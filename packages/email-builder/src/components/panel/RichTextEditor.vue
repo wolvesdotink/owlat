@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import UiTooltip from '@owlat/ui/components/ui/Tooltip.vue';
 import { computed, ref, watch, onMounted, nextTick } from 'vue';
 import { useRichText } from '@owlat/ui/composables/useRichText';
 import { sanitizeEditorHtml } from '@owlat/email-renderer';
@@ -126,55 +127,60 @@ function handleSourceInput(event: Event) {
 			role="toolbar"
 			:aria-label="t('builder.richText.formatting')"
 		>
-			<button
-				type="button"
-				class="flex items-center justify-center w-[26px] h-[26px] border-none rounded bg-none text-text-secondary cursor-pointer transition-[background-color,color] duration-(--motion-fast) hover:bg-bg-surface-hover hover:text-text-primary"
-				:title="shortcutTitle('builder.toolbar.bold', 'B')"
-				:aria-label="t('builder.toolbar.bold')"
-				@click="applyFormat(richText.toggleBold)"
-			>
-				<Bold :size="14" />
-			</button>
-			<button
-				type="button"
-				class="flex items-center justify-center w-[26px] h-[26px] border-none rounded bg-none text-text-secondary cursor-pointer transition-[background-color,color] duration-(--motion-fast) hover:bg-bg-surface-hover hover:text-text-primary"
-				:title="shortcutTitle('builder.toolbar.italic', 'I')"
-				:aria-label="t('builder.toolbar.italic')"
-				@click="applyFormat(richText.toggleItalic)"
-			>
-				<Italic :size="14" />
-			</button>
-			<button
-				type="button"
-				class="flex items-center justify-center w-[26px] h-[26px] border-none rounded bg-none text-text-secondary cursor-pointer transition-[background-color,color] duration-(--motion-fast) hover:bg-bg-surface-hover hover:text-text-primary"
-				:title="shortcutTitle('builder.toolbar.underline', 'U')"
-				:aria-label="t('builder.toolbar.underline')"
-				@click="applyFormat(richText.toggleUnderline)"
-			>
-				<Underline :size="14" />
-			</button>
-			<button
-				type="button"
-				class="flex items-center justify-center w-[26px] h-[26px] border-none rounded bg-none text-text-secondary cursor-pointer transition-[background-color,color] duration-(--motion-fast) hover:bg-bg-surface-hover hover:text-text-primary"
-				:title="shortcutTitle('builder.toolbar.link', 'K')"
-				:aria-label="t('builder.toolbar.link')"
-				@click="applyFormat(richText.setLink)"
-			>
-				<Link :size="14" />
-			</button>
-			<div v-if="variables?.length" class="w-px h-[18px] bg-border-subtle mx-0.5" />
-			<div v-if="variables?.length" class="relative">
+			<UiTooltip :text="shortcutTitle('builder.toolbar.bold', 'B')">
 				<button
 					type="button"
 					class="flex items-center justify-center w-[26px] h-[26px] border-none rounded bg-none text-text-secondary cursor-pointer transition-[background-color,color] duration-(--motion-fast) hover:bg-bg-surface-hover hover:text-text-primary"
-					:title="t('builder.richText.insertVariable')"
-					:aria-label="t('builder.richText.insertVariable')"
-					aria-haspopup="menu"
-					:aria-expanded="showVariableMenu"
-					@click="showVariableMenu = !showVariableMenu"
+					:aria-label="t('builder.toolbar.bold')"
+					@click="applyFormat(richText.toggleBold)"
 				>
-					<VariableIcon :size="14" />
+					<Bold :size="14" />
 				</button>
+			</UiTooltip>
+			<UiTooltip :text="shortcutTitle('builder.toolbar.italic', 'I')">
+				<button
+					type="button"
+					class="flex items-center justify-center w-[26px] h-[26px] border-none rounded bg-none text-text-secondary cursor-pointer transition-[background-color,color] duration-(--motion-fast) hover:bg-bg-surface-hover hover:text-text-primary"
+					:aria-label="t('builder.toolbar.italic')"
+					@click="applyFormat(richText.toggleItalic)"
+				>
+					<Italic :size="14" />
+				</button>
+			</UiTooltip>
+			<UiTooltip :text="shortcutTitle('builder.toolbar.underline', 'U')">
+				<button
+					type="button"
+					class="flex items-center justify-center w-[26px] h-[26px] border-none rounded bg-none text-text-secondary cursor-pointer transition-[background-color,color] duration-(--motion-fast) hover:bg-bg-surface-hover hover:text-text-primary"
+					:aria-label="t('builder.toolbar.underline')"
+					@click="applyFormat(richText.toggleUnderline)"
+				>
+					<Underline :size="14" />
+				</button>
+			</UiTooltip>
+			<UiTooltip :text="shortcutTitle('builder.toolbar.link', 'K')">
+				<button
+					type="button"
+					class="flex items-center justify-center w-[26px] h-[26px] border-none rounded bg-none text-text-secondary cursor-pointer transition-[background-color,color] duration-(--motion-fast) hover:bg-bg-surface-hover hover:text-text-primary"
+					:aria-label="t('builder.toolbar.link')"
+					@click="applyFormat(richText.setLink)"
+				>
+					<Link :size="14" />
+				</button>
+			</UiTooltip>
+			<div v-if="variables?.length" class="w-px h-[18px] bg-border-subtle mx-0.5" />
+			<div v-if="variables?.length" class="relative">
+				<UiTooltip :text="t('builder.richText.insertVariable')">
+					<button
+						type="button"
+						class="flex items-center justify-center w-[26px] h-[26px] border-none rounded bg-none text-text-secondary cursor-pointer transition-[background-color,color] duration-(--motion-fast) hover:bg-bg-surface-hover hover:text-text-primary"
+						:aria-label="t('builder.richText.insertVariable')"
+						aria-haspopup="menu"
+						:aria-expanded="showVariableMenu"
+						@click="showVariableMenu = !showVariableMenu"
+					>
+						<VariableIcon :size="14" />
+					</button>
+				</UiTooltip>
 				<div
 					v-if="showVariableMenu"
 					role="menu"
@@ -194,17 +200,18 @@ function handleSourceInput(event: Event) {
 				</div>
 			</div>
 			<div class="flex-1" />
-			<button
-				type="button"
-				class="flex items-center justify-center w-[26px] h-[26px] border-none rounded bg-none text-text-secondary cursor-pointer transition-[background-color,color] duration-(--motion-fast) hover:bg-bg-surface-hover hover:text-text-primary"
-				:class="{ 'bg-brand text-white': isSourceMode }"
-				:title="t('builder.richText.sourceMode')"
-				:aria-label="t('builder.richText.sourceMode')"
-				:aria-pressed="isSourceMode"
-				@click="toggleSourceMode"
-			>
-				<Code :size="14" />
-			</button>
+			<UiTooltip :text="t('builder.richText.sourceMode')">
+				<button
+					type="button"
+					class="flex items-center justify-center w-[26px] h-[26px] border-none rounded bg-none text-text-secondary cursor-pointer transition-[background-color,color] duration-(--motion-fast) hover:bg-bg-surface-hover hover:text-text-primary"
+					:class="{ 'bg-brand text-white': isSourceMode }"
+					:aria-label="t('builder.richText.sourceMode')"
+					:aria-pressed="isSourceMode"
+					@click="toggleSourceMode"
+				>
+					<Code :size="14" />
+				</button>
+			</UiTooltip>
 		</div>
 
 		<!-- Visual editor -->

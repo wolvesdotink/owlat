@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import UiTooltip from '@owlat/ui/components/ui/Tooltip.vue';
 import { computed, ref } from 'vue';
 import type { GradientBackground } from '../../types';
 import {
@@ -166,16 +167,20 @@ function openColorPicker(index: number) {
 				>
 					<!-- Color swatch with hidden color input -->
 					<div class="relative shrink-0">
-						<button
-							class="w-[22px] h-[22px] rounded-[5px] border-[1.5px] border-border-subtle cursor-pointer p-0 transition-[transform,box-shadow] duration-(--motion-moderate) hover:scale-[1.12] hover:border-text-tertiary"
-							:style="{ backgroundColor: stop.color }"
-							:title="stop.color"
-							:aria-label="
-								t('builder.panel.gradient.stopColorValue', { index: index + 1, color: stop.color })
-							"
-							type="button"
-							@click="openColorPicker(index)"
-						/>
+						<UiTooltip :text="stop.color">
+							<button
+								class="w-[22px] h-[22px] rounded-[5px] border-[1.5px] border-border-subtle cursor-pointer p-0 transition-[transform,box-shadow] duration-(--motion-moderate) hover:scale-[1.12] hover:border-text-tertiary"
+								:style="{ backgroundColor: stop.color }"
+								:aria-label="
+									t('builder.panel.gradient.stopColorValue', {
+										index: index + 1,
+										color: stop.color,
+									})
+								"
+								type="button"
+								@click="openColorPicker(index)"
+							/>
+						</UiTooltip>
 						<input
 							:ref="
 								(el) => {

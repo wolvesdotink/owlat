@@ -48,13 +48,13 @@ describe('PostboxFloatingFormatBar', () => {
 	it('renders the format toolbar when a selection anchors the bar', () => {
 		const wrapper = mountBar();
 		expect(wrapper.find('[data-testid="postbox-floating-format-bar"]').exists()).toBe(true);
-		// Format buttons are present (Bold has a recognizable title).
-		expect(wrapper.find('button[title^="Bold"]').exists()).toBe(true);
+		// Format buttons are present (Bold has a recognizable name).
+		expect(wrapper.find('button[aria-label="Bold"]').exists()).toBe(true);
 	});
 
 	it('forwards a format command to the parent', async () => {
 		const wrapper = mountBar();
-		await wrapper.find('button[title^="Bold"]').trigger('click');
+		await wrapper.find('button[aria-label="Bold"]').trigger('click');
 		expect(wrapper.emitted('bold')).toHaveLength(1);
 	});
 
@@ -66,7 +66,7 @@ describe('PostboxFloatingFormatBar', () => {
 	it('renders the AI actions in the same combined bar when showAiActions is on', () => {
 		const wrapper = mountBar({ showAiActions: true, aiLanguages: ['Spanish'] });
 		// Both the format buttons AND the AI actions live in the one bar.
-		expect(wrapper.find('button[title^="Bold"]').exists()).toBe(true);
+		expect(wrapper.find('button[aria-label="Bold"]').exists()).toBe(true);
 		expect(wrapper.find('[data-testid="postbox-rewrite-actions"]').exists()).toBe(true);
 	});
 

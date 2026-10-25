@@ -35,22 +35,21 @@ const { t } = useI18n();
 		<span class="mr-1 text-xs text-text-secondary">{{
 			t('desktop.settings.workspaces.accent')
 		}}</span>
-		<button
-			v-for="option in options"
-			:key="option.value"
-			type="button"
-			class="group/swatch flex size-5 shrink-0 items-center justify-center rounded-full pointer-coarse:size-11"
-			:title="t(option.label)"
-			:aria-label="t('desktop.settings.workspaces.accentOption', { accent: t(option.label) })"
-			:aria-pressed="modelValue === option.value"
-			data-testid="workspace-swatch"
-			@click="emit('update:modelValue', option.value)"
-		>
-			<span
-				class="size-5 shrink-0 rounded-full border-2 transition-transform group-hover/swatch:scale-110"
-				:class="modelValue === option.value ? 'border-text-primary' : 'border-transparent'"
-				:style="{ backgroundColor: option.value }"
-			/>
-		</button>
+		<UiTooltip v-for="option in options" :key="option.value" :text="t(option.label)">
+			<button
+				type="button"
+				class="group/swatch flex size-5 shrink-0 items-center justify-center rounded-full pointer-coarse:size-11"
+				:aria-label="t('desktop.settings.workspaces.accentOption', { accent: t(option.label) })"
+				:aria-pressed="modelValue === option.value"
+				data-testid="workspace-swatch"
+				@click="emit('update:modelValue', option.value)"
+			>
+				<span
+					class="size-5 shrink-0 rounded-full border-2 transition-transform group-hover/swatch:scale-110"
+					:class="modelValue === option.value ? 'border-text-primary' : 'border-transparent'"
+					:style="{ backgroundColor: option.value }"
+				/>
+			</button>
+		</UiTooltip>
 	</div>
 </template>

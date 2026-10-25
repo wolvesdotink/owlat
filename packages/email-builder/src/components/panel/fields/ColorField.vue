@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import UiTooltip from '@owlat/ui/components/ui/Tooltip.vue';
 import { ref, inject, type Ref } from 'vue';
 import { Pipette } from '@lucide/vue';
 import ColorSwatch from '../../ui/ColorSwatch.vue';
@@ -65,17 +66,20 @@ function selectSwatch(color: string) {
 		<div
 			class="flex items-center gap-0 border border-border-subtle rounded-lg overflow-hidden bg-bg-surface eb-input-ring"
 		>
-			<button
-				class="w-[34px] h-[34px] border-none border-r border-r-border-subtle cursor-pointer shrink-0 p-0 transition-opacity duration-(--motion-fast) hover:opacity-85"
-				:class="{ 'bg-checker': !value || value === 'transparent' }"
-				:style="value && value !== 'transparent' ? { backgroundColor: value } : undefined"
-				type="button"
-				:title="t('builder.panel.color.open')"
-				:aria-label="
-					label ? t('builder.panel.color.openFor', { field: label }) : t('builder.panel.color.open')
-				"
-				@click="openColorPicker"
-			/>
+			<UiTooltip :text="t('builder.panel.color.open')">
+				<button
+					class="w-[34px] h-[34px] border-none border-r border-r-border-subtle cursor-pointer shrink-0 p-0 transition-opacity duration-(--motion-fast) hover:opacity-85"
+					:class="{ 'bg-checker': !value || value === 'transparent' }"
+					:style="value && value !== 'transparent' ? { backgroundColor: value } : undefined"
+					type="button"
+					:aria-label="
+						label
+							? t('builder.panel.color.openFor', { field: label })
+							: t('builder.panel.color.open')
+					"
+					@click="openColorPicker"
+				/>
+			</UiTooltip>
 			<input
 				type="text"
 				:aria-label="
@@ -88,17 +92,20 @@ function selectSwatch(color: string) {
 				@input="handleTextInput"
 				@blur="handleTextBlur"
 			/>
-			<button
-				class="flex items-center justify-center w-8 h-[34px] border-none border-l border-l-border-subtle bg-transparent text-text-disabled cursor-pointer shrink-0 transition-[background-color,color] duration-(--motion-fast) hover:bg-bg-surface-hover hover:text-text-secondary"
-				type="button"
-				:title="t('builder.panel.color.pick')"
-				:aria-label="
-					label ? t('builder.panel.color.pickFor', { field: label }) : t('builder.panel.color.pick')
-				"
-				@click="openColorPicker"
-			>
-				<Pipette :size="13" />
-			</button>
+			<UiTooltip :text="t('builder.panel.color.pick')">
+				<button
+					class="flex items-center justify-center w-8 h-[34px] border-none border-l border-l-border-subtle bg-transparent text-text-disabled cursor-pointer shrink-0 transition-[background-color,color] duration-(--motion-fast) hover:bg-bg-surface-hover hover:text-text-secondary"
+					type="button"
+					:aria-label="
+						label
+							? t('builder.panel.color.pickFor', { field: label })
+							: t('builder.panel.color.pick')
+					"
+					@click="openColorPicker"
+				>
+					<Pipette :size="13" />
+				</button>
+			</UiTooltip>
 			<input
 				ref="colorInputRef"
 				type="color"

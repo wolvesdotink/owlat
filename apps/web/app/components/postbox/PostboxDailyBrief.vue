@@ -131,15 +131,16 @@ const isVisible = computed(
 			:aria-label="t('components.postbox.postboxDailyBrief.regionLabel')"
 			class="group relative"
 		>
-			<button
-				type="button"
-				:aria-label="t('components.postbox.postboxDailyBrief.dismissLabel')"
-				:title="t('components.postbox.postboxDailyBrief.dismissTitle')"
-				class="absolute -top-1 -right-1 flex items-center justify-center w-8 h-8 rounded text-text-tertiary hover:text-text-primary opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 focus-visible:ring-1 focus-visible:ring-brand/40 outline-none transition-opacity duration-(--motion-fast)"
-				@click="dismiss"
-			>
-				<Icon name="lucide:x" class="w-3.5 h-3.5" />
-			</button>
+			<UiTooltip :text="t('components.postbox.postboxDailyBrief.dismissTitle')">
+				<button
+					type="button"
+					:aria-label="t('components.postbox.postboxDailyBrief.dismissLabel')"
+					class="absolute -top-1 -right-1 flex items-center justify-center w-8 h-8 rounded text-text-tertiary hover:text-text-primary opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 focus-visible:ring-1 focus-visible:ring-brand/40 outline-none transition-opacity duration-(--motion-fast)"
+					@click="dismiss"
+				>
+					<Icon name="lucide:x" class="w-3.5 h-3.5" />
+				</button>
+			</UiTooltip>
 			<h2 class="font-display text-xl text-text-primary">
 				{{ t('components.postbox.postboxDailyBrief.heading', { greeting }) }}
 			</h2>

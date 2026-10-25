@@ -143,35 +143,38 @@ function onDownload(att: AttachmentMeta): void {
 				<!-- Compact icon buttons for a mouse; on touch (pointer-coarse) each
 				     grows to the 44px target of the `.btn` recipe as its own box in
 				     the row, so the eye and the download never share a hit area. -->
-				<button
+				<UiTooltip
 					v-if="isPreviewEnabled && previewLabel && isPreviewableFile(att.contentType)"
-					type="button"
-					class="p-1 rounded hover:bg-bg-elevated text-text-tertiary hover:text-text-primary pointer-coarse:inline-flex pointer-coarse:min-h-11 pointer-coarse:min-w-11 pointer-coarse:items-center pointer-coarse:justify-center"
-					:title="previewLabel(att.filename)"
-					:aria-label="previewLabel(att.filename)"
-					data-testid="message-attachment-preview"
-					@click="emit('preview', att, attachments)"
+					:text="previewLabel(att.filename)"
 				>
-					<Icon name="lucide:eye" class="w-4 h-4" />
-				</button>
-				<button
-					v-if="!isDownloadHidden"
-					type="button"
-					class="p-1 rounded hover:bg-bg-elevated text-text-tertiary hover:text-text-primary disabled:opacity-50 aria-disabled:opacity-50 pointer-coarse:inline-flex pointer-coarse:min-h-11 pointer-coarse:min-w-11 pointer-coarse:items-center pointer-coarse:justify-center"
-					:title="downloadLabel(att.filename)"
-					:aria-label="downloadLabel(att.filename)"
-					:aria-describedby="hasNotice ? noticeId : undefined"
-					:aria-disabled="isDownloadDisabled === true ? 'true' : undefined"
-					:disabled="isDownloading(att)"
-					data-testid="message-attachment-download"
-					@click="onDownload(att)"
-				>
-					<Icon
-						:name="isDownloading(att) ? 'lucide:loader-2' : 'lucide:download'"
-						class="w-4 h-4"
-						:class="{ 'animate-spin motion-reduce:animate-none': isDownloading(att) }"
-					/>
-				</button>
+					<button
+						type="button"
+						class="p-1 rounded hover:bg-bg-elevated text-text-tertiary hover:text-text-primary pointer-coarse:inline-flex pointer-coarse:min-h-11 pointer-coarse:min-w-11 pointer-coarse:items-center pointer-coarse:justify-center"
+						:aria-label="previewLabel(att.filename)"
+						data-testid="message-attachment-preview"
+						@click="emit('preview', att, attachments)"
+					>
+						<Icon name="lucide:eye" class="w-4 h-4" />
+					</button>
+				</UiTooltip>
+				<UiTooltip v-if="!isDownloadHidden" :text="downloadLabel(att.filename)">
+					<button
+						type="button"
+						class="p-1 rounded hover:bg-bg-elevated text-text-tertiary hover:text-text-primary disabled:opacity-50 aria-disabled:opacity-50 pointer-coarse:inline-flex pointer-coarse:min-h-11 pointer-coarse:min-w-11 pointer-coarse:items-center pointer-coarse:justify-center"
+						:aria-label="downloadLabel(att.filename)"
+						:aria-describedby="hasNotice ? noticeId : undefined"
+						:aria-disabled="isDownloadDisabled === true ? 'true' : undefined"
+						:disabled="isDownloading(att)"
+						data-testid="message-attachment-download"
+						@click="onDownload(att)"
+					>
+						<Icon
+							:name="isDownloading(att) ? 'lucide:loader-2' : 'lucide:download'"
+							class="w-4 h-4"
+							:class="{ 'animate-spin motion-reduce:animate-none': isDownloading(att) }"
+						/>
+					</button>
+				</UiTooltip>
 			</li>
 		</ul>
 	</section>

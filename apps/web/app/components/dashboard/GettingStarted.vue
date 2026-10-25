@@ -318,14 +318,15 @@ const handleDismiss = () => dismiss(model.value.dismissalScope, props.userId);
 			>
 				{{ t('components.dashboard.gettingStarted.continue') }}
 			</UiButton>
-			<button
-				class="rounded-lg p-1.5 text-text-tertiary transition-colors hover:bg-bg-surface hover:text-text-secondary"
-				:title="t('common.dismiss')"
-				:aria-label="t('components.dashboard.gettingStarted.dismissLabel')"
-				@click="handleDismiss"
-			>
-				<Icon name="lucide:x" class="h-4 w-4" />
-			</button>
+			<UiTooltip :text="t('common.dismiss')">
+				<button
+					class="rounded-lg p-1.5 text-text-tertiary transition-colors hover:bg-bg-surface hover:text-text-secondary"
+					:aria-label="t('components.dashboard.gettingStarted.dismissLabel')"
+					@click="handleDismiss"
+				>
+					<Icon name="lucide:x" class="h-4 w-4" />
+				</button>
+			</UiTooltip>
 		</section>
 		<section
 			v-else-if="model.visible"
@@ -348,14 +349,15 @@ const handleDismiss = () => dismiss(model.value.dismissalScope, props.userId);
 						</p>
 					</div>
 				</div>
-				<button
-					class="rounded-lg p-1.5 text-text-tertiary transition-colors hover:bg-bg-surface hover:text-text-secondary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
-					:title="t('common.dismiss')"
-					:aria-label="t('components.dashboard.gettingStarted.dismissLabel')"
-					@click="handleDismiss"
-				>
-					<Icon name="lucide:x" class="h-4 w-4" />
-				</button>
+				<UiTooltip :text="t('common.dismiss')">
+					<button
+						class="rounded-lg p-1.5 text-text-tertiary transition-colors hover:bg-bg-surface hover:text-text-secondary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+						:aria-label="t('components.dashboard.gettingStarted.dismissLabel')"
+						@click="handleDismiss"
+					>
+						<Icon name="lucide:x" class="h-4 w-4" />
+					</button>
+				</UiTooltip>
 			</div>
 
 			<!-- Progress -->

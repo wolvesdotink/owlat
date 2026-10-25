@@ -40,7 +40,7 @@ const settlePanels = async () => {
 	await flushPromises();
 };
 
-const diffButton = (w: VueWrapper) => w.find('button[title="Compare changes"]');
+const diffButton = (w: VueWrapper) => w.find('button[aria-label="Compare changes"]');
 
 describe('EmailPreviewer — diff request signal', () => {
 	it('offers no diff and requests none without a change', () => {

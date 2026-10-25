@@ -514,22 +514,28 @@ const handleBack = () => {
 										<div class="flex items-center justify-between">
 											<span>{{ languageNativeLabel(lang) }}</span>
 											<div class="flex items-center gap-1">
-												<button
+												<UiTooltip
 													v-if="isTranslating !== lang"
-													class="p-1 rounded hover:bg-brand/10 text-text-tertiary hover:text-brand transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-													:title="t('components.translation.manager.autoTranslateTitle')"
-													@click="autoTranslateColumn(lang)"
+													:text="t('components.translation.manager.autoTranslateTitle')"
 												>
-													<Icon name="lucide:sparkles" class="w-4 h-4" />
-												</button>
+													<button
+														class="p-1 rounded hover:bg-brand/10 text-text-tertiary hover:text-brand transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+														:aria-label="t('components.translation.manager.autoTranslateTitle')"
+														@click="autoTranslateColumn(lang)"
+													>
+														<Icon name="lucide:sparkles" class="w-4 h-4" />
+													</button>
+												</UiTooltip>
 												<UiSpinner v-else size="xs" />
-												<button
-													class="p-1 rounded hover:bg-error/10 text-text-tertiary hover:text-error transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-													:title="t('components.translation.manager.removeLanguageTitle')"
-													@click="removeLanguage(lang)"
-												>
-													<Icon name="lucide:trash-2" class="w-4 h-4" />
-												</button>
+												<UiTooltip :text="t('components.translation.manager.removeLanguageTitle')">
+													<button
+														class="p-1 rounded hover:bg-error/10 text-text-tertiary hover:text-error transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+														:aria-label="t('components.translation.manager.removeLanguageTitle')"
+														@click="removeLanguage(lang)"
+													>
+														<Icon name="lucide:trash-2" class="w-4 h-4" />
+													</button>
+												</UiTooltip>
 											</div>
 										</div>
 									</th>

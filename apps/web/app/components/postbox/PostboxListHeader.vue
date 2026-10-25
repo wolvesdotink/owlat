@@ -97,37 +97,40 @@ const emit = defineEmits<{
 		<div class="flex items-center gap-2 min-w-0">
 			<!-- Tri-state select-all over the rows that are loaded: unchecked,
 			     a dash while some are picked, checked when the page is covered. -->
-			<button
+			<UiTooltip
 				v-if="selectionEnabled"
-				type="button"
-				role="checkbox"
-				:aria-checked="
-					selectionState === 'all' ? 'true' : selectionState === 'partial' ? 'mixed' : 'false'
-				"
-				class="w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center focus-visible:ring-1 focus-visible:ring-brand/40 outline-none"
-				:class="
-					selectionState === 'none'
-						? 'border-border-subtle bg-bg-base'
-						: 'bg-brand border-brand text-text-inverse'
-				"
-				:aria-label="
+				:text="
 					selectionState === 'all'
 						? t('components.postbox.postboxListHeader.deselectPage')
 						: t('components.postbox.postboxListHeader.selectPage')
 				"
-				:title="
-					selectionState === 'all'
-						? t('components.postbox.postboxListHeader.deselectPage')
-						: t('components.postbox.postboxListHeader.selectPage')
-				"
-				@click="toggleSelectPage()"
 			>
-				<Icon
-					v-if="selectionState !== 'none'"
-					:name="selectionState === 'all' ? 'lucide:check' : 'lucide:minus'"
-					class="w-3 h-3"
-				/>
-			</button>
+				<button
+					type="button"
+					role="checkbox"
+					:aria-checked="
+						selectionState === 'all' ? 'true' : selectionState === 'partial' ? 'mixed' : 'false'
+					"
+					class="w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center focus-visible:ring-1 focus-visible:ring-brand/40 outline-none"
+					:class="
+						selectionState === 'none'
+							? 'border-border-subtle bg-bg-base'
+							: 'bg-brand border-brand text-text-inverse'
+					"
+					:aria-label="
+						selectionState === 'all'
+							? t('components.postbox.postboxListHeader.deselectPage')
+							: t('components.postbox.postboxListHeader.selectPage')
+					"
+					@click="toggleSelectPage()"
+				>
+					<Icon
+						v-if="selectionState !== 'none'"
+						:name="selectionState === 'all' ? 'lucide:check' : 'lucide:minus'"
+						class="w-3 h-3"
+					/>
+				</button>
+			</UiTooltip>
 			<!-- Drawer handle for the folder rail (mobile only). 44px square for
 			     the thumb; the negative margins keep it from growing the header
 			     past the height the 16px icon alone would give it. -->

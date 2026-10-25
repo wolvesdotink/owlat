@@ -123,38 +123,41 @@ const isNoMatch = computed(
 				data-testid="thread-find-count"
 				>{{ countLabel }}</span
 			>
-			<button
-				type="button"
-				class="rounded p-1 text-text-secondary hover:bg-bg-surface hover:text-text-primary disabled:opacity-40"
-				:aria-label="t('components.postbox.threadFind.previous')"
-				:title="t('components.postbox.threadFind.previous')"
-				:disabled="!canStep"
-				data-testid="thread-find-previous"
-				@click="find.previous()"
-			>
-				<Icon name="lucide:chevron-up" class="size-4" aria-hidden="true" />
-			</button>
-			<button
-				type="button"
-				class="rounded p-1 text-text-secondary hover:bg-bg-surface hover:text-text-primary disabled:opacity-40"
-				:aria-label="t('components.postbox.threadFind.next')"
-				:title="t('components.postbox.threadFind.next')"
-				:disabled="!canStep"
-				data-testid="thread-find-next"
-				@click="find.next()"
-			>
-				<Icon name="lucide:chevron-down" class="size-4" aria-hidden="true" />
-			</button>
-			<button
-				type="button"
-				class="rounded p-1 text-text-secondary hover:bg-bg-surface hover:text-text-primary"
-				:aria-label="t('components.postbox.threadFind.close')"
-				:title="t('components.postbox.threadFind.close')"
-				data-testid="thread-find-close"
-				@click="find.close()"
-			>
-				<Icon name="lucide:x" class="size-4" aria-hidden="true" />
-			</button>
+			<UiTooltip :text="t('components.postbox.threadFind.previous')">
+				<button
+					type="button"
+					class="rounded p-1 text-text-secondary hover:bg-bg-surface hover:text-text-primary disabled:opacity-40"
+					:aria-label="t('components.postbox.threadFind.previous')"
+					:disabled="!canStep"
+					data-testid="thread-find-previous"
+					@click="find.previous()"
+				>
+					<Icon name="lucide:chevron-up" class="size-4" aria-hidden="true" />
+				</button>
+			</UiTooltip>
+			<UiTooltip :text="t('components.postbox.threadFind.next')">
+				<button
+					type="button"
+					class="rounded p-1 text-text-secondary hover:bg-bg-surface hover:text-text-primary disabled:opacity-40"
+					:aria-label="t('components.postbox.threadFind.next')"
+					:disabled="!canStep"
+					data-testid="thread-find-next"
+					@click="find.next()"
+				>
+					<Icon name="lucide:chevron-down" class="size-4" aria-hidden="true" />
+				</button>
+			</UiTooltip>
+			<UiTooltip :text="t('components.postbox.threadFind.close')">
+				<button
+					type="button"
+					class="rounded p-1 text-text-secondary hover:bg-bg-surface hover:text-text-primary"
+					:aria-label="t('components.postbox.threadFind.close')"
+					data-testid="thread-find-close"
+					@click="find.close()"
+				>
+					<Icon name="lucide:x" class="size-4" aria-hidden="true" />
+				</button>
+			</UiTooltip>
 		</div>
 		<div
 			v-if="

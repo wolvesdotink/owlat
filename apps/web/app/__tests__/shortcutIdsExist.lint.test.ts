@@ -24,7 +24,6 @@ const PATTERNS = [
 	/<UiShortcut\b[^>]*?(?<![:\w-])id="([\w.]+)"/g,
 	/\bshortcutId:\s*'([\w.]+)'/g,
 	/\b(?:labelFor|ariaFor)\(\s*'([\w.]+)'/g,
-	/\btitleWithShortcut\([^,]+,\s*'([\w.]+)'/g,
 ];
 
 function sourceFiles(dir: string): string[] {

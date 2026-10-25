@@ -118,36 +118,38 @@ const formatCreatedAt = (createdAt: number) =>
 			<div
 				class="flex shrink-0 items-center border border-border-subtle rounded-lg overflow-hidden ml-auto"
 			>
-				<button
-					type="button"
-					class="p-2 transition-colors hover:bg-bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand"
-					:class="
-						viewMode === 'grid'
-							? 'bg-bg-surface text-text-primary'
-							: 'text-text-tertiary hover:text-text-primary'
-					"
-					:title="t('dashboard.files.index.gridView')"
-					:aria-label="t('dashboard.files.index.gridView')"
-					:aria-pressed="viewMode === 'grid'"
-					@click="viewMode = 'grid'"
-				>
-					<Icon name="lucide:layout-grid" class="w-4 h-4" />
-				</button>
-				<button
-					type="button"
-					class="p-2 transition-colors hover:bg-bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand"
-					:class="
-						viewMode === 'list'
-							? 'bg-bg-surface text-text-primary'
-							: 'text-text-tertiary hover:text-text-primary'
-					"
-					:title="t('dashboard.files.index.listView')"
-					:aria-label="t('dashboard.files.index.listView')"
-					:aria-pressed="viewMode === 'list'"
-					@click="viewMode = 'list'"
-				>
-					<Icon name="lucide:list" class="w-4 h-4" />
-				</button>
+				<UiTooltip :text="t('dashboard.files.index.gridView')">
+					<button
+						type="button"
+						class="p-2 transition-colors hover:bg-bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand"
+						:class="
+							viewMode === 'grid'
+								? 'bg-bg-surface text-text-primary'
+								: 'text-text-tertiary hover:text-text-primary'
+						"
+						:aria-label="t('dashboard.files.index.gridView')"
+						:aria-pressed="viewMode === 'grid'"
+						@click="viewMode = 'grid'"
+					>
+						<Icon name="lucide:layout-grid" class="w-4 h-4" />
+					</button>
+				</UiTooltip>
+				<UiTooltip :text="t('dashboard.files.index.listView')">
+					<button
+						type="button"
+						class="p-2 transition-colors hover:bg-bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand"
+						:class="
+							viewMode === 'list'
+								? 'bg-bg-surface text-text-primary'
+								: 'text-text-tertiary hover:text-text-primary'
+						"
+						:aria-label="t('dashboard.files.index.listView')"
+						:aria-pressed="viewMode === 'list'"
+						@click="viewMode = 'list'"
+					>
+						<Icon name="lucide:list" class="w-4 h-4" />
+					</button>
+				</UiTooltip>
 			</div>
 		</div>
 

@@ -171,21 +171,24 @@ const identifierPlaceholder = computed(() => {
 						<p class="text-xs text-text-tertiary">{{ t(getChannelLabel(identity.channel)) }}</p>
 					</div>
 					<div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-						<button
-							v-if="!identity.verifiedAt"
-							class="p-1.5 rounded text-text-tertiary hover:text-success hover:bg-success-subtle transition-colors"
-							:title="t('components.contacts.identitiesTab.markVerified')"
-							@click="onVerify(identity._id)"
-						>
-							<Icon name="lucide:check-circle" class="w-4 h-4" />
-						</button>
-						<button
-							class="p-1.5 rounded text-text-tertiary hover:text-error hover:bg-error-subtle transition-colors"
-							:title="t('components.contacts.identitiesTab.removeIdentity')"
-							@click="onRemove(identity._id)"
-						>
-							<Icon name="lucide:trash-2" class="w-4 h-4" />
-						</button>
+						<UiTooltip v-if="!identity.verifiedAt" :text="t('components.contacts.identitiesTab.markVerified')">
+							<button
+								class="p-1.5 rounded text-text-tertiary hover:text-success hover:bg-success-subtle transition-colors"
+								:aria-label="t('components.contacts.identitiesTab.markVerified')"
+								@click="onVerify(identity._id)"
+							>
+								<Icon name="lucide:check-circle" class="w-4 h-4" />
+							</button>
+						</UiTooltip>
+						<UiTooltip :text="t('components.contacts.identitiesTab.removeIdentity')">
+							<button
+								class="p-1.5 rounded text-text-tertiary hover:text-error hover:bg-error-subtle transition-colors"
+								:aria-label="t('components.contacts.identitiesTab.removeIdentity')"
+								@click="onRemove(identity._id)"
+							>
+								<Icon name="lucide:trash-2" class="w-4 h-4" />
+							</button>
+						</UiTooltip>
 					</div>
 				</div>
 			</div>

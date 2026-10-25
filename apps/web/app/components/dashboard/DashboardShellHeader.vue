@@ -7,7 +7,7 @@ const emit = defineEmits<{ openNavigation: []; openSearch: [] }>();
 
 const { t } = useI18n();
 const { enterZen } = useZenMode();
-const { ariaFor, titleWithShortcut } = useShortcutLabels();
+const { ariaFor } = useShortcutLabels();
 </script>
 
 <template>
@@ -30,17 +30,19 @@ const { ariaFor, titleWithShortcut } = useShortcutLabels();
 			<!-- The create action, persistent: one click from every page. -->
 			<DashboardQuickCreateMenu />
 			<GlobalSearch v-if="!isDesktop" />
-			<button
-				type="button"
-				data-testid="zen-enter"
-				class="flex size-8 items-center justify-center rounded-lg text-text-tertiary transition-colors hover:bg-bg-surface hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-				:title="titleWithShortcut(t('components.shell.zen.enter'), 'global.zen')"
-				:aria-label="t('components.shell.zen.enter')"
-				:aria-keyshortcuts="ariaFor('global.zen')"
-				@click="enterZen"
-			>
-				<Icon name="lucide:maximize-2" class="size-4" />
-			</button>
+			<UiTooltip :text="t('components.shell.zen.enter')">
+				<template #shortcut><UiShortcut id="global.zen" /></template>
+				<button
+					type="button"
+					data-testid="zen-enter"
+					class="flex size-8 items-center justify-center rounded-lg text-text-tertiary transition-colors hover:bg-bg-surface hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+					:aria-label="t('components.shell.zen.enter')"
+					:aria-keyshortcuts="ariaFor('global.zen')"
+					@click="enterZen"
+				>
+					<Icon name="lucide:maximize-2" class="size-4" />
+				</button>
+			</UiTooltip>
 		</div>
 	</header>
 

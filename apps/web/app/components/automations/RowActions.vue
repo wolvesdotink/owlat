@@ -73,48 +73,49 @@ const neutralButton = 'text-text-tertiary hover:text-text-primary hover:bg-bg-su
 
 <template>
 	<div class="flex items-center justify-end gap-1" @click.stop>
-		<button
-			v-if="canManage && !isDraft"
-			type="button"
-			:class="[
-				iconButton,
-				isActive
-					? 'text-warning hover:text-warning hover:bg-warning/10'
-					: 'text-success hover:text-success hover:bg-success/10',
-			]"
-			:title="toggleLabel"
-			:aria-label="toggleLabel"
-			:disabled="toggling"
-			@click="emit('toggle', automation)"
-		>
-			<Icon
-				v-if="toggling"
-				name="lucide:loader-2"
-				class="w-4 h-4 animate-spin motion-reduce:animate-none"
-			/>
-			<Icon v-else-if="isActive" name="lucide:pause" class="w-4 h-4" />
-			<Icon v-else name="lucide:play" class="w-4 h-4" />
-		</button>
-		<button
-			v-if="canManage"
-			type="button"
-			:class="[iconButton, neutralButton]"
-			:title="t('common.edit')"
-			:aria-label="t('common.edit')"
-			@click="emit('edit', automation)"
-		>
-			<Icon name="lucide:pencil" class="w-4 h-4" />
-		</button>
+		<UiTooltip v-if="canManage && !isDraft" :text="toggleLabel">
+			<button
+				type="button"
+				:class="[
+					iconButton,
+					isActive
+						? 'text-warning hover:text-warning hover:bg-warning/10'
+						: 'text-success hover:text-success hover:bg-success/10',
+				]"
+				:aria-label="toggleLabel"
+				:disabled="toggling"
+				@click="emit('toggle', automation)"
+			>
+				<Icon
+					v-if="toggling"
+					name="lucide:loader-2"
+					class="w-4 h-4 animate-spin motion-reduce:animate-none"
+				/>
+				<Icon v-else-if="isActive" name="lucide:pause" class="w-4 h-4" />
+				<Icon v-else name="lucide:play" class="w-4 h-4" />
+			</button>
+		</UiTooltip>
+		<UiTooltip v-if="canManage" :text="t('common.edit')">
+			<button
+				type="button"
+				:class="[iconButton, neutralButton]"
+				:aria-label="t('common.edit')"
+				@click="emit('edit', automation)"
+			>
+				<Icon name="lucide:pencil" class="w-4 h-4" />
+			</button>
+		</UiTooltip>
 		<UiDropdownMenu v-if="verbs.length > 0" v-model:open="menuOpen">
 			<template #trigger>
-				<button
-					type="button"
-					:class="[iconButton, neutralButton]"
-					:title="t('dashboard.automations.index.actions.more')"
-					:aria-label="t('dashboard.automations.index.actions.more')"
-				>
-					<Icon name="lucide:more-vertical" class="w-4 h-4" />
-				</button>
+				<UiTooltip :text="t('dashboard.automations.index.actions.more')">
+					<button
+						type="button"
+						:class="[iconButton, neutralButton]"
+						:aria-label="t('dashboard.automations.index.actions.more')"
+					>
+						<Icon name="lucide:more-vertical" class="w-4 h-4" />
+					</button>
+				</UiTooltip>
 			</template>
 			<template v-for="verb in verbs" :key="verb.id">
 				<UiDropdownDivider v-if="verb.separatorBefore" />

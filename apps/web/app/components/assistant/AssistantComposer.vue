@@ -173,39 +173,39 @@ const handleKeydown = (event: KeyboardEvent) => {
 					@input="grow"
 				/>
 
-				<UiButton
-					v-if="streaming"
-					variant="secondary"
-					class="flex-shrink-0 w-10 h-10 p-0 rounded-xl"
-					:title="t('components.assistant.assistantComposer.stop')"
-					:aria-label="t('components.assistant.assistantComposer.stop')"
-					@click="emit('stop')"
-				>
-					<Icon name="lucide:square" class="w-4 h-4" />
-				</UiButton>
+				<UiTooltip v-if="streaming" :text="t('components.assistant.assistantComposer.stop')">
+					<UiButton
+						variant="secondary"
+						class="flex-shrink-0 w-10 h-10 p-0 rounded-xl"
+						:aria-label="t('components.assistant.assistantComposer.stop')"
+						@click="emit('stop')"
+					>
+						<Icon name="lucide:square" class="w-4 h-4" />
+					</UiButton>
+				</UiTooltip>
 				<!-- Send is `.btn-primary` — monochrome by design. A solid terracotta
 				     fill pinned to the bottom of a full-height pane is the most saturated
 				     thing on the screen, and this one competed with the assistant's own
 				     accents (the sparkles glyph, the user bubble). UiButton also brings
 				     the disabled state, which used to be a third recipe written by hand. -->
-				<UiButton
-					v-else
-					variant="primary"
-					:disabled="!canSend"
-					class="flex-shrink-0 w-10 h-10 p-0 rounded-xl"
-					:title="t('common.send')"
-					:aria-label="t('common.send')"
-					:aria-busy="isSending || undefined"
-					data-testid="assistant-send"
-					@click="send"
-				>
-					<Icon
-						v-if="isSending"
-						name="lucide:loader-2"
-						class="w-4 h-4 animate-spin motion-reduce:animate-none"
-					/>
-					<Icon v-else name="lucide:send" class="w-4 h-4" />
-				</UiButton>
+				<UiTooltip v-else :text="t('common.send')">
+					<UiButton
+						variant="primary"
+						:disabled="!canSend"
+						class="flex-shrink-0 w-10 h-10 p-0 rounded-xl"
+						:aria-label="t('common.send')"
+						:aria-busy="isSending || undefined"
+						data-testid="assistant-send"
+						@click="send"
+					>
+						<Icon
+							v-if="isSending"
+							name="lucide:loader-2"
+							class="w-4 h-4 animate-spin motion-reduce:animate-none"
+						/>
+						<Icon v-else name="lucide:send" class="w-4 h-4" />
+					</UiButton>
+				</UiTooltip>
 			</div>
 			<div aria-live="polite">
 				<p

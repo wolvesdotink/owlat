@@ -8,7 +8,6 @@
  * same handlers serve the keyboard, the row menus and this bar.
  */
 import type { AssignPopoverMember } from '~/components/inbox/AssignPopover.vue';
-import { useShortcutLabels } from '~/composables/useShortcutLabels';
 
 const props = defineProps<{
 	count: number;
@@ -27,7 +26,6 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
-const { titleWithShortcut } = useShortcutLabels();
 
 const assignOpenModel = computed({
 	get: () => props.assignOpen,
@@ -55,56 +53,60 @@ const assignOpenModel = computed({
 			@assign="emit('assign', $event)"
 		>
 			<template #trigger>
-				<UiButton
-					variant="ghost"
-					size="sm"
-					class="gap-1.5 px-2 py-1"
-					:title="titleWithShortcut(t('components.inbox.bulkBar.assign'), 'inboxList.assign')"
-				>
-					<template #iconLeft>
-						<Icon name="lucide:user-plus" class="h-4 w-4" />
-					</template>
-					{{ t('components.inbox.bulkBar.assign') }}
-				</UiButton>
+				<UiTooltip :text="t('components.inbox.bulkBar.assign')">
+					<template #shortcut><UiShortcut id="inboxList.assign" /></template>
+					<UiButton variant="ghost" size="sm" class="gap-1.5 px-2 py-1">
+						<template #iconLeft>
+							<Icon name="lucide:user-plus" class="h-4 w-4" />
+						</template>
+						{{ t('components.inbox.bulkBar.assign') }}
+					</UiButton>
+				</UiTooltip>
 			</template>
 		</InboxAssignPopover>
-		<UiButton
-			variant="ghost"
-			size="sm"
-			class="gap-1.5 px-2 py-1"
-			:title="titleWithShortcut(t('components.inbox.inboxThreadRow.resolve'), 'inboxList.resolve')"
-			data-testid="inbox-bulk-resolve"
-			@click="emit('resolve')"
-		>
-			<template #iconLeft>
-				<Icon name="lucide:check-circle" class="h-4 w-4" />
-			</template>
-			{{ t('components.inbox.inboxThreadRow.resolve') }}
-		</UiButton>
-		<UiButton
-			variant="ghost"
-			size="sm"
-			class="gap-1.5 px-2 py-1"
-			:title="titleWithShortcut(t('components.inbox.inboxThreadRow.snooze'), 'inboxList.snooze')"
-			data-testid="inbox-bulk-snooze"
-			@click="emit('snooze')"
-		>
-			<template #iconLeft>
-				<Icon name="lucide:clock" class="h-4 w-4" />
-			</template>
-			{{ t('components.inbox.inboxThreadRow.snooze') }}
-		</UiButton>
+		<UiTooltip :text="t('components.inbox.inboxThreadRow.resolve')">
+			<template #shortcut><UiShortcut id="inboxList.resolve" /></template>
+			<UiButton
+				variant="ghost"
+				size="sm"
+				class="gap-1.5 px-2 py-1"
+				data-testid="inbox-bulk-resolve"
+				@click="emit('resolve')"
+			>
+				<template #iconLeft>
+					<Icon name="lucide:check-circle" class="h-4 w-4" />
+				</template>
+				{{ t('components.inbox.inboxThreadRow.resolve') }}
+			</UiButton>
+		</UiTooltip>
+		<UiTooltip :text="t('components.inbox.inboxThreadRow.snooze')">
+			<template #shortcut><UiShortcut id="inboxList.snooze" /></template>
+			<UiButton
+				variant="ghost"
+				size="sm"
+				class="gap-1.5 px-2 py-1"
+				data-testid="inbox-bulk-snooze"
+				@click="emit('snooze')"
+			>
+				<template #iconLeft>
+					<Icon name="lucide:clock" class="h-4 w-4" />
+				</template>
+				{{ t('components.inbox.inboxThreadRow.snooze') }}
+			</UiButton>
+		</UiTooltip>
 		<span class="min-w-0 flex-1" />
-		<UiButton
-			variant="ghost"
-			size="sm"
-			class="px-2 py-1"
-			:title="titleWithShortcut(t('components.inbox.bulkBar.clear'), 'inboxList.clearSelection')"
-			:aria-label="t('components.inbox.bulkBar.clear')"
-			data-testid="inbox-bulk-clear"
-			@click="emit('clear')"
-		>
-			<Icon name="lucide:x" class="h-4 w-4" />
-		</UiButton>
+		<UiTooltip :text="t('components.inbox.bulkBar.clear')">
+			<template #shortcut><UiShortcut id="inboxList.clearSelection" /></template>
+			<UiButton
+				variant="ghost"
+				size="sm"
+				class="px-2 py-1"
+				:aria-label="t('components.inbox.bulkBar.clear')"
+				data-testid="inbox-bulk-clear"
+				@click="emit('clear')"
+			>
+				<Icon name="lucide:x" class="h-4 w-4" />
+			</UiButton>
+		</UiTooltip>
 	</div>
 </template>

@@ -50,7 +50,7 @@ function render(list: EditorBlock[], provide?: Record<symbol, unknown>) {
 		items: w
 			.findAll('[role="listitem"]')
 			.map((li) => li.findAll('[data-block-id]').map((b) => b.attributes('data-block-id'))),
-		headers: w.findAll('button[title="Detach"]').map((b) => b.attributes('aria-label')),
+		headers: w.findAll('button[aria-label^="Detach "]').map((b) => b.attributes('aria-label')),
 		cls: (id: string) => w.find(`[data-block-id="${id}"]`).classes(),
 	};
 }

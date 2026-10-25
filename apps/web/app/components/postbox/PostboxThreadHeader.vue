@@ -62,7 +62,7 @@ const emit = defineEmits<{
 const { t } = useI18n();
 // Reply and Archive run the same reader action as their keys, so their
 // tooltips and accessible shortcuts name the key as this person has it bound.
-const { ariaFor, titleWithShortcut } = useShortcutLabels();
+const { ariaFor } = useShortcutLabels();
 const headerEl = ref<HTMLElement | null>(null);
 
 const isMuted = computed(() => props.thread?.mutedAt != null);
@@ -105,32 +105,36 @@ const ICON_CLASS = 'w-3.5 h-3.5 flex-shrink-0 text-text-tertiary';
 				<template v-else>{{ subjectText }}</template>
 			</h1>
 			<!-- The thread's two verbs. On a phone they shrink to icons. -->
-			<UiButton
-				variant="ghost"
-				size="sm"
-				class="flex-shrink-0"
-				:aria-label="t('postbox.reader.header.reply')"
-				:title="titleWithShortcut(t('postbox.reader.header.reply'), 'postbox.reply')"
-				:aria-keyshortcuts="ariaFor('postbox.reply')"
-				data-testid="thread-header-reply"
-				@click="emit('reply')"
-			>
-				<Icon name="lucide:reply" class="w-4 h-4 sm:hidden" aria-hidden="true" />
-				<span class="max-sm:sr-only">{{ t('postbox.reader.header.reply') }}</span>
-			</UiButton>
-			<UiButton
-				variant="ghost"
-				size="sm"
-				class="flex-shrink-0"
-				:aria-label="t('postbox.reader.header.archive')"
-				:title="titleWithShortcut(t('postbox.reader.header.archive'), 'postbox.archive')"
-				:aria-keyshortcuts="ariaFor('postbox.archive')"
-				data-testid="thread-header-archive"
-				@click="emit('archive')"
-			>
-				<Icon name="lucide:archive" class="w-4 h-4 sm:hidden" aria-hidden="true" />
-				<span class="max-sm:sr-only">{{ t('postbox.reader.header.archive') }}</span>
-			</UiButton>
+			<UiTooltip :text="t('postbox.reader.header.reply')">
+				<template #shortcut><UiShortcut id="postbox.reply" /></template>
+				<UiButton
+					variant="ghost"
+					size="sm"
+					class="flex-shrink-0"
+					:aria-label="t('postbox.reader.header.reply')"
+					:aria-keyshortcuts="ariaFor('postbox.reply')"
+					data-testid="thread-header-reply"
+					@click="emit('reply')"
+				>
+					<Icon name="lucide:reply" class="w-4 h-4 sm:hidden" aria-hidden="true" />
+					<span class="max-sm:sr-only">{{ t('postbox.reader.header.reply') }}</span>
+				</UiButton>
+			</UiTooltip>
+			<UiTooltip :text="t('postbox.reader.header.archive')">
+				<template #shortcut><UiShortcut id="postbox.archive" /></template>
+				<UiButton
+					variant="ghost"
+					size="sm"
+					class="flex-shrink-0"
+					:aria-label="t('postbox.reader.header.archive')"
+					:aria-keyshortcuts="ariaFor('postbox.archive')"
+					data-testid="thread-header-archive"
+					@click="emit('archive')"
+				>
+					<Icon name="lucide:archive" class="w-4 h-4 sm:hidden" aria-hidden="true" />
+					<span class="max-sm:sr-only">{{ t('postbox.reader.header.archive') }}</span>
+				</UiButton>
+			</UiTooltip>
 			<!-- Host-owned thread actions (the reader's "Discuss" toggle). -->
 			<slot name="actions" />
 			<PostboxOverflowMenu

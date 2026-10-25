@@ -168,14 +168,16 @@ const movableFolders = computed(() =>
 				</UiButton>
 				<PostboxBulkOverflowMenu :mailbox-id="mailboxId" :folder-role="folderRole" />
 				<span class="w-px h-4 bg-border-subtle mx-1" />
-				<button
-					type="button"
-					class="p-1 rounded hover:bg-bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-					:title="t('components.postbox.postboxQuickActionsBar.clearSelectionTitle')"
-					@click="bulk.clear()"
-				>
-					<Icon name="lucide:x" class="w-4 h-4" />
-				</button>
+				<UiTooltip :text="t('components.postbox.postboxQuickActionsBar.clearSelectionTitle')">
+					<button
+						type="button"
+						class="p-1 rounded hover:bg-bg-surface-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+						:aria-label="t('components.postbox.postboxQuickActionsBar.clearSelectionTitle')"
+						@click="bulk.clear()"
+					>
+						<Icon name="lucide:x" class="w-4 h-4" />
+					</button>
+				</UiTooltip>
 			</div>
 			<PostboxBulkSelectAllRow
 				:mailbox-id="mailboxId"

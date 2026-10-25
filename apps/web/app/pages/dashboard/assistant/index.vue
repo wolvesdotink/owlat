@@ -259,16 +259,19 @@ const cancelRename = () => {
 								@update:open="(v: boolean) => (actionsOpenId = v ? c._id : null)"
 							>
 								<template #trigger>
-									<button
-										:id="`conversation-actions-${c._id}`"
-										type="button"
-										class="w-8 h-8 flex items-center justify-center rounded-md text-text-tertiary hover:text-text-primary hover:bg-bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-										:title="t('dashboard.assistant.index.moreActions')"
-										:aria-label="t('dashboard.assistant.index.moreActionsFor', { title: c.title })"
-										data-testid="assistant-conversation-actions"
-									>
-										<Icon name="lucide:ellipsis" class="w-4 h-4" />
-									</button>
+									<UiTooltip :text="t('dashboard.assistant.index.moreActions')">
+										<button
+											:id="`conversation-actions-${c._id}`"
+											type="button"
+											class="w-8 h-8 flex items-center justify-center rounded-md text-text-tertiary hover:text-text-primary hover:bg-bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+											:aria-label="
+												t('dashboard.assistant.index.moreActionsFor', { title: c.title })
+											"
+											data-testid="assistant-conversation-actions"
+										>
+											<Icon name="lucide:ellipsis" class="w-4 h-4" />
+										</button>
+									</UiTooltip>
 								</template>
 								<UiDropdownMenuItem icon="lucide:pencil" @click="startRename(c._id, c.title)">
 									{{ t('dashboard.assistant.index.renameConversation') }}

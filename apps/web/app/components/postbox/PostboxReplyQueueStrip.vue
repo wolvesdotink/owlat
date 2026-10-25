@@ -38,14 +38,15 @@ const { count, dismissed, visible } = usePostboxReplyQueueBanner(
 		</NuxtLink>
 		<!-- 44px square: a dismiss control that small is otherwise a coin toss on a
 		     phone. Negative margins keep the strip the height the text gives it. -->
-		<button
-			type="button"
-			class="-my-2 -mr-2 w-11 h-11 flex items-center justify-center flex-shrink-0 rounded text-text-tertiary hover:text-text-primary"
-			:title="t('components.postbox.postboxReplyQueueStrip.dismissTitle')"
-			:aria-label="t('components.postbox.postboxReplyQueueStrip.dismissLabel')"
-			@click="dismissed = true"
-		>
-			<Icon name="lucide:x" class="w-3.5 h-3.5" />
-		</button>
+		<UiTooltip :text="t('components.postbox.postboxReplyQueueStrip.dismissTitle')">
+			<button
+				type="button"
+				class="-my-2 -mr-2 w-11 h-11 flex items-center justify-center flex-shrink-0 rounded text-text-tertiary hover:text-text-primary"
+				:aria-label="t('components.postbox.postboxReplyQueueStrip.dismissLabel')"
+				@click="dismissed = true"
+			>
+				<Icon name="lucide:x" class="w-3.5 h-3.5" />
+			</button>
+		</UiTooltip>
 	</div>
 </template>

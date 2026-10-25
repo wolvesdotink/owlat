@@ -39,7 +39,7 @@ describe('PostboxEditorToolbar', () => {
 
 	it('emits the format command for a button', async () => {
 		const wrapper = mountToolbar();
-		await wrapper.find('button[title^="Italic"]').trigger('click');
+		await wrapper.find('button[aria-label="Italic"]').trigger('click');
 		expect(wrapper.emitted('italic')).toHaveLength(1);
 	});
 });

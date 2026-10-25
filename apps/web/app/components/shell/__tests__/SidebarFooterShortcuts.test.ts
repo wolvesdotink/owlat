@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { ref } from 'vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+import { focusTooltip } from '~/__tests__/tooltip';
 import { applyShortcutPreferences, resetShortcutPreferences } from '~/utils/shortcutScope';
 import SidebarFooter from '../SidebarFooter.vue';
 
@@ -46,6 +47,7 @@ async function openMenu(userAgent: string) {
 			components: { NuxtLink: NuxtLinkStub },
 			stubs: { Icon: true, UiSkeleton: true, UiThemeToggle: true },
 		},
+		attachTo: document.body,
 	});
 	await wrapper.get('button[aria-haspopup="menu"]').trigger('click');
 	return wrapper;
@@ -60,16 +62,14 @@ describe('account menu shortcut hints', () => {
 		const wrapper = await openMenu(WINDOWS_UA);
 		expect(hints(wrapper)).toEqual(['Ctrl+J', 'Ctrl+Shift+F', '?']);
 		const settings = wrapper.get('a[href="/dashboard/preferences"]');
-		expect(settings.attributes('title')).toBe('Settings (Ctrl+,)');
+		expect(await focusTooltip(settings)).toBe('Settings Ctrl+,');
 		expect(settings.attributes('aria-keyshortcuts')).toBe('Control+,');
 	});
 
 	it('say ⌘ on a Mac, in the browser too', async () => {
 		const wrapper = await openMenu(MAC_UA);
 		expect(hints(wrapper)).toEqual(['⌘J', '⇧⌘F', '?']);
-		expect(wrapper.get('a[href="/dashboard/preferences"]').attributes('title')).toBe(
-			'Settings (⌘,)'
-		);
+		expect(await focusTooltip(wrapper.get('a[href="/dashboard/preferences"]'))).toBe('Settings ⌘,');
 	});
 
 	it('tell assistive tech the same keys', async () => {
@@ -92,7 +92,7 @@ describe('account menu shortcut hints', () => {
 		const wrapper = await openMenu(WINDOWS_UA);
 		expect(hints(wrapper)).toEqual(['Ctrl+U', 'Ctrl+Shift+F', '?']);
 		const settings = wrapper.get('a[href="/dashboard/preferences"]');
-		expect(settings.attributes('title')).toBe('Settings (Ctrl+.)');
+		expect(await focusTooltip(settings)).toBe('Settings Ctrl+.');
 		expect(settings.attributes('aria-keyshortcuts')).toBe('Control+.');
 	});
 });

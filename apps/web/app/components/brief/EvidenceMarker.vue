@@ -44,14 +44,15 @@ function onClick() {
 </script>
 
 <template>
-	<button
-		type="button"
-		class="ml-1 inline-flex items-center rounded bg-bg-surface px-1 align-[1px] font-mono text-[10px] leading-4 text-text-tertiary hover:bg-brand hover:text-text-inverse focus-visible:bg-brand focus-visible:text-text-inverse"
-		:aria-label="label"
-		:title="evidence.quote ? `“${evidence.quote}”` : label"
-		data-testid="evidence-marker"
-		@click="onClick"
-	>
-		{{ text }}
-	</button>
+	<UiTooltip :text="evidence.quote ? `“${evidence.quote}”` : label">
+		<button
+			type="button"
+			class="ml-1 inline-flex items-center rounded bg-bg-surface px-1 align-[1px] font-mono text-[10px] leading-4 text-text-tertiary hover:bg-brand hover:text-text-inverse focus-visible:bg-brand focus-visible:text-text-inverse"
+			:aria-label="label"
+			data-testid="evidence-marker"
+			@click="onClick"
+		>
+			{{ text }}
+		</button>
+	</UiTooltip>
 </template>

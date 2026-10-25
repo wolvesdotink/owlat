@@ -655,15 +655,16 @@ const formatExpiryTime = (expiresAt: Date) => {
 
 						<!-- Row actions: copy link / resend / revoke -->
 						<div v-if="canManageMembers" class="flex items-center gap-1">
-							<UiButton
-								variant="ghost"
-								size="sm"
-								:title="t('dashboard.admin.team.invites.copyLink')"
-								:aria-label="t('dashboard.admin.team.invites.copyLink')"
-								@click="copyInviteLink(invite.id)"
-							>
-								<Icon name="lucide:link" class="w-4 h-4 text-text-secondary" />
-							</UiButton>
+							<UiTooltip :text="t('dashboard.admin.team.invites.copyLink')">
+								<UiButton
+									variant="ghost"
+									size="sm"
+									:aria-label="t('dashboard.admin.team.invites.copyLink')"
+									@click="copyInviteLink(invite.id)"
+								>
+									<Icon name="lucide:link" class="w-4 h-4 text-text-secondary" />
+								</UiButton>
+							</UiTooltip>
 							<!-- An expired invite's obvious next step is a fresh email, so it
 							     gets a labelled button instead of a bare icon. -->
 							<UiButton
@@ -679,31 +680,32 @@ const formatExpiryTime = (expiresAt: Date) => {
 								<Icon v-if="resendingId !== invite.id" name="lucide:send" class="w-4 h-4 mr-2" />
 								{{ t('dashboard.admin.team.invites.resendShort') }}
 							</UiButton>
-							<UiButton
-								v-else
-								variant="ghost"
-								size="sm"
-								:title="t('dashboard.admin.team.invites.resend')"
-								:aria-label="t('dashboard.admin.team.invites.resend')"
-								:loading="resendingId === invite.id"
-								:disabled="resendingId === invite.id"
-								@click="handleResend(invite)"
-							>
-								<Icon
-									v-if="resendingId !== invite.id"
-									name="lucide:send"
-									class="w-4 h-4 text-text-secondary"
-								/>
-							</UiButton>
-							<UiButton
-								variant="ghost"
-								size="sm"
-								:title="t('dashboard.admin.team.invites.revoke')"
-								:aria-label="t('dashboard.admin.team.invites.revoke')"
-								@click="inviteToCancel = invite"
-							>
-								<Icon name="lucide:x" class="w-4 h-4 text-text-secondary hover:text-error" />
-							</UiButton>
+							<UiTooltip v-else :text="t('dashboard.admin.team.invites.resend')">
+								<UiButton
+									variant="ghost"
+									size="sm"
+									:aria-label="t('dashboard.admin.team.invites.resend')"
+									:loading="resendingId === invite.id"
+									:disabled="resendingId === invite.id"
+									@click="handleResend(invite)"
+								>
+									<Icon
+										v-if="resendingId !== invite.id"
+										name="lucide:send"
+										class="w-4 h-4 text-text-secondary"
+									/>
+								</UiButton>
+							</UiTooltip>
+							<UiTooltip :text="t('dashboard.admin.team.invites.revoke')">
+								<UiButton
+									variant="ghost"
+									size="sm"
+									:aria-label="t('dashboard.admin.team.invites.revoke')"
+									@click="inviteToCancel = invite"
+								>
+									<Icon name="lucide:x" class="w-4 h-4 text-text-secondary hover:text-error" />
+								</UiButton>
+							</UiTooltip>
 						</div>
 					</div>
 				</div>

@@ -8,6 +8,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { defineComponent, nextTick, ref } from 'vue';
 import { installNuxtStubs, mountDashboardPage } from '~/__tests__/a11y';
 import { i18nStubs } from '~/__tests__/i18n';
+import { tooltipOf } from '~/__tests__/tooltip';
 import { usePostboxOptimisticHide } from '~/composables/postbox/usePostboxOptimisticHide';
 
 const ROW_PX = 50;
@@ -109,7 +110,7 @@ describe('Team Updates: dismiss sweep', () => {
 		const rows = wrapper.findAll('li[data-sweep-row]');
 		expect(rows.map((r) => r.attributes('data-sweep-row'))).toEqual(['c', 'a', 'b']);
 
-		const done = rows[0]!.findAll('button').find((b) => b.attributes('title')?.includes('drag'))!;
+		const done = rows[0]!.findAll('button').find((b) => tooltipOf(wrapper, b)?.includes('drag'))!;
 		done.element.dispatchEvent(pointer('pointerdown', 25));
 		window.dispatchEvent(pointer('pointermove', 33));
 		window.dispatchEvent(pointer('pointermove', 75));

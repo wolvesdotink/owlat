@@ -81,19 +81,22 @@ const queueStatus = useUploadQueueStatus(() => props.uploads);
 				<!-- Idea 10: swap this file for an expiring link in the body. Offered
 				     only once the meter is worried; the file is malware-scanned before it
 				     becomes shareable, so the click takes a moment. -->
-				<button
+				<UiTooltip
 					v-if="offerShare"
-					type="button"
-					class="p-0.5 pointer-coarse:p-2 rounded hover:bg-bg-elevated text-text-tertiary hover:text-accent disabled:opacity-50"
-					:disabled="isSharing || shareDisabled"
-					:title="t('components.postbox.postboxComposerAttachments.shareTitle')"
-					:aria-label="
-						t('components.postbox.postboxComposerAttachments.share', { filename: att.filename })
-					"
-					@click="emit('share', att.storageId)"
+					:text="t('components.postbox.postboxComposerAttachments.shareTitle')"
 				>
-					<Icon name="lucide:link" class="w-3 h-3" />
-				</button>
+					<button
+						type="button"
+						class="p-0.5 pointer-coarse:p-2 rounded hover:bg-bg-elevated text-text-tertiary hover:text-accent disabled:opacity-50"
+						:disabled="isSharing || shareDisabled"
+						:aria-label="
+							t('components.postbox.postboxComposerAttachments.share', { filename: att.filename })
+						"
+						@click="emit('share', att.storageId)"
+					>
+						<Icon name="lucide:link" class="w-3 h-3" />
+					</button>
+				</UiTooltip>
 				<button
 					type="button"
 					class="p-0.5 pointer-coarse:p-2 rounded hover:bg-bg-elevated text-text-tertiary hover:text-text-primary"
@@ -148,18 +151,21 @@ const queueStatus = useUploadQueueStatus(() => props.uploads);
 								})
 					}}
 				</span>
-				<button
+				<UiTooltip
 					v-if="up.status === 'failed'"
-					type="button"
-					class="p-0.5 pointer-coarse:p-2 rounded hover:bg-bg-elevated text-text-tertiary hover:text-text-primary"
-					:aria-label="
-						t('components.postbox.postboxComposerAttachments.retry', { filename: up.filename })
-					"
-					:title="t('components.postbox.postboxComposerAttachments.retryTitle')"
-					@click="emit('retry', up.id)"
+					:text="t('components.postbox.postboxComposerAttachments.retryTitle')"
 				>
-					<Icon name="lucide:rotate-cw" class="w-3 h-3" />
-				</button>
+					<button
+						type="button"
+						class="p-0.5 pointer-coarse:p-2 rounded hover:bg-bg-elevated text-text-tertiary hover:text-text-primary"
+						:aria-label="
+							t('components.postbox.postboxComposerAttachments.retry', { filename: up.filename })
+						"
+						@click="emit('retry', up.id)"
+					>
+						<Icon name="lucide:rotate-cw" class="w-3 h-3" />
+					</button>
+				</UiTooltip>
 				<button
 					type="button"
 					class="p-0.5 pointer-coarse:p-2 rounded hover:bg-bg-elevated text-text-tertiary hover:text-text-primary"

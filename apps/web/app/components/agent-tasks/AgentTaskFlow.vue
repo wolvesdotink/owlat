@@ -119,28 +119,30 @@ const MAX_DOTS = 9;
 						class="inline-flex items-center gap-0.5"
 						data-testid="task-flow-browse"
 					>
-						<button
-							type="button"
-							data-testid="task-flow-back"
-							class="inline-flex items-center justify-center w-6 h-6 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors duration-(--motion-fast) disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-text-tertiary"
-							:disabled="!canGoBack"
-							:title="t('components.agentTasks.agentTaskFlow.backTitle')"
-							:aria-label="t('components.agentTasks.agentTaskFlow.back')"
-							@click="emit('back')"
-						>
-							<Icon name="lucide:chevron-left" class="w-4 h-4" aria-hidden="true" />
-						</button>
-						<button
-							type="button"
-							data-testid="task-flow-next"
-							class="inline-flex items-center justify-center w-6 h-6 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors duration-(--motion-fast) disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-text-tertiary"
-							:disabled="!canGoNext"
-							:title="t('components.agentTasks.agentTaskFlow.nextTitle')"
-							:aria-label="t('components.agentTasks.agentTaskFlow.next')"
-							@click="emit('next')"
-						>
-							<Icon name="lucide:chevron-right" class="w-4 h-4" aria-hidden="true" />
-						</button>
+						<UiTooltip :text="t('components.agentTasks.agentTaskFlow.backTitle')">
+							<button
+								type="button"
+								data-testid="task-flow-back"
+								class="inline-flex items-center justify-center w-6 h-6 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors duration-(--motion-fast) disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-text-tertiary"
+								:disabled="!canGoBack"
+								:aria-label="t('components.agentTasks.agentTaskFlow.back')"
+								@click="emit('back')"
+							>
+								<Icon name="lucide:chevron-left" class="w-4 h-4" aria-hidden="true" />
+							</button>
+						</UiTooltip>
+						<UiTooltip :text="t('components.agentTasks.agentTaskFlow.nextTitle')">
+							<button
+								type="button"
+								data-testid="task-flow-next"
+								class="inline-flex items-center justify-center w-6 h-6 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors duration-(--motion-fast) disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-text-tertiary"
+								:disabled="!canGoNext"
+								:aria-label="t('components.agentTasks.agentTaskFlow.next')"
+								@click="emit('next')"
+							>
+								<Icon name="lucide:chevron-right" class="w-4 h-4" aria-hidden="true" />
+							</button>
+						</UiTooltip>
 					</div>
 					<button
 						v-if="canUndo"

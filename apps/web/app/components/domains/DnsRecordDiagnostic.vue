@@ -50,19 +50,21 @@ const handleCopyFound = () => {
 				>
 					{{ diagnostic.foundValue }}
 				</code>
-				<UiButton
-					variant="ghost"
-					class="p-2"
-					:title="t('components.domains.dnsRecordPanel.copyFoundValue')"
-					@click="handleCopyFound"
-				>
-					<Icon
-						v-if="isCopied(`${copyKey}-found`)"
-						name="lucide:check"
-						class="w-4 h-4 text-success"
-					/>
-					<Icon v-else name="lucide:copy" class="w-4 h-4" />
-				</UiButton>
+				<UiTooltip :text="t('components.domains.dnsRecordPanel.copyFoundValue')">
+					<UiButton
+						variant="ghost"
+						class="p-2"
+						:aria-label="t('components.domains.dnsRecordPanel.copyFoundValue')"
+						@click="handleCopyFound"
+					>
+						<Icon
+							v-if="isCopied(`${copyKey}-found`)"
+							name="lucide:check"
+							class="w-4 h-4 text-success"
+						/>
+						<Icon v-else name="lucide:copy" class="w-4 h-4" />
+					</UiButton>
+				</UiTooltip>
 			</div>
 		</div>
 	</div>

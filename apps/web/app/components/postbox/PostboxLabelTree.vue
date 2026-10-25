@@ -311,19 +311,22 @@ function menuItems(label: { _id: string; name: string }): ContextMenuItem[] {
 									{{ row.label.name }}
 								</button>
 								<span class="flex items-center gap-1 flex-shrink-0">
-									<button
+									<UiTooltip
 										v-for="color in PRESET_COLORS"
 										:key="color"
-										type="button"
-										class="w-3.5 h-3.5 rounded-full border"
-										:class="
-											row.label.color === color ? 'border-text-primary' : 'border-transparent'
-										"
-										:style="{ backgroundColor: color }"
-										:title="t('components.postbox.postboxLabelManager.setColor', { color })"
-										:aria-label="t('components.postbox.postboxLabelManager.setColor', { color })"
-										@click="setColor(row.label._id as Id<'mailLabels'>, color)"
-									/>
+										:text="t('components.postbox.postboxLabelManager.setColor', { color })"
+									>
+										<button
+											type="button"
+											class="w-3.5 h-3.5 rounded-full border"
+											:class="
+												row.label.color === color ? 'border-text-primary' : 'border-transparent'
+											"
+											:style="{ backgroundColor: color }"
+											:aria-label="t('components.postbox.postboxLabelManager.setColor', { color })"
+											@click="setColor(row.label._id as Id<'mailLabels'>, color)"
+										/>
+									</UiTooltip>
 								</span>
 							</template>
 						</div>
@@ -348,17 +351,18 @@ function menuItems(label: { _id: string; name: string }): ContextMenuItem[] {
 						>
 							<Icon name="lucide:chevron-down" class="w-3 h-3" />
 						</button>
-						<button
-							type="button"
-							class="p-1 rounded hover:bg-error/10 text-error"
-							:title="t('components.postbox.postboxLabelManager.deleteLabel')"
-							:aria-label="
-								t('components.postbox.postboxLabelTree.deleteAriaLabel', { name: row.label.name })
-							"
-							@click="remove(row.label._id as Id<'mailLabels'>)"
-						>
-							<Icon name="lucide:trash" class="w-4 h-4" />
-						</button>
+						<UiTooltip :text="t('components.postbox.postboxLabelManager.deleteLabel')">
+							<button
+								type="button"
+								class="p-1 rounded hover:bg-error/10 text-error"
+								:aria-label="
+									t('components.postbox.postboxLabelTree.deleteAriaLabel', { name: row.label.name })
+								"
+								@click="remove(row.label._id as Id<'mailLabels'>)"
+							>
+								<Icon name="lucide:trash" class="w-4 h-4" />
+							</button>
+						</UiTooltip>
 					</template>
 				</li>
 			</template>

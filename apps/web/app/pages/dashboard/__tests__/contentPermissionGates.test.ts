@@ -24,6 +24,7 @@ import BlockCard from '~/components/send/BlockCard.vue';
 import AudienceListTable from '~/components/audience/AudienceListTable.vue';
 import AutomationsListTable from '~/components/automations/ListTable.vue';
 import AutomationsRowActions from '~/components/automations/RowActions.vue';
+import UiTooltip from '@owlat/ui/components/ui/Tooltip.vue';
 import RowContextMenu from '~/components/RowContextMenu.vue';
 import UiContextMenu from '@owlat/ui/components/ui/ContextMenu.vue';
 
@@ -144,6 +145,8 @@ const STUBS = {
 	ListPageShell,
 	AudienceListTable,
 	SendBlockCard: BlockCard,
+	// A shallow stub would swallow the icon-only write controls it wraps.
+	UiTooltip,
 	// Row names are links; render them so the list's content can be asserted.
 	NuxtLink: NuxtLinkStub,
 	ListSortMenu: true,
@@ -219,8 +222,8 @@ describe('segments list', () => {
 		role.value = 'admin';
 		const wrapper = await mountPage(() => import('../audience/segments/index.vue'));
 
-		expect(wrapper.find('button[title="Edit segment"]').exists()).toBe(true);
-		expect(wrapper.find('button[title="Delete segment"]').exists()).toBe(true);
+		expect(wrapper.find('button[aria-label="Edit segment"]').exists()).toBe(true);
+		expect(wrapper.find('button[aria-label="Delete segment"]').exists()).toBe(true);
 		expect(wrapper.text()).not.toContain('Only owners and admins');
 		wrapper.unmount();
 	});
@@ -229,8 +232,8 @@ describe('segments list', () => {
 		role.value = 'editor';
 		const wrapper = await mountPage(() => import('../audience/segments/index.vue'));
 
-		expect(wrapper.find('button[title="Edit segment"]').exists()).toBe(false);
-		expect(wrapper.find('button[title="Delete segment"]').exists()).toBe(false);
+		expect(wrapper.find('button[aria-label="Edit segment"]').exists()).toBe(false);
+		expect(wrapper.find('button[aria-label="Delete segment"]').exists()).toBe(false);
 		expect(wrapper.text()).toContain('Only owners and admins can create or edit segments.');
 		// The list itself is member-readable and stays, its name a link to the
 		// segment.
@@ -276,8 +279,8 @@ describe('topics list', () => {
 		role.value = 'admin';
 		const wrapper = await mountPage(() => import('../audience/topics/index.vue'));
 
-		expect(wrapper.find('button[title="Edit topic"]').exists()).toBe(true);
-		expect(wrapper.find('button[title="Delete topic"]').exists()).toBe(true);
+		expect(wrapper.find('button[aria-label="Edit topic"]').exists()).toBe(true);
+		expect(wrapper.find('button[aria-label="Delete topic"]').exists()).toBe(true);
 		wrapper.unmount();
 	});
 
@@ -285,8 +288,8 @@ describe('topics list', () => {
 		role.value = 'editor';
 		const wrapper = await mountPage(() => import('../audience/topics/index.vue'));
 
-		expect(wrapper.find('button[title="Edit topic"]').exists()).toBe(false);
-		expect(wrapper.find('button[title="Delete topic"]').exists()).toBe(false);
+		expect(wrapper.find('button[aria-label="Edit topic"]').exists()).toBe(false);
+		expect(wrapper.find('button[aria-label="Delete topic"]').exists()).toBe(false);
 		expect(wrapper.text()).toContain('Only owners and admins can create or edit topics.');
 		expect(wrapper.text()).toContain('Product updates');
 		wrapper.unmount();
@@ -310,8 +313,8 @@ describe('blocks list', () => {
 		role.value = 'admin';
 		const wrapper = await mountPage(() => import('../send/blocks/index.vue'), blocksQuery);
 
-		expect(wrapper.find('button[title="Quick settings"]').exists()).toBe(true);
-		expect(wrapper.find('button[title="Edit content"]').exists()).toBe(true);
+		expect(wrapper.find('button[aria-label="Quick settings"]').exists()).toBe(true);
+		expect(wrapper.find('button[aria-label="Edit content"]').exists()).toBe(true);
 		wrapper.unmount();
 	});
 
@@ -319,10 +322,10 @@ describe('blocks list', () => {
 		role.value = 'editor';
 		const wrapper = await mountPage(() => import('../send/blocks/index.vue'), blocksQuery);
 
-		expect(wrapper.find('button[title="Quick settings"]').exists()).toBe(false);
+		expect(wrapper.find('button[aria-label="Quick settings"]').exists()).toBe(false);
 		expect(wrapper.text()).toContain('Only owners and admins can create or delete blocks.');
 		// Opening a block to read it is not a write, so it stays.
-		expect(wrapper.find('button[title="Edit content"]').exists()).toBe(true);
+		expect(wrapper.find('button[aria-label="Edit content"]').exists()).toBe(true);
 		expect(wrapper.text()).toContain('Footer with address');
 		wrapper.unmount();
 	});
@@ -369,9 +372,9 @@ describe('automations list', () => {
 			automationStubs
 		);
 
-		expect(wrapper.find('button[title="Edit"]').exists()).toBe(true);
-		expect(wrapper.find('button[title="Pause"]').exists()).toBe(true);
-		expect(wrapper.find('button[title="More actions"]').exists()).toBe(true);
+		expect(wrapper.find('button[aria-label="Edit"]').exists()).toBe(true);
+		expect(wrapper.find('button[aria-label="Pause"]').exists()).toBe(true);
+		expect(wrapper.find('button[aria-label="More actions"]').exists()).toBe(true);
 		const menu = wrapper.findAll('[role="menuitem"]').map((item) => item.text());
 		expect(menu).toEqual(['View details', 'Edit', 'Duplicate', 'Pause']);
 		wrapper.unmount();
@@ -385,8 +388,8 @@ describe('automations list', () => {
 			automationStubs
 		);
 
-		expect(wrapper.find('button[title="Edit"]').exists()).toBe(false);
-		expect(wrapper.find('button[title="Pause"]').exists()).toBe(false);
+		expect(wrapper.find('button[aria-label="Edit"]').exists()).toBe(false);
+		expect(wrapper.find('button[aria-label="Pause"]').exists()).toBe(false);
 		// Reading the automation is not a write: the menu keeps "View details".
 		const menu = wrapper.findAll('[role="menuitem"]').map((item) => item.text());
 		expect(menu).toEqual(['View details']);

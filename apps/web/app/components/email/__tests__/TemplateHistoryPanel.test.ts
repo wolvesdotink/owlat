@@ -97,7 +97,7 @@ function mountPanel(
 async function openPreview(wrapper: ReturnType<typeof mountPanel>) {
 	await wrapper.get('button').trigger('click');
 	await flushPromises();
-	const preview = document.querySelector<HTMLElement>('[title="Preview this version"]');
+	const preview = document.querySelector<HTMLElement>('[aria-label="Preview this version"]');
 	preview?.click();
 	await flushPromises();
 }
@@ -208,7 +208,9 @@ describe('TemplateHistoryPanel — compare with the editor', () => {
 	}
 
 	function compareButtons() {
-		return [...document.querySelectorAll<HTMLElement>('[title="Compare with the current editor"]')];
+		return [
+			...document.querySelectorAll<HTMLElement>('[aria-label="Compare with the current editor"]'),
+		];
 	}
 
 	it('compares the snapshot with the unsaved canvas, read at the click, and restores nothing', async () => {

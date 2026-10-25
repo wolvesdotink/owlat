@@ -146,25 +146,26 @@ async function handleDelete() {
 							class="text-xs px-2 py-0.5 rounded bg-brand-subtle text-brand hover:underline"
 							>{{ t('dashboard.preferences.index.teamManage') }}</NuxtLink
 						>
-						<button
-							type="button"
-							class="p-1.5 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-surface"
-							:title="t('dashboard.preferences.index.renameMailbox')"
-							:aria-label="t('dashboard.preferences.index.renameMailbox')"
-							@click="openRename(mb)"
-						>
-							<Icon name="lucide:pencil" class="w-4 h-4" />
-						</button>
-						<button
-							v-if="isAdmin"
-							type="button"
-							class="p-1.5 rounded text-text-tertiary hover:text-error hover:bg-error/10"
-							:title="t('dashboard.preferences.index.deleteMailbox')"
-							:aria-label="t('dashboard.preferences.index.deleteMailbox')"
-							@click="deleteTarget = mb"
-						>
-							<Icon name="lucide:trash-2" class="w-4 h-4" />
-						</button>
+						<UiTooltip :text="t('dashboard.preferences.index.renameMailbox')">
+							<button
+								type="button"
+								class="p-1.5 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-surface"
+								:aria-label="t('dashboard.preferences.index.renameMailbox')"
+								@click="openRename(mb)"
+							>
+								<Icon name="lucide:pencil" class="w-4 h-4" />
+							</button>
+						</UiTooltip>
+						<UiTooltip v-if="isAdmin" :text="t('dashboard.preferences.index.deleteMailbox')">
+							<button
+								type="button"
+								class="p-1.5 rounded text-text-tertiary hover:text-error hover:bg-error/10"
+								:aria-label="t('dashboard.preferences.index.deleteMailbox')"
+								@click="deleteTarget = mb"
+							>
+								<Icon name="lucide:trash-2" class="w-4 h-4" />
+							</button>
+						</UiTooltip>
 					</div>
 					<!-- Only admins reach every mailbox here, a teammate's
 					     personal one included, so this is where it is excluded. -->

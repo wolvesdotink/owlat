@@ -158,13 +158,15 @@ const removeLanguage = (langCode: string) => {
 					@click="selectedLanguage = langCode"
 				>
 					<span class="text-sm font-medium">{{ getLanguageNativeLabel(langCode) }}</span>
-					<button
-						class="p-0.5 rounded hover:bg-error/20 hover:text-error transition-colors"
-						:title="t('dashboard.send.emails.detail.settings.translations.removeLanguage')"
-						@click.stop="removeLanguage(langCode)"
-					>
-						<Icon name="lucide:trash-2" class="w-3 h-3" />
-					</button>
+					<UiTooltip :text="t('dashboard.send.emails.detail.settings.translations.removeLanguage')">
+						<button
+							class="p-0.5 rounded hover:bg-error/20 hover:text-error transition-colors"
+							:aria-label="t('dashboard.send.emails.detail.settings.translations.removeLanguage')"
+							@click.stop="removeLanguage(langCode)"
+						>
+							<Icon name="lucide:trash-2" class="w-3 h-3" />
+						</button>
+					</UiTooltip>
 				</div>
 			</div>
 
