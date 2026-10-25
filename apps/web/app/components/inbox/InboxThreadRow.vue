@@ -45,6 +45,10 @@ import { INBOX_SLA_TIER_CLASS, inboxSlaChip } from '~/utils/inboxSla';
 import DraftMarker from '~/components/shell/DraftMarker.vue';
 import { vReplyDrop } from '~/composables/useReplyFileDrop';
 import type { ReplyDropTarget } from '~/utils/replyFileDrop';
+import type { ContextMenuItem } from '@owlat/ui/components/ui/ContextMenu.vue';
+import RowContextMenu from '~/components/RowContextMenu.vue';
+import PostboxSwipeTrack from '~/components/postbox/PostboxSwipeTrack.vue';
+import type { InboxRowSwipeAction } from '~/composables/useInboxRowMenu';
 
 const props = withDefaults(
 	defineProps<{
@@ -77,8 +81,18 @@ const props = withDefaults(
 		noteCount?: number;
 		/** The viewer keeps unsent text on this thread, on this device (the pencil). */
 		hasDraft?: boolean;
+		/** Part of the list's multi-selection (the checkbox). */
+		selected?: boolean;
+		/**
+		 * The list's context-menu verbs for a row, called when the menu opens.
+		 * One function for every row, so the prop stays stable across renders.
+		 * Absent: right-click falls through to the browser's own menu.
+		 */
+		menuItems?: (thread: InboxThreadRowThread) => ContextMenuItem[];
+		/** The row's assignee picker, opened from the list (`a`, the row menu). */
+		assignOpen?: boolean;
 	}>(),
-	{ canManage: true, noteCount: 0, hasDraft: false }
+	{ canManage: true, noteCount: 0, hasDraft: false, selected: false, assignOpen: false }
 );
 
 const emit = defineEmits<{
@@ -87,6 +101,9 @@ const emit = defineEmits<{
 	resolve: [];
 	snooze: [];
 	open: [];
+	/** The checkbox or a Shift+click; `extend` asks for the range from the anchor. */
+	'toggle-select': [extend: boolean];
+	'update:assignOpen': [value: boolean];
 }>();
 
 const { t } = useI18n();
@@ -109,7 +126,27 @@ const rowMembers = computed(() => props.members ?? []);
 
 // Keep the (opacity-only) hover cluster visible while the teleported picker is
 // open — otherwise focus leaves the row and the reveal would fade under the menu.
-const assignMenuOpen = ref(false);
+// Controlled by the list, which also opens it from the keyboard and the menu.
+const assignMenuOpen = computed({
+	get: () => props.assignOpen,
+	set: (value: boolean) => emit('update:assignOpen', value),
+});
+
+// Touch: a drag left resolves, a drag right snoozes, a hold opens the menu.
+// Only for a viewer who may triage; anyone else gets the hold alone.
+const swipeLeft = computed<InboxRowSwipeAction>(() => (props.canManage ? 'resolve' : 'none'));
+const swipeRight = computed<InboxRowSwipeAction>(() => (props.canManage ? 'snooze' : 'none'));
+function onSwipe(action: Exclude<InboxRowSwipeAction, 'none'>) {
+	if (action === 'resolve') emit('resolve');
+	else emit('snooze');
+}
+
+const rowMenuItems = () => props.menuItems?.(props.thread) ?? [];
+
+/** Shift on the checkbox extends the selection from the anchor. */
+function onCheckboxClick(event: MouseEvent) {
+	emit('toggle-select', event.shiftKey);
+}
 
 const rowId = computed(() => `inbox-row-${props.thread._id}`);
 
@@ -148,174 +185,233 @@ function rowAction(event: MouseEvent, action: 'resolve' | 'snooze') {
 </script>
 
 <template>
-	<li v-reply-drop="replyDrop" class="group relative">
-		<NuxtLink
-			:id="rowId"
-			role="option"
-			:aria-selected="focused"
-			:to="`/dashboard/inbox/${thread._id}`"
-			class="block w-full text-left px-4 py-3 density-compact:py-1.5 rounded-lg hover:bg-(--surface-1-hover) transition-colors"
-			:class="{ 'ring-1 ring-inset ring-brand/50': focused }"
-			@click="emit('open')"
-		>
-			<div class="flex items-start gap-3">
-				<!-- Unread dot — weight-based emphasis lives on the identifier; the dot
+	<RowContextMenu
+		:items="rowMenuItems"
+		:swipe-left="swipeLeft"
+		:swipe-right="swipeRight"
+		:shift-click-selects="canManage"
+		@swipe="onSwipe"
+		@shift-click="emit('toggle-select', true)"
+	>
+		<template #default="{ rowBindings, track, settling, rowStyle }">
+			<!-- `role="none"`: the option is the link inside, which the listbox owns. -->
+			<li
+				v-reply-drop="replyDrop"
+				role="none"
+				class="group relative [@media(hover:none)]:touch-pan-y"
+				:class="{ 'pbx-row-swiping overflow-hidden': !!track }"
+				v-bind="rowBindings"
+			>
+				<!-- Revealed behind the row while it follows the finger sideways. -->
+				<PostboxSwipeTrack v-if="track" :track="track" />
+				<NuxtLink
+					:id="rowId"
+					role="option"
+					:aria-selected="canManage ? selected : focused"
+					:to="`/dashboard/inbox/${thread._id}`"
+					class="pbx-row-link block w-full text-left px-4 py-3 density-compact:py-1.5 rounded-lg hover:bg-(--surface-1-hover) transition-colors"
+					:class="{
+						'ring-1 ring-inset ring-brand/50': focused,
+						'bg-brand/5': selected,
+						'pbx-row-settle': settling,
+					}"
+					:style="rowStyle"
+					@click="emit('open')"
+				>
+					<div class="flex items-start gap-3">
+						<!-- Room for the selection checkbox, which sits over it from outside the link. -->
+						<span v-if="canManage" class="w-4 h-4 flex-shrink-0" aria-hidden="true" />
+						<!-- Unread dot — weight-based emphasis lives on the identifier; the dot
 				     is a small brand indicator, the one sanctioned accent use. -->
-				<span class="mt-1.5 w-2 flex-shrink-0" aria-hidden="true">
-					<span
-						v-if="thread.unread"
-						class="block w-2 h-2 rounded-full bg-brand"
-						:title="t('components.inbox.inboxThreadRow.unread')"
-					/>
-				</span>
+						<span class="mt-1.5 w-2 flex-shrink-0" aria-hidden="true">
+							<span
+								v-if="thread.unread"
+								class="block w-2 h-2 rounded-full bg-brand"
+								:title="t('components.inbox.inboxThreadRow.unread')"
+							/>
+						</span>
 
-				<PostboxRowCore :unread="thread.unread">
-					<template #identifier>
-						{{ thread.subject || t('components.inbox.inboxThreadRow.noSubject') }}
-					</template>
-					<template #meta>{{ formatCompactRelativeTime(timestamp) }}</template>
+						<PostboxRowCore :unread="thread.unread">
+							<template #identifier>
+								{{ thread.subject || t('components.inbox.inboxThreadRow.noSubject') }}
+							</template>
+							<template #meta>{{ formatCompactRelativeTime(timestamp) }}</template>
 
-					<!-- Detail row: sender + the single status chip + optional channel chip. -->
-					<div class="flex items-center gap-2 mt-0.5 min-w-0">
-						<span class="truncate text-sm text-text-secondary">
-							{{ thread.contactIdentifier || t('components.inbox.inboxThreadRow.unknownSender') }}
-						</span>
-						<InboxStatusChip
-							class="flex-shrink-0"
-							:status="thread.status"
-							:latest-draft-status="thread.latestDraftStatus"
-							:snoozed-until="thread.snoozedUntil"
-							:snooze-returned-at="thread.snoozeReturnedAt"
-						/>
-						<span
-							v-if="showChannelChip"
-							class="flex-shrink-0 inline-flex items-center gap-1 text-xs text-text-tertiary"
-						>
-							<Icon name="lucide:message-circle" class="w-3 h-3" />
-							{{ channelLabel }}
-						</span>
-						<DraftMarker v-if="hasDraft" />
-						<!-- Internal notes the team left on the thread. -->
-						<span
-							v-if="noteCount > 0"
-							class="flex-shrink-0 inline-flex items-center gap-1 text-xs tabular-nums text-text-tertiary"
-							:title="t('components.inbox.inboxThreadRow.notes', { count: noteCount }, noteCount)"
-							data-testid="inbox-row-note-count"
-						>
-							<Icon name="lucide:sticky-note" class="w-3 h-3" aria-hidden="true" />
-							<span class="sr-only">{{
-								t('components.inbox.inboxThreadRow.notes', { count: noteCount }, noteCount)
-							}}</span>
-							<span aria-hidden="true">{{ noteCount >= 100 ? '99+' : noteCount }}</span>
-						</span>
-						<!-- Response-target chip (due in / overdue) while a reply deadline
+							<!-- Detail row: sender + the single status chip + optional channel chip. -->
+							<div class="flex items-center gap-2 mt-0.5 min-w-0">
+								<span class="truncate text-sm text-text-secondary">
+									{{
+										thread.contactIdentifier || t('components.inbox.inboxThreadRow.unknownSender')
+									}}
+								</span>
+								<InboxStatusChip
+									class="flex-shrink-0"
+									:status="thread.status"
+									:latest-draft-status="thread.latestDraftStatus"
+									:snoozed-until="thread.snoozedUntil"
+									:snooze-returned-at="thread.snoozeReturnedAt"
+								/>
+								<span
+									v-if="showChannelChip"
+									class="flex-shrink-0 inline-flex items-center gap-1 text-xs text-text-tertiary"
+								>
+									<Icon name="lucide:message-circle" class="w-3 h-3" />
+									{{ channelLabel }}
+								</span>
+								<DraftMarker v-if="hasDraft" />
+								<!-- Internal notes the team left on the thread. -->
+								<span
+									v-if="noteCount > 0"
+									class="flex-shrink-0 inline-flex items-center gap-1 text-xs tabular-nums text-text-tertiary"
+									:title="
+										t('components.inbox.inboxThreadRow.notes', { count: noteCount }, noteCount)
+									"
+									data-testid="inbox-row-note-count"
+								>
+									<Icon name="lucide:sticky-note" class="w-3 h-3" aria-hidden="true" />
+									<span class="sr-only">{{
+										t('components.inbox.inboxThreadRow.notes', { count: noteCount }, noteCount)
+									}}</span>
+									<span aria-hidden="true">{{ noteCount >= 100 ? '99+' : noteCount }}</span>
+								</span>
+								<!-- Response-target chip (due in / overdue) while a reply deadline
 						     runs; otherwise the aging chip: how long this customer has been
 						     waiting on us, escalating fresh → attention → overdue. Colour is
 						     never the only signal — the duration is spelled out beside it. -->
+								<span
+									v-if="sla"
+									class="flex-shrink-0 inline-flex items-center gap-1 text-xs tabular-nums"
+									:class="INBOX_SLA_TIER_CLASS[sla.tier]"
+									data-testid="inbox-sla-chip"
+								>
+									<Icon name="lucide:alarm-clock" class="w-3 h-3" />
+									{{ t(sla.label.key, sla.label.params) }}
+								</span>
+								<span
+									v-else-if="waiting"
+									class="flex-shrink-0 inline-flex items-center gap-1 text-xs tabular-nums"
+									:class="INBOX_WAITING_TIER_CLASS[waiting.tier]"
+								>
+									<Icon name="lucide:timer" class="w-3 h-3" />
+									{{ t(waiting.label.key, waiting.label.params) }}
+								</span>
+							</div>
+
+							<!-- Snippet line — newest-message preview (denormalized). -->
+							<p class="text-xs text-text-tertiary truncate mt-0.5">
+								{{ thread.lastPreview || ' ' }}
+							</p>
+						</PostboxRowCore>
+
+						<!-- Assignee avatar + live presence ring, right-aligned. -->
 						<span
-							v-if="sla"
-							class="flex-shrink-0 inline-flex items-center gap-1 text-xs tabular-nums"
-							:class="INBOX_SLA_TIER_CLASS[sla.tier]"
-							data-testid="inbox-sla-chip"
+							v-if="thread.assignee"
+							class="flex-shrink-0 mt-0.5"
+							:title="t('components.inbox.inboxThreadRow.assignedTo', { name: assigneeName })"
 						>
-							<Icon name="lucide:alarm-clock" class="w-3 h-3" />
-							{{ t(sla.label.key, sla.label.params) }}
-						</span>
-						<span
-							v-else-if="waiting"
-							class="flex-shrink-0 inline-flex items-center gap-1 text-xs tabular-nums"
-							:class="INBOX_WAITING_TIER_CLASS[waiting.tier]"
-						>
-							<Icon name="lucide:timer" class="w-3 h-3" />
-							{{ t(waiting.label.key, waiting.label.params) }}
+							<UiPresenceRing :active="assigneePresent">
+								<UiAvatar
+									:name="assigneeName ?? undefined"
+									:email="thread.assignee.email"
+									:image="thread.assignee.image ?? undefined"
+									deterministic-color
+									size="sm"
+								/>
+							</UiPresenceRing>
 						</span>
 					</div>
+				</NuxtLink>
 
-					<!-- Snippet line — newest-message preview (denormalized). -->
-					<p class="text-xs text-text-tertiary truncate mt-0.5">
-						{{ thread.lastPreview || ' ' }}
-					</p>
-				</PostboxRowCore>
-
-				<!-- Assignee avatar + live presence ring, right-aligned. -->
-				<span
-					v-if="thread.assignee"
-					class="flex-shrink-0 mt-0.5"
-					:title="t('components.inbox.inboxThreadRow.assignedTo', { name: assigneeName })"
+				<!-- Selection checkbox: shown on hover, and always while checked. A sibling
+		     of the option, never inside it: an option's content is presentational and
+		     a link may not hold a control, so a nested button loses its role and name
+		     for assistive tech. It is laid over the spacer at the start of the link
+		     and follows the row's swipe offset; z-2 keeps it above a dragged row's
+		     link (z-index 1) and below the sticky bulk bar (z-10). -->
+				<button
+					v-if="canManage"
+					type="button"
+					class="absolute z-2 left-4 top-3.5 density-compact:top-2 w-4 h-4 rounded border flex items-center justify-center"
+					:class="[
+						selected
+							? 'bg-brand border-brand text-text-inverse'
+							: 'border-border-subtle bg-bg-base opacity-0 group-hover:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100',
+						{ 'pbx-row-settle': settling },
+					]"
+					:style="rowStyle"
+					:aria-label="
+						selected
+							? t('components.inbox.inboxThreadRow.deselect')
+							: t('components.inbox.inboxThreadRow.select')
+					"
+					data-testid="inbox-row-checkbox"
+					@click="onCheckboxClick"
 				>
-					<UiPresenceRing :active="assigneePresent">
-						<UiAvatar
-							:name="assigneeName ?? undefined"
-							:email="thread.assignee.email"
-							:image="thread.assignee.image ?? undefined"
-							deterministic-color
-							size="sm"
-						/>
-					</UiPresenceRing>
-				</span>
-			</div>
-		</NuxtLink>
+					<Icon v-if="selected" name="lucide:check" class="w-3 h-3" />
+				</button>
 
-		<!-- Hover-reveal quick actions (opacity-only, focus-within reveals for
+				<!-- Hover-reveal quick actions (opacity-only, focus-within reveals for
 		     keyboard) — single-thread triage without opening the thread. While the
 		     assignee picker is open the cluster stays visible (dropping the
 		     hover-reveal class) so the teleported menu keeps its anchor. -->
-		<div
-			v-if="canManage"
-			:class="[
-				assignMenuOpen ? '' : 'ui-hover-reveal',
-				'absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-0.5 bg-bg-elevated/95 rounded px-1 py-0.5 shadow-sm border border-border-subtle',
-			]"
-		>
-			<!-- Assignee picker (Me / members / Unassign). The `i` shortcut on a
+				<div
+					v-if="canManage"
+					:class="[
+						assignMenuOpen ? '' : 'ui-hover-reveal',
+						'absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-0.5 bg-bg-elevated/95 rounded px-1 py-0.5 shadow-sm border border-border-subtle',
+					]"
+				>
+					<!-- Assignee picker (Me / members / Unassign). The `i` shortcut on a
 			     focused row still assigns to me directly (handled by the list). -->
-			<InboxAssignPopover
-				v-model:open="assignMenuOpen"
-				:members="rowMembers"
-				:current-user-id="currentUserId ?? null"
-				:assigned-to="thread.assignedTo ?? null"
-				position="right"
-				assign-shortcut-id="inboxList.assignToMe"
-				@assign="emit('assign', $event)"
-			>
-				<template #trigger>
+					<InboxAssignPopover
+						v-model:open="assignMenuOpen"
+						:members="rowMembers"
+						:current-user-id="currentUserId ?? null"
+						:assigned-to="thread.assignedTo ?? null"
+						position="right"
+						assign-shortcut-id="inboxList.assignToMe"
+						@assign="emit('assign', $event)"
+					>
+						<template #trigger>
+							<button
+								type="button"
+								class="p-1 rounded hover:bg-bg-surface text-text-tertiary hover:text-brand"
+								:title="t('components.inbox.inboxThreadRow.assign')"
+								:aria-label="t('components.inbox.inboxThreadRow.assignThread')"
+							>
+								<Icon name="lucide:user-plus" class="w-4 h-4" />
+							</button>
+						</template>
+					</InboxAssignPopover>
 					<button
 						type="button"
-						class="p-1 rounded hover:bg-bg-surface text-text-tertiary hover:text-brand"
-						:title="t('components.inbox.inboxThreadRow.assign')"
-						:aria-label="t('components.inbox.inboxThreadRow.assignThread')"
+						class="p-1 rounded hover:bg-bg-surface text-text-tertiary hover:text-success"
+						:title="t('components.inbox.inboxThreadRow.resolve')"
+						:aria-label="t('components.inbox.inboxThreadRow.resolve')"
+						@click="rowAction($event, 'resolve')"
 					>
-						<Icon name="lucide:user-plus" class="w-4 h-4" />
+						<Icon name="lucide:check-circle" class="w-4 h-4" />
 					</button>
-				</template>
-			</InboxAssignPopover>
-			<button
-				type="button"
-				class="p-1 rounded hover:bg-bg-surface text-text-tertiary hover:text-success"
-				:title="t('components.inbox.inboxThreadRow.resolve')"
-				:aria-label="t('components.inbox.inboxThreadRow.resolve')"
-				@click="rowAction($event, 'resolve')"
-			>
-				<Icon name="lucide:check-circle" class="w-4 h-4" />
-			</button>
-			<button
-				type="button"
-				class="p-1 rounded hover:bg-bg-surface text-text-tertiary hover:text-text-primary"
-				:title="t('components.inbox.inboxThreadRow.snooze')"
-				:aria-label="t('components.inbox.inboxThreadRow.snooze')"
-				@click="rowAction($event, 'snooze')"
-			>
-				<Icon name="lucide:clock" class="w-4 h-4" />
-			</button>
-			<NuxtLink
-				:to="`/dashboard/inbox/${thread._id}`"
-				class="p-1 rounded hover:bg-bg-surface text-text-tertiary hover:text-text-primary inline-flex"
-				:title="t('common.open')"
-				:aria-label="t('components.inbox.inboxThreadRow.openThread')"
-				@click.stop
-			>
-				<Icon name="lucide:arrow-right" class="w-4 h-4" />
-			</NuxtLink>
-		</div>
-	</li>
+					<button
+						type="button"
+						class="p-1 rounded hover:bg-bg-surface text-text-tertiary hover:text-text-primary"
+						:title="t('components.inbox.inboxThreadRow.snooze')"
+						:aria-label="t('components.inbox.inboxThreadRow.snooze')"
+						@click="rowAction($event, 'snooze')"
+					>
+						<Icon name="lucide:clock" class="w-4 h-4" />
+					</button>
+					<NuxtLink
+						:to="`/dashboard/inbox/${thread._id}`"
+						class="p-1 rounded hover:bg-bg-surface text-text-tertiary hover:text-text-primary inline-flex"
+						:title="t('common.open')"
+						:aria-label="t('components.inbox.inboxThreadRow.openThread')"
+						@click.stop
+					>
+						<Icon name="lucide:arrow-right" class="w-4 h-4" />
+					</NuxtLink>
+				</div>
+			</li>
+		</template>
+	</RowContextMenu>
 </template>

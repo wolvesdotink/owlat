@@ -1,8 +1,8 @@
 /**
- * Shared plumbing for the updater's endpoint handlers: JSON responses, body
- * reading, instance-secret auth, docker exec and compose-ps parsing. Split out
- * of server.ts so each privileged endpoint module stays focused on its own
- * control flow (CONVENTIONS.md ~500 LOC rule).
+ * Shared plumbing for the updater's endpoint handlers: JSON responses,
+ * instance-secret auth, docker exec and compose-ps parsing (bodies are read in
+ * jsonBody.ts). Split out of server.ts so each privileged endpoint module stays
+ * focused on its own control flow (CONVENTIONS.md ~500 LOC rule).
  */
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { spawn, type ChildProcess } from 'node:child_process';
@@ -17,15 +17,6 @@ export { OWLAT_DIR };
 export function json(res: ServerResponse, status: number, body: unknown) {
 	res.writeHead(status, { 'Content-Type': 'application/json' });
 	res.end(JSON.stringify(body));
-}
-
-export function readBody(req: IncomingMessage): Promise<string> {
-	return new Promise((resolve, reject) => {
-		const chunks: Buffer[] = [];
-		req.on('data', (chunk: Buffer) => chunks.push(chunk));
-		req.on('end', () => resolve(Buffer.concat(chunks).toString()));
-		req.on('error', reject);
-	});
 }
 
 /**

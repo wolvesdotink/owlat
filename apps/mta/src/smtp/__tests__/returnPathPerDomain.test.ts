@@ -324,7 +324,7 @@ describe('per-domain VERP return-path host', () => {
 			});
 			expect(res.status).toBe(400);
 			const json = (await res.json()) as { error: string };
-			expect(json.error).toMatch(/JSON object/i);
+			expect(json.error).toBe('Invalid request body: $: expected object');
 
 			// Nothing was registered on the rejected request.
 			dkimStore.clearCache();

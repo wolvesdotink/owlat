@@ -20,7 +20,9 @@
  * `owlat-setup` CLI so the two never drift on which outcomes count as valid.
  */
 
+import { v } from 'convex/values';
 import { validateProvider, type SetupProvider } from '@owlat/shared/setupValidators';
+import { readJsonBody } from '~~/server/utils/jsonBody';
 import {
 	hasSendProviderProbe,
 	parseProbeBody,
@@ -37,7 +39,8 @@ export default defineEventHandler(async (event): Promise<{ ok: boolean; message:
 	// credentials. Missing/wrong token -> 401.
 	requireSetupToken(event);
 
-	const input = parseProbeBody(await readBody(event));
+	// The probe body's own parser checks it and answers in its own words.
+	const input = parseProbeBody(await readJsonBody(event, v.any(), { emptyBody: {} }));
 	if (hasSendProviderProbe(input.provider)) {
 		return runSendProviderProbe(input.provider, input);
 	}

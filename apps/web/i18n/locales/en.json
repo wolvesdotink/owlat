@@ -4189,7 +4189,9 @@
 				"resolve": "Resolve",
 				"snooze": "Snooze",
 				"unknownSender": "Unknown sender",
-				"unread": "Unread"
+				"unread": "Unread",
+				"select": "Select",
+				"deselect": "Deselect"
 			},
 			"statusChip": {
 				"returned": "· Returned"
@@ -4315,6 +4317,18 @@
 				"retryHint": "Trying again runs the message through the agent with normal automation, so its reply can be sent on its own.",
 				"since": "Held {date}. Nothing is sent automatically while the message is held.",
 				"title": "Waiting for a person: AI budget reached"
+			},
+			"rowMenu": {
+				"counted": "{verb} ({count})",
+				"assignToMe": "Assign to me",
+				"assign": "Assign to…",
+				"snooze": "Snooze…"
+			},
+			"bulkBar": {
+				"label": "Selected conversations",
+				"selected": "{count} selected",
+				"assign": "Assign",
+				"clear": "Clear selection"
 			}
 		},
 		"keyboardShortcutsHelp": {
@@ -5611,6 +5625,13 @@
 				"undoTrashed": "Moved to trash",
 				"unstar": "Unstar"
 			},
+			"postboxSweepStatus": {
+				"select": "Select {count} message | Select {count} messages",
+				"deselect": "Deselect {count} message | Deselect {count} messages",
+				"archive": "Archive {count} message | Archive {count} messages",
+				"dismiss": "Dismiss {count} update | Dismiss {count} updates",
+				"escHint": "Esc to cancel"
+			},
 			"postboxThreadRow": {
 				"backFromSnooze": "Back from snooze",
 				"deselect": "Deselect",
@@ -5629,7 +5650,9 @@
 				"unstar": "Unstar",
 				"pin": "Pin conversation",
 				"unpin": "Unpin conversation",
-				"pinnedChip": "Pinned to the top of the Inbox"
+				"pinnedChip": "Pinned to the top of the Inbox",
+				"selectSweepHint": "Select — drag across rows to select several",
+				"archiveSweepHint": "Archive — drag across rows to archive several"
 			},
 			"postboxThreadRowFollowUp": {
 				"cancelLabel": "Cancel reply reminder",
@@ -7316,7 +7339,9 @@
 			},
 			"line": {
 				"done": "Done",
-				"replyAnyway": "Reply anyway"
+				"replyAnyway": "Reply anyway",
+				"open": "Peek",
+				"openThread": "Open conversation"
 			},
 			"source": {
 				"one": "Source: email from {from}, “{subject}”",
@@ -11580,7 +11605,19 @@
 				"sortSwitchTo": "Sort by {sort}",
 				"waitingOver24h": "{count} customer has waited more than a day for an answer | {count} customers have waited more than a day for an answer",
 				"showLongestWaitFirst": "Show longest wait first",
-				"analytics": "Analytics"
+				"analytics": "Analytics",
+				"bulk": {
+					"failed": {
+						"resolved": "{count} of {total} conversations wasn't resolved. It stays selected. | {count} of {total} conversations weren't resolved. They stay selected.",
+						"snoozed": "{count} of {total} conversations wasn't snoozed. It stays selected. | {count} of {total} conversations weren't snoozed. They stay selected.",
+						"assigned": "{count} of {total} conversations wasn't assigned. It stays selected. | {count} of {total} conversations weren't assigned. They stay selected."
+					},
+					"failedUnselected": {
+						"resolved": "{count} of {total} conversations wasn't resolved. | {count} of {total} conversations weren't resolved.",
+						"snoozed": "{count} of {total} conversations wasn't snoozed. | {count} of {total} conversations weren't snoozed.",
+						"assigned": "{count} of {total} conversations wasn't assigned. | {count} of {total} conversations weren't assigned."
+					}
+				}
 			},
 			"quarantine": {
 				"blockDialogConfirm": "Block sender",
@@ -11694,6 +11731,8 @@
 				"dismiss": "Done",
 				"dismissOperation": "Dismiss update",
 				"dismissedToast": "Update dismissed",
+				"dismissedManyToast": "{count} update dismissed | {count} updates dismissed",
+				"dismissSweepHint": "Done — drag across updates to dismiss several",
 				"empty": {
 					"updates": {
 						"title": "You're caught up",
@@ -12980,7 +13019,12 @@
 				"other": "Other"
 			},
 			"empty": "No conversations match these filters.",
-			"footnote": "Shows the latest {count} conversations of each inbox. Open an inbox for everything, including sent, archive and search."
+			"footnote": "Shows the latest {count} conversations of each inbox. Open an inbox for everything, including sent, archive and search.",
+			"archiveOperation": "Archive conversations",
+			"archiveUndoOperation": "Undo archive",
+			"archivedUndo": "Archived {count} conversation | Archived {count} conversations",
+			"archiveSweepHint": "Archive — drag across rows to archive several",
+			"sweepStatus": "Archive {count} conversation | Archive {count} conversations"
 		}
 	},
 	"desktop": {
@@ -16963,7 +17007,10 @@
 				"rejectDraft": "Reject the draft",
 				"openMention": "Open the mention to reply",
 				"markMentionRead": "Mark the mention read",
-				"skipCard": "Skip for now"
+				"skipCard": "Skip for now",
+				"clearSelection": "Clear the selection",
+				"resolveThread": "Resolve the thread",
+				"assignThread": "Assign the thread to…"
 			}
 		},
 		"signatureBadge": {
@@ -18241,7 +18288,8 @@
 				"snooze": "Snooze",
 				"star": "Star",
 				"read": "Mark read",
-				"none": "Nothing"
+				"none": "Nothing",
+				"resolve": "Resolve"
 			}
 		},
 		"postboxKeyVerification": {
@@ -18356,6 +18404,13 @@
 				"automation": "Automation",
 				"template": "Template"
 			}
+		},
+		"rowMenu": {
+			"open": "Open",
+			"openInNewTab": "Open in new tab",
+			"copyLink": "Copy link",
+			"linkCopied": "Link copied",
+			"copyFailed": "Couldn't copy the link"
 		}
 	},
 	"sharedPkg": {

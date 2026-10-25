@@ -23,12 +23,15 @@
  * test email" card after applying.
  */
 
+import { v } from 'convex/values';
 import { requireOrgAdmin } from '~~/server/utils/requireOrgAdmin';
+import { readJsonBody } from '~~/server/utils/jsonBody';
 import { parseProbeBody, runSendProviderProbe } from '~~/server/utils/sendProviderProbe';
 
 export default defineEventHandler(async (event): Promise<{ ok: boolean; message: string }> => {
 	await requireOrgAdmin(event);
 
-	const input = parseProbeBody(await readBody(event));
+	// The probe body's own parser checks it and answers in its own words.
+	const input = parseProbeBody(await readJsonBody(event, v.any(), { emptyBody: {} }));
 	return runSendProviderProbe(input.provider, input);
 });

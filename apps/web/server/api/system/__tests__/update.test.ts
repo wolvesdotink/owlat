@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { getFunctionName } from 'convex/server';
+import { jsonRequestEvent } from '../../../__tests__/nitro';
 
 /**
  * Route tests for `POST /api/system/update` — the in-app "Update now" button.
@@ -65,7 +66,7 @@ interface RouteResult {
 async function callRoute(): Promise<RouteResult> {
 	const mod = await import('../update.post');
 	const handler = mod.default as unknown as (event: unknown) => Promise<RouteResult>;
-	return handler({});
+	return handler(jsonRequestEvent(body));
 }
 
 function updaterResponse(ok: boolean, payload: unknown, status = ok ? 200 : 500) {
@@ -95,16 +96,29 @@ beforeEach(() => {
 	body = { targetVersion: '0.4.17' };
 
 	vi.stubGlobal('defineEventHandler', <T>(handler: T) => handler);
-	vi.stubGlobal(
-		'readBody',
-		vi.fn(async () => body)
-	);
 	vi.stubGlobal('createError', (opts: { statusCode: number; message: string; data?: unknown }) =>
 		Object.assign(new Error(opts.message), { statusCode: opts.statusCode, data: opts.data })
 	);
 });
 
 describe('POST /api/system/update — gates', () => {
+	it('refuses a numeric targetVersion with 400 before Convex or the updater is asked', async () => {
+		body = { targetVersion: 1.2 };
+
+		await expect(callRoute()).rejects.toMatchObject({ statusCode: 400 });
+		expect(queryMock).not.toHaveBeenCalled();
+		expect(mutationMock).not.toHaveBeenCalled();
+		expect(callUpdaterMock).not.toHaveBeenCalled();
+	});
+
+	it('refuses a body that is not JSON with 400 before anything runs', async () => {
+		body = '{"targetVersion":';
+
+		await expect(callRoute()).rejects.toMatchObject({ statusCode: 400 });
+		expect(queryMock).not.toHaveBeenCalled();
+		expect(callUpdaterMock).not.toHaveBeenCalled();
+	});
+
 	it('refuses with 412 while a stepping-stone migration is unfinished, before anything runs', async () => {
 		queryMock.mockResolvedValue([
 			{ migration: '0067_empty_retired_summaries', introducedIn: '0.4.16', state: 'pending' },

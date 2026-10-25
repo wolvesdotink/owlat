@@ -107,6 +107,7 @@ export const INTENTIONALLY_IDENTICAL_KEYS: readonly string[] = [
 	'components.forms.fieldsEditor.types.text',
 	'components.inbox.inboxThreadRow.channel.sms',
 	'components.inbox.inboxThreadRow.channel.whatsapp',
+	'components.inbox.rowMenu.counted',
 	'components.knowledge.graphStatsPanel.bucketHint',
 	'components.knowledge.graphStatsPanel.communityCount',
 	'components.knowledge.graphStatsPanel.median',

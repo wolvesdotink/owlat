@@ -64,6 +64,7 @@ import {
 	type TransportCredentialValues,
 } from '~/composables/setupWizardCredentials';
 import { probeRequestBuilder } from '~/composables/useRelayCredentialDraft';
+import { jsonRequestEvent } from '../../../__tests__/nitro';
 
 /** Which validator the route reached, recorded by the stubs installed below. */
 const { probeCalls } = vi.hoisted(() => ({ probeCalls: [] as string[] }));
@@ -104,7 +105,7 @@ let body: unknown;
 async function callRoute(): Promise<ProbeResult> {
 	const mod = await import('../validate-transport.post');
 	const handler = mod.default as unknown as (event: unknown) => Promise<ProbeResult>;
-	return handler({});
+	return handler(jsonRequestEvent(body));
 }
 
 /**
@@ -158,10 +159,6 @@ beforeEach(() => {
 	body = undefined;
 	requireOrgAdminMock.mockReset().mockResolvedValue(undefined);
 	vi.stubGlobal('defineEventHandler', <T>(handler: T) => handler);
-	vi.stubGlobal(
-		'readBody',
-		vi.fn(async () => body)
-	);
 	vi.stubGlobal('createError', (opts: { statusCode: number; message: string }) =>
 		Object.assign(new Error(opts.message), { statusCode: opts.statusCode })
 	);
@@ -220,6 +217,18 @@ describe('the live-check endpoint takes exactly the kinds the catalog says can b
 			expect(requireOrgAdminMock).toHaveBeenCalledTimes(1);
 		}
 	);
+
+	it('answers 400, not a TypeError, for a non-string smtp field', async () => {
+		body = {
+			provider: 'smtp',
+			smtp: { host: 42, port: 587, secure: false, username: 'u', password: 'p' },
+		};
+		await expect(callRoute()).rejects.toMatchObject({
+			statusCode: 400,
+			message: 'smtp.host, smtp.username, and smtp.password are required.',
+		});
+		expect(probeCalls).toEqual([]);
+	});
 
 	it('runs the admin gate BEFORE any validator, and a refusal reaches no probe', async () => {
 		requireOrgAdminMock

@@ -1,6 +1,6 @@
 /**
  * Runs a route middleware the way Nuxt does: the REAL composables it reaches
- * (`useAuth`, `useOrganizationContext`, `useOrganization`, `usePermissions`,
+ * (`useAuth`, `useOrganizationContext`, `useOrganizationSession`, `useOrganization`, `usePermissions`,
  * `useFeatureFlag`, `useConvexQuery`) and the real `vue-i18n` `useI18n`, over a
  * fake session and a fake Convex client that the test drives.
  *
@@ -323,6 +323,7 @@ export async function loadMiddleware<T>(
 		auth,
 		activeMemberRole,
 		organization,
+		organizationSession,
 		organizationContext,
 		permissions,
 		featureFlag,
@@ -332,6 +333,7 @@ export async function loadMiddleware<T>(
 		import('~/composables/useAuth'),
 		import('~/composables/useActiveMemberRole'),
 		import('~/composables/useOrganization'),
+		import('~/composables/useOrganizationSession'),
 		import('~/composables/useOrganizationContext'),
 		import('~/composables/usePermissions'),
 		import('~/composables/useFeatureFlag'),
@@ -342,6 +344,7 @@ export async function loadMiddleware<T>(
 	vi.stubGlobal('useActiveMemberRole', activeMemberRole.useActiveMemberRole);
 	vi.stubGlobal('useBackendOperation', backendOperation.useBackendOperation);
 	vi.stubGlobal('useOrganization', organization.useOrganization);
+	vi.stubGlobal('useOrganizationSession', organizationSession.useOrganizationSession);
 	vi.stubGlobal('useOrganizationContext', organizationContext.useOrganizationContext);
 	vi.stubGlobal('usePermissions', permissions.usePermissions);
 	vi.stubGlobal('useFeatureFlag', featureFlag.useFeatureFlag);

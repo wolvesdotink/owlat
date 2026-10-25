@@ -79,6 +79,12 @@ export interface BackendRunOptions<M extends FunctionReference<'mutation' | 'act
 	 * differs by more than their args say.
 	 */
 	optimisticUpdate?: BackendOptimisticUpdate<M>;
+	/**
+	 * A failure claim for this one run, used instead of the operation's own
+	 * `onError`. For a runner shared by calls that belong to different batches,
+	 * where whether to surface a failure depends on the batch it is part of.
+	 */
+	onError?: (error: OperationError) => boolean;
 }
 
 /** {@link BackendOperationOptions} plus the args-typed optimistic update. */
@@ -228,11 +234,11 @@ export function useBackendOperation<M extends FunctionReference<'mutation' | 'ac
 	const mintsUploadUrl = isUploadUrlMint(operation);
 	const inlineError: Ref<string | null> = opts.inlineTarget ?? ref<string | null>(null);
 
-	function applyTreatment(e: unknown): void {
+	function applyTreatment(e: unknown, onError = opts.onError): void {
 		const op = normalizeToOperationError(e);
 		// Claimed by the caller — it is rendering this failure itself, so neither
 		// the default surface nor the telemetry report applies.
-		if (opts.onError?.(op) === true) return;
+		if (onError?.(op) === true) return;
 		const treatment = categoryTreatment(op.category);
 		// `operationCopy` is module scope, so it hands back either a message KEY
 		// (copy this app owns) or the backend's own sentence, which must NOT go
@@ -338,7 +344,7 @@ export function useBackendOperation<M extends FunctionReference<'mutation' | 'ac
 			}
 			return { ok: true, result: result as FunctionReturnType<M> };
 		} catch (e) {
-			applyTreatment(e);
+			applyTreatment(e, runOpts?.onError ?? opts.onError);
 			return { ok: false };
 		} finally {
 			isLoading.value = false;

@@ -19,6 +19,7 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getFunctionName } from 'convex/server';
 import { api } from '@owlat/api';
 import { RELAY_REMOVAL_CONFIRMATION } from '@owlat/shared/deliverabilityIndependence';
+import { jsonRequestEvent } from '../../../__tests__/nitro';
 
 const { pushMock, readMock, writeMock, requireOrgAdminMock, queryMock } = vi.hoisted(() => ({
 	pushMock: vi.fn(),
@@ -53,7 +54,7 @@ let body: unknown;
 let routeHandler: (event: unknown) => Promise<ApplyResult>;
 
 async function callRoute(): Promise<ApplyResult> {
-	return await routeHandler({});
+	return await routeHandler(jsonRequestEvent(body));
 }
 
 beforeAll(async () => {
@@ -115,10 +116,6 @@ beforeEach(() => {
 	requireOrgAdminMock.mockReset().mockResolvedValue({ query: queryMock });
 	body = { providerEnv: ownMtaPatch() };
 
-	vi.stubGlobal(
-		'readBody',
-		vi.fn(async () => body)
-	);
 	vi.stubGlobal('createError', (opts: { statusCode: number; message: string }) =>
 		Object.assign(new Error(opts.message), { statusCode: opts.statusCode })
 	);
