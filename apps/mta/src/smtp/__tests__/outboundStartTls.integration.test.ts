@@ -161,7 +161,7 @@ describe('outbound STARTTLS opportunistic-vs-enforce (PR-25)', () => {
 
 		expect(probe.upgraded()).toBe(true);
 		expect(probe.dataOverTls()).toBe(true);
-	}, 15000);
+	});
 
 	it('enforce: a self-signed cert FAILS verification and classifies as certificate-not-trusted', async () => {
 		probe = await startServer();
@@ -185,7 +185,7 @@ describe('outbound STARTTLS opportunistic-vs-enforce (PR-25)', () => {
 		expect(classifyTlsFailure(caught.tlsCause!)).toBe('certificate-not-trusted');
 		// DATA never rode an unverified session.
 		expect(probe.dataOverTls()).toBeNull();
-	}, 15000);
+	});
 
 	it('SNI: the server SNICallback observes servername === "mx.test"', async () => {
 		probe = await startServer();
@@ -203,7 +203,7 @@ describe('outbound STARTTLS opportunistic-vs-enforce (PR-25)', () => {
 
 		expect(probe.sniServername()).toBe('mx.test');
 		expect(probe.dataOverTls()).toBe(true);
-	}, 15000);
+	});
 
 	it('DANE-EE: a matching TLSA record authenticates the self-signed MX', async () => {
 		probe = await startServer();
@@ -228,7 +228,7 @@ describe('outbound STARTTLS opportunistic-vs-enforce (PR-25)', () => {
 
 		expect(probe.upgraded()).toBe(true);
 		expect(probe.dataOverTls()).toBe(true);
-	}, 15000);
+	});
 
 	it('DANE-EE: a TLSA mismatch aborts before SMTP DATA', async () => {
 		probe = await startServer();
@@ -253,7 +253,7 @@ describe('outbound STARTTLS opportunistic-vs-enforce (PR-25)', () => {
 		expect((caught as Error).message).toMatch(/DANE TLSA mismatch/);
 		expect(verifyPeerCertificate).toHaveBeenCalledOnce();
 		expect(probe.dataOverTls()).toBeNull();
-	}, 15000);
+	});
 
 	it('DANE-TA: an associated CA certificate authenticates the named MX', async () => {
 		probe = await startServer();
@@ -273,7 +273,7 @@ describe('outbound STARTTLS opportunistic-vs-enforce (PR-25)', () => {
 		});
 		expect(result.accepted.map((v) => v.recipient)).toContain('recipient@example.test');
 		expect(probe.dataOverTls()).toBe(true);
-	}, 15000);
+	});
 
 	it('DANE-TA: a trust-anchor match still rejects the wrong MX name before DATA', async () => {
 		probe = await startServer();
@@ -294,7 +294,7 @@ describe('outbound STARTTLS opportunistic-vs-enforce (PR-25)', () => {
 			/DANE-TA validation failed: MX certificate name mismatch/
 		);
 		expect(probe.dataOverTls()).toBeNull();
-	}, 15000);
+	});
 
 	// The pool's connect config must always attempt STARTTLS and never disable it.
 	// tlsMode 'starttls' is the only outbound MX shape; there is no field that
@@ -376,7 +376,7 @@ describe('outbound require-verified vs broken TLS (T1)', () => {
 		expect(isSmtpError(caught)).toBe(true);
 		if (!isSmtpError(caught)) throw caught;
 		expect(classifyTlsFailure(caught.tlsCause!)).toBe('certificate-not-trusted');
-	}, 15000);
+	});
 
 	it('require (TLS mandatory) bounces on a receiver that offers no STARTTLS and records starttls-not-supported', async () => {
 		plainServer = new SMTPServer({
@@ -419,5 +419,5 @@ describe('outbound require-verified vs broken TLS (T1)', () => {
 		if (!isSmtpError(caught)) throw caught;
 		expect(caught.tlsCause).toBe('starttls-unavailable');
 		expect(classifyTlsFailure(caught.tlsCause!)).toBe('starttls-not-supported');
-	}, 15000);
+	});
 });

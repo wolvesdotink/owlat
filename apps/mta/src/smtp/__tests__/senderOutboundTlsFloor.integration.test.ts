@@ -123,7 +123,7 @@ describe('sendToMx honours OUTBOUND_TLS_MODE: bounce + TLS-RPT under a required 
 		expect(probe.dataReached()).toBe(false);
 
 		expect(await failureTypes()).toContain('starttls-not-supported');
-	}, 15000);
+	});
 
 	it('require-verified: a self-signed MX soft-bounces and records certificate-not-trusted', async () => {
 		probe = await startServer({ advertiseStartTls: true });
@@ -141,7 +141,7 @@ describe('sendToMx honours OUTBOUND_TLS_MODE: bounce + TLS-RPT under a required 
 		expect(probe.dataReached()).toBe(false);
 
 		expect(await failureTypes()).toContain('certificate-not-trusted');
-	}, 15000);
+	});
 
 	it('opportunistic (default): the SAME no-STARTTLS receiver still gets the mail — the floor switch is what changes the outcome', async () => {
 		probe = await startServer({ advertiseStartTls: false });
@@ -159,7 +159,7 @@ describe('sendToMx honours OUTBOUND_TLS_MODE: bounce + TLS-RPT under a required 
 		expect(result.success).toBe(true);
 		expect(probe.dataReached()).toBe(true);
 		expect(await failureTypes()).toContain('starttls-not-supported');
-	}, 15000);
+	});
 
 	it('Gmail provider policy refuses plaintext even when the local mode is opportunistic', async () => {
 		probe = await startServer({ advertiseStartTls: false });
@@ -206,5 +206,5 @@ describe('sendToMx honours OUTBOUND_TLS_MODE: bounce + TLS-RPT under a required 
 		expect(result.bounceType).toBe('soft');
 		expect(result.error).toContain('TLS required');
 		expect(probe.dataReached()).toBe(false);
-	}, 15000);
+	});
 });

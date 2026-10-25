@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events';
 import { spawn } from 'node:child_process';
-import { describe, it, expect, vi } from 'vitest';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import {
 	SANDBOX_OUTPUT_LIMITS,
 	SANDBOX_OUTPUT_TRUNCATED,
@@ -251,14 +251,42 @@ describe('task runners report a bounded, visibly truncated output', () => {
  * Real pipes. `runUntrusted` pins the sandbox uid, which an unprivileged test
  * process cannot switch to, so the spawn wrapper drops uid/gid and records the
  * process group; the injected reap kills that group, as production reaps the uid.
+ *
+ * The children are real; the parent's deadline is not. Only setTimeout and
+ * clearTimeout are faked, so pipes and child events run as usual while the
+ * deadline fires exactly when a test advances it: after the child has shown
+ * the output the test is about, never because a busy machine was slow to
+ * start it.
  */
 describe('runUntrusted with real child processes', () => {
+	beforeEach(() => {
+		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+	});
+
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
 	function localSpawn() {
 		const groups: number[] = [];
+		let stdoutBytes = 0;
+		let flooding: (() => void) | undefined;
+		/** Resolves once the children have written `bytes` to stdout. */
+		const stdoutReached = (bytes: number) =>
+			new Promise<void>((resolve) => {
+				flooding = () => {
+					if (stdoutBytes >= bytes) resolve();
+				};
+				flooding();
+			});
 		const spawnFn = ((command: string, args: string[], options: Record<string, unknown>) => {
 			const { uid: _uid, gid: _gid, ...rest } = options;
 			const child = spawn(command, args, rest);
 			if (child.pid) groups.push(child.pid);
+			child.stdout?.on('data', (chunk: Buffer) => {
+				stdoutBytes += chunk.length;
+				flooding?.();
+			});
 			return child;
 		}) as unknown as typeof spawn;
 		const reap = vi.fn(() => {
@@ -270,7 +298,7 @@ describe('runUntrusted with real child processes', () => {
 				}
 			}
 		});
-		return { spawnFn, reap };
+		return { spawnFn, reap, stdoutReached };
 	}
 
 	const limits = { headBytes: 1024, tailBytes: 1024 };
@@ -284,6 +312,7 @@ describe('runUntrusted with real child processes', () => {
 			process.stdout.write('€TAIL');
 			process.stderr.write('ERR-TAIL');
 		`;
+		// The deadline is never advanced: the child has to finish on its own.
 		const result = await runUntrusted(
 			process.execPath,
 			['-e', script],
@@ -291,6 +320,7 @@ describe('runUntrusted with real child processes', () => {
 			spawnFn
 		);
 		expect(result.code).toBe(0);
+		expect(result.timedOut).toBe(false);
 		expect(result.outputTruncated).toBe(true);
 		expect(reap).toHaveBeenCalledTimes(1);
 		expect(result.stdout.startsWith('HEAD')).toBe(true);
@@ -298,10 +328,10 @@ describe('runUntrusted with real child processes', () => {
 		expect(result.stderr.endsWith('ERR-TAIL')).toBe(true);
 		expect(Buffer.byteLength(result.stdout)).toBeLessThan(2 * 1024 + 100);
 		expect(Buffer.byteLength(result.stderr)).toBeLessThan(2 * 1024 + 100);
-	}, 30_000);
+	});
 
 	it('settles on timeout while a child floods its pipes, and a later run sees none of it', async () => {
-		const { spawnFn, reap } = localSpawn();
+		const { spawnFn, reap, stdoutReached } = localSpawn();
 		// A background grandchild inherits the pipes and keeps writing after its
 		// parent exits; the parent itself floods until the deadline.
 		const script = `
@@ -312,15 +342,21 @@ describe('runUntrusted with real child processes', () => {
 			const block = 'y'.repeat(16 * 1024);
 			setInterval(() => { process.stdout.write(block); process.stderr.write(block); }, 1);
 		`;
-		const noisy = await runUntrusted(
+		const noisy = runUntrusted(
 			process.execPath,
 			['-e', script],
 			{ cwd: '/', env: {}, timeoutMs: 500, reap, outputLimits: limits },
 			spawnFn
 		);
-		expect(noisy.timedOut).toBe(true);
+		// Many times the retained budget has gone through the pipe before the
+		// deadline fires, so the bound below is about a flood, not a quiet child.
+		await stdoutReached(64 * (limits.headBytes + limits.tailBytes));
+		await vi.advanceTimersByTimeAsync(500);
+		const flooded = await noisy;
+		expect(flooded.timedOut).toBe(true);
+		expect(flooded.outputTruncated).toBe(true);
 		expect(reap).toHaveBeenCalledTimes(1);
-		expect(Buffer.byteLength(noisy.stdout)).toBeLessThan(2 * 1024 + 100);
+		expect(Buffer.byteLength(flooded.stdout)).toBeLessThan(2 * 1024 + 100);
 
 		const next = await runUntrusted(
 			process.execPath,
@@ -328,8 +364,9 @@ describe('runUntrusted with real child processes', () => {
 			{ cwd: '/', env: {}, timeoutMs: 5_000, reap, outputLimits: limits },
 			spawnFn
 		);
+		expect(next.timedOut).toBe(false);
 		expect(next.stdout).toBe('second run');
 		expect(next.stderr).toBe('');
 		expect(next.outputTruncated).toBe(false);
-	}, 30_000);
+	});
 });
