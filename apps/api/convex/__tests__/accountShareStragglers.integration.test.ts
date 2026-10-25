@@ -29,6 +29,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import schema from '../schema';
 import { api, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
+import type * as SessionOrganizationModule from '../lib/sessionOrganization';
 
 // Mutable session: requireSelf passes for `sessionMock.userId`; role drives the
 // in-handler shareLinks:manage permission gate; subject is what
@@ -57,8 +58,7 @@ vi.mock('../lib/sessionOrganization', async () => {
 		requireOrgPermission: vi
 			.fn()
 			.mockImplementation(async (_ctx: unknown, permission: string, message?: string) => {
-				const mod: typeof import('../lib/sessionOrganization') =
-					actual as typeof import('../lib/sessionOrganization');
+				const mod: typeof SessionOrganizationModule = actual as typeof SessionOrganizationModule;
 				mod.requirePermission(
 					mod.hasPermission(
 						sessionMock.role as Parameters<typeof mod.hasPermission>[0],

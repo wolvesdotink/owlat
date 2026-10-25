@@ -19,6 +19,8 @@ import { AI_BUDGET_ERROR_CODE } from '@owlat/shared/aiRouting';
 import type { Id } from '../_generated/dataModel';
 import { enableFeatures } from './factories';
 import { VOICE_STALE_MS } from '../mail/ai/voiceProfile';
+import type * as LlmDispatchModule from '../lib/llm/dispatch';
+import type * as LlmProviderModule from '../lib/llmProvider';
 
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
@@ -38,12 +40,12 @@ vi.mock('../lib/sessionOrganization', async () => {
 const runLlmObjectMock = vi.hoisted(() => vi.fn());
 
 vi.mock('../lib/llmProvider', async () => {
-	const actual = await vi.importActual<typeof import('../lib/llmProvider')>('../lib/llmProvider');
+	const actual = await vi.importActual<typeof LlmProviderModule>('../lib/llmProvider');
 	return { ...actual, resolveLanguageModel: vi.fn(() => 'test-model') };
 });
 
 vi.mock('../lib/llm/dispatch', async () => {
-	const actual = await vi.importActual<typeof import('../lib/llm/dispatch')>('../lib/llm/dispatch');
+	const actual = await vi.importActual<typeof LlmDispatchModule>('../lib/llm/dispatch');
 	return { ...actual, runLlmObject: runLlmObjectMock };
 });
 

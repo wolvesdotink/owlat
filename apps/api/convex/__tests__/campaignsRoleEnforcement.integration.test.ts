@@ -5,6 +5,7 @@ import { api } from '../_generated/api';
 import { createTestCampaign, createTestEmailTemplate } from './factories';
 import type { Id } from '../_generated/dataModel';
 import type { OrganizationRole } from '../lib/sessionOrganization';
+import type * as SessionOrganizationModule from '../lib/sessionOrganization';
 
 /**
  * Role-enforcement integration tests for the campaign-edit mutations
@@ -22,7 +23,7 @@ import type { OrganizationRole } from '../lib/sessionOrganization';
 let mockRole: OrganizationRole = 'owner';
 
 vi.mock('../lib/sessionOrganization', async () => {
-	const actual = await vi.importActual<typeof import('../lib/sessionOrganization')>(
+	const actual = await vi.importActual<typeof SessionOrganizationModule>(
 		'../lib/sessionOrganization'
 	);
 	const { realPermissionGate } = await import('./helpers/permissionGateMock');

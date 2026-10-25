@@ -20,6 +20,7 @@ import {
 	PRESENCE_ACTIVE_WINDOW_MS,
 	PRESENCE_REFRESH_MS,
 } from '../inbox/presence';
+import type * as SessionOrganizationModule from '../lib/sessionOrganization';
 
 const sessionMock = vi.hoisted(() => ({
 	user: { id: 'user-owner', role: 'owner' as 'owner' | 'admin' | 'editor' },
@@ -31,7 +32,7 @@ const setUser = (id: string, role: 'owner' | 'admin' | 'editor' = 'owner') => {
 };
 
 vi.mock('../lib/sessionOrganization', async () => {
-	const actual = await vi.importActual<typeof import('../lib/sessionOrganization')>(
+	const actual = await vi.importActual<typeof SessionOrganizationModule>(
 		'../lib/sessionOrganization'
 	);
 	return {

@@ -24,9 +24,9 @@ import {
 let mockRole: OrganizationRole = 'owner';
 
 vi.mock('../lib/sessionOrganization', async () => {
-	const actual: typeof sessionOrganization = await vi.importActual<
-		typeof import('../lib/sessionOrganization')
-	>('../lib/sessionOrganization');
+	const actual: typeof sessionOrganization = await vi.importActual<typeof sessionOrganization>(
+		'../lib/sessionOrganization'
+	);
 	return {
 		...actual,
 		requireOrgMember: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),

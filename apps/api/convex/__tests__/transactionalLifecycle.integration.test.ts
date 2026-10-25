@@ -6,6 +6,7 @@ import { internal } from '../_generated/api';
 import { createTestTransactionalEmail } from './factories';
 import { assertEditableForPublishableChange } from '../lib/publishableEmail';
 import type { Id, Doc } from '../_generated/dataModel';
+import type * as EmailScannerModule from '@owlat/email-scanner';
 
 const modules = import.meta.glob('../**/*.*s');
 
@@ -14,7 +15,7 @@ const modules = import.meta.glob('../**/*.*s');
 // `(scanContent as Mock).mockReturnValueOnce(...)`. Without an override, scans
 // return "clean" — the typical happy-path.
 vi.mock('@owlat/email-scanner', async (importOriginal) => {
-	const original = await importOriginal<typeof import('@owlat/email-scanner')>();
+	const original = await importOriginal<typeof EmailScannerModule>();
 	return {
 		...original,
 		scanContent: vi.fn(() => ({

@@ -15,6 +15,8 @@ import schema from '../schema';
 import { api, internal } from '../_generated/api';
 import { SES_RELAY_PROOF_MAX_AGE_MS } from '@owlat/shared';
 import { relayDomainVerified } from '../lib/sendProviders/relayDomainVerification';
+import type * as MandrillApiModule from '../domains/providers/mandrill/api';
+import type * as SesModule from '../domains/providers/ses';
 
 const permissionState = vi.hoisted(() => ({ allowed: true }));
 
@@ -53,9 +55,7 @@ vi.mock('../lib/sessionOrganization', async () => {
 });
 
 vi.mock('../domains/providers/ses', async () => {
-	const actual = await vi.importActual<typeof import('../domains/providers/ses')>(
-		'../domains/providers/ses'
-	);
+	const actual = await vi.importActual<typeof SesModule>('../domains/providers/ses');
 	return {
 		...actual,
 		sesProvider: {
@@ -83,7 +83,7 @@ vi.mock('../domains/providers/ses', async () => {
 // so the backfill's write is observable. `checkSenderDomain` keeps its real
 // implementation — nothing here reaches it.
 vi.mock('../domains/providers/mandrill/api', async () => {
-	const actual = await vi.importActual<typeof import('../domains/providers/mandrill/api')>(
+	const actual = await vi.importActual<typeof MandrillApiModule>(
 		'../domains/providers/mandrill/api'
 	);
 	return {

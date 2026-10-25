@@ -18,6 +18,7 @@ import { api, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { enableFeatures } from './factories';
 import { transition } from '../inbox/threads/module';
+import type * as SessionOrganizationModule from '../lib/sessionOrganization';
 
 const sessionMock = vi.hoisted(() => ({
 	user: { id: 'user-owner', role: 'owner' as 'owner' | 'admin' | 'editor' },
@@ -29,7 +30,7 @@ const setUser = (id: string, role: 'owner' | 'admin' | 'editor' = 'owner') => {
 };
 
 vi.mock('../lib/sessionOrganization', async () => {
-	const actual = await vi.importActual<typeof import('../lib/sessionOrganization')>(
+	const actual = await vi.importActual<typeof SessionOrganizationModule>(
 		'../lib/sessionOrganization'
 	);
 	return {

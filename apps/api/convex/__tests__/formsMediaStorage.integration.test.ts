@@ -30,6 +30,7 @@ import { recordUploadedBlob } from './uploadFixtures.testlib';
 import { api } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { createTestTopic, createTestContact } from './factories';
+import type * as SessionOrganizationModule from '../lib/sessionOrganization';
 
 // Mutable mocked session — role flips between admin (owner/admin) and editor so
 // the `media:manage` / admin gates are both exercised. The REAL `hasPermission`
@@ -57,8 +58,7 @@ vi.mock('../lib/sessionOrganization', async () => {
 		requireOrgPermission: vi
 			.fn()
 			.mockImplementation(async (_ctx: unknown, permission: string, message?: string) => {
-				const mod: typeof import('../lib/sessionOrganization') =
-					actual as typeof import('../lib/sessionOrganization');
+				const mod: typeof SessionOrganizationModule = actual as typeof SessionOrganizationModule;
 				mod.requirePermission(
 					mod.hasPermission(
 						sessionMock.user.role as Parameters<typeof mod.hasPermission>[0],

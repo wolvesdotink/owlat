@@ -23,6 +23,7 @@ import schema from '../schema';
 import { api } from '../_generated/api';
 import { enableFeatures, createTestAutomation, createTestAutomationStep } from './factories';
 import type { Id } from '../_generated/dataModel';
+import type * as SessionOrganizationModule from '../lib/sessionOrganization';
 
 // Mutable mock so a single test can switch the caller's role. The automation
 // guards resolve their session via `getMutationContext`, and
@@ -48,8 +49,7 @@ vi.mock('../lib/sessionOrganization', async () => {
 		requireOrgPermission: vi
 			.fn()
 			.mockImplementation(async (_ctx: unknown, permission: string, message?: string) => {
-				const mod: typeof import('../lib/sessionOrganization') =
-					actual as typeof import('../lib/sessionOrganization');
+				const mod: typeof SessionOrganizationModule = actual as typeof SessionOrganizationModule;
 				mod.requirePermission(
 					mod.hasPermission(
 						sessionMock.user.role as Parameters<typeof mod.hasPermission>[0],

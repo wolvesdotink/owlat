@@ -38,6 +38,7 @@ import {
 	createTestTopic,
 	enableFeatures,
 } from './factories';
+import type * as SessionOrganizationModule from '../lib/sessionOrganization';
 
 // Mutable session mock — flip role per test (owner/admin can schedule + manage;
 // editor cannot).
@@ -46,7 +47,7 @@ const sessionMock = vi.hoisted(() => ({
 }));
 
 vi.mock('../lib/sessionOrganization', async () => {
-	const actual = await vi.importActual<typeof import('../lib/sessionOrganization')>(
+	const actual = await vi.importActual<typeof SessionOrganizationModule>(
 		'../lib/sessionOrganization'
 	);
 	const { realPermissionGate } = await import('./helpers/permissionGateMock');
