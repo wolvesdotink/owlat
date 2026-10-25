@@ -327,10 +327,16 @@ describe('a write that changes nothing, between two replies', () => {
 		expect((await draftRow(t, r)).obsoleted?.byMessageIds).toEqual([sentA]);
 		const editedAt = (await draftRow(t, r)).lastEditedAt;
 
-		await new Promise((resolve) => setTimeout(resolve, 5));
-		await t.mutation(api.mail.drafts.setIdentity, { draftId: r.draftId, fromAddress: OWNER });
-		await save(t, r, aiBody(AI_TEXT), { aiText: AI_TEXT }); // the same snapshot again
-		expect((await draftRow(t, r)).lastEditedAt).toBe(editedAt);
+		// A minute on, so a save that wrongly stamped a fresh edit would show it.
+		vi.useFakeTimers({ toFake: ['Date'] });
+		try {
+			vi.setSystemTime(editedAt! + 60_000);
+			await t.mutation(api.mail.drafts.setIdentity, { draftId: r.draftId, fromAddress: OWNER });
+			await save(t, r, aiBody(AI_TEXT), { aiText: AI_TEXT }); // the same snapshot again
+			expect((await draftRow(t, r)).lastEditedAt).toBe(editedAt);
+		} finally {
+			vi.useRealTimers();
+		}
 
 		await deliver(t, sentB, 'sent');
 		await deliver(t, sentA, 'bounced');

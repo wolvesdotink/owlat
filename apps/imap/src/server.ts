@@ -40,6 +40,18 @@ interface ConnectionAccounting {
 	perIp: Map<string, number>;
 }
 
+/**
+ * Arms a deadline that calls `onExpire` after `ms`, and returns what disarms
+ * it. Real timers by default; a test passes its own to expire deadlines
+ * without waiting them out.
+ */
+type ArmDeadline = (onExpire: () => void, ms: number) => () => void;
+
+const armTimerDeadline: ArmDeadline = (onExpire, ms) => {
+	const timer = setTimeout(onExpire, ms);
+	return () => clearTimeout(timer);
+};
+
 export interface ImapServerHandle {
 	server: TcpServer | TlsServer;
 	stopTlsReload: () => void;
@@ -50,7 +62,8 @@ export interface ImapServerHandle {
 export function startImapServer(
 	config: ImapConfig,
 	convex: ConvexClient,
-	rateLimiter: AuthRateLimiter
+	rateLimiter: AuthRateLimiter,
+	seams: { armHandshakeDeadline?: ArmDeadline } = {}
 ): ImapServerHandle {
 	const accounting: ConnectionAccounting = {
 		totalActive: 0,
@@ -62,7 +75,7 @@ export function startImapServer(
 	const connections = new Set<ImapConnection>();
 	// IMAPS sockets still in their TLS handshake, keyed by connection 4-tuple.
 	// They hold a slot but have no session yet, so the shutdown destroys them.
-	const handshakes = new Map<string, { socket: Socket; deadline: NodeJS.Timeout }>();
+	const handshakes = new Map<string, { socket: Socket; disarm: () => void }>();
 	const closeAllConnections = (reason: string) => {
 		for (const connection of connections) connection.shutdown(reason);
 		for (const { socket } of handshakes.values()) socket.destroy();
@@ -105,7 +118,7 @@ export function startImapServer(
 			(socket: Socket) => {
 				const handshake = handshakes.get(connectionKey(socket));
 				if (handshake) {
-					clearTimeout(handshake.deadline);
+					handshake.disarm();
 					handshakes.delete(connectionKey(socket));
 				}
 				startSession(socket, true);
@@ -115,7 +128,8 @@ export function startImapServer(
 			server,
 			reserveSlot,
 			handshakes,
-			config.tlsHandshakeTimeoutMs ?? TLS_HANDSHAKE_TIMEOUT_MS
+			config.tlsHandshakeTimeoutMs ?? TLS_HANDSHAKE_TIMEOUT_MS,
+			seams.armHandshakeDeadline ?? armTimerDeadline
 		);
 		// A renewed certificate on the mail-certs volume is swapped in place.
 		const reloader = startImapTlsReload(server, config.tls, TLS_POLICY);
@@ -181,8 +195,9 @@ function connectionKey(socket: Socket): string {
 function admitBeforeHandshake(
 	server: TlsServer,
 	reserveSlot: (socket: Socket) => string | null,
-	handshakes: Map<string, { socket: Socket; deadline: NodeJS.Timeout }>,
-	timeoutMs: number
+	handshakes: Map<string, { socket: Socket; disarm: () => void }>,
+	timeoutMs: number,
+	armDeadline: ArmDeadline
 ): void {
 	const tlsAccept = server.listeners('connection') as Array<(socket: Socket) => void>;
 	server.removeAllListeners('connection');
@@ -192,10 +207,10 @@ function admitBeforeHandshake(
 			return;
 		}
 		const key = connectionKey(socket);
-		const deadline = setTimeout(() => socket.destroy(), timeoutMs);
-		handshakes.set(key, { socket, deadline });
+		const disarm = armDeadline(() => socket.destroy(), timeoutMs);
+		handshakes.set(key, { socket, disarm });
 		socket.once('close', () => {
-			clearTimeout(deadline);
+			disarm();
 			if (handshakes.get(key)?.socket === socket) handshakes.delete(key);
 		});
 		for (const accept of tlsAccept) accept.call(server, socket);
