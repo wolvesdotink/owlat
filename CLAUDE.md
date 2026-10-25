@@ -17,7 +17,8 @@ one git object store. Each of these has cost a run before:
    names its compose project `owlat`, like a production install, and ends with
    `docker compose down -v`. The updater's reclaim step prunes every dangling
    image and the unused images of the stack's repositories, whoever pulled
-   them. Run the update flow inside a `docker:dind` container, or leave it to
+   them. Run the update flow inside a `docker:dind` container
+   (`scripts/e2e-update-flow-dind.sh` does that), or leave it to
    `update-flow.yml` in CI.
 3. **Formatting or staging the whole tree.** Never bare `npx oxfmt` or
    `bunx oxfmt` (both ignore `oxfmtrc.json` or fetch another version), and
