@@ -11,13 +11,7 @@
  * the Send cut off after its dot must end ambiguous without a resend.
  */
 
-import {
-	checkMtaRun,
-	type PlannedSend,
-	type SendRowState,
-	type SinkTransactionState,
-	type WebhookState,
-} from './oracle';
+import { checkMtaRun, type PlannedSend, type SendRowState } from './oracle';
 import type { KillStack } from './stack';
 
 const DOMAINS = [
@@ -128,7 +122,7 @@ export async function runMtaScenario(
 	for (const send of plan) {
 		await stack.waitFor(`mta.terminal:${send.messageId}`, Math.max(1, deadline - Date.now()));
 	}
-	const state = await stack.state<{ smtp: SinkTransactionState[]; webhooks: WebhookState[] }>();
+	const state = await stack.state();
 	const sends = backend.rows('transactionalSends') as unknown as SendRowState[];
 	return checkMtaRun(plan, state.smtp, state.webhooks, sends);
 }

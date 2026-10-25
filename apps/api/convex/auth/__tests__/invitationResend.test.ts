@@ -13,6 +13,8 @@
  *   - throws inside the cooldown (friendly "wait Ns")
  *   - never writes rows (the hook owns the stamp)
  *   - rejects non-admin callers
+ *   - reads the tenant from the session its admin floor resolved, never a
+ *     second session lookup, and ignores another tenant's stamp
  */
 
 import { convexTest } from 'convex-test';
@@ -21,8 +23,12 @@ import schema from '../../schema';
 import { api, internal } from '../../_generated/api';
 
 const sessionMocks = vi.hoisted(() => ({
-	getBetterAuthSessionWithRole: vi.fn(),
+	// The `adminMutation` floor: the only session resolution `throttleResend` may do.
 	requireAdminContext: vi.fn(),
+	// A second lookup inside the handler is a regression; make it loud.
+	getBetterAuthSessionWithRole: vi.fn(async () => {
+		throw new Error('throttleResend re-resolved the session its floor already resolved');
+	}),
 }));
 
 vi.mock('../../lib/sessionOrganization', async () => {
@@ -35,20 +41,14 @@ vi.mock('../../lib/sessionOrganization', async () => {
 });
 
 function setAdminSession(userId = 'admin-user', orgId = 'test-org') {
-	sessionMocks.getBetterAuthSessionWithRole.mockResolvedValue({
+	sessionMocks.requireAdminContext.mockResolvedValue({
 		userId,
 		role: 'owner',
 		activeOrganizationId: orgId,
 	});
-	sessionMocks.requireAdminContext.mockResolvedValue({ userId, role: 'owner' });
 }
 
-function setEditorSession(userId = 'editor-user', orgId = 'test-org') {
-	sessionMocks.getBetterAuthSessionWithRole.mockResolvedValue({
-		userId,
-		role: 'editor',
-		activeOrganizationId: orgId,
-	});
+function setEditorSession() {
 	sessionMocks.requireAdminContext.mockImplementation(async () => {
 		throw new Error('Only owners and admins can perform this action');
 	});
@@ -226,6 +226,33 @@ describe('invitationResend.throttleResend (client pre-check)', () => {
 			invitationId: 'inv-1',
 		});
 		expect(result.ok).toBe(true);
+	});
+
+	it('scopes the cooldown to the floor session tenant, resolving the session once', async () => {
+		setAdminSession('admin-user', 'test-org');
+		sessionMocks.requireAdminContext.mockClear();
+		sessionMocks.getBetterAuthSessionWithRole.mockClear();
+		const t = convexTest(schema, modules);
+
+		// Another tenant's fresh stamp for the same invitation id must not leak
+		// into this tenant's pre-check.
+		await t.mutation(internal.auth.invitationResend.enforceResendThrottle, {
+			invitationId: 'inv-1',
+			organizationId: 'other-org',
+		});
+
+		const result = await t.mutation(api.auth.invitationResend.throttleResend, {
+			invitationId: 'inv-1',
+		});
+		expect(result.ok).toBe(true);
+		expect(sessionMocks.requireAdminContext).toHaveBeenCalledTimes(1);
+		expect(sessionMocks.getBetterAuthSessionWithRole).not.toHaveBeenCalled();
+
+		// The same stamp under the floor's own tenant is enforced.
+		setAdminSession('admin-user', 'other-org');
+		await expect(
+			t.mutation(api.auth.invitationResend.throttleResend, { invitationId: 'inv-1' })
+		).rejects.toThrow(/wait/i);
 	});
 
 	it('rejects non-admin callers', async () => {

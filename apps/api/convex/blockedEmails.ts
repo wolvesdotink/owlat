@@ -2,7 +2,7 @@ import { v } from 'convex/values';
 import type { Id } from './_generated/dataModel';
 import { internalMutation } from './lib/writeFence';
 import { authedQuery, authedMutation } from './lib/authedFunctions';
-import { requireOrgPermission } from './lib/sessionOrganization';
+import { hasPermission, requirePermission } from './lib/sessionOrganization';
 import {
 	isValidEmail,
 	normalizeEmail,
@@ -89,8 +89,8 @@ export const listByTeam = authedQuery({
  */
 export const listProviderProvenance = authedQuery({
 	args: {},
-	handler: async (ctx) => {
-		await requireOrgPermission(ctx, 'organization:manage');
+	handler: async (ctx, _args, session) => {
+		requirePermission(hasPermission(session.role, 'organization:manage'));
 		const entries = await ctx.db
 			.query('auditLogs')
 			.withIndex('by_action', (q) => q.eq('action', 'blocklist.provider_suppressed'))
@@ -136,14 +136,13 @@ export const add = authedMutation({
 		sourceEmailSendId: v.optional(v.id('emailSends')),
 		sourceTransactionalSendId: v.optional(v.id('transactionalSends')),
 	},
-	handler: async (ctx, args) => {
+	handler: async (ctx, args, session) => {
 		validateStringLength(args.email, STRING_LIMITS.EMAIL, 'email');
 		if (args.notes !== undefined)
 			validateStringLength(args.notes, STRING_LIMITS.DESCRIPTION, 'notes');
 
-		const session = await requireOrgPermission(
-			ctx,
-			'contacts:manage',
+		requirePermission(
+			hasPermission(session.role, 'contacts:manage'),
 			'Only owners and admins can manage the blocklist'
 		);
 		const normalizedEmail = normalizeEmail(args.email);
@@ -194,10 +193,9 @@ export const add = authedMutation({
 // Remove an email from the blocklist
 export const remove = authedMutation({
 	args: { blockedEmailId: v.id('blockedEmails') },
-	handler: async (ctx, args) => {
-		const session = await requireOrgPermission(
-			ctx,
-			'contacts:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'contacts:manage'),
 			'Only owners and admins can manage the blocklist'
 		);
 		const blockedEmail = await getOrThrow(ctx, args.blockedEmailId, 'Blocked email');
@@ -262,10 +260,9 @@ export const bulkAdd = authedMutation({
 			})
 		),
 	},
-	handler: async (ctx, args) => {
-		const session = await requireOrgPermission(
-			ctx,
-			'contacts:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'contacts:manage'),
 			'Only owners and admins can manage the blocklist'
 		);
 

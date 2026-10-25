@@ -14,8 +14,7 @@
 import { v } from 'convex/values';
 import { internalQuery } from './_generated/server';
 import { internalMutation } from './lib/writeFence';
-import { adminQuery, authedMutation } from './lib/authedFunctions';
-import { requireAdminContext } from './lib/sessionOrganization';
+import { adminQuery, adminMutation } from './lib/authedFunctions';
 import { internal } from './_generated/api';
 import { getOrThrow, throwInvalidState } from './_utils/errors';
 import { assertFeatureEnabled, isFeatureEnabled } from './lib/featureFlags';
@@ -112,7 +111,7 @@ export const listPinned = adminQuery({
 /**
  * Create a visualization request and kick off generation
  */
-export const createFromPrompt = authedMutation({
+export const createFromPrompt = adminMutation({
 	args: {
 		prompt: v.string(),
 		pinned: v.optional(v.boolean()),
@@ -121,8 +120,7 @@ export const createFromPrompt = authedMutation({
 		// data. Only the fixed allowlist is accepted; no free-form query channel.
 		dataset: v.optional(datasetKeyValidator),
 	},
-	handler: async (ctx, args) => {
-		const session = await requireAdminContext(ctx);
+	handler: async (ctx, args, session) => {
 		await assertFeatureEnabled(ctx, 'ai.visualizations');
 		// Bound the prompt — it feeds an LLM call, so an unbounded string is a
 		// (admin-only) cost/abuse vector.
@@ -161,10 +159,9 @@ export const createFromPrompt = authedMutation({
  * pulls fresh numbers, so nothing here accepts a raw query string. An
  * illustrative chart has no dataset to refresh, so it is rejected.
  */
-export const regenerate = authedMutation({
+export const regenerate = adminMutation({
 	args: { id: v.id('visualizations') },
 	handler: async (ctx, args) => {
-		await requireAdminContext(ctx);
 		await assertFeatureEnabled(ctx, 'ai.visualizations');
 		const viz = await getOrThrow(ctx, args.id, 'Visualization');
 
@@ -193,10 +190,9 @@ export const regenerate = authedMutation({
 /**
  * Pin/unpin a visualization
  */
-export const togglePin = authedMutation({
+export const togglePin = adminMutation({
 	args: { id: v.id('visualizations') },
 	handler: async (ctx, args) => {
-		await requireAdminContext(ctx);
 		await assertFeatureEnabled(ctx, 'ai.visualizations');
 		const viz = await getOrThrow(ctx, args.id, 'Visualization');
 
@@ -210,10 +206,9 @@ export const togglePin = authedMutation({
 /**
  * Delete a visualization
  */
-export const remove = authedMutation({
+export const remove = adminMutation({
 	args: { id: v.id('visualizations') },
 	handler: async (ctx, args) => {
-		await requireAdminContext(ctx);
 		await assertFeatureEnabled(ctx, 'ai.visualizations');
 		await ctx.db.delete(args.id);
 	},

@@ -42,6 +42,9 @@ const sessionMock = vi.hoisted(() => ({
 
 import { storedEmbeddingTarget } from '../lib/embeddingSpace';
 import { seedEmbeddingSpace, stampedIn } from './helpers/embeddingSpaces';
+import type * as LlmDispatchModule from '../lib/llm/dispatch';
+import type * as LlmProviderModule from '../lib/llmProvider';
+import type * as AiModule from 'ai';
 
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
@@ -78,7 +81,7 @@ vi.mock('../lib/sessionOrganization', async () => {
 // The embedder is mocked to a fixed one-hot vector so retrieval is deterministic
 // and needs no real embedding key/network.
 vi.mock('ai', async () => {
-	const actual = await vi.importActual<typeof import('ai')>('ai');
+	const actual = await vi.importActual<typeof AiModule>('ai');
 	return {
 		...actual,
 		embed: vi.fn(async () => ({ embedding: unit(5), usage: { tokens: 1 } })),
@@ -87,7 +90,7 @@ vi.mock('ai', async () => {
 
 // Stub the model resolvers so `ask` needs no real LLM key.
 vi.mock('../lib/llmProvider', async () => {
-	const actual = await vi.importActual<typeof import('../lib/llmProvider')>('../lib/llmProvider');
+	const actual = await vi.importActual<typeof LlmProviderModule>('../lib/llmProvider');
 	return {
 		...actual,
 		resolveLanguageModel: vi.fn(() => 'test-model'),
@@ -104,7 +107,7 @@ vi.mock('../lib/llmProvider', async () => {
 // that its output flows through), not answer quality.
 const runLlmTextMock = vi.hoisted(() => vi.fn());
 vi.mock('../lib/llm/dispatch', async () => {
-	const actual = await vi.importActual<typeof import('../lib/llm/dispatch')>('../lib/llm/dispatch');
+	const actual = await vi.importActual<typeof LlmDispatchModule>('../lib/llm/dispatch');
 	return { ...actual, runLlmText: runLlmTextMock };
 });
 

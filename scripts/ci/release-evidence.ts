@@ -1,7 +1,11 @@
 import { execFileSync } from 'node:child_process';
+import { boolean, object } from '../json';
+import { parsePackageManifest, requiredVersion } from '../package-manifest';
 import { github } from './github';
-import type { Run } from './reuse';
+import { decodeWorkflowRuns } from './reuse';
 import { candidatesOf, type CandidateEvidence } from './release-policy';
+
+const decodeReleaseState = object({ draft: boolean, prerelease: boolean });
 
 function git(cwd: string, ...args: string[]): string {
 	return execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
@@ -19,7 +23,8 @@ export function fileAt(cwd: string, commit: string, path: string): string {
 
 /** The version field of the root package.json at `commit`. */
 export function preparedVersion(cwd: string, commit: string): string {
-	return (JSON.parse(fileAt(cwd, commit, 'package.json')) as { version: string }).version;
+	const label = `${commit}:package.json`;
+	return requiredVersion(parsePackageManifest(fileAt(cwd, commit, 'package.json'), label), label);
 }
 
 /**
@@ -32,17 +37,16 @@ export function candidateEvidence(cwd: string, repo: string, base: string): Cand
 		const commit = peeledCommit(cwd, `refs/tags/${tag}`);
 		let release: CandidateEvidence['release'] = null;
 		try {
-			release = github<{ draft: boolean; prerelease: boolean }>(
-				`repos/${repo}/releases/tags/${tag}`
-			);
+			release = github(`repos/${repo}/releases/tags/${tag}`, decodeReleaseState);
 		} catch (error) {
 			// Only "no such release" means unpublished; anything else must not
 			// read as an answer.
 			if (!/HTTP 404/.test(String(error))) throw error;
 		}
-		const runs = github<{ workflow_runs: Run[] }>(
-			`repos/${repo}/actions/workflows/release.yml/runs?head_sha=${commit}&event=push&per_page=100`
-		).workflow_runs;
+		const runs = github(
+			`repos/${repo}/actions/workflows/release.yml/runs?head_sha=${commit}&event=push&per_page=100`,
+			decodeWorkflowRuns
+		);
 		return { tag, commit, release, runs };
 	});
 }

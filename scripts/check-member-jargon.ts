@@ -29,24 +29,45 @@ const jargon = /\b(?:SPF|DKIM|DMARC|IMAP|SMTP)\b|\bMX records?\b/g;
  *
  * The catalog is optional on purpose: the self-test copies this script into a
  * sandbox without one, and a missing catalog must mean "no messages to read",
- * not a crash.
+ * not a crash. A catalog that is there but unreadable is different: reading
+ * part of it would scan fewer messages and pass, so it stops the gate. The
+ * check is local because the self-test copies this file alone.
  */
+const CATALOG = 'apps/web/i18n/locales/en.json';
 const catalog = new Map<string, string>();
+
+/** Every message under `node` by key path; a catalog holds only groups and strings. */
+function readMessages(node: unknown, prefix: string): void {
+	if (typeof node !== 'object' || node === null || Array.isArray(node))
+		throw new Error(`${CATALOG}: ${prefix || 'the catalog'} must be a message or a group of them`);
+	for (const [key, value] of Object.entries(node)) {
+		const path = prefix === '' ? key : `${prefix}.${key}`;
+		if (typeof value === 'string') catalog.set(path, value);
+		else readMessages(value, path);
+	}
+}
+
+let catalogText: string | undefined;
 try {
-	const parsed = JSON.parse(
-		await readFile(join(workspace, 'apps/web/i18n/locales/en.json'), 'utf8')
-	) as Record<string, unknown>;
-	const walk = (node: Record<string, unknown>, prefix: string) => {
-		for (const [key, value] of Object.entries(node)) {
-			const path = prefix === '' ? key : `${prefix}.${key}`;
-			if (typeof value === 'string') catalog.set(path, value);
-			else if (value !== null && typeof value === 'object')
-				walk(value as Record<string, unknown>, path);
-		}
-	};
-	walk(parsed, '');
-} catch {
+	catalogText = await readFile(join(workspace, CATALOG), 'utf8');
+} catch (error) {
 	// No catalog in this workspace — the template half still runs.
+	if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+}
+if (catalogText !== undefined) {
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(catalogText);
+	} catch {
+		console.error(`${CATALOG} is not valid JSON.`);
+		process.exit(2);
+	}
+	try {
+		readMessages(parsed, '');
+	} catch (error) {
+		console.error((error as Error).message);
+		process.exit(2);
+	}
 }
 
 const KEY_REFERENCE = /(?:\bte?\(\s*|keypath=)['"]([A-Za-z][\w-]*(?:\.[\w-]+)+)['"]/g;

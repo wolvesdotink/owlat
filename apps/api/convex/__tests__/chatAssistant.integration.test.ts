@@ -9,6 +9,9 @@ import { runLlmStream } from '../lib/llm/dispatch';
 import { metered } from '../analytics/__tests__/meteredDispatch.testlib';
 import { LlmPartialUsageError } from '../lib/llm/partialUsage';
 import { ASSISTANT_AUTHOR_ID } from '../chat/_helpers';
+import type * as LlmDispatchModule from '../lib/llm/dispatch';
+import type * as LlmProviderModule from '../lib/llmProvider';
+import type * as SessionOrganizationModule from '../lib/sessionOrganization';
 
 /**
  * Team-chat @assistant: an explicit @assistant mention (when ai.assistant is on)
@@ -22,7 +25,7 @@ const modules = import.meta.glob('../**/*.*s');
 const sess = vi.hoisted(() => ({ user: { userId: 'user-a', role: 'owner' as const } }));
 
 vi.mock('../lib/sessionOrganization', async () => {
-	const actual = await vi.importActual<typeof import('../lib/sessionOrganization')>(
+	const actual = await vi.importActual<typeof SessionOrganizationModule>(
 		'../lib/sessionOrganization'
 	);
 	return {
@@ -34,7 +37,7 @@ vi.mock('../lib/sessionOrganization', async () => {
 		requireOrgPermission: vi
 			.fn()
 			.mockImplementation(async (_ctx: unknown, permission: string, message?: string) => {
-				const mod: typeof import('../lib/sessionOrganization') = actual;
+				const mod: typeof SessionOrganizationModule = actual;
 				mod.requirePermission(
 					mod.hasPermission(
 						sess.user.role as Parameters<typeof mod.hasPermission>[0],
@@ -48,7 +51,7 @@ vi.mock('../lib/sessionOrganization', async () => {
 });
 
 vi.mock('../lib/llmProvider', async () => {
-	const actual = await vi.importActual<typeof import('../lib/llmProvider')>('../lib/llmProvider');
+	const actual = await vi.importActual<typeof LlmProviderModule>('../lib/llmProvider');
 	return {
 		...actual,
 		resolveLanguageModel: vi.fn(() => 'test-model'),
@@ -57,7 +60,7 @@ vi.mock('../lib/llmProvider', async () => {
 });
 
 vi.mock('../lib/llm/dispatch', async () => {
-	const actual = await vi.importActual<typeof import('../lib/llm/dispatch')>('../lib/llm/dispatch');
+	const actual = await vi.importActual<typeof LlmDispatchModule>('../lib/llm/dispatch');
 	return { ...actual, runLlmStream: vi.fn() };
 });
 

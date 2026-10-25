@@ -33,9 +33,10 @@ import {
 	type TestRunner,
 } from './preflightFixtures';
 import type { StoredAudience } from '../campaigns/audience';
+import type * as SessionOrganizationModule from '../lib/sessionOrganization';
 
 vi.mock('../lib/sessionOrganization', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../lib/sessionOrganization')>();
+	const actual = await importOriginal<typeof SessionOrganizationModule>();
 	return {
 		...actual,
 		getSingletonOrganizationId: vi.fn().mockResolvedValue('org_paced_preflight'),

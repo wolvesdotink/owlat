@@ -14,8 +14,8 @@ import { paginationOptsValidator, type PaginationResult } from 'convex/server';
 import { internalQuery, type MutationCtx, type QueryCtx } from './_generated/server';
 import { internalMutation } from './lib/writeFence';
 import { internal } from './_generated/api';
-import { authedQuery, authedMutation } from './lib/authedFunctions';
-import { requireAdminContext } from './lib/sessionOrganization';
+import { authedQuery, authedMutation, adminMutation } from './lib/authedFunctions';
+import { hasPermission, requirePermission } from './lib/sessionOrganization';
 import { isSharedInboxReader } from './inbox/access';
 import {
 	mailCaptureScopeValidator,
@@ -316,7 +316,7 @@ export const create = authedMutation({
 		threadId: v.optional(v.id('conversationThreads')),
 		previousVersionId: v.optional(v.id('semanticFiles')),
 	},
-	handler: async (ctx, args) => {
+	handler: async (ctx, args, session) => {
 		validateStringLength(args.filename, STRING_LIMITS.FILENAME, 'filename');
 		validateStringLength(args.mimeType, STRING_LIMITS.MIME_TYPE, 'mimeType');
 		if (args.title !== undefined) validateStringLength(args.title, STRING_LIMITS.NAME, 'title');
@@ -324,7 +324,10 @@ export const create = authedMutation({
 		if (args.uploadContext !== undefined)
 			validateStringLength(args.uploadContext, STRING_LIMITS.DESCRIPTION, 'uploadContext');
 
-		const session = await requireAdminContext(ctx);
+		requirePermission(
+			hasPermission(session.role, 'organization:manage'),
+			'Only owners and admins can perform this action'
+		);
 
 		// Security: validate file type before storing the record, matching the
 		// media library (mediaAssets.create). The knowledge base accepts
@@ -633,11 +636,14 @@ export const update = authedMutation({
 		contactIds: v.optional(v.array(v.id('contacts'))),
 		threadId: v.optional(v.union(v.id('conversationThreads'), v.null())),
 	},
-	handler: async (ctx, args) => {
+	handler: async (ctx, args, session) => {
 		if (args.title !== undefined) validateStringLength(args.title, STRING_LIMITS.NAME, 'title');
 		for (const tag of args.tags ?? []) validateStringLength(tag, STRING_LIMITS.TAG, 'Tag');
 
-		await requireAdminContext(ctx);
+		requirePermission(
+			hasPermission(session.role, 'organization:manage'),
+			'Only owners and admins can perform this action'
+		);
 		const { fileId, ...updates } = args;
 		const file = await ctx.db.get(fileId);
 		if (!file) throwInvalidInput('File not found');
@@ -682,10 +688,9 @@ export const update = authedMutation({
 /**
  * Delete a file
  */
-export const remove = authedMutation({
+export const remove = adminMutation({
 	args: { fileId: v.id('semanticFiles') },
 	handler: async (ctx, args) => {
-		await requireAdminContext(ctx);
 		const file = await ctx.db.get(args.fileId);
 		if (!file) return;
 

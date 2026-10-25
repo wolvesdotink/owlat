@@ -15,6 +15,8 @@ import schema from '../schema';
 import { api, internal } from '../_generated/api';
 import { SES_RELAY_PROOF_MAX_AGE_MS } from '@owlat/shared';
 import { relayDomainVerified } from '../lib/sendProviders/relayDomainVerification';
+import type * as MandrillApiModule from '../domains/providers/mandrill/api';
+import type * as SesModule from '../domains/providers/ses';
 
 const permissionState = vi.hoisted(() => ({ allowed: true }));
 
@@ -36,10 +38,15 @@ vi.mock('../lib/sessionOrganization', async () => {
 		requireOrgMember: vi.fn().mockImplementation(async () => ({
 			userId: 'test-user',
 			role: permissionState.allowed ? 'owner' : 'editor',
+			activeOrganizationId: TEST_ORG_ID,
 		})),
 		isActiveOrgMember: vi.fn().mockResolvedValue(true),
 		getUserIdFromSession: vi.fn().mockResolvedValue('test-user'),
-		getMutationContext: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
+		getMutationContext: vi.fn().mockImplementation(async () => ({
+			userId: 'test-user',
+			role: permissionState.allowed ? 'owner' : 'editor',
+			activeOrganizationId: TEST_ORG_ID,
+		})),
 		requireOrgPermission: vi.fn().mockImplementation(async () => {
 			if (!permissionState.allowed) throw new Error('Missing required permission');
 			return { userId: 'test-user', role: 'owner' };
@@ -48,9 +55,7 @@ vi.mock('../lib/sessionOrganization', async () => {
 });
 
 vi.mock('../domains/providers/ses', async () => {
-	const actual = await vi.importActual<typeof import('../domains/providers/ses')>(
-		'../domains/providers/ses'
-	);
+	const actual = await vi.importActual<typeof SesModule>('../domains/providers/ses');
 	return {
 		...actual,
 		sesProvider: {
@@ -78,7 +83,7 @@ vi.mock('../domains/providers/ses', async () => {
 // so the backfill's write is observable. `checkSenderDomain` keeps its real
 // implementation — nothing here reaches it.
 vi.mock('../domains/providers/mandrill/api', async () => {
-	const actual = await vi.importActual<typeof import('../domains/providers/mandrill/api')>(
+	const actual = await vi.importActual<typeof MandrillApiModule>(
 		'../domains/providers/mandrill/api'
 	);
 	return {
@@ -1019,7 +1024,7 @@ describe('deliverability relay domain lifecycle', () => {
 			t.query(api.providerRoutes.listRelayDomainIdentities, {
 				paginationOpts: { cursor: null, numItems: 100 },
 			})
-		).rejects.toThrow('Missing required permission');
+		).rejects.toThrow("You don't have permission to perform this action");
 	});
 
 	it('provisions a future MTA domain on its first verified lifecycle edge', async () => {

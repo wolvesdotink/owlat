@@ -23,6 +23,7 @@ import schema from '../schema';
 import { recordUploadedBlob } from './uploadFixtures.testlib';
 import { api } from '../_generated/api';
 import { enableFeatures } from './factories';
+import type * as SessionOrganizationModule from '../lib/sessionOrganization';
 
 // Mutable session mock so each test can pick a user/role. Mirrors the
 // chat.integration.test.ts pattern.
@@ -51,8 +52,7 @@ vi.mock('../lib/sessionOrganization', async () => {
 		requireOrgPermission: vi
 			.fn()
 			.mockImplementation(async (_ctx: unknown, permission: string, message?: string) => {
-				const mod: typeof import('../lib/sessionOrganization') =
-					actual as typeof import('../lib/sessionOrganization');
+				const mod: typeof SessionOrganizationModule = actual as typeof SessionOrganizationModule;
 				mod.requirePermission(
 					mod.hasPermission(
 						sessionMock.user.role as Parameters<typeof mod.hasPermission>[0],

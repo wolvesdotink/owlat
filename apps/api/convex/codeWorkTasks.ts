@@ -10,7 +10,7 @@ import { v } from 'convex/values';
 import { internalQuery } from './_generated/server';
 import { internalMutation } from './lib/writeFence';
 import { authedQuery, authedMutation } from './lib/authedFunctions';
-import { requireOrgPermission, requirePermission } from './lib/sessionOrganization';
+import { requirePermission, hasPermission } from './lib/sessionOrganization';
 import { isSharedInboxReader } from './inbox/access';
 import { getOrThrow, throwInvalidState } from './_utils/errors';
 import { createCodeTaskFromInbound } from './lib/codeTaskInbound';
@@ -139,10 +139,9 @@ export const create = authedMutation({
  */
 export const cancel = authedMutation({
 	args: { taskId: v.id('codeWorkTasks') },
-	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'organization:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'organization:manage'),
 			'Only owners and admins can manage code tasks'
 		);
 		const task = await getOrThrow(ctx, args.taskId, 'Task');

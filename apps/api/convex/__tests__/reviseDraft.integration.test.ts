@@ -8,6 +8,9 @@ import { runLlmStream } from '../lib/llm/dispatch';
 import { persistMeteredSpend } from '../analytics/meteredSpend';
 import type * as MeteredSpendModule from '../analytics/meteredSpend';
 import { metered } from '../analytics/__tests__/meteredDispatch.testlib';
+import type * as LlmDispatchModule from '../lib/llm/dispatch';
+import type * as LlmProviderModule from '../lib/llmProvider';
+import type * as SessionOrganizationModule from '../lib/sessionOrganization';
 
 /**
  * Whole-draft REVISE-by-instruction (mail/ai/reviseDraft.reviseDraft): the action
@@ -22,7 +25,7 @@ const modules = import.meta.glob('../**/*.*s');
 const sess = vi.hoisted(() => ({ user: { userId: 'user-a', role: 'owner' as const } }));
 
 vi.mock('../lib/sessionOrganization', async () => {
-	const actual = await vi.importActual<typeof import('../lib/sessionOrganization')>(
+	const actual = await vi.importActual<typeof SessionOrganizationModule>(
 		'../lib/sessionOrganization'
 	);
 	return {
@@ -43,7 +46,7 @@ vi.mock('../lib/sessionOrganization', async () => {
 });
 
 vi.mock('../lib/llmProvider', async () => {
-	const actual = await vi.importActual<typeof import('../lib/llmProvider')>('../lib/llmProvider');
+	const actual = await vi.importActual<typeof LlmProviderModule>('../lib/llmProvider');
 	return {
 		...actual,
 		resolveLanguageModel: vi.fn(() => 'test-model'),
@@ -52,7 +55,7 @@ vi.mock('../lib/llmProvider', async () => {
 });
 
 vi.mock('../lib/llm/dispatch', async () => {
-	const actual = await vi.importActual<typeof import('../lib/llm/dispatch')>('../lib/llm/dispatch');
+	const actual = await vi.importActual<typeof LlmDispatchModule>('../lib/llm/dispatch');
 	return { ...actual, runLlmStream: vi.fn() };
 });
 

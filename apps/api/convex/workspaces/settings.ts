@@ -42,17 +42,11 @@ import { internal } from '../_generated/api';
 import { recordAuditLog } from '../lib/auditLog';
 import { getInstanceSettings, upsertInstanceSettings } from '../lib/instanceSettings';
 import { beginWorkspaceDeletion } from './deletion/job';
-import {
-	getUserIdFromSession,
-	getMutationContext,
-	requirePermission,
-	requireOrgPermission,
-} from '../lib/sessionOrganization';
+import { hasPermission, requirePermission } from '../lib/sessionOrganization';
 
 export const get = authedQuery({
 	args: {},
 	handler: async (ctx) => {
-		await getUserIdFromSession(ctx);
 		return await getInstanceSettings(ctx.db);
 	},
 });
@@ -108,10 +102,9 @@ export const update = authedMutation({
 		// remove after the release that follows the brand kit's.
 		emailTheme: v.optional(emailThemeValidator),
 	},
-	handler: async (ctx, args) => {
-		const session = await requireOrgPermission(
-			ctx,
-			'settings:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'settings:manage'),
 			'Only owners and admins can update organization settings'
 		);
 		const now = Date.now();
@@ -219,8 +212,7 @@ export const getInboundTlsPolicy = internalQuery({
 
 export const remove = authedMutation({
 	args: {},
-	handler: async (ctx) => {
-		const session = await getMutationContext(ctx);
+	handler: async (ctx, _args, session) => {
 		requirePermission(session.role === 'owner', 'Only the owner can delete the organization');
 		// Opens the durable job in THIS transaction, so the write fence is up the
 		// moment the owner is told the deletion started. A repeated request joins

@@ -14,6 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { KillBackend, type WorkerSecrets } from './backend';
 import { makeImapCertificates } from './certificates';
 import type { HoldRule } from './world/smtpSink';
+import { decodeWorldState, parseWire, type WorldState } from './world/wire';
 
 /** One control long-poll; `waitFor` chains them up to its deadline. */
 const LONG_POLL_MS = 60_000;
@@ -150,8 +151,11 @@ export class KillStack {
 		await this.post('/control/convex/hold-ingest', { uids });
 	}
 
-	async state<T>(): Promise<T> {
-		return (await (await this.world('/control/state')).json()) as T;
+	/** What the world observed; an answer of the wrong shape fails the run before any verdict. */
+	async state(): Promise<WorldState> {
+		const response = await this.world('/control/state');
+		if (!response.ok) throw new Error(`/control/state answered ${response.status}`);
+		return decodeWorldState(parseWire(await response.text(), '/control/state'));
 	}
 
 	logs(services: readonly string[]): string {

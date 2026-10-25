@@ -1,17 +1,19 @@
 /**
  * The report-only benchmark specs (plan item OW-072) and the hostile-input
  * scaling benchmarks import root files under scripts/perf-bench/, outside the
- * workspace turbo hashes by default. turbo.json adds that directory to the
- * inputs of the generic `test`, `test:coverage` and `typecheck` tasks, so a
- * change to one of those files alone cannot replay a cached result. This reads
- * which perf-bench files each spec really imports and checks them against the
- * real `turbo run --dry=json` input lists of the importing workspace, so it
- * fails when the inputs are dropped or narrowed past a file a spec imports.
+ * workspace turbo hashes by default. turbo.json adds that directory, and the
+ * root files those import, to the inputs of the generic `test`, `test:coverage`
+ * and `typecheck` tasks, so a change to one of those files alone cannot replay
+ * a cached result. This follows each spec's perf-bench imports and their
+ * relative imports transitively and checks every file reached against the real
+ * `turbo run --dry=json` input lists of the importing workspace, so it fails
+ * when the inputs are dropped, narrowed, or miss a file a fixture starts
+ * importing.
  */
 
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import { join, normalize } from 'node:path';
+import { dirname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { beforeAll, describe, expect, it } from 'vitest';
 
@@ -75,10 +77,26 @@ function perfBenchImports(spec: string): string[] {
 	);
 }
 
+/** The given root files plus every file they reach through relative imports, repo-relative. */
+function importClosure(roots: readonly string[]): string[] {
+	const seen = new Set<string>();
+	const pending = [...roots];
+	for (let file = pending.pop(); file !== undefined; file = pending.pop()) {
+		if (seen.has(file)) continue;
+		seen.add(file);
+		const source = readFileSync(join(REPOSITORY_ROOT, file), 'utf8');
+		for (const match of source.matchAll(/(?:from|import) '(\.{1,2}\/[^']+)'/g)) {
+			pending.push(normalize(join(dirname(file), `${match[1]}.ts`)));
+		}
+	}
+	return [...seen].sort();
+}
+
 describe('turbo test and typecheck inputs for the perf-bench imports', () => {
 	it.each(SPECS)('$workspace hashes every perf-bench file $spec imports', ({ workspace, spec }) => {
-		const imported = perfBenchImports(spec);
-		expect(imported.length).toBeGreaterThan(0);
+		const direct = perfBenchImports(spec);
+		expect(direct.length).toBeGreaterThan(0);
+		const imported = importClosure(direct);
 		for (const task of TASKS) {
 			const files = inputs.get(`${workspace}#${task}`);
 			expect(files, `${workspace}#${task} is missing from the dry run`).toBeDefined();
@@ -86,5 +104,11 @@ describe('turbo test and typecheck inputs for the perf-bench imports', () => {
 				expect(files?.has(file), `${workspace}#${task} does not hash ${file}`).toBe(true);
 			}
 		}
+	});
+
+	it('follows the Postbox fixture into the decoder it imports', () => {
+		expect(importClosure(['scripts/perf-bench/postboxListPage.ts'])).toEqual(
+			expect.arrayContaining(['scripts/json.ts', 'scripts/perf-bench/listPageWire.ts'])
+		);
 	});
 });

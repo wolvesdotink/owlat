@@ -169,10 +169,36 @@ const changes = git(['diff', '--no-renames', '--name-status', baseCommit, '--', 
 		return { status, path: path.slice(CORPUS.length + 1) };
 	});
 
+/**
+ * retired.json maps a retired contentBlockVersion to the migration that retired
+ * it. Anything else (an array, a version without its migration) would excuse
+ * deletions it never named, so it stops the gate. The check is local because
+ * the self-test copies this file alone.
+ */
+function readRetired(path: string): Record<string, string> {
+	const fail = (reason: string): never => {
+		console.error(`check-stored-block-corpus: ${CORPUS}/retired.json ${reason}`);
+		process.exit(1);
+	};
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(readFileSync(path, 'utf8'));
+	} catch {
+		return fail('is not valid JSON');
+	}
+	if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed))
+		return fail('must map each retired contentBlockVersion to its migration');
+	const retired: Record<string, string> = {};
+	for (const [version, migration] of Object.entries(parsed)) {
+		if (typeof migration !== 'string' || migration === '')
+			return fail(`must name the migration that retired contentBlockVersion ${version}`);
+		retired[version] = migration;
+	}
+	return retired;
+}
+
 const retiredPath = join(root, CORPUS, 'retired.json');
-const retired = existsSync(retiredPath)
-	? (JSON.parse(readFileSync(retiredPath, 'utf8')) as Record<string, string>)
-	: {};
+const retired = existsSync(retiredPath) ? readRetired(retiredPath) : {};
 const rendererVersion = /EMAIL_RENDERER_VERSION\s*=\s*(\d+)/.exec(
 	readFileSync(join(root, VERSION_FILE), 'utf8')
 )?.[1];
