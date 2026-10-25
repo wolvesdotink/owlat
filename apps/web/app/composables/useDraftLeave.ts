@@ -25,7 +25,7 @@ export interface DraftLeaveDecisions {
 	discard: () => string | null;
 	/** Stay. */
 	cancel: () => void;
-	/** Leaving now would lose something (read synchronously, for `beforeunload`). */
+	/** Leaving now would lose something (read synchronously, for closing the tab). */
 	isAtRisk: () => boolean;
 }
 
