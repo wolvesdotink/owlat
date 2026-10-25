@@ -1,5 +1,6 @@
 import { v } from 'convex/values';
 import { authedQuery } from '../lib/authedFunctions';
+import { getLiveContact } from '../lib/contactHelpers';
 import type { ContactActivityType } from '../contactActivities/catalog';
 
 /** Activity-type literal union. Re-exported for back-compat with existing callers. */
@@ -29,8 +30,7 @@ export const listByContact = authedQuery({
 	handler: async (ctx, args) => {
 		const limit = args.limit ?? 20;
 
-		const contact = await ctx.db.get(args.contactId);
-		if (!contact || contact.deletedAt !== undefined) {
+		if (!(await getLiveContact(ctx, args.contactId))) {
 			return { items: [], nextCursor: undefined, hasMore: false };
 		}
 

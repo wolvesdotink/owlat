@@ -4,6 +4,7 @@ import { getUserIdFromSession } from '../lib/sessionOrganization';
 import { getCachedContactCount } from '../lib/contactCountHelpers';
 import { readDailyStats } from '../lib/sendDailyStats';
 import { batchGet } from '../_utils/batchLoader';
+import { isLiveContact } from '../lib/contactHelpers';
 
 // Get dashboard stats for the instance.
 //
@@ -104,9 +105,10 @@ export const getRecentActivity = adminQuery({
 			contactActivities.map((activity) => activity.contactId)
 		);
 		for (const activity of contactActivities) {
-			// Get contact details for display
+			// Get contact details for display. A soft-deleted contact's name and
+			// email stay on its row until the retention sweep; it reads as unknown.
 			const contact = activityContacts.get(activity.contactId);
-			const contactName = contact
+			const contactName = isLiveContact(contact)
 				? contact.firstName || contact.email?.split('@')[0] || 'User'
 				: 'Unknown';
 

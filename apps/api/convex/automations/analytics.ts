@@ -3,6 +3,7 @@ import { automationsQuery } from './_helpers';
 import { PAGE_SIZE_DEFAULT } from '../lib/constants';
 import { loadOrderedSteps } from './steps';
 import { getLive } from '../lib/softDelete';
+import { getLiveContact } from '../lib/contactHelpers';
 import { automationRunEndReasonValidator } from '../lib/validators/automations';
 import { healthWindowStart } from './health';
 
@@ -22,7 +23,8 @@ import { healthWindowStart } from './health';
 //
 // all-members: run history is part of the automation page every member may
 // read; the joined contact is the display projection (id, email, name) already
-// member-visible on the contact list.
+// member-visible on the contact list. Runs outlive a contact's soft delete for
+// the retention window, so a missing or soft-deleted contact joins as `null`.
 export const getAutomationRuns = automationsQuery({
 	args: {
 		automationId: v.id('automations'),
@@ -71,7 +73,7 @@ export const getAutomationRuns = automationsQuery({
 
 		const enrichedRuns = await Promise.all(
 			paginatedRuns.map(async (run) => {
-				const contact = await ctx.db.get(run.contactId);
+				const contact = await getLiveContact(ctx, run.contactId);
 				return {
 					...run,
 					contact: contact

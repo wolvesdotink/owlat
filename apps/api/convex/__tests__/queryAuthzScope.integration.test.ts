@@ -2,8 +2,8 @@
  * What the reviewed reads return, not just who may call them: the admin-only
  * activity feed, the room-read policy behind the mention feed and `getRoom`,
  * the self-scoped chat and dashboard reads, and the deleted-contact boundary
- * on the activity timeline. Sessions are real (see
- * queryAuthzFixtures.ts).
+ * on the activity timeline, the automation run history and the admin activity
+ * feed. Sessions are real (see queryAuthzFixtures.ts).
  */
 
 import { describe, it, expect } from 'vitest';
@@ -304,5 +304,68 @@ describe('contacts.activities.listByContact', () => {
 				.collect()
 		);
 		expect(retained).toHaveLength(1);
+	});
+});
+
+describe('automations.analytics.getAutomationRuns', () => {
+	it('joins a contact an owner deleted as null, keeping the run', async () => {
+		const { t, seed } = await authzHarness();
+		await t.run(async (ctx) => {
+			const now = Date.now();
+			await ctx.db.insert('automationRuns', {
+				automationId: seed.automationId,
+				contactId: seed.contactId,
+				currentStepIndex: 1,
+				status: 'completed',
+				startedAt: now,
+				completedAt: now,
+				triggeredBy: 'contact_created',
+			});
+		});
+		const editor = as(t, seed, EDITOR);
+		const runs = () =>
+			editor.query(api.automations.analytics.getAutomationRuns, {
+				automationId: seed.automationId,
+			});
+		expect((await runs()).runs.map((run) => run.contact?.email)).toEqual(['reader@example.com']);
+
+		await as(t, seed, OWNER).mutation(api.contacts.contacts.remove, {
+			contactId: seed.contactId,
+		});
+
+		expect(await editor.query(api.contacts.contacts.get, { contactId: seed.contactId })).toBeNull();
+		const after = await runs();
+		expect(after.runs).toHaveLength(1);
+		expect(after.runs[0]?.contactId).toBe(seed.contactId);
+		expect(after.runs[0]?.contact).toBeNull();
+	});
+});
+
+describe('analytics.dashboard.getRecentActivity contact names', () => {
+	it('narrates the activity of a contact an owner deleted as unknown', async () => {
+		const { t, seed } = await authzHarness();
+		await t.run(async (ctx) => {
+			await ctx.db.patch(seed.contactId, { firstName: 'Readerina' });
+			await ctx.db.insert('contactActivities', {
+				contactId: seed.contactId,
+				activityType: 'email_opened',
+				metadata: {},
+				occurredAt: Date.now(),
+			});
+		});
+		const admin = as(t, seed, ADMIN);
+		const descriptions = async () =>
+			(await admin.query(api.analytics.dashboard.getRecentActivity, {})).map(
+				(item) => item.description
+			);
+		expect(await descriptions()).toContain('Readerina opened an email');
+
+		await as(t, seed, OWNER).mutation(api.contacts.contacts.remove, {
+			contactId: seed.contactId,
+		});
+
+		const after = await descriptions();
+		expect(after).toContain('Unknown opened an email');
+		expect(after.join('\n')).not.toMatch(/Readerina|reader@example\.com/);
 	});
 });
