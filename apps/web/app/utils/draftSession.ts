@@ -33,7 +33,7 @@ import {
 	rebased,
 	reload,
 } from './draftSessionChoices';
-import { OWN_EDITS, canAutosave, pendingFields, saveFields } from './draftSessionSelectors';
+import { OWN_EDITS, canAutosave, pendingFields } from './draftSessionSelectors';
 import { DraftStep, pick } from './draftSessionStep';
 import type { DraftEffect, DraftEvent, DraftSessionState, Fingerprints } from './draftSessionTypes';
 
