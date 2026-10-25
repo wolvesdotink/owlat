@@ -137,7 +137,7 @@ describe('backup.sh → restore.sh carries the CLI feature flags', () => {
 		const rewritten = await readFile(join(install.dir, 'docker-compose.override.yml'), 'utf8');
 		expect(overrideProfiles(rewritten)).toEqual(SOURCE_PROFILES);
 		expect(overrideProfiles(rewritten)).not.toContain('clamav');
-	}, 30_000);
+	});
 });
 
 describe('restore.sh over an existing install', () => {

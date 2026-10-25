@@ -34,7 +34,7 @@ describe('hostile consent bodies', () => {
 const output = perfBenchOutput();
 
 describe.runIf(output)('postbox consent scaling benchmark (perf:bench only)', () => {
-	it('samples applyPostboxImageConsent at n and 4n', { timeout: 300_000 }, () => {
+	it('samples applyPostboxImageConsent at n and 4n', () => {
 		const tasks = HOSTILE_BODIES.flatMap((body) =>
 			[body.n, FACTOR * body.n].map((n) => {
 				const html = body.build(n);

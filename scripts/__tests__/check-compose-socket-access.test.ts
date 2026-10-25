@@ -10,7 +10,6 @@
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import {
-	GATE_TIMEOUT_MS,
 	TEMPLATES,
 	addIntruder,
 	addVolume,
@@ -328,56 +327,48 @@ const SOCKET_MUTATIONS = [
 describe.each(TEMPLATES)('$name keeps the Docker socket to the proxy', ({ name, env }) => {
 	const original = readTemplate(name);
 
-	it(
-		'accepts mounts that stay off the socket, and extension keys',
-		() => {
-			const result = runGate(
-				env,
-				both(
-					(s: string) => `x-policy:\n  note: extension keys are free-form\n${s}`,
-					// Named volumes that cannot alias each other or a socket-backed one.
-					addVolume(
-						'  proxy-run:\n    driver_opts:\n      type: none\n      o: bind\n      device: /var/run\n  scratch:\n    name: ${SCRATCH_VOLUME:-owlat-scratch}\n  run:\n    name: owlat_proxy-run-cache\n'
-					),
-					proxyMount('proxy-run:/host-run:ro'),
-					offline(
-						[
-							'    x-owner: ops',
-							'    volumes:',
-							'      - /cache',
-							'      - ./data:/data',
-							'      - ${OWLAT_DATA_DIR:-./data}:/srv/data:ro',
-							'      - /var/lib/owlat:/var/lib/owlat:ro',
-							'      - /run/owlat:/run/owlat',
-							'      - /procedures:/srv/procedures:ro',
-							'      - /dev/shm:/dev/shm',
-							'      - /srv/./owlat//cache/:/srv/cache',
-							'      - scratch:/scratch-volume',
-							'      - run:/run-cache',
-							'      - type: tmpfs',
-							'        target: /tmp',
-							'      - type: ${SCRATCH_MOUNT_TYPE:-tmpfs}',
-							'        target: /scratch',
-							'    volumes_from: [web:ro]',
-							'    use_api_socket: false',
-							'',
-						].join('\n')
-					)
-				)(original)
-			);
-			expect(result.stderr).toBe('');
-			expect(result.status).toBe(0);
-		},
-		GATE_TIMEOUT_MS
-	);
+	it('accepts mounts that stay off the socket, and extension keys', () => {
+		const result = runGate(
+			env,
+			both(
+				(s: string) => `x-policy:\n  note: extension keys are free-form\n${s}`,
+				// Named volumes that cannot alias each other or a socket-backed one.
+				addVolume(
+					'  proxy-run:\n    driver_opts:\n      type: none\n      o: bind\n      device: /var/run\n  scratch:\n    name: ${SCRATCH_VOLUME:-owlat-scratch}\n  run:\n    name: owlat_proxy-run-cache\n'
+				),
+				proxyMount('proxy-run:/host-run:ro'),
+				offline(
+					[
+						'    x-owner: ops',
+						'    volumes:',
+						'      - /cache',
+						'      - ./data:/data',
+						'      - ${OWLAT_DATA_DIR:-./data}:/srv/data:ro',
+						'      - /var/lib/owlat:/var/lib/owlat:ro',
+						'      - /run/owlat:/run/owlat',
+						'      - /procedures:/srv/procedures:ro',
+						'      - /dev/shm:/dev/shm',
+						'      - /srv/./owlat//cache/:/srv/cache',
+						'      - scratch:/scratch-volume',
+						'      - run:/run-cache',
+						'      - type: tmpfs',
+						'        target: /tmp',
+						'      - type: ${SCRATCH_MOUNT_TYPE:-tmpfs}',
+						'        target: /scratch',
+						'    volumes_from: [web:ro]',
+						'    use_api_socket: false',
+						'',
+					].join('\n')
+				)
+			)(original)
+		);
+		expect(result.stderr).toBe('');
+		expect(result.status).toBe(0);
+	});
 
-	it.each(SOCKET_MUTATIONS)(
-		'rejects $breaks',
-		({ apply, expected }) => {
-			const result = runGate(env, apply(original));
-			expect(result.status).toBe(1);
-			expect(result.stderr).toContain(expected);
-		},
-		GATE_TIMEOUT_MS
-	);
+	it.each(SOCKET_MUTATIONS)('rejects $breaks', ({ apply, expected }) => {
+		const result = runGate(env, apply(original));
+		expect(result.status).toBe(1);
+		expect(result.stderr).toContain(expected);
+	});
 });

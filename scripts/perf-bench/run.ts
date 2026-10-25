@@ -38,6 +38,7 @@ import { parseArgs } from 'node:util';
 import type { FamilyResult } from './sample';
 import { PERF_BENCH_OUT_ENV } from './sample';
 import { aggregateFamily, aggregateScaling, renderReport, type ReportContext } from './stats';
+import { PERF_BENCH_TIMEOUT_MS } from '../../vitest.timeouts';
 
 const ROOT = resolve(import.meta.dir, '../..');
 const VITEST = join(ROOT, 'node_modules/.bin/vitest');
@@ -141,11 +142,17 @@ function main(): number {
 			// A reused --out directory must not let an earlier run's file stand in for this one.
 			rmSync(resultPath, { force: true });
 			console.error(`[perf-bench] ${name} run ${i}/${runs}`);
-			const proc = spawnSync(VITEST, ['run', spec, '--maxWorkers=1'], {
-				cwd: join(ROOT, workspace),
-				env: { ...process.env, [PERF_BENCH_OUT_ENV]: resultPath },
-				encoding: 'utf8',
-			});
+			// The benchmark budget replaces the workspace's own for this run only;
+			// the specs set none, so an ordinary test run never waits that long.
+			const proc = spawnSync(
+				VITEST,
+				['run', spec, '--maxWorkers=1', `--testTimeout=${PERF_BENCH_TIMEOUT_MS}`],
+				{
+					cwd: join(ROOT, workspace),
+					env: { ...process.env, [PERF_BENCH_OUT_ENV]: resultPath },
+					encoding: 'utf8',
+				}
+			);
 			writeFileSync(join(outDir, `${name}.run-${i}.log`), `${proc.stdout}${proc.stderr}`);
 			if (proc.status !== 0 || !existsSync(resultPath)) {
 				console.error(

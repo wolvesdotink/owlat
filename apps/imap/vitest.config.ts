@@ -1,6 +1,12 @@
 import { nodePackageConfig } from '../../vitest.shared';
 
 export default nodePackageConfig({
+	// Several suites pay a fixed cost a contended runner multiplies: real TCP and
+	// TLS servers with openssl-generated certificates, a 75 MiB FETCH paced
+	// through a real socket, and folder-pattern inputs sized so that a matcher
+	// that backtracks would run for minutes. Their guards count work and bytes,
+	// never time.
+	timeout: 'parallel-gate',
 	coverage: {
 		lines: 78,
 		thresholds: { branches: 70 },

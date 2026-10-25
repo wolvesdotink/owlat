@@ -9,6 +9,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { expect } from 'vitest';
+import { PARALLEL_GATE_TIMEOUT_MS } from '../../vitest.timeouts';
 
 const REPOSITORY_ROOT = resolve(import.meta.dirname, '../..');
 const SCRIPT = join(REPOSITORY_ROOT, 'scripts/check-compose-invariants.sh');
@@ -18,9 +19,9 @@ export const TEMPLATES = [
 	{ name: 'infra/templates/docker-compose.vps.yml', env: 'COMPOSE_INVARIANTS_VPS' },
 ] as const;
 
-// One gate run is ~0.5s, but it forks a few hundred greps; leave headroom for a
-// contended runner rather than flake at vitest's 5s default.
-export const GATE_TIMEOUT_MS = 30_000;
+// A test runs the gate once. Half the suite's per-test budget kills a hung gate
+// with time left for the test to report the spawn error.
+const GATE_DEADLINE_MS = PARALLEL_GATE_TIMEOUT_MS / 2;
 
 const sandboxes: string[] = [];
 
@@ -54,7 +55,7 @@ export function runGate(env: string, compose: string): { status: number | null; 
 	const result = spawnSync('bash', [SCRIPT], {
 		encoding: 'utf8',
 		env: { ...process.env, [env]: file },
-		timeout: GATE_TIMEOUT_MS,
+		timeout: GATE_DEADLINE_MS,
 	});
 	expect(result.error).toBeUndefined();
 	return { status: result.status, stderr: result.stderr };

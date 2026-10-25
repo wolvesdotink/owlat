@@ -16,7 +16,6 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
 import { afterAll, describe, expect, it } from 'vitest';
-import { PARALLEL_GATE_TIMEOUT_MS } from '../../vitest.timeouts';
 
 const REPOSITORY_ROOT = fileURLToPath(new URL('../..', import.meta.url));
 const RULES = [
@@ -94,14 +93,10 @@ describe.each(RULES)('%s allowances in oxlintrc.json', (rule) => {
 		expect(files.filter((file) => !existsSync(join(REPOSITORY_ROOT, file)))).toEqual([]);
 	});
 
-	it(
-		'each exempt a file the rule would otherwise report',
-		() => {
-			const reported = reportedWithoutAllowances(rule, files);
-			expect(files.filter((file) => !reported.has(file))).toEqual([]);
-		},
-		PARALLEL_GATE_TIMEOUT_MS
-	);
+	it('each exempt a file the rule would otherwise report', () => {
+		const reported = reportedWithoutAllowances(rule, files);
+		expect(files.filter((file) => !reported.has(file))).toEqual([]);
+	});
 });
 
 describe(`${FEATURE_FLOOR} allowances in oxlintrc.json`, () => {
@@ -121,18 +116,14 @@ describe(`${FEATURE_FLOOR} allowances in oxlintrc.json`, () => {
 		);
 	});
 
-	it(
-		'each exempt a site the rule would otherwise report',
-		() => {
-			const files = [...new Set(sites.map((site) => split(site).file))];
-			const reported = new Set(
-				diagnosticsWithoutAllowances(FEATURE_FLOOR, files).flatMap((d) => {
-					const name = /^`([^`]+)`/.exec(d.message)?.[1];
-					return name === undefined ? [] : [`${d.filename}:${name}`];
-				})
-			);
-			expect(sites.filter((site) => !reported.has(site))).toEqual([]);
-		},
-		PARALLEL_GATE_TIMEOUT_MS
-	);
+	it('each exempt a site the rule would otherwise report', () => {
+		const files = [...new Set(sites.map((site) => split(site).file))];
+		const reported = new Set(
+			diagnosticsWithoutAllowances(FEATURE_FLOOR, files).flatMap((d) => {
+				const name = /^`([^`]+)`/.exec(d.message)?.[1];
+				return name === undefined ? [] : [`${d.filename}:${name}`];
+			})
+		);
+		expect(sites.filter((site) => !reported.has(site))).toEqual([]);
+	});
 });
