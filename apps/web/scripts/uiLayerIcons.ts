@@ -15,13 +15,37 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-/** Every `lucide:*` name under packages/ui, sorted and de-duplicated. */
-export function uiLayerIconNames(): string[] {
-	const root = fileURLToPath(new URL('../../../packages/ui', import.meta.url));
+/**
+ * What the app's icon scan (nuxt.config.ts `icon.clientBundle.scan`) skips:
+ * @nuxt/icon's own defaults, which setting the option replaces, plus test
+ * files. Every name the scan finds is bundled into the entry chunk, and a name
+ * that only a test quotes renders nothing. The defaults' `tests` does not cover
+ * this app's `__tests__` directories or a `*.test.ts` beside its module.
+ */
+export const ICON_SCAN_EXCLUDE = [
+	'node_modules',
+	'dist',
+	'build',
+	'coverage',
+	'test',
+	'tests',
+	'.*',
+	'**/__tests__/**',
+	'**/*.test.*',
+	'**/*.spec.*',
+];
+
+const TEST_FILE = /\.(?:test|spec)\.[^.]+$/;
+
+/** Every `lucide:*` name under packages/ui, sorted and de-duplicated. Tests are skipped. */
+export function uiLayerIconNames(
+	root = fileURLToPath(new URL('../../../packages/ui', import.meta.url))
+): string[] {
 	const names = new Set<string>();
 	const walk = (dir: string): void => {
 		for (const entry of readdirSync(dir, { withFileTypes: true })) {
 			if (entry.name === 'node_modules' || entry.name.startsWith('.')) continue;
+			if (entry.name === '__tests__' || TEST_FILE.test(entry.name)) continue;
 			const path = join(dir, entry.name);
 			if (entry.isDirectory()) {
 				walk(path);

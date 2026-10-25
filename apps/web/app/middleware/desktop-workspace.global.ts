@@ -8,6 +8,10 @@
  * non-existent workspace.
  */
 import { isDesktopRuntime } from '~/lib/desktop/activeWorkspace';
+// The shared workspace state, not `useDesktopWorkspaces()`: global middleware
+// is in every browser's boot bundle, and the composable brings the whole
+// workspace manager (switching, removal, the connect handshake) with it.
+import { activeId, workspaces } from '~/lib/desktop/workspaceState';
 
 // `/desktop/settings` stays reachable with no active workspace even though it is
 // now only a redirect into Preferences: the page itself decides where to send a
@@ -25,8 +29,8 @@ export default defineNuxtRouteMiddleware((to) => {
 	if (!isDesktopRuntime()) return;
 	if (ALLOWED_PREFIXES.some((p) => to.path.startsWith(p))) return;
 
-	const { active } = useDesktopWorkspaces();
-	if (!active.value) {
+	// The same lookup as `useDesktopWorkspaces().active`.
+	if (!workspaces.value.some((w) => w.id === activeId.value)) {
 		return navigateTo('/desktop/welcome');
 	}
 

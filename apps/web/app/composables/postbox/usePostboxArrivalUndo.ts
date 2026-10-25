@@ -1,7 +1,8 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
-import { ref, watch } from 'vue';
+import { watch } from 'vue';
 import { useConvexQueryMap } from '~/composables/useConvexQueryMap';
+import { pendingArrivalUndos } from '~/lib/pendingArrivalUndos';
 
 /** How long a toast with Undo stays: long enough to read it and reach the button. */
 const UNDO_TOAST_MS = 8000;
@@ -12,14 +13,6 @@ interface UndoOutcome {
 	kind: string;
 	isNeedsReplyCleared: boolean;
 }
-
-/**
- * Undos still running on the server (more pages, or a sender re-sort chain),
- * app-wide: whichever component started one may be gone before it finishes.
- * `PostboxArrivalUndoHost` (mounted in app.vue while this is not empty)
- * subscribes to each and announces its outcome.
- */
-export const pendingArrivalUndos = ref<Id<'mailArrivalOperations'>[]>([]);
 
 /**
  * The outcome in words. Each fact is its own sentence, so none hides another:
