@@ -8,9 +8,10 @@ import type { DraftAutosave } from './useDraftAutosave';
  *
  * Publish puts the row's stored HTML live, which unsaved edits are not part
  * of. A draft's autosave session (`draft`) holds its background saves while
- * Publish runs, saves what is pending through its queue first, and publishes
- * only once that landed; a published template's Publish button is held while
- * it has unsaved changes.
+ * Publish runs, saves what is pending through its queue first (co-editing:
+ * everyone's edits in the shared session, whoever is still here), and
+ * publishes only once that landed; a published template's Publish button is
+ * held while it has unsaved changes.
  */
 export function useTemplatePublication(opts: {
 	templateId: Ref<Id<'emailTemplates'>>;

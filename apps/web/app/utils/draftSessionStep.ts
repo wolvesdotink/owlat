@@ -6,6 +6,7 @@
  */
 
 import {
+	OWN_EDITS,
 	atRisk,
 	canAutosave,
 	copyFields,
@@ -158,7 +159,8 @@ export class DraftStep {
 	 * A restored copy's source goes once every field it restored is kept
 	 * elsewhere: held by the server (the base) or by this editor's committed
 	 * copy. A save that left a field out (an unfinished choice) or a copy that
-	 * failed proves nothing about that field.
+	 * failed proves nothing about that field. Live, the restore is an own edit
+	 * at a count: a save or copy at that count or later holds it.
 	 */
 	keepAdopted(): void {
 		const s = this.state;
@@ -168,12 +170,14 @@ export class DraftStep {
 		const fields = Object.keys(adopting.values);
 		// Not applied yet: nothing was restored to keep.
 		if (fields.length === 0) return;
-		const disk = s.onDisk;
-		const kept = fields.every(
-			(field) =>
-				base.values[field] === adopting.values[field] ||
-				(disk !== null && disk.values[field] === adopting.values[field])
-		);
+		const holds = (held: Fingerprints | undefined, field: string) => {
+			const value = held?.[field];
+			const wanted = adopting.values[field]!;
+			if (value === undefined) return false;
+			return s.live && field === OWN_EDITS ? Number(value) >= Number(wanted) : value === wanted;
+		};
+		const disk = s.onDisk?.values;
+		const kept = fields.every((field) => holds(base.values, field) || holds(disk, field));
 		if (kept) this.retireSource(adopting.source);
 	}
 

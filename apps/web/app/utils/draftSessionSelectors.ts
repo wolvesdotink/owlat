@@ -17,6 +17,13 @@ export type DraftSaveStatus =
 	| 'scheduling'
 	| 'error';
 
+/**
+ * The live session's field for this tab's own edits: a count that only grows,
+ * so a save or copy taken at a count holds every own edit up to it. It says
+ * nothing about what others put into the session (`DraftLive.sharedPending`).
+ */
+export const OWN_EDITS = '@own';
+
 /** The fields a device copy stores: everything but the volatile ones. */
 export const copyFields = (s: DraftSessionState): string[] =>
 	Object.keys(s.values).filter((field) => !s.volatile.includes(field));
@@ -36,12 +43,24 @@ export const volatilePending = (s: DraftSessionState): string[] => {
 };
 
 /**
+ * The server holds what the editor shows. Live, that also needs the shared
+ * session written to the email: `@own` matching proves only this tab's own
+ * edits are, not what others put into the session.
+ */
+export const serverHolds = (s: DraftSessionState): boolean =>
+	pendingFields(s).length === 0 && s.live?.sharedPending !== true;
+
+/**
  * What a save would carry now. Live, the session is written for this tab's
- * own edits, or for others' that nobody else is left to write.
+ * own edits, for others' that nobody else is left to write, and for anyone's
+ * while a final action (Publish) waits to put the stored email live.
  */
 export const sendableFields = (s: DraftSessionState): string[] => {
 	const pending = pendingFields(s);
-	if (s.live) return pending.length > 0 || (s.live.sharedPending && s.live.alone) ? ['@own'] : [];
+	if (s.live) {
+		const shared = s.live.sharedPending && (s.live.alone || s.action !== null);
+		return pending.length > 0 || shared ? [OWN_EDITS] : [];
+	}
 	return pending.filter((field) => !s.deviceOnly.includes(field));
 };
 
@@ -63,8 +82,9 @@ export const canAutosave = (s: DraftSessionState): boolean =>
 
 /**
  * Final action `id` may dispatch what the server holds: the editor shows
- * exactly that (nothing on its way, nothing pending, no open text), and the
- * volatile choices it consumes are the ones it began with.
+ * exactly that (nothing on its way, nothing pending, live nobody's edit left
+ * unwritten in the session, no open text), and the volatile choices it
+ * consumes are the ones it began with.
  */
 export const actionCurrent = (
 	s: DraftSessionState,
@@ -79,7 +99,7 @@ export const actionCurrent = (
 		!s.discarded &&
 		!s.inline &&
 		s.flight === null &&
-		pendingFields(s).length === 0 &&
+		serverHolds(s) &&
 		consumes.every((field) => s.values[field] === action.values[field])
 	);
 };

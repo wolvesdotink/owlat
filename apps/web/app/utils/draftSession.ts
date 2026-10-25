@@ -41,7 +41,7 @@ import {
 	recoveryStart,
 	reload,
 } from './draftSessionChoices';
-import { canAutosave, pendingFields, sendableFields } from './draftSessionSelectors';
+import { OWN_EDITS, canAutosave, pendingFields, sendableFields } from './draftSessionSelectors';
 import { DraftStep, pick } from './draftSessionStep';
 import type { DraftEffect, DraftEvent, DraftSessionState, Fingerprints } from './draftSessionTypes';
 
@@ -62,8 +62,7 @@ export const DRAFT_DEBOUNCE_MS = 1500;
 export const DRAFT_MIRROR_MS = 300;
 export const DRAFT_LEAVE_WAIT_MS = 1000;
 
-/** The live session's field for this tab's own edits. */
-export const OWN_EDITS = '@own';
+export { OWN_EDITS };
 
 export function createDraftSession(config: DraftSessionConfig): DraftSessionState {
 	return {

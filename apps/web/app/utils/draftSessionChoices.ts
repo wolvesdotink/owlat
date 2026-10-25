@@ -5,11 +5,13 @@
  */
 
 import {
+	OWN_EDITS,
 	atRisk,
 	copyFields,
 	deviceCovers,
 	pendingFields,
 	sendableFields,
+	serverHolds,
 	volatilePending,
 } from './draftSessionSelectors';
 import { pick, type DraftStep } from './draftSessionStep';
@@ -32,7 +34,10 @@ export function recoveryStart(step: DraftStep, e: Of<'recovery-start'>): void {
  * editor shows, it is nothing to offer. Saying the same is not keeping it:
  * such a copy goes only while the server or this editor's committed copy
  * holds what it holds; otherwise this editor takes it over and it goes once
- * that is so.
+ * that is so. Live, what is shown may be others' edits the session holds
+ * unwritten, which neither `@own` nor this tab's copy answers for: the copy
+ * goes only while the email holds what is shown, and otherwise stays for a
+ * later read to decide.
  */
 export function recoveryRead(step: DraftStep, e: Of<'recovery-read'>): void {
 	const s = step.state;
@@ -48,10 +53,10 @@ export function recoveryRead(step: DraftStep, e: Of<'recovery-read'>): void {
 		}
 		// One whose editor may still be open stays that editor's.
 		if (candidate.liveness !== 'closed') continue;
-		const kept = pendingFields(s).length === 0 || (s.persistent && deviceCovers(s));
+		const kept = serverHolds(s) || (!s.live && s.persistent && deviceCovers(s));
 		if (kept) {
 			step.emit({ type: 'remove-copies', key: candidate.key, tokens: [candidate.token] });
-		} else if (!step.state.adopting) {
+		} else if (!s.live && !step.state.adopting) {
 			step.set({ adopting: { source: candidate, values: pick(s.values, copyFields(s)) } });
 			step.settleCopy();
 		}
@@ -84,11 +89,17 @@ export function recoveryRestore(step: DraftStep): void {
  * The restored snapshot is an edit against the confirmed base (a server
  * write since still makes its save a conflict). It goes to this editor's own
  * copy at once; its source goes only once every field it restored is kept.
+ * Live, it is this tab's own edit from now on (the session hears of it a
+ * moment later): kept by a save or copy taken at that own-edit count or later.
  */
 export function recoveryApplied(step: DraftStep, e: Of<'recovery-applied'>): void {
+	const adopting = step.state.adopting;
+	if (!adopting || e.request !== step.state.recovery.request) return;
+	if (step.state.live) {
+		step.set({ values: { [OWN_EDITS]: String(step.state.localRevision + 1) } });
+		step.localEdit();
+	}
 	const s = step.state;
-	const adopting = s.adopting;
-	if (!adopting || e.request !== s.recovery.request) return;
 	step.set({ adopting: { ...adopting, values: pick(s.values, copyFields(s)) } });
 	if (s.persistent) step.writeCopy();
 }

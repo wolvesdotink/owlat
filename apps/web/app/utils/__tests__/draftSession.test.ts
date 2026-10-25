@@ -881,6 +881,69 @@ describe('draftSession: live co-editing', () => {
 		]);
 		expect(ofType(kept.effects, 'persist')[0]?.flight.baseRevision).toBe(7);
 	});
+	const shared = (alone = false, sharedPending = true): DraftEvent => ({
+		type: 'live',
+		live: { sessionId: 's1', base: 2, sharedPending, alone },
+	});
+	const sourceGone = (effects: DraftEffect[]) =>
+		ofType(effects, 'remove-copies').some((effect) => effect.key === 'scope:tab-old.1');
+
+	it("writes everyone's edits before a final action, and lets it dispatch only once the session is written", () => {
+		// Someone else's edit is in the session, unwritten; they are still here.
+		const begun = trace(live(), [shared(), { type: 'action-begin', id: 1 }]).state;
+		expect(actionCurrent(begun, 1)).toBe(false);
+		const saving = trace(begun, [{ type: 'save-now' }]);
+		expect(ofType(saving.effects, 'persist')).toHaveLength(1);
+		const landedState = trace(saving.state, [landed()]).state;
+		// The save landed, but the session still reports unwritten edits: not yet.
+		expect(actionCurrent(landedState, 1)).toBe(false);
+		expect(actionCurrent(trace(landedState, [shared(false, false)]).state, 1)).toBe(true);
+		// Without an action, their edits stay theirs to write.
+		const after = trace(landedState, [
+			shared(),
+			{ type: 'action-end', id: 1, ok: false, consumed: [] },
+			fire('save'),
+		]);
+		expect(ofType(after.effects, 'persist')).toEqual([]);
+	});
+
+	it('keeps a copy saying what is shown while the session holds edits the email does not', () => {
+		const matching = candidate({ matches: true });
+		const start = (steps: Step[]) =>
+			trace(live(), [{ type: 'recovery-start', scope: 'scope:' }, ...steps, read([matching])]);
+		// Others' unwritten edits are what the copy says: neither kept nor taken over.
+		const theirs = start([shared()]);
+		expect(sourceGone(theirs.effects)).toBe(false);
+		expect(theirs.state.adopting).toBeNull();
+		expect(theirs.state.offer).toBeNull();
+		// This tab's committed copy holds its own edits, not theirs.
+		const ownCopy = start([{ type: 'live-edit' }, fire('mirror'), committed, shared()]);
+		expect(deviceCovers(ownCopy.state)).toBe(true);
+		expect(sourceGone(ownCopy.effects)).toBe(false);
+		// Once the email holds what is shown, it goes.
+		expect(sourceGone(start([shared(false, false)]).effects)).toBe(true);
+	});
+
+	it('retires a restored source once a save or copy taken after the restore holds it', () => {
+		const restored = trace(live(), [
+			{ type: 'recovery-start', scope: 'scope:' },
+			{ type: 'live-edit' },
+			fire('save'),
+			read([candidate()]),
+			{ type: 'recovery-restore' },
+			(s) => ({ type: 'recovery-applied', request: s.recovery.request }),
+		]);
+		// The restore counts as an own edit at once.
+		expect(restored.state.values[OWN_EDITS]).toBe('2');
+		expect(atRisk(restored.state)).toBe(true);
+		// A save that started before the restore does not hold it.
+		const early = trace(restored.state, [failed, landed()]);
+		expect(sourceGone(early.effects)).toBe(false);
+		// One taken after it does, also once the session heard of it as another own edit.
+		const later = trace(early.state, [{ type: 'live-edit' }, fire('save'), landed()]);
+		expect(sourceGone(later.effects)).toBe(true);
+		expect(sourceGone(trace(restored.state, [committed]).effects)).toBe(true);
+	});
 });
 
 describe('draftSession: final actions and closing', () => {

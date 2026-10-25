@@ -15,6 +15,7 @@ vi.mock('@owlat/api', () => ({
 		storage: { generateUploadUrl: 'storage.generateUploadUrl' },
 		mediaAssets: { create: 'mediaAssets.create' },
 		emailBlocks: { blocks: { create: 'emailBlocks.blocks.create' } },
+		emailTemplates: { emails: { publish: 'emails.publish', unpublish: 'emails.unpublish' } },
 		emailCoediting: {
 			sessions: {
 				get: 'sessions.get',
@@ -39,10 +40,25 @@ vi.mock('~/utils/editorDraftStore', async (importOriginal) => {
 	return { ...actual, getEditorDraftStore: () => draftStore ?? actual.getEditorDraftStore() };
 });
 
-import { ref, nextTick, onMounted, onUnmounted, type Ref } from 'vue';
+// Copies left by an editor known to be closed (no Web Locks in jsdom says "unknown").
+let closedWriters = false;
+vi.mock('~/utils/editorDraftWriters', async (importOriginal) => {
+	const actual: typeof import('~/utils/editorDraftWriters') = await importOriginal();
+	const closed = actual.createEditorDraftWriters('tab-new', {
+		request: async () => undefined,
+		query: async () => ({ held: [], pending: [] }),
+	});
+	return {
+		...actual,
+		getEditorDraftWriters: () => (closedWriters ? closed : actual.getEditorDraftWriters()),
+	};
+});
+
+import { computed, ref, nextTick, onMounted, onUnmounted, type Ref } from 'vue';
 import type { EditorBlock } from '@owlat/email-builder';
 import { useEmailEditorBridge, type EmailEditorSaveBase } from '../useEmailEditorBridge';
 import { useUnsavedChanges } from '../useUnsavedChanges';
+import { useTemplatePublication } from '../useTemplatePublication';
 import { StaleDraftError } from '../useEditorSaveOperation';
 import { withSetup } from '~/__tests__/withSetup';
 import {
@@ -122,6 +138,7 @@ beforeEach(() => {
 	};
 	canCoedit = false;
 	draftStore = null;
+	closedWriters = false;
 	showToast = vi.fn();
 	mutation = vi.fn(async (fn: string) => {
 		if (fn === 'sessions.applyOps') return { version: 2 };
@@ -683,6 +700,101 @@ describe('useEmailEditorBridge autosave (co-editing)', () => {
 		expect(calls('sessions.reset')).toHaveLength(0);
 		expect(calls('sessions.applyOps')).toHaveLength(0);
 		expect(save).not.toHaveBeenCalled();
+	});
+
+	describe("someone else's unwritten edit in the session", () => {
+		const theirSubject = sessionRow(2, 1, {
+			fields: JSON.stringify({ name: 'Welcome', subject: 'Bob changed this' }),
+		});
+		async function withTheirEdit() {
+			const t = await joined();
+			await someoneElseJoins();
+			queries['sessions.get']!.value = theirSubject;
+			await settle();
+			expect(t.bridge.subject.value).toBe('Bob changed this');
+			return t;
+		}
+
+		it('is written to the email before Publish, which then publishes that revision', async () => {
+			const { bridge, source, save, unmount } = await withTheirEdit();
+			// The server writes the session to the email, then reports it saved.
+			save.mockImplementationOnce(async (_ctx, base) => {
+				const revision = (base.revision ?? 0) + 1;
+				source.value = { ...source.value!, subject: 'Bob changed this', contentRevision: revision };
+				queries['sessions.get']!.value = { ...theirSubject, savedVersion: 2, baseRevision: 3 };
+				await nextTick();
+				return revision;
+			});
+			const publish = vi.fn(async (_args: unknown) => ({ ok: true }));
+			vi.stubGlobal('useBackendOperation', () => ({ run: publish, isLoading: ref(false) }));
+			const publication = useTemplatePublication({
+				templateId: ref('t1' as never),
+				template: computed(() => ({ ...source.value!, htmlContent: '<p>Stored</p>' })),
+				hasChanges: bridge.hasChanges,
+				draft: () => bridge.autosave!.autosave,
+			});
+			await publication.togglePublication();
+			expect(save).toHaveBeenCalledOnce();
+			expect(save.mock.calls[0]?.[1]).toMatchObject({ coeditVersion: 2, revision: 2 });
+			expect(publish).toHaveBeenCalledOnce();
+			expect(publish.mock.calls[0]?.[0]).toMatchObject({ expectedContentRevision: 3 });
+			unmount();
+		});
+
+		it('stops Publish while the session still holds edits the email does not', async () => {
+			const { bridge, source, save, unmount } = await withTheirEdit();
+			// The save lands, but the session keeps reporting an unwritten version.
+			save.mockImplementation(async (_ctx, base) => (base.revision ?? 0) + 1);
+			const publish = vi.fn(async (_args: unknown) => ({ ok: true }));
+			vi.stubGlobal('useBackendOperation', () => ({ run: publish, isLoading: ref(false) }));
+			const publication = useTemplatePublication({
+				templateId: ref('t1' as never),
+				template: computed(() => ({ ...source.value!, htmlContent: '<p>Stored</p>' })),
+				hasChanges: bridge.hasChanges,
+				draft: () => bridge.autosave!.autosave,
+			});
+			const done = publication.togglePublication();
+			// Each save waits a bounded while for the session to report it written.
+			await vi.advanceTimersByTimeAsync(30_000);
+			await done;
+			expect(save).toHaveBeenCalled();
+			expect(publish).not.toHaveBeenCalled();
+			expect(showToast).toHaveBeenCalledWith('shared.draftAutosave.notSavedYet', 'error');
+			unmount();
+		});
+
+		it('keeps a copy saying the same, which nothing durable holds yet', async () => {
+			closedWriters = true;
+			draftStore = memoryStore(
+				leftBehind(2, {
+					name: 'Welcome',
+					subject: 'Bob changed this',
+					blocks: [text('a', 'Alpha')],
+				})
+			);
+			const store = draftStore;
+			const list = store.list.bind(store);
+			// The read finishes only once the edit is shown.
+			let release!: () => void;
+			const gate = new Promise<void>((resolve) => {
+				release = resolve;
+			});
+			store.list = async (...args) => {
+				await gate;
+				return list(...args);
+			};
+			const { bridge, save, unmount } = await withTheirEdit();
+			release();
+			await settle();
+			await vi.advanceTimersByTimeAsync(0);
+			const autosave = bridge.autosave!.autosave;
+			expect(autosave.state.value.recovery.scope).not.toBeNull();
+			expect(autosave.state.value.offer).toBeNull();
+			expect(save).not.toHaveBeenCalled();
+			const copies = await list(scope, (data): data is unknown => true);
+			expect(copies.map(({ key }) => key)).toEqual([editorDraftKey(scope, 'tab-old.1')]);
+			unmount();
+		});
 	});
 
 	it("leaves another person's edit to their tab while they are here", async () => {

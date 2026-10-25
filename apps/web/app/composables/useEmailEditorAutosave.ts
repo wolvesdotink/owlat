@@ -27,8 +27,8 @@ import type { UseEditorDirtyTrackingReturn } from './useEditorDirtyTracking';
  * "keep my version" merges onto the latest row the same way the manual
  * tracker does. Live co-editing: the shared session merges everyone's edits;
  * what this tab answers for is its own edits (counted as they are made, not
- * when they are sent 250 ms later), and the email is written for them, or for
- * others' that nobody else is left to write.
+ * when they are sent 250 ms later), and the email is written for them, for
+ * others' that nobody else is left to write, and for everyone's before Publish.
  */
 
 /** What the canvas holds, as the device keeps it. */
@@ -319,7 +319,9 @@ export function useEmailEditorAutosave<S>(
 							: null,
 				});
 			},
-			{ immediate: true }
+			// Synchronous: Publish reads it right before it dispatches, and must
+			// not see a session that was written (or changed) a moment ago as before.
+			{ immediate: true, flush: 'sync' }
 		);
 	}
 
