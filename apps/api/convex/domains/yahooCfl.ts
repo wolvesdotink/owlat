@@ -41,7 +41,12 @@ import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import { authedMutation, authedQuery } from '../lib/authedFunctions';
 import { recordAuditLog } from '../lib/auditLog';
-import { getSingletonOrganizationId, requireOrgPermission } from '../lib/sessionOrganization';
+import {
+	getSingletonOrganizationId,
+	hasPermission,
+	requirePermission,
+	type MutationSessionContext,
+} from '../lib/sessionOrganization';
 
 /**
  * The enrollment's optional fields, declared ONCE.
@@ -207,10 +212,11 @@ interface YahooCflEventResult {
  */
 async function runEvent(
 	ctx: MutationCtx,
+	session: MutationSessionContext,
 	domainId: Id<'domains'>,
 	event: YahooCflEvent
 ): Promise<YahooCflEventResult> {
-	const session = await requireOrgPermission(ctx, 'organization:manage');
+	requirePermission(hasPermission(session.role, 'organization:manage'));
 	const domain = await ctx.db.get(domainId);
 	// An unknown domain is not an error state for the operator to resolve — it
 	// means the domain was deleted underneath the wizard. Its OWN reason, never
@@ -265,10 +271,10 @@ async function runEvent(
  */
 export const getGuide = authedQuery({
 	args: { domainId: v.id('domains') },
-	handler: async (ctx, args) => {
+	handler: async (ctx, args, session) => {
 		// Domain-level sending configuration, same gate as every other write on
 		// this wizard: only owners/admins see or change it.
-		const session = await requireOrgPermission(ctx, 'organization:manage');
+		requirePermission(hasPermission(session.role, 'organization:manage'));
 		const domain = await ctx.db.get(args.domainId);
 		if (!domain) return null;
 		const slot = await loadEnrollment(ctx, session.activeOrganizationId, args.domainId);
@@ -312,23 +318,26 @@ export const getGuide = authedQuery({
 
 /** Step 2: the operator submitted Yahoo's form. */
 export const submitEnrollment = authedMutation({
-	// authz: runEvent() gates on requireOrgPermission(ctx, 'organization:manage').
+	// authz: runEvent() requires organization:manage on the threaded session.
 	args: { domainId: v.id('domains') },
-	handler: async (ctx, args) => runEvent(ctx, args.domainId, { kind: 'submit', at: Date.now() }),
+	handler: async (ctx, args, session) =>
+		runEvent(ctx, session, args.domainId, { kind: 'submit', at: Date.now() }),
 });
 
 /** Step 3: Yahoo acknowledged the domain. */
 export const confirmEnrollment = authedMutation({
-	// authz: runEvent() gates on requireOrgPermission(ctx, 'organization:manage').
+	// authz: runEvent() requires organization:manage on the threaded session.
 	args: { domainId: v.id('domains') },
-	handler: async (ctx, args) => runEvent(ctx, args.domainId, { kind: 'confirm', at: Date.now() }),
+	handler: async (ctx, args, session) =>
+		runEvent(ctx, session, args.domainId, { kind: 'confirm', at: Date.now() }),
 });
 
 /** Start over — e.g. the enrollment lapsed and is being re-submitted. */
 export const resetEnrollment = authedMutation({
-	// authz: runEvent() gates on requireOrgPermission(ctx, 'organization:manage').
+	// authz: runEvent() requires organization:manage on the threaded session.
 	args: { domainId: v.id('domains') },
-	handler: async (ctx, args) => runEvent(ctx, args.domainId, { kind: 'reset', at: Date.now() }),
+	handler: async (ctx, args, session) =>
+		runEvent(ctx, session, args.domainId, { kind: 'reset', at: Date.now() }),
 });
 
 // ─── Report observation ─────────────────────────────────────────────────────

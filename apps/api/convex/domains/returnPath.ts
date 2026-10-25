@@ -12,7 +12,7 @@ import { v } from 'convex/values';
 import { internal } from '../_generated/api';
 import { throwInvalidInput, throwNotFound, throwInvalidState } from '../_utils/errors';
 import { authedMutation } from '../lib/authedFunctions';
-import { requireOrgPermission } from '../lib/sessionOrganization';
+import { hasPermission, requirePermission } from '../lib/sessionOrganization';
 import { normalizeReturnPathHost } from '@owlat/shared/returnPathHost';
 import { LIFECYCLE_USER_PUBLIC_MUTATION } from './lifecycle';
 
@@ -26,10 +26,9 @@ export const setReturnPathHost = authedMutation({
 		domainId: v.id('domains'),
 		returnPathHost: v.string(),
 	},
-	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'organization:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'organization:manage'),
 			'Only owners and admins can manage sending domains'
 		);
 		// Validate + normalize the host up front with the SHARED strict validator

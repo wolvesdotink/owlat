@@ -1,20 +1,22 @@
 /**
  * Contact management authorization guard.
  *
- * The contact-property and relationship mutations all opened with the same
- * `requireOrgPermission(ctx, 'contacts:manage', …)` check and identical
- * message. This guard owns that precondition so the wording has one home and
- * can't drift across the seven call sites.
+ * The contact-property and relationship mutations all require `contacts:manage`
+ * with the same message. This guard owns that precondition so the wording has
+ * one home and can't drift across the call sites. It checks the session the
+ * builder's floor already resolved, so it never reads the session again.
  */
 
-import type { QueryCtx, MutationCtx } from '../_generated/server';
-import { requireOrgPermission } from '../lib/sessionOrganization';
+import {
+	hasPermission,
+	requirePermission,
+	type MutationSessionContext,
+} from '../lib/sessionOrganization';
 
 /** Require that the caller may manage contacts (owner/admin role). */
-export async function requireContactsManage(ctx: QueryCtx | MutationCtx) {
-	return await requireOrgPermission(
-		ctx,
-		'contacts:manage',
+export function requireContactsManage(session: MutationSessionContext): void {
+	requirePermission(
+		hasPermission(session.role, 'contacts:manage'),
 		'Only owners and admins can manage contacts'
 	);
 }

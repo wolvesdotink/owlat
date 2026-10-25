@@ -10,7 +10,7 @@ import {
 	throwInvalidState,
 } from '../_utils/errors';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
-import { hasPermission, requireOrgPermission, requirePermission } from '../lib/sessionOrganization';
+import { hasPermission, requirePermission } from '../lib/sessionOrganization';
 import { getOptional } from '../lib/env';
 import {
 	externalReceivingProviderValidator,
@@ -86,8 +86,8 @@ const INBOUND_SMTP_PORT = 25;
 // kept admin-only for parity with the rest of the domain-management surface.
 export const getInboundMailConfig = authedQuery({
 	args: {},
-	handler: async (ctx) => {
-		await requireOrgPermission(ctx, 'organization:manage');
+	handler: async (ctx, _args, session) => {
+		requirePermission(hasPermission(session.role, 'organization:manage'));
 		const mailHost = getOptional('EHLO_HOSTNAME')?.trim() || null;
 		return { mailHost, inboundPort: INBOUND_SMTP_PORT };
 	},
@@ -131,10 +131,9 @@ export const create = authedMutation({
 		receivingMode: v.optional(receivingModeValidator),
 		externalReceivingProvider: v.optional(externalReceivingProviderValidator),
 	},
-	handler: async (ctx, args): Promise<Id<'domains'>> => {
-		await requireOrgPermission(
-			ctx,
-			'organization:manage',
+	handler: async (ctx, args, session): Promise<Id<'domains'>> => {
+		requirePermission(
+			hasPermission(session.role, 'organization:manage'),
 			'Only owners and admins can manage sending domains'
 		);
 		const outcome = await ctx.runMutation(internal.domains.lifecycle.create, {
@@ -179,10 +178,9 @@ export const remove = authedMutation({
 	args: {
 		domainId: v.id('domains'),
 	},
-	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'organization:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'organization:manage'),
 			'Only owners and admins can manage sending domains'
 		);
 		const outcome = await ctx.runMutation(internal.domains.lifecycle.remove, {
@@ -202,10 +200,9 @@ export const regenerateDnsRecords = authedMutation({
 	args: {
 		domainId: v.id('domains'),
 	},
-	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'organization:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'organization:manage'),
 			'Only owners and admins can manage sending domains'
 		);
 		const outcome = await ctx.runMutation(internal.domains.lifecycle.transition, {
@@ -233,10 +230,9 @@ export const setDmarcPolicy = authedMutation({
 		subdomainPolicy: v.optional(dmarcPolicyValidator),
 		pct: v.optional(v.number()),
 	},
-	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'organization:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'organization:manage'),
 			'Only owners and admins can manage sending domains'
 		);
 		if (args.pct !== undefined && (!Number.isInteger(args.pct) || args.pct < 0 || args.pct > 100)) {

@@ -1,7 +1,7 @@
 import { v } from 'convex/values';
 import { campaignsQuery, campaignsMutation } from './_helpers';
 import { paginationOptsValidator } from 'convex/server';
-import { hasPermission, requireOrgPermission, requirePermission } from '../lib/sessionOrganization';
+import { hasPermission, requirePermission } from '../lib/sessionOrganization';
 import { getLive, getLiveOrThrow } from '../lib/softDelete';
 import { restoreCampaign, softDeleteCampaign } from './deletion';
 import { listResources } from '../lib/listing';
@@ -60,12 +60,12 @@ export const updateBasics = campaignsMutation({
 		replyTo: v.optional(v.string()),
 		archiveEnabled: v.optional(v.boolean()),
 	},
-	handler: async (ctx, args) => {
+	handler: async (ctx, args, session) => {
 		// Validate input lengths
 		if (args.name) validateStringLength(args.name, STRING_LIMITS.NAME, 'Name');
 
 		// authz: requireDraftCampaign enforces campaigns:manage
-		const { campaign } = await requireDraftCampaign(ctx, args.campaignId, 'edit campaigns');
+		const campaign = await requireDraftCampaign(ctx, session, args.campaignId, 'edit campaigns');
 
 		const updates: {
 			name?: string;
@@ -130,9 +130,9 @@ export const updateAudience = campaignsMutation({
 		campaignId: v.id('campaigns'),
 		audience: audienceValidator,
 	},
-	handler: async (ctx, args) => {
+	handler: async (ctx, args, session) => {
 		// authz: requireDraftCampaign enforces campaigns:manage
-		await requireDraftCampaign(ctx, args.campaignId, 'edit campaign audience');
+		await requireDraftCampaign(ctx, session, args.campaignId, 'edit campaign audience');
 
 		// Validate the referenced segment exists (parity with the old
 		// behaviour, which loaded the segment to snapshot its filters).
@@ -156,12 +156,17 @@ export const updateContent = campaignsMutation({
 		emailTemplateId: v.id('emailTemplates'),
 		subject: v.optional(v.string()),
 	},
-	handler: async (ctx, args) => {
+	handler: async (ctx, args, session) => {
 		// Validate input lengths
 		if (args.subject) validateStringLength(args.subject, STRING_LIMITS.SUBJECT, 'Subject');
 
 		// authz: requireDraftCampaign enforces campaigns:manage
-		const { campaign } = await requireDraftCampaign(ctx, args.campaignId, 'edit campaign content');
+		const campaign = await requireDraftCampaign(
+			ctx,
+			session,
+			args.campaignId,
+			'edit campaign content'
+		);
 
 		// Verify template exists (and is not in Recently deleted)
 		await getLiveOrThrow(ctx, args.emailTemplateId, 'Email template');
@@ -184,10 +189,9 @@ export const updateContent = campaignsMutation({
 // Mutation to duplicate a campaign
 export const duplicate = campaignsMutation({
 	args: { campaignId: v.id('campaigns') },
-	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'campaigns:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'campaigns:manage'),
 			'You do not have permission to duplicate campaigns'
 		);
 
@@ -221,10 +225,9 @@ export const duplicate = campaignsMutation({
 // 30 days (campaigns/deletion.ts). Deleting one already there is a no-op.
 export const remove = campaignsMutation({
 	args: { campaignId: v.id('campaigns') },
-	handler: async (ctx, args) => {
-		const session = await requireOrgPermission(
-			ctx,
-			'campaigns:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'campaigns:manage'),
 			'You do not have permission to delete campaigns'
 		);
 
@@ -276,14 +279,13 @@ export const create = campaignsMutation({
 	args: {
 		name: v.string(),
 	},
-	handler: async (ctx, args) => {
+	handler: async (ctx, args, session) => {
 		// Validate input lengths
 		validateStringLength(args.name, STRING_LIMITS.NAME, 'Name');
 
 		// Get full mutation context (userId, role)
-		const session = await requireOrgPermission(
-			ctx,
-			'campaigns:manage',
+		requirePermission(
+			hasPermission(session.role, 'campaigns:manage'),
 			'You do not have permission to create campaigns'
 		);
 

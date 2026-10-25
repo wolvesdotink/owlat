@@ -10,7 +10,7 @@ import { paginationOptsValidator } from 'convex/server';
 import { SUNSET_MIN_WINDOW_DAYS } from '@owlat/shared/sunsetPolicy';
 import type { Id } from '../_generated/dataModel';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
-import { requireOrgPermission } from '../lib/sessionOrganization';
+import { hasPermission, requirePermission } from '../lib/sessionOrganization';
 import { recordAuditLog } from '../lib/auditLog';
 import { throwInvalidInput } from '../_utils/errors';
 import { globalSunsetPolicyRow, loadSunsetPolicyRows, toSunsetOverride } from './sunsetEngine';
@@ -56,10 +56,9 @@ export const getSunsetPolicies = authedQuery({
 			verifiedAt: v.union(v.number(), v.null()),
 		}),
 	}),
-	handler: async (ctx) => {
-		await requireOrgPermission(
-			ctx,
-			'contacts:manage',
+	handler: async (ctx, _args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'contacts:manage'),
 			'Only owners and admins can view the sunset policy'
 		);
 		const rows = await loadSunsetPolicyRows(ctx);
@@ -119,10 +118,9 @@ export const getSunsetPolicies = authedQuery({
 export const confirmSunsetClock = authedMutation({
 	args: {},
 	returns: v.number(),
-	handler: async (ctx) => {
-		const session = await requireOrgPermission(
-			ctx,
-			'contacts:manage',
+	handler: async (ctx, _args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'contacts:manage'),
 			'Only owners and admins can confirm the sunset clock'
 		);
 
@@ -200,10 +198,9 @@ export const setSunsetPolicy = authedMutation({
 		),
 	},
 	returns: v.id('sunsetPolicies'),
-	handler: async (ctx, args) => {
-		const session = await requireOrgPermission(
-			ctx,
-			'contacts:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'contacts:manage'),
 			'Only owners and admins can change the sunset policy'
 		);
 
@@ -346,10 +343,9 @@ export const listSunsetStage = authedQuery({
 			v.union(v.literal('SplitRecommended'), v.literal('SplitRequired'), v.null())
 		),
 	}),
-	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'contacts:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'contacts:manage'),
 			'Only owners and admins can view the sunset track'
 		);
 		const page = await ctx.db
@@ -387,10 +383,9 @@ export const restoreSunsetContact = authedMutation({
 			v.literal('not_suppressed')
 		),
 	}),
-	handler: async (ctx, args) => {
-		const session = await requireOrgPermission(
-			ctx,
-			'contacts:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'contacts:manage'),
 			'Only owners and admins can restore a suppressed contact'
 		);
 		return await restoreSunsetSuppression(ctx, {
@@ -405,10 +400,9 @@ export const restoreSunsetContact = authedMutation({
 export const setSunsetContactExemption = authedMutation({
 	args: { contactId: v.id('contacts'), exempt: v.boolean() },
 	returns: v.boolean(),
-	handler: async (ctx, args) => {
-		const session = await requireOrgPermission(
-			ctx,
-			'contacts:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'contacts:manage'),
 			'Only owners and admins can change a contact exemption'
 		);
 		return await setSunsetExemption(ctx, {

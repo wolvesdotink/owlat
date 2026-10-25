@@ -46,30 +46,36 @@ const sessionMock = vi.hoisted(() => ({ member: true, admin: true }));
 
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
+	// The floor's role: handlers check it against the real permission map.
+	const role = () => (sessionMock.admin ? 'owner' : 'editor');
 	return {
 		...actual,
 		requireOrgMember: vi.fn().mockImplementation(async () => {
 			if (!sessionMock.member) throw new Error('forbidden: not an org member');
-			return { userId: 'test-user', role: 'owner' };
+			return { userId: 'test-user', role: role() };
 		}),
 		isActiveOrgMember: vi.fn().mockImplementation(async () => sessionMock.member),
 		getUserIdFromSession: vi.fn().mockResolvedValue('test-user'),
 		getMutationContext: vi.fn().mockImplementation(async () => {
 			if (!sessionMock.member) throw new Error('forbidden: not an org member');
-			return { userId: 'test-user', role: 'owner' };
+			return { userId: 'test-user', role: role() };
 		}),
 		requireOrgPermission: vi.fn().mockImplementation(async () => {
 			if (!sessionMock.member) throw new Error('forbidden: not an org member');
-			return { userId: 'test-user', role: 'owner' };
+			return { userId: 'test-user', role: role() };
 		}),
 		requireAdminContext: vi.fn().mockImplementation(async () => {
 			if (!sessionMock.member) throw new Error('forbidden: not an org member');
 			if (!sessionMock.admin) throw new Error('forbidden: admins only');
-			return { userId: 'test-user', role: 'owner' };
+			return { userId: 'test-user', role: role() };
 		}),
 		requireAuthenticatedIdentity: vi
 			.fn()
-			.mockResolvedValue({ subject: 'test-user', issuer: 'test', tokenIdentifier: 'test|test-user' }),
+			.mockResolvedValue({
+				subject: 'test-user',
+				issuer: 'test',
+				tokenIdentifier: 'test|test-user',
+			}),
 	};
 });
 
@@ -127,8 +133,8 @@ const verifyModules = Object.fromEntries(
 			!path.includes('knowledgeExtraction') &&
 			!path.includes('semanticFileProcessing') &&
 			!path.includes('visualizationAgent') &&
-			!path.includes('llmProvider'),
-	),
+			!path.includes('llmProvider')
+	)
 );
 
 beforeEach(() => {
@@ -165,13 +171,16 @@ describe('dnsVerification.verifyDomain — gates', () => {
 		const t = convexTest(schema, verifyModules);
 		let domainId: Id<'domains'>;
 		await t.run(async (ctx) => {
-			domainId = await ctx.db.insert('domains', createTestDomain({ status: 'pending', providerType: 'mta' }));
+			domainId = await ctx.db.insert(
+				'domains',
+				createTestDomain({ status: 'pending', providerType: 'mta' })
+			);
 		});
 
 		sessionMock.member = false;
 
 		await expect(
-			t.action(api.domains.dnsVerification.verifyDomain, { domainId: domainId! }),
+			t.action(api.domains.dnsVerification.verifyDomain, { domainId: domainId! })
 		).rejects.toThrow(/forbidden|member/i);
 	});
 
@@ -184,7 +193,7 @@ describe('dnsVerification.verifyDomain — gates', () => {
 		});
 
 		await expect(
-			t.action(api.domains.dnsVerification.verifyDomain, { domainId: domainId! }),
+			t.action(api.domains.dnsVerification.verifyDomain, { domainId: domainId! })
 		).rejects.toThrow(/Domain not found/);
 
 		// No DNS lookup should have happened — the guard runs before runDnsLookups.
@@ -197,12 +206,12 @@ describe('dnsVerification.verifyDomain — gates', () => {
 		await t.run(async (ctx) => {
 			domainId = await ctx.db.insert(
 				'domains',
-				createTestDomain({ status: 'registering', providerType: 'mta' }),
+				createTestDomain({ status: 'registering', providerType: 'mta' })
 			);
 		});
 
 		await expect(
-			t.action(api.domains.dnsVerification.verifyDomain, { domainId: domainId! }),
+			t.action(api.domains.dnsVerification.verifyDomain, { domainId: domainId! })
 		).rejects.toThrow(/still being registered/i);
 
 		expect(dnsMock.resolveTxt).not.toHaveBeenCalled();
@@ -225,7 +234,7 @@ describe('dnsVerification.verifyDomain — DNS matching (mocked resolvers)', () 
 					status: 'pending',
 					providerType: 'mta',
 					dnsRecords: mtaDnsRecords(),
-				}),
+				})
 			);
 		});
 
@@ -270,7 +279,7 @@ describe('dnsVerification.verifyDomain — DNS matching (mocked resolvers)', () 
 						...mtaDnsRecords(),
 						spf: { type: 'TXT' as const, host: '@', value: 'v=spf1 include:owlat.mx ~all' },
 					},
-				}),
+				})
 			);
 		});
 
@@ -307,7 +316,7 @@ describe('dnsVerification.verifyDomain — DNS matching (mocked resolvers)', () 
 					status: 'pending',
 					providerType: 'mta',
 					dnsRecords: mtaDnsRecords(),
-				}),
+				})
 			);
 		});
 
@@ -337,7 +346,7 @@ describe('dnsVerification.verifyDomain — DNS matching (mocked resolvers)', () 
 					status: 'pending',
 					providerType: 'mta',
 					dnsRecords: mtaDnsRecords(),
-				}),
+				})
 			);
 		});
 
@@ -370,8 +379,10 @@ describe('dnsVerification.verifyDomain — DNS matching (mocked resolvers)', () 
 					domain: 'verify-missing.com',
 					status: 'pending',
 					providerType: 'mta',
-					dnsRecords: { dmarc: { type: 'TXT' as const, host: '_dmarc', value: 'v=DMARC1; p=none' } },
-				}),
+					dnsRecords: {
+						dmarc: { type: 'TXT' as const, host: '_dmarc', value: 'v=DMARC1; p=none' },
+					},
+				})
 			);
 		});
 
@@ -416,7 +427,7 @@ describe('dnsVerification.verifyDomain — DNS matching (mocked resolvers)', () 
 						],
 						dmarc: { type: 'TXT' as const, host: '_dmarc', value: 'v=DMARC1; p=none' },
 					},
-				}),
+				})
 			);
 		});
 
@@ -460,7 +471,7 @@ describe('dnsVerification.verifyDomain — DNS matching (mocked resolvers)', () 
 							},
 						],
 					},
-				}),
+				})
 			);
 		});
 
@@ -505,7 +516,7 @@ describe('dnsVerification.verifyDomain — DNS matching (mocked resolvers)', () 
 							},
 						],
 					},
-				}),
+				})
 			);
 		});
 
@@ -548,7 +559,7 @@ describe('providers.registerAction.run', () => {
 			t.action(internal.domains.providers.registerAction.run, {
 				providerType: 'mta',
 				domainId: domainId!,
-			}),
+			})
 		).resolves.toBeNull();
 		expect(mtaManager.registerDomain).not.toHaveBeenCalled();
 	});
@@ -562,7 +573,7 @@ describe('providers.registerAction.deleteDomainAction', () => {
 			t.action(internal.domains.providers.registerAction.deleteDomainAction, {
 				providerType: 'mta',
 				domain: 'gone.example.com',
-			}),
+			})
 		).resolves.toBeNull();
 		expect(mtaManager.deleteDomain).toHaveBeenCalledWith('gone.example.com');
 	});
@@ -575,7 +586,7 @@ describe('providers.registerAction.deleteDomainAction', () => {
 			t.action(internal.domains.providers.registerAction.deleteDomainAction, {
 				providerType: 'mta',
 				domain: 'boom.example.com',
-			}),
+			})
 		).resolves.toBeNull();
 	});
 });
@@ -585,7 +596,7 @@ describe('providers.registerAction.deleteDomainAction', () => {
 // ============================================================================
 
 describe('trackingDomains.addTrackingDomain', () => {
-	it('inserts an unverified row whose CNAME target is THIS deployment\'s own tracking host (admin)', async () => {
+	it("inserts an unverified row whose CNAME target is THIS deployment's own tracking host (admin)", async () => {
 		const t = convexTest(schema, verifyModules);
 
 		// The CNAME target must point at the deployment that actually serves the
@@ -618,8 +629,8 @@ describe('trackingDomains.addTrackingDomain', () => {
 		sessionMock.admin = false;
 
 		await expect(
-			t.mutation(api.domains.trackingDomains.addTrackingDomain, { domain: 'nope.example.com' }),
-		).rejects.toThrow(/admins only/i);
+			t.mutation(api.domains.trackingDomains.addTrackingDomain, { domain: 'nope.example.com' })
+		).rejects.toThrow(/Only owners and admins can perform this action/);
 	});
 
 	it('rejects a duplicate domain', async () => {
@@ -627,7 +638,7 @@ describe('trackingDomains.addTrackingDomain', () => {
 
 		await t.mutation(api.domains.trackingDomains.addTrackingDomain, { domain: 'dup.example.com' });
 		await expect(
-			t.mutation(api.domains.trackingDomains.addTrackingDomain, { domain: 'dup.example.com' }),
+			t.mutation(api.domains.trackingDomains.addTrackingDomain, { domain: 'dup.example.com' })
 		).rejects.toThrow(/already registered/i);
 	});
 });
@@ -648,8 +659,8 @@ describe('trackingDomains.verifyTrackingDomain', () => {
 		sessionMock.admin = false;
 
 		await expect(
-			t.mutation(api.domains.trackingDomains.verifyTrackingDomain, { trackingDomainId: tdId! }),
-		).rejects.toThrow(/admins only/i);
+			t.mutation(api.domains.trackingDomains.verifyTrackingDomain, { trackingDomainId: tdId! })
+		).rejects.toThrow(/Only owners and admins can perform this action/);
 	});
 
 	it('throws not_found for a missing tracking domain', async () => {
@@ -666,7 +677,7 @@ describe('trackingDomains.verifyTrackingDomain', () => {
 		});
 
 		await expect(
-			t.mutation(api.domains.trackingDomains.verifyTrackingDomain, { trackingDomainId: tdId! }),
+			t.mutation(api.domains.trackingDomains.verifyTrackingDomain, { trackingDomainId: tdId! })
 		).rejects.toThrow(/Tracking domain not found/);
 	});
 });
@@ -709,8 +720,8 @@ describe('trackingDomains.removeTrackingDomain', () => {
 		sessionMock.admin = false;
 
 		await expect(
-			t.mutation(api.domains.trackingDomains.removeTrackingDomain, { trackingDomainId: tdId! }),
-		).rejects.toThrow(/admins only/i);
+			t.mutation(api.domains.trackingDomains.removeTrackingDomain, { trackingDomainId: tdId! })
+		).rejects.toThrow(/Only owners and admins can perform this action/);
 	});
 
 	it('throws not_found for a missing tracking domain', async () => {
@@ -727,7 +738,7 @@ describe('trackingDomains.removeTrackingDomain', () => {
 		});
 
 		await expect(
-			t.mutation(api.domains.trackingDomains.removeTrackingDomain, { trackingDomainId: tdId! }),
+			t.mutation(api.domains.trackingDomains.removeTrackingDomain, { trackingDomainId: tdId! })
 		).rejects.toThrow(/Tracking domain not found/);
 	});
 });
@@ -772,7 +783,7 @@ describe('trackingDomains.markVerifiedInternal', () => {
 		await expect(
 			t.mutation(internal.domains.trackingDomains.markVerifiedInternal, {
 				trackingDomainId: tdId!,
-			}),
+			})
 		).resolves.toBeNull();
 	});
 });
