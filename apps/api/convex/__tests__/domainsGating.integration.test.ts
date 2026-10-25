@@ -69,13 +69,11 @@ vi.mock('../lib/sessionOrganization', async () => {
 			if (!sessionMock.admin) throw new Error('forbidden: admins only');
 			return { userId: 'test-user', role: role() };
 		}),
-		requireAuthenticatedIdentity: vi
-			.fn()
-			.mockResolvedValue({
-				subject: 'test-user',
-				issuer: 'test',
-				tokenIdentifier: 'test|test-user',
-			}),
+		requireAuthenticatedIdentity: vi.fn().mockResolvedValue({
+			subject: 'test-user',
+			issuer: 'test',
+			tokenIdentifier: 'test|test-user',
+		}),
 	};
 });
 
