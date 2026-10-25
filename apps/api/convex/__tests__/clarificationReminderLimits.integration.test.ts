@@ -121,7 +121,7 @@ it('stamps every legacy row on the first run and drains the reminders over runs,
 	const sent = await reminders();
 	expect(sent).toHaveLength(total);
 	expect(new Set(sent.map((n) => `${n.inboundMessageId}:${n.userId}`)).size).toBe(total);
-}, 180_000);
+});
 
 // Sol's round-5 scenario: once some questions were reminded, every run used
 // to re-check each (question, reader) pair with its own index read. From the
@@ -154,7 +154,7 @@ it('drains 100 questions x 50 readers over runs, a full share each run, nobody t
 	await t.mutation(internal.inbox.processingLifecycle.reconcileAbandonedClarifications, {});
 	await t.finishAllScheduledFunctions(vi.runAllTimers);
 	expect(await reminders()).toHaveLength(total);
-}, 180_000);
+});
 
 // Sol's round-6 probe: held messages keep their bodies inline. When the sends
 // ran inside the cron's own transaction, the cron's scan of 100 such messages
@@ -177,7 +177,7 @@ it('reminds about 100 questions with 96 KiB bodies, with nothing rolled back', a
 		// Everything on the first run; nothing again on the second.
 		expect(await reminders()).toHaveLength(OVERDUE);
 	}
-}, 180_000);
+});
 
 // ─── Sol's round-7 probes: bounds by shape, not by counted budgets ──────────
 
@@ -319,7 +319,7 @@ it('finds a reminder past 500 other notices on the question', async () => {
 
 	const sent = await runOnce(t);
 	expect(sent.filter((n) => n.userId === 'reader-0')).toHaveLength(1);
-}, 60_000);
+});
 
 it('keeps the cron within limits over 100 questions on their own 192 KiB threads', async () => {
 	const t = await harness(1, false);
@@ -330,4 +330,4 @@ it('keeps the cron within limits over 100 questions on their own 192 KiB threads
 
 	const sent = await runOnce(t);
 	expect(sent).toHaveLength(OVERDUE);
-}, 180_000);
+});

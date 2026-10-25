@@ -383,8 +383,10 @@ describe('folder renames and deletes', () => {
 	});
 });
 
-// Hundreds of rows polled to empty: seconds on its own, far more in a loaded full run.
-describe('a long queue keeps draining', { timeout: 120_000 }, () => {
+// Hundreds of rows polled to empty, past the read limits and a deferral pass:
+// the population is the point, which is why the suite takes the population
+// budget (vitest.config.ts).
+describe('a long queue keeps draining', () => {
 	type Row = Omit<Doc<'externalMailRemoteOps'>, '_id' | '_creationTime' | 'accountId'>;
 	const row = (op: QueuedOp, nextAttemptAt: number): Row => ({
 		...op,

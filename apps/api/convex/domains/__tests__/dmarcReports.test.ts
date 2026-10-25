@@ -318,7 +318,7 @@ describe('getDomainSummary', () => {
 			isReady: false,
 			isIncomplete: true,
 		});
-	}, 120_000);
+	});
 
 	it('stops reading rows at the byte budget and says the view is truncated', async () => {
 		const t = convexTest(schema, modules);

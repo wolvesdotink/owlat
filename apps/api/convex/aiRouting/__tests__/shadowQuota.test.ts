@@ -33,7 +33,7 @@ describe('aiRouting.shadowQuota.claimShadowSlot', () => {
 		}
 		expect(admitted).toBeGreaterThan(50);
 		expect(admitted).toBeLessThanOrEqual(100);
-	}, 60_000);
+	});
 
 	it('answers a repeated message the same way, counting it once', async () => {
 		const t = newHarness();

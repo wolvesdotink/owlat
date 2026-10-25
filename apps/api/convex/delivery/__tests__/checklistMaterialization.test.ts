@@ -148,7 +148,7 @@ describe('Deliverability Center complete materialization', () => {
 			.flatMap((group) => group.items)
 			.find((item) => item.id === 'deployment.ptr');
 		expect(ptr).toMatchObject({ status: 'pass', lastCheckedAt: now });
-	}, 20_000);
+	});
 
 	it('reads legacy and current observation versions but quarantines unknown versions', async () => {
 		const t = convexTest(schema, modules);

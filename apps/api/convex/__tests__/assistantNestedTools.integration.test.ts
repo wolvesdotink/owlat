@@ -425,7 +425,7 @@ describe('the assistant turn', () => {
 		expect(draftRows).toEqual([
 			expect.objectContaining({ totalTokens: 15, parentCallId: turnRows[0]!.requestId }),
 		]);
-	}, 20_000);
+	});
 
 	it('notices a Stop while a nested draft waits on its provider, with no stream event (Sol r1 F1)', async () => {
 		const { t } = await setup('10');
@@ -480,7 +480,7 @@ describe('the assistant turn', () => {
 		const holds = await holdsOf(t);
 		expect(holds.length).toBeGreaterThanOrEqual(2);
 		expect(holds.every((hold) => hold.status === 'settled')).toBe(true);
-	}, 20_000);
+	});
 
 	it('stores a budget refusal as its code and reason, not as a sentence', async () => {
 		const { t } = await setup('0.0001');

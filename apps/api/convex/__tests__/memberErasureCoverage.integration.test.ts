@@ -462,12 +462,15 @@ describe('personal data coverage', () => {
 
 describe('volume under the platform limits', () => {
 	// The real ceiling is 32,000 documents read per transaction. convex-test
-	// needs minutes to seed and walk that many threads, so the limit is scaled
-	// down eightfold with the mailbox: one thread more than a transaction may
-	// read. The previous walker collected every thread in one transaction and
-	// failed here exactly as it does on a deployment past 32,000.
+	// reads by scanning the whole table, so each walker page costs time in
+	// proportion to the threads still left: the limit is scaled down 32-fold
+	// with the mailbox, to one thread more than a transaction may read. That
+	// still holds more than twice the walker's own per-transaction row cap
+	// (ERASURE_ROWS_PER_TRANSACTION), so the threads take several pages. A
+	// walker that collected every thread in one transaction fails here exactly
+	// as it does on a deployment past 32,000.
 	it('drains more retained threads than a transaction may read, many drafts and pages of mentions', async () => {
-		const DOCUMENTS_READ_LIMIT = 4_000;
+		const DOCUMENTS_READ_LIMIT = 1_000;
 		const t = erasureHarness({ documentsRead: DOCUMENTS_READ_LIMIT });
 		const { authUserId, requestId } = await seedEditor(t);
 		const { mailboxId } = await seedPersonalMailbox(t, authUserId);
@@ -532,5 +535,5 @@ describe('volume under the platform limits', () => {
 			expect(await ctx.db.query('chatMentions').first()).toBeNull();
 			expect(await ctx.db.get(mailboxId)).toBeNull();
 		});
-	}, 300_000);
+	});
 });

@@ -67,7 +67,7 @@ describe('previous-release calls are still accepted', () => {
 
 	beforeAll(async () => {
 		current = await currentFunctions(snapshot.functions);
-	}, 120_000);
+	});
 
 	it('the snapshot holds the public functions and the worker-called internal ones', () => {
 		const signatures = Object.values(snapshot.functions);

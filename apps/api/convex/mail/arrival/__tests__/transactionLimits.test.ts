@@ -174,5 +174,5 @@ describe('sender-wide re-sorts at 200 threads, under production limits', () => {
 			isDone: true,
 		});
 		expect(await placements(t, all)).toEqual({ today: 10 * THREADS });
-	}, 120_000);
+	});
 });
