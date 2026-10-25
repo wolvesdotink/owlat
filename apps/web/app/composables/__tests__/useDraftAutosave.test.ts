@@ -80,7 +80,7 @@ function trackedStore(store: EditorDraftStore) {
 	};
 	const idle = async (): Promise<void> => {
 		if (pending.size === 0) return;
-		await Promise.allSettled([...pending]);
+		await Promise.allSettled(pending);
 		return idle();
 	};
 	const tracked: EditorDraftStore = {
