@@ -59,9 +59,10 @@ const RESOLVERS = [
 
 export async function threadedSessionMock(): Promise<Record<string, unknown>> {
 	const actual = await vi.importActual<typeof SessionOrganization>('../lib/sessionOrganization');
+	const requirePermission: typeof SessionOrganization.requirePermission = actual.requirePermission;
 	const current = () => ({ ...mockSession });
 	const gate = (permission: Permission, message?: string) => {
-		actual.requirePermission(actual.hasPermission(mockSession.role, permission), message);
+		requirePermission(actual.hasPermission(mockSession.role, permission), message);
 		return current();
 	};
 	return {
