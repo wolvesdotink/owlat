@@ -323,12 +323,24 @@ describe('SDK retries are off (plan 1.14)', () => {
 			message: 'rate limited',
 			responseHeaders: { 'retry-after': '5' },
 		});
-		const started = Date.now();
-		await expect(
-			runLlmText({ model: fakeModel, prompt: 'hi', abortSignal: AbortSignal.timeout(50) })
-		).rejects.toMatchObject({ name: 'TimeoutError' });
-		expect(Date.now() - started).toBeLessThan(2_000);
-		expect(generateTextMock).toHaveBeenCalledTimes(1);
+		vi.useFakeTimers();
+		try {
+			const deadline = new AbortController();
+			const result = runLlmText({ model: fakeModel, prompt: 'hi', abortSignal: deadline.signal });
+			const settled = expect(result).rejects.toMatchObject({ name: 'TimeoutError' });
+			// The first attempt failed and the 5 s backoff is waiting on its timer.
+			await vi.advanceTimersByTimeAsync(0);
+			expect(generateTextMock).toHaveBeenCalledTimes(1);
+			expect(vi.getTimerCount()).toBe(1);
+			// The deadline fires long before the backoff would end.
+			deadline.abort(new DOMException('The operation timed out.', 'TimeoutError'));
+			await settled;
+			// The backoff timer is cleared, and no second attempt is made.
+			expect(vi.getTimerCount()).toBe(0);
+			expect(generateTextMock).toHaveBeenCalledTimes(1);
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 });
 

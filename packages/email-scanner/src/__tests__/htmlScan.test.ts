@@ -1,5 +1,7 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { scanContent } from '../content/index.js';
+import { contentRules } from '../content/rule.js';
+import { HOSTILE_UNITS } from './hostileRegexInputs.js';
 import { extractUrls } from '../content/phishingUrls.js';
 import {
 	MAX_CONTENT_SCAN_CHARS,
@@ -106,16 +108,7 @@ describe('content scan helpers run in linear time on adversarial input', () => {
 	// most 4 per character. A scan that rereads the input reads thousands.
 	const READS_PER_CHAR = 4;
 
-	const shapes: Array<[string, string]> = [
-		['unclosed anchors with href', '<a href="x" '],
-		['closed anchor tags without </a>', '<a href="x">'],
-		['anchors with unterminated quoted values', '<a x="'],
-		['anchors with unterminated single-quoted values', "<a x='"],
-		['tag openers', '<'],
-		['unclosed style openers', '<style'],
-		['unclosed script openers', '<script>'],
-		['unclosed comments', '<!--'],
-	];
+	const shapes = HOSTILE_UNITS;
 
 	/** Run the scan behind `extractUrls` and check what it read. */
 	const expectLinearAnchorScan = (input: string) => {
@@ -139,22 +132,30 @@ describe('content scan helpers run in linear time on adversarial input', () => {
 	});
 
 	// scanContent also runs every content rule, and those spend their time in
-	// regular expressions, whose steps no meter can count. So it keeps a time
-	// budget, over 100 times what it takes on a developer machine (10-40 ms): a
-	// CI runner meets it with room to spare, while a scan that rereads 5 MB
-	// takes minutes.
-	const BUDGET_MS = 5000;
-
-	const timed = (fn: () => unknown): number => {
-		const start = performance.now();
-		fn();
-		return performance.now() - start;
-	};
-
-	it.each(shapes)('scanContent on 5 MB of %s', (_label, unit) => {
-		const input = repeatTo(unit);
-		expect(timed(() => scanContent('subject', input, { from: 'a@example.com' }))).toBeLessThan(
-			BUDGET_MS
-		);
-	});
+	// regular expressions, whose steps no meter can count. What the tests hold
+	// is their input: no rule sees more than the scan cap, however long the
+	// body. `bun run perf:bench` (family scan-content-scaling) times the rules
+	// on the same bodies, filling the cap, at two sizes.
+	it.each(HOSTILE_UNITS)(
+		'scanContent on 5 MB of %s hands each rule at most the cap',
+		(_l, unit) => {
+			const rules = [...contentRules.values()];
+			const seen: number[] = [];
+			const spies = rules.map((rule) => {
+				const scan = rule.scan.bind(rule);
+				return vi.spyOn(rule, 'scan').mockImplementation((input) => {
+					seen.push(input.html.length, input.text.length);
+					return scan(input);
+				});
+			});
+			try {
+				const result = scanContent('subject', repeatTo(unit), { from: 'a@example.com' });
+				expect(result.level).toBeDefined();
+			} finally {
+				for (const spy of spies) spy.mockRestore();
+			}
+			expect(seen).toHaveLength(2 * rules.length);
+			expect(Math.max(...seen)).toBeLessThanOrEqual(MAX_CONTENT_SCAN_CHARS);
+		}
+	);
 });
