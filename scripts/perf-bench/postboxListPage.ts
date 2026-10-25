@@ -28,6 +28,8 @@
  * script may not import from apps/; the API contract test holds them to the
  * real wire type. Content is synthetic and uses example domains only.
  */
+import { decodeJson, type Decoder } from '../json';
+import { decodeListPage } from './listPageWire';
 
 /** The live first page `usePostboxThreads` subscribes to, and `listMessages`' default. */
 export const LIVE_PAGE_SIZE = 50;
@@ -364,9 +366,11 @@ function cursorAfter(rand: Rand): string {
 	return Array.from({ length: 4 }, () => convexId(rand)).join('');
 }
 
+const decodeWirePage: Decoder<ListPage> = decodeListPage;
+
 /** A fresh copy of a page, as the Convex client delivers every update. */
 export function wireCopy(page: ListPage): ListPage {
-	return JSON.parse(JSON.stringify(page)) as ListPage;
+	return decodeJson(JSON.stringify(page), decodeWirePage, 'list page');
 }
 
 /** UTF-8 size of a value's JSON, as it travels. */

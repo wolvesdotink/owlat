@@ -22,6 +22,16 @@ import { hashPassword } from '@owlat/shared/passwordHash';
 import { parseAdminKey } from '../dev-stack/envFile';
 import { selfHostedCliEnv } from '../dev-stack/convexTarget';
 import { syncStage } from '../dev-stack/stage';
+import {
+	arrayOf,
+	decodeJson,
+	type Decoder,
+	object,
+	optional,
+	record,
+	string,
+	unchecked,
+} from '../json';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 /** Two levels below the root like `apps/api`, and gitignored by the `/.owlat-*` rule. */
@@ -66,6 +76,21 @@ export interface QueuedSend {
 }
 
 type Row = Record<string, unknown>;
+
+/** Convex's HTTP API envelope: `value` on success, `errorMessage` otherwise. */
+const decodeConvexAnswer = object({
+	status: optional(string),
+	value: optional(unchecked),
+	errorMessage: optional(string),
+});
+
+/**
+ * A BetterAuth answer checked by `decode`. Errors name the route only: the
+ * body can carry a session token.
+ */
+async function authJson<T>(response: Promise<Response>, route: string, decode: Decoder<T>) {
+	return decodeJson(await (await response).text(), decode, route);
+}
 
 export class KillBackend {
 	private readonly cliEnv: NodeJS.ProcessEnv;
@@ -146,21 +171,27 @@ export class KillBackend {
 			return response;
 		};
 		await auth('/sign-in/email', { email: OWNER.email, password: OWNER.password });
-		const organizations = (await (await auth('/organization/list')).json()) as Array<{
-			id: string;
-		}>;
+		const organizations = await authJson(
+			auth('/organization/list'),
+			'/organization/list',
+			arrayOf(object({ id: string }))
+		);
 		if (organizations.length !== 1) {
 			throw new Error(`the owner belongs to ${organizations.length} organizations, expected 1`);
 		}
 		// The token carries the active organization; the seeded session has none yet.
 		await auth('/organization/set-active', { organizationId: organizations[0]!.id });
-		const { token } = (await (await auth('/convex/token')).json()) as { token: string };
+		const { token } = await authJson(
+			auth('/convex/token'),
+			'/convex/token',
+			object({ token: string })
+		);
 		return token;
 	}
 
 	/** Connect the owner's external mailbox and start importing its history. */
 	async connectAndImport(token: string, account: ImapAccount): Promise<SeededAccount> {
-		const connected = (await this.call(token, 'action', 'mail/external/accountsActions:connect', {
+		const result = await this.call(token, 'action', 'mail/external/accountsActions:connect', {
 			emailAddress: account.emailAddress,
 			imapHost: account.host,
 			imapPort: account.port,
@@ -171,7 +202,11 @@ export class KillBackend {
 			isSmtpSecure: false,
 			username: account.emailAddress,
 			password: account.password,
-		})) as { externalAccountId: string; mailboxId: string };
+		});
+		const connected = object({ externalAccountId: string, mailboxId: string })(
+			result,
+			'mail/external/accountsActions:connect'
+		);
 		await this.call(token, 'mutation', 'mail/migration:start', {});
 		return { accountId: connected.externalAccountId, mailboxId: connected.mailboxId };
 	}
@@ -221,7 +256,7 @@ export class KillBackend {
 			.split('\n')
 			.map((line) => line.trim())
 			.filter((line) => line.startsWith('{'))
-			.map((line) => JSON.parse(line) as Row);
+			.map((line, index) => decodeJson(line, record, `${table} row ${index + 1}`));
 	}
 
 	/** One call through Convex's public HTTP API, as the signed-in owner. */
@@ -236,11 +271,7 @@ export class KillBackend {
 			headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
 			body: JSON.stringify({ path, args, format: 'json' }),
 		});
-		const answer = (await response.json()) as {
-			status?: string;
-			value?: unknown;
-			errorMessage?: string;
-		};
+		const answer = decodeJson(await response.text(), decodeConvexAnswer, path);
 		if (answer.status !== 'success') {
 			throw new Error(
 				`${path} failed (${response.status}): ${answer.errorMessage ?? 'no message'}`

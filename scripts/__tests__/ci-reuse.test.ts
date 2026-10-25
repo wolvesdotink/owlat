@@ -2,7 +2,10 @@ import { expect, it } from 'vitest';
 import {
 	eligibleRun,
 	assertVerification,
+	decodeRun,
+	decodeWorkflowRuns,
 	FULL_JOBS,
+	parseVerification,
 	type Run,
 	type Verification,
 } from '../ci/reuse';
@@ -125,4 +128,51 @@ it('waits for the same running commit without launching duplicate verification',
 	});
 	expect(result.run).toEqual(run);
 	expect(polls).toBe(4);
+});
+
+it('reads verification evidence only in the shape the summary job writes', () => {
+	const text = JSON.stringify(evidence);
+	expect(parseVerification(text, 'verification.json')).toEqual(evidence);
+	for (const [patch, message] of [
+		[{ full: 'false' }, 'verification.json.full must be a boolean'],
+		[{ version: '1' }, 'verification.json.version must be an integer'],
+		[{ expected: FULL_JOBS.join(',') }, 'verification.json.expected must be an array'],
+		[
+			{ results: { detect: { result: 'success' } } },
+			'verification.json.results.detect must be a string',
+		],
+		[{ runId: 10 }, 'verification.json.runId must be a string'],
+	] as const)
+		expect(() =>
+			parseVerification(JSON.stringify({ ...evidence, ...patch }), 'verification.json')
+		).toThrow(message);
+});
+
+it('never grants reuse from evidence of the wrong shape', async () => {
+	const { probeMainCI } = await import('../ci/reuse-probe');
+	// A string "false" is truthy: read through a cast, it passed the full-run check.
+	const text = JSON.stringify({ ...evidence, full: 'false' });
+	const result = await probeMainCI({
+		repo: 'example/repo',
+		sha: 'abc',
+		runs: () => [run],
+		current: () => run,
+		evidence: () => parseVerification(text, 'verification.json'),
+		now: Date.now,
+		sleep: async () => {},
+	});
+	expect(result).toEqual({ reason: 'Verification evidence unavailable' });
+});
+
+it('reads workflow runs, a branchless run included, and refuses a malformed one', () => {
+	const page = { total_count: 2, workflow_runs: [run, { ...run, id: 11, head_branch: null }] };
+	expect(decodeWorkflowRuns(page, 'runs').map((r) => r.head_branch)).toEqual(['main', null]);
+	expect(decodeRun({ ...run, extra: 1 }, 'run')).toMatchObject(run);
+	expect(() => decodeWorkflowRuns({ workflow_runs: [{ ...run, id: '10' }] }, 'runs')).toThrow(
+		'runs.workflow_runs[0].id must be an integer'
+	);
+	expect(() => decodeWorkflowRuns([run], 'runs')).toThrow('runs must be an object');
+	expect(() => decodeRun({ ...run, conclusion: undefined }, 'run')).toThrow(
+		'run.conclusion must be a string'
+	);
 });

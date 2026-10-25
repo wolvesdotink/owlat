@@ -18,7 +18,9 @@ import { spawnSync } from 'node:child_process';
 import { readdirSync, readFileSync } from 'node:fs';
 import { relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { isOwlatWarning, type LintDiagnostic } from './check-lint-warnings';
+import { isOwlatWarning } from './check-lint-warnings';
+import { JsonShapeError } from './json';
+import { type LintDiagnostic, parseLintReport } from './lint-diagnostics';
 
 const SNIPPET_LIMIT = 160;
 
@@ -76,12 +78,15 @@ function main(): number {
 		console.error(run.error ?? run.stderr ?? 'oxlint failed');
 		return 2;
 	}
-	const report = JSON.parse(run.stdout) as { diagnostics?: LintDiagnostic[] };
-	if (!Array.isArray(report.diagnostics)) {
-		console.error('oxlint printed no diagnostics array');
+	let diagnostics: LintDiagnostic[];
+	try {
+		diagnostics = parseLintReport(run.stdout);
+	} catch (error) {
+		if (!(error instanceof JsonShapeError)) throw error;
+		console.error(error.message);
 		return 2;
 	}
-	for (const diagnostic of report.diagnostics.filter(isOwlatWarning)) {
+	for (const diagnostic of diagnostics.filter(isOwlatWarning)) {
 		const filename = resolve(root, diagnostic.filename);
 		console.info(
 			findingLine({ ...diagnostic, filename: relative(root, filename) }, readFileSync(filename))

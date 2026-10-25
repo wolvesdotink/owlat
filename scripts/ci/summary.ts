@@ -1,8 +1,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { assertJobResults } from './selection';
-const expected = JSON.parse(process.env['CI_EXPECTED'] ?? 'null') as string[];
-const needs = JSON.parse(process.env['CI_NEEDS'] ?? '{}') as Record<string, { result: string }>;
-if (!Array.isArray(expected)) throw new Error('Missing expected CI job manifest');
+import { assertJobResults, parseExpectedJobs, parseJobResults } from './selection';
+const expected = parseExpectedJobs(process.env['CI_EXPECTED']);
+const needs = parseJobResults(process.env['CI_NEEDS']);
 assertJobResults(expected, needs);
 mkdirSync('.ci-verification', { recursive: true });
 writeFileSync(

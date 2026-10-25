@@ -121,6 +121,17 @@ describe('secrets', () => {
 		expect(secrets.betterAuthSecret).toMatch(/^[0-9a-f]{64}$/);
 	});
 
+	it('refuses a file that is not an object of secrets, and leaves it alone', () => {
+		const file = join(tempDir(), 'secrets.json');
+		for (const contents of ['null', '42', '"a"', '["' + 'a'.repeat(64) + '"]']) {
+			writeFileSync(file, contents);
+			expect(() => loadOrCreateSecrets(file)).toThrow('does not hold an object of secrets');
+			expect(readFileSync(file, 'utf8')).toBe(contents);
+		}
+		writeFileSync(file, '{"instanceSecret":');
+		expect(() => loadOrCreateSecrets(file)).toThrow('is not valid JSON');
+	});
+
 	it('feeds the compose file the derived ports and URLs', () => {
 		const config = resolveDevStackConfig({ root: '/w', linkedWorktree: true, explicit: '7' });
 		const secrets = { instanceSecret: '1', betterAuthSecret: '2', redisPassword: '3' };

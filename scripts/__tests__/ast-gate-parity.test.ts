@@ -29,6 +29,7 @@ import {
 	unexplained,
 } from '../ast-gate-parity';
 import { apiTree, removeTrees } from './convexGates.testlib';
+import { parseLintReport } from '../lint-diagnostics';
 
 const REPOSITORY_ROOT = fileURLToPath(new URL('../..', import.meta.url));
 const roots: string[] = [];
@@ -487,10 +488,7 @@ function owlatFindings(cwd: string, targets: string[]): string[] {
 		['--config', join(REPOSITORY_ROOT, 'oxlintrc.json'), '--format', 'json', ...targets],
 		{ cwd, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 }
 	);
-	const { diagnostics } = JSON.parse(run.stdout) as {
-		diagnostics: { filename: string; code?: string; labels?: { span: { line: number } }[] }[];
-	};
-	return diagnostics
+	return parseLintReport(run.stdout)
 		.filter((d) => (d.code ?? '').startsWith('owlat('))
 		.map((d) => `${resolve(cwd, d.filename)}:${d.labels?.[0]?.span.line ?? 0}:${d.code}`)
 		.sort();

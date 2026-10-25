@@ -162,6 +162,27 @@ describe('check-stored-block-corpus', () => {
 		expect(check(root, base).status).toBe(0);
 	});
 
+	it('refuses a retired.json that does not name each version with its migration', () => {
+		const { root, base } = repository();
+		rmSync(join(root, CORPUS, 'v1/a.json'));
+		rmSync(join(root, CORPUS, 'snapshots/renderer-v2/a.html'));
+		// Read through a cast, the array's index "1" retired version 1.
+		for (const [contents, message] of [
+			[
+				'["v0", "migrations/0099_retire_v1_blocks.ts"]',
+				'must map each retired contentBlockVersion',
+			],
+			['{ "1": true }', 'must name the migration that retired contentBlockVersion 1'],
+			['{ "1": "" }', 'must name the migration that retired contentBlockVersion 1'],
+			['{ "1": ', 'is not valid JSON'],
+		]) {
+			write(root, `${CORPUS}/retired.json`, contents!);
+			const result = check(root, base);
+			expect(result.output).toContain(message);
+			expect(result.status).toBe(1);
+		}
+	});
+
 	describe('push events in CI', () => {
 		it('compares a push with the commit before it, even when origin/main is HEAD', () => {
 			const { root, base } = rewrittenOnTop();

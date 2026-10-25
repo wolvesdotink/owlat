@@ -200,6 +200,35 @@ describe('the member-jargon gate, unused exemptions', () => {
 		expect(result.status).toBe(0);
 	});
 
+	it('stops on a catalog that is there but not nested groups of messages', () => {
+		// Read leniently, a catalog of the wrong shape scanned fewer messages and passed.
+		for (const [catalog, message] of [
+			[
+				'{"dashboard":{"preferences":["Set up SPF"]}}',
+				'dashboard.preferences must be a message or a group',
+			],
+			[
+				'{"dashboard":{"preferences":{"aliases":{"hint":42}}}}',
+				'dashboard.preferences.aliases.hint must be a message',
+			],
+			['["Set up SPF"]', 'the catalog must be a message or a group'],
+			['{"dashboard":', 'is not valid JSON'],
+		]) {
+			const result = run({
+				files: {
+					[`${PREFERENCES}/aliases.vue`]: page(
+						`<p>{{ t('dashboard.preferences.aliases.hint') }}</p>`
+					),
+					'apps/web/i18n/locales/en.json': catalog!,
+				},
+				roots: [PREFERENCES],
+				allowlist: [],
+			});
+			expect(result.output).toContain(message);
+			expect(result.status).toBe(2);
+		}
+	});
+
 	it('fails when an unlisted surface renders a catalog message that says jargon', () => {
 		// The violation half of the same move: copy that leaks jargon is a leak
 		// whether it sits in the template or behind a key the template renders.

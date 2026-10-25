@@ -38,25 +38,8 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-
-interface PackageManifest {
-	readonly name?: string;
-	readonly scripts?: Readonly<Record<string, string>>;
-	readonly dependencies?: Readonly<Record<string, string>>;
-	readonly devDependencies?: Readonly<Record<string, string>>;
-	readonly peerDependencies?: Readonly<Record<string, string>>;
-}
-
-interface TurboTask {
-	readonly taskId: string;
-	readonly package: string;
-	readonly task: string;
-	readonly dependencies: readonly string[];
-}
-
-interface TurboDryRun {
-	readonly tasks: readonly TurboTask[];
-}
+import { readPackageManifest, type PackageManifest } from './package-manifest';
+import { parseTurboGraph } from './turbo-json';
 
 interface SharedArtifact {
 	readonly packageName: string;
@@ -118,7 +101,7 @@ function readWorkspaceManifests(): ReadonlyMap<string, PackageManifest> {
 	for (const directory of directories) {
 		const manifestPath = join(workspaceRoot, directory, 'package.json');
 		if (!existsSync(manifestPath)) continue;
-		const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as PackageManifest;
+		const manifest = readPackageManifest(manifestPath);
 		if (!manifest.name) continue;
 		manifests.set(manifest.name, manifest);
 	}
@@ -147,9 +130,7 @@ function findCrossPackageBuildScripts(
  * would let a future root script become an unordered writer silently.
  */
 function findUnsanctionedRootScripts(): readonly string[] {
-	const manifest = JSON.parse(
-		readFileSync(join(workspaceRoot, 'package.json'), 'utf8')
-	) as PackageManifest;
+	const manifest = readPackageManifest(join(workspaceRoot, 'package.json'));
 
 	const failures: string[] = [];
 	for (const [script, command] of Object.entries(manifest.scripts ?? {})) {
@@ -262,7 +243,7 @@ function findUnorderedArtifactReaders(
 		throw new Error(`Build-graph inspection failed: ${dryRun.stderr.trim()}`);
 	}
 
-	const graph = JSON.parse(dryRun.stdout) as TurboDryRun;
+	const graph = parseTurboGraph(dryRun.stdout, 'turbo run --dry=json');
 	const edges = new Map(graph.tasks.map((task) => [task.taskId, task.dependencies]));
 	const failures: string[] = [];
 	for (const artifact of artifacts) {

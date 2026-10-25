@@ -1,3 +1,4 @@
+import { arrayOf, decodeJson, JsonShapeError, object, recordOf, string } from '../json';
 export interface Task {
 	task: string;
 	package: string;
@@ -137,6 +138,23 @@ export function expectedJobs(selection: {
 		...(selection.java ? ['sdk-java'] : []),
 		...(selection.desktopSpa ? ['desktop-spa'] : []),
 	];
+}
+const decodeGroup = object({
+	workspaces: arrayOf(object({ package: string, name: string, directory: string })),
+});
+/** A test group as the detect job wrote it into the matrix (`CI_GROUP`). */
+export function parseTestGroup(text: string | undefined): { workspaces: Workspace[] } {
+	if (!text) throw new JsonShapeError('Missing CI test group');
+	return decodeJson(text, decodeGroup, 'CI_GROUP');
+}
+/** The job names the detect job expects to run (`CI_EXPECTED`). */
+export function parseExpectedJobs(text: string | undefined): string[] {
+	if (!text) throw new JsonShapeError('Missing expected CI job manifest');
+	return decodeJson(text, arrayOf(string), 'CI_EXPECTED');
+}
+/** The `needs` context of the summary job (`CI_NEEDS`): each job's result. */
+export function parseJobResults(text: string | undefined): Record<string, { result: string }> {
+	return decodeJson(text ?? '{}', recordOf(object({ result: string })), 'CI_NEEDS');
 }
 export function assertJobResults(expected: string[], needs: Record<string, { result: string }>) {
 	if (!expected.includes('detect') || new Set(expected).size !== expected.length)

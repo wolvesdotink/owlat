@@ -615,6 +615,20 @@ describe('the desktop invoke contract gate', () => {
 		]);
 	});
 
+	it('refuses a capability file whose permissions are not identifiers', async () => {
+		const window = `${IMPORT}invoke('plugin:store|load');\n`;
+		for (const [permissions, message] of [
+			['store:default', 'default.json.permissions must be an array'],
+			[[{ identifier: 42 }], 'default.json.permissions[0] must be a permission identifier'],
+			[[null], 'default.json.permissions[0] must be a permission identifier'],
+		] as const) {
+			const capability = JSON.stringify({ windows: ['main'], permissions });
+			await expect(
+				check({ 'apps/desktop/src-tauri/capabilities/default.json': capability, [WINDOW]: window })
+			).rejects.toThrow(message);
+		}
+	});
+
 	it('passes a plugin command granted by the real capability files', async () => {
 		const root = await fixture({
 			[WINDOW]: `${IMPORT}invoke('plugin:notification|is_permission_granted');\n`,

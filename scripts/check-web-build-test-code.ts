@@ -20,6 +20,8 @@
  */
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { JsonShapeError } from './json';
+import { type PackageManifest, readPackageManifest } from './package-manifest';
 
 /** Packages only a test run needs. Any of them in the server bundle is a leak. */
 const TEST_PACKAGE =
@@ -45,9 +47,14 @@ if (missing.length > 0) {
 
 const problems: string[] = [];
 
-const serverPackage = JSON.parse(readFileSync(serverPackagePath, 'utf8')) as {
-	dependencies?: Record<string, string>;
-};
+let serverPackage: PackageManifest;
+try {
+	serverPackage = readPackageManifest(serverPackagePath);
+} catch (error) {
+	if (!(error instanceof JsonShapeError)) throw error;
+	console.error(`check-web-build-test-code: cannot read ${serverPackagePath}: ${error.message}`);
+	process.exit(2);
+}
 for (const name of Object.keys(serverPackage.dependencies ?? {})) {
 	if (TEST_PACKAGE.test(name)) problems.push(`server/package.json depends on ${name}`);
 }

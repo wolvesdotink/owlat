@@ -5,6 +5,9 @@ import {
 	groupWorkspaces,
 	expectedJobs,
 	assertJobResults,
+	parseExpectedJobs,
+	parseJobResults,
+	parseTestGroup,
 	selectCiWork,
 	type Task,
 } from '../ci/selection';
@@ -154,5 +157,40 @@ describe('CI work selection', () => {
 				images,
 			})
 		).toMatchObject({ java: true });
+	});
+});
+
+describe('CI matrix inputs', () => {
+	const group = {
+		id: 1,
+		workspaces: [{ package: '@owlat/shared', name: 'shared', directory: 'packages/shared' }],
+	};
+
+	it('read the test group, the expected jobs and the job results as Actions writes them', () => {
+		expect(parseTestGroup(JSON.stringify(group))).toEqual(group);
+		expect(parseExpectedJobs('["detect","lint"]')).toEqual(['detect', 'lint']);
+		expect(parseJobResults('{"detect":{"result":"success","outputs":{"api":"true"}}}')).toEqual({
+			detect: { result: 'success', outputs: { api: 'true' } },
+		});
+		expect(parseJobResults(undefined)).toEqual({});
+	});
+
+	it('refuse a group, manifest or result of the wrong shape', () => {
+		expect(() => parseTestGroup(undefined)).toThrow('Missing CI test group');
+		expect(() => parseTestGroup('null')).toThrow('CI_GROUP must be an object');
+		expect(() =>
+			parseTestGroup(JSON.stringify({ workspaces: [{ package: '@owlat/shared', name: 'shared' }] }))
+		).toThrow('CI_GROUP.workspaces[0].directory must be a string');
+		expect(() => parseExpectedJobs(undefined)).toThrow('Missing expected CI job manifest');
+		expect(() => parseExpectedJobs('"detect,lint"')).toThrow('CI_EXPECTED must be an array');
+		expect(() => parseExpectedJobs('["detect",1]')).toThrow('CI_EXPECTED[1] must be a string');
+		// An array would read as jobs "0" and "1"; a bare string as a success.
+		expect(() => parseJobResults('[{"result":"success"}]')).toThrow('CI_NEEDS must be an object');
+		expect(() => parseJobResults('{"detect":"success"}')).toThrow(
+			'CI_NEEDS.detect must be an object'
+		);
+		expect(() => parseJobResults('{"detect":{"result":true}}')).toThrow(
+			'CI_NEEDS.detect.result must be a string'
+		);
 	});
 });

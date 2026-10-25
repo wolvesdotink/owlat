@@ -1,3 +1,4 @@
+import { arrayOf, decodeJson, type Decoder, integer, object, recordOf, string } from '../json';
 export interface DesktopManifest {
 	version: string;
 	platforms: Record<string, { url: string; signature: string }>;
@@ -6,6 +7,19 @@ interface DesktopRelease {
 	id: number;
 	tag_name: string;
 	assets: { id: number; name: string; url: string; browser_download_url: string }[];
+}
+export const decodeDesktopRelease: Decoder<DesktopRelease> = object({
+	id: integer,
+	tag_name: string,
+	assets: arrayOf(object({ id: integer, name: string, url: string, browser_download_url: string })),
+});
+const decodeDesktopManifest: Decoder<DesktopManifest> = object({
+	version: string,
+	platforms: recordOf(object({ url: string, signature: string })),
+});
+/** The updater's `latest.json` as downloaded from the release. */
+export function parseDesktopManifest(text: string, label: string): DesktopManifest {
+	return decodeJson(text, decodeDesktopManifest, label);
 }
 // Draft releases must be addressed by the caller's numeric ID. A tag lookup
 // excludes drafts and may select another release when stale drafts exist.
