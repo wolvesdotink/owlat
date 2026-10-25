@@ -68,3 +68,9 @@ convex/domains/lifecycleReducer.ts
 # the shells around them.
 convex/contacts/sunsetPolicy.ts
 convex/contacts/sunsetSweepDecision.ts
+
+# Personal-mail dispatch decisions; the action (mail/outbound.ts) and its
+# build and transport helpers (mail/outbound/build.ts, dispatch.ts) are the
+# shells. The seal policy is the consent rule they share with the composer.
+convex/mail/outbound/decision.ts
+convex/mail/sealPolicy.ts
