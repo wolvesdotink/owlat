@@ -30,7 +30,8 @@ describe('scanContent hostile bodies', () => {
 const output = perfBenchOutput();
 
 describe.runIf(output)('scanContent scaling benchmark (perf:bench only)', () => {
-	// No per-test budget here: the driver runs benchmark specs without one.
+	// No local timeout: the perf:bench driver supplies the shared benchmark budget
+	// (PERF_BENCH_TIMEOUT_MS), and a local override would bypass it.
 	it('samples each body at n and 4n', () => {
 		const { tasks, scaling } = sampleScalingCases(SCAN_CONTENT_CASES, SCALING_FACTOR, {
 			warmup: 2,

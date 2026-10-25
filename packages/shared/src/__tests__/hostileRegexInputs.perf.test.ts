@@ -32,7 +32,8 @@ describe('shared regex-bound hostile inputs', () => {
 const output = perfBenchOutput();
 
 describe.runIf(output)('shared regex-bound scaling benchmark (perf:bench only)', () => {
-	// No per-test budget here: the driver runs benchmark specs without one.
+	// No local timeout: the perf:bench driver supplies the shared benchmark budget
+	// (PERF_BENCH_TIMEOUT_MS), and a local override would bypass it.
 	it('samples each case at n and 4n', () => {
 		const { tasks, scaling } = sampleScalingCases(SHARED_REGEX_CASES, SCALING_FACTOR, {
 			warmup: 3,
