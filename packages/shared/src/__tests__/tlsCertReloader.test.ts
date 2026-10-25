@@ -48,7 +48,7 @@ let newPair: TlsCertMaterial;
 beforeAll(() => {
 	oldPair = generatePair('old.mail.example.com');
 	newPair = generatePair('new.mail.example.com');
-}, 30000);
+});
 
 describe('startTlsCertReloader', () => {
 	let dir: string;

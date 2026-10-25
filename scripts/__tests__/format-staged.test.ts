@@ -19,7 +19,6 @@ import {
 import { devNull, tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { PARALLEL_GATE_TIMEOUT_MS } from '../../vitest.timeouts';
 import { FORMAT_PATHSPECS } from '../format-staged';
 import { NO_AUTO_MAINTENANCE } from './gitRepository.testlib';
 
@@ -126,7 +125,7 @@ function baseline(root: string): void {
 	commitOk(root);
 }
 
-describe('format-staged pre-commit hook', { timeout: PARALLEL_GATE_TIMEOUT_MS }, () => {
+describe('format-staged pre-commit hook', () => {
 	it('formats the staged files of the first commit and the working tree with them', () => {
 		const { root } = repository();
 		installHook(root);
@@ -335,7 +334,7 @@ describe('format-staged pre-commit hook', { timeout: PARALLEL_GATE_TIMEOUT_MS },
 	});
 });
 
-describe('install-git-hooks', { timeout: PARALLEL_GATE_TIMEOUT_MS }, () => {
+describe('install-git-hooks', () => {
 	const hookFile = (root: string) => join(root, '.git/hooks/pre-commit');
 
 	it('installs idempotently and uninstalls its own hook', () => {

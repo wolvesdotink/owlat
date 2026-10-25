@@ -75,7 +75,7 @@ beforeAll(() => {
 			new Set(Object.keys(task.inputs).map((file) => normalize(join(task.directory, file)))),
 		])
 	);
-}, 120_000);
+});
 
 describe('turbo inputs for the perf-scenario writer limits', () => {
 	it('is imported by the web scenarios and the api contract test', () => {

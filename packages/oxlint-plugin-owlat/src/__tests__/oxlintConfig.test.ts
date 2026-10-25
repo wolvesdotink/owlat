@@ -74,9 +74,20 @@ const FIXTURES: Record<string, string> = {
 		'',
 	].join('\n'),
 	'timeout.test.ts': [
-		"import { it } from 'vitest';",
+		"import { beforeAll, it } from 'vitest';",
 		'',
+		'beforeAll(() => {}, 20_000);',
 		"it('slow', async () => {}, 30_000);",
+		"it('slower', { timeout: 60_000 }, async () => {});",
+		"it.skip('later', () => {});",
+		'',
+	].join('\n'),
+	'sharedBudget.test.ts': [
+		"import { it } from 'vitest';",
+		"import { PARALLEL_GATE_TIMEOUT_MS } from '../vitest.timeouts';",
+		'',
+		"it('boots a tool', async () => {}, PARALLEL_GATE_TIMEOUT_MS);",
+		"it.skipIf(process.platform === 'win32')('uses a unix socket', () => {});",
 		'',
 	].join('\n'),
 	'quarantined.test.ts': [
@@ -259,17 +270,21 @@ describe.each(['.', 'apps/web'])('oxlint run from %s with the root config', (cwd
 		expect(errorCodes(byFile.get('pragma.test.ts'))).toEqual(['owlat(no-test-environment-pragma)']);
 	});
 
-	it('reports a local test timeout and a retry in a vitest config for the ratchet', () => {
-		expect(warningCodes(byFile.get('timeout.test.ts'))).toEqual([
-			'owlat(no-test-timeout-or-unreasoned-skip)',
-		]);
-		expect(warningCodes(byFile.get('vitest.config.ts'))).toEqual([
+	it('rejects local test and hook timeouts, an unreasoned skip and a retry in a vitest config', () => {
+		expect(errorCodes(byFile.get('timeout.test.ts'))).toEqual(
+			Array(4).fill('owlat(no-test-timeout-or-unreasoned-skip)')
+		);
+		expect(errorCodes(byFile.get('vitest.config.ts'))).toEqual([
 			'owlat(no-test-timeout-or-unreasoned-skip)',
 		]);
 	});
 
 	it('accepts a skip that names its tracking issue', () => {
 		expect(byFile.get('quarantined.test.ts')).toBeUndefined();
+	});
+
+	it('accepts a shared budget and a skip gated on a real condition', () => {
+		expect(byFile.get('sharedBudget.test.ts')).toBeUndefined();
 	});
 
 	it('reports exponential backoff computed outside the retry policy module', () => {

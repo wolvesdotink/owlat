@@ -151,7 +151,7 @@ describe('apply-transport secrets at rest', () => {
 			EMAIL_PROVIDER: PLUGIN_KIND,
 			[PLUGIN_TOKEN_ENV]: 'tok-live',
 		});
-	}, 15_000);
+	});
 
 	it('pushes the PLAINTEXT relay password live but writes the SEALED form to the .env backup', async () => {
 		readMock.mockResolvedValue({

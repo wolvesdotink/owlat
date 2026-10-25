@@ -127,7 +127,7 @@ describe('preview canvas fixture fidelity', () => {
 const output = perfBenchOutput();
 
 describe.runIf(output)('preview regenerate benchmark (perf:bench only)', () => {
-	it('samples regenerate and the dark-mode toggle', { timeout: 600_000 }, () => {
+	it('samples regenerate and the dark-mode toggle', () => {
 		const canvases = previewCanvases();
 		const tasks = canvases.map((canvas) => {
 			const open = openPreview(canvas);

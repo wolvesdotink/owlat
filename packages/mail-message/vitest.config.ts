@@ -1,6 +1,10 @@
 import { nodePackageConfig } from '../../vitest.shared';
 
 export default nodePackageConfig({
+	// The seeded fuzz suite parses 10,000 mutated messages in one test: about
+	// 300ms on an idle machine, over 12s on a runner shared with the whole
+	// monorepo's release gate.
+	timeout: 'parallel-gate',
 	include: ['__tests__/**/*.test.ts', 'src/**/__tests__/**/*.test.ts'],
 	coverage: {
 		// R2 ratchet (U6 doctrine): the compose side is raised to the parse

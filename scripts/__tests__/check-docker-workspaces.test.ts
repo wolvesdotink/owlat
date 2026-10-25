@@ -29,7 +29,6 @@ import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { afterAll, describe, expect, it } from 'vitest';
-import { PARALLEL_GATE_TIMEOUT_MS } from '../../vitest.timeouts';
 
 const REPOSITORY_ROOT = fileURLToPath(new URL('../..', import.meta.url));
 
@@ -413,20 +412,12 @@ describe('docker workspace-manifest guard', () => {
 	});
 
 	// The only case here that runs the guard over the REAL tree: a `git ls-files`
-	// plus a parse of every Dockerfile in the repository. That fixed subprocess
-	// cost is well inside vitest's 5s default standalone, but this file shares a
-	// worker pool with the other gate suites — each of which also shells out —
-	// and it timed out at 5s once the pool grew. Take the shared gate budget, as
-	// check-convex-node-globals.test.ts does for its own real-repository case.
-	it(
-		'holds for the images checked into this repository',
-		async () => {
-			const { stdout } = await run('bash', [GUARD], { cwd: REPOSITORY_ROOT });
+	// plus a parse of every Dockerfile in the repository.
+	it('holds for the images checked into this repository', async () => {
+		const { stdout } = await run('bash', [GUARD], { cwd: REPOSITORY_ROOT });
 
-			expect(stdout).toMatch(
-				/^ok: {3}all \d+ Dockerfiles copy every one of the \d+ workspace manifests/
-			);
-		},
-		PARALLEL_GATE_TIMEOUT_MS
-	);
+		expect(stdout).toMatch(
+			/^ok: {3}all \d+ Dockerfiles copy every one of the \d+ workspace manifests/
+		);
+	});
 });
