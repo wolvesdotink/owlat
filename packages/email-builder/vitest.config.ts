@@ -9,6 +9,7 @@ export default defineConfig({
 	test: {
 		include: ['src/**/__tests__/**/*.test.ts'],
 		environment: 'node',
+		setupFiles: ['src/__tests__/setup.ts'],
 		// The email-block host tests deliberately reload the whole module graph
 		// (`vi.resetModules()` + dynamic import) on every test, because the block
 		// registries are module-level one-way latches. That fixed setup cost is

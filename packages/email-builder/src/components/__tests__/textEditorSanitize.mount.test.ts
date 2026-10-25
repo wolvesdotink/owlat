@@ -4,7 +4,7 @@
 // editor document. They run it through the shared editor sanitizer first, on
 // mount and (for the sidebar editor) when the value prop changes, and every
 // commit path emits sanitized HTML.
-import { describe, it, expect, afterEach, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { mount, type VueWrapper } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import RichTextEditor from '../panel/RichTextEditor.vue';
@@ -27,14 +27,8 @@ declare global {
 	}
 }
 
-let wrappers: VueWrapper[] = [];
 beforeEach(() => {
 	delete window.__x;
-});
-afterEach(() => {
-	for (const w of wrappers) w.unmount();
-	wrappers = [];
-	document.body.innerHTML = '';
 });
 
 function textBlock(html: string): EditorBlock {
@@ -46,18 +40,14 @@ function textBlock(html: string): EditorBlock {
 }
 
 function mountRich(value: string) {
-	const w = mount(RichTextEditor, { props: { value }, attachTo: document.body });
-	wrappers.push(w);
-	return w;
+	return mount(RichTextEditor, { props: { value }, attachTo: document.body });
 }
 
 function mountInline(html: string) {
-	const w = mount(InlineTextEditor, {
+	return mount(InlineTextEditor, {
 		props: { block: textBlock(html), theme: defaultTheme as Required<EmailTheme> },
 		attachTo: document.body,
 	});
-	wrappers.push(w);
-	return w;
 }
 
 const richEditor = (w: VueWrapper) => w.get<HTMLDivElement>('[contenteditable="true"]').element;

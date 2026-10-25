@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { ref } from 'vue';
 import {
 	detectVariableTrigger,
@@ -38,6 +38,7 @@ function mountEditor(html: string): HTMLDivElement {
 	el.contentEditable = 'true';
 	el.innerHTML = html;
 	document.body.appendChild(el);
+	onTestFinished(() => el.remove());
 	return el;
 }
 
@@ -56,7 +57,6 @@ function caret() {
 }
 
 afterEach(() => {
-	document.body.innerHTML = '';
 	window.getSelection()?.removeAllRanges();
 });
 
