@@ -28,16 +28,15 @@ describe('resolveSet (non-UID, sequence numbers)', () => {
 		// `FETCH 1:2000000000` must not spin a ~2-billion-iteration loop; the
 		// clamp bounds it to map.uids.length, and the result is unchanged —
 		// positions above the message count never resolve.
-		const start = performance.now();
-		const out = resolveSet(map, '1:2000000000', false);
-		const elapsedMs = performance.now() - start;
+		const meter = { steps: 0 };
+		const out = resolveSet(map, '1:2000000000', false, meter);
 		expect(out).toEqual([
 			{ uid: 5, seq: 1 },
 			{ uid: 9, seq: 2 },
 			{ uid: 14, seq: 3 },
 		]);
-		// A clamped loop is 3 iterations; an unclamped one is ~2e9 (~30s).
-		expect(elapsedMs).toBeLessThan(1000);
+		// A clamped walk visits the 3 positions; an unclamped one visits ~2e9.
+		expect(meter.steps).toBe(3);
 	});
 
 	it('drops a range entirely above the message count', () => {
@@ -57,6 +56,18 @@ describe('resolveSet (UID)', () => {
 
 	it('resolves * to the highest UID', () => {
 		expect(resolveSet(map, '*', true)).toEqual([{ uid: 14, seq: 3 }]);
+	});
+
+	it('walks only the folder for a range far past its highest UID (CPU-DoS guard)', () => {
+		// `UID EXPUNGE 1:4000000000` must cost the folder size, not the range width.
+		const meter = { steps: 0 };
+		expect(resolveSet(map, '1:4000000000', true, meter)).toEqual([
+			{ uid: 5, seq: 1 },
+			{ uid: 9, seq: 2 },
+			{ uid: 14, seq: 3 },
+		]);
+		// The three UIDs, plus the one step that ends the range.
+		expect(meter.steps).toBeLessThanOrEqual(map.uids.length + 1);
 	});
 });
 

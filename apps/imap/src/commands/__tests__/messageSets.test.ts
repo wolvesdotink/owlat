@@ -15,6 +15,7 @@ import { copyModule } from '../copy/index.js';
 import { expungeModule } from '../expunge/index.js';
 import { moveModule } from '../move/index.js';
 import { uidModule } from '../uid/index.js';
+import { resolveSelectedSet } from '../helpers/seqMap.js';
 import type {
 	CommandDeps,
 	ConnectionState,
@@ -22,6 +23,7 @@ import type {
 	ImapVerb,
 	SelectedState,
 } from '../types.js';
+import type * as SeqMapModule from '../helpers/seqMap.js';
 
 // convex/server declares AnyFunctionReference without exporting it.
 type AnyFunctionReference = Parameters<typeof getFunctionName>[0];
@@ -29,6 +31,11 @@ type AnyFunctionReference = Parameters<typeof getFunctionName>[0];
 vi.mock('../../logger.js', () => ({
 	logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
+
+vi.mock('../helpers/seqMap.js', async (importOriginal) => {
+	const actual = await importOriginal<typeof SeqMapModule>();
+	return { ...actual, resolveSelectedSet: vi.fn(actual.resolveSelectedSet) };
+});
 
 interface FakeMessage {
 	readonly uid: number;
@@ -155,9 +162,17 @@ describe('UID EXPUNGE resolves its set against the folder', () => {
 
 	it('bounds a huge range to the folder and expunges only \\Deleted messages', async () => {
 		const h = harness(tenMessages);
-		const startedAt = performance.now();
+		vi.mocked(resolveSelectedSet).mockClear();
 		const lines = await run(h, selected(10), uid, 'UID', ['EXPUNGE', '1:4000000000']);
-		expect(performance.now() - startedAt).toBeLessThan(1000);
+
+		// The raw set goes to the resolver, whose walk is bounded by the folder
+		// size (counted in helpers/__tests__/seqMap.test.ts), so the command never
+		// expands the four-billion-wide range itself.
+		expect(resolveSelectedSet).toHaveBeenCalledTimes(1);
+		expect(vi.mocked(resolveSelectedSet).mock.calls[0]?.slice(2, 4)).toEqual([
+			'1:4000000000',
+			true,
+		]);
 
 		const [call] = h.calls('expungeFolder');
 		expect(call?.['uidSet']).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);

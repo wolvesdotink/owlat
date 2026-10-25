@@ -12,7 +12,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { generateKeyPairSync } from 'crypto';
+import { createHash, generateKeyPairSync } from 'crypto';
 import { evaluateDmarc } from '../../dmarc.js';
 import { verifyDkim, type DkimDnsResolver } from '../verify.js';
 import { isKeyRecordError, parseDkimKeyRecord } from '../keyRecord.js';
@@ -90,27 +90,29 @@ describe('verifyDkim — hostile input is bounded and safe', () => {
 	});
 
 	it('10k-signature bomb is bounded and returns a definite verdict', async () => {
-		let calls = 0;
+		const queried: string[] = [];
 		const countingResolver: DkimDnsResolver = async (name) => {
-			calls++;
+			queried.push(name);
 			throw Object.assign(new Error(`ENOTFOUND ${name}`), { code: 'ENOTFOUND' });
 		};
+		// The real relaxed body hash, so every evaluated signature gets as far as
+		// its key lookup instead of failing on the body first.
+		const bodyHash = createHash('sha256').update('body content\r\n').digest('base64');
 		// Ten thousand structurally-plausible signatures.
 		const bomb = Array.from(
 			{ length: 10_000 },
 			(_v, i) =>
 				`DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=d${i}.example;` +
-				` s=s; h=from; bh=AAAA; b=AAAA`
+				` s=s; h=from; bh=${bodyHash}; b=AAAA`
 		).join('\r\n');
 		const msg = `${bomb}\r\n${BASE_MESSAGE}`;
 
-		const start = Date.now();
 		const outcome = await verifyDkim(Buffer.from(msg), { resolver: countingResolver });
-		const elapsed = Date.now() - start;
 
-		// Bounded: at most MAX_SIGNATURES evaluated, so at most that many lookups.
-		expect(calls).toBeLessThanOrEqual(10);
-		expect(elapsed).toBeLessThan(5000);
+		// Bounded: only the first MAX_SIGNATURES (10) are evaluated, one lookup
+		// each; the 11th signature onwards costs no lookup and no hash.
+		expect(outcome.signatures).toHaveLength(10);
+		expect(queried).toEqual(Array.from({ length: 10 }, (_v, i) => `s._domainkey.d${i}.example`));
 		expect(['permerror', 'fail', 'temperror', 'neutral']).toContain(outcome.result);
 	});
 });

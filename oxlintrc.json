@@ -95,8 +95,10 @@
 		// polling loops. A rule is a warning while existing tests still break it;
 		// every remaining finding is frozen in scripts/owlat-lint-baseline.txt.
 		"owlat/no-real-time-wait-in-tests": "warn",
-		"owlat/no-wall-clock-in-tests": "warn",
 		"owlat/no-polling-loop-in-tests": "error",
+		// A test asserts on events and counts; wall-clock ratios belong in
+		// `bun run perf:bench`.
+		"owlat/no-wall-clock-in-tests": "error",
 		// Parsed JSON is decoded to `unknown` and checked, never typed by a cast
 		// (@owlat/worker-protocol/decodeJson). A warning while existing casts
 		// remain; each is frozen in scripts/owlat-lint-baseline.txt.

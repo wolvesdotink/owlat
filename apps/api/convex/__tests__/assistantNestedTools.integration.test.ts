@@ -430,8 +430,10 @@ describe('the assistant turn', () => {
 	it('notices a Stop while a nested draft waits on its provider, with no stream event (Sol r1 F1)', async () => {
 		const { t } = await setup('10');
 		const { conversationId, assistantMessageId } = await seedTurn(t);
-		let draftAbortedAt: number | undefined;
-		let stoppedAt: number | undefined;
+		// Only the turn's stop watch runs on a faked interval; the draft advances
+		// it by one check, so the abort can only come from that check.
+		let abortedBeforeCheck: boolean | undefined;
+		let abortReason: unknown;
 		llm.model = stampModelEndpoint(
 			new MockLanguageModelV3({
 				modelId: 'gpt-4o',
@@ -450,29 +452,35 @@ describe('the assistant turn', () => {
 				// The draft is blocked until it is cancelled. The person presses Stop
 				// once it has started; nothing else happens on the stream.
 				doGenerate: async (options) => {
-					await t.run((c) => c.db.patch(assistantMessageId, { status: 'stopped' }));
-					stoppedAt = Date.now();
-					await new Promise((_, reject) =>
-						options.abortSignal?.addEventListener('abort', () => {
-							draftAbortedAt = Date.now();
-							reject(Object.assign(new Error('aborted'), { name: 'AbortError' }));
-						})
+					const signal = options.abortSignal!;
+					const aborted = new Promise<unknown>((resolve) =>
+						signal.addEventListener('abort', () => resolve(signal.reason), { once: true })
 					);
-					throw new Error('unreachable');
+					await t.run((c) => c.db.patch(assistantMessageId, { status: 'stopped' }));
+					abortedBeforeCheck = signal.aborted;
+					await vi.advanceTimersByTimeAsync(STOP_POLL_MS);
+					abortReason = await aborted;
+					throw Object.assign(new Error('aborted'), { name: 'AbortError' });
 				},
 			}),
 			'openai-native'
 		);
 
-		await t.action(internal.assistant.runner.run, {
-			conversationId,
-			assistantMessageId,
-			ownerId: 'user-a',
-		});
+		vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+		try {
+			await t.action(internal.assistant.runner.run, {
+				conversationId,
+				assistantMessageId,
+				ownerId: 'user-a',
+			});
+		} finally {
+			vi.useRealTimers();
+		}
 
-		// Aborted within about one stop check, not at the call's deadline.
-		expect(draftAbortedAt).toBeDefined();
-		expect(draftAbortedAt! - stoppedAt!).toBeLessThan(STOP_POLL_MS * 3);
+		// Aborted by the first stop check after Stop, not at the call's deadline.
+		expect(abortedBeforeCheck).toBe(false);
+		expect(abortReason).toBeDefined();
+		expect((abortReason as { name?: string }).name).not.toBe('TimeoutError');
 		expect((await t.run((c) => c.db.get(assistantMessageId)))?.status).toBe('stopped');
 		// The aborted draft's request is on the ledger and every hold is settled.
 		const draftRows = (await rowsOf(t)).filter((r) => r.feature === 'assistant_tool_draft');

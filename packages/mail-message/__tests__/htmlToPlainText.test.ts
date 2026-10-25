@@ -7,6 +7,7 @@
 import { describe, it, expect } from 'vitest';
 import { htmlToPlainText } from '../src/text/htmlToPlainText';
 import * as mailMessage from '../src/index';
+import { HTML_TO_TEXT_SHAPES, SCALING_FACTOR } from '../src/__tests__/helpers/hostileRegexInputs';
 
 const fromRoot = mailMessage.htmlToPlainText;
 
@@ -136,25 +137,33 @@ describe('htmlToPlainText — preserveBreaks', () => {
 describe('htmlToPlainText — linear on hostile input', () => {
 	// Each shape defeats a naive pattern: `<[^>]+>` retried from every `<`, a
 	// lazy `[\s\S]*?</script>` per unterminated opening tag, `<head>` with no
-	// close, and entity look-alikes. 200k repetitions keep a quadratic scan in
-	// the tens of seconds while a linear one stays in milliseconds.
-	const N = 200_000;
-	it.each([
-		['bare <', '<'.repeat(N)],
-		['open tag start', '<a'.repeat(N)],
-		['unterminated scripts', '<script>'.repeat(N / 4)],
-		['unterminated heads', '<head>'.repeat(N / 4)],
-		['comment openers', '<!-'.repeat(N)],
-		['br look-alikes', '<br '.repeat(N)],
-		['closing look-alikes', '</p '.repeat(N)],
-		['entity look-alikes', '&#1'.repeat(N)],
-		['whitespace runs', `${' \n'.repeat(N)}x`],
-		['nbsp runs', '&nbsp;  '.repeat(N / 4)],
-	])('%s', (_name, input) => {
+	// close, and entity look-alikes. The hidden-content pass is counted: its
+	// opener scan reads each character once and each kind's missing close is
+	// searched for once, so it reads at most twice the input. The time the
+	// remaining regex passes take on these inputs is reported by
+	// `bun run perf:bench` (family mail-message-regex-scaling).
+	it.each(HTML_TO_TEXT_SHAPES)('$name', ({ build, n }) => {
+		const input = build(SCALING_FACTOR * n);
 		for (const preserveBreaks of [false, true]) {
-			const start = performance.now();
-			htmlToPlainText(input, { preserveBreaks });
-			expect(performance.now() - start).toBeLessThan(1000);
+			const meter = { chars: 0 };
+			expect(typeof htmlToPlainText(input, { preserveBreaks, meter })).toBe('string');
+			expect(meter.chars).toBeLessThanOrEqual(2 * input.length);
 		}
+	});
+
+	it('searches for a missing </head> once, however many <head> tags follow', () => {
+		const input = '<head>'.repeat(10_000);
+		const meter = { chars: 0 };
+		htmlToPlainText(input, { meter });
+		// The opener scan, plus one search from after the first `<head` to the end.
+		expect(meter.chars).toBe(2 * input.length - '<head'.length);
+	});
+
+	it('counts the closing searches it makes', () => {
+		const meter = { chars: 0 };
+		expect(htmlToPlainText('a<script>x</script>b<!--c-->d', { meter })).toBe('a b d');
+		// Every character once, and the `--` of the comment's opener twice: its
+		// search starts right after `<!`, so `<!-->` closes.
+		expect(meter.chars).toBe('a<script>x</script>b<!--c-->d'.length + 2);
 	});
 });

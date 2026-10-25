@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { gzipSync } from 'node:zlib';
@@ -15,6 +15,20 @@ import {
 	type PolicyServer,
 	type PolicyServerCert,
 } from './helpers/stsPolicyServer.js';
+import type * as ZlibModule from 'node:zlib';
+
+// Lets a test see the moment the fetch starts decoding a gzip body.
+const zlibHooks = vi.hoisted(() => ({ onGunzip: undefined as (() => void) | undefined }));
+vi.mock('node:zlib', async (importOriginal) => {
+	const actual = await importOriginal<typeof ZlibModule>();
+	return {
+		...actual,
+		createGunzip: (...args: Parameters<typeof actual.createGunzip>) => {
+			zlibHooks.onGunzip?.();
+			return actual.createGunzip(...args);
+		},
+	};
+});
 
 const POLICY = 'version: STSv1\nmode: enforce\nmx: mx1.owlat.test\nmax_age: 604800\n';
 
@@ -396,22 +410,32 @@ describe('fetchStsPolicyText', () => {
 			expect(STS_FETCH_TIMEOUT).toBe(10_000);
 		});
 
-		it('aborts a slow-drip body at the time budget', async () => {
-			let timer: ReturnType<typeof setInterval> | undefined;
+		it('aborts a body that never finishes at the time budget', async () => {
+			// The budget is a native AbortSignal.timeout, which fake timers cannot
+			// drive: hand out a signal the test fires once the body read has begun.
+			const deadline = new AbortController();
+			const timeout = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(deadline.signal);
+			// A gzip body, so the start of the body read shows as its decoder being made.
+			const bodyRead = new Promise<void>((resolve) => (zlibHooks.onGunzip = resolve));
 			const server = await policyServer((_req, res) => {
-				res.writeHead(200);
-				res.write('version: STSv1\n');
-				// One byte every 20ms: never over the size cap, never finished.
-				timer = setInterval(() => res.write('x'), 20);
-				res.on('close', () => clearInterval(timer));
+				res.writeHead(200, { 'Content-Encoding': 'gzip' });
+				// Part of a policy, then nothing: under the size cap, never finished.
+				res.write(gzipSync(POLICY).subarray(0, 10));
 			});
-			cleanups.push(async () => clearInterval(timer));
-
-			const started = Date.now();
-			await expect(
-				fetchStsPolicyText(STS_TEST_DOMAIN, { ...server.transport, timeoutMs: 300 })
-			).rejects.toThrow(/timed out/);
-			expect(Date.now() - started).toBeLessThan(5_000);
+			try {
+				const fetched = fetchStsPolicyText(STS_TEST_DOMAIN, {
+					...server.transport,
+					timeoutMs: 300,
+				});
+				const rejected = expect(fetched).rejects.toThrow(/timed out after 300ms/);
+				await bodyRead;
+				expect(timeout).toHaveBeenCalledWith(300);
+				deadline.abort(new DOMException('The operation timed out.', 'TimeoutError'));
+				await rejected;
+			} finally {
+				timeout.mockRestore();
+				zlibHooks.onGunzip = undefined;
+			}
 		});
 
 		it('aborts a server that never sends headers at the time budget', async () => {
