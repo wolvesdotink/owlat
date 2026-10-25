@@ -329,3 +329,40 @@ describe('POST /webhooks/mta-inbound refuses a wrong-typed field after auditing 
 		expect(stored).toEqual([]);
 	});
 });
+
+/**
+ * The event check runs on unvalidated JSON, so its refusal must not coerce the
+ * discriminator: an object with no primitive conversion is a 400 like any other
+ * unknown event, and the body is still audited first.
+ */
+describe('both raw MTA routes refuse a non-string event without coercing it', () => {
+	it.each(['/webhooks/mta-mailbox', '/webhooks/mta-inbound'])(
+		'%s answers 400 for an event object with no primitive conversion',
+		async (path) => {
+			const t = setupTest();
+			const body = JSON.stringify({ event: { toString: null }, timestamp: Date.now() });
+
+			const res = await postSigned(t, body, path);
+			expect(res.status).toBe(400);
+			expect(await res.json()).toEqual({ error: 'Unsupported event: (not a string)' });
+
+			const rows = await auditRows(t);
+			expect(rows).toHaveLength(1);
+			const summary = JSON.parse(rows[0]!.rawPayload) as Record<string, unknown>;
+			expect(summary['event']).toBe('missing-event');
+		}
+	);
+
+	it.each([
+		['/webhooks/mta-mailbox', 'inbound.received'],
+		['/webhooks/mta-inbound', 'inbound.mailbox.received'],
+	])('%s still names a string event it does not handle', async (path, event) => {
+		const t = setupTest();
+		const body = JSON.stringify({ event, timestamp: Date.now() });
+
+		const res = await postSigned(t, body, path);
+		expect(res.status).toBe(400);
+		expect(await res.json()).toEqual({ error: `Unsupported event: ${event}` });
+		expect(await auditRows(t)).toHaveLength(1);
+	});
+});

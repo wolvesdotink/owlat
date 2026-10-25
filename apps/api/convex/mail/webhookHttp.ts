@@ -37,6 +37,7 @@ import {
 	clampAuditField,
 	readVerifiedMtaBody,
 	storeRawRouteAudit,
+	unsupportedEventResponse,
 } from '../webhooks/adapters/mtaRawRoute';
 import { spamVerdictValidator } from '../lib/convexValidators';
 import { virusVerdictValidator } from '../lib/literalValidators';
@@ -140,7 +141,7 @@ export const handleMailWebhook = httpAction(async (ctx, request) => {
 
 	if (envelope['event'] !== 'inbound.mailbox.received' || !envelope['mailboxPayload']) {
 		await audited;
-		return jsonResponse(400, { error: `Unsupported event: ${String(envelope['event'])}` });
+		return unsupportedEventResponse(envelope['event']);
 	}
 
 	// Accept and drop while the workspace is being deleted (see

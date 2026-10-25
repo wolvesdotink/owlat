@@ -49,6 +49,7 @@ import {
 	clampAuditField,
 	readVerifiedMtaBody,
 	storeRawRouteAudit,
+	unsupportedEventResponse,
 } from '../webhooks/adapters/mtaRawRoute';
 import {
 	decodeMtaInboundWire,
@@ -146,7 +147,7 @@ export const handleInboundWebhook = httpAction(async (ctx, request) => {
 
 	if (envelope['event'] !== 'inbound.received' || !envelope['inboundPayload']) {
 		await audited;
-		return jsonResponse(400, { error: `Unsupported event: ${String(envelope['event'])}` });
+		return unsupportedEventResponse(envelope['event']);
 	}
 
 	// Accept and drop while the workspace is being deleted (see
