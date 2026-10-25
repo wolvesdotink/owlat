@@ -72,7 +72,10 @@ import {
 import type { Doc } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
 import { adminMutation } from '../lib/authedFunctions';
-import { getMutationContext, getSingletonOrganizationId } from '../lib/sessionOrganization';
+import {
+	getSingletonOrganizationId,
+	type MutationSessionContext,
+} from '../lib/sessionOrganization';
 import { recordAuditLog } from '../lib/auditLog';
 import { loadRouteStateCell } from '../lib/deliverabilityRouteState';
 import { throwInvalidInput } from '../_utils/errors';
@@ -142,12 +145,13 @@ interface ResolvedCell {
  */
 export async function resolveControlTarget(
 	ctx: MutationCtx,
+	session: MutationSessionContext,
 	args: {
 		stream: DeliverabilityCell['stream'];
 		destinationProvider: DeliverabilityCell['destinationProvider'];
 	}
 ): Promise<ResolvedCell | RampControlRefusal> {
-	const { userId } = await getMutationContext(ctx);
+	const { userId } = session;
 	const organizationId = await getSingletonOrganizationId(ctx);
 	const cell: DeliverabilityCell = {
 		stream: args.stream,
@@ -182,8 +186,8 @@ export function refusedControl(refusal: RampControlRefusal): RampControlResult {
  */
 export const setCellPause = adminMutation({
 	args: { ...cellArgs, isPaused: v.boolean() },
-	handler: async (ctx, args): Promise<RampControlResult> => {
-		const target = await resolveControlTarget(ctx, args);
+	handler: async (ctx, args, session): Promise<RampControlResult> => {
+		const target = await resolveControlTarget(ctx, session, args);
 		if (typeof target === 'string') return refusedControl(target);
 		const now = Date.now();
 		const wasPaused = target.row.operatorPausedAt !== undefined;
@@ -234,8 +238,8 @@ export const setCellPause = adminMutation({
  */
 export const pinCellShare = adminMutation({
 	args: { ...cellArgs, share: v.union(v.number(), v.null()) },
-	handler: async (ctx, args): Promise<RampControlResult> => {
-		const target = await resolveControlTarget(ctx, args);
+	handler: async (ctx, args, session): Promise<RampControlResult> => {
+		const target = await resolveControlTarget(ctx, session, args);
 		if (typeof target === 'string') return refusedControl(target);
 		if (args.share !== null && !Number.isFinite(args.share)) {
 			throwInvalidInput('A pinned share must be a number between 0 and 1.');
@@ -288,7 +292,7 @@ export const pinCellShare = adminMutation({
  */
 export const forceAdvanceCellShare = adminMutation({
 	args: { ...cellArgs, share: v.number(), confirmation: v.string() },
-	handler: async (ctx, args): Promise<RampControlResult> => {
+	handler: async (ctx, args, session): Promise<RampControlResult> => {
 		if (!isConfirmationPhraseMatch(args.confirmation, FORCE_ADVANCE_CONFIRMATION)) {
 			throwInvalidInput(
 				`Force-advance needs its consequence confirmed: type “${FORCE_ADVANCE_CONFIRMATION}” to proceed.`
@@ -297,7 +301,7 @@ export const forceAdvanceCellShare = adminMutation({
 		if (!Number.isFinite(args.share)) {
 			throwInvalidInput('A forced share must be a number between 0 and 1.');
 		}
-		const target = await resolveControlTarget(ctx, args);
+		const target = await resolveControlTarget(ctx, session, args);
 		if (typeof target === 'string') return refusedControl(target);
 		const now = Date.now();
 		const share = clampOwnShare(args.share);
@@ -366,8 +370,8 @@ export const forceAdvanceCellShare = adminMutation({
  */
 export const setStreamPreset = adminMutation({
 	args: { stream: deliverabilityStreamValidator, preset: v.union(rampPresetValidator, v.null()) },
-	handler: async (ctx, args): Promise<{ readonly applied: true }> => {
-		const { userId } = await getMutationContext(ctx);
+	handler: async (ctx, args, session): Promise<{ readonly applied: true }> => {
+		const { userId } = session;
 		const organizationId = await getSingletonOrganizationId(ctx);
 		const now = Date.now();
 		const existing = await ctx.db

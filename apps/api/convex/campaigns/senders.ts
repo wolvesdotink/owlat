@@ -20,7 +20,11 @@ import { internalQuery, type MutationCtx, type QueryCtx } from '../_generated/se
 import { internalMutation } from '../lib/writeFence';
 import { authedMutation, authedQuery } from '../lib/authedFunctions';
 import { campaignsQuery } from './_helpers';
-import { hasPermission, requireOrgMember, requireOrgPermission } from '../lib/sessionOrganization';
+import {
+	hasPermission,
+	requirePermission,
+	type MutationSessionContext,
+} from '../lib/sessionOrganization';
 import { checkEmailDomainVerification, memoizedEmailDomainVerification } from '../domains/domains';
 import { isValidEmail } from '../lib/inputGuards';
 import { checkFromAlignment, emailDomain, normalizeEmail } from '@owlat/shared';
@@ -50,12 +54,12 @@ const MAX_CAMPAIGN_SENDERS = 200;
  * (`listForPicker`, member-level) but do not decide WHAT is on it. Gating on
  * `settings:manage` — the same owner/admin floor as the custom-senders policy
  * toggle on the settings page — keeps the whole surface admin-only in one place.
- * Extracted so the identical call can't drift across the five call sites.
+ * Extracted so the identical call can't drift across the five call sites. It
+ * checks the session the builder's floor already resolved.
  */
-async function requireCampaignSendersManage(ctx: QueryCtx | MutationCtx) {
-	return await requireOrgPermission(
-		ctx,
-		'settings:manage',
+function requireCampaignSendersManage(session: MutationSessionContext): void {
+	requirePermission(
+		hasPermission(session.role, 'settings:manage'),
 		'Only owners and admins can manage campaign senders'
 	);
 }
@@ -140,8 +144,8 @@ async function assertVerifiedSenderDomain(ctx: MutationCtx, email: string): Prom
 // (admin/team/senders), which stays reachable with `campaigns` off.
 export const list = authedQuery({
 	args: {},
-	handler: async (ctx): Promise<Doc<'campaignSenders'>[]> => {
-		await requireCampaignSendersManage(ctx);
+	handler: async (ctx, _args, session): Promise<Doc<'campaignSenders'>[]> => {
+		requireCampaignSendersManage(session);
 		return await ctx.db.query('campaignSenders').take(MAX_CAMPAIGN_SENDERS);
 	},
 });
@@ -169,11 +173,10 @@ export const list = authedQuery({
  */
 export const listForPicker = campaignsQuery({
 	args: {},
-	handler: async (ctx) => {
+	handler: async (ctx, _args, session) => {
 		// all-members: any campaign builder needs to read the enabled sender list to
 		// pick one (and learn via canManage whether they may add one); rows expose
 		// only email/displayName/isDefault, never the full curated record.
-		const session = await requireOrgMember(ctx);
 		const all = await ctx.db.query('campaignSenders').take(MAX_CAMPAIGN_SENDERS);
 		const settings = await ctx.db.query('instanceSettings').first();
 
@@ -222,8 +225,8 @@ export const create = authedMutation({
 		isEnabled: v.optional(v.boolean()),
 		isDefault: v.optional(v.boolean()),
 	},
-	handler: async (ctx, args) => {
-		const session = await requireCampaignSendersManage(ctx);
+	handler: async (ctx, args, session) => {
+		requireCampaignSendersManage(session);
 		const email = normalizeEmail(args.email);
 		await assertVerifiedSenderDomain(ctx, email);
 
@@ -264,8 +267,8 @@ export const update = authedMutation({
 		displayName: v.optional(v.string()),
 		isEnabled: v.optional(v.boolean()),
 	},
-	handler: async (ctx, args) => {
-		await requireCampaignSendersManage(ctx);
+	handler: async (ctx, args, session) => {
+		requireCampaignSendersManage(session);
 		await getOrThrow(ctx, args.id, 'Campaign sender');
 		const patch: Partial<Doc<'campaignSenders'>> = { updatedAt: Date.now() };
 		if (args.displayName !== undefined) {
@@ -286,8 +289,8 @@ export const update = authedMutation({
 // (admin/team/senders), which stays reachable with `campaigns` off.
 export const setDefault = authedMutation({
 	args: { id: v.id('campaignSenders') },
-	handler: async (ctx, args) => {
-		await requireCampaignSendersManage(ctx);
+	handler: async (ctx, args, session) => {
+		requireCampaignSendersManage(session);
 		await getOrThrow(ctx, args.id, 'Campaign sender');
 		await clearDefault(ctx);
 		await ctx.db.patch(args.id, { isDefault: true, updatedAt: Date.now() });
@@ -304,8 +307,8 @@ export const setDefault = authedMutation({
 // (admin/team/senders), which stays reachable with `campaigns` off.
 export const remove = authedMutation({
 	args: { id: v.id('campaignSenders') },
-	handler: async (ctx, args) => {
-		await requireCampaignSendersManage(ctx);
+	handler: async (ctx, args, session) => {
+		requireCampaignSendersManage(session);
 		await getOrThrow(ctx, args.id, 'Campaign sender');
 		await ctx.db.delete(args.id);
 		return { success: true };

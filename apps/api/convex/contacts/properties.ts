@@ -40,8 +40,8 @@ export const create = authedMutation({
 		label: v.string(),
 		type: fieldTypeValidator,
 	},
-	handler: async (ctx, args) => {
-		await requireContactsManage(ctx);
+	handler: async (ctx, args, session) => {
+		requireContactsManage(session);
 
 		// Check if property with same key already exists
 		const existing = await ctx.db
@@ -73,8 +73,8 @@ export const update = authedMutation({
 		propertyId: v.id('contactProperties'),
 		label: v.optional(v.string()),
 	},
-	handler: async (ctx, args) => {
-		await requireContactsManage(ctx);
+	handler: async (ctx, args, session) => {
+		requireContactsManage(session);
 
 		const property = await getOrThrow(ctx, args.propertyId, 'Property');
 		if (isPropertyPendingDeletion(property)) {
@@ -99,7 +99,7 @@ export const update = authedMutation({
 export const remove = authedMutation({
 	args: { propertyId: v.id('contactProperties') },
 	handler: async (ctx, args, session): Promise<'deleted' | 'pending'> => {
-		await requireContactsManage(ctx);
+		requireContactsManage(session);
 
 		const property = await getOrThrow(ctx, args.propertyId, 'Property');
 		return await requestPropertyDeletion(ctx, property, session.userId);

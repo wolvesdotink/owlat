@@ -52,11 +52,11 @@
 #     they are never flagged; a file-level gate would have called all 63 of them
 #     violations.
 #   * A handler that delegates to a module-scope shared guard which re-resolves
-#     (convex/contacts/guards.ts, convex/campaigns/guards.ts,
-#     convex/mail/permissions.ts, …) is NOT flagged — the helper call is outside
-#     any registered-function block. ~18 such call sites exist; converting them
-#     means changing the guard's signature to accept a session, which the ratchet
-#     deliberately does not force.
+#     (convex/automations/guards.ts, convex/mail/permissions.ts, …) is NOT
+#     flagged — the helper call is outside any registered-function block.
+#     Converting one means changing the guard's signature to accept a session
+#     (as convex/contacts/guards.ts and convex/campaigns/guards.ts do), which the
+#     ratchet deliberately does not force.
 #   * Only the first re-resolution per handler is reported (one baseline line per
 #     handler, so fixing one of two calls does not churn the baseline).
 #   * A `^})` at column 0 inside a handler body would end the block early. No

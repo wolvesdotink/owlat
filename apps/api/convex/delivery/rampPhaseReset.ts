@@ -66,13 +66,13 @@ export const resetCellPhase = adminMutation({
 		destinationProvider: destinationProviderValidator,
 		phaseCeiling: v.number(),
 	},
-	handler: async (ctx, args): Promise<RampControlResult> => {
+	handler: async (ctx, args, session): Promise<RampControlResult> => {
 		if (!(RAMP_PHASE_CEILINGS as readonly number[]).includes(args.phaseCeiling)) {
 			throwInvalidInput(
 				`A phase ceiling must be one of the ladder's rungs: ${RAMP_PHASE_CEILINGS.join(', ')}.`
 			);
 		}
-		const target = await resolveControlTarget(ctx, args);
+		const target = await resolveControlTarget(ctx, session, args);
 		if (typeof target === 'string') return refusedControl(target);
 		const now = Date.now();
 		// THE SAME READING THE PROMOTION PATH TAKES, through the same helper — a row

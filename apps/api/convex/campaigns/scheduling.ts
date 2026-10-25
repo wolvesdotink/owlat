@@ -1,7 +1,7 @@
 import { v } from 'convex/values';
 import { campaignsMutation } from './_helpers';
 import { internal } from '../_generated/api';
-import { requireOrgPermission } from '../lib/sessionOrganization';
+import { hasPermission, requirePermission } from '../lib/sessionOrganization';
 import { throwInvalidInput, throwInvalidState } from '../_utils/errors';
 import { preflightErrorData, validateReadyToSend } from './preflight';
 import { seedDefaultSenderIfNeeded } from './senders';
@@ -100,10 +100,9 @@ export const cancel = campaignsMutation({
 	args: {
 		campaignId: v.id('campaigns'),
 	},
-	handler: async (ctx, args) => {
-		const session = await requireOrgPermission(
-			ctx,
-			'campaigns:schedule',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'campaigns:schedule'),
 			'You do not have permission to cancel campaigns'
 		);
 
@@ -139,10 +138,9 @@ export const reschedule = campaignsMutation({
 		scheduledMinute: v.optional(v.number()),
 		sendTimeOptimization: sendTimeOptimizationArg,
 	},
-	handler: async (ctx, args) => {
-		const session = await requireOrgPermission(
-			ctx,
-			'campaigns:schedule',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'campaigns:schedule'),
 			'You do not have permission to reschedule campaigns'
 		);
 
@@ -211,10 +209,9 @@ export const unschedule = campaignsMutation({
 	args: {
 		campaignId: v.id('campaigns'),
 	},
-	handler: async (ctx, args) => {
-		const session = await requireOrgPermission(
-			ctx,
-			'campaigns:schedule',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'campaigns:schedule'),
 			'You do not have permission to unschedule campaigns'
 		);
 
@@ -246,13 +243,12 @@ export const schedule = campaignsMutation({
 		scheduledMinute: v.optional(v.number()),
 		sendTimeOptimization: sendTimeOptimizationArg,
 	},
-	handler: async (ctx, args) => {
+	handler: async (ctx, args, session) => {
 		// Deliberately NOT requireDraftCampaign: scheduling is gated on the
 		// distinct campaigns:schedule permission, while the guard hard-codes
 		// campaigns:manage. Same shape, different authz decision.
-		const session = await requireOrgPermission(
-			ctx,
-			'campaigns:schedule',
+		requirePermission(
+			hasPermission(session.role, 'campaigns:schedule'),
 			'You do not have permission to schedule campaigns'
 		);
 

@@ -95,8 +95,8 @@ export const create = authedMutation({
 		relationship: v.string(),
 		confidence: v.optional(v.number()),
 	},
-	handler: async (ctx, args) => {
-		await requireContactsManage(ctx);
+	handler: async (ctx, args, session) => {
+		requireContactsManage(session);
 
 		if (args.fromContactId === args.toContactId) {
 			throwInvalidInput('Cannot create a relationship between a contact and itself');
@@ -139,8 +139,8 @@ export const updateConfidence = authedMutation({
 		relationshipId: v.id('contactRelationships'),
 		confidence: v.number(),
 	},
-	handler: async (ctx, args) => {
-		await requireContactsManage(ctx);
+	handler: async (ctx, args, session) => {
+		requireContactsManage(session);
 
 		await ctx.db.patch(args.relationshipId, { confidence: args.confidence });
 	},
@@ -151,8 +151,8 @@ export const updateConfidence = authedMutation({
  */
 export const remove = authedMutation({
 	args: { relationshipId: v.id('contactRelationships') },
-	handler: async (ctx, args) => {
-		await requireContactsManage(ctx);
+	handler: async (ctx, args, session) => {
+		requireContactsManage(session);
 
 		await ctx.db.delete(args.relationshipId);
 	},

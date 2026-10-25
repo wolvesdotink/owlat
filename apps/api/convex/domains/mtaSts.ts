@@ -23,7 +23,7 @@ import {
 	mtaStsPolicyId,
 } from '@owlat/shared/mtaStsPolicy';
 import { authedQuery, publicQuery } from '../lib/authedFunctions';
-import { requireOrgPermission } from '../lib/sessionOrganization';
+import { hasPermission, requirePermission } from '../lib/sessionOrganization';
 import { getOptional } from '../lib/env';
 
 // public: MTA-STS policy content for the public `/.well-known/mta-sts.txt`
@@ -67,14 +67,16 @@ export const getMtaStsPolicy = publicQuery({
 export const getMtaStsGuidance = authedQuery({
 	args: {},
 	handler: async (
-		ctx
+		ctx,
+		_args,
+		session
 	): Promise<{
 		mode: MtaStsMode;
 		mailHost: string | null;
 		policyId: string | null;
 		txtValue: string | null;
 	}> => {
-		await requireOrgPermission(ctx, 'organization:manage');
+		requirePermission(hasPermission(session.role, 'organization:manage'));
 		const settings = await ctx.db.query('instanceSettings').first();
 		const mode: MtaStsMode = settings?.mtaStsMode ?? 'none';
 		const mailHost = getOptional('EHLO_HOSTNAME')?.trim() || null;
