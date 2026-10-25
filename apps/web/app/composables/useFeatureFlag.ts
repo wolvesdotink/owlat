@@ -24,7 +24,7 @@ import {
 	resolveFlags,
 	type FeatureFlagKey,
 	type FeatureFlagState,
-} from '@owlat/shared/featureFlags';
+} from '@owlat/shared/featureFlagRuntime';
 import {
 	readCachedFeatureFlags,
 	writeCachedFeatureFlags,

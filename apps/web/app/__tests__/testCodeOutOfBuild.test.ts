@@ -17,7 +17,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
  */
 
 vi.mock('@tailwindcss/vite', () => ({ default: () => [] }));
-vi.mock('../../scripts/uiLayerIcons', () => ({ uiLayerIconNames: () => [] }));
+vi.mock('../../scripts/uiLayerIcons', () => ({
+	uiLayerIconNames: () => [],
+	ICON_SCAN_EXCLUDE: [],
+}));
 
 const webRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const uiLayerRoot = resolve(webRoot, '..', '..', 'packages', 'ui');

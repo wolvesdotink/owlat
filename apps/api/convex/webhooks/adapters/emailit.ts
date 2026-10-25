@@ -1,6 +1,8 @@
 /** Emailit event semantics. Authentication is supplied by the host verifier registry. */
+import { v, type Infer } from 'convex/values';
 import { classifyBounceMessage } from '@owlat/shared/bounceClassification';
 import type { InboundEvent, InboundEventOf } from '../types';
+import { decodeWebhookBody, decodeWebhookValue } from './webhookBody';
 
 /** The closed host vocabulary for a recipient-specific provider suppression. */
 type SuppressionReason = InboundEventOf<'email.provider_suppressed'>['reason'];
@@ -19,18 +21,29 @@ type EmailitEventType =
 	| 'email.scheduled'
 	| 'email.received';
 
-interface EmailitPayload {
-	readonly type: EmailitEventType;
-	readonly data: {
-		readonly object: {
-			readonly id: string;
-			readonly to?: string | readonly string[];
-			readonly status?: string;
-			readonly created_at?: string;
-			readonly updated_at?: string;
-		};
-	};
-}
+/** What every Emailit event must carry: a type and the id of the message it is about. */
+const emailitEnvelopeValidator = v.object({
+	type: v.string(),
+	data: v.object({ object: v.object({ id: v.string() }) }),
+});
+
+/**
+ * The fields an actionable event is built from. Checked only for those kinds,
+ * so a click or a receipt is never refused over a field we discard.
+ */
+const emailitObjectValidator = v.object({
+	id: v.string(),
+	to: v.optional(v.union(v.string(), v.array(v.string()))),
+	status: v.optional(v.string()),
+	created_at: v.optional(v.string()),
+	updated_at: v.optional(v.string()),
+});
+
+const emailitActionableValidator = v.object({
+	data: v.object({ object: emailitObjectValidator }),
+});
+
+type EmailitObject = Infer<typeof emailitObjectValidator>;
 
 /**
  * The kinds the dispatcher acts on. Everything else Emailit sends — click/open
@@ -39,7 +52,7 @@ interface EmailitPayload {
  * scheduling/receiving do not move Owlat's outbound Send lifecycle. Same
  * posture as the Resend and Mandrill adapters' default branches.
  */
-const ACTIONABLE_EVENT_TYPES: ReadonlySet<EmailitEventType> = new Set([
+const ACTIONABLE_EVENT_TYPES: ReadonlySet<string> = new Set<EmailitEventType>([
 	'email.accepted',
 	'email.attempted',
 	'email.bounced',
@@ -96,37 +109,31 @@ function suppressionReason(status: string | undefined): SuppressionReason {
 	return 'recipient_blacklisted';
 }
 
-function payloadFrom(rawBody: string): EmailitPayload {
-	const payload = JSON.parse(rawBody) as Partial<EmailitPayload>;
-	const object = payload.data?.object;
-	if (!payload.type || !object || typeof object.id !== 'string' || !object.id) {
-		throw new TypeError('Malformed Emailit webhook payload');
-	}
-	return payload as EmailitPayload;
-}
-
-function eventTime(object: EmailitPayload['data']['object']): number {
+function eventTime(object: EmailitObject): number {
 	const at = Date.parse(object.updated_at ?? object.created_at ?? '');
 	if (!Number.isFinite(at)) throw new TypeError('Emailit webhook has an invalid timestamp');
 	return at;
 }
 
-function recipientOf(object: EmailitPayload['data']['object']): string | undefined {
-	if (typeof object.to === 'string') return object.to;
-	return Array.isArray(object.to) && typeof object.to[0] === 'string' ? object.to[0] : undefined;
+function recipientOf(object: EmailitObject): string | undefined {
+	return typeof object.to === 'string' ? object.to : object.to?.[0];
 }
 
 export const emailitAdapter = {
 	source: 'emailit' as const,
 
 	parseEvent(rawBody: string): InboundEvent | null {
-		const payload = payloadFrom(rawBody);
-		const object = payload.data.object;
-		// Drop the kinds we never dispatch BEFORE parsing the timestamp: an
-		// unparseable timestamp must fail closed only for the events that move
-		// the Send lifecycle. Failing a click or a receipt with a 400 would risk
-		// Emailit disabling the endpoint over telemetry we discard anyway.
+		const payload = decodeWebhookBody(rawBody, emailitEnvelopeValidator, 'emailit');
+		if (!payload.type || !payload.data.object.id) {
+			throw new TypeError('Malformed Emailit webhook payload');
+		}
+		// Drop the kinds we never dispatch BEFORE checking the rest of the object
+		// or parsing the timestamp: a bad field must fail closed only for the
+		// events that move the Send lifecycle. Failing a click or a receipt with
+		// a 400 would risk Emailit disabling the endpoint over telemetry we
+		// discard anyway.
 		if (!ACTIONABLE_EVENT_TYPES.has(payload.type)) return null;
+		const object = decodeWebhookValue(payload, emailitActionableValidator, 'emailit').data.object;
 		const providerMessageId = object.id;
 		const at = eventTime(object);
 		const recipient = recipientOf(object);

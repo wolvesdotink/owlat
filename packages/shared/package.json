@@ -98,6 +98,10 @@
 			"types": "./src/featureFlags.ts",
 			"import": "./src/featureFlags.ts"
 		},
+		"./featureFlagRuntime": {
+			"types": "./src/featureFlagRuntime.ts",
+			"import": "./src/featureFlagRuntime.ts"
+		},
 		"./organizationPermissions": {
 			"types": "./src/organizationPermissions.ts",
 			"import": "./src/organizationPermissions.ts"
@@ -201,6 +205,10 @@
 		"./constantTimeEqual": {
 			"types": "./src/constantTimeEqual.ts",
 			"import": "./src/constantTimeEqual.ts"
+		},
+		"./cappedStream": {
+			"types": "./src/cappedStream.ts",
+			"import": "./src/cappedStream.ts"
 		},
 		"./passwordPolicy": {
 			"types": "./src/passwordPolicy.ts",

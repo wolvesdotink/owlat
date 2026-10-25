@@ -9,6 +9,8 @@
  *    sender-auth reply guard (a deep link never went through the reader's);
  *    forward never does. The seed is built once the message and the
  *    mailbox's own addresses (for the reply-all recipient math) are known.
+ *    A lead or a selected passage the reader could not save into a draft
+ *    waits in session state for this message and seeds that composer.
  *
  * The draft id is not created here: the composer creates the row with its
  * first autosave and the page writes it into the URL then, so opening Answer
@@ -25,7 +27,7 @@ import {
 	type ReplyComposeSeed,
 	type ReplyForwardSource,
 } from '~/composables/postbox/postboxReplySpec';
-import { useAnswerPendingLead } from './useAnswerMode';
+import { useAnswerPendingLead, useAnswerPendingQuote } from './useAnswerMode';
 
 export type AnswerModeMessage = ReplyForwardSource & { mailboxId: string; threadId?: string };
 
@@ -50,6 +52,7 @@ export function useAnswerModeSession(opts: {
 		computed(() => (opts.message()?.mailboxId as Id<'mailboxes'> | undefined) ?? null)
 	);
 	const pendingLead = useAnswerPendingLead();
+	const pendingQuote = useAnswerPendingQuote();
 
 	const seed: ShallowRef<ReplyComposeSeed | null> = shallowRef(null);
 	/** The composer kind in use; null for a resumed draft whose URL named none. */
@@ -63,6 +66,7 @@ export function useAnswerModeSession(opts: {
 			autoLoadImages: autoLoadImages.value,
 			isSenderAllowed: imageAllowlist.isAllowed(message.fromAddress),
 			leadText: pendingLead.take(message._id),
+			quotedPassage: pendingQuote.take(message._id),
 		});
 	}
 

@@ -23,6 +23,8 @@
  * `useI18n`, so every consumer resolves them at its own render boundary.
  */
 import type { FeatureFlagKey } from '@owlat/shared/featureFlags';
+import type { OrganizationRole } from '@owlat/shared/organizationPermissions';
+import { alertSoundKindsFor } from './alertSoundRules';
 import { fuzzyMatch } from './commandPalette';
 
 /** Where the Preferences tree lives. Everything under it is registry-owned. */
@@ -30,12 +32,15 @@ export const SETTINGS_ROOT = '/dashboard/preferences';
 
 /**
  * The ambient inputs a gate reads. Deliberately a subset of
- * `NavigationEnvironment` (no role — no personal preference is role-gated), so a
- * `SettingsGate` is assignable wherever a navigation gate is expected.
+ * `NavigationEnvironment`, so a `SettingsGate` is assignable wherever a
+ * navigation gate is expected. `role` is optional: no destination is
+ * role-gated, only a control whose card shows rows by role (the alert sounds),
+ * and a caller that omits it reaches none of those rows.
  */
 export interface SettingsEnvironment {
 	isFeatureEnabled(flag: FeatureFlagKey): boolean;
 	isDesktop: boolean;
+	role?: OrganizationRole | null;
 }
 
 export type SettingsGate = (env: SettingsEnvironment) => boolean;
@@ -49,6 +54,8 @@ export const hasMail: SettingsGate = (env) =>
 	env.isFeatureEnabled('postbox') || env.isFeatureEnabled('mail.external');
 const desktopOnly: SettingsGate = (env) => env.isDesktop;
 const browserOnly: SettingsGate = (env) => !env.isDesktop;
+/** Some alert sound can reach this person: the card's own predicate, so search matches it. */
+const hasAlertSounds: SettingsGate = (env) => alertSoundKindsFor(env).length > 0;
 /** Campaigns, automations or transactional sending: marketing notifications can fire. */
 const hasMarketingNotices: SettingsGate = (env) =>
 	env.isFeatureEnabled('campaigns') ||
@@ -165,6 +172,7 @@ export const SETTINGS_REGISTRY: readonly SettingsEntry[] = [
 			control('readingPane', 'reading', hasMail),
 			control('swipeActions', 'reading', hasMail),
 			control('replyDefault', 'reading', hasMail),
+			control('afterReply', 'reading', hasMail),
 			control('writingSuggestions', 'reading', all(hasMail, flag('ai'))),
 			control('autoSummarize', 'reading', all(hasMail, flag('ai'))),
 			control('sendSound', 'reading', hasMail),
@@ -279,6 +287,7 @@ export const SETTINGS_REGISTRY: readonly SettingsEntry[] = [
 		controls: [
 			control('pushNotifications', 'push', all(browserOnly, hasPushSource)),
 			control('marketingNotifications', 'marketing-notifications', hasMarketingNotices),
+			control('alertSounds', 'alert-sounds', hasAlertSounds),
 			control('offlineCache', 'offline', hasMail),
 			control('notifyAbout', 'notifications', all(desktopOnly, hasMail)),
 			control('quietHours', 'notifications', all(desktopOnly, hasMail)),

@@ -1,7 +1,7 @@
 /**
- * `desktop-workspace.global` pre-auth gate over the shipped
- * `useDesktopWorkspaces` (its workspace store and keychain bridges mocked at
- * the Tauri boundary) and the real vue-i18n `useI18n`.
+ * `desktop-workspace.global` pre-auth gate over the workspace list the shipped
+ * `loadWorkspaces` hydrates (its workspace store and keychain bridges mocked at
+ * the Tauri boundary).
  *
  * The packaged Tauri app loads `/` on every launch, and `/` is also the web
  * marketing landing: the desktop runtime must be routed into the product —
@@ -67,7 +67,6 @@ async function load(store: { workspaces: WorkspaceConfig[]; active: string | nul
 	});
 	return loadMiddleware<Middleware>(async () => {
 		const desktop = await import('~/composables/useDesktopWorkspaces');
-		vi.stubGlobal('useDesktopWorkspaces', desktop.useDesktopWorkspaces);
 		await desktop.loadWorkspaces();
 		return import('../desktop-workspace.global');
 	});

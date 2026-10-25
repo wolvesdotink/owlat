@@ -4,7 +4,9 @@
  *     `r`: Answer mode resolves the default reply mode and runs the guard);
  *   - Esc on the list closes the conversation open beside it;
  *   - the j/k row survives the round trip: filed on unmount, taken back on the
- *     mount that is the return from Answer mode, and only then.
+ *     mount that is the return from Answer mode, and only then;
+ *   - a reply marked done moves on to the next conversation of the list it came
+ *     from, and back to that list (a label view's own page, not the Inbox).
  *
  * Same auto-import stubs as PostboxThreadListStates.test.ts.
  */
@@ -24,7 +26,11 @@ import {
 	usePostboxMessageDrag,
 } from '../../../composables/postbox/usePostboxMessageDrag';
 import { nextUnreadIndex, resolvePostboxShortcut } from '../../../utils/postboxShortcuts';
-import { rememberListPlace, takeListPlace } from '../../../composables/useAnswerMode';
+import {
+	rememberListPlace,
+	takeListPlace,
+	useAnswerModeNav,
+} from '../../../composables/useAnswerMode';
 import PostboxThreadRow from '../PostboxThreadRow.vue';
 import PostboxRowCore from '../PostboxRowCore.vue';
 import PostboxThreadRowBody from '../PostboxThreadRowBody.vue';
@@ -127,8 +133,9 @@ const contextMenuStub = {
 	template: '<slot :on-contextmenu="() => {}" :on-keydown="() => {}" />',
 };
 
-function makeMessage(i: number) {
+function makeMessage(i: number, threadId?: string) {
 	return {
+		...(threadId ? { threadId } : {}),
 		_id: `msg-${i}` as Id<'mailMessages'>,
 		fromAddress: `sender${i}@example.com`,
 		fromName: `Sender ${i}`,
@@ -147,6 +154,7 @@ function mountList(opts: {
 	folderRole?: string;
 	folderId?: string;
 	emptyContext?: 'label';
+	listPath?: string;
 	hasMore?: boolean;
 	activeMessageId?: string;
 }) {
@@ -158,6 +166,7 @@ function mountList(opts: {
 			folderRole: opts.folderRole ?? 'inbox',
 			folderId: opts.folderId,
 			emptyContext: opts.emptyContext,
+			listPath: opts.listPath,
 			hasMore: opts.hasMore,
 			activeMessageId: opts.activeMessageId,
 		},
@@ -260,5 +269,49 @@ describe('PostboxThreadList and Answer mode', () => {
 		mountList({ loading: false, messages: rows });
 		await flushPromises();
 		expect(focusedIndex.value).toBe(-1);
+	});
+
+	describe('a reply marked done', () => {
+		const leaveDone = (
+			messageId: string,
+			mode: 'next' | 'back-to-list',
+			threadId: string | null = null
+		) => {
+			navigateTo.mockClear();
+			useAnswerModeNav().leaveDone({ messageId, threadId }, mode);
+		};
+
+		it('goes back to the label view it was opened from, and opens rows where it does', () => {
+			const label = mountList({
+				loading: false,
+				messages: rows,
+				emptyContext: 'label',
+				listPath: '/dashboard/postbox/label/lbl_1',
+			});
+			act('r', 'msg-2');
+			label.unmount();
+			leaveDone('msg-2', 'back-to-list');
+			expect(navigateTo).toHaveBeenCalledWith('/dashboard/postbox/label/lbl_1', { replace: true });
+
+			const again = mountList({
+				loading: false,
+				messages: rows,
+				emptyContext: 'label',
+				listPath: '/dashboard/postbox/label/lbl_1',
+			});
+			act('r', 'msg-2');
+			again.unmount();
+			leaveDone('msg-2', 'next');
+			expect(navigateTo).toHaveBeenCalledWith('/dashboard/postbox/inbox/msg-3', { replace: true });
+		});
+
+		it('moves past the rest of the conversation in a flat feed', () => {
+			const feed = [makeMessage(1, 't_a'), makeMessage(2, 't_a'), makeMessage(3, 't_b')];
+			const list = mountList({ loading: false, messages: feed });
+			act('r', 'msg-1');
+			list.unmount();
+			leaveDone('msg-1', 'next', 't_a');
+			expect(navigateTo).toHaveBeenCalledWith('/dashboard/postbox/inbox/msg-3', { replace: true });
+		});
 	});
 });

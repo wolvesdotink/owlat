@@ -169,6 +169,16 @@ export const SHORTCUT_CATALOG: readonly ShortcutDefinition[] = [
 		...SURFACE,
 	},
 	{
+		// Bound only while a conversation is open (usePostboxThreadFind): the
+		// reader on top takes the press, and everywhere else the browser's own
+		// find keeps it.
+		id: 'global.findInConversation',
+		scope: 'global',
+		keys: ['mod+f'],
+		labelKey: L('findInConversation'),
+		groupKey: G.actions,
+	},
+	{
 		// useSidebarJumpHints: hold Alt to see the numbers.
 		id: 'global.jumpToSidebarItem',
 		scope: 'global',

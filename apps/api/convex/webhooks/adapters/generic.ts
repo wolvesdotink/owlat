@@ -20,23 +20,36 @@
  * No `successResponse` — inherits the pipeline's default JSON envelope.
  */
 
+import { v } from 'convex/values';
 import { constantTimeEqual } from '../security';
 import { missingChannelSecretResult, resolveChannelInboundSecret } from '../channelSecrets';
 import type { InboundAdapter } from '../pipeline';
 import type { InboundEvent } from '../types';
+import { decodeWebhookBody } from './webhookBody';
 
-interface GenericPayload {
-	from?: string;
-	sender?: string;
-	id?: string;
-	messageId?: string;
-	text?: string;
-	message?: string;
-	html?: string;
-	subject?: string;
-	content?: { text?: string; html?: string; subject?: string };
-	metadata?: Record<string, string | undefined>;
-}
+/**
+ * The envelope fields this adapter reads. All optional (the cascades below
+ * default them), but each has to be the type it is read as. `metadata` is
+ * stored as a JSON blob, so its values are not constrained.
+ */
+const genericPayloadValidator = v.object({
+	from: v.optional(v.string()),
+	sender: v.optional(v.string()),
+	id: v.optional(v.string()),
+	messageId: v.optional(v.string()),
+	text: v.optional(v.string()),
+	message: v.optional(v.string()),
+	html: v.optional(v.string()),
+	subject: v.optional(v.string()),
+	content: v.optional(
+		v.object({
+			text: v.optional(v.string()),
+			html: v.optional(v.string()),
+			subject: v.optional(v.string()),
+		})
+	),
+	metadata: v.optional(v.record(v.string(), v.any())),
+});
 
 const MISSING_AUTH_REASON = 'Missing authentication (x-webhook-secret or Authorization header)';
 
@@ -81,7 +94,7 @@ export const genericAdapter: InboundAdapter = {
 	},
 
 	parseEvent(rawBody): InboundEvent | null {
-		const payload = JSON.parse(rawBody) as GenericPayload;
+		const payload = decodeWebhookBody(rawBody, genericPayloadValidator, 'generic');
 
 		const from = payload.from ?? payload.sender ?? 'webhook';
 		const text = payload.text ?? payload.message ?? payload.content?.text ?? '';

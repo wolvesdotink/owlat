@@ -461,6 +461,9 @@ useWorkbenchKeyboard({
 			</div>
 		</template>
 
+		<!-- Across every inbox and campaigns, so it also shows with no inbox. -->
+		<TodayUpcoming v-if="hasActiveOrganization && !isZen" />
+
 		<TodayPeekPanel
 			:sources="peekSources"
 			@close="closePeek"

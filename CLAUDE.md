@@ -17,7 +17,8 @@ one git object store. Each of these has cost a run before:
    names its compose project `owlat`, like a production install, and ends with
    `docker compose down -v`. The updater's reclaim step prunes every dangling
    image and the unused images of the stack's repositories, whoever pulled
-   them. Run the update flow inside a `docker:dind` container, or leave it to
+   them. Run the update flow inside a `docker:dind` container
+   (`scripts/e2e-update-flow-dind.sh` does that), or leave it to
    `update-flow.yml` in CI.
 3. **Formatting or staging the whole tree.** Never bare `npx oxfmt` or
    `bunx oxfmt` (both ignore `oxfmtrc.json` or fetch another version), and
@@ -304,11 +305,17 @@ a layout, a token or a palette class. Post one pair per affected surface — the
 same page/viewport/theme in both shots, so the diff is the change and nothing
 else.
 
-Captures come from either a real local backend (`bun run dev:stack`, seeded
-with demo data) or a dev-only screenshot harness that renders the real
-authenticated UI against a mocked Convex client and mocked better-auth
-endpoints. The harness is intentionally kept out of the repository — it is
-scaffolding, not product — so none of it may ever be committed.
+Take captures with `bun run capture` against the real local stack
+(`bun run dev:stack`, seeded with demo data): it signs in as the seeded owner,
+screenshots named surfaces (`--list`) or any route (`--path`), and writes the
+PNGs outside the checkout, never into the tree. Run it once with the label
+`before` and once with `after`; the second run reuses the first one's theme,
+viewport and clock. See
+[docs/operations/development.md](docs/operations/development.md#screenshots-for-a-ui-pull-request).
+The script is committed tooling. The older mock harness (a mocked Convex
+client and mocked better-auth endpoints) is not: if you still use it for a
+state the seed cannot show, keep it out of the repository, none of it may ever
+be committed.
 
 Capture the "before" shots _before_ you start editing: once the change is in
 the working tree the original state is gone.

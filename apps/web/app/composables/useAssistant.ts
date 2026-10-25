@@ -1,5 +1,6 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import { buildPromptHistory } from '~/utils/composerRecall';
 
 /**
  * State + actions for the personal AI assistant (`/dashboard/assistant`):
@@ -28,6 +29,14 @@ export function useAssistant() {
 		activeId.value ? { conversationId: activeId.value } : 'skip'
 	);
 	const messages = computed(() => messagesData.value ?? []);
+
+	/**
+	 * The questions asked in the open conversation, oldest first, for the
+	 * composer's ↑. Empty until the conversation's own messages have loaded.
+	 */
+	const promptHistory = computed(() =>
+		activeId.value && !messagesLoading.value ? buildPromptHistory(messages.value) : []
+	);
 
 	const activeConversation = computed(
 		() => conversations.value.find((c) => c._id === activeId.value) ?? null
@@ -120,6 +129,7 @@ export function useAssistant() {
 		messagesLoading,
 		messagesError,
 		refetchMessages,
+		promptHistory,
 		activeConversation,
 		streaming,
 		selectConversation,

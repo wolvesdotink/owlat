@@ -92,8 +92,27 @@ export interface TriageMovedEntry {
 }
 
 /**
+ * Most messages one move-family mutation (archive, trash, move) is given.
+ * Every moved message costs several index reads (folder counters, thread
+ * aggregates, triage bookkeeping) and a transaction may read at most 4,096
+ * index ranges, so a few hundred messages in one call abort it whole. A
+ * longer range, and its Undo, is split into calls of this size.
+ */
+export const POSTBOX_MESSAGES_PER_MOVE = 100;
+
+/** Split `ids` into consecutive runs of at most {@link POSTBOX_MESSAGES_PER_MOVE}. */
+export function chunkForMove<T>(ids: readonly T[]): T[][] {
+	const chunks: T[][] = [];
+	for (let i = 0; i < ids.length; i += POSTBOX_MESSAGES_PER_MOVE) {
+		chunks.push(ids.slice(i, i + POSTBOX_MESSAGES_PER_MOVE));
+	}
+	return chunks;
+}
+
+/**
  * Group a move-family mutation's `moved` provenance into the inverse move
- * calls (one per distinct source folder, preserving message order).
+ * calls: per distinct source folder, preserving message order, and at most
+ * {@link POSTBOX_MESSAGES_PER_MOVE} messages per call.
  */
 export function groupMovedBySourceFolder(
 	moved: TriageMovedEntry[]
@@ -104,10 +123,9 @@ export function groupMovedBySourceFolder(
 		bucket.push(entry.messageId);
 		byFolder.set(entry.sourceFolderId, bucket);
 	}
-	return [...byFolder.entries()].map(([targetFolderId, messageIds]) => ({
-		targetFolderId,
-		messageIds,
-	}));
+	return [...byFolder.entries()].flatMap(([targetFolderId, messageIds]) =>
+		chunkForMove(messageIds).map((chunk) => ({ targetFolderId, messageIds: chunk }))
+	);
 }
 
 /** A notice on screen, standing for every stacked entry with its id as `groupId`. */
@@ -351,7 +369,8 @@ export function usePostboxTriageUndo() {
 
 	/**
 	 * Convenience for the dominant case: undo a move-family action by moving
-	 * each message back to its source folder (grouped per folder), optionally
+	 * each message back to its source folder (grouped per folder, one bounded
+	 * `runMove` call after another, so `moved` may be any length), optionally
 	 * preceded by a semantic inverse (e.g. notSpam) and followed by local
 	 * cleanup (e.g. un-hiding optimistic rows).
 	 *

@@ -72,6 +72,26 @@ describe('ThreadHeaderActions', () => {
 		expect(discuss).toHaveLength(2);
 	});
 
+	it('copies the link and shares it in chat from both menus', async () => {
+		const wrapper = mountActions({ discussionChannels: [{ _id: 'c1', name: 'billing' }] });
+		const copy = wrapper.findAll('.menu-item').filter((b) => b.text() === 'Copy link');
+		const share = wrapper.findAll('.menu-item').filter((b) => b.text() === 'Share in chat…');
+		// The wide ⋯ menu stays even with no discussion to start, plus the compact one.
+		expect(copy).toHaveLength(2);
+		expect(share).toHaveLength(2);
+		for (const item of copy) await item.trigger('click');
+		await share[0]!.trigger('click');
+		expect(wrapper.emitted('copyLink')).toHaveLength(2);
+		expect(wrapper.emitted('shareInChat')).toHaveLength(1);
+	});
+
+	it('offers no chat sharing while chat is off', () => {
+		const wrapper = mountActions({ chatEnabled: false });
+		const texts = wrapper.findAll('.menu-item').map((item) => item.text());
+		expect(texts.filter((text) => text === 'Copy link')).toHaveLength(2);
+		expect(texts).not.toContain('Share in chat…');
+	});
+
 	it('links an existing chat channel on wide screens', () => {
 		const wrapper = mountActions({ discussionChannels: [{ _id: 'c1', name: 'billing' }] });
 		expect(wrapper.get('a[href="/dashboard/chat/c1"]').text()).toContain('#billing');

@@ -45,7 +45,12 @@ import { usePostboxFrameAutosize } from '~/composables/postbox/usePostboxFrameAu
 import { usePostboxCidImages } from '~/composables/postbox/usePostboxCidImages';
 import { usePostboxImageConsent } from '~/composables/postbox/usePostboxImageConsent';
 import { usePostboxQuoteHighlight } from '~/composables/postbox/usePostboxQuoteHighlight';
+import { usePostboxFindInFrame } from '~/composables/postbox/usePostboxFindInFrame';
+import type { PostboxMessageFind } from '~/composables/postbox/usePostboxThreadFind';
 import { usePostboxRenderedBody } from '~/composables/postbox/usePostboxRenderedBody';
+import { usePostboxFrameSelection } from '~/composables/postbox/usePostboxFrameSelection';
+import { usePostboxReaderQuoteReply } from '~/composables/postbox/usePostboxReaderContext';
+import PostboxQuoteReplyPill from './PostboxQuoteReplyPill.vue';
 import type { CitedQuote } from '~/utils/postboxQuoteHighlight';
 import type { CidAttachment } from '~/utils/postboxCidImages';
 import { notePostboxBodyRendered } from '~/composables/postbox/usePostboxPerfMarks';
@@ -100,6 +105,8 @@ const props = defineProps<{
 	suspicious?: boolean;
 	/** A cited quote of the thread brief to mark and scroll to. */
 	highlightQuote?: CitedQuote | null;
+	/** Find in conversation's matches in this body (the reader's find state). */
+	find?: PostboxMessageFind | null;
 	/** Render the image banner there instead (the calm reader's Details, §3). */
 	imageBannerTo?: HTMLElement | null;
 }>();
@@ -158,12 +165,33 @@ const { showImages, loadEverything, loadEverythingNow } = usePostboxImageConsent
 	images: () => props,
 });
 const showQuoted = ref(false);
+// Find shows the quote while a match sits in it, apart from the reader's own
+// toggle: closing find folds it away again unless the reader opened it. Hiding
+// it by hand while find holds it open wins until find lets go.
+const quoteHiddenByHand = ref(false);
+const findForcesQuote = computed(() => !!props.find?.forceQuoted && !quoteHiddenByHand.value);
+watch(
+	() => !!props.find?.forceQuoted,
+	(forced) => {
+		if (!forced) quoteHiddenByHand.value = false;
+	}
+);
+const quotedShown = computed(() => showQuoted.value || findForcesQuote.value);
+function toggleQuoted() {
+	if (quotedShown.value) {
+		showQuoted.value = false;
+		if (findForcesQuote.value) quoteHiddenByHand.value = true;
+	} else {
+		showQuoted.value = true;
+	}
+}
 const iframeRef = ref<HTMLIFrameElement | null>(null);
 usePostboxQuoteHighlight({
 	frame: iframeRef,
 	quote: () => props.highlightQuote,
 	onResult: (isLocated) => emit('citeLocated', isLocated),
 });
+usePostboxFindInFrame({ frame: iframeRef, find: () => props.find });
 
 /** Canonical sender key, or null when the From header holds no address. */
 const senderKey = computed(() => postboxSenderKey(props.message.fromAddress));
@@ -201,7 +229,7 @@ const rendered = usePostboxRenderedBody(() => ({
 	html: effectiveHtml.value ?? '',
 	text: effectiveText.value,
 	scheme: appScheme.value,
-	showQuoted: showQuoted.value,
+	showQuoted: quotedShown.value,
 	showImages: showImages.value,
 	loadEverything: loadEverything.value,
 	typography: mailTypography.value,
@@ -318,6 +346,30 @@ function trustSender() {
 	emit('trustSender', from);
 }
 
+// "Quote in reply" over a passage selected in the body, where the reader
+// offers it for this message and the frame shows its text (not the
+// "(empty message)" stand-in).
+const quoteReply = usePostboxReaderQuoteReply();
+const frameBox = ref<HTMLElement | null>(null);
+const quotePill = ref<{ el: HTMLElement | null; focus: () => void } | null>(null);
+const frameSelection = usePostboxFrameSelection({
+	iframeRef,
+	srcdoc: displaySrcdoc,
+	enabled: () =>
+		!!props.message._id &&
+		(hasLiveContent.value || !!shownPlaceholder.value) &&
+		!!quoteReply?.canQuote(props.message._id),
+	onQuote: quoteSelection,
+	actionEl: () => quotePill.value?.el ?? null,
+	focusAction: () => quotePill.value?.focus(),
+});
+const selectedPassage = frameSelection.selection;
+function quoteSelection(passage: string) {
+	const id = props.message._id;
+	frameSelection.clear();
+	if (id && quoteReply?.canQuote(id)) quoteReply.quote(id, passage);
+}
+
 function untrustSender() {
 	const from = props.message.fromAddress;
 	if (!from) return;
@@ -377,33 +429,44 @@ usePostboxFrameAutosize({
 				@untrust-sender="untrustSender()"
 			/>
 		</Teleport>
-		<!-- palette-ok: designed mail keeps its own colors on a white paper card
-		     (also on the dark app background). Plain mail paints nothing, so it
-		     reads as part of the message card; `color-scheme` is pinned to the
-		     frame's own scheme because the browser paints an opaque backdrop
-		     behind a frame whose scheme differs from its embedder's. -->
-		<iframe
-			ref="iframeRef"
-			:srcdoc="displaySrcdoc"
-			sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"
-			class="block w-full"
-			:class="isPaper ? 'rounded-md border border-border-subtle bg-white' : 'bg-transparent'"
-			:style="{
-				minHeight: isPaper ? '200px' : '48px',
-				height: presetHeight ? `${presetHeight}px` : undefined,
-				colorScheme: renderScheme,
-			}"
-			referrerpolicy="no-referrer"
-		/>
+		<!-- The box the "Quote in reply" pill is placed in, over the frame. -->
+		<div ref="frameBox" class="relative">
+			<!-- palette-ok: designed mail keeps its own colors on a white paper card
+			     (also on the dark app background). Plain mail paints nothing, so it
+			     reads as part of the message card; `color-scheme` is pinned to the
+			     frame's own scheme because the browser paints an opaque backdrop
+			     behind a frame whose scheme differs from its embedder's. -->
+			<iframe
+				ref="iframeRef"
+				:srcdoc="displaySrcdoc"
+				sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"
+				class="block w-full"
+				:class="isPaper ? 'rounded-md border border-border-subtle bg-white' : 'bg-transparent'"
+				:style="{
+					minHeight: isPaper ? '200px' : '48px',
+					height: presetHeight ? `${presetHeight}px` : undefined,
+					colorScheme: renderScheme,
+				}"
+				referrerpolicy="no-referrer"
+			/>
+			<PostboxQuoteReplyPill
+				v-if="selectedPassage"
+				ref="quotePill"
+				:anchor="selectedPassage.anchor"
+				:bounds-width="frameBox?.clientWidth ?? 0"
+				@quote="quoteSelection(selectedPassage.text)"
+				@dismiss="frameSelection.clear()"
+			/>
+		</div>
 		<button
 			v-if="hasQuotedContent"
 			type="button"
 			class="mt-2 inline-flex items-center gap-1 px-2 py-1 rounded text-xs text-text-secondary hover:text-text-primary hover:bg-bg-surface"
-			@click="showQuoted = !showQuoted"
+			@click="toggleQuoted"
 		>
-			<Icon :name="showQuoted ? 'lucide:chevron-up' : 'lucide:chevron-down'" class="w-3.5 h-3.5" />
+			<Icon :name="quotedShown ? 'lucide:chevron-up' : 'lucide:chevron-down'" class="w-3.5 h-3.5" />
 			{{
-				showQuoted
+				quotedShown
 					? t('components.postbox.postboxMessageBody.hideQuoted')
 					: t('components.postbox.postboxMessageBody.showQuoted')
 			}}

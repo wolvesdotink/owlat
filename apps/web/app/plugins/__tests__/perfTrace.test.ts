@@ -78,7 +78,7 @@ async function loadPlugin() {
 	vi.resetModules();
 	const definition = (await import('../perf-trace.client')).default as unknown as (
 		nuxtApp: typeof fakeNuxtApp
-	) => void;
+	) => Promise<void>;
 	// Same module registry as the plugin: loaded right after the reset.
 	const telemetry = await import('~/lib/perfTelemetry');
 	const registry = await import('~/lib/sharedConvexSubscriptions');
@@ -161,10 +161,18 @@ describe('perf-trace plugin', () => {
 	});
 
 	it('does nothing at all unless this browser opted in', async () => {
+		const installModuleLoads = vi.fn();
+		vi.doMock('~/lib/localPerfTraceInstall.client', () => {
+			installModuleLoads();
+			return { installLocalPerfTrace: vi.fn() };
+		});
 		const { plugin, telemetry } = await loadPlugin();
-		plugin();
+		await plugin();
+		vi.doUnmock('~/lib/localPerfTraceInstall.client');
 		telemetry.reportPerf('owlat_boot_shell_ms', { duration_ms: 300 });
 
+		// The trace implementation is not even downloaded.
+		expect(installModuleLoads).not.toHaveBeenCalled();
 		expect(window.owlatPerfTrace).toBeUndefined();
 		expect(guards).toEqual([]);
 		expect(hooks.size).toBe(0);
@@ -175,7 +183,7 @@ describe('perf-trace plugin', () => {
 	it('stays off for a value it does not understand', async () => {
 		localStorage.setItem('owlat:perf-trace', 'please');
 		const { plugin } = await loadPlugin();
-		plugin();
+		await plugin();
 
 		expect(window.owlatPerfTrace).toBeUndefined();
 		expect(observers).toBe(0);
@@ -184,7 +192,7 @@ describe('perf-trace plugin', () => {
 	it('records samples without PostHog, within the bound, and clears completely', async () => {
 		localStorage.setItem('owlat:perf-trace', '10');
 		const { plugin, telemetry } = await loadPlugin();
-		plugin();
+		await plugin();
 		const handle = window.owlatPerfTrace!;
 		expect(handle.limit).toBe(10);
 
@@ -217,7 +225,7 @@ describe('perf-trace plugin', () => {
 		it('counts after the destination rendered and the page before let go', async () => {
 			localStorage.setItem('owlat:perf-trace', 'on');
 			const { plugin, registry } = await loadPlugin();
-			plugin();
+			await plugin();
 			const leaveA = holdQuery(registry, 'page-a');
 
 			navigate('dashboard-postbox-folder');
@@ -252,7 +260,7 @@ describe('perf-trace plugin', () => {
 		it('drops a sample a newer navigation superseded before the render finished', async () => {
 			localStorage.setItem('owlat:perf-trace', 'on');
 			const { plugin } = await loadPlugin();
-			plugin();
+			await plugin();
 
 			navigate('dashboard-postbox-folder');
 			navigate('auth-login');
@@ -265,7 +273,7 @@ describe('perf-trace plugin', () => {
 		it('drops a sample a newer navigation superseded during its last frame', async () => {
 			localStorage.setItem('owlat:perf-trace', 'on');
 			const { plugin } = await loadPlugin();
-			plugin();
+			await plugin();
 
 			navigate('dashboard-postbox-folder');
 			pageRendered();
@@ -281,7 +289,7 @@ describe('perf-trace plugin', () => {
 		it('takes none for a failed navigation', async () => {
 			localStorage.setItem('owlat:perf-trace', 'on');
 			const { plugin } = await loadPlugin();
-			plugin();
+			await plugin();
 
 			navigate('auth-login', { failure: new Error('aborted') });
 			nextFrame();
@@ -294,7 +302,7 @@ describe('perf-trace plugin', () => {
 		it('records nothing wrong when the navigation is repeated while it renders', async () => {
 			localStorage.setItem('owlat:perf-trace', 'on');
 			const { plugin, registry } = await loadPlugin();
-			plugin();
+			await plugin();
 			const leaveA = holdQuery(registry, 'page-a');
 
 			navigate('dashboard-postbox-folder');
@@ -318,7 +326,7 @@ describe('perf-trace plugin', () => {
 		it('ignores page:loading:end on its own, as a same-page re-render sends it', async () => {
 			localStorage.setItem('owlat:perf-trace', 'on');
 			const { plugin, registry } = await loadPlugin();
-			plugin();
+			await plugin();
 			holdQuery(registry, 'page-a');
 
 			// A query-only change keeps the page mounted: no Suspense, no sample.
@@ -339,7 +347,7 @@ describe('perf-trace plugin', () => {
 		it('takes none when the route moved on without a navigation of its own', async () => {
 			localStorage.setItem('owlat:perf-trace', 'on');
 			const { plugin } = await loadPlugin();
-			plugin();
+			await plugin();
 
 			navigate('dashboard-postbox-folder');
 			currentRoute = { name: 'dashboard-postbox-folder', fullPath: '/elsewhere' };
@@ -353,7 +361,7 @@ describe('perf-trace plugin', () => {
 	it("keeps every listed producer's event with all of its numbers", async () => {
 		localStorage.setItem('owlat:perf-trace', 'on');
 		const { plugin, telemetry } = await loadPlugin();
-		plugin();
+		await plugin();
 		const { usePerfMark } = await import('~/composables/usePerfMark');
 		vi.useRealTimers();
 
@@ -384,7 +392,7 @@ describe('perf-trace plugin', () => {
 	it('exports and downloads no personal data, URLs, ids or credentials', async () => {
 		localStorage.setItem('owlat:perf-trace', 'on');
 		const { plugin, telemetry } = await loadPlugin();
-		plugin();
+		await plugin();
 
 		// A route the router does not know (a URL leaked into a name) and a
 		// caller that slipped past the types with every kind of string.

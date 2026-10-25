@@ -28,7 +28,8 @@
 }
 
 /* Answer mode keeps the quoted original in the body (the draft and the sent
-   message are unchanged) and only folds it out of sight in the editor. */
-.pbx-quote-folded .postbox-basic-editor .gmail_quote {
+   message are unchanged) and only folds it out of sight in the editor. A
+   passage the person chose to quote stays in view. */
+.pbx-quote-folded .postbox-basic-editor .gmail_quote:not(.owlat_selected_quote) {
 	display: none;
 }

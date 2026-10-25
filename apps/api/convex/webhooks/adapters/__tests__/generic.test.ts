@@ -190,6 +190,29 @@ describe('genericAdapter.parseEvent', () => {
 		expect(() => genericAdapter.parseEvent('not json')).toThrow();
 	});
 
+	it('refuses a field of the wrong type instead of dispatching it', () => {
+		// The channel mutation validates `from` as a string, so a wrong type has
+		// to be refused here, before dispatch, or it surfaces there as a 500.
+		expect(() => genericAdapter.parseEvent('{"from":42,"text":"hi"}')).toThrow(
+			'generic webhook: $.from: expected string'
+		);
+		expect(() =>
+			genericAdapter.parseEvent(JSON.stringify({ text: 'hi', content: { html: ['x'] } }))
+		).toThrow('generic webhook: $.content.html: expected string');
+		expect(() => genericAdapter.parseEvent(JSON.stringify({ text: 'hi', metadata: 'x' }))).toThrow(
+			/\$\.metadata/
+		);
+		expect(() => genericAdapter.parseEvent('[]')).toThrow(/generic webhook: \$/);
+	});
+
+	it('keeps keys it does not read and metadata values of any type', () => {
+		const event = genericAdapter.parseEvent(
+			JSON.stringify({ from: 'a@b', text: 'hi', extra: 1, metadata: { count: 3 } })
+		);
+		if (event?.kind !== 'channel.received') throw new Error('wrong kind');
+		expect(event.metadata).toEqual({ count: 3 });
+	});
+
 	it('does NOT supply a custom successResponse (inherits pipeline default)', () => {
 		expect(genericAdapter.successResponse).toBeUndefined();
 	});

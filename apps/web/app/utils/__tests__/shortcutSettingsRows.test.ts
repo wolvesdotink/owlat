@@ -35,6 +35,7 @@ describe('shortcut page sections', () => {
 			'global',
 			'postbox',
 			'composer',
+			'chatComposer',
 			'inbox',
 			'inboxList',
 			'review',
@@ -81,6 +82,16 @@ describe('shortcut page sections', () => {
 			true
 		);
 		expect(isShortcutScopeAvailable('answer', env([]))).toBe(false);
+	});
+
+	it('lists the message-box recall keys where Chat or the Assistant exists', () => {
+		const ids = (flags: string[]) =>
+			sections(env(flags))
+				.filter((section) => section.scope === 'chatComposer')
+				.flatMap((section) => section.rows.map((row) => row.def.id));
+		expect(ids(['chat'])).toEqual(['chatComposer.recallOlder']);
+		expect(ids(['ai.assistant'])).toEqual(['chatComposer.recallOlder', 'chatComposer.recallNewer']);
+		expect(ids(['inbox'])).toEqual([]);
 	});
 
 	it('hides the Ask chord while knowledge is off', () => {

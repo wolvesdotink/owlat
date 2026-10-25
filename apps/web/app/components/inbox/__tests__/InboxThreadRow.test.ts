@@ -177,6 +177,34 @@ describe('InboxThreadRow', () => {
 	});
 });
 
+describe('InboxThreadRow selection', () => {
+	it('selects from its checkbox without opening, and extends with Shift', async () => {
+		const w = mountRow({});
+		const box = w.get('[data-testid="inbox-row-checkbox"]');
+		expect(box.attributes('aria-label')).toBe('Select');
+		await box.trigger('click');
+		await box.trigger('click', { shiftKey: true });
+		expect(w.emitted('toggle-select')).toEqual([[false], [true]]);
+		expect(w.emitted('open')).toBeUndefined();
+	});
+
+	it('reports selection, not focus, as the option state for a manager', () => {
+		const selected = mountRow({}, undefined, { selected: true, focused: false });
+		expect(selected.get('[role="option"]').attributes('aria-selected')).toBe('true');
+		expect(selected.get('[data-testid="inbox-row-checkbox"]').attributes('aria-label')).toBe(
+			'Deselect'
+		);
+		const focused = mountRow({}, undefined, { selected: false, focused: true });
+		expect(focused.get('[role="option"]').attributes('aria-selected')).toBe('false');
+	});
+
+	it('keeps the read-only row without a checkbox, its option state on focus', () => {
+		const w = mountRow({}, undefined, { canManage: false, focused: true });
+		expect(w.find('[data-testid="inbox-row-checkbox"]').exists()).toBe(false);
+		expect(w.get('[role="option"]').attributes('aria-selected')).toBe('true');
+	});
+});
+
 describe('InboxThreadRow response-target chip', () => {
 	const NOW = 10_000_000;
 	function mountAt(thread: Partial<InboxThreadRowThread>) {

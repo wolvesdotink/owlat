@@ -195,6 +195,30 @@ describe('handleTlsReportWebhook (/webhooks/mta-tls-report)', () => {
 		expect(await countReports(t)).toBe(1);
 	});
 
+	it('refuses (400) a signed body whose attachment content is not a string', async () => {
+		const t = setupTest();
+		const reqBody = JSON.stringify({
+			attachments: [
+				{ filename: 'report.json.gz', contentType: 'application/tlsrpt+gzip', content: 42 },
+			],
+		});
+		const ts = nowSeconds();
+		const sig = await hmacSha256Hex(SECRET, `${ts}.${reqBody}`);
+		const res = await t.fetch(TLS_RPT_PATH, {
+			method: 'POST',
+			body: reqBody,
+			headers: signedHeaders(ts, sig),
+		});
+		expect(res.status).toBe(400);
+		expect(await res.json()).toEqual({
+			error: {
+				category: 'invalid_input',
+				message: 'Invalid request body: $.attachments[0].content: expected string',
+			},
+		});
+		expect(await countReports(t)).toBe(0);
+	});
+
 	it('acknowledges (200 ok:false) a garbage attachment without ingesting', async () => {
 		const t = setupTest();
 		// A `.gz`-named attachment whose bytes are not valid gzip — the shared

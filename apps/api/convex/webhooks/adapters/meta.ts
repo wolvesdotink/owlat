@@ -18,6 +18,7 @@
  * https://developers.facebook.com/docs/whatsapp/cloud-api/webhooks
  */
 
+import { v } from 'convex/values';
 import { constantTimeEqual, hmacSha256Hex } from '../security';
 import { missingChannelSecretResult, resolveChannelInboundSecret } from '../channelSecrets';
 import { logError } from '../../lib/runtimeLog';
@@ -26,6 +27,7 @@ import { getClientIp, rateLimitedResponse } from '../../lib/publicRateLimit';
 import type { ActionCtx } from '../../_generated/server';
 import type { InboundAdapter } from '../pipeline';
 import type { InboundEvent } from '../types';
+import { decodeWebhookBody } from './webhookBody';
 
 /**
  * Verify a Meta `x-hub-signature-256` header against the raw body.
@@ -43,22 +45,48 @@ export async function verifyMetaSignature(
 	return constantTimeEqual(expected, provided);
 }
 
-interface MetaPayload {
-	entry?: Array<{
-		changes?: Array<{
-			value?: {
-				messages?: Array<{
-					from?: string;
-					id?: string;
-					text?: { body?: string };
-					image?: { url?: string };
-					document?: { url?: string };
-				}>;
-				contacts?: Array<{ profile?: { name?: string } }>;
-			};
-		}>;
-	}>;
-}
+/**
+ * The path to the message this adapter reads, every level optional. Status
+ * updates carry `statuses` instead of `messages`; that key is not declared
+ * here, so it is ignored and the update is acknowledged with no event.
+ */
+const urlPart = v.optional(v.object({ url: v.optional(v.string()) }));
+const metaPayloadValidator = v.object({
+	entry: v.optional(
+		v.array(
+			v.object({
+				changes: v.optional(
+					v.array(
+						v.object({
+							value: v.optional(
+								v.object({
+									messages: v.optional(
+										v.array(
+											v.object({
+												from: v.optional(v.string()),
+												id: v.optional(v.string()),
+												text: v.optional(v.object({ body: v.optional(v.string()) })),
+												image: urlPart,
+												document: urlPart,
+											})
+										)
+									),
+									contacts: v.optional(
+										v.array(
+											v.object({
+												profile: v.optional(v.object({ name: v.optional(v.string()) })),
+											})
+										)
+									),
+								})
+							),
+						})
+					)
+				),
+			})
+		)
+	),
+});
 
 const META_SUCCESS_BODY = 'OK';
 
@@ -97,7 +125,7 @@ export const metaAdapter: InboundAdapter = {
 	},
 
 	parseEvent(rawBody): InboundEvent | null {
-		const payload = JSON.parse(rawBody) as MetaPayload;
+		const payload = decodeWebhookBody(rawBody, metaPayloadValidator, 'meta');
 		const value = payload.entry?.[0]?.changes?.[0]?.value;
 		const msg = value?.messages?.[0];
 

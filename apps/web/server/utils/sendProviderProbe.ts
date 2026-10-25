@@ -32,7 +32,21 @@ export interface ProbeInput {
 	apiKey?: string;
 	/** Only the setup wizard's PostHog check reads it. */
 	host?: string;
-	smtp?: Partial<SmtpRelayInput>;
+	smtp?: SmtpProbeBlock;
+}
+
+/**
+ * The `smtp` block as read from the body. The string fields hold only strings
+ * (anything else reads as absent), so dispatch can never call a string method
+ * on a number. `port` and `secure` stay unknown: {@link requireSmtpRelay}
+ * refuses a non-numeric port and counts only `true` as secure.
+ */
+export interface SmtpProbeBlock {
+	host?: string;
+	port?: unknown;
+	secure?: unknown;
+	username?: string;
+	password?: string;
 }
 
 /** Every validator name a core catalog entry declares, as a literal union. */
@@ -60,13 +74,33 @@ export function parseProbeBody(body: unknown): ProbeInput {
 	if (provider === undefined) {
 		throw badRequest('provider is required.');
 	}
-	const smtp = raw['smtp'];
 	return {
 		provider,
 		apiKey: optionalString(raw['apiKey']),
 		host: optionalString(raw['host']),
-		smtp: smtp !== null && typeof smtp === 'object' ? (smtp as Partial<SmtpRelayInput>) : undefined,
+		smtp: parseSmtpBlock(raw['smtp']),
 	};
+}
+
+/**
+ * Reads the `smtp` block field by field. A block that is not an object is
+ * absent, like a non-string `apiKey`, and a non-string host, username or
+ * password is absent too, so it gets the same "are required" 400 as a missing
+ * one instead of a TypeError from the validator.
+ */
+function parseSmtpBlock(value: unknown): SmtpProbeBlock | undefined {
+	if (value === null || typeof value !== 'object' || Array.isArray(value)) return undefined;
+	const block = value as Record<string, unknown>;
+	const parsed: SmtpProbeBlock = {};
+	const host = optionalString(block['host']);
+	const username = optionalString(block['username']);
+	const password = optionalString(block['password']);
+	if (host !== undefined) parsed.host = host;
+	if (block['port'] !== undefined) parsed.port = block['port'];
+	if (block['secure'] !== undefined) parsed.secure = block['secure'];
+	if (username !== undefined) parsed.username = username;
+	if (password !== undefined) parsed.password = password;
+	return parsed;
 }
 
 /** The API key an API-key validator needs, or the 400 saying it is missing. */
