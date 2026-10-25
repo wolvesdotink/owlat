@@ -58,6 +58,21 @@ const FIXTURES: Record<string, string> = {
 		'declare function ready(): boolean;',
 		'',
 	].join('\n'),
+	'milestones.test.ts': [
+		"import { it } from 'vitest';",
+		'',
+		"it('steps through held work', async () => {",
+		'\tawait started(3);',
+		'\tfor (let step = 3; step > 0; step--) {',
+		'\t\trelease();',
+		'\t\tawait new Promise((resolve) => setTimeout(resolve, 0));',
+		'\t}',
+		'});',
+		'',
+		'declare function started(count: number): Promise<void>;',
+		'declare function release(): void;',
+		'',
+	].join('\n'),
 	'timeout.test.ts': [
 		"import { it } from 'vitest';",
 		'',
@@ -218,13 +233,16 @@ describe.each(['.', 'apps/web'])('oxlint run from %s with the root config', (cwd
 		expect(errorCodes(byFile.get('loop.test.ts'))).toEqual(['owlat(no-test-in-loop)']);
 	});
 
-	it('warns about a real-clock sleep, a polling loop and an elapsed-time check', () => {
-		expect(errorCodes(byFile.get('timing.test.ts'))).toEqual([]);
+	it('reports a polling loop, and warns about a real-clock sleep and an elapsed-time check', () => {
+		expect(errorCodes(byFile.get('timing.test.ts'))).toEqual(['owlat(no-polling-loop-in-tests)']);
 		expect(warningCodes(byFile.get('timing.test.ts'))).toEqual([
-			'owlat(no-polling-loop-in-tests)',
 			'owlat(no-real-time-wait-in-tests)',
 			'owlat(no-wall-clock-in-tests)',
 		]);
+	});
+
+	it('accepts a test that awaits its milestone and then steps a fixed number of times', () => {
+		expect(byFile.get('milestones.test.ts')).toBeUndefined();
 	});
 
 	it('reports a per-file test environment pragma', () => {

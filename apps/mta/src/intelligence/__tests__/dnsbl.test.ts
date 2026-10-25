@@ -880,14 +880,37 @@ describe('the sweep bounds its resolver fan-out', () => {
 	});
 
 	it('attributes each address’s zone answers to that address whatever order they arrive in', async () => {
-		vi.mocked(resolve4).mockImplementation(async (hostname: string) => {
-			// Reverse-ordered latency, so the pool's workers complete out of order.
-			const rank = Number(queriedIp(hostname).split('.')[3]);
-			await new Promise((resolve) => setTimeout(resolve, IPS.length - rank));
-			return answerFor(hostname);
-		});
+		// Every query is held until the whole wave the pool keeps in flight has
+		// arrived, and each wave is answered in reverse arrival order, so the
+		// pool's workers complete out of order.
+		const asked: string[] = [];
+		const answered: string[] = [];
+		const held: Array<{ hostname: string; answer: () => void }> = [];
+		let answeredAddresses = 0;
+		vi.mocked(resolve4).mockImplementation(
+			(hostname: string) =>
+				new Promise<string[]>((resolve, reject) => {
+					asked.push(hostname);
+					held.push({
+						hostname,
+						answer: () => {
+							answered.push(hostname);
+							answerFor(hostname).then(resolve, reject);
+						},
+					});
+					const addressesInFlight = Math.min(
+						SWEEP_ADDRESS_CONCURRENCY,
+						IPS.length - answeredAddresses
+					);
+					if (held.length < addressesInFlight * ZONES_PER_IP) return;
+					answeredAddresses += addressesInFlight;
+					for (const query of held.splice(0).reverse()) query.answer();
+				})
+		);
 
 		await runDnsblCheck(redis, fanOutConfig, createRecordingLookupDeps().deps);
+		expect(answered).toHaveLength(asked.length);
+		expect(answered).not.toEqual(asked);
 
 		// Every address measured exactly once — no query duplicated, none skipped.
 		expect(vi.mocked(resolve4)).toHaveBeenCalledTimes(IPS.length * ZONES_PER_IP);

@@ -13,6 +13,7 @@ import {
 import type * as NodeFs from 'node:fs';
 import type * as OwnerOnlyFile from '@owlat/shared/ownerOnlyFile';
 import type * as Http from '../http.js';
+import type * as RolloutState from '../rolloutState.js';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -41,6 +42,20 @@ vi.mock('../http.js', async (importOriginal) => {
 	const actual = await importOriginal<typeof Http>();
 	execSpy.mockImplementation(actual.exec);
 	return { ...actual, exec: execSpy };
+});
+// The real rollout lock, reporting each time a rollout gets inside it, so a
+// case can hold a rollout in flight without asking /health until it shows.
+const { lockEntries } = vi.hoisted(() => ({ lockEntries: [] as Array<() => void> }));
+vi.mock('../rolloutState.js', async (importOriginal) => {
+	const actual = await importOriginal<typeof RolloutState>();
+	return {
+		...actual,
+		exclusively: (...[kind, res, fn]: Parameters<typeof actual.exclusively>) =>
+			actual.exclusively(kind, res, () => {
+				for (const entered of lockEntries.splice(0)) entered();
+				return fn();
+			}),
+	};
 });
 // The real owner-only writer, behind a spy so a case can make it refuse.
 const { writeOwnerOnlyFileSpy } = vi.hoisted(() => ({ writeOwnerOnlyFileSpy: vi.fn() }));
@@ -1353,14 +1368,15 @@ describe('one rollout at a time', () => {
 				resolve(res.statusCode ?? 0);
 			})
 		);
+		// Until the server is inside the handler, the lock is not taken yet.
+		const locked = new Promise<void>((resolve) => lockEntries.push(resolve));
 		req.flushHeaders();
 		req.write(head);
-		// Until the server is inside the handler, the lock is not taken yet.
-		for (let i = 0; i < 50; i++) {
-			const res = await fetch(`${base}/health`, { headers: AUTH });
-			if (((await res.json()) as { rolloutInProgress: string | null }).rolloutInProgress) break;
-			await new Promise((r) => setTimeout(r, 10));
-		}
+		await locked;
+		const health = await fetch(`${base}/health`, { headers: AUTH });
+		expect(
+			((await health.json()) as { rolloutInProgress: string | null }).rolloutInProgress
+		).not.toBeNull();
 		return {
 			release: () => {
 				req.end(tail);

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { flushPromises } from '@vue/test-utils';
 import type { WorkspaceConfig, WorkspaceStoreShape } from '~/lib/desktop/workspaceTypes';
 
 // The desktop connect handshake. These tests pin the invariant that broke a
@@ -311,14 +312,22 @@ describe('completeConnection — the keychain handover', () => {
 		const mod = await freshModule();
 		await mod.loadWorkspaces();
 		const state = await beginConnect(mod);
-		// The current client refreshed its (older) session; the debounce holds it.
-		mod.getActiveKeychainStorage()?.setItem('better-auth_cookie', 'older');
-		getSession.mockImplementation(async () => {
-			return { data: { user: { id: 'user-1' } } };
-		});
+		// The keychain write debounce runs on the fake clock, so the test can
+		// fire whatever the handover left pending instead of sleeping past it.
+		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+		try {
+			// The current client refreshed its (older) session; the debounce holds it.
+			mod.getActiveKeychainStorage()?.setItem('better-auth_cookie', 'older');
+			getSession.mockImplementation(async () => {
+				return { data: { user: { id: 'user-1' } } };
+			});
 
-		await mod.completeConnection({ ott: 'tok', state });
-		await new Promise((resolve) => setTimeout(resolve, 300));
+			await mod.completeConnection({ ott: 'tok', state });
+			await vi.runOnlyPendingTimersAsync();
+			await flushPromises();
+		} finally {
+			vi.useRealTimers();
+		}
 
 		const writes = [...sessionWrite.mock.calls, ...sessionReplace.mock.calls].filter(
 			([key]) => key === 'owlat-ws:ws-existing'
@@ -382,21 +391,34 @@ describe('completeConnection — two deep links at once', () => {
 		const second = await beginConnect(mod);
 		let inFlight = 0;
 		let overlapped = false;
-		authFetch.mockImplementation(async () => {
+		// Each redeem stays in flight until the test finishes it.
+		const finishRedeem: Array<() => void> = [];
+		authFetch.mockImplementation(() => {
 			inFlight++;
 			overlapped ||= inFlight > 1;
-			await new Promise((resolve) => setTimeout(resolve, 5));
-			inFlight--;
-			return { data: { data: null, error: { status: 500 } }, error: { status: 500 } };
+			return new Promise((resolve) => {
+				finishRedeem.push(() => {
+					inFlight--;
+					resolve({ data: { data: null, error: { status: 500 } }, error: { status: 500 } });
+				});
+			});
 		});
 
-		const results = await Promise.allSettled([
+		const settled = Promise.allSettled([
 			mod.completeConnection({ ott: 'a', state: first }),
 			mod.completeConnection({ ott: 'b', state: second }),
 		]);
+		await flushPromises();
+		// The second completion waits for the first one's redeem to finish.
+		expect(authFetch).toHaveBeenCalledTimes(1);
+
+		finishRedeem[0]!();
+		await flushPromises();
+		expect(authFetch).toHaveBeenCalledTimes(2);
+		finishRedeem[1]!();
+		const results = await settled;
 
 		expect(overlapped).toBe(false);
-		expect(authFetch).toHaveBeenCalledTimes(2);
 		expect(results.map((r) => r.status)).toEqual(['rejected', 'rejected']);
 	});
 

@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { heldStages } from './heldStages.js';
 import {
 	nextBackfillRange,
 	backfillFolder,
@@ -417,12 +418,11 @@ describe('backfillFolder with a staged ingest (plan 3.6)', () => {
 			alreadyPresent: [4],
 		});
 		const events: string[] = [];
-		const uploads: Array<() => void> = [];
+		const uploads = heldStages();
 		deps.ingestConcurrency = 3;
 		deps.stageIngest = async (_remoteName, _role, uid) => {
 			events.push(`stage:${uid}`);
-			// Uploads finish in reverse: the commits must not follow them.
-			await new Promise<void>((resolve) => uploads.unshift(resolve));
+			await uploads.hold();
 			return {
 				commit: async () => {
 					events.push(`commit:${uid}`);
@@ -440,15 +440,16 @@ describe('backfillFolder with a staged ingest (plan 3.6)', () => {
 			ceilingUid: 6,
 			messageCount: 6,
 		});
-		await new Promise((resolve) => setTimeout(resolve, 0));
+		await uploads.started(3);
 		// Three uploads started before any commit.
 		expect(events).toEqual(['stage:1', 'stage:2', 'stage:3']);
-		// Release uploads as they queue up, newest first, until the walk ends.
-		while (!rec.progress.length) {
-			for (const release of uploads.splice(0)) release();
-			await new Promise((resolve) => setTimeout(resolve, 0));
-		}
+		// Uploads finish in reverse: the commits must not follow them. 4 is
+		// already present, so 5 and 6 are the only uploads left to start.
+		expect(uploads.releaseNewestFirst()).toBe(3);
+		await uploads.started(5);
+		expect(uploads.releaseNewestFirst()).toBe(2);
 		await run;
+		expect(uploads.peak).toBe(3);
 
 		expect(events.filter((e) => e.startsWith('commit:'))).toEqual([
 			'commit:1',

@@ -242,21 +242,31 @@ describe.runIf(dockerRedisAvailable())('delivery log indexes on standalone Redis
 	});
 
 	it('expires the indexes together with the stream', async () => {
-		const shortLived = { ...config, deliveryLogTtlHours: 1 / 3600 } as MtaConfig;
-		await logDeliveryEvent(redis, event(0, { messageId: 'target' }), shortLived);
-		const streamTtl = await redis.pttl(streamKeyFor(today));
-		expect(streamTtl).toBeGreaterThan(0);
-		for (const key of [statsKeyFor(today), messageIndexKeyFor(today)]) {
-			const ttl = await redis.pttl(key);
-			expect(ttl).toBeGreaterThan(0);
-			expect(ttl).toBeLessThanOrEqual(streamTtl);
-		}
+		await logDeliveryEvent(redis, event(0, { messageId: 'target', orgId: 'org-0' }), config);
+		const keys = [
+			streamKeyFor(today),
+			statsKeyFor(today),
+			messageIndexKeyFor(today),
+			orgStatsKeyFor(today, 'org-0'),
+		];
+		// The record script sets every index's expiry from the stream's in the same
+		// atomic call, so all of them name the same absolute instant: the
+		// configured retention after the write, by Redis's own clock.
+		const expiries = (await Promise.all(
+			keys.map((key) => redis.call('PEXPIRETIME', key))
+		)) as number[];
+		const [seconds, micros] = await redis.time();
+		const now = Number(seconds) * 1000 + Math.floor(Number(micros) / 1000);
+		const retentionMs = config.deliveryLogTtlHours * 3_600_000;
+		expect(expiries[0]).toBeGreaterThan(now);
+		expect(expiries[0]).toBeLessThanOrEqual(now + retentionMs);
+		expect(expiries).toEqual(keys.map(() => expiries[0]));
 
-		await new Promise((resolve) => setTimeout(resolve, 1_200));
+		// Pass that instant without waiting for it: an expiry set in the past makes
+		// Redis drop the key at once, as it would at the real deadline.
+		for (const key of keys) await redis.pexpireat(key, 1);
 
-		expect(
-			await redis.exists(streamKeyFor(today), statsKeyFor(today), messageIndexKeyFor(today))
-		).toBe(0);
+		expect(await redis.exists(...keys)).toBe(0);
 		expect((await getDeliveryLogStats(redis, today))['total']).toBe(0);
 		expect(await getMessageEvents(redis, 'target')).toEqual([]);
 	});

@@ -39,9 +39,6 @@ function emit(payload: Record<string, unknown>): void {
 	for (const cb of listeners) cb(payload);
 }
 
-/** Let the fire-and-forget handlers (and their dynamic imports) run out. */
-const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
-
 interface StoredMessage {
 	mailboxId: string;
 	fromAddress: string;
@@ -181,7 +178,7 @@ describe('notification routing subscription lifetime', () => {
 		expect(listeners.size).toBe(1);
 
 		emit({ action: 'reply', messageId: 'm1', reply: 'Thanks!' });
-		await settle();
+		await second.idle();
 
 		expect(backend.names()).toEqual([
 			'mail/mailbox/messages:getMessage',
@@ -196,13 +193,14 @@ describe('notification routing subscription lifetime', () => {
 		const ctx = context({ convex: backend.client });
 		await setup(ctx).ready;
 		await setup(ctx).ready;
-		await setup(ctx).ready;
+		const last = setup(ctx);
+		await last.ready;
 		expect(listeners.size).toBe(1);
 
 		emit({ action: 'archive', messageId: 'm1' });
-		await settle();
+		await last.idle();
 		emit({ action: 'read', messageId: 'm1' });
-		await settle();
+		await last.idle();
 
 		expect(backend.names()).toEqual([
 			'mail/messageActions:archive',
@@ -237,7 +235,7 @@ describe('notification routing subscription lifetime', () => {
 		expect(listeners.size).toBe(1);
 
 		emit({ action: 'read', messageId: 'm1' });
-		await settle();
+		await Promise.all([first.idle(), second.idle()]);
 		expect(backend.names()).toEqual(['mail/messageActions:markRead']);
 	});
 
@@ -250,11 +248,12 @@ describe('notification routing subscription lifetime', () => {
 
 	it('routes a duplicated delivery of the same native notification once', async () => {
 		const backend = fakeBackend({ m1: message });
-		await setup(context({ convex: backend.client })).ready;
+		const routing = setup(context({ convex: backend.client }));
+		await routing.ready;
 
 		emit({ action: 'archive', messageId: 'm1', notificationId: 41 });
 		emit({ action: 'archive', messageId: 'm1', notificationId: 41 });
-		await settle();
+		await routing.idle();
 
 		expect(backend.names()).toEqual(['mail/messageActions:archive']);
 	});

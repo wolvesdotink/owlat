@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Redis from 'ioredis-mock';
 import {
 	runSmtpSecondaryEffect,
@@ -57,12 +57,115 @@ const deliveredOutcome = {
 } as const;
 const deliveredReduction = { effects: [], defer: undefined };
 
+/**
+ * The effect runner's clock on fake time: lease stamps (Date), contention
+ * waits (setTimeout) and heartbeats (setInterval). The mock Redis keeps its own
+ * scheduling, so lease transitions still run while time stands still.
+ */
+function useFakeLeaseClock(): void {
+	vi.useFakeTimers({
+		toFake: ['Date', 'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'],
+	});
+}
+
+type LeaseCall = 'begin' | 'renew' | 'complete' | 'release';
+
+/** A fragment unique to each lease transition script in lib/effectCheckpoint.ts. */
+const LEASE_SCRIPT_MARKERS: ReadonlyArray<[LeaseCall, string]> = [
+	['begin', 'inspectEffectLease(state, ARGV[5], tonumber(ARGV[4]))'],
+	['renew', 'pendingEffectLease(ARGV[4], tonumber(ARGV[5]), tonumber(ARGV[6]))'],
+	['complete', "redis.call('HSET', KEYS[2], ARGV[2], 'applied')"],
+	['release', "redis.call('HDEL', KEYS[2], ARGV[2])"],
+];
+
+interface SettledLeaseCall {
+	call: LeaseCall;
+	result?: unknown;
+	error?: unknown;
+}
+
+/**
+ * Spy on the lease transitions the effect runner sends to Redis and record each
+ * one as it settles. `fault` can fail a chosen call before it reaches Redis
+ * (`'before'`) or after it committed, losing only the response (`'after'`).
+ */
+function watchLeaseCalls(
+	redis: InstanceType<typeof Redis>,
+	fault: (call: LeaseCall, index: number) => 'before' | 'after' | undefined = () => undefined
+) {
+	const settled: SettledLeaseCall[] = [];
+	const waiters: Array<{ call: LeaseCall; n: number; resolve: () => void }> = [];
+	const issued = new Map<LeaseCall, number>();
+	const countOf = (call: LeaseCall) => settled.filter((entry) => entry.call === call).length;
+	const record = (entry: SettledLeaseCall): void => {
+		settled.push(entry);
+		for (const waiter of waiters.filter((w) => countOf(w.call) >= w.n)) {
+			waiters.splice(waiters.indexOf(waiter), 1);
+			waiter.resolve();
+		}
+	};
+	const originalEval = redis.eval.bind(redis) as (...args: unknown[]) => Promise<unknown>;
+	const spy = vi.spyOn(redis, 'eval').mockImplementation(async (...args: unknown[]) => {
+		const script = String(args[0]);
+		const call = LEASE_SCRIPT_MARKERS.find(([, marker]) => script.includes(marker))?.[0];
+		if (!call) return originalEval(...args);
+		const index = issued.get(call) ?? 0;
+		issued.set(call, index + 1);
+		const mode = fault(call, index);
+		try {
+			if (mode === 'before') throw new Error(`${call} unavailable`);
+			const result = await originalEval(...args);
+			if (mode === 'after') throw new Error(`${call} response lost`);
+			record({ call, result });
+			return result;
+		} catch (error) {
+			record({ call, error });
+			throw error;
+		}
+	});
+	return {
+		of: (call: LeaseCall) => settled.filter((entry) => entry.call === call),
+		/** Resolves once `n` calls of `call` have settled. */
+		settled(call: LeaseCall, n: number): Promise<void> {
+			if (countOf(call) >= n) return Promise.resolve();
+			return new Promise((resolve) => waiters.push({ call, n, resolve }));
+		},
+		restore: () => spy.mockRestore(),
+	};
+}
+
+/** The disposition code of a settled begin: 0 applied, 1 acquired, 2 busy. */
+function beginDisposition(entry: SettledLeaseCall | undefined): unknown {
+	return (entry?.result as unknown[] | undefined)?.[0];
+}
+
+/** An effect the test finishes by hand, with a promise for its start. */
+function heldEffect() {
+	let markStarted!: () => void;
+	const started = new Promise<void>((resolve) => {
+		markStarted = resolve;
+	});
+	let finish!: () => void;
+	const finished = new Promise<void>((resolve) => {
+		finish = resolve;
+	});
+	const apply = vi.fn(async () => {
+		markStarted();
+		await finished;
+	});
+	return { apply, started, finish };
+}
+
 describe('SMTP outcome journal', () => {
 	let redis: InstanceType<typeof Redis>;
 
 	beforeEach(async () => {
 		redis = new Redis();
 		await redis.flushall();
+	});
+
+	afterEach(() => {
+		vi.useRealTimers();
 	});
 
 	it('round-trips the per-provider volume pressure the reducer needs', async () => {
@@ -316,12 +419,10 @@ describe('SMTP outcome journal', () => {
 			deliveredReduction,
 			{ now: 142 }
 		);
-		const originalEval = redis.eval.bind(redis);
-		const evalSpy = vi.spyOn(redis, 'eval').mockImplementation(async (...args: unknown[]) => {
-			const result = await (originalEval as (...inner: unknown[]) => Promise<unknown>)(...args);
-			if (String(args[0]).includes("'pending:'")) throw new Error('checkpoint response lost');
-			return result;
-		});
+		useFakeLeaseClock();
+		const leases = watchLeaseCalls(redis, (call, index) =>
+			call === 'begin' && index === 0 ? 'after' : undefined
+		);
 		const apply = vi.fn().mockResolvedValue(undefined);
 
 		await expect(
@@ -331,13 +432,27 @@ describe('SMTP outcome journal', () => {
 			})
 		).rejects.toThrow('Effect checkpoint could not be started');
 		expect(apply).not.toHaveBeenCalled();
-		evalSpy.mockRestore();
-		await new Promise((resolve) => setTimeout(resolve, 55));
-		await runSmtpSecondaryEffect(redis, completed.entry, completed.raw, '0:metrics_record', apply, {
-			leaseMs: 1000,
-			waitMs: 1,
-		});
+
+		// The lost begin still committed a 50 ms pending lease: a retry inside it
+		// finds the lease busy and waits.
+		const retry = runSmtpSecondaryEffect(
+			redis,
+			completed.entry,
+			completed.raw,
+			'0:metrics_record',
+			apply,
+			{ leaseMs: 1000, waitMs: 1 }
+		);
+		await leases.settled('begin', 2);
+		expect(beginDisposition(leases.of('begin')[1])).toBe(2);
+		expect(apply).not.toHaveBeenCalled();
+
+		// Once that lease expires, the retry takes it over and applies the effect.
+		await vi.advanceTimersByTimeAsync(50);
+		await retry;
+		expect(beginDisposition(leases.of('begin').at(-1))).toBe(1);
 		expect(apply).toHaveBeenCalledOnce();
+		leases.restore();
 	});
 
 	it('takes over expired crash leases without accepting non-finite expiries', async () => {
@@ -404,36 +519,43 @@ describe('SMTP outcome journal', () => {
 			deliveredReduction,
 			{ now: 142 }
 		);
-		let finishFirst!: () => void;
-		const firstCanFinish = new Promise<void>((resolve) => {
-			finishFirst = resolve;
-		});
-		const apply = vi.fn(async () => firstCanFinish);
+		useFakeLeaseClock();
+		const leases = watchLeaseCalls(redis);
+		const effect = heldEffect();
 		const options = { leaseMs: 5_000, waitMs: 1 };
 		const first = runSmtpSecondaryEffect(
 			redis,
 			completed.entry,
 			completed.raw,
 			'0:circuit_breaker_outcome',
-			apply,
+			effect.apply,
 			options
 		);
-		await vi.waitFor(() => expect(apply).toHaveBeenCalledOnce());
+		await effect.started;
 		const contender = runSmtpSecondaryEffect(
 			redis,
 			completed.entry,
 			completed.raw,
 			'0:circuit_breaker_outcome',
-			apply,
+			effect.apply,
 			options
 		);
-		// Give the contender time to observe the active owned lease and wait.
-		await new Promise((resolve) => setTimeout(resolve, 40));
-		expect(apply).toHaveBeenCalledOnce();
+		// The contender observes the active owned lease, waits, and asks again:
+		// still busy, so it never applies.
+		await leases.settled('begin', 2);
+		await vi.advanceTimersByTimeAsync(options.waitMs);
+		await leases.settled('begin', 3);
+		expect(leases.of('begin').slice(1).map(beginDisposition)).toEqual([2, 2]);
+		expect(effect.apply).toHaveBeenCalledOnce();
 
-		finishFirst();
-		await Promise.all([first, contender]);
-		expect(apply).toHaveBeenCalledOnce();
+		effect.finish();
+		await first;
+		// The contender's next look finds the effect applied and stands down.
+		await vi.advanceTimersByTimeAsync(options.waitMs);
+		await contender;
+		expect(beginDisposition(leases.of('begin').at(-1))).toBe(0);
+		expect(effect.apply).toHaveBeenCalledOnce();
+		leases.restore();
 	});
 
 	it('recovers after one transient heartbeat renewal failure', async () => {
@@ -458,30 +580,34 @@ describe('SMTP outcome journal', () => {
 			deliveredReduction,
 			{ now: 142 }
 		);
-		const originalEval = redis.eval.bind(redis);
-		let renewalCalls = 0;
-		const evalSpy = vi.spyOn(redis, 'eval').mockImplementation(async (...args: unknown[]) => {
-			const script = String(args[0]);
-			const isRenewal = script.includes(
-				'pendingEffectLease(ARGV[4], tonumber(ARGV[5]), tonumber(ARGV[6]))'
-			);
-			if (isRenewal && renewalCalls++ === 0) throw new Error('transient renewal outage');
-			return (originalEval as (...inner: unknown[]) => Promise<unknown>)(...args);
-		});
-		// Keep the synthetic lease comfortably above scheduler jitter from the
-		// repository-wide parallel suite while still spanning multiple heartbeats:
-		// the first renewal fails, a later one succeeds, and completion observes
-		// that renewed ownership. Production uses the much larger 60-second lease.
-		const apply = vi.fn(async () => new Promise((resolve) => setTimeout(resolve, 1_100)));
+		// Heartbeats every 300 ms against a 900 ms lease. Only the second renewal
+		// reaches Redis; the first and every later one fail before it. The effect
+		// finishes at 1100 ms, past the original lease, so completion goes through
+		// only on the ownership that second renewal extended.
+		useFakeLeaseClock();
+		const leases = watchLeaseCalls(redis, (call, index) =>
+			call === 'renew' && index !== 1 ? 'before' : undefined
+		);
+		const effect = heldEffect();
+		const run = runSmtpSecondaryEffect(
+			redis,
+			completed.entry,
+			completed.raw,
+			'0:renew-recovery',
+			effect.apply,
+			{ leaseMs: 900, waitMs: 1 }
+		);
+		await effect.started;
+		await vi.advanceTimersByTimeAsync(600);
+		await leases.settled('renew', 2);
+		expect(leases.of('renew')[0]?.error).toBeInstanceOf(Error);
+		expect(leases.of('renew')[1]?.result).toEqual(expect.any(Number));
 
-		await expect(
-			runSmtpSecondaryEffect(redis, completed.entry, completed.raw, '0:renew-recovery', apply, {
-				leaseMs: 900,
-				waitMs: 1,
-			})
-		).resolves.toBeUndefined();
-		expect(renewalCalls).toBeGreaterThanOrEqual(2);
-		evalSpy.mockRestore();
+		await vi.advanceTimersByTimeAsync(500);
+		effect.finish();
+		await expect(run).resolves.toBeUndefined();
+		expect(leases.of('complete')).toEqual([{ call: 'complete', result: 1 }]);
+		leases.restore();
 	});
 
 	it('completes when a heartbeat renewal committed but its response was lost', async () => {
@@ -506,31 +632,33 @@ describe('SMTP outcome journal', () => {
 			deliveredReduction,
 			{ now: 142 }
 		);
-		const originalEval = redis.eval.bind(redis);
-		let lost = false;
-		const evalSpy = vi.spyOn(redis, 'eval').mockImplementation(async (...args: unknown[]) => {
-			const result = await (originalEval as (...inner: unknown[]) => Promise<unknown>)(...args);
-			if (
-				!lost &&
-				String(args[0]).includes(
-					'pendingEffectLease(ARGV[4], tonumber(ARGV[5]), tonumber(ARGV[6]))'
-				)
-			) {
-				lost = true;
-				throw new Error('renewal response lost');
-			}
-			return result;
+		// Heartbeats every 30 ms against a 90 ms lease. The first renewal commits
+		// but its response is lost; every later one fails before reaching Redis.
+		// The effect finishes at 100 ms, past the original lease, so completion
+		// goes through only on the lease the lost-response renewal extended.
+		useFakeLeaseClock();
+		const leases = watchLeaseCalls(redis, (call, index) => {
+			if (call !== 'renew') return undefined;
+			return index === 0 ? 'after' : 'before';
 		});
-		const apply = vi.fn(async () => new Promise((resolve) => setTimeout(resolve, 50)));
+		const effect = heldEffect();
+		const run = runSmtpSecondaryEffect(
+			redis,
+			completed.entry,
+			completed.raw,
+			'0:lost-renewal',
+			effect.apply,
+			{ leaseMs: 90, waitMs: 1 }
+		);
+		await effect.started;
+		await vi.advanceTimersByTimeAsync(100);
+		await leases.settled('renew', 3);
+		expect(leases.of('renew')[0]?.error).toMatchObject({ message: 'renew response lost' });
 
-		await expect(
-			runSmtpSecondaryEffect(redis, completed.entry, completed.raw, '0:lost-renewal', apply, {
-				leaseMs: 90,
-				waitMs: 1,
-			})
-		).resolves.toBeUndefined();
-		expect(lost).toBe(true);
-		evalSpy.mockRestore();
+		effect.finish();
+		await expect(run).resolves.toBeUndefined();
+		expect(leases.of('complete')).toEqual([{ call: 'complete', result: 1 }]);
+		leases.restore();
 	});
 
 	it('retries a secondary effect after the effect rejects', async () => {
