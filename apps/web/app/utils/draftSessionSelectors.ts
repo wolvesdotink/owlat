@@ -11,63 +11,53 @@ export type DraftSaveStatus =
 	| 'saving'
 	| 'offline'
 	| 'saved'
-	/** Saved, but a choice no draft save stores could not be kept on this device. */
-	| 'unkept'
-	/** Saved; scheduling choices wait for Schedule. */
-	| 'scheduling'
+	/** Not written to the email yet, and no save of this tab is due (others' live edits). */
+	| 'unsaved'
 	| 'error';
 
 /**
  * The live session's field for this tab's own edits: a count that only grows,
- * so a save or copy taken at a count holds every own edit up to it. It says
- * nothing about what others put into the session (`DraftLive.sharedPending`).
+ * so a save taken at a count holds every own edit up to it. It says nothing
+ * about what others put into the session (`DraftLive.sharedPending`).
  */
 export const OWN_EDITS = '@own';
 
-/** The fields a device copy stores: everything but the volatile ones. */
-export const copyFields = (s: DraftSessionState): string[] =>
-	Object.keys(s.values).filter((field) => !s.volatile.includes(field));
-
-/** Fields (volatile ones aside) whose value the server does not hold. */
+/** Fields whose value the server does not hold. */
 export const pendingFields = (s: DraftSessionState): string[] => {
 	const base = s.base;
 	if (!base) return [];
-	return copyFields(s).filter((field) => s.values[field] !== base.values[field]);
-};
-
-/** Volatile fields changed from what the server holds. */
-export const volatilePending = (s: DraftSessionState): string[] => {
-	const base = s.base;
-	if (!base) return [];
-	return s.volatile.filter((field) => field in s.values && s.values[field] !== base.values[field]);
+	return Object.keys(s.values).filter((field) => s.values[field] !== base.values[field]);
 };
 
 /**
- * The server holds what the editor shows. Live, that also needs the shared
- * session written to the email: `@own` matching proves only this tab's own
- * edits are, not what others put into the session.
+ * The server holds what the editor shows: every field is what an
+ * acknowledged save stored, and nothing is on its way or being typed. Live,
+ * `@own` matching proves only that this tab's own edits are written; the
+ * session must also hold nothing the email does not (anyone's edits) and
+ * have taken every edit of this tab. The only coverage there is: nothing
+ * else (presence, a query emission) lets the page go.
  */
 export const serverHolds = (s: DraftSessionState): boolean =>
-	pendingFields(s).length === 0 && s.live?.sharedPending !== true;
+	!s.inline &&
+	s.flight === null &&
+	pendingFields(s).length === 0 &&
+	!(s.live && (s.live.sharedPending || s.live.unsent));
 
 /**
- * What a save would carry now. Live, the session is written for this tab's
- * own edits, for others' that nobody else is left to write, and for anyone's
- * while a final action (Publish) waits to put the stored email live.
+ * What a save would carry now. In the background, the live session is
+ * written for this tab's own edits, and for others' only when nobody else is
+ * left to write them. An explicit save (Save, the leave prompt, Publish)
+ * writes whatever the editor shows, whoever made it.
  */
-export const sendableFields = (s: DraftSessionState): string[] => {
+export const saveFields = (s: DraftSessionState, explicit = false): string[] => {
 	const pending = pendingFields(s);
 	if (s.live) {
-		const shared = s.live.sharedPending && (s.live.alone || s.action !== null);
+		const shared = explicit
+			? s.live.sharedPending || s.live.unsent
+			: s.live.sharedPending && s.live.alone;
 		return pending.length > 0 || shared ? [OWN_EDITS] : [];
 	}
-	return pending.filter((field) => !s.deviceOnly.includes(field));
-};
-
-/** The last committed copy holds every stored field as it is now. */
-export const deviceCovers = (s: DraftSessionState): boolean => {
-	const disk = s.onDisk;
-	return disk !== null && copyFields(s).every((field) => disk.values[field] === s.values[field]);
+	return pending;
 };
 
 /** Background saving may run (a prompt or a final action holds it). */
@@ -80,59 +70,29 @@ export const canAutosave = (s: DraftSessionState): boolean =>
 	s.leave === null &&
 	s.action === null;
 
-/**
- * Final action `id` may dispatch what the server holds: the editor shows
- * exactly that (nothing on its way, nothing pending, live nobody's edit left
- * unwritten in the session, no open text), and the volatile choices it
- * consumes are the ones it began with.
- */
-export const actionCurrent = (
-	s: DraftSessionState,
-	id: number,
-	consumes: readonly string[] = []
-): boolean => {
-	const action = s.action;
-	return (
-		action !== null &&
-		action.id === id &&
-		!s.closed &&
-		!s.discarded &&
-		!s.inline &&
-		s.flight === null &&
-		serverHolds(s) &&
-		consumes.every((field) => s.values[field] === action.values[field])
-	);
-};
+/** Final action `id` may dispatch what the server holds: the editor shows exactly that. */
+export const actionCurrent = (s: DraftSessionState, id: number): boolean =>
+	s.action !== null && s.action.id === id && !s.closed && !s.discarded && serverHolds(s);
 
 /** New collaboration sends wait while the person decides whether to leave. */
 export const holdsSends = (s: DraftSessionState): boolean => s.leave !== null;
 
-/** The draft holds something the server does not (for the editor's own UI). */
-export const isDirty = (s: DraftSessionState): boolean =>
-	pendingFields(s).length > 0 || volatilePending(s).length > 0;
-
-export const onDevice = (s: DraftSessionState): boolean => s.persistent && deviceCovers(s);
+/** The draft holds an edit of this editor the server does not (for its own UI). */
+export const isDirty = (s: DraftSessionState): boolean => pendingFields(s).length > 0;
 
 /** Leaving now would lose something: what the leave guards ask about. */
 export const atRisk = (s: DraftSessionState): boolean =>
-	s.enabled &&
-	!s.closed &&
-	!s.discarded &&
-	(s.inline ||
-		volatilePending(s).length > 0 ||
-		(pendingFields(s).length > 0 && !(s.persistent && deviceCovers(s))));
+	s.enabled && !s.closed && !s.discarded && !serverHolds(s);
 
 export const saveStatus = (s: DraftSessionState): DraftSaveStatus => {
 	if (!s.enabled || !s.base) return 'idle';
+	if (s.discarded) return s.savedAt === null ? 'idle' : 'saved';
 	if (s.inline) return 'editing';
 	if (s.failure !== null && !s.flight) return 'error';
-	const pending = pendingFields(s);
-	const waiting = s.flight !== null || s.saveTimer !== null || sendableFields(s).length > 0;
-	if (waiting && !s.discarded) return s.online ? 'saving' : 'offline';
-	if (pending.length > 0 && !s.discarded) {
-		if (s.writes.length > 0) return 'saving';
-		if (!onDevice(s)) return 'unkept';
+	const waiting = s.flight !== null || s.saveTimer !== null || saveFields(s).length > 0;
+	if (waiting || !serverHolds(s)) {
+		if (!s.online) return 'offline';
+		return waiting ? 'saving' : 'unsaved';
 	}
-	if (volatilePending(s).length > 0 && !s.discarded) return 'scheduling';
 	return s.savedAt === null ? 'idle' : 'saved';
 };

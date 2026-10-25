@@ -1,17 +1,22 @@
 import { computed, type Ref } from 'vue';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import { untilReached } from '~/lib/untilReached';
 import type { DraftAutosave } from './useDraftAutosave';
+
+/** How long Publish waits for the live query to deliver the row its save stored. */
+const ROW_CATCH_UP_MS = 5000;
 
 /**
  * Publish and unpublish from the email template editor.
  *
  * Publish puts the row's stored HTML live, which unsaved edits are not part
  * of. A draft's autosave session (`draft`) holds its background saves while
- * Publish runs, saves what is pending through its queue first (co-editing:
- * everyone's edits in the shared session, whoever is still here), and
- * publishes only once that landed; a published template's Publish button is
- * held while it has unsaved changes.
+ * Publish runs, saves what the editor shows through its queue first
+ * (co-editing: everyone's edits in the shared session, whoever is still
+ * here), and publishes only once the server holds it and the loaded row is
+ * the one that save stored; a published template's Publish button is held
+ * while it has unsaved changes.
  */
 export function useTemplatePublication(opts: {
 	templateId: Ref<Id<'emailTemplates'>>;
@@ -61,6 +66,15 @@ export function useTemplatePublication(opts: {
 		if (draft) {
 			await draft.runAction(async (current) => {
 				if (!(await draft.flush())) {
+					showToast(t('shared.draftAutosave.notSavedYet'), 'error');
+					return false;
+				}
+				// Publish names the loaded row's revision: it must be the one the save stored.
+				const stored = draft.state.value.ownRevision;
+				const loaded = () =>
+					stored === null || (opts.template.value?.contentRevision ?? 0) >= stored;
+				await untilReached(opts.template, loaded, ROW_CATCH_UP_MS);
+				if (!loaded()) {
 					showToast(t('shared.draftAutosave.notSavedYet'), 'error');
 					return false;
 				}

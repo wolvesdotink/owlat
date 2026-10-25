@@ -1,5 +1,5 @@
 import { computed, type ComputedRef, type ShallowRef } from 'vue';
-import type { DraftEvent, DraftLeaveKind, DraftSessionState } from '~/utils/draftSession';
+import type { DraftEvent, DraftSessionState } from '~/utils/draftSession';
 
 /**
  * A draft's leave decisions as the router guard and the prompt use them
@@ -10,11 +10,9 @@ import type { DraftEvent, DraftLeaveKind, DraftSessionState } from '~/utils/draf
 
 export interface DraftLeaveDecisions {
 	/** Resolves whether the page may go to `destination` now; false shows the prompt (or was superseded). */
-	request: (destination: string, kind?: DraftLeaveKind) => Promise<boolean>;
-	/** The leave prompt is open (a leave in this window). */
+	request: (destination: string) => Promise<boolean>;
+	/** The leave prompt is open. */
 	choosing: ComputedRef<boolean>;
-	/** The prompt for an editor opened in a new tab is open (the page stays). */
-	tabChoosing: ComputedRef<boolean>;
 	/** Its Save is running. */
 	saving: ComputedRef<boolean>;
 	/** Where the open decision would go. */
@@ -39,24 +37,20 @@ export function useDraftLeave(
 	const settles = new Map<number, (destination: string | null) => void>();
 	let requests = 0;
 
-	/** The prompt of a decision of `kind` is open (its Save may be running). */
-	const prompting = (kind: DraftLeaveKind) =>
-		computed(() => {
-			const current = state.value.leave;
-			return current?.kind === kind && (current.phase === 'choosing' || current.phase === 'saving');
-		});
-
 	const leave: DraftLeaveDecisions = {
-		request: (destination, kind = 'navigate') => {
+		request: (destination) => {
 			beforeRequest();
 			requests += 1;
 			const id = requests;
 			const verdict = new Promise<boolean>((resolve) => verdicts.set(id, resolve));
-			dispatch({ type: 'leave-requested', id, destination, kind });
+			dispatch({ type: 'leave-requested', id, destination });
 			return verdict;
 		},
-		choosing: prompting('navigate'),
-		tabChoosing: prompting('open-tab'),
+		// Its Save may be running.
+		choosing: computed(() => {
+			const phase = state.value.leave?.phase;
+			return phase === 'choosing' || phase === 'saving';
+		}),
 		saving: computed(() => state.value.leave?.phase === 'saving'),
 		destination: computed(() => state.value.leave?.destination ?? null),
 		save: () => {

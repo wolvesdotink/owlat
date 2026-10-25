@@ -8,14 +8,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { computed, shallowRef } from 'vue';
 import SaveStatus from '../SaveStatus.vue';
-import RecoveryNotice from '../RecoveryNotice.vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { useNow } from '~/composables/useNow';
 import { SaveRefusedError } from '~/composables/useEditorSaveOperation';
 import type { DraftAutosave } from '~/composables/useDraftAutosave';
 import type { DraftSaveStatus } from '~/utils/draftSessionSelectors';
 import { createDraftSession } from '~/utils/draftSession';
-import { formatDateTime } from '~/utils/formatters';
 
 const i18n = createTestI18n();
 const buttonStub = {
@@ -27,10 +25,10 @@ const t = i18n.global.t;
 /** What the status reads of a session, set by the test. */
 function autosaveIn(
 	status: DraftSaveStatus,
-	over: { savedAt?: number; error?: unknown; onDevice?: boolean; conflict?: boolean } = {}
+	over: { savedAt?: number; error?: unknown; conflict?: boolean } = {}
 ) {
 	const state = shallowRef({
-		...createDraftSession({ writer: 'tab-a.1' }),
+		...createDraftSession(),
 		conflict: over.conflict ? { revision: 4, mustReload: false, open: true } : null,
 	});
 	const status$ = shallowRef(status);
@@ -41,7 +39,6 @@ function autosaveIn(
 		status: computed(() => status$.value),
 		savedAt: computed(() => savedAt.value),
 		error: computed(() => over.error ?? null),
-		onDevice: computed(() => over.onDevice ?? false),
 		retry,
 	} as unknown as DraftAutosave;
 	return { autosave, retry, status$ };
@@ -85,25 +82,18 @@ describe('SaveStatus', () => {
 		wrapper.unmount();
 	});
 
-	it.each<[DraftSaveStatus, string, string | null]>([
-		['saving', 'shared.draftAutosave.saving', null],
-		['editing', 'shared.draftAutosave.editing', null],
-		['unkept', 'shared.draftAutosave.unkept', 'shared.draftAutosave.unkeptDetail'],
-		['scheduling', 'shared.draftAutosave.scheduling', 'shared.draftAutosave.schedulingDetail'],
-	])('says %s, with its reason where there is one', (status, label, detail) => {
-		const wrapper = mountStatus(autosaveIn(status).autosave);
+	it.each<[DraftSaveStatus, string]>([
+		['saving', 'shared.draftAutosave.saving'],
+		['editing', 'shared.draftAutosave.editing'],
+		['unsaved', 'shared.draftAutosave.unsaved'],
+		['offline', 'shared.draftAutosave.offlineNotSaved'],
+	])('says %s, never Saved, and offers no Retry', (status, label) => {
+		const wrapper = mountStatus(autosaveIn(status, { savedAt: Date.now() }).autosave);
 		const live = wrapper.get('[role="status"]').text();
-		expect(live).toContain(t(label));
-		if (detail) expect(live).toContain(t(detail));
+		expect(live).toBe(t(label));
+		expect(wrapper.text()).not.toContain(t('shared.draftAutosave.saved'));
 		expect(wrapper.find('button').exists()).toBe(false);
 		wrapper.unmount();
-	});
-
-	it('tells offline with a copy on this device from offline with none', () => {
-		const kept = mountStatus(autosaveIn('offline', { onDevice: true }).autosave);
-		expect(kept.text()).toContain(t('shared.draftAutosave.offlineOnDevice'));
-		const lost = mountStatus(autosaveIn('offline').autosave);
-		expect(lost.text()).toContain(t('shared.draftAutosave.offlineNotSaved'));
 	});
 
 	it('shows a refused save with its reason and Retry, but no Retry over a conflict', async () => {
@@ -119,38 +109,5 @@ describe('SaveStatus', () => {
 
 		const conflict = mountStatus(autosaveIn('error', { error, conflict: true }).autosave);
 		expect(conflict.find('button').exists()).toBe(false);
-	});
-});
-
-describe('RecoveryNotice', () => {
-	const mountNotice = (confirm: boolean, savedAt = Date.now() - 60_000) =>
-		mount(RecoveryNotice, {
-			props: { savedAt, confirm },
-			global: {
-				plugins: [i18n],
-				stubs: {
-					Icon: true,
-					UiButton: buttonStub,
-				},
-			},
-		});
-
-	it('offers the copy: Restore or Discard, never applied by itself', async () => {
-		const wrapper = mountNotice(false);
-		expect(wrapper.text()).toContain(t('shared.draftAutosave.recovery.restore'));
-		const [discard, restore] = wrapper.findAll('button');
-		await restore!.trigger('click');
-		await discard!.trigger('click');
-		expect(wrapper.emitted('restore')).toHaveLength(1);
-		expect(wrapper.emitted('discard')).toHaveLength(1);
-	});
-
-	it('asks once more when the draft was edited since', () => {
-		const savedAt = Date.now() - 60_000;
-		const wrapper = mountNotice(true, savedAt);
-		expect(wrapper.text()).toContain(t('shared.draftAutosave.recovery.restoreAnyway'));
-		expect(wrapper.text()).toContain(
-			t('shared.draftAutosave.recovery.confirm', { when: formatDateTime(savedAt) })
-		);
 	});
 });

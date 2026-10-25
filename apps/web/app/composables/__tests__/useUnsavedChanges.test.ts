@@ -1,9 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { nextTick, ref, watch } from 'vue';
 import { withSetup as mountSetup } from '~/__tests__/withSetup';
-import { createEditorDraftStore } from '~/utils/editorDraftStore';
-import { createEditorDraftWriters } from '~/utils/editorDraftWriters';
-import { createNoopDriver } from '~/utils/postboxOfflineKvDriver';
 import { useDraftAutosave } from '../useDraftAutosave';
 
 // useUnsavedChanges imports `onBeforeRouteLeave`/`useRouter` from vue-router.
@@ -313,8 +310,8 @@ describe('useUnsavedChanges for a draft that decides leaving itself', () => {
 	});
 
 	/**
-	 * A draft editor (one text field, a draft session, no device storage)
-	 * whose leave decisions the guard follows; `save` is held by the test.
+	 * A draft editor (one text field, a draft session) whose leave decisions
+	 * the guard follows; `save` is held by the test.
 	 */
 	function setupDraft() {
 		const text = ref('saved');
@@ -327,22 +324,15 @@ describe('useUnsavedChanges for a draft that decides leaving itself', () => {
 				})
 		);
 		const page = withSetup(() => {
-			const draft = useDraftAutosave<{ text: string }>({
+			const draft = useDraftAutosave({
 				enabled: () => true,
-				scope: () => 'editor-draft:v1:u:o:emailTemplate:t:',
-				read: () => ({ values: { text: JSON.stringify(text.value) } }),
-				snapshot: () => ({ text: text.value }),
+				read: () => ({ text: JSON.stringify(text.value) }),
 				persist,
 				inline: () => open.value,
 				commitInline: () => {
 					open.value = false;
 					text.value = 'typed in the open block';
 				},
-				accept: (data): data is { text: string } => typeof data === 'object',
-				matches: () => false,
-				apply: () => {},
-				store: createEditorDraftStore(createNoopDriver()),
-				writers: createEditorDraftWriters('tab-a', null),
 			});
 			watch(text, (value) => draft.edit({ text: JSON.stringify(value) }));
 			draft.dispatch({
@@ -372,7 +362,7 @@ describe('useUnsavedChanges for a draft that decides leaving itself', () => {
 		};
 	}
 
-	it('commits open text before it decides, and asks when it is kept nowhere', async () => {
+	it('commits open text before it decides, and asks while the server does not hold it', async () => {
 		const page = setupDraft();
 		page.open.value = true;
 		await nextTick();

@@ -1,10 +1,6 @@
 import { computed, nextTick, watch, type ComputedRef, type Ref } from 'vue';
-import type { EditorBlock } from '@owlat/email-builder';
-import { canonicalJson } from '@owlat/shared/canonicalJson';
-import type { DraftReceipt, Fingerprints } from '~/utils/draftSession';
-import { editorDraftScope, type EditorDraftKind } from '~/utils/editorDraftStore';
+import type { DraftLive, DraftReceipt, Fingerprints } from '~/utils/draftSession';
 import { useDraftAutosave, type DraftAutosave } from './useDraftAutosave';
-import type { DraftRecovery } from './useDraftRecovery';
 import type {
 	EmailBuilderHandle,
 	EmailEditorBridgeContext,
@@ -27,25 +23,15 @@ import type { UseEditorDirtyTrackingReturn } from './useEditorDirtyTracking';
  * "keep my version" merges onto the latest row the same way the manual
  * tracker does. Live co-editing: the shared session merges everyone's edits;
  * what this tab answers for is its own edits (counted as they are made, not
- * when they are sent 250 ms later), and the email is written for them, for
- * others' that nobody else is left to write, and for everyone's before Publish.
+ * when they are sent 250 ms later). The email is written in the background
+ * for them and for others' that nobody else is left to write; an explicit
+ * save (Save, the leave prompt, Publish) writes everyone's. The shared
+ * session is not the email: until the email holds it, leaving asks.
  */
-
-/** What the canvas holds, as the device keeps it. */
-export interface EmailDraftSnapshot {
-	name: string;
-	subject: string;
-	blocks: EditorBlock[];
-	/** The surface's own dirty-tracked values, in `extraWatch` order. */
-	extra: unknown[];
-}
 
 export interface EmailEditorAutosaveOptions {
 	/** Autosave applies: the email is a draft. */
 	enabled: () => boolean;
-	/** Which device copy this email's draft is. */
-	kind: EditorDraftKind;
-	id: () => string | null;
 }
 
 export interface EmailEditorAutosaveHost<S> {
@@ -62,8 +48,12 @@ export interface EmailEditorAutosaveHost<S> {
 	canKeepDraft?: (base: NonNullable<S>, latest: NonNullable<S>) => boolean;
 	/** The surface's save of the classic draft, built on `base`. */
 	save: (base: EmailEditorSaveBase<S>) => Promise<number | void>;
-	/** Live: send this tab's edits and write the session over `revision`. */
-	saveSession: (revision: number | undefined) => Promise<void>;
+	/**
+	 * Live: send this tab's edits and write the session over `revision`;
+	 * resolves the revision it stored when known. Rejects unless the session
+	 * this tab saw was written to the email.
+	 */
+	saveSession: (revision: number | undefined) => Promise<number | void>;
 	/** Answering a conflict (shared with the manual draft). */
 	choice: EmailEditorConflictChoice<S>;
 	/** The bridge's manual tracker: it holds the draft while autosave is off. */
@@ -74,8 +64,7 @@ export interface EmailEditorAutosaveHost<S> {
 }
 
 export interface EmailEditorAutosave<S> {
-	autosave: DraftAutosave<EmailDraftSnapshot>;
-	recovery: DraftRecovery<EmailDraftSnapshot>;
+	autosave: DraftAutosave;
 	/** The row the classic draft is built on (for the manual tracker taking over). */
 	baseRow: () => NonNullable<S> | null;
 	conflict: ComputedRef<EmailEditorConflict | null>;
@@ -83,17 +72,6 @@ export interface EmailEditorAutosave<S> {
 	loadLatestVersion: () => Promise<void>;
 	dismissConflict: () => void;
 }
-
-const isSnapshot = (data: unknown): data is EmailDraftSnapshot => {
-	if (typeof data !== 'object' || data === null) return false;
-	const draft = data as Partial<EmailDraftSnapshot>;
-	return (
-		typeof draft.name === 'string' &&
-		typeof draft.subject === 'string' &&
-		Array.isArray(draft.blocks) &&
-		Array.isArray(draft.extra)
-	);
-};
 
 const fingerprint = (value: unknown) => JSON.stringify(value) ?? 'undefined';
 const identityOf = (row: unknown) =>
@@ -103,21 +81,11 @@ export function useEmailEditorAutosave<S>(
 	opts: EmailEditorAutosaveOptions,
 	host: EmailEditorAutosaveHost<S>
 ): EmailEditorAutosave<S> {
-	const { user, activeOrganizationId } = useAuth();
 	const { showToast } = useToast();
 	const { t } = useI18n();
 	const { ctx, extraWatch, coediting } = host;
 	const revisionOf = (row: NonNullable<S> | null) =>
 		row && host.revision ? host.revision(row) : null;
-
-	const scope = computed(() => {
-		const id = opts.id();
-		const userId = user.value?.id;
-		const organizationId = activeOrganizationId.value;
-		return id && userId && organizationId
-			? editorDraftScope({ userId, organizationId, kind: opts.kind, id })
-			: null;
-	});
 
 	/** Who edits the draft now: nobody (published), the classic draft, or the live session. */
 	const mode = computed<'off' | 'waiting' | 'classic' | 'live'>(() => {
@@ -137,13 +105,6 @@ export function useEmailEditorAutosave<S>(
 	const read = (): Fingerprints =>
 		Object.fromEntries(fields.map(([name, field]) => [name, fingerprint(field.value)]));
 
-	const snapshot = (): EmailDraftSnapshot => ({
-		name: ctx.name.value,
-		subject: ctx.subject.value,
-		blocks: ctx.blocks.value,
-		extra: extraWatch.map((field) => field.value),
-	});
-
 	// The row the classic draft is built on, and the latest one.
 	let baseRow: NonNullable<S> | null = null;
 	let latestRow: NonNullable<S> | null = null;
@@ -151,17 +112,29 @@ export function useEmailEditorAutosave<S>(
 	// A hydration's own writes (and the canvas settling them) are not edits.
 	let hydrating = false;
 
-	const notify = (key: string) => showToast(t(key), 'error');
+	// What the live session reports, read synchronously: Publish, Save and
+	// leaving read it right before they decide, and must not see a session
+	// that was written (or changed) a moment ago as before.
+	const liveState = (): DraftLive | null => {
+		if (!coediting || mode.value !== 'live') return null;
+		const meta = coediting.meta.value;
+		return {
+			sessionId: meta?.sessionId ?? null,
+			base: meta?.baseRevision ?? null,
+			sharedPending: coediting.hasSharedChanges.value,
+			unsent: coediting.hasUnsent.value,
+			alone: coediting.isAlone.value,
+		};
+	};
 
-	const autosave: DraftAutosave<EmailDraftSnapshot> = useDraftAutosave<EmailDraftSnapshot>({
+	const autosave: DraftAutosave = useDraftAutosave({
 		enabled: opts.enabled,
-		scope: () => scope.value,
-		read: () => ({ values: mode.value === 'classic' ? read() : {} }),
-		snapshot,
+		read: () => (mode.value === 'classic' ? read() : {}),
+		readLive: liveState,
 		persist: async (flight): Promise<DraftReceipt> => {
 			if (autosave.state.value.live) {
-				await host.saveSession(flight.baseRevision ?? undefined);
-				return {};
+				const stored = await host.saveSession(flight.baseRevision ?? undefined);
+				return typeof stored === 'number' ? { revision: stored } : {};
 			}
 			const landed = await host.save({
 				source: baseRow,
@@ -173,17 +146,6 @@ export function useEmailEditorAutosave<S>(
 		},
 		inline: () => host.builder()?.isInlineEditing === true,
 		commitInline: () => host.builder()?.commitInlineEdit?.(),
-		accept: isSnapshot,
-		matches: (data) => canonicalJson(data) === canonicalJson(snapshot()),
-		apply: (data) => {
-			ctx.name.value = data.name;
-			ctx.subject.value = data.subject;
-			ctx.blocks.value = data.blocks;
-			for (const [i, field] of extraWatch.entries()) {
-				if (i < data.extra.length) field.value = data.extra[i];
-			}
-			host.builder()?.loadState({ blocks: data.blocks, name: data.name, subject: data.subject });
-		},
 		hydrate: () => {
 			if (mode.value === 'classic' && latestRow) hydrate(latestRow, false);
 		},
@@ -191,16 +153,8 @@ export function useEmailEditorAutosave<S>(
 			if (mode.value === 'live') void coediting?.resetShared();
 			else if (latestRow) hydrate(latestRow, false);
 		},
-		live: coediting
-			? { sendUnsent: () => coediting.sendUnsent(), dropUnsent: () => coediting.dropUnsent() }
-			: undefined,
-		ready: () => mode.value === 'classic' || mode.value === 'live',
-		onRefused: (reason) =>
-			notify(
-				reason === 'unkept'
-					? 'shared.draftAutosave.unkeptDetail'
-					: 'shared.draftAutosave.notSavedYet'
-			),
+		dropUnsent: coediting ? () => coediting.dropUnsent() : undefined,
+		onRefused: () => showToast(t('shared.draftAutosave.notSavedYet'), 'error'),
 	});
 
 	// ── Classic: the row and the canvas ─────────────────────────────────
@@ -297,32 +251,10 @@ export function useEmailEditorAutosave<S>(
 		watch(coediting.localEdits, () => {
 			if (mode.value === 'live') autosave.dispatch({ type: 'live-edit' });
 		});
-		watch(
-			() => [
-				mode.value,
-				coediting.meta.value,
-				coediting.isAlone.value,
-				coediting.hasSharedChanges.value,
-			],
-			() => {
-				const meta = coediting.meta.value;
-				autosave.dispatch({
-					type: 'live',
-					live:
-						mode.value === 'live'
-							? {
-									sessionId: meta?.sessionId ?? null,
-									base: meta?.baseRevision ?? null,
-									sharedPending: coediting.hasSharedChanges.value,
-									alone: coediting.isAlone.value,
-								}
-							: null,
-				});
-			},
-			// Synchronous: Publish reads it right before it dispatches, and must
-			// not see a session that was written (or changed) a moment ago as before.
-			{ immediate: true, flush: 'sync' }
-		);
+		watch(liveState, (live) => autosave.dispatch({ type: 'live', live }), {
+			immediate: true,
+			flush: 'sync',
+		});
 	}
 
 	// ── Conflict ─────────────────────────────────────────────────────────
@@ -392,7 +324,6 @@ export function useEmailEditorAutosave<S>(
 
 	return {
 		autosave,
-		recovery: autosave.recovery,
 		baseRow: () => baseRow,
 		conflict,
 		keepMyVersion,

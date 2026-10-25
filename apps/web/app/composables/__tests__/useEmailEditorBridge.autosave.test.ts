@@ -2,10 +2,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // Autosave through the email editor bridge (useEmailEditorAutosave.ts): a
 // draft's session owns it, classic and co-edited. It saves after a pause in
-// the edits, offers copies left on the device (never applies them), decides
-// leaving through the real unsaved-changes guard, and drops only this tab's
-// unsent work on Discard. Convex is a fake client with controllable query
-// results; fake timers throughout.
+// the edits, decides leaving through the real unsaved-changes guard (it asks
+// until the server acknowledged what the editor shows), and drops only this
+// tab's unsent work on Discard. Convex is a fake client with controllable
+// query results; fake timers throughout.
 
 vi.mock('@owlat/email-builder', () => ({
 	provideEmailBuilderHandlers: vi.fn(),
@@ -33,42 +33,13 @@ vi.mock('vue-router', () => ({
 	onBeforeRouteLeave: routeLeave,
 	useRouter: () => ({ push: vi.fn() }),
 }));
-// A test that needs device copies sets `draftStore`; the rest run without one.
-let draftStore: EditorDraftStore | null = null;
-vi.mock('~/utils/editorDraftStore', async (importOriginal) => {
-	const actual: { getEditorDraftStore: () => EditorDraftStore } = await importOriginal();
-	return { ...actual, getEditorDraftStore: () => draftStore ?? actual.getEditorDraftStore() };
-});
-
-// Copies left by an editor known to be closed (no Web Locks in jsdom says "unknown").
-let closedWriters = false;
-vi.mock('~/utils/editorDraftWriters', async (importOriginal) => {
-	const actual: typeof DraftWriters = await importOriginal();
-	const closed = actual.createEditorDraftWriters('tab-new', {
-		request: async () => undefined,
-		query: async () => ({ held: [], pending: [] }),
-	});
-	return {
-		...actual,
-		getEditorDraftWriters: () => (closedWriters ? closed : actual.getEditorDraftWriters()),
-	};
-});
-
 import { computed, ref, nextTick, onMounted, onUnmounted, type Ref } from 'vue';
-import type * as DraftWriters from '~/utils/editorDraftWriters';
 import type { EditorBlock } from '@owlat/email-builder';
 import { useEmailEditorBridge, type EmailEditorSaveBase } from '../useEmailEditorBridge';
 import { useUnsavedChanges } from '../useUnsavedChanges';
 import { useTemplatePublication } from '../useTemplatePublication';
 import { StaleDraftError } from '../useEditorSaveOperation';
 import { withSetup } from '~/__tests__/withSetup';
-import {
-	createEditorDraftStore,
-	editorDraftKey,
-	editorDraftScope,
-	type EditorDraftStore,
-} from '~/utils/editorDraftStore';
-import { createNoopDriver } from '~/utils/postboxOfflineKvDriver';
 
 interface TemplateRow {
 	_id: string;
@@ -108,28 +79,6 @@ let mutation: ReturnType<typeof vi.fn>;
 let canCoedit: boolean;
 let showToast: ReturnType<typeof vi.fn>;
 
-/** A device-copy store held in memory, holding `entries`. */
-function memoryStore(entries: Record<string, unknown>): EditorDraftStore {
-	const data = new Map(Object.entries(entries));
-	return createEditorDraftStore({
-		...createNoopDriver(),
-		persistent: true,
-		get: async <T>(key: string) => data.get(key) as T,
-		set: async (key, value) => {
-			data.set(key, value);
-		},
-		delete: async (key) => {
-			data.delete(key);
-		},
-		keys: async () => [...data.keys()],
-		deleteIf: async (key, predicate) => {
-			if (!predicate(data.get(key))) return false;
-			data.delete(key);
-			return true;
-		},
-	});
-}
-
 beforeEach(() => {
 	vi.useFakeTimers();
 	queries = {
@@ -138,8 +87,6 @@ beforeEach(() => {
 		'notices.listForClient': ref([]),
 	};
 	canCoedit = false;
-	draftStore = null;
-	closedWriters = false;
 	showToast = vi.fn();
 	mutation = vi.fn(async (fn: string) => {
 		if (fn === 'sessions.applyOps') return { version: 2 };
@@ -150,10 +97,6 @@ beforeEach(() => {
 	vi.stubGlobal('onUnmounted', onUnmounted);
 	vi.stubGlobal('useI18n', () => ({ t: (key: string) => key, locale: ref('en'), te: () => true }));
 	vi.stubGlobal('useToast', () => ({ showToast }));
-	vi.stubGlobal('useAuth', () => ({
-		user: ref({ id: 'user_1' }),
-		activeOrganizationId: ref('org_1'),
-	}));
 	vi.stubGlobal('useBackendOperation', () => ({ run: vi.fn() }));
 	// The real guard: a draft's leave decisions go through it.
 	vi.stubGlobal('useUnsavedChanges', useUnsavedChanges);
@@ -212,11 +155,7 @@ function setup(status: 'draft' | 'published' = 'draft', initial: Partial<Templat
 			source,
 			revision: (row) => row.contentRevision ?? 0,
 			coedit: { target: () => ({ type: 'emailTemplate', id: 't1' as never }), fields: {} },
-			autosave: {
-				enabled: () => source.value?.status === 'draft',
-				kind: 'emailTemplate',
-				id: () => 't1',
-			},
+			autosave: { enabled: () => source.value?.status === 'draft' },
 			initialize: (row, ctx) => {
 				ctx.name.value = row.name;
 				ctx.subject.value = row.subject;
@@ -243,25 +182,6 @@ async function leave(to = '/dashboard/send') {
 		if (answer === false) return 'blocked';
 	}
 	return 'left';
-}
-
-const scope = editorDraftScope({
-	userId: 'user_1',
-	organizationId: 'org_1',
-	kind: 'emailTemplate',
-	id: 't1',
-});
-
-/** A copy another editor (closed) left behind on `base`. */
-function leftBehind(base: number, data: Record<string, unknown>) {
-	return {
-		[editorDraftKey(scope, 'tab-old.1')]: {
-			v: 1,
-			savedAt: Date.now(),
-			base,
-			data: { name: 'Welcome', subject: 'Hello', blocks: [text('a', 'Alpha')], extra: [], ...data },
-		},
-	};
 }
 
 describe('useEmailEditorBridge autosave (classic)', () => {
@@ -302,7 +222,6 @@ describe('useEmailEditorBridge autosave (classic)', () => {
 	});
 
 	it('saves nothing of a discarded edit, also when the editor closes right after', async () => {
-		draftStore = createEditorDraftStore(createNoopDriver());
 		const { bridge, save, unmount } = setup();
 		await settle();
 		bridge.subject.value = 'Discarded';
@@ -315,7 +234,6 @@ describe('useEmailEditorBridge autosave (classic)', () => {
 	});
 
 	it("saves the leave prompt's Save through the autosave queue", async () => {
-		draftStore = createEditorDraftStore(createNoopDriver());
 		const { bridge, save, unmount } = setup();
 		await settle();
 		bridge.subject.value = 'Before leaving';
@@ -338,7 +256,6 @@ describe('useEmailEditorBridge autosave (classic)', () => {
 	});
 
 	it('shares one queue between a background save, the prompt, the shortcut and Publish', async () => {
-		draftStore = createEditorDraftStore(createNoopDriver());
 		const { bridge, save, unmount } = setup();
 		let release!: () => void;
 		save.mockImplementationOnce(
@@ -370,67 +287,6 @@ describe('useEmailEditorBridge autosave (classic)', () => {
 		unmount();
 	});
 
-	it('offers a copy left on the revision the server still holds, and applies nothing', async () => {
-		draftStore = memoryStore(leftBehind(2, { subject: 'Offline subject' }));
-		const { bridge, save, unmount } = setup();
-		await settle();
-		await vi.advanceTimersByTimeAsync(0);
-		expect(bridge.subject.value).toBe('Hello');
-		expect(bridge.autosave?.recovery.pending.value?.data).toMatchObject({
-			subject: 'Offline subject',
-		});
-		await vi.advanceTimersByTimeAsync(1500);
-		expect(save).not.toHaveBeenCalled();
-
-		// Restore: an edit like any other, saved on the revision the draft is built on.
-		bridge.autosave?.recovery.restore();
-		await settle();
-		expect(bridge.subject.value).toBe('Offline subject');
-		await vi.advanceTimersByTimeAsync(1500);
-		expect(save.mock.calls[0]?.[1]).toMatchObject({ revision: 2, autosave: true });
-		unmount();
-	});
-
-	it('offers a copy while text is typed into a block, and never loads it into the canvas', async () => {
-		draftStore = memoryStore(leftBehind(2, { blocks: [] }));
-		const { bridge, unmount } = setup();
-		const loadState = vi.fn();
-		bridge.builderRef.value = { loadState, isInlineEditing: true };
-		await settle();
-		await vi.advanceTimersByTimeAsync(0);
-		expect(loadState).not.toHaveBeenCalled();
-		expect(bridge.autosave?.recovery.pending.value?.data).toMatchObject({ blocks: [] });
-		unmount();
-	});
-
-	it('asks before Restore replaces text typed into a block, and closes that text first', async () => {
-		draftStore = memoryStore(leftBehind(2, { blocks: [] }));
-		const { bridge, unmount } = setup();
-		await settle();
-		await vi.advanceTimersByTimeAsync(0);
-		expect(bridge.autosave?.recovery.pending.value).not.toBeNull();
-		const calls: string[] = [];
-		const loadState = vi.fn(() => calls.push('loadState'));
-		bridge.builderRef.value = {
-			loadState,
-			isInlineEditing: true,
-			commitInlineEdit: () => {
-				calls.push('commit');
-				(bridge.builderRef.value as { isInlineEditing: boolean }).isInlineEditing = false;
-			},
-		};
-		await nextTick();
-
-		bridge.autosave!.recovery.restore();
-		expect(loadState).not.toHaveBeenCalled();
-		expect(bridge.autosave!.recovery.confirm.value).toBe(true);
-
-		bridge.autosave!.recovery.restore();
-		expect(calls).toEqual(['commit', 'loadState']);
-		expect(loadState).toHaveBeenCalledWith(expect.objectContaining({ blocks: [] }));
-		unmount();
-	});
-
 	describe('leaving while text is typed into a block', () => {
 		/** The text editor is open with `typed`; closing it puts the text in the subject. */
 		const typeInto = (bridge: ReturnType<typeof setup>['bridge'], typed: string) => {
@@ -444,11 +300,8 @@ describe('useEmailEditorBridge autosave (classic)', () => {
 			};
 		};
 
-		it('asks before leaving when the text could be kept nowhere', async () => {
-			// No device storage, and the save on the way out will fail.
-			draftStore = createEditorDraftStore(createNoopDriver());
-			const { bridge, save, unmount } = setup();
-			save.mockRejectedValue(new Error('offline'));
+		it('asks before leaving while the typed text is not saved', async () => {
+			const { bridge, unmount } = setup();
 			await settle();
 			typeInto(bridge, 'Typed, not committed');
 			await settle();
@@ -461,73 +314,17 @@ describe('useEmailEditorBridge autosave (classic)', () => {
 			unmount();
 		});
 
-		it('leaves without asking once the text is on the device', async () => {
-			draftStore = memoryStore({});
-			const { bridge, unmount } = setup();
+		it('leaves without asking once Save wrote the typed text', async () => {
+			const { bridge, save, unmount } = setup();
 			await settle();
-			typeInto(bridge, 'Typed, kept');
+			typeInto(bridge, 'Typed, saved');
 			await settle();
+			await bridge.requestSave();
+			expect(save).toHaveBeenCalledOnce();
 
 			expect(await leave()).toBe('left');
 			expect(bridge.showUnsavedChangesDialog.value).toBe(false);
-			expect(bridge.autosave?.autosave.onDevice.value).toBe(true);
 			unmount();
-		});
-	});
-
-	describe('a device copy of edits made before a newer write', () => {
-		/** Edits at revision 2; another writer's revision 3 arrives and refuses the save. */
-		async function editBeforeTheirWrite() {
-			draftStore = memoryStore({});
-			const first = setup();
-			first.save.mockRejectedValue(new StaleDraftError(3));
-			await settle();
-			first.bridge.subject.value = 'My subject';
-			await settle();
-			first.source.value = { ...first.source.value!, subject: 'Their subject', contentRevision: 3 };
-			await settle();
-			await vi.advanceTimersByTimeAsync(1500);
-			expect(first.bridge.conflict.value).toEqual({ currentRevision: 3 });
-			const copies = await draftStore.list(scope, (data): data is unknown => true);
-			expect(copies).toHaveLength(1);
-			return { first, copy: copies[0]! };
-		}
-
-		it('names the revision the edits were built on', async () => {
-			const { first, copy } = await editBeforeTheirWrite();
-			expect(copy.base).toBe(2);
-			first.unmount();
-		});
-
-		it('is offered on reopen, not applied over the newer write', async () => {
-			const { first } = await editBeforeTheirWrite();
-			first.unmount();
-			const reopened = setup('draft', { subject: 'Their subject', contentRevision: 3 });
-			await settle();
-			await vi.advanceTimersByTimeAsync(0);
-
-			expect(reopened.bridge.subject.value).toBe('Their subject');
-			expect(reopened.bridge.autosave?.recovery.pending.value?.data).toMatchObject({
-				subject: 'My subject',
-			});
-			await vi.advanceTimersByTimeAsync(1500);
-			expect(reopened.save).not.toHaveBeenCalled();
-			reopened.unmount();
-		});
-
-		it('names the newer revision once "keep my version" built the edits on it', async () => {
-			const { first } = await editBeforeTheirWrite();
-			// Its save does not land: the copy is what keeps the edits.
-			first.save.mockReset();
-			first.save.mockRejectedValue(new Error('offline'));
-			await first.bridge.keepMyVersion();
-			first.bridge.subject.value = 'My subject, kept';
-			await settle();
-			await vi.advanceTimersByTimeAsync(1500);
-			const copies = await draftStore!.list(scope, (data): data is unknown => true);
-			expect(copies.map(({ base }) => base)).toEqual([3]);
-			expect(first.save.mock.calls.at(-1)?.[1]).toMatchObject({ revision: 3 });
-			first.unmount();
 		});
 	});
 
@@ -607,27 +404,7 @@ describe('useEmailEditorBridge autosave (co-editing)', () => {
 		unmount();
 	});
 
-	it('names the revision the session is built on in the device copy', async () => {
-		draftStore = memoryStore({});
-		const { bridge, source, unmount } = await joined();
-		bridge.blocks.value = [text('a', 'Alpha edited')];
-		await settle();
-		await vi.advanceTimersByTimeAsync(300);
-		queries['sessions.get']!.value = sessionRow(2, 1);
-		await settle();
-		// The email moves on outside the session (an API write) before the next copy.
-		source.value = { ...source.value!, contentRevision: 3 };
-		bridge.blocks.value = [text('a', 'Alpha edited again')];
-		await settle();
-		await vi.advanceTimersByTimeAsync(300);
-
-		const copies = await draftStore.list(scope, (data): data is unknown => true);
-		expect(copies.map(({ base }) => base)).toEqual([2]);
-		unmount();
-	});
-
 	it('counts an edit from the keystroke, before it goes to the session', async () => {
-		draftStore = createEditorDraftStore(createNoopDriver());
 		const { bridge, unmount } = await joined();
 		const autosave = bridge.autosave!.autosave;
 		const before = autosave.state.value.localRevision;
@@ -654,7 +431,6 @@ describe('useEmailEditorBridge autosave (co-editing)', () => {
 	const calls = (fn: string) => mutation.mock.calls.filter(([name]) => name === fn);
 
 	it('holds new session sends while the leave prompt is open, and Discard drops them', async () => {
-		draftStore = createEditorDraftStore(createNoopDriver());
 		const { bridge, save, unmount } = await joined();
 		await someoneElseJoins();
 		bridge.subject.value = 'Not yet shared';
@@ -671,7 +447,6 @@ describe('useEmailEditorBridge autosave (co-editing)', () => {
 	});
 
 	it('sends the held edit once the person stays', async () => {
-		draftStore = createEditorDraftStore(createNoopDriver());
 		const { bridge, unmount } = await joined();
 		bridge.subject.value = 'Stay';
 		await nextTick();
@@ -688,7 +463,6 @@ describe('useEmailEditorBridge autosave (co-editing)', () => {
 		['alone', false],
 		['when someone joins during the choice', true],
 	])('never resets the shared session on Discard (%s)', async (_, joins) => {
-		draftStore = createEditorDraftStore(createNoopDriver());
 		const { bridge, save, unmount } = await joined();
 		bridge.subject.value = 'Discarded';
 		await settle();
@@ -764,38 +538,99 @@ describe('useEmailEditorBridge autosave (co-editing)', () => {
 			unmount();
 		});
 
-		it('keeps a copy saying the same, which nothing durable holds yet', async () => {
-			closedWriters = true;
-			draftStore = memoryStore(
-				leftBehind(2, {
-					name: 'Welcome',
-					subject: 'Bob changed this',
-					blocks: [text('a', 'Alpha')],
-				})
-			);
-			const store = draftStore;
-			const list = store.list.bind(store);
-			// The read finishes only once the edit is shown.
-			let release!: () => void;
-			const gate = new Promise<void>((resolve) => {
-				release = resolve;
-			});
-			store.list = async (...args) => {
-				await gate;
-				return list(...args);
+		/** The server writes the session to the email on the next save, then reports it saved. */
+		const writesTheSession =
+			(source: Ref<TemplateRow | null>) =>
+			async (_ctx: unknown, base: EmailEditorSaveBase<TemplateRow | null>) => {
+				const revision = (base.revision ?? 0) + 1;
+				source.value = { ...source.value!, subject: 'Bob changed this', contentRevision: revision };
+				queries['sessions.get']!.value = { ...theirSubject, savedVersion: 2, baseRevision: 3 };
+				await nextTick();
+				return revision;
 			};
+
+		it('is not saved: the status says so, and leaving asks, read at once', async () => {
 			const { bridge, save, unmount } = await withTheirEdit();
-			release();
-			await settle();
-			await vi.advanceTimersByTimeAsync(0);
 			const autosave = bridge.autosave!.autosave;
-			expect(autosave.state.value.recovery.scope).not.toBeNull();
-			expect(autosave.state.value.offer).toBeNull();
+			// Their tab writes it in the background, not this one…
+			await vi.advanceTimersByTimeAsync(5000);
 			expect(save).not.toHaveBeenCalled();
-			const copies = await list(scope, (data): data is unknown => true);
-			expect(copies.map(({ key }) => key)).toEqual([editorDraftKey(scope, 'tab-old.1')]);
+			// …but until it is written, nothing here says Saved or lets the page go quietly.
+			expect(autosave.status.value).toBe('unsaved');
+			expect(autosave.leave.isAtRisk()).toBe(true);
+			expect(await leave()).toBe('blocked');
 			unmount();
 		});
+
+		it("is written by the prompt's Save, which then lets the page go", async () => {
+			const { bridge, source, save, unmount } = await withTheirEdit();
+			save.mockImplementationOnce(writesTheSession(source));
+			expect(await leave()).toBe('blocked');
+			await bridge.confirmSave();
+			expect(save).toHaveBeenCalledOnce();
+			expect(save.mock.calls[0]?.[1]).toMatchObject({ coeditVersion: 2, autosave: true });
+			expect(bridge.showUnsavedChangesDialog.value).toBe(false);
+			expect(bridge.autosave!.autosave.atRisk.value).toBe(false);
+			expect(await leave()).toBe('left');
+			unmount();
+		});
+
+		it('is written by the Save shortcut', async () => {
+			const { bridge, source, save, unmount } = await withTheirEdit();
+			save.mockImplementationOnce(writesTheSession(source));
+			await bridge.requestSave();
+			expect(save).toHaveBeenCalledOnce();
+			expect(bridge.autosave!.autosave.status.value).toBe('saved');
+			unmount();
+		});
+	});
+
+	it('counts nothing as saved while its edits cannot reach the session, and does not publish', async () => {
+		const { bridge, source, save, unmount } = await joined();
+		mutation.mockImplementation(async (fn: string) => {
+			if (fn === 'sessions.applyOps') throw new Error('offline');
+			if (fn === 'presence.heartbeat') return { isLeaseHeld: false, heldBy: null };
+			return null;
+		});
+		const publish = vi.fn(async (_args: unknown) => ({ ok: true }));
+		vi.stubGlobal('useBackendOperation', () => ({ run: publish, isLoading: ref(false) }));
+		const publication = useTemplatePublication({
+			templateId: ref('t1' as never),
+			template: computed(() => ({ ...source.value!, htmlContent: '<p>Stored</p>' })),
+			hasChanges: bridge.hasChanges,
+			draft: () => bridge.autosave!.autosave,
+		});
+		bridge.subject.value = 'Never reaches the session';
+		await settle();
+		const done = publication.togglePublication();
+		// The bounded send rounds run out.
+		await vi.advanceTimersByTimeAsync(60_000);
+		await done;
+		// The older shared session is not written in its place.
+		expect(save).not.toHaveBeenCalled();
+		expect(publish).not.toHaveBeenCalled();
+		const autosave = bridge.autosave!.autosave;
+		expect(autosave.status.value).toBe('error');
+		expect(autosave.atRisk.value).toBe(true);
+		expect(bridge.subject.value).toBe('Never reaches the session');
+		unmount();
+	});
+
+	it('does not count a save as done while the session never reports it written', async () => {
+		const { bridge, save, unmount } = await joined();
+		bridge.blocks.value = [text('a', 'Alpha edited')];
+		await settle();
+		await vi.advanceTimersByTimeAsync(300);
+		queries['sessions.get']!.value = sessionRow(2, 1);
+		await settle();
+		await vi.advanceTimersByTimeAsync(1500);
+		expect(save).toHaveBeenCalledOnce();
+		// `untilSaved` runs out without the session reporting version 2 saved.
+		await vi.advanceTimersByTimeAsync(10_000);
+		const autosave = bridge.autosave!.autosave;
+		expect(autosave.status.value).toBe('error');
+		expect(autosave.atRisk.value).toBe(true);
+		unmount();
 	});
 
 	it("leaves another person's edit to their tab while they are here", async () => {

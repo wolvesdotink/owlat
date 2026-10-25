@@ -52,8 +52,9 @@ export interface EmailCoeditingOptions {
 	 */
 	held?: () => boolean;
 	/**
-	 * Another owner decides what happens to this tab's unsent edits when the
-	 * editor closes (the draft's autosave session, through `sendUnsent`).
+	 * Another owner decides what happens to this tab's unsent edits, and
+	 * nothing is sent when the editor closes (a draft's autosave session,
+	 * whose leave prompt saves or drops them).
 	 */
 	managed?: () => boolean;
 }
@@ -113,8 +114,7 @@ export function useEmailCoediting(opts: EmailCoeditingOptions) {
 	const isOffline = ref(false);
 	/**
 	 * Counts this tab's own edits as they are made, not when they are sent:
-	 * until the session has an edit, the device copy and the leave guards are
-	 * all that cover it.
+	 * until the session has an edit, only the leave guards cover it.
 	 */
 	const localEdits = ref(0);
 
@@ -274,17 +274,19 @@ export function useEmailCoediting(opts: EmailCoeditingOptions) {
 	/**
 	 * Send everything this tab has and wait until the server applied it, so a
 	 * save that follows includes it. Gives up after a few rounds; what is
-	 * still unsent then stays unsaved (the editor stays dirty).
+	 * still unsent then stays unsaved (the editor stays dirty). Resolves
+	 * whether nothing is left unsent.
 	 */
-	const flushNow = async () => {
+	const flushNow = async (): Promise<boolean> => {
 		if (sendTimer !== null) {
 			clearTimeout(sendTimer);
 			sendTimer = null;
 		}
 		for (let round = 0; round < 5; round++) {
-			if (!sync.hasUnsent(opts.read())) return;
+			if (!sync.hasUnsent(opts.read())) return true;
 			if (!(await send())) await nextChange(CATCH_UP_MS);
 		}
+		return !sync.hasUnsent(opts.read());
 	};
 
 	// ── Receiving ───────────────────────────────────────────────────────
@@ -405,10 +407,6 @@ export function useEmailCoediting(opts: EmailCoeditingOptions) {
 		untilSaved,
 		resetShared,
 		dropUnsent,
-		/** Best effort: hand over what this tab has not sent (an editor closing). */
-		sendUnsent: () => {
-			if (status.value === 'active' && !dropsUnsent) void send();
-		},
 	};
 }
 

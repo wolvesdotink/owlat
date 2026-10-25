@@ -18,7 +18,7 @@ import {
 	type DraftEffect,
 	type DraftEvent,
 	type DraftFlight,
-	type DraftLeaveRefusal,
+	type DraftLive,
 	type DraftReceipt,
 	type DraftSessionState,
 	type Fingerprints,
@@ -28,57 +28,45 @@ import {
 	atRisk,
 	holdsSends,
 	isDirty,
-	onDevice,
 	saveStatus,
-	sendableFields,
+	serverHolds,
 	type DraftSaveStatus,
 } from '~/utils/draftSessionSelectors';
-import {
-	editorDraftKey,
-	getEditorDraftStore,
-	type EditorDraftStore,
-} from '~/utils/editorDraftStore';
-import { getEditorDraftWriters, type EditorDraftWriters } from '~/utils/editorDraftWriters';
 import { useDraftLeave, type DraftLeaveDecisions } from './useDraftLeave';
-import { readDraftCandidates, useDraftRecovery, type DraftRecovery } from './useDraftRecovery';
 
 /**
- * Draft autosave: runs a draft editor's session (`utils/draftSession.ts`) for
- * the draft editors (email template, campaign). The session decides; this
- * runs what it decides (the debounce and mirror timers, the save, the device
- * copy, reading copies left behind, the leave prompt's steps) and reports each
+ * Draft autosave: runs a draft email template editor's session
+ * (`utils/draftSession.ts`). The session decides; this runs what it decides
+ * (the debounce timer, the save, the leave prompt's steps) and reports each
  * outcome back to it, and exposes what it derives (`status`, `atRisk`, ...).
  *
  * - An edit restarts a short pause; then the draft is saved. One save runs at
  *   a time; an edit made meanwhile is saved after it.
- * - An edit is also written to this editor's device copy a moment later, and
- *   the copy goes once the server holds everything in it.
- * - A copy another editor left behind is only ever offered (`recovery`);
- *   Restore makes it an edit of this draft, never a silent replacement.
- * - `leave` decides a leave: open text is committed and the device copy given
- *   a bounded moment first; the prompt shows only while something would be
- *   lost; its Save goes through the same queue; Discard drops what was not
- *   sent. A newer leave request, Stay or closing retires a decision.
- * - `flush` saves now (Publish, the Save shortcut); `runAction` holds the
- *   background saves while a final action (Send, Schedule, Publish) runs.
+ * - Nothing is kept on the device: an edit is at risk until the server
+ *   acknowledged it, and leaving (or closing the tab) asks until then.
+ * - `leave` decides a leave: open text is committed first; the prompt shows
+ *   only while the server does not hold what the editor shows; its Save goes
+ *   through the same queue; Discard drops what was not sent. A newer leave
+ *   request, Stay or closing retires a decision.
+ * - `flush` saves now (Publish, Save, the leave prompt) and is done only
+ *   once the server holds what the editor shows; `runAction` holds the
+ *   background saves while a final action (Publish) runs.
  *
  * Failures show in the status, not as a toast per attempt; the next edit,
  * `retry` or the backend coming back tries again. While the backend is
  * unreachable the Convex client holds the mutation and sends it on reconnect.
  */
 
-export interface DraftAutosaveOptions<T> {
+export interface DraftAutosaveOptions {
 	/** Autosave applies to what is open (a loaded draft). */
 	enabled: () => boolean;
-	/** Where this draft's device copies live (`editorDraftScope`); null while unknown. */
-	scope: () => string | null;
 	/**
 	 * The editor's fields as fingerprints, read synchronously. Without it the
 	 * editor reports its edits itself (live co-editing).
 	 */
-	read?: () => { values: Fingerprints; deviceOnly?: readonly string[] };
-	/** The device copy's data, read synchronously. */
-	snapshot: () => T;
+	read?: () => Fingerprints;
+	/** Live co-editing: what the session reports now, read synchronously (null: not live). */
+	readLive?: () => DraftLive | null;
 	/**
 	 * Persist `flight`. Read the editor synchronously before the first
 	 * `await`; reject when it did not land (a `StaleDraftError` opens the
@@ -89,46 +77,30 @@ export interface DraftAutosaveOptions<T> {
 	inline?: () => boolean;
 	/** Make that text part of the fields (close the text editor). */
 	commitInline?: () => void;
-	/** Shape check for a stored copy's data (it may come from an older build). */
-	accept: (data: unknown) => data is T;
-	/** A copy's data says what the editor shows now. */
-	matches: (data: T) => boolean;
-	/** Put a restored copy's data into the editor (an edit like any other). */
-	apply: (data: T) => void;
 	/** Follow the latest server row (the session found the draft clean). */
 	hydrate?: () => void;
 	/** Replace the draft with the server's state ("Load latest"). */
 	reload?: () => void;
-	/** Live co-editing: hand over or drop what this tab has not sent. */
-	live?: { sendUnsent: () => void; dropUnsent: () => void };
-	/** Recovery may look for copies: the editor shows the server's state. */
-	ready?: () => boolean;
+	/** Live co-editing: drop what this tab has not sent (Discard). */
+	dropUnsent?: () => void;
 	/** A Save in the leave prompt did not let the page go. */
-	onRefused?: (reason: DraftLeaveRefusal) => void;
-	/** Fields no draft save or device copy holds (they wait for an action). */
-	volatile?: readonly string[];
+	onRefused?: () => void;
 	/** How long the editor waits after the last edit; default 1500 ms. */
 	debounceMs?: number;
 	/** Whether the backend is reachable; default: the app's connection state and the browser's. */
 	online?: () => boolean;
-	/** Injected in tests; defaults to the page's IndexedDB store. */
-	store?: EditorDraftStore;
-	/** Injected in tests; defaults to the page's writers. */
-	writers?: EditorDraftWriters;
 	/** Sees each event once the session took it and its effects started (tests). */
 	observe?: (event: DraftEvent) => void;
 }
 
-export interface DraftAutosave<T = unknown> {
+export interface DraftAutosave {
 	state: Readonly<ShallowRef<DraftSessionState>>;
 	status: ComputedRef<DraftSaveStatus>;
 	/** When the last save landed. */
 	savedAt: ComputedRef<number | null>;
 	/** The last save's failure, until a save lands. */
 	error: ComputedRef<unknown>;
-	/** Everything the draft holds is on this device. */
-	onDevice: ComputedRef<boolean>;
-	/** The draft holds something the server does not. */
+	/** The draft holds an edit of this editor the server does not. */
 	dirty: ComputedRef<boolean>;
 	/** Leaving now would lose something. */
 	atRisk: ComputedRef<boolean>;
@@ -136,25 +108,21 @@ export interface DraftAutosave<T = unknown> {
 	holdsSends: ComputedRef<boolean>;
 	dispatch: (event: DraftEvent) => void;
 	/** Report fields that changed (an edit, when the editor reports its own). */
-	edit: (values: Fingerprints, deviceOnly?: readonly string[]) => void;
-	/** Save now; resolves true when nothing is left to save. */
+	edit: (values: Fingerprints) => void;
+	/** Save now; resolves true once the server holds what the editor shows. */
 	flush: () => Promise<boolean>;
 	retry: () => void;
-	/** Discard: nothing of the current edits is saved or kept; the next edit saves again. */
+	/** Discard: nothing of the current edits is saved; the next edit saves again. */
 	discard: () => void;
 	/**
-	 * Hold background saves while `perform` (a final action) runs. On success
-	 * the `consumes` fields count as done with the values they had at the
-	 * start. `perform` asks `current()` right before its final dispatch: false
-	 * when the editor no longer shows what the server holds (an edit made while
-	 * the action saved), and then it must not dispatch.
+	 * Hold background saves while `perform` (a final action) runs. `perform`
+	 * asks `current()` right before its final dispatch: false when the editor
+	 * no longer shows what the server holds (an edit made while the action
+	 * saved, someone else's edit the email does not hold), and then it must
+	 * not dispatch.
 	 */
-	runAction: (
-		perform: (current: () => boolean) => Promise<boolean>,
-		consumes?: readonly string[]
-	) => Promise<boolean>;
+	runAction: (perform: (current: () => boolean) => Promise<boolean>) => Promise<boolean>;
 	leave: DraftLeaveDecisions;
-	recovery: DraftRecovery<T>;
 }
 
 /** Saves a flush starts before giving up on an editor that keeps changing. */
@@ -177,21 +145,21 @@ function browserOnline(): Ref<boolean> {
 	return online;
 }
 
-export function useDraftAutosave<T>(opts: DraftAutosaveOptions<T>): DraftAutosave<T> {
-	const store = opts.store ?? getEditorDraftStore();
-	const writers = opts.writers ?? getEditorDraftWriters();
-	const writer = writers.open();
-	const state = shallowRef(
-		createDraftSession({
-			writer: writer.id,
-			volatile: opts.volatile,
-			debounceMs: opts.debounceMs,
-		})
-	);
+const sameLive = (a: DraftLive | null, b: DraftLive | null) =>
+	a === b ||
+	(a !== null &&
+		b !== null &&
+		a.sessionId === b.sessionId &&
+		a.base === b.base &&
+		a.sharedPending === b.sharedPending &&
+		a.unsent === b.unsent &&
+		a.alone === b.alone);
 
-	const timers = new Map<string, ReturnType<typeof setTimeout>>();
+export function useDraftAutosave(opts: DraftAutosaveOptions): DraftAutosave {
+	const state = shallowRef(createDraftSession({ debounceMs: opts.debounceMs }));
+
+	let timer: ReturnType<typeof setTimeout> | null = null;
 	const flights = new Map<number, Promise<void>>();
-	const candidateData = new Map<string, T>();
 	let actions = 0;
 
 	// ── Dispatching ──────────────────────────────────────────────────────
@@ -218,33 +186,27 @@ export function useDraftAutosave<T>(opts: DraftAutosaveOptions<T>): DraftAutosav
 	const sync = () => {
 		const s = state.value;
 		if (s.closed) return;
-		if (opts.read && s.base && !s.live) {
-			const reading = opts.read();
-			dispatch({ type: 'edit', values: reading.values, deviceOnly: reading.deviceOnly ?? [] });
+		if (opts.readLive) {
+			const live = opts.readLive();
+			if (!sameLive(live, state.value.live)) dispatch({ type: 'live', live });
+		}
+		if (opts.read && state.value.base && !state.value.live) {
+			dispatch({ type: 'edit', values: opts.read() });
 		}
 		const open = opts.inline?.() === true;
 		if (open !== state.value.inline) dispatch({ type: 'inline', open });
-	};
-
-	const ownKey = () => {
-		const scope = opts.scope();
-		return scope ? editorDraftKey(scope, writer.id) : null;
 	};
 
 	// ── Effects ──────────────────────────────────────────────────────────
 	function execute(effect: DraftEffect) {
 		switch (effect.type) {
 			case 'timer': {
-				const previous = timers.get(effect.name);
-				if (previous !== undefined) clearTimeout(previous);
-				timers.set(
-					effect.name,
-					setTimeout(() => {
-						timers.delete(effect.name);
-						sync();
-						dispatch({ type: 'timer', name: effect.name, id: effect.id });
-					}, effect.ms)
-				);
+				if (timer !== null) clearTimeout(timer);
+				timer = setTimeout(() => {
+					timer = null;
+					sync();
+					dispatch({ type: 'timer', id: effect.id });
+				}, effect.ms);
 				break;
 			}
 			case 'persist': {
@@ -269,64 +231,6 @@ export function useDraftAutosave<T>(opts: DraftAutosaveOptions<T>): DraftAutosav
 					)
 				);
 				void flights.get(flight.id)!.then(() => flights.delete(flight.id));
-				break;
-			}
-			case 'write-copy': {
-				const { write } = effect;
-				const key = ownKey();
-				if (!key) {
-					queue.push({ type: 'copy-failed', token: write.token });
-					break;
-				}
-				const copy = {
-					v: 2 as const,
-					token: write.token,
-					seq: write.seq,
-					savedAt: Date.now(),
-					base: write.base,
-					data: opts.snapshot(),
-				};
-				void store
-					.write(key, copy)
-					.then((written) =>
-						dispatch({ type: written ? 'copy-committed' : 'copy-failed', token: write.token })
-					);
-				break;
-			}
-			case 'remove-copies': {
-				const key = effect.key ?? ownKey();
-				if (key) void store.removeIf(key, effect.tokens);
-				break;
-			}
-			case 'read-copies': {
-				const { request, scope } = effect;
-				const reader = {
-					store,
-					writers,
-					own: writer.id,
-					accept: opts.accept,
-					matches: opts.matches,
-				};
-				void readDraftCandidates(reader, scope, (token, data) =>
-					candidateData.set(token, data)
-				).then(
-					(candidates) => {
-						sync();
-						dispatch({ type: 'recovery-read', request, candidates });
-					},
-					() => dispatch({ type: 'recovery-read', request, candidates: [] })
-				);
-				break;
-			}
-			case 'apply-copy': {
-				const data = candidateData.get(effect.candidate.token);
-				if (data === undefined) break;
-				// Restore was confirmed over open text: close it first, so it
-				// cannot land on the restored draft later.
-				if (opts.inline?.() && opts.commitInline) opts.commitInline();
-				opts.apply(data);
-				sync();
-				dispatch({ type: 'recovery-applied', request: effect.request });
 				break;
 			}
 			case 'hydrate':
@@ -358,20 +262,16 @@ export function useDraftAutosave<T>(opts: DraftAutosaveOptions<T>): DraftAutosav
 				);
 				break;
 			case 'settled':
-				if (effect.reason) opts.onRefused?.(effect.reason);
+				if (effect.refused) opts.onRefused?.();
 				decisions.settle(effect.id, effect.destination);
 				break;
 			case 'drop-unsent':
-				opts.live?.dropUnsent();
-				break;
-			case 'send-unsent':
-				opts.live?.sendUnsent();
+				opts.dropUnsent?.();
 				break;
 		}
 	}
 
 	// ── Inputs ───────────────────────────────────────────────────────────
-	dispatch({ type: 'storage', persistent: store.persistent });
 	const browser = opts.online ? null : browserOnline();
 	const online = opts.online ?? (() => backendConnectionPhase.value === null && browser!.value);
 	watch(online, (value) => dispatch({ type: 'online', online: value }), { immediate: true });
@@ -379,16 +279,6 @@ export function useDraftAutosave<T>(opts: DraftAutosaveOptions<T>): DraftAutosav
 		immediate: true,
 	});
 	if (opts.inline) watch(opts.inline, () => sync());
-	watch(
-		() =>
-			state.value.enabled && state.value.base !== null && opts.ready?.() !== false
-				? opts.scope()
-				: null,
-		(scope) => {
-			if (scope) dispatch({ type: 'recovery-start', scope });
-		},
-		{ immediate: true }
-	);
 
 	// ── Commands ─────────────────────────────────────────────────────────
 	const flush = async (): Promise<boolean> => {
@@ -402,6 +292,7 @@ export function useDraftAutosave<T>(opts: DraftAutosaveOptions<T>): DraftAutosav
 			const running = state.value.flight;
 			if (running) {
 				await flights.get(running.id);
+				sync();
 				continue;
 			}
 			if (started >= FLUSH_ROUNDS) break;
@@ -414,25 +305,23 @@ export function useDraftAutosave<T>(opts: DraftAutosaveOptions<T>): DraftAutosav
 			sync();
 		}
 		const s = state.value;
-		return s.failure === null && s.conflict === null && !s.inline && sendableFields(s).length === 0;
+		return s.failure === null && s.conflict === null && serverHolds(s);
 	};
 
-	const runAction: DraftAutosave<T>['runAction'] = async (perform, consumes = []) => {
+	const runAction: DraftAutosave['runAction'] = async (perform) => {
 		actions += 1;
 		const id = actions;
 		sync();
 		dispatch({ type: 'action-begin', id });
 		const current = () => {
 			sync();
-			return actionCurrent(state.value, id, consumes);
+			return actionCurrent(state.value, id);
 		};
-		let ok = false;
 		try {
-			ok = await perform(current);
+			return await perform(current);
 		} finally {
-			dispatch({ type: 'action-end', id, ok, consumed: consumes });
+			dispatch({ type: 'action-end', id });
 		}
-		return ok;
 	};
 
 	const isAtRisk = () => {
@@ -441,17 +330,12 @@ export function useDraftAutosave<T>(opts: DraftAutosaveOptions<T>): DraftAutosav
 	};
 	const decisions = useDraftLeave(state, dispatch, sync, isAtRisk);
 
-	const recovery = useDraftRecovery<T>(state, dispatch, (token) => candidateData.get(token), sync);
-
-	// Closing: what was not discarded gets one last save and copy (best
-	// effort), every decision still open settles, and the editor's lock goes.
+	// Closing settles every decision still open and stops the timer; it saves nothing.
 	if (getCurrentScope()) {
 		onScopeDispose(() => {
-			sync();
 			dispatch({ type: 'close' });
-			for (const timer of timers.values()) clearTimeout(timer);
-			timers.clear();
-			writer.close();
+			if (timer !== null) clearTimeout(timer);
+			timer = null;
 		});
 	}
 
@@ -460,17 +344,15 @@ export function useDraftAutosave<T>(opts: DraftAutosaveOptions<T>): DraftAutosav
 		status: computed(() => saveStatus(state.value)),
 		savedAt: computed(() => state.value.savedAt),
 		error: computed(() => state.value.failure),
-		onDevice: computed(() => onDevice(state.value)),
 		dirty: computed(() => isDirty(state.value)),
 		atRisk: computed(() => atRisk(state.value)),
 		holdsSends: computed(() => holdsSends(state.value)),
 		dispatch,
-		edit: (values, deviceOnly) => dispatch({ type: 'edit', values, deviceOnly }),
+		edit: (values) => dispatch({ type: 'edit', values }),
 		flush,
 		retry: () => dispatch({ type: 'retry' }),
 		discard: () => dispatch({ type: 'discard' }),
 		runAction,
 		leave: decisions.leave,
-		recovery,
 	};
 }

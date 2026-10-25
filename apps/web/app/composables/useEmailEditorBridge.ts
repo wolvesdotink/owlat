@@ -168,7 +168,7 @@ export interface EmailEditorBridgeReturn {
 	isConnecting: Ref<boolean>;
 	// Bind to the EmailBuilder's `collab-focus` event.
 	onCollabFocus: (focus: BuilderCollabFocus) => void;
-	// A draft's autosave session and its device copy (null without `autosave`).
+	// A draft's autosave session (null without `autosave`).
 	autosave: EmailEditorAutosave<unknown> | null;
 }
 
@@ -235,8 +235,9 @@ export function useEmailEditorBridge<S>(
 				},
 				rowRevision,
 				{
-					// A leave being decided holds this tab's new sends; on close the
-					// draft's session decides what to hand over.
+					// A leave being decided holds this tab's new sends. A draft sends
+					// nothing on close: what it had not saved was left through the
+					// leave prompt (its Discard drops it) or the browser's warning.
 					held: () => draftOwned()?.autosave.holdsSends.value === true,
 					managed: () => draftOwned() !== null,
 				}
@@ -349,17 +350,28 @@ export function useEmailEditorBridge<S>(
 
 	// Live: send what this tab still has, then save the shared session (the
 	// server writes the session, so nobody's edit that reached it is lost).
-	// A draft's session names the revision itself (`revision`).
+	// A draft's session names the revision itself (`revision`) and counts the
+	// save as done only once the session this tab saw is written to the email:
+	// same session, saved at least at the version seen, nothing of this tab
+	// left unsent. Resolves the revision the write stored when known.
 	const saveSession = async (
 		live: EmailEditorCoedit,
 		autosave = false,
 		revision = keepOverRevision ?? live.meta.value?.baseRevision
-	) => {
-		await live.flushNow();
+	): Promise<number | void> => {
+		const delivered = await live.flushNow();
+		if (autosave && !delivered) throw new Error('Edits not sent to the shared session');
 		const seen = live.seenVersion();
 		const sessionId = live.meta.value?.sessionId;
+		const written = () => {
+			const meta = live.meta.value;
+			return (
+				seen !== undefined && !!meta && meta.sessionId === sessionId && meta.savedVersion >= seen
+			);
+		};
+		let landed: number | void;
 		try {
-			await opts.save(ctx, {
+			landed = await opts.save(ctx, {
 				source: (opts.source.value as NonNullable<S> | null) ?? null,
 				revision,
 				coeditVersion: seen,
@@ -370,13 +382,15 @@ export function useEmailEditorBridge<S>(
 			// row first, and it wrote the session including what this tab saw.
 			if (!autosave || !(error instanceof StaleDraftError) || seen === undefined) throw error;
 			await live.untilSaved(seen);
-			const meta = live.meta.value;
-			if (!meta || meta.sessionId !== sessionId || meta.savedVersion < seen) throw error;
+			if (!written()) throw error;
 			return;
 		}
 		keepOverRevision = null;
 		// The leave guard reads the dirty flag right after this resolves.
 		if (seen !== undefined) await live.untilSaved(seen);
+		// A wait that ran out proves nothing.
+		if (autosave && !written()) throw new Error('Shared session not written to the email');
+		return landed;
 	};
 
 	// A Save button handler's rejection would reach Vue's error handling and

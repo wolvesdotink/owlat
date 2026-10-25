@@ -1,27 +1,24 @@
 /**
- * One draft editor's session (email template, campaign): the single owner of
- * what the editor holds, the server state it is built on, what is on its way
- * to the server or the device, what a copy left on the device may do, and
- * whether the page may be left.
+ * One draft email template editor's session: the single owner of what the
+ * editor holds, the server state it is built on, what is on its way to the
+ * server, and whether the page may be left.
  *
  * Pure: `transition(state, event)` returns the next state and the effects to
- * run. `useDraftAutosave.ts` runs them (timers, the save mutation, IndexedDB)
- * and reports each outcome as an event naming the effect it belongs to (a
- * flight id, a copy token, a request or decision id). An outcome whose name no
+ * run. `useDraftAutosave.ts` runs them (the save timer, the save mutation,
+ * the leave prompt's steps) and reports each outcome as an event naming the
+ * effect it belongs to (a flight id, a decision id). An outcome whose name no
  * longer matches belongs to a retired effect: it changes nothing it does not
  * prove. Retiring an effect does not cancel a mutation Convex already took.
  *
  * What the editor holds is described per field by a fingerprint (its value,
  * serialized). Live co-editing has one field, `@own`, counting this tab's own
- * edits: the session merges everyone's, and what this tab answers for is its
- * own. A field is covered by the server while its fingerprint equals the
- * base's; only a hydration, an acknowledged save of that exact value, an
- * explicit rebase or a completed final action move the base. The device covers
- * the editor while its last committed copy holds the current fingerprint of
- * every field a copy stores. Volatile fields (the campaign's unscheduled send
- * time) are in neither: only the action that consumes them, or Discard, ends
- * their risk. The selectors in `draftSessionSelectors.ts` derive everything
- * else (dirty, at risk, on the device, the save status) from this state.
+ * edits: the session merges everyone's, and what the shared session holds
+ * unwritten is reported beside it (`DraftLive`). A field is covered while
+ * its fingerprint equals the base's; only a hydration, an acknowledged save
+ * of that exact value or an explicit rebase move the base. Nothing is kept
+ * on the device: until the server acknowledged an edit, leaving asks. The
+ * selectors in `draftSessionSelectors.ts` derive everything else (dirty, at
+ * risk, the save status) from this state.
  */
 
 import {
@@ -34,43 +31,25 @@ import {
 	leaveSave,
 	leaveSaved,
 	rebased,
-	recoveryApplied,
-	recoveryDiscard,
-	recoveryRead,
-	recoveryRestore,
-	recoveryStart,
 	reload,
 } from './draftSessionChoices';
-import { OWN_EDITS, canAutosave, pendingFields, sendableFields } from './draftSessionSelectors';
+import { OWN_EDITS, canAutosave, pendingFields, saveFields } from './draftSessionSelectors';
 import { DraftStep, pick } from './draftSessionStep';
 import type { DraftEffect, DraftEvent, DraftSessionState, Fingerprints } from './draftSessionTypes';
 
 export type * from './draftSessionTypes';
 
 export interface DraftSessionConfig {
-	/** Names this editor's device copies apart from other editors' (its writer id). */
-	writer: string;
-	/** Fields no draft save and no device copy hold. */
-	volatile?: readonly string[];
 	debounceMs?: number;
-	mirrorMs?: number;
-	/** How long leaving waits for the device copy before it asks instead. */
-	leaveWaitMs?: number;
 }
 
 export const DRAFT_DEBOUNCE_MS = 1500;
-export const DRAFT_MIRROR_MS = 300;
-export const DRAFT_LEAVE_WAIT_MS = 1000;
 
 export { OWN_EDITS };
 
-export function createDraftSession(config: DraftSessionConfig): DraftSessionState {
+export function createDraftSession(config: DraftSessionConfig = {}): DraftSessionState {
 	return {
-		writer: config.writer,
-		volatile: config.volatile ?? [],
 		debounceMs: config.debounceMs ?? DRAFT_DEBOUNCE_MS,
-		mirrorMs: config.mirrorMs ?? DRAFT_MIRROR_MS,
-		leaveWaitMs: config.leaveWaitMs ?? DRAFT_LEAVE_WAIT_MS,
 		epoch: 0,
 		closed: false,
 		enabled: false,
@@ -83,32 +62,19 @@ export function createDraftSession(config: DraftSessionConfig): DraftSessionStat
 		keepOver: null,
 		localRevision: 0,
 		values: {},
-		deviceOnly: [],
 		inline: false,
 		discarded: false,
 		flight: null,
 		saveTimer: null,
-		mirrorTimer: null,
 		failure: null,
 		savedAt: null,
 		conflict: null,
-		persistent: true,
-		onDisk: null,
-		writes: [],
-		deviceFailed: false,
-		seq: 0,
-		recovery: { request: 0, scope: null },
-		offer: null,
-		adopting: null,
 		leave: null,
 		pass: null,
 		action: null,
 		next: 1,
 	};
 }
-
-const sameList = (a: readonly string[], b: readonly string[]) =>
-	a.length === b.length && a.every((item, i) => item === b[i]);
 
 const unchanged = (current: Fingerprints, next: Fingerprints) =>
 	Object.keys(next).every((key) => current[key] === next[key]);
@@ -125,7 +91,7 @@ export function transition(
 		case 'enabled':
 			step.set({ enabled: e.enabled });
 			if (e.enabled) step.resume();
-			else step.set({ saveTimer: null, mirrorTimer: null });
+			else step.set({ saveTimer: null });
 			break;
 		case 'online': {
 			const cameBack = e.online && !step.state.online;
@@ -133,9 +99,6 @@ export function transition(
 			if (cameBack) step.resume(true);
 			break;
 		}
-		case 'storage':
-			step.set({ persistent: e.persistent });
-			break;
 		case 'hydrated':
 			hydrated(step, e);
 			break;
@@ -145,7 +108,6 @@ export function transition(
 			step.set({
 				base: { revision: e.revision, values: e.dirty ? {} : e.values },
 				values: e.values,
-				deviceOnly: e.deviceOnly ?? [],
 				hydration: step.state.hydration + 1,
 				latest: e.revision,
 			});
@@ -169,10 +131,9 @@ export function transition(
 			const s = step.state;
 			// Off (a published template): the owner that takes over reads the fields itself.
 			if (!s.enabled || !s.base || s.live || s.closed) break;
-			const deviceOnly = e.deviceOnly ?? s.deviceOnly;
-			if (unchanged(s.values, e.values) && sameList(deviceOnly, s.deviceOnly)) break;
-			step.set({ values: { ...s.values, ...e.values }, deviceOnly });
-			if (!unchanged(s.values, e.values)) step.localEdit();
+			if (unchanged(s.values, e.values)) break;
+			step.set({ values: { ...s.values, ...e.values } });
+			step.localEdit();
 			break;
 		}
 		case 'live-edit': {
@@ -196,7 +157,7 @@ export function transition(
 		case 'save-now': {
 			const s = step.state;
 			if (!s.enabled || !s.base || s.closed || s.discarded || s.conflict || s.flight) break;
-			step.startFlight();
+			step.startFlight(true);
 			break;
 		}
 		case 'retry': {
@@ -207,7 +168,7 @@ export function transition(
 			}
 			step.set({ failure: null, saveTimer: null });
 			const s = step.state;
-			if (canAutosave(s) && !s.flight && sendableFields(s).length > 0) step.armSave(0);
+			if (canAutosave(s) && !s.flight && saveFields(s).length > 0) step.armSave(0);
 			break;
 		}
 		case 'saved':
@@ -228,25 +189,6 @@ export function transition(
 			}
 			break;
 		}
-		case 'copy-committed':
-		case 'copy-failed':
-			copySettled(step, e);
-			break;
-		case 'recovery-start':
-			recoveryStart(step, e);
-			break;
-		case 'recovery-read':
-			recoveryRead(step, e);
-			break;
-		case 'recovery-restore':
-			recoveryRestore(step);
-			break;
-		case 'recovery-applied':
-			recoveryApplied(step, e);
-			break;
-		case 'recovery-discard':
-			recoveryDiscard(step);
-			break;
 		case 'leave-requested':
 			leaveRequested(step, e);
 			break;
@@ -286,7 +228,7 @@ export function transition(
 			reload(step);
 			break;
 		case 'action-begin':
-			step.set({ action: { id: e.id, values: step.state.values }, saveTimer: null });
+			step.set({ action: { id: e.id }, saveTimer: null });
 			break;
 		case 'action-end':
 			actionEnd(step, e);
@@ -304,7 +246,6 @@ function hydrated(step: DraftStep, e: Of<'hydrated'>) {
 	step.set({
 		base: { revision: e.revision, values: e.values },
 		values: e.values,
-		deviceOnly: e.deviceOnly ?? [],
 		hydration: step.state.hydration + 1,
 		latest: e.revision === null ? latest : Math.max(latest ?? e.revision, e.revision),
 		conflict: null,
@@ -312,23 +253,8 @@ function hydrated(step: DraftStep, e: Of<'hydrated'>) {
 		keepOver: null,
 	});
 	if (e.fresh) {
-		// Another entity: nothing of the previous one carries over. Its copies
-		// stay under its own key for its recovery.
-		step.set({
-			epoch: step.state.epoch + 1,
-			ownRevision: null,
-			discarded: false,
-			onDisk: null,
-			writes: [],
-			deviceFailed: false,
-			offer: null,
-			adopting: null,
-			recovery: { request: 0, scope: null },
-			saveTimer: null,
-			mirrorTimer: null,
-		});
-	} else {
-		step.settleCopy();
+		// Another entity: nothing of the previous one carries over.
+		step.set({ epoch: step.state.epoch + 1, ownRevision: null, discarded: false, saveTimer: null });
 	}
 	step.resume();
 }
@@ -356,7 +282,7 @@ function observed(step: DraftStep, e: Of<'observed'>) {
 function live(step: DraftStep, e: Of<'live'>) {
 	const s = step.state;
 	if (e.live === null) {
-		if (s.live) step.set({ live: null, base: null, values: {}, deviceOnly: [] });
+		if (s.live) step.set({ live: null, base: null, values: {} });
 		return;
 	}
 	if (s.live) {
@@ -367,7 +293,6 @@ function live(step: DraftStep, e: Of<'live'>) {
 			live: e.live,
 			base: { revision: e.live.base, values: own },
 			values: own,
-			deviceOnly: [],
 			hydration: s.hydration + 1,
 		});
 	}
@@ -376,23 +301,14 @@ function live(step: DraftStep, e: Of<'live'>) {
 
 function timer(step: DraftStep, e: Of<'timer'>) {
 	const s = step.state;
-	if (e.name === 'save') {
-		if (e.id !== s.saveTimer) return;
-		step.set({ saveTimer: null });
-		if (canAutosave(step.state) && !s.flight) step.startFlight();
-	} else if (e.name === 'mirror') {
-		if (e.id !== s.mirrorTimer) return;
-		step.set({ mirrorTimer: null });
-		step.settleCopy();
-	} else if (s.leave?.deadline === e.id) {
-		step.decideLeave();
-	}
+	if (e.id !== s.saveTimer) return;
+	step.set({ saveTimer: null });
+	if (canAutosave(step.state) && !s.flight) step.startFlight();
 }
 
 /**
  * A save landed: exactly what it carried is covered, and the base moves to
- * the revision it stored (an email) or, only when nobody else wrote between,
- * to the `updatedAt` it left (a campaign). Edits made meanwhile stay pending.
+ * the revision it stored. Edits made meanwhile stay pending.
  */
 function saved(step: DraftStep, e: Of<'saved'>) {
 	const s = step.state;
@@ -404,37 +320,11 @@ function saved(step: DraftStep, e: Of<'saved'>) {
 	if (e.receipt.revision !== undefined) {
 		revision = e.receipt.revision;
 		step.set({ ownRevision: revision, latest: Math.max(s.latest ?? revision, revision) });
-	} else if (e.receipt.lineage && e.receipt.lineage.from === s.base.revision) {
-		revision = e.receipt.lineage.to;
 	}
 	step.set({
 		base: { revision, values: { ...s.base.values, ...pick(flight.values, flight.included) } },
 		keepOver: null,
 	});
-	// A restored snapshot's source may go once nothing of it depends on it.
-	step.keepAdopted();
-	step.settleCopy();
 	step.catchUp();
 	if (!step.state.discarded) step.resume();
-}
-
-/** Writes to one key land in order: a commit also settles every older write. */
-function copySettled(step: DraftStep, e: Of<'copy-committed'> | Of<'copy-failed'>) {
-	const s = step.state;
-	const at = s.writes.findIndex((write) => write.token === e.token);
-	if (at === -1) return;
-	const write = s.writes[at]!;
-	const rest = s.writes.slice(at + 1);
-	if (e.type === 'copy-committed') {
-		step.set({ writes: rest, onDisk: write, deviceFailed: false });
-		step.keepAdopted();
-		// Discarded or saved meanwhile: a late write goes again.
-		if (step.state.discarded || pendingFields(step.state).length === 0) step.dropOwnCopies();
-	} else {
-		step.set({ writes: rest, deviceFailed: rest.length === 0 });
-	}
-	const leave = step.state.leave;
-	if (leave?.phase === 'preparing' && leave.deadline !== null && rest.length === 0) {
-		step.decideLeave();
-	}
 }

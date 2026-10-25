@@ -98,11 +98,7 @@ const {
 	},
 	canKeepDraft: sameDefaultLanguage,
 	// A draft saves itself; a published one keeps Save (it refuses edits until unpublished).
-	autosave: {
-		enabled: () => isDraft.value,
-		kind: 'emailTemplate',
-		id: () => templateId.value,
-	},
+	autosave: { enabled: () => isDraft.value },
 	initialize: (t, ctx) => {
 		ctx.name.value = t.name;
 		ctx.subject.value = t.subject;
@@ -271,14 +267,6 @@ const { isPublished, isChangingPublication, togglePublication } = useTemplatePub
 			</UiButton>
 		</div>
 
-		<!-- Edits another editor left on this device: never applied without a choice. -->
-		<DraftRecoveryNotice
-			v-if="drafts?.recovery.pending.value"
-			:saved-at="drafts.recovery.pending.value.savedAt"
-			:confirm="drafts.recovery.confirm.value"
-			@restore="drafts.recovery.restore"
-			@discard="drafts.recovery.discard"
-		/>
 		<div class="min-h-0 flex-1">
 			<UiQueryBoundary
 				:loading="templateLoading || isConnecting"

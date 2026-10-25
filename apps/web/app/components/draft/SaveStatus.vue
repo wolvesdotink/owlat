@@ -1,10 +1,10 @@
 <script setup lang="ts">
 /**
  * The save state of a draft that saves itself (`useDraftAutosave`), shown in
- * place of a Save button: "Saved · 3s ago", "Saving…", offline with or
- * without a copy on this device, not kept on this device, saved with the
- * schedule still waiting for Schedule, or a failure with Retry. It renders the
- * session's status; it decides nothing about durability itself.
+ * place of a Save button: "Saved · 3s ago", "Saving…", "Unsaved changes"
+ * (someone's edits the email does not hold yet), offline and not saved, or a
+ * failure with Retry. It renders the session's status; it decides nothing
+ * about what is saved itself.
  *
  * Only the state is a live region: the age beside "Saved" keeps changing
  * while nothing happens, and a screen reader would read every change out.
@@ -35,16 +35,12 @@ const label = computed(() => {
 			return t('shared.draftAutosave.editing');
 		case 'saving':
 			return t('shared.draftAutosave.saving');
+		case 'unsaved':
+			return t('shared.draftAutosave.unsaved');
 		case 'offline':
-			return props.autosave.onDevice.value
-				? t('shared.draftAutosave.offlineOnDevice')
-				: t('shared.draftAutosave.offlineNotSaved');
+			return t('shared.draftAutosave.offlineNotSaved');
 		case 'error':
 			return t('shared.draftAutosave.notSaved');
-		case 'unkept':
-			return t('shared.draftAutosave.unkept');
-		case 'scheduling':
-			return t('shared.draftAutosave.scheduling');
 		default:
 			return t('shared.draftAutosave.saved');
 	}
@@ -52,8 +48,6 @@ const label = computed(() => {
 
 /** Why the last save failed, in the words the toast would have used. */
 const errorDetail = computed(() => {
-	if (status.value === 'unkept') return t('shared.draftAutosave.unkeptDetail');
-	if (status.value === 'scheduling') return t('shared.draftAutosave.schedulingDetail');
 	if (status.value !== 'error') return '';
 	const error = props.autosave.error.value;
 	const options = { locale: locale.value, hasMessage: (key: string) => te(key) };
@@ -71,12 +65,11 @@ const icon = computed(() => {
 		case 'offline':
 			return 'lucide:cloud-off';
 		case 'error':
-		case 'unkept':
 			return 'lucide:alert-circle';
 		case 'editing':
 			return 'lucide:pencil';
-		case 'scheduling':
-			return 'lucide:calendar-clock';
+		case 'unsaved':
+			return 'lucide:circle-dot';
 		default:
 			return 'lucide:check';
 	}
@@ -87,13 +80,7 @@ const icon = computed(() => {
 	<div class="flex shrink-0 items-center gap-2" data-testid="draft-save-status">
 		<span
 			class="inline-flex items-center gap-1.5 text-xs whitespace-nowrap"
-			:class="
-				status === 'error' || status === 'unkept'
-					? 'text-error'
-					: status === 'scheduling'
-						? 'text-warning'
-						: 'text-text-secondary'
-			"
+			:class="status === 'error' ? 'text-error' : 'text-text-secondary'"
 			:title="errorDetail || undefined"
 		>
 			<Icon
