@@ -4,8 +4,8 @@
  * The draft-only edit mutations (updateBasics / updateAudience / updateContent,
  * A/B enable + disable) all open with the same checks: require
  * `campaigns:manage` on the session the builder's floor resolved, load the
- * campaign, 404 if missing, reject if it isn't a draft. The wording of the "not a draft" message drifted between
- * copies. This guard owns that precondition so it has one home and one message.
+ * campaign, 404 if missing, reject if it isn't a draft. This guard owns that
+ * precondition so it has one home and one message.
  *
  * Auth lives here rather than in the lifecycle module (which owns
  * `campaigns.status` transitions and intentionally carries no session imports).

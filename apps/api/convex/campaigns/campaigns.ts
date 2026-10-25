@@ -283,7 +283,6 @@ export const create = campaignsMutation({
 		// Validate input lengths
 		validateStringLength(args.name, STRING_LIMITS.NAME, 'Name');
 
-		// Get full mutation context (userId, role)
 		requirePermission(
 			hasPermission(session.role, 'campaigns:manage'),
 			'You do not have permission to create campaigns'
