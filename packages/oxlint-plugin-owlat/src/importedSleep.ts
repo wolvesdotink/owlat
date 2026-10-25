@@ -8,14 +8,17 @@
  * an arrow or function expression, whose name the module mentions nowhere
  * else (so no write can rebind it), and whose whole body returns
  * `new Promise(executor)`, where the executor's whole body is one global
- * `setTimeout` / `setInterval` call whose callback only resolves, so that one
- * timer settles the promise and nothing else can. The module may not bind
+ * `setTimeout` / `setInterval` call whose callback only resolves, with no
+ * value or a primitive literal, so that one timer settles the promise and
+ * nothing else can (resolving with a promise or a thenable adopts it, and the
+ * wait then ends on that value's clock). The module may not bind
  * `setTimeout`, `setInterval` or `Promise` to anything else: every mention of
  * a timer has to be a call of it, and every mention of `Promise` a
  * `new Promise` or a type. Anything else (a package import, a re-export, a
  * `let` / `var` binding or a reassigned one, a helper that awaits more work, a
- * second timer, a branch, a callback that does more than resolve, a
- * `node:timers` import) yields no timer, and the call stays a real-clock wait.
+ * second timer, a branch, a callback that does more than resolve, a value
+ * that is not a literal, a `node:timers` import) yields no timer, and the call
+ * stays a real-clock wait.
  *
  * The module is parsed with the TypeScript compiler, loaded on first use: the
  * plugin API offers no parser for a second file, and most lint runs never
@@ -156,9 +159,28 @@ const globalsUnbound = (ts: Ts, file: TypeScript.SourceFile): boolean => {
 	return unbound;
 };
 
-/** Whether `node` holds a call, a `new` or a function, i.e. could start or wait on more work. */
+/** Whether `node` writes a binding or a property, e.g. stores `resolve` and rebinds it. */
+const writes = (ts: Ts, node: TypeScript.Node): boolean => {
+	if (ts.isBinaryExpression(node)) {
+		const operator = node.operatorToken.kind;
+		return operator >= ts.SyntaxKind.FirstAssignment && operator <= ts.SyntaxKind.LastAssignment;
+	}
+	if (ts.isPrefixUnaryExpression(node) || ts.isPostfixUnaryExpression(node)) {
+		return (
+			node.operator === ts.SyntaxKind.PlusPlusToken ||
+			node.operator === ts.SyntaxKind.MinusMinusToken
+		);
+	}
+	return ts.isDeleteExpression(node);
+};
+
+/**
+ * Whether `node` holds a call, a `new`, a function or a write, i.e. could
+ * start or wait on more work, or hand the resolver to it.
+ */
 const doesWork = (ts: Ts, node: TypeScript.Node): boolean =>
 	ts.isCallExpression(node) ||
+	writes(ts, node) ||
 	ts.isNewExpression(node) ||
 	ts.isFunctionLike(node) ||
 	ts.isAwaitExpression(node) ||
@@ -186,13 +208,40 @@ const firstParameter = (ts: Ts, fn: TypeScript.FunctionLikeDeclaration): string 
 };
 
 /**
- * Whether a timer callback does nothing but settle the promise: `resolve`
- * itself, or a function without parameters whose only work is `resolve(...)`
- * with plain arguments.
+ * Whether a value handed to `resolve` is a primitive literal. Resolving with a
+ * promise or any thenable adopts it, so the promise settles when that value
+ * does, on whatever clock it runs; a value not proven primitive (a binding, a
+ * call, an object) may be one.
  */
-const settlesOnly = (ts: Ts, callback: TypeScript.Expression, resolve: string): boolean => {
+const primitive = (ts: Ts, value: TypeScript.Expression): boolean => {
+	const node = unwrapped(ts, value);
+	return (
+		ts.isNumericLiteral(node) ||
+		ts.isBigIntLiteral(node) ||
+		ts.isStringLiteral(node) ||
+		ts.isNoSubstitutionTemplateLiteral(node) ||
+		node.kind === ts.SyntaxKind.TrueKeyword ||
+		node.kind === ts.SyntaxKind.FalseKeyword ||
+		node.kind === ts.SyntaxKind.NullKeyword
+	);
+};
+
+/**
+ * Whether a timer callback does nothing but settle the promise with a
+ * primitive: `resolve` itself, called with the timer's `passed` arguments, or
+ * a function without parameters whose only work is `resolve(...)` with
+ * primitive literals.
+ */
+const settlesOnly = (
+	ts: Ts,
+	callback: TypeScript.Expression,
+	resolve: string,
+	passed: readonly TypeScript.Expression[]
+): boolean => {
 	const node = unwrapped(ts, callback);
-	if (ts.isIdentifier(node)) return node.text === resolve;
+	if (ts.isIdentifier(node)) {
+		return node.text === resolve && passed.every((argument) => primitive(ts, argument));
+	}
 	if (!(ts.isArrowFunction(node) || ts.isFunctionExpression(node))) return false;
 	if (node.parameters.length > 0) return false;
 	const call = onlyExpression(ts, node);
@@ -201,16 +250,17 @@ const settlesOnly = (ts: Ts, callback: TypeScript.Expression, resolve: string): 
 		ts.isCallExpression(call) &&
 		ts.isIdentifier(call.expression) &&
 		call.expression.text === resolve &&
-		!call.arguments.some((argument) => doesWork(ts, argument))
+		call.arguments.every((argument) => primitive(ts, argument))
 	);
 };
 
 /**
  * The global timer that alone settles an executor: its whole body is one call
- * of `setTimeout` / `setInterval` whose callback only resolves and whose other
- * arguments do no work. Any second timer, branch, statement or callback that
- * does more leaves which clock settles the promise unknown, so it yields none:
- * faking one timer must be enough to drive the whole wait.
+ * of `setTimeout` / `setInterval` whose callback only resolves with a
+ * primitive and whose other arguments do no work. Any second timer, branch,
+ * statement, callback that does more or value that may be a thenable leaves
+ * which clock settles the promise unknown, so it yields none: faking one timer
+ * must be enough to drive the whole wait.
  */
 const executorTimer = (ts: Ts, executor: TypeScript.Node): string | undefined => {
 	if (!(ts.isArrowFunction(executor) || ts.isFunctionExpression(executor))) return undefined;
@@ -220,8 +270,9 @@ const executorTimer = (ts: Ts, executor: TypeScript.Node): string | undefined =>
 	if (!ts.isIdentifier(call.expression) || !GLOBAL_TIMERS.has(call.expression.text)) {
 		return undefined;
 	}
+	// The timer hands the arguments after its delay to the callback.
 	const [callback, ...rest] = call.arguments;
-	if (!callback || !settlesOnly(ts, callback, resolve)) return undefined;
+	if (!callback || !settlesOnly(ts, callback, resolve, rest.slice(1))) return undefined;
 	return rest.some((argument) => doesWork(ts, argument)) ? undefined : call.expression.text;
 };
 

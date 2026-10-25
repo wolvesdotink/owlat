@@ -30,6 +30,16 @@ const helpers: Record<string, string> = {
 		"export function sleep(ms: number) {\n\treturn new Promise((resolve) => socket.once('drain', () => setTimeout(resolve, ms)));\n}\ndeclare const socket: { once(event: string, fn: () => void): void };\n",
 	'settle.ts':
 		'export const sleep = (ms: number) =>\n\tnew Promise<void>((resolve) => setTimeout(() => resolve(), ms));\n',
+	'settleValue.ts':
+		"export const sleep = (ms: number) =>\n\tnew Promise((resolve) => setTimeout(() => resolve(true), ms));\nexport function delay(ms: number) {\n\treturn new Promise((resolve) => setTimeout(resolve, ms, 'done'));\n}\n",
+	'adoptsPromise.ts':
+		"import { scheduler } from 'node:timers/promises';\nconst pending = scheduler.wait(60_000);\nexport function sleep(ms: number) {\n\treturn new Promise((resolve) => setTimeout(() => resolve(pending), ms));\n}\n",
+	'resolverArgument.ts':
+		"import { scheduler } from 'node:timers/promises';\nconst pending = scheduler.wait(60_000);\nexport function sleep(ms: number) {\n\treturn new Promise((resolve) => setTimeout(resolve, ms, pending));\n}\n",
+	'unknownValue.ts':
+		'export function sleep(ms: number, value?: unknown) {\n\treturn new Promise((resolve) => setTimeout(() => resolve(value), ms));\n}\n',
+	'storesResolver.ts':
+		"import { scheduler } from 'node:timers/promises';\nconst held: Array<() => void> = [];\nvoid scheduler.wait(60_000).then(() => held[0]?.());\nconst noop = () => {};\nexport function sleep(ms: number) {\n\treturn new Promise((resolve) => setTimeout(() => resolve(), ((held[0] = resolve), (resolve = noop), ms)));\n}\n",
 	'mixedTimers.ts':
 		'export function sleep(ms: number) {\n\treturn new Promise((resolve) => {\n\t\tsetInterval(tick, 10);\n\t\tsetTimeout(resolve, ms);\n\t});\n}\ndeclare function tick(): void;\n',
 	'branch.ts':
@@ -181,6 +191,11 @@ ruleTester.run('owlat/no-real-time-wait-in-tests', rule, {
 			name: 'an imported helper whose timer callback only resolves',
 			filename: besideHelpers,
 			code: drivesImported('./helpers/settle'),
+		},
+		{
+			name: 'imported helpers whose timer resolves with a primitive literal',
+			filename: besideHelpers,
+			code: `${drivesImported('./helpers/settleValue')}\n${drivesImported('./helpers/settleValue', 'delay').replace(vitest, '')}`,
 		},
 		{
 			name: 'the same helper named by its .js specifier, and an arrow delay helper',
@@ -373,6 +388,10 @@ ruleTester.run('owlat/no-real-time-wait-in-tests', rule, {
 			['a conditional onto another wait', './helpers/ternary'],
 			['a timer callback that waits again', './helpers/busyCallback'],
 			['a delay argument that does work', './helpers/workInDelay'],
+			['a callback that resolves with a pending promise', './helpers/adoptsPromise'],
+			['a pending promise the timer passes to a bare resolver', './helpers/resolverArgument'],
+			['a callback that resolves with a value of unknown type', './helpers/unknownValue'],
+			['a delay argument that hands the resolver to a real wait', './helpers/storesResolver'],
 			['a re-export', './helpers/reexport'],
 			['a let binding reassigned to a real wait', './helpers/reassignedLet'],
 			['a let binding', './helpers/unwrittenLet'],

@@ -133,6 +133,30 @@ const FIXTURES: Record<string, string> = {
 		'});',
 		'',
 	].join('\n'),
+	// A helper whose timer resolves with a promise that waits on the real
+	// clock: the result adopts it, so fake time does not settle the wait.
+	'helpers/adoptingSleep.ts': [
+		"import { scheduler } from 'node:timers/promises';",
+		'',
+		'const pending = scheduler.wait(60_000);',
+		'',
+		'export function sleep(ms: number): Promise<unknown> {',
+		'\treturn new Promise((resolve) => setTimeout(() => resolve(pending), ms));',
+		'}',
+		'',
+	].join('\n'),
+	'helpers/importedAdoptingSleep.test.ts': [
+		"import { it, vi } from 'vitest';",
+		"import { sleep } from './adoptingSleep';",
+		'',
+		"it('fakes the timer whose result adopts a real wait', async () => {",
+		'\tvi.useFakeTimers();',
+		'\tconst slept = sleep(50);',
+		'\tawait vi.advanceTimersByTimeAsync(50);',
+		'\tawait slept;',
+		'});',
+		'',
+	].join('\n'),
 	'milestones.test.ts': [
 		"import { it } from 'vitest';",
 		'',
@@ -346,6 +370,9 @@ describe.each(['.', 'apps/web'])('oxlint run from %s with the root config', (cwd
 			'owlat(no-real-time-wait-in-tests)',
 		]);
 		expect(errorCodes(byFile.get('importedReassignedSleep.test.ts'))).toEqual([
+			'owlat(no-real-time-wait-in-tests)',
+		]);
+		expect(errorCodes(byFile.get('importedAdoptingSleep.test.ts'))).toEqual([
 			'owlat(no-real-time-wait-in-tests)',
 		]);
 	});
