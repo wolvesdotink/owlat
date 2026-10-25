@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { join, normalize } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
 	coverageWorkspaces,
@@ -11,6 +14,8 @@ import {
 	selectCiWork,
 	type Task,
 } from '../ci/selection';
+
+const REPOSITORY_ROOT = fileURLToPath(new URL('../..', import.meta.url));
 const task = (name: string): Task => ({
 	task: 'test:coverage',
 	package: `@owlat/${name}`,
@@ -96,6 +101,13 @@ describe('CI work selection', () => {
 			'docs/x.md',
 		])
 			expect(desktopSpaSelected(false, false, [file])).toBe(false);
+		// Every module the inspector imports changes what it checks.
+		const inspector = readFileSync(join(REPOSITORY_ROOT, 'scripts/check-desktop-spa.ts'), 'utf8');
+		const imported = [...inspector.matchAll(/from '(\.{1,2}\/[^']+)'/g)].map((match) =>
+			normalize(join('scripts', `${match[1]}.ts`))
+		);
+		expect(imported).toContain('scripts/json.ts');
+		for (const file of imported) expect(desktopSpaSelected(false, false, [file]), file).toBe(true);
 		const selection = { groups: [], images: [], api: false, web: false, mta: false, java: false };
 		expect(expectedJobs({ ...selection, desktopSpa: true })).toContain('desktop-spa');
 		expect(expectedJobs({ ...selection, desktopSpa: false })).not.toContain('desktop-spa');
