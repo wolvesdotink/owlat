@@ -1480,6 +1480,7 @@ import type * as mail_threadAggregates from '../mail/threadAggregates.js';
 import type * as mail_threadLatestSnooze from '../mail/threadLatestSnooze.js';
 import type * as mail_threadVisits from '../mail/threadVisits.js';
 import type * as mail_threadAlerts from '../mail/threadAlerts.js';
+import type * as mail_threadArchive from '../mail/threadArchive.js';
 import type * as mail_trashRetention from '../mail/trashRetention.js';
 import type * as mail_triageTally from '../mail/triageTally.js';
 import type * as mail_unsubscribe from '../mail/unsubscribe.js';
@@ -3372,6 +3373,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/threadLatestSnooze': typeof mail_threadLatestSnooze;
 	'mail/threadVisits': typeof mail_threadVisits;
 	'mail/threadAlerts': typeof mail_threadAlerts;
+	'mail/threadArchive': typeof mail_threadArchive;
 	'mail/trashRetention': typeof mail_trashRetention;
 	'mail/triageTally': typeof mail_triageTally;
 	'mail/unsubscribe': typeof mail_unsubscribe;

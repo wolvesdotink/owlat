@@ -5624,6 +5624,13 @@
 				"undoTrashed": "Moved to trash",
 				"unstar": "Unstar"
 			},
+			"postboxSweepStatus": {
+				"select": "Select {count} message | Select {count} messages",
+				"deselect": "Deselect {count} message | Deselect {count} messages",
+				"archive": "Archive {count} message | Archive {count} messages",
+				"dismiss": "Dismiss {count} update | Dismiss {count} updates",
+				"escHint": "Esc to cancel"
+			},
 			"postboxThreadRow": {
 				"backFromSnooze": "Back from snooze",
 				"deselect": "Deselect",
@@ -5642,7 +5649,9 @@
 				"unstar": "Unstar",
 				"pin": "Pin conversation",
 				"unpin": "Unpin conversation",
-				"pinnedChip": "Pinned to the top of the Inbox"
+				"pinnedChip": "Pinned to the top of the Inbox",
+				"selectSweepHint": "Select — drag across rows to select several",
+				"archiveSweepHint": "Archive — drag across rows to archive several"
 			},
 			"postboxThreadRowFollowUp": {
 				"cancelLabel": "Cancel reply reminder",
@@ -11721,6 +11730,8 @@
 				"dismiss": "Done",
 				"dismissOperation": "Dismiss update",
 				"dismissedToast": "Update dismissed",
+				"dismissedManyToast": "{count} update dismissed | {count} updates dismissed",
+				"dismissSweepHint": "Done — drag across updates to dismiss several",
 				"empty": {
 					"updates": {
 						"title": "You're caught up",
@@ -13007,7 +13018,12 @@
 				"other": "Other"
 			},
 			"empty": "No conversations match these filters.",
-			"footnote": "Shows the latest {count} conversations of each inbox. Open an inbox for everything, including sent, archive and search."
+			"footnote": "Shows the latest {count} conversations of each inbox. Open an inbox for everything, including sent, archive and search.",
+			"archiveOperation": "Archive conversations",
+			"archiveUndoOperation": "Undo archive",
+			"archivedUndo": "Archived {count} conversation | Archived {count} conversations",
+			"archiveSweepHint": "Archive — drag across rows to archive several",
+			"sweepStatus": "Archive {count} conversation | Archive {count} conversations"
 		}
 	},
 	"desktop": {

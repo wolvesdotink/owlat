@@ -5624,6 +5624,13 @@
 				"undoTrashed": "In den Papierkorb verschoben",
 				"unstar": "Markierung entfernen"
 			},
+			"postboxSweepStatus": {
+				"select": "{count} Nachricht auswählen | {count} Nachrichten auswählen",
+				"deselect": "Auswahl von {count} Nachricht aufheben | Auswahl von {count} Nachrichten aufheben",
+				"archive": "{count} Nachricht archivieren | {count} Nachrichten archivieren",
+				"dismiss": "{count} Neuigkeit verwerfen | {count} Neuigkeiten verwerfen",
+				"escHint": "Esc bricht ab"
+			},
 			"postboxThreadRow": {
 				"backFromSnooze": "Zurück aus dem Schlummer",
 				"deselect": "Auswahl aufheben",
@@ -5642,7 +5649,9 @@
 				"unstar": "Markierung entfernen",
 				"pin": "Unterhaltung anheften",
 				"unpin": "Unterhaltung lösen",
-				"pinnedChip": "Oben im Posteingang angeheftet"
+				"pinnedChip": "Oben im Posteingang angeheftet",
+				"selectSweepHint": "Auswählen – über Zeilen ziehen, um mehrere auszuwählen",
+				"archiveSweepHint": "Archivieren – über Zeilen ziehen, um mehrere zu archivieren"
 			},
 			"postboxThreadRowFollowUp": {
 				"cancelLabel": "Antwort-Erinnerung abbrechen",
@@ -11721,6 +11730,8 @@
 				"dismiss": "Erledigt",
 				"dismissOperation": "Neuigkeit verwerfen",
 				"dismissedToast": "Neuigkeit verworfen",
+				"dismissedManyToast": "{count} Neuigkeit verworfen | {count} Neuigkeiten verworfen",
+				"dismissSweepHint": "Erledigt – über Neuigkeiten ziehen, um mehrere zu verwerfen",
 				"empty": {
 					"updates": {
 						"title": "Du bist auf dem Laufenden",
@@ -13007,7 +13018,12 @@
 				"other": "Sonstiges"
 			},
 			"empty": "Keine Unterhaltung passt zu diesen Filtern.",
-			"footnote": "Zeigt die neuesten {count} Unterhaltungen je Postfach. Öffne ein Postfach für alles, auch Gesendet, Archiv und Suche."
+			"footnote": "Zeigt die neuesten {count} Unterhaltungen je Postfach. Öffne ein Postfach für alles, auch Gesendet, Archiv und Suche.",
+			"archiveOperation": "Unterhaltungen archivieren",
+			"archiveUndoOperation": "Archivieren rückgängig machen",
+			"archivedUndo": "{count} Unterhaltung archiviert | {count} Unterhaltungen archiviert",
+			"archiveSweepHint": "Archivieren – über Zeilen ziehen, um mehrere zu archivieren",
+			"sweepStatus": "{count} Unterhaltung archivieren | {count} Unterhaltungen archivieren"
 		}
 	},
 	"desktop": {
