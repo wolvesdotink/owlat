@@ -147,6 +147,8 @@ const CHROME = [
 	'PostboxSnoozeDialog',
 	'PostboxThreadDiscussion',
 	'PostboxThreadDiscussionToggle',
+	'PostboxThreadFindBar',
+	'PostboxThreadFindButton',
 	'PostboxThreadEarlier',
 	'PostboxThreadHeader',
 	'PostboxTriageSuggestion',

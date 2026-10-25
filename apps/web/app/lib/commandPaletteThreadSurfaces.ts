@@ -118,6 +118,8 @@ export interface ThreadSurfaceDeps {
 	/** Chat is on: the conversation's link can be posted to a room. */
 	canShareInChat: () => boolean;
 	onShareInChat: () => void;
+	/** Opens find in conversation; absent where the reader has none. */
+	onFind?: () => void;
 }
 
 const P = 'shared.commandPaletteSurfaces.thread';
@@ -259,6 +261,16 @@ export function buildThreadSurfaceGroups(
 			label: t(`${P}.cancelFollowUp`),
 			icon: 'lucide:alarm-clock-off',
 			run: deps.onCancelFollowUp,
+		});
+	}
+	if (deps.onFind) {
+		items.push({
+			id: 'postbox:thread-find',
+			label: t(`${P}.find`),
+			...about,
+			icon: 'lucide:search',
+			shortcutId: 'global.findInConversation',
+			run: deps.onFind,
 		});
 	}
 	if (deps.canTranslate()) {

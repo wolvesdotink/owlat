@@ -11,6 +11,7 @@
  * side by side never see each other's context.
  */
 import { inject, provide, toValue, type InjectionKey, type MaybeRefOrGetter } from 'vue';
+import type { PostboxMessageFind } from './usePostboxThreadFind';
 
 /** Where one card's chrome renders; null renders it in the card itself. */
 export interface PostboxReaderCardChrome {
@@ -45,15 +46,24 @@ export interface PostboxReaderContext {
 	readonly reduced: boolean;
 	/** The card's chrome placement; the calm reader owns that policy. */
 	chromeOf(messageId: string): PostboxReaderCardChrome;
+	/** What find in conversation marks in this card's body; null for nothing. */
+	findOf(messageId: string): PostboxMessageFind | null;
+	/** How many find matches this card holds (shown on its collapsed row). */
+	findCountOf(messageId: string): number;
 }
 
-type ContextValues = Omit<PostboxReaderContext, 'chromeOf'>;
+type ContextValues = Omit<PostboxReaderContext, 'chromeOf' | 'findOf' | 'findCountOf'>;
 
 export type PostboxReaderContextSource = {
 	[K in keyof ContextValues]: MaybeRefOrGetter<ContextValues[K]>;
 } & {
 	/** Omitted: every card renders its chrome in place. */
 	chromeOf?: (messageId: string) => PostboxReaderCardChrome;
+	/** Omitted: the host has no find, and no card marks anything. */
+	find?: {
+		findOf: (messageId: string) => PostboxMessageFind | null;
+		matchCountOf: (messageId: string) => number;
+	};
 };
 
 export const POSTBOX_READER_CTX: InjectionKey<PostboxReaderContext> =
@@ -68,6 +78,7 @@ const IN_PLACE: PostboxReaderCardChrome = Object.freeze({
 /** Every read goes through the source, so the card tracks the host's state. */
 function readThrough(source: PostboxReaderContextSource): PostboxReaderContext {
 	const chromeOf = source.chromeOf;
+	const find = source.find;
 	return {
 		get mailboxId() {
 			return toValue(source.mailboxId);
@@ -94,6 +105,8 @@ function readThrough(source: PostboxReaderContextSource): PostboxReaderContext {
 			return toValue(source.reduced);
 		},
 		chromeOf: chromeOf ? (messageId) => chromeOf(messageId) : () => IN_PLACE,
+		findOf: (messageId) => find?.findOf(messageId) ?? null,
+		findCountOf: (messageId) => find?.matchCountOf(messageId) ?? 0,
 	};
 }
 

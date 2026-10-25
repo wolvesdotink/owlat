@@ -19,6 +19,7 @@ import { earlierThreadPageArgs, threadPageArgs } from '~/composables/postbox/pos
 import PostboxThreadReader, { type PostboxReaderMessage } from '../PostboxThreadReader.vue';
 import PostboxReaderMessageCard from '../PostboxReaderMessage.vue';
 import PostboxThreadEarlier from '../PostboxThreadEarlier.vue';
+import PostboxThreadFindBar from '../PostboxThreadFindBar.vue';
 
 const THREAD = 'mail/mailbox/messages:listThreadMessages';
 const BODY = 'mail/mailbox/messages:getMessageInlineBody';
@@ -59,6 +60,12 @@ beforeEach(() => {
 		registerCommandPaletteProvider: vi.fn(),
 		unregisterCommandPaletteProvider: vi.fn(),
 		useRoute: () => ({ path: '/dashboard/postbox/inbox/m9', params: {}, query: {}, meta: {} }),
+		// Find in conversation reads the bodies it searches through the client.
+		requireConvex: () => ({
+			query: async (query: unknown, args: unknown) =>
+				answers.get(keyOf(getFunctionName(query as never), args)) ?? null,
+			action: async () => null,
+		}),
 		useConvexQuery: (query: unknown, args: unknown) => {
 			const name = getFunctionName(query as never);
 			const resolved = computed(() => (typeof args === 'function' ? args() : args));
@@ -109,13 +116,17 @@ const passThrough = defineComponent({
 /** Shows which body the card handed the body component. */
 const bodyProbe = defineComponent({
 	name: 'PostboxMessageBody',
-	props: { message: { type: Object, required: true } },
+	props: {
+		message: { type: Object, required: true },
+		find: { type: Object, default: null },
+	},
 	setup: (props) => () =>
 		h('div', {
 			'data-testid': 'body',
 			'data-id': props.message['_id'],
 			'data-pending': String(props.message['bodyPending'] === true),
 			'data-text': props.message['textBodyInline'] ?? '',
+			'data-find-active': props.find ? String(props.find['active']) : undefined,
 		}),
 });
 const marker = (name: string) =>
@@ -152,6 +163,8 @@ const CHROME = [
 	'PostboxSnoozeDialog',
 	'PostboxThreadDiscussion',
 	'PostboxThreadDiscussionToggle',
+	'PostboxThreadFindBar',
+	'PostboxThreadFindButton',
 	'PostboxThreadHeader',
 	'PostboxTriageSuggestion',
 	'PostboxTeamComposer',
@@ -161,9 +174,10 @@ const CHROME = [
 	'PostboxUnsubscribeChip',
 ];
 
-function mountReader() {
+function mountReader(components: Record<string, unknown> = {}) {
 	return mount(PostboxThreadReader, {
 		props: { message: row('m9', 9), folderRole: 'inbox' },
+		attachTo: document.body,
 		global: {
 			plugins: [createTestI18n()],
 			mocks: autoImportedHelpers(),
@@ -173,6 +187,7 @@ function mountReader() {
 				PostboxThreadEarlier,
 				PostboxLazyBody: passThrough,
 				PostboxMessageBody: bodyProbe,
+				...components,
 			},
 		},
 	});
@@ -286,5 +301,71 @@ describe('PostboxThreadReader on a long thread', () => {
 		await flushPromises();
 		expect(opened.map((sub) => sub.args)).toContainEqual(earlierThreadPageArgs('m9', 'c2'));
 		expect(w.text()).toContain('Snippet m1');
+	});
+});
+
+describe('PostboxThreadReader find in conversation', () => {
+	const inlineBody = (html: string) => ({
+		htmlInline: html,
+		textInline: null,
+		hasHtmlBlob: false,
+		hasTextBlob: false,
+	});
+	const pressFind = () =>
+		document.body.dispatchEvent(
+			new KeyboardEvent('keydown', { key: 'f', ctrlKey: true, bubbles: true, cancelable: true })
+		);
+
+	it('finds a word in a collapsed envelope, opens it and marks it there', async () => {
+		answerNewestPage();
+		answers.set(keyOf(BODY, { messageId: 'm7' }), inlineBody('<p>The invoice is attached.</p>'));
+		const w = mountReader({ PostboxThreadFindBar });
+		await flushPromises();
+		expect(bodies(w)).toEqual(['m9']);
+
+		pressFind();
+		await flushPromises();
+		await w.get('[data-testid="thread-find-input"]').setValue('Invoice');
+		await flushPromises();
+
+		expect(w.get('[data-testid="thread-find-count"]').text()).toBe('1 of 1');
+		// The envelope opened, its body subscription answered, and it marks the match.
+		expect(bodies(w)).toEqual(['m7', 'm9']);
+		expect(w.get('[data-id="m7"]').attributes('data-find-active')).toBe('0');
+		expect(w.get('[data-id="m9"]').attributes('data-find-active')).toBeUndefined();
+	});
+
+	it('searches an earlier page asked for from the bar, keeping the active match', async () => {
+		answerNewestPage();
+		answers.set(keyOf(BODY, { messageId: 'm7' }), inlineBody('<p>invoice</p>'));
+		answers.set(keyOf(BODY, { messageId: 'm8' }), inlineBody('<p>nothing</p>'));
+		answers.set(keyOf(BODY, { messageId: 'm1' }), inlineBody('<p>The first invoice.</p>'));
+		const w = mountReader({ PostboxThreadFindBar });
+		await flushPromises();
+		pressFind();
+		await flushPromises();
+		await w.get('[data-testid="thread-find-input"]').setValue('invoice');
+		await flushPromises();
+		expect(w.get('[data-testid="thread-find-count"]').text()).toBe('1 of 1');
+		expect(w.get('[data-testid="thread-find-coverage"]').text()).toContain(
+			'Only the loaded part of the conversation is searched.'
+		);
+
+		await w.get('[data-testid="thread-find-earlier"]').trigger('click');
+		await flushPromises();
+		expect(opened.map((sub) => sub.args)).toContainEqual(earlierThreadPageArgs('m9', 'c1'));
+		answers.set(keyOf(THREAD, earlierThreadPageArgs('m9', 'c1')), {
+			thread: { _id: 't1', messageCount: 60, unreadCount: 0 },
+			labels: [],
+			messages: [],
+			envelopes: [row('m1', 1)],
+			olderCursor: null,
+		});
+		await flushPromises();
+
+		// The earlier match counts first; the active one stays where it was.
+		expect(w.get('[data-testid="thread-find-count"]').text()).toBe('2 of 2');
+		expect(w.get('[data-testid="reader-message-find-count"]').text()).toBe('1 match');
+		expect(w.find('[data-testid="thread-find-coverage"]').exists()).toBe(false);
 	});
 });

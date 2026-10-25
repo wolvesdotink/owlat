@@ -45,6 +45,8 @@ import { usePostboxFrameAutosize } from '~/composables/postbox/usePostboxFrameAu
 import { usePostboxCidImages } from '~/composables/postbox/usePostboxCidImages';
 import { usePostboxImageConsent } from '~/composables/postbox/usePostboxImageConsent';
 import { usePostboxQuoteHighlight } from '~/composables/postbox/usePostboxQuoteHighlight';
+import { usePostboxFindInFrame } from '~/composables/postbox/usePostboxFindInFrame';
+import type { PostboxMessageFind } from '~/composables/postbox/usePostboxThreadFind';
 import { usePostboxRenderedBody } from '~/composables/postbox/usePostboxRenderedBody';
 import type { CitedQuote } from '~/utils/postboxQuoteHighlight';
 import type { CidAttachment } from '~/utils/postboxCidImages';
@@ -100,6 +102,8 @@ const props = defineProps<{
 	suspicious?: boolean;
 	/** A cited quote of the thread brief to mark and scroll to. */
 	highlightQuote?: CitedQuote | null;
+	/** Find in conversation's matches in this body (the reader's find state). */
+	find?: PostboxMessageFind | null;
 	/** Render the image banner there instead (the calm reader's Details, §3). */
 	imageBannerTo?: HTMLElement | null;
 }>();
@@ -158,12 +162,33 @@ const { showImages, loadEverything, loadEverythingNow } = usePostboxImageConsent
 	images: () => props,
 });
 const showQuoted = ref(false);
+// Find shows the quote while a match sits in it, apart from the reader's own
+// toggle: closing find folds it away again unless the reader opened it. Hiding
+// it by hand while find holds it open wins until find lets go.
+const quoteHiddenByHand = ref(false);
+const findForcesQuote = computed(() => !!props.find?.forceQuoted && !quoteHiddenByHand.value);
+watch(
+	() => !!props.find?.forceQuoted,
+	(forced) => {
+		if (!forced) quoteHiddenByHand.value = false;
+	}
+);
+const quotedShown = computed(() => showQuoted.value || findForcesQuote.value);
+function toggleQuoted() {
+	if (quotedShown.value) {
+		showQuoted.value = false;
+		if (findForcesQuote.value) quoteHiddenByHand.value = true;
+	} else {
+		showQuoted.value = true;
+	}
+}
 const iframeRef = ref<HTMLIFrameElement | null>(null);
 usePostboxQuoteHighlight({
 	frame: iframeRef,
 	quote: () => props.highlightQuote,
 	onResult: (isLocated) => emit('citeLocated', isLocated),
 });
+usePostboxFindInFrame({ frame: iframeRef, find: () => props.find });
 
 /** Canonical sender key, or null when the From header holds no address. */
 const senderKey = computed(() => postboxSenderKey(props.message.fromAddress));
@@ -201,7 +226,7 @@ const rendered = usePostboxRenderedBody(() => ({
 	html: effectiveHtml.value ?? '',
 	text: effectiveText.value,
 	scheme: appScheme.value,
-	showQuoted: showQuoted.value,
+	showQuoted: quotedShown.value,
 	showImages: showImages.value,
 	loadEverything: loadEverything.value,
 	typography: mailTypography.value,
@@ -399,11 +424,11 @@ usePostboxFrameAutosize({
 			v-if="hasQuotedContent"
 			type="button"
 			class="mt-2 inline-flex items-center gap-1 px-2 py-1 rounded text-xs text-text-secondary hover:text-text-primary hover:bg-bg-surface"
-			@click="showQuoted = !showQuoted"
+			@click="toggleQuoted"
 		>
-			<Icon :name="showQuoted ? 'lucide:chevron-up' : 'lucide:chevron-down'" class="w-3.5 h-3.5" />
+			<Icon :name="quotedShown ? 'lucide:chevron-up' : 'lucide:chevron-down'" class="w-3.5 h-3.5" />
 			{{
-				showQuoted
+				quotedShown
 					? t('components.postbox.postboxMessageBody.hideQuoted')
 					: t('components.postbox.postboxMessageBody.showQuoted')
 			}}
