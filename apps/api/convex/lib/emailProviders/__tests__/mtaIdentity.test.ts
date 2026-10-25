@@ -158,6 +158,18 @@ describe('MtaIdentityManager', () => {
 
 			await expect(mgr().listOrgCredentials('org-1')).rejects.toThrow(/unexpected answer/);
 		});
+
+		it('refuses an answer without a credentials list instead of reading it as empty', async () => {
+			fetchMock.mockResolvedValue(jsonResponse({}));
+
+			await expect(mgr().listOrgCredentials('org-1')).rejects.toThrow(/unexpected answer/);
+		});
+
+		it('returns an empty list when the MTA answers with no credentials', async () => {
+			fetchMock.mockResolvedValue(jsonResponse({ credentials: [] }));
+
+			await expect(mgr().listOrgCredentials('org-1')).resolves.toEqual([]);
+		});
 	});
 
 	describe('setCredentialAllowedDomains', () => {

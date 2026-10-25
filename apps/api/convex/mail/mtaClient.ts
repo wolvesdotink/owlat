@@ -121,7 +121,6 @@ export async function pokeMailSyncReconcile(): Promise<boolean> {
 	return false;
 }
 
-/** Raw `/scan/attachment` response body shape. */
 /** The scanner's answer to `POST /scan/attachment`. */
 const decodeAttachmentScanResponse = validatorDecoder(
 	v.object({

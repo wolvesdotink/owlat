@@ -24,7 +24,6 @@ interface MtaRegistrationResult {
 	ownership?: 'assigned' | 'unchanged' | 'unowned';
 }
 
-/** One org credential as the MTA's `?includeKeys=1` list returns it. */
 /**
  * One entry of the MTA's `GET /credentials?includeKeys=1` list, as far as the
  * allowedDomains backfill reads it.
@@ -35,8 +34,13 @@ const mtaOrgCredentialValidator = v.object({
 });
 type MtaOrgCredential = Infer<typeof mtaOrgCredentialValidator>;
 
+/**
+ * The MTA always answers the list with a `credentials` array, so an answer
+ * without one is refused: reading it as an empty list would let the backfill
+ * report success without scoping a single credential.
+ */
 const decodeCredentialList = validatorDecoder(
-	v.object({ credentials: v.optional(v.array(mtaOrgCredentialValidator)) })
+	v.object({ credentials: v.array(mtaOrgCredentialValidator) })
 );
 
 /** The MTA's DKIM registration answer. */
@@ -166,7 +170,7 @@ export class MtaIdentityManager {
 		if (!decoded.ok) {
 			throw new Error(`MTA credential list returned an unexpected answer (${decoded.issue})`);
 		}
-		return decoded.value.credentials ?? [];
+		return decoded.value.credentials;
 	}
 
 	/**
