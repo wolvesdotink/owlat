@@ -1,5 +1,7 @@
 /**
- * mail.mailbox.messages.getMessageBody coverage — the reader's body source.
+ * The Postbox reader's body sources: `getMessageInlineBody` (the reactive
+ * inline body) and `getMessageBodyBlobUrls` (URLs for over-threshold blobs),
+ * plus the raw-file URLs IMAP FETCH mints.
  *
  * Regression guard for the bug where bodies over the 64KB inline threshold were
  * dropped from the row, so newsletters / long threads rendered blank. Large
@@ -158,33 +160,7 @@ async function insertMessage(
 	return id;
 }
 
-describe('mail.mailbox.messages.getMessageBody', () => {
-	it('returns the inline body for small messages', async () => {
-		const t = convexTest(schema, modules);
-		await enableFeatures(t, ['mail.external']);
-		const { mailboxId, folderId } = await seedMailboxAndFolder(t);
-		const id = await insertMessage(t, mailboxId, folderId, {
-			htmlBodyInline: '<p>small</p>',
-		});
-		const body = await t.action(api.mail.mailbox.messages.getMessageBody, { messageId: id });
-		expect(body?.htmlInline).toBe('<p>small</p>');
-		expect(body?.htmlUrl).toBeNull();
-	});
-
-	it('returns a signed URL for storage-backed large bodies', async () => {
-		const t = convexTest(schema, modules);
-		await enableFeatures(t, ['mail.external']);
-		const { mailboxId, folderId } = await seedMailboxAndFolder(t);
-		let storageId!: Id<'_storage'>;
-		await t.run(async (ctx) => {
-			storageId = await ctx.storage.store(new Blob(['<p>big</p>'], { type: 'text/html' }));
-		});
-		const id = await insertMessage(t, mailboxId, folderId, { htmlBodyStorageId: storageId });
-		const body = await t.action(api.mail.mailbox.messages.getMessageBody, { messageId: id });
-		expect(body?.htmlInline).toBeNull();
-		expect(body?.htmlUrl).toBeTruthy();
-	});
-
+describe('sealed body and raw blobs after key loss', () => {
 	it('fails closed for a sealed blob after key loss while preserving legacy plaintext', async () => {
 		const t = convexTest(schema, modules);
 		await enableFeatures(t, ['mail.external']);
@@ -198,7 +174,7 @@ describe('mail.mailbox.messages.getMessageBody', () => {
 		});
 		vi.stubEnv('INSTANCE_SECRET', undefined);
 
-		const sealedBody = await t.action(api.mail.mailbox.messages.getMessageBody, {
+		const sealedBody = await t.action(api.mail.mailbox.messages.getMessageBodyBlobUrls, {
 			messageId: sealedMessageId,
 		});
 		expect(sealedBody?.htmlUrl).toBeNull();
@@ -214,7 +190,7 @@ describe('mail.mailbox.messages.getMessageBody', () => {
 		const legacyMessageId = await insertMessage(t, mailboxId, folderId, {
 			htmlBodyStorageId: legacyStorageId,
 		});
-		const legacyBody = await t.action(api.mail.mailbox.messages.getMessageBody, {
+		const legacyBody = await t.action(api.mail.mailbox.messages.getMessageBodyBlobUrls, {
 			messageId: legacyMessageId,
 		});
 		expect(legacyBody?.htmlUrl).toBeTruthy();

@@ -21,7 +21,6 @@ import { copyFile, mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, describe, expect, it } from 'vitest';
-import { PARALLEL_GATE_TIMEOUT_MS } from '../../vitest.timeouts';
 import {
 	compareGates,
 	type Comparison,
@@ -501,28 +500,20 @@ describe.each(CASES)('$gate: the text gate and its rule', ({ gate, files, onlyOl
 	let comparison: Comparison;
 	let root: string;
 
-	it(
-		'differ only where the grep misreads text or misses a form',
-		async () => {
-			root = await tree(files);
-			[comparison] = compareGates(root, [gate]) as [Comparison];
-			expect(comparison.old.length).toBeGreaterThan(onlyOld.length);
-			expect(comparison.new.length).toBeGreaterThan(onlyNew.length);
-			expect(comparison.onlyOld).toEqual([...onlyOld].sort());
-			expect(comparison.onlyNew).toEqual([...onlyNew].sort());
-		},
-		PARALLEL_GATE_TIMEOUT_MS
-	);
+	it('differ only where the grep misreads text or misses a form', async () => {
+		root = await tree(files);
+		[comparison] = compareGates(root, [gate]) as [Comparison];
+		expect(comparison.old.length).toBeGreaterThan(onlyOld.length);
+		expect(comparison.new.length).toBeGreaterThan(onlyNew.length);
+		expect(comparison.onlyOld).toEqual([...onlyOld].sort());
+		expect(comparison.onlyNew).toEqual([...onlyNew].sort());
+	});
 
-	it(
-		'report the same from the repository root and from apps/api',
-		() => {
-			const fromRoot = owlatFindings(root, ['apps/api/convex']);
-			expect(fromRoot.length).toBeGreaterThan(0);
-			expect(owlatFindings(join(root, 'apps/api'), ['convex'])).toEqual(fromRoot);
-		},
-		PARALLEL_GATE_TIMEOUT_MS
-	);
+	it('report the same from the repository root and from apps/api', () => {
+		const fromRoot = owlatFindings(root, ['apps/api/convex']);
+		expect(fromRoot.length).toBeGreaterThan(0);
+		expect(owlatFindings(join(root, 'apps/api'), ['convex'])).toEqual(fromRoot);
+	});
 });
 
 describe('unexplained differences', () => {

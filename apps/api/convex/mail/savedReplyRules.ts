@@ -1,8 +1,7 @@
 /**
  * Saved replies: what a row may hold, who sees it in a composer and who may
  * change it. The functions are in `savedReplies.ts`; this module holds the
- * rules they share with the previous release's `snippets.ts`, the erasure and
- * migration 0060.
+ * rules they share with the erasure and migration 0060.
  *
  * The rows live in `mailSnippets`, the table's name from when they were
  * per-mailbox canned responses in the Postbox. A row is one of:

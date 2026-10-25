@@ -8,7 +8,7 @@
 import { convexTest } from 'convex-test';
 import { describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
-import { api, internal } from '../../_generated/api';
+import { api } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import {
 	createTestAutomation,
@@ -85,10 +85,5 @@ describe('loadOrderedSteps', () => {
 
 		const funnel = await t.query(api.automations.analytics.getStepAnalytics, { automationId });
 		expect(funnel.map((s) => s.stepIndex)).toEqual([0, 1, 2, 3]);
-
-		const legacy = await t.query(internal.automations.stepExecutorQueries.getAutomationSteps, {
-			automationId,
-		});
-		expect(legacy.map((s) => s.stepIndex)).toEqual([0, 1, 2, 3]);
 	});
 });

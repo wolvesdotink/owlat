@@ -707,9 +707,10 @@ Responsibilities the per-provider adapter doesn't carry:
 - Retries with backoff (`RetryableProviderError` → retry up to N
   with linear backoff; any other thrown `Error` → fail the
   import immediately).
-- Progress patching via the internal `updateImportProgress`
-  mutation (running counter sums + rolling error list capped at
-  20).
+- Progress patching via the internal `commitIntegrationPage`
+  mutation (`pageCommit.ts`: the page's writes, running counter sums,
+  the rolling error list capped at 20 and the next hop in one
+  transaction).
 - `importBatch` delegation to the **Contact import (module)** with
   `source = provider` and `doiAttest` derived from the adapter's
   `defaultDoiAttest`.

@@ -296,15 +296,12 @@ apps/api/convex/workspaces/settings.ts	owlat(use-threaded-session)	remove
 apps/api/convex/workspaces/settings.ts	owlat(use-threaded-session)	update
 apps/imap/src/__tests__/pipelining.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(() => resolve(compute()), slow.has(name) ? 10 * LATENCY_MS : LATENCY_MS)
 apps/imap/src/__tests__/server.handshake.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, deadlineMs + 500)
-apps/imap/src/__tests__/tlsReload.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	30000
 apps/imap/src/commands/append/index.ts	owlat(no-unchecked-json-cast)	(await uploadRes.json()) as { storageId: string }
 apps/imap/src/commands/fetch/__tests__/backpressure.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, 1)
 apps/imap/src/commands/fetch/__tests__/backpressure.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, 30)
 apps/imap/src/commands/fetch/__tests__/backpressure.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, 5)
-apps/imap/src/commands/fetch/__tests__/backpressure.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	30_000
 apps/imap/src/commands/fetch/__tests__/rawBatching.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, (100 - (uid % 100)) / 20)
 apps/imap/src/commands/fetch/__tests__/rawBatching.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, n)
-apps/imap/src/commands/helpers/__tests__/folderTree.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	30_000
 apps/mail-sync/src/ingest.ts	owlat(no-unchecked-json-cast)	(await response.json()) as { storageId: string; size: number }
 apps/marketing/app/composables/useDesktopDownload.ts	owlat(no-unchecked-json-cast)	(await res.json()) as { assets?: { name: string; browser_download_url: string }[]; }
 apps/mta/src/auth/credentials.ts	owlat(no-unchecked-json-cast)	JSON.parse(data) as OrgCredential
@@ -362,7 +359,6 @@ apps/web/app/composables/useLocalStorage.ts	owlat(no-unchecked-json-cast)	JSON.p
 apps/web/app/composables/useSegmentFilters.ts	owlat(no-unchecked-json-cast)	parsed = JSON.parse(filters)
 apps/web/app/composables/useSegmentForm.ts	owlat(no-unchecked-json-cast)	JSON.parse(JSON.stringify(filters)) as typeof segmentForm.filters
 apps/web/app/composables/useSettingsForm.ts	owlat(no-unchecked-json-cast)	JSON.parse(JSON.stringify(value)) as T
-apps/web/app/lib/__tests__/structuralSharing.perf.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	300_000
 apps/web/app/lib/convex-auth.ts	owlat(no-unchecked-json-cast)	(await response.json()) as { token?: string | null }
 apps/web/app/lib/desktop/keychainStorage.ts	owlat(no-unchecked-json-cast)	JSON.parse(blob) as Record<string, string>
 apps/web/app/lib/desktop/notificationWorkspace.ts	owlat(no-unchecked-json-cast)	JSON.parse(raw) as Partial<PendingNotificationAction>
@@ -372,7 +368,6 @@ apps/web/app/lib/desktop/workspaceConnect.ts	owlat(no-unchecked-json-cast)	(awai
 apps/web/app/pages/dashboard/send/emails/[id]/edit.vue	owlat(no-unchecked-json-cast)	JSON.parse(JSON.stringify(blocks.value)) as typeof blocks.value
 apps/web/app/pages/dashboard/send/emails/[id]/edit.vue	owlat(no-unchecked-json-cast)	JSON.parse(JSON.stringify(blocks.value)) as typeof blocks.value
 apps/web/app/pages/desktop/connect.vue	owlat(no-unchecked-json-cast)	(await res.json()) as { token?: string }
-apps/web/app/utils/__tests__/postboxRemoteResources.perf.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	300_000
 apps/web/app/utils/accountJsonExport.ts	owlat(no-unchecked-json-cast)	JSON.parse(rowJson) as Record<string, unknown>
 apps/web/app/utils/answerThreadFiles.ts	owlat(no-unchecked-json-cast)	JSON.parse(raw) as Partial<ThreadFile>
 apps/web/app/utils/doh.ts	owlat(no-unchecked-json-cast)	(await response.json()) as DohResponse
@@ -385,8 +380,6 @@ apps/web/perf/fixture/assistantStream.ts	owlat(no-unchecked-json-cast)	JSON.pars
 apps/web/perf/fixture/chatHistory.ts	owlat(no-unchecked-json-cast)	JSON.parse(JSON.stringify(rows)) as SyntheticChatRow[]
 apps/web/perf/fixture/postboxList.ts	owlat(no-unchecked-json-cast)	JSON.parse(JSON.stringify(next)) as SyntheticPostboxRow[]
 apps/web/perf/fixture/teamInbox.ts	owlat(no-unchecked-json-cast)	JSON.parse(JSON.stringify(next)) as SyntheticInboxThread[]
-apps/web/server/api/delivery/__tests__/apply-transport-relay-removal.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	30_000
-apps/web/server/api/delivery/__tests__/apply-transport.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	15_000
 apps/web/server/api/storage/upload.post.ts	owlat(no-unchecked-json-cast)	(await begin.json()) as { uploadId: string; uploadUrl: string }
 apps/web/server/api/storage/upload.post.ts	owlat(no-unchecked-json-cast)	(await native.json()) as { storageId?: unknown }
 apps/web/server/api/system/apply-profiles.post.ts	owlat(no-unchecked-json-cast)	(await updaterResp.json()) as typeof result
@@ -394,36 +387,18 @@ apps/web/server/api/system/port-checks.post.ts	owlat(no-unchecked-json-cast)	(aw
 apps/web/server/api/system/profile-drift.get.ts	owlat(no-unchecked-json-cast)	(await resp.json()) as UpdaterProfileState
 apps/web/server/api/system/update.post.ts	owlat(no-unchecked-json-cast)	(await updaterResp.json()) as typeof updaterResult
 apps/web/server/utils/authedConvexClient.ts	owlat(no-unchecked-json-cast)	(await tokenResp.json()) as { token?: string | null }
-examples/plugins/deliverability-lab/src/__tests__/html.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	60_000
-packages/email-builder/src/composables/__tests__/usePreview.perf.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	600_000
 packages/email-builder/src/utils/deltaHistory.ts	owlat(no-unchecked-json-cast)	JSON.parse(JSON.stringify(checkpoint.state)) as HistoryState
 packages/email-renderer/src/draftBodies.ts	owlat(no-unchecked-json-cast)	JSON.parse(draft.bodyBlocks) as EditorBlock[]
 packages/email-renderer/src/renderer.ts	owlat(no-unchecked-json-cast)	items = JSON.parse(rawValue)
 packages/email-scanner/src/urls/safeBrowsing.ts	owlat(no-unchecked-json-cast)	await response.json() as SafeBrowsingResponse
-packages/mail-message/src/__tests__/fuzz.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	60_000
 packages/plugin-codegen/scripts/deployGraphSmoke.ts	owlat(no-unchecked-json-cast)	JSON.parse(dryRun.stdout) as TurboDryRun
 packages/plugin-kit/scripts/packageSmoke.ts	owlat(no-unchecked-json-cast)	JSON.parse( readFileSync(join(consumerRoot, 'node_modules/@owlat/plugin-kit/package.json'), 'utf8') ) as { exports?: Record<string, unknown> }
 packages/plugin-kit/scripts/packageSmoke.ts	owlat(no-unchecked-json-cast)	JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as PackageMetadata
 packages/sdk-js/src/utils/fetch.ts	owlat(no-unchecked-json-cast)	JSON.parse(rawBody) as ApiErrorResponse
-packages/shared/src/__tests__/mailSegmentsHostile.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	30_000
-packages/shared/src/__tests__/postboxTrackers.perf.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	300_000
-packages/shared/src/__tests__/tlsCertReloader.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	30000
 packages/shared/src/blockTree.ts	owlat(no-unchecked-json-cast)	JSON.parse(JSON.stringify(roots)) as T[]
 packages/shared/src/blockTree.ts	owlat(no-unchecked-json-cast)	JSON.parse(JSON.stringify(roots)) as unknown[]
 packages/shared/src/deliverabilityDiagnostics.ts	owlat(no-unchecked-json-cast)	JSON.parse( JSON.stringify({ ...value, schemaVersion: DELIVERABILITY_OBSERVATION_SCHEMA_VERSION, }) ) as Record<string, unknown>
 packages/shared/src/setupProgress.ts	owlat(no-unchecked-json-cast)	JSON.parse(json) as ProgressEvent
-scripts/__tests__/check-compose-invariants.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	GATE_TIMEOUT_MS
-scripts/__tests__/check-compose-invariants.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	GATE_TIMEOUT_MS
-scripts/__tests__/check-compose-invariants.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	GATE_TIMEOUT_MS
-scripts/__tests__/check-compose-socket-access.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	GATE_TIMEOUT_MS
-scripts/__tests__/check-compose-socket-access.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	GATE_TIMEOUT_MS
-scripts/__tests__/ci-coverage.integration.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	120_000
-scripts/__tests__/restore-flags.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	30_000
-scripts/__tests__/restore.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	30_000
-scripts/__tests__/restore.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	30_000
-scripts/__tests__/turbo-lint-inputs.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	120_000
-scripts/__tests__/turbo-perf-bench-inputs.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	120_000
-scripts/__tests__/turbo-perf-scenarios-inputs.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	120_000
 scripts/ast-gate-parity.ts	owlat(no-unchecked-json-cast)	JSON.parse(run.stdout) as { diagnostics?: Diagnostic[] }
 scripts/check-build-graph.ts	owlat(no-unchecked-json-cast)	JSON.parse( readFileSync(join(workspaceRoot, 'package.json'), 'utf8') ) as PackageManifest
 scripts/check-build-graph.ts	owlat(no-unchecked-json-cast)	JSON.parse(dryRun.stdout) as TurboDryRun

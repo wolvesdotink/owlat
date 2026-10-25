@@ -42,13 +42,5 @@ describe('scanner input cap (MAX_SCAN_LENGTH)', () => {
 		const report = analyzeEmail({ ...email, html: adversarial });
 		expect(report.overall).toMatch(/^(pass|warn|fail)$/);
 		expect(report).toEqual(analyzeEmail({ ...email, html: adversarial.slice(0, MAX_SCAN_LENGTH) }));
-		// CPU-bound by construction: this builds a 128 KiB adversarial body and
-		// analyzes it twice — ~3-5s on an idle machine. The release workflow's
-		// Verify job runs the whole monorepo on one runner and has pushed this
-		// to 45s+ (17x idle), blowing through the previous 20s deadline, so the
-		// margin is sized for that gate. 60s still surfaces a quadratic
-		// regression in analyzeEmail (which would burn minutes, not seconds);
-		// the assertions stay deterministic (equality against the capped
-		// prefix); only the deadline is generous.
-	}, 60_000);
+	});
 });

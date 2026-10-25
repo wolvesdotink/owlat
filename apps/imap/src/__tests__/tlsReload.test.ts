@@ -72,7 +72,7 @@ let newPair: { cert: string; key: string };
 beforeAll(() => {
 	oldPair = generatePair('old.imap.example.com');
 	newPair = generatePair('new.imap.example.com');
-}, 30000);
+});
 
 describe('startImapTlsReload', () => {
 	let dir: string;

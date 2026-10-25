@@ -41,3 +41,14 @@ export const POPULATION_SUITE_TIMEOUT_MS = 3 * PARALLEL_GATE_TIMEOUT_MS;
 
 /** Vitest's built-in default, which the budget above deliberately replaces. */
 export const VITEST_DEFAULT_TIMEOUT_MS = 5_000;
+
+/**
+ * The budget for one report-only benchmark run (`bun run perf:bench`,
+ * scripts/perf-bench/run.ts). A benchmark spec times a fixed number of calls,
+ * so its length is the machine's speed times the sample count, and the driver
+ * runs it alone on a quiet machine. The budget only has to stop a run that never
+ * ends, so it sits well above the slowest family. The driver passes it on the
+ * command line; no workspace config sets it, because ordinary test runs skip the
+ * benchmark blocks and keep their own budget for hang detection.
+ */
+export const PERF_BENCH_TIMEOUT_MS = 10 * 60_000;

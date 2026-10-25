@@ -292,45 +292,6 @@ describe('analytics.llmUsage.recordRequests', () => {
 		});
 	});
 
-	it('keeps the previous release’s single-row writer working', async () => {
-		const t = convexTest(schema, modules);
-		await t.mutation(internal.analytics.llmUsage.record, {
-			feature: 'assistant_ask',
-			modelUsed: 'gpt-4o',
-			tokenUsage: { promptTokens: 1000, completionTokens: 1000, totalTokens: 2000 },
-		});
-		// No usage and no plane: nothing, as before.
-		await t.mutation(internal.analytics.llmUsage.record, {
-			feature: 'assistant_ask',
-			modelUsed: 'gpt-4o',
-			tokenUsage: undefined,
-		});
-		// A tagged decision attempt without usage: a zero-cost estimate.
-		await t.mutation(internal.analytics.llmUsage.record, {
-			feature: 'agent_classify',
-			modelUsed: 'jev-1.13.0',
-			plane: 'decision',
-			isThrottled: true,
-		});
-		await t.run(async (ctx) => {
-			const rows = await ctx.db.query('llmUsageEvents').collect();
-			expect(rows).toHaveLength(2);
-			const priced = rows.find((row) => row.feature === 'assistant_ask')!;
-			expect(priced.costUsd).toBeGreaterThan(0);
-			expect(priced.priceVersion).toBe(PRICE_VERSION);
-			expect(rows.find((row) => row.plane === 'decision')).toMatchObject({
-				costUsd: 0,
-				isEstimated: true,
-				isThrottled: true,
-			});
-			// Both rows reached the spend aggregate.
-			const days = (await ctx.db.query('llmSpendPeriods').collect()).filter(
-				(b) => b.periodKind === 'day'
-			);
-			expect(days.reduce((sum, b) => sum + b.eventCount, 0)).toBe(2);
-		});
-	});
-
 	it('refuses an unbounded batch', async () => {
 		const t = convexTest(schema, modules);
 		const requests = Array.from({ length: MAX_METERED_REQUESTS_PER_WRITE + 1 }, (_, i) => ({

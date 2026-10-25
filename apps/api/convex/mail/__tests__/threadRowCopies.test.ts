@@ -10,7 +10,7 @@
  *     trigger message. `applyResult` writes it; the read falls back to the
  *     message when it is missing or the trigger is no longer the newest.
  *   - `listThreads` rows are projected and `listQueue` rows say only whether a
- *     draft exists; the draft is read per thread with `getDraftSlot`.
+ *     draft exists; the draft is read per thread with `listThreadMessages`.
  *   - migration 0047 fills both copies on old rows.
  *
  * "Reads the copy, not the message" is pinned by making the two disagree.
@@ -325,9 +325,12 @@ describe('Reply Queue trigger copy', () => {
 		expect((await t.query(api.mail.needsReply.listQueue, { mailboxId })).items).toEqual([]);
 	});
 
-	it('rows say whether a draft exists; getDraftSlot returns it to the owner only', async () => {
+	it('rows say whether a draft exists; the thread read returns it to the owner only', async () => {
 		const { t, mailboxId } = await setup();
-		const { threadId } = await flagged(t, mailboxId);
+		const { messageId, threadId } = await flagged(t, mailboxId);
+		const draftSlotRead = async () =>
+			(await t.query(api.mail.mailbox.messages.listThreadMessages, { messageId }))?.thread
+				?.needsReply?.draftSlot;
 		const flag = (await thread(t, threadId)).needsReply!;
 		const draftSlot = { draft: 'DRAFT BODY', confidence: 0.7, generatedAt: 1 };
 		await patchThread(t, threadId, { needsReply: { ...flag, draftSlot } });
@@ -337,29 +340,17 @@ describe('Reply Queue trigger copy', () => {
 		expect(items[0]!.hasDraftSlot).toBe(true);
 		expect(JSON.stringify(items)).not.toContain('DRAFT BODY');
 
-		expect(await t.query(api.mail.needsReply.getDraftSlot, { threadId })).toEqual(draftSlot);
+		expect(await draftSlotRead()).toEqual(draftSlot);
 
 		vi.mocked(getBetterAuthSessionWithRole).mockResolvedValueOnce({
 			userId: 'user-B',
 			role: 'editor',
 			activeOrganizationId: 'org-1',
 		});
-		expect(await t.query(api.mail.needsReply.getDraftSlot, { threadId })).toBeNull();
+		expect(await t.query(api.mail.mailbox.messages.listThreadMessages, { messageId })).toBeNull();
 
 		vi.mocked(getBetterAuthSessionWithRole).mockResolvedValueOnce(null);
-		expect(await t.query(api.mail.needsReply.getDraftSlot, { threadId })).toBeNull();
-	});
-
-	it('getDraftSlot leaves out the alternatives a legacy slot still stores (#1200)', async () => {
-		const { t, mailboxId } = await setup();
-		const { threadId } = await flagged(t, mailboxId);
-		const flag = (await thread(t, threadId)).needsReply!;
-		const shown = { draft: 'DRAFT BODY', confidence: 0.7, generatedAt: 1 };
-		// Written before #1200; a web build from then counts these as "3 options".
-		const draftSlot = { ...shown, options: ['DRAFT BODY', 'ALT ONE', 'ALT TWO'] };
-		await patchThread(t, threadId, { needsReply: { ...flag, draftSlot } });
-
-		expect(await t.query(api.mail.needsReply.getDraftSlot, { threadId })).toEqual(shown);
+		expect(await t.query(api.mail.mailbox.messages.listThreadMessages, { messageId })).toBeNull();
 	});
 });
 

@@ -424,19 +424,3 @@ export async function recordAutomationRunFailure(
 		}
 	}
 }
-
-/**
- * Remove after release N+1: v0.5.5 compatibility. v0.5.5's step walker called
- * this from its action after failing the step and cancelling the run; an
- * action in flight when this release deploys still does (see CONVENTIONS.md,
- * "Old clients and workers against new functions"). It counts nothing: given
- * only the automation, it cannot tell whether that cancel did anything, so
- * the legacy cancel shim (`stepExecutorQueries.cancelAutomationRun`) counts
- * the failure together with the cancel it belongs to.
- */
-export const recordRunFailure = internalMutation({
-	args: {
-		automationId: v.id('automations'),
-	},
-	handler: async () => {},
-});

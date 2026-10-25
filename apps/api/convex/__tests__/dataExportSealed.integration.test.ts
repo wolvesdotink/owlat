@@ -1,7 +1,7 @@
 /**
  * Sealed Mail E8b — per-contact data export DECRYPTS bodies (named gate c).
  *
- * A GDPR data-subject access bundle must be READABLE, so `exportContactData`
+ * A GDPR data-subject access bundle must be READABLE, so `exportContactDataBundle`
  * decrypts the sealed-at-rest message bodies before returning them. This is the
  * one documented place plaintext leaves the store (the owner's own data). The
  * test seals the bodies at rest, exports, and asserts the bundle carries the
@@ -20,12 +20,12 @@ const CANARY = 'CANARY-body-plaintext-9f3a-do-not-leak';
 
 vi.stubEnv('INSTANCE_SECRET', SECRET);
 
-// `exportContactData` is an authedQuery gated on `organization:manage`. Mocking
-// the session read alone would NOT intercept the intra-module callers that
-// actually gate the query: `authedQuery`'s auth floor calls `requireOrgMember`
-// and the handler calls `requireOrgPermission`, both of which reference the real
-// `getBetterAuthSessionWithRole` via their own lexical binding (a partial mock
-// does not rewrite intra-module calls). So admit the owner directly at those two
+// `exportContactDataBundle` is an authedAction whose read is gated on
+// `organization:manage`. Mocking the session read alone would NOT intercept the
+// intra-module callers that actually gate it: the action's auth floor calls
+// `requireOrgMember` and the read calls `requireOrgPermission`, both of which
+// reference the real `getBetterAuthSessionWithRole` via their own lexical
+// binding (a partial mock does not rewrite intra-module calls). So admit the owner directly at those two
 // choke points — the same shape the established session-mocked tests use
 // (see externalAccounts.integration.test.ts).
 vi.mock('../lib/sessionOrganization', async () => {
@@ -91,7 +91,7 @@ describe('contacts.dataExport — sealed bodies decrypt on export (c)', () => {
 			return cId;
 		});
 
-		const bundle = await t.query(api.contacts.dataExport.exportContactData, { contactId });
+		const bundle = await t.action(api.contacts.dataExport.exportContactDataBundle, { contactId });
 
 		const inbound = bundle.inboundMessages.rows[0];
 		expect(inbound).toBeDefined();
@@ -159,7 +159,7 @@ describe('contacts.dataExport — sealed bodies decrypt on export (c)', () => {
 			return cId;
 		});
 
-		const bundle = await t.query(api.contacts.dataExport.exportContactData, { contactId });
+		const bundle = await t.action(api.contacts.dataExport.exportContactDataBundle, { contactId });
 
 		expect(bundle.inboundMessages.rows[0]!.textBody).toBe('');
 		expect(bundle.inboundMessages.rows[0]!.htmlBody).toBe('');
@@ -184,7 +184,7 @@ describe('contacts.dataExport — capability fields', () => {
 			});
 		});
 
-		const bundle = await t.query(api.contacts.dataExport.exportContactData, { contactId });
+		const bundle = await t.action(api.contacts.dataExport.exportContactDataBundle, { contactId });
 
 		expect(bundle.contact.email).toBe('person@example.com');
 		expect(bundle.contact.doiStatus).toBe('pending');
@@ -194,8 +194,8 @@ describe('contacts.dataExport — capability fields', () => {
 	});
 });
 
-// #1343: the export is a read boundary too. Both export endpoints build their
-// inbound rows here (`exportContactDataBundle` reads the same bundle).
+// The export is a read boundary too: a draft with gaps the owner never agreed
+// to is held back.
 describe('contacts.dataExport — an agent draft with gaps nobody agreed to', () => {
 	const GAPPED = 'Hi, your refund of [[refund amount]] is on its way.';
 
@@ -230,7 +230,7 @@ describe('contacts.dataExport — an agent draft with gaps nobody agreed to', ()
 			return cId;
 		});
 
-		const bundle = await t.query(api.contacts.dataExport.exportContactData, { contactId });
+		const bundle = await t.action(api.contacts.dataExport.exportContactDataBundle, { contactId });
 
 		const row = bundle.inboundMessages.rows[0]!;
 		expect(row.textBody).toBe('Where is my refund?');

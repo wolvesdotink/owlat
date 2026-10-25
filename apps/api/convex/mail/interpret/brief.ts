@@ -9,8 +9,6 @@
  *     `completeness: 'none'` and never an empty "nothing to do".
  *   - `markSeen({threadRef})`: the viewer has seen the brief as it stands
  *     (drives `sinceLastSeen` / `isNew` next time).
- *   - `setViewOverride({threadRef, view})`: this thread opens on Overview or
- *     Conversation for this viewer (personal mail threads only; `null` clears).
  *
  * Reader rule: a mail thread is readable with mailbox access
  * (`loadReadableMailbox` / `requireMailboxAccess`), a Team Inbox thread by a
@@ -22,14 +20,13 @@ import { v } from 'convex/values';
 import { appLocaleOf } from '@owlat/shared/appLocales';
 import { publicQuery } from '../../lib/authedFunctions';
 import { getBetterAuthSessionWithRole } from '../../lib/sessionOrganization';
-import { throwInvalidInput } from '../../_utils/errors';
 import { isSharedInboxReader } from '../../inbox/access';
 import { loadReadableMailbox } from '../permissions';
 import { mailboxScope } from '../mailbox/shared';
 import type { InterpretMode } from '@owlat/shared/threadBrief';
 import { threadBriefMutation } from '../_helpers';
 import { isFencedThread } from './staleFence';
-import { threadViewValidator, streamPositionValidator } from '../../lib/validators/threadBrief';
+import { streamPositionValidator } from '../../lib/validators/threadBrief';
 import {
 	threadRefToFields,
 	threadRefValidator,
@@ -218,28 +215,21 @@ async function upsertViewerState(
 	patch: {
 		seenInterpretationRevision?: number;
 		seenActivitySeq?: number;
-		viewOverride?: 'overview' | 'conversation' | null;
 		streamPosition?: { at: number; key: string };
 	}
 ): Promise<void> {
 	const existing = await readViewerState(ctx, ref, userId);
 	const now = Date.now();
-	const { viewOverride, ...rest } = patch;
-	const override =
-		viewOverride === undefined
-			? {}
-			: { viewOverride: viewOverride === null ? undefined : viewOverride };
 	if (existing) {
-		await ctx.db.patch(existing._id, { ...rest, ...override, updatedAt: now });
+		await ctx.db.patch(existing._id, { ...patch, updatedAt: now });
 		return;
 	}
 	await ctx.db.insert('threadViewerState', {
 		...threadRefToFields(ref),
 		userId,
-		seenInterpretationRevision: rest.seenInterpretationRevision ?? 0,
-		seenActivitySeq: rest.seenActivitySeq ?? 0,
-		...(rest.streamPosition ? { streamPosition: rest.streamPosition } : {}),
-		...(viewOverride ? { viewOverride } : {}),
+		seenInterpretationRevision: patch.seenInterpretationRevision ?? 0,
+		seenActivitySeq: patch.seenActivitySeq ?? 0,
+		...(patch.streamPosition ? { streamPosition: patch.streamPosition } : {}),
 		updatedAt: now,
 	});
 }
@@ -268,18 +258,6 @@ export const markSeen = threadBriefMutation({
 		});
 		// Senders (§5): seeing a mail thread's Overview opens its newest inbound message.
 		if (args.threadRef.kind === 'mail') await countThreadOpen(ctx, args.threadRef.id);
-		return null;
-	},
-});
-
-export const setViewOverride = threadBriefMutation({
-	args: { threadRef: threadRefValidator, view: v.union(threadViewValidator, v.null()) },
-	handler: async (ctx, args, session) => {
-		if (args.threadRef.kind !== 'mail') throwInvalidInput('Team threads have no Overview');
-		// authz: requireThreadReader applies the thread's reader rule:
-		// requireMailboxAccess for a mail thread, requirePermission(isSharedInboxReader) for a team one.
-		await requireThreadReader(ctx, args.threadRef, session);
-		await upsertViewerState(ctx, args.threadRef, session.userId, { viewOverride: args.view });
 		return null;
 	},
 });

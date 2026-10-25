@@ -147,6 +147,8 @@ export const ROOT_GATES: readonly RootGate[] = [
 			'install.sh',
 			'turbo.json',
 			'tsconfig.base.json',
+			// The config this suite runs under.
+			'vitest.config.ts',
 			'vitest.shared.ts',
 			'vitest.timeouts.ts',
 			'oxlintrc.json',

@@ -18,11 +18,7 @@
  * message is modified either way.
  */
 
-import { v } from 'convex/values';
 import { isSafeUnsubscribeUrl } from '@owlat/shared/listUnsubscribe';
-import { api, internal } from '../_generated/api';
-import { authedAction } from '../lib/authedFunctions';
-import type { UnsubscribeOutcome } from './senders/unsubscribeActions';
 import { fetchGuarded, SsrfBlockedError } from '../lib/ssrfGuard';
 
 /** Bounded wait for the sender's unsubscribe endpoint. */
@@ -60,31 +56,3 @@ export async function postOneClickUnsubscribe(
 		return { ok: false, error: error instanceof SsrfBlockedError ? 'unsafe_url' : 'network' };
 	}
 }
-
-/**
- * ONE-RELEASE COMPATIBILITY SHIM (`scripts/entryWiringPreviousRelease.ts`):
- * the previous Unsubscribe chip, in shipped desktop bundles and tabs opened
- * before the deploy, still calls this path. It delegates to the one
- * unsubscribe path (`api.mail.senders.unsubscribeActions.unsubscribe`, so
- * personal mail is also suppressed locally and the result recorded) and
- * answers in the old `{ ok, error? }` shape. A message without a one-click
- * target answers `not_one_click` with nothing changed, as it always did.
- * Delete with its ledger line in the next release.
- */
-// authz: org membership via authedAction; mailbox access in the delegated
-// flow (startUnsubscribe: requireMailboxAccess on the propagated session).
-export const performOneClick = authedAction({
-	args: { messageId: v.id('mailMessages') },
-	handler: async (ctx, args): Promise<OneClickResult> => {
-		const target = await ctx.runQuery(internal.mail.senders.unsubscribe.oneClickTarget, {
-			messageId: args.messageId,
-		});
-		if (!target) return { ok: false, error: 'not_one_click' };
-		const outcome: UnsubscribeOutcome = await ctx.runAction(
-			api.mail.senders.unsubscribeActions.unsubscribe,
-			{ target: { messageId: args.messageId } }
-		);
-		if (outcome.result === 'confirmed') return { ok: true };
-		return { ok: false, error: outcome.error ?? 'not_one_click' };
-	},
-});

@@ -8,12 +8,10 @@
 # they accrete easily — an index is usually added in the same commit as the
 # query that motivated it, and survives the query's removal.
 #
-# This gate fails when a schema declares an index no code reads, and fails
-# equally when the allowlist (scripts/unused-index-allowlist.txt) holds an
-# entry that is no longer unused. It is a ratchet in both directions: this
+# This gate fails when a schema declares an index no code reads. There is no
+# allowlist: an index lands in the same change as the query that reads it. This
 # script only prints the unused `table.index` pairs (`--generate`), and
-# scripts/ratchet.sh owns the comparison with the allowlist, like
-# check-query-authz.sh.
+# `scripts/ratchet.sh --zero` fails on any of them.
 #
 # HOW A REFERENCE IS RECOGNISED
 #
@@ -46,9 +44,8 @@
 # Tests count as references. An index no production code reads but a test names
 # is a narrower problem than a fully forgotten one, and outside this gate's job.
 #
-# Usage: `bash scripts/check-unused-indexes.sh` compares; `--generate` prints
-# the unused pairs; `--write-baseline` re-seeds the allowlist (keeping its `#`
-# header).
+# Usage: `bash scripts/check-unused-indexes.sh` checks; `--generate` prints
+# the unused pairs.
 #
 set -uo pipefail
 repo_root="$(cd "$(dirname "$0")/../../.." && pwd)"
@@ -141,15 +138,11 @@ if [ "${1:-}" = "--generate" ]; then
 fi
 
 exec "$repo_root/scripts/ratchet.sh" \
-	--baseline scripts/unused-index-allowlist.txt \
-	--seed "bash apps/api/scripts/check-unused-indexes.sh --write-baseline" \
+	--zero \
 	--stderr \
 	--ok "no Convex index declared but never queried" \
 	--new-header "FAIL: {n} Convex index(es) declared but never queried:" \
 	--new-advice "Every index costs a write on each insert and patch of its table. Delete the
-index, or — if a landing change will query it — add '<table>.<index>' to
-{baseline} with a comment saying which change needs it." \
-	--stale-header "FAIL: {n} stale entr(y/ies) in {baseline}:" \
-	--stale-advice "Each of these is now queried, or no longer declared. Delete the line." \
+index, or add it in the same change as the query that reads it." \
 	"$@" \
 	-- bash "$self" --generate

@@ -150,14 +150,6 @@ describe('a 1.5 MiB HTML newsletter with a short text part', () => {
 		expect(exported.textBody).toBe(TEXT_PART);
 		expect(exported.htmlBody).toBe(html);
 		expect(exported.storedBodyAvailability).toEqual({ text: undefined, html: 'available' });
-
-		// The previous release's query cannot read storage: it says nothing
-		// rather than anything sealed.
-		const legacy = await t.query(api.contacts.dataExport.exportContactData, {
-			contactId: row.contactId!,
-		});
-		expect(legacy.inboundMessages.rows[0]!.htmlBody).toBeUndefined();
-		expect(JSON.stringify(legacy)).not.toContain('atrest:');
 	});
 });
 

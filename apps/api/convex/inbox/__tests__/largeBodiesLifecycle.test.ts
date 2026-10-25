@@ -23,6 +23,7 @@ import type * as MessagesModule from '../messages';
 import type * as SealedBlobModule from '../../lib/sealedBlob';
 import { permanentlyDeleteContactWithRelations } from '../../lib/contactMutations';
 import { DAY_MS } from '../../lib/constants';
+import { runDeletionStepBatch } from '../../__tests__/helpers/workspaceDeletionFence';
 import {
 	MIB,
 	SECRET,
@@ -196,7 +197,7 @@ describe('deleting the row deletes its body', () => {
 		await ingestHuge(t, 'workspace-1@example.com');
 		const row = await onlyRow(t);
 
-		await t.mutation(internal.workspaces.deletion.walker.runStep, { table: 'inboundMessages' });
+		await runDeletionStepBatch(t, 'inboundMessages');
 
 		expect(await t.run((ctx) => ctx.db.query('inboundMessages').collect())).toHaveLength(0);
 		expect(await bodyBlobsExist(t, [row.textBodyStorageId, row.htmlBodyStorageId])).toEqual([

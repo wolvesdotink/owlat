@@ -349,8 +349,7 @@ describe('restore.sh rolls back when interrupted', () => {
 			expect(result.out).not.toContain('Restore complete');
 			await expectOriginalData(install);
 			expect(result.calls.at(-1)).toBe('compose up -d');
-		},
-		30_000
+		}
 	);
 
 	it('drops the half-made copies when interrupted while keeping the current data', async () => {
@@ -364,7 +363,7 @@ describe('restore.sh rolls back when interrupted', () => {
 		expect(result.calls.some((c) => isWipe(c) || isExtraction(c))).toBe(false);
 		await expectOriginalData(install);
 		expect((await install.volumeNames()).filter((n) => n.includes('pre-restore'))).toEqual([]);
-	}, 30_000);
+	});
 });
 
 describe('restore.sh keeps deployment secrets owner-only', () => {

@@ -15,7 +15,7 @@ import { internalAction, type ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { anchorActionDeadline } from '../lib/llm/actionDeadline';
-import { scopeForInterpretation } from '../mail/interpret/scope';
+import { scopeForInterpretation } from '../mail/interpret/scopeLoad';
 import { scopedEvidence } from './scopedEvidence';
 import type { InterpretationSource } from '../lib/validators/threadBrief';
 import { guardStanding } from '../agent/steps/security_scan/disposition';

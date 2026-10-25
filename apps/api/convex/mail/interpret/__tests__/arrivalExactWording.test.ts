@@ -29,7 +29,8 @@ import { rateLimiter } from '../../../lib/rateLimiter';
 import { senderKeyOf } from '../../senders/profiles';
 import { attachThreadState } from '../../mailbox/rowThreadState';
 import { freshTextOf } from '../../arrival/scopedInput';
-import { scopeForInterpretation, segmentScoped } from '../scope';
+import { segmentScoped } from '../scope';
+import { scopeForInterpretation } from '../scopeLoad';
 import { sourceVersionOf } from '../sourceVersion';
 import { loadBriefRow } from '../briefRow';
 
