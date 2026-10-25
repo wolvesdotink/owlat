@@ -185,11 +185,20 @@ describe('segmentMessage: details', () => {
 	});
 
 	it('stays linear on hostile markup', () => {
-		const hostile = '<'.repeat(50_000) + '<script'.repeat(5_000) + '&amp'.repeat(20_000);
-		const started = Date.now();
-		segmentMessage({ html: hostile });
-		segmentMessage({ text: '>'.repeat(100_000) });
-		expect(Date.now() - started).toBeLessThan(2_000);
+		// Counted, not timed: characters read plus open elements visited stay a
+		// small multiple of the input (mailSegmentsHostile.test.ts holds more
+		// shapes to the same bound and to linear growth).
+		const work = (input: { html?: string; text?: string }) => {
+			const meter = { chars: 0, steps: 0 };
+			segmentMessage(input, { work: meter });
+			return meter.chars + meter.steps;
+		};
+		const html = '<'.repeat(50_000) + '<script'.repeat(5_000) + '&amp'.repeat(20_000);
+		expect(work({ html })).toBeGreaterThan(0);
+		expect(work({ html })).toBeLessThanOrEqual(6 * html.length);
+		const text = '>'.repeat(100_000);
+		expect(work({ text })).toBeGreaterThan(0);
+		expect(work({ text })).toBeLessThanOrEqual(6 * text.length);
 	});
 });
 

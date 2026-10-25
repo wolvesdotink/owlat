@@ -5,7 +5,9 @@
  *
  *   bun run perf:bench -- --machine "reference laptop" [--runs 5]
  *     [--family structural-sharing|preview-regenerate|postbox-strip-scaling|
- *      postbox-consent-scaling] [--out dir]
+ *      postbox-consent-scaling|api-regex-scaling|web-regex-scaling|
+ *      scan-content-scaling|mail-message-regex-scaling|shared-regex-scaling]
+ *     [--out dir]
  *
  * Families:
  * - structural-sharing: `shareStructure` (apps/web/app/lib/structuralSharing.ts)
@@ -19,6 +21,12 @@
  * - postbox-consent-scaling: `applyPostboxImageConsent` (apps/web) the same way.
  *   The tests count work and never time it; these two families report the
  *   wall-clock ratio, which also sees regex backtracking no counter can.
+ * - api-regex-scaling, web-regex-scaling, scan-content-scaling,
+ *   mail-message-regex-scaling, shared-regex-scaling: the hostile inputs whose
+ *   cost is spent inside regular expressions (security scan, analytics
+ *   sanitizer, content rules, HTML-to-text, exact-wording detection, ...), at
+ *   n and 4n. Their tests count the hand-written scans and bound the input;
+ *   only these families see the regex engine's own time.
  *
  * Each run is a separate `vitest run` of the family's spec with
  * OWLAT_PERF_BENCH_OUT set, so engine state never carries over between runs and
@@ -59,6 +67,26 @@ const FAMILIES = {
 	'postbox-consent-scaling': {
 		workspace: 'apps/web',
 		spec: 'app/utils/__tests__/postboxRemoteResources.perf.test.ts',
+	},
+	'api-regex-scaling': {
+		workspace: 'apps/api',
+		spec: 'convex/__tests__/hostileRegexInputs.perf.test.ts',
+	},
+	'web-regex-scaling': {
+		workspace: 'apps/web',
+		spec: 'app/lib/__tests__/hostileRegexInputs.perf.test.ts',
+	},
+	'scan-content-scaling': {
+		workspace: 'packages/email-scanner',
+		spec: 'src/__tests__/hostileRegexInputs.perf.test.ts',
+	},
+	'mail-message-regex-scaling': {
+		workspace: 'packages/mail-message',
+		spec: 'src/__tests__/hostileRegexInputs.perf.test.ts',
+	},
+	'shared-regex-scaling': {
+		workspace: 'packages/shared',
+		spec: 'src/__tests__/hostileRegexInputs.perf.test.ts',
 	},
 } as const;
 type FamilyName = keyof typeof FAMILIES;

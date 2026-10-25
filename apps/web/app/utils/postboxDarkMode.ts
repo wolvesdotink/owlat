@@ -369,9 +369,11 @@ function adaptOnLight(decls: Decl[], ownColor: Decl | undefined, text: SenderTex
  *
  * Operates on the sanitized string only and rewrites nothing but style
  * attributes, so it cannot change document structure. sanitize-html emits
- * balanced tags, which is what the element stack relies on.
+ * balanced tags, which is what the element stack relies on. `meter`, when
+ * given, counts one step per tag plus one per stack entry a closing tag looks
+ * at: linear in the tags for balanced input.
  */
-export function remapInlineColorsForDark(sanitizedHtml: string): string {
+export function remapInlineColorsForDark(sanitizedHtml: string, meter?: { steps: number }): string {
 	// One entry per open element.
 	const stack: Array<{ tag: string; surface: Surface; text: SenderText; canvasFill: Rgba | null }> =
 		[];
@@ -379,10 +381,12 @@ export function remapInlineColorsForDark(sanitizedHtml: string): string {
 		/<(\/?)([a-z][a-z0-9]*)\b([^>]*)>/gi,
 		(full, closing: string, rawTag: string, attrs: string) => {
 			const tag = rawTag.toLowerCase();
+			if (meter) meter.steps += 1;
 			if (closing) {
 				// Balanced input closes the top element; search down only for
 				// anything else.
 				for (let i = stack.length - 1; i >= 0; i--) {
+					if (meter) meter.steps += 1;
 					if (stack[i]!.tag === tag) {
 						stack.length = i;
 						break;

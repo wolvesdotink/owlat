@@ -11,6 +11,7 @@ import {
 	parseAttributes,
 	proposeBrandKit,
 } from '../brandKitWebsite';
+import { SCALING_FACTOR, unfinishedRgbRun } from '../../__tests__/helpers/hostileRegexInputs';
 
 const PAGE = `<!doctype html>
 <html><head>
@@ -73,11 +74,18 @@ describe('parseAttributes', () => {
 		);
 	});
 
-	it('stays fast on a hostile tag', () => {
-		const tag = `<meta ${'a'.repeat(200_000)}${'= '.repeat(50_000)}>`;
-		const started = performance.now();
-		parseAttributes(tag);
-		expect(performance.now() - started).toBeLessThan(500);
+	it.each([
+		['a long name then bare equals signs', `<meta ${'a'.repeat(200_000)}${'= '.repeat(50_000)}>`],
+		['unterminated quoted values', `<meta ${'a="b '.repeat(50_000)}>`],
+		['empty attributes', `<meta ${'a= '.repeat(70_000)}>`],
+	])('scans a hostile tag in one forward pass: %s', (_label, tag) => {
+		// Counted, not timed: rounds plus quoted-value search spans stay within
+		// the tag length; a scanner that rescanned from each attribute would do
+		// tag length squared.
+		const meter = { steps: 0 };
+		parseAttributes(tag, meter);
+		expect(meter.steps).toBeGreaterThan(0);
+		expect(meter.steps).toBeLessThanOrEqual(tag.length);
 	});
 });
 
@@ -97,11 +105,11 @@ describe('colours', () => {
 		]);
 	});
 
-	it('scans a large stylesheet quickly', () => {
-		const css = `${'rgb(   '.repeat(100_000)}#123456`;
-		const started = performance.now();
-		countCssColors(css);
-		expect(performance.now() - started).toBeLessThan(1000);
+	it('counts the colours of a large stylesheet of unfinished rgb( openers', () => {
+		// The regex's own time on this input is reported by `bun run perf:bench`
+		// (family api-regex-scaling); here it must still find the one colour.
+		const css = unfinishedRgbRun(SCALING_FACTOR * 25_000);
+		expect(countCssColors(css)).toEqual([{ color: '#123456', count: 1 }]);
 	});
 });
 

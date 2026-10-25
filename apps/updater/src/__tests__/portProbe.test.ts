@@ -1,8 +1,9 @@
-import { describe, it, expect, afterAll } from 'vitest';
+import { describe, it, expect, afterAll, vi } from 'vitest';
 import { createServer, type Server } from 'node:http';
 import { CONNREFUSED, NOTFOUND, SERVFAIL, TIMEOUT } from 'node:dns';
 import { Resolver } from 'node:dns/promises';
 import { isNameResolutionCode, probeDns, probeTcp } from '../portProbe';
+import type * as DnsModule from 'node:dns';
 
 /**
  * The socket half of the port checks.
@@ -14,6 +15,19 @@ import { isNameResolutionCode, probeDns, probeTcp } from '../portProbe';
  * pinned — with real sockets where that is deterministic, and an injected
  * resolver where it is not.
  */
+
+// Lets a test stand in for a resolver that never answers (port 53 dropped).
+const dnsHooks = vi.hoisted(() => ({ hang: false }));
+vi.mock('node:dns', async (importOriginal) => {
+	const actual = await importOriginal<typeof DnsModule>();
+	return {
+		...actual,
+		lookup: ((...args: Parameters<typeof actual.lookup>) => {
+			if (dnsHooks.hang) return;
+			return actual.lookup(...args);
+		}) as typeof actual.lookup,
+	};
+});
 
 const servers: Server[] = [];
 
@@ -72,16 +86,27 @@ describe('probeTcp', () => {
 	 * answers must be its own, shorter failure.
 	 */
 	it('does not call a hanging resolver a blocked port', async () => {
-		const startedAt = Date.now();
-		const result = await probeTcp({
-			// `.invalid` never resolves, and the lookup budget is what bounds it.
-			host: 'hangs.invalid',
-			port: 25,
-			timeoutMs: 30_000,
-			lookupTimeoutMs: 200,
-		});
-		expect(result.status).toBe('error');
-		expect(Date.now() - startedAt).toBeLessThan(5_000);
+		vi.useFakeTimers();
+		dnsHooks.hang = true;
+		try {
+			let settled = false;
+			const probe = probeTcp({
+				host: 'hangs.example',
+				port: 25,
+				timeoutMs: 30_000,
+				lookupTimeoutMs: 200,
+			}).finally(() => (settled = true));
+			await vi.advanceTimersByTimeAsync(199);
+			expect(settled).toBe(false);
+			// The lookup budget, not the 30 s socket budget, ends the probe.
+			await vi.advanceTimersByTimeAsync(1);
+			const result = await probe;
+			expect(result.status).toBe('error');
+			expect(result.code).toBe(TIMEOUT);
+		} finally {
+			dnsHooks.hang = false;
+			vi.useRealTimers();
+		}
 	});
 });
 

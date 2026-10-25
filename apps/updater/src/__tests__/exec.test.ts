@@ -27,9 +27,12 @@ function alive(pid: number): boolean {
 	}
 }
 
-/** A command that starts a background `sleep` and prints its pid first. */
-function spawnsGrandchild(pidFile: string): string {
-	return `sleep 30 & echo $! > ${pidFile}; wait`;
+/**
+ * A command that starts a background `sleep` and reports its pid first, into
+ * a file or a test's readiness pipe.
+ */
+function spawnsGrandchild(pidPath: string): string {
+	return `sleep 30 & echo $! > ${pidPath}; wait`;
 }
 
 /**
@@ -142,12 +145,13 @@ describe('exec', () => {
 
 	it('stops a command at its timeout, grandchildren included, and collects it', async () => {
 		const pidFile = join(DIR, 'timeout.pid');
-		const started = Date.now();
+		// The grandchild sleeps 30 s and holds the output pipes: only the timeout
+		// stopping the group lets `exec` return, and it returns once the group
+		// has gone.
 		const result = await exec('sh', ['-c', spawnsGrandchild(pidFile)], DIR, {
 			timeoutMs: 200,
 		});
 
-		expect(Date.now() - started).toBeLessThan(3_000);
 		expect(result.ok).toBe(false);
 		expect(result.stderr).toContain('sh timed out after 0.2s');
 		// A stopped command settles only once its whole group has gone, so the
@@ -166,18 +170,19 @@ describe('exec', () => {
 	});
 
 	it('stops a command when its signal aborts, and does not start one after', async () => {
-		const pidFile = join(DIR, 'abort.pid');
+		const ready = readyPipe('abort');
 		const controller = new AbortController();
-		const running = exec('sh', ['-c', spawnsGrandchild(pidFile)], DIR, {
+		const running = exec('sh', ['-c', spawnsGrandchild(ready.path)], DIR, {
 			signal: controller.signal,
 		});
-		await new Promise((resolve) => setTimeout(resolve, 150));
+		// The grandchild is running once it has reported its pid.
+		const grandchild = await ready.pid();
 		controller.abort();
 
 		const result = await running;
 		expect(result.ok).toBe(false);
 		expect(result.stderr).toContain('was stopped because the updater is shutting down');
-		expect(alive(Number(readFileSync(pidFile, 'utf-8')))).toBe(false);
+		expect(alive(grandchild)).toBe(false);
 
 		const late = await exec('sh', ['-c', 'echo never'], DIR, { signal: controller.signal });
 		expect(late).toEqual({
@@ -227,15 +232,16 @@ describe('stopRunningChildren', () => {
 
 	/** What the shutdown deadline does before the process exits. */
 	it('stops and collects every command still running', async () => {
-		const pidFile = join(DIR, 'deadline.pid');
-		const running = exec('sh', ['-c', spawnsGrandchild(pidFile)], DIR);
-		await new Promise((resolve) => setTimeout(resolve, 150));
+		const ready = readyPipe('deadline');
+		const running = exec('sh', ['-c', spawnsGrandchild(ready.path)], DIR);
+		// The grandchild is running once it has reported its pid.
+		const grandchild = await ready.pid();
 
 		await stopRunningChildren(1_000);
 
 		const result = await running;
 		expect(result.ok).toBe(false);
-		expect(alive(Number(readFileSync(pidFile, 'utf-8')))).toBe(false);
+		expect(alive(grandchild)).toBe(false);
 	});
 
 	it.each([

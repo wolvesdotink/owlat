@@ -15,6 +15,7 @@ import {
 	isClearsigned,
 	isClearsignedText,
 } from '../clearsignedBody';
+import { SCALING_FACTOR, clearsignedBlankRun } from './hostileRegexInputs';
 
 /** A real, structurally complete inline clearsigned body (RFC 4880 §7). */
 const CLEARSIGNED_BODY = [
@@ -842,29 +843,30 @@ describe('extractArmoredCiphertext', () => {
 });
 
 describe('long blank runs stay linear', () => {
-	/** Generous wall-clock ceiling: a linear scan needs a small fraction of it. */
-	const TIME_BUDGET_MS = 2_000;
-
-	function timed<T>(run: () => T): { value: T; ms: number } {
-		const started = performance.now();
-		const value = run();
-		return { value, ms: performance.now() - started };
-	}
-
-	it('classifies a raw message with a long blank-padded dash line in bounded time', () => {
-		const raw = [
-			'From: a@example.com',
-			'Content-Type: text/plain',
-			'',
-			'hello',
-			'Content-Type: application/pgp-signature',
-			`--${' \t'.repeat(250_000)}x`,
-			'',
-		].join('\r\n');
-		const { value, ms } = timed(() => classifyRawSecureMessage(raw));
-		expect(ms).toBeLessThan(TIME_BUDGET_MS);
-		expect(value).toBe('none');
-	});
+	// Counted, not timed: the structure check looks at each line once and scans
+	// back over a delimiter's padding at most once.
+	it.each([
+		['padding followed by text', `--${' \t'.repeat(250_000)}x`],
+		['trailing padding', `--${' \t'.repeat(250_000)}`],
+	])(
+		'classifies a raw message with a long blank-padded dash line (%s) in linear work',
+		(_l, dashLine) => {
+			const raw = [
+				'From: a@example.com',
+				'Content-Type: text/plain',
+				'',
+				'hello',
+				'Content-Type: application/pgp-signature',
+				dashLine,
+				'',
+			].join('\r\n');
+			const meter = { lines: 0, chars: 0 };
+			expect(classifyRawSecureMessage(raw, meter)).toBe('none');
+			expect(meter.lines).toBeGreaterThan(0);
+			expect(meter.lines).toBeLessThanOrEqual(raw.split('\n').length);
+			expect(meter.chars).toBeLessThanOrEqual(dashLine.length);
+		}
+	);
 
 	it('still ignores transport padding after a delimiter', () => {
 		const raw = [
@@ -888,18 +890,10 @@ describe('long blank runs stay linear', () => {
 		expect(isSignedPgpMime(raw)).toBe(true);
 	});
 
-	it('extracts clearsigned text with a long inner blank run in bounded time', () => {
-		const body = [
-			'-----BEGIN PGP SIGNED MESSAGE-----',
-			'Hash: SHA256',
-			'',
-			`Hello${' '.repeat(500_000)}world  `,
-			'-----BEGIN PGP SIGNATURE-----',
-			'sig',
-			'-----END PGP SIGNATURE-----',
-		].join('\n');
-		const { value, ms } = timed(() => extractClearsignedText(body));
-		expect(ms).toBeLessThan(TIME_BUDGET_MS);
-		expect(value).toBe(`Hello${' '.repeat(500_000)}world`);
+	it('extracts clearsigned text with a long inner blank run', () => {
+		// The time this takes is reported by `bun run perf:bench` (family
+		// shared-regex-scaling); here the run must survive and the tail be trimmed.
+		const body = clearsignedBlankRun(SCALING_FACTOR * 500_000);
+		expect(extractClearsignedText(body)).toBe(`Hello${' '.repeat(2_000_000)}world`);
 	});
 });
