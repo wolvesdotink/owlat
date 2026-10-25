@@ -69,6 +69,8 @@ beforeAll(() => {
 		onKeydown: vi.fn(),
 	}));
 	vi.stubGlobal('navigateTo', vi.fn());
+	// The delete guard reads the route a failed delete returns from.
+	vi.stubGlobal('useRouter', () => ({ currentRoute: ref({ path: '/dashboard/postbox/inbox' }) }));
 	vi.stubGlobal('resolvePostboxShortcut', () => undefined);
 	vi.stubGlobal('useI18n', i18nStubs.useI18n);
 });

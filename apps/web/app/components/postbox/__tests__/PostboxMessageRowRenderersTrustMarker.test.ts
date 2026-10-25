@@ -54,6 +54,8 @@ beforeAll(() => {
 		onKeydown: vi.fn(),
 	}));
 	vi.stubGlobal('navigateTo', vi.fn());
+	// The list's delete guard reads the route a failed delete returns from.
+	vi.stubGlobal('useRouter', () => ({ currentRoute: ref({ path: '/dashboard/postbox/inbox' }) }));
 	// The flat list's own wiring (triage, selection, pickers), inert or real
 	// exactly as PostboxThreadListStates.test.ts runs it.
 	vi.stubGlobal('usePostboxPrefetch', () => ({ prefetch: vi.fn() }));

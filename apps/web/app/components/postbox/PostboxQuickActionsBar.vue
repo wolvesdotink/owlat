@@ -127,7 +127,7 @@ const movableFolders = computed(() =>
 							type="button"
 							class="w-full text-left px-3 py-1.5 text-sm hover:bg-bg-surface capitalize"
 							@click="
-								bulk.moveSelected(folder._id);
+								bulk.moveSelected(folder._id, folder.role === 'trash');
 								moveOpen = false;
 							"
 						>

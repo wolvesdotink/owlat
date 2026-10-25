@@ -103,6 +103,8 @@ beforeAll(() => {
 		return { focusedIndex: ref(-1), activeId: ref(undefined), onKeydown: vi.fn() };
 	});
 	vi.stubGlobal('navigateTo', vi.fn());
+	// The delete guard reads the route a failed delete returns from.
+	vi.stubGlobal('useRouter', () => ({ currentRoute: ref({ path: '/dashboard/postbox/inbox' }) }));
 	vi.stubGlobal('resolvePostboxShortcut', () => undefined);
 	// The list's empty-state copy and operation labels flow through vue-i18n now;
 	// `useI18n` is a Nuxt auto-import, so it has to exist as a global.
