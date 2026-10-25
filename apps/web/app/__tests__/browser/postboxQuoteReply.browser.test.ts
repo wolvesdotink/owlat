@@ -6,26 +6,36 @@
  * real pill the way the body wires them. The selection is made in the frame's
  * own document, so `selectionchange` comes from the browser; Playwright clicks
  * the pill and presses the reply key with focus inside the frame, where the
- * reader's window listener never hears it. happy-dom has neither native
- * iframe selections nor layout, which is what these tests need.
+ * reader's window listener never hears it, and clicks into a second message
+ * frame, which the host page never sees a pointer event from. Then the quote
+ * going into an open draft, typed after on a real contenteditable: where the
+ * caret lands decides whether the next words count as written. happy-dom has
+ * neither native iframe selections, focus moving between frames, nor layout
+ * or typing, which is what these tests need.
  */
-import { describe, expect, it } from 'vitest';
-import { userEvent } from 'vitest/browser';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { page, userEvent } from 'vitest/browser';
 import { mount } from '@vue/test-utils';
-import { defineComponent, h, nextTick, ref } from 'vue';
+import { defineComponent, h, nextTick, ref, type Ref } from 'vue';
+import { EMPTY_ACTIVE_MARKS } from '@owlat/ui/composables/useRichText';
 import PostboxQuoteReplyPill from '~/components/postbox/PostboxQuoteReplyPill.vue';
+import { usePostboxComposerAnswerApi } from '~/composables/postbox/usePostboxComposerAnswerApi';
+import { usePostboxEditorDocument } from '~/composables/postbox/usePostboxEditorDocument';
 import { usePostboxFrameSelection } from '~/composables/postbox/usePostboxFrameSelection';
+import { splitAnswerBody } from '~/utils/answerDraft';
 import { nextEvent, scrollTo } from './events';
 
 const BODY =
 	'<!doctype html><html><body style="margin:0;font:16px sans-serif">' +
 	'<p>Hi there,</p><p id="ask">We were billed twice on the 14th for the same seat count.</p>' +
 	'<p>Thanks,<br>Ines</p></body></html>';
+const OTHER_BODY =
+	'<!doctype html><html><body style="margin:0;font:16px sans-serif">' +
+	'<p>Another message entirely.</p></body></html>';
 
-function mountBody() {
-	const quotes: string[] = [];
-	const srcdoc = ref(BODY);
-	const Host = defineComponent({
+/** One message body as PostboxMessageBody wires it: the frame, its selection owner, its pill. */
+function defineBodyHost(srcdoc: Ref<string>, quotes: string[]) {
+	return defineComponent({
 		setup() {
 			const iframeRef = ref<HTMLIFrameElement | null>(null);
 			const box = ref<HTMLElement | null>(null);
@@ -64,6 +74,12 @@ function mountBody() {
 			};
 		},
 	});
+}
+
+function mountBody() {
+	const quotes: string[] = [];
+	const srcdoc = ref(BODY);
+	const Host = defineBodyHost(srcdoc, quotes);
 	const Page = defineComponent({
 		setup: () => () =>
 			h('div', { 'data-testid': 'scroller', style: 'height:300px;overflow:auto' }, [
@@ -174,5 +190,115 @@ describe('Quote in reply', () => {
 		expect(pill()).not.toBeNull();
 		await userEvent.keyboard('r');
 		expect(quotes).toEqual(['We were billed twice on the 14th for the same seat count.']);
+	});
+
+	it('drops the pill when focus moves into another message frame, and keeps it for Tab to the pill', async () => {
+		const quotes: string[] = [];
+		const First = defineBodyHost(ref(BODY), quotes);
+		const Second = defineBodyHost(ref(OTHER_BODY), quotes);
+		const wrapper = mount(defineComponent({ setup: () => () => h('div', [h(First), h(Second)]) }), {
+			attachTo: document.body,
+		});
+		const [first, second] = wrapper.findAll('iframe').map((w) => w.element as HTMLIFrameElement);
+		const pills = () => document.querySelectorAll<HTMLElement>('[data-testid="quote-reply-pill"]');
+		const other = page.frameLocator(page.elementLocator(second!)).getByText('Another message');
+		await loaded(second!);
+
+		// Focus in the selection's frame, then a click in the other message.
+		const { doc } = await selectAsk(first!);
+		expect(pills()).toHaveLength(1);
+		await other.click();
+		await nextTick();
+		expect(pills()).toHaveLength(0);
+		expect(doc.getSelection()!.isCollapsed).toBe(true);
+
+		// Tab hands focus to the pill on purpose; a click in the other message from there.
+		await selectAsk(first!);
+		await userEvent.keyboard('{Tab}');
+		await nextTick();
+		expect(pills()).toHaveLength(1);
+		expect(document.activeElement).toBe(pills()[0]);
+		expect(doc.getSelection()!.toString()).toBe(
+			'We were billed twice on the 14th for the same seat count.'
+		);
+		await other.click();
+		await nextTick();
+		expect(pills()).toHaveLength(0);
+		expect(doc.getSelection()!.isCollapsed).toBe(true);
+		expect(quotes).toEqual([]);
+	});
+});
+
+describe('Quote in reply, into an open draft', () => {
+	// The composer's save operations; nothing here saves.
+	beforeAll(() => {
+		Object.assign(globalThis, {
+			useBackendOperation: () => ({ run: async () => ({ ok: true }), isLoading: ref(false) }),
+		});
+	});
+	afterAll(() => {
+		Reflect.deleteProperty(globalThis, 'useBackendOperation');
+	});
+
+	it('keeps typing in the written part after a passage goes in before the signature', async () => {
+		const tail =
+			'<br><br><div data-postbox-signature="true">Ada</div>' +
+			'<br><br><div class="gmail_quote"><blockquote>The full original</blockquote></div>';
+		const body = ref(`<p>My reply</p>${tail}`);
+		let answerApi!: ReturnType<typeof usePostboxComposerAnswerApi>['answerApi'];
+
+		// The basic editor's document mirror on a real contenteditable.
+		const Editor = defineComponent({
+			props: { modelValue: { type: String, required: true } },
+			emits: ['update:modelValue'],
+			setup(props, { emit, expose }) {
+				const editorRef = ref<HTMLDivElement | null>(null);
+				const editorDoc = usePostboxEditorDocument({
+					editorRef,
+					modelValue: () => props.modelValue,
+					readActiveMarks: () => ({ ...EMPTY_ACTIVE_MARKS }),
+					emit: (value) => emit('update:modelValue', value),
+				});
+				expose({ focus: () => editorRef.value?.focus() });
+				return () =>
+					h('div', { ref: editorRef, contenteditable: 'true', onInput: editorDoc.emitContent });
+			},
+		});
+		const Composer = defineComponent({
+			setup() {
+				const editor = ref<{ focus: () => void } | null>(null);
+				answerApi = usePostboxComposerAnswerApi({
+					bodyHtml: body,
+					attachments: ref([]),
+					followUpRemindAt: ref(null),
+					addFiles: async () => {},
+					flush: async () => ({ ok: true, result: null }),
+					focusBody: () => editor.value?.focus(),
+					isSaving: ref(false),
+					lastSavedAt: ref(null),
+					gapCount: ref(0),
+					statusNote: () => undefined,
+				}).answerApi;
+				return () =>
+					h(Editor, {
+						ref: editor,
+						modelValue: body.value,
+						'onUpdate:modelValue': (value: string) => (body.value = value),
+					});
+			},
+		});
+		mount(Composer, { attachTo: document.body });
+
+		const passage =
+			'<br><br><div class="gmail_quote owlat_selected_quote"><div>On Monday, Ines wrote:</div>' +
+			'<blockquote>billed twice</blockquote></div>';
+		answerApi.insertQuote!(passage);
+		await nextTick();
+		await userEvent.keyboard(' and more');
+		await nextTick();
+
+		const { fresh, tail: after } = splitAnswerBody(body.value);
+		expect(fresh).toBe('<p>My reply and more</p>');
+		expect(after).toBe(`${passage}${tail}`);
 	});
 });
