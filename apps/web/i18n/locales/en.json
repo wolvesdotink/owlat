@@ -3984,6 +3984,7 @@
 				"restoreAction": "Restore this version into the editor",
 				"restoreFailed": "Couldn't restore that version",
 				"restored": "Version loaded into the editor — save to keep it, or undo to go back",
+				"restoredAutosave": "Version loaded into the editor — it saves like any other edit; undo to go back",
 				"subtitle": "Snapshots taken on every save, publish and send",
 				"title": "Version history",
 				"trigger": "History",
@@ -15504,6 +15505,19 @@
 				}
 			}
 		},
+		"draftAutosave": {
+			"editing": "Editing…",
+			"saving": "Saving…",
+			"saved": "Saved",
+			"savedAge": "· {when}",
+			"unsaved": "Unsaved changes",
+			"offlineNotSaved": "Offline, not saved yet",
+			"notSaved": "Not saved",
+			"failed": "Your changes could not be saved.",
+			"retry": "Retry",
+			"notSavedYet": "Your latest changes are not saved yet. Try again in a moment.",
+			"changedDuringAction": "The draft changed while this was running, so it stopped. Check your changes and try again."
+		},
 		"dualArmAlignment": {
 			"actionLabel": "Review records",
 			"aligned": "Your own server and your relay look identical to mailboxes, so the gradual switchover can measure them fairly.",
@@ -17600,6 +17614,9 @@
 				"updateAudience": "Update campaign audience",
 				"updateBasics": "Update campaign basics",
 				"updateContent": "Update campaign content"
+			},
+			"toasts": {
+				"scheduleNotSaved": "Draft saved. The date and delivery options are set only when you press Schedule; leaving now drops them."
 			}
 		},
 		"useChannelInbox": {

@@ -123,6 +123,7 @@ const FEATURE_STUBS = Object.fromEntries(
 		'DeliveryRampNarrativeCard',
 		'DeliveryRampPresetPicker',
 		'DeliveryReferenceRelayNotice',
+		'DraftSaveStatus',
 		'InboxActivityEmptyState',
 		'InboxFilterPills',
 		'InboxQuarantineReason',

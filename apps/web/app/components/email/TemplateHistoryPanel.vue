@@ -21,6 +21,8 @@ import type { CompareSide } from './TemplateCompareModal.vue';
 const props = defineProps<{
 	templateId: Id<'emailTemplates'>;
 	hasUnsavedChanges: boolean;
+	/** The editor saves by itself (a draft): a restore needs no Save. */
+	autosaves?: boolean;
 	/** The editor's state right now, unsaved edits included; enables "Compare". */
 	readCurrent?: () => HistoryState;
 }>();
@@ -78,18 +80,33 @@ const isPreviewOpen = computed({
 	},
 });
 
-async function loadSnapshot(versionId: Id<'emailTemplateVersions'>) {
-	if (!convex) throw new Error('Convex client is not available');
-	return await convex.query(api.emailTemplates.versions.get, { versionId });
+// A snapshot is immutable, but its row may go while it is on screen: the next
+// autosave of the same person and window replaces it. What a preview or a
+// restore confirmation loaded is what Restore applies, without asking again.
+const loadedStates = new Map<Id<'emailTemplateVersions'>, Promise<HistoryState>>();
+
+function loadState(versionId: Id<'emailTemplateVersions'>): Promise<HistoryState> {
+	const cached = loadedStates.get(versionId);
+	if (cached) return cached;
+	const loading = (async () => {
+		if (!convex) throw new Error('Convex client is not available');
+		const snapshot = await convex.query(api.emailTemplates.versions.get, { versionId });
+		return deserializeVersionSnapshot(snapshot);
+	})();
+	loadedStates.set(versionId, loading);
+	loading.catch(() => loadedStates.delete(versionId));
+	return loading;
 }
+watch(isOpen, (open) => {
+	if (!open) loadedStates.clear();
+});
 
 async function openPreview(version: VersionSummary) {
 	previewVersion.value = version;
 	previewHtml.value = '';
 	isPreviewLoading.value = true;
 	try {
-		const snapshot = await loadSnapshot(version._id);
-		const state = deserializeVersionSnapshot(snapshot);
+		const state = await loadState(version._id);
 		previewHtml.value = renderBlocksToHtml(state.blocks, {
 			theme: emailTheme.value,
 			variableType: 'personalization',
@@ -137,7 +154,7 @@ async function openCompare(version: VersionSummary) {
 	};
 	isCompareLoading.value = true;
 	try {
-		const state = deserializeVersionSnapshot(await loadSnapshot(version._id));
+		const state = await loadState(version._id);
 		if (request !== compareRequest) return;
 		compareBefore.value = {
 			label: triggerLabel(version.trigger),
@@ -170,6 +187,7 @@ function requestRestore(version: VersionSummary) {
 		previewVersion.value = null;
 		isCompareOpen.value = false;
 		pendingRestore.value = version;
+		loadState(version._id).catch(() => {});
 		return;
 	}
 	void applyRestore(version);
@@ -178,12 +196,17 @@ function requestRestore(version: VersionSummary) {
 async function applyRestore(version: VersionSummary) {
 	isRestoring.value = true;
 	try {
-		const snapshot = await loadSnapshot(version._id);
-		emit('restore', deserializeVersionSnapshot(snapshot));
+		emit('restore', await loadState(version._id));
 		isOpen.value = false;
 		previewVersion.value = null;
 		isCompareOpen.value = false;
-		showToast(t('components.email.templateHistoryPanel.restored'));
+		showToast(
+			t(
+				props.autosaves
+					? 'components.email.templateHistoryPanel.restoredAutosave'
+					: 'components.email.templateHistoryPanel.restored'
+			)
+		);
 	} catch {
 		showToast(t('components.email.templateHistoryPanel.restoreFailed'), 'error');
 	} finally {

@@ -9,11 +9,14 @@
 
 import { describe, it, expect } from 'vitest';
 import {
+	AUTOSAVE_VERSION_WINDOW_MS,
 	VERSION_HISTORY_LIMIT,
 	fingerprintSnapshot,
+	selectAutosaveVersion,
 	selectVersionsToEvict,
 	shouldCaptureVersion,
 	snapshotByteLength,
+	type TemplateVersionTrigger,
 } from '../versionSnapshot';
 
 const source = (over: Partial<{ name: string; subject: string; content: string }> = {}) => ({
@@ -103,5 +106,51 @@ describe('selectVersionsToEvict', () => {
 
 	it('honours an explicit lower limit', () => {
 		expect(selectVersionsToEvict(['a', 'b', 'c'], 1)).toEqual(['b', 'c']);
+	});
+});
+
+describe('selectAutosaveVersion', () => {
+	const W = AUTOSAVE_VERSION_WINDOW_MS;
+	const row = (
+		createdAt: number,
+		createdBy = 'alice',
+		trigger: TemplateVersionTrigger = 'save'
+	) => ({
+		trigger,
+		createdBy,
+		createdAt,
+	});
+
+	it("finds the same person's save from the same window", () => {
+		const own = row(W * 3 + 10);
+		expect(selectAutosaveVersion([own], { userId: 'alice', now: W * 3 + W - 1 })).toBe(own);
+	});
+
+	it("finds it behind co-editors' saves from the window", () => {
+		const own = row(W * 3 + 10);
+		const rows = [row(W * 3 + 30, 'bob'), row(W * 3 + 20, 'carol'), own];
+		expect(selectAutosaveVersion(rows, { userId: 'alice', now: W * 3 + 40 })).toBe(own);
+	});
+
+	it('keeps a row from an earlier window, or from before an event', () => {
+		expect(selectAutosaveVersion([row(W * 3 - 1)], { userId: 'alice', now: W * 3 })).toBeNull();
+		expect(
+			selectAutosaveVersion([row(W * 3, 'bob')], { userId: 'alice', now: W * 3 + 5 })
+		).toBeNull();
+		for (const trigger of ['publish', 'send', 'conflict'] as const) {
+			expect(
+				selectAutosaveVersion([row(W * 3 + 2, 'alice', trigger)], {
+					userId: 'alice',
+					now: W * 3 + 5,
+				})
+			).toBeNull();
+			expect(
+				selectAutosaveVersion([row(W * 3 + 2, 'bob', trigger), row(W * 3 + 1)], {
+					userId: 'alice',
+					now: W * 3 + 5,
+				})
+			).toBeNull();
+		}
+		expect(selectAutosaveVersion([], { userId: 'alice', now: 0 })).toBeNull();
 	});
 });

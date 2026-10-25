@@ -26,9 +26,20 @@ export interface CampaignActionsOptions {
 	/**
 	 * Called once a successful save/schedule/send has persisted the form, right
 	 * before any navigation away. Lets the caller clear its unsaved-changes flag
-	 * so the route guard doesn't prompt after a successful action.
+	 * so the route guard doesn't prompt after a successful action. `'form'`
+	 * after Save, which stores no send-time choice; `'all'` after Send,
+	 * Schedule or Cancel.
 	 */
-	onSaved?: () => void;
+	onSaved?: (scope: 'form' | 'all') => void;
+	/**
+	 * Run Send or Schedule (`perform`, resolving whether it completed).
+	 * `current()` says whether the form still shows what the action began
+	 * with; it is asked right before the final mutation, with no await between.
+	 */
+	final?: (
+		kind: 'send' | 'schedule',
+		perform: (current: () => boolean) => Promise<boolean>
+	) => Promise<boolean>;
 }
 
 /**
@@ -45,6 +56,7 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 		handleSaveFields,
 		onSaved,
 	} = options;
+	const final = options.final ?? ((_kind, perform) => perform(() => true));
 	const router = useRouter();
 	const { t } = useI18n();
 	const { showToast } = useToast();
@@ -131,8 +143,33 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 		sendTiming.value = sendTimingFromCampaign(timing);
 	};
 
-	// Save campaign. Returns whether the save (fields + A/B test) fully
-	// succeeded so multi-step callers can abort the rest of their sequence.
+	// The validated form (fields + A/B test) in its writes. Returns whether
+	// they all landed so multi-step callers can abort the rest of their
+	// sequence. Not `onSaved`: Send and Schedule report that only once they
+	// completed, so a step that fails after this keeps the form's edits.
+	const saveForm = async (): Promise<boolean> => {
+		if (!(await handleSaveFields())) return false;
+
+		// Update A/B test settings
+		if (abTest.abTestEnabled.value) {
+			return (await enableABTest(abTest.buildEnablePayload(campaignId.value))).ok;
+		}
+		if (campaignData.value?.isABTest) {
+			return (await disableABTest({ campaignId: campaignId.value })).ok;
+		}
+		return true;
+	};
+
+	// Send and Schedule act on what the server holds once their saves landed.
+	// The form stays editable meanwhile: an edit made after those saves would
+	// not be part of what goes out, so the action stops instead.
+	const changedMeanwhile = (current: () => boolean) => {
+		if (current()) return false;
+		saveError.value = t('shared.draftAutosave.changedDuringAction');
+		return true;
+	};
+
+	// Save campaign. Returns whether the save (fields + A/B test) fully succeeded.
 	const handleSave = async (): Promise<boolean> => {
 		if (!validateForm() || !campaignId.value) return false;
 
@@ -140,21 +177,9 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 		saveError.value = '';
 
 		try {
-			if (!(await handleSaveFields())) return false;
-
-			// Update A/B test settings
-			if (abTest.abTestEnabled.value) {
-				if (!(await enableABTest(abTest.buildEnablePayload(campaignId.value))).ok) {
-					return false;
-				}
-			} else if (campaignData.value?.isABTest) {
-				if (!(await disableABTest({ campaignId: campaignId.value })).ok) {
-					return false;
-				}
-			}
-
+			if (!(await saveForm())) return false;
 			showToast(t('shared.useCampaignActions.toasts.saved'));
-			onSaved?.();
+			onSaved?.('form');
 			return true;
 		} finally {
 			isSaving.value = false;
@@ -162,7 +187,7 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 	};
 
 	// Send now. Each step aborts the sequence on failure; the failing `run`
-	// (or handleSave) has already surfaced the categorized error.
+	// (or saveForm) has already surfaced the categorized error.
 	//
 	// "Now" means one undo window from now: the campaign is SCHEDULED at
 	// `Date.now() + SEND_UNDO_WINDOW_MS` rather than handed to `sendNow`, so the
@@ -178,39 +203,37 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 		dismissCapacitySchedule();
 
 		try {
-			if (isDraft.value) {
-				if (!(await handleSave())) return;
-			}
+			const sent = await final('send', async (current) => {
+				if (isDraft.value && !(await saveForm())) return false;
 
-			// `schedule` only accepts a draft, so a campaign that is already
-			// scheduled goes back to draft first — the same step the immediate send
-			// took, for the same reason.
-			if (isScheduled.value) {
-				if (!(await unscheduleCampaign({ campaignId: campaignId.value })).ok) return;
-			}
+				// `schedule` only accepts a draft, so a campaign that is already
+				// scheduled goes back to draft first — the same step the immediate
+				// send took, for the same reason.
+				if (isScheduled.value) {
+					if (!(await unscheduleCampaign({ campaignId: campaignId.value })).ok) return false;
+				}
 
-			const sendAt = Date.now() + SEND_UNDO_WINDOW_MS;
-			if (
-				!(
-					await scheduleCampaign({
-						campaignId: campaignId.value,
-						scheduledAt: sendAt,
-						// Staggering by recipient timezone is a scheduling choice; an
-						// immediate send is not one, whatever the form's toggle says.
-						useRecipientTimezone: false,
-					})
-				).ok
-			) {
-				return;
-			}
+				if (changedMeanwhile(current)) return false;
+				const sendAt = Date.now() + SEND_UNDO_WINDOW_MS;
+				const scheduled = await scheduleCampaign({
+					campaignId: campaignId.value,
+					scheduledAt: sendAt,
+					// Staggering by recipient timezone is a scheduling choice; an
+					// immediate send is not one, whatever the form's toggle says.
+					useRecipientTimezone: false,
+				});
+				if (!scheduled.ok) return false;
 
-			armUndoSend({
-				campaignId: campaignId.value,
-				campaignName: campaignData.value?.name ?? '',
-				sendAt,
+				armUndoSend({
+					campaignId: campaignId.value,
+					campaignName: campaignData.value?.name ?? '',
+					sendAt,
+				});
+				return true;
 			});
+			if (!sent) return;
 
-			onSaved?.();
+			onSaved?.('all');
 			// Straight to the report: it is where the undo toast lives and where the
 			// numbers start climbing, which is the point of having pressed send.
 			router.push(`/dashboard/campaigns/${campaignId.value}/report`);
@@ -241,32 +264,29 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 		dismissCapacitySchedule();
 
 		try {
-			if (isDraft.value) {
-				if (!(await handleSave())) return;
-				if (
-					!(
-						await scheduleCampaign({
-							campaignId: campaignId.value,
-							scheduledAt: scheduledDateTime.getTime(),
-							...timingArgs,
-						})
-					).ok
-				) {
-					return;
+			const scheduled = await final('schedule', async (current) => {
+				if (isDraft.value) {
+					if (!(await saveForm())) return false;
+					if (changedMeanwhile(current)) return false;
+					const result = await scheduleCampaign({
+						campaignId: campaignId.value,
+						scheduledAt: scheduledDateTime.getTime(),
+						...timingArgs,
+					});
+					return result.ok;
 				}
-			} else if (isScheduled.value) {
-				if (
-					!(
-						await rescheduleCampaign({
-							campaignId: campaignId.value,
-							scheduledAt: scheduledDateTime.getTime(),
-							...timingArgs,
-						})
-					).ok
-				) {
-					return;
+				if (isScheduled.value) {
+					if (changedMeanwhile(current)) return false;
+					const result = await rescheduleCampaign({
+						campaignId: campaignId.value,
+						scheduledAt: scheduledDateTime.getTime(),
+						...timingArgs,
+					});
+					return result.ok;
 				}
-			}
+				return true;
+			});
+			if (!scheduled) return;
 
 			showToast(
 				sendTiming.value.mode === 'local'
@@ -278,7 +298,7 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 						: t('shared.useCampaignActions.toasts.scheduled')
 			);
 
-			onSaved?.();
+			onSaved?.('all');
 			setTimeout(() => {
 				router.push('/dashboard/campaigns');
 			}, 1500);
@@ -335,7 +355,7 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 
 			showToast(t('shared.useCampaignActions.toasts.cancelled'));
 
-			onSaved?.();
+			onSaved?.('all');
 			setTimeout(() => {
 				router.push('/dashboard/campaigns');
 			}, 1500);

@@ -3984,6 +3984,7 @@
 				"restoreAction": "Diese Version in den Editor zurückholen",
 				"restoreFailed": "Diese Version konnte nicht wiederhergestellt werden",
 				"restored": "Version in den Editor geladen – speichere sie, um sie zu behalten, oder mache den Schritt rückgängig",
+				"restoredAutosave": "Version in den Editor geladen – sie wird wie jede andere Änderung gespeichert; mache den Schritt rückgängig, um zurückzugehen",
 				"subtitle": "Momentaufnahmen bei jedem Speichern, Veröffentlichen und Senden",
 				"title": "Versionsverlauf",
 				"trigger": "Verlauf",
@@ -15504,6 +15505,19 @@
 				}
 			}
 		},
+		"draftAutosave": {
+			"editing": "Wird bearbeitet…",
+			"saving": "Wird gespeichert…",
+			"saved": "Gespeichert",
+			"savedAge": "· {when}",
+			"unsaved": "Ungespeicherte Änderungen",
+			"offlineNotSaved": "Offline, noch nicht gespeichert",
+			"notSaved": "Nicht gespeichert",
+			"failed": "Deine Änderungen konnten nicht gespeichert werden.",
+			"retry": "Erneut versuchen",
+			"notSavedYet": "Deine letzten Änderungen sind noch nicht gespeichert. Versuche es gleich noch einmal.",
+			"changedDuringAction": "Der Entwurf hat sich währenddessen geändert, deshalb wurde abgebrochen. Prüfe deine Änderungen und versuche es noch einmal."
+		},
 		"dualArmAlignment": {
 			"actionLabel": "Einträge prüfen",
 			"aligned": "Dein eigener Server und dein Relay sehen für Mailboxen identisch aus, deshalb kann die schrittweise Umstellung sie fair messen.",
@@ -17600,6 +17614,9 @@
 				"updateAudience": "Kampagnen-Zielgruppe aktualisieren",
 				"updateBasics": "Kampagnen-Basisdaten aktualisieren",
 				"updateContent": "Kampagneninhalt aktualisieren"
+			},
+			"toasts": {
+				"scheduleNotSaved": "Entwurf gespeichert. Datum und Zustellungsoptionen werden erst gesetzt, wenn du auf „Planen“ drückst; verlässt du die Seite jetzt, gehen sie verloren."
 			}
 		},
 		"useChannelInbox": {

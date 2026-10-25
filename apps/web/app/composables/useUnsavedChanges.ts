@@ -1,6 +1,7 @@
-import { nextTick, readonly, ref, onUnmounted, type Ref } from 'vue';
+import { computed, nextTick, ref, onUnmounted, type Ref } from 'vue';
 import { onBeforeRouteLeave, useRouter, type RouteLocationRaw } from 'vue-router';
 import { usePageExitGuard } from '~/composables/usePageExitGuard';
+import type { DraftLeaveDecisions } from '~/composables/useDraftLeave';
 
 export interface UseUnsavedChangesReturn {
 	showDialog: Ref<boolean>;
@@ -22,6 +23,13 @@ export interface UseUnsavedChangesOptions {
 	 * flight keeps the page dirty, and the guard stays instead of leaving.
 	 */
 	onSave?: () => Promise<void>;
+	/**
+	 * A draft's autosave session, which decides leaving itself
+	 * (`useDraftAutosave`'s `leave`). While this returns one, the route guard,
+	 * the dialog and the browser's warning follow its decisions; `onSave` and
+	 * `setHasChanges` are not consulted.
+	 */
+	decisions?: () => DraftLeaveDecisions | null;
 }
 
 /**
@@ -30,10 +38,11 @@ export interface UseUnsavedChangesOptions {
  */
 export function useUnsavedChanges(options: UseUnsavedChangesOptions = {}): UseUnsavedChangesReturn {
 	const router = useRouter();
-	const showDialog = ref(false);
+	const dialog = ref(false);
 	const hasUnsavedChanges = ref(false);
-	const pendingRoute = ref<RouteLocationRaw | null>(null);
-	const isSavingBeforeLeave = ref(false);
+	const route = ref<RouteLocationRaw | null>(null);
+	const saving = ref(false);
+	const owner = () => options.decisions?.() ?? null;
 
 	// Every leave request is its own decision. Cancel, Discard, a newer leave
 	// request and unmounting each retire the current one, so a Save that
@@ -42,63 +51,80 @@ export function useUnsavedChanges(options: UseUnsavedChangesOptions = {}): UseUn
 
 	const retireDecision = () => {
 		decision += 1;
-		showDialog.value = false;
-		pendingRoute.value = null;
+		dialog.value = false;
+		route.value = null;
 	};
 
 	// The browser asks before the tab closes, and an app update does not reload over the edits.
-	usePageExitGuard(() => hasUnsavedChanges.value);
+	usePageExitGuard(() => owner()?.isAtRisk() ?? hasUnsavedChanges.value);
 
 	onUnmounted(() => {
 		decision += 1;
 	});
 
 	// Vue Router navigation guard
-	onBeforeRouteLeave((to, _from, next) => {
+	onBeforeRouteLeave(async (to, _from, next) => {
+		const decisions = owner();
+		if (decisions) {
+			next((await decisions.request(to.fullPath)) ? undefined : false);
+			return;
+		}
 		if (hasUnsavedChanges.value) {
 			// Store the target route and show dialog
 			decision += 1;
-			pendingRoute.value = to.fullPath;
-			showDialog.value = true;
+			route.value = to.fullPath;
+			dialog.value = true;
 			next(false);
 		} else {
 			next();
 		}
 	});
 
-	const navigate = (route: RouteLocationRaw | null) => {
+	const navigate = (target: RouteLocationRaw | null) => {
 		retireDecision();
 		hasUnsavedChanges.value = false;
-		if (route) {
-			router.push(route);
+		if (target) {
+			router.push(target);
 		}
 	};
 
 	const confirmDiscard = () => {
+		const decisions = owner();
+		if (decisions) {
+			const target = decisions.discard();
+			if (target) void router.push(target);
+			return;
+		}
 		// The draft is already being written; leaving without it is back on
 		// offer once that write settles.
-		if (isSavingBeforeLeave.value) return;
-		navigate(pendingRoute.value);
+		if (saving.value) return;
+		navigate(route.value);
 	};
 
 	const confirmSave = async () => {
+		const decisions = owner();
+		if (decisions) {
+			const target = await decisions.save();
+			if (target) void router.push(target);
+			return;
+		}
 		// One submission per decision: a repeated click while it runs is ignored.
-		if (isSavingBeforeLeave.value) return;
-		const route = pendingRoute.value;
+		if (saving.value) return;
+		const target = route.value;
 		if (!options.onSave) {
-			navigate(route);
+			navigate(target);
 			return;
 		}
 
 		const submittedFor = decision;
-		isSavingBeforeLeave.value = true;
+		saving.value = true;
 		try {
 			await options.onSave();
 			// Owners mirror their dirty state through watchers; let them report
 			// what the save acknowledged before it is read below.
 			await nextTick();
 		} finally {
-			isSavingBeforeLeave.value = false;
+			saving.value = false;
 		}
 
 		// Cancelled, replaced by a newer leave request, or the page unmounted.
@@ -106,12 +132,14 @@ export function useUnsavedChanges(options: UseUnsavedChangesOptions = {}): UseUn
 		// Edited while the save ran: the newer draft is unsaved, so the dialog
 		// stays up and asks again about it.
 		if (hasUnsavedChanges.value) return;
-		navigate(route);
+		navigate(target);
 	};
 
 	const cancelNavigation = () => {
+		const decisions = owner();
 		// Only the navigation is cancelled; a save already in flight carries on.
-		retireDecision();
+		if (decisions) decisions.cancel();
+		else retireDecision();
 	};
 
 	const setHasChanges = (value: boolean) => {
@@ -119,10 +147,22 @@ export function useUnsavedChanges(options: UseUnsavedChangesOptions = {}): UseUn
 	};
 
 	return {
-		showDialog,
+		showDialog: computed({
+			get: () => owner()?.choosing.value ?? dialog.value,
+			set: (open) => {
+				const decisions = owner();
+				if (!decisions) dialog.value = open;
+				else if (!open) decisions.cancel();
+			},
+		}),
 		hasUnsavedChanges,
-		pendingRoute,
-		isSavingBeforeLeave: readonly(isSavingBeforeLeave),
+		pendingRoute: computed({
+			get: () => owner()?.destination.value ?? route.value,
+			set: (target) => {
+				route.value = target;
+			},
+		}),
+		isSavingBeforeLeave: computed(() => owner()?.saving.value ?? saving.value),
 		confirmDiscard,
 		confirmSave,
 		cancelNavigation,
