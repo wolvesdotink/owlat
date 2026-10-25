@@ -22,6 +22,7 @@ import { purgeMessageRow, purgeThreadBriefsOf, type PurgedMessages } from './mes
 import { getOrThrow, throwForbidden, throwInvalidState } from '../_utils/errors';
 import {
 	applyThreadFlagDeltas,
+	applyThreadFolderMove,
 	rebuildThreadAggregates,
 	type ThreadFlagDeltas,
 } from './threadAggregates';
@@ -156,11 +157,10 @@ export const continueMarkThreadRead = internalMutation({
 export async function moveMessagesToFolder(
 	ctx: MutationCtx,
 	args: { messageIds: Id<'mailMessages'>[]; targetFolderId: Id<'mailFolders'> },
-	// writeBack false: the move mirrors one the provider already made
-	// (mail/external/remoteState.ts), so it is not written back.
-	// isNeedsReplyKept: an archive that keeps the thread's Reply Queue state
-	// (`archiveSingleMessage.ts`, the thread still has Inbox mail).
-	options: { writeBack?: boolean; isNeedsReplyKept?: boolean } = {}
+	// writeBack false: mirrors a provider's own move (external/remoteState.ts).
+	// isNeedsReplyKept: keep the thread's Reply Queue state (it still has Inbox mail).
+	// isFolderRolesOnly: bounded thread update, no whole-thread re-read (replyDone.ts).
+	options: { writeBack?: boolean; isNeedsReplyKept?: boolean; isFolderRolesOnly?: boolean } = {}
 ): Promise<MoveResult> {
 	const target = await getOrThrow(ctx, args.targetFolderId, 'Target folder');
 	const now = Date.now();
@@ -249,7 +249,9 @@ export async function moveMessagesToFolder(
 	const clearsNeedsReply =
 		(target.role === 'archive' || target.role === 'trash') && !options.isNeedsReplyKept;
 	for (const t of touchedThreads) {
-		await rebuildThreadAggregates(ctx, t);
+		if (!options.isFolderRolesOnly) await rebuildThreadAggregates(ctx, t);
+		else
+			await applyThreadFolderMove(ctx, t, { sourceFolderIds: sourceFolderTouches.keys(), target });
 		if (clearsNeedsReply) await clearThreadNeedsReply(ctx, t);
 	}
 	if (options.writeBack !== false) await recordRemoteChanges(ctx, remote);

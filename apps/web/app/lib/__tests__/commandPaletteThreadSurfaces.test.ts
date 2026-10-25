@@ -51,6 +51,8 @@ function postboxDeps(overrides: Partial<ThreadSurfaceDeps> = {}): ThreadSurfaceD
 		onShowOriginal: vi.fn(),
 		onTranslate: vi.fn(),
 		onCopyLink: vi.fn(),
+		canShareInChat: () => true,
+		onShareInChat: vi.fn(),
 		...overrides,
 	};
 }
@@ -78,6 +80,7 @@ describe('buildThreadSurfaceGroups (Postbox reader)', () => {
 			['postbox:thread-translate', 'Translate'],
 			['postbox:thread-original', 'Download original (.eml)'],
 			['postbox:thread-copy-link', 'Copy link'],
+			['postbox:thread-share-in-chat', 'Share in chat…'],
 		]);
 	});
 
@@ -167,6 +170,7 @@ describe('buildThreadSurfaceGroups (Postbox reader)', () => {
 			['postbox:thread-translate', 'onTranslate'],
 			['postbox:thread-original', 'onShowOriginal'],
 			['postbox:thread-copy-link', 'onCopyLink'],
+			['postbox:thread-share-in-chat', 'onShareInChat'],
 		];
 		for (const [id, handler] of handlers) {
 			byId(all, id)!.run();
@@ -180,6 +184,15 @@ describe('buildThreadSurfaceGroups (Postbox reader)', () => {
 		expect(byId(items, 'postbox:thread-archive')?.shortcutId).toBe('postbox.archive');
 		expect(byId(items, 'postbox:forward')?.shortcutId).toBe('postbox.forward');
 		expect(byId(items, 'postbox:thread-mark-unread')?.shortcutId).toBe('postbox.markUnread');
+	});
+
+	it('offers Share in chat only while chat is on', () => {
+		expect(
+			byId(postboxItems('', { canShareInChat: () => false }), 'postbox:thread-share-in-chat')
+		).toBeUndefined();
+		expect(
+			byId(postboxItems('', { canShareInChat: () => false }), 'postbox:thread-copy-link')
+		).toBeDefined();
 	});
 
 	it('drops the subject line when the message has no subject', () => {
@@ -248,6 +261,9 @@ function teamDeps(overrides: Partial<TeamThreadSurfaceDeps> = {}): TeamThreadSur
 		onReopen: vi.fn(),
 		onUnsnooze: vi.fn(),
 		onAddNote: vi.fn(),
+		onCopyLink: vi.fn(),
+		canShareInChat: () => true,
+		onShareInChat: vi.fn(),
 		...overrides,
 	};
 }
@@ -258,7 +274,7 @@ function teamItems(overrides: Partial<TeamThreadSurfaceDeps> = {}, query = ''): 
 }
 
 describe('buildTeamThreadSurfaceGroups (Team Inbox thread)', () => {
-	it('offers reply, assign ›, claim, resolve, snooze ›, a note and priority ›', () => {
+	it('offers reply, assign ›, claim, resolve, snooze ›, a note, priority › and its link', () => {
 		const [group] = buildTeamThreadSurfaceGroups(teamDeps(), '');
 		expect(group).toMatchObject({ key: TEAM_THREAD_COMMAND_GROUP_KEY, order: 0, mode: 'commands' });
 		expect(teamItems().map((item) => [item.id, item.label, !!item.argument])).toEqual([
@@ -269,7 +285,12 @@ describe('buildTeamThreadSurfaceGroups (Team Inbox thread)', () => {
 			['inbox:thread-snooze', 'Snooze…', true],
 			['inbox:thread-note', 'Add internal note', false],
 			['inbox:thread-priority', 'Set priority…', true],
+			['inbox:thread-copy-link', 'Copy link', false],
+			['inbox:thread-share-in-chat', 'Share in chat…', false],
 		]);
+		expect(
+			byId(teamItems({ canShareInChat: () => false }), 'inbox:thread-share-in-chat')
+		).toBeUndefined();
 	});
 
 	it('follows the thread’s state: no claim once mine, reopen once resolved, wake once snoozed', () => {
@@ -294,6 +315,10 @@ describe('buildTeamThreadSurfaceGroups (Team Inbox thread)', () => {
 		byId(items, 'inbox:thread-claim')!.run();
 		byId(items, 'inbox:thread-status')!.run();
 		byId(items, 'inbox:thread-note')!.run();
+		byId(items, 'inbox:thread-copy-link')!.run();
+		byId(items, 'inbox:thread-share-in-chat')!.run();
+		expect(deps.onCopyLink).toHaveBeenCalledTimes(1);
+		expect(deps.onShareInChat).toHaveBeenCalledTimes(1);
 		expect(deps.onReply).toHaveBeenCalledTimes(1);
 		expect(deps.onClaim).toHaveBeenCalledTimes(1);
 		expect(deps.onClose).toHaveBeenCalledTimes(1);

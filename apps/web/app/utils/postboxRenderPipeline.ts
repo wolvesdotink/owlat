@@ -35,6 +35,12 @@ export interface PostboxRenderStageInput {
 	scheme: PostboxRenderScheme;
 	/** Resolved inline images: normalized Content-ID → `data:` URL. */
 	cidUrls: ReadonlyMap<string, string>;
+	/**
+	 * Tag the divider above the quoted chain with {@link POSTBOX_QUOTE_DIVIDER_ATTR},
+	 * so a reader of the output can tell the fresh text from the quoted. Only
+	 * find in conversation's index asks; the body the iframe shows never carries it.
+	 */
+	markQuoteDivider?: boolean;
 }
 
 export interface PostboxRenderStageOutput {
@@ -58,8 +64,15 @@ export type PostboxRenderWorkerResponse =
 	| { id: number; ok: true; output: PostboxRenderStageOutput }
 	| { id: number; ok: false; error: string };
 
-const QUOTE_DIVIDER =
-	'<hr style="margin:1.25em 0;border:0;border-top:1px solid rgba(128,128,128,0.3)">';
+const QUOTE_DIVIDER_STYLE = 'margin:1.25em 0;border:0;border-top:1px solid rgba(128,128,128,0.3)';
+const QUOTE_DIVIDER = `<hr style="${QUOTE_DIVIDER_STYLE}">`;
+
+/**
+ * Marks the divider when {@link PostboxRenderStageInput.markQuoteDivider} asks.
+ * The sanitizer drops every `data-*` attribute, so mail cannot forge it.
+ */
+export const POSTBOX_QUOTE_DIVIDER_ATTR = 'data-owlat-quote-divider';
+const MARKED_QUOTE_DIVIDER = `<hr ${POSTBOX_QUOTE_DIVIDER_ATTR}="" style="${QUOTE_DIVIDER_STYLE}">`;
 
 function sanitize(html: string): string {
 	return sanitizeHtml(html, POSTBOX_SANITIZE_CONFIG);
@@ -104,7 +117,8 @@ export function renderPostboxBodyStage(input: PostboxRenderStageInput): PostboxR
 		? sanitize(split.fresh)
 		: trimTrailingBlankBlocks(sanitize(split.fresh));
 	const quoted = input.showQuoted ? sanitize(split.quoted) : '';
-	const combined = quoted ? `${fresh}${QUOTE_DIVIDER}${quoted}` : fresh;
+	const divider = input.markQuoteDivider ? MARKED_QUOTE_DIVIDER : QUOTE_DIVIDER;
+	const combined = quoted ? `${fresh}${divider}${quoted}` : fresh;
 	// Adaptive dark rendering reads the sanitized string only; for a light app
 	// (or a message forced light) it is a pass-through.
 	const adapted = adaptEmailHtml(combined, input.scheme);

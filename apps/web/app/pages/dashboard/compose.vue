@@ -24,7 +24,8 @@
  */
 import { splitMailtoAddressList } from '@owlat/shared/mailto';
 import type { Id } from '@owlat/api/dataModel';
-import { composePageKey, type ComposeSpec } from '~/composables/postbox/usePostboxComposeNav';
+import type { ComposeSpec } from '~/composables/postbox/usePostboxComposeNav';
+import { composePageKey } from '~/utils/composePageKey';
 import {
 	usePostboxComposePageRequest,
 	type ComposePageComposer,

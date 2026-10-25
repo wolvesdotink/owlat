@@ -37,7 +37,7 @@ vi.mock('~/composables/postbox/postboxBodyResolver', () => ({
 }));
 
 import { useAnswerModeSession, type AnswerModeMessage } from '../useAnswerModeSession';
-import { useAnswerPendingLead } from '../useAnswerMode';
+import { useAnswerPendingLead, useAnswerPendingQuote } from '../useAnswerMode';
 import type { AnswerModeKind } from '~/utils/answerMode';
 
 const message: AnswerModeMessage = {
@@ -176,5 +176,35 @@ describe('useAnswerModeSession', () => {
 		const { seed } = start({ kind: 'reply' });
 		await settle();
 		expect(seed.value?.prefillBodyHtml?.startsWith('<p>Here it is</p>')).toBe(true);
+	});
+
+	it('quotes a pending selected passage of this message instead of the whole original', async () => {
+		useAnswerPendingQuote().set('msg_1', 'send the invoice');
+		const { seed } = start({ kind: 'reply' });
+		await settle();
+		expect(seed.value?.prefillBodyHtml).toContain('owlat_selected_quote');
+		expect(seed.value?.prefillBodyHtml).toContain('send the invoice');
+		expect(seed.value?.prefillBodyHtml).not.toContain('Could you send the invoice?');
+		// Taken once: it is never quoted again.
+		expect(useAnswerPendingQuote().take('msg_1')).toBeUndefined();
+	});
+
+	it("leaves another message's pending passage alone", async () => {
+		useAnswerPendingQuote().set('msg_other', 'not this one');
+		const { seed } = start({ kind: 'reply' });
+		await settle();
+		expect(seed.value?.prefillBodyHtml).toContain('Could you send the invoice?');
+		expect(useAnswerPendingQuote().take('msg_other')).toBe('not this one');
+	});
+
+	it('keeps a pending passage when the guard is cancelled', async () => {
+		useAnswerPendingQuote().set('msg_1', 'send the invoice');
+		const guard = vi.fn();
+		const session = effectScope().run(() =>
+			useAnswerModeSession({ message: () => message, draftId: null, kind: 'reply', guard })
+		)!;
+		await settle();
+		expect(session.seed.value).toBeNull();
+		expect(useAnswerPendingQuote().take('msg_1')).toBe('send the invoice');
 	});
 });

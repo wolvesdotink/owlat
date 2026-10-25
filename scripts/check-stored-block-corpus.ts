@@ -15,7 +15,9 @@
  *
  * What it compares with, by event (one table, `resolveBase` below):
  * - STORED_BLOCK_CORPUS_BASE when set: its merge base with HEAD;
- * - a pull request (GITHUB_BASE_REF): the merge base with its target branch;
+ * - a pull request (GITHUB_BASE_REF): the merge base with its target branch,
+ *   pinned to PR_BASE_SHA (the event's base commit) when CI sets it, so a push
+ *   to the target mid-job cannot move it;
  * - a push (GITHUB_EVENT_NAME=push) with a before sha
  *   (STORED_BLOCK_CORPUS_PUSH_BEFORE, from `github.event.before`): that commit
  *   itself, the state the branch had, so a force push that replaces earlier
@@ -27,9 +29,11 @@
  *   repository metadata), or HEAD's parent when HEAD is already on it (the
  *   empty tree for a root commit);
  * - locally: the merge base with origin/main.
- * The two variables are set on the Lint step in .github/workflows/test.yml.
+ * The variables are set on the Lint step in .github/workflows/test.yml.
  * The diff runs from that commit to the working tree, so uncommitted edits
- * count. History a shallow checkout lacks is fetched; if the base still cannot
+ * count. History a shallow checkout lacks is fetched, never with --depth: a
+ * shallow fetch into a full clone leaves the fetched tip without parents, and
+ * HEAD without a merge base for every later gate. If the base still cannot
  * be resolved the gate fails in CI (CI=true) and only warns locally, so a
  * missing base never passes a rewrite unseen.
  */
@@ -90,20 +94,23 @@ function fetchedCommit(sha: string): string | undefined {
 }
 
 /**
- * The merge base with a branch of origin. The branch is fetched into its
- * remote-tracking ref explicitly: a single-branch or shallow clone has no
- * `origin/<branch>`, and a bare `git fetch origin <branch>` only fills
- * FETCH_HEAD. `mergeBaseWith` unshallows if the history still falls short.
+ * The merge base with a branch of origin. A checkout that has the branch keeps
+ * it as it was, so a push mid-job cannot move the base. Otherwise the branch is
+ * fetched into its remote-tracking ref explicitly: a single-branch or shallow
+ * clone has no `origin/<branch>`, and a bare `git fetch origin <branch>` only
+ * fills FETCH_HEAD. `mergeBaseWith` unshallows if the history still falls short.
  */
 function branchBase(branch: string): Base {
-	git([
-		'fetch',
-		'--quiet',
-		'--no-tags',
-		'origin',
-		`+refs/heads/${branch}:refs/remotes/origin/${branch}`,
-	]);
 	const ref = `origin/${branch}`;
+	if (!commitOf(ref)) {
+		git([
+			'fetch',
+			'--quiet',
+			'--no-tags',
+			'origin',
+			`+refs/heads/${branch}:refs/remotes/origin/${branch}`,
+		]);
+	}
 	return { label: ref, commit: commitOf(ref) ? mergeBaseWith(ref) : undefined };
 }
 
@@ -122,6 +129,11 @@ function resolveBase(): Base {
 	const explicit = env['STORED_BLOCK_CORPUS_BASE'];
 	if (explicit) return { label: explicit, commit: mergeBaseWith(explicit) };
 	const target = env['GITHUB_BASE_REF'];
+	const pinned = env['PR_BASE_SHA'];
+	if (target && pinned) {
+		const commit = fetchedCommit(pinned);
+		return { label: `origin/${target} at ${pinned}`, commit: commit && mergeBaseWith(commit) };
+	}
 	if (target) return branchBase(target);
 	if (env['GITHUB_ACTIONS'] !== 'true') {
 		return {

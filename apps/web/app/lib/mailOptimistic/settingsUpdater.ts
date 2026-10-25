@@ -35,3 +35,11 @@ export const optimisticUpdateSettings: OptimisticUpdate<
 export const optimisticUpdateShortcutSettings: OptimisticUpdate<
 	FunctionArgs<typeof api.preferences.shortcuts.update>
 > = (store, args) => patchCachedSettings(store, args);
+
+/**
+ * The same repaint for `preferences.alertSounds.update`, the alert sounds' own
+ * write door: it writes three fields of the row `mail.settings.get` returns.
+ */
+export const optimisticUpdateAlertSoundSettings: OptimisticUpdate<
+	FunctionArgs<typeof api.preferences.alertSounds.update>
+> = (store, args) => patchCachedSettings(store, args);

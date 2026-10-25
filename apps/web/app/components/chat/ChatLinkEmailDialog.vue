@@ -1,9 +1,20 @@
 <script setup lang="ts">
+/**
+ * Links an email to chat, from either end:
+ * - from a room (`roomId`): pick a Team Inbox thread to discuss in the channel;
+ * - from a conversation (`conversation`): pick a room to post its link in
+ *   ("Share in chat…", ChatShareConversationPicker).
+ */
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import type { ConversationLinkTarget } from '~/utils/conversationLink';
 
+/** Exactly one of `roomId` and `conversation`; `audience` goes with `conversation`. */
 interface Props {
-	roomId: Id<'chatRooms'>;
+	roomId?: Id<'chatRooms'>;
+	conversation?: ConversationLinkTarget;
+	/** Who can open the shared link (see ChatShareConversationPicker). */
+	audience?: 'personal' | 'shared' | 'team';
 }
 
 const props = defineProps<Props>();
@@ -17,10 +28,14 @@ const { t, locale } = useI18n();
 // thread outside the newest hundred was unlinkable however exactly you spelt it.
 const { query: search, debouncedQuery } = useDebouncedSearch();
 
-const { data: threadsData, isLoading } = useConvexQuery(api.inbox.queries.listThreads, () => ({
-	...(debouncedQuery.value.trim() ? { search: debouncedQuery.value.trim() } : {}),
-	limit: 100,
-}));
+const { data: threadsData, isLoading } = useConvexQuery(api.inbox.queries.listThreads, () =>
+	props.roomId
+		? {
+				...(debouncedQuery.value.trim() ? { search: debouncedQuery.value.trim() } : {}),
+				limit: 100,
+			}
+		: 'skip'
+);
 
 const threads = computed(() => threadsData.value?.threads ?? []);
 
@@ -28,6 +43,7 @@ const { linkChannelToInboxThread, unlinkChannel } = useChatActions();
 const isSubmitting = ref(false);
 
 const linkAndClose = async (threadId: Id<'conversationThreads'>) => {
+	if (!props.roomId) return;
 	isSubmitting.value = true;
 	try {
 		// useBackendOperation toasts failure and resolves `ok: false`; close
@@ -40,6 +56,7 @@ const linkAndClose = async (threadId: Id<'conversationThreads'>) => {
 };
 
 const unlinkAndClose = async () => {
+	if (!props.roomId) return;
 	isSubmitting.value = true;
 	try {
 		const result = await unlinkChannel(props.roomId);
@@ -59,51 +76,63 @@ const formatTime = (timestamp: number) => {
 
 <template>
 	<ChatDialogShell
-		:title="t('components.chat.chatLinkEmailDialog.title')"
+		:title="
+			conversation
+				? t('components.chat.chatLinkEmailDialog.share.title')
+				: t('components.chat.chatLinkEmailDialog.title')
+		"
 		size="lg"
 		@close="emit('close')"
 	>
-		<div class="px-5 py-3 border-b border-border-subtle">
-			<input
-				v-model="search"
-				type="text"
-				:placeholder="t('components.chat.chatLinkEmailDialog.searchPlaceholder')"
-				class="input w-full"
-			/>
-		</div>
+		<ChatShareConversationPicker
+			v-if="conversation"
+			:conversation="conversation"
+			:audience="audience ?? 'personal'"
+			@close="emit('close')"
+		/>
+		<template v-else>
+			<div class="px-5 py-3 border-b border-border-subtle">
+				<input
+					v-model="search"
+					type="text"
+					:placeholder="t('components.chat.chatLinkEmailDialog.searchPlaceholder')"
+					class="input w-full"
+				/>
+			</div>
 
-		<div class="flex-1 overflow-y-auto p-2">
-			<div v-if="isLoading" class="flex items-center justify-center py-8">
-				<UiSpinner size="md" delay />
-			</div>
-			<div v-else-if="threads.length === 0" class="text-center py-8 text-text-tertiary text-sm">
-				{{ t('components.chat.chatLinkEmailDialog.empty') }}
-			</div>
-			<div v-else class="space-y-1">
-				<button
-					v-for="thread in threads"
-					:key="thread._id"
-					class="w-full text-left flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-bg-surface transition-colors"
-					@click="linkAndClose(thread._id)"
-				>
-					<Icon name="lucide:mail" class="w-4 h-4 text-text-tertiary flex-shrink-0" />
-					<div class="flex-1 min-w-0">
-						<div class="text-sm font-medium text-text-primary truncate">
-							{{ thread.subject }}
+			<div class="flex-1 overflow-y-auto p-2">
+				<div v-if="isLoading" class="flex items-center justify-center py-8">
+					<UiSpinner size="md" delay />
+				</div>
+				<div v-else-if="threads.length === 0" class="text-center py-8 text-text-tertiary text-sm">
+					{{ t('components.chat.chatLinkEmailDialog.empty') }}
+				</div>
+				<div v-else class="space-y-1">
+					<button
+						v-for="thread in threads"
+						:key="thread._id"
+						class="w-full text-left flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-bg-surface transition-colors"
+						@click="linkAndClose(thread._id)"
+					>
+						<Icon name="lucide:mail" class="w-4 h-4 text-text-tertiary flex-shrink-0" />
+						<div class="flex-1 min-w-0">
+							<div class="text-sm font-medium text-text-primary truncate">
+								{{ thread.subject }}
+							</div>
+							<div class="text-xs text-text-tertiary truncate">
+								{{ thread.contactIdentifier }} · {{ formatTime(thread.lastMessageAt) }}
+							</div>
 						</div>
-						<div class="text-xs text-text-tertiary truncate">
-							{{ thread.contactIdentifier }} · {{ formatTime(thread.lastMessageAt) }}
-						</div>
-					</div>
-				</button>
+					</button>
+				</div>
 			</div>
-		</div>
 
-		<div class="flex items-center justify-between gap-3 px-5 py-3 border-t border-border-subtle">
-			<UiButton variant="danger-ghost" size="sm" :disabled="isSubmitting" @click="unlinkAndClose">
-				{{ t('components.chat.chatLinkEmailDialog.removeLink') }}
-			</UiButton>
-			<UiButton variant="secondary" @click="emit('close')">{{ t('common.close') }}</UiButton>
-		</div>
+			<div class="flex items-center justify-between gap-3 px-5 py-3 border-t border-border-subtle">
+				<UiButton variant="danger-ghost" size="sm" :disabled="isSubmitting" @click="unlinkAndClose">
+					{{ t('components.chat.chatLinkEmailDialog.removeLink') }}
+				</UiButton>
+				<UiButton variant="secondary" @click="emit('close')">{{ t('common.close') }}</UiButton>
+			</div>
+		</template>
 	</ChatDialogShell>
 </template>

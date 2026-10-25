@@ -121,6 +121,17 @@ function auditEventLabel(payload: { event?: unknown } | null): string {
 }
 
 /**
+ * The 400 for an event the route does not handle. `event` is unvalidated wire
+ * data, so only a string is echoed back: coercing anything else can throw (a
+ * `{"toString":null}` object has no primitive conversion) and turn the refusal
+ * into a 500.
+ */
+export function unsupportedEventResponse(event: unknown): Response {
+	const label = typeof event === 'string' ? event : '(not a string)';
+	return jsonResponse(400, { error: `Unsupported event: ${label}` });
+}
+
+/**
  * Write the bounded audit row for one raw-route delivery. Never fails the
  * webhook — mail that arrived is not dropped because its audit row would not
  * write — but it SAYS so when it could not write, because an audit that can

@@ -193,6 +193,29 @@ describe('resendAdapter.parseEvent — complaints', () => {
 		});
 	});
 
+	it('refuses a complaint whose consumed fields have the wrong type', () => {
+		const body = JSON.stringify({
+			type: 'email.complained',
+			created_at: '2026-07-10T00:00:00.000Z',
+			data: { email_id: 7, to: ['complainer@example.com'] },
+		});
+		expect(() => resendAdapter.parseEvent(body)).toThrow(
+			'resend webhook: $.data.email_id: expected string'
+		);
+		expect(() => resendAdapter.parseEvent(complaint([42 as unknown as string]))).toThrow(
+			'resend webhook: $.data.to[0]: expected string'
+		);
+	});
+
+	it('still acknowledges an event kind it ignores without checking its data', () => {
+		const opened = JSON.stringify({ type: 'email.opened', data: { email_id: 7, click: 'x' } });
+		expect(resendAdapter.parseEvent(opened)).toBeNull();
+		// The envelope itself is checked for every kind.
+		expect(() => resendAdapter.parseEvent(JSON.stringify({ type: 'email.opened' }))).toThrow(
+			'resend webhook: $.data: missing'
+		);
+	});
+
 	it('names no complainer when the message had several recipients', () => {
 		const event = resendAdapter.parseEvent(complaint(['one@example.com', 'two@example.com']));
 		expect(event).toMatchObject({ kind: 'email.complained', providerType: 'resend' });

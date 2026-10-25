@@ -13,22 +13,22 @@
  * which handles JSON-shape validation and attachment storage upload (the
  * latter requires action context for `ctx.storage.store`). The module's
  * args are typed, well-formed data.
+ *
+ * The refusals and the write plan are decided in `./dispatchDecision.ts`
+ * (pure); this mutation reads the facts they need and applies the plan.
  */
 
 import { v } from 'convex/values';
 import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
-import type { Doc, Id } from '../_generated/dataModel';
 import { nanoid } from 'nanoid';
 import { createContact } from '../contacts/creation';
 import { checkEmailDomainVerification } from '../domains/domains';
 import { resolveSendRouteFromDb } from '../lib/sendProviders/route';
-import { formatFromAddress } from '../lib/emailProviders/domainVerification';
-import { nextDailySendCount } from '../lib/sendingLimits';
 import { readInstanceCounter, writeInstanceCounter } from '../lib/instanceCounters';
 import { enqueueGovernedSend } from '../delivery/governedEnqueue';
 import { recordSendAssignments } from '../delivery/sendAssignments';
-import { runSendIntakeGates, type SendIntakeRejectionReason } from '../delivery/sendIntakeGates';
+import { runSendIntakeGates } from '../delivery/sendIntakeGates';
 import { jsonPrimitiveValue } from '../lib/convexValidators';
 import { getOptional } from '../lib/env';
 import { logWarn } from '../lib/runtimeLog';
@@ -36,7 +36,6 @@ import { featureDisabledMessage, resolveStoredFeatureFlags } from '../lib/featur
 import { claimPendingUploads } from './pendingUploads';
 import {
 	IDEMPOTENCY_REFUSAL_MESSAGES,
-	type IdempotencyRefusalReason,
 	idempotencyArgValidator,
 	lookupReceipt,
 	storedTransactionalResponse,
@@ -49,45 +48,16 @@ import {
 	selectContent,
 	mergeAttachments,
 } from './dispatchContent';
+import {
+	decideSenderAndVariables,
+	decideTemplate,
+	planTransactionalSend,
+	senderDefaults,
+	type DispatchOutcome,
+} from './dispatchDecision';
 
-// ============================================================
-// Public types
-// ============================================================
-
-/**
- * Why this intake refused. The first three members are the shared
- * {@link SendIntakeRejectionReason} vocabulary — the same three pre-row gates
- * the **Non-campaign send intake (module)** runs, named once in
- * `delivery/sendIntakeGates.ts` so the two intakes cannot drift into two
- * spellings of one refusal. The rest are this intake's own: only the Template
- * API takes a stored template and caller-supplied variables.
- */
-export type DispatchRejectionReason =
-	| SendIntakeRejectionReason
-	| 'feature_disabled'
-	| 'template_not_found'
-	| 'template_not_published'
-	| 'template_no_content'
-	| 'domain_unverified'
-	| 'invalid_variables'
-	| IdempotencyRefusalReason;
-
-export type DispatchOutcome =
-	| {
-			ok: true;
-			sendId: Id<'transactionalSends'>;
-			contactId: Id<'contacts'>;
-			contactCreated: boolean;
-			language: string;
-			queued: true;
-			/** Answered from the Idempotency-Key's receipt: nothing was sent this time. */
-			replayed?: true;
-	  }
-	| {
-			ok: false;
-			reason: DispatchRejectionReason;
-			detail?: string;
-	  };
+// The outcome types live with the decisions; re-exported for existing importers.
+export type { DispatchOutcome, DispatchRejectionReason } from './dispatchDecision';
 
 // Discriminated lookup so the module accepts either a typed id or a slug
 // from the HTTP shell without re-validating which was provided.
@@ -150,22 +120,13 @@ export const dispatch = internalMutation({
 			}
 		}
 
-		// 1. The shared pre-row gate sequence: abuse → provider-ready →
-		//    suppression, owned by `delivery/sendIntakeGates.ts` (pre-deepening
-		//    the abuse check lived as `isSendingAllowed` on the HTTP shell against
-		//    a separately-fetched instanceSettings). Every refusal is returned as
-		//    a typed rejection and leaves no row behind.
-		//
-		//    `settings` is read HERE and handed down because this intake needs the
-		//    same row again for its sender defaults and counters; the gate must
-		//    not read the singleton a second time.
-		//
-		//    SUPPRESSION SCOPE `'transactional'`: a bounce or a complaint still
-		//    blocks, but a MARKETING-hygiene suppression does not. A customer who
-		//    ignores the newsletter has not asked to stop receiving their
-		//    receipts, their password resets or the double-opt-in confirmation
-		//    they just requested — and blocking the confirmation would make
-		//    consent itself unreachable.
+		// 1. The shared pre-row gate sequence (abuse → provider-ready →
+		//    suppression, `delivery/sendIntakeGates.ts`) on the settings row read
+		//    once here, since the sender defaults and counters need it again.
+		//    SUPPRESSION SCOPE `'transactional'`: a bounce or a complaint blocks, a
+		//    marketing-hygiene suppression does not, so receipts, password resets
+		//    and double-opt-in confirmations still reach someone who ignores the
+		//    newsletter.
 		const settings = await ctx.db.query('instanceSettings').first();
 		// The `transactional` feature floor, resolved from the row just read so
 		// the singleton is not fetched twice. Nothing is written while it is off.
@@ -181,10 +142,9 @@ export const dispatch = internalMutation({
 			email: args.email,
 			suppressionScope: 'transactional',
 			settings: settings ?? null,
-			// The Template API's route resolution is address-aware and needs a
-			// `from` that is only settled by step 3 below, so the gate asks the
-			// route-INDEPENDENT question — can this message type deliver at all —
-			// and this intake resolves its own route later (step 7).
+			// The route resolution here is address-aware and needs the sender
+			// settled below, so the gate asks the route-INDEPENDENT question — can
+			// this message type deliver at all — and the route is resolved later.
 			providerReadiness: { kind: 'message_type', messageType: 'transactional' },
 			noDeliveryProviderDetail:
 				'No email delivery provider is configured. Set EMAIL_PROVIDER (+ credentials) or a provider route before sending transactional email.',
@@ -192,264 +152,108 @@ export const dispatch = internalMutation({
 		if (!gates.ok) return gates;
 
 		// 2. Template lookup + publish + has-HTML checks.
-		let template: Doc<'transactionalEmails'> | null = null;
-		if (args.templateLookup.kind === 'id') {
-			template = await ctx.db.get(args.templateLookup.id);
-			if (!template) {
-				return {
-					ok: false,
-					reason: 'template_not_found',
-					detail: `Transactional email with ID "${args.templateLookup.id}" not found`,
-				};
-			}
-		} else {
-			const slug = args.templateLookup.slug;
-			template = await ctx.db
-				.query('transactionalEmails')
-				.withIndex('by_slug', (q) => q.eq('slug', slug))
-				.first();
-			if (!template) {
-				return {
-					ok: false,
-					reason: 'template_not_found',
-					detail: `Transactional email with slug "${slug}" not found`,
-				};
-			}
-		}
-
-		if (template.status !== 'published') {
-			return {
-				ok: false,
-				reason: 'template_not_published',
-				detail: `Transactional email "${template.slug}" is not published. Please publish it before sending.`,
-			};
-		}
-
-		if (!template.htmlContent) {
-			return {
-				ok: false,
-				reason: 'template_no_content',
-				detail: `Transactional email "${template.slug}" has no HTML content. Please save and publish it first.`,
-			};
-		}
-
-		// Log (do not gate) when sending against stale HTML — a
-		// saved-block edit propagated to the consumer's content JSON but the
-		// rerender pool has not yet caught up. Cached `htmlContent` is used.
-		if (template.htmlRenderState?.stale) {
+		const lookup = args.templateLookup;
+		const found = decideTemplate(
+			lookup,
+			lookup.kind === 'id'
+				? await ctx.db.get(lookup.id)
+				: await ctx.db
+						.query('transactionalEmails')
+						.withIndex('by_slug', (q) => q.eq('slug', lookup.slug))
+						.first()
+		);
+		if (!found.ok) return found;
+		const { template } = found;
+		if (found.isHtmlStale) {
 			logWarn(`htmlRenderState.stale at send time for ${template._id}; using cached htmlContent`);
 		}
 
-		// 3. Sender + domain verification. Resolve `defaultFromEmail` from
-		//    settings → env → fallback; verify the sending domain is registered
-		//    and currently `verified`.
-		const defaultFromEmail =
-			settings?.defaultFromEmail ?? getOptional('DEFAULT_FROM_EMAIL') ?? 'noreply@example.com';
-		const defaultFromName =
-			settings?.defaultFromName ?? getOptional('DEFAULT_FROM_NAME') ?? 'Owlat';
+		// 3–4. The sending domain must be verified, then the variables must match.
+		const sender = senderDefaults(settings, {
+			defaultFromEmail: getOptional('DEFAULT_FROM_EMAIL'),
+			defaultFromName: getOptional('DEFAULT_FROM_NAME'),
+		});
+		const refusal = decideSenderAndVariables({
+			domainStatus: await checkEmailDomainVerification(ctx, sender.fromEmail),
+			dataVariables: args.dataVariables,
+			dataVariablesSchema: template.dataVariablesSchema,
+		});
+		if (refusal) return refusal;
 
-		const domainStatus = await checkEmailDomainVerification(ctx, defaultFromEmail);
-		if (!domainStatus.verified) {
-			return {
-				ok: false,
-				reason: 'domain_unverified',
-				detail:
-					domainStatus.error ||
-					`Cannot send transactional email: domain "${domainStatus.domain}" is not verified. Please verify this domain in Settings > Domains.`,
-			};
-		}
-
-		// 4. Validate `dataVariables` shape against the template's declared schema.
-		const variableValidation = validateDataVariables(
-			args.dataVariables,
-			template.dataVariablesSchema
-		);
-		if (!variableValidation.valid) {
-			return {
-				ok: false,
-				reason: 'invalid_variables',
-				detail: variableValidation.error,
-			};
-		}
-
-		// 5. Contact resolution. Routes through the Contact resolution module
-		//    in `upsert` mode — closes the open-coded find-or-create with
-		//    race-retry try/catch hack at the pre-deepening transactionalApiHttp.ts.
+		// 5. Contact resolution, through the Contact resolution module in
+		//    `upsert` mode; the contact is read back for its stored language.
 		const resolved = await createContact(ctx, {
 			channel: 'email',
 			identifier: args.email,
 			source: 'transactional',
 			mode: 'upsert',
 		});
-
-		// 6. Language resolution. Read the contact (post-upsert) so the
-		//    fallback chain (request → contact → template default → 'en')
-		//    can consider the contact's stored language. The upsert never
-		//    overwrites contact.language, so a pre-existing value wins.
 		const contact = await ctx.db.get(resolved.contactId);
-		const supportedLanguages = template.supportedLanguages ?? [template.defaultLanguage ?? 'en'];
-		const language = resolveLanguage(
-			args.language,
-			contact?.language,
-			template.defaultLanguage,
-			supportedLanguages
-		);
 
-		const {
-			html: htmlContentToSend,
-			subject: subjectToSend,
-			resolvedLanguage,
-		} = selectContent(
-			language,
-			template.defaultLanguage ?? 'en',
-			template.htmlContent,
-			template.subject,
-			template.htmlTranslations
-		);
-
-		// The pre-generated text/plain body belongs to the DEFAULT language only —
-		// translations carry no translated text body, and pairing the default
-		// language's text with translated html would send two languages in one
-		// message. Absent → the composer strips the untracked html instead.
-		const plainTextToSend =
-			resolvedLanguage === (template.defaultLanguage ?? 'en')
-				? template.plainTextContent
-				: undefined;
-
-		// 7. Provider route resolution. Reads the route config + health
-		//    snapshots in-transaction via the shared `resolveSendRoute` seam.
-		//
-		//    KEPT HERE, and kept LATE, on purpose. The sibling non-campaign
-		//    intake resolves its route up in the provider gate; this one cannot,
-		//    because the resolution is address-aware and `defaultFromEmail` is
-		//    only settled by step 4 above. The `providerType`/`ipPool` it yields
-		//    are advisory for the worker either way (`delivery/lastMileRouting.ts`
-		//    re-resolves and reads them only as the fallback), but they are
-		//    authoritative for the `providerType` stamped on the row below, so
-		//    this must run before the insert.
+		// 6. Provider route resolution, through the shared `resolveSendRoute`
+		//    seam. KEPT LATE on purpose: it is address-aware, so it needs the
+		//    sender settled above. Its `providerType`/`ipPool` are advisory for the
+		//    worker (`delivery/lastMileRouting.ts` re-resolves) but authoritative
+		//    for the `providerType` stamped on the row, so it runs before the insert.
 		const resolvedRoute = await resolveSendRouteFromDb(ctx, 'transactional', {
 			to: args.email,
-			from: defaultFromEmail,
+			from: sender.fromEmail,
 		});
 
-		// 8. Template + request attachment merge.
-		const mergedAttachments = mergeAttachments(template.attachments, args.attachmentRefs);
-		const attachmentStorageIds = args.attachmentRefs
-			?.filter((a) => a.storageId)
-			.map((a) => a.storageId!);
-		// Ownership of the request's uploaded bytes moves to the row inserted
-		// below, in this transaction. A claim that fails throws, so no Send ever
-		// names a blob the shell released or the expiry sweep freed, and a caller
-		// that stored a blob without registering it is refused.
-		if (attachmentStorageIds) {
-			await claimPendingUploads(ctx, attachmentStorageIds);
-		}
-
-		// 9. Insert `transactionalSends` row in `queued`. Writes the resolved
-		//     language onto the row — pre-deepening this lived on the API
-		//     response only.
-		const correlationId = `txn_${nanoid(16)}`;
-		const now = Date.now();
-		const sendId = await ctx.db.insert('transactionalSends', {
-			kind: 'transactional' as const,
-			transactionalEmailId: template._id,
-			email: args.email,
+		const plan = planTransactionalSend({
+			template,
+			request: {
+				email: args.email,
+				language: args.language,
+				dataVariables: args.dataVariables,
+				attachmentRefs: args.attachmentRefs,
+			},
 			contactId: resolved.contactId,
-			language: resolvedLanguage,
-			dataVariables: args.dataVariables,
-			status: 'queued',
-			queuedAt: now,
-			...(resolvedRoute ? { providerType: resolvedRoute.providerType } : {}),
-			correlationId,
-			...(attachmentStorageIds && attachmentStorageIds.length > 0 ? { attachmentStorageIds } : {}),
+			contactLanguage: contact?.language,
+			sender,
+			route: resolvedRoute,
+			sendCounters: settings ? await readInstanceCounter(ctx.db, 'sends') : null,
+			// Gmail FBL — singleton org id anchors the stable `txn`-stream
+			// Feedback-ID SenderId the worker's transactional composer emits.
+			organizationId: await ctx.runQuery(
+				internal.campaigns.sendQueries.getSingletonOrganizationId,
+				{}
+			),
+			siteUrl: getOptional('SITE_URL'),
+			correlationId: `txn_${nanoid(16)}`,
+			now: Date.now(),
 		});
 
-		// 10. Counter increments — all atomic with the row insert.
-		//     Pre-deepening the daily counter fired from the HTTP shell
-		//     *after* the enqueue mutation returned; consolidating into
-		//     `dispatch` closes the drift seam. The per-template `sendCount`
-		//     denormalization replaces the N+1 scan that `transactional.sends.getCounts`
-		//     used to do over `transactionalSends` per template.
-		// One write for the transactional + daily counters together, on the
-		// `sends` counter row rather than the config singleton every feature gate
-		// reads (plan 2.4), so a send no longer re-runs gated queries.
-		if (settings) {
-			const sends = await readInstanceCounter(ctx.db, 'sends');
-			await writeInstanceCounter(ctx, 'sends', {
-				transactionalSendCount: (sends.transactionalSendCount ?? 0) + 1,
-				...nextDailySendCount(sends, 1, Date.now()),
-			});
+		// 7. Ownership of the request's uploaded bytes moves to the row inserted
+		//    below, in this transaction. A claim that fails throws, so no Send ever
+		//    names a blob the shell released or the expiry sweep freed, and a
+		//    caller that stored a blob without registering it is refused.
+		if (plan.attachmentStorageIds) {
+			await claimPendingUploads(ctx, plan.attachmentStorageIds);
 		}
-		await ctx.db.patch(template._id, {
-			sendCount: (template.sendCount ?? 0) + 1,
-		});
 
-		// 11. Enqueue workpool.
-		const from = formatFromAddress(defaultFromEmail, defaultFromName);
-		// Gmail FBL — singleton org id anchors the stable `txn`-stream
-		// Feedback-ID SenderId the worker's transactional composer emits.
-		const organizationId = await ctx.runQuery(
-			internal.campaigns.sendQueries.getSingletonOrganizationId,
-			{}
-		);
+		// 8. The `queued` row and its counters, atomic with each other.
+		const sendId = await ctx.db.insert('transactionalSends', plan.sendRow);
+		if (plan.counterPatch) await writeInstanceCounter(ctx, 'sends', plan.counterPatch);
+		await ctx.db.patch(template._id, plan.templatePatch);
 
-		// Experiment record: the Template API is the primary producer
-		// of the `transactional` stream, so its cell axis would otherwise be
-		// populated only by agent 1:1 replies. Written inside THIS transaction,
-		// before the workpool enqueue.
-		//
-		// It deliberately does NOT reuse `resolvedRoute` from step 7. That one
-		// comes from the authoritative per-message resolver, which is
-		// health-influenced and draws with `Math.random()` under
-		// `workload_split` — a draw the worker repeats independently at
-		// dispatch. Recording it would file a coin flip, under a second
-		// resolution semantics, into the same `transactional:*` cells the other
-		// producers fill from the health-free cell seam. The writer re-resolves
-		// through that one seam instead, which is also where the
-		// non-deterministic-strategy gate lives.
+		// 9. Experiment record, inside THIS transaction, before the enqueue. It
+		//    does NOT reuse `resolvedRoute`: that resolver is health-influenced and
+		//    draws with `Math.random()` under `workload_split`, a draw the worker
+		//    repeats, so the writer re-resolves through the health-free cell seam.
+		//    The SEND id is the salt, so the arm is re-drawn per message.
 		await recordSendAssignments(ctx, {
-			organizationId,
+			organizationId: plan.organizationId,
 			stream: 'transactional',
 			sendKind: 'transactional',
-			routing: { messageType: 'transactional', from },
-			// No campaign salt: a transactional send is its own single-recipient
-			// experiment. The contact id is the stable per-recipient identity and
-			// the SEND id is the salt, so the arm is re-drawn per message rather
-			// than pinning the contact to one arm forever.
+			routing: { messageType: 'transactional', from: plan.from },
 			recipients: [{ sendId, email: args.email, contactId: resolved.contactId }],
 		});
 
 		await enqueueGovernedSend(
 			ctx,
 			{ kind: 'transactional', id: sendId },
-			{
-				envelopeInput: {
-					kind: 'transactional' as const,
-					emailPurpose: 'transactional' as const,
-					to: args.email,
-					from,
-					...(resolvedRoute ? { providerType: resolvedRoute.providerType } : {}),
-					...(resolvedRoute?.ipPool ? { ipPool: resolvedRoute.ipPool } : {}),
-					sendId,
-					template: {
-						subject: subjectToSend,
-						htmlContent: htmlContentToSend,
-						...(plainTextToSend ? { plainTextContent: plainTextToSend } : {}),
-					},
-					dataVariables: args.dataVariables,
-					attachmentRefs: mergedAttachments,
-					...(organizationId ? { organizationId } : {}),
-					// Unsubscribe footer — the worker builds the HMAC URLs from
-					// `siteUrl` + `contactId` only when the template opts in.
-					...(template.showUnsubscribe
-						? {
-								showUnsubscribe: true,
-								contactId: resolved.contactId,
-								siteUrl: getOptional('SITE_URL') || undefined,
-							}
-						: {}),
-				},
-			}
+			{ envelopeInput: { ...plan.envelope, sendId } }
 		);
 
 		const contactCreated = resolved.action === 'created';
@@ -459,7 +263,7 @@ export const dispatch = internalMutation({
 				contactId: resolved.contactId,
 				contactCreated,
 				sendId,
-				language: resolvedLanguage,
+				language: plan.language,
 			});
 		}
 
@@ -468,7 +272,7 @@ export const dispatch = internalMutation({
 			sendId,
 			contactId: resolved.contactId,
 			contactCreated,
-			language: resolvedLanguage,
+			language: plan.language,
 			queued: true,
 		};
 	},

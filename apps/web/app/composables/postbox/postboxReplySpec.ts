@@ -70,7 +70,10 @@ export function primaryReplyKindFor(
 /**
  * The one-time seed for `kind` of `source`. The body is resolved first (a body
  * over the inline threshold lives in blob storage). `leadText` (an AI
- * suggestion) goes above the quote of a reply. `autoLoadImages` and
+ * suggestion) goes above the quote of a reply. `quotedPassage`, a passage the
+ * person selected in `source`, is the whole quote of a reply instead of the
+ * original (a forward always carries the original); it needs no body, so none
+ * is fetched for it. `autoLoadImages` and
  * `isSenderAllowed` are the reader's preference and sender grant: the quote
  * keeps remote images only where the reader would load them on open
  * (utils/postboxImageAllowlist).
@@ -82,12 +85,14 @@ export async function buildReplyComposeSeed(
 		mailboxId: Id<'mailboxes'>;
 		ownAddresses: ReadonlySet<string>;
 		leadText?: string;
+		quotedPassage?: string;
 		autoLoadImages: boolean;
 		/** The source's sender is on the mailbox's image allowlist. */
 		isSenderAllowed?: boolean;
 	}
 ): Promise<ReplyComposeSeed> {
-	const target = await resolveBodyFields(source);
+	const quotesPassage = kind !== 'forward' && !!ctx.quotedPassage;
+	const target = quotesPassage ? source : await resolveBodyFields(source);
 	const loadImages = postboxImagesLoadOnOpen({
 		autoLoadImages: ctx.autoLoadImages,
 		senderImagesAllowed: ctx.isSenderAllowed,
@@ -106,6 +111,7 @@ export async function buildReplyComposeSeed(
 	const spec: ReplyComposeSeed = buildReplySpec(ctx.mailboxId, target, {
 		leadText: ctx.leadText,
 		loadImages,
+		quotedPassage: quotesPassage ? ctx.quotedPassage : undefined,
 	});
 	// A reply to our own message (a follow-up, a nudge) goes to the people it
 	// went to, not back to us: its To, else its Cc when it went only to us.

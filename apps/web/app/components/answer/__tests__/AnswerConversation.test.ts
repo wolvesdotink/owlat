@@ -124,6 +124,8 @@ function mountColumn(slots: Record<string, string> = {}) {
 				PostboxThreadEarlier: inert('PostboxThreadEarlier'),
 				PostboxSenderProfile: inert('PostboxSenderProfile'),
 				PostboxAttachmentLightbox: inert('PostboxAttachmentLightbox'),
+				PostboxThreadFindBar: inert('PostboxThreadFindBar'),
+				PostboxThreadFindButton: inert('PostboxThreadFindButton'),
 			},
 		},
 	});
@@ -196,6 +198,8 @@ describe('AnswerConversation', () => {
 					PostboxThreadEarlier: inert('PostboxThreadEarlier'),
 					PostboxSenderProfile: inert('PostboxSenderProfile'),
 					PostboxAttachmentLightbox: inert('PostboxAttachmentLightbox'),
+					PostboxThreadFindBar: inert('PostboxThreadFindBar'),
+					PostboxThreadFindButton: inert('PostboxThreadFindButton'),
 				},
 			},
 		});
@@ -250,6 +254,8 @@ describe('AnswerConversation', () => {
 					PostboxThreadEarlier: inert('PostboxThreadEarlier'),
 					PostboxSenderProfile: inert('PostboxSenderProfile'),
 					PostboxAttachmentLightbox: inert('PostboxAttachmentLightbox'),
+					PostboxThreadFindBar: inert('PostboxThreadFindBar'),
+					PostboxThreadFindButton: inert('PostboxThreadFindButton'),
 				},
 				stubs: { Icon: true },
 			},

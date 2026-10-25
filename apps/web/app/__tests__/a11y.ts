@@ -464,6 +464,7 @@ export function dashboardShellStubs(): Record<string, unknown> {
 		useUnreadBadge: () => ({ data: ref(undefined), count: ref(null) }),
 		useTabBadge: vi.fn(),
 		useDesktopNotifications: () => ({ isDesktop: ref(false) }),
+		useAlertSounds: vi.fn(),
 		useWorkspaceHotkeys: vi.fn(),
 		useCommandPalette: () => ({ open: ref(false) }),
 		useChatMentions: () => ({

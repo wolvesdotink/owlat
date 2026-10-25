@@ -319,6 +319,20 @@ describe('useBackendOperation', () => {
 			expect(showToast).toHaveBeenCalledWith('No template', 'error');
 		});
 
+		it("uses a run's own claim instead of the operation's", async () => {
+			mutation.mockRejectedValue(
+				new ConvexError({ category: 'invalid_state', message: 'No template' })
+			);
+			const { run } = build(fakeOp, { label: 'send', onError: () => true });
+
+			await run({}, { onError: () => false });
+			expect(showToast).toHaveBeenCalledWith('No template', 'error');
+
+			showToast.mockClear();
+			await run({});
+			expect(showToast).not.toHaveBeenCalled();
+		});
+
 		it('does not suppress reporting on a genuine fault the caller declines', async () => {
 			mutation.mockRejectedValue(new Error('kaboom'));
 			const { run } = build(fakeOp, { label: 'send', onError: () => false });

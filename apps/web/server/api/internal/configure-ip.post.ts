@@ -1,4 +1,12 @@
+import { v } from 'convex/values';
 import { requireInstanceSecret, callUpdater } from '~~/server/utils/updater';
+import { readJsonBody } from '~~/server/utils/jsonBody';
+
+/** The updater checks the address itself; this checks the shape it forwards. */
+const configureIpBody = v.object({
+	ip: v.string(),
+	action: v.union(v.literal('add'), v.literal('remove')),
+});
 
 /**
  * Configure-IP proxy endpoint.
@@ -15,13 +23,13 @@ import { requireInstanceSecret, callUpdater } from '~~/server/utils/updater';
 export default defineEventHandler(async (event) => {
 	const instanceSecret = requireInstanceSecret(event, 'Configure-IP not available');
 
-	const body = await readBody(event);
+	const { ip, action } = await readJsonBody(event, configureIpBody);
 
 	// Forward to updater sidecar
 	const response = await callUpdater('/configure-ip', instanceSecret, {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
-		body: JSON.stringify(body || {}),
+		body: JSON.stringify({ ip, action }),
 		signal: AbortSignal.timeout(60_000), // 1 min timeout
 	});
 

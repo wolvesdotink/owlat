@@ -73,16 +73,6 @@ const STORAGE_PREFIX = 'owlat:compose-request:';
 /** As long as the server keeps a request nonce bound to its draft. */
 export const COMPOSE_REQUEST_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 
-/**
- * The compose page's instance key: one per compose request (`?c=`), so a new
- * open remounts the editor while the page's own URL rewrite, which keeps `c`,
- * does not. Lives here because `definePageMeta` is hoisted out of the page.
- */
-export function composePageKey(rawRequestKey: unknown): string {
-	const value = Array.isArray(rawRequestKey) ? rawRequestKey[0] : rawRequestKey;
-	return `compose:${typeof value === 'string' ? value : ''}`;
-}
-
 /** A colon-free random id (request keys, nonces, mounts, sources). */
 export function composeRandomId(): string {
 	const bytes = new Uint8Array(12);

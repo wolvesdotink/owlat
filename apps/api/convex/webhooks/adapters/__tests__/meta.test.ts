@@ -205,6 +205,24 @@ describe('metaAdapter.parseEvent', () => {
 		expect(metaAdapter.parseEvent(build({/* no messages */}))).toBeNull();
 	});
 
+	it('refuses a message field of the wrong type instead of dispatching it', () => {
+		expect(() =>
+			metaAdapter.parseEvent(build({ messages: [{ from: 4915123456, id: 'wamid.n' }] }))
+		).toThrow('meta webhook: $.entry[0].changes[0].value.messages[0].from: expected string');
+		expect(() =>
+			metaAdapter.parseEvent(
+				build({
+					messages: [{ from: '49555', id: 'wamid.n' }],
+					contacts: [{ profile: { name: 7 } }],
+				})
+			)
+		).toThrow(/\.contacts\[0\]\.profile\.name: expected string/);
+	});
+
+	it('acknowledges a status update whatever its statuses carry', () => {
+		expect(metaAdapter.parseEvent(build({ statuses: [{ id: 1, status: ['read'] }] }))).toBeNull();
+	});
+
 	it('returns null when entry is missing entirely', () => {
 		expect(metaAdapter.parseEvent('{}')).toBeNull();
 	});

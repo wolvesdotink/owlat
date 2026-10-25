@@ -347,6 +347,35 @@ describe('sesAdapter.parseEvent', () => {
 		expect(event).toBeNull();
 	});
 
+	it('refuses a Bounce whose consumed fields have the wrong type', () => {
+		expect(() =>
+			sesAdapter.parseEvent(
+				notification({ notificationType: 'Bounce', mail: { messageId: 7 }, bounce: {} })
+			)
+		).toThrow('ses webhook: $.mail.messageId: expected string');
+		expect(() =>
+			sesAdapter.parseEvent(
+				notification({
+					notificationType: 'Complaint',
+					mail: { messageId: 'm' },
+					complaint: { complainedRecipients: [{ emailAddress: ['a@b.com'] }] },
+				})
+			)
+		).toThrow('ses webhook: $.complaint.complainedRecipients[0].emailAddress: expected string');
+	});
+
+	it('acknowledges an event kind it ignores without checking the rest', () => {
+		expect(
+			sesAdapter.parseEvent(notification({ eventType: 'Open', mail: { messageId: 7 }, open: 1 }))
+		).toBeNull();
+	});
+
+	it('refuses an SNS envelope field of the wrong type', () => {
+		expect(() =>
+			sesAdapter.parseEvent(JSON.stringify({ Type: 'Notification', Message: { a: 1 } }))
+		).toThrow('ses webhook: $.Message: expected string');
+	});
+
 	it('ignores UnsubscribeConfirmation and unknown SES notification types', () => {
 		expect(sesAdapter.parseEvent(JSON.stringify({ Type: 'UnsubscribeConfirmation' }))).toBeNull();
 		expect(

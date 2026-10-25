@@ -8,11 +8,8 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defineComponent, h, nextTick, ref } from 'vue';
 import { flushPromises, mount } from '@vue/test-utils';
 import { createTestI18n } from '~/__tests__/i18n';
-import {
-	pendingArrivalUndos,
-	usePostboxArrivalUndo,
-	usePostboxArrivalUndoAnnouncer,
-} from '../usePostboxArrivalUndo';
+import { pendingArrivalUndos } from '~/lib/pendingArrivalUndos';
+import { usePostboxArrivalUndo, usePostboxArrivalUndoAnnouncer } from '../usePostboxArrivalUndo';
 import { usePostboxLearnedNotices } from '../usePostboxLearnedNotices';
 
 vi.mock('@owlat/api', () => {
@@ -175,6 +172,48 @@ describe('usePostboxArrivalUndo', () => {
 			'Undone, except what changed since. Reply reminders were not restored.',
 			'info',
 		]);
+		expect(pendingArrivalUndos.value).toEqual([]);
+		host.unmount();
+	});
+
+	it('announces an undo that finished before its host mounted (the host is lazy)', async () => {
+		let undoOf: ((id: never) => Promise<boolean>) | undefined;
+		const Initiator = defineComponent({
+			setup() {
+				undoOf = usePostboxArrivalUndo().undo;
+				return () => h('span');
+			},
+		});
+		const initiator = mount(Initiator);
+		undoRun.mockResolvedValue(result({ restored: 100, hasMore: true }));
+		await undoOf!('op1' as never);
+		// The page that started it is left, and the server finishes, while the
+		// host's chunk is still on its way.
+		initiator.unmount();
+		undoStatus.value = {
+			status: 'undone',
+			kind: 'fix',
+			restored: 140,
+			skipped: 0,
+			isNeedsReplyCleared: false,
+			isPagingDone: true,
+			pendingResorts: 0,
+			isDone: true,
+		};
+		expect(showToast).toHaveBeenCalledTimes(1);
+
+		const host = mount(
+			defineComponent({
+				setup() {
+					usePostboxArrivalUndoAnnouncer();
+					return () => h('span');
+				},
+			})
+		);
+		await nextTick();
+
+		expect(showToast).toHaveBeenCalledTimes(2);
+		expect(showToast.mock.calls[1]).toEqual(['Undone.', 'success']);
 		expect(pendingArrivalUndos.value).toEqual([]);
 		host.unmount();
 	});

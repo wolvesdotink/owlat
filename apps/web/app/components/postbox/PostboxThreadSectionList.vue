@@ -18,6 +18,7 @@ import { provideBriefLines } from '~/composables/postbox/usePostboxBriefLines';
 import { usePostboxPinRowDrag } from '~/composables/postbox/usePostboxMessageDrag';
 import { vReplyDrop } from '~/composables/useReplyFileDrop';
 import { replyDropForMessage } from '~/utils/replyFileDrop';
+import { folderAnswerOrigin, useListAnswerOrigin } from '~/composables/useAnswerMode';
 
 const props = defineProps<{
 	sections: PostboxInboxSection[];
@@ -54,13 +55,22 @@ function rowClass(msg: PostboxThreadRowMessage) {
 	return { 'pbx-row-danger': senderRowMarkerOf(msg, trustMarkers.value) !== null };
 }
 
-// Every row in order, skipping collapsed sections: previous/next in Zen walk this.
-const visibleIds = computed(() =>
+// Every row and its conversation in order, skipping collapsed sections:
+// previous/next in Zen walk this, and so does a reply marked done that was
+// opened from here.
+const rows = computed(() =>
 	props.sections
 		.filter((section) => !props.collapsed[section.key])
-		.flatMap((section) => section.messages.map((msg) => String(msg._id)))
+		.flatMap((section) =>
+			section.messages.map((msg) => ({ id: String(msg._id), threadId: msg.threadId ?? null }))
+		)
 );
+const visibleIds = computed(() => rows.value.map((row) => row.id));
 defineExpose({ visibleIds });
+useListAnswerOrigin({
+	rows: () => rows.value,
+	origin: () => folderAnswerOrigin(props.folderRole, props.activeMessageId),
+});
 
 // The header badge is the server's unread count, a floor when capped ("99+").
 const listSections = computed<PostboxThreadListSection<PostboxThreadRowMessage>[]>(() =>

@@ -3,13 +3,26 @@
  */
 
 import { Hono } from 'hono';
+import { v } from 'convex/values';
 import type Redis from 'ioredis';
 import type { MtaConfig } from '../config.js';
 import type { RouteMode } from '../inbound/router.js';
 import * as router from '../inbound/router.js';
 import { masterKeyAuth } from '../auth/masterKeyAuth.js';
+import { readJsonBody } from '../lib/jsonBody.js';
 
 const VALID_MODES: RouteMode[] = ['endpoint', 'accept', 'hold', 'bounce', 'reject'];
+
+const isRouteMode = (mode: string): mode is RouteMode => (VALID_MODES as string[]).includes(mode);
+
+const routeBody = v.object({
+	domain: v.string(),
+	address: v.string(),
+	// Membership is checked below, with its own message.
+	mode: v.string(),
+	endpointUrl: v.optional(v.string()),
+	organizationId: v.optional(v.string()),
+});
 
 export function createInboundRoutes(redis: Redis, config: MtaConfig) {
 	const app = new Hono();
@@ -19,30 +32,27 @@ export function createInboundRoutes(redis: Redis, config: MtaConfig) {
 
 	// Create or update route
 	app.post('/', async (c) => {
-		const body = await c.req.json<{
-			domain: string;
-			address: string;
-			mode: RouteMode;
-			endpointUrl?: string;
-			organizationId?: string;
-		}>();
+		const read = await readJsonBody(c, routeBody);
+		if (!read.ok) return read.response;
+		const body = read.value;
 
 		if (!body.domain || !body.address || !body.mode) {
 			return c.json({ error: 'domain, address, and mode are required' }, 400);
 		}
 
-		if (!VALID_MODES.includes(body.mode)) {
+		const { mode } = body;
+		if (!isRouteMode(mode)) {
 			return c.json({ error: `mode must be one of: ${VALID_MODES.join(', ')}` }, 400);
 		}
 
-		if (body.mode === 'endpoint' && !body.endpointUrl) {
+		if (mode === 'endpoint' && !body.endpointUrl) {
 			return c.json({ error: 'endpointUrl is required for endpoint mode' }, 400);
 		}
 
 		const route = await router.createRoute(redis, {
 			domain: body.domain,
 			address: body.address,
-			mode: body.mode,
+			mode,
 			endpointUrl: body.endpointUrl,
 			organizationId: body.organizationId,
 		});

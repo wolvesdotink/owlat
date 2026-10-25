@@ -13,7 +13,8 @@ import { usePostboxFollowUp } from '~/composables/postbox/usePostboxFollowUp';
 import { usePostboxOriginalEml } from '~/composables/postbox/usePostboxOriginalEml';
 import { usePostboxSnoozePresets } from '~/composables/postbox/usePostboxSnoozePresets';
 import { useRecordPaletteObjectOpen } from '~/composables/useCommandPaletteObjectRecents';
-import { useCopyToClipboard } from '~/composables/useCopyToClipboard';
+import { useConversationLink } from '~/composables/useConversationLink';
+import type { ConversationLinkTarget } from '~/utils/conversationLink';
 import { followUpPresets } from '~/utils/postboxFollowUpPresets';
 
 /** What the open conversation hands the palette. */
@@ -24,8 +25,12 @@ export interface PostboxThreadCommandSources {
 	messageId: () => string;
 	threadId: () => string | undefined;
 	mailboxId: () => string;
-	/** The route that opens this conversation (for "Copy link" and Jump back). */
+	/** The route that opens this conversation (for Jump back). */
 	href: () => string;
+	/** What "Copy link" and "Share in chat…" point at: the reader's own ⋯ menu target. */
+	link: () => ConversationLinkTarget;
+	/** Opens the reader's "Share in chat…" dialog. */
+	shareInChat: () => void;
 	/** Subject + snippet, for the snooze presets' suggestion. */
 	hintText: () => string;
 	isMuted: () => boolean;
@@ -46,6 +51,8 @@ export interface PostboxThreadCommandSources {
 	toggleAlert: () => void;
 	togglePin: () => void;
 	translate: () => void;
+	/** Opens the reader's find in conversation bar. */
+	find?: () => void;
 }
 
 /**
@@ -62,17 +69,20 @@ const mountedReaders = shallowRef<readonly string[]>([]);
  *
  * Every verb the reader offers is here — reply, archive, snooze ›, forward,
  * mark unread, mute, notify on reply, pin, label ›, move ›, remind me if no reply ›,
- * translate, the original `.eml`, copy link — and each runs THIS reader's own
+ * translate, the original `.eml`, copy link, share in chat — and each runs THIS reader's own
  * action rather than a window-event broadcast to every mounted reader.
  */
-export function usePostboxThreadCommandSurface(sources: PostboxThreadCommandSources): void {
+export function usePostboxThreadCommandSurface(sources: PostboxThreadCommandSources): {
+	/** This reader is the one on top: it answers the palette and the reader-wide shortcuts. */
+	isTopmost: () => boolean;
+} {
 	const { t } = useI18n();
 	const instanceId = useId();
-	const { showToast } = useToast();
 	const followUp = usePostboxFollowUp();
 	const original = usePostboxOriginalEml();
 	const { snoozeOptions } = usePostboxSnoozePresets();
-	const { copy } = useCopyToClipboard();
+	const { copyConversationLink } = useConversationLink();
+	const { isEnabled: isFeatureEnabled } = useFeatureFlag();
 
 	onMounted(() => {
 		mountedReaders.value = [...mountedReaders.value, instanceId];
@@ -80,6 +90,7 @@ export function usePostboxThreadCommandSurface(sources: PostboxThreadCommandSour
 	onBeforeUnmount(() => {
 		mountedReaders.value = mountedReaders.value.filter((id) => id !== instanceId);
 	});
+	const isTopmost = () => mountedReaders.value[mountedReaders.value.length - 1] === instanceId;
 
 	useRecordPaletteObjectOpen(() => {
 		const messageId = sources.messageId();
@@ -92,12 +103,6 @@ export function usePostboxThreadCommandSurface(sources: PostboxThreadCommandSour
 			href: sources.href(),
 		};
 	});
-
-	async function copyLink() {
-		const copied = await copy(`${window.location.origin}${sources.href()}`);
-		if (copied) showToast(t('shared.commandPaletteSurfaces.thread.linkCopied'));
-		else showToast(t('shared.commandPaletteSurfaces.thread.linkCopyFailed'), 'error');
-	}
 
 	function followUpOptions(): PaletteArgumentOption[] {
 		const outboundId = sources.followUp().outboundId;
@@ -115,7 +120,7 @@ export function usePostboxThreadCommandSurface(sources: PostboxThreadCommandSour
 		priority: POSTBOX_THREAD_COMMAND_PROVIDER_PRIORITY,
 		matchRoute: matchPostboxRoute,
 		build: ({ query, mode }) => {
-			if (mountedReaders.value[mountedReaders.value.length - 1] !== instanceId) return [];
+			if (!isTopmost()) return [];
 			return buildThreadSurfaceGroups(
 				{
 					subject: sources.subject,
@@ -158,11 +163,15 @@ export function usePostboxThreadCommandSurface(sources: PostboxThreadCommandSour
 					},
 					onShowOriginal: () => void original.downloadOriginal(sources.messageId()),
 					onTranslate: sources.translate,
-					onCopyLink: () => void copyLink(),
+					onCopyLink: () => void copyConversationLink(sources.link()),
+					canShareInChat: () => isFeatureEnabled('chat'),
+					onShareInChat: sources.shareInChat,
+					onFind: sources.find,
 				},
 				query,
 				mode
 			);
 		},
 	});
+	return { isTopmost };
 }

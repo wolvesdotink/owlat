@@ -32,6 +32,15 @@ export const SURFACE_SHORTCUTS: readonly ShortcutDefinition[] = [
 		...CONVENTION,
 	},
 	{
+		// Send, then the opposite of the "after replying" setting (keep / done).
+		id: 'composer.sendAlternate',
+		scope: 'composer',
+		keys: ['mod+alt+Enter'],
+		labelKey: L('sendAlternate'),
+		groupKey: G.compose,
+		...SURFACE,
+	},
+	{
 		id: 'composer.schedule',
 		scope: 'composer',
 		keys: ['mod+shift+Enter'],
@@ -143,6 +152,53 @@ export const SURFACE_SHORTCUTS: readonly ShortcutDefinition[] = [
 		scope: 'inboxList',
 		keys: ['i'],
 		labelKey: L('assignToMe'),
+		groupKey: G.teamInbox,
+	},
+	// The triage verbs act on the selection when there is one, else on the
+	// focused row.
+	{
+		id: 'inboxList.toggleSelect',
+		scope: 'inboxList',
+		keys: ['x'],
+		labelKey: L('selectDeselect'),
+		groupKey: G.teamInbox,
+	},
+	{
+		id: 'inboxList.extendSelection',
+		scope: 'inboxList',
+		keys: ['J', 'K'],
+		displayKeys: 'shift+j/k',
+		labelKey: L('extendSelection'),
+		groupKey: G.teamInbox,
+		...SURFACE,
+	},
+	{
+		id: 'inboxList.clearSelection',
+		scope: 'inboxList',
+		keys: ['Escape'],
+		labelKey: L('clearSelection'),
+		groupKey: G.teamInbox,
+		...CONVENTION,
+	},
+	{
+		id: 'inboxList.resolve',
+		scope: 'inboxList',
+		keys: ['e'],
+		labelKey: L('resolveThread'),
+		groupKey: G.teamInbox,
+	},
+	{
+		id: 'inboxList.snooze',
+		scope: 'inboxList',
+		keys: ['h'],
+		labelKey: L('snooze'),
+		groupKey: G.teamInbox,
+	},
+	{
+		id: 'inboxList.assign',
+		scope: 'inboxList',
+		keys: ['a'],
+		labelKey: L('assignThread'),
 		groupKey: G.teamInbox,
 	},
 

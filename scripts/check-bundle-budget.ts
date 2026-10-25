@@ -13,8 +13,15 @@
  * (`import()` is a lazy chunk and stays out), and every file is gzipped at level
  * 9. The run fails when the closure's gzip total is over GZIP_BUDGET_KB.
  *
+ * The budget is not raised inside a feature pull request. A feature that
+ * crosses it moves something off the boot path instead (a dynamic `import()`,
+ * a lazy component, a smaller leaf module). An increase happens only in a
+ * pull request of its own that shows the base and head commits, entry
+ * measurements from both built with the same toolchain, what grew and why it
+ * has to load at boot, the alternatives considered, and the headroom left.
  * Lower the budget when a change shrinks the entry for good, so the room it
- * freed cannot be spent silently. Raising it needs a reason in the commit.
+ * freed cannot be spent silently. `report-bundle-delta.ts` shows every pull
+ * request its delta and headroom against the base commit.
  *
  * Pages and lazily loaded features are not budgeted; `report-bundle-closures.ts`
  * reports their closures with the same rules (scripts/bundle-closure.ts).
@@ -27,61 +34,51 @@ import { kb, measure, readWebBuild, staticClosure } from './bundle-closure';
 /**
  * Gzip budget for the entry closure, in KiB (1024 bytes).
  *
- * First set from this script's own reading, 230.7 KB, after the boot-path items
- * of the performance plan (1.7, 2.7, A8-A10) landed, plus about 5% headroom
- * (242). Raised on 2026-10-03 the same way, from 241.8 KB plus about 5%: the
- * entry had grown to within 0.2 KB of the old budget as features landed, so
- * the next eager addition would have failed.
- *
- * Raised to 256 on 2026-10-22 from 254.1 KB: every icon the app names is
- * bundled into this closure on purpose (nuxt.config.ts `icon.clientBundle`, so
- * an offline desktop never fetches one), and each new lazy chunk adds an entry
- * to the entry's preload map, so features that add icons or pages grow it by a
- * few hundred bytes with nothing turning eager. 2 KB of headroom covers that
- * drift while a feature imported eagerly (several KB at least) still fails.
- *
- * Raised to 258 on 2026-10-24 from 256.0 KB, by the same rule: main had grown to
- * 255.6 KB, and the pane error boundaries add about 0.4 KB that has to load at
- * boot. The global error handler must show its toast even when a lazy chunk
- * fails to load, and the page outlet wraps every page. The boundary component
- * itself stays in the dashboard layout's lazy chunk.
- *
- * Raised to 260 on 2026-10-24 from 258.0 KB, by the same rule: the features
- * merged since had spent the whole 2 KB of drift, and the next new lazy chunk
- * (the shared message-recall helpers of Chat and the Assistant) put one more
- * line in the preload map, about 17 bytes gzip, with nothing turning eager.
+ * The entry measured 231.9 KiB when this was set, so it leaves about 18 KiB of
+ * headroom. The headroom is deliberate: every icon the app names is bundled
+ * into this closure (nuxt.config.ts `icon.clientBundle`, so an offline desktop
+ * never fetches one), and every new lazy chunk adds a line to the entry's
+ * preload map, so features grow it by a few hundred bytes with nothing turning
+ * eager. A budget a kilobyte or two above the measured size turns that drift
+ * into a failure in whichever unrelated pull request comes next. Keep at least
+ * 12 KiB of room when lowering it.
  */
-const GZIP_BUDGET_KB = 260;
+export const GZIP_BUDGET_KB = 250;
 
-const { publicDir, entry } = readWebBuild('check-bundle-budget', process.argv[2]);
+if (import.meta.main) checkEntryBudget(process.argv[2]);
 
-const rows = staticClosure(publicDir, entry)
-	.map((file) => measure(publicDir, file))
-	.sort((a, b) => b.gz - a.gz);
+function checkEntryBudget(outputArg: string | undefined): void {
+	const { publicDir, entry } = readWebBuild('check-bundle-budget', outputArg);
 
-const rawTotal = rows.reduce((sum, row) => sum + row.raw, 0);
-const gzTotal = rows.reduce((sum, row) => sum + row.gz, 0);
-const budget = GZIP_BUDGET_KB * 1024;
+	const rows = staticClosure(publicDir, entry)
+		.map((file) => measure(publicDir, file))
+		.sort((a, b) => b.gz - a.gz);
 
-console.info(
-	`Entry ${entry}: ${rows.length} file${rows.length === 1 ? '' : 's'}, ${kb(rawTotal)} KB raw, ${kb(gzTotal)} KB gzip`
-);
-console.info('Largest files (gzip):');
-for (const row of rows.slice(0, 10)) {
-	console.info(`  ${kb(row.gz).padStart(7)} KB  ${row.file}`);
-}
+	const rawTotal = rows.reduce((sum, row) => sum + row.raw, 0);
+	const gzTotal = rows.reduce((sum, row) => sum + row.gz, 0);
+	const budget = GZIP_BUDGET_KB * 1024;
 
-if (gzTotal > budget) {
-	console.error(
-		`\nThe entry closure is ${kb(gzTotal)} KB gzip, over the ${GZIP_BUDGET_KB} KB budget ` +
-			`by ${kb(gzTotal - budget)} KB.\n` +
-			'Something the boot path imports statically grew or became eager. Load it with a dynamic ' +
-			'import() or defineAsyncComponent, or raise GZIP_BUDGET_KB in scripts/check-bundle-budget.ts ' +
-			'with a reason in the commit.'
+	console.info(
+		`Entry ${entry}: ${rows.length} file${rows.length === 1 ? '' : 's'}, ${kb(rawTotal)} KB raw, ${kb(gzTotal)} KB gzip`
 	);
-	process.exit(1);
-}
+	console.info('Largest files (gzip):');
+	for (const row of rows.slice(0, 10)) {
+		console.info(`  ${kb(row.gz).padStart(7)} KB  ${row.file}`);
+	}
 
-console.info(
-	`\nWithin the ${GZIP_BUDGET_KB} KB gzip budget (${kb(budget - gzTotal)} KB to spare).`
-);
+	if (gzTotal > budget) {
+		console.error(
+			`\nThe entry closure is ${kb(gzTotal)} KB gzip, over the ${GZIP_BUDGET_KB} KB budget ` +
+				`by ${kb(gzTotal - budget)} KB.\n` +
+				'Something the boot path imports statically grew or became eager. Load it with a dynamic ' +
+				'import() or defineAsyncComponent, or move what boot needs into a smaller leaf module. ' +
+				'Do not raise GZIP_BUDGET_KB in a feature pull request: an increase needs a dedicated pull ' +
+				'request with base and head measurements (see the comment in scripts/check-bundle-budget.ts).'
+		);
+		process.exit(1);
+	}
+
+	console.info(
+		`\nWithin the ${GZIP_BUDGET_KB} KB gzip budget (${kb(budget - gzTotal)} KB to spare).`
+	);
+}

@@ -6,8 +6,11 @@ import {
 	teamThreadStatus,
 	type ConversationStatus,
 } from '~/utils/conversationStatus';
+import type { Id } from '@owlat/api/dataModel';
+import type { ContextMenuItem } from '@owlat/ui/components/ui/ContextMenu.vue';
 import type { SidebarThreadSort } from '~/composables/useShellSidebarPrefs';
 import { teamThreadHasDraft, useComposerDrafts } from '~/composables/useComposerDrafts';
+import { usePostboxTriageUndo } from '~/composables/postbox/usePostboxTriageUndo';
 
 /**
  * The team inbox (the agent's shared inbound) as one more group in the
@@ -40,6 +43,9 @@ const rows = computed(() => {
 		lastMessageAt: thread.lastMessageAt,
 		unread: thread.unread,
 		status: teamThreadStatus(thread),
+		threadId: thread._id,
+		threadStatus: thread.status,
+		assignedTo: thread.assignedTo ?? undefined,
 	}));
 	if (props.sort === 'recent') threads.sort((a, b) => b.lastMessageAt - a.lastMessageAt);
 	else {
@@ -58,6 +64,63 @@ const groupStatus = computed(() =>
 		...rows.value.map((r) => r.status),
 	])
 );
+// ── The row menu's verbs: the Team Inbox's own, each undoable like on the list ──
+type Row = (typeof rows.value)[number];
+const { user } = useAuth();
+const undo = usePostboxTriageUndo();
+const { run: assignThread } = useBackendOperation(api.inbox.mutations.assignThread, {
+	label: () => t('dashboard.inbox.index.assignThreadOperation'),
+});
+const { run: updateThreadStatus } = useBackendOperation(api.inbox.mutations.updateThreadStatus, {
+	label: () => t('dashboard.inbox.index.updateThreadStatusOperation'),
+});
+
+async function assignToMe(threadId: Id<'conversationThreads'>, previous: string | undefined) {
+	const me = user.value?.id;
+	if (!me || previous === me) return;
+	if (!(await assignThread({ threadId, assignedTo: me })).ok) return;
+	undo.register({
+		label: t('dashboard.inbox.index.undo.assignedToYou'),
+		inverse: async () => {
+			await assignThread({ threadId, assignedTo: previous });
+		},
+	});
+}
+
+async function resolve(threadId: Id<'conversationThreads'>, previous: Row['threadStatus']) {
+	if (previous === 'resolved') return;
+	if (!(await updateThreadStatus({ threadId, status: 'resolved' })).ok) return;
+	undo.register({
+		label: t('dashboard.inbox.index.undo.resolved'),
+		inverse: async () => {
+			await updateThreadStatus({ threadId, status: previous });
+		},
+	});
+}
+
+/** Captured when the menu opens, so the undo restores what the row showed then. */
+function menuFor(row: Row) {
+	return (): ContextMenuItem[] => {
+		const { threadId, assignedTo, threadStatus } = row;
+		return [
+			{
+				id: 'assign-to-me',
+				label: t('components.inbox.rowMenu.assignToMe'),
+				icon: 'lucide:user-check',
+				disabled: !user.value?.id || assignedTo === user.value.id,
+				run: () => void assignToMe(threadId, assignedTo),
+			},
+			{
+				id: 'resolve',
+				label: t('components.inbox.inboxThreadRow.resolve'),
+				icon: 'lucide:check-circle',
+				disabled: threadStatus === 'resolved',
+				run: () => void resolve(threadId, threadStatus),
+			},
+		];
+	};
+}
+
 const activeThreadId = computed(
 	() => /^\/dashboard\/inbox\/([^/?#]+)/.exec(route.path)?.[1] ?? null
 );
@@ -108,6 +171,7 @@ const activeThreadId = computed(
 				:is-unread="row.unread"
 				:is-active="activeThreadId === row.id"
 				:has-draft="teamThreadHasDraft(drafts, row.id)"
+				:menu-items="menuFor(row)"
 				indented
 			/>
 			<NuxtLink
