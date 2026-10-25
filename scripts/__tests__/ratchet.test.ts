@@ -1,11 +1,12 @@
 /**
  * The shared ratchet runner's own gate.
  *
- * scripts/ratchet.sh is now the single comparison behind eight baselines, so a
- * mistake in it is a mistake in all eight at once — and every mistake a ratchet
- * can make is silent: a runner that ignores a new entry, or that quietly treats
- * a failed generator as "everything got fixed", is indistinguishable from
- * `exit 0`. Each rule is therefore proved by a pair, green beside red.
+ * scripts/ratchet.sh is the single comparison behind most of the repo's
+ * ratchets, so a mistake in it is a mistake in all of them at once — and every
+ * mistake a ratchet can make is silent: a runner that ignores a new entry, or
+ * that quietly treats a failed generator as "everything got fixed", is
+ * indistinguishable from `exit 0`. Each rule is therefore proved by a pair,
+ * green beside red.
  */
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
