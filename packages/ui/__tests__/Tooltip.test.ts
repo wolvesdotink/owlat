@@ -98,6 +98,60 @@ describe('UiTooltip', () => {
 		expect(button('other').getAttribute('aria-describedby')).toBe('hint');
 	});
 
+	it('describes a control whose name it repeats when it also shows a shortcut prop', async () => {
+		mountTooltips([['a', 'Archive', { 'aria-label': 'Archive' }]], { shortcut: 'E' });
+		button('a').focus();
+		await nextTick();
+		expect(tooltip()?.textContent).toBe('ArchiveE');
+		expect(button('a').getAttribute('aria-describedby')).toBe(tooltip()!.id);
+	});
+
+	it('describes a control whose name it repeats only while its #shortcut slot renders a key', async () => {
+		const key = ref<string | null>('E');
+		wrapper = mount(
+			defineComponent({
+				setup: () => () =>
+					h(
+						Tooltip,
+						{ text: 'Resolve' },
+						{
+							default: () => h('button', { id: 'a' }, 'Resolve'),
+							shortcut: () => (key.value ? h('kbd', key.value) : null),
+						}
+					),
+			}),
+			{ attachTo: document.body }
+		);
+		button('a').focus();
+		await nextTick();
+		expect(tooltip()?.textContent).toBe('ResolveE');
+		expect(button('a').getAttribute('aria-describedby')).toBe(tooltip()!.id);
+
+		// The chip goes away while open: the tooltip only repeats the name now.
+		key.value = null;
+		await nextTick();
+		await Promise.resolve();
+		expect(tooltip()?.textContent).toBe('Resolve');
+		expect(button('a').hasAttribute('aria-describedby')).toBe(false);
+
+		key.value = 'E';
+		await nextTick();
+		await Promise.resolve();
+		expect(button('a').getAttribute('aria-describedby')).toBe(tooltip()!.id);
+
+		button('a').blur();
+		await nextTick();
+		expect(button('a').hasAttribute('aria-describedby')).toBe(false);
+
+		// Opened with an empty chip, it starts out undescribed.
+		key.value = null;
+		await nextTick();
+		button('a').focus();
+		await nextTick();
+		expect(tooltip()?.textContent).toBe('Resolve');
+		expect(button('a').hasAttribute('aria-describedby')).toBe(false);
+	});
+
 	it('opens at once on keyboard focus and closes on blur', async () => {
 		mountTooltips([['a', 'Archive']]);
 		button('a').focus();

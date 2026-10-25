@@ -93,6 +93,7 @@ export default defineComponent({
 		let triggerVNode: VNode | null = null;
 		let trigger: HTMLElement | null = null;
 		let host: HTMLElement | null = null;
+		let observer: MutationObserver | null = null;
 		let openTimer: ReturnType<typeof setTimeout> | undefined;
 		let closeTimer: ReturnType<typeof setTimeout> | undefined;
 		let hovering = false;
@@ -100,9 +101,11 @@ export default defineComponent({
 		// A press (or an Escape) hides the tooltip until the pointer leaves or
 		// focus moves on, so clicking a control does not bring its label back.
 		let suppressed = false;
-		// The element the open tooltip describes, with its own aria-describedby
-		// to restore: the control, or the part of a composite control (a
-		// segment, a tab) that keyboard focus is on.
+		// The element the open tooltip is for: the control, or the part of a
+		// composite control (a segment, a tab) that keyboard focus is on.
+		let target: Element | null = null;
+		// That element while the tooltip describes it, with its own
+		// aria-describedby to restore.
 		let described: { element: Element; value: string | null } | null = null;
 
 		const owner = { close: () => hide() };
@@ -116,14 +119,14 @@ export default defineComponent({
 			clearTimeout(closeTimer);
 		}
 
-		function show(target: Element | null = trigger) {
+		function show(element: Element | null = trigger) {
 			clearTimers();
 			if (!hasContent() || !trigger || open.value) return;
 			claimTooltip(owner);
 			position.value = null;
 			open.value = true;
 			mountBubble();
-			linkDescription(target ?? trigger);
+			linkDescription(element ?? trigger);
 			// Only while open: a page holds hundreds of closed tooltips.
 			window.addEventListener('scroll', onViewportChange, { capture: true, passive: true });
 			window.addEventListener('resize', onViewportChange, { passive: true });
@@ -158,26 +161,49 @@ export default defineComponent({
 		}
 
 		/**
-		 * The tooltip describes the focused element while it is open. Not when it
-		 * only repeats that element's name (its aria-label, else its text):
-		 * "Archive, button, Archive" helps nobody.
+		 * Whether the open tooltip says more than the element's own name (its
+		 * aria-label, else its text). One that only repeats it is not linked:
+		 * "Archive, button, Archive" helps nobody. A `#content` slot or a
+		 * shortcut that renders a key always adds something, so it is read
+		 * from the mounted bubble (a `#shortcut` slot can render nothing).
 		 */
-		function linkDescription(element: Element) {
+		function addsInformation(element: Element): boolean {
+			if (slots['content']) return true;
+			const shortcut = bubble.value?.querySelector('.ui-tooltip-shortcut');
+			if (shortcut?.textContent?.trim()) return true;
 			const name = (element.getAttribute('aria-label') ?? element.textContent ?? '')
 				.replace(/\s+/g, ' ')
 				.trim();
-			if (!slots['content'] && name && name === props.text?.trim()) return;
+			return !name || name !== props.text?.trim();
+		}
+
+		/** The tooltip describes the element it is open for, while it is open. */
+		function linkDescription(element: Element) {
+			target = element;
+			if (!addsInformation(element)) return;
 			const current = element.getAttribute('aria-describedby');
 			described = { element, value: current };
 			element.setAttribute('aria-describedby', current ? `${current} ${id}` : id);
 		}
 
 		function unlinkDescription() {
+			target = null;
 			if (!described) return;
 			const { element, value } = described;
 			if (value === null) element.removeAttribute('aria-describedby');
 			else element.setAttribute('aria-describedby', value);
 			described = null;
+		}
+
+		// The bubble's content can change while it is open and gain or lose what
+		// it adds to the name (a shortcut chip whose scope became active, which
+		// re-renders only the chip), so the link follows the bubble's DOM.
+		function refreshDescription() {
+			const element = target;
+			if (!open.value || !element) return;
+			if (addsInformation(element) === (described !== null)) return;
+			unlinkDescription();
+			linkDescription(element);
 		}
 
 		function place() {
@@ -219,16 +245,16 @@ export default defineComponent({
 		// the control's root.
 		function onFocusIn(event: FocusEvent) {
 			focused = true;
-			const target = event.target instanceof Element ? event.target : trigger;
-			if (suppressed || !trigger || !target || !focusVisible(target)) return;
+			const focusedPart = event.target instanceof Element ? event.target : trigger;
+			if (suppressed || !trigger || !focusedPart || !focusVisible(focusedPart)) return;
 			if (!open.value) {
-				show(target);
+				show(focusedPart);
 				return;
 			}
 			// Arrow keys moving between the parts of an open composite control.
-			if (described?.element === target) return;
+			if (focusedPart === target) return;
 			unlinkDescription();
-			linkDescription(target);
+			linkDescription(focusedPart);
 		}
 
 		function onFocusOut(event: FocusEvent) {
@@ -367,9 +393,13 @@ export default defineComponent({
 			// The app's globals (components, i18n) for the slot content.
 			vnode.appContext = appContext;
 			render(vnode, host);
+			observer = new MutationObserver(refreshDescription);
+			observer.observe(host, { childList: true, characterData: true, subtree: true });
 		}
 
 		function unmountBubble() {
+			observer?.disconnect();
+			observer = null;
 			if (!host) return;
 			render(null, host);
 			host.remove();
