@@ -74,3 +74,10 @@ convex/contacts/sunsetSweepDecision.ts
 # shells. The seal policy is the consent rule they share with the composer.
 convex/mail/outbound/decision.ts
 convex/mail/sealPolicy.ts
+
+# Inbound receive decisions; the mutation (inbox/messages.ts) is the shell.
+# The envelope helpers they read are pure too.
+convex/inbox/receiveDecision.ts
+convex/lib/emailAddress.ts
+convex/lib/inboundClassification.ts
+convex/lib/textPreview.ts
