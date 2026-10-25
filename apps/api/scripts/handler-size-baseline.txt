@@ -10,5 +10,5 @@ convex/delivery/rampControllerCron.ts:runRampController 318
 convex/delivery/sendCompletion.ts:applyCompletion 228
 convex/delivery/statusActions.ts:sendTest 182
 convex/mail/delivery.ts:deliverToMailbox 204
-convex/seedAdminHttp.ts:seedAdmin 203
+convex/seedAdminHttp.ts:seedAdmin 189
 convex/semanticFileProcessing.ts:processFile 243
