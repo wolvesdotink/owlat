@@ -62,3 +62,9 @@ convex/inbox/processingLifecycle
 
 # Sending-domain lifecycle reducer.
 convex/domains/lifecycleReducer.ts
+
+# Sunset sweep: the per-contact verdict and the batch's own decisions; the
+# sweep (contacts/sunsetSweep.ts) and engine (contacts/sunsetEngine.ts) are
+# the shells around them.
+convex/contacts/sunsetPolicy.ts
+convex/contacts/sunsetSweepDecision.ts
