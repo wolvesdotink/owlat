@@ -7,20 +7,19 @@ import { restoreCampaign, softDeleteCampaign } from './deletion';
 import { listResources } from '../lib/listing';
 import { campaignListing } from './listing';
 import { buildSearchableText } from '../lib/queryHelpers';
-import { validateStringLength, STRING_LIMITS } from '../lib/inputGuards';
+import { validateStringLength, STRING_LIMITS, sanitizeEmailHeaderValue } from '../lib/inputGuards';
 import { trackEvent } from '../lib/posthogHelpers';
 import { recordAuditLog } from '../lib/auditLog';
 import { recordListingCounter } from '../lib/listingCounters';
-import { getOrThrow } from '../_utils/errors';
+import { getOrThrow, throwForbidden } from '../_utils/errors';
 import { campaignStatusValidator } from '../lib/convexValidators';
 import { audienceValidator } from './audience';
-import { requireDraftCampaign } from './guards';
 import {
-	assertAudienceTarget,
-	campaignBasicsPatch,
-	campaignContentFields,
-	type CampaignBasicsPatch,
-} from './draftFields';
+	seedDefaultSenderIfNeeded,
+	isCampaignSenderAllowed,
+	senderNotAllowedMessage,
+} from './senders';
+import { requireDraftCampaign } from './guards';
 
 // Query to get campaign with related data (template, topic, segment)
 export const getWithRelations = campaignsQuery({
@@ -62,21 +61,60 @@ export const updateBasics = campaignsMutation({
 		archiveEnabled: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args) => {
+		// Validate input lengths
+		if (args.name) validateStringLength(args.name, STRING_LIMITS.NAME, 'Name');
+
 		// authz: requireDraftCampaign enforces campaigns:manage
 		const { campaign } = await requireDraftCampaign(ctx, args.campaignId, 'edit campaigns');
 
-		const { campaignId: _campaignId, ...fields } = args;
-		const updates: CampaignBasicsPatch & { searchableText?: string; updatedAt: number } = {
-			...(await campaignBasicsPatch(ctx, fields)),
-			updatedAt: Date.now(),
-		};
+		const updates: {
+			name?: string;
+			fromName?: string;
+			fromEmail?: string;
+			replyTo?: string;
+			archiveEnabled?: boolean;
+			searchableText?: string;
+			updatedAt: number;
+		} = { updatedAt: Date.now() };
+
+		if (args.name !== undefined) {
+			updates.name = args.name.trim();
+		}
+
+		if (args.fromName !== undefined) {
+			updates.fromName = sanitizeEmailHeaderValue(args.fromName);
+		}
+
+		if (args.fromEmail !== undefined) {
+			const fromEmail = args.fromEmail.trim();
+			updates.fromEmail = fromEmail;
+			if (fromEmail) {
+				// Self-heal an upgraded deployment (empty curated list) so the org's own
+				// default address stays usable, then enforce the curated-sender gate so
+				// there is no way to persist an off-list address from the API — the
+				// wizard offers only on-list senders (or a custom one when the toggle is
+				// on). The verified-domain floor is enforced separately at send time
+				// (preflight / testSend), keeping its dedicated "domain not verified" copy.
+				await seedDefaultSenderIfNeeded(ctx);
+				if (!(await isCampaignSenderAllowed(ctx, fromEmail))) {
+					throwForbidden(senderNotAllowedMessage(fromEmail));
+				}
+			}
+		}
+
+		if (args.replyTo !== undefined) {
+			updates.replyTo = sanitizeEmailHeaderValue(args.replyTo);
+		}
+
+		if (args.archiveEnabled !== undefined) {
+			updates.archiveEnabled = args.archiveEnabled;
+		}
 
 		// Update searchableText if name changed
 		if (args.name !== undefined) {
-			updates.searchableText = buildSearchableText(
-				updates.name ?? campaign.name,
-				campaign.subject ?? ''
-			);
+			const newName = updates.name ?? campaign.name;
+			const newSubject = campaign.subject ?? '';
+			updates.searchableText = buildSearchableText(newName, newSubject);
 		}
 
 		await ctx.db.patch(args.campaignId, updates);
@@ -98,7 +136,9 @@ export const updateAudience = campaignsMutation({
 
 		// Validate the referenced segment exists (parity with the old
 		// behaviour, which loaded the segment to snapshot its filters).
-		await assertAudienceTarget(ctx, args.audience);
+		if (args.audience.kind === 'segment') {
+			await getOrThrow(ctx, args.audience.segmentId, 'Segment');
+		}
 
 		await ctx.db.patch(args.campaignId, {
 			audience: args.audience,
@@ -117,18 +157,22 @@ export const updateContent = campaignsMutation({
 		subject: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
+		// Validate input lengths
+		if (args.subject) validateStringLength(args.subject, STRING_LIMITS.SUBJECT, 'Subject');
+
 		// authz: requireDraftCampaign enforces campaigns:manage
 		const { campaign } = await requireDraftCampaign(ctx, args.campaignId, 'edit campaign content');
 
 		// Verify template exists (and is not in Recently deleted)
-		const content = await campaignContentFields(ctx, args);
+		await getLiveOrThrow(ctx, args.emailTemplateId, 'Email template');
 
 		// Update searchableText if subject changed
-		const newSubject = content.subject ?? campaign.subject ?? '';
+		const newSubject = args.subject?.trim() ?? campaign.subject ?? '';
 		const searchableText = buildSearchableText(campaign.name, newSubject);
 
 		await ctx.db.patch(args.campaignId, {
-			...content,
+			emailTemplateId: args.emailTemplateId,
+			subject: args.subject?.trim(),
 			searchableText,
 			updatedAt: Date.now(),
 		});

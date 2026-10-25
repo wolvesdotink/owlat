@@ -1,4 +1,4 @@
-import { ref, computed, nextTick, watch, type Ref } from 'vue';
+import { ref, computed, getCurrentScope, nextTick, onScopeDispose, watch, type Ref } from 'vue';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { SenderPickerHandle } from '~/utils/campaignSenderPicker';
@@ -6,7 +6,6 @@ import type { useCampaignABTest } from './useCampaignABTest';
 import { useCampaignActions } from './useCampaignActions';
 import { useCampaignAudience } from './useCampaignAudience';
 import { useEditorDirtyTracking } from './useEditorDirtyTracking';
-import { SCHEDULE_FIELD, useCampaignDraftAutosave } from './useCampaignDraftAutosave';
 
 type ABTest = ReturnType<typeof useCampaignABTest>;
 
@@ -24,9 +23,11 @@ export interface CampaignFormErrors {
  * Delegates action handlers to useCampaignActions and
  * test-email sending to the CampaignsTestEmailModal component. The recipients
  * come from useCampaignAudience and the From from the wizard's sender picker,
- * whose `validate()` guards the save before Send and Schedule (`senderPicker`
- * is its template ref). A draft saves itself as it is edited
- * (useCampaignDraftAutosave); Send and Schedule stay explicit.
+ * whose `validate()` guards every save (`senderPicker` is its template ref).
+ *
+ * Save draft stores the form's fields; the send-time choices (date, time,
+ * delivery) are stored only by a completed Schedule, so leaving keeps asking
+ * about them after a Save draft.
  */
 export function useCampaignForm(
 	campaignId: Ref<Id<'campaigns'>>,
@@ -74,8 +75,14 @@ export function useCampaignForm(
 
 	// ─── Mutations (for save) ───────────────────────────────────────────
 
-	const { run: saveDraft } = useBackendOperation(api.campaigns.drafts.saveDraft, {
-		label: () => t('shared.useCampaignForm.operations.saveDraft'),
+	const { run: updateBasics } = useBackendOperation(api.campaigns.campaigns.updateBasics, {
+		label: () => t('shared.useCampaignForm.operations.updateBasics'),
+	});
+	const { run: updateAudience } = useBackendOperation(api.campaigns.campaigns.updateAudience, {
+		label: () => t('shared.useCampaignForm.operations.updateAudience'),
+	});
+	const { run: updateContent } = useBackendOperation(api.campaigns.campaigns.updateContent, {
+		label: () => t('shared.useCampaignForm.operations.updateContent'),
 	});
 
 	// ─── Validation ─────────────────────────────────────────────────────
@@ -113,21 +120,36 @@ export function useCampaignForm(
 
 	// ─── Field Save (used by actions) ───────────────────────────────────
 
-	// The validated form on the server before Send and Schedule. Returns
-	// whether it landed so useCampaignActions can abort the rest of the
-	// sequence; a failure is toasted. A draft saves what is pending through
-	// its session's queue (what the server holds already needs no write).
-	// Otherwise the whole form goes in one write, with a complete A/B test
-	// (the per-section enable that follows cannot change the setup of a test
-	// that is already on).
+	// Returns whether every field-save mutation succeeded so multi-step callers
+	// (useCampaignActions) can abort the rest of the sequence on failure. Each
+	// `run` self-toasts its categorized error and resolves to `undefined`.
 	const handleSaveFields = async (): Promise<boolean> => {
+		const basicsResult = await updateBasics({
+			campaignId: campaignId.value,
+			name: campaignName.value.trim(),
+			fromName: fromName.value.trim() || undefined,
+			fromEmail: fromEmail.value.trim(),
+			replyTo: replyTo.value.trim() || undefined,
+			archiveEnabled: archiveEnabled.value,
+		});
+		if (!basicsResult.ok) return false;
+
 		if (!audience.value) {
 			errors.value.audience = t('shared.useCampaignForm.errors.audienceRequired');
 			return false;
 		}
-		if (isDraft.value) return drafts.saveBeforeAction();
-		const result = await saveDraft({ campaignId: campaignId.value, ...drafts.payload() });
-		return result.ok;
+		const audienceResult = await updateAudience({
+			campaignId: campaignId.value,
+			audience: audience.value,
+		});
+		if (!audienceResult.ok) return false;
+
+		const contentResult = await updateContent({
+			campaignId: campaignId.value,
+			emailTemplateId: selectedTemplateId.value!,
+			subject: campaignSubject.value.trim(),
+		});
+		return contentResult.ok;
 	};
 
 	// ─── Computed Properties ────────────────────────────────────────────
@@ -156,10 +178,10 @@ export function useCampaignForm(
 
 	// ─── Unsaved-changes Guard ──────────────────────────────────────────
 
-	// Reuses the shared composable + dialog. A draft's session decides leaving
-	// itself (what is at risk, the prompt, its Save). Otherwise `onSave` runs
-	// the explicit save once the user confirms "Save"; it throws on a failed
-	// save so the user stays on the page.
+	// Reuses the shared composable + dialog. `onSave` closes over `actions`
+	// (assigned below) and only runs after the user confirms "Save", by which
+	// point it exists; it throws on a failed save so the user stays on the page.
+	const { showToast } = useToast();
 	const {
 		showDialog: showUnsavedChangesDialog,
 		isSavingBeforeLeave,
@@ -171,13 +193,73 @@ export function useCampaignForm(
 	} = useUnsavedChanges({
 		onSave: async () => {
 			if (!(await actions.handleSave())) throw new Error('Save failed');
+			// The dialog stays open: say why, so Discard is a choice and not a guess.
+			if (scheduleChanged.value) {
+				showToast(t('shared.useCampaignForm.toasts.scheduleNotSaved'), 'warning');
+			}
 		},
-		decisions: () => (isDraft.value ? drafts.autosave.leave : null),
 	});
 
-	// The save-or-discard prompt for opening the linked email from a campaign
-	// that is not a draft (the page's; a draft's goes through its session).
-	const showEditEmailPrompt = ref(false);
+	// Clears the dirty state after a successful save/schedule/send so the route
+	// guard doesn't prompt on the action's own navigation. Bound below once the
+	// dirty tracker exists.
+	let markCleanForm: () => void = () => {};
+
+	// ─── Tracked Fields ─────────────────────────────────────────────────
+
+	// What Save draft stores (and Send and Schedule save first).
+	const formSources = [
+		() => campaignName.value,
+		() => fromName.value,
+		() => fromEmail.value,
+		() => replyTo.value,
+		() => audienceType.value,
+		() => selectedTopicId.value,
+		() => selectedSegmentId.value,
+		() => selectedTemplateId.value,
+		() => campaignSubject.value,
+		() => archiveEnabled.value,
+		() => abTest.abTestEnabled.value,
+		() => abTest.abTestType.value,
+		() => abTest.abVariantBSubject.value,
+		() => abTest.abVariantBTemplateId.value,
+		() => abTest.abSplitPercentage.value,
+		() => abTest.abWinnerCriteria.value,
+		() => abTest.abTestDuration.value,
+	];
+	// The send-time choices, which only a completed Schedule stores. Bound
+	// below once the actions (which own them) exist.
+	let scheduleSources: (() => unknown)[] = [];
+	const serialize = (sources: (() => unknown)[]) => JSON.stringify(sources.map((read) => read()));
+	// The send-time choices as loaded, or as the last completed action left them.
+	const scheduleBaseline = ref<string | null>(null);
+	const scheduleChanged = computed(
+		() => scheduleBaseline.value !== null && serialize(scheduleSources) !== scheduleBaseline.value
+	);
+
+	// Send and Schedule act on what the server holds once their saves landed,
+	// while the form stays editable. What they act on is what the form showed
+	// when they began: this campaign, every field they save and, for
+	// Schedule, its send-time choices. Asked right before the final mutation.
+	let isMounted = true;
+	if (getCurrentScope()) {
+		onScopeDispose(() => {
+			isMounted = false;
+		});
+	}
+	const runFinal = (
+		kind: 'send' | 'schedule',
+		perform: (current: () => boolean) => Promise<boolean>
+	) => {
+		const target = () =>
+			JSON.stringify([
+				campaignId.value,
+				serialize(formSources),
+				kind === 'schedule' ? serialize(scheduleSources) : null,
+			]);
+		const began = target();
+		return perform(() => isMounted && target() === began);
+	};
 
 	// ─── Actions (delegated) ────────────────────────────────────────────
 
@@ -189,15 +271,20 @@ export function useCampaignForm(
 		isScheduled,
 		validateForm,
 		handleSaveFields,
-		// Send and Schedule hold a draft's background saves until they are
-		// done; only a Schedule that completed retires the schedule it took.
-		final: (kind, perform) =>
-			isDraft.value
-				? drafts.autosave.runAction(perform, kind === 'schedule' ? [SCHEDULE_FIELD] : [])
-				: perform(() => true),
-		// After a completed action, so the route guard does not ask on its navigation.
-		onSaved: () => markClean(),
+		final: runFinal,
+		onSaved: (scope) => {
+			markCleanForm();
+			// Save draft leaves the send-time choices as they were stored.
+			if (scope === 'all') scheduleBaseline.value = serialize(scheduleSources);
+		},
 	});
+	scheduleSources = [
+		() => actions.scheduledDate.value,
+		() => actions.scheduledTime.value,
+		() => actions.sendTiming.value.mode,
+		() => actions.sendTiming.value.windowHours,
+		() => actions.sendTiming.value.holdoutPercent,
+	];
 
 	// ─── Form Initialization + Dirty Tracking ───────────────────────────
 
@@ -205,38 +292,8 @@ export function useCampaignForm(
 	// the form dirty on any subsequent field edit. The shared tracker defers its
 	// "initialized" flag by a tick so the initial writes don't count as edits
 	// (no false-positive "unsaved changes" on load).
-	const tracked = [
-		() => campaignName.value,
-		() => fromName.value,
-		() => fromEmail.value,
-		() => replyTo.value,
-		() => audienceType.value,
-		() => selectedTopicId.value,
-		() => selectedSegmentId.value,
-		() => selectedTemplateId.value,
-		() => campaignSubject.value,
-		() => archiveEnabled.value,
-		() => actions.scheduledDate.value,
-		() => actions.scheduledTime.value,
-		() => actions.sendTiming.value.mode,
-		() => actions.sendTiming.value.windowHours,
-		() => actions.sendTiming.value.holdoutPercent,
-		() => abTest.abTestEnabled.value,
-		() => abTest.abTestType.value,
-		() => abTest.abVariantBSubject.value,
-		() => abTest.abVariantBTemplateId.value,
-		() => abTest.abSplitPercentage.value,
-		() => abTest.abWinnerCriteria.value,
-		() => abTest.abTestDuration.value,
-	];
-	// Bound below once the autosave exists: the form as just loaded is what
-	// the server holds.
-	let onFormLoaded: () => void = () => {};
-	const tracker = useEditorDirtyTracking({
+	const { markClean, hasChanges } = useEditorDirtyTracking({
 		source: campaignData,
-		// A draft's form is its autosave session's (below); this tracker loads
-		// it and owns it while the campaign is not a draft.
-		active: () => !isDraft.value,
 		initialize: (campaign) => {
 			if (isFormInitialized.value) return;
 			campaignName.value = campaign.name;
@@ -250,47 +307,17 @@ export function useCampaignForm(
 
 			actions.initializeSchedule(campaign.scheduledAt, campaign);
 			abTest.initializeFromCampaign(campaign);
+			scheduleBaseline.value = serialize(scheduleSources);
 
 			isFormInitialized.value = true;
-			onFormLoaded();
 		},
-		watchSources: tracked,
+		watchSources: formSources,
 	});
-	const { markClean, hasChanges } = tracker;
-
-	// The From picker settles its selection once; a restored sender remounts it.
-	const senderPickerKey = ref(0);
-	const drafts = useCampaignDraftAutosave({
-		campaignId,
-		campaignData,
-		isDraft: () => isDraft.value,
-		tracker,
-		changes: tracked,
-		campaignName,
-		fromName,
-		fromEmail,
-		replyTo,
-		audienceType,
-		selectedTopicId,
-		selectedSegmentId,
-		audience,
-		selectedTemplateId,
-		campaignSubject,
-		archiveEnabled,
-		scheduledDate: actions.scheduledDate,
-		scheduledTime: actions.scheduledTime,
-		sendTiming: actions.sendTiming,
-		abTest,
-		onSenderRestored: () => {
-			senderPickerKey.value += 1;
-		},
+	markCleanForm = markClean;
+	// Leaving asks while the fields or the send-time choices would be lost.
+	watch([hasChanges, scheduleChanged], ([fields, schedule]) => setHasChanges(fields || schedule), {
+		immediate: true,
 	});
-	onFormLoaded = () => drafts.markLoaded();
-	if (isFormInitialized.value) onFormLoaded();
-
-	// Leaving warns about edits that would be lost (a draft's session decides
-	// that itself).
-	watch(hasChanges, (guard) => setHasChanges(guard), { immediate: true });
 
 	// The sender picker settles the loaded From onto its curated row once, and
 	// may write that sender's current name and address (or the default sender
@@ -298,10 +325,6 @@ export function useCampaignForm(
 	// on a form nobody has touched it must not arm the leave guard. The dirty
 	// flag is read before the write's watchers run, then cleared after them.
 	const onSenderPreselected = () => {
-		if (isDraft.value) {
-			if (!drafts.autosave.dirty.value) void nextTick(() => drafts.markSettled());
-			return;
-		}
 		if (hasChanges.value) return;
 		void nextTick(() => markClean());
 	};
@@ -396,13 +419,8 @@ export function useCampaignForm(
 		isSaving: actions.isSaving,
 		saveError: actions.saveError,
 
-		// Autosave (drafts) and the From picker's remount key
-		drafts,
-		senderPickerKey,
-
 		// Unsaved-changes guard
 		showUnsavedChangesDialog,
-		showEditEmailPrompt,
 		isSavingBeforeLeave,
 		hasUnsavedChanges,
 		confirmDiscard,

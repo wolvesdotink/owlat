@@ -6,8 +6,7 @@ import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { getUserIdFromSession, requireOrgPermission } from '../lib/sessionOrganization';
 import { requireDraftCampaign } from './guards';
-import { buildAbTestConfig } from './draftFields';
-import { throwInvalidState } from '../_utils/errors';
+import { throwInvalidState, throwInvalidInput } from '../_utils/errors';
 import { abVariantValidator } from '../lib/literalValidators';
 import { hasClicked, hasOpened, hasReachedDelivered } from '../delivery/sendEngagement';
 import { getLiveOrThrow } from '../lib/softDelete';
@@ -109,8 +108,47 @@ export const enableABTest = campaignsMutation({
 			'A/B testing can only be enabled on draft campaigns'
 		);
 
-		const { campaignId: _campaignId, ...setup } = args;
-		const abTestConfig = await buildAbTestConfig(ctx, setup);
+		// Validate split percentage
+		if (args.splitPercentage < 10 || args.splitPercentage > 50) {
+			throwInvalidInput('Split percentage must be between 10 and 50');
+		}
+
+		// Validate test type requirements
+		if (args.testType === 'subject' && !args.variantBSubject) {
+			throwInvalidInput('Variant B subject is required for subject tests');
+		}
+
+		if (args.testType === 'content' && !args.variantBTemplateId) {
+			throwInvalidInput('Variant B template is required for content tests');
+		}
+
+		// If content test, verify template exists
+		if (args.testType === 'content' && args.variantBTemplateId) {
+			await getLiveOrThrow(ctx, args.variantBTemplateId, 'Variant B template');
+		}
+
+		const abTestConfig: {
+			testType: 'subject' | 'content';
+			splitPercentage: number;
+			winnerCriteria: 'open_rate' | 'click_rate' | 'manual';
+			variantBSubject?: string;
+			variantBTemplateId?: string;
+			testDuration?: number;
+		} = {
+			testType: args.testType,
+			splitPercentage: args.splitPercentage,
+			winnerCriteria: args.winnerCriteria,
+		};
+
+		if (args.testType === 'subject') {
+			abTestConfig.variantBSubject = args.variantBSubject;
+		} else {
+			abTestConfig.variantBTemplateId = args.variantBTemplateId as string;
+		}
+
+		if (args.winnerCriteria !== 'manual' && args.testDuration) {
+			abTestConfig.testDuration = args.testDuration;
+		}
 
 		const outcome = await ctx.runMutation(internal.campaigns.abTestLifecycle.transition, {
 			campaignId: args.campaignId,

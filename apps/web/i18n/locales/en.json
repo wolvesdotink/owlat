@@ -17598,7 +17598,12 @@
 				"zh": "Chinese"
 			},
 			"operations": {
-				"saveDraft": "Save campaign draft"
+				"updateAudience": "Update campaign audience",
+				"updateBasics": "Update campaign basics",
+				"updateContent": "Update campaign content"
+			},
+			"toasts": {
+				"scheduleNotSaved": "Draft saved. The date and delivery options are set only when you press Schedule; leaving now drops them."
 			}
 		},
 		"useChannelInbox": {

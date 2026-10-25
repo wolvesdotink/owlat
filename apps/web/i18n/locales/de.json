@@ -17598,7 +17598,12 @@
 				"zh": "Chinesisch"
 			},
 			"operations": {
-				"saveDraft": "Kampagnenentwurf speichern"
+				"updateAudience": "Kampagnen-Zielgruppe aktualisieren",
+				"updateBasics": "Kampagnen-Basisdaten aktualisieren",
+				"updateContent": "Kampagneninhalt aktualisieren"
+			},
+			"toasts": {
+				"scheduleNotSaved": "Entwurf gespeichert. Datum und Zustellungsoptionen werden erst gesetzt, wenn du auf „Planen“ drückst; verlässt du die Seite jetzt, gehen sie verloren."
 			}
 		},
 		"useChannelInbox": {

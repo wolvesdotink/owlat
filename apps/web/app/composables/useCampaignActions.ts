@@ -26,14 +26,15 @@ export interface CampaignActionsOptions {
 	/**
 	 * Called once a successful save/schedule/send has persisted the form, right
 	 * before any navigation away. Lets the caller clear its unsaved-changes flag
-	 * so the route guard doesn't prompt after a successful action.
+	 * so the route guard doesn't prompt after a successful action. `'form'`
+	 * after Save, which stores no send-time choice; `'all'` after Send,
+	 * Schedule or Cancel.
 	 */
-	onSaved?: () => void;
+	onSaved?: (scope: 'form' | 'all') => void;
 	/**
-	 * Run Send or Schedule (`perform`, resolving whether it completed) as one
-	 * final action: a draft holds its background saves until it is done.
-	 * `current()` says whether the form still shows what the server holds; it
-	 * is asked right before the final mutation.
+	 * Run Send or Schedule (`perform`, resolving whether it completed).
+	 * `current()` says whether the form still shows what the action began
+	 * with; it is asked right before the final mutation, with no await between.
 	 */
 	final?: (
 		kind: 'send' | 'schedule',
@@ -178,7 +179,7 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 		try {
 			if (!(await saveForm())) return false;
 			showToast(t('shared.useCampaignActions.toasts.saved'));
-			onSaved?.();
+			onSaved?.('form');
 			return true;
 		} finally {
 			isSaving.value = false;
@@ -232,7 +233,7 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 			});
 			if (!sent) return;
 
-			onSaved?.();
+			onSaved?.('all');
 			// Straight to the report: it is where the undo toast lives and where the
 			// numbers start climbing, which is the point of having pressed send.
 			router.push(`/dashboard/campaigns/${campaignId.value}/report`);
@@ -297,7 +298,7 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 						: t('shared.useCampaignActions.toasts.scheduled')
 			);
 
-			onSaved?.();
+			onSaved?.('all');
 			setTimeout(() => {
 				router.push('/dashboard/campaigns');
 			}, 1500);
@@ -354,7 +355,7 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 
 			showToast(t('shared.useCampaignActions.toasts.cancelled'));
 
-			onSaved?.();
+			onSaved?.('all');
 			setTimeout(() => {
 				router.push('/dashboard/campaigns');
 			}, 1500);
