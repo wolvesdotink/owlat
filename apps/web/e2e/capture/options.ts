@@ -130,14 +130,41 @@ export interface PlannedShot {
 	readonly file: string;
 }
 
+/** C0 controls and DEL; the URL parser drops tabs and newlines inside a route. */
+function hasControlCharacter(text: string): boolean {
+	for (let index = 0; index < text.length; index++) {
+		const code = text.charCodeAt(index);
+		if (code < 0x20 || code === 0x7f) return true;
+	}
+	return false;
+}
+
 /**
- * A `--path` route becomes the shot `path-<slug>`. Only same-origin app paths
- * are accepted: the browser is signed in as the seeded owner, and the capture
- * never navigates anywhere but the local app.
+ * The absolute URL of an app route, or null unless it stays on the app's
+ * origin: the browser is signed in as the seeded owner, and a capture of any
+ * other site must never pass for evidence of this app. The origin is checked
+ * on the URL as the browser resolves it, because the parser rewrites a route
+ * first (`/\t/example.com` becomes `//example.com`, another host). A
+ * backslash is refused outright, since browsers read it as a slash.
  */
+export function appRouteUrl(route: string, appUrl: string): URL | null {
+	if (!route.startsWith('/') || route.includes('\\') || hasControlCharacter(route)) {
+		return null;
+	}
+	const origin = new URL(appUrl).origin;
+	const url = new URL(route, origin);
+	return url.origin === origin ? url : null;
+}
+
+/** Any origin works: only whether the route keeps it matters. */
+const PLACEHOLDER_ORIGIN = 'http://localhost';
+
+/** A `--path` route becomes the shot `path-<slug>`; see {@link appRouteUrl} for which are accepted. */
 export function pathShotName(path: string): string {
-	if (!path.startsWith('/') || path.startsWith('//') || path.includes('\\')) {
-		throw new CaptureUsageError(`--path must be an app route starting with "/", got "${path}".`);
+	if (!appRouteUrl(path, PLACEHOLDER_ORIGIN)) {
+		throw new CaptureUsageError(
+			`--path must be an app route starting with "/", got ${JSON.stringify(path)}.`
+		);
 	}
 	const slug = path
 		.toLowerCase()
@@ -155,9 +182,9 @@ export function pathShotName(path: string): string {
  * original state. Only this label's files are ever named: the other label's
  * captures in the same directory are never touched.
  *
- * Surfaces run in registry order, whatever order the flags name them in. Some
- * surfaces change what they show (opening a message marks it read), and a
- * fixed order makes both labels of a pair see the same state.
+ * Surfaces run in registry order, whatever order the flags name them in. The
+ * registry lists the surfaces that change local data first (opening a message
+ * marks it read), so both labels of a pair see that data in the same state.
  */
 export function planShots(
 	request: Pick<CaptureRequest, 'label' | 'surfaces' | 'paths' | 'force'>,
@@ -234,7 +261,10 @@ export function resolveOutputDir(
 	const real = realpathLoose(absolute);
 	const realRoot = realpathLoose(root);
 	const inside = relative(realRoot, real);
-	if (inside === '' || (!inside.startsWith('..') && !isAbsolute(inside))) {
+	// `..` as a whole first segment, not as a prefix: `..shots` is a directory
+	// inside the checkout.
+	const outside = isAbsolute(inside) || /^\.\.(?:[/\\]|$)/.test(inside);
+	if (!outside) {
 		throw new CaptureUsageError(
 			`The output directory ${absolute} is inside the checkout. Captures are PR evidence ` +
 				'and never go into the tree; pick a directory outside it.'

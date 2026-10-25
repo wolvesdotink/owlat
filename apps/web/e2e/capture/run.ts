@@ -40,9 +40,10 @@ const USAGE = `Usage: bun run capture <label> --surface <name>[,<name>...] [--pa
 
 function describeSurfaces(): string {
 	const width = Math.max(...SURFACE_NAMES.map((name) => name.length));
-	return SURFACES.map((surface) => `  ${surface.name.padEnd(width)}  ${surface.description}`).join(
-		'\n'
-	);
+	return SURFACES.map((surface) => {
+		const changes = surface.changes ? ` Changes: ${surface.changes}.` : '';
+		return `  ${surface.name.padEnd(width)}  ${surface.description}${changes}`;
+	}).join('\n');
 }
 
 async function reachable(url: string): Promise<boolean> {

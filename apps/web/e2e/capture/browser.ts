@@ -8,6 +8,7 @@
 import { chromium, type Browser, type BrowserContext, type Page } from '@playwright/test';
 import { WELCOMED_STORAGE_PREFIX } from '../../app/lib/welcomedCache';
 import type { CaptureManifest, PlannedShot } from './options';
+import { QUIET_MS, SETTLE_TIMEOUT_MS, shootWhenSettled, type PageChecks } from './settle';
 import { BOOT_TIMEOUT_MS, CaptureFailure, openRoute, SURFACES } from './surfaces';
 
 export interface Credentials {
@@ -29,10 +30,6 @@ export function captureCredentials(env: NodeJS.ProcessEnv): Credentials {
 /** `nuxt dev`'s own overlays: present in dev only, never part of the product. */
 const HIDE_DEV_OVERLAYS =
 	'#nuxt-devtools-container, nuxt-devtools-inspect-panel, #vue-tracer-overlay { display: none !important; }';
-
-const SETTLE_TIMEOUT_MS = 30_000;
-/** How long the DOM must stay unchanged before a shot. */
-const QUIET_MS = 1_500;
 
 async function launch(): Promise<Browser> {
 	try {
@@ -124,76 +121,87 @@ async function renderedError(page: Page): Promise<string | null> {
 	});
 }
 
+/** Fonts loaded and no visible loading placeholder, evaluated in the page. */
+function pageLoaded(): boolean {
+	return (
+		document.fonts.status === 'loaded' &&
+		![...document.querySelectorAll('.ui-skeleton, [aria-busy="true"]')].some(
+			(element) => (element as HTMLElement).offsetParent !== null
+		)
+	);
+}
+
 /**
- * Waits until the page is done loading what it shows: no visible loading
- * placeholder (the shared skeleton, `packages/ui/components/ui/Skeleton.vue`,
- * or an element marked aria-busy), fonts loaded, the DOM unchanged for
- * {@link QUIET_MS}, and two frames painted after that. Focus is dropped first,
- * so the ring and the focus-only controls of the last clicked element are not
- * captured.
+ * The checks {@link shootWhenSettled} runs on this page. A loading placeholder
+ * is the shared skeleton (`packages/ui/components/ui/Skeleton.vue`) or an
+ * element marked aria-busy.
  */
-async function settle(page: Page, name: string, viewportHeight: number): Promise<void> {
-	await page.locator('.owlat-spa').waitFor({ state: 'detached', timeout: BOOT_TIMEOUT_MS });
-	const path = new URL(page.url()).pathname;
-	if (path.startsWith('/auth')) {
-		throw new CaptureFailure(`${name}: the app sent the browser back to sign-in (${path}).`);
-	}
-	const error = await renderedError(page);
-	if (error) throw new CaptureFailure(`${name}: the app rendered its error page (${error}).`);
-	try {
-		await page.waitForFunction(
-			() =>
-				document.fonts.status === 'loaded' &&
-				![...document.querySelectorAll('.ui-skeleton, [aria-busy="true"]')].some(
-					(element) => (element as HTMLElement).offsetParent !== null
-				),
-			undefined,
-			{ timeout: SETTLE_TIMEOUT_MS }
-		);
-	} catch {
-		throw new CaptureFailure(
-			`${name}: the page was still loading after ${SETTLE_TIMEOUT_MS / 1000}s.`
-		);
-	}
-	// Off every control, so no hover state from the last click is captured.
-	await page.mouse.move(0, viewportHeight - 1);
-	await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
-	// Not every late part has a placeholder (a sidebar list, a picker that shows
-	// an empty note until its options arrive), so also wait for the DOM to stop
-	// changing. A page that never does is reported rather than captured midway.
-	const quiet = await page.evaluate(
-		({ quietMs, timeoutMs }) =>
-			new Promise<boolean>((done) => {
-				const finish = (settled: boolean) => {
-					observer.disconnect();
-					clearTimeout(quietTimer);
-					clearTimeout(deadline);
-					done(settled);
-				};
-				const observer = new MutationObserver(() => {
-					clearTimeout(quietTimer);
-					quietTimer = setTimeout(finish, quietMs, true);
-				});
-				let quietTimer = setTimeout(finish, quietMs, true);
-				const deadline = setTimeout(finish, timeoutMs, false);
-				observer.observe(document.body, {
-					subtree: true,
-					childList: true,
-					attributes: true,
-					characterData: true,
-				});
+function pageChecks(page: Page, manifest: CaptureManifest): PageChecks {
+	return {
+		async blocker() {
+			const path = new URL(page.url()).pathname;
+			if (path.startsWith('/auth')) return `the app sent the browser back to sign-in (${path}).`;
+			const error = await renderedError(page);
+			return error ? `the app rendered its error page (${error}).` : null;
+		},
+		loaded: () => page.evaluate(pageLoaded),
+		waitLoaded: () =>
+			page
+				.waitForFunction(pageLoaded, undefined, { timeout: SETTLE_TIMEOUT_MS })
+				.then(() => true)
+				.catch(() => false),
+		waitQuiet: () =>
+			page.evaluate(
+				({ quietMs, timeoutMs }) =>
+					new Promise<boolean>((done) => {
+						const finish = (settled: boolean) => {
+							observer.disconnect();
+							clearTimeout(quietTimer);
+							clearTimeout(deadline);
+							done(settled);
+						};
+						const observer = new MutationObserver(() => {
+							clearTimeout(quietTimer);
+							quietTimer = setTimeout(finish, quietMs, true);
+						});
+						let quietTimer = setTimeout(finish, quietMs, true);
+						const deadline = setTimeout(finish, timeoutMs, false);
+						observer.observe(document.body, {
+							subtree: true,
+							childList: true,
+							attributes: true,
+							characterData: true,
+						});
+					}),
+				{ quietMs: QUIET_MS, timeoutMs: SETTLE_TIMEOUT_MS }
+			),
+		paint: () =>
+			page.evaluate(
+				() =>
+					new Promise<void>((done) =>
+						requestAnimationFrame(() => requestAnimationFrame(() => done()))
+					)
+			),
+		screenshot: () =>
+			page.screenshot({
+				animations: 'disabled',
+				caret: 'hide',
+				fullPage: manifest.fullPage,
+				style: HIDE_DEV_OVERLAYS,
 			}),
-		{ quietMs: QUIET_MS, timeoutMs: SETTLE_TIMEOUT_MS }
-	);
-	if (!quiet) {
-		throw new CaptureFailure(
-			`${name}: the page kept changing for ${SETTLE_TIMEOUT_MS / 1000}s; nothing to capture reliably.`
-		);
-	}
-	await page.evaluate(
-		() =>
-			new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done())))
-	);
+	};
+}
+
+/**
+ * The shot of the page the browser is on, once it has loaded. Focus and the
+ * mouse are moved off every control first, so no focus ring, hover state or
+ * focus-only control of the last clicked element is captured.
+ */
+async function shoot(page: Page, name: string, manifest: CaptureManifest): Promise<Uint8Array> {
+	await page.locator('.owlat-spa').waitFor({ state: 'detached', timeout: BOOT_TIMEOUT_MS });
+	await page.mouse.move(0, manifest.viewport.height - 1);
+	await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+	return shootWhenSettled(name, pageChecks(page, manifest));
 }
 
 export async function shootAll(
@@ -219,15 +227,7 @@ export async function shootAll(
 				if (!surface) throw new CaptureFailure(`Unknown surface ${shot.name}.`);
 				await surface.open(page, appUrl);
 			}
-			await settle(page, shot.name, manifest.viewport.height);
-			images.push(
-				await page.screenshot({
-					animations: 'disabled',
-					caret: 'hide',
-					fullPage: manifest.fullPage,
-					style: HIDE_DEV_OVERLAYS,
-				})
-			);
+			images.push(await shoot(page, shot.name, manifest));
 		}
 		return images;
 	} finally {

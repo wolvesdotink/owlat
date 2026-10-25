@@ -13,6 +13,7 @@ import {
 	resolveDevStackConfig,
 } from '../../../../../scripts/dev-stack/config';
 import {
+	appRouteUrl,
 	CaptureUsageError,
 	DEFAULT_VIEWPORT,
 	parseCaptureArgs,
@@ -24,7 +25,7 @@ import {
 	settleManifest,
 	type CaptureManifest,
 } from '../options';
-import { SURFACE_NAMES } from '../surfaces';
+import { SURFACE_NAMES, SURFACES } from '../surfaces';
 
 const KNOWN = ['dashboard', 'postbox', 'contacts'];
 
@@ -90,12 +91,30 @@ describe('pathShotName', () => {
 		expect(pathShotName('/')).toBe('path-root');
 	});
 
-	it.each([['dashboard'], ['//evil.example/x'], ['http://evil.example'], ['/a\\b']])(
-		'refuses %j, which is not a same-origin app route',
-		(path) => {
-			expect(() => pathShotName(path)).toThrow(CaptureUsageError);
-		}
-	);
+	it.each([
+		['dashboard'],
+		['//evil.example/x'],
+		['http://evil.example'],
+		['/a\\b'],
+		['/\\evil.example'],
+		// The URL parser drops tabs and newlines, which turns these into //evil.example.
+		['/\t/evil.example'],
+		['/\n/evil.example/x'],
+		['/dashboard\u0000'],
+		['/dashboard\u007f'],
+	])('refuses %j, which is not a same-origin app route', (path) => {
+		expect(() => pathShotName(path)).toThrow(CaptureUsageError);
+		expect(appRouteUrl(path, 'http://localhost:4574')).toBeNull();
+	});
+});
+
+describe('appRouteUrl', () => {
+	it('resolves an app route on the app origin, whatever path the app URL has', () => {
+		expect(appRouteUrl('/dashboard/campaigns?status=all', 'http://localhost:4574/x')?.href).toBe(
+			'http://localhost:4574/dashboard/campaigns?status=all'
+		);
+		expect(appRouteUrl('/a/../b', 'http://localhost:4574')?.href).toBe('http://localhost:4574/b');
+	});
 });
 
 describe('planShots', () => {
@@ -149,6 +168,21 @@ describe('the registered surfaces', () => {
 		expect(new Set(SURFACE_NAMES).size).toBe(SURFACE_NAMES.length);
 		for (const name of SURFACE_NAMES) expect(name).toMatch(/^(?!path-)[a-z][a-z-]*$/);
 	});
+
+	it('list every surface that changes local data before the ones that only show it', () => {
+		const changing = SURFACES.filter((surface) => surface.changes).map((surface) => surface.name);
+		expect(changing).toContain('postbox');
+		expect(SURFACE_NAMES.slice(0, changing.length)).toEqual(changing);
+		// So a pair on fresh seed data never shows the message unread in "before"
+		// and read in "after": postbox runs first, whatever order the flags give.
+		const shots = planShots(
+			request({ surfaces: ['dashboard', 'contacts', 'postbox'] }),
+			'/out',
+			SURFACE_NAMES,
+			() => false
+		);
+		expect(shots.map((shot) => shot.name)).toEqual(['postbox', 'dashboard', 'contacts']);
+	});
 });
 
 describe('resolveOutputDir', () => {
@@ -180,6 +214,12 @@ describe('resolveOutputDir', () => {
 			expect(() => resolveOutputDir(relativeOut, root, base, {})).toThrow(/inside the checkout/);
 		}
 	);
+
+	it('tells a name that merely starts with two dots from the parent directory', () => {
+		expect(() => resolveOutputDir('..shots', root, root, {})).toThrow(/inside the checkout/);
+		expect(() => resolveOutputDir('apps/..shots', root, root, {})).toThrow(/inside the checkout/);
+		expect(resolveOutputDir('../shots', root, root, {})).toBe(join(base, 'shots'));
+	});
 
 	it('refuses a symlink outside that points back into the checkout', () => {
 		symlinkSync(join(root, 'apps'), join(base, 'alias'));

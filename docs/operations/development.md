@@ -221,8 +221,10 @@ bun run capture after --surface postbox,contacts
 Capturing changes a few things in the local data, the same way a person
 clicking through would: the first run marks the welcome screen as seen,
 `postbox` opens a message (which marks it read) and both postbox surfaces save
-the inbox view they show. Surfaces always run in the same order, so the
-"before" and the "after" of a pair see the same state.
+the inbox view they show (`--list` says which surface changes what). Those
+surfaces always run before the others, so when both labels of a pair name the
+same surfaces, every shot of the "before" sees the same state as the "after",
+also on freshly seeded data.
 
 Take "before" before you edit: once the change is in the working tree the
 original state is gone. The mock-Convex screenshot harness some contributors

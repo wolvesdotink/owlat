@@ -10,6 +10,7 @@
  */
 
 import type { Locator, Page } from '@playwright/test';
+import { appRouteUrl } from './options';
 
 export class CaptureFailure extends Error {}
 
@@ -23,7 +24,9 @@ const POSTBOX_HINT =
 
 /** Navigates to an app route and waits until the SPA has booted. */
 export async function openRoute(page: Page, appUrl: string, route: string): Promise<void> {
-	await page.goto(new URL(route, appUrl).href, { waitUntil: 'domcontentloaded' });
+	const url = appRouteUrl(route, appUrl);
+	if (!url) throw new CaptureFailure(`Refusing to leave the app for ${JSON.stringify(route)}.`);
+	await page.goto(url.href, { waitUntil: 'domcontentloaded' });
 	// The cold-boot splash (app/spa-loading-template.html) stays until Nuxt mounts.
 	await page.locator('.owlat-spa').waitFor({ state: 'detached', timeout: BOOT_TIMEOUT_MS });
 }
@@ -47,6 +50,14 @@ async function arrives(page: Page, pattern: RegExp, what: string): Promise<void>
 export interface Surface {
 	readonly name: string;
 	readonly description: string;
+	/**
+	 * The local data opening this surface changes. Every page with the app
+	 * layout can show that data (the unread badge counts the Team inbox), so
+	 * such surfaces are registered before all others: shots run in registry
+	 * order, and a pair's "before" on fresh seed data must not see a state its
+	 * "after" no longer can.
+	 */
+	readonly changes?: string;
 	open(page: Page, appUrl: string): Promise<void>;
 }
 
@@ -107,20 +118,9 @@ async function openSharedInbox(
 
 export const SURFACES: readonly Surface[] = [
 	{
-		name: 'dashboard',
-		description: 'The home dashboard (/dashboard).',
-		async open(page, appUrl) {
-			await openRoute(page, appUrl, '/dashboard');
-			await needs(
-				page.locator('main').getByRole('heading', { level: 1 }),
-				'The dashboard greeting'
-			);
-		},
-	},
-	{
-		// Before postbox-today: opening the message marks it read, and the
-		// Priority view's counts include it.
+		// Before postbox-today, whose Priority view counts the message.
 		name: 'postbox',
+		changes: 'the seeded message becomes read; the inbox view is saved as All mail',
 		description: `The shared ${SHARED_INBOX} inbox (All mail) with "${SHARED_MESSAGE.subject}" open in the reader.`,
 		async open(page, appUrl) {
 			await openSharedInbox(page, appUrl, 'All mail');
@@ -143,6 +143,7 @@ export const SURFACES: readonly Surface[] = [
 	},
 	{
 		name: 'postbox-today',
+		changes: 'the inbox view is saved as Priority',
 		description: `The shared ${SHARED_INBOX} inbox in the Priority view.`,
 		async open(page, appUrl) {
 			await openSharedInbox(page, appUrl, 'Priority');
@@ -150,6 +151,17 @@ export const SURFACES: readonly Surface[] = [
 			await needs(main.getByText("here's where things stand"), 'The Priority view greeting');
 			await needs(main.getByRole('heading', { name: /^Needs you/ }), 'The "Needs you" section');
 			await needs(main.getByText('Ben Ortiz', { exact: true }), 'The seeded sender Ben Ortiz');
+		},
+	},
+	{
+		name: 'dashboard',
+		description: 'The home dashboard (/dashboard).',
+		async open(page, appUrl) {
+			await openRoute(page, appUrl, '/dashboard');
+			await needs(
+				page.locator('main').getByRole('heading', { level: 1 }),
+				'The dashboard greeting'
+			);
 		},
 	},
 	{
