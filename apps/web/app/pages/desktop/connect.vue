@@ -71,6 +71,7 @@ const {
 async function generateAndReturn() {
 	if (handingBack.value) return;
 	handingBack.value = true;
+	errorMessage.value = '';
 	try {
 		// /api/auth/* is proxied to Convex by the instance's Nitro server; the
 		// session cookie authorizes the one-time-token generation.
@@ -138,6 +139,17 @@ async function handleTwoFactorSubmit() {
 
 			<div v-if="!redirectValid" class="text-sm text-error">
 				{{ t('desktop.connect.invalidReturnLink') }}
+			</div>
+
+			<!--
+				Signed in but no token came back: the hand-back stopped, so say why
+				and ask for a new token (the session is still there).
+			-->
+			<div v-else-if="!handingBack && user && !isPending && errorMessage" class="text-sm">
+				<p class="text-error" role="alert">{{ errorMessage }}</p>
+				<UiButton class="mt-4" variant="outline" size="sm" @click="generateAndReturn">
+					{{ t('common.tryAgain') }}
+				</UiButton>
 			</div>
 
 			<div v-else-if="handingBack || (user && !isPending)" class="text-sm text-text-secondary">
