@@ -420,6 +420,30 @@ describe('the real manifest', () => {
 		);
 	});
 
+	it('guards the decision cores beside the longest handlers', async () => {
+		const guarded = await guardedModules();
+		expect(guarded).toEqual(
+			expect.arrayContaining([
+				'convex/campaigns/pageDecision.ts',
+				'convex/campaigns/sendPlanning.ts',
+				'convex/transactional/dispatchDecision.ts',
+				'convex/inbox/receiveDecision.ts',
+				'convex/contacts/sunsetSweepDecision.ts',
+				'convex/contacts/sunsetPolicy.ts',
+				'convex/mail/outbound/decision.ts',
+			])
+		);
+		for (const shell of [
+			'convex/campaigns/send.ts',
+			'convex/transactional/dispatch.ts',
+			'convex/inbox/messages.ts',
+			'convex/contacts/sunsetSweep.ts',
+			'convex/mail/outbound.ts',
+		]) {
+			expect(guarded).not.toContain(shell);
+		}
+	});
+
 	it('keeps the effect runners and ctx-bound ports outside the guarded set', async () => {
 		const guarded = await guardedModules();
 		for (const shell of [

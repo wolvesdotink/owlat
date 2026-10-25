@@ -686,6 +686,37 @@ so each one must leave that work alone: `createSendJob` and
 (`campaigns/sendJob.ts`) finds the send prepared, also after it completed:
 the emails it already mailed still point at what the commit wrote.
 
+## Decision cores
+
+A handler loads, decides and writes. When the deciding grows, it moves into a
+pure module beside the handler: functions that take what the handler loaded
+(rows, query answers, injected `now`, ids and configuration) and return what
+to write, what to schedule and what to answer, as typed data. The handler
+keeps every read and write, in the order the decisions describe; it calls the
+core between them, and a decision that needs the result of a write (an
+inserted id, an idempotent enqueue count, a coalescing verdict) is a second
+stage the handler calls once it has that result. Never pass an I/O callback
+into a core. `delivery/ramp/controller.ts` (`nextShare`) and the
+`…Decision.ts` modules next to the longest handlers
+(`campaigns/pageDecision.ts`, `transactional/dispatchDecision.ts`,
+`inbox/receiveDecision.ts`, `contacts/sunsetSweepDecision.ts`,
+`mail/outbound/decision.ts`) are the worked examples.
+
+A core is listed in `scripts/purity-roots.txt`, so `check-purity.sh` refuses a
+clock, randomness, environment read, timer, network call or database handle
+in it. Its tests drive it with plain objects and check that the same input
+gives the same plan; the handler's integration tests stay, to prove the plan
+is what runs. Authoritative checks that must be atomic with a write (an undo
+token, a status re-check, an idempotency guard) stay in the mutation that
+writes; a core may pre-check them, never replace them.
+
+`scripts/check-handler-size.sh` (in `bun run lint`) measures every registered
+handler from the syntax tree (`scripts/lib/handlerSize.ts`: the handler
+function's own lines, comments included) and lists each one longer than the
+cap in `scripts/handler-size-census.ts` in `scripts/handler-size-baseline.txt`
+with its length. A handler that grows past its line, or a new one past the
+cap, fails; one that shrinks fails until its line is lowered or deleted.
+
 ## Convex best practices
 
 This codebase tracks the official Convex AI/cursor rules
