@@ -1,8 +1,0 @@
-# Convex indexes that check-unused-indexes.sh may find unqueried.
-#
-# Format: `<table>.<index>` per line. An entry that stops being unused — because
-# something now queries it, or because the index was deleted — fails the gate,
-# so this file cannot rot into a list of permanent exemptions.
-#
-# Keep the reason on a `#` line above the entry. scripts/ratchet.sh compares
-# whole lines, so a trailing `# note` would stop the entry matching.

@@ -12,11 +12,10 @@
 #   toISOString().slice(0, 10)     → utcDayKey(now)
 #   .split('T')[0]                 → utcDayKey(now)
 #
-# RATCHET on scripts/ratchet.sh, strict in both directions. The baseline
-# (scripts/utc-day-baseline.txt) may only list a site that is NOT a day key or
-# day start — a date written for a person, say — with its reason. A new entry
-# means a module rolled its own day: import it from lib/clock.ts. A stale entry
-# means a listed site went away: delete its line.
+# Zero-tolerance gate on scripts/ratchet.sh --zero: there is no baseline, so
+# any reported site fails. Import the day from lib/clock.ts. A date that is not
+# a day key or day start (one written for a person, say) should not use these
+# spellings either; Intl.DateTimeFormat or a named helper says what it is.
 
 set -uo pipefail
 repo_root="$(cd "$(dirname "$0")/../../.." && pwd)"
@@ -48,17 +47,13 @@ if [ "${1:-}" = "--generate" ]; then
 fi
 
 exec "$repo_root/scripts/ratchet.sh" \
-	--baseline scripts/utc-day-baseline.txt \
-	--seed "bash apps/api/scripts/check-utc-day.sh --write-baseline" \
+	--zero \
 	--ok "no module rolls its own UTC day outside lib/clock.ts" \
 	--new-header "FAIL: {n} hand-rolled UTC day primitive(s) outside convex/lib/clock.ts:" \
 	--new-advice "Import the day from convex/lib/clock.ts instead:
   setUTCHours(0, 0, 0, 0)       → utcDayStart(now)
   toISOString().slice(0, 10)    → utcDayKey(now)
   .split('T')[0]                → utcDayKey(now)
-  a zero-filled daily series    → denseDailySeries(countsByKey, days, now)
-Only a date that is not a day key (e.g. one written for a person) may be
-listed in {baseline}, with its reason." \
-	--stale-header "FAIL: {n} stale entr(y/ies) in {baseline} (site converted or removed):" \
+  a zero-filled daily series    → denseDailySeries(countsByKey, days, now)" \
 	"$@" \
 	-- bash "$self" --generate

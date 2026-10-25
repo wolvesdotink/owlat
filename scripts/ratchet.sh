@@ -27,8 +27,15 @@
 #   * a baseline entry the generator no longer reports fails as stale — delete
 #     the line, so the debt count only ever moves down.
 #
+# A gate whose debt is gone runs with --zero instead of --baseline: no file,
+# every reported entry fails. An empty baseline file would be a standing
+# invitation to add the next exception to it; --zero makes adding one a
+# deliberate change to the gate script instead.
+#
 # Options:
-#   --baseline <path>     baseline file, relative to the caller's cwd (required)
+#   --baseline <path>     baseline file, relative to the caller's cwd
+#   --zero                no baseline: any entry fails (excludes --baseline,
+#                         --seed and --write-baseline)
 #   --ok <text>           green line: "ok:   <text> (N baseline entries remain)"
 #   --new-header <tmpl>   first line of the regression block
 #   --new-advice <text>   how to fix a regression (printed after the entries)
@@ -52,17 +59,18 @@ set -uo pipefail
 
 baseline=""
 ok_text="no new entries"
-new_header="FAIL: {n} new entr(y/ies) not in {baseline}:"
-new_advice="Fix them. Do NOT add new lines to {baseline}; it is frozen debt."
+new_header=""
+new_advice=""
 stale_header="FAIL: {n} stale entr(y/ies) in {baseline}:"
 stale_advice="Delete these lines so the ratchet only moves down."
 seed_cmd=""
 write_baseline=0
 to_stderr=0
+zero=0
 
 usage() {
 	echo "ratchet.sh: $*" >&2
-	echo "usage: scripts/ratchet.sh --baseline <path> [options] -- <generator command …>" >&2
+	echo "usage: scripts/ratchet.sh (--baseline <path> | --zero) [options] -- <generator command …>" >&2
 	exit 2
 }
 
@@ -85,6 +93,10 @@ while [ $# -gt 0 ]; do
 			write_baseline=1
 			shift
 			;;
+		--zero)
+			zero=1
+			shift
+			;;
 		--stderr)
 			to_stderr=1
 			shift
@@ -97,8 +109,20 @@ while [ $# -gt 0 ]; do
 	esac
 done
 
-[ -n "$baseline" ] || usage "--baseline is required"
-[ $# -gt 0 ] || usage "no generator command after --"
+if [ "$zero" -eq 1 ]; then
+	[ -z "$baseline" ] || usage "--zero takes no --baseline"
+	[ -z "$seed_cmd" ] || usage "--zero takes no --seed"
+	[ "$write_baseline" -eq 0 ] || usage "--zero has no baseline to write"
+	baseline="(no baseline)"
+	default_header="FAIL: {n} entr(y/ies) found; this gate allows none:"
+	default_advice="Fix them. This gate has no baseline to add them to."
+else
+	[ -n "$baseline" ] || usage "--baseline or --zero is required"
+	default_header="FAIL: {n} new entr(y/ies) not in {baseline}:"
+	default_advice="Fix them. Do NOT add new lines to {baseline}; it is frozen debt."
+fi
+[ -n "$new_header" ] || new_header="$default_header"
+[ -n "$new_advice" ] || new_advice="$default_advice"
 
 # {n} / {baseline} substitution. Deliberately not printf: the message bodies
 # contain literal % characters (percentages, awk snippets) that printf would
@@ -140,13 +164,15 @@ if [ "$write_baseline" -eq 1 ]; then
 	exit 0
 fi
 
-if [ ! -f "$baseline" ]; then
+if [ "$zero" -eq 1 ]; then
+	frozen=""
+elif [ ! -f "$baseline" ]; then
 	echo "FAIL: $baseline missing. Seed it with the current output:" >&2
 	[ -n "$seed_cmd" ] && echo "  $seed_cmd" >&2
 	exit 1
+else
+	frozen=$(entries <"$baseline")
 fi
-
-frozen=$(entries <"$baseline")
 new=$(LC_ALL=C comm -23 <(printf '%s\n' "$current" | grep .) <(printf '%s\n' "$frozen" | grep .))
 stale=$(LC_ALL=C comm -13 <(printf '%s\n' "$current" | grep .) <(printf '%s\n' "$frozen" | grep .))
 
@@ -169,4 +195,8 @@ if [ -n "$stale" ]; then
 fi
 [ "$fail" -eq 1 ] && exit 1
 
-echo "ok:   $ok_text ($(printf '%s\n' "$frozen" | grep -c .) baseline entries remain)"
+if [ "$zero" -eq 1 ]; then
+	echo "ok:   $ok_text (no baseline, none allowed)"
+else
+	echo "ok:   $ok_text ($(printf '%s\n' "$frozen" | grep -c .) baseline entries remain)"
+fi

@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
-# Audits apps/api/convex/ for Convex anti-patterns and fails if any count
-# grows above its checked-in baseline. Lowering a baseline below the actual
-# count is the signal that a migration phase landed; raising one needs
-# justification in the PR description.
+# Audits apps/api/convex/ for Convex anti-patterns and fails unless every
+# count equals its checked-in baseline. The comparison is exact in both
+# directions, like scripts/ratchet.sh: a count above its baseline is a new
+# violation to fix, and a count below it means a site was fixed, so the
+# baseline must come down in the same change. Otherwise the gap is slack a new
+# violation could fill without failing. Never raise a baseline.
 #
 # See https://docs.convex.dev/production/best-practices
 #
@@ -72,24 +74,20 @@ done < <(find convex -name "*.ts" -not -path "*/_generated/*" -not -path "*/__te
 # scans of intrinsically-small tables with a trailing `// bounded: reason`.
 #
 # The baseline is the count of `.collect()` calls that are NEITHER take/paginate
-# -bounded NOR carry a `// bounded:` justification. As of the boundedness-audit
-# pass it is the following KNOWN-UNBOUNDED fan-out scans, each deliberately left
-# uncommented pending a batched-delete / denormalized-counter follow-up:
-#   1. topics/topics.ts               deleteTopic → all `contactTopics` by_topic
-#   2. contacts/properties.ts         deleteProperty → all `contactPropertyValues` by_property
-#   3. contacts/propertyValues.ts     getPropertyValueCount → `.collect().length` by_property
-#   4. delivery/sends.ts              deleteByCampaign → all `emailSends` by_campaign
-#   5. transactional/sends.ts         delete → all `transactionalSends` by_transactional_email
-#   6. webhooks/endpoints.ts          deleteWebhook → all `webhookDeliveryLogs` by_webhook
-#   7. conditions/topic_membership    segment eval preloads all members by_topic
-#   8. conditions/contact_property    segment eval preloads all values by_property
-# These fan out by a secondary key (per-campaign/topic/property/webhook), so
-# they are genuinely unbounded — unlike the per-CONTACT cascade collects, which
-# a single person's bounded fan-out keeps small and which carry `// bounded:`.
-# Fixing them means batched self-rescheduling deletes and denormalized counts;
-# tracked separately. Do NOT slap `// bounded:` on these — the baseline holds
-# the line so no NEW unbounded scan slips in.
-COLLECT_BASELINE=8
+# -bounded NOR carry a `// bounded:` justification. These are the known-unbounded
+# scans left:
+#   1. topics/topics.ts                    remove → all `contactTopics` by_topic
+#   2. webhooks/endpoints.ts               deleteWebhook → all `webhookDeliveryLogs` by_webhook
+#   3. conditions/topic_membership         segment eval preloads all members by_topic
+#   4. conditions/contact_property         segment eval preloads all values by_property
+#   5. systemUpdates.ts                    recordUpdateStart → running `updateRun` rows
+#   6. mail/interpret/sendFailure.ts       dependentDispositions → items by_disposition_source
+# The fan-out ones key on a secondary id (topic/property/webhook), so they are
+# genuinely unbounded, unlike the per-CONTACT cascade collects, which a single
+# person's bounded fan-out keeps small and which carry `// bounded:`. Fixing
+# them means batched self-rescheduling deletes and denormalized counts. Do NOT
+# slap `// bounded:` on these; fix one and lower the baseline with it.
+COLLECT_BASELINE=6
 collect_count=0
 while IFS= read -r f; do
 	c=$(awk '
@@ -188,6 +186,8 @@ if [ "$literal_map_count" -gt 0 ]; then
 fi
 
 fail=0
+grew=0
+shrank=0
 report() {
 	local name="$1"
 	local count="$2"
@@ -195,6 +195,11 @@ report() {
 	if [ "$count" -gt "$baseline" ]; then
 		echo "FAIL: $name count=$count > baseline=$baseline"
 		fail=1
+		grew=1
+	elif [ "$count" -lt "$baseline" ]; then
+		echo "FAIL: $name count=$count < baseline=$baseline (stale baseline)"
+		fail=1
+		shrank=1
 	else
 		echo "ok:   $name count=$count (baseline=$baseline)"
 	fi
@@ -207,13 +212,19 @@ report "console.log debug calls   " "$console_log_count" "$CONSOLE_LOG_BASELINE"
 report "instanceSettings insert   " "$instance_settings_insert_count" "$INSTANCE_SETTINGS_INSERT_BASELINE"
 report "hand-rolled literal union " "$literal_map_count" "$LITERAL_MAP_BASELINE"
 
-if [ "$fail" -ne 0 ]; then
+if [ "$grew" -ne 0 ]; then
 	echo ""
 	echo "One or more Convex anti-pattern counts grew. See https://docs.convex.dev/production/best-practices"
-	echo "If the regression is justified (e.g. an intrinsically small table), raise the baseline"
-	echo "in apps/api/scripts/check-convex-patterns.sh and explain why in the PR description."
-	echo "For .collect(): prefer .take()/paginate, or trail the call with a '// bounded: reason' comment."
-	echo "For instanceSettings: never raise that baseline; write through upsertInstanceSettings (lib/instanceSettings.ts)."
-	echo "For a literal union: never raise that baseline; build it with literalUnion (lib/literalUnion.ts)."
-	exit 1
+	echo "Fix the new site; never raise a baseline in apps/api/scripts/check-convex-patterns.sh."
+	echo "For .filter(): narrow the query with .withIndex() instead of filtering a full scan."
+	echo "For .collect(): prefer .take()/paginate, or trail an intrinsically small scan with a '// bounded: reason' comment."
+	echo "For instanceSettings: write through upsertInstanceSettings (lib/instanceSettings.ts)."
+	echo "For a literal union: build it with literalUnion (lib/literalUnion.ts)."
 fi
+if [ "$shrank" -ne 0 ]; then
+	echo ""
+	echo "One or more Convex anti-pattern counts fell below their baseline: a site was fixed."
+	echo "Lower that baseline in apps/api/scripts/check-convex-patterns.sh to the new count"
+	echo "(and drop the fixed site from its comment) so the slack cannot be refilled."
+fi
+[ "$fail" -eq 0 ] || exit 1

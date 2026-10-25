@@ -726,8 +726,10 @@ This codebase tracks the official Convex AI/cursor rules
   `internalQuery`, `internalMutation`, `internalAction`. For zero-arg
   functions use `args: {}`. The `lint:patterns` check enforces this.
 - **Index, don't filter.** Prefer `.withIndex('by_x', q => q.eq('x', val))`
-  over `.query('table').filter(...)`. New `.filter()` call sites must not
-  push the count above the baseline in `scripts/check-convex-patterns.sh`.
+  over `.query('table').filter(...)`. `scripts/check-convex-patterns.sh`
+  holds each anti-pattern count to its exact baseline: a new full-scan
+  `.filter()` fails, and fixing one means lowering the baseline in the same
+  change.
 - **Bound `.collect()`.** Use `.take(n)`, pagination
   (`paginationOptsValidator`), or a cached counter for any table that can
   grow unboundedly. If a scan is intentional (e.g. an intrinsically tiny
