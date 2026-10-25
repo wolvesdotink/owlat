@@ -29,13 +29,41 @@ beforeAll(() => {
 
 afterEach(closeAllListeners);
 
-/** Poll a condition that has no event to wait on (a counter, a mock's calls). */
-async function until(pred: () => boolean | Promise<boolean>, timeoutMs = 3000): Promise<void> {
-	const deadline = Date.now() + timeoutMs;
-	while (!(await pred())) {
-		if (Date.now() > deadline) throw new Error('condition not met in time');
-		await new Promise((resolve) => setTimeout(resolve, 5));
-	}
+/** A spy whose call count can be awaited: `reached(n)` resolves once it has been called n times. */
+function countedSpy<A extends unknown[], R>(impl: (...args: A) => R) {
+	const waiters: Array<{ count: number; resolve: () => void }> = [];
+	const settle = () => {
+		for (const waiter of waiters.splice(0)) {
+			if (spy.mock.calls.length >= waiter.count) waiter.resolve();
+			else waiters.push(waiter);
+		}
+	};
+	const spy = vi.fn((...args: A): R => {
+		const result = impl(...args);
+		// Settled after the call returns, so a waiter sees the call's effects.
+		queueMicrotask(settle);
+		return result;
+	});
+	return Object.assign(spy, {
+		reached: (count: number) =>
+			new Promise<void>((resolve) => {
+				waiters.push({ count, resolve });
+				settle();
+			}),
+	});
+}
+
+/** The server's side of each connection the listener accepts, in accept order. */
+function acceptedSockets(listener: SmtpListener): net.Socket[] {
+	const sockets: net.Socket[] = [];
+	listener.raw.on('connection', (socket: net.Socket) => sockets.push(socket));
+	return sockets;
+}
+
+/** Resolves once `socket` has closed (at once if it already has). */
+function closedSocket(socket: net.Socket): Promise<void> {
+	if (socket.closed) return Promise.resolve();
+	return new Promise((resolve) => socket.once('close', () => resolve()));
 }
 
 /** The listener's live socket count, as the server itself sees it. */
@@ -58,11 +86,11 @@ function deferred<T>(): Deferred<T> {
 	return { promise, resolve };
 }
 
-/** A per-IP limiter whose acquire/release are spies the test can steer. */
+/** A per-IP limiter whose acquire/release are spies the test can steer and await. */
 function limiter(acquire: (peer: SmtpAdmissionPeer) => Promise<boolean>) {
 	return {
-		acquire: vi.fn(acquire),
-		release: vi.fn(async (_peer: SmtpAdmissionPeer) => undefined),
+		acquire: countedSpy(acquire),
+		release: countedSpy(async (_peer: SmtpAdmissionPeer) => undefined),
 		rejectReply: PER_IP_REJECT,
 	};
 }
@@ -70,8 +98,12 @@ function limiter(acquire: (peer: SmtpAdmissionPeer) => Promise<boolean>) {
 async function start(
 	admission: SmtpAdmission,
 	overrides: Partial<SmtpListenerOptions> = {}
-): Promise<{ listener: SmtpListener; port: number; onConnect: ReturnType<typeof vi.fn> }> {
-	const onConnect = vi.fn(() => undefined);
+): Promise<{
+	listener: SmtpListener;
+	port: number;
+	onConnect: ReturnType<typeof countedSpy<[], undefined>>;
+}> {
+	const onConnect = countedSpy(() => undefined);
 	const started = await startListener({ hostname: 'mx.test', admission, onConnect, ...overrides });
 	return { ...started, onConnect };
 }
@@ -81,20 +113,25 @@ function tlsClient(port: number): {
 	socket: tls.TLSSocket;
 	secured: () => boolean;
 	text: () => string;
+	/** Resolves once the 220 banner has arrived over TLS. */
+	banner: Promise<void>;
 } {
 	// Self-signed fixture cert (see the header of ../smtpTestClient.ts).
 	// nosemgrep: problem-based-packs.insecure-transport.js-node.bypass-tls-verification.bypass-tls-verification
 	const socket = tls.connect({ port, host: '127.0.0.1', rejectUnauthorized: false });
 	let secured = false;
 	let text = '';
+	let greeted!: () => void;
+	const banner = new Promise<void>((resolve) => (greeted = resolve));
 	socket.on('error', () => {});
 	socket.on('secureConnect', () => {
 		secured = true;
 	});
 	socket.on('data', (chunk: Buffer) => {
 		text += chunk.toString();
+		if (text.startsWith('220 ')) greeted();
 	});
-	return { socket, secured: () => secured, text: () => text };
+	return { socket, secured: () => secured, text: () => text, banner };
 }
 
 describe('admission on a plaintext / STARTTLS listener', () => {
@@ -105,9 +142,10 @@ describe('admission on a plaintext / STARTTLS listener', () => {
 			overCapacityReply: OVER_CAPACITY,
 			onRefused,
 		});
+		const accepted = acceptedSockets(listener);
 		const held = [await Client.connect(port), await Client.connect(port)];
 		for (const c of held) await c.waitCode(220);
-		await until(() => onConnect.mock.calls.length === 2);
+		await onConnect.reached(2);
 
 		const over = await Client.connect(port);
 		await over.waitCode(220);
@@ -122,7 +160,8 @@ describe('admission on a plaintext / STARTTLS listener', () => {
 
 		// A closed connection frees its place under the cap.
 		held[0]!.end();
-		await until(async () => (await openConnections(listener)) === 1);
+		await closedSocket(accepted[0]!);
+		expect(await openConnections(listener)).toBe(1);
 		const next = await Client.connect(port);
 		next.write('EHLO client.test\r\n');
 		await next.waitCode(250);
@@ -200,7 +239,7 @@ describe('admission on a plaintext / STARTTLS listener', () => {
 		expect(perIp.release).not.toHaveBeenCalled();
 		c.write('QUIT\r\n');
 		await c.waitClose();
-		await until(() => perIp.release.mock.calls.length === 1);
+		await perIp.release.reached(1);
 		await new Promise((resolve) => setTimeout(resolve, 20));
 		expect(perIp.release).toHaveBeenCalledTimes(1);
 		expect(perIp.release.mock.calls[0]![0]).toEqual(perIp.acquire.mock.calls[0]![0]);
@@ -214,14 +253,16 @@ describe('admission on a plaintext / STARTTLS listener', () => {
 			overCapacityReply: OVER_CAPACITY,
 			perIp,
 		});
+		const accepted = acceptedSockets(listener);
 		const c = await Client.connect(port);
-		await until(() => perIp.acquire.mock.calls.length === 1);
+		await perIp.acquire.reached(1);
 		c.socket.resetAndDestroy();
-		await until(async () => (await openConnections(listener)) === 0);
+		await closedSocket(accepted[0]!);
+		expect(await openConnections(listener)).toBe(0);
 		expect(perIp.release).not.toHaveBeenCalled();
 
 		verdict.resolve(true); // the grant lands after the socket is gone
-		await until(() => perIp.release.mock.calls.length === 1);
+		await perIp.release.reached(1);
 		await new Promise((resolve) => setTimeout(resolve, 20));
 		expect(perIp.release).toHaveBeenCalledTimes(1);
 	});
@@ -241,18 +282,18 @@ describe('admission on an implicit-TLS listener', () => {
 		});
 		const client = tlsClient(port);
 		try {
-			await until(() => perIp.acquire.mock.calls.length === 1);
+			await perIp.acquire.reached(1);
 			await new Promise((resolve) => setTimeout(resolve, 100));
 			expect(client.secured()).toBe(false);
 			expect(client.text()).toBe('');
 
 			verdict.resolve(true);
-			await until(() => client.text().startsWith('220 '));
+			await client.banner;
 			expect(client.secured()).toBe(true);
 
 			// The slot is released once the TLS session ends.
 			client.socket.write('QUIT\r\n');
-			await until(() => perIp.release.mock.calls.length === 1);
+			await perIp.release.reached(1);
 			await new Promise((resolve) => setTimeout(resolve, 20));
 			expect(perIp.release).toHaveBeenCalledTimes(1);
 		} finally {
@@ -287,7 +328,7 @@ describe('admission on an implicit-TLS listener', () => {
 		const first = net.connect(port, '127.0.0.1');
 		first.on('error', () => {});
 		try {
-			await until(() => perIp.acquire.mock.calls.length === 1);
+			await perIp.acquire.reached(1);
 			const over = tlsClient(port);
 			await new Promise<void>((resolve) => over.socket.once('close', () => resolve()));
 			expect(over.secured()).toBe(false);
@@ -296,7 +337,7 @@ describe('admission on an implicit-TLS listener', () => {
 			first.destroy();
 		}
 		// The silent pre-handshake socket held a slot and gives it back on close.
-		await until(() => perIp.release.mock.calls.length === 1);
+		await perIp.release.reached(1);
 	});
 
 	it('fails open on an acquire fault and completes the handshake', async () => {
@@ -310,7 +351,7 @@ describe('admission on an implicit-TLS listener', () => {
 		);
 		const client = tlsClient(port);
 		try {
-			await until(() => client.text().startsWith('220 '));
+			await client.banner;
 			expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: 'redis down' }));
 			client.socket.write('QUIT\r\n');
 			await new Promise<void>((resolve) => client.socket.once('close', () => resolve()));
@@ -339,7 +380,7 @@ describe('admission on an implicit-TLS listener', () => {
 			await new Promise<void>((resolve) => client.socket.once('close', () => resolve()));
 			expect(client.secured()).toBe(false);
 			verdict.resolve(true);
-			await until(() => perIp.release.mock.calls.length === 1);
+			await perIp.release.reached(1);
 		} finally {
 			client.socket.destroy();
 			await new Promise((resolve) => server.close(resolve));

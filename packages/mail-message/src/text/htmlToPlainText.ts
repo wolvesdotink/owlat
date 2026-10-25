@@ -34,6 +34,12 @@
 export interface HtmlToPlainTextOptions {
 	/** Keep block structure as newlines instead of collapsing to one line. */
 	preserveBreaks?: boolean;
+	/**
+	 * Counts the characters the hidden-content pass reads: each step of its
+	 * forward scan for openers, and each search for a closing tag or `-->`.
+	 * For the tests that hold that pass to linear work.
+	 */
+	meter?: { chars: number };
 }
 
 /** Opening of a comment or of an element whose content is never visible text. */
@@ -94,15 +100,21 @@ function decodeEntities(text: string): string {
  * (browsers close it implicitly at `<body>`, so its content cannot be skipped
  * safely).
  */
-function dropHiddenContent(html: string, replacement: string): string {
+function dropHiddenContent(
+	html: string,
+	replacement: string,
+	meter: { chars: number } | undefined
+): string {
 	const pieces: string[] = [];
 	let kept = 0;
 	// Once a close tag is missing after some position it is missing after every
 	// later one too; remembering that keeps `<head><head>…` linear.
 	const missingClose = new Set<string>();
 	HIDDEN_OPEN.lastIndex = 0;
+	let scanned = 0;
 	for (let open = HIDDEN_OPEN.exec(html); open; open = HIDDEN_OPEN.exec(html)) {
 		const start = open.index;
+		if (meter) meter.chars += start + open[0].length - scanned;
 		let end: number;
 		const name = open[1]?.toLowerCase();
 		if (name === undefined) {
@@ -110,6 +122,7 @@ function dropHiddenContent(html: string, replacement: string): string {
 			// terminator from just after `<!`.
 			const close = html.indexOf('-->', start + 2);
 			end = close === -1 ? html.length : close + 3;
+			if (meter) meter.chars += end - (start + 2);
 		} else {
 			const closeRe = HIDDEN_CLOSE[name] as RegExp;
 			const from = start + open[0].length;
@@ -117,11 +130,13 @@ function dropHiddenContent(html: string, replacement: string): string {
 			if (!missingClose.has(name)) {
 				closeRe.lastIndex = from;
 				close = closeRe.exec(html);
+				if (meter) meter.chars += (close ? close.index + close[0].length : html.length) - from;
 				if (!close) missingClose.add(name);
 			}
 			if (close) {
 				end = close.index + close[0].length;
 			} else if (name === 'head') {
+				scanned = start + open[0].length;
 				continue;
 			} else {
 				end = html.length;
@@ -130,7 +145,9 @@ function dropHiddenContent(html: string, replacement: string): string {
 		pieces.push(html.slice(kept, start), replacement);
 		kept = end;
 		HIDDEN_OPEN.lastIndex = end;
+		scanned = end;
 	}
+	if (meter) meter.chars += html.length - scanned;
 	if (kept === 0) return html;
 	pieces.push(html.slice(kept));
 	return pieces.join('');
@@ -140,7 +157,7 @@ function dropHiddenContent(html: string, replacement: string): string {
 export function htmlToPlainText(html: string, options: HtmlToPlainTextOptions = {}): string {
 	if (!html) return '';
 	if (options.preserveBreaks) {
-		const text = dropHiddenContent(html, '')
+		const text = dropHiddenContent(html, '', options.meter)
 			.replace(LINE_BREAK_TAG, '\n')
 			.replace(PARAGRAPH_END_TAG, '\n\n')
 			.replace(TAG, '');
@@ -148,6 +165,6 @@ export function htmlToPlainText(html: string, options: HtmlToPlainTextOptions = 
 			.replace(/\n{3,}/g, '\n\n')
 			.trim();
 	}
-	const text = dropHiddenContent(html, ' ').replace(TAG, ' ');
+	const text = dropHiddenContent(html, ' ', options.meter).replace(TAG, ' ');
 	return decodeEntities(text).replace(/\s+/g, ' ').trim();
 }

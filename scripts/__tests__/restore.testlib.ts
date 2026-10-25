@@ -26,6 +26,7 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { expect } from 'vitest';
+import { readinessPipe } from './readinessPipe.testlib';
 
 export const RESTORE = fileURLToPath(new URL('../restore.sh', import.meta.url));
 export const BACKUP = fileURLToPath(new URL('../backup.sh', import.meta.url));
@@ -91,6 +92,8 @@ if [[ -n "\${FAKE_DOCKER_HANG:-}" && "$line" =~ $FAKE_DOCKER_HANG && ! -e "$FAKE
 	# counts as handled by it, and one landing during a fork can miss the new
 	# sleep. exec makes this process the sleep, so the call never does its work.
 	: > "$FAKE_DOCKER_ROOT/hanging"
+	# The test's readiness pipe, when it has one (a builtin write: no child).
+	[[ -p "$FAKE_DOCKER_ROOT/hang-ready" ]] && echo hanging > "$FAKE_DOCKER_ROOT/hang-ready"
 	exec sleep 30
 fi
 vols="$FAKE_DOCKER_ROOT/volumes"
@@ -411,6 +414,7 @@ export async function makeInstall(
 		volume,
 		async interrupt(signal, env) {
 			await writeFile(join(root, 'docker.log'), '');
+			const hangPoint = readinessPipe(join(root, 'hang-ready'));
 			// Its own process group, so the signal reaches the script and the
 			// blocked docker call together, as a Ctrl-C in a terminal does.
 			const child = spawn('bash', [RESTORE, '--yes', archive], {
@@ -424,12 +428,7 @@ export async function makeInstall(
 			const exited = new Promise<number>((resolve) =>
 				child.on('close', (code, sig) => resolve(code ?? (sig ? 128 : 1)))
 			);
-			const hanging = join(root, 'hanging');
-			const deadline = Date.now() + 10_000;
-			while (!existsSync(hanging)) {
-				if (Date.now() > deadline) throw new Error(`never reached the hang point:\n${out}`);
-				await new Promise((resolve) => setTimeout(resolve, 20));
-			}
+			await hangPoint.reached(exited, () => `never reached the hang point:\n${out}`);
 			process.kill(-(child.pid ?? 0), signal);
 			// A signal the script sat on fails here, with its output, not at the test timeout.
 			let stuck = false;

@@ -57,15 +57,24 @@ describe('usePerfMark', () => {
 		const { composable, sent } = await load();
 		const { mark, measure } = composable.usePerfMark();
 
-		const startTime = Math.max(0, performance.now() - 40);
+		// A fixed time on the page's timeline, earlier than any measure below.
+		const startTime = 5;
 		mark('owlat_test_start', startTime);
 
 		expect(performance.getEntriesByName('owlat_test_start', 'mark')[0]?.startTime).toBe(startTime);
-		const before = performance.now();
-		expect(measure('owlat_reader_open_ms', 'owlat_test_start')).toBeGreaterThanOrEqual(
-			before - startTime
-		);
-		expect(sent).toHaveLength(1);
+		const duration = measure('owlat_reader_open_ms', 'owlat_test_start');
+
+		// The span the browser recorded starts at the given time, and the
+		// composable returns and reports exactly that span.
+		const [span] = performance.getEntriesByName('owlat_reader_open_ms', 'measure');
+		expect(span?.startTime).toBe(startTime);
+		expect(duration).toBe(span?.duration);
+		expect(sent).toEqual([
+			[
+				'owlat_reader_open_ms',
+				{ route: 'dashboard-postbox-folder', duration_ms: Math.round(span?.duration ?? -1) },
+			],
+		]);
 	});
 
 	it('reports nothing for a start mark that was never set', async () => {

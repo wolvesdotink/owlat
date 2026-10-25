@@ -26,6 +26,7 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { afterAll, describe, expect, it } from 'vitest';
+import { readinessPipe } from './readinessPipe.testlib';
 
 const REPOSITORY_ROOT = fileURLToPath(new URL('../..', import.meta.url));
 const run = promisify(execFile);
@@ -43,6 +44,7 @@ const STUB_DOCKER = `#!/bin/sh
 case "$1" in
 	run)
 		if [ -f "$STUB_CONFIG" ]; then echo "run: config present" >> "$STUB_LOG"; else echo "run: config missing" >> "$STUB_LOG"; fi
+		[ -n "$STUB_READY" ] && echo running > "$STUB_READY"
 		[ -n "$STUB_RUN_SLEEP" ] && sleep "$STUB_RUN_SLEEP"
 		exit "\${STUB_RUN_EXIT:-0}" ;;
 esac
@@ -125,17 +127,22 @@ describe('scripts/owlat quickstart with OWLAT_CONSUME_CONFIG=1', () => {
 
 	it('deletes the config when the wrapper is told to hang up mid-run', async () => {
 		const install = await makeInstall();
+		const running = readinessPipe(`${install.log}.ready`);
 		const child = spawn(
 			'bash',
 			[install.script, 'quickstart', '--terminal', '--config', install.config],
-			{ env: install.env({ OWLAT_CONSUME_CONFIG: '1', STUB_RUN_SLEEP: '1' }), stdio: 'ignore' }
+			{
+				env: install.env({
+					OWLAT_CONSUME_CONFIG: '1',
+					STUB_RUN_SLEEP: '1',
+					STUB_READY: running.path,
+				}),
+				stdio: 'ignore',
+			}
 		);
 		const exited = new Promise<number | null>((resolve) => child.on('exit', resolve));
 		// Wait until the setup container is running, then hang up the wrapper.
-		const started = Date.now();
-		while (!existsSync(install.log) && Date.now() - started < 5000) {
-			await new Promise((r) => setTimeout(r, 20));
-		}
+		await running.reached(exited, () => 'the wrapper ended before the setup container ran');
 		child.kill('SIGHUP');
 		expect(await exited).toBe(129);
 		expect(existsSync(install.config)).toBe(false);

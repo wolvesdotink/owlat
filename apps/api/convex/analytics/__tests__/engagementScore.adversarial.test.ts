@@ -211,26 +211,42 @@ describe('NaN / negative guards', () => {
 });
 
 describe('bounded work', () => {
-	it('scores a 10k-activity contact without unbounded allocation', () => {
-		const activities: EngagementActivity[] = Array.from({ length: 10_000 }, (_, i) => ({
-			kind: i % 7 === 0 ? 'click' : 'open',
-			occurredAt: NOW - i * 60_000,
-		}));
+	it('scores a 10k-activity contact in O(n log n) counted work', () => {
+		/** Distinct activities in a fixed shuffled order, so the sort has real work to do. */
+		const timeline = (n: number): EngagementActivity[] => {
+			const activities = Array.from({ length: n }, (_, i) => ({
+				kind: i % 7 === 0 ? ('click' as const) : ('open' as const),
+				occurredAt: NOW - i * 60_000,
+			}));
+			let seed = 1;
+			for (let i = n - 1; i > 0; i--) {
+				seed = (seed * 1_103_515_245 + 12_345) % 2_147_483_648;
+				const j = seed % (i + 1);
+				[activities[i], activities[j]] = [activities[j]!, activities[i]!];
+			}
+			return activities;
+		};
+		const score = (n: number) => {
+			const meter = { steps: 0 };
+			const result = computeEngagementScore({
+				activities: timeline(n),
+				tenureStartedAt: NOW - 900 * DAY,
+				now: NOW,
+				meter,
+			});
+			expectSane(result.score);
+			expect(result.inputs.openCount + result.inputs.clickCount).toBe(n);
+			// One read and one fold per activity, plus the sort's comparisons: an
+			// accidental nested scan over the timeline is n^2 / 2 steps.
+			expect(meter.steps, `steps at ${n}`).toBeLessThanOrEqual(n * (2 + Math.log2(n)));
+			return meter.steps;
+		};
 
-		const started = Date.now();
-		const result = computeEngagementScore({
-			activities,
-			tenureStartedAt: NOW - 900 * DAY,
-			now: NOW,
-		});
-		const elapsed = Date.now() - started;
-
-		expectSane(result.score);
-		// Allocation is O(n) in the caller-supplied list and nothing else — one
-		// array + one Set. Wall time is a coarse smoke check against an
-		// accidental O(n^2) (a nested scan over the timeline).
-		expect(elapsed).toBeLessThan(2000);
-		expect(result.inputs.openCount + result.inputs.clickCount).toBe(10_000);
+		const small = score(10_000);
+		const large = score(40_000);
+		expect(small).toBeGreaterThan(2 * 10_000);
+		// 4x the activities is a little over 4x the work, never 16x.
+		expect(large / small).toBeLessThan(5);
 	});
 });
 
