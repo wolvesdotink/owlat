@@ -9,41 +9,35 @@ import { getOptional } from '../lib/env';
 import { resolveNextSendTime, isValidTimeZone } from '../lib/emailHelpers';
 import type { CampaignEnqueueEmail } from '../delivery/enqueue';
 import { composeForSend, personalizeSubject } from '../delivery/sendComposition';
-import { getListIdHeader } from '../delivery/sendComposition/listId';
-import { planTodaysSlice, remainingRecipients } from './multiDaySendPlan';
 import {
 	bucketPageRecipients,
-	buildPlanCheckpoint,
-	buildSendPlanState,
 	classifyContentScan,
 	classifyStartSendSkip,
 	combineContentScan,
 	isEmptyAudienceComplete,
-	isPlannedTotalCounted,
 	isSendPrepared,
-	isTimezoneScheduled,
 	makeVariantBucketer,
-	pageSizeForSlice,
-	resolveParkInstant,
-	resolveVariantBSource,
 } from './sendPlanning';
+import type { PlannedSendTime } from './sendTimeOptimization';
 import {
-	makeSendTimePlanner,
-	resolveSendTimeWindow,
-	sendTimeOptimizationFor,
-	type PlannedSendTime,
-} from './sendTimeOptimization';
-import { nextUtcDayStart } from '../lib/clock';
+	NO_PROVIDER_RETRY_MS,
+	bucketContent,
+	bucketTemplateId,
+	decideHopPlan,
+	decideHopStart,
+	decidePageEnd,
+	hopSendContext,
+	hopSendSettings,
+	needsSendTimePlanning,
+	planSendTimes,
+	shouldCountAudience,
+	type HopSendContext,
+} from './pageDecision';
 import { nanoid } from 'nanoid';
 // Campaign send orchestrator (module) — the single live action that takes a
 // campaign from `draft|scheduled|sending` through content scan, archive,
 // audience resolution, A/B variant fanout (test cohort), and workpool
 // enqueue. See CONTEXT.md "Campaign send orchestrator (module)".
-// Backoff before re-trying a send hop that found no configured delivery
-// provider (removed between schedule and send). Long enough not to hot-loop
-// while an admin re-configures the provider; the stuck-send watchdog backstops
-// a lost reschedule.
-const NO_PROVIDER_RETRY_MS = 5 * 60 * 1000; // 5 minutes
 /**
  * Recipients handed to ONE `enqueueCampaignEmails` mutation.
  *
@@ -332,7 +326,7 @@ async function composeArchiveSnapshot(
 
 // ─── Per-variant batch enqueue ─────────────────────────────────────────
 
-type EnqueueVariantArgs = {
+type EnqueueVariantArgs = HopSendContext & {
 	campaignId: Id<'campaigns'>;
 	recipients: ReadonlyArray<CampaignRecipient>;
 	abVariant: 'A' | 'B' | undefined;
@@ -340,25 +334,6 @@ type EnqueueVariantArgs = {
 	htmlContent: string;
 	/** Pre-generated (or author-overridden) text/plain body; default language only. */
 	plainTextContent?: string;
-	from: string;
-	replyTo?: string;
-	audienceType?: 'topic' | 'segment';
-	viewInBrowserUrl?: string;
-	providerType?: string;
-	ipPool?: string;
-	trackingBaseUrl?: string;
-	convexSiteUrl?: string;
-	siteUrl?: string;
-	// Singleton org id — anchors the Gmail FBL Feedback-ID SenderId.
-	organizationId?: string;
-	// RFC 2919 List-Id header value for a TOPIC campaign (omitted for segments).
-	listId?: string;
-	useTimezone: boolean;
-	scheduledHour?: number;
-	scheduledMinute?: number;
-	// Org-level fallback zone (General settings) for recipients without a
-	// valid IANA timezone; bucket to UTC only when the org setting is unset.
-	defaultTimezone?: string;
 	// Send-time optimization: the instant and arm the planner chose per
 	// contact id. Set only for an optimized campaign; replaces both the
 	// timezone grouping and the immediate chunking.
@@ -540,369 +515,184 @@ async function enqueueVariantBatch(ctx: ActionCtx, args: EnqueueVariantArgs): Pr
 // archive snapshot, freeze, and the `→ sending` transition once; this hop only
 // does per-page send work, so it re-derives the lighter send context (route,
 // tracking domain, timezone) but never re-scans or re-archives.
+//
+// What the hop decides between its reads and writes (stop, park, the page,
+// the send context, each bucket's content, the page end) is in
+// `pageDecision.ts`, pure; this action loads, enqueues and writes.
 export const resolveCampaignPage = internalAction({
 	args: {
 		campaignId: v.id('campaigns'),
 	},
 	handler: async (ctx, args): Promise<{ done: boolean; pageEnqueued: number }> => {
-		const job = await ctx.runQuery(internal.campaigns.sendJob.getSendJob, {
-			campaignId: args.campaignId,
-		});
-		// Stale/cancelled walk: another hop finished it, or the row is gone.
-		if (!job || job.phase !== 'resolving') {
-			return { done: true, pageEnqueued: 0 };
-		}
-
-		const campaign = await ctx.runQuery(internal.campaigns.sendQueries.getCampaignForSending, {
-			campaignId: args.campaignId,
-		});
-		// Status-race guard: the campaign was cancelled / reverted to draft
-		// between hops. Leave the job as-is (it will be wiped on the next send)
-		// and stop — do NOT enqueue against a no-longer-sending campaign.
-		if (!campaign || campaign.status !== 'sending') {
-			return { done: true, pageEnqueued: 0 };
-		}
-		if (!campaign.emailTemplateId || !campaign.fromEmail) {
-			// Should not happen (PREF validated), but never enqueue without them.
-			return { done: true, pageEnqueued: 0 };
-		}
-
-		// THE MULTI-DAY SEND PLAN. A warming deployment
-		// with no relay to overflow to cannot deliver a large campaign in one day,
-		// and enqueueing the whole audience anyway does not make it faster — it makes
-		// the tail expire at `maxMessageAgeMs` after churning the MTA's queue for
-		// hours. So the walker takes only TODAY'S CAPACITY SLICE and resumes in the
-		// next cap window.
-		//
-		// UNMEASURED CAPACITY IMPOSES NO BUDGET: with no warming projection the slice
-		// is `undefined` and every line below behaves exactly as the shipped walker.
-		const planCapacity = await ctx.runQuery(
-			internal.campaigns.sendPlanQueries.getSendPlanCapacity,
-			{
-				audience: job.audience,
-				// ONCE PER WALK. `plannedTotal === undefined` alone would re-run the
-				// count on every hop of a walk whose count came back counted-but-
-				// unusable, because that verdict writes no total by design.
-				countAudienceSize:
-					job.plannedTotal === undefined && job.isPlannedTotalCountAttempted !== true,
-			}
+		const { campaignId } = args;
+		const start = decideHopStart(
+			await ctx.runQuery(internal.campaigns.sendJob.getSendJob, { campaignId }),
+			await ctx.runQuery(internal.campaigns.sendQueries.getCampaignForSending, { campaignId })
 		);
-		const planState = buildSendPlanState(job, planCapacity);
-		const slice = planTodaysSlice({
-			state: planState,
-			remaining: remainingRecipients(planState, job.enqueuedCount),
-			capacityByDay: planCapacity.capacityByDay,
+		if (start.kind === 'stop') return { done: true, pageEnqueued: 0 };
+		const { job, campaign } = start;
+
+		// THE MULTI-DAY SEND PLAN: today's capacity slice, or a park until the
+		// next cap window (see `decideHopPlan`).
+		const hop = decideHopPlan({
+			job,
+			capacity: await ctx.runQuery(internal.campaigns.sendPlanQueries.getSendPlanCapacity, {
+				audience: job.audience,
+				countAudienceSize: shouldCountAudience(job),
+			}),
+			fullPageSize: SEND_PAGE_SIZE,
 			now: Date.now(),
 		});
-		const planCheckpoint = buildPlanCheckpoint(
-			planState,
-			slice,
-			isPlannedTotalCounted(job, planCapacity)
-		);
-		const parkUntil = resolveParkInstant(slice, Date.now());
-		if (parkUntil !== undefined) {
-			// Today's slice is spent. PARK the walk until the next cap window: the
-			// checkpoint carries `resumeAt`, which both records the day's counters and
-			// takes the row out of the stuck-walk watchdog's reach — a 24h park is far
-			// past its staleness threshold, and a re-drive would schedule a second
-			// resume hop for the same instant. `recordSendPlanDay` owns the
-			// `updatedAt` touch, so there is no separate `touchSendJob` here.
+		if (hop.kind === 'park') {
+			// `recordSendPlanDay` owns the `updatedAt` touch, so there is no
+			// separate `touchSendJob` here.
 			const parked = await ctx.runMutation(internal.campaigns.sendJob.recordSendPlanDay, {
-				campaignId: args.campaignId,
-				plan: { ...planCheckpoint, enqueuedToday: slice.enqueuedToday },
-				resumeAt: parkUntil,
+				campaignId,
+				plan: hop.planDay,
+				resumeAt: hop.resumeAt,
 			});
 			// IDEMPOTENT RESUME. The row was already parked for exactly this window,
 			// so a hop is already pending and a second one would apply this page's
 			// counters twice.
 			if (!parked.isResumeAlreadyScheduled) {
-				await ctx.scheduler.runAt(parkUntil, internal.campaigns.send.resolveCampaignPage, {
-					campaignId: args.campaignId,
+				await ctx.scheduler.runAt(hop.resumeAt, internal.campaigns.send.resolveCampaignPage, {
+					campaignId,
 				});
 			}
 			return { done: false, pageEnqueued: 0 };
 		}
 
-		// Resolve ONE page at the job cursor — the bounded read that replaces the
-		// whole-audience resolve, narrowed to what is left of today's slice (see
-		// `pageSizeForSlice`). Never 0 here: a spent budget took the park branch.
-		const pageSize = pageSizeForSlice(slice, SEND_PAGE_SIZE);
+		// ONE bounded page at the job cursor, narrowed to what is left of
+		// today's slice.
 		const page = await ctx.runQuery(internal.campaigns.audienceResolution.resolveRecipientPage, {
 			audience: job.audience,
 			cursor: job.cursor,
-			...(pageSize === undefined ? {} : { numItems: pageSize }),
+			...(hop.pageSize === undefined ? {} : { numItems: hop.pageSize }),
 		});
-
-		const audienceType = job.audience.kind;
-		const from = campaign.fromName
-			? `${campaign.fromName} <${campaign.fromEmail}>`
-			: campaign.fromEmail;
-
-		// Re-derive the per-hop send context (cheap reads). Archive URL is read
-		// from the campaign snapshot PREP wrote (archiveToken), so each page's
-		// emails carry the same "view in browser" link.
-		const siteUrl = getOptional('SITE_URL');
-		const convexSiteUrl = getOptional('CONVEX_SITE_URL');
-		const viewInBrowserUrl =
-			campaign.archiveToken && siteUrl
-				? `${siteUrl}/archive?token=${campaign.archiveToken}`
-				: undefined;
+		const settings = hopSendSettings(job, campaign);
 
 		const resolvedRoute = await ctx.runQuery(internal.lib.sendProviders.route.resolveSendRoute, {
 			messageType: 'campaign',
 			to: page.recipients[0]?.email,
-			from,
+			from: settings.from,
 		});
 		if (!resolvedRoute) {
-			// Fail-closed: the campaign pre-flight already requires a configured
-			// delivery provider, so a null route here means one was removed between
-			// schedule and this send hop. Do NOT dispatch to a phantom MTA — but do
-			// NOT throw either: a bare throw would strand the walk forever (it stays
-			// `resolving`, the cursor never advances, and every remaining recipient
-			// is silently dropped). Instead reschedule this SAME hop after a backoff
-			// so the walk resumes once a provider is (re)configured. The cursor is
-			// left untouched, so the page re-resolves from the checkpoint.
-			//
-			// Touch `updatedAt` so this backoff reschedule — not the watchdog — owns
-			// the retry loop while the provider stays unconfigured. Without the touch
-			// the row's `updatedAt` would stay frozen at the last real progress and go
-			// ever staler, so the `reconcile stuck campaign sends` watchdog would match
-			// it on EVERY 5-min tick and schedule a fresh redundant hop on top of this
-			// self-reschedule chain, unbounded. With the touch the watchdog stays the
-			// true backstop: it only re-drives once the row goes stale again, i.e. once
-			// this self-reschedule chain has actually died.
+			// Fail closed and retry this same hop later; see `NO_PROVIDER_RETRY_MS`.
 			logWarn(
-				`Campaign send hop deferred for ${args.campaignId}: no delivery provider configured; retrying in ${NO_PROVIDER_RETRY_MS}ms`
+				`Campaign send hop deferred for ${campaignId}: no delivery provider configured; retrying in ${NO_PROVIDER_RETRY_MS}ms`
 			);
-			await ctx.runMutation(internal.campaigns.sendJob.touchSendJob, {
-				campaignId: args.campaignId,
-			});
+			await ctx.runMutation(internal.campaigns.sendJob.touchSendJob, { campaignId });
 			await ctx.scheduler.runAfter(
 				NO_PROVIDER_RETRY_MS,
 				internal.campaigns.send.resolveCampaignPage,
-				{ campaignId: args.campaignId }
+				{ campaignId }
 			);
 			return { done: false, pageEnqueued: 0 };
 		}
 
-		const activeTrackingDomain = await ctx.runQuery(
-			internal.domains.trackingDomains.getActiveTrackingDomain,
-			{}
-		);
-		const trackingBaseUrl = activeTrackingDomain?.domain
-			? `https://${activeTrackingDomain.domain}`
-			: undefined;
+		// The per-hop send context (cheap reads). PREP already scanned, archived
+		// and froze the campaign; this hop only re-derives what each page needs.
+		const context = hopSendContext({
+			job,
+			campaign,
+			settings,
+			route: resolvedRoute,
+			siteUrl: getOptional('SITE_URL'),
+			convexSiteUrl: getOptional('CONVEX_SITE_URL'),
+			trackingDomain: (
+				await ctx.runQuery(internal.domains.trackingDomains.getActiveTrackingDomain, {})
+			)?.domain,
+			organizationId:
+				(await ctx.runQuery(internal.campaigns.sendQueries.getSingletonOrganizationId, {})) ??
+				undefined,
+			topic: settings.topicId
+				? await ctx.runQuery(internal.topics.topics.getInternal, { topicId: settings.topicId })
+				: null,
+			defaultTimezone:
+				(settings.isTimezoneAware
+					? await ctx.runQuery(internal.campaigns.sendQueries.getOrgTimezone, {})
+					: undefined) ?? undefined,
+		});
+		const plannedSendTimes = planSendTimes({
+			campaignId,
+			campaign,
+			variantMode: settings.variantMode,
+			slice: hop.slice,
+			recipients: page.recipients,
+			planning: needsSendTimePlanning(campaign, settings.variantMode, page.recipients.length)
+				? await ctx.runQuery(internal.campaigns.sendTimeQueries.getPlanningContext, {})
+				: null,
+			now: Date.now(),
+		});
 
-		// Gmail FBL: the deployment's singleton org id anchors a stable
-		// Feedback-ID SenderId across the campaign mail stream. Resolved once per
-		// hop in this system (no-session) context.
-		const organizationId =
-			(await ctx.runQuery(internal.campaigns.sendQueries.getSingletonOrganizationId, {})) ??
-			undefined;
-
-		// RFC 2919 List-Id — a stable mailing-list handle for TOPIC campaigns,
-		// derived from the topic id/name + the sending domain (host of the From
-		// address). Segment campaigns get none (a computed audience has no single
-		// list identity). Built once per hop (it is identical for every recipient
-		// in this campaign) and threaded through the enqueue into the composer.
-		let listId: string | undefined;
-		if (job.audience.kind === 'topic') {
-			const topic = await ctx.runQuery(internal.topics.topics.getInternal, {
-				topicId: job.audience.topicId,
-			});
-			// Sending domain = host part of the From address (`local@host`).
-			const sendingDomain = campaign.fromEmail.split('@')[1] ?? '';
-			if (topic && sendingDomain) {
-				listId =
-					getListIdHeader({
-						domain: sendingDomain,
-						topic: { id: topic._id, name: topic.name },
-					}) ?? undefined;
-			}
-		}
-
-		const variantMode = job.variantMode ?? 'plain';
-		const useTimezone = isTimezoneScheduled(campaign, variantMode);
-
-		// Send-time optimization: propose each contact's instant inside the
-		// window. With a day budget the window ends with the budget's UTC day,
-		// so today's slice never lands in tomorrow's cap window.
-		const sendTimeSettings = sendTimeOptimizationFor(campaign, variantMode);
-		let plannedSendTimes: Map<string, PlannedSendTime> | undefined;
-		if (sendTimeSettings && page.recipients.length > 0) {
-			const now = Date.now();
-			const planning = await ctx.runQuery(
-				internal.campaigns.sendTimeQueries.getPlanningContext,
-				{}
-			);
-			const plan = makeSendTimePlanner({
-				campaignId: args.campaignId,
-				settings: sendTimeSettings,
-				window: resolveSendTimeWindow({
-					sentAt: campaign.sentAt,
-					windowHours: sendTimeSettings.windowHours,
-					now,
-					dayBudgetEndsAt: slice.remainingToday === undefined ? undefined : nextUtcDayStart(now),
-				}),
-				organization: planning.organization,
-				defaultTimezone: planning.defaultTimezone,
-				startWallClock:
-					campaign.scheduledHour !== undefined && campaign.scheduledMinute !== undefined
-						? { hour: campaign.scheduledHour, minute: campaign.scheduledMinute }
-						: undefined,
-				now,
-			});
-			plannedSendTimes = new Map(page.recipients.map((r) => [r._id, plan(r)]));
-		}
-
-		// Org-level timezone (General settings) — the fallback zone for
-		// timezone-aware scheduling when a recipient has no valid zone of their
-		// own. Only loaded on the timezone-aware path.
-		const defaultTimezone =
-			(useTimezone
-				? await ctx.runQuery(internal.campaigns.sendQueries.getOrgTimezone, {})
-				: undefined) ?? undefined;
-
-		// Classify THIS page's recipients into variant buckets per the job's
-		// variantMode + the deterministic per-contact hash.
+		// Each recipient's variant bucket, from the job's variant mode and the
+		// deterministic per-contact hash.
 		const bucketFor = makeVariantBucketer({
-			variantMode,
-			campaignId: args.campaignId,
+			variantMode: settings.variantMode,
+			campaignId,
 			testFraction: job.testFraction ?? 0,
 			winningVariant: job.winningVariant,
 		});
-		const variantB = resolveVariantBSource(campaign);
-		const variantBTemplateId = variantB.templateId as Id<'emailTemplates'> | undefined;
-		const variantBSubject = variantB.subject;
 
 		let pageEnqueued = 0;
 		if (page.recipients.length > 0) {
 			const template = await ctx.runQuery(internal.campaigns.sendQueries.getEmailTemplate, {
 				templateId: campaign.emailTemplateId,
 			});
-			const tmplDefaultLanguage = template?.defaultLanguage ?? 'en';
-			const campaignSubjectOverride = campaign.subject;
-
-			for (const bucket of bucketPageRecipients(page.recipients, bucketFor, tmplDefaultLanguage)) {
-				const { recipients } = bucket;
-				if (recipients.length === 0) continue;
-
-				// Resolve the content for this (language, variant). Variant A and
-				// the no-tag plain bucket use the primary template; variant B uses
-				// variantBSubject (subject test) or variantBTemplateId (content test).
-				let subject: string;
-				let htmlContent: string;
-				// The text/plain body travels with the html it belongs to — the
-				// per-language query returns it for the default language only.
-				let plainTextContent: string | undefined;
-				if (bucket.variant === 'B') {
-					if (variantBTemplateId) {
-						const bContent = await ctx.runQuery(
-							internal.campaigns.sendQueries.getEmailTemplateForLanguage,
-							{ templateId: variantBTemplateId, language: bucket.language }
-						);
-						if (!bContent) continue;
-						subject = bContent.subject;
-						htmlContent = bContent.htmlContent;
-						plainTextContent = bContent.plainTextContent;
-					} else {
-						// Subject test — variant B reuses A's html with the alt subject.
-						const aContent = await ctx.runQuery(
-							internal.campaigns.sendQueries.getEmailTemplateForLanguage,
-							{ templateId: campaign.emailTemplateId, language: bucket.language }
-						);
-						if (!aContent) continue;
-						subject = variantBSubject ?? campaignSubjectOverride ?? aContent.subject;
-						htmlContent = aContent.htmlContent;
-						plainTextContent = aContent.plainTextContent;
-					}
-				} else {
-					const aContent = await ctx.runQuery(
-						internal.campaigns.sendQueries.getEmailTemplateForLanguage,
-						{ templateId: campaign.emailTemplateId, language: bucket.language }
-					);
-					if (!aContent) continue;
-					subject = campaignSubjectOverride ?? aContent.subject;
-					htmlContent = aContent.htmlContent;
-					plainTextContent = aContent.plainTextContent;
-				}
-
+			const defaultLanguage = template?.defaultLanguage ?? 'en';
+			for (const bucket of bucketPageRecipients(page.recipients, bucketFor, defaultLanguage)) {
+				if (bucket.recipients.length === 0) continue;
+				const content = bucketContent(
+					bucket.variant,
+					campaign,
+					await ctx.runQuery(internal.campaigns.sendQueries.getEmailTemplateForLanguage, {
+						templateId: bucketTemplateId(bucket.variant, campaign),
+						language: bucket.language,
+					})
+				);
+				if (!content) continue;
 				pageEnqueued += await enqueueVariantBatch(ctx, {
-					campaignId: args.campaignId,
-					recipients,
+					...context,
+					...content,
+					campaignId,
+					recipients: bucket.recipients,
 					abVariant: bucket.variant,
-					subject,
-					htmlContent,
-					plainTextContent,
-					from,
-					replyTo: campaign.replyTo,
-					audienceType,
-					viewInBrowserUrl,
-					// Advisory snapshot only. The worker deliberately re-resolves current
-					// state for each recipient immediately before dispatch.
-					providerType: resolvedRoute.providerType,
-					ipPool: resolvedRoute.ipPool,
-					trackingBaseUrl,
-					convexSiteUrl,
-					siteUrl,
-					organizationId,
-					listId,
-					useTimezone: useTimezone === true,
-					scheduledHour: campaign.scheduledHour,
-					scheduledMinute: campaign.scheduledMinute,
-					defaultTimezone,
 					plannedSendTimes,
 				});
 			}
 		}
 
-		// Bump the daily send count for THIS page (the in-line path bumped once
-		// for the whole send; the walker bumps per page so the counter stays
-		// accurate even if a later hop is delayed).
-		if (pageEnqueued > 0) {
+		const end = decidePageEnd({
+			page,
+			pageEnqueued,
+			slice: hop.slice,
+			planCheckpoint: hop.planCheckpoint,
+		});
+		if (end.dailySendCount !== undefined) {
 			await ctx.runMutation(internal.campaigns.sendQueries.incrementDailySendCountInternal, {
-				count: pageEnqueued,
+				count: end.dailySendCount,
 			});
 		}
-
-		// Advance the checkpoint: patch cursor + counters, flip to `done` on the
-		// last page. Committing the cursor AFTER the enqueue means a crash before
-		// this point re-runs the SAME page on resume — and createBatch's
-		// idempotent guard makes that re-run write zero duplicate rows.
 		const advanced = await ctx.runMutation(internal.campaigns.sendJob.advanceSendJob, {
-			campaignId: args.campaignId,
-			nextCursor: page.nextCursor,
-			pageEnqueued,
-			pageCandidates: page.pageCandidates,
+			campaignId,
+			...end.advance,
 		});
-
-		// Record what today's slice has carried so far. Written AFTER the advance so
-		// the two never disagree about a page, and written on every hop — including
-		// the ones that enqueued nothing — because the day-of-N line has to be there
-		// from the first moment, not once a plan turns out to be long.
-		// No `resumeAt`: this hop made progress, so any previous park is cleared and
-		// the stuck-walk watchdog can see the row again.
 		await ctx.runMutation(internal.campaigns.sendJob.recordSendPlanDay, {
-			campaignId: args.campaignId,
-			plan: { ...planCheckpoint, enqueuedToday: slice.enqueuedToday + pageEnqueued },
+			campaignId,
+			plan: end.planDay,
 		});
 
-		if (page.nextCursor !== null) {
-			// More pages — self-reschedule the next hop.
-			await ctx.scheduler.runAfter(0, internal.campaigns.send.resolveCampaignPage, {
-				campaignId: args.campaignId,
-			});
+		if (!end.isLastPage) {
+			await ctx.scheduler.runAfter(0, internal.campaigns.send.resolveCampaignPage, { campaignId });
 			return { done: false, pageEnqueued };
 		}
 
-		// Last page. Decide whether the campaign can complete NOW (empty-audience
-		// fast-path) — see `isEmptyAudienceComplete`. In every other case the
-		// per-send completion callback / reconcile cron completes it once the last
-		// queued send clears (the guard no longer blocks now that phase ===
-		// 'done').
-		if (isEmptyAudienceComplete(variantMode, advanced)) {
+		// Last page: complete NOW only on the empty-audience fast path; otherwise
+		// the per-send completion callback / reconcile cron completes it once the
+		// last queued send clears (the guard no longer blocks once phase is done).
+		if (isEmptyAudienceComplete(settings.variantMode, advanced)) {
 			await ctx.runMutation(internal.campaigns.lifecycle.transition, {
-				campaignId: args.campaignId,
+				campaignId,
 				input: { to: 'sent', at: Date.now() },
 				userId: LIFECYCLE_USER_ORCHESTRATOR,
 			});
