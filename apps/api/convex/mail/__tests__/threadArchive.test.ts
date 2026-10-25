@@ -190,6 +190,13 @@ async function undoArchive(
 	}
 }
 
+/**
+ * For the tests that push hundreds of messages through `transactionLimits`:
+ * about 5 s locally, but up to 13 s on a coverage-instrumented CI runner, past
+ * the suite's 10 s default.
+ */
+const LIMITS_TEST = { timeout: 30_000 };
+
 let t: T;
 beforeEach(() => {
 	t = convexTest({ schema, modules });
@@ -521,38 +528,45 @@ describe('archiveThreads', () => {
 		});
 	});
 
-	it('archives a 1,000-message conversation and undoes it within the transaction limits', async () => {
-		// Enforces Convex's per-transaction limits, 4,096 index ranges among them.
-		// Moving 1,000 messages in one transaction, either way, would pass that limit.
-		t = convexTest({ schema, modules, transactionLimits: true });
-		const { mailboxId, folders } = await seedBox(t);
-		const { threadId, messageIds } = await seedThread(
-			t,
-			mailboxId,
-			folders,
-			Array.from({ length: 1000 }, () => ({}))
-		);
+	it(
+		'archives a 1,000-message conversation and undoes it within the transaction limits',
+		LIMITS_TEST,
+		async () => {
+			// Enforces Convex's per-transaction limits, 4,096 index ranges among them.
+			// Moving 1,000 messages in one transaction, either way, would pass that limit.
+			t = convexTest({ schema, modules, transactionLimits: true });
+			const { mailboxId, folders } = await seedBox(t);
+			const { threadId, messageIds } = await seedThread(
+				t,
+				mailboxId,
+				folders,
+				Array.from({ length: 1000 }, () => ({}))
+			);
 
-		const calls = await archiveUntilDone([threadId]);
+			const calls = await archiveUntilDone([threadId]);
 
-		expect(calls).toHaveLength(10);
-		expect(calls[calls.length - 1]!.threads[0]).toMatchObject({ isDone: true, hasLeftInbox: true });
-		const archived = await t.run(async (ctx) =>
-			ctx.db
-				.query('mailMessages')
-				.withIndex('by_thread_folder_received', (q) =>
-					q.eq('threadId', threadId).eq('folderId', folders.archive)
-				)
-				.collect()
-		);
-		expect(archived).toHaveLength(messageIds.length);
+			expect(calls).toHaveLength(10);
+			expect(calls[calls.length - 1]!.threads[0]).toMatchObject({
+				isDone: true,
+				hasLeftInbox: true,
+			});
+			const archived = await t.run(async (ctx) =>
+				ctx.db
+					.query('mailMessages')
+					.withIndex('by_thread_folder_received', (q) =>
+						q.eq('threadId', threadId).eq('folderId', folders.archive)
+					)
+					.collect()
+			);
+			expect(archived).toHaveLength(messageIds.length);
 
-		await undoArchive(calls.flatMap((call) => call.moved));
+			await undoArchive(calls.flatMap((call) => call.moved));
 
-		for (const id of messageIds) expect(await folderOf(t, id)).toBe(folders.inbox);
-		const thread = await t.run(async (ctx) => ctx.db.get(threadId));
-		expect(thread!.folderRoles).toContain('inbox');
-	});
+			for (const id of messageIds) expect(await folderOf(t, id)).toBe(folders.inbox);
+			const thread = await t.run(async (ctx) => ctx.db.get(threadId));
+			expect(thread!.folderRoles).toContain('inbox');
+		}
+	);
 
 	it('archives as many conversations as one call takes within the transaction limits', async () => {
 		t = convexTest({ schema, modules, transactionLimits: true });
@@ -570,30 +584,34 @@ describe('archiveThreads', () => {
 });
 
 describe('Postbox Archive sweep over a long range', () => {
-	it('archives 600 conversations in calls of 100 and undoes them within the transaction limits', async () => {
-		// One archive of all 600 exceeds the 4,096 index-range limit, so
-		// usePostboxRowTriage sends at most 100 messages per call, and the Undo
-		// (groupMovedBySourceFolder) puts them back 100 per move.
-		t = convexTest({ schema, modules, transactionLimits: true });
-		const { mailboxId, folders } = await seedBox(t);
-		const messageIds: Id<'mailMessages'>[] = [];
-		for (let i = 0; i < 600; i++) {
-			messageIds.push((await seedThread(t, mailboxId, folders, [{}])).messageIds[0]!);
+	it(
+		'archives 600 conversations in calls of 100 and undoes them within the transaction limits',
+		LIMITS_TEST,
+		async () => {
+			// One archive of all 600 exceeds the 4,096 index-range limit, so
+			// usePostboxRowTriage sends at most 100 messages per call, and the Undo
+			// (groupMovedBySourceFolder) puts them back 100 per move.
+			t = convexTest({ schema, modules, transactionLimits: true });
+			const { mailboxId, folders } = await seedBox(t);
+			const messageIds: Id<'mailMessages'>[] = [];
+			for (let i = 0; i < 600; i++) {
+				messageIds.push((await seedThread(t, mailboxId, folders, [{}])).messageIds[0]!);
+			}
+
+			const moved = [];
+			for (let i = 0; i < messageIds.length; i += 100) {
+				const result = await t.mutation(api.mail.messageActions.archive, {
+					messageIds: messageIds.slice(i, i + 100),
+				});
+				moved.push(...result!.moved);
+			}
+
+			expect(moved).toHaveLength(600);
+			for (const id of messageIds) expect(await folderOf(t, id)).toBe(folders.archive);
+
+			await undoArchive(moved);
+
+			for (const id of messageIds) expect(await folderOf(t, id)).toBe(folders.inbox);
 		}
-
-		const moved = [];
-		for (let i = 0; i < messageIds.length; i += 100) {
-			const result = await t.mutation(api.mail.messageActions.archive, {
-				messageIds: messageIds.slice(i, i + 100),
-			});
-			moved.push(...result!.moved);
-		}
-
-		expect(moved).toHaveLength(600);
-		for (const id of messageIds) expect(await folderOf(t, id)).toBe(folders.archive);
-
-		await undoArchive(moved);
-
-		for (const id of messageIds) expect(await folderOf(t, id)).toBe(folders.inbox);
-	});
+	);
 });
