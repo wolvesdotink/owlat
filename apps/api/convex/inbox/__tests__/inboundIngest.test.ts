@@ -59,6 +59,7 @@ import { internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import { getInboundChannelAdapter } from '../../webhooks/adapters/inboundRegistry';
 import { readScanRequest } from '../../mail/__tests__/scannerStub.testlib';
+import { drainScheduled } from './scheduledWork.testlib';
 
 /**
  * The two blob-drop branches are reachable only from OUTSIDE the action.
@@ -167,6 +168,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+	vi.useRealTimers();
 	globalThis.fetch = originalFetch;
 	process.env = { ...SAVED_ENV };
 	vi.restoreAllMocks();
@@ -290,28 +292,6 @@ async function ingest(
 		},
 		rawBytesBase64: raw,
 	});
-}
-
-/**
- * Let the background work a delivery scheduled (the agent pipeline) run to
- * completion. convex-test decides whether an action's storage call opens its own
- * transaction by asking whether ANY transaction is open, so a `storage.delete`
- * issued while a scheduled mutation happens to be running executes inside that
- * mutation's transaction and can vanish with it. On a slow runner that made the
- * staged-blob race test fail with the dropped blob still present, with no error
- * logged. Draining first keeps the second delivery alone on the transaction.
- */
-async function drainScheduled(t: ReturnType<typeof setupTest>): Promise<void> {
-	for (let round = 0; round < 50; round++) {
-		await new Promise((resolve) => setTimeout(resolve, 0));
-		await t.finishInProgressScheduledFunctions();
-		const functions = await t.run((ctx) => ctx.db.system.query('_scheduled_functions').collect());
-		const busy = functions.some(
-			(fn) => fn.state.kind === 'pending' || fn.state.kind === 'inProgress'
-		);
-		if (!busy) return;
-	}
-	throw new Error('scheduled functions did not settle');
 }
 
 /**
@@ -631,6 +611,9 @@ describe('inboundIngest — idempotency', () => {
 	});
 
 	it('drops the blob it staged when it loses the race to a concurrent delivery', async () => {
+		// The first delivery's pipeline must not run while the second one stages
+		// and drops its blob: see drainScheduled.
+		vi.useFakeTimers();
 		const t = setupTest();
 		configureMta();
 		stubScanner({ clean: true });

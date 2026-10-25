@@ -23,6 +23,7 @@ import {
 import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { Readable, Writable } from 'node:stream';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { afterAll, describe, expect, it } from 'vitest';
@@ -36,14 +37,17 @@ afterAll(async () => {
 	roots.length = 0;
 });
 
-// `docker run …` (the setup container) logs whether the config is still there,
-// optionally sleeps, and exits with $STUB_RUN_EXIT. Everything else succeeds
-// silently (`docker info` reports no Docker Desktop, so the Linux path runs).
+// `docker run …` (the setup container) logs whether the config is still there
+// and exits with $STUB_RUN_EXIT. With $STUB_RUN_HOLD set it first says it is
+// running on fd 3 and then holds until the test writes a line to fd 4: both
+// are pipes the test passes to the wrapper, which hands them down unchanged.
+// Everything else succeeds silently (`docker info` reports no Docker Desktop,
+// so the Linux path runs).
 const STUB_DOCKER = `#!/bin/sh
 case "$1" in
 	run)
 		if [ -f "$STUB_CONFIG" ]; then echo "run: config present" >> "$STUB_LOG"; else echo "run: config missing" >> "$STUB_LOG"; fi
-		[ -n "$STUB_RUN_SLEEP" ] && sleep "$STUB_RUN_SLEEP"
+		if [ -n "$STUB_RUN_HOLD" ]; then echo running >&3; read released <&4; fi
 		exit "\${STUB_RUN_EXIT:-0}" ;;
 esac
 exit 0
@@ -128,17 +132,29 @@ describe('scripts/owlat quickstart with OWLAT_CONSUME_CONFIG=1', () => {
 		const child = spawn(
 			'bash',
 			[install.script, 'quickstart', '--terminal', '--config', install.config],
-			{ env: install.env({ OWLAT_CONSUME_CONFIG: '1', STUB_RUN_SLEEP: '1' }), stdio: 'ignore' }
+			{
+				env: install.env({ OWLAT_CONSUME_CONFIG: '1', STUB_RUN_HOLD: '1' }),
+				stdio: ['ignore', 'ignore', 'ignore', 'pipe', 'pipe'],
+			}
 		);
+		const [, , , running, hold] = child.stdio as [null, null, null, Readable, Writable];
 		const exited = new Promise<number | null>((resolve) => child.on('exit', resolve));
-		// Wait until the setup container is running, then hang up the wrapper.
-		const started = Date.now();
-		while (!existsSync(install.log) && Date.now() - started < 5000) {
-			await new Promise((r) => setTimeout(r, 20));
+		const containerRunning = new Promise<void>((resolve) => running.once('data', () => resolve()));
+		try {
+			// Hang up the wrapper while the setup container runs. Bash runs its HUP
+			// trap once the container command returns, so release that next.
+			await containerRunning;
+			expect(existsSync(install.config)).toBe(true);
+			child.kill('SIGHUP');
+			hold.write('\n');
+			expect(await exited).toBe(129);
+			expect(await log(install)).toEqual(['run: config present']);
+			expect(existsSync(install.config)).toBe(false);
+		} finally {
+			// A stub still holding sees end-of-file and exits.
+			hold.destroy();
+			running.destroy();
 		}
-		child.kill('SIGHUP');
-		expect(await exited).toBe(129);
-		expect(existsSync(install.config)).toBe(false);
 	});
 
 	it('leaves the config alone without the variable (install.sh and hand-run installs)', async () => {

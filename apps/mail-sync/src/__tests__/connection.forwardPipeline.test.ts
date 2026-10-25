@@ -9,6 +9,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { getFunctionName } from 'convex/server';
 import type { ConnectableAccount, ConvexClient } from '../convex.js';
 import type { MailSyncConfig } from '../config.js';
+import { heldStages } from './heldStages.js';
 
 // convex/server declares AnyFunctionReference without exporting it.
 type AnyFunctionReference = Parameters<typeof getFunctionName>[0];
@@ -84,24 +85,24 @@ beforeEach(() => {
 describe('forward sync pipeline', () => {
 	it('starts the next uploads before the first message commits', async () => {
 		expect(FORWARD_INGEST_CONCURRENCY).toBe(4);
-		const releases: Array<() => void> = [];
+		const uploads = heldStages();
 		ingest.stageIngest.mockImplementation(async (_config, params) => {
-			await new Promise<void>((resolve) => releases.push(resolve));
+			await uploads.hold();
 			return { params };
 		});
 		const conn = connection([42, 43, 44, 45, 46]);
 
 		const poll = conn.pollFolder('INBOX', 'inbox');
-		await new Promise((resolve) => setTimeout(resolve, 0));
+		await uploads.started(4);
 		expect(ingest.stageIngest).toHaveBeenCalledTimes(4);
 		expect(ingest.commitIngest).not.toHaveBeenCalled();
 
 		// Finish the uploads last-first; the commits still go in UID order.
-		while (ingest.commitIngest.mock.calls.length < 5) {
-			for (const release of releases.splice(0).reverse()) release();
-			await new Promise((resolve) => setTimeout(resolve, 0));
-		}
+		expect(uploads.releaseNewestFirst()).toBe(4);
+		await uploads.started(5);
+		expect(uploads.releaseNewestFirst()).toBe(1);
 		await poll;
+		expect(uploads.peak).toBe(4);
 
 		expect(committedUids()).toEqual([42, 43, 44, 45, 46]);
 		expect(conn.cursors.get('INBOX')?.lastSeenUid).toBe(46);
