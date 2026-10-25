@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { reactive } from 'vue';
+import { isProxy, reactive } from 'vue';
 
 // Mock the renderer composable. `vi.hoisted` makes the spies exist before the
 // hoisted `vi.mock` factory references them. The HTML stand-in spells out each
@@ -313,12 +313,15 @@ describe('publishableEmailSave', () => {
 		});
 	});
 
-	it('takes the snapshot from a reactive draft, nested proxies included', async () => {
+	it('renders from a plain snapshot of a reactive draft, nested proxies included', async () => {
 		const blocks = reactive([text('b1', 'Hi there')]);
 		const payload = await saveAndCapture(draft({ blocks }), base());
 		expect(payload.content).toBe(JSON.stringify([text('b1', 'Hi there')]));
+
+		const rendered = renderBlocksToHtml.mock.calls[0]![0] as EditorBlock[];
+		expect(isProxy(rendered) || isProxy(rendered[0]) || isProxy(rendered[0]!.content)).toBe(false);
 		(blocks[0]!.content as { html: string }).html = 'Changed later';
-		expect(payload.content).toBe(JSON.stringify([text('b1', 'Hi there')]));
+		expect((rendered[0]!.content as { html: string }).html).toBe('Hi there');
 	});
 
 	it('omits the revision check when the base carries no revision', async () => {
