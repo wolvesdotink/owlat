@@ -188,14 +188,16 @@ describe('e2e-update-flow-dind.sh', () => {
 		expect(script).toMatch(/DIND_IMAGE='docker:[0-9.]+-dind@sha256:[0-9a-f]{64}'/);
 		expect(script).not.toContain('/var/run/docker.sock');
 		expect(script).toContain(
-			'docker exec "${flow_env[@]}" "$NAME" bash /src/scripts/e2e-update-flow.sh'
+			'docker exec "${flow_env[@]}" "$CID" bash /src/scripts/e2e-update-flow.sh'
 		);
 	});
 
-	it('bounds the wait for the daemon and removes the container and its volume by name', () => {
-		expect(script).toMatch(/for _ in \$\(seq 1 \d+\); do\n\tif docker exec "\$NAME" docker info/);
-		expect(script).toContain('docker rm -f -v "$NAME"');
-		expect(script).toContain('docker volume rm "$NAME-docker"');
+	// What its cleanup removes is pinned by running it against a stand-in
+	// docker: scripts/__tests__/e2e-update-flow-dind.test.ts.
+	it('bounds the wait for the daemon and cleans up only what carries its owner label', () => {
+		expect(script).toMatch(/for _ in \$\(seq 1 \d+\); do\n\tif docker exec "\$CID" docker info/);
+		expect(script).toContain('docker ps -aq --filter "label=$OWNER_LABEL"');
+		expect(script).toContain('docker volume ls -q --filter "label=$OWNER_LABEL"');
 		expect(script).toMatch(/trap cleanup EXIT/);
 	});
 });

@@ -163,7 +163,8 @@ Release is created as a DRAFT up front; every job below must pass before the
 `update-flow.yml` runs two scenarios, each on its own runner and each against
 a Docker daemon of its own (`scripts/e2e-update-flow-dind.sh`: a pinned
 `docker:dind` container whose image store is a named volume, with the whole
-harness running inside it and no host socket mounted), because the updater
+harness running inside it and no host socket mounted; its cleanup removes
+only the container and volume that carry its own random owner label), because the updater
 prunes images and the harness takes its stack down with its volumes. Before
 either update it installs the previous release, seeds Convex data through it
 (its sample data plus one queued Send, with no way to send mail) and records a
