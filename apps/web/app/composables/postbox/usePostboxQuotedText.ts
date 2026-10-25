@@ -18,7 +18,8 @@ import { POSTBOX_SANITIZE_CONFIG } from '@owlat/shared/postboxSanitize';
 import { escapeHtml, escapeHtmlWithBreaks } from '@owlat/shared/html';
 import type { ComposeSpec } from '~/composables/postbox/usePostboxComposeNav';
 import { applyPostboxImageConsent } from '~/utils/postboxRemoteResources';
-import { SELECTED_QUOTE_CLASS, normalizeQuotedPassage } from '~/utils/postboxSelectedQuote';
+import { SELECTED_QUOTE_CLASS } from '~/utils/answerMode';
+import { normalizeQuotedPassage } from '~/utils/postboxSelectedQuote';
 import { api } from '@owlat/api';
 import { consumeResolvedPostboxMessageBody } from './postboxBodyResolver';
 

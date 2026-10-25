@@ -12,7 +12,12 @@
  * reply mode), which is what `r` and the Reply button ask for.
  */
 
-import { SELECTED_QUOTE_CLASS } from './postboxSelectedQuote';
+/**
+ * Marks the quote block of a passage the person selected ("Quote in reply"),
+ * next to `gmail_quote`: never folded, and counted as their own content
+ * (utils/postboxSelectedQuote).
+ */
+export const SELECTED_QUOTE_CLASS = 'owlat_selected_quote';
 
 export const ANSWER_MODE_KINDS = ['reply', 'replyAll', 'forward'] as const;
 export type AnswerModeKind = (typeof ANSWER_MODE_KINDS)[number];

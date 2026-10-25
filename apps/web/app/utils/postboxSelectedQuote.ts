@@ -1,20 +1,20 @@
 /**
  * A passage the person selected in a message and chose to quote in their
- * reply: what the passage becomes, the class that marks its block in a reply
- * body, and where a further passage goes in a body that already holds some.
+ * reply: what the passage becomes, and where a further passage goes in a body
+ * that already holds some.
  *
  * The block is a `gmail_quote`, so Answer mode's split (`splitAnswerBody`)
  * counts it as part of the seeded tail, out of reach of an AI draft that
  * replaces what was written, and every mail client folds it as quoted text.
- * Its second class keeps Answer mode from folding it away with the full quoted
- * original: the person asked for this passage, so it stays on screen.
+ * Its second class (`SELECTED_QUOTE_CLASS`, kept in utils/answerMode with the
+ * fold and content rules that read it) keeps Answer mode from folding it away
+ * with the full quoted original: the person asked for this passage, so it
+ * stays on screen.
  *
  * Pure string work (no DOM), so it runs the same in tests and in the browser.
  */
 import { splitAnswerBody } from '@owlat/shared/answerMode';
-
-/** Marks a selected passage's quote block (next to `gmail_quote`). */
-export const SELECTED_QUOTE_CLASS = 'owlat_selected_quote';
+import { SELECTED_QUOTE_CLASS } from './answerMode';
 
 /**
  * The selected text as it is quoted: line endings unified, non-breaking spaces

@@ -4,11 +4,8 @@
  */
 import { describe, expect, it } from 'vitest';
 import { splitAnswerBody } from '@owlat/shared/answerMode';
-import {
-	SELECTED_QUOTE_CLASS,
-	insertSelectedQuote,
-	normalizeQuotedPassage,
-} from '../postboxSelectedQuote';
+import { SELECTED_QUOTE_CLASS } from '../answerMode';
+import { insertSelectedQuote, normalizeQuotedPassage } from '../postboxSelectedQuote';
 
 const block = (text: string) =>
 	`<br><br><div class="gmail_quote ${SELECTED_QUOTE_CLASS}"><div>On …, Sam wrote:</div><blockquote>${text}</blockquote></div>`;
