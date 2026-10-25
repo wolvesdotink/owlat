@@ -404,12 +404,13 @@ usePostboxFrameAutosize({
 				@untrust-sender="untrustSender()"
 			/>
 		</Teleport>
-		<!-- palette-ok: designed mail keeps its own colors on a white paper card
-		     (also on the dark app background). Plain mail paints nothing, so it
-		     reads as part of the message card; `color-scheme` is pinned to the
-		     frame's own scheme because the browser paints an opaque backdrop
-		     behind a frame whose scheme differs from its embedder's. -->
+		<!-- The box the "Quote in reply" pill is placed in, over the frame. -->
 		<div ref="frameBox" class="relative">
+			<!-- palette-ok: designed mail keeps its own colors on a white paper card
+			     (also on the dark app background). Plain mail paints nothing, so it
+			     reads as part of the message card; `color-scheme` is pinned to the
+			     frame's own scheme because the browser paints an opaque backdrop
+			     behind a frame whose scheme differs from its embedder's. -->
 			<iframe
 				ref="iframeRef"
 				:srcdoc="displaySrcdoc"
