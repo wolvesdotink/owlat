@@ -34,6 +34,7 @@
  * deliver-without-the-raw branch to take when it trips.
  */
 
+import { isRecord } from '@owlat/shared';
 import { httpAction } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { logError, logWarn } from '../lib/runtimeLog';
@@ -50,8 +51,8 @@ import {
 	storeRawRouteAudit,
 } from '../webhooks/adapters/mtaRawRoute';
 import {
+	decodeMtaInboundWire,
 	getInboundChannelAdapter,
-	type MtaInboundWirePayload,
 } from '../webhooks/adapters/inboundRegistry';
 
 /**
@@ -107,42 +108,45 @@ export const handleInboundWebhook = httpAction(async (ctx, request) => {
 	if (!verified.ok) return verified.response;
 	const { bodyText } = verified;
 
-	let payload: MtaInboundWirePayload | null = null;
+	// Parsed to `unknown`: the audit below reads identifiers off whatever
+	// arrived, and the shape is checked only once the event is known.
+	let parsed: unknown = null;
 	try {
-		payload = JSON.parse(bodyText) as MtaInboundWirePayload;
+		parsed = JSON.parse(bodyText);
 	} catch {
-		payload = null;
+		parsed = null;
 	}
+	const envelope = parsed === null ? null : isRecord(parsed) ? parsed : {};
 
 	// Audit EVERY body, including one we could not parse — an MTA sending us
 	// garbage is precisely what the audit trail is for. The write runs beside
 	// the ingest rather than ahead of it (it never rejects), and every response
 	// below waits for it, so no request is answered unaudited.
-	const ip = payload?.inboundPayload;
+	const ip = isRecord(envelope?.['inboundPayload']) ? envelope['inboundPayload'] : undefined;
 	const audited = storeRawRouteAudit(ctx, {
 		source: 'mta-inbound',
 		logTag: '[Inbound Webhook]',
 		bodyText,
-		payload,
+		payload: envelope,
 		envelope: {
-			messageId: clampAuditField(ip?.messageId ?? payload?.messageId),
-			organizationId: clampAuditField(payload?.organizationId),
-			from: clampAuditField(ip?.from),
-			to: clampAuditField(ip?.to),
-			subject: clampAuditField(ip?.subject),
-			rawMessageBytes: base64ByteLength(ip?.rawBytesBase64),
-			attachmentCount: Array.isArray(ip?.attachments) ? ip.attachments.length : undefined,
+			messageId: clampAuditField(ip?.['messageId'] ?? envelope?.['messageId']),
+			organizationId: clampAuditField(envelope?.['organizationId']),
+			from: clampAuditField(ip?.['from']),
+			to: clampAuditField(ip?.['to']),
+			subject: clampAuditField(ip?.['subject']),
+			rawMessageBytes: base64ByteLength(ip?.['rawBytesBase64']),
+			attachmentCount: Array.isArray(ip?.['attachments']) ? ip['attachments'].length : undefined,
 		},
 	});
 
-	if (!payload) {
+	if (!envelope) {
 		await audited;
 		return jsonResponse(400, { error: 'Invalid JSON' });
 	}
 
-	if (payload.event !== 'inbound.received' || !payload.inboundPayload) {
+	if (envelope['event'] !== 'inbound.received' || !envelope['inboundPayload']) {
 		await audited;
-		return jsonResponse(400, { error: `Unsupported event: ${payload.event}` });
+		return jsonResponse(400, { error: `Unsupported event: ${String(envelope['event'])}` });
 	}
 
 	// Accept and drop while the workspace is being deleted (see
@@ -151,6 +155,15 @@ export const handleInboundWebhook = httpAction(async (ctx, request) => {
 		await audited;
 		return workspaceDeletionAck('[Inbound Webhook]');
 	}
+
+	// The fields the ingest reads, checked before any of them is: a wrong type
+	// is a 400 naming the path, not a 500 from the ingest action's validator.
+	const decoded = decodeMtaInboundWire(envelope);
+	if (!decoded.ok) {
+		await audited;
+		return jsonResponse(400, { error: decoded.failure.message });
+	}
+	const payload = decoded.value;
 
 	// Envelope normalization is the SHARED parser the legacy `/webhooks/mta`
 	// route also runs (`webhooks/adapters/mtaEventParsers.ts`), so the two

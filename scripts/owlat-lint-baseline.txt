@@ -198,7 +198,6 @@ apps/api/convex/inbox/__tests__/largeBodiesLifecycle.test.ts	owlat(no-polling-lo
 apps/api/convex/inbox/askEagernessSettings.ts	owlat(use-threaded-session)	setAskEagerness
 apps/api/convex/inbox/clarificationMemory.ts	owlat(use-threaded-session)	promoteClarificationMemory
 apps/api/convex/inbox/clarificationMemory.ts	owlat(use-threaded-session)	revokeClarificationMemory
-apps/api/convex/inbox/inboundWebhookHttp.ts	owlat(no-unchecked-json-cast)	JSON.parse(bodyText) as MtaInboundWirePayload
 apps/api/convex/inbox/manualReply.ts	owlat(no-unchecked-json-cast)	JSON.parse(output) as DispositionFacts
 apps/api/convex/inbox/mutations.ts	owlat(use-threaded-session)	approveDraft
 apps/api/convex/inbox/mutations.ts	owlat(use-threaded-session)	assignThread
@@ -293,7 +292,6 @@ apps/api/convex/mail/pendingMailbox.ts	owlat(use-threaded-session)	cancelForInvi
 apps/api/convex/mail/pendingMailbox.ts	owlat(use-threaded-session)	claimForInvitation
 apps/api/convex/mail/pendingMailbox.ts	owlat(use-threaded-session)	setForInvitation
 apps/api/convex/mail/settings.ts	owlat(use-threaded-session)	update
-apps/api/convex/mail/webhookHttp.ts	owlat(no-unchecked-json-cast)	JSON.parse(bodyText) as MailWebhookPayload
 apps/api/convex/mediaAssets.ts	owlat(use-threaded-session)	bulkDelete
 apps/api/convex/mediaAssets.ts	owlat(use-threaded-session)	create
 apps/api/convex/mediaAssets.ts	owlat(use-threaded-session)	update
@@ -339,13 +337,6 @@ apps/api/convex/visualizationAgent.ts	owlat(use-threaded-session)	createFromProm
 apps/api/convex/visualizationAgent.ts	owlat(use-threaded-session)	regenerate
 apps/api/convex/visualizationAgent.ts	owlat(use-threaded-session)	remove
 apps/api/convex/visualizationAgent.ts	owlat(use-threaded-session)	togglePin
-apps/api/convex/webhooks/adapters/emailit.ts	owlat(no-unchecked-json-cast)	JSON.parse(rawBody) as Partial<EmailitPayload>
-apps/api/convex/webhooks/adapters/generic.ts	owlat(no-unchecked-json-cast)	JSON.parse(rawBody) as GenericPayload
-apps/api/convex/webhooks/adapters/meta.ts	owlat(no-unchecked-json-cast)	JSON.parse(rawBody) as MetaPayload
-apps/api/convex/webhooks/adapters/resend.ts	owlat(no-unchecked-json-cast)	JSON.parse(rawBody) as ResendWebhookPayload
-apps/api/convex/webhooks/adapters/ses.ts	owlat(no-unchecked-json-cast)	JSON.parse(msg.Message) as SesNotification
-apps/api/convex/webhooks/adapters/ses.ts	owlat(no-unchecked-json-cast)	JSON.parse(rawBody) as SnsEnvelope
-apps/api/convex/webhooks/adapters/ses.ts	owlat(no-unchecked-json-cast)	JSON.parse(rawBody) as SnsEnvelope
 apps/api/convex/webhooks/endpoints.ts	owlat(use-threaded-session)	create
 apps/api/convex/webhooks/endpoints.ts	owlat(use-threaded-session)	getDeliveryLog
 apps/api/convex/webhooks/endpoints.ts	owlat(use-threaded-session)	getDeliveryStats

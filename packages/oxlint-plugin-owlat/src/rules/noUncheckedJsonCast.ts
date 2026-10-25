@@ -22,8 +22,11 @@ import type { AstNode, Context, Rule } from '../types.ts';
  *   `const body: T = await req.json()`, or `body = JSON.parse(text)` where
  *   `body` was declared `let body: T`.
  *
- * An untyped binding (`const body = JSON.parse(text)`) is `any` and is not
- * caught here; that is the compiler's `noImplicitAny` territory, not a cast.
+ * Not enforced anywhere: an untyped binding (`const body = JSON.parse(text)`).
+ * It takes the explicit `any` that `JSON.parse` and `.json()` are declared to
+ * return, so strict mode (`noImplicitAny` included) accepts `body.to.trim()`
+ * without a check, and this rule, which looks for casts, does not see it
+ * either. Reviewers have to catch that case.
  */
 
 const MESSAGE =

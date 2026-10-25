@@ -74,6 +74,18 @@ describe('POST /api/setup/validate-provider', () => {
 		expect(mocks.validateProvider).not.toHaveBeenCalled();
 	});
 
+	it('answers 400, not a TypeError, for a non-string smtp field', async () => {
+		body = {
+			provider: 'smtp',
+			smtp: { host: 42, port: 587, secure: false, username: 'u', password: 'p' },
+		};
+		await expect(callRoute()).rejects.toMatchObject({
+			statusCode: 400,
+			message: 'smtp.host, smtp.username, and smtp.password are required.',
+		});
+		expect(mocks.validateSmtpRelay).not.toHaveBeenCalled();
+	});
+
 	it('sends a non-send provider through validateProvider with its host', async () => {
 		body = { provider: 'posthog', apiKey: 'key', host: 'https://ph.owlat.example' };
 		await expect(callRoute()).resolves.toEqual({ ok: true, message: 'ran validateProvider' });

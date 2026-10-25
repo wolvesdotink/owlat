@@ -20,6 +20,9 @@
  * adapter.
  */
 
+import { v } from 'convex/values';
+import { isRecord } from '@owlat/shared';
+import { decodeJsonValue } from '@owlat/worker-protocol/decodeJson';
 import { httpAction } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { logError } from '../lib/runtimeLog';
@@ -35,60 +38,59 @@ import {
 	readVerifiedMtaBody,
 	storeRawRouteAudit,
 } from '../webhooks/adapters/mtaRawRoute';
+import { spamVerdictValidator } from '../lib/convexValidators';
+import { virusVerdictValidator } from '../lib/literalValidators';
+import { deliveredEnvelopeFields } from './deliveryPipeline/ingestFields';
 
-interface MailWebhookAttachment {
-	filename: string;
-	contentType: string;
-	size: number;
-	contentId?: string;
-	partIndex: string;
-}
+/**
+ * The `inbound.mailbox.received` payload, checked before the delivery action
+ * is called. Each field is the validator `mail.delivery.ingestFromWebhook`
+ * declares for it (so the two cannot drift), except the ones this route
+ * defaults: `cc`, `bcc` and `attachments` default to empty and `subject` to
+ * `(no subject)`, so they may be absent here. A wrong type is refused with a
+ * 400 that names the path, where it used to reach the action's validator and
+ * come back as a 500.
+ */
+const mailboxPayloadValidator = v.object({
+	deliveryId: v.string(),
+	recipientAddress: v.string(),
+	rawBytesBase64: v.string(),
+	from: deliveredEnvelopeFields.from,
+	to: deliveredEnvelopeFields.to,
+	cc: v.optional(deliveredEnvelopeFields.cc),
+	bcc: v.optional(deliveredEnvelopeFields.bcc),
+	replyTo: deliveredEnvelopeFields.replyTo,
+	// SMTP envelope sender (RFC 5321 MAIL FROM); `''` for a bounce/DSN null
+	// sender. Used to suppress vacation auto-replies to bounces (RFC 3834 §2).
+	returnPath: v.optional(v.string()),
+	subject: v.optional(deliveredEnvelopeFields.subject),
+	textBody: v.optional(v.string()),
+	htmlBody: v.optional(v.string()),
+	messageId: deliveredEnvelopeFields.messageId,
+	inReplyTo: deliveredEnvelopeFields.inReplyTo,
+	references: deliveredEnvelopeFields.references,
+	date: v.optional(v.number()),
+	attachments: v.optional(deliveredEnvelopeFields.attachments),
+	spamScore: v.optional(v.number()),
+	spamVerdict: v.optional(spamVerdictValidator),
+	virusVerdict: v.optional(virusVerdictValidator),
+	spfResult: v.optional(v.string()),
+	dkimResult: v.optional(v.string()),
+	dmarcResult: v.optional(v.string()),
+	dmarcPolicy: v.optional(v.string()),
+	// DMARC alignment inputs (envelope MAIL FROM domain + DKIM d= domain),
+	// stored beside the verdicts on `mailMessages`. Both optional.
+	envelopeFromDomain: v.optional(v.string()),
+	dkimSigningDomain: v.optional(v.string()),
+	// Verified inbound ARC verdict (RFC 8617, Sealed Mail A5). Used to rescue a
+	// DMARC fail when a TRUSTED forwarder sealed a valid chain attesting the
+	// original passed. All optional — an older MTA omits them (no rescue).
+	arcCv: v.optional(v.string()),
+	arcSealerDomain: v.optional(v.string()),
+	arcAttestsOriginalPass: v.optional(v.boolean()),
+});
 
-interface MailWebhookPayload {
-	event: 'inbound.mailbox.received';
-	messageId?: string;
-	organizationId?: string;
-	message?: string;
-	timestamp: number;
-	mailboxPayload: {
-		deliveryId: string;
-		recipientAddress: string;
-		rawBytesBase64: string;
-		from: string;
-		to: string[];
-		cc?: string[];
-		bcc?: string[];
-		replyTo?: string;
-		// SMTP envelope sender (RFC 5321 MAIL FROM); `''` for a bounce/DSN null
-		// sender. Used to suppress vacation auto-replies to bounces (RFC 3834 §2).
-		returnPath?: string;
-		subject: string;
-		textBody?: string;
-		htmlBody?: string;
-		messageId: string;
-		inReplyTo?: string;
-		references?: string;
-		date?: number;
-		attachments?: MailWebhookAttachment[];
-		spamScore?: number;
-		spamVerdict?: 'ham' | 'spam' | 'quarantine';
-		virusVerdict?: 'clean' | 'infected' | 'skipped';
-		spfResult?: string;
-		dkimResult?: string;
-		dmarcResult?: string;
-		dmarcPolicy?: string;
-		// DMARC alignment inputs (envelope MAIL FROM domain + DKIM d= domain),
-		// stored beside the verdicts on `mailMessages`. Both optional.
-		envelopeFromDomain?: string;
-		dkimSigningDomain?: string;
-		// Verified inbound ARC verdict (RFC 8617, Sealed Mail A5). Used to rescue a
-		// DMARC fail when a TRUSTED forwarder sealed a valid chain attesting the
-		// original passed. All optional — an older MTA omits them (no rescue).
-		arcCv?: string;
-		arcSealerDomain?: string;
-		arcAttestsOriginalPass?: boolean;
-	};
-}
+const mailWebhookPayloadValidator = v.object({ mailboxPayload: mailboxPayloadValidator });
 
 export const handleMailWebhook = httpAction(async (ctx, request) => {
 	const verified = await readVerifiedMtaBody(ctx, request, {
@@ -98,42 +100,47 @@ export const handleMailWebhook = httpAction(async (ctx, request) => {
 	if (!verified.ok) return verified.response;
 	const { bodyText } = verified;
 
-	let payload: MailWebhookPayload | null = null;
+	// Parsed to `unknown`: the audit below reads identifiers off whatever
+	// arrived, and the shape is checked only once the event is known.
+	let parsed: unknown = null;
 	try {
-		payload = JSON.parse(bodyText) as MailWebhookPayload;
+		parsed = JSON.parse(bodyText);
 	} catch {
-		payload = null;
+		parsed = null;
 	}
+	const envelope = parsed === null ? null : isRecord(parsed) ? parsed : {};
 
 	// Audit EVERY body, including one we could not parse — an MTA sending us
 	// garbage is precisely the thing the audit trail is for. The write starts
 	// first but runs beside the delivery rather than ahead of it (it never
 	// rejects: a failed audit write is logged, not thrown), and every response
 	// below waits for it, so no request is answered unaudited.
-	const mpAudit = payload?.mailboxPayload;
+	const mpAudit = isRecord(envelope?.['mailboxPayload']) ? envelope['mailboxPayload'] : undefined;
 	const audited = storeRawRouteAudit(ctx, {
 		source: 'mta-mailbox',
 		logTag: '[Mail Webhook]',
 		bodyText,
-		payload,
+		payload: envelope,
 		envelope: {
-			deliveryId: clampAuditField(mpAudit?.deliveryId),
-			messageId: clampAuditField(mpAudit?.messageId),
-			recipientAddress: clampAuditField(mpAudit?.recipientAddress),
-			from: clampAuditField(mpAudit?.from),
-			rawMessageBytes: base64ByteLength(mpAudit?.rawBytesBase64),
-			attachmentCount: mpAudit?.attachments?.length,
+			deliveryId: clampAuditField(mpAudit?.['deliveryId']),
+			messageId: clampAuditField(mpAudit?.['messageId']),
+			recipientAddress: clampAuditField(mpAudit?.['recipientAddress']),
+			from: clampAuditField(mpAudit?.['from']),
+			rawMessageBytes: base64ByteLength(mpAudit?.['rawBytesBase64']),
+			attachmentCount: Array.isArray(mpAudit?.['attachments'])
+				? mpAudit['attachments'].length
+				: undefined,
 		},
 	});
 
-	if (!payload) {
+	if (!envelope) {
 		await audited;
 		return jsonResponse(400, { error: 'Invalid JSON' });
 	}
 
-	if (payload.event !== 'inbound.mailbox.received' || !payload.mailboxPayload) {
+	if (envelope['event'] !== 'inbound.mailbox.received' || !envelope['mailboxPayload']) {
 		await audited;
-		return jsonResponse(400, { error: `Unsupported event: ${payload.event}` });
+		return jsonResponse(400, { error: `Unsupported event: ${String(envelope['event'])}` });
 	}
 
 	// Accept and drop while the workspace is being deleted (see
@@ -143,7 +150,12 @@ export const handleMailWebhook = httpAction(async (ctx, request) => {
 		return workspaceDeletionAck('[Mail Webhook]');
 	}
 
-	const mp = payload.mailboxPayload;
+	const decoded = decodeJsonValue(envelope, mailWebhookPayloadValidator);
+	if (!decoded.ok) {
+		await audited;
+		return jsonResponse(400, { error: decoded.failure.message });
+	}
+	const mp = decoded.value.mailboxPayload;
 
 	try {
 		const [result] = await Promise.all([

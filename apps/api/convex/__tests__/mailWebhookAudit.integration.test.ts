@@ -73,10 +73,14 @@ async function sha256Hex(value: string): Promise<string> {
 		.join('');
 }
 
-async function postSigned(t: ReturnType<typeof setupTest>, body: string): Promise<Response> {
+async function postSigned(
+	t: ReturnType<typeof setupTest>,
+	body: string,
+	path: string = MAILBOX_PATH
+): Promise<Response> {
 	const ts = String(Math.floor(Date.now() / 1000));
 	const sig = await hmacSha256Hex(SECRET, `${ts}.${body}`);
-	return t.fetch(MAILBOX_PATH, {
+	return t.fetch(path, {
 		method: 'POST',
 		body,
 		headers: {
@@ -174,12 +178,12 @@ describe('POST /webhooks/mta-mailbox audit row', () => {
 		expect(summary['bodySha256']).toBe(await sha256Hex(body));
 	});
 
-	it('still audits a delivery whose rawBytesBase64 is not a string', async () => {
+	it('still audits a delivery whose rawBytesBase64 is not a string, then refuses it', async () => {
 		const t = setupTest();
-		// Nothing validates the parsed body's shape. A numeric `rawBytesBase64` is
-		// truthy, so the byte-length helper used to throw a `TypeError` into
-		// `auditDelivery`'s catch and the delivery went through with no audit row —
-		// the exact silent gap the summary was written to close.
+		// The audit reads the envelope before the shape is checked, so a numeric
+		// `rawBytesBase64` must neither throw inside the byte-length helper (which
+		// would leave the request with no audit row, the gap the summary exists to
+		// close) nor reach the delivery action.
 		const body = JSON.stringify({
 			event: 'inbound.mailbox.received',
 			timestamp: Date.now(),
@@ -195,7 +199,10 @@ describe('POST /webhooks/mta-mailbox audit row', () => {
 		});
 
 		const res = await postSigned(t, body);
-		expect(res.status).not.toBe(401);
+		expect(res.status).toBe(400);
+		expect(await res.json()).toEqual({
+			error: 'Invalid request body: $.mailboxPayload.rawBytesBase64: expected string',
+		});
 
 		const rows = await auditRows(t);
 		expect(rows).toHaveLength(1);
@@ -281,5 +288,44 @@ describe('POST /webhooks/mta-mailbox audit row', () => {
 		const summary = JSON.parse(rows[0]!.rawPayload) as Record<string, unknown>;
 		expect(summary['head']).toBeUndefined();
 		expect(rows[0]!.rawPayload).not.toContain('secret body');
+	});
+});
+
+/**
+ * The team-inbox raw route reads the same way: audit first, off whatever
+ * arrived, then the fields the ingest consumes are checked, and a wrong type
+ * is a 400 naming the path instead of a 500 from the ingest action.
+ */
+describe('POST /webhooks/mta-inbound refuses a wrong-typed field after auditing it', () => {
+	it('answers 400 for a numeric sender and stores no message', async () => {
+		const t = setupTest();
+		const body = JSON.stringify({
+			event: 'inbound.received',
+			organizationId: 'org-1',
+			timestamp: Date.now(),
+			inboundPayload: {
+				from: 42,
+				to: 'team@acme.test',
+				subject: 'hello',
+				headers: {},
+				messageId: '<typed-1@example.com>',
+				attachments: [],
+			},
+		});
+
+		const res = await postSigned(t, body, '/webhooks/mta-inbound');
+		expect(res.status).toBe(400);
+		expect(await res.json()).toEqual({
+			error: 'Invalid request body: $.inboundPayload.from: expected string',
+		});
+
+		const rows = await auditRows(t);
+		expect(rows).toHaveLength(1);
+		const summary = JSON.parse(rows[0]!.rawPayload) as Record<string, unknown>;
+		expect(summary['event']).toBe('inbound.received');
+		expect(summary['messageId']).toBe('<typed-1@example.com>');
+		expect(summary['from']).toBeUndefined();
+		const stored = await t.run(async (ctx) => ctx.db.query('inboundMessages').collect());
+		expect(stored).toEqual([]);
 	});
 });

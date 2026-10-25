@@ -218,6 +218,18 @@ describe('the live-check endpoint takes exactly the kinds the catalog says can b
 		}
 	);
 
+	it('answers 400, not a TypeError, for a non-string smtp field', async () => {
+		body = {
+			provider: 'smtp',
+			smtp: { host: 42, port: 587, secure: false, username: 'u', password: 'p' },
+		};
+		await expect(callRoute()).rejects.toMatchObject({
+			statusCode: 400,
+			message: 'smtp.host, smtp.username, and smtp.password are required.',
+		});
+		expect(probeCalls).toEqual([]);
+	});
+
 	it('runs the admin gate BEFORE any validator, and a refusal reaches no probe', async () => {
 		requireOrgAdminMock
 			.mockReset()

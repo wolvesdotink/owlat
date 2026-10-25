@@ -1740,6 +1740,7 @@ import type * as webhooks_adapters_mtaRawRoute from '../webhooks/adapters/mtaRaw
 import type * as webhooks_adapters_resend from '../webhooks/adapters/resend.js';
 import type * as webhooks_adapters_ses from '../webhooks/adapters/ses.js';
 import type * as webhooks_adapters_twilio from '../webhooks/adapters/twilio.js';
+import type * as webhooks_adapters_webhookBody from '../webhooks/adapters/webhookBody.js';
 import type * as webhooks_channels from '../webhooks/channels.js';
 import type * as webhooks_channelSecrets from '../webhooks/channelSecrets.js';
 import type * as webhooks_channelsHttp from '../webhooks/channelsHttp.js';
@@ -3627,6 +3628,7 @@ declare const fullApi: ApiFromModules<{
 	'webhooks/adapters/resend': typeof webhooks_adapters_resend;
 	'webhooks/adapters/ses': typeof webhooks_adapters_ses;
 	'webhooks/adapters/twilio': typeof webhooks_adapters_twilio;
+	'webhooks/adapters/webhookBody': typeof webhooks_adapters_webhookBody;
 	'webhooks/channels': typeof webhooks_channels;
 	'webhooks/channelSecrets': typeof webhooks_channelSecrets;
 	'webhooks/channelsHttp': typeof webhooks_channelsHttp;
