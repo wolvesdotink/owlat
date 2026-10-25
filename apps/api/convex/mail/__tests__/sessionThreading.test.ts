@@ -23,9 +23,7 @@ const sessionMock = vi.hoisted(() => ({
 }));
 
 vi.mock('../../lib/sessionOrganization', async () => {
-	const actual = await vi.importActual<typeof import('../../lib/sessionOrganization')>(
-		'../../lib/sessionOrganization'
-	);
+	const actual: typeof sessionOrganization = await vi.importActual('../../lib/sessionOrganization');
 	const current = () => ({
 		userId: sessionMock.userId,
 		role: sessionMock.role,
