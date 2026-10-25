@@ -197,7 +197,19 @@ describe('useEmailEditorBridge with co-editing', () => {
 		['content that is not JSON', { content: '[{' }],
 		['content that is not a list', { content: '{"blocks":[]}' }],
 		['a Block without an id', { content: JSON.stringify([{ type: 'text', content: {} }]) }],
+		[
+			'a Block with null content',
+			{ content: JSON.stringify([{ id: 'x', type: 'text', content: null }]) },
+		],
+		['a Block without content', { content: JSON.stringify([{ id: 'x', type: 'text' }]) }],
 		['fields that are not an object', { fields: '["Welcome"]' }],
+		['a text field that is not a string', { fields: JSON.stringify({ plainTextOverride: {} }) }],
+		['a subject that is not a string', { fields: JSON.stringify({ subject: 42 }) }],
+		['attachments that are not a list', { fields: JSON.stringify({ attachments: 'a.pdf' }) }],
+		[
+			'an unsubscribe flag that is not a boolean',
+			{ fields: JSON.stringify({ showUnsubscribe: 'yes' }) },
+		],
 	])('edits the classic way when the first session state has %s', async (_case, extra) => {
 		const { bridge, unmount } = setup();
 		queries['sessions.get']!.value = sessionRow(1, [text('a', 'Shared A')], extra);
@@ -206,6 +218,18 @@ describe('useEmailEditorBridge with co-editing', () => {
 		expect(bridge.isConnecting.value).toBe(false);
 		// The row's content, not an empty canvas or the unreadable state.
 		expect(bridge.blocks.value.map((b) => b.id)).toEqual(['a', 'b']);
+		unmount();
+	});
+
+	it('shows a session whose fields include one this build does not know', async () => {
+		const { bridge, unmount } = setup();
+		queries['sessions.get']!.value = sessionRow(1, [text('a', 'Shared A')], {
+			fields: JSON.stringify({ subject: 'Hello', plainTextOverride: 'Plain', futureField: 7 }),
+		});
+		await settle();
+
+		expect(bridge.isConnecting.value).toBe(false);
+		expect(bridge.blocks.value.map((b) => b.id)).toEqual(['a']);
 		unmount();
 	});
 

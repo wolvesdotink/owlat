@@ -100,21 +100,50 @@ function serialize({ op, baseVersion }: CoeditOutgoing<EditorBlock>) {
 /**
  * A Block of a session document. The document is canonical (the server
  * stores what the editors sent), so every Block has the id the sync keys it by.
+ * Its `content` is an object: the canvas and the renderers read a Block's
+ * fields straight off it.
  */
 function isSessionBlock(value: unknown): value is EditorBlock {
 	return (
 		isRecord(value) &&
 		typeof value['id'] === 'string' &&
 		value['id'] !== '' &&
-		typeof value['type'] === 'string'
+		typeof value['type'] === 'string' &&
+		isRecord(value['content'])
 	);
+}
+
+/**
+ * Whether `value` is what the editor holds in shared field `name`, as the
+ * server checks a sent value (`isValidFieldValue` in
+ * `emailCoediting/target.ts`). A field this build does not know is ignored
+ * when shown, so any value passes.
+ */
+function isSessionFieldValue(name: string, value: unknown): boolean {
+	switch (name as CoeditFieldName) {
+		case 'name':
+		case 'subject':
+		case 'plainTextOverride':
+			return typeof value === 'string';
+		case 'attachments':
+			return Array.isArray(value);
+		case 'showUnsubscribe':
+			return typeof value === 'boolean';
+		default:
+			return true;
+	}
 }
 
 const sessionBlocksDecoder = guardDecoder(
 	(value): value is EditorBlock[] => Array.isArray(value) && value.every(isSessionBlock),
 	'$: expected an array of Blocks'
 );
-const sessionFieldsDecoder = guardDecoder(isRecord, '$: expected an object');
+const sessionFieldsDecoder = guardDecoder(
+	(value): value is Record<string, unknown> =>
+		isRecord(value) &&
+		Object.entries(value).every(([name, field]) => isSessionFieldValue(name, field)),
+	'$: expected an object of shared field values'
+);
 
 /** The document of a session row, or null when its JSON is not one. */
 function readSessionDoc(row: { content: string; fields: string }): CoeditEditorDoc | null {
