@@ -38,6 +38,7 @@ import { LlmPartialUsageError } from '../partialUsage';
 import { LlmTruncatedError } from '../truncation';
 import { isRetriableLlmError } from '../retryPolicy';
 import { normalizeUsage, providerReportedUsage, streamUsage } from '../providerUsage';
+import { withFakeBackoff } from './backoffClock.testlib';
 import { scriptedStreamModel } from './streamModel.testlib';
 
 const model = stampModelEndpoint(
@@ -359,28 +360,32 @@ describe('runLlmStream — every provider request, at the provider boundary', ()
 
 	it('records a re-sent opening request: a 503, then the stream that answered', async () => {
 		const meter = new LlmCallMeter({ task: 'assistant.answer' });
-		await runLlmStream({
-			model: flaky(scriptedStreamModel([{ text: ['Done.'] }]), 1),
-			messages: [{ role: 'user', content: 'hi' }],
-			meter,
-		});
+		await withFakeBackoff(() =>
+			runLlmStream({
+				model: flaky(scriptedStreamModel([{ text: ['Done.'] }]), 1),
+				messages: [{ role: 'user', content: 'hi' }],
+				meter,
+			})
+		);
 		expect(meter.requests.map((r) => [r.attempt, r.outcome, r.usage?.totalTokens])).toEqual([
 			[1, 'failed', undefined],
 			[2, 'ok', 15],
 		]);
-	}, 20_000);
+	});
 
 	it('stops re-sending at the task’s attempt allowance', async () => {
 		const meter = new LlmCallMeter({ task: 'mail.ask' }); // 2 attempts
 		await expect(
-			runLlmStream({
-				model: flaky(scriptedStreamModel([{ text: ['Done.'] }]), 5),
-				messages: [{ role: 'user', content: 'hi' }],
-				meter,
-			})
+			withFakeBackoff(() =>
+				runLlmStream({
+					model: flaky(scriptedStreamModel([{ text: ['Done.'] }]), 5),
+					messages: [{ role: 'user', content: 'hi' }],
+					meter,
+				})
+			)
 		).rejects.toThrow();
 		expect(meter.requests.map((r) => r.outcome)).toEqual(['failed', 'failed']);
-	}, 20_000);
+	});
 
 	it('keeps the billed usage when the reader’s callback throws mid-stream', async () => {
 		const meter = new LlmCallMeter({ task: 'assistant.answer' });

@@ -1,11 +1,34 @@
 import { resolve } from 'node:path';
 import { defineConfig } from 'vitest/config';
 import { packageCoverage } from '../../vitest.shared';
-import { scheduledFailureSeam } from './convex/__tests__/helpers/scheduledFailureSeam.ts';
-import { creationTimeSeam } from './convex/__tests__/helpers/creationTimeSeam.ts';
-import { storageStoreSeam } from './convex/__tests__/helpers/storageStoreSeam.ts';
+import { scheduledFailureSeam } from './convex/__tests__/helpers/scheduledFailureSeam';
+import { creationTimeSeam } from './convex/__tests__/helpers/creationTimeSeam';
+import { storageStoreSeam } from './convex/__tests__/helpers/storageStoreSeam';
+import { PARALLEL_GATE_TIMEOUT_MS, POPULATION_SUITE_TIMEOUT_MS } from '../../vitest.timeouts';
 
+const unitTestPattern = 'convex/**/__tests__/**/*.test.ts';
 const integrationTestPattern = 'convex/**/__tests__/**/*.integration.test.ts';
+
+/**
+ * The suites that drive a population past a production limit to its end (see
+ * POPULATION_SUITE_TIMEOUT_MS): a reminder drain over the send cap, held-question
+ * pages at the read limits, a remote-op queue longer than a deferral pass, sender
+ * undos over the transaction limits, an audience scan past its read budget.
+ * They run in their own projects, with that budget, in the environment their
+ * file name picks; everything else keeps the parallel-gate budget.
+ */
+const populationSuites = [
+	'convex/__tests__/clarificationHoldBounds.integration.test.ts',
+	'convex/__tests__/clarificationReminderLimits.integration.test.ts',
+	'convex/__tests__/preflightBindingPopulations.test.ts',
+	'convex/mail/__tests__/remoteOpOrder.test.ts',
+	'convex/mail/arrival/__tests__/transactionLimits.test.ts',
+];
+const isIntegrationSuite = (path: string) => path.endsWith('.integration.test.ts');
+const populationBudget = {
+	testTimeout: POPULATION_SUITE_TIMEOUT_MS,
+	hookTimeout: POPULATION_SUITE_TIMEOUT_MS,
+};
 
 export default defineConfig({
 	// Lets the scheduled-failure gate (vitest.setup.ts) see a throwing scheduled
@@ -17,22 +40,36 @@ export default defineConfig({
 	test: {
 		setupFiles: ['./vitest.setup.ts'],
 		server: { deps: { inline: ['convex-test'] } },
-		// Integration tests run the real HTTP-router graph through convex-test, which
-		// lazily transforms/imports the whole `convex/` tree on the first `t.fetch`
-		// in a worker. That one-time cold-start can exceed a tight timeout for
-		// whichever integration test lands first in a contended worker. Keep the
-		// tighter default for fast unit tests and give only the integration project
-		// enough headroom for that environmental cost.
-		testTimeout: 10000,
-		hookTimeout: 10000,
+		// Every test builds a convex-test harness whose module graph its worker
+		// imports lazily: the HTTP router's whole `convex/` tree on an integration
+		// test's first `t.fetch`, the send worker's graph on a delivery test's
+		// first send. A full API run initializes hundreds of those graphs in
+		// parallel, and the release gate runs it beside every other workspace, so
+		// a test that takes a second alone can take tens of seconds there. That is
+		// the fixed cost the shared parallel-gate budget is sized for.
+		testTimeout: PARALLEL_GATE_TIMEOUT_MS,
+		hookTimeout: PARALLEL_GATE_TIMEOUT_MS,
+		// A project per environment and budget. Projects of one group run at the
+		// same time, under the run's one worker limit, so each population project
+		// joins its environment's group instead of adding a run of its own.
 		projects: [
 			{
 				extends: true,
 				test: {
 					name: 'unit',
-					include: ['convex/**/__tests__/**/*.test.ts'],
-					exclude: ['convex/_generated/**', integrationTestPattern],
+					include: [unitTestPattern],
+					exclude: ['convex/_generated/**', integrationTestPattern, ...populationSuites],
 					environment: 'node',
+					sequence: { groupOrder: 0 },
+				},
+			},
+			{
+				extends: true,
+				test: {
+					name: 'unit-population',
+					include: populationSuites.filter((path) => !isIntegrationSuite(path)),
+					environment: 'node',
+					...populationBudget,
 					sequence: { groupOrder: 0 },
 				},
 			},
@@ -41,10 +78,18 @@ export default defineConfig({
 				test: {
 					name: 'integration',
 					include: [integrationTestPattern],
-					exclude: ['convex/_generated/**'],
+					exclude: ['convex/_generated/**', ...populationSuites],
 					environment: 'edge-runtime',
-					testTimeout: 20000,
-					// Splitting by timeout must not create two competing worker pools.
+					sequence: { groupOrder: 1 },
+				},
+			},
+			{
+				extends: true,
+				test: {
+					name: 'integration-population',
+					include: populationSuites.filter(isIntegrationSuite),
+					environment: 'edge-runtime',
+					...populationBudget,
 					sequence: { groupOrder: 1 },
 				},
 			},
