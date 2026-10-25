@@ -111,5 +111,5 @@ describe.skipIf(process.env[REFRESH_SWITCH] !== '1')('schema-compat fixture refr
 		} finally {
 			rmSync(join(apiRoot, '.schema-compat'), { recursive: true, force: true });
 		}
-	}, 300_000);
+	});
 });

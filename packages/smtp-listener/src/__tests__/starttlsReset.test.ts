@@ -38,7 +38,7 @@ beforeAll(() => {
 	const material = generateCert('mx.test');
 	cert = material.cert;
 	key = material.key;
-}, 20000);
+});
 
 async function start(overrides: Partial<SmtpListenerOptions> = {}): Promise<{
 	listener: SmtpListener;

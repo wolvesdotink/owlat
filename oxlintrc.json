@@ -84,15 +84,10 @@
 		"import/no-unassigned-import": "off",
 		"owlat/require-suppression-reason": "error",
 		"owlat/no-test-in-loop": "error",
-		// The vitest setups of these workspaces unmount every component a test
-		// mounted, so a test never wipes the document to clean up. email-builder
-		// has no shared setup that does this; its suites still clear the body.
-		"owlat/no-document-body-reset": [
-			"error",
-			{
-				"files": ["apps/web/**/__tests__/**", "packages/ui/**/__tests__/**"]
-			}
-		],
+		// The vitest setups of the workspaces that mount components unmount every
+		// mount after each test, and a test removes the nodes it appended, so no
+		// test wipes the document to clean up. The rule reads test files only.
+		"owlat/no-document-body-reset": "error",
 		// Exponential backoff goes through @owlat/shared/retryPolicy (nextDelay).
 		"owlat/no-inline-backoff": "error",
 		"owlat/no-test-timeout-or-unreasoned-skip": "warn",

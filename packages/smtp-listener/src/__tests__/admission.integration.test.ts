@@ -25,7 +25,7 @@ let key: string;
 
 beforeAll(() => {
 	({ cert, key } = generateCert('mx.test'));
-}, 20000);
+});
 
 afterEach(closeAllListeners);
 

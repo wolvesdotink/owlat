@@ -4,7 +4,10 @@
 	// puts them back for `typecheck` only and emits nothing.
 	"extends": "./tsconfig.json",
 	"compilerOptions": {
-		"noEmit": true
+		"noEmit": true,
+		// Tests may import the repo's shared vitest budget (vitest.timeouts.ts).
+		// Nothing is emitted, so widening rootDir only admits that import.
+		"rootDir": "../.."
 	},
 	"include": ["src"],
 	"exclude": ["node_modules", "dist"]

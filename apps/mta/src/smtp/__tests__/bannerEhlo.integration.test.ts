@@ -145,7 +145,7 @@ describe('SMTP greeting banner uses config.ehloHostname (PR-64, RFC 5321 §4.2)'
 		const greeting = await readGreeting(server);
 
 		expect(greeting.startsWith(`220 ${EHLO} `)).toBe(true);
-	}, 15000);
+	});
 
 	it('submission server (587 STARTTLS) greets with "220 mail.test.example "', async () => {
 		const config = {
@@ -163,7 +163,7 @@ describe('SMTP greeting banner uses config.ehloHostname (PR-64, RFC 5321 §4.2)'
 		const greeting = await readGreeting(server);
 
 		expect(greeting.startsWith(`220 ${EHLO} `)).toBe(true);
-	}, 15000);
+	});
 
 	it('implicit-TLS submission server (465) greets with "220 mail.test.example "', async () => {
 		const config = {
@@ -181,5 +181,5 @@ describe('SMTP greeting banner uses config.ehloHostname (PR-64, RFC 5321 §4.2)'
 		const greeting = await readGreeting(server, { tls: true });
 
 		expect(greeting.startsWith(`220 ${EHLO} `)).toBe(true);
-	}, 15000);
+	});
 });

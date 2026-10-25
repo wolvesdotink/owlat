@@ -390,7 +390,7 @@ beforeAll(async () => {
 		isolationOpensUnderOwnSecret,
 		isolationOpenThrew,
 	};
-}, 60_000);
+});
 
 afterAll(() => {
 	vi.unstubAllGlobals();

@@ -10,7 +10,7 @@
 // is indistinguishable from that echo: pushed through the prop it is silently
 // dropped, and the canvas keeps showing the current copy while a save would
 // persist the restored one. `loadState` is the explicit door for that case.
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import EmailBuilder from '../EmailBuilder.vue';
 import { EmailBuilderHandlersKey } from '../../composables/useEmailBuilderHandlers';
@@ -25,10 +25,8 @@ function text(id: string, html: string): EditorBlock {
 	return block;
 }
 
-let wrapper: VueWrapper | null = null;
-
 async function mountBuilder(blocks: EditorBlock[]) {
-	wrapper = mount(EmailBuilder, {
+	const wrapper = mount(EmailBuilder, {
 		props: { blocks, subject: 'Subject', name: 'Name', variables: [] },
 		global: {
 			provide: {
@@ -42,12 +40,6 @@ async function mountBuilder(blocks: EditorBlock[]) {
 	await flushPromises();
 	return wrapper;
 }
-
-afterEach(() => {
-	wrapper?.unmount();
-	wrapper = null;
-	document.body.innerHTML = '';
-});
 
 describe('EmailBuilder version restore', () => {
 	it('renders a same-ids/different-content snapshot pushed through loadState', async () => {

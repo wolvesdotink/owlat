@@ -1,6 +1,7 @@
 import { MockLanguageModelV3 } from 'ai/test';
 import { describe, expect, it } from 'vitest';
 import { runLlmTextWithAttemptMetadata } from '../dispatch';
+import { withFakeBackoff } from './backoffClock.testlib';
 import { providerGenerationResult } from './providerModel.testlib';
 
 const REQUESTED_MODEL_ID = 'requested-model';
@@ -51,12 +52,14 @@ describe('provider-reported model identity', () => {
 			},
 		});
 
-		const dispatched = await runLlmTextWithAttemptMetadata({ model, prompt: 'hello' });
+		const dispatched = await withFakeBackoff(() =>
+			runLlmTextWithAttemptMetadata({ model, prompt: 'hello' })
+		);
 
 		expect(dispatched.attempts).toBe(2);
 		expect(dispatched.result.modelUsed).toBe(REQUESTED_MODEL_ID);
 		expect(dispatched.providerModelUsed).toBe('successful-retry-model');
-	}, 10_000);
+	});
 
 	it.each([
 		['missing model id', {}],

@@ -271,7 +271,7 @@ describe('TLS-handshake abandonment', () => {
 		const material = generateCert('mx.test');
 		cert = material.cert;
 		key = material.key;
-	}, 20000);
+	});
 
 	it('STARTTLS then plaintext garbage: the handshake errors and the socket dies', async () => {
 		const { port } = await start({ tls: { cert, key } });

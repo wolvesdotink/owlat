@@ -34,6 +34,7 @@ import {
 	MAX_LLM_ATTEMPTS,
 } from '../dispatch';
 import { interactiveLlmPolicy } from '../retryPolicy';
+import { withFakeBackoff } from './backoffClock.testlib';
 
 const fakeModel = { modelId: 'fake-model-id' } as unknown as Parameters<
 	typeof runLlmText
@@ -259,10 +260,10 @@ describe('runLlmText retry behavior', () => {
 				usage: { inputTokens: 1, outputTokens: 2, totalTokens: 3 },
 			});
 
-		const result = await runLlmText({ model: fakeModel, prompt: 'hi' });
+		const result = await withFakeBackoff(() => runLlmText({ model: fakeModel, prompt: 'hi' }));
 		expect(result.text).toBe('ok');
 		expect(generateTextMock).toHaveBeenCalledTimes(2);
-	}, 10_000);
+	});
 
 	it('reports attempts and forwards a host-owned output ceiling through the metadata seam', async () => {
 		generateTextMock
@@ -271,15 +272,13 @@ describe('runLlmText retry behavior', () => {
 				text: 'ok',
 				usage: { inputTokens: 1, outputTokens: 2, totalTokens: 3 },
 			});
-		const result = await runLlmTextWithAttemptMetadata({
-			model: fakeModel,
-			prompt: 'hi',
-			maxOutputTokens: 2048,
-		});
+		const result = await withFakeBackoff(() =>
+			runLlmTextWithAttemptMetadata({ model: fakeModel, prompt: 'hi', maxOutputTokens: 2048 })
+		);
 		expect(result.attempts).toBe(2);
 		expect(result.providerModelUsed).toBeUndefined();
 		expect(generateTextMock.mock.calls[1]?.[0]).toMatchObject({ maxOutputTokens: 2048 });
-	}, 10_000);
+	});
 
 	it('bails immediately on a non-retriable auth error (no wasted retries)', async () => {
 		generateTextMock.mockRejectedValue({ statusCode: 401, message: 'invalid api key' });
@@ -303,18 +302,20 @@ describe('SDK retries are off (plan 1.14)', () => {
 	it('stops after `maxAttempts` (one retry on interactive paths)', async () => {
 		generateTextMock.mockRejectedValue({ statusCode: 503, message: 'overloaded' });
 		await expect(
-			runLlmText({ model: fakeModel, prompt: 'hi', maxAttempts: 2 })
+			withFakeBackoff(() => runLlmText({ model: fakeModel, prompt: 'hi', maxAttempts: 2 }))
 		).rejects.toMatchObject({ statusCode: 503 });
 		expect(generateTextMock).toHaveBeenCalledTimes(2);
-	}, 10_000);
+	});
 
 	it('never raises the ceiling above MAX_LLM_ATTEMPTS', async () => {
 		generateObjectMock.mockRejectedValue({ statusCode: 503, message: 'overloaded' });
 		await expect(
-			runLlmObject({ model: fakeModel, schema: z.object({}), prompt: 'x', maxAttempts: 10 })
+			withFakeBackoff(() =>
+				runLlmObject({ model: fakeModel, schema: z.object({}), prompt: 'x', maxAttempts: 10 })
+			)
 		).rejects.toMatchObject({ statusCode: 503 });
 		expect(generateObjectMock).toHaveBeenCalledTimes(MAX_LLM_ATTEMPTS);
-	}, 10_000);
+	});
 
 	it('a deadline cuts the backoff short and makes no further attempt', async () => {
 		generateTextMock.mockRejectedValue({

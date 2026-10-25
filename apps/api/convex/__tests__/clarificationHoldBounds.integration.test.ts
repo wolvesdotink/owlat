@@ -246,7 +246,7 @@ it('fits the largest worker pages and cron with near-limit threads, bodies and p
 	expect(Math.max(...first.map((n) => getConvexSize(n)))).toBeLessThan(2 * KiB);
 	for (let i = 0; i < 3; i++) await run();
 	expect(await run()).toHaveLength(1600);
-}, 180_000);
+});
 
 it('keeps a worker link under its documented ceiling, every read counted', async () => {
 	// Push stays on, so every send reads its device row.
@@ -316,7 +316,7 @@ it('keeps a worker link under its documented ceiling, every read counted', async
 		(await ctx.db.query('inboxAssignmentNotices').collect()).filter((n) => n.isReminder)
 	);
 	expect(reminders).toHaveLength(800 + 400);
-}, 180_000);
+});
 
 it('reads at most 4 MiB settling a thread in the transition, the rest in pages', async () => {
 	const t = await harness();
@@ -348,7 +348,7 @@ it('reads at most 4 MiB settling a thread in the transition, the rest in pages',
 	await t.finishAllScheduledFunctions(vi.runAllTimers);
 	const rows = await Promise.all(held.map((id) => t.run((ctx) => ctx.db.get(id))));
 	expect(rows.every((m) => m?.isThreadSettled === true)).toBe(true);
-}, 120_000);
+});
 
 it('gives a question its turn while earlier ones ask anew every run', async () => {
 	const t = await harness(200);
@@ -384,4 +384,4 @@ it('gives a question its turn while earlier ones ask anew every run', async () =
 			.collect()
 	);
 	expect(tailNotices.filter((n) => n.isReminder)).toHaveLength(200);
-}, 180_000);
+});

@@ -101,8 +101,7 @@ describe('trigger fanout running-instance guard', () => {
 				expect(inserted).toHaveLength(running ? 0 : 1);
 				expect(await runningCount(t, automationId, contactId)).toBe(1);
 			}
-		},
-		30_000
+		}
 	);
 
 	it('lets only one of two concurrent triggers start a run', async () => {

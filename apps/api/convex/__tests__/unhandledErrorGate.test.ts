@@ -50,5 +50,5 @@ describe('unhandled error gate', () => {
 		expect(output).toContain('Unhandled Rejection');
 		expect(output).toContain(SENTINEL_MESSAGE);
 		expect(result.status).toBe(1);
-	}, 150_000);
+	});
 });

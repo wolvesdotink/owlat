@@ -24,6 +24,14 @@ import {
 	WEBHOOK_DLQ_ENTRIES_KEY,
 	WEBHOOK_DLQ_PROTECTED_KEY,
 } from '../dlq.js';
+import { WEBHOOK_DLQ_SWEEP_BATCH_SIZE } from '../dlqSweeper.js';
+import { corruptDuePrefixIsQuarantined, exhaustedDuePrefixDrains } from './duePrefixCases.js';
+
+/** The page one sweep pass reads from the due index (see sweepWebhookDlq). */
+const SWEEPER_SCAN_PAGE = {
+	limit: WEBHOOK_DLQ_SWEEP_BATCH_SIZE,
+	scanLimit: WEBHOOK_DLQ_SWEEP_BATCH_SIZE * 20,
+};
 
 describe.runIf(dockerRedisAvailable())('webhook DLQ on standalone Redis', () => {
 	const config = { webhookDlqMaxSize: 10 } as MtaConfig;
@@ -33,7 +41,7 @@ describe.runIf(dockerRedisAvailable())('webhook DLQ on standalone Redis', () => 
 	beforeAll(async () => {
 		fixture = await startRedisStandaloneFixture('dlq');
 		redis = fixture.client;
-	}, 15_000);
+	});
 
 	beforeEach(async () => {
 		await redis.flushall();
@@ -179,6 +187,14 @@ describe.runIf(dockerRedisAvailable())('webhook DLQ on standalone Redis', () => 
 		expect(await getEntry(redis, visible)).not.toBeNull();
 		expect(await redis.sismember(WEBHOOK_DLQ_PROTECTED_KEY, hidden)).toBe(1);
 	});
+
+	it('drains an exhausted due prefix one row longer than the sweeper scans per pass', async () => {
+		await exhaustedDuePrefixDrains(redis, SWEEPER_SCAN_PAGE);
+	});
+
+	it('quarantines a corrupt due prefix one row longer than the sweeper scans per pass', async () => {
+		await corruptDuePrefixIsQuarantined(redis, SWEEPER_SCAN_PAGE);
+	});
 });
 
 describe.runIf(dockerRedisAvailable())('webhook DLQ on Redis Cluster', () => {
@@ -188,7 +204,7 @@ describe.runIf(dockerRedisAvailable())('webhook DLQ on Redis Cluster', () => {
 	beforeAll(async () => {
 		fixture = await startRedisClusterFixture('dlq');
 		cluster = fixture.client;
-	}, 60_000);
+	});
 
 	afterAll(() => {
 		stopRedisClusterFixture(fixture);
@@ -223,7 +239,7 @@ describe.runIf(dockerRedisAvailable())('webhook DLQ on Redis Cluster', () => {
 		expect(await cluster.zcard(WEBHOOK_DLQ_CREATED_KEY)).toBe(config.webhookDlqMaxSize);
 		await storeFailed(cluster as never, event, { category: 'transport' }, config);
 		expect(await getEntry(cluster as never, pending)).not.toBeNull();
-	}, 15_000);
+	});
 
 	it('atomically frees every capacity artifact for missing and corrupt protected rows', async () => {
 		for (const [id, raw] of [
@@ -257,7 +273,7 @@ describe.runIf(dockerRedisAvailable())('webhook DLQ on Redis Cluster', () => {
 			expect(await cluster.zscore(WEBHOOK_DLQ_DUE_KEY, id)).toBeNull();
 			expect(await cluster.sismember(WEBHOOK_DLQ_PROTECTED_KEY, id)).toBe(0);
 		}
-	}, 15_000);
+	});
 
 	it('atomically repairs a deterministic protected row and its indexes', async () => {
 		const config = { webhookDlqMaxSize: 10 } as MtaConfig;
@@ -286,7 +302,7 @@ describe.runIf(dockerRedisAvailable())('webhook DLQ on Redis Cluster', () => {
 		expect(await cluster.zscore(WEBHOOK_DLQ_CREATED_KEY, id)).not.toBeNull();
 		expect(await cluster.zscore(WEBHOOK_DLQ_DUE_KEY, id)).not.toBeNull();
 		expect(await cluster.sismember(WEBHOOK_DLQ_PROTECTED_KEY, id)).toBe(1);
-	}, 15_000);
+	});
 
 	it('atomically quarantines a protected row with an unknown event type', async () => {
 		const config = { webhookDlqMaxSize: 10 } as MtaConfig;
@@ -312,7 +328,7 @@ describe.runIf(dockerRedisAvailable())('webhook DLQ on Redis Cluster', () => {
 		expect(await cluster.zscore(WEBHOOK_DLQ_CREATED_KEY, id)).toBeNull();
 		expect(await cluster.zscore(WEBHOOK_DLQ_DUE_KEY, id)).toBeNull();
 		expect(await cluster.sismember(WEBHOOK_DLQ_PROTECTED_KEY, id)).toBe(0);
-	}, 15_000);
+	});
 
 	it('quarantines incomplete protected events and rejects immutable payload collisions', async () => {
 		const config = { webhookDlqMaxSize: 10 } as MtaConfig;
@@ -337,7 +353,7 @@ describe.runIf(dockerRedisAvailable())('webhook DLQ on Redis Cluster', () => {
 
 		await expect(storePending(cluster as never, event, config, key)).rejects.toThrow('quarantined');
 		expect(await getEntry(cluster as never, id)).toBeNull();
-	}, 15_000);
+	});
 
 	it('fails closed without deleting repaired protected rows at protected capacity', async () => {
 		await cluster.del(
@@ -369,5 +385,5 @@ describe.runIf(dockerRedisAvailable())('webhook DLQ on Redis Cluster', () => {
 		expect(await getEntry(cluster as never, hidden)).not.toBeNull();
 		expect(await getEntry(cluster as never, visible)).not.toBeNull();
 		expect(await cluster.sismember(WEBHOOK_DLQ_PROTECTED_KEY, hidden)).toBe(1);
-	}, 15_000);
+	});
 });
