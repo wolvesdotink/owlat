@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { logError } from '~/lib/runtimeLog';
 import { useZenMode } from '~/composables/useZenMode';
+import { useGettingStartedControls } from '~/composables/useGettingStartedControls';
 import { useShortcutLabels } from '~/composables/useShortcutLabels';
 import ShellConnectionIndicator from './ConnectionIndicator.vue';
 
 /**
  * The sidebar footer, one row: the account menu (Assistant, Zen mode, keyboard
- * shortcuts, theme, sign out), then Settings as a quiet gear (settings are
+ * shortcuts, the setup checklist, theme, sign out), then Settings as a quiet gear (settings are
  * visited rarely, so they get one door rather than two top-level sections),
  * then the collapse toggle. Collapsed to the icon rail, the three stack. While
  * the backend connection is down, its indicator gets a line above the row (a
@@ -25,6 +26,7 @@ const { user, signOut, isPending } = useAuth();
 const { isEnabled } = useFeatureFlag();
 const { openHelpModal } = useKeyboardShortcuts();
 const { enterZen } = useZenMode();
+const { showChecklist } = useGettingStartedControls();
 // The Assistant and Settings hints read the person's live binding, so a remap
 // on the shortcuts page shows up here too.
 const { ariaFor, titleWithShortcut } = useShortcutLabels();
@@ -86,6 +88,10 @@ function openShortcuts() {
 function startZen() {
 	menuOpen.value = false;
 	enterZen();
+}
+function openSetupChecklist() {
+	menuOpen.value = false;
+	void showChecklist();
 }
 </script>
 
@@ -172,6 +178,17 @@ function startZen() {
 						<Icon name="lucide:keyboard" class="size-4 text-text-tertiary" />
 						<span class="flex-1 text-left">{{ t('components.shell.footer.shortcuts') }}</span>
 						<UiShortcut id="global.help" class="font-mono text-2xs text-text-tertiary" />
+					</button>
+					<button
+						type="button"
+						role="menuitem"
+						class="flex w-full items-center gap-3 px-3 py-2 text-sm text-text-primary hover:bg-bg-surface"
+						@click="openSetupChecklist"
+					>
+						<Icon name="lucide:list-checks" class="size-4 text-text-tertiary" />
+						<span class="flex-1 text-left">{{
+							t('components.dashboard.gettingStarted.show')
+						}}</span>
 					</button>
 					<div class="flex items-center gap-3 px-3 py-2 text-sm text-text-primary">
 						<UiThemeToggle
