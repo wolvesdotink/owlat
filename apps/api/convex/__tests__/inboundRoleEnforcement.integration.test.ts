@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import schema from '../schema';
 import { api } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
+import * as sessionOrganization from '../lib/sessionOrganization';
 import type { OrganizationRole } from '../lib/sessionOrganization';
 import {
 	createTestContact,
@@ -31,13 +32,27 @@ vi.mock('../lib/sessionOrganization', async () => {
 		requireOrgMember: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
 		isActiveOrgMember: vi.fn().mockResolvedValue(true),
 		getUserIdFromSession: vi.fn().mockResolvedValue('test-user'),
-		getMutationContext: vi.fn(async () => ({ userId: 'test-user', role: mockRole })),
+		getMutationContext: vi.fn(async () => ({
+			userId: 'test-user',
+			role: mockRole,
+			activeOrganizationId: 'org-test',
+		})),
 		requireAdminContext: vi.fn(async () => {
 			if (mockRole !== 'owner' && mockRole !== 'admin') {
 				throw new Error('Only owners and admins can perform this action');
 			}
-			return { userId: 'test-user', role: mockRole };
+			return { userId: 'test-user', role: mockRole, activeOrganizationId: 'org-test' };
 		}),
+		requireOrgPermission: vi.fn(
+			async (
+				_ctx: unknown,
+				permission: Parameters<typeof actual.hasPermission>[1],
+				message?: string
+			) => {
+				actual.requirePermission(actual.hasPermission(mockRole, permission), message);
+				return { userId: 'test-user', role: mockRole, activeOrganizationId: 'org-test' };
+			}
+		),
 		getBetterAuthSessionWithRole: vi.fn(async () => ({
 			userId: 'test-user',
 			activeOrganizationId: 'org-test',
@@ -184,5 +199,77 @@ describe('inbox role enforcement — listThreads (query)', () => {
 		mockRole = 'admin';
 		const result = await t.withIdentity(testIdentity).query(api.inbox.queries.listThreads, {});
 		expect(result.threads).toHaveLength(1);
+	});
+});
+
+describe('inbox handlers read the session their builder floor resolved', () => {
+	const adminFloor = vi.mocked(sessionOrganization.requireAdminContext);
+	const memberFloor = vi.mocked(sessionOrganization.getMutationContext);
+	const reResolvers = [
+		vi.mocked(sessionOrganization.getBetterAuthSessionWithRole),
+		vi.mocked(sessionOrganization.getUserIdFromSession),
+		vi.mocked(sessionOrganization.requireOrgPermission),
+	];
+	function clearSessionMocks() {
+		for (const mock of [adminFloor, memberFloor, ...reResolvers]) mock.mockClear();
+	}
+
+	it('admin-floored thread actions resolve once and attribute the floor user', async () => {
+		const t = convexTest(schema, modules);
+		mockRole = 'admin';
+		let threadId!: Id<'conversationThreads'>;
+		let messageId!: Id<'inboundMessages'>;
+		await t.run(async (ctx) => {
+			const contactId = await ctx.db.insert('contacts', createTestContact());
+			threadId = await ctx.db.insert('conversationThreads', threadData({ contactId }));
+			messageId = await ctx.db.insert(
+				'inboundMessages',
+				msgData({ processingStatus: 'draft_ready', draftResponse: 'Draft reply' })
+			);
+		});
+		clearSessionMocks();
+
+		const asCaller = t.withIdentity(testIdentity);
+		await asCaller.mutation(api.inbox.reads.markThreadSeen, { threadId });
+		await asCaller.mutation(api.inbox.presence.heartbeat, { threadId, mode: 'viewing' });
+		await asCaller.mutation(api.inbox.presence.leave, { threadId });
+		await asCaller.mutation(api.inbox.snooze.snoozeThread, {
+			threadId,
+			until: Date.now() + 60 * 60 * 1000,
+		});
+		await asCaller.mutation(api.inbox.snooze.unsnoozeThread, { threadId });
+		await asCaller.mutation(api.inbox.mutations.approveDraft, { inboundMessageId: messageId });
+
+		expect(adminFloor).toHaveBeenCalledTimes(6);
+		expect(memberFloor).not.toHaveBeenCalled();
+		for (const mock of reResolvers) expect(mock).not.toHaveBeenCalled();
+
+		const reads = await t.run(async (ctx) => await ctx.db.query('threadReads').collect());
+		expect(reads.map((r) => r.userId)).toEqual(['test-user']);
+	});
+
+	it('setAskEagerness checks organization:manage on the floor session', async () => {
+		const t = convexTest(schema, modules);
+
+		mockRole = 'editor';
+		clearSessionMocks();
+		await expect(
+			t
+				.withIdentity(testIdentity)
+				.mutation(api.inbox.askEagernessSettings.setAskEagerness, { mode: 'cautious' })
+		).rejects.toThrow('Only owners and admins can change the ask-eagerness setting');
+		expect(
+			await t.run(async (ctx) => await ctx.db.query('askEagernessSettings').collect())
+		).toHaveLength(0);
+
+		mockRole = 'admin';
+		await t
+			.withIdentity(testIdentity)
+			.mutation(api.inbox.askEagernessSettings.setAskEagerness, { mode: 'cautious' });
+		const rows = await t.run(async (ctx) => await ctx.db.query('askEagernessSettings').collect());
+		expect(rows.map((r) => r.mode)).toEqual(['cautious']);
+
+		expect(memberFloor).toHaveBeenCalledTimes(2);
+		for (const mock of reResolvers) expect(mock).not.toHaveBeenCalled();
 	});
 });

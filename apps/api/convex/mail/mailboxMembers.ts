@@ -31,7 +31,7 @@ import type { MutationCtx } from '../_generated/server';
 import { adminQuery } from '../lib/authedFunctions';
 import { postboxQuery, postboxMutation } from './_helpers';
 import type { Id } from '../_generated/dataModel';
-import { requireAdminContext, getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
+import { hasPermission, requirePermission } from '../lib/sessionOrganization';
 import { throwForbidden, throwInvalidInput } from '../_utils/errors';
 import { requireMailboxAccess } from './permissions';
 import { createProvisionedMailbox } from './mailbox/identity';
@@ -116,12 +116,11 @@ export const createShared = postboxMutation({
 		displayName: v.optional(v.string()),
 		memberUserIds: v.array(v.string()),
 	},
-	handler: async (ctx, args) => {
-		await requireAdminContext(ctx);
-		const session = await getBetterAuthSessionWithRole(ctx);
-		if (!session?.activeOrganizationId) {
-			throwForbidden('No active organization');
-		}
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'organization:manage'),
+			'Only owners and admins can perform this action'
+		);
 		const address = extractEmail(args.address);
 		const [, domain] = address.split('@');
 		if (!domain) {

@@ -123,12 +123,11 @@ export const _connectSeedInternal = internalMutation({
  */
 export const acknowledgeSeedRotation = adminMutation({
 	args: { accountId: v.id('externalMailAccounts') },
-	handler: async (ctx, args) => {
-		const s = await requireAdminContext(ctx);
+	handler: async (ctx, args, session) => {
 		const account = await ctx.db.get(args.accountId);
 		// Tenant scoping before existence: a foreign id must not be distinguishable
 		// from a missing one.
-		if (!account || account.organizationId !== s.activeOrganizationId) {
+		if (!account || account.organizationId !== session.activeOrganizationId) {
 			throwNotFound('Seed mailbox');
 		}
 		if (account.purpose !== 'seed') throwInvalidInput('Not a deliverability seed mailbox.');
@@ -140,8 +139,8 @@ export const acknowledgeSeedRotation = adminMutation({
 		});
 		// Provider + age only, exactly like the reminder it answers.
 		await recordAuditLog(ctx, {
-			userId: s.userId,
-			organizationId: s.activeOrganizationId,
+			userId: session.userId,
+			organizationId: session.activeOrganizationId,
 			action: 'seed_mailbox.rotation_acknowledged',
 			resource: 'seed_mailbox',
 			resourceId: args.accountId,

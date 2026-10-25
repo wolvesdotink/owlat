@@ -18,7 +18,7 @@
 import { v } from 'convex/values';
 import { answerModeQuery, postboxMutation } from './_helpers';
 import { internalMutation } from '../lib/writeFence';
-import { getMutationContext, getUserIdFromSession } from '../lib/sessionOrganization';
+import { getUserIdFromSession } from '../lib/sessionOrganization';
 import { tokenUsageValidator } from '../lib/convexValidators';
 import { getOrThrow, throwForbidden } from '../_utils/errors';
 import { draftSurfaceValidator } from '../lib/literalValidators';
@@ -50,8 +50,8 @@ export const createDraftStream = postboxMutation({
 	args: {
 		surface: draftSurfaceValidator,
 	},
-	handler: async (ctx, args) => {
-		const { userId } = await getMutationContext(ctx);
+	handler: async (ctx, args, session) => {
+		const { userId } = session;
 		const now = Date.now();
 		return ctx.db.insert('aiDraftStreams', {
 			ownerId: userId,
@@ -153,8 +153,8 @@ export const finalizeDraftStream = internalMutation({
 // all-members: a member reads only their own draft buffer (owner-scoped).
 export const getDraftStream = answerModeQuery({
 	args: { streamId: v.id('aiDraftStreams') },
-	handler: async (ctx, args) => {
-		const userId = await getUserIdFromSession(ctx);
+	handler: async (ctx, args, session) => {
+		const { userId } = session;
 		const row = await ctx.db.get(args.streamId);
 		if (!row || row.ownerId !== userId) return null;
 		if (await isAnswerStreamFenced(ctx, row)) {
@@ -174,8 +174,8 @@ export const getDraftStream = answerModeQuery({
 // all-members: a member deletes only their own revise buffer (owner-scoped).
 export const deleteDraftStream = postboxMutation({
 	args: { streamId: v.id('aiDraftStreams') },
-	handler: async (ctx, args) => {
-		const userId = await getUserIdFromSession(ctx);
+	handler: async (ctx, args, session) => {
+		const { userId } = session;
 		const row = await ctx.db.get(args.streamId);
 		if (!row) return;
 		if (row.ownerId !== userId) throwForbidden('You do not own this draft stream');

@@ -223,12 +223,7 @@ export const start = externalMailMutation({
 // authz: admin — the externalMailAdminMutation wrapper (adminMutation + mail.external) gates hosted-mailbox creation.
 export const provisionHosted = externalMailAdminMutation({
 	args: { moveId: v.id('mailboxMoves') },
-	handler: async (ctx, args) => {
-		// The wrapper already enforced the admin floor; we still need the session
-		// for the acting user + org scope.
-		const session = await getBetterAuthSessionWithRole(ctx);
-		if (!session?.activeOrganizationId) throwForbidden('No active organization');
-
+	handler: async (ctx, args, session) => {
 		const move = await getOrThrow(ctx, args.moveId, 'Mailbox move');
 		if (move.organizationId !== session.activeOrganizationId) {
 			throwForbidden('Move not accessible');
