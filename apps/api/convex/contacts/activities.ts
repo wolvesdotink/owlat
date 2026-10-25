@@ -17,6 +17,9 @@ export type ActivityType = ContactActivityType;
 // Returns activities in chronological order (most recent first)
 // all-members: a contact's activity timeline on the contact page every member
 // may view (editors view contacts; only writes need contacts:manage).
+// Activities outlive a soft delete for the retention window and their metadata
+// carries PII (old/new email addresses), so a missing or soft-deleted parent
+// reads as an empty page, the same boundary `contacts.get` draws.
 export const listByContact = authedQuery({
 	args: {
 		contactId: v.id('contacts'),
@@ -25,6 +28,11 @@ export const listByContact = authedQuery({
 	},
 	handler: async (ctx, args) => {
 		const limit = args.limit ?? 20;
+
+		const contact = await ctx.db.get(args.contactId);
+		if (!contact || contact.deletedAt !== undefined) {
+			return { items: [], nextCursor: undefined, hasMore: false };
+		}
 
 		// Query activities for this contact, ordered by occurredAt descending
 		const activitiesQuery = ctx.db

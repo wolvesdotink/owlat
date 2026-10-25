@@ -287,7 +287,7 @@ describe('query authorization matrix', () => {
 				const h = await authzHarness();
 				const others = (['campaigns', 'automations', 'chat'] as const).filter((f) => f !== flag);
 				await setFeatures(h.t, others);
-				for (const caller of [OWNER, EDITOR] as const) {
+				for (const caller of [OWNER, ADMIN, EDITOR] as const) {
 					await expect(call(row, h, caller)).rejects.toMatchObject({
 						data: { category: 'forbidden', data: { features: [flag] } },
 					});

@@ -1,7 +1,8 @@
 /**
  * What the reviewed reads return, not just who may call them: the admin-only
  * activity feed, the room-read policy behind the mention feed and `getRoom`,
- * and the self-scoped chat and dashboard reads. Sessions are real (see
+ * the self-scoped chat and dashboard reads, and the deleted-contact boundary
+ * on the activity timeline. Sessions are real (see
  * queryAuthzFixtures.ts).
  */
 
@@ -263,5 +264,45 @@ describe('contact export reads', () => {
 			paginationOpts: { numItems: 10, cursor: null },
 		});
 		expect(page.page.map((contact) => contact.email)).toEqual(['reader@example.com']);
+	});
+});
+
+describe('contacts.activities.listByContact', () => {
+	it('hides the activity of a contact an owner deleted', async () => {
+		const { t, seed } = await authzHarness();
+		await t.run(async (ctx) => {
+			await ctx.db.insert('contactActivities', {
+				contactId: seed.contactId,
+				activityType: 'property_updated',
+				metadata: {
+					propertyKey: 'email',
+					oldValue: 'old.reader@example.com',
+					newValue: 'reader@example.com',
+				},
+				occurredAt: Date.now(),
+			});
+		});
+		const editor = as(t, seed, EDITOR);
+		const before = await editor.query(api.contacts.activities.listByContact, {
+			contactId: seed.contactId,
+		});
+		expect(before.items.map((item) => item.metadata?.oldValue)).toEqual(['old.reader@example.com']);
+
+		await as(t, seed, OWNER).mutation(api.contacts.contacts.remove, {
+			contactId: seed.contactId,
+		});
+
+		expect(await editor.query(api.contacts.contacts.get, { contactId: seed.contactId })).toBeNull();
+		expect(
+			await editor.query(api.contacts.activities.listByContact, { contactId: seed.contactId })
+		).toEqual({ items: [], nextCursor: undefined, hasMore: false });
+		// The rows themselves stay for the retention window; only the read hides them.
+		const retained = await t.run(async (ctx) =>
+			ctx.db
+				.query('contactActivities')
+				.withIndex('by_contact', (q) => q.eq('contactId', seed.contactId))
+				.collect()
+		);
+		expect(retained).toHaveLength(1);
 	});
 });
