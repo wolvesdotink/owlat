@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
+import { nextTick } from 'vue';
 import { createForeignI18n, mountUi, type MountedUi } from '../../__tests__/i18n';
 import Bars from '../ui/Bars.vue';
 import ErrorAlert from '../ui/ErrorAlert.vue';
@@ -109,9 +110,12 @@ describe('localized layer copy', () => {
 		expect(el.textContent).not.toContain('ui.select');
 	});
 
-	it('labels the theme toggle with the active mode', () => {
+	it('labels the theme toggle with the active mode', async () => {
 		const button = mount(ThemeToggle).querySelector('button');
-		expect(button?.getAttribute('title')).toBe('System preference');
+		button?.focus();
+		await nextTick();
+		expect(document.querySelector('[role="tooltip"]')?.textContent).toBe('System preference');
+		button?.blur();
 		expect(button?.getAttribute('aria-label')).toBe('Theme: System preference. Click to change.');
 		mounted?.unmount();
 

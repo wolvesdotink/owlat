@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import UiTooltip from '@owlat/ui/components/ui/Tooltip.vue';
 import { computed } from 'vue';
 import type { Component } from 'vue';
 import type { EditorBlock, BlockType, EmailTheme } from '../../types';
@@ -121,16 +122,16 @@ const validChildTypes = computed<{ value: string; label: string; icon: Component
 						class="text-text-tertiary shrink-0 opacity-0 group-hover/item:opacity-100 transition-opacity duration-(--motion-fast)"
 					/>
 				</button>
-				<button
-					v-if="childrenAreBlocks"
-					class="flex items-center justify-center w-[22px] h-[22px] border-none rounded bg-none text-text-tertiary cursor-pointer shrink-0 opacity-0 group-hover/item:opacity-100 transition-[opacity,color,background-color] duration-(--motion-fast) hover:text-error hover:bg-error-subtle"
-					type="button"
-					:title="t('builder.panel.nested.remove', { item: childLabel(child) })"
-					:aria-label="t('builder.panel.nested.remove', { item: childLabel(child) })"
-					@click.stop="emit('remove-child', child.id)"
-				>
-					<Trash2 :size="12" />
-				</button>
+				<UiTooltip v-if="childrenAreBlocks" :text="t('builder.panel.nested.remove', { item: childLabel(child) })">
+					<button
+						class="flex items-center justify-center w-[22px] h-[22px] border-none rounded bg-none text-text-tertiary cursor-pointer shrink-0 opacity-0 group-hover/item:opacity-100 transition-[opacity,color,background-color] duration-(--motion-fast) hover:text-error hover:bg-error-subtle"
+						type="button"
+						:aria-label="t('builder.panel.nested.remove', { item: childLabel(child) })"
+						@click.stop="emit('remove-child', child.id)"
+					>
+						<Trash2 :size="12" />
+					</button>
+				</UiTooltip>
 			</div>
 
 			<div v-if="children.length === 0" class="p-3 text-center text-xs text-text-tertiary">

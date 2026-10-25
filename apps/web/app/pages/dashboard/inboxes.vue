@@ -354,18 +354,18 @@ const SHOW_OPTIONS = [
 						}}</span>
 					</span>
 				</NuxtLink>
-				<button
-					v-if="row.archive"
-					type="button"
-					class="absolute right-3 top-1/2 -translate-y-1/2 rounded-md bg-bg-surface p-1.5 text-text-tertiary opacity-0 shadow-(--shadow-1) transition-opacity hover:text-text-primary focus-visible:opacity-100 group-hover:opacity-100"
-					:title="t('dashboard.inboxes.archiveSweepHint')"
-					:aria-label="t('common.archive')"
-					data-testid="inboxes-row-archive"
-					@pointerdown="sweep.start('archive', row.key, $event)"
-					@click="archiveRow(row)"
-				>
-					<Icon name="lucide:archive" class="size-4" />
-				</button>
+				<UiTooltip v-if="row.archive" :text="t('dashboard.inboxes.archiveSweepHint')">
+					<button
+						type="button"
+						class="absolute right-3 top-1/2 -translate-y-1/2 rounded-md bg-bg-surface p-1.5 text-text-tertiary opacity-0 shadow-(--shadow-1) transition-opacity hover:text-text-primary focus-visible:opacity-100 group-hover:opacity-100"
+						:aria-label="t('common.archive')"
+						data-testid="inboxes-row-archive"
+						@pointerdown="sweep.start('archive', row.key, $event)"
+						@click="archiveRow(row)"
+					>
+						<Icon name="lucide:archive" class="size-4" />
+					</button>
+				</UiTooltip>
 			</li>
 		</ul>
 		<PostboxSweepStatus :status="sweep.status.value" label-key="dashboard.inboxes.sweepStatus" />

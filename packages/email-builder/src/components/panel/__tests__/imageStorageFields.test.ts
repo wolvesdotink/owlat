@@ -45,7 +45,7 @@ describe('image property storage identity', () => {
 			},
 		});
 
-		await wrapper.get('button[title="Browse or upload images"]').trigger('click');
+		await wrapper.get('button[aria-label="Browse or upload images"]').trigger('click');
 		const select = pickFromMediaLibrary.mock.calls[0]![0]!;
 		select({
 			url: 'https://capability.example/library-image',

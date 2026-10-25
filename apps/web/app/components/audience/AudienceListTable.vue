@@ -95,30 +95,32 @@ const headerCell = 'text-left px-6 py-4 text-sm font-medium text-text-secondary'
 					</span>
 				</NuxtLink>
 				<template v-if="canManage">
-					<button
-						type="button"
-						:class="[
-							'w-11 h-11 flex items-center justify-center flex-shrink-0 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover transition-colors',
-							focusRing,
-						]"
-						:title="editLabel"
-						:aria-label="editLabel"
-						@click="emit('edit', item)"
-					>
-						<Icon name="lucide:pencil" class="w-4 h-4" />
-					</button>
-					<button
-						type="button"
-						:class="[
-							'w-11 h-11 flex items-center justify-center flex-shrink-0 rounded-lg text-text-tertiary hover:text-error hover:bg-error-subtle transition-colors',
-							focusRing,
-						]"
-						:title="deleteLabel"
-						:aria-label="deleteLabel"
-						@click="emit('delete', item)"
-					>
-						<Icon name="lucide:trash-2" class="w-4 h-4" />
-					</button>
+					<UiTooltip :text="editLabel">
+						<button
+							type="button"
+							:class="[
+								'w-11 h-11 flex items-center justify-center flex-shrink-0 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover transition-colors',
+								focusRing,
+							]"
+							:aria-label="editLabel"
+							@click="emit('edit', item)"
+						>
+							<Icon name="lucide:pencil" class="w-4 h-4" />
+						</button>
+					</UiTooltip>
+					<UiTooltip :text="deleteLabel">
+						<button
+							type="button"
+							:class="[
+								'w-11 h-11 flex items-center justify-center flex-shrink-0 rounded-lg text-text-tertiary hover:text-error hover:bg-error-subtle transition-colors',
+								focusRing,
+							]"
+							:aria-label="deleteLabel"
+							@click="emit('delete', item)"
+						>
+							<Icon name="lucide:trash-2" class="w-4 h-4" />
+						</button>
+					</UiTooltip>
 				</template>
 			</li>
 		</ul>
@@ -192,30 +194,32 @@ const headerCell = 'text-left px-6 py-4 text-sm font-medium text-text-secondary'
 							<div class="flex items-center justify-end gap-1">
 								<slot name="actions" :item="item" />
 								<template v-if="canManage">
-									<button
-										type="button"
-										:class="[
-											'p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover transition-colors',
-											focusRing,
-										]"
-										:title="editLabel"
-										:aria-label="editLabel"
-										@click="emit('edit', item)"
-									>
-										<Icon name="lucide:pencil" class="w-4 h-4" />
-									</button>
-									<button
-										type="button"
-										:class="[
-											'p-2 rounded-lg text-text-tertiary hover:text-error hover:bg-error-subtle transition-colors',
-											focusRing,
-										]"
-										:title="deleteLabel"
-										:aria-label="deleteLabel"
-										@click="emit('delete', item)"
-									>
-										<Icon name="lucide:trash-2" class="w-4 h-4" />
-									</button>
+									<UiTooltip :text="editLabel">
+										<button
+											type="button"
+											:class="[
+												'p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover transition-colors',
+												focusRing,
+											]"
+											:aria-label="editLabel"
+											@click="emit('edit', item)"
+										>
+											<Icon name="lucide:pencil" class="w-4 h-4" />
+										</button>
+									</UiTooltip>
+									<UiTooltip :text="deleteLabel">
+										<button
+											type="button"
+											:class="[
+												'p-2 rounded-lg text-text-tertiary hover:text-error hover:bg-error-subtle transition-colors',
+												focusRing,
+											]"
+											:aria-label="deleteLabel"
+											@click="emit('delete', item)"
+										>
+											<Icon name="lucide:trash-2" class="w-4 h-4" />
+										</button>
+									</UiTooltip>
 								</template>
 							</div>
 						</td>

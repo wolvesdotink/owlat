@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import UiTooltip from '@owlat/ui/components/ui/Tooltip.vue';
 import { computed, ref, watch, nextTick, inject, onMounted, onUnmounted, toRaw } from 'vue';
 import type { EditorBlock, EmailTheme, Variable, SlashCommand, BlockType, RemoteBlockMark as RemoteMark } from '../../types';
 import type { ParentContext } from './types';
@@ -319,7 +320,7 @@ function handleInlineEditorMounted(blockId: string, comp: InlineEditorComponentR
 					<div
 						v-if="showBgColorPopover"
 						ref="bgColorPopoverRef"
-						class="light fixed z-[9999] bg-bg-elevated border border-border-subtle rounded-xl shadow-lg p-3 w-[240px]"
+						class="light fixed z-(--z-menu) bg-bg-elevated border border-border-subtle rounded-xl shadow-lg p-3 w-[240px]"
 						:style="{
 							top: (bgColorBubbleRef?.getBoundingClientRect().bottom ?? 0) + 6 + 'px',
 							left: (bgColorBubbleRef?.getBoundingClientRect().right ?? 0) - 240 + 'px',
@@ -408,15 +409,16 @@ function handleInlineEditorMounted(blockId: string, comp: InlineEditorComponentR
 								<span class="text-[10px] font-semibold text-text-tertiary uppercase whitespace-nowrap tracking-[0.02em]">
 									{{ block.savedBlockRef?.blockName || t('builder.toolbar.linkedBlock') }}
 								</span>
-								<button
-									class="inline-flex items-center justify-center w-[18px] h-[18px] p-0 text-text-tertiary bg-transparent border-none rounded-[3px] cursor-pointer transition-colors duration-(--motion-fast) hover:text-brand hover:bg-brand/10"
-									:title="t('builder.toolbar.detach')"
-									:aria-label="t('builder.canvas.detachBlock', { block: block.savedBlockRef?.blockName || t('builder.canvas.linkedBlock') })"
-									type="button"
-									@click.stop="requestDetachLinkedBlock(block.id)"
-								>
-									<Link :size="12" />
-								</button>
+								<UiTooltip :text="t('builder.toolbar.detach')">
+									<button
+										class="inline-flex items-center justify-center w-[18px] h-[18px] p-0 text-text-tertiary bg-transparent border-none rounded-[3px] cursor-pointer transition-colors duration-(--motion-fast) hover:text-brand hover:bg-brand/10"
+										:aria-label="t('builder.canvas.detachBlock', { block: block.savedBlockRef?.blockName || t('builder.canvas.linkedBlock') })"
+										type="button"
+										@click.stop="requestDetachLinkedBlock(block.id)"
+									>
+										<Link :size="12" />
+									</button>
+								</UiTooltip>
 							</div>
 
 							<!-- Block content: inline text editor or preview -->

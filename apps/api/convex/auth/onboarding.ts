@@ -129,5 +129,60 @@ export const dismiss = authedMutation({
 				updatedAt: now,
 			});
 		}
+		// The instant is the Undo token: `restore` given it leaves any later
+		// dismissal alone.
+		return { dismissedAt: now };
+	},
+});
+
+/**
+ * Upper bound on the dismissal rows one `restore` clears. There is at most one
+ * row per admin who ever dismissed, so this bounds the admin count, not the
+ * instance's data; a remainder is reported as still dismissed.
+ */
+const RESTORE_BATCH = 200;
+
+/**
+ * Bring the onboarding surface back for the whole instance — the inverse of
+ * {@link dismiss}.
+ *
+ * Because the read side ORs across every record, clearing only the caller's
+ * row would leave the surface hidden whenever another admin had dismissed it
+ * too, so every dismissal record is cleared. With `dismissedAt` (the token
+ * `dismiss` returned) this is an Undo: records dismissed AFTER that instant are
+ * a later decision and stay. Idempotent; never touches the derived progress.
+ * Returns whether the surface is still dismissed afterwards.
+ */
+// authz: admin + self, the same boundary as `dismiss`: an ordinary member must
+// not be able to change an instance-wide surface.
+export const restore = authedMutation({
+	args: {
+		userId: v.string(),
+		dismissedAt: v.optional(v.number()),
+	},
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'organization:manage'),
+			'Only owners and admins can restore onboarding'
+		);
+		await requireSelf(ctx, args.userId);
+
+		const records = await ctx.db
+			.query('onboardingProgress')
+			.withIndex('by_dismissed', (q) => q.eq('dismissed', true))
+			.take(RESTORE_BATCH);
+		const now = Date.now();
+		for (const record of records) {
+			const isLaterDismissal =
+				args.dismissedAt !== undefined && (record.dismissedAt ?? 0) > args.dismissedAt;
+			if (isLaterDismissal) continue;
+			await ctx.db.patch(record._id, { dismissed: false, dismissedAt: undefined, updatedAt: now });
+		}
+
+		const stillDismissed = await ctx.db
+			.query('onboardingProgress')
+			.withIndex('by_dismissed', (q) => q.eq('dismissed', true))
+			.first();
+		return { isDismissed: stillDismissed !== null };
 	},
 });

@@ -25,21 +25,29 @@ const { t } = useI18n();
 
 <template>
 	<div class="inline-flex items-center gap-1">
-		<UiButton
-			variant="ghost"
+		<UiTooltip
 			v-if="mode === 'simple'"
-			type="button"
-			:class="{ 'text-brand': persistentToolbar }"
-			:aria-pressed="persistentToolbar"
-			:title="
+			:text="
 				persistentToolbar
 					? t('components.postbox.postboxComposerModeControls.hideToolbar')
 					: t('components.postbox.postboxComposerModeControls.showToolbar')
 			"
-			@click="emit('toggle-toolbar')"
 		>
-			<Icon name="lucide:type" class="w-4 h-4" />
-		</UiButton>
+			<UiButton
+				variant="ghost"
+				type="button"
+				:class="{ 'text-brand': persistentToolbar }"
+				:aria-pressed="persistentToolbar"
+				:aria-label="
+					persistentToolbar
+						? t('components.postbox.postboxComposerModeControls.hideToolbar')
+						: t('components.postbox.postboxComposerModeControls.showToolbar')
+				"
+				@click="emit('toggle-toolbar')"
+			>
+				<Icon name="lucide:type" class="w-4 h-4" />
+			</UiButton>
+		</UiTooltip>
 		<UiButton
 			variant="ghost"
 			type="button"

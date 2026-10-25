@@ -82,6 +82,7 @@ import { POSTBOX_PRIORITY_ROWS } from '~/utils/postboxPriorityGroups';
 import { vReplyDrop } from '~/composables/useReplyFileDrop';
 import { replyDropForMessage } from '~/utils/replyFileDrop';
 import { useShortcutLabels } from '~/composables/useShortcutLabels';
+import PostboxThreadRowQuickActions from './PostboxThreadRowQuickActions.vue';
 
 const { t } = useI18n();
 // A filtered list (`?placement=`) keeps its filter on the message route.
@@ -388,25 +389,26 @@ function onCapturedClick(event: MouseEvent) {
 					@click="selectable ? emit('select') : undefined"
 				>
 					<div class="flex items-start gap-2">
-						<button
-							type="button"
-							class="pbx-row-checkbox mt-0.5 w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center"
-							:class="
-								shownSelected
-									? 'bg-brand border-brand text-text-inverse'
-									: 'border-border-subtle bg-bg-base opacity-0 group-hover:opacity-100'
-							"
-							:aria-label="
-								selected
-									? t('components.postbox.postboxThreadRow.deselect')
-									: t('components.postbox.postboxThreadRow.select')
-							"
-							:title="t('components.postbox.postboxThreadRow.selectSweepHint')"
-							data-sweep-handle="select"
-							@click="onCheckboxClick($event)"
-						>
-							<Icon v-if="shownSelected" name="lucide:check" class="w-3 h-3" />
-						</button>
+						<UiTooltip :text="t('components.postbox.postboxThreadRow.selectSweepHint')">
+							<button
+								type="button"
+								class="pbx-row-checkbox mt-0.5 w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center"
+								:class="
+									shownSelected
+										? 'bg-brand border-brand text-text-inverse'
+										: 'border-border-subtle bg-bg-base opacity-0 group-hover:opacity-100'
+								"
+								:aria-label="
+									selected
+										? t('components.postbox.postboxThreadRow.deselect')
+										: t('components.postbox.postboxThreadRow.select')
+								"
+								data-sweep-handle="select"
+								@click="onCheckboxClick($event)"
+							>
+								<Icon v-if="shownSelected" name="lucide:check" class="w-3 h-3" />
+							</button>
+						</UiTooltip>
 						<UiAvatar
 							:name="msg.fromName"
 							:email="msg.fromAddress"
@@ -423,76 +425,12 @@ function onCapturedClick(event: MouseEvent) {
 						/>
 					</div>
 				</component>
-				<!-- Hover quick-actions (single-message triage without a round-trip
-		     through the bulk selection). -->
-				<div
-					class="ui-hover-reveal absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-0.5 bg-bg-elevated/95 rounded px-1 py-0.5 shadow-sm border border-border-subtle"
-				>
-					<button
-						v-if="isWhyHereShown"
-						type="button"
-						class="p-1 rounded hover:bg-bg-surface text-text-tertiary hover:text-text-primary"
-						:title="t('postbox.explain.rowLink')"
-						:aria-label="t('postbox.explain.rowLink')"
-						data-testid="row-why-here"
-						@click="openWhyHere($event)"
-					>
-						<Icon name="lucide:help-circle" class="w-4 h-4" />
-					</button>
-					<button
-						type="button"
-						class="p-1 rounded hover:bg-bg-surface text-text-tertiary hover:text-warning"
-						:title="
-							msg.flagFlagged
-								? t('components.postbox.postboxThreadRow.unstar')
-								: t('components.postbox.postboxThreadRow.star')
-						"
-						:aria-label="
-							msg.flagFlagged
-								? t('components.postbox.postboxThreadRow.unstar')
-								: t('components.postbox.postboxThreadRow.star')
-						"
-						@click="rowAction($event, 'toggle-star')"
-					>
-						<Icon name="lucide:star" class="w-4 h-4" />
-					</button>
-					<button
-						type="button"
-						class="p-1 rounded hover:bg-bg-surface text-text-tertiary hover:text-text-primary"
-						:title="
-							msg.flagSeen
-								? t('components.postbox.postboxThreadRow.markUnread')
-								: t('components.postbox.postboxThreadRow.markRead')
-						"
-						:aria-label="
-							msg.flagSeen
-								? t('components.postbox.postboxThreadRow.markUnread')
-								: t('components.postbox.postboxThreadRow.markRead')
-						"
-						@click="rowAction($event, 'toggle-read')"
-					>
-						<Icon :name="msg.flagSeen ? 'lucide:mail' : 'lucide:mail-open'" class="w-4 h-4" />
-					</button>
-					<button
-						type="button"
-						class="p-1 rounded hover:bg-bg-surface text-text-tertiary hover:text-text-primary"
-						:title="t('components.postbox.postboxThreadRow.archiveSweepHint')"
-						:aria-label="t('common.archive')"
-						data-sweep-handle="archive"
-						@click="rowAction($event, 'archive')"
-					>
-						<Icon name="lucide:archive" class="w-4 h-4" />
-					</button>
-					<button
-						type="button"
-						class="p-1 rounded hover:bg-error/10 text-text-tertiary hover:text-error"
-						:title="t('common.delete')"
-						:aria-label="t('common.delete')"
-						@click="rowAction($event, 'trash')"
-					>
-						<Icon name="lucide:trash" class="w-4 h-4" />
-					</button>
-				</div>
+				<PostboxThreadRowQuickActions
+					:msg="msg"
+					:why-here-shown="isWhyHereShown"
+					@why-here="openWhyHere"
+					@action="rowAction"
+				/>
 			</li>
 		</template>
 	</UiContextMenu>

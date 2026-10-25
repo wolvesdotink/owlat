@@ -125,36 +125,42 @@ const fieldTypes: Array<{ value: FormFieldDraft['type']; labelKey: string }> = [
 					</div>
 
 					<div class="flex items-center gap-1">
-						<UiButton
-							variant="ghost"
-							type="button"
-							class="p-1.5"
-							:title="t('components.forms.fieldsEditor.moveUp')"
-							:disabled="disabled || index === 0"
-							@click="editor.moveField(index, -1)"
-						>
-							<Icon name="lucide:arrow-up" class="w-4 h-4" />
-						</UiButton>
-						<UiButton
-							variant="ghost"
-							type="button"
-							class="p-1.5"
-							:title="t('components.forms.fieldsEditor.moveDown')"
-							:disabled="disabled || index === fields.length - 1"
-							@click="editor.moveField(index, 1)"
-						>
-							<Icon name="lucide:arrow-down" class="w-4 h-4" />
-						</UiButton>
-						<UiButton
-							variant="ghost"
-							type="button"
-							class="p-1.5 text-error hover:bg-error/10"
-							:title="t('components.forms.fieldsEditor.removeField')"
-							:disabled="disabled || fields.length === 1"
-							@click="editor.removeField(index)"
-						>
-							<Icon name="lucide:trash-2" class="w-4 h-4" />
-						</UiButton>
+						<UiTooltip :text="t('components.forms.fieldsEditor.moveUp')">
+							<UiButton
+								variant="ghost"
+								type="button"
+								class="p-1.5"
+								:aria-label="t('components.forms.fieldsEditor.moveUp')"
+								:disabled="disabled || index === 0"
+								@click="editor.moveField(index, -1)"
+							>
+								<Icon name="lucide:arrow-up" class="w-4 h-4" />
+							</UiButton>
+						</UiTooltip>
+						<UiTooltip :text="t('components.forms.fieldsEditor.moveDown')">
+							<UiButton
+								variant="ghost"
+								type="button"
+								class="p-1.5"
+								:aria-label="t('components.forms.fieldsEditor.moveDown')"
+								:disabled="disabled || index === fields.length - 1"
+								@click="editor.moveField(index, 1)"
+							>
+								<Icon name="lucide:arrow-down" class="w-4 h-4" />
+							</UiButton>
+						</UiTooltip>
+						<UiTooltip :text="t('components.forms.fieldsEditor.removeField')">
+							<UiButton
+								variant="ghost"
+								type="button"
+								class="p-1.5 text-error hover:bg-error/10"
+								:aria-label="t('components.forms.fieldsEditor.removeField')"
+								:disabled="disabled || fields.length === 1"
+								@click="editor.removeField(index)"
+							>
+								<Icon name="lucide:trash-2" class="w-4 h-4" />
+							</UiButton>
+						</UiTooltip>
 					</div>
 				</div>
 			</div>

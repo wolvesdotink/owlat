@@ -149,28 +149,31 @@ function openForYou(): void {
 		<div class="ml-auto flex items-stretch self-stretch" data-tauri-drag-region>
 			<div class="flex items-center gap-2 pr-1" data-tauri-drag-region>
 				<ShellConnectionIndicator drag-region />
-				<NuxtLink
+				<UiTooltip
 					v-if="active"
-					to="/dashboard/postbox/inbox#postbox-for-you"
-					class="tb-unread"
-					:class="unreadCount > 0 ? 'text-text-inverse' : 'tb-unread-idle'"
-					:aria-label="
-						unreadCount > 0
-							? t('components.desktop.desktopTitlebar.unreadAriaLabel', { count: unreadCount })
-							: t('components.desktop.desktopTitlebar.openPostbox')
-					"
-					:title="
+					:text="
 						unreadCount > 0
 							? t('components.desktop.desktopTitlebar.unreadTitle', { count: unreadCount })
 							: t('components.desktop.desktopTitlebar.postbox')
 					"
-					@click.prevent="openForYou"
 				>
-					<Icon name="lucide:inbox" class="w-3.5 h-3.5" />
-					<span v-if="unreadCount > 0" class="tabular-nums text-[11px] font-[550] leading-none">{{
-						unreadLabel
-					}}</span>
-				</NuxtLink>
+					<NuxtLink
+						to="/dashboard/postbox/inbox#postbox-for-you"
+						class="tb-unread"
+						:class="unreadCount > 0 ? 'text-text-inverse' : 'tb-unread-idle'"
+						:aria-label="
+							unreadCount > 0
+								? t('components.desktop.desktopTitlebar.unreadAriaLabel', { count: unreadCount })
+								: t('components.desktop.desktopTitlebar.openPostbox')
+						"
+						@click.prevent="openForYou"
+					>
+						<Icon name="lucide:inbox" class="w-3.5 h-3.5" />
+						<span v-if="unreadCount > 0" class="tabular-nums text-[11px] font-[550] leading-none">{{
+							unreadLabel
+						}}</span>
+					</NuxtLink>
+				</UiTooltip>
 			</div>
 
 			<!-- Windows/Linux window controls -->

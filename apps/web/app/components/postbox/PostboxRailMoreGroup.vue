@@ -133,54 +133,55 @@ const expanded = computed(() => isOpen.value || holdsActiveRoute.value || spring
 
 <template>
 	<div :class="collapsed ? 'flex flex-col items-center gap-1 w-full' : 'w-full'">
-		<button
-			type="button"
-			class="rounded text-text-tertiary hover:text-text-primary hover:bg-bg-surface"
-			:class="
-				collapsed
-					? 'relative flex items-center justify-center w-9 h-9'
-					: 'flex items-center gap-2 px-2.5 py-1.5 w-full text-sm'
-			"
-			:aria-expanded="expanded"
-			:title="collapsed ? t('components.postbox.postboxRailMoreGroup.more') : undefined"
-			:aria-label="
-				spamUnread > 0 && !expanded
-					? t('components.postbox.postboxRailMoreGroup.moreUnreadAriaLabel', {
-							count: spamUnread,
-						})
-					: t('components.postbox.postboxRailMoreGroup.more')
-			"
-			@click="toggle"
-			@dragenter="armSpring"
-			@dragleave="onHeaderDragleave"
-		>
-			<Icon
-				v-if="collapsed"
-				:name="expanded ? 'lucide:chevron-up' : 'lucide:ellipsis'"
-				class="w-4 h-4"
-			/>
-			<template v-else>
-				<Icon
-					:name="expanded ? 'lucide:chevron-down' : 'lucide:chevron-right'"
-					class="w-4 h-4 flex-shrink-0"
-				/>
-				<span class="flex-1 text-left">{{
-					t('components.postbox.postboxRailMoreGroup.more')
-				}}</span>
-				<!-- Spam's unread bubbles up while the group is folded, so folding it
-				     never hides new mail. -->
-				<span
-					v-if="spamUnread > 0 && !expanded"
-					class="text-xs font-medium text-text-secondary flex-shrink-0"
-					>{{ spamUnread }}</span
-				>
-			</template>
-			<span
-				v-if="collapsed && spamUnread > 0 && !expanded"
-				class="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 rounded-full bg-brand text-text-inverse text-2xs leading-4 font-medium text-center"
-				>{{ spamUnread > 99 ? '99+' : spamUnread }}</span
+		<UiTooltip :text="collapsed ? t('components.postbox.postboxRailMoreGroup.more') : undefined">
+			<button
+				type="button"
+				class="rounded text-text-tertiary hover:text-text-primary hover:bg-bg-surface"
+				:class="
+					collapsed
+						? 'relative flex items-center justify-center w-9 h-9'
+						: 'flex items-center gap-2 px-2.5 py-1.5 w-full text-sm'
+				"
+				:aria-expanded="expanded"
+				:aria-label="
+					spamUnread > 0 && !expanded
+						? t('components.postbox.postboxRailMoreGroup.moreUnreadAriaLabel', {
+								count: spamUnread,
+							})
+						: t('components.postbox.postboxRailMoreGroup.more')
+				"
+				@click="toggle"
+				@dragenter="armSpring"
+				@dragleave="onHeaderDragleave"
 			>
-		</button>
+				<Icon
+					v-if="collapsed"
+					:name="expanded ? 'lucide:chevron-up' : 'lucide:ellipsis'"
+					class="w-4 h-4"
+				/>
+				<template v-else>
+					<Icon
+						:name="expanded ? 'lucide:chevron-down' : 'lucide:chevron-right'"
+						class="w-4 h-4 flex-shrink-0"
+					/>
+					<span class="flex-1 text-left">{{
+						t('components.postbox.postboxRailMoreGroup.more')
+					}}</span>
+					<!-- Spam's unread bubbles up while the group is folded, so folding it
+					     never hides new mail. -->
+					<span
+						v-if="spamUnread > 0 && !expanded"
+						class="text-xs font-medium text-text-secondary flex-shrink-0"
+						>{{ spamUnread }}</span
+					>
+				</template>
+				<span
+					v-if="collapsed && spamUnread > 0 && !expanded"
+					class="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 rounded-full bg-brand text-text-inverse text-2xs leading-4 font-medium text-center"
+					>{{ spamUnread > 99 ? '99+' : spamUnread }}</span
+				>
+			</button>
+		</UiTooltip>
 
 		<div
 			v-if="expanded"
@@ -205,23 +206,24 @@ const expanded = computed(() => isOpen.value || holdsActiveRoute.value || spring
 			/>
 			<!-- The one CRUD surface. The rail's rows are navigation; creating,
 			     renaming and deleting folders and labels all happen in here. -->
-			<button
-				type="button"
-				class="rounded text-sm text-text-tertiary hover:text-text-secondary hover:bg-bg-surface"
-				:class="
-					collapsed
-						? 'flex items-center justify-center w-9 h-9'
-						: 'flex items-center gap-2 px-2.5 py-1.5 w-full text-left'
-				"
-				:title="collapsed ? t('components.postbox.postboxLabelManager.title') : undefined"
-				:aria-label="collapsed ? t('components.postbox.postboxLabelManager.title') : undefined"
-				@click="openManager({ section: 'folders' })"
-			>
-				<Icon name="lucide:settings-2" class="w-4 h-4 flex-shrink-0" />
-				<span v-if="!collapsed" class="flex-1 truncate">{{
-					t('components.postbox.postboxLabelManager.title')
-				}}</span>
-			</button>
+			<UiTooltip :text="collapsed ? t('components.postbox.postboxLabelManager.title') : undefined">
+				<button
+					type="button"
+					class="rounded text-sm text-text-tertiary hover:text-text-secondary hover:bg-bg-surface"
+					:class="
+						collapsed
+							? 'flex items-center justify-center w-9 h-9'
+							: 'flex items-center gap-2 px-2.5 py-1.5 w-full text-left'
+					"
+					:aria-label="collapsed ? t('components.postbox.postboxLabelManager.title') : undefined"
+					@click="openManager({ section: 'folders' })"
+				>
+					<Icon name="lucide:settings-2" class="w-4 h-4 flex-shrink-0" />
+					<span v-if="!collapsed" class="flex-1 truncate">{{
+						t('components.postbox.postboxLabelManager.title')
+					}}</span>
+				</button>
+			</UiTooltip>
 		</div>
 	</div>
 </template>

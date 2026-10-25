@@ -19,7 +19,7 @@ import * as onboarding from '../auth/onboarding';
  *  2. **Dead code is gone.** `get`, `initialize`, and `markStepComplete` (and
  *     the inert per-step boolean columns they wrote) were never read and have
  *     been deleted per the prefer-deletion convention. Importing the module
- *     must not break, and only the two live functions remain exported.
+ *     must not break, and only the live functions remain exported.
  */
 
 // Only the auth FLOOR is mocked (the `authedQuery`/`authedMutation` wrapper's
@@ -50,8 +50,8 @@ const modules = Object.fromEntries(
 			!path.includes('knowledgeExtraction') &&
 			!path.includes('semanticFileProcessing') &&
 			!path.includes('visualizationAgent') &&
-			!path.includes('llmProvider'),
-	),
+			!path.includes('llmProvider')
+	)
 );
 
 function adminIdentity(subject: string) {
@@ -112,9 +112,10 @@ describe('auth/onboarding — dead code is deleted', () => {
 		expect(surface['markStepComplete']).toBeUndefined();
 	});
 
-	it('still exports the two live functions', () => {
+	it('still exports the live functions', () => {
 		const surface = onboarding as Record<string, unknown>;
 		expect(surface['getWithActualProgress']).toBeDefined();
 		expect(surface['dismiss']).toBeDefined();
+		expect(surface['restore']).toBeDefined();
 	});
 });

@@ -3,14 +3,16 @@
  * One navigation row in the Postbox folder rail.
  *
  * The rail had seven near-identical `<NuxtLink>` blocks — each repeating the
- * expanded/collapsed class pair, the collapsed `title` + `aria-label`, and the
- * inline-count vs corner-badge switch. They are one row type, so they are one
+ * expanded/collapsed class pair, the collapsed label tooltip + `aria-label`, and
+ * the inline-count vs corner-badge switch. They are one row type, so they are one
  * component: adding a destination to the rail (or to its "More" group) is now a
  * line, not a copied twenty.
  *
- * Collapsed, the rail is a ~48px icon strip: the label survives only as `title`
- * + `aria-label`, or the strip is unusable with a screen reader, and a count
- * moves from an inline number to a corner badge for the same reason.
+ * Collapsed, the rail is a ~48px icon strip: the label survives only as a
+ * UiTooltip for sighted pointer and keyboard users, and as the `aria-label`
+ * (with the count, when there is one) for screen readers. The tooltip is not in
+ * the DOM until it opens, so it cannot be the accessible name. A count moves
+ * from an inline number to a corner badge.
  */
 withDefaults(
 	defineProps<{
@@ -51,38 +53,39 @@ withDefaults(
 </script>
 
 <template>
-	<NuxtLink
-		:to="to"
-		class="rounded text-sm"
-		:class="[
-			collapsed
-				? 'relative flex items-center justify-center w-9 h-9'
-				: 'flex items-center gap-2 px-2.5 py-1.5',
-			muted ? 'text-text-tertiary hover:text-text-secondary' : '',
-			active ? 'bg-bg-surface text-brand' : 'hover:bg-bg-surface',
-		]"
-		:title="collapsed ? label : count > 0 ? countLabel : undefined"
-		:aria-label="collapsed ? (count > 0 ? (countLabel ?? label) : label) : undefined"
-		:aria-current="active ? 'page' : undefined"
-	>
-		<Icon :name="icon" class="w-4 h-4 flex-shrink-0" />
-		<template v-if="!collapsed">
-			<!-- With a worded count the label keeps its full width and the count
-			     truncates instead (the full phrase is in the title). -->
-			<span class="min-w-0 truncate" :class="count > 0 && countText ? 'shrink-0' : 'flex-1'">{{
-				label
-			}}</span>
-			<span
-				v-if="count > 0"
-				class="ml-auto min-w-0 truncate text-xs font-medium text-text-secondary"
-				:class="countText ? '' : 'shrink-0'"
-				>{{ countText ?? count }}</span
-			>
-		</template>
-		<span
-			v-else-if="count > 0"
-			class="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 rounded-full bg-text-primary text-text-inverse text-2xs leading-4 font-medium text-center"
-			>{{ count > 99 ? '99+' : count }}</span
+	<UiTooltip :text="collapsed ? label : count > 0 ? countLabel : undefined">
+		<NuxtLink
+			:to="to"
+			class="rounded text-sm"
+			:class="[
+				collapsed
+					? 'relative flex items-center justify-center w-9 h-9'
+					: 'flex items-center gap-2 px-2.5 py-1.5',
+				muted ? 'text-text-tertiary hover:text-text-secondary' : '',
+				active ? 'bg-bg-surface text-brand' : 'hover:bg-bg-surface',
+			]"
+			:aria-label="collapsed ? (count > 0 ? (countLabel ?? label) : label) : undefined"
+			:aria-current="active ? 'page' : undefined"
 		>
-	</NuxtLink>
+			<Icon :name="icon" class="w-4 h-4 flex-shrink-0" />
+			<template v-if="!collapsed">
+				<!-- With a worded count the label keeps its full width and the count
+				     truncates instead (the tooltip shows the full countLabel phrase). -->
+				<span class="min-w-0 truncate" :class="count > 0 && countText ? 'shrink-0' : 'flex-1'">{{
+					label
+				}}</span>
+				<span
+					v-if="count > 0"
+					class="ml-auto min-w-0 truncate text-xs font-medium text-text-secondary"
+					:class="countText ? '' : 'shrink-0'"
+					>{{ countText ?? count }}</span
+				>
+			</template>
+			<span
+				v-else-if="count > 0"
+				class="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 rounded-full bg-text-primary text-text-inverse text-2xs leading-4 font-medium text-center"
+				>{{ count > 99 ? '99+' : count }}</span
+			>
+		</NuxtLink>
+	</UiTooltip>
 </template>

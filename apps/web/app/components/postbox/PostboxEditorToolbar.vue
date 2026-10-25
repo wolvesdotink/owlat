@@ -16,7 +16,7 @@ import { useShortcutLabels } from '~/composables/useShortcutLabels';
 
 const { t } = useI18n();
 // The editor's own Cmd/Ctrl-B/I/U/K (useRichText's handleFormatKeydown).
-const { chordLabel } = useShortcutLabels();
+const { chordLabel, chordAria } = useShortcutLabels();
 
 const props = withDefaults(
 	defineProps<{
@@ -50,98 +50,132 @@ const emit = defineEmits<{
 
 <template>
 	<div :class="containerClass">
-		<button
-			type="button"
-			class="px-1.5 py-1 rounded text-sm hover:bg-bg-elevated"
-			:class="{ 'bg-bg-elevated text-brand': activeMarks.bold }"
-			:title="t('components.postbox.postboxEditorToolbar.bold', { keys: chordLabel('mod+b') })"
-			@mousedown.prevent
-			@click="emit('bold')"
+		<UiTooltip
+			:text="t('components.postbox.postboxEditorToolbar.bold')"
+			:shortcut="chordLabel('mod+b')"
 		>
-			<Icon name="lucide:bold" class="w-4 h-4" />
-		</button>
-		<button
-			type="button"
-			class="px-1.5 py-1 rounded text-sm hover:bg-bg-elevated"
-			:class="{ 'bg-bg-elevated text-brand': activeMarks.italic }"
-			:title="t('components.postbox.postboxEditorToolbar.italic', { keys: chordLabel('mod+i') })"
-			@mousedown.prevent
-			@click="emit('italic')"
+			<button
+				type="button"
+				class="px-1.5 py-1 rounded text-sm hover:bg-bg-elevated"
+				:class="{ 'bg-bg-elevated text-brand': activeMarks.bold }"
+				:aria-label="t('components.postbox.postboxEditorToolbar.bold')"
+				:aria-keyshortcuts="chordAria('mod+b')"
+				@mousedown.prevent
+				@click="emit('bold')"
+			>
+				<Icon name="lucide:bold" class="w-4 h-4" />
+			</button>
+		</UiTooltip>
+		<UiTooltip
+			:text="t('components.postbox.postboxEditorToolbar.italic')"
+			:shortcut="chordLabel('mod+i')"
 		>
-			<Icon name="lucide:italic" class="w-4 h-4" />
-		</button>
-		<button
-			type="button"
-			class="px-1.5 py-1 rounded text-sm hover:bg-bg-elevated"
-			:class="{ 'bg-bg-elevated text-brand': activeMarks.underline }"
-			:title="t('components.postbox.postboxEditorToolbar.underline', { keys: chordLabel('mod+u') })"
-			@mousedown.prevent
-			@click="emit('underline')"
+			<button
+				type="button"
+				class="px-1.5 py-1 rounded text-sm hover:bg-bg-elevated"
+				:class="{ 'bg-bg-elevated text-brand': activeMarks.italic }"
+				:aria-label="t('components.postbox.postboxEditorToolbar.italic')"
+				:aria-keyshortcuts="chordAria('mod+i')"
+				@mousedown.prevent
+				@click="emit('italic')"
+			>
+				<Icon name="lucide:italic" class="w-4 h-4" />
+			</button>
+		</UiTooltip>
+		<UiTooltip
+			:text="t('components.postbox.postboxEditorToolbar.underline')"
+			:shortcut="chordLabel('mod+u')"
 		>
-			<Icon name="lucide:underline" class="w-4 h-4" />
-		</button>
+			<button
+				type="button"
+				class="px-1.5 py-1 rounded text-sm hover:bg-bg-elevated"
+				:class="{ 'bg-bg-elevated text-brand': activeMarks.underline }"
+				:aria-label="t('components.postbox.postboxEditorToolbar.underline')"
+				:aria-keyshortcuts="chordAria('mod+u')"
+				@mousedown.prevent
+				@click="emit('underline')"
+			>
+				<Icon name="lucide:underline" class="w-4 h-4" />
+			</button>
+		</UiTooltip>
 		<span class="w-px h-4 bg-border-subtle mx-1" />
-		<button
-			type="button"
-			class="px-1.5 py-1 rounded text-sm hover:bg-bg-elevated"
-			:class="{ 'bg-bg-elevated text-brand': activeMarks.h1 }"
-			:title="t('components.postbox.postboxEditorToolbar.heading1')"
-			@mousedown.prevent
-			@click="emit('heading', 1)"
-		>
-			<Icon name="lucide:heading-1" class="w-4 h-4" />
-		</button>
-		<button
-			type="button"
-			class="px-1.5 py-1 rounded text-sm hover:bg-bg-elevated"
-			:class="{ 'bg-bg-elevated text-brand': activeMarks.h2 }"
-			:title="t('components.postbox.postboxEditorToolbar.heading2')"
-			@mousedown.prevent
-			@click="emit('heading', 2)"
-		>
-			<Icon name="lucide:heading-2" class="w-4 h-4" />
-		</button>
+		<UiTooltip :text="t('components.postbox.postboxEditorToolbar.heading1')">
+			<button
+				type="button"
+				class="px-1.5 py-1 rounded text-sm hover:bg-bg-elevated"
+				:class="{ 'bg-bg-elevated text-brand': activeMarks.h1 }"
+				:aria-label="t('components.postbox.postboxEditorToolbar.heading1')"
+				@mousedown.prevent
+				@click="emit('heading', 1)"
+			>
+				<Icon name="lucide:heading-1" class="w-4 h-4" />
+			</button>
+		</UiTooltip>
+		<UiTooltip :text="t('components.postbox.postboxEditorToolbar.heading2')">
+			<button
+				type="button"
+				class="px-1.5 py-1 rounded text-sm hover:bg-bg-elevated"
+				:class="{ 'bg-bg-elevated text-brand': activeMarks.h2 }"
+				:aria-label="t('components.postbox.postboxEditorToolbar.heading2')"
+				@mousedown.prevent
+				@click="emit('heading', 2)"
+			>
+				<Icon name="lucide:heading-2" class="w-4 h-4" />
+			</button>
+		</UiTooltip>
 		<span class="w-px h-4 bg-border-subtle mx-1" />
-		<button
-			type="button"
-			class="px-1.5 py-1 rounded text-sm hover:bg-bg-elevated"
-			:class="{ 'bg-bg-elevated text-brand': activeMarks.ul }"
-			:title="t('components.postbox.postboxEditorToolbar.bulletList')"
-			@mousedown.prevent
-			@click="emit('list', false)"
-		>
-			<Icon name="lucide:list" class="w-4 h-4" />
-		</button>
-		<button
-			type="button"
-			class="px-1.5 py-1 rounded text-sm hover:bg-bg-elevated"
-			:class="{ 'bg-bg-elevated text-brand': activeMarks.ol }"
-			:title="t('components.postbox.postboxEditorToolbar.orderedList')"
-			@mousedown.prevent
-			@click="emit('list', true)"
-		>
-			<Icon name="lucide:list-ordered" class="w-4 h-4" />
-		</button>
-		<button
-			type="button"
-			class="px-1.5 py-1 rounded text-sm hover:bg-bg-elevated"
-			:class="{ 'bg-bg-elevated text-brand': activeMarks.quote }"
-			:title="t('components.postbox.postboxEditorToolbar.blockquote')"
-			@mousedown.prevent
-			@click="emit('blockquote')"
-		>
-			<Icon name="lucide:quote" class="w-4 h-4" />
-		</button>
+		<UiTooltip :text="t('components.postbox.postboxEditorToolbar.bulletList')">
+			<button
+				type="button"
+				class="px-1.5 py-1 rounded text-sm hover:bg-bg-elevated"
+				:class="{ 'bg-bg-elevated text-brand': activeMarks.ul }"
+				:aria-label="t('components.postbox.postboxEditorToolbar.bulletList')"
+				@mousedown.prevent
+				@click="emit('list', false)"
+			>
+				<Icon name="lucide:list" class="w-4 h-4" />
+			</button>
+		</UiTooltip>
+		<UiTooltip :text="t('components.postbox.postboxEditorToolbar.orderedList')">
+			<button
+				type="button"
+				class="px-1.5 py-1 rounded text-sm hover:bg-bg-elevated"
+				:class="{ 'bg-bg-elevated text-brand': activeMarks.ol }"
+				:aria-label="t('components.postbox.postboxEditorToolbar.orderedList')"
+				@mousedown.prevent
+				@click="emit('list', true)"
+			>
+				<Icon name="lucide:list-ordered" class="w-4 h-4" />
+			</button>
+		</UiTooltip>
+		<UiTooltip :text="t('components.postbox.postboxEditorToolbar.blockquote')">
+			<button
+				type="button"
+				class="px-1.5 py-1 rounded text-sm hover:bg-bg-elevated"
+				:class="{ 'bg-bg-elevated text-brand': activeMarks.quote }"
+				:aria-label="t('components.postbox.postboxEditorToolbar.blockquote')"
+				@mousedown.prevent
+				@click="emit('blockquote')"
+			>
+				<Icon name="lucide:quote" class="w-4 h-4" />
+			</button>
+		</UiTooltip>
 		<span class="w-px h-4 bg-border-subtle mx-1" />
-		<button
-			type="button"
-			class="px-1.5 py-1 rounded text-sm hover:bg-bg-elevated"
-			:class="{ 'bg-bg-elevated text-brand': activeMarks.link }"
-			:title="t('components.postbox.postboxEditorToolbar.link', { keys: chordLabel('mod+k') })"
-			@mousedown.prevent
-			@click="emit('link')"
+		<UiTooltip
+			:text="t('components.postbox.postboxEditorToolbar.link')"
+			:shortcut="chordLabel('mod+k')"
 		>
-			<Icon name="lucide:link" class="w-4 h-4" />
-		</button>
+			<button
+				type="button"
+				class="px-1.5 py-1 rounded text-sm hover:bg-bg-elevated"
+				:class="{ 'bg-bg-elevated text-brand': activeMarks.link }"
+				:aria-label="t('components.postbox.postboxEditorToolbar.link')"
+				:aria-keyshortcuts="chordAria('mod+k')"
+				@mousedown.prevent
+				@click="emit('link')"
+			>
+				<Icon name="lucide:link" class="w-4 h-4" />
+			</button>
+		</UiTooltip>
 	</div>
 </template>

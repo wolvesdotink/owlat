@@ -244,6 +244,20 @@ export const ROOT_GATES: readonly RootGate[] = [
 	},
 	{ name: 'ui-controls', paths: ['apps/web/app/', 'scripts/check-ui-controls.ts'] },
 	{
+		name: 'native-title',
+		paths: [
+			'apps/web/app/',
+			'apps/marketing/',
+			'apps/docs/',
+			'packages/ui/',
+			'packages/email-builder/src/',
+			'scripts/check-native-title.sh',
+			'scripts/native-title-findings.ts',
+			'scripts/native-title-baseline.txt',
+			RATCHET,
+		],
+	},
+	{
 		name: 'desktop-invoke',
 		paths: [
 			'apps/desktop/src/',

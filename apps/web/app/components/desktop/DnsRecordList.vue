@@ -43,24 +43,27 @@ const keyOf = (r: DnsRecord) => `${r.name}/${r.type}`;
 				:class="r.placeholder ? 'italic text-warning' : 'text-text-secondary'"
 				>{{ r.value }}</span
 			>
-			<button
+			<UiTooltip
 				v-if="!r.placeholder"
-				type="button"
-				class="flex size-6 items-center justify-center justify-self-end rounded text-text-secondary transition-colors hover:bg-bg-surface hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-				:aria-label="t('components.desktop.dnsRecordList.copyValue', { name: r.name })"
-				:title="
+				:text="
 					isCopied(keyOf(r))
 						? t('common.copied')
 						: t('components.desktop.dnsRecordList.copyValue', { name: r.name })
 				"
-				@click="copy(r.value, keyOf(r))"
 			>
-				<Icon
-					:name="isCopied(keyOf(r)) ? 'lucide:check' : 'lucide:copy'"
-					class="size-3.5"
-					:class="isCopied(keyOf(r)) ? 'text-success' : ''"
-				/>
-			</button>
+				<button
+					type="button"
+					class="flex size-6 items-center justify-center justify-self-end rounded text-text-secondary transition-colors hover:bg-bg-surface hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+					:aria-label="t('components.desktop.dnsRecordList.copyValue', { name: r.name })"
+					@click="copy(r.value, keyOf(r))"
+				>
+					<Icon
+						:name="isCopied(keyOf(r)) ? 'lucide:check' : 'lucide:copy'"
+						class="size-3.5"
+						:class="isCopied(keyOf(r)) ? 'text-success' : ''"
+					/>
+				</button>
+			</UiTooltip>
 			<span
 				v-else
 				class="flex size-6 items-center justify-center justify-self-end text-text-tertiary"

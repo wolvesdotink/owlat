@@ -7,6 +7,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { mount } from '@vue/test-utils';
 import TodayInboxPicker from '../TodayInboxPicker.vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+import { tooltipOf } from '~/__tests__/tooltip';
 
 beforeAll(() => {
 	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
@@ -41,8 +42,10 @@ function mountPicker(hidden: string[]) {
 
 describe('TodayInboxPicker', () => {
 	it('is just an icon named "Edit tabs" until one is left out, then counts', () => {
-		const all = mountPicker([]).find('button');
-		expect(all.attributes('title')).toBe('Edit tabs');
+		const picker = mountPicker([]);
+		const all = picker.find('button');
+		expect(tooltipOf(picker, all)).toBe('Edit tabs');
+		expect(all.attributes('title')).toBeUndefined();
 		expect(all.text()).toBe('');
 		expect(mountPicker(['mb_support']).find('button').text()).toBe('1 of 2 inboxes');
 	});

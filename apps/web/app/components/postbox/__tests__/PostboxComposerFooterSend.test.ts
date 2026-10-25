@@ -8,6 +8,7 @@ import { describe, it, expect, beforeAll, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { ref } from 'vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+import { tooltipOf } from '~/__tests__/tooltip';
 import { composerTargetCapabilities } from '~/utils/composerTarget';
 import PostboxComposerFooter from '../PostboxComposerFooter.vue';
 
@@ -68,7 +69,9 @@ function mountFooter(overrides: Record<string, unknown> = {}) {
 describe('PostboxComposerFooter send button', () => {
 	it('says "Send" and names the identity beside it, not inside it', () => {
 		const wrapper = mountFooter({ sendAs: { mailboxId: 'mbx_1', label: 'ada@example.com' } });
-		const send = wrapper.get('button[title="Cmd+Enter"]');
+		const send = wrapper.get('[data-testid="composer-send"]');
+		expect(tooltipOf(wrapper, send)).toBe('Cmd+Enter');
+		expect(send.attributes('title')).toBeUndefined();
 		expect(send.text()).toBe('Send');
 		expect(send.classes()).toContain('whitespace-nowrap');
 		expect(wrapper.get('[data-testid="postbox-send-as"]').text()).toBe('as Ada');
@@ -101,7 +104,7 @@ describe('PostboxComposerFooter: a reply’s Send', () => {
 	it('says what Send does with the conversation, and sends with the setting', async () => {
 		const wrapper = mountFooter({ sendActions: actions });
 		const send = wrapper.get('[data-testid="composer-send"]');
-		expect(send.attributes('title')).toBe('Send and mark done (Ctrl+Enter)');
+		expect(tooltipOf(wrapper, send)).toBe('Send and mark done (Ctrl+Enter)');
 		await send.trigger('click');
 		expect(wrapper.emitted('send')).toEqual([[undefined]]);
 		wrapper.unmount();
@@ -125,6 +128,6 @@ describe('PostboxComposerFooter: a reply’s Send', () => {
 	it('is a plain Send for a new message or a forward', () => {
 		const wrapper = mountFooter();
 		expect(wrapper.find('[data-testid="composer-send-options"]').exists()).toBe(false);
-		expect(wrapper.get('[data-testid="composer-send"]').attributes('title')).toBe('Cmd+Enter');
+		expect(tooltipOf(wrapper, wrapper.get('[data-testid="composer-send"]'))).toBe('Cmd+Enter');
 	});
 });

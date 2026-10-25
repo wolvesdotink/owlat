@@ -64,26 +64,26 @@ const iconButton =
 					<slot name="cells" :item="item" />
 					<td class="px-6 py-4">
 						<div class="flex items-center justify-end gap-1" @click.stop>
-							<button
-								v-for="action in inlineActions"
-								:key="action.key"
-								type="button"
-								:class="iconButton"
-								:title="action.label"
-								:aria-label="action.label"
-								@click="action.run(item)"
-							>
-								<Icon :name="action.icon" class="w-4 h-4" />
-							</button>
-							<button
-								type="button"
-								:class="iconButton"
-								:title="t('common.edit')"
-								:aria-label="t('common.edit')"
-								@click="emit('edit', item)"
-							>
-								<Icon name="lucide:pencil" class="w-4 h-4" />
-							</button>
+							<UiTooltip v-for="action in inlineActions" :key="action.key" :text="action.label">
+								<button
+									type="button"
+									:class="iconButton"
+									:aria-label="action.label"
+									@click="action.run(item)"
+								>
+									<Icon :name="action.icon" class="w-4 h-4" />
+								</button>
+							</UiTooltip>
+							<UiTooltip :text="t('common.edit')">
+								<button
+									type="button"
+									:class="iconButton"
+									:aria-label="t('common.edit')"
+									@click="emit('edit', item)"
+								>
+									<Icon name="lucide:pencil" class="w-4 h-4" />
+								</button>
+							</UiTooltip>
 							<SendTemplateActionsMenu
 								v-if="canManage || actions.length > 0"
 								:item="item"

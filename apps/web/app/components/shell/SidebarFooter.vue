@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { logError } from '~/lib/runtimeLog';
 import { useZenMode } from '~/composables/useZenMode';
+import { useGettingStartedControls } from '~/composables/useGettingStartedControls';
 import { useShortcutLabels } from '~/composables/useShortcutLabels';
 import ShellConnectionIndicator from './ConnectionIndicator.vue';
 
 /**
  * The sidebar footer, one row: the account menu (Assistant, Zen mode, keyboard
- * shortcuts, theme, sign out), then Settings as a quiet gear (settings are
+ * shortcuts, the setup checklist, theme, sign out), then Settings as a quiet gear (settings are
  * visited rarely, so they get one door rather than two top-level sections),
  * then the collapse toggle. Collapsed to the icon rail, the three stack. While
  * the backend connection is down, its indicator gets a line above the row (a
@@ -25,9 +26,10 @@ const { user, signOut, isPending } = useAuth();
 const { isEnabled } = useFeatureFlag();
 const { openHelpModal } = useKeyboardShortcuts();
 const { enterZen } = useZenMode();
+const { showChecklist } = useGettingStartedControls();
 // The Assistant and Settings hints read the person's live binding, so a remap
 // on the shortcuts page shows up here too.
-const { ariaFor, titleWithShortcut } = useShortcutLabels();
+const { ariaFor } = useShortcutLabels();
 
 const settingsActive = computed(
 	() => route.path.startsWith('/dashboard/preferences') || route.path.startsWith('/dashboard/admin')
@@ -72,6 +74,10 @@ const initials = computed(() => {
 		.slice(0, 2);
 });
 
+const collapsedName = computed(() =>
+	props.collapsed ? user.value?.name || t('shell.dashboard.userFallback') : undefined
+);
+
 async function handleSignOut() {
 	try {
 		await signOut();
@@ -87,6 +93,10 @@ function startZen() {
 	menuOpen.value = false;
 	enterZen();
 }
+function openSetupChecklist() {
+	menuOpen.value = false;
+	void showChecklist();
+}
 </script>
 
 <template>
@@ -97,34 +107,37 @@ function startZen() {
 		"
 	>
 		<div ref="menuRef" class="relative min-w-0" :class="props.collapsed ? '' : 'flex-1'">
-			<button
-				type="button"
-				class="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 transition-colors hover:bg-bg-surface"
-				:class="props.collapsed ? 'justify-center' : ''"
-				:aria-expanded="menuOpen"
-				aria-haspopup="menu"
-				:aria-busy="isPending ? 'true' : undefined"
-				:title="props.collapsed ? user?.name || t('shell.dashboard.userFallback') : undefined"
-				@click.stop="menuOpen = !menuOpen"
-			>
-				<UiSkeleton v-if="isPending" circle class="size-7 shrink-0" />
-				<span
-					v-else
-					class="flex size-7 shrink-0 items-center justify-center rounded-full bg-bg-surface text-xs font-medium text-text-secondary"
-					>{{ initials }}</span
+			<!-- Collapsed, the row shows only initials: the name is the tooltip and the label. -->
+			<UiTooltip :text="collapsedName">
+				<button
+					type="button"
+					class="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 transition-colors hover:bg-bg-surface"
+					:class="props.collapsed ? 'justify-center' : ''"
+					:aria-expanded="menuOpen"
+					aria-haspopup="menu"
+					:aria-busy="isPending ? 'true' : undefined"
+					:aria-label="collapsedName"
+					@click.stop="menuOpen = !menuOpen"
 				>
-				<span v-if="isPending" class="sr-only">{{ t('common.loading') }}</span>
-				<span v-if="!props.collapsed" class="min-w-0 flex-1 text-left">
-					<template v-if="isPending">
-						<UiSkeleton class="h-3.5 w-24" />
-					</template>
-					<template v-else>
-						<span class="block truncate text-sm font-medium text-text-primary">{{
-							user?.name || t('shell.dashboard.userFallback')
-						}}</span>
-					</template>
-				</span>
-			</button>
+					<UiSkeleton v-if="isPending" circle class="size-7 shrink-0" />
+					<span
+						v-else
+						class="flex size-7 shrink-0 items-center justify-center rounded-full bg-bg-surface text-xs font-medium text-text-secondary"
+						>{{ initials }}</span
+					>
+					<span v-if="isPending" class="sr-only">{{ t('common.loading') }}</span>
+					<span v-if="!props.collapsed" class="min-w-0 flex-1 text-left">
+						<template v-if="isPending">
+							<UiSkeleton class="h-3.5 w-24" />
+						</template>
+						<template v-else>
+							<span class="block truncate text-sm font-medium text-text-primary">{{
+								user?.name || t('shell.dashboard.userFallback')
+							}}</span>
+						</template>
+					</span>
+				</button>
+			</UiTooltip>
 
 			<Transition
 				enter-active-class="transition-[opacity,translate] duration-(--motion-moderate)"
@@ -173,6 +186,17 @@ function startZen() {
 						<span class="flex-1 text-left">{{ t('components.shell.footer.shortcuts') }}</span>
 						<UiShortcut id="global.help" class="font-mono text-2xs text-text-tertiary" />
 					</button>
+					<button
+						type="button"
+						role="menuitem"
+						class="flex w-full items-center gap-3 px-3 py-2 text-sm text-text-primary hover:bg-bg-surface"
+						@click="openSetupChecklist"
+					>
+						<Icon name="lucide:list-checks" class="size-4 text-text-tertiary" />
+						<span class="flex-1 text-left">{{
+							t('components.dashboard.gettingStarted.show')
+						}}</span>
+					</button>
 					<div class="flex items-center gap-3 px-3 py-2 text-sm text-text-primary">
 						<UiThemeToggle
 							class="flex items-center gap-3 text-text-tertiary hover:text-text-primary"
@@ -199,33 +223,35 @@ function startZen() {
 			:compact="props.collapsed"
 			:class="props.collapsed ? 'px-1' : 'order-first basis-full px-2 pb-1'"
 		/>
-		<NuxtLink
-			to="/dashboard/preferences"
-			:aria-current="settingsActive ? 'page' : undefined"
-			:aria-label="t('components.shell.footer.settings')"
-			:title="titleWithShortcut(t('components.shell.footer.settings'), 'global.settings')"
-			:aria-keyshortcuts="ariaFor('global.settings')"
-			class="flex size-8 shrink-0 items-center justify-center rounded-lg transition-colors"
-			:class="
-				settingsActive
-					? 'bg-(--surface-2-selected) text-text-primary'
-					: 'text-text-tertiary hover:bg-(--surface-2-hover) hover:text-text-primary'
-			"
-		>
-			<Icon name="lucide:settings" class="size-4.5" />
-		</NuxtLink>
-		<button
-			v-if="props.collapseLabel"
-			type="button"
-			class="hidden size-8 shrink-0 items-center justify-center rounded-lg text-text-tertiary transition-colors hover:bg-(--surface-2-hover) hover:text-text-primary lg:flex"
-			:title="props.collapseLabel"
-			:aria-label="props.collapseLabel"
-			@click="emit('toggleCollapse')"
-		>
-			<Icon
-				:name="props.collapsed ? 'lucide:panel-left' : 'lucide:panel-left-close'"
-				class="size-4.5"
-			/>
-		</button>
+		<UiTooltip :text="t('components.shell.footer.settings')">
+			<template #shortcut><UiShortcut id="global.settings" /></template>
+			<NuxtLink
+				to="/dashboard/preferences"
+				:aria-current="settingsActive ? 'page' : undefined"
+				:aria-label="t('components.shell.footer.settings')"
+				:aria-keyshortcuts="ariaFor('global.settings')"
+				class="flex size-8 shrink-0 items-center justify-center rounded-lg transition-colors"
+				:class="
+					settingsActive
+						? 'bg-(--surface-2-selected) text-text-primary'
+						: 'text-text-tertiary hover:bg-(--surface-2-hover) hover:text-text-primary'
+				"
+			>
+				<Icon name="lucide:settings" class="size-4.5" />
+			</NuxtLink>
+		</UiTooltip>
+		<UiTooltip v-if="props.collapseLabel" :text="props.collapseLabel">
+			<button
+				type="button"
+				class="hidden size-8 shrink-0 items-center justify-center rounded-lg text-text-tertiary transition-colors hover:bg-(--surface-2-hover) hover:text-text-primary lg:flex"
+				:aria-label="props.collapseLabel"
+				@click="emit('toggleCollapse')"
+			>
+				<Icon
+					:name="props.collapsed ? 'lucide:panel-left' : 'lucide:panel-left-close'"
+					class="size-4.5"
+				/>
+			</button>
+		</UiTooltip>
 	</div>
 </template>

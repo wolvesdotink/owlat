@@ -86,39 +86,38 @@ const switchHitArea = computed(() =>
 
 <template>
 	<div class="flex items-center justify-end gap-1" @click.stop>
-		<span
-			v-if="canManage && !isDraft"
-			:class="['flex items-center justify-center flex-shrink-0', touch ? 'w-14 h-11' : '']"
-			:title="toggleLabel"
-		>
-			<UiSwitch
-				:model-value="isActive"
-				:label="switchLabel"
-				:disabled="toggling"
-				:class="switchHitArea"
-				@update:model-value="emit('toggle', automation)"
-			/>
-		</span>
-		<button
-			v-if="canManage"
-			type="button"
-			:class="[iconButton, neutralButton]"
-			:title="t('common.edit')"
-			:aria-label="t('common.edit')"
-			@click="emit('edit', automation)"
-		>
-			<Icon name="lucide:pencil" class="w-4 h-4" />
-		</button>
+		<UiTooltip v-if="canManage && !isDraft" :text="toggleLabel">
+			<span :class="['flex items-center justify-center flex-shrink-0', touch ? 'w-14 h-11' : '']">
+				<UiSwitch
+					:model-value="isActive"
+					:label="switchLabel"
+					:disabled="toggling"
+					:class="switchHitArea"
+					@update:model-value="emit('toggle', automation)"
+				/>
+			</span>
+		</UiTooltip>
+		<UiTooltip v-if="canManage" :text="t('common.edit')">
+			<button
+				type="button"
+				:class="[iconButton, neutralButton]"
+				:aria-label="t('common.edit')"
+				@click="emit('edit', automation)"
+			>
+				<Icon name="lucide:pencil" class="w-4 h-4" />
+			</button>
+		</UiTooltip>
 		<UiDropdownMenu v-if="verbs.length > 0" v-model:open="menuOpen">
 			<template #trigger>
-				<button
-					type="button"
-					:class="[iconButton, neutralButton]"
-					:title="t('dashboard.automations.index.actions.more')"
-					:aria-label="t('dashboard.automations.index.actions.more')"
-				>
-					<Icon name="lucide:more-vertical" class="w-4 h-4" />
-				</button>
+				<UiTooltip :text="t('dashboard.automations.index.actions.more')">
+					<button
+						type="button"
+						:class="[iconButton, neutralButton]"
+						:aria-label="t('dashboard.automations.index.actions.more')"
+					>
+						<Icon name="lucide:more-vertical" class="w-4 h-4" />
+					</button>
+				</UiTooltip>
 			</template>
 			<template v-for="verb in verbs" :key="verb.id">
 				<UiDropdownDivider v-if="verb.separatorBefore" />

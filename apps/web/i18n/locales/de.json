@@ -2638,12 +2638,19 @@
 				"dismissInstanceOperation": "Onboarding ausblenden",
 				"dismissLabel": "Erste Schritte ausblenden",
 				"dismissUserOperation": "Checkliste ausblenden",
+				"hidden": "Erste Schritte ausgeblendet.",
 				"later": "Das mache ich später",
+				"notUndone": "Nicht rückgängig gemacht.",
+				"partlyHidden": "Erste Schritte teilweise ausgeblendet.",
 				"progress": "Fortschritt",
 				"progressCount": "{completed} von {total} erledigt",
 				"progressLabel": "Fortschritt der ersten Schritte",
+				"restoreInstanceOperation": "Onboarding wiederherstellen",
+				"restoreUserOperation": "Checkliste wiederherstellen",
+				"show": "Einrichtungs-Checkliste anzeigen",
 				"subtitle": "Alles, was noch zu tun ist, damit Owlat für dich arbeitet — an einem Ort.",
 				"title": "Erste Schritte",
+				"undoing": "Wird rückgängig gemacht…",
 				"continue": "Einrichtung fortsetzen"
 			},
 			"gettingStartedResources": {
@@ -3984,6 +3991,7 @@
 				"restoreAction": "Diese Version in den Editor zurückholen",
 				"restoreFailed": "Diese Version konnte nicht wiederhergestellt werden",
 				"restored": "Version in den Editor geladen – speichere sie, um sie zu behalten, oder mache den Schritt rückgängig",
+				"restoredAutosave": "Version in den Editor geladen – sie wird wie jede andere Änderung gespeichert; mache den Schritt rückgängig, um zurückzugehen",
 				"subtitle": "Momentaufnahmen bei jedem Speichern, Veröffentlichen und Senden",
 				"title": "Versionsverlauf",
 				"trigger": "Verlauf",
@@ -4193,7 +4201,8 @@
 				"deselect": "Auswahl aufheben"
 			},
 			"statusChip": {
-				"returned": "· Zurückgekehrt"
+				"returned": "· Zurückgekehrt",
+				"autoClosed": "· Automatisch geschlossen"
 			},
 			"threadChannelTimeline": {
 				"longMessage": "Gekürzt: Die ganze Nachricht steht oben.",
@@ -4268,6 +4277,14 @@
 					"hours": "Stunden",
 					"minutes": "Minuten"
 				}
+			},
+			"inboxAutoClosePolicyForm": {
+				"title": "Ruhige Konversationen automatisch schließen",
+				"hint": "Erledigt eine Konversation, die so viele Tage auf den Kunden wartet, ohne dass eine Seite geschrieben hat. Eine Antwort öffnet sie wieder, und jede Konversation kann davon ausgenommen werden.",
+				"daysLabel": "Schließen nach",
+				"daysSuffix": "ruhigen Tagen",
+				"problem": "Gib eine ganze Zahl von Tagen zwischen 1 und 365 ein.",
+				"save": "Automatisches Schließen speichern"
 			},
 			"notes": {
 				"add": "Notiz hinzufügen",
@@ -4797,14 +4814,14 @@
 			},
 			"postboxEditorToolbar": {
 				"blockquote": "Zitat",
-				"bold": "Fett ({keys})",
+				"bold": "Fett",
 				"bulletList": "Aufzählung",
 				"heading1": "Überschrift 1",
 				"heading2": "Überschrift 2",
-				"italic": "Kursiv ({keys})",
-				"link": "Link ({keys})",
+				"italic": "Kursiv",
+				"link": "Link",
 				"orderedList": "Nummerierte Liste",
-				"underline": "Unterstrichen ({keys})"
+				"underline": "Unterstrichen"
 			},
 			"postboxEmojiPicker": {
 				"listLabel": "Emoji"
@@ -4884,12 +4901,10 @@
 			"postboxFolderRail": {
 				"collapse": "Einklappen",
 				"collapseSidebar": "Seitenleiste einklappen",
-				"collapseSidebarTitle": "Seitenleiste einklappen ({keys})",
 				"contacts": "Kontakte",
 				"deleteFolder": "Ordner löschen",
 				"deleteFolderDescription": "Den Ordner „{name}“ löschen? Nachrichten darin werden verschoben, nicht gelöscht.",
 				"expandSidebar": "Seitenleiste ausklappen",
-				"expandSidebarTitle": "Seitenleiste ausklappen ({keys})",
 				"foldersHeading": "Ordner",
 				"labelsHeading": "Labels",
 				"newFolder": "Neuer Ordner",
@@ -11495,6 +11510,20 @@
 				"followUpSentToast": "Nachfassnachricht wird gesendet",
 				"followUpUndoneToast": "Nachfassnachricht abgebrochen. Dein Text steht wieder im Antwortfeld.",
 				"lastMessage": "Letzte Nachricht",
+				"autoClose": {
+					"label": "Automatisch schließen",
+					"closesAt": "Schließt {time}, wenn niemand schreibt",
+					"onWhenWaiting": "Nach {days} ruhigem Tag beim Warten | Nach {days} ruhigen Tagen beim Warten",
+					"off": "Für diese Konversation aus",
+					"notice": "Automatisch geschlossen {time}: Die Konversation hat {days} Tag ohne Nachricht auf den Kunden gewartet. | Automatisch geschlossen {time}: Die Konversation hat {days} Tage ohne Nachricht auf den Kunden gewartet.",
+					"noticeNoDays": "Automatisch geschlossen {time}: Die Konversation hat ohne Nachricht auf den Kunden gewartet.",
+					"reopen": "Wieder öffnen",
+					"reopenedToast": "Konversation wieder geöffnet",
+					"turnOff": "Automatisches Schließen ausschalten",
+					"turnOn": "Automatisches Schließen einschalten",
+					"turnedOffToast": "Automatisches Schließen ist für diese Konversation aus",
+					"turnedOnToast": "Automatisches Schließen ist für diese Konversation an"
+				},
 				"loading": "Konversation wird geladen …",
 				"markSeenOperation": "Konversation als gelesen markieren",
 				"markAs": {
@@ -11733,6 +11762,9 @@
 				"pageTitle": "Antwortziele",
 				"saveOperation": "Antwortziele speichern",
 				"saved": "Antwortziele gespeichert",
+				"autoCloseSaveOperation": "Automatisches Schließen speichern",
+				"autoCloseSaved": "Automatisches Schließen gespeichert",
+				"autoCloseErrorTitle": "Das automatische Schließen konnte nicht geladen werden",
 				"subtitle": "Wie schnell das Team auf Konversationen im Team-Postfach antworten soll.",
 				"title": "Antwortziele",
 				"backToInbox": "Team-Postfach"
@@ -15516,6 +15548,19 @@
 				}
 			}
 		},
+		"draftAutosave": {
+			"editing": "Wird bearbeitet…",
+			"saving": "Wird gespeichert…",
+			"saved": "Gespeichert",
+			"savedAge": "· {when}",
+			"unsaved": "Ungespeicherte Änderungen",
+			"offlineNotSaved": "Offline, noch nicht gespeichert",
+			"notSaved": "Nicht gespeichert",
+			"failed": "Deine Änderungen konnten nicht gespeichert werden.",
+			"retry": "Erneut versuchen",
+			"notSavedYet": "Deine letzten Änderungen sind noch nicht gespeichert. Versuche es gleich noch einmal.",
+			"changedDuringAction": "Der Entwurf hat sich währenddessen geändert, deshalb wurde abgebrochen. Prüfe deine Änderungen und versuche es noch einmal."
+		},
 		"dualArmAlignment": {
 			"actionLabel": "Einträge prüfen",
 			"aligned": "Dein eigener Server und dein Relay sehen für Mailboxen identisch aus, deshalb kann die schrittweise Umstellung sie fair messen.",
@@ -17612,6 +17657,9 @@
 				"updateAudience": "Kampagnen-Zielgruppe aktualisieren",
 				"updateBasics": "Kampagnen-Basisdaten aktualisieren",
 				"updateContent": "Kampagneninhalt aktualisieren"
+			},
+			"toasts": {
+				"scheduleNotSaved": "Entwurf gespeichert. Datum und Zustellungsoptionen werden erst gesetzt, wenn du auf „Planen“ drückst; verlässt du die Seite jetzt, gehen sie verloren."
 			}
 		},
 		"useChannelInbox": {
@@ -18005,7 +18053,8 @@
 			"snoozeThread": "Konversation zurückstellen",
 			"unsnoozeThread": "Zurückstellung aufheben",
 			"updateThreadStatus": "Konversationsstatus aktualisieren",
-			"setPriority": "Priorität setzen"
+			"setPriority": "Priorität setzen",
+			"setAutoClose": "Automatisches Schließen ändern"
 		},
 		"useWebhookActions": {
 			"copyFailed": "Kopieren in die Zwischenablage fehlgeschlagen",

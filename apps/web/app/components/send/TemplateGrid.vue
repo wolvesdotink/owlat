@@ -59,17 +59,16 @@ const overlayButton =
 				<div
 					class="absolute inset-0 bg-bg-deep/80 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2"
 				>
-					<button
-						v-for="action in overlayActions"
-						:key="action.key"
-						type="button"
-						:class="[overlayButton, 'hover:bg-bg-surface-hover']"
-						:title="action.label"
-						:aria-label="action.label"
-						@click.stop="action.run(item)"
-					>
-						<Icon :name="action.icon" class="w-4 h-4" />
-					</button>
+					<UiTooltip v-for="action in overlayActions" :key="action.key" :text="action.label">
+						<button
+							type="button"
+							:class="[overlayButton, 'hover:bg-bg-surface-hover']"
+							:aria-label="action.label"
+							@click.stop="action.run(item)"
+						>
+							<Icon :name="action.icon" class="w-4 h-4" />
+						</button>
+					</UiTooltip>
 					<button
 						type="button"
 						:class="[overlayButton, 'hover:bg-bg-surface-hover']"

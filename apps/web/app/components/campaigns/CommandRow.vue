@@ -207,15 +207,15 @@ const hasMetrics = computed(() => props.row.openRate != null || props.row.clickR
 					>
 						{{ t('components.campaigns.commandRow.abResults') }}
 					</button>
-					<button
-						v-else
-						class="ui-hover-reveal p-2 rounded-lg text-text-tertiary hover:text-brand transition-colors duration-(--motion-fast) ease-spring focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand"
-						:title="t('components.campaigns.commandRow.viewCampaign')"
-						:aria-label="t('components.campaigns.commandRow.viewCampaign')"
-						@click="emit('open')"
-					>
-						<Icon name="lucide:arrow-right" class="w-4 h-4" />
-					</button>
+					<UiTooltip v-else :text="t('components.campaigns.commandRow.viewCampaign')">
+						<button
+							class="ui-hover-reveal p-2 rounded-lg text-text-tertiary hover:text-brand transition-colors duration-(--motion-fast) ease-spring focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand"
+							:aria-label="t('components.campaigns.commandRow.viewCampaign')"
+							@click="emit('open')"
+						>
+							<Icon name="lucide:arrow-right" class="w-4 h-4" />
+						</button>
+					</UiTooltip>
 
 					<!-- Row overflow: Duplicate + Delete (preserved from the old list).
 					     Touch screens never hover, so there it stays visible. -->

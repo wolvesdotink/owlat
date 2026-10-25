@@ -299,35 +299,39 @@ const handleCopyValue = () => {
 				<code class="min-w-0 max-w-[45%] truncate" :title="hostDisplay.primary">{{
 					hostDisplay.primary
 				}}</code>
-				<UiButton
-					variant="ghost"
-					class="p-1 shrink-0"
-					:title="t('components.domains.dnsRecordPanel.copyHost')"
-					:aria-label="t('components.domains.dnsRecordPanel.copyHostOf', { label })"
-					@click="handleCopyHost"
-				>
-					<Icon
-						:name="isCopied(`${label}-host`) ? 'lucide:check' : 'lucide:copy'"
-						:class="['w-3.5 h-3.5', isCopied(`${label}-host`) && 'text-success']"
-					/>
-				</UiButton>
+				<UiTooltip :text="t('components.domains.dnsRecordPanel.copyHost')">
+					<UiButton
+						variant="ghost"
+						class="p-1 shrink-0"
+						:aria-label="t('components.domains.dnsRecordPanel.copyHostOf', { label })"
+						@click="handleCopyHost"
+					>
+						<Icon
+							:name="isCopied(`${label}-host`) ? 'lucide:check' : 'lucide:copy'"
+							:class="['w-3.5 h-3.5', isCopied(`${label}-host`) && 'text-success']"
+						/>
+					</UiButton>
+				</UiTooltip>
 				<Icon name="lucide:arrow-right" class="w-3 h-3 shrink-0 text-text-tertiary" />
 				<code class="min-w-0 flex-1 truncate" :title="valueDisplay ?? undefined">{{
 					valueDisplay
 				}}</code>
-				<UiButton
+				<UiTooltip
 					v-if="valueDisplay !== null"
-					variant="ghost"
-					class="p-1 shrink-0"
-					:title="t('components.domains.dnsRecordPanel.copyValue')"
-					:aria-label="t('components.domains.dnsRecordPanel.copyValueOf', { label })"
-					@click="handleCopyValue"
+					:text="t('components.domains.dnsRecordPanel.copyValue')"
 				>
-					<Icon
-						:name="isCopied(`${label}-value`) ? 'lucide:check' : 'lucide:copy'"
-						:class="['w-3.5 h-3.5', isCopied(`${label}-value`) && 'text-success']"
-					/>
-				</UiButton>
+					<UiButton
+						variant="ghost"
+						class="p-1 shrink-0"
+						:aria-label="t('components.domains.dnsRecordPanel.copyValueOf', { label })"
+						@click="handleCopyValue"
+					>
+						<Icon
+							:name="isCopied(`${label}-value`) ? 'lucide:check' : 'lucide:copy'"
+							:class="['w-3.5 h-3.5', isCopied(`${label}-value`) && 'text-success']"
+						/>
+					</UiButton>
+				</UiTooltip>
 			</div>
 
 			<div
@@ -377,19 +381,21 @@ const handleCopyValue = () => {
 					>
 						{{ hostDisplay.primary }}
 					</code>
-					<UiButton
-						variant="ghost"
-						class="p-2"
-						:title="t('components.domains.dnsRecordPanel.copyHost')"
-						@click="handleCopyHost"
-					>
-						<Icon
-							v-if="isCopied(`${label}-host`)"
-							name="lucide:check"
-							class="w-4 h-4 text-success"
-						/>
-						<Icon v-else name="lucide:copy" class="w-4 h-4" />
-					</UiButton>
+					<UiTooltip :text="t('components.domains.dnsRecordPanel.copyHost')">
+						<UiButton
+							variant="ghost"
+							class="p-2"
+							:aria-label="t('components.domains.dnsRecordPanel.copyHost')"
+							@click="handleCopyHost"
+						>
+							<Icon
+								v-if="isCopied(`${label}-host`)"
+								name="lucide:check"
+								class="w-4 h-4 text-success"
+							/>
+							<Icon v-else name="lucide:copy" class="w-4 h-4" />
+						</UiButton>
+					</UiTooltip>
 				</div>
 
 				<!-- Secondary: fully-qualified name + its own copy affordance, on
@@ -403,19 +409,21 @@ const handleCopyValue = () => {
 					<code class="font-mono break-all" data-testid="dns-host-fqdn">{{
 						hostDisplay.fqdn
 					}}</code>
-					<UiButton
-						variant="ghost"
-						class="p-1"
-						:title="t('components.domains.dnsRecordPanel.copyFullName')"
-						@click="handleCopyFqdn"
-					>
-						<Icon
-							v-if="isCopied(`${label}-fqdn`)"
-							name="lucide:check"
-							class="w-3.5 h-3.5 text-success"
-						/>
-						<Icon v-else name="lucide:copy" class="w-3.5 h-3.5" />
-					</UiButton>
+					<UiTooltip :text="t('components.domains.dnsRecordPanel.copyFullName')">
+						<UiButton
+							variant="ghost"
+							class="p-1"
+							:aria-label="t('components.domains.dnsRecordPanel.copyFullName')"
+							@click="handleCopyFqdn"
+						>
+							<Icon
+								v-if="isCopied(`${label}-fqdn`)"
+								name="lucide:check"
+								class="w-3.5 h-3.5 text-success"
+							/>
+							<Icon v-else name="lucide:copy" class="w-3.5 h-3.5" />
+						</UiButton>
+					</UiTooltip>
 					<span data-testid="dns-provider-hint">
 						{{ t('components.domains.dnsRecordPanel.providerHint') }}
 					</span>
@@ -465,19 +473,21 @@ const handleCopyValue = () => {
 					>
 						{{ valueDisplay }}
 					</code>
-					<UiButton
-						variant="ghost"
-						class="p-2"
-						:title="t('components.domains.dnsRecordPanel.copyValue')"
-						@click="handleCopyValue"
-					>
-						<Icon
-							v-if="isCopied(`${label}-value`)"
-							name="lucide:check"
-							class="w-4 h-4 text-success"
-						/>
-						<Icon v-else name="lucide:copy" class="w-4 h-4" />
-					</UiButton>
+					<UiTooltip :text="t('components.domains.dnsRecordPanel.copyValue')">
+						<UiButton
+							variant="ghost"
+							class="p-2"
+							:aria-label="t('components.domains.dnsRecordPanel.copyValue')"
+							@click="handleCopyValue"
+						>
+							<Icon
+								v-if="isCopied(`${label}-value`)"
+								name="lucide:check"
+								class="w-4 h-4 text-success"
+							/>
+							<Icon v-else name="lucide:copy" class="w-4 h-4" />
+						</UiButton>
+					</UiTooltip>
 				</div>
 			</div>
 

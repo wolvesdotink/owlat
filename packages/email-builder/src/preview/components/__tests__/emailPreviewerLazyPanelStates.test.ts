@@ -57,7 +57,7 @@ describe('EmailPreviewer — lazy panel loading and failure states', () => {
 		vi.useFakeTimers();
 		try {
 			const w = mountPreviewer();
-			await w.find('button[title="Render options"]').trigger('click');
+			await w.find('button[aria-label="Render options"]').trigger('click');
 			// Fast loads skip the placeholder; Vue's default 200 ms delay applies.
 			expect(w.find('.ep-panel-loading').exists()).toBe(false);
 			await vi.advanceTimersByTimeAsync(250);
@@ -94,7 +94,7 @@ describe('EmailPreviewer — lazy panel loading and failure states', () => {
 			},
 		});
 		const w = mount(Host);
-		await w.find('button[title="Compare changes"]').trigger('click');
+		await w.find('button[aria-label="Compare changes"]').trigger('click');
 		await vi.dynamicImportSettled();
 		await flushPromises();
 

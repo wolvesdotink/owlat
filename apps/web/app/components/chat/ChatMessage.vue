@@ -254,24 +254,26 @@ const aiTyping = computed(
 			v-if="!isEditing && !message.deletedAt && isOwnMessage"
 			class="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity flex items-start gap-1"
 		>
-			<button
-				class="w-7 h-7 rounded hover:bg-bg-elevated text-text-tertiary hover:text-text-primary flex items-center justify-center"
-				type="button"
-				:title="t('common.edit')"
-				:aria-label="t('common.edit')"
-				@click="startEdit"
-			>
-				<Icon name="lucide:pencil" class="w-3.5 h-3.5" />
-			</button>
-			<button
-				class="w-7 h-7 rounded hover:bg-bg-elevated text-text-tertiary hover:text-error flex items-center justify-center"
-				type="button"
-				:title="t('common.delete')"
-				:aria-label="t('common.delete')"
-				@click="doDelete"
-			>
-				<Icon name="lucide:trash-2" class="w-3.5 h-3.5" />
-			</button>
+			<UiTooltip :text="t('common.edit')">
+				<button
+					class="w-7 h-7 rounded hover:bg-bg-elevated text-text-tertiary hover:text-text-primary flex items-center justify-center"
+					type="button"
+					:aria-label="t('common.edit')"
+					@click="startEdit"
+				>
+					<Icon name="lucide:pencil" class="w-3.5 h-3.5" />
+				</button>
+			</UiTooltip>
+			<UiTooltip :text="t('common.delete')">
+				<button
+					class="w-7 h-7 rounded hover:bg-bg-elevated text-text-tertiary hover:text-error flex items-center justify-center"
+					type="button"
+					:aria-label="t('common.delete')"
+					@click="doDelete"
+				>
+					<Icon name="lucide:trash-2" class="w-3.5 h-3.5" />
+				</button>
+			</UiTooltip>
 		</div>
 	</div>
 </template>

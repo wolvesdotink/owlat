@@ -68,6 +68,12 @@ export interface UseEditorDirtyTrackingOptions<S> {
 	 * the draft's text belongs to another language on the latest row).
 	 */
 	canRebase?: (base: NonNullable<S>, latest: NonNullable<S>) => boolean;
+	/**
+	 * Whether this tracker owns the draft. While another owner does (a draft's
+	 * autosave session), the first row still loads the draft, but later rows
+	 * are only noted and edits not counted; `resume` hands the draft back.
+	 */
+	active?: () => boolean;
 }
 
 /** A save in flight: the draft as submitted and the server state it was built on. */
@@ -108,6 +114,12 @@ export interface UseEditorDirtyTrackingReturn<S> {
 	rebase: () => boolean;
 	/** Throw the draft away and hydrate the latest server row. */
 	reload: () => void;
+	/**
+	 * Take the draft over from the owner that held it while this tracker was
+	 * inactive: built on `base` (default: the latest row), and dirty when that
+	 * owner had unsaved work.
+	 */
+	resume: (base: NonNullable<S> | null, dirty: boolean) => void;
 }
 
 const defaultIdentity = (source: unknown): unknown =>
@@ -146,6 +158,7 @@ export function useEditorDirtyTracking<S>(
 	const serializeFields = () => opts.watchSources.map((source) => JSON.stringify(read(source)));
 	const serializeDraft = () => JSON.stringify(serializeFields());
 	const held = () => opts.holdHydration?.() === true;
+	const active = () => opts.active?.() !== false;
 
 	const hydrate = (row: NonNullable<S>) => {
 		hydrating = true;
@@ -169,6 +182,7 @@ export function useEditorDirtyTracking<S>(
 		(row) => {
 			if (!row) return;
 			latest = row;
+			if (!active() && hydratedFrom !== null) return;
 			if (hydratedFrom === null || identityOf(row) !== hydratedIdentity) {
 				hydrate(row);
 				return;
@@ -189,7 +203,7 @@ export function useEditorDirtyTracking<S>(
 	const onDraftChange = () => {
 		// Only track changes after the initial data has been loaded, and not
 		// the writes a hydration makes.
-		if (!isInitialized.value || hydrating) return;
+		if (!isInitialized.value || hydrating || !active()) return;
 		setDirty(true);
 	};
 	const signals = opts.changeSignals;
@@ -288,6 +302,20 @@ export function useEditorDirtyTracking<S>(
 		if (latest !== null) hydrate(latest);
 	};
 
+	const resume = (row: NonNullable<S> | null, dirty: boolean) => {
+		const from = row ?? latest;
+		if (from === null) return;
+		generation += 1;
+		hydratedFrom = from;
+		base = from;
+		latest ??= from;
+		baseRevision = opts.revision?.(from);
+		hydratedIdentity = identityOf(from);
+		baseFields = dirty ? null : serializeFields();
+		isInitialized.value = true;
+		setDirty(dirty);
+	};
+
 	return {
 		hasChanges,
 		isInitialized,
@@ -296,5 +324,6 @@ export function useEditorDirtyTracking<S>(
 		markClean: catchUp,
 		rebase,
 		reload,
+		resume,
 	};
 }

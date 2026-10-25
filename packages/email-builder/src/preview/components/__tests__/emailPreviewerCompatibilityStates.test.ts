@@ -124,7 +124,7 @@ describe('EmailPreviewer — Compatibility tab states', () => {
 		await select(client('gmail-webmail'));
 		expect(tab().text()).toBe('Refresh the preview to check compatibility with Gmail (Web).');
 
-		await w.find('button[title="Refresh preview"]').trigger('click');
+		await w.find('button[aria-label="Refresh preview"]').trigger('click');
 		expect(tab().find('[role="status"]').text()).toBe('Checking compatibility with Gmail (Web)…');
 		respond();
 		await flushPromises();

@@ -35,42 +35,44 @@ const actionList = POSTBOX_AFTER_REPLY_OPTIONS.map((option) => option.value);
 
 <template>
 	<div class="flex shrink-0 items-center" data-testid="composer-send-group">
-		<UiButton
-			type="button"
-			class="shrink-0 whitespace-nowrap"
-			:class="{ 'rounded-r-none relative focus-visible:z-10': actions }"
-			:title="title"
-			:disabled="disabled"
-			data-testid="composer-send"
-			@click="emit('send')"
-		>
-			<Icon
-				v-if="sending"
-				name="lucide:loader-2"
-				class="w-4 h-4 mr-1.5 animate-spin motion-reduce:animate-none"
-			/>
-			<Icon v-else :name="icon ?? 'lucide:send'" class="w-4 h-4 mr-1.5" />
-			{{
-				label ??
-				(sending ? t('components.postbox.postboxComposerFooter.sending') : t('common.send'))
-			}}
-		</UiButton>
+		<UiTooltip :text="title">
+			<UiButton
+				type="button"
+				class="shrink-0 whitespace-nowrap"
+				:class="{ 'rounded-r-none relative focus-visible:z-10': actions }"
+				:disabled="disabled"
+				data-testid="composer-send"
+				@click="emit('send')"
+			>
+				<Icon
+					v-if="sending"
+					name="lucide:loader-2"
+					class="w-4 h-4 mr-1.5 animate-spin motion-reduce:animate-none"
+				/>
+				<Icon v-else :name="icon ?? 'lucide:send'" class="w-4 h-4 mr-1.5" />
+				{{
+					label ??
+					(sending ? t('components.postbox.postboxComposerFooter.sending') : t('common.send'))
+				}}
+			</UiButton>
+		</UiTooltip>
 		<UiDropdownMenu v-if="actions" v-model:open="menuOpen" position="left" class="flex">
 			<template #trigger>
-				<UiButton
-					type="button"
-					class="rounded-l-none w-8 px-0 border-l border-text-inverse/20 relative focus-visible:z-10"
-					:disabled="disabled"
-					:title="t('components.postbox.postboxComposerFooter.sendOptions')"
-					:aria-label="t('components.postbox.postboxComposerFooter.sendOptions')"
-					data-testid="composer-send-options"
-				>
-					<Icon
-						name="lucide:chevron-down"
-						class="w-4 h-4 transition-transform duration-(--motion-fast)"
-						:class="{ 'rotate-180': menuOpen }"
-					/>
-				</UiButton>
+				<UiTooltip :text="t('components.postbox.postboxComposerFooter.sendOptions')">
+					<UiButton
+						type="button"
+						class="rounded-l-none w-8 px-0 border-l border-text-inverse/20 relative focus-visible:z-10"
+						:disabled="disabled"
+						:aria-label="t('components.postbox.postboxComposerFooter.sendOptions')"
+						data-testid="composer-send-options"
+					>
+						<Icon
+							name="lucide:chevron-down"
+							class="w-4 h-4 transition-transform duration-(--motion-fast)"
+							:class="{ 'rotate-180': menuOpen }"
+						/>
+					</UiButton>
+				</UiTooltip>
 			</template>
 			<UiDropdownMenuItem
 				v-for="action in actionList"

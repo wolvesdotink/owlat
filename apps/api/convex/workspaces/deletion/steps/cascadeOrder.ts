@@ -93,6 +93,7 @@ export const STEPS: readonly [OrganizationDeletionTable, ...OrganizationDeletion
 	'handlingRules',
 	'askEagernessSettings',
 	'inboxSlaPolicies',
+	'inboxAutoClosePolicies',
 	'clarificationAskLog',
 	'clarificationMemory',
 	'agentShadowDecisions',

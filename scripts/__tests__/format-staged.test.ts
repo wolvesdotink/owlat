@@ -21,6 +21,7 @@ import { dirname, join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { PARALLEL_GATE_TIMEOUT_MS } from '../../vitest.timeouts';
 import { FORMAT_PATHSPECS } from '../format-staged';
+import { NO_AUTO_MAINTENANCE } from './gitRepository.testlib';
 
 const REPOSITORY_ROOT = resolve(import.meta.dirname, '../..');
 const OXFMT = realpathSync(join(REPOSITORY_ROOT, 'node_modules/.bin/oxfmt'));
@@ -97,6 +98,7 @@ function repository(): { parent: string; root: string } {
 	git(root, ['init', '--quiet', '--initial-branch=main']);
 	git(root, ['config', 'user.email', 'test@example.com']);
 	git(root, ['config', 'user.name', 'Format Test']);
+	git(root, [...NO_AUTO_MAINTENANCE]);
 	write(root, '.gitignore', 'node_modules/\n');
 	copyScripts(root);
 	linkOxfmt(root);

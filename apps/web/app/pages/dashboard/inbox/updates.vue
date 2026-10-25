@@ -423,18 +423,17 @@ function kindLabel(kind: string | undefined): string | undefined {
 												<Icon name="lucide:external-link" class="h-3 w-3" />
 												{{ t('dashboard.inbox.updates.open') }}
 											</UiButton>
-											<template v-if="isSpamView">
-												<UiButton
-													variant="ghost"
-													size="sm"
-													class="gap-1 text-error hover:bg-error-subtle"
-													:disabled="actionInProgress === row._id"
-													@click.stop="pendingBlock = row"
-												>
-													<Icon name="lucide:ban" class="h-3 w-3" />
-													{{ t('dashboard.inbox.updates.blockSender') }}
-												</UiButton>
-											</template>
+											<UiButton
+												v-if="isSpamView"
+												variant="ghost"
+												size="sm"
+												class="gap-1 text-error hover:bg-error-subtle"
+												:disabled="actionInProgress === row._id"
+												@click.stop="pendingBlock = row"
+											>
+												<Icon name="lucide:ban" class="h-3 w-3" />
+												{{ t('dashboard.inbox.updates.blockSender') }}
+											</UiButton>
 											<template v-else>
 												<UiButton
 													variant="ghost"
@@ -446,18 +445,19 @@ function kindLabel(kind: string | undefined): string | undefined {
 													<Icon name="lucide:reply" class="h-3 w-3" />
 													{{ t('dashboard.inbox.updates.requestReply') }}
 												</UiButton>
-												<UiButton
-													variant="secondary"
-													size="sm"
-													class="gap-1"
-													:disabled="actionInProgress === row._id"
-													:title="t('dashboard.inbox.updates.dismissSweepHint')"
-													@pointerdown="dismissSweep.start(row._id, $event)"
-													@click.stop="onDismiss(row)"
-												>
-													<Icon name="lucide:check" class="h-3 w-3" />
-													{{ t('dashboard.inbox.updates.dismiss') }}
-												</UiButton>
+												<UiTooltip :text="t('dashboard.inbox.updates.dismissSweepHint')">
+													<UiButton
+														variant="secondary"
+														size="sm"
+														class="gap-1"
+														:disabled="actionInProgress === row._id"
+														@pointerdown="dismissSweep.start(row._id, $event)"
+														@click.stop="onDismiss(row)"
+													>
+														<Icon name="lucide:check" class="h-3 w-3" />
+														{{ t('dashboard.inbox.updates.dismiss') }}
+													</UiButton>
+												</UiTooltip>
 											</template>
 										</div>
 									</div>

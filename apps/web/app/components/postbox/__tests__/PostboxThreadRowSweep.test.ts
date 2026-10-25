@@ -8,6 +8,7 @@ import { describe, it, expect, vi, beforeAll } from 'vitest';
 import { mount } from '@vue/test-utils';
 import type { Id } from '@owlat/api/dataModel';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+import { tooltipOf } from '~/__tests__/tooltip';
 import type { PostboxSweepMark } from '~/utils/postboxSweep';
 
 import PostboxThreadRow, { type PostboxThreadRowMessage } from '../PostboxThreadRow.vue';
@@ -125,8 +126,10 @@ describe('PostboxThreadRow sweep handles', () => {
 
 	it('says on both handles that they sweep', () => {
 		const w = mountRow();
-		expect(w.find('.pbx-row-checkbox').attributes('title')).toContain('drag across rows');
-		expect(archiveButton(w).getAttribute('title')).toContain('drag across rows');
+		expect(tooltipOf(w, w.find('.pbx-row-checkbox'))).toContain('drag across rows');
+		expect(tooltipOf(w, archiveButton(w))).toContain('drag across rows');
+		expect(w.find('.pbx-row-checkbox').attributes('title')).toBeUndefined();
+		expect(archiveButton(w).getAttribute('title')).toBeNull();
 		// The accessible names stay the verbs.
 		expect(archiveButton(w).getAttribute('aria-label')).toBe('Archive');
 	});

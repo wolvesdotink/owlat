@@ -65,19 +65,22 @@ const matchesQuery = (name: string) => {
 			<h2 class="text-sm font-semibold text-text-primary">
 				{{ t('components.chat.chatSidebar.title') }}
 			</h2>
-			<button
-				class="relative w-7 h-7 rounded flex items-center justify-center text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
-				:title="t('components.chat.chatSidebar.mentions')"
-				@click="emit('mentions')"
-			>
-				<Icon name="lucide:at-sign" class="w-4 h-4" />
-				<span
-					v-if="mentionCount > 0"
-					class="absolute -top-0.5 -right-0.5 min-w-3.5 h-3.5 px-0.5 rounded-full bg-error text-text-inverse text-2xs font-semibold flex items-center justify-center"
+			<UiTooltip :text="t('components.chat.chatSidebar.mentions')">
+				<button
+					class="relative w-7 h-7 rounded flex items-center justify-center text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
+					@click="emit('mentions')"
 				>
-					{{ mentionCount > 9 ? '9+' : mentionCount }}
-				</span>
-			</button>
+					<!-- The name, with the badge's count after it: "Mentions 3". -->
+					<span class="sr-only">{{ t('components.chat.chatSidebar.mentions') }}</span>
+					<Icon name="lucide:at-sign" class="w-4 h-4" />
+					<span
+						v-if="mentionCount > 0"
+						class="absolute -top-0.5 -right-0.5 min-w-3.5 h-3.5 px-0.5 rounded-full bg-error text-text-inverse text-2xs font-semibold flex items-center justify-center"
+					>
+						{{ mentionCount > 9 ? '9+' : mentionCount }}
+					</span>
+				</button>
+			</UiTooltip>
 		</div>
 
 		<!-- Search -->
@@ -125,20 +128,24 @@ const matchesQuery = (name: string) => {
 							{{ t('components.chat.chatSidebar.channels') }}
 						</span>
 						<div class="flex items-center gap-1">
-							<button
-								class="w-6 h-6 rounded flex items-center justify-center text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
-								:title="t('components.chat.chatSidebar.browseChannels')"
-								@click="emit('browseChannels')"
-							>
-								<Icon name="lucide:hash" class="w-3.5 h-3.5" />
-							</button>
-							<button
-								class="w-6 h-6 rounded flex items-center justify-center text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
-								:title="t('components.chat.chatSidebar.newChannel')"
-								@click="emit('newChannel')"
-							>
-								<Icon name="lucide:plus" class="w-3.5 h-3.5" />
-							</button>
+							<UiTooltip :text="t('components.chat.chatSidebar.browseChannels')">
+								<button
+									class="w-6 h-6 rounded flex items-center justify-center text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
+									:aria-label="t('components.chat.chatSidebar.browseChannels')"
+									@click="emit('browseChannels')"
+								>
+									<Icon name="lucide:hash" class="w-3.5 h-3.5" />
+								</button>
+							</UiTooltip>
+							<UiTooltip :text="t('components.chat.chatSidebar.newChannel')">
+								<button
+									class="w-6 h-6 rounded flex items-center justify-center text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
+									:aria-label="t('components.chat.chatSidebar.newChannel')"
+									@click="emit('newChannel')"
+								>
+									<Icon name="lucide:plus" class="w-3.5 h-3.5" />
+								</button>
+							</UiTooltip>
 						</div>
 					</div>
 
@@ -224,13 +231,15 @@ const matchesQuery = (name: string) => {
 						<span class="text-2xs uppercase tracking-wider font-semibold text-text-tertiary">
 							{{ t('components.chat.chatSidebar.directMessages') }}
 						</span>
-						<button
-							class="w-6 h-6 rounded flex items-center justify-center text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
-							:title="t('components.chat.chatSidebar.newDm')"
-							@click="emit('newDm')"
-						>
-							<Icon name="lucide:plus" class="w-3.5 h-3.5" />
-						</button>
+						<UiTooltip :text="t('components.chat.chatSidebar.newDm')">
+							<button
+								class="w-6 h-6 rounded flex items-center justify-center text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
+								:aria-label="t('components.chat.chatSidebar.newDm')"
+								@click="emit('newDm')"
+							>
+								<Icon name="lucide:plus" class="w-3.5 h-3.5" />
+							</button>
+						</UiTooltip>
 					</div>
 
 					<div v-if="dms.length === 0" class="px-1 py-2 text-xs text-text-tertiary">

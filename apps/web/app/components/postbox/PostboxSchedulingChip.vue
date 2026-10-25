@@ -65,15 +65,16 @@ async function draft() {
 				</template>
 				{{ t('components.postbox.postboxSchedulingChip.prompt') }}
 			</UiButton>
-			<button
-				type="button"
-				class="p-1 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-surface"
-				:title="t('common.dismiss')"
-				:aria-label="t('components.postbox.postboxSchedulingChip.dismissLabel')"
-				@click="emit('dismiss')"
-			>
-				<Icon name="lucide:x" class="w-3.5 h-3.5" />
-			</button>
+			<UiTooltip :text="t('common.dismiss')">
+				<button
+					type="button"
+					class="p-1 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-surface"
+					:aria-label="t('components.postbox.postboxSchedulingChip.dismissLabel')"
+					@click="emit('dismiss')"
+				>
+					<Icon name="lucide:x" class="w-3.5 h-3.5" />
+				</button>
+			</UiTooltip>
 		</div>
 
 		<div aria-live="polite" :aria-busy="suggestBusy">

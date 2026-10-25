@@ -24,6 +24,10 @@
  * `UiShortcut` is the shortcut hint chip the shell, the palette and the
  * onboarding tips render; real, so a suite sees the key a person would.
  *
+ * `UiTooltip` wraps most icon-only controls. It is real: it renders the control
+ * itself, so a stub would either drop the control or hide the tooltip a
+ * suite hovers or focuses to read.
+ *
  * The pickers' primitives (`UiPopover`, `UiListbox`, `UiCombobox`,
  * `UiSuggestionPopover`) are real too: a picker's keys, highlight and ARIA
  * live in them, so a stub would leave a suite typing into nothing. A suite
@@ -48,6 +52,7 @@ import UiListbox from '@owlat/ui/components/ui/Listbox.vue';
 import UiPopover from '@owlat/ui/components/ui/Popover.vue';
 import UiSpinner from '@owlat/ui/components/ui/Spinner.vue';
 import UiSuggestionPopover from '@owlat/ui/components/ui/SuggestionPopover.vue';
+import UiTooltip from '@owlat/ui/components/ui/Tooltip.vue';
 import UiUnsavedChangesDialog from '@owlat/ui/components/ui/UnsavedChangesDialog.vue';
 import UiQueryBoundary from '~/components/ui/QueryBoundary.vue';
 import AppErrorBoundary from '~/components/AppErrorBoundary.vue';
@@ -89,6 +94,7 @@ export function registerNuxtComponents(): void {
 		UiSpinner,
 		UiUnsavedChangesDialog,
 		UiShortcut,
+		UiTooltip,
 		UiPopover,
 		UiListbox,
 		UiCombobox,

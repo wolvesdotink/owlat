@@ -232,14 +232,18 @@ const loadPrevRuns = () => {
 								}}
 							</div>
 						</div>
-						<NuxtLink
+						<UiTooltip
 							v-if="run.contact"
-							:to="`/dashboard/audience/contacts/${run.contact._id}`"
-							class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors"
-							:title="t('dashboard.automations.detail.index.runs.viewContact')"
+							:text="t('dashboard.automations.detail.index.runs.viewContact')"
 						>
-							<Icon name="lucide:chevron-right" class="w-4 h-4" />
-						</NuxtLink>
+							<NuxtLink
+								:to="`/dashboard/audience/contacts/${run.contact._id}`"
+								class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors"
+								:aria-label="t('dashboard.automations.detail.index.runs.viewContact')"
+							>
+								<Icon name="lucide:chevron-right" class="w-4 h-4" />
+							</NuxtLink>
+						</UiTooltip>
 					</div>
 				</div>
 			</div>

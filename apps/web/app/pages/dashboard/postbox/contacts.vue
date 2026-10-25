@@ -232,36 +232,39 @@ function initial(c: { displayName?: string; email: string }) {
 					<div
 						class="flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100"
 					>
-						<UiButton
-							variant="ghost"
-							size="sm"
-							type="button"
-							:title="t('dashboard.postbox.contacts.compose')"
-							:aria-label="t('dashboard.postbox.contacts.composeAria')"
-							@click="composeTo(c.email)"
-						>
-							<Icon name="lucide:pencil" class="w-4 h-4" />
-						</UiButton>
-						<UiButton
-							variant="ghost"
-							size="sm"
-							type="button"
-							:title="t('common.edit')"
-							:aria-label="t('dashboard.postbox.contacts.editAria')"
-							@click="openEdit(c)"
-						>
-							<Icon name="lucide:edit-2" class="w-4 h-4" />
-						</UiButton>
-						<UiButton
-							variant="danger-ghost"
-							size="sm"
-							type="button"
-							:title="t('common.remove')"
-							:aria-label="t('dashboard.postbox.contacts.removeAria')"
-							@click="removeContact(c)"
-						>
-							<Icon name="lucide:trash" class="w-4 h-4" />
-						</UiButton>
+						<UiTooltip :text="t('dashboard.postbox.contacts.compose')">
+							<UiButton
+								variant="ghost"
+								size="sm"
+								type="button"
+								:aria-label="t('dashboard.postbox.contacts.composeAria')"
+								@click="composeTo(c.email)"
+							>
+								<Icon name="lucide:pencil" class="w-4 h-4" />
+							</UiButton>
+						</UiTooltip>
+						<UiTooltip :text="t('common.edit')">
+							<UiButton
+								variant="ghost"
+								size="sm"
+								type="button"
+								:aria-label="t('dashboard.postbox.contacts.editAria')"
+								@click="openEdit(c)"
+							>
+								<Icon name="lucide:edit-2" class="w-4 h-4" />
+							</UiButton>
+						</UiTooltip>
+						<UiTooltip :text="t('common.remove')">
+							<UiButton
+								variant="danger-ghost"
+								size="sm"
+								type="button"
+								:aria-label="t('dashboard.postbox.contacts.removeAria')"
+								@click="removeContact(c)"
+							>
+								<Icon name="lucide:trash" class="w-4 h-4" />
+							</UiButton>
+						</UiTooltip>
 					</div>
 				</li>
 			</ul>

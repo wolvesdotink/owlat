@@ -241,29 +241,33 @@ watch([isAddDirty, isEditDirty], ([add, edit]) => setHasChanges(add || edit), { 
 								@update:model-value="handleToggleActive(form)"
 							/>
 							<!-- Edit -->
-							<UiButton
-								variant="ghost"
-								class="p-2"
-								:title="t('dashboard.admin.instance.forms.editForm')"
-								@click.stop="openEditModal(form as Parameters<typeof openEditModal>[0])"
-							>
-								<Icon name="lucide:settings-2" class="w-4 h-4" />
-							</UiButton>
+							<UiTooltip :text="t('dashboard.admin.instance.forms.editForm')">
+								<UiButton
+									variant="ghost"
+									class="p-2"
+									:aria-label="t('dashboard.admin.instance.forms.editForm')"
+									@click.stop="openEditModal(form as Parameters<typeof openEditModal>[0])"
+								>
+									<Icon name="lucide:settings-2" class="w-4 h-4" />
+								</UiButton>
+							</UiTooltip>
 							<!-- Delete -->
-							<UiButton
-								variant="ghost"
-								class="p-2 text-error hover:bg-error/10"
-								:title="t('dashboard.admin.instance.forms.deleteForm')"
-								@click.stop="
-									formToDelete = {
-										_id: form._id,
-										name: form.name,
-										totalSubmissions: form.totalSubmissions,
-									}
-								"
-							>
-								<Icon name="lucide:trash-2" class="w-4 h-4" />
-							</UiButton>
+							<UiTooltip :text="t('dashboard.admin.instance.forms.deleteForm')">
+								<UiButton
+									variant="ghost"
+									class="p-2 text-error hover:bg-error/10"
+									:aria-label="t('dashboard.admin.instance.forms.deleteForm')"
+									@click.stop="
+										formToDelete = {
+											_id: form._id,
+											name: form.name,
+											totalSubmissions: form.totalSubmissions,
+										}
+									"
+								>
+									<Icon name="lucide:trash-2" class="w-4 h-4" />
+								</UiButton>
+							</UiTooltip>
 							<!-- Expand Arrow -->
 							<div
 								:class="[
@@ -351,19 +355,21 @@ watch([isAddDirty, isEditDirty], ([add, edit]) => setHasChanges(add || edit), { 
 										>
 											{{ getFormUrl(form._id) }}
 										</code>
-										<UiButton
-											variant="ghost"
-											class="p-2"
-											:title="t('dashboard.admin.instance.forms.copyUrl')"
-											@click="copyToClipboard(getFormUrl(form._id), `url-${form._id}`)"
-										>
-											<Icon
-												v-if="copiedCode === `url-${form._id}`"
-												name="lucide:check"
-												class="w-4 h-4 text-success"
-											/>
-											<Icon v-else name="lucide:copy" class="w-4 h-4" />
-										</UiButton>
+										<UiTooltip :text="t('dashboard.admin.instance.forms.copyUrl')">
+											<UiButton
+												variant="ghost"
+												class="p-2"
+												:aria-label="t('dashboard.admin.instance.forms.copyUrl')"
+												@click="copyToClipboard(getFormUrl(form._id), `url-${form._id}`)"
+											>
+												<Icon
+													v-if="copiedCode === `url-${form._id}`"
+													name="lucide:check"
+													class="w-4 h-4 text-success"
+												/>
+												<Icon v-else name="lucide:copy" class="w-4 h-4" />
+											</UiButton>
+										</UiTooltip>
 									</div>
 								</div>
 

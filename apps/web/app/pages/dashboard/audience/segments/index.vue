@@ -254,14 +254,15 @@ onMounted(() => {
 					}}</span>
 				</template>
 				<template #actions="{ item }">
-					<NuxtLink
-						:to="segmentPath(item)"
-						class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-						:title="t('dashboard.audience.segments.index.actions.viewContacts')"
-						:aria-label="t('dashboard.audience.segments.index.actions.viewContacts')"
-					>
-						<Icon name="lucide:users" class="w-4 h-4" />
-					</NuxtLink>
+					<UiTooltip :text="t('dashboard.audience.segments.index.actions.viewContacts')">
+						<NuxtLink
+							:to="segmentPath(item)"
+							class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+							:aria-label="t('dashboard.audience.segments.index.actions.viewContacts')"
+						>
+							<Icon name="lucide:users" class="w-4 h-4" />
+						</NuxtLink>
+					</UiTooltip>
 				</template>
 			</AudienceListTable>
 		</template>
@@ -424,14 +425,16 @@ onMounted(() => {
 								</div>
 
 								<!-- Remove button -->
-								<button
-									type="button"
-									class="shrink-0 p-1.5 rounded-lg text-text-tertiary hover:text-error hover:bg-error-subtle transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-									:title="t('dashboard.audience.segments.index.modal.removeCondition')"
-									@click="removeCondition(index)"
-								>
-									<Icon name="lucide:x" class="w-4 h-4" />
-								</button>
+								<UiTooltip :text="t('dashboard.audience.segments.index.modal.removeCondition')">
+									<button
+										type="button"
+										class="shrink-0 p-1.5 rounded-lg text-text-tertiary hover:text-error hover:bg-error-subtle transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+										:aria-label="t('dashboard.audience.segments.index.modal.removeCondition')"
+										@click="removeCondition(index)"
+									>
+										<Icon name="lucide:x" class="w-4 h-4" />
+									</button>
+								</UiTooltip>
 							</div>
 						</div>
 					</div>

@@ -27,6 +27,8 @@ export interface InboxThreadRowThread {
 	assignee?: { name?: string; email: string; image?: string | null } | null;
 	/** Running reply deadline while response targets are on; absent otherwise. */
 	responseDueAt?: number | null;
+	/** Set while the current resolve is the auto-close sweep's. */
+	autoClosedAt?: number | null;
 }
 </script>
 
@@ -250,6 +252,7 @@ function rowAction(event: MouseEvent, action: 'resolve' | 'snooze') {
 									:latest-draft-status="thread.latestDraftStatus"
 									:snoozed-until="thread.snoozedUntil"
 									:snooze-returned-at="thread.snoozeReturnedAt"
+									:auto-closed-at="thread.autoClosedAt"
 								/>
 								<span
 									v-if="showChannelChip"
@@ -373,43 +376,47 @@ function rowAction(event: MouseEvent, action: 'resolve' | 'snooze') {
 						@assign="emit('assign', $event)"
 					>
 						<template #trigger>
-							<button
-								type="button"
-								class="p-1 rounded hover:bg-bg-surface text-text-tertiary hover:text-brand"
-								:title="t('components.inbox.inboxThreadRow.assign')"
-								:aria-label="t('components.inbox.inboxThreadRow.assignThread')"
-							>
-								<Icon name="lucide:user-plus" class="w-4 h-4" />
-							</button>
+							<UiTooltip :text="t('components.inbox.inboxThreadRow.assign')">
+								<button
+									type="button"
+									class="p-1 rounded hover:bg-bg-surface text-text-tertiary hover:text-brand"
+									:aria-label="t('components.inbox.inboxThreadRow.assignThread')"
+								>
+									<Icon name="lucide:user-plus" class="w-4 h-4" />
+								</button>
+							</UiTooltip>
 						</template>
 					</InboxAssignPopover>
-					<button
-						type="button"
-						class="p-1 rounded hover:bg-bg-surface text-text-tertiary hover:text-success"
-						:title="t('components.inbox.inboxThreadRow.resolve')"
-						:aria-label="t('components.inbox.inboxThreadRow.resolve')"
-						@click="rowAction($event, 'resolve')"
-					>
-						<Icon name="lucide:check-circle" class="w-4 h-4" />
-					</button>
-					<button
-						type="button"
-						class="p-1 rounded hover:bg-bg-surface text-text-tertiary hover:text-text-primary"
-						:title="t('components.inbox.inboxThreadRow.snooze')"
-						:aria-label="t('components.inbox.inboxThreadRow.snooze')"
-						@click="rowAction($event, 'snooze')"
-					>
-						<Icon name="lucide:clock" class="w-4 h-4" />
-					</button>
-					<NuxtLink
-						:to="`/dashboard/inbox/${thread._id}`"
-						class="p-1 rounded hover:bg-bg-surface text-text-tertiary hover:text-text-primary inline-flex"
-						:title="t('common.open')"
-						:aria-label="t('components.inbox.inboxThreadRow.openThread')"
-						@click.stop
-					>
-						<Icon name="lucide:arrow-right" class="w-4 h-4" />
-					</NuxtLink>
+					<UiTooltip :text="t('components.inbox.inboxThreadRow.resolve')">
+						<button
+							type="button"
+							class="p-1 rounded hover:bg-bg-surface text-text-tertiary hover:text-success"
+							:aria-label="t('components.inbox.inboxThreadRow.resolve')"
+							@click="rowAction($event, 'resolve')"
+						>
+							<Icon name="lucide:check-circle" class="w-4 h-4" />
+						</button>
+					</UiTooltip>
+					<UiTooltip :text="t('components.inbox.inboxThreadRow.snooze')">
+						<button
+							type="button"
+							class="p-1 rounded hover:bg-bg-surface text-text-tertiary hover:text-text-primary"
+							:aria-label="t('components.inbox.inboxThreadRow.snooze')"
+							@click="rowAction($event, 'snooze')"
+						>
+							<Icon name="lucide:clock" class="w-4 h-4" />
+						</button>
+					</UiTooltip>
+					<UiTooltip :text="t('common.open')">
+						<NuxtLink
+							:to="`/dashboard/inbox/${thread._id}`"
+							class="p-1 rounded hover:bg-bg-surface text-text-tertiary hover:text-text-primary inline-flex"
+							:aria-label="t('components.inbox.inboxThreadRow.openThread')"
+							@click.stop
+						>
+							<Icon name="lucide:arrow-right" class="w-4 h-4" />
+						</NuxtLink>
+					</UiTooltip>
 				</div>
 			</li>
 		</template>

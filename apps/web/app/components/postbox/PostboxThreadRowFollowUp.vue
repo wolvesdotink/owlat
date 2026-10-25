@@ -63,14 +63,14 @@ function reminderSetTitle(remindAt: number): string {
 		<Icon name="lucide:alarm-clock" class="w-3 h-3" />
 		{{ t('components.postbox.postboxThreadRowFollowUp.noReplyYet') }}
 	</button>
-	<button
-		v-else-if="followUp.watched"
-		type="button"
-		class="inline-flex items-center gap-1 px-1.5 py-px rounded-full bg-brand/10 text-brand text-[10px] font-medium hover:bg-brand/20 flex-shrink-0"
-		:title="reminderTitle(followUp.remindAt)"
-		:aria-label="t('components.postbox.postboxThreadRowFollowUp.cancelLabel')"
-		@click="emit('cancel', $event)"
-	>
-		<Icon name="lucide:alarm-clock" class="w-3 h-3" />
-	</button>
+	<UiTooltip v-else-if="followUp.watched" :text="reminderTitle(followUp.remindAt)">
+		<button
+			type="button"
+			class="inline-flex items-center gap-1 px-1.5 py-px rounded-full bg-brand/10 text-brand text-[10px] font-medium hover:bg-brand/20 flex-shrink-0"
+			:aria-label="t('components.postbox.postboxThreadRowFollowUp.cancelLabel')"
+			@click="emit('cancel', $event)"
+		>
+			<Icon name="lucide:alarm-clock" class="w-3 h-3" />
+		</button>
+	</UiTooltip>
 </template>

@@ -3,6 +3,7 @@ import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { NO_AUTO_MAINTENANCE } from './gitRepository.testlib';
 
 const SCRIPT = resolve(import.meta.dirname, '../check-stored-block-corpus.ts');
 const CORPUS = 'packages/email-renderer/src/__tests__/storedBlocks';
@@ -38,6 +39,7 @@ function repository(): { root: string; base: string } {
 	git(root, ['init', '--quiet', '--initial-branch', 'main']);
 	git(root, ['config', 'user.email', 'test@example.com']);
 	git(root, ['config', 'user.name', 'Corpus Test']);
+	git(root, [...NO_AUTO_MAINTENANCE]);
 	write(root, VERSION_FILE, 'export const EMAIL_RENDERER_VERSION = 2;\n');
 	write(root, `${CORPUS}/retired.json`, '{}\n');
 	write(root, `${CORPUS}/v1/a.json`, '{"stored": []}\n');
@@ -103,6 +105,7 @@ function shallowClone(source: string): string {
 	const root = mkdtempSync(join(tmpdir(), 'owlat-stored-block-corpus-shallow-'));
 	sandboxes.push(root);
 	execFileSync('git', ['clone', '--quiet', '--depth', '1', `file://${source}`, root]);
+	git(root, [...NO_AUTO_MAINTENANCE]);
 	return root;
 }
 
@@ -227,6 +230,7 @@ describe('check-stored-block-corpus', () => {
 			const remote = mkdtempSync(join(tmpdir(), 'owlat-stored-block-corpus-remote-'));
 			sandboxes.push(remote);
 			git(remote, ['init', '--quiet', '--bare']);
+			git(remote, [...NO_AUTO_MAINTENANCE]);
 			git(repo.root, ['remote', 'add', 'origin', remote]);
 			git(repo.root, ['push', '--quiet', 'origin', 'HEAD:refs/heads/main']);
 			setOriginMain(repo.root, repo.base);
@@ -319,6 +323,7 @@ describe('check-stored-block-corpus', () => {
 				`file://${source}`,
 				root,
 			]);
+			git(root, [...NO_AUTO_MAINTENANCE]);
 			return root;
 		}
 

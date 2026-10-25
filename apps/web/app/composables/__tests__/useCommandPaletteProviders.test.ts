@@ -20,6 +20,11 @@ import { createTestI18n } from '~/__tests__/i18n';
 
 const { t } = createTestI18n().global;
 
+const showChecklist = vi.hoisted(() => vi.fn(async () => {}));
+vi.mock('~/composables/useGettingStartedControls', () => ({
+	useGettingStartedControls: () => ({ showChecklist }),
+}));
+
 let role: 'owner' | 'admin' | 'editor' | null;
 let hasRampStarted: boolean;
 let disabledFlags: string[];
@@ -47,6 +52,7 @@ beforeEach(() => {
 	openCompose = vi.fn(async () => {});
 	openNewContact = vi.fn(async () => {});
 	navigations = [];
+	showChecklist.mockClear();
 
 	vi.stubGlobal('useI18n', () => ({ t }));
 	vi.stubGlobal('useFeatureFlag', () => ({
@@ -106,6 +112,17 @@ describe('verbs', () => {
 
 		expect(openNewContact).toHaveBeenCalledTimes(1);
 		expect(navigations).toEqual([]);
+	});
+
+	it('brings back the setup checklist, for every role', async () => {
+		role = 'editor';
+		const { verbItems } = await providers();
+
+		const verb = byId(verbItems.value, 'verb:show-setup-checklist');
+		expect(verb?.label).toBe('Show setup checklist');
+		verb?.run();
+
+		expect(showChecklist).toHaveBeenCalledTimes(1);
 	});
 
 	it('drops Compose entirely when no mail feature is on', async () => {
