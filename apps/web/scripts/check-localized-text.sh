@@ -17,9 +17,8 @@
 #                                                       `type BriefText = LocalizedText`)
 #   params ?? {})                                     → useLocalized() / resolveLocalized
 #
-# RATCHET on scripts/ratchet.sh, strict in both directions. The baseline
-# (scripts/localized-text-baseline.txt) lists only files that a parallel rewrite
-# owned when the helper landed; migrate them and delete their lines.
+# Zero-tolerance gate on scripts/ratchet.sh --zero: there is no baseline, so
+# any reported copy fails.
 
 set -uo pipefail
 repo_root="$(cd "$(dirname "$0")/../../.." && pwd)"
@@ -53,8 +52,7 @@ if [ "${1:-}" = "--generate" ]; then
 fi
 
 exec "$repo_root/scripts/ratchet.sh" \
-	--baseline scripts/localized-text-baseline.txt \
-	--seed "bash apps/web/scripts/check-localized-text.sh --write-baseline" \
+	--zero \
 	--ok "no module restates LocalizedText or its resolver outside app/utils/localizedText.ts" \
 	--new-header "FAIL: {n} copy/copies of LocalizedText or its resolver outside app/utils/localizedText.ts:" \
 	--new-advice "Use the shared module instead:
@@ -62,8 +60,6 @@ exec "$repo_root/scripts/ratchet.sh" \
   string | { key; params } union    → the same import (a domain alias may be \`= LocalizedText\`)
   typeof v === 'string' ? t(v) : t(v.key, v.params ?? {})
                                     → const localized = useLocalized(); localized(v)
-                                      (resolveLocalized({ t, te }, v) outside a component)
-Do NOT add lines to {baseline}; it is frozen debt." \
-	--stale-header "FAIL: {n} stale entr(y/ies) in {baseline} (file migrated or removed):" \
+                                      (resolveLocalized({ t, te }, v) outside a component)" \
 	"$@" \
 	-- bash "$self" --generate

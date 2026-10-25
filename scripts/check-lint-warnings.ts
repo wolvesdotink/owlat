@@ -1,4 +1,9 @@
-/** Freeze existing warnings by file, rule, and offending source text. New warnings fail CI. */
+/**
+ * Freeze existing warnings by file, rule, and offending source text. The
+ * comparison is exact in both directions: a new or increased warning fails, and
+ * so does a baseline entry whose warnings were fixed, so the baseline never
+ * holds slack a fixed warning could silently come back into.
+ */
 import { readFileSync } from 'node:fs';
 import { resolve, relative } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -35,13 +40,25 @@ export const ratchetedWarnings = (diagnostics: LintDiagnostic[]): LintDiagnostic
 		(diagnostic) => diagnostic.severity === 'warning' && !isOwlatWarning(diagnostic)
 	);
 
-export function excessWarnings(
+export interface WarningDrift {
+	/** Keys whose live count exceeds the baseline: fix the new warnings. */
+	regressions: string[];
+	/** Keys whose baseline exceeds the live count: lower or delete the entry. */
+	stale: string[];
+}
+
+export function compareWarnings(
 	actual: Record<string, number>,
 	baseline: Record<string, number>
-): string[] {
-	return Object.entries(actual)
-		.filter(([key, count]) => count > (baseline[key] ?? 0))
-		.map(([key, count]) => `${key}: ${count} warnings (baseline ${baseline[key] ?? 0})`);
+): WarningDrift {
+	const drift: WarningDrift = { regressions: [], stale: [] };
+	for (const key of new Set([...Object.keys(actual), ...Object.keys(baseline)])) {
+		const count = actual[key] ?? 0;
+		const frozen = baseline[key] ?? 0;
+		if (count > frozen) drift.regressions.push(`${key}: ${count} warnings (baseline ${frozen})`);
+		else if (count < frozen) drift.stale.push(`${key}: ${count} warnings (baseline ${frozen})`);
+	}
+	return drift;
 }
 
 function main(): number {
@@ -80,10 +97,21 @@ function main(): number {
 	const baseline = JSON.parse(
 		readFileSync(resolve(root, 'scripts/lint-warning-baseline.json'), 'utf8')
 	) as Record<string, number>;
-	const failures = excessWarnings(counts, baseline);
+	const { regressions, stale } = compareWarnings(counts, baseline);
 	for (const error of errors) console.error(`${error.filename}: ${error.code}: ${error.message}`);
-	for (const failure of failures) console.error(failure);
-	if (errors.length || failures.length) return 1;
+	if (regressions.length) {
+		console.error(`FAIL: ${regressions.length} warning key(s) above the baseline:`);
+		for (const line of regressions) console.error(`  ${line}`);
+		console.error('Fix these warnings. Do not raise scripts/lint-warning-baseline.json.');
+	}
+	if (stale.length) {
+		console.error(`FAIL: ${stale.length} stale key(s) in scripts/lint-warning-baseline.json:`);
+		for (const line of stale) console.error(`  ${line}`);
+		console.error(
+			'These warnings were fixed. Lower each count to the live one, or delete the key at 0.'
+		);
+	}
+	if (errors.length || regressions.length || stale.length) return 1;
 	console.info(
 		`Lint warning ratchet passed (${Object.values(counts).reduce((a, b) => a + b, 0)} grandfathered warnings).`
 	);

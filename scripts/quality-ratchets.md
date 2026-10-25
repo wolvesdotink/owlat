@@ -3,10 +3,13 @@
 `bun run lint:warnings` is part of the shared CI/release lint gate. It runs
 oxlint with `--deny-warnings` and compares diagnostics against the frozen
 `lint-warning-baseline.json`. The key is the file, rule, message, and offending
-source token, with a maximum count. Moving a line does not add an exception;
-a new warning, a changed offending token, or an increased count fails. Existing
-errors always fail, as do tool crashes or invalid output. Remove baseline entries
-as warnings are fixed; do not regenerate the baseline to accept new warnings.
+source token, with an exact count. Moving a line does not add an exception;
+a new warning, a changed offending token, or an increased count fails. Like every
+`scripts/ratchet.sh` baseline, the comparison is strict in both directions: a
+count that drops below its baseline, or a key with no live warnings left, fails
+as stale until the entry is lowered or deleted, so a fixed warning cannot come
+back unnoticed. Existing errors always fail, as do tool crashes or invalid
+output. Do not regenerate the baseline to accept new warnings.
 
 `import/no-cycle` is an error by default. The initial 17 cycle diagnostics are
 limited to the file patterns at the end of `oxlintrc.json`; these remain warnings
