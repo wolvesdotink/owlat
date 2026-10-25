@@ -155,8 +155,7 @@ export type StepRunGate =
  * side effect: the run is running, the automation active, the step present and
  * the contact eligible. A closed gate has already written its outcome — the
  * step run skipped or failed, and the run cancelled or moved on — so the
- * caller only reports it. Also used by the v0.5.5 claim shim
- * (`stepExecutorQueries.markStepExecuting`).
+ * caller only reports it.
  */
 export async function gateStepRun(
 	ctx: MutationCtx,

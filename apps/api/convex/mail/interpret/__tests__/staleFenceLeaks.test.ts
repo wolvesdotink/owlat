@@ -139,7 +139,9 @@ describe('the stale fence at the boundaries round 5 found open', () => {
 		const t = convexTest(schema, modules);
 		const { mailboxId, messageId, threadId } = await seedThread(t);
 		await storeSlot(t, threadId);
-		const slot = () => t.query(api.mail.needsReply.getDraftSlot, { threadId });
+		const slot = async () =>
+			(await t.query(api.mail.mailbox.messages.listThreadMessages, { messageId }))?.thread
+				?.needsReply?.draftSlot;
 		const queued = async () =>
 			(await t.query(api.mail.needsReply.listQueue, { mailboxId })).items.find(
 				(i) => i.threadId === threadId
@@ -158,10 +160,8 @@ describe('the stale fence at the boundaries round 5 found open', () => {
 		expect((await t.run((ctx) => ctx.db.get(threadId)))!.needsReply?.draftSlot).toBeUndefined();
 		// One that slipped in anyway is never shown.
 		await storeSlot(t, threadId);
-		expect(await slot()).toBeNull();
+		expect(await slot()).toBeUndefined();
 		expect((await queued())?.hasDraftSlot).toBe(false);
-		const thread = await t.query(api.mail.mailbox.messages.listThreadMessages, { messageId });
-		expect(thread?.thread?.needsReply?.draftSlot).toBeUndefined();
 	});
 
 	it('hides a stored plan check and refuses a late one', async () => {

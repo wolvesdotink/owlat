@@ -15,7 +15,6 @@
  *     (`pageCommit.ts`), which writes the page's effects, its counts and the
  *     next hop (or the terminal status) in one fenced transaction.
  *   - `completeImport`, `getImportById` — terminal patch and hop-entry read.
- *     `updateImportProgress` is kept only for hops of the previous release.
  *   - `recovery.ts` re-issues a page whose hop was lost.
  *
  * The walker never branches on `provider`. Per-provider HTTP knowledge
@@ -33,11 +32,8 @@ import { assertFeatureEnabled } from '../lib/featureFlags';
 import { throwInvalidInput, throwInvalidState, getOrThrow } from '../_utils/errors';
 import { providerFor } from './providers';
 import {
-	addSuppressionCounts,
 	integrationProviderConfigValidator,
 	RetryableProviderError,
-	ZERO_SUPPRESSION_COUNTS,
-	suppressionCountsValidator,
 	type FetchPageResult,
 	type IntegrationProviderConfig,
 	type IntegrationProviderKind,
@@ -301,63 +297,6 @@ export const processIntegrationPage = internalAction({
 });
 
 // ─── Internal mutations / queries ───────────────────────────────────────────
-
-// ============== v0.6.5 compatibility shim — remove after release N+1 ==============
-
-/**
- * Patch per-page counter sums and the next opaque cursor, for a page hop of
- * the previous release that is still running when this one deploys (it calls
- * this after its own contact and suppression writes, before it schedules the
- * next hop). Nothing in this release calls it.
- *
- * It only touches a row that release started: a row with a page count belongs
- * to this release's commit, and counting a legacy hop into it as well would
- * count one page twice when the recovery sweep has already re-issued it.
- */
-export const updateImportProgress = internalMutation({
-	args: {
-		importId: v.id('integrationImports'),
-		imported: v.number(),
-		updated: v.number(),
-		skipped: v.number(),
-		failed: v.number(),
-		errors: v.array(v.string()),
-		totalEstimate: v.optional(v.number()),
-		suppressionCounts: v.optional(suppressionCountsValidator),
-		newCursor: v.string(),
-	},
-	handler: async (ctx, args) => {
-		const record = await ctx.db.get(args.importId);
-		if (!record) return;
-
-		// Don't advance counters/cursor on an import the user already cancelled
-		// (or that already reached a terminal state).
-		if (record.status !== 'running' || record.pagesCommitted !== undefined) return;
-
-		const mergedErrors = [...record.errors, ...args.errors].slice(0, 20);
-
-		await ctx.db.patch(args.importId, {
-			imported: record.imported + args.imported,
-			updated: record.updated + args.updated,
-			skipped: record.skipped + args.skipped,
-			failed: record.failed + args.failed,
-			errors: mergedErrors,
-			cursor: args.newCursor,
-			lastPageAt: Date.now(),
-			...(args.totalEstimate !== undefined ? { totalEstimate: args.totalEstimate } : {}),
-			...(args.suppressionCounts
-				? {
-						suppressionCounts: addSuppressionCounts(
-							record.suppressionCounts ?? ZERO_SUPPRESSION_COUNTS,
-							args.suppressionCounts
-						),
-					}
-				: {}),
-		});
-	},
-});
-
-// ============== end of v0.6.5 compatibility shim ==============
 
 /**
  * Terminal patch — flips `status` from `'running'` to `'completed'` or

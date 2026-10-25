@@ -54,9 +54,6 @@ async function attemptStillLive(
  * invocation that still surfaces then finds the row closed and does nothing.
  * Rows only ever leave this range, so the scan shrinks to nothing once the
  * previous release's open rows are gone.
- *
- * Remove after release N+1, together with the previous-release shims in
- * `deliveryQueries.ts`.
  */
 async function adoptUntrackedRows(
 	ctx: MutationCtx,

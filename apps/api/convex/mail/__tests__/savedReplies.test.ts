@@ -424,26 +424,6 @@ describe('rows written before saved replies', () => {
 			mailboxId: team,
 		});
 	});
-
-	it('keep the previous release’s snippet API to the new rules', async () => {
-		const t = await harness();
-		const team = await seedMailbox(t, 'admin-1', { scope: 'shared', members: ['user-A'] });
-		const teams = await seedLegacy(t, team, 'Teams');
-
-		await expect(
-			t.mutation(api.mail.snippets.create, {
-				mailboxId: team,
-				name: 'Sneaky',
-				shortcut: '',
-				bodyHtml: '<p>x</p>',
-			})
-		).rejects.toThrow();
-		await expect(
-			t.mutation(api.mail.snippets.update, { snippetId: teams, name: 'x' })
-		).rejects.toThrow();
-		await expect(t.mutation(api.mail.snippets.remove, { snippetId: teams })).rejects.toThrow();
-		expect(names(await t.query(api.mail.snippets.list, { mailboxId: team }))).toEqual(['Teams']);
-	});
 });
 
 describe('feature floor', () => {

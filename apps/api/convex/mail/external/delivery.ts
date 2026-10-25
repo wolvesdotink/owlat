@@ -395,7 +395,7 @@ export const ingestExternalRaw = internalAction({
 			throw new Error('ingestExternalRaw: headerBlockBase64 decoded to zero bytes');
 		}
 		// Bodies arrive uncapped from the worker; inline small ones, stash large
-		// ones as blobs (served lazily by mailbox.getMessageBody).
+		// ones as blobs (served lazily by mailbox.messages.getMessageBodyBlobUrls).
 		const textBody = await splitBodyForStorage(
 			ctx,
 			args.textBodyInline,

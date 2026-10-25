@@ -59,7 +59,6 @@ import { v } from 'convex/values';
 import type { WithoutSystemFields } from 'convex/server';
 import type { MutationCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
-import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { AuditAction } from '../lib/auditLog';
 import { refuse } from '../lib/lifecycle';
@@ -437,61 +436,3 @@ export const removeSendingDomain = {
 };
 
 export const remove = internalMutation(removeSendingDomain);
-
-// ============== v0.6.3 compatibility shims — remove after release N+1 ==============
-//
-// v0.6.3 called these three editors at `domains/lifecycle` from actions: the
-// registration and return-path push actions (`providers/registerAction.ts`) and
-// the webhook dispatcher. An action running when this release deploys finishes
-// on v0.6.3's code, but each ctx.runMutation it makes resolves against the NEW
-// deployment (CONVENTIONS.md, "Old clients and workers against new functions").
-// So they stay for one release at their old path with their old arguments and
-// result, delegating to the editor's new home. The public mutations that call
-// the other editors run in one transaction and need no shim.
-
-/** Remove after release N+1: v0.6.3 compatibility (see the section comment above). */
-export const reconcileReturnPathAfterRegistration = internalMutation({
-	args: {
-		domainId: v.id('domains'),
-		registeredReturnPathHost: v.optional(v.string()),
-		userId: v.string(),
-	},
-	handler: async (ctx, args): Promise<void> => {
-		await ctx.runMutation(
-			internal.domains.lifecycleReturnPath.reconcileReturnPathAfterRegistration,
-			args
-		);
-	},
-});
-
-/** Remove after release N+1: v0.6.3 compatibility (see the section comment above). */
-export const recordReturnPathPushResult = internalMutation({
-	args: {
-		domainId: v.id('domains'),
-		returnPathHost: v.string(),
-		error: v.optional(v.string()),
-		attempts: v.optional(v.number()),
-		userId: v.string(),
-	},
-	handler: async (ctx, args): Promise<void> => {
-		await ctx.runMutation(internal.domains.lifecycleReturnPath.recordReturnPathPushResult, args);
-	},
-});
-
-/** Remove after release N+1: v0.6.3 compatibility (see the section comment above). */
-export const recordDkimRotation = internalMutation({
-	args: {
-		domain: v.string(),
-		selector: v.string(),
-		dnsRecord: v.string(),
-		phase: v.union(v.literal('pending'), v.literal('activated')),
-		userId: v.string(),
-	},
-	handler: async (
-		ctx,
-		args
-	): Promise<
-		| { ok: true; phase: 'pending' | 'activated'; selector: string; changed: boolean }
-		| { ok: false; reason: 'domain_not_found' }
-	> => await ctx.runMutation(internal.domains.lifecycleDkim.recordDkimRotation, args),
-});

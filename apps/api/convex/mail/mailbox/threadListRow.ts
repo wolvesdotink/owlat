@@ -32,7 +32,7 @@ export type ThreadListRow = Pick<
 	/**
 	 * Present while the thread is in the Reply Queue. `draftSlot` / the
 	 * clarification's `draft` are `true` markers, not the drafts: the drafts are
-	 * read per thread (`mail.needsReply.getDraftSlot`) when a card opens.
+	 * read per thread (`mail.mailbox.messages.listThreadMessages`) when it opens.
 	 */
 	needsReply?: { draftSlot?: true; clarification?: { draft?: true } };
 	followUp?: { dueAt?: number };
