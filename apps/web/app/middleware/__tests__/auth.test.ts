@@ -9,6 +9,7 @@
  * invitation lists.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { flushPromises } from '@vue/test-utils';
 import type { RouteLocationNormalized } from 'vue-router';
 import {
 	ORGANIZATION,
@@ -98,7 +99,7 @@ describe('auth middleware — signed out', () => {
 			settled = true;
 			return result;
 		});
-		await new Promise((resolve) => setTimeout(resolve, 20));
+		await flushPromises();
 		expect(settled).toBe(false);
 
 		signIn();
@@ -121,15 +122,25 @@ describe('auth middleware — signed in', () => {
 		signIn({ role: 'owner' });
 		// A role lookup that never answers: the guard must not care.
 		getActiveMember.mockImplementationOnce(() => new Promise(() => undefined));
-		const { middleware } = await load();
-		const to = route('/dashboard');
+		// The guard's waits give up after a timeout. On a clock that never moves,
+		// a guard that waits for the role stays undecided.
+		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+		try {
+			const { middleware } = await load();
+			const to = route('/dashboard');
 
-		const decision = await Promise.race([
-			middleware(to, to),
-			new Promise((resolve) => setTimeout(() => resolve('WAITED'), 200)),
-		]);
+			let settled = false;
+			const decision = middleware(to, to).then((result) => {
+				settled = true;
+				return result;
+			});
+			await flushPromises();
 
-		expect(decision).toBeUndefined();
+			expect(settled, 'the guard waited for the member role').toBe(true);
+			await expect(decision).resolves.toBeUndefined();
+		} finally {
+			vi.useRealTimers();
+		}
 		// …but it has started the lookup, so the role is on its way.
 		expect(getActiveMember).toHaveBeenCalledOnce();
 	});

@@ -44,7 +44,11 @@ interface TemplateRow {
 const text = (id: string, html: string) =>
 	({ id, type: 'text', content: { html } }) as unknown as EditorBlock;
 
-const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+/**
+ * Let `ms` of the co-edit timers (the send delay, retries, heartbeats) pass on
+ * the fake clock, running whatever they start.
+ */
+const elapse = (ms: number) => vi.advanceTimersByTimeAsync(ms);
 
 interface SessionRow {
 	sessionId: string;
@@ -76,6 +80,8 @@ let mutation: ReturnType<typeof vi.fn>;
 let canManage: boolean;
 
 beforeEach(() => {
+	// Only the timers: presence rows and sessions keep reading the real date.
+	vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] });
 	queries = {
 		'sessions.get': ref(undefined),
 		'presence.list': ref({ now: Date.now(), people: [] }),
@@ -119,6 +125,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+	vi.useRealTimers();
 	vi.unstubAllGlobals();
 });
 
@@ -194,7 +201,7 @@ describe('useEmailEditorBridge with co-editing', () => {
 		bridge.blocks.value = [text('a', 'Alpha edited')];
 		await settle();
 		expect(bridge.hasChanges.value).toBe(true);
-		await wait(400);
+		await elapse(400);
 
 		const call = mutation.mock.calls.find(([fn]) => fn === 'sessions.applyOps');
 		expect(call?.[1]).toMatchObject({
@@ -227,7 +234,8 @@ describe('useEmailEditorBridge with co-editing', () => {
 		await settle();
 
 		const pending = bridge.save();
-		await wait(50);
+		// The save reaches the point where it waits for the server to catch up.
+		await elapse(0);
 		queries['sessions.get']!.value = sessionRow(4, [text('a', 'Alpha')], {
 			savedVersion: 4,
 			baseRevision: 3,
@@ -273,7 +281,7 @@ describe('useEmailEditorBridge with co-editing', () => {
 		await settle();
 		expect(bridge.isConnecting.value).toBe(false);
 		expect(bridge.blocks.value.map((b) => (b.content as { html: string }).html)).toEqual(['Alpha']);
-		await wait(400);
+		await elapse(400);
 		expect(mutation).not.toHaveBeenCalledWith('sessions.applyOps', expect.anything());
 		unmount();
 	});
@@ -297,7 +305,7 @@ describe('useEmailEditorBridge with co-editing', () => {
 
 		bridge.blocks.value = [text('a', 'Alpha<br>edited')];
 		await settle();
-		await wait(1200);
+		await elapse(1200);
 
 		const sends = mutation.mock.calls.filter(([fn]) => fn === 'sessions.applyOps');
 		expect(sends).toHaveLength(1);

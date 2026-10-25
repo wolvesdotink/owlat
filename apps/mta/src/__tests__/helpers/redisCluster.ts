@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { randomInt, randomUUID } from 'node:crypto';
 import { createServer } from 'node:net';
 import Redis, { type Cluster } from 'ioredis';
+import { awaitContainerLog, REDIS_CLUSTER_OK_LOG, REDIS_READY_LOG } from './dockerLogs.js';
 
 const REDIS_IMAGE = 'redis:7-alpine';
 const CLUSTER_NODE_COUNT = 3;
@@ -91,47 +92,37 @@ async function allocatePorts(): Promise<number[]> {
 	return ports;
 }
 
+/** Wait for a node to log that it listens, then check that it answers PING. */
 async function waitForOwnedNode(name: string, port: number): Promise<void> {
-	for (let attempt = 0; attempt < 50; attempt++) {
-		try {
-			const running = execFileSync('docker', ['inspect', '--format', '{{.State.Running}}', name], {
-				encoding: 'utf8',
-			}).trim();
-			if (running !== 'true') throw new Error(`Container ${name} exited during startup`);
-			const pong = execFileSync('docker', ['exec', name, 'redis-cli', '-p', String(port), 'ping'], {
-				encoding: 'utf8',
-			}).trim();
-			if (pong === 'PONG') return;
-		} catch {
-			await new Promise((resolve) => setTimeout(resolve, 100));
-		}
-	}
-	throw new Error(`Redis Cluster node ${name} did not become ready on port ${port}`);
+	await awaitContainerLog(name, REDIS_READY_LOG);
+	const pong = execFileSync('docker', ['exec', name, 'redis-cli', '-p', String(port), 'ping'], {
+		encoding: 'utf8',
+	}).trim();
+	if (pong !== 'PONG')
+		throw new Error(`Redis Cluster node ${name} answered ${pong} on port ${port}`);
 }
 
+/**
+ * Wait for every node to log that the cluster state turned ok, then check that
+ * each one sees full slot coverage and every node. `redis-cli --cluster create`
+ * returns once the slots are assigned, a few seconds before the nodes flip
+ * their state to ok.
+ */
 async function waitForCluster(names: string[], ports: number[]): Promise<void> {
-	for (let attempt = 0; attempt < 150; attempt++) {
-		const ready = names.every((name, index) => {
-			try {
-				const info = execFileSync(
-					'docker',
-					['exec', name, 'redis-cli', '-p', String(ports[index]), 'cluster', 'info'],
-					{ encoding: 'utf8' }
-				);
-				return (
-					info.includes('cluster_state:ok') &&
-					info.includes(`cluster_slots_assigned:${CLUSTER_SLOT_COUNT}`) &&
-					info.includes(`cluster_slots_ok:${CLUSTER_SLOT_COUNT}`) &&
-					info.includes(`cluster_known_nodes:${CLUSTER_NODE_COUNT}`)
-				);
-			} catch {
-				return false;
-			}
-		});
-		if (ready) return;
-		await new Promise((resolve) => setTimeout(resolve, 100));
+	await Promise.all(names.map((name) => awaitContainerLog(name, REDIS_CLUSTER_OK_LOG)));
+	for (const [index, name] of names.entries()) {
+		const info = execFileSync(
+			'docker',
+			['exec', name, 'redis-cli', '-p', String(ports[index]), 'cluster', 'info'],
+			{ encoding: 'utf8' }
+		);
+		const converged =
+			info.includes('cluster_state:ok') &&
+			info.includes(`cluster_slots_assigned:${CLUSTER_SLOT_COUNT}`) &&
+			info.includes(`cluster_slots_ok:${CLUSTER_SLOT_COUNT}`) &&
+			info.includes(`cluster_known_nodes:${CLUSTER_NODE_COUNT}`);
+		if (!converged) throw new Error(`Redis Cluster node ${name} did not converge:\n${info}`);
 	}
-	throw new Error('Redis Cluster did not converge with full slot coverage');
 }
 
 function removeContainers(names: string[]): void {

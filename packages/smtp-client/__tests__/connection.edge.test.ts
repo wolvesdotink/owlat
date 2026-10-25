@@ -8,7 +8,8 @@
  * The cleartext `secured === false` invariant is asserted here (the TLS side is
  * covered in the smtp-server integration suite).
  */
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
+import { once } from 'node:events';
 import net from 'node:net';
 import tls from 'node:tls';
 import type { AddressInfo } from 'node:net';
@@ -20,6 +21,8 @@ import { VALID_CERT, VALID_KEY, EXPIRED_CERT, EXPIRED_KEY } from './certFixtures
 const cleanups: Array<() => void> = [];
 
 afterEach(() => {
+	vi.useRealTimers();
+	vi.restoreAllMocks();
 	while (cleanups.length > 0) {
 		const fn = cleanups.pop();
 		try {
@@ -270,18 +273,16 @@ describe('SmtpConnection.connect — raw-socket edge cases', () => {
 		if (isSmtpError(caught)) {
 			expect(caught.phase).toBe('mail');
 		}
-		// The first read stays alive and eventually times out on its own.
-		await expect(first).rejects.toThrow();
+		// The first waiter is still the live one: closing the connection settles it.
+		// Had the second read clobbered it, this await would never settle.
+		conn.close();
+		await expect(first).rejects.toThrow(/connection closed while a reply was awaited/);
 	});
 
 	it('command() refuses a second command BEFORE writing while a reply is awaited', async () => {
-		const received: string[] = [];
 		const port = await startRawServer({
 			greeting: '220 mx.test ready\r\n',
-			handle: (line) => {
-				received.push(line);
-				return line.startsWith('EHLO') ? EHLO_REPLY : '250 OK\r\n';
-			},
+			handle: (line) => (line.startsWith('EHLO') ? EHLO_REPLY : '250 OK\r\n'),
 		});
 		const conn = await SmtpConnection.connect({
 			host: '127.0.0.1',
@@ -290,7 +291,7 @@ describe('SmtpConnection.connect — raw-socket edge cases', () => {
 			tlsMode: 'none',
 		});
 		cleanups.push(() => conn.close());
-		const receivedBeforeGuard = received.length;
+		const write = vi.spyOn(conn.rawSocket, 'write');
 		// Park a waiter so the reader is busy; the server sends nothing more.
 		const parked = conn.readReply('mail', 1_000);
 		let caught: unknown;
@@ -305,10 +306,9 @@ describe('SmtpConnection.connect — raw-socket edge cases', () => {
 		if (isSmtpError(caught)) {
 			expect(caught.phase).toBe('rcpt');
 		}
-		// The refused command must never have reached the wire. Give the loopback a
-		// tick to have delivered anything that was (wrongly) written.
-		await new Promise((r) => setTimeout(r, 50));
-		expect(received.length).toBe(receivedBeforeGuard);
+		// The refused command must never have reached the socket.
+		expect(write).not.toHaveBeenCalled();
+		conn.close();
 		await expect(parked).rejects.toThrow();
 	});
 
@@ -412,26 +412,24 @@ describe('SmtpConnection.connect — raw-socket edge cases', () => {
 
 	it('poisons the reader after a read timeout: a later command() throws instead of consuming a late reply', async () => {
 		// The server completes the handshake, then PARKS the next command line
-		// without ever replying. The test drives the read timeout itself with an
-		// explicit deadline and only writes the late `250 late` AFTER catching that
-		// timeout. A live reader would queue that late reply and hand it to the
-		// following read as its own answer (stale-reply desync). The wire timeout
-		// must instead poison the reader so every later read/command rejects.
-		//
-		// Determinism: nothing races a real-clock server timer against the client's
-		// timeout. The server never replies on its own, the read deadline is an
-		// explicit 100ms `readReply` argument, and the late reply is injected by the
-		// test only once the timeout has been observed.
-		let parkedSocket: net.Socket | undefined;
+		// without ever replying. The test drives the read timeout itself on fake
+		// time and only writes the late `250 late` AFTER catching that timeout. A
+		// live reader would queue that late reply and hand it to the following read
+		// as its own answer (stale-reply desync). The wire timeout must instead
+		// poison the reader so every later read/command rejects.
+		let markParked!: (socket: net.Socket) => void;
+		const parked = new Promise<net.Socket>((resolve) => {
+			markParked = resolve;
+		});
 		const port = await startRawServer({
 			greeting: '220 mx.test ready\r\n',
 			handle: (line, socket) => {
 				if (line.startsWith('EHLO')) {
 					return EHLO_REPLY;
 				}
-				// Park: capture the socket and write nothing, so the client's read
-				// deadline is the only thing that can fire.
-				parkedSocket = socket;
+				// Park: hand the socket to the test and write nothing, so the client's
+				// read deadline is the only thing that can fire.
+				markParked(socket);
 				return '';
 			},
 		});
@@ -440,28 +438,30 @@ describe('SmtpConnection.connect — raw-socket edge cases', () => {
 			port,
 			ehloName: 'client.test',
 			tlsMode: 'none',
-			// Default connect() timeouts — the handshake is not time-boxed tightly, so
-			// event-loop jitter cannot flake the setup.
 		});
 		cleanups.push(() => conn.close());
-		// Drive the timed-out hop by hand: write the command, then await a read with
-		// an explicit 100ms deadline against a server that never answers.
 		conn.write('MAIL FROM:<a@test>\r\n', 'mail');
-		let timedOut: unknown;
-		try {
-			await conn.readReply('mail', 100);
-		} catch (err) {
-			timedOut = err;
-		}
+		const parkedSocket = await parked;
+		// Only the read deadline runs on fake time; the sockets keep real I/O.
+		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+		const read = conn.readReply('mail', 100).then(
+			() => undefined,
+			(err: unknown) => err
+		);
+		await vi.advanceTimersByTimeAsync(100);
+		const timedOut = await read;
+		vi.useRealTimers();
 		expect(isSmtpError(timedOut)).toBe(true);
 		if (isSmtpError(timedOut)) {
 			expect(timedOut.phase).toBe('mail');
+			expect(timedOut.message).toMatch(/timed out after 100ms/);
 		}
-		// Now — and only now — inject the late reply the parked hop never got, and
-		// let it settle so it is queued before the next read.
-		expect(parkedSocket).toBeDefined();
-		parkedSocket?.write('250 late\r\n');
-		await new Promise((r) => setTimeout(r, 50));
+		// Now, and only now, inject the late reply the parked hop never got, and
+		// wait until the client socket has handed it to the reader. The reader's
+		// listener was attached first, so it has seen the bytes when this resolves.
+		const delivered = once(conn.rawSocket, 'data');
+		parkedSocket.write('250 late\r\n');
+		await delivered;
 		// A subsequent command must reject (poisoned reader), NOT resolve the late
 		// `250 late` as its own answer.
 		let caught: unknown;
@@ -514,13 +514,9 @@ describe('SmtpConnection.connect — raw-socket edge cases', () => {
 	});
 
 	it('command() rejects a line with no CRLF terminator before writing (framing guard)', async () => {
-		const received: string[] = [];
 		const port = await startRawServer({
 			greeting: '220 mx.test ready\r\n',
-			handle: (line) => {
-				received.push(line);
-				return line.startsWith('EHLO') ? EHLO_REPLY : '250 OK\r\n';
-			},
+			handle: (line) => (line.startsWith('EHLO') ? EHLO_REPLY : '250 OK\r\n'),
 		});
 		const conn = await SmtpConnection.connect({
 			host: '127.0.0.1',
@@ -529,7 +525,7 @@ describe('SmtpConnection.connect — raw-socket edge cases', () => {
 			tlsMode: 'none',
 		});
 		cleanups.push(() => conn.close());
-		const receivedBeforeGuard = received.length;
+		const write = vi.spyOn(conn.rawSocket, 'write');
 		let caught: unknown;
 		try {
 			await conn.command('NOOP', 'rcpt');
@@ -540,19 +536,14 @@ describe('SmtpConnection.connect — raw-socket edge cases', () => {
 		if (isSmtpError(caught)) {
 			expect(caught.phase).toBe('rcpt');
 		}
-		// The unframed line must never have reached the wire.
-		await new Promise((r) => setTimeout(r, 50));
-		expect(received.length).toBe(receivedBeforeGuard);
+		// The unframed line must never have reached the socket.
+		expect(write).not.toHaveBeenCalled();
 	});
 
 	it('command() rejects a line carrying an interior CRLF before writing (command injection)', async () => {
-		const received: string[] = [];
 		const port = await startRawServer({
 			greeting: '220 mx.test ready\r\n',
-			handle: (line) => {
-				received.push(line);
-				return line.startsWith('EHLO') ? EHLO_REPLY : '250 OK\r\n';
-			},
+			handle: (line) => (line.startsWith('EHLO') ? EHLO_REPLY : '250 OK\r\n'),
 		});
 		const conn = await SmtpConnection.connect({
 			host: '127.0.0.1',
@@ -561,7 +552,7 @@ describe('SmtpConnection.connect — raw-socket edge cases', () => {
 			tlsMode: 'none',
 		});
 		cleanups.push(() => conn.close());
-		const receivedBeforeGuard = received.length;
+		const write = vi.spyOn(conn.rawSocket, 'write');
 		let caught: unknown;
 		try {
 			// A smuggled second command — the exact injection the framing guard exists
@@ -574,18 +565,13 @@ describe('SmtpConnection.connect — raw-socket edge cases', () => {
 		if (isSmtpError(caught)) {
 			expect(caught.phase).toBe('rcpt');
 		}
-		await new Promise((r) => setTimeout(r, 50));
-		expect(received.length).toBe(receivedBeforeGuard);
+		expect(write).not.toHaveBeenCalled();
 	});
 
 	it('writePipeline() rejects a batch line with no CRLF terminator before writing (framing guard)', async () => {
-		const received: string[] = [];
 		const port = await startRawServer({
 			greeting: '220 mx.test ready\r\n',
-			handle: (line) => {
-				received.push(line);
-				return line.startsWith('EHLO') ? EHLO_REPLY : '250 OK\r\n';
-			},
+			handle: (line) => (line.startsWith('EHLO') ? EHLO_REPLY : '250 OK\r\n'),
 		});
 		const conn = await SmtpConnection.connect({
 			host: '127.0.0.1',
@@ -594,7 +580,7 @@ describe('SmtpConnection.connect — raw-socket edge cases', () => {
 			tlsMode: 'none',
 		});
 		cleanups.push(() => conn.close());
-		const receivedBeforeGuard = received.length;
+		const write = vi.spyOn(conn.rawSocket, 'write');
 		let caught: unknown;
 		try {
 			// The second line lacks its CRLF terminator — the whole batch must be
@@ -607,18 +593,13 @@ describe('SmtpConnection.connect — raw-socket edge cases', () => {
 		if (isSmtpError(caught)) {
 			expect(caught.phase).toBe('mail');
 		}
-		await new Promise((r) => setTimeout(r, 50));
-		expect(received.length).toBe(receivedBeforeGuard);
+		expect(write).not.toHaveBeenCalled();
 	});
 
 	it('writePipeline() rejects a batch line carrying an interior CRLF before writing (command injection)', async () => {
-		const received: string[] = [];
 		const port = await startRawServer({
 			greeting: '220 mx.test ready\r\n',
-			handle: (line) => {
-				received.push(line);
-				return line.startsWith('EHLO') ? EHLO_REPLY : '250 OK\r\n';
-			},
+			handle: (line) => (line.startsWith('EHLO') ? EHLO_REPLY : '250 OK\r\n'),
 		});
 		const conn = await SmtpConnection.connect({
 			host: '127.0.0.1',
@@ -627,7 +608,7 @@ describe('SmtpConnection.connect — raw-socket edge cases', () => {
 			tlsMode: 'none',
 		});
 		cleanups.push(() => conn.close());
-		const receivedBeforeGuard = received.length;
+		const write = vi.spyOn(conn.rawSocket, 'write');
 		let caught: unknown;
 		try {
 			// A smuggled second command inside a batched line — the write-side injection
@@ -640,8 +621,7 @@ describe('SmtpConnection.connect — raw-socket edge cases', () => {
 		if (isSmtpError(caught)) {
 			expect(caught.phase).toBe('mail');
 		}
-		await new Promise((r) => setTimeout(r, 50));
-		expect(received.length).toBe(receivedBeforeGuard);
+		expect(write).not.toHaveBeenCalled();
 	});
 
 	it('writePipeline() refuses to enqueue a batch while a reply is already awaited', async () => {

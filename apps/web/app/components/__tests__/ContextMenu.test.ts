@@ -18,7 +18,7 @@
  */
 import { describe, it, expect, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
-import { defineComponent } from 'vue';
+import { defineComponent, nextTick } from 'vue';
 
 import UiContextMenu, { type ContextMenuItem } from '@owlat/ui/components/ui/ContextMenu.vue';
 
@@ -51,8 +51,9 @@ const menuEl = () => document.body.querySelector<HTMLElement>('[role="menu"]');
 const menuItems = () =>
 	Array.from(document.body.querySelectorAll<HTMLElement>('[role="menuitem"]'));
 
+/** Closing is a state change: the menu leaves the DOM on the next render. */
 async function waitForClose() {
-	await new Promise((resolve) => setTimeout(resolve, 60));
+	await nextTick();
 }
 
 describe('UiContextMenu', () => {
@@ -106,7 +107,7 @@ describe('UiContextMenu', () => {
 
 		await wrapper.find('.trigger').trigger('contextmenu', { clientX: 5, clientY: 5 });
 		// useModalFocus moves focus in after an internal nextTick.
-		await new Promise((resolve) => setTimeout(resolve, 0));
+		await nextTick();
 
 		expect(document.activeElement).toBe(menuItems()[0]);
 		wrapper.unmount();
