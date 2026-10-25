@@ -206,6 +206,10 @@
 			"types": "./src/constantTimeEqual.ts",
 			"import": "./src/constantTimeEqual.ts"
 		},
+		"./cappedStream": {
+			"types": "./src/cappedStream.ts",
+			"import": "./src/cappedStream.ts"
+		},
 		"./passwordPolicy": {
 			"types": "./src/passwordPolicy.ts",
 			"import": "./src/passwordPolicy.ts"

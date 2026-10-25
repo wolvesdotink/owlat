@@ -110,6 +110,10 @@ import { primaryReplyKindFor } from '~/composables/postbox/postboxReplySpec';
 import { replyDropRecipient, type ReplyDropTarget } from '~/utils/replyFileDrop';
 import type { ConversationLinkTarget } from '~/utils/conversationLink';
 import { useConversationLink } from '~/composables/useConversationLink';
+import {
+	usePostboxThreadFind,
+	type PostboxFindSeed,
+} from '~/composables/postbox/usePostboxThreadFind';
 
 const props = defineProps<{
 	message: PostboxReaderMessage;
@@ -120,6 +124,8 @@ const props = defineProps<{
 	// Overlay hosting (Today's centered reader): auto-advance swaps the reader in
 	// place via `advance`, so triaging never tears down the overlay.
 	advanceInPlace?: boolean;
+	/** Opened from a search result: find opens on its words, that message first. */
+	findSeed?: PostboxFindSeed | null;
 }>();
 
 const emit = defineEmits<{
@@ -733,9 +739,25 @@ function conversationLinkOf(messageId: string): ConversationLinkTarget {
 }
 const shareTarget = shallowRef<ConversationLinkTarget | null>(null);
 
+// Find in conversation (⌘F): collapsed messages, folded quotes and envelopes
+// included. Only the reader on top answers the shortcut.
+const find = usePostboxThreadFind({
+	threadKey,
+	messages: () => allMessages.value,
+	// Encrypted, clearsigned and signed mail shows through its security badge;
+	// its raw body is not what the reader shows, so it is not searched.
+	searchable: (msg) =>
+		secureClass(msg) === 'none' && !(msg as PostboxReaderMessage).inboundSignatureInfo,
+	isExpanded: (id) => expanded.value.has(id),
+	expand: toggleExpanded,
+	pages: threadPages,
+	seed: () => props.findSeed,
+	answersShortcut: () => threadSurface.isTopmost(),
+});
+
 // ⌘K, while a conversation is open, offers every verb this reader has. Runs the
 // actions directly, so it acts on THIS conversation.
-usePostboxThreadCommandSurface({
+const threadSurface = usePostboxThreadCommandSurface({
 	subject: () => props.message.subject,
 	messageId: () => props.message._id,
 	threadId: () => readerThread.value?._id ?? props.message.threadId,
@@ -765,6 +787,7 @@ usePostboxThreadCommandSurface({
 	toggleAlert: toggleOpenThreadAlert,
 	togglePin: toggleOpenThreadPin,
 	translate: () => void translation.translate(),
+	find: () => find.open(),
 });
 
 // Single-key shortcuts while reading and the Cmd-K palette bridge, both
@@ -805,6 +828,7 @@ providePostboxReaderContext({
 			if (msg) runGuarded(msg, () => void openQuoteReply(msg, passage));
 		},
 	},
+	find,
 });
 
 /**
@@ -873,12 +897,14 @@ const replyDrop = computed<ReplyDropTarget | null>(() => {
 			@why-here="calm.openWhyHere"
 		>
 			<template #actions>
+				<PostboxThreadFindButton @click="find.open()" />
 				<PostboxThreadDiscussionToggle
 					v-if="discussionThreadId && !team.isActive.value"
 					:thread-id="discussionThreadId"
 				/>
 			</template>
 		</PostboxThreadHeader>
+		<PostboxThreadFindBar :find="find" />
 
 		<PostboxReaderStrip
 			ref="stripEl"

@@ -19,7 +19,10 @@ import {
 import { errorMessage } from '@owlat/shared';
 import { writeOwnerOnlyFile } from '@owlat/shared/ownerOnlyFile';
 import { applyEnvUpdates, isRateLimited, validateFlagSnapshot } from './security.js';
-import { composePsServices, exec, json, OWLAT_DIR, readBody, requireAuth } from './http.js';
+import { composePsServices, exec, json, OWLAT_DIR, requireAuth } from './http.js';
+import { readJsonBody } from './jsonBody.js';
+import { parserDecoder } from '@owlat/worker-protocol/decodeJson';
+import { asRecord } from './requestBodies.js';
 import { composeArgv, recoverStackAfterFailedUp, servicesToRecreate } from './rollout.js';
 
 export async function handleApplyProfiles(req: IncomingMessage, res: ServerResponse) {
@@ -30,13 +33,9 @@ export async function handleApplyProfiles(req: IncomingMessage, res: ServerRespo
 		return json(res, 429, { error: 'Too many apply-profiles requests. Try again later.' });
 	}
 
-	let snapshot: ReturnType<typeof validateFlagSnapshot>;
-	try {
-		const body = JSON.parse(await readBody(req)) as { flags?: unknown };
-		snapshot = validateFlagSnapshot(body.flags);
-	} catch {
-		return json(res, 400, { error: 'Invalid JSON body' });
-	}
+	const body = await readJsonBody(req, res, parserDecoder(asRecord, '$: expected object'));
+	if (!body) return;
+	const snapshot = validateFlagSnapshot(body['flags']);
 	if (!snapshot.ok) {
 		return json(res, 400, { error: snapshot.reason });
 	}

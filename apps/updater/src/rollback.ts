@@ -18,7 +18,10 @@ import { readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { writeOwnerOnlyFile } from '@owlat/shared/ownerOnlyFile';
 import { errorMessage } from '@owlat/shared';
-import { exec, json, OWLAT_DIR, readBody } from './http.js';
+import { parserDecoder } from '@owlat/worker-protocol/decodeJson';
+import { exec, json, OWLAT_DIR } from './http.js';
+import { readJsonBody } from './jsonBody.js';
+import { asRecord } from './requestBodies.js';
 import {
 	composeArgvIn,
 	oneLine,
@@ -451,12 +454,11 @@ export async function handleRollback(req: IncomingMessage, res: ServerResponse) 
 	if (isRateLimited('rollback', 2, 60_000)) {
 		return json(res, 429, { error: 'Too many rollback requests. Try again later.' });
 	}
-	let requested: unknown;
-	try {
-		requested = JSON.parse((await readBody(req)) || '{}').snapshot;
-	} catch {
-		return json(res, 400, { error: 'Invalid JSON body' });
-	}
+	const body = await readJsonBody(req, res, parserDecoder(asRecord, '$: expected object'), {
+		emptyBody: {},
+	});
+	if (!body) return;
+	const requested = body['snapshot'];
 
 	const snapshot = readSnapshot();
 	if (!snapshot || snapshot.state === 'capturing') {

@@ -4,6 +4,7 @@ import {
 	createEnvBackupBox,
 	isEnvBackupSealedValue,
 } from '@owlat/shared/envBackupBox';
+import { jsonRequestEvent } from '../../../__tests__/nitro';
 
 /**
  * Secrets-at-rest tests for `POST /api/delivery/apply-transport`: the `.env`
@@ -91,7 +92,7 @@ interface ApplyResult {
 async function callRoute(): Promise<ApplyResult> {
 	const mod = await import('../apply-transport.post');
 	const handler = mod.default as unknown as (event: unknown) => Promise<ApplyResult>;
-	return handler({});
+	return handler(jsonRequestEvent(body));
 }
 
 function smtpPatch(): Record<string, string> {
@@ -113,10 +114,6 @@ beforeEach(() => {
 	body = { providerEnv: smtpPatch() };
 
 	vi.stubGlobal('defineEventHandler', <T>(handler: T) => handler);
-	vi.stubGlobal(
-		'readBody',
-		vi.fn(async () => body)
-	);
 	vi.stubGlobal('createError', (opts: { statusCode: number; message: string }) =>
 		Object.assign(new Error(opts.message), { statusCode: opts.statusCode })
 	);

@@ -83,6 +83,12 @@ const FIXTURES: Record<string, string> = {
 		'}',
 		'',
 	].join('\n'),
+	'uncheckedJson.ts': [
+		'export async function read(request: Request): Promise<{ to: string }> {',
+		'\treturn (await request.json()) as { to: string };',
+		'}',
+		'',
+	].join('\n'),
 	'unexplained.ts': [
 		'export function log(value: string): void {',
 		'\t// oxlint-disable-next-line no-console',
@@ -240,6 +246,11 @@ describe.each(['.', 'apps/web'])('oxlint run from %s with the root config', (cwd
 
 	it('reports exponential backoff computed outside the retry policy module', () => {
 		expect(errorCodes(byFile.get('backoff.ts'))).toEqual(['owlat(no-inline-backoff)']);
+	});
+
+	it('warns about a cast of parsed JSON for the ratchet', () => {
+		expect(errorCodes(byFile.get('uncheckedJson.ts'))).toEqual([]);
+		expect(warningCodes(byFile.get('uncheckedJson.ts'))).toEqual(['owlat(no-unchecked-json-cast)']);
 	});
 
 	it('reports a suppression that does not say why', () => {

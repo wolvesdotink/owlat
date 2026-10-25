@@ -1,4 +1,6 @@
+import { v } from 'convex/values';
 import { requirePlatformAdmin } from '~~/server/utils/requireAdmin';
+import { readJsonBody } from '~~/server/utils/jsonBody';
 import { getInstanceSecret, callUpdater } from '~~/server/utils/updater';
 
 /**
@@ -12,24 +14,16 @@ import { getInstanceSecret, callUpdater } from '~~/server/utils/updater';
  * profiles itself, so this route can only request states the
  * registry can produce.
  */
+const applyProfilesBody = v.object({ flags: v.record(v.string(), v.boolean()) });
+
 export default defineEventHandler(async (event) => {
 	await requirePlatformAdmin(event);
 
 	const instanceSecret = getInstanceSecret('In-app apply not configured (INSTANCE_SECRET missing)');
 
-	const body = await readBody<{ flags?: unknown }>(event);
-	const flags = body?.flags;
-	if (
-		typeof flags !== 'object' ||
-		flags === null ||
-		Array.isArray(flags) ||
-		Object.values(flags).some((value) => typeof value !== 'boolean')
-	) {
-		throw createError({
-			statusCode: 400,
-			message: 'Invalid flags (expected an object mapping flag keys to booleans)',
-		});
-	}
+	const { flags } = await readJsonBody(event, applyProfilesBody, {
+		invalidMessage: 'Invalid flags (expected an object mapping flag keys to booleans)',
+	});
 
 	let result: {
 		success?: boolean;

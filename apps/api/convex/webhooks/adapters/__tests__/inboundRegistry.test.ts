@@ -185,6 +185,20 @@ describe('MtaInboundAdapter', () => {
 		).toEqual([]);
 	});
 
+	it('refuses a field the canonical shape carries as is, when it has the wrong type', () => {
+		// The ingest action's validator would refuse it one `ctx.runAction` later
+		// as a 500; refusing here names the path, on both routes that call this.
+		expect(() => getInboundChannelAdapter('mta').parseInbound(mtaEnvelope({ from: 42 }))).toThrow(
+			'mta inbound.received: $.inboundPayload.from: expected string'
+		);
+		expect(() =>
+			getInboundChannelAdapter('mta').parseInbound(mtaEnvelope({ spfResult: true }))
+		).toThrow('mta inbound.received: $.inboundPayload.spfResult: expected string');
+		expect(() =>
+			getInboundChannelAdapter('mta').parseInbound({ inboundPayload: mtaEnvelope().inboundPayload })
+		).toThrow('mta inbound.received: $.timestamp: missing');
+	});
+
 	it('synthesizes a message id from the envelope timestamp when one is missing', () => {
 		const mail = getInboundChannelAdapter('mta').parseInbound(
 			mtaEnvelope({ messageId: undefined }, 42)

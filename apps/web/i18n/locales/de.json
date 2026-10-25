@@ -5588,6 +5588,27 @@
 				"trashOperation": "In den Papierkorb verschieben",
 				"trashedUndo": "In den Papierkorb verschoben"
 			},
+			"threadFind": {
+				"label": "In dieser Unterhaltung suchen",
+				"placeholder": "In dieser Unterhaltung suchen",
+				"open": "In dieser Unterhaltung suchen",
+				"position": "{current} von {total}",
+				"matches": "{count} Treffer | {count} Treffer",
+				"searching": "Wird gesucht…",
+				"noMatches": "Keine Treffer",
+				"previous": "Vorheriger Treffer",
+				"next": "Nächster Treffer",
+				"close": "Suche schließen",
+				"stillSearching": "{count} Nachricht wird noch gelesen… | {count} Nachrichten werden noch gelesen…",
+				"failed": "{count} Nachricht konnte nicht durchsucht werden. | {count} Nachrichten konnten nicht durchsucht werden.",
+				"retry": "Erneut versuchen",
+				"unsearchable": "{count} verschlüsselte oder signierte Nachricht wird nicht durchsucht. | {count} verschlüsselte oder signierte Nachrichten werden nicht durchsucht.",
+				"loadedOnly": "Nur der geladene Teil der Unterhaltung wird durchsucht.",
+				"earlierFailed": "Ältere Nachrichten konnten nicht geladen werden.",
+				"searchEarlier": "Ältere Nachrichten durchsuchen",
+				"loadingEarlier": "Ältere Nachrichten werden geladen…",
+				"rowCount": "{count} Treffer | {count} Treffer"
+			},
 			"postboxThreadEarlier": {
 				"load": "Ältere Nachrichten laden",
 				"loadCount": "{count} ältere Nachricht laden | {count} ältere Nachrichten laden",
@@ -16944,6 +16965,7 @@
 				"toggleTodayBrowse": "Zwischen Priorität und Alle E-Mails wechseln (Posteingang)",
 				"undoTriage": "Letzte Triage rückgängig machen",
 				"zenMode": "Zen-Modus: nur die aktuelle Aufgabe zeigen",
+				"findInConversation": "In dieser Unterhaltung suchen",
 				"goToAnswer": "Zur Antwortliste",
 				"goToMarketing": "Zu Marketing",
 				"next": "Weiter",
@@ -18310,6 +18332,7 @@
 				"followUpPrompt": "Erinnern",
 				"cancelFollowUp": "Antwort-Erinnerung abbrechen",
 				"translate": "Übersetzen",
+				"find": "In dieser Unterhaltung suchen",
 				"showOriginal": "Original herunterladen (.eml)",
 				"pin": "Unterhaltung anheften",
 				"unpin": "Unterhaltung lösen"

@@ -25,10 +25,12 @@ import { base64ToBytes } from '../../lib/bytes';
  * idempotent (suppression insert + lifecycle transition are both idempotent).
  */
 
+import { v, type Infer } from 'convex/values';
 import { getOptional } from '../../lib/env';
 import { withTimeout } from '../../lib/inputGuards';
 import type { InboundAdapter } from '../pipeline';
 import type { InboundEvent } from '../types';
+import { decodeWebhookBody, decodeWebhookValue } from './webhookBody';
 
 /**
  * Reject a signed SNS envelope whose `Timestamp` is more than this many seconds
@@ -41,37 +43,65 @@ const SNS_TIMESTAMP_TOLERANCE_SECONDS = 300; // 5 minutes
 /** Max time to wait for the SNS signing-certificate fetch before failing closed. */
 const SNS_CERT_FETCH_TIMEOUT_MS = 10_000;
 
-/** SNS message envelope (only the fields we read are declared). */
-interface SnsEnvelope {
-	Type?: string;
-	MessageId?: string;
-	Token?: string;
-	TopicArn?: string;
-	Subject?: string;
-	Message?: string;
-	Timestamp?: string;
-	SignatureVersion?: string;
-	Signature?: string;
-	SigningCertURL?: string;
-	SubscribeURL?: string;
-}
+/**
+ * SNS message envelope (only the fields we read are declared). Checked before
+ * the signature is: every field feeds the canonical string or a host check.
+ */
+const snsEnvelopeValidator = v.object({
+	Type: v.optional(v.string()),
+	MessageId: v.optional(v.string()),
+	Token: v.optional(v.string()),
+	TopicArn: v.optional(v.string()),
+	Subject: v.optional(v.string()),
+	Message: v.optional(v.string()),
+	Timestamp: v.optional(v.string()),
+	SignatureVersion: v.optional(v.string()),
+	Signature: v.optional(v.string()),
+	SigningCertURL: v.optional(v.string()),
+	SubscribeURL: v.optional(v.string()),
+});
 
-/** SES notification payload carried (JSON-encoded) inside `SnsEnvelope.Message`. */
-interface SesNotification {
-	notificationType?: string;
-	eventType?: string;
-	mail?: { messageId?: string; timestamp?: string };
-	bounce?: {
-		bounceType?: string;
-		timestamp?: string;
-		bouncedRecipients?: Array<{ emailAddress?: string; diagnosticCode?: string }>;
-	};
-	complaint?: {
-		timestamp?: string;
-		complainedRecipients?: Array<{ emailAddress?: string }>;
-	};
-	delivery?: { timestamp?: string };
-}
+type SnsEnvelope = Infer<typeof snsEnvelopeValidator>;
+
+/** Which SES event a notification is: decided before any other field is checked. */
+const sesKindValidator = v.object({
+	notificationType: v.optional(v.string()),
+	eventType: v.optional(v.string()),
+});
+
+const SES_ACTIONABLE_KINDS: ReadonlySet<string> = new Set(['Bounce', 'Complaint', 'Delivery']);
+
+/**
+ * The SES notification fields a bounce, complaint or delivery is built from,
+ * carried (JSON-encoded) inside `SnsEnvelope.Message`. An event kind we do not
+ * act on (an open, a send) is acknowledged without checking them.
+ */
+const sesNotificationValidator = v.object({
+	mail: v.optional(
+		v.object({ messageId: v.optional(v.string()), timestamp: v.optional(v.string()) })
+	),
+	bounce: v.optional(
+		v.object({
+			bounceType: v.optional(v.string()),
+			timestamp: v.optional(v.string()),
+			bouncedRecipients: v.optional(
+				v.array(
+					v.object({
+						emailAddress: v.optional(v.string()),
+						diagnosticCode: v.optional(v.string()),
+					})
+				)
+			),
+		})
+	),
+	complaint: v.optional(
+		v.object({
+			timestamp: v.optional(v.string()),
+			complainedRecipients: v.optional(v.array(v.object({ emailAddress: v.optional(v.string()) }))),
+		})
+	),
+	delivery: v.optional(v.object({ timestamp: v.optional(v.string()) })),
+});
 
 /**
  * AWS SNS signing-host pattern (mirrors the AWS SDK's own check). Pins the
@@ -327,7 +357,7 @@ export const sesAdapter: InboundAdapter<'ses'> = {
 
 		let msg: SnsEnvelope;
 		try {
-			msg = JSON.parse(rawBody) as SnsEnvelope;
+			msg = decodeWebhookBody(rawBody, snsEnvelopeValidator, 'ses');
 		} catch {
 			return { ok: false, status: 400, reason: 'Invalid SNS payload' };
 		}
@@ -344,7 +374,7 @@ export const sesAdapter: InboundAdapter<'ses'> = {
 	},
 
 	parseEvent(rawBody): InboundEvent | null {
-		const msg = JSON.parse(rawBody) as SnsEnvelope;
+		const msg = decodeWebhookBody(rawBody, snsEnvelopeValidator, 'ses');
 
 		if (msg.Type === 'SubscriptionConfirmation') {
 			// The dispatcher (network-capable) confirms by GET-ing SubscribeURL.
@@ -354,16 +384,19 @@ export const sesAdapter: InboundAdapter<'ses'> = {
 
 		if (msg.Type !== 'Notification' || !msg.Message) return null;
 
-		let notification: SesNotification;
+		let message: unknown;
 		try {
-			notification = JSON.parse(msg.Message) as SesNotification;
+			message = JSON.parse(msg.Message);
 		} catch {
 			return null;
 		}
 
 		// Configuration-Set event publishing uses `eventType`; the SNS-topic
 		// feedback path uses `notificationType`. Accept either.
-		const kind = notification.notificationType ?? notification.eventType;
+		const kinds = decodeWebhookValue(message, sesKindValidator, 'ses');
+		const kind = kinds.notificationType ?? kinds.eventType;
+		if (kind === undefined || !SES_ACTIONABLE_KINDS.has(kind)) return null;
+		const notification = decodeWebhookValue(message, sesNotificationValidator, 'ses');
 		const providerMessageId = notification.mail?.messageId;
 		const envelopeAt = parseTimestamp(msg.Timestamp, Date.now());
 		const at = parseTimestamp(notification.mail?.timestamp, envelopeAt);

@@ -657,6 +657,28 @@ describe('owlat rollback (GET /snapshot, POST /rollback)', () => {
 		expect((await fetch(`${base}/snapshot`)).status).toBe(401);
 		expect((await fetch(`${base}/rollback`, { method: 'POST' })).status).toBe(401);
 	});
+
+	it('refuses a body that is not a JSON object, and asks a body-less one to name the snapshot', async () => {
+		await update();
+		const send = (body: string | undefined) =>
+			fetch(`${base}/rollback`, { method: 'POST', headers: AUTH, body });
+
+		const malformed = await send('{"snapshot":');
+		expect(malformed.status).toBe(400);
+		expect(((await malformed.json()) as Answer).error).toBe('Request body is not valid JSON');
+
+		const notObject = await send('["snap-abc-0123abcd"]');
+		expect(notObject.status).toBe(400);
+		expect(((await notObject.json()) as Answer).error).toBe(
+			'Invalid request body: $: expected object'
+		);
+
+		const bodyless = await send(undefined);
+		expect(bodyless.status).toBe(400);
+		expect(((await bodyless.json()) as Answer).error).toContain('Name the snapshot to restore');
+
+		expect(commandLines().some(isRestore)).toBe(false);
+	});
 });
 
 describe('after an updater that stopped mid-rollout', () => {

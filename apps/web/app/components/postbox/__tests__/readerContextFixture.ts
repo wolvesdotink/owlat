@@ -19,6 +19,8 @@ export function readerContext(over: Partial<PostboxReaderContext> = {}): Postbox
 		reduced: false,
 		chromeOf: () => ({ detailsTo: null, imageBannerTo: null, hideDanger: false }),
 		quoteReply: null,
+		findOf: () => null,
+		findCountOf: () => 0,
 		...over,
 	};
 }

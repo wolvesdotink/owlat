@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { jsonRequestEvent } from '../../__tests__/nitro';
 
 /**
  * `POST /api/self-update`, the control plane's update trigger.
@@ -23,10 +24,12 @@ vi.mock('~~/server/utils/composeUpdate', () => ({
 	resolveVerifiedComposeTemplate: resolveComposeMock,
 }));
 
-async function callRoute(): Promise<Record<string, unknown>> {
+async function callRoute(
+	body: unknown = { targetVersion: '0.4.17' }
+): Promise<Record<string, unknown>> {
 	const mod = await import('../self-update.post');
 	const handler = mod.default as unknown as (event: unknown) => Promise<Record<string, unknown>>;
-	return handler({});
+	return handler(jsonRequestEvent(body));
 }
 
 function updaterResponse(status: number, payload: unknown) {
@@ -38,16 +41,18 @@ beforeEach(() => {
 	resolveComposeMock.mockReset().mockResolvedValue('services: {}\n');
 	callUpdaterMock.mockReset();
 	vi.stubGlobal('defineEventHandler', <T>(handler: T) => handler);
-	vi.stubGlobal(
-		'readBody',
-		vi.fn(async () => ({ targetVersion: '0.4.17' }))
-	);
 	vi.stubGlobal('createError', (opts: { statusCode: number; message: string; data?: unknown }) =>
 		Object.assign(new Error(opts.message), { statusCode: opts.statusCode, data: opts.data })
 	);
 });
 
 describe('POST /api/self-update', () => {
+	it('refuses a numeric targetVersion with 400 before fetching a template', async () => {
+		await expect(callRoute({ targetVersion: 17 })).rejects.toMatchObject({ statusCode: 400 });
+		expect(resolveComposeMock).not.toHaveBeenCalled();
+		expect(callUpdaterMock).not.toHaveBeenCalled();
+	});
+
 	it('answers a started-but-not-healthy rollout as a success with a warning', async () => {
 		callUpdaterMock.mockResolvedValue(
 			updaterResponse(500, {
