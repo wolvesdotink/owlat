@@ -121,6 +121,7 @@ else
 	default_header="FAIL: {n} new entr(y/ies) not in {baseline}:"
 	default_advice="Fix them. Do NOT add new lines to {baseline}; it is frozen debt."
 fi
+[ $# -gt 0 ] || usage "no generator command after --"
 [ -n "$new_header" ] || new_header="$default_header"
 [ -n "$new_advice" ] || new_advice="$default_advice"
 

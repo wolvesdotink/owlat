@@ -159,6 +159,17 @@ describe('the ratchet runner, when it cannot compare', () => {
 	});
 });
 
+describe('the ratchet runner, misused', () => {
+	it.each([
+		['--baseline', ['--baseline', 'baseline.txt']],
+		['--zero', ['--zero']],
+	])('refuses to run %s without a generator command', (_mode, flags) => {
+		const run = spawnSync('bash', [RATCHET, ...flags, '--'], { encoding: 'utf8' });
+		expect(run.stderr).toContain('no generator command after --');
+		expect(run.status).toBe(2);
+	});
+});
+
 describe('the ratchet runner, reseeding', () => {
 	it('writes the current set and keeps the baseline’s comment header', () => {
 		const run = ratchet({
