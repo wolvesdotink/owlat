@@ -39,7 +39,7 @@ describe.runIf(dockerRedisAvailable())('complaint deduplication on standalone Re
 	beforeAll(async () => {
 		fixture = await startRedisStandaloneFixture('fbl');
 		redis = fixture.client;
-	}, 15_000);
+	});
 
 	afterAll(async () => {
 		await stopRedisStandaloneFixture(fixture);
@@ -55,7 +55,7 @@ describe.runIf(dockerRedisAvailable())('complaint deduplication on standalone Re
 		expect(await redis.hget(reservation.reservation.key, 'version')).toBe('2');
 		expect(await redis.hget(reservation.reservation.key, 'status')).toBe('reserved');
 		expect(await redis.get(legacyKey)).toBe('1');
-	}, 10_000);
+	});
 
 	it('retains one effect application across release and retry', async () => {
 		const identity = `legacy-retry-${suffix}`;
@@ -74,7 +74,7 @@ describe.runIf(dockerRedisAvailable())('complaint deduplication on standalone Re
 
 		expect(apply).toHaveBeenCalledOnce();
 		expect(await reserveComplaint(redis, identity)).toEqual({ kind: 'completed' });
-	}, 10_000);
+	});
 });
 
 describe.runIf(dockerRedisAvailable())('complaint deduplication on Redis Cluster', () => {
@@ -85,7 +85,7 @@ describe.runIf(dockerRedisAvailable())('complaint deduplication on Redis Cluster
 	beforeAll(async () => {
 		fixture = await startRedisClusterFixture('fbl');
 		cluster = fixture.client;
-	}, 60_000);
+	});
 
 	afterAll(() => {
 		stopRedisClusterFixture(fixture);
@@ -119,14 +119,14 @@ describe.runIf(dockerRedisAvailable())('complaint deduplication on Redis Cluster
 		expect(await reserveComplaint(cluster as never, 'cluster-complaint')).toEqual({
 			kind: 'completed',
 		});
-	}, 15_000);
+	});
 
 	it('accepts owned-v2 after quiescence even while a legacy marker remains', async () => {
 		await cluster.set('mta:fbl:dedup:shadow-cluster-complaint', '1', 'EX', 60);
 		const result = await reserveComplaint(cluster as never, 'shadow-cluster-complaint');
 		if (result.kind !== 'reserved') throw new Error('expected reservation');
 		expect(await cluster.hget(result.reservation.key, 'version')).toBe('2');
-	}, 15_000);
+	});
 
 	it('does not mutate or refresh a residual legacy key while reserving v2', async () => {
 		const key = 'mta:fbl:dedup:legacy-cluster-complaint';
@@ -137,7 +137,7 @@ describe.runIf(dockerRedisAvailable())('complaint deduplication on Redis Cluster
 		);
 		expect(await cluster.get(key)).toBe('1');
 		expect(await cluster.ttl(key)).toBeGreaterThanOrEqual(before - 1);
-	}, 15_000);
+	});
 
 	it('applies each downstream control once when an old-success marker is replayed', async () => {
 		const complaint = `legacy-success-${suffix}`;
@@ -176,7 +176,7 @@ describe.runIf(dockerRedisAvailable())('complaint deduplication on Redis Cluster
 		expect((await getStats(cluster as never, campaign)).complaints).toBe(1);
 		expect(await cluster.llen(`mta:breaker:{org-${suffix}}:outcomes`)).toBe(1);
 		expect(await cluster.llen(`mta:breaker:{org-${suffix}:provider:gmail}:outcomes`)).toBe(1);
-	}, 15_000);
+	});
 
 	it('keeps every dispatch control atomic and idempotent on Cluster', async () => {
 		const campaign = `dispatch${suffix}`;
@@ -206,5 +206,5 @@ describe.runIf(dockerRedisAvailable())('complaint deduplication on Redis Cluster
 		expect(
 			(await shouldBackoffDomain(cluster as never, 'example.com')).retryAfter
 		).toBeLessThanOrEqual(30_000);
-	}, 15_000);
+	});
 });

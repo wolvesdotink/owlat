@@ -99,5 +99,5 @@ describe('outbound EHLO name end-to-end (PR-64)', () => {
 		expect(started.seen).toContain('mail.test.example');
 		// …and NEVER the OS/container hostname (which has no matching PTR record).
 		expect(started.seen).not.toContain(os.hostname());
-	}, 15000);
+	});
 });

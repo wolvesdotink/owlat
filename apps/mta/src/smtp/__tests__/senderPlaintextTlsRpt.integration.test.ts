@@ -131,7 +131,7 @@ describe('sendToMx records the real TLS-RPT result type per session (PR-24)', ()
 		const details = policy['failure-details']!;
 		expect(details.find((d) => d['result-type'] === 'starttls-not-supported')).toBeDefined();
 		expect(details.find((d) => d['result-type'] === 'success')).toBeUndefined();
-	}, 15000);
+	});
 
 	it('an encrypted delivery (MX advertises STARTTLS) is still recorded as a TLS success', async () => {
 		probe = await startServer({ advertiseStartTls: true });
@@ -146,5 +146,5 @@ describe('sendToMx records the real TLS-RPT result type per session (PR-24)', ()
 		const policy = report.policies[0]!;
 		expect(policy.summary['total-successful-session-count']).toBe(1);
 		expect(policy.summary['total-failure-session-count']).toBe(0);
-	}, 15000);
+	});
 });

@@ -19,11 +19,13 @@ import {
 	WEBHOOK_DLQ_PROTECTED_KEY,
 } from '../dlq.js';
 import { createTestConfig } from '../../__tests__/helpers/fixtures.js';
+import { corruptDuePrefixIsQuarantined, exhaustedDuePrefixDrains } from './duePrefixCases.js';
 import type { MtaRoutingReentry } from '@owlat/mta-protocol';
 import type { MtaWebhookEvent } from '../../types.js';
 
 const TRANSPORT_FAILURE = { category: 'transport' } as const;
-const LARGE_BATCH_TEST_TIMEOUT_MS = 20_000;
+/** A sweep page small enough for ioredis-mock's interpreted Lua. */
+const MOCK_SCAN_PAGE = { limit: 2, scanLimit: 10 };
 
 vi.mock('../../monitoring/logger.js', () => ({
 	logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -331,94 +333,15 @@ describe('dlq', () => {
 			}
 		}
 
-		it(
-			'drains a legacy >1000 exhausted due prefix without deleting inspectable rows',
-			async () => {
-				const pipeline = redis.pipeline();
-				for (let index = 0; index < 1_001; index++) {
-					const id = `exhausted-${index}`;
-					pipeline.hset(
-						WEBHOOK_DLQ_ENTRIES_KEY,
-						id,
-						JSON.stringify({
-							dlqId: id,
-							event: createTestEvent({ messageId: id }),
-							failure: TRANSPORT_FAILURE,
-							attempts: 8,
-							createdAt: index,
-						})
-					);
-					pipeline.hset(WEBHOOK_DLQ_ENTRIES_KEY, `attempts:${id}`, '8');
-					pipeline.zadd(WEBHOOK_DLQ_CREATED_KEY, index, id);
-					pipeline.zadd(WEBHOOK_DLQ_DUE_KEY, index + 60_000, id);
-				}
-				await pipeline.exec();
-				await seedRaw('routing-reentry-due', 0, 2_000);
+		// The sweeper's own page, and its Lua argument lists, run against real
+		// Redis in dlq.integration.test.ts; here the same cases use a small page.
+		it('drains a legacy exhausted due prefix longer than one scan page without deleting inspectable rows', async () => {
+			await exhaustedDuePrefixDrains(redis, MOCK_SCAN_PAGE);
+		});
 
-				const firstPage = await listEligibleIds(redis, {
-					now: 1_000_000,
-					limit: 50,
-					scanLimit: 1_000,
-					autoRetryLimit: 8,
-				});
-				expect(firstPage).toEqual([]);
-
-				const secondPage = await listEligibleIds(redis, {
-					now: 1_000_000,
-					limit: 50,
-					scanLimit: 1_000,
-					autoRetryLimit: 8,
-				});
-				expect(secondPage).toContain('routing-reentry-due');
-				expect(
-					await claimOne(redis, 'routing-reentry-due', {
-						owner: 'sweeper-second-pass',
-						now: 1_000_000,
-						requireDue: true,
-						enforceAutoLimit: true,
-						autoRetryLimit: 8,
-					})
-				).not.toBeNull();
-				expect(
-					(await listFailed(redis, 2_000)).entries.filter((entry) => entry.attempts === 8)
-				).toHaveLength(1_001);
-			},
-			LARGE_BATCH_TEST_TIMEOUT_MS
-		);
-
-		it(
-			'atomically quarantines a >1000 corrupt due prefix and exposes valid work immediately',
-			async () => {
-				const pipeline = redis.pipeline();
-				for (let index = 0; index < 1_001; index++) {
-					const id = `corrupt-${String(index).padStart(4, '0')}`;
-					pipeline.hset(WEBHOOK_DLQ_ENTRIES_KEY, id, '{malformed');
-					pipeline.zadd(WEBHOOK_DLQ_CREATED_KEY, index, id);
-					pipeline.zadd(WEBHOOK_DLQ_DUE_KEY, index, id);
-				}
-				pipeline.hset(
-					WEBHOOK_DLQ_ENTRIES_KEY,
-					'valid-after-corrupt',
-					JSON.stringify({
-						dlqId: 'valid-after-corrupt',
-						event: createTestEvent({ messageId: 'valid-after-corrupt' }),
-						failure: TRANSPORT_FAILURE,
-						attempts: 0,
-						createdAt: 2_000,
-					})
-				);
-				pipeline.hset(WEBHOOK_DLQ_ENTRIES_KEY, 'attempts:valid-after-corrupt', '0');
-				pipeline.zadd(WEBHOOK_DLQ_CREATED_KEY, 2_000, 'valid-after-corrupt');
-				pipeline.zadd(WEBHOOK_DLQ_DUE_KEY, 2_000, 'valid-after-corrupt');
-				await pipeline.exec();
-
-				const ids = await listEligibleIds(redis, { now: 10_000, limit: 50, scanLimit: 2_000 });
-				expect(ids).toEqual(['valid-after-corrupt']);
-				expect(await redis.zcard(WEBHOOK_DLQ_DUE_KEY)).toBe(1);
-				expect(await redis.zcard(WEBHOOK_DLQ_CREATED_KEY)).toBe(1);
-			},
-			LARGE_BATCH_TEST_TIMEOUT_MS
-		);
+		it('atomically quarantines a corrupt due prefix longer than one scan page and exposes valid work immediately', async () => {
+			await corruptDuePrefixIsQuarantined(redis, MOCK_SCAN_PAGE);
+		});
 
 		it('does not let list-side corrupt cleanup steal a live claim', async () => {
 			const id = 'claimed-corrupt';
