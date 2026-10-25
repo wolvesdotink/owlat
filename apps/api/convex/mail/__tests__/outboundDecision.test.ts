@@ -209,6 +209,47 @@ describe('decideAfterSent', () => {
 	});
 });
 
+describe('every decision', () => {
+	it('is the same on every evaluation and leaves its inputs alone', () => {
+		const draft = {
+			state: 'pending_send' as const,
+			undoToken: 'tok',
+			fromAddress: 'pat@a.test',
+			mailboxId: THREAD_MAILBOX,
+			sendAsMailboxId: PERSONAL_MAILBOX,
+			toAddresses: ['a@x.test'],
+			ccAddresses: ['a@x.test', 'b@x.test'],
+			bccAddresses: [] as string[],
+		};
+		const sentInput = {
+			draft: {
+				bodyHtml: '<p>Hi</p>',
+				bodyText: 'Hi',
+				attachments: [{ filename: 'a.pdf', contentType: 'application/pdf', size: 3 }],
+			} as Parameters<typeof sentContext>[0]['draft'],
+			rawStorageId: RAW,
+			storedSize: 1,
+			isFlagEnabled: true,
+			encryptionInfo: { isSealed: false as const, reason: 'recipient_no_key' as const },
+			rfc822MessageId: '<m1@a.test>',
+			inReplyToHeaderValue: '<p1@a.test>',
+			referencesHeaderValue: '<r1@a.test>',
+		};
+		const refusal = { ok: false as const, reason: 'from_revoked' as const };
+		const inputs = { draft, sentInput, refusal };
+		const snapshot = structuredClone(inputs);
+		const evaluate = () => ({
+			start: decideDispatchStart(DRAFT_ID, draft, 'tok'),
+			context: sentContext(sentInput),
+			after: decideAfterSent(DRAFT_ID, draft, refusal),
+			recipients: dispatchRecipients(draft),
+			mailbox: sendingMailboxId(draft),
+		});
+		expect(evaluate()).toEqual(evaluate());
+		expect(inputs).toEqual(snapshot);
+	});
+});
+
 describe('recipients and the sending mailbox', () => {
 	it('lists every recipient once, To first', () => {
 		expect(

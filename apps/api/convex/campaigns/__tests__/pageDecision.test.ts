@@ -132,9 +132,16 @@ describe('decideHopPlan', () => {
 		});
 	});
 
-	it('is the same plan on every evaluation', () => {
-		const input = { job: job(), capacity: NO_BUDGET, fullPageSize: 500, now: NOW };
+	it('is the same plan on every evaluation and leaves its input alone', () => {
+		const input = {
+			job: job({ planDayKey: utcDayKey(NOW), enqueuedToday: 4_900, planDayIndex: 0 }),
+			capacity: { capacityByDay: [5_000, 5_000], plannedTotal: 8_000, isPlannedTotalCounted: true },
+			fullPageSize: 500,
+			now: NOW,
+		};
+		const snapshot = structuredClone(input);
 		expect(decideHopPlan(input)).toEqual(decideHopPlan(input));
+		expect(input).toEqual(snapshot);
 	});
 });
 
