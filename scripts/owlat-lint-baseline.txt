@@ -193,8 +193,6 @@ apps/api/convex/forms/endpoints.ts	owlat(use-threaded-session)	create
 apps/api/convex/forms/endpoints.ts	owlat(use-threaded-session)	remove
 apps/api/convex/forms/endpoints.ts	owlat(use-threaded-session)	update
 apps/api/convex/globalSearch.ts	owlat(use-threaded-session)	search
-apps/api/convex/inbox/__tests__/inboundIngest.test.ts	owlat(no-polling-loop-in-tests)	for (let round = 0; round < 50; round++) { await new Promise((resolve) => setTimeout(resolve, 0)); await t.finishInProgressScheduledFunctions(); const functions
-apps/api/convex/inbox/__tests__/largeBodiesLifecycle.test.ts	owlat(no-polling-loop-in-tests)	for (let round = 0; round < 50; round++) { await new Promise((resolve) => setTimeout(resolve, 0)); await t.finishInProgressScheduledFunctions(); const functions
 apps/api/convex/inbox/askEagernessSettings.ts	owlat(use-threaded-session)	setAskEagerness
 apps/api/convex/inbox/clarificationMemory.ts	owlat(use-threaded-session)	promoteClarificationMemory
 apps/api/convex/inbox/clarificationMemory.ts	owlat(use-threaded-session)	revokeClarificationMemory
@@ -253,7 +251,6 @@ apps/api/convex/lib/sendProviders/mandrill/client.ts	owlat(no-unchecked-json-cas
 apps/api/convex/lib/sendProviders/mta/index.ts	owlat(no-unchecked-json-cast)	(await response.json()) as Partial<MtaSendAccepted & MtaSendRefused>
 apps/api/convex/mail/__tests__/aiGateParallel.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, 5)
 apps/api/convex/mail/__tests__/draftProvenance.integration.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, 5)
-apps/api/convex/mail/__tests__/outboundDispatchConcurrency.test.ts	owlat(no-polling-loop-in-tests)	while (answered < recipients.length) { await flush(); const open = held.pending.slice(answered); expect(open.length).toBeGreaterThan(0); for (const p of open) p
 apps/api/convex/mail/__tests__/remoteOpOrder.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	120_000
 apps/api/convex/mail/appPasswords.ts	owlat(use-threaded-session)	revokeAll
 apps/api/convex/mail/arrival/__tests__/transactionLimits.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	120_000
@@ -369,26 +366,19 @@ apps/imap/src/__tests__/server.handshake.test.ts	owlat(no-wall-clock-in-tests)	D
 apps/imap/src/__tests__/tlsReload.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	30000
 apps/imap/src/commands/__tests__/messageSets.test.ts	owlat(no-wall-clock-in-tests)	performance.now()
 apps/imap/src/commands/__tests__/messageSets.test.ts	owlat(no-wall-clock-in-tests)	performance.now()
-apps/imap/src/commands/__tests__/sequenceView.test.ts	owlat(no-polling-loop-in-tests)	for (let i = 0; i < 200; i++) { const done = lines(); if (tags.every((tag) => done.some((l) => l.startsWith(`${tag} `)))) return; await new Promise((resolve) =>
 apps/imap/src/commands/append/index.ts	owlat(no-unchecked-json-cast)	(await uploadRes.json()) as { storageId: string }
-apps/imap/src/commands/fetch/__tests__/backpressure.test.ts	owlat(no-polling-loop-in-tests)	for (;;) { const text = Buffer.concat(chunks.slice(-2)).toString('latin1'); if (text.includes(`\r\n${tag} `) && text.endsWith('\r\n')) return; await new Promise
-apps/imap/src/commands/fetch/__tests__/backpressure.test.ts	owlat(no-polling-loop-in-tests)	for (let i = 0; i < 100 && b.counts.downloads !== last; i++) { last = b.counts.downloads; await new Promise((resolve) => setTimeout(resolve, 50)); peakQueued =
 apps/imap/src/commands/fetch/__tests__/backpressure.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, 1)
 apps/imap/src/commands/fetch/__tests__/backpressure.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, 30)
 apps/imap/src/commands/fetch/__tests__/backpressure.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, 5)
-apps/imap/src/commands/fetch/__tests__/backpressure.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, 5)
-apps/imap/src/commands/fetch/__tests__/backpressure.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, 50)
 apps/imap/src/commands/fetch/__tests__/backpressure.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	30_000
 apps/imap/src/commands/fetch/__tests__/rawBatching.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, (100 - (uid % 100)) / 20)
 apps/imap/src/commands/fetch/__tests__/rawBatching.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, n)
 apps/imap/src/commands/helpers/__tests__/folderTree.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	30_000
 apps/imap/src/commands/helpers/__tests__/seqMap.test.ts	owlat(no-wall-clock-in-tests)	performance.now()
 apps/imap/src/commands/helpers/__tests__/seqMap.test.ts	owlat(no-wall-clock-in-tests)	performance.now()
-apps/mail-sync/src/__tests__/backfill.test.ts	owlat(no-polling-loop-in-tests)	while (!rec.progress.length) { for (const release of uploads.splice(0)) release(); await new Promise((resolve) => setTimeout(resolve, 0)); }
 apps/mail-sync/src/__tests__/connection.disconnected.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	2000
 apps/mail-sync/src/__tests__/connection.disconnected.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	2000
 apps/mail-sync/src/__tests__/connection.disconnected.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	2000
-apps/mail-sync/src/__tests__/connection.forwardPipeline.test.ts	owlat(no-polling-loop-in-tests)	while (ingest.commitIngest.mock.calls.length < 5) { for (const release of releases.splice(0).reverse()) release(); await new Promise((resolve) => setTimeout(res
 apps/mail-sync/src/ingest.ts	owlat(no-unchecked-json-cast)	(await response.json()) as { storageId: string; size: number }
 apps/marketing/app/composables/useDesktopDownload.ts	owlat(no-unchecked-json-cast)	(await res.json()) as { assets?: { name: string; browser_download_url: string }[]; }
 apps/mta/src/auth/credentials.ts	owlat(no-unchecked-json-cast)	JSON.parse(data) as OrgCredential
@@ -462,29 +452,17 @@ apps/mta/src/webhooks/__tests__/dlq.test.ts	owlat(no-test-timeout-or-unreasoned-
 apps/mta/src/webhooks/__tests__/dlq.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	LARGE_BATCH_TEST_TIMEOUT_MS
 apps/setup-cli/src/commands/doctorRun.ts	owlat(no-unchecked-json-cast)	JSON.parse(await readFile(statePath, 'utf-8')) as FeatureFlagState
 apps/setup-cli/src/lib/flagState.ts	owlat(no-unchecked-json-cast)	JSON.parse(await file.text()) as FeatureFlagState
-apps/updater/src/__tests__/exec.test.ts	owlat(no-polling-loop-in-tests)	while (Date.now() < until) { const text = existsSync(pidFile) ? readFileSync(pidFile, 'utf-8').trim() : ''; if (text) { const pid = Number(text); strays.push(pi
-apps/updater/src/__tests__/exec.test.ts	owlat(no-polling-loop-in-tests)	while (Date.now() < until) { if (!alive(pid)) return true; await new Promise((resolve) => setTimeout(resolve, 20)); }
 apps/updater/src/__tests__/exec.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, 150)
 apps/updater/src/__tests__/exec.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, 150)
-apps/updater/src/__tests__/exec.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, 20)
-apps/updater/src/__tests__/exec.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, 20)
 apps/updater/src/__tests__/exec.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	STOP_TEST_TIMEOUT_MS
 apps/updater/src/__tests__/exec.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	STOP_TEST_TIMEOUT_MS
 apps/updater/src/__tests__/exec.test.ts	owlat(no-wall-clock-in-tests)	Date.now() - started
-apps/updater/src/__tests__/exec.test.ts	owlat(no-wall-clock-in-tests)	Date.now() < until
-apps/updater/src/__tests__/exec.test.ts	owlat(no-wall-clock-in-tests)	Date.now() < until
 apps/updater/src/__tests__/portProbe.test.ts	owlat(no-wall-clock-in-tests)	Date.now() - startedAt
-apps/updater/src/__tests__/server.test.ts	owlat(no-polling-loop-in-tests)	for (let i = 0; i < 50; i++) { const res = await fetch(`${base}/health`, { headers: AUTH }); if (((await res.json()) as { rolloutInProgress: string | null }).ro
-apps/updater/src/__tests__/server.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(r, 10)
-apps/updater/src/__tests__/shutdown.test.ts	owlat(no-polling-loop-in-tests)	for (let i = 0; i < 250; i++) { if (existsSync(pidFile) && readFileSync(pidFile, 'utf-8').trim()) { return Number(readFileSync(pidFile, 'utf-8')); } await new P
-apps/updater/src/__tests__/shutdown.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, 20)
 apps/updater/src/__tests__/shutdown.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, 200)
 apps/updater/src/snapshot.ts	owlat(no-unchecked-json-cast)	JSON.parse(line) as typeof entry
 apps/web/app/components/postbox/PostboxRecipientField.vue	owlat(no-unchecked-json-cast)	JSON.parse(raw) as { email: string; from: RecipientField }
 apps/web/app/composables/__tests__/usePerfMark.test.ts	owlat(no-wall-clock-in-tests)	performance.now()
 apps/web/app/composables/__tests__/usePerfMark.test.ts	owlat(no-wall-clock-in-tests)	performance.now()
-apps/web/app/composables/__tests__/useServerProvisioning.test.ts	owlat(no-polling-loop-in-tests)	while (!t.commands.some((c) => c.includes('quickstart'))) await settle();
-apps/web/app/composables/__tests__/useServerProvisioning.test.ts	owlat(no-polling-loop-in-tests)	while (!t.localBuilds.length) await settle();
 apps/web/app/composables/emailEditorHandlers.ts	owlat(no-unchecked-json-cast)	(await response.json()) as { storageId?: unknown }
 apps/web/app/composables/emailSettingsRender.ts	owlat(no-unchecked-json-cast)	JSON.parse(blob) as Record<string, SettingsOverlay>
 apps/web/app/composables/emailSettingsRender.ts	owlat(no-unchecked-json-cast)	JSON.parse(state.content) as BlockLikeItem[]
@@ -551,9 +529,6 @@ apps/web/server/api/system/update.post.ts	owlat(no-unchecked-json-cast)	(await u
 apps/web/server/utils/__tests__/updater.test.ts	owlat(no-wall-clock-in-tests)	Date.now() - started
 apps/web/server/utils/authedConvexClient.ts	owlat(no-unchecked-json-cast)	(await tokenResp.json()) as { token?: string | null }
 examples/plugins/deliverability-lab/src/__tests__/html.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	60_000
-packages/email-builder/src/composables/__tests__/useHistory.test.ts	owlat(no-polling-loop-in-tests)	while (history.canUndo.value) { history.undo(); await settle(); undoSteps++; }
-packages/email-builder/src/composables/__tests__/useHistory.test.ts	owlat(no-polling-loop-in-tests)	while (history.canUndo.value) { history.undo(); await settle(); undoSteps++; }
-packages/email-builder/src/composables/__tests__/useHistory.test.ts	owlat(no-polling-loop-in-tests)	while (history.canUndo.value) { history.undo(); await settle(); }
 packages/email-builder/src/composables/__tests__/usePreview.perf.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	600_000
 packages/email-builder/src/utils/deltaHistory.ts	owlat(no-unchecked-json-cast)	JSON.parse(JSON.stringify(checkpoint.state)) as HistoryState
 packages/email-renderer/src/draftBodies.ts	owlat(no-unchecked-json-cast)	JSON.parse(draft.bodyBlocks) as EditorBlock[]
@@ -593,7 +568,6 @@ packages/shared/src/deliverabilityDiagnostics.ts	owlat(no-unchecked-json-cast)	J
 packages/shared/src/setupProgress.ts	owlat(no-unchecked-json-cast)	JSON.parse(json) as ProgressEvent
 packages/smtp-listener/src/__tests__/admission.integration.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	20000
 packages/smtp-listener/src/__tests__/auth.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	20000
-packages/smtp-listener/src/__tests__/budget.test.ts	owlat(no-polling-loop-in-tests)	for (let i = 0; i < 100 && !destroyed; i++) { if (!s.write(Buffer.alloc(1024, 1))) { await new Promise((r) => s.once('drain', r)); } await new Promise((r) => se
 packages/smtp-listener/src/__tests__/hostile.integration.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	20000
 packages/smtp-listener/src/__tests__/starttlsReset.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	20000
 packages/smtp-listener/src/__tests__/tls.integration.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	20000
@@ -604,15 +578,9 @@ scripts/__tests__/check-compose-invariants.test.ts	owlat(no-test-timeout-or-unre
 scripts/__tests__/check-compose-socket-access.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	GATE_TIMEOUT_MS
 scripts/__tests__/check-compose-socket-access.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	GATE_TIMEOUT_MS
 scripts/__tests__/ci-coverage.integration.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	120_000
-scripts/__tests__/owlat-quickstart-config.test.ts	owlat(no-polling-loop-in-tests)	while (!existsSync(install.log) && Date.now() - started < 5000) { await new Promise((r) => setTimeout(r, 20)); }
-scripts/__tests__/owlat-quickstart-config.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(r, 20)
-scripts/__tests__/owlat-quickstart-config.test.ts	owlat(no-wall-clock-in-tests)	Date.now() - started
 scripts/__tests__/restore-flags.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	30_000
 scripts/__tests__/restore.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	30_000
 scripts/__tests__/restore.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	30_000
-scripts/__tests__/restore.testlib.ts	owlat(no-polling-loop-in-tests)	while (!existsSync(hanging)) { if (Date.now() > deadline) throw new Error(`never reached the hang point:\n${out}`); await new Promise((resolve) => setTimeout(re
-scripts/__tests__/restore.testlib.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, 20)
-scripts/__tests__/restore.testlib.ts	owlat(no-wall-clock-in-tests)	Date.now() > deadline
 scripts/__tests__/turbo-lint-inputs.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	120_000
 scripts/__tests__/turbo-perf-bench-inputs.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	120_000
 scripts/__tests__/turbo-perf-scenarios-inputs.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	120_000
