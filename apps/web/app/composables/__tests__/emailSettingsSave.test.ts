@@ -42,6 +42,7 @@ const payload = (
 const base = (overrides: Partial<EmailSettingsBase> = {}): EmailSettingsBase => ({
 	content: CONTENT,
 	plainTextOverride: undefined,
+	translations: JSON.stringify({ de: DE }),
 	revision: 7,
 	...overrides,
 });
@@ -384,6 +385,31 @@ describe('emailSettingsSave', () => {
 				expect(swap.update).not.toHaveBeenCalled();
 				expect(swap.setDefaultLanguage).not.toHaveBeenCalled();
 			}
+		});
+
+		it('writes nothing over stored translations it cannot read', async () => {
+			// The form read nothing from the row, so its payload holds a blank
+			// overlay that is valid on its own; saving it would replace the text.
+			const stored = base({ translations: JSON.stringify({ de: 'Recoverable stored text' }) });
+			const blank = JSON.stringify({ de: { subject: '', previewText: '' } });
+			const plain = save({ base: stored, updatePayload: payload({ translations: blank }) });
+			expect(await plain.run()).toMatchObject({ status: 'render-failed' });
+			expect(plain.update).not.toHaveBeenCalled();
+
+			const swap = save({
+				base: stored,
+				selectedDefaultLanguage: 'de',
+				updatePayload: payload({ defaultLanguage: 'de', translations: blank }),
+			});
+			expect(await swap.run()).toMatchObject({ status: 'render-failed' });
+			expect(swap.update).not.toHaveBeenCalled();
+			expect(swap.setDefaultLanguage).not.toHaveBeenCalled();
+		});
+
+		it('saves over a row that has no translations yet', async () => {
+			const { update, run } = save({ base: base({ translations: undefined }) });
+			expect(await run()).toEqual({ status: 'saved' });
+			expect(update).toHaveBeenCalledOnce();
 		});
 	});
 });
