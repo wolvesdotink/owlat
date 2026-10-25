@@ -127,12 +127,13 @@ describe.runIf(dockerRedisAvailable())('IP readiness atomicity on standalone Red
 		});
 	}
 
-	// Past Redis's listpack limit (128 fields) the pending hash is a hash table:
-	// HSCAN pages through it and the drain's deletes shrink it mid-scan. A
-	// flusher that restarted its scan from cursor 0 would rescan an ever longer
-	// drained prefix; on a large enough hash its page limit runs out before it
-	// reaches a marker and the backlog stalls. The recorded cursors prove the
-	// resumption directly, at any size.
+	// Each marker value is longer than Redis's 64-byte `hash-max-listpack-value`,
+	// so the pending hash is a hash table at any field count (the encoding
+	// assertion below pins this): HSCAN pages through it and the drain's deletes
+	// shrink it mid-scan. A flusher that restarted its scan from cursor 0 would
+	// rescan an ever longer drained prefix; on a large enough hash its page limit
+	// runs out before it reaches a marker and the backlog stalls. The recorded
+	// cursors prove the resumption directly, at any size.
 	it('drains a paged hash in cursor order across empty pages, restart, additions, and concurrent flushers', async () => {
 		const initialMarkerCount = 300;
 		const addedMarkerCount = 137;
