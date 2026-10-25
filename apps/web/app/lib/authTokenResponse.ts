@@ -1,4 +1,3 @@
-import { decodeJsonValue, parserDecoder } from '@owlat/worker-protocol/decodeJson';
 import { isRecord } from '@owlat/shared/utils/guards';
 
 /**
@@ -14,18 +13,16 @@ import { isRecord } from '@owlat/shared/utils/guards';
  */
 export type AuthTokenAnswer = { kind: 'token'; token: string | null } | { kind: 'unusable' };
 
-const tokenDecoder = parserDecoder((value): { token: string | null } | null => {
-	if (!isRecord(value)) return null;
-	const { token } = value;
-	if (token === undefined || token === null) return { token: null };
-	return typeof token === 'string' ? { token: token || null } : null;
-}, '$.token: expected a string or null');
-
 /**
  * Read a token endpoint's body as returned by `response.json()`; a caller
  * passes `undefined` for a body that was not JSON.
  */
 export function readAuthTokenAnswer(body: unknown): AuthTokenAnswer {
-	const decoded = decodeJsonValue(body, tokenDecoder);
-	return decoded.ok ? { kind: 'token', token: decoded.value.token } : { kind: 'unusable' };
+	// Checked by this module's own guard, not `@owlat/worker-protocol/decodeJson`:
+	// this runs on the boot path, and that module carries the Convex validator
+	// matcher into the entry bundle.
+	if (!isRecord(body)) return { kind: 'unusable' };
+	const { token } = body;
+	if (token === undefined || token === null) return { kind: 'token', token: null };
+	return typeof token === 'string' ? { kind: 'token', token: token || null } : { kind: 'unusable' };
 }

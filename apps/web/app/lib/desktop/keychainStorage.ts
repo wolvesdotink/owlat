@@ -27,7 +27,6 @@
  * out with (see `desktopAuthClient.ts`), so an answer to the older session can only
  * reach the retired storage.
  */
-import { decodeJsonText, parserDecoder } from '@owlat/worker-protocol/decodeJson';
 import { isRecord } from '@owlat/shared/utils/guards';
 import type { SessionEntry, SessionWriteOutcome } from '@owlat/desktop/src/keychain';
 
@@ -85,24 +84,28 @@ export interface KeychainStorageOptions {
 
 const FLUSH_DEBOUNCE_MS = 150;
 
-/** The blob's string entries; one that is not a string is not a storage value and is dropped. */
-const stringMapDecoder = parserDecoder((value): Record<string, string> | null => {
-	if (!isRecord(value)) return null;
-	const map: Record<string, string> = {};
-	for (const [key, entry] of Object.entries(value)) {
-		if (typeof entry === 'string') map[key] = entry;
-	}
-	return map;
-}, '$: expected an object of strings');
-
 /**
  * A persisted keychain blob as the storage's key/value cache. A corrupt blob
  * (not JSON, not an object) reads as empty: the next auth flow re-populates it.
  */
 export function parseKeychainBlob(blob: string | null): Record<string, string> {
 	if (!blob) return {};
-	const decoded = decodeJsonText(blob, stringMapDecoder);
-	return decoded.ok ? decoded.value : {};
+	// Checked by this module's own guard, not `@owlat/worker-protocol/decodeJson`:
+	// this runs on the boot path, and that module carries the Convex validator
+	// matcher into the entry bundle.
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(blob);
+	} catch {
+		return {};
+	}
+	if (!isRecord(parsed)) return {};
+	// An entry that is not a string is not a storage value and is dropped.
+	const map: Record<string, string> = {};
+	for (const [key, entry] of Object.entries(parsed)) {
+		if (typeof entry === 'string') map[key] = entry;
+	}
+	return map;
 }
 
 /**

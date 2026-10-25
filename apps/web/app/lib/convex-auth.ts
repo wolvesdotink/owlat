@@ -1,4 +1,3 @@
-import { decodeJsonText, parserDecoder } from '@owlat/worker-protocol/decodeJson';
 import { isRecord } from '@owlat/shared/utils/guards';
 import { isDesktopRuntime } from '~/lib/desktop/activeWorkspace';
 import { desktopConvexTokenRequest } from '~/lib/auth-client';
@@ -66,23 +65,24 @@ function buildTokenRequest(): { url: string; init: RequestInit } | null {
 	};
 }
 
-/** A JWT payload's `exp` (seconds); 0 when it has none, which never caches. */
-const expiryDecoder = parserDecoder((value): number | null => {
-	if (!isRecord(value)) return null;
-	const { exp } = value;
-	if (exp === undefined || exp === null) return 0;
-	return typeof exp === 'number' && Number.isFinite(exp) ? exp : null;
-}, '$.exp: expected a number');
+/** A JWT payload's `exp` (seconds); 0 when it has none or an unusable one, which never caches. */
+function expiryOf(payload: unknown): number {
+	if (!isRecord(payload)) return 0;
+	const { exp } = payload;
+	return typeof exp === 'number' && Number.isFinite(exp) ? exp : 0;
+}
 
 function getTokenExpiry(jwt: string): number {
-	let payload: string;
+	// Checked by this module's own guard, not `@owlat/worker-protocol/decodeJson`:
+	// this runs on the boot path, and that module carries the Convex validator
+	// matcher into the entry bundle.
+	let payload: unknown;
 	try {
-		payload = atob(jwt.split('.')[1] ?? '');
+		payload = JSON.parse(atob(jwt.split('.')[1] ?? ''));
 	} catch {
 		return 0;
 	}
-	const decoded = decodeJsonText(payload, expiryDecoder);
-	return decoded.ok ? decoded.value * 1000 : 0;
+	return expiryOf(payload) * 1000;
 }
 
 function clearCachedToken() {

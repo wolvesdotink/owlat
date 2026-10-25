@@ -14,7 +14,6 @@
  * itself lives in `notificationActions.client.ts`.
  */
 
-import { decodeJsonText, guardDecoder } from '@owlat/worker-protocol/decodeJson';
 import { isRecord } from '@owlat/shared/utils/guards';
 
 /** Where an action has to run, given the workspace its notification came from. */
@@ -65,12 +64,6 @@ interface PendingNotificationAction {
 	payload: CarriedNotificationAction;
 }
 
-/**
- * A stored entry, as an object; its fields are checked where they are used,
- * because one for another workspace must stay put whatever else it holds.
- */
-const pendingDecoder = guardDecoder(isRecord, '$: expected an object');
-
 /** Persist an action for the workspace it belongs to. False when storage failed. */
 export function writePendingAction(
 	storage: Storage,
@@ -98,14 +91,19 @@ export function takePendingAction(
 	activeId: string | null,
 	now: number
 ): { payload: Record<string, unknown>; fresh: boolean } | null {
-	let pending: Record<string, unknown> | null;
+	// Checked by this module's own guard, not `@owlat/worker-protocol/decodeJson`:
+	// this runs on the boot path, and that module carries the Convex validator
+	// matcher into the entry bundle.
+	let parsed: unknown = null;
 	try {
 		const raw = storage.getItem(PENDING_NOTIFICATION_ACTION_KEY);
-		const decoded = raw ? decodeJsonText(raw, pendingDecoder) : null;
-		pending = decoded?.ok ? decoded.value : null;
+		if (raw) parsed = JSON.parse(raw);
 	} catch {
-		pending = null;
+		parsed = null;
 	}
+	// Only the object shape is checked here: an entry for another workspace
+	// must stay put whatever else it holds.
+	const pending = isRecord(parsed) ? parsed : null;
 	if (!pending) return null;
 	if (!activeId || pending['workspaceId'] !== activeId) return null;
 	try {
