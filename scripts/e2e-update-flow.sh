@@ -206,6 +206,10 @@ print_steps() {
 # the convex-deploy command sets it after a successful deploy. A release whose
 # deploy image predates that command leaves it where it was, so it is only
 # checked when the running release's image runs the command.
+deployment_version() {
+	docker compose --profile deploy run --rm -T convex-deploy \
+		sh -c 'convex env get OWLAT_VERSION </dev/null' 2>/dev/null | tail -n1
+}
 check_backend_version() {
 	local version="$1" image backend_version
 	image="$(grep -m1 -oE 'ghcr.io/[a-z0-9-]+/convex-deploy:[^[:space:]]+' docker-compose.yml)"
@@ -213,8 +217,7 @@ check_backend_version() {
 		echo "  ($version's convex-deploy image does not set the deployment's OWLAT_VERSION)"
 		return 0
 	fi
-	backend_version="$(docker compose --profile deploy run --rm -T convex-deploy \
-		sh -c 'convex env get OWLAT_VERSION </dev/null' 2>/dev/null | tail -n1)" ||
+	backend_version="$(deployment_version)" ||
 		fail "could not read OWLAT_VERSION from the Convex deployment"
 	[[ "$backend_version" == "$version" ]] ||
 		fail "the Convex deployment reports OWLAT_VERSION=$backend_version, not $version"

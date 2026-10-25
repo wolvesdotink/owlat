@@ -211,6 +211,12 @@ verify_rolled_back() {
 	wait_for_web || fail "web does not answer after the rollback"
 	pass "web answers at $FROM"
 	check_backend_version "$FROM"
+	# TO's deploy wrote its version into the deployment's environment, which
+	# lives in the Convex data: the restore takes it back even where FROM's
+	# image sets none of its own.
+	[[ "$(deployment_version || true)" != "$TO" ]] ||
+		fail "the Convex deployment still reports OWLAT_VERSION=$TO, so its data was not restored"
+	pass "the Convex deployment no longer reports $TO"
 
 	[[ "$(redis_cli GET "$SENTINEL_KEY")" == "$sentinel" ]] ||
 		fail "the Redis sentinel is $(redis_cli GET "$SENTINEL_KEY"), not the value written at $FROM"
