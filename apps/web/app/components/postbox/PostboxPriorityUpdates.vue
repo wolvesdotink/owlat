@@ -18,7 +18,7 @@ const props = defineProps<{
 	activeMessageId: string | null;
 }>();
 
-const emit = defineEmits<{ select: [messageId: string] }>();
+const emit = defineEmits<{ select: [messageId: string | null] }>();
 
 const { t } = useI18n();
 const isOpen = ref(false);

@@ -15,6 +15,7 @@ import { postboxListEmptyState } from '~/utils/postboxListEmptyState';
 import { useShortcutLabels } from '~/composables/useShortcutLabels';
 import { usePostboxListQuery } from '~/composables/postbox/usePostboxPlacementFilter';
 import { provideBriefLines } from '~/composables/postbox/usePostboxBriefLines';
+import { usePostboxListDeletedOpenRow } from '~/composables/postbox/usePostboxDeletedOpenRow';
 
 const props = defineProps<{
 	mailboxId: Id<'mailboxes'>;
@@ -58,7 +59,8 @@ const props = defineProps<{
 
 const emit = defineEmits<{
 	(e: 'load-more'): void;
-	(e: 'select', messageId: string): void;
+	/** Show this row in place; null closes the preview (its row was deleted). */
+	(e: 'select', messageId: string | null): void;
 	(e: 'clear-filter'): void;
 }>();
 
@@ -100,6 +102,16 @@ const {
 const visibleIds = computed(() => visibleMessages.value.map((m) => m._id));
 defineExpose({ visibleIds });
 
+// Deleting the open conversation from this list moves the reader off it.
+const { isTrashFolder } = usePostboxListDeletedOpenRow({
+	mailboxId: mailboxIdRef,
+	orderedIds: visibleIds,
+	list: props,
+	select: (id) => emit('select', id),
+	folderKey,
+	query: listQuery,
+});
+
 // The triage verbs themselves (one action source for the hover buttons, the
 // context menu, the long-press menu and the single-key shortcuts), including
 // the optimistic hide/restore and the "Undo — Cmd+Z" registration.
@@ -122,6 +134,7 @@ const {
 	unhide: unhideRow,
 	setFlags: setRowFlags,
 	clearFlags: clearRowFlags,
+	isTrashFolder,
 });
 
 // r/a/f on a row open Answer mode on that message. No kind for `r`: Answer mode

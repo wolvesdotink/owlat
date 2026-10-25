@@ -31,6 +31,7 @@ import {
 	optimisticTrash,
 } from '~/lib/mailOptimistic/mailUpdaters';
 import { usePostboxPinAction } from './usePostboxPins';
+import { leaveDeletedOpenRow } from './usePostboxDeletedOpenRow';
 
 export function usePostboxRowTriage(args: {
 	/** Hide a row optimistically while its mutation is in flight. */
@@ -41,6 +42,8 @@ export function usePostboxRowTriage(args: {
 	setFlags: (id: Id<'mailMessages'>, patch: PostboxFlagOverride) => void;
 	/** Drop a row's painted flags — the mutation failed, the server value wins. */
 	clearFlags: (id: Id<'mailMessages'>) => void;
+	/** True for the mailbox's Trash folder: a move there is a delete. */
+	isTrashFolder?: (folderId: Id<'mailFolders'>) => boolean;
 }) {
 	const { t } = useI18n();
 	const triageUndo = usePostboxTriageUndo();
@@ -98,6 +101,9 @@ export function usePostboxRowTriage(args: {
 	 * is shown rather than one per call: its rows and the ones not yet sent come
 	 * back, and what the earlier calls moved stays moved under ONE Undo entry.
 	 * Resolves to whether every call landed.
+	 *
+	 * A delete (`isDelete`) also takes the reader off the open conversation when
+	 * it is among `ids`, and brings it back if that row's call fails.
 	 */
 	async function runRemoving(
 		ids: Id<'mailMessages'>[],
@@ -107,8 +113,11 @@ export function usePostboxRowTriage(args: {
 			BackendOperationResult<{
 				moved: Parameters<typeof triageUndo.registerMoveBack>[0]['moved'];
 			} | null>
-		>
+		>,
+		isDelete = false
 	) {
+		// Before the hide: the reader's next row comes from the order on screen.
+		const returnToOpenRow = isDelete ? leaveDeletedOpenRow(ids) : null;
 		for (const id of ids) args.hide(id);
 		const landed: Id<'mailMessages'>[] = [];
 		const moved: Parameters<typeof triageUndo.registerMoveBack>[0]['moved'] = [];
@@ -122,7 +131,9 @@ export function usePostboxRowTriage(args: {
 			landed.push(...chunk);
 			moved.push(...outcome.result.moved);
 		}
-		for (const id of ids.slice(landed.length)) args.unhide(id);
+		const failed = ids.slice(landed.length);
+		for (const id of failed) args.unhide(id);
+		if (failed.length > 0) returnToOpenRow?.(failed);
 		if (moved.length > 0) {
 			triageUndo.registerMoveBack({
 				label: undoLabel(landed.length),
@@ -163,7 +174,8 @@ export function usePostboxRowTriage(args: {
 			[id],
 			() => t('components.postbox.postboxThreadList.trashedUndo'),
 			{ kind: 'trashed' },
-			(chunk) => trashOp.run({ messageIds: chunk })
+			(chunk) => trashOp.run({ messageIds: chunk }),
+			true
 		);
 
 	/**
@@ -180,7 +192,8 @@ export function usePostboxRowTriage(args: {
 							? t('shared.postbox.usePostboxBulkActions.undo.movedMany', { count })
 							: t('components.postbox.postboxThreadList.movedUndo'),
 					{ kind: 'moved', scope: targetFolderId },
-					(chunk) => moveOp.run({ messageIds: chunk, targetFolderId })
+					(chunk) => moveOp.run({ messageIds: chunk, targetFolderId }),
+					args.isTrashFolder?.(targetFolderId) === true
 				);
 
 	const moveMsg = (id: Id<'mailMessages'>, targetFolderId: Id<'mailFolders'>) =>

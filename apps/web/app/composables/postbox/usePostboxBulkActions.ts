@@ -18,6 +18,7 @@ import {
 	optimisticSetFlags,
 	optimisticTrash,
 } from '~/lib/mailOptimistic/mailUpdaters';
+import { leaveDeletedOpenRow } from './usePostboxDeletedOpenRow';
 
 /** Provenance of the current selection, for the header's count line. */
 interface SelectAllMatchingState {
@@ -196,10 +197,17 @@ export function usePostboxBulkActions(mailboxId: Ref<Id<'mailboxes'> | null>) {
 		clear();
 	}
 
+	// A delete takes the reader off the open conversation when the selection
+	// holds it, before the rows leave (usePostboxDeletedOpenRow).
 	async function trashSelected() {
 		if (ids.value.length === 0) return;
-		const result = await trash.run({ messageIds: ids.value });
-		if (!result.ok) return;
+		const messageIds = ids.value;
+		const returnToOpenRow = leaveDeletedOpenRow(messageIds);
+		const result = await trash.run({ messageIds });
+		if (!result.ok) {
+			returnToOpenRow(messageIds);
+			return;
+		}
 		if (result.result?.moved) {
 			triageUndo.registerMoveBack({
 				label: undoLabel('trashed', result.result.moved.length),
@@ -218,15 +226,25 @@ export function usePostboxBulkActions(mailboxId: Ref<Id<'mailboxes'> | null>) {
 	 */
 	async function purgeSelected(messageIds: Id<'mailMessages'>[] = ids.value) {
 		if (messageIds.length === 0) return;
+		const returnToOpenRow = leaveDeletedOpenRow(messageIds);
 		const result = await purge.run({ messageIds });
-		if (!result.ok) return;
+		if (!result.ok) {
+			returnToOpenRow(messageIds);
+			return;
+		}
 		clear();
 	}
 
-	async function moveSelected(targetFolderId: Id<'mailFolders'>) {
+	/** `isTrash`: the target is the Trash folder, so the move is a delete. */
+	async function moveSelected(targetFolderId: Id<'mailFolders'>, isTrash = false) {
 		if (ids.value.length === 0) return;
-		const result = await move.run({ messageIds: ids.value, targetFolderId });
-		if (!result.ok) return;
+		const messageIds = ids.value;
+		const returnToOpenRow = isTrash ? leaveDeletedOpenRow(messageIds) : null;
+		const result = await move.run({ messageIds, targetFolderId });
+		if (!result.ok) {
+			returnToOpenRow?.(messageIds);
+			return;
+		}
 		if (result.result.moved) {
 			triageUndo.registerMoveBack({
 				label: undoLabel('moved', result.result.moved.length),
