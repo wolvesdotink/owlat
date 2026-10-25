@@ -18,6 +18,7 @@
 
 import { v } from 'convex/values';
 import { validatorDecoder } from '@owlat/worker-protocol/decodeJson';
+import { isRecord } from '@owlat/shared';
 import type { ActionCtx } from '../../_generated/server';
 import { internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
@@ -41,17 +42,51 @@ import type { SealedMime } from '../../e2ee/seal';
 const POSTBOX_SEND_CONCURRENCY = 6;
 
 /**
- * The mail-sync worker's `/send` answer: a per-recipient SMTP verdict. `status`
- * is read as a string so a verdict this build does not know counts as sent,
- * as a missing entry does; only `bounced` is a rejection.
+ * One recipient's verdict in the mail-sync worker's `/send` answer. `status` is
+ * read as a string so a verdict this build does not know counts as sent, as a
+ * missing entry does; only `bounced` is a rejection. `error` is read loosely so
+ * a bounce whose message is not text is still a bounce.
  */
-const decodeExternalSendResult = validatorDecoder(
-	v.object({
-		recipients: v.optional(
-			v.array(v.object({ address: v.string(), status: v.string(), error: v.optional(v.string()) }))
-		),
-	})
+const decodeRecipientVerdict = validatorDecoder(
+	v.object({ address: v.string(), status: v.string(), error: v.optional(v.any()) })
 );
+
+interface RecipientVerdict {
+	address: string;
+	status: string;
+	error?: string;
+}
+
+/**
+ * The readable per-recipient verdicts of a `/send` answer, plus a path-only
+ * description of every part that could not be read. Each entry is checked on
+ * its own: a 2xx answer does not by itself mean SMTP accepted the message (the
+ * worker answers an SMTPUTF8 refusal with a 2xx that bounces every recipient),
+ * so one unreadable entry must not discard the bounces listed next to it.
+ */
+function readExternalSendVerdicts(body: unknown): {
+	verdicts: RecipientVerdict[];
+	unreadable: string[];
+} {
+	if (!isRecord(body)) return { verdicts: [], unreadable: ['$: expected object'] };
+	const recipients = body['recipients'];
+	if (recipients === undefined) return { verdicts: [], unreadable: [] };
+	if (!Array.isArray(recipients)) {
+		return { verdicts: [], unreadable: ['$.recipients: expected array'] };
+	}
+	const verdicts: RecipientVerdict[] = [];
+	const unreadable: string[] = [];
+	recipients.forEach((entry: unknown, i) => {
+		const decoded = decodeRecipientVerdict(entry);
+		if (!decoded.ok) {
+			unreadable.push(decoded.issue.replace(/^\$/, `$.recipients[${i}]`));
+			return;
+		}
+		const { address, status, error } = decoded.value;
+		verdicts.push({ address, status, ...(typeof error === 'string' ? { error } : {}) });
+	});
+	return { verdicts, unreadable };
+}
 
 /**
  * Dispatch a Sent-folder message through the user's external SMTP via the
@@ -160,20 +195,19 @@ export async function dispatchViaExternalWorker(
 		return;
 	}
 
-	// The 2xx means SMTP accepted the message. An answer that does not decode
-	// carries no per-recipient rejection this code can trust, so every recipient
-	// is recorded sent, as for a missing entry; the log says why.
-	const result = decodeExternalSendResult(body);
-	if (!result.ok) {
-		logError(`[Outbound] mail-sync /send answered an unreadable result (${result.issue})`);
+	// Only the parts of the answer that cannot be read fall back to sent, as a
+	// missing entry does: they name no recipient this code could bounce. Every
+	// readable entry keeps its verdict; the log says what was skipped.
+	const { verdicts: perRecipient, unreadable } = readExternalSendVerdicts(body);
+	if (unreadable.length > 0) {
+		logError(`[Outbound] mail-sync /send answered unreadable verdicts (${unreadable.join('; ')})`);
 	}
-	const perRecipient = result.ok ? (result.value.recipients ?? []) : [];
 	for (let i = 0; i < params.recipients.length; i++) {
 		const addr = params.recipients[i]!;
 		const r = perRecipient.find((x) => x.address.toLowerCase() === addr.toLowerCase());
-		// A 2xx response means SMTP accepted the message; a recipient explicitly
-		// flagged 'bounced' is a per-RCPT rejection. Missing entries default to
-		// sent (accepted by the relay).
+		// A recipient flagged 'bounced' was refused (a per-RCPT rejection, or
+		// the worker's SMTPUTF8 refusal of the whole envelope). A recipient with
+		// no readable entry defaults to sent: the worker reported no refusal.
 		if (r && r.status === 'bounced') {
 			await ctx.runMutation(internal.mail.postboxOutboundLifecycle.transition, {
 				mailMessageId: params.mailMessageId,
