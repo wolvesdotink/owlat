@@ -339,6 +339,34 @@ describe('emailSettingsSave', () => {
 			expect(setDefaultLanguage.mock.calls[0]![0].plainTextContent).toBe('Handgeschrieben');
 		});
 
+		it.each([
+			['a non-string subject', { de: { ...DE, subject: 1 } }],
+			['Block text that is not a string', { de: { ...DE, blocks: { b1: { html: ['x'] } } } }],
+			['a language that is not an overlay', { de: 'Deutsch' }],
+		])('writes nothing when the overlays hold %s', async (_case, translations) => {
+			const plain = save({
+				updatePayload: payload({ translations: JSON.stringify(translations) }),
+			});
+			expect(await plain.run()).toMatchObject({ status: 'render-failed' });
+			expect(plain.update).not.toHaveBeenCalled();
+		});
+
+		it('swaps content holding an entry that is not a Block, leaving that entry as it is', async () => {
+			const { setDefaultLanguage, run } = save({
+				selectedDefaultLanguage: 'de',
+				updatePayload: payload({ defaultLanguage: 'de' }),
+				base: base({
+					content: JSON.stringify([...JSON.parse(CONTENT), 'stray']),
+				}),
+			});
+
+			await run();
+
+			const swap = setDefaultLanguage.mock.calls[0]![0];
+			expect(swap.htmlContent).toContain('Hallo Welt');
+			expect(swap.htmlContent).toContain('Klick mich');
+		});
+
 		it('writes nothing when the HTML cannot be rendered', async () => {
 			const plain = save({ updatePayload: payload({ translations: 'not json' }) });
 			expect(await plain.run()).toMatchObject({ status: 'render-failed' });
@@ -346,14 +374,16 @@ describe('emailSettingsSave', () => {
 
 			// The swap is rendered before step 1 is written, so a swap that cannot
 			// be rendered leaves the row untouched too.
-			const swap = save({
-				selectedDefaultLanguage: 'de',
-				updatePayload: payload({ defaultLanguage: 'de' }),
-				base: base({ content: 'not json' }),
-			});
-			expect(await swap.run()).toMatchObject({ status: 'render-failed' });
-			expect(swap.update).not.toHaveBeenCalled();
-			expect(swap.setDefaultLanguage).not.toHaveBeenCalled();
+			for (const content of ['not json', '{"blocks":[]}', 'null']) {
+				const swap = save({
+					selectedDefaultLanguage: 'de',
+					updatePayload: payload({ defaultLanguage: 'de' }),
+					base: base({ content }),
+				});
+				expect(await swap.run()).toMatchObject({ status: 'render-failed' });
+				expect(swap.update).not.toHaveBeenCalled();
+				expect(swap.setDefaultLanguage).not.toHaveBeenCalled();
+			}
 		});
 	});
 });

@@ -5,10 +5,13 @@
  * footer "Aa" affordance flips back to the classic persistent toolbar and
  * persists the choice per user via `useLocalStorage`.
  */
+
+import { readStoredBoolean } from '~/utils/storedValue';
+
 const STORAGE_KEY = 'postbox-composer-persistent-toolbar';
 
 export function usePostboxToolbarPreference() {
-	const { data: persistentToolbar, set } = useLocalStorage(STORAGE_KEY, false);
+	const { data: persistentToolbar, set } = useLocalStorage(STORAGE_KEY, false, readStoredBoolean);
 	function toggleToolbar() {
 		set(!persistentToolbar.value);
 	}

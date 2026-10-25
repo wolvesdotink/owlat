@@ -101,3 +101,31 @@ describe('desktop/connect credentials', () => {
 		expect(w.text()).toContain('Sign-in failed.');
 	});
 });
+
+describe('desktop/connect hand-back', () => {
+	it.each([
+		['an object token', '{"token":{"value":"ott_1"}}'],
+		['a number token', '{"token":42}'],
+		['a body that is not JSON', '<html>proxy</html>'],
+	])('hands nothing back for a token answer with %s', async (_case, body) => {
+		vi.stubGlobal('useAuth', () => ({
+			user: ref({ id: 'user-1' }),
+			isPending: ref(false),
+			signInWithEmail,
+			completeTwoFactorSignIn: vi.fn(),
+		}));
+		const fetchMock = vi.fn(async () => new Response(body, { status: 200 }));
+		vi.stubGlobal('fetch', fetchMock);
+		const before = window.location.href;
+
+		const w = mountConnect();
+		await flushPromises();
+
+		expect(fetchMock).toHaveBeenCalledWith('/api/auth/one-time-token/generate', {
+			credentials: 'include',
+		});
+		expect(w.text()).not.toContain('nonce-1:');
+		expect(w.text()).not.toContain('[object Object]');
+		expect(window.location.href).toBe(before);
+	});
+});

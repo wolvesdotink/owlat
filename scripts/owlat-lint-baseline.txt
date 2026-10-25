@@ -353,57 +353,14 @@ apps/updater/src/__tests__/exec.test.ts	owlat(no-wall-clock-in-tests)	Date.now()
 apps/updater/src/__tests__/portProbe.test.ts	owlat(no-wall-clock-in-tests)	Date.now() - startedAt
 apps/updater/src/__tests__/shutdown.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, 200)
 apps/updater/src/snapshot.ts	owlat(no-unchecked-json-cast)	JSON.parse(line) as typeof entry
-apps/web/app/components/postbox/PostboxRecipientField.vue	owlat(no-unchecked-json-cast)	JSON.parse(raw) as { email: string; from: RecipientField }
 apps/web/app/composables/__tests__/usePerfMark.test.ts	owlat(no-wall-clock-in-tests)	performance.now()
 apps/web/app/composables/__tests__/usePerfMark.test.ts	owlat(no-wall-clock-in-tests)	performance.now()
-apps/web/app/composables/emailEditorHandlers.ts	owlat(no-unchecked-json-cast)	(await response.json()) as { storageId?: unknown }
-apps/web/app/composables/emailSettingsRender.ts	owlat(no-unchecked-json-cast)	JSON.parse(blob) as Record<string, SettingsOverlay>
-apps/web/app/composables/emailSettingsRender.ts	owlat(no-unchecked-json-cast)	JSON.parse(state.content) as BlockLikeItem[]
-apps/web/app/composables/postbox/postboxAttachmentUploads.ts	owlat(no-unchecked-json-cast)	JSON.parse(xhr.responseText) as { storageId: string }
-apps/web/app/composables/postbox/postboxComposeParking.ts	owlat(no-unchecked-json-cast)	JSON.parse(source.fields.bodyBlocks) as unknown[]
-apps/web/app/composables/postbox/usePostboxComposeAttachments.ts	owlat(no-unchecked-json-cast)	(await res.json()) as { storageId: string }
-apps/web/app/composables/postbox/usePostboxComposeHydration.ts	owlat(no-unchecked-json-cast)	JSON.parse(draft.bodyBlocks) as EditorBlock[]
-apps/web/app/composables/postbox/usePostboxComposePageRequest.ts	owlat(no-unchecked-json-cast)	JSON.parse(JSON.stringify(row)) as MirrorFields
-apps/web/app/composables/postbox/usePostboxComposePageRequest.ts	owlat(no-unchecked-json-cast)	JSON.parse(JSON.stringify(source)) as RecoverySource
-apps/web/app/composables/postbox/usePostboxComposePageRequest.ts	owlat(no-unchecked-json-cast)	JSON.parse(JSON.stringify(source)) as RecoverySource
-apps/web/app/composables/postbox/usePostboxOfflineCache.ts	owlat(no-unchecked-json-cast)	JSON.parse(JSON.stringify(value)) as T[]
-apps/web/app/composables/postbox/usePostboxOfflineOutbox.ts	owlat(no-unchecked-json-cast)	JSON.parse(JSON.stringify(payload)) as OfflineComposePayload
-apps/web/app/composables/publishableEmailSave.ts	owlat(no-unchecked-json-cast)	JSON.parse(blob) as Record<string, TranslationOverlay>
-apps/web/app/composables/publishableEmailSave.ts	owlat(no-unchecked-json-cast)	JSON.parse(content) as EditorBlock[]
-apps/web/app/composables/translationSave.ts	owlat(no-unchecked-json-cast)	JSON.parse(JSON.stringify(overlay)) as TranslationOverlay
-apps/web/app/composables/translationSave.ts	owlat(no-unchecked-json-cast)	JSON.parse(row.translations) as Record<string, TranslationOverlay>
-apps/web/app/composables/useAutomationStepConfig.ts	owlat(no-unchecked-json-cast)	JSON.parse(snapshot) as never
-apps/web/app/composables/useDesktopAppSettings.ts	owlat(no-unchecked-json-cast)	JSON.parse(JSON.stringify(settings.value)) as DesktopSettings
-apps/web/app/composables/useDesktopWorkspaces.ts	owlat(no-unchecked-json-cast)	(await res.json()) as InstanceInfo
-apps/web/app/composables/useEmailCoediting.ts	owlat(no-unchecked-json-cast)	JSON.parse(row.content) as EditorBlock[]
-apps/web/app/composables/useEmailCoediting.ts	owlat(no-unchecked-json-cast)	JSON.parse(row.fields) as Record<string, unknown>
-apps/web/app/composables/useEmailEditorCoedit.ts	owlat(no-unchecked-json-cast)	JSON.parse(JSON.stringify(value)) as T
-apps/web/app/composables/useLocalStorage.ts	owlat(no-unchecked-json-cast)	JSON.parse(stored) as T
-apps/web/app/composables/useSegmentFilters.ts	owlat(no-unchecked-json-cast)	parsed = JSON.parse(filters)
-apps/web/app/composables/useSegmentForm.ts	owlat(no-unchecked-json-cast)	JSON.parse(JSON.stringify(filters)) as typeof segmentForm.filters
-apps/web/app/composables/useSettingsForm.ts	owlat(no-unchecked-json-cast)	JSON.parse(JSON.stringify(value)) as T
 apps/web/app/lib/__tests__/analyticsPrivacy.test.ts	owlat(no-wall-clock-in-tests)	performance.now()
 apps/web/app/lib/__tests__/analyticsPrivacy.test.ts	owlat(no-wall-clock-in-tests)	performance.now()
-apps/web/app/lib/convex-auth.ts	owlat(no-unchecked-json-cast)	(await response.json()) as { token?: string | null }
-apps/web/app/lib/desktop/keychainStorage.ts	owlat(no-unchecked-json-cast)	JSON.parse(blob) as Record<string, string>
-apps/web/app/lib/desktop/notificationWorkspace.ts	owlat(no-unchecked-json-cast)	JSON.parse(raw) as Partial<PendingNotificationAction>
-apps/web/app/lib/desktop/workspaceBadgeClient.ts	owlat(no-unchecked-json-cast)	(await res.json()) as { token?: string | null }
-apps/web/app/lib/desktop/workspaceBadgeClient.ts	owlat(no-unchecked-json-cast)	JSON.parse(blob) as Record<string, unknown>
-apps/web/app/lib/desktop/workspaceConnect.ts	owlat(no-unchecked-json-cast)	(await res.json()) as InstanceInfo
-apps/web/app/pages/dashboard/send/emails/[id]/edit.vue	owlat(no-unchecked-json-cast)	JSON.parse(JSON.stringify(blocks.value)) as typeof blocks.value
-apps/web/app/pages/dashboard/send/emails/[id]/edit.vue	owlat(no-unchecked-json-cast)	JSON.parse(JSON.stringify(blocks.value)) as typeof blocks.value
-apps/web/app/pages/desktop/connect.vue	owlat(no-unchecked-json-cast)	(await res.json()) as { token?: string }
 apps/web/app/utils/__tests__/postboxBodyTidy.test.ts	owlat(no-wall-clock-in-tests)	performance.now()
 apps/web/app/utils/__tests__/postboxBodyTidy.test.ts	owlat(no-wall-clock-in-tests)	performance.now()
 apps/web/app/utils/__tests__/postboxDarkMode.test.ts	owlat(no-wall-clock-in-tests)	performance.now()
 apps/web/app/utils/__tests__/postboxDarkMode.test.ts	owlat(no-wall-clock-in-tests)	performance.now()
-apps/web/app/utils/accountJsonExport.ts	owlat(no-unchecked-json-cast)	JSON.parse(rowJson) as Record<string, unknown>
-apps/web/app/utils/answerThreadFiles.ts	owlat(no-unchecked-json-cast)	JSON.parse(raw) as Partial<ThreadFile>
-apps/web/app/utils/doh.ts	owlat(no-unchecked-json-cast)	(await response.json()) as DohResponse
-apps/web/app/utils/postboxDraftMirror.ts	owlat(no-unchecked-json-cast)	JSON.parse(JSON.stringify(fields)) as MirrorFields
-apps/web/app/utils/postboxDraftMirror.ts	owlat(no-unchecked-json-cast)	JSON.parse(fields.bodyBlocks) as unknown[]
-apps/web/app/utils/postboxDraftMirror.ts	owlat(no-unchecked-json-cast)	JSON.parse(raw) as unknown[]
-apps/web/app/utils/storageUpload.ts	owlat(no-unchecked-json-cast)	(await response.json()) as { storageId?: Id<'_storage'> }
 apps/web/e2e/sessionSecrets.ts	owlat(no-unchecked-json-cast)	JSON.parse(json) as StorageState
 apps/web/perf/fixture/assistantStream.ts	owlat(no-unchecked-json-cast)	JSON.parse(payload) as SyntheticAssistantRow[]
 apps/web/perf/fixture/chatHistory.ts	owlat(no-unchecked-json-cast)	JSON.parse(JSON.stringify(rows)) as SyntheticChatRow[]

@@ -27,6 +27,8 @@
  * out with (see `desktopAuthClient.ts`), so an answer to the older session can only
  * reach the retired storage.
  */
+import { decodeJsonText, parserDecoder } from '@owlat/worker-protocol/decodeJson';
+import { isRecord } from '@owlat/shared/utils/guards';
 import type { SessionEntry, SessionWriteOutcome } from '@owlat/desktop/src/keychain';
 
 /** How a storage reaches its keychain entry. */
@@ -83,15 +85,24 @@ export interface KeychainStorageOptions {
 
 const FLUSH_DEBOUNCE_MS = 150;
 
-function parseBlob(blob: string | null): Record<string, string> {
-	if (!blob) return {};
-	try {
-		const parsed = JSON.parse(blob) as Record<string, string>;
-		if (parsed && typeof parsed === 'object') return parsed;
-	} catch {
-		// Corrupt blob — start clean; the next auth flow re-populates it.
+/** The blob's string entries; one that is not a string is not a storage value and is dropped. */
+const stringMapDecoder = parserDecoder((value): Record<string, string> | null => {
+	if (!isRecord(value)) return null;
+	const map: Record<string, string> = {};
+	for (const [key, entry] of Object.entries(value)) {
+		if (typeof entry === 'string') map[key] = entry;
 	}
-	return {};
+	return map;
+}, '$: expected an object of strings');
+
+/**
+ * A persisted keychain blob as the storage's key/value cache. A corrupt blob
+ * (not JSON, not an object) reads as empty: the next auth flow re-populates it.
+ */
+export function parseKeychainBlob(blob: string | null): Record<string, string> {
+	if (!blob) return {};
+	const decoded = decodeJsonText(blob, stringMapDecoder);
+	return decoded.ok ? decoded.value : {};
 }
 
 /**
@@ -106,7 +117,7 @@ export function createKeychainStorage(
 	persistence: SessionPersistence | null,
 	options: KeychainStorageOptions = {}
 ): KeychainSessionStorage {
-	let cache = parseBlob(initial?.value ?? null);
+	let cache = parseKeychainBlob(initial?.value ?? null);
 	const revision = initial?.revision ?? 0;
 	let flushTimer: ReturnType<typeof setTimeout> | null = null;
 	let dirty = false;

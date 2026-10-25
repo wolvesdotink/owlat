@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { reactive } from 'vue';
 
 // Mock the renderer composable. `vi.hoisted` makes the spies exist before the
 // hoisted `vi.mock` factory references them. The HTML stand-in spells out each
@@ -273,6 +274,51 @@ describe('publishableEmailSave', () => {
 			plainTextContent: 'My own words',
 			plainTextOverride: 'My own words',
 		});
+	});
+
+	it.each([
+		['not JSON', '{de:'],
+		['a list', '[]'],
+		['a language that is not an overlay', JSON.stringify({ de: 'Hallo' })],
+		['a non-string subject', JSON.stringify({ de: { subject: 42 } })],
+		['Block text that is not a string', JSON.stringify({ de: { blocks: { b1: { html: 7 } } } })],
+		['a Block entry that is not an object', JSON.stringify({ de: { blocks: { b1: 'Hallo' } } })],
+	])(
+		'refuses to save over translations that are %s, and commits nothing',
+		async (_case, translations) => {
+			const commit = vi.fn().mockResolvedValue(6);
+			await expect(
+				publishableEmailSave({
+					draft: draft(),
+					base: base({ supportedLanguages: ['en', 'de'], translations }),
+					renderOptions,
+					commit,
+				})
+			).rejects.toThrow();
+			expect(commit).not.toHaveBeenCalled();
+		}
+	);
+
+	it('keeps overlay fields it does not render, such as preview text', async () => {
+		const translations = JSON.stringify({
+			de: { subject: 'Hallo', previewText: 'Vorschau', blocks: { b1: { html: 'Hallo' } }, x: 1 },
+		});
+		const payload = await saveAndCapture(
+			draft(),
+			base({ supportedLanguages: ['en', 'de'], translations })
+		);
+		expect(JSON.parse(payload.htmlTranslations).de).toEqual({
+			htmlContent: 'Hallo',
+			subject: 'Hallo',
+		});
+	});
+
+	it('takes the snapshot from a reactive draft, nested proxies included', async () => {
+		const blocks = reactive([text('b1', 'Hi there')]);
+		const payload = await saveAndCapture(draft({ blocks }), base());
+		expect(payload.content).toBe(JSON.stringify([text('b1', 'Hi there')]));
+		(blocks[0]!.content as { html: string }).html = 'Changed later';
+		expect(payload.content).toBe(JSON.stringify([text('b1', 'Hi there')]));
 	});
 
 	it('omits the revision check when the base carries no revision', async () => {

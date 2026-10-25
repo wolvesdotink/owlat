@@ -16,9 +16,12 @@
  *     because conditional deletes are keyed on it.
  */
 import { describe, expect, it } from 'vitest';
+import { isProxy, reactive } from 'vue';
 import {
 	MIRROR_RETENTION_MS,
+	applyMirrorFields,
 	canonicalBlocks,
+	copyMirrorFields,
 	isBlankHtml,
 	isBlankMirrorFields,
 	isMirrorCopyExpired,
@@ -28,6 +31,7 @@ import {
 	mirrorFieldsOfLegacy,
 	mirrorFieldsOfRow,
 	pickNewest,
+	readMirrorBlocks,
 	restoreNeedsConfirmation,
 	sameStoredValue,
 	type LegacyMirrorEntry,
@@ -153,6 +157,12 @@ describe('mirrorFieldsOf vs mirrorFieldsOfRow', () => {
 	it('treats an empty or unparsable stored blocks string as no blocks', () => {
 		expect(mirrorFieldsOfRow({ bodyBlocks: '' }).bodyBlocks).toBe('[]');
 		expect(mirrorFieldsOfRow({ bodyBlocks: '{not json' }).bodyBlocks).toBe('[]');
+	});
+
+	it('treats stored blocks that are JSON but not a list as no blocks', () => {
+		for (const bodyBlocks of ['{}', '{"blocks":[]}', 'null', '"x"']) {
+			expect(mirrorFieldsOfRow({ bodyBlocks }).bodyBlocks).toBe('[]');
+		}
 	});
 
 	// An editor that rebuilds a block in another key order has not changed it.
@@ -390,5 +400,66 @@ describe('mirrorFieldsOfLegacy', () => {
 
 	it('keeps a recorded reminder', () => {
 		expect(mirrorFieldsOfLegacy(legacy({ followUpRemindAt: 42 })).followUpRemindAt).toBe(42);
+	});
+});
+
+describe('readMirrorBlocks', () => {
+	it('reads a stored list as it is, without normalizing its entries', () => {
+		const stored = [{ type: 'text' }, 'legacy', null];
+		expect(readMirrorBlocks(JSON.stringify(stored))).toEqual(stored);
+	});
+
+	it('answers null for anything that is not JSON of a list', () => {
+		for (const raw of ['', '{not json', '{}', 'null', '42'])
+			expect(readMirrorBlocks(raw)).toBeNull();
+	});
+});
+
+describe('applyMirrorFields', () => {
+	function targets(blocks: unknown[]) {
+		return {
+			toAddresses: { value: [] as string[] },
+			ccAddresses: { value: [] as string[] },
+			bccAddresses: { value: [] as string[] },
+			subject: { value: '' },
+			bodyHtml: { value: '' },
+			bodyBlocks: { value: blocks },
+			composerMode: { value: 'simple' as DraftComposerMode },
+			followUpRemindAt: { value: null as number | null },
+		};
+	}
+
+	it('restores readable blocks', () => {
+		const into = targets([]);
+		applyMirrorFields(into, fields({ bodyBlocks: JSON.stringify(BLOCKS) }), ['bodyBlocks']);
+		expect(into.bodyBlocks.value).toEqual(BLOCKS);
+	});
+
+	it("keeps the composer's blocks when the copy's are malformed or not a list", () => {
+		for (const bodyBlocks of ['{nope', '{}', 'null', '"text"']) {
+			const into = targets(BLOCKS);
+			applyMirrorFields(into, fields({ bodyBlocks, subject: 'Restored' }));
+			expect(into.bodyBlocks.value).toBe(BLOCKS);
+			// The rest of the copy is still restored.
+			expect(into.subject.value).toBe('Restored');
+		}
+	});
+});
+
+describe('copyMirrorFields', () => {
+	it('copies every field, with lists of its own', () => {
+		const source = fields({ ccAddresses: ['ruben@northwind.studio'], followUpRemindAt: 5 });
+		const copy = copyMirrorFields(source);
+		expect(copy).toEqual(source);
+		source.toAddresses.push('late@northwind.studio');
+		source.ccAddresses.length = 0;
+		expect(copy.toAddresses).toEqual(['ines@northwind.studio']);
+		expect(copy.ccAddresses).toEqual(['ruben@northwind.studio']);
+	});
+
+	it('gives a plain copy of reactive fields, which IndexedDB can clone', () => {
+		const copy = copyMirrorFields(reactive(fields({ ccAddresses: ['ruben@northwind.studio'] })));
+		expect(isProxy(copy.toAddresses) || isProxy(copy.ccAddresses)).toBe(false);
+		expect(() => structuredClone(copy)).not.toThrow();
 	});
 });

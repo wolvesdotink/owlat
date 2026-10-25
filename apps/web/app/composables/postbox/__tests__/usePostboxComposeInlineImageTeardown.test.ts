@@ -88,6 +88,30 @@ describe('usePostboxComposeAttachments: an inline image upload that outlives its
 		expect(addAttachment).not.toHaveBeenCalled();
 	});
 
+	it.each([
+		['a non-string storage id', JSON.stringify({ storageId: 42 })],
+		['an empty storage id', JSON.stringify({ storageId: '' })],
+		['a body that is not JSON', 'Bad gateway'],
+	])('attaches nothing for an upload response with %s', async (_case, body) => {
+		globalThis.fetch = vi.fn(
+			async () => new Response(body, { status: 200 })
+		) as unknown as typeof fetch;
+		const { usePostboxComposeAttachments } = await import('../usePostboxComposeAttachments');
+		const { result: composer } = withSetup(() =>
+			usePostboxComposeAttachments({
+				ensureDraft: async () => 'draft-a' as never,
+				draftId: ref('draft-a' as never),
+			})
+		);
+
+		const added = await composer.addInlineImage(
+			new File([new Uint8Array([1, 2, 3])], 'chart.png', { type: 'image/png' })
+		);
+
+		expect(added).toBeNull();
+		expect(addAttachment).not.toHaveBeenCalled();
+	});
+
 	it('still attaches an upload that finishes while the composer is open', async () => {
 		const { usePostboxComposeAttachments } = await import('../usePostboxComposeAttachments');
 		const { result: composer } = withSetup(() =>

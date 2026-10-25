@@ -6,8 +6,8 @@ import { ref } from 'vue';
  *
  * The section keys were renamed and extended ('settings' → 'administration',
  * 'preferences' added, 'delivery' removed), so every existing user's stored
- * object is missing the new keys. `useLocalStorage` returns stored JSON verbatim
- * and the sidebar tests each key for truthiness, so a verbatim read would render
+ * object is missing the new keys. The sidebar tests each key for truthiness, so
+ * a verbatim read of the stored object would render
  * the new sections collapsed exactly once — silently, right after an upgrade.
  *
  * `useSidebarState` reads its storage at module scope, so the stub (seeded with a

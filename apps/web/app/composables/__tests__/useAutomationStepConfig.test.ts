@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { effectScope, ref, nextTick } from 'vue';
+import { effectScope, isProxy, ref, nextTick } from 'vue';
 import { useAutomationStepConfig } from '../useAutomationStepConfig';
 import { createTestI18n } from '~/__tests__/i18n';
 import {
@@ -67,6 +67,16 @@ describe('useAutomationStepConfig autosave', () => {
 		expect(calls).toHaveLength(1);
 		expect(calls[0]!.args).toEqual({ stepId: 's1', config: { duration: 5, unit: 'days' } });
 		expect(saveStatus.value).toBe('saving');
+	});
+
+	it('sends a plain copy that an in-place edit made afterwards cannot reach', async () => {
+		const { requestSave, currentConfig } = setup();
+		currentConfig.value = { kind: 'delay', config: { duration: 5, unit: 'days' } };
+		void requestSave();
+		(currentConfig.value!.config as { duration: number }).duration = 9;
+
+		expect(calls[0]!.args.config).toEqual({ duration: 5, unit: 'days' });
+		expect(isProxy(calls[0]!.args.config)).toBe(false);
 	});
 
 	it('keeps an edit made while a save is pending dirty, then saves it once', async () => {

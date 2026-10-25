@@ -13,6 +13,7 @@ const { t } = useI18n();
 useHead({ title: () => t('desktop.connect.pageTitle') });
 definePageMeta({ layout: false });
 
+import { readAuthTokenAnswer } from '~/lib/authTokenResponse';
 import { formatConnectionCode } from '~/lib/desktop/connectionCode';
 import { requiresTwoFactor } from '~/utils/accountTwoFactor';
 import { useCopyToClipboard } from '~/composables/useCopyToClipboard';
@@ -75,10 +76,12 @@ async function generateAndReturn() {
 		// session cookie authorizes the one-time-token generation.
 		const res = await fetch('/api/auth/one-time-token/generate', { credentials: 'include' });
 		if (!res.ok) throw new Error(t('desktop.connect.errors.tokenRequestFailed'));
-		const data = (await res.json()) as { token?: string };
-		if (!data.token) throw new Error(t('desktop.connect.errors.noToken'));
-		connectionCode.value = formatConnectionCode(state.value, data.token);
-		window.location.href = `${redirect.value}?ott=${encodeURIComponent(data.token)}&state=${encodeURIComponent(state.value)}`;
+		const answer = readAuthTokenAnswer(await res.json().catch(() => undefined));
+		if (answer.kind === 'unusable') throw new Error(t('desktop.connect.errors.tokenRequestFailed'));
+		const { token } = answer;
+		if (!token) throw new Error(t('desktop.connect.errors.noToken'));
+		connectionCode.value = formatConnectionCode(state.value, token);
+		window.location.href = `${redirect.value}?ott=${encodeURIComponent(token)}&state=${encodeURIComponent(state.value)}`;
 	} catch (e) {
 		errorMessage.value = e instanceof Error ? e.message : t('desktop.connect.errors.generic');
 		handingBack.value = false;

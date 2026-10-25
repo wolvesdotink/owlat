@@ -1,5 +1,7 @@
 // Composable for managing sidebar state with localStorage persistence
 
+import { readStoredBoolean } from '~/utils/storedValue';
+
 export interface SectionState {
 	inbox: boolean;
 	postbox: boolean;
@@ -36,10 +38,10 @@ const defaultSectionState: SectionState = {
 };
 
 /**
- * Reconcile a persisted section map with the current set of sections.
+ * Reconcile a persisted section map with the current set of sections; the
+ * reader `useLocalStorage` checks the stored value with.
  *
- * `useLocalStorage` returns stored JSON verbatim, and the stored object predates
- * the current keys for anyone who used the sidebar before them ('settings' was
+ * The stored object predates the current keys for anyone who used the sidebar before them ('settings' was
  * renamed to 'administration', 'preferences' was added, 'delivery' was removed).
  * A verbatim read therefore leaves the new keys `undefined`, and the sidebar's
  * plain truthy check renders `undefined` as collapsed — so an upgrade would
@@ -59,9 +61,13 @@ function normalizeSectionState(stored: unknown): SectionState {
 }
 
 // Use module-level storage to maintain singleton pattern across component instances
-const collapsedStorage = useLocalStorage<boolean>('sidebar-collapsed', false);
-const hiddenStorage = useLocalStorage<boolean>('sidebar-hidden', false);
-const sectionsStorage = useLocalStorage<SectionState>('sidebar-sections', defaultSectionState);
+const collapsedStorage = useLocalStorage<boolean>('sidebar-collapsed', false, readStoredBoolean);
+const hiddenStorage = useLocalStorage<boolean>('sidebar-hidden', false, readStoredBoolean);
+const sectionsStorage = useLocalStorage<SectionState>(
+	'sidebar-sections',
+	defaultSectionState,
+	normalizeSectionState
+);
 // Section expand/collapse states, always reconciled against the current sections.
 const normalizedSectionStates = computed<SectionState>(() =>
 	normalizeSectionState(sectionsStorage.data.value)

@@ -8,10 +8,13 @@
  * preference), so it persists via localStorage rather than the Convex settings
  * row.
  */
+
+import { readStoredBoolean } from '~/utils/storedValue';
+
 const STORAGE_KEY = 'postbox-rail-collapsed';
 
 export function usePostboxRailCollapsed() {
-	const { data: collapsed, set } = useLocalStorage(STORAGE_KEY, false);
+	const { data: collapsed, set } = useLocalStorage(STORAGE_KEY, false, readStoredBoolean);
 
 	function toggle() {
 		set(!collapsed.value);

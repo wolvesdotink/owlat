@@ -3,6 +3,7 @@ import type { FunctionReturnType } from 'convex/server';
 import {
 	DEFAULT_INBOX_FILTER,
 	DEFAULT_INBOX_SORT,
+	INBOX_SORTS,
 	inboxAssigneeArg,
 	inboxAssigneeToQuery,
 	inboxFilterToQuery,
@@ -18,6 +19,7 @@ import {
 	type InboxSort,
 } from '~/utils/inboxFilters';
 import { inboxSlaSliceHolds } from '~/utils/inboxSla';
+import { readStoredChoice } from '~/utils/storedValue';
 import { rememberTeamThreadPreviews } from '~/utils/teamThreadPreviews';
 import { useNow } from '~/composables/useNow';
 
@@ -105,7 +107,8 @@ export function useInbox(gate?: Ref<boolean>) {
 	// ── Sort preference, persisted per user (a6 mechanism = useLocalStorage) ──
 	const { data: storedSort, set: setStoredSort } = useLocalStorage<InboxSort>(
 		SORT_STORAGE_KEY,
-		DEFAULT_INBOX_SORT
+		DEFAULT_INBOX_SORT,
+		readStoredChoice(INBOX_SORTS)
 	);
 	// Normalised on read: the stored value predates the "oldest waiting" order,
 	// and a browser holding something unknown must not select a nonexistent

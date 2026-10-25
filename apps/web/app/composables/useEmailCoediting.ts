@@ -4,6 +4,8 @@ import type { Id } from '@owlat/api/dataModel';
 import type { EditorBlock } from '@owlat/email-builder';
 import { coeditBlockKey, type CoeditDocument, type CoeditOp } from '@owlat/shared/coeditOps';
 import { nextDelay, type RetryPolicy } from '@owlat/shared/retryPolicy';
+import { isRecord } from '@owlat/shared/utils/guards';
+import { decodeJsonText, guardDecoder } from '@owlat/worker-protocol/decodeJson';
 import { CoeditSync, type CoeditOutgoing, type CoeditServerState } from '~/lib/coeditSync';
 
 /**
@@ -93,6 +95,32 @@ function serialize({ op, baseVersion }: CoeditOutgoing<EditorBlock>) {
 				baseVersion,
 			};
 	}
+}
+
+/**
+ * A Block of a session document. The document is canonical (the server
+ * stores what the editors sent), so every Block has the id the sync keys it by.
+ */
+function isSessionBlock(value: unknown): value is EditorBlock {
+	return (
+		isRecord(value) &&
+		typeof value['id'] === 'string' &&
+		value['id'] !== '' &&
+		typeof value['type'] === 'string'
+	);
+}
+
+const sessionBlocksDecoder = guardDecoder(
+	(value): value is EditorBlock[] => Array.isArray(value) && value.every(isSessionBlock),
+	'$: expected an array of Blocks'
+);
+const sessionFieldsDecoder = guardDecoder(isRecord, '$: expected an object');
+
+/** The document of a session row, or null when its JSON is not one. */
+function readSessionDoc(row: { content: string; fields: string }): CoeditEditorDoc | null {
+	const blocks = decodeJsonText(row.content, sessionBlocksDecoder);
+	const fields = decodeJsonText(row.fields, sessionFieldsDecoder);
+	return blocks.ok && fields.ok ? { blocks: blocks.value, fields: fields.value } : null;
 }
 
 function isSessionGone(error: unknown): boolean {
@@ -297,15 +325,20 @@ export function useEmailCoediting(opts: EmailCoeditingOptions) {
 			void open();
 			return;
 		}
+		const doc = readSessionDoc(row);
+		if (!doc) {
+			// An unreadable state is never shown or taken as the server's: the
+			// editor keeps what it holds, and a tab still joining edits the
+			// classic way instead.
+			if (status.value === 'connecting') status.value = 'unavailable';
+			return;
+		}
 		const state: CoeditServerState<EditorBlock> = {
 			sessionId: row.sessionId,
 			version: row.version,
 			savedVersion: row.savedVersion,
 			baseRevision: row.baseRevision,
-			doc: {
-				blocks: JSON.parse(row.content) as EditorBlock[],
-				fields: JSON.parse(row.fields) as Record<string, unknown>,
-			},
+			doc,
 		};
 		const local = opts.read();
 		const result = sync.receive(state, local);

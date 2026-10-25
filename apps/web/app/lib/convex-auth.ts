@@ -1,5 +1,8 @@
+import { decodeJsonText, parserDecoder } from '@owlat/worker-protocol/decodeJson';
+import { isRecord } from '@owlat/shared/utils/guards';
 import { isDesktopRuntime } from '~/lib/desktop/activeWorkspace';
 import { desktopConvexTokenRequest } from '~/lib/auth-client';
+import { readAuthTokenAnswer } from '~/lib/authTokenResponse';
 
 let cachedToken: string | null = null;
 let tokenExpiresAt = 0;
@@ -63,13 +66,23 @@ function buildTokenRequest(): { url: string; init: RequestInit } | null {
 	};
 }
 
+/** A JWT payload's `exp` (seconds); 0 when it has none, which never caches. */
+const expiryDecoder = parserDecoder((value): number | null => {
+	if (!isRecord(value)) return null;
+	const { exp } = value;
+	if (exp === undefined || exp === null) return 0;
+	return typeof exp === 'number' && Number.isFinite(exp) ? exp : null;
+}, '$.exp: expected a number');
+
 function getTokenExpiry(jwt: string): number {
+	let payload: string;
 	try {
-		const payload = JSON.parse(atob(jwt.split('.')[1] ?? ''));
-		return (payload.exp ?? 0) * 1000;
+		payload = atob(jwt.split('.')[1] ?? '');
 	} catch {
 		return 0;
 	}
+	const decoded = decodeJsonText(payload, expiryDecoder);
+	return decoded.ok ? decoded.value * 1000 : 0;
 }
 
 function clearCachedToken() {
@@ -102,9 +115,10 @@ async function fetchToken(): Promise<string | null> {
 			);
 		}
 
-		const data = (await response.json()) as { token?: string | null };
-		const token = data.token ?? null;
-
+		const answer = readAuthTokenAnswer(await response.json().catch(() => undefined));
+		// A body that is not a token answer says nothing about the session.
+		if (answer.kind === 'unusable') return fail('unreachable');
+		const { token } = answer;
 		if (!token) return fail('no-session');
 
 		cachedToken = token;

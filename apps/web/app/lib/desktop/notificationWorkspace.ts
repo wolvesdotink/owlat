@@ -14,6 +14,9 @@
  * itself lives in `notificationActions.client.ts`.
  */
 
+import { decodeJsonText, guardDecoder } from '@owlat/worker-protocol/decodeJson';
+import { isRecord } from '@owlat/shared/utils/guards';
+
 /** Where an action has to run, given the workspace its notification came from. */
 export type NotificationWorkspaceRoute =
 	| { kind: 'here' }
@@ -62,6 +65,12 @@ interface PendingNotificationAction {
 	payload: CarriedNotificationAction;
 }
 
+/**
+ * A stored entry, as an object; its fields are checked where they are used,
+ * because one for another workspace must stay put whatever else it holds.
+ */
+const pendingDecoder = guardDecoder(isRecord, '$: expected an object');
+
 /** Persist an action for the workspace it belongs to. False when storage failed. */
 export function writePendingAction(
 	storage: Storage,
@@ -80,34 +89,35 @@ export function writePendingAction(
 
 /**
  * Take the carried action if it belongs to the active workspace. One that
- * belongs to another workspace stays put: it must never run here. The payload
- * is returned unvalidated; the caller resolves it like a live event.
+ * belongs to another workspace stays put: it must never run here. Only the
+ * payload's object shape is checked; the caller resolves its fields like a
+ * live event's.
  */
 export function takePendingAction(
 	storage: Storage,
 	activeId: string | null,
 	now: number
 ): { payload: Record<string, unknown>; fresh: boolean } | null {
-	let pending: Partial<PendingNotificationAction> | null;
+	let pending: Record<string, unknown> | null;
 	try {
 		const raw = storage.getItem(PENDING_NOTIFICATION_ACTION_KEY);
-		pending = raw ? (JSON.parse(raw) as Partial<PendingNotificationAction>) : null;
+		const decoded = raw ? decodeJsonText(raw, pendingDecoder) : null;
+		pending = decoded?.ok ? decoded.value : null;
 	} catch {
 		pending = null;
 	}
-	if (!pending || typeof pending !== 'object') return null;
-	if (!activeId || pending.workspaceId !== activeId) return null;
+	if (!pending) return null;
+	if (!activeId || pending['workspaceId'] !== activeId) return null;
 	try {
 		storage.removeItem(PENDING_NOTIFICATION_ACTION_KEY);
 	} catch {
 		// A failed remove would replay the action on every mount; drop it instead.
 		return null;
 	}
-	if (typeof pending.at !== 'number' || !pending.payload || typeof pending.payload !== 'object') {
-		return null;
-	}
+	const { at, payload } = pending;
+	if (typeof at !== 'number' || !isRecord(payload)) return null;
 	return {
-		payload: pending.payload as unknown as Record<string, unknown>,
-		fresh: pending.at <= now && now - pending.at <= PENDING_ACTION_FRESH_MS,
+		payload,
+		fresh: at <= now && now - at <= PENDING_ACTION_FRESH_MS,
 	};
 }

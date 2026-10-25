@@ -4,6 +4,9 @@
  * reply. Pure: the card lists them, the page attaches them.
  */
 
+import { isRecord } from '@owlat/shared/utils/guards';
+import { decodeJsonText, parserDecoder } from '@owlat/worker-protocol/decodeJson';
+
 /** The message fields the file list reads. */
 export interface ThreadFileSource {
 	_id: string;
@@ -70,30 +73,31 @@ export function threadFilesOf(messages: readonly ThreadFileSource[]): ThreadFile
 	return files;
 }
 
+/**
+ * A dragged thread file chip. The ids and name are required; the rest of the
+ * chip is display detail with a default.
+ */
+const threadFileDecoder = parserDecoder((value): ThreadFile | null => {
+	if (!isRecord(value)) return null;
+	const { messageId, filename, partIndex, contentType, size, receivedAt, fromAddress } = value;
+	if (typeof messageId !== 'string' || typeof filename !== 'string') return null;
+	if (typeof partIndex !== 'string') return null;
+	return {
+		key: `${messageId}:${partIndex}`,
+		messageId,
+		filename,
+		contentType: typeof contentType === 'string' ? contentType : '',
+		size: typeof size === 'number' ? size : 0,
+		partIndex,
+		receivedAt: typeof receivedAt === 'number' ? receivedAt : 0,
+		...(typeof fromAddress === 'string' ? { fromAddress } : {}),
+	};
+}, '$: expected a thread file');
+
 /** Read a thread file back off a drop, or null when the drop is something else. */
 export function threadFileFromDrop(dataTransfer: DataTransfer | null): ThreadFile | null {
 	const raw = dataTransfer?.getData(THREAD_FILE_DRAG_TYPE);
 	if (!raw) return null;
-	try {
-		const parsed = JSON.parse(raw) as Partial<ThreadFile>;
-		if (
-			typeof parsed.messageId !== 'string' ||
-			typeof parsed.filename !== 'string' ||
-			typeof parsed.partIndex !== 'string'
-		) {
-			return null;
-		}
-		return {
-			key: `${parsed.messageId}:${parsed.partIndex}`,
-			messageId: parsed.messageId,
-			filename: parsed.filename,
-			contentType: typeof parsed.contentType === 'string' ? parsed.contentType : '',
-			size: typeof parsed.size === 'number' ? parsed.size : 0,
-			partIndex: parsed.partIndex,
-			receivedAt: typeof parsed.receivedAt === 'number' ? parsed.receivedAt : 0,
-			...(typeof parsed.fromAddress === 'string' ? { fromAddress: parsed.fromAddress } : {}),
-		};
-	} catch {
-		return null;
-	}
+	const decoded = decodeJsonText(raw, threadFileDecoder);
+	return decoded.ok ? decoded.value : null;
 }

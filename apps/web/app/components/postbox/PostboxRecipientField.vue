@@ -2,6 +2,8 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { isValidEmail, normalizeEmail } from '@owlat/shared';
+import { isRecord } from '@owlat/shared/utils/guards';
+import { decodeJsonText, parserDecoder } from '@owlat/worker-protocol/decodeJson';
 import { canonicalEmailAddress, isExternalRecipient } from '~/utils/recipientHints';
 import { suggestRecipientDomain, type DomainSuggestion } from '~/utils/recipientTypo';
 import {
@@ -144,18 +146,25 @@ function onChipDragStart(event: DragEvent, addr: string) {
 		JSON.stringify({ email: addr, from: props.field })
 	);
 }
+const RECIPIENT_FIELDS: readonly RecipientField[] = ['to', 'cc', 'bcc'];
+/** A chip dragged out of a recipient field; anything else is a foreign drag. */
+const recipientDragDecoder = parserDecoder(
+	(value): { email: string; from: RecipientField } | null => {
+		if (!isRecord(value)) return null;
+		const { email, from } = value;
+		if (typeof email !== 'string' || email === '') return null;
+		const field = RECIPIENT_FIELDS.find((name) => name === from);
+		return field ? { email, from: field } : null;
+	},
+	'$: expected { email, from }'
+);
 function onFieldDrop(event: DragEvent) {
 	const raw = event.dataTransfer?.getData('application/x-postbox-recipient');
 	if (!raw) return;
 	event.preventDefault();
-	try {
-		const payload = JSON.parse(raw) as { email: string; from: RecipientField };
-		if (payload.email && payload.from && payload.from !== props.field) {
-			emit('move', payload);
-		}
-	} catch {
-		// Ignore a malformed / foreign drag payload.
-	}
+	// A malformed or foreign drag payload is ignored.
+	const payload = decodeJsonText(raw, recipientDragDecoder);
+	if (payload.ok && payload.value.from !== props.field) emit('move', payload.value);
 }
 
 const inputValue = ref('');

@@ -349,6 +349,55 @@ describe('createAttachmentUploads state machine', () => {
 });
 
 describe('xhrPutFile', () => {
+	/** An XHR that answers `status` with `body` as soon as it is sent. */
+	function answeringXhr(status: number, body: string) {
+		return class {
+			upload = {};
+			status = 0;
+			responseText = '';
+			onload: (() => void) | null = null;
+			open() {}
+			setRequestHeader() {}
+			abort() {}
+			send() {
+				this.status = status;
+				this.responseText = body;
+				this.onload?.();
+			}
+		};
+	}
+	async function putAnswering(status: number, body: string): Promise<string> {
+		const realXhr = globalThis.XMLHttpRequest;
+		globalThis.XMLHttpRequest = answeringXhr(status, body) as unknown as typeof XMLHttpRequest;
+		try {
+			return await xhrPutFile('https://upload.example', makeFile('a.txt', 10), 'text/plain', {
+				signal: new AbortController().signal,
+				onProgress: () => {},
+			});
+		} finally {
+			globalThis.XMLHttpRequest = realXhr;
+		}
+	}
+
+	it('resolves the storage id of a well-formed response', async () => {
+		await expect(putAnswering(200, JSON.stringify({ storageId: 'st_1' }))).resolves.toBe('st_1');
+	});
+
+	it.each([
+		['a non-string id', JSON.stringify({ storageId: 42 })],
+		['an empty id', JSON.stringify({ storageId: '' })],
+		['no id', JSON.stringify({})],
+		['a null body', 'null'],
+	])('rejects a response with %s instead of resolving it', async (_case, body) => {
+		await expect(putAnswering(200, body)).rejects.toThrow('Upload response missing storageId');
+	});
+
+	it('rejects a response that is not JSON', async () => {
+		await expect(putAnswering(200, '<html>proxy error</html>')).rejects.toThrow(
+			'Upload response was not valid JSON'
+		);
+	});
+
 	it('rejects with an AbortError when the signal was aborted before the request went out', async () => {
 		const opened = vi.fn();
 		class FakeXhr {

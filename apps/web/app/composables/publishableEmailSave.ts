@@ -1,10 +1,8 @@
 import type { EditorBlock } from '@owlat/email-builder';
-import {
-	mergeTranslationIntoItem,
-	type BlockLikeItem,
-	type TranslatableBlockContent,
-} from '@owlat/api/translationMerge';
+import { plainClone } from '@owlat/email-builder/plain-clone';
+import { mergeTranslationIntoItem, type BlockLikeItem } from '@owlat/api/translationMerge';
 import { EMAIL_RENDERER_VERSION } from '@owlat/email-renderer/version';
+import { requireTranslationOverlays } from '~/utils/translationOverlays';
 import { useEmailHtmlRendering, type RenderOptions } from './useEmailHtmlRendering';
 
 /**
@@ -71,11 +69,6 @@ export interface PublishableEmailSaveArgs {
 	commit: (payload: PublishableEmailPayload) => Promise<number>;
 }
 
-interface TranslationOverlay {
-	subject?: string;
-	blocks?: Record<string, TranslatableBlockContent>;
-}
-
 /** Derive the deduplicated saved-block ids referenced by the canvas blocks. */
 function deriveLinkedBlockIds(blocks: EditorBlock[]): string[] {
 	return [
@@ -83,10 +76,6 @@ function deriveLinkedBlockIds(blocks: EditorBlock[]): string[] {
 			blocks.filter((block) => block.savedBlockRef).map((block) => block.savedBlockRef!.blockId)
 		),
 	];
-}
-
-function parseOverlays(blob: string | undefined): Record<string, TranslationOverlay> {
-	return blob ? (JSON.parse(blob) as Record<string, TranslationOverlay>) : {};
 }
 
 /**
@@ -101,16 +90,18 @@ function buildPublishableEmailPayload(
 	const { renderBlocksToHtml, renderBlocksToPlainText } = useEmailHtmlRendering();
 
 	// The editor refs are shared with the live canvas, which mutates them in
-	// place; the serialized copy is the one immutable snapshot everything below
-	// is rendered from.
-	const content = JSON.stringify(draft.blocks);
-	const blocks = JSON.parse(content) as EditorBlock[];
+	// place; one plain copy, taken synchronously, is the snapshot the stored
+	// JSON and everything below are derived from.
+	const blocks = plainClone(draft.blocks);
+	const content = JSON.stringify(blocks);
 	const plainTextOverride = draft.plainTextOverride;
 
 	// Each language overlays its text onto THIS draft's structure, the same
 	// merge the backend's getForLanguage applies. A language without an overlay
 	// falls back to the default content and subject, as it does there.
-	const overlays = parseOverlays(base.translations);
+	// Unreadable overlays throw here, before anything is committed: rendering
+	// the languages without them would store default text as their HTML.
+	const overlays = requireTranslationOverlays(base.translations);
 	const htmlTranslations: Record<string, { htmlContent: string; subject: string }> = {};
 	for (const language of base.supportedLanguages) {
 		if (language === base.defaultLanguage) continue;

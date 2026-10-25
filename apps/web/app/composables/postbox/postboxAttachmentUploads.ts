@@ -29,7 +29,9 @@
  * the state machine is unit-testable with a mocked transport and never imports
  * Convex or Nuxt-toast context directly.
  */
+import { decodeJsonText } from '@owlat/worker-protocol/decodeJson';
 import { holdPendingWork } from '~/lib/pendingOperations';
+import { storageUploadResponseDecoder } from '~/utils/storageUpload';
 
 /** A committed attachment, matching the parent composable's `attachments` shape. */
 export interface CommittedAttachment {
@@ -363,13 +365,11 @@ export function xhrPutFile(
 				reject(new Error(`Upload failed (${xhr.status})`));
 				return;
 			}
-			try {
-				const { storageId } = JSON.parse(xhr.responseText) as { storageId: string };
-				if (!storageId) reject(new Error('Upload response missing storageId'));
-				else resolve(storageId);
-			} catch {
-				reject(new Error('Upload response was not valid JSON'));
-			}
+			const decoded = decodeJsonText(xhr.responseText, storageUploadResponseDecoder);
+			if (decoded.ok) resolve(decoded.value);
+			else if (decoded.failure.kind === 'invalid') {
+				reject(new Error('Upload response missing storageId'));
+			} else reject(new Error('Upload response was not valid JSON'));
 		};
 		xhr.onerror = () => reject(new Error('Upload network error'));
 		xhr.onabort = () => reject(new DOMException('Upload aborted', 'AbortError'));

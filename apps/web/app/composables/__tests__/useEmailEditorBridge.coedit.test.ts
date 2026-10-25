@@ -193,6 +193,43 @@ describe('useEmailEditorBridge with co-editing', () => {
 		unmount();
 	});
 
+	it.each([
+		['content that is not JSON', { content: '[{' }],
+		['content that is not a list', { content: '{"blocks":[]}' }],
+		['a Block without an id', { content: JSON.stringify([{ type: 'text', content: {} }]) }],
+		['fields that are not an object', { fields: '["Welcome"]' }],
+	])('edits the classic way when the first session state has %s', async (_case, extra) => {
+		const { bridge, unmount } = setup();
+		queries['sessions.get']!.value = sessionRow(1, [text('a', 'Shared A')], extra);
+		await settle();
+
+		expect(bridge.isConnecting.value).toBe(false);
+		// The row's content, not an empty canvas or the unreadable state.
+		expect(bridge.blocks.value.map((b) => b.id)).toEqual(['a', 'b']);
+		unmount();
+	});
+
+	it('keeps what it shows when a later session state is unreadable', async () => {
+		const { bridge, builder, unmount } = setup();
+		queries['sessions.get']!.value = sessionRow(1, [text('a', 'Alpha')]);
+		await settle();
+		bridge.builderRef.value = builder;
+
+		queries['sessions.get']!.value = sessionRow(2, [text('a', 'Alpha')], { content: 'null' });
+		await settle();
+		expect(bridge.blocks.value.map((b) => b.id)).toEqual(['a']);
+		expect(builder.applyRemoteOps).not.toHaveBeenCalled();
+		expect(builder.loadState).not.toHaveBeenCalled();
+
+		// The next readable state is taken as usual.
+		queries['sessions.get']!.value = sessionRow(3, [text('a', 'Alpha'), text('n', 'New')]);
+		await settle();
+		expect(builder.applyRemoteOps).toHaveBeenCalledWith([
+			{ kind: 'insert', block: text('n', 'New'), afterId: 'a' },
+		]);
+		unmount();
+	});
+
 	it('sends a local edit as a block operation based on the version it saw', async () => {
 		const { bridge, unmount } = setup();
 		queries['sessions.get']!.value = sessionRow(1, [text('a', 'Alpha')]);
