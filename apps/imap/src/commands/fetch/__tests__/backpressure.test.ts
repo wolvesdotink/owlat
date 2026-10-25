@@ -344,11 +344,10 @@ describe('FETCH over a real TCP socket to a client that stops reading', () => {
 		let tail = '';
 		let gone: Error | null = null;
 		const wake = () => {
-			for (const waiter of [...waiters]) {
-				if (done.has(waiter.tag)) waiter.resolve();
-				else if (gone) waiter.reject(gone);
-				else continue;
+			for (const waiter of waiters.filter((w) => done.has(w.tag) || gone)) {
 				waiters.splice(waiters.indexOf(waiter), 1);
+				if (done.has(waiter.tag)) waiter.resolve();
+				else waiter.reject(gone!);
 			}
 		};
 		client.on('data', (chunk: Buffer) => {
