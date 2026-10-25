@@ -10,6 +10,8 @@ import {
 	enableFeatures,
 } from './factories';
 import type { Doc } from '../_generated/dataModel';
+import type * as LlmDispatchModule from '../lib/llm/dispatch';
+import type * as LlmProviderModule from '../lib/llmProvider';
 
 /**
  * knowledge/edgeInference.ts — the LLM ("semantic") edge-inference pass, with the
@@ -29,12 +31,12 @@ const runLlmObjectMock = vi.hoisted(() => vi.fn());
 // Stub the model resolver so the action needs no real LLM key, and the object
 // dispatch so we feed it a deterministic relations array.
 vi.mock('../lib/llmProvider', async () => {
-	const actual = await vi.importActual<typeof import('../lib/llmProvider')>('../lib/llmProvider');
+	const actual = await vi.importActual<typeof LlmProviderModule>('../lib/llmProvider');
 	return { ...actual, resolveLanguageModel: vi.fn(() => 'test-model') };
 });
 
 vi.mock('../lib/llm/dispatch', async () => {
-	const actual = await vi.importActual<typeof import('../lib/llm/dispatch')>('../lib/llm/dispatch');
+	const actual = await vi.importActual<typeof LlmDispatchModule>('../lib/llm/dispatch');
 	const { metered } = await import('../analytics/__tests__/meteredDispatch.testlib');
 	return { ...actual, runLlmObject: metered((opts: unknown) => runLlmObjectMock(opts)) };
 });

@@ -7,7 +7,7 @@
 import { v } from 'convex/values';
 import { internalQuery } from '../_generated/server';
 import { authedQuery } from '../lib/authedFunctions';
-import { requireOrgPermission } from '../lib/sessionOrganization';
+import { hasPermission, requireOrgPermission, requirePermission } from '../lib/sessionOrganization';
 import { toPublicConnectedApp, type PublicConnectedApp } from './model';
 import type { ConnectedAppStatus } from './lifecycle';
 import { loadConnectedAppInOrg } from './repository';
@@ -18,12 +18,12 @@ const MAX_CONNECTED_APPS = 200;
 /** List the active organization's connected apps, newest first. Secret-free. */
 export const listByTeam = authedQuery({
 	args: {},
-	handler: async (ctx): Promise<PublicConnectedApp[]> => {
-		const { activeOrganizationId } = await requireOrgPermission(
-			ctx,
-			'organization:manage',
+	handler: async (ctx, _args, session): Promise<PublicConnectedApp[]> => {
+		requirePermission(
+			hasPermission(session.role, 'organization:manage'),
 			'Only owners and admins can view connected apps'
 		);
+		const { activeOrganizationId } = session;
 		const rows = await ctx.db
 			.query('connectedApps')
 			.withIndex('by_organization_id', (index) => index.eq('organizationId', activeOrganizationId))

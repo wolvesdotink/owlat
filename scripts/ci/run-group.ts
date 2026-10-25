@@ -1,8 +1,8 @@
 import { execFileSync } from 'node:child_process';
 import { appendFileSync, existsSync } from 'node:fs';
-import type { Workspace } from './selection';
-const group = JSON.parse(process.env['CI_GROUP'] ?? 'null') as { workspaces: Workspace[] } | null;
-if (!group?.workspaces.length) throw new Error('Empty CI test group');
+import { parseTestGroup } from './selection';
+const group = parseTestGroup(process.env['CI_GROUP']);
+if (!group.workspaces.length) throw new Error('Empty CI test group');
 const filters = group.workspaces.map((workspace) => {
 	if (
 		!/^@owlat\/[a-z0-9-]+$/.test(workspace.package) ||

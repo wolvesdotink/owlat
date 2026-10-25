@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import type * as RuntimeLogModule from '../lib/runtimeLog';
 
 /**
  * Startup-warning behavior for `getClientIp`'s trusted-proxy modes (M2).
@@ -15,7 +16,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
  */
 
 vi.mock('../lib/runtimeLog', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../lib/runtimeLog')>();
+	const actual = await importOriginal<typeof RuntimeLogModule>();
 	return { ...actual, logWarn: vi.fn() };
 });
 

@@ -27,17 +27,16 @@ vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
 	return {
 		...actual,
-		requireOrgMember: vi.fn().mockResolvedValue({ userId: 'admin-1', role: 'owner' }),
-		isActiveOrgMember: vi.fn().mockResolvedValue(true),
-		getUserIdFromSession: vi.fn().mockResolvedValue('admin-1'),
-		getMutationContext: vi.fn().mockResolvedValue({ userId: 'admin-1', role: 'owner' }),
-		// The mail branch derives the caller's mailboxes from the session rather
-		// than from an argument, so it needs the full session, not just the id.
-		getBetterAuthSessionWithRole: vi.fn().mockResolvedValue({
+		// The mail branch derives the caller's mailboxes from the floor's session
+		// rather than from an argument, so the floor returns the full session.
+		requireOrgMember: vi.fn().mockResolvedValue({
 			userId: 'admin-1',
 			role: 'owner',
 			activeOrganizationId: 'org-1',
 		}),
+		isActiveOrgMember: vi.fn().mockResolvedValue(true),
+		getUserIdFromSession: vi.fn().mockResolvedValue('admin-1'),
+		getMutationContext: vi.fn().mockResolvedValue({ userId: 'admin-1', role: 'owner' }),
 	};
 });
 

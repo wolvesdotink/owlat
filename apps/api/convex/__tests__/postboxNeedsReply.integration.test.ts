@@ -32,6 +32,8 @@ import { enableFeatures } from './factories';
 import { normalizeQuestionKey } from '../inbox/clarificationMemoryMatch';
 import { MAX_SWEEP_RETRIES, SWEEP_MIN_AGE_MS } from '../mail/needsReplyPending';
 import type * as InterpretRun from '../mail/interpret/run';
+import type * as LlmDispatchModule from '../lib/llm/dispatch';
+import type * as LlmProviderModule from '../lib/llmProvider';
 
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
@@ -67,7 +69,7 @@ const runLlmTextMock = vi.hoisted(() => vi.fn());
 // Stub the model resolver so the action needs no LLM key, and the object
 // dispatch so we control the refinement result.
 vi.mock('../lib/llmProvider', async () => {
-	const actual = await vi.importActual<typeof import('../lib/llmProvider')>('../lib/llmProvider');
+	const actual = await vi.importActual<typeof LlmProviderModule>('../lib/llmProvider');
 	return { ...actual, resolveLanguageModel: vi.fn(() => 'test-model') };
 });
 
@@ -77,7 +79,7 @@ vi.mock('../mail/interpret/run', async () => {
 });
 
 vi.mock('../lib/llm/dispatch', async () => {
-	const actual = await vi.importActual<typeof import('../lib/llm/dispatch')>('../lib/llm/dispatch');
+	const actual = await vi.importActual<typeof LlmDispatchModule>('../lib/llm/dispatch');
 	return { ...actual, runLlmObject: runLlmObjectMock, runLlmText: runLlmTextMock };
 });
 

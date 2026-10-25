@@ -8,7 +8,6 @@
 import { v } from 'convex/values';
 import type { QueryCtx, MutationCtx } from '../_generated/server';
 import type { Id } from '../_generated/dataModel';
-import { getMutationContext, getUserIdFromSession } from '../lib/sessionOrganization';
 import { chatQuery, chatMutation, loadRoomReadAccess } from './_helpers';
 import { getOrThrow } from '../_utils/errors';
 import { batchGet } from '../_utils/batchLoader';
@@ -48,8 +47,8 @@ export async function resolveMentionsToMemberIds(
 // authz: self — only the caller's own mentions, each still readable under loadRoomReadAccess (chat/_helpers.ts)
 export const listMyUnreadMentions = chatQuery({
 	args: { limit: v.optional(v.number()) },
-	handler: async (ctx, args) => {
-		const userId = await getUserIdFromSession(ctx);
+	handler: async (ctx, args, session) => {
+		const { userId } = session;
 		return await loadVisibleUnreadMentions(ctx, userId, args.limit);
 	},
 });
@@ -147,8 +146,8 @@ async function loadVisibleUnreadMentions(ctx: QueryCtx, userId: string, requeste
 // user) and returns no room or message content, so it stays the raw row count.
 export const countMyUnreadMentions = chatQuery({
 	args: {},
-	handler: async (ctx) => {
-		const userId = await getUserIdFromSession(ctx);
+	handler: async (ctx, _args, session) => {
+		const { userId } = session;
 		const mentions = await ctx.db
 			.query('chatMentions')
 			.withIndex('by_mentioned_unread', (q) =>
@@ -163,8 +162,8 @@ export const countMyUnreadMentions = chatQuery({
 // authz: self — a member marks only their own mentions read.
 export const markMentionRead = chatMutation({
 	args: { mentionId: v.id('chatMentions') },
-	handler: async (ctx, args) => {
-		const { userId } = await getMutationContext(ctx);
+	handler: async (ctx, args, session) => {
+		const { userId } = session;
 		const mention = await getOrThrow(ctx, args.mentionId, 'Mention');
 		if (mention.mentionedMemberId !== userId) {
 			// Silently no-op — don't leak existence of others' mentions.
@@ -186,7 +185,6 @@ export const markMentionRead = chatMutation({
 export const searchOrgMembersForMention = chatQuery({
 	args: { query: v.optional(v.string()) },
 	handler: async (ctx, args) => {
-		await getUserIdFromSession(ctx);
 		const q = args.query?.trim().toLowerCase() ?? '';
 
 		const profiles = await ctx.db.query('userProfiles').take(500);

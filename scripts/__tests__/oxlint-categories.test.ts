@@ -11,7 +11,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { LintDiagnostic } from '../check-lint-warnings';
+import { type LintDiagnostic, parseLintReport } from '../lint-diagnostics';
 
 const REPOSITORY_ROOT = fileURLToPath(new URL('../..', import.meta.url));
 
@@ -73,7 +73,7 @@ beforeAll(() => {
 		{ cwd: REPOSITORY_ROOT, encoding: 'utf8' }
 	);
 	if (run.error) throw run.error;
-	diagnostics = (JSON.parse(run.stdout) as { diagnostics: LintDiagnostic[] }).diagnostics;
+	diagnostics = parseLintReport(run.stdout);
 });
 
 afterAll(() => {

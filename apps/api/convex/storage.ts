@@ -1,5 +1,4 @@
 import { authedMutation, authedQuery } from './lib/authedFunctions';
-import { getUserIdFromSession } from './lib/sessionOrganization';
 import { rateLimiter } from './lib/rateLimiter';
 import { throwRateLimited, throwNotFound } from './_utils/errors';
 import { v } from 'convex/values';
@@ -45,8 +44,6 @@ export const generateUploadUrl = authedMutation({
 export const getUrl = authedQuery({
 	args: { storageId: v.id('_storage') },
 	handler: async (ctx, args) => {
-		await getUserIdFromSession(ctx);
-
 		// Only a blob owned by a media asset is resolvable through this endpoint.
 		const owningAsset = await ctx.db
 			.query('mediaAssets')

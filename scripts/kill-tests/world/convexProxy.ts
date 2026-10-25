@@ -20,6 +20,7 @@
 
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { EventLog } from './events';
+import { isRecord } from './wire';
 
 /** MTA webhook events after which Convex holds the Send in a terminal state. */
 const TERMINAL_WEBHOOK_EVENTS = new Set(['sent', 'bounced', 'failed']);
@@ -57,36 +58,40 @@ interface Forwarded {
 /** What a stalled request resolves to: the proxy never answers it. */
 const NEVER = new Promise<never>(() => {});
 
-function functionName(body: Buffer): string {
+/**
+ * The forwarded bytes as an object. The proxy only observes: a body that is not
+ * a JSON object has already gone to the backend as it was, and reads as empty.
+ */
+function bodyFields(body: Buffer): Record<string, unknown> {
 	try {
-		const parsed = JSON.parse(body.toString()) as { path?: unknown };
-		return String(parsed.path ?? '').replace(/\.js(?=:)/, '');
+		const parsed: unknown = JSON.parse(body.toString());
+		return isRecord(parsed) ? parsed : {};
 	} catch {
-		return '';
+		return {};
 	}
 }
 
+function functionName(body: Buffer): string {
+	const { path } = bodyFields(body);
+	return typeof path === 'string' ? path.replace(/\.js(?=:)/, '') : '';
+}
+
 function firstArg(body: Buffer): Record<string, unknown> {
-	const parsed = JSON.parse(body.toString()) as { args?: unknown };
-	const args = Array.isArray(parsed.args) ? parsed.args[0] : parsed.args;
-	return (args ?? {}) as Record<string, unknown>;
+	const { args } = bodyFields(body);
+	const first: unknown = Array.isArray(args) ? args[0] : args;
+	return isRecord(first) ? first : {};
 }
 
 /** The `value` of a successful Convex HTTP API answer, or undefined. */
 function successValue(response: Forwarded): unknown {
-	try {
-		const parsed = JSON.parse(response.body.toString()) as { status?: string; value?: unknown };
-		return parsed.status === 'success' ? parsed.value : undefined;
-	} catch {
-		return undefined;
-	}
+	const answer = bodyFields(response.body);
+	return answer['status'] === 'success' ? answer['value'] : undefined;
 }
 
 function ingestOutcome(value: unknown): IngestObservation['outcome'] {
-	if (typeof value !== 'object' || value === null) return 'other';
-	const record = value as Record<string, unknown>;
-	if (record['skipped'] === 'duplicate') return 'duplicate';
-	return typeof record['messageId'] === 'string' ? 'stored' : 'other';
+	if (!isRecord(value)) return 'other';
+	if (value['skipped'] === 'duplicate') return 'duplicate';
+	return typeof value['messageId'] === 'string' ? 'stored' : 'other';
 }
 
 export class ConvexProxy {
@@ -161,10 +166,10 @@ export class ConvexProxy {
 	}
 
 	private observeWebhook(body: Buffer, backendStatus: number): void {
-		const parsed = JSON.parse(body.toString()) as Record<string, unknown>;
+		const webhook = bodyFields(body);
 		const observation = {
-			event: String(parsed['event']),
-			messageId: String(parsed['messageId'] ?? ''),
+			event: typeof webhook['event'] === 'string' ? webhook['event'] : '',
+			messageId: typeof webhook['messageId'] === 'string' ? webhook['messageId'] : '',
 			backendStatus,
 		};
 		this.webhooks.push(observation);

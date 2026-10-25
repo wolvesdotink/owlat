@@ -1,4 +1,6 @@
-type SessionModule = typeof import('../../lib/sessionOrganization');
+import type * as SessionOrganizationModule from '../../lib/sessionOrganization';
+
+type SessionModule = typeof SessionOrganizationModule;
 type Role = Parameters<SessionModule['hasPermission']>[0];
 type Permission = Parameters<SessionModule['hasPermission']>[1];
 

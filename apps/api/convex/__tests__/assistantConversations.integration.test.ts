@@ -5,6 +5,7 @@ import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import schema from '../schema';
 import { api, internal } from '../_generated/api';
 import { enableFeatures } from './factories';
+import type * as SessionOrganizationModule from '../lib/sessionOrganization';
 
 const modules = import.meta.glob('../**/*.*s');
 
@@ -24,8 +25,8 @@ function makeT() {
 const sess = vi.hoisted(() => ({ user: { userId: 'user-a', role: 'owner' as const } }));
 
 vi.mock('../lib/sessionOrganization', async () => {
-	const actual = await vi.importActual<typeof import('../lib/sessionOrganization')>(
-		'../lib/sessionOrganization',
+	const actual = await vi.importActual<typeof SessionOrganizationModule>(
+		'../lib/sessionOrganization'
 	);
 	return {
 		...actual,
@@ -87,7 +88,7 @@ describe('assistant conversations — CRUD + ownership', () => {
 		const msgs = await t.query(api.assistant.conversations.listMessages, { conversationId: id });
 		expect(msgs).toEqual([]);
 		await expect(
-			t.mutation(api.assistant.conversations.renameConversation, { conversationId: id, title: 'x' }),
+			t.mutation(api.assistant.conversations.renameConversation, { conversationId: id, title: 'x' })
 		).rejects.toThrow();
 	});
 });
@@ -121,7 +122,7 @@ describe('assistant conversations — send lifecycle', () => {
 		await enableFeatures(t, ['ai.assistant']);
 		const id = await t.mutation(api.assistant.conversations.createConversation, {});
 		await expect(
-			t.mutation(api.assistant.conversations.sendMessage, { conversationId: id, text: '   ' }),
+			t.mutation(api.assistant.conversations.sendMessage, { conversationId: id, text: '   ' })
 		).rejects.toThrow();
 	});
 
@@ -134,13 +135,21 @@ describe('assistant conversations — send lifecycle', () => {
 		const id = await t.run(async (ctx) => {
 			const now = Date.now();
 			const convoId = await ctx.db.insert('aiConversations', {
-				ownerId: 'user-a', title: 'Long', createdAt: now, updatedAt: now,
-				lastMessageAt: now, messageCount: 501,
+				ownerId: 'user-a',
+				title: 'Long',
+				createdAt: now,
+				updatedAt: now,
+				lastMessageAt: now,
+				messageCount: 501,
 			});
 			for (let i = 0; i < 501; i++) {
 				await ctx.db.insert('aiMessages', {
-					conversationId: convoId, ownerId: 'user-a', role: 'user',
-					text: `m${i}`, status: 'complete', createdAt: now + i,
+					conversationId: convoId,
+					ownerId: 'user-a',
+					role: 'user',
+					text: `m${i}`,
+					status: 'complete',
+					createdAt: now + i,
 				});
 			}
 			return convoId;
@@ -180,7 +189,11 @@ describe('assistant conversations — runner internal mutations', () => {
 
 		const msgs = await t.query(api.assistant.conversations.listMessages, { conversationId: id });
 		const assistant = msgs.find((m) => m._id === assistantMessageId);
-		expect(assistant).toMatchObject({ status: 'complete', text: 'final answer', model: 'test-model' });
+		expect(assistant).toMatchObject({
+			status: 'complete',
+			text: 'final answer',
+			model: 'test-model',
+		});
 
 		// After finalization the row is no longer streaming → patch signals stop.
 		const r2 = await t.mutation(internal.assistant.conversations.patchAssistantMessage, {

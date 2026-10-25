@@ -14,6 +14,7 @@ import { describe, it, expect, vi } from 'vitest';
 import schema from '../../schema';
 import type { Id } from '../../_generated/dataModel';
 import { api, internal } from '../../_generated/api';
+import * as sessionOrganization from '../../lib/sessionOrganization';
 import { captureStandingAnswers } from '../clarificationMemory';
 
 const sessionMocks = vi.hoisted(() => ({
@@ -28,6 +29,7 @@ vi.mock('../../lib/sessionOrganization', async () => {
 		requireOrgMember: vi.fn(async () => ({
 			userId: sessionMocks.userId,
 			role: sessionMocks.role,
+			activeOrganizationId: 'org-1',
 		})),
 		isActiveOrgMember: vi.fn().mockResolvedValue(true),
 		// The admin floor resolves the caller's session like every other floor.
@@ -39,6 +41,7 @@ vi.mock('../../lib/sessionOrganization', async () => {
 		getMutationContext: vi.fn(async () => ({
 			userId: sessionMocks.userId,
 			role: sessionMocks.role,
+			activeOrganizationId: 'org-1',
 		})),
 		getBetterAuthSessionWithRole: vi.fn(async () => ({
 			userId: sessionMocks.userId,
@@ -261,5 +264,60 @@ describe('revokeClarificationMemory', () => {
 			const rows = await ctx.db.query('clarificationMemory').collect();
 			expect(rows).toHaveLength(0);
 		});
+	});
+});
+
+describe('learned-answer admin writes', () => {
+	const memberFloor = vi.mocked(sessionOrganization.getMutationContext);
+	const reResolvers = [
+		vi.mocked(sessionOrganization.requireOrgPermission),
+		vi.mocked(sessionOrganization.getBetterAuthSessionWithRole),
+	];
+
+	async function seedAnswer(t: ReturnType<typeof convexTest>): Promise<Id<'clarificationMemory'>> {
+		const contactId = await seedContact(t, 'ops@acme.test');
+		await t.run(async (ctx) => {
+			await captureStandingAnswers(ctx, {
+				contactId,
+				source: 'agent',
+				answers: [
+					{ slotType: DOCK_QUESTION.slotType, questionText: DOCK_QUESTION.text, value: 'Bay 3' },
+				],
+			});
+		});
+		return await t.run(async (ctx) => (await ctx.db.query('clarificationMemory').first())!._id);
+	}
+
+	it('refuses an editor on the floor session and leaves the row untouched', async () => {
+		const t = convexTest(schema, modules);
+		const id = await seedAnswer(t);
+		sessionMocks.role = 'editor';
+		try {
+			await expect(
+				t.mutation(api.inbox.clarificationMemory.promoteClarificationMemory, { id })
+			).rejects.toThrow('Only owners and admins can promote learned answers');
+			await expect(
+				t.mutation(api.inbox.clarificationMemory.revokeClarificationMemory, { id })
+			).rejects.toThrow('Only owners and admins can manage learned answers');
+		} finally {
+			sessionMocks.role = 'admin';
+		}
+		const row = await t.run(async (ctx) => await ctx.db.get(id));
+		expect(row?.contactId).toBeDefined();
+	});
+
+	it('lets an admin promote and revoke with one session resolution per call', async () => {
+		const t = convexTest(schema, modules);
+		const id = await seedAnswer(t);
+		memberFloor.mockClear();
+		for (const mock of reResolvers) mock.mockClear();
+
+		await t.mutation(api.inbox.clarificationMemory.promoteClarificationMemory, { id });
+		expect((await t.run(async (ctx) => await ctx.db.get(id)))?.contactId).toBeUndefined();
+		await t.mutation(api.inbox.clarificationMemory.revokeClarificationMemory, { id });
+		expect(await t.run(async (ctx) => await ctx.db.get(id))).toBeNull();
+
+		expect(memberFloor).toHaveBeenCalledTimes(2);
+		for (const mock of reResolvers) expect(mock).not.toHaveBeenCalled();
 	});
 });

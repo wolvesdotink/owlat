@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { assertShards, type ShardIdentity } from '../ci/shards';
+import { assertShards, parseShardIdentity, type ShardIdentity } from '../ci/shards';
 const expected = { sha: 'abc', run: '123', attempt: '2', workspace: 'web', total: 2, passed: true };
 const identities: ShardIdentity[] = [
 	{ ...expected, attempt: '1', shard: 1, report: 'blob-1.json' },
@@ -23,4 +23,18 @@ it('fails closed on missing, duplicate, failed, mismatched or future shards', ()
 			assertShards([{ ...identities[0]!, ...patch }, identities[1]!], expected, reports)
 		).toThrow();
 	expect(() => assertShards(identities, expected, ['blob-1.json', 'unrelated.json'])).toThrow();
+});
+it('reads a shard identity file only in the shape run-shard writes', () => {
+	const identity = identities[1]!;
+	expect(parseShardIdentity(JSON.stringify(identity), '2.json')).toEqual(identity);
+	for (const [patch, message] of [
+		[{ shard: '2' }, '2.json.shard must be an integer'],
+		[{ passed: 'true' }, '2.json.passed must be a boolean'],
+		[{ attempt: 2 }, '2.json.attempt must be a string'],
+		[{ sha: undefined }, '2.json.sha must be a string'],
+	] as const)
+		expect(() => parseShardIdentity(JSON.stringify({ ...identity, ...patch }), '2.json')).toThrow(
+			message
+		);
+	expect(() => parseShardIdentity('[]', '2.json')).toThrow('2.json must be an object');
 });

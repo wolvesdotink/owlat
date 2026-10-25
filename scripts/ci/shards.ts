@@ -1,3 +1,4 @@
+import { boolean, decodeJson, type Decoder, integer, object, string } from '../json';
 export interface ShardIdentity {
 	sha: string;
 	run: string;
@@ -7,6 +8,20 @@ export interface ShardIdentity {
 	total: number;
 	report: string;
 	passed: boolean;
+}
+const decodeShardIdentity: Decoder<ShardIdentity> = object({
+	sha: string,
+	run: string,
+	attempt: string,
+	workspace: string,
+	shard: integer,
+	total: integer,
+	report: string,
+	passed: boolean,
+});
+/** A shard's `.ci-shards/<n>.json` identity file. */
+export function parseShardIdentity(text: string, label: string): ShardIdentity {
+	return decodeJson(text, decodeShardIdentity, label);
 }
 export function assertShards(
 	identities: ShardIdentity[],

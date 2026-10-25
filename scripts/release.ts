@@ -45,6 +45,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { candidatesOf, classifyReleaseTag, nextCandidateTag } from './ci/release-policy';
+import { readPackageManifest, requiredVersion } from './package-manifest';
 import { bucketSubjects, bucketSummary, writeSection } from './release-changelog';
 
 const ROOT = join(import.meta.dir, '..');
@@ -80,10 +81,7 @@ if (!request)
 		'usage: bun run release:cut <version|major|minor|patch|rc> [--dry-run] [--no-commit] [--push] [--any-branch]'
 	);
 
-const rootPkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')) as {
-	version: string;
-};
-const oldVersion = rootPkg.version;
+const oldVersion = requiredVersion(readPackageManifest(join(ROOT, 'package.json')), 'package.json');
 
 function bump(current: string, kind: string): string {
 	const [major = 0, minor = 0, patch = 0] = current.split('-')[0]?.split('.').map(Number) ?? [];

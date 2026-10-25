@@ -4,7 +4,7 @@ import { internalAction, internalQuery } from '../_generated/server';
 import type { QueryCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
-import { getUserIdFromSession, requireOrgPermission } from '../lib/sessionOrganization';
+import { hasPermission, requirePermission } from '../lib/sessionOrganization';
 import { requireDraftCampaign } from './guards';
 import { throwInvalidState, throwInvalidInput } from '../_utils/errors';
 import { abVariantValidator } from '../lib/literalValidators';
@@ -99,10 +99,11 @@ export const enableABTest = campaignsMutation({
 		winnerCriteria: v.union(v.literal('open_rate'), v.literal('click_rate'), v.literal('manual')),
 		testDuration: v.optional(v.number()), // Hours
 	},
-	handler: async (ctx, args) => {
+	handler: async (ctx, args, session) => {
 		// authz: requireDraftCampaign enforces campaigns:manage
-		const { session } = await requireDraftCampaign(
+		await requireDraftCampaign(
 			ctx,
+			session,
 			args.campaignId,
 			'enable A/B testing',
 			'A/B testing can only be enabled on draft campaigns'
@@ -170,10 +171,11 @@ export const disableABTest = campaignsMutation({
 	args: {
 		campaignId: v.id('campaigns'),
 	},
-	handler: async (ctx, args) => {
+	handler: async (ctx, args, session) => {
 		// authz: requireDraftCampaign enforces campaigns:manage
-		const { session } = await requireDraftCampaign(
+		await requireDraftCampaign(
 			ctx,
+			session,
 			args.campaignId,
 			'disable A/B testing',
 			'A/B testing can only be disabled on draft campaigns'
@@ -199,10 +201,9 @@ export const declareABTestWinner = campaignsMutation({
 		campaignId: v.id('campaigns'),
 		winner: abVariantValidator,
 	},
-	handler: async (ctx, args) => {
-		const session = await requireOrgPermission(
-			ctx,
-			'campaigns:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'campaigns:manage'),
 			'Only owners and admins can declare A/B test winners'
 		);
 
@@ -292,7 +293,6 @@ export const getABTestStats = campaignsQuery({
 		campaignId: v.id('campaigns'),
 	},
 	handler: async (ctx, args) => {
-		await getUserIdFromSession(ctx);
 		const campaign = await getLiveOrThrow(ctx, args.campaignId, 'Campaign');
 
 		if (!campaign.isABTest) {

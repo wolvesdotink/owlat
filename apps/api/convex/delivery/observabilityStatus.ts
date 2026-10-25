@@ -7,9 +7,8 @@ import { parseSndsFeedUrls } from './sndsConfig';
 export const get = adminQuery({
 	args: {},
 	handler: async (ctx, _args, session) => {
-		// The `adminQuery` floor has ALREADY run
-		// `requireOrgPermission(ctx, 'organization:manage')` — the session, the
-		// active org and the admin role are all decided before this handler runs,
+		// The `adminQuery` floor has ALREADY required `organization:manage` — the
+		// session, the active org and the admin role are all decided before this handler runs,
 		// and the floor threads its result in as `session`. So the org id this read
 		// is scoped by costs NOTHING: no second session read, no second `member`
 		// component query, and no way for the scope to disagree with the identity

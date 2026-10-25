@@ -8,15 +8,8 @@ import { readFileSync } from 'node:fs';
 import { resolve, relative } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-
-export interface LintDiagnostic {
-	filename: string;
-	/** Absent on oxlint's own reports, such as an unused disable directive. */
-	code?: string;
-	message: string;
-	severity: string;
-	labels?: { span: { offset: number; length: number } }[];
-}
+import { decodeJson, integer, JsonShapeError, recordOf } from './json';
+import { type LintDiagnostic, parseLintReport } from './lint-diagnostics';
 
 export function warningKey(diagnostic: LintDiagnostic, source: Buffer): string {
 	const span = diagnostic.labels?.[0]?.span;
@@ -61,6 +54,12 @@ export function compareWarnings(
 	return drift;
 }
 
+/** The frozen warning counts, by key. */
+function readBaseline(root: string): Record<string, number> {
+	const path = 'scripts/lint-warning-baseline.json';
+	return decodeJson(readFileSync(resolve(root, path), 'utf8'), recordOf(integer), path);
+}
+
 function main(): number {
 	const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
 	const run = spawnSync(
@@ -84,19 +83,24 @@ function main(): number {
 		console.error(run.error ?? run.stderr ?? 'oxlint failed');
 		return 1;
 	}
-	const report = JSON.parse(run.stdout) as { diagnostics: LintDiagnostic[] };
-	if (!Array.isArray(report.diagnostics)) throw new Error('Missing oxlint diagnostics');
+	let diagnostics: LintDiagnostic[];
+	let baseline: Record<string, number>;
+	try {
+		diagnostics = parseLintReport(run.stdout);
+		baseline = readBaseline(root);
+	} catch (error) {
+		if (!(error instanceof JsonShapeError)) throw error;
+		console.error(error.message);
+		return 1;
+	}
 	const counts: Record<string, number> = {};
-	const errors = report.diagnostics.filter((d) => d.severity === 'error');
-	for (const diagnostic of ratchetedWarnings(report.diagnostics)) {
+	const errors = diagnostics.filter((d) => d.severity === 'error');
+	for (const diagnostic of ratchetedWarnings(diagnostics)) {
 		const filename = resolve(root, diagnostic.filename);
 		const normalized = { ...diagnostic, filename: relative(root, filename) };
 		const key = warningKey(normalized, readFileSync(filename));
 		counts[key] = (counts[key] ?? 0) + 1;
 	}
-	const baseline = JSON.parse(
-		readFileSync(resolve(root, 'scripts/lint-warning-baseline.json'), 'utf8')
-	) as Record<string, number>;
 	const { regressions, stale } = compareWarnings(counts, baseline);
 	for (const error of errors) console.error(`${error.filename}: ${error.code}: ${error.message}`);
 	if (regressions.length) {

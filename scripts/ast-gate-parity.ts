@@ -28,6 +28,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
+import { type LintDiagnostic, parseLintReport } from './lint-diagnostics';
 
 const REPOSITORY_ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
 // The package's launcher, run by its own `node` shebang: under bun's runtime
@@ -123,18 +124,7 @@ export interface KnownDifference {
 }
 
 /** Every site on this repository where the two sides disagree, and why. */
-export const KNOWN_DIFFERENCES: readonly KnownDifference[] = [
-	'apps/api/convex/delivery/observabilityStatus.ts:get',
-	'apps/api/convex/domains/yahooCfl.ts:confirmEnrollment',
-	'apps/api/convex/domains/yahooCfl.ts:resetEnrollment',
-	'apps/api/convex/domains/yahooCfl.ts:submitEnrollment',
-].map((site): KnownDifference => ({
-	gate: 'session-threading',
-	site,
-	side: 'old',
-	reason:
-		'the grep matches requireOrgPermission( inside a comment; the handler resolves no session of its own',
-}));
+export const KNOWN_DIFFERENCES: readonly KnownDifference[] = [];
 
 export interface Comparison {
 	readonly gate: GateName;
@@ -173,15 +163,8 @@ export function oldFindings(root: string, gate: Gate): string[] {
 	return sorted(sites);
 }
 
-interface Diagnostic {
-	filename: string;
-	code?: string;
-	message: string;
-	labels?: { span: { line: number } }[];
-}
-
 /** One oxlint run with the repository config over `root`'s apps/ and packages/. */
-export function lintDiagnostics(root: string): Diagnostic[] {
+export function lintDiagnostics(root: string): LintDiagnostic[] {
 	const targets = ['apps', 'packages'].filter((directory) => existsSync(join(root, directory)));
 	const run = spawnSync(
 		OXLINT,
@@ -191,9 +174,7 @@ export function lintDiagnostics(root: string): Diagnostic[] {
 	if (run.error || (run.status !== 0 && run.status !== 1)) {
 		throw new Error(`oxlint exited ${String(run.status)}: ${run.stderr}`);
 	}
-	const report = JSON.parse(run.stdout) as { diagnostics?: Diagnostic[] };
-	if (!Array.isArray(report.diagnostics)) throw new Error('oxlint printed no diagnostics array');
-	return report.diagnostics;
+	return parseLintReport(run.stdout);
 }
 
 /** The `allow` sites of owlat/feature-floor-in-builder in the repository config. */
@@ -210,7 +191,7 @@ export function featureFloorAllowances(): string[] {
 const FUNCTION_NAME = /^`([^`]+)`/;
 
 /** The rule's sites, normalized like the old gate's. */
-export function newFindings(root: string, gate: Gate, diagnostics: Diagnostic[]): string[] {
+export function newFindings(root: string, gate: Gate, diagnostics: LintDiagnostic[]): string[] {
 	const sites: string[] = [];
 	const stale = new Set<string>();
 	for (const diagnostic of diagnostics) {

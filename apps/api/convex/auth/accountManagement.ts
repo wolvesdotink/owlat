@@ -6,7 +6,12 @@ import type { Doc } from '../_generated/dataModel';
 import { BULK_QUERY_LIMIT } from '../lib/constants';
 import { randomToken } from '../lib/randomToken';
 import { getOptional } from '../lib/env';
-import { requireOrgPermission, requireSelf, loadOwnUserProfile } from '../lib/sessionOrganization';
+import {
+	requireSelf,
+	loadOwnUserProfile,
+	hasPermission,
+	requirePermission,
+} from '../lib/sessionOrganization';
 import { throwNotFound, throwInvalidState } from '../_utils/errors';
 import { beginWorkspaceDeletion } from '../workspaces/deletion/job';
 import { beginMemberErasure, resumeRequestWithoutProfile } from './erasure/lifecycle';
@@ -20,10 +25,9 @@ import { beginMemberErasure, resumeRequestWithoutProfile } from './erasure/lifec
  */
 export const exportContactsForOrganization = authedQuery({
 	args: {},
-	handler: async (ctx) => {
-		await requireOrgPermission(
-			ctx,
-			'contacts:manage',
+	handler: async (ctx, _args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'contacts:manage'),
 			'Only owners and admins can export contacts'
 		);
 		// Get all live contacts — soft-deleted (GDPR-erased) contacts must never

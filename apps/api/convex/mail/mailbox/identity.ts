@@ -1,7 +1,7 @@
 /**
  * Mailbox identity management — per-user personal mailboxes (Postbox).
  *
- * - Admin CRUD (org-scoped via getMutationContext)
+ * - Admin CRUD (org-scoped via the session the builder threads to the handler)
  * - Provisioned mailboxes are pushed to the MTA's Redis cache
  *   (`mailboxActions.pushMailboxToCache`) so `findMailboxRoute()` resolves
  *   inbound recipients without a Convex round-trip per RCPT TO.
@@ -20,7 +20,7 @@ import { adminQuery, publicQuery } from '../../lib/authedFunctions';
 import { postboxMutation } from '../_helpers';
 import type { Id, Doc } from '../../_generated/dataModel';
 import { internal } from '../../_generated/api';
-import { requireAdminContext, getBetterAuthSessionWithRole } from '../../lib/sessionOrganization';
+import { hasPermission, requirePermission } from '../../lib/sessionOrganization';
 import {
 	throwForbidden,
 	throwInvalidInput,
@@ -248,15 +248,14 @@ export const create = postboxMutation({
 		displayName: v.optional(v.string()),
 		quotaBytes: v.optional(v.number()),
 	},
-	handler: async (ctx, args) => {
-		await requireAdminContext(ctx);
-		const sessionWithOrg = await getBetterAuthSessionWithRole(ctx);
-		if (!sessionWithOrg?.activeOrganizationId) {
-			throwForbidden('No active organization');
-		}
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'organization:manage'),
+			'Only owners and admins can perform this action'
+		);
 		return createProvisionedMailbox(ctx, {
 			userId: args.userId,
-			organizationId: sessionWithOrg.activeOrganizationId,
+			organizationId: session.activeOrganizationId,
 			address: args.address,
 			displayName: args.displayName,
 			quotaBytes: args.quotaBytes,
@@ -374,8 +373,11 @@ export const getById = internalQuery({
 
 export const remove = postboxMutation({
 	args: { mailboxId: v.id('mailboxes') },
-	handler: async (ctx, args) => {
-		const session = await requireAdminContext(ctx);
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'organization:manage'),
+			'Only owners and admins can perform this action'
+		);
 		// Admin role alone is not enough: bind the caller-supplied mailboxId to the
 		// admin's own organization before deleting. A missing mailbox or one in
 		// another org fails closed, so a mailboxId cannot delete a mailbox outside

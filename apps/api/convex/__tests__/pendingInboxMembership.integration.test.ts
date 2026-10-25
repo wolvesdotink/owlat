@@ -34,8 +34,15 @@ vi.mock('../lib/sessionOrganization', async () => {
 	};
 });
 
+// Every mock answers for the same caller and org: the builder floors
+// (`getMutationContext`, `requireAdminContext`) are what the handlers read, and
+// the session-resolution tests below count calls to catch a re-resolution.
 function setAdminSession(userId = 'admin-user', orgId = 'test-org') {
-	sessionMocks.getMutationContext.mockResolvedValue({ userId, role: 'owner' });
+	sessionMocks.getMutationContext.mockResolvedValue({
+		userId,
+		role: 'owner',
+		activeOrganizationId: orgId,
+	});
 	sessionMocks.getBetterAuthSessionWithRole.mockResolvedValue({
 		userId,
 		role: 'owner',
@@ -49,7 +56,11 @@ function setAdminSession(userId = 'admin-user', orgId = 'test-org') {
 }
 
 function setInviteeSession(userId: string, orgId = 'test-org') {
-	sessionMocks.getMutationContext.mockResolvedValue({ userId, role: 'editor' });
+	sessionMocks.getMutationContext.mockResolvedValue({
+		userId,
+		role: 'editor',
+		activeOrganizationId: orgId,
+	});
 	sessionMocks.getBetterAuthSessionWithRole.mockResolvedValue({
 		userId,
 		role: 'editor',
@@ -449,5 +460,65 @@ describe('mail.mailbox.identity.remove cascade', () => {
 		});
 
 		await expect(t.mutation(api.mail.mailbox.identity.remove, { mailboxId })).rejects.toThrow();
+	});
+});
+
+describe('mail.mailbox.identity.remove role gate', () => {
+	it('refuses a non-admin member and leaves the mailbox active', async () => {
+		setAdminSession();
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
+		const mailboxId = await seedSharedMailbox(t, 'support@owlat.test');
+
+		setInviteeSession('editor-user');
+		await expect(t.mutation(api.mail.mailbox.identity.remove, { mailboxId })).rejects.toThrow(
+			'Only owners and admins can perform this action'
+		);
+		await t.run(async (ctx) => {
+			expect((await ctx.db.get(mailboxId))!.status).toBe('active');
+		});
+	});
+});
+
+describe('team-inbox grants — session resolution', () => {
+	function clearSessionMocks() {
+		sessionMocks.getMutationContext.mockClear();
+		sessionMocks.getBetterAuthSessionWithRole.mockClear();
+		sessionMocks.requireAdminContext.mockClear();
+	}
+
+	it('claim, cancel and remove read the session their builder floor resolved', async () => {
+		setAdminSession();
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
+		const mailboxId = await seedSharedMailbox(t, 'support@owlat.test');
+		await t.mutation(api.mail.pendingInboxMembership.reserveInboxMembership, {
+			mailboxId,
+			inviteeEmail: 'newbie@example.com',
+		});
+
+		// adminMutation: the admin floor is the only resolution.
+		clearSessionMocks();
+		await t.mutation(api.mail.pendingInboxMembership.cancelInboxMembershipsForEmail, {
+			inviteeEmail: 'newbie@example.com',
+		});
+		expect(sessionMocks.requireAdminContext).toHaveBeenCalledTimes(1);
+		expect(sessionMocks.getBetterAuthSessionWithRole).not.toHaveBeenCalled();
+
+		// postboxMutation: the member floor is the only resolution; the admin check
+		// runs on its role.
+		clearSessionMocks();
+		await t.mutation(api.mail.mailbox.identity.remove, { mailboxId });
+		expect(sessionMocks.getMutationContext).toHaveBeenCalledTimes(1);
+		expect(sessionMocks.requireAdminContext).not.toHaveBeenCalled();
+		expect(sessionMocks.getBetterAuthSessionWithRole).not.toHaveBeenCalled();
+
+		// authedMutation: the claim binds to the floor's user and org.
+		setInviteeSession('newbie-user');
+		await seedUserProfile(t, 'newbie-user', 'newbie@example.com');
+		clearSessionMocks();
+		await t.mutation(api.mail.pendingInboxMembership.claimInboxMemberships, {});
+		expect(sessionMocks.getMutationContext).toHaveBeenCalledTimes(1);
+		expect(sessionMocks.getBetterAuthSessionWithRole).not.toHaveBeenCalled();
 	});
 });

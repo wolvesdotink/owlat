@@ -34,7 +34,7 @@ vi.mock('../lib/sessionOrganization', async () => {
 		getMutationContext: vi.fn().mockImplementation(async () => {
 			const s = await sessionMocks.getBetterAuthSessionWithRole();
 			if (!s) throw new Error('Not authenticated');
-			return { userId: s.userId, role: s.role };
+			return { userId: s.userId, role: s.role, activeOrganizationId: s.activeOrganizationId };
 		}),
 		// The shared team-inbox connect is admin-gated; the real helper would read a
 		// live BetterAuth session, so mirror the mocked one.

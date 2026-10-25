@@ -1,40 +1,39 @@
 import { execFileSync } from 'node:child_process';
-import { appendFileSync, readFileSync } from 'node:fs';
-import { coverageWorkspaces, expectedJobs, selectCiWork, type Task } from './selection';
+import { appendFileSync } from 'node:fs';
+import { parseTurboTasks, parseTurboWorkspaces } from '../turbo-json';
+import { readDockerImages } from './docker-images';
+import { coverageWorkspaces, expectedJobs, selectCiWork } from './selection';
 const full = process.env['RUN_ALL'] === 'true',
 	base = process.env['BASE_SHA'];
 if (!full && !base) throw new Error('Affected selection requires BASE_SHA');
 const env = { ...process.env, ...(base ? { TURBO_SCM_BASE: base } : {}) };
-function turbo(args: string[]) {
-	return JSON.parse(
-		execFileSync('bunx', ['turbo', ...args], {
-			env,
-			encoding: 'utf8',
-			maxBuffer: 256 * 1024 * 1024,
-		})
-	);
+function turbo(args: string[]): string {
+	return execFileSync('bunx', ['turbo', ...args], {
+		env,
+		encoding: 'utf8',
+		maxBuffer: 256 * 1024 * 1024,
+	});
 }
 const affected = full ? [] : ['--affected'];
-const tasks = turbo(['run', 'test:coverage', ...affected, '--dry=json']) as { tasks: Task[] };
+const tasks = parseTurboTasks(
+	turbo(['run', 'test:coverage', ...affected, '--dry=json']),
+	'turbo run test:coverage --dry=json'
+);
 const changed = full
 	? []
 	: execFileSync('git', ['diff', '--name-only', `${base}...HEAD`], { encoding: 'utf8' })
 			.trim()
 			.split('\n');
-const images = JSON.parse(readFileSync('.github/docker-images.json', 'utf8')) as {
-	name: string;
-	package: string;
-	dockerfile: string;
-}[];
+const images = readDockerImages('.github/docker-images.json');
 const names = full
 	? []
-	: (
-			turbo(['ls', ...affected, '--output=json']) as { packages: { items: { name: string }[] } }
-		).packages.items.map((item) => item.name);
+	: parseTurboWorkspaces(turbo(['ls', ...affected, '--output=json']), 'turbo ls --output=json').map(
+			(item) => item.name
+		);
 const selection = selectCiWork({
 	full,
 	changed,
-	coverage: coverageWorkspaces(tasks.tasks),
+	coverage: coverageWorkspaces(tasks),
 	affected: names,
 	images,
 });

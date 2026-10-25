@@ -6,11 +6,7 @@
  */
 
 import { v } from 'convex/values';
-import {
-	getMutationContext,
-	getUserIdFromSession,
-	requireOrgPermission,
-} from '../lib/sessionOrganization';
+import { hasPermission, requirePermission } from '../lib/sessionOrganization';
 import { throwAlreadyExists, throwInvalidInput } from '../_utils/errors';
 import {
 	chatQuery,
@@ -37,8 +33,9 @@ export const createChannel = chatMutation({
 		visibility: chatRoomVisibilityValidator,
 		initialMemberIds: v.optional(v.array(v.string())),
 	},
-	handler: async (ctx, args) => {
-		const { userId } = await requireOrgPermission(ctx, 'chat:participate', 'Chat is not available');
+	handler: async (ctx, args, session) => {
+		requirePermission(hasPermission(session.role, 'chat:participate'), 'Chat is not available');
+		const { userId } = session;
 
 		const name = requireChannelName(args.name);
 		const normalizedName = normalizeChannelName(name);
@@ -111,8 +108,8 @@ export const updateChannel = chatMutation({
 		description: v.optional(v.string()),
 		visibility: v.optional(chatRoomVisibilityValidator),
 	},
-	handler: async (ctx, args) => {
-		const { userId, role } = await getMutationContext(ctx);
+	handler: async (ctx, args, session) => {
+		const { userId, role } = session;
 		const room = await getRoomOrThrow(ctx, args.roomId);
 		if (room.kind !== 'channel') {
 			throwInvalidInput('Only channels can be updated this way');
@@ -165,8 +162,8 @@ export const updateChannel = chatMutation({
  */
 export const archiveChannel = chatMutation({
 	args: { roomId: v.id('chatRooms') },
-	handler: async (ctx, args) => {
-		const { userId, role } = await getMutationContext(ctx);
+	handler: async (ctx, args, session) => {
+		const { userId, role } = session;
 		const room = await getRoomOrThrow(ctx, args.roomId);
 		if (room.kind !== 'channel') {
 			throwInvalidInput('Only channels can be archived');
@@ -181,8 +178,8 @@ export const archiveChannel = chatMutation({
  */
 export const unarchiveChannel = chatMutation({
 	args: { roomId: v.id('chatRooms') },
-	handler: async (ctx, args) => {
-		const { userId, role } = await getMutationContext(ctx);
+	handler: async (ctx, args, session) => {
+		const { userId, role } = session;
 		const room = await getRoomOrThrow(ctx, args.roomId);
 		if (room.kind !== 'channel') {
 			throwInvalidInput('Only channels can be unarchived');
@@ -204,8 +201,8 @@ export const unarchiveChannel = chatMutation({
 // index excludes mail-thread discussions.
 export const listMyChannels = chatQuery({
 	args: { includeArchived: v.optional(v.boolean()) },
-	handler: async (ctx, args) => {
-		const userId = await getUserIdFromSession(ctx);
+	handler: async (ctx, args, session) => {
+		const { userId } = session;
 
 		// Memberships first — used to filter private channels.
 		const memberships = await ctx.db
@@ -245,8 +242,8 @@ export const listMyChannels = chatQuery({
 // private channels, DMs and mail-thread discussions are filtered out.
 export const listPublicChannels = chatQuery({
 	args: { limit: v.optional(v.number()) },
-	handler: async (ctx, args) => {
-		const userId = await getUserIdFromSession(ctx);
+	handler: async (ctx, args, session) => {
+		const { userId } = session;
 		const limit = Math.max(1, Math.min(args.limit ?? 100, 500));
 
 		const channels = await ctx.db
@@ -283,8 +280,8 @@ export const listPublicChannels = chatQuery({
 // authz: loadRoomReadAccess (chat/_helpers.ts) decides; unreadable reads as null.
 export const getRoom = chatQuery({
 	args: { roomId: v.id('chatRooms') },
-	handler: async (ctx, args) => {
-		const userId = await getUserIdFromSession(ctx);
+	handler: async (ctx, args, session) => {
+		const { userId } = session;
 		const room = await ctx.db.get(args.roomId);
 		if (!room) return null;
 		if (!(await loadRoomReadAccess(ctx, room, userId))) return null;

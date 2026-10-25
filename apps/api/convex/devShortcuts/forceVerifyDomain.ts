@@ -25,7 +25,7 @@ import { v } from 'convex/values';
 import { internalMutation } from '../lib/writeFence';
 import { authedMutation } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
-import { requireOrgPermission } from '../lib/sessionOrganization';
+import { hasPermission, requirePermission } from '../lib/sessionOrganization';
 import { getOrThrow } from '../_utils/errors';
 import { recordAuditLog } from '../lib/auditLog';
 import { assertDevDeployment } from './_guard';
@@ -138,11 +138,10 @@ export const forceVerifyDomain = authedMutation({
 	args: {
 		domainId: v.id('domains'),
 	},
-	handler: async (ctx, { domainId }): Promise<ForceVerifyResult> => {
+	handler: async (ctx, { domainId }, session): Promise<ForceVerifyResult> => {
 		assertDevDeployment();
-		const session = await requireOrgPermission(
-			ctx,
-			'organization:manage',
+		requirePermission(
+			hasPermission(session.role, 'organization:manage'),
 			'Only owners and admins can force-verify domains'
 		);
 		return await ctx.runMutation(

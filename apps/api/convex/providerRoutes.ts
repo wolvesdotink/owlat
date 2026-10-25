@@ -3,7 +3,7 @@ import { paginationOptsValidator } from 'convex/server';
 import type { Doc } from './_generated/dataModel';
 import { type MutationCtx, type QueryCtx } from './_generated/server';
 import { authedQuery, authedMutation } from './lib/authedFunctions';
-import { requireOrgPermission, requirePermission, hasPermission } from './lib/sessionOrganization';
+import { requirePermission, hasPermission } from './lib/sessionOrganization';
 import { messageTypeValidator } from './lib/sendProviders/route';
 import { MTA_IP_POOL_NAMES } from './lib/sendProviders/types';
 import { SEND_PROVIDER_CATALOG, isSendProviderKind } from './lib/sendProviders/catalog';
@@ -232,8 +232,8 @@ function relayKindLabel(kind: string): string {
  */
 export const listRelayDomainIdentities = authedQuery({
 	args: { paginationOpts: paginationOptsValidator },
-	handler: async (ctx, args) => {
-		await requireOrgPermission(ctx, 'organization:manage');
+	handler: async (ctx, args, session) => {
+		requirePermission(hasPermission(session.role, 'organization:manage'));
 		const page = await ctx.db
 			.query('domains')
 			.withIndex('by_provider_type', (q) => q.eq('providerType', OWN_SENDING_DOMAIN_PROVIDER_KIND))
@@ -393,10 +393,9 @@ export const setRoute = authedMutation({
 		ipPool: v.optional(v.string()),
 		deliverabilityFallback: v.optional(deliverabilityFallbackValidator),
 	},
-	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'organization:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'organization:manage'),
 			'Only owners and admins can change provider routing'
 		);
 		const seenKinds = new Set<string>();
@@ -473,10 +472,9 @@ export const removeRoute = authedMutation({
 	args: {
 		messageType: messageTypeValidator,
 	},
-	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'organization:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'organization:manage'),
 			'Only owners and admins can change provider routing'
 		);
 		const existing = await getRouteByType(ctx, args.messageType);
