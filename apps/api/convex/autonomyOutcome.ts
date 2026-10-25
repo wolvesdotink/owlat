@@ -19,7 +19,7 @@ import type { MutationCtx } from './_generated/server';
 import type { Id } from './_generated/dataModel';
 import { internal } from './_generated/api';
 import { adminQuery, authedMutation } from './lib/authedFunctions';
-import { requireOrgPermission } from './lib/sessionOrganization';
+import { hasPermission, requirePermission } from './lib/sessionOrganization';
 import { assertFeatureEnabled } from './lib/featureFlags';
 import { extractEmail } from './lib/emailAddress';
 import { recordAuditLog } from './lib/auditLog';
@@ -189,10 +189,9 @@ export const listAutoDemotions = adminQuery({
 export const acknowledgeAutoDemotion = authedMutation({
 	args: { ruleId: v.id('autonomyRules') },
 	returns: v.null(),
-	handler: async (ctx, args) => {
-		const session = await requireOrgPermission(
-			ctx,
-			'organization:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'organization:manage'),
 			'Only owners and admins can manage autonomy'
 		);
 		await assertFeatureEnabled(ctx, 'ai.autonomy');

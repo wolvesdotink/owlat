@@ -36,10 +36,15 @@ vi.mock('../lib/sessionOrganization', async () => {
 		requireOrgMember: vi.fn().mockImplementation(async () => ({
 			userId: 'test-user',
 			role: permissionState.allowed ? 'owner' : 'editor',
+			activeOrganizationId: TEST_ORG_ID,
 		})),
 		isActiveOrgMember: vi.fn().mockResolvedValue(true),
 		getUserIdFromSession: vi.fn().mockResolvedValue('test-user'),
-		getMutationContext: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
+		getMutationContext: vi.fn().mockImplementation(async () => ({
+			userId: 'test-user',
+			role: permissionState.allowed ? 'owner' : 'editor',
+			activeOrganizationId: TEST_ORG_ID,
+		})),
 		requireOrgPermission: vi.fn().mockImplementation(async () => {
 			if (!permissionState.allowed) throw new Error('Missing required permission');
 			return { userId: 'test-user', role: 'owner' };
@@ -1019,7 +1024,7 @@ describe('deliverability relay domain lifecycle', () => {
 			t.query(api.providerRoutes.listRelayDomainIdentities, {
 				paginationOpts: { cursor: null, numItems: 100 },
 			})
-		).rejects.toThrow('Missing required permission');
+		).rejects.toThrow("You don't have permission to perform this action");
 	});
 
 	it('provisions a future MTA domain on its first verified lifecycle edge', async () => {

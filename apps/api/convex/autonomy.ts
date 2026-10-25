@@ -12,7 +12,7 @@ import { internalQuery } from './_generated/server';
 import { internalMutation } from './lib/writeFence';
 import type { Id } from './_generated/dataModel';
 import { adminQuery, authedMutation } from './lib/authedFunctions';
-import { requireOrgPermission } from './lib/sessionOrganization';
+import { hasPermission, requirePermission } from './lib/sessionOrganization';
 import { assertFeatureEnabled, isFeatureEnabled } from './lib/featureFlags';
 import { extractEmail } from './lib/emailAddress';
 import {
@@ -193,10 +193,9 @@ export const upsertRule = authedMutation({
 		maxDailyAutoActions: v.number(),
 		isEnabled: v.boolean(),
 	},
-	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'organization:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'organization:manage'),
 			'Only owners and admins can change autonomy rules'
 		);
 		const now = Date.now();
@@ -247,10 +246,9 @@ export const setSenderAutonomy = authedMutation({
 		maxDailyAutoActions: v.optional(v.number()),
 		warmupRequired: v.optional(v.number()),
 	},
-	handler: async (ctx, args): Promise<Id<'autonomyRules'>> => {
-		await requireOrgPermission(
-			ctx,
-			'organization:manage',
+	handler: async (ctx, args, session): Promise<Id<'autonomyRules'>> => {
+		requirePermission(
+			hasPermission(session.role, 'organization:manage'),
 			'Only owners and admins can change autonomy rules'
 		);
 		const sender = extractEmail(args.sender) || args.sender;
@@ -298,10 +296,9 @@ export const setSenderAutonomy = authedMutation({
  */
 export const deleteRule = authedMutation({
 	args: { ruleId: v.id('autonomyRules') },
-	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'organization:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'organization:manage'),
 			'Only owners and admins can delete autonomy rules'
 		);
 		await ctx.db.delete(args.ruleId);

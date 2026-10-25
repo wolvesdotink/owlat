@@ -2,33 +2,10 @@
 # oxlintrc.json (see scripts/check-owlat-lint.sh). One line per finding:
 # <file> TAB <rule> TAB <source text of the reported span>.
 # Lines only ever get deleted; a rule with no line left here moves to "error".
-apps/api/convex/agentConfigMutations.ts	owlat(use-threaded-session)	updateConfig
 apps/api/convex/analytics/complianceTelemetry.ts	owlat(use-threaded-session)	getComplianceTelemetry
 apps/api/convex/analytics/dashboard.ts	owlat(use-threaded-session)	getRecentActivity
 apps/api/convex/analytics/dashboard.ts	owlat(use-threaded-session)	getStats
 apps/api/convex/analytics/reputationSnapshots.ts	owlat(use-threaded-session)	getDeliverySnapshots
-apps/api/convex/assistant/conversations.ts	owlat(use-threaded-session)	createConversation
-apps/api/convex/assistant/conversations.ts	owlat(use-threaded-session)	deleteConversation
-apps/api/convex/assistant/conversations.ts	owlat(use-threaded-session)	listConversations
-apps/api/convex/assistant/conversations.ts	owlat(use-threaded-session)	listMessages
-apps/api/convex/assistant/conversations.ts	owlat(use-threaded-session)	renameConversation
-apps/api/convex/assistant/conversations.ts	owlat(use-threaded-session)	stopGeneration
-apps/api/convex/auth/accountManagement.ts	owlat(use-threaded-session)	exportContactsForOrganization
-apps/api/convex/auth/apiKeys.ts	owlat(use-threaded-session)	create
-apps/api/convex/auth/apiKeys.ts	owlat(use-threaded-session)	listByTeam
-apps/api/convex/auth/apiKeys.ts	owlat(use-threaded-session)	remove
-apps/api/convex/auth/apiKeys.ts	owlat(use-threaded-session)	revoke
-apps/api/convex/auth/apiKeys.ts	owlat(use-threaded-session)	updateName
-apps/api/convex/auth/invitationResend.ts	owlat(use-threaded-session)	throttleResend
-apps/api/convex/autonomy.ts	owlat(use-threaded-session)	deleteRule
-apps/api/convex/autonomy.ts	owlat(use-threaded-session)	setSenderAutonomy
-apps/api/convex/autonomy.ts	owlat(use-threaded-session)	upsertRule
-apps/api/convex/autonomyOutcome.ts	owlat(use-threaded-session)	acknowledgeAutoDemotion
-apps/api/convex/autonomySuggestions.ts	owlat(use-threaded-session)	acceptGraduationSuggestion
-apps/api/convex/blockedEmails.ts	owlat(use-threaded-session)	add
-apps/api/convex/blockedEmails.ts	owlat(use-threaded-session)	bulkAdd
-apps/api/convex/blockedEmails.ts	owlat(use-threaded-session)	listProviderProvenance
-apps/api/convex/blockedEmails.ts	owlat(use-threaded-session)	remove
 apps/api/convex/campaigns/abTest.ts	owlat(use-threaded-session)	declareABTestWinner
 apps/api/convex/campaigns/abTest.ts	owlat(use-threaded-session)	getABTestStats
 apps/api/convex/campaigns/campaigns.ts	owlat(use-threaded-session)	create
@@ -74,11 +51,8 @@ apps/api/convex/chat/rooms.ts	owlat(use-threaded-session)	listMyChannels
 apps/api/convex/chat/rooms.ts	owlat(use-threaded-session)	listPublicChannels
 apps/api/convex/chat/rooms.ts	owlat(use-threaded-session)	unarchiveChannel
 apps/api/convex/chat/rooms.ts	owlat(use-threaded-session)	updateChannel
-apps/api/convex/codeWorkTasks.ts	owlat(use-threaded-session)	cancel
 apps/api/convex/conditions/liveContactScan.ts	owlat(no-unchecked-json-cast)	JSON.parse(cursor) as Partial<LiveScanPosition>
 apps/api/convex/conditions/segmentMatch.ts	owlat(no-unchecked-json-cast)	JSON.parse(input) as SegmentFilters
-apps/api/convex/connectedApps/mutations.ts	owlat(use-threaded-session)	remove
-apps/api/convex/connectedApps/queries.ts	owlat(use-threaded-session)	listByTeam
 apps/api/convex/contacts/contacts.ts	owlat(use-threaded-session)	bulkDelete
 apps/api/convex/contacts/contacts.ts	owlat(use-threaded-session)	create
 apps/api/convex/contacts/contacts.ts	owlat(use-threaded-session)	importBatch
@@ -107,7 +81,6 @@ apps/api/convex/delivery/rampEnrollment.ts	owlat(use-threaded-session)	enrollCel
 apps/api/convex/delivery/rampPhasePromotion.ts	owlat(use-threaded-session)	promoteCellPhase
 apps/api/convex/delivery/sends.ts	owlat(use-threaded-session)	get
 apps/api/convex/delivery/suppressionMirror.ts	owlat(no-unchecked-json-cast)	(await response.json()) as { entries: Array<{ email: string; source?: string; suppressedAt?: number }>; nextCursor?: string; }
-apps/api/convex/devShortcuts/forceVerifyDomain.ts	owlat(use-threaded-session)	forceVerifyDomain
 apps/api/convex/domains/domains.ts	owlat(use-threaded-session)	create
 apps/api/convex/domains/domains.ts	owlat(use-threaded-session)	getInboundMailConfig
 apps/api/convex/domains/domains.ts	owlat(use-threaded-session)	regenerateDnsRecords
@@ -151,7 +124,6 @@ apps/api/convex/emailTemplates/translationMerge.ts	owlat(no-unchecked-json-cast)
 apps/api/convex/forms/endpoints.ts	owlat(use-threaded-session)	create
 apps/api/convex/forms/endpoints.ts	owlat(use-threaded-session)	remove
 apps/api/convex/forms/endpoints.ts	owlat(use-threaded-session)	update
-apps/api/convex/globalSearch.ts	owlat(use-threaded-session)	search
 apps/api/convex/inbox/askEagernessSettings.ts	owlat(use-threaded-session)	setAskEagerness
 apps/api/convex/inbox/clarificationMemory.ts	owlat(use-threaded-session)	promoteClarificationMemory
 apps/api/convex/inbox/clarificationMemory.ts	owlat(use-threaded-session)	revokeClarificationMemory
@@ -220,25 +192,10 @@ apps/api/convex/mail/pendingMailbox.ts	owlat(use-threaded-session)	cancelForInvi
 apps/api/convex/mail/pendingMailbox.ts	owlat(use-threaded-session)	claimForInvitation
 apps/api/convex/mail/pendingMailbox.ts	owlat(use-threaded-session)	setForInvitation
 apps/api/convex/mail/settings.ts	owlat(use-threaded-session)	update
-apps/api/convex/mediaAssets.ts	owlat(use-threaded-session)	bulkDelete
-apps/api/convex/mediaAssets.ts	owlat(use-threaded-session)	create
-apps/api/convex/mediaAssets.ts	owlat(use-threaded-session)	update
 apps/api/convex/plugins/draftStrategySelections.ts	owlat(use-threaded-session)	listCatalog
 apps/api/convex/plugins/draftStrategySelections.ts	owlat(use-threaded-session)	setSelection
 apps/api/convex/plugins/settings.ts	owlat(use-threaded-session)	resetPluginSettings
 apps/api/convex/plugins/settings.ts	owlat(use-threaded-session)	setPluginSettings
-apps/api/convex/providerRoutes.ts	owlat(use-threaded-session)	listRelayDomainIdentities
-apps/api/convex/providerRoutes.ts	owlat(use-threaded-session)	removeRoute
-apps/api/convex/providerRoutes.ts	owlat(use-threaded-session)	setRoute
-apps/api/convex/segments.ts	owlat(use-threaded-session)	create
-apps/api/convex/segments.ts	owlat(use-threaded-session)	remove
-apps/api/convex/segments.ts	owlat(use-threaded-session)	update
-apps/api/convex/semanticFiles.ts	owlat(use-threaded-session)	create
-apps/api/convex/semanticFiles.ts	owlat(use-threaded-session)	remove
-apps/api/convex/semanticFiles.ts	owlat(use-threaded-session)	update
-apps/api/convex/shareLinks.ts	owlat(use-threaded-session)	createShareLink
-apps/api/convex/shareLinks.ts	owlat(use-threaded-session)	revokeShareLink
-apps/api/convex/storage.ts	owlat(use-threaded-session)	getUrl
 apps/api/convex/systemUpdatesReleaseCheck.ts	owlat(no-unchecked-json-cast)	(await resp.json()) as { tag_name?: string; body?: string; published_at?: string; draft?: boolean; prerelease?: boolean; }
 apps/api/convex/topics/bulk.ts	owlat(use-threaded-session)	addContacts
 apps/api/convex/topics/bulk.ts	owlat(use-threaded-session)	removeContacts
@@ -260,11 +217,6 @@ apps/api/convex/transactional/emails.ts	owlat(use-threaded-session)	updateSchema
 apps/api/convex/transactional/translations.ts	owlat(use-threaded-session)	addTranslation
 apps/api/convex/transactional/translations.ts	owlat(use-threaded-session)	removeTranslation
 apps/api/convex/transactional/translations.ts	owlat(use-threaded-session)	updateTranslation
-apps/api/convex/unifiedMessages.ts	owlat(use-threaded-session)	updateChannelConfig
-apps/api/convex/visualizationAgent.ts	owlat(use-threaded-session)	createFromPrompt
-apps/api/convex/visualizationAgent.ts	owlat(use-threaded-session)	regenerate
-apps/api/convex/visualizationAgent.ts	owlat(use-threaded-session)	remove
-apps/api/convex/visualizationAgent.ts	owlat(use-threaded-session)	togglePin
 apps/api/convex/webhooks/endpoints.ts	owlat(use-threaded-session)	create
 apps/api/convex/webhooks/endpoints.ts	owlat(use-threaded-session)	getDeliveryLog
 apps/api/convex/webhooks/endpoints.ts	owlat(use-threaded-session)	getDeliveryStats
@@ -275,12 +227,6 @@ apps/api/convex/webhooks/endpoints.ts	owlat(use-threaded-session)	remove
 apps/api/convex/webhooks/endpoints.ts	owlat(use-threaded-session)	sendTestWebhook
 apps/api/convex/webhooks/endpoints.ts	owlat(use-threaded-session)	toggle
 apps/api/convex/webhooks/endpoints.ts	owlat(use-threaded-session)	update
-apps/api/convex/workspaces/featureFlags.ts	owlat(use-threaded-session)	setAllFeatureFlags
-apps/api/convex/workspaces/featureFlags.ts	owlat(use-threaded-session)	setFeatureFlag
-apps/api/convex/workspaces/featureFlags.ts	owlat(use-threaded-session)	setFeaturePack
-apps/api/convex/workspaces/settings.ts	owlat(use-threaded-session)	get
-apps/api/convex/workspaces/settings.ts	owlat(use-threaded-session)	remove
-apps/api/convex/workspaces/settings.ts	owlat(use-threaded-session)	update
 apps/imap/src/commands/append/index.ts	owlat(no-unchecked-json-cast)	(await uploadRes.json()) as { storageId: string }
 apps/mail-sync/src/ingest.ts	owlat(no-unchecked-json-cast)	(await response.json()) as { storageId: string; size: number }
 apps/marketing/app/composables/useDesktopDownload.ts	owlat(no-unchecked-json-cast)	(await res.json()) as { assets?: { name: string; browser_download_url: string }[]; }
