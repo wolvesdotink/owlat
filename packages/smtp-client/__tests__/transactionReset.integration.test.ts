@@ -17,6 +17,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { SMTPServer } from 'smtp-server';
 import type { SMTPServerOptions } from 'smtp-server';
+import { once } from 'node:events';
 import net from 'node:net';
 import type { AddressInfo } from 'node:net';
 
@@ -246,8 +247,10 @@ describe('resetTransaction — RSET reuse boundary (X1)', () => {
 			to: ['one@rcpt.test'],
 			data: 'Subject: m\r\n\r\nb\r\n',
 		});
-		// Let the unsolicited line arrive and buffer on the reader.
-		await new Promise((resolve) => setTimeout(resolve, 30));
+		// The unsolicited line rides the same write as the final 250, but TCP may
+		// still split it off; if none of its bytes are buffered yet, wait for them.
+		if (!conn.hasPendingData) await once(conn.rawSocket, 'data');
+		expect(conn.hasPendingData).toBe(true);
 
 		const err = await resetTransaction(conn).then(
 			() => null,

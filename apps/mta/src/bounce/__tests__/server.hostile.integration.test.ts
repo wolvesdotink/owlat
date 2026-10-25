@@ -28,7 +28,7 @@ import type { AddressInfo } from 'node:net';
 import type { SmtpListener } from '@owlat/smtp-listener';
 import { Client } from '@owlat/smtp-listener/testClient';
 import { createBounceServer } from '../server.js';
-import { watchSlotScripts } from '../../__tests__/helpers/slotScripts.js';
+import { watchSlotScripts } from '../../__tests__/helpers/connectionSlotScripts.js';
 import type { MtaConfig } from '../../config.js';
 
 vi.mock('../../monitoring/logger.js', () => ({
@@ -335,6 +335,7 @@ describe('MX listener caps connections per IP with 421 (production config)', () 
 		expect(await redis.get(key)).toBe('2');
 
 		for (const c of held) c.end();
+		// One release per granted slot; the refused connection never held one.
 		await slots.released(2);
 		expect(await redis.exists(key)).toBe(0);
 	});

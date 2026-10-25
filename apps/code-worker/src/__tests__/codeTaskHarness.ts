@@ -254,16 +254,17 @@ export function createGitHub() {
 	return { prs, faults, api, find, create };
 }
 
-/** Wait until `signal` aborts (the sandbox would be reaped), or give up. */
-export function untilAborted(signal: AbortSignal | undefined, ms = 2_000): Promise<boolean> {
+/**
+ * Resolve once `signal` aborts (the sandbox would be reaped). There is no
+ * fallback deadline: a run that is never aborted leaves this pending and the
+ * test fails on the runner's budget. A missing signal rejects, since the
+ * sandbox could then never be reaped.
+ */
+export function untilAborted(signal: AbortSignal | undefined): Promise<true> {
+	if (!signal) return Promise.reject(new Error('the sandbox run got no abort signal'));
+	if (signal.aborted) return Promise.resolve(true);
 	return new Promise((resolve) => {
-		if (!signal) return resolve(false);
-		if (signal.aborted) return resolve(true);
-		const timer = setTimeout(() => resolve(false), ms);
-		signal.addEventListener('abort', () => {
-			clearTimeout(timer);
-			resolve(true);
-		});
+		signal.addEventListener('abort', () => resolve(true), { once: true });
 	});
 }
 

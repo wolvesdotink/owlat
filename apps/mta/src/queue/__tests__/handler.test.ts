@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import Redis from 'ioredis-mock';
 import type { Queue, ReservedJob } from 'groupmq';
 
@@ -208,6 +208,10 @@ describe('handleEmailJob', () => {
 	let redis: InstanceType<typeof Redis>;
 	let config: MtaConfig;
 	let queue: ReturnType<typeof createQueueStub>;
+
+	afterEach(() => {
+		vi.useRealTimers();
+	});
 
 	beforeEach(async () => {
 		vi.resetAllMocks();
@@ -927,6 +931,10 @@ describe('handleEmailJob', () => {
 		// is rejected outright, which dead-letters the job. A transient outbox
 		// failure on the first run is the cheapest way to reach the second
 		// rebuild that the guard would compare against.
+		//
+		// Only Date is faked: the handler's own timers and the mock Redis keep
+		// running, while the clock a payload could stamp moves on demand.
+		vi.useFakeTimers({ toFake: ['Date'] });
 		const wh = await import('../../webhooks/convexNotifier.js');
 		const { queueConvexWebhook } = wh;
 		const { firstEnqueuedAt } = await setup();
@@ -947,7 +955,8 @@ describe('handleEmailJob', () => {
 		});
 
 		await expect(run(job, { timestamp: firstEnqueuedAt })).rejects.toThrow('outbox unavailable');
-		await new Promise((resolve) => setTimeout(resolve, 5));
+		// The replay runs a minute later on the clock the payload builders read.
+		vi.advanceTimersByTime(60_000);
 		await run(job, { timestamp: firstEnqueuedAt });
 
 		const payloads = vi

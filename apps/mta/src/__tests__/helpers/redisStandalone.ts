@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import Redis from 'ioredis';
-import { containerLogLine } from './containerLogs.js';
+import { awaitContainerLog, REDIS_READY_LOG } from './dockerLogs.js';
 
 export interface RedisStandaloneFixture {
 	client: Redis;
@@ -21,23 +21,23 @@ export async function startRedisStandaloneFixture(prefix: string): Promise<Redis
 		['run', '-d', '--rm', '--name', container, '-p', `127.0.0.1:${port}:6379`, 'redis:7-alpine'],
 		{ stdio: 'ignore' }
 	);
-	let client: Redis | undefined;
+	// Connect only once Redis logs that it listens. Before that, Docker's port
+	// proxy accepts a connection and then drops it, and an ioredis client that
+	// connected too early keeps reconnecting in the background: a second
+	// `connect()` throws "Redis is already connecting/connected" and the first
+	// never settles.
+	const client = new Redis(port, '127.0.0.1', { lazyConnect: true, maxRetriesPerRequest: 3 });
 	try {
-		// Connect only once Redis says it is listening. Before that, Docker's port
-		// proxy accepts a connection and then drops it, and ioredis keeps
-		// reconnecting in the background: a second `connect()` throws "Redis is
-		// already connecting/connected" and the first never settles.
-		await containerLogLine(container, /Ready to accept connections/);
-		client = new Redis(port, '127.0.0.1', { lazyConnect: true, maxRetriesPerRequest: 3 });
+		await awaitContainerLog(container, REDIS_READY_LOG);
 		await client.connect();
 		await client.ping();
 		await client.flushall();
-		return { client, container };
 	} catch (error) {
-		client?.disconnect();
+		client.disconnect();
 		removeContainer(container);
 		throw error;
 	}
+	return { client, container };
 }
 
 function removeContainer(container: string): void {

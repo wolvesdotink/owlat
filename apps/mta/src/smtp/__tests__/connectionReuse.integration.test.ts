@@ -19,7 +19,7 @@
  * socket) and, at the primitive level, in
  * packages/smtp-client/__tests__/transactionReset.integration.test.ts.
  */
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { SMTPServer } from 'smtp-server';
 import net from 'node:net';
 import type { AddressInfo } from 'node:net';
@@ -33,10 +33,12 @@ import {
 	type PoolConfig,
 } from '../connectionPool.js';
 import { MX_CERT, MX_KEY } from './certFixture.js';
+import { socketClosed } from '../../__tests__/helpers/socketClosed.js';
 
 const cleanups: Array<() => Promise<void> | void> = [];
 
 afterEach(async () => {
+	vi.useRealTimers();
 	// LIFO: close the pool (which may park a live idle socket) BEFORE the fake MX
 	// it connected to. `server.close()` waits for every open connection to end, so
 	// tearing the MX down while the pool still holds a socket hangs the hook — run
@@ -51,11 +53,8 @@ interface FakeMx {
 	connections(): number;
 	/** Cleartext QUIT commands observed across all sessions (proves a clean QUIT teardown). */
 	quits(): number;
-	/**
-	 * Resolves once `n` QUITs have been observed. The pool's QUIT is
-	 * fire-and-forget, so the test awaits the MX seeing it rather than the send.
-	 */
-	quitSeen(n: number): Promise<void>;
+	/** Resolves once `n` cleartext QUITs have been observed (the pool sends them fire-and-forget). */
+	quitsReached(n: number): Promise<void>;
 	messages(): Array<{ to: string[]; body: string; secure: boolean }>;
 }
 
@@ -100,7 +99,7 @@ async function startFakeMx(opts: { starttls?: boolean } = {}): Promise<FakeMx> {
 		socket.on('data', (chunk: Buffer) => {
 			if (!/^QUIT\b/im.test(chunk.toString('utf8'))) return;
 			quits += 1;
-			for (const waiter of quitWaiters.filter((w) => quits >= w.n)) {
+			for (const waiter of quitWaiters.filter((w) => w.n <= quits)) {
 				quitWaiters.splice(quitWaiters.indexOf(waiter), 1);
 				waiter.resolve();
 			}
@@ -119,11 +118,8 @@ async function startFakeMx(opts: { starttls?: boolean } = {}): Promise<FakeMx> {
 		port,
 		connections: () => connections,
 		quits: () => quits,
-		quitSeen: (n) =>
-			new Promise<void>((resolve) => {
-				if (quits >= n) resolve();
-				else quitWaiters.push({ n, resolve });
-			}),
+		quitsReached: (n) =>
+			quits >= n ? Promise.resolve() : new Promise((resolve) => quitWaiters.push({ n, resolve })),
 		messages: () => messages,
 	};
 }
@@ -136,8 +132,8 @@ interface RawConnBehavior {
 	destroyOnMail?: boolean;
 	/** Destroy the socket after the body but BEFORE the final reply (socket death mid-stream). */
 	destroyMidData?: boolean;
-	/** After the final 250, destroy the (now idle, parked) socket this many ms later. */
-	destroyWhenIdleMs?: number;
+	/** After the final 250, hand the (now idle, parked) socket to the test to kill. */
+	exposeWhenIdle?: boolean;
 }
 
 /**
@@ -149,8 +145,12 @@ interface RawConnBehavior {
  */
 async function startRawMx(
 	behavior: (connIndex: number) => RawConnBehavior = () => ({})
-): Promise<{ port: number; connections(): number }> {
+): Promise<{ port: number; connections(): number; idle(): Promise<net.Socket> }> {
 	let connIndex = 0;
+	let markIdle!: (socket: net.Socket) => void;
+	const idle = new Promise<net.Socket>((resolve) => {
+		markIdle = resolve;
+	});
 	const server = net.createServer((socket) => {
 		connIndex += 1;
 		const b = behavior(connIndex);
@@ -170,9 +170,7 @@ async function startRawMx(
 						return;
 					}
 					socket.write('250 2.0.0 queued\r\n');
-					if (b.destroyWhenIdleMs !== undefined) {
-						setTimeout(() => socket.destroy(), b.destroyWhenIdleMs);
-					}
+					if (b.exposeWhenIdle) markIdle(socket);
 				}
 				return;
 			}
@@ -201,7 +199,7 @@ async function startRawMx(
 	await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
 	const port = (server.address() as AddressInfo).port;
 	cleanups.push(() => new Promise<void>((resolve) => server.close(() => resolve())));
-	return { port, connections: () => connIndex };
+	return { port, connections: () => connIndex, idle: () => idle };
 }
 
 function makePool(port: number, overrides: Partial<PoolConfig> = {}): SmtpConnectionPool {
@@ -321,7 +319,7 @@ describe('SmtpConnectionPool — true socket reuse (X1)', () => {
 		expect(mx.messages()).toHaveLength(cap + 1);
 		// The capped socket was retired with a graceful QUIT (observed on the wire), not
 		// destroyed — connections()===2 alone would also hold for a destroyed socket.
-		await mx.quitSeen(1);
+		await mx.quitsReached(1);
 		expect(mx.quits()).toBe(1);
 		// No state leaked between transactions: every message carried its OWN recipient.
 		expect(mx.messages().map((m) => m.to[0])).toEqual([
@@ -389,37 +387,42 @@ describe('SmtpConnectionPool — true socket reuse (X1)', () => {
 
 	it('(guardrail) an idle socket past maxAgeMs is retired with a clean QUIT and the next job reconnects', async () => {
 		const mx = await startFakeMx();
-		// A lifetime long enough to park the first socket, short enough to age it out
-		// before the second delivery (which waits well past it).
 		const pool = makePool(mx.port, { maxAgeMs: 120, maxMessagesPerConnection: 100 });
+		// Only Date is faked: socket I/O and the pool's timers stay real, while the
+		// clock the lifetime cap reads moves on demand.
+		vi.useFakeTimers({ toFake: ['Date'] });
 
 		const first = await deliverOnce(pool, mx.port, { to: ['r1@rcpt.test'], body: body(1) });
 		expect(first.reused).toBe(false); // opened + parked
 
-		// Let the parked socket age past maxAgeMs while idle.
-		await new Promise((resolve) => setTimeout(resolve, 220));
+		// The parked socket ages past maxAgeMs while idle.
+		vi.advanceTimersByTime(121);
 
 		const second = await deliverOnce(pool, mx.port, { to: ['r2@rcpt.test'], body: body(2) });
 		// takeConnection saw the aged socket, QUIT it cleanly, and the caller reconnected.
 		expect(second.reused).toBe(false);
 		expect(mx.connections()).toBe(2);
-		await mx.quitSeen(1);
+		await mx.quitsReached(1);
 		expect(mx.quits()).toBe(1);
 	});
 
 	it('(guardrail) a parked socket the MX closed while idle fails its RSET probe → the caller connects fresh', async () => {
-		// Connection 1 serves one delivery, then (40 ms after the final 250) the MX
-		// destroys the now-idle parked socket. The next takeConnection finds a dead
-		// socket, its RSET probe throws, and the pool discards it and returns undefined.
-		const mx = await startRawMx((i) => (i === 1 ? { destroyWhenIdleMs: 40 } : {}));
+		// Connection 1 serves one delivery, then the MX destroys the now-idle parked
+		// socket. The next takeConnection finds a dead socket, its RSET probe
+		// throws, and the pool discards it and returns undefined.
+		const mx = await startRawMx((i) => (i === 1 ? { exposeWhenIdle: true } : {}));
 		const pool = makePool(mx.port);
 
 		const first = await deliverOnce(pool, mx.port, { to: ['r1@rcpt.test'], body: body(1) });
 		expect(first.reused).toBe(false); // opened + parked
 
-		// Wait for the MX to kill the parked socket (the client observes the close,
-		// flipping the reader to failed) before the next delivery probes it.
-		await new Promise((resolve) => setTimeout(resolve, 120));
+		// Kill the parked socket from the MX side. Whether the client has already
+		// seen the close (its reader is failed and the probe write throws) or not
+		// (the RSET probe meets the dead peer), the probe fails either way.
+		const parked = await mx.idle();
+		const closed = socketClosed(parked);
+		parked.destroy();
+		await closed;
 
 		const second = await deliverOnce(pool, mx.port, { to: ['r2@rcpt.test'], body: body(2) });
 		expect(second.reused).toBe(false); // RSET probe failed → fresh connect

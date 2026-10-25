@@ -70,25 +70,24 @@ async function readGreeting(server: Greetable, opts: { tls?: boolean } = {}): Pr
 		const socket: Socket = opts.tls
 			? tlsConnect({ port, host: '127.0.0.1', rejectUnauthorized: false })
 			: netConnect(port, '127.0.0.1');
+		// Settled by the greeting line, an error or a close, whichever comes
+		// first; a server that stays silent fails on the runner's budget.
 		let buf = '';
-		const timer = setTimeout(() => {
-			socket.destroy();
-			reject(new Error('timed out waiting for SMTP greeting'));
-		}, 5000);
 		socket.setEncoding('utf8');
 		socket.on('data', (chunk: string) => {
 			buf += chunk;
 			const nl = buf.indexOf('\r\n');
 			if (nl !== -1) {
-				clearTimeout(timer);
 				const line = buf.slice(0, nl);
 				socket.end();
 				resolve(line);
 			}
 		});
 		socket.on('error', (err) => {
-			clearTimeout(timer);
 			reject(err);
+		});
+		socket.on('close', () => {
+			reject(new Error(`connection closed before an SMTP greeting line; received: ${buf}`));
 		});
 	});
 }

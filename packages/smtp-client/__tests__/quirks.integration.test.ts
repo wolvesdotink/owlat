@@ -13,22 +13,25 @@
  * banners late, sprays 8-bit bytes, or omits the CR must each produce the RIGHT
  * structured outcome and never a crash, a hang, or a wrong verdict.
  *
- * Determinism: no real network and no wall-clock races — the timeout case drives
- * an explicit short greeting deadline against a server whose banner is delayed far
- * beyond it, and every other case is purely reply-driven.
+ * Determinism: no real network and no wall-clock races. The timeout case runs
+ * the greeting deadline on fake time and writes the late banner itself once that
+ * deadline has fired; every other case is purely reply-driven.
  */
 
 import net from 'node:net';
 import type { AddressInfo } from 'node:net';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { SmtpConnection } from '../src/connection';
+import { ReplyReader } from '../src/replyReader';
 import { sendEnvelope } from '../src/transaction';
 import { isSmtpError } from '../src/errors';
 
 const cleanups: Array<() => void> = [];
 
 afterEach(() => {
+	vi.useRealTimers();
+	vi.restoreAllMocks();
 	while (cleanups.length > 0) {
 		try {
 			cleanups.pop()?.();
@@ -106,24 +109,29 @@ function startRawServer(config: RawServerConfig): Promise<number> {
 }
 
 /**
- * Resolve when a socket has fully closed (or is already gone), rejecting if it
- * stays open past `timeoutMs`. Used to PROVE the client tore a connection down —
- * a resolved `'close'` on the server side means the peer is gone and no further
- * server write can ever be read by the client.
+ * Resolve when a socket has fully closed (or is already gone). Used to PROVE the
+ * client tore a connection down: a `'close'` on the server side means the peer
+ * is gone and no further server write can ever be read by the client. A client
+ * that kept the socket open leaves this pending, and the test fails on the
+ * runner's budget.
+ *
+ * The client's teardown may reset the connection, so `'error'` (ECONNRESET, or
+ * EPIPE for a server write racing it) can precede `'close'`. That is why this is
+ * not `events.once(socket, 'close')`, which rejects on the first `'error'`. Any
+ * other socket error still rejects.
  */
-function awaitServerClose(socket: net.Socket, timeoutMs = 2_000): Promise<void> {
+function awaitServerClose(socket: net.Socket): Promise<void> {
+	if (socket.destroyed) return Promise.resolve();
 	return new Promise((resolve, reject) => {
-		if (socket.destroyed) {
-			resolve();
-			return;
-		}
-		const timer = setTimeout(
-			() => reject(new Error('server-side socket did not close within the deadline')),
-			timeoutMs
-		);
+		let unexpected: Error | undefined;
+		const onError = (err: NodeJS.ErrnoException): void => {
+			if (err.code !== 'ECONNRESET' && err.code !== 'EPIPE') unexpected ??= err;
+		};
+		socket.on('error', onError);
 		socket.once('close', () => {
-			clearTimeout(timer);
-			resolve();
+			socket.off('error', onError);
+			if (unexpected) reject(unexpected);
+			else resolve();
 		});
 	});
 }
@@ -317,48 +325,59 @@ describe('smtp-client long-tail quirks — raw-socket fake servers', () => {
 	// client's greeting deadline must fire in phase `greeting` and it must NOT
 	// later consume the late banner as if the handshake had succeeded.
 	it('times out in the greeting phase and does not consume a late banner', async () => {
-		let serverSocket: net.Socket | undefined;
-		let bannerWritten = false;
+		let accept!: (socket: net.Socket) => void;
+		const accepted = new Promise<net.Socket>((resolve) => {
+			accept = resolve;
+		});
 		const port = await startRawServer({
-			onConnect: (s) => {
-				serverSocket = s;
-				// Banner arrives far AFTER the client's 150ms greeting deadline.
-				const timer = setTimeout(() => {
-					if (!s.destroyed) {
-						s.write('220 mx.test finally ready\r\n');
-						bannerWritten = true;
-					}
-				}, 1_000);
-				cleanups.push(() => clearTimeout(timer));
-			},
+			// The banner is withheld until the test writes it after the deadline.
+			onConnect: (s) => accept(s),
 			handle: (_line, s) => {
 				if (!s.destroyed) s.write('250 OK\r\n');
 			},
 		});
-		let caught: unknown;
-		try {
-			await SmtpConnection.connect({
-				host: '127.0.0.1',
-				port,
-				ehloName: 'client.test',
-				tlsMode: 'none',
-				timeouts: { greeting: 150 },
-			});
-		} catch (err) {
-			caught = err;
-		}
+		// Milestone: the client has armed its greeting deadline.
+		let markGreetingRead!: () => void;
+		const greetingRead = new Promise<void>((resolve) => {
+			markGreetingRead = resolve;
+		});
+		const read = ReplyReader.prototype.read;
+		vi.spyOn(ReplyReader.prototype, 'read').mockImplementation(function (
+			this: ReplyReader,
+			...args: Parameters<ReplyReader['read']>
+		) {
+			const reply = read.apply(this, args);
+			if (args[0] === 'greeting') markGreetingRead();
+			return reply;
+		});
+		// Only the client's deadlines run on fake time; the sockets keep real I/O.
+		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+		const outcome = SmtpConnection.connect({
+			host: '127.0.0.1',
+			port,
+			ehloName: 'client.test',
+			tlsMode: 'none',
+			timeouts: { greeting: 150 },
+		}).then(
+			() => undefined,
+			(err: unknown) => err
+		);
+		await greetingRead;
+		await vi.advanceTimersByTimeAsync(150);
+		const caught = await outcome;
+		vi.useRealTimers();
 		expect(isSmtpError(caught)).toBe(true);
 		if (isSmtpError(caught)) {
 			expect(caught.phase).toBe('greeting');
 			expect(caught.secured).toBe(false);
 		}
 		// Non-consumption proof: on the greeting timeout the client DESTROYS the
-		// connection, so the server observes 'close' well before its 1s banner timer
-		// fires. The 220 is therefore never on the wire when the client is still
-		// reading — the client cannot have consumed a banner that was never sent.
-		expect(serverSocket).toBeDefined();
-		if (serverSocket !== undefined) await awaitServerClose(serverSocket);
-		expect(bannerWritten).toBe(false);
+		// connection, so the banner written now, after the deadline, has no reader
+		// left, and the server observes 'close'.
+		const serverSocket = await accepted;
+		const closed = awaitServerClose(serverSocket);
+		if (!serverSocket.destroyed) serverSocket.write('220 mx.test finally ready\r\n');
+		await closed;
 	});
 
 	// ── QUIRK 7: 8-bit garbage bytes in reply text ────────────────────────────

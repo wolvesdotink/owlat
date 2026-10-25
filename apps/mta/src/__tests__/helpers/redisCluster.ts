@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { randomInt, randomUUID } from 'node:crypto';
 import { createServer } from 'node:net';
 import Redis, { type Cluster } from 'ioredis';
-import { containerLogLine } from './containerLogs.js';
+import { awaitContainerLog, REDIS_CLUSTER_OK_LOG, REDIS_READY_LOG } from './dockerLogs.js';
 
 const REDIS_IMAGE = 'redis:7-alpine';
 const CLUSTER_NODE_COUNT = 3;
@@ -92,39 +92,36 @@ async function allocatePorts(): Promise<number[]> {
 	return ports;
 }
 
-/** Each node's full `CLUSTER INFO`, read once. */
-function clusterInfo(name: string, port: number): string {
-	return execFileSync(
-		'docker',
-		['exec', name, 'redis-cli', '-p', String(port), 'cluster', 'info'],
-		{
-			encoding: 'utf8',
-		}
-	);
+/** Wait for a node to log that it listens, then check that it answers PING. */
+async function waitForOwnedNode(name: string, port: number): Promise<void> {
+	await awaitContainerLog(name, REDIS_READY_LOG);
+	const pong = execFileSync('docker', ['exec', name, 'redis-cli', '-p', String(port), 'ping'], {
+		encoding: 'utf8',
+	}).trim();
+	if (pong !== 'PONG')
+		throw new Error(`Redis Cluster node ${name} answered ${pong} on port ${port}`);
 }
 
 /**
- * Wait for every node to report the cluster healthy, then check it once.
- *
- * A node logs "Cluster state changed: ok" once it sees every slot served,
- * which `redis-cli --cluster create` only starts; the gossip that finishes it
- * is asynchronous. The one-shot `CLUSTER INFO` afterwards pins what the suites
- * rely on: full slot coverage on every node and all nodes known.
+ * Wait for every node to log that the cluster state turned ok, then check that
+ * each one sees full slot coverage and every node. `redis-cli --cluster create`
+ * returns once the slots are assigned, a few seconds before the nodes flip
+ * their state to ok.
  */
 async function waitForCluster(names: string[], ports: number[]): Promise<void> {
-	await Promise.all(names.map((name) => containerLogLine(name, /Cluster state changed: ok/)));
+	await Promise.all(names.map((name) => awaitContainerLog(name, REDIS_CLUSTER_OK_LOG)));
 	for (const [index, name] of names.entries()) {
-		const info = clusterInfo(name, ports[index]!);
-		for (const expected of [
-			'cluster_state:ok',
-			`cluster_slots_assigned:${CLUSTER_SLOT_COUNT}`,
-			`cluster_slots_ok:${CLUSTER_SLOT_COUNT}`,
-			`cluster_known_nodes:${CLUSTER_NODE_COUNT}`,
-		]) {
-			if (!info.includes(expected)) {
-				throw new Error(`Redis Cluster node ${name} reports no ${expected}:\n${info}`);
-			}
-		}
+		const info = execFileSync(
+			'docker',
+			['exec', name, 'redis-cli', '-p', String(ports[index]), 'cluster', 'info'],
+			{ encoding: 'utf8' }
+		);
+		const converged =
+			info.includes('cluster_state:ok') &&
+			info.includes(`cluster_slots_assigned:${CLUSTER_SLOT_COUNT}`) &&
+			info.includes(`cluster_slots_ok:${CLUSTER_SLOT_COUNT}`) &&
+			info.includes(`cluster_known_nodes:${CLUSTER_NODE_COUNT}`);
+		if (!converged) throw new Error(`Redis Cluster node ${name} did not converge:\n${info}`);
 	}
 }
 
@@ -139,76 +136,76 @@ function removeContainers(names: string[]): void {
 }
 
 export async function startRedisClusterFixture(prefix: string): Promise<RedisClusterFixture> {
-	const suffix = randomUUID().slice(0, 8);
-	const ports = await allocatePorts();
-	const names = ports.map((_, index) => `owlat-${prefix}-${suffix}-${index}`);
-	const started: string[] = [];
-	let client: Cluster | undefined;
+	let lastError: unknown;
+	for (let setupAttempt = 0; setupAttempt < 3; setupAttempt++) {
+		const suffix = randomUUID().slice(0, 8);
+		const ports = await allocatePorts();
+		const names = ports.map((_, index) => `owlat-${prefix}-${suffix}-${index}`);
+		let client: Cluster | undefined;
 
-	try {
-		for (let index = 0; index < ports.length; index++) {
+		try {
+			for (let index = 0; index < ports.length; index++) {
+				execFileSync(
+					'docker',
+					[
+						'run',
+						'-d',
+						'--rm',
+						'--network',
+						'host',
+						'--name',
+						names[index]!,
+						REDIS_IMAGE,
+						'redis-server',
+						'--port',
+						String(ports[index]),
+						'--cluster-enabled',
+						'yes',
+						'--cluster-config-file',
+						'nodes.conf',
+						'--cluster-node-timeout',
+						'5000',
+						'--appendonly',
+						'no',
+						'--save',
+						'',
+						'--protected-mode',
+						'no',
+					],
+					{ stdio: 'ignore' }
+				);
+			}
+			await Promise.all(names.map((name, index) => waitForOwnedNode(name, ports[index]!)));
 			execFileSync(
 				'docker',
 				[
 					'run',
-					'-d',
 					'--rm',
 					'--network',
 					'host',
-					'--name',
-					names[index]!,
 					REDIS_IMAGE,
-					'redis-server',
-					'--port',
-					String(ports[index]),
-					'--cluster-enabled',
-					'yes',
-					'--cluster-config-file',
-					'nodes.conf',
-					'--cluster-node-timeout',
-					'5000',
-					'--appendonly',
-					'no',
-					'--save',
-					'',
-					'--protected-mode',
-					'no',
+					'redis-cli',
+					'--cluster',
+					'create',
+					...ports.map((port) => `127.0.0.1:${port}`),
+					'--cluster-replicas',
+					'0',
+					'--cluster-yes',
 				],
-				{ stdio: 'ignore' }
+				{ stdio: 'ignore', timeout: 15_000 }
 			);
-			started.push(names[index]!);
+			await waitForCluster(names, ports);
+			client = new Redis.Cluster(ports.map((port) => ({ host: '127.0.0.1', port })));
+			await client.ping();
+			await client.flushall();
+			return { client, names, ports };
+		} catch (error) {
+			lastError = error;
+			client?.disconnect();
+			removeContainers(names);
 		}
-		// A node that cannot bind its port exits, which ends its log stream and
-		// fails the setup here rather than at cluster creation.
-		await Promise.all(names.map((name) => containerLogLine(name, /Ready to accept connections/)));
-		execFileSync(
-			'docker',
-			[
-				'run',
-				'--rm',
-				'--network',
-				'host',
-				REDIS_IMAGE,
-				'redis-cli',
-				'--cluster',
-				'create',
-				...ports.map((port) => `127.0.0.1:${port}`),
-				'--cluster-replicas',
-				'0',
-				'--cluster-yes',
-			],
-			{ stdio: 'ignore', timeout: 15_000 }
-		);
-		await waitForCluster(names, ports);
-		client = new Redis.Cluster(ports.map((port) => ({ host: '127.0.0.1', port })));
-		await client.ping();
-		await client.flushall();
-		return { client, names, ports };
-	} catch (error) {
-		client?.disconnect();
-		removeContainers(started);
-		throw new Error('Could not start an isolated Redis Cluster fixture', { cause: error });
 	}
+	throw new Error('Could not start an isolated Redis Cluster fixture', { cause: lastError });
 }
 
 export function stopRedisClusterFixture(fixture: RedisClusterFixture | undefined): void {
