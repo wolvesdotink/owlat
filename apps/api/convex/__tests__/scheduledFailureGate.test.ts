@@ -10,6 +10,7 @@ import { internal } from '../_generated/api';
 import { scheduledFailureSeam } from './helpers/scheduledFailureSeam';
 import {
 	drainDueScheduledJobs,
+	drainScheduledJobsDueWithin,
 	expectScheduledFailure,
 	takeScheduledFailures,
 } from './helpers/scheduledFailures';
@@ -168,6 +169,53 @@ describe('scheduled failure gate', () => {
 		expect(jobs.map((job) => job.state.kind)).toEqual(['pending']);
 		// Its timer is real: cancelled, it does nothing when it fires after this file.
 		await t.run((ctx) => ctx.scheduler.cancel(jobs[0]!._id));
+	});
+
+	describe('running jobs due soon, as the file drain does', () => {
+		afterEach(() => {
+			vi.useRealTimers();
+		});
+
+		/** Schedule the throwing function `delayMs` out on real timers; the harness is handed back. */
+		async function scheduleThrowingJob(delayMs: number) {
+			const t = newHarness();
+			await t.run(async (ctx) => {
+				await ctx.scheduler.runAfter(
+					delayMs,
+					internal.webhooks.deliveryReconciler.reconcileOverdueDeliveries,
+					{ unexpected: true } as never
+				);
+			});
+			return t;
+		}
+
+		it('moves Date to the due time before the job runs, then hands the real clock back', async () => {
+			const t = await scheduleThrowingJob(500);
+
+			await drainScheduledJobsDueWithin(1000);
+
+			expect(takeScheduledFailures().map((failure) => failure.name)).toEqual([THROWING_FUNCTION]);
+			const [job] = await t.run((ctx) => ctx.db.system.query('_scheduled_functions').collect());
+			// convex-test stamps the end of the run with Date.now(): the job never
+			// saw a clock before its scheduled time.
+			expect(job?.state.kind).toBe('failed');
+			expect(job?.completedTime).toBeGreaterThanOrEqual(job!.scheduledTime);
+			expect(vi.getMockedSystemTime()).toBeNull();
+		});
+
+		it('runs no job early on a clock the test controls', async () => {
+			vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
+			const t = await scheduleThrowingJob(500);
+
+			await drainScheduledJobsDueWithin(1000);
+
+			expect(takeScheduledFailures()).toEqual([]);
+			const jobs = await t.run((ctx) => ctx.db.system.query('_scheduled_functions').collect());
+			expect(jobs.map((job) => job.state.kind)).toEqual(['pending']);
+			expect(vi.getMockedSystemTime()?.toISOString()).toBe('2026-01-01T00:00:00.000Z');
+			// Its timer is real: cancelled, it does nothing when it fires after this file.
+			await t.run((ctx) => ctx.scheduler.cancel(jobs[0]!._id));
+		});
 	});
 
 	describe('the convex-test seam', () => {

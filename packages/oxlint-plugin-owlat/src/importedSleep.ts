@@ -5,12 +5,14 @@
  *
  * Only a relative import is followed, and only a helper of one shape is
  * accepted: an exported function (declaration, arrow or function expression)
- * whose whole body returns `new Promise(executor)`, where the executor starts a
- * global `setTimeout` / `setInterval` itself, not from a nested callback. The
+ * whose whole body returns `new Promise(executor)`, where the executor's whole
+ * body is one global `setTimeout` / `setInterval` call whose callback only
+ * resolves, so that one timer settles the promise and nothing else can. The
  * module may not bind `setTimeout`, `setInterval` or `Promise` to anything
  * else: every mention of a timer has to be a call of it, and every mention of
  * `Promise` a `new Promise` or a type. Anything else (a package import, a
- * re-export, a helper that awaits more work, a `node:timers` import) yields no
+ * re-export, a helper that awaits more work, a second timer, a branch, a
+ * callback that does more than resolve, a `node:timers` import) yields no
  * timer, and the call stays a real-clock wait.
  *
  * The module is parsed with the TypeScript compiler, loaded on first use: the
@@ -126,26 +128,73 @@ const globalsUnbound = (ts: Ts, file: TypeScript.SourceFile): boolean => {
 	return unbound;
 };
 
-/** The global timer an executor starts directly, outside any nested function. */
+/** Whether `node` holds a call, a `new` or a function, i.e. could start or wait on more work. */
+const doesWork = (ts: Ts, node: TypeScript.Node): boolean =>
+	ts.isCallExpression(node) ||
+	ts.isNewExpression(node) ||
+	ts.isFunctionLike(node) ||
+	ts.isAwaitExpression(node) ||
+	ts.isYieldExpression(node) ||
+	ts.isTaggedTemplateExpression(node) ||
+	ts.forEachChild(node, (child) => doesWork(ts, child) || undefined) === true;
+
+/** The one expression a function evaluates: its expression body, or a block of one expression statement. */
+const onlyExpression = (
+	ts: Ts,
+	fn: TypeScript.FunctionLikeDeclaration
+): TypeScript.Expression | undefined => {
+	const body = fn.body;
+	if (!body) return undefined;
+	if (!ts.isBlock(body)) return unwrapped(ts, body);
+	const [only, ...rest] = body.statements;
+	return rest.length === 0 && only && ts.isExpressionStatement(only)
+		? unwrapped(ts, only.expression)
+		: undefined;
+};
+
+const firstParameter = (ts: Ts, fn: TypeScript.FunctionLikeDeclaration): string | undefined => {
+	const [parameter] = fn.parameters;
+	return parameter && ts.isIdentifier(parameter.name) ? parameter.name.text : undefined;
+};
+
+/**
+ * Whether a timer callback does nothing but settle the promise: `resolve`
+ * itself, or a function without parameters whose only work is `resolve(...)`
+ * with plain arguments.
+ */
+const settlesOnly = (ts: Ts, callback: TypeScript.Expression, resolve: string): boolean => {
+	const node = unwrapped(ts, callback);
+	if (ts.isIdentifier(node)) return node.text === resolve;
+	if (!(ts.isArrowFunction(node) || ts.isFunctionExpression(node))) return false;
+	if (node.parameters.length > 0) return false;
+	const call = onlyExpression(ts, node);
+	return (
+		call !== undefined &&
+		ts.isCallExpression(call) &&
+		ts.isIdentifier(call.expression) &&
+		call.expression.text === resolve &&
+		!call.arguments.some((argument) => doesWork(ts, argument))
+	);
+};
+
+/**
+ * The global timer that alone settles an executor: its whole body is one call
+ * of `setTimeout` / `setInterval` whose callback only resolves and whose other
+ * arguments do no work. Any second timer, branch, statement or callback that
+ * does more leaves which clock settles the promise unknown, so it yields none:
+ * faking one timer must be enough to drive the whole wait.
+ */
 const executorTimer = (ts: Ts, executor: TypeScript.Node): string | undefined => {
-	let found: string | undefined;
-	const visit = (node: TypeScript.Node): void => {
-		if (found !== undefined || ts.isFunctionLike(node)) return;
-		if (
-			ts.isCallExpression(node) &&
-			ts.isIdentifier(node.expression) &&
-			GLOBAL_TIMERS.has(node.expression.text)
-		) {
-			found = node.expression.text;
-			return;
-		}
-		ts.forEachChild(node, visit);
-	};
 	if (!(ts.isArrowFunction(executor) || ts.isFunctionExpression(executor))) return undefined;
-	const body = executor.body;
-	if (ts.isBlock(body)) ts.forEachChild(body, visit);
-	else visit(body);
-	return found;
+	const resolve = firstParameter(ts, executor);
+	const call = onlyExpression(ts, executor);
+	if (resolve === undefined || call === undefined || !ts.isCallExpression(call)) return undefined;
+	if (!ts.isIdentifier(call.expression) || !GLOBAL_TIMERS.has(call.expression.text)) {
+		return undefined;
+	}
+	const [callback, ...rest] = call.arguments;
+	if (!callback || !settlesOnly(ts, callback, resolve)) return undefined;
+	return rest.some((argument) => doesWork(ts, argument)) ? undefined : call.expression.text;
 };
 
 const timerOf = (path: string, text: string, name: string): string | undefined => {
@@ -158,8 +207,8 @@ const timerOf = (path: string, text: string, name: string): string | undefined =
 	const promise = unwrapped(ts, returned);
 	if (!ts.isNewExpression(promise) || !ts.isIdentifier(promise.expression)) return undefined;
 	if (promise.expression.text !== 'Promise') return undefined;
-	const [executor] = promise.arguments ?? [];
-	return executor ? executorTimer(ts, executor) : undefined;
+	const [executor, ...extra] = promise.arguments ?? [];
+	return executor && extra.length === 0 ? executorTimer(ts, unwrapped(ts, executor)) : undefined;
 };
 
 /**

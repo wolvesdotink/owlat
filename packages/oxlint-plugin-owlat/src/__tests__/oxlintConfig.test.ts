@@ -87,6 +87,31 @@ const FIXTURES: Record<string, string> = {
 		'});',
 		'',
 	].join('\n'),
+	// A helper that starts a bookkeeping interval and resolves on a timeout:
+	// faking the interval alone leaves the timeout on the real clock.
+	'helpers/mixedSleep.ts': [
+		'export function sleep(ms: number): Promise<void> {',
+		'\treturn new Promise((resolve) => {',
+		'\t\tsetInterval(tick, 10);',
+		'\t\tsetTimeout(resolve, ms);',
+		'\t});',
+		'}',
+		'',
+		'declare function tick(): void;',
+		'',
+	].join('\n'),
+	'helpers/importedMixedSleep.test.ts': [
+		"import { it, vi } from 'vitest';",
+		"import { sleep } from './mixedSleep';",
+		'',
+		"it('fakes the interval only', async () => {",
+		"\tvi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });",
+		'\tconst slept = sleep(50);',
+		'\tawait vi.advanceTimersByTimeAsync(50);',
+		'\tawait slept;',
+		'});',
+		'',
+	].join('\n'),
 	'milestones.test.ts': [
 		"import { it } from 'vitest';",
 		'',
@@ -283,6 +308,9 @@ describe.each(['.', 'apps/web'])('oxlint run from %s with the root config', (cwd
 	it('follows a sleep helper imported from a sibling module to the timer fake time drives', () => {
 		expect(byFile.get('importedSleep.test.ts')).toBeUndefined();
 		expect(errorCodes(byFile.get('importedRealSleep.test.ts'))).toEqual([
+			'owlat(no-real-time-wait-in-tests)',
+		]);
+		expect(errorCodes(byFile.get('importedMixedSleep.test.ts'))).toEqual([
 			'owlat(no-real-time-wait-in-tests)',
 		]);
 	});

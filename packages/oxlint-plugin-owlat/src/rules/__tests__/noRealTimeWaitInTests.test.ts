@@ -28,6 +28,18 @@ const helpers: Record<string, string> = {
 		'export async function sleep(ms: number) {\n\tawait warmUp();\n\treturn new Promise((resolve) => setTimeout(resolve, ms));\n}\ndeclare function warmUp(): Promise<void>;\n',
 	'nested.ts':
 		"export function sleep(ms: number) {\n\treturn new Promise((resolve) => socket.once('drain', () => setTimeout(resolve, ms)));\n}\ndeclare const socket: { once(event: string, fn: () => void): void };\n",
+	'settle.ts':
+		'export const sleep = (ms: number) =>\n\tnew Promise<void>((resolve) => setTimeout(() => resolve(), ms));\n',
+	'mixedTimers.ts':
+		'export function sleep(ms: number) {\n\treturn new Promise((resolve) => {\n\t\tsetInterval(tick, 10);\n\t\tsetTimeout(resolve, ms);\n\t});\n}\ndeclare function tick(): void;\n',
+	'branch.ts':
+		'export function sleep(ms: number) {\n\treturn new Promise((resolve) => {\n\t\tif (ms > 100) realWait(resolve, ms);\n\t\telse setTimeout(resolve, ms);\n\t});\n}\ndeclare function realWait(fn: () => void, ms: number): void;\n',
+	'ternary.ts':
+		'export function sleep(ms: number) {\n\treturn new Promise((resolve) => (slow ? realWait(resolve, ms) : setTimeout(resolve, ms)));\n}\ndeclare const slow: boolean;\ndeclare function realWait(fn: () => void, ms: number): void;\n',
+	'busyCallback.ts':
+		'export function sleep(ms: number) {\n\treturn new Promise((resolve) => setTimeout(() => realWait(resolve), ms));\n}\ndeclare function realWait(fn: () => void): void;\n',
+	'workInDelay.ts':
+		'export function sleep(ms: number) {\n\treturn new Promise((resolve) => setTimeout(resolve, startedAt(ms)));\n}\ndeclare function startedAt(ms: number): number;\n',
 	'reexport.ts': "export { sleep } from './sleep';\n",
 	'local.ts':
 		'function sleep(ms: number) {\n\treturn new Promise((resolve) => setTimeout(resolve, ms));\n}\nexport const unrelated = 1;\nvoid sleep;\n',
@@ -103,6 +115,11 @@ ruleTester.run('owlat/no-real-time-wait-in-tests', rule, {
 			code: `${vitest}it('fires', async () => { vi.useFakeTimers(); const done = new Promise((r) => setTimeout(r, 1000)); await vi.advanceTimersByTimeAsync(1000); await done; });`,
 		},
 		{
+			name: 'an executor whose delays all run on the one faked timer',
+			filename,
+			code: `${vitest}it('fires', async () => { vi.useFakeTimers(); const done = new Promise((r) => { setTimeout(tick, 10); setTimeout(r, 50); }); await vi.advanceTimersByTimeAsync(50); await done; });`,
+		},
+		{
 			name: 'a local sleep helper called in a test that runs all timers, with fake timers from beforeEach',
 			filename,
 			code: `${vitest}const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));\nbeforeEach(() => { vi.useFakeTimers(); });\nit('fires', async () => { const done = sleep(50); vi.runAllTimers(); await done; vi.useRealTimers(); });`,
@@ -151,6 +168,11 @@ ruleTester.run('owlat/no-real-time-wait-in-tests', rule, {
 			name: 'a sleep helper imported from a sibling module, driven by fake timers',
 			filename: besideHelpers,
 			code: drivesImported('./helpers/sleep'),
+		},
+		{
+			name: 'an imported helper whose timer callback only resolves',
+			filename: besideHelpers,
+			code: drivesImported('./helpers/settle'),
 		},
 		{
 			name: 'the same helper named by its .js specifier, and an arrow delay helper',
@@ -338,12 +360,17 @@ ruleTester.run('owlat/no-real-time-wait-in-tests', rule, {
 			['a local setTimeout', './helpers/shadowed'],
 			['more work before the timer', './helpers/moreWork'],
 			['a timer behind a nested callback', './helpers/nested'],
+			['a second timer beside the one that resolves', './helpers/mixedTimers'],
+			['a branch onto another wait', './helpers/branch'],
+			['a conditional onto another wait', './helpers/ternary'],
+			['a timer callback that waits again', './helpers/busyCallback'],
+			['a delay argument that does work', './helpers/workInDelay'],
 			['a re-export', './helpers/reexport'],
 			['no such export', './helpers/local'],
 			['no such module', './helpers/missing'],
 			['a package import', '@owlat/shared'],
 		].map(([what, source]) => ({
-			name: `an imported helper whose module shows no global timer behind it: ${what}`,
+			name: `an imported helper whose module shows no one global timer settling it: ${what}`,
 			filename: besideHelpers,
 			code: drivesImported(source!),
 			errors: [{ message }],
@@ -353,6 +380,18 @@ ruleTester.run('owlat/no-real-time-wait-in-tests', rule, {
 			filename: besideHelpers,
 			code: `${vitest}import { sleep } from './helpers/sleep';\nit('real again', async () => { vi.useFakeTimers(); vi.useRealTimers(); const p = sleep(50); await vi.advanceTimersByTimeAsync(50); await p; });\nit('timer not faked', async () => { vi.useFakeTimers({ toFake: ['Date'] }); const p = sleep(50); await vi.advanceTimersByTimeAsync(50); await p; });\nit('follows the real clock', async () => { vi.useFakeTimers({ shouldAdvanceTime: true }); const p = sleep(50); await vi.advanceTimersByTimeAsync(50); await p; });\nit('not driven', async () => { await sleep(50); });`,
 			errors: 4,
+		},
+		{
+			name: 'faking the bookkeeping timer of a helper that resolves on another',
+			filename: besideHelpers,
+			code: `${vitest}import { sleep } from './helpers/mixedTimers';\nit('x', async () => { vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] }); const p = sleep(50); await vi.advanceTimersByTimeAsync(50); await p; });`,
+			errors: [{ message }],
+		},
+		{
+			name: 'an executor that starts delays on two different timers',
+			filename,
+			code: `${vitest}it('x', async () => { vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] }); const p = new Promise((r) => { setInterval(tick, 10); setTimeout(r, 50); }); await vi.advanceTimersByTimeAsync(50); await p; });\nit('y', async () => { vi.useFakeTimers(); const p = new Promise((r) => { if (slow) later(r, 50); else setTimeout(r, 50); }); await vi.advanceTimersByTimeAsync(50); await p; });\nimport { setTimeout as later } from 'node:timers';`,
+			errors: 2,
 		},
 		{
 			name: 'a vi that is not vitest does not drive anything',
