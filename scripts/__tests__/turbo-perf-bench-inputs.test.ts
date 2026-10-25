@@ -65,7 +65,7 @@ beforeAll(() => {
 			new Set(Object.keys(task.inputs).map((file) => normalize(join(task.directory, file)))),
 		])
 	);
-}, 120_000);
+});
 
 /** The scripts/perf-bench/ files a spec imports, repo-relative. */
 function perfBenchImports(spec: string): string[] {

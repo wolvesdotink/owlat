@@ -107,6 +107,7 @@ import type * as mail_interpret_run from '../mail/interpret/run.js';
 import type * as mail_interpret_runApply from '../mail/interpret/runApply.js';
 import type * as mail_interpret_scope from '../mail/interpret/scope.js';
 import type * as mail_interpret_scopeChange from '../mail/interpret/scopeChange.js';
+import type * as mail_interpret_scopeLoad from '../mail/interpret/scopeLoad.js';
 import type * as mail_interpret_sendActivity from '../mail/interpret/sendActivity.js';
 import type * as mail_interpret_sendFailure from '../mail/interpret/sendFailure.js';
 import type * as mail_interpret_sourceOrder from '../mail/interpret/sourceOrder.js';
@@ -1485,7 +1486,6 @@ import type * as mail_senderProfile from '../mail/senderProfile.js';
 import type * as mail_sendingSwitch from '../mail/sendingSwitch.js';
 import type * as mail_settings from '../mail/settings.js';
 import type * as mail_signatures from '../mail/signatures.js';
-import type * as mail_snippets from '../mail/snippets.js';
 import type * as mail_snooze from '../mail/snooze.js';
 import type * as mail_subscriptions from '../mail/subscriptions.js';
 import type * as mail_teamInboxConversion from '../mail/teamInboxConversion.js';
@@ -1786,7 +1786,6 @@ import type * as webhooks_events_emailSent_index from '../webhooks/events/emailS
 import type * as webhooks_events_registry from '../webhooks/events/registry.js';
 import type * as webhooks_events_test_index from '../webhooks/events/test/index.js';
 import type * as webhooks_events_topicUnsubscribed_index from '../webhooks/events/topicUnsubscribed/index.js';
-import type * as webhooks_fanout from '../webhooks/fanout.js';
 import type * as webhooks_githubHttp from '../webhooks/githubHttp.js';
 import type * as webhooks_inboundEventClaims from '../webhooks/inboundEventClaims.js';
 import type * as webhooks_inboundHttp from '../webhooks/inboundHttp.js';
@@ -2026,6 +2025,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/interpret/runApply': typeof mail_interpret_runApply;
 	'mail/interpret/scope': typeof mail_interpret_scope;
 	'mail/interpret/scopeChange': typeof mail_interpret_scopeChange;
+	'mail/interpret/scopeLoad': typeof mail_interpret_scopeLoad;
 	'mail/interpret/sendActivity': typeof mail_interpret_sendActivity;
 	'mail/interpret/sendFailure': typeof mail_interpret_sendFailure;
 	'mail/interpret/sourceOrder': typeof mail_interpret_sourceOrder;
@@ -3394,7 +3394,6 @@ declare const fullApi: ApiFromModules<{
 	'mail/sendingSwitch': typeof mail_sendingSwitch;
 	'mail/settings': typeof mail_settings;
 	'mail/signatures': typeof mail_signatures;
-	'mail/snippets': typeof mail_snippets;
 	'mail/snooze': typeof mail_snooze;
 	'mail/subscriptions': typeof mail_subscriptions;
 	'mail/teamInboxConversion': typeof mail_teamInboxConversion;
@@ -3695,7 +3694,6 @@ declare const fullApi: ApiFromModules<{
 	'webhooks/events/registry': typeof webhooks_events_registry;
 	'webhooks/events/test/index': typeof webhooks_events_test_index;
 	'webhooks/events/topicUnsubscribed/index': typeof webhooks_events_topicUnsubscribed_index;
-	'webhooks/fanout': typeof webhooks_fanout;
 	'webhooks/githubHttp': typeof webhooks_githubHttp;
 	'webhooks/inboundEventClaims': typeof webhooks_inboundEventClaims;
 	'webhooks/inboundHttp': typeof webhooks_inboundHttp;

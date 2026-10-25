@@ -6,7 +6,4 @@
  * `check-entry-wiring.ts` holds it exact; kept in its own file so a lane that
  * wires an entry edits data, not the walk.
  */
-export const UNREACHED_ENTRIES: readonly string[] = [
-	// Thread brief: wired by the wiring and web lanes, which delete each line (none may survive).
-	'mail/interpret/scope.ts#loadSourceForScope',
-];
+export const UNREACHED_ENTRIES: readonly string[] = [];

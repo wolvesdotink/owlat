@@ -172,7 +172,7 @@ The web app's `lint` script (`apps/web`) runs gates of its own, including:
   `LocalizedText` and rendered with `useLocalized()` (or `resolveLocalized`),
   both from `app/utils/localizedText.ts`, never a restated union or an inline
   `typeof v === 'string' ? t(v) : t(v.key, v.params ?? {})`
-  (frozen-baseline ratchet, `apps/web/scripts/check-localized-text.sh`).
+  (zero-tolerance gate, `apps/web/scripts/check-localized-text.sh`).
 
 ## Code Quality
 

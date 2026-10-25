@@ -30,7 +30,7 @@ beforeAll(() => {
 	const material = generateCert('mx.test');
 	cert = material.cert;
 	key = material.key;
-}, 20000);
+});
 
 function authConfig(): SmtpAuthConfig {
 	return {

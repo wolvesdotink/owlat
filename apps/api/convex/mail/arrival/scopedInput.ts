@@ -6,7 +6,7 @@
  * It applies interpretation's own scope and segmentation rules, so a short
  * read can never see more than a full read would:
  *
- *   - the body is loaded, opened and scoped exactly as `interpret/scope.ts`
+ *   - the body is loaded, opened and scoped exactly as `interpret/scopeLoad.ts`
  *     does (clearsigned scoping, hidden HTML stripped, undecryptable mail
  *     refused) and segmented with the same stable segment ids;
  *   - only the sender's own text and forwarded text are offered: quoted
@@ -29,7 +29,8 @@ import type { ActionCtx } from '../../_generated/server';
 import { internal } from '../../_generated/api';
 import type { SegmentedMessage } from '@owlat/shared/mailSegments';
 import { detectExactWording } from '@owlat/shared/exactWordingDetector';
-import { scopeForInterpretation, segmentScoped } from '../interpret/scope';
+import { segmentScoped } from '../interpret/scope';
+import { scopeForInterpretation } from '../interpret/scopeLoad';
 import { isSecurityMail } from '../interpret/eligibility';
 
 /** The segment kinds a short read is offered. */

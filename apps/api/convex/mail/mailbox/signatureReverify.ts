@@ -49,7 +49,7 @@ import { rateLimiter } from '../../lib/rateLimiter';
 import { logError } from '../../lib/runtimeLog';
 import { postboxMutation } from '../_helpers';
 import { requireMailboxAccess } from '../permissions';
-import { isMailReadChangedBy } from '../interpret/scope';
+import { isMailReadChangedBy } from '../interpret/scopeLoad';
 import { fenceThreadInterpretation } from '../interpret/staleFence';
 import { refreshArrivalProjection } from '../arrival/projection';
 import { clearColdPitchOfMessage } from '../arrival/coldPitch';

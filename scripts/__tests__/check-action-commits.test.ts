@@ -19,15 +19,11 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
-import { afterAll, describe, expect, it, vi } from 'vitest';
-import { PARALLEL_GATE_TIMEOUT_MS } from '../../vitest.timeouts';
+import { afterAll, describe, expect, it } from 'vitest';
 
 const REPOSITORY_ROOT = fileURLToPath(new URL('../..', import.meta.url));
 const CENSUS = join(REPOSITORY_ROOT, 'apps/api/scripts/action-commit-census.ts');
 const run = promisify(execFile);
-
-// Every case runs the census in a bun subprocess.
-vi.setConfig({ testTimeout: PARALLEL_GATE_TIMEOUT_MS });
 
 interface ModuleCensus {
 	readonly actions: ReadonlyArray<{ module: string; name: string; commits: number }>;
@@ -393,48 +389,36 @@ describe('check-action-commits.sh', () => {
 
 	const BASELINE = 'apps/api/scripts/action-commit-baseline.txt';
 
-	it(
-		'passes at the baseline, fails on one more commit and on a stale line',
-		async () => {
-			const baseline = '# debt\nconvex/send.ts:start #2\nconvex/send.ts:start #3\n';
+	it('passes at the baseline, fails on one more commit and on a stale line', async () => {
+		const baseline = '# debt\nconvex/send.ts:start #2\nconvex/send.ts:start #3\n';
 
-			const atBaseline = await gate(await tree({ ...convexTree(3), [BASELINE]: baseline }));
-			expect(atBaseline.output).toContain('2 baseline entries remain');
-			expect(atBaseline.code).toBe(0);
+		const atBaseline = await gate(await tree({ ...convexTree(3), [BASELINE]: baseline }));
+		expect(atBaseline.output).toContain('2 baseline entries remain');
+		expect(atBaseline.code).toBe(0);
 
-			const grown = await gate(await tree({ ...convexTree(4), [BASELINE]: baseline }));
-			expect(grown.code).toBe(1);
-			expect(grown.output).toContain('convex/send.ts:start #4');
+		const grown = await gate(await tree({ ...convexTree(4), [BASELINE]: baseline }));
+		expect(grown.code).toBe(1);
+		expect(grown.output).toContain('convex/send.ts:start #4');
 
-			const shrunk = await gate(await tree({ ...convexTree(2), [BASELINE]: baseline }));
-			expect(shrunk.code).toBe(1);
-			expect(shrunk.output).toMatch(/stale[\s\S]*convex\/send\.ts:start #3/);
-		},
-		PARALLEL_GATE_TIMEOUT_MS
-	);
+		const shrunk = await gate(await tree({ ...convexTree(2), [BASELINE]: baseline }));
+		expect(shrunk.code).toBe(1);
+		expect(shrunk.output).toMatch(/stale[\s\S]*convex\/send\.ts:start #3/);
+	});
 
-	it(
-		'fails on a misplaced checkpoint marker',
-		async () => {
-			const root = await tree({
-				...convexTree(1, '\n// checkpoint: exempts nothing\nexport const x = 1;\n'),
-				[BASELINE]: '# debt\n',
-			});
-			const result = await gate(root);
-			expect(result.code).toBe(1);
-			expect(result.output).toContain('convex/send.ts:8: a // checkpoint: marker must be');
-		},
-		PARALLEL_GATE_TIMEOUT_MS
-	);
+	it('fails on a misplaced checkpoint marker', async () => {
+		const root = await tree({
+			...convexTree(1, '\n// checkpoint: exempts nothing\nexport const x = 1;\n'),
+			[BASELINE]: '# debt\n',
+		});
+		const result = await gate(root);
+		expect(result.code).toBe(1);
+		expect(result.output).toContain('convex/send.ts:8: a // checkpoint: marker must be');
+	});
 
-	it(
-		'passes on this repository',
-		async () => {
-			const { stdout } = await run('bash', ['apps/api/scripts/check-action-commits.sh'], {
-				cwd: REPOSITORY_ROOT,
-			});
-			expect(stdout).toMatch(/^ok: /m);
-		},
-		PARALLEL_GATE_TIMEOUT_MS
-	);
+	it('passes on this repository', async () => {
+		const { stdout } = await run('bash', ['apps/api/scripts/check-action-commits.sh'], {
+			cwd: REPOSITORY_ROOT,
+		});
+		expect(stdout).toMatch(/^ok: /m);
+	});
 });

@@ -65,37 +65,6 @@ const tagArgs = {
 	...routingArgs,
 };
 
-/**
- * COMPATIBILITY: the previous release's single-row writer, kept with its exact
- * arguments so spend writes already scheduled against it, and actions still
- * running the previous release, land in the ledger after the deploy instead of
- * failing. New code writes through {@link recordRequests}. Behaves as before:
- * no usage and no plane writes nothing; a tagged row without usage is a
- * zero-cost estimate. Remove once a release has shipped without callers
- * (`scripts/check-entry-wiring.ts` PREVIOUS_RELEASE_ENTRIES).
- */
-export const record = internalMutation({
-	args: {
-		feature: v.string(),
-		modelUsed: v.optional(v.string()),
-		tokenUsage: v.optional(tokenUsageValidator),
-		plane: v.optional(llmUsagePlaneValidator),
-		requestId: v.optional(v.string()),
-		isFallback: v.optional(v.boolean()),
-		isCalibrated: v.optional(v.boolean()),
-		isThrottled: v.optional(v.boolean()),
-		isLocalEngine: v.optional(v.boolean()),
-	},
-	handler: async (ctx, args) => {
-		const { feature, modelUsed, tokenUsage, ...tags } = args;
-		if (!tokenUsage && args.plane === undefined) return;
-		await insertLlmUsage(ctx, feature, tokenUsage ?? ZERO_USAGE, modelUsed, undefined, {
-			...tags,
-			...(tokenUsage ? {} : { isEstimated: true }),
-		});
-	},
-});
-
 /** One provider request of a metered call (`lib/llm/requestMeter.ts` `LlmRequestRecord`). */
 export const meteredRequestValidator = v.object({
 	attempt: v.number(),

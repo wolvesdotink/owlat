@@ -13,7 +13,6 @@
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import {
-	GATE_TIMEOUT_MS,
 	TEMPLATES,
 	addIntruder,
 	both,
@@ -334,38 +333,26 @@ const MUTATIONS = [
 describe.each(TEMPLATES)('$name keeps the Docker API off the app network', ({ name, env }) => {
 	const original = readTemplate(name);
 
-	it(
-		'passes the gate as checked in',
-		() => {
-			const result = runGate(env, original);
-			expect(result.stderr).toBe('');
-			expect(result.status).toBe(0);
-		},
-		GATE_TIMEOUT_MS
-	);
+	it('passes the gate as checked in', () => {
+		const result = runGate(env, original);
+		expect(result.stderr).toBe('');
+		expect(result.status).toBe(0);
+	});
 
-	it(
-		'accepts the network modes that stay off docker-proxy',
-		() => {
-			const result = runGate(
-				env,
-				addIntruder(
-					'    network_mode: service:web\n\n  isolated:\n    image: alpine:3\n    network_mode: none\n'
-				)(original)
-			);
-			expect(result.stderr).toBe('');
-			expect(result.status).toBe(0);
-		},
-		GATE_TIMEOUT_MS
-	);
+	it('accepts the network modes that stay off docker-proxy', () => {
+		const result = runGate(
+			env,
+			addIntruder(
+				'    network_mode: service:web\n\n  isolated:\n    image: alpine:3\n    network_mode: none\n'
+			)(original)
+		);
+		expect(result.stderr).toBe('');
+		expect(result.status).toBe(0);
+	});
 
-	it.each(MUTATIONS)(
-		'rejects $breaks',
-		({ apply, expected }) => {
-			const result = runGate(env, apply(original));
-			expect(result.status).toBe(1);
-			expect(result.stderr).toContain(expected);
-		},
-		GATE_TIMEOUT_MS
-	);
+	it.each(MUTATIONS)('rejects $breaks', ({ apply, expected }) => {
+		const result = runGate(env, apply(original));
+		expect(result.status).toBe(1);
+		expect(result.stderr).toContain(expected);
+	});
 });

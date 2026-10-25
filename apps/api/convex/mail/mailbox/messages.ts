@@ -382,55 +382,6 @@ export const getMessageBodyBlobUrls = publicAction({
 });
 
 /**
- * Inline body plus blob URLs in one action. Superseded by
- * {@link getMessageInlineBody} + {@link getMessageBodyBlobUrls}. The web reader
- * moved over in plan 2.5; this stays one release for tabs still running the
- * previous reader (`scripts/entryWiringPreviousRelease.ts`), then goes.
- */
-type ReadableMessageBodySource = {
-	htmlInline: string | null;
-	textInline: string | null;
-} & BodyStorageIds;
-
-export const getReadableMessageBodySource = internalQuery({
-	args: { messageId: v.id('mailMessages') },
-	handler: async (ctx, args): Promise<ReadableMessageBodySource | null> => {
-		const message = await loadReadableMessage(ctx, args.messageId);
-		if (!message) return null;
-		const { text, html } = await openStoredInlineBody(ctx.db, message);
-		return {
-			htmlInline: html ?? null,
-			textInline: text ?? null,
-			htmlBodyStorageId: message.htmlBodyStorageId ?? null,
-			textBodyStorageId: message.textBodyStorageId ?? null,
-		};
-	},
-});
-
-type ReadableMessageBody = {
-	htmlInline: string | null;
-	textInline: string | null;
-} & BodyBlobUrls;
-
-// public: soft-auth — internal source query returns null for anonymous and enforces mailbox access
-// authz: gate lives in internal.mail.mailbox.messages.getReadableMessageBodySource (loadReadableMessage).
-export const getMessageBody = publicAction({
-	args: { messageId: v.id('mailMessages') },
-	handler: async (ctx, args): Promise<ReadableMessageBody | null> => {
-		const source: ReadableMessageBodySource | null = await ctx.runQuery(
-			internal.mail.mailbox.messages.getReadableMessageBodySource,
-			args
-		);
-		if (!source) return null;
-		return {
-			htmlInline: source.htmlInline,
-			textInline: source.textInline,
-			...(await mintBodyBlobUrls(ctx.storage, source)),
-		};
-	},
-});
-
-/**
  * Signed URL for a message's raw .eml. The reader fetches it to extract an
  * attachment client-side (the attachment bytes live in the raw MIME) and for
  * "download original". Ownership-checked.

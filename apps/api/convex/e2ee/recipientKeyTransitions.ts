@@ -1,9 +1,9 @@
 /**
  * The row-level trust transitions behind `e2ee/recipientKeys.ts`: how a
  * discovery miss and a discovered key are written onto a `recipientKeys` row.
- * Kept apart from the Convex functions so the commit mutation and its v0.6.5
- * compatibility shim share one implementation of the TOFU write (the decision
- * itself stays in the pure `e2ee/pinning.ts`).
+ * Kept apart from the Convex functions as plain helpers over a mutation
+ * context, so the TOFU write has one implementation (the decision itself stays
+ * in the pure `e2ee/pinning.ts`).
  *
  * Callers decide WHICH row state a write may be made against (the commit path
  * checks the revision the discovery read); these helpers only apply it.

@@ -13,8 +13,8 @@ import { v } from 'convex/values';
 import { internalQuery, type QueryCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
-import { authedAction, authedQuery } from '../lib/authedFunctions';
-import { hasPermission, requireOrgPermission, requirePermission } from '../lib/sessionOrganization';
+import { authedAction } from '../lib/authedFunctions';
+import { requireOrgPermission, requirePermission } from '../lib/sessionOrganization';
 import { isSharedInboxReader } from '../inbox/access';
 import { getOrThrow } from '../_utils/errors';
 import { utf8Bytes } from '../lib/bytes';
@@ -211,29 +211,14 @@ type ContactDataExport = Omit<ContactDataBundle, 'inboundMessages'> & {
 	inboundMessages: { rows: InboundExportRow[]; truncated: boolean };
 };
 
-/**
- * The previous contact page's export, a query and so without the stored body
- * parts. Kept one release for tabs opened before the deploy
- * (`scripts/entryWiringPreviousRelease.ts`); remove after the next release.
- */
-export const exportContactData = authedQuery({
-	args: { contactId: v.id('contacts') },
-	handler: async (ctx, args, session) => {
-		// Full personal-data disclosure — operator surface. The bundle carries the
-		// contact's Team Inbox mail and threads, so the caller must also pass the
-		// shared-inbox reader gate (inbox/access.ts): a bundle with those left out
-		// would not answer an access request.
-		requirePermission(hasPermission(session.role, 'organization:manage'));
-		requirePermission(isSharedInboxReader(session));
-		return await collectContactData(ctx, args.contactId);
-	},
-});
-
 /** The authorization and the database half of {@link exportContactDataBundle}. */
 export const readContactDataForExport = internalQuery({
 	args: { contactId: v.id('contacts') },
 	handler: async (ctx, args): Promise<ContactDataBundle> => {
-		// Same gate as exportContactData; the identity is the calling action's.
+		// Full personal-data disclosure — operator surface. The bundle carries the
+		// contact's Team Inbox mail and threads, so the caller must also pass the
+		// shared-inbox reader gate (inbox/access.ts): a bundle with those left out
+		// would not answer an access request. The identity is the calling action's.
 		const session = await requireOrgPermission(ctx, 'organization:manage');
 		requirePermission(isSharedInboxReader(session));
 		return await collectContactData(ctx, args.contactId);

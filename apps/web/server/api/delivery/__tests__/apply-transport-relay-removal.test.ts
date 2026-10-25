@@ -59,12 +59,11 @@ async function callRoute(): Promise<ApplyResult> {
 
 beforeAll(async () => {
 	// Nuxt transforms this route on first import. Keep that one-time harness cost
-	// outside the behavioral test timeout; a repository-wide parallel run can
-	// otherwise spend the entire default five seconds waiting for a transform.
+	// in a hook, outside the behavioural tests.
 	vi.stubGlobal('defineEventHandler', <T>(handler: T) => handler);
 	const mod = await import('../apply-transport.post');
 	routeHandler = mod.default as unknown as (event: unknown) => Promise<ApplyResult>;
-}, 30_000);
+});
 
 /** The draft an operator applies to stop paying the relay. */
 function ownMtaPatch(): Record<string, string> {

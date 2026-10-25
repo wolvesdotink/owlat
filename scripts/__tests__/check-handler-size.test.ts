@@ -21,15 +21,11 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
-import { afterAll, describe, expect, it, vi } from 'vitest';
-import { PARALLEL_GATE_TIMEOUT_MS } from '../../vitest.timeouts';
+import { afterAll, describe, expect, it } from 'vitest';
 
 const REPOSITORY_ROOT = fileURLToPath(new URL('../..', import.meta.url));
 const CENSUS = join(REPOSITORY_ROOT, 'apps/api/scripts/handler-size-census.ts');
 const run = promisify(execFile);
-
-// Every case runs the census in a bun subprocess.
-vi.setConfig({ testTimeout: PARALLEL_GATE_TIMEOUT_MS });
 
 /** The census of one module, through the CLI's `--stdin` mode. */
 function census(source: string): {
@@ -238,106 +234,78 @@ describe('check-handler-size.sh', () => {
 	// 300 statements plus the two lines of the function itself.
 	const baseline = '# debt\nconvex/send.ts:send 302\n';
 
-	it(
-		'passes at the baseline and fails when a tracked handler grows',
-		async () => {
-			const atBaseline = await gate(await tree({ ...convexTree(300), [BASELINE]: baseline }));
-			expect(atBaseline.output).toContain('1 baseline entries remain');
-			expect(atBaseline.code).toBe(0);
+	it('passes at the baseline and fails when a tracked handler grows', async () => {
+		const atBaseline = await gate(await tree({ ...convexTree(300), [BASELINE]: baseline }));
+		expect(atBaseline.output).toContain('1 baseline entries remain');
+		expect(atBaseline.code).toBe(0);
 
-			const grown = await gate(await tree({ ...convexTree(301), [BASELINE]: baseline }));
-			expect(grown.code).toBe(1);
-			expect(grown.output).toContain('convex/send.ts:send 303');
-		},
-		PARALLEL_GATE_TIMEOUT_MS
-	);
+		const grown = await gate(await tree({ ...convexTree(301), [BASELINE]: baseline }));
+		expect(grown.code).toBe(1);
+		expect(grown.output).toContain('convex/send.ts:send 303');
+	});
 
-	it(
-		'fails on a new handler over the cap',
-		async () => {
-			const result = await gate(await tree({ ...convexTree(300, 250), [BASELINE]: baseline }));
-			expect(result.code).toBe(1);
-			expect(result.output).toContain('convex/other.ts:other 252');
-		},
-		PARALLEL_GATE_TIMEOUT_MS
-	);
+	it('fails on a new handler over the cap', async () => {
+		const result = await gate(await tree({ ...convexTree(300, 250), [BASELINE]: baseline }));
+		expect(result.code).toBe(1);
+		expect(result.output).toContain('convex/other.ts:other 252');
+	});
 
-	it(
-		'fails on a stale line when a tracked handler shrinks or leaves the list',
-		async () => {
-			const shrunk = await gate(await tree({ ...convexTree(280), [BASELINE]: baseline }));
-			expect(shrunk.code).toBe(1);
-			expect(shrunk.output).toMatch(/stale[\s\S]*convex\/send\.ts:send 302/);
+	it('fails on a stale line when a tracked handler shrinks or leaves the list', async () => {
+		const shrunk = await gate(await tree({ ...convexTree(280), [BASELINE]: baseline }));
+		expect(shrunk.code).toBe(1);
+		expect(shrunk.output).toMatch(/stale[\s\S]*convex\/send\.ts:send 302/);
 
-			const underCap = await gate(await tree({ ...convexTree(10), [BASELINE]: baseline }));
-			expect(underCap.code).toBe(1);
-			expect(underCap.output).toMatch(/stale[\s\S]*convex\/send\.ts:send 302/);
-			expect(underCap.output).not.toContain('convex/send.ts:send 12');
-		},
-		PARALLEL_GATE_TIMEOUT_MS
-	);
+		const underCap = await gate(await tree({ ...convexTree(10), [BASELINE]: baseline }));
+		expect(underCap.code).toBe(1);
+		expect(underCap.output).toMatch(/stale[\s\S]*convex\/send\.ts:send 302/);
+		expect(underCap.output).not.toContain('convex/send.ts:send 12');
+	});
 
-	it(
-		'measures a handler imported from another module where it is declared',
-		async () => {
-			const body = Array.from({ length: 300 }, (_, i) => `\tconst v${i} = ${i};`);
-			const files = {
-				...convexTree(300),
-				'apps/api/convex/sendHandlers.ts': [
-					'async function sendImpl(ctx) {',
-					...body,
-					'}',
-					'export { sendImpl as sendHandler };',
-				].join('\n'),
-				'apps/api/convex/lib/index.ts': "export { sendHandler } from '../sendHandlers';",
-				'apps/api/convex/drafts.ts': [
-					"import { sendHandler as run } from './lib';",
-					'export const sendDraft = internalMutation({ args: {}, handler: run });',
-				].join('\n'),
-				[BASELINE]: baseline,
-			};
-			const result = await gate(await tree(files));
-			expect(result.code).toBe(1);
-			expect(result.output).toContain('convex/drafts.ts:sendDraft 302');
-		},
-		PARALLEL_GATE_TIMEOUT_MS
-	);
+	it('measures a handler imported from another module where it is declared', async () => {
+		const body = Array.from({ length: 300 }, (_, i) => `\tconst v${i} = ${i};`);
+		const files = {
+			...convexTree(300),
+			'apps/api/convex/sendHandlers.ts': [
+				'async function sendImpl(ctx) {',
+				...body,
+				'}',
+				'export { sendImpl as sendHandler };',
+			].join('\n'),
+			'apps/api/convex/lib/index.ts': "export { sendHandler } from '../sendHandlers';",
+			'apps/api/convex/drafts.ts': [
+				"import { sendHandler as run } from './lib';",
+				'export const sendDraft = internalMutation({ args: {}, handler: run });',
+			].join('\n'),
+			[BASELINE]: baseline,
+		};
+		const result = await gate(await tree(files));
+		expect(result.code).toBe(1);
+		expect(result.output).toContain('convex/drafts.ts:sendDraft 302');
+	});
 
-	it(
-		'fails on a registration it cannot measure',
-		async () => {
-			const files = {
-				...convexTree(300),
-				'apps/api/convex/opaque.ts': 'export const opaque = internalMutation(makeDefinition());',
-				[BASELINE]: baseline,
-			};
-			const result = await gate(await tree(files));
-			expect(result.code).toBe(1);
-			expect(result.output).toContain('convex/opaque.ts:1: cannot find the handler of opaque');
-		},
-		PARALLEL_GATE_TIMEOUT_MS
-	);
+	it('fails on a registration it cannot measure', async () => {
+		const files = {
+			...convexTree(300),
+			'apps/api/convex/opaque.ts': 'export const opaque = internalMutation(makeDefinition());',
+			[BASELINE]: baseline,
+		};
+		const result = await gate(await tree(files));
+		expect(result.code).toBe(1);
+		expect(result.output).toContain('convex/opaque.ts:1: cannot find the handler of opaque');
+	});
 
-	it(
-		'refuses a tree whose handlers it cannot find',
-		async () => {
-			const result = await gate(
-				await tree({ 'apps/api/convex/send.ts': registration('send', 300), [BASELINE]: baseline })
-			);
-			expect(result.code).toBe(1);
-			expect(result.output).toContain('found only 1 Convex handlers');
-		},
-		PARALLEL_GATE_TIMEOUT_MS
-	);
+	it('refuses a tree whose handlers it cannot find', async () => {
+		const result = await gate(
+			await tree({ 'apps/api/convex/send.ts': registration('send', 300), [BASELINE]: baseline })
+		);
+		expect(result.code).toBe(1);
+		expect(result.output).toContain('found only 1 Convex handlers');
+	});
 
-	it(
-		'passes on this repository',
-		async () => {
-			const { stdout } = await run('bash', ['apps/api/scripts/check-handler-size.sh'], {
-				cwd: REPOSITORY_ROOT,
-			});
-			expect(stdout).toMatch(/^ok: /m);
-		},
-		PARALLEL_GATE_TIMEOUT_MS
-	);
+	it('passes on this repository', async () => {
+		const { stdout } = await run('bash', ['apps/api/scripts/check-handler-size.sh'], {
+			cwd: REPOSITORY_ROOT,
+		});
+		expect(stdout).toMatch(/^ok: /m);
+	});
 });

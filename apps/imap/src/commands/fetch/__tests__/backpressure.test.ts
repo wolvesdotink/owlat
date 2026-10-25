@@ -494,5 +494,5 @@ describe('FETCH over a real TCP socket to a client that stops reading', () => {
 			client.destroy();
 			await new Promise<void>((resolve) => server.close(() => resolve()));
 		}
-	}, 30_000);
+	});
 });

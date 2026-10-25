@@ -102,7 +102,7 @@ describe.runIf(dockerRedisAvailable())('delivery log indexes on standalone Redis
 	beforeAll(async () => {
 		fixture = await startRedisStandaloneFixture('delivery-log');
 		redis = fixture.client;
-	}, 15_000);
+	});
 
 	beforeEach(async () => {
 		await redis.flushall();
@@ -277,7 +277,7 @@ describe.runIf(dockerRedisAvailable())('delivery log indexes on Redis Cluster', 
 
 	beforeAll(async () => {
 		fixture = await startRedisClusterFixture('delivery-log');
-	}, 60_000);
+	});
 
 	afterAll(async () => {
 		await stopRedisClusterFixture(fixture);

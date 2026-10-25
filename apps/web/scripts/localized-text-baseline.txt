@@ -1,6 +1,0 @@
-# Frozen exceptions to scripts/check-localized-text.sh — one `path:<spelling>`
-# per occurrence. It held the files the #864 mail-surface rewrite owned when
-# `utils/localizedText.ts` landed; every one of them now resolves through
-# `useLocalized()`. Never add a line: import the shared type and resolver.
-#
-# (none)
