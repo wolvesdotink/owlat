@@ -129,6 +129,20 @@ describe('InboxThreadRow', () => {
 		expect(w.find('.ui-presence-ring').exists()).toBe(false);
 	});
 
+	it('says when the auto-close sweep resolved the thread, and only while it stays resolved', () => {
+		const closed = mountRow({ status: 'resolved', autoClosedAt: Date.now() - 1000 });
+		expect(closed.find('[data-testid="status-chip-auto-closed"]').text()).toBe(
+			'· Closed automatically'
+		);
+		expect(closed.text()).toContain('Resolved');
+
+		const manual = mountRow({ status: 'resolved' });
+		expect(manual.find('[data-testid="status-chip-auto-closed"]').exists()).toBe(false);
+
+		const reopened = mountRow({ status: 'open', autoClosedAt: Date.now() - 1000 });
+		expect(reopened.find('[data-testid="status-chip-auto-closed"]').exists()).toBe(false);
+	});
+
 	it('shows the assignee without a ring when the assignee is not there', () => {
 		const w = mountRow({ assignee: { name: 'Jordan Lee', email: 'jordan@team.com' } }, false);
 		expect(w.text()).toContain('Jordan Lee');

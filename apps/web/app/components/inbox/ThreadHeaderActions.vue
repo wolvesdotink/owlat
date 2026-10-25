@@ -6,11 +6,11 @@
  * copying the thread's link and sharing it in chat wait in a ⋯ menu. Below `sm`
  * everything but Reply folds into that one menu instead of wrapping off the edge.
  *
- * The plain actions (discuss in chat, copy link, share in chat, snooze /
- * unsnooze) are described once in `simpleActions` and rendered as buttons or
- * menu items. Assignment and status have a richer wide form (an avatar popover,
- * a status menu) and a compact one (assign to me, "mark as" items), so each gets
- * both renderings here.
+ * The plain actions (discuss in chat, copy link, share in chat, auto-close
+ * on / off, snooze / unsnooze) are described once in `simpleActions` and
+ * rendered as buttons or menu items. Assignment and status have a richer wide
+ * form (an avatar popover, a status menu) and a compact one (assign to me,
+ * "mark as" items), so each gets both renderings here.
  *
  * Presentation only: the page owns the data and the writes.
  */
@@ -30,6 +30,11 @@ const props = defineProps<{
 	assignedMemberName: string | null;
 	isSnoozed: boolean;
 	currentStatus: ThreadStatus;
+	/**
+	 * This thread's auto-close switch (`utils/inboxAutoClose.ts`); `null` or
+	 * absent hides it (the rule is off and the thread never opted out).
+	 */
+	autoClose?: 'on' | 'off' | null;
 }>();
 
 const emit = defineEmits<{
@@ -41,6 +46,8 @@ const emit = defineEmits<{
 	status: [status: ThreadStatus];
 	copyLink: [];
 	shareInChat: [];
+	/** Turn auto-close off (`true`) or back on (`false`) for this thread. */
+	autoClose: [isDisabled: boolean];
 }>();
 
 const { t } = useI18n();
@@ -101,6 +108,19 @@ const simpleActions = computed<SimpleAction[]>(() => {
 			icon: 'lucide:message-square-share',
 			label: t('shared.conversationLink.shareInChat'),
 			run: () => emit('shareInChat'),
+		});
+	}
+	if (props.isAdmin && props.autoClose) {
+		const isOn = props.autoClose === 'on';
+		actions.push({
+			key: 'auto-close',
+			icon: isOn ? 'lucide:timer-off' : 'lucide:timer',
+			label: t(
+				isOn
+					? 'dashboard.inbox.detail.autoClose.turnOff'
+					: 'dashboard.inbox.detail.autoClose.turnOn'
+			),
+			run: () => emit('autoClose', isOn),
 		});
 	}
 	return actions;

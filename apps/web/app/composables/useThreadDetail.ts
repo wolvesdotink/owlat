@@ -84,6 +84,9 @@ export function useThreadDetail(threadId: Ref<Id<'conversationThreads'>>) {
 	const { run: setThreadPriority } = useBackendOperation(api.inbox.priority.setThreadPriority, {
 		label: () => t('shared.useThreadDetail.setPriority'),
 	});
+	const { run: setThreadAutoClose } = useBackendOperation(api.inbox.autoClose.setThreadAutoClose, {
+		label: () => t('shared.useThreadDetail.setAutoClose'),
+	});
 
 	// Actions
 	// Return the run result so callers can show a success toast only on a real
@@ -153,7 +156,7 @@ export function useThreadDetail(threadId: Ref<Id<'conversationThreads'>>) {
 	};
 
 	const handleStatusChange = async (status: 'open' | 'waiting' | 'resolved' | 'closed') => {
-		await updateThreadStatus({ threadId: threadId.value, status });
+		return await updateThreadStatus({ threadId: threadId.value, status });
 	};
 
 	// Snooze the thread until `until` (ms epoch); it leaves the Open filter and
@@ -169,6 +172,11 @@ export function useThreadDetail(threadId: Ref<Id<'conversationThreads'>>) {
 	// Mark the thread urgent / normal / low (normal clears it server-side).
 	const handleSetPriority = async (priority: TeamThreadPriority) => {
 		return await setThreadPriority({ threadId: threadId.value, priority });
+	};
+
+	// Turn auto-close off (`true`) or back on (`false`) for this thread.
+	const handleSetAutoClose = async (isDisabled: boolean) => {
+		return await setThreadAutoClose({ threadId: threadId.value, isDisabled });
 	};
 
 	return {
@@ -194,5 +202,6 @@ export function useThreadDetail(threadId: Ref<Id<'conversationThreads'>>) {
 		handleSnooze,
 		handleUnsnooze,
 		handleSetPriority,
+		handleSetAutoClose,
 	};
 }

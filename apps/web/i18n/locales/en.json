@@ -4194,7 +4194,8 @@
 				"deselect": "Deselect"
 			},
 			"statusChip": {
-				"returned": "· Returned"
+				"returned": "· Returned",
+				"autoClosed": "· Closed automatically"
 			},
 			"threadChannelTimeline": {
 				"longMessage": "Shortened: the full message is shown above.",
@@ -4269,6 +4270,14 @@
 					"hours": "hours",
 					"minutes": "minutes"
 				}
+			},
+			"inboxAutoClosePolicyForm": {
+				"title": "Auto-close quiet conversations",
+				"hint": "Resolve a conversation that has been waiting on the customer for this many days without a word from either side. A reply from them reopens it, and any conversation can opt out.",
+				"daysLabel": "Close after",
+				"daysSuffix": "quiet days",
+				"problem": "Enter a whole number of days between 1 and 365.",
+				"save": "Save auto-close"
 			},
 			"notes": {
 				"add": "Add note",
@@ -11484,6 +11493,20 @@
 				"followUpSentToast": "Follow-up queued for sending",
 				"followUpUndoneToast": "Follow-up cancelled. Your text is back in the reply box.",
 				"lastMessage": "Last message",
+				"autoClose": {
+					"label": "Auto-close",
+					"closesAt": "Closes {time} if nobody writes",
+					"onWhenWaiting": "After {days} quiet day while waiting | After {days} quiet days while waiting",
+					"off": "Off for this conversation",
+					"notice": "Closed automatically {time}, after {days} quiet day waiting on the customer. | Closed automatically {time}, after {days} quiet days waiting on the customer.",
+					"noticeNoDays": "Closed automatically {time}, after a quiet period waiting on the customer.",
+					"reopen": "Reopen",
+					"reopenedToast": "Conversation reopened",
+					"turnOff": "Turn off auto-close",
+					"turnOn": "Turn on auto-close",
+					"turnedOffToast": "Auto-close is off for this conversation",
+					"turnedOnToast": "Auto-close is on for this conversation"
+				},
 				"loading": "Loading thread...",
 				"markSeenOperation": "Mark thread seen",
 				"markAs": {
@@ -11722,6 +11745,9 @@
 				"pageTitle": "Response targets",
 				"saveOperation": "Save response targets",
 				"saved": "Response targets saved",
+				"autoCloseSaveOperation": "Save auto-close",
+				"autoCloseSaved": "Auto-close saved",
+				"autoCloseErrorTitle": "Auto-close could not be loaded",
 				"subtitle": "How fast the team should answer Team Inbox conversations.",
 				"title": "Response targets",
 				"backToInbox": "Team Inbox"
@@ -18010,7 +18036,8 @@
 			"snoozeThread": "Snooze thread",
 			"unsnoozeThread": "Unsnooze thread",
 			"updateThreadStatus": "Update thread status",
-			"setPriority": "Set priority"
+			"setPriority": "Set priority",
+			"setAutoClose": "Change auto-close"
 		},
 		"useWebhookActions": {
 			"copyFailed": "Failed to copy to clipboard",
