@@ -345,7 +345,6 @@
 	"[\"examples/plugins/escalation-guard/src/__tests__/config.test.ts\",\"typescript(no-extraneous-class)\",\"Unexpected empty class.\",\"class Config {}\"]": 1,
 	"[\"examples/plugins/slack-approvals/src/notify.ts\",\"unicorn(require-post-message-target-origin)\",\"Missing the `targetOrigin` argument.\",\"\"]": 1,
 	"[\"packages/email-builder/src/components/EmailBuilder.vue\",\"import(no-duplicates)\",\"Module '../schema' is imported more than once in this file\",\"'../schema'\"]": 1,
-	"[\"packages/email-builder/src/components/canvas/__tests__/blockPreviews.mount.test.ts\",\"unicorn(no-array-for-each)\",\"Do not use `Array#forEach`\",\"forEach\"]": 1,
 	"[\"packages/email-builder/src/components/panel/PropertyField.vue\",\"import(no-duplicates)\",\"Module '../../types' is imported more than once in this file\",\"'../../types'\"]": 1,
 	"[\"packages/email-builder/src/composables/__tests__/useSaveBlockModal.test.ts\",\"import(no-duplicates)\",\"Module '../../types' is imported more than once in this file\",\"'../../types'\"]": 1,
 	"[\"packages/email-builder/src/composables/useBlockManagement.ts\",\"unicorn(no-array-for-each)\",\"Do not use `Array#forEach`\",\"forEach\"]": 2,
