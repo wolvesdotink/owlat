@@ -112,6 +112,27 @@ const FIXTURES: Record<string, string> = {
 		'});',
 		'',
 	].join('\n'),
+	// A helper exported as a timer sleep and then rebound to a real wait.
+	'helpers/reassignedSleep.ts': [
+		"import { scheduler } from 'node:timers/promises';",
+		'',
+		'export let sleep = (ms: number): Promise<unknown> =>',
+		'\tnew Promise((resolve) => setTimeout(resolve, ms));',
+		'sleep = (ms: number) => scheduler.wait(ms);',
+		'',
+	].join('\n'),
+	'helpers/importedReassignedSleep.test.ts': [
+		"import { it, vi } from 'vitest';",
+		"import { sleep } from './reassignedSleep';",
+		'',
+		"it('fakes timers the rebound helper never uses', async () => {",
+		'\tvi.useFakeTimers();',
+		'\tconst slept = sleep(50);',
+		'\tawait vi.advanceTimersByTimeAsync(50);',
+		'\tawait slept;',
+		'});',
+		'',
+	].join('\n'),
 	'milestones.test.ts': [
 		"import { it } from 'vitest';",
 		'',
@@ -311,6 +332,9 @@ describe.each(['.', 'apps/web'])('oxlint run from %s with the root config', (cwd
 			'owlat(no-real-time-wait-in-tests)',
 		]);
 		expect(errorCodes(byFile.get('importedMixedSleep.test.ts'))).toEqual([
+			'owlat(no-real-time-wait-in-tests)',
+		]);
+		expect(errorCodes(byFile.get('importedReassignedSleep.test.ts'))).toEqual([
 			'owlat(no-real-time-wait-in-tests)',
 		]);
 	});

@@ -4,16 +4,18 @@
  * fake timers is judged like one calling a helper declared in the same file.
  *
  * Only a relative import is followed, and only a helper of one shape is
- * accepted: an exported function (declaration, arrow or function expression)
- * whose whole body returns `new Promise(executor)`, where the executor's whole
- * body is one global `setTimeout` / `setInterval` call whose callback only
- * resolves, so that one timer settles the promise and nothing else can. The
- * module may not bind `setTimeout`, `setInterval` or `Promise` to anything
- * else: every mention of a timer has to be a call of it, and every mention of
- * `Promise` a `new Promise` or a type. Anything else (a package import, a
- * re-export, a helper that awaits more work, a second timer, a branch, a
- * callback that does more than resolve, a `node:timers` import) yields no
- * timer, and the call stays a real-clock wait.
+ * accepted: an exported function declaration, or an exported `const` bound to
+ * an arrow or function expression, whose name the module mentions nowhere
+ * else (so no write can rebind it), and whose whole body returns
+ * `new Promise(executor)`, where the executor's whole body is one global
+ * `setTimeout` / `setInterval` call whose callback only resolves, so that one
+ * timer settles the promise and nothing else can. The module may not bind
+ * `setTimeout`, `setInterval` or `Promise` to anything else: every mention of
+ * a timer has to be a call of it, and every mention of `Promise` a
+ * `new Promise` or a type. Anything else (a package import, a re-export, a
+ * `let` / `var` binding or a reassigned one, a helper that awaits more work, a
+ * second timer, a branch, a callback that does more than resolve, a
+ * `node:timers` import) yields no timer, and the call stays a real-clock wait.
  *
  * The module is parsed with the TypeScript compiler, loaded on first use: the
  * plugin API offers no parser for a second file, and most lint runs never
@@ -58,16 +60,42 @@ const isExported = (ts: Ts, node: TypeScript.Node): boolean =>
 	ts.canHaveModifiers(node) &&
 	(ts.getModifiers(node) ?? []).some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword);
 
-/** The function the module exports under `name` from its own declarations. */
+/**
+ * Whether the module mentions `name` only once, in the declaration that binds
+ * it. A function declaration's binding is writable and a later declaration of
+ * the same name replaces it, so any second mention (a write, a redeclaration,
+ * a re-export, a property of that name) leaves what the export finally holds
+ * unknown.
+ */
+const mentionedOnce = (ts: Ts, file: TypeScript.SourceFile, name: string): boolean => {
+	let mentions = 0;
+	const visit = (node: TypeScript.Node): void => {
+		if (mentions > 1) return;
+		if (ts.isIdentifier(node)) {
+			if (node.text === name) mentions += 1;
+			return;
+		}
+		ts.forEachChild(node, visit);
+	};
+	visit(file);
+	return mentions === 1;
+};
+
+/**
+ * The function the module exports under `name` from its own declarations,
+ * when nothing else in the module can rebind that export.
+ */
 const exportedFunction = (
 	ts: Ts,
 	file: TypeScript.SourceFile,
 	name: string
 ): TypeScript.FunctionLikeDeclaration | undefined => {
+	if (!mentionedOnce(ts, file, name)) return undefined;
 	for (const statement of file.statements) {
 		if (!isExported(ts, statement)) continue;
 		if (ts.isFunctionDeclaration(statement) && statement.name?.text === name) return statement;
 		if (!ts.isVariableStatement(statement)) continue;
+		if (!(statement.declarationList.flags & ts.NodeFlags.Const)) continue;
 		for (const declaration of statement.declarationList.declarations) {
 			const init = declaration.initializer;
 			if (

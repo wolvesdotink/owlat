@@ -41,6 +41,14 @@ const helpers: Record<string, string> = {
 	'workInDelay.ts':
 		'export function sleep(ms: number) {\n\treturn new Promise((resolve) => setTimeout(resolve, startedAt(ms)));\n}\ndeclare function startedAt(ms: number): number;\n',
 	'reexport.ts': "export { sleep } from './sleep';\n",
+	'reassignedLet.ts':
+		"import { scheduler } from 'node:timers/promises';\nexport let sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));\nsleep = (ms: number) => scheduler.wait(ms);\n",
+	'unwrittenLet.ts':
+		'export let sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));\n',
+	'reassignedFunction.ts':
+		"import { scheduler } from 'node:timers/promises';\nexport function sleep(ms: number) {\n\treturn new Promise((resolve) => setTimeout(resolve, ms));\n}\nsleep = (ms: number) => scheduler.wait(ms);\n",
+	'redeclared.ts':
+		"import { scheduler } from 'node:timers/promises';\nexport function sleep(ms: number) {\n\treturn new Promise((resolve) => setTimeout(resolve, ms));\n}\nfunction sleep(ms: number) {\n\treturn scheduler.wait(ms);\n}\n",
 	'local.ts':
 		'function sleep(ms: number) {\n\treturn new Promise((resolve) => setTimeout(resolve, ms));\n}\nexport const unrelated = 1;\nvoid sleep;\n',
 };
@@ -366,6 +374,10 @@ ruleTester.run('owlat/no-real-time-wait-in-tests', rule, {
 			['a timer callback that waits again', './helpers/busyCallback'],
 			['a delay argument that does work', './helpers/workInDelay'],
 			['a re-export', './helpers/reexport'],
+			['a let binding reassigned to a real wait', './helpers/reassignedLet'],
+			['a let binding', './helpers/unwrittenLet'],
+			['a function declaration reassigned to a real wait', './helpers/reassignedFunction'],
+			['a function declaration redeclared as a real wait', './helpers/redeclared'],
 			['no such export', './helpers/local'],
 			['no such module', './helpers/missing'],
 			['a package import', '@owlat/shared'],
