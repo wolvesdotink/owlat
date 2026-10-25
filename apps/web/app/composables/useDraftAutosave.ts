@@ -155,8 +155,8 @@ const defaultOnline = () =>
 
 export function useDraftAutosave<T>(opts: DraftAutosaveOptions<T>): DraftAutosave<T> {
 	const store = opts.store ?? getEditorDraftStore();
-	const writer = (opts.writers ?? getEditorDraftWriters()).open();
 	const writers = opts.writers ?? getEditorDraftWriters();
+	const writer = writers.open();
 	const state = shallowRef(
 		createDraftSession({
 			writer: writer.id,
