@@ -15452,6 +15452,7 @@
 			"failed": "Deine Änderungen konnten nicht gespeichert werden.",
 			"retry": "Erneut versuchen",
 			"notSavedYet": "Deine letzten Änderungen sind noch nicht gespeichert. Versuche es gleich noch einmal.",
+			"changedDuringAction": "Der Entwurf hat sich währenddessen geändert, deshalb wurde abgebrochen. Prüfe deine Änderungen und versuche es noch einmal.",
 			"recovery": {
 				"title": "Nicht gespeicherte Änderungen auf diesem Gerät.",
 				"description": "Änderungen von {when} wurden nie gespeichert. Stell sie in diesem Entwurf wieder her oder verwirf sie.",

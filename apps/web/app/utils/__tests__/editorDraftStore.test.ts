@@ -185,6 +185,34 @@ describe('editorDraftStore', () => {
 		expect((driver.data.get(KEY) as { data: unknown }).data).toEqual({ text: 'B' });
 	});
 
+	it('stores the data as it was when the write was asked for, not when its turn came', async () => {
+		const driver = memoryDriver();
+		const gate = deferred();
+		const set = driver.set;
+		let held = true;
+		driver.set = async (key, value) => {
+			if (held) {
+				held = false;
+				await gate.promise;
+			}
+			await set(key, value);
+		};
+		const store = createEditorDraftStore(driver);
+		// The editor's live blocks: the same objects keep changing after the write is asked for.
+		const blocks = [{ content: { html: 'A' } }];
+		const writeA = store.write(KEY, copy({ token: 'tab-a.1#1', seq: 1, data: { blocks } }));
+		blocks[0]!.content.html = 'B';
+		const writeB = store.write(KEY, copy({ token: 'tab-a.1#2', seq: 2, data: { blocks } }));
+		blocks[0]!.content.html = 'C';
+		gate.resolve();
+		await writeA;
+		expect(await writeB).toBe(true);
+		expect(driver.data.get(KEY)).toMatchObject({
+			token: 'tab-a.1#2',
+			data: { blocks: [{ content: { html: 'B' } }] },
+		});
+	});
+
 	it('says so when nothing can be stored', async () => {
 		const store = createEditorDraftStore(memoryDriver(false));
 		expect(store.persistent).toBe(false);

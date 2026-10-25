@@ -2,18 +2,27 @@
  * The draft autosave runner (`useDraftAutosave.ts`): it runs what the
  * session (`utils/draftSession.ts`) decides against real timers, storage and
  * a save, and reports the outcomes back. Fake timers only; nothing waits on
- * the real clock. The editor is one text field.
+ * the real clock, and no wait counts microtasks: a test awaits the milestone
+ * it depends on (an event the session took, a state it reached, storage
+ * having finished what it was asked). The editor is one text field.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { effectScope, nextTick, ref, watch } from 'vue';
+import { effectScope, nextTick, reactive, ref, toRaw, watch } from 'vue';
+import { until } from '~/__tests__/until';
+import type { DraftEvent } from '~/utils/draftSession';
 import type { OfflineKvDriver } from '~/utils/postboxOfflineKvDriver';
-import { createEditorDraftStore, editorDraftKey } from '~/utils/editorDraftStore';
+import {
+	createEditorDraftStore,
+	editorDraftKey,
+	type EditorDraftStore,
+} from '~/utils/editorDraftStore';
 import { createEditorDraftWriters } from '~/utils/editorDraftWriters';
 import { useDraftAutosave, type DraftAutosaveOptions } from '../useDraftAutosave';
 
+/** IndexedDB in memory. `data` is reactive, so a test can wait for what it holds. */
 function memoryDriver(persistent = true): OfflineKvDriver & { data: Map<string, unknown> } {
-	const data = new Map<string, unknown>();
-	const clone = <T>(value: T): T => structuredClone(value);
+	const data = reactive(new Map<string, unknown>());
+	const clone = <T>(value: T): T => structuredClone(toRaw(value));
 	return {
 		data,
 		persistent,
@@ -58,16 +67,45 @@ const isDraft = (data: unknown): data is Draft =>
  * device (shared storage, a tab each). The test plays the editor's binding:
  * it loads the draft and reports each edit.
  */
+/**
+ * The page's store, with a milestone for "storage finished everything it was
+ * asked so far" (`idle`), including what those operations led the session to ask.
+ */
+function trackedStore(store: EditorDraftStore) {
+	const pending = new Set<Promise<unknown>>();
+	const track = <R>(operation: Promise<R>): Promise<R> => {
+		pending.add(operation);
+		void operation.finally(() => pending.delete(operation));
+		return operation;
+	};
+	const idle = async (): Promise<void> => {
+		if (pending.size === 0) return;
+		await Promise.allSettled([...pending]);
+		return idle();
+	};
+	const tracked: EditorDraftStore = {
+		persistent: store.persistent,
+		write: (key, copy) => track(store.write(key, copy)),
+		read: (key, accept, now) => track(store.read(key, accept, now)),
+		list: (scope, accept, now) => track(store.list(scope, accept, now)),
+		removeIf: (key, tokens) => track(store.removeIf(key, tokens)),
+		prune: (now) => track(store.prune(now)),
+	};
+	return { store: tracked, idle };
+}
+
 function setup(
 	over: Partial<DraftAutosaveOptions<Draft>> = {},
 	env: { driver?: ReturnType<typeof memoryDriver>; tab?: string; locks?: boolean } = {}
 ) {
+	const events = reactive<DraftEvent['type'][]>([]);
 	const text = ref('saved');
 	const serverText = ref('saved');
 	const enabled = ref(true);
 	const online = ref(true);
 	const open = ref(false);
 	const driver = env.driver ?? memoryDriver();
+	const storage = trackedStore(over.store ?? createEditorDraftStore(driver));
 	const saves: string[] = [];
 	let pending: ReturnType<typeof deferred> | null = null;
 	let revision = 3;
@@ -98,13 +136,14 @@ function setup(
 				text.value = data.text;
 			},
 			online: () => online.value,
-			store: createEditorDraftStore(driver),
+			observe: (event) => events.push(event.type),
 			// A browser with Web Locks: another tab's editor is open only while it holds its lock.
 			writers: createEditorDraftWriters(
 				env.tab ?? 'tab-a',
 				env.locks === false ? null : noLocksHeld
 			),
 			...over,
+			store: storage.store,
 		});
 		watch(text, (value) => draft.edit({ text: fp(value) }));
 		draft.dispatch({ type: 'hydrated', revision: 3, values: { text: fp('saved') }, fresh: false });
@@ -116,6 +155,11 @@ function setup(
 	};
 	return {
 		autosave,
+		/** Resolves once the session took its `n`-th event of `type` since setup. */
+		after: (type: DraftEvent['type'], n = 1) =>
+			until(() => events.filter((event) => event === type).length >= n),
+		/** Resolves once storage finished everything it was asked. */
+		storageIdle: storage.idle,
 		text,
 		serverText,
 		enabled,
@@ -141,11 +185,6 @@ const noLocksHeld = {
 	request: async () => undefined,
 	query: async () => ({ held: [], pending: [] }),
 } as unknown as Pick<LockManager, 'request' | 'query'>;
-
-/** Let promise chains settle (no timers involved). */
-const settle = async () => {
-	for (let i = 0; i < 10; i++) await Promise.resolve();
-};
 
 beforeEach(() => {
 	vi.useFakeTimers();
@@ -204,7 +243,7 @@ describe('useDraftAutosave: saving', () => {
 		const flight = t.hold();
 		await t.edit('typed');
 		await vi.advanceTimersByTimeAsync(300);
-		await settle();
+		await t.after('copy-committed');
 		expect(t.driver.data.get(KEY)).toMatchObject({
 			v: 2,
 			token: 'tab-a.1#1',
@@ -218,7 +257,7 @@ describe('useDraftAutosave: saving', () => {
 		await vi.advanceTimersByTimeAsync(1200);
 		flight.resolve();
 		await vi.advanceTimersByTimeAsync(0);
-		await settle();
+		await until(() => !t.driver.data.has(KEY));
 		expect(t.driver.data.has(KEY)).toBe(false);
 	});
 
@@ -227,7 +266,8 @@ describe('useDraftAutosave: saving', () => {
 		t.persist.mockRejectedValueOnce(new Error('refused'));
 		await t.edit('typed');
 		await vi.advanceTimersByTimeAsync(1500);
-		await settle();
+		await t.after('save-failed');
+		await t.after('copy-committed');
 		expect(t.autosave.status.value).toBe('error');
 		expect(t.autosave.error.value).toBeInstanceOf(Error);
 		expect(t.autosave.dirty.value).toBe(true);
@@ -235,7 +275,8 @@ describe('useDraftAutosave: saving', () => {
 
 		t.autosave.retry();
 		await vi.advanceTimersByTimeAsync(0);
-		await settle();
+		await t.after('saved');
+		await until(() => !t.driver.data.has(KEY));
 		expect(t.persist).toHaveBeenCalledTimes(2);
 		expect(t.serverText.value).toBe('typed');
 		expect(t.autosave.status.value).toBe('saved');
@@ -248,7 +289,7 @@ describe('useDraftAutosave: saving', () => {
 		const flight = t.hold();
 		await t.edit('offline edit');
 		await vi.advanceTimersByTimeAsync(1500);
-		await settle();
+		await t.after('copy-committed');
 		expect(t.autosave.status.value).toBe('offline');
 		expect(t.autosave.onDevice.value).toBe(true);
 		expect(t.autosave.atRisk.value).toBe(false);
@@ -256,8 +297,36 @@ describe('useDraftAutosave: saving', () => {
 		t.online.value = true;
 		flight.resolve();
 		await vi.advanceTimersByTimeAsync(0);
-		await settle();
+		await t.after('saved');
 		expect(t.autosave.status.value).toBe('saved');
+	});
+
+	it('follows the browser going offline and back by default', async () => {
+		const onLine = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(true);
+		try {
+			const t = setup({ online: undefined });
+			const flight = t.hold();
+			await t.edit('typed offline');
+			onLine.mockReturnValue(false);
+			window.dispatchEvent(new Event('offline'));
+			await nextTick();
+			expect(t.autosave.state.value.online).toBe(false);
+			await vi.advanceTimersByTimeAsync(1500);
+			await t.after('copy-committed');
+			expect(t.autosave.status.value).toBe('offline');
+
+			onLine.mockReturnValue(true);
+			window.dispatchEvent(new Event('online'));
+			await nextTick();
+			expect(t.autosave.state.value.online).toBe(true);
+			t.release();
+			flight.resolve();
+			await t.after('saved');
+			expect(t.autosave.status.value).toBe('saved');
+			t.scope.stop();
+		} finally {
+			onLine.mockRestore();
+		}
 	});
 
 	it('counts an edit as at risk while no device copy could be written', async () => {
@@ -320,6 +389,25 @@ describe('useDraftAutosave: saving', () => {
 		await vi.advanceTimersByTimeAsync(1500);
 		expect(t.saves).toEqual(['before', 'after']);
 	});
+
+	it('lets a final action dispatch only while the editor shows what the server holds', async () => {
+		const t = setup();
+		await t.edit('before');
+		const asked: boolean[] = [];
+		const done = t.autosave.runAction(async (current) => {
+			await t.autosave.flush();
+			asked.push(current());
+			// Edited after the action's save: what it would dispatch is not what is shown.
+			await t.edit('typed during the action');
+			asked.push(current());
+			return asked.at(-1)!;
+		});
+		expect(await done).toBe(false);
+		expect(asked).toEqual([true, false]);
+		// Background saving carries on with the newer edit.
+		await vi.advanceTimersByTimeAsync(1500);
+		expect(t.saves).toEqual(['before', 'typed during the action']);
+	});
 });
 
 describe('useDraftAutosave: leaving', () => {
@@ -351,15 +439,21 @@ describe('useDraftAutosave: leaving', () => {
 
 	it('stops waiting for a copy write that hangs and asks', async () => {
 		const driver = memoryDriver();
-		driver.set = () => new Promise(() => {});
+		const reached = deferred();
+		driver.set = () => {
+			reached.resolve();
+			return new Promise(() => {});
+		};
 		const t = setup({}, { driver });
 		await t.edit('typed');
 		const verdict = t.autosave.leave.request('/elsewhere');
-		await vi.advanceTimersByTimeAsync(999);
 		let decided: boolean | null = null;
 		void verdict.then((value) => (decided = value));
-		await settle();
+		// The copy is in storage's hands, and it never answers.
+		await reached.promise;
+		await vi.advanceTimersByTimeAsync(999);
 		expect(decided).toBeNull();
+		expect(t.autosave.state.value.leave?.phase).toBe('preparing');
 		await vi.advanceTimersByTimeAsync(1);
 		expect(await verdict).toBe(false);
 		expect(t.autosave.atRisk.value).toBe(true);
@@ -385,7 +479,7 @@ describe('useDraftAutosave: leaving', () => {
 
 		const flight = t.hold();
 		const saving = t.autosave.leave.save();
-		await settle();
+		await until(() => t.autosave.state.value.flight !== null);
 		t.autosave.leave.cancel();
 		flight.resolve();
 		expect(await saving).toBeNull();
@@ -398,7 +492,7 @@ describe('useDraftAutosave: Discard and closing', () => {
 		const t = setup();
 		await t.edit('leaving');
 		t.scope.stop();
-		await settle();
+		await t.after('close');
 		expect(t.saves).toEqual(['leaving']);
 	});
 
@@ -417,7 +511,7 @@ describe('useDraftAutosave: Discard and closing', () => {
 		await t.edit('discarded');
 		await vi.advanceTimersByTimeAsync(300);
 		t.autosave.discard();
-		await settle();
+		await t.storageIdle();
 		expect(t.driver.data.has(KEY)).toBe(false);
 		expect(t.autosave.atRisk.value).toBe(false);
 	});
@@ -440,7 +534,8 @@ describe('useDraftAutosave: Discard and closing', () => {
 		await a.edit('from A');
 		await b.edit('from B');
 		await vi.advanceTimersByTimeAsync(300);
-		await settle();
+		await a.after('copy-committed');
+		await b.after('copy-committed');
 
 		expect(driver.data.get(editorDraftKey(SCOPE, 'tab-a.1'))).toMatchObject({
 			data: { text: 'from A' },
@@ -468,7 +563,7 @@ describe('useDraftAutosave: copies left behind', () => {
 		const driver = memoryDriver();
 		driver.data.set(OTHER, leftBehind('offline edit'));
 		const t = setup({}, { driver });
-		await settle();
+		await t.after('recovery-read');
 		await vi.advanceTimersByTimeAsync(5000);
 		expect(t.autosave.recovery.pending.value?.data).toEqual({ text: 'offline edit' });
 		expect(t.text.value).toBe('saved');
@@ -479,10 +574,11 @@ describe('useDraftAutosave: copies left behind', () => {
 		const driver = memoryDriver();
 		driver.data.set(OTHER, leftBehind('offline edit'));
 		const t = setup({}, { driver });
-		await settle();
+		await t.after('recovery-read');
 		t.autosave.recovery.restore();
 		expect(t.text.value).toBe('offline edit');
-		await settle();
+		await t.after('copy-committed');
+		await t.storageIdle();
 		expect(driver.data.get(KEY)).toMatchObject({ data: { text: 'offline edit' } });
 		expect(driver.data.has(OTHER)).toBe(false);
 		await vi.advanceTimersByTimeAsync(1500);
@@ -490,11 +586,28 @@ describe('useDraftAutosave: copies left behind', () => {
 		expect(t.persist.mock.calls[0]?.[0]).toMatchObject({ baseRevision: 3 });
 	});
 
+	it('asks before Restore replaces open text, and closes that text before restoring', async () => {
+		const driver = memoryDriver();
+		driver.data.set(OTHER, leftBehind('offline edit'));
+		const t = setup({}, { driver });
+		await t.after('recovery-read');
+		t.open.value = true;
+		await nextTick();
+		t.autosave.recovery.restore();
+		expect(t.autosave.recovery.confirm.value).toBe(true);
+		expect(t.text.value).toBe('saved');
+		expect(t.open.value).toBe(true);
+
+		t.autosave.recovery.restore();
+		expect(t.open.value).toBe(false);
+		expect(t.text.value).toBe('offline edit');
+	});
+
 	it('keeps the copy left behind when this editor could not keep the restored one', async () => {
 		const driver = memoryDriver();
 		driver.data.set(OTHER, leftBehind('offline edit'));
 		const t = setup({}, { driver });
-		await settle();
+		await t.after('recovery-read');
 		const set = driver.set;
 		driver.set = async (key, value) => {
 			if (key === KEY) throw new Error('QuotaExceededError');
@@ -502,24 +615,26 @@ describe('useDraftAutosave: copies left behind', () => {
 		};
 		t.persist.mockRejectedValue(new Error('offline'));
 		t.autosave.recovery.restore();
-		await settle();
+		await t.after('copy-failed');
 		await vi.advanceTimersByTimeAsync(1500);
-		await settle();
+		await t.after('save-failed');
+		await t.storageIdle();
 		expect(driver.data.has(OTHER)).toBe(true);
 	});
 
 	it('deletes a copy that says what the editor shows, and discards an offered one on request', async () => {
 		const driver = memoryDriver();
 		driver.data.set(OTHER, leftBehind('saved'));
-		setup({}, { driver });
-		await settle();
+		const first = setup({}, { driver });
+		await first.after('recovery-read');
+		await first.storageIdle();
 		expect(driver.data.has(OTHER)).toBe(false);
 
 		driver.data.set(OTHER, leftBehind('offline edit'));
 		const t = setup({}, { driver, tab: 'tab-c' });
-		await settle();
+		await t.after('recovery-read');
 		t.autosave.recovery.discard();
-		await settle();
+		await t.storageIdle();
 		expect(driver.data.has(OTHER)).toBe(false);
 		expect(t.autosave.recovery.pending.value).toBeNull();
 	});
@@ -528,16 +643,18 @@ describe('useDraftAutosave: copies left behind', () => {
 		const driver = memoryDriver();
 		driver.data.set(OTHER, leftBehind('saved'));
 		const t = setup({}, { driver, locks: false });
-		await settle();
+		await t.after('recovery-read');
+		await t.storageIdle();
 		expect(driver.data.has(OTHER)).toBe(true);
 		driver.data.set(OTHER, leftBehind('their edit'));
 		const second = setup({}, { driver, tab: 'tab-c', locks: false });
-		await settle();
+		await second.after('recovery-read');
 		expect(second.autosave.recovery.pending.value?.data).toEqual({ text: 'their edit' });
 		second.autosave.recovery.restore();
-		await settle();
+		await second.after('copy-committed');
+		await second.storageIdle();
 		second.autosave.recovery.discard();
-		await settle();
+		await second.storageIdle();
 		expect(driver.data.has(OTHER)).toBe(true);
 		expect(t.text.value).toBe('saved');
 	});
@@ -552,9 +669,11 @@ describe('useDraftAutosave: copies left behind', () => {
 			return list();
 		};
 		const t = setup({}, { driver });
+		// The read has started (it waits on storage) when the editor closes.
+		await until(() => t.autosave.state.value.recovery.request !== 0);
 		t.scope.stop();
 		keys.resolve();
-		await settle();
+		await t.after('recovery-read');
 		expect(t.autosave.recovery.pending.value).toBeNull();
 		t.autosave.recovery.restore();
 		expect(t.text.value).toBe('saved');

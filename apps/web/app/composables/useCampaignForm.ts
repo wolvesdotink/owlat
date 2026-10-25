@@ -194,7 +194,7 @@ export function useCampaignForm(
 		final: (kind, perform) =>
 			isDraft.value
 				? drafts.autosave.runAction(perform, kind === 'schedule' ? [SCHEDULE_FIELD] : [])
-				: perform(),
+				: perform(() => true),
 		// After a completed action, so the route guard does not ask on its navigation.
 		onSaved: () => markClean(),
 	});

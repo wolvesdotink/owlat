@@ -58,10 +58,17 @@ export function useTemplatePublication(opts: {
 		}
 		const draft = opts.draft();
 		if (draft) {
-			await draft.runAction(async () => {
-				if (await draft.flush()) return publishStored();
-				showToast(t('shared.draftAutosave.notSavedYet'), 'error');
-				return false;
+			await draft.runAction(async (current) => {
+				if (!(await draft.flush())) {
+					showToast(t('shared.draftAutosave.notSavedYet'), 'error');
+					return false;
+				}
+				// What goes live is the stored draft: it must still be what the editor shows.
+				if (!current()) {
+					showToast(t('shared.draftAutosave.changedDuringAction'), 'error');
+					return false;
+				}
+				return publishStored();
 			});
 			return;
 		}

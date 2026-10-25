@@ -32,8 +32,13 @@ export interface CampaignActionsOptions {
 	/**
 	 * Run Send or Schedule (`perform`, resolving whether it completed) as one
 	 * final action: a draft holds its background saves until it is done.
+	 * `current()` says whether the form still shows what the server holds; it
+	 * is asked right before the final mutation.
 	 */
-	final?: (kind: 'send' | 'schedule', perform: () => Promise<boolean>) => Promise<boolean>;
+	final?: (
+		kind: 'send' | 'schedule',
+		perform: (current: () => boolean) => Promise<boolean>
+	) => Promise<boolean>;
 }
 
 /**
@@ -50,7 +55,7 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 		handleSaveFields,
 		onSaved,
 	} = options;
-	const final = options.final ?? ((_kind, perform) => perform());
+	const final = options.final ?? ((_kind, perform) => perform(() => true));
 	const router = useRouter();
 	const { t } = useI18n();
 	const { showToast } = useToast();
@@ -154,6 +159,15 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 		return true;
 	};
 
+	// Send and Schedule act on what the server holds once their saves landed.
+	// The form stays editable meanwhile: an edit made after those saves would
+	// not be part of what goes out, so the action stops instead.
+	const changedMeanwhile = (current: () => boolean) => {
+		if (current()) return false;
+		saveError.value = t('shared.draftAutosave.changedDuringAction');
+		return true;
+	};
+
 	// Save campaign. Returns whether the save (fields + A/B test) fully succeeded.
 	const handleSave = async (): Promise<boolean> => {
 		if (!validateForm() || !campaignId.value) return false;
@@ -188,7 +202,7 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 		dismissCapacitySchedule();
 
 		try {
-			const sent = await final('send', async () => {
+			const sent = await final('send', async (current) => {
 				if (isDraft.value && !(await saveForm())) return false;
 
 				// `schedule` only accepts a draft, so a campaign that is already
@@ -198,6 +212,7 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 					if (!(await unscheduleCampaign({ campaignId: campaignId.value })).ok) return false;
 				}
 
+				if (changedMeanwhile(current)) return false;
 				const sendAt = Date.now() + SEND_UNDO_WINDOW_MS;
 				const scheduled = await scheduleCampaign({
 					campaignId: campaignId.value,
@@ -248,9 +263,10 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 		dismissCapacitySchedule();
 
 		try {
-			const scheduled = await final('schedule', async () => {
+			const scheduled = await final('schedule', async (current) => {
 				if (isDraft.value) {
 					if (!(await saveForm())) return false;
+					if (changedMeanwhile(current)) return false;
 					const result = await scheduleCampaign({
 						campaignId: campaignId.value,
 						scheduledAt: scheduledDateTime.getTime(),
@@ -259,6 +275,7 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 					return result.ok;
 				}
 				if (isScheduled.value) {
+					if (changedMeanwhile(current)) return false;
 					const result = await rescheduleCampaign({
 						campaignId: campaignId.value,
 						scheduledAt: scheduledDateTime.getTime(),

@@ -203,9 +203,17 @@ export function createEditorDraftStore(driver: OfflineKvDriver): EditorDraftStor
 		persistent,
 		write(key, copy) {
 			if (!persistent) return Promise.resolve(false);
-			// Through JSON: the editors' state is reactive, and IndexedDB's
+			// Serialized now, not when its turn in the queue comes: the data is
+			// the editor's live state, which keeps changing, and the write must
+			// store what its token names. Through JSON, also because IndexedDB's
 			// structured clone refuses a Vue proxy.
-			return serial(key, () => driver.set(key, JSON.parse(JSON.stringify(copy)))).then(
+			let frozen: EditorDraftCopy<unknown>;
+			try {
+				frozen = JSON.parse(JSON.stringify(copy)) as EditorDraftCopy<unknown>;
+			} catch {
+				return Promise.resolve(false);
+			}
+			return serial(key, () => driver.set(key, frozen)).then(
 				() => true,
 				() => false
 			);

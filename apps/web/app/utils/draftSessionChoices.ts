@@ -6,6 +6,7 @@
 
 import {
 	atRisk,
+	copyFields,
 	deviceCovers,
 	pendingFields,
 	sendableFields,
@@ -26,7 +27,13 @@ export function recoveryStart(step: DraftStep, e: Of<'recovery-start'>): void {
 	step.emit({ type: 'read-copies', request, scope: e.scope });
 }
 
-/** Never applied on its own: a copy is offered, or cleaned up when it says what is shown. */
+/**
+ * Never applied on its own: a copy is offered, or, when it says what the
+ * editor shows, it is nothing to offer. Saying the same is not keeping it:
+ * such a copy goes only while the server or this editor's committed copy
+ * holds what it holds; otherwise this editor takes it over and it goes once
+ * that is so.
+ */
 export function recoveryRead(step: DraftStep, e: Of<'recovery-read'>): void {
 	const s = step.state;
 	if (e.request !== s.recovery.request || s.recovery.scope === null || s.closed || s.discarded) {
@@ -35,15 +42,19 @@ export function recoveryRead(step: DraftStep, e: Of<'recovery-read'>): void {
 	let offer: DraftCandidate | null = null;
 	for (const candidate of e.candidates) {
 		if (candidate.liveness === 'open') continue;
-		if (candidate.matches) {
-			// Nothing to recover. Only a copy whose editor is known to be
-			// closed is deleted; one that may still be open stays its editor's.
-			if (candidate.liveness === 'closed') {
-				step.emit({ type: 'remove-copies', key: candidate.key, tokens: [candidate.token] });
-			}
+		if (!candidate.matches) {
+			offer ??= candidate;
 			continue;
 		}
-		offer ??= candidate;
+		// One whose editor may still be open stays that editor's.
+		if (candidate.liveness !== 'closed') continue;
+		const kept = pendingFields(s).length === 0 || (s.persistent && deviceCovers(s));
+		if (kept) {
+			step.emit({ type: 'remove-copies', key: candidate.key, tokens: [candidate.token] });
+		} else if (!step.state.adopting) {
+			step.set({ adopting: { source: candidate, values: pick(s.values, copyFields(s)) } });
+			step.settleCopy();
+		}
 	}
 	if (offer) {
 		step.set({
@@ -52,35 +63,34 @@ export function recoveryRead(step: DraftStep, e: Of<'recovery-read'>): void {
 	}
 }
 
+/**
+ * Restore asks once more when it would replace newer work: an edit since the
+ * offer, or text open in a block (which no edit counts yet). Confirmed, open
+ * text is committed and then replaced with the rest (`apply-copy`).
+ */
 export function recoveryRestore(step: DraftStep): void {
 	const s = step.state;
 	const offer = s.offer;
 	if (!offer || s.closed || offer.request !== s.recovery.request) return;
-	if (offer.revision !== s.localRevision && !offer.confirm) {
-		// Edited since the offer: Restore would replace that work, so it asks
-		// once more before it does.
+	if (offer.revision !== s.localRevision || (s.inline && !offer.confirm)) {
 		step.set({ offer: { ...offer, revision: s.localRevision, confirm: true } });
 		return;
 	}
-	step.set({ offer: null, adopting: { source: offer.candidate, token: null, values: {} } });
+	step.set({ offer: null, adopting: { source: offer.candidate, values: {} } });
 	step.emit({ type: 'apply-copy', request: offer.request, candidate: offer.candidate });
 }
 
 /**
  * The restored snapshot is an edit against the confirmed base (a server
  * write since still makes its save a conflict). It goes to this editor's own
- * copy at once; its source goes only once that exact snapshot is kept.
+ * copy at once; its source goes only once every field it restored is kept.
  */
 export function recoveryApplied(step: DraftStep, e: Of<'recovery-applied'>): void {
 	const s = step.state;
 	const adopting = s.adopting;
 	if (!adopting || e.request !== s.recovery.request) return;
-	const values = pick(
-		s.values,
-		Object.keys(s.values).filter((f) => !s.volatile.includes(f))
-	);
-	const token = s.persistent ? step.writeCopy() : null;
-	step.set({ adopting: { ...adopting, values, token } });
+	step.set({ adopting: { ...adopting, values: pick(s.values, copyFields(s)) } });
+	if (s.persistent) step.writeCopy();
 }
 
 export function recoveryDiscard(step: DraftStep): void {

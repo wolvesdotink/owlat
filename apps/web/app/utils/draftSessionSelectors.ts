@@ -61,6 +61,29 @@ export const canAutosave = (s: DraftSessionState): boolean =>
 	s.leave === null &&
 	s.action === null;
 
+/**
+ * Final action `id` may dispatch what the server holds: the editor shows
+ * exactly that (nothing on its way, nothing pending, no open text), and the
+ * volatile choices it consumes are the ones it began with.
+ */
+export const actionCurrent = (
+	s: DraftSessionState,
+	id: number,
+	consumes: readonly string[] = []
+): boolean => {
+	const action = s.action;
+	return (
+		action !== null &&
+		action.id === id &&
+		!s.closed &&
+		!s.discarded &&
+		!s.inline &&
+		s.flight === null &&
+		pendingFields(s).length === 0 &&
+		consumes.every((field) => s.values[field] === action.values[field])
+	);
+};
+
 /** New collaboration sends wait while the person decides whether to leave. */
 export const holdsSends = (s: DraftSessionState): boolean => s.leave !== null;
 

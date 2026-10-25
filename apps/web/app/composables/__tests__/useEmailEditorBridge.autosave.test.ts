@@ -385,6 +385,34 @@ describe('useEmailEditorBridge autosave (classic)', () => {
 		unmount();
 	});
 
+	it('asks before Restore replaces text typed into a block, and closes that text first', async () => {
+		draftStore = memoryStore(leftBehind(2, { blocks: [] }));
+		const { bridge, unmount } = setup();
+		await settle();
+		await vi.advanceTimersByTimeAsync(0);
+		expect(bridge.autosave?.recovery.pending.value).not.toBeNull();
+		const calls: string[] = [];
+		const loadState = vi.fn(() => calls.push('loadState'));
+		bridge.builderRef.value = {
+			loadState,
+			isInlineEditing: true,
+			commitInlineEdit: () => {
+				calls.push('commit');
+				(bridge.builderRef.value as { isInlineEditing: boolean }).isInlineEditing = false;
+			},
+		};
+		await nextTick();
+
+		bridge.autosave!.recovery.restore();
+		expect(loadState).not.toHaveBeenCalled();
+		expect(bridge.autosave!.recovery.confirm.value).toBe(true);
+
+		bridge.autosave!.recovery.restore();
+		expect(calls).toEqual(['commit', 'loadState']);
+		expect(loadState).toHaveBeenCalledWith(expect.objectContaining({ blocks: [] }));
+		unmount();
+	});
+
 	describe('leaving while text is typed into a block', () => {
 		/** The text editor is open with `typed`; closing it puts the text in the subject. */
 		const typeInto = (bridge: ReturnType<typeof setup>['bridge'], typed: string) => {

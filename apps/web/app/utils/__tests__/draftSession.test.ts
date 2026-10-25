@@ -18,6 +18,7 @@ import {
 	type Fingerprints,
 } from '../draftSession';
 import {
+	actionCurrent,
 	atRisk,
 	canAutosave,
 	deviceCovers,
@@ -417,10 +418,7 @@ describe('draftSession: copies left on the device', () => {
 		expect(sourceRemoved(trace(restored.state, [failed]).effects)).toBe(false);
 		// Edited again while the adopted copy is written: the source receipt covers
 		// only the adopted snapshot, and the later edit stays uncovered.
-		const adopted = trace(restored.state, [
-			edit('From the copy, edited'),
-			(s) => ({ type: 'copy-committed', token: s.adopting!.token! }),
-		]);
+		const adopted = trace(restored.state, [edit('From the copy, edited'), committed]);
 		expect(sourceRemoved(adopted.effects)).toBe(true);
 		expect(deviceCovers(adopted.state)).toBe(false);
 		expect(atRisk(adopted.state)).toBe(true);
@@ -440,6 +438,88 @@ describe('draftSession: copies left on the device', () => {
 			{ type: 'recovery-discard' },
 		]);
 		expect(ofType(effects, 'remove-copies').some((e) => e.key === 'scope:tab-old.1')).toBe(false);
+	});
+
+	const sourceGone = (effects: DraftEffect[]) =>
+		ofType(effects, 'remove-copies').some((effect) => effect.key === 'scope:tab-old.1');
+
+	it('keeps the source while a restored field is held nowhere else, whatever a save of the others did', () => {
+		// A campaign: the copy restores a name and an unfinished audience choice.
+		const restored = trace(loaded(100, doc('Original', { audience: 'segment:old' })), [
+			{ type: 'recovery-start', scope: 'scope:' },
+			read([candidate({ base: 100 })]),
+			{ type: 'recovery-restore' },
+			{
+				type: 'edit',
+				values: doc('Restored', { audience: 'topic:none picked' }),
+				deviceOnly: ['audience'],
+			},
+			(s) => ({ type: 'recovery-applied', request: s.recovery.request }),
+		]);
+		// Its own copy of the snapshot fails; then the name is saved, without the audience.
+		const saved = trace(restored.state, [
+			failed,
+			fire('save'),
+			(s) => {
+				expect(s.flight?.included).toEqual(['name']);
+				return landed({ lineage: { from: 100, to: 150 } })(s);
+			},
+		]);
+		expect(sourceGone(saved.effects)).toBe(false);
+		expect(saved.state.adopting).not.toBeNull();
+		// Once a copy holding the audience commits, nothing depends on the source.
+		const kept = trace(saved.state, [fire('mirror'), committed]);
+		expect(sourceGone(kept.effects)).toBe(true);
+	});
+
+	it('takes over a copy saying what is shown while nothing durable holds it, and lets it go once kept', () => {
+		// Typed while the read ran: the editor shows what the copy holds, but the
+		// server still has the original and this editor has no committed copy.
+		const matching = candidate({ matches: true });
+		const read1 = trace(loaded(2), [
+			{ type: 'recovery-start', scope: 'scope:' },
+			edit('Restored'),
+			read([matching]),
+		]);
+		expect(sourceGone(read1.effects)).toBe(false);
+		expect(read1.state.offer).toBeNull();
+		expect(read1.state.adopting?.source.token).toBe(matching.token);
+		// Its own copy is written at once; the source goes when it commits.
+		expect(ofType(read1.effects, 'write-copy')).toHaveLength(1);
+		expect(sourceGone(trace(read1.state, [failed]).effects)).toBe(false);
+		expect(sourceGone(trace(read1.state, [committed]).effects)).toBe(true);
+		// Or when a save of it lands.
+		const saved = trace(read1.state, [failed, fire('save'), landed({ revision: 3 })]);
+		expect(sourceGone(saved.effects)).toBe(true);
+		// Without device storage only the save can keep it.
+		const noStorage = trace(loaded(2), [
+			{ type: 'storage', persistent: false },
+			{ type: 'recovery-start', scope: 'scope:' },
+			edit('Restored'),
+			read([matching]),
+		]);
+		expect(sourceGone(noStorage.effects)).toBe(false);
+		expect(ofType(noStorage.effects, 'write-copy')).toEqual([]);
+	});
+
+	it('asks before Restore replaces text open in a block, then restores over it', () => {
+		const offered = trace(loaded(), [
+			{ type: 'recovery-start', scope: 'scope:' },
+			read([candidate()]),
+			{ type: 'inline', open: true },
+		]);
+		const first = trace(offered.state, [{ type: 'recovery-restore' }]);
+		expect(ofType(first.effects, 'apply-copy')).toEqual([]);
+		expect(first.state.offer?.confirm).toBe(true);
+		const second = trace(first.state, [{ type: 'recovery-restore' }]);
+		expect(ofType(second.effects, 'apply-copy')).toHaveLength(1);
+		// An edit made after that confirmation asks again.
+		const later = trace(first.state, [
+			edit('Typed after the question'),
+			{ type: 'recovery-restore' },
+		]);
+		expect(ofType(later.effects, 'apply-copy')).toEqual([]);
+		expect(later.state.offer?.confirm).toBe(true);
 	});
 });
 
@@ -820,6 +900,35 @@ describe('draftSession: final actions and closing', () => {
 			fp('A'),
 			fp('AB'),
 		]);
+	});
+
+	it('lets a final action dispatch only while the editor shows what the server holds', () => {
+		const start = loaded(100, doc('Spring', { schedule: ['2026-12-01', '09:00', 'instant'] }), {
+			volatile: ['schedule'],
+		});
+		const begun = trace(start, [
+			edit('Spring sale', { schedule: ['2026-12-01', '09:00', 'instant'] }),
+			{ type: 'action-begin', id: 1 },
+			{ type: 'save-now' },
+		]).state;
+		const schedule = ['schedule'];
+		// Its save is on the way: not yet.
+		expect(actionCurrent(begun, 1, schedule)).toBe(false);
+		const saved = trace(begun, [landed({ lineage: { from: 100, to: 150 } })]).state;
+		expect(actionCurrent(saved, 1, schedule)).toBe(true);
+		expect(actionCurrent(saved, 2, schedule)).toBe(false);
+		// Edited after its save, or the schedule changed: it must not dispatch.
+		const edited = trace(saved, [
+			edit('Spring sale!', { schedule: ['2026-12-01', '09:00', 'instant'] }),
+		]).state;
+		expect(actionCurrent(edited, 1, schedule)).toBe(false);
+		// A changed schedule stops only the action that takes it (Schedule, not Send).
+		const moved = trace(saved, [
+			edit('Spring sale', { schedule: ['2026-12-02', '09:00', 'instant'] }),
+		]).state;
+		expect(actionCurrent(moved, 1, schedule)).toBe(false);
+		expect(actionCurrent(moved, 1)).toBe(true);
+		expect(actionCurrent(trace(saved, [{ type: 'inline', open: true }]).state, 1)).toBe(false);
 	});
 
 	it('saves and keeps what is pending on the way out, once', () => {

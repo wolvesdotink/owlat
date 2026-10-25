@@ -154,6 +154,29 @@ export class DraftStep {
 		if (!current) this.writeCopy();
 	}
 
+	/**
+	 * A restored copy's source goes once every field it restored is kept
+	 * elsewhere: held by the server (the base) or by this editor's committed
+	 * copy. A save that left a field out (an unfinished choice) or a copy that
+	 * failed proves nothing about that field.
+	 */
+	keepAdopted(): void {
+		const s = this.state;
+		const adopting = s.adopting;
+		const base = s.base;
+		if (!adopting || !base) return;
+		const fields = Object.keys(adopting.values);
+		// Not applied yet: nothing was restored to keep.
+		if (fields.length === 0) return;
+		const disk = s.onDisk;
+		const kept = fields.every(
+			(field) =>
+				base.values[field] === adopting.values[field] ||
+				(disk !== null && disk.values[field] === adopting.values[field])
+		);
+		if (kept) this.retireSource(adopting.source);
+	}
+
 	/** A restored copy's source goes, unless its editor may still be open. */
 	retireSource(source: DraftCandidate): void {
 		if (source.liveness === 'closed') {

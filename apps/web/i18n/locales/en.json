@@ -15452,6 +15452,7 @@
 			"failed": "Your changes could not be saved.",
 			"retry": "Retry",
 			"notSavedYet": "Your latest changes are not saved yet. Try again in a moment.",
+			"changedDuringAction": "The draft changed while this was running, so it stopped. Check your changes and try again.",
 			"recovery": {
 				"title": "Unsaved changes on this device.",
 				"description": "Changes from {when} were never saved. Restore them into this draft, or discard them.",

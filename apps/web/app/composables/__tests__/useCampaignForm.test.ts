@@ -14,9 +14,10 @@
  * through the real unsaved-changes guard.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { nextTick, ref, type Ref } from 'vue';
+import { nextTick, reactive, ref, type Ref } from 'vue';
 import type { Id } from '@owlat/api/dataModel';
 import { createTestI18n } from '~/__tests__/i18n';
+import { until } from '~/__tests__/until';
 import { withSetup } from '~/__tests__/withSetup';
 import type { SenderPickerHandle } from '~/utils/campaignSenderPicker';
 import {
@@ -101,7 +102,7 @@ beforeEach(() => {
 	failNext = false;
 	failLabel = null;
 	holdLabel = null;
-	held = [];
+	held = reactive([]);
 	showToast = vi.fn();
 	routes.guards = [];
 	routes.push.mockClear();
@@ -194,9 +195,19 @@ async function leave(to = '/dashboard/campaigns') {
 }
 
 const saves = () => runs.filter((run) => run.label === 'Save campaign draft');
-const settle = async () => {
-	for (let i = 0; i < 10; i++) await Promise.resolve();
-};
+
+type Form = Awaited<ReturnType<typeof setup>>['form'];
+/** The session's milestones a test waits for. */
+const saveLanded = (form: Form) =>
+	until(() => {
+		const s = form.drafts.autosave.state.value;
+		return s.flight === null && s.savedAt !== null;
+	});
+const copyCommitted = (form: Form) =>
+	until(() => {
+		const s = form.drafts.autosave.state.value;
+		return s.writes.length === 0 && s.onDisk !== null;
+	});
 
 describe('useCampaignForm on the wizard controls', () => {
 	it('hydrates the recipients from the saved campaign', async () => {
@@ -417,7 +428,7 @@ describe('useCampaignForm schedule choices', () => {
 		form.campaignName.value = 'Renamed';
 		await nextTick();
 		await vi.advanceTimersByTimeAsync(1600);
-		await settle();
+		await saveLanded(form);
 
 		// The draft's own sections saved; the schedule went nowhere.
 		expect(saves().map((run) => run.args)).toEqual([{ campaignId: 'cmp_1', name: 'Renamed' }]);
@@ -462,8 +473,8 @@ describe('useCampaignForm schedule choices', () => {
 		await pick(form);
 
 		const scheduling = form.handleSchedule();
-		await settle();
-		// Waits for the save in flight: no second save, no schedule yet.
+		// The action began and waits for the save in flight: no second save, no schedule yet.
+		expect(form.drafts.autosave.state.value.action).not.toBeNull();
 		expect(saves()).toHaveLength(1);
 		expect(
 			runs.some((run) => run.label === t('shared.useCampaignActions.operations.schedule'))
@@ -476,6 +487,32 @@ describe('useCampaignForm schedule choices', () => {
 			t('shared.useCampaignActions.operations.schedule'),
 		]);
 		expect(form.drafts.autosave.atRisk.value).toBe(false);
+	});
+
+	it('stops instead of scheduling a form that changed after its save', async () => {
+		const { form, abTest } = await setup();
+		abTest.abTestEnabled.value = true;
+		abTest.abVariantBSubject.value = 'Variant B';
+		await pick(form);
+		// The A/B write after the draft save is slow; the subject changes meanwhile.
+		holdLabel = t('shared.useCampaignActions.operations.enableABTest');
+		const scheduling = form.handleSchedule();
+		await until(() => held.length === 1);
+		form.campaignSubject.value = 'Changed after its save';
+		await nextTick();
+		holdLabel = null;
+		held.shift()!();
+		await scheduling;
+
+		const schedule = t('shared.useCampaignActions.operations.schedule');
+		expect(runs.some((run) => run.label === schedule)).toBe(false);
+		expect(form.saveError.value).toBe(t('shared.draftAutosave.changedDuringAction'));
+		// The schedule stays a guarded choice, and the newer subject saves in the background.
+		expect(form.drafts.autosave.atRisk.value).toBe(true);
+		await vi.advanceTimersByTimeAsync(1500);
+		expect(saves().at(-1)?.args).toMatchObject({
+			content: { subject: 'Changed after its save' },
+		});
 	});
 });
 
@@ -502,7 +539,7 @@ describe('useCampaignForm device copy', () => {
 		form.campaignAudience.audienceType.value = 'topic';
 		await nextTick();
 		await vi.advanceTimersByTimeAsync(300);
-		await settle();
+		await copyCommitted(form);
 	};
 
 	it('leaves the schedule out of the copy', async () => {
@@ -521,7 +558,7 @@ describe('useCampaignForm device copy', () => {
 		campaign.value = { ...DRAFT, replyTo: 'their@owlat.example', updatedAt: 200 };
 		await nextTick();
 		await vi.advanceTimersByTimeAsync(300);
-		await settle();
+		await copyCommitted(form);
 
 		// The copy holds the reply-to as loaded; a newer base would let it pass for one made after theirs.
 		expect((await copies()).map(({ base }) => base)).toEqual([100]);
@@ -580,7 +617,7 @@ describe('useCampaignForm device copy', () => {
 			},
 		});
 		const { form } = await setup();
-		await settle();
+		await until(() => form.drafts.recovery.pending.value !== null);
 		// Built on the very `updatedAt` loaded: still only offered.
 		expect(form.campaignName.value).toBe('September newsletter');
 		expect(form.drafts.recovery.pending.value?.data).toMatchObject({ name: 'Offline name' });

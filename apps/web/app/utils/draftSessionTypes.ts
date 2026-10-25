@@ -136,10 +136,12 @@ export interface DraftSessionState {
 	readonly seq: number;
 	readonly recovery: { readonly request: number; readonly scope: string | null };
 	readonly offer: DraftOffer | null;
-	/** A restored copy: its source goes once the adopted snapshot is kept elsewhere. */
+	/**
+	 * A copy this editor took over (restored, or one saying what it shows):
+	 * its source goes once every field of `values` is kept elsewhere.
+	 */
 	readonly adopting: {
 		readonly source: DraftCandidate;
-		readonly token: string | null;
 		readonly values: Fingerprints;
 	} | null;
 	readonly leave: DraftLeave | null;

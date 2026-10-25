@@ -412,16 +412,8 @@ function saved(step: DraftStep, e: Of<'saved'>) {
 		base: { revision, values: { ...s.base.values, ...pick(flight.values, flight.included) } },
 		keepOver: null,
 	});
-	// The server now holds a restored snapshot: its source may go.
-	const adopting = step.state.adopting;
-	const adopted = adopting ? Object.keys(adopting.values) : [];
-	if (
-		adopting &&
-		adopted.length > 0 &&
-		adopted.every((field) => flight.values[field] === adopting.values[field])
-	) {
-		step.retireSource(adopting.source);
-	}
+	// A restored snapshot's source may go once nothing of it depends on it.
+	step.keepAdopted();
 	step.settleCopy();
 	step.catchUp();
 	if (!step.state.discarded) step.resume();
@@ -434,15 +426,13 @@ function copySettled(step: DraftStep, e: Of<'copy-committed'> | Of<'copy-failed'
 	if (at === -1) return;
 	const write = s.writes[at]!;
 	const rest = s.writes.slice(at + 1);
-	const adopting = s.adopting;
 	if (e.type === 'copy-committed') {
 		step.set({ writes: rest, onDisk: write, deviceFailed: false });
-		if (adopting?.token === e.token) step.retireSource(adopting.source);
+		step.keepAdopted();
 		// Discarded or saved meanwhile: a late write goes again.
 		if (step.state.discarded || pendingFields(step.state).length === 0) step.dropOwnCopies();
 	} else {
 		step.set({ writes: rest, deviceFailed: rest.length === 0 });
-		if (adopting?.token === e.token) step.set({ adopting: { ...adopting, token: null } });
 	}
 	const leave = step.state.leave;
 	if (leave?.phase === 'preparing' && leave.deadline !== null && rest.length === 0) {

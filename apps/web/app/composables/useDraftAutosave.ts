@@ -3,9 +3,11 @@ import {
 	getCurrentScope,
 	nextTick,
 	onScopeDispose,
+	ref,
 	shallowRef,
 	watch,
 	type ComputedRef,
+	type Ref,
 	type ShallowRef,
 } from 'vue';
 import { backendConnectionPhase } from '~/lib/backendConnection';
@@ -22,6 +24,7 @@ import {
 	type Fingerprints,
 } from '~/utils/draftSession';
 import {
+	actionCurrent,
 	atRisk,
 	holdsSends,
 	isDirty,
@@ -106,12 +109,14 @@ export interface DraftAutosaveOptions<T> {
 	volatile?: readonly string[];
 	/** How long the editor waits after the last edit; default 1500 ms. */
 	debounceMs?: number;
-	/** Whether the backend is reachable; default: the app's connection state. */
+	/** Whether the backend is reachable; default: the app's connection state and the browser's. */
 	online?: () => boolean;
 	/** Injected in tests; defaults to the page's IndexedDB store. */
 	store?: EditorDraftStore;
 	/** Injected in tests; defaults to the page's writers. */
 	writers?: EditorDraftWriters;
+	/** Sees each event once the session took it and its effects started (tests). */
+	observe?: (event: DraftEvent) => void;
 }
 
 export interface DraftAutosave<T = unknown> {
@@ -139,9 +144,15 @@ export interface DraftAutosave<T = unknown> {
 	discard: () => void;
 	/**
 	 * Hold background saves while `perform` (a final action) runs. On success
-	 * the `consumes` fields count as done with the values they had at the start.
+	 * the `consumes` fields count as done with the values they had at the
+	 * start. `perform` asks `current()` right before its final dispatch: false
+	 * when the editor no longer shows what the server holds (an edit made while
+	 * the action saved), and then it must not dispatch.
 	 */
-	runAction: (perform: () => Promise<boolean>, consumes?: readonly string[]) => Promise<boolean>;
+	runAction: (
+		perform: (current: () => boolean) => Promise<boolean>,
+		consumes?: readonly string[]
+	) => Promise<boolean>;
 	leave: DraftLeaveDecisions;
 	recovery: DraftRecovery<T>;
 }
@@ -149,9 +160,22 @@ export interface DraftAutosave<T = unknown> {
 /** Saves a flush starts before giving up on an editor that keeps changing. */
 const FLUSH_ROUNDS = 3;
 
-const defaultOnline = () =>
-	backendConnectionPhase.value === null &&
-	(typeof navigator === 'undefined' || navigator.onLine !== false);
+/** The browser's connectivity, followed through its events while the editor is open. */
+function browserOnline(): Ref<boolean> {
+	const read = () => typeof navigator === 'undefined' || navigator.onLine !== false;
+	const online = ref(read());
+	if (typeof window === 'undefined' || !getCurrentScope()) return online;
+	const update = () => {
+		online.value = read();
+	};
+	window.addEventListener('online', update);
+	window.addEventListener('offline', update);
+	onScopeDispose(() => {
+		window.removeEventListener('online', update);
+		window.removeEventListener('offline', update);
+	});
+	return online;
+}
 
 export function useDraftAutosave<T>(opts: DraftAutosaveOptions<T>): DraftAutosave<T> {
 	const store = opts.store ?? getEditorDraftStore();
@@ -179,9 +203,11 @@ export function useDraftAutosave<T>(opts: DraftAutosaveOptions<T>): DraftAutosav
 		dispatching = true;
 		try {
 			while (queue.length > 0) {
-				const step = transition(state.value, queue.shift()!);
+				const event = queue.shift()!;
+				const step = transition(state.value, event);
 				state.value = step.state;
 				for (const effect of step.effects) execute(effect);
+				opts.observe?.(event);
 			}
 		} finally {
 			dispatching = false;
@@ -295,6 +321,9 @@ export function useDraftAutosave<T>(opts: DraftAutosaveOptions<T>): DraftAutosav
 			case 'apply-copy': {
 				const data = candidateData.get(effect.candidate.token);
 				if (data === undefined) break;
+				// Restore was confirmed over open text: close it first, so it
+				// cannot land on the restored draft later.
+				if (opts.inline?.() && opts.commitInline) opts.commitInline();
 				opts.apply(data);
 				sync();
 				dispatch({ type: 'recovery-applied', request: effect.request });
@@ -343,7 +372,8 @@ export function useDraftAutosave<T>(opts: DraftAutosaveOptions<T>): DraftAutosav
 
 	// ── Inputs ───────────────────────────────────────────────────────────
 	dispatch({ type: 'storage', persistent: store.persistent });
-	const online = opts.online ?? defaultOnline;
+	const browser = opts.online ? null : browserOnline();
+	const online = opts.online ?? (() => backendConnectionPhase.value === null && browser!.value);
 	watch(online, (value) => dispatch({ type: 'online', online: value }), { immediate: true });
 	watch(opts.enabled, (value) => dispatch({ type: 'enabled', enabled: value }), {
 		immediate: true,
@@ -387,14 +417,18 @@ export function useDraftAutosave<T>(opts: DraftAutosaveOptions<T>): DraftAutosav
 		return s.failure === null && s.conflict === null && !s.inline && sendableFields(s).length === 0;
 	};
 
-	const runAction = async (perform: () => Promise<boolean>, consumes: readonly string[] = []) => {
+	const runAction: DraftAutosave<T>['runAction'] = async (perform, consumes = []) => {
 		actions += 1;
 		const id = actions;
 		sync();
 		dispatch({ type: 'action-begin', id });
+		const current = () => {
+			sync();
+			return actionCurrent(state.value, id, consumes);
+		};
 		let ok = false;
 		try {
-			ok = await perform();
+			ok = await perform(current);
 		} finally {
 			dispatch({ type: 'action-end', id, ok, consumed: consumes });
 		}
