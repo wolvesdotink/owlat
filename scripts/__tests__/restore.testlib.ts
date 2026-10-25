@@ -23,10 +23,10 @@ import { existsSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { Readable } from 'node:stream';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { expect } from 'vitest';
-import { readinessPipe } from './readinessPipe.testlib';
 
 export const RESTORE = fileURLToPath(new URL('../restore.sh', import.meta.url));
 export const BACKUP = fileURLToPath(new URL('../backup.sh', import.meta.url));
@@ -54,7 +54,8 @@ export const COMPOSE_WITHOUT_NAME = COMPOSE_FILE.replace('name: owlat\n', '');
  * FAKE_DOCKER_PS          what `docker ps` prints (a container still running)
  * FAKE_DOCKER_PS_FILTER   regex; `docker ps` prints FAKE_DOCKER_PS only for a
  *                         matching call (one project's containers running)
- * FAKE_DOCKER_HANG        regex; the first matching call writes "$FAKE_DOCKER_ROOT/hanging"
+ * FAKE_DOCKER_HANG        regex; the first matching call writes "$FAKE_DOCKER_ROOT/hanging",
+ *                         says "hanging" on fd 3 (a pipe `interrupt` passes in)
  *                         and then blocks without doing its work (a step the
  *                         operator interrupts)
  * FAKE_DOCKER_SERVICES    what `docker compose ps --services` prints
@@ -92,8 +93,7 @@ if [[ -n "\${FAKE_DOCKER_HANG:-}" && "$line" =~ $FAKE_DOCKER_HANG && ! -e "$FAKE
 	# counts as handled by it, and one landing during a fork can miss the new
 	# sleep. exec makes this process the sleep, so the call never does its work.
 	: > "$FAKE_DOCKER_ROOT/hanging"
-	# The test's readiness pipe, when it has one (a builtin write: no child).
-	[[ -p "$FAKE_DOCKER_ROOT/hang-ready" ]] && echo hanging > "$FAKE_DOCKER_ROOT/hang-ready"
+	echo hanging >&3
 	exec sleep 30
 fi
 vols="$FAKE_DOCKER_ROOT/volumes"
@@ -414,21 +414,36 @@ export async function makeInstall(
 		volume,
 		async interrupt(signal, env) {
 			await writeFile(join(root, 'docker.log'), '');
-			const hangPoint = readinessPipe(join(root, 'hang-ready'));
 			// Its own process group, so the signal reaches the script and the
 			// blocked docker call together, as a Ctrl-C in a terminal does.
+			// fd 3 is the pipe the hanging docker call reports on; bash hands it
+			// down to every command the script runs.
 			const child = spawn('bash', [RESTORE, '--yes', archive], {
 				cwd: dir,
 				env: host.env(env),
 				detached: true,
+				stdio: ['ignore', 'pipe', 'pipe', 'pipe'],
 			});
 			let out = '';
-			child.stdout.on('data', (chunk: Buffer) => (out += chunk.toString()));
-			child.stderr.on('data', (chunk: Buffer) => (out += chunk.toString()));
+			child.stdout!.on('data', (chunk: Buffer) => (out += chunk.toString()));
+			child.stderr!.on('data', (chunk: Buffer) => (out += chunk.toString()));
 			const exited = new Promise<number>((resolve) =>
 				child.on('close', (code, sig) => resolve(code ?? (sig ? 128 : 1)))
 			);
-			await hangPoint.reached(exited, () => `never reached the hang point:\n${out}`);
+			const hangs = child.stdio[3] as Readable;
+			let reached = false;
+			const hanging = new Promise<void>((resolve) =>
+				hangs.once('data', () => {
+					reached = true;
+					resolve();
+				})
+			);
+			await Promise.race([
+				hanging,
+				exited.then(() => {
+					if (!reached) throw new Error(`never reached the hang point:\n${out}`);
+				}),
+			]);
 			process.kill(-(child.pid ?? 0), signal);
 			// A signal the script sat on fails here, with its output, not at the test timeout.
 			let stuck = false;

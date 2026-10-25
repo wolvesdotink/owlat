@@ -28,7 +28,11 @@ const DRAFT = {
 
 type Answer = () => Response | Promise<Response>;
 
-/** A fetch whose calls wait until the test releases them, one answer per call. */
+/**
+ * A fetch whose calls wait until the test releases them, one answer per call.
+ * `arrived(n)` resolves once `n` calls have been made, so the test steps
+ * through the dispatch instead of spinning until requests show up.
+ */
 function heldFetch() {
 	const pending: Array<{
 		to: string;
@@ -36,13 +40,20 @@ function heldFetch() {
 		init: RequestInit;
 		answer: (a: Answer) => void;
 	}> = [];
+	const waiters: Array<{ count: number; resolve: () => void }> = [];
+	const wake = () => {
+		for (const waiter of waiters.filter((w) => pending.length >= w.count)) {
+			waiters.splice(waiters.indexOf(waiter), 1);
+			waiter.resolve();
+		}
+	};
 	let inFlight = 0;
 	let peak = 0;
 	const fetchMock = vi.fn((_url: string | URL | Request, init?: RequestInit) => {
 		const body = JSON.parse(String(init?.body)) as { to: string; messageId: string };
 		inFlight += 1;
 		peak = Math.max(peak, inFlight);
-		return new Promise<Response>((resolve, reject) => {
+		const call = new Promise<Response>((resolve, reject) => {
 			pending.push({
 				to: body.to,
 				messageId: body.messageId,
@@ -53,17 +64,22 @@ function heldFetch() {
 				},
 			});
 		});
+		wake();
+		return call;
 	});
 	vi.stubGlobal('fetch', fetchMock);
-	return { pending, peak: () => peak };
+	const arrived = (count: number) =>
+		new Promise<void>((resolve) => {
+			waiters.push({ count, resolve });
+			wake();
+		});
+	return { pending, arrived, peak: () => peak };
 }
 
 function fakeCtx() {
 	const runMutation = vi.fn(async () => undefined);
 	return { ctx: { runMutation } as unknown as ActionCtx, runMutation };
 }
-
-const flush = () => new Promise((r) => setTimeout(r, 0));
 
 afterEach(() => {
 	vi.unstubAllGlobals();
@@ -86,7 +102,7 @@ describe('dispatchViaMta', () => {
 			allowedFromAddresses: ['me@owlat.test'],
 			mta: MTA,
 		});
-		await flush();
+		await held.arrived(3);
 
 		// All three intakes are open at once — the old loop had exactly one.
 		expect(held.pending.map((p) => p.to)).toEqual(recipients);
@@ -136,18 +152,20 @@ describe('dispatchViaMta', () => {
 			mta: MTA,
 		});
 
-		let answered = 0;
-		while (answered < recipients.length) {
-			await flush();
-			const open = held.pending.slice(answered);
-			expect(open.length).toBeGreaterThan(0);
-			for (const p of open) p.answer(() => new Response('{}', { status: 202 }));
-			answered += open.length;
-		}
+		const accept = () => new Response('{}', { status: 202 });
+		// Six intakes open at once and no more; each answered one frees a slot
+		// for the next recipient: 6, then 6 more, then the last 3.
+		await held.arrived(6);
+		expect(held.pending).toHaveLength(6);
+		for (const p of held.pending.slice(0, 6)) p.answer(accept);
+		await held.arrived(12);
+		expect(held.pending).toHaveLength(12);
+		for (const p of held.pending.slice(6, 12)) p.answer(accept);
+		await held.arrived(15);
+		for (const p of held.pending.slice(12)) p.answer(accept);
 		await run;
 
 		expect(held.pending.map((p) => p.to).sort()).toEqual([...recipients].sort());
-		expect(held.peak()).toBeGreaterThan(1);
-		expect(held.peak()).toBeLessThanOrEqual(6);
+		expect(held.peak()).toBe(6);
 	});
 });

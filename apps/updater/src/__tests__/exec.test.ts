@@ -1,9 +1,8 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync } from 'node:fs';
-import { readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fifoLines } from './fifoChannel.js';
 
 /**
  * `exec` against real child processes. Every other suite scripts Docker
@@ -28,22 +27,6 @@ function alive(pid: number): boolean {
 	}
 }
 
-/**
- * Whether `pid` has stopped running: gone, or a zombie its new parent has not
- * collected yet (an orphan is collected by init, not by us).
- */
-function stoppedRunning(pid: number): boolean {
-	if (!alive(pid)) return true;
-	try {
-		return execFileSync('ps', ['-o', 'stat=', '-p', String(pid)], { encoding: 'utf-8' })
-			.trim()
-			.startsWith('Z');
-	} catch {
-		// `ps` exits non-zero when no such process is left.
-		return true;
-	}
-}
-
 /** A command that starts a background `sleep` and prints its pid first. */
 function spawnsGrandchild(pidFile: string): string {
 	return `sleep 30 & echo $! > ${pidFile}; wait`;
@@ -56,36 +39,39 @@ function spawnsGrandchild(pidFile: string): string {
  * descendant keeps the command's output pipes open (so `close` waits for it)
  * or lets go of them (so `close` fires the moment the leader exits).
  */
-function leaderWithStubbornDescendant(pidFile: string, holdsPipes: boolean): string {
+function leaderWithStubbornDescendant(readyPipe: string, holdsPipes: boolean): string {
 	const redirect = holdsPipes ? '' : ' >/dev/null 2>&1';
-	// The descendant writes its pid only once it ignores SIGTERM, so a test
+	// The descendant reports its pid only once it ignores SIGTERM, so a test
 	// never signals it before the trap is in place.
-	const descendant = `trap "" TERM; echo $$ > ${pidFile}; exec sleep 30`;
+	const descendant = `trap "" TERM; echo $$ > ${readyPipe}; exec sleep 30`;
 	return `sh -c '${descendant}'${redirect} & wait`;
 }
 
 /** Descendants a test started; killed after each test whatever it asserted. */
 const strays: number[] = [];
-
-/** A named pipe a test command writes its descendant's pid to. */
-function pidPipe(name: string): string {
-	const path = join(DIR, name);
-	execFileSync('mkfifo', [path]);
-	return path;
-}
+/** Readiness pipes a test opened; closed after each test. */
+const pipes: Array<{ close(): void }> = [];
 
 /**
- * The pid a test command writes to `pipe` once its descendant is ready, and
- * track it. Reading the pipe waits for the writer to open, write and close it.
+ * The pipe a test command's descendant reports its pid on. Opened before the
+ * command starts, so the report cannot come before anyone listens.
  */
-async function descendantPid(pipe: string): Promise<number> {
-	const pid = Number((await readFile(pipe, 'utf-8')).trim());
-	if (!Number.isInteger(pid) || pid <= 0) throw new Error(`no pid in ${pipe}`);
-	strays.push(pid);
-	return pid;
+function readyPipe(name: string): { path: string; pid(): Promise<number> } {
+	const path = join(DIR, `${name}.ready`);
+	const lines = fifoLines(path);
+	pipes.push(lines);
+	return {
+		path,
+		async pid() {
+			const pid = Number(await lines.next());
+			strays.push(pid);
+			return pid;
+		},
+	};
 }
 
 afterEach(async () => {
+	for (const pipe of pipes.splice(0)) pipe.close();
 	for (const pid of strays.splice(0)) {
 		try {
 			process.kill(pid, 'SIGKILL');
@@ -165,7 +151,9 @@ describe('exec', () => {
 
 		expect(result.ok).toBe(false);
 		expect(result.stderr).toContain('sh timed out after 0.2s');
-		expect(stoppedRunning(Number(readFileSync(pidFile, 'utf-8')))).toBe(true);
+		// A stopped command settles only once its whole group has gone, so the
+		// grandchild is gone by now, not merely signalled.
+		expect(alive(Number(readFileSync(pidFile, 'utf-8')))).toBe(false);
 	});
 
 	it('kills a command that ignores SIGTERM once the grace runs out', async () => {
@@ -190,7 +178,7 @@ describe('exec', () => {
 		const result = await running;
 		expect(result.ok).toBe(false);
 		expect(result.stderr).toContain('was stopped because the updater is shutting down');
-		expect(stoppedRunning(Number(readFileSync(pidFile, 'utf-8')))).toBe(true);
+		expect(alive(Number(readFileSync(pidFile, 'utf-8')))).toBe(false);
 
 		const late = await exec('sh', ['-c', 'echo never'], DIR, { signal: controller.signal });
 		expect(late).toEqual({
@@ -210,13 +198,18 @@ describe('exec', () => {
 	])(
 		'kills a SIGTERM-resistant descendant after its leader exits, when it %s',
 		async (_, holdsPipes) => {
-			const pidFile = pidPipe(`stubborn-abort-${holdsPipes}.pid`);
+			const ready = readyPipe(`stubborn-abort-${holdsPipes}`);
 			const controller = new AbortController();
-			const running = exec('sh', ['-c', leaderWithStubbornDescendant(pidFile, holdsPipes)], DIR, {
-				signal: controller.signal,
-				killGraceMs: 300,
-			});
-			const pid = await descendantPid(pidFile);
+			const running = exec(
+				'sh',
+				['-c', leaderWithStubbornDescendant(ready.path, holdsPipes)],
+				DIR,
+				{
+					signal: controller.signal,
+					killGraceMs: 300,
+				}
+			);
+			const pid = await ready.pid();
 			controller.abort();
 
 			const result = await running;
@@ -247,7 +240,7 @@ describe('stopRunningChildren', () => {
 
 			const result = await running;
 			expect(result.ok).toBe(false);
-			expect(stoppedRunning(Number(readFileSync(pidFile, 'utf-8')))).toBe(true);
+			expect(alive(Number(readFileSync(pidFile, 'utf-8')))).toBe(false);
 		}
 	);
 
@@ -258,9 +251,9 @@ describe('stopRunningChildren', () => {
 		'kills a SIGTERM-resistant descendant whose leader has exited, when it %s',
 		{ timeout: STOP_TEST_TIMEOUT_MS },
 		async (_, holdsPipes) => {
-			const pidFile = pidPipe(`stubborn-deadline-${holdsPipes}.pid`);
-			const running = exec('sh', ['-c', leaderWithStubbornDescendant(pidFile, holdsPipes)], DIR);
-			const pid = await descendantPid(pidFile);
+			const ready = readyPipe(`stubborn-deadline-${holdsPipes}`);
+			const running = exec('sh', ['-c', leaderWithStubbornDescendant(ready.path, holdsPipes)], DIR);
+			const pid = await ready.pid();
 
 			await stopRunningChildren(300);
 

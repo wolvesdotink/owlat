@@ -486,9 +486,24 @@ function connection(b: ReturnType<typeof backend>) {
 		owlatVersion: 'dev',
 	};
 	const written: string[] = [];
+	const lines = () => written.join('').split('\r\n').filter(Boolean);
+	// `until` waiters, rechecked on every write: a completion that was written
+	// before the waiter arrived is still in `written`, so it is not missed.
+	const waiters: Array<{ tags: string[]; resolve: () => void }> = [];
+	const completed = (tags: string[]) => {
+		const done = lines();
+		return tags.every((tag) => done.some((l) => l.startsWith(`${tag} `)));
+	};
+	const wake = () => {
+		for (const waiter of waiters.filter((w) => completed(w.tags))) {
+			waiters.splice(waiters.indexOf(waiter), 1);
+			waiter.resolve();
+		}
+	};
 	const socket = Object.assign(new EventEmitter(), {
 		write(data: string | Buffer) {
 			written.push(String(data));
+			wake();
 			return true;
 		},
 		end() {
@@ -509,7 +524,6 @@ function connection(b: ReturnType<typeof backend>) {
 		'127.0.0.1',
 		true
 	);
-	const lines = () => written.join('').split('\r\n').filter(Boolean);
 	const settle = async () => {
 		for (let i = 0; i < 20; i++) await new Promise((resolve) => setTimeout(resolve, 0));
 	};
@@ -520,13 +534,11 @@ function connection(b: ReturnType<typeof backend>) {
 		},
 		settle,
 		/** Wait for the tagged completion of every tag given. */
-		async until(...tags: string[]) {
-			for (let i = 0; i < 200; i++) {
-				const done = lines();
-				if (tags.every((tag) => done.some((l) => l.startsWith(`${tag} `)))) return;
-				await new Promise((resolve) => setTimeout(resolve, 0));
-			}
-			throw new Error(`no completion for ${tags.join(', ')}: ${lines().join(' | ')}`);
+		until(...tags: string[]) {
+			return new Promise<void>((resolve) => {
+				waiters.push({ tags, resolve });
+				wake();
+			});
 		},
 		/** Lines written since the last `clear`. */
 		lines,
