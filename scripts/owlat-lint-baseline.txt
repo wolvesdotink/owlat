@@ -514,13 +514,7 @@ apps/updater/src/__tests__/shutdown.test.ts	owlat(no-polling-loop-in-tests)	for 
 apps/updater/src/__tests__/shutdown.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, 20)
 apps/updater/src/__tests__/shutdown.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, 200)
 apps/updater/src/snapshot.ts	owlat(no-unchecked-json-cast)	JSON.parse(line) as typeof entry
-apps/web/app/components/__tests__/ContextMenu.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, 60)
 apps/web/app/components/postbox/PostboxRecipientField.vue	owlat(no-unchecked-json-cast)	JSON.parse(raw) as { email: string; from: RecipientField }
-apps/web/app/composables/__tests__/useAnswerAskSession.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, 5)
-apps/web/app/composables/__tests__/useDesktopNotificationsRouting.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, 20)
-apps/web/app/composables/__tests__/useDesktopWorkspacesConnect.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, 300)
-apps/web/app/composables/__tests__/useDesktopWorkspacesConnect.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, 5)
-apps/web/app/composables/__tests__/useEmailEditorBridge.coedit.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, ms)
 apps/web/app/composables/__tests__/usePerfMark.test.ts	owlat(no-wall-clock-in-tests)	performance.now()
 apps/web/app/composables/__tests__/usePerfMark.test.ts	owlat(no-wall-clock-in-tests)	performance.now()
 apps/web/app/composables/__tests__/useServerProvisioning.test.ts	owlat(no-polling-loop-in-tests)	while (!t.commands.some((c) => c.includes('quickstart'))) await settle();
@@ -528,7 +522,6 @@ apps/web/app/composables/__tests__/useServerProvisioning.test.ts	owlat(no-pollin
 apps/web/app/composables/emailEditorHandlers.ts	owlat(no-unchecked-json-cast)	(await response.json()) as { storageId?: unknown }
 apps/web/app/composables/emailSettingsRender.ts	owlat(no-unchecked-json-cast)	JSON.parse(blob) as Record<string, SettingsOverlay>
 apps/web/app/composables/emailSettingsRender.ts	owlat(no-unchecked-json-cast)	JSON.parse(state.content) as BlockLikeItem[]
-apps/web/app/composables/postbox/__tests__/postboxAttachmentUploads.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(() => r('pending'), 50)
 apps/web/app/composables/postbox/postboxAttachmentUploads.ts	owlat(no-unchecked-json-cast)	JSON.parse(xhr.responseText) as { storageId: string }
 apps/web/app/composables/postbox/postboxComposeParking.ts	owlat(no-unchecked-json-cast)	JSON.parse(source.fields.bodyBlocks) as unknown[]
 apps/web/app/composables/postbox/usePostboxComposeAttachments.ts	owlat(no-unchecked-json-cast)	(await res.json()) as { storageId: string }
@@ -556,23 +549,14 @@ apps/web/app/lib/__tests__/analyticsPrivacy.test.ts	owlat(no-wall-clock-in-tests
 apps/web/app/lib/__tests__/analyticsPrivacy.test.ts	owlat(no-wall-clock-in-tests)	performance.now()
 apps/web/app/lib/__tests__/structuralSharing.perf.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	300_000
 apps/web/app/lib/convex-auth.ts	owlat(no-unchecked-json-cast)	(await response.json()) as { token?: string | null }
-apps/web/app/lib/desktop/__tests__/notificationRouting.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, 20)
-apps/web/app/lib/desktop/__tests__/updaterClient.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, IDLE_FALLBACK_DELAY_MS + 50)
 apps/web/app/lib/desktop/keychainStorage.ts	owlat(no-unchecked-json-cast)	JSON.parse(blob) as Record<string, string>
 apps/web/app/lib/desktop/notificationWorkspace.ts	owlat(no-unchecked-json-cast)	JSON.parse(raw) as Partial<PendingNotificationAction>
 apps/web/app/lib/desktop/workspaceBadgeClient.ts	owlat(no-unchecked-json-cast)	(await res.json()) as { token?: string | null }
 apps/web/app/lib/desktop/workspaceBadgeClient.ts	owlat(no-unchecked-json-cast)	JSON.parse(blob) as Record<string, unknown>
 apps/web/app/lib/desktop/workspaceConnect.ts	owlat(no-unchecked-json-cast)	(await res.json()) as InstanceInfo
-apps/web/app/middleware/__tests__/admin.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(() => resolve('HUNG'), 500)
-apps/web/app/middleware/__tests__/admin.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, 20)
-apps/web/app/middleware/__tests__/admin.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, 20)
-apps/web/app/middleware/__tests__/auth.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(() => resolve('WAITED'), 200)
-apps/web/app/middleware/__tests__/auth.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, 20)
-apps/web/app/middleware/__tests__/guest.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, 20)
 apps/web/app/pages/dashboard/send/emails/[id]/edit.vue	owlat(no-unchecked-json-cast)	JSON.parse(JSON.stringify(blocks.value)) as typeof blocks.value
 apps/web/app/pages/dashboard/send/emails/[id]/edit.vue	owlat(no-unchecked-json-cast)	JSON.parse(JSON.stringify(blocks.value)) as typeof blocks.value
 apps/web/app/pages/desktop/connect.vue	owlat(no-unchecked-json-cast)	(await res.json()) as { token?: string }
-apps/web/app/plugins/__tests__/desktopWorkspaceBoot.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, SPLASH_PAINT_FALLBACK_MS + 50)
 apps/web/app/utils/__tests__/postboxBodyTidy.test.ts	owlat(no-wall-clock-in-tests)	performance.now()
 apps/web/app/utils/__tests__/postboxBodyTidy.test.ts	owlat(no-wall-clock-in-tests)	performance.now()
 apps/web/app/utils/__tests__/postboxDarkMode.test.ts	owlat(no-wall-clock-in-tests)	performance.now()
@@ -586,14 +570,12 @@ apps/web/app/utils/postboxDraftMirror.ts	owlat(no-unchecked-json-cast)	JSON.pars
 apps/web/app/utils/postboxDraftMirror.ts	owlat(no-unchecked-json-cast)	JSON.parse(raw) as unknown[]
 apps/web/app/utils/storageUpload.ts	owlat(no-unchecked-json-cast)	(await response.json()) as { storageId?: Id<'_storage'> }
 apps/web/e2e/sessionSecrets.ts	owlat(no-unchecked-json-cast)	JSON.parse(json) as StorageState
-apps/web/e2e/tests/csp-boot.spec.ts	owlat(no-real-time-wait-in-tests)	page.waitForTimeout(1_000)
 apps/web/perf/fixture/assistantStream.ts	owlat(no-unchecked-json-cast)	JSON.parse(payload) as SyntheticAssistantRow[]
 apps/web/perf/fixture/chatHistory.ts	owlat(no-unchecked-json-cast)	JSON.parse(JSON.stringify(rows)) as SyntheticChatRow[]
 apps/web/perf/fixture/postboxList.ts	owlat(no-unchecked-json-cast)	JSON.parse(JSON.stringify(next)) as SyntheticPostboxRow[]
 apps/web/perf/fixture/teamInbox.ts	owlat(no-unchecked-json-cast)	JSON.parse(JSON.stringify(next)) as SyntheticInboxThread[]
 apps/web/server/api/delivery/__tests__/apply-transport-relay-removal.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	30_000
 apps/web/server/api/delivery/__tests__/apply-transport.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	15_000
-apps/web/server/api/storage/__tests__/upload.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, 100)
 apps/web/server/api/storage/upload.post.ts	owlat(no-unchecked-json-cast)	(await begin.json()) as { uploadId: string; uploadUrl: string }
 apps/web/server/api/storage/upload.post.ts	owlat(no-unchecked-json-cast)	(await native.json()) as { storageId?: unknown }
 apps/web/server/api/system/apply-profiles.post.ts	owlat(no-unchecked-json-cast)	(await updaterResp.json()) as typeof result
@@ -603,17 +585,10 @@ apps/web/server/api/system/update.post.ts	owlat(no-unchecked-json-cast)	(await u
 apps/web/server/utils/__tests__/updater.test.ts	owlat(no-wall-clock-in-tests)	Date.now() - started
 apps/web/server/utils/authedConvexClient.ts	owlat(no-unchecked-json-cast)	(await tokenResp.json()) as { token?: string | null }
 examples/plugins/deliverability-lab/src/__tests__/html.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	60_000
-packages/email-builder/src/components/canvas/__tests__/blockPreviews.mount.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(r, 250)
-packages/email-builder/src/components/canvas/__tests__/blockPreviews.mount.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(r, 300)
-packages/email-builder/src/composables/__tests__/useBlockTreeVersion.test.ts	owlat(no-real-time-wait-in-tests)	sleep(DEBOUNCE + 5)
 packages/email-builder/src/composables/__tests__/useHistory.test.ts	owlat(no-polling-loop-in-tests)	while (history.canUndo.value) { history.undo(); await settle(); undoSteps++; }
 packages/email-builder/src/composables/__tests__/useHistory.test.ts	owlat(no-polling-loop-in-tests)	while (history.canUndo.value) { history.undo(); await settle(); undoSteps++; }
 packages/email-builder/src/composables/__tests__/useHistory.test.ts	owlat(no-polling-loop-in-tests)	while (history.canUndo.value) { history.undo(); await settle(); }
 packages/email-builder/src/composables/__tests__/usePreview.perf.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	600_000
-packages/email-builder/src/preview/components/__tests__/emailPreviewerLazyPanelStates.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, 5000)
-packages/email-builder/src/utils/__tests__/versionSnapshot.test.ts	owlat(no-real-time-wait-in-tests)	sleep(DEBOUNCE + 5)
-packages/email-builder/src/utils/__tests__/versionSnapshot.test.ts	owlat(no-real-time-wait-in-tests)	sleep(DEBOUNCE + 5)
-packages/email-builder/src/utils/__tests__/versionSnapshot.test.ts	owlat(no-real-time-wait-in-tests)	sleep(DEBOUNCE + 5)
 packages/email-builder/src/utils/deltaHistory.ts	owlat(no-unchecked-json-cast)	JSON.parse(JSON.stringify(checkpoint.state)) as HistoryState
 packages/email-renderer/src/draftBodies.ts	owlat(no-unchecked-json-cast)	JSON.parse(draft.bodyBlocks) as EditorBlock[]
 packages/email-renderer/src/renderer.ts	owlat(no-unchecked-json-cast)	items = JSON.parse(rawValue)

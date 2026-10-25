@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { flushPromises } from '@vue/test-utils';
 import type { WorkspaceConfig } from '../workspaceTypes';
 import { IDLE_FALLBACK_DELAY_MS } from '~/lib/scheduleIdle';
 
@@ -523,14 +524,22 @@ describe('setupUpdateChecks', () => {
 		const addEventListener_ = vi.spyOn(window, 'addEventListener');
 		const { setupUpdateChecks } = await load();
 
-		setupUpdateChecks({ firstCheckDelayMs: 0 });
-		const handler = addEventListener_.mock.calls.find(
-			([name]) => name === 'owlat:check-updates'
-		)?.[1];
-		expect(handler).toBeTypeOf('function');
-		(handler as EventListener)(new Event('owlat:check-updates'));
-		// Past the delayed boot check's idle fallback too.
-		await new Promise((resolve) => setTimeout(resolve, IDLE_FALLBACK_DELAY_MS + 50));
+		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+		try {
+			setupUpdateChecks({ firstCheckDelayMs: 0 });
+			const handler = addEventListener_.mock.calls.find(
+				([name]) => name === 'owlat:check-updates'
+			)?.[1];
+			expect(handler).toBeTypeOf('function');
+			(handler as EventListener)(new Event('owlat:check-updates'));
+			// The window probe has answered, and the delayed boot check has passed
+			// its idle fallback too.
+			await vi.dynamicImportSettled();
+			await vi.advanceTimersByTimeAsync(IDLE_FALLBACK_DELAY_MS);
+			await flushPromises();
+		} finally {
+			vi.useRealTimers();
+		}
 
 		// No boot check, no timer, and the shared menu event is left to main.
 		expect(checkForUpdate).not.toHaveBeenCalled();

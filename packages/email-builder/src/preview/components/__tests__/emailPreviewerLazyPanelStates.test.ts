@@ -1,9 +1,9 @@
 // @vitest-environment happy-dom
-import { describe, it, expect, afterEach, vi } from 'vitest';
+import { describe, it, expect, afterEach, beforeAll, vi } from 'vitest';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { defineComponent, h, onErrorCaptured } from 'vue';
 import { diffEmails } from '@owlat/email-renderer';
-import EmailPreviewer from '../EmailPreviewer.vue';
+import type EmailPreviewerComponent from '../EmailPreviewer.vue';
 
 /**
  * Through the previewer: a lazily loaded panel shows a compact loading state
@@ -17,9 +17,7 @@ const gate = vi.hoisted(() => {
 });
 
 vi.mock('../RenderOptionsPanel.vue', async () => {
-	// The time limit only matters if the panel is imported statically again: the
-	// import would then block the previewer itself, and the test should fail, not hang.
-	await Promise.race([gate.opened, new Promise((resolve) => setTimeout(resolve, 5000))]);
+	await gate.opened;
 	return {
 		// Marks the mock as a module so Vue unwraps `default`, as for a real chunk.
 		__esModule: true,
@@ -32,6 +30,14 @@ vi.mock('../RenderOptionsPanel.vue', async () => {
 
 vi.mock('../DiffPanel.vue', async () => {
 	throw new Error('chunk failed to load');
+});
+
+// Imported in a hook, not at the top: were the panel imported statically again,
+// loading the previewer would wait on the gate above, and the hook's time
+// budget fails the file instead of collection hanging.
+let EmailPreviewer: typeof EmailPreviewerComponent;
+beforeAll(async () => {
+	EmailPreviewer = (await import('../EmailPreviewer.vue')).default;
 });
 
 let wrapper: VueWrapper | null = null;

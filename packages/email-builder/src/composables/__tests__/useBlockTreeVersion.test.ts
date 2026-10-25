@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from 'vitest';
-import { nextTick, ref, watch } from 'vue';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
+import { effectScope, nextTick, ref, watch, type EffectScope } from 'vue';
 import { useBlockTreeVersion } from '../useBlockTreeVersion';
 import { useBlockManagement } from '../useBlockManagement';
 import { useLinkedBlocks } from '../useLinkedBlocks';
@@ -162,20 +162,35 @@ describe('in-place block edits report themselves', () => {
 
 describe('useHistory with a block-tree version', () => {
 	const DEBOUNCE = 2;
-	const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+	let scope: EffectScope | null = null;
+
+	beforeEach(() => {
+		vi.useFakeTimers();
+	});
+
+	afterEach(() => {
+		scope?.stop();
+		scope = null;
+		vi.useRealTimers();
+	});
+
+	// Let the watcher see the change, then run the debounced history push.
 	const settle = async () => {
 		await nextTick();
-		await sleep(DEBOUNCE + 5);
+		vi.advanceTimersByTime(DEBOUNCE);
 		await nextTick();
 	};
 
 	it('records a change when the version moves, and only then', async () => {
 		const blocks = ref<EditorBlock[]>([text('a', 'one')]);
 		const version = ref(0);
-		const history = useHistory(blocks, ref('Name'), ref('Subject'), {
-			debounceMs: DEBOUNCE,
-			blocksVersion: version,
-		});
+		scope = effectScope();
+		const history = scope.run(() =>
+			useHistory(blocks, ref('Name'), ref('Subject'), {
+				debounceMs: DEBOUNCE,
+				blocksVersion: version,
+			})
+		)!;
 		expect(history.currentIndex.value).toBe(0);
 
 		// A deep edit with no version bump: history no longer walks the tree.
