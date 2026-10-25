@@ -480,8 +480,9 @@ describe('dlq', () => {
 			const winner = first ?? second;
 			expect([first, second].filter(Boolean)).toHaveLength(1);
 			expect(winner).not.toBeNull();
-			await new Promise((resolve) => setTimeout(resolve, 5));
 
+			// The injected clock alone crosses the 1 ms lease: 100_002 is past its
+			// 100_001 expiry, with no real time spent.
 			const replacement = await claimOne(redis, 'race', {
 				...options,
 				owner: 'manual',

@@ -150,11 +150,12 @@ describe('STARTTLS discards pre-upgrade state', () => {
 		c.write('STARTTLS\r\n');
 		await c.waitCode(220);
 		await c.startTls('mx.test');
-		// startTls() cleared the buffer; nothing should arrive until we prompt.
-		await new Promise((r) => setTimeout(r, 100));
-		expect(c.received).toBe('');
+		// startTls() cleared the buffer. A greeting re-sent after the handshake
+		// would be written before the server reads NOOP, so on the ordered stream
+		// it would precede the 250: the NOOP reply must be all there is.
 		c.write('NOOP\r\n');
 		await c.waitCode(250);
+		expect(c.received).toMatch(/^250 [^\r\n]*\r\n$/);
 		c.end();
 	});
 });
