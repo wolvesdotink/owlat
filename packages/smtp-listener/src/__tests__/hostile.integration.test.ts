@@ -21,7 +21,6 @@
  */
 
 import { describe, it, expect, beforeAll, afterEach } from 'vitest';
-import { once } from 'node:events';
 import net from 'node:net';
 import type { SmtpListener } from '../server.js';
 import type { SmtpListenerOptions } from '../types.js';
@@ -52,6 +51,31 @@ async function expectStillServes(port: number): Promise<void> {
 	c.write('healthy\r\n.\r\n');
 	await c.waitFor((b) => /250 2\.0\.0/.test(b));
 	c.end();
+}
+
+/**
+ * Await a socket's `'close'` while tolerating the reset that may precede it.
+ * A dropped connection can surface as `'error'` (ECONNRESET, or EPIPE for a
+ * write racing the teardown) before `'close'`, and `events.once(socket,
+ * 'close')` rejects on that first `'error'` even though `'close'` follows. Any
+ * other socket error still rejects. A socket that never closes leaves this
+ * pending, and the test fails on the runner's budget.
+ */
+function socketClosed(socket: net.Socket): Promise<void> {
+	return new Promise((resolve, reject) => {
+		let unexpected: Error | undefined;
+		const onError = (err: NodeJS.ErrnoException): void => {
+			if (err.code !== 'ECONNRESET' && err.code !== 'EPIPE') unexpected ??= err;
+		};
+		socket.on('error', onError);
+		const settle = (): void => {
+			socket.off('error', onError);
+			if (unexpected) reject(unexpected);
+			else resolve();
+		};
+		if (socket.closed) settle();
+		else socket.once('close', settle);
+	});
 }
 
 afterEach(closeAllListeners);
@@ -315,11 +339,10 @@ describe('TLS-handshake abandonment', () => {
 		sock.on('data', (chunk: Buffer) => {
 			chunks.push(chunk);
 		});
-		// A reset surfaces as 'error' and is followed by 'close'. A listener that
-		// kept the connection open leaves this pending, and the test fails on the
-		// runner's budget.
-		sock.on('error', () => {});
-		await once(sock, 'close');
+		// The drop may arrive as a reset rather than a FIN (see below). A listener
+		// that kept the connection open leaves this pending, and the test fails on
+		// the runner's budget.
+		await socketClosed(sock);
 		const received = Buffer.concat(chunks);
 		// The handshake never completed, so the command loop never ran: the peer must
 		// not have seen a greeting — nor ANY other SMTP reply, including a 4xx/5xx
@@ -380,10 +403,9 @@ describe('TLS-handshake abandonment', () => {
 		// Connect and say NOTHING — not even a ClientHello.
 		const sock = net.connect(port, '127.0.0.1');
 		sock.resume(); // see the sibling case: an unread socket never sees the FIN
-		sock.on('error', () => {});
 		// Without the teardown this never settles, and the test fails on the
 		// runner's budget.
-		await once(sock, 'close');
+		await socketClosed(sock);
 		// Reported, because this is the one path where the listener — not the peer,
 		// and not node — decided the connection was over.
 		expect(

@@ -18,7 +18,6 @@
  * deadline has fired; every other case is purely reply-driven.
  */
 
-import { once } from 'node:events';
 import net from 'node:net';
 import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -115,10 +114,26 @@ function startRawServer(config: RawServerConfig): Promise<number> {
  * is gone and no further server write can ever be read by the client. A client
  * that kept the socket open leaves this pending, and the test fails on the
  * runner's budget.
+ *
+ * The client's teardown may reset the connection, so `'error'` (ECONNRESET, or
+ * EPIPE for a server write racing it) can precede `'close'`. That is why this is
+ * not `events.once(socket, 'close')`, which rejects on the first `'error'`. Any
+ * other socket error still rejects.
  */
-async function awaitServerClose(socket: net.Socket): Promise<void> {
-	if (socket.destroyed) return;
-	await once(socket, 'close');
+function awaitServerClose(socket: net.Socket): Promise<void> {
+	if (socket.destroyed) return Promise.resolve();
+	return new Promise((resolve, reject) => {
+		let unexpected: Error | undefined;
+		const onError = (err: NodeJS.ErrnoException): void => {
+			if (err.code !== 'ECONNRESET' && err.code !== 'EPIPE') unexpected ??= err;
+		};
+		socket.on('error', onError);
+		socket.once('close', () => {
+			socket.off('error', onError);
+			if (unexpected) reject(unexpected);
+			else resolve();
+		});
+	});
 }
 
 /** Write `text` to the socket one small chunk at a time (forces cross-packet framing). */

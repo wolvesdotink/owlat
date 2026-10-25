@@ -21,7 +21,6 @@
  */
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { SMTPServer } from 'smtp-server';
-import { once } from 'node:events';
 import net from 'node:net';
 import type { AddressInfo } from 'node:net';
 import Redis from 'ioredis-mock';
@@ -34,6 +33,7 @@ import {
 	type PoolConfig,
 } from '../connectionPool.js';
 import { MX_CERT, MX_KEY } from './certFixture.js';
+import { socketClosed } from '../../__tests__/helpers/socketClosed.js';
 
 const cleanups: Array<() => Promise<void> | void> = [];
 
@@ -420,7 +420,7 @@ describe('SmtpConnectionPool — true socket reuse (X1)', () => {
 		// seen the close (its reader is failed and the probe write throws) or not
 		// (the RSET probe meets the dead peer), the probe fails either way.
 		const parked = await mx.idle();
-		const closed = once(parked, 'close');
+		const closed = socketClosed(parked);
 		parked.destroy();
 		await closed;
 

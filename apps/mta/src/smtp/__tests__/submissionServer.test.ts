@@ -6,7 +6,6 @@ import { join } from 'node:path';
 import * as net from 'node:net';
 import * as tls from 'node:tls';
 import type { AddressInfo } from 'node:net';
-import { once } from 'node:events';
 import type { SmtpListener, SmtpReply } from '@owlat/smtp-listener';
 import { Client } from '@owlat/smtp-listener/testClient';
 import Redis from 'ioredis-mock';
@@ -37,6 +36,7 @@ import type { EmailJob } from '../../types.js';
 import type { Queue } from 'groupmq';
 import { promoteIntakeReceipt } from '../../routes/sendReceipt.js';
 import { watchSlotScripts } from '../../__tests__/helpers/connectionSlotScripts.js';
+import { socketClosed } from '../../__tests__/helpers/socketClosed.js';
 import { prepareSignedMessage } from '../send/compose.js';
 import { parseMessage } from '@owlat/mail-message';
 import {
@@ -1404,11 +1404,10 @@ describe('submission TLS gate — wire-level', () => {
 			await slots.acquired(1);
 			expect(await liveRedis.get('mta:submission:conn:127.0.0.1')).toBe('1');
 
-			// The over-cap socket is destroyed before any handshake. A listener that
-			// kept it open fails this on the runner's budget.
+			// The over-cap socket is destroyed before any handshake, possibly with a
+			// reset. A listener that kept it open fails this on the runner's budget.
 			second = net.connect(port, '127.0.0.1');
-			second.on('error', () => {});
-			await once(second, 'close');
+			await socketClosed(second);
 			expect(await liveRedis.get('mta:submission:conn:127.0.0.1')).toBe('1');
 
 			first.destroy();
