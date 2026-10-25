@@ -112,17 +112,18 @@ export function useEmailEditorAutosave<S>(
 	// A hydration's own writes (and the canvas settling them) are not edits.
 	let hydrating = false;
 
-	// What the live session reports, read synchronously: Publish, Save and
-	// leaving read it right before they decide, and must not see a session
-	// that was written (or changed) a moment ago as before.
-	const liveState = (): DraftLive | null => {
+	// What the live session reports. Publish, Save, leaving and the unload
+	// warning sample it (`sampled`) right before they decide, so they see a
+	// session written (or changed) a moment ago, and an edit typed a moment ago
+	// that the change watchers have not counted yet.
+	const liveState = (sampled = false): DraftLive | null => {
 		if (!coediting || mode.value !== 'live') return null;
 		const meta = coediting.meta.value;
 		return {
 			sessionId: meta?.sessionId ?? null,
 			base: meta?.baseRevision ?? null,
 			sharedPending: coediting.hasSharedChanges.value,
-			unsent: coediting.hasUnsent.value,
+			unsent: sampled ? coediting.unsentNow() : coediting.hasUnsent.value,
 			alone: coediting.isAlone.value,
 		};
 	};
@@ -130,7 +131,7 @@ export function useEmailEditorAutosave<S>(
 	const autosave: DraftAutosave = useDraftAutosave({
 		enabled: opts.enabled,
 		read: () => (mode.value === 'classic' ? read() : {}),
-		readLive: liveState,
+		readLive: () => liveState(true),
 		persist: async (flight): Promise<DraftReceipt> => {
 			if (autosave.state.value.live) {
 				const stored = await host.saveSession(flight.baseRevision ?? undefined);
@@ -251,10 +252,14 @@ export function useEmailEditorAutosave<S>(
 		watch(coediting.localEdits, () => {
 			if (mode.value === 'live') autosave.dispatch({ type: 'live-edit' });
 		});
-		watch(liveState, (live) => autosave.dispatch({ type: 'live', live }), {
-			immediate: true,
-			flush: 'sync',
-		});
+		watch(
+			() => liveState(),
+			(live) => autosave.dispatch({ type: 'live', live }),
+			{
+				immediate: true,
+				flush: 'sync',
+			}
+		);
 	}
 
 	// ── Conflict ─────────────────────────────────────────────────────────

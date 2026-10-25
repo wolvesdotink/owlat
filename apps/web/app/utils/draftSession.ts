@@ -166,9 +166,10 @@ export function transition(
 				step.set({ conflict: { ...conflict, open: true } });
 				break;
 			}
+			// Retry is the person's choice: it saves what the editor shows, as Save does.
 			step.set({ failure: null, saveTimer: null });
 			const s = step.state;
-			if (canAutosave(s) && !s.flight && saveFields(s).length > 0) step.armSave(0);
+			if (canAutosave(s) && !s.flight) step.startFlight(true);
 			break;
 		}
 		case 'saved':

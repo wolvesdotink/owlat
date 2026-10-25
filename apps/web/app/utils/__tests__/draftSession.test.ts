@@ -336,8 +336,11 @@ describe('draftSession: leaving', () => {
 		expect(ofType(done.effects, 'settled')).toEqual([
 			{ type: 'settled', id: 1, destination: '/elsewhere' },
 		]);
-		// The navigation it lets go passes the guard once.
+		// The navigation it lets go passes the guard once…
 		expect(verdictsOf(trace(done.state, [request(2)]).effects)).toEqual([[2, true]]);
+		// …unless something came up meanwhile that would be lost: then it asks again.
+		const reopened = trace(done.state, [{ type: 'inline', open: true }, request(2), ready(2)]);
+		expect(verdictsOf(reopened.effects)).toEqual([[2, false]]);
 
 		function save(): Step {
 			return { type: 'save-now' };
@@ -465,6 +468,17 @@ describe('draftSession: live co-editing', () => {
 		]);
 		expect(ofType(effects, 'drop-unsent')).toHaveLength(1);
 		expect(ofType(effects, 'reload')).toEqual([]);
+	});
+
+	it("retries a failed explicit save of others' edits as an explicit save", () => {
+		const failed = trace(live(), [
+			session({ sharedPending: true }),
+			{ type: 'save-now' },
+			refused(),
+		]);
+		expect(saveStatus(failed.state)).toBe('error');
+		const retried = trace(failed.state, [{ type: 'retry' }]);
+		expect(ofType(retried.effects, 'persist')).toHaveLength(1);
 	});
 
 	it('names "keep my version" in its next save', () => {

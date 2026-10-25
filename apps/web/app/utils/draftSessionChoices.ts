@@ -15,11 +15,13 @@ type Of<K extends DraftEvent['type']> = Extract<DraftEvent, { type: K }>;
 /**
  * A leave request is a new decision: it retires the previous one and holds
  * background saves and collaboration sends at once, before anything is
- * prepared. A navigation a decision already let go passes.
+ * prepared. A navigation a decision already let go passes, unless something
+ * that would be lost came up since (a teammate's edit, say): then it is a
+ * new decision.
  */
 export function leaveRequested(step: DraftStep, e: Of<'leave-requested'>): void {
 	const s = step.state;
-	if (s.pass !== null && s.pass === e.destination) {
+	if (s.pass !== null && s.pass === e.destination && !atRisk(s)) {
 		step.set({ pass: null });
 		step.emit({ type: 'verdict', id: e.id, leave: true });
 		return;

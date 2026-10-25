@@ -407,6 +407,11 @@ export function useEmailCoediting(opts: EmailCoeditingOptions) {
 		untilSaved,
 		resetShared,
 		dropUnsent,
+		/**
+		 * Whether this tab holds edits the session has not taken, read from the
+		 * editor now: `hasUnsent` follows only once the change watchers ran.
+		 */
+		unsentNow: () => status.value === 'active' && !dropsUnsent && sync.hasUnsent(opts.read()),
 	};
 }
 

@@ -419,6 +419,18 @@ describe('useEmailEditorBridge autosave (co-editing)', () => {
 		unmount();
 	});
 
+	it('reads an edit the change watchers have not counted yet, when leaving or unloading', async () => {
+		const { bridge, unmount } = await joined();
+		bridge.subject.value = 'Not yet sent';
+		// No tick: the session's own unsent flag has not caught up.
+		expect(bridge.autosave!.autosave.leave.isAtRisk()).toBe(true);
+		const unload = new Event('beforeunload', { cancelable: true });
+		window.dispatchEvent(unload);
+		expect(unload.defaultPrevented).toBe(true);
+		expect(await leave()).toBe('blocked');
+		unmount();
+	});
+
 	const someoneElseJoins = async () => {
 		queries['presence.list']!.value = {
 			now: Date.now(),
@@ -572,6 +584,35 @@ describe('useEmailEditorBridge autosave (co-editing)', () => {
 			expect(bridge.showUnsavedChangesDialog.value).toBe(false);
 			expect(bridge.autosave!.autosave.atRisk.value).toBe(false);
 			expect(await leave()).toBe('left');
+			unmount();
+		});
+
+		it("asks again when their next edit arrives after the prompt's Save", async () => {
+			const { bridge, source, save, unmount } = await withTheirEdit();
+			save.mockImplementationOnce(writesTheSession(source));
+			expect(await leave()).toBe('blocked');
+			await bridge.confirmSave();
+			queries['sessions.get']!.value = sessionRow(3, 2, {
+				baseRevision: 3,
+				fields: JSON.stringify({ name: 'Welcome', subject: 'Bob edited again' }),
+			});
+			await settle();
+			expect(bridge.subject.value).toBe('Bob edited again');
+			// The navigation the Save let go is retried: it asks about the new edit.
+			expect(await leave()).toBe('blocked');
+			unmount();
+		});
+
+		it('retries a failed Save of their edit as a Save', async () => {
+			const { bridge, source, save, unmount } = await withTheirEdit();
+			save.mockRejectedValueOnce(new Error('temporary refusal'));
+			await bridge.requestSave();
+			expect(bridge.autosave!.autosave.status.value).toBe('error');
+			save.mockImplementationOnce(writesTheSession(source));
+			bridge.autosave!.autosave.retry();
+			await vi.advanceTimersByTimeAsync(0);
+			expect(save).toHaveBeenCalledTimes(2);
+			expect(bridge.autosave!.autosave.status.value).toBe('saved');
 			unmount();
 		});
 
