@@ -13,10 +13,12 @@
  */
 
 import { convexTest, type TestConvex } from 'convex-test';
+import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import schema from '../schema';
 import { recordUploadedBlob } from './uploadFixtures.testlib';
 import { api } from '../_generated/api';
+import * as sessionOrganization from '../lib/sessionOrganization';
 import { enableFeatures } from './factories';
 
 // Each test parameterizes the mocked session to a specific user/role so we can
@@ -968,5 +970,91 @@ describe('chat attachment privacy across the media library', () => {
 		expect(
 			await t.query(api.chat.attachments.getAttachmentDetails, { messageId: sharedMessage })
 		).toHaveLength(1);
+	});
+});
+
+describe('chat handlers read the session their builder floor resolved', () => {
+	// The floors are `getMutationContext` (chatMutation) and `requireOrgMember`
+	// (chatQuery); any other session helper called during a chat request is a
+	// second resolution inside a handler.
+	const floors = {
+		mutation: vi.mocked(sessionOrganization.getMutationContext),
+		query: vi.mocked(sessionOrganization.requireOrgMember),
+	};
+	const reResolvers = [
+		vi.mocked(sessionOrganization.getUserIdFromSession),
+		vi.mocked(sessionOrganization.requireOrgPermission),
+		vi.mocked(sessionOrganization.requireAdminContext),
+	];
+
+	it('resolves once per call across rooms, members, messages, mentions, DMs and attachments', async () => {
+		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
+		await enableFeatures(t, ['chat']);
+		await seedUsers(t, ['user-alice', 'user-bob']);
+		setUser('user-alice', 'editor');
+		for (const mock of [floors.mutation, floors.query, ...reResolvers]) mock.mockClear();
+
+		const roomId = await t.mutation(api.chat.rooms.createChannel, {
+			name: 'general',
+			visibility: 'public',
+		});
+		await t.mutation(api.chat.rooms.updateChannel, { roomId: roomId!, description: 'all hands' });
+		await t.mutation(api.chat.members.addMember, { roomId: roomId!, memberId: 'user-bob' });
+		await t.mutation(api.chat.messages.sendMessage, { roomId: roomId!, text: 'hi @user-bob' });
+		await t.mutation(api.chat.messages.markRead, { roomId: roomId! });
+		await t.mutation(api.chat.dms.findOrCreateDm, { otherMemberIds: ['user-bob'] });
+		await t.mutation(api.chat.attachments.generateUploadUrl, {});
+		const mutations = 7;
+
+		await t.query(api.chat.rooms.getRoom, { roomId: roomId! });
+		await t.query(api.chat.rooms.listMyChannels, {});
+		await t.query(api.chat.rooms.listPublicChannels, {});
+		await t.query(api.chat.members.listRoomMembers, { roomId: roomId! });
+		await t.query(api.chat.messages.listMessages, { roomId: roomId! });
+		await t.query(api.chat.messages.myUnreadCounts, {});
+		await t.query(api.chat.dms.listMyDms, {});
+		await t.query(api.chat.mentions.listMyUnreadMentions, {});
+		await t.query(api.chat.mentions.countMyUnreadMentions, {});
+		await t.query(api.chat.mentions.searchOrgMembersForMention, { query: 'bob' });
+		const queries = 10;
+
+		expect(floors.mutation).toHaveBeenCalledTimes(mutations);
+		expect(floors.query).toHaveBeenCalledTimes(queries);
+		for (const mock of reResolvers) expect(mock).not.toHaveBeenCalled();
+	});
+
+	it('takes the acting user from the floor session', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['chat']);
+		await seedUsers(t, ['user-alice', 'user-bob']);
+		setUser('user-alice', 'editor');
+		const roomId = await t.mutation(api.chat.rooms.createChannel, {
+			name: 'general',
+			visibility: 'public',
+		});
+
+		// Bob joins and posts: the membership row and the message are his, even
+		// though nothing but the floor session names him.
+		setUser('user-bob', 'editor');
+		await t.mutation(api.chat.members.joinChannel, { roomId: roomId! });
+		await t.mutation(api.chat.messages.sendMessage, { roomId: roomId!, text: 'from bob' });
+		const { members, messages } = await t.run(async (ctx) => ({
+			members: await ctx.db
+				.query('chatRoomMembers')
+				.withIndex('by_room_and_member', (q) => q.eq('roomId', roomId!).eq('memberId', 'user-bob'))
+				.collect(),
+			messages: await ctx.db
+				.query('chatMessages')
+				.withIndex('by_room', (q) => q.eq('roomId', roomId!))
+				.collect(),
+		}));
+		expect(members).toHaveLength(1);
+		expect(messages.map((m) => m.authorId)).toEqual(['user-bob']);
+
+		// An editor who is neither room admin nor chat:manage cannot rename it.
+		await expect(
+			t.mutation(api.chat.rooms.updateChannel, { roomId: roomId!, name: 'renamed' })
+		).rejects.toThrow('Only room admins can perform this action');
 	});
 });
