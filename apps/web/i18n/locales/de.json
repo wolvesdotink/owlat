@@ -15446,15 +15446,18 @@
 			"offlineNotSaved": "Offline, noch nicht gespeichert",
 			"notSaved": "Nicht gespeichert",
 			"unkept": "Nicht auf diesem Gerät gesichert",
-			"unkeptDetail": "Gespeichert, aber dieser Browser konnte die Angaben nicht sichern, die ein Entwurf nicht speichert. Verlässt du die Seite, gehen sie verloren.",
+			"unkeptDetail": "Gespeichert, aber dieser Browser konnte die unvollständigen Angaben nicht sichern, die ein Entwurf noch nicht speichern kann. Verlässt du die Seite, gehen sie verloren.",
+			"scheduling": "Entwurf gespeichert, Termin nicht geplant",
+			"schedulingDetail": "Datum und Zustellungsoptionen bleiben nur erhalten, bis du auf „Planen“ drückst. Verlässt du die Seite, gehen sie verloren.",
 			"failed": "Deine Änderungen konnten nicht gespeichert werden.",
 			"retry": "Erneut versuchen",
 			"notSavedYet": "Deine letzten Änderungen sind noch nicht gespeichert. Versuche es gleich noch einmal.",
-			"restored": "Die auf diesem Gerät gesicherten Änderungen wurden wiederhergestellt",
 			"recovery": {
 				"title": "Nicht gespeicherte Änderungen auf diesem Gerät.",
-				"description": "Änderungen von {when} wurden nicht übernommen, weil sich der Entwurf inzwischen geändert hat.",
+				"description": "Änderungen von {when} wurden nie gespeichert. Stell sie in diesem Entwurf wieder her oder verwirf sie.",
+				"confirm": "Du hast den Entwurf bearbeitet, seit dieser Hinweis erschienen ist. Beim Wiederherstellen ersetzen die Änderungen von {when} diese Bearbeitungen.",
 				"restore": "Wiederherstellen",
+				"restoreAnyway": "Trotzdem wiederherstellen",
 				"discard": "Verwerfen"
 			}
 		},

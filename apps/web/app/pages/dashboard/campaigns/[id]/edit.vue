@@ -74,9 +74,9 @@ const {
 	confirmSave,
 	cancelNavigation,
 	onSenderPreselected,
-	saveFromPrompt,
 
 	// Actions
+	handleSave,
 	handleSendNow,
 	handleSchedule,
 	handleUnschedule,
@@ -116,40 +116,56 @@ const scheduledAtDisplay = computed(() => {
 
 // Guard the "Edit Email" link. In a browser it opens the linked email editor in
 // a NEW tab, so the SPA route guard never fires — intercept the click and, when
-// the campaign form has unsaved edits, prompt to save them first (so the
-// campaign and its linked email stay consistent) before opening the editor. On
-// desktop the link navigates this window instead (the route guard does fire),
-// so the prompt's actions clear the dirty state before navigating.
-// While the prompt is open a draft saves nothing in the background
-// (useCampaignForm holds it), so its "without saving" has nothing to take back.
+// leaving the edits behind would lose something, ask first. On desktop the link
+// navigates this window instead (the route guard fires and decides). A draft
+// decides through its session (`leave`), which holds its background saves
+// while the person chooses; a scheduled campaign through this page's prompt.
 const pendingEmailUrl = ref('');
+const draftLeave = drafts.autosave.leave;
+const showEmailPrompt = computed(() =>
+	isDraft.value ? draftLeave.tabChoosing.value : showEditEmailPrompt.value
+);
+// Desktop has no tabs: the editor opens in this window instead (lib/openAfterSave).
+const { isDesktop } = useDesktopContext();
 const onEditEmailClick = (event: MouseEvent, url: string) => {
-	if (hasUnsavedChanges.value) {
+	if (isDraft.value) {
+		if (isDesktop.value) return;
+		// Nothing at risk: save what is pending and let the editor open.
+		if (!draftLeave.isAtRisk()) {
+			void drafts.autosave.flush();
+			return;
+		}
 		event.preventDefault();
 		pendingEmailUrl.value = url;
-		showEditEmailPrompt.value = true;
+		void draftLeave.request(url, 'open-tab');
 		return;
 	}
-	// Nothing at risk: a draft's edits are saved or on this device. Save what
-	// is pending now and let the editor open.
-	if (isDraft.value) void drafts.autosave.flush();
+	if (!hasUnsavedChanges.value) return; // no edits — let it open the new tab
+	event.preventDefault();
+	pendingEmailUrl.value = url;
+	showEditEmailPrompt.value = true;
 };
 const closeEditEmailPrompt = () => {
 	pendingEmailUrl.value = '';
-	showEditEmailPrompt.value = false;
+	if (isDraft.value) draftLeave.cancel();
+	else showEditEmailPrompt.value = false;
 };
-// Desktop has no tabs: the editor opens in this window instead (lib/openAfterSave).
-const { isDesktop } = useDesktopContext();
 const discardAndOpenEmail = async () => {
 	const url = pendingEmailUrl.value;
-	closeEditEmailPrompt();
+	pendingEmailUrl.value = '';
+	// A draft in a browser: the new tab opens, and this page keeps its edits.
+	if (isDraft.value) {
+		if (draftLeave.discard()) {
+			await openWithoutSaving({ url, isDesktop: false, discard: () => {}, navigate: navigateTo });
+		}
+		return;
+	}
+	showEditEmailPrompt.value = false;
 	if (!url) return;
 	await openWithoutSaving({
 		url,
 		isDesktop: isDesktop.value,
-		// This window leaves for the editor: the discarded edits are not saved on the way.
 		discard: () => {
-			drafts.autosave.cancel();
 			hasUnsavedChanges.value = false;
 		},
 		navigate: navigateTo,
@@ -157,17 +173,19 @@ const discardAndOpenEmail = async () => {
 };
 const saveAndOpenEmail = async () => {
 	// On failure keep the prompt up (with inline errors or a toast) so nothing
-	// is lost. In a browser this page stays open, so it keeps what a draft
-	// holds only on this device.
+	// is lost. A draft saves through its session's queue, without the Send checks.
 	const url = pendingEmailUrl.value;
 	if (!url) return;
 	const opened = await openAfterSave({
 		url,
-		save: () => saveFromPrompt(!isDesktop.value),
+		save: isDraft.value ? async () => (await draftLeave.save()) !== null : handleSave,
 		isDesktop: isDesktop.value,
 		navigate: navigateTo,
 	});
-	if (opened) closeEditEmailPrompt();
+	if (opened) {
+		pendingEmailUrl.value = '';
+		showEditEmailPrompt.value = false;
+	}
 };
 
 // Test-email modal (shared CampaignsTestEmailModal owns the send flow)
@@ -394,11 +412,12 @@ const shownCapacityPlan = computed(() => {
 			<!-- Edit Form -->
 			<div v-else class="max-w-4xl mx-auto px-6 py-8">
 				<div class="space-y-6">
-					<!-- Edits this device kept that the server has moved past -->
+					<!-- Edits another editor left on this device: never applied without a choice -->
 					<DraftRecoveryNotice
 						v-if="drafts.recovery.pending.value"
 						class="rounded-lg border"
 						:saved-at="drafts.recovery.pending.value.savedAt"
+						:confirm="drafts.recovery.confirm.value"
 						@restore="drafts.recovery.restore"
 						@discard="drafts.recovery.discard"
 					/>
@@ -1003,7 +1022,7 @@ const shownCapacityPlan = computed(() => {
 
 		<!-- Unsaved Changes Dialog — opening the linked email (new tab; same window on desktop) -->
 		<UiUnsavedChangesDialog
-			:show="showEditEmailPrompt"
+			:show="showEmailPrompt"
 			@close="closeEditEmailPrompt"
 			@discard="discardAndOpenEmail"
 			@save="saveAndOpenEmail"

@@ -45,18 +45,7 @@ useRecordPaletteObjectOpen(() =>
 const commitTemplate = useEditorSaveOperation(api.emailTemplates.emails.update, {
 	label: () => t('dashboard.send.emails.detail.edit.operations.save'),
 });
-const { run: publishTemplate, isLoading: isPublishing } = useBackendOperation(
-	api.emailTemplates.emails.publish,
-	{ label: () => t('dashboard.send.emails.detail.edit.operations.publish') }
-);
-const { run: unpublishTemplate, isLoading: isUnpublishing } = useBackendOperation(
-	api.emailTemplates.emails.unpublish,
-	{ label: () => t('dashboard.send.emails.detail.edit.operations.unpublish') }
-);
-const { showToast } = useToast();
-const isPublished = computed(() => template.value?.status === 'published');
 const isDraft = computed(() => template.value?.status === 'draft');
-const isChangingPublication = computed(() => isPublishing.value || isUnpublishing.value);
 
 // Organization email theme (incl. baseWidth) from the shared source.
 const { emailTheme, brand } = useEmailTheme();
@@ -246,38 +235,13 @@ const handleTranslations = () => {
 	router.push(`/dashboard/send/emails/${templateId.value}/translations`);
 };
 
-async function handlePublicationToggle() {
-	if (isPublished.value) {
-		const result = await unpublishTemplate({ templateId: templateId.value });
-		if (result.ok) showToast(t('dashboard.send.emails.detail.edit.toasts.unpublished'));
-		return;
-	}
-	// Publish puts the stored HTML live, which unsaved edits are not part of:
-	// a draft saves them first, and publishes only once they landed.
-	if (isDraft.value && drafts) {
-		if (!(await drafts.autosave.flush())) {
-			showToast(t('shared.draftAutosave.notSavedYet'), 'error');
-			return;
-		}
-	} else if (hasChanges.value) {
-		// The button holds Publish while dirty; this covers any other caller.
-		return;
-	}
-	const row = template.value;
-	if (!row?.htmlContent) {
-		showToast(t('dashboard.send.emails.detail.edit.toasts.saveBeforePublish'), 'error');
-		return;
-	}
-	// The server publishes the row's own stored HTML, and refuses while a
-	// saved-block rerender is still bringing it up to date. The revision makes
-	// a write landing after this click refuse the publish instead of putting
-	// a version live that this tab never showed.
-	const result = await publishTemplate({
-		templateId: templateId.value,
-		expectedContentRevision: row.contentRevision ?? 0,
-	});
-	if (result.ok) showToast(t('dashboard.send.emails.detail.edit.toasts.published'));
-}
+// Publish and unpublish; a draft saves what is pending through its queue first.
+const { isPublished, isChangingPublication, togglePublication } = useTemplatePublication({
+	templateId,
+	template,
+	hasChanges,
+	draft: () => (isDraft.value ? (drafts?.autosave ?? null) : null),
+});
 </script>
 
 <template>
@@ -307,10 +271,11 @@ async function handlePublicationToggle() {
 			</UiButton>
 		</div>
 
-		<!-- Edits this device kept that the server has moved past: the person chooses. -->
+		<!-- Edits another editor left on this device: never applied without a choice. -->
 		<DraftRecoveryNotice
 			v-if="drafts?.recovery.pending.value"
 			:saved-at="drafts.recovery.pending.value.savedAt"
+			:confirm="drafts.recovery.confirm.value"
 			@restore="drafts.recovery.restore"
 			@discard="drafts.recovery.discard"
 		/>
@@ -400,7 +365,7 @@ async function handlePublicationToggle() {
 								:has-changes="isDraft && drafts ? false : hasChanges"
 								:has-stored-html="Boolean(template?.htmlContent)"
 								:loading="isChangingPublication"
-								@toggle="handlePublicationToggle"
+								@toggle="togglePublication"
 							/>
 							<EmailTemplateHistoryPanel
 								:template-id="templateId"

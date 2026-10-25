@@ -1,6 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { ref, watch } from 'vue';
+import { nextTick, ref, watch } from 'vue';
 import { withSetup as mountSetup } from '~/__tests__/withSetup';
+import { createEditorDraftStore } from '~/utils/editorDraftStore';
+import { createEditorDraftWriters } from '~/utils/editorDraftWriters';
+import { createNoopDriver } from '~/utils/postboxOfflineKvDriver';
+import { useDraftAutosave } from '../useDraftAutosave';
 
 // useUnsavedChanges imports `onBeforeRouteLeave`/`useRouter` from vue-router.
 // Capture the registered leave guard and a router push spy so we can drive the
@@ -97,103 +101,6 @@ describe('useUnsavedChanges navigation guard', () => {
 		expect(guarded.showDialog.value).toBe(false);
 		expect(h.push).toHaveBeenCalledTimes(1);
 		expect(h.push).toHaveBeenCalledWith('/target');
-	});
-
-	it('decides only after beforeLeave and the dirty feed it moves have run', async () => {
-		// The owner learns of an edit only once beforeLeave commits it, and feeds
-		// the guard through a watcher, as the editors do.
-		const committed = ref(false);
-		const guarded = withSetup(() => {
-			const unsaved = useUnsavedChanges({
-				beforeLeave: async () => {
-					committed.value = true;
-				},
-			});
-			watch(committed, (value) => unsaved.setHasChanges(value));
-			return unsaved;
-		}).result;
-		const next = vi.fn();
-
-		await h.guard?.({ fullPath: '/target' }, {}, next);
-
-		expect(next).toHaveBeenCalledTimes(1);
-		expect(next).toHaveBeenCalledWith(false);
-		expect(guarded.showDialog.value).toBe(true);
-		expect(guarded.pendingRoute.value).toBe('/target');
-	});
-
-	it('decides at once when beforeLeave has nothing to wait for', () => {
-		const beforeLeave = vi.fn(() => undefined);
-		const guarded = withSetup(() => useUnsavedChanges({ beforeLeave })).result;
-		guarded.setHasChanges(true);
-		const next = vi.fn();
-
-		h.guard?.({ fullPath: '/target' }, {}, next);
-
-		expect(beforeLeave).toHaveBeenCalledTimes(1);
-		expect(next).toHaveBeenCalledWith(false);
-		expect(guarded.showDialog.value).toBe(true);
-	});
-
-	describe('a leave request still waiting for beforeLeave', () => {
-		// The first request waits for a device copy the test settles by hand; any
-		// later request finds the text committed and decides at once.
-		function setupWaiting() {
-			let finish!: () => void;
-			const waiting = new Promise<void>((resolve) => {
-				finish = resolve;
-			});
-			const beforeLeave = vi.fn((): Promise<void> | undefined => undefined);
-			beforeLeave.mockReturnValueOnce(waiting);
-			const setup = withSetup(() => useUnsavedChanges({ beforeLeave }));
-			setup.result.setHasChanges(true);
-			const olderNext = vi.fn();
-			const older = h.guard?.({ fullPath: '/older' }, {}, olderNext);
-			return { guarded: setup.result, unmount: setup.unmount, finish, older, olderNext };
-		}
-
-		it('leaves the target of a newer prompt in place', async () => {
-			const { guarded, finish, older, olderNext } = setupWaiting();
-
-			const newerNext = vi.fn();
-			h.guard?.({ fullPath: '/newer' }, {}, newerNext);
-			expect(newerNext).toHaveBeenCalledWith(false);
-			expect(guarded.pendingRoute.value).toBe('/newer');
-
-			finish();
-			await older;
-
-			expect(olderNext).toHaveBeenCalledTimes(1);
-			expect(olderNext).toHaveBeenCalledWith(false);
-			expect(guarded.pendingRoute.value).toBe('/newer');
-			expect(guarded.showDialog.value).toBe(true);
-		});
-
-		it('does not reopen a prompt the user cancelled', async () => {
-			const { guarded, finish, older, olderNext } = setupWaiting();
-			h.guard?.({ fullPath: '/newer' }, {}, vi.fn());
-			guarded.cancelNavigation();
-
-			finish();
-			await older;
-
-			expect(olderNext).toHaveBeenCalledWith(false);
-			expect(guarded.showDialog.value).toBe(false);
-			expect(guarded.pendingRoute.value).toBeNull();
-			expect(h.push).not.toHaveBeenCalled();
-		});
-
-		it('settles without a prompt once the page unmounted', async () => {
-			const { guarded, unmount, finish, older, olderNext } = setupWaiting();
-			unmount();
-
-			finish();
-			await older;
-
-			expect(olderNext).toHaveBeenCalledWith(false);
-			expect(guarded.showDialog.value).toBe(false);
-			expect(guarded.pendingRoute.value).toBeNull();
-		});
 	});
 
 	it('cancelNavigation dismisses the dialog and stays put', () => {
@@ -392,5 +299,146 @@ describe('useUnsavedChanges and reloading', () => {
 		page.result.setHasChanges(true);
 		page.unmount();
 		expect(await settleForReload()).toBe(true);
+	});
+});
+
+describe('useUnsavedChanges for a draft that decides leaving itself', () => {
+	beforeEach(() => {
+		h.guard = null;
+		h.push.mockClear();
+		vi.useFakeTimers();
+	});
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	/**
+	 * A draft editor (one text field, a draft session, no device storage)
+	 * whose leave decisions the guard follows; `save` is held by the test.
+	 */
+	function setupDraft() {
+		const text = ref('saved');
+		const open = ref(false);
+		let release: (() => void) | null = null;
+		const persist = vi.fn(
+			() =>
+				new Promise<{ revision: number }>((resolve) => {
+					release = () => resolve({ revision: 4 });
+				})
+		);
+		const page = withSetup(() => {
+			const draft = useDraftAutosave<{ text: string }>({
+				enabled: () => true,
+				scope: () => 'editor-draft:v1:u:o:emailTemplate:t:',
+				read: () => ({ values: { text: JSON.stringify(text.value) } }),
+				snapshot: () => ({ text: text.value }),
+				persist,
+				inline: () => open.value,
+				commitInline: () => {
+					open.value = false;
+					text.value = 'typed in the open block';
+				},
+				accept: (data): data is { text: string } => typeof data === 'object',
+				matches: () => false,
+				apply: () => {},
+				store: createEditorDraftStore(createNoopDriver()),
+				writers: createEditorDraftWriters('tab-a', null),
+			});
+			watch(text, (value) => draft.edit({ text: JSON.stringify(value) }));
+			draft.dispatch({
+				type: 'hydrated',
+				revision: 3,
+				values: { text: JSON.stringify('saved') },
+				fresh: false,
+			});
+			// The dirty feed the page would wire: never consulted for a draft.
+			const unsaved = useUnsavedChanges({ decisions: () => draft.leave });
+			unsaved.setHasChanges(false);
+			return { draft, unsaved };
+		});
+		const leave = async (to = '/target') => {
+			const next = vi.fn();
+			await h.guard?.({ fullPath: to }, {}, next);
+			return next;
+		};
+		return {
+			...page.result,
+			text,
+			open,
+			persist,
+			release: () => release?.(),
+			leave,
+			unmount: page.unmount,
+		};
+	}
+
+	it('commits open text before it decides, and asks when it is kept nowhere', async () => {
+		const page = setupDraft();
+		page.open.value = true;
+		await nextTick();
+		const next = await page.leave();
+		expect(next).toHaveBeenCalledWith(false);
+		expect(page.text.value).toBe('typed in the open block');
+		expect(page.unsaved.showDialog.value).toBe(true);
+		expect(page.unsaved.pendingRoute.value).toBe('/target');
+		// The browser asks too, read at once.
+		expect(page.draft.leave.isAtRisk()).toBe(true);
+	});
+
+	it('lets the page go when nothing would be lost', async () => {
+		const page = setupDraft();
+		expect(await page.leave()).toHaveBeenCalledWith(undefined);
+		expect(page.unsaved.showDialog.value).toBe(false);
+	});
+
+	it('saves through the draft queue, then navigates where the prompt was going', async () => {
+		const page = setupDraft();
+		page.text.value = 'edited';
+		await nextTick();
+		await page.leave('/target');
+		const saving = page.unsaved.confirmSave();
+		// A second click while it runs submits nothing more.
+		void page.unsaved.confirmSave();
+		await vi.advanceTimersByTimeAsync(0);
+		expect(page.unsaved.isSavingBeforeLeave.value).toBe(true);
+		page.release();
+		await saving;
+		expect(page.persist).toHaveBeenCalledOnce();
+		expect(h.push).toHaveBeenCalledWith('/target');
+		// The navigation it pushes passes the guard.
+		expect(await page.leave('/target')).toHaveBeenCalledWith(undefined);
+	});
+
+	it('lets only the current decision navigate', async () => {
+		const page = setupDraft();
+		page.text.value = 'edited';
+		await nextTick();
+		await page.leave('/a');
+		const saving = page.unsaved.confirmSave();
+		await vi.advanceTimersByTimeAsync(0);
+		// The person stays while the save runs; the save then lands.
+		page.unsaved.cancelNavigation();
+		page.release();
+		await saving;
+		expect(h.push).not.toHaveBeenCalled();
+		expect(page.unsaved.showDialog.value).toBe(false);
+		// A newer leave request takes the dialog over from an older one.
+		page.text.value = 'edited again';
+		await nextTick();
+		await page.leave('/b');
+		await page.leave('/c');
+		expect(page.unsaved.pendingRoute.value).toBe('/c');
+	});
+
+	it('discards: goes without sending anything, also once the page unmounts', async () => {
+		const page = setupDraft();
+		page.text.value = 'discarded';
+		await nextTick();
+		await page.leave('/target');
+		page.unsaved.confirmDiscard();
+		expect(h.push).toHaveBeenCalledWith('/target');
+		page.unmount();
+		await vi.advanceTimersByTimeAsync(5000);
+		expect(page.persist).not.toHaveBeenCalled();
 	});
 });

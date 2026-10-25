@@ -35,9 +35,9 @@ describe('editorDraftWriters', () => {
 		expect(second.id).toBe('tab-a.2');
 
 		first.close();
-		const isOpen = await writers.liveness();
-		expect(isOpen(first.id)).toBe(false);
-		expect(isOpen(second.id)).toBe(true);
+		const liveness = await writers.liveness();
+		expect(liveness(first.id)).toBe('closed');
+		expect(liveness(second.id)).toBe('open');
 	});
 
 	it("leaves another tab's open editor its copy, and recovers a closed tab's", async () => {
@@ -48,10 +48,10 @@ describe('editorDraftWriters', () => {
 		const writerB = tabB.open();
 		await Promise.resolve();
 
-		expect((await tabA.liveness())(writerB.id)).toBe(true);
+		expect((await tabA.liveness())(writerB.id)).toBe('open');
 		// The tab went away, and its locks with it.
 		held.clear();
-		expect((await tabA.liveness())(writerB.id)).toBe(false);
+		expect((await tabA.liveness())(writerB.id)).toBe('closed');
 	});
 
 	it('recovers the copy of an editor another tab closed while that tab stays open', async () => {
@@ -65,9 +65,9 @@ describe('editorDraftWriters', () => {
 		await Promise.resolve();
 		await Promise.resolve();
 
-		const isOpen = await tabB.liveness();
-		expect(isOpen(closed.id)).toBe(false);
-		expect(isOpen(open.id)).toBe(true);
+		const liveness = await tabB.liveness();
+		expect(liveness(closed.id)).toBe('closed');
+		expect(liveness(open.id)).toBe('open');
 	});
 
 	it('releases the lock of an editor closed before the lock was granted', async () => {
@@ -79,8 +79,18 @@ describe('editorDraftWriters', () => {
 		expect(held.size).toBe(0);
 	});
 
-	it("treats another tab's copy as left behind when the browser cannot tell", async () => {
+	it("calls another tab's editor unknown when the browser cannot tell, never closed", async () => {
 		const writers = createEditorDraftWriters('tab-a', null);
-		expect((await writers.liveness())('tab-b.1')).toBe(false);
+		expect((await writers.liveness())('tab-b.1')).toBe('unknown');
+		// Asking for the locks failing is no proof either.
+		const { locks } = fakeLocks();
+		locks.query = vi.fn(async () => {
+			throw new Error('SecurityError');
+		}) as never;
+		const failing = createEditorDraftWriters('tab-a', locks);
+		expect((await failing.liveness())('tab-b.1')).toBe('unknown');
+		// This tab's own editors are known either way.
+		const own = failing.open();
+		expect((await failing.liveness())(own.id)).toBe('open');
 	});
 });

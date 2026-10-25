@@ -6,7 +6,7 @@ import type { useCampaignABTest } from './useCampaignABTest';
 import { useCampaignActions } from './useCampaignActions';
 import { useCampaignAudience } from './useCampaignAudience';
 import { useEditorDirtyTracking } from './useEditorDirtyTracking';
-import { useCampaignDraftAutosave } from './useCampaignDraftAutosave';
+import { SCHEDULE_FIELD, useCampaignDraftAutosave } from './useCampaignDraftAutosave';
 
 type ABTest = ReturnType<typeof useCampaignABTest>;
 
@@ -34,7 +34,6 @@ export function useCampaignForm(
 	senderPicker: Ref<SenderPickerHandle | null>
 ) {
 	const { t, locale } = useI18n();
-	const { showToast } = useToast();
 
 	// ─── Data Fetching ──────────────────────────────────────────────────
 
@@ -114,19 +113,20 @@ export function useCampaignForm(
 
 	// ─── Field Save (used by actions) ───────────────────────────────────
 
-	// The whole validated form in one write, before Send and Schedule. Returns
+	// The validated form on the server before Send and Schedule. Returns
 	// whether it landed so useCampaignActions can abort the rest of the
-	// sequence; `run` self-toasts its categorized error. A complete A/B test
-	// goes with it (the per-section enable that follows cannot change the
-	// setup of a test that is already on).
+	// sequence; a failure is toasted. A draft saves what is pending through
+	// its session's queue (what the server holds already needs no write).
+	// Otherwise the whole form goes in one write, with a complete A/B test
+	// (the per-section enable that follows cannot change the setup of a test
+	// that is already on).
 	const handleSaveFields = async (): Promise<boolean> => {
 		if (!audience.value) {
 			errors.value.audience = t('shared.useCampaignForm.errors.audienceRequired');
 			return false;
 		}
-		const fields = drafts.payload();
-		const result = await saveDraft({ campaignId: campaignId.value, ...fields });
-		if (result.ok) drafts.markSent(fields, result.result);
+		if (isDraft.value) return drafts.saveBeforeAction();
+		const result = await saveDraft({ campaignId: campaignId.value, ...drafts.payload() });
 		return result.ok;
 	};
 
@@ -156,11 +156,10 @@ export function useCampaignForm(
 
 	// ─── Unsaved-changes Guard ──────────────────────────────────────────
 
-	// Reuses the shared composable + dialog. `onSave` closes over
-	// `saveFromPrompt` (assigned below) and only runs after the user confirms
-	// "Save", by which point it exists; it throws on a failed save so the user
-	// stays on the page. A draft whose save landed but whose device-only
-	// choices are kept nowhere stays too: its guard is still armed.
+	// Reuses the shared composable + dialog. A draft's session decides leaving
+	// itself (what is at risk, the prompt, its Save). Otherwise `onSave` runs
+	// the explicit save once the user confirms "Save"; it throws on a failed
+	// save so the user stays on the page.
 	const {
 		showDialog: showUnsavedChangesDialog,
 		isSavingBeforeLeave,
@@ -171,20 +170,14 @@ export function useCampaignForm(
 		setHasChanges,
 	} = useUnsavedChanges({
 		onSave: async () => {
-			if (await saveFromPrompt()) return;
-			if (!(isDraft.value && drafts.autosave.status.value === 'unkept')) {
-				throw new Error('Save failed');
-			}
+			if (!(await actions.handleSave())) throw new Error('Save failed');
 		},
+		decisions: () => (isDraft.value ? drafts.autosave.leave : null),
 	});
 
-	// The save-or-discard prompt for opening the linked email (the page's).
+	// The save-or-discard prompt for opening the linked email from a campaign
+	// that is not a draft (the page's; a draft's goes through its session).
 	const showEditEmailPrompt = ref(false);
-
-	// Clears the dirty flag (and retires the device copy) after a successful
-	// save/schedule/send so the route guard doesn't prompt on the action's own
-	// navigation. Bound below once the dirty tracker exists.
-	let markCleanForm: () => void = () => {};
 
 	// ─── Actions (delegated) ────────────────────────────────────────────
 
@@ -196,7 +189,14 @@ export function useCampaignForm(
 		isScheduled,
 		validateForm,
 		handleSaveFields,
-		onSaved: () => markCleanForm(),
+		// Send and Schedule hold a draft's background saves until they are
+		// done; only a Schedule that completed retires the schedule it took.
+		final: (kind, perform) =>
+			isDraft.value
+				? drafts.autosave.runAction(perform, kind === 'schedule' ? [SCHEDULE_FIELD] : [])
+				: perform(),
+		// After a completed action, so the route guard does not ask on its navigation.
+		onSaved: () => markClean(),
 	});
 
 	// ─── Form Initialization + Dirty Tracking ───────────────────────────
@@ -232,8 +232,11 @@ export function useCampaignForm(
 	// Bound below once the autosave exists: the form as just loaded is what
 	// the server holds.
 	let onFormLoaded: () => void = () => {};
-	const { markClean, hasChanges, beginSubmit, acknowledge } = useEditorDirtyTracking({
+	const tracker = useEditorDirtyTracking({
 		source: campaignData,
+		// A draft's form is its autosave session's (below); this tracker loads
+		// it and owns it while the campaign is not a draft.
+		active: () => !isDraft.value,
 		initialize: (campaign) => {
 			if (isFormInitialized.value) return;
 			campaignName.value = campaign.name;
@@ -253,6 +256,7 @@ export function useCampaignForm(
 		},
 		watchSources: tracked,
 	});
+	const { markClean, hasChanges } = tracker;
 
 	// The From picker settles its selection once; a restored sender remounts it.
 	const senderPickerKey = ref(0);
@@ -260,13 +264,7 @@ export function useCampaignForm(
 		campaignId,
 		campaignData,
 		isDraft: () => isDraft.value,
-		isInitialized: () => isFormInitialized.value,
-		isActing: () => actions.isSaving.value,
-		// Nothing saves in the background while a prompt offers to discard it.
-		isChoosing: () => showUnsavedChangesDialog.value || showEditEmailPrompt.value,
-		hasChanges: () => hasChanges.value,
-		beginSubmit,
-		acknowledge,
+		tracker,
 		changes: tracked,
 		campaignName,
 		fromName,
@@ -289,35 +287,10 @@ export function useCampaignForm(
 	});
 	onFormLoaded = () => drafts.markLoaded();
 	if (isFormInitialized.value) onFormLoaded();
-	markCleanForm = () => {
-		markClean();
-		drafts.autosave.cancel();
-	};
 
-	// The Save of a save-or-discard prompt. A draft saves the way autosave
-	// does: what is complete goes to the server, without the checks Send and
-	// Schedule need, and what a draft cannot store (the schedule, an unfinished
-	// section) stays in this device's copy for the next visit. Nothing is
-	// discarded. Resolves false while something would still be lost, unless
-	// the page `staysOpen` (the linked email opens in a new tab) and keeps it.
-	const saveFromPrompt = async (staysOpen = false): Promise<boolean> => {
-		if (!isDraft.value) return actions.handleSave();
-		if (!(await drafts.autosave.flush())) {
-			showToast(t('shared.draftAutosave.notSavedYet'), 'error');
-			return false;
-		}
-		if (staysOpen || !drafts.autosave.atRisk.value) return true;
-		showToast(t('shared.draftAutosave.unkeptDetail'), 'error');
-		return false;
-	};
-
-	// Leaving warns about edits that would be lost: for a draft, only one
-	// neither saved nor kept on this device.
-	watch(
-		() => (isDraft.value ? drafts.autosave.atRisk.value : hasChanges.value),
-		(guard) => setHasChanges(guard),
-		{ immediate: true }
-	);
+	// Leaving warns about edits that would be lost (a draft's session decides
+	// that itself).
+	watch(hasChanges, (guard) => setHasChanges(guard), { immediate: true });
 
 	// The sender picker settles the loaded From onto its curated row once, and
 	// may write that sender's current name and address (or the default sender
@@ -325,6 +298,10 @@ export function useCampaignForm(
 	// on a form nobody has touched it must not arm the leave guard. The dirty
 	// flag is read before the write's watchers run, then cleared after them.
 	const onSenderPreselected = () => {
+		if (isDraft.value) {
+			if (!drafts.autosave.dirty.value) void nextTick(() => drafts.markSettled());
+			return;
+		}
 		if (hasChanges.value) return;
 		void nextTick(() => markClean());
 	};
@@ -428,15 +405,10 @@ export function useCampaignForm(
 		showEditEmailPrompt,
 		isSavingBeforeLeave,
 		hasUnsavedChanges,
-		// Discard: nothing of the draft's edits is saved on the way out.
-		confirmDiscard: () => {
-			drafts.autosave.cancel();
-			confirmDiscard();
-		},
+		confirmDiscard,
 		confirmSave,
 		cancelNavigation,
 		onSenderPreselected,
-		saveFromPrompt,
 
 		// Actions
 		handleSave: actions.handleSave,

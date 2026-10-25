@@ -29,6 +29,11 @@ export interface CampaignActionsOptions {
 	 * so the route guard doesn't prompt after a successful action.
 	 */
 	onSaved?: () => void;
+	/**
+	 * Run Send or Schedule (`perform`, resolving whether it completed) as one
+	 * final action: a draft holds its background saves until it is done.
+	 */
+	final?: (kind: 'send' | 'schedule', perform: () => Promise<boolean>) => Promise<boolean>;
 }
 
 /**
@@ -45,6 +50,7 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 		handleSaveFields,
 		onSaved,
 	} = options;
+	const final = options.final ?? ((_kind, perform) => perform());
 	const router = useRouter();
 	const { t } = useI18n();
 	const { showToast } = useToast();
@@ -182,37 +188,34 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 		dismissCapacitySchedule();
 
 		try {
-			if (isDraft.value) {
-				if (!(await saveForm())) return;
-			}
+			const sent = await final('send', async () => {
+				if (isDraft.value && !(await saveForm())) return false;
 
-			// `schedule` only accepts a draft, so a campaign that is already
-			// scheduled goes back to draft first — the same step the immediate send
-			// took, for the same reason.
-			if (isScheduled.value) {
-				if (!(await unscheduleCampaign({ campaignId: campaignId.value })).ok) return;
-			}
+				// `schedule` only accepts a draft, so a campaign that is already
+				// scheduled goes back to draft first — the same step the immediate
+				// send took, for the same reason.
+				if (isScheduled.value) {
+					if (!(await unscheduleCampaign({ campaignId: campaignId.value })).ok) return false;
+				}
 
-			const sendAt = Date.now() + SEND_UNDO_WINDOW_MS;
-			if (
-				!(
-					await scheduleCampaign({
-						campaignId: campaignId.value,
-						scheduledAt: sendAt,
-						// Staggering by recipient timezone is a scheduling choice; an
-						// immediate send is not one, whatever the form's toggle says.
-						useRecipientTimezone: false,
-					})
-				).ok
-			) {
-				return;
-			}
+				const sendAt = Date.now() + SEND_UNDO_WINDOW_MS;
+				const scheduled = await scheduleCampaign({
+					campaignId: campaignId.value,
+					scheduledAt: sendAt,
+					// Staggering by recipient timezone is a scheduling choice; an
+					// immediate send is not one, whatever the form's toggle says.
+					useRecipientTimezone: false,
+				});
+				if (!scheduled.ok) return false;
 
-			armUndoSend({
-				campaignId: campaignId.value,
-				campaignName: campaignData.value?.name ?? '',
-				sendAt,
+				armUndoSend({
+					campaignId: campaignId.value,
+					campaignName: campaignData.value?.name ?? '',
+					sendAt,
+				});
+				return true;
 			});
+			if (!sent) return;
 
 			onSaved?.();
 			// Straight to the report: it is where the undo toast lives and where the
@@ -245,32 +248,27 @@ export function useCampaignActions(options: CampaignActionsOptions) {
 		dismissCapacitySchedule();
 
 		try {
-			if (isDraft.value) {
-				if (!(await saveForm())) return;
-				if (
-					!(
-						await scheduleCampaign({
-							campaignId: campaignId.value,
-							scheduledAt: scheduledDateTime.getTime(),
-							...timingArgs,
-						})
-					).ok
-				) {
-					return;
+			const scheduled = await final('schedule', async () => {
+				if (isDraft.value) {
+					if (!(await saveForm())) return false;
+					const result = await scheduleCampaign({
+						campaignId: campaignId.value,
+						scheduledAt: scheduledDateTime.getTime(),
+						...timingArgs,
+					});
+					return result.ok;
 				}
-			} else if (isScheduled.value) {
-				if (
-					!(
-						await rescheduleCampaign({
-							campaignId: campaignId.value,
-							scheduledAt: scheduledDateTime.getTime(),
-							...timingArgs,
-						})
-					).ok
-				) {
-					return;
+				if (isScheduled.value) {
+					const result = await rescheduleCampaign({
+						campaignId: campaignId.value,
+						scheduledAt: scheduledDateTime.getTime(),
+						...timingArgs,
+					});
+					return result.ok;
 				}
-			}
+				return true;
+			});
+			if (!scheduled) return;
 
 			showToast(
 				sendTiming.value.mode === 'local'

@@ -22,7 +22,7 @@ import schema from '../schema';
 import { api, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { createTestEmailTemplate } from './factories';
-import { VERSION_HISTORY_LIMIT } from '../emailTemplates/versionSnapshot';
+import { AUTOSAVE_VERSION_SCAN, VERSION_HISTORY_LIMIT } from '../emailTemplates/versionSnapshot';
 import { SOFT_DELETE_RETENTION_MS } from '../lib/softDelete';
 
 const sessionMock = vi.hoisted(() => ({
@@ -238,6 +238,45 @@ describe('version capture on autosave', () => {
 			['user-bob', CONTENT_B],
 		]);
 		expect(await audits(t)).toHaveLength(2);
+	});
+
+	it("adds a row when the same person's earlier save lies past the bounded lookup", async () => {
+		vi.useFakeTimers({ now: Date.UTC(2026, 9, 24, 10, 0, 0), toFake: ['Date'] });
+		const t = convexTest(schema, modules);
+		const templateId = await seedTemplate(t);
+		const save = async (userId: string, i: number) => {
+			sessionMock.user = { id: userId, role: 'owner' };
+			vi.setSystemTime(Date.UTC(2026, 9, 24, 10, 0, i));
+			const content = JSON.stringify([{ id: 'b1', type: 'text', content: { html: `v${i}` } }]);
+			await t.mutation(api.emailTemplates.emails.update, { templateId, content, autosave: true });
+		};
+
+		// Alice, then more co-editors than the lookup reads, then Alice again.
+		await save('user-alice', 0);
+		for (let i = 1; i <= AUTOSAVE_VERSION_SCAN; i++) await save(`user-${i}`, i);
+		await save('user-alice', AUTOSAVE_VERSION_SCAN + 1);
+
+		// Her first row is beyond the newest rows read: the save keeps it and adds one.
+		const alice = (await versionRows(t, templateId)).filter((r) => r.createdBy === 'user-alice');
+		expect(alice).toHaveLength(2);
+	});
+
+	it('leaves neither a history row nor an audit entry when the save is refused', async () => {
+		vi.useFakeTimers({ now: Date.UTC(2026, 9, 24, 10, 0, 0), toFake: ['Date'] });
+		const t = convexTest(schema, modules);
+		const templateId = await seedTemplate(t, { contentRevision: 4 });
+
+		await expect(
+			t.mutation(api.emailTemplates.emails.update, {
+				templateId,
+				content: CONTENT_B,
+				autosave: true,
+				expectedContentRevision: 3,
+			})
+		).rejects.toThrow();
+
+		expect(await versionRows(t, templateId)).toEqual([]);
+		expect(await audits(t)).toEqual([]);
 	});
 
 	it('leaves a save without the flag as its own row', async () => {

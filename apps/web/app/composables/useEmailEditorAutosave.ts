@@ -1,22 +1,34 @@
-import { computed, ref, type Ref } from 'vue';
+import { computed, nextTick, watch, type ComputedRef, type Ref } from 'vue';
 import type { EditorBlock } from '@owlat/email-builder';
 import { canonicalJson } from '@owlat/shared/canonicalJson';
+import type { DraftReceipt, Fingerprints } from '~/utils/draftSession';
 import { editorDraftScope, type EditorDraftKind } from '~/utils/editorDraftStore';
 import { useDraftAutosave, type DraftAutosave } from './useDraftAutosave';
-import { useDraftRecovery, type DraftRecovery } from './useDraftRecovery';
-import type { EmailEditorBridgeContext, EmailBuilderHandle } from './useEmailEditorBridge';
+import type { DraftRecovery } from './useDraftRecovery';
+import type {
+	EmailBuilderHandle,
+	EmailEditorBridgeContext,
+	EmailEditorConflict,
+	EmailEditorSaveBase,
+} from './useEmailEditorBridge';
 import type { EmailEditorCoedit } from './useEmailEditorCoedit';
+import type { EmailEditorConflictChoice } from './useEmailEditorConflict';
+import type { UseEditorDirtyTrackingReturn } from './useEditorDirtyTracking';
 
 /**
- * The email editor bridge's autosave half (`useEmailEditorBridge.ts`): wires
- * the draft autosave (`useDraftAutosave.ts`) and the device-copy recovery
- * (`useDraftRecovery.ts`) to the canvas.
+ * The email editor bridge's autosave half (`useEmailEditorBridge.ts`) for a
+ * draft: binds the canvas to its session (`useDraftAutosave.ts`), which owns
+ * the draft from then on. The bridge's manual tracker owns it otherwise (a
+ * published template); the two hand it over explicitly when the template
+ * changes between draft and published.
  *
- * Classic editing saves after every pause in this tab's edits. Live
- * co-editing already keeps every edit in the shared session on the server;
- * what autosave adds there is writing the session to the email, and only for
- * edits made in this tab (or when nobody else is left to do it), so several
- * open tabs do not all save the same change.
+ * Classic editing: the fields are the canvas refs, the session decides when a
+ * server row may replace them, what a save carries and what it covered, and
+ * "keep my version" merges onto the latest row the same way the manual
+ * tracker does. Live co-editing: the shared session merges everyone's edits;
+ * what this tab answers for is its own edits (counted as they are made, not
+ * when they are sent 250 ms later), and the email is written for them, or for
+ * others' that nobody else is left to write.
  */
 
 /** What the canvas holds, as the device keeps it. */
@@ -36,37 +48,40 @@ export interface EmailEditorAutosaveOptions {
 	id: () => string | null;
 }
 
-export interface EmailEditorAutosaveHost {
+export interface EmailEditorAutosaveHost<S> {
 	ctx: EmailEditorBridgeContext;
 	extraWatch: Ref<unknown>[];
 	blocksVersion: Readonly<Ref<number>>;
 	builder: () => EmailBuilderHandle | null;
 	coediting: EmailEditorCoedit | null;
-	isLive: () => boolean;
-	/** The classic draft has loaded the row. */
-	isInitialized: () => boolean;
-	/** The loaded row's revision: what the server holds now. */
-	rowRevision: () => number | undefined;
-	/**
-	 * The revision the classic draft is built on (hydration, a landed save,
-	 * "keep my version"). It stays behind the row while an unsaved draft
-	 * waits on a newer write.
-	 */
-	draftRevision: () => number | undefined;
-	hasChanges: () => boolean;
-	/** A stale-revision choice is open. */
-	hasConflict: () => boolean;
-	/** The leave prompt asks whether to save or discard the edits. */
-	isChoosing: () => boolean;
-	/** One save through the bridge's queue (rejects when it did not land). */
-	save: () => Promise<void>;
+	/** The loaded row. */
+	source: Ref<S>;
+	revision?: (row: NonNullable<S>) => number;
+	/** Per-surface parse of a row into the canvas refs. */
+	initialize: (row: NonNullable<S>) => void;
+	canKeepDraft?: (base: NonNullable<S>, latest: NonNullable<S>) => boolean;
+	/** The surface's save of the classic draft, built on `base`. */
+	save: (base: EmailEditorSaveBase<S>) => Promise<number | void>;
+	/** Live: send this tab's edits and write the session over `revision`. */
+	saveSession: (revision: number | undefined) => Promise<void>;
+	/** Answering a conflict (shared with the manual draft). */
+	choice: EmailEditorConflictChoice<S>;
+	/** The bridge's manual tracker: it holds the draft while autosave is off. */
+	tracker: Pick<
+		UseEditorDirtyTrackingReturn<S>,
+		'isInitialized' | 'hasChanges' | 'beginSubmit' | 'resume'
+	>;
 }
 
-export interface EmailEditorAutosave {
-	autosave: DraftAutosave;
+export interface EmailEditorAutosave<S> {
+	autosave: DraftAutosave<EmailDraftSnapshot>;
 	recovery: DraftRecovery<EmailDraftSnapshot>;
-	/** The leave prompt's Save; rejects while anything is left unsaved. */
-	saveBeforeLeaving: () => Promise<void>;
+	/** The row the classic draft is built on (for the manual tracker taking over). */
+	baseRow: () => NonNullable<S> | null;
+	conflict: ComputedRef<EmailEditorConflict | null>;
+	keepMyVersion: () => Promise<void>;
+	loadLatestVersion: () => Promise<void>;
+	dismissConflict: () => void;
 }
 
 const isSnapshot = (data: unknown): data is EmailDraftSnapshot => {
@@ -80,14 +95,20 @@ const isSnapshot = (data: unknown): data is EmailDraftSnapshot => {
 	);
 };
 
-export function useEmailEditorAutosave(
+const fingerprint = (value: unknown) => JSON.stringify(value) ?? 'undefined';
+const identityOf = (row: unknown) =>
+	typeof row === 'object' && row !== null && '_id' in row ? (row as { _id: unknown })._id : row;
+
+export function useEmailEditorAutosave<S>(
 	opts: EmailEditorAutosaveOptions,
-	host: EmailEditorAutosaveHost
-): EmailEditorAutosave {
+	host: EmailEditorAutosaveHost<S>
+): EmailEditorAutosave<S> {
 	const { user, activeOrganizationId } = useAuth();
 	const { showToast } = useToast();
 	const { t } = useI18n();
 	const { ctx, extraWatch, coediting } = host;
+	const revisionOf = (row: NonNullable<S> | null) =>
+		row && host.revision ? host.revision(row) : null;
 
 	const scope = computed(() => {
 		const id = opts.id();
@@ -98,6 +119,24 @@ export function useEmailEditorAutosave(
 			: null;
 	});
 
+	/** Who edits the draft now: nobody (published), the classic draft, or the live session. */
+	const mode = computed<'off' | 'waiting' | 'classic' | 'live'>(() => {
+		if (!opts.enabled()) return 'off';
+		const status = coediting?.status.value;
+		if (status === 'connecting') return 'waiting';
+		return status === 'active' ? 'live' : 'classic';
+	});
+
+	// The fields, in the manual tracker's order (its merge works on the same).
+	const fields: [string, Ref<unknown>][] = [
+		['blocks', ctx.blocks],
+		['subject', ctx.subject],
+		['name', ctx.name],
+		...extraWatch.map((field, i): [string, Ref<unknown>] => [`extra.${i}`, field]),
+	];
+	const read = (): Fingerprints =>
+		Object.fromEntries(fields.map(([name, field]) => [name, fingerprint(field.value)]));
+
 	const snapshot = (): EmailDraftSnapshot => ({
 		name: ctx.name.value,
 		subject: ctx.subject.value,
@@ -105,82 +144,262 @@ export function useEmailEditorAutosave(
 		extra: extraWatch.map((field) => field.value),
 	});
 
-	// Live: the edits made in this tab since its last landed save.
-	const savedLocalEdits = ref(0);
-	const hasOwnEdits = () => (coediting?.localEdits.value ?? 0) !== savedLocalEdits.value;
+	// The row the classic draft is built on, and the latest one.
+	let baseRow: NonNullable<S> | null = null;
+	let latestRow: NonNullable<S> | null = null;
+	let hydratedId: unknown;
+	// A hydration's own writes (and the canvas settling them) are not edits.
+	let hydrating = false;
 
-	const autosave = useDraftAutosave<EmailDraftSnapshot>({
+	const notify = (key: string) => showToast(t(key), 'error');
+
+	const autosave: DraftAutosave<EmailDraftSnapshot> = useDraftAutosave<EmailDraftSnapshot>({
 		enabled: opts.enabled,
-		// Live with others there: their tabs save their own edits.
-		paused: () =>
-			host.hasConflict() || (host.isLive() && coediting?.isAlone.value !== true && !hasOwnEdits()),
-		// Nothing saves in the background while the leave prompt offers to discard it.
-		held: host.isChoosing,
-		dirty: host.hasChanges,
-		changes: [
-			() => (host.isLive() ? -1 : host.blocksVersion.value),
-			() => (host.isLive() ? null : ctx.name.value),
-			() => (host.isLive() ? null : ctx.subject.value),
-			() => (host.isLive() ? null : canonicalJson(extraWatch.map((field) => field.value))),
-			() => coediting?.localEdits.value ?? 0,
-		],
-		save: async () => {
-			const covers = coediting?.localEdits.value ?? 0;
-			await host.save();
-			savedLocalEdits.value = Math.max(savedLocalEdits.value, covers);
-		},
-		uncommitted: () => host.builder()?.isInlineEditing === true,
-		commit: () => host.builder()?.commitInlineEdit?.(),
-		mirror: {
-			scope: () => scope.value,
-			snapshot,
-			// What the edits were built on (live: the session's base), not what
-			// the server holds now: a copy of edits made before someone else's
-			// write must not pass for one made after it, or reopening would
-			// apply it over that write.
-			base: () =>
-				(host.isLive() ? coediting?.meta.value?.baseRevision : host.draftRevision()) ?? null,
-		},
-	});
-
-	const apply = (data: EmailDraftSnapshot) => {
-		ctx.name.value = data.name;
-		ctx.subject.value = data.subject;
-		ctx.blocks.value = data.blocks;
-		for (const [i, field] of extraWatch.entries()) {
-			if (i < data.extra.length) field.value = data.extra[i];
-		}
-		host.builder()?.loadState({ blocks: data.blocks, name: data.name, subject: data.subject });
-	};
-
-	const recovery = useDraftRecovery<EmailDraftSnapshot>({
 		scope: () => scope.value,
-		ready: () =>
-			opts.enabled() &&
-			(coediting?.status.value === 'connecting' ? false : host.isLive() || host.isInitialized()),
+		read: () => ({ values: mode.value === 'classic' ? read() : {} }),
+		snapshot,
+		persist: async (flight): Promise<DraftReceipt> => {
+			if (autosave.state.value.live) {
+				await host.saveSession(flight.baseRevision ?? undefined);
+				return {};
+			}
+			const landed = await host.save({
+				source: baseRow,
+				revision: flight.baseRevision ?? undefined,
+				autosave: true,
+			});
+			if (typeof landed === 'number') return { revision: landed };
+			return flight.baseRevision !== null ? { revision: flight.baseRevision + 1 } : {};
+		},
+		inline: () => host.builder()?.isInlineEditing === true,
+		commitInline: () => host.builder()?.commitInlineEdit?.(),
 		accept: isSnapshot,
 		matches: (data) => canonicalJson(data) === canonicalJson(snapshot()),
-		// Only over the very state it was built on: the row at the same
-		// revision, (live) a session holding nothing unsaved by anyone, and no
-		// text typed into an open block that the edit count cannot see yet.
-		canApply: (copy) =>
-			copy.base !== null &&
-			copy.base === host.rowRevision() &&
-			!(host.isLive() && coediting?.hasSharedChanges.value === true) &&
-			host.builder()?.isInlineEditing !== true,
-		apply,
-		edits: () => autosave.edits.value,
-		keep: autosave.keep,
-		onApplied: () => showToast(t('shared.draftAutosave.restored')),
+		apply: (data) => {
+			ctx.name.value = data.name;
+			ctx.subject.value = data.subject;
+			ctx.blocks.value = data.blocks;
+			for (const [i, field] of extraWatch.entries()) {
+				if (i < data.extra.length) field.value = data.extra[i];
+			}
+			host.builder()?.loadState({ blocks: data.blocks, name: data.name, subject: data.subject });
+		},
+		hydrate: () => {
+			if (mode.value === 'classic' && latestRow) hydrate(latestRow, false);
+		},
+		reload: () => {
+			if (mode.value === 'live') void coediting?.resetShared();
+			else if (latestRow) hydrate(latestRow, false);
+		},
+		live: coediting
+			? { sendUnsent: () => coediting.sendUnsent(), dropUnsent: () => coediting.dropUnsent() }
+			: undefined,
+		ready: () => mode.value === 'classic' || mode.value === 'live',
+		onRefused: (reason) =>
+			notify(
+				reason === 'unkept'
+					? 'shared.draftAutosave.unkeptDetail'
+					: 'shared.draftAutosave.notSavedYet'
+			),
 	});
 
-	// Through the background saves' queue: a separate save beside one in
-	// flight would be refused as stale. Open inline text is committed first.
-	const saveBeforeLeaving = async () => {
-		if (await autosave.flush()) return;
-		showToast(t('shared.draftAutosave.notSavedYet'), 'error');
-		throw new Error('The draft is not saved yet');
+	// ── Classic: the row and the canvas ─────────────────────────────────
+	const hydrate = (row: NonNullable<S>, fresh: boolean) => {
+		hydrating = true;
+		host.initialize(row);
+		host.builder()?.loadState({
+			blocks: ctx.blocks.value,
+			name: ctx.name.value,
+			subject: ctx.subject.value,
+		});
+		baseRow = row;
+		latestRow = row;
+		hydratedId = identityOf(row);
+		autosave.dispatch({ type: 'hydrated', revision: revisionOf(row), values: read(), fresh });
+		const hydration = autosave.state.value.hydration;
+		// The canvas settles what it was given (it may normalize it) after the
+		// render: that is still the server's state.
+		void nextTick(() => {
+			hydrating = false;
+			if (mode.value === 'classic')
+				autosave.dispatch({ type: 'rebaseline', hydration, values: read() });
+		});
 	};
 
-	return { autosave, recovery, saveBeforeLeaving };
+	/** Published → draft: take the draft over from the manual tracker, or load it. */
+	const takeOver = (row: NonNullable<S>) => {
+		const manual = host.tracker;
+		if (!manual.isInitialized.value || !manual.hasChanges.value) {
+			hydrate(row, false);
+			return;
+		}
+		const held = manual.beginSubmit();
+		baseRow = held.base ?? row;
+		latestRow = row;
+		hydratedId = identityOf(row);
+		autosave.dispatch({
+			type: 'transfer',
+			revision: held.revision ?? null,
+			values: read(),
+			dirty: true,
+		});
+	};
+	// Draft → published: the manual tracker takes the draft back as the session left it.
+	watch(
+		opts.enabled,
+		(on, was) => {
+			if (!on && was) host.tracker.resume(baseRow, autosave.dirty.value);
+		},
+		{ flush: 'sync' }
+	);
+
+	watch(
+		[() => host.source.value, mode],
+		([row, current], old) => {
+			const previous = old?.[1];
+			if (current !== 'classic' || !row) return;
+			latestRow = row as NonNullable<S>;
+			if (
+				autosave.state.value.base === null ||
+				(previous !== undefined && previous !== 'classic')
+			) {
+				takeOver(row as NonNullable<S>);
+				return;
+			}
+			if (identityOf(row) !== hydratedId) {
+				hydrate(row as NonNullable<S>, true);
+				return;
+			}
+			const revision = revisionOf(row as NonNullable<S>);
+			if (revision === null) return;
+			autosave.dispatch({ type: 'observed', revision });
+			if (revision === autosave.state.value.base?.revision) baseRow = row as NonNullable<S>;
+		},
+		{ immediate: true }
+	);
+
+	const edited = (values: Fingerprints) => {
+		if (mode.value === 'classic' && !hydrating) autosave.edit(values);
+	};
+	watch(host.blocksVersion, () => edited({ blocks: fingerprint(ctx.blocks.value) }));
+	watch(ctx.subject, (value) => edited({ subject: fingerprint(value) }));
+	watch(ctx.name, (value) => edited({ name: fingerprint(value) }));
+	if (extraWatch.length > 0) {
+		watch(
+			() => extraWatch.map((field) => field.value),
+			(values) => edited(Object.fromEntries(values.map((v, i) => [`extra.${i}`, fingerprint(v)]))),
+			{ deep: true }
+		);
+	}
+
+	// ── Live: this tab's own edits, and what the session reports ────────
+	if (coediting) {
+		watch(coediting.localEdits, () => {
+			if (mode.value === 'live') autosave.dispatch({ type: 'live-edit' });
+		});
+		watch(
+			() => [
+				mode.value,
+				coediting.meta.value,
+				coediting.isAlone.value,
+				coediting.hasSharedChanges.value,
+			],
+			() => {
+				const meta = coediting.meta.value;
+				autosave.dispatch({
+					type: 'live',
+					live:
+						mode.value === 'live'
+							? {
+									sessionId: meta?.sessionId ?? null,
+									base: meta?.baseRevision ?? null,
+									sharedPending: coediting.hasSharedChanges.value,
+									alone: coediting.isAlone.value,
+								}
+							: null,
+				});
+			},
+			{ immediate: true }
+		);
+	}
+
+	// ── Conflict ─────────────────────────────────────────────────────────
+	const { choice } = host;
+	const conflict = computed<EmailEditorConflict | null>(() => {
+		const open = autosave.state.value.conflict;
+		if (!open?.open) return null;
+		return open.mustReload
+			? { currentRevision: open.revision, mustReload: true }
+			: { currentRevision: open.revision };
+	});
+	const resolve = async (choose: (mustReload: boolean) => void) => {
+		const open = autosave.state.value.conflict;
+		if (open) await choice.resolve(open.revision, () => choose(open.mustReload));
+	};
+
+	/** Three-way: a field the person left as the base had takes the latest row's value. */
+	const mergeOnto = (latest: NonNullable<S>) => {
+		const base = autosave.state.value.base?.values ?? {};
+		const draft = fields.map(([, field]) => field.value);
+		const touched = fields.map(([name, field]) => fingerprint(field.value) !== base[name]);
+		const revision = revisionOf(latest) ?? 0;
+		baseRow = latest;
+		latestRow = latest;
+		if (touched.every(Boolean)) {
+			autosave.dispatch({ type: 'rebased', revision, base, values: read() });
+			return;
+		}
+		hydrating = true;
+		host.initialize(latest);
+		const latestValues = read();
+		for (const [i, [, field]] of fields.entries()) {
+			if (touched[i]) field.value = draft[i];
+		}
+		host.builder()?.loadState({
+			blocks: ctx.blocks.value,
+			name: ctx.name.value,
+			subject: ctx.subject.value,
+		});
+		autosave.dispatch({ type: 'rebased', revision, base: latestValues, values: read() });
+		void nextTick(() => {
+			hydrating = false;
+		});
+	};
+
+	// "Keep my version": the draft merged onto the latest row (classic) or the
+	// session written over it (live), saved naming that row's revision.
+	const keepMyVersion = () =>
+		resolve((mustReload) => {
+			if (mustReload) return;
+			const latest = choice.latest();
+			if (autosave.state.value.live) {
+				const revision = autosave.state.value.conflict?.revision ?? 0;
+				autosave.dispatch(
+					choice.canKeepLive()
+						? { type: 'rebased', revision, base: {}, values: {} }
+						: { type: 'rebase-refused' }
+				);
+				return;
+			}
+			if (!latest || (baseRow && host.canKeepDraft?.(baseRow, latest) === false)) {
+				autosave.dispatch({ type: 'rebase-refused' });
+				return;
+			}
+			mergeOnto(latest);
+		});
+
+	return {
+		autosave,
+		recovery: autosave.recovery,
+		baseRow: () => baseRow,
+		conflict,
+		keepMyVersion,
+		// "Load latest": the draft (live: everyone's unsaved changes) gives way
+		// to the server's version. The explicit choice of a conflict, never
+		// what leaving the page does.
+		loadLatestVersion: () => resolve(() => autosave.dispatch({ type: 'reload' })),
+		dismissConflict: () => {
+			if (!choice.isResolving.value) autosave.dispatch({ type: 'conflict-dismiss' });
+		},
+	};
 }

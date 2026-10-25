@@ -1,35 +1,40 @@
-import { computed, type Ref } from 'vue';
+import { computed, watch, type Ref } from 'vue';
 import { api } from '@owlat/api';
 import type { Doc, Id } from '@owlat/api/dataModel';
-import type { FunctionArgs, FunctionReturnType } from 'convex/server';
+import type { FunctionArgs } from 'convex/server';
 import type { OperationError } from '@owlat/shared/operationError';
-import { sendTimingFromCampaign, type SendTiming } from '~/lib/sendTiming';
+import { operationCopy, resolveOperationCopy } from '~/lib/operationError';
+import type { SendTiming } from '~/lib/sendTiming';
+import { canonicalJson } from '@owlat/shared/canonicalJson';
+import type { Fingerprints } from '~/utils/draftSession';
 import { editorDraftScope } from '~/utils/editorDraftStore';
 import type { useCampaignABTest } from './useCampaignABTest';
 import type { CampaignAudienceSelection, CampaignAudienceType } from './useCampaignAudience';
 import { useDraftAutosave, type DraftAutosave } from './useDraftAutosave';
-import { useDraftRecovery, type DraftRecovery } from './useDraftRecovery';
+import type { DraftRecovery } from './useDraftRecovery';
 import { SaveRefusedError } from './useEditorSaveOperation';
 
 /**
- * The campaign editor's autosave: the draft campaign form saved in the
- * background through `campaigns.drafts.saveDraft` (`useDraftAutosave.ts`),
- * with a device copy for edits the server has not got (`useDraftRecovery.ts`).
+ * The campaign editor's autosave: binds the draft campaign form to its
+ * session (`useDraftAutosave.ts`), which owns the draft while the campaign is
+ * a draft; the form's manual tracker owns it otherwise (a scheduled campaign).
  *
- * A save sends only the sections that changed since the last one landed, so
- * an editor open in two tabs does not write one tab's stale copy of a section
- * over the other's newer edit of it. A section that is not complete yet (no
- * list picked, an A/B test without its Variant B) stays on the device until it
- * is; so do the schedule choices, which a draft does not store.
+ * A save (`campaigns.drafts.saveDraft`) carries only the sections that differ
+ * from what the server holds, and only those count as saved when it lands.
+ * This keeps a second tab's edit of another section from being overwritten;
+ * an edit of the same section in two tabs is still last-writer-wins (a draft
+ * save has no compare-and-swap). A section that is not complete yet (no list
+ * picked, no email, an A/B test without its Variant B) is a choice only the
+ * device copy holds until it is. The schedule (date, time, delivery options)
+ * is in neither: a draft does not store it and its copy leaves it out, so it
+ * keeps the leave guard until Schedule takes it, or Discard drops it.
  */
 
 type ABTest = ReturnType<typeof useCampaignABTest>;
 type SaveDraftArgs = FunctionArgs<typeof api.campaigns.drafts.saveDraft>;
 type DraftPayload = Omit<SaveDraftArgs, 'campaignId'>;
-/** What a landed `saveDraft` reports about the campaign's `updatedAt`. */
-type SavedDraft = FunctionReturnType<typeof api.campaigns.drafts.saveDraft>;
 
-/** Everything the form holds, as the device keeps it. */
+/** Everything the form holds, as the device keeps it (the schedule only in older copies). */
 export interface CampaignDraftSnapshot {
 	name: string;
 	fromName: string;
@@ -41,9 +46,9 @@ export interface CampaignDraftSnapshot {
 	templateId: string | null;
 	subject: string;
 	archiveEnabled: boolean;
-	scheduledDate: string;
-	scheduledTime: string;
-	sendTiming: SendTiming;
+	scheduledDate?: string;
+	scheduledTime?: string;
+	sendTiming?: SendTiming;
 	abTest: {
 		enabled: boolean;
 		type: 'subject' | 'content';
@@ -55,25 +60,21 @@ export interface CampaignDraftSnapshot {
 	};
 }
 
-export interface CampaignDraftForm<Submission> {
+/** The schedule's field: no draft save and no device copy hold it. */
+export const SCHEDULE_FIELD = 'schedule';
+
+export interface CampaignDraftForm {
 	campaignId: Ref<Id<'campaigns'>>;
-	campaignData: Ref<
-		| Pick<
-				Doc<'campaigns'>,
-				'updatedAt' | 'audience' | 'useRecipientTimezone' | 'sendTimeOptimization'
-		  >
-		| null
-		| undefined
-	>;
+	campaignData: Ref<Pick<Doc<'campaigns'>, 'updatedAt'> | null | undefined>;
 	isDraft: () => boolean;
-	isInitialized: () => boolean;
-	/** Send, Schedule or the explicit save is running. */
-	isActing: () => boolean;
-	/** A prompt asks whether to save or discard the edits. */
-	isChoosing: () => boolean;
-	hasChanges: () => boolean;
-	beginSubmit: () => Submission;
-	acknowledge: (submission: Submission) => void;
+	/** The form's manual tracker: it holds the form while the campaign is not a draft. */
+	tracker: {
+		isInitialized: Readonly<Ref<boolean>>;
+		hasChanges: Readonly<Ref<boolean>>;
+		/** Take the form back (built on the latest row), dirty when the session had unsaved work. */
+		resume: (base: null, dirty: boolean) => void;
+	};
+	/** Values that change with every edit. */
 	changes: (() => unknown)[];
 	campaignName: Ref<string>;
 	fromName: Ref<string>;
@@ -95,17 +96,22 @@ export interface CampaignDraftForm<Submission> {
 }
 
 export interface CampaignDraftAutosave {
-	autosave: DraftAutosave;
+	autosave: DraftAutosave<CampaignDraftSnapshot>;
 	recovery: DraftRecovery<CampaignDraftSnapshot>;
-	/** The whole draft as `saveDraft` takes it (the explicit save before Send). */
-	payload: () => DraftPayload;
-	/** The form was just loaded from the campaign: the server holds `payload()`. */
+	/** The form was just loaded from the campaign: the server holds what it shows. */
 	markLoaded: () => void;
 	/**
-	 * A save of `payload` landed (`saved`: what the server reported): later
-	 * autosaves send only what changes after it.
+	 * The form settled what it loaded (the sender picker wrote the loaded
+	 * sender's current details): still the server's state, not an edit.
 	 */
-	markSent: (payload: DraftPayload, saved: SavedDraft | null) => void;
+	markSettled: () => void;
+	/** The whole form as `saveDraft` takes it, complete sections only. */
+	payload: () => DraftPayload;
+	/**
+	 * Save what is pending before Send or Schedule; false (with a toast) when
+	 * it did not land.
+	 */
+	saveBeforeAction: () => Promise<boolean>;
 }
 
 const isSnapshot = (data: unknown): data is CampaignDraftSnapshot => {
@@ -115,16 +121,15 @@ const isSnapshot = (data: unknown): data is CampaignDraftSnapshot => {
 		typeof draft.name === 'string' &&
 		typeof draft.fromEmail === 'string' &&
 		typeof draft.subject === 'string' &&
-		typeof draft.abTest === 'object' &&
-		typeof draft.sendTiming === 'object'
+		typeof draft.abTest === 'object'
 	);
 };
 
-export function useCampaignDraftAutosave<Submission>(
-	form: CampaignDraftForm<Submission>
-): CampaignDraftAutosave {
+const fingerprint = (value: unknown) => JSON.stringify(value) ?? 'undefined';
+
+export function useCampaignDraftAutosave(form: CampaignDraftForm): CampaignDraftAutosave {
 	const { user, activeOrganizationId } = useAuth();
-	const { t } = useI18n();
+	const { t, locale, te } = useI18n();
 	const { showToast } = useToast();
 	const { abTest } = form;
 
@@ -139,56 +144,72 @@ export function useCampaignDraftAutosave<Submission>(
 		announce: false,
 	});
 
-	const abTestComplete = () => abTest.abTestEnabled.value && abTest.validate() === null;
+	const abTestSetup = () => ({
+		enabled: abTest.abTestEnabled.value,
+		type: abTest.abTestType.value,
+		variantBSubject: abTest.abVariantBSubject.value,
+		variantBTemplateId: abTest.abVariantBTemplateId.value,
+		split: abTest.abSplitPercentage.value,
+		criteria: abTest.abWinnerCriteria.value,
+		duration: abTest.abTestDuration.value,
+	});
 
-	/** The sections `saveDraft` can store now; incomplete ones are left out. */
-	const payload = (): DraftPayload => {
+	/** The form as fingerprints per section, and the sections no draft save can hold yet. */
+	const read = (): { values: Fingerprints; deviceOnly: string[] } => ({
+		values: {
+			name: fingerprint(form.campaignName.value),
+			fromName: fingerprint(form.fromName.value),
+			fromEmail: fingerprint(form.fromEmail.value),
+			replyTo: fingerprint(form.replyTo.value),
+			archiveEnabled: fingerprint(form.archiveEnabled.value),
+			audience: fingerprint([
+				form.audienceType.value,
+				form.selectedTopicId.value,
+				form.selectedSegmentId.value,
+			]),
+			content: fingerprint([form.selectedTemplateId.value, form.campaignSubject.value]),
+			abTest: fingerprint(abTestSetup()),
+			[SCHEDULE_FIELD]: fingerprint([
+				form.scheduledDate.value,
+				form.scheduledTime.value,
+				form.sendTiming.value,
+			]),
+		},
+		deviceOnly: [
+			...(form.audience.value === null ? ['audience'] : []),
+			...(form.selectedTemplateId.value === null ? ['content'] : []),
+			...(abTest.abTestEnabled.value && abTest.validate() !== null ? ['abTest'] : []),
+		],
+	});
+
+	/** What `saveDraft` takes for `sections`, read from the form now. */
+	const payloadFor = (sections: readonly string[]): DraftPayload => {
+		const has = (section: string) => sections.includes(section);
+		const draft: DraftPayload = {};
+		if (has('name')) draft.name = form.campaignName.value.trim();
+		if (has('fromName')) draft.fromName = form.fromName.value.trim();
+		if (has('fromEmail')) draft.fromEmail = form.fromEmail.value.trim();
+		if (has('replyTo')) draft.replyTo = form.replyTo.value.trim();
+		if (has('archiveEnabled')) draft.archiveEnabled = form.archiveEnabled.value;
 		const selected = form.audience.value;
+		if (has('audience') && selected) draft.audience = selected;
 		const templateId = form.selectedTemplateId.value;
-		const draft: DraftPayload = {
-			name: form.campaignName.value.trim(),
-			fromName: form.fromName.value.trim(),
-			fromEmail: form.fromEmail.value.trim(),
-			replyTo: form.replyTo.value.trim(),
-			archiveEnabled: form.archiveEnabled.value,
-		};
-		if (selected) draft.audience = selected;
-		if (templateId) {
+		if (has('content') && templateId) {
 			draft.content = { emailTemplateId: templateId, subject: form.campaignSubject.value.trim() };
 		}
-		if (!abTest.abTestEnabled.value) draft.abTest = { enabled: false };
-		else if (abTestComplete()) {
-			const { campaignId: _campaignId, ...setup } = abTest.buildEnablePayload(
-				form.campaignId.value
-			);
-			draft.abTest = { enabled: true, ...setup };
+		if (has('abTest')) {
+			if (!abTest.abTestEnabled.value) draft.abTest = { enabled: false };
+			else {
+				const { campaignId: _campaignId, ...setup } = abTest.buildEnablePayload(
+					form.campaignId.value
+				);
+				draft.abTest = { enabled: true, ...setup };
+			}
 		}
 		return draft;
 	};
 
-	// What the server holds, per section, as of the last save that landed.
-	let sent: Record<string, string> = {};
-	const recordSent = (draft: DraftPayload) => {
-		sent = {
-			...sent,
-			...Object.fromEntries(Object.entries(draft).map(([k, v]) => [k, JSON.stringify(v)])),
-		};
-	};
-	// The campaign's `updatedAt` the form is built on (the device copy's
-	// base). The form does not follow later writes, so only its own save moves
-	// this on, and only when the server reports nobody else wrote in between.
-	// Left behind, a copy is offered on the next visit instead of applied
-	// over a write it does not contain.
-	let base: number | null = null;
-	const markLoaded = () => {
-		recordSent(payload());
-		base = form.campaignData.value?.updatedAt ?? null;
-	};
-	const markSent = (draft: DraftPayload, saved: SavedDraft | null) => {
-		recordSent(draft);
-		if (base !== null && saved?.previousUpdatedAt === base) base = saved.updatedAt;
-	};
-
+	/** The copy: everything but the schedule. */
 	const snapshot = (): CampaignDraftSnapshot => ({
 		name: form.campaignName.value,
 		fromName: form.fromName.value,
@@ -200,29 +221,8 @@ export function useCampaignDraftAutosave<Submission>(
 		templateId: form.selectedTemplateId.value,
 		subject: form.campaignSubject.value,
 		archiveEnabled: form.archiveEnabled.value,
-		scheduledDate: form.scheduledDate.value,
-		scheduledTime: form.scheduledTime.value,
-		sendTiming: { ...form.sendTiming.value },
-		abTest: {
-			enabled: abTest.abTestEnabled.value,
-			type: abTest.abTestType.value,
-			variantBSubject: abTest.abVariantBSubject.value,
-			variantBTemplateId: abTest.abVariantBTemplateId.value,
-			split: abTest.abSplitPercentage.value,
-			criteria: abTest.abWinnerCriteria.value,
-			duration: abTest.abTestDuration.value,
-		},
+		abTest: abTestSetup(),
 	});
-
-	/** Choices only the device holds: worth keeping after a save landed. */
-	const holdsDeviceOnly = (draft: CampaignDraftSnapshot) =>
-		draft.scheduledDate !== '' ||
-		draft.scheduledTime !== '' ||
-		JSON.stringify(draft.sendTiming) !==
-			JSON.stringify(sendTimingFromCampaign(form.campaignData.value ?? {})) ||
-		(draft.abTest.enabled && !abTestComplete()) ||
-		(form.audience.value === null && form.campaignData.value?.audience != null) ||
-		(draft.templateId === null && draft.subject.trim() !== '');
 
 	const scope = computed(() => {
 		const userId = user.value?.id;
@@ -232,75 +232,145 @@ export function useCampaignDraftAutosave<Submission>(
 			: null;
 	});
 
-	const ready = () => form.isDraft() && form.isInitialized();
+	const failureCopy = (error: unknown) =>
+		error instanceof SaveRefusedError
+			? resolveOperationCopy(
+					operationCopy(error.op, { locale: locale.value, hasMessage: (key) => te(key) }),
+					t
+				)
+			: t('shared.draftAutosave.notSavedYet');
 
-	const autosave = useDraftAutosave<CampaignDraftSnapshot>({
-		enabled: ready,
-		paused: form.isActing,
-		held: form.isChoosing,
-		dirty: form.hasChanges,
-		changes: form.changes,
-		save: async () => {
-			const submission = form.beginSubmit();
-			const draft = payload();
-			const changed = Object.fromEntries(
-				Object.entries(draft).filter(([k, v]) => sent[k] !== JSON.stringify(v))
-			) as DraftPayload;
-			if (Object.keys(changed).length > 0) {
-				refusal = null;
-				const outcome = await saveDraft({ campaignId: form.campaignId.value, ...changed });
-				const refused = refusal as OperationError | null;
-				if (!outcome.ok) {
-					throw refused ? new SaveRefusedError(refused) : new Error('Saving the campaign failed');
-				}
-				markSent(changed, outcome.result);
+	const autosave: DraftAutosave<CampaignDraftSnapshot> = useDraftAutosave<CampaignDraftSnapshot>({
+		enabled: () => form.isDraft() && form.tracker.isInitialized.value,
+		scope: () => scope.value,
+		read,
+		snapshot,
+		volatile: [SCHEDULE_FIELD],
+		persist: async (flight) => {
+			const draft = payloadFor(flight.included);
+			refusal = null;
+			const outcome = await saveDraft({ campaignId: form.campaignId.value, ...draft });
+			const refused = refusal as OperationError | null;
+			if (!outcome.ok) {
+				throw refused ? new SaveRefusedError(refused) : new Error('Saving the campaign failed');
 			}
-			form.acknowledge(submission);
+			// From one transaction: what `updatedAt` was, and what this save left.
+			return { lineage: { from: outcome.result.previousUpdatedAt, to: outcome.result.updatedAt } };
 		},
-		mirror: {
-			scope: () => scope.value,
-			snapshot,
-			base: () => base,
-			keepAfterSave: holdsDeviceOnly,
+		accept: isSnapshot,
+		matches: (data) =>
+			canonicalJson(data) === canonicalJson({ ...snapshot(), ...scheduleOf(data) }),
+		apply: (data) => {
+			form.campaignName.value = data.name;
+			form.fromName.value = data.fromName;
+			form.fromEmail.value = data.fromEmail;
+			form.replyTo.value = data.replyTo;
+			form.audienceType.value = data.audienceType;
+			form.selectedTopicId.value = data.topicId as Id<'topics'> | null;
+			form.selectedSegmentId.value = data.segmentId as Id<'segments'> | null;
+			form.selectedTemplateId.value = data.templateId as Id<'emailTemplates'> | null;
+			form.campaignSubject.value = data.subject;
+			form.archiveEnabled.value = data.archiveEnabled;
+			// A copy from before the schedule was left out: the choice comes back
+			// as a choice, guarded until Schedule.
+			if (data.scheduledDate !== undefined) form.scheduledDate.value = data.scheduledDate;
+			if (data.scheduledTime !== undefined) form.scheduledTime.value = data.scheduledTime;
+			if (data.sendTiming) form.sendTiming.value = { ...data.sendTiming };
+			abTest.abTestEnabled.value = data.abTest.enabled;
+			abTest.abTestType.value = data.abTest.type;
+			abTest.abVariantBSubject.value = data.abTest.variantBSubject;
+			abTest.abVariantBTemplateId.value = data.abTest
+				.variantBTemplateId as Id<'emailTemplates'> | null;
+			abTest.abSplitPercentage.value = data.abTest.split;
+			abTest.abWinnerCriteria.value = data.abTest.criteria;
+			abTest.abTestDuration.value = data.abTest.duration;
+			form.onSenderRestored();
 		},
+		onRefused: (reason) =>
+			showToast(
+				reason === 'schedule'
+					? t('shared.draftAutosave.schedulingDetail')
+					: reason === 'unkept'
+						? t('shared.draftAutosave.unkeptDetail')
+						: failureCopy(autosave.error.value),
+				'error'
+			),
 	});
 
-	const apply = (data: CampaignDraftSnapshot) => {
-		form.campaignName.value = data.name;
-		form.fromName.value = data.fromName;
-		form.fromEmail.value = data.fromEmail;
-		form.replyTo.value = data.replyTo;
-		form.audienceType.value = data.audienceType;
-		form.selectedTopicId.value = data.topicId as Id<'topics'> | null;
-		form.selectedSegmentId.value = data.segmentId as Id<'segments'> | null;
-		form.selectedTemplateId.value = data.templateId as Id<'emailTemplates'> | null;
-		form.campaignSubject.value = data.subject;
-		form.archiveEnabled.value = data.archiveEnabled;
-		form.scheduledDate.value = data.scheduledDate;
-		form.scheduledTime.value = data.scheduledTime;
-		form.sendTiming.value = { ...data.sendTiming };
-		abTest.abTestEnabled.value = data.abTest.enabled;
-		abTest.abTestType.value = data.abTest.type;
-		abTest.abVariantBSubject.value = data.abTest.variantBSubject;
-		abTest.abVariantBTemplateId.value = data.abTest
-			.variantBTemplateId as Id<'emailTemplates'> | null;
-		abTest.abSplitPercentage.value = data.abTest.split;
-		abTest.abWinnerCriteria.value = data.abTest.criteria;
-		abTest.abTestDuration.value = data.abTest.duration;
-		form.onSenderRestored();
+	/** The form's schedule, for comparing an older copy that holds one (a newer copy has none). */
+	function scheduleOf(data: CampaignDraftSnapshot) {
+		return data.scheduledDate === undefined
+			? {}
+			: {
+					scheduledDate: form.scheduledDate.value,
+					scheduledTime: form.scheduledTime.value,
+					sendTiming: { ...form.sendTiming.value },
+				};
+	}
+
+	const edited = () => {
+		if (form.isDraft()) {
+			const reading = read();
+			autosave.edit(reading.values, reading.deviceOnly);
+		}
+	};
+	watch(form.changes, edited);
+
+	/** The form as the server holds it now: the session's base. */
+	const markLoaded = () => {
+		const reading = read();
+		autosave.dispatch({
+			type: 'hydrated',
+			revision: form.campaignData.value?.updatedAt ?? null,
+			values: reading.values,
+			deviceOnly: reading.deviceOnly,
+			fresh: false,
+		});
 	};
 
-	const recovery = useDraftRecovery<CampaignDraftSnapshot>({
-		scope: () => scope.value,
-		ready,
-		accept: isSnapshot,
-		matches: (data) => JSON.stringify(data) === JSON.stringify(snapshot()),
-		canApply: (copy) => copy.base !== null && copy.base === form.campaignData.value?.updatedAt,
-		apply,
-		edits: () => autosave.edits.value,
-		keep: autosave.keep,
-		onApplied: () => showToast(t('shared.draftAutosave.restored')),
+	// Scheduled → draft (Unschedule): the session takes the form over, with
+	// what the manual tracker held unsaved. Draft → scheduled: back to it.
+	watch(form.isDraft, (draft, was) => {
+		if (draft === was || !form.tracker.isInitialized.value) return;
+		if (!draft) {
+			form.tracker.resume(null, autosave.dirty.value);
+			return;
+		}
+		const reading = read();
+		autosave.dispatch({
+			type: 'transfer',
+			revision: form.campaignData.value?.updatedAt ?? null,
+			values: reading.values,
+			deviceOnly: reading.deviceOnly,
+			dirty: form.tracker.hasChanges.value,
+		});
 	});
 
-	return { autosave, recovery, payload, markLoaded, markSent };
+	const markSettled = () => {
+		autosave.dispatch({
+			type: 'rebaseline',
+			hydration: autosave.state.value.hydration,
+			values: read().values,
+		});
+	};
+
+	const saveBeforeAction = async () => {
+		if (await autosave.flush()) return true;
+		showToast(failureCopy(autosave.error.value), 'error');
+		return false;
+	};
+
+	const payload = () => {
+		const { values, deviceOnly } = read();
+		return payloadFor(Object.keys(values).filter((section) => !deviceOnly.includes(section)));
+	};
+
+	return {
+		autosave,
+		recovery: autosave.recovery,
+		markLoaded,
+		markSettled,
+		payload,
+		saveBeforeAction,
+	};
 }

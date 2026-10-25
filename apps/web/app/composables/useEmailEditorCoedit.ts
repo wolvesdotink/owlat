@@ -4,7 +4,12 @@ import type { Id } from '@owlat/api/dataModel';
 import type { BuilderCollabFocus, EditorBlock } from '@owlat/email-builder';
 import { applyCoeditOps, type CoeditOp } from '@owlat/shared/coeditOps';
 import { canonicalJson } from '@owlat/shared/canonicalJson';
-import { useEmailCoediting, type CoeditEditorDoc, type CoeditTarget } from './useEmailCoediting';
+import {
+	useEmailCoediting,
+	type CoeditEditorDoc,
+	type CoeditTarget,
+	type EmailCoeditingOptions,
+} from './useEmailCoediting';
 import { useEmailEditorPresence } from './useEmailEditorPresence';
 
 /**
@@ -46,7 +51,8 @@ const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 export function useEmailEditorCoedit(
 	target: () => CoeditTarget | null,
 	host: EmailEditorCoeditHost,
-	rowRevision: () => number | undefined
+	rowRevision: () => number | undefined,
+	control: Pick<EmailCoeditingOptions, 'held' | 'managed'> = {}
 ) {
 	const { t } = useI18n();
 	const client = useConvex();
@@ -112,6 +118,7 @@ export function useEmailEditorCoedit(
 		hydrate,
 		applyRemote,
 		changeSignals,
+		...control,
 	});
 
 	const focus = ref<BuilderCollabFocus>({ selectedRootId: null, inlineEditRootId: null });
@@ -175,13 +182,6 @@ export function useEmailEditorCoedit(
 	/** Leaving would drop unsaved work only when nobody else is there to keep it. */
 	const isAlone = computed(() => presence.people.value.length === 0);
 
-	/**
-	 * Discard on the way out. Alone, the session goes back to the email as
-	 * saved. With others there it is their draft too: only what this tab has
-	 * not sent yet is dropped, and their work stays.
-	 */
-	const discardOnLeave = () => (isAlone.value ? session.resetShared() : session.dropUnsent());
-
 	watch(
 		() => session.status.value,
 		(status) => {
@@ -194,7 +194,6 @@ export function useEmailEditorCoedit(
 		people: presence.people,
 		remoteMarks: presence.remoteMarks,
 		isAlone,
-		discardOnLeave,
 		notices,
 		dismissNotice,
 		restoreNotice,

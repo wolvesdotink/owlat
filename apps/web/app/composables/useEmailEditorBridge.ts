@@ -1,4 +1,4 @@
-import { computed, ref, watch, type Ref } from 'vue';
+import { computed, ref, shallowRef, watch, type Ref } from 'vue';
 import type {
 	BuilderCollabFocus,
 	EditorBlock,
@@ -7,7 +7,6 @@ import type {
 } from '@owlat/email-builder';
 import type { CoeditOp } from '@owlat/shared/coeditOps';
 import { versionedRef } from '~/lib/versionedRef';
-import { untilReached } from '~/lib/untilReached';
 import { useEditorDirtyTracking } from './useEditorDirtyTracking';
 import { StaleDraftError } from './useEditorSaveOperation';
 import { useOperationErrorToast } from './useOperationErrorToast';
@@ -15,6 +14,7 @@ import { useEditorSaveShortcut } from './useEditorSaveShortcut';
 import { provideEmailEditorHandlers } from './emailEditorHandlers';
 import type { CoeditTarget } from './useEmailCoediting';
 import { useEmailEditorCoedit, type EmailEditorCoedit } from './useEmailEditorCoedit';
+import { useEmailEditorConflictChoice } from './useEmailEditorConflict';
 import {
 	useEmailEditorAutosave,
 	type EmailEditorAutosave,
@@ -37,9 +37,6 @@ import {
  * block, and Save writes the session. A member who cannot co-edit falls back
  * to the classic draft below.
  */
-
-/** How long a conflict choice waits for the live query to deliver the newer row. */
-const CONFLICT_CATCH_UP_MS = 5000;
 
 // ---------------------------------------------------------------------------
 // The bridge — composes the upload pipeline above and the dirty tracker
@@ -160,7 +157,7 @@ export interface EmailEditorBridgeReturn {
 	// the draft is pushed into the canvas through it.
 	builderRef: Ref<EmailBuilderHandle | null>;
 	// A stale-revision refusal waiting for the user's choice.
-	conflict: Ref<EmailEditorConflict | null>;
+	conflict: Readonly<Ref<EmailEditorConflict | null>>;
 	isResolvingConflict: Ref<boolean>;
 	keepMyVersion: () => Promise<void>;
 	loadLatestVersion: () => Promise<void>;
@@ -171,8 +168,8 @@ export interface EmailEditorBridgeReturn {
 	isConnecting: Ref<boolean>;
 	// Bind to the EmailBuilder's `collab-focus` event.
 	onCollabFocus: (focus: BuilderCollabFocus) => void;
-	// Background saving and the device copy (null without `autosave`).
-	autosave: EmailEditorAutosave | null;
+	// A draft's autosave session and its device copy (null without `autosave`).
+	autosave: EmailEditorAutosave<unknown> | null;
 }
 
 export function useEmailEditorBridge<S>(
@@ -186,8 +183,15 @@ export function useEmailEditorBridge<S>(
 	const isSaving = ref(false);
 	const ctx: EmailEditorBridgeContext = { blocks, subject, name };
 
-	// Unsaved-changes guard. Its hooks close over `save` and `drafts` (declared
-	// below); only the navigation guard calls them, by which point both exist.
+	// A draft's autosave session (below) owns the draft while autosave is on;
+	// the manual tracker owns it otherwise. A ref: what reads it before it
+	// exists (the co-editing hold) must see it once it does.
+	const draftsRef = shallowRef<EmailEditorAutosave<S> | null>(null);
+	const autosaveOn = () => opts.autosave?.enabled() === true;
+	const draftOwned = () => (autosaveOn() ? draftsRef.value : null);
+
+	// Unsaved-changes guard. `onSave` closes over `save` (declared below); it is
+	// only invoked later from the navigation guard, by which point it is defined.
 	const {
 		showDialog: showUnsavedChangesDialog,
 		isSavingBeforeLeave,
@@ -196,9 +200,9 @@ export function useEmailEditorBridge<S>(
 		cancelNavigation,
 		setHasChanges,
 	} = useUnsavedChanges({
-		onSave: () => (autosaveOn() && drafts ? drafts.saveBeforeLeaving() : save()),
-		// Open inline text joins the draft (and its device copy) before the guard decides.
-		beforeLeave: () => drafts?.autosave.commitBeforeLeaving(),
+		onSave: () => save(),
+		// A draft's session decides leaving itself: what is at risk, the prompt, its Save.
+		decisions: () => draftOwned()?.autosave.leave ?? null,
 	});
 
 	// Load → dirty loop.
@@ -229,24 +233,31 @@ export function useEmailEditorBridge<S>(
 					blocksVersion,
 					builder: () => builderRef.value,
 				},
-				rowRevision
+				rowRevision,
+				{
+					// A leave being decided holds this tab's new sends; on close the
+					// draft's session decides what to hand over.
+					held: () => draftOwned()?.autosave.holdsSends.value === true,
+					managed: () => draftOwned() !== null,
+				}
 			)
 		: null;
 	const isLive = computed(() => coediting?.status.value === 'active');
 	const isConnecting = computed(() => coediting?.status.value === 'connecting');
 	const classicSource = computed(() =>
-		coediting && coediting.status.value !== 'unavailable' ? undefined : opts.source.value
+		(coediting && coediting.status.value !== 'unavailable') || autosaveOn()
+			? undefined
+			: opts.source.value
 	) as Ref<S>;
 
-	const autosaveOn = () => opts.autosave?.enabled() === true;
 	const {
 		hasChanges: classicHasChanges,
 		isInitialized,
-		baseRevision: draftRevision,
 		beginSubmit,
 		acknowledge,
 		rebase,
 		reload,
+		resume,
 	} = useEditorDirtyTracking({
 		source: classicSource,
 		revision: opts.revision,
@@ -267,24 +278,30 @@ export function useEmailEditorBridge<S>(
 		},
 		watchSources: [blocks, subject, name, ...(opts.extraWatch ?? [])],
 		changeSignals: new Map([[blocks, blocksVersion]]),
-		keepOwnEcho: autosaveOn,
+		active: () => !autosaveOn(),
 	});
 
 	// Live, the email has unsaved changes when the session does or this tab
-	// has edits still on their way.
+	// has edits still on their way. Leaving only warns when nobody else is in
+	// the editor to keep them (a draft's session decides that itself).
 	const hasChanges = computed(() =>
 		isLive.value && coediting
 			? coediting.hasSharedChanges.value || coediting.hasUnsent.value
-			: classicHasChanges.value
+			: (draftOwned()?.autosave.dirty.value ?? classicHasChanges.value)
 	);
-	// The row the session was last based on, for "keep my version".
-	let rowAtSessionBase: NonNullable<S> | null = null;
-	watch([() => opts.source.value, () => coediting?.meta.value], ([row, meta]) => {
-		if (row && meta && opts.revision?.(row as NonNullable<S>) === meta.baseRevision) {
-			rowAtSessionBase = row as NonNullable<S>;
-		}
+	watch(
+		() => hasChanges.value && (!isLive.value || coediting?.isAlone.value === true),
+		(guard) => setHasChanges(guard),
+		{ immediate: true }
+	);
+	// Answering a conflict (waiting for the row it names; live, whether the
+	// session may go over it). "Keep my version" live: the revision the save names.
+	const choice = useEmailEditorConflictChoice({
+		source: opts.source,
+		revision: opts.revision,
+		canKeepDraft: opts.canKeepDraft,
+		coediting,
 	});
-	// "Keep my version" over a row that moved on: the revision the save names.
 	let keepOverRevision: number | null = null;
 
 	// The handler set the builder injects, and the media picker it opens.
@@ -298,30 +315,31 @@ export function useEmailEditorBridge<S>(
 	};
 
 	// A stale-revision refusal: the draft stays as it is until the user picks.
-	const conflict = ref<EmailEditorConflict | null>(null);
-	const isResolvingConflict = ref(false);
+	// A draft's session keeps its own.
+	const manualConflict = ref<EmailEditorConflict | null>(null);
+	const conflict = computed(() => draftOwned()?.conflict.value ?? manualConflict.value);
 
-	// The save entrypoint. A surface throws from opts.save to abort (validation
-	// failure, mutation error), which keeps the editor dirty and propagates. A
-	// save that lands clears dirty only if nothing was edited while it ran.
-	const save = async (autosave = false) => {
+	// The save entrypoint (a draft's session saves through its own queue). A
+	// surface throws from opts.save to abort (validation failure, mutation
+	// error), which keeps the editor dirty and propagates. A save that lands
+	// clears dirty only if nothing was edited while it ran.
+	const save = async () => {
 		isSaving.value = true;
 		const live = isLive.value ? coediting : null;
 		const submission = live ? null : beginSubmit();
 		try {
 			if (live) {
-				await saveSession(live, autosave);
+				await saveSession(live);
 			} else if (submission) {
 				const landed = await opts.save(ctx, {
 					source: submission.base,
 					revision: submission.revision,
-					autosave,
 				});
 				acknowledge(submission, typeof landed === 'number' ? landed : undefined);
 			}
 		} catch (error) {
 			if (error instanceof StaleDraftError) {
-				conflict.value = { currentRevision: error.currentRevision };
+				manualConflict.value = { currentRevision: error.currentRevision };
 			}
 			throw error;
 		} finally {
@@ -331,14 +349,19 @@ export function useEmailEditorBridge<S>(
 
 	// Live: send what this tab still has, then save the shared session (the
 	// server writes the session, so nobody's edit that reached it is lost).
-	const saveSession = async (live: EmailEditorCoedit, autosave: boolean) => {
+	// A draft's session names the revision itself (`revision`).
+	const saveSession = async (
+		live: EmailEditorCoedit,
+		autosave = false,
+		revision = keepOverRevision ?? live.meta.value?.baseRevision
+	) => {
 		await live.flushNow();
 		const seen = live.seenVersion();
 		const sessionId = live.meta.value?.sessionId;
 		try {
 			await opts.save(ctx, {
 				source: (opts.source.value as NonNullable<S> | null) ?? null,
-				revision: keepOverRevision ?? live.meta.value?.baseRevision,
+				revision,
 				coeditVersion: seen,
 				autosave,
 			});
@@ -361,9 +384,10 @@ export function useEmailEditorBridge<S>(
 	// already (toast, conflict dialog) or here; the draft stays dirty either way.
 	const { showOperationError } = useOperationErrorToast();
 	const requestSave = async () => {
-		// Autosave: the same queue, and its status shows a failure.
-		if (autosaveOn() && drafts) {
-			await drafts.autosave.flush();
+		// A draft: the session's queue, and its status shows a failure.
+		const owned = draftOwned();
+		if (owned) {
+			await owned.autosave.flush();
 			return;
 		}
 		try {
@@ -374,53 +398,23 @@ export function useEmailEditorBridge<S>(
 	};
 
 	const drafts = opts.autosave
-		? useEmailEditorAutosave(opts.autosave, {
+		? useEmailEditorAutosave<S>(opts.autosave, {
 				ctx,
 				extraWatch: opts.extraWatch ?? [],
 				blocksVersion,
 				builder: () => builderRef.value,
 				coediting,
-				isLive: () => isLive.value,
-				isInitialized: () => isInitialized.value,
-				rowRevision,
-				draftRevision,
-				hasChanges: () => hasChanges.value,
-				hasConflict: () => conflict.value !== null,
-				isChoosing: () => showUnsavedChangesDialog.value,
-				save: () => save(true),
+				source: opts.source,
+				revision: opts.revision,
+				initialize: (row) => opts.initialize(row, ctx),
+				canKeepDraft: opts.canKeepDraft,
+				choice,
+				save: (base) => opts.save(ctx, base),
+				saveSession: (revision) => saveSession(coediting!, true, revision),
+				tracker: { isInitialized, hasChanges: classicHasChanges, beginSubmit, resume },
 			})
 		: null;
-	// Leaving warns about edits that would be lost: with autosave, one neither
-	// saved nor on the device; live, only when nobody else is there to keep it.
-	watch(
-		() =>
-			autosaveOn() && drafts
-				? drafts.autosave.atRisk.value
-				: hasChanges.value && (!isLive.value || coediting?.isAlone.value === true),
-		(guard) => setHasChanges(guard),
-		{ immediate: true }
-	);
-
-	// The server row a conflict names can reach this tab a moment after the
-	// refusal; resolving against an older emission would hide the change the
-	// user was just told about. Wait (briefly) for the live query to deliver it.
-	const untilRevision = (target: number) =>
-		untilReached(opts.source, () => (rowRevision() ?? target) >= target, CONFLICT_CATCH_UP_MS);
-
-	const resolveConflict = async (
-		resolve: (pending: EmailEditorConflict) => Promise<void> | void
-	) => {
-		const pending = conflict.value;
-		if (!pending || isResolvingConflict.value) return;
-		isResolvingConflict.value = true;
-		try {
-			await untilRevision(pending.currentRevision);
-			conflict.value = null;
-			await resolve(pending);
-		} finally {
-			isResolvingConflict.value = false;
-		}
-	};
+	draftsRef.value = drafts;
 
 	// "Keep my version": merge the draft onto the latest row (what the user
 	// changed wins, everything else is the latest row's) and save it with that
@@ -429,30 +423,37 @@ export function useEmailEditorBridge<S>(
 	// offering to load the latest.
 	// Live, the shared session is what is kept: the next save names the
 	// latest row's revision, so it goes over the change made elsewhere.
-	const canKeepLive = () => {
-		const latest = opts.source.value as NonNullable<S> | null;
-		return !rowAtSessionBase || !latest || opts.canKeepDraft?.(rowAtSessionBase, latest) !== false;
-	};
-	const keepMyVersion = () =>
-		resolveConflict((pending) => {
-			if (!pending.mustReload && isLive.value && canKeepLive()) {
+	const keepManual = async () => {
+		const pending = manualConflict.value;
+		if (!pending) return;
+		await choice.resolve(pending.currentRevision, () => {
+			manualConflict.value = null;
+			if (!pending.mustReload && isLive.value && choice.canKeepLive()) {
 				keepOverRevision = pending.currentRevision;
 				return requestSave();
 			}
 			if (!pending.mustReload && !isLive.value && rebase()) return requestSave();
-			conflict.value = { ...pending, mustReload: true };
+			manualConflict.value = { ...pending, mustReload: true };
 		});
+	};
 
 	// "Load latest": discard the draft (live: everyone's unsaved changes) and
 	// show the server's version.
-	const loadLatestVersion = () =>
-		resolveConflict(() => {
-			drafts?.autosave.cancel();
+	const loadManual = async () => {
+		const pending = manualConflict.value;
+		if (!pending) return;
+		await choice.resolve(pending.currentRevision, () => {
+			manualConflict.value = null;
 			return isLive.value && coediting ? coediting.resetShared() : reload();
 		});
+	};
 
+	const keepMyVersion = () => draftOwned()?.keepMyVersion() ?? keepManual();
+	const loadLatestVersion = () => draftOwned()?.loadLatestVersion() ?? loadManual();
 	const dismissConflict = () => {
-		if (!isResolvingConflict.value) conflict.value = null;
+		const owned = draftOwned();
+		if (owned) owned.dismissConflict();
+		else if (!choice.isResolving.value) manualConflict.value = null;
 	};
 
 	// The advertised `s` (Save) shortcut, for every editor surface.
@@ -466,10 +467,10 @@ export function useEmailEditorBridge<S>(
 		hasChanges,
 		showUnsavedChangesDialog,
 		isSavingBeforeLeave,
-		// Discard saves nothing more; live, it also drops this tab's share (`discardOnLeave`).
+		// Leaving a live session alone without saving: the shared draft goes too.
+		// A draft's session drops only what this tab has not sent (its `leave`).
 		confirmDiscard: () => {
-			drafts?.autosave.cancel();
-			if (isLive.value) void coediting?.discardOnLeave();
+			if (!draftOwned() && isLive.value) void coediting?.resetShared();
 			confirmDiscard();
 		},
 		confirmSave,
@@ -483,7 +484,7 @@ export function useEmailEditorBridge<S>(
 		requestSave,
 		builderRef,
 		conflict,
-		isResolvingConflict,
+		isResolvingConflict: choice.isResolving,
 		keepMyVersion,
 		loadLatestVersion,
 		dismissConflict,

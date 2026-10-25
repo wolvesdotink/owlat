@@ -12,11 +12,14 @@
  * its writer id and releases it when it closes (or its tab goes), so another
  * tab can tell which copies are still in use: a tab that stays open after
  * its editor closed does not keep the copy from being recovered. Within one
- * tab the open editors are known directly. A browser without Web Locks cannot
- * tell, and treats every other tab's copy as left behind.
+ * tab the open editors are known directly. Without Web Locks (or when asking
+ * for them fails) another tab's editor is `unknown`: its copy may be offered,
+ * but nothing deletes it, since that editor may still count on it.
  *
  * Pure data layer: no Vue, no network.
  */
+
+import type { DraftLiveness } from './draftSessionTypes';
 
 const LOCK_PREFIX = 'owlat-editor-draft-writer:';
 
@@ -29,7 +32,7 @@ export interface EditorDraftWriter {
 export interface EditorDraftWriters {
 	open(): EditorDraftWriter;
 	/** A snapshot of which writers still have an open editor. */
-	liveness(): Promise<(writerId: string) => boolean>;
+	liveness(): Promise<(writerId: string) => DraftLiveness>;
 }
 
 type Locks = Pick<LockManager, 'request' | 'query'>;
@@ -93,8 +96,9 @@ export function createEditorDraftWriters(tabId: string, locks: Locks | null): Ed
 			const held = await openElsewhere();
 			return (writerId) => {
 				const tab = writerId.split('.')[0] ?? '';
-				if (tab === tabId) return openWriters.has(writerId);
-				return held?.has(writerId) === true;
+				if (tab === tabId) return openWriters.has(writerId) ? 'open' : 'closed';
+				if (held === null) return 'unknown';
+				return held.has(writerId) ? 'open' : 'closed';
 			};
 		},
 	};

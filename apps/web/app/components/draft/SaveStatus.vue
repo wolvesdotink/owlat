@@ -2,8 +2,9 @@
 /**
  * The save state of a draft that saves itself (`useDraftAutosave`), where a
  * Save button used to be: "Saved · 3s ago", "Saving…", offline with or
- * without a copy on this device, not kept on this device, or a failure with
- * Retry.
+ * without a copy on this device, not kept on this device, saved with the
+ * schedule still waiting for Schedule, or a failure with Retry. It renders the
+ * session's status; it decides nothing about durability itself.
  *
  * Only the state is a live region: the age beside "Saved" keeps changing
  * while nothing happens, and a screen reader would read every change out.
@@ -42,6 +43,8 @@ const label = computed(() => {
 			return t('shared.draftAutosave.notSaved');
 		case 'unkept':
 			return t('shared.draftAutosave.unkept');
+		case 'scheduling':
+			return t('shared.draftAutosave.scheduling');
 		default:
 			return t('shared.draftAutosave.saved');
 	}
@@ -50,6 +53,7 @@ const label = computed(() => {
 /** Why the last save failed, in the words the toast would have used. */
 const errorDetail = computed(() => {
 	if (status.value === 'unkept') return t('shared.draftAutosave.unkeptDetail');
+	if (status.value === 'scheduling') return t('shared.draftAutosave.schedulingDetail');
 	if (status.value !== 'error') return '';
 	const error = props.autosave.error.value;
 	const options = { locale: locale.value, hasMessage: (key: string) => te(key) };
@@ -71,6 +75,8 @@ const icon = computed(() => {
 			return 'lucide:alert-circle';
 		case 'editing':
 			return 'lucide:pencil';
+		case 'scheduling':
+			return 'lucide:calendar-clock';
 		default:
 			return 'lucide:check';
 	}
@@ -81,7 +87,13 @@ const icon = computed(() => {
 	<div class="flex shrink-0 items-center gap-2" data-testid="draft-save-status">
 		<span
 			class="inline-flex items-center gap-1.5 text-xs whitespace-nowrap"
-			:class="status === 'error' || status === 'unkept' ? 'text-error' : 'text-text-secondary'"
+			:class="
+				status === 'error' || status === 'unkept'
+					? 'text-error'
+					: status === 'scheduling'
+						? 'text-warning'
+						: 'text-text-secondary'
+			"
 			:title="errorDetail || undefined"
 		>
 			<Icon
@@ -98,7 +110,12 @@ const icon = computed(() => {
 				<template v-if="age">{{ ` ${age}` }}</template>
 			</span>
 		</span>
-		<UiButton v-if="status === 'error'" variant="ghost" size="sm" @click="autosave.retry()">
+		<UiButton
+			v-if="status === 'error' && autosave.state.value.conflict === null"
+			variant="ghost"
+			size="sm"
+			@click="autosave.retry()"
+		>
 			{{ t('shared.draftAutosave.retry') }}
 		</UiButton>
 	</div>

@@ -45,6 +45,17 @@ export interface EmailCoeditingOptions {
 	applyRemote: (ops: CoeditOp<EditorBlock>[]) => void;
 	/** Values that change with every local edit. */
 	changeSignals: WatchSource<unknown>[];
+	/**
+	 * New sends of this tab's edits wait while this is true (a leave is being
+	 * decided, and its Discard must still find them unsent). Others' edits
+	 * keep arriving; an explicit save (`flushNow`) still sends.
+	 */
+	held?: () => boolean;
+	/**
+	 * Another owner decides what happens to this tab's unsent edits when the
+	 * editor closes (the draft's autosave session, through `sendUnsent`).
+	 */
+	managed?: () => boolean;
 }
 
 /** The editor fields a session shares (`lib/validators/coediting.ts` on the server). */
@@ -235,10 +246,18 @@ export function useEmailCoediting(opts: EmailCoeditingOptions) {
 		if (status.value !== 'active' || sendTimer !== null || dropsUnsent) return;
 		sendTimer = setTimeout(() => {
 			sendTimer = null;
+			// Held: sent once the hold ends (or dropped by its Discard).
+			if (opts.held?.()) return;
 			void send().then((didSend) => {
 				if (didSend && sync.hasUnsent(opts.read())) scheduleSend();
 			});
 		}, delay);
+	}
+
+	if (opts.held) {
+		watch(opts.held, (isHeld) => {
+			if (!isHeld && hasUnsent.value) scheduleSend();
+		});
 	}
 
 	watch(opts.changeSignals, () => {
@@ -360,8 +379,10 @@ export function useEmailCoediting(opts: EmailCoeditingOptions) {
 	onUnmounted(() => {
 		if (sendTimer !== null) clearTimeout(sendTimer);
 		// Best effort: hand over what this tab still has before it goes, unless
-		// it is leaving because it threw its changes away.
-		if (status.value === 'active' && !isDiscarding && !dropsUnsent) void send();
+		// it is leaving because it threw its changes away, or its owner decides.
+		if (status.value === 'active' && !isDiscarding && !dropsUnsent && !opts.managed?.()) {
+			void send();
+		}
 		notifyWaiters();
 	});
 
@@ -384,6 +405,10 @@ export function useEmailCoediting(opts: EmailCoeditingOptions) {
 		untilSaved,
 		resetShared,
 		dropUnsent,
+		/** Best effort: hand over what this tab has not sent (an editor closing). */
+		sendUnsent: () => {
+			if (status.value === 'active' && !dropsUnsent) void send();
+		},
 	};
 }
 

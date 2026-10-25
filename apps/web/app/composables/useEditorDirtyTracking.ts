@@ -69,14 +69,11 @@ export interface UseEditorDirtyTrackingOptions<S> {
 	 */
 	canRebase?: (base: NonNullable<S>, latest: NonNullable<S>) => boolean;
 	/**
-	 * Keep the draft as typed when the row comes back from this editor's own
-	 * save (the row at the revision `acknowledge` was told landed). The server
-	 * normalizes what it stores (trims the name and subject), and an editor
-	 * that saves in the background would otherwise have that echo replace text
-	 * the person is in the middle of typing. A row at any later revision is
-	 * someone else's write and hydrates as usual.
+	 * Whether this tracker owns the draft. While another owner does (a draft's
+	 * autosave session), the first row still loads the draft, but later rows
+	 * are only noted and edits not counted; `resume` hands the draft back.
 	 */
-	keepOwnEcho?: () => boolean;
+	active?: () => boolean;
 }
 
 /** A save in flight: the draft as submitted and the server state it was built on. */
@@ -96,12 +93,6 @@ export interface EditorSubmission<S> {
 export interface UseEditorDirtyTrackingReturn<S> {
 	hasChanges: Ref<boolean>;
 	isInitialized: Ref<boolean>;
-	/**
-	 * The revision the draft is built on: the hydrated row's, the one an
-	 * acknowledged save stored, or the latest row's after `rebase`. A newer
-	 * row arriving while the draft holds unsaved work does not move it.
-	 */
-	baseRevision: () => number | undefined;
 	/** Freeze the draft at the start of a save. */
 	beginSubmit: () => EditorSubmission<S>;
 	/**
@@ -123,6 +114,12 @@ export interface UseEditorDirtyTrackingReturn<S> {
 	rebase: () => boolean;
 	/** Throw the draft away and hydrate the latest server row. */
 	reload: () => void;
+	/**
+	 * Take the draft over from the owner that held it while this tracker was
+	 * inactive: built on `base` (default: the latest row), and dirty when that
+	 * owner had unsaved work.
+	 */
+	resume: (base: NonNullable<S> | null, dirty: boolean) => void;
 }
 
 const defaultIdentity = (source: unknown): unknown =>
@@ -144,8 +141,6 @@ export function useEditorDirtyTracking<S>(
 	let base: NonNullable<S> | null = null;
 	let baseRevision: number | undefined;
 	let hydratedIdentity: unknown;
-	// The revision this editor's last acknowledged save stored.
-	let ownRevision: number | undefined;
 	// What the server holds for each tracked source of the draft's base: set
 	// when a row is hydrated and when a save of the draft lands.
 	let baseFields: readonly string[] | null = null;
@@ -163,19 +158,7 @@ export function useEditorDirtyTracking<S>(
 	const serializeFields = () => opts.watchSources.map((source) => JSON.stringify(read(source)));
 	const serializeDraft = () => JSON.stringify(serializeFields());
 	const held = () => opts.holdHydration?.() === true;
-
-	const isOwnEcho = (row: NonNullable<S>) =>
-		opts.keepOwnEcho?.() === true &&
-		ownRevision !== undefined &&
-		opts.revision?.(row) === ownRevision &&
-		identityOf(row) === hydratedIdentity;
-
-	// The echo of this editor's own save: build on it, keep the draft's values.
-	const adoptEcho = (row: NonNullable<S>) => {
-		hydratedFrom = row;
-		base = row;
-		setDirty(false);
-	};
+	const active = () => opts.active?.() !== false;
 
 	const hydrate = (row: NonNullable<S>) => {
 		hydrating = true;
@@ -199,14 +182,14 @@ export function useEditorDirtyTracking<S>(
 		(row) => {
 			if (!row) return;
 			latest = row;
+			if (!active() && hydratedFrom !== null) return;
 			if (hydratedFrom === null || identityOf(row) !== hydratedIdentity) {
 				hydrate(row);
 				return;
 			}
 			if (!hasChanges.value && !held()) {
 				// Nothing unsaved: follow the server.
-				if (isOwnEcho(row)) adoptEcho(row);
-				else hydrate(row);
+				hydrate(row);
 				return;
 			}
 			// Unsaved draft (or work not committed to it yet): keep it. A row at the draft's revision (a send
@@ -220,7 +203,7 @@ export function useEditorDirtyTracking<S>(
 	const onDraftChange = () => {
 		// Only track changes after the initial data has been loaded, and not
 		// the writes a hydration makes.
-		if (!isInitialized.value || hydrating) return;
+		if (!isInitialized.value || hydrating || !active()) return;
 		setDirty(true);
 	};
 	const signals = opts.changeSignals;
@@ -253,8 +236,7 @@ export function useEditorDirtyTracking<S>(
 			identityOf(latest) === hydratedIdentity &&
 			!predatesBase(latest)
 		) {
-			if (isOwnEcho(latest)) adoptEcho(latest);
-			else hydrate(latest);
+			hydrate(latest);
 		} else {
 			setDirty(false);
 		}
@@ -269,7 +251,6 @@ export function useEditorDirtyTracking<S>(
 			// The draft now builds on our write. Prefer the revision the server
 			// says it stored over assuming the next one.
 			baseRevision = landedRevision ?? (submission.revision as number) + 1;
-			ownRevision = landedRevision;
 			if (latest !== null && opts.revision?.(latest) === baseRevision) base = latest;
 		} else if (opts.revision === undefined && latest !== null) {
 			base = latest;
@@ -321,14 +302,28 @@ export function useEditorDirtyTracking<S>(
 		if (latest !== null) hydrate(latest);
 	};
 
+	const resume = (row: NonNullable<S> | null, dirty: boolean) => {
+		const from = row ?? latest;
+		if (from === null) return;
+		generation += 1;
+		hydratedFrom = from;
+		base = from;
+		latest ??= from;
+		baseRevision = opts.revision?.(from);
+		hydratedIdentity = identityOf(from);
+		baseFields = dirty ? null : serializeFields();
+		isInitialized.value = true;
+		setDirty(dirty);
+	};
+
 	return {
 		hasChanges,
 		isInitialized,
-		baseRevision: () => baseRevision,
 		beginSubmit,
 		acknowledge,
 		markClean: catchUp,
 		rebase,
 		reload,
+		resume,
 	};
 }
