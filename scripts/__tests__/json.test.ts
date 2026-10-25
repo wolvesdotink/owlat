@@ -92,6 +92,9 @@ describe('the scripts JSON decoders', () => {
 			'map must be an object'
 		);
 		expect(shapeError(() => decodeJson('[]', record, 'row'))).toBe('row must be an object');
+		const keyed = decodeJson('{"__proto__":"x"}', recordOf(string), 'map');
+		expect(Object.keys(keyed)).toEqual(['__proto__']);
+		expect(Object.getPrototypeOf(keyed)).toBe(Object.prototype);
 
 		const either = oneOf<string | number>('a string or a number', string, number);
 		expect(either('a', 'x')).toBe('a');

@@ -110,9 +110,10 @@ export const recordOf =
 	<T>(decode: Decoder<T>): Decoder<Record<string, T>> =>
 	(value, path) => {
 		if (!isRecord(value)) return fail(path, 'an object');
-		const out: Record<string, T> = {};
-		for (const [key, item] of Object.entries(value)) out[key] = decode(item, `${path}.${key}`);
-		return out;
+		// fromEntries defines each key as data, so a `__proto__` key stays a key.
+		return Object.fromEntries(
+			Object.entries(value).map(([key, item]) => [key, decode(item, `${path}.${key}`)])
+		);
 	};
 
 /** Any JSON object, its members unchecked (for a caller that inspects them itself). */

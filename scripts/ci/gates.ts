@@ -184,6 +184,9 @@ export const ROOT_GATES: readonly RootGate[] = [
 			'packages/provider-kit/',
 			'packages/plugin-kit/',
 			'scripts/check-build-graph.ts',
+			'scripts/json.ts',
+			'scripts/package-manifest.ts',
+			'scripts/turbo-json.ts',
 		],
 	},
 	{
@@ -268,6 +271,7 @@ export const ROOT_GATES: readonly RootGate[] = [
 			'scripts/check-desktop-invoke-contract.ts',
 			'scripts/desktop-invoke-scan.ts',
 			'scripts/desktop-invoke-vue.ts',
+			'scripts/json.ts',
 		],
 	},
 	{
@@ -380,6 +384,8 @@ export const ROOT_GATES: readonly RootGate[] = [
 			'apps/api/scripts/',
 			'scripts/ast-gate-parity.ts',
 			'scripts/check-crypto-primitives.sh',
+			'scripts/json.ts',
+			'scripts/lint-diagnostics.ts',
 		],
 	},
 	// Scans every tracked source, config and doc file.

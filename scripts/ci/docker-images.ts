@@ -19,7 +19,7 @@ export function readDockerImages(path: string): DockerImage[] {
 
 const decodePublishedImages = arrayOf(object({ name: string, rootCompose: optional(string) }));
 
-export type PublishedImage = ReturnType<typeof decodePublishedImages>[number];
+type PublishedImage = ReturnType<typeof decodePublishedImages>[number];
 
 /** A release's published image list (`docker/images.json` at its tag). */
 export function parsePublishedImages(text: string, label: string): PublishedImage[] {

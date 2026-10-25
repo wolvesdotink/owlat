@@ -74,18 +74,18 @@ export function decodeHoldUids(body: unknown): number[] {
 	});
 }
 
-export interface SinkTransactionView {
+interface SinkTransactionView {
 	readonly rcpts: readonly string[];
 	readonly bodyReceived: boolean;
 }
 
-export interface WebhookView {
+interface WebhookView {
 	readonly event: string;
 	readonly messageId: string;
 	readonly backendStatus: number;
 }
 
-export interface IngestCallView {
+interface IngestCallView {
 	readonly messageId: string;
 	readonly remoteUid: number;
 	readonly outcome: 'stored' | 'duplicate' | 'other';
