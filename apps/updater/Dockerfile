@@ -32,6 +32,9 @@ COPY packages/mail-message/src packages/mail-message/src
 # not just what today's tree-shake happens to keep, so an added import through
 # mail-message cannot break this image.
 COPY packages/mail-canon/src packages/mail-canon/src
+# Request-body decoding (@owlat/worker-protocol/decodeJson). Its runtime imports
+# are only @owlat/shared's bounded reader; `convex/values` is type-only.
+COPY packages/worker-protocol/src packages/worker-protocol/src
 RUN cd apps/updater && bun run build
 
 FROM node:26-alpine
@@ -42,8 +45,8 @@ RUN apk add --no-cache docker-cli docker-cli-compose
 
 WORKDIR /app
 
-# No node_modules: the updater's only dependency (@owlat/shared) is bundled
-# into dist at build time.
+# No node_modules: the updater's workspace dependencies (@owlat/shared,
+# @owlat/worker-protocol) are bundled into dist at build time.
 COPY --from=builder /build/apps/updater/dist ./dist
 COPY apps/updater/package.json ./
 

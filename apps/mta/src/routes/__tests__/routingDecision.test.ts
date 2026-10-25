@@ -362,7 +362,12 @@ describe('reservation rollback', () => {
 
 	function context(json: ReturnType<typeof vi.fn>): Context {
 		return {
-			req: { json: vi.fn().mockResolvedValue(rollbackRequest) },
+			req: {
+				raw: new Request('http://mta.example/send/decision', {
+					method: 'POST',
+					body: JSON.stringify(rollbackRequest),
+				}),
+			},
 			get: vi.fn().mockReturnValue({ isMasterKey: true }),
 			json,
 		} as unknown as Context;

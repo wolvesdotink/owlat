@@ -291,6 +291,64 @@ describe('auth + routing', () => {
 	});
 });
 
+/** A raw body, sent as is: the cases below are bodies JSON.stringify cannot produce. */
+function postRaw(path: string, body: string) {
+	return fetch(`${base}${path}`, {
+		method: 'POST',
+		headers: { ...AUTH, 'content-type': 'application/json' },
+		body,
+	});
+}
+
+describe('request bodies are decoded before anything runs', () => {
+	const RECORD = join(OWLAT_DIR, '.owlat-last-rollout.json');
+	const ENV_BEFORE = 'FOO=bar\nIP_POOLS_CAMPAIGN=1.1.1.1\nINSTANCE_SECRET=old\n';
+
+	function expectNothingRan(): void {
+		expect(commandMock).not.toHaveBeenCalled();
+		expect(readFileSync(join(OWLAT_DIR, '.env'), 'utf-8')).toBe(ENV_BEFORE);
+	}
+
+	it.each([
+		['malformed JSON', '{"composeTemplate":'],
+		['a JSON array', '[]'],
+		['a numeric compose template', '{"composeTemplate":5}'],
+	])('refuses /update with %s, without touching Docker or rollout state', async (_name, body) => {
+		rmSync(RECORD, { force: true });
+		const res = await postRaw('/update', body);
+		expect(res.status).toBe(400);
+		expectNothingRan();
+		expect(existsSync(RECORD)).toBe(false);
+	});
+
+	it('refuses a body past the cap with 413', async () => {
+		const res = await postRaw(
+			'/update',
+			JSON.stringify({ composeTemplate: 'x'.repeat(1024 * 1024) })
+		);
+		expect(res.status).toBe(413);
+		expectNothingRan();
+	});
+
+	it('refuses /configure-ip with a numeric ip', async () => {
+		const res = await postRaw('/configure-ip', '{"ip":167772161,"action":"add"}');
+		expect(res.status).toBe(400);
+		expectNothingRan();
+	});
+
+	it('refuses /rotate-env with a body that is not an object', async () => {
+		const res = await postRaw('/rotate-env', '["instanceSecret"]');
+		expect(res.status).toBe(400);
+		expectNothingRan();
+	});
+
+	it('refuses /apply-profiles with malformed JSON', async () => {
+		const res = await postRaw('/apply-profiles', '{"flags":');
+		expect(res.status).toBe(400);
+		expectNothingRan();
+	});
+});
+
 describe('POST /update', () => {
 	it('runs pull → convex-deploy → up and reports the steps', async () => {
 		const res = await post('/update');

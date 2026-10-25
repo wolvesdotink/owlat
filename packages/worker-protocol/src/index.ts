@@ -2,7 +2,9 @@
  * The Convex <-> worker wire contract. Subpaths: `/imap` and `/mailSync` (the
  * endpoint registries), `/fields` (the field vocabulary shared with the mail
  * tables), `/client` (worker references and the checked client),
- * `/validatorMatch`, and the test-only `/wireFixtures`.
+ * `/validatorMatch`, `/decodeJson` (request-body decoding for every HTTP
+ * ingress; import it by subpath so a transport does not pull in the endpoint
+ * registries), and the test-only `/wireFixtures`.
  */
 
 export {

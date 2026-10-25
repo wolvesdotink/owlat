@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { jsonRequestEvent } from '../../../__tests__/nitro';
 
 /**
  * Route tests for `POST /api/system/apply-profiles`: platform-admin
@@ -35,7 +36,7 @@ interface RouteResult {
 async function callRoute(): Promise<RouteResult> {
 	const mod = await import('../apply-profiles.post');
 	const handler = mod.default as unknown as (event: unknown) => Promise<RouteResult>;
-	return handler({});
+	return handler(jsonRequestEvent(body));
 }
 
 function updaterResponse(ok: boolean, payload: unknown, status = ok ? 200 : 500) {
@@ -53,10 +54,6 @@ beforeEach(() => {
 	body = { flags: { 'mail.external': true, ai: false } };
 
 	vi.stubGlobal('defineEventHandler', <T>(handler: T) => handler);
-	vi.stubGlobal(
-		'readBody',
-		vi.fn(async () => body)
-	);
 	vi.stubGlobal('createError', (opts: { statusCode: number; message: string; data?: unknown }) =>
 		Object.assign(new Error(opts.message), { statusCode: opts.statusCode, data: opts.data })
 	);

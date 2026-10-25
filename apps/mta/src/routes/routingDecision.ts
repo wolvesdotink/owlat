@@ -11,6 +11,8 @@ import {
 } from '@owlat/shared';
 import type { MtaConfig } from '../config.js';
 import { fireAndForget } from '../lib/fireAndForget.js';
+import { readJsonBody } from '../lib/jsonBody.js';
+import { guardDecoder } from '@owlat/worker-protocol/decodeJson';
 import { logger } from '../monitoring/logger.js';
 import type { AuthContext } from '../server.js';
 import {
@@ -229,13 +231,11 @@ function decide(c: Context, answer: MtaRoutingDecisionResponse) {
 
 export function createRoutingDecisionHandler(redis: Redis, config: MtaConfig) {
 	return async (c: Context) => {
-		let input: unknown;
-		try {
-			input = await c.req.json();
-		} catch {
-			return c.json({ error: 'Invalid routing decision request' }, 400);
-		}
-		if (!validRequest(input)) return c.json({ error: 'Invalid routing decision request' }, 400);
+		const read = await readJsonBody(c, guardDecoder(validRequest), {
+			invalidMessage: 'Invalid routing decision request',
+		});
+		if (!read.ok) return read.response;
+		const input = read.value;
 		if (!authorizedForOrg(c, input.organizationId))
 			return c.json({ error: 'Credential not authorized for this organization' }, 403);
 
