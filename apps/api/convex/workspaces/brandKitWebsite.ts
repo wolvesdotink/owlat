@@ -50,15 +50,18 @@ const isSpace = (c: string) => c === ' ' || c === '\n' || c === '\t' || c === '\
 /**
  * Attribute map of one start tag's source (`<link rel=… href=…>`). A hand
  * scanner rather than a regex: one pass, so a long run of name characters
- * cannot make it backtrack.
+ * cannot make it backtrack. `meter`, when given, counts the attribute rounds
+ * and the characters each quoted-value search spans; both stay within the tag
+ * length because the cursor only moves forward.
  */
-export function parseAttributes(tag: string): Record<string, string> {
+export function parseAttributes(tag: string, meter?: { steps: number }): Record<string, string> {
 	const attrs: Record<string, string> = {};
 	const end = tag.endsWith('>') ? tag.length - 1 : tag.length;
 	// Skip `<name`.
 	let i = 1;
 	while (i < end && !isSpace(tag[i]!) && tag[i] !== '/') i++;
 	while (i < end) {
+		if (meter) meter.steps += 1;
 		while (i < end && (isSpace(tag[i]!) || tag[i] === '/')) i++;
 		const nameStart = i;
 		while (i < end && !isSpace(tag[i]!) && tag[i] !== '=' && tag[i] !== '/') i++;
@@ -72,6 +75,7 @@ export function parseAttributes(tag: string): Record<string, string> {
 			if (quote === '"' || quote === "'") {
 				const close = tag.indexOf(quote, i + 1);
 				const stop = close === -1 || close > end ? end : close;
+				if (meter) meter.steps += (close === -1 ? tag.length : close) - i;
 				value = tag.slice(i + 1, stop);
 				i = stop + 1;
 			} else {
@@ -169,8 +173,8 @@ export function resolveHttpUrl(href: string | undefined, base: string): string |
 
 /** Read the brand signals out of a page's HTML. */
 export function extractWebsiteSignals(html: string, pageUrl: string): WebsiteBrandSignals {
-	const metas = startTags(html, 'meta').map(parseAttributes);
-	const links = startTags(html, 'link').map(parseAttributes);
+	const metas = startTags(html, 'meta').map((tag) => parseAttributes(tag));
+	const links = startTags(html, 'link').map((tag) => parseAttributes(tag));
 	const meta = (key: string) =>
 		metas.find((m) => (m['name'] ?? m['property'])?.toLowerCase() === key)?.['content']?.trim();
 
@@ -186,7 +190,7 @@ export function extractWebsiteSignals(html: string, pageUrl: string): WebsiteBra
 	};
 	const rels = (l: Record<string, string>) => (l['rel'] ?? '').toLowerCase().split(/\s+/);
 	for (const l of links) if (rels(l).includes('apple-touch-icon')) add(l['href'], 'appleTouchIcon');
-	for (const img of startTags(html, 'img').map(parseAttributes)) {
+	for (const img of startTags(html, 'img').map((tag) => parseAttributes(tag))) {
 		const hint = `${img['class'] ?? ''} ${img['id'] ?? ''} ${img['alt'] ?? ''}`.toLowerCase();
 		if (hint.includes('logo')) add(img['src'], 'logoImage');
 	}

@@ -1,7 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import { MAX_MIME_PARTS, parseBody, parseMimeTree } from '../parse/body';
 import { extractAttachments } from '../parse/attachments';
-import { MAX_ADDRESS_HEADER_LENGTH, parseAddressList, parseAddressObject } from '../parse/address';
+import {
+	MAX_ADDRESS_HEADER_LENGTH,
+	parseAddressList,
+	parseAddressObject,
+	parseMailboxAddress,
+} from '../parse/address';
+import { unclosedAngleRun } from './helpers/hostileRegexInputs';
 import { parseMessage } from '../parse/index';
 
 /**
@@ -248,7 +254,7 @@ describe('hostile MIME input', () => {
 });
 
 /**
- * Address-header parse must be BOUNDED IN TIME, not just bounded in output.
+ * Address-header parse must be BOUNDED IN WORK, not just bounded in output.
  *
  * The de-backtracked mailbox parse (`parseMailbox`) plus the defensive
  * `MAX_ADDRESS_HEADER_LENGTH` cap replace an anchored regex
@@ -256,38 +262,45 @@ describe('hostile MIME input', () => {
  * O(n^2) — on a long `<`-run with no closing `>`. Measured against the OLD
  * code end-to-end via parseMessage: a `To:` of `"A<".repeat(k)` took ~200ms at
  * 20 KB, ~800ms at 40 KB, ~3s at 80 KB, ~12s at 160 KB, so ~1 MB pinned a core
- * for minutes. These tests would have failed (timed out) against the old
- * quadratic regex; the linear scan completes in well under a millisecond.
+ * for minutes. The tests below count the scans' work and pin the cap; the
+ * time on the same input is reported by `bun run perf:bench`.
  */
-describe('hostile address-header input is bounded in TIME', () => {
-	it('parseAddressList survives a 200 KB no-closing-> run FAST and returns a bounded result', () => {
+describe('hostile address-header input is bounded in WORK', () => {
+	it('parseAddressList reads only the capped prefix of a 200 KB no-closing-> run, in linear work', () => {
 		// 100k copies of "A<" => 200 KB of pure backtrack bait, zero closing '>'.
-		const evil = 'A<'.repeat(100_000);
-		const start = performance.now();
-		const list = parseAddressList(evil);
-		const elapsed = performance.now() - start;
-
-		// Time bound: the old O(n^2) regex needed many SECONDS on this input; the
-		// linear scan is sub-millisecond. 500ms is a generous, non-flaky ceiling.
-		expect(elapsed).toBeLessThan(500);
-		// Defense-in-depth cap also fired: nothing past 16 KiB was ever scanned.
+		const evil = unclosedAngleRun.build(100_000);
 		expect(evil.length).toBeGreaterThan(MAX_ADDRESS_HEADER_LENGTH);
+		const meter = { chars: 0 };
+		const list = parseAddressList(evil, meter);
+		// Counted, not timed: the list scan reads the 16 KiB prefix once and the
+		// one mailbox it buffers at most twice more (comments, angle split). The
+		// retired regex was O(n^2) on this shape. Its fallback regex's own time
+		// is reported by `bun run perf:bench` (family mail-message-regex-scaling).
+		expect(meter.chars).toBeGreaterThan(0);
+		expect(meter.chars).toBeLessThanOrEqual(3 * MAX_ADDRESS_HEADER_LENGTH);
 		// No valid `local@domain` exists in the run, so the list is empty — a
 		// bounded, sane result rather than a hang.
 		expect(list).toEqual([]);
 	});
 
-	it('parseMessage survives a 200 KB hostile To: header FAST (end-to-end)', () => {
-		const raw = `To: ${'A<'.repeat(100_000)}\r\nSubject: x\r\n\r\nbody\r\n`;
-		const start = performance.now();
+	it('an address past the 16 KiB cap is never read, by the list or the single-mailbox parse', () => {
+		const pad = 'A<'.repeat(MAX_ADDRESS_HEADER_LENGTH / 2);
+		expect(parseAddressList(`${pad.slice(1)}, real@z.example`)).toEqual([]);
+		expect(parseMailboxAddress(`${pad.slice(1)} real@z.example`)).toBeNull();
+		// The same address just inside the cap is found by both.
+		const inside = 'A<'.repeat(MAX_ADDRESS_HEADER_LENGTH / 2 - 16);
+		expect(parseAddressList(`${inside}, real@z.example`).map((a) => a.address)).toContain(
+			'real@z.example'
+		);
+		expect(parseMailboxAddress(`${inside} real@z.example`)?.address).toBe('real@z.example');
+	});
+
+	it('parseMessage parses a 200 KB hostile To: header to an empty address (end-to-end)', () => {
+		const raw = `To: ${unclosedAngleRun.build(100_000)}\r\nSubject: x\r\n\r\nbody\r\n`;
 		let parsed: ReturnType<typeof parseMessage> | undefined;
 		expect(() => {
 			parsed = parseMessage(raw);
 		}).not.toThrow();
-		const elapsed = performance.now() - start;
-		// The whole message parse (headers + MIME + this address header) stays far
-		// under the bound the old quadratic address parse alone would blow past.
-		expect(elapsed).toBeLessThan(500);
 		// `To:` parsed to a bounded, empty address object, never a hang.
 		expect(parsed!.to).toEqual({ value: [], text: '' });
 	});

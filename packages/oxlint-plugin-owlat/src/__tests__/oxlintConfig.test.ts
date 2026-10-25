@@ -58,6 +58,105 @@ const FIXTURES: Record<string, string> = {
 		'declare function ready(): boolean;',
 		'',
 	].join('\n'),
+	// A sleep helper in its own module: driven by fake timers in one test file,
+	// left on the real clock in the other.
+	'helpers/sleep.ts': [
+		'export function sleep(ms: number): Promise<void> {',
+		'\treturn new Promise((resolve) => setTimeout(resolve, ms));',
+		'}',
+		'',
+	].join('\n'),
+	'helpers/importedSleep.test.ts': [
+		"import { it, vi } from 'vitest';",
+		"import { sleep } from './sleep';",
+		'',
+		"it('sleeps on fake time', async () => {",
+		'\tvi.useFakeTimers();',
+		'\tconst slept = sleep(50);',
+		'\tawait vi.advanceTimersByTimeAsync(50);',
+		'\tawait slept;',
+		'});',
+		'',
+	].join('\n'),
+	'helpers/importedRealSleep.test.ts': [
+		"import { it } from 'vitest';",
+		"import { sleep } from './sleep';",
+		'',
+		"it('sleeps on the real clock', async () => {",
+		'\tawait sleep(50);',
+		'});',
+		'',
+	].join('\n'),
+	// A helper that starts a bookkeeping interval and resolves on a timeout:
+	// faking the interval alone leaves the timeout on the real clock.
+	'helpers/mixedSleep.ts': [
+		'export function sleep(ms: number): Promise<void> {',
+		'\treturn new Promise((resolve) => {',
+		'\t\tsetInterval(tick, 10);',
+		'\t\tsetTimeout(resolve, ms);',
+		'\t});',
+		'}',
+		'',
+		'declare function tick(): void;',
+		'',
+	].join('\n'),
+	'helpers/importedMixedSleep.test.ts': [
+		"import { it, vi } from 'vitest';",
+		"import { sleep } from './mixedSleep';",
+		'',
+		"it('fakes the interval only', async () => {",
+		"\tvi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });",
+		'\tconst slept = sleep(50);',
+		'\tawait vi.advanceTimersByTimeAsync(50);',
+		'\tawait slept;',
+		'});',
+		'',
+	].join('\n'),
+	// A helper exported as a timer sleep and then rebound to a real wait.
+	'helpers/reassignedSleep.ts': [
+		"import { scheduler } from 'node:timers/promises';",
+		'',
+		'export let sleep = (ms: number): Promise<unknown> =>',
+		'\tnew Promise((resolve) => setTimeout(resolve, ms));',
+		'sleep = (ms: number) => scheduler.wait(ms);',
+		'',
+	].join('\n'),
+	'helpers/importedReassignedSleep.test.ts': [
+		"import { it, vi } from 'vitest';",
+		"import { sleep } from './reassignedSleep';",
+		'',
+		"it('fakes timers the rebound helper never uses', async () => {",
+		'\tvi.useFakeTimers();',
+		'\tconst slept = sleep(50);',
+		'\tawait vi.advanceTimersByTimeAsync(50);',
+		'\tawait slept;',
+		'});',
+		'',
+	].join('\n'),
+	// A helper whose timer resolves with a promise that waits on the real
+	// clock: the result adopts it, so fake time does not settle the wait.
+	'helpers/adoptingSleep.ts': [
+		"import { scheduler } from 'node:timers/promises';",
+		'',
+		'const pending = scheduler.wait(60_000);',
+		'',
+		'export function sleep(ms: number): Promise<unknown> {',
+		'\treturn new Promise((resolve) => setTimeout(() => resolve(pending), ms));',
+		'}',
+		'',
+	].join('\n'),
+	'helpers/importedAdoptingSleep.test.ts': [
+		"import { it, vi } from 'vitest';",
+		"import { sleep } from './adoptingSleep';",
+		'',
+		"it('fakes the timer whose result adopts a real wait', async () => {",
+		'\tvi.useFakeTimers();',
+		'\tconst slept = sleep(50);',
+		'\tawait vi.advanceTimersByTimeAsync(50);',
+		'\tawait slept;',
+		'});',
+		'',
+	].join('\n'),
 	'milestones.test.ts': [
 		"import { it } from 'vitest';",
 		'',
@@ -254,11 +353,28 @@ describe.each(['.', 'apps/web'])('oxlint run from %s with the root config', (cwd
 		expect(errorCodes(byFile.get('loop.test.ts'))).toEqual(['owlat(no-test-in-loop)']);
 	});
 
-	it('reports a polling loop, and warns about a real-clock sleep and an elapsed-time check', () => {
-		expect(errorCodes(byFile.get('timing.test.ts'))).toEqual(['owlat(no-polling-loop-in-tests)']);
-		expect(warningCodes(byFile.get('timing.test.ts'))).toEqual([
+	it('rejects a polling loop, a real-clock sleep and an elapsed-time check', () => {
+		expect(errorCodes(byFile.get('timing.test.ts')).sort()).toEqual([
+			'owlat(no-polling-loop-in-tests)',
 			'owlat(no-real-time-wait-in-tests)',
 			'owlat(no-wall-clock-in-tests)',
+		]);
+		expect(warningCodes(byFile.get('timing.test.ts'))).toEqual([]);
+	});
+
+	it('follows a sleep helper imported from a sibling module to the timer fake time drives', () => {
+		expect(byFile.get('importedSleep.test.ts')).toBeUndefined();
+		expect(errorCodes(byFile.get('importedRealSleep.test.ts'))).toEqual([
+			'owlat(no-real-time-wait-in-tests)',
+		]);
+		expect(errorCodes(byFile.get('importedMixedSleep.test.ts'))).toEqual([
+			'owlat(no-real-time-wait-in-tests)',
+		]);
+		expect(errorCodes(byFile.get('importedReassignedSleep.test.ts'))).toEqual([
+			'owlat(no-real-time-wait-in-tests)',
+		]);
+		expect(errorCodes(byFile.get('importedAdoptingSleep.test.ts'))).toEqual([
+			'owlat(no-real-time-wait-in-tests)',
 		]);
 	});
 

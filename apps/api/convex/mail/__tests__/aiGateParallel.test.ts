@@ -5,6 +5,7 @@
  * `analytics/__tests__/meteredSpend.test.ts` (`write: 'schedule'`).
  */
 
+import { setImmediate as nextTurn } from 'node:timers/promises';
 import { describe, it, expect, vi } from 'vitest';
 import type { ActionCtx } from '../../_generated/server';
 import { gatedInParallel } from '../ai/gate';
@@ -59,7 +60,9 @@ describe('gatedInParallel', () => {
 			settled = true;
 			throw error;
 		});
-		await new Promise((resolve) => setTimeout(resolve, 5));
+		// The gate's rejection settles within microtasks; a full event-loop turn
+		// is past the point where an early return would have settled the result.
+		await nextTurn();
 		expect(settled).toBe(false);
 		work.resolve('late');
 		await expect(result).rejects.toThrow('rate limited');

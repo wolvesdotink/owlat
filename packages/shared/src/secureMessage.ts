@@ -100,16 +100,27 @@ export function isEncryptedClass(c: SecureMessageClass): boolean {
 }
 
 /**
+ * Counts the detached-signature structure check's work, for the tests that
+ * hold it to linear: each line it looks at for a delimiter, and each character
+ * of a delimiter line's transport padding it scans back over.
+ */
+interface LineScanMeter {
+	lines: number;
+	chars: number;
+}
+
+/**
  * Classify a RAW RFC 5322 message (headers + body) by feeding every MIME part
  * `Content-Type` it carries plus the whole raw text through
  * {@link classifySecureMessage}. This is the SERVER-SIDE twin of the reader's
  * attachment-based classification: ingest gates (`isSignedPgpMime`,
  * `isClearsigned`, and the sealed gate in `e2ee/inboundSeal.ts`) consume it so
  * the server's structural detection can never fork from the client badge's.
+ * `meter`, when given, counts the structure check's work (see LineScanMeter).
  */
-export function classifyRawSecureMessage(raw: string): SecureMessageClass {
+export function classifyRawSecureMessage(raw: string, meter?: LineScanMeter): SecureMessageClass {
 	const attachments = extractRawPartContentTypes(raw)
-		.filter((contentType) => isCorroboratedRawPartType(contentType, raw))
+		.filter((contentType) => isCorroboratedRawPartType(contentType, raw, meter))
 		.map((contentType) => ({ contentType }));
 	// The whole raw message doubles as the "body" so inline-armored blocks
 	// (clearsigned text, armored ciphertext directly in the body) are detected.
@@ -133,9 +144,13 @@ export function classifyRawSecureMessage(raw: string): SecureMessageClass {
  * demanding one skipped those messages at the ingest gate and left them stuck
  * on the neutral "signed · not verified" badge.
  */
-function isCorroboratedRawPartType(contentType: string, raw: string): boolean {
+function isCorroboratedRawPartType(
+	contentType: string,
+	raw: string,
+	meter: LineScanMeter | undefined
+): boolean {
 	if (!contentType.toLowerCase().includes(PGP_SIGNATURE_TYPE)) return true;
-	return hasDetachedSignatureStructure(raw);
+	return hasDetachedSignatureStructure(raw, meter);
 }
 
 /**
@@ -158,7 +173,7 @@ function isCorroboratedRawPartType(contentType: string, raw: string): boolean {
  * verification needs lives in `@owlat/mail-canon`'s rfc3156 module, behind this
  * gate.
  */
-function hasDetachedSignatureStructure(raw: string): boolean {
+function hasDetachedSignatureStructure(raw: string, meter: LineScanMeter | undefined): boolean {
 	const lines = raw.replace(/\r\n/g, '\n').split('\n');
 	// Boundaries may only be honoured once DECLARED by a header we already read.
 	const boundaries = new Set<string>();
@@ -169,7 +184,7 @@ function hasDetachedSignatureStructure(raw: string): boolean {
 	// the message's own header block, which can never hold a signature part.
 	let openedBy: string | null = null;
 	while (at < lines.length) {
-		const block = readHeaderBlock(lines, at, boundaries);
+		const block = readHeaderBlock(lines, at, boundaries, meter);
 		for (const value of contentTypeValues(block.headers)) {
 			if (openedBy !== null && signedBoundaries.has(openedBy) && isPgpSignaturePart(value)) {
 				return true;
@@ -185,7 +200,7 @@ function hasDetachedSignatureStructure(raw: string): boolean {
 		at = block.end;
 		openedBy = null;
 		while (at < lines.length) {
-			const delimiter = mimeDelimiter(lines[at] ?? '', boundaries);
+			const delimiter = mimeDelimiter(lines[at] ?? '', boundaries, meter);
 			at++;
 			// A CLOSE delimiter (`--b--`) ends its multipart, so what follows is the
 			// PARENT's epilogue, not a new part's headers. RFC 2046 §5.1.1 attaches
@@ -218,14 +233,15 @@ function hasDetachedSignatureStructure(raw: string): boolean {
 function readHeaderBlock(
 	lines: string[],
 	from: number,
-	boundaries: Set<string>
+	boundaries: Set<string>,
+	meter: LineScanMeter | undefined
 ): { headers: string[]; end: number } {
 	const headers: string[] = [];
 	let at = from;
 	for (; at < lines.length; at++) {
 		const line = lines[at] ?? '';
 		if (line === '') return { headers, end: at + 1 };
-		if (mimeDelimiter(line, boundaries)) return { headers, end: at };
+		if (mimeDelimiter(line, boundaries, meter)) return { headers, end: at };
 		const last = headers.length - 1;
 		if (last >= 0 && /^[ \t]/.test(line)) headers[last] += ` ${line.trim()}`;
 		else headers.push(line);
@@ -283,13 +299,16 @@ function isPgpSignaturePart(value: string): boolean {
  */
 function mimeDelimiter(
 	line: string,
-	boundaries: Set<string>
+	boundaries: Set<string>,
+	meter: LineScanMeter | undefined
 ): { boundary: string; isClose: boolean } | null {
+	if (meter) meter.lines += 1;
 	if (!line.startsWith('--')) return null;
 	// Backwards scan rather than a trailing-anchored regex: linear in the
 	// length of the padding.
 	let end = line.length;
 	while (end > 2) {
+		if (meter) meter.chars += 1;
 		const c = line.charCodeAt(end - 1);
 		if (c !== 0x20 && c !== 0x09 && c !== 0x0d) break;
 		end--;

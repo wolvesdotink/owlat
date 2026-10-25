@@ -108,10 +108,11 @@ describe('huge continuation indexes stay cheap', () => {
 			'',
 		].join('\r\n');
 
-	it.each(huge)('index %s: parsed in well under a second, and ignored', (index) => {
+	it.each(huge)('index %s: ignored by the string and byte parsers', (index) => {
 		const text = message(index);
 		const raw = Uint8Array.from(text, (c) => c.charCodeAt(0));
-		const started = performance.now();
+		// The old join walked an array sized by the index, seconds per part. An
+		// ignored segment is never placed, so no work grows with the index.
 		for (const name of ['filename', 'name', 'boundary']) {
 			expect(getRawParam(`x; ${name}*${index}="v"`, name)).toBeUndefined();
 		}
@@ -119,12 +120,23 @@ describe('huge continuation indexes stay cheap', () => {
 		const located = locateMimeTree(raw);
 		const filenames: string[] = [];
 		walkLeaves(walked.root, (leaf) => filenames.push(partFilename(leaf)));
-		// The old join walked an array sized by the index, seconds per part. The
-		// parse takes a few ms; the wide ceiling keeps a loaded CI runner from
-		// failing it, and the `toBeUndefined` above catches the old join anyway.
-		expect(performance.now() - started).toBeLessThan(1_000);
 		expect(walked.root.children).toHaveLength(3);
 		expect(located.root.children).toHaveLength(3);
 		expect(filenames).toEqual(['', '', '']);
+	});
+
+	it('keeps the last index under the cap and ignores the first one past it, in both parsers', () => {
+		const at = (index: number) => {
+			const text = message(String(index));
+			const raw = Uint8Array.from(text, (c) => c.charCodeAt(0));
+			return {
+				param: getRawParam(`x; filename*0="a"; filename*${index}="b"`, 'filename'),
+				// A kept `boundary*N="x"` replaces the boundary, so no part is found.
+				walked: parseMimeTreeWithBounds(text).root.children.length,
+				located: locateMimeTree(raw).root.children.length,
+			};
+		};
+		expect(at(MAX_CONTINUATION_INDEX)).toEqual({ param: 'ab', walked: 0, located: 0 });
+		expect(at(MAX_CONTINUATION_INDEX + 1)).toEqual({ param: 'a', walked: 3, located: 3 });
 	});
 });

@@ -12,6 +12,13 @@ import {
 	type AnalyticsUrlContext,
 	type ResolvedRoute,
 } from '../analyticsPrivacy';
+import {
+	SCALING_FACTOR,
+	URL_LIKE_UNITS,
+	exceptionEvent,
+	urlLikeRunOf,
+	urlLikeUnitsFor,
+} from './hostileRegexInputs';
 
 const ORIGIN = 'https://app.example.com';
 
@@ -282,31 +289,13 @@ describe('sanitizeAnalyticsEvent', () => {
 		});
 	});
 
-	it('stays linear on long runs of URL-like characters', () => {
-		for (const unit of [
-			'a.',
-			'a-',
-			'a+',
-			'a%',
-			'%2F',
-			'www.',
-			'?a',
-			'a/',
-			'/',
-			'href="',
-			'\\',
-			'.',
-			'./',
-			'a%3A',
-			'https:',
-			'token=',
-		]) {
-			const text = unit.repeat(Math.ceil(100_000 / unit.length));
-			const started = performance.now();
-			sanitizeAnalyticsEvent(event('$exception', { $exception_message: text }), onDashboard);
-			// A quadratic scan takes seconds here; linear takes a few milliseconds.
-			expect(performance.now() - started, unit).toBeLessThan(500);
-		}
+	it.each(URL_LIKE_UNITS)('sanitizes a 100,000-character run of %j', (unit) => {
+		// The URL patterns' time on these runs is reported by `bun run perf:bench`
+		// (family web-regex-scaling); here the run must come back as text.
+		const text = urlLikeRunOf(unit)(SCALING_FACTOR * urlLikeUnitsFor(unit));
+		expect(text.length).toBeGreaterThanOrEqual(100_000);
+		const sent = sanitizeAnalyticsEvent(exceptionEvent(text), onDashboard);
+		expect(typeof sent?.properties['$exception_message']).toBe('string');
 	});
 
 	it('leaves prose, arithmetic, aliases and quoted element attributes alone', () => {

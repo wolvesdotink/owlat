@@ -482,12 +482,19 @@ describe('remapInlineColorsForDark', () => {
 	});
 
 	it('stays linear on deeply nested markup', () => {
-		// Quadratic stack handling took seconds at this depth; linear is ~0.2 s.
-		const depth = 40_000;
-		const html = `${'<span style="color:#000">'.repeat(depth)}x${'</span>'.repeat(depth)}`;
-		const startedAt = performance.now();
-		remapInlineColorsForDark(html);
-		expect(performance.now() - startedAt).toBeLessThan(2000);
+		// Counted, not timed: each tag is one step and each closing tag finds its
+		// element on top of the stack, so a level costs 3 steps (open, close, one look).
+		// Quadratic stack handling (a search from the bottom, a copy per level)
+		// costs depth^2 / 2.
+		const steps = (depth: number) => {
+			const html = `${'<span style="color:#000">'.repeat(depth)}x${'</span>'.repeat(depth)}`;
+			const meter = { steps: 0 };
+			const out = remapInlineColorsForDark(html, meter);
+			expect(out.split('<span').length - 1).toBe(depth);
+			return meter.steps;
+		};
+		expect(steps(10_000)).toBe(3 * 10_000);
+		expect(steps(40_000)).toBe(3 * 40_000);
 	});
 
 	it('leaves a translucent tint that stays dark on the dark page alone', () => {

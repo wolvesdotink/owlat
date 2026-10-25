@@ -78,6 +78,41 @@ export function sampleTask(name: string, run: () => unknown, options: SampleOpti
 	return { name, opsPerSample: options.opsPerSample, samplesMs };
 }
 
+/**
+ * One hostile input shape for a scaling family: `build(n)` makes the input at
+ * `n` units, and `run` is the call under test. The tests hold the same shapes
+ * to their counted or bounded work; the family times them at n and factor * n,
+ * which also sees backtracking inside a regex that no counter can.
+ */
+export interface ScalingCase {
+	name: string;
+	n: number;
+	build: (n: number) => string;
+	run: (input: string) => unknown;
+}
+
+/** Time every case at n and `factor` * n, and name the pairs the report compares. */
+export function sampleScalingCases(
+	cases: readonly ScalingCase[],
+	factor: number,
+	options: SampleOptions
+): { tasks: TaskSamples[]; scaling: ScalingPair[] } {
+	const label = (scalingCase: ScalingCase, n: number) => `${scalingCase.name}, n=${n}`;
+	const tasks = cases.flatMap((scalingCase) =>
+		[scalingCase.n, factor * scalingCase.n].map((n) => {
+			const input = scalingCase.build(n);
+			return sampleTask(label(scalingCase, n), () => scalingCase.run(input), options);
+		})
+	);
+	const scaling = cases.map((scalingCase) => ({
+		name: scalingCase.name,
+		small: label(scalingCase, scalingCase.n),
+		large: label(scalingCase, factor * scalingCase.n),
+		factor,
+	}));
+	return { tasks, scaling };
+}
+
 /** Write one family's samples for the driver, with the engine that produced them. */
 export function writeFamilyResult(path: string, result: Omit<FamilyResult, 'runtime'>): void {
 	const full: FamilyResult = {

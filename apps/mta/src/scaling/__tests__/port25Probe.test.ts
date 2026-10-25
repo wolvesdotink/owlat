@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { MxRecord } from 'node:dns';
 import {
 	classifyPort25,
@@ -146,20 +146,30 @@ describe('probePort25Egress', () => {
 	});
 
 	it('is bounded by its own deadline when a connect never settles', async () => {
-		const startedAt = Date.now();
-		const result = await probePort25Egress('203.0.113.10', {
-			now: () => 1_000,
-			reachability: reachability({
-				'gmail.com': 'hang',
-				'outlook.com': 'hang',
-				'yahoo.com': 'hang',
-			}),
-			domains: DOMAINS,
-			deadlineMs: 25,
-		});
-		expect(result.status).toBe('unknown');
-		expect(result.reason).toBe('probe_deadline_exceeded');
-		expect(Date.now() - startedAt).toBeLessThan(2_000);
+		vi.useFakeTimers();
+		try {
+			let settled = false;
+			const probe = probePort25Egress('203.0.113.10', {
+				now: () => 1_000,
+				reachability: reachability({
+					'gmail.com': 'hang',
+					'outlook.com': 'hang',
+					'yahoo.com': 'hang',
+				}),
+				domains: DOMAINS,
+				deadlineMs: 25,
+			}).finally(() => (settled = true));
+			await vi.advanceTimersByTimeAsync(24);
+			expect(settled).toBe(false);
+			// The deadline, not any connect, ends the probe.
+			await vi.advanceTimersByTimeAsync(1);
+			const result = await probe;
+			expect(result.status).toBe('unknown');
+			expect(result.reason).toBe('probe_deadline_exceeded');
+			expect(vi.getTimerCount()).toBe(0);
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	it('keeps the answers of operators that replied when another one hangs', async () => {

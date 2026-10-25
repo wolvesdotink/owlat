@@ -151,9 +151,18 @@ describe('hosted draft strategy boundary', () => {
 	it('revokes services, drains late rejection, and reports one timeout outcome', async () => {
 		vi.useFakeTimers();
 		try {
+			// The strategy answers only once the test lets it, well after the deadline.
+			let answerLate!: () => void;
+			const late = new Promise<void>((resolve) => (answerLate = resolve));
+			let lateCallSettled!: () => void;
+			const lateCall = new Promise<void>((resolve) => (lateCallSettled = resolve));
 			mocks.generate.mockImplementation(async (_input, services) => {
-				await new Promise((resolve) => setTimeout(resolve, 150));
-				await services.llm.generate({ tier: 'fast', prompt: 'too late' });
+				await late;
+				try {
+					await services.llm.generate({ tier: 'fast', prompt: 'too late' });
+				} finally {
+					lateCallSettled();
+				}
 				return { draftBody: 'must never be accepted' };
 			});
 			const { ctx, calls } = fakeCtx();
@@ -166,9 +175,14 @@ describe('hosted draft strategy boundary', () => {
 				calls.filter((call) => JSON.stringify(call).includes('draft_strategy_timeout'))
 			).toHaveLength(1);
 
-			await vi.advanceTimersByTimeAsync(50);
+			// The late strategy reaches for a service the host has revoked; its
+			// rejection is drained by the host, not left unhandled.
+			answerLate();
+			await lateCall;
 			expect(mocks.llmGenerate).not.toHaveBeenCalled();
-			await Promise.resolve(); // late strategy rejection is explicitly drained by the host
+			expect(
+				calls.filter((call) => JSON.stringify(call).includes('draft_strategy_timeout'))
+			).toHaveLength(1);
 		} finally {
 			vi.useRealTimers();
 		}
