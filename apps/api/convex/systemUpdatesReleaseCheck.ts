@@ -17,6 +17,7 @@
  * Gating: platform-admin only, like everything in the pair.
  */
 import { v } from 'convex/values';
+import { validatorDecoder } from '@owlat/worker-protocol/decodeJson';
 import { GITHUB_REPO_SLUG } from '@owlat/shared/releaseArtifacts';
 import { semverCompare } from '@owlat/shared/semver';
 import { getOptional } from './lib/env';
@@ -69,6 +70,20 @@ export function offeredReleaseVersion(release: {
 }
 
 const CHECK_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+
+/**
+ * The fields of GitHub's latest-release answer this check reads. GitHub sends
+ * `body: null` for a release without notes and `published_at: null` for a draft.
+ */
+const decodeLatestRelease = validatorDecoder(
+	v.object({
+		tag_name: v.optional(v.string()),
+		body: v.optional(v.union(v.string(), v.null())),
+		published_at: v.optional(v.union(v.string(), v.null())),
+		draft: v.optional(v.boolean()),
+		prerelease: v.optional(v.boolean()),
+	})
+);
 const GITHUB_RELEASES_URL = `https://api.github.com/repos/${GITHUB_REPO_SLUG}/releases/latest`;
 
 // ── Internal mutations / queries (release-check cache) ───────────────────────
@@ -229,13 +244,9 @@ export const checkForUpdates = authedAction({
 				throwInternal(`GitHub API returned ${resp.status}`);
 			}
 
-			const release = (await resp.json()) as {
-				tag_name?: string;
-				body?: string;
-				published_at?: string;
-				draft?: boolean;
-				prerelease?: boolean;
-			};
+			const decoded = decodeLatestRelease(await resp.json());
+			if (!decoded.ok) throwInternal(`GitHub returned an unexpected release (${decoded.issue})`);
+			const release = decoded.value;
 
 			const latestVersion = offeredReleaseVersion(release);
 			const releaseNotes = release.body || '';

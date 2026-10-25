@@ -1,6 +1,7 @@
 'use node';
 
 /** Emailit transport adapter. Authentication and provider tracking stay at this boundary. */
+import { isRecord } from '@owlat/shared/utils/guards';
 import { withTimeout } from '../../inputGuards';
 import { redactSecret } from '../../redactSecret';
 import {
@@ -23,19 +24,20 @@ export const EMAILIT_SEND_URL = 'https://api.emailit.com/v2/emails';
 const EMAILIT_SEND_TIMEOUT_MS = 30_000;
 const EMAILIT_TIMEOUT_MESSAGE = 'Emailit API call timed out';
 
-interface EmailitErrorBody {
-	readonly message?: unknown;
-	readonly error?: unknown;
-}
-
 function safeErrorMessage(body: string, status: number, apiKey: string): string {
 	let message = `Emailit send failed (HTTP ${status})`;
+	let parsed: unknown;
 	try {
-		const parsed = JSON.parse(body) as EmailitErrorBody;
-		if (typeof parsed.message === 'string' && parsed.message.trim()) message = parsed.message;
-		else if (typeof parsed.error === 'string' && parsed.error.trim()) message = parsed.error;
+		parsed = JSON.parse(body);
 	} catch {
 		// Gateway HTML and malformed payloads are intentionally not surfaced.
+	}
+	// Only Emailit's own `{ message }` / `{ error }` text is surfaced.
+	if (isRecord(parsed)) {
+		const text = parsed['message'];
+		const error = parsed['error'];
+		if (typeof text === 'string' && text.trim()) message = text;
+		else if (typeof error === 'string' && error.trim()) message = error;
 	}
 	return redactSecret(message, apiKey);
 }

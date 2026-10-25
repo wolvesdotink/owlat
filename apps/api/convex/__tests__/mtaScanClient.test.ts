@@ -114,6 +114,22 @@ describe('scanAttachmentBytes', () => {
 		expect(String(warnSpy.mock.calls[0]?.[1])).toContain('HTTP 503');
 	});
 
+	it.each([
+		['a verdict without `clean`', {}],
+		['a `clean` that is not a boolean', { clean: 'false' }],
+		['a JSON scalar', 1],
+	])('FAIL-OPEN: an answer with %s is an unreadable scanner, not a verdict', async (_l, body) => {
+		const warnSpy = vi.spyOn(scannerHealth, 'warnScanSkipped');
+		vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+			new Response(JSON.stringify(body), { status: 200 })
+		);
+
+		const verdict = await scanAttachmentBytes(MTA, 'invoice.pdf', DATA);
+
+		expect(verdict.kind).toBe('skipped');
+		expect(warnSpy).toHaveBeenCalledWith('invoice.pdf', expect.stringContaining('unreadable'));
+	});
+
 	it('FAIL-OPEN: a network/parse error resolves to skipped and is surfaced', async () => {
 		const warnSpy = vi.spyOn(scannerHealth, 'warnScanSkipped');
 		vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('ECONNREFUSED'));

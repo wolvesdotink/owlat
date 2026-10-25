@@ -294,3 +294,23 @@ describe('send path: languages the template no longer supports', () => {
 		expect((await deliver(t, id, 'de'))?.resolvedLanguage).toBe('de');
 	});
 });
+
+describe('send path: stored HTML translations that do not decode', () => {
+	it.each([
+		['a subject that is not a string', { de: { htmlContent: '<p>Hallo Welt</p>', subject: 9 } }],
+		['an entry without html', { de: { subject: 'Deutscher Betreff' } }],
+		['a list', [{ htmlContent: '<p>Hallo Welt</p>', subject: 'Deutscher Betreff' }]],
+	])('delivers the default language for %s', async (_label, htmlTranslations) => {
+		const t = convexTest(schema, modules);
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+		const id = await seed(t, { htmlTranslations: JSON.stringify(htmlTranslations) });
+
+		expect(await deliver(t, id, 'de')).toEqual({
+			htmlContent: '<p>Hello world</p>',
+			subject: 'English subject',
+			plainTextContent: 'Hello world',
+			resolvedLanguage: 'en',
+		});
+		logged.mockRestore();
+	});
+});

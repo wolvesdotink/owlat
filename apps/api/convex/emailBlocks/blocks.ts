@@ -15,6 +15,7 @@ import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { requireOrgPermission } from '../lib/sessionOrganization';
 import { throwNotFound } from '../_utils/errors';
+import { isRecord } from '@owlat/shared/utils/guards';
 
 // Userless audit attribution — saved-block mutations historically have
 // no session check (mirrors the pre-deepening behavior). Audit logs
@@ -23,34 +24,21 @@ const SYSTEM_USER_ID = 'system:email_block_api';
 
 // ─── Content parsing for `blockCount` denormalization in reads ──────────────
 
-interface SingleBlockContent {
-	type: string;
-	content: unknown;
-}
-
-interface MultiBlockContent {
-	blocks: Array<{ id: string; type: string; content: unknown }>;
-}
-
-type ParsedBlockContent = SingleBlockContent | MultiBlockContent;
-
-function isMultiBlockContent(content: ParsedBlockContent): content is MultiBlockContent {
-	return 'blocks' in content && Array.isArray(content.blocks);
-}
-
+/**
+ * How many Blocks a saved block's content holds: the length of a
+ * `{ blocks: [...] }` envelope, 1 for a single `{ type, content }` block, and 0
+ * for anything else, unparseable JSON included.
+ */
 function getBlockCount(contentJson: string): number {
+	let parsed: unknown;
 	try {
-		const parsed = JSON.parse(contentJson) as ParsedBlockContent;
-		if (isMultiBlockContent(parsed)) {
-			return parsed.blocks.length;
-		}
-		if (parsed && typeof parsed === 'object' && 'type' in parsed && 'content' in parsed) {
-			return 1;
-		}
-		return 0;
+		parsed = JSON.parse(contentJson);
 	} catch {
 		return 0;
 	}
+	if (!isRecord(parsed)) return 0;
+	if (Array.isArray(parsed['blocks'])) return parsed['blocks'].length;
+	return 'type' in parsed && 'content' in parsed ? 1 : 0;
 }
 
 // ─── Read queries (unchanged) ───────────────────────────────────────────────

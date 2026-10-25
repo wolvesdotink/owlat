@@ -28,7 +28,10 @@
  */
 
 import { createCipheriv, createDecipheriv, hkdfSync, randomBytes } from 'node:crypto';
+import { v } from 'convex/values';
+import type { Decoded } from '@owlat/worker-protocol/decodeJson';
 import { getRequired } from './env';
+import { decodeJsonString } from './jsonText';
 import { CURRENT_EXTERNAL_MAIL_CRED_VERSION } from './constants';
 
 const ALGORITHM = 'aes-256-gcm';
@@ -45,6 +48,22 @@ const HKDF_INFO = 'owlat:external-mail:creds:v1';
 export interface EncryptedEnvelope extends SecretBoxEnvelope {
 	/** matches CURRENT_EXTERNAL_MAIL_CRED_VERSION at encrypt time */
 	version: number;
+}
+
+const encryptedEnvelopeValidator = v.object({
+	ciphertext: v.string(),
+	iv: v.string(),
+	authTag: v.string(),
+	version: v.number(),
+});
+
+/**
+ * Read an {@link EncryptedEnvelope} stored as JSON text, before anything tries
+ * to open it. A failure names the field, never a value: the parts are
+ * ciphertext, not secrets, but there is no reason to log them either.
+ */
+export function parseEncryptedEnvelope(json: string): Decoded<EncryptedEnvelope> {
+	return decodeJsonString(json, encryptedEnvelopeValidator);
 }
 
 /**

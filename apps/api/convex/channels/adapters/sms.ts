@@ -14,6 +14,8 @@ import type {
 	DeliveryStatus,
 	ChannelHealth,
 } from './types';
+import { v } from 'convex/values';
+import { validatorDecoder } from '@owlat/worker-protocol/decodeJson';
 import { utf8ToBase64 } from '../../lib/bytes';
 import { FETCH_TIMEOUTS, fetchWithTimeout } from '../../lib/fetchWithTimeout';
 
@@ -23,13 +25,11 @@ interface TwilioConfig {
 	fromNumber: string;
 }
 
-interface TwilioSendResponse {
-	sid?: string;
-}
+/** Twilio's created-message answer, as far as a send reads it. */
+const decodeSendResponse = validatorDecoder(v.object({ sid: v.optional(v.string()) }));
 
-interface TwilioStatusResponse {
-	status?: string;
-}
+/** Twilio's message resource, as far as a status poll reads it. */
+const decodeStatusResponse = validatorDecoder(v.object({ status: v.optional(v.string()) }));
 
 export class SmsAdapter implements ChannelAdapter {
 	id = 'sms' as const;
@@ -82,8 +82,11 @@ export class SmsAdapter implements ChannelAdapter {
 			);
 
 			if (response.ok) {
-				const data = (await response.json()) as TwilioSendResponse;
-				return { success: true, externalMessageId: data.sid };
+				// A 2xx means Twilio took the message. A sid this build cannot read is
+				// not recorded (a delivery-status poll would key on it); the send stays
+				// a success, so it is not sent again.
+				const data = decodeSendResponse(await response.json());
+				return { success: true, externalMessageId: data.ok ? data.value.sid : undefined };
 			}
 
 			const errorData = await response.text();
@@ -115,7 +118,10 @@ export class SmsAdapter implements ChannelAdapter {
 			);
 
 			if (response.ok) {
-				const data = (await response.json()) as TwilioStatusResponse;
+				const data = decodeStatusResponse(await response.json());
+				// An answer that does not decode leaves the status unknown: `sent`.
+				if (!data.ok) return 'sent';
+				const { status } = data.value;
 				const statusMap: Record<string, DeliveryStatus> = {
 					queued: 'queued',
 					sent: 'sent',
@@ -124,7 +130,7 @@ export class SmsAdapter implements ChannelAdapter {
 					failed: 'failed',
 					undelivered: 'failed',
 				};
-				return (data.status ? statusMap[data.status] : undefined) ?? 'sent';
+				return (status ? statusMap[status] : undefined) ?? 'sent';
 			}
 			// Non-2xx (429/5xx, or a 404 before the SID propagates) is transient and
 			// non-terminal — report the no-change sentinel so the caller re-polls.

@@ -11,6 +11,8 @@
  * way it began. Terminal page returns `nextCursor: null`.
  */
 
+import { v, type Infer } from 'convex/values';
+import { decodeJsonText, validatorDecoder } from '@owlat/worker-protocol/decodeJson';
 import {
 	fetchProviderPage,
 	type FetchPageResult,
@@ -22,20 +24,30 @@ import { bytesToHex, utf8Bytes, utf8ToBase64 } from '../../../lib/bytes';
 
 const PAGE_SIZE = 100;
 
-interface MailchimpMember {
-	email_address: string;
-	status: string;
-	merge_fields?: {
-		FNAME?: string;
-		LNAME?: string;
-		[key: string]: string | undefined;
-	};
-}
+/**
+ * A merge field's value. Its type is the audience owner's choice: text, a
+ * number, or an object (an ADDRESS field), so only the shapes are told apart
+ * here; the parts of an object are not read.
+ */
+const mergeFieldValueValidator = v.union(
+	v.string(),
+	v.number(),
+	v.boolean(),
+	v.null(),
+	v.object({})
+);
 
-interface MailchimpListResponse {
-	members: MailchimpMember[];
-	total_items: number;
-}
+const mailchimpMemberValidator = v.object({
+	email_address: v.string(),
+	status: v.string(),
+	merge_fields: v.optional(v.record(v.string(), mergeFieldValueValidator)),
+});
+type MailchimpMember = Infer<typeof mailchimpMemberValidator>;
+
+/** A page of `GET /lists/{id}/members`, limited by `fields=` to what is read. */
+const decodeMemberPage = validatorDecoder(
+	v.object({ members: v.array(mailchimpMemberValidator), total_items: v.number() })
+);
 
 /** Mailchimp's problem-details error body. */
 interface MailchimpErrorBody {
@@ -75,15 +87,16 @@ const SINCE_MARGIN_MS = 5 * 60 * 1000;
  *    who unsubscribed or was cleaned after its page was read, and any signup
  *    the first pass placed before its position.
  */
-interface MailchimpCursor {
-	pass: 'audience' | 'changed';
+const mailchimpCursorValidator = v.object({
+	pass: v.union(v.literal('audience'), v.literal('changed')),
 	/** Position just past the last member read, in this pass's order. */
-	offset: number;
+	offset: v.number(),
 	/** Mailchimp timestamp (ISO 8601) the `changed` pass reads from. */
-	since: string;
+	since: v.string(),
 	/** {@link memberKey} of the last member read; absent on a pass's first page. */
-	last?: string;
-}
+	last: v.optional(v.string()),
+});
+type MailchimpCursor = Infer<typeof mailchimpCursorValidator>;
 
 /** Previous release's cursor: the numeric offset of an unsorted walk. */
 const LEGACY_OFFSET_CURSOR = /^\d+$/;
@@ -95,22 +108,9 @@ function parseCursor(cursor: string): MailchimpCursor | number {
 		return { pass: 'audience', offset: 0, since: since.replace(/\.\d{3}Z$/, '+00:00') };
 	}
 	if (LEGACY_OFFSET_CURSOR.test(cursor)) return parseInt(cursor, 10);
-	let parsed: Partial<MailchimpCursor> | null = null;
-	try {
-		parsed = JSON.parse(cursor) as Partial<MailchimpCursor> | null;
-	} catch {
-		// Reported below like any other cursor this adapter did not write.
-	}
-	if (
-		parsed === null ||
-		typeof parsed !== 'object' ||
-		(parsed.pass !== 'audience' && parsed.pass !== 'changed') ||
-		typeof parsed.offset !== 'number' ||
-		typeof parsed.since !== 'string'
-	) {
-		throw new Error(`Unrecognized Mailchimp import cursor: ${cursor}`);
-	}
-	return parsed as MailchimpCursor;
+	const parsed = decodeJsonText(cursor, mailchimpCursorValidator);
+	if (!parsed.ok) throw new Error(`Unrecognized Mailchimp import cursor: ${cursor}`);
+	return parsed.value;
 }
 
 /**
@@ -238,7 +238,15 @@ export const mailchimpProvider: IntegrationImportProviderModule<'mailchimp'> = {
 			}
 		);
 
-		const data = (await response.json()) as MailchimpListResponse;
+		// A page that does not decode fails the run: it is never taken as an
+		// empty page, which would end the pass as if every member was read.
+		const decoded = decodeMemberPage(await response.json());
+		if (!decoded.ok) {
+			throw new Error(
+				`Mailchimp returned a malformed members page at offset ${offset} (${decoded.issue})`
+			);
+		}
+		const data = decoded.value;
 		const isPassOver = data.members.length < count;
 		let members = data.members;
 		if (typeof position !== 'number' && position.last !== undefined) {
@@ -264,16 +272,22 @@ export const mailchimpProvider: IntegrationImportProviderModule<'mailchimp'> = {
 				continue;
 			}
 			const mergeFields = member.merge_fields ?? {};
+			const text = (key: string) => {
+				const value = mergeFields[key];
+				return typeof value === 'string' ? value : undefined;
+			};
 			const properties: Record<string, string | number | boolean | null> = {};
 			for (const [key, value] of Object.entries(mergeFields)) {
 				if (key === 'FNAME' || key === 'LNAME') continue;
 				if (value == null || value === '') continue;
+				// An ADDRESS field is an object, which a Contact property cannot hold.
+				if (typeof value === 'object') continue;
 				properties[key] = value;
 			}
 			rows.push({
 				email: member.email_address.toLowerCase(),
-				firstName: mergeFields.FNAME,
-				lastName: mergeFields.LNAME,
+				firstName: text('FNAME'),
+				lastName: text('LNAME'),
 				...(Object.keys(properties).length > 0 ? { properties } : {}),
 			});
 		}

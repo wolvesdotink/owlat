@@ -20,11 +20,11 @@
  * Reached as `internal.channels.credentials.*`.
  */
 
-import { v } from 'convex/values';
+import { v, type Infer } from 'convex/values';
 import { internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
-import { decryptSecret } from '../lib/credentialCrypto';
-import type { EncryptedEnvelope } from '../lib/credentialCrypto';
+import { decryptSecret, parseEncryptedEnvelope } from '../lib/credentialCrypto';
+import { decodeJsonString } from '../lib/jsonText';
 import { outboundChannelValidator } from '../lib/convexValidators';
 import type { OutboundChannel } from '../lib/convexValidators';
 import { logError } from '../lib/runtimeLog';
@@ -33,25 +33,29 @@ import { logError } from '../lib/runtimeLog';
  * Shape of the plaintext credential blob entered in the channel config form
  * (`apps/web/app/components/channels/ChannelConfigForm.vue`). This mirrors that
  * form exactly — every key the form can write is listed and nothing else, so a
- * field with no reader cannot masquerade as a stored credential.
+ * field with no reader cannot masquerade as a stored credential. Each one is a
+ * string when present; a decrypted blob that is not this shape is treated like
+ * one that cannot be opened.
  */
-export interface ChannelCreds {
+const channelCredsValidator = v.object({
 	// sms (Twilio). `authToken` does double duty: it is the outbound API
 	// credential AND the key Twilio signs its inbound webhooks with, so SMS
 	// needs no separate inbound field.
-	accountSid?: string;
-	authToken?: string;
-	phoneNumber?: string;
+	accountSid: v.optional(v.string()),
+	authToken: v.optional(v.string()),
+	phoneNumber: v.optional(v.string()),
 	// whatsapp (Meta Cloud API)
-	businessAccountId?: string; // stored only — the send call is keyed on phoneNumberId
-	accessToken?: string;
-	phoneNumberId?: string;
-	appSecret?: string; // inbound only — the X-Hub-Signature-256 HMAC key
-	verifyToken?: string; // inbound only — answers Meta's GET subscription challenge
+	businessAccountId: v.optional(v.string()), // stored only — the send call is keyed on phoneNumberId
+	accessToken: v.optional(v.string()),
+	phoneNumberId: v.optional(v.string()),
+	appSecret: v.optional(v.string()), // inbound only — the X-Hub-Signature-256 HMAC key
+	verifyToken: v.optional(v.string()), // inbound only — answers Meta's GET subscription challenge
 	// generic webhook
-	endpointUrl?: string;
-	secretKey?: string; // inbound only — the shared secret the caller echoes back
-}
+	endpointUrl: v.optional(v.string()),
+	secretKey: v.optional(v.string()), // inbound only — the shared secret the caller echoes back
+});
+
+export type ChannelCreds = Infer<typeof channelCredsValidator>;
 
 /**
  * The stored field each channel's inbound signature check verifies against.
@@ -82,8 +86,12 @@ const channelSecretFieldValidator = v.union(v.literal('signature'), v.literal('v
  */
 export function decryptChannelCreds(config: string, channel: string): ChannelCreds | null {
 	try {
-		const envelope = JSON.parse(config) as EncryptedEnvelope;
-		return JSON.parse(decryptSecret(envelope)) as ChannelCreds;
+		const envelope = parseEncryptedEnvelope(config);
+		if (!envelope.ok) throw new Error(`stored envelope is malformed (${envelope.issue})`);
+		const creds = decodeJsonString(decryptSecret(envelope.value), channelCredsValidator);
+		// The path only: the plaintext is the credential.
+		if (!creds.ok) throw new Error(`decrypted credentials are malformed (${creds.issue})`);
+		return creds.value;
 	} catch (error) {
 		logError(
 			`[channels] stored credential envelope for '${channel}' could not be opened (tampered row, or encrypted under a rotated INSTANCE_SECRET) — treating the channel as not configured`,

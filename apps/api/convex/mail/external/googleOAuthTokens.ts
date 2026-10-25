@@ -16,6 +16,8 @@
  */
 
 import { createHash, randomBytes } from 'node:crypto';
+import { v, type Infer } from 'convex/values';
+import { validatorDecoder } from '@owlat/worker-protocol/decodeJson';
 import { internal } from '../../_generated/api';
 import { decryptSecret, encryptSecret } from '../../lib/credentialCrypto';
 import { getOptional } from '../../lib/env';
@@ -126,14 +128,17 @@ export function buildAuthorizationUrl(params: {
 	return `${AUTHORIZATION_ENDPOINT}?${query.toString()}`;
 }
 
-interface GoogleTokenResponse {
-	access_token?: string;
-	refresh_token?: string;
-	expires_in?: number;
-	id_token?: string;
-	error?: string;
-	error_description?: string;
-}
+/** Google's token endpoint answer: the tokens on success, `error` on a refusal. */
+const googleTokenResponseValidator = v.object({
+	access_token: v.optional(v.string()),
+	refresh_token: v.optional(v.string()),
+	expires_in: v.optional(v.number()),
+	id_token: v.optional(v.string()),
+	error: v.optional(v.string()),
+	error_description: v.optional(v.string()),
+});
+type GoogleTokenResponse = Infer<typeof googleTokenResponseValidator>;
+const decodeGoogleTokenResponse = validatorDecoder(googleTokenResponseValidator);
 
 async function postToken(body: URLSearchParams): Promise<GoogleTokenResponse> {
 	const res = await fetchWithTimeout(
@@ -145,13 +150,16 @@ async function postToken(body: URLSearchParams): Promise<GoogleTokenResponse> {
 		},
 		FETCH_TIMEOUTS.thirdPartyApi
 	);
-	let parsed: GoogleTokenResponse;
+	let answer: unknown;
 	try {
-		parsed = (await res.json()) as GoogleTokenResponse;
+		answer = await res.json();
 	} catch {
-		parsed = { error: `http_${res.status}` };
+		return { error: `http_${res.status}` };
 	}
-	return parsed;
+	// A body in another shape is a failure with its own taxonomy entry, never a
+	// token: no field of it is read, and none of it is logged.
+	const parsed = decodeGoogleTokenResponse(answer);
+	return parsed.ok ? parsed.value : { error: 'malformed_response' };
 }
 
 /**

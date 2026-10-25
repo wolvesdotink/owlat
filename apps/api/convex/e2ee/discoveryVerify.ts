@@ -16,8 +16,16 @@
  */
 
 import * as openpgp from 'openpgp';
+import { v } from 'convex/values';
 import { normalizeEmail } from '@owlat/shared';
-import { verifyManifest, type ManifestPayload } from './manifest';
+import { isRecord } from '@owlat/shared/utils/guards';
+import { validatorDecoder } from '@owlat/worker-protocol/decodeJson';
+import {
+	manifestPayloadFields,
+	rotationStatementValidator,
+	verifyManifest,
+	type ManifestPayload,
+} from './manifest';
 import { fingerprintsEqual, rotationStatementText, type RotationStatement } from './pinning';
 
 /** The parsed `/.well-known/owlat.json` body — the signed payload plus extras. */
@@ -25,6 +33,25 @@ interface FetchedManifest extends ManifestPayload {
 	signature: string;
 	/** Optional rotation feed (outside the signed payload; verified per-entry). */
 	keyRotations?: RotationStatement[];
+}
+
+/** The signed payload and its signature: what has to hold before the signature is checked. */
+const decodeSignedPayload = validatorDecoder(
+	v.object({ ...manifestPayloadFields, signature: v.string() })
+);
+const decodeRotationStatement = validatorDecoder(rotationStatementValidator);
+
+/**
+ * The well-formed entries of a fetched rotation feed. The feed is unsigned and
+ * each entry is verified on its own, so an entry that is not a statement is
+ * dropped (it could never verify) without discarding the manifest.
+ */
+function rotationStatementsOf(feed: unknown): RotationStatement[] | undefined {
+	if (!Array.isArray(feed)) return undefined;
+	return feed.flatMap((entry) => {
+		const decoded = decodeRotationStatement(entry);
+		return decoded.ok ? [decoded.value] : [];
+	});
 }
 
 /**
@@ -117,18 +144,25 @@ export async function anyRotationValid(
 	return false;
 }
 
-/** Parse + signature-verify a fetched manifest. Returns null when absent/invalid. */
+/**
+ * Parse, check and signature-verify a fetched manifest. Returns null when
+ * absent/invalid: not JSON, a payload field of the wrong type, or a signature
+ * that does not verify.
+ */
 export async function verifyFetchedManifest(bytes: Uint8Array): Promise<FetchedManifest | null> {
-	let parsed: FetchedManifest;
+	let raw: unknown;
 	try {
-		parsed = JSON.parse(new TextDecoder().decode(bytes)) as FetchedManifest;
+		raw = JSON.parse(new TextDecoder().decode(bytes));
 	} catch {
 		return null;
 	}
-	if (!parsed?.instance?.publicKeyArmored || typeof parsed.signature !== 'string') return null;
+	const checked = decodeSignedPayload(raw);
+	if (!checked.ok || !checked.value.instance.publicKeyArmored) return null;
+	const parsed = checked.value;
 	// Reconstruct EXACTLY the signed payload — everything except the detached
 	// `signature` and the unsigned `keyRotations` feed — so canonicalization
 	// matches the signer (any extra top-level field would safely fail verify).
+	// The values are the fetched ones, unchanged: the check above only reads them.
 	const payload: ManifestPayload = {
 		version: parsed.version,
 		instance: parsed.instance,
@@ -138,5 +172,7 @@ export async function verifyFetchedManifest(bytes: Uint8Array): Promise<FetchedM
 		generatedAt: parsed.generatedAt,
 	};
 	const ok = await verifyManifest(payload, parsed.signature, parsed.instance.publicKeyArmored);
-	return ok ? parsed : null;
+	if (!ok) return null;
+	const keyRotations = rotationStatementsOf(isRecord(raw) ? raw['keyRotations'] : undefined);
+	return { ...payload, signature: parsed.signature, ...(keyRotations ? { keyRotations } : {}) };
 }

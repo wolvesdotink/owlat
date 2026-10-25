@@ -14,6 +14,8 @@ import type {
 	DeliveryStatus,
 	ChannelHealth,
 } from './types';
+import { v } from 'convex/values';
+import { validatorDecoder } from '@owlat/worker-protocol/decodeJson';
 import { FETCH_TIMEOUTS, fetchWithTimeout } from '../../lib/fetchWithTimeout';
 
 interface WhatsAppConfig {
@@ -21,9 +23,10 @@ interface WhatsAppConfig {
 	accessToken: string;
 }
 
-interface WhatsAppSendResponse {
-	messages?: Array<{ id?: string }>;
-}
+/** The Graph API's send answer, as far as a send reads it. */
+const decodeSendResponse = validatorDecoder(
+	v.object({ messages: v.optional(v.array(v.object({ id: v.optional(v.string()) }))) })
+);
 
 export class WhatsAppAdapter implements ChannelAdapter {
 	id = 'whatsapp' as const;
@@ -62,8 +65,13 @@ export class WhatsAppAdapter implements ChannelAdapter {
 			);
 
 			if (response.ok) {
-				const data = (await response.json()) as WhatsAppSendResponse;
-				return { success: true, externalMessageId: data.messages?.[0]?.id };
+				// A 2xx means Meta took the message. An id this build cannot read is
+				// not recorded; the send stays a success, so it is not sent again.
+				const data = decodeSendResponse(await response.json());
+				return {
+					success: true,
+					externalMessageId: data.ok ? data.value.messages?.[0]?.id : undefined,
+				};
 			}
 
 			const errorData = await response.text();

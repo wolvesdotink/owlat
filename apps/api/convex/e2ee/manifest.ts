@@ -17,12 +17,13 @@
 
 import { createHash } from 'node:crypto';
 import * as openpgp from 'openpgp';
+import { v, type Infer } from 'convex/values';
 import { canonicalJson } from '@owlat/shared/canonicalJson';
+import { decodeJsonText } from '@owlat/worker-protocol/decodeJson';
 import { publicAction } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
 import { getOptional } from '../lib/env';
 import { openPrivateKey } from './sealing';
-import type { RotationStatement } from './pinning';
 
 /** Manifest schema version — bump when the signed-payload shape changes. */
 export const MANIFEST_VERSION = 1;
@@ -34,19 +35,31 @@ export interface KeyDirectoryEntry {
 	fingerprint: string;
 }
 
-/** The SIGNED payload (everything except the detached signature). */
-export type ManifestPayload = {
-	version: number;
-	instance: { fingerprint: string; publicKeyArmored: string };
-	features: { e2ee: number };
-	keyDirectoryDigest: string;
-	rotationFeedUrl: string;
-	generatedAt: number;
+/**
+ * The fields of the SIGNED payload (everything except the detached signature).
+ * A manifest is checked against them before its cached copy is served or a
+ * fetched one is verified; fields a newer release adds are left on the value.
+ */
+export const manifestPayloadFields = {
+	version: v.number(),
+	instance: v.object({ fingerprint: v.string(), publicKeyArmored: v.string() }),
+	features: v.object({ e2ee: v.number() }),
+	keyDirectoryDigest: v.string(),
+	rotationFeedUrl: v.string(),
+	generatedAt: v.number(),
 };
 
+/** One entry of the key-rotation feed: an old->new statement signed by the old key. */
+export const rotationStatementValidator = v.object({
+	oldFingerprint: v.string(),
+	newFingerprint: v.string(),
+	signature: v.string(),
+});
+
 /** The served manifest: the payload plus its armored detached signature. */
-type SignedManifest = ManifestPayload & {
-	signature: string;
+const signedManifestValidator = v.object({
+	...manifestPayloadFields,
+	signature: v.string(),
 	/**
 	 * The key-rotation feed (E6) — signed old->new statements a peer verifies
 	 * against a pin it already holds to upgrade silently. OUTSIDE the signed
@@ -54,8 +67,15 @@ type SignedManifest = ManifestPayload & {
 	 * so it never affects `keyDirectoryDigest` / signature verification. Absent
 	 * when this instance has never rotated a key.
 	 */
-	keyRotations?: RotationStatement[];
-};
+	keyRotations: v.optional(v.array(rotationStatementValidator)),
+});
+
+const manifestPayloadValidator = v.object(manifestPayloadFields);
+
+/** The SIGNED payload (everything except the detached signature). */
+export type ManifestPayload = Infer<typeof manifestPayloadValidator>;
+
+type SignedManifest = Infer<typeof signedManifestValidator>;
 
 /**
  * A digest of the published address-key directory: SHA-256 (hex) over the
@@ -175,7 +195,9 @@ export const getSignedManifest = publicAction({
 			cached.instanceFingerprint === identity.fingerprint &&
 			cached.rotationFeedUrl === feedUrl
 		) {
-			return JSON.parse(cached.signedManifestJson) as SignedManifest;
+			// A cached copy that does not decode is re-signed below, as on a miss.
+			const decoded = decodeJsonText(cached.signedManifestJson, signedManifestValidator);
+			if (decoded.ok) return decoded.value;
 		}
 
 		const privateKeyArmored = openPrivateKey(identity.sealedPrivateKey);

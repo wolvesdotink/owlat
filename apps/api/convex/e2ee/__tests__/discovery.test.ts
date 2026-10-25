@@ -26,8 +26,12 @@ import {
 	SsrfRejection,
 	type DiscoveryDeps,
 } from '../discoveryFetch';
-import { keyCertifiesAddress, verifyRotationStatement } from '../discoveryVerify';
-import { buildManifestPayload, signManifest } from '../manifest';
+import {
+	keyCertifiesAddress,
+	verifyFetchedManifest,
+	verifyRotationStatement,
+} from '../discoveryVerify';
+import { buildManifestPayload, signManifest, type ManifestPayload } from '../manifest';
 
 const keyPath = (name: string) =>
 	new URL(`../../../fixtures/sealed-mail/pgp-mime/keys/${name}`, import.meta.url);
@@ -312,5 +316,57 @@ describe('e2ee/discovery signed rotation statement', () => {
 		expect(await verifyRotationStatement(alicePub, statement, 'mallory@b.test', OLD, NEW)).toBe(
 			false
 		);
+	});
+});
+
+describe('e2ee/discovery fetched manifest shape', () => {
+	const bytes = (value: unknown) => new TextEncoder().encode(JSON.stringify(value));
+	const payload = () =>
+		buildManifestPayload({
+			instanceFingerprint: aliceFp,
+			instancePublicKeyArmored: alicePub,
+			directory: [{ address: BOB, fingerprint: bobFp }],
+			rotationFeedUrl: `https://${BOB_DOMAIN}/.well-known/owlat.json`,
+			generatedAt: 1_800_000_000_000,
+		});
+
+	it('returns a validly signed manifest unchanged', async () => {
+		const signed = { ...payload(), signature: await signManifest(payload(), aliceSec) };
+		expect(await verifyFetchedManifest(bytes(signed))).toEqual(signed);
+	});
+
+	it.each([
+		['a timestamp that is a string', { generatedAt: '1800000000000' }],
+		['a feature level that is a string', { features: { e2ee: '1' } }],
+		[
+			'an instance fingerprint that is a number',
+			{ instance: { fingerprint: 42, publicKeyArmored: alicePub } },
+		],
+	])('refuses a manifest whose SIGNED payload has %s', async (_label, change) => {
+		// Signed over exactly these values, so only the shape check refuses it.
+		const forged = { ...payload(), ...change } as unknown as ManifestPayload;
+		const signed = { ...forged, signature: await signManifest(forged, aliceSec) };
+		expect(await verifyFetchedManifest(bytes(signed))).toBeNull();
+	});
+
+	it('drops a malformed rotation entry and keeps the well-formed ones', async () => {
+		const statement = { oldFingerprint: 'AA', newFingerprint: 'BB', signature: 'sig' };
+		const signed = {
+			...payload(),
+			signature: await signManifest(payload(), aliceSec),
+			keyRotations: [statement, { oldFingerprint: 1 }, 'junk'],
+		};
+		expect((await verifyFetchedManifest(bytes(signed)))?.keyRotations).toEqual([statement]);
+	});
+
+	it('reads a rotation feed that is not a list as none', async () => {
+		const signed = {
+			...payload(),
+			signature: await signManifest(payload(), aliceSec),
+			keyRotations: 'none',
+		};
+		const manifest = await verifyFetchedManifest(bytes(signed));
+		expect(manifest).not.toBeNull();
+		expect(manifest).not.toHaveProperty('keyRotations');
 	});
 });

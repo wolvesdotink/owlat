@@ -339,6 +339,39 @@ describe('the necessity judgment through the runner', () => {
 		expect(await languageClaim(after)).toMatchObject({ outcome: 'claimed' });
 	});
 
+	it.each([
+		['a label that is not a string', JSON.stringify({ labels: { necessity: 1 } })],
+		['labels that are a list', JSON.stringify({ labels: ['needed'] })],
+		['answers that are not JSON', '{labels'],
+	])('never hands back stored answers with %s', async (_label, answers) => {
+		const t = await setup({ clarifyNecessity: 'enforce' });
+		const id = await seedTeamMessage(t);
+		const contextVersion = 'typesafe|jev-1.13.0|https://api.typesafe.ai';
+		await t.run(async (ctx) => {
+			await ctx.db.insert('decisionArtifacts', {
+				artifactKey: 'key-1',
+				task: 'mail.necessity',
+				kind: 'advisory',
+				status: 'complete',
+				subjectKind: 'inbound_message',
+				inboundMessageId: id,
+				contentHash: 'h',
+				policyVersion: 4,
+				contextVersion,
+				answers,
+				expiresAt: Date.now() + 60_000,
+				createdAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+		});
+		expect(
+			await t.query(internal.decision.artifacts.answeredLabels, {
+				artifactKey: 'key-1',
+				contextVersion,
+			})
+		).toBeNull();
+	});
+
 	it('stops a call planned under a policy that has since been switched off', async () => {
 		const t = await setup({ clarifyNecessity: 'enforce' });
 		const id = await seedTeamMessage(t);
