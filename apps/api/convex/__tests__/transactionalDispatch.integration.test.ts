@@ -565,7 +565,11 @@ describe('transactional.dispatch.dispatch — queued envelope', () => {
 	async function queuedEnvelope(): Promise<Record<string, unknown>> {
 		const enqueue = vi.mocked(transactionalEmailPool.enqueueAction);
 		expect(enqueue).toHaveBeenCalledOnce();
-		return (enqueue.mock.calls[0]?.[2] as { envelopeInput: Record<string, unknown> }).envelopeInput;
+		const queued = enqueue.mock.calls[0]?.[2] as
+			| { envelopeInput: Record<string, unknown> }
+			| undefined;
+		if (!queued) throw new Error('expected one queued envelope');
+		return queued.envelopeInput;
 	}
 
 	it('queues the default language with its plain text and the unsubscribe footer', async () => {

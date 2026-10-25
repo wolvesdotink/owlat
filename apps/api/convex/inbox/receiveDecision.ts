@@ -88,26 +88,26 @@ export interface ArrivalPlan {
 	readonly replyFeedbackText: string | undefined;
 }
 
-export function planArrival(arrival: Arrival): ArrivalPlan {
-	const senderEmail = extractEmail(arrival.from);
-	const isInfected = arrival.virusVerdict === 'infected';
-	const isReply = Boolean(arrival.inReplyTo || arrival.references);
-	const replyText = arrival.textBody ?? arrival.htmlBody;
+export function planArrival(input: Arrival): ArrivalPlan {
+	const senderEmail = extractEmail(input.from);
+	const isInfected = input.virusVerdict === 'infected';
+	const isReply = Boolean(input.inReplyTo || input.references);
+	const replyText = input.textBody ?? input.htmlBody;
 	return {
 		senderEmail,
-		normalizedSubject: normalizeSubject(arrival.subject),
-		senderFirstName: extractNameFromEmail(arrival.from),
+		normalizedSubject: normalizeSubject(input.subject),
+		senderFirstName: extractNameFromEmail(input.from),
 		// Sliced first: a 140-character preview need not convert or collapse a
 		// 10 MiB body inside a mutation's time budget.
 		preview: buildMessagePreview({
-			text: arrival.textBody?.slice(0, PREVIEW_SOURCE_CHARS),
-			html: arrival.htmlBody?.slice(0, PREVIEW_SOURCE_CHARS),
+			text: input.textBody?.slice(0, PREVIEW_SOURCE_CHARS),
+			html: input.htmlBody?.slice(0, PREVIEW_SOURCE_CHARS),
 		}),
 		isInfected,
 		isPipelineSkipped:
 			isInfected ||
-			isAutomatedMail(parseHeaders(arrival.headers)) ||
-			senderEmail === extractEmail(arrival.to),
+			isAutomatedMail(parseHeaders(input.headers)) ||
+			senderEmail === extractEmail(input.to),
 		replyFeedbackText:
 			isReply && replyText && !isInfected ? replyText.slice(0, REPLY_TEXT_ARG_CHARS) : undefined,
 	};
