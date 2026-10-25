@@ -46,19 +46,16 @@ afterEach(async () => {
 	}
 });
 
-/** Poll `pred` until it holds or the deadline elapses (for fire-and-forget QUITs). */
-async function waitUntil(pred: () => boolean, timeoutMs = 1_000): Promise<void> {
-	const deadline = Date.now() + timeoutMs;
-	while (!pred() && Date.now() < deadline) {
-		await new Promise((resolve) => setTimeout(resolve, 10));
-	}
-}
-
 interface FakeMx {
 	port: number;
 	connections(): number;
 	/** Cleartext QUIT commands observed across all sessions (proves a clean QUIT teardown). */
 	quits(): number;
+	/**
+	 * Resolves once `n` QUITs have been observed. The pool's QUIT is
+	 * fire-and-forget, so the test awaits the MX seeing it rather than the send.
+	 */
+	quitSeen(n: number): Promise<void>;
 	messages(): Array<{ to: string[]; body: string; secure: boolean }>;
 }
 
@@ -66,6 +63,7 @@ interface FakeMx {
 async function startFakeMx(opts: { starttls?: boolean } = {}): Promise<FakeMx> {
 	let connections = 0;
 	let quits = 0;
+	const quitWaiters: Array<{ n: number; resolve: () => void }> = [];
 	const messages: Array<{ to: string[]; body: string; secure: boolean }> = [];
 	const server = new SMTPServer({
 		secure: false,
@@ -100,7 +98,12 @@ async function startFakeMx(opts: { starttls?: boolean } = {}): Promise<FakeMx> {
 	// cleartext sessions the QUIT assertions use.
 	server.server.on('connection', (socket) => {
 		socket.on('data', (chunk: Buffer) => {
-			if (/^QUIT\b/im.test(chunk.toString('utf8'))) quits += 1;
+			if (!/^QUIT\b/im.test(chunk.toString('utf8'))) return;
+			quits += 1;
+			for (const waiter of quitWaiters.filter((w) => quits >= w.n)) {
+				quitWaiters.splice(quitWaiters.indexOf(waiter), 1);
+				waiter.resolve();
+			}
 		});
 	});
 	await new Promise<void>((resolve, reject) => {
@@ -116,6 +119,11 @@ async function startFakeMx(opts: { starttls?: boolean } = {}): Promise<FakeMx> {
 		port,
 		connections: () => connections,
 		quits: () => quits,
+		quitSeen: (n) =>
+			new Promise<void>((resolve) => {
+				if (quits >= n) resolve();
+				else quitWaiters.push({ n, resolve });
+			}),
 		messages: () => messages,
 	};
 }
@@ -313,7 +321,7 @@ describe('SmtpConnectionPool — true socket reuse (X1)', () => {
 		expect(mx.messages()).toHaveLength(cap + 1);
 		// The capped socket was retired with a graceful QUIT (observed on the wire), not
 		// destroyed — connections()===2 alone would also hold for a destroyed socket.
-		await waitUntil(() => mx.quits() >= 1);
+		await mx.quitSeen(1);
 		expect(mx.quits()).toBe(1);
 		// No state leaked between transactions: every message carried its OWN recipient.
 		expect(mx.messages().map((m) => m.to[0])).toEqual([
@@ -395,7 +403,7 @@ describe('SmtpConnectionPool — true socket reuse (X1)', () => {
 		// takeConnection saw the aged socket, QUIT it cleanly, and the caller reconnected.
 		expect(second.reused).toBe(false);
 		expect(mx.connections()).toBe(2);
-		await waitUntil(() => mx.quits() >= 1);
+		await mx.quitSeen(1);
 		expect(mx.quits()).toBe(1);
 	});
 

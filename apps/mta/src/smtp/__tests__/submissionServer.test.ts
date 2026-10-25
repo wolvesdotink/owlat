@@ -41,6 +41,7 @@ import {
 	SUBMISSION_DEDUPLICATION_MAIL_PARAMETER,
 	SUBMISSION_IDEMPOTENCY_MAIL_PARAMETER,
 } from '../submissionIdentity.js';
+import { watchSlotScripts } from '../../__tests__/helpers/slotScripts.js';
 
 const config = {
 	apiKey: 'master-secret-key',
@@ -1157,14 +1158,6 @@ describe('submission TLS gate — wire-level', () => {
 		conn.write(`${line}\r\n`);
 	}
 
-	async function waitFor(check: () => Promise<boolean>, timeoutMs = 1_000): Promise<void> {
-		const deadline = Date.now() + timeoutMs;
-		while (!(await check())) {
-			if (Date.now() >= deadline) throw new Error('timed out waiting for condition');
-			await new Promise((resolve) => setTimeout(resolve, 10));
-		}
-	}
-
 	const plainAuth = (user: string, pass: string): string =>
 		Buffer.from(`\0${user}\0${pass}`, 'utf8').toString('base64');
 
@@ -1296,6 +1289,7 @@ describe('submission TLS gate — wire-level', () => {
 			liveRedis,
 			tlsConfig({ submissionMaxConnectionsPerIp: 2 })
 		);
+		const slots = watchSlotScripts(liveRedis);
 		const port = await boot(server);
 		const key = 'mta:submission:conn:127.0.0.1';
 		const held = [await Client.connect(port), await Client.connect(port)];
@@ -1314,7 +1308,8 @@ describe('submission TLS gate — wire-level', () => {
 			expect(await liveRedis.get(key)).toBe('2');
 
 			for (const c of held) c.end();
-			await waitFor(async () => (await liveRedis.exists(key)) === 0);
+			await slots.released(2);
+			expect(await liveRedis.exists(key)).toBe(0);
 		} finally {
 			for (const c of held) c.end();
 			await server.close();
@@ -1395,6 +1390,7 @@ describe('submission TLS gate — wire-level', () => {
 			liveRedis,
 			tlsConfig({ submissionMaxConnectionsPerIp: 1 })
 		);
+		const slots = watchSlotScripts(liveRedis);
 		const port = await boot(server);
 		const first = net.connect(port, '127.0.0.1');
 		let second: net.Socket | undefined;
@@ -1403,7 +1399,8 @@ describe('submission TLS gate — wire-level', () => {
 				first.once('connect', resolve);
 				first.once('error', reject);
 			});
-			await waitFor(async () => (await liveRedis.get('mta:submission:conn:127.0.0.1')) === '1');
+			await slots.acquired(1);
+			expect(await liveRedis.get('mta:submission:conn:127.0.0.1')).toBe('1');
 
 			second = net.connect(port, '127.0.0.1');
 			await new Promise<void>((resolve, reject) => {
@@ -1420,7 +1417,8 @@ describe('submission TLS gate — wire-level', () => {
 			expect(await liveRedis.get('mta:submission:conn:127.0.0.1')).toBe('1');
 
 			first.destroy();
-			await waitFor(async () => (await liveRedis.exists('mta:submission:conn:127.0.0.1')) === 0);
+			await slots.released(1);
+			expect(await liveRedis.exists('mta:submission:conn:127.0.0.1')).toBe(0);
 		} finally {
 			first.destroy();
 			second?.destroy();
@@ -1476,15 +1474,18 @@ describe('submission TLS gate — wire-level', () => {
 		client.on('secureConnect', () => {
 			secured = true;
 		});
-		client.on('data', (chunk) => {
-			greeting += chunk.toString();
+		const greeted = new Promise<void>((resolve) => {
+			client.on('data', (chunk) => {
+				greeting += chunk.toString();
+				if (greeting.startsWith('220 ')) resolve();
+			});
 		});
 		try {
 			await new Promise((resolve) => setTimeout(resolve, 100));
 			expect(secured).toBe(false);
 			expect(greeting).toBe('');
 			decide(1);
-			await waitFor(async () => greeting.startsWith('220 '));
+			await greeted;
 			expect(secured).toBe(true);
 		} finally {
 			decide?.(0);

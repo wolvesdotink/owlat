@@ -28,6 +28,7 @@ import type { AddressInfo } from 'node:net';
 import type { SmtpListener } from '@owlat/smtp-listener';
 import { Client } from '@owlat/smtp-listener/testClient';
 import { createBounceServer } from '../server.js';
+import { watchSlotScripts } from '../../__tests__/helpers/slotScripts.js';
 import type { MtaConfig } from '../../config.js';
 
 vi.mock('../../monitoring/logger.js', () => ({
@@ -316,6 +317,7 @@ describe('MX listener bounds a connection flood with 421 (production config)', (
 describe('MX listener caps connections per IP with 421 (production config)', () => {
 	it('refuses the N+1th connection from one IP and releases every slot on close', async () => {
 		const { port, redis } = await start({ bounceMaxConnectionsPerIp: 2 });
+		const slots = watchSlotScripts(redis);
 		const key = 'mta:bounce:conn:127.0.0.1';
 		const held: Client[] = [];
 		for (let i = 0; i < 2; i++) {
@@ -333,11 +335,8 @@ describe('MX listener caps connections per IP with 421 (production config)', () 
 		expect(await redis.get(key)).toBe('2');
 
 		for (const c of held) c.end();
-		const deadline = Date.now() + 3000;
-		while ((await redis.exists(key)) !== 0) {
-			if (Date.now() > deadline) throw new Error('per-IP slots were not released');
-			await new Promise((resolve) => setTimeout(resolve, 10));
-		}
+		await slots.released(2);
+		expect(await redis.exists(key)).toBe(0);
 	});
 });
 

@@ -211,13 +211,14 @@ describe('useHistory', () => {
 		// Undo all the way back; every step must reconstruct without throwing
 		// (nearest-checkpoint + forward-delta replay via reconstructState) and
 		// land on the original state.
-		let undoSteps = 0;
-		while (history.canUndo.value) {
+		// A fixed walk: each step must still be undoable and move the index by
+		// exactly one, so a stuck or skipping undo fails here, not by hanging.
+		for (let step = 12; step > 0; step--) {
+			expect(history.canUndo.value).toBe(true);
+			expect(history.currentIndex.value).toBe(step);
 			history.undo();
 			await settle();
-			undoSteps++;
 		}
-		expect(undoSteps).toBe(12);
 		expect(flags(history)).toEqual({ canUndo: false, canRedo: true, length: 13, index: 0 });
 		expect(name.value).toBe('Initial');
 
@@ -251,16 +252,16 @@ describe('useHistory', () => {
 		// deep-copy of the nearest retained checkpoint + forward deltas), so
 		// reaching the earliest retained entry proves no delta was orphaned.
 		const retained = history.historyLength.value;
-		let undoSteps = 0;
-		while (history.canUndo.value) {
+		expect(retained).toBeGreaterThan(2);
+		for (let step = retained - 1; step > 0; step--) {
+			expect(history.canUndo.value).toBe(true);
+			expect(history.currentIndex.value).toBe(step);
 			history.undo();
 			await settle();
-			undoSteps++;
 		}
-		expect(history.currentIndex.value).toBe(0);
 		// We walked the entire retained window (more than one entry) cleanly.
-		expect(undoSteps).toBe(retained - 1);
-		expect(undoSteps).toBeGreaterThan(1);
+		expect(history.currentIndex.value).toBe(0);
+		expect(history.canUndo.value).toBe(false);
 		expect(typeof name.value).toBe('string');
 
 		// Stepping forward off the earliest checkpoint through its delta run
@@ -279,10 +280,13 @@ describe('useHistory', () => {
 				name.value = `c${i}`;
 			});
 		}
-		while (history.canUndo.value) {
+		for (let step = 15; step > 0; step--) {
+			expect(history.canUndo.value).toBe(true);
+			expect(history.currentIndex.value).toBe(step);
 			history.undo();
 			await settle();
 		}
+		expect(history.canUndo.value).toBe(false);
 		expect(name.value).toBe('Initial');
 		// Step forward a couple deltas off the first checkpoint.
 		history.redo();
