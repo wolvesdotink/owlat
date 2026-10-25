@@ -321,30 +321,8 @@ apps/imap/src/commands/helpers/__tests__/seqMap.test.ts	owlat(no-wall-clock-in-t
 apps/imap/src/commands/helpers/__tests__/seqMap.test.ts	owlat(no-wall-clock-in-tests)	performance.now()
 apps/mail-sync/src/ingest.ts	owlat(no-unchecked-json-cast)	(await response.json()) as { storageId: string; size: number }
 apps/marketing/app/composables/useDesktopDownload.ts	owlat(no-unchecked-json-cast)	(await res.json()) as { assets?: { name: string; browser_download_url: string }[]; }
-apps/mta/src/auth/credentials.ts	owlat(no-unchecked-json-cast)	JSON.parse(data) as OrgCredential
-apps/mta/src/auth/credentials.ts	owlat(no-unchecked-json-cast)	JSON.parse(data) as OrgCredential
-apps/mta/src/auth/credentials.ts	owlat(no-unchecked-json-cast)	JSON.parse(data) as OrgCredential
-apps/mta/src/auth/credentials.ts	owlat(no-unchecked-json-cast)	JSON.parse(data) as OrgCredential
-apps/mta/src/auth/postboxAuth.ts	owlat(no-unchecked-json-cast)	(await res.json()) as | { ok: true; mailboxId: string; appPasswordId: string; userId: string; organizationId: string; } | { ok: false }
-apps/mta/src/bounce/feedbackProvenance.ts	owlat(no-unchecked-json-cast)	JSON.parse(value) as Record<string, unknown>
-apps/mta/src/bounce/feedbackProvenance.ts	owlat(no-unchecked-json-cast)	JSON.parse(value) as Record<string, unknown>
-apps/mta/src/config.ts	owlat(no-unchecked-json-cast)	dkimKeys = JSON.parse(dkimKeysRaw)
-apps/mta/src/inbound/mailboxResolver.ts	owlat(no-unchecked-json-cast)	JSON.parse(data) as MailboxCacheEntry
-apps/mta/src/inbound/mailboxResolver.ts	owlat(no-unchecked-json-cast)	JSON.parse(data) as MailboxCacheEntry
-apps/mta/src/intelligence/contentScreening.ts	owlat(no-unchecked-json-cast)	(await response.json()) as RspamdResponse
-apps/mta/src/intelligence/smtpResponse.ts	owlat(no-unchecked-json-cast)	JSON.parse(raw) as { code: number }
-apps/mta/src/intelligence/smtpResponse.ts	owlat(no-unchecked-json-cast)	JSON.parse(raw) as { code: number }
-apps/mta/src/intelligence/suppressionList.ts	owlat(no-unchecked-json-cast)	meta = JSON.parse(raw)
-apps/mta/src/intelligence/suppressionList.ts	owlat(no-unchecked-json-cast)	previous = JSON.parse(raw)
-apps/mta/src/monitoring/googlePostmasterApi.ts	owlat(no-unchecked-json-cast)	(await response.json()) as { access_token?: unknown; expires_in?: unknown }
-apps/mta/src/queue/deferHandoff.ts	owlat(no-unchecked-json-cast)	JSON.parse(raw) as Record<string, unknown>
-apps/mta/src/queue/routingReentryHandoff.ts	owlat(no-unchecked-json-cast)	JSON.parse(raw) as Record<string, unknown>
-apps/mta/src/routes/sendReceipt.ts	owlat(no-unchecked-json-cast)	JSON.parse(value) as Record<string, unknown>
 apps/mta/src/scaling/__tests__/port25Probe.test.ts	owlat(no-wall-clock-in-tests)	Date.now() - startedAt
 apps/mta/src/smtp/__tests__/mtaStsFetch.test.ts	owlat(no-wall-clock-in-tests)	Date.now() - started
-apps/mta/src/smtp/daneResolver.ts	owlat(no-unchecked-json-cast)	JSON.parse(cached) as CachedTlsa
-apps/mta/src/smtp/mtaSts.ts	owlat(no-unchecked-json-cast)	JSON.parse(raw) as Partial<StsPolicy>
-apps/mta/src/smtp/tlsRpt.ts	owlat(no-unchecked-json-cast)	JSON.parse(raw) as { type: string; mxHost: string; sendingIp: string }
 apps/setup-cli/src/commands/doctorRun.ts	owlat(no-unchecked-json-cast)	JSON.parse(await readFile(statePath, 'utf-8')) as FeatureFlagState
 apps/setup-cli/src/lib/flagState.ts	owlat(no-unchecked-json-cast)	JSON.parse(await file.text()) as FeatureFlagState
 apps/updater/src/__tests__/exec.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, 150)
@@ -404,19 +382,7 @@ apps/web/app/utils/postboxDraftMirror.ts	owlat(no-unchecked-json-cast)	JSON.pars
 apps/web/app/utils/postboxDraftMirror.ts	owlat(no-unchecked-json-cast)	JSON.parse(fields.bodyBlocks) as unknown[]
 apps/web/app/utils/postboxDraftMirror.ts	owlat(no-unchecked-json-cast)	JSON.parse(raw) as unknown[]
 apps/web/app/utils/storageUpload.ts	owlat(no-unchecked-json-cast)	(await response.json()) as { storageId?: Id<'_storage'> }
-apps/web/e2e/sessionSecrets.ts	owlat(no-unchecked-json-cast)	JSON.parse(json) as StorageState
-apps/web/perf/fixture/assistantStream.ts	owlat(no-unchecked-json-cast)	JSON.parse(payload) as SyntheticAssistantRow[]
-apps/web/perf/fixture/chatHistory.ts	owlat(no-unchecked-json-cast)	JSON.parse(JSON.stringify(rows)) as SyntheticChatRow[]
-apps/web/perf/fixture/postboxList.ts	owlat(no-unchecked-json-cast)	JSON.parse(JSON.stringify(next)) as SyntheticPostboxRow[]
-apps/web/perf/fixture/teamInbox.ts	owlat(no-unchecked-json-cast)	JSON.parse(JSON.stringify(next)) as SyntheticInboxThread[]
-apps/web/server/api/storage/upload.post.ts	owlat(no-unchecked-json-cast)	(await begin.json()) as { uploadId: string; uploadUrl: string }
-apps/web/server/api/storage/upload.post.ts	owlat(no-unchecked-json-cast)	(await native.json()) as { storageId?: unknown }
-apps/web/server/api/system/apply-profiles.post.ts	owlat(no-unchecked-json-cast)	(await updaterResp.json()) as typeof result
-apps/web/server/api/system/port-checks.post.ts	owlat(no-unchecked-json-cast)	(await resp.json()) as PortChecksResult
-apps/web/server/api/system/profile-drift.get.ts	owlat(no-unchecked-json-cast)	(await resp.json()) as UpdaterProfileState
-apps/web/server/api/system/update.post.ts	owlat(no-unchecked-json-cast)	(await updaterResp.json()) as typeof updaterResult
 apps/web/server/utils/__tests__/updater.test.ts	owlat(no-wall-clock-in-tests)	Date.now() - started
-apps/web/server/utils/authedConvexClient.ts	owlat(no-unchecked-json-cast)	(await tokenResp.json()) as { token?: string | null }
 packages/email-builder/src/utils/deltaHistory.ts	owlat(no-unchecked-json-cast)	JSON.parse(JSON.stringify(checkpoint.state)) as HistoryState
 packages/email-renderer/src/draftBodies.ts	owlat(no-unchecked-json-cast)	JSON.parse(draft.bodyBlocks) as EditorBlock[]
 packages/email-renderer/src/renderer.ts	owlat(no-unchecked-json-cast)	items = JSON.parse(rawValue)

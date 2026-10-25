@@ -32,7 +32,15 @@ afterEach(async () => {
 	);
 });
 async function fixture(
-	options: { rejectToken?: boolean; failFinish?: boolean; redirect?: boolean } = {}
+	options: {
+		rejectToken?: boolean;
+		failFinish?: boolean;
+		redirect?: boolean;
+		/** Replaces the begin answer; receives the native storage URL. */
+		beginBody?: (nativeUrl: string) => unknown;
+		/** Replaces the native storage answer. */
+		nativeBody?: unknown;
+	} = {}
 ) {
 	let bytes = 0;
 	const controls: { operation: string; body: Record<string, unknown>; auth?: string }[] = [];
@@ -58,7 +66,11 @@ async function fixture(
 				return;
 			}
 			res.setHeader('Content-Type', 'application/json');
-			res.end(JSON.stringify({ storageId: 'server-returned-storage-id' }));
+			res.end(
+				JSON.stringify(
+					'nativeBody' in options ? options.nativeBody : { storageId: 'server-returned-storage-id' }
+				)
+			);
 		})
 	);
 	const controlUrl = await listen(
@@ -78,7 +90,11 @@ async function fixture(
 			res.setHeader('Content-Type', 'application/json');
 			res.end(
 				JSON.stringify(
-					operation === 'begin' ? { uploadId: 'receipt-id', uploadUrl: nativeUrl } : { ok: true }
+					operation !== 'begin'
+						? { ok: true }
+						: options.beginBody
+							? options.beginBody(nativeUrl)
+							: { uploadId: 'receipt-id', uploadUrl: nativeUrl }
 				)
 			);
 		})
@@ -229,5 +245,29 @@ describe('streaming upload receipt bridge', () => {
 		vi.stubEnv('INSTANCE_SECRET', '');
 		expect((await post(`${f.proxy}?token=one-use`, 1)).status).toBe(503);
 		expect(f.controls).toEqual([]);
+	});
+	it.each<[string, (nativeUrl: string) => unknown, string[]]>([
+		['null', () => null, ['begin']],
+		['an array', (nativeUrl) => [{ uploadId: 'receipt-id', uploadUrl: nativeUrl }], ['begin']],
+		['no uploadUrl', () => ({ uploadId: 'receipt-id' }), ['begin', 'abort']],
+		['no uploadId', (nativeUrl) => ({ uploadUrl: nativeUrl }), ['begin']],
+		['a numeric uploadId', (nativeUrl) => ({ uploadId: 7, uploadUrl: nativeUrl }), ['begin']],
+	])('refuses a begin answer with %s before forwarding bytes', async (_label, beginBody, ops) => {
+		const f = await fixture({ beginBody });
+		expect((await post(`${f.proxy}?token=one-use`, 10)).status).toBe(502);
+		expect(f.nativeHeaders).toEqual([]);
+		expect(f.controls.map((c) => c.operation)).toEqual(ops);
+		if (ops.includes('abort')) expect(f.controls.at(-1)?.body).toEqual({ uploadId: 'receipt-id' });
+	});
+	it.each<[string, unknown]>([
+		['null', null],
+		['an array', [{ storageId: 'server-returned-storage-id' }]],
+		['no storageId', {}],
+		['a numeric storageId', { storageId: 7 }],
+	])('aborts without a receipt when storage answers %s', async (_label, nativeBody) => {
+		const f = await fixture({ nativeBody });
+		expect((await post(`${f.proxy}?token=one-use`, 10)).status).toBe(502);
+		expect(f.controls.map((c) => c.operation)).toEqual(['begin', 'abort']);
+		expect(f.controls.at(-1)?.body).toEqual({ uploadId: 'receipt-id' });
 	});
 });

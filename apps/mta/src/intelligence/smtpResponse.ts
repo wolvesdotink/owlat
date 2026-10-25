@@ -10,6 +10,7 @@
  */
 
 import type Redis from 'ioredis';
+import { isRecord } from '@owlat/shared/utils/guards';
 import type { SmtpDomainStatus } from '../types.js';
 import { logger } from '../monitoring/logger.js';
 import { createHash } from 'crypto';
@@ -109,6 +110,22 @@ function codeClass(code: number): '2xx' | '4xx' | '5xx' | 'other' {
 }
 
 /**
+ * The class of one recorded response (`{"code":550,…}` in the history list).
+ * An entry without a numeric code is corrupt and counts as 'other', so it
+ * never tips a domain into degraded or blocking.
+ */
+function recordedCodeClass(raw: string): ReturnType<typeof codeClass> {
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(raw);
+	} catch {
+		return 'other';
+	}
+	const code = isRecord(parsed) ? parsed['code'] : undefined;
+	return typeof code === 'number' ? codeClass(code) : 'other';
+}
+
+/**
  * Check if sends to a domain should be deferred based on recent SMTP patterns
  * Returns the number of milliseconds to defer, or 0 if sending is OK
  */
@@ -197,15 +214,10 @@ export async function recordResponse(
 	let count5xx = 0;
 
 	for (const raw of recentCodes) {
-		try {
-			const parsed = JSON.parse(raw) as { code: number };
-			const parsedClass = codeClass(parsed.code);
-			if (parsedClass === '2xx') count2xx++;
-			else if (parsedClass === '4xx') count4xx++;
-			else if (parsedClass === '5xx') count5xx++;
-		} catch {
-			continue;
-		}
+		const parsedClass = recordedCodeClass(raw);
+		if (parsedClass === '2xx') count2xx++;
+		else if (parsedClass === '4xx') count4xx++;
+		else if (parsedClass === '5xx') count5xx++;
 	}
 
 	const total = count2xx + count4xx + count5xx;
@@ -231,14 +243,7 @@ export async function recordResponse(
 	else if (ratio4xx > DEGRADED_4XX_RATIO) {
 		// Additional check: last 5 responses all 4xx?
 		const lastFive = recentCodes.slice(0, 5);
-		const allRecent4xx = lastFive.every((raw) => {
-			try {
-				const p = JSON.parse(raw) as { code: number };
-				return codeClass(p.code) === '4xx';
-			} catch {
-				return false;
-			}
-		});
+		const allRecent4xx = lastFive.every((raw) => recordedCodeClass(raw) === '4xx');
 
 		if (allRecent4xx) {
 			newStatus = 'degraded';

@@ -20,6 +20,7 @@ vi.mock('../../monitoring/logger.js', () => ({
 
 const RESOLVER = 'https://doh.example/dns-query';
 const MX = 'mx.recipient.test';
+const CACHE_PREFIX = 'mta:dane:';
 
 function dohResponse(body: unknown): Response {
 	return new Response(JSON.stringify(body), {
@@ -218,5 +219,57 @@ describe('lookupTlsaRecords — caching', () => {
 		const requestUrl = String(fetchSpy.mock.calls[0]?.[0]);
 		expect(requestUrl).toContain('name=_25._tcp.mx.recipient.test');
 		expect(requestUrl).toContain('type=52');
+	});
+});
+
+describe('lookupTlsaRecords — a corrupt cache entry triggers a fresh lookup', () => {
+	const valid = { usage: 3, selector: 1, matchingType: 1, data: 'aabbcc' };
+	const corrupt: Array<[string, unknown]> = [
+		['null', null],
+		['an array', [valid]],
+		['an unknown status', { status: 'none', records: [] }],
+		['records that are not an array', { status: 'records', records: valid }],
+		['a null record', { status: 'records', records: [valid, null] }],
+		['a string usage', { status: 'records', records: [{ ...valid, usage: '3' }] }],
+		['a fractional selector', { status: 'records', records: [{ ...valid, selector: 1.5 }] }],
+		['non-hex data', { status: 'records', records: [{ ...valid, data: 'zz' }] }],
+		['un-normalised data', { status: 'records', records: [{ ...valid, data: 'AA BB CC' }] }],
+		['a record without data', { status: 'records', records: [{ ...valid, data: undefined }] }],
+	];
+
+	it.each(corrupt)('re-resolves a cache entry with %s', async (_label, entry) => {
+		await redis.set(`${CACHE_PREFIX}${MX}`, JSON.stringify(entry));
+		const fetchSpy = vi
+			.spyOn(globalThis, 'fetch')
+			.mockResolvedValue(dohResponse(secureTlsaAnswer('3 1 1 ddeeff')));
+
+		expect(await lookupTlsaRecords(redis, MX, RESOLVER)).toEqual({
+			status: 'records',
+			records: [{ usage: 3, selector: 1, matchingType: 1, data: 'ddeeff' }],
+		});
+		expect(fetchSpy).toHaveBeenCalledTimes(1);
+	});
+
+	it.each(corrupt)('defers rather than reading %s as no-tlsa', async (_label, entry) => {
+		await redis.set(`${CACHE_PREFIX}${MX}`, JSON.stringify(entry));
+		vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('resolver down'));
+
+		expect(await lookupTlsaRecords(redis, MX, RESOLVER)).toMatchObject({
+			status: 'lookup-failed',
+		});
+	});
+
+	it('still serves a well-formed cached entry without a fetch', async () => {
+		await redis.set(
+			`${CACHE_PREFIX}${MX}`,
+			JSON.stringify({ status: 'records', records: [valid] })
+		);
+		const fetchSpy = vi.spyOn(globalThis, 'fetch');
+
+		expect(await lookupTlsaRecords(redis, MX, RESOLVER)).toEqual({
+			status: 'records',
+			records: [valid],
+		});
+		expect(fetchSpy).not.toHaveBeenCalled();
 	});
 });

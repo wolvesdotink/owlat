@@ -18,7 +18,13 @@
  */
 
 import type Redis from 'ioredis';
-import { parseTlsaRecord, type TlsaRecord } from '@owlat/shared/dane';
+import {
+	formatTlsaRecord,
+	parseTlsaRecord,
+	tlsaRecordsEqual,
+	type TlsaRecord,
+} from '@owlat/shared/dane';
+import { isRecord } from '@owlat/shared/utils/guards';
 import { logger } from '../monitoring/logger.js';
 import { queryDohJson } from './dohResolver.js';
 
@@ -65,6 +71,51 @@ type QueryOutcome =
 interface CachedTlsa {
 	status: 'records' | 'no-tlsa';
 	records: TlsaRecord[];
+}
+
+/**
+ * A cached record, held to the same rules as one parsed off the wire: it must
+ * be exactly what {@link parseTlsaRecord} makes of its presentation form.
+ */
+function decodeCachedTlsaRecord(value: unknown): TlsaRecord | null {
+	if (!isRecord(value)) return null;
+	const { usage, selector, matchingType, data } = value;
+	if (
+		typeof usage !== 'number' ||
+		typeof selector !== 'number' ||
+		typeof matchingType !== 'number' ||
+		typeof data !== 'string'
+	) {
+		return null;
+	}
+	const record = { usage, selector, matchingType, data };
+	const reparsed = parseTlsaRecord(formatTlsaRecord(record));
+	return reparsed && tlsaRecordsEqual(reparsed, record) ? reparsed : null;
+}
+
+/**
+ * A cache entry, or `null` when it is corrupt. Every record must decode: a
+ * cache that lost one could otherwise pin a weaker policy than DNS publishes.
+ * `null` means a fresh lookup, never `no-tlsa`.
+ */
+function decodeCachedTlsa(cached: string): CachedTlsa | null {
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(cached);
+	} catch {
+		return null;
+	}
+	if (!isRecord(parsed)) return null;
+	const { status, records: cachedRecords } = parsed;
+	if (status === 'no-tlsa') return { status: 'no-tlsa', records: [] };
+	if (status !== 'records' || !Array.isArray(cachedRecords)) return null;
+	const records: TlsaRecord[] = [];
+	for (const entry of cachedRecords) {
+		const record = decodeCachedTlsaRecord(entry);
+		if (!record) return null;
+		records.push(record);
+	}
+	return { status: 'records', records };
 }
 
 /** Normalise an MX hostname for the TLSA query name and cache key. */
@@ -151,17 +202,10 @@ export async function lookupTlsaRecords(
 	const cacheKey = `${DANE_CACHE_PREFIX}${host}`;
 
 	const cached = await redis.get(cacheKey);
-	if (cached) {
-		try {
-			const parsed = JSON.parse(cached) as CachedTlsa;
-			if (parsed.status === 'no-tlsa') return { status: 'no-tlsa' };
-			if (parsed.status === 'records' && Array.isArray(parsed.records)) {
-				return { status: 'records', records: parsed.records };
-			}
-		} catch {
-			// Corrupt cache entry — fall through to a fresh lookup.
-		}
-	}
+	// A corrupt cache entry falls through to a fresh lookup.
+	const hit = cached ? decodeCachedTlsa(cached) : null;
+	if (hit?.status === 'no-tlsa') return { status: 'no-tlsa' };
+	if (hit?.status === 'records') return { status: 'records', records: hit.records };
 
 	const outcome = await queryTlsa(resolverUrl, host);
 

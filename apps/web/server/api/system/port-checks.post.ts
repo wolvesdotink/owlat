@@ -1,6 +1,7 @@
 import { errorMessage } from '@owlat/shared';
 import { requirePlatformAdmin } from '~~/server/utils/requireAdmin';
 import { getInstanceSecret, callUpdater } from '~~/server/utils/updater';
+import { decodePortChecksReport } from '~~/server/utils/updaterResponses';
 
 /**
  * Session-authed proxy to the updater's POST /port-checks — the admin card's
@@ -47,7 +48,8 @@ export default defineEventHandler(async (event): Promise<PortChecksResult> => {
 			// leaves room for the slowest of them plus the sidecar's own overhead.
 			signal: AbortSignal.timeout(30_000),
 		});
-		const body = (await resp.json()) as PortChecksResult;
+		const body = decodePortChecksReport(await resp.json());
+		if (!body) return { reachable: false, error: 'Updater answered with an unreadable report' };
 		if (!resp.ok) {
 			return { reachable: true, error: body.error || `Updater returned ${resp.status}` };
 		}

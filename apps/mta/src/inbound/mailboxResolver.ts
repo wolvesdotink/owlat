@@ -12,6 +12,7 @@
  */
 
 import type Redis from 'ioredis';
+import { isRecord } from '@owlat/shared/utils/guards';
 import { logger } from '../monitoring/logger.js';
 
 const CACHE_PREFIX = 'mta:mailbox:';
@@ -30,6 +31,39 @@ function cacheKey(address: string): string {
 	return `${CACHE_PREFIX}${address.toLowerCase()}`;
 }
 
+const isId = (value: unknown): value is string => typeof value === 'string' && value !== '';
+
+const isCount = (value: unknown): value is number =>
+	typeof value === 'number' && Number.isFinite(value);
+
+/**
+ * A stored cache entry, or `null` when it is corrupt. A corrupt entry routes
+ * nothing and is never rewritten: a non-numeric `usedBytes` must not become a
+ * `NaN` quota check or be written back as one. Fields this build does not
+ * know stay on the entry, so the usedBytes refresh keeps them.
+ */
+function decodeCacheEntry(data: string): MailboxCacheEntry | null {
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(data);
+	} catch {
+		return null;
+	}
+	if (!isRecord(parsed)) return null;
+	const { mailboxId, organizationId, quotaBytes, usedBytes, cachedAt } = parsed;
+	if (!isId(mailboxId) || !isId(organizationId)) return null;
+	if (!isCount(usedBytes) || !isCount(cachedAt)) return null;
+	if (quotaBytes !== undefined && !isCount(quotaBytes)) return null;
+	return {
+		...parsed,
+		mailboxId,
+		organizationId,
+		...(quotaBytes === undefined ? {} : { quotaBytes }),
+		usedBytes,
+		cachedAt,
+	};
+}
+
 /**
  * Look up a recipient address in the personal-mailbox cache.
  * Returns null if no mailbox is registered for that address.
@@ -40,12 +74,9 @@ export async function findMailboxRoute(
 ): Promise<MailboxCacheEntry | null> {
 	const data = await redis.get(cacheKey(address));
 	if (!data) return null;
-	try {
-		return JSON.parse(data) as MailboxCacheEntry;
-	} catch (err) {
-		logger.warn({ err, address }, 'Failed to parse mailbox cache entry');
-		return null;
-	}
+	const entry = decodeCacheEntry(data);
+	if (!entry) logger.warn({ address }, 'Ignoring a corrupt mailbox cache entry');
+	return entry;
 }
 
 /**
@@ -84,10 +115,14 @@ export async function bumpUsedBytes(
 ): Promise<void> {
 	const data = await redis.get(cacheKey(address));
 	if (!data) return;
+	const entry = decodeCacheEntry(data);
+	if (!entry) {
+		logger.warn({ address }, 'Not bumping usedBytes on a corrupt mailbox cache entry');
+		return;
+	}
+	entry.usedBytes = Math.max(0, entry.usedBytes + deltaBytes);
 	try {
-		const parsed = JSON.parse(data) as MailboxCacheEntry;
-		parsed.usedBytes = Math.max(0, parsed.usedBytes + deltaBytes);
-		await redis.setex(cacheKey(address), CACHE_TTL_SECONDS, JSON.stringify(parsed));
+		await redis.setex(cacheKey(address), CACHE_TTL_SECONDS, JSON.stringify(entry));
 	} catch (err) {
 		logger.warn({ err, address }, 'Failed to bump usedBytes in mailbox cache');
 	}

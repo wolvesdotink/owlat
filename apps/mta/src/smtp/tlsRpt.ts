@@ -21,6 +21,7 @@ import { Counter } from 'prom-client';
 import { registry } from '../monitoring/collector.js';
 import type { EmailJob } from '../types.js';
 import { formatTlsaRecord, type TlsaRecord } from '@owlat/shared/dane';
+import { isRecord } from '@owlat/shared/utils/guards';
 import { buildGroupKey, extractDomain } from '../queue/groups.js';
 import { enqueueReconciledIntake } from '../queue/intakeEnqueue.js';
 
@@ -266,17 +267,14 @@ export async function generateReport(
 		{ type: string; mxHost: string; sendingIp: string; count: number }
 	>();
 	for (const raw of rawFailures) {
-		try {
-			const f = JSON.parse(raw) as { type: string; mxHost: string; sendingIp: string };
-			const mapKey = `${f.type}:${f.mxHost}:${f.sendingIp}`;
-			const existing = failureMap.get(mapKey);
-			if (existing) {
-				existing.count++;
-			} else {
-				failureMap.set(mapKey, { ...f, count: 1 });
-			}
-		} catch {
-			// Skip malformed entries
+		const f = parseFailureDetail(raw);
+		if (!f) continue; // Skip malformed entries
+		const mapKey = `${f.type}:${f.mxHost}:${f.sendingIp}`;
+		const existing = failureMap.get(mapKey);
+		if (existing) {
+			existing.count++;
+		} else {
+			failureMap.set(mapKey, { ...f, count: 1 });
 		}
 	}
 
@@ -354,6 +352,23 @@ function parseJsonStringArray(raw: string | undefined): string[] {
 	} catch {
 		return [];
 	}
+}
+
+/** One stored failure session, or `null` when the entry is malformed. */
+function parseFailureDetail(
+	raw: string
+): { type: string; mxHost: string; sendingIp: string } | null {
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(raw);
+	} catch {
+		return null;
+	}
+	if (!isRecord(parsed)) return null;
+	const { type, mxHost, sendingIp } = parsed;
+	return typeof type === 'string' && typeof mxHost === 'string' && typeof sendingIp === 'string'
+		? { type, mxHost, sendingIp }
+		: null;
 }
 
 /**
