@@ -96,7 +96,9 @@ function decodeCachedTlsaRecord(value: unknown): TlsaRecord | null {
 /**
  * A cache entry, or `null` when it is corrupt. Every record must decode: a
  * cache that lost one could otherwise pin a weaker policy than DNS publishes.
- * `null` means a fresh lookup, never `no-tlsa`.
+ * A `records` entry must hold at least one record, because an empty RRset is
+ * cached as `no-tlsa` and an empty `records` list would let enforce mode send
+ * without DANE. `null` means a fresh lookup, never `no-tlsa`.
  */
 function decodeCachedTlsa(cached: string): CachedTlsa | null {
 	let parsed: unknown;
@@ -108,7 +110,9 @@ function decodeCachedTlsa(cached: string): CachedTlsa | null {
 	if (!isRecord(parsed)) return null;
 	const { status, records: cachedRecords } = parsed;
 	if (status === 'no-tlsa') return { status: 'no-tlsa', records: [] };
-	if (status !== 'records' || !Array.isArray(cachedRecords)) return null;
+	if (status !== 'records' || !Array.isArray(cachedRecords) || cachedRecords.length === 0) {
+		return null;
+	}
 	const records: TlsaRecord[] = [];
 	for (const entry of cachedRecords) {
 		const record = decodeCachedTlsaRecord(entry);
