@@ -128,10 +128,22 @@ describe('streaming upload receipt bridge', () => {
 		const nativeFetch = globalThis.fetch;
 		const toWeb = Readable.toWeb;
 		let consumed = 0;
+		let backpressured!: () => void;
+		const paused = new Promise<void>((resolve) => {
+			backpressured = resolve;
+		});
 		vi.spyOn(Readable, 'toWeb').mockImplementation((readable, options) => {
 			readable.on('data', (chunk: Buffer) => {
 				consumed += chunk.byteLength;
 			});
+			// The adapter pauses the request once its queue is full. The pause it
+			// makes before the first byte arrives is not backpressure.
+			readable.on('pause', () => {
+				if (consumed > 0) backpressured();
+			});
+			// Without backpressure the whole body is read; settle then too, so the
+			// bound below fails instead of the test waiting forever.
+			readable.on('end', () => backpressured());
 			return toWeb(readable, options);
 		});
 		let release!: () => void;
@@ -157,7 +169,7 @@ describe('streaming upload receipt bridge', () => {
 		const totalBytes = 4 * 1024 * 1024;
 		const uploading = post(`${f.proxy}?token=one-use`, totalBytes);
 		await nativeStarted;
-		await new Promise((resolve) => setTimeout(resolve, 100));
+		await paused;
 		const consumedWhileStalled = consumed;
 		release();
 		const response = await uploading;

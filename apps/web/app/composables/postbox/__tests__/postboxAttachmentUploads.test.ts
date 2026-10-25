@@ -367,12 +367,13 @@ describe('xhrPutFile', () => {
 				signal: controller.signal,
 				onProgress: () => {},
 			});
+			// Settled before the next macrotask: nothing went out to wait for.
 			const settled = await Promise.race([
 				put.then(
 					() => 'resolved',
 					(err: unknown) => (err as { name?: string }).name
 				),
-				new Promise<string>((r) => setTimeout(() => r('pending'), 50)),
+				tick().then(() => 'pending'),
 			]);
 			expect(settled).toBe('AbortError');
 			expect(opened).not.toHaveBeenCalled();
