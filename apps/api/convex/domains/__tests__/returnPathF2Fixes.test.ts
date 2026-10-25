@@ -20,11 +20,13 @@ import schema from '../../schema';
 import { api, internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import { buildReturnPathMailFromRecords, RETURN_PATH_MX_PRIORITY } from '../spf';
+import type * as SessionOrganizationModule from '../../lib/sessionOrganization';
+import type * as MtaIdentityModule from '../../lib/emailProviders/mtaIdentity';
 
 // ─── Mocks ──────────────────────────────────────────────────────────────────
 
 vi.mock('../../lib/sessionOrganization', async () => {
-	const actual = await vi.importActual<typeof import('../../lib/sessionOrganization')>(
+	const actual = await vi.importActual<typeof SessionOrganizationModule>(
 		'../../lib/sessionOrganization'
 	);
 	const ctx = () => ({ userId: 'test-user', role: 'owner' as const });
@@ -45,7 +47,7 @@ vi.mock('../../lib/sessionOrganization', async () => {
 
 const registerDomainMock = vi.fn();
 vi.mock('../../lib/emailProviders/mtaIdentity', async (importActual) => {
-	const actual = await importActual<typeof import('../../lib/emailProviders/mtaIdentity')>();
+	const actual = await importActual<typeof MtaIdentityModule>();
 	return {
 		...actual,
 		createMtaIdentityManager: () => ({

@@ -4,6 +4,7 @@ import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import type { MutationCtx } from '../../_generated/server';
 import { trackEvent } from '../posthogHelpers';
+import type * as EnvModule from '../env';
 
 /**
  * `analytics.posthog` decides whether this instance talks to PostHog at all.
@@ -24,7 +25,7 @@ vi.mock('posthog-node', () => ({
 }));
 
 vi.mock('../env', async () => {
-	const actual = await vi.importActual<typeof import('../env')>('../env');
+	const actual = await vi.importActual<typeof EnvModule>('../env');
 	return {
 		...actual,
 		getOptional: (key: string) => (key === 'POSTHOG_API_KEY' ? 'phc_test' : undefined),

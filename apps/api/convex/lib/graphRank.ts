@@ -24,7 +24,7 @@
  */
 
 import type { Id } from '../_generated/dataModel';
-import { RELATION_TYPES } from '../schema/knowledge';
+import type { RELATION_TYPES } from '../schema/knowledge';
 import { reciprocalRankFusion } from './rrf';
 
 /** A typed knowledge-graph edge kind. Derived from the schema's single source. */

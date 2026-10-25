@@ -25,6 +25,7 @@ import type { LanguageModel } from 'ai';
 import { choice, noul, score } from '../../decision/questions';
 import { DecisionWireError } from '../wire';
 import { LlmPartialUsageError, partialUsageOf } from '../../llm/partialUsage';
+import type * as LlmDispatchModule from '../../llm/dispatch';
 
 // Hoisted by vitest above the adapter import, so the module under test binds to
 // the stub rather than the real (Node-only) AI SDK dispatch.
@@ -340,8 +341,8 @@ describe('llmDecisionAdapter metadata', () => {
 });
 
 describe('the widened runLlmObject', () => {
-	async function realDispatch(): Promise<typeof import('../../llm/dispatch')> {
-		return await vi.importActual<typeof import('../../llm/dispatch')>('../../llm/dispatch');
+	async function realDispatch(): Promise<typeof LlmDispatchModule> {
+		return await vi.importActual<typeof LlmDispatchModule>('../../llm/dispatch');
 	}
 
 	it('hands the signal to the SDK, so a structured call is cancellable', async () => {

@@ -23,6 +23,8 @@
 
 import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type * as HostedContributionAuthorizationModule from '../../plugins/hostedContributionAuthorization';
+import type * as SessionOrganizationModule from '../../lib/sessionOrganization';
 
 const KIND = 'plugin.mail-pack.postmark';
 const PLUGIN_ID = 'mail-pack';
@@ -84,9 +86,9 @@ vi.mock('../../plugins/sendTransportDomainIdentityModules.generated', () => ({
  * provider call at all.
  */
 vi.mock('../../plugins/hostedContributionAuthorization', async () => {
-	const actual = await vi.importActual<
-		typeof import('../../plugins/hostedContributionAuthorization')
-	>('../../plugins/hostedContributionAuthorization');
+	const actual = await vi.importActual<typeof HostedContributionAuthorizationModule>(
+		'../../plugins/hostedContributionAuthorization'
+	);
 	return {
 		...actual,
 		authorizeHostedContribution: (...args: unknown[]) => authorizeMock(...args),
@@ -95,7 +97,7 @@ vi.mock('../../plugins/hostedContributionAuthorization', async () => {
 });
 
 vi.mock('../../lib/sessionOrganization', async () => {
-	const actual = await vi.importActual<typeof import('../../lib/sessionOrganization')>(
+	const actual = await vi.importActual<typeof SessionOrganizationModule>(
 		'../../lib/sessionOrganization'
 	);
 	return { ...actual, getSingletonOrganizationId: vi.fn().mockResolvedValue('org-a') };

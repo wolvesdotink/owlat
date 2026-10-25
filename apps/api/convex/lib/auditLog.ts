@@ -1,6 +1,6 @@
 import type { Infer } from 'convex/values';
 import type { MutationCtx } from '../_generated/server';
-import {
+import type {
 	auditActionValidator,
 	auditResourceValidator,
 	jsonPrimitiveRecord,

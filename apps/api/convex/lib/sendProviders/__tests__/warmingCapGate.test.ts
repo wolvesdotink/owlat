@@ -27,6 +27,7 @@ import {
 } from '@owlat/shared/deliverabilityRouting';
 import { DELIVERABILITY_SIGNAL_MAX_AGE_MS } from '../../../delivery/deliverabilityRouting';
 import { campaignWarmingCapBinds, type WarmingCapVerdict } from '../warmingCapGate';
+import type * as SessionOrganizationModule from '../../sessionOrganization';
 
 const singletonOrg = vi.hoisted(() => ({
 	/**
@@ -40,7 +41,7 @@ const singletonOrg = vi.hoisted(() => ({
 }));
 
 vi.mock('../../sessionOrganization', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../../sessionOrganization')>();
+	const actual = await importOriginal<typeof SessionOrganizationModule>();
 	const { ConvexError } = await import('convex/values');
 	return {
 		...actual,
