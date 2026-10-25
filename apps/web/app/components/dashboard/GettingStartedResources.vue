@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { normalizeDashboardUrl, resolveConvexDashboardUrl } from '~/utils/convexDashboard';
+import { readStoredString } from '~/utils/storedValue';
 
 /**
  * Self-host resource links shown beneath the instance go-live steps in the
@@ -21,7 +22,8 @@ const config = useRuntimeConfig();
 // port-swap guess we clearly flag. See `~/utils/convexDashboard`.
 const { data: dashboardOverride, set: setDashboardOverride } = useLocalStorage<string>(
 	'owlat:convexDashboardUrl',
-	''
+	'',
+	readStoredString
 );
 const resolvedDashboard = computed(() =>
 	resolveConvexDashboardUrl({

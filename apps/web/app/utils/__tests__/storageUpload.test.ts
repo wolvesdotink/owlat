@@ -63,6 +63,24 @@ describe('uploadFileToStorage', () => {
 		expect(res).toEqual({ ok: false, reason: 'no-storage-id' });
 	});
 
+	it.each([
+		['an empty id', JSON.stringify({ storageId: '' })],
+		['a non-string id', JSON.stringify({ storageId: 42 })],
+		['a null body', 'null'],
+		['an array body', JSON.stringify(['st_1'])],
+		['a body that is not JSON', '<html>gateway</html>'],
+	])('reports no-storage-id for %s', async (_case, body) => {
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () => new Response(body, { status: 200 }))
+		);
+		const res = await uploadFileToStorage(
+			file,
+			async () => ({ ok: true, result: 'https://upload' }) as const
+		);
+		expect(res).toEqual({ ok: false, reason: 'no-storage-id' });
+	});
+
 	it('uses the supplied content type, defaulting to the file type', async () => {
 		const fetchMock = vi.fn(
 			async () => new Response(JSON.stringify({ storageId: 's' }), { status: 200 })

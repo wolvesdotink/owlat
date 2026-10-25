@@ -2,6 +2,7 @@
 import { api } from '@owlat/api';
 import { languageOptions } from '~/data/languageOptions';
 import { emailSettingsSave } from '~/composables/emailSettingsSave';
+import { readTranslationOverlays } from '~/utils/translationOverlays';
 import { useEditorDirtyTracking } from '~/composables/useEditorDirtyTracking';
 
 const { t } = useI18n();
@@ -57,6 +58,11 @@ const translations = ref<Record<string, { subject: string; previewText: string }
 // page does not edit (e.g. `blocks`). Retained so saving here never drops them.
 const rawTranslations = ref<Record<string, Record<string, unknown>>>({});
 
+// The row's stored translations could not be read. The page then shows none
+// and does not save: a save writes the whole blob, so it would replace text
+// the row still holds with what this read could not see.
+const storedTranslationsUnreadable = ref(false);
+
 const isSaving = ref(false);
 
 // The default language as last persisted. Changing the form's defaultLanguage
@@ -99,23 +105,17 @@ const { hasChanges, markClean } = useEditorDirtyTracking({
 		persistedDefaultLanguage.value = t.defaultLanguage || 'en';
 		form.supportedLanguages = [...(t.supportedLanguages || [])];
 
-		if (t.translations) {
-			try {
-				const parsed = JSON.parse(t.translations);
-				// Retain the full per-language payload so non-edited fields survive a save.
-				for (const lang of Object.keys(parsed)) {
-					const entry = parsed[lang] && typeof parsed[lang] === 'object' ? parsed[lang] : {};
-					rawTranslations.value[lang] = { ...entry };
-					translations.value[lang] = {
-						subject: entry.subject || '',
-						previewText: entry.previewText || '',
-					};
-				}
-			} catch {
-				translations.value = {};
-				rawTranslations.value = {};
-			}
+		const overlays = readTranslationOverlays(t.translations);
+		storedTranslationsUnreadable.value = overlays === null;
+		const edited: Record<string, { subject: string; previewText: string }> = {};
+		const retained: Record<string, Record<string, unknown>> = {};
+		for (const [lang, entry] of Object.entries(overlays ?? {})) {
+			// Retain the full per-language payload so non-edited fields survive a save.
+			retained[lang] = { ...entry };
+			edited[lang] = { subject: entry.subject || '', previewText: entry.previewText || '' };
 		}
+		translations.value = edited;
+		rawTranslations.value = retained;
 	},
 	watchSources: [() => form, () => translations.value],
 	onDirtyChange: setHasChanges,
@@ -159,7 +159,7 @@ const buildTranslationsJson = () => {
 const handleSave = async (): Promise<boolean> => {
 	// The row the writes and their delivery HTML are built on.
 	const row = template.value;
-	if (!row) return false;
+	if (!row || storedTranslationsUnreadable.value) return false;
 	isSaving.value = true;
 	try {
 		const outcome = await emailSettingsSave({
@@ -178,6 +178,7 @@ const handleSave = async (): Promise<boolean> => {
 			base: {
 				content: row.content,
 				plainTextOverride: row.plainTextOverride,
+				translations: row.translations,
 				revision: row.contentRevision ?? 0,
 			},
 			renderOptions: { theme: emailTheme.value, variableType: 'personalization' },
@@ -271,7 +272,11 @@ const handleBack = () => {
 							t('dashboard.send.emails.detail.settings.unsavedChanges')
 						}}</span>
 					</span>
-					<UiButton :loading="isSaving" :disabled="!hasChanges" @click="handleSave">
+					<UiButton
+						:loading="isSaving"
+						:disabled="!hasChanges || storedTranslationsUnreadable"
+						@click="handleSave"
+					>
 						<template #iconLeft>
 							<Icon v-if="!isSaving" name="lucide:check" class="w-4 h-4" />
 						</template>
@@ -319,6 +324,20 @@ const handleBack = () => {
 			<!-- Settings Content -->
 			<div v-else class="flex-1 overflow-y-auto p-6 lg:p-8">
 				<div class="max-w-3xl mx-auto space-y-8">
+					<UiCard v-if="storedTranslationsUnreadable" variant="error" role="alert">
+						<div class="flex gap-3">
+							<Icon name="lucide:alert-triangle" class="w-5 h-5 text-error shrink-0 mt-0.5" />
+							<div class="text-sm">
+								<p class="text-text-primary font-medium mb-1">
+									{{ t('dashboard.send.emails.detail.settings.unreadableTranslations.title') }}
+								</p>
+								<p class="text-text-secondary">
+									{{ t('dashboard.send.emails.detail.settings.unreadableTranslations.body') }}
+								</p>
+							</div>
+						</div>
+					</UiCard>
+
 					<EmailSubjectSettingsCard
 						v-model:email-type="form.type"
 						v-model:default-language="form.defaultLanguage"

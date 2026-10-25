@@ -7,6 +7,12 @@ import {
 	type TranslatableBlockContent,
 } from '@owlat/api/translationMerge';
 import { EMAIL_RENDERER_VERSION } from '@owlat/email-renderer/version';
+import { isRecord } from '@owlat/shared/utils/guards';
+import { decodeJsonText, guardDecoder } from '@owlat/worker-protocol/decodeJson';
+import {
+	requireTranslationOverlays,
+	type StoredTranslationOverlay,
+} from '~/utils/translationOverlays';
 import { useEmailHtmlRendering, type RenderOptions } from './useEmailHtmlRendering';
 
 /**
@@ -19,11 +25,7 @@ import { useEmailHtmlRendering, type RenderOptions } from './useEmailHtmlRenderi
  */
 
 /** One language's overlay as the row stores it; the page edits only part of it. */
-interface SettingsOverlay {
-	subject?: string;
-	blocks?: Record<string, TranslatableBlockContent>;
-	[field: string]: unknown;
-}
+type SettingsOverlay = StoredTranslationOverlay;
 
 /** A template's language data: what every language's HTML is rendered from. */
 export interface SettingsLanguageState {
@@ -44,8 +46,45 @@ export interface SwappedDelivery {
 	rendererVersion: number;
 }
 
+/**
+ * The row's overlays; throws when the blob cannot be read, so a save renders
+ * nothing (and writes nothing) over translations it could not see.
+ */
 export function parseSettingsOverlays(blob: string | undefined): Record<string, SettingsOverlay> {
-	return blob ? (JSON.parse(blob) as Record<string, SettingsOverlay>) : {};
+	return requireTranslationOverlays(blob);
+}
+
+const blockListDecoder = guardDecoder(
+	(value): value is unknown[] => Array.isArray(value),
+	'$: expected an array'
+);
+
+function isBlockLikeItem(value: unknown): value is BlockLikeItem {
+	return (
+		isRecord(value) &&
+		typeof value['id'] === 'string' &&
+		typeof value['type'] === 'string' &&
+		isRecord(value['content'])
+	);
+}
+
+/**
+ * `content` with an overlay's Block text merged in; an entry that is not a
+ * Block has no id for overlay text to address and stays as it is. Content
+ * that is not a Block list throws: nothing can be rendered from it, so the
+ * save writes nothing rather than delivery HTML for an empty email.
+ */
+function mergeOverlayIntoContent(
+	content: string,
+	blocks: Record<string, TranslatableBlockContent>
+): string {
+	const decoded = decodeJsonText(content, blockListDecoder);
+	if (!decoded.ok) throw new Error('Could not read the email content to merge a translation into');
+	return JSON.stringify(
+		decoded.value.map((block) =>
+			isBlockLikeItem(block) ? mergeTranslationIntoItem(block, blocks) : block
+		)
+	);
 }
 
 function overlaid(content: string, overlay: SettingsOverlay | undefined): EditorBlock[] {
@@ -91,11 +130,8 @@ export function promoteLanguage(
 	if (!promoted) throw new Error(`No ${language} translation to make the default language`);
 	const others = { ...state.translations };
 	delete others[language];
-	const content = JSON.parse(state.content) as BlockLikeItem[];
 	return {
-		content: JSON.stringify(
-			content.map((block) => mergeTranslationIntoItem(block, promoted.blocks ?? {}))
-		),
+		content: mergeOverlayIntoContent(state.content, promoted.blocks ?? {}),
 		subject: promoted.subject ?? '',
 		defaultLanguage: language,
 		supportedLanguages: [

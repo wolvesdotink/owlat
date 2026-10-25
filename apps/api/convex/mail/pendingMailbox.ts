@@ -15,15 +15,9 @@ import type { MutationCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
 import { authedMutation } from '../lib/authedFunctions';
 import { markOnboardingStep } from '../auth/userOnboarding';
-import { requireAdminContext, getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
+import { hasPermission, requirePermission } from '../lib/sessionOrganization';
 import { normalizeEmail } from '../lib/inputGuards';
-import {
-	throwForbidden,
-	throwUnauthenticated,
-	throwInvalidInput,
-	throwInvalidState,
-	throwAlreadyExists,
-} from '../_utils/errors';
+import { throwInvalidInput, throwInvalidState, throwAlreadyExists } from '../_utils/errors';
 import { provisionMailbox, isDomainVerified } from './mailbox/identity';
 import { findAddressClaim } from './mailbox/addressResolution';
 import { extractEmail } from '../lib/emailAddress';
@@ -182,12 +176,11 @@ export const setForInvitation = authedMutation({
 		domain: v.string(),
 		displayName: v.optional(v.string()),
 	},
-	handler: async (ctx, args) => {
-		await requireAdminContext(ctx);
-		const sessionWithOrg = await getBetterAuthSessionWithRole(ctx);
-		if (!sessionWithOrg?.activeOrganizationId) {
-			throwForbidden('No active organization');
-		}
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'organization:manage'),
+			'Only owners and admins can perform this action'
+		);
 
 		const localpart = normalizeEmail(args.localpart);
 		if (!LOCALPART_PATTERN.test(localpart)) {
@@ -242,13 +235,13 @@ export const setForInvitation = authedMutation({
 		const id = await ctx.db.insert('pendingMailboxes', {
 			invitationId: args.invitationId,
 			inviteeEmail: normalizeEmail(args.inviteeEmail),
-			organizationId: sessionWithOrg.activeOrganizationId,
+			organizationId: session.activeOrganizationId,
 			localpart,
 			domain,
 			address,
 			displayName: args.displayName,
 			createdAt: Date.now(),
-			createdByUserId: sessionWithOrg.userId,
+			createdByUserId: session.userId,
 		});
 
 		return { id, address };
@@ -259,8 +252,11 @@ export const cancelForInvitation = authedMutation({
 	args: {
 		invitationId: v.string(),
 	},
-	handler: async (ctx, args) => {
-		await requireAdminContext(ctx);
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'organization:manage'),
+			'Only owners and admins can perform this action'
+		);
 		const existing = await ctx.db
 			.query('pendingMailboxes')
 			.withIndex('by_invitation', (q) => q.eq('invitationId', args.invitationId))
@@ -278,15 +274,7 @@ export const claimForInvitation = authedMutation({
 	args: {
 		invitationId: v.string(),
 	},
-	handler: async (ctx, args) => {
-		const session = await getBetterAuthSessionWithRole(ctx);
-		if (!session) {
-			throwUnauthenticated();
-		}
-		if (!session.activeOrganizationId) {
-			throwForbidden('No active organization');
-		}
-
+	handler: async (ctx, args, session) => {
 		const pending = await ctx.db
 			.query('pendingMailboxes')
 			.withIndex('by_invitation', (q) => q.eq('invitationId', args.invitationId))

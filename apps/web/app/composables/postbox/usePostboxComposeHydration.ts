@@ -23,6 +23,7 @@ import type { Ref } from 'vue';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { EditorBlock } from '@owlat/email-builder';
+import { parseStoredBlocks } from '@owlat/email-builder/stored-blocks';
 import type { ComposerMode } from './usePostboxCompose';
 import type { ComposerAttachment } from './usePostboxComposeAttachments';
 import { mirrorFieldsOfRow, type MirrorFields } from '~/utils/postboxDraftMirror';
@@ -155,15 +156,9 @@ export function usePostboxComposeHydration(
 		// Absent means the defaults a new row has (simple, no blocks), so an
 		// untouched field never keeps a value the row does not hold.
 		if (!keep('composerMode')) fields.composerMode.value = draft.composerMode ?? 'simple';
-		if (!keep('bodyBlocks')) {
-			try {
-				fields.bodyBlocks.value = draft.bodyBlocks
-					? (JSON.parse(draft.bodyBlocks) as EditorBlock[])
-					: [];
-			} catch {
-				fields.bodyBlocks.value = [];
-			}
-		}
+		// The stored-block reader: unreadable blocks read as none, and an entry
+		// that is not a Block is dropped rather than handed to the editor.
+		if (!keep('bodyBlocks')) fields.bodyBlocks.value = parseStoredBlocks(draft.bodyBlocks);
 		// Not part of the autosaved snapshot (it has its own targeted write), so
 		// a value already present simply stays.
 		if (!fields.fromAddress.value && draft.fromAddress) {

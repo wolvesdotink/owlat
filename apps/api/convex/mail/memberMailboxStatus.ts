@@ -18,7 +18,6 @@
 
 import { v } from 'convex/values';
 import { authedQuery } from '../lib/authedFunctions';
-import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
 import type { Doc } from '../_generated/dataModel';
 
 export type MemberMailboxStatus = 'hosted' | 'external' | 'external-instance' | 'none';
@@ -62,13 +61,12 @@ export function deriveMemberMailboxStatus(mailboxes: Doc<'mailboxes'>[]): Member
 // only, no mailbox contents); authedQuery already floors on requireOrgMember.
 export const byMembers = authedQuery({
 	args: { userIds: v.array(v.string()) },
-	handler: async (ctx, args): Promise<Record<string, MemberMailboxStatus>> => {
-		// authedQuery already enforced the org-member floor; re-read the session
-		// only to scope the fetched rows to the caller's active organization so
-		// this read can never reflect cross-org mailboxes (single-org today, but
-		// the invariant shouldn't rest on this one query).
-		const session = await getBetterAuthSessionWithRole(ctx);
-		const organizationId = session?.activeOrganizationId ?? null;
+	handler: async (ctx, args, session): Promise<Record<string, MemberMailboxStatus>> => {
+		// Scope the fetched rows to the caller's active organization (from the
+		// session the authedQuery floor resolved) so this read can never reflect
+		// cross-org mailboxes (single-org today, but the invariant shouldn't rest
+		// on this one query).
+		const organizationId = session.activeOrganizationId;
 
 		// De-duplicate and bound the batch before touching the DB.
 		const uniqueUserIds = [...new Set(args.userIds)].slice(0, MAX_USER_IDS);
@@ -82,10 +80,7 @@ export const byMembers = authedQuery({
 					.withIndex('by_user', (q) => q.eq('userId', userId))
 					.collect();
 				// bounded: a single user owns a handful of mailbox rows.
-				const ownRows =
-					organizationId === null
-						? mailboxes
-						: mailboxes.filter((m) => m.organizationId === organizationId);
+				const ownRows = mailboxes.filter((m) => m.organizationId === organizationId);
 				return [userId, deriveMemberMailboxStatus(ownRows)] as const;
 			})
 		);

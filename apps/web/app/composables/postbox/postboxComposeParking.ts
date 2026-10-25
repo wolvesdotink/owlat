@@ -12,6 +12,7 @@ import {
 	isBlankMirrorFields,
 	mirrorFieldEqual,
 	mirrorFieldsOfRow,
+	readMirrorBlocks,
 	type MirrorFieldName,
 	type MirrorFields,
 } from '~/utils/postboxDraftMirror';
@@ -44,11 +45,9 @@ export function seedWithParked(seed: ComposeSpec, source: RecoverySource): Compo
 	for (const name of source.present) {
 		if (name === 'bodyBlocks') {
 			if (source.fields.bodyBlocks === null) continue;
-			try {
-				next[PREFILL_KEY.bodyBlocks] = JSON.parse(source.fields.bodyBlocks) as unknown[];
-			} catch {
-				// Malformed blocks: the body HTML still carries the text.
-			}
+			// Malformed blocks: the body HTML still carries the text.
+			const blocks = readMirrorBlocks(source.fields.bodyBlocks);
+			if (blocks) next[PREFILL_KEY.bodyBlocks] = blocks;
 			continue;
 		}
 		const value = source.fields[name];

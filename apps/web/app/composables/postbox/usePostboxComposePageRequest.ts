@@ -38,6 +38,7 @@ import { ref, type Ref } from 'vue';
 import type { Id } from '@owlat/api/dataModel';
 import {
 	MIRROR_FIELD_NAMES,
+	copyMirrorFields,
 	mirrorFieldEqual,
 	mirrorFieldsEqual,
 	type MirrorCopy,
@@ -50,6 +51,7 @@ import {
 } from '~/utils/postboxDraftMirrorStore';
 import {
 	type usePostboxComposeNav,
+	copyRecoverySource,
 	seedCarriesText,
 	withoutCreationKeys,
 	withoutSeedText,
@@ -230,9 +232,9 @@ export function usePostboxComposePageRequest(options: {
 		const ns = String(request.mailboxId);
 		// Plain copies: the record comes from session state (reactive), and
 		// IndexedDB cannot clone a proxy.
-		const parked = JSON.parse(JSON.stringify(source)) as RecoverySource;
+		const parked = copyRecoverySource(source);
 		// Placeholders take the row's values: only present fields are offered.
-		const fields = JSON.parse(JSON.stringify(row)) as MirrorFields;
+		const fields = copyMirrorFields(row);
 		for (const name of parked.present) {
 			(fields as unknown as Record<string, unknown>)[name] = parked.fields[name];
 		}
@@ -348,7 +350,7 @@ export function usePostboxComposePageRequest(options: {
 			: null;
 		let allKept = true;
 		for (const source of unseen) {
-			const parked = JSON.parse(JSON.stringify(source)) as RecoverySource;
+			const parked = copyRecoverySource(source);
 			const sessionId = `parked-${parked.id}`;
 			const copy: MirrorCopy = {
 				v: 2,

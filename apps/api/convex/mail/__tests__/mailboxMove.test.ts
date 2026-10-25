@@ -36,7 +36,11 @@ vi.mock('../../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../../lib/sessionOrganization');
 	return {
 		...actual,
-		requireOrgMember: vi.fn(async () => ({ userId: sessionMocks.userId, role: sessionMocks.role })),
+		requireOrgMember: vi.fn(async () => ({
+			userId: sessionMocks.userId,
+			role: sessionMocks.role,
+			activeOrganizationId: 'org-1',
+		})),
 		isActiveOrgMember: vi.fn().mockResolvedValue(true),
 		getMutationContext: vi.fn(async () => ({
 			userId: sessionMocks.userId,
@@ -51,7 +55,11 @@ vi.mock('../../lib/sessionOrganization', async () => {
 			if (sessionMocks.role !== 'owner' && sessionMocks.role !== 'admin') {
 				throw new Error('Only owners and admins can perform this action');
 			}
-			return { userId: sessionMocks.userId, role: sessionMocks.role };
+			return {
+				userId: sessionMocks.userId,
+				role: sessionMocks.role,
+				activeOrganizationId: 'org-1',
+			};
 		}),
 		getBetterAuthSessionWithRole: vi.fn(async () => ({
 			userId: sessionMocks.userId,

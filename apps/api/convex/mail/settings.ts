@@ -139,12 +139,10 @@ export const update = postboxMutation({
 	},
 	// authz: self-scoped — upserts only the caller's own settings row (keyed
 	// by the session userId; no cross-user id is accepted).
-	handler: async (ctx, args) => {
-		const s = await getBetterAuthSessionWithRole(ctx);
-		if (!s) return null; // unreachable past the authedMutation floor
+	handler: async (ctx, args, session) => {
 		const existing = await ctx.db
 			.query('mailUserSettings')
-			.withIndex('by_user', (q) => q.eq('userId', s.userId))
+			.withIndex('by_user', (q) => q.eq('userId', session.userId))
 			.first();
 		const now = Date.now();
 		const patch: {
@@ -236,7 +234,7 @@ export const update = postboxMutation({
 			// only set another preference.
 			autoAdvance: args.autoAdvance ?? 'next',
 			...patch,
-			userId: s.userId,
+			userId: session.userId,
 			createdAt: now,
 			updatedAt: now,
 		});

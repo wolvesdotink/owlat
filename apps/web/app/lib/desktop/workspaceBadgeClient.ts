@@ -14,11 +14,35 @@
  * `convex-auth.ts` for the active workspace).
  */
 import { ConvexClient } from 'convex/browser';
+import { decodeJsonText, parserDecoder } from '@owlat/worker-protocol/decodeJson';
+import { isRecord } from '@owlat/shared/utils/guards';
 import { api } from '@owlat/api';
+import { readAuthTokenAnswer } from '~/lib/authTokenResponse';
+import { parseKeychainBlob } from './keychainStorage';
 import type { WorkspaceConfig } from './workspaceTypes';
 
 /** Storage key the cross-domain BetterAuth client writes its cookie jar under. */
 const COOKIE_STORAGE_KEY = 'better-auth_cookie';
+
+/** One cookie of the jar: `{ value, expires }`, `expires` an ISO date or null. */
+interface StoredCookie {
+	name: string;
+	value: string;
+	expires: string | null;
+}
+
+/** The jar's cookies; an entry of any other shape is skipped, never coerced into the header. */
+const cookieJarDecoder = parserDecoder((value): StoredCookie[] | null => {
+	if (!isRecord(value)) return null;
+	const cookies: StoredCookie[] = [];
+	for (const [name, entry] of Object.entries(value)) {
+		if (!isRecord(entry) || typeof entry['value'] !== 'string') continue;
+		const expires = entry['expires'] ?? null;
+		if (expires !== null && typeof expires !== 'string') continue;
+		cookies.push({ name, value: entry['value'], expires });
+	}
+	return cookies;
+}, '$: expected a cookie jar object');
 
 /**
  * Turn a persisted keychain blob into a `key=value; …` Cookie header string.
@@ -29,19 +53,14 @@ const COOKIE_STORAGE_KEY = 'better-auth_cookie';
  * `getCookie`, dropping expired entries.
  */
 export function cookieStringFromBlob(blob: string | null): string {
-	if (!blob) return '';
-	let jar: unknown;
-	try {
-		const cache = JSON.parse(blob) as Record<string, unknown>;
-		jar = JSON.parse((cache[COOKIE_STORAGE_KEY] as string) || '{}');
-	} catch {
-		return '';
-	}
-	if (!jar || typeof jar !== 'object') return '';
+	const jar = parseKeychainBlob(blob)[COOKIE_STORAGE_KEY];
+	if (!jar) return '';
+	const decoded = decodeJsonText(jar, cookieJarDecoder);
+	if (!decoded.ok) return '';
 	const now = Date.now();
-	return Object.entries(jar as Record<string, { value?: string; expires?: string | null }>)
-		.filter(([, v]) => !v?.expires || new Date(v.expires).getTime() >= now)
-		.map(([name, v]) => `${name}=${v?.value ?? ''}`)
+	return decoded.value
+		.filter(({ expires }) => !expires || new Date(expires).getTime() >= now)
+		.map(({ name, value }) => `${name}=${value}`)
 		.join('; ');
 }
 
@@ -71,8 +90,8 @@ async function fetchWorkspaceToken(ws: WorkspaceConfig): Promise<string | null> 
 			headers: { 'Better-Auth-Cookie': cookie },
 		});
 		if (!res.ok) return null;
-		const data = (await res.json()) as { token?: string | null };
-		return data.token ?? null;
+		const answer = readAuthTokenAnswer(await res.json().catch(() => undefined));
+		return answer.kind === 'token' ? answer.token : null;
 	} catch {
 		return null;
 	}
@@ -92,7 +111,7 @@ export interface WorkspaceBadgeClient {
  */
 export function createWorkspaceBadgeClient(
 	ws: WorkspaceConfig,
-	onCount: (count: number) => void,
+	onCount: (count: number) => void
 ): WorkspaceBadgeClient {
 	const client = new ConvexClient(ws.convexUrl);
 	client.setAuth(() => fetchWorkspaceToken(ws));
@@ -111,7 +130,7 @@ export function createWorkspaceBadgeClient(
 		() => {
 			drafts = 0;
 			emit();
-		},
+		}
 	);
 
 	const unsubMentions = client.onUpdate(
@@ -124,7 +143,7 @@ export function createWorkspaceBadgeClient(
 		() => {
 			mentions = 0;
 			emit();
-		},
+		}
 	);
 
 	return {

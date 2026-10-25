@@ -13,6 +13,7 @@ const { t } = useI18n();
 useHead({ title: () => t('desktop.connect.pageTitle') });
 definePageMeta({ layout: false });
 
+import { readAuthTokenAnswer } from '~/lib/authTokenResponse';
 import { formatConnectionCode } from '~/lib/desktop/connectionCode';
 import { requiresTwoFactor } from '~/utils/accountTwoFactor';
 import { useCopyToClipboard } from '~/composables/useCopyToClipboard';
@@ -70,15 +71,18 @@ const {
 async function generateAndReturn() {
 	if (handingBack.value) return;
 	handingBack.value = true;
+	errorMessage.value = '';
 	try {
 		// /api/auth/* is proxied to Convex by the instance's Nitro server; the
 		// session cookie authorizes the one-time-token generation.
 		const res = await fetch('/api/auth/one-time-token/generate', { credentials: 'include' });
 		if (!res.ok) throw new Error(t('desktop.connect.errors.tokenRequestFailed'));
-		const data = (await res.json()) as { token?: string };
-		if (!data.token) throw new Error(t('desktop.connect.errors.noToken'));
-		connectionCode.value = formatConnectionCode(state.value, data.token);
-		window.location.href = `${redirect.value}?ott=${encodeURIComponent(data.token)}&state=${encodeURIComponent(state.value)}`;
+		const answer = readAuthTokenAnswer(await res.json().catch(() => undefined));
+		if (answer.kind === 'unusable') throw new Error(t('desktop.connect.errors.tokenRequestFailed'));
+		const { token } = answer;
+		if (!token) throw new Error(t('desktop.connect.errors.noToken'));
+		connectionCode.value = formatConnectionCode(state.value, token);
+		window.location.href = `${redirect.value}?ott=${encodeURIComponent(token)}&state=${encodeURIComponent(state.value)}`;
 	} catch (e) {
 		errorMessage.value = e instanceof Error ? e.message : t('desktop.connect.errors.generic');
 		handingBack.value = false;
@@ -135,6 +139,17 @@ async function handleTwoFactorSubmit() {
 
 			<div v-if="!redirectValid" class="text-sm text-error">
 				{{ t('desktop.connect.invalidReturnLink') }}
+			</div>
+
+			<!--
+				Signed in but no token came back: the hand-back stopped, so say why
+				and ask for a new token (the session is still there).
+			-->
+			<div v-else-if="!handingBack && user && !isPending && errorMessage" class="text-sm">
+				<p class="text-error" role="alert">{{ errorMessage }}</p>
+				<UiButton class="mt-4" variant="outline" size="sm" @click="generateAndReturn">
+					{{ t('common.tryAgain') }}
+				</UiButton>
 			</div>
 
 			<div v-else-if="handingBack || (user && !isPending)" class="text-sm text-text-secondary">

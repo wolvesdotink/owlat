@@ -1,3 +1,5 @@
+import { isRecord } from '@owlat/shared/utils/guards';
+import { decodeJsonText, parserDecoder } from '@owlat/worker-protocol/decodeJson';
 import {
 	CONDITION_EDITOR_MODULES,
 	conditionEditorModuleFor,
@@ -18,6 +20,26 @@ export interface SegmentFilters {
 	conditions: Condition[];
 }
 
+/** What a filter description says: how many conditions, and how they combine. */
+interface FilterSummary {
+	logic: FilterLogic | undefined;
+	count: number;
+}
+
+/**
+ * Stored filter JSON, read as far as its description needs: an object whose
+ * `conditions` (absent: none) is a list of conditions, each an object with a
+ * `kind`, and whose `logic` (absent: any) is AND or OR.
+ */
+const filterSummaryDecoder = parserDecoder((value): FilterSummary | null => {
+	if (!isRecord(value)) return null;
+	const { logic, conditions = [] } = value;
+	if (logic !== undefined && logic !== 'AND' && logic !== 'OR') return null;
+	if (!Array.isArray(conditions)) return null;
+	if (!conditions.every((c) => isRecord(c) && typeof c['kind'] === 'string')) return null;
+	return { logic, count: conditions.length };
+}, '$: expected segment filters');
+
 /**
  * Composable for managing segment filter configuration.
  *
@@ -34,22 +56,20 @@ export function useSegmentFilters(ctx: ConditionEditorContextInput) {
 	const moduleList = Object.values(CONDITION_EDITOR_MODULES);
 
 	const describeFilters = (filters: SegmentFilters | string): string => {
-		let parsed: SegmentFilters;
+		let summary: FilterSummary;
 		if (typeof filters === 'string') {
-			try {
-				parsed = JSON.parse(filters);
-			} catch {
-				return t('shared.useSegmentFilters.invalidFilters');
-			}
+			const decoded = decodeJsonText(filters, filterSummaryDecoder);
+			if (!decoded.ok) return t('shared.useSegmentFilters.invalidFilters');
+			summary = decoded.value;
 		} else {
-			parsed = filters;
+			summary = { logic: filters.logic, count: filters.conditions?.length ?? 0 };
 		}
-		if (!parsed.conditions || parsed.conditions.length === 0) {
+		if (summary.count === 0) {
 			return t('shared.useSegmentFilters.allContacts');
 		}
-		const count = parsed.conditions.length;
+		const { count } = summary;
 		const logic = t(
-			parsed.logic === 'AND'
+			summary.logic === 'AND'
 				? 'shared.useSegmentFilters.logicAll'
 				: 'shared.useSegmentFilters.logicAny'
 		);

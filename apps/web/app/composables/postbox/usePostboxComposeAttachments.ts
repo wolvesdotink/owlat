@@ -15,6 +15,7 @@ import { downscaleImageFile } from './postboxInlineImage';
 import { attachmentMeter } from './postboxAttachmentMeter';
 import { createAttachmentUploads, xhrPutFile } from './postboxAttachmentUploads';
 import { holdPendingWork } from '~/lib/pendingOperations';
+import { uploadedStorageId } from '~/utils/storageUpload';
 import type { InitialHydrationState } from './usePostboxComposeHydration';
 import {
 	usePostboxComposeExpected,
@@ -264,21 +265,23 @@ export function usePostboxComposeAttachments(opts: {
 				headers: { 'Content-Type': contentType },
 				body: scaled,
 			});
-			if (!res.ok) {
+			// A response without a usable storage id is a failed upload: nothing
+			// may be attached under it.
+			const storageId = res.ok ? uploadedStorageId(await res.json().catch(() => undefined)) : null;
+			if (storageId === null) {
 				showToast(
 					t('shared.postbox.usePostboxComposeAttachments.uploadFailed', { filename: file.name }),
 					'error'
 				);
 				return null;
 			}
-			const { storageId } = (await res.json()) as { storageId: string };
 			// The composer closed meanwhile: bind nothing. The unbound upload
 			// expires and the abandoned-uploads sweep deletes it.
 			if (tornDown) return null;
 			const contentId = newContentId();
 			const result = await addAttachmentOp.run({
 				draftId: id,
-				storageId: storageId as Id<'_storage'>,
+				storageId,
 				filename: scaled.name,
 				contentType,
 				size: scaled.size,
