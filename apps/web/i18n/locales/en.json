@@ -1823,6 +1823,21 @@
 				"empty": "No inbox threads found.",
 				"removeLink": "Remove current link",
 				"searchPlaceholder": "Search inbox threads…",
+				"share": {
+					"title": "Share in chat",
+					"searchPlaceholder": "Search channels and people…",
+					"roomsLabel": "Where to share",
+					"empty": "No channel or direct message to post in.",
+					"partial": "Some channels or direct messages could not be loaded.",
+					"notePlaceholder": "Add a note (optional)",
+					"send": "Share",
+					"shared": "Link shared in {room}",
+					"audience": {
+						"personal": "From your personal inbox. Others in the chat see the link, not the mail.",
+						"shared": "Members of this inbox can open the link. Anyone else sees just the link.",
+						"team": "Owners and admins can open the link. Anyone else sees just the link."
+					}
+				},
 				"title": "Link an email thread"
 			},
 			"chatLinkedEmailPanel": {
@@ -4173,7 +4188,9 @@
 				"resolve": "Resolve",
 				"snooze": "Snooze",
 				"unknownSender": "Unknown sender",
-				"unread": "Unread"
+				"unread": "Unread",
+				"select": "Select",
+				"deselect": "Deselect"
 			},
 			"statusChip": {
 				"returned": "· Returned"
@@ -4299,6 +4316,18 @@
 				"retryHint": "Trying again runs the message through the agent with normal automation, so its reply can be sent on its own.",
 				"since": "Held {date}. Nothing is sent automatically while the message is held.",
 				"title": "Waiting for a person: AI budget reached"
+			},
+			"rowMenu": {
+				"counted": "{verb} ({count})",
+				"assignToMe": "Assign to me",
+				"assign": "Assign to…",
+				"snooze": "Snooze…"
+			},
+			"bulkBar": {
+				"label": "Selected conversations",
+				"selected": "{count} selected",
+				"assign": "Assign",
+				"clear": "Clear selection"
 			}
 		},
 		"keyboardShortcutsHelp": {
@@ -4689,6 +4718,9 @@
 				"moreOptions": "More compose options",
 				"scheduleSend": "Schedule send…",
 				"sending": "Sending…",
+				"sendOptions": "More ways to send",
+				"sendAndKeep": "Send and keep in Inbox",
+				"sendAndDone": "Send and mark done",
 				"signature": "Signature",
 				"uploadingTitle": "Waiting for attachments to finish uploading…",
 				"previewAsSent": "Preview as sent",
@@ -5211,6 +5243,24 @@
 					"label": "Screen first-time senders"
 				}
 			},
+			"postboxAlertSoundSettings": {
+				"saveOperation": "Save alert sound",
+				"heading": "Alert sounds",
+				"scopeBadge": "All your devices",
+				"intro": "A soft chime for the alerts you pick, and for nothing else. These switches belong to your account, so they hold in every browser and in the desktop app. Quiet hours keep every chime silent, and alerts that arrive together make one sound.",
+				"reply": {
+					"label": "Replies you are waiting for",
+					"hint": "When a reply lands in a conversation where you turned on \"Notify me when they reply\"."
+				},
+				"assignment": {
+					"label": "Conversations assigned to you",
+					"hint": "When a teammate assigns you a conversation in the Team inbox."
+				},
+				"question": {
+					"label": "Questions from the agent",
+					"hint": "When the agent needs a fact from you before it can reply. The question waits in your Answer queue."
+				}
+			},
 			"postboxOfflineBanners": {
 				"failedSendsBanner": "{count} queued message couldn't be sent — kept on this device. | {count} queued messages couldn't be sent — kept on this device.",
 				"offlineBanner": "Offline — reading from this device; sends will go out when you're back online.",
@@ -5343,6 +5393,9 @@
 			"postboxRewriteLayer": {
 				"rewritten": "Rewritten",
 				"undo": "Undo"
+			},
+			"postboxQuoteReplyPill": {
+				"action": "Quote in reply"
 			},
 			"postboxRewritePill": {
 				"toolbarLabel": "Rewrite selection with AI"
@@ -5533,6 +5586,27 @@
 				"trashOperation": "Move to trash",
 				"trashedUndo": "Moved to trash"
 			},
+			"threadFind": {
+				"label": "Find in conversation",
+				"placeholder": "Find in conversation",
+				"open": "Find in conversation",
+				"position": "{current} of {total}",
+				"matches": "{count} match | {count} matches",
+				"searching": "Searching…",
+				"noMatches": "No matches",
+				"previous": "Previous match",
+				"next": "Next match",
+				"close": "Close find",
+				"stillSearching": "Still reading {count} message… | Still reading {count} messages…",
+				"failed": "{count} message could not be searched. | {count} messages could not be searched.",
+				"retry": "Try again",
+				"unsearchable": "{count} encrypted or signed message is not searched. | {count} encrypted or signed messages are not searched.",
+				"loadedOnly": "Only the loaded part of the conversation is searched.",
+				"earlierFailed": "Earlier messages could not be loaded.",
+				"searchEarlier": "Search earlier messages",
+				"loadingEarlier": "Loading earlier messages…",
+				"rowCount": "{count} match | {count} matches"
+			},
 			"postboxThreadEarlier": {
 				"load": "Load earlier messages",
 				"loadCount": "Load {count} earlier message | Load {count} earlier messages",
@@ -5572,6 +5646,13 @@
 				"undoTrashed": "Moved to trash",
 				"unstar": "Unstar"
 			},
+			"postboxSweepStatus": {
+				"select": "Select {count} message | Select {count} messages",
+				"deselect": "Deselect {count} message | Deselect {count} messages",
+				"archive": "Archive {count} message | Archive {count} messages",
+				"dismiss": "Dismiss {count} update | Dismiss {count} updates",
+				"escHint": "Esc to cancel"
+			},
 			"postboxThreadRow": {
 				"backFromSnooze": "Back from snooze",
 				"deselect": "Deselect",
@@ -5590,7 +5671,9 @@
 				"unstar": "Unstar",
 				"pin": "Pin conversation",
 				"unpin": "Unpin conversation",
-				"pinnedChip": "Pinned to the top of the Inbox"
+				"pinnedChip": "Pinned to the top of the Inbox",
+				"selectSweepHint": "Select — drag across rows to select several",
+				"archiveSweepHint": "Archive — drag across rows to archive several"
 			},
 			"postboxThreadRowFollowUp": {
 				"cancelLabel": "Cancel reply reminder",
@@ -6175,6 +6258,8 @@
 				"readingPaneHelp": "Where the reader sits next to the list. Drag the divider — or focus it and use the arrow keys — to move the seam.",
 				"replyDefaultLabel": "Default reply behavior",
 				"replyDefaultHelp": "What the Reply button and the {replyKey} shortcut do. {replyAllKey} always replies to everyone; you can switch a reply to all while composing.",
+				"afterReplyLabel": "After replying",
+				"afterReplyHelp": "What Send does with the conversation you answered. Marked done, it is archived once the reply goes out, and you move on as after archiving. {oppositeKey} or the menu beside Send does the other for one reply.",
 				"writingSuggestionsLabel": "Writing suggestions",
 				"writingSuggestionsHelp": "Show inline AI autocomplete as you write. Press Tab to accept.",
 				"autoSummarizeLabel": "Show the brief above conversations",
@@ -6799,6 +6884,7 @@
 			"updateProgress": {
 				"heading": "Updating to v{version}",
 				"restartNotice": "The web app may restart during the update. This page will reconnect automatically.",
+				"rollingBackNotice": "The update failed and is being rolled back to the snapshot taken before it. This can take several minutes.",
 				"stepFailed": "Failed",
 				"steps": {
 					"convexDeploy": "Deploy backend functions",
@@ -7274,7 +7360,9 @@
 			},
 			"line": {
 				"done": "Done",
-				"replyAnyway": "Reply anyway"
+				"replyAnyway": "Reply anyway",
+				"open": "Peek",
+				"openThread": "Open conversation"
 			},
 			"source": {
 				"one": "Source: email from {from}, “{subject}”",
@@ -7333,6 +7421,55 @@
 			"zenMore": {
 				"hidden": "{count} more update in {inbox} waits outside Zen. | {count} more updates in {inbox} wait outside Zen.",
 				"show": "Show everything"
+			},
+			"upcoming": {
+				"title": "Upcoming",
+				"loadFailed": "Could not load what is coming up",
+				"when": {
+					"now": "Now",
+					"today": "{time}",
+					"tomorrow": "Tomorrow {time}",
+					"week": "{day} {time}",
+					"date": "{date}, {time}"
+				},
+				"noSubject": "(no subject)",
+				"send": {
+					"to": "Sends to {to}",
+					"toMany": "Sends to {to} and {count} other | Sends to {to} and {count} others",
+					"noRecipient": "Scheduled send, no recipient yet"
+				},
+				"snooze": {
+					"returns": "Returns from snooze · {from}",
+					"untilReply": "Returns from snooze, sooner if they reply · {from}"
+				},
+				"followUp": {
+					"waitingOn": "Reminder if {who} has not replied",
+					"anyone": "Reminder if nobody has replied"
+				},
+				"teamSnooze": "Team inbox · returns from snooze · {contact}",
+				"campaign": {
+					"title": "Campaign {name}",
+					"toAudience": "to {audience}",
+					"recipients": "{count} recipient | {count} recipients",
+					"countedAt": "Recipients counted {when}",
+					"local": "at {time} in each recipient's time zone",
+					"optimized": "at each recipient's usual reading time"
+				},
+				"actionsFor": "Scheduled send: {subject}",
+				"actions": {
+					"sendNow": "Send now",
+					"edit": "Edit",
+					"cancel": "Cancel"
+				},
+				"operations": {
+					"sendNow": "Send now",
+					"cancel": "Unschedule the send"
+				},
+				"noLongerScheduled": "That send is no longer scheduled.",
+				"sent": "Sending now.",
+				"cancelled": "Unscheduled. It is back in Drafts.",
+				"showMore": "Show more",
+				"moreThanShown": "More is scheduled than the Workbench lists."
 			}
 		},
 		"answer": {
@@ -11489,7 +11626,19 @@
 				"sortSwitchTo": "Sort by {sort}",
 				"waitingOver24h": "{count} customer has waited more than a day for an answer | {count} customers have waited more than a day for an answer",
 				"showLongestWaitFirst": "Show longest wait first",
-				"analytics": "Analytics"
+				"analytics": "Analytics",
+				"bulk": {
+					"failed": {
+						"resolved": "{count} of {total} conversations wasn't resolved. It stays selected. | {count} of {total} conversations weren't resolved. They stay selected.",
+						"snoozed": "{count} of {total} conversations wasn't snoozed. It stays selected. | {count} of {total} conversations weren't snoozed. They stay selected.",
+						"assigned": "{count} of {total} conversations wasn't assigned. It stays selected. | {count} of {total} conversations weren't assigned. They stay selected."
+					},
+					"failedUnselected": {
+						"resolved": "{count} of {total} conversations wasn't resolved. | {count} of {total} conversations weren't resolved.",
+						"snoozed": "{count} of {total} conversations wasn't snoozed. | {count} of {total} conversations weren't snoozed.",
+						"assigned": "{count} of {total} conversations wasn't assigned. | {count} of {total} conversations weren't assigned."
+					}
+				}
 			},
 			"quarantine": {
 				"blockDialogConfirm": "Block sender",
@@ -11603,6 +11752,8 @@
 				"dismiss": "Done",
 				"dismissOperation": "Dismiss update",
 				"dismissedToast": "Update dismissed",
+				"dismissedManyToast": "{count} update dismissed | {count} updates dismissed",
+				"dismissSweepHint": "Done — drag across updates to dismiss several",
 				"empty": {
 					"updates": {
 						"title": "You're caught up",
@@ -12889,7 +13040,12 @@
 				"other": "Other"
 			},
 			"empty": "No conversations match these filters.",
-			"footnote": "Shows the latest {count} conversations of each inbox. Open an inbox for everything, including sent, archive and search."
+			"footnote": "Shows the latest {count} conversations of each inbox. Open an inbox for everything, including sent, archive and search.",
+			"archiveOperation": "Archive conversations",
+			"archiveUndoOperation": "Undo archive",
+			"archivedUndo": "Archived {count} conversation | Archived {count} conversations",
+			"archiveSweepHint": "Archive — drag across rows to archive several",
+			"sweepStatus": "Archive {count} conversation | Archive {count} conversations"
 		}
 	},
 	"desktop": {
@@ -15999,6 +16155,10 @@
 				"scopeOperation": "changing who can open the share link"
 			}
 		},
+		"postboxAfterReply": {
+			"keep": "Keep it in the Inbox",
+			"done": "Mark it done (archive)"
+		},
 		"postboxAutoAdvance": {
 			"backToList": "Go back to the list",
 			"next": "Open the next conversation",
@@ -16579,6 +16739,10 @@
 					"title": "Default reply behavior",
 					"keywords": "reply all, reply, r key"
 				},
+				"afterReply": {
+					"title": "After replying",
+					"keywords": "send and archive, mark done, done, archive after reply, keep in inbox"
+				},
 				"shortcuts": {
 					"keywords": "keyboard, shortcuts, hotkeys, key bindings, remap, gmail keys, superhuman keys, outlook keys",
 					"title": "Keyboard shortcuts"
@@ -16670,6 +16834,10 @@
 				"marketingNotifications": {
 					"title": "Marketing notifications",
 					"keywords": "campaign finished, scheduled campaign reminder, bounce spike, bounce protection, sending paused, automation stalled, dns broken, alerts"
+				},
+				"alertSounds": {
+					"title": "Alert sounds",
+					"keywords": "sound, chime, audio, reply alert, assigned to me, agent question"
 				},
 				"pushNotifications": {
 					"title": "Push notifications",
@@ -16784,6 +16952,7 @@
 				"scheduleSend": "Schedule send (in composer)",
 				"selectDeselect": "Select / deselect",
 				"send": "Send (in composer)",
+				"sendAlternate": "Send, other after-reply action (in composer)",
 				"showShortcuts": "Show keyboard shortcuts",
 				"snooze": "Snooze",
 				"starUnstar": "Star / unstar",
@@ -16794,6 +16963,7 @@
 				"toggleTodayBrowse": "Switch between Priority and All mail (inbox)",
 				"undoTriage": "Undo last triage",
 				"zenMode": "Zen mode: show only the task at hand",
+				"findInConversation": "Find in conversation",
 				"goToAnswer": "Go to the Answer queue",
 				"goToMarketing": "Go to marketing",
 				"next": "Next",
@@ -16834,7 +17004,10 @@
 				"rejectDraft": "Reject the draft",
 				"openMention": "Open the mention to reply",
 				"markMentionRead": "Mark the mention read",
-				"skipCard": "Skip for now"
+				"skipCard": "Skip for now",
+				"clearSelection": "Clear the selection",
+				"resolveThread": "Resolve the thread",
+				"assignThread": "Assign the thread to…"
 			}
 		},
 		"signatureBadge": {
@@ -18114,7 +18287,8 @@
 				"snooze": "Snooze",
 				"star": "Star",
 				"read": "Mark read",
-				"none": "Nothing"
+				"none": "Nothing",
+				"resolve": "Resolve"
 			}
 		},
 		"postboxKeyVerification": {
@@ -18156,10 +18330,8 @@
 				"followUpPrompt": "Remind me",
 				"cancelFollowUp": "Cancel reply reminder",
 				"translate": "Translate",
+				"find": "Find in conversation",
 				"showOriginal": "Download original (.eml)",
-				"copyLink": "Copy link",
-				"linkCopied": "Link copied",
-				"linkCopyFailed": "Could not copy the link",
 				"pin": "Pin conversation",
 				"unpin": "Unpin conversation"
 			},
@@ -18180,6 +18352,13 @@
 				"priorityPrompt": "Priority",
 				"current": "Current"
 			}
+		},
+		"conversationLink": {
+			"copyLink": "Copy link",
+			"shareInChat": "Share in chat…",
+			"linkCopied": "Link copied",
+			"linkCopyFailed": "Could not copy the link",
+			"linkUnavailable": "This workspace has no web address to link to"
 		},
 		"inboxSla": {
 			"dueIn": {
@@ -18225,6 +18404,13 @@
 				"automation": "Automation",
 				"template": "Template"
 			}
+		},
+		"rowMenu": {
+			"open": "Open",
+			"openInNewTab": "Open in new tab",
+			"copyLink": "Copy link",
+			"linkCopied": "Link copied",
+			"copyFailed": "Couldn't copy the link"
 		}
 	},
 	"sharedPkg": {

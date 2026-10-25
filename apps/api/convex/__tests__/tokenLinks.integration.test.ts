@@ -1039,6 +1039,31 @@ describe('seedAdmin (POST /seed/admin)', () => {
 		});
 	});
 
+	it('rejects (400) a field of the wrong type before touching any row', async () => {
+		const t = setupTest();
+		const res = await t.fetch('/seed/admin', {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json',
+				'X-Instance-Secret': 'test-instance-secret',
+			},
+			body: JSON.stringify({
+				email: 'admin@example.com',
+				name: 'Admin',
+				passwordHash: 'hashed-password',
+				flags: { campaigns: 'yes' },
+			}),
+		});
+		expect(res.status).toBe(400);
+		expect(await res.json()).toEqual({
+			error: {
+				category: 'invalid_input',
+				message: 'Invalid request body: $.flags[*]: expected boolean',
+			},
+		});
+		expect(await t.run(async (ctx) => ctx.db.query('instanceSettings').collect())).toEqual([]);
+	});
+
 	it('rate-limits the endpoint per IP (429) before the secret check (L5)', async () => {
 		const t = setupTest();
 		// The adminSeed limiter is a 5/min fixed window; getClientIp collapses to

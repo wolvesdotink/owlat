@@ -7,7 +7,7 @@
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
-import { nextTick } from 'vue';
+import { nextTick, ref } from 'vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { useConvexQuery } from '~/composables/useConvexQuery';
 import InboxGroup from '../InboxGroup.vue';
@@ -30,6 +30,17 @@ beforeEach(() => {
 		useRoute: () => ({ path: '/dashboard' }),
 		useConvex: () => client,
 		useConvexQuery,
+		// The Team inbox rows' menu verbs (assign to me, resolve) set up their
+		// writes and the undo notice; nothing here runs them.
+		useAuth: () => ({ user: ref({ id: 'user1' }) }),
+		useBackendOperation: () => ({ run: vi.fn(), isLoading: ref(false) }),
+		useState: (_key: string, init: () => unknown) => ref(init()),
+		useToast: () => ({
+			showToast: vi.fn(),
+			removeToast: vi.fn(),
+			updateToast: vi.fn(),
+			setToastShortcutHint: vi.fn(),
+		}),
 	});
 });
 

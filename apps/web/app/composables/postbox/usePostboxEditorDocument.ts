@@ -22,6 +22,15 @@ import { EMPTY_ACTIVE_MARKS, type ActiveMarks } from '@owlat/ui/composables/useR
 import { sanitizePostboxComposerHtml } from '~/utils/postboxSanitizeHtml';
 import { serializeComposerBody } from '~/utils/postboxInlineImageSrc';
 
+/** Where a reply's seeded tail starts (as `splitAnswerBody` reads it). */
+const SEEDED_TAIL = 'div[data-postbox-signature], div.gmail_quote';
+
+/** The `<br>`s and blank text between the written part and the tail. */
+function isTailSpacing(node: Node): boolean {
+	if (node.nodeName === 'BR') return true;
+	return node.nodeType === Node.TEXT_NODE && !(node.textContent ?? '').trim();
+}
+
 export function usePostboxEditorDocument(opts: {
 	editorRef: Ref<HTMLDivElement | null>;
 	/** Current bound HTML (getter so the watcher tracks the live prop). */
@@ -97,17 +106,34 @@ export function usePostboxEditorDocument(opts: {
 	}
 
 	/**
-	 * Drop the caret at the very end of the content after an external rewrite.
-	 * Every external writer today appends (a signature, a revise pass, a share
-	 * block), so the end is where the user would want to carry on typing; the
-	 * alternative — leaving the selection on detached nodes — types into nothing.
+	 * Drop the caret where the person carries on writing after an external
+	 * rewrite: the end of the written part, just before a reply's seeded tail
+	 * (the signature block or a quote, with the `<br>`s spacing it), else the
+	 * end of the content. External writers append after the text (a revise
+	 * pass, a share block) or put something into the tail (a signature, a
+	 * quoted passage); typing after the tail would land inside the signature
+	 * or the quoted original, out of reach of Answer mode's written part. The
+	 * alternative, leaving the selection on detached nodes, types into nothing.
 	 */
-	function placeCaretAtEnd(el: HTMLElement) {
+	function placeCaretAtWrittenEnd(el: HTMLElement) {
 		const selection = window.getSelection?.();
 		if (!selection) return;
 		const range = document.createRange();
-		range.selectNodeContents(el);
-		range.collapse(false);
+		let boundary: Node | null = el.querySelector(SEEDED_TAIL);
+		while (boundary && boundary.parentNode !== el) boundary = boundary.parentNode;
+		if (!boundary) {
+			range.selectNodeContents(el);
+			range.collapse(false);
+		} else {
+			let written = boundary.previousSibling;
+			while (written && isTailSpacing(written)) written = written.previousSibling;
+			if (!written) range.setStart(el, 0);
+			else if (written.nodeType === Node.TEXT_NODE)
+				range.setStart(written, written.textContent?.length ?? 0);
+			else if (written.lastChild?.nodeName === 'BR') range.setStartBefore(written.lastChild);
+			else range.setStart(written, written.childNodes.length);
+			range.collapse(true);
+		}
 		selection.removeAllRanges();
 		selection.addRange(range);
 	}
@@ -146,7 +172,7 @@ export function usePostboxEditorDocument(opts: {
 		ensureScaffold();
 		lastSynced = serializeComposerBody(el);
 		opts.onWritten?.();
-		if (wasFocused) placeCaretAtEnd(el);
+		if (wasFocused) placeCaretAtWrittenEnd(el);
 		syncEmptyState();
 	});
 

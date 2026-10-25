@@ -1,7 +1,8 @@
 import { api } from '@owlat/api';
 import { effectScope, type EffectScope } from 'vue';
 import type { ConvexQueryResult } from './useConvexQuery';
-import type { OrganizationRole } from './useOrganization';
+import type { OrganizationRole } from '@owlat/shared/organizationPermissions';
+import { useOrganizationSession } from './useOrganizationSession';
 
 type SettingsQuery = ConvexQueryResult<(typeof api.workspaces.settings.get)['_returnType']> | null;
 
@@ -58,8 +59,11 @@ function workspaceSettingsQuery(): NonNullable<SettingsQuery> {
  * Use this composable instead of directly accessing useAuth for organization-related data.
  */
 export function useOrganizationContext() {
-	const { isPending: authPending, activeOrganizationId, user } = useAuth();
-	const { organization, organizations, setActive } = useOrganization();
+	const auth = useAuth();
+	const { isPending: authPending, activeOrganizationId, user } = auth;
+	// The session half only: the roster (`useOrganization`) is for team pages,
+	// and this composable runs on every page.
+	const { organization, organizations, setActive } = useOrganizationSession(auth);
 	const { role: memberRole, isResolved: roleResolved } = useActiveMemberRole();
 
 	// Instance settings from Convex (timezone, email theme, etc.) — shared, see

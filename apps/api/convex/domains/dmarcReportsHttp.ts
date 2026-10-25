@@ -26,6 +26,8 @@ import {
 } from '../webhooks/mtaSignature';
 import { getClientIp } from '../lib/publicRateLimit';
 import { errorResponse, jsonResponse, methodNotAllowed } from '../lib/httpResponse';
+import { decodeJsonText } from '@owlat/worker-protocol/decodeJson';
+import { forwardedReportBody, type ForwardedAttachment } from './forwardedReportBody';
 import { readStreamBytes, StreamByteLimitExceeded } from '@owlat/shared';
 import { DMARC_REPORT_MAX_XML_BYTES } from '@owlat/shared/dmarcReport';
 
@@ -33,12 +35,6 @@ import { DMARC_REPORT_MAX_XML_BYTES } from '@owlat/shared/dmarcReport';
 // message's other fields (a report mail's body is a line or two).
 const DMARC_REPORT_MAX_WEBHOOK_BODY_BYTES =
 	4 * Math.ceil(DMARC_REPORT_MAX_XML_BYTES / 3) + 256 * 1024;
-
-interface ForwardedAttachment {
-	filename?: string;
-	contentType?: string;
-	content?: string; // base64
-}
 
 /** Report attachments by media type or name; the Node action checks the bytes. */
 export function isDmarcReportAttachment(att: ForwardedAttachment): boolean {
@@ -107,16 +103,11 @@ export const handleDmarcReportWebhook = httpAction(async (ctx, request) => {
 		);
 	}
 
-	let payload: { attachments?: ForwardedAttachment[] };
-	try {
-		payload = JSON.parse(bodyText);
-	} catch {
-		return errorResponse('invalid_input', 'Invalid JSON');
-	}
+	const decoded = decodeJsonText(bodyText, forwardedReportBody);
+	if (!decoded.ok) return errorResponse('invalid_input', decoded.failure.message);
+	const payload = decoded.value;
 
-	const attachment = (Array.isArray(payload.attachments) ? payload.attachments : []).find(
-		isDmarcReportAttachment
-	);
+	const attachment = (payload.attachments ?? []).find(isDmarcReportAttachment);
 	if (typeof attachment?.content !== 'string' || attachment.content.length === 0) {
 		return jsonResponse({ ok: false, reason: 'no-report-attachment' });
 	}

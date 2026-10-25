@@ -9,6 +9,7 @@
  */
 
 import { Hono } from 'hono';
+import { v } from 'convex/values';
 import type Redis from 'ioredis';
 import { DNSBL_LISTS, dnsblZoneHost, isSpamhausDqsKey } from '@owlat/shared/dnsbl';
 import type { MtaDnsblAccessUpdate } from '@owlat/mta-protocol/dnsblAccess';
@@ -24,6 +25,10 @@ import { runDnsblCheck } from '../intelligence/dnsbl.js';
 import { defaultLookupDeps } from '../intelligence/dnsblLookup.js';
 import { getDnsblTransport } from '../intelligence/dnsblResolver.js';
 import { logger } from '../monitoring/logger.js';
+import { readJsonBody } from '../lib/jsonBody.js';
+
+const KEY_MESSAGE = 'spamhausDqsKey must be a string or null';
+const accessBody = v.object({ spamhausDqsKey: v.union(v.string(), v.null()) });
 
 export function createDnsblAccessRoutes(redis: Redis, config: MtaConfig) {
 	const app = new Hono();
@@ -39,13 +44,9 @@ export function createDnsblAccessRoutes(redis: Redis, config: MtaConfig) {
 	app.get('/', async (c) => c.json(await readSpamhausAccess(redis, transport().configured)));
 
 	app.put('/', async (c) => {
-		const body = await c.req
-			.json<{ spamhausDqsKey?: unknown }>()
-			.catch(() => ({}) as { spamhausDqsKey?: unknown });
-		const raw = body.spamhausDqsKey;
-		if (raw !== null && typeof raw !== 'string') {
-			return c.json({ error: 'spamhausDqsKey must be a string or null' }, 400);
-		}
+		const read = await readJsonBody(c, accessBody, { invalidMessage: KEY_MESSAGE });
+		if (!read.ok) return read.response;
+		const raw = read.value.spamhausDqsKey;
 
 		if (raw !== null) {
 			const key = raw.trim();

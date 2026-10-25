@@ -10,7 +10,8 @@
  */
 import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vitest';
 import type { VueWrapper } from '@vue/test-utils';
-import { computed, defineComponent, h, reactive, ref } from 'vue';
+import { computed, defineComponent, h, nextTick, reactive, ref } from 'vue';
+import { parseSearchQuery } from '@owlat/shared/mailSearch';
 
 import { i18nStubs } from '~/__tests__/i18n';
 import { mountDashboardPage } from '~/__tests__/a11y';
@@ -42,6 +43,7 @@ const searchOlder = vi.fn(() => {
 });
 const searchError = ref<Error | null>(null);
 const refetchSearch = vi.fn();
+const parsed = ref<object>({});
 
 beforeAll(() => {
 	Object.assign(globalThis, {
@@ -59,7 +61,7 @@ beforeAll(() => {
 			isLoading: ref(false),
 		}),
 		usePostboxSearch: () => ({
-			parsed: ref({}),
+			parsed,
 			results,
 			isLoading: ref(false),
 			isLoadingMore: ref(false),
@@ -74,14 +76,19 @@ beforeAll(() => {
 		// Settings row for the admin notice; the backfill status is not needed
 		// for the "disabled" state, so every other query resolves empty.
 		useConvexQuery: (_ref: unknown, args: unknown) => {
-			const resolved = typeof args === 'function' ? (args as () => unknown)() : args;
-			if (resolved === 'skip') return { data: ref(undefined) };
+			const resolve = () => (typeof args === 'function' ? (args as () => unknown)() : args);
 			return {
-				data: computed(() =>
-					resolved && typeof resolved === 'object' && 'mailboxId' in resolved
+				data: computed(() => {
+					const resolved = resolve();
+					if (resolved === 'skip') return undefined;
+					// The picked result's message (search preview).
+					if (resolved && typeof resolved === 'object' && 'messageId' in resolved) {
+						return { _id: (resolved as { messageId: string }).messageId };
+					}
+					return resolved && typeof resolved === 'object' && 'mailboxId' in resolved
 						? null
-						: { isBodySearchIndexingEnabled: bodyIndexing.value }
-				),
+						: { isBodySearchIndexingEnabled: bodyIndexing.value };
+				}),
 			};
 		},
 		usePostboxSavedSearches: () => ({
@@ -110,6 +117,7 @@ beforeEach(() => {
 	searchOlder.mockClear();
 	searchError.value = null;
 	refetchSearch.mockClear();
+	parsed.value = {};
 });
 
 const passthrough = (name: string) =>
@@ -219,5 +227,21 @@ describe('mail search page', () => {
 		const retry = page.findAll('button').find((button) => button.text() === 'Try again');
 		await retry!.trigger('click');
 		expect(refetchSearch).toHaveBeenCalledTimes(1);
+	});
+
+	it('opens a picked result with its searched words found, never an operator', async () => {
+		parsed.value = parseSearchQuery('from:ines@example.com refund is:unread');
+		results.value = [{ _id: 'mm1' }];
+		const page = mountPage();
+		await nextTick();
+		page.findComponent({ name: 'PostboxThreadList' }).vm.$emit('select', 'mm1');
+		await nextTick();
+		// The reader is stubbed, so the seed arrives as a plain attribute.
+		const seed = () => page.findComponent({ name: 'PostboxThreadReader' }).vm.$attrs['find-seed'];
+		expect(seed()).toEqual({ query: 'refund', messageId: 'mm1' });
+
+		parsed.value = parseSearchQuery('from:ines@example.com is:unread');
+		await nextTick();
+		expect(seed()).toBeNull();
 	});
 });

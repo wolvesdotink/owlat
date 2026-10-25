@@ -23,7 +23,6 @@ apps/web/app/components/postbox/PostboxBulkOverflowMenu.vue	button	:title="t('co
 apps/web/app/components/postbox/PostboxBulkOverflowMenu.vue	button	:title="t('components.postbox.postboxQuickActionsBar.spamTitle')"
 apps/web/app/components/postbox/PostboxBulkOverflowMenu.vue	button	:title="t('components.postbox.postboxQuickActionsBar.unsnoozeTitle')"
 apps/web/app/components/postbox/PostboxComposerEnvelope.vue	button	:title=" t('components.postbox.postboxComposerEnvelope.alsoInclude', { names: replyAllExtraNames, }) "
-apps/web/app/components/postbox/PostboxComposerFooter.vue	UiButton	:title="sendTitle"
 apps/web/app/components/postbox/PostboxFilesPanel.vue	NuxtLink	:title="file.subject"
 apps/web/app/components/postbox/PostboxFolderRail.vue	NuxtLink	:title="saved.rawQuery"
 apps/web/app/components/postbox/PostboxFollowUpChip.vue	button	:title="t('components.postbox.postboxFollowUpChip.remindMe')"

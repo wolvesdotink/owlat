@@ -55,6 +55,7 @@ const GATE_ENV = [
 	'GITHUB_ACTIONS',
 	'GITHUB_BASE_REF',
 	'GITHUB_EVENT_NAME',
+	'PR_BASE_SHA',
 	'STORED_BLOCK_CORPUS_BASE',
 	'STORED_BLOCK_CORPUS_DEFAULT_BRANCH',
 	'STORED_BLOCK_CORPUS_PUSH_BEFORE',
@@ -206,6 +207,56 @@ describe('check-stored-block-corpus', () => {
 			const root = shallowClone(source);
 			const result = ciPush(root, base);
 			expect(result.status).toBe(1);
+			expect(result.output).toContain('snapshots/renderer-v2/a.html');
+		});
+	});
+
+	describe('pull requests in CI', () => {
+		/** A pull request run, as the Lint job runs the gate. */
+		const ciPullRequest = (root: string, pinned?: string): Result =>
+			run(root, {
+				CI: 'true',
+				GITHUB_ACTIONS: 'true',
+				GITHUB_BASE_REF: 'main',
+				...(pinned && { PR_BASE_SHA: pinned }),
+			});
+
+		/** `rewrittenOnTop` with an origin whose main moved to HEAD after the checkout. */
+		function targetMovedToHead(): { root: string; base: string } {
+			const repo = rewrittenOnTop();
+			const remote = mkdtempSync(join(tmpdir(), 'owlat-stored-block-corpus-remote-'));
+			sandboxes.push(remote);
+			git(remote, ['init', '--quiet', '--bare']);
+			git(repo.root, ['remote', 'add', 'origin', remote]);
+			git(repo.root, ['push', '--quiet', 'origin', 'HEAD:refs/heads/main']);
+			setOriginMain(repo.root, repo.base);
+			return repo;
+		}
+
+		it('compares with PR_BASE_SHA, not where origin/main points', () => {
+			const { root, base } = rewrittenOnTop();
+			setOriginMain(root, 'HEAD');
+			const result = ciPullRequest(root, base);
+			expect(result.status).toBe(1);
+			expect(result.output).toContain(`against origin/main at ${base}`);
+		});
+
+		it('keeps the origin/main the checkout has when the remote moves', () => {
+			const { root, base } = targetMovedToHead();
+			for (const pinned of [base, undefined]) {
+				const result = ciPullRequest(root, pinned);
+				expect(result.status, result.output).toBe(1);
+				expect(result.output).toContain('snapshots/renderer-v2/a.html');
+			}
+			expect(git(root, ['rev-parse', 'origin/main'])).toBe(base);
+			expect(git(root, ['rev-parse', '--is-shallow-repository'])).toBe('false');
+		});
+
+		it('fetches a pinned base a shallow checkout lacks', () => {
+			const { root: source, base } = rewrittenOnTop();
+			const root = shallowClone(source);
+			const result = ciPullRequest(root, base);
+			expect(result.status, result.output).toBe(1);
 			expect(result.output).toContain('snapshots/renderer-v2/a.html');
 		});
 	});

@@ -79,6 +79,7 @@ const overCap = computed(() => labelData.value?.hasMore ?? false);
 							:loading="isLoading"
 							folder-role="inbox"
 							empty-context="label"
+							:list-path="`/dashboard/postbox/label/${labelId}`"
 						/>
 					</div>
 				</aside>

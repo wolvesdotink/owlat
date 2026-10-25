@@ -6,10 +6,20 @@
  */
 
 import { Hono } from 'hono';
+import { v } from 'convex/values';
 import type Redis from 'ioredis';
 import type { MtaConfig } from '../config.js';
 import * as poolRulesService from '../scaling/poolRules.js';
 import { masterKeyAuth } from '../auth/masterKeyAuth.js';
+import { readJsonBody } from '../lib/jsonBody.js';
+
+const poolRuleBody = v.object({
+	organizationId: v.string(),
+	pool: v.optional(v.union(v.literal('transactional'), v.literal('campaign'))),
+	dedicatedIp: v.optional(v.string()),
+	fromDomain: v.optional(v.string()),
+	toDomain: v.optional(v.string()),
+});
 
 export function createPoolRulesRoutes(redis: Redis, config: MtaConfig) {
 	const app = new Hono();
@@ -19,13 +29,9 @@ export function createPoolRulesRoutes(redis: Redis, config: MtaConfig) {
 
 	// Set pool rule for an org (optionally scoped by domain)
 	app.post('/', async (c) => {
-		const body = await c.req.json<{
-			organizationId: string;
-			pool?: 'transactional' | 'campaign';
-			dedicatedIp?: string;
-			fromDomain?: string;
-			toDomain?: string;
-		}>();
+		const read = await readJsonBody(c, poolRuleBody);
+		if (!read.ok) return read.response;
+		const body = read.value;
 
 		if (!body.organizationId) {
 			return c.json({ error: 'organizationId is required' }, 400);
@@ -33,10 +39,6 @@ export function createPoolRulesRoutes(redis: Redis, config: MtaConfig) {
 
 		if (!body.pool && !body.dedicatedIp) {
 			return c.json({ error: 'At least one of pool or dedicatedIp is required' }, 400);
-		}
-
-		if (body.pool && body.pool !== 'transactional' && body.pool !== 'campaign') {
-			return c.json({ error: 'pool must be "transactional" or "campaign"' }, 400);
 		}
 
 		await poolRulesService.setRule(redis, body.organizationId, {

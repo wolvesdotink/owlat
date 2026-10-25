@@ -7,6 +7,9 @@
  * and its own ⋯ items (the `menu` slot). Props only a mailbox draft uses are
  * optional.
  *
+ * A reply's Send is a split button (`sendActions`): Send does what the "after
+ * replying" setting says, its menu offers both ways (PostboxComposerSendButton).
+ *
  * Slots: `send-hint` (beside Send), `menu` (first in ⋯, receives `close`),
  * `notes` (under the pre-send checks). Both composers pass `savedReplies`, which
  * puts the saved-reply picker beside the paperclip.
@@ -20,6 +23,9 @@ import type { InlineImageSources } from '~/composables/postbox/usePostboxInlineI
 import SavedReplyComposerTools from '~/components/savedReply/SavedReplyComposerTools.vue';
 import type { PreflightFinding } from '~/utils/postboxPreflight';
 import { usePostboxInsertAvailability } from '~/composables/postbox/usePostboxInsertAvailability';
+import type { ComposerSendActions, PostboxAfterReply } from '~/utils/postboxAfterReply';
+import { POSTBOX_SEND_AND_LABELS } from '~/utils/postboxAfterReply';
+import PostboxComposerSendButton from './PostboxComposerSendButton.vue';
 
 const props = defineProps<{
 	/** What the composer's target allows; hides the controls it cannot use. */
@@ -36,6 +42,8 @@ const props = defineProps<{
 	isScheduled?: boolean;
 	sendShortcutHint?: string;
 	scheduleShortcutHint?: string;
+	/** A reply's two ways to send (keep in Inbox / mark done); unset is a plain Send. */
+	sendActions?: ComposerSendActions;
 	showSignaturePicker?: boolean;
 	signatures?: { _id: Id<'mailSignatures'>; name: string }[];
 	activeSignatureId?: Id<'mailSignatures'> | null;
@@ -74,7 +82,8 @@ const followUpRemindAt = defineModel<number | null>('followUpRemindAt', {
 const bodyHtml = defineModel<string>('bodyHtml', { default: '' });
 
 const emit = defineEmits<{
-	(e: 'send'): void;
+	/** `action`: a Send menu entry's explicit choice; the button sends none. */
+	(e: 'send', action?: PostboxAfterReply): void;
 	(e: 'schedule'): void;
 	(e: 'add-files', files: File[]): void;
 	(e: 'signature-change', event: Event): void;
@@ -105,12 +114,14 @@ const sendAsName = computed(() => {
 });
 
 // While an upload is in flight the Send button is disabled (canSend is false);
-// explain the wait in its tooltip instead of showing the keyboard hint.
-const sendTitle = computed(() =>
-	props.isUploading
-		? t('components.postbox.postboxComposerFooter.uploadingTitle')
-		: props.sendShortcutHint
-);
+// explain the wait in its tooltip instead of showing the keyboard hint. A
+// reply's Send says what it does with the conversation.
+const sendTitle = computed(() => {
+	if (props.isUploading) return t('components.postbox.postboxComposerFooter.uploadingTitle');
+	const actions = props.sendActions;
+	if (!actions) return props.sendShortcutHint;
+	return `${t(POSTBOX_SEND_AND_LABELS[actions.primary])} (${actions.chords[actions.primary]})`;
+});
 
 // The file input lives here alongside the attach button that triggers it; the
 // selected files are emitted to the composer, which owns the upload state. On
@@ -163,25 +174,15 @@ function onPickFiles(event: Event) {
 			data-testid="composer-footer-row"
 		>
 			<div class="flex items-center gap-2 min-w-0">
-				<UiButton
-					type="button"
-					class="shrink-0 whitespace-nowrap"
-					:title="sendTitle"
+				<PostboxComposerSendButton
 					:disabled="!canSend || sending || isScheduled"
-					data-testid="composer-send"
-					@click="emit('send')"
-				>
-					<Icon
-						v-if="sending"
-						name="lucide:loader-2"
-						class="w-4 h-4 mr-1.5 animate-spin motion-reduce:animate-none"
-					/>
-					<Icon v-else :name="sendIcon ?? 'lucide:send'" class="w-4 h-4 mr-1.5" />
-					{{
-						sendLabel ??
-						(sending ? t('components.postbox.postboxComposerFooter.sending') : t('common.send'))
-					}}
-				</UiButton>
+					:sending="sending"
+					:title="sendTitle"
+					:label="sendLabel"
+					:icon="sendIcon"
+					:actions="sendActions"
+					@send="(action) => emit('send', action)"
+				/>
 				<slot name="send-hint" />
 				<span
 					v-if="sendAsName"

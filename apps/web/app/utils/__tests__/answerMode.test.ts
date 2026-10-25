@@ -79,4 +79,19 @@ describe('answerDraftHasContent', () => {
 		expect(bodyHasQuote(quote)).toBe(true);
 		expect(bodyHasQuote('<p>Hello</p>')).toBe(false);
 	});
+
+	// "Quote in reply": the person picked this passage, so it is theirs to keep
+	// and it is never folded away.
+	const selected =
+		'<br><br><div class="gmail_quote owlat_selected_quote"><div>On Monday, Jonas wrote:</div>' +
+		'<blockquote>the invoice</blockquote></div>';
+
+	it('counts a selected passage as content', () => {
+		expect(answerDraftHasContent(`<p><br></p>${selected}${signature}`, 0)).toBe(true);
+	});
+
+	it('does not see a quote to fold in a selected passage alone', () => {
+		expect(bodyHasQuote(selected)).toBe(false);
+		expect(bodyHasQuote(`${selected}${quote}`)).toBe(true);
+	});
 });

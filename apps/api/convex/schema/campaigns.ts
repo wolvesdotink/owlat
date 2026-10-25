@@ -295,6 +295,9 @@ export const campaignTables = {
 		.index('by_deleted_at_and_updated_at', ['deletedAt', 'updatedAt'])
 		.index('by_deleted_at_and_status_and_updated_at', ['deletedAt', 'status', 'updatedAt'])
 		.index('by_status_and_scheduled_at', ['status', 'scheduledAt'])
+		// Today's Upcoming band: live scheduled campaigns, soonest first, so a
+		// Recently deleted row never takes a place on the page.
+		.index('by_deleted_at_and_status_and_scheduled_at', ['deletedAt', 'status', 'scheduledAt'])
 		.index('by_status_sent_at', ['status', 'sentAt'])
 		// Live sends newest first (overview, comparisons, assistant stats): the
 		// range skips Recently deleted rows before any limit is applied.

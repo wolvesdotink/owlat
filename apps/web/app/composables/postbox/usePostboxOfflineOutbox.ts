@@ -310,6 +310,8 @@ export function usePostboxOfflineOutbox(mailboxId?: MaybeRefOrGetter<string | un
 			undoSendDelayMs: p.sendOptions?.undoSendDelayMs ?? 0,
 			scheduledSendAt: p.sendOptions?.scheduledSendAt,
 			allowUnsealed: p.sendOptions?.allowUnsealed,
+			afterSend: p.sendOptions?.afterSend,
+			afterSendChosenAt: p.sendOptions?.afterSendChosenAt,
 		});
 	}
 

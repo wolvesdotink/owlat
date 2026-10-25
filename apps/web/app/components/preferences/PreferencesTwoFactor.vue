@@ -15,8 +15,8 @@ import {
 	isCompleteTotpCode,
 	normalizeTotpCode,
 	parseTotpUri,
-	totpQrCode,
 } from '~/utils/accountTwoFactor';
+import { totpQrCode } from '~/utils/accountTwoFactorQr';
 
 /** Raised when the session was rotated underneath the page (see `confirmEnrolment`). */
 const emit = defineEmits<{ sessionsChanged: [] }>();

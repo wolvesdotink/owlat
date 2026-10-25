@@ -1,4 +1,6 @@
+import { v } from 'convex/values';
 import { isValidTargetVersion } from '@owlat/shared/releaseArtifacts';
+import { readJsonBody } from '~~/server/utils/jsonBody';
 import { requireInstanceSecret, callUpdater } from '~~/server/utils/updater';
 import { resolveVerifiedComposeTemplate } from '~~/server/utils/composeUpdate';
 import { isStartedRollout, UPDATE_REQUEST_TIMEOUT_MS } from '~/lib/systemUpdate';
@@ -22,11 +24,14 @@ import { isStartedRollout, UPDATE_REQUEST_TIMEOUT_MS } from '~/lib/systemUpdate'
  * every service healthy in time) is answered 200 with the updater's note as
  * `warning`: the release is live, and retrying it would change nothing.
  */
+/** Presence and syntax are checked below, with the route's own message. */
+const selfUpdateBody = v.object({ targetVersion: v.optional(v.string()) });
+
 export default defineEventHandler(async (event) => {
 	const instanceSecret = requireInstanceSecret(event, 'Self-update not configured');
 
-	const body = await readBody<{ targetVersion?: string }>(event);
-	const targetVersion = body?.targetVersion?.trim() || '';
+	const body = await readJsonBody(event, selfUpdateBody, { emptyBody: {} });
+	const targetVersion = body.targetVersion?.trim() || '';
 
 	if (!isValidTargetVersion(targetVersion)) {
 		throw createError({

@@ -2,6 +2,8 @@
 import type { Id } from '@owlat/api/dataModel';
 import { splitMentionSegments } from '@owlat/shared/chatMentions';
 import type { ChatMessageRow } from '~/composables/chat/useChatRoom';
+import { currentConversationLinkOrigin } from '~/composables/useConversationLink';
+import { type ConversationLinkSegment, splitConversationLinks } from '~/utils/conversationLink';
 
 interface Props {
 	message: ChatMessageRow;
@@ -43,8 +45,17 @@ const formattedTime = computed(() =>
 
 const isMentioned = computed(() => (props.message.mentions ?? []).includes(props.currentUserId));
 
-// Render the text with @-mentions visually emphasized.
-const segments = computed(() => splitMentionSegments(props.message.text));
+// Render the text with @-mentions visually emphasized, and a link to a
+// conversation on this instance ("Share in chat…") as an in-app link.
+const linkOrigin = currentConversationLinkOrigin();
+type MessageSegment = ConversationLinkSegment | { kind: 'mention'; value: string };
+const segments = computed(() =>
+	splitMentionSegments(props.message.text).flatMap((segment): MessageSegment[] =>
+		segment.kind === 'mention'
+			? [{ kind: 'mention', value: segment.value }]
+			: splitConversationLinks(segment.value, linkOrigin)
+	)
+);
 
 const editTextareaRef = ref<HTMLTextAreaElement | null>(null);
 const editorRef = ref<HTMLElement | null>(null);
@@ -216,6 +227,12 @@ const aiTyping = computed(
 							v-if="segment.kind === 'mention'"
 							class="px-1 py-0.5 rounded bg-brand-subtle text-brand font-medium"
 							>{{ segment.value }}</span
+						>
+						<NuxtLink
+							v-else-if="segment.kind === 'link'"
+							:to="segment.path"
+							class="text-brand underline underline-offset-2 hover:no-underline"
+							>{{ segment.value }}</NuxtLink
 						>
 						<template v-else>{{ segment.value }}</template>
 					</template>

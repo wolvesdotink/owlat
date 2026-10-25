@@ -33,12 +33,18 @@
  * live in them, so a stub would leave a suite typing into nothing. A suite
  * finds popover content under `document.body` (it is teleported there) or
  * stubs `teleport`.
+ *
+ * `UiDropdownMenu` and `UiDropdownMenuItem` are real too: the composer
+ * footer's Send renders them for a reply, and every suite mounting the footer
+ * would otherwise need its own stub. A suite that stubs them still wins.
  */
 import { config } from '@vue/test-utils';
 import { defineComponent, h } from 'vue';
 import UiButton from '@owlat/ui/components/ui/Button.vue';
 import UiCheckbox from '@owlat/ui/components/ui/Checkbox.vue';
 import UiCombobox from '@owlat/ui/components/ui/Combobox.vue';
+import UiDropdownMenu from '@owlat/ui/components/ui/DropdownMenu.vue';
+import UiDropdownMenuItem from '@owlat/ui/components/ui/DropdownMenuItem.vue';
 import UiEmptyState from '@owlat/ui/components/ui/EmptyState.vue';
 import UiErrorAlert from '@owlat/ui/components/ui/ErrorAlert.vue';
 import UiErrorBoundary from '@owlat/ui/components/ui/ErrorBoundary.vue';
@@ -78,6 +84,8 @@ export function registerNuxtComponents(): void {
 		NuxtLink: NuxtLinkStub,
 		UiButton,
 		UiCheckbox,
+		UiDropdownMenu,
+		UiDropdownMenuItem,
 		UiQueryBoundary,
 		UiEmptyState,
 		UiErrorAlert,

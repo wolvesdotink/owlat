@@ -8,7 +8,7 @@ name: Release (unified)
 #
 # Releases go through a candidate (docs/RELEASING.md): `bun run release:cut`
 # tags `vX.Y.Z-rc.N`, which runs this whole pipeline (verification, both
-# builds, the install gates and the update flow) and publishes a prerelease
+# builds, the install gates and the update gate) and publishes a prerelease
 # that no installer, updater or image alias follows. `bun run release:promote`
 # then tags `vX.Y.Z` on that candidate's commit, and the `resolve` job refuses
 # a stable tag anywhere else (scripts/ci/release-gate.ts).
@@ -131,6 +131,10 @@ jobs:
       release_id: ${{ needs.create-release.outputs.release_id }}
     secrets: inherit
 
+  # `server` includes the update gate (_server-build.yml update-gate): the
+  # previous stable release updating to this draft, and a failed release
+  # rolled back. Candidates run it too, from the stable release below their
+  # base version, so an update that breaks shows up before promotion.
   publish:
     name: Publish Release
     needs: [resolve, server, desktop]
@@ -159,35 +163,3 @@ jobs:
     needs: [resolve, publish]
     if: needs.resolve.outputs.channel == 'stable'
     uses: ./.github/workflows/promote-aliases.yml
-
-  # Candidates and prereleases too: a candidate is where an update that breaks
-  # must show up, before the same commit is promoted. They start from the
-  # stable release below their base version (scripts/ci/aliases.ts).
-  update-versions:
-    name: Resolve published update pair
-    needs: [resolve, publish]
-    runs-on: ubuntu-latest
-    outputs:
-      from: ${{ steps.pair.outputs.from }}
-    steps:
-      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2
-        with:
-          egress-policy: audit
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
-        with:
-          bun-version-file: package.json
-      - id: pair
-        env:
-          GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ needs.resolve.outputs.version }}
-        run: bun scripts/ci/resolve-update.ts
-
-  post-publish-update:
-    name: Verify the published update
-    needs: [resolve, update-versions]
-    if: needs.update-versions.outputs.from != ''
-    uses: ./.github/workflows/update-flow.yml
-    with:
-      from: ${{ needs.update-versions.outputs.from }}
-      to: ${{ needs.resolve.outputs.version }}

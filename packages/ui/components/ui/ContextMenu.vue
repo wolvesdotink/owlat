@@ -16,6 +16,15 @@ export interface ContextMenuItem {
 	disabled?: boolean;
 	/** Draw a divider above this item (group separator). */
 	separatorBefore?: boolean;
+	/**
+	 * The key that runs the same verb outside the menu, as the person reads it
+	 * (`E`, `Shift+J`). Rendered in a right-aligned column. The package has no
+	 * shortcut registry, so the caller resolves the label from its own: an
+	 * unbound verb passes nothing rather than a key that does nothing.
+	 */
+	shortcut?: string;
+	/** `aria-keyshortcuts` for the same key, in the ARIA spelling (`Shift+J`). */
+	ariaKeyshortcuts?: string;
 	run: () => void;
 }
 </script>
@@ -142,6 +151,11 @@ function focusItem(index: number) {
 
 /** Arrow / Home / End navigation within the open menu. */
 function onMenuKeydown(event: KeyboardEvent) {
+	// The menu is teleported to <body>, so a key typed in it would otherwise
+	// bubble to the document-level shortcut dispatcher and run a verb on the
+	// page behind the menu. Escape and Tab stay unstopped: the focus trap and
+	// the escape layer own them.
+	if (event.key !== 'Escape' && event.key !== 'Tab') event.stopPropagation();
 	const items = Array.from(menuRef.value?.querySelectorAll<HTMLElement>(MENU_ITEM_SELECTOR) ?? []);
 	if (items.length === 0) return;
 	const current = items.findIndex((el) => el === document.activeElement);
@@ -209,7 +223,7 @@ onUnmounted(() => {
 				ref="menuRef"
 				role="menu"
 				aria-orientation="vertical"
-				class="fixed z-50 min-w-44 max-w-64 py-1 rounded-lg border border-border-subtle bg-bg-elevated shadow-lg origin-top-left focus:outline-none"
+				class="fixed z-(--z-menu) min-w-44 max-w-72 py-1 rounded-lg border border-border-subtle bg-bg-elevated shadow-lg origin-top-left focus:outline-none"
 				:style="{ top: `${position.y}px`, left: `${position.x}px` }"
 				@keydown="onMenuKeydown"
 				@contextmenu.prevent
@@ -221,6 +235,7 @@ onUnmounted(() => {
 						role="menuitem"
 						:tabindex="item.disabled ? -1 : 0"
 						:disabled="item.disabled"
+						:aria-keyshortcuts="item.ariaKeyshortcuts"
 						class="w-full px-3 py-2 text-left text-sm flex items-center gap-2 transition-colors duration-(--motion-fast)"
 						:class="
 							item.disabled
@@ -233,6 +248,12 @@ onUnmounted(() => {
 					>
 						<Icon v-if="item.icon" :name="item.icon" class="w-4 h-4 shrink-0" />
 						<span class="truncate">{{ item.label }}</span>
+						<kbd
+							v-if="item.shortcut"
+							class="ml-auto pl-4 shrink-0 font-sans text-xs text-text-tertiary"
+							aria-hidden="true"
+							>{{ item.shortcut }}</kbd
+						>
 					</button>
 				</template>
 			</div>

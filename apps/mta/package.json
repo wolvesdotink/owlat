@@ -26,6 +26,8 @@
 		"@owlat/shared": "workspace:*",
 		"@owlat/smtp-client": "workspace:*",
 		"@owlat/smtp-listener": "workspace:*",
+		"@owlat/worker-protocol": "workspace:*",
+		"convex": "catalog:convex",
 		"groupmq": "^1.1.0",
 		"hono": "^4.13.1",
 		"ioredis": "^6.0.0",

@@ -11,7 +11,8 @@
  *
  * Leaving (Esc, "← Inbox", or a send) goes back to the page it came from; the
  * draft stays saved, and a draft with something in it is offered back on the
- * list ("Draft to Jonas saved · Resume").
+ * list ("Draft to Jonas saved · Resume"). A reply marked done moves on to the
+ * next conversation of that list instead, as archiving does in the reader.
  *
  * Keys: Esc leaves (inside the editor the first Esc only blurs it), `t`
  * toggles Summary / Full conversation, Cmd/Ctrl+J focuses "Draft with AI"
@@ -42,6 +43,7 @@ import AskCard from '~/components/answer/AskCard.vue';
 import type { FileCopyPolicy } from '~/components/answer/FileAsk.vue';
 import AnswerMailMenu from '~/components/answer/AnswerMailMenu.vue';
 import { hasOwnWriting } from '~/utils/answerDraft';
+import { buildSelectedQuote } from '~/composables/postbox/usePostboxQuotedText';
 import { useReplyDropDelivery } from '~/composables/useReplyFileDrop';
 
 definePageMeta({
@@ -151,6 +153,15 @@ useReplyDropDelivery({
 		return answer ? (files: File[]) => void answer.addFiles(files) : null;
 	},
 });
+
+/** A passage selected in the conversation joins the reply being written. */
+function quoteIntoReply(source: PostboxReaderMessage, passage: string) {
+	const answer = composerRef.value?.answer;
+	const quote = buildSelectedQuote(source, passage);
+	if (!answer?.insertQuote || !quote) return;
+	answer.insertQuote(quote);
+	tab.value = 'reply';
+}
 
 function onDraftId(id: string) {
 	draftId.value = id;
@@ -266,10 +277,17 @@ function leaveMissing() {
 	else queueSession.goCurrent();
 }
 
-function onSent() {
+// The reader's auto-advance preference, for a reply that marks its conversation done.
+const { autoAdvance } = usePostboxSettings();
+function onSent(outcome: { done: boolean }) {
 	leftDraft.clearFor(draftId.value);
 	if (queueSession?.handleSent()) return;
-	answerNav.leave();
+	if (outcome.done)
+		answerNav.leaveDone(
+			{ messageId: messageId.value, threadId: message.value?.threadId ?? null },
+			autoAdvance.value
+		);
+	else answerNav.leave();
 }
 
 function onDiscarded() {
@@ -352,7 +370,9 @@ useAnswerModeKeys({
 					v-if="message"
 					v-model:view="view"
 					:message="message"
+					:quotable="!!composerRef"
 					@count="messageCount = $event"
+					@quote="quoteIntoReply"
 				>
 					<template #brief="{ view: shown, messages, reveal }">
 						<AnswerBriefCard

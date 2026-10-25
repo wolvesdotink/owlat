@@ -74,6 +74,8 @@ const emit = defineEmits<{
 	(e: 'block-sender'): void;
 	(e: 'create-filter'): void;
 	(e: 'print'): void;
+	(e: 'copy-link'): void;
+	(e: 'share-in-chat'): void;
 	(e: 'preview-attachment', att: AttachmentMeta, all: AttachmentMeta[]): void;
 	(e: 'download-attachment', att: AttachmentMeta): void;
 	(e: 'trackers', detection: TrackerDetection): void;
@@ -92,6 +94,9 @@ const { t } = useI18n();
 const msg = computed(() => props.message);
 const reader = usePostboxReaderContext();
 const chrome = computed(() => reader.chromeOf(msg.value._id));
+// Find in conversation: the active match mounts its body even off screen.
+const find = computed(() => reader.findOf(msg.value._id));
+const findCount = computed(() => reader.findCountOf(msg.value._id));
 
 // Reduced cards fold the recipient lines and details behind the sender name.
 const metaOpen = ref(false);
@@ -199,6 +204,12 @@ const renderToggleLabel = computed(() =>
 				</template>
 			</p>
 		</div>
+		<span
+			v-if="findCount > 0"
+			class="rounded bg-warning/15 px-1.5 text-xs tabular-nums text-text-secondary"
+			data-testid="reader-message-find-count"
+			>{{ t('components.postbox.threadFind.rowCount', { count: findCount }, findCount) }}</span
+		>
 		<span
 			class="text-xs text-text-tertiary tabular-nums whitespace-nowrap flex-shrink-0"
 			:title="formatDateTime(msg.receivedAt)"
@@ -424,13 +435,14 @@ const renderToggleLabel = computed(() =>
 			:message-id="msg._id"
 			:force-light="forcedLight"
 			:images="images"
-			:eager="reader.eagerBody"
+			:eager="reader.eagerBody || find?.active != null"
 		>
 			<PostboxMessageBody
 				:message="msg"
 				:force-light="forcedLight"
 				v-bind="images"
 				:highlight-quote="citeQuote"
+				:find="find"
 				:image-banner-to="chrome.imageBannerTo"
 				@image-state="emit('image-state', $event)"
 				@cite-located="isCiteMissed = !$event"
@@ -474,6 +486,8 @@ const renderToggleLabel = computed(() =>
 			@block-sender="emit('block-sender')"
 			@create-filter="emit('create-filter')"
 			@print="emit('print')"
+			@copy-link="emit('copy-link')"
+			@share-in-chat="emit('share-in-chat')"
 		/>
 	</section>
 </template>

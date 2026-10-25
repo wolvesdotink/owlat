@@ -197,6 +197,7 @@ const marker = (name: string) =>
 
 /** Reader chrome this suite does not look into. */
 const CHROME = [
+	'LazyChatLinkEmailDialog',
 	'UiAvatar',
 	'PostboxThreadCiteNote',
 	'PostboxAiStrip',
@@ -221,6 +222,7 @@ const CHROME = [
 	'PostboxSnoozeDialog',
 	'PostboxThreadDiscussion',
 	'PostboxThreadDiscussionToggle',
+	'PostboxThreadFindButton',
 	'PostboxThreadEarlier',
 	'PostboxTriageSuggestion',
 	'PostboxTeamComposer',
@@ -264,6 +266,11 @@ async function mountReader(next: Fixture, provide: Record<symbol, unknown> = {})
 			provide,
 			components: {
 				...Object.fromEntries(CHROME.map((name) => [name, marker(name)])),
+				// Closed, find renders nothing above the mail.
+				PostboxThreadFindBar: defineComponent({
+					name: 'PostboxThreadFindBar',
+					setup: () => () => null,
+				}),
 				PostboxThreadHeader,
 				PostboxReaderStrip,
 				PostboxReaderStripLinks,

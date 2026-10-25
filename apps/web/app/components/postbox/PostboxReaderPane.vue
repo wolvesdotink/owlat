@@ -8,8 +8,10 @@
  * working, and opening another message recovers the pane.
  */
 import type { PostboxReaderMessage } from '~/components/postbox/PostboxThreadReader.vue';
+import type { PostboxFindSeed } from '~/composables/postbox/usePostboxThreadFind';
+import { POSTBOX_FIND_QUERY_PARAM } from '~/utils/postboxFindSeed';
 
-defineProps<{
+const props = defineProps<{
 	activeMessageId?: string | null;
 	message?: PostboxReaderMessage;
 	/** The flat list's visual order, for auto-advance after triage. */
@@ -26,6 +28,15 @@ defineProps<{
 }>();
 
 const emit = defineEmits<{ back: []; retry: [] }>();
+
+// A mail-search hit opened from the palette carries its words (`?find=`): the
+// conversation opens with them found, in the message that was hit.
+const route = useRoute();
+const findSeed = computed<PostboxFindSeed | null>(() => {
+	const words = route.query[POSTBOX_FIND_QUERY_PARAM];
+	const id = props.activeMessageId;
+	return typeof words === 'string' && words.trim() && id ? { query: words, messageId: id } : null;
+});
 </script>
 
 <template>
@@ -50,6 +61,7 @@ const emit = defineEmits<{ back: []; retry: [] }>();
 				:message="message"
 				:advance-ids="advanceIds"
 				:folder-role="folderPath"
+				:find-seed="findSeed"
 			/>
 		</AppErrorBoundary>
 		<PostboxReaderPlaceholder

@@ -195,6 +195,26 @@ export function resolvePostboxMessageBody(
 	return entry.promise;
 }
 
+/**
+ * Read a body for a reader-wide scan (find in conversation) without filling
+ * the shared cache: a body the cache already holds or is loading is reused,
+ * anything else loads on its own. A scan reads every message of a long thread,
+ * and putting each into the six-entry cache would evict the bodies the reader
+ * and the list read-ahead are about to show.
+ */
+export function readPostboxMessageBodyUncached(
+	client: PostboxBodyClient,
+	messageId: string,
+	options: ResolvePostboxBodyOptions = {}
+): Promise<ResolvedPostboxBody> {
+	const existing = resolvedBodies.get(client)?.entries.get(messageId);
+	if (existing && (existing.expiresAt === null || existing.expiresAt > Date.now())) {
+		return existing.promise;
+	}
+	const fetchImpl = options.fetchImpl ?? ((url: string) => fetch(url));
+	return loadPostboxBody(client, messageId, fetchImpl, options.blobOnly === true);
+}
+
 /** Read a body for display. A prefetched result is reused, and the resolved
  * body then stays cached for CONSUMED_POSTBOX_BODY_TTL_MS (within the entry and
  * byte caps above) before the decrypted copy is dropped. Reading it again

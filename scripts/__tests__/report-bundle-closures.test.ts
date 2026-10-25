@@ -66,7 +66,20 @@ function build(
 }
 
 function run(outputDir: string, ...flags: string[]) {
-	const result = spawnSync('bun', [SCRIPT, outputDir, ...flags], { encoding: 'utf8' });
+	return runWith({}, outputDir, ...flags);
+}
+
+/** Run with these provenance variables only; CI's own are never inherited. */
+function runWith(env: Record<string, string>, outputDir: string, ...flags: string[]) {
+	const {
+		BUNDLE_REPORT_SHA: _sha,
+		BUNDLE_REPORT_TOOLCHAIN: _toolchain,
+		...inherited
+	} = process.env;
+	const result = spawnSync('bun', [SCRIPT, outputDir, ...flags], {
+		encoding: 'utf8',
+		env: { ...inherited, ...env },
+	});
 	return {
 		status: result.status ?? -1,
 		stdout: result.stdout,
@@ -87,8 +100,12 @@ interface Closure {
 	};
 }
 interface Report {
-	meta: { assets: string; budget: null };
-	entry: { key: string; closure: { files: number; raw: number; gzip: number } };
+	meta: { assets: string; budget: null; sha: string | null; toolchain: string | null };
+	entry: {
+		key: string;
+		closure: { files: number; raw: number; gzip: number };
+		chunks: { key: string; gzip: number }[];
+	};
 	routes: Closure[];
 	deferred: Closure[];
 }
@@ -151,10 +168,20 @@ describe('the route and deferred-feature closure report', () => {
 		const gz = (file: string) => sizes[file] as number;
 		const result = report(output);
 
-		expect(result.meta).toEqual({ assets: 'javascript-only', budget: null });
+		expect(result.meta).toEqual({
+			assets: 'javascript-only',
+			budget: null,
+			sha: null,
+			toolchain: null,
+		});
 		expect(result.entry).toEqual({
 			key: '../node_modules/nuxt/dist/app/entry.js',
 			closure: { files: 2, raw: raw('entry.js', 'vue.js'), gzip: gz('entry.js') + gz('vue.js') },
+			// The entry closure's own chunks, largest first, named like the rest.
+			chunks: [
+				{ key: '../node_modules/nuxt/dist/app/entry.js', gzip: gz('entry.js') },
+				{ key: 'vue', gzip: gz('vue.js') },
+			].sort((a, b) => b.gzip - a.gzip || (a.key < b.key ? -1 : 1)),
 		});
 		expect(result.routes.map((route) => route.key)).toEqual([
 			'pages/emails/[id]/edit.vue',
@@ -174,6 +201,19 @@ describe('the route and deferred-feature closure report', () => {
 		expect(edit.beyondEntry.chunks.map((chunk) => chunk.file)).not.toContain('modal.js');
 
 		expect(index.beyondEntry).toMatchObject({ files: 1, raw: raw('index.js') });
+	});
+
+	it('names the commit and toolchain it was taken from when CI says so', () => {
+		const output = build(CHUNKS, RESOURCES);
+		const result = JSON.parse(
+			runWith(
+				{ BUNDLE_REPORT_SHA: 'abc123', BUNDLE_REPORT_TOOLCHAIN: 'bun-1.4.2+docker-0f00' },
+				output,
+				'--json'
+			).stdout
+		) as Report;
+
+		expect(result.meta).toMatchObject({ sha: 'abc123', toolchain: 'bun-1.4.2+docker-0f00' });
 	});
 
 	it('reports every lazily imported chunk as a deferred feature with its importers', () => {
