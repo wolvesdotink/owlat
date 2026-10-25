@@ -70,7 +70,7 @@ import {
 import type { Doc } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
 import { adminMutation } from '../lib/authedFunctions';
-import { getMutationContext, getSingletonOrganizationId } from '../lib/sessionOrganization';
+import { getSingletonOrganizationId } from '../lib/sessionOrganization';
 import { loadRouteStateCell } from '../lib/deliverabilityRouteState';
 import { isStreamShareSplitRouted } from '../lib/sendProviders/routeMixContext';
 import { configuredRelayKinds } from './relayConfiguration';
@@ -115,8 +115,8 @@ export const enrollCell = adminMutation({
 		stream: deliverabilityStreamValidator,
 		destinationProvider: destinationProviderValidator,
 	},
-	handler: async (ctx, args): Promise<RampEnrollmentResult> => {
-		const { userId } = await getMutationContext(ctx);
+	handler: async (ctx, args, session): Promise<RampEnrollmentResult> => {
+		const { userId } = session;
 		const organizationId = await getSingletonOrganizationId(ctx);
 		const cell: DeliverabilityCell = {
 			stream: args.stream,

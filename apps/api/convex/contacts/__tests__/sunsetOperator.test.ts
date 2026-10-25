@@ -19,19 +19,27 @@
  *   - the re-engagement track is enumerable.
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { beforeEach, describe, it, expect, vi } from 'vitest';
 import { api, internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import { createTestContact } from '../../__tests__/factories';
-import { requireOrgPermission } from '../../lib/sessionOrganization';
+import type { OrganizationRole } from '../../lib/sessionOrganization';
 import { SUNSET_MIN_WINDOW_DAYS } from '@owlat/shared/sunsetPolicy';
 import { daysAgo, harness, type Harness } from './sunsetFixtures';
+
+// The role the floor resolves. The handlers check it with the real permission
+// map, so a test that lowers it exercises the real refusal.
+const caller = vi.hoisted(() => ({ role: 'admin' as OrganizationRole }));
 
 vi.mock('../../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual<typeof import('../../lib/sessionOrganization')>(
 		'../../lib/sessionOrganization'
 	);
-	const session = () => ({ userId: 'operator-1', role: 'admin' as const });
+	const session = () => ({
+		userId: 'operator-1',
+		role: caller.role,
+		activeOrganizationId: 'org-1',
+	});
 	return {
 		...actual,
 		requireOrgMember: vi.fn(async () => session()),
@@ -43,6 +51,10 @@ vi.mock('../../lib/sessionOrganization', async () => {
 		getMutationContext: vi.fn(async () => session()),
 		requireOrgPermission: vi.fn(async () => session()),
 	};
+});
+
+beforeEach(() => {
+	caller.role = 'admin';
 });
 
 const identity = { subject: 'operator-1', tokenIdentifier: 'test|operator-1' };
@@ -623,17 +635,17 @@ describe('restoreSunsetContact / setSunsetContactExemption', () => {
 		const t = harness();
 		const contactId = await seedSuppressed(t, 'unauthorised@example.com');
 
-		vi.mocked(requireOrgPermission).mockRejectedValueOnce(new Error('permission denied'));
+		// Editors may annotate contacts but not manage them.
+		caller.role = 'editor';
 		await expect(
 			t.withIdentity(identity).mutation(api.contacts.sunset.restoreSunsetContact, { contactId })
-		).rejects.toThrow(/permission denied/);
+		).rejects.toThrow(/Only owners and admins can restore a suppressed contact/);
 
-		vi.mocked(requireOrgPermission).mockRejectedValueOnce(new Error('permission denied'));
 		await expect(
 			t
 				.withIdentity(identity)
 				.mutation(api.contacts.sunset.setSunsetContactExemption, { contactId, exempt: true })
-		).rejects.toThrow(/permission denied/);
+		).rejects.toThrow(/Only owners and admins can change a contact exemption/);
 
 		// Nothing happened on either refused call.
 		await t.run(async (ctx) => {

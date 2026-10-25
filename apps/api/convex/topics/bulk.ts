@@ -1,7 +1,7 @@
 import { v } from 'convex/values';
 import { authedMutation } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
-import { hasPermission, requireOrgPermission, requirePermission } from '../lib/sessionOrganization';
+import { hasPermission, requirePermission } from '../lib/sessionOrganization';
 import {
 	addedMembershipValidator,
 	removedMembershipValidator,
@@ -29,8 +29,8 @@ export const addContacts = authedMutation({
 		// Optional: site URL for confirmation emails.
 		siteUrl: v.optional(v.string()),
 	},
-	handler: async (ctx, args): Promise<{ added: AddedMembership[] }> => {
-		await requireOrgPermission(ctx, 'topics:manage', BULK_EDIT_DENIED);
+	handler: async (ctx, args, session): Promise<{ added: AddedMembership[] }> => {
+		requirePermission(hasPermission(session.role, 'topics:manage'), BULK_EDIT_DENIED);
 
 		const { outcomes } = await ctx.runMutation(internal.topics.subscription.subscribeMany, {
 			topicId: args.topicId,
@@ -76,8 +76,8 @@ export const removeContacts = authedMutation({
 		topicId: v.id('topics'),
 		contactIds: v.array(v.id('contacts')),
 	},
-	handler: async (ctx, args): Promise<{ removed: RemovedMembership[] }> => {
-		await requireOrgPermission(ctx, 'topics:manage', BULK_EDIT_DENIED);
+	handler: async (ctx, args, session): Promise<{ removed: RemovedMembership[] }> => {
+		requirePermission(hasPermission(session.role, 'topics:manage'), BULK_EDIT_DENIED);
 		const { removed } = await ctx.runMutation(internal.topics.subscription.unsubscribeMany, {
 			topicId: args.topicId,
 			contactIds: args.contactIds,

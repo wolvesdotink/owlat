@@ -15,7 +15,6 @@
  */
 
 import { authedQuery } from '../lib/authedFunctions';
-import { getUserIdFromSession } from '../lib/sessionOrganization';
 import { summarize } from '../analytics/sendingReputation';
 import { isDeliveryConfigured } from '../lib/sendProviders/capability';
 import { getOptional } from '../lib/env';
@@ -142,8 +141,6 @@ export function rollUpDeliveryHealth(inputs: DeliveryHealthInputs): DeliveryHeal
 export const getDeliveryHealth = authedQuery({
 	args: {},
 	handler: async (ctx): Promise<DeliveryHealthRollup> => {
-		await getUserIdFromSession(ctx);
-
 		// Rolling 30-day org reputation, derived on read through the single
 		// summarizer. No in-window activity summarizes to 'low' → treated as ok.
 		const orgSummary = await summarize(ctx.db, { kind: 'org' });
