@@ -43,7 +43,7 @@ vi.mock('~/utils/editorDraftStore', async (importOriginal) => {
 // Copies left by an editor known to be closed (no Web Locks in jsdom says "unknown").
 let closedWriters = false;
 vi.mock('~/utils/editorDraftWriters', async (importOriginal) => {
-	const actual: typeof import('~/utils/editorDraftWriters') = await importOriginal();
+	const actual: typeof DraftWriters = await importOriginal();
 	const closed = actual.createEditorDraftWriters('tab-new', {
 		request: async () => undefined,
 		query: async () => ({ held: [], pending: [] }),
@@ -55,6 +55,7 @@ vi.mock('~/utils/editorDraftWriters', async (importOriginal) => {
 });
 
 import { computed, ref, nextTick, onMounted, onUnmounted, type Ref } from 'vue';
+import type * as DraftWriters from '~/utils/editorDraftWriters';
 import type { EditorBlock } from '@owlat/email-builder';
 import { useEmailEditorBridge, type EmailEditorSaveBase } from '../useEmailEditorBridge';
 import { useUnsavedChanges } from '../useUnsavedChanges';
