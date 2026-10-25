@@ -45,8 +45,6 @@ const nestedDocument = (): EditorBlock[] => [
 	}),
 ];
 
-let wrapper: VueWrapper | null = null;
-
 /** Let the lazily loaded nested previews mount. */
 async function settle() {
 	for (let i = 0; i < 5; i++) {
@@ -56,7 +54,7 @@ async function settle() {
 }
 
 async function mountBuilder(blocks: EditorBlock[]) {
-	wrapper = mount(EmailBuilder, {
+	const wrapper = mount(EmailBuilder, {
 		attachTo: document.body,
 		props: { blocks, subject: 'Subject', name: 'Name', variables: [] },
 		global: {
@@ -95,9 +93,6 @@ async function clickItem(w: VueWrapper, id: string, nth = 0) {
 
 afterEach(() => {
 	vi.useRealTimers();
-	wrapper?.unmount();
-	wrapper = null;
-	document.body.innerHTML = '';
 });
 
 describe('EmailBuilder nested editing', () => {
@@ -121,7 +116,7 @@ describe('EmailBuilder nested editing', () => {
 		// can be edited at the same depth.
 		const reloaded = parseStoredBlocks(JSON.stringify(draft));
 		expect(reloaded).toEqual(JSON.parse(JSON.stringify(draft)));
-		wrapper!.unmount();
+		w.unmount();
 		const again = await mountBuilder(reloaded);
 		await clickItem(again, 'deep');
 		toolbar(again).vm.$emit('update', 'deep', 'html', '<p>Reloaded</p>');

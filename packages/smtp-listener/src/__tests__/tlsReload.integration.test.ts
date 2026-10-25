@@ -14,7 +14,7 @@ let newPair: { cert: string; key: string };
 beforeAll(() => {
 	oldPair = generateCert('old.mx.test');
 	newPair = generateCert('new.mx.test');
-}, 30000);
+});
 
 afterEach(closeAllListeners);
 

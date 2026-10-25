@@ -169,11 +169,14 @@ describe('useBlockRenderer', () => {
 });
 
 describe('editor-scoped render cache', () => {
+	// Plain apps are outside the setup's wrapper auto-unmount: each editor's app
+	// is unmounted here and its host removed, also after a failed assertion.
 	let apps: App[] = [];
+	const hosts: HTMLElement[] = [];
 	afterEach(() => {
 		for (const app of apps) app.unmount();
 		apps = [];
-		document.body.innerHTML = '';
+		for (const host of hosts.splice(0)) host.remove();
 	});
 
 	type Preview = ReturnType<typeof useBlockRenderer>;
@@ -206,6 +209,7 @@ describe('editor-scoped render cache', () => {
 		});
 		const host = document.createElement('div');
 		document.body.appendChild(host);
+		hosts.push(host);
 		app.mount(host);
 		apps.push(app);
 		let nextKey = 0;

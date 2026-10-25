@@ -20,6 +20,7 @@ import { attemptRequests, isThrottledError, localTag } from '../attemptRequests'
 import { decisionUsageRecorder } from '../ports';
 import { noul } from '../questions';
 import { LlmCallMeter } from '../../llm/requestMeter';
+import { withFakeBackoff } from '../../llm/__tests__/backoffClock.testlib';
 
 const questions = { needsReply: noul('Does this need a reply?') };
 const usage = { inputTokens: 100, outputTokens: 4, totalTokens: 104 };
@@ -38,18 +39,20 @@ describe('decision metering', () => {
 			.mockResolvedValueOnce({ object: { needsReply: 0.8 }, usage });
 		const records: DecisionAttemptRecord[] = [];
 
-		await runDecision({
-			feature: 'inbound_triage',
-			task: 'mail.triage',
-			root: { rootRequestId: 'team:m1' },
-			state: 'Subject: hello',
-			questions,
-			provider: { kind: 'llm', config: {}, model: 'gpt-4.1-mini' },
-			allowance: { allowed: true, fallbackAllowed: false },
-			recordUsage: (record) => {
-				records.push(record);
-			},
-		});
+		await withFakeBackoff(() =>
+			runDecision({
+				feature: 'inbound_triage',
+				task: 'mail.triage',
+				root: { rootRequestId: 'team:m1' },
+				state: 'Subject: hello',
+				questions,
+				provider: { kind: 'llm', config: {}, model: 'gpt-4.1-mini' },
+				allowance: { allowed: true, fallbackAllowed: false },
+				recordUsage: (record) => {
+					records.push(record);
+				},
+			})
+		);
 
 		// One dispatch attempt (the adapter retries itself), three requests.
 		expect(records).toHaveLength(1);
@@ -59,7 +62,7 @@ describe('decision metering', () => {
 			[2, 'failed', undefined],
 			[3, 'ok', 104],
 		]);
-	}, 15_000);
+	});
 
 	it('enforces the root deadline on every adapter: an expired root reaches no provider', async () => {
 		const ask = vi.fn();

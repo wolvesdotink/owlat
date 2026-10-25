@@ -1,12 +1,35 @@
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { PARALLEL_GATE_TIMEOUT_MS } from '../../../../vitest.timeouts';
 import { parseRepoUrl } from '../taskRunner.js';
 
 // Opt in with OWLAT_TEST_SANDBOX_DOCKER=1. This exercises Linux permissions
 // using the runtime image and the same capabilities as both Compose stacks.
 const enabled = process.env['OWLAT_TEST_SANDBOX_DOCKER'] === '1';
-const sandboxPath = fileURLToPath(new URL('../sandbox.ts', import.meta.url));
+const sourceDir = fileURLToPath(new URL('..', import.meta.url));
+
+// Every case boots a container and a Node process inside it.
+vi.setConfig({ testTimeout: PARALLEL_GATE_TIMEOUT_MS });
+
+/**
+ * The worker's source imports its siblings as `./x.js`, which the build emits
+ * and the mounted source tree lacks. This resolve hook falls back to the `.ts`
+ * file, which Node runs with its built-in type stripping.
+ */
+const resolveTsSiblings = `data:text/javascript,${encodeURIComponent(`
+	import { registerHooks } from 'node:module';
+	registerHooks({
+		resolve(specifier, context, nextResolve) {
+			try {
+				return nextResolve(specifier, context);
+			} catch (error) {
+				if (error?.code !== 'ERR_MODULE_NOT_FOUND' || !specifier.endsWith('.js')) throw error;
+				return nextResolve(specifier.slice(0, -3) + '.ts', context);
+			}
+		},
+	});
+`)}`;
 
 function runContainer(script: string): string {
 	return execFileSync(
@@ -32,10 +55,12 @@ function runContainer(script: string): string {
 			'--security-opt',
 			'no-new-privileges:true',
 			'--mount',
-			`type=bind,source=${sandboxPath},target=/audit/sandbox.ts,readonly`,
+			`type=bind,source=${sourceDir},target=/audit,readonly`,
 			'-i',
 			'node:26-alpine',
 			'node',
+			'--import',
+			resolveTsSiblings,
 			'--input-type=module',
 		],
 		{ input: script, encoding: 'utf8', timeout: 15_000 }
@@ -72,7 +97,7 @@ describe.skipIf(!enabled)('sandbox Linux security boundaries', () => {
 			console.log('Git metadata boundary passed');
 		`);
 		expect(output).toContain('Git metadata boundary passed');
-	}, 20_000);
+	});
 
 	it('keeps Git credentials out of cross-uid readable argv and blocks access to environ', () => {
 		const { authEnv } = parseRepoUrl('https://user:dummy-secret@github.com/owlat/example.git');
@@ -97,7 +122,7 @@ describe.skipIf(!enabled)('sandbox Linux security boundaries', () => {
 			} finally { trusted.kill('SIGKILL'); }
 		`);
 		expect(output).toContain('credential boundary passed');
-	}, 20_000);
+	});
 
 	it.each(['timeout', 'cancel', 'success'])(
 		'reaps detached descendants on %s without CAP_KILL',
@@ -138,8 +163,7 @@ describe.skipIf(!enabled)('sandbox Linux security boundaries', () => {
 				console.log('cleanup boundary passed');
 			`);
 			expect(output).toContain('cleanup boundary passed');
-		},
-		20_000
+		}
 	);
 
 	it('bounds the output a flooding sandbox child leaves in the orchestrator', () => {
@@ -161,5 +185,5 @@ describe.skipIf(!enabled)('sandbox Linux security boundaries', () => {
 			console.log('output bound passed');
 		`);
 		expect(output).toContain('output bound passed');
-	}, 20_000);
+	});
 });

@@ -1,3 +1,4 @@
+import { isTestFile } from '../ast.ts';
 import { createRootMatcher, type Node, propertyName, unwrap } from '../documentRoot.ts';
 import { createLoopMatcher } from '../documentRootLoops.ts';
 import { matchesFileGlobs } from '../fileGlobs.ts';
@@ -38,8 +39,10 @@ import type { AstNode, Rule } from '../types.ts';
  * document`). Appending to the body, removing one owned node and reading the
  * body's markup stay allowed.
  *
- * Options: `files` limits the rule to repository-relative globs (see
- * `fileGlobs.ts`); without it the rule applies to every linted file.
+ * The rule reads test files only (`*.test.*`, `*.spec.*`, anything under
+ * `__tests__`): application code may legitimately write a document it owns.
+ * Options: `files` further limits it to repository-relative globs (see
+ * `fileGlobs.ts`); without it the rule applies to every test file.
  */
 
 interface Options {
@@ -70,6 +73,7 @@ const rule: Rule = {
 		],
 	},
 	create(context) {
+		if (!isTestFile(context.filename)) return {};
 		const files = (context.options[0] as Options | undefined)?.files;
 		if (files && !matchesFileGlobs(context.filename, files)) return {};
 		if (!context.sourceCode.text.includes('document')) return {};

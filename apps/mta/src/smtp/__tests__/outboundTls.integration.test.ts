@@ -128,7 +128,7 @@ describe('outbound STARTTLS TLS-version floor (PR-23)', () => {
 				socketTimeout: 5000,
 			})
 		).rejects.toThrow();
-	}, 15000);
+	});
 
 	it('succeeds against a STARTTLS server that offers TLS 1.2 (floor is met, not over-strict)', async () => {
 		const started = await startServer('TLSv1.2');
@@ -145,5 +145,5 @@ describe('outbound STARTTLS TLS-version floor (PR-23)', () => {
 		});
 
 		expect(result.accepted.map((v) => v.recipient)).toContain('recipient@example.test');
-	}, 15000);
+	});
 });

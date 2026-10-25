@@ -187,10 +187,9 @@ describe('check-log-pii.sh gate', () => {
 	});
 
 	// Every case above greps a throwaway fixture tree; this one greps the whole
-	// real convex/ tree and takes seconds rather than milliseconds — give it the
-	// same headroom checkTokenRedaction.ratchet.test.ts needed on a loaded CI
-	// runner rather than leaving the release gate to lose a coin flip.
+	// real convex/ tree and takes seconds rather than milliseconds, which the
+	// suite's parallel-gate budget (vitest.config.ts) covers on a loaded runner.
 	it('passes the real convex tree at its baseline of zero', () => {
 		expect(runGate('convex')).toBe(0);
-	}, 120_000);
+	});
 });

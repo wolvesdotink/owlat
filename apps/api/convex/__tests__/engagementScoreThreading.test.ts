@@ -82,16 +82,14 @@ function mtaFetchSpy(id: string, lease: string): ReturnType<typeof vi.fn> {
 }
 
 // The first `sendSingleEmail` call loads the send worker's whole import graph
-// through the lazy module map above: about a second alone, and past the 10 s
-// test timeout on a loaded machine. That timeout then left the abandoned first
+// through the lazy module map above: about a second alone, and many times that
+// on a loaded machine. A test that timed out on it left the abandoned first
 // attempt running into the retry's fetch stub. Load the graph once up front,
-// under a hook budget sized for it, so each test times only its own send.
-const WORKER_MODULE_LOAD_TIMEOUT_MS = 60_000;
-
+// under the hook budget (vitest.config.ts), so each test times only its own send.
 describe('engagementScore threading — envelope → MtaExtras → MTA intake', () => {
 	beforeAll(async () => {
 		await modules['../delivery/worker.ts']!();
-	}, WORKER_MODULE_LOAD_TIMEOUT_MS);
+	});
 
 	beforeEach(() => {
 		vi.stubEnv('MTA_API_URL', 'https://mta.test');

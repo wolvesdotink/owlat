@@ -2,39 +2,16 @@
 # oxlintrc.json (see scripts/check-owlat-lint.sh). One line per finding:
 # <file> TAB <rule> TAB <source text of the reported span>.
 # Lines only ever get deleted; a rule with no line left here moves to "error".
-apps/api/convex/__tests__/assistantNestedTools.integration.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	20_000
-apps/api/convex/__tests__/assistantNestedTools.integration.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	20_000
 apps/api/convex/__tests__/assistantNestedTools.integration.test.ts	owlat(no-wall-clock-in-tests)	draftAbortedAt! - stoppedAt!
-apps/api/convex/__tests__/clarificationHoldBounds.integration.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	120_000
-apps/api/convex/__tests__/clarificationHoldBounds.integration.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	180_000
-apps/api/convex/__tests__/clarificationHoldBounds.integration.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	180_000
-apps/api/convex/__tests__/clarificationHoldBounds.integration.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	180_000
-apps/api/convex/__tests__/clarificationReminderLimits.integration.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	180_000
-apps/api/convex/__tests__/clarificationReminderLimits.integration.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	180_000
-apps/api/convex/__tests__/clarificationReminderLimits.integration.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	180_000
-apps/api/convex/__tests__/clarificationReminderLimits.integration.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	180_000
-apps/api/convex/__tests__/clarificationReminderLimits.integration.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	60_000
-apps/api/convex/__tests__/emailWorkerIdempotency.integration.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	30_000
-apps/api/convex/__tests__/engagementScoreThreading.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	WORKER_MODULE_LOAD_TIMEOUT_MS
 apps/api/convex/__tests__/factories.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, t === undefined ? 25 : 0)
-apps/api/convex/__tests__/memberErasureCoverage.integration.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	300_000
-apps/api/convex/__tests__/preflightBindingPopulations.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	120_000
-apps/api/convex/__tests__/preflightBindingPopulations.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	120_000
 apps/api/convex/__tests__/scheduledFailureExcusedLeakSentinel.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, 300)
 apps/api/convex/__tests__/scheduledFailureFileSentinel.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, 300)
-apps/api/convex/__tests__/scheduledFailureGate.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	150_000
-apps/api/convex/__tests__/schemaCompat/functionArgs.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	120_000
-apps/api/convex/__tests__/schemaCompat/refresh.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	300_000
-apps/api/convex/__tests__/unhandledErrorGate.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	150_000
 apps/api/convex/__tests__/unhandledErrorSentinel.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, 20)
 apps/api/convex/agent/shared/__tests__/draftStrategyHost.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, 150)
 apps/api/convex/agent/steps/__tests__/lateGuardDeadline.test.ts	owlat(no-wall-clock-in-tests)	Date.now() - started
 apps/api/convex/agent/steps/security_scan/__tests__/stripHiddenContent.perf.test.ts	owlat(no-wall-clock-in-tests)	performance.now()
 apps/api/convex/agent/steps/security_scan/__tests__/stripHiddenContent.perf.test.ts	owlat(no-wall-clock-in-tests)	performance.now()
 apps/api/convex/agentConfigMutations.ts	owlat(use-threaded-session)	updateConfig
-apps/api/convex/aiRouting/__tests__/shadowQuota.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	60_000
-apps/api/convex/aiRouting/__tests__/spendAggregate.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	60_000
-apps/api/convex/aiRouting/__tests__/spendAggregate.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	60_000
 apps/api/convex/analytics/__tests__/engagementScore.adversarial.test.ts	owlat(no-wall-clock-in-tests)	Date.now() - started
 apps/api/convex/analytics/complianceTelemetry.ts	owlat(use-threaded-session)	getComplianceTelemetry
 apps/api/convex/analytics/dashboard.ts	owlat(use-threaded-session)	getRecentActivity
@@ -46,7 +23,6 @@ apps/api/convex/assistant/conversations.ts	owlat(use-threaded-session)	listConve
 apps/api/convex/assistant/conversations.ts	owlat(use-threaded-session)	listMessages
 apps/api/convex/assistant/conversations.ts	owlat(use-threaded-session)	renameConversation
 apps/api/convex/assistant/conversations.ts	owlat(use-threaded-session)	stopGeneration
-apps/api/convex/auth/__tests__/invitationVerification.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	10_000
 apps/api/convex/auth/accountManagement.ts	owlat(use-threaded-session)	exportContactsForOrganization
 apps/api/convex/auth/apiKeys.ts	owlat(use-threaded-session)	create
 apps/api/convex/auth/apiKeys.ts	owlat(use-threaded-session)	listByTeam
@@ -54,7 +30,6 @@ apps/api/convex/auth/apiKeys.ts	owlat(use-threaded-session)	remove
 apps/api/convex/auth/apiKeys.ts	owlat(use-threaded-session)	revoke
 apps/api/convex/auth/apiKeys.ts	owlat(use-threaded-session)	updateName
 apps/api/convex/auth/invitationResend.ts	owlat(use-threaded-session)	throttleResend
-apps/api/convex/automations/__tests__/runningInstanceGuard.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	30_000
 apps/api/convex/autonomy.ts	owlat(use-threaded-session)	deleteRule
 apps/api/convex/autonomy.ts	owlat(use-threaded-session)	setSenderAutonomy
 apps/api/convex/autonomy.ts	owlat(use-threaded-session)	upsertRule
@@ -137,8 +112,6 @@ apps/api/convex/contacts/sunset.ts	owlat(use-threaded-session)	setSunsetPolicy
 apps/api/convex/decision/artifacts.ts	owlat(no-unchecked-json-cast)	JSON.parse(row.answers) as { labels?: DecisionLabels }
 apps/api/convex/delivery/__tests__/alignmentDnsFailures.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(() => reject(new Error('ESERVFAIL after two tries')), 30)
 apps/api/convex/delivery/__tests__/alignmentDnsFailures.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, 80)
-apps/api/convex/delivery/__tests__/checklistMaterialization.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	20_000
-apps/api/convex/delivery/__tests__/sndsAdversarial.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	60_000
 apps/api/convex/delivery/health.ts	owlat(use-threaded-session)	getDeliveryHealth
 apps/api/convex/delivery/postmaster.ts	owlat(use-threaded-session)	getPostmasterStatus
 apps/api/convex/delivery/rampControls.ts	owlat(use-threaded-session)	setStreamPreset
@@ -147,7 +120,6 @@ apps/api/convex/delivery/rampPhasePromotion.ts	owlat(use-threaded-session)	promo
 apps/api/convex/delivery/sends.ts	owlat(use-threaded-session)	get
 apps/api/convex/delivery/suppressionMirror.ts	owlat(no-unchecked-json-cast)	(await response.json()) as { entries: Array<{ email: string; source?: string; suppressedAt?: number }>; nextCursor?: string; }
 apps/api/convex/devShortcuts/forceVerifyDomain.ts	owlat(use-threaded-session)	forceVerifyDomain
-apps/api/convex/domains/__tests__/dmarcReports.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	120_000
 apps/api/convex/domains/domains.ts	owlat(use-threaded-session)	create
 apps/api/convex/domains/domains.ts	owlat(use-threaded-session)	getInboundMailConfig
 apps/api/convex/domains/domains.ts	owlat(use-threaded-session)	regenerateDnsRecords
@@ -163,7 +135,6 @@ apps/api/convex/domains/trackingDomains.ts	owlat(use-threaded-session)	addTracki
 apps/api/convex/domains/trackingDomains.ts	owlat(use-threaded-session)	removeTrackingDomain
 apps/api/convex/domains/trackingDomains.ts	owlat(use-threaded-session)	verifyTrackingDomain
 apps/api/convex/domains/yahooCfl.ts	owlat(use-threaded-session)	getGuide
-apps/api/convex/e2ee/__tests__/twoInstance.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	60_000
 apps/api/convex/e2ee/discoveryVerify.ts	owlat(no-unchecked-json-cast)	JSON.parse(new TextDecoder().decode(bytes)) as FetchedManifest
 apps/api/convex/e2ee/manifest.ts	owlat(no-unchecked-json-cast)	JSON.parse(cached.signedManifestJson) as SignedManifest
 apps/api/convex/emailBlocks/blocks.ts	owlat(no-unchecked-json-cast)	JSON.parse(contentJson) as ParsedBlockContent
@@ -215,11 +186,7 @@ apps/api/convex/integrationImports/providers/mailchimp/index.ts	owlat(no-uncheck
 apps/api/convex/integrationImports/providers/stripe/index.ts	owlat(no-unchecked-json-cast)	(await response.json()) as StripeCustomerListResponse
 apps/api/convex/integrationImports/walker.ts	owlat(use-threaded-session)	cancelImport
 apps/api/convex/integrationImports/walker.ts	owlat(use-threaded-session)	startIntegrationImport
-apps/api/convex/knowledge/__tests__/openCommitmentsIndex.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	180_000
-apps/api/convex/lib/__tests__/checkLogPii.gate.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	120_000
-apps/api/convex/lib/__tests__/checkTokenRedaction.ratchet.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	120_000
 apps/api/convex/lib/__tests__/llmProvider.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, 5)
-apps/api/convex/lib/decision/__tests__/attemptMetering.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	15_000
 apps/api/convex/lib/decisionProviders/local.ts	owlat(no-unchecked-json-cast)	(await response.json()) as { data?: { id?: unknown }[] } | null
 apps/api/convex/lib/decisionProviders/local.ts	owlat(no-unchecked-json-cast)	(await response.json()) as { error?: { message?: unknown } } | null
 apps/api/convex/lib/emailProviders/mtaIdentity.ts	owlat(no-unchecked-json-cast)	(await response.json()) as { credentials?: MtaOrgCredential[] }
@@ -227,20 +194,7 @@ apps/api/convex/lib/emailProviders/mtaIdentity.ts	owlat(no-unchecked-json-cast)	
 apps/api/convex/lib/emailTranslations.ts	owlat(no-unchecked-json-cast)	JSON.parse(blob) as Record<string, Translation>
 apps/api/convex/lib/emailTranslations.ts	owlat(no-unchecked-json-cast)	JSON.parse(contentJson) as Block[]
 apps/api/convex/lib/emailTranslations.ts	owlat(no-unchecked-json-cast)	JSON.parse(sanitizeOverlayBlocksJson(update.blocks)) as Record< string, TranslatableBlockContent >
-apps/api/convex/lib/llm/__tests__/dispatch.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	10_000
-apps/api/convex/lib/llm/__tests__/dispatch.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	10_000
-apps/api/convex/lib/llm/__tests__/dispatch.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	10_000
-apps/api/convex/lib/llm/__tests__/dispatch.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	10_000
 apps/api/convex/lib/llm/__tests__/dispatch.test.ts	owlat(no-wall-clock-in-tests)	Date.now() - started
-apps/api/convex/lib/llm/__tests__/dispatchMetering.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	20_000
-apps/api/convex/lib/llm/__tests__/dispatchMetering.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	20_000
-apps/api/convex/lib/llm/__tests__/dispatchPartialUsage.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	10_000
-apps/api/convex/lib/llm/__tests__/dispatchPartialUsage.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	10_000
-apps/api/convex/lib/llm/__tests__/dispatchPartialUsage.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	10_000
-apps/api/convex/lib/llm/__tests__/dispatchPartialUsage.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	10_000
-apps/api/convex/lib/llm/__tests__/dispatchPartialUsage.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	10_000
-apps/api/convex/lib/llm/__tests__/dispatchProviderIdentity.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	10_000
-apps/api/convex/lib/llm/__tests__/toolMarkup.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	60_000
 apps/api/convex/lib/llm/__tests__/toolMarkup.test.ts	owlat(no-wall-clock-in-tests)	performance.now()
 apps/api/convex/lib/llm/__tests__/toolMarkup.test.ts	owlat(no-wall-clock-in-tests)	performance.now()
 apps/api/convex/lib/llm/batch/transport.ts	owlat(no-unchecked-json-cast)	(await response.json()) as { id?: unknown }
@@ -251,9 +205,7 @@ apps/api/convex/lib/sendProviders/mandrill/client.ts	owlat(no-unchecked-json-cas
 apps/api/convex/lib/sendProviders/mta/index.ts	owlat(no-unchecked-json-cast)	(await response.json()) as Partial<MtaSendAccepted & MtaSendRefused>
 apps/api/convex/mail/__tests__/aiGateParallel.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, 5)
 apps/api/convex/mail/__tests__/draftProvenance.integration.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, 5)
-apps/api/convex/mail/__tests__/remoteOpOrder.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	120_000
 apps/api/convex/mail/appPasswords.ts	owlat(use-threaded-session)	revokeAll
-apps/api/convex/mail/arrival/__tests__/transactionLimits.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	120_000
 apps/api/convex/mail/draftStreamStore.ts	owlat(use-threaded-session)	createDraftStream
 apps/api/convex/mail/draftStreamStore.ts	owlat(use-threaded-session)	deleteDraftStream
 apps/api/convex/mail/draftStreamStore.ts	owlat(use-threaded-session)	getDraftStream
@@ -354,12 +306,6 @@ apps/api/convex/workspaces/featureFlags.ts	owlat(use-threaded-session)	setFeatur
 apps/api/convex/workspaces/settings.ts	owlat(use-threaded-session)	get
 apps/api/convex/workspaces/settings.ts	owlat(use-threaded-session)	remove
 apps/api/convex/workspaces/settings.ts	owlat(use-threaded-session)	update
-apps/code-worker/src/__tests__/sandboxDocker.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	20_000
-apps/code-worker/src/__tests__/sandboxDocker.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	20_000
-apps/code-worker/src/__tests__/sandboxDocker.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	20_000
-apps/code-worker/src/__tests__/sandboxDocker.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	20_000
-apps/code-worker/src/__tests__/sandboxOutput.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	30_000
-apps/code-worker/src/__tests__/sandboxOutput.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	30_000
 apps/imap/src/__tests__/pipelining.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(() => resolve(compute()), slow.has(name) ? 10 * LATENCY_MS : LATENCY_MS)
 apps/imap/src/__tests__/server.handshake.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, deadlineMs + 500)
 apps/imap/src/__tests__/server.handshake.test.ts	owlat(no-wall-clock-in-tests)	Date.now() - opened
@@ -376,9 +322,6 @@ apps/imap/src/commands/fetch/__tests__/rawBatching.test.ts	owlat(no-real-time-wa
 apps/imap/src/commands/helpers/__tests__/folderTree.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	30_000
 apps/imap/src/commands/helpers/__tests__/seqMap.test.ts	owlat(no-wall-clock-in-tests)	performance.now()
 apps/imap/src/commands/helpers/__tests__/seqMap.test.ts	owlat(no-wall-clock-in-tests)	performance.now()
-apps/mail-sync/src/__tests__/connection.disconnected.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	2000
-apps/mail-sync/src/__tests__/connection.disconnected.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	2000
-apps/mail-sync/src/__tests__/connection.disconnected.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	2000
 apps/mail-sync/src/ingest.ts	owlat(no-unchecked-json-cast)	(await response.json()) as { storageId: string; size: number }
 apps/marketing/app/composables/useDesktopDownload.ts	owlat(no-unchecked-json-cast)	(await res.json()) as { assets?: { name: string; browser_download_url: string }[]; }
 apps/mta/src/auth/credentials.ts	owlat(no-unchecked-json-cast)	JSON.parse(data) as OrgCredential
@@ -386,16 +329,6 @@ apps/mta/src/auth/credentials.ts	owlat(no-unchecked-json-cast)	JSON.parse(data) 
 apps/mta/src/auth/credentials.ts	owlat(no-unchecked-json-cast)	JSON.parse(data) as OrgCredential
 apps/mta/src/auth/credentials.ts	owlat(no-unchecked-json-cast)	JSON.parse(data) as OrgCredential
 apps/mta/src/auth/postboxAuth.ts	owlat(no-unchecked-json-cast)	(await res.json()) as | { ok: true; mailboxId: string; appPasswordId: string; userId: string; organizationId: string; } | { ok: false }
-apps/mta/src/bounce/__tests__/complaintDedupStore.integration.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	10_000
-apps/mta/src/bounce/__tests__/complaintDedupStore.integration.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	10_000
-apps/mta/src/bounce/__tests__/complaintDedupStore.integration.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	15_000
-apps/mta/src/bounce/__tests__/complaintDedupStore.integration.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	15_000
-apps/mta/src/bounce/__tests__/complaintDedupStore.integration.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	15_000
-apps/mta/src/bounce/__tests__/complaintDedupStore.integration.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	15_000
-apps/mta/src/bounce/__tests__/complaintDedupStore.integration.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	15_000
-apps/mta/src/bounce/__tests__/complaintDedupStore.integration.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	15_000
-apps/mta/src/bounce/__tests__/complaintDedupStore.integration.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	60_000
-apps/mta/src/bounce/__tests__/tlsReload.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	30000
 apps/mta/src/bounce/feedbackProvenance.ts	owlat(no-unchecked-json-cast)	JSON.parse(value) as Record<string, unknown>
 apps/mta/src/bounce/feedbackProvenance.ts	owlat(no-unchecked-json-cast)	JSON.parse(value) as Record<string, unknown>
 apps/mta/src/config.ts	owlat(no-unchecked-json-cast)	dkimKeys = JSON.parse(dkimKeysRaw)
@@ -406,56 +339,19 @@ apps/mta/src/intelligence/smtpResponse.ts	owlat(no-unchecked-json-cast)	JSON.par
 apps/mta/src/intelligence/smtpResponse.ts	owlat(no-unchecked-json-cast)	JSON.parse(raw) as { code: number }
 apps/mta/src/intelligence/suppressionList.ts	owlat(no-unchecked-json-cast)	meta = JSON.parse(raw)
 apps/mta/src/intelligence/suppressionList.ts	owlat(no-unchecked-json-cast)	previous = JSON.parse(raw)
-apps/mta/src/monitoring/__tests__/deliveryLogger.integration.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	15_000
-apps/mta/src/monitoring/__tests__/deliveryLogger.integration.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	60_000
 apps/mta/src/monitoring/googlePostmasterApi.ts	owlat(no-unchecked-json-cast)	(await response.json()) as { access_token?: unknown; expires_in?: unknown }
 apps/mta/src/queue/deferHandoff.ts	owlat(no-unchecked-json-cast)	JSON.parse(raw) as Record<string, unknown>
 apps/mta/src/queue/routingReentryHandoff.ts	owlat(no-unchecked-json-cast)	JSON.parse(raw) as Record<string, unknown>
 apps/mta/src/routes/sendReceipt.ts	owlat(no-unchecked-json-cast)	JSON.parse(value) as Record<string, unknown>
-apps/mta/src/scaling/__tests__/ipReadinessRedis.integration.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	120_000
-apps/mta/src/scaling/__tests__/ipReadinessRedis.integration.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	15_000
 apps/mta/src/scaling/__tests__/port25Probe.test.ts	owlat(no-wall-clock-in-tests)	Date.now() - startedAt
-apps/mta/src/smtp/__tests__/bannerEhlo.integration.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	15000
-apps/mta/src/smtp/__tests__/bannerEhlo.integration.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	15000
-apps/mta/src/smtp/__tests__/bannerEhlo.integration.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	15000
 apps/mta/src/smtp/__tests__/mtaStsFetch.test.ts	owlat(no-wall-clock-in-tests)	Date.now() - started
-apps/mta/src/smtp/__tests__/outboundStartTls.integration.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	15000
-apps/mta/src/smtp/__tests__/outboundStartTls.integration.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	15000
-apps/mta/src/smtp/__tests__/outboundStartTls.integration.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	15000
-apps/mta/src/smtp/__tests__/outboundStartTls.integration.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	15000
-apps/mta/src/smtp/__tests__/outboundStartTls.integration.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	15000
-apps/mta/src/smtp/__tests__/outboundStartTls.integration.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	15000
-apps/mta/src/smtp/__tests__/outboundStartTls.integration.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	15000
-apps/mta/src/smtp/__tests__/outboundStartTls.integration.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	15000
-apps/mta/src/smtp/__tests__/outboundStartTls.integration.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	15000
-apps/mta/src/smtp/__tests__/outboundTls.integration.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	15000
-apps/mta/src/smtp/__tests__/outboundTls.integration.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	15000
-apps/mta/src/smtp/__tests__/senderEhlo.integration.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	15000
-apps/mta/src/smtp/__tests__/senderOutboundTlsFloor.integration.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	15000
-apps/mta/src/smtp/__tests__/senderOutboundTlsFloor.integration.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	15000
-apps/mta/src/smtp/__tests__/senderOutboundTlsFloor.integration.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	15000
-apps/mta/src/smtp/__tests__/senderOutboundTlsFloor.integration.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	15000
-apps/mta/src/smtp/__tests__/senderPlaintextTlsRpt.integration.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	15000
-apps/mta/src/smtp/__tests__/senderPlaintextTlsRpt.integration.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	15000
 apps/mta/src/smtp/daneResolver.ts	owlat(no-unchecked-json-cast)	JSON.parse(cached) as CachedTlsa
 apps/mta/src/smtp/mtaSts.ts	owlat(no-unchecked-json-cast)	JSON.parse(raw) as Partial<StsPolicy>
 apps/mta/src/smtp/tlsRpt.ts	owlat(no-unchecked-json-cast)	JSON.parse(raw) as { type: string; mxHost: string; sendingIp: string }
-apps/mta/src/webhooks/__tests__/dlq.integration.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	15_000
-apps/mta/src/webhooks/__tests__/dlq.integration.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	15_000
-apps/mta/src/webhooks/__tests__/dlq.integration.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	15_000
-apps/mta/src/webhooks/__tests__/dlq.integration.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	15_000
-apps/mta/src/webhooks/__tests__/dlq.integration.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	15_000
-apps/mta/src/webhooks/__tests__/dlq.integration.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	15_000
-apps/mta/src/webhooks/__tests__/dlq.integration.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	15_000
-apps/mta/src/webhooks/__tests__/dlq.integration.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	60_000
-apps/mta/src/webhooks/__tests__/dlq.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	LARGE_BATCH_TEST_TIMEOUT_MS
-apps/mta/src/webhooks/__tests__/dlq.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	LARGE_BATCH_TEST_TIMEOUT_MS
 apps/setup-cli/src/commands/doctorRun.ts	owlat(no-unchecked-json-cast)	JSON.parse(await readFile(statePath, 'utf-8')) as FeatureFlagState
 apps/setup-cli/src/lib/flagState.ts	owlat(no-unchecked-json-cast)	JSON.parse(await file.text()) as FeatureFlagState
 apps/updater/src/__tests__/exec.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, 150)
 apps/updater/src/__tests__/exec.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, 150)
-apps/updater/src/__tests__/exec.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	STOP_TEST_TIMEOUT_MS
-apps/updater/src/__tests__/exec.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	STOP_TEST_TIMEOUT_MS
 apps/updater/src/__tests__/exec.test.ts	owlat(no-wall-clock-in-tests)	Date.now() - started
 apps/updater/src/__tests__/portProbe.test.ts	owlat(no-wall-clock-in-tests)	Date.now() - startedAt
 apps/updater/src/__tests__/shutdown.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, 200)
@@ -566,12 +462,6 @@ packages/shared/src/blockTree.ts	owlat(no-unchecked-json-cast)	JSON.parse(JSON.s
 packages/shared/src/blockTree.ts	owlat(no-unchecked-json-cast)	JSON.parse(JSON.stringify(roots)) as unknown[]
 packages/shared/src/deliverabilityDiagnostics.ts	owlat(no-unchecked-json-cast)	JSON.parse( JSON.stringify({ ...value, schemaVersion: DELIVERABILITY_OBSERVATION_SCHEMA_VERSION, }) ) as Record<string, unknown>
 packages/shared/src/setupProgress.ts	owlat(no-unchecked-json-cast)	JSON.parse(json) as ProgressEvent
-packages/smtp-listener/src/__tests__/admission.integration.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	20000
-packages/smtp-listener/src/__tests__/auth.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	20000
-packages/smtp-listener/src/__tests__/hostile.integration.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	20000
-packages/smtp-listener/src/__tests__/starttlsReset.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	20000
-packages/smtp-listener/src/__tests__/tls.integration.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	20000
-packages/smtp-listener/src/__tests__/tlsReload.integration.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	30000
 scripts/__tests__/check-compose-invariants.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	GATE_TIMEOUT_MS
 scripts/__tests__/check-compose-invariants.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	GATE_TIMEOUT_MS
 scripts/__tests__/check-compose-invariants.test.ts	owlat(no-test-timeout-or-unreasoned-skip)	GATE_TIMEOUT_MS

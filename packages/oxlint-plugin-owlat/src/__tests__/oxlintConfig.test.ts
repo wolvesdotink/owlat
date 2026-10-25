@@ -160,8 +160,8 @@ const FIXTURES: Record<string, string> = {
 		"export const count: number = 'one';",
 		'',
 	].join('\n'),
-	// The body-reset rule is scoped to the workspaces whose vitest setup
-	// unmounts every mount; `document` is a global the browser env provides.
+	// The body-reset rule covers the test files of every workspace, run from the
+	// root or from a workspace; `document` is a global the browser env provides.
 	'apps/web/app/__tests__/bodyReset.test.ts': [
 		"import { afterEach } from 'vitest';",
 		'',
@@ -187,7 +187,7 @@ const FIXTURES: Record<string, string> = {
 		'});',
 		'',
 	].join('\n'),
-	'packages/email-builder/src/__tests__/bodyResetElsewhere.test.ts': [
+	'packages/email-builder/src/__tests__/bodyResetEmailBuilder.test.ts': [
 		"import { afterEach } from 'vitest';",
 		'',
 		'afterEach(() => {',
@@ -195,6 +195,16 @@ const FIXTURES: Record<string, string> = {
 		'});',
 		'',
 	].join('\n'),
+	'packages/shared/src/__tests__/bodyResetShared.test.ts': [
+		"import { afterEach } from 'vitest';",
+		'',
+		'afterEach(() => {',
+		'\tdocument.body.replaceChildren();',
+		'});',
+		'',
+	].join('\n'),
+	// Application code is outside the rule: it may write a document it owns.
+	'packages/shared/src/bodyWrite.ts': ["document.body.innerHTML = '';", ''].join('\n'),
 };
 
 let fixtureDirectory: string;
@@ -308,9 +318,18 @@ describe.each(['.', 'apps/web'])('oxlint run from %s with the root config', (cwd
 		]);
 	});
 
-	it('reports a whole-body reset in a web test, and only in the configured workspaces', () => {
-		expect(errorCodes(byFile.get('bodyReset.test.ts'))).toEqual(['owlat(no-document-body-reset)']);
-		expect(byFile.get('bodyResetElsewhere.test.ts')).toBeUndefined();
+	it('reports a whole-body reset in the tests of every workspace', () => {
+		for (const name of [
+			'bodyReset.test.ts',
+			'bodyResetEmailBuilder.test.ts',
+			'bodyResetShared.test.ts',
+		]) {
+			expect(errorCodes(byFile.get(name)), name).toEqual(['owlat(no-document-body-reset)']);
+		}
+	});
+
+	it('leaves application code that writes the body alone', () => {
+		expect(byFile.get('bodyWrite.ts')).toBeUndefined();
 	});
 
 	it('accepts a loop over the body that removes only some of its nodes', () => {

@@ -337,9 +337,7 @@ describe('replay, staleness and foreign IPs', () => {
 
 // The cap cases here ingest SNDS_MAX_OBSERVATIONS_PER_POLL (2,000) observations
 // on purpose (32 sequential batched mutations): that is the bound under test.
-// They take a couple of seconds locally, and more than the default timeout on
-// a loaded CI runner under coverage, so the block gets an explicit, generous one.
-describe('poll fan-out bounds', { timeout: 60_000 }, () => {
+describe('poll fan-out bounds', () => {
 	it('caps observations per poll and counts what the cap dropped', async () => {
 		const t = convexTest(schema, modules);
 		process.env['SNDS_DATA_FEED_URLS'] = FEED_URL;

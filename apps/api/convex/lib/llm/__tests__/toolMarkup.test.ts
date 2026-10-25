@@ -348,5 +348,5 @@ describe('grammar fuzz: every valid leading tag, at every chunk boundary', () =>
 			expect(visibleDraftStreamText(full)).toBe(reply);
 		}
 		expect(leaks).toBe(0);
-	}, 60_000);
+	});
 });

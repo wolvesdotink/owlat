@@ -174,97 +174,93 @@ beforeEach(() => {
 afterEach(() => vi.useRealTimers());
 
 describe('open-commitments recall reads the junction projection', () => {
-	it(
-		'10,000 unrelated facts: returns the due-ordered answer and loads only the returned entries',
-		{ timeout: 180_000 },
-		async () => {
-			const t = convexTest(schema, modules);
-			// The public knowledge functions follow the `ai.knowledge` flag.
-			await enableFeatures(t, ['ai.knowledge']);
-			const contactId = await newContact(t);
-			const otherId = await newContact(t);
+	it('10,000 unrelated facts: returns the due-ordered answer and loads only the returned entries', async () => {
+		const t = convexTest(schema, modules);
+		// The public knowledge functions follow the `ai.knowledge` flag.
+		await enableFeatures(t, ['ai.knowledge']);
+		const contactId = await newContact(t);
+		const otherId = await newContact(t);
 
-			// Pre-projection history: 10,000 facts, fulfilled / cancelled
-			// commitments and an expired open one, all older than the answer.
-			for (let chunk = 0; chunk < 10; chunk++) {
-				await t.run(async (ctx) => {
-					for (let i = 0; i < 1_000; i++) {
-						const n = chunk * 1_000 + i;
-						await insertLegacy(ctx, contactId, { title: `Fact ${n}`, createdAt: BASE + n });
-					}
-				});
-			}
+		// Pre-projection history: 10,000 facts, fulfilled / cancelled
+		// commitments and an expired open one, all older than the answer.
+		for (let chunk = 0; chunk < 10; chunk++) {
 			await t.run(async (ctx) => {
-				for (let i = 0; i < 200; i++) {
-					await insertLegacy(ctx, contactId, {
-						entryType: 'action_item',
-						title: `Done ${i}`,
-						commitmentStatus: 'fulfilled',
-						dueAt: BASE + i,
-					});
+				for (let i = 0; i < 1_000; i++) {
+					const n = chunk * 1_000 + i;
+					await insertLegacy(ctx, contactId, { title: `Fact ${n}`, createdAt: BASE + n });
 				}
-				for (let i = 0; i < 50; i++) {
-					await insertLegacy(ctx, contactId, {
-						entryType: 'decision',
-						title: `Cancelled ${i}`,
-						commitmentStatus: 'cancelled',
-					});
-				}
+			});
+		}
+		await t.run(async (ctx) => {
+			for (let i = 0; i < 200; i++) {
 				await insertLegacy(ctx, contactId, {
 					entryType: 'action_item',
-					title: 'Expired promise',
-					dueAt: BASE,
-					expiresAt: BASE + DAY,
+					title: `Done ${i}`,
+					commitmentStatus: 'fulfilled',
+					dueAt: BASE + i,
 				});
-				// Another contact's open promise, due first: must not leak.
-				await insertLegacy(ctx, otherId, {
-					entryType: 'action_item',
-					title: 'Other contact',
-					dueAt: BASE,
+			}
+			for (let i = 0; i < 50; i++) {
+				await insertLegacy(ctx, contactId, {
+					entryType: 'decision',
+					title: `Cancelled ${i}`,
+					commitmentStatus: 'cancelled',
 				});
-			});
-
-			const run = await backfill(t);
-			expect(run.projected).toBe(10_252);
-
-			// The answer, written by the live writer after the backfill.
-			const undatedOld = await save(t, [contactId], {
+			}
+			await insertLegacy(ctx, contactId, {
 				entryType: 'action_item',
-				title: 'Undated older',
+				title: 'Expired promise',
+				dueAt: BASE,
+				expiresAt: BASE + DAY,
 			});
-			const undatedNew = await save(t, [contactId], {
-				entryType: 'decision',
-				title: 'Undated newer',
+			// Another contact's open promise, due first: must not leak.
+			await insertLegacy(ctx, otherId, {
+				entryType: 'action_item',
+				title: 'Other contact',
+				dueAt: BASE,
 			});
-			const later = await save(t, [contactId], { entryType: 'decision', title: 'Due later' });
-			const soon = await save(t, [contactId], { entryType: 'action_item', title: 'Due soon' });
-			const resolved = await save(t, [contactId], { entryType: 'action_item', title: 'Resolved' });
-			await t.mutation(api.knowledge.graph.setCommitmentStatus, {
-				entryId: later,
-				commitmentStatus: 'open',
-				dueAt: BASE + 120 * DAY,
-			});
-			await t.mutation(api.knowledge.graph.setCommitmentStatus, {
-				entryId: soon,
-				commitmentStatus: 'open',
-				dueAt: BASE + 101 * DAY,
-			});
-			await t.mutation(api.knowledge.graph.setCommitmentStatus, {
-				entryId: resolved,
-				commitmentStatus: 'fulfilled',
-			});
-			expect([undatedOld, undatedNew]).toHaveLength(2);
+		});
 
-			const recall = await countedRecall(t, contactId);
-			expect(recall.titles).toEqual(['Due soon', 'Due later', 'Undated newer', 'Undated older']);
-			// Entry loads follow the answer, not the 10,256 linked entries.
-			expect(recall.entryLoads).toBe(4);
-			expect(recall.hasEmbedding).toBe(false);
+		const run = await backfill(t);
+		expect(run.projected).toBe(10_252);
 
-			expect(await titles(t, contactId, 2)).toEqual(['Due soon', 'Due later']);
-			expect(await titles(t, otherId)).toEqual(['Other contact']);
-		}
-	);
+		// The answer, written by the live writer after the backfill.
+		const undatedOld = await save(t, [contactId], {
+			entryType: 'action_item',
+			title: 'Undated older',
+		});
+		const undatedNew = await save(t, [contactId], {
+			entryType: 'decision',
+			title: 'Undated newer',
+		});
+		const later = await save(t, [contactId], { entryType: 'decision', title: 'Due later' });
+		const soon = await save(t, [contactId], { entryType: 'action_item', title: 'Due soon' });
+		const resolved = await save(t, [contactId], { entryType: 'action_item', title: 'Resolved' });
+		await t.mutation(api.knowledge.graph.setCommitmentStatus, {
+			entryId: later,
+			commitmentStatus: 'open',
+			dueAt: BASE + 120 * DAY,
+		});
+		await t.mutation(api.knowledge.graph.setCommitmentStatus, {
+			entryId: soon,
+			commitmentStatus: 'open',
+			dueAt: BASE + 101 * DAY,
+		});
+		await t.mutation(api.knowledge.graph.setCommitmentStatus, {
+			entryId: resolved,
+			commitmentStatus: 'fulfilled',
+		});
+		expect([undatedOld, undatedNew]).toHaveLength(2);
+
+		const recall = await countedRecall(t, contactId);
+		expect(recall.titles).toEqual(['Due soon', 'Due later', 'Undated newer', 'Undated older']);
+		// Entry loads follow the answer, not the 10,256 linked entries.
+		expect(recall.entryLoads).toBe(4);
+		expect(recall.hasEmbedding).toBe(false);
+
+		expect(await titles(t, contactId, 2)).toEqual(['Due soon', 'Due later']);
+		expect(await titles(t, otherId)).toEqual(['Other contact']);
+	});
 
 	it('merges rows written before the projection with projected ones', async () => {
 		const t = convexTest(schema, modules);

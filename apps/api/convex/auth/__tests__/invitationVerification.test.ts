@@ -120,7 +120,6 @@ describe('invitation identity verification with installed BetterAuth', () => {
 				body: { invitationId: target.id },
 			});
 			expect(accepted.member.role).toBe('admin');
-		},
-		10_000
+		}
 	);
 });

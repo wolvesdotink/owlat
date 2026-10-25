@@ -245,5 +245,5 @@ describe('scheduled failure gate', () => {
 		expect(Object.values(excused.tests)).toEqual(['passed', 'passed']);
 
 		expect(exitStatus).toBe(1);
-	}, 150_000);
+	});
 });

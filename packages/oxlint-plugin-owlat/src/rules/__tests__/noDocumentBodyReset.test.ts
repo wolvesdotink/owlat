@@ -154,6 +154,11 @@ ruleTester.run('owlat/no-document-body-reset', rule, {
 			code: "document.body.innerHTML = '';",
 		},
 		{
+			name: 'application code, which may write a document it owns',
+			filename: 'apps/web/app/utils/printPreview.ts',
+			code: "document.body.innerHTML = '';",
+		},
+		{
 			name: 'a file that never names the document',
 			filename,
 			code: "declare const body: { innerHTML: string };\nbody.innerHTML = '';",
@@ -176,6 +181,18 @@ ruleTester.run('owlat/no-document-body-reset', rule, {
 			name: 'a file inside the configured globs',
 			filename: 'packages/ui/composables/__tests__/cases.test.ts',
 			options: scoped,
+			code: "document.body.innerHTML = '';",
+			errors,
+		},
+		{
+			name: 'a test file in any workspace when no globs are configured',
+			filename: 'packages/email-builder/src/__tests__/cases.test.ts',
+			code: "document.body.innerHTML = '';",
+			errors,
+		},
+		{
+			name: 'a spec file outside a __tests__ directory',
+			filename: 'apps/marketing/e2e/home.spec.ts',
 			code: "document.body.innerHTML = '';",
 			errors,
 		},

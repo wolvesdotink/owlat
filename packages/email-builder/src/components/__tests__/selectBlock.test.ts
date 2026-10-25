@@ -5,7 +5,7 @@
 // in. It has to select the right Block, scroll it into view and leave a
 // preview for the canvas, and say so when the Block no longer exists.
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
 import EmailBuilder from '../EmailBuilder.vue';
 import { EmailBuilderHandlersKey } from '../../composables/useEmailBuilderHandlers';
 import { createBlock } from '../../utils/blocks';
@@ -19,13 +19,12 @@ function text(id: string, html: string): EditorBlock {
 	return block;
 }
 
-let wrapper: VueWrapper | null = null;
 const originalScrollIntoView = Element.prototype.scrollIntoView;
 
 type Exposed = { selectBlock: (id: string) => boolean };
 
 async function mountBuilder(blocks: EditorBlock[]) {
-	wrapper = mount(EmailBuilder, {
+	const wrapper = mount(EmailBuilder, {
 		props: { blocks, subject: 'Subject', name: 'Name', variables: [] },
 		global: {
 			provide: {
@@ -42,9 +41,6 @@ async function mountBuilder(blocks: EditorBlock[]) {
 }
 
 afterEach(() => {
-	wrapper?.unmount();
-	wrapper = null;
-	document.body.innerHTML = '';
 	Element.prototype.scrollIntoView = originalScrollIntoView;
 });
 

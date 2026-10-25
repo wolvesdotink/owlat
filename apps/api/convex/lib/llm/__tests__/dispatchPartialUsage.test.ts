@@ -23,6 +23,7 @@ import {
 	runLlmTextWithTools,
 } from '../dispatch';
 import { LlmPartialUsageError, partialUsageOf } from '../partialUsage';
+import { withFakeBackoff } from './backoffClock.testlib';
 import { providerGenerationResult } from './providerModel.testlib';
 import { scriptedStreamModel } from './streamModel.testlib';
 
@@ -119,16 +120,22 @@ describe('runLlmTextWithTools — usage of finished steps', () => {
 
 	it('counts the finished steps of an attempt that failed and was retried', async () => {
 		const overloaded = Object.assign(new Error('overloaded'), { statusCode: 503 });
-		const result = await runLlmTextWithTools({
-			model: generateModel([toolCallStep(), overloaded, providerGenerationResult(undefined, 'Hi')]),
-			messages,
-			tools: recallTools(),
-		});
+		const result = await withFakeBackoff(() =>
+			runLlmTextWithTools({
+				model: generateModel([
+					toolCallStep(),
+					overloaded,
+					providerGenerationResult(undefined, 'Hi'),
+				]),
+				messages,
+				tools: recallTools(),
+			})
+		);
 
 		// Attempt 1 paid for its tool step before it failed; attempt 2 is one step.
 		expect(result.text).toBe('Hi');
 		expect(result.tokenUsage).toEqual({ promptTokens: 20, completionTokens: 10, totalTokens: 30 });
-	}, 10_000);
+	});
 });
 
 describe('runLlmStream — usage of finished steps', () => {
@@ -194,16 +201,14 @@ describe('runLlmObject — usage of billed attempts (#1260)', () => {
 	});
 
 	it('returns the usage of a failed schema attempt and the one that succeeded', async () => {
-		const result = await runLlmObject({
-			model: generateModel([offSchema(), valid()]),
-			schema,
-			prompt,
-		});
+		const result = await withFakeBackoff(() =>
+			runLlmObject({ model: generateModel([offSchema(), valid()]), schema, prompt })
+		);
 
 		expect(result.object).toEqual({ score: 0.4 });
 		expect(result.tokenUsage).toEqual(twice(2));
 		expect(result.modelUsed).toBe('tool-model');
-	}, 10_000);
+	});
 
 	it('returns one attempt of usage when the first succeeds', async () => {
 		const result = await runLlmObject({ model: generateModel([valid()]), schema, prompt });
@@ -212,29 +217,33 @@ describe('runLlmObject — usage of billed attempts (#1260)', () => {
 	});
 
 	it('throws the usage of every attempt when each one fails the schema', async () => {
-		const error = await runLlmObject({
-			model: generateModel([offSchema(), offSchema(), offSchema()]),
-			schema,
-			prompt,
-		}).catch((e: unknown) => e);
+		const error = await withFakeBackoff(() =>
+			runLlmObject({
+				model: generateModel([offSchema(), offSchema(), offSchema()]),
+				schema,
+				prompt,
+			})
+		).catch((e: unknown) => e);
 
 		expect(error).toBeInstanceOf(LlmPartialUsageError);
 		expect(partialUsageOf(error)).toEqual({ tokenUsage: twice(3), modelUsed: 'tool-model' });
 		const cause = (error as Error).cause;
 		expect(NoObjectGeneratedError.isInstance(cause)).toBe(true);
 		expect((error as Error).message).toBe((cause as Error).message);
-	}, 10_000);
+	});
 
 	it('counts only the attempts the interactive ceiling allowed', async () => {
-		const error = await runLlmObject({
-			model: generateModel([offSchema(), offSchema(), valid()]),
-			schema,
-			prompt,
-			maxAttempts: 2,
-		}).catch((e: unknown) => e);
+		const error = await withFakeBackoff(() =>
+			runLlmObject({
+				model: generateModel([offSchema(), offSchema(), valid()]),
+				schema,
+				prompt,
+				maxAttempts: 2,
+			})
+		).catch((e: unknown) => e);
 
 		expect(partialUsageOf(error)?.tokenUsage).toEqual(twice(2));
-	}, 10_000);
+	});
 
 	it('rethrows a failure that was never billed untouched', async () => {
 		const original = badRequest();
@@ -250,11 +259,9 @@ describe('runLlmObject — usage of billed attempts (#1260)', () => {
 
 	it('keeps a later provider rejection readable after a billed schema failure', async () => {
 		const original = badRequest();
-		const error = await runLlmObject({
-			model: generateModel([offSchema(), original]),
-			schema,
-			prompt,
-		}).catch((e: unknown) => e);
+		const error = await withFakeBackoff(() =>
+			runLlmObject({ model: generateModel([offSchema(), original]), schema, prompt })
+		).catch((e: unknown) => e);
 
 		expect(partialUsageOf(error)).toEqual({ tokenUsage: STEP_USAGE, modelUsed: 'tool-model' });
 		expect((error as Error).cause).toBe(original);
@@ -262,5 +269,5 @@ describe('runLlmObject — usage of billed attempts (#1260)', () => {
 		// The shared classifiers read the provider's error, not the wrapper.
 		expect(errorStatus(error)).toBe(400);
 		expect(isRetriableLlmError(error)).toBe(false);
-	}, 10_000);
+	});
 });
