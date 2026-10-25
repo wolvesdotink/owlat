@@ -80,6 +80,7 @@ import { usePostboxWhyHere } from '~/composables/postbox/usePostboxWhyHere';
 import { POSTBOX_PRIORITY_ROWS } from '~/utils/postboxPriorityGroups';
 import { vReplyDrop } from '~/composables/useReplyFileDrop';
 import { replyDropForMessage } from '~/utils/replyFileDrop';
+import { useShortcutLabels } from '~/composables/useShortcutLabels';
 
 const { t } = useI18n();
 // A filtered list (`?placement=`) keeps its filter on the message route.
@@ -236,7 +237,9 @@ function openWhyHere(event: MouseEvent) {
 }
 
 // Right-click / context-menu-key items — the same triage verbs as the hover
-// row-actions (one action source, two entry points).
+// row-actions (one action source, two entry points), each with its list key.
+const { labelFor } = useShortcutLabels();
+const key = (id: string) => labelFor(id) ?? undefined;
 const contextItems = computed<ContextMenuItem[]>(() => [
 	{
 		id: 'star',
@@ -244,6 +247,7 @@ const contextItems = computed<ContextMenuItem[]>(() => [
 			? t('components.postbox.postboxThreadRow.unstar')
 			: t('components.postbox.postboxThreadRow.star'),
 		icon: 'lucide:star',
+		shortcut: key('postbox.star'),
 		run: () => triage('toggle-star'),
 	},
 	{
@@ -252,12 +256,14 @@ const contextItems = computed<ContextMenuItem[]>(() => [
 			? t('components.postbox.postboxThreadRow.markAsUnread')
 			: t('components.postbox.postboxThreadRow.markAsRead'),
 		icon: props.msg.flagSeen ? 'lucide:mail' : 'lucide:mail-open',
+		shortcut: key('postbox.toggleRead'),
 		run: () => triage('toggle-read'),
 	},
 	{
 		id: 'archive',
 		label: t('common.archive'),
 		icon: 'lucide:archive',
+		shortcut: key('postbox.archive'),
 		run: () => triage('archive'),
 	},
 	{
@@ -274,6 +280,7 @@ const contextItems = computed<ContextMenuItem[]>(() => [
 			? t('components.postbox.postboxThreadRow.unmute')
 			: t('components.postbox.postboxThreadRow.mute'),
 		icon: props.msg.mutedAt ? 'lucide:bell' : 'lucide:bell-off',
+		shortcut: key('postbox.mute'),
 		run: () => triage('toggle-mute'),
 	},
 	{
@@ -282,6 +289,7 @@ const contextItems = computed<ContextMenuItem[]>(() => [
 		icon: 'lucide:trash',
 		danger: true,
 		separatorBefore: true,
+		shortcut: key('postbox.trash'),
 		run: () => triage('trash'),
 	},
 ]);
