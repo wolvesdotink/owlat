@@ -67,6 +67,28 @@ describe('cookieStringFromBlob', () => {
 		expect(cookieStringFromBlob('{}')).toBe('');
 		expect(cookieStringFromBlob('not json')).toBe('');
 	});
+
+	it('returns empty string when the blob or its jar is valid JSON of the wrong shape', () => {
+		expect(cookieStringFromBlob('[]')).toBe('');
+		expect(cookieStringFromBlob(JSON.stringify({ 'better-auth_cookie': { a: 1 } }))).toBe('');
+		expect(cookieStringFromBlob(JSON.stringify({ 'better-auth_cookie': '["a=1"]' }))).toBe('');
+		expect(cookieStringFromBlob(JSON.stringify({ 'better-auth_cookie': 'null' }))).toBe('');
+	});
+
+	it('skips a malformed entry instead of coercing it into the header', () => {
+		const blob = JSON.stringify({
+			'better-auth_cookie': JSON.stringify({
+				good: { value: 'keep', expires: null },
+				objectValue: { value: { nested: true } },
+				numberValue: { value: 42 },
+				noValue: { expires: null },
+				notAnEntry: 'raw',
+				nullEntry: null,
+				numberExpiry: { value: 'x', expires: 123 },
+			}),
+		});
+		expect(cookieStringFromBlob(blob)).toBe('good=keep');
+	});
 });
 
 describe('createWorkspaceBadgeClient', () => {

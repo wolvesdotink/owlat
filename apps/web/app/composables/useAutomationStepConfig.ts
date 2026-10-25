@@ -1,5 +1,6 @@
 import { ref, computed, getCurrentScope, onScopeDispose, watch, type Ref } from 'vue';
 import { api } from '@owlat/api';
+import { plainClone } from '@owlat/email-builder/plain-clone';
 import type { Id, Doc } from '@owlat/api/dataModel';
 import { stepEditorModuleFor, type StepConfigByKind, type StepKind } from './automations/steps';
 import { registerUnsavedWorkProbe } from '~/lib/pendingOperations';
@@ -99,6 +100,15 @@ export function useAutomationStepConfig(
 	const remoteConfig = ref<NonNullable<StepCurrentConfig> | null>(null);
 
 	const currentJson = () => (currentConfig.value ? stableJson(currentConfig.value.config) : null);
+	/**
+	 * What a save sends: a plain copy of the open config, taken when the
+	 * request goes out, and the serialized form its echo is recognised by.
+	 */
+	const currentSnapshot = () => {
+		if (!currentConfig.value) return null;
+		const config = plainClone(currentConfig.value.config);
+		return { config, json: stableJson(config) };
+	};
 
 	const isCurrentConfigDirty = computed(() => {
 		if (!currentConfig.value || persistedConfigJson.value === null) return false;
@@ -180,13 +190,11 @@ export function useAutomationStepConfig(
 		try {
 			while (isCurrentConfigDirty.value && remoteConfig.value === null) {
 				const stepId = selectedStepId.value;
-				const snapshot = currentJson();
-				if (!stepId || snapshot === null) return true;
+				const sent = currentSnapshot();
+				if (!stepId || sent === null) return true;
+				const snapshot = sent.json;
 				inFlightJson = snapshot;
-				const result = await updateStepMutation({
-					stepId,
-					config: JSON.parse(snapshot) as never,
-				});
+				const result = await updateStepMutation({ stepId, config: sent.config });
 				inFlightJson = null;
 				// The selection moved while the request ran: nothing of this
 				// request's result belongs to the step now on screen.

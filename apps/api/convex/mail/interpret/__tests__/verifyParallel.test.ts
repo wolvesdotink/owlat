@@ -13,19 +13,64 @@ import type { VerifyClaim } from '../pipeline';
 import type { InterpretRunHold } from '../runHold';
 import { VERIFY_PARALLELISM, verifyClaims } from '../verify';
 
-/** How the stubbed verifier answers one batch, by the claim ids it was asked about. */
+/**
+ * How the stubbed verifier answers one batch, by the claim ids it was asked
+ * about: what it returns, and how long the call takes on the stub's clock.
+ */
 type Answer = (ids: string[]) => {
-	delayMs: number;
+	durationMs: number;
 	result: { claimId: string; verdict: 'supported' | 'unsupported' | 'unclear' }[] | Error;
 };
 
-const stub = vi.hoisted(() => ({
-	answer: (() => ({ delayMs: 0, result: [] })) as unknown as Answer,
-	inFlight: 0,
-	maxInFlight: 0,
-	batches: [] as string[][],
-	targets: [] as unknown[],
-}));
+/**
+ * The calls in flight finish in the order of a virtual clock, never the real
+ * one: once the code under test has started every call it can (one event-loop
+ * turn, since every other dependency is a stub that answers at once), the
+ * call due first finishes, the clock moves to its end, and so on. A call that
+ * starts later is due its duration after the clock's current time.
+ */
+const stub = vi.hoisted(() => {
+	const state = {
+		answer: (() => ({ durationMs: 0, result: [] })) as unknown as Answer,
+		inFlight: 0,
+		maxInFlight: 0,
+		batches: [] as string[][],
+		targets: [] as unknown[],
+		now: 0,
+		started: 0,
+		calls: [] as { dueAt: number; order: number; finish: () => void }[],
+		finishing: false,
+	};
+	const finishNext = () => {
+		state.finishing = false;
+		const next = state.calls.reduce<(typeof state.calls)[number] | undefined>(
+			(first, call) =>
+				!first ||
+				call.dueAt < first.dueAt ||
+				(call.dueAt === first.dueAt && call.order < first.order)
+					? call
+					: first,
+			undefined
+		);
+		if (!next) return;
+		state.calls.splice(state.calls.indexOf(next), 1);
+		state.now = next.dueAt;
+		next.finish();
+		if (state.calls.length > 0) scheduleFinish();
+	};
+	const scheduleFinish = () => {
+		if (state.finishing) return;
+		state.finishing = true;
+		setImmediate(finishNext);
+	};
+	/** Resolves when the call started now, lasting `durationMs`, finishes. */
+	const lasting = (durationMs: number) =>
+		new Promise<void>((finish) => {
+			state.calls.push({ dueAt: state.now + durationMs, order: state.started++, finish });
+			scheduleFinish();
+		});
+	return Object.assign(state, { lasting });
+});
 
 vi.mock('../../../lib/llm/dispatch', () => ({
 	runLlmObject: vi.fn(async ({ prompt }: { prompt: string }) => {
@@ -33,8 +78,8 @@ vi.mock('../../../lib/llm/dispatch', () => ({
 		stub.batches.push(ids);
 		stub.inFlight += 1;
 		stub.maxInFlight = Math.max(stub.maxInFlight, stub.inFlight);
-		const { delayMs, result } = stub.answer(ids);
-		await new Promise((resolve) => setTimeout(resolve, delayMs));
+		const { durationMs, result } = stub.answer(ids);
+		await stub.lasting(durationMs);
 		stub.inFlight -= 1;
 		if (result instanceof Error) throw result;
 		return { object: { verdicts: result }, tokenUsage: undefined, modelUsed: 'stub' };
@@ -63,11 +108,11 @@ function claims(count: number): VerifyClaim[] {
 
 const VERDICTS = ['supported', 'unsupported', 'unclear'] as const;
 
-/** Batch `b` (by its first claim) finishes after a delay that reverses the start order. */
+/** Batch `b` (by its first claim) takes a duration that reverses the start order. */
 function reversed(ids: string[]) {
 	const first = Number(ids[0]!.split(':')[1]);
 	return {
-		delayMs: Math.max(0, 40 - first),
+		durationMs: Math.max(0, 40 - first),
 		result: ids.map((claimId, i) => ({ claimId, verdict: VERDICTS[(first + i) % 3]! })),
 	};
 }
@@ -99,6 +144,7 @@ async function both(input: VerifyClaim[], answer: Answer) {
 const entries = (map: Map<string, string>) => [...map.entries()];
 
 beforeEach(() => {
+	stub.now = 0;
 	stub.inFlight = 0;
 	stub.maxInFlight = 0;
 	stub.batches = [];
@@ -154,7 +200,7 @@ describe('verifyClaims in parallel', () => {
 
 	it('ignores answers for claims outside the batch and keeps the first answer per claim', async () => {
 		const { serial, parallel } = await both(claims(6), (ids) => ({
-			delayMs: ids[0] === 'item:0' ? 20 : 0,
+			durationMs: ids[0] === 'item:0' ? 20 : 0,
 			result: [
 				{ claimId: ids[0]!, verdict: 'unsupported' },
 				{ claimId: ids[0]!, verdict: 'supported' },
@@ -170,7 +216,9 @@ describe('verifyClaims in parallel', () => {
 	it('stops at a spend refusal exactly as the serial loop did, and sends nothing after it', async () => {
 		const refusal = new AdmissionRefusedError('daily_ceiling', 'ceiling');
 		const answer: Answer = (ids) =>
-			ids[0] === 'item:3' ? { delayMs: 0, result: refusal } : { ...reversed(ids), delayMs: 30 };
+			ids[0] === 'item:3'
+				? { durationMs: 0, result: refusal }
+				: { ...reversed(ids), durationMs: 30 };
 		const { serial, parallel } = await both(claims(24), answer);
 		expect(parallel).toEqual(serial);
 		expect(parallel.refusal).toMatchObject({ reason: 'daily_ceiling' });

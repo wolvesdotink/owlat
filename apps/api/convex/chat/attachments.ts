@@ -11,7 +11,7 @@
  */
 
 import { v } from 'convex/values';
-import { getUserIdFromSession, requireOrgPermission } from '../lib/sessionOrganization';
+import { hasPermission, requirePermission } from '../lib/sessionOrganization';
 import { throwInvalidInput, throwRateLimited } from '../_utils/errors';
 import { rateLimiter } from '../lib/rateLimiter';
 import { chatQuery, chatMutation, assertCanReadRoom, getRoomOrThrow } from './_helpers';
@@ -26,7 +26,7 @@ import { consumeUpload, mintUploadUrl, storedFileSize } from '../storage/uploads
 export const generateUploadUrl = chatMutation({
 	args: {},
 	handler: async (ctx, _args, session) => {
-		await requireOrgPermission(ctx, 'chat:participate', 'Chat is not available');
+		requirePermission(hasPermission(session.role, 'chat:participate'), 'Chat is not available');
 		const limit = await rateLimiter.limit(ctx, 'storageUpload', { key: session.userId });
 		if (!limit.ok) throwRateLimited('Too many uploads — try again in a moment.', limit.retryAfter);
 		return await mintUploadUrl(ctx, session);
@@ -46,8 +46,8 @@ export const registerAttachment = chatMutation({
 		width: v.optional(v.number()),
 		height: v.optional(v.number()),
 	},
-	handler: async (ctx, args) => {
-		const session = await requireOrgPermission(ctx, 'chat:participate', 'Chat is not available');
+	handler: async (ctx, args, session) => {
+		requirePermission(hasPermission(session.role, 'chat:participate'), 'Chat is not available');
 		const { userId } = session;
 
 		if (!args.filename.trim()) throwInvalidInput('Filename cannot be empty');
@@ -98,8 +98,8 @@ export const registerAttachment = chatMutation({
  */
 export const getAttachmentDetails = chatQuery({
 	args: { messageId: v.id('chatMessages') },
-	handler: async (ctx, args) => {
-		const userId = await getUserIdFromSession(ctx);
+	handler: async (ctx, args, session) => {
+		const { userId } = session;
 
 		const message = await ctx.db.get(args.messageId);
 		if (!message) return [];

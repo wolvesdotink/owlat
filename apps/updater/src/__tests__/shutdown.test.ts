@@ -69,7 +69,7 @@ process.env['FAKE_DOCKER_DIR'] = FAKE;
 process.env['PATH'] = `${join(FAKE, 'bin')}:${process.env['PATH']}`;
 
 const { buildRequestListener } = await import('../server.js');
-const { beginShutdown, setShutdownHandle } = await import('../lifecycle.js');
+const { beginShutdown, setShutdownHandle, shutdownSignal } = await import('../lifecycle.js');
 const { reconcileInterruptedUpdate } = await import('../update.js');
 const { readLastRollout, writeLastRollout } = await import('../rolloutState.js');
 const { fastReadiness } = await import('./readinessStubs.js');
@@ -89,6 +89,8 @@ type Step = (typeof STEPS)[number];
 /** Per test: where each held step reports its start, and the gate it waits on. */
 let ready: Record<Step, ReturnType<typeof fifoLines>> | undefined;
 let gates: Record<Step, ReturnType<typeof fifoGate>> | undefined;
+/** Waiting for the shutdown's next wait on a critical section still in flight. */
+let drainWaiters: Array<() => void> = [];
 
 function closePipes(): void {
 	for (const step of STEPS) {
@@ -133,11 +135,17 @@ beforeEach(() => {
 	// Each case starts without the snapshot an earlier case's update left.
 	rmSync(join(OWLAT_DIR, '.owlat-update-snapshot'), { recursive: true, force: true });
 	exit = vi.fn<(code: number) => void>();
+	drainWaiters = [];
 	// Signals are delivered by the test (`handle.shutdown`), never by the OS,
-	// and the server is the test's own: the shutdown must not close it.
+	// and the server is the test's own: the shutdown must not close it. Its log
+	// says when the drain waits on a critical section.
 	handle = installShutdown({
 		timeoutMs: 10_000,
-		log: () => {},
+		log: (message) => {
+			if (message === 'shutdown waiting for in-flight critical sections') {
+				for (const resolve of drainWaiters.splice(0)) resolve();
+			}
+		},
 		signals: [],
 		exit,
 		onShutdown: beginShutdown,
@@ -160,6 +168,11 @@ afterEach(() => {
 function release(step: Step): void {
 	writeFileSync(join(FAKE, `released-${step}`), '');
 	gates?.[step].release();
+}
+
+/** Resolves when the shutdown next waits on a critical section; ask before shutting down. */
+function waitsOnCriticalSection(): Promise<void> {
+	return new Promise((resolve) => drainWaiters.push(resolve));
 }
 
 function calls(): string[] {
@@ -246,8 +259,12 @@ describe('SIGTERM during an update', () => {
 		release('pull');
 		const upPid = await started('up');
 
+		const waiting = waitsOnCriticalSection();
 		const shutting = handle.shutdown('SIGTERM');
-		await new Promise((resolve) => setTimeout(resolve, 200));
+		// The handlers have heard of the shutdown, and the drain waits on the
+		// rollout's critical section, which is held in the recreate.
+		await waiting;
+		expect(shutdownSignal().aborted).toBe(true);
 		// Still recreating: the recreate is not stopped and the exit waits.
 		expect(alive(upPid)).toBe(true);
 		expect(exit).not.toHaveBeenCalled();

@@ -1,10 +1,13 @@
 import type { NavigationSection } from '~/composables/useDashboardNavigation';
 import {
 	type SidebarContext,
+	SIDEBAR_CONTEXTS,
 	contextForPath,
+	readLastVisitedRoutes,
 	resolveSwitchTarget,
 	splitSectionsByContext,
 } from '~/lib/sidebarContext';
+import { readStoredChoice } from '~/utils/storedValue';
 
 /**
  * Reactive wiring for the sidebar's Inbox ↔ Marketing context toggle (pure
@@ -22,10 +25,15 @@ import {
 
 // Module-level storage (singleton across component instances, same pattern as
 // useSidebarState). Fresh users default to Inbox.
-const contextStorage = useLocalStorage<SidebarContext>('sidebar-context', 'inbox');
+const contextStorage = useLocalStorage<SidebarContext>(
+	'sidebar-context',
+	'inbox',
+	readStoredChoice(SIDEBAR_CONTEXTS)
+);
 const lastVisitedStorage = useLocalStorage<Partial<Record<SidebarContext, string>>>(
 	'sidebar-context-routes',
-	{}
+	{},
+	readLastVisitedRoutes
 );
 
 export function useSidebarContext() {

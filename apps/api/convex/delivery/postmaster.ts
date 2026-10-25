@@ -13,7 +13,6 @@ import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
 import { authedQuery } from '../lib/authedFunctions';
 import { utcDayKey } from '../lib/clock';
-import { getUserIdFromSession } from '../lib/sessionOrganization';
 import { observationVerdict } from './observationFreshness';
 import { type ObservationSweepResult, sweepExpiredObservations } from '../lib/retentionSweep';
 import {
@@ -308,8 +307,6 @@ export interface PostmasterStatus {
 export const getPostmasterStatus = authedQuery({
 	args: {},
 	handler: async (ctx): Promise<PostmasterStatus> => {
-		await getUserIdFromSession(ctx);
-
 		const domains = await ctx.db.query('domains').collect(); // bounded: org-curated sending domains, low-tens at most
 		const statuses = await Promise.all(
 			domains.map(async (domainRecord): Promise<PostmasterDomainStatus> => {

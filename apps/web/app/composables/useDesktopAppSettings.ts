@@ -12,6 +12,7 @@
  * keeping the settings page developable in a plain browser.
  */
 import { isDesktopRuntime } from '~/lib/desktop/activeWorkspace';
+import { plainClone } from '@owlat/email-builder/plain-clone';
 import {
 	defaultDesktopSettings,
 	defaultWorkspaceLocalSettings,
@@ -75,7 +76,7 @@ async function persistNow(): Promise<void> {
 		clearTimeout(saveTimer);
 		saveTimer = null;
 	}
-	const snapshot = JSON.parse(JSON.stringify(settings.value)) as DesktopSettings;
+	const snapshot = plainClone(settings.value);
 	if (isDesktopRuntime()) {
 		try {
 			await (await bridge()).saveSettingsStore(snapshot);

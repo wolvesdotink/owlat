@@ -2,11 +2,6 @@
 # oxlintrc.json (see scripts/check-owlat-lint.sh). One line per finding:
 # <file> TAB <rule> TAB <source text of the reported span>.
 # Lines only ever get deleted; a rule with no line left here moves to "error".
-apps/api/convex/__tests__/factories.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, t === undefined ? 25 : 0)
-apps/api/convex/__tests__/scheduledFailureExcusedLeakSentinel.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, 300)
-apps/api/convex/__tests__/scheduledFailureFileSentinel.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, 300)
-apps/api/convex/__tests__/unhandledErrorSentinel.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, 20)
-apps/api/convex/agent/shared/__tests__/draftStrategyHost.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, 150)
 apps/api/convex/agentConfigMutations.ts	owlat(use-threaded-session)	updateConfig
 apps/api/convex/analytics/complianceTelemetry.ts	owlat(use-threaded-session)	getComplianceTelemetry
 apps/api/convex/analytics/dashboard.ts	owlat(use-threaded-session)	getRecentActivity
@@ -34,102 +29,22 @@ apps/api/convex/blockedEmails.ts	owlat(use-threaded-session)	add
 apps/api/convex/blockedEmails.ts	owlat(use-threaded-session)	bulkAdd
 apps/api/convex/blockedEmails.ts	owlat(use-threaded-session)	listProviderProvenance
 apps/api/convex/blockedEmails.ts	owlat(use-threaded-session)	remove
-apps/api/convex/campaigns/abTest.ts	owlat(use-threaded-session)	declareABTestWinner
-apps/api/convex/campaigns/abTest.ts	owlat(use-threaded-session)	getABTestStats
-apps/api/convex/campaigns/campaigns.ts	owlat(use-threaded-session)	create
-apps/api/convex/campaigns/campaigns.ts	owlat(use-threaded-session)	duplicate
-apps/api/convex/campaigns/campaigns.ts	owlat(use-threaded-session)	remove
-apps/api/convex/campaigns/scheduling.ts	owlat(use-threaded-session)	cancel
-apps/api/convex/campaigns/scheduling.ts	owlat(use-threaded-session)	reschedule
-apps/api/convex/campaigns/scheduling.ts	owlat(use-threaded-session)	schedule
-apps/api/convex/campaigns/scheduling.ts	owlat(use-threaded-session)	unschedule
 apps/api/convex/campaigns/sendQueries.ts	owlat(no-unchecked-json-cast)	htmlTranslations: Record<string, HtmlTranslation> = JSON.parse( template.htmlTranslations )
-apps/api/convex/campaigns/senders.ts	owlat(use-threaded-session)	listForPicker
 apps/api/convex/channels/adapters/sms.ts	owlat(no-unchecked-json-cast)	(await response.json()) as TwilioSendResponse
 apps/api/convex/channels/adapters/sms.ts	owlat(no-unchecked-json-cast)	(await response.json()) as TwilioStatusResponse
 apps/api/convex/channels/adapters/whatsapp.ts	owlat(no-unchecked-json-cast)	(await response.json()) as WhatsAppSendResponse
 apps/api/convex/channels/credentials.ts	owlat(no-unchecked-json-cast)	JSON.parse(config) as EncryptedEnvelope
 apps/api/convex/channels/credentials.ts	owlat(no-unchecked-json-cast)	JSON.parse(decryptSecret(envelope)) as ChannelCreds
-apps/api/convex/chat/attachments.ts	owlat(use-threaded-session)	generateUploadUrl
-apps/api/convex/chat/attachments.ts	owlat(use-threaded-session)	getAttachmentDetails
-apps/api/convex/chat/attachments.ts	owlat(use-threaded-session)	registerAttachment
-apps/api/convex/chat/dms.ts	owlat(use-threaded-session)	findOrCreateDm
-apps/api/convex/chat/dms.ts	owlat(use-threaded-session)	listMyDms
-apps/api/convex/chat/emailLink.ts	owlat(use-threaded-session)	unlinkChannel
-apps/api/convex/chat/members.ts	owlat(use-threaded-session)	addMember
-apps/api/convex/chat/members.ts	owlat(use-threaded-session)	joinChannel
-apps/api/convex/chat/members.ts	owlat(use-threaded-session)	leaveRoom
-apps/api/convex/chat/members.ts	owlat(use-threaded-session)	listRoomMembers
-apps/api/convex/chat/members.ts	owlat(use-threaded-session)	removeMember
-apps/api/convex/chat/members.ts	owlat(use-threaded-session)	setMemberRole
-apps/api/convex/chat/mentions.ts	owlat(use-threaded-session)	countMyUnreadMentions
-apps/api/convex/chat/mentions.ts	owlat(use-threaded-session)	listMyUnreadMentions
-apps/api/convex/chat/mentions.ts	owlat(use-threaded-session)	markMentionRead
-apps/api/convex/chat/mentions.ts	owlat(use-threaded-session)	searchOrgMembersForMention
-apps/api/convex/chat/messages.ts	owlat(use-threaded-session)	deleteMessage
-apps/api/convex/chat/messages.ts	owlat(use-threaded-session)	editMessage
-apps/api/convex/chat/messages.ts	owlat(use-threaded-session)	listMessages
-apps/api/convex/chat/messages.ts	owlat(use-threaded-session)	markRead
-apps/api/convex/chat/messages.ts	owlat(use-threaded-session)	myUnreadCounts
-apps/api/convex/chat/messages.ts	owlat(use-threaded-session)	sendMessage
-apps/api/convex/chat/rooms.ts	owlat(use-threaded-session)	archiveChannel
-apps/api/convex/chat/rooms.ts	owlat(use-threaded-session)	createChannel
-apps/api/convex/chat/rooms.ts	owlat(use-threaded-session)	getRoom
-apps/api/convex/chat/rooms.ts	owlat(use-threaded-session)	listMyChannels
-apps/api/convex/chat/rooms.ts	owlat(use-threaded-session)	listPublicChannels
-apps/api/convex/chat/rooms.ts	owlat(use-threaded-session)	unarchiveChannel
-apps/api/convex/chat/rooms.ts	owlat(use-threaded-session)	updateChannel
 apps/api/convex/codeWorkTasks.ts	owlat(use-threaded-session)	cancel
 apps/api/convex/conditions/liveContactScan.ts	owlat(no-unchecked-json-cast)	JSON.parse(cursor) as Partial<LiveScanPosition>
 apps/api/convex/conditions/segmentMatch.ts	owlat(no-unchecked-json-cast)	JSON.parse(input) as SegmentFilters
 apps/api/convex/connectedApps/mutations.ts	owlat(use-threaded-session)	remove
 apps/api/convex/connectedApps/queries.ts	owlat(use-threaded-session)	listByTeam
-apps/api/convex/contacts/contacts.ts	owlat(use-threaded-session)	bulkDelete
-apps/api/convex/contacts/contacts.ts	owlat(use-threaded-session)	create
-apps/api/convex/contacts/contacts.ts	owlat(use-threaded-session)	importBatch
-apps/api/convex/contacts/contacts.ts	owlat(use-threaded-session)	remove
-apps/api/convex/contacts/contacts.ts	owlat(use-threaded-session)	update
-apps/api/convex/contacts/contacts.ts	owlat(use-threaded-session)	updateNotes
-apps/api/convex/contacts/identities.ts	owlat(use-threaded-session)	addIdentity
-apps/api/convex/contacts/identities.ts	owlat(use-threaded-session)	mergeContacts
-apps/api/convex/contacts/identities.ts	owlat(use-threaded-session)	removeIdentity
-apps/api/convex/contacts/identities.ts	owlat(use-threaded-session)	verifyIdentity
-apps/api/convex/contacts/propertyValues.ts	owlat(use-threaded-session)	bulkSet
-apps/api/convex/contacts/propertyValues.ts	owlat(use-threaded-session)	countByProperty
-apps/api/convex/contacts/propertyValues.ts	owlat(use-threaded-session)	listByContact
-apps/api/convex/contacts/propertyValues.ts	owlat(use-threaded-session)	remove
-apps/api/convex/contacts/sunset.ts	owlat(use-threaded-session)	confirmSunsetClock
-apps/api/convex/contacts/sunset.ts	owlat(use-threaded-session)	getSunsetPolicies
-apps/api/convex/contacts/sunset.ts	owlat(use-threaded-session)	listSunsetStage
-apps/api/convex/contacts/sunset.ts	owlat(use-threaded-session)	restoreSunsetContact
-apps/api/convex/contacts/sunset.ts	owlat(use-threaded-session)	setSunsetContactExemption
-apps/api/convex/contacts/sunset.ts	owlat(use-threaded-session)	setSunsetPolicy
 apps/api/convex/decision/artifacts.ts	owlat(no-unchecked-json-cast)	JSON.parse(row.answers) as { labels?: DecisionLabels }
-apps/api/convex/delivery/__tests__/alignmentDnsFailures.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(() => reject(new Error('ESERVFAIL after two tries')), 30)
-apps/api/convex/delivery/__tests__/alignmentDnsFailures.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, 80)
-apps/api/convex/delivery/health.ts	owlat(use-threaded-session)	getDeliveryHealth
-apps/api/convex/delivery/postmaster.ts	owlat(use-threaded-session)	getPostmasterStatus
-apps/api/convex/delivery/rampControls.ts	owlat(use-threaded-session)	setStreamPreset
-apps/api/convex/delivery/rampEnrollment.ts	owlat(use-threaded-session)	enrollCell
-apps/api/convex/delivery/rampPhasePromotion.ts	owlat(use-threaded-session)	promoteCellPhase
-apps/api/convex/delivery/sends.ts	owlat(use-threaded-session)	get
 apps/api/convex/delivery/suppressionMirror.ts	owlat(no-unchecked-json-cast)	(await response.json()) as { entries: Array<{ email: string; source?: string; suppressedAt?: number }>; nextCursor?: string; }
 apps/api/convex/devShortcuts/forceVerifyDomain.ts	owlat(use-threaded-session)	forceVerifyDomain
-apps/api/convex/domains/domains.ts	owlat(use-threaded-session)	create
-apps/api/convex/domains/domains.ts	owlat(use-threaded-session)	getInboundMailConfig
-apps/api/convex/domains/domains.ts	owlat(use-threaded-session)	regenerateDnsRecords
-apps/api/convex/domains/domains.ts	owlat(use-threaded-session)	remove
-apps/api/convex/domains/domains.ts	owlat(use-threaded-session)	setDmarcPolicy
-apps/api/convex/domains/mandrillRelayQueries.ts	owlat(use-threaded-session)	listIdentities
-apps/api/convex/domains/mtaSts.ts	owlat(use-threaded-session)	getMtaStsGuidance
 apps/api/convex/domains/providers/mandrill/identity.ts	owlat(no-unchecked-json-cast)	JSON.parse(raw) as MandrillProviderDetails
-apps/api/convex/domains/returnPath.ts	owlat(use-threaded-session)	setReturnPathHost
-apps/api/convex/domains/streamSubdomainWizard.ts	owlat(use-threaded-session)	getStreamSubdomainPlan
 apps/api/convex/domains/trackingDomains.ts	owlat(no-unchecked-json-cast)	(await response.json()) as { Answer?: Array<{ type: number; data: string }>; }
-apps/api/convex/domains/trackingDomains.ts	owlat(use-threaded-session)	addTrackingDomain
-apps/api/convex/domains/trackingDomains.ts	owlat(use-threaded-session)	removeTrackingDomain
-apps/api/convex/domains/trackingDomains.ts	owlat(use-threaded-session)	verifyTrackingDomain
-apps/api/convex/domains/yahooCfl.ts	owlat(use-threaded-session)	getGuide
 apps/api/convex/e2ee/discoveryVerify.ts	owlat(no-unchecked-json-cast)	JSON.parse(new TextDecoder().decode(bytes)) as FetchedManifest
 apps/api/convex/e2ee/manifest.ts	owlat(no-unchecked-json-cast)	JSON.parse(cached.signedManifestJson) as SignedManifest
 apps/api/convex/emailBlocks/blocks.ts	owlat(no-unchecked-json-cast)	JSON.parse(contentJson) as ParsedBlockContent
@@ -159,29 +74,12 @@ apps/api/convex/forms/endpoints.ts	owlat(use-threaded-session)	create
 apps/api/convex/forms/endpoints.ts	owlat(use-threaded-session)	remove
 apps/api/convex/forms/endpoints.ts	owlat(use-threaded-session)	update
 apps/api/convex/globalSearch.ts	owlat(use-threaded-session)	search
-apps/api/convex/inbox/askEagernessSettings.ts	owlat(use-threaded-session)	setAskEagerness
-apps/api/convex/inbox/clarificationMemory.ts	owlat(use-threaded-session)	promoteClarificationMemory
-apps/api/convex/inbox/clarificationMemory.ts	owlat(use-threaded-session)	revokeClarificationMemory
 apps/api/convex/inbox/manualReply.ts	owlat(no-unchecked-json-cast)	JSON.parse(output) as DispositionFacts
-apps/api/convex/inbox/mutations.ts	owlat(use-threaded-session)	approveDraft
-apps/api/convex/inbox/mutations.ts	owlat(use-threaded-session)	assignThread
-apps/api/convex/inbox/mutations.ts	owlat(use-threaded-session)	blockSender
-apps/api/convex/inbox/mutations.ts	owlat(use-threaded-session)	editDraft
-apps/api/convex/inbox/mutations.ts	owlat(use-threaded-session)	rejectDraft
-apps/api/convex/inbox/mutations.ts	owlat(use-threaded-session)	releaseFromQuarantine
-apps/api/convex/inbox/mutations.ts	owlat(use-threaded-session)	retryFailedMessage
-apps/api/convex/inbox/mutations.ts	owlat(use-threaded-session)	undoAutoSend
-apps/api/convex/inbox/presence.ts	owlat(use-threaded-session)	heartbeat
-apps/api/convex/inbox/presence.ts	owlat(use-threaded-session)	leave
-apps/api/convex/inbox/reads.ts	owlat(use-threaded-session)	markThreadSeen
-apps/api/convex/inbox/snooze.ts	owlat(use-threaded-session)	snoozeThread
-apps/api/convex/inbox/snooze.ts	owlat(use-threaded-session)	unsnoozeThread
 apps/api/convex/integrationImports/providers/mailchimp/index.ts	owlat(no-unchecked-json-cast)	(await response.json()) as MailchimpListResponse
 apps/api/convex/integrationImports/providers/mailchimp/index.ts	owlat(no-unchecked-json-cast)	JSON.parse(cursor) as Partial<MailchimpCursor> | null
 apps/api/convex/integrationImports/providers/stripe/index.ts	owlat(no-unchecked-json-cast)	(await response.json()) as StripeCustomerListResponse
 apps/api/convex/integrationImports/walker.ts	owlat(use-threaded-session)	cancelImport
 apps/api/convex/integrationImports/walker.ts	owlat(use-threaded-session)	startIntegrationImport
-apps/api/convex/lib/__tests__/llmProvider.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, 5)
 apps/api/convex/lib/decisionProviders/local.ts	owlat(no-unchecked-json-cast)	(await response.json()) as { data?: { id?: unknown }[] } | null
 apps/api/convex/lib/decisionProviders/local.ts	owlat(no-unchecked-json-cast)	(await response.json()) as { error?: { message?: unknown } } | null
 apps/api/convex/lib/emailProviders/mtaIdentity.ts	owlat(no-unchecked-json-cast)	(await response.json()) as { credentials?: MtaOrgCredential[] }
@@ -195,44 +93,13 @@ apps/api/convex/lib/publishableEmailRender.ts	owlat(no-unchecked-json-cast)	JSON
 apps/api/convex/lib/sendProviders/emailit/index.ts	owlat(no-unchecked-json-cast)	JSON.parse(body) as EmailitErrorBody
 apps/api/convex/lib/sendProviders/mandrill/client.ts	owlat(no-unchecked-json-cast)	JSON.parse(body) as Record<string, unknown>
 apps/api/convex/lib/sendProviders/mta/index.ts	owlat(no-unchecked-json-cast)	(await response.json()) as Partial<MtaSendAccepted & MtaSendRefused>
-apps/api/convex/mail/__tests__/aiGateParallel.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, 5)
-apps/api/convex/mail/__tests__/draftProvenance.integration.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, 5)
-apps/api/convex/mail/appPasswords.ts	owlat(use-threaded-session)	revokeAll
-apps/api/convex/mail/draftStreamStore.ts	owlat(use-threaded-session)	createDraftStream
-apps/api/convex/mail/draftStreamStore.ts	owlat(use-threaded-session)	deleteDraftStream
-apps/api/convex/mail/draftStreamStore.ts	owlat(use-threaded-session)	getDraftStream
-apps/api/convex/mail/external/accounts.ts	owlat(use-threaded-session)	disconnect
-apps/api/convex/mail/external/accounts.ts	owlat(use-threaded-session)	purge
 apps/api/convex/mail/external/accountsActions.ts	owlat(no-unchecked-json-cast)	(await res.json()) as ConnectionTestResult
 apps/api/convex/mail/external/accountsActions.ts	owlat(no-unchecked-json-cast)	JSON.parse(decryptSecret(envelope)) as { oauthRefreshToken?: string }
 apps/api/convex/mail/external/accountsActions.ts	owlat(no-unchecked-json-cast)	creds = JSON.parse(decryptSecret(envelope))
-apps/api/convex/mail/external/accountsSeed.ts	owlat(use-threaded-session)	acknowledgeSeedRotation
 apps/api/convex/mail/external/googleOAuthTokens.ts	owlat(no-unchecked-json-cast)	(await res.json()) as GoogleTokenResponse
-apps/api/convex/mail/external/sharedInbox.ts	owlat(use-threaded-session)	purgeShared
-apps/api/convex/mail/handlingRules.ts	owlat(use-threaded-session)	create
-apps/api/convex/mail/handlingRules.ts	owlat(use-threaded-session)	remove
-apps/api/convex/mail/handlingRules.ts	owlat(use-threaded-session)	update
-apps/api/convex/mail/interpret/__tests__/arrivalRead.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, 10)
-apps/api/convex/mail/interpret/__tests__/sourceLease.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, 20)
-apps/api/convex/mail/interpret/__tests__/verifyParallel.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, delayMs)
 apps/api/convex/mail/interpret/load.ts	owlat(no-unchecked-json-cast)	JSON.parse(await openMessageBody(row.payload)) as ReduceResult
-apps/api/convex/mail/mailbox/identity.ts	owlat(use-threaded-session)	create
-apps/api/convex/mail/mailbox/identity.ts	owlat(use-threaded-session)	remove
-apps/api/convex/mail/mailboxMembers.ts	owlat(use-threaded-session)	createShared
-apps/api/convex/mail/mailboxMove.ts	owlat(use-threaded-session)	provisionHosted
-apps/api/convex/mail/mailboxRequest.ts	owlat(use-threaded-session)	freshStartStatus
-apps/api/convex/mail/mailboxRequest.ts	owlat(use-threaded-session)	provisionFromRequest
-apps/api/convex/mail/memberMailboxStatus.ts	owlat(use-threaded-session)	byMembers
-apps/api/convex/mail/migration.ts	owlat(use-threaded-session)	cancel
-apps/api/convex/mail/migration.ts	owlat(use-threaded-session)	start
 apps/api/convex/mail/mtaClient.ts	owlat(no-unchecked-json-cast)	(await res.json()) as AttachmentScanResponse
 apps/api/convex/mail/outbound/dispatch.ts	owlat(no-unchecked-json-cast)	(await res.json()) as ExternalSendResult
-apps/api/convex/mail/pendingInboxMembership.ts	owlat(use-threaded-session)	cancelInboxMembershipsForEmail
-apps/api/convex/mail/pendingInboxMembership.ts	owlat(use-threaded-session)	claimInboxMemberships
-apps/api/convex/mail/pendingMailbox.ts	owlat(use-threaded-session)	cancelForInvitation
-apps/api/convex/mail/pendingMailbox.ts	owlat(use-threaded-session)	claimForInvitation
-apps/api/convex/mail/pendingMailbox.ts	owlat(use-threaded-session)	setForInvitation
-apps/api/convex/mail/settings.ts	owlat(use-threaded-session)	update
 apps/api/convex/mediaAssets.ts	owlat(use-threaded-session)	bulkDelete
 apps/api/convex/mediaAssets.ts	owlat(use-threaded-session)	create
 apps/api/convex/mediaAssets.ts	owlat(use-threaded-session)	update
@@ -253,26 +120,8 @@ apps/api/convex/shareLinks.ts	owlat(use-threaded-session)	createShareLink
 apps/api/convex/shareLinks.ts	owlat(use-threaded-session)	revokeShareLink
 apps/api/convex/storage.ts	owlat(use-threaded-session)	getUrl
 apps/api/convex/systemUpdatesReleaseCheck.ts	owlat(no-unchecked-json-cast)	(await resp.json()) as { tag_name?: string; body?: string; published_at?: string; draft?: boolean; prerelease?: boolean; }
-apps/api/convex/topics/bulk.ts	owlat(use-threaded-session)	addContacts
-apps/api/convex/topics/bulk.ts	owlat(use-threaded-session)	removeContacts
-apps/api/convex/topics/topics.ts	owlat(use-threaded-session)	addContact
-apps/api/convex/topics/topics.ts	owlat(use-threaded-session)	create
-apps/api/convex/topics/topics.ts	owlat(use-threaded-session)	remove
-apps/api/convex/topics/topics.ts	owlat(use-threaded-session)	removeContact
-apps/api/convex/topics/topics.ts	owlat(use-threaded-session)	resendDoiConfirmation
-apps/api/convex/topics/topics.ts	owlat(use-threaded-session)	update
 apps/api/convex/transactional/dispatchContent.ts	owlat(no-unchecked-json-cast)	JSON.parse(htmlTranslationsJson) as Record< string, { htmlContent: string; subject: string } >
 apps/api/convex/transactional/dispatchContent.ts	owlat(no-unchecked-json-cast)	JSON.parse(templateAttachmentsJson) as { filename: string; contentType?: string; url: string; }[]
-apps/api/convex/transactional/emails.ts	owlat(use-threaded-session)	create
-apps/api/convex/transactional/emails.ts	owlat(use-threaded-session)	duplicate
-apps/api/convex/transactional/emails.ts	owlat(use-threaded-session)	publish
-apps/api/convex/transactional/emails.ts	owlat(use-threaded-session)	remove
-apps/api/convex/transactional/emails.ts	owlat(use-threaded-session)	unpublish
-apps/api/convex/transactional/emails.ts	owlat(use-threaded-session)	update
-apps/api/convex/transactional/emails.ts	owlat(use-threaded-session)	updateSchema
-apps/api/convex/transactional/translations.ts	owlat(use-threaded-session)	addTranslation
-apps/api/convex/transactional/translations.ts	owlat(use-threaded-session)	removeTranslation
-apps/api/convex/transactional/translations.ts	owlat(use-threaded-session)	updateTranslation
 apps/api/convex/unifiedMessages.ts	owlat(use-threaded-session)	updateChannelConfig
 apps/api/convex/visualizationAgent.ts	owlat(use-threaded-session)	createFromPrompt
 apps/api/convex/visualizationAgent.ts	owlat(use-threaded-session)	regenerate
@@ -294,65 +143,12 @@ apps/api/convex/workspaces/featureFlags.ts	owlat(use-threaded-session)	setFeatur
 apps/api/convex/workspaces/settings.ts	owlat(use-threaded-session)	get
 apps/api/convex/workspaces/settings.ts	owlat(use-threaded-session)	remove
 apps/api/convex/workspaces/settings.ts	owlat(use-threaded-session)	update
-apps/imap/src/__tests__/pipelining.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(() => resolve(compute()), slow.has(name) ? 10 * LATENCY_MS : LATENCY_MS)
-apps/imap/src/__tests__/server.handshake.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, deadlineMs + 500)
 apps/imap/src/commands/append/index.ts	owlat(no-unchecked-json-cast)	(await uploadRes.json()) as { storageId: string }
-apps/imap/src/commands/fetch/__tests__/backpressure.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, 1)
-apps/imap/src/commands/fetch/__tests__/backpressure.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, 30)
-apps/imap/src/commands/fetch/__tests__/backpressure.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, 5)
-apps/imap/src/commands/fetch/__tests__/rawBatching.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, (100 - (uid % 100)) / 20)
-apps/imap/src/commands/fetch/__tests__/rawBatching.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, n)
 apps/mail-sync/src/ingest.ts	owlat(no-unchecked-json-cast)	(await response.json()) as { storageId: string; size: number }
 apps/marketing/app/composables/useDesktopDownload.ts	owlat(no-unchecked-json-cast)	(await res.json()) as { assets?: { name: string; browser_download_url: string }[]; }
 apps/setup-cli/src/commands/doctorRun.ts	owlat(no-unchecked-json-cast)	JSON.parse(await readFile(statePath, 'utf-8')) as FeatureFlagState
 apps/setup-cli/src/lib/flagState.ts	owlat(no-unchecked-json-cast)	JSON.parse(await file.text()) as FeatureFlagState
-apps/updater/src/__tests__/exec.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, 150)
-apps/updater/src/__tests__/exec.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, 150)
-apps/updater/src/__tests__/shutdown.test.ts	owlat(no-real-time-wait-in-tests)	setTimeout(resolve, 200)
 apps/updater/src/snapshot.ts	owlat(no-unchecked-json-cast)	JSON.parse(line) as typeof entry
-apps/web/app/components/postbox/PostboxRecipientField.vue	owlat(no-unchecked-json-cast)	JSON.parse(raw) as { email: string; from: RecipientField }
-apps/web/app/composables/emailEditorHandlers.ts	owlat(no-unchecked-json-cast)	(await response.json()) as { storageId?: unknown }
-apps/web/app/composables/emailSettingsRender.ts	owlat(no-unchecked-json-cast)	JSON.parse(blob) as Record<string, SettingsOverlay>
-apps/web/app/composables/emailSettingsRender.ts	owlat(no-unchecked-json-cast)	JSON.parse(state.content) as BlockLikeItem[]
-apps/web/app/composables/postbox/postboxAttachmentUploads.ts	owlat(no-unchecked-json-cast)	JSON.parse(xhr.responseText) as { storageId: string }
-apps/web/app/composables/postbox/postboxComposeParking.ts	owlat(no-unchecked-json-cast)	JSON.parse(source.fields.bodyBlocks) as unknown[]
-apps/web/app/composables/postbox/usePostboxComposeAttachments.ts	owlat(no-unchecked-json-cast)	(await res.json()) as { storageId: string }
-apps/web/app/composables/postbox/usePostboxComposeHydration.ts	owlat(no-unchecked-json-cast)	JSON.parse(draft.bodyBlocks) as EditorBlock[]
-apps/web/app/composables/postbox/usePostboxComposePageRequest.ts	owlat(no-unchecked-json-cast)	JSON.parse(JSON.stringify(row)) as MirrorFields
-apps/web/app/composables/postbox/usePostboxComposePageRequest.ts	owlat(no-unchecked-json-cast)	JSON.parse(JSON.stringify(source)) as RecoverySource
-apps/web/app/composables/postbox/usePostboxComposePageRequest.ts	owlat(no-unchecked-json-cast)	JSON.parse(JSON.stringify(source)) as RecoverySource
-apps/web/app/composables/postbox/usePostboxOfflineCache.ts	owlat(no-unchecked-json-cast)	JSON.parse(JSON.stringify(value)) as T[]
-apps/web/app/composables/postbox/usePostboxOfflineOutbox.ts	owlat(no-unchecked-json-cast)	JSON.parse(JSON.stringify(payload)) as OfflineComposePayload
-apps/web/app/composables/publishableEmailSave.ts	owlat(no-unchecked-json-cast)	JSON.parse(blob) as Record<string, TranslationOverlay>
-apps/web/app/composables/publishableEmailSave.ts	owlat(no-unchecked-json-cast)	JSON.parse(content) as EditorBlock[]
-apps/web/app/composables/translationSave.ts	owlat(no-unchecked-json-cast)	JSON.parse(JSON.stringify(overlay)) as TranslationOverlay
-apps/web/app/composables/translationSave.ts	owlat(no-unchecked-json-cast)	JSON.parse(row.translations) as Record<string, TranslationOverlay>
-apps/web/app/composables/useAutomationStepConfig.ts	owlat(no-unchecked-json-cast)	JSON.parse(snapshot) as never
-apps/web/app/composables/useDesktopAppSettings.ts	owlat(no-unchecked-json-cast)	JSON.parse(JSON.stringify(settings.value)) as DesktopSettings
-apps/web/app/composables/useDesktopWorkspaces.ts	owlat(no-unchecked-json-cast)	(await res.json()) as InstanceInfo
-apps/web/app/composables/useEmailCoediting.ts	owlat(no-unchecked-json-cast)	JSON.parse(row.content) as EditorBlock[]
-apps/web/app/composables/useEmailCoediting.ts	owlat(no-unchecked-json-cast)	JSON.parse(row.fields) as Record<string, unknown>
-apps/web/app/composables/useEmailEditorCoedit.ts	owlat(no-unchecked-json-cast)	JSON.parse(JSON.stringify(value)) as T
-apps/web/app/composables/useLocalStorage.ts	owlat(no-unchecked-json-cast)	JSON.parse(stored) as T
-apps/web/app/composables/useSegmentFilters.ts	owlat(no-unchecked-json-cast)	parsed = JSON.parse(filters)
-apps/web/app/composables/useSegmentForm.ts	owlat(no-unchecked-json-cast)	JSON.parse(JSON.stringify(filters)) as typeof segmentForm.filters
-apps/web/app/composables/useSettingsForm.ts	owlat(no-unchecked-json-cast)	JSON.parse(JSON.stringify(value)) as T
-apps/web/app/lib/convex-auth.ts	owlat(no-unchecked-json-cast)	(await response.json()) as { token?: string | null }
-apps/web/app/lib/desktop/keychainStorage.ts	owlat(no-unchecked-json-cast)	JSON.parse(blob) as Record<string, string>
-apps/web/app/lib/desktop/notificationWorkspace.ts	owlat(no-unchecked-json-cast)	JSON.parse(raw) as Partial<PendingNotificationAction>
-apps/web/app/lib/desktop/workspaceBadgeClient.ts	owlat(no-unchecked-json-cast)	(await res.json()) as { token?: string | null }
-apps/web/app/lib/desktop/workspaceBadgeClient.ts	owlat(no-unchecked-json-cast)	JSON.parse(blob) as Record<string, unknown>
-apps/web/app/lib/desktop/workspaceConnect.ts	owlat(no-unchecked-json-cast)	(await res.json()) as InstanceInfo
-apps/web/app/pages/dashboard/send/emails/[id]/edit.vue	owlat(no-unchecked-json-cast)	JSON.parse(JSON.stringify(blocks.value)) as typeof blocks.value
-apps/web/app/pages/dashboard/send/emails/[id]/edit.vue	owlat(no-unchecked-json-cast)	JSON.parse(JSON.stringify(blocks.value)) as typeof blocks.value
-apps/web/app/pages/desktop/connect.vue	owlat(no-unchecked-json-cast)	(await res.json()) as { token?: string }
-apps/web/app/utils/accountJsonExport.ts	owlat(no-unchecked-json-cast)	JSON.parse(rowJson) as Record<string, unknown>
-apps/web/app/utils/answerThreadFiles.ts	owlat(no-unchecked-json-cast)	JSON.parse(raw) as Partial<ThreadFile>
-apps/web/app/utils/doh.ts	owlat(no-unchecked-json-cast)	(await response.json()) as DohResponse
-apps/web/app/utils/postboxDraftMirror.ts	owlat(no-unchecked-json-cast)	JSON.parse(JSON.stringify(fields)) as MirrorFields
-apps/web/app/utils/postboxDraftMirror.ts	owlat(no-unchecked-json-cast)	JSON.parse(fields.bodyBlocks) as unknown[]
-apps/web/app/utils/postboxDraftMirror.ts	owlat(no-unchecked-json-cast)	JSON.parse(raw) as unknown[]
-apps/web/app/utils/storageUpload.ts	owlat(no-unchecked-json-cast)	(await response.json()) as { storageId?: Id<'_storage'> }
 packages/email-builder/src/utils/deltaHistory.ts	owlat(no-unchecked-json-cast)	JSON.parse(JSON.stringify(checkpoint.state)) as HistoryState
 packages/email-renderer/src/draftBodies.ts	owlat(no-unchecked-json-cast)	JSON.parse(draft.bodyBlocks) as EditorBlock[]
 packages/email-renderer/src/renderer.ts	owlat(no-unchecked-json-cast)	items = JSON.parse(rawValue)

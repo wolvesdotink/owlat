@@ -32,7 +32,7 @@ import { publicQuery } from '../lib/authedFunctions';
 import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
 import { assertFeatureEnabled, isFeatureEnabled } from '../lib/featureFlags';
 import { externalMailMutation } from './external/externalFeature';
-import { throwForbidden, throwInvalidInput, throwInvalidState } from '../_utils/errors';
+import { throwInvalidInput, throwInvalidState } from '../_utils/errors';
 import { markOnboardingStep } from '../auth/userOnboarding';
 import { getLivePersonalExternalAccountForUser } from './external/personalAccount';
 import { isActiveMigrationStatus, cancelActiveMigrationForAccount } from './external/accountShared';
@@ -314,13 +314,10 @@ export const getStatus = publicQuery({
 // authz: self — operates only on the caller's own connected external mailbox (by_user on the session userId)
 export const start = externalMailMutation({
 	args: { source: v.optional(migrationSourceValidator) },
-	handler: async (ctx, args) => {
-		const s = await getBetterAuthSessionWithRole(ctx);
-		if (!s || !s.activeOrganizationId || !s.role) throwForbidden('Not authenticated');
-
+	handler: async (ctx, args, session) => {
 		// The caller's LIVE PERSONAL account only — a migration must never target a
 		// shared team inbox (org infrastructure) or a post-move disconnected archive.
-		const account = await getLivePersonalExternalAccountForUser(ctx, s.userId);
+		const account = await getLivePersonalExternalAccountForUser(ctx, session.userId);
 		if (!account) {
 			throwInvalidInput('Connect a mailbox before starting a migration.');
 		}
@@ -328,15 +325,15 @@ export const start = externalMailMutation({
 		const result = await startMigrationForAccount(ctx, {
 			account,
 			mailboxId: account.mailboxId,
-			userId: s.userId,
-			organizationId: s.activeOrganizationId,
+			userId: session.userId,
+			organizationId: session.activeOrganizationId,
 			source: args.source ?? 'imap',
 			scope: 'personal',
 			isAiIndexingEnabled: await isFeatureEnabled(ctx, 'ai.knowledge'),
 		});
 		// Onboarding is a PERSONAL-setup notion, so it is stamped here rather than
 		// in the shared core — the team-inbox twin must never touch the checklist.
-		await markOnboardingStep(ctx, s.userId, 'importStarted');
+		await markOnboardingStep(ctx, session.userId, 'importStarted');
 		return result;
 	},
 });
@@ -349,12 +346,10 @@ export const start = externalMailMutation({
 // authz: self — cancels only the caller's own migration (resolved via by_user on the session userId)
 export const cancel = externalMailMutation({
 	args: {},
-	handler: async (ctx) => {
-		const s = await getBetterAuthSessionWithRole(ctx);
-		if (!s || !s.role) throwForbidden('Not authenticated');
+	handler: async (ctx, _args, session) => {
 		// The caller's LIVE PERSONAL account only — cancelling must never reach a
 		// shared team inbox's migration or a post-move disconnected archive.
-		const account = await getLivePersonalExternalAccountForUser(ctx, s.userId);
+		const account = await getLivePersonalExternalAccountForUser(ctx, session.userId);
 		if (!account) return false;
 		return await cancelMigrationForAccount(ctx, account);
 	},

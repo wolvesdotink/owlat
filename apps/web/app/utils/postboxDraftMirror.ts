@@ -20,6 +20,7 @@
  * `postboxDraftMirrorStore.ts`, the wiring in `usePostboxComposeMirror.ts`.
  */
 
+import { decodeJsonText, guardDecoder } from '@owlat/worker-protocol/decodeJson';
 import type { DraftComposerMode, DraftFields } from './postboxDraftFields';
 
 /**
@@ -96,14 +97,24 @@ export function canonicalBlocks(blocks: readonly unknown[] | null | undefined): 
 	return stableStringify(blocks ?? []);
 }
 
-/** The row's stored blocks string, normalized like the composer's. */
+const blockListDecoder = guardDecoder(
+	(value): value is unknown[] => Array.isArray(value),
+	'$: expected an array'
+);
+
+/**
+ * A stored blocks string (a row's, a mirror copy's) as the list the composer
+ * holds, or null when it is not JSON of an array. The entries are kept as
+ * they are, so mirror equality compares exactly what was stored.
+ */
+export function readMirrorBlocks(raw: string): unknown[] | null {
+	const decoded = decodeJsonText(raw, blockListDecoder);
+	return decoded.ok ? decoded.value : null;
+}
+
+/** The row's stored blocks string, normalized like the composer's; unreadable reads as none. */
 function canonicalRowBlocks(raw: string | undefined): string {
-	if (!raw) return '[]';
-	try {
-		return canonicalBlocks(JSON.parse(raw) as unknown[]);
-	} catch {
-		return '[]';
-	}
+	return canonicalBlocks(raw ? readMirrorBlocks(raw) : null);
 }
 
 /** The composer refs the mirror reads (anything with a `.value`). */
@@ -156,11 +167,9 @@ export function applyMirrorFields(
 	for (const name of names) {
 		if (name === 'bodyBlocks') {
 			if (fields.bodyBlocks === null) continue;
-			try {
-				targets.bodyBlocks.value = JSON.parse(fields.bodyBlocks) as unknown[];
-			} catch {
-				// Malformed blocks: keep the composer's.
-			}
+			// Malformed blocks: keep the composer's.
+			const blocks = readMirrorBlocks(fields.bodyBlocks);
+			if (blocks) targets.bodyBlocks.value = blocks;
 		} else if (name === 'toAddresses' || name === 'ccAddresses' || name === 'bccAddresses') {
 			targets[name].value = [...fields[name]];
 		} else if (name === 'subject' || name === 'bodyHtml') {
@@ -173,9 +182,26 @@ export function applyMirrorFields(
 	}
 }
 
-/** A plain copy for the store (IndexedDB cannot clone a reactive proxy). */
+/**
+ * A plain copy for the store (IndexedDB cannot clone a reactive proxy): every
+ * field is a primitive or a list of strings, so copying the lists is enough.
+ */
+export function copyMirrorFields(fields: MirrorFields): MirrorFields {
+	return {
+		toAddresses: [...fields.toAddresses],
+		ccAddresses: [...fields.ccAddresses],
+		bccAddresses: [...fields.bccAddresses],
+		subject: fields.subject,
+		bodyHtml: fields.bodyHtml,
+		bodyBlocks: fields.bodyBlocks,
+		composerMode: fields.composerMode,
+		followUpRemindAt: fields.followUpRemindAt,
+	};
+}
+
+/** {@link copyMirrorFields}, passing a missing row through. */
 export function plainMirrorFields(fields: MirrorFields | null): MirrorFields | null {
-	return fields ? (JSON.parse(JSON.stringify(fields)) as MirrorFields) : null;
+	return fields ? copyMirrorFields(fields) : null;
 }
 
 /** The raw `drafts.get` row fields the mirror needs. */

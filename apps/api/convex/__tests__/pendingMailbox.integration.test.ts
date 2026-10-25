@@ -30,14 +30,26 @@ vi.mock('../lib/sessionOrganization', async () => {
 	};
 });
 
+// The builder floor (`getMutationContext`) is the one session source the
+// handlers read; the other two mocks answer coherently so a stray
+// re-resolution would still see the same caller, and the single-resolution
+// test below catches it by call count.
 function setAdminSession(userId = 'admin-user', orgId = 'test-org') {
-	sessionMocks.getMutationContext.mockResolvedValue({ userId, role: 'owner' });
+	sessionMocks.getMutationContext.mockResolvedValue({
+		userId,
+		role: 'owner',
+		activeOrganizationId: orgId,
+	});
 	sessionMocks.getBetterAuthSessionWithRole.mockResolvedValue({
 		userId,
 		role: 'owner',
 		activeOrganizationId: orgId,
 	});
-	sessionMocks.requireAdminContext.mockResolvedValue({ userId, role: 'owner' });
+	sessionMocks.requireAdminContext.mockResolvedValue({
+		userId,
+		role: 'owner',
+		activeOrganizationId: orgId,
+	});
 }
 
 async function seedUserProfile(t: ReturnType<typeof convexTest>, userId: string, email: string) {
@@ -52,7 +64,11 @@ async function seedUserProfile(t: ReturnType<typeof convexTest>, userId: string,
 }
 
 function setEditorSession(userId = 'editor-user', orgId = 'test-org') {
-	sessionMocks.getMutationContext.mockResolvedValue({ userId, role: 'editor' });
+	sessionMocks.getMutationContext.mockResolvedValue({
+		userId,
+		role: 'editor',
+		activeOrganizationId: orgId,
+	});
 	sessionMocks.getBetterAuthSessionWithRole.mockResolvedValue({
 		userId,
 		role: 'editor',
@@ -170,7 +186,10 @@ describe('pendingMailbox.setForInvitation', () => {
 				localpart: 'marcel',
 				domain: 'owlat.test',
 			})
-		).rejects.toThrow();
+		).rejects.toThrow('Only owners and admins can perform this action');
+		await t.run(async (ctx) => {
+			expect(await ctx.db.query('pendingMailboxes').collect()).toHaveLength(0);
+		});
 	});
 
 	it('reserves the intent on a not-yet-verified domain (early-instance invite)', async () => {
@@ -362,6 +381,51 @@ describe('pendingMailbox.cancelForInvitation', () => {
 			invitationId: 'nope',
 		});
 		expect(result.canceled).toBe(false);
+	});
+
+	it('rejects non-admin callers and keeps the reservation', async () => {
+		setAdminSession();
+		const t = convexTest(schema, modules);
+		await seedVerifiedDomain(t, 'owlat.test');
+		await t.mutation(api.mail.pendingMailbox.setForInvitation, {
+			invitationId: 'inv-1',
+			inviteeEmail: 'invitee@example.com',
+			localpart: 'marcel',
+			domain: 'owlat.test',
+		});
+
+		setEditorSession();
+		await expect(
+			t.mutation(api.mail.pendingMailbox.cancelForInvitation, { invitationId: 'inv-1' })
+		).rejects.toThrow('Only owners and admins can perform this action');
+		await t.run(async (ctx) => {
+			expect(await ctx.db.query('pendingMailboxes').collect()).toHaveLength(1);
+		});
+	});
+});
+
+describe('pendingMailbox — session resolution', () => {
+	it('reads the caller from the builder floor and never resolves the session again', async () => {
+		setAdminSession('admin-user', 'test-org');
+		const t = convexTest(schema, modules);
+		await seedVerifiedDomain(t, 'owlat.test');
+		await seedUserProfile(t, 'admin-user', 'invitee@example.com');
+		sessionMocks.getMutationContext.mockClear();
+		sessionMocks.getBetterAuthSessionWithRole.mockClear();
+		sessionMocks.requireAdminContext.mockClear();
+
+		await t.mutation(api.mail.pendingMailbox.setForInvitation, {
+			invitationId: 'inv-1',
+			inviteeEmail: 'invitee@example.com',
+			localpart: 'marcel',
+			domain: 'owlat.test',
+		});
+		await t.mutation(api.mail.pendingMailbox.cancelForInvitation, { invitationId: 'inv-1' });
+		await t.mutation(api.mail.pendingMailbox.claimForInvitation, { invitationId: 'inv-1' });
+
+		expect(sessionMocks.getMutationContext).toHaveBeenCalledTimes(3);
+		expect(sessionMocks.getBetterAuthSessionWithRole).not.toHaveBeenCalled();
+		expect(sessionMocks.requireAdminContext).not.toHaveBeenCalled();
 	});
 });
 

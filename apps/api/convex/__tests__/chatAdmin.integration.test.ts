@@ -34,7 +34,13 @@ vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
 	return {
 		...actual,
-		requireOrgMember: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
+		// The query floor answers for the same switchable caller as the mutation
+		// floor: chat reads take the caller from the session their builder threads.
+		requireOrgMember: vi.fn().mockImplementation(async () => ({
+			userId: sessionMock.user.id,
+			role: sessionMock.user.role,
+			activeOrganizationId: 'test-org',
+		})),
 		isActiveOrgMember: vi.fn().mockResolvedValue(true),
 		getUserIdFromSession: vi.fn().mockImplementation(async () => sessionMock.user.id),
 		getMutationContext: vi.fn().mockImplementation(async () => ({

@@ -72,4 +72,36 @@ describe('threadFileFromDrop', () => {
 		).toBeNull();
 		expect(threadFileFromDrop(null)).toBeNull();
 	});
+
+	it('is null for valid JSON of another shape', () => {
+		for (const raw of [
+			'null',
+			'[]',
+			'"invoice.pdf"',
+			'{"messageId":"m1","filename":"x","partIndex":2}',
+		]) {
+			expect(threadFileFromDrop(transfer({ [THREAD_FILE_DRAG_TYPE]: raw }))).toBeNull();
+		}
+	});
+
+	it('defaults display details of the wrong type', () => {
+		const raw = JSON.stringify({
+			messageId: 'm1',
+			filename: 'po.pdf',
+			partIndex: '2',
+			contentType: 7,
+			size: '1 KB',
+			receivedAt: null,
+			fromAddress: ['ada@example.com'],
+		});
+		expect(threadFileFromDrop(transfer({ [THREAD_FILE_DRAG_TYPE]: raw }))).toEqual({
+			key: 'm1:2',
+			messageId: 'm1',
+			filename: 'po.pdf',
+			contentType: '',
+			size: 0,
+			partIndex: '2',
+			receivedAt: 0,
+		});
+	});
 });

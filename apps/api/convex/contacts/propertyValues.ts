@@ -2,7 +2,7 @@ import { v } from 'convex/values';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import type { QueryCtx, MutationCtx } from '../_generated/server';
 import type { Id } from '../_generated/dataModel';
-import { getUserIdFromSession, requireOrgPermission } from '../lib/sessionOrganization';
+import { hasPermission, requirePermission } from '../lib/sessionOrganization';
 import { validateStringLength, STRING_LIMITS } from '../lib/inputGuards';
 import { getOrThrow, throwInvalidInput } from '../_utils/errors';
 import { requireWritableProperty } from './propertyDeletion';
@@ -22,7 +22,6 @@ async function verifyContactExists(
 export const listByContact = authedQuery({
 	args: { contactId: v.id('contacts') },
 	handler: async (ctx, args) => {
-		await getUserIdFromSession(ctx);
 		await verifyContactExists(ctx, args.contactId);
 
 		return await ctx.db
@@ -38,10 +37,9 @@ export const remove = authedMutation({
 		contactId: v.id('contacts'),
 		propertyId: v.id('contactProperties'),
 	},
-	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'contacts:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'contacts:manage'),
 			'Only owners and admins can modify contact properties'
 		);
 
@@ -79,8 +77,6 @@ const PROPERTY_VALUE_COUNT_LIMIT = 10_000;
 export const countByProperty = authedQuery({
 	args: { propertyId: v.id('contactProperties') },
 	handler: async (ctx, args) => {
-		await getUserIdFromSession(ctx);
-
 		// Verify property exists
 		await getOrThrow(ctx, args.propertyId, 'Property');
 
@@ -103,10 +99,9 @@ export const bulkSet = authedMutation({
 			})
 		),
 	},
-	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'contacts:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'contacts:manage'),
 			'Only owners and admins can modify contact properties'
 		);
 

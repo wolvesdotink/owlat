@@ -23,6 +23,7 @@
  */
 
 import { EMAIL_RENDERER_VERSION } from '@owlat/email-renderer/version';
+import { readTranslationOverlays } from '~/utils/translationOverlays';
 import type { RenderOptions } from './useEmailHtmlRendering';
 import {
 	parseSettingsOverlays,
@@ -46,6 +47,12 @@ export interface EmailSettingsBase {
 	content: string;
 	/** The author's own text/plain body, which a language swap keeps. */
 	plainTextOverride: string | undefined;
+	/**
+	 * The row's stored `translations`. The form's payload replaces the whole
+	 * blob, so a save over one that cannot be read is refused: it would drop
+	 * text the row still holds.
+	 */
+	translations: string | undefined;
 	/** The row's content revision; a write is refused if the row moved. */
 	revision: number;
 }
@@ -157,6 +164,12 @@ function tryRender<W>(build: () => W): { ok: true; write: W } | { ok: false; err
 export async function emailSettingsSave(
 	args: EmailSettingsSaveArgs
 ): Promise<EmailSettingsSaveResult> {
+	if (!readTranslationOverlays(args.base.translations)) {
+		return {
+			status: 'render-failed',
+			error: new Error('Could not read the translations stored on the email'),
+		};
+	}
 	const languageChanged = args.selectedDefaultLanguage !== args.persistedDefaultLanguage;
 
 	// The plain write: the form's fields and every non-default language's HTML

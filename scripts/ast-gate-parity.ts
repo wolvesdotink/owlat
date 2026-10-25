@@ -123,18 +123,7 @@ export interface KnownDifference {
 }
 
 /** Every site on this repository where the two sides disagree, and why. */
-export const KNOWN_DIFFERENCES: readonly KnownDifference[] = [
-	'apps/api/convex/delivery/observabilityStatus.ts:get',
-	'apps/api/convex/domains/yahooCfl.ts:confirmEnrollment',
-	'apps/api/convex/domains/yahooCfl.ts:resetEnrollment',
-	'apps/api/convex/domains/yahooCfl.ts:submitEnrollment',
-].map((site): KnownDifference => ({
-	gate: 'session-threading',
-	site,
-	side: 'old',
-	reason:
-		'the grep matches requireOrgPermission( inside a comment; the handler resolves no session of its own',
-}));
+export const KNOWN_DIFFERENCES: readonly KnownDifference[] = [];
 
 export interface Comparison {
 	readonly gate: GateName;

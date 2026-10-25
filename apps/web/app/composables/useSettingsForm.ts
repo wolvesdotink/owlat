@@ -1,4 +1,5 @@
 import { computed, reactive, ref, toRaw, watch, type Ref } from 'vue';
+import { plainClone } from '@owlat/email-builder/plain-clone';
 import { useEditorDirtyTracking } from './useEditorDirtyTracking';
 
 /**
@@ -90,12 +91,10 @@ export interface UseSettingsFormReturn<F extends SettingsFormShape> {
 /** Every emission is the same settings row: only a changed row, never a new one. */
 const SETTINGS_IDENTITY = 'settings';
 
-const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
-
 export function useSettingsForm<Row, F extends SettingsFormShape>(
 	opts: UseSettingsFormOptions<Row, F>
 ): UseSettingsFormReturn<F> {
-	const form = reactive(clone(opts.defaults)) as F;
+	const form = reactive(plainClone(opts.defaults)) as F;
 	const keyOf = (value: F) => JSON.stringify(opts.dirtyKey ? opts.dirtyKey(value) : value);
 
 	// The key of the row the draft is built on: the hydrated row's, then the
@@ -139,7 +138,7 @@ export function useSettingsForm<Row, F extends SettingsFormShape>(
 		if (isSaving.value || !loaded.value) return false;
 		if (opts.validate && !opts.validate(form)) return false;
 		const submission = tracker.beginSubmit();
-		const draft = clone(toRaw(form)) as F;
+		const draft = plainClone(toRaw(form)) as F;
 		const submittedKey = keyOf(draft);
 		const generation = hydrations;
 		isSaving.value = true;
@@ -156,14 +155,14 @@ export function useSettingsForm<Row, F extends SettingsFormShape>(
 	};
 
 	const resetToDefaults = () => {
-		Object.assign(form, clone(opts.defaults));
+		Object.assign(form, plainClone(opts.defaults));
 	};
 
 	const isFieldChanged = (key: keyof F) =>
 		JSON.stringify(form[key]) !== JSON.stringify(opts.defaults[key]);
 
 	const resetField = (key: keyof F) => {
-		form[key] = clone(opts.defaults[key]);
+		form[key] = plainClone(opts.defaults[key]);
 	};
 
 	// The leave guard. `onSave` throws on a failed save, so the guard keeps the

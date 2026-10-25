@@ -6,12 +6,7 @@
 import { v } from 'convex/values';
 import { internalQuery } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
-import {
-	getMutationContext,
-	getUserIdFromSession,
-	requireOrgPermission,
-	hasPermission,
-} from '../lib/sessionOrganization';
+import { hasPermission, requirePermission } from '../lib/sessionOrganization';
 import { throwForbidden, throwInvalidInput, throwNotFound } from '../_utils/errors';
 import {
 	chatQuery,
@@ -53,8 +48,8 @@ export const listMessages = chatQuery({
 		// page back into older history.
 		beforeCreatedAt: v.optional(v.number()),
 	},
-	handler: async (ctx, args) => {
-		const userId = await getUserIdFromSession(ctx);
+	handler: async (ctx, args, session) => {
+		const { userId } = session;
 		const room = await getRoomOrThrow(ctx, args.roomId);
 		await assertCanReadRoom(ctx, room, userId);
 
@@ -117,8 +112,9 @@ export const sendMessage = chatMutation({
 		text: v.string(),
 		attachmentIds: v.optional(v.array(v.id('mediaAssets'))),
 	},
-	handler: async (ctx, args) => {
-		const { userId } = await requireOrgPermission(ctx, 'chat:participate', 'Chat is not available');
+	handler: async (ctx, args, session) => {
+		requirePermission(hasPermission(session.role, 'chat:participate'), 'Chat is not available');
+		const { userId } = session;
 
 		const room = await getRoomOrThrow(ctx, args.roomId);
 		if (room.archivedAt) {
@@ -155,8 +151,8 @@ export const sendMessage = chatMutation({
 // authz: author-only — a member may edit only their own chat message (checked below).
 export const editMessage = chatMutation({
 	args: { messageId: v.id('chatMessages'), text: v.string() },
-	handler: async (ctx, args) => {
-		const { userId } = await getMutationContext(ctx);
+	handler: async (ctx, args, session) => {
+		const { userId } = session;
 		const message = await ctx.db.get(args.messageId);
 		if (!message || message.deletedAt) {
 			throwNotFound('Message');
@@ -176,8 +172,8 @@ export const editMessage = chatMutation({
 // authz: author, room admin, or org chat:manage may delete (checked below).
 export const deleteMessage = chatMutation({
 	args: { messageId: v.id('chatMessages') },
-	handler: async (ctx, args) => {
-		const { userId, role } = await getMutationContext(ctx);
+	handler: async (ctx, args, session) => {
+		const { userId, role } = session;
 		const message = await ctx.db.get(args.messageId);
 		if (!message || message.deletedAt) {
 			throwNotFound('Message');
@@ -218,8 +214,8 @@ export const deleteMessage = chatMutation({
 // authz: room membership — only a room member may mark it read (checked below).
 export const markRead = chatMutation({
 	args: { roomId: v.id('chatRooms'), at: v.optional(v.number()) },
-	handler: async (ctx, args) => {
-		const { userId } = await getMutationContext(ctx);
+	handler: async (ctx, args, session) => {
+		const { userId } = session;
 		const membership = await getMembership(ctx, args.roomId, userId);
 		if (!membership) return; // tolerate; caller may have just left
 
@@ -255,8 +251,8 @@ export const markRead = chatMutation({
  */
 export const myUnreadCounts = chatQuery({
 	args: {},
-	handler: async (ctx) => {
-		const userId = await getUserIdFromSession(ctx);
+	handler: async (ctx, _args, session) => {
+		const { userId } = session;
 
 		const memberships = await ctx.db
 			.query('chatRoomMembers')

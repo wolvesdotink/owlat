@@ -13,11 +13,28 @@
  * switch-target resolution live here as pure functions so they can be
  * unit-tested without mounting anything (see __tests__/sidebarContext.test.ts).
  */
+import { isRecord } from '@owlat/shared/utils/guards';
 import type { SectionKey } from '~/composables/useSidebarState';
 
 export type SidebarContext = 'inbox' | 'marketing';
 
-const SIDEBAR_CONTEXTS: readonly SidebarContext[] = ['inbox', 'marketing'];
+export const SIDEBAR_CONTEXTS: readonly SidebarContext[] = ['inbox', 'marketing'];
+
+/**
+ * The stored last-visited route per context, as `useLocalStorage` reads it:
+ * a context this build does not have, or a route that is not a string, is dropped.
+ */
+export function readLastVisitedRoutes(
+	stored: unknown
+): Partial<Record<SidebarContext, string>> | undefined {
+	if (!isRecord(stored)) return undefined;
+	const routes: Partial<Record<SidebarContext, string>> = {};
+	for (const context of SIDEBAR_CONTEXTS) {
+		const route = stored[context];
+		if (typeof route === 'string') routes[context] = route;
+	}
+	return routes;
+}
 
 /**
  * Which context each sidebar section belongs to. Total over SectionKey so the

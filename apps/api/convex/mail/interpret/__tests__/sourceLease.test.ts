@@ -106,8 +106,6 @@ beforeEach(() => {
 	llm.runLlmObject.mockReset();
 	llm.runLlmObject.mockImplementation(
 		async ({ schema, prompt }: { schema: unknown; prompt: string }) => {
-			// A model call takes a while: long enough for a second run to overlap.
-			await new Promise((resolve) => setTimeout(resolve, 20));
 			if (schema === briefModelSchema) {
 				await llm.beforeExtraction?.(extractions());
 				return { object: OUTPUT, tokenUsage: undefined, modelUsed: 'stub-model' };
@@ -144,11 +142,17 @@ describe('per-source lease', () => {
 		const t = convexTest(schema, modules);
 		rateLimiterTest.register(t);
 		const { source, messageId } = await eligibleSource(t);
+		let overlapping: Awaited<ReturnType<typeof t.action>> | undefined;
+		// While the first run holds the lease and its extraction is in flight, a
+		// second run of the source starts and runs to its answer.
+		llm.beforeExtraction = async (n) => {
+			if (n === 1) {
+				overlapping = await t.action(internal.mail.interpret.run.interpretMessage, { source });
+			}
+		};
 
-		const results = await Promise.all([
-			t.action(internal.mail.interpret.run.interpretMessage, { source }),
-			t.action(internal.mail.interpret.run.interpretMessage, { source }),
-		]);
+		const first = await t.action(internal.mail.interpret.run.interpretMessage, { source });
+		const results = [first, overlapping!];
 
 		expect(extractions()).toBe(1);
 		expect(results.map((r) => r.status).sort()).toEqual(['busy', 'complete']);

@@ -7,7 +7,8 @@
  * backend fails soft to "not found"; this one deliberately does not.
  */
 
-import { describe, expect, it } from 'vitest';
+import { setImmediate as nextTurn } from 'node:timers/promises';
+import { describe, expect, it, vi } from 'vitest';
 import { gatherAlignmentDns, observeTxt, type AlignmentDnsDeps } from '../alignmentPreflightGather';
 import type { AlignmentTarget } from '../alignmentPreflight';
 
@@ -66,12 +67,18 @@ describe('observeTxt failure mapping', () => {
 	it('treats a lookup that never settles as UNKNOWN once the deadline fires', async () => {
 		// A slow-drip nameserver must not be able to burn the sweep's action budget:
 		// the bound is ours, and the verdict it produces is a HOLD, not a fail.
-		const observation = await observeTxt(
-			'acme.com',
-			{ resolveTxt: () => new Promise<string[][]>(() => {}) },
-			5
-		);
-		expect(observation).toEqual({ state: 'unknown', failure: 'timeout' });
+		vi.useFakeTimers();
+		try {
+			const observing = observeTxt(
+				'acme.com',
+				{ resolveTxt: () => new Promise<string[][]>(() => {}) },
+				5
+			);
+			await vi.advanceTimersByTimeAsync(5);
+			expect(await observing).toEqual({ state: 'unknown', failure: 'timeout' });
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	/**
@@ -96,23 +103,29 @@ describe('observeTxt failure mapping', () => {
 			unhandled.push(reason);
 		};
 		process.on('unhandledRejection', onUnhandled);
+		vi.useFakeTimers();
 		try {
-			const observation = await observeTxt(
+			let rejectLate!: (error: Error) => void;
+			const observing = observeTxt(
 				'acme.com',
 				{
 					resolveTxt: () =>
 						new Promise<string[][]>((_resolve, reject) => {
-							setTimeout(() => reject(new Error('ESERVFAIL after two tries')), 30);
+							rejectLate = reject;
 						}),
 				},
 				5
 			);
-			expect(observation).toEqual({ state: 'unknown', failure: 'timeout' });
-			// Past the resolver's own rejection, and past the microtask turn an
-			// unhandled rejection would be reported on.
-			await new Promise((resolve) => setTimeout(resolve, 80));
+			await vi.advanceTimersByTimeAsync(5);
+			expect(await observing).toEqual({ state: 'unknown', failure: 'timeout' });
+			// The resolver gives up after the observation was answered.
+			rejectLate(new Error('ESERVFAIL after two tries'));
+			// Node reports an unhandled rejection once the microtasks have drained,
+			// so one real event-loop turn is past the moment it would surface.
+			await nextTurn();
 			expect(unhandled).toEqual([]);
 		} finally {
+			vi.useRealTimers();
 			process.off('unhandledRejection', onUnhandled);
 		}
 	});

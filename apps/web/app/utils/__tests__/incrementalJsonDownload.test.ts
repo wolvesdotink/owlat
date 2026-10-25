@@ -463,6 +463,39 @@ describe('account JSON export', () => {
 		).toHaveLength(rowCount / pageSize);
 	});
 
+	it.each([
+		['null', 'null'],
+		['a number', '42'],
+		['a list', '[{"_id":"external_1"}]'],
+		['text that is not JSON', '{"_id":'],
+	])(
+		'fails the export on a row that is %s instead of completing without it',
+		async (_case, row) => {
+			const action = vi.fn(async (_reference: unknown, untypedArgs: unknown) => {
+				const args = untypedArgs as { resource?: string };
+				if (!args.resource) {
+					return {
+						exportSessionId: 'accountExportSession_1',
+						userProfile: { email: 'owner@example.com', createdAt: 1, updatedAt: 2 },
+						exportedAt: 3,
+					};
+				}
+				if (args.resource !== 'externalMailAccounts') {
+					return { pageJson: [], isDone: true, continueCursor: '' };
+				}
+				return {
+					pageJson: [JSON.stringify({ _id: 'external_0' }), row],
+					isDone: true,
+					continueCursor: '',
+				};
+			});
+			const client = { action } as unknown as ConvexClient;
+			const { sink } = createRecordingSink();
+
+			await expect(writeAccountJsonExport(client, 'user_1', sink)).rejects.toThrow();
+		}
+	);
+
 	it('acknowledges staged content only after it has streamed and omits staging capabilities', async () => {
 		const exportSessionId = 'accountExportSession_1';
 		const artifactId = 'accountExportArtifact_1';

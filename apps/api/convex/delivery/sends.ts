@@ -3,7 +3,6 @@ import { internalMutation } from '../lib/writeFence';
 import type { QueryCtx } from '../_generated/server';
 import { authedQuery } from '../lib/authedFunctions';
 import type { Doc, Id } from '../_generated/dataModel';
-import { getUserIdFromSession } from '../lib/sessionOrganization';
 import { getLive, getLiveOrThrow } from '../lib/softDelete';
 import { abVariantValidator } from '../lib/literalValidators';
 import { sendTimeGroupValidator } from '../lib/validators/sendTime';
@@ -39,7 +38,6 @@ async function loadCampaignSendsForReport(
 export const get = authedQuery({
 	args: { id: v.id('emailSends') },
 	handler: async (ctx, args) => {
-		await getUserIdFromSession(ctx);
 		const send = await ctx.db.get(args.id);
 		if (!send) return null;
 

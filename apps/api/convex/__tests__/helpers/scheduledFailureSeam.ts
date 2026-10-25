@@ -11,16 +11,22 @@
  * `globalThis` right before that log line. Tests do not touch the sink, so a
  * mocked console no longer hides the failure. A second sink call, where
  * convex-test arms a scheduled job's timer, tells the gate which test
- * scheduled each job.
+ * scheduled each job, and the timer's callback is handed to the gate on its
+ * way to `setTimeout`, so the gate can run a job left behind at once instead
+ * of waiting for its timer.
  *
- * If a convex-test upgrade changes either line, the transform throws and every
- * test that loads convex-test fails, rather than the gate going quiet.
+ * If a convex-test upgrade changes any of these lines, the transform throws
+ * and every test that loads convex-test fails, rather than the gate going
+ * quiet.
  */
 
 export const SCHEDULED_FAILURE_SINK = 'owlat.test.scheduledFailureSink';
 
 /** Where convex-test reports each job it schedules, so a failure can be tied to its test. */
 export const SCHEDULED_JOB_SINK = 'owlat.test.scheduledJobSink';
+
+/** Arms a scheduled job's timer, so the gate holds the callback that runs the job. */
+export const SCHEDULED_JOB_ARM = 'owlat.test.scheduledJobArm';
 
 const CONVEX_TEST_ENTRY = /[\\/]node_modules[\\/]convex-test[\\/]dist[\\/]index\.js(\?.*)?$/;
 
@@ -47,6 +53,15 @@ const SCHEDULE_WITH_SINK =
 	`scheduledTime: tsInSecs * 1000, ` +
 	`parentJobId: requestMetadataStorage.getStore()?.scheduledFunctionId ?? null }));` +
 	SCHEDULE_LINE;
+
+// The call in the same syscall that arms that timer. Its callback runs the job,
+// once; the arm hands it to the gate first (and falls back to arming it
+// directly when no gate is installed). The rest of the call, the callback's
+// body and the delay, stays as convex-test wrote it.
+const ARM_CALL = 'frameworkSetTimeout(() => {';
+const ARM_WITH_SINK =
+	`(globalThis[Symbol.for(${JSON.stringify(SCHEDULED_JOB_ARM)})] ?? ` +
+	`((arm, _job, run, ms) => arm(run, ms)))(frameworkSetTimeout, { db, jobId }, () => {`;
 
 // Module-level names the injected code reads from convex-test's own scope.
 const REQUIRED_SCOPE = ['const requestMetadataStorage = ', 'const globalOverridesStorage = '];
@@ -77,10 +92,12 @@ export function scheduledFailureSeam(): ScheduledFailureSeamPlugin {
 			if (!CONVEX_TEST_ENTRY.test(id)) return null;
 			expectOnce(code, REPORT_LINE, id);
 			expectOnce(code, SCHEDULE_LINE, id);
+			expectOnce(code, ARM_CALL, id);
 			for (const declaration of REQUIRED_SCOPE) expectOnce(code, declaration, id);
 			return code
 				.replace(REPORT_LINE, () => REPORT_WITH_SINK)
-				.replace(SCHEDULE_LINE, () => SCHEDULE_WITH_SINK);
+				.replace(SCHEDULE_LINE, () => SCHEDULE_WITH_SINK)
+				.replace(ARM_CALL, () => ARM_WITH_SINK);
 		},
 	};
 }

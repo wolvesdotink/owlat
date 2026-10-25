@@ -9,8 +9,6 @@ describe('sleep', () => {
 	it('resolves once the requested time has elapsed on the global timer', async () => {
 		vi.useFakeTimers();
 		let resolved = false;
-		// sleep() is the unit under test, and its body is the global setTimeout these fake timers replace.
-		// oxlint-disable-next-line owlat/no-real-time-wait-in-tests
 		const pending = sleep(50).then(() => {
 			resolved = true;
 		});

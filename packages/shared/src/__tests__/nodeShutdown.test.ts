@@ -120,8 +120,9 @@ describe('installShutdown', () => {
 
 	it('waits for an in-flight critical section before exiting', async () => {
 		const exit = vi.fn();
+		const log = vi.fn();
 		const order: string[] = [];
-		const handle = install({ exit });
+		const handle = install({ exit, log });
 
 		let release!: () => void;
 		const section = handle.critical(
@@ -137,6 +138,10 @@ describe('installShutdown', () => {
 		const shutting = handle.shutdown('SIGTERM').then(() => order.push('exited'));
 		await Promise.resolve();
 		expect(exit).not.toHaveBeenCalled();
+		// It says what it is waiting for.
+		expect(log).toHaveBeenCalledWith('shutdown waiting for in-flight critical sections', {
+			criticalSections: 1,
+		});
 
 		release();
 		await section;

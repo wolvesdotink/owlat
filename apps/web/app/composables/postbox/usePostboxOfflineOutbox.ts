@@ -27,6 +27,7 @@
  */
 
 import { api } from '@owlat/api';
+import { plainClone } from '@owlat/email-builder/plain-clone';
 import type { Id } from '@owlat/api/dataModel';
 import {
 	getPostboxOfflineStore,
@@ -101,7 +102,7 @@ export function __resetPostboxOfflineOutboxState() {
  * side's `toPlain`).
  */
 function toPlainPayload(payload: OfflineComposePayload): OfflineComposePayload {
-	return JSON.parse(JSON.stringify(payload)) as OfflineComposePayload;
+	return plainClone(payload);
 }
 
 /**

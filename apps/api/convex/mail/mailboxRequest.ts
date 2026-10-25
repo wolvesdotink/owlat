@@ -23,7 +23,7 @@
 
 import { v } from 'convex/values';
 import { adminMutation, adminQuery, authedMutation, authedQuery } from '../lib/authedFunctions';
-import { getBetterAuthSessionWithRole, requireAdminContext } from '../lib/sessionOrganization';
+import { hasPermission, requirePermission } from '../lib/sessionOrganization';
 import { getOrThrow, throwForbidden, throwInvalidState } from '../_utils/errors';
 import { listOpenRequests, resolveOpenRequest, upsertOpenRequest } from '../lib/adminRequests';
 import { normalizeEmail } from '@owlat/shared';
@@ -97,23 +97,15 @@ export const request = authedMutation({
 export const freshStartStatus = authedQuery({
 	args: {},
 	handler: async (
-		ctx
+		ctx,
+		_args,
+		session
 	): Promise<{
 		hasMailbox: boolean;
 		reservedAddress: string | null;
 		reservationAwaitingDomain: boolean;
 		hasOpenRequest: boolean;
 	}> => {
-		const session = await getBetterAuthSessionWithRole(ctx);
-		if (!session) {
-			return {
-				hasMailbox: false,
-				reservedAddress: null,
-				reservationAwaitingDomain: false,
-				hasOpenRequest: false,
-			};
-		}
-
 		const mailbox = await getActiveMailboxForUser(ctx, session.userId);
 		if (mailbox) {
 			return {
@@ -195,15 +187,16 @@ export const listPending = adminQuery({
  * HOSTED mailbox is fulfilled against that mailbox instead of standing up a
  * second one.
  */
-// authz: admin — requireAdminContext gates hosted-mailbox provisioning.
+// authz: admin — organization:manage on the threaded session gates hosted-mailbox provisioning.
 export const provisionFromRequest = authedMutation({
 	args: {
 		requestId: v.id('mailboxRequests'),
 	},
-	handler: async (ctx, args) => {
-		await requireAdminContext(ctx);
-		const session = await getBetterAuthSessionWithRole(ctx);
-		if (!session?.activeOrganizationId) throwForbidden('No active organization');
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'organization:manage'),
+			'Only owners and admins can perform this action'
+		);
 		const organizationId = session.activeOrganizationId;
 
 		const row = await getOrThrow(ctx, args.requestId, 'Request');

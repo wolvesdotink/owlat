@@ -4,7 +4,14 @@
  * groups are collapsed. Persisted per device, like the other sidebar state.
  */
 
-export type SidebarThreadSort = 'recent' | 'priority';
+import {
+	readStoredChoice,
+	readStoredFiniteNumber,
+	readStoredStringList,
+} from '~/utils/storedValue';
+
+const SIDEBAR_THREAD_SORTS = ['recent', 'priority'] as const;
+export type SidebarThreadSort = (typeof SIDEBAR_THREAD_SORTS)[number];
 
 export const SIDEBAR_THREADS_MIN = 0;
 export const SIDEBAR_THREADS_MAX = 10;
@@ -19,9 +26,21 @@ let storage: {
 } | null = null;
 function prefsStorage() {
 	storage ??= {
-		threadsPerInbox: useLocalStorage<number>('sidebar-threads-per-inbox', SIDEBAR_THREADS_DEFAULT),
-		threadSort: useLocalStorage<SidebarThreadSort>('sidebar-thread-sort', 'recent'),
-		collapsedGroups: useLocalStorage<string[]>('sidebar-collapsed-groups', []),
+		threadsPerInbox: useLocalStorage<number>(
+			'sidebar-threads-per-inbox',
+			SIDEBAR_THREADS_DEFAULT,
+			readStoredFiniteNumber
+		),
+		threadSort: useLocalStorage<SidebarThreadSort>(
+			'sidebar-thread-sort',
+			'recent',
+			readStoredChoice(SIDEBAR_THREAD_SORTS)
+		),
+		collapsedGroups: useLocalStorage<string[]>(
+			'sidebar-collapsed-groups',
+			[],
+			readStoredStringList
+		),
 	};
 	return storage;
 }

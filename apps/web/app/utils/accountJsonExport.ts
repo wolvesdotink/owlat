@@ -1,6 +1,8 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { ACCOUNT_EXPORT_ORGANIZATION_RESOURCES, type AccountExportResource } from '@owlat/shared';
+import { isRecord } from '@owlat/shared/utils/guards';
+import { decodeJsonText, guardDecoder } from '@owlat/worker-protocol/decodeJson';
 import type { ConvexClient } from 'convex/browser';
 import {
 	jsonArray,
@@ -30,6 +32,9 @@ type AccountExportContext = {
 	onRow?: (resource: string) => void;
 };
 
+/** Every exported row is a JSON object (a document); anything else is a broken page. */
+const exportRowDecoder = guardDecoder(isRecord, '$: expected an object');
+
 async function* iterateAccountExportPageRows(
 	context: AccountExportContext,
 	resource: AccountExportResource,
@@ -47,7 +52,11 @@ async function* iterateAccountExportPageRows(
 			...(options.mailboxId ? { mailboxId: options.mailboxId } : {}),
 		});
 		for (const rowJson of result.pageJson) {
-			yield JSON.parse(rowJson) as Record<string, unknown>;
+			// A row that is not a JSON object fails the export rather than being
+			// left out of a download that would then look complete.
+			const row = decodeJsonText(rowJson, exportRowDecoder);
+			if (!row.ok) throw new Error(`Account export row could not be read (${resource})`);
+			yield row.value;
 		}
 		if (result.isDone) return;
 		if (!result.continueCursor || seenCursors.has(result.continueCursor)) {
