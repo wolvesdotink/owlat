@@ -22,7 +22,7 @@ import {
 import { throwInvalidInput } from '../_utils/errors';
 import { sanitizeStoredBlocksJson } from '../lib/emailContentSanitize';
 import type { CoeditField, CoeditOpArg } from '../lib/validators/coediting';
-import { isValidFieldValue, type StoredRootBlock } from './target';
+import { isStoredRootBlock, isValidFieldValue, type StoredRootBlock } from './target';
 
 /** Upper bound on a block id, a client id or a field key. */
 export const MAX_COEDIT_ID_LENGTH = 128;
@@ -73,18 +73,13 @@ function parseJson(text: string): unknown {
  */
 export function parseBlock(json: string): StoredRootBlock {
 	const sent = parseJson(json);
-	const [block] = JSON.parse(sanitizeStoredBlocksJson(JSON.stringify([sent]))) as unknown[];
-	if (
-		typeof block !== 'object' ||
-		block === null ||
-		Array.isArray(block) ||
-		typeof (block as { id?: unknown }).id !== 'string' ||
-		typeof (block as { type?: unknown }).type !== 'string'
-	) {
+	const sanitized = parseJson(sanitizeStoredBlocksJson(JSON.stringify([sent])));
+	const block = Array.isArray(sanitized) ? sanitized[0] : undefined;
+	if (!isStoredRootBlock(block)) {
 		return throwInvalidInput('An edited block is not valid.');
 	}
-	checkId((block as StoredRootBlock).id, 'block id');
-	return block as StoredRootBlock;
+	checkId(block.id, 'block id');
+	return block;
 }
 
 /** Parse and check a batch against the fields the target shares. */

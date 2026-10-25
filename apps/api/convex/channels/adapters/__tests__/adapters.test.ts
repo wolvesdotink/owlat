@@ -146,6 +146,16 @@ describe('SmsAdapter.send — configured path', () => {
 		expect(body.get('Body')).toBe('hi');
 	});
 
+	it('keeps an accepted send a success but records no id Twilio sent as a number', async () => {
+		// The 2xx means Twilio took the message, so it must not read as a failure
+		// (that would send it again); an id that is not a string is never stored.
+		const { result } = await withFetch(respond(201, { sid: 42 }), () =>
+			configuredSms().send(message)
+		);
+
+		expect(result).toEqual({ success: true, externalMessageId: undefined });
+	});
+
 	it('maps a 400 to a failed SendResult carrying the status and provider body', async () => {
 		const { result } = await withFetch(respond(400, 'bad To number'), () =>
 			configuredSms().send(message)
@@ -214,6 +224,14 @@ describe('WhatsAppAdapter.send / healthCheck — configured path', () => {
 
 		expect(result.success).toBe(true);
 		expect(result.externalMessageId).toBeUndefined();
+	});
+
+	it('records no externalMessageId when Meta sends a message id that is not a string', async () => {
+		const { result } = await withFetch(respond(200, { messages: [{ id: 7 }] }), () =>
+			configuredWhatsApp().send(message)
+		);
+
+		expect(result).toEqual({ success: true, externalMessageId: undefined });
 	});
 
 	it('maps a non-2xx to a failed SendResult carrying the status and provider body', async () => {

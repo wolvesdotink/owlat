@@ -3,6 +3,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import schema from '../schema';
 import { api, internal } from '../_generated/api';
 import { decryptChannelCreds } from '../channels/credentials';
+import { encryptSecret } from '../lib/credentialCrypto';
 import { createTestChannelConfig } from './factories';
 import type { Doc, Id } from '../_generated/dataModel';
 
@@ -255,6 +256,39 @@ describe('channels.credentials.getInboundSecret', () => {
 				field: 'signature',
 			})
 		).resolves.toBe('meta-app-secret');
+	});
+});
+
+describe('channels.credentials.decryptChannelCreds', () => {
+	const sealed = (plaintext: unknown) => JSON.stringify(encryptSecret(JSON.stringify(plaintext)));
+
+	it.each([
+		['a JSON scalar', 42],
+		['a list', [{ authToken: 'x' }]],
+		['a credential that is not a string', { accountSid: 'AC1', authToken: 12345 }],
+	])('treats %s as not configured, naming no value', (_label, plaintext) => {
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+		expect(decryptChannelCreds(sealed(plaintext), 'sms')).toBeNull();
+		const lines = logged.mock.calls.map((call) => JSON.stringify(call));
+		expect(lines.some((line) => /malformed/.test(line))).toBe(true);
+		expect(lines.every((line) => !line.includes('12345') && !line.includes('AC1'))).toBe(true);
+		logged.mockRestore();
+	});
+
+	it('refuses an envelope whose parts are not strings before opening it', () => {
+		const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+		const envelope = { ...encryptSecret('{}'), iv: 7 };
+
+		expect(decryptChannelCreds(JSON.stringify(envelope), 'sms')).toBeNull();
+		expect(logged.mock.calls.some((call) => JSON.stringify(call).includes('$.iv'))).toBe(true);
+		logged.mockRestore();
+	});
+
+	it('opens a well-formed blob, keeping a field this build does not list', () => {
+		expect(
+			decryptChannelCreds(sealed({ accountSid: 'AC1', authToken: 't', extra: 'kept' }), 'sms')
+		).toEqual({ accountSid: 'AC1', authToken: 't', extra: 'kept' });
 	});
 });
 

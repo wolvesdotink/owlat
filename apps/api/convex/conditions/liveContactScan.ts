@@ -13,6 +13,8 @@
  * the population is exhausted.
  */
 
+import { v, type Infer } from 'convex/values';
+import { decodeJsonText } from '@owlat/worker-protocol/decodeJson';
 import type { DatabaseReader } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
 
@@ -66,10 +68,8 @@ export interface LiveScanOptions {
 }
 
 /** The decoded checkpoint: a position in the `by_deleted_at` index. */
-interface LiveScanPosition {
-	creationTime: number;
-	id: string;
-}
+const liveScanPositionValidator = v.object({ creationTime: v.number(), id: v.string() });
+type LiveScanPosition = Infer<typeof liveScanPositionValidator>;
 
 function encodeCursor(contact: Doc<'contacts'>): string {
 	return JSON.stringify({ creationTime: contact._creationTime, id: contact._id });
@@ -83,13 +83,8 @@ function encodeCursor(contact: Doc<'contacts'>): string {
  */
 function decodeCursor(cursor: string | null | undefined): LiveScanPosition | null {
 	if (!cursor) return null;
-	try {
-		const parsed = JSON.parse(cursor) as Partial<LiveScanPosition>;
-		if (typeof parsed.creationTime !== 'number' || typeof parsed.id !== 'string') return null;
-		return { creationTime: parsed.creationTime, id: parsed.id };
-	} catch {
-		return null;
-	}
+	const decoded = decodeJsonText(cursor, liveScanPositionValidator);
+	return decoded.ok ? { creationTime: decoded.value.creationTime, id: decoded.value.id } : null;
 }
 
 /**

@@ -488,6 +488,16 @@ describe('googleOAuthActions.complete', () => {
 		}
 	});
 
+	it('refuses a token answer whose refresh token is not text, and stores nothing', async () => {
+		const t = convexTest(schema, modules);
+		await enableExternal(t);
+		setSession('user-A');
+		await expect(
+			roundTrip(t, { kind: 'connect' }, googleAccount('me@gmail.com', { refresh_token: 42 }))
+		).rejects.toThrow(/Google refused this sign-in/i);
+		expect(await t.run((ctx) => ctx.db.query('externalMailAccounts').collect())).toHaveLength(0);
+	});
+
 	it('refuses an id_token that has already expired', async () => {
 		const t = convexTest(schema, modules);
 		await enableExternal(t);

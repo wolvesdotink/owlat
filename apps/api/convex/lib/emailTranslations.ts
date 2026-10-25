@@ -32,27 +32,18 @@ import {
 import {
 	extractTranslatableContent,
 	mergeTranslationIntoItem,
+	parseBlockList,
 	type TranslatableBlockContent,
 } from '../emailTemplates/translationMerge';
+import { decodeOverlayBlocks, decodeStoredTranslations, type StoredTranslation } from './emailJson';
 
 export type { TranslatableBlockContent };
 
-export interface Block {
-	id: string;
-	type: string;
-	content: {
-		html?: string;
-		text?: string; // Button text in block content
-		alt?: string;
-		columns?: Array<Array<{ id: string; type: string; content: Record<string, unknown> }>>;
-		items?: Array<{ id: string; type: string; content: Record<string, unknown> }>;
-		[key: string]: unknown;
-	};
-}
-
 /**
- * Per-language translation overlay. `previewText` is optional: email templates
- * carry it, transactional emails do not.
+ * Per-language translation overlay, as this module writes it. `previewText` is
+ * optional: email templates carry it, transactional emails do not. A stored
+ * overlay is read back as a {@link StoredTranslation}, whose `subject` and
+ * `blocks` older rows may lack.
  */
 export interface Translation {
 	subject: string;
@@ -87,11 +78,19 @@ const DEFAULT_LANGUAGE = 'en';
 
 // --- blob (de)serialization -------------------------------------------------
 
-export function parseTranslations(blob: string | undefined): Record<string, Translation> {
-	return blob ? (JSON.parse(blob) as Record<string, Translation>) : {};
+/**
+ * A row's overlays. A blob that is not a record of overlays throws: every
+ * caller either writes the overlays back (and must not replace a damaged blob
+ * with an empty one) or serves a language from them.
+ */
+export function parseTranslations(blob: string | undefined): Record<string, StoredTranslation> {
+	if (!blob) return {};
+	const decoded = decodeStoredTranslations(blob);
+	if (!decoded.ok) throw new Error(`The stored translations are malformed (${decoded.issue}).`);
+	return decoded.value;
 }
 
-export function serializeTranslations(translations: Record<string, Translation>): string {
+export function serializeTranslations(translations: Record<string, StoredTranslation>): string {
 	return JSON.stringify(translations);
 }
 
@@ -99,17 +98,14 @@ export function serializeTranslations(translations: Record<string, Translation>)
 
 // Helper to merge translation blocks with main content blocks.
 // Takes the block structure/styling from main content and applies translated text.
+// Content that is not a Block list comes back unchanged.
 export function mergeTranslationWithContent(
 	contentJson: string,
 	translationBlocks: Record<string, TranslatableBlockContent>
 ): string {
-	try {
-		const blocks = JSON.parse(contentJson) as Block[];
-		const mergedBlocks = blocks.map((block) => mergeTranslationIntoItem(block, translationBlocks));
-		return JSON.stringify(mergedBlocks);
-	} catch {
-		return contentJson;
-	}
+	const blocks = parseBlockList(contentJson);
+	if (!blocks) return contentJson;
+	return JSON.stringify(blocks.map((block) => mergeTranslationIntoItem(block, translationBlocks)));
 }
 
 // --- resolve / add / remove ops ---------------------------------------------
@@ -164,11 +160,13 @@ export function resolveForLanguage(
 	const translations = parseTranslations(entity.translations);
 	const translation = translations[requested];
 	if (translation) {
-		// Merge translation text with the main content's styling.
-		const mergedContent = mergeTranslationWithContent(entity.content, translation.blocks);
+		// Merge translation text with the main content's styling. An overlay
+		// without its own subject or block text keeps the default's, as the
+		// delivery render does.
+		const mergedContent = mergeTranslationWithContent(entity.content, translation.blocks ?? {});
 		return buildResolved(
 			requested,
-			translation.subject,
+			translation.subject ?? entity.subject,
 			translation.previewText,
 			mergedContent,
 			fields
@@ -340,10 +338,14 @@ export function updateTranslationPatch(
 		translation.previewText = previewText.trim();
 	}
 	if (update.blocks !== undefined) {
-		translation.blocks = JSON.parse(sanitizeOverlayBlocksJson(update.blocks)) as Record<
-			string,
-			TranslatableBlockContent
-		>;
+		const blocks = decodeOverlayBlocks(sanitizeOverlayBlocksJson(update.blocks));
+		if (!blocks.ok) {
+			throwInvalidInput(
+				'Translation blocks must be a JSON object of block id to { html?, buttonText?, alt? } text.',
+				{ issue: blocks.issue }
+			);
+		}
+		translation.blocks = blocks.value;
 	}
 	translations[update.language] = translation;
 
@@ -393,7 +395,7 @@ export function setDefaultLanguagePatch(
 
 	// Drop the promoted language's overlay; demote the old default to one.
 	const { [language]: _, ...otherTranslations } = translations;
-	const updatedTranslations: Record<string, Translation> = {
+	const updatedTranslations: Record<string, StoredTranslation> = {
 		...otherTranslations,
 		[currentDefault]: outgoingDefaultOverlay,
 	};
@@ -406,7 +408,7 @@ export function setDefaultLanguagePatch(
 		: [];
 
 	return {
-		subject: newDefault.subject,
+		subject: newDefault.subject ?? row.subject,
 		...(fields.hasPreviewText ? { previewText: newDefault.previewText } : {}),
 		content: sanitizeStoredBlocksJson(newDefaultContent),
 		defaultLanguage: language,

@@ -101,6 +101,21 @@ describe('MtaIdentityManager', () => {
 			expect(JSON.stringify((error as { data: unknown }).data)).not.toContain('already registered');
 		});
 
+		it('refuses a key pair whose fields are not text, and omits an ownership it does not know', async () => {
+			fetchMock.mockResolvedValueOnce(jsonResponse({ success: true, selector: 1, dnsRecord: 'x' }));
+			await expect(mgr().registerDomain('acme.com')).rejects.toThrow(
+				'MTA did not return a valid DKIM key pair'
+			);
+
+			fetchMock.mockResolvedValueOnce(
+				jsonResponse({ success: true, selector: 's1', dnsRecord: 'v=DKIM1', ownership: 'moved' })
+			);
+			expect(await mgr().registerDomain('acme.com')).toEqual({
+				selector: 's1',
+				dnsRecord: 'v=DKIM1',
+			});
+		});
+
 		it('throws a plain error for any other refusal, whatever its text', async () => {
 			fetchMock.mockResolvedValue(new Response('conflict (409) upstream', { status: 500 }));
 
@@ -132,6 +147,16 @@ describe('MtaIdentityManager', () => {
 			expect(init.method).toBe('GET');
 			expect(creds).toHaveLength(1);
 			expect(creds[0]!.apiKey).toBe('owlat_full');
+		});
+
+		it('refuses a list whose allowed domains are not a list of text', async () => {
+			fetchMock.mockResolvedValue(
+				jsonResponse({
+					credentials: [{ apiKey: 'owlat_full', credential: { allowedDomains: 'acme.com' } }],
+				})
+			);
+
+			await expect(mgr().listOrgCredentials('org-1')).rejects.toThrow(/unexpected answer/);
 		});
 	});
 

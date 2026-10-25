@@ -10,7 +10,9 @@
  * The trailing slash is trimmed so callers can append `/path` directly.
  */
 
+import { v } from 'convex/values';
 import { CORRELATION_HEADER, mintCorrelationId } from '@owlat/shared/correlation';
+import { validatorDecoder } from '@owlat/worker-protocol/decodeJson';
 import { getOptional } from '../lib/env';
 import { FETCH_TIMEOUTS, fetchWithTimeout } from '../lib/fetchWithTimeout';
 import { logError, logWarn } from '../lib/runtimeLog';
@@ -120,20 +122,23 @@ export async function pokeMailSyncReconcile(): Promise<boolean> {
 }
 
 /** Raw `/scan/attachment` response body shape. */
-interface AttachmentScanResponse {
-	clean: boolean;
-	virus?: string;
-	reason?: string;
-	skipped?: boolean;
-	/**
-	 * WHICH gate answered. The endpoint runs its file-type allowlist BEFORE
-	 * ClamAV and answers a refusal with the same `clean: false` shape a virus
-	 * gets, tagged `'file_type_validation'` (see `apps/mta/src/routes/scan.ts`).
-	 * Without reading it, a legacy `.doc` — an OLE2 container the type gate used
-	 * to call an installer — came back indistinguishable from a trojan.
-	 */
-	stage?: string;
-}
+/** The scanner's answer to `POST /scan/attachment`. */
+const decodeAttachmentScanResponse = validatorDecoder(
+	v.object({
+		clean: v.boolean(),
+		virus: v.optional(v.string()),
+		reason: v.optional(v.string()),
+		skipped: v.optional(v.boolean()),
+		/**
+		 * WHICH gate answered. The endpoint runs its file-type allowlist BEFORE
+		 * ClamAV and answers a refusal with the same `clean: false` shape a virus
+		 * gets, tagged `'file_type_validation'` (see `apps/mta/src/routes/scan.ts`).
+		 * Without reading it, a legacy `.doc` — an OLE2 container the type gate used
+		 * to call an installer — came back indistinguishable from a trojan.
+		 */
+		stage: v.optional(v.string()),
+	})
+);
 
 /** The `stage` the MTA tags a refusal from its file-type allowlist with. */
 const FILE_TYPE_REFUSAL_STAGE = 'file_type_validation';
@@ -281,7 +286,15 @@ export async function scanAttachmentBytes(
 			return { kind: 'skipped', reason };
 		}
 
-		const result = (await res.json()) as AttachmentScanResponse;
+		const decoded = decodeAttachmentScanResponse(await res.json());
+		if (!decoded.ok) {
+			// An answer this build cannot read is an unavailable scanner, not a
+			// verdict: fail open, surfaced, like an unparseable body.
+			const reason = `scanner returned an unreadable answer (${decoded.issue})`;
+			warnScanSkipped(filename, reason);
+			return { kind: 'skipped', reason };
+		}
+		const result = decoded.value;
 		if (!result.clean && !result.skipped) {
 			// The type gate, not the virus gate. Told apart HERE, once, because
 			// the difference decides whether a message is quarantined and its

@@ -18,6 +18,7 @@
  * can import it as well as the Node send worker.
  */
 
+import { isRecord } from '@owlat/shared/utils/guards';
 import { withTimeout } from '../../inputGuards';
 import { redactSecret } from '../../redactSecret';
 
@@ -55,8 +56,13 @@ function readMandrillApiError(
 	status: number,
 	fallbackLabel: string
 ): MandrillApiError {
+	let parsed: unknown;
 	try {
-		const parsed = JSON.parse(body) as Record<string, unknown>;
+		parsed = JSON.parse(body);
+	} catch {
+		// Not JSON. Classify from the text, surface none of it.
+	}
+	if (isRecord(parsed)) {
 		const name = typeof parsed['name'] === 'string' ? parsed['name'] : '';
 		const message = typeof parsed['message'] === 'string' ? parsed['message'] : '';
 		if (name || message) {
@@ -65,8 +71,6 @@ function readMandrillApiError(
 				classifyText: `${name}: ${message}`,
 			};
 		}
-	} catch {
-		// Not JSON. Classify from the text, surface none of it.
 	}
 	return { surfaced: `${fallbackLabel} (HTTP ${status})`, classifyText: body };
 }

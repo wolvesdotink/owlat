@@ -2,7 +2,13 @@ import { describe, it, expect } from 'vitest';
 import { ConvexError } from 'convex/values';
 import type { CoeditOpArg } from '../../lib/validators/coediting';
 import { applySessionOps, parseBlock, parseOps, type SessionState } from '../sessionOps';
-import { TARGET_FIELDS, rootBlocksOf, type StoredRootBlock } from '../target';
+import {
+	TARGET_FIELDS,
+	rootBlocksOf,
+	sessionDocOf,
+	type CoeditSession,
+	type StoredRootBlock,
+} from '../target';
 
 const text = (id: string, html: string): StoredRootBlock => ({
 	id,
@@ -163,5 +169,34 @@ describe('rootBlocksOf', () => {
 
 	it('reads invalid JSON as an empty email', () => {
 		expect(rootBlocksOf('{')).toEqual([]);
+	});
+});
+
+describe('sessionDocOf', () => {
+	const session = (content: string, fields: string) =>
+		({ targetType: 'emailTemplate', content, fields }) as CoeditSession;
+
+	it('reads the stored draft as stored, repeated ids included', () => {
+		const blocks = [text('a', 'One'), text('a', 'Two')];
+		expect(sessionDocOf(session(JSON.stringify(blocks), '{"subject":"S"}'))).toEqual({
+			blocks,
+			fields: { subject: 'S' },
+		});
+	});
+
+	it.each([
+		['content that is not JSON', '{', '{}'],
+		['content that is an envelope, not a list', '{"blocks":[]}', '{}'],
+		['a root without an id', '[{"type":"text"}]', '{}'],
+		['fields that are a list', '[]', '[]'],
+		['a shared field of the wrong type', '[]', '{"name":7}'],
+	])('refuses a draft with %s', (_label, content, fields) => {
+		expect(() => sessionDocOf(session(content, fields))).toThrow(ConvexError);
+	});
+
+	it('does not check a field this target does not share', () => {
+		expect(sessionDocOf(session('[]', '{"attachments":"x"}')).fields).toEqual({
+			attachments: 'x',
+		});
 	});
 });

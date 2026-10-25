@@ -429,6 +429,61 @@ describe('saving a co-edited email', () => {
 	});
 });
 
+describe('a session draft that does not decode', () => {
+	const corruptSession = async (
+		t: TestConvex<typeof schema>,
+		templateId: Id<'emailTemplates'>,
+		patch: { content?: string; fields?: string }
+	) =>
+		t.run(async (ctx) => {
+			const session = await ctx.db
+				.query('emailCoeditSessions')
+				.withIndex('by_email_template', (q) => q.eq('emailTemplateId', templateId))
+				.first();
+			await ctx.db.patch(session!._id, patch);
+		});
+
+	it.each([
+		['fields that are a list', { content: '[]', fields: '[]' }],
+		['a shared field of the wrong type', { content: '[]', fields: '{"subject":42}' }],
+		['content that is not a list of blocks', { content: '[{"type":"text"}]' }],
+	])('with %s refuses the save and leaves the email as it was', async (_label, patch) => {
+		as('user-a');
+		const t = convexTest(schema, modules);
+		const { templateId } = await openTemplate(t);
+		await corruptSession(t, templateId, patch);
+
+		const data = await operationError(
+			t.mutation(api.emailTemplates.emails.update, {
+				templateId,
+				subject: 'x',
+				expectedContentRevision: 3,
+				coeditVersion: 1,
+			})
+		);
+		expect(data.category).toBe('invalid_state');
+		const row = await t.run((ctx) => ctx.db.get(templateId));
+		expect(row?.content).toBe(CONTENT);
+		expect(row?.subject).toBe('Hello');
+	});
+
+	it('refuses an edit applied on top of it', async () => {
+		as('user-a');
+		const t = convexTest(schema, modules);
+		const { templateId, target } = await openTemplate(t);
+		await corruptSession(t, templateId, { fields: '[]' });
+
+		const data = await operationError(
+			t.mutation(api.emailCoediting.sessions.applyOps, {
+				target,
+				clientId: 'tab-1',
+				ops: [update(block('a', 'Edited'), 1)],
+			})
+		);
+		expect(data.category).toBe('invalid_state');
+	});
+});
+
 describe('sessions.reset', () => {
 	it('throws the shared unsaved changes away', async () => {
 		as('user-a');

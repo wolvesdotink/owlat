@@ -16,6 +16,8 @@
  * outcomes; neither builds or seals anything (that is `./build.ts`).
  */
 
+import { v } from 'convex/values';
+import { validatorDecoder } from '@owlat/worker-protocol/decodeJson';
 import type { ActionCtx } from '../../_generated/server';
 import { internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
@@ -38,9 +40,18 @@ import type { SealedMime } from '../../e2ee/seal';
  */
 const POSTBOX_SEND_CONCURRENCY = 6;
 
-interface ExternalSendResult {
-	recipients?: Array<{ address: string; status: 'sent' | 'bounced'; error?: string }>;
-}
+/**
+ * The mail-sync worker's `/send` answer: a per-recipient SMTP verdict. `status`
+ * is read as a string so a verdict this build does not know counts as sent,
+ * as a missing entry does; only `bounced` is a rejection.
+ */
+const decodeExternalSendResult = validatorDecoder(
+	v.object({
+		recipients: v.optional(
+			v.array(v.object({ address: v.string(), status: v.string(), error: v.optional(v.string()) }))
+		),
+	})
+);
 
 /**
  * Dispatch a Sent-folder message through the user's external SMTP via the
@@ -109,7 +120,7 @@ export async function dispatchViaExternalWorker(
 		return;
 	}
 
-	let result: ExternalSendResult;
+	let body: unknown;
 	try {
 		const res = await fetchWithTimeout(
 			`${mailSync.baseUrl}/send`,
@@ -137,7 +148,7 @@ export async function dispatchViaExternalWorker(
 			});
 			return;
 		}
-		result = (await res.json()) as ExternalSendResult;
+		body = await res.json();
 	} catch (err) {
 		logError('[Outbound] mail-sync /send error:', err);
 		await transitionAll({
@@ -149,7 +160,14 @@ export async function dispatchViaExternalWorker(
 		return;
 	}
 
-	const perRecipient = result.recipients ?? [];
+	// The 2xx means SMTP accepted the message. An answer that does not decode
+	// carries no per-recipient rejection this code can trust, so every recipient
+	// is recorded sent, as for a missing entry; the log says why.
+	const result = decodeExternalSendResult(body);
+	if (!result.ok) {
+		logError(`[Outbound] mail-sync /send answered an unreadable result (${result.issue})`);
+	}
+	const perRecipient = result.ok ? (result.value.recipients ?? []) : [];
 	for (let i = 0; i < params.recipients.length; i++) {
 		const addr = params.recipients[i]!;
 		const r = perRecipient.find((x) => x.address.toLowerCase() === addr.toLowerCase());

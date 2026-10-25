@@ -12,9 +12,10 @@
  */
 
 import { generateId } from '@owlat/shared';
+import type { CoeditDocument } from '@owlat/shared/coeditOps';
 import type { Doc } from '../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
-import { getOrThrow } from '../_utils/errors';
+import { getOrThrow, throwInvalidState } from '../_utils/errors';
 import { assertFeatureEnabled } from '../lib/featureFlags';
 import type { CoeditField, CoeditTarget } from '../lib/validators/coediting';
 import { getLiveOrThrow } from '../lib/softDelete';
@@ -176,6 +177,47 @@ export function isValidFieldValue(field: CoeditField, value: unknown): boolean {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** Whether a parsed value is a root block: an object with a string id and type. */
+export function isStoredRootBlock(value: unknown): value is StoredRootBlock {
+	return isRecord(value) && typeof value['id'] === 'string' && typeof value['type'] === 'string';
+}
+
+function parseJson(text: string): unknown {
+	try {
+		return JSON.parse(text);
+	} catch {
+		return undefined;
+	}
+}
+
+/**
+ * A session's stored draft, checked: `content` is a list of root blocks and
+ * `fields` an object whose shared fields hold valid values. The blocks are
+ * taken as stored, not through {@link rootBlocksOf}: renewing a missing or
+ * repeated id here would move the target of every operation in flight.
+ *
+ * A draft that fails is refused rather than read as empty: an edit or a save
+ * applied on top of an empty draft would write an empty email over the real
+ * one.
+ */
+export function sessionDocOf(session: CoeditSession): CoeditDocument<StoredRootBlock> {
+	const blocks = parseJson(session.content);
+	const fields = parseJson(session.fields);
+	if (
+		!Array.isArray(blocks) ||
+		!blocks.every(isStoredRootBlock) ||
+		!isRecord(fields) ||
+		TARGET_FIELDS[session.targetType].some(
+			(field) =>
+				Object.prototype.hasOwnProperty.call(fields, field) &&
+				!isValidFieldValue(field, fields[field])
+		)
+	) {
+		throwInvalidState('The co-editing session of this email could not be read.');
+	}
+	return { blocks, fields };
 }
 
 /**

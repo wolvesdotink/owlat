@@ -9,6 +9,7 @@
  * Errors carry an HTTP status at most, never a response body.
  */
 
+import { isRecord } from '@owlat/shared/utils/guards';
 import type { BatchProvider } from '../../validators/aiRouting';
 import {
 	anthropicBatchBody,
@@ -90,6 +91,17 @@ async function send(
 	return response;
 }
 
+/**
+ * The `id` of a create or upload answer. An answer without one is a failure
+ * with no HTTP status: the request may still have created something, so a
+ * create stays an uncertain submission, never a definite refusal.
+ */
+function createdId(what: string, body: unknown): string {
+	const id = isRecord(body) ? body['id'] : undefined;
+	if (typeof id !== 'string') throw new BatchHttpError(what, undefined);
+	return id;
+}
+
 /** A create call that failed with a client error created nothing; anything else may have. */
 function isDefiniteRefusal(error: unknown): boolean {
 	return error instanceof BatchHttpError && error.status !== undefined && error.status < 500;
@@ -97,9 +109,9 @@ function isDefiniteRefusal(error: unknown): boolean {
 
 function openaiTransport(apiKey: string, fetchImpl: Fetch): BatchTransport {
 	const auth = { authorization: `Bearer ${apiKey}` };
-	const json = (what: string, url: string, init: RequestInit = {}) =>
+	const json = (what: string, url: string, init: RequestInit = {}): Promise<unknown> =>
 		send(fetchImpl, what, url, { ...init, headers: { ...auth, ...init.headers } }).then(
-			(response) => response.json() as Promise<{ id?: unknown }>
+			(response) => response.json()
 		);
 	const fileText = async (fileId: string) =>
 		(
@@ -128,8 +140,7 @@ function openaiTransport(apiKey: string, fetchImpl: Fetch): BatchTransport {
 					method: 'POST',
 					body: form,
 				});
-				if (typeof file.id !== 'string') throw new BatchHttpError('batch upload', undefined);
-				fileId = file.id;
+				fileId = createdId('batch upload', file);
 			} catch (error) {
 				// Nothing is billed for a file: an upload that failed either way is definite.
 				throw new BatchSubmitError(error, true);
@@ -144,8 +155,7 @@ function openaiTransport(apiKey: string, fetchImpl: Fetch): BatchTransport {
 						completion_window: '24h',
 					}),
 				});
-				if (typeof batch.id !== 'string') throw new BatchHttpError('batch create', undefined);
-				return { batchId: batch.id, fileId };
+				return { batchId: createdId('batch create', batch), fileId };
 			} catch (error) {
 				const isDefinite = isDefiniteRefusal(error);
 				if (isDefinite) await deleteFile(fileId);
@@ -195,9 +205,7 @@ function anthropicTransport(apiKey: string, fetchImpl: Fetch): BatchTransport {
 						body: JSON.stringify(anthropicBatchBody(customId, captured)),
 					}
 				);
-				const batch = (await response.json()) as { id?: unknown };
-				if (typeof batch.id !== 'string') throw new BatchHttpError('batch create', undefined);
-				return { batchId: batch.id };
+				return { batchId: createdId('batch create', await response.json()) };
 			} catch (error) {
 				throw new BatchSubmitError(error, isDefiniteRefusal(error));
 			}

@@ -1,3 +1,5 @@
+import { v, type Infer } from 'convex/values';
+import { validatorDecoder } from '@owlat/worker-protocol/decodeJson';
 import { getRequired } from '../env';
 import { InternalFailure } from '../../_utils/errors';
 /**
@@ -23,16 +25,36 @@ interface MtaRegistrationResult {
 }
 
 /** One org credential as the MTA's `?includeKeys=1` list returns it. */
-interface MtaOrgCredential {
-	apiKey: string;
-	credential: {
-		organizationId: string;
-		name: string;
-		allowedDomains?: string[];
-		createdAt: number;
-		lastUsedAt?: number;
-	};
-}
+/**
+ * One entry of the MTA's `GET /credentials?includeKeys=1` list, as far as the
+ * allowedDomains backfill reads it.
+ */
+const mtaOrgCredentialValidator = v.object({
+	apiKey: v.string(),
+	credential: v.object({ allowedDomains: v.optional(v.array(v.string())) }),
+});
+type MtaOrgCredential = Infer<typeof mtaOrgCredentialValidator>;
+
+const decodeCredentialList = validatorDecoder(
+	v.object({ credentials: v.optional(v.array(mtaOrgCredentialValidator)) })
+);
+
+/** The MTA's DKIM registration answer. */
+const decodeDkimRegistration = validatorDecoder(
+	v.object({
+		success: v.boolean(),
+		selector: v.string(),
+		dnsRecord: v.string(),
+		created: v.optional(v.boolean()),
+		/** Read as text: an outcome this build does not know is left out, not refused. */
+		ownership: v.optional(v.string()),
+	})
+);
+
+const DKIM_OWNERSHIP_OUTCOMES = ['assigned', 'unchanged', 'unowned'] as const;
+type DkimOwnership = (typeof DKIM_OWNERSHIP_OUTCOMES)[number];
+const isDkimOwnership = (value: string): value is DkimOwnership =>
+	(DKIM_OWNERSHIP_OUTCOMES as readonly string[]).includes(value);
 
 export class MtaIdentityManager {
 	private baseUrl: string;
@@ -106,15 +128,9 @@ export class MtaIdentityManager {
 			throw new Error(message);
 		}
 
-		const result = (await response.json()) as {
-			success: boolean;
-			domain: string;
-			selector: string;
-			dnsRecord: string;
-			created?: boolean;
-			ownership?: 'assigned' | 'unchanged' | 'unowned';
-		};
-
+		const decoded = decodeDkimRegistration(await response.json());
+		if (!decoded.ok) throw new Error('MTA did not return a valid DKIM key pair');
+		const result = decoded.value;
 		if (!result.success || !result.selector || !result.dnsRecord) {
 			throw new Error('MTA did not return a valid DKIM key pair');
 		}
@@ -123,7 +139,9 @@ export class MtaIdentityManager {
 			selector: result.selector,
 			dnsRecord: result.dnsRecord,
 			...(result.created !== undefined ? { created: result.created } : {}),
-			...(result.ownership !== undefined ? { ownership: result.ownership } : {}),
+			...(result.ownership !== undefined && isDkimOwnership(result.ownership)
+				? { ownership: result.ownership }
+				: {}),
 		};
 	}
 
@@ -144,8 +162,11 @@ export class MtaIdentityManager {
 			const body = await response.text().catch(() => 'Unknown error');
 			throw new Error(`MTA credential list failed (${response.status}): ${body}`);
 		}
-		const result = (await response.json()) as { credentials?: MtaOrgCredential[] };
-		return result.credentials ?? [];
+		const decoded = decodeCredentialList(await response.json());
+		if (!decoded.ok) {
+			throw new Error(`MTA credential list returned an unexpected answer (${decoded.issue})`);
+		}
+		return decoded.value.credentials ?? [];
 	}
 
 	/**
