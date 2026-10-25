@@ -18,6 +18,7 @@
 
 import { convexTest } from 'convex-test';
 import { describe, expect, it, vi } from 'vitest';
+import type * as SessionOrganization from '../../lib/sessionOrganization';
 import type { WorkId } from '@convex-dev/workpool';
 import { GOVERNED_MTA_MAX_MESSAGE_AGE_MS } from '@owlat/shared';
 import type { Id } from '../../_generated/dataModel';
@@ -29,7 +30,7 @@ import { seedAssignedSend } from '../../analytics/__tests__/transportOutcomesFix
 // The singleton-org lookup goes through the BetterAuth component, which is not
 // registered in the convex-test harness.
 vi.mock('../../lib/sessionOrganization', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../../lib/sessionOrganization')>();
+	const actual = await importOriginal<typeof SessionOrganization>();
 	return { ...actual, getSingletonOrganizationId: vi.fn().mockResolvedValue('org_ambiguous') };
 });
 

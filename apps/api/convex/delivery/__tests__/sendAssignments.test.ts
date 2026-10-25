@@ -16,6 +16,9 @@
 
 import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type * as CellRoute from '../../lib/sendProviders/cellRoute';
+import type * as DeliverabilityRouteState from '../../lib/deliverabilityRouteState';
+import type * as SessionOrganization from '../../lib/sessionOrganization';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
@@ -63,7 +66,7 @@ const { routeResolutions, seamPreparations, cellStateReads } = vi.hoisted(() => 
 }));
 
 vi.mock('../../lib/sendProviders/cellRoute', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../../lib/sendProviders/cellRoute')>();
+	const actual = await importOriginal<typeof CellRoute>();
 	return {
 		...actual,
 		prepareCellMixResolver: async (
@@ -80,7 +83,7 @@ vi.mock('../../lib/sendProviders/cellRoute', async (importOriginal) => {
 });
 
 vi.mock('../../lib/deliverabilityRouteState', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../../lib/deliverabilityRouteState')>();
+	const actual = await importOriginal<typeof DeliverabilityRouteState>();
 	return {
 		...actual,
 		loadRouteStateCell: async (
@@ -105,7 +108,7 @@ vi.mock('../workpool', () => ({
 // registered in the convex-test harness. Same override the shipped routing
 // tests use, so the org fallback in `recordSendAssignments` is deterministic.
 vi.mock('../../lib/sessionOrganization', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../../lib/sessionOrganization')>();
+	const actual = await importOriginal<typeof SessionOrganization>();
 	return { ...actual, getSingletonOrganizationId: vi.fn().mockResolvedValue('org_experiment') };
 });
 

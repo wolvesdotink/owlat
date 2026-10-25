@@ -17,6 +17,7 @@
 
 import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type * as SessionOrganization from '../../lib/sessionOrganization';
 import schema from '../../schema';
 import { api } from '../../_generated/api';
 import type { Doc } from '../../_generated/dataModel';
@@ -35,7 +36,7 @@ const OTHER_ORG = 'org_intruder';
 const sessionMocks = vi.hoisted(() => ({ refuse: false }));
 
 vi.mock('../../lib/sessionOrganization', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../../lib/sessionOrganization')>();
+	const actual = await importOriginal<typeof SessionOrganization>();
 	return {
 		...actual,
 		requireOrgMember: vi.fn(async () => {

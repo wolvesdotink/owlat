@@ -17,6 +17,8 @@
 
 import { convexTest } from 'convex-test';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type * as SessionOrganization from '../../lib/sessionOrganization';
+import type * as RampControllerInputs from '../rampControllerInputs';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import { modules } from '../../__tests__/testModules';
@@ -35,7 +37,7 @@ const FAILING = { stream: 'campaign', destinationProvider: 'gmail' } as const;
 const SURVIVOR = { stream: 'campaign', destinationProvider: 'yahoo' } as const;
 
 vi.mock('../../lib/sessionOrganization', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../../lib/sessionOrganization')>();
+	const actual = await importOriginal<typeof SessionOrganization>();
 	return {
 		...actual,
 		getSingletonOrganizationId: vi.fn().mockResolvedValue(ORG),
@@ -52,7 +54,7 @@ const thrown = vi.hoisted(() => ({ message: 'route state row is unreadable' }));
 // every other cell must go through the production reader, or the surviving cell
 // would only prove that a stub can be called twice.
 vi.mock('../rampControllerInputs', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../rampControllerInputs')>();
+	const actual = await importOriginal<typeof RampControllerInputs>();
 	return {
 		...actual,
 		loadCellInput: vi.fn(async (ctx: never, args: { cell: typeof FAILING }) => {

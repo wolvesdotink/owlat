@@ -41,6 +41,7 @@
 
 import { convexTest } from 'convex-test';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type * as SessionOrganization from '../../../lib/sessionOrganization';
 
 /** The conformance fixture's transport kind. Owned by `examples/conformance/`. */
 const KIND = 'plugin.mock-esp.relay';
@@ -143,7 +144,7 @@ import {
 const ORG = 'org_plugin_reference_arm';
 
 vi.mock('../../../lib/sessionOrganization', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../../../lib/sessionOrganization')>();
+	const actual = await importOriginal<typeof SessionOrganization>();
 	return {
 		...actual,
 		getSingletonOrganizationId: vi.fn().mockResolvedValue('org_plugin_reference_arm'),

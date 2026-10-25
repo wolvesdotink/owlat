@@ -19,6 +19,7 @@
 
 import { convexTest } from 'convex-test';
 import { describe, expect, it, vi } from 'vitest';
+import type * as SessionOrganization from '../../../lib/sessionOrganization';
 import { OWN_SHARE_CEILING } from '@owlat/shared/deliverabilityRouting';
 import schema from '../../../schema';
 import { internal } from '../../../_generated/api';
@@ -40,7 +41,7 @@ import { RAMP_STREAM_CONFIGS } from '../gateConfig';
 import { absent } from './controllerFixtures';
 
 vi.mock('../../../lib/sessionOrganization', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../../../lib/sessionOrganization')>();
+	const actual = await importOriginal<typeof SessionOrganization>();
 	return {
 		...actual,
 		getSingletonOrganizationId: vi.fn().mockResolvedValue('org_ramp_integration_removal'),
