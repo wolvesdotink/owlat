@@ -286,6 +286,8 @@ export const autoDeclareWinner = internalAction({
 });
 
 // Query to get A/B test stats for a campaign
+// all-members: every member may manage and send campaigns (campaigns:manage
+// includes editors), so the A/B results of one are theirs to read.
 export const getABTestStats = campaignsQuery({
 	args: {
 		campaignId: v.id('campaigns'),

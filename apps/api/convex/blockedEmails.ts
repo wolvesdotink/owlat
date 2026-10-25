@@ -41,6 +41,9 @@ function deriveBlockSourceType(source: {
 }
 
 // List the most recent blocked emails (most-recent-first) with optional reason filter.
+// all-members: the suppression list every member may read before sending (the
+// audience Suppressions page). The provider audit evidence behind a row stays
+// admin-only in `listProviderProvenance`.
 export const listByTeam = authedQuery({
 	args: {
 		// Every stored reason is filterable, the sunset engine's `unengaged`
@@ -118,6 +121,7 @@ export const listProviderProvenance = authedQuery({
 });
 
 // Get blocked email record by email (returns the record or null)
+// all-members: the suppression state the contact detail page shows every member.
 export const getByEmail = authedQuery({
 	args: {
 		email: v.string(),
@@ -335,6 +339,7 @@ export const bulkAdd = authedMutation({
 
 // Get count of blocked emails by reason. Each count saturates at
 // BLOCKLIST_VIEW_LIMIT, matching the capped list view (see countBlockedByReason).
+// all-members: per-reason counts behind the member-readable suppression list.
 export const getCountsByReason = authedQuery({
 	args: {},
 	handler: async (ctx) => await countBlockedByReason(ctx),

@@ -97,6 +97,8 @@ export const findOrCreateDm = chatMutation({
  * List DMs the caller participates in, most recently active first.
  * Each row includes the other participants' names for the sidebar label.
  */
+// authz: self — walks only the caller's own chatRoomMembers rows (keyed by the
+// session user), so every DM returned is one the caller participates in.
 export const listMyDms = chatQuery({
 	args: { limit: v.optional(v.number()) },
 	handler: async (ctx, args, session) => {

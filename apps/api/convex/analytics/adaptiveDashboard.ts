@@ -121,6 +121,8 @@ function visibleCards<T extends { type: string }>(
  * always filtered against a real role rather than falling through to the
  * null-role path that could never be reached behind it.
  */
+// authz: self — reads only the session user's own layout row (by_user on
+// session.userId), and its cards are filtered to the caller's role.
 export const getLayout = authedQuery({
 	args: {},
 	handler: async (ctx, _args, session) => {
@@ -197,6 +199,7 @@ export const getAvailableCards = authedQuery({
  * Get raw layout configuration for editing. Keyed by the session user the floor
  * admitted — never a caller-supplied id.
  */
+// authz: self — reads only the session user's own layout row (by_user on session.userId).
 export const getRawLayout = authedQuery({
 	args: {},
 	handler: async (ctx, _args, session) =>

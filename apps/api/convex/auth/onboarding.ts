@@ -19,6 +19,8 @@ import { isDeliveryConfigured } from '../lib/sendProviders/capability';
  * across admins and browsers (the dismissal is no longer a per-user /
  * localStorage flag that disagrees with the shared progress).
  */
+// authz: self — requireSelf refuses any args.userId other than the caller's own;
+// the progress it returns is instance-wide and the same for every member.
 export const getWithActualProgress = authedQuery({
 	args: {
 		userId: v.string(),
