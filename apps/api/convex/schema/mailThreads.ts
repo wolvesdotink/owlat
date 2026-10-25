@@ -85,7 +85,7 @@ export const needsReplyValidator = v.object({
 			// when the self-check failed → shown as "unverified" in review.
 			quality: v.optional(draftQualityValidator),
 			// Legacy: alternative drafts (options[0] == draft). Nothing writes
-			// them since #1200; kept optional so older slots validate. Drop in a
+			// them any more; kept optional so older slots validate. Drop in a
 			// contract step.
 			options: v.optional(v.array(v.string())),
 			// When the slot was generated (advisory; freshness display).

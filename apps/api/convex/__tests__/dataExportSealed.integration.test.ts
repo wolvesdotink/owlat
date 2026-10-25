@@ -194,7 +194,8 @@ describe('contacts.dataExport — capability fields', () => {
 	});
 });
 
-// #1343: the export is a read boundary too.
+// The export is a read boundary too: a draft with gaps the owner never agreed
+// to is held back.
 describe('contacts.dataExport — an agent draft with gaps nobody agreed to', () => {
 	const GAPPED = 'Hi, your refund of [[refund amount]] is on its way.';
 
