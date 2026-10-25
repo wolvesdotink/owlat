@@ -20,8 +20,7 @@
 import { v } from 'convex/values';
 import { internalMutation } from '../lib/writeFence';
 import { adminMutation } from '../lib/authedFunctions';
-import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
-import { throwForbidden, throwRateLimited } from '../_utils/errors';
+import { throwRateLimited } from '../_utils/errors';
 
 // A single invitation may trigger at most one send email (initial or resend) per
 // minute — the initial send counts, so a resend seconds later is refused.
@@ -85,12 +84,7 @@ export const throttleResend = adminMutation({
 	args: {
 		invitationId: v.string(),
 	},
-	handler: async (ctx, args) => {
-		const session = await getBetterAuthSessionWithRole(ctx);
-		if (!session?.activeOrganizationId) {
-			throwForbidden('No active organization');
-		}
-
+	handler: async (ctx, args, session) => {
 		const row = await ctx.db
 			.query('invitationResends')
 			.withIndex('by_invitation', (q) => q.eq('invitationId', args.invitationId))

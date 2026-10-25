@@ -4,7 +4,14 @@ import schema from '../schema';
 import { api, internal } from '../_generated/api';
 import { createTestAutonomyRule, createTestInboundMessage, enableFeatures } from './factories';
 import type { Id } from '../_generated/dataModel';
-import { requireOrgPermission } from '../lib/sessionOrganization';
+import { getMutationContext } from '../lib/sessionOrganization';
+
+/** A member below the `organization:manage` bar, as the mutation floor resolves it. */
+const EDITOR_SESSION = {
+	userId: 'editor-user',
+	role: 'editor',
+	activeOrganizationId: 'org-1',
+} as const;
 
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
@@ -661,11 +668,11 @@ describe('autonomy.acceptGraduationSuggestion', () => {
 			});
 		});
 
-		vi.mocked(requireOrgPermission).mockRejectedValueOnce(new Error('forbidden'));
+		vi.mocked(getMutationContext).mockResolvedValueOnce(EDITOR_SESSION);
 
 		await expect(
 			t.mutation(api.autonomySuggestions.acceptGraduationSuggestion, { suggestionId })
-		).rejects.toThrow();
+		).rejects.toThrow('Only owners and admins can widen autonomy');
 
 		await t.run(async (ctx) => {
 			const rule = await ctx.db
@@ -1093,13 +1100,13 @@ describe('autonomy.setSenderAutonomy', () => {
 
 	it('rejects an unauthorized (non-admin) caller', async () => {
 		const t = convexTest(schema, modules);
-		vi.mocked(requireOrgPermission).mockRejectedValueOnce(new Error('forbidden'));
+		vi.mocked(getMutationContext).mockResolvedValueOnce(EDITOR_SESSION);
 		await expect(
 			t.mutation(api.autonomy.setSenderAutonomy, {
 				category: 'support',
 				sender: 'vip@corp.com',
 				isEnabled: true,
 			})
-		).rejects.toThrow();
+		).rejects.toThrow('Only owners and admins can change autonomy rules');
 	});
 });

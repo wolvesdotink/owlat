@@ -11,7 +11,7 @@ import { internalQuery, internalAction } from './_generated/server';
 import { internalMutation } from './lib/writeFence';
 import type { MutationCtx } from './_generated/server';
 import { authedQuery, authedMutation } from './lib/authedFunctions';
-import { requireOrgPermission, hasPermission, requirePermission } from './lib/sessionOrganization';
+import { hasPermission, requirePermission } from './lib/sessionOrganization';
 import { isSharedInboxReader } from './inbox/access';
 import { transition as threadTransition } from './inbox/threads/module';
 import { internal } from './_generated/api';
@@ -330,10 +330,9 @@ export const updateChannelConfig = authedMutation({
 		displayName: v.optional(v.string()),
 		config: v.optional(v.string()),
 	},
-	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'organization:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'organization:manage'),
 			'Only owners and admins can configure channels'
 		);
 		const existing = await ctx.db

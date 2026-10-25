@@ -17,7 +17,12 @@ import type { Id } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import { authedMutation } from '../lib/authedFunctions';
-import { requireOrgPermission } from '../lib/sessionOrganization';
+import {
+	hasPermission,
+	requireOrgPermission,
+	requirePermission,
+	type MutationSessionContext,
+} from '../lib/sessionOrganization';
 import { recordAuditLog, type AuditAction } from '../lib/auditLog';
 import { throwInvalidState } from '../_utils/errors';
 import {
@@ -69,18 +74,20 @@ async function recordConnectedAppAudit(
 	});
 }
 
-/** Apply a status→status lifecycle edge, or fail closed on an illegal request. */
+/**
+ * Apply a status→status lifecycle edge, or fail closed on an illegal request.
+ * Takes the session the caller's `authedMutation` floor resolved and owns the
+ * owner/admin check on it, so every edge is gated in one place.
+ */
 async function applyLifecycleTransition(
 	ctx: MutationCtx,
+	session: MutationSessionContext,
 	connectedAppId: Id<'connectedApps'>,
 	transition: ConnectedAppTransition,
 	action: AuditAction
 ): Promise<{ success: true }> {
-	const { userId, activeOrganizationId } = await requireOrgPermission(
-		ctx,
-		MANAGE_PERMISSION,
-		MANAGE_MESSAGE
-	);
+	requirePermission(hasPermission(session.role, MANAGE_PERMISSION), MANAGE_MESSAGE);
+	const { userId, activeOrganizationId } = session;
 	const app = await loadConnectedAppInOrg(ctx, connectedAppId, activeOrganizationId);
 	const next = nextConnectedAppStatus(app.status, transition);
 	if (next === null) {
@@ -107,20 +114,26 @@ async function applyLifecycleTransition(
 }
 
 /** Re-enable a disabled app. Illegal on an enabled or revoked app. */
-// authz: owner/admin gate (requireOrgPermission 'organization:manage') is baked
+// authz: owner/admin gate ('organization:manage' on the threaded session) is baked
 // into applyLifecycleTransition, the shared helper every edge runs through.
 export const enable = authedMutation({
 	args: { connectedAppId: v.id('connectedApps') },
-	handler: (ctx, args) =>
-		applyLifecycleTransition(ctx, args.connectedAppId, 'enable', 'connected_app.enabled'),
+	handler: (ctx, args, session) =>
+		applyLifecycleTransition(ctx, session, args.connectedAppId, 'enable', 'connected_app.enabled'),
 });
 
 /** Temporarily disable an enabled app. Illegal on a disabled or revoked app. */
 // authz: owner/admin gate baked into applyLifecycleTransition (see enable).
 export const disable = authedMutation({
 	args: { connectedAppId: v.id('connectedApps') },
-	handler: (ctx, args) =>
-		applyLifecycleTransition(ctx, args.connectedAppId, 'disable', 'connected_app.disabled'),
+	handler: (ctx, args, session) =>
+		applyLifecycleTransition(
+			ctx,
+			session,
+			args.connectedAppId,
+			'disable',
+			'connected_app.disabled'
+		),
 });
 
 /**
@@ -131,19 +144,16 @@ export const disable = authedMutation({
 // authz: owner/admin gate baked into applyLifecycleTransition (see enable).
 export const revoke = authedMutation({
 	args: { connectedAppId: v.id('connectedApps') },
-	handler: (ctx, args) =>
-		applyLifecycleTransition(ctx, args.connectedAppId, 'revoke', 'connected_app.revoked'),
+	handler: (ctx, args, session) =>
+		applyLifecycleTransition(ctx, session, args.connectedAppId, 'revoke', 'connected_app.revoked'),
 });
 
 /** Permanently delete a connected-app record. Legal from any status. */
 export const remove = authedMutation({
 	args: { connectedAppId: v.id('connectedApps') },
-	handler: async (ctx, args): Promise<{ success: true }> => {
-		const { userId, activeOrganizationId } = await requireOrgPermission(
-			ctx,
-			MANAGE_PERMISSION,
-			MANAGE_MESSAGE
-		);
+	handler: async (ctx, args, session): Promise<{ success: true }> => {
+		requirePermission(hasPermission(session.role, MANAGE_PERMISSION), MANAGE_MESSAGE);
+		const { userId, activeOrganizationId } = session;
 		const app = await loadConnectedAppInOrg(ctx, args.connectedAppId, activeOrganizationId);
 		await revokeApiKeysForPlugin(ctx, app.pluginId);
 		await ctx.db.delete(args.connectedAppId);

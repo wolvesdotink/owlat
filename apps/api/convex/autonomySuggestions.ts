@@ -14,7 +14,7 @@
 import { v } from 'convex/values';
 import { internalMutation } from './lib/writeFence';
 import { adminQuery, authedMutation } from './lib/authedFunctions';
-import { requireOrgPermission } from './lib/sessionOrganization';
+import { hasPermission, requirePermission } from './lib/sessionOrganization';
 import { assertFeatureEnabled } from './lib/featureFlags';
 import { getCategoryRule } from './lib/autonomyRules';
 
@@ -103,10 +103,9 @@ export const clearGraduationSuggestion = internalMutation({
  */
 export const acceptGraduationSuggestion = authedMutation({
 	args: { suggestionId: v.id('autonomySuggestions') },
-	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'organization:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'organization:manage'),
 			'Only owners and admins can widen autonomy'
 		);
 		await assertFeatureEnabled(ctx, 'ai.autonomy');
