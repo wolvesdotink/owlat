@@ -166,4 +166,77 @@ describe('useInboxTriage', () => {
 		expect(ids(visible.value)).toEqual(['a', 'b', 'c']);
 		expect(toasts).toHaveLength(0);
 	});
+
+	it('keeps a batch of more rows than the undo stack holds as one entry that undoes them all', async () => {
+		const many = Array.from({ length: 12 }, (_, i) => ({ _id: `r${i}` }));
+		const rows = ref<Row[]>([...many, { _id: 'z' }]);
+		const { visible, batch } = useInboxTriage(rows);
+		const group = {
+			key: 'inbox:resolved',
+			label: (count: number) => `Resolved ${count} conversations`,
+		};
+		const undone: string[] = [];
+		const run = batch();
+		const results = await Promise.all(
+			many.map((row) =>
+				run.run({
+					id: row._id,
+					leavesView: true,
+					// One write fails: it is rolled back and left out of the undo.
+					mutate: async () =>
+						row._id === 'r5' ? ({ ok: false } as const) : ({ ok: true, result: null } as const),
+					inverse: async () => {
+						undone.push(row._id);
+					},
+				})
+			)
+		);
+		expect(results.filter(Boolean)).toHaveLength(11);
+		// Nothing is undoable until the run commits.
+		expect(toasts).toHaveLength(0);
+		run.commit({ label: 'Resolved', group, concurrency: 4 });
+
+		const undo = usePostboxTriageUndo();
+		expect(undo.depth.value).toBe(1);
+		expect(ids(visible.value)).toEqual(['r5', 'z']);
+		expect(toasts.map((t) => [t.message, t.action?.label])).toEqual([
+			['Resolved 11 conversations', 'Undo'],
+		]);
+
+		toasts[0]!.action!.onAction();
+		await vi.advanceTimersByTimeAsync(0);
+		expect(undone.sort()).toEqual(
+			many
+				.map((r) => r._id)
+				.filter((id) => id !== 'r5')
+				.sort()
+		);
+		expect(ids(visible.value)).toEqual([...many.map((r) => r._id), 'z']);
+		expect(toasts).toHaveLength(0);
+	});
+
+	it('registers nothing for a batch in which no row landed, and the one-row text for one', async () => {
+		const rows = ref<Row[]>([{ _id: 'a' }, { _id: 'b' }]);
+		const { batch } = useInboxTriage(rows);
+		const group = { key: 'inbox:resolved', label: (count: number) => `Resolved ${count}` };
+		const none = batch();
+		await none.run({
+			id: 'a',
+			leavesView: true,
+			mutate: async () => ({ ok: false }) as const,
+			inverse: vi.fn(),
+		});
+		none.commit({ label: 'Resolved', group });
+		expect(toasts).toHaveLength(0);
+
+		const one = batch();
+		await one.run({
+			id: 'b',
+			leavesView: true,
+			mutate: async () => ({ ok: true, result: null }) as const,
+			inverse: vi.fn(),
+		});
+		one.commit({ label: 'Resolved', group });
+		expect(toasts.map((t) => t.message)).toEqual(['Resolved']);
+	});
 });

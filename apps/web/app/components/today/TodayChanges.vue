@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import type { TodayChange } from '~/utils/todayDigest';
+import { useTodayLineMenu } from '~/composables/useTodayLineMenu';
+import RowContextMenu from '~/components/RowContextMenu.vue';
 
 /**
  * "What changed": conversations the viewer already knew (they opened or
  * answered them) that moved since they last looked. Each row says what is
- * new, and the new messages are linked, quietly, as its sources.
+ * new, and the new messages are linked, quietly, as its sources. A right-click
+ * or a long-press on a row offers its verbs (open, done) with their keys.
  */
 const props = withDefaults(
 	defineProps<{ changes: readonly TodayChange[]; hidden: number; moreHref?: string }>(),
@@ -12,6 +15,10 @@ const props = withDefaults(
 );
 const emit = defineEmits<{ done: [change: TodayChange] }>();
 const { t } = useI18n();
+const lineMenu = useTodayLineMenu();
+const menuFor = (change: TodayChange) => () =>
+	lineMenu(change, { done: () => emit('done', change) });
+
 function latestName(change: TodayChange): string {
 	const s = change.latest;
 	return s ? s.fromName || s.fromAddress : '';
@@ -28,48 +35,51 @@ function latestName(change: TodayChange): string {
 			<span class="normal-case tracking-normal">{{ t('components.today.changed.subtitle') }}</span>
 		</h3>
 		<ul class="divide-y divide-border-subtle rounded-xl border border-border-subtle bg-bg-elevated">
-			<li
-				v-for="change in props.changes"
-				:key="change.key"
-				class="group relative flex items-start gap-3 px-4 py-3 focus-within:bg-bg-surface"
-				tabindex="-1"
-				data-today-line
-				:data-today-key="change.key"
-			>
-				<div class="min-w-0 flex-1">
-					<p class="truncate text-sm font-medium text-text-primary">
-						{{ change.subject || t('components.shell.noSubject') }}
-					</p>
-					<p class="mt-0.5 text-xs leading-relaxed text-text-secondary">
-						<template v-if="change.summary">
-							<TodaySourceLink :text="change.summary" :sources="change.sources" />
-						</template>
-						<template v-else-if="change.latest">
-							{{
-								t(
-									'components.today.changed.newFrom',
-									{ count: change.newMessages, name: latestName(change) },
-									change.newMessages
-								)
-							}}
-							<TodaySourceLink
-								:text="change.latest.snippet || change.latest.subject"
-								:sources="change.sources"
-							/>
-						</template>
-					</p>
-				</div>
-				<span class="shrink-0 pt-0.5 text-2xs text-text-tertiary">{{
-					formatCompactRelativeTime(change.at)
-				}}</span>
-				<button
-					type="button"
-					class="absolute right-14 top-3 rounded-md border border-border-subtle bg-bg-elevated px-2 py-0.5 text-2xs text-text-secondary opacity-0 transition-opacity hover:text-text-primary focus-visible:opacity-100 group-hover:opacity-100 max-md:static max-md:opacity-100"
-					@click="emit('done', change)"
-				>
-					{{ t('components.today.line.done') }}
-				</button>
-			</li>
+			<RowContextMenu v-for="change in props.changes" :key="change.key" :items="menuFor(change)">
+				<template #default="{ rowBindings }">
+					<li
+						class="group relative flex items-start gap-3 px-4 py-3 focus-within:bg-bg-surface"
+						tabindex="-1"
+						data-today-line
+						:data-today-key="change.key"
+						v-bind="rowBindings"
+					>
+						<div class="min-w-0 flex-1">
+							<p class="truncate text-sm font-medium text-text-primary">
+								{{ change.subject || t('components.shell.noSubject') }}
+							</p>
+							<p class="mt-0.5 text-xs leading-relaxed text-text-secondary">
+								<template v-if="change.summary">
+									<TodaySourceLink :text="change.summary" :sources="change.sources" />
+								</template>
+								<template v-else-if="change.latest">
+									{{
+										t(
+											'components.today.changed.newFrom',
+											{ count: change.newMessages, name: latestName(change) },
+											change.newMessages
+										)
+									}}
+									<TodaySourceLink
+										:text="change.latest.snippet || change.latest.subject"
+										:sources="change.sources"
+									/>
+								</template>
+							</p>
+						</div>
+						<span class="shrink-0 pt-0.5 text-2xs text-text-tertiary">{{
+							formatCompactRelativeTime(change.at)
+						}}</span>
+						<button
+							type="button"
+							class="absolute right-14 top-3 rounded-md border border-border-subtle bg-bg-elevated px-2 py-0.5 text-2xs text-text-secondary opacity-0 transition-opacity hover:text-text-primary focus-visible:opacity-100 group-hover:opacity-100 max-md:static max-md:opacity-100"
+							@click="emit('done', change)"
+						>
+							{{ t('components.today.line.done') }}
+						</button>
+					</li>
+				</template>
+			</RowContextMenu>
 		</ul>
 		<p v-if="props.hidden > 0" class="mt-2 text-xs text-text-tertiary">
 			{{ t('components.today.changed.more', { count: props.hidden }, props.hidden) }}
