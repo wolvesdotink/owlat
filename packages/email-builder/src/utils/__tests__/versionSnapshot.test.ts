@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { ref, nextTick } from 'vue';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
+import { effectScope, ref, nextTick, type EffectScope } from 'vue';
 import {
 	deserializeVersionSnapshot,
 	formatSnapshotSize,
@@ -94,25 +94,44 @@ describe('formatSnapshotSize', () => {
 	});
 });
 
-// Real timers with a tiny debounce drive the history commit.
+// Fake timers with a tiny debounce drive the history commit.
 const DEBOUNCE = 2;
-const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 describe('restoring a snapshot into the editor', () => {
+	let scope: EffectScope | null = null;
+
+	beforeEach(() => {
+		vi.useFakeTimers();
+	});
+
+	afterEach(() => {
+		scope?.stop();
+		scope = null;
+		vi.useRealTimers();
+	});
+
+	// Let the watcher see the change, then run the debounced history push.
+	const commit = async () => {
+		await nextTick();
+		vi.advanceTimersByTime(DEBOUNCE);
+		await nextTick();
+	};
+
 	it('is recorded as an undoable edit, not an unrecoverable jump', async () => {
 		const blocks = ref<EditorBlock[]>([block('a', 'original')]);
 		const name = ref('Newsletter');
 		const subject = ref('Hi');
-		const history = useHistory(blocks, name, subject, {
-			debounceMs: DEBOUNCE,
-			checkpointInterval: 10,
-		});
+		scope = effectScope();
+		const history = scope.run(() =>
+			useHistory(blocks, name, subject, {
+				debounceMs: DEBOUNCE,
+				checkpointInterval: 10,
+			})
+		)!;
 
 		// The user edits, then saves — the save is what the backend snapshots.
 		blocks.value = [block('a', 'edited')];
-		await nextTick();
-		await sleep(DEBOUNCE + 5);
-		await nextTick();
+		await commit();
 		const snapshot = serializeHistoryState({
 			blocks: blocks.value,
 			name: name.value,
@@ -122,18 +141,14 @@ describe('restoring a snapshot into the editor', () => {
 		// …then keeps editing past it.
 		blocks.value = [block('a', 'later work')];
 		name.value = 'Renamed';
-		await nextTick();
-		await sleep(DEBOUNCE + 5);
-		await nextTick();
+		await commit();
 
 		// Restore = assign the deserialized state to the very same refs.
 		const restored = deserializeVersionSnapshot(snapshot);
 		blocks.value = restored.blocks;
 		name.value = restored.name;
 		subject.value = restored.subject;
-		await nextTick();
-		await sleep(DEBOUNCE + 5);
-		await nextTick();
+		await commit();
 
 		expect(htmlOf(blocks.value[0])).toBe('edited');
 		expect(name.value).toBe('Newsletter');

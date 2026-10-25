@@ -420,6 +420,12 @@ export interface NotificationRouting {
 	dispose: () => void;
 	/** Settles once registration (and any carried action) has finished. */
 	ready: Promise<void>;
+	/**
+	 * Settles once registration and every action delivered so far have been
+	 * handled. Deliveries run fire-and-forget from the event callback, so this
+	 * is the only point that says their work is done.
+	 */
+	idle: () => Promise<void>;
 }
 
 /**
@@ -442,12 +448,19 @@ export function setupNotificationActionRouting(
 	};
 	activeRouting = dispose;
 
+	const handling = new Set<Promise<void>>();
+	const handle = (payload: NotificationActionPayload) => {
+		const run = handleNotificationAction(payload, ctx).finally(() => handling.delete(run));
+		handling.add(run);
+		return run;
+	};
+
 	const ready = (async () => {
 		try {
 			if (!(await isMainWindow()) || disposed) return;
 			const { onNotificationAction } = await import('@owlat/desktop/src/notifications');
 			const off = await onNotificationAction((payload) => {
-				if (!disposed && firstDelivery(payload)) void handleNotificationAction(payload, ctx);
+				if (!disposed && firstDelivery(payload)) void handle(payload);
 			});
 			// The owner went away while we were registering: drop the late listener.
 			if (disposed) {
@@ -460,5 +473,10 @@ export function setupNotificationActionRouting(
 			// Not running under Tauri.
 		}
 	})();
-	return { dispose, ready };
+	const idle = async () => {
+		await ready;
+		// Deliveries that arrive while earlier ones settle are awaited too.
+		while (handling.size > 0) await Promise.allSettled(handling);
+	};
+	return { dispose, ready, idle };
 }

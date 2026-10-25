@@ -3,6 +3,7 @@
  * the real `safeRedirect`, so the open-redirect filter is the one that ships.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { flushPromises } from '@vue/test-utils';
 import type { RouteLocationNormalized } from 'vue-router';
 import {
 	authClientMock,
@@ -79,7 +80,7 @@ describe('guest middleware', () => {
 			settled = true;
 			return result;
 		});
-		await new Promise((resolve) => setTimeout(resolve, 20));
+		await flushPromises();
 		expect(settled).toBe(false);
 
 		signIn();

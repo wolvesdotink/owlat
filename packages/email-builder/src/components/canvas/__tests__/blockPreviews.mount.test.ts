@@ -9,8 +9,8 @@
 // through unit tests: the button block rendered fine under happy-dom while
 // being invisible in real browsers (white text on a wiped background — see the
 // background-shorthand regression below).
-import { describe, it, expect, afterEach } from 'vitest';
-import { createApp, h, type App } from 'vue';
+import { describe, it, expect, afterEach, vi } from 'vitest';
+import { createApp, h, nextTick, type App } from 'vue';
 import DocumentBlock from '../DocumentBlock.vue';
 import DocumentCanvas from '../DocumentCanvas.vue';
 import { getRegisteredTypes } from '../../../registry';
@@ -30,7 +30,17 @@ afterEach(() => {
 	apps.forEach((a) => a.unmount());
 	apps = [];
 	document.body.innerHTML = '';
+	vi.useRealTimers();
 });
+
+/**
+ * Run the debounced fragment render (and the resize it schedules) on the fake
+ * clock, then let the canvas re-render with the result.
+ */
+async function finishRender() {
+	await vi.runOnlyPendingTimersAsync();
+	await nextTick();
+}
 
 function mountBlock(block: EditorBlock): { host: HTMLElement; errors: unknown[] } {
 	const host = document.createElement('div');
@@ -54,13 +64,14 @@ describe('every registered block type renders on the canvas', () => {
 	});
 
 	it.each(getRegisteredTypes())('renders a default %s block without errors', async (type) => {
+		vi.useFakeTimers();
 		const block = createBlock(type as BlockType, defaultTheme);
 		const { host, errors } = mountBlock(block);
 		expect(errors).toEqual([]);
 		if (IFRAME_TYPES.has(type)) {
-			// Wait out the debounced renderBlockFragment call so the iframe /
+			// Run the debounced renderBlockFragment call so the iframe /
 			// empty-placeholder decision has settled.
-			await new Promise((r) => setTimeout(r, 250));
+			await finishRender();
 			// A content-less default (video without URL, carousel without
 			// images, comment-only rawHtml) must show the labelled
 			// placeholder — never a zero-height invisible sliver.
@@ -75,11 +86,12 @@ describe('every registered block type renders on the canvas', () => {
 	});
 
 	it('shows the empty placeholder for a content-less video block, and a real iframe for a table', async () => {
+		vi.useFakeTimers();
 		const video = createBlock('video', defaultTheme);
 		const { host: videoHost } = mountBlock(video);
 		const table = createBlock('table', defaultTheme);
 		const { host: tableHost } = mountBlock(table);
-		await new Promise((r) => setTimeout(r, 300));
+		await finishRender();
 		expect(videoHost.textContent).toContain('select to configure');
 		expect(videoHost.querySelector('iframe')).toBeNull();
 		expect(tableHost.querySelector('iframe')).toBeTruthy();
