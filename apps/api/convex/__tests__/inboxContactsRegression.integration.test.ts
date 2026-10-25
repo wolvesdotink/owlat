@@ -20,6 +20,7 @@ import schema from '../schema';
 import { api } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { enableFeatures, createTestContact } from './factories';
+import type * as SessionOrganizationModule from '../lib/sessionOrganization';
 
 // Mutable session so a single test can switch between owner/admin/editor and
 // between user ids (mirrors the chat.integration.test.ts pattern).
@@ -33,7 +34,7 @@ const setUser = (id: string, role: 'owner' | 'admin' | 'editor' = 'owner') => {
 };
 
 vi.mock('../lib/sessionOrganization', async () => {
-	const actual = await vi.importActual<typeof import('../lib/sessionOrganization')>(
+	const actual = await vi.importActual<typeof SessionOrganizationModule>(
 		'../lib/sessionOrganization'
 	);
 	return {
@@ -53,7 +54,7 @@ vi.mock('../lib/sessionOrganization', async () => {
 		requireOrgPermission: vi
 			.fn()
 			.mockImplementation(async (_ctx: unknown, permission: string, message?: string) => {
-				const mod: typeof import('../lib/sessionOrganization') = actual;
+				const mod: typeof SessionOrganizationModule = actual;
 				mod.requirePermission(
 					mod.hasPermission(
 						sessionMock.user.role as Parameters<typeof mod.hasPermission>[0],

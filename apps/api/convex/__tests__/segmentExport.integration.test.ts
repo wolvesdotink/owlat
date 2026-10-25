@@ -26,7 +26,7 @@ import type { Infer } from 'convex/values';
 import schema from '../schema';
 import { api } from '../_generated/api';
 import type { MutationCtx } from '../_generated/server';
-import { segmentFiltersValidator } from '../lib/convexValidators';
+import type { segmentFiltersValidator } from '../lib/convexValidators';
 
 const sessionMock = vi.hoisted(() => ({ member: true }));
 
