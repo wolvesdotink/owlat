@@ -15,8 +15,9 @@
  * way to `setTimeout`, so the gate can run a job left behind at once instead
  * of waiting for its timer.
  *
- * If a convex-test upgrade changes either line, the transform throws and every
- * test that loads convex-test fails, rather than the gate going quiet.
+ * If a convex-test upgrade changes any of these lines, the transform throws
+ * and every test that loads convex-test fails, rather than the gate going
+ * quiet.
  */
 
 export const SCHEDULED_FAILURE_SINK = 'owlat.test.scheduledFailureSink';
