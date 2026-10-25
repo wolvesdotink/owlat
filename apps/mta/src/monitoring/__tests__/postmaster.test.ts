@@ -902,9 +902,11 @@ describe('Google Postmaster v2 collection', () => {
 
 	it('can acquire a new lease after the previous lease expires', async () => {
 		vi.restoreAllMocks();
+		// The mock Redis expires keys against Date.now(), so fake Date alone moves
+		// the lease past its expiry.
+		vi.useFakeTimers({ toFake: ['Date'] });
 		const redis = new Redis();
-		await redis.set('mta:postmaster:collection-lock', 'expired-worker', 'PX', 1);
-		await new Promise((resolve) => setTimeout(resolve, 5));
+		await redis.set('mta:postmaster:collection-lock', 'expired-worker', 'PX', 5);
 		const fetchMock = vi.fn(async (input: string | URL | Request) =>
 			String(input).includes('/token')
 				? response({ access_token: 'token', expires_in: 3600 })
@@ -912,6 +914,12 @@ describe('Google Postmaster v2 collection', () => {
 		);
 		vi.stubGlobal('fetch', fetchMock);
 
+		// Still inside the other worker's lease: the sweep stands down.
+		vi.advanceTimersByTime(4);
+		await fetchPostmasterData(redis, config);
+		expect(fetchMock).not.toHaveBeenCalled();
+
+		vi.advanceTimersByTime(2);
 		await fetchPostmasterData(redis, config);
 
 		expect(fetchMock).toHaveBeenCalled();

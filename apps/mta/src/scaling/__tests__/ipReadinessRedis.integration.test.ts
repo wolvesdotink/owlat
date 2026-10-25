@@ -1,8 +1,11 @@
-import { execFileSync } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
-import Redis from 'ioredis';
+import type Redis from 'ioredis';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { dockerRedisAvailable } from '../../__tests__/helpers/redisCluster.js';
+import {
+	startRedisStandaloneFixture,
+	stopRedisStandaloneFixture,
+	type RedisStandaloneFixture,
+} from '../../__tests__/helpers/redisStandalone.js';
 import type { MtaConfig } from '../../config.js';
 import { queueConvexWebhook } from '../../webhooks/convexNotifier.js';
 import {
@@ -21,43 +24,13 @@ vi.mock('../../webhooks/convexNotifier.js', () => ({
 }));
 
 describe.runIf(dockerRedisAvailable())('IP readiness atomicity on standalone Redis', () => {
-	const port = 19_000 + Math.floor(Math.random() * 1_000);
-	const container = `owlat-ip-readiness-${randomUUID().slice(0, 8)}`;
 	const ip = '2001:db8::10';
+	let fixture: RedisStandaloneFixture | undefined;
 	let redis: Redis;
 
 	beforeAll(async () => {
-		execFileSync(
-			'docker',
-			[
-				'run',
-				'-d',
-				'--rm',
-				'--network',
-				'host',
-				'--name',
-				container,
-				'redis:7-alpine',
-				'redis-server',
-				'--port',
-				String(port),
-				'--appendonly',
-				'no',
-				'--protected-mode',
-				'no',
-			],
-			{ stdio: 'ignore' }
-		);
-		redis = new Redis(port, '127.0.0.1', { lazyConnect: true, maxRetriesPerRequest: 1 });
-		for (let attempt = 0; attempt < 30; attempt++) {
-			try {
-				await redis.connect();
-				break;
-			} catch {
-				await new Promise((resolve) => setTimeout(resolve, 100));
-			}
-		}
-		await redis.ping();
+		fixture = await startRedisStandaloneFixture('ip-readiness');
+		redis = fixture.client;
 	}, 15_000);
 
 	beforeEach(async () => {
@@ -66,12 +39,7 @@ describe.runIf(dockerRedisAvailable())('IP readiness atomicity on standalone Red
 	});
 
 	afterAll(async () => {
-		await redis?.quit();
-		try {
-			execFileSync('docker', ['rm', '-f', container], { stdio: 'ignore' });
-		} catch {
-			// Container may already have exited; --rm handled it.
-		}
+		await stopRedisStandaloneFixture(fixture);
 	});
 
 	it('atomically emits one pending marker across racing generation-CAS blocks', async () => {
@@ -157,8 +125,11 @@ describe.runIf(dockerRedisAvailable())('IP readiness atomicity on standalone Red
 		expect(await redis.hget(IP_READINESS_ALERT_SCAN_STATE, 'cursor')).not.toBe('1');
 
 		// Simulate a process restart: the new client has no in-memory scan state.
+		const restarted = redis.duplicate();
 		await redis.quit();
-		redis = new Redis(port, '127.0.0.1', { maxRetriesPerRequest: 1 });
+		redis = restarted;
+		// Teardown quits the fixture's client, which is now the restarted one.
+		fixture!.client = restarted;
 		await redis.ping();
 		const persistedCursor = await redis.hget(IP_READINESS_ALERT_SCAN_STATE, 'cursor');
 		expect(persistedCursor).toMatch(/^\d+$/);

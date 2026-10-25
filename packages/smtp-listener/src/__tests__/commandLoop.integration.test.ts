@@ -169,19 +169,16 @@ describe('command loop over a raw socket', () => {
 		expect(c.closed).toBe(true);
 	});
 
-	it('assembles a DATA body delivered across multiple TCP segments', async () => {
-		// Each segment arrives as its own chunk with NO terminator, forcing the
-		// reader's no-terminator flush/keep path (partial-terminator carry) before
-		// the final `.<CRLF>` completes the body.
+	it('assembles a DATA body written in several pieces', async () => {
+		// TCP may coalesce the writes; reader.test.ts pins each chunk boundary
+		// (the partial-terminator carry) deterministically.
 		const h = await start();
 		const c = await Client.connect(h.port);
 		await c.waitCode(220);
 		c.write('MAIL FROM:<a@a.test>\r\nRCPT TO:<b@b.test>\r\nDATA\r\n');
 		await c.waitCode(354);
 		c.write('first line of the body\r\n');
-		await new Promise((r) => setTimeout(r, 50));
 		c.write('second line of the body\r\n');
-		await new Promise((r) => setTimeout(r, 50));
 		c.write('.\r\n');
 		await c.waitCode(250);
 		expect(h.messages[0]?.toString()).toBe('first line of the body\r\nsecond line of the body\r\n');
@@ -197,8 +194,7 @@ describe('command loop over a raw socket', () => {
 		c.write('MAIL FROM:<a@a.test>\r\nRCPT TO:<b@b.test>\r\nDATA\r\n');
 		await c.waitCode(354);
 		c.write('partial body with no terminator\r\n');
-		await new Promise((r) => setTimeout(r, 50));
-		c.socket.end(); // FIN mid-DATA
+		c.socket.end(); // FIN mid-DATA, after the partial body on the same stream
 		await c.waitClose();
 		expect(c.closed).toBe(true);
 		expect(h.messages).toHaveLength(0);

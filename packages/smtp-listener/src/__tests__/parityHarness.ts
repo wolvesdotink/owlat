@@ -95,15 +95,12 @@ export interface Step {
 
 /**
  * Run a scripted conversation against `port`. Returns the greeting reply first,
- * then one {@link WireReply} per step. Throws on timeout so a hung dialogue
- * fails loudly rather than hanging the suite.
+ * then one {@link WireReply} per step. Every advance is driven by the peer's
+ * replies or its close; a dialogue that stalls leaves the promise pending and
+ * fails on the runner's budget.
  */
-export function converse(
-	port: number,
-	steps: readonly (string | Step)[],
-	timeoutMs = 3000
-): Promise<WireReply[]> {
-	return new Promise<WireReply[]>((resolve, reject) => {
+export function converse(port: number, steps: readonly (string | Step)[]): Promise<WireReply[]> {
+	return new Promise<WireReply[]>((resolve) => {
 		const replies: WireReply[] = [];
 		const socket = net.connect(port, '127.0.0.1');
 		socket.setEncoding('utf8');
@@ -112,13 +109,7 @@ export function converse(
 		let stepIndex = -1; // -1 = awaiting greeting
 		let awaitingClose = false;
 
-		const timer = setTimeout(() => {
-			socket.destroy();
-			reject(new Error(`parity converse timeout at step ${stepIndex}; buffer:\n${buffer}`));
-		}, timeoutMs);
-
 		const finish = (): void => {
-			clearTimeout(timer);
 			socket.destroy();
 			resolve(replies);
 		};
@@ -190,13 +181,11 @@ export function converse(
 		socket.on('close', () => {
 			if (closed) return;
 			closed = true;
-			clearTimeout(timer);
 			resolve(replies);
 		});
 		socket.on('error', () => {
 			if (closed) return;
 			closed = true;
-			clearTimeout(timer);
 			resolve(replies);
 		});
 	});
