@@ -198,30 +198,33 @@ export function useCommandPaletteMailScope(options: CommandPaletteMailScopeOptio
 				isSearchRefetching.value)
 	);
 
-	const hitItems = computed<PaletteItem[]>(() =>
-		(searchData.value?.messages ?? []).map((message) => ({
+	const hitItems = computed<PaletteItem[]>(() => {
+		// Captured now, not when the hit runs: the palette closes (and clears its
+		// box) before it runs the chosen row.
+		const searched = options.query.value;
+		// The searched words travel along, so the conversation opens with them
+		// found (find in conversation).
+		const find = postboxFindTermsOf(parseSearchQuery(searched));
+		return (searchData.value?.messages ?? []).map((message) => ({
 			id: `mail-hit:${message._id}`,
 			objectId: message._id,
 			label: message.subject?.trim() || t('components.appCommandPalette.noSubject'),
 			subtitle: `${message.fromName || message.fromAddress} · ${message.snippet}`.trim(),
 			icon: 'lucide:mail',
 			run: () => {
-				options.onRemember(options.query.value);
+				options.onRemember(searched);
 				// A hit may live in another mailbox (a team inbox); point the Postbox
 				// selection at it first or the thread opens as "not found".
 				if (message.mailboxId) setActiveMailboxId(message.mailboxId);
 				// The Postbox route takes a system-folder role OR a folder id, and the
 				// message document carries the id — no folder read needed.
-				// The searched words travel along, so the conversation opens with them
-				// found (find in conversation).
-				const find = postboxFindTermsOf(parseSearchQuery(options.query.value));
 				void navigateTo({
 					path: `/dashboard/postbox/${message.folderId}/${message._id}`,
 					query: find ? { [POSTBOX_FIND_QUERY_PARAM]: find } : {},
 				});
 			},
-		}))
-	);
+		}));
+	});
 
 	return { suggestionItems, hitItems, isSearching, resetQuery };
 }

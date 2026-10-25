@@ -95,17 +95,37 @@ describe('useCommandPaletteMailScope', () => {
 
 	it('opens a hit with the searched words for find in conversation, never an operator', async () => {
 		const hit = { _id: 'mm1', folderId: 'inbox', mailboxId: 'mailbox-1', subject: 'Invoice' };
+		const remembered: string[] = [];
 		const run = async (text: string) => {
-			const mail = mailScope(ref(text));
+			const query = ref(text);
+			const mail = scope.run(() =>
+				useCommandPaletteMailScope({
+					query,
+					caret: ref(text.length),
+					enabled: ref(true),
+					onReplace: vi.fn(),
+					onRemember: (term) => remembered.push(term),
+				})
+			)!;
 			queries[queries.length - 1]!.data.value = { messages: [hit] };
 			await nextTick();
-			mail.hitItems.value[0]!.run();
+			// The palette's real sequence: pick the row, close (clearing the box and
+			// resetting the scope), then run the row.
+			const item = mail.hitItems.value[0]!;
+			query.value = '';
+			mail.resetQuery();
+			await nextTick();
+			item.run();
 		};
 		await run('from:ines@example.com "refund the duplicate" is:unread');
 		await run('from:ines@example.com is:unread');
 		expect(vi.mocked(navigateTo).mock.calls.map(([to]) => to)).toEqual([
 			{ path: '/dashboard/postbox/inbox/mm1', query: { find: 'refund the duplicate' } },
 			{ path: '/dashboard/postbox/inbox/mm1', query: {} },
+		]);
+		expect(remembered).toEqual([
+			'from:ines@example.com "refund the duplicate" is:unread',
+			'from:ines@example.com is:unread',
 		]);
 	});
 

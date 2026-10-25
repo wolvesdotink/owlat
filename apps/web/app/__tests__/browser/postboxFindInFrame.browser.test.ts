@@ -7,7 +7,9 @@
  *     scrolled into view inside the reader's scroll container;
  *   - the bar opens on ⌘F with the keyboard in it, Escape closes it as the
  *     innermost layer (never the overlay around it) and focus goes back to
- *     where it was; the reader underneath an overlay does not answer.
+ *     where it was; the reader underneath an overlay does not answer;
+ *   - matches that share a source glyph (a ligature) mark it once, with
+ *     Chrome's strict text-node splitting.
  */
 import { describe, expect, it, onTestFinished } from 'vitest';
 import { userEvent } from 'vitest/browser';
@@ -22,6 +24,7 @@ import {
 	type PostboxMessageFind,
 } from '~/composables/postbox/usePostboxThreadFind';
 import { createPostboxFindIndex } from '~/composables/postbox/postboxFindIndex';
+import { markPostboxFindMatches, postboxFindNeedle } from '~/utils/postboxFindHighlights';
 import PostboxThreadFindBar from '~/components/postbox/PostboxThreadFindBar.vue';
 import { nextEvent } from './events';
 
@@ -203,5 +206,19 @@ describe('find in conversation in a real browser', () => {
 		// With the bar gone, Escape belongs to the overlay again.
 		await userEvent.keyboard('{Escape}');
 		expect(overlayEscapes).toBe(1);
+	});
+
+	it('marks matches that share a ligature without splitting it twice', () => {
+		// Chrome's splitText throws on an offset past a node's end, which a second
+		// wrap of the same glyph produced.
+		const d = document.implementation.createHTMLDocument('body');
+		d.body.innerHTML = '<p>oﬃce, xfﬀfx</p>';
+		const shared = markPostboxFindMatches(d, postboxFindNeedle('f'), 1);
+		expect(shared.count).toBe(6);
+		expect(shared.active?.textContent).toBe('ﬃ');
+		const overlapping = markPostboxFindMatches(d, postboxFindNeedle('ff'), 2);
+		expect(overlapping.count).toBe(3);
+		expect(overlapping.active?.textContent).toBe('ﬀ');
+		expect(d.body.textContent).toBe('oﬃce, xfﬀfx');
 	});
 });

@@ -95,6 +95,36 @@ describe('markPostboxFindMatches', () => {
 		expect(d.body.textContent).toBe('Please confirm the refund by Friday.');
 	});
 
+	it('marks a glyph two matches share once, counting both and keeping the active one', () => {
+		// NFKC reads `ﬃ` as `ffi`: two matches of `f` on one source unit.
+		for (const active of [0, 1]) {
+			const d = doc('<p>oﬃce</p>');
+			const result = markPostboxFindMatches(d, postboxFindNeedle('f'), active);
+			expect(result.count).toBe(2);
+			expect(marks(d)).toBe('ﬃ');
+			expect(activeText(d)).toBe('ﬃ');
+			expect(result.active?.textContent).toBe('ﬃ');
+			expect(d.body.textContent).toBe('oﬃce');
+		}
+		const d = doc('<p>oﬃce</p>');
+		expect(markPostboxFindMatches(d, postboxFindNeedle('f'), null).count).toBe(2);
+		expect(activeText(d)).toBe('');
+	});
+
+	it('splits matches that overlap on part of their source into shared and own marks', () => {
+		// `fﬀf` reads as `ffff`: `ff` matches `fﬀ` and `ﬀf`, sharing the `ﬀ`.
+		const d = doc('<p>xfﬀfx</p>');
+		const result = markPostboxFindMatches(d, postboxFindNeedle('ff'), 1);
+		expect(result.count).toBe(2);
+		expect(marks(d)).toBe('f|ﬀ|f');
+		expect(activeText(d)).toBe('ﬀf');
+		// The active match's first mark is the shared glyph: it starts there.
+		expect(result.active?.textContent).toBe('ﬀ');
+		expect(d.body.textContent).toBe('xfﬀfx');
+		markPostboxFindMatches(d, postboxFindNeedle('ff'), 0);
+		expect(activeText(d)).toBe('fﬀ');
+	});
+
 	it('marks nothing for an empty needle', () => {
 		const d = doc('<p>refund</p>');
 		expect(markPostboxFindMatches(d, '', 0)).toEqual({ count: 0, active: null });

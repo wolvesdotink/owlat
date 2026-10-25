@@ -117,10 +117,55 @@ export function clearPostboxFindMarks(doc: Document): void {
 	doc.body?.normalize();
 }
 
+/** A stretch of raw visible text that one mark covers. */
+interface MarkSegment {
+	start: number;
+	end: number;
+	active: boolean;
+}
+
+/**
+ * The raw ranges of non-overlapping normalized matches can still overlap: one
+ * source unit can expand into several normalized units (`ﬃ` is `ffi`), so two
+ * matches of `f` both sit on the same glyph. Cut the raw text at every match
+ * edge into segments that are each covered by the same matches throughout,
+ * and wrap every covered segment once. `ranges` is in document order with
+ * non-decreasing ends (the normalization map is monotonic). Also returns the
+ * index of the active match's first segment.
+ */
+function markSegments(
+	ranges: ReadonlyArray<{ start: number; end: number }>,
+	active: number | null
+): { segments: MarkSegment[]; activeFirst: number | null } {
+	const cuts = [...new Set(ranges.flatMap((range) => [range.start, range.end]))].sort(
+		(a, b) => a - b
+	);
+	const segments: MarkSegment[] = [];
+	let activeFirst: number | null = null;
+	let open = 0;
+	for (let c = 0; c + 1 < cuts.length; c++) {
+		const start = cuts[c]!;
+		while (open < ranges.length && ranges[open]!.end <= start) open++;
+		// Every range from `open` that starts by `start` ends at a later cut, so
+		// it covers this whole segment.
+		let covered = false;
+		let isActive = false;
+		for (let k = open; k < ranges.length && ranges[k]!.start <= start; k++) {
+			covered = true;
+			if (k === active) isActive = true;
+		}
+		if (!covered) continue;
+		if (isActive) activeFirst ??= segments.length;
+		segments.push({ start, end: cuts[c + 1]!, active: isActive });
+	}
+	return { segments, activeFirst };
+}
+
 /**
  * Mark every match of `needle` in a live body document, the `active`-th one
  * (0-based, in this document) distinctly. Returns how many it marked and the
- * active match's first mark, to scroll to.
+ * active match's first mark, to scroll to. Matches that share a source glyph
+ * share its mark; the count is still one per match.
  */
 export function markPostboxFindMatches(
 	doc: Document,
@@ -131,17 +176,20 @@ export function markPostboxFindMatches(
 	if (!needle || !doc.body) return { count: 0, active: null };
 	const { index, hay } = foldedIndex(doc);
 	const starts = postboxFindOccurrences(hay.normalized, needle);
+	const { segments, activeFirst } = markSegments(
+		starts.map((at) => ({ start: hay.from[at]!, end: hay.to[at + needle.length - 1]! })),
+		active
+	);
 	let activeMark: HTMLElement | null = null;
 	// Last to first: wrapping splits text nodes after the range, never before it.
-	for (let k = starts.length - 1; k >= 0; k--) {
-		const at = starts[k]!;
-		const isActive = k === active;
-		const mark = wrapTextRange(doc, index, hay.from[at]!, hay.to[at + needle.length - 1]!, {
+	for (let k = segments.length - 1; k >= 0; k--) {
+		const segment = segments[k]!;
+		const mark = wrapTextRange(doc, index, segment.start, segment.end, {
 			[FIND_ATTR]: '',
-			...(isActive ? { [FIND_ACTIVE_ATTR]: '' } : {}),
-			style: isActive ? FIND_ACTIVE_STYLE : FIND_STYLE,
+			...(segment.active ? { [FIND_ACTIVE_ATTR]: '' } : {}),
+			style: segment.active ? FIND_ACTIVE_STYLE : FIND_STYLE,
 		});
-		if (isActive) activeMark = mark;
+		if (k === activeFirst) activeMark = mark;
 	}
 	return { count: starts.length, active: activeMark };
 }

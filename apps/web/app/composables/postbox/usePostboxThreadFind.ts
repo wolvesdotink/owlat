@@ -23,7 +23,11 @@
  */
 import { computed, onScopeDispose, ref, shallowRef, watch, type Ref } from 'vue';
 import { useKeyboardShortcuts } from '~/composables/useKeyboardShortcuts';
-import { countPostboxFindMatches, postboxFindNeedle } from '~/utils/postboxFindHighlights';
+import {
+	countPostboxFindMatches,
+	postboxFindNeedle,
+	type PostboxFindText,
+} from '~/utils/postboxFindHighlights';
 import { POSTBOX_FIND_MAX_QUERY } from '~/utils/postboxFindSeed';
 import {
 	createPostboxFindIndex,
@@ -105,6 +109,25 @@ export function usePostboxThreadFind(source: {
 		{ immediate: true }
 	);
 
+	/**
+	 * Each indexed text's matches for the needle last asked of it. Bodies settle
+	 * one at a time and every settle recomputes `counts`; without this a long
+	 * conversation rescans every body read so far on each one (quadratic). An
+	 * index entry's text is a new object whenever it is read again, so the cache
+	 * never answers for an older read.
+	 */
+	const matchCache = new WeakMap<
+		PostboxFindText,
+		{ needle: string; count: { total: number; fresh: number } }
+	>();
+	function matchesOf(text: PostboxFindText, current: string) {
+		const cached = matchCache.get(text);
+		if (cached?.needle === current) return cached.count;
+		const count = countPostboxFindMatches(text, current);
+		matchCache.set(text, { needle: current, count });
+		return count;
+	}
+
 	/** Per message: its matches, and how many sit above its quote. */
 	const counts = computed(() => {
 		const out = new Map<string, { total: number; fresh: number }>();
@@ -112,7 +135,7 @@ export function usePostboxThreadFind(source: {
 		for (const row of source.messages()) {
 			if (index.stateOf(row._id) !== 'ready') continue;
 			const text = index.textOf(row._id);
-			if (text) out.set(row._id, countPostboxFindMatches(text, needle.value));
+			if (text) out.set(row._id, matchesOf(text, needle.value));
 		}
 		return out;
 	});

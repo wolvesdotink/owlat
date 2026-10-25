@@ -10,15 +10,25 @@
  *   - a new query, a thread switch and closing each start clean, and a body
  *     answer for the previous thread lands nowhere;
  *   - a search result opens find on its message, without taking the keyboard;
- *   - ⌘F reaches only the reader that answers it.
+ *   - ⌘F reaches only the reader that answers it;
+ *   - each body is scanned once per query, however many settle after it.
  */
-import { describe, expect, it, onTestFinished } from 'vitest';
+import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { defineComponent, h, nextTick, ref, shallowRef } from 'vue';
 import { flushPromises, mount } from '@vue/test-utils';
 import { renderPostboxBodyStage } from '~/utils/postboxRenderPipeline';
 import type { ResolvedPostboxBody } from '../postboxBodyResolver';
 import { createPostboxFindIndex, type PostboxFindRow } from '../postboxFindIndex';
 import { usePostboxThreadFind, type PostboxFindSeed } from '../usePostboxThreadFind';
+import { countPostboxFindMatches } from '~/utils/postboxFindHighlights';
+import type * as FindHighlights from '~/utils/postboxFindHighlights';
+
+// Counted, not replaced: the body scans are the work a long thread must not
+// repeat for every body that settles.
+vi.mock('~/utils/postboxFindHighlights', async (importOriginal) => {
+	const actual = await importOriginal<typeof FindHighlights>();
+	return { ...actual, countPostboxFindMatches: vi.fn(actual.countPostboxFindMatches) };
+});
 
 function deferred<T>() {
 	let resolve!: (value: T) => void;
@@ -284,5 +294,21 @@ describe('usePostboxThreadFind', () => {
 		await nextTick();
 		expect(press().defaultPrevented).toBe(false);
 		expect(other.find().isOpen.value).toBe(false);
+	});
+
+	it('scans each body once per query as the bodies settle one by one', async () => {
+		const ids = Array.from({ length: 20 }, (_, i) => `m${i}`);
+		const t = setup(ids.map(envelope));
+		await search(t.find(), 'refund');
+		vi.mocked(countPostboxFindMatches).mockClear();
+		for (const id of ids) await t.answer(id, '<p>refund</p>');
+		expect(t.find().total.value).toBe(20);
+		expect(t.find().coverage.value.pending).toBe(0);
+		expect(vi.mocked(countPostboxFindMatches)).toHaveBeenCalledTimes(20);
+		// A new query reads every body once more, and nothing else does.
+		t.find().query.value = 'invoice';
+		await flushPromises();
+		t.find().next();
+		expect(vi.mocked(countPostboxFindMatches)).toHaveBeenCalledTimes(40);
 	});
 });
