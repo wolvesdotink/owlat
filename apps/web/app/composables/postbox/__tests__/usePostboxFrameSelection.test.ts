@@ -49,6 +49,8 @@ function key(doc: Document, init: KeyboardEventInit) {
 }
 
 let scope: EffectScope;
+/** The hand-built action buttons this file appended, removed after each test. */
+const owned: HTMLElement[] = [];
 
 function setup(doc: Document, opts: { enabled?: () => boolean } = {}) {
 	const frame = makeFrame(doc);
@@ -56,6 +58,7 @@ function setup(doc: Document, opts: { enabled?: () => boolean } = {}) {
 	const srcdoc = ref('<p>one</p>');
 	const action = document.createElement('button');
 	document.body.appendChild(action);
+	owned.push(action);
 	const onQuote = vi.fn();
 	const focusAction = vi.fn();
 	const api = scope.run(() =>
@@ -78,7 +81,7 @@ beforeEach(() => {
 
 afterEach(() => {
 	scope.stop();
-	document.body.innerHTML = '';
+	for (const el of owned.splice(0)) el.remove();
 	resetShortcutPreferences();
 });
 
