@@ -14,6 +14,8 @@
  * itself lives in `notificationActions.client.ts`.
  */
 
+import { isRecord } from '@owlat/shared/utils/guards';
+
 /** Where an action has to run, given the workspace its notification came from. */
 export type NotificationWorkspaceRoute =
 	| { kind: 'here' }
@@ -80,34 +82,40 @@ export function writePendingAction(
 
 /**
  * Take the carried action if it belongs to the active workspace. One that
- * belongs to another workspace stays put: it must never run here. The payload
- * is returned unvalidated; the caller resolves it like a live event.
+ * belongs to another workspace stays put: it must never run here. Only the
+ * payload's object shape is checked; the caller resolves its fields like a
+ * live event's.
  */
 export function takePendingAction(
 	storage: Storage,
 	activeId: string | null,
 	now: number
 ): { payload: Record<string, unknown>; fresh: boolean } | null {
-	let pending: Partial<PendingNotificationAction> | null;
+	// Checked by this module's own guard, not `@owlat/worker-protocol/decodeJson`:
+	// this runs on the boot path, and that module carries the Convex validator
+	// matcher into the entry bundle.
+	let parsed: unknown = null;
 	try {
 		const raw = storage.getItem(PENDING_NOTIFICATION_ACTION_KEY);
-		pending = raw ? (JSON.parse(raw) as Partial<PendingNotificationAction>) : null;
+		if (raw) parsed = JSON.parse(raw);
 	} catch {
-		pending = null;
+		parsed = null;
 	}
-	if (!pending || typeof pending !== 'object') return null;
-	if (!activeId || pending.workspaceId !== activeId) return null;
+	// Only the object shape is checked here: an entry for another workspace
+	// must stay put whatever else it holds.
+	const pending = isRecord(parsed) ? parsed : null;
+	if (!pending) return null;
+	if (!activeId || pending['workspaceId'] !== activeId) return null;
 	try {
 		storage.removeItem(PENDING_NOTIFICATION_ACTION_KEY);
 	} catch {
 		// A failed remove would replay the action on every mount; drop it instead.
 		return null;
 	}
-	if (typeof pending.at !== 'number' || !pending.payload || typeof pending.payload !== 'object') {
-		return null;
-	}
+	const { at, payload } = pending;
+	if (typeof at !== 'number' || !isRecord(payload)) return null;
 	return {
-		payload: pending.payload as unknown as Record<string, unknown>,
-		fresh: pending.at <= now && now - pending.at <= PENDING_ACTION_FRESH_MS,
+		payload,
+		fresh: at <= now && now - at <= PENDING_ACTION_FRESH_MS,
 	};
 }

@@ -130,6 +130,31 @@ describe('createUploadImageHandler', () => {
 		expect(deps.getUrl).not.toHaveBeenCalled();
 	});
 
+	it.each([
+		['a non-string id', { storageId: 42 }],
+		['an empty id', { storageId: '' }],
+		['a null body', null],
+	])('rejects an upload response with %s', async (_case, body) => {
+		fetchMock.mockResolvedValue({ ok: true, json: async () => body });
+		const upload = createUploadImageHandler(deps);
+
+		await expect(upload(makeFile())).rejects.toThrow('Image upload did not return a storage ID');
+		expect(deps.createMediaAsset).not.toHaveBeenCalled();
+	});
+
+	it('rejects an upload response that is not JSON', async () => {
+		fetchMock.mockResolvedValue({
+			ok: true,
+			json: async () => {
+				throw new SyntaxError('Unexpected token <');
+			},
+		});
+		const upload = createUploadImageHandler(deps);
+
+		await expect(upload(makeFile())).rejects.toThrow('Image upload did not return a storage ID');
+		expect(deps.createMediaAsset).not.toHaveBeenCalled();
+	});
+
 	it('throws when the registered asset has no resolvable URL', async () => {
 		deps.getUrl.mockResolvedValue(null);
 		const upload = createUploadImageHandler(deps);

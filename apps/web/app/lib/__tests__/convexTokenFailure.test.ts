@@ -34,6 +34,12 @@ describe('lastConvexTokenFailure', () => {
 		['a 503', 'unreachable', () => new Response('{}', { status: 503 })],
 		['a 502 from the proxy', 'unreachable', () => new Response('bad gateway', { status: 502 })],
 		['a body that is not JSON', 'unreachable', () => new Response('<html>', { status: 200 })],
+		// Valid JSON of the wrong shape says nothing about the session either:
+		// reading it as "no session" would sign the device out.
+		['a non-string token', 'unreachable', () => new Response('{"token":42}', { status: 200 })],
+		['an object token', 'unreachable', () => new Response('{"token":{}}', { status: 200 })],
+		['a body that is a list', 'unreachable', () => new Response('["t"]', { status: 200 })],
+		['a null body', 'unreachable', () => new Response('null', { status: 200 })],
 		[
 			'a network error',
 			'unreachable',
@@ -46,6 +52,29 @@ describe('lastConvexTokenFailure', () => {
 		const auth = await loadModule();
 		await expect(auth.getConvexAuthToken(true)).resolves.toBeNull();
 		expect(auth.lastConvexTokenFailure()).toBe(expected);
+	});
+
+	it('never hands a token of the wrong type to the client', async () => {
+		fetchMock.mockImplementation(async () => new Response('{"token":12345}', { status: 200 }));
+		const auth = await loadModule();
+		await expect(auth.getConvexAuthToken(true)).resolves.toBeNull();
+		await expect(auth.getConvexAuthToken()).resolves.toBeNull();
+	});
+
+	it('caches a token whose payload has no usable expiry for no time at all', async () => {
+		const noExp = (payload: unknown) =>
+			new Response(JSON.stringify({ token: `h.${btoa(JSON.stringify(payload))}.s` }), {
+				status: 200,
+			});
+		for (const payload of [{ exp: 'soon' }, ['exp'], null]) {
+			fetchMock.mockReset();
+			fetchMock.mockImplementation(async () => noExp(payload));
+			const auth = await loadModule();
+			await expect(auth.getConvexAuthToken(true)).resolves.toMatch(/^h\./);
+			// Not cached: the next caller asks again.
+			await auth.getConvexAuthToken();
+			expect(fetchMock).toHaveBeenCalledTimes(2);
+		}
 	});
 
 	it('clears after a fetch that produced a token, and on a cache reset', async () => {

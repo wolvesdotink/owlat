@@ -27,6 +27,7 @@
  * out with (see `desktopAuthClient.ts`), so an answer to the older session can only
  * reach the retired storage.
  */
+import { isRecord } from '@owlat/shared/utils/guards';
 import type { SessionEntry, SessionWriteOutcome } from '@owlat/desktop/src/keychain';
 
 /** How a storage reaches its keychain entry. */
@@ -83,15 +84,28 @@ export interface KeychainStorageOptions {
 
 const FLUSH_DEBOUNCE_MS = 150;
 
-function parseBlob(blob: string | null): Record<string, string> {
+/**
+ * A persisted keychain blob as the storage's key/value cache. A corrupt blob
+ * (not JSON, not an object) reads as empty: the next auth flow re-populates it.
+ */
+export function parseKeychainBlob(blob: string | null): Record<string, string> {
 	if (!blob) return {};
+	// Checked by this module's own guard, not `@owlat/worker-protocol/decodeJson`:
+	// this runs on the boot path, and that module carries the Convex validator
+	// matcher into the entry bundle.
+	let parsed: unknown;
 	try {
-		const parsed = JSON.parse(blob) as Record<string, string>;
-		if (parsed && typeof parsed === 'object') return parsed;
+		parsed = JSON.parse(blob);
 	} catch {
-		// Corrupt blob — start clean; the next auth flow re-populates it.
+		return {};
 	}
-	return {};
+	if (!isRecord(parsed)) return {};
+	// An entry that is not a string is not a storage value and is dropped.
+	const map: Record<string, string> = {};
+	for (const [key, entry] of Object.entries(parsed)) {
+		if (typeof entry === 'string') map[key] = entry;
+	}
+	return map;
 }
 
 /**
@@ -106,7 +120,7 @@ export function createKeychainStorage(
 	persistence: SessionPersistence | null,
 	options: KeychainStorageOptions = {}
 ): KeychainSessionStorage {
-	let cache = parseBlob(initial?.value ?? null);
+	let cache = parseKeychainBlob(initial?.value ?? null);
 	const revision = initial?.revision ?? 0;
 	let flushTimer: ReturnType<typeof setTimeout> | null = null;
 	let dirty = false;

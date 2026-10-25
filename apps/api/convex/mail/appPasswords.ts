@@ -20,7 +20,7 @@ import { publicQuery } from '../lib/authedFunctions';
 import { postboxMutation } from './_helpers';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
-import { requireAdminContext } from '../lib/sessionOrganization';
+import { hasPermission, requirePermission } from '../lib/sessionOrganization';
 import { personalMailEnabled, requireMailboxAccess } from './permissions';
 import { resolveDeliverableMailbox } from './mailbox/addressResolution';
 import { throwForbidden, throwInvalidInput, throwNotFound } from '../_utils/errors';
@@ -173,8 +173,11 @@ export const revoke = postboxMutation({
 /** Owner-level emergency: revoke ALL app passwords for a mailbox. */
 export const revokeAll = postboxMutation({
 	args: { mailboxId: v.id('mailboxes') },
-	handler: async (ctx, args) => {
-		const session = await requireAdminContext(ctx);
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'organization:manage'),
+			'Only owners and admins can perform this action'
+		);
 		// Admin role alone is not enough: bind the caller-supplied mailboxId to the
 		// admin's own organization before touching any credential. A missing mailbox
 		// or one in another org fails closed, so a mailboxId cannot be used to revoke

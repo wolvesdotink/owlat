@@ -31,7 +31,7 @@
 import { v } from 'convex/values';
 import { internalMutation } from '../lib/writeFence';
 import { adminQuery, authedMutation } from '../lib/authedFunctions';
-import { requireOrgPermission } from '../lib/sessionOrganization';
+import { hasPermission, requirePermission } from '../lib/sessionOrganization';
 import { findContactByIdentifier } from '../contacts/resolution';
 import { normalizeEmail } from '@owlat/shared';
 import type { Doc, Id } from '../_generated/dataModel';
@@ -274,13 +274,12 @@ export const listClarificationMemory = adminQuery({
  * by revoking it — the next matching email asks again. Admin-gated (mirrors the
  * autonomy/eagerness controls).
  */
-// authz: org:manage via requireOrgPermission; org membership via authedMutation.
+// authz: org:manage via requirePermission on the threaded session; org membership via authedMutation.
 export const revokeClarificationMemory = authedMutation({
 	args: { id: v.id('clarificationMemory') },
-	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'organization:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'organization:manage'),
 			'Only owners and admins can manage learned answers'
 		);
 		const row = await ctx.db.get(args.id);
@@ -297,13 +296,12 @@ export const revokeClarificationMemory = authedMutation({
  * ever becomes cross-contact by an explicit human decision, never automatically.
  * No-op when the row is already org-general.
  */
-// authz: org:manage via requireOrgPermission; org membership via authedMutation.
+// authz: org:manage via requirePermission on the threaded session; org membership via authedMutation.
 export const promoteClarificationMemory = authedMutation({
 	args: { id: v.id('clarificationMemory') },
-	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'organization:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'organization:manage'),
 			'Only owners and admins can promote learned answers'
 		);
 		const row = await ctx.db.get(args.id);

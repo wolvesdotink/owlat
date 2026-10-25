@@ -16,7 +16,6 @@
 
 import { v } from 'convex/values';
 import { adminMutation } from '../lib/authedFunctions';
-import { getMutationContext } from '../lib/sessionOrganization';
 import { getOrThrow } from '../_utils/errors';
 
 /**
@@ -29,8 +28,8 @@ export const markThreadSeen = adminMutation({
 	args: {
 		threadId: v.id('conversationThreads'),
 	},
-	handler: async (ctx, args) => {
-		const { userId } = await getMutationContext(ctx);
+	handler: async (ctx, args, session) => {
+		const { userId } = session;
 		// A read marker for a deleted / non-existent thread is a no-op error, the
 		// same guard the neighbouring presence heartbeat applies.
 		await getOrThrow(ctx, args.threadId, 'Thread');

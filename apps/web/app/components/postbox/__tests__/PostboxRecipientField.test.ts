@@ -236,3 +236,37 @@ describe('PostboxRecipientField — IME composition (#1052)', () => {
 		expect(wrapper.emitted('update:modelValue')).toBeUndefined();
 	});
 });
+
+describe('PostboxRecipientField — chip drops', () => {
+	async function drop(payload: string) {
+		const wrapper = mountField({ modelValue: ['anna@example.com'], field: 'to' });
+		const zone = wrapper.findAll('div').find((div) => div.classes().includes('flex-wrap'))!;
+		await zone.trigger('drop', {
+			dataTransfer: {
+				getData: (type: string) => (type === 'application/x-postbox-recipient' ? payload : ''),
+			},
+		});
+		return wrapper.emitted('move');
+	}
+
+	it('moves a chip dragged from another field', async () => {
+		expect(await drop(JSON.stringify({ email: 'ben@example.com', from: 'cc' }))).toEqual([
+			[{ email: 'ben@example.com', from: 'cc' }],
+		]);
+	});
+
+	it.each([
+		['a non-string address', { email: 42, from: 'cc' }],
+		['an empty address', { email: '', from: 'cc' }],
+		['a field that does not exist', { email: 'ben@example.com', from: 'reply-to' }],
+		['no source field', { email: 'ben@example.com' }],
+		['a list', ['ben@example.com', 'cc']],
+	])('ignores a payload with %s', async (_case, payload) => {
+		expect(await drop(JSON.stringify(payload))).toBeUndefined();
+	});
+
+	it('ignores a payload that is not JSON, and one from its own field', async () => {
+		expect(await drop('ben@example.com')).toBeUndefined();
+		expect(await drop(JSON.stringify({ email: 'anna@example.com', from: 'to' }))).toBeUndefined();
+	});
+});

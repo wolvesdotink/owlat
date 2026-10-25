@@ -12768,6 +12768,10 @@
 							"subjectPlaceholder": "Betreff auf {language}",
 							"title": "Übersetzungen"
 						},
+						"unreadableTranslations": {
+							"body": "Die gespeicherten Übersetzungen dieser E-Mail sind beschädigt, deshalb kann diese Seite sie nicht anzeigen. Speichern ist ausgeschaltet, damit sie nicht überschrieben werden.",
+							"title": "Übersetzungen konnten nicht gelesen werden"
+						},
 						"unsavedChanges": "Nicht gespeicherte Änderungen"
 					},
 					"translations": {

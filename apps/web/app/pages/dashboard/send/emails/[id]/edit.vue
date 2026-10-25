@@ -7,6 +7,7 @@ import {
 	type HistoryState,
 } from '@owlat/email-builder';
 import { api } from '@owlat/api';
+import { plainClone } from '@owlat/email-builder/plain-clone';
 import { campaignReturnTarget } from '~/lib/campaignCompose';
 import type { PresendSource } from '~/composables/usePresendChecks';
 import { useRecordPaletteObjectOpen } from '~/composables/useCommandPaletteObjectRecents';
@@ -156,7 +157,7 @@ const handleRestoreVersion = (state: HistoryState) => {
 // History "Compare": the canvas as it is now, unsaved edits included, copied
 // so the comparison holds still while editing goes on.
 const readCurrentState = (): HistoryState => ({
-	blocks: JSON.parse(JSON.stringify(blocks.value)) as typeof blocks.value,
+	blocks: plainClone(blocks.value),
 	name: name.value,
 	subject: subject.value,
 });
@@ -176,7 +177,7 @@ const {
 } = usePresendChecks(() => presendSnapshot.value);
 
 function checkEmail() {
-	const snapshot = JSON.parse(JSON.stringify(blocks.value)) as typeof blocks.value;
+	const snapshot = plainClone(blocks.value);
 	presendSnapshot.value = {
 		html: renderBlocksToHtml(snapshot, {
 			theme: emailTheme.value,

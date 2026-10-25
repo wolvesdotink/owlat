@@ -40,7 +40,7 @@ import { getOptional } from '../lib/env';
 import { isSendProviderReady } from '../lib/sendProviders/capability';
 import { OWN_ARM_TRANSPORT_KIND } from '../lib/sendProviders/strategies/adaptive_mix';
 import { listSendTransports } from '../lib/sendProviders/transports';
-import { requireOrgPermission } from '../lib/sessionOrganization';
+import { hasPermission, requirePermission } from '../lib/sessionOrganization';
 import { offerBimiRecord, type BimiOffer } from './bimi';
 import { DEFAULT_DMARC_POLICY, dmarcRuaFromEnv } from './dmarc';
 import { parsePoolIpsLenient, parseReturnPathRelaySpfTerms, resolveSpfQualifier } from './spf';
@@ -209,10 +209,10 @@ function shippedSigningIdentity(
  */
 export const getStreamSubdomainPlan = authedQuery({
 	args: { domainId: v.id('domains') },
-	handler: async (ctx, args): Promise<StreamSubdomainWizardResult> => {
+	handler: async (ctx, args, session): Promise<StreamSubdomainWizardResult> => {
 		// Domain-level sending configuration, the same gate as every other read and
 		// write on this wizard: only owners/admins see or change it.
-		await requireOrgPermission(ctx, 'organization:manage');
+		requirePermission(hasPermission(session.role, 'organization:manage'));
 		const domain = await ctx.db.get(args.domainId);
 		if (domain === null) return { ok: false, reason: 'unknown_domain' };
 

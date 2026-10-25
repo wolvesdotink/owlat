@@ -29,7 +29,12 @@
  * row for one composition), the page says so instead.
  */
 import type { Id } from '@owlat/api/dataModel';
-import type { MirrorFieldName, MirrorFields } from '~/utils/postboxDraftMirror';
+import {
+	copyMirrorFields,
+	plainMirrorFields,
+	type MirrorFieldName,
+	type MirrorFields,
+} from '~/utils/postboxDraftMirror';
 import type { ComposerSeed } from './usePostboxCompose';
 
 /** A composer seed plus, on a plain reply, the extras Reply-All would add. */
@@ -49,6 +54,19 @@ export interface RecoverySource {
 	/** The mount that parked it (its own later leaves replace it). */
 	mountId: string;
 	parkedAt: number;
+}
+
+/** A plain copy of a recovery source (session state is reactive; IndexedDB cannot clone a proxy). */
+export function copyRecoverySource(source: RecoverySource): RecoverySource {
+	return {
+		id: source.id,
+		fields: copyMirrorFields(source.fields),
+		present: [...source.present],
+		base: plainMirrorFields(source.base),
+		rowless: source.rowless,
+		mountId: source.mountId,
+		parkedAt: source.parkedAt,
+	};
 }
 
 export interface ComposeRequest {

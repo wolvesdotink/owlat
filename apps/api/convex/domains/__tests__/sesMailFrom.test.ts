@@ -451,6 +451,6 @@ describe('returnPath.setReturnPathHost — SES via the public mutation', () => {
 				domainId,
 				returnPathHost: 'bounce.acme.com',
 			})
-		).rejects.toThrow(/permission/i);
+		).rejects.toThrow(/Only owners and admins can manage sending domains/);
 	});
 });

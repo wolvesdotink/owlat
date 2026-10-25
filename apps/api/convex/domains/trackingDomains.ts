@@ -11,7 +11,7 @@ import { internalQuery, internalAction } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
-import { requireAdminContext } from '../lib/sessionOrganization';
+import { hasPermission, requirePermission } from '../lib/sessionOrganization';
 import { getOrThrow, throwAlreadyExists } from '../_utils/errors';
 import { getOptional } from '../lib/env';
 import { logError, logWarn } from '../lib/runtimeLog';
@@ -50,8 +50,11 @@ export const addTrackingDomain = authedMutation({
 	args: {
 		domain: v.string(),
 	},
-	handler: async (ctx, args) => {
-		await requireAdminContext(ctx);
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'organization:manage'),
+			'Only owners and admins can perform this action'
+		);
 
 		// Ensure domain is not already registered
 		const existing = await ctx.db
@@ -82,8 +85,11 @@ export const verifyTrackingDomain = authedMutation({
 	args: {
 		trackingDomainId: v.id('trackingDomains'),
 	},
-	handler: async (ctx, args) => {
-		await requireAdminContext(ctx);
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'organization:manage'),
+			'Only owners and admins can perform this action'
+		);
 
 		const td = await getOrThrow(ctx, args.trackingDomainId, 'Tracking domain');
 
@@ -119,8 +125,11 @@ export const removeTrackingDomain = authedMutation({
 	args: {
 		trackingDomainId: v.id('trackingDomains'),
 	},
-	handler: async (ctx, args) => {
-		await requireAdminContext(ctx);
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'organization:manage'),
+			'Only owners and admins can perform this action'
+		);
 
 		await getOrThrow(ctx, args.trackingDomainId, 'Tracking domain');
 

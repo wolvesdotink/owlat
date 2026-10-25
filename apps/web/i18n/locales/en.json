@@ -12768,6 +12768,10 @@
 							"subjectPlaceholder": "Subject in {language}",
 							"title": "Translations"
 						},
+						"unreadableTranslations": {
+							"body": "The translations stored on this email are damaged, so this page cannot show them. Saving is turned off so they are not overwritten.",
+							"title": "Translations could not be read"
+						},
 						"unsavedChanges": "Unsaved changes"
 					},
 					"translations": {

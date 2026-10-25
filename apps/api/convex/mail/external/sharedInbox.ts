@@ -57,7 +57,11 @@ import { v } from 'convex/values';
 import { internalMutation } from '../../lib/writeFence';
 import { postboxQuery, postboxMutation } from '../_helpers';
 import { internal } from '../../_generated/api';
-import { requireAdminContext } from '../../lib/sessionOrganization';
+import {
+	hasPermission,
+	requireAdminContext,
+	requirePermission,
+} from '../../lib/sessionOrganization';
 import {
 	connectFieldsValidator,
 	insertExternalAccountRow,
@@ -235,12 +239,15 @@ export const _updateCredentialsSharedInternal = internalMutation({
  */
 export const purgeShared = postboxMutation({
 	args: { mailboxId: v.id('mailboxes') },
-	handler: async (ctx, args) => {
-		// authz: requireAdminContext (team inbox = org infrastructure) + shared-external scope gate.
-		const s = await requireAdminContext(ctx);
+	handler: async (ctx, args, session) => {
+		// authz: organization:manage on the threaded session (team inbox = org infrastructure) + shared-external scope gate.
+		requirePermission(
+			hasPermission(session.role, 'organization:manage'),
+			'Only owners and admins can perform this action'
+		);
 		const mailbox = await ctx.db.get(args.mailboxId);
 		if (!mailbox) throwNotFound('Team inbox');
-		if (mailbox.organizationId !== s.activeOrganizationId) {
+		if (mailbox.organizationId !== session.activeOrganizationId) {
 			throwForbidden('You do not have permission to manage this inbox.');
 		}
 		if (mailbox.scope !== 'shared' || mailbox.kind !== 'external' || !mailbox.externalAccountId) {

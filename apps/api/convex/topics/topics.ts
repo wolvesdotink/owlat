@@ -6,7 +6,7 @@ import { paginationOptsValidator } from 'convex/server';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { nanoid } from 'nanoid';
-import { requireOrgPermission } from '../lib/sessionOrganization';
+import { hasPermission, requirePermission } from '../lib/sessionOrganization';
 import { countIndexRange } from '../lib/pagination';
 import { getOptional } from '../lib/env';
 import { listResources } from '../lib/listing';
@@ -136,8 +136,11 @@ export const update = authedMutation({
 		displayOrder: v.optional(v.number()),
 		isDefault: v.optional(v.boolean()),
 	},
-	handler: async (ctx, args) => {
-		await requireOrgPermission(ctx, 'topics:manage', 'Only owners and admins can manage topics');
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'topics:manage'),
+			'Only owners and admins can manage topics'
+		);
 		// Validate input lengths
 		if (args.name) validateStringLength(args.name, STRING_LIMITS.NAME, 'Name');
 		if (args.description)
@@ -179,8 +182,11 @@ export const update = authedMutation({
 // Mutation to delete a topic and all its memberships
 export const remove = authedMutation({
 	args: { topicId: v.id('topics') },
-	handler: async (ctx, args) => {
-		await requireOrgPermission(ctx, 'topics:manage', 'Only owners and admins can manage topics');
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'topics:manage'),
+			'Only owners and admins can manage topics'
+		);
 		await getOrThrow(ctx, args.topicId, 'Topic');
 
 		// Delete all memberships associated with this topic
@@ -268,10 +274,9 @@ const addContactSessionArgs = {
 
 export const addContact = authedMutation({
 	args: addContactSessionArgs,
-	handler: async (ctx, args): Promise<AddContactResult> => {
-		await requireOrgPermission(
-			ctx,
-			'topics:manage',
+	handler: async (ctx, args, session): Promise<AddContactResult> => {
+		requirePermission(
+			hasPermission(session.role, 'topics:manage'),
 			'Only owners and admins can manage topic membership'
 		);
 		return addContactImpl(ctx, { ...args, siteUrl: getOptional('SITE_URL') || '' });
@@ -305,10 +310,9 @@ async function removeContactImpl(
 
 export const removeContact = authedMutation({
 	args: removeContactArgs,
-	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'topics:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'topics:manage'),
 			'Only owners and admins can manage topic membership'
 		);
 		await removeContactImpl(ctx, args);
@@ -532,10 +536,9 @@ export const resendDoiConfirmation = authedMutation({
 	args: {
 		contactId: v.id('contacts'),
 	},
-	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'topics:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'topics:manage'),
 			'Only owners and admins can resend confirmations'
 		);
 		// Resolve the confirmation-link host server-side from SITE_URL — never
@@ -591,15 +594,14 @@ export const create = authedMutation({
 		displayOrder: v.optional(v.number()),
 		isDefault: v.optional(v.boolean()),
 	},
-	handler: async (ctx, args) => {
+	handler: async (ctx, args, session) => {
 		// Validate input lengths
 		validateStringLength(args.name, STRING_LIMITS.NAME, 'Name');
 		if (args.description)
 			validateStringLength(args.description, STRING_LIMITS.DESCRIPTION, 'Description');
 
-		const session = await requireOrgPermission(
-			ctx,
-			'topics:manage',
+		requirePermission(
+			hasPermission(session.role, 'topics:manage'),
 			'Only owners and admins can create topics'
 		);
 

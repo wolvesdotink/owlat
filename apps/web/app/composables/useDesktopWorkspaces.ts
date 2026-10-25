@@ -21,6 +21,7 @@ import {
 	rebindActiveSession,
 } from '~/lib/desktop/keychainStorage';
 import { setDesktopAuthClientFactory } from '~/lib/desktop/desktopAuthClientFactory';
+import { readInstanceInfo } from '~/lib/desktop/instanceInfo';
 import {
 	type WorkspaceAccent,
 	type WorkspaceStoreShape,
@@ -80,15 +81,15 @@ async function seedLocalDevWorkspace(): Promise<void> {
 	const origin = window.location.origin;
 	if (!LOCAL_DEV_ORIGIN_RE.test(origin)) return;
 
-	let info: InstanceInfo;
+	let info: InstanceInfo | null;
 	try {
 		const res = await fetch(`${origin}/api/instance-info`, { credentials: 'omit' });
 		if (!res.ok) return;
-		info = (await res.json()) as InstanceInfo;
+		info = readInstanceInfo(await res.json());
 	} catch {
 		return;
 	}
-	if (!info.convexUrl || !info.convexSiteUrl) return;
+	if (!info) return;
 
 	const sameOrigin = (url: string) => {
 		try {

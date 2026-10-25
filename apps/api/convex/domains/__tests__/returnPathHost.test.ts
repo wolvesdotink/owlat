@@ -388,7 +388,7 @@ describe('returnPath.setReturnPathHost — authorization', () => {
 				domainId,
 				returnPathHost: 'bounce.acme.com',
 			})
-		).rejects.toThrow(/permission/i);
+		).rejects.toThrow(/Only owners and admins can manage sending domains/);
 
 		await t.run(async (ctx) => {
 			const domain = await ctx.db.get(domainId);

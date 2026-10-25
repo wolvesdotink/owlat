@@ -8,7 +8,7 @@
  */
 
 import { v } from 'convex/values';
-import { getUserIdFromSession, requireOrgPermission } from '../lib/sessionOrganization';
+import { hasPermission, requirePermission } from '../lib/sessionOrganization';
 import { throwInvalidInput } from '../_utils/errors';
 import {
 	chatQuery,
@@ -31,8 +31,9 @@ import { loadProfileSummary } from '../lib/userProfiles';
  */
 export const findOrCreateDm = chatMutation({
 	args: { otherMemberIds: v.array(v.string()) },
-	handler: async (ctx, args) => {
-		const { userId } = await requireOrgPermission(ctx, 'chat:participate', 'Chat is not available');
+	handler: async (ctx, args, session) => {
+		requirePermission(hasPermission(session.role, 'chat:participate'), 'Chat is not available');
+		const { userId } = session;
 
 		if (args.otherMemberIds.length === 0) {
 			throwInvalidInput('Pick at least one other person for a DM');
@@ -98,8 +99,8 @@ export const findOrCreateDm = chatMutation({
  */
 export const listMyDms = chatQuery({
 	args: { limit: v.optional(v.number()) },
-	handler: async (ctx, args) => {
-		const userId = await getUserIdFromSession(ctx);
+	handler: async (ctx, args, session) => {
+		const { userId } = session;
 		const limit = Math.max(1, Math.min(args.limit ?? 100, 500));
 
 		const memberships = await ctx.db

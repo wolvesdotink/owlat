@@ -166,6 +166,21 @@ describe('loadWorkspaces seedLocalDev — dev auto-connect to the local instance
 		expect(setActiveWorkspace).toHaveBeenCalledWith(null);
 	});
 
+	it.each([
+		['no Convex URLs', { name: 'Owlat Dev' }],
+		['a non-string Convex URL', { ...INSTANCE_INFO, convexSiteUrl: 3211 }],
+		['null', null],
+	])('fails soft on an instance answer with %s — no workspace', async (_case, body) => {
+		fetchMock.mockResolvedValue({ ok: true, json: async () => body } as unknown as Response);
+		loadWorkspaceStore.mockResolvedValue({ workspaces: [], activeWorkspaceId: null });
+		const { loadWorkspaces, useDesktopWorkspaces } = await importFresh();
+
+		await loadWorkspaces({ seedLocalDev: true });
+
+		expect(useDesktopWorkspaces().active.value).toBeNull();
+		expect(useDesktopWorkspaces().workspaces.value).toEqual([]);
+	});
+
 	it('does not probe at all without the flag (packaged builds)', async () => {
 		loadWorkspaceStore.mockResolvedValue({ workspaces: [], activeWorkspaceId: null });
 		const { loadWorkspaces } = await importFresh();

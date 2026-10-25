@@ -31,7 +31,11 @@
 
 import { MANDRILL_RELAY_PROOF_MAX_AGE_MS } from '@owlat/shared';
 import { authedQuery } from '../lib/authedFunctions';
-import { getSingletonOrganizationId, requireOrgPermission } from '../lib/sessionOrganization';
+import {
+	getSingletonOrganizationId,
+	hasPermission,
+	requirePermission,
+} from '../lib/sessionOrganization';
 import { parseMandrillProviderDetails } from './providers/mandrill/identity';
 import { buildMandrillDnsRecords, buildMandrillVerifyRecord } from './providers/mandrill/records';
 
@@ -53,8 +57,8 @@ const MANDRILL_IDENTITY_VIEW_LIMIT = 200;
  */
 export const listIdentities = authedQuery({
 	args: {},
-	handler: async (ctx) => {
-		await requireOrgPermission(ctx, 'organization:manage');
+	handler: async (ctx, _args, session) => {
+		requirePermission(hasPermission(session.role, 'organization:manage'));
 		const organizationId = await getSingletonOrganizationId(ctx);
 		const rows = await ctx.db
 			.query('sendingDomainRelayIdentities')

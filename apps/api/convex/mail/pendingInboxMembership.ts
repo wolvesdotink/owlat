@@ -13,9 +13,8 @@
 import { v } from 'convex/values';
 import { internalQuery } from '../_generated/server';
 import { authedMutation, adminMutation } from '../lib/authedFunctions';
-import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
 import { normalizeEmail, isValidEmail } from '../lib/inputGuards';
-import { throwForbidden, throwUnauthenticated, throwInvalidInput } from '../_utils/errors';
+import { throwForbidden, throwInvalidInput } from '../_utils/errors';
 import { requireMailboxAccess } from './permissions';
 
 /**
@@ -98,17 +97,10 @@ export const reserveInboxMembership = adminMutation({
  */
 export const claimInboxMemberships = authedMutation({
 	args: {},
-	handler: async (ctx) => {
+	handler: async (ctx, _args, session) => {
 		// all-members: every member may claim, but ONLY grants bound to their own
 		// login email — the email match below is the per-row authorization, so a
 		// caller can never materialize a teammate's inbox access.
-		const session = await getBetterAuthSessionWithRole(ctx);
-		if (!session) {
-			throwUnauthenticated();
-		}
-		if (!session.activeOrganizationId) {
-			throwForbidden('No active organization');
-		}
 		const organizationId = session.activeOrganizationId;
 
 		const profile = await ctx.db
@@ -186,11 +178,7 @@ export const cancelInboxMembershipsForEmail = adminMutation({
 		// only the grant this attempt created, never a sibling inbox's live grant.
 		mailboxId: v.optional(v.id('mailboxes')),
 	},
-	handler: async (ctx, args) => {
-		const session = await getBetterAuthSessionWithRole(ctx);
-		if (!session?.activeOrganizationId) {
-			throwForbidden('No active organization');
-		}
+	handler: async (ctx, args, session) => {
 		const organizationId = session.activeOrganizationId;
 		const inviteeEmail = normalizeEmail(args.inviteeEmail);
 		if (!inviteeEmail) {

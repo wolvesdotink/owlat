@@ -29,7 +29,7 @@ import { internalMutation } from '../lib/writeFence';
 import type { QueryCtx, MutationCtx } from '../_generated/server';
 import type { Id } from '../_generated/dataModel';
 import { adminMutation, publicQuery } from '../lib/authedFunctions';
-import { getMutationContext, getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
+import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
 import { isSharedInboxReader } from './access';
 import { getOrThrow } from '../_utils/errors';
 
@@ -65,8 +65,8 @@ export const heartbeat = adminMutation({
 		threadId: v.id('conversationThreads'),
 		mode: v.union(v.literal('viewing'), v.literal('replying')),
 	},
-	handler: async (ctx, args) => {
-		const { userId } = await getMutationContext(ctx);
+	handler: async (ctx, args, session) => {
+		const { userId } = session;
 		// Validate thread access the same way the neighbouring reads do — a
 		// heartbeat for a deleted / non-existent thread is a no-op error.
 		await getOrThrow(ctx, args.threadId, 'Thread');
@@ -106,8 +106,8 @@ export const leave = adminMutation({
 	args: {
 		threadId: v.id('conversationThreads'),
 	},
-	handler: async (ctx, args) => {
-		const { userId } = await getMutationContext(ctx);
+	handler: async (ctx, args, session) => {
+		const { userId } = session;
 		// One row per (user, thread) — point-read and drop it if present.
 		const existing = await ctx.db
 			.query('threadPresence')

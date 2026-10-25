@@ -1,5 +1,7 @@
+import { isRecord } from '@owlat/shared/utils/guards';
 import { isDesktopRuntime } from '~/lib/desktop/activeWorkspace';
 import { desktopConvexTokenRequest } from '~/lib/auth-client';
+import { readAuthTokenAnswer } from '~/lib/authTokenResponse';
 
 let cachedToken: string | null = null;
 let tokenExpiresAt = 0;
@@ -63,13 +65,24 @@ function buildTokenRequest(): { url: string; init: RequestInit } | null {
 	};
 }
 
+/** A JWT payload's `exp` (seconds); 0 when it has none or an unusable one, which never caches. */
+function expiryOf(payload: unknown): number {
+	if (!isRecord(payload)) return 0;
+	const { exp } = payload;
+	return typeof exp === 'number' && Number.isFinite(exp) ? exp : 0;
+}
+
 function getTokenExpiry(jwt: string): number {
+	// Checked by this module's own guard, not `@owlat/worker-protocol/decodeJson`:
+	// this runs on the boot path, and that module carries the Convex validator
+	// matcher into the entry bundle.
+	let payload: unknown;
 	try {
-		const payload = JSON.parse(atob(jwt.split('.')[1] ?? ''));
-		return (payload.exp ?? 0) * 1000;
+		payload = JSON.parse(atob(jwt.split('.')[1] ?? ''));
 	} catch {
 		return 0;
 	}
+	return expiryOf(payload) * 1000;
 }
 
 function clearCachedToken() {
@@ -102,9 +115,10 @@ async function fetchToken(): Promise<string | null> {
 			);
 		}
 
-		const data = (await response.json()) as { token?: string | null };
-		const token = data.token ?? null;
-
+		const answer = readAuthTokenAnswer(await response.json().catch(() => undefined));
+		// A body that is not a token answer says nothing about the session.
+		if (answer.kind === 'unusable') return fail('unreachable');
+		const { token } = answer;
 		if (!token) return fail('no-session');
 
 		cachedToken = token;
