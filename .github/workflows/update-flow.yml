@@ -79,7 +79,7 @@ jobs:
       matrix:
         scenario: [success, rollback]
     steps:
-      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2
+      - uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2
         with:
           egress-policy: audit
 
@@ -117,7 +117,7 @@ jobs:
       # again before use. Never the published URL, which a draft does not have.
       - name: Download the release target
         if: inputs.target_artifact
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: ${{ inputs.target_artifact }}
           path: ${{ runner.temp }}/update-target
