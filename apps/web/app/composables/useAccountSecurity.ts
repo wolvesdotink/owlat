@@ -138,8 +138,11 @@ export type TotpEnrolmentPayload = { totpURI: string; backupCodes: string[] };
 export function useTwoFactorEnrolment() {
 	async function begin(password: string): Promise<SecurityResult<TotpEnrolmentPayload>> {
 		try {
-			const result = await authClient.twoFactor.enable({ password });
+			// Only TOTP is wired (no `otpOptions`), and only a TOTP enrolment
+			// carries the QR payload and backup codes this flow shows.
+			const result = await authClient.twoFactor.enable({ password, method: 'totp' });
 			if (result.error || !result.data) return fail(classify(result.error));
+			if (result.data.method !== 'totp') return fail();
 			return ok({
 				totpURI: result.data.totpURI,
 				backupCodes: [...result.data.backupCodes],

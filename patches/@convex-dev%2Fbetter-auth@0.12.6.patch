@@ -1,0 +1,422 @@
+diff --git a/dist/auth-options.js b/dist/auth-options.js
+index 1b67f02ecc231be2054d30b5ce6fbf9e9e323724..d6eabd0f79ac0743adee46b98a1f3efaa9c97685 100644
+--- a/dist/auth-options.js
++++ b/dist/auth-options.js
+@@ -4,7 +4,6 @@ import { emailOTP } from "better-auth/plugins/email-otp";
+ import { genericOAuth } from "better-auth/plugins/generic-oauth";
+ import { jwt } from "better-auth/plugins/jwt";
+ import { magicLink } from "better-auth/plugins/magic-link";
+-import { oidcProvider } from "better-auth/plugins/oidc-provider";
+ import { oneTimeToken } from "better-auth/plugins/one-time-token";
+ import { phoneNumber } from "better-auth/plugins/phone-number";
+ import { twoFactor } from "better-auth/plugins/two-factor";
+@@ -33,10 +32,6 @@ export const options = {
+                 },
+             ],
+         }),
+-        oidcProvider({
+-            loginPage: "/login",
+-            __skipDeprecationWarning: true,
+-        }),
+         bearer(),
+         oneTimeToken(),
+         jwt(),
+diff --git a/dist/client/adapter-utils.js b/dist/client/adapter-utils.js
+index ed8f85781a3e210becb5eebbc80f1bccea36e146..851fe0c352066a78f711be504fc449934b41606e 100644
+--- a/dist/client/adapter-utils.js
++++ b/dist/client/adapter-utils.js
+@@ -210,7 +210,9 @@ filterWhere) => {
+             switch (w.operator) {
+                 case undefined:
+                 case "eq": {
+-                    return value === w.value;
++                    // Convex omits unset optional fields; Better Auth's null
++                    // comparisons must match those fields too.
++                    return w.value === null ? value == null : value === w.value;
+                 }
+                 case "in": {
+                     return Array.isArray(w.value) && w.value.includes(value);
+@@ -232,7 +234,7 @@ filterWhere) => {
+                     return value === w.value || isGreaterThan(value, w.value);
+                 }
+                 case "ne": {
+-                    return value !== w.value;
++                    return w.value === null ? value != null : value !== w.value;
+                 }
+                 case "contains": {
+                     return typeof value === "string" && value.includes(w.value);
+diff --git a/dist/client/adapter.js b/dist/client/adapter.js
+index 6916dd1f7cf7e9aa83ff7a681a65f0c4ea0130e1..7ff36c640cad58350e6dc4cd82d6d06c5d50042a 100644
+--- a/dist/client/adapter.js
++++ b/dist/client/adapter.js
+@@ -3,7 +3,7 @@ import { createFunctionHandle } from "convex/server";
+ import { asyncMap } from "convex-helpers";
+ import { prop, sortBy } from "remeda";
+ import { isRunMutationCtx } from "../utils/index.js";
+-let didWarnExperimentalJoinsUnsupported = false;
++let didWarnJoinsUnsupported = false;
+ const handlePagination = async (next, { limit, numItems } = {}) => {
+     const state = {
+         isDone: false,
+@@ -12,11 +12,9 @@ const handlePagination = async (next, { limit, numItems } = {}) => {
+         count: 0,
+     };
+     const onResult = (result) => {
+-        state.cursor =
+-            result.pageStatus === "SplitRecommended" ||
+-                result.pageStatus === "SplitRequired"
+-                ? (result.splitCursor ?? result.continueCursor)
+-                : result.continueCursor;
++        // splitCursor divides the page already received; continuing from it
++        // would revisit the second half and repeat reads and writes.
++        state.cursor = result.continueCursor;
+         if (result.page) {
+             state.docs.push(...result.page);
+             state.isDone = (limit && state.docs.length >= limit) || result.isDone;
+@@ -147,15 +145,18 @@ export const convexAdapter = (ctx, api, config = {}) => {
+         adapter: ({ options }) => {
+             // Disable telemetry in all cases because it requires Node
+             options.telemetry = { enabled: false };
+-            if (options.experimental?.joins) {
+-                options.experimental = {
+-                    ...options.experimental,
+-                    joins: false,
++            if (options.advanced?.database?.joins) {
++                options.advanced = {
++                    ...options.advanced,
++                    database: {
++                        ...options.advanced.database,
++                        joins: false,
++                    },
+                 };
+-                if (!didWarnExperimentalJoinsUnsupported) {
+-                    didWarnExperimentalJoinsUnsupported = true;
++                if (!didWarnJoinsUnsupported) {
++                    didWarnJoinsUnsupported = true;
+                     // eslint-disable-next-line no-console
+-                    console.warn("[convex-better-auth] Better Auth experimental.joins is not supported by the Convex adapter yet. Forcing experimental.joins = false.");
++                    console.warn("[convex-better-auth] Better Auth advanced.database.joins is not supported by the Convex adapter yet. Forcing advanced.database.joins = false.");
+                 }
+             }
+             const collectIdsForOrWhere = async (data) => {
+@@ -193,7 +194,9 @@ export const convexAdapter = (ctx, api, config = {}) => {
+                         onCreateHandle: onCreateHandle,
+                     });
+                 },
+-                findOne: async (data) => {
++                // modelKey is Better Auth metadata, not a Convex function argument;
++                // the component validators reject unknown fields.
++                findOne: async ({ modelKey: _modelKey, ...data }) => {
+                     if (data.where?.every((w) => w.connector === "OR")) {
+                         for (const w of data.where) {
+                             const result = await ctx.runQuery(api.adapter.findOne, {
+@@ -212,7 +215,7 @@ export const convexAdapter = (ctx, api, config = {}) => {
+                         where: parseWhere(data.where),
+                     });
+                 },
+-                findMany: async (data) => {
++                findMany: async ({ modelKey: _modelKey, ...data }) => {
+                     if (data.offset) {
+                         throw new Error("offset not supported");
+                     }
+@@ -250,7 +253,7 @@ export const convexAdapter = (ctx, api, config = {}) => {
+                     }, { limit: data.limit });
+                     return result.docs;
+                 },
+-                count: async (data) => {
++                count: async ({ modelKey: _modelKey, ...data }) => {
+                     // Yes, count is just findMany returning a number.
+                     if (data.where?.some((w) => w.connector === "OR")) {
+                         const results = await asyncMap(data.where, async (w) => handlePagination(async ({ paginationOpts }) => {
+@@ -299,6 +302,49 @@ export const convexAdapter = (ctx, api, config = {}) => {
+                         onUpdateHandle: onUpdateHandle,
+                     });
+                 },
++                // Native atomic operations: Better Auth 1.7's fallbacks guard on
++                // every field of a row snapshot, including _creationTime, which the
++                // component where-validators reject.
++                consumeOne: async (data) => {
++                    if (!("runMutation" in ctx)) {
++                        throw new Error("ctx is not a mutation ctx");
++                    }
++                    if (!data.where?.length) {
++                        return null;
++                    }
++                    const onDeleteHandle = config.authFunctions?.onDelete &&
++                        config.triggers?.[data.model]?.onDelete
++                        ? (await createFunctionHandle(config.authFunctions.onDelete))
++                        : undefined;
++                    return ((await ctx.runMutation(api.adapter.deleteOne, {
++                        input: {
++                            model: data.model,
++                            where: parseWhere(data.where),
++                        },
++                        onDeleteHandle: onDeleteHandle,
++                    })) ?? null);
++                },
++                incrementOne: async (data) => {
++                    if (!("runMutation" in ctx)) {
++                        throw new Error("ctx is not a mutation ctx");
++                    }
++                    if (!data.where?.length) {
++                        return null;
++                    }
++                    const onUpdateHandle = config.authFunctions?.onUpdate &&
++                        config.triggers?.[data.model]?.onUpdate
++                        ? (await createFunctionHandle(config.authFunctions.onUpdate))
++                        : undefined;
++                    return ctx.runMutation(api.adapter.incrementOne, {
++                        input: {
++                            model: data.model,
++                            where: parseWhere(data.where),
++                            increment: data.increment,
++                            set: data.set,
++                        },
++                        onUpdateHandle: onUpdateHandle,
++                    });
++                },
+                 delete: async (data) => {
+                     if (!("runMutation" in ctx)) {
+                         throw new Error("ctx is not a mutation ctx");
+@@ -315,7 +361,7 @@ export const convexAdapter = (ctx, api, config = {}) => {
+                         onDeleteHandle: onDeleteHandle,
+                     });
+                 },
+-                deleteMany: async (data) => {
++                deleteMany: async ({ modelKey: _modelKey, ...data }) => {
+                     if (!("runMutation" in ctx)) {
+                         throw new Error("ctx is not a mutation ctx");
+                     }
+@@ -352,7 +398,7 @@ export const convexAdapter = (ctx, api, config = {}) => {
+                     });
+                     return result.count;
+                 },
+-                updateMany: async (data) => {
++                updateMany: async ({ modelKey: _modelKey, ...data }) => {
+                     if (!("runMutation" in ctx)) {
+                         throw new Error("ctx is not a mutation ctx");
+                     }
+diff --git a/dist/client/create-api.d.ts b/dist/client/create-api.d.ts
+index 3f54c8920733256558e0eab1275bfb4cc8521b12..93f4124248018c6ce8bb3408489f88ef912d8c77 100644
+--- a/dist/client/create-api.d.ts
++++ b/dist/client/create-api.d.ts
+@@ -70,6 +70,25 @@ export declare const createApi: <Schema extends SchemaDefinition<any, any>>(sche
+             model: TableNames;
+         };
+     }, Promise<any>>;
++    incrementOne: import("convex/server").RegisteredMutation<"public", {
++        onUpdateHandle?: string | undefined;
++        input: {
++            set?: {
++                [x: string]: unknown;
++                [x: number]: unknown;
++                [x: symbol]: unknown;
++            } | undefined;
++            where: {
++                mode?: "sensitive" | "insensitive" | undefined;
++                operator?: "lt" | "lte" | "gt" | "gte" | "eq" | "in" | "not_in" | "ne" | "contains" | "starts_with" | "ends_with" | undefined;
++                connector?: "AND" | "OR" | undefined;
++                value: string | number | boolean | string[] | number[] | null;
++                field: string;
++            }[];
++            increment: Record<string, number>;
++            model: TableNames;
++        };
++    }, Promise<any>>;
+     updateMany: import("convex/server").RegisteredMutation<"public", {
+         onUpdateHandle?: string | undefined;
+         input: {
+diff --git a/dist/client/create-api.js b/dist/client/create-api.js
+index 35e3bc4fd385b5bd949317a64410cc14a7e6b6ce..9ba13f6342daf30a13843e3fd77076b0a34d4945 100644
+--- a/dist/client/create-api.js
++++ b/dist/client/create-api.js
+@@ -89,8 +89,10 @@ export const createApi = (schema, createAuthOptions) => {
+             },
+             handler: async (ctx, args) => {
+                 const doc = await listOne(ctx, schema, betterAuthSchema, args.input);
++                // Better Auth 1.7 expects null when no row matches (a session
++                // refresh racing a revocation, for example), not an error.
+                 if (!doc) {
+-                    throw new Error(`Failed to update ${args.input.model}`);
++                    return null;
+                 }
+                 await checkUniqueFields(ctx, schema, betterAuthSchema, args.input.model, args.input.update, doc);
+                 await ctx.db.patch(args.input.model, doc._id, args.input.update);
+@@ -113,6 +115,61 @@ export const createApi = (schema, createAuthOptions) => {
+                 return updatedDoc;
+             },
+         }),
++        // Better Auth 1.7's atomic counter update (two-factor lockout, backup
++        // codes, organization counters). One mutation reads and patches the
++        // row, so concurrent increments cannot lose updates.
++        incrementOne: mutationGeneric({
++            args: {
++                input: v.union(...Object.entries(schema.tables).map(([name, table]) => {
++                    const tableName = name;
++                    return v.object({
++                        model: v.literal(tableName),
++                        where: v.array(whereValidator(schema, tableName)),
++                        increment: v.record(v.string(), v.number()),
++                        set: v.optional(v.object(partial(table.validator.fields))),
++                    });
++                })),
++                onUpdateHandle: v.optional(v.string()),
++            },
++            handler: async (ctx, args) => {
++                if (!args.input.where.length) {
++                    return null;
++                }
++                const doc = await listOne(ctx, schema, betterAuthSchema, args.input);
++                if (!doc) {
++                    return null;
++                }
++                const update = { ...args.input.set };
++                for (const [field, delta] of Object.entries(args.input.increment)) {
++                    const current = doc[field];
++                    if (current !== undefined &&
++                        current !== null &&
++                        typeof current !== "number") {
++                        throw new Error(`Cannot increment non-numeric field ${args.input.model}.${field}`);
++                    }
++                    update[field] = (current ?? 0) + delta;
++                }
++                await checkUniqueFields(ctx, schema, betterAuthSchema, args.input.model, update, doc);
++                await ctx.db.patch(args.input.model, doc._id, update);
++                const updatedDoc = await ctx.db.get(args.input.model, doc._id);
++                if (!updatedDoc) {
++                    throw new Error(`Failed to update ${args.input.model}`);
++                }
++                if (args.onUpdateHandle) {
++                    await ctx.runMutation(args.onUpdateHandle, {
++                        model: args.input.model,
++                        newDoc: updatedDoc,
++                        oldDoc: doc,
++                    });
++                    const innerUpdatedDoc = await ctx.db.get(args.input.model, doc._id);
++                    if (!innerUpdatedDoc) {
++                        throw new Error(`Failed to update ${args.input.model} (deleted by onUpdate trigger?)`);
++                    }
++                    return innerUpdatedDoc;
++                }
++                return updatedDoc;
++            },
++        }),
+         updateMany: mutationGeneric({
+             args: {
+                 input: v.union(...Object.entries(schema.tables).map(([name, table]) => {
+diff --git a/dist/client/create-client.d.ts b/dist/client/create-client.d.ts
+index da1c2a1d4a7287a3fa06a2e8347d3882bd6136aa..cfc4456d68f974182be8a329514e2695c6b40ef3 100644
+--- a/dist/client/create-client.d.ts
++++ b/dist/client/create-client.d.ts
+@@ -39,6 +39,7 @@ type SlimComponentApi = {
+         findOne: FunctionReference<"query", "internal">;
+         findMany: FunctionReference<"query", "internal">;
+         updateOne: FunctionReference<"mutation", "internal">;
++        incrementOne: FunctionReference<"mutation", "internal">;
+         updateMany: FunctionReference<"mutation", "internal">;
+         deleteOne: FunctionReference<"mutation", "internal">;
+         deleteMany: FunctionReference<"mutation", "internal">;
+diff --git a/dist/plugins/convex/index.d.ts b/dist/plugins/convex/index.d.ts
+index e316d163f09b2f9f70c6e9e08dadb22faf7ad007..a80578006dd4477c344c3642181ca2eb8dfa695f 100644
+--- a/dist/plugins/convex/index.d.ts
++++ b/dist/plugins/convex/index.d.ts
+@@ -258,7 +258,11 @@ export declare const convex: (opts: {
+             metadata: {
+                 isAction: false;
+             };
+-        }, import("better-auth/plugins/oidc-provider").OIDCMetadata>;
++        }, {
++            issuer: string;
++            jwks_uri: string;
++            id_token_signing_alg_values_supported: string[];
++        }>;
+         getJwks: import("better-call").StrictEndpoint<"/convex/jwks", {
+             method: "GET";
+             metadata: {
+diff --git a/dist/plugins/convex/index.js b/dist/plugins/convex/index.js
+index 549d21da3f8e8be44530aba44c892d7b20a26b7b..daa9382e5b8ecc47e39f8030329dcfe11fd7fd6d 100644
+--- a/dist/plugins/convex/index.js
++++ b/dist/plugins/convex/index.js
+@@ -1,16 +1,9 @@
+ import { createAuthEndpoint, createAuthMiddleware, sessionMiddleware, } from "better-auth/api";
+ import { bearer as bearerPlugin } from "better-auth/plugins/bearer";
+ import { jwt as jwtPlugin } from "better-auth/plugins/jwt";
+-import { oidcProvider as oidcProviderPlugin } from "better-auth/plugins/oidc-provider";
+ import { omit } from "convex-helpers";
+ import { VERSION } from "../../version.js";
+ export const JWT_COOKIE_NAME = "convex_jwt";
+-const normalizeAfterHooks = (hooks) => {
+-    return hooks.map((hook) => ({
+-        ...hook,
+-        matcher: (ctx) => Boolean(hook.matcher(ctx)),
+-    }));
+-};
+ const getJwksAlg = (authProvider) => {
+     const isCustomJwt = "type" in authProvider && authProvider.type === "customJwt";
+     if (isCustomJwt && authProvider.algorithm !== "RS256") {
+@@ -42,14 +35,6 @@ const parseAuthConfig = (authConfig, opts) => {
+ };
+ export const convex = (opts) => {
+     const jwtExpirationSeconds = opts.jwt?.expirationSeconds ?? opts.jwtExpirationSeconds ?? 60 * 15;
+-    const oidcProvider = oidcProviderPlugin({
+-        loginPage: "/not-used",
+-        metadata: {
+-            issuer: `${process.env.CONVEX_SITE_URL}`,
+-            jwks_uri: `${process.env.CONVEX_SITE_URL}${opts.options?.basePath ?? "/api/auth"}/convex/jwks`,
+-        },
+-        __skipDeprecationWarning: true,
+-    });
+     const providerConfig = parseAuthConfig(opts.authConfig, opts);
+     const jwtOptions = {
+         jwt: {
+@@ -163,12 +148,20 @@ export const convex = (opts) => {
+                         ctx.context.adapter.updateMany = noopWrite("updateMany");
+                         ctx.context.adapter.delete = noopWrite("delete");
+                         ctx.context.adapter.deleteMany = noopWrite("deleteMany");
++                        const noopAtomicWrite = (method) => {
++                            const warn = noopWrite(method);
++                            return async (...args) => {
++                                await warn(...args);
++                                return null;
++                            };
++                        };
++                        ctx.context.adapter.consumeOne = noopAtomicWrite("consumeOne");
++                        ctx.context.adapter.incrementOne = noopAtomicWrite("incrementOne");
+                         return { context: ctx };
+                     }),
+                 },
+             ],
+             after: [
+-                ...normalizeAfterHooks(oidcProvider.hooks.after),
+                 {
+                     matcher: (ctx) => {
+                         return Boolean(ctx.path?.startsWith("/sign-in") ||
+@@ -231,14 +224,20 @@ export const convex = (opts) => {
+                     isAction: false,
+                 },
+                 // TODO: properly type this
+-            }, async (ctx) => {
+-                const response = await oidcProvider.endpoints.getOpenIdConfig({
+-                    ...ctx,
+-                    asResponse: false,
+-                    returnHeaders: false,
+-                    returnStatus: false,
+-                });
+-                return response;
++            }, async (_ctx) => {
++                // Better Auth 1.7 removed the oidcProvider plugin this document
++                // came from; only the issuer and JWKS location matter to Convex.
++                const issuer = process.env.CONVEX_SITE_URL;
++                if (!issuer) {
++                    throw new Error("CONVEX_SITE_URL is not set");
++                }
++                return {
++                    issuer,
++                    jwks_uri: `${issuer}${opts.options?.basePath ?? "/api/auth"}/convex/jwks`,
++                    id_token_signing_alg_values_supported: [
++                        getJwksAlg(providerConfig),
++                    ],
++                };
+             }),
+             getJwks: createAuthEndpoint("/convex/jwks", {
+                 method: "GET",
