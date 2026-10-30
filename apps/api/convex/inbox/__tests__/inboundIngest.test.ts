@@ -57,6 +57,8 @@ import {
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
+import type * as ContactsModule from '../../contacts/contacts';
+import type * as MessagesModule from '../messages';
 import { getInboundChannelAdapter } from '../../webhooks/adapters/inboundRegistry';
 import { readScanRequest } from '../../mail/__tests__/scannerStub.testlib';
 import { drainScheduled } from './scheduledWork.testlib';
@@ -94,7 +96,7 @@ function withHandler<T extends { _handler: (...args: never[]) => unknown }>(
 }
 
 vi.mock('../messages', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../messages')>();
+	const actual = await importOriginal<typeof MessagesModule>();
 	const findIdByMessageId = actual.findIdByMessageId as unknown as {
 		_handler: (...args: never[]) => unknown;
 	};
@@ -127,7 +129,7 @@ vi.mock('../messages', async (importOriginal) => {
  * renders exactly like a message the assistant read cover to cover.
  */
 vi.mock('../../contacts/contacts', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../../contacts/contacts')>();
+	const actual = await importOriginal<typeof ContactsModule>();
 	const getByEmailForTeam = actual.getByEmailForTeam as unknown as {
 		_handler: (...args: never[]) => unknown;
 	};

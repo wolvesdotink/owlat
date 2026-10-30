@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import schema from '../../schema';
 import { api, internal } from '../../_generated/api';
 import type { OrganizationRole } from '../../lib/sessionOrganization';
+import type * as SessionOrganizationModule from '../../lib/sessionOrganization';
 
 /**
  * The desktop update cache and policy end to end through convex-test:
@@ -22,7 +23,7 @@ import type { OrganizationRole } from '../../lib/sessionOrganization';
 let mockRole: OrganizationRole = 'owner';
 
 vi.mock('../../lib/sessionOrganization', async () => {
-	const actual = await vi.importActual<typeof import('../../lib/sessionOrganization')>(
+	const actual = await vi.importActual<typeof SessionOrganizationModule>(
 		'../../lib/sessionOrganization'
 	);
 	return {
@@ -46,7 +47,7 @@ vi.mock('../../lib/sessionOrganization', async () => {
 			.mockImplementation(async (_ctx: unknown, permission: string, message?: string) => {
 				// The explicit annotation is what lets TS narrow through
 				// `requirePermission`'s assertion signature off a property access.
-				const mod: typeof import('../../lib/sessionOrganization') = actual;
+				const mod: typeof SessionOrganizationModule = actual;
 				mod.requirePermission(
 					mod.hasPermission(
 						mockRole as Parameters<typeof mod.hasPermission>[0],

@@ -4,6 +4,7 @@ import schema from '../../schema';
 import { api, internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import type { OrganizationRole } from '../../lib/sessionOrganization';
+import type * as SessionOrganizationModule from '../../lib/sessionOrganization';
 import { readInstanceCounter } from '../../lib/instanceCounters';
 
 /**
@@ -18,7 +19,7 @@ import { readInstanceCounter } from '../../lib/instanceCounters';
 let mockRole: OrganizationRole = 'owner';
 
 vi.mock('../../lib/sessionOrganization', async () => {
-	const actual = await vi.importActual<typeof import('../../lib/sessionOrganization')>(
+	const actual = await vi.importActual<typeof SessionOrganizationModule>(
 		'../../lib/sessionOrganization'
 	);
 	return {
@@ -36,7 +37,7 @@ vi.mock('../../lib/sessionOrganization', async () => {
 		requireOrgPermission: vi
 			.fn()
 			.mockImplementation(async (_ctx: unknown, permission: string, message?: string) => {
-				const mod: typeof import('../../lib/sessionOrganization') = actual;
+				const mod: typeof SessionOrganizationModule = actual;
 				mod.requirePermission(
 					mod.hasPermission(
 						mockRole as Parameters<typeof mod.hasPermission>[0],
