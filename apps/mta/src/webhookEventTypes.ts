@@ -21,9 +21,8 @@ import type {
 	MtaWebhookEventDraft,
 	MtaWebhookPayloads,
 } from '@owlat/mta-protocol';
+export type { MtaWebhookEventType } from '@owlat/mta-protocol';
 import type { InboundEmailPayload, MailboxInboundPayload } from './types.js';
-
-export type MtaWebhookEventType = import('@owlat/mta-protocol').MtaWebhookEventType;
 
 /** This service's bindings for the wire's three producer-owned blobs. */
 export interface MtaProducedPayloads extends MtaWebhookPayloads {

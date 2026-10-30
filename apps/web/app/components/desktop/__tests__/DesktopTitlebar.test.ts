@@ -22,6 +22,7 @@ import { ref, computed } from 'vue';
 import DesktopTitlebar from '../DesktopTitlebar.vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { WORKSPACE_ACCENTS } from '~/lib/desktop/workspaceTypes';
+import type * as WindowModule from '@owlat/desktop/src/window';
 
 const { setWindowTitleMock, setWindowThemeMock } = vi.hoisted(() => ({
 	setWindowTitleMock: vi.fn().mockResolvedValue(undefined),
@@ -29,7 +30,7 @@ const { setWindowTitleMock, setWindowThemeMock } = vi.hoisted(() => ({
 }));
 
 vi.mock('@owlat/desktop/src/window', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('@owlat/desktop/src/window')>();
+	const actual = await importOriginal<typeof WindowModule>();
 	return {
 		...actual,
 		setWindowTitle: setWindowTitleMock,

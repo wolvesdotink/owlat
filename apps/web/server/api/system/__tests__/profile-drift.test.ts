@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { getActiveProfiles } from '@owlat/shared/featureFlags';
+import type * as RequireAdminModule from '~~/server/utils/requireAdmin';
 
 /**
  * Route tests for `GET /api/system/profile-drift` (plan FU4): the durable
@@ -236,9 +237,7 @@ describe('GET /api/system/profile-drift — updater unreachable', () => {
  */
 describe('GET /api/system/profile-drift — the real platform-admin gate', () => {
 	it('rejects an unauthenticated call with 401 before touching the updater', async () => {
-		const real = await vi.importActual<typeof import('~~/server/utils/requireAdmin')>(
-			'~~/server/utils/requireAdmin'
-		);
+		const real = await vi.importActual<typeof RequireAdminModule>('~~/server/utils/requireAdmin');
 		requirePlatformAdminMock.mockImplementation(real.requirePlatformAdmin);
 		vi.stubGlobal('useRuntimeConfig', () => ({
 			public: { convexUrl: 'https://convex.example.com', siteUrl: 'https://owlat.example' },

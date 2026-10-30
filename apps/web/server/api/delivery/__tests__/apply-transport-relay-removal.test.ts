@@ -20,6 +20,8 @@ import { getFunctionName } from 'convex/server';
 import { api } from '@owlat/api';
 import { RELAY_REMOVAL_CONFIRMATION } from '@owlat/shared/deliverabilityIndependence';
 import { jsonRequestEvent } from '../../../__tests__/nitro';
+import type * as ConvexRuntimeEnvModule from '@owlat/shared/convexRuntimeEnv';
+import type * as RequireOrgAdminModule from '~~/server/utils/requireOrgAdmin';
 
 const { pushMock, readMock, writeMock, requireOrgAdminMock, queryMock } = vi.hoisted(() => ({
 	pushMock: vi.fn(),
@@ -37,7 +39,7 @@ vi.mock('@owlat/shared/setupEnv', () => ({
 	writeEnvFile: writeMock,
 }));
 vi.mock('@owlat/shared/convexRuntimeEnv', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('@owlat/shared/convexRuntimeEnv')>();
+	const actual = await importOriginal<typeof ConvexRuntimeEnvModule>();
 	return { ...actual, pushConvexRuntimeEnv: pushMock };
 });
 
@@ -314,7 +316,7 @@ describe('apply-transport — disconnecting a relay cells still lean on', () => 
  */
 describe('apply-transport relay removal — the real org-admin gate', () => {
 	it('rejects an unauthenticated call with 401 before reading or writing .env', async () => {
-		const real = await vi.importActual<typeof import('~~/server/utils/requireOrgAdmin')>(
+		const real = await vi.importActual<typeof RequireOrgAdminModule>(
 			'~~/server/utils/requireOrgAdmin'
 		);
 		requireOrgAdminMock.mockImplementation(real.requireOrgAdmin);

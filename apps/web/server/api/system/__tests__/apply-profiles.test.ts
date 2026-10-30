@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { jsonRequestEvent } from '../../../__tests__/nitro';
+import type * as RequireAdminModule from '~~/server/utils/requireAdmin';
 
 /**
  * Route tests for `POST /api/system/apply-profiles`: platform-admin
@@ -163,9 +164,7 @@ describe('POST /api/system/apply-profiles — updater proxying', () => {
  */
 describe('POST /api/system/apply-profiles — the real platform-admin gate', () => {
 	it('rejects an unauthenticated call with 401 before touching the updater', async () => {
-		const real = await vi.importActual<typeof import('~~/server/utils/requireAdmin')>(
-			'~~/server/utils/requireAdmin'
-		);
+		const real = await vi.importActual<typeof RequireAdminModule>('~~/server/utils/requireAdmin');
 		requirePlatformAdminMock.mockImplementation(real.requirePlatformAdmin);
 		vi.stubGlobal('useRuntimeConfig', () => ({
 			public: { convexUrl: 'https://convex.example.com', siteUrl: 'https://owlat.example' },
