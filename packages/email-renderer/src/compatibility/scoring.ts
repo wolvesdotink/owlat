@@ -25,7 +25,7 @@ export const getBlockCompatibility = (blockType: BlockType): readonly FeatureCom
 /** Per-property compatibility for a block type, optionally filtered by property. */
 export const getPropertyCompatibility = (
 	blockType: BlockType,
-	property?: string,
+	property?: string
 ): readonly PropertyCompatibility[] => {
 	const all = propertiesFor(blockType);
 	return property ? all.filter((p) => p.property === property) : all;
@@ -37,7 +37,7 @@ export const getPropertyCompatibility = (
  */
 export const getAudienceReach = (
 	support: ClientSupport,
-	customWeights?: Partial<Record<keyof ClientSupport, number>>,
+	customWeights?: Partial<Record<keyof ClientSupport, number>>
 ): number => {
 	const clients = Object.keys(support) as (keyof ClientSupport)[];
 	let totalReach = 0;
@@ -45,9 +45,7 @@ export const getAudienceReach = (
 
 	for (const client of clients) {
 		const weight =
-			customWeights?.[client] ??
-			emailClientRegistry.get(client)?.marketSharePercent ??
-			0;
+			customWeights?.[client] ?? emailClientRegistry.get(client)?.marketSharePercent ?? 0;
 		totalWeight += weight;
 
 		const level = lookupClientSupport(support, client);
@@ -68,7 +66,7 @@ export const getAudienceReach = (
  */
 export const scoreBlockCompatibility = (
 	blockType: BlockType,
-	properties: Record<string, unknown>,
+	properties: Record<string, unknown>
 ): BlockCompatibilityScore => {
 	const allClients = Object.keys(fullSupport) as (keyof ClientSupport)[];
 	const fullSupportClients: (keyof ClientSupport)[] = [];
@@ -77,7 +75,7 @@ export const scoreBlockCompatibility = (
 
 	const features = featuresFor(blockType);
 	const usedProperties = propertiesFor(blockType).filter(
-		(p) => properties[p.property] !== undefined,
+		(p) => properties[p.property] !== undefined
 	);
 
 	for (const client of allClients) {
@@ -90,7 +88,7 @@ export const scoreBlockCompatibility = (
 				if (feat.degradationImpact === 'functional' || feat.degradationImpact === 'hidden') {
 					hasCritical = true;
 					criticalIssues.push(
-						`${emailClients[client]?.name ?? client}: ${feat.feature} — ${feat.fallback}`,
+						`${emailClients[client]?.name ?? client}: ${feat.feature} — ${feat.fallback}`
 					);
 				} else {
 					hasPartial = true;
@@ -105,7 +103,7 @@ export const scoreBlockCompatibility = (
 			if (level === 'none' && prop.severity === 'critical') {
 				hasCritical = true;
 				criticalIssues.push(
-					`${emailClients[client]?.name ?? client}: ${prop.property} — ${prop.recommendation}`,
+					`${emailClients[client]?.name ?? client}: ${prop.property} — ${prop.recommendation}`
 				);
 			} else if (level !== 'full') {
 				hasPartial = true;
