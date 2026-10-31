@@ -166,6 +166,23 @@ const recordCheckArgs = {
 };
 
 /**
+ * Whether the thread is still as the check read it: not fenced, the same plan
+ * revision, nothing purged or erased since, and every item it names still at
+ * the revision it read. Draft on arrival asks before it writes the slot, so a
+ * reply written from stale input is not kept either.
+ */
+export async function isPlanCheckCurrent(
+	ctx: MutationCtx,
+	args: ObjectType<typeof recordCheckArgs>
+): Promise<boolean> {
+	// A check that read a thread now fenced off is not kept (staleFence.ts).
+	if (await isInterpretationFenced(ctx, args.threadRef)) return false;
+	const existing = await readPlanRow(ctx, args.draftRef);
+	if ((existing?.planRevision ?? 0) !== args.planRevision) return false;
+	return await isStillBound(ctx, args);
+}
+
+/**
  * Store a checked plan for a draft (the agent draft step, Answer mode's
  * coverage check, draft on arrival). The caller already applied the reader
  * rule; claim and promise texts are sealed here.
@@ -185,13 +202,8 @@ export async function recordPlanCheck(
 ): Promise<{ isStored: boolean }> {
 	if (!(await isDraftOfThread(ctx, args.draftRef, args.threadRef))) return { isStored: false };
 	if (!(await isDraftLive(ctx, args.draftRef))) return { isStored: false };
-	// A check that read a thread now fenced off is not kept (staleFence.ts).
-	if (await isInterpretationFenced(ctx, args.threadRef)) return { isStored: false };
+	if (!(await isPlanCheckCurrent(ctx, args))) return { isStored: false };
 	const existing = await readPlanRow(ctx, args.draftRef);
-	if ((existing?.planRevision ?? 0) !== args.planRevision) return { isStored: false };
-	// Nothing purged or erased since the check read, and every item it names
-	// still exists at the revision it read.
-	if (!(await isStillBound(ctx, args))) return { isStored: false };
 	await upsertPlan(ctx, args.threadRef, args.draftRef, {
 		threadRevision: args.threadRevision,
 		itemRevisions: args.itemRevisions,

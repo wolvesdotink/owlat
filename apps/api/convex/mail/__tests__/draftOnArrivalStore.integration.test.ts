@@ -350,4 +350,25 @@ describe('the slot and its plan land in one commit', () => {
 		);
 		expect(await arrivalPlans(t)).toEqual([]);
 	});
+
+	it('stores no slot written from a plan that went stale on the same trigger', async () => {
+		const t = convexTest(schema, modules);
+		const { threadId, ids } = await seedThread(
+			t,
+			[{ from: CUSTOMER, body: 'Does Friday work?' }],
+			0
+		);
+
+		// The thread was purged while the reply was drafted: its epoch moved on.
+		await t.mutation(internal.mail.ai.draftOnArrivalStore.persistDraftSlot, {
+			threadId,
+			triggerMessageId: ids[0]!,
+			draft: 'Hi Chris, Friday works.',
+			confidence: 0.8,
+			plan: { ...plan, deletionEpoch: 1 },
+		});
+
+		expect((await t.run((ctx) => ctx.db.get(threadId)))?.needsReply?.draftSlot).toBeUndefined();
+		expect(await arrivalPlans(t)).toEqual([]);
+	});
 });
