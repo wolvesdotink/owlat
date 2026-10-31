@@ -32,9 +32,15 @@ function harness() {
 	vi.stubEnv('CONVEX_SITE_URL', 'https://api.owlat.example');
 	const t = newBetterAuthHarness();
 	const sent: SentEmail[] = [];
+	// The adapter forwards whichever component reference Better Auth asked for,
+	// which no single instantiation of convex-test's generic signature describes.
+	const forward = t as unknown as {
+		query: (ref: unknown, args: unknown) => Promise<unknown>;
+		mutation: (ref: unknown, args: unknown) => Promise<unknown>;
+	};
 	const ctx = {
-		runQuery: (ref: never, args: never) => t.query(ref, args),
-		runMutation: (ref: never, args: never) => t.mutation(ref, args),
+		runQuery: (ref: unknown, args: unknown) => forward.query(ref, args),
+		runMutation: (ref: unknown, args: unknown) => forward.mutation(ref, args),
 		runAction: async (_ref: unknown, params: SentEmail) => {
 			sent.push(params);
 			return { success: true };
