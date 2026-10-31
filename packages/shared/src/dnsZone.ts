@@ -73,7 +73,7 @@ export interface ZoneSplit {
 }
 
 /** Thrown by {@link splitZone} and {@link zoneRelativeHost} for input with no registrable domain. */
-export class InvalidDomainError extends Error {
+class InvalidDomainError extends Error {
 	constructor(
 		message: string,
 		/** The offending input, for callers that log or surface it. */
@@ -172,7 +172,7 @@ export function isDnsLabel(label: string): boolean {
  * (`localhost`), or an IP literal. Use {@link trySplitZone} for the non-throwing
  * variant (e.g. live-validating picker input).
  */
-export function splitZone(domain: string): ZoneSplit {
+function splitZone(domain: string): ZoneSplit {
 	const split = trySplitZone(domain);
 	if (split === null) {
 		throw new InvalidDomainError(

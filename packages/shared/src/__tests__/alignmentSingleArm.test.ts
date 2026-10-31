@@ -21,8 +21,11 @@ import {
 	ALIGNMENT_RECHECK_INTERVAL_MS,
 	evaluateAlignmentPreflight,
 } from '../deliverabilityAlignment';
-import { ALIGNMENT_STALE_AFTER_MS, alignmentGate } from '../deliverabilityAlignmentGate';
+import { alignmentGate } from '../deliverabilityAlignmentGate';
 import { ALIGNMENT_FAILURE_TABLE, alignedInput, CHECKED_AT } from './alignmentFixtures';
+
+// The gate's 48-hour freshness window, pinned as a literal.
+const ALIGNMENT_STALE_AFTER_MS = 48 * 60 * 60 * 1000;
 
 const NO_REFERENCE = { kind: 'none' } as const;
 

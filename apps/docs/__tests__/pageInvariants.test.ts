@@ -5,7 +5,6 @@ import { CORE_SEND_PROVIDER_CATALOG_ENTRIES, FEATURE_FLAGS } from '@owlat/shared
 import {
 	GMAIL_BULK_SENDER_THRESHOLD,
 	GMAIL_PROXIMITY_WARNING_THRESHOLD,
-	MICROSOFT_HIGH_VOLUME_SENDER_THRESHOLD,
 	UNSUBSCRIBE_HONOR_WINDOW_MS,
 } from '@owlat/shared/deliverabilityPolicy';
 import { backtickSpans, docPages, REPO_ROOT } from './repoVocabulary';
@@ -235,7 +234,6 @@ const LOCALE_TAGS: ReadonlyArray<readonly [string, string]> = [
 const QUOTED_THRESHOLDS: ReadonlyArray<readonly [string, number]> = [
 	['Gmail bulk sender', GMAIL_BULK_SENDER_THRESHOLD],
 	['Gmail proximity warning', GMAIL_PROXIMITY_WARNING_THRESHOLD],
-	['Outlook.com high volume', MICROSOFT_HIGH_VOLUME_SENDER_THRESHOLD],
 ];
 
 describe('deliverability thresholds', () => {

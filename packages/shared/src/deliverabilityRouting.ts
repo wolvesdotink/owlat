@@ -21,7 +21,7 @@ export type DeliverabilitySignalProvider = DestinationProviderKey | 'all';
  * governed message type (there are three) widens the stream axis with it
  * instead of silently missing every per-stream row.
  */
-export const DELIVERABILITY_STREAM_KEYS = GOVERNED_MESSAGE_TYPES;
+const DELIVERABILITY_STREAM_KEYS = GOVERNED_MESSAGE_TYPES;
 export type DeliverabilityStream = GovernedMessageType;
 
 /** A ramp cell: the `(stream, destinationProvider)` pair the controller drives. */
@@ -68,7 +68,7 @@ export function allDeliverabilityCells(): DeliverabilityCell[] {
  * Infrastructure sources are the SHIPPED fallback triggers: they, and only
  * they, flip a provider slice onto the relay through the shipped hysteresis.
  */
-export const INFRASTRUCTURE_DELIVERABILITY_SIGNAL_SOURCES = [
+const INFRASTRUCTURE_DELIVERABILITY_SIGNAL_SOURCES = [
 	'ip_quarantined',
 	'dnsbl_listed',
 	'breaker_open',
@@ -81,7 +81,7 @@ export const INFRASTRUCTURE_DELIVERABILITY_SIGNAL_SOURCES = [
  * silently filed to Spam). They are recorded and readable, they move the ramp
  * controller's share, and they never on their own flip the shipped boolean.
  */
-export const OUTCOME_DELIVERABILITY_SIGNAL_SOURCES = [
+const OUTCOME_DELIVERABILITY_SIGNAL_SOURCES = [
 	'bounce_rate',
 	'complaint_rate',
 	'engagement_ratio',
@@ -90,19 +90,6 @@ export const OUTCOME_DELIVERABILITY_SIGNAL_SOURCES = [
 
 export type InfrastructureDeliverabilitySignalSource =
 	(typeof INFRASTRUCTURE_DELIVERABILITY_SIGNAL_SOURCES)[number];
-export type OutcomeDeliverabilitySignalSource =
-	(typeof OUTCOME_DELIVERABILITY_SIGNAL_SOURCES)[number];
-
-export const DELIVERABILITY_SIGNAL_SOURCES = [
-	'ip_quarantined',
-	'dnsbl_listed',
-	'dnsbl_partial',
-	'dnsbl_unknown',
-	'breaker_open',
-	'persistent_defers',
-	...OUTCOME_DELIVERABILITY_SIGNAL_SOURCES,
-] as const;
-export type DeliverabilitySignalSource = (typeof DELIVERABILITY_SIGNAL_SOURCES)[number];
 
 /**
  * Advisory sources describe what the MTA could MEASURE, not a routing verdict.
@@ -119,9 +106,19 @@ export type DeliverabilitySignalSource = (typeof DELIVERABILITY_SIGNAL_SOURCES)[
  * Advisory signals are recorded and readable; only actionable sources drive the
  * shipped fallback + hysteresis transition.
  */
-export const ADVISORY_DELIVERABILITY_SIGNAL_SOURCES = ['dnsbl_partial', 'dnsbl_unknown'] as const;
-export type AdvisoryDeliverabilitySignalSource =
-	(typeof ADVISORY_DELIVERABILITY_SIGNAL_SOURCES)[number];
+const ADVISORY_DELIVERABILITY_SIGNAL_SOURCES = ['dnsbl_partial', 'dnsbl_unknown'] as const;
+
+/**
+ * The full source union, built from the three classes so every source belongs
+ * to exactly one of them.
+ */
+const DELIVERABILITY_SIGNAL_SOURCES = [
+	...INFRASTRUCTURE_DELIVERABILITY_SIGNAL_SOURCES,
+	...ADVISORY_DELIVERABILITY_SIGNAL_SOURCES,
+	...OUTCOME_DELIVERABILITY_SIGNAL_SOURCES,
+] as const;
+export type DeliverabilitySignalSource = (typeof DELIVERABILITY_SIGNAL_SOURCES)[number];
+
 /**
  * "Actionable" means actionable for the SHIPPED relay fallback — the four
  * infrastructure sources. Advisory (measurement-state) and outcome-derived
@@ -131,23 +128,11 @@ export type AdvisoryDeliverabilitySignalSource =
 export type ActionableDeliverabilitySignalSource = InfrastructureDeliverabilitySignalSource;
 export type DeliverabilitySignalSeverity = 'warning' | 'critical';
 
-export function isDeliverabilitySignalSource(value: unknown): value is DeliverabilitySignalSource {
+function isDeliverabilitySignalSource(value: unknown): value is DeliverabilitySignalSource {
 	return (
 		typeof value === 'string' &&
 		(DELIVERABILITY_SIGNAL_SOURCES as readonly string[]).includes(value)
 	);
-}
-
-export function isAdvisoryDeliverabilitySignalSource(
-	value: DeliverabilitySignalSource
-): value is AdvisoryDeliverabilitySignalSource {
-	return (ADVISORY_DELIVERABILITY_SIGNAL_SOURCES as readonly string[]).includes(value);
-}
-
-export function isOutcomeDeliverabilitySignalSource(
-	value: DeliverabilitySignalSource
-): value is OutcomeDeliverabilitySignalSource {
-	return (OUTCOME_DELIVERABILITY_SIGNAL_SOURCES as readonly string[]).includes(value);
 }
 
 export function isActionableDeliverabilitySignalSource(
@@ -266,7 +251,7 @@ export interface DeliverabilityRoutingSnapshot {
 }
 
 const MAX_SIGNALS = 32;
-export const DELIVERABILITY_SNAPSHOT_MAX_AGE_MS = 10 * 60 * 1000;
+const DELIVERABILITY_SNAPSHOT_MAX_AGE_MS = 10 * 60 * 1000;
 export const DELIVERABILITY_SNAPSHOT_MAX_FUTURE_SKEW_MS = 2 * 60 * 1000;
 
 export function isDestinationProviderKey(value: unknown): value is DestinationProviderKey {

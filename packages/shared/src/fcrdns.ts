@@ -63,7 +63,7 @@ const FCRDNS_DNS_TIMEOUT_MS = 5_000;
  * Provider-owned reverse-DNS suffixes that identify their default/generated
  * hostnames. Kept as data so operators can add suffixes without changing code.
  */
-export const DEFAULT_GENERIC_PTR_SUFFIXES = [
+const DEFAULT_GENERIC_PTR_SUFFIXES = [
 	'your-server.de',
 	'clients.your-server.de',
 	'compute.amazonaws.com',
@@ -110,10 +110,7 @@ function embedsIpv4(name: string): boolean {
 	);
 }
 
-export function isGenericPtrHostname(
-	hostname: string,
-	extraSuffixes: readonly string[] = []
-): boolean {
+function isGenericPtrHostname(hostname: string, extraSuffixes: readonly string[] = []): boolean {
 	const name = normalizeDomain(hostname);
 	if (!name) return false;
 	const suffixes = [...DEFAULT_GENERIC_PTR_SUFFIXES, ...extraSuffixes]

@@ -95,7 +95,6 @@ export {
 	SEED_REACHED_THRESHOLD,
 	SEED_REFERENCE_TOLERANCE,
 	summarizeSeedPlacement,
-	summarizeSeedProvider,
 	summarizeSeedProviderCounts,
 	type SeedArmPlacementCounts,
 	type SeedConfidence,
@@ -109,9 +108,9 @@ export {
 // ============ PROBE HYGIENE (part of the feature, not a follow-up) ============
 
 /** A seed that never opens anything trains the provider to distrust us. */
-export const SEED_CLICK_PROBABILITY = 0.2;
+const SEED_CLICK_PROBABILITY = 0.2;
 /** Consumer mailboxes go stale; prompt the operator to rotate roughly quarterly. */
-export const SEED_ROTATION_INTERVAL_MS = 90 * 24 * 60 * 60 * 1000;
+const SEED_ROTATION_INTERVAL_MS = 90 * 24 * 60 * 60 * 1000;
 
 export interface SeedHygienePlan {
 	markRead: boolean;

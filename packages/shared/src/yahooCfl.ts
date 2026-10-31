@@ -47,11 +47,11 @@ export type YahooCflStoredState = (typeof YAHOO_CFL_STORED_STATES)[number];
  * `enrolled` domain that has seen no report for long enough that the enrollment
  * is probably no longer live and is worth re-checking at Yahoo.
  */
-export const YAHOO_CFL_ENROLLMENT_STATES = [...YAHOO_CFL_STORED_STATES, 'lapsed'] as const;
+const YAHOO_CFL_ENROLLMENT_STATES = [...YAHOO_CFL_STORED_STATES, 'lapsed'] as const;
 export type YahooCflEnrollmentState = (typeof YAHOO_CFL_ENROLLMENT_STATES)[number];
 
 /** Where the operator performs the enrollment. Informational only. */
-export const YAHOO_CFL_ENROLLMENT_URL = 'https://senders.yahooinc.com/complaint-feedback-loop/';
+const YAHOO_CFL_ENROLLMENT_URL = 'https://senders.yahooinc.com/complaint-feedback-loop/';
 
 /**
  * Silence that makes an `enrolled` domain read as `lapsed`.
@@ -61,13 +61,13 @@ export const YAHOO_CFL_ENROLLMENT_URL = 'https://senders.yahooinc.com/complaint-
  * be far longer than any plausible clean streak: the derived state is a PROMPT
  * TO RE-CHECK, never an alarm, and `lapsed` is deliberately not an error state.
  */
-export const YAHOO_CFL_LAPSE_SILENCE_MS = 90 * 24 * 60 * 60 * 1000;
+const YAHOO_CFL_LAPSE_SILENCE_MS = 90 * 24 * 60 * 60 * 1000;
 
 /**
  * How long a submission may sit in `awaiting_yahoo` before the guided flow
  * suggests re-submitting. Yahoo's review is manual and typically days.
  */
-export const YAHOO_CFL_SUBMISSION_PATIENCE_MS = 14 * 24 * 60 * 60 * 1000;
+const YAHOO_CFL_SUBMISSION_PATIENCE_MS = 14 * 24 * 60 * 60 * 1000;
 
 /**
  * How much `lastReportAt` must ADVANCE before a report is worth a write.
@@ -79,7 +79,7 @@ export const YAHOO_CFL_SUBMISSION_PATIENCE_MS = 14 * 24 * 60 * 60 * 1000;
  * liveness against a 90-day lapse window, so one write per hour carries all the
  * information the derived verdict can use; the rest is coalesced away.
  */
-export const YAHOO_CFL_REPORT_COALESCE_MS = 60 * 60 * 1000;
+const YAHOO_CFL_REPORT_COALESCE_MS = 60 * 60 * 1000;
 
 /** The lapse / patience windows in whole days, for operator-facing copy. */
 function inDays(ms: number): number {
@@ -119,7 +119,7 @@ export function emptyYahooCflEnrollment(): YahooCflEnrollmentRecord {
  * AND carries a selector. This is a PRECONDITION on our own guided flow, not a
  * gate on sending: mail to Yahoo keeps flowing either way.
  */
-export function yahooCflPreconditionMet(precondition: YahooCflDkimPrecondition): boolean {
+function yahooCflPreconditionMet(precondition: YahooCflDkimPrecondition): boolean {
 	return precondition.isVerified && (precondition.dkimSelector ?? '').trim().length > 0;
 }
 

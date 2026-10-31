@@ -21,15 +21,13 @@ export { type AlignmentMode, isSpfAligned, emailDomain } from './spfAlignment';
 export {
 	type DnsName,
 	type ZoneSplit,
-	InvalidDomainError,
 	asDnsName,
 	isDnsLabel,
-	splitZone,
 	trySplitZone,
 	zoneRelativeHost,
 } from './dnsZone';
 export { boundedEditDistance, LOOKALIKE_MAX_EDITS } from './editDistance';
-export { normalizeReturnPathHost, isValidReturnPathHost } from './returnPathHost';
+export { normalizeReturnPathHost } from './returnPathHost';
 export { SES_RELAY_PROOF_MAX_AGE_MS, MANDRILL_RELAY_PROOF_MAX_AGE_MS } from './deliveryProof';
 export {
 	DELIVERABILITY_ALERT_RECIPIENT_LIMIT,
@@ -111,9 +109,7 @@ export {
 	type ReverseDnsGuidance,
 	FCRDNS_FAILURE_REASONS,
 	FCRDNS_VERDICTS,
-	DEFAULT_GENERIC_PTR_SUFFIXES,
 	isFqdn,
-	isGenericPtrHostname,
 	verifyFcrdnsIdentity,
 	reverseDnsGuidance,
 	fcrdnsReasonMessage,
@@ -177,7 +173,6 @@ export {
 	TLS_RPT_MAX_CONTACT_INFO_LENGTH,
 	TLS_RPT_MAX_POLICY_DOMAIN_LENGTH,
 	TLS_RPT_MAX_FAILURE_TYPE_LENGTH,
-	gunzipTlsReport,
 	parseTlsReport,
 	decodeTlsReport,
 	digestTlsReport,
@@ -187,7 +182,6 @@ export {
 	type MtaStsMode,
 	type MtaStsPublishedMode,
 	MTA_STS_MODES,
-	MTA_STS_MAX_AGE_SECONDS,
 	MTA_STS_TXT_HOST,
 	MTA_STS_POLICY_HOST,
 	MTA_STS_WELL_KNOWN_PATH,

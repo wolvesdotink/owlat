@@ -17,7 +17,6 @@ import {
 	decodeTlsReport,
 	parseTlsReport,
 	digestTlsReport,
-	gunzipTlsReport,
 	TLS_RPT_MAX_COMPRESSED_BYTES,
 	type TlsReportDigest,
 } from '@owlat/shared';
@@ -119,8 +118,7 @@ describe('TLS-RPT parsing (shared parser, never throws)', () => {
 
 describe('domains.tlsReports.ingest (idempotent)', () => {
 	async function digestFixture(): Promise<TlsReportDigest> {
-		const json = await gunzipTlsReport(new Uint8Array(fixtureGz));
-		const parsed = parseTlsReport(json);
+		const parsed = await decodeTlsReport(new Uint8Array(fixtureGz));
 		if (!parsed.ok) throw new Error('fixture should parse');
 		return digestTlsReport(parsed.report);
 	}

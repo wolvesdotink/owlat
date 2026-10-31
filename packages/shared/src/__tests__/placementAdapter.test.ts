@@ -10,17 +10,31 @@
 import { describe, expect, it } from 'vitest';
 import type { DeliverabilityCell } from '../deliverabilityRouting';
 import {
-	MAX_PANEL_MAILBOXES_PER_REPORT,
-	MAX_PANEL_REPORTS,
-	PLACEMENT_SOURCE_KINDS,
-	commercialPlacementApiAdapter,
-	commercialReportsToObservations,
 	resolvePlacementAdapter,
-	selfHostedSeedPlacementAdapter,
+	type CommercialPlacementReport,
 	type PlacementAdapter,
 } from '../placementAdapter';
 import { SEED_GATE_CONFIDENCE } from '../seedPlacement';
 import type { SeedObservation } from '../seedPlacement';
+
+// The two implementations, reached the way production reaches them.
+const selfHostedSeedPlacementAdapter = resolvePlacementAdapter({
+	seedMailboxCount: 8,
+	commercialApiConfigured: false,
+}).adapter;
+const commercialPlacementApiAdapter = resolvePlacementAdapter({
+	seedMailboxCount: 8,
+	commercialApiConfigured: true,
+}).adapter;
+
+// The panel caps, pinned as literals: per-report mailbox count and report list.
+const MAX_PANEL_MAILBOXES_PER_REPORT = 200;
+const MAX_PANEL_REPORTS = 50;
+
+/** The roll-up a commercial panel's reports produce. */
+function panel(reports: readonly CommercialPlacementReport[]) {
+	return commercialPlacementApiAdapter.summarize({ kind: 'commercial_api', reports });
+}
 
 const CELL: DeliverabilityCell = { stream: 'campaign', destinationProvider: 'gmail' };
 
@@ -41,8 +55,11 @@ describe('exactly two implementations', () => {
 			selfHostedSeedPlacementAdapter,
 			commercialPlacementApiAdapter,
 		];
+		expect(adapters.map((adapter) => adapter.kind)).toEqual([
+			'self_hosted_seeds',
+			'commercial_api',
+		]);
 		for (const adapter of adapters) {
-			expect(PLACEMENT_SOURCE_KINDS).toContain(adapter.kind);
 			// The grade has ONE home; asserting the constant rather than a literal
 			// is what stops the adapter drifting away from the gate it feeds.
 			expect(adapter.confidence).toBe(SEED_GATE_CONFIDENCE);
@@ -85,7 +102,7 @@ describe('the self-hosted path is the default', () => {
 			commercialApiConfigured: false,
 		});
 		expect(resolution.kind).toBe('self_hosted_seeds');
-		expect(resolution.adapter).toBe(selfHostedSeedPlacementAdapter);
+		expect(resolution.adapter.kind).toBe('self_hosted_seeds');
 		expect(resolution.improvement).toBe('none');
 		expect(resolution.confidence).toBe(SEED_GATE_CONFIDENCE);
 	});
@@ -96,7 +113,7 @@ describe('the self-hosted path is the default', () => {
 			commercialApiConfigured: true,
 		});
 		expect(resolution.kind).toBe('commercial_api');
-		expect(resolution.adapter).toBe(commercialPlacementApiAdapter);
+		expect(resolution.adapter.kind).toBe('commercial_api');
 	});
 });
 
@@ -126,21 +143,31 @@ describe('an absent commercial key changes NOTHING', () => {
 
 describe('commercial counts fold into the shared observation shape', () => {
 	it('expands counts, treats a tab as reached and defaults the arm to own', () => {
-		const observations = commercialReportsToObservations([
-			{ provider: 'gmail', inbox: 2, category: 1, spam: 1, missing: 1 },
+		expect(panel([{ provider: 'gmail', inbox: 2, category: 1, spam: 1, missing: 1 }])).toEqual([
+			expect.objectContaining({ sampleSize: 5, referenceSampleSize: 0, anyMissing: true }),
 		]);
-		expect(observations).toHaveLength(5);
-		expect(observations.every((o) => o.arm === 'own')).toBe(true);
-		expect(observations.filter((o) => o.placement === 'category')).toHaveLength(1);
+		// A tab is reached: an all-category panel reads as inbox-dominant.
+		expect(panel([{ provider: 'gmail', inbox: 0, category: 10, spam: 0 }])[0]?.status).toBe(
+			'inbox_dominant'
+		);
 	});
 
 	it('is hostile-input safe: negatives, NaN and fractions never manufacture probes', () => {
-		const observations = commercialReportsToObservations([
-			{ provider: 'yahoo', inbox: -5, spam: Number.NaN, missing: 2.7 },
-			{ provider: 'yahoo', arm: 'reference', inbox: Number.POSITIVE_INFINITY, spam: 0 },
+		// Only the two whole missing probes survive: no inbox, no spam, no
+		// reference arm.
+		expect(
+			panel([
+				{ provider: 'yahoo', inbox: -5, spam: Number.NaN, missing: 2.7 },
+				{ provider: 'yahoo', arm: 'reference', inbox: Number.POSITIVE_INFINITY, spam: 0 },
+			])
+		).toEqual([
+			expect.objectContaining({
+				status: 'insufficient_data',
+				sampleSize: 2,
+				referenceSampleSize: 0,
+				anyMissing: true,
+			}),
 		]);
-		expect(observations).toHaveLength(2);
-		expect(observations.every((o) => o.placement === 'missing')).toBe(true);
 	});
 
 	it('a huge count from the panel is clamped to the named cap', () => {
@@ -148,11 +175,10 @@ describe('commercial counts fold into the shared observation shape', () => {
 		// counts are expanded into one row per mailbox, and the roll-up walks that
 		// array several times per provider. The cap is what keeps a third party
 		// from choosing how much work we do.
-		const observations = commercialReportsToObservations([
+		const [rollup] = panel([
 			{ provider: 'gmail', inbox: 1e9, spam: 1e9, category: 1e9, missing: 1e9 },
 		]);
-		expect(observations).toHaveLength(4 * MAX_PANEL_MAILBOXES_PER_REPORT);
-		expect(MAX_PANEL_MAILBOXES_PER_REPORT).toBeLessThanOrEqual(1000);
+		expect(rollup?.sampleSize).toBe(4 * MAX_PANEL_MAILBOXES_PER_REPORT);
 	});
 
 	it('the report LIST is bounded too', () => {
@@ -161,7 +187,7 @@ describe('commercial counts fold into the shared observation shape', () => {
 			inbox: 1,
 			spam: 0,
 		}));
-		expect(commercialReportsToObservations(reports)).toHaveLength(MAX_PANEL_REPORTS);
+		expect(panel(reports)[0]?.sampleSize).toBe(MAX_PANEL_REPORTS);
 	});
 
 	it('keeps the reference arm separate so it cannot dilute the own arm', () => {

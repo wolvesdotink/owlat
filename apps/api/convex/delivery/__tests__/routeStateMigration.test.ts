@@ -13,11 +13,11 @@ import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import { loadRouteStateCell, loadStreamlessRouteState } from '../../lib/deliverabilityRouteState';
 import {
-	DELIVERABILITY_SIGNAL_SOURCES,
-	DELIVERABILITY_STREAM_KEYS,
 	isRouteStateFallbackActive,
 	resolveOwnShare,
+	type DeliverabilitySignalSource,
 } from '@owlat/shared/deliverabilityRouting';
+import { GOVERNED_MESSAGE_TYPES } from '@owlat/shared/routingDispatch';
 import {
 	deliverabilitySignalSourceValidator,
 	deliverabilityStreamValidator,
@@ -56,7 +56,7 @@ describe('legacy route-state rows', () => {
 	it('reads a stream-less row through the cell lookup for every stream', async () => {
 		const t = convexTest(schema, modules);
 		await legacyRow(t, { destinationProvider: 'gmail', isFallbackActive: true });
-		for (const stream of DELIVERABILITY_STREAM_KEYS) {
+		for (const stream of GOVERNED_MESSAGE_TYPES) {
 			const rows = await t.run((ctx) =>
 				loadRouteStateCell(ctx, 'org-a', { stream, destinationProvider: 'gmail' })
 			);
@@ -154,18 +154,36 @@ describe('shipped hysteresis after the widening', () => {
 	});
 });
 
+/**
+ * Every member of the shared signal-source union. The `satisfies` clause makes
+ * a source missing here (or one the union does not have) a type error, so this
+ * list is the union itself.
+ */
+const SHARED_SIGNAL_SOURCES = Object.keys({
+	ip_quarantined: true,
+	dnsbl_listed: true,
+	dnsbl_partial: true,
+	dnsbl_unknown: true,
+	breaker_open: true,
+	persistent_defers: true,
+	bounce_rate: true,
+	complaint_rate: true,
+	engagement_ratio: true,
+	seed_placement: true,
+} satisfies Record<DeliverabilitySignalSource, true>);
+
 describe('validator / shared-union parity', () => {
 	it('mirrors the shared signal-source union into the Convex validator', () => {
 		const validatorSources = deliverabilitySignalSourceValidator.members.map((member) =>
 			String(member.value)
 		);
-		expect(validatorSources.sort()).toEqual([...DELIVERABILITY_SIGNAL_SOURCES].sort());
+		expect(validatorSources.sort()).toEqual([...SHARED_SIGNAL_SOURCES].sort());
 	});
 
 	it('mirrors the shared stream keys into the Convex validator', () => {
 		const validatorStreams = deliverabilityStreamValidator.members.map((member) =>
 			String(member.value)
 		);
-		expect(validatorStreams.sort()).toEqual([...DELIVERABILITY_STREAM_KEYS].sort());
+		expect(validatorStreams.sort()).toEqual([...GOVERNED_MESSAGE_TYPES].sort());
 	});
 });

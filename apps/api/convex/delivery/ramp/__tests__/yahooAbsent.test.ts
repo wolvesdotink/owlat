@@ -19,7 +19,6 @@
 
 import { describe, expect, it } from 'vitest';
 import {
-	YAHOO_CFL_ENROLLMENT_STATES,
 	yahooCflGuidedSteps,
 	emptyYahooCflEnrollment,
 	type YahooCflEnrollmentState,
@@ -38,6 +37,14 @@ import {
 import { arm, input, itEquipped } from './gateFixtures';
 
 const UNENROLLED_STATES: YahooCflEnrollmentState[] = ['not_started', 'awaiting_yahoo', 'lapsed'];
+
+/** Every presented enrollment state; `satisfies` keeps the list exhaustive. */
+const YAHOO_CFL_ENROLLMENT_STATES = Object.keys({
+	not_started: true,
+	awaiting_yahoo: true,
+	enrolled: true,
+	lapsed: true,
+} satisfies Record<YahooCflEnrollmentState, true>) as YahooCflEnrollmentState[];
 
 describe('the substitution table always yields a usable gate', () => {
 	it('enumerates exactly three complaint sources', () => {

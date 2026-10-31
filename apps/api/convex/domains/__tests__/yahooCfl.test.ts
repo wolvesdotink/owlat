@@ -19,7 +19,6 @@ import schema from '../../schema';
 import { api, internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import type { OrganizationRole } from '../../lib/sessionOrganization';
-import { YAHOO_CFL_LAPSE_SILENCE_MS, YAHOO_CFL_REPORT_COALESCE_MS } from '@owlat/shared/yahooCfl';
 import type * as SessionOrganizationModule from '../../lib/sessionOrganization';
 
 let mockRole: OrganizationRole = 'admin';
@@ -68,8 +67,10 @@ const identity = {
 
 const T0 = Date.UTC(2026, 6, 1);
 const DAY = 24 * 60 * 60 * 1000;
-const LAPSE_MS = YAHOO_CFL_LAPSE_SILENCE_MS;
-const COALESCE_MS = YAHOO_CFL_REPORT_COALESCE_MS;
+// The enrollment's 90-day lapse window and one-hour report coalescing window,
+// pinned as literals.
+const LAPSE_MS = 90 * DAY;
+const COALESCE_MS = 60 * 60 * 1000;
 
 type Harness = TestConvex<typeof schema>;
 

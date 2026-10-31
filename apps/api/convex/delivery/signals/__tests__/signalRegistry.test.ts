@@ -24,8 +24,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	isActionableDeliverabilitySignalSource,
-	isDeliverabilitySignalSource,
-	isOutcomeDeliverabilitySignalSource,
+	normalizeDeliverabilityRoutingSnapshot,
 	type DeliverabilitySignalSource,
 } from '@owlat/shared/deliverabilityRouting';
 import type { RampGateResult, RampGateStatus } from '../../ramp/gateTypes';
@@ -179,14 +178,42 @@ describe('the declared absence is what actually happens', () => {
 	});
 });
 
+/**
+ * The shared taxonomy's class for every routing signal source, pinned as
+ * literals. The `satisfies` clause keeps it exhaustive over the shared union.
+ */
+const SHARED_SOURCE_KIND = {
+	ip_quarantined: 'infrastructure',
+	dnsbl_listed: 'infrastructure',
+	breaker_open: 'infrastructure',
+	persistent_defers: 'infrastructure',
+	dnsbl_partial: 'advisory',
+	dnsbl_unknown: 'advisory',
+	bounce_rate: 'outcome',
+	complaint_rate: 'outcome',
+	engagement_ratio: 'outcome',
+	seed_placement: 'outcome',
+} as const satisfies Record<DeliverabilitySignalSource, 'infrastructure' | 'advisory' | 'outcome'>;
+
+/** Does the strict routing-snapshot parser accept a signal named `source`? */
+function isRoutingSignalSource(source: string): boolean {
+	return (
+		normalizeDeliverabilityRoutingSnapshot(
+			{
+				generatedAt: 100,
+				signals: [{ provider: 'all', source, severity: 'warning', observedAt: 100 }],
+			},
+			100
+		) !== null
+	);
+}
+
 describe('a kind is the shared vocabulary, not a local opinion', () => {
 	it.each([...RAMP_GATE_SIGNAL_KEYS])('%s is classified as shared classifies it', (key) => {
 		const shared: DeliverabilitySignalSource = key;
-		const expected = isOutcomeDeliverabilitySignalSource(shared)
-			? 'outcome'
-			: isActionableDeliverabilitySignalSource(shared)
-				? 'infrastructure'
-				: 'advisory';
+		const expected = SHARED_SOURCE_KIND[shared];
+		// The pinned class agrees with the one predicate shared routing acts on.
+		expect(isActionableDeliverabilitySignalSource(shared)).toBe(expected === 'infrastructure');
 		expect(SIGNAL_SOURCES[key].kind).toBe(expected);
 	});
 
@@ -194,7 +221,7 @@ describe('a kind is the shared vocabulary, not a local opinion', () => {
 		// A feed that could name itself in the routing vocabulary could be acted on
 		// by the shipped fallback; keeping the two unions disjoint is what stops a
 		// third-party account from ever flipping a provider slice onto the relay.
-		expect(isDeliverabilitySignalSource(key)).toBe(false);
+		expect(isRoutingSignalSource(key)).toBe(false);
 		expect(SIGNAL_SOURCES[key].kind).toBe('advisory');
 	});
 

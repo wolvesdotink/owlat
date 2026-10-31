@@ -107,7 +107,7 @@ const NEIGHBOURHOOD_MIN_SAMPLE = 8;
 const NEIGHBOURHOOD_NOISY_RATIO = 0.5;
 const NEIGHBOURHOOD_MIXED_RATIO = 0.2;
 
-export function neighbourhoodStatus(neighbourhood: IpAuditNeighbourhood): NeighbourhoodStatus {
+function neighbourhoodStatus(neighbourhood: IpAuditNeighbourhood): NeighbourhoodStatus {
 	const { sampled, listed } = neighbourhood;
 	if (!Number.isFinite(sampled) || !Number.isFinite(listed)) return 'insufficient_data';
 	if (sampled < NEIGHBOURHOOD_MIN_SAMPLE || sampled <= 0) return 'insufficient_data';

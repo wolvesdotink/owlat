@@ -7,12 +7,14 @@
 
 import { describe, it, expect } from 'vitest';
 import {
-	MTA_STS_MAX_AGE_SECONDS,
 	isMtaStsMode,
 	mtaStsPolicyId,
 	buildMtaStsTxtValue,
 	buildMtaStsPolicy,
 } from '../mtaStsPolicy';
+
+// The published policy's max_age: one week, pinned as a literal.
+const MTA_STS_MAX_AGE_SECONDS = 604800;
 
 describe('MtaStsMode', () => {
 	it('narrows valid mode strings and rejects others', () => {

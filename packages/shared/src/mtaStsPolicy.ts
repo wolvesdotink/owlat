@@ -56,7 +56,7 @@ export function isMtaStsMode(value: string): value is MtaStsMode {
  * §3.2). One week is the widely-used default (Google, Microsoft): long enough to
  * resist a stripping attack, short enough to recover from a mistake.
  */
-export const MTA_STS_MAX_AGE_SECONDS = 604800;
+const MTA_STS_MAX_AGE_SECONDS = 604800;
 
 /** DNS label for the MTA-STS policy TXT record (RFC 8461 §3.1): `_mta-sts`. */
 export const MTA_STS_TXT_HOST = '_mta-sts';
