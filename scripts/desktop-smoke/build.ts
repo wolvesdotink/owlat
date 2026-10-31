@@ -16,6 +16,7 @@
 import { spawnSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { decodeJson, object, recordOf, string } from '../json';
 import { appImageName, nextVersion, packageVersion, repositoryPath } from './release';
 
 export interface Fixtures {
@@ -43,8 +44,16 @@ function run(command: string, args: readonly string[], cwd: string, env: NodeJS.
 	}
 }
 
+const decodeFixtures = object({
+	from: string,
+	to: string,
+	repoPath: string,
+	webServer: string,
+	appImages: recordOf(string),
+});
+
 export function readFixtures(dir: string): Fixtures {
-	return JSON.parse(readFileSync(join(dir, FIXTURES_FILE), 'utf8')) as Fixtures;
+	return decodeJson(readFileSync(join(dir, FIXTURES_FILE), 'utf8'), decodeFixtures, FIXTURES_FILE);
 }
 
 export function buildFixtures(root: string, outArg: string): Fixtures {

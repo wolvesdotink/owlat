@@ -15,6 +15,7 @@
 
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { arrayOf, decodeJson, object, optional, unchecked } from '../json';
 
 export const MANIFEST_QUERY = 'desktop/updates:manifestForClient';
 
@@ -40,6 +41,8 @@ interface QueryBody {
 	readonly path?: unknown;
 	readonly args?: readonly unknown[];
 }
+
+const decodeQueryBody = object({ path: unchecked, args: optional(arrayOf(unchecked)) });
 
 function readBody(request: IncomingMessage): Promise<string> {
 	return new Promise((resolve, reject) => {
@@ -84,7 +87,7 @@ export function startFixtureServer(): Promise<FixtureServer> {
 		const path = new URL(request.url ?? '/', 'http://fixture').pathname;
 		if (request.method === 'POST' && path === '/api/query') {
 			void readBody(request)
-				.then((raw) => answerQuery(JSON.parse(raw) as QueryBody, response))
+				.then((raw) => answerQuery(decodeJson(raw, decodeQueryBody, 'query body'), response))
 				.catch(() => json(response, 400, { status: 'error', errorMessage: 'bad request body' }));
 			return;
 		}
