@@ -823,6 +823,7 @@ import type * as e2ee_signedMimeStructure from '../e2ee/signedMimeStructure.js';
 import type * as e2ee_verifyInboundSignature from '../e2ee/verifyInboundSignature.js';
 import type * as e2ee_wkd from '../e2ee/wkd.js';
 import type * as emailBlocks_blocks from '../emailBlocks/blocks.js';
+import type * as emailBlocks_consumers from '../emailBlocks/consumers.js';
 import type * as emailBlocks_module from '../emailBlocks/module.js';
 import type * as emailBlocks_rendering from '../emailBlocks/rendering.js';
 import type * as emailBlocks_renderingPool from '../emailBlocks/renderingPool.js';
@@ -946,7 +947,10 @@ import type * as knowledge_commitmentFacets from '../knowledge/commitmentFacets.
 import type * as knowledge_edgeBackfill from '../knowledge/edgeBackfill.js';
 import type * as knowledge_edgeInference from '../knowledge/edgeInference.js';
 import type * as knowledge_edges from '../knowledge/edges.js';
+import type * as knowledge_entryContacts from '../knowledge/entryContacts.js';
 import type * as knowledge_entryDedupe from '../knowledge/entryDedupe.js';
+import type * as knowledge_entryReads from '../knowledge/entryReads.js';
+import type * as knowledge_entryWrites from '../knowledge/entryWrites.js';
 import type * as knowledge_extractedEntries from '../knowledge/extractedEntries.js';
 import type * as knowledge_extraction from '../knowledge/extraction.js';
 import type * as knowledge_extractionPolicy from '../knowledge/extractionPolicy.js';
@@ -958,6 +962,7 @@ import type * as knowledge_graphTraversal from '../knowledge/graphTraversal.js';
 import type * as knowledge_maintenance from '../knowledge/maintenance.js';
 import type * as knowledge_messageBackfill from '../knowledge/messageBackfill.js';
 import type * as knowledge_messageBackfillChunk from '../knowledge/messageBackfillChunk.js';
+import type * as knowledge_policyEntries from '../knowledge/policyEntries.js';
 import type * as knowledge_relationDecay from '../knowledge/relationDecay.js';
 import type * as knowledge_retrieval from '../knowledge/retrieval.js';
 import type * as knowledge_sharing from '../knowledge/sharing.js';
@@ -2665,6 +2670,7 @@ declare const fullApi: ApiFromModules<{
 	'e2ee/wkd': typeof e2ee_wkd;
 }> & ApiFromModules<{
 	'emailBlocks/blocks': typeof emailBlocks_blocks;
+	'emailBlocks/consumers': typeof emailBlocks_consumers;
 	'emailBlocks/module': typeof emailBlocks_module;
 	'emailBlocks/rendering': typeof emailBlocks_rendering;
 	'emailBlocks/renderingPool': typeof emailBlocks_renderingPool;
@@ -2793,7 +2799,10 @@ declare const fullApi: ApiFromModules<{
 	'knowledge/edgeBackfill': typeof knowledge_edgeBackfill;
 	'knowledge/edgeInference': typeof knowledge_edgeInference;
 	'knowledge/edges': typeof knowledge_edges;
+	'knowledge/entryContacts': typeof knowledge_entryContacts;
 	'knowledge/entryDedupe': typeof knowledge_entryDedupe;
+	'knowledge/entryReads': typeof knowledge_entryReads;
+	'knowledge/entryWrites': typeof knowledge_entryWrites;
 	'knowledge/extractedEntries': typeof knowledge_extractedEntries;
 	'knowledge/extraction': typeof knowledge_extraction;
 	'knowledge/extractionPolicy': typeof knowledge_extractionPolicy;
@@ -2805,6 +2814,7 @@ declare const fullApi: ApiFromModules<{
 	'knowledge/maintenance': typeof knowledge_maintenance;
 	'knowledge/messageBackfill': typeof knowledge_messageBackfill;
 	'knowledge/messageBackfillChunk': typeof knowledge_messageBackfillChunk;
+	'knowledge/policyEntries': typeof knowledge_policyEntries;
 	'knowledge/relationDecay': typeof knowledge_relationDecay;
 	'knowledge/retrieval': typeof knowledge_retrieval;
 	'knowledge/sharing': typeof knowledge_sharing;

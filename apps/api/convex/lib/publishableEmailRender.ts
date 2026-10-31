@@ -11,7 +11,7 @@ import type { EmailTheme } from '@owlat/shared';
 import { brandKitEmailTheme, resolveBrandKitDesign } from '@owlat/shared/brandKit';
 import type { MutationCtx } from '../_generated/server';
 import { throwInvalidInput } from '../_utils/errors';
-import { parseContentBlocks } from '../emailBlocks/module';
+import { parseContentBlocks } from '../emailBlocks/consumers';
 import {
 	mergeTranslationIntoItem,
 	type BlockLikeItem,
