@@ -68,9 +68,9 @@ async function readForwardedParts(
 }
 
 /**
- * Decode (only within the per-file limit), store, receipt and bind one copy;
- * the reason it stays owed, or null once bound. The decoded bytes live only
- * for this call.
+ * Decode (only within the per-file limit), store and bind one copy; the
+ * reason it stays owed, or null once bound. The decoded bytes live only for
+ * this call.
  */
 async function copyOn(
 	ctx: Ctx,
@@ -83,29 +83,22 @@ async function copyOn(
 	const storageId = await ctx.storage.store(
 		new Blob([file.decode() as BlobPart], { type: file.contentType })
 	);
+	let outcome: 'bound' | 'taken' | 'tooLarge' | 'tooMany' | 'totalTooLarge';
 	try {
-		await ctx.runMutation(internal.mail.draftExpectedAttachments.stageCopy, { storageId });
-	} catch {
-		// Not receipted, so nothing else would find it: delete it now.
-		await ctx.storage.delete(storageId);
-		return 'failed';
-	}
-	let outcome: 'bound' | 'taken' | 'tooLarge' | 'tooMany' | 'totalTooLarge' | 'failed';
-	try {
-		({ outcome } = await ctx.runMutation(internal.mail.draftExpectedAttachments.bindExpected, {
+		// checkpoint: one owed file of the walk. Once bound it leaves `owedWork`,
+		// so a re-run (or another tab) resumes from the files still owed, and a
+		// key settled first elsewhere comes back `taken` with its copy deleted.
+		({ outcome } = await ctx.runMutation(internal.mail.draftExpectedAttachments.bindCopy, {
 			draftId,
 			key,
 			storageId,
 		}));
 	} catch {
-		outcome = 'failed';
+		// Nothing was written, so no receipt names the blob: delete it now.
+		await ctx.storage.delete(storageId);
+		return 'failed';
 	}
-	if (outcome === 'bound') return null;
-	// The receipt stays until this lands; failing that, the upload sweep takes it.
-	await ctx
-		.runMutation(internal.mail.draftExpectedAttachments.dropCopy, { storageId })
-		.catch(() => undefined);
-	return outcome === 'taken' ? null : outcome;
+	return outcome === 'bound' || outcome === 'taken' ? null : outcome;
 }
 
 /** Expand (once) and copy one forwarded message's parts. */
@@ -130,6 +123,8 @@ async function fulfilForward(
 		// Parts past the cut were never seen: keep the whole forward owed.
 		failed.push({ key: job.debtKey, filename: '', reason: 'messageTooComplex' });
 	} else if (job.debtKey) {
+		// checkpoint: the forward's debt is expanded once; a re-run finds it gone
+		// (`taken`) and copies the parts it expanded into that are still owed.
 		const expanded = await ctx.runMutation(internal.mail.draftExpectedAttachments.expandForward, {
 			draftId,
 			key: job.debtKey,
@@ -189,7 +184,7 @@ export async function fulfilExpectedAttachments(
  * Copy what the draft owes onto it (the composer runs this whenever a draft it
  * shows owes a file; another tab running it too is harmless).
  */
-// authz: owedWork checks the caller can write the draft (and read each forwarded message); expandForward and bindExpected re-check the draft.
+// authz: owedWork checks the caller can write the draft (and read each forwarded message); expandForward and bindCopy re-check the draft.
 export const fulfil = authedAction({
 	args: { draftId: v.id('mailDrafts') },
 	handler: async (ctx, args) => fulfilExpectedAttachments(ctx, args),

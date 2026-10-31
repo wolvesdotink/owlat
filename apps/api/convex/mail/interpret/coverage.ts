@@ -76,6 +76,8 @@ async function checkWithModel(
 	// File claims and commitments are checked even when no item is planned or
 	// every item is skipped (review F12).
 	try {
+		// checkpoint: admission before the model call; the rate-limit token it
+		// consumes stays spent when the check fails later, so retries stay bounded.
 		await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {
 			rateLimitBucket: 'answerCoveragePerUser',
 		});
