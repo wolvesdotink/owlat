@@ -132,11 +132,18 @@ export const runReSealVault = internalAction({
 		for (const row of rows) {
 			try {
 				const reSealedEnvelope = reSealPrivateKey(row.sealedPrivateKey);
-				await ctx.runMutation(internal.e2ee.lifecycle.updateSealedPrivateKey, {
+				// checkpoint: one row per transaction, since the whole vault's sealed keys
+				// do not fit one. The patch only lands while the row still holds the
+				// envelope re-sealed here, and a row this run did not reach still opens
+				// under the previous secret, so a re-run finishes the job.
+				const { updated } = await ctx.runMutation(internal.e2ee.lifecycle.updateSealedPrivateKey, {
 					id: row.id,
 					sealedPrivateKey: reSealedEnvelope,
+					expectedSealedPrivateKey: row.sealedPrivateKey,
 				});
-				reSealed++;
+				// A row replaced while this ran was sealed under the current secret
+				// by whatever replaced it, so it needs no re-seal and is not counted.
+				if (updated) reSealed++;
 			} catch {
 				// A row that opens under NEITHER the current nor the previous secret is
 				// left as-is (its data is unrecoverable via re-seal) and counted, so the

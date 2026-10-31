@@ -216,21 +216,20 @@ bun run test:ramp   # the ramp-gate matrix, both legs (see "CI checks")
 
 ### Dead-code gate
 
-A frozen-baseline ratchet keeps orphaned exports, files, and modules from
-accreting silently (the repo has a documented history of speculative seams and
-zero-caller modules). Run it before submitting a PR:
+A zero-tolerance gate keeps orphaned exports, files, modules, and dependencies
+from accreting silently (the repo has a documented history of speculative seams
+and zero-caller modules). Run it before submitting a PR:
 
 ```bash
 bun run lint:deadcode   # == bash scripts/check-dead-code.sh
 ```
 
 It runs [`knip`](https://knip.dev) (config: `knip.jsonc`) restricted to
-dead-_code_ issue types (unused files / exports / types / members), normalises
-the result to a sorted list, and compares it against
-`scripts/dead-code-baseline.txt`. The ratchet is strict in both directions: a
-**new** orphan that is not in the baseline fails, and a **stale** baseline entry
-that is no longer dead fails (delete the line so the debt only ever goes down). Do not add new lines to the
-baseline — fix or intentionally re-anchor the export instead. The dependency /
+dead-_code_ issue types (unused files / exports / types / members) plus unused
+`dependencies` / `devDependencies`, and fails on any entry. There is no
+baseline: delete the orphan. When something outside the source graph really
+consumes it (a framework convention, a published package's barrel, a spawned
+script), declare that consumer in `knip.jsonc` with a comment naming it. The
 unlisted / unresolved knip categories are deliberately excluded (knip does not
 model bun catalogs, Nuxt aliases, or transitive deps, so they are noise here).
 
@@ -243,7 +242,7 @@ package's `entry` list.
 
 `ci:lint` and `ci:verify` both run `scripts/ci-gate.sh`, which runs this gate
 after the turbo lint pass, so a PR that introduces a new orphan fails CI just
-like the other ratchets. Because the hosted GitHub Actions **Lint & Typecheck**
+like the ratchets. Because the hosted GitHub Actions **Lint & Typecheck**
 job runs `bun run ci:lint`, the gate is enforced on every PR there — the same
 path that runs `apps/api/scripts/check-query-authz.sh` — not only when someone
 runs `ci:verify` locally.

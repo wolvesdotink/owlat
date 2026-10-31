@@ -67,14 +67,12 @@
 # VISIBLE — the plan owner's call, not P0.5's to make silently. Two things are
 # true at once. The definitional sites A1 names are not in this file at all,
 # because after P0.1–P0.4 they are declarations rather than comparisons (listing
-# them would trip the stale-entry check and turn the gate red). And ALL FOUR of
+# them would trip the stale-entry check and turn the gate red). And ALL THREE of
 # the families below carry no owning card in this plan: `return-path` (waiting on
 # the capability reaching SendingDomainProviderModule), `adapter-adjacent` (the
 # Mandrill provisioning action's own literals — the sweep prediction fired in
-# P3.2, see that family's header), `provider-shaped-ui-followup` (waiting on the
-# wizard-descriptor follow-up after P1.2) and `credentials-and-probes` (the
-# CLI/endpoint half of the descriptor rollout — see that family's own header for
-# why P1.1 was the wrong owner for it).
+# P3.2, see that family's header) and `provider-shaped-ui-followup` (waiting on
+# the wizard-descriptor follow-up after P1.2).
 #
 # AND THAT COUNT IS AN UNDERCOUNT BY ONE SITE — two spellings — deliberately and
 # visibly. P1.2 introduced kind literals that this file CANNOT license, because
@@ -125,9 +123,13 @@
 # precedent the ask was really about: an ownerless family is fixed by someone
 # picking it up, not by the file being rephrased around it.
 #
-# THE ASK STANDS, UNCHANGED IN SUBSTANCE. The same four families still carry no
+# `credentials-and-probes`, the family this ask was raised for, is cleared the
+# same way: the setup CLI's prompts, its config parser and writer, and the shared
+# validators now read the catalog's credential fields and `setupProbe`.
+#
+# THE ASK STANDS, UNCHANGED IN SUBSTANCE. The same three families still carry no
 # owning card in this plan — `return-path`, `adapter-adjacent`,
-# `provider-shaped-ui-followup`, `credentials-and-probes` — and whether they get
+# `provider-shaped-ui-followup` — and whether they get
 # cards (a) or A1 gets restated (b) is still not a build piece's call. What has
 # changed is only that `feedback-panel-answering-sets`, which DOES have an owner
 # (P2.1) and whose unblocking change is the same shape as the one just landed —
@@ -142,7 +144,7 @@
 # longer compares is stale and fails. AND IT MUST CORRECT THIS PROSE WHEN THE
 # OWNERSHIP IS WRONG: a family whose named owner has already merged is a family
 # nobody is coming back for, which is the one state this file must never be left
-# in. Four families have no owning piece INSIDE this plan and say so.
+# in. Three families have no owning piece INSIDE this plan and say so.
 #
 # Kind DECLARATIONS inside apps/api/convex are a different rule with a different
 # list: SURVIVING_KIND_LITERALS in
@@ -388,46 +390,3 @@ apps/web/app/pages/setup/email.vue:smtp
 # (signing-key presence, last event) instead of one read per vendor — after which
 # both sets become "every kind that declares this panel" and this block goes. It
 # is step 4's caveat in the providers doc.
-
-
-# ── credentials-and-probes (owner: the descriptor rollout OUTSIDE apps/web — no card yet) ──
-#
-# Which env vars a kind needs, which kinds can be live-checked before saving, and
-# what a validator asks of each — all of it restated per vendor outside the
-# catalog. `requiredEnvVars`, `credentialFields` and `setupProbe` on the shared
-# catalog entry are the declarations these read; P1.1 landed them, and the file
-# it CLEARED from this family was packages/shared/src/featureFlags.ts, whose
-# `=== 'mta'` was an own-arm question wearing this family's label.
-#
-# THE OWNER MOVED, DELIBERATELY. This family said "owner: P1.1" while P1.1's card
-# is the catalog's DATA HALF; declaring a field is not the same as rewriting the
-# six surfaces that render it, and the pieces that do exist stop short of these
-# files: P1.2 is `apps/web/app/**` (its card names four components and
-# composables, none of them below), and P1.3 is TESTS — it pins that every
-# `setupProbe.validator` names a real export, which is a guard on the declaration,
-# not a rewrite of the switch that dispatches it. So the CLI's prompts and
-# config writer have no owning card in this plan. Recorded with an honest owner
-# rather than left attributed to a piece that has merged — an owner who has
-# shipped is how a family becomes nobody's. The two validate endpoints left this
-# family when their dispatch moved onto the catalog's `setupProbe`
-# (apps/web/server/utils/sendProviderProbe.ts keys on the validator name, never
-# on a kind).
-#
-# THIS IS WHERE A NEW VENDOR LANDS, which is why the bare-path form had to go:
-# three files, twelve spellings, and every kind added to the product adds a line
-# to most of them. Under a file-granular licence that arrival was silent. (The
-# `--assume-yes` env table left in #879; it reads the catalog's credential fields
-# through `@owlat/shared/setupSendingConfig`.)
-
-apps/setup-cli/src/commands/setupSendingProvider.ts:emailit  # the interactive prompts
-apps/setup-cli/src/commands/setupSendingProvider.ts:mta
-apps/setup-cli/src/commands/setupSendingProvider.ts:resend
-apps/setup-cli/src/commands/setupSendingProvider.ts:ses
-apps/setup-cli/src/commands/setupSendingProvider.ts:smtp
-apps/setup-cli/src/lib/setupConfig.ts:emailit  # the written config's per-kind keys
-apps/setup-cli/src/lib/setupConfig.ts:mta
-apps/setup-cli/src/lib/setupConfig.ts:resend
-apps/setup-cli/src/lib/setupConfig.ts:ses
-apps/setup-cli/src/lib/setupConfig.ts:smtp
-packages/shared/src/setupValidators.ts:emailit  # the probes themselves
-packages/shared/src/setupValidators.ts:resend

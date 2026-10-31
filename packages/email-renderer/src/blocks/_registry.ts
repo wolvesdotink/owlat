@@ -50,17 +50,6 @@ export const registerBlockModule = <T extends BlockType>(mod: BlockModule<T>): v
 	}
 };
 
-/**
- * Unregister a Block module. Returns true if anything was removed.
- * Must be called before `finalizeBlockRegistry()`.
- */
-export const unregisterBlockModule = (type: string): boolean => {
-	if (frozen) {
-		throw new Error(`Cannot unregister block "${type}": registry is frozen.`);
-	}
-	return registry.delete(type);
-};
-
 /** Freeze the registry to prevent further mutation. */
 export const finalizeBlockRegistry = (): void => {
 	frozen = true;

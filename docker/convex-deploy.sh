@@ -15,7 +15,12 @@
 # abort a rollout whose backend half already went through. Re-running this
 # container sets it again.
 
-convex deploy --url "$CONVEX_SELF_HOSTED_URL" --admin-key "$CONVEX_SELF_HOSTED_ADMIN_KEY" || exit $?
+# `--codegen disable`: the deploy typechecks the committed convex/_generated.
+# Convex's own codegen would replace api.d.ts with one ApiFromModules over every
+# module, which TypeScript cannot type at this module count (api/internal become
+# never and the typecheck fails the deploy); the committed file is split into
+# per-directory chunks (apps/api/scripts/apiDeclarationChunks.ts).
+convex deploy --codegen disable --url "$CONVEX_SELF_HOSTED_URL" --admin-key "$CONVEX_SELF_HOSTED_ADMIN_KEY" || exit $?
 
 if [ -z "${OWLAT_VERSION:-}" ]; then
 	echo "warning: this image carries no OWLAT_VERSION; the deployment's OWLAT_VERSION was left unchanged" >&2

@@ -238,16 +238,22 @@ function fakeContext(options: ContextOptions = {}) {
 	const stored: Record<string, unknown>[] = [];
 	const completed: Record<string, unknown>[] = [];
 	const ctx = {
+		runQuery: vi.fn(async (reference: unknown) => {
+			const name = getFunctionName(reference as never);
+			calls.push(name);
+			if (name.includes('checkDelivery')) {
+				options.onAuthorize?.();
+				return options.isAuthorized !== false;
+			}
+			throw new Error(`unexpected query ${name}`);
+		}),
 		runMutation: vi.fn(async (reference: unknown, args: Record<string, unknown>) => {
 			const name = getFunctionName(reference as never);
 			calls.push(name);
 			if (name.includes('checkPublicRateLimit')) {
 				return { ok: options.isRateLimited !== true, retryAfter: 1_000 };
 			}
-			if (name.includes('authorizeDelivery')) {
-				options.onAuthorize?.();
-				return options.isAuthorized !== false;
-			}
+			if (name.includes('authorizeDelivery')) return options.isAuthorized !== false;
 			if (options.deliveries && name.includes('pluginFeedbackDeliveries:')) {
 				if (name.includes(':complete')) completed.push(args);
 				return options.deliveries(name, args);
@@ -430,7 +436,7 @@ describe('a caller who cannot produce the signature', () => {
 		expect(response.status).toBe(401);
 		// No authorization mutation ran, so a stranger cannot make us write audit
 		// rows; no claim was taken, so they cannot deny a real delivery either.
-		expect(calls.some((name) => name.includes('authorizeDelivery'))).toBe(false);
+		expect(calls.some((name) => /(authorize|check)Delivery/.test(name))).toBe(false);
 		expect(calls.some((name) => name.includes('claim'))).toBe(false);
 		expect(scheduled).toEqual([]);
 		expect(mocks.dispatch).not.toHaveBeenCalled();
@@ -623,10 +629,19 @@ describe('a delivery whose plugin is no longer allowed to act', () => {
 		await handler(ctx, webhookRequest());
 		await handler(ctx, webhookRequest());
 		expect(
-			ctx.runMutation.mock.calls.filter((call) =>
-				getFunctionName(call[0] as never).includes('authorizeDelivery')
+			ctx.runQuery.mock.calls.filter((call) =>
+				getFunctionName(call[0] as never).includes('checkDelivery')
 			)
 		).toHaveLength(2);
+	});
+
+	it('audits a refusal through the recheck, as its one write', async () => {
+		const { ctx, calls } = fakeContext({ isAuthorized: false });
+		await handler(ctx, webhookRequest());
+		expect(calls.filter((name) => !name.includes('checkPublicRateLimit'))).toEqual([
+			'plugins/sendTransportWebhookAuthorization:checkDelivery',
+			'plugins/sendTransportWebhookAuthorization:authorizeDelivery',
+		]);
 	});
 });
 
@@ -1104,7 +1119,7 @@ describe('a plugin whose provider signs with svix', () => {
 		const response = await handler(ctx, svixRequest({ headers }));
 
 		expect(response.status).toBe(401);
-		expect(calls.some((name) => name.includes('authorizeDelivery'))).toBe(false);
+		expect(calls.some((name) => /(authorize|check)Delivery/.test(name))).toBe(false);
 		expect(calls.some((name) => name.includes('claim'))).toBe(false);
 		expect(scheduled).toEqual([]);
 		expect(mocks.dispatch).not.toHaveBeenCalled();

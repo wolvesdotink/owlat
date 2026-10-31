@@ -766,6 +766,7 @@ import type * as domains_providers_plugin_index from '../domains/providers/plugi
 import type * as domains_providers_plugin_persistence from '../domains/providers/plugin/persistence.js';
 import type * as domains_providers_plugin_state from '../domains/providers/plugin/state.js';
 import type * as domains_providers_registerAction from '../domains/providers/registerAction.js';
+import type * as domains_providers_registerCommit from '../domains/providers/registerCommit.js';
 import type * as domains_providers_relayIdentityPersistence from '../domains/providers/relayIdentityPersistence.js';
 import type * as domains_providers_relayIdentityProof from '../domains/providers/relayIdentityProof.js';
 import type * as domains_providers_relayIdentityProviderDetails from '../domains/providers/relayIdentityProviderDetails.js';
@@ -1941,169 +1942,58 @@ import type * as mail_ownAddresses from '../mail/ownAddresses.js';
 
 import type { ApiFromModules, FilterApi, FunctionReference } from 'convex/server';
 
+// One ApiFromModules chunk per top-level directory: a single map over every module
+// exceeds TypeScript's relation budget and turns api/internal into never.
+// Regenerate with `bun run --cwd apps/api codegen:chunks` (scripts/apiDeclarationChunks.ts).
 declare const fullApi: ApiFromModules<{
-	'agent/replyEnvelope': typeof agent_replyEnvelope;
-	'agent/steps/classify/intents': typeof agent_steps_classify_intents;
-	'analytics/meteredSpend': typeof analytics_meteredSpend;
-	'chat/attachmentAccess': typeof chat_attachmentAccess;
-	'contacts/growthCounters': typeof contacts_growthCounters;
-	'delivery/sendLifecycle/sourceFinalization': typeof delivery_sendLifecycle_sourceFinalization;
-	'delivery/sendLifecycle/sendTimeEffects': typeof delivery_sendLifecycle_sendTimeEffects;
-	'inbox/followUps': typeof inbox_followUps;
-	'lib/aiRouting/spendPeriodWrites': typeof lib_aiRouting_spendPeriodWrites;
-	'lib/counters': typeof lib_counters;
-	'lib/agentConfigDefaults': typeof lib_agentConfigDefaults;
-	'lib/decision/attemptRequests': typeof lib_decision_attemptRequests;
-	'lib/listingCounters': typeof lib_listingCounters;
-	'lib/softDelete': typeof lib_softDelete;
-	'lib/llm/actionDeadline': typeof lib_llm_actionDeadline;
-	'lib/llm/admissionPort': typeof lib_llm_admissionPort;
-	'lib/llm/batch/calls': typeof lib_llm_batch_calls;
-	'lib/llm/batch/capture': typeof lib_llm_batch_capture;
-	'lib/llm/batch/submit': typeof lib_llm_batch_submit;
-	'lib/llm/batch/transport': typeof lib_llm_batch_transport;
-	'lib/llm/batch/wire': typeof lib_llm_batch_wire;
-	'lib/llm/callShape': typeof lib_llm_callShape;
-	'lib/llm/dispatchStream': typeof lib_llm_dispatchStream;
-	'lib/llm/embed': typeof lib_llm_embed;
-	'lib/llm/endpointLocality': typeof lib_llm_endpointLocality;
-	'lib/llm/languageIdentity': typeof lib_llm_languageIdentity;
-	'lib/llm/modelEndpoint': typeof lib_llm_modelEndpoint;
-	'lib/llm/modelOutputLimits': typeof lib_llm_modelOutputLimits;
-	'lib/llm/providerUsage': typeof lib_llm_providerUsage;
-	'lib/llm/requestMeter': typeof lib_llm_requestMeter;
-	'lib/llm/streamMetering': typeof lib_llm_streamMetering;
-	'lib/llm/taskLimits': typeof lib_llm_taskLimits;
-	'lib/llm/truncation': typeof lib_llm_truncation;
-	'lib/rowCounters': typeof lib_rowCounters;
-	'lib/semanticFileText': typeof lib_semanticFileText;
-	'mail/ai/gapQuestions': typeof mail_ai_gapQuestions;
-	'mail/ai/nudgeDraft': typeof mail_ai_nudgeDraft;
-	'mail/draftOfferUsage': typeof mail_draftOfferUsage;
-	'mail/draftPause': typeof mail_draftPause;
-	'mail/interpret/__eval__/liveModel': typeof mail_interpret___eval___liveModel;
-	'mail/interpret/activity': typeof mail_interpret_activity;
-	'mail/interpret/backfill': typeof mail_interpret_backfill;
-	'mail/interpret/backfillSources': typeof mail_interpret_backfillSources;
-	'mail/interpret/brief': typeof mail_interpret_brief;
-	'mail/interpret/briefOpen': typeof mail_interpret_briefOpen;
-	'mail/interpret/briefProject': typeof mail_interpret_briefProject;
-	'mail/interpret/briefRead': typeof mail_interpret_briefRead;
-	'mail/interpret/briefRow': typeof mail_interpret_briefRow;
-	'mail/interpret/categoryDefer': typeof mail_interpret_categoryDefer;
-	'mail/interpret/claimCheck': typeof mail_interpret_claimCheck;
-	'mail/interpret/clamp': typeof mail_interpret_clamp;
-	'mail/interpret/commitmentLink': typeof mail_interpret_commitmentLink;
-	'mail/interpret/counters': typeof mail_interpret_counters;
-	'mail/interpret/coverage': typeof mail_interpret_coverage;
-	'mail/interpret/dueDate': typeof mail_interpret_dueDate;
-	'mail/interpret/eligibility': typeof mail_interpret_eligibility;
-	'mail/interpret/elsewhere': typeof mail_interpret_elsewhere;
-	'mail/interpret/enqueue': typeof mail_interpret_enqueue;
-	'mail/interpret/evidence': typeof mail_interpret_evidence;
-	'mail/interpret/factEquivalence': typeof mail_interpret_factEquivalence;
-	'mail/interpret/factKeys': typeof mail_interpret_factKeys;
-	'mail/interpret/fold': typeof mail_interpret_fold;
-	'mail/interpret/gate': typeof mail_interpret_gate;
-	'mail/interpret/heldSources': typeof mail_interpret_heldSources;
-	'mail/interpret/lazy': typeof mail_interpret_lazy;
-	'mail/interpret/lease': typeof mail_interpret_lease;
-	'mail/interpret/load': typeof mail_interpret_load;
-	'mail/interpret/needsReplyProjection': typeof mail_interpret_needsReplyProjection;
-	'mail/interpret/noteReactions': typeof mail_interpret_noteReactions;
-	'mail/interpret/outboundRun': typeof mail_interpret_outboundRun;
-	'mail/interpret/outstanding': typeof mail_interpret_outstanding;
-	'mail/interpret/parties': typeof mail_interpret_parties;
-	'mail/interpret/pendingMatch': typeof mail_interpret_pendingMatch;
-	'mail/interpret/pipeline': typeof mail_interpret_pipeline;
-	'mail/interpret/planCheck': typeof mail_interpret_planCheck;
-	'mail/interpret/planGate': typeof mail_interpret_planGate;
-	'mail/interpret/preferences': typeof mail_interpret_preferences;
-	'mail/interpret/prompt': typeof mail_interpret_prompt;
-	'mail/interpret/purge': typeof mail_interpret_purge;
-	'mail/interpret/purgeActive': typeof mail_interpret_purgeActive;
-	'mail/interpret/purgeClaims': typeof mail_interpret_purgeClaims;
-	'mail/interpret/purgeDrain': typeof mail_interpret_purgeDrain;
-	'mail/interpret/purgeJobs': typeof mail_interpret_purgeJobs;
-	'mail/interpret/purgeLinks': typeof mail_interpret_purgeLinks;
-	'mail/interpret/purgeQuestions': typeof mail_interpret_purgeQuestions;
-	'mail/interpret/purgeRepairs': typeof mail_interpret_purgeRepairs;
-	'mail/interpret/purgeRun': typeof mail_interpret_purgeRun;
-	'mail/interpret/purgeThread': typeof mail_interpret_purgeThread;
-	'mail/interpret/reactionRules': typeof mail_interpret_reactionRules;
-	'mail/interpret/reactions': typeof mail_interpret_reactions;
-	'mail/interpret/redactedRefill': typeof mail_interpret_redactedRefill;
-	'mail/interpret/reduce': typeof mail_interpret_reduce;
-	'mail/interpret/reduceHeld': typeof mail_interpret_reduceHeld;
-	'mail/interpret/reduceIdentity': typeof mail_interpret_reduceIdentity;
-	'mail/interpret/reduceInput': typeof mail_interpret_reduceInput;
-	'mail/interpret/reducePlan': typeof mail_interpret_reducePlan;
-	'mail/interpret/reducePlanFacts': typeof mail_interpret_reducePlanFacts;
-	'mail/interpret/reduceState': typeof mail_interpret_reduceState;
-	'mail/interpret/reduceTerms': typeof mail_interpret_reduceTerms;
-	'mail/interpret/reduceWrite': typeof mail_interpret_reduceWrite;
-	'mail/interpret/responsePlan': typeof mail_interpret_responsePlan;
-	'mail/interpret/responsePlanDraft': typeof mail_interpret_responsePlanDraft;
-	'mail/interpret/responsePlanRules': typeof mail_interpret_responsePlanRules;
-	'mail/interpret/responsePlanState': typeof mail_interpret_responsePlanState;
-	'mail/interpret/retry': typeof mail_interpret_retry;
-	'mail/interpret/run': typeof mail_interpret_run;
-	'mail/interpret/runApply': typeof mail_interpret_runApply;
-	'mail/interpret/scope': typeof mail_interpret_scope;
-	'mail/interpret/scopeChange': typeof mail_interpret_scopeChange;
-	'mail/interpret/scopeLoad': typeof mail_interpret_scopeLoad;
-	'mail/interpret/sendActivity': typeof mail_interpret_sendActivity;
-	'mail/interpret/sendFailure': typeof mail_interpret_sendFailure;
-	'mail/interpret/sourceOrder': typeof mail_interpret_sourceOrder;
-	'mail/interpret/sourceVersion': typeof mail_interpret_sourceVersion;
-	'mail/interpret/staleFence': typeof mail_interpret_staleFence;
-	'mail/interpret/sources': typeof mail_interpret_sources;
-	'mail/interpret/threadAccess': typeof mail_interpret_threadAccess;
-	'mail/interpret/threadEvents': typeof mail_interpret_threadEvents;
-	'mail/interpret/transitionSources': typeof mail_interpret_transitionSources;
-	'mail/interpret/verify': typeof mail_interpret_verify;
-	'mail/interpret/verifyRoute': typeof mail_interpret_verifyRoute;
-	'mail/messageCounters': typeof mail_messageCounters;
-	'mail/needsReplySlot': typeof mail_needsReplySlot;
-	'mail/nudgeQueue': typeof mail_nudgeQueue;
-	'mail/nudges': typeof mail_nudges;
-	'maintenance/counterBackfill': typeof maintenance_counterBackfill;
-	'migrations/0048_backfill_counters': typeof migrations_0048_backfill_counters;
-	'migrations/0049_move_message_bodies': typeof migrations_0049_move_message_bodies;
-	'migrations/0050_reindex_mailbox_knowledge': typeof migrations_0050_reindex_mailbox_knowledge;
-	'migrations/0051_clear_residual_search_bodies': typeof migrations_0051_clear_residual_search_bodies;
-	'migrations/0052_reerase_legacy_account_deletions': typeof migrations_0052_reerase_legacy_account_deletions;
-	'migrations/0053_project_open_commitments': typeof migrations_0053_project_open_commitments;
-	'migrations/0055_repair_repeated_block_ids': typeof migrations_0055_repair_repeated_block_ids;
-	'migrations/0056_retry_parked_mail_accounts': typeof migrations_0056_retry_parked_mail_accounts;
-	'lib/repeatedBlockIds': typeof lib_repeatedBlockIds;
-	'migrations/0057_withdraw_opted_out_confirmation_tokens': typeof migrations_0057_withdraw_opted_out_confirmation_tokens;
-	'migrations/0064_backfill_send_time_profiles': typeof migrations_0064_backfill_send_time_profiles;
-	'migrations/0065_backfill_thread_response_metrics': typeof migrations_0065_backfill_thread_response_metrics;
-	'migrations/0066_backfill_clarification_origin': typeof migrations_0066_backfill_clarification_origin;
-	'migrations/0067_empty_retired_summaries': typeof migrations_0067_empty_retired_summaries;
-	'migrations/0068_seal_fact_keys': typeof migrations_0068_seal_fact_keys;
-	'migrations/0069_restrict_captured_file_knowledge': typeof migrations_0069_restrict_captured_file_knowledge;
-	'lib/migrationLedger': typeof lib_migrationLedger;
-	'lib/migrationPlan': typeof lib_migrationPlan;
-	'migrations/admin': typeof migrations_admin;
-	'migrations/manifest': typeof migrations_manifest;
-	'plugins/llmLedgerRows': typeof plugins_llmLedgerRows;
-	'schema/migrationRuns': typeof schema_migrationRuns;
-	'migrations/0060_saved_reply_scopes': typeof migrations_0060_saved_reply_scopes;
-	'migrations/0054_backfill_folder_membership': typeof migrations_0054_backfill_folder_membership;
-	'maintenance/folderMembershipBackfill': typeof maintenance_folderMembershipBackfill;
-	'mail/folderMembership': typeof mail_folderMembership;
-	'schema/counters': typeof schema_counters;
-	'workspaces/deletion/steps/storageUploads': typeof workspaces_deletion_steps_storageUploads;
-	'storage/uploadsHttp': typeof storage_uploadsHttp;
-	'storage/uploads': typeof storage_uploads;
-	'schema/storage': typeof schema_storage;
+	accountDeletionEmail: typeof accountDeletionEmail;
+	agentConfigMutations: typeof agentConfigMutations;
+	agentHealth: typeof agentHealth;
+	aiProviderConfig: typeof aiProviderConfig;
+	aiProviderConfigActions: typeof aiProviderConfigActions;
+	auditLogs: typeof auditLogs;
+	apiV1Http: typeof apiV1Http;
+	autonomy: typeof autonomy;
+	autonomyFeedback: typeof autonomyFeedback;
+	autonomyOutcome: typeof autonomyOutcome;
+	autonomySuggestions: typeof autonomySuggestions;
+	backups: typeof backups;
+	blockedEmails: typeof blockedEmails;
+	codeWorkTasks: typeof codeWorkTasks;
+	confirmationEmail: typeof confirmationEmail;
+	confirmationEmailQueries: typeof confirmationEmailQueries;
+	crons: typeof crons;
+	eventsApi: typeof eventsApi;
+	globalSearch: typeof globalSearch;
+	http: typeof http;
+	mediaAssets: typeof mediaAssets;
+	providerRoutes: typeof providerRoutes;
+	quickQuery: typeof quickQuery;
+	quickQueryGate: typeof quickQueryGate;
+	seedAdminHttp: typeof seedAdminHttp;
+	segments: typeof segments;
+	semanticFileProcessing: typeof semanticFileProcessing;
+	semanticFiles: typeof semanticFiles;
+	shareLinkHttp: typeof shareLinkHttp;
+	shareLinkQueries: typeof shareLinkQueries;
+	shareLinks: typeof shareLinks;
+	storage: typeof storage;
+	systemMail: typeof systemMail;
+	systemUpdates: typeof systemUpdates;
+	systemUpdatesReleaseCheck: typeof systemUpdatesReleaseCheck;
+	translate: typeof translate;
+	unifiedMessages: typeof unifiedMessages;
+	visualizationAgent: typeof visualizationAgent;
+	visualizationAgentActions: typeof visualizationAgentActions;
+}> & ApiFromModules<{
 	'__tests__/factories': typeof __tests___factories;
 	'__tests__/helpers/permissionGateMock': typeof __tests___helpers_permissionGateMock;
+}> & ApiFromModules<{
 	'_utils/batchLoader': typeof _utils_batchLoader;
 	'_utils/errors': typeof _utils_errors;
-	accountDeletionEmail: typeof accountDeletionEmail;
+}> & ApiFromModules<{
+	'agent/replyEnvelope': typeof agent_replyEnvelope;
+	'agent/steps/classify/intents': typeof agent_steps_classify_intents;
 	'agent/agentPipeline': typeof agent_agentPipeline;
 	'agent/approvedReplyDecision': typeof agent_approvedReplyDecision;
 	'agent/coalescing': typeof agent_coalescing;
@@ -2158,16 +2048,13 @@ declare const fullApi: ApiFromModules<{
 	'agent/steps/types': typeof agent_steps_types;
 	'agent/walker': typeof agent_walker;
 	'agent/walkerTransition': typeof agent_walkerTransition;
+}> & ApiFromModules<{
 	'aiRouting/admission': typeof aiRouting_admission;
 	'aiRouting/admissionState': typeof aiRouting_admissionState;
 	'aiRouting/batchContinuation': typeof aiRouting_batchContinuation;
 	'aiRouting/batchItems': typeof aiRouting_batchItems;
 	'aiRouting/batchPoller': typeof aiRouting_batchPoller;
 	'aiRouting/enforcedBudget': typeof aiRouting_enforcedBudget;
-	agentConfigMutations: typeof agentConfigMutations;
-	agentHealth: typeof agentHealth;
-	aiProviderConfig: typeof aiProviderConfig;
-	aiProviderConfigActions: typeof aiProviderConfigActions;
 	'aiRouting/embeddingAttestations': typeof aiRouting_embeddingAttestations;
 	'aiRouting/embeddingCoverage': typeof aiRouting_embeddingCoverage;
 	'aiRouting/embeddingRebuild': typeof aiRouting_embeddingRebuild;
@@ -2183,6 +2070,8 @@ declare const fullApi: ApiFromModules<{
 	'aiRouting/shadowQuota': typeof aiRouting_shadowQuota;
 	'aiRouting/spendAggregate': typeof aiRouting_spendAggregate;
 	'aiRouting/teamBudgetHold': typeof aiRouting_teamBudgetHold;
+}> & ApiFromModules<{
+	'analytics/meteredSpend': typeof analytics_meteredSpend;
 	'analytics/adaptiveDashboard': typeof analytics_adaptiveDashboard;
 	'analytics/admissionPorts': typeof analytics_admissionPorts;
 	'analytics/backgroundDeferral': typeof analytics_backgroundDeferral;
@@ -2217,14 +2106,16 @@ declare const fullApi: ApiFromModules<{
 	'analytics/spendBudget': typeof analytics_spendBudget;
 	'analytics/transportOutcomeSummary': typeof analytics_transportOutcomeSummary;
 	'analytics/transportOutcomes': typeof analytics_transportOutcomes;
+}> & ApiFromModules<{
 	'assistant/conversations': typeof assistant_conversations;
 	'assistant/insights': typeof assistant_insights;
 	'assistant/prompt': typeof assistant_prompt;
 	'assistant/runner': typeof assistant_runner;
 	'assistant/toolRegistry': typeof assistant_toolRegistry;
 	'assistant/tools': typeof assistant_tools;
+}> & ApiFromModules<{
 	'auditActions/catalog': typeof auditActions_catalog;
-	auditLogs: typeof auditLogs;
+}> & ApiFromModules<{
 	'auth/accessRequest': typeof auth_accessRequest;
 	'auth/accountDeletion': typeof auth_accountDeletion;
 	'auth/accountExport': typeof auth_accountExport;
@@ -2235,7 +2126,6 @@ declare const fullApi: ApiFromModules<{
 	'auth/accountExportQueries': typeof auth_accountExportQueries;
 	'auth/accountExportThreadBriefQueries': typeof auth_accountExportThreadBriefQueries;
 	'auth/accountManagement': typeof auth_accountManagement;
-	apiV1Http: typeof apiV1Http;
 	'auth/apiAuth': typeof auth_apiAuth;
 	'auth/apiAuthHttp': typeof auth_apiAuthHttp;
 	'auth/apiHandlers': typeof auth_apiHandlers;
@@ -2274,6 +2164,8 @@ declare const fullApi: ApiFromModules<{
 	'auth/trustedOrigins': typeof auth_trustedOrigins;
 	'auth/userOnboarding': typeof auth_userOnboarding;
 	'auth/userProfiles': typeof auth_userProfiles;
+	'auth/erasure/arrivalRelations': typeof auth_erasure_arrivalRelations;
+}> & ApiFromModules<{
 	'automations/_helpers': typeof automations__helpers;
 	'automations/analytics': typeof automations_analytics;
 	'automations/automations': typeof automations_automations;
@@ -2303,13 +2195,12 @@ declare const fullApi: ApiFromModules<{
 	'automations/triggers/topic_subscribed/index': typeof automations_triggers_topic_subscribed_index;
 	'automations/triggers/types': typeof automations_triggers_types;
 	'automations/types': typeof automations_types;
-	autonomy: typeof autonomy;
-	autonomyFeedback: typeof autonomyFeedback;
-	autonomyOutcome: typeof autonomyOutcome;
-	autonomySuggestions: typeof autonomySuggestions;
-	backups: typeof backups;
+	'automations/steps/catalog': typeof automations_steps_catalog;
+	'automations/steps/pluginStep': typeof automations_steps_pluginStep;
+	'automations/triggers/catalog': typeof automations_triggers_catalog;
+}> & ApiFromModules<{
 	'blockedEmails/lookup': typeof blockedEmails_lookup;
-	blockedEmails: typeof blockedEmails;
+}> & ApiFromModules<{
 	'booking/_helpers': typeof booking__helpers;
 	'booking/emailCopy': typeof booking_emailCopy;
 	'booking/emails': typeof booking_emails;
@@ -2319,6 +2210,7 @@ declare const fullApi: ApiFromModules<{
 	'booking/publicHttp': typeof booking_publicHttp;
 	'booking/settings': typeof booking_settings;
 	'booking/slots': typeof booking_slots;
+}> & ApiFromModules<{
 	'campaigns/_helpers': typeof campaigns__helpers;
 	'campaigns/abTest': typeof campaigns_abTest;
 	'campaigns/abTestLifecycle': typeof campaigns_abTestLifecycle;
@@ -2358,6 +2250,7 @@ declare const fullApi: ApiFromModules<{
 	'campaigns/statShards': typeof campaigns_statShards;
 	'campaigns/testSend': typeof campaigns_testSend;
 	'campaigns/testSendCommit': typeof campaigns_testSendCommit;
+}> & ApiFromModules<{
 	'channels/adapters/index': typeof channels_adapters_index;
 	'channels/adapters/sms': typeof channels_adapters_sms;
 	'channels/adapters/types': typeof channels_adapters_types;
@@ -2365,6 +2258,8 @@ declare const fullApi: ApiFromModules<{
 	'channels/adapters/whatsapp': typeof channels_adapters_whatsapp;
 	'channels/credentials': typeof channels_credentials;
 	'channels/outbound': typeof channels_outbound;
+}> & ApiFromModules<{
+	'chat/attachmentAccess': typeof chat_attachmentAccess;
 	'chat/_helpers': typeof chat__helpers;
 	'chat/attachments': typeof chat_attachments;
 	'chat/dms': typeof chat_dms;
@@ -2375,7 +2270,7 @@ declare const fullApi: ApiFromModules<{
 	'chat/messageInsert': typeof chat_messageInsert;
 	'chat/messages': typeof chat_messages;
 	'chat/rooms': typeof chat_rooms;
-	codeWorkTasks: typeof codeWorkTasks;
+}> & ApiFromModules<{
 	'conditions/contact_property/index': typeof conditions_contact_property_index;
 	'conditions/email_activity/index': typeof conditions_email_activity_index;
 	'conditions/evaluation': typeof conditions_evaluation;
@@ -2384,8 +2279,8 @@ declare const fullApi: ApiFromModules<{
 	'conditions/segmentMatch': typeof conditions_segmentMatch;
 	'conditions/topic_membership/index': typeof conditions_topic_membership_index;
 	'conditions/types': typeof conditions_types;
-	confirmationEmail: typeof confirmationEmail;
-	confirmationEmailQueries: typeof confirmationEmailQueries;
+	'conditions/catalog': typeof conditions_catalog;
+}> & ApiFromModules<{
 	'connectedApps/actions': typeof connectedApps_actions;
 	'connectedApps/connectionTest': typeof connectedApps_connectionTest;
 	'connectedApps/hookProtocol': typeof connectedApps_hookProtocol;
@@ -2396,6 +2291,7 @@ declare const fullApi: ApiFromModules<{
 	'connectedApps/queries': typeof connectedApps_queries;
 	'connectedApps/repository': typeof connectedApps_repository;
 	'connectedApps/secretBox': typeof connectedApps_secretBox;
+}> & ApiFromModules<{
 	'contactActivities/catalog': typeof contactActivities_catalog;
 	'contactActivities/created/index': typeof contactActivities_created_index;
 	'contactActivities/doi_attested/index': typeof contactActivities_doi_attested_index;
@@ -2412,6 +2308,8 @@ declare const fullApi: ApiFromModules<{
 	'contactActivities/topic_unsubscribed/index': typeof contactActivities_topic_unsubscribed_index;
 	'contactActivities/types': typeof contactActivities_types;
 	'contactActivities/writer': typeof contactActivities_writer;
+}> & ApiFromModules<{
+	'contacts/growthCounters': typeof contacts_growthCounters;
 	'contacts/activities': typeof contacts_activities;
 	'contacts/analytics': typeof contacts_analytics;
 	'contacts/api': typeof contacts_api;
@@ -2453,7 +2351,7 @@ declare const fullApi: ApiFromModules<{
 	'contacts/sunsetSweep': typeof contacts_sunsetSweep;
 	'contacts/sunsetSweepDecision': typeof contacts_sunsetSweepDecision;
 	'contacts/timeline': typeof contacts_timeline;
-	crons: typeof crons;
+}> & ApiFromModules<{
 	'decision/breaker': typeof decision_breaker;
 	'decision/gate': typeof decision_gate;
 	'decision/artifacts': typeof decision_artifacts;
@@ -2468,6 +2366,9 @@ declare const fullApi: ApiFromModules<{
 	'decision/scopedEvidence': typeof decision_scopedEvidence;
 	'decision/senderMemory': typeof decision_senderMemory;
 	'decision/senderMemoryPages': typeof decision_senderMemoryPages;
+}> & ApiFromModules<{
+	'delivery/sendLifecycle/sourceFinalization': typeof delivery_sendLifecycle_sourceFinalization;
+	'delivery/sendLifecycle/sendTimeEffects': typeof delivery_sendLifecycle_sendTimeEffects;
 	'delivery/contactToken': typeof delivery_contactToken;
 	'delivery/checklist': typeof delivery_checklist;
 	'delivery/checklistAlertManagement': typeof delivery_checklistAlertManagement;
@@ -2554,7 +2455,6 @@ declare const fullApi: ApiFromModules<{
 	'delivery/rampControllerWrites': typeof delivery_rampControllerWrites;
 	'delivery/rampMixDecisions': typeof delivery_rampMixDecisions;
 	'delivery/rampPaceInputs': typeof delivery_rampPaceInputs;
-
 	'delivery/rampControlAudit': typeof delivery_rampControlAudit;
 	'delivery/rampControlMessages': typeof delivery_rampControlMessages;
 	'delivery/rampControlQueries': typeof delivery_rampControlQueries;
@@ -2654,14 +2554,17 @@ declare const fullApi: ApiFromModules<{
 	'delivery/workerEnvelope': typeof delivery_workerEnvelope;
 	'delivery/workerOutcome': typeof delivery_workerOutcome;
 	'delivery/workpool': typeof delivery_workpool;
+}> & ApiFromModules<{
 	'desktop/releaseManifest': typeof desktop_releaseManifest;
 	'desktop/updateReads': typeof desktop_updateReads;
 	'desktop/updateResolver': typeof desktop_updateResolver;
 	'desktop/updates': typeof desktop_updates;
+}> & ApiFromModules<{
 	'devShortcuts/_guard': typeof devShortcuts__guard;
 	'devShortcuts/forceVerifyDomain': typeof devShortcuts_forceVerifyDomain;
 	'devShortcuts/reset': typeof devShortcuts_reset;
 	'devShortcuts/resetHttp': typeof devShortcuts_resetHttp;
+}> & ApiFromModules<{
 	'domains/bimi': typeof domains_bimi;
 	'domains/dmarc': typeof domains_dmarc;
 	'domains/dmarcReports': typeof domains_dmarcReports;
@@ -2700,6 +2603,7 @@ declare const fullApi: ApiFromModules<{
 	'domains/providers/plugin/persistence': typeof domains_providers_plugin_persistence;
 	'domains/providers/plugin/state': typeof domains_providers_plugin_state;
 	'domains/providers/registerAction': typeof domains_providers_registerAction;
+	'domains/providers/registerCommit': typeof domains_providers_registerCommit;
 	'domains/providers/relayIdentityPersistence': typeof domains_providers_relayIdentityPersistence;
 	'domains/providers/relayIdentityProof': typeof domains_providers_relayIdentityProof;
 	'domains/providers/relayIdentityProviderDetails': typeof domains_providers_relayIdentityProviderDetails;
@@ -2729,6 +2633,7 @@ declare const fullApi: ApiFromModules<{
 	'domains/tlsRpt': typeof domains_tlsRpt;
 	'domains/trackingDomains': typeof domains_trackingDomains;
 	'domains/yahooCfl': typeof domains_yahooCfl;
+}> & ApiFromModules<{
 	'e2ee/discovery': typeof e2ee_discovery;
 	'e2ee/discoveryFetch': typeof e2ee_discoveryFetch;
 	'e2ee/discoveryVerify': typeof e2ee_discoveryVerify;
@@ -2752,10 +2657,20 @@ declare const fullApi: ApiFromModules<{
 	'e2ee/signedMimeStructure': typeof e2ee_signedMimeStructure;
 	'e2ee/verifyInboundSignature': typeof e2ee_verifyInboundSignature;
 	'e2ee/wkd': typeof e2ee_wkd;
+}> & ApiFromModules<{
 	'emailBlocks/blocks': typeof emailBlocks_blocks;
 	'emailBlocks/module': typeof emailBlocks_module;
 	'emailBlocks/rendering': typeof emailBlocks_rendering;
 	'emailBlocks/renderingPool': typeof emailBlocks_renderingPool;
+}> & ApiFromModules<{
+	'emailCoediting/notices': typeof emailCoediting_notices;
+	'emailCoediting/presence': typeof emailCoediting_presence;
+	'emailCoediting/save': typeof emailCoediting_save;
+	'emailCoediting/sessionOps': typeof emailCoediting_sessionOps;
+	'emailCoediting/sessions': typeof emailCoediting_sessions;
+	'emailCoediting/sweep': typeof emailCoediting_sweep;
+	'emailCoediting/target': typeof emailCoediting_target;
+}> & ApiFromModules<{
 	'emailTemplates/emails': typeof emailTemplates_emails;
 	'emailTemplates/i18n': typeof emailTemplates_i18n;
 	'emailTemplates/lifecycle': typeof emailTemplates_lifecycle;
@@ -2768,25 +2683,19 @@ declare const fullApi: ApiFromModules<{
 	'emailTemplates/translationMerge': typeof emailTemplates_translationMerge;
 	'emailTemplates/versionSnapshot': typeof emailTemplates_versionSnapshot;
 	'emailTemplates/versions': typeof emailTemplates_versions;
-	'emailCoediting/notices': typeof emailCoediting_notices;
-	'emailCoediting/presence': typeof emailCoediting_presence;
-	'emailCoediting/save': typeof emailCoediting_save;
-	'emailCoediting/sessionOps': typeof emailCoediting_sessionOps;
-	'emailCoediting/sessions': typeof emailCoediting_sessions;
-	'emailCoediting/sweep': typeof emailCoediting_sweep;
-	'emailCoediting/target': typeof emailCoediting_target;
-	eventsApi: typeof eventsApi;
+}> & ApiFromModules<{
 	'files/cards': typeof files_cards;
 	'files/history': typeof files_history;
 	'files/historyCursor': typeof files_historyCursor;
 	'files/processFileDecision': typeof files_processFileDecision;
+}> & ApiFromModules<{
 	'forms/_helpers': typeof forms__helpers;
 	'forms/apiHttp': typeof forms_apiHttp;
 	'forms/endpoints': typeof forms_endpoints;
 	'forms/pendingConfirmations': typeof forms_pendingConfirmations;
 	'forms/submission': typeof forms_submission;
-	globalSearch: typeof globalSearch;
-	http: typeof http;
+}> & ApiFromModules<{
+	'inbox/followUps': typeof inbox_followUps;
 	'inbox/access': typeof inbox_access;
 	'inbox/answeredThread': typeof inbox_answeredThread;
 	'inbox/askEagerness': typeof inbox_askEagerness;
@@ -2859,6 +2768,7 @@ declare const fullApi: ApiFromModules<{
 	'inbox/sla/queries': typeof inbox_sla_queries;
 	'inbox/sla/slices': typeof inbox_sla_slices;
 	'inbox/sla/threadClock': typeof inbox_sla_threadClock;
+}> & ApiFromModules<{
 	'integrationImports/_common': typeof integrationImports__common;
 	'integrationImports/credentialSeal': typeof integrationImports_credentialSeal;
 	'integrationImports/pageCommit': typeof integrationImports_pageCommit;
@@ -2869,6 +2779,7 @@ declare const fullApi: ApiFromModules<{
 	'integrationImports/recovery': typeof integrationImports_recovery;
 	'integrationImports/suppressions': typeof integrationImports_suppressions;
 	'integrationImports/walker': typeof integrationImports_walker;
+}> & ApiFromModules<{
 	'knowledge/attachmentIngestBudget': typeof knowledge_attachmentIngestBudget;
 	'knowledge/backfillJobs': typeof knowledge_backfillJobs;
 	'knowledge/batchedMail': typeof knowledge_batchedMail;
@@ -2894,6 +2805,37 @@ declare const fullApi: ApiFromModules<{
 	'knowledge/vectorCorpus': typeof knowledge_vectorCorpus;
 	'knowledge/vectorSearch': typeof knowledge_vectorSearch;
 	'knowledge/visibility': typeof knowledge_visibility;
+}> & ApiFromModules<{
+	'lib/aiRouting/spendPeriodWrites': typeof lib_aiRouting_spendPeriodWrites;
+	'lib/counters': typeof lib_counters;
+	'lib/agentConfigDefaults': typeof lib_agentConfigDefaults;
+	'lib/decision/attemptRequests': typeof lib_decision_attemptRequests;
+	'lib/listingCounters': typeof lib_listingCounters;
+	'lib/softDelete': typeof lib_softDelete;
+	'lib/llm/actionDeadline': typeof lib_llm_actionDeadline;
+	'lib/llm/admissionPort': typeof lib_llm_admissionPort;
+	'lib/llm/batch/calls': typeof lib_llm_batch_calls;
+	'lib/llm/batch/capture': typeof lib_llm_batch_capture;
+	'lib/llm/batch/submit': typeof lib_llm_batch_submit;
+	'lib/llm/batch/transport': typeof lib_llm_batch_transport;
+	'lib/llm/batch/wire': typeof lib_llm_batch_wire;
+	'lib/llm/callShape': typeof lib_llm_callShape;
+	'lib/llm/dispatchStream': typeof lib_llm_dispatchStream;
+	'lib/llm/embed': typeof lib_llm_embed;
+	'lib/llm/endpointLocality': typeof lib_llm_endpointLocality;
+	'lib/llm/languageIdentity': typeof lib_llm_languageIdentity;
+	'lib/llm/modelEndpoint': typeof lib_llm_modelEndpoint;
+	'lib/llm/modelOutputLimits': typeof lib_llm_modelOutputLimits;
+	'lib/llm/providerUsage': typeof lib_llm_providerUsage;
+	'lib/llm/requestMeter': typeof lib_llm_requestMeter;
+	'lib/llm/streamMetering': typeof lib_llm_streamMetering;
+	'lib/llm/taskLimits': typeof lib_llm_taskLimits;
+	'lib/llm/truncation': typeof lib_llm_truncation;
+	'lib/rowCounters': typeof lib_rowCounters;
+	'lib/semanticFileText': typeof lib_semanticFileText;
+	'lib/repeatedBlockIds': typeof lib_repeatedBlockIds;
+	'lib/migrationLedger': typeof lib_migrationLedger;
+	'lib/migrationPlan': typeof lib_migrationPlan;
 	'lib/readBody': typeof lib_readBody;
 	'lib/adminRequests': typeof lib_adminRequests;
 	'lib/aiNotConfigured': typeof lib_aiNotConfigured;
@@ -3192,6 +3134,99 @@ declare const fullApi: ApiFromModules<{
 	'lib/webSecretBox': typeof lib_webSecretBox;
 	'lib/workingHours': typeof lib_workingHours;
 	'lib/writeFence': typeof lib_writeFence;
+	'lib/validators/arrival': typeof lib_validators_arrival;
+}> & ApiFromModules<{
+	'mail/ai/gapQuestions': typeof mail_ai_gapQuestions;
+	'mail/ai/nudgeDraft': typeof mail_ai_nudgeDraft;
+	'mail/draftOfferUsage': typeof mail_draftOfferUsage;
+	'mail/draftPause': typeof mail_draftPause;
+	'mail/interpret/__eval__/liveModel': typeof mail_interpret___eval___liveModel;
+	'mail/interpret/activity': typeof mail_interpret_activity;
+	'mail/interpret/backfill': typeof mail_interpret_backfill;
+	'mail/interpret/backfillSources': typeof mail_interpret_backfillSources;
+	'mail/interpret/brief': typeof mail_interpret_brief;
+	'mail/interpret/briefOpen': typeof mail_interpret_briefOpen;
+	'mail/interpret/briefProject': typeof mail_interpret_briefProject;
+	'mail/interpret/briefRead': typeof mail_interpret_briefRead;
+	'mail/interpret/briefRow': typeof mail_interpret_briefRow;
+	'mail/interpret/categoryDefer': typeof mail_interpret_categoryDefer;
+	'mail/interpret/claimCheck': typeof mail_interpret_claimCheck;
+	'mail/interpret/clamp': typeof mail_interpret_clamp;
+	'mail/interpret/commitmentLink': typeof mail_interpret_commitmentLink;
+	'mail/interpret/counters': typeof mail_interpret_counters;
+	'mail/interpret/coverage': typeof mail_interpret_coverage;
+	'mail/interpret/dueDate': typeof mail_interpret_dueDate;
+	'mail/interpret/eligibility': typeof mail_interpret_eligibility;
+	'mail/interpret/elsewhere': typeof mail_interpret_elsewhere;
+	'mail/interpret/enqueue': typeof mail_interpret_enqueue;
+	'mail/interpret/evidence': typeof mail_interpret_evidence;
+	'mail/interpret/factEquivalence': typeof mail_interpret_factEquivalence;
+	'mail/interpret/factKeys': typeof mail_interpret_factKeys;
+	'mail/interpret/fold': typeof mail_interpret_fold;
+	'mail/interpret/gate': typeof mail_interpret_gate;
+	'mail/interpret/heldSources': typeof mail_interpret_heldSources;
+	'mail/interpret/lazy': typeof mail_interpret_lazy;
+	'mail/interpret/lease': typeof mail_interpret_lease;
+	'mail/interpret/load': typeof mail_interpret_load;
+	'mail/interpret/needsReplyProjection': typeof mail_interpret_needsReplyProjection;
+	'mail/interpret/noteReactions': typeof mail_interpret_noteReactions;
+	'mail/interpret/outboundRun': typeof mail_interpret_outboundRun;
+	'mail/interpret/outstanding': typeof mail_interpret_outstanding;
+	'mail/interpret/parties': typeof mail_interpret_parties;
+	'mail/interpret/pendingMatch': typeof mail_interpret_pendingMatch;
+	'mail/interpret/pipeline': typeof mail_interpret_pipeline;
+	'mail/interpret/planCheck': typeof mail_interpret_planCheck;
+	'mail/interpret/planGate': typeof mail_interpret_planGate;
+	'mail/interpret/preferences': typeof mail_interpret_preferences;
+	'mail/interpret/prompt': typeof mail_interpret_prompt;
+	'mail/interpret/purge': typeof mail_interpret_purge;
+	'mail/interpret/purgeActive': typeof mail_interpret_purgeActive;
+	'mail/interpret/purgeClaims': typeof mail_interpret_purgeClaims;
+	'mail/interpret/purgeDrain': typeof mail_interpret_purgeDrain;
+	'mail/interpret/purgeJobs': typeof mail_interpret_purgeJobs;
+	'mail/interpret/purgeLinks': typeof mail_interpret_purgeLinks;
+	'mail/interpret/purgeQuestions': typeof mail_interpret_purgeQuestions;
+	'mail/interpret/purgeRepairs': typeof mail_interpret_purgeRepairs;
+	'mail/interpret/purgeRun': typeof mail_interpret_purgeRun;
+	'mail/interpret/purgeThread': typeof mail_interpret_purgeThread;
+	'mail/interpret/reactionRules': typeof mail_interpret_reactionRules;
+	'mail/interpret/reactions': typeof mail_interpret_reactions;
+	'mail/interpret/redactedRefill': typeof mail_interpret_redactedRefill;
+	'mail/interpret/reduce': typeof mail_interpret_reduce;
+	'mail/interpret/reduceHeld': typeof mail_interpret_reduceHeld;
+	'mail/interpret/reduceIdentity': typeof mail_interpret_reduceIdentity;
+	'mail/interpret/reduceInput': typeof mail_interpret_reduceInput;
+	'mail/interpret/reducePlan': typeof mail_interpret_reducePlan;
+	'mail/interpret/reducePlanFacts': typeof mail_interpret_reducePlanFacts;
+	'mail/interpret/reduceState': typeof mail_interpret_reduceState;
+	'mail/interpret/reduceTerms': typeof mail_interpret_reduceTerms;
+	'mail/interpret/reduceWrite': typeof mail_interpret_reduceWrite;
+	'mail/interpret/responsePlan': typeof mail_interpret_responsePlan;
+	'mail/interpret/responsePlanDraft': typeof mail_interpret_responsePlanDraft;
+	'mail/interpret/responsePlanRules': typeof mail_interpret_responsePlanRules;
+	'mail/interpret/responsePlanState': typeof mail_interpret_responsePlanState;
+	'mail/interpret/retry': typeof mail_interpret_retry;
+	'mail/interpret/run': typeof mail_interpret_run;
+	'mail/interpret/runApply': typeof mail_interpret_runApply;
+	'mail/interpret/scope': typeof mail_interpret_scope;
+	'mail/interpret/scopeChange': typeof mail_interpret_scopeChange;
+	'mail/interpret/scopeLoad': typeof mail_interpret_scopeLoad;
+	'mail/interpret/sendActivity': typeof mail_interpret_sendActivity;
+	'mail/interpret/sendFailure': typeof mail_interpret_sendFailure;
+	'mail/interpret/sourceOrder': typeof mail_interpret_sourceOrder;
+	'mail/interpret/sourceVersion': typeof mail_interpret_sourceVersion;
+	'mail/interpret/staleFence': typeof mail_interpret_staleFence;
+	'mail/interpret/sources': typeof mail_interpret_sources;
+	'mail/interpret/threadAccess': typeof mail_interpret_threadAccess;
+	'mail/interpret/threadEvents': typeof mail_interpret_threadEvents;
+	'mail/interpret/transitionSources': typeof mail_interpret_transitionSources;
+	'mail/interpret/verify': typeof mail_interpret_verify;
+	'mail/interpret/verifyRoute': typeof mail_interpret_verifyRoute;
+	'mail/messageCounters': typeof mail_messageCounters;
+	'mail/needsReplySlot': typeof mail_needsReplySlot;
+	'mail/nudgeQueue': typeof mail_nudgeQueue;
+	'mail/nudges': typeof mail_nudges;
+	'mail/folderMembership': typeof mail_folderMembership;
 	'mail/_bodySearchLifecycle': typeof mail__bodySearchLifecycle;
 	'mail/_helpers': typeof mail__helpers;
 	'mail/_jobLifecycle': typeof mail__jobLifecycle;
@@ -3459,22 +3494,113 @@ declare const fullApi: ApiFromModules<{
 	'mail/unsubscribe': typeof mail_unsubscribe;
 	'mail/vacation': typeof mail_vacation;
 	'mail/webhookHttp': typeof mail_webhookHttp;
+	'mail/arrival/changeRows': typeof mail_arrival_changeRows;
+	'mail/arrival/digestState': typeof mail_arrival_digestState;
+	'mail/arrival/hooks': typeof mail_arrival_hooks;
+	'mail/arrival/mailboxRows': typeof mail_arrival_mailboxRows;
+	'mail/arrival/purgeRanges': typeof mail_arrival_purgeRanges;
+	'mail/arrival/sharedConversion': typeof mail_arrival_sharedConversion;
+	'mail/arrival/records': typeof mail_arrival_records;
+	'mail/arrival/projection': typeof mail_arrival_projection;
+	'mail/arrival/scopedInput': typeof mail_arrival_scopedInput;
+	'mail/arrival/dispatch': typeof mail_arrival_dispatch;
+	'mail/arrival/r2': typeof mail_arrival_r2;
+	'mail/interpret/gistState': typeof mail_interpret_gistState;
+	'mail/ai/categoryQuestions': typeof mail_ai_categoryQuestions;
+	'mail/interpret/runOnce': typeof mail_interpret_runOnce;
+	'mail/interpret/arrivalDecide': typeof mail_interpret_arrivalDecide;
+	'mail/interpret/arrivalRun': typeof mail_interpret_arrivalRun;
+	'mail/interpret/gist': typeof mail_interpret_gist;
+	'mail/interpret/gistCommit': typeof mail_interpret_gistCommit;
+	'mail/arrival/autoBackfill': typeof mail_arrival_autoBackfill;
+	'mail/external/syncCursor': typeof mail_external_syncCursor;
+	'mail/senders/brief': typeof mail_senders_brief;
+	'mail/senders/counters': typeof mail_senders_counters;
+	'mail/senders/delivery': typeof mail_senders_delivery;
+	'mail/senders/operations': typeof mail_senders_operations;
+	'mail/senders/opens': typeof mail_senders_opens;
+	'mail/senders/page': typeof mail_senders_page;
+	'mail/senders/profiles': typeof mail_senders_profiles;
+	'mail/senders/status': typeof mail_senders_status;
+	'mail/senders/suggestions': typeof mail_senders_suggestions;
+	'mail/senders/unsubscribe': typeof mail_senders_unsubscribe;
+	'mail/senders/unsubscribeActions': typeof mail_senders_unsubscribeActions;
+	'mail/senders/targets': typeof mail_senders_targets;
+	'mail/archiveSingleMessage': typeof mail_archiveSingleMessage;
+	'mail/arrival/explain': typeof mail_arrival_explain;
+	'mail/arrival/fix': typeof mail_arrival_fix;
+	'mail/arrival/fixCompile': typeof mail_arrival_fixCompile;
+	'mail/arrival/learning': typeof mail_arrival_learning;
+	'mail/arrival/learningSignals': typeof mail_arrival_learningSignals;
+	'mail/arrival/operations': typeof mail_arrival_operations;
+	'mail/arrival/undoChanges': typeof mail_arrival_undoChanges;
+	'mail/arrival/undoProgress': typeof mail_arrival_undoProgress;
+	'mail/digest/claim': typeof mail_digest_claim;
+	'mail/digest/emailBlocks': typeof mail_digest_emailBlocks;
+	'mail/digest/generate': typeof mail_digest_generate;
+	'mail/digest/select': typeof mail_digest_select;
+	'mail/digest/view': typeof mail_digest_view;
+	'mail/filterCompile': typeof mail_filterCompile;
+	'mail/filterCompileStore': typeof mail_filterCompileStore;
+	'mail/filterValidation': typeof mail_filterValidation;
+	'mail/senders/resortBatch': typeof mail_senders_resortBatch;
+	'mail/senders/resortChain': typeof mail_senders_resortChain;
+	'mail/interpret/arrivalAdmit': typeof mail_interpret_arrivalAdmit;
+	'mail/interpret/arrivalHold': typeof mail_interpret_arrivalHold;
+	'mail/interpret/fullRead': typeof mail_interpret_fullRead;
+	'mail/interpret/fullReadPrepare': typeof mail_interpret_fullReadPrepare;
+	'mail/ai/composeDraftFullRead': typeof mail_ai_composeDraftFullRead;
+	'mail/rules/delayedActions': typeof mail_rules_delayedActions;
+	'mail/rules/dryRun': typeof mail_rules_dryRun;
+	'mail/rules/dryRunData': typeof mail_rules_dryRunData;
+	'mail/rules/operationLog': typeof mail_rules_operationLog;
+	'mail/rules/ruleApply': typeof mail_rules_ruleApply;
+	'mail/rules/rulesPass': typeof mail_rules_rulesPass;
+	'mail/arrival/offerable': typeof mail_arrival_offerable;
+	'mail/arrival/coldPitch': typeof mail_arrival_coldPitch;
+	'mail/arrival/__eval__/coldPitchEval': typeof mail_arrival___eval___coldPitchEval;
+	'mail/arrival/__eval__/coldPitchSample': typeof mail_arrival___eval___coldPitchSample;
+	'mail/arrival/coldPitchEvidence': typeof mail_arrival_coldPitchEvidence;
+	'mail/correspondence': typeof mail_correspondence;
+	'mail/ownAddresses': typeof mail_ownAddresses;
+}> & ApiFromModules<{
+	'maintenance/counterBackfill': typeof maintenance_counterBackfill;
+	'maintenance/folderMembershipBackfill': typeof maintenance_folderMembershipBackfill;
 	'maintenance/cronRegistration': typeof maintenance_cronRegistration;
+	'maintenance/retention': typeof maintenance_retention;
+	'maintenance/derivedFields/adapters': typeof maintenance_derivedFields_adapters;
+	'maintenance/derivedFields/registry': typeof maintenance_derivedFields_registry;
+	'maintenance/derivedFields/sampler': typeof maintenance_derivedFields_sampler;
+	'maintenance/derivedFields/types': typeof maintenance_derivedFields_types;
+	'maintenance/workerRegistry': typeof maintenance_workerRegistry;
+	'maintenance/workerReportHttp': typeof maintenance_workerReportHttp;
+}> & ApiFromModules<{
 	'marketing/recentlyDeleted': typeof marketing_recentlyDeleted;
 	'marketing/noticeEvents': typeof marketing_noticeEvents;
 	'marketing/noticePolicy': typeof marketing_noticePolicy;
 	'marketing/noticeResolvers': typeof marketing_noticeResolvers;
 	'marketing/noticeUrls': typeof marketing_noticeUrls;
 	'marketing/notifications': typeof marketing_notifications;
-	'maintenance/retention': typeof maintenance_retention;
-	'maintenance/derivedFields/adapters': typeof maintenance_derivedFields_adapters;
-	'maintenance/derivedFields/registry': typeof maintenance_derivedFields_registry;
-	'maintenance/derivedFields/sampler': typeof maintenance_derivedFields_sampler;
-	'maintenance/derivedFields/types': typeof maintenance_derivedFields_types;
-	'schema/derivedFields': typeof schema_derivedFields;
-	'maintenance/workerRegistry': typeof maintenance_workerRegistry;
-	'maintenance/workerReportHttp': typeof maintenance_workerReportHttp;
-	mediaAssets: typeof mediaAssets;
+}> & ApiFromModules<{
+	'migrations/0048_backfill_counters': typeof migrations_0048_backfill_counters;
+	'migrations/0049_move_message_bodies': typeof migrations_0049_move_message_bodies;
+	'migrations/0050_reindex_mailbox_knowledge': typeof migrations_0050_reindex_mailbox_knowledge;
+	'migrations/0051_clear_residual_search_bodies': typeof migrations_0051_clear_residual_search_bodies;
+	'migrations/0052_reerase_legacy_account_deletions': typeof migrations_0052_reerase_legacy_account_deletions;
+	'migrations/0053_project_open_commitments': typeof migrations_0053_project_open_commitments;
+	'migrations/0055_repair_repeated_block_ids': typeof migrations_0055_repair_repeated_block_ids;
+	'migrations/0056_retry_parked_mail_accounts': typeof migrations_0056_retry_parked_mail_accounts;
+	'migrations/0057_withdraw_opted_out_confirmation_tokens': typeof migrations_0057_withdraw_opted_out_confirmation_tokens;
+	'migrations/0064_backfill_send_time_profiles': typeof migrations_0064_backfill_send_time_profiles;
+	'migrations/0065_backfill_thread_response_metrics': typeof migrations_0065_backfill_thread_response_metrics;
+	'migrations/0066_backfill_clarification_origin': typeof migrations_0066_backfill_clarification_origin;
+	'migrations/0067_empty_retired_summaries': typeof migrations_0067_empty_retired_summaries;
+	'migrations/0068_seal_fact_keys': typeof migrations_0068_seal_fact_keys;
+	'migrations/0069_restrict_captured_file_knowledge': typeof migrations_0069_restrict_captured_file_knowledge;
+	'migrations/admin': typeof migrations_admin;
+	'migrations/manifest': typeof migrations_manifest;
+	'migrations/0060_saved_reply_scopes': typeof migrations_0060_saved_reply_scopes;
+	'migrations/0054_backfill_folder_membership': typeof migrations_0054_backfill_folder_membership;
 	'migrations/0035_seal_bodies_at_rest': typeof migrations_0035_seal_bodies_at_rest;
 	'migrations/0036_seed_platform_admin': typeof migrations_0036_seed_platform_admin;
 	'migrations/0037_backfill_mail_categories': typeof migrations_0037_backfill_mail_categories;
@@ -3488,10 +3614,13 @@ declare const fullApi: ApiFromModules<{
 	'migrations/0045_recheck_needs_reply': typeof migrations_0045_recheck_needs_reply;
 	'migrations/0046_split_hot_rows': typeof migrations_0046_split_hot_rows;
 	'migrations/0047_denormalize_thread_rows': typeof migrations_0047_denormalize_thread_rows;
+}> & ApiFromModules<{
 	'platformAdmin/bootstrap': typeof platformAdmin_bootstrap;
 	'platformAdmin/mutations': typeof platformAdmin_mutations;
 	'platformAdmin/platformAdmin': typeof platformAdmin_platformAdmin;
 	'platformAdmin/queries': typeof platformAdmin_queries;
+}> & ApiFromModules<{
+	'plugins/llmLedgerRows': typeof plugins_llmLedgerRows;
 	'plugins/featureFlagRegistry': typeof plugins_featureFlagRegistry;
 	'plugins/apiKeyBinding': typeof plugins_apiKeyBinding;
 	'plugins/audit': typeof plugins_audit;
@@ -3533,16 +3662,6 @@ declare const fullApi: ApiFromModules<{
 	'plugins/sendTransportWebhookCatalog': typeof plugins_sendTransportWebhookCatalog;
 	'plugins/sendTransportWebhookCatalog.generated': typeof plugins_sendTransportWebhookCatalog_generated;
 	'plugins/sendTransportWebhookModules.generated': typeof plugins_sendTransportWebhookModules_generated;
-	'preferences/alertSounds': typeof preferences_alertSounds;
-	'preferences/shortcuts': typeof preferences_shortcuts;
-	'providers/composition': typeof providers_composition;
-	'providers/domainIdentity': typeof providers_domainIdentity;
-	'providers/feedback': typeof providers_feedback;
-	'providers/feedbackStatus': typeof providers_feedbackStatus;
-	'automations/steps/catalog': typeof automations_steps_catalog;
-	'automations/steps/pluginStep': typeof automations_steps_pluginStep;
-	'automations/triggers/catalog': typeof automations_triggers_catalog;
-	'conditions/catalog': typeof conditions_catalog;
 	'plugins/automationStepAuthorization': typeof plugins_automationStepAuthorization;
 	'plugins/hostedModuleSnapshot': typeof plugins_hostedModuleSnapshot;
 	'plugins/automationConditionCatalog.generated': typeof plugins_automationConditionCatalog_generated;
@@ -3559,7 +3678,15 @@ declare const fullApi: ApiFromModules<{
 	'plugins/webhookEventCatalog': typeof plugins_webhookEventCatalog;
 	'plugins/webhookEventCatalog.generated': typeof plugins_webhookEventCatalog_generated;
 	'plugins/workerTasks': typeof plugins_workerTasks;
-	providerRoutes: typeof providerRoutes;
+}> & ApiFromModules<{
+	'preferences/alertSounds': typeof preferences_alertSounds;
+	'preferences/shortcuts': typeof preferences_shortcuts;
+}> & ApiFromModules<{
+	'providers/composition': typeof providers_composition;
+	'providers/domainIdentity': typeof providers_domainIdentity;
+	'providers/feedback': typeof providers_feedback;
+	'providers/feedbackStatus': typeof providers_feedbackStatus;
+}> & ApiFromModules<{
 	'push/config': typeof push_config;
 	'push/copy': typeof push_copy;
 	'push/dispatch': typeof push_dispatch;
@@ -3568,10 +3695,14 @@ declare const fullApi: ApiFromModules<{
 	'push/marketingCopy': typeof push_marketingCopy;
 	'push/send': typeof push_send;
 	'push/subscriptions': typeof push_subscriptions;
-	quickQuery: typeof quickQuery;
-	quickQueryGate: typeof quickQueryGate;
+}> & ApiFromModules<{
 	'sampleData/index': typeof sampleData_index;
 	'sampleData/manageHttp': typeof sampleData_manageHttp;
+}> & ApiFromModules<{
+	'schema/migrationRuns': typeof schema_migrationRuns;
+	'schema/counters': typeof schema_counters;
+	'schema/storage': typeof schema_storage;
+	'schema/derivedFields': typeof schema_derivedFields;
 	'schema/aiRouting': typeof schema_aiRouting;
 	'schema/alignment': typeof schema_alignment;
 	'schema/answerAsk': typeof schema_answerAsk;
@@ -3651,7 +3782,9 @@ declare const fullApi: ApiFromModules<{
 	'schema/webhooks': typeof schema_webhooks;
 	'schema/workspaceDeletion': typeof schema_workspaceDeletion;
 	'schema/workerServers': typeof schema_workerServers;
-	seedAdminHttp: typeof seedAdminHttp;
+	'schema/mailArrival': typeof schema_mailArrival;
+	'schema/mailArrivalRules': typeof schema_mailArrivalRules;
+}> & ApiFromModules<{
 	'seedDemo/index': typeof seedDemo_index;
 	'seedDemo/indexHttp': typeof seedDemo_indexHttp;
 	'seedDemo/loaders/accounts': typeof seedDemo_loaders_accounts;
@@ -3670,29 +3803,26 @@ declare const fullApi: ApiFromModules<{
 	'seedDemo/loaders/webhooks': typeof seedDemo_loaders_webhooks;
 	'seedDemo/messages': typeof seedDemo_messages;
 	'seedDemo/pipeline': typeof seedDemo_pipeline;
-	segments: typeof segments;
+}> & ApiFromModules<{
 	'segments/countRefresh': typeof segments_countRefresh;
 	'segments/listing': typeof segments_listing;
-	semanticFileProcessing: typeof semanticFileProcessing;
-	semanticFiles: typeof semanticFiles;
-	shareLinkHttp: typeof shareLinkHttp;
-	shareLinkQueries: typeof shareLinkQueries;
-	shareLinks: typeof shareLinks;
-	storage: typeof storage;
-	systemMail: typeof systemMail;
-	systemUpdates: typeof systemUpdates;
-	systemUpdatesReleaseCheck: typeof systemUpdatesReleaseCheck;
+}> & ApiFromModules<{
+	'storage/uploadsHttp': typeof storage_uploadsHttp;
+	'storage/uploads': typeof storage_uploads;
+}> & ApiFromModules<{
+	'today/mailbox': typeof today_mailbox;
+	'today/state': typeof today_state;
+	'today/triage': typeof today_triage;
+	'today/upcoming': typeof today_upcoming;
+	'today/upcomingSources': typeof today_upcomingSources;
+}> & ApiFromModules<{
 	'topics/apiHttp': typeof topics_apiHttp;
 	'topics/bulk': typeof topics_bulk;
 	'topics/doiHttp': typeof topics_doiHttp;
 	'topics/listing': typeof topics_listing;
 	'topics/subscription': typeof topics_subscription;
 	'topics/topics': typeof topics_topics;
-	'today/mailbox': typeof today_mailbox;
-	'today/state': typeof today_state;
-	'today/triage': typeof today_triage;
-	'today/upcoming': typeof today_upcoming;
-	'today/upcomingSources': typeof today_upcomingSources;
+}> & ApiFromModules<{
 	'transactional/_helpers': typeof transactional__helpers;
 	'transactional/api': typeof transactional_api;
 	'transactional/attachmentIntake': typeof transactional_attachmentIntake;
@@ -3704,10 +3834,7 @@ declare const fullApi: ApiFromModules<{
 	'transactional/pendingUploads': typeof transactional_pendingUploads;
 	'transactional/sends': typeof transactional_sends;
 	'transactional/translations': typeof transactional_translations;
-	translate: typeof translate;
-	unifiedMessages: typeof unifiedMessages;
-	visualizationAgent: typeof visualizationAgent;
-	visualizationAgentActions: typeof visualizationAgentActions;
+}> & ApiFromModules<{
 	'webhooks/adapters/emailit': typeof webhooks_adapters_emailit;
 	'webhooks/adapters/generic': typeof webhooks_adapters_generic;
 	'webhooks/adapters/inboundRegistry': typeof webhooks_adapters_inboundRegistry;
@@ -3770,6 +3897,8 @@ declare const fullApi: ApiFromModules<{
 	'webhooks/unresolvedFeedback': typeof webhooks_unresolvedFeedback;
 	'webhooks/workspaceDeletionAck': typeof webhooks_workspaceDeletionAck;
 	'webhooks/yahooCflObservation': typeof webhooks_yahooCflObservation;
+}> & ApiFromModules<{
+	'workspaces/deletion/steps/storageUploads': typeof workspaces_deletion_steps_storageUploads;
 	'workspaces/abuseGate': typeof workspaces_abuseGate;
 	'workspaces/abuseStatus': typeof workspaces_abuseStatus;
 	'workspaces/branding': typeof workspaces_branding;
@@ -3799,79 +3928,6 @@ declare const fullApi: ApiFromModules<{
 	'workspaces/deletion/walker': typeof workspaces_deletion_walker;
 	'workspaces/featureFlags': typeof workspaces_featureFlags;
 	'workspaces/settings': typeof workspaces_settings;
-	'auth/erasure/arrivalRelations': typeof auth_erasure_arrivalRelations;
-	'lib/validators/arrival': typeof lib_validators_arrival;
-	'mail/arrival/changeRows': typeof mail_arrival_changeRows;
-	'mail/arrival/digestState': typeof mail_arrival_digestState;
-	'mail/arrival/hooks': typeof mail_arrival_hooks;
-	'mail/arrival/mailboxRows': typeof mail_arrival_mailboxRows;
-	'mail/arrival/purgeRanges': typeof mail_arrival_purgeRanges;
-	'mail/arrival/sharedConversion': typeof mail_arrival_sharedConversion;
-	'schema/mailArrival': typeof schema_mailArrival;
-	'schema/mailArrivalRules': typeof schema_mailArrivalRules;
-	'mail/arrival/records': typeof mail_arrival_records;
-	'mail/arrival/projection': typeof mail_arrival_projection;
-	'mail/arrival/scopedInput': typeof mail_arrival_scopedInput;
-	'mail/arrival/dispatch': typeof mail_arrival_dispatch;
-	'mail/arrival/r2': typeof mail_arrival_r2;
-	'mail/interpret/gistState': typeof mail_interpret_gistState;
-	'mail/ai/categoryQuestions': typeof mail_ai_categoryQuestions;
-	'mail/interpret/runOnce': typeof mail_interpret_runOnce;
-	'mail/interpret/arrivalDecide': typeof mail_interpret_arrivalDecide;
-	'mail/interpret/arrivalRun': typeof mail_interpret_arrivalRun;
-	'mail/interpret/gist': typeof mail_interpret_gist;
-	'mail/interpret/gistCommit': typeof mail_interpret_gistCommit;
-	'mail/arrival/autoBackfill': typeof mail_arrival_autoBackfill;
-	'mail/external/syncCursor': typeof mail_external_syncCursor;
-	'mail/senders/brief': typeof mail_senders_brief;
-	'mail/senders/counters': typeof mail_senders_counters;
-	'mail/senders/delivery': typeof mail_senders_delivery;
-	'mail/senders/operations': typeof mail_senders_operations;
-	'mail/senders/opens': typeof mail_senders_opens;
-	'mail/senders/page': typeof mail_senders_page;
-	'mail/senders/profiles': typeof mail_senders_profiles;
-	'mail/senders/status': typeof mail_senders_status;
-	'mail/senders/suggestions': typeof mail_senders_suggestions;
-	'mail/senders/unsubscribe': typeof mail_senders_unsubscribe;
-	'mail/senders/unsubscribeActions': typeof mail_senders_unsubscribeActions;
-	'mail/senders/targets': typeof mail_senders_targets;
-	'mail/archiveSingleMessage': typeof mail_archiveSingleMessage;
-	'mail/arrival/explain': typeof mail_arrival_explain;
-	'mail/arrival/fix': typeof mail_arrival_fix;
-	'mail/arrival/fixCompile': typeof mail_arrival_fixCompile;
-	'mail/arrival/learning': typeof mail_arrival_learning;
-	'mail/arrival/learningSignals': typeof mail_arrival_learningSignals;
-	'mail/arrival/operations': typeof mail_arrival_operations;
-	'mail/arrival/undoChanges': typeof mail_arrival_undoChanges;
-	'mail/arrival/undoProgress': typeof mail_arrival_undoProgress;
-	'mail/digest/claim': typeof mail_digest_claim;
-	'mail/digest/emailBlocks': typeof mail_digest_emailBlocks;
-	'mail/digest/generate': typeof mail_digest_generate;
-	'mail/digest/select': typeof mail_digest_select;
-	'mail/digest/view': typeof mail_digest_view;
-	'mail/filterCompile': typeof mail_filterCompile;
-	'mail/filterCompileStore': typeof mail_filterCompileStore;
-	'mail/filterValidation': typeof mail_filterValidation;
-	'mail/senders/resortBatch': typeof mail_senders_resortBatch;
-	'mail/senders/resortChain': typeof mail_senders_resortChain;
-	'mail/interpret/arrivalAdmit': typeof mail_interpret_arrivalAdmit;
-	'mail/interpret/arrivalHold': typeof mail_interpret_arrivalHold;
-	'mail/interpret/fullRead': typeof mail_interpret_fullRead;
-	'mail/interpret/fullReadPrepare': typeof mail_interpret_fullReadPrepare;
-	'mail/ai/composeDraftFullRead': typeof mail_ai_composeDraftFullRead;
-	'mail/rules/delayedActions': typeof mail_rules_delayedActions;
-	'mail/rules/dryRun': typeof mail_rules_dryRun;
-	'mail/rules/dryRunData': typeof mail_rules_dryRunData;
-	'mail/rules/operationLog': typeof mail_rules_operationLog;
-	'mail/rules/ruleApply': typeof mail_rules_ruleApply;
-	'mail/rules/rulesPass': typeof mail_rules_rulesPass;
-	'mail/arrival/offerable': typeof mail_arrival_offerable;
-	'mail/arrival/coldPitch': typeof mail_arrival_coldPitch;
-	'mail/arrival/__eval__/coldPitchEval': typeof mail_arrival___eval___coldPitchEval;
-	'mail/arrival/__eval__/coldPitchSample': typeof mail_arrival___eval___coldPitchSample;
-	'mail/arrival/coldPitchEvidence': typeof mail_arrival_coldPitchEvidence;
-	'mail/correspondence': typeof mail_correspondence;
-	'mail/ownAddresses': typeof mail_ownAddresses;
 }>;
 
 /**

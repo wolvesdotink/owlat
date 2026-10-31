@@ -27,6 +27,7 @@
  */
 
 import { v } from 'convex/values';
+import type { FunctionArgs } from 'convex/server';
 import * as openpgp from 'openpgp';
 import { internalAction, type ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
@@ -105,16 +106,16 @@ function instanceIdentityEmail(): string {
 	return `instance@${host}`;
 }
 
+/** What `storeKeypair` takes: a freshly minted, sealed keypair for one subject. */
+type StoreKeypairArgs = FunctionArgs<typeof internal.e2ee.keys.storeKeypair>;
+
 /**
- * Mint a fresh instance-identity keypair and upsert it (unconditionally — the
- * caller decides whether a key is missing or stale). Returns the fingerprint.
+ * Mint a fresh instance-identity keypair and seal it, ready for `storeKeypair`.
+ * Writes nothing. `expectedFingerprint` names the active key it may replace.
  */
-async function mintAndStoreInstance(
-	ctx: ActionCtx,
-	expectedFingerprint?: string
-): Promise<{ created: boolean; fingerprint: string }> {
+async function mintInstanceKeypair(expectedFingerprint?: string): Promise<StoreKeypairArgs> {
 	const kp = await generateKeypair(instanceIdentityEmail(), 'Owlat instance');
-	const stored = await ctx.runMutation(internal.e2ee.keys.storeKeypair, {
+	return {
 		kind: 'instance',
 		fingerprint: kp.fingerprint,
 		algorithm: KEY_ALGORITHM,
@@ -122,23 +123,21 @@ async function mintAndStoreInstance(
 		publicKeyBinaryBase64: kp.publicKeyBinaryBase64,
 		sealedPrivateKey: sealPrivateKey(kp.privateKeyArmored),
 		expectedFingerprint,
-	});
-	return { created: stored.created, fingerprint: stored.fingerprint };
+	};
 }
 
 /**
- * Mint a fresh address keypair for `address` and upsert it (unconditionally).
- * Refreshes the published WKD binary. Returns the fingerprint.
+ * Mint a fresh address keypair for `address` and seal it, ready for
+ * `storeKeypair` (which also refreshes the published WKD binary). Writes nothing.
  */
-async function mintAndStoreAddress(
-	ctx: ActionCtx,
+async function mintAddressKeypair(
 	address: string,
 	expectedFingerprint?: string
-): Promise<{ created: boolean; fingerprint: string }> {
+): Promise<StoreKeypairArgs> {
 	const { localPart, domain } = splitAddress(address);
 	const normalized = `${localPart}@${domain}`;
 	const kp = await generateKeypair(normalized, normalized);
-	const stored = await ctx.runMutation(internal.e2ee.keys.storeKeypair, {
+	return {
 		kind: 'address',
 		address: normalized,
 		domain,
@@ -149,7 +148,15 @@ async function mintAndStoreAddress(
 		publicKeyBinaryBase64: kp.publicKeyBinaryBase64,
 		sealedPrivateKey: sealPrivateKey(kp.privateKeyArmored),
 		expectedFingerprint,
-	});
+	};
+}
+
+/** Persist a minted keypair; returns what the row holds afterwards. */
+async function storeMinted(
+	ctx: ActionCtx,
+	minted: StoreKeypairArgs
+): Promise<{ created: boolean; fingerprint: string }> {
+	const stored = await ctx.runMutation(internal.e2ee.keys.storeKeypair, minted);
 	return { created: stored.created, fingerprint: stored.fingerprint };
 }
 
@@ -169,7 +176,7 @@ export const mintForAddress = internalAction({
 		});
 		if (existing) return { created: false, fingerprint: existing.fingerprint };
 
-		return await mintAndStoreAddress(ctx, normalized);
+		return await storeMinted(ctx, await mintAddressKeypair(normalized));
 	},
 });
 
@@ -181,7 +188,7 @@ export const ensureInstanceIdentity = internalAction({
 		const existing = await ctx.runQuery(internal.e2ee.keys.getInstanceIdentityInternal, {});
 		if (existing) return { created: false, fingerprint: existing.fingerprint };
 
-		return await mintAndStoreInstance(ctx);
+		return await storeMinted(ctx, await mintInstanceKeypair());
 	},
 });
 
@@ -207,13 +214,19 @@ export const remintLegacyProfile = internalAction({
 		for (const entry of entries) {
 			if (await isLegacyProfile(entry.publicKeyArmored)) continue; // already legacy — leave it
 
+			let minted: StoreKeypairArgs;
 			if (entry.kind === 'instance') {
-				await mintAndStoreInstance(ctx, entry.fingerprint);
+				minted = await mintInstanceKeypair(entry.fingerprint);
 			} else if (entry.address) {
-				await mintAndStoreAddress(ctx, entry.address, entry.fingerprint);
+				minted = await mintAddressKeypair(entry.address, entry.fingerprint);
 			} else {
 				continue; // address row without an address is unreachable — nothing to re-mint
 			}
+			// checkpoint: one key per transaction, since the whole vault's sealed keys
+			// do not fit one. storeKeypair only replaces the fingerprint read before
+			// keygen, and a re-run skips keys already on the legacy profile, so a run
+			// that stops partway resumes with the keys it had not reached.
+			await ctx.runMutation(internal.e2ee.keys.storeKeypair, minted);
 			reminted++;
 		}
 		return { reminted, total: entries.length };

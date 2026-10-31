@@ -190,11 +190,36 @@ export const listVaultForReseal = internalQuery({
 	},
 });
 
-/** Patch one `keyVault` row's sealed private envelope — the re-seal migration's per-row write. */
+/**
+ * Patch one `keyVault` row's sealed private envelope — the re-seal migration's
+ * per-row write. With `expectedSealedPrivateKey` (the envelope the re-seal
+ * opened), the patch only lands while the row still holds exactly that
+ * envelope: a key rotated, re-minted or imported while the re-seal ran was
+ * sealed under the current secret already, and writing the re-sealed OLD key
+ * over it would pair the row's new public key with the old private one.
+ */
 export const updateSealedPrivateKey = internalMutation({
-	args: { id: v.id('keyVault'), sealedPrivateKey: sealedPrivateKeyValidator },
-	handler: async (ctx, args) => {
+	args: {
+		id: v.id('keyVault'),
+		sealedPrivateKey: sealedPrivateKeyValidator,
+		expectedSealedPrivateKey: v.optional(sealedPrivateKeyValidator),
+	},
+	handler: async (ctx, args): Promise<{ updated: boolean }> => {
+		const expected = args.expectedSealedPrivateKey;
+		if (expected !== undefined) {
+			const row = await ctx.db.get(args.id);
+			const current = row?.sealedPrivateKey;
+			if (
+				!current ||
+				current.ciphertext !== expected.ciphertext ||
+				current.iv !== expected.iv ||
+				current.authTag !== expected.authTag
+			) {
+				return { updated: false };
+			}
+		}
 		await ctx.db.patch(args.id, { sealedPrivateKey: args.sealedPrivateKey, updatedAt: Date.now() });
+		return { updated: true };
 	},
 });
 
