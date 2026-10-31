@@ -218,6 +218,35 @@ describe('the conversation drop target', () => {
 		row.element.dispatchEvent(drag('drop', { files: [file('a')] }));
 		expect(open).toHaveBeenCalledWith('m2', { kind: null });
 	});
+
+	it('writes its marker only when the row starts or stops taking drops', async () => {
+		mountHost();
+		const target = ref<ReplyDropTarget | null>(ines);
+		const row = mountTarget(target);
+		const el = row.element as HTMLElement;
+		const set = vi.spyOn(el, 'setAttribute');
+		const remove = vi.spyOn(el, 'removeAttribute');
+
+		target.value = { kind: 'message', id: 'm2', recipient: 'Jonas' };
+		await nextTick();
+		expect(set).not.toHaveBeenCalled();
+		expect(remove).not.toHaveBeenCalled();
+		expect(el.hasAttribute('data-reply-drop')).toBe(true);
+		el.dispatchEvent(drag('drop', { files: [file('a')] }));
+		expect(open).toHaveBeenCalledWith('m2', { kind: null });
+
+		target.value = null;
+		await nextTick();
+		expect(el.hasAttribute('data-reply-drop')).toBe(false);
+		const ignored = drag('dragover', { count: 1 });
+		el.dispatchEvent(ignored);
+		expect(ignored.defaultPrevented).toBe(false);
+
+		target.value = ines;
+		await nextTick();
+		expect(set).toHaveBeenCalledTimes(1);
+		expect(el.hasAttribute('data-reply-drop')).toBe(true);
+	});
 });
 
 describe('a drop, through to Answer mode', () => {
