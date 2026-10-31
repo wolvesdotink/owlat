@@ -23,8 +23,10 @@
  * freed cannot be spent silently. `report-bundle-delta.ts` shows every pull
  * request its delta and headroom against the base commit.
  *
- * Pages and lazily loaded features are not budgeted; `report-bundle-closures.ts`
- * reports their closures with the same rules (scripts/bundle-closure.ts).
+ * Pages and lazily loaded features have budgets of their own:
+ * `report-bundle-closures.ts` checks what each adds on top of this closure
+ * against `scripts/bundle-closure-budgets.txt`, with the same reading rules
+ * (scripts/bundle-closure.ts).
  *
  * Usage: bun scripts/check-bundle-budget.ts [path/to/.output]
  *   (defaults to apps/web/.output; CI copies the output out of the web image)
