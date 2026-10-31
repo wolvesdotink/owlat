@@ -5,8 +5,10 @@
  *   bun scripts/codegen-api-chunks.ts            rewrite the declaration in place
  *   bun scripts/codegen-api-chunks.ts --check    exit 1 when it is not chunked
  *
- * `bun run codegen` runs it after `convex codegen`; after hand-adding a module
- * entry run `bun run codegen:chunks`. `scripts/check-codegen.sh` runs `--check`.
+ * `bun run codegen` runs it after `convex codegen --typecheck disable` (the
+ * unsplit map cannot be typechecked) and typechecks the result; after
+ * hand-adding a module entry run `bun run codegen:chunks`.
+ * `scripts/check-codegen.sh` runs `--check`.
  * An optional path argument replaces the default declaration file.
  */
 import { readFileSync, writeFileSync } from 'node:fs';
