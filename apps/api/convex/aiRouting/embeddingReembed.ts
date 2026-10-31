@@ -55,6 +55,8 @@ export const kickoff = internalAction({
 	handler: async (ctx, args): Promise<void> => {
 		// One model budget for this action, from its start.
 		anchorActionDeadline(ctx);
+		// checkpoint: a best-effort cache refresh. It schedules a coverage count only
+		// when the stored one is stale (or forced), whatever the kickoff does next.
 		await ctx.runMutation(internal.aiRouting.embeddingCoverage.requestScan, {
 			isForced: args.isForced ?? false,
 		});
@@ -77,17 +79,14 @@ export const kickoff = internalAction({
 			});
 			return;
 		}
-		const active = await ctx.runMutation(internal.aiRouting.embeddingSpaces.ensureConfigured, {
-			space,
-		});
-		if (!active) return;
 		const outcome = await ctx.runMutation(
-			internal.aiRouting.embeddingReembedJobs.startLocalReembed,
+			internal.aiRouting.embeddingReembedCommit.activateLocalSpace,
 			{
-				spaceId: active._id,
+				space,
 				isForced: args.isForced ?? false,
 			}
 		);
+		if (outcome === 'inactive') return;
 		logInfo('[embedding.kickoff] local re-embed', { outcome });
 	},
 });

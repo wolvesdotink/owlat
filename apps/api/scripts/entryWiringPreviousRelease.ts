@@ -33,6 +33,8 @@ export const PREVIOUS_RELEASE_ENTRIES: Readonly<Record<string, string>> = {
 	// The message backfill now commits a chunk with knowledge/messageBackfill.ts `commitChunk`.
 	'knowledge/messageBackfill.ts#patchProgress': 'old message backfill chunks mid-run',
 	'knowledge/messageBackfill.ts#finalizeJob': 'old message backfill chunks mid-run',
+	// The re-embed actions now commit through aiRouting/embeddingReembedCommit.ts.
+	'aiRouting/embeddingReembedJobs.ts#startLocalReembed': 'old re-embed kickoffs mid-run',
 	// System & updates now reads maintenance/workerRegistry.ts `getForAdmin`.
 	'mail/imap/serverRegistry.ts#getForAdmin':
 		'the previous IMAP servers card on System & updates, in tabs opened before the deploy',

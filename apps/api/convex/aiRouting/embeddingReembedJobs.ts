@@ -347,40 +347,48 @@ const LOCAL_REEMBED_INTERVAL_MS = 24 * 60 * 60_000;
  * The local re-embed the kickoff asks for: resume a stalled or provider-paused
  * job, or start a `reembed` of the active space when none ran in the last day
  * (or `isForced`: a switch, an attestation, a settings save). Paid jobs are
- * never started here.
+ * never started here. The previous release's kickoff calls it after its own
+ * activation; this release's kickoff commits both in `activateLocalSpace`, and
+ * a job either started is `busy` to the other. Remove after release N+1.
  */
 export const startLocalReembed = internalMutation({
 	args: { spaceId: v.id('embeddingSpaces'), isForced: v.boolean() },
-	handler: async (ctx, args): Promise<'started' | 'resumed' | 'busy' | 'skipped'> => {
-		const open = await readOpenJob(ctx);
-		const now = Date.now();
-		if (open) {
-			const isStalled = open.status === 'running' && now - open.updatedAt > REEMBED_STALL_MS;
-			const isProviderPaused =
-				open.status === 'paused' && open.pausedReason === 'provider_unavailable' && !open.isPaid;
-			if (isStalled || isProviderPaused) {
-				await resumeJobRecord(ctx, open);
-				return 'resumed';
-			}
-			return 'busy';
-		}
-		const active = await readSearchableSpace(ctx.db);
-		// Never a paid job from here: only a target that is local by the ledger's rule.
-		if (!active || active._id !== args.spaceId || !isSpaceLocal(active)) return 'skipped';
-		if (!args.isForced) {
-			const last = await ctx.db
-				.query('embeddingReembedJobs')
-				.withIndex('by_target_space', (q) => q.eq('targetSpaceId', active._id))
-				.order('desc')
-				.first();
-			if (last?.finishedAt !== undefined && now - last.finishedAt < LOCAL_REEMBED_INTERVAL_MS) {
-				return 'skipped';
-			}
-		}
-		await startJob(ctx, { kind: 'reembed', targetSpaceId: active._id, isPaid: false });
-		return 'started';
-	},
+	handler: async (ctx, args) => startLocalReembedJob(ctx, args),
 });
+
+/** {@link startLocalReembed} inside the caller's transaction. */
+export async function startLocalReembedJob(
+	ctx: MutationCtx,
+	args: { spaceId: Id<'embeddingSpaces'>; isForced: boolean }
+): Promise<'started' | 'resumed' | 'busy' | 'skipped'> {
+	const open = await readOpenJob(ctx);
+	const now = Date.now();
+	if (open) {
+		const isStalled = open.status === 'running' && now - open.updatedAt > REEMBED_STALL_MS;
+		const isProviderPaused =
+			open.status === 'paused' && open.pausedReason === 'provider_unavailable' && !open.isPaid;
+		if (isStalled || isProviderPaused) {
+			await resumeJobRecord(ctx, open);
+			return 'resumed';
+		}
+		return 'busy';
+	}
+	const active = await readSearchableSpace(ctx.db);
+	// Never a paid job from here: only a target that is local by the ledger's rule.
+	if (!active || active._id !== args.spaceId || !isSpaceLocal(active)) return 'skipped';
+	if (!args.isForced) {
+		const last = await ctx.db
+			.query('embeddingReembedJobs')
+			.withIndex('by_target_space', (q) => q.eq('targetSpaceId', active._id))
+			.order('desc')
+			.first();
+		if (last?.finishedAt !== undefined && now - last.finishedAt < LOCAL_REEMBED_INTERVAL_MS) {
+			return 'skipped';
+		}
+	}
+	await startJob(ctx, { kind: 'reembed', targetSpaceId: active._id, isPaid: false });
+	return 'started';
+}
 
 // ── Admin controls ─────────────────────────────────────────────────────────
 
