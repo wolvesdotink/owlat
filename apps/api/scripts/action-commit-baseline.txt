@@ -48,8 +48,6 @@ convex/contacts/propertyDeletion.ts:drive #2
 convex/contacts/propertyDeletion.ts:drive #3
 convex/contacts/propertyDeletion.ts:drive #4
 convex/delivery/statusActions.ts:sendTest #2
-convex/delivery/trackingHttp.ts:trackClick #2
-convex/delivery/trackingHttp.ts:trackOpen #2
 convex/delivery/warmingSync.ts:syncWarmingState #2
 convex/desktop/updates.ts:refreshReleases #2
 convex/desktop/updates.ts:refreshReleases #3
