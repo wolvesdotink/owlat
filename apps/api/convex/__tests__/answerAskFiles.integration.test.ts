@@ -31,6 +31,7 @@ import type * as SessionOrganizationModule from '../lib/sessionOrganization';
 import type * as LlmProviderModule from '../lib/llmProvider';
 import type * as DispatchModule from '../lib/llm/dispatch';
 import type * as AttachmentSuggestModule from '../inbox/attachmentSuggest';
+import type * as ComposeDraftPlanModule from '../mail/ai/composeDraftPlan';
 
 type FoundFile = AttachmentSuggestModule.FoundFile;
 
@@ -39,7 +40,11 @@ const modules = import.meta.glob('../**/*.*s');
 const sess = vi.hoisted(() => ({
 	user: { userId: 'user-a', role: 'member' as 'member' | 'owner', activeOrganizationId: 'org-a' },
 }));
-const llm = vi.hoisted(() => ({ files: [] as FoundFile[] }));
+const llm = vi.hoisted(() => ({
+	files: [] as FoundFile[],
+	// A failure before the draft opens its stream (the response plan's load).
+	planFailure: null as Error | null,
+}));
 
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual<typeof SessionOrganizationModule>(
@@ -83,6 +88,19 @@ vi.mock('../inbox/attachmentSuggest', async () => {
 		'../inbox/attachmentSuggest'
 	);
 	return { ...actual, searchFilesForRequest: vi.fn(async () => llm.files) };
+});
+
+vi.mock('../mail/ai/composeDraftPlan', async () => {
+	const actual = await vi.importActual<typeof ComposeDraftPlanModule>(
+		'../mail/ai/composeDraftPlan'
+	);
+	return {
+		...actual,
+		loadAnswerPlan: vi.fn(async (...args: Parameters<typeof actual.loadAnswerPlan>) => {
+			if (llm.planFailure) throw llm.planFailure;
+			return actual.loadAnswerPlan(...args);
+		}),
+	};
 });
 
 async function makeT() {
@@ -132,6 +150,7 @@ async function receipt(t: Tx, storageId: Id<'_storage'>) {
 beforeEach(() => {
 	sess.user = { userId: 'user-a', role: 'member', activeOrganizationId: ORG };
 	llm.files = [];
+	llm.planFailure = null;
 	vi.mocked(runLlmStream).mockClear();
 	vi.mocked(runLlmTextWithTools).mockClear();
 });
@@ -360,6 +379,40 @@ describe('upload answers and Files', () => {
 		expect((await t.query(api.mail.ai.composeDraftStore.getSession, { target }))?.status).toBe(
 			'asking'
 		);
+	});
+
+	it('an upload answer whose draft fails before its stream keeps the answer and the file', async () => {
+		const t = await makeT();
+		const { draftId, sessionId } = await askForUpload(t);
+		const upload = await seedUpload(t, { filename: 'invoice-2026-09.pdf' });
+		llm.planFailure = new Error('plan read failed');
+
+		await expect(
+			t.action(api.mail.ai.composeDraft.answer, {
+				sessionId,
+				answers: [
+					{
+						questionId: 'file_request',
+						file: { source: 'upload', id: upload, filename: 'invoice-2026-09.pdf' },
+					},
+				],
+			})
+		).rejects.toThrow('plan read failed');
+
+		expect(vi.mocked(runLlmTextWithTools)).not.toHaveBeenCalled();
+		expect((await draftRow(t, draftId)).attachments.map((a) => a.storageId)).toEqual([upload]);
+		expect(await receipt(t, upload)).toMatchObject({ status: 'bound' });
+		const target = { kind: 'mailDraft' as const, draftId };
+		const session = await t.query(api.mail.ai.composeDraftStore.getSession, { target });
+		expect(session?.status).toBe('asking');
+		expect(session?.attachedFiles).toEqual([
+			{ source: 'upload', id: upload, filename: 'invoice-2026-09.pdf' },
+		]);
+		expect(session?.questions.find((q) => q.id === 'file_request')?.answer?.file).toEqual({
+			source: 'upload',
+			id: upload,
+			filename: 'invoice-2026-09.pdf',
+		});
 	});
 
 	it('two answers racing on one session attach the file once', async () => {

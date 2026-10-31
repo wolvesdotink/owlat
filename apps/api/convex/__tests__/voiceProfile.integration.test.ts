@@ -232,6 +232,50 @@ describe('mail.voiceProfileActions.refresh', () => {
 		expect(row?.status).toBe('idle');
 		expect(row?.profile).toBeUndefined();
 	});
+
+	it('fails soft when the model fails: the flag is released and the previous profile stays', async () => {
+		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
+		await enableFeatures(t, ['ai']);
+		const mailboxId = await seedMailboxWithSent(t, ['One.', 'Two.', 'Three.']);
+		const previous = {
+			greetings: ['Hi'],
+			signOffs: ['Best'],
+			formality: 3,
+			brevity: 3,
+			languages: ['English'],
+			isEmojiUser: false,
+			examplePhrasings: [],
+		};
+		await t.run(async (ctx) => {
+			const now = Date.now();
+			await ctx.db.insert('mailVoiceProfiles', {
+				mailboxId,
+				isEnabled: true,
+				status: 'refreshing',
+				profile: previous,
+				sampleCount: 5,
+				sentCountAtCompute: 5,
+				lastComputedAt: now,
+				createdAt: now,
+				updatedAt: now,
+			});
+		});
+		runLlmObjectMock.mockRejectedValue(new Error('model down'));
+
+		await t.action(internal.mail.ai.voiceProfileActions.refresh, { mailboxId });
+
+		expect(runLlmObjectMock).toHaveBeenCalledTimes(1);
+		const row = await t.run(async (ctx) =>
+			ctx.db
+				.query('mailVoiceProfiles')
+				.withIndex('by_mailbox', (q) => q.eq('mailboxId', mailboxId))
+				.first()
+		);
+		expect(row?.status).toBe('idle');
+		expect(row?.profile).toEqual(previous);
+		expect(row?.sampleCount).toBe(5);
+	});
 });
 
 describe('mail.voiceProfile.getGuidanceForMailbox', () => {

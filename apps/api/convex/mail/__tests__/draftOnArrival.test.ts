@@ -60,6 +60,7 @@ vi.mock('../../lib/llmProvider', () => ({
 import { generateDraftOnArrival } from '../ai/draftOnArrival';
 import { ledgerRows } from '../../analytics/__tests__/meteredDispatch.testlib';
 import { LlmPartialUsageError } from '../../lib/llm/partialUsage';
+import { draftHashOf } from '@owlat/shared/threadBriefRules';
 
 type Persisted = { draft: string; confidence: number; quality?: unknown; options?: string[] };
 
@@ -269,6 +270,63 @@ describe('generateDraftOnArrival', () => {
 		const h = makeCtx({ loaded: makeLoaded() });
 		await generateDraftOnArrival(h.ctx, { threadId: 'thr1' as never });
 		expect(h.persisted).toHaveLength(0);
+	});
+
+	it("binds the thread's plan to the text the slot holds", async () => {
+		const h = makeCtx({ loaded: makeLoaded() });
+		const plan = {
+			items: [
+				{
+					id: 'item1',
+					revision: 3,
+					intent: 'question',
+					facets: [],
+					responsibility: 'us',
+					text: 'Does Friday work?',
+				},
+			],
+			stances: [{ itemId: 'item1', stance: 'answer' }],
+			threadRevision: 7,
+			planRevision: 2,
+			deletionEpoch: 1,
+			isOverflow: false,
+		};
+		// The self-check and the plan's coverage check read their own fields.
+		const checked = {
+			object: {
+				score: 0.72,
+				complete: true,
+				grounded: true,
+				flags: [],
+				coverage: [],
+				fileClaims: [],
+				promises: [],
+			},
+			tokenUsage: undefined,
+			modelUsed: 'mock-model',
+		};
+		runLlmObjectMock.mockResolvedValueOnce(checked).mockResolvedValueOnce(checked);
+		h.runQuery.mockImplementation(async (ref: unknown) => {
+			const name = getFunctionName(ref as Parameters<typeof getFunctionName>[0]);
+			if (name.includes('responsePlanDraft')) return plan;
+			return name.includes('resolveForDraft') ? 'default' : makeLoaded();
+		});
+		await generateDraftOnArrival(h.ctx, { threadId: 'thr1' as never });
+
+		expect(h.persisted).toHaveLength(1);
+		const written = h.runMutation.mock.calls
+			.map((call) => call[1])
+			.find((params) => params && 'draftHash' in params);
+		expect(written).toMatchObject({
+			threadRef: { kind: 'mail', id: 'thr1' },
+			draftRef: { kind: 'arrivalDraft', id: 'thr1' },
+			threadRevision: 7,
+			planRevision: 2,
+			deletionEpoch: 1,
+			itemRevisions: [{ itemId: 'item1', revision: 3 }],
+			stances: plan.stances,
+			draftHash: await draftHashOf('PERSONAL DRAFT BODY'),
+		});
 	});
 
 	it('FAIL-SOFT: an empty generated body persists nothing', async () => {
