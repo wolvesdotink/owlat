@@ -9,7 +9,7 @@
  * tables and the `lib/autonomyRules` helpers.
  */
 
-import { v } from 'convex/values';
+import { v, type Infer } from 'convex/values';
 import { internalQuery, internalAction, type QueryCtx } from './_generated/server';
 import { internalMutation } from './lib/writeFence';
 import type { Doc } from './_generated/dataModel';
@@ -18,6 +18,11 @@ import { internal } from './_generated/api';
 import { getCategoryRule } from './lib/autonomyRules';
 import { omit } from './lib/validators/fields';
 import { autonomyFeedbackFields } from './schema/autonomy';
+import {
+	clearCategorySuggestion,
+	graduationSuggestionValidator,
+	upsertGraduationSuggestion,
+} from './autonomySuggestions';
 
 // ============================================================
 // Feedback readers
@@ -151,6 +156,7 @@ export const adjustThresholds = internalAction({
 	handler: async (ctx) => {
 		const rules = await ctx.runQuery(internal.autonomy.listRulesInternal);
 		const oneWeekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+		const adjustments: ThresholdAdjustment[] = [];
 
 		for (const rule of rules) {
 			if (!rule.isEnabled) continue;
@@ -174,30 +180,29 @@ export const adjustThresholds = internalAction({
 				else if (f.action === 'approved') approvals++;
 			}
 			const rejectionRate = rejections / recentFeedback.length;
+			const readThreshold = rule.autoApproveThreshold;
 
 			if (rejectionRate > 0.4) {
 				// Tighten threshold: increase by 10% (make it harder to auto-approve).
 				// This is the only automatic threshold move, and it only ever narrows.
-				const newThreshold = Math.min(0.99, rule.autoApproveThreshold + 0.1);
-				await ctx.runMutation(internal.autonomyFeedback.updateThreshold, {
+				adjustments.push({
+					kind: 'tighten',
 					ruleId: rule._id,
-					newThreshold,
-				});
-				// A prior loosening suggestion is now stale — drop it.
-				await ctx.runMutation(internal.autonomySuggestions.clearGraduationSuggestion, {
-					category: rule.category,
+					readThreshold,
+					newThreshold: Math.min(0.99, readThreshold + 0.1),
 				});
 			} else if (rejectionRate < 0.1 && recentFeedback.length >= 20) {
 				// Low rejection rate: do NOT lower the threshold. Record a
 				// graduation suggestion the user must explicitly accept. The
 				// suggested (looser) threshold is computed but only applied on
 				// acceptance.
-				const suggestedThreshold = Math.max(0.5, rule.autoApproveThreshold - 0.05);
+				const suggestedThreshold = Math.max(0.5, readThreshold - 0.05);
 				// Only bother suggesting if it actually loosens something.
-				if (suggestedThreshold < rule.autoApproveThreshold) {
-					await ctx.runMutation(internal.autonomySuggestions.recordGraduationSuggestion, {
-						category: rule.category,
-						currentThreshold: rule.autoApproveThreshold,
+				if (suggestedThreshold < readThreshold) {
+					adjustments.push({
+						kind: 'suggest',
+						ruleId: rule._id,
+						readThreshold,
 						suggestedThreshold,
 						evidence: {
 							approved: approvals,
@@ -208,11 +213,80 @@ export const adjustThresholds = internalAction({
 				}
 			}
 		}
+
+		if (adjustments.length > 0) {
+			await ctx.runMutation(internal.autonomyFeedback.commitThresholdAdjustments, {
+				adjustments,
+			});
+		}
+		return null;
+	},
+});
+
+const thresholdAdjustmentValidator = v.union(
+	v.object({
+		kind: v.literal('tighten'),
+		ruleId: v.id('autonomyRules'),
+		/** The threshold the decision was made from. */
+		readThreshold: v.number(),
+		newThreshold: v.number(),
+	}),
+	v.object({
+		kind: v.literal('suggest'),
+		ruleId: v.id('autonomyRules'),
+		readThreshold: v.number(),
+		suggestedThreshold: v.number(),
+		evidence: graduationSuggestionValidator.fields.evidence,
+	})
+);
+type ThresholdAdjustment = Infer<typeof thresholdAdjustmentValidator>;
+
+/**
+ * The one commit of `adjustThresholds`: every category's tightening (and the
+ * stale suggestion it clears) and every graduation suggestion. A rule that
+ * changed since the cron read it (disabled, turned into a sender rule, or its
+ * threshold moved, e.g. by an accepted suggestion) is skipped: the decision
+ * was made from a threshold it no longer has, and next week's run decides
+ * again from the current one.
+ */
+export const commitThresholdAdjustments = internalMutation({
+	args: { adjustments: v.array(thresholdAdjustmentValidator) },
+	returns: v.object({ skipped: v.number() }),
+	handler: async (ctx, args) => {
+		let skipped = 0;
+		for (const adjustment of args.adjustments) {
+			const rule = await ctx.db.get(adjustment.ruleId);
+			if (
+				!rule?.isEnabled ||
+				rule.sender != null ||
+				rule.autoApproveThreshold !== adjustment.readThreshold
+			) {
+				skipped++;
+				continue;
+			}
+			if (adjustment.kind === 'tighten') {
+				await ctx.db.patch(rule._id, {
+					autoApproveThreshold: adjustment.newThreshold,
+					updatedAt: Date.now(),
+				});
+				// A prior loosening suggestion is now stale — drop it.
+				await clearCategorySuggestion(ctx, rule.category);
+			} else {
+				await upsertGraduationSuggestion(ctx, {
+					category: rule.category,
+					currentThreshold: adjustment.readThreshold,
+					suggestedThreshold: adjustment.suggestedThreshold,
+					evidence: adjustment.evidence,
+				});
+			}
+		}
+		return { skipped };
 	},
 });
 
 /**
- * Update threshold for a rule (internal)
+ * A previous release's threshold cron tightens a rule here. Nothing in this
+ * release calls it; remove after release 0.6.17.
  */
 export const updateThreshold = internalMutation({
 	args: {

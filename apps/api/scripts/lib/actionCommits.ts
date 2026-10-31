@@ -430,8 +430,8 @@ export function censusModule(module: string, source: string): ModuleCensus {
 
 /**
  * The census as ratchet entries: one line per commit past the first,
- * `<module>:<action> #<n>` for n = 2..commits. Fixing one commit removes the
- * highest line; adding one adds a line the baseline does not hold.
+ * `<module>:<action> #<n>` for n = 2..commits. The gate allows none, so every
+ * line is a failure that names the action and how many commits it can make.
  */
 export function censusLines(actions: readonly ActionCommitCount[]): string[] {
 	const lines: string[] = [];

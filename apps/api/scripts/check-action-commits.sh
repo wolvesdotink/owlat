@@ -14,20 +14,17 @@
 # under a `// checkpoint: <reason>` line does not count; the census itself
 # fails on a marker that exempts nothing or gives no reason.
 #
-# The comparison lives in scripts/ratchet.sh and is strict both ways: a new
-# entry (a new multi-commit action, or one more commit in a listed one) fails,
-# and a stale one (an action converted or a commit removed) fails until its
-# line is deleted, so the debt only goes down.
+# The comparison lives in scripts/ratchet.sh with --zero: there is no
+# baseline, so any entry (an action that can commit more than once) fails.
 
 set -uo pipefail
 repo_root="$(cd "$(dirname "$0")/../../.." && pwd)"
 cd "$(dirname "$0")/.."
 
 exec "$repo_root/scripts/ratchet.sh" \
-	--baseline scripts/action-commit-baseline.txt \
-	--seed "bash apps/api/scripts/check-action-commits.sh --write-baseline" \
-	--ok "no action commits more often than its baseline allows" \
-	--new-header "FAIL: {n} action commit(s) past the first, not in {baseline}:" \
+	--zero \
+	--ok "no action commits more than once" \
+	--new-header "FAIL: {n} action commit(s) past the first:" \
 	--new-advice "An action makes one commit: read with ctx.runQuery, do the external I/O,
 then call ONE mutation that re-checks its preconditions, writes everything and
 schedules what comes next. Fold the extra runMutation calls into that mutation
@@ -35,7 +32,6 @@ schedules what comes next. Fold the extra runMutation calls into that mutation
 to stand on its own if the action fails after it (a chunked job's checkpoint,
 a lease claimed before an external effect), put a
 '// checkpoint: <why it may stand alone>' line directly above its statement.
-Do NOT add lines to {baseline}; it is frozen debt." \
-	--stale-header "FAIL: {n} stale entr(y/ies) in {baseline} (commit removed or action converted):" \
+This gate has no baseline to add them to." \
 	"$@" \
 	-- bun scripts/action-commit-census.ts

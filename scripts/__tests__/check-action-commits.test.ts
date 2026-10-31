@@ -8,8 +8,8 @@
  * early returns are not added up, loops, per-item callbacks and switch
  * fall-through are, same-module helpers are followed by lexical scope, also
  * when handed over by name — and where a `// checkpoint:` marker may sit. The last
- * block runs the real gate, once against a throwaway tree to see the ratchet
- * fail in both directions and once against the repository itself. The census
+ * block runs the real gate, against throwaway trees to see it fail on any
+ * second commit (it has no baseline) and against the repository itself. The census
  * is driven through its CLI (`--stdin`), the way the gate runs it.
  */
 
@@ -387,29 +387,30 @@ describe('check-action-commits.sh', () => {
 		return files;
 	}
 
-	const BASELINE = 'apps/api/scripts/action-commit-baseline.txt';
+	it('passes when every action commits once, and fails on a second commit', async () => {
+		const once = await gate(await tree(convexTree(1)));
+		expect(once.output).toContain('no baseline, none allowed');
+		expect(once.code).toBe(0);
 
-	it('passes at the baseline, fails on one more commit and on a stale line', async () => {
-		const baseline = '# debt\nconvex/send.ts:start #2\nconvex/send.ts:start #3\n';
+		const twice = await gate(await tree(convexTree(2)));
+		expect(twice.code).toBe(1);
+		expect(twice.output).toContain('convex/send.ts:start #2');
+	});
 
-		const atBaseline = await gate(await tree({ ...convexTree(3), [BASELINE]: baseline }));
-		expect(atBaseline.output).toContain('2 baseline entries remain');
-		expect(atBaseline.code).toBe(0);
-
-		const grown = await gate(await tree({ ...convexTree(4), [BASELINE]: baseline }));
-		expect(grown.code).toBe(1);
-		expect(grown.output).toContain('convex/send.ts:start #4');
-
-		const shrunk = await gate(await tree({ ...convexTree(2), [BASELINE]: baseline }));
-		expect(shrunk.code).toBe(1);
-		expect(shrunk.output).toMatch(/stale[\s\S]*convex\/send\.ts:start #3/);
+	it('has no baseline to add an entry to', async () => {
+		const root = await tree({
+			...convexTree(2),
+			'apps/api/scripts/action-commit-baseline.txt': 'convex/send.ts:start #2\n',
+		});
+		const result = await gate(root);
+		expect(result.code).toBe(1);
+		expect(result.output).toContain('convex/send.ts:start #2');
 	});
 
 	it('fails on a misplaced checkpoint marker', async () => {
-		const root = await tree({
-			...convexTree(1, '\n// checkpoint: exempts nothing\nexport const x = 1;\n'),
-			[BASELINE]: '# debt\n',
-		});
+		const root = await tree(
+			convexTree(1, '\n// checkpoint: exempts nothing\nexport const x = 1;\n')
+		);
 		const result = await gate(root);
 		expect(result.code).toBe(1);
 		expect(result.output).toContain('convex/send.ts:8: a // checkpoint: marker must be');

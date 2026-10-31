@@ -726,6 +726,7 @@ import type * as delivery_worker from '../delivery/worker.js';
 import type * as delivery_workerEnvelope from '../delivery/workerEnvelope.js';
 import type * as delivery_workerOutcome from '../delivery/workerOutcome.js';
 import type * as delivery_workpool from '../delivery/workpool.js';
+import type * as desktop_refreshCommit from '../desktop/refreshCommit.js';
 import type * as desktop_releaseManifest from '../desktop/releaseManifest.js';
 import type * as desktop_updateReads from '../desktop/updateReads.js';
 import type * as desktop_updateResolver from '../desktop/updateResolver.js';
@@ -2578,6 +2579,7 @@ declare const fullApi: ApiFromModules<{
 	'delivery/workerOutcome': typeof delivery_workerOutcome;
 	'delivery/workpool': typeof delivery_workpool;
 }> & ApiFromModules<{
+	'desktop/refreshCommit': typeof desktop_refreshCommit;
 	'desktop/releaseManifest': typeof desktop_releaseManifest;
 	'desktop/updateReads': typeof desktop_updateReads;
 	'desktop/updateResolver': typeof desktop_updateResolver;
