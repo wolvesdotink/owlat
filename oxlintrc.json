@@ -99,9 +99,8 @@
 		// `bun run perf:bench`.
 		"owlat/no-wall-clock-in-tests": "error",
 		// Parsed JSON is decoded to `unknown` and checked, never typed by a cast
-		// (@owlat/worker-protocol/decodeJson). A warning while existing casts
-		// remain; each is frozen in scripts/owlat-lint-baseline.txt.
-		"owlat/no-unchecked-json-cast": "warn",
+		// (@owlat/worker-protocol/decodeJson).
+		"owlat/no-unchecked-json-cast": "error",
 		// Shortcuts in the web app go through the shortcut registry. Scoped by the
 		// rule's own path-suffix `files`, not an override, so the root gates and
 		// apps/web's own lint agree. Every raw keydown listener left carries a

@@ -4,6 +4,7 @@ import type {
 	DeliverabilityScope,
 	DeliverabilityValidatorEvidence,
 } from './deliverabilityChecklist';
+import { isRecord } from './utils/guards';
 
 export const DELIVERABILITY_DIAGNOSTIC_LENGTH = 2_048;
 export const DELIVERABILITY_OBSERVED_VALUE_LIMIT = 16;
@@ -72,12 +73,18 @@ export function serializeDeliverabilityObservation(value: Record<string, unknown
 	if (typeof value['kind'] !== 'string' || value['kind'].length === 0) {
 		throw new Error('Deliverability observation kind is required');
 	}
-	const mutableValue = JSON.parse(
+	// The JSON round trip normalises the value to what will be stored (toJSON
+	// applied, undefined dropped) before the slots are trimmed. An own `toJSON`
+	// spread in from `value` can still turn it into something else.
+	const mutableValue: unknown = JSON.parse(
 		JSON.stringify({
 			...value,
 			schemaVersion: DELIVERABILITY_OBSERVATION_SCHEMA_VERSION,
 		})
-	) as Record<string, unknown>;
+	);
+	if (!isRecord(mutableValue)) {
+		throw new Error('Deliverability observation must serialize to an object');
+	}
 	let serialized = JSON.stringify(mutableValue);
 	while (serialized.length > DELIVERABILITY_OBSERVED_VALUE_LENGTH) {
 		const slot = observationStringSlots(mutableValue).sort(

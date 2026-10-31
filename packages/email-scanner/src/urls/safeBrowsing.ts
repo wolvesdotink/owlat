@@ -29,14 +29,10 @@ const THREAT_TYPES = [
 ] as const;
 
 /** Safe Browsing platform types */
-const PLATFORM_TYPES = [
-	'ANY_PLATFORM',
-] as const;
+const PLATFORM_TYPES = ['ANY_PLATFORM'] as const;
 
 /** Safe Browsing threat entry types */
-const THREAT_ENTRY_TYPES = [
-	'URL',
-] as const;
+const THREAT_ENTRY_TYPES = ['URL'] as const;
 
 export interface SafeBrowsingResult {
 	url: string;
@@ -44,16 +40,38 @@ export interface SafeBrowsingResult {
 	verdict: UrlVerdict;
 }
 
+/** The fields of a Safe Browsing threat match this client reads. */
 interface ThreatMatch {
 	threatType: string;
-	platformType: string;
 	threat: { url: string };
-	cacheDuration: string;
-	threatEntryType: string;
 }
 
-interface SafeBrowsingResponse {
-	matches?: ThreatMatch[];
+function isObject(value: unknown): value is Record<string, unknown> {
+	return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isThreatMatch(value: unknown): value is ThreatMatch {
+	return (
+		isObject(value) &&
+		typeof value['threatType'] === 'string' &&
+		isObject(value['threat']) &&
+		typeof value['threat']['url'] === 'string'
+	);
+}
+
+/**
+ * The matches of a `threatMatches:find` answer. An answer without `matches`
+ * means every URL is clean, so one this client cannot read must not pass for
+ * that: it throws, like an API error.
+ */
+function threatMatches(data: unknown): ThreatMatch[] {
+	if (!isObject(data)) throw new Error('Safe Browsing API answered something other than an object');
+	const matches = data['matches'];
+	if (matches === undefined) return [];
+	if (!Array.isArray(matches) || !matches.every(isThreatMatch)) {
+		throw new Error('Safe Browsing API answered malformed threat matches');
+	}
+	return matches;
 }
 
 /**
@@ -65,7 +83,7 @@ interface SafeBrowsingResponse {
  */
 export async function checkSafeBrowsing(
 	urls: string[],
-	apiKey: string,
+	apiKey: string
 ): Promise<SafeBrowsingResult[]> {
 	if (urls.length === 0) return [];
 
@@ -84,10 +102,7 @@ export async function checkSafeBrowsing(
 /**
  * Check a single batch of URLs (max 500).
  */
-async function checkBatch(
-	urls: string[],
-	apiKey: string,
-): Promise<SafeBrowsingResult[]> {
+async function checkBatch(urls: string[], apiKey: string): Promise<SafeBrowsingResult[]> {
 	const requestBody = {
 		client: {
 			clientId: 'owlat-email-scanner',
@@ -97,7 +112,7 @@ async function checkBatch(
 			threatTypes: [...THREAT_TYPES],
 			platformTypes: [...PLATFORM_TYPES],
 			threatEntryTypes: [...THREAT_ENTRY_TYPES],
-			threatEntries: urls.map(url => ({ url })),
+			threatEntries: urls.map((url) => ({ url })),
 		},
 	};
 
@@ -117,15 +132,15 @@ async function checkBatch(
 			throw new Error(`Safe Browsing API error: ${response.status} ${errorText}`);
 		}
 
-		const data = await response.json() as SafeBrowsingResponse;
+		const matches = threatMatches(await response.json());
 
-		if (!data.matches || data.matches.length === 0) {
+		if (matches.length === 0) {
 			return []; // All URLs are clean
 		}
 
 		// Group matches by URL
 		const matchesByUrl = new Map<string, string[]>();
-		for (const match of data.matches) {
+		for (const match of matches) {
 			const url = match.threat.url;
 			const existing = matchesByUrl.get(url) ?? [];
 			existing.push(match.threatType);
@@ -150,7 +165,10 @@ function determineVerdict(threats: string[]): UrlVerdict {
 	if (threats.includes('MALWARE') || threats.includes('SOCIAL_ENGINEERING')) {
 		return 'malicious';
 	}
-	if (threats.includes('UNWANTED_SOFTWARE') || threats.includes('POTENTIALLY_HARMFUL_APPLICATION')) {
+	if (
+		threats.includes('UNWANTED_SOFTWARE') ||
+		threats.includes('POTENTIALLY_HARMFUL_APPLICATION')
+	) {
 		return 'suspicious';
 	}
 	return 'suspicious'; // Any match is at least suspicious
@@ -188,5 +206,5 @@ export async function hashUrl(url: string): Promise<string> {
 	// Use Web Crypto API (works in Node.js 18+ and Convex)
 	const hashBuffer = await crypto.subtle.digest('SHA-256', data);
 	const hashArray = Array.from(new Uint8Array(hashBuffer));
-	return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+	return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
 }

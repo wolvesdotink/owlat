@@ -11,9 +11,14 @@ import {
 /** A reporter whose emitted lines are captured into an array, with a fixed clock. */
 function capturing() {
 	const lines: string[] = [];
-	const reporter = createReporter({ json: true, write: (line) => lines.push(line), now: () => 1000 });
+	const reporter = createReporter({
+		json: true,
+		write: (line) => lines.push(line),
+		now: () => 1000,
+	});
 	// Each emitted line is one sentinel-prefixed JSON record terminated by \n.
-	const events = (): ProgressEvent[] => lines.map((l) => parseProgressLine(l)).filter((e): e is ProgressEvent => e !== null);
+	const events = (): ProgressEvent[] =>
+		lines.map((l) => parseProgressLine(l)).filter((e): e is ProgressEvent => e !== null);
 	return { reporter, lines, events };
 }
 
@@ -55,8 +60,23 @@ describe('JSON reporter wire format', () => {
 		reporter.step(SetupStep.ComposeUp, 'Starting containers');
 		reporter.ok('Stack is up');
 		expect(events()).toEqual([
-			{ v: 1, event: 'step', id: 'compose-up', title: 'Starting containers', status: 'running', ts: 1000 },
-			{ v: 1, event: 'step', id: 'compose-up', title: 'Starting containers', status: 'ok', detail: 'Stack is up', ts: 1000 },
+			{
+				v: 1,
+				event: 'step',
+				id: 'compose-up',
+				title: 'Starting containers',
+				status: 'running',
+				ts: 1000,
+			},
+			{
+				v: 1,
+				event: 'step',
+				id: 'compose-up',
+				title: 'Starting containers',
+				status: 'ok',
+				detail: 'Stack is up',
+				ts: 1000,
+			},
 		]);
 	});
 
@@ -131,5 +151,53 @@ describe('parseProgressLine', () => {
 		expect(parseProgressLine('docker compose: pulling image...')).toBeNull();
 		expect(parseProgressLine(`${PROGRESS_SENTINEL}{not json`)).toBeNull();
 		expect(parseProgressLine(`${PROGRESS_SENTINEL}`)).toBeNull();
+	});
+
+	const line = (value: unknown) => `${PROGRESS_SENTINEL}${JSON.stringify(value)}`;
+
+	it('keeps every event the reporter emits, optional fields and unknown fields included', () => {
+		const events: unknown[] = [
+			{ v: 1, event: 'step', id: 'compose-up', title: 'Start', status: 'running', ts: 1 },
+			{
+				v: 1,
+				event: 'step',
+				id: 'a-step-this-build-does-not-know',
+				title: 'Later',
+				status: 'ok',
+				detail: 'done',
+				warn: true,
+				ts: 2,
+			},
+			{ v: 1, event: 'log', line: 'pulling', stream: 'stderr', ts: 3 },
+			{ v: 1, event: 'done', ok: false, summary: { siteUrl: 'https://owlat.example' }, ts: 4 },
+			{ v: 1, event: 'done', ok: true, ts: 5, addedLater: 'kept' },
+		];
+		for (const event of events) expect(parseProgressLine(line(event))).toEqual(event);
+	});
+
+	it('treats a sentinel line that does not hold a progress event as raw output', () => {
+		const step = { v: 1, event: 'step', id: 'compose-up', title: 'Start', status: 'ok', ts: 1 };
+		const malformed: unknown[] = [
+			null,
+			42,
+			'step',
+			[step],
+			{ ...step, v: 2 },
+			{ ...step, event: 'phase' },
+			{ ...step, status: 42 },
+			{ ...step, status: 'done' },
+			{ ...step, id: 7 },
+			{ ...step, title: null },
+			{ ...step, detail: 3 },
+			{ ...step, warn: 'yes' },
+			{ ...step, ts: '1' },
+			{ v: 1, event: 'step', id: 'compose-up', title: 'Start', status: 'ok' },
+			{ v: 1, event: 'log', line: 3, stream: 'stdout', ts: 1 },
+			{ v: 1, event: 'log', line: 'x', stream: 'stdin', ts: 1 },
+			{ v: 1, event: 'done', ok: 'true', ts: 1 },
+			{ v: 1, event: 'done', ok: true, summary: ['x'], ts: 1 },
+			{ v: 1, event: 'done', ok: true, summary: null, ts: 1 },
+		];
+		for (const value of malformed) expect(parseProgressLine(line(value))).toBeNull();
 	});
 });

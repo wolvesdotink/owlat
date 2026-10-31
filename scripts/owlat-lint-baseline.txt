@@ -2,21 +2,3 @@
 # oxlintrc.json (see scripts/check-owlat-lint.sh). One line per finding:
 # <file> TAB <rule> TAB <source text of the reported span>.
 # Lines only ever get deleted; a rule with no line left here moves to "error".
-apps/imap/src/commands/append/index.ts	owlat(no-unchecked-json-cast)	(await uploadRes.json()) as { storageId: string }
-apps/mail-sync/src/ingest.ts	owlat(no-unchecked-json-cast)	(await response.json()) as { storageId: string; size: number }
-apps/marketing/app/composables/useDesktopDownload.ts	owlat(no-unchecked-json-cast)	(await res.json()) as { assets?: { name: string; browser_download_url: string }[]; }
-apps/setup-cli/src/commands/doctorRun.ts	owlat(no-unchecked-json-cast)	JSON.parse(await readFile(statePath, 'utf-8')) as FeatureFlagState
-apps/setup-cli/src/lib/flagState.ts	owlat(no-unchecked-json-cast)	JSON.parse(await file.text()) as FeatureFlagState
-apps/updater/src/snapshot.ts	owlat(no-unchecked-json-cast)	JSON.parse(line) as typeof entry
-packages/email-builder/src/utils/deltaHistory.ts	owlat(no-unchecked-json-cast)	JSON.parse(JSON.stringify(checkpoint.state)) as HistoryState
-packages/email-renderer/src/draftBodies.ts	owlat(no-unchecked-json-cast)	JSON.parse(draft.bodyBlocks) as EditorBlock[]
-packages/email-renderer/src/renderer.ts	owlat(no-unchecked-json-cast)	items = JSON.parse(rawValue)
-packages/email-scanner/src/urls/safeBrowsing.ts	owlat(no-unchecked-json-cast)	await response.json() as SafeBrowsingResponse
-packages/plugin-codegen/scripts/deployGraphSmoke.ts	owlat(no-unchecked-json-cast)	JSON.parse(dryRun.stdout) as TurboDryRun
-packages/plugin-kit/scripts/packageSmoke.ts	owlat(no-unchecked-json-cast)	JSON.parse( readFileSync(join(consumerRoot, 'node_modules/@owlat/plugin-kit/package.json'), 'utf8') ) as { exports?: Record<string, unknown> }
-packages/plugin-kit/scripts/packageSmoke.ts	owlat(no-unchecked-json-cast)	JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as PackageMetadata
-packages/sdk-js/src/utils/fetch.ts	owlat(no-unchecked-json-cast)	JSON.parse(rawBody) as ApiErrorResponse
-packages/shared/src/blockTree.ts	owlat(no-unchecked-json-cast)	JSON.parse(JSON.stringify(roots)) as T[]
-packages/shared/src/blockTree.ts	owlat(no-unchecked-json-cast)	JSON.parse(JSON.stringify(roots)) as unknown[]
-packages/shared/src/deliverabilityDiagnostics.ts	owlat(no-unchecked-json-cast)	JSON.parse( JSON.stringify({ ...value, schemaVersion: DELIVERABILITY_OBSERVATION_SCHEMA_VERSION, }) ) as Record<string, unknown>
-packages/shared/src/setupProgress.ts	owlat(no-unchecked-json-cast)	JSON.parse(json) as ProgressEvent

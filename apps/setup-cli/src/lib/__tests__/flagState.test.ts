@@ -2,7 +2,13 @@ import { chmod, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { applyAndPersist, applyPackAndPersist, saveFlagState } from '../flagState';
+import {
+	applyAndPersist,
+	applyPackAndPersist,
+	loadFlagState,
+	parseFlagState,
+	saveFlagState,
+} from '../flagState';
 
 const roots: string[] = [];
 
@@ -50,6 +56,34 @@ describe('setup CLI flag persistence', () => {
 		const result = await applyPackAndPersist(root, 'emailClient', true);
 
 		expect(result.state['plugin.policy-pack']).toBe(true);
+	});
+});
+
+describe('setup CLI flag file decoding', () => {
+	it('keeps core flags and plugin overrides and drops keys no flag owns', () => {
+		expect(
+			parseFlagState(JSON.stringify({ ai: false, 'plugin.policy-pack': true, retired: 'anything' }))
+		).toEqual({ ai: false, 'plugin.policy-pack': true });
+	});
+
+	it.each([
+		['text that is not JSON', '{ not json'],
+		['null', 'null'],
+		['a list', '[{"ai":true}]'],
+		['a string', '"ai"'],
+		['a flag that is not a boolean', '{"ai":"true"}'],
+		['a plugin override that is not a boolean', '{"plugin.policy-pack":null}'],
+	])('refuses %s', (_name, text) => {
+		expect(parseFlagState(text)).toBeUndefined();
+	});
+
+	it('loads a malformed file as no stored flags, and a toggle starts from the defaults', async () => {
+		const root = await temporaryOwlatDirectory();
+		await writeFile(join(root, '.owlat-flags.json'), '{"ai":"true","inbox":false}');
+
+		expect(await loadFlagState(root)).toEqual({});
+		const result = await applyAndPersist(root, 'campaigns', true);
+		expect(result.state).toEqual({ campaigns: true });
 	});
 });
 

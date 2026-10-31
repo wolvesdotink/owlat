@@ -137,16 +137,20 @@ const expandRepeats = (blocks: EditorBlock[], ctx: RenderContext): EditorBlock[]
 			continue;
 		}
 
-		let items: Record<string, string>[];
+		// Every entry repeats the block. An object entry's own keys fill
+		// {{alias.key}} (each value as text) and its position fills {{$index}};
+		// any other entry repeats the block as written.
+		let items: readonly unknown[];
 		try {
-			items = JSON.parse(rawValue);
-			if (!Array.isArray(items)) {
+			const parsed: unknown = JSON.parse(rawValue);
+			if (!Array.isArray(parsed)) {
 				addWarning(
 					ctx,
 					`Repeat variable "${repeat.variable}" is not an array — block "${block.id}" skipped.`
 				);
 				continue;
 			}
+			items = parsed;
 		} catch {
 			addWarning(
 				ctx,

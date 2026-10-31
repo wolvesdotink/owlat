@@ -13,6 +13,8 @@
  * (placement) stays with the block registries.
  */
 
+import { jsonClone } from './utils/jsonClone';
+
 /** A root Block or a nested Block item. Every level of the tree has this shape. */
 export interface BlockTreeNode {
 	id: string;
@@ -269,9 +271,9 @@ export function normalizeBlockTreeIds<T>(
 ): T[] {
 	const renewRepeated = options.renewRepeated ?? false;
 	if (!repairTreeIds(roots, renewRepeated, false)) return [...roots];
-	// Stored Blocks are plain JSON, so a JSON round trip is a faithful deep copy
-	// (and, unlike structuredClone, accepts a reactive proxy).
-	const copy = JSON.parse(JSON.stringify(roots)) as T[];
+	// Stored Blocks are plain JSON, so a copy under the JSON rules is a faithful
+	// one (and, unlike structuredClone, accepts a reactive proxy).
+	const copy = jsonClone([...roots]);
 	repairTreeIds(copy, renewRepeated, true);
 	return copy;
 }
@@ -291,7 +293,7 @@ export interface BlockIdRenewal {
  */
 export function repeatedBlockIdRenewals(roots: readonly unknown[]): BlockIdRenewal[] {
 	const renewals: BlockIdRenewal[] = [];
-	const copy = JSON.parse(JSON.stringify(roots)) as unknown[];
+	const copy = jsonClone([...roots]);
 	repairTreeIds(copy, true, true, (from, to) => renewals.push({ from, to }));
 	return renewals;
 }
