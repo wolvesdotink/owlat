@@ -90,6 +90,8 @@ export const seedMailboxMessages = internalAction({
 			const blob = new Blob([raw], { type: 'message/rfc822' });
 			const rawStorageId = await ctx.storage.store(blob);
 
+			// checkpoint: one fixture message per delivery, so a reply finds its parent
+			// already threaded; a re-run skips every message whose Message-ID landed.
 			const result: { messageId: unknown } | { skipped: true } = await ctx.runMutation(
 				internal.mail.delivery.deliverToMailbox,
 				{

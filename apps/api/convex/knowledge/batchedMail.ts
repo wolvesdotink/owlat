@@ -13,8 +13,12 @@
  */
 
 import { v } from 'convex/values';
+import type { Id } from '../_generated/dataModel';
 import { internalAction } from '../_generated/server';
+import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
+import { resolveSenderContactId } from '../mail/migrationIndexing';
+import { dropUnfinishedMarker } from './extractionProgress';
 import { loadExtractableMail } from '../mail/knowledgeScreen';
 import { anchorActionDeadline, boundedRoot } from '../lib/llm/actionDeadline';
 import { rootRequest } from '../lib/llm/requestMeter';
@@ -41,17 +45,35 @@ export const resumeMailExtraction = internalAction({
 		// Gone, or phishing/spoofed mail that must not feed the graph.
 		const msg = await loadExtractableMail(ctx, args.mailMessageId);
 		if (!msg) return refuse();
-		const { contactId } = await ctx.runMutation(
-			internal.mail.migrationIndexing.resolveSenderContact,
-			{ email: msg.fromAddress, fromName: msg.fromName ?? undefined }
-		);
-		// The callers' rule: an unresolvable sender would land org-general.
-		if (!contactId) return refuse();
+		const contactId = await ctx.runMutation(internal.knowledge.batchedMail.resolveSenderOrDrop, {
+			mailMessageId: args.mailMessageId,
+			email: msg.fromAddress,
+			fromName: msg.fromName ?? undefined,
+		});
+		if (!contactId) return;
 		await ctx.runAction(internal.knowledge.extraction.extractFromMailMessage, {
 			mailMessageId: args.mailMessageId,
 			contactIds: [contactId],
 			// Awaited: it spends from this action's clock.
 			root: boundedRoot(ctx, rootRequest('postbox', args.mailMessageId)),
 		});
+	},
+});
+
+/**
+ * Resolve the sender's contact (quiet find-or-create), or, for a sender that
+ * resolves to none, drop the batch's result in the same transaction: the
+ * callers' rule is that an unresolvable sender would land org-general.
+ */
+export const resolveSenderOrDrop = internalMutation({
+	args: {
+		mailMessageId: v.id('mailMessages'),
+		email: v.string(),
+		fromName: v.optional(v.string()),
+	},
+	handler: async (ctx, args): Promise<Id<'contacts'> | null> => {
+		const contactId = await resolveSenderContactId(ctx, args.email, args.fromName);
+		if (!contactId) await dropUnfinishedMarker(ctx, 'email', args.mailMessageId);
+		return contactId;
 	},
 });

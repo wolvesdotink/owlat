@@ -116,6 +116,8 @@ const sampleDataRemoveHttp = httpAction(async (ctx, request) => {
 			truncated ||= scan.truncated;
 			let removed = 0;
 			for (let i = 0; i < scan.ids.length; i += DELETE_BATCH) {
+				// checkpoint: one batch per transaction, and it deletes only rows that still
+				// carry the seed tag; a re-run of remove scans again and deletes the rest.
 				removed += await ctx.runMutation(internal.sampleData.index.deleteTaggedRows, {
 					table,
 					ids: scan.ids.slice(i, i + DELETE_BATCH),

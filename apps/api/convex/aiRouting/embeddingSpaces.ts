@@ -94,6 +94,10 @@ export const assertAdmin = internalQuery({
  * `expectedTargetKey` (the target the caller confirmed and embedded with), a
  * configuration that moved since is refused with `embedding_target_changed`
  * in this transaction, so nothing is activated and no kickoff is scheduled.
+ *
+ * The previous release's re-embed actions activate through this; this
+ * release's commit inside `embeddingReembedCommit.ts`. A space already active
+ * is returned as it is. Remove after release N+1.
  */
 export const ensureConfigured = internalMutation({
 	args: { space: measuredEmbeddingSpaceValidator, expectedTargetKey: v.optional(v.string()) },
