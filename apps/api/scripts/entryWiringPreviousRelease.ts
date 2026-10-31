@@ -32,6 +32,10 @@ export const PREVIOUS_RELEASE_ENTRIES: Readonly<Record<string, string>> = {
 	'campaigns/sendJob.ts#advanceSendJob': 'old campaign send-walker hops mid-page',
 	// The A/B winner phase now commits once (campaigns/walkerCommit.ts).
 	'campaigns/sendQueries.ts#freezeCampaignAudience': 'old A/B winner phases mid-run',
+	// The test sends now commit once (campaigns/testSendCommit.ts).
+	'campaigns/senders.ts#seedDefaultSender': 'old test sends mid-run',
+	'campaigns/senders.ts#checkSenderAllowed': 'old test sends mid-run',
+	'delivery/enqueueTestSend.ts#enqueueTestSend': 'old test sends mid-run',
 	'campaigns/sendJob.ts#createSendJob':
 		'old campaign send preparations and A/B winner phases mid-run',
 	// The expected-attachment copy now lands in one commit (`bindCopy`).

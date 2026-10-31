@@ -32,11 +32,9 @@ export async function readMemberInboxes(ctx: QueryCtx): Promise<string[]> {
 }
 
 /**
- * `readMemberInboxes` for a test-send action of the previous release still
- * running during the deploy; this release checks recipients inside
- * `campaigns/testSendCommit.ts`. A read, so it is safe beside that commit.
+ * `readMemberInboxes` for an action, with the caller's id and organization.
  * Inherits the caller's identity through `ctx.runQuery` (and re-asserts org
- * membership). Remove after release N+1.
+ * membership).
  */
 export const getTestSendAllowedRecipients = internalQuery({
 	args: {},

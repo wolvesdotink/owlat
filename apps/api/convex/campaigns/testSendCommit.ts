@@ -17,7 +17,7 @@
  *      caller-controlled HTML from the verified domain, so they may only go to
  *      the org's own member inboxes, never relay to an arbitrary address;
  *   4. a ready delivery provider;
- *   5. one queued test Send per recipient.
+ *   5. one queued test Send per recipient, with its retention callback.
  *
  * A refusal is returned, not thrown, so what the gates before it wrote stands:
  * a refused recipient or a missing provider still spends the token, as a
@@ -26,12 +26,17 @@
 
 import { v } from 'convex/values';
 import { normalizeEmail } from '@owlat/shared';
+import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { internalMutation } from '../lib/writeFence';
 import { requireOrgMember } from '../lib/sessionOrganization';
 import { rateLimiter } from '../lib/rateLimiter';
 import { selectedSendProviderReady } from '../lib/sendProviders/capability';
-import { NO_TEST_SEND_PROVIDER_MESSAGE, queueTestSend } from '../delivery/enqueueTestSend';
+import {
+	NO_TEST_SEND_PROVIDER_MESSAGE,
+	TEST_SEND_RETENTION_MS,
+	queueTestSend,
+} from '../delivery/enqueueTestSend';
 import { isCampaignSenderAllowed, seedDefaultSenderIfNeeded } from './senders';
 import { readMemberInboxes } from './sendQueries';
 
@@ -75,16 +80,20 @@ export const commitTestSends = internalMutation({
 
 		const sendIds: Id<'transactionalSends'>[] = [];
 		for (const email of args.recipients) {
-			sendIds.push(
-				await queueTestSend(ctx, {
-					email,
-					organizationId: session.activeOrganizationId,
-					from: args.from,
-					replyTo: args.replyTo,
-					subject: args.subject,
-					html: args.html,
-				})
+			const queued = await queueTestSend(ctx, {
+				email,
+				organizationId: session.activeOrganizationId,
+				from: args.from,
+				replyTo: args.replyTo,
+				subject: args.subject,
+				html: args.html,
+			});
+			await ctx.scheduler.runAfter(
+				TEST_SEND_RETENTION_MS,
+				internal.delivery.enqueueTestSend.deleteExpiredTestSend,
+				queued
 			);
+			sendIds.push(queued.sendId);
 		}
 		return { kind: 'queued', sendIds };
 	},

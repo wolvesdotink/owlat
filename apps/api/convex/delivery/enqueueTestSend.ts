@@ -51,7 +51,13 @@ export const enqueueTestSend = internalMutation({
 		if (!(await selectedSendProviderReady(ctx, undefined))) {
 			throw new Error(NO_TEST_SEND_PROVIDER_MESSAGE);
 		}
-		return { sendId: await queueTestSend(ctx, args) };
+		const queued = await queueTestSend(ctx, args);
+		await ctx.scheduler.runAfter(
+			TEST_SEND_RETENTION_MS,
+			internal.delivery.enqueueTestSend.deleteExpiredTestSend,
+			queued
+		);
+		return { sendId: queued.sendId };
 	},
 });
 
@@ -59,12 +65,14 @@ export const enqueueTestSend = internalMutation({
  * `enqueueTestSend` inside the caller's transaction, once the caller has found
  * a delivery provider ready (`selectedSendProviderReady`): the test-send
  * commit checks that once for all of its recipients and answers a missing
- * provider with an outcome, so the rate-limit token it spent stays spent.
+ * provider with an outcome, so the rate-limit token it spent stays spent. The
+ * caller schedules the Send's retention (`deleteExpiredTestSend`, with the
+ * returned `sendId` and `queuedAt`) in the same transaction.
  */
 export async function queueTestSend(
 	ctx: MutationCtx,
 	args: Infer<typeof testSendValidator>
-): Promise<Id<'transactionalSends'>> {
+): Promise<{ sendId: Id<'transactionalSends'>; queuedAt: number }> {
 	const queuedAt = Date.now();
 	const sendId = await ctx.db.insert('transactionalSends', {
 		kind: 'test' as const,
@@ -92,12 +100,7 @@ export async function queueTestSend(
 			},
 		}
 	);
-	await ctx.scheduler.runAfter(
-		TEST_SEND_RETENTION_MS,
-		internal.delivery.enqueueTestSend.deleteExpiredTestSend,
-		{ sendId, queuedAt }
-	);
-	return sendId;
+	return { sendId, queuedAt };
 }
 
 /** Idempotent per-row retention callback; seven days exceeds every MTA retry window. */
