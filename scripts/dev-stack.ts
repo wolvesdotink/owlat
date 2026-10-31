@@ -20,6 +20,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { lstatSync, realpathSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { join } from 'node:path';
+import { DEV_STACK_USAGE, parseDevStackArgs } from './dev-stack/args';
 import {
 	DevStackConfigError,
 	describePorts,
@@ -214,8 +215,6 @@ async function status(): Promise<number> {
 	return 0;
 }
 
-const SERVICES = ['convex', 'redis'];
-
 async function logs(service: string | undefined, follow: boolean): Promise<number> {
 	writeComposeEnv();
 	const args = ['logs', '--tail', '200', ...(follow ? ['--follow'] : [])];
@@ -223,35 +222,19 @@ async function logs(service: string | undefined, follow: boolean): Promise<numbe
 	return 0;
 }
 
-const USAGE =
-	'Usage: bun run dev:stack [up [--no-seed] | down [--volumes] | status | ports | logs [convex|redis] [--follow]]';
-
 async function main(argv: string[]): Promise<number> {
 	config = resolveDevStackConfig({
 		explicit: process.env['OWLAT_PORT_OFFSET'],
 		root,
 		linkedWorktree: isLinkedWorktree(),
 	});
-	const flags = new Set(argv.filter((arg) => arg.startsWith('-')));
-	const [command = 'up', ...rest] = argv.filter((arg) => !arg.startsWith('-'));
-	const known: Record<string, string[]> = {
-		up: ['--no-seed'],
-		down: ['--volumes'],
-		status: [],
-		ports: [],
-		logs: ['--follow'],
-	};
-	const allowed = known[command];
-	const unknown = [...flags].filter((flag) => !allowed?.includes(flag));
-	const badArgs =
-		command === 'logs'
-			? rest.length > 1 || (rest[0] !== undefined && !SERVICES.includes(rest[0]))
-			: rest.length > 0;
-	if (flags.has('--help') || flags.has('-h') || !allowed || badArgs || unknown.length > 0) {
-		console.info(USAGE);
-		return flags.has('--help') || flags.has('-h') ? 0 : 2;
+	const args = parseDevStackArgs(argv);
+	if (args.kind === 'usage') {
+		console.info(DEV_STACK_USAGE);
+		return args.exitCode;
 	}
-	switch (command) {
+	const { flags } = args;
+	switch (args.command) {
 		case 'down':
 			return down(flags.has('--volumes'));
 		case 'status':
@@ -260,7 +243,7 @@ async function main(argv: string[]): Promise<number> {
 			console.info(describePorts(config));
 			return 0;
 		case 'logs':
-			return logs(rest[0], flags.has('--follow'));
+			return logs(args.service, flags.has('--follow'));
 		default:
 			return up(!flags.has('--no-seed'));
 	}

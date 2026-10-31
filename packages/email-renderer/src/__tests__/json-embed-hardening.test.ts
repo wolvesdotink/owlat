@@ -64,6 +64,33 @@ describe('escapeJsonValue hardening', () => {
 		// Round-trips through JSON.parse as part of a JSON string literal.
 		expect(JSON.parse(`"${escaped}"`)).toBe(raw);
 	});
+
+	it('escapes every C0 control code unit with its short or \\u form', () => {
+		const short: Record<number, string> = {
+			0x08: '\\b',
+			0x09: '\\t',
+			0x0a: '\\n',
+			0x0c: '\\f',
+			0x0d: '\\r',
+		};
+		for (let code = 0; code < 0x20; code++) {
+			const ch = String.fromCharCode(code);
+			const expected = short[code] ?? `\\u${code.toString(16).padStart(4, '0')}`;
+			expect(escapeJsonValue(`a${ch}b`), `U+${code.toString(16)}`).toBe(`a${expected}b`);
+			expect(JSON.parse(`"${escapeJsonValue(ch)}"`)).toBe(ch);
+		}
+	});
+
+	it('escapes the JSON delimiters, <, U+2028 and U+2029 and nothing else', () => {
+		expect(escapeJsonValue('"\\<>\u2028\u2029')).toBe('\\"\\\\\\u003c>\\u2028\\u2029');
+		expect(escapeJsonValue("plain 'text' & > é")).toBe("plain 'text' & > é");
+	});
+
+	it('keeps surrogate pairs and lone surrogates untouched', () => {
+		const value = 'mail \u{1F4E7}\uD800 end';
+		expect(escapeJsonValue(value)).toBe(value);
+		expect(JSON.parse(`"${escapeJsonValue(`${value}\n<`)}"`)).toBe(`${value}\n<`);
+	});
 });
 
 describe('repeat-block re-parse resilience', () => {

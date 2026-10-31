@@ -11,8 +11,8 @@
 		"reportUnusedDisableDirectives": "error"
 	},
 	"categories": {
-		"suspicious": "warn",
-		"perf": "warn"
+		"suspicious": "error",
+		"perf": "error"
 	},
 	"env": {
 		"browser": true,
@@ -69,7 +69,7 @@
 		"no-unsafe-optional-chaining": "error",
 		"@typescript-eslint/consistent-type-imports": "error",
 		"import/no-duplicates": "warn",
-		"unicorn/no-array-for-each": "warn",
+		"unicorn/no-array-for-each": "error",
 		"import/no-cycle": "error",
 		"no-underscore-dangle": "off",
 		// Sequential awaits are deliberate across the codebase: ordered Convex

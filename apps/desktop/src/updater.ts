@@ -99,8 +99,7 @@ export async function checkForUpdate(endpoint: string | null): Promise<UpdateChe
  * update is already downloaded (a webview that reloaded into a ready slot).
  */
 export async function installUpdate(onProgress: (event: UpdateProgress) => void): Promise<void> {
-	const channel = new Channel<UpdateProgress>();
-	channel.onmessage = onProgress;
+	const channel = new Channel<UpdateProgress>(onProgress);
 	try {
 		await invoke('updater_install', { onEvent: channel });
 	} catch (e) {

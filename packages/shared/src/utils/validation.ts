@@ -31,7 +31,7 @@
  * previously-invalid ASCII address stays invalid.
  */
 export const emailRegex =
-	/^(?:(?![\p{C}\p{Z}])[a-zA-Z0-9!#$%&'*+\/=?^_`{|}~\u{80}-\u{10FFFF}\-])+(?:\.(?:(?![\p{C}\p{Z}])[a-zA-Z0-9!#$%&'*+\/=?^_`{|}~\u{80}-\u{10FFFF}\-])+)*@(?:(?:(?![\p{C}\p{Z}])[a-zA-Z0-9\u{80}-\u{10FFFF}])(?:(?:(?![\p{C}\p{Z}])[a-zA-Z0-9\u{80}-\u{10FFFF}\-])*(?:(?![\p{C}\p{Z}])[a-zA-Z0-9\u{80}-\u{10FFFF}]))?\.)+(?:(?![\p{C}\p{Z}])[a-zA-Z\u{80}-\u{10FFFF}]){2,}$/u;
+	/^(?:(?![\p{C}\p{Z}])[a-zA-Z0-9!#$%&'*+/=?^_`{|}~\u{80}-\u{10FFFF}-])+(?:\.(?:(?![\p{C}\p{Z}])[a-zA-Z0-9!#$%&'*+/=?^_`{|}~\u{80}-\u{10FFFF}-])+)*@(?:(?:(?![\p{C}\p{Z}])[a-zA-Z0-9\u{80}-\u{10FFFF}])(?:(?:(?![\p{C}\p{Z}])[a-zA-Z0-9\u{80}-\u{10FFFF}-])*(?:(?![\p{C}\p{Z}])[a-zA-Z0-9\u{80}-\u{10FFFF}]))?\.)+(?:(?![\p{C}\p{Z}])[a-zA-Z\u{80}-\u{10FFFF}]){2,}$/u;
 
 /**
  * Domain validation regex
@@ -68,8 +68,8 @@ export function isValidDomain(domain: string): boolean {
  */
 export function isValidUrl(url: string): boolean {
 	try {
-		new URL(url);
-		return true;
+		// The constructor throws on anything that does not parse.
+		return new URL(url).protocol !== '';
 	} catch {
 		return false;
 	}

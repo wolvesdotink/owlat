@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { nextTick, ref, type ShallowRef } from 'vue';
-import type PostHog from 'posthog-js';
+import type { PostHog } from 'posthog-js';
 
 /**
  * `analytics.posthog` is the gate the docs promise and the reason a
@@ -21,7 +21,7 @@ const posthogStub = {
 
 vi.mock('posthog-js', () => ({ default: posthogStub }));
 
-type Plugin = () => { provide: { posthog: ShallowRef<typeof PostHog | null> } };
+type Plugin = () => { provide: { posthog: ShallowRef<PostHog | null> } };
 
 const afterEach_ = vi.fn();
 

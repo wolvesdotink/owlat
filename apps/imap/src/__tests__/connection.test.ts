@@ -198,7 +198,7 @@ describe('ImapConnection — one CAPABILITY_LINE feeds greeting + banner + CAPAB
 		await exec(socket, 'a002 LOGIN "alice@test" "good"');
 		const bannerCap = socket
 			.lines()
-			.find((l) => /^\* OK \[CAPABILITY/.test(l))!
+			.find((l) => l.startsWith('* OK [CAPABILITY'))!
 			.match(/\[CAPABILITY ([^\]]+)\]/)![1];
 
 		expect(cmdCap).toBe(greetingCap);

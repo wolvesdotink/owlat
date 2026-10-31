@@ -29,7 +29,9 @@ describe('writeEnvFile', () => {
 		['carriage return', 'Acme\rINSTANCE_SECRET=x'],
 		['NUL', 'Acme\0x'],
 	])('rejects a value containing a %s', async (_label, value) => {
-		await expect(writeEnvFile(path, { DEFAULT_FROM_NAME: value })).rejects.toThrow();
+		await expect(writeEnvFile(path, { DEFAULT_FROM_NAME: value })).rejects.toThrow(
+			/newline, carriage return, or NUL/
+		);
 	});
 
 	it('never emits a physical multi-line value: every written line round-trips to one key', async () => {

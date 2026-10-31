@@ -34,10 +34,8 @@ vi.mock('@owlat/shared', async (importOriginal) => ({
 // A connect attempt must never be reached in these tests; if one is, the
 // constructor throwing is the loudest possible failure.
 vi.mock('imapflow', () => ({
-	ImapFlow: class {
-		constructor() {
-			throw new Error('the connection should never be attempted without credentials');
-		}
+	ImapFlow: function ImapFlow() {
+		throw new Error('the connection should never be attempted without credentials');
 	},
 }));
 

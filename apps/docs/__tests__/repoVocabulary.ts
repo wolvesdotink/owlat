@@ -86,8 +86,8 @@ function buildVocabulary(): ReadonlySet<string> {
 	const code = [
 		...walk(join(REPO_ROOT, 'apps'), (p) => /\.(ts|vue)$/.test(p)),
 		...walk(join(REPO_ROOT, 'packages'), (p) => /\.(ts|vue|java)$/.test(p)),
-		...walk(join(REPO_ROOT, 'examples'), (p) => /\.ts$/.test(p)),
-		...walk(join(REPO_ROOT, 'scripts'), (p) => /\.ts$/.test(p)),
+		...walk(join(REPO_ROOT, 'examples'), (p) => p.endsWith('.ts')),
+		...walk(join(REPO_ROOT, 'scripts'), (p) => p.endsWith('.ts')),
 	];
 	for (const file of code) {
 		const source = stripComments(readFileSync(file, 'utf8'));

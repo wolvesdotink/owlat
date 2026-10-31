@@ -153,6 +153,14 @@ describe('stripTrackingParams', () => {
 		);
 	});
 
+	it('strips adjacent and repeated tracking params', () => {
+		expect(
+			stripTrackingParams(
+				'https://example.com/a?utm_source=x&utm_medium=y&fbclid=1&page=2&utm_source=z#frag'
+			)
+		).toBe('https://example.com/a?page=2#frag');
+	});
+
 	it('drops the dangling ? when all params were tracking noise', () => {
 		expect(stripTrackingParams('https://example.com/a?utm_source=x')).toBe('https://example.com/a');
 	});

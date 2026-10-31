@@ -60,6 +60,12 @@ describe('security audit parser', () => {
 		expect(() => classifyAuditJson(raw)).toThrow(/failing closed/);
 	});
 
+	it('keeps the JSON parse error as the cause of malformed input', () => {
+		expect(() => classifyAuditJson('{not-json')).toThrow(
+			expect.objectContaining({ cause: expect.any(SyntaxError) })
+		);
+	});
+
 	it.each(['[]', '{"example":{}}', '{"example":[{"severity":"high"}]}'])(
 		'fails closed for an unexpected audit shape: %s',
 		(raw) => {

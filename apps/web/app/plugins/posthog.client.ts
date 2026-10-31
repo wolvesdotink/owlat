@@ -1,4 +1,4 @@
-import type PostHog from 'posthog-js';
+import type { PostHog } from 'posthog-js';
 import { shallowRef, watch } from 'vue';
 import type { PostHogHandle } from '~/composables/usePostHog';
 import {
@@ -54,7 +54,7 @@ export default defineNuxtPlugin(() => {
 	const apiKey = config.public.posthogApiKey as string;
 	const host = config.public.posthogHost as string;
 
-	const handle: PostHogHandle = shallowRef<typeof PostHog | null>(null);
+	const handle: PostHogHandle = shallowRef<PostHog | null>(null);
 	const provide = { posthog: handle };
 
 	if (!apiKey) {
@@ -71,7 +71,7 @@ export default defineNuxtPlugin(() => {
 
 	startPerfReporting(router, handle);
 
-	let client: typeof PostHog | null = null;
+	let client: PostHog | null = null;
 	let starting = false;
 	/** The flag was on but the SDK waited for the visitor to leave a private page. */
 	let deferred = false;

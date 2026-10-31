@@ -37,10 +37,8 @@ vi.mock('../logger.js', () => ({
 // accounting handler can run against a bare fake socket without protocol setup.
 const connectionCtor = vi.fn();
 vi.mock('../connection.js', () => ({
-	ImapConnection: class {
-		constructor(...args: unknown[]) {
-			connectionCtor(...args);
-		}
+	ImapConnection: function ImapConnection(...args: unknown[]) {
+		connectionCtor(...args);
 	},
 }));
 

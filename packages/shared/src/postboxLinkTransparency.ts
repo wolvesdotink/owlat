@@ -96,7 +96,9 @@ export function stripTrackingParams(url: string): string {
 	try {
 		const parsed = new URL(url);
 		let changed = false;
-		for (const name of [...parsed.searchParams.keys()]) {
+		// Snapshot the keys: deleting from the live iterator would skip the key
+		// after each deleted one.
+		for (const name of Array.from(parsed.searchParams.keys())) {
 			if (!isTrackingParamName(name)) continue;
 			parsed.searchParams.delete(name);
 			changed = true;

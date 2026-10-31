@@ -189,11 +189,11 @@ export function useBlockManagement(options: UseBlockManagementOptions): UseBlock
 			// Clean up column item editors if this is a columns block
 			if (block?.type === 'columns') {
 				const content = block.content as ColumnsBlockContent;
-				content.columns.forEach((column) => {
-					column.forEach((item: ColumnItem) => {
+				for (const column of content.columns) {
+					for (const item of column) {
 						onColumnItemDeleted?.(item.id);
-					});
-				});
+					}
+				}
 			}
 
 			// Notify about block deletion (for editor cleanup)

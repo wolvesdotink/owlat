@@ -287,7 +287,7 @@ export async function writeEnvFile(path: string, map: EnvMap): Promise<void> {
 		// next read as a SEPARATE, attacker-controlled env line (e.g. an injected
 		// INSTANCE_SECRET). A NUL is equally illegitimate in a `.env`. Reject rather
 		// than silently mangle.
-		if (/[\r\n\0]/.test(value)) {
+		if (value.includes('\r') || value.includes('\n') || value.includes('\0')) {
 			throw new Error(
 				`Refusing to write env key ${key}: value contains a newline, carriage return, or NUL.`
 			);

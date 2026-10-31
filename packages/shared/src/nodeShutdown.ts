@@ -179,7 +179,7 @@ export function installShutdown(options: ShutdownOptions): ShutdownHandle {
 		// Logged each round: a shutdown that takes long says what it waits for.
 		while (inFlight.size > 0) {
 			log('shutdown waiting for in-flight critical sections', { criticalSections: inFlight.size });
-			await Promise.allSettled([...inFlight]);
+			await Promise.allSettled(inFlight);
 		}
 
 		if (closed) await closed;

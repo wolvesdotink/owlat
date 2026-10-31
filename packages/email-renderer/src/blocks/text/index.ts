@@ -19,7 +19,7 @@ const DEFAULT_FONT_SIZE = 16;
 const DEFAULT_LINE_HEIGHT = 1.5;
 
 const TEXT_BLOCK_TYPES = ['paragraph', 'h1', 'h2', 'h3'] as const;
-const VAGUE_LINK_PATTERNS = [
+const VAGUE_LINK_PATTERNS: ReadonlySet<string> = new Set([
 	'click here',
 	'here',
 	'read more',
@@ -35,7 +35,7 @@ const VAGUE_LINK_PATTERNS = [
 	'view',
 	'this',
 	'more info',
-];
+]);
 
 /** Build the inline style list shared by both placements. */
 const baseStyles = (
@@ -367,7 +367,7 @@ export const textModule: BlockModule<'text'> = {
 				for (const link of linkMatches) {
 					const textMatch = link.match(/>([^<]*)</);
 					const text = textMatch?.[1]?.trim().toLowerCase() || '';
-					if (VAGUE_LINK_PATTERNS.includes(text)) {
+					if (VAGUE_LINK_PATTERNS.has(text)) {
 						ctx.issues.push({
 							blockId: block.id,
 							blockType: 'text',
