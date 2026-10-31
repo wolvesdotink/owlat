@@ -297,10 +297,10 @@ export function fuzzyMatch(text: string, query: string): FuzzyMatch | null {
 
 	let gaps = 0;
 	let wordStarts = 0;
-	indices.forEach((index, position) => {
+	for (const [position, index] of indices.entries()) {
 		if (position > 0 && index !== (indices[position - 1] ?? -1) + 1) gaps += 1;
 		if (isWordStart(haystack, index)) wordStarts += 1;
-	});
+	}
 	return {
 		score:
 			SUBSEQUENCE_BASE -
@@ -338,15 +338,15 @@ export function scoreItems<T extends { label: string; subtitle?: string }>(
 	}
 
 	const scored: Array<ScoredPaletteItem<T> & { rank: number; index: number }> = [];
-	items.forEach((item, index) => {
+	for (const [index, item] of items.entries()) {
 		const onLabel = fuzzyMatch(item.label, query);
 		if (onLabel) {
 			scored.push({ item, field: 'label', rank: 0, ...onLabel, index });
-			return;
+			continue;
 		}
 		const onSubtitle = item.subtitle ? fuzzyMatch(item.subtitle, query) : null;
 		if (onSubtitle) scored.push({ item, field: 'subtitle', rank: 1, ...onSubtitle, index });
-	});
+	}
 
 	return scored
 		.sort((a, b) => a.rank - b.rank || b.score - a.score || a.index - b.index)

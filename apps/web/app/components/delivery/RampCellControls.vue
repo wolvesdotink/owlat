@@ -137,7 +137,7 @@ const isDisabled = computed(() => props.busy === true || !props.cell.isRampManag
  */
 function rungFor(phaseCeiling: number | null): number {
 	if (phaseCeiling === null || !Number.isFinite(phaseCeiling)) return PHASE_RUNGS[0];
-	return PHASE_RUNGS.filter((rung) => rung <= phaseCeiling).at(-1) ?? PHASE_RUNGS[0];
+	return PHASE_RUNGS.findLast((rung) => rung <= phaseCeiling) ?? PHASE_RUNGS[0];
 }
 
 const currentRung = computed(() => rungFor(props.cell.phaseCeiling));

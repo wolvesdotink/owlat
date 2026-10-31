@@ -518,9 +518,18 @@ describe('addWorkspace — an unusable instance answer', () => {
 		const mod = await freshModule();
 		await mod.loadWorkspaces();
 
-		await expect(mod.useDesktopWorkspaces().addWorkspace('acme.test')).rejects.toThrow(
-			'shared.useDesktopWorkspaces.errors.unusableConfig'
-		);
+		const failure = await mod
+			.useDesktopWorkspaces()
+			.addWorkspace('acme.test')
+			.then(
+				() => null,
+				(err: unknown) => err as Error
+			);
+		expect(failure?.message).toBe('shared.useDesktopWorkspaces.errors.unusableConfig');
+		// The key-carrying error the translated one replaced stays reachable.
+		expect(failure?.cause).toMatchObject({
+			messageKey: 'shared.useDesktopWorkspaces.errors.unusableConfig',
+		});
 		expect(openExternal).not.toHaveBeenCalled();
 	});
 });

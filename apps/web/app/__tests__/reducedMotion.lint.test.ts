@@ -72,15 +72,15 @@ function findOffences(): Offence[] {
 	for (const root of ROOTS) {
 		for (const file of vueFilesUnder(root)) {
 			const lines = readFileSync(file, 'utf8').split('\n');
-			lines.forEach((text, index) => {
-				if (!LOOPING_ANIMATION.test(text)) return;
-				if (text.includes(OPT_OUT)) return;
+			for (const [index, text] of lines.entries()) {
+				if (!LOOPING_ANIMATION.test(text)) continue;
+				if (text.includes(OPT_OUT)) continue;
 				offences.push({
 					file: relative(repoRoot, file),
 					line: index + 1,
 					text: text.trim(),
 				});
-			});
+			}
 		}
 	}
 	return offences;

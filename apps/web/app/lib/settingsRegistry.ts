@@ -411,16 +411,16 @@ export function filterByKeywords<T extends KeywordSearchable>(items: T[], rawQue
 	if (!query) return [...items];
 
 	const scored: { item: T; rank: number; score: number; index: number }[] = [];
-	items.forEach((item, index) => {
+	for (const [index, item] of items.entries()) {
 		const onLabel = fuzzyMatch(item.label, query);
 		if (onLabel) {
 			scored.push({ item, rank: 0, score: onLabel.score, index });
-			return;
+			continue;
 		}
 		const onSubtitle = item.subtitle ? fuzzyMatch(item.subtitle, query) : null;
 		if (onSubtitle) {
 			scored.push({ item, rank: 1, score: onSubtitle.score, index });
-			return;
+			continue;
 		}
 		let best: number | null = null;
 		for (const word of item.keywords) {
@@ -428,7 +428,7 @@ export function filterByKeywords<T extends KeywordSearchable>(items: T[], rawQue
 			if (hit && (best === null || hit.score > best)) best = hit.score;
 		}
 		if (best !== null) scored.push({ item, rank: 2, score: best, index });
-	});
+	}
 
 	return scored
 		.sort((a, b) => a.rank - b.rank || b.score - a.score || a.index - b.index)

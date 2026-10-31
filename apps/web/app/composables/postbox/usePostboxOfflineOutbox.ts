@@ -206,7 +206,7 @@ export function usePostboxOfflineOutbox(mailboxId?: MaybeRefOrGetter<string | un
 				),
 				'error'
 			);
-			throw new Error('Send failed');
+			throw new Error('Send failed', { cause: err });
 		}
 		await refreshCounts(ns);
 		return {

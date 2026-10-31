@@ -125,7 +125,7 @@ export function derivePluginNavigation(
 		const contributes = manifest.contributes;
 		if (!contributes) continue;
 
-		contributes.navItems?.forEach((item, index) => {
+		for (const [index, item] of (contributes.navItems ?? []).entries()) {
 			navItems.push({
 				pluginId,
 				section: item.section,
@@ -134,9 +134,9 @@ export function derivePluginNavigation(
 				enabled,
 				value: { name: clampLabel(item.name), href: item.href, icon: item.icon },
 			});
-		});
+		}
 
-		contributes.settingsPanels?.forEach((panel, index) => {
+		for (const [index, panel] of (contributes.settingsPanels ?? []).entries()) {
 			settingsPanels.push({
 				pluginId,
 				id: panel.href,
@@ -144,7 +144,7 @@ export function derivePluginNavigation(
 				enabled,
 				value: { name: clampLabel(panel.name), href: panel.href, icon: panel.icon },
 			});
-		});
+		}
 	}
 
 	if (navItems.length === 0 && settingsPanels.length === 0) return EMPTY_CONTRIBUTIONS;

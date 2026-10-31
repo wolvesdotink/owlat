@@ -423,7 +423,7 @@ export function useOrganization() {
 		try {
 			steps = planOwnershipTransfer(members.value, sessionUser.value?.id, newOwnerMemberId);
 		} catch (error) {
-			if (error instanceof Error) throw new Error(t(error.message));
+			if (error instanceof Error) throw new Error(t(error.message), { cause: error });
 			throw error;
 		}
 
