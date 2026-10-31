@@ -597,6 +597,20 @@ describe('visualization', () => {
 		expect(visualization?.dataQuery).toBeUndefined();
 	});
 
+	it('drops the result of a visualization deleted while it was generating', async () => {
+		const { t } = await setup();
+		const id = await seedVisualization(t);
+		await t.run((c) => c.db.delete(id));
+
+		// The lost race is not an error: the action finishes without throwing.
+		await t.action(internal.visualizationAgentActions.generate, {
+			visualizationId: id,
+			prompt: 'Open rates by week',
+		});
+
+		expect(await t.run((c) => c.db.get(id))).toBeNull();
+	});
+
 	it('stores a budget refusal as its code and reason, with no English sentence on the page', async () => {
 		const { t } = await setup('0.0001');
 		const id = await seedVisualization(t);

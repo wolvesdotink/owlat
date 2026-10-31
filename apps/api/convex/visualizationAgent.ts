@@ -215,7 +215,9 @@ export const remove = adminMutation({
 });
 
 /**
- * Internal mutation to update a visualization after generation
+ * The one commit of `visualizationAgentActions.generate`: the generated page,
+ * or the failure page. A visualization deleted while it was generating stays
+ * deleted; the late result is dropped.
  */
 export const updateGenerated = internalMutation({
 	args: {
@@ -229,6 +231,7 @@ export const updateGenerated = internalMutation({
 		budgetRefusal: v.optional(budgetRefusalValidator),
 	},
 	handler: async (ctx, args) => {
+		if ((await ctx.db.get(args.id)) === null) return;
 		await ctx.db.patch(args.id, {
 			title: args.title,
 			html: args.html,
