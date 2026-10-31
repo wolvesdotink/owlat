@@ -171,6 +171,7 @@ import type * as _utils_batchLoader from '../_utils/batchLoader.js';
 import type * as _utils_errors from '../_utils/errors.js';
 import type * as accountDeletionEmail from '../accountDeletionEmail.js';
 import type * as agent_agentPipeline from '../agent/agentPipeline.js';
+import type * as agent_approvedReplyDecision from '../agent/approvedReplyDecision.js';
 import type * as agent_coalescing from '../agent/coalescing.js';
 import type * as agent_hostedStepRunner from '../agent/hostedStepRunner.js';
 import type * as agent_knowledgeBackfill from '../agent/knowledgeBackfill.js';
@@ -494,6 +495,7 @@ import type * as contacts_erasure_walker from '../contacts/erasure/walker.js';
 import type * as contacts_guards from '../contacts/guards.js';
 import type * as contacts_identities from '../contacts/identities.js';
 import type * as contacts_import from '../contacts/import.js';
+import type * as contacts_importDecision from '../contacts/importDecision.js';
 import type * as contacts_listing from '../contacts/listing.js';
 import type * as contacts_organization from '../contacts/organization.js';
 import type * as contacts_properties from '../contacts/properties.js';
@@ -1322,6 +1324,7 @@ import type * as mail_deliveryPipeline_deferredCapture from '../mail/deliveryPip
 import type * as mail_deliveryPipeline_ingest from '../mail/deliveryPipeline/ingest.js';
 import type * as mail_deliveryPipeline_ingestFields from '../mail/deliveryPipeline/ingestFields.js';
 import type * as mail_deliveryPipeline_insert from '../mail/deliveryPipeline/insert.js';
+import type * as mail_deliveryPipeline_mailboxDecision from '../mail/deliveryPipeline/mailboxDecision.js';
 import type * as mail_deliveryPipeline_routing from '../mail/deliveryPipeline/routing.js';
 import type * as mail_deliveryPipeline_scan from '../mail/deliveryPipeline/scan.js';
 import type * as mail_deliveryPipeline_threading from '../mail/deliveryPipeline/threading.js';
@@ -2086,6 +2089,7 @@ declare const fullApi: ApiFromModules<{
 	'_utils/errors': typeof _utils_errors;
 	accountDeletionEmail: typeof accountDeletionEmail;
 	'agent/agentPipeline': typeof agent_agentPipeline;
+	'agent/approvedReplyDecision': typeof agent_approvedReplyDecision;
 	'agent/coalescing': typeof agent_coalescing;
 	'agent/hostedStepRunner': typeof agent_hostedStepRunner;
 	'agent/knowledgeBackfill': typeof agent_knowledgeBackfill;
@@ -2409,6 +2413,7 @@ declare const fullApi: ApiFromModules<{
 	'contacts/guards': typeof contacts_guards;
 	'contacts/identities': typeof contacts_identities;
 	'contacts/import': typeof contacts_import;
+	'contacts/importDecision': typeof contacts_importDecision;
 	'contacts/listing': typeof contacts_listing;
 	'contacts/organization': typeof contacts_organization;
 	'contacts/properties': typeof contacts_properties;
@@ -3237,6 +3242,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/deliveryPipeline/ingest': typeof mail_deliveryPipeline_ingest;
 	'mail/deliveryPipeline/ingestFields': typeof mail_deliveryPipeline_ingestFields;
 	'mail/deliveryPipeline/insert': typeof mail_deliveryPipeline_insert;
+	'mail/deliveryPipeline/mailboxDecision': typeof mail_deliveryPipeline_mailboxDecision;
 	'mail/deliveryPipeline/routing': typeof mail_deliveryPipeline_routing;
 	'mail/deliveryPipeline/scan': typeof mail_deliveryPipeline_scan;
 	'mail/deliveryPipeline/threading': typeof mail_deliveryPipeline_threading;

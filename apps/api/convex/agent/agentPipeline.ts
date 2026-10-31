@@ -9,18 +9,11 @@ import { v } from 'convex/values';
 import { internalQuery, internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { isFeatureEnabled } from '../lib/featureFlags';
-import { isValidEmail } from '../lib/inputGuards';
 import { getOptional } from '../lib/env';
-import { buildReplySubject } from '../lib/emailAddress';
-import { formatFromAddress } from '../lib/emailProviders/domainVerification';
 import { redactEmailAddress } from '@owlat/shared/logRedaction';
 import { logError, logInfo } from '../lib/runtimeLog';
-import { isOutboundChannel } from '../lib/convexValidators';
-import { runReferenceMonitor } from './referenceMonitor';
-import { buildThreadingHeaders, extractRecipient } from './replyEnvelope';
-import { replyBodyToHtml } from '@owlat/shared/html';
-import type { NonCampaignIntakeRejectionReason } from '../delivery/nonCampaignIntake';
 import type { AgentReplyIntakeOutcome } from '../inbox/replyAttachments';
+import { planEmailReply, routeApprovedReply, settleIntakeOutcome } from './approvedReplyDecision';
 
 // ============================================================
 // Helper Queries
@@ -118,75 +111,23 @@ export const getAgentConfig = internalQuery({
 // retryFailedActions) have all moved to the lifecycle module.
 
 /**
- * How each typed refusal from the Non-campaign send intake (module) terminates
- * the inbound message.
- *
- * TOTAL BY CONSTRUCTION — the `Record<NonCampaignIntakeRejectionReason, …>`
- * makes a new rejection reason a compile error here. Without it the intake
- * throws, this action catches, and EVERY refusal — including a suppressed
- * recipient — flattens into `fail(err.message)`, i.e. into the same `failed`
- * transition as a real fault.
- *
- *   - `recipient_blocked` → `archived` with reason `sender_blocked`, the same
- *     edge `inbox/messages.ts` uses when blocklisted mail arrives, and the
- *     same `'transactional'` suppression scope. It is the identical verdict
- *     about the identical address, only observed at reply time instead of at
- *     receipt: the recipient is hard-blocked, so there is nothing to fix and
- *     nothing to retry. `archived` is TERMINAL, so the failed-action retry
- *     cron never re-drives it — which is the agent-side reading of how the
- *     automation step treats the same reason (completed, no send, no retry).
- *     `failed` would have mis-reported a policy decision as a fault AND left
- *     the message eligible for that cron to retry forever.
- *   - `no_delivery_provider` / `abuse_blocked` are about the DEPLOYMENT, not
- *     the recipient: the draft is still good and should send once an operator
- *     configures a provider or the suspension lifts. Those stay `failed`, so
- *     the message keeps surfacing as a fault and the retry cron can re-drive
- *     it — which is exactly the behaviour that would be wrong for a blocklist
- *     hit and is right here.
- */
-/**
- * An autonomous reply whose file answer is still being copied waits this long
- * between tries, at most this many times (two minutes, well inside the
- * stuck-approved reconcile's ten), then stops for a person.
- */
-const ATTACHMENT_WAIT_MS = 5_000;
-const MAX_ATTACHMENT_WAITS = 24;
-
-const REPLY_REFUSAL_BY_REASON: Record<
-	NonCampaignIntakeRejectionReason,
-	| { terminal: 'archived'; archiveReason: 'sender_blocked' }
-	| { terminal: 'failed'; message: (detail: string | undefined) => string }
-> = {
-	recipient_blocked: { terminal: 'archived', archiveReason: 'sender_blocked' },
-	// Contact-level marketing eligibility gates marketing-scope kinds only, so an
-	// agent reply never receives it; mapped like a block for totality.
-	recipient_ineligible: { terminal: 'archived', archiveReason: 'sender_blocked' },
-	no_delivery_provider: {
-		terminal: 'failed',
-		message: (detail) => detail ?? 'No delivery provider configured',
-	},
-	abuse_blocked: {
-		terminal: 'failed',
-		message: () => 'Sending is disabled while this instance is suspended.',
-	},
-};
-
-/**
  * Send an approved agent-drafted reply to the customer who sent the inbound
  * message by enqueuing a `kind: 'agent_reply'` Send. On a pre-flight failure
  * (no draft, unparseable recipient, missing sender identity) the inbound message
  * transitions to `failed` immediately. Otherwise the reply is ENQUEUED and the
  * inbound message's `sent` / `failed` transition is driven later by the Send
- * completion module once the worker outcome lands — so the reply now flows
- * through the same Send lifecycle as every other outbound (provider health, the
- * sendingReputation denominator, blocklist-on-hard-bounce), which the old
- * direct-dispatch path silently skipped.
+ * completion module once the worker outcome lands — so the reply flows through
+ * the same Send lifecycle as every other outbound (provider health, the
+ * sendingReputation denominator, blocklist-on-hard-bounce).
  *
  * Scope: the agent shared inbox is the EMAIL pipeline (`inbound.received` →
  * `inboundMessages`). Non-email customer channels (sms/whatsapp/generic) land
- * in `unifiedMessages` via a separate path and never reach this action; we
- * still guard the recipient with `isValidEmail` and fail gracefully so a
- * non-email recipient can never be faked as `sent`.
+ * in `unifiedMessages` via a separate path and never reach this action; the
+ * recipient is still validated so a non-email recipient can never be faked as
+ * `sent`.
+ *
+ * The decisions live in `./approvedReplyDecision.ts`; this action loads, asks
+ * them, and writes.
  */
 export const sendApprovedReply = internalAction({
 	args: {
@@ -199,6 +140,8 @@ export const sendApprovedReply = internalAction({
 		attachmentWaits: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
+		const autonomous = args.autonomous === true;
+		const attachmentWaits = args.attachmentWaits ?? 0;
 		const fail = async (errorMessage: string): Promise<void> => {
 			logError(`[Agent Pipeline] sendApprovedReply failed: ${errorMessage}`);
 			await ctx.runMutation(internal.inbox.processingLifecycle.transition, {
@@ -216,7 +159,7 @@ export const sendApprovedReply = internalAction({
 		// an already-dispatched send. Autonomous sends never record it; their
 		// feedback comes from real-world outcome signals (agent/outcomeFeedback).
 		const recordHumanApprovalFeedback = async (): Promise<void> => {
-			if (args.autonomous) return;
+			if (autonomous) return;
 			try {
 				await ctx.runMutation(internal.inbox.decisionFeedback.recordApprovalSignalsAtSend, {
 					inboundMessageId: args.inboundMessageId,
@@ -233,198 +176,95 @@ export const sendApprovedReply = internalAction({
 		const message = await ctx.runQuery(internal.agent.agentPipeline.getMessage, {
 			inboundMessageId: args.inboundMessageId,
 		});
-
 		if (!message) {
 			logError('[Agent Pipeline] sendApprovedReply: message not found', args.inboundMessageId);
 			return;
 		}
-		// A send waiting on a file copy ends once someone pulled the message back.
-		if ((args.attachmentWaits ?? 0) > 0 && message.processingStatus !== 'approved') return;
-		if (!message.draftResponse) {
-			await fail('No draft to send');
-			return;
-		}
+		const route = routeApprovedReply(message, attachmentWaits);
+		if (route.kind === 'stop') return;
+		if (route.kind === 'fail') return await fail(route.errorMessage);
 
-		// Non-email channels (sms/whatsapp/generic) dispatch through the channel
-		// adapter instead of the MTA email pipeline. dispatchOutbound is fail-safe
-		// and — because channels have no sendCompletion module — drives THIS message
-		// to sent/failed off the real send outcome (we pass inboundMessageId). It is
-		// a `'use node'` action, so schedule it (keeps the fail-safe boundary).
-		if (isOutboundChannel(message.to)) {
-			if (!message.threadId || !message.contactId) {
-				await fail(`Channel reply (${message.to}) is missing its thread or contact`);
-				return;
-			}
+		// The channel adapter is fail-safe and, with no sendCompletion module for
+		// channels, drives THIS message to sent/failed off the real send outcome.
+		// It is a `'use node'` action, so it is scheduled (keeps the fail-safe
+		// boundary).
+		if (route.kind === 'channel') {
 			await ctx.scheduler.runAfter(0, internal.channels.outbound.dispatchOutbound, {
-				channel: message.to,
-				contactId: message.contactId,
-				threadId: message.threadId,
-				content: {
-					text: message.draftResponse,
-					...(message.draftSubject ? { subject: message.draftSubject } : {}),
-				},
+				...route.dispatch,
 				inboundMessageId: args.inboundMessageId,
 			});
 			logInfo(
-				`[Agent Pipeline] Dispatched approved ${message.to} reply (inbound=${args.inboundMessageId})`
+				`[Agent Pipeline] Dispatched approved ${route.dispatch.channel} reply (inbound=${args.inboundMessageId})`
 			);
 			await recordHumanApprovalFeedback();
 			return;
 		}
 
-		// Resolve the recipient. The inbound `from` is "Name <email>"; the reply
-		// goes back to that address. A recipient that doesn't parse as a valid
-		// email (e.g. a non-email channel that somehow reached here) fails rather
-		// than being faked as sent.
-		const recipient = extractRecipient(message.from);
-		if (!recipient || !isValidEmail(recipient)) {
-			await fail(`Unsupported or invalid reply recipient: "${message.from}"`);
-			return;
-		}
-
-		// Resolve the org sending identity. Mirrors the automation email step:
-		// instanceSettings.defaultFrom* → env defaults.
+		// The org sending identity mirrors the automation email step.
 		const settings = await ctx.runQuery(
 			internal.automations.stepExecutorQueries.getInstanceSettings,
 			{}
 		);
-		const fromEmail = settings?.defaultFromEmail ?? getOptional('DEFAULT_FROM_EMAIL');
-		if (!fromEmail) {
-			await fail(
-				'No sending identity configured — set a default sender email in organization settings.'
-			);
-			return;
-		}
-		const fromName = settings?.defaultFromName ?? getOptional('DEFAULT_FROM_NAME');
-		const from = formatFromAddress(fromEmail, fromName);
+		const plan = planEmailReply(
+			message,
+			route,
+			{
+				fromEmail: settings?.defaultFromEmail ?? getOptional('DEFAULT_FROM_EMAIL'),
+				fromName: settings?.defaultFromName ?? getOptional('DEFAULT_FROM_NAME'),
+			},
+			autonomous
+		);
+		if (plan.kind === 'fail') return await fail(plan.errorMessage);
 
-		// Reply subject: prefer the agent's draftSubject (already "Re: ..."),
-		// otherwise derive one from the inbound subject.
-		const subject =
-			message.draftSubject ??
-			(message.subject ? buildReplySubject(message.subject) : 'Re: your message');
-
-		// RFC 5322 threading headers so the reply lands under the customer's
-		// message in their client. Carried through the transactional envelope's
-		// custom headers (the transactional composer emits none of its own).
-		const headers = buildThreadingHeaders({
-			messageId: message.messageId,
-			references: message.references,
-		});
-
-		let html = replyBodyToHtml(message.draftResponse);
-
-		// Deterministic pre-send reference monitor — AUTONOMOUS path only. This is
-		// the non-LLM data-isolation backstop that runs immediately before an
-		// unattended send: it re-derives the authenticated recipient server-side and
-		// asserts the resolved target matches it (no model-supplied / redirected /
-		// forwarded recipient), runs a local DLP pass over the draft (credential /
-		// OTP / recovery-link fingerprints), and strips remote images / tracking
-		// pixels + off-allowlist link hosts from the outbound HTML. A recipient-lock
-		// or DLP violation FAILS CLOSED — the unattended send is withheld (the draft
-		// is preserved on the message; nothing is sent). The routine withhold path
-		// is the `route` step's gate (→ human review); this backstop only trips on an
-		// anomaly that slipped past it, and it never auto-sends on uncertainty.
-		// Human-reviewed sends bypass the monitor entirely.
-		if (args.autonomous) {
-			const monitor = runReferenceMonitor({
-				inboundFrom: message.from,
-				resolvedRecipient: recipient,
-				draftText: message.draftResponse,
-				draftHtml: html,
-				allowedLinkHosts: [fromEmail.slice(fromEmail.indexOf('@') + 1)],
-			});
-			if (!monitor.ok) {
-				await fail(monitor.reason);
-				return;
-			}
-			html = monitor.html;
-		}
-
-		// Hand the reply to the Non-campaign send intake (module): it runs the
-		// shared gate sequence (abuse → provider-ready → suppression), resolves
-		// the provider route in its own transaction, and — when nothing refuses —
-		// inserts the `agent_reply` Send row and enqueues it. The inbound message
-		// stays in `approved` until the Send completion module drives it to
-		// `sent` / `failed` (see delivery/sendCompletion.ts) — no more optimistic
-		// transition at dispatch time.
-		//
-		// NO route resolution here any more. This action used to resolve one and
-		// pass `providerType`/`ipPool` down — a second resolution of the same
-		// message for a value the worker only uses as a fallback. Nothing above
-		// the intake reads a route, so it moved into the intake transaction.
+		// The Non-campaign send intake runs the shared gate sequence (abuse →
+		// provider-ready → suppression), resolves the provider route in its own
+		// transaction and, when nothing refuses, inserts the `agent_reply` Send
+		// and enqueues it. Through the Team inbox reply attachments: the files a
+		// person attached in the thread composer go out with the reply (never the
+		// agent's unconfirmed `attachmentSuggestions`); an autonomous send only
+		// takes files attached after the message arrived.
 		let outcome: AgentReplyIntakeOutcome;
 		try {
-			// Through the Team inbox reply attachments: the files a person attached
-			// in the thread composer go out with the reply (never the agent's
-			// unconfirmed `attachmentSuggestions`), in the intake's transaction. An
-			// autonomous send only takes files attached after the message arrived.
+			// checkpoint: the intake is the send itself; once it enqueued, the Send completion owns this message, and a refusal it returned is filed below or re-fired by the stuck-approved reconcile
 			outcome = await ctx.runMutation(internal.inbox.replyAttachments.intakeAgentReply, {
-				autonomous: args.autonomous === true,
-				email: recipient,
-				...(message.contactId ? { contactId: message.contactId } : {}),
+				...plan.envelope,
+				autonomous,
 				inboundMessageId: args.inboundMessageId,
-				subject,
-				html,
-				draftText: message.draftResponse,
-				from,
-				...(Object.keys(headers).length > 0 ? { headers } : {}),
 			});
 		} catch (err) {
 			// Every REFUSAL is a typed `{ ok: false }` return, so a throw here is an
-			// infrastructure fault, never a policy decision. Nothing is classified
-			// by matching the message any more.
-			await fail(err instanceof Error ? err.message : String(err));
-			return;
+			// infrastructure fault, never a policy decision.
+			return await fail(err instanceof Error ? err.message : String(err));
 		}
 
-		if (!outcome.ok) {
-			if (outcome.reason === 'attachment_copying') {
-				// A file for this reply is still being copied onto it. The wait is
-				// a queued send like the undo window: the marker moves to the new
-				// job, so Undo, a landing reply or the kill switch can still stop it.
-				const waits = args.attachmentWaits ?? 0;
-				if (waits < MAX_ATTACHMENT_WAITS) {
-					await ctx.runMutation(internal.inbox.processingLifecycle.holdSend, {
-						inboundMessageId: args.inboundMessageId,
-						autonomous: args.autonomous === true,
-						attachmentWaits: waits + 1,
-						delayMs: ATTACHMENT_WAIT_MS,
-					});
-					return;
-				}
-				await fail('A file for this reply is still being attached. Review and send it by hand.');
+		const settled = settleIntakeOutcome(outcome, attachmentWaits);
+		switch (settled.kind) {
+			case 'hold':
+				await ctx.runMutation(internal.inbox.processingLifecycle.holdSend, {
+					inboundMessageId: args.inboundMessageId,
+					autonomous,
+					attachmentWaits: settled.attachmentWaits,
+					delayMs: settled.delayMs,
+				});
 				return;
-			}
-			if (outcome.reason === 'item_coverage' || outcome.reason === 'interpretation_incomplete') {
-				await fail(outcome.detail);
+			case 'fail':
+				return await fail(settled.errorMessage);
+			case 'archive':
+				logInfo(
+					`[Agent Pipeline] approved reply withheld (${settled.refusal}); archiving inbound message`,
+					args.inboundMessageId
+				);
+				await ctx.runMutation(internal.inbox.processingLifecycle.transition, {
+					inboundMessageId: args.inboundMessageId,
+					input: { to: 'archived', at: Date.now(), reason: settled.reason },
+				});
 				return;
-			}
-			if (outcome.reason === 'attachment_failed') {
-				await fail('A file for this reply could not be attached. Review and send it by hand.');
-				return;
-			}
-			const refusal = REPLY_REFUSAL_BY_REASON[outcome.reason];
-			if (refusal.terminal === 'failed') {
-				await fail(refusal.message(outcome.detail));
-				return;
-			}
-			logInfo(
-				`[Agent Pipeline] approved reply withheld (${outcome.reason}); archiving inbound message`,
-				args.inboundMessageId
-			);
-			await ctx.runMutation(internal.inbox.processingLifecycle.transition, {
-				inboundMessageId: args.inboundMessageId,
-				input: { to: 'archived', at: Date.now(), reason: refusal.archiveReason },
-			});
-			return;
+			case 'enqueued':
+				logInfo(
+					`[Agent Pipeline] Enqueued approved reply to ${redactEmailAddress(route.recipient)} (sendId=${settled.sendId})`
+				);
+				await recordHumanApprovalFeedback();
 		}
-
-		logInfo(
-			`[Agent Pipeline] Enqueued approved reply to ${redactEmailAddress(recipient)} (sendId=${outcome.sendId})`
-		);
-
-		await recordHumanApprovalFeedback();
 	},
 });
 
