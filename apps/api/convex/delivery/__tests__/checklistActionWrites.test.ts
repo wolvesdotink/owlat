@@ -38,6 +38,11 @@ type Stubs = Record<string, (args: Record<string, unknown>) => unknown>;
  * named in `stubs` answer from the stub; other queries are real.
  */
 function bridgeCtx(t: TestConvex<typeof schema>, stubs: Stubs) {
+	// The refs arrive untyped from the action under test.
+	const db = t as unknown as {
+		query: (ref: AnyRef, args: Record<string, unknown>) => Promise<unknown>;
+		mutation: (ref: AnyRef, args: Record<string, unknown>) => Promise<unknown>;
+	};
 	const stubbed = (ref: AnyRef, args: Record<string, unknown>) => {
 		const stub = stubs[getFunctionName(ref)];
 		return stub ? { hit: true as const, value: stub(args) } : { hit: false as const };
@@ -45,10 +50,9 @@ function bridgeCtx(t: TestConvex<typeof schema>, stubs: Stubs) {
 	return {
 		runQuery: async (ref: AnyRef, args: Record<string, unknown>) => {
 			const answer = stubbed(ref, args);
-			return answer.hit ? await answer.value : await t.query(ref as never, args as never);
+			return answer.hit ? await answer.value : await db.query(ref, args);
 		},
-		runMutation: (ref: AnyRef, args: Record<string, unknown>) =>
-			t.mutation(ref as never, args as never),
+		runMutation: (ref: AnyRef, args: Record<string, unknown>) => db.mutation(ref, args),
 		runAction: async (ref: AnyRef, args: Record<string, unknown>) => {
 			const answer = stubbed(ref, args);
 			if (!answer.hit) throw new Error(`unexpected action ${getFunctionName(ref)}`);
