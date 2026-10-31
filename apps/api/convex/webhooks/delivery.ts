@@ -79,6 +79,9 @@ export const deliverWebhookInternal = internalAction({
 		const { webhookId, logId, attemptNumber, attemptSeq } = args;
 		const attemptRef = { logId, attemptNumber, attemptSeq };
 
+		// checkpoint: the attempt is claimed before the POST, which cannot be taken
+		// back, so a second invocation of the same attempt sends nothing; the
+		// claim's lease lets the reconciler re-issue an attempt whose run died.
 		const claim = await ctx.runMutation(
 			internal.webhooks.deliveryQueries.claimDeliveryAttempt,
 			attemptRef
