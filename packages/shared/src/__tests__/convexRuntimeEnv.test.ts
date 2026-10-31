@@ -5,7 +5,11 @@ import {
 	deriveConvexAdminUrl,
 	pushConvexRuntimeEnv,
 } from '../convexRuntimeEnv';
-import { ENV_BACKUP_SEALED_PREFIX, createEnvBackupBox } from '../envBackupBox';
+import { createEnvBackupBox } from '../envBackupBox';
+
+// The sealed-token prefix is the on-disk format of `.env` files already
+// written, so the tests pin its literal value.
+const ENV_BACKUP_SEALED_PREFIX = 'envsealed:v1:';
 
 describe('selectRuntimeEnvVars', () => {
 	it('picks only populated runtime keys, skipping empty/undefined and compose-only vars', () => {

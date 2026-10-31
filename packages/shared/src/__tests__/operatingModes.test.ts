@@ -1,11 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { needsDeliveryProvider, resolveFlags } from '../featureFlags';
-import {
-	OPERATING_MODES,
-	OPERATING_MODE_KEYS,
-	operatingModeFlags,
-	operatingModeNeedsTransport,
-} from '../operatingModes';
+import { OPERATING_MODES, OPERATING_MODE_KEYS, operatingModeFlags } from '../operatingModes';
 
 describe('operatingModes — registry shape', () => {
 	it('keys match the record', () => {
@@ -55,7 +50,7 @@ describe('operatingModes — representative postures', () => {
 		expect(flags.campaigns).toBe(false);
 		expect(flags.transactional).toBe(false);
 		expect(needsDeliveryProvider(flags)).toBe(false);
-		expect(operatingModeNeedsTransport('imap_only')).toBe(false);
+		expect(OPERATING_MODES.imap_only.needsMta).toBe(false);
 	});
 
 	it('marketing turns on campaigns + automations + transactional and needs a provider', () => {
@@ -69,7 +64,6 @@ describe('operatingModes — representative postures', () => {
 	it('hosted_mail needs the MTA as a transport even without bulk sending', () => {
 		expect(OPERATING_MODES.hosted_mail.needsDeliveryProvider).toBe(false);
 		expect(OPERATING_MODES.hosted_mail.needsMta).toBe(true);
-		expect(operatingModeNeedsTransport('hosted_mail')).toBe(true);
 	});
 
 	it('team_inbox_ai enables the agent and an LLM-backed posture', () => {
@@ -77,13 +71,12 @@ describe('operatingModes — representative postures', () => {
 		expect(flags.inbox).toBe(true);
 		expect(flags.ai).toBe(true);
 		expect(flags['ai.agent']).toBe(true);
-		expect(operatingModeNeedsTransport('team_inbox_ai')).toBe(true);
 	});
 
 	it('crm_only sends nothing', () => {
 		const flags = operatingModeFlags('crm_only');
 		expect(needsDeliveryProvider(flags)).toBe(false);
-		expect(operatingModeNeedsTransport('crm_only')).toBe(false);
+		expect(OPERATING_MODES.crm_only.needsMta).toBe(false);
 	});
 
 	it('full stack enables marketing + receiving + ai', () => {

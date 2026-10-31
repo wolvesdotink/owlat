@@ -40,11 +40,8 @@ export interface OperationError {
 	data?: Record<string, unknown>;
 }
 
-/**
- * Every category, as a runtime array. The lint guard and the runtime type
- * guards below derive from this so the union has exactly one source.
- */
-export const OPERATION_ERROR_CATEGORIES = [
+/** Every category, as a runtime array, for the runtime type guard below. */
+const OPERATION_ERROR_CATEGORIES = [
 	'unauthenticated',
 	'forbidden',
 	'not_found',

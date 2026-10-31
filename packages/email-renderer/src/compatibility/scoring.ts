@@ -2,7 +2,7 @@
  * Compatibility scoring — runs against the per-block data the walker collects
  * from registered Block modules. Moved from `@owlat/shared` so it can read
  * directly from the renderer's module registry; the shared package keeps the
- * extension registry but no longer owns per-block data.
+ * client metadata but no longer owns per-block data.
  */
 
 import type {
@@ -15,10 +15,7 @@ import type {
 import { emailClientRegistry, emailClients, fullSupport, lookupClientSupport } from '@owlat/shared';
 import { featuresFor, propertiesFor } from './walker';
 
-/**
- * Effective Feature compatibility for a block type. Baseline from the Block
- * module plus any plugin-registered extras.
- */
+/** Feature compatibility for a block type, as its Block module declares it. */
 export const getBlockCompatibility = (blockType: BlockType): readonly FeatureCompatibility[] =>
 	featuresFor(blockType);
 

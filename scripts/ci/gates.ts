@@ -169,7 +169,6 @@ export const ROOT_GATES: readonly RootGate[] = [
 			'knip.jsonc',
 			'scripts/check-dead-code.sh',
 			'scripts/check-shared-production-exports.sh',
-			'scripts/shared-production-export-baseline.txt',
 			RATCHET,
 		],
 	},

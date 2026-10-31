@@ -91,7 +91,7 @@ function normalizeHost(host: string): string {
  * https URL. Pure rewrite: host, path, hash, and all other params are kept.
  * Fails soft: a URL that does not parse is returned unchanged.
  */
-export function stripTrackingParams(url: string): string {
+function stripTrackingParams(url: string): string {
 	if (!/^https:\/\//i.test(url)) return url;
 	try {
 		const parsed = new URL(url);
@@ -117,7 +117,7 @@ export function stripTrackingParams(url: string): string {
  * does not look like a URL/domain. Accepts `https://x.com/...`, `www.x.com`,
  * and bare `x.com/path` shapes.
  */
-export function textClaimedHost(visibleText: string): string | null {
+function textClaimedHost(visibleText: string): string | null {
 	const text = visibleText.trim();
 	if (!text || text.length > 2048) return null;
 	// Full URL text: parse it properly.
