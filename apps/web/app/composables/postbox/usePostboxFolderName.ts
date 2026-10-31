@@ -45,7 +45,7 @@ export function usePostboxFolderName(args: {
 			const custom = args.customFolders.value.find((f) => f._id === args.folderId.value)?.name;
 			return custom ?? t('components.postbox.postboxLayout.folderFallback');
 		}
-		return NAMED_FOLDER_ROLES.includes(args.folderRole.value)
+		return NAMED_FOLDER_ROLES.has(args.folderRole.value)
 			? t(`components.postbox.postboxLayout.folderRoles.${args.folderRole.value}`)
 			: args.folderRole.value;
 	});
