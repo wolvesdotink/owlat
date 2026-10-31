@@ -6,7 +6,7 @@
  * Fake timers keep convex-test from firing the scheduled runs itself.
  */
 
-import { convexTest } from 'convex-test';
+import { convexTest, type TestConvex } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BUDGET_HOLD_ERROR_MESSAGE } from '@owlat/shared/aiRouting';
 import schema from '../schema';
@@ -36,7 +36,7 @@ vi.mock('../lib/contactCountHelpers', async () => ({
 
 const modules = import.meta.glob('../**/*.*s');
 
-type Harness = ReturnType<typeof convexTest>;
+type Harness = TestConvex<typeof schema>;
 
 const CLEAN_FLAGS = {
 	injectionDetected: false,
