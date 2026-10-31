@@ -8,9 +8,17 @@
 import { v } from 'convex/values';
 import { internal } from '../_generated/api';
 import { internalMutation } from '../lib/writeFence';
+import type { Id } from '../_generated/dataModel';
+import { throwInvalidState } from '../_utils/errors';
 import { ensureConfiguredSpace } from '../lib/aiRouting/embeddingActivation';
+import { assertExpectedTarget, readConfiguredTarget } from '../lib/aiRouting/embeddingRegistry';
+import { embeddingTargetKey } from '../lib/embeddingSpace';
 import { measuredEmbeddingSpaceValidator } from '../lib/validators/embedding';
-import { REEMBED_PAGE_ATTEMPTS, startLocalReembedJob } from './embeddingReembedJobs';
+import {
+	REEMBED_PAGE_ATTEMPTS,
+	startAdminReembedJob,
+	startLocalReembedJob,
+} from './embeddingReembedJobs';
 import { commitReembedPage, pauseRunningJob, reembedPageArgs } from './embeddingReembedPage';
 
 /** Wait before retrying a page whose rows did not all land, per attempt. */
@@ -31,6 +39,34 @@ export const activateLocalSpace = internalMutation({
 		const active = await ensureConfiguredSpace(ctx, args.space);
 		if (!active) return 'inactive';
 		return startLocalReembedJob(ctx, { spaceId: active._id, isForced: args.isForced });
+	},
+});
+
+/**
+ * The admin start's commit. With `space` (the bootstrap: no space was
+ * searchable, and the action measured the configured one), it first activates
+ * that space, only while the configuration still names the confirmed target;
+ * then it starts the job. One transaction: a refused start activates nothing.
+ */
+export const startReembedCommit = internalMutation({
+	args: {
+		expectedSpaceId: v.optional(v.id('embeddingSpaces')),
+		expectedTargetKey: v.optional(v.string()),
+		space: v.optional(measuredEmbeddingSpaceValidator),
+	},
+	handler: async (ctx, { space, ...expected }): Promise<Id<'embeddingReembedJobs'>> => {
+		if (space) {
+			if (expected.expectedTargetKey !== undefined) {
+				const target = await readConfiguredTarget(ctx.db);
+				assertExpectedTarget(
+					target ? embeddingTargetKey(target) : null,
+					expected.expectedTargetKey
+				);
+			}
+			const active = await ensureConfiguredSpace(ctx, space);
+			if (!active) throwInvalidState('The embedding configuration changed. Try again.');
+		}
+		return startAdminReembedJob(ctx, expected);
 	},
 });
 

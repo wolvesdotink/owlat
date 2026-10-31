@@ -100,7 +100,7 @@ export const kickoff = internalAction({
  * Payment is decided by the embedder about to be called, never by an earlier
  * configuration read; the job itself derives it from its target space.
  */
-// authz: admin-only; assertAdmin runs first, startReembedJob checks again
+// authz: admin-only; assertAdmin runs first, startReembedCommit checks again
 export const startReembed = authedAction({
 	/**
 	 * `expectedSpaceId`: the searchable space the caller confirmed re-embedding
@@ -133,6 +133,7 @@ export const startReembed = authedAction({
 		if (!target.isLocal && !isPaidEmbeddingAdmissionAvailable()) {
 			throwInvalidState(PAID_EMBEDDING_REFUSAL);
 		}
+		let space: MeasuredSpace | undefined;
 		if (!isActiveConfigured) {
 			const embedder = buildIndexEmbedder(await snapshot.plane(), target);
 			const rootRequestId = `embedding:bootstrap:${crypto.randomUUID()}`;
@@ -156,17 +157,14 @@ export const startReembed = authedAction({
 					)
 			);
 			if (!probe.isAdmitted) throwInvalidState(probe.reason);
-			// Activated only while the configuration still names the confirmed
-			// target (refused in the transaction when it was confirmed).
-			const active = await ctx.runMutation(internal.aiRouting.embeddingSpaces.ensureConfigured, {
-				space: probe.value.space,
-				expectedTargetKey: args.expectedTargetKey,
-			});
-			if (!active) throwInvalidState('The embedding configuration changed. Try again.');
+			space = probe.value.space;
 		}
-		return await ctx.runMutation(internal.aiRouting.embeddingReembedJobs.startReembedJob, {
+		// The commit activates the measured space (while the configuration still
+		// names the confirmed target) and starts the job, or refuses both.
+		return await ctx.runMutation(internal.aiRouting.embeddingReembedCommit.startReembedCommit, {
 			expectedSpaceId: args.expectedSpaceId,
 			expectedTargetKey: args.expectedTargetKey,
+			...(space ? { space } : {}),
 		});
 	},
 });

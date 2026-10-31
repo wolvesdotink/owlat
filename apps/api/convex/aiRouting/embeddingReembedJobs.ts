@@ -253,49 +253,62 @@ export async function startLocalReembedJob(
 // ── Admin controls ─────────────────────────────────────────────────────────
 
 /**
- * Start an admin re-embed into the searchable space, after
- * `embeddingReembed.startReembed` checked the caller, admission and (when no
- * space was searchable yet) measured and activated the configured one.
+ * Start an admin re-embed into the searchable space: the previous release's
+ * `embeddingReembed.startReembed` called it after activating the space in a
+ * call of its own; `embeddingReembedCommit.startReembedCommit` now does both
+ * in one. A start the new commit already made is an open job, refused here.
+ * Remove after release N+1.
  */
 export const startReembedJob = internalMutation({
 	args: {
 		expectedSpaceId: v.optional(v.id('embeddingSpaces')),
 		expectedTargetKey: v.optional(v.string()),
 	},
-	handler: async (ctx, args): Promise<Id<'embeddingReembedJobs'>> => {
-		const session = await requireOrgPermission(ctx, 'organization:manage');
-		const active = await readSearchableSpace(ctx.db);
-		assertExpectedSpace(active, args.expectedSpaceId);
-		const target = await readConfiguredTarget(ctx.db);
-		assertExpectedTarget(target ? embeddingTargetKey(target) : null, args.expectedTargetKey);
-		if (!active) {
-			throwInvalidState('The configured embedding model has no active space yet.');
-		}
-		if (await readOpenJob(ctx)) {
-			throwConflict('A re-embed or rebuild is already running. Wait for it, or cancel it first.');
-		}
-		// Paid or not is the target's own endpoint, read in this transaction.
-		const isPaid = !isSpaceLocal(active);
-		if (isPaid && !isPaidEmbeddingAdmissionAvailable()) {
-			throwInvalidState(PAID_EMBEDDING_REFUSAL);
-		}
-		const jobId = await startJob(ctx, {
-			kind: 'reembed',
-			targetSpaceId: active._id,
-			isPaid,
-			startedBy: session.userId,
-		});
-		await recordAuditLog(ctx, {
-			userId: session.userId,
-			organizationId: session.activeOrganizationId,
-			action: 'embedding_reembed.started',
-			resource: 'embedding_space',
-			resourceId: active._id,
-			details: { jobId, kind: 'reembed', isPaid },
-		});
-		return jobId;
-	},
+	handler: async (ctx, args) => startAdminReembedJob(ctx, args),
 });
+
+/**
+ * Start an admin re-embed into the searchable space, inside the caller's
+ * transaction, after the caller's action checked the caller and admission.
+ * Throws on a space or target other than the one confirmed, an open job, or a
+ * paid job without spend admission.
+ */
+export async function startAdminReembedJob(
+	ctx: MutationCtx,
+	args: { expectedSpaceId?: Id<'embeddingSpaces'>; expectedTargetKey?: string }
+): Promise<Id<'embeddingReembedJobs'>> {
+	const session = await requireOrgPermission(ctx, 'organization:manage');
+	const active = await readSearchableSpace(ctx.db);
+	assertExpectedSpace(active, args.expectedSpaceId);
+	const target = await readConfiguredTarget(ctx.db);
+	assertExpectedTarget(target ? embeddingTargetKey(target) : null, args.expectedTargetKey);
+	if (!active) {
+		throwInvalidState('The configured embedding model has no active space yet.');
+	}
+	if (await readOpenJob(ctx)) {
+		throwConflict('A re-embed or rebuild is already running. Wait for it, or cancel it first.');
+	}
+	// Paid or not is the target's own endpoint, read in this transaction.
+	const isPaid = !isSpaceLocal(active);
+	if (isPaid && !isPaidEmbeddingAdmissionAvailable()) {
+		throwInvalidState(PAID_EMBEDDING_REFUSAL);
+	}
+	const jobId = await startJob(ctx, {
+		kind: 'reembed',
+		targetSpaceId: active._id,
+		isPaid,
+		startedBy: session.userId,
+	});
+	await recordAuditLog(ctx, {
+		userId: session.userId,
+		organizationId: session.activeOrganizationId,
+		action: 'embedding_reembed.started',
+		resource: 'embedding_space',
+		resourceId: active._id,
+		details: { jobId, kind: 'reembed', isPaid },
+	});
+	return jobId;
+}
 
 /** The refusal of paid embedding work while spend admission is absent. */
 export const PAID_EMBEDDING_REFUSAL =

@@ -36,6 +36,8 @@ export const PREVIOUS_RELEASE_ENTRIES: Readonly<Record<string, string>> = {
 	// The re-embed actions now commit through aiRouting/embeddingReembedCommit.ts.
 	'aiRouting/embeddingReembedJobs.ts#startLocalReembed': 'old re-embed kickoffs mid-run',
 	'aiRouting/embeddingReembedJobs.ts#reembedCommit': 'old re-embed batches mid-run',
+	'aiRouting/embeddingReembedJobs.ts#startReembedJob': 'old admin re-embed starts mid-run',
+	'aiRouting/embeddingSpaces.ts#ensureConfigured': 'old re-embed kickoffs and admin starts mid-run',
 	// System & updates now reads maintenance/workerRegistry.ts `getForAdmin`.
 	'mail/imap/serverRegistry.ts#getForAdmin':
 		'the previous IMAP servers card on System & updates, in tabs opened before the deploy',
