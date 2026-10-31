@@ -10,7 +10,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { normalizeBlockTreeIds } from '@owlat/shared/blockTree';
 import schema from '../schema';
 import { api } from '../_generated/api';
-import { parseContentBlocks } from '../emailBlocks/module';
+import { parseContentBlocks } from '../emailBlocks/consumers';
 import { createTestEmailTemplate, createTestTransactionalEmail } from './factories';
 
 vi.mock('../lib/sessionOrganization', async () => {

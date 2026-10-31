@@ -4,11 +4,8 @@
  * One TypeScript interface, one concrete implementation per registered kind
  * (`SendingDomainIdentityRegistry` below). The **Sending domain lifecycle
  * (module)** dispatches per-provider work through `providerFor(kind)` in
- * `./index.ts`; provider variation lives entirely behind this seam — with the
- * RETURN-PATH branches the lifecycle still carries of its own as the stated
- * exception (`./index.ts`'s header says what they cost a new kind). The identity
- * ones are cleared: both relay-identity provisioning paths now walk the registry
- * through {@link SendingDomainProviderModule.ensureRelayIdentity}.
+ * `./index.ts`; provider variation lives entirely behind this seam, the
+ * custom return path included (`./returnPathTypes.ts`).
  *
  * THE PRIMARY CONTRACT ONLY. The smaller "can this RELAY kind prove a domain?"
  * surface a bundled plugin transport also answers is `./relayIdentityTypes.ts`;
@@ -35,6 +32,7 @@ import type { Doc, Id } from '../../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../../_generated/server';
 import type { DnsRecords } from '../domains';
 import type { EnsureRelayIdentityOptions } from './relayIdentityTypes';
+import type { SendingDomainReturnPath } from './returnPathTypes';
 import type { RelayDomainIdentityFacts } from './relayIdentityView';
 
 // ─── Per-provider identity shapes ──────────────────────────────────────────
@@ -157,6 +155,13 @@ export type ProviderVerificationStatusFields = {
 
 export interface SendingDomainProviderModule<K extends SendingDomainProviderKind> {
 	readonly kind: K;
+
+	/**
+	 * Custom return-path support. Absent means the provider manages its own
+	 * bounce path: a custom host is refused (`unsupported_provider`) and the
+	 * checklist finds no active return path of ours.
+	 */
+	readonly returnPath?: SendingDomainReturnPath;
 
 	// ── Provider API calls (run inside 'use node' actions) ────────────────
 

@@ -22,15 +22,14 @@ vi.mock('../../auth/credentials.js', () => ({ lookupCredential: lookupCredential
 vi.mock('../../auth/postboxAuth.js', () => ({ verifyPostboxAppPassword: verifyAppPasswordMock }));
 
 import {
-	buildAuthenticate,
-	buildOnData,
 	buildOnMailFrom,
 	createSubmissionServer,
 	createImplicitTlsSubmissionServer,
 	SUBMISSION_COMMAND_TIMEOUT_MS,
-	type SubmissionSessionState,
-	type AuthenticatedSession,
 } from '../submissionServer.js';
+import { buildAuthenticate } from '../submissionAuth.js';
+import { buildOnData } from '../submissionData.js';
+import type { SubmissionSessionState, AuthenticatedSession } from '../submissionSession.js';
 import type { MtaConfig } from '../../config.js';
 import type { EmailJob } from '../../types.js';
 import type { Queue } from 'groupmq';

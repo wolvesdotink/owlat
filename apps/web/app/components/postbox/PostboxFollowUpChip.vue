@@ -98,7 +98,6 @@ const dueLabel = computed(() => {
 			v-else-if="latestOutboundId"
 			type="button"
 			class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border border-border-subtle text-xs text-text-tertiary hover:text-text-primary hover:bg-bg-elevated"
-			:title="t('components.postbox.postboxFollowUpChip.remindMe')"
 			:disabled="busy"
 			@click="dialogOpen = true"
 		>

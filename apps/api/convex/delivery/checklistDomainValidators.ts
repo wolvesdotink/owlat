@@ -7,9 +7,7 @@ import type { ActionCtx } from '../_generated/server';
 import { api } from '../_generated/api';
 import { runDnsLookups } from '../domains/dnsVerification';
 import { fetchMtaStsPolicyBody, resolveMtaStsTxt } from '../domains/mtaStsVerify';
-import { resolveSesMailFrom } from '../domains/providers/ses/mailFrom';
-import { OWN_SENDING_DOMAIN_PROVIDER_KIND } from '../domains/providers';
-import { getOptional } from '../lib/env';
+import { returnPathProviderFor } from '../domains/returnPathProviders';
 import { assertMarketingOneClickSigningContract } from './marketingCompliance';
 import { detectDomainDnsProvider, dnsProviderObservation } from './checklistProviderDetection';
 import { checklistTraits } from './checklistTraits';
@@ -220,16 +218,15 @@ export async function observeDomainCheck(
 			if (!results) throw new Error('return-path DNS observation was not loaded');
 			const mailFromRecords = domain.dnsRecords.mailFrom ?? [];
 			const configuredReturnPath = domain.returnPathHost?.toLowerCase().replace(/\.$/, '');
+			// A provider with no return-path support has no active return path of
+			// ours, whatever DNS shows.
 			const activeReturnPath =
-				domain.providerType === OWN_SENDING_DOMAIN_PROVIDER_KIND
-					? (configuredReturnPath ??
-						getOptional('MTA_RETURN_PATH_DOMAIN')?.trim().toLowerCase().replace(/\.$/, ''))
-					: domain.providerType === 'ses'
-						? (resolveSesMailFrom(domain.domain, configuredReturnPath)?.mailFromDomain ?? null)
-						: null;
+				returnPathProviderFor(domain.providerType)?.activeHost(
+					domain.domain,
+					configuredReturnPath
+				) ?? null;
 			const hasActiveContract =
 				activeReturnPath !== null &&
-				activeReturnPath !== undefined &&
 				mailFromRecords.length > 0 &&
 				mailFromRecords.every(
 					(record) => absoluteDnsRecordName(record, domain.domain) === activeReturnPath

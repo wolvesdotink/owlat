@@ -105,8 +105,10 @@ export async function isCampaignSenderAllowed(ctx: Ctx, fromEmail: string): Prom
 }
 
 /**
- * InternalQuery wrapper so actions (`campaigns/testSend.ts`) can run the
- * list/toggle gate without a direct db handle.
+ * InternalQuery wrapper for a test-send action of the previous release still
+ * running during the deploy; this release runs the list/toggle gate inside
+ * `campaigns/testSendCommit.ts`. A read, so it is safe beside that commit.
+ * Remove after release N+1.
  */
 export const checkSenderAllowed = internalQuery({
 	args: { fromEmail: v.string() },
@@ -359,12 +361,10 @@ export async function seedDefaultSenderIfNeeded(ctx: MutationCtx): Promise<boole
 }
 
 /**
- * InternalMutation wrapper so the test-send ACTIONS (`campaigns/testSend.ts`),
- * which have no db handle, can run the same idempotent bootstrap seed before the
- * curated-sender gate. Without this, an upgraded deployment (empty list, toggle
- * OFF, no management UI until d2/d3) would reject a test send from the org's own
- * default address — the normal test-first flow — with no recovery an admin can
- * click. The mutation send path calls the plain helper directly instead.
+ * InternalMutation wrapper for a test-send action of the previous release still
+ * running during the deploy, which seeds before its curated-sender gate; this
+ * release seeds inside `campaigns/testSendCommit.ts`. Idempotent, so it is safe
+ * beside that commit. Remove after release N+1.
  */
 export const seedDefaultSender = internalMutation({
 	args: {},

@@ -1,12 +1,10 @@
 /**
- * KIND LITERALS OUTSIDE THE ADAPTER FOLDERS ARE AN ENUMERATED, SHRINKING SET.
+ * NO KIND LITERALS OUTSIDE THE ADAPTER FOLDERS.
  *
  * Capabilities, not identity: no code outside an adapter folder may declare a provider kind
- * as a literal (`= 'ses'`); there is exactly one sanctioned exception (own vs.
- * not-own), and every other "is this our own MTA?" test READS its
- * declaration. What the leak sweep could not convert is the map below, asserted
- * in both directions: a declaration in a file not on it fails, an entry whose
- * file no longer declares one fails and must be deleted.
+ * as a literal (`= 'ses'`). Ask the catalog or the adapter's own declaration
+ * instead; there is exactly one sanctioned exception (own vs. not-own), and
+ * every "is this our own MTA?" test READS its declaration.
  *
  * Declarations only. The COMPARISON half is owned by `scripts/check-provider-
  * identity.sh` (root `lint:providers`) over a strict superset of these files.
@@ -31,24 +29,8 @@ const EXEMPT_PREFIXES = [
 	'migrations/',
 ];
 
-/**
- * Every remaining declaration, with the FAMILY it belongs to and who clears it.
- * None of these is definitional; they are capability gaps with named owners.
- */
-const SURVIVING_KIND_LITERALS: Record<string, { family: string; owner: string }> = {
-	'delivery/checklistValidatorTypes.ts': {
-		family: 'frozen-sibling-read',
-		owner:
-			'P1.2 — replaced by asking the loaded rows which kind they belong to, once the ' +
-			'generic sendingDomainRelayIdentities read lands',
-	},
-};
-
 // Files whose own-arm comparison is the sanctioned own-vs-not-own exception.
-const OWN_ARM_COMPARISON_EXEMPT = new Set([
-	'domains/returnPathProviders.ts',
-	'delivery/lastMileRouting.ts',
-]);
+const OWN_ARM_COMPARISON_EXEMPT = new Set(['delivery/lastMileRouting.ts']);
 
 // `= 'ses'` that is not part of `==`, `!=`, `<=`, `>=`.
 const declarationPattern = (kind: string): RegExp => new RegExp(`(^|[^=!<>])=\\s*'${kind}'`, 'gm');
@@ -76,18 +58,10 @@ for (const landmark of ['delivery/sendLifecycle.ts', 'webhooks/dispatcher.ts']) 
 	check(paths.includes(landmark), `${landmark} dropped out of the walk`);
 }
 
-const unexplained = declarationOffenders.filter((file) => !(file.path in SURVIVING_KIND_LITERALS));
 check(
-	unexplained.length === 0,
-	'these files declare a provider kind as a literal — ask the catalog (lib/sendProviders/catalog.ts) or, for own-vs-not-own, read OWN_ARM_TRANSPORT_KIND / OWN_SENDING_DOMAIN_PROVIDER_KIND; adding an entry to SURVIVING_KIND_LITERALS is a plan change, not a fix:\n  ' +
-		unexplained.map((file) => `${file.path} (${file.kinds.join(', ')})`).join('\n  ')
-);
-
-const withLiterals = new Set(declarationOffenders.map((file) => file.path));
-const stale = Object.keys(SURVIVING_KIND_LITERALS).filter((path) => !withLiterals.has(path));
-check(
-	stale.length === 0,
-	`these SURVIVING_KIND_LITERALS entries no longer have a declaration — delete them: ${stale.join(', ')}`
+	declarationOffenders.length === 0,
+	"these files declare a provider kind as a literal — ask the catalog (lib/sendProviders/catalog.ts) or the adapter module's own `kind`, or, for own-vs-not-own, read OWN_ARM_TRANSPORT_KIND / OWN_SENDING_DOMAIN_PROVIDER_KIND:\n  " +
+		declarationOffenders.map((file) => `${file.path} (${file.kinds.join(', ')})`).join('\n  ')
 );
 
 const ownArm = new RegExp(
@@ -102,13 +76,11 @@ check(
 	`these files compare a kind to '${OWN_SEND_PROVIDER_KIND}' instead of reading OWN_ARM_TRANSPORT_KIND (send transports) or OWN_SENDING_DOMAIN_PROVIDER_KIND (domains.providerType): ${restated.join(', ')}`
 );
 
-for (const [path, entry] of Object.entries(SURVIVING_KIND_LITERALS)) {
-	check(/^[a-z-]+$/.test(entry.family), `${path} has no family`);
-	check(entry.owner.length > 10, `${path} has no owner`);
-	check(entry.family === 'frozen-sibling-read', `${path} names an unknown family ${entry.family}`);
+for (const path of OWN_ARM_COMPARISON_EXEMPT) {
+	check(
+		inScope.some((file) => file.path === path && ownArm.test(file.source)),
+		`${path} no longer compares a kind to '${OWN_SEND_PROVIDER_KIND}' — delete it from OWN_ARM_COMPARISON_EXEMPT`
+	);
 }
 
-report(
-	'check-kind-literal-custody',
-	`${Object.keys(SURVIVING_KIND_LITERALS).length} surviving declaration(s)`
-);
+report('check-kind-literal-custody', `${inScope.length} file(s) scanned, no kind declarations`);

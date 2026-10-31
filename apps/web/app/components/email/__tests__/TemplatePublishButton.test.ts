@@ -16,6 +16,7 @@ import UiButton from '@owlat/ui/components/ui/Button.vue';
 
 import TemplatePublishButton from '../TemplatePublishButton.vue';
 import { createTestI18n, expectFullyLocalized, i18nStubs } from '~/__tests__/i18n';
+import { tooltipOf } from '~/__tests__/tooltip';
 
 let wrapper: VueWrapper | undefined;
 
@@ -77,10 +78,13 @@ describe('TemplatePublishButton — held Publish', () => {
 			expect(button.text()).toBe('Publish');
 			expect(el.disabled).toBe(false);
 			expect(button.attributes('aria-disabled')).toBe('true');
+			// Focus opens the tooltip with the same reason; it is not read twice.
 			el.focus();
 			expect(document.activeElement).toBe(el);
+			expect(document.querySelector('[role="tooltip"]')?.textContent).toBe(reason);
 			expect(describedBy(el)).toBe(reason);
-			expect(button.attributes('title')).toBe(reason);
+			expect(tooltipOf(w, button)).toBe(reason);
+			expect(button.attributes('title')).toBeUndefined();
 
 			await button.trigger('click');
 			await button.trigger('keydown', { key: 'Enter' });
@@ -118,6 +122,7 @@ describe('TemplatePublishButton — live controls', () => {
 		expect(button.attributes('disabled')).toBeUndefined();
 		expect(button.attributes('aria-disabled')).toBeUndefined();
 		expect(button.attributes('aria-describedby')).toBeUndefined();
+		expect(tooltipOf(w, button)).toBeUndefined();
 		expect(button.attributes('title')).toBeUndefined();
 		await button.trigger('click');
 		expect(w.emitted('toggle')).toHaveLength(1);
@@ -130,6 +135,7 @@ describe('TemplatePublishButton — live controls', () => {
 		expect(button.attributes('disabled')).toBeUndefined();
 		expect(button.attributes('aria-disabled')).toBeUndefined();
 		expect(button.attributes('aria-describedby')).toBeUndefined();
+		expect(tooltipOf(w, button)).toBeUndefined();
 		expect(button.attributes('title')).toBeUndefined();
 		expect(w.find('.sr-only[id]').exists()).toBe(false);
 		await button.trigger('click');

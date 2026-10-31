@@ -94,8 +94,9 @@ describe('the ramp controls are admin-only, and the route is the gate', () => {
 		// The lede promises the controls unconditionally now — it used to add this
 		// clause only once the role resolved, and had nothing to hedge against.
 		expect(wrapper.find('[data-testid="ramp-controls-lede-actions"]').exists()).toBe(true);
-		expect(wrapper.find('header').text()).toMatch(/what each stream is carrying/i);
-		expect(wrapper.find('header').text()).toMatch(/pulled back on its own/i);
+		const lede = wrapper.find('h1 + div').text();
+		expect(lede).toMatch(/what each stream is carrying/i);
+		expect(lede).toMatch(/pulled back on its own/i);
 		wrapper.unmount();
 	});
 

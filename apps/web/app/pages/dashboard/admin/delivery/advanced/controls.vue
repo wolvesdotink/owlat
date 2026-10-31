@@ -289,22 +289,19 @@ async function changePreset(
 
 <template>
 	<div>
-		<header class="mb-6">
-			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-				{{ t('dashboard.admin.delivery.advanced.controls.title') }}
-			</h1>
+		<UiPageHeader class="mb-6" :title="t('dashboard.admin.delivery.advanced.controls.title')">
 			<!-- The action clause used to be conditional, as the header's half of an
 			     in-template admin gate. The `admin` route middleware means every
 			     reader of this page is an admin, so the lede promises the controls
 			     unconditionally — and cannot rewrite itself mid-paint. -->
-			<p class="mt-1 max-w-2xl text-sm text-text-secondary">
+			<template #description>
 				{{ t('dashboard.admin.delivery.advanced.controls.ledeIntro') }}
 				<span data-testid="ramp-controls-lede-actions">
 					{{ t('dashboard.admin.delivery.advanced.controls.ledeActions') }}
 				</span>
 				{{ t('dashboard.admin.delivery.advanced.controls.ledeRecorded') }}
-			</p>
-		</header>
+			</template>
+		</UiPageHeader>
 
 		<UiQueryBoundary
 			:loading="isLoading"

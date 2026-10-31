@@ -63,23 +63,22 @@ const lastEventLabel = computed(() => {
 					<p class="text-xs font-medium text-text-primary">
 						{{ t('dashboard.admin.delivery.transport.sns.endpointTitle') }}
 					</p>
-					<UiButton
-						variant="ghost"
-						size="sm"
-						:title="
+					<UiTooltip
+						:text="
 							isCopied('ses-url')
 								? t('common.copied')
 								: t('dashboard.admin.delivery.transport.sns.copyEndpoint')
 						"
-						@click="copy(webhookUrl, 'ses-url')"
 					>
-						<Icon
-							:name="isCopied('ses-url') ? 'lucide:check' : 'lucide:copy'"
-							class="w-3.5 h-3.5"
-							:class="isCopied('ses-url') ? 'text-success' : ''"
-						/>
-						{{ isCopied('ses-url') ? t('common.copied') : t('common.copy') }}
-					</UiButton>
+						<UiButton variant="ghost" size="sm" @click="copy(webhookUrl, 'ses-url')">
+							<Icon
+								:name="isCopied('ses-url') ? 'lucide:check' : 'lucide:copy'"
+								class="w-3.5 h-3.5"
+								:class="isCopied('ses-url') ? 'text-success' : ''"
+							/>
+							{{ isCopied('ses-url') ? t('common.copied') : t('common.copy') }}
+						</UiButton>
+					</UiTooltip>
 				</div>
 				<pre
 					class="select-all overflow-x-auto rounded-lg bg-bg-surface px-3 py-2 font-mono text-xs text-text-primary"

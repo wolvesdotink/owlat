@@ -266,6 +266,7 @@ function downloadLightbox(att: { filename: string; partIndex?: string }) {
 						</span>
 					</span>
 				</button>
+				<!-- native-title: the full subject of a link truncated to its column -->
 				<NuxtLink
 					:to="`/dashboard/postbox/${file.folderParam}/${file.messageId}`"
 					class="text-xs text-text-tertiary hover:text-brand truncate max-w-[14rem] hidden sm:block"

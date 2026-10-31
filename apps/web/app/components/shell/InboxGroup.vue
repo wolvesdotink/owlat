@@ -77,20 +77,18 @@ const moreCount = computed(() =>
 					:class="collapsed ? '-rotate-90' : ''"
 				/>
 			</button>
-			<NuxtLink
-				:to="inboxHref"
-				class="flex min-w-0 flex-1 items-center gap-2 py-1"
-				:title="inbox.address"
-			>
-				<InboxChip :name="inbox.name" :slot="inbox.slot" variant="plain" size="md" />
-				<ShellStatusPill v-if="data?.groupStatus" :status="data.groupStatus" dot-only />
-				<span
-					v-if="inbox.unread > 0"
-					class="ml-auto text-2xs tabular-nums text-text-tertiary"
-					:aria-label="t('components.shell.inboxGroup.unread', { count: inbox.unread })"
-					>{{ inbox.unread > 99 ? '99+' : inbox.unread }}</span
-				>
-			</NuxtLink>
+			<UiTooltip :text="inbox.address">
+				<NuxtLink :to="inboxHref" class="flex min-w-0 flex-1 items-center gap-2 py-1">
+					<InboxChip :name="inbox.name" :slot="inbox.slot" variant="plain" size="md" />
+					<ShellStatusPill v-if="data?.groupStatus" :status="data.groupStatus" dot-only />
+					<span
+						v-if="inbox.unread > 0"
+						class="ml-auto text-2xs tabular-nums text-text-tertiary"
+						:aria-label="t('components.shell.inboxGroup.unread', { count: inbox.unread })"
+						>{{ inbox.unread > 99 ? '99+' : inbox.unread }}</span
+					>
+				</NuxtLink>
+			</UiTooltip>
 			<UiTooltip :text="t('components.shell.inboxGroup.compose', { name: inbox.name })">
 				<NuxtLink
 					:to="composeHref"

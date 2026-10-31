@@ -46,26 +46,11 @@ const onRetry = async (message: NonNullable<typeof failedMessages.value>[number]
 
 <template>
 	<div>
-		<!-- Header -->
-		<div class="flex items-center gap-4 mb-8">
-			<div>
-				<h1
-					class="text-2xl font-medium tracking-[-0.02em] text-text-primary flex items-center gap-3"
-				>
-					<!-- Red only while something waits on the operator; an all-clear page
-					     keeps a neutral icon. -->
-					<Icon
-						name="lucide:alert-triangle"
-						class="w-7 h-7"
-						:class="failedMessages?.length ? 'text-error' : 'text-text-tertiary'"
-					/>
-					{{ t('dashboard.inbox.failed.title') }}
-				</h1>
-				<p class="text-text-secondary mt-1">
-					{{ t('dashboard.inbox.failed.subtitle') }}
-				</p>
-			</div>
-		</div>
+		<UiPageHeader
+			class="mb-8"
+			:title="t('dashboard.inbox.failed.title')"
+			:description="t('dashboard.inbox.failed.subtitle')"
+		/>
 
 		<!-- Loading / faulted / empty / list — a faulted query must NOT look like
 		     an empty (all-clear) list, which is exactly the boundary's ordering. -->

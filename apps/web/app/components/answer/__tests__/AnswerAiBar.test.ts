@@ -5,17 +5,21 @@
  *   - while the AI checks or writes, the bar says so and takes no second start;
  *   - an AI draft in the editor gets a quiet "AI draft · Discard" tag.
  */
-import { beforeAll, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { mount } from '@vue/test-utils';
 
 import AnswerAiBar from '../AnswerAiBar.vue';
 import { createTestI18n, expectFullyLocalized, i18nStubs } from '~/__tests__/i18n';
 import { auditA11y } from '~/__tests__/a11y';
 import { useAnswerAiFocus } from '~/composables/useAnswerMode';
+import { focusTooltip, tooltipOf } from '~/__tests__/tooltip';
+import { pushShortcutScope, resetShortcutScopes } from '~/utils/shortcutScope';
 
 beforeAll(() => {
 	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 });
+
+afterEach(() => resetShortcutScopes());
 
 const mountBar = (props: Record<string, unknown> = {}) =>
 	mount(AnswerAiBar, { props, attachTo: document.body, global: { plugins: [createTestI18n()] } });
@@ -28,6 +32,16 @@ describe('AnswerAiBar', () => {
 		await w.get('[data-testid="answer-ai-draft"]').trigger('click');
 		expect(w.emitted('draft')?.[0]).toEqual(['say sorry it is late']);
 		expectFullyLocalized(w);
+		w.unmount();
+	});
+
+	it('names the key that lands here in a tooltip, not a native title', async () => {
+		pushShortcutScope('answer');
+		const w = mountBar();
+		const draft = w.get('[data-testid="answer-ai-draft"]');
+		expect(draft.attributes('title')).toBeUndefined();
+		expect(tooltipOf(w, draft)).toBe('Jump here from anywhere');
+		expect(await focusTooltip(draft)).toBe('Jump here from anywhere Ctrl+J');
 		w.unmount();
 	});
 

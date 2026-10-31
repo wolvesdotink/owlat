@@ -163,16 +163,15 @@ const snoozeAction = computed<SimpleAction>(() =>
 		</UiButton>
 
 		<div class="hidden sm:flex items-center gap-2">
-			<NuxtLink
-				v-for="action in inlineActions"
-				:key="action.key"
-				:to="action.to!"
-				class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-brand-subtle text-text-primary hover:bg-brand-subtle/70 transition-colors"
-				:title="action.title"
-			>
-				<Icon :name="action.icon" class="w-3.5 h-3.5 text-brand" />
-				{{ action.label }}
-			</NuxtLink>
+			<UiTooltip v-for="action in inlineActions" :key="action.key" :text="action.title">
+				<NuxtLink
+					:to="action.to!"
+					class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-brand-subtle text-text-primary hover:bg-brand-subtle/70 transition-colors"
+				>
+					<Icon :name="action.icon" class="w-3.5 h-3.5 text-brand" />
+					{{ action.label }}
+				</NuxtLink>
+			</UiTooltip>
 			<!-- Assignee picker — avatar popover (Me / members / Unassign). `open`
 			     is a controlled prop: without the binding the popover never opens. -->
 			<InboxAssignPopover

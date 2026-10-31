@@ -26,22 +26,28 @@ vi.mock('../../lib/emailProviders/mtaIdentity', async (importActual) => {
 	};
 });
 
-// Only the record builder and the reflection scheduler the post-registration
-// repair calls are wrapped, so a test can make that repair throw before it
-// writes (a misconfigured provider) or after (a scheduling failure).
+// Only the record builder and the reflection scheduler of the provider's
+// return-path support are wrapped, so a test can make the post-registration
+// repair throw before it writes (a misconfigured provider) or after (a
+// scheduling failure).
 vi.mock('../returnPathProviders', async (importActual) => {
 	const actual = await importActual<typeof ReturnPathProvidersModule>();
 	return {
 		...actual,
-		buildReturnPathMailFrom: (...args: Parameters<typeof actual.buildReturnPathMailFrom>) => {
-			if (reconcileFault.isActive) throw new Error('AWS_SES_REGION is not set');
-			return actual.buildReturnPathMailFrom(...args);
-		},
-		scheduleReturnPathReflection: (
-			...args: Parameters<typeof actual.scheduleReturnPathReflection>
-		) => {
-			if (reconcileFault.reflectionThrows) throw new Error('scheduler unavailable');
-			return actual.scheduleReturnPathReflection(...args);
+		returnPathProviderFor: (...args: Parameters<typeof actual.returnPathProviderFor>) => {
+			const returnPath = actual.returnPathProviderFor(...args);
+			if (returnPath === null) return null;
+			return {
+				...returnPath,
+				mailFromRecords: (...recordArgs: Parameters<typeof returnPath.mailFromRecords>) => {
+					if (reconcileFault.isActive) throw new Error('AWS_SES_REGION is not set');
+					return returnPath.mailFromRecords(...recordArgs);
+				},
+				scheduleReflection: (...reflectArgs: Parameters<typeof returnPath.scheduleReflection>) => {
+					if (reconcileFault.reflectionThrows) throw new Error('scheduler unavailable');
+					return returnPath.scheduleReflection(...reflectArgs);
+				},
+			};
 		},
 	};
 });
