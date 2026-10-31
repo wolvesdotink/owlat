@@ -39,7 +39,7 @@ function chunksOf(declaration: string): string[][] {
 	for (const line of lines.slice(start + 1)) {
 		if (line === '}>;') break;
 		if (line === '}> & ApiFromModules<{') chunks.push([]);
-		else chunks.at(-1)?.push(/^['"]?([^'":]+)['"]?:/.exec(line.trim())?.[1] ?? line);
+		else chunks[chunks.length - 1]?.push(/^['"]?([^'":]+)['"]?:/.exec(line.trim())?.[1] ?? line);
 	}
 	return chunks;
 }
