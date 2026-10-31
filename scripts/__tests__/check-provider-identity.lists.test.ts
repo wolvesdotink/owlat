@@ -1,84 +1,74 @@
 /**
- * The provider-identity ratchet's own gate, part three: the two lists it reads
+ * The provider-identity ratchet's own gate, part three: the one list it reads
  * and the catalog it follows.
  *
- * The allowlist is debt and drives to zero; the collisions list is permanent
- * vocabulary. They are separate files so a permanent entry cannot hold the debt
- * count above zero forever, and the kind list is read from the catalog so a
- * newly declared provider kind is guarded the day it lands.
+ * The collisions list is permanent vocabulary, and the only licence the gate
+ * grants: there is no debt list, so a comparison that asks a provider's name
+ * fails wherever it is. The kind list is read from the catalog so a newly
+ * declared provider kind is guarded the day it lands.
  */
 
 import { rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { DEFAULT_KINDS, cleanupSandboxes, leak, runIn, sandbox } from './providerIdentity.testlib';
+import {
+	DEFAULT_KINDS,
+	cleanupSandboxes,
+	leak,
+	runIn,
+	sandbox,
+	write,
+} from './providerIdentity.testlib';
 
 afterEach(cleanupSandboxes);
 
-describe('provider-identity ratchet, the allowlist', () => {
-	it('passes a violation in an allowlisted file', () => {
+describe('provider-identity ratchet, no debt list', () => {
+	it('fails a kind comparison that no collision entry licenses', () => {
 		const root = sandbox({
-			files: { 'apps/api/convex/delivery/sanctioned.ts': leak("kind === 'mta'") },
-			allowlist: ['apps/api/convex/delivery/sanctioned.ts'],
+			files: { 'apps/web/app/pages/setup/email.vue': leak("kind === 'ses'") },
 		});
 		const result = runIn(root);
 
-		expect(result.output).toContain('ok:');
-		expect(result.output).toContain('1 allowlisted site(s) remain');
-		expect(result.status).toBe(0);
-	});
-
-	it('fails a stale entry whose file no longer holds a literal, so the list only shrinks', () => {
-		const root = sandbox({
-			files: { 'apps/api/convex/delivery/cleaned.ts': leak('kind === OWN_ARM_TRANSPORT_KIND') },
-			allowlist: ['apps/api/convex/delivery/cleaned.ts'],
-		});
-		const result = runIn(root);
-
-		expect(result.output).toContain('stale allowlist entr');
-		expect(result.output).toContain('apps/api/convex/delivery/cleaned.ts');
-		expect(result.output).toContain('only ever moves down');
+		expect(result.output).toContain('apps/web/app/pages/setup/email.vue:2');
 		expect(result.status).toBe(1);
 	});
 
-	it('fails a stale entry whose file is gone', () => {
+	it('reads no allowlist file, so a leftover one licenses nothing', () => {
+		// The debt list is gone; a copy of it brought back by a merge must not quietly
+		// start excusing the sites it used to name.
 		const root = sandbox({
-			files: { 'apps/api/convex/delivery/kept.ts': leak('kind === OWN_ARM_TRANSPORT_KIND') },
-			allowlist: ['apps/api/convex/delivery/deleted.ts'],
+			files: { 'apps/web/app/pages/setup/email.vue': leak("kind === 'ses'") },
 		});
+		write(
+			root,
+			'scripts/provider-identity-allowlist.txt',
+			'apps/web/app/pages/setup/email.vue:ses\n'
+		);
 		const result = runIn(root);
 
-		expect(result.output).toContain('stale allowlist entr');
-		expect(result.output).toContain('apps/api/convex/delivery/deleted.ts');
+		expect(result.output).toContain('apps/web/app/pages/setup/email.vue:2');
 		expect(result.status).toBe(1);
 	});
 
-	it.each([
-		['the allowlist', 'scripts/provider-identity-allowlist.txt'],
-		['the collisions list', 'scripts/provider-identity-collisions.txt'],
-	])('fails when %s is missing', (_label, path) => {
+	it('fails when the collisions list is missing', () => {
 		const root = sandbox({ files: { 'apps/api/convex/delivery/clean.ts': leak('kind === OWN') } });
-		rmSync(join(root, path));
+		rmSync(join(root, 'scripts/provider-identity-collisions.txt'));
 		const result = runIn(root);
 
 		expect(result.output).toContain('is missing');
 		expect(result.status).toBe(1);
 	});
 
-	it('passes with both lists empty — the end state A1 asks for', () => {
+	it('passes with an empty collisions list and no comparison', () => {
 		const root = sandbox({ files: { 'apps/api/convex/delivery/clean.ts': leak('kind === OWN') } });
 		const result = runIn(root);
 
-		expect(result.output).toContain('0 allowlisted site(s) remain');
+		expect(result.output).toContain('0 licensed vocabulary collision(s)');
 		expect(result.status).toBe(0);
 	});
 });
 
 describe('provider-identity ratchet, the collisions list', () => {
-	// Debt and vocabulary collisions are separate files on purpose: the allowlist
-	// drives to zero (that count is what A1 measures) and the collisions list is
-	// permanent, so a permanent entry must not be able to hold the debt count
-	// above zero forever.
 	it('licenses a spelling that belongs to another vocabulary', () => {
 		const root = sandbox({
 			files: { 'apps/web/server/api/setup/apply.post.ts': leak("profiles.includes('mta')") },
@@ -86,7 +76,7 @@ describe('provider-identity ratchet, the collisions list', () => {
 		});
 		const result = runIn(root);
 
-		expect(result.output).toContain('0 allowlisted site(s) remain, 1 vocabulary collision');
+		expect(result.output).toContain('1 licensed vocabulary collision(s)');
 		expect(result.status).toBe(0);
 	});
 
@@ -116,8 +106,10 @@ describe('provider-identity ratchet, the collisions list', () => {
 	it('fails a qualified entry whose spelling is gone, even though the file still has others', () => {
 		const root = sandbox({
 			files: { 'apps/api/convex/delivery/moved.ts': leak("kind === 'ses'") },
-			allowlist: ['apps/api/convex/delivery/moved.ts'],
-			collisions: ['apps/api/convex/delivery/moved.ts:mta'],
+			collisions: [
+				'apps/api/convex/delivery/moved.ts:ses',
+				'apps/api/convex/delivery/moved.ts:mta',
+			],
 		});
 		const result = runIn(root);
 
@@ -141,20 +133,46 @@ describe('provider-identity ratchet, the collisions list', () => {
 	it('fails a stale collision entry, naming its own file', () => {
 		const root = sandbox({
 			files: { 'apps/api/convex/delivery/cleaned.ts': leak('kind === OWN_ARM_TRANSPORT_KIND') },
-			collisions: ['apps/api/convex/delivery/cleaned.ts'],
+			collisions: ['apps/api/convex/delivery/cleaned.ts:mta'],
 		});
 		const result = runIn(root);
 
 		expect(result.output).toContain('stale collision entr');
 		expect(result.output).toContain('scripts/provider-identity-collisions.txt');
+		expect(result.output).toContain('only ever moves down');
 		expect(result.status).toBe(1);
 	});
 
-	it('points an unlicensed violation at both files, with the right one first', () => {
+	it('fails a stale collision entry whose file is gone', () => {
+		const root = sandbox({
+			files: { 'apps/api/convex/delivery/kept.ts': leak('kind === OWN_ARM_TRANSPORT_KIND') },
+			collisions: ['apps/api/convex/delivery/deleted.ts:mta'],
+		});
+		const result = runIn(root);
+
+		expect(result.output).toContain('stale collision entr');
+		expect(result.output).toContain('apps/api/convex/delivery/deleted.ts:mta');
+		expect(result.status).toBe(1);
+	});
+
+	it('rejects a bare path, which would license every kind in the file forever', () => {
+		const root = sandbox({
+			files: { 'apps/web/server/api/setup/apply.post.ts': leak("profiles.includes('mta')") },
+			collisions: ['apps/web/server/api/setup/apply.post.ts'],
+		});
+		const result = runIn(root);
+
+		expect(result.output).toContain('licenses the whole file');
+		expect(result.output).not.toContain('ok:');
+		expect(result.status).toBe(1);
+	});
+
+	it('points an unlicensed violation at the catalog, and at the list only for another vocabulary', () => {
 		const root = sandbox({ files: { 'apps/api/convex/delivery/leak.ts': leak("kind === 'ses'") } });
 		const result = runIn(root);
 
-		expect(result.output).toContain('Do NOT add a line to');
+		expect(result.output).toContain('Ask the capability, not the name');
+		expect(result.output).toContain('no list of exempt');
 		expect(result.output).toContain('scripts/provider-identity-collisions.txt');
 		expect(result.status).toBe(1);
 	});

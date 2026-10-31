@@ -5,7 +5,7 @@
  * A ratchet nobody has watched FAIL is indistinguishable from `exit 0`, so
  * every comparison shape the script claims to see is seeded here and proved to
  * fail. The exemptions it grants are proved in
- * check-provider-identity.exemptions.test.ts, and the two lists it reads in
+ * check-provider-identity.exemptions.test.ts, and the list it reads in
  * check-provider-identity.lists.test.ts.
  */
 
@@ -14,7 +14,6 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
-	ALLOWLIST,
 	COLLISIONS,
 	REPO_ROOT,
 	cleanupSandboxes,
@@ -36,11 +35,8 @@ describe('provider-identity ratchet, on the repository it guards', () => {
 		expect(run.status).toBe(0);
 	});
 
-	it.each([
-		['the allowlist', ALLOWLIST],
-		['the collisions list', COLLISIONS],
-	])('ships %s as real, deduplicated, blocked paths', (_label, file) => {
-		const contents = readFileSync(file, 'utf8');
+	it('ships the collisions list as real, deduplicated, blocked paths', () => {
+		const contents = readFileSync(COLLISIONS, 'utf8');
 		const entries = parseList(contents);
 
 		expect(entries.length).toBeGreaterThan(0);
@@ -55,17 +51,12 @@ describe('provider-identity ratchet, on the repository it guards', () => {
 		}
 	});
 
-	it.each([
-		['the allowlist', ALLOWLIST],
-		['the collisions list', COLLISIONS],
-	])('writes each entry of %s exactly once, in the list itself', (_label, file) => {
-		// The lists used to repeat every path in the family prose as well as in the
-		// enforced list at the bottom. Only the enforced half is checked in either
-		// direction, so a sweep that deleted one line and not the other left the
-		// file documenting debt — with an owner — for a site that was already
-		// clear. Prose may DISCUSS a path inside a sentence; a comment line that is
-		// nothing but a path is the second copy coming back.
-		const restated = readFileSync(file, 'utf8')
+	it('writes each entry of the collisions list exactly once, in the list itself', () => {
+		// Only the enforced list is checked in either direction, so a path repeated
+		// in the block prose survives a sweep that deletes the entry and leaves the
+		// file documenting a licence nothing uses. Prose may DISCUSS a path inside
+		// a sentence; a comment line that is nothing but a path is the second copy.
+		const restated = readFileSync(COLLISIONS, 'utf8')
 			.split('\n')
 			.filter((line) =>
 				/^#\s*(apps|packages|examples)\/\S+\.(ts|tsx|vue)(:[a-z0-9_-]+)?\s*$/.test(line)
@@ -73,32 +64,9 @@ describe('provider-identity ratchet, on the repository it guards', () => {
 		expect(restated, 'these comment lines restate an entry — keep the entry only').toEqual([]);
 	});
 
-	it('gives every allowlist entry a family and an owning piece', () => {
-		// Debt with no owner is just a permanent exemption with better manners. The
-		// collisions list is exempt from this on purpose: nothing owns a vocabulary
-		// collision because there is nothing to clear.
-		for (const entry of parseList(readFileSync(ALLOWLIST, 'utf8'))) {
-			expect(entry.block, `${entry.raw} has no family/owner header`).toMatch(
-				/^[a-z0-9-]+ \(owner: .{10,}\)$/
-			);
-		}
-	});
-
-	it('keeps debt and vocabulary collisions in separate lists', () => {
-		// The split is what makes acceptance criterion A1 reachable: the allowlist
-		// is debt that drives to zero, the collisions file is permanent. A file in
-		// both would let a real leak hide behind a collision licence.
-		const debt = new Set(parseList(readFileSync(ALLOWLIST, 'utf8')).map((entry) => entry.path));
-		const collisions = parseList(readFileSync(COLLISIONS, 'utf8'));
-		expect(collisions.filter((entry) => debt.has(entry.path)).map((entry) => entry.raw)).toEqual(
-			[]
-		);
-	});
-
 	it('qualifies every permanent collision licence with the one spelling it excuses', () => {
 		// A bare path in the collisions list never expires, so it would license a
-		// real `kind === 'ses'` branch added to that file years from now. The debt
-		// list may use the coarse form — it is on its way out.
+		// real `kind === 'ses'` branch added to that file years from now.
 		for (const entry of parseList(readFileSync(COLLISIONS, 'utf8'))) {
 			expect(entry.literal, `${entry.raw} licenses the whole file, forever`).toMatch(
 				/^[a-z0-9_-]+$/
