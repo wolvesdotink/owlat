@@ -258,7 +258,7 @@ async function commitDiscovery(
 		return { outcome: committed.outcome, action: committed.action };
 	}
 	// Another writer committed between the basis check and this commit, so
-	// nothing was written. A fresh, forced discovery records our observation
+	// nothing was written. A fresh, forced discovery fetches again and commits
 	// against the row that writer left, so a key that differs from its pin
 	// still surfaces as `keyChanged`.
 	await ctx.scheduler.runAfter(0, internal.e2ee.discovery.discoverRecipientKey, {
