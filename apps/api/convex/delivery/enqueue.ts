@@ -54,6 +54,37 @@ const campaignEnqueueEmailValidator = v.object({
 export type CampaignEnqueueEmail = Infer<typeof campaignEnqueueEmailValidator>;
 
 /**
+ * The fields every chunk of one campaign enqueue shares (everything but the
+ * campaign and its recipients). The send walker's page commit
+ * (`campaigns/walkerCommit.ts`) carries them per bucket with the same
+ * validator, so the two cannot drift.
+ */
+export const campaignEnqueueEnvelopeFields = {
+	from: v.string(),
+	replyTo: v.optional(v.string()),
+	subject: v.string(),
+	htmlContent: v.string(),
+	// Pre-generated (or author-overridden) text/plain body from the template
+	// row. Absent → the composer strips the untracked html instead.
+	plainTextContent: v.optional(v.string()),
+	convexSiteUrl: v.optional(v.string()),
+	siteUrl: v.optional(v.string()),
+	audienceType: v.optional(v.union(v.literal('topic'), v.literal('segment'))),
+	viewInBrowserUrl: v.optional(v.string()),
+	providerType: v.optional(v.string()),
+	ipPool: v.optional(v.string()),
+	trackingBaseUrl: v.optional(v.string()),
+	// Singleton org id — anchors the Gmail FBL Feedback-ID SenderId.
+	organizationId: v.optional(v.string()),
+	// RFC 2919 List-Id header value for a TOPIC campaign, pre-built by the
+	// orchestrator via `getListIdHeader`. Absent for segment campaigns.
+	listId: v.optional(v.string()),
+	// A/B arm this page belongs to. Only used to key the seed-probe set: the
+	// two arms are different messages and each deserves its own reading.
+	abVariant: v.optional(abVariantValidator),
+};
+
+/**
  * Internal mutation to enqueue campaign emails to workpool (used for
  * timezone-delayed sending). Lives in a non-node file because mutations
  * cannot run in Node.js runtime.
@@ -66,28 +97,7 @@ export const enqueueCampaignEmails = internalMutation({
 	args: {
 		campaignId: v.id('campaigns'),
 		emails: v.array(campaignEnqueueEmailValidator),
-		from: v.string(),
-		replyTo: v.optional(v.string()),
-		subject: v.string(),
-		htmlContent: v.string(),
-		// Pre-generated (or author-overridden) text/plain body from the template
-		// row. Absent → the composer strips the untracked html instead.
-		plainTextContent: v.optional(v.string()),
-		convexSiteUrl: v.optional(v.string()),
-		siteUrl: v.optional(v.string()),
-		audienceType: v.optional(v.union(v.literal('topic'), v.literal('segment'))),
-		viewInBrowserUrl: v.optional(v.string()),
-		providerType: v.optional(v.string()),
-		ipPool: v.optional(v.string()),
-		trackingBaseUrl: v.optional(v.string()),
-		// Singleton org id — anchors the Gmail FBL Feedback-ID SenderId.
-		organizationId: v.optional(v.string()),
-		// RFC 2919 List-Id header value for a TOPIC campaign, pre-built by the
-		// orchestrator via `getListIdHeader`. Absent for segment campaigns.
-		listId: v.optional(v.string()),
-		// A/B arm this page belongs to. Only used to key the seed-probe set: the
-		// two arms are different messages and each deserves its own reading.
-		abVariant: v.optional(abVariantValidator),
+		...campaignEnqueueEnvelopeFields,
 	},
 	handler: async (ctx, args) => {
 		// The experiment record: one assignment row per recipient,

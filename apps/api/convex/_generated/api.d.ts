@@ -410,6 +410,7 @@ import type * as campaigns_preflight from '../campaigns/preflight.js';
 import type * as campaigns_scheduling from '../campaigns/scheduling.js';
 import type * as campaigns_send from '../campaigns/send.js';
 import type * as campaigns_sendCommit from '../campaigns/sendCommit.js';
+import type * as campaigns_walkerCommit from '../campaigns/walkerCommit.js';
 import type * as campaigns_sendJob from '../campaigns/sendJob.js';
 import type * as campaigns_sendPlanProgress from '../campaigns/sendPlanProgress.js';
 import type * as campaigns_sendPlanQueries from '../campaigns/sendPlanQueries.js';
@@ -422,6 +423,7 @@ import type * as campaigns_senders from '../campaigns/senders.js';
 import type * as campaigns_sendingReadiness from '../campaigns/sendingReadiness.js';
 import type * as campaigns_statShards from '../campaigns/statShards.js';
 import type * as campaigns_testSend from '../campaigns/testSend.js';
+import type * as campaigns_testSendCommit from '../campaigns/testSendCommit.js';
 import type * as channels_adapters_index from '../channels/adapters/index.js';
 import type * as channels_adapters_sms from '../channels/adapters/sms.js';
 import type * as channels_adapters_types from '../channels/adapters/types.js';
@@ -2237,6 +2239,7 @@ declare const fullApi: ApiFromModules<{
 	'campaigns/scheduling': typeof campaigns_scheduling;
 	'campaigns/send': typeof campaigns_send;
 	'campaigns/sendCommit': typeof campaigns_sendCommit;
+	'campaigns/walkerCommit': typeof campaigns_walkerCommit;
 	'campaigns/sendJob': typeof campaigns_sendJob;
 	'campaigns/sendPlanProgress': typeof campaigns_sendPlanProgress;
 	'campaigns/sendPlanQueries': typeof campaigns_sendPlanQueries;
@@ -2249,6 +2252,7 @@ declare const fullApi: ApiFromModules<{
 	'campaigns/sendingReadiness': typeof campaigns_sendingReadiness;
 	'campaigns/statShards': typeof campaigns_statShards;
 	'campaigns/testSend': typeof campaigns_testSend;
+	'campaigns/testSendCommit': typeof campaigns_testSendCommit;
 }> & ApiFromModules<{
 	'channels/adapters/index': typeof channels_adapters_index;
 	'channels/adapters/sms': typeof channels_adapters_sms;

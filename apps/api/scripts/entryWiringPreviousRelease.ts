@@ -25,6 +25,19 @@ export const PREVIOUS_RELEASE_ENTRIES: Readonly<Record<string, string>> = {
 	'campaigns/sendQueries.ts#storeContentScanResult': 'old campaign send preparations mid-run',
 	'campaigns/archiveQueries.ts#setArchiveSnapshot': 'old campaign send preparations mid-run',
 	'emailTemplates/versions.ts#captureForSend': 'old campaign send preparations mid-run',
+	// A send-walker page now commits once (campaigns/walkerCommit.ts).
+	'delivery/sends.ts#createBatch': 'old campaign send-walker hops mid-page',
+	'campaigns/sendQueries.ts#incrementDailySendCountInternal':
+		'old campaign send-walker hops mid-page',
+	'campaigns/sendJob.ts#advanceSendJob': 'old campaign send-walker hops mid-page',
+	// The A/B winner phase now commits once (campaigns/walkerCommit.ts).
+	'campaigns/sendQueries.ts#freezeCampaignAudience': 'old A/B winner phases mid-run',
+	// The test sends now commit once (campaigns/testSendCommit.ts).
+	'campaigns/senders.ts#seedDefaultSender': 'old test sends mid-run',
+	'campaigns/senders.ts#checkSenderAllowed': 'old test sends mid-run',
+	'delivery/enqueueTestSend.ts#enqueueTestSend': 'old test sends mid-run',
+	'campaigns/sendJob.ts#createSendJob':
+		'old campaign send preparations and A/B winner phases mid-run',
 	// The delivery actions below now commit once; remove after release 0.6.17.
 	'delivery/alignmentPreflight.ts#recordAlignmentResult': 'old alignment sweeps mid-run',
 	'delivery/warmingSync.ts#upsertWarmingState': 'old warming syncs mid-run',

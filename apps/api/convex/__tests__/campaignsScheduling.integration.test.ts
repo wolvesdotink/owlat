@@ -519,7 +519,8 @@ describe('campaigns.scheduling.schedule', () => {
 describe('campaigns.testSend.sendTestEmailFromTemplate (recipient allowlist)', () => {
 	it('rejects a well-formed recipient that is NOT an org member inbox', async () => {
 		const t = setupTest();
-		// Seed exactly one member inbox — the allowlist is the userProfiles roster.
+		// Seed exactly one member inbox — the allowlist is the userProfiles roster —
+		// and a verified, curated sender, so the recipient gate is what refuses.
 		await t.run(async (ctx) => {
 			const now = Date.now();
 			await ctx.db.insert('userProfiles', {
@@ -529,6 +530,14 @@ describe('campaigns.testSend.sendTestEmailFromTemplate (recipient allowlist)', (
 				createdAt: now,
 				updatedAt: now,
 			});
+			await ctx.db.insert(
+				'domains',
+				createTestDomain({ domain: 'owlat.test', status: 'verified', lastVerifiedAt: now })
+			);
+			await ctx.db.insert(
+				'campaignSenders',
+				createTestCampaignSender({ email: 'sender@owlat.test' })
+			);
 		});
 
 		// `attacker@evil.test` is a valid email but not a member inbox — the guard
@@ -540,7 +549,7 @@ describe('campaigns.testSend.sendTestEmailFromTemplate (recipient allowlist)', (
 				testEmails: ['attacker@evil.test'],
 				fromEmail: 'sender@owlat.test',
 			})
-		).rejects.toThrow();
+		).rejects.toThrow(/attacker@evil\.test.{0,4} is not a member of this organization/);
 	});
 
 	it('rejects an outright invalid email address before the allowlist check', async () => {
