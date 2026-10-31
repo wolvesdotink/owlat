@@ -541,6 +541,35 @@ describe('migrationIndexing.runIndexChunk', () => {
 		});
 	});
 
+	it('marks the migration failed when its page cannot be read, and schedules no next chunk', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai.knowledge']);
+		let s!: Seeded;
+		let migrationId!: Id<'mailboxMigrations'>;
+		await t.run(async (ctx) => {
+			s = await seedMailbox(ctx);
+			await seedMessage(ctx, s, { receivedAt: 1000 });
+			migrationId = await seedMigration(ctx, s, { messagesImported: 1 });
+		});
+
+		// A fractional page size makes the page read throw inside the chunk.
+		await t.action(internal.mail.migrationIndexing.runIndexChunk, {
+			migrationId,
+			chunkSize: 1.5,
+			interChunkDelayMs: 0,
+		});
+
+		await t.run(async (ctx) => {
+			const m = await ctx.db.get(migrationId);
+			expect(m!.status).toBe('failed');
+			expect(m!.lastError).toBeTruthy();
+			expect(m!.completedAt).toBeDefined();
+			expect(m!.messagesIndexed).toBe(0);
+			const scheduled = await ctx.db.system.query('_scheduled_functions').collect();
+			expect(scheduled.filter((fn) => fn.name.includes('runIndexChunk'))).toHaveLength(0);
+		});
+	});
+
 	it('is a no-op when the migration is not in the indexing phase', async () => {
 		const t = convexTest(schema, modules);
 		await enableFeatures(t, ['ai.knowledge']);

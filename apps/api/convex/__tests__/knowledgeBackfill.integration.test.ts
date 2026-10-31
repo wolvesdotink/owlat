@@ -429,6 +429,46 @@ describe('knowledgeBackfill.runChunk — cursor pagination', () => {
 		});
 	});
 
+	it('marks the job failed when its page cannot be read, and schedules no next chunk', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai.agent']);
+
+		let jobId!: Id<'knowledgeBackfillJobs'>;
+		await t.run(async (ctx) => {
+			await ctx.db.insert('inboundMessages', msgData({ receivedAt: 1000 }));
+			jobId = await ctx.db.insert('knowledgeBackfillJobs', {
+				status: 'running',
+				triggeredBy: 'test',
+				totalCount: 1,
+				scannedCount: 0,
+				extractedCount: 0,
+				skippedCount: 0,
+				errorCount: 0,
+				startedAt: Date.now(),
+				updatedAt: Date.now(),
+			});
+		});
+
+		// A fractional page size makes the page read throw inside the chunk.
+		const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+		await t.action(internal.knowledge.messageBackfill.runChunk, {
+			jobId,
+			chunkSize: 1.5,
+			interChunkDelayMs: 0,
+		});
+		errorSpy.mockRestore();
+
+		await t.run(async (ctx) => {
+			const job = await ctx.db.get(jobId);
+			expect(job!.status).toBe('failed');
+			expect(job!.errorMessage).toBeTruthy();
+			expect(job!.finishedAt).toBeDefined();
+			expect(job!.scannedCount).toBe(0);
+			const scheduled = await ctx.db.system.query('_scheduled_functions').collect();
+			expect(scheduled.filter((fn) => fn.name.includes('runChunk'))).toHaveLength(0);
+		});
+	});
+
 	it('nextChunk drains a same-receivedAt group larger than the page', async () => {
 		const t = convexTest(schema, modules);
 		const ids: Id<'inboundMessages'>[] = [];
