@@ -13,7 +13,7 @@ import { v } from 'convex/values';
 import { authedMutation, authedQuery } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
-import { requireOrgPermission } from '../lib/sessionOrganization';
+import { hasPermission, requirePermission } from '../lib/sessionOrganization';
 import { throwNotFound } from '../_utils/errors';
 import { isRecord } from '@owlat/shared/utils/guards';
 
@@ -117,10 +117,9 @@ export const create = authedMutation({
 		description: v.optional(v.string()),
 		content: v.string(),
 	},
-	handler: async (ctx, args): Promise<Id<'emailBlocks'>> => {
-		await requireOrgPermission(
-			ctx,
-			'templates:manage',
+	handler: async (ctx, args, session): Promise<Id<'emailBlocks'>> => {
+		requirePermission(
+			hasPermission(session.role, 'templates:manage'),
 			'Only owners and admins can create saved blocks'
 		);
 		const outcome = await ctx.runMutation(internal.emailBlocks.module.create, {
@@ -146,10 +145,9 @@ export const update = authedMutation({
 		description: v.optional(v.string()),
 		content: v.optional(v.string()),
 	},
-	handler: async (ctx, args): Promise<Id<'emailBlocks'>> => {
-		await requireOrgPermission(
-			ctx,
-			'templates:manage',
+	handler: async (ctx, args, session): Promise<Id<'emailBlocks'>> => {
+		requirePermission(
+			hasPermission(session.role, 'templates:manage'),
 			'Only owners and admins can update saved blocks'
 		);
 		const outcome = await ctx.runMutation(internal.emailBlocks.module.update, {
@@ -174,10 +172,9 @@ export const update = authedMutation({
  */
 export const duplicate = authedMutation({
 	args: { blockId: v.id('emailBlocks') },
-	handler: async (ctx, args): Promise<Id<'emailBlocks'>> => {
-		await requireOrgPermission(
-			ctx,
-			'templates:manage',
+	handler: async (ctx, args, session): Promise<Id<'emailBlocks'>> => {
+		requirePermission(
+			hasPermission(session.role, 'templates:manage'),
 			'Only owners and admins can duplicate saved blocks'
 		);
 		const outcome = await ctx.runMutation(internal.emailBlocks.module.duplicate, {
@@ -198,10 +195,9 @@ export const duplicate = authedMutation({
  */
 export const remove = authedMutation({
 	args: { blockId: v.id('emailBlocks') },
-	handler: async (ctx, args): Promise<void> => {
-		await requireOrgPermission(
-			ctx,
-			'templates:manage',
+	handler: async (ctx, args, session): Promise<void> => {
+		requirePermission(
+			hasPermission(session.role, 'templates:manage'),
 			'Only owners and admins can delete saved blocks'
 		);
 		const outcome = await ctx.runMutation(internal.emailBlocks.module.remove, {

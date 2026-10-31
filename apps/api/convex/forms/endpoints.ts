@@ -7,7 +7,7 @@ import { internal } from '../_generated/api';
 
 /** Per-batch cap for the scheduled form-submission cascade delete. */
 const FORM_SUBMISSION_DELETE_BATCH = 256;
-import { requireOrgPermission } from '../lib/sessionOrganization';
+import { hasPermission, requirePermission } from '../lib/sessionOrganization';
 import { validateStringLength, STRING_LIMITS } from '../lib/inputGuards';
 import { getOrThrow, throwRateLimited, throwInvalidInput } from '../_utils/errors';
 import { rateLimiter } from '../lib/rateLimiter';
@@ -67,10 +67,9 @@ export const create = formsMutation({
 		honeypotFieldName: v.optional(v.string()),
 		doubleOptIn: v.optional(v.boolean()),
 	},
-	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'organization:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'organization:manage'),
 			'Only owners and admins can manage forms'
 		);
 		// Validate input lengths
@@ -118,10 +117,9 @@ export const update = formsMutation({
 		isActive: v.optional(v.boolean()),
 		doubleOptIn: v.optional(v.boolean()),
 	},
-	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'organization:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'organization:manage'),
 			'Only owners and admins can manage forms'
 		);
 		// Validate input lengths
@@ -162,10 +160,9 @@ export const remove = formsMutation({
 	args: {
 		formEndpointId: v.id('formEndpoints'),
 	},
-	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'organization:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'organization:manage'),
 			'Only owners and admins can manage forms'
 		);
 		await getOrThrow(ctx, args.formEndpointId, 'Form endpoint');
