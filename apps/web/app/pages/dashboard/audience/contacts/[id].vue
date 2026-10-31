@@ -5,6 +5,13 @@ import { tabPanelAttrs } from '@owlat/ui/utils/tabs';
 import { formatContactPropertyValue } from '~/utils/contactPropertyValue';
 import { formatDate } from '~/utils/formatters';
 import { useRecordPaletteObjectOpen } from '~/composables/useCommandPaletteObjectRecents';
+import { useContactTopics } from '~/composables/contacts/useContactTopics';
+import ContactActivityLogCard from '~/components/contacts/detail/ActivityLogCard.vue';
+import ContactCustomPropertiesCard from '~/components/contacts/detail/CustomPropertiesCard.vue';
+import ContactDeleteDialog from '~/components/contacts/detail/DeleteContactDialog.vue';
+import ContactDetailHeader from '~/components/contacts/detail/Header.vue';
+import ContactProfileCard from '~/components/contacts/detail/ProfileCard.vue';
+import ContactTopicsCard from '~/components/contacts/detail/TopicsCard.vue';
 
 const { t } = useI18n();
 
@@ -136,18 +143,7 @@ const tabOptions = computed(() =>
 // for a listByContact subscription that members can never surface and admins
 // usually don't open.
 const isActivityTabActive = computed(() => isAdmin.value && activeTab.value === 'timeline');
-const {
-	accumulatedActivities,
-	activitiesLoading,
-	hasMoreActivities,
-	isLoadingMoreActivities,
-	loadMoreActivities,
-	getActivityIcon,
-	getActivityLabel,
-	getActivityColor,
-	getActivityDescription,
-	formatActivityTime,
-} = useActivityTimeline(contactId, () => isActivityTabActive.value);
+const activityTimeline = useActivityTimeline(contactId, () => isActivityTabActive.value);
 
 const notesDraft = ref('');
 watch(
@@ -167,63 +163,15 @@ async function saveNotes() {
 }
 
 // Topics
-const { data: contactTopics } = useConvexQuery(api.topics.topics.getTopicsForContact, () => ({
-	contactId: contactId.value,
-}));
-
-const { results: allTopics } = useTopicsList();
-
-const { run: addToTopic } = useBackendOperation(api.topics.topics.addContact, {
-	label: () => t('dashboard.audience.contacts.detail.operations.addToTopic'),
-});
-const { run: removeFromTopic } = useBackendOperation(api.topics.topics.removeContact, {
-	label: () => t('dashboard.audience.contacts.detail.operations.removeFromTopic'),
-});
-
-// Add to Topic Dropdown State
-const isAddToTopicDropdownOpen = ref(false);
-const isAddingToTopic = ref(false);
-
-const availableTopicsToAdd = computed(() => {
-	if (!allTopics.value || !contactTopics.value) return [];
-	const currentTopicIds = new Set(contactTopics.value.map((t) => t._id));
-	return allTopics.value.filter((topic) => !currentTopicIds.has(topic._id));
-});
-
-const handleAddToTopic = async (topicId: Id<'topics'>) => {
-	isAddingToTopic.value = true;
-
-	const result = await addToTopic({
-		topicId,
-		contactId: contactId.value,
-	});
-	isAddingToTopic.value = false;
-	if (!result.ok) return;
-	const topicName =
-		allTopics.value?.find((topic) => topic._id === topicId)?.name ||
-		t('dashboard.audience.contacts.detail.topicFallback');
-	showToast(t('dashboard.audience.contacts.detail.toasts.addedToTopic', { topic: topicName }));
-	isAddToTopicDropdownOpen.value = false;
-};
-
-const handleRemoveFromTopic = async (topicId: Id<'topics'>) => {
-	const result = await removeFromTopic({
-		topicId,
-		contactId: contactId.value,
-	});
-	if (!result.ok) return;
-	const topicName =
-		contactTopics.value?.find((topic) => topic._id === topicId)?.name ||
-		t('dashboard.audience.contacts.detail.topicFallback');
-	showToast(t('dashboard.audience.contacts.detail.toasts.removedFromTopic', { topic: topicName }));
-};
-
-// Close dropdown when clicking outside
-const addToTopicDropdownRef = ref<HTMLElement | null>(null);
-
-useClickOutside(addToTopicDropdownRef, () => {
-	isAddToTopicDropdownOpen.value = false;
-});
+const {
+	contactTopics,
+	allTopics,
+	isAddToTopicDropdownOpen,
+	isAddingToTopic,
+	availableTopicsToAdd,
+	handleAddToTopic,
+	handleRemoveFromTopic,
+} = useContactTopics(contactId);
 
 // Toast notifications (global)
 const { showToast } = useToast();
@@ -308,90 +256,25 @@ async function handleRemoveSuppression() {
 			/>
 
 			<!-- Header -->
-			<div class="flex items-start gap-4 mb-8">
-				<UiIconBox icon="lucide:user" size="xl" variant="surface" rounded="full" />
-				<UiPageHeader class="flex-1" :title="contactTitle" :description="contact.email">
-					<!-- Double-opt-in confirmation status -->
-					<template v-if="getDoiStatusLabel(contact.doiStatus)" #meta>
-						<div
-							class="inline-flex items-center gap-1.5 text-sm"
-							:class="getDoiStatusColor(contact.doiStatus)"
-						>
-							<Icon
-								v-if="getDoiStatusIcon(contact.doiStatus)"
-								:name="getDoiStatusIcon(contact.doiStatus)!"
-								class="w-4 h-4"
-							/>
-							<span>{{ getDoiStatusLabel(contact.doiStatus) }}</span>
-						</div>
-					</template>
-
-					<template #actions>
-						<template v-if="isEditing">
-							<UiButton variant="ghost" :disabled="isSaving" @click="cancelEditing">
-								{{ t('common.cancel') }}
-							</UiButton>
-							<UiButton class="gap-2" :disabled="isSaving" @click="saveChanges">
-								<UiSpinner v-if="isSaving" size="xs" tone="inverse" />
-								<Icon v-else name="lucide:save" class="w-4 h-4" />
-								{{ t('dashboard.audience.contacts.detail.saveChanges') }}
-							</UiButton>
-						</template>
-						<template v-else-if="canManageContacts">
-							<UiTooltip
-								v-if="contact.doiStatus === 'pending'"
-								:text="t('dashboard.audience.contacts.detail.resendDoiTitle')"
-							>
-								<UiButton
-									variant="secondary"
-									class="gap-2"
-									:disabled="isResendingDoi"
-									@click="handleResendDoi"
-								>
-									<Icon
-										v-if="isResendingDoi"
-										name="lucide:loader-2"
-										class="w-4 h-4 animate-spin motion-reduce:animate-none"
-									/>
-									<Icon v-else name="lucide:mail-check" class="w-4 h-4" />
-									{{
-										isResendingDoi
-											? t('dashboard.audience.contacts.detail.sending')
-											: t('dashboard.audience.contacts.detail.resendDoi')
-									}}
-								</UiButton>
-							</UiTooltip>
-							<UiButton variant="secondary" class="gap-2" @click="startEditing">
-								<Icon name="lucide:pencil" class="w-4 h-4" />
-								{{ t('common.edit') }}
-							</UiButton>
-							<UiTooltip :text="t('dashboard.audience.contacts.detail.exportDataTitle')">
-								<UiButton
-									variant="secondary"
-									class="gap-2"
-									:disabled="exportRequested"
-									@click="handleExportData"
-								>
-									<Icon name="lucide:download" class="w-4 h-4" />
-									{{
-										exportRequested
-											? t('dashboard.audience.contacts.detail.exporting')
-											: t('dashboard.audience.contacts.detail.exportData')
-									}}
-								</UiButton>
-							</UiTooltip>
-							<UiButton
-								variant="ghost"
-								class="text-error hover:bg-error-subtle"
-								@click="showDeleteConfirm = true"
-								:aria-label="t('common.delete')"
-							>
-								<Icon name="lucide:trash-2" class="w-4 h-4" />
-							</UiButton>
-						</template>
-					</template>
-				</UiPageHeader>
-			</div>
+			<ContactDetailHeader
+				:title="contactTitle"
+				:email="contact.email"
+				:doi-status="contact.doiStatus"
+				:doi-label="getDoiStatusLabel(contact.doiStatus)"
+				:doi-color="getDoiStatusColor(contact.doiStatus)"
+				:doi-icon="getDoiStatusIcon(contact.doiStatus)"
+				:is-editing="isEditing"
+				:is-saving="isSaving"
+				:can-manage="canManageContacts"
+				:is-resending-doi="isResendingDoi"
+				:exporting="exportRequested"
+				@cancel="cancelEditing"
+				@save="saveChanges"
+				@edit="startEditing"
+				@resend-doi="handleResendDoi"
+				@export="handleExportData"
+				@delete="showDeleteConfirm = true"
+			/>
 
 			<!-- Error Message -->
 			<div
@@ -413,182 +296,25 @@ async function handleRemoveSuppression() {
 				<!-- Main Info -->
 				<div class="lg:col-span-2 space-y-6">
 					<!-- Contact Details Card -->
-					<div v-if="isAdmin || activeTab === 'profile'" class="card">
-						<h2 class="text-lg font-medium text-text-primary mb-4">
-							{{ t('dashboard.audience.contacts.detail.contactDetails') }}
-						</h2>
-
-						<!-- Two columns once the main column is wide, so a label and its
-						     value stay close instead of floating in a 1000px card. -->
-						<div class="grid gap-4 2xl:grid-cols-2 2xl:gap-x-8">
-							<!-- Email -->
-							<div>
-								<label class="label">{{
-									t('dashboard.audience.contacts.detail.fields.email')
-								}}</label>
-								<div v-if="isEditing" class="flex items-center gap-3">
-									<Icon name="lucide:mail" class="w-5 h-5 text-text-tertiary flex-shrink-0" />
-									<input
-										v-model="editForm.email"
-										type="email"
-										class="input"
-										:placeholder="t('dashboard.audience.contacts.detail.fields.emailPlaceholder')"
-									/>
-								</div>
-								<div v-else class="flex items-center gap-3 py-2">
-									<Icon name="lucide:mail" class="w-5 h-5 text-text-tertiary flex-shrink-0" />
-									<span class="text-text-primary">{{ contact.email }}</span>
-								</div>
-							</div>
-
-							<!-- First Name -->
-							<div>
-								<label class="label">{{
-									t('dashboard.audience.contacts.detail.fields.firstName')
-								}}</label>
-								<div v-if="isEditing" class="flex items-center gap-3">
-									<Icon name="lucide:user" class="w-5 h-5 text-text-tertiary flex-shrink-0" />
-									<input
-										v-model="editForm.firstName"
-										type="text"
-										class="input"
-										:placeholder="
-											t('dashboard.audience.contacts.detail.fields.firstNamePlaceholder')
-										"
-									/>
-								</div>
-								<div v-else class="flex items-center gap-3 py-2">
-									<Icon name="lucide:user" class="w-5 h-5 text-text-tertiary flex-shrink-0" />
-									<span :class="contact.firstName ? 'text-text-primary' : 'text-text-tertiary'">
-										{{ contact.firstName || t('dashboard.audience.contacts.detail.notSet') }}
-									</span>
-								</div>
-							</div>
-
-							<!-- Last Name -->
-							<div>
-								<label class="label">{{
-									t('dashboard.audience.contacts.detail.fields.lastName')
-								}}</label>
-								<div v-if="isEditing" class="flex items-center gap-3">
-									<Icon name="lucide:user" class="w-5 h-5 text-text-tertiary flex-shrink-0" />
-									<input
-										v-model="editForm.lastName"
-										type="text"
-										class="input"
-										:placeholder="
-											t('dashboard.audience.contacts.detail.fields.lastNamePlaceholder')
-										"
-									/>
-								</div>
-								<div v-else class="flex items-center gap-3 py-2">
-									<Icon name="lucide:user" class="w-5 h-5 text-text-tertiary flex-shrink-0" />
-									<span :class="contact.lastName ? 'text-text-primary' : 'text-text-tertiary'">
-										{{ contact.lastName || t('dashboard.audience.contacts.detail.notSet') }}
-									</span>
-								</div>
-							</div>
-
-							<!-- Timezone -->
-							<div>
-								<label class="label">{{
-									t('dashboard.audience.contacts.detail.fields.timezone')
-								}}</label>
-								<div v-if="isEditing" class="flex items-center gap-3">
-									<Icon name="lucide:globe" class="w-5 h-5 text-text-tertiary flex-shrink-0" />
-									<select v-model="editForm.timezone" class="input">
-										<option v-for="tz in commonTimezones" :key="tz.value" :value="tz.value">
-											{{ tz.label }}
-										</option>
-									</select>
-								</div>
-								<div v-else class="flex items-center gap-3 py-2">
-									<Icon name="lucide:globe" class="w-5 h-5 text-text-tertiary flex-shrink-0" />
-									<span :class="contact.timezone ? 'text-text-primary' : 'text-text-tertiary'">
-										{{ getTimezoneLabel(contact.timezone) }}
-									</span>
-								</div>
-							</div>
-
-							<!-- Language -->
-							<div>
-								<label class="label">{{
-									t('dashboard.audience.contacts.detail.fields.language')
-								}}</label>
-								<div v-if="isEditing" class="flex items-center gap-3">
-									<Icon name="lucide:languages" class="w-5 h-5 text-text-tertiary flex-shrink-0" />
-									<select v-model="editForm.language" class="input">
-										<option v-for="lang in commonLanguages" :key="lang.value" :value="lang.value">
-											{{ lang.label }}
-										</option>
-									</select>
-								</div>
-								<div v-else class="flex items-center gap-3 py-2">
-									<Icon name="lucide:languages" class="w-5 h-5 text-text-tertiary flex-shrink-0" />
-									<span :class="contact.language ? 'text-text-primary' : 'text-text-tertiary'">
-										{{ getLanguageLabel(contact.language) }}
-									</span>
-								</div>
-							</div>
-						</div>
-					</div>
+					<ContactProfileCard
+						v-if="isAdmin || activeTab === 'profile'"
+						:contact="contact"
+						:is-editing="isEditing"
+						:form="editForm"
+						:timezones="commonTimezones"
+						:languages="commonLanguages"
+						:timezone-label="getTimezoneLabel(contact.timezone)"
+						:language-label="getLanguageLabel(contact.language)"
+					/>
 
 					<!-- Custom Properties Card -->
-					<div v-if="isAdmin && properties && properties.length > 0" class="card">
-						<h2 class="text-lg font-medium text-text-primary mb-4">
-							{{ t('dashboard.audience.contacts.detail.customProperties') }}
-						</h2>
-
-						<!-- Edit mode: one input per property -->
-						<div v-if="isEditing" class="grid gap-4 2xl:grid-cols-2 2xl:gap-x-8">
-							<div v-for="property in properties" :key="property._id">
-								<label class="label">{{ property.label }}</label>
-								<select
-									v-if="property.type === 'boolean'"
-									v-model="propertyForm[property._id]"
-									class="input"
-								>
-									<option value="">{{ t('dashboard.audience.contacts.detail.notSet') }}</option>
-									<option value="true">{{ t('common.yes') }}</option>
-									<option value="false">{{ t('common.no') }}</option>
-								</select>
-								<input
-									v-else
-									v-model="propertyForm[property._id]"
-									:type="
-										property.type === 'number'
-											? 'number'
-											: property.type === 'date'
-												? 'date'
-												: 'text'
-									"
-									class="input"
-									:placeholder="property.label"
-								/>
-							</div>
-						</div>
-
-						<!-- Read mode: label and value share a row; two columns on wide
-						     screens keep them within reading distance. -->
-						<div v-else class="grid gap-x-8 gap-y-4 2xl:grid-cols-2">
-							<div
-								v-for="property in properties"
-								:key="property._id"
-								class="flex items-center justify-between gap-4 py-2 border-b border-border-subtle last:border-b-0 2xl:[&:nth-last-child(2):nth-child(odd)]:border-b-0"
-							>
-								<span class="text-text-secondary">{{ property.label }}</span>
-								<span
-									:class="
-										displayPropertyValue(property) ? 'text-text-primary' : 'text-text-tertiary'
-									"
-								>
-									{{
-										displayPropertyValue(property) || t('dashboard.audience.contacts.detail.notSet')
-									}}
-								</span>
-							</div>
-						</div>
-					</div>
+					<ContactCustomPropertiesCard
+						v-if="isAdmin && properties && properties.length > 0"
+						:properties="properties"
+						:is-editing="isEditing"
+						:form="propertyForm"
+						:display-value="displayPropertyValue"
+					/>
 
 					<div v-if="(isAdmin || activeTab === 'profile') && canAnnotateContacts" class="card">
 						<div class="flex items-start justify-between gap-4 mb-3">
@@ -617,107 +343,10 @@ async function handleRemoveSuppression() {
 
 					<!-- Timeline Tab: messages across channels, then the activity log -->
 					<ContactsUnifiedTimelineTab v-if="activeTab === 'timeline'" :contact-id="contactId" />
-					<div v-if="isAdmin && activeTab === 'timeline'" class="card">
-						<h2 class="text-lg font-medium text-text-primary mb-4">
-							{{ t('dashboard.audience.contacts.detail.activity.title') }}
-						</h2>
-
-						<!-- Loading State -->
-						<div
-							v-if="activitiesLoading && accumulatedActivities.length === 0"
-							class="flex items-center justify-center py-8"
-						>
-							<div class="flex flex-col items-center gap-3">
-								<UiSpinner size="md" />
-								<p class="text-text-tertiary text-sm">
-									{{ t('dashboard.audience.contacts.detail.activity.loading') }}
-								</p>
-							</div>
-						</div>
-
-						<!-- Empty State -->
-						<div
-							v-else-if="accumulatedActivities.length === 0"
-							class="flex flex-col items-center justify-center py-8 text-center"
-						>
-							<UiIconBox
-								icon="lucide:clock"
-								size="lg"
-								variant="surface"
-								rounded="full"
-								class="mb-3"
-							/>
-							<p class="text-text-secondary text-sm">
-								{{ t('dashboard.audience.contacts.detail.activity.emptyTitle') }}
-							</p>
-							<p class="text-text-tertiary text-sm mt-1">
-								{{ t('dashboard.audience.contacts.detail.activity.emptyBody') }}
-							</p>
-						</div>
-
-						<!-- Activity List -->
-						<div v-else class="space-y-1">
-							<div
-								v-for="(activity, index) in accumulatedActivities"
-								:key="activity._id"
-								class="relative"
-							>
-								<!-- Timeline connector line -->
-								<div
-									v-if="index < accumulatedActivities.length - 1"
-									class="absolute left-5 top-10 bottom-0 w-px bg-border-subtle"
-								/>
-
-								<!-- Activity item -->
-								<div class="flex items-start gap-4 py-3">
-									<!-- Icon -->
-									<div
-										class="flex-shrink-0 w-10 h-10 rounded-full bg-bg-surface flex items-center justify-center"
-										:class="getActivityColor(activity.activityType)"
-									>
-										<Icon :name="getActivityIcon(activity.activityType)" class="w-5 h-5" />
-									</div>
-
-									<!-- Content -->
-									<div class="flex-1 min-w-0">
-										<p class="text-text-primary text-sm font-medium">
-											{{ getActivityLabel(activity.activityType) }}
-										</p>
-										<p
-											v-if="getActivityDescription(activity.activityType, activity.metadata)"
-											class="text-text-secondary text-sm mt-0.5 truncate"
-										>
-											{{ getActivityDescription(activity.activityType, activity.metadata) }}
-										</p>
-										<p class="text-text-tertiary text-xs mt-1">
-											{{ formatActivityTime(activity.occurredAt) }}
-										</p>
-									</div>
-								</div>
-							</div>
-
-							<!-- Load More Button -->
-							<div v-if="hasMoreActivities" class="pt-4 text-center">
-								<UiButton
-									variant="secondary"
-									size="sm"
-									:disabled="isLoadingMoreActivities"
-									@click="loadMoreActivities"
-								>
-									<Icon
-										v-if="isLoadingMoreActivities"
-										name="lucide:loader-2"
-										class="w-4 h-4 animate-spin motion-reduce:animate-none mr-2"
-									/>
-									{{
-										isLoadingMoreActivities
-											? t('common.loading')
-											: t('dashboard.audience.contacts.detail.activity.loadMore')
-									}}
-								</UiButton>
-							</div>
-						</div>
-					</div>
+					<ContactActivityLogCard
+						v-if="isAdmin && activeTab === 'timeline'"
+						:timeline="activityTimeline"
+					/>
 
 					<!-- Knowledge Tab -->
 					<ContactsContactKnowledgeTab
@@ -790,193 +419,26 @@ async function handleRemoveSuppression() {
 					</div>
 
 					<!-- Topics Card -->
-					<div v-if="isAdmin" class="card">
-						<div class="flex items-center justify-between mb-4">
-							<h2 class="text-lg font-medium text-text-primary">
-								{{ t('dashboard.audience.contacts.detail.topics.title') }}
-							</h2>
-
-							<!-- Add to Topic Dropdown -->
-							<div ref="addToTopicDropdownRef" class="relative">
-								<UiButton
-									variant="secondary"
-									size="sm"
-									class="gap-1.5"
-									:disabled="availableTopicsToAdd.length === 0 || isAddingToTopic"
-									@click.stop="isAddToTopicDropdownOpen = !isAddToTopicDropdownOpen"
-								>
-									<Icon
-										v-if="isAddingToTopic"
-										name="lucide:loader-2"
-										class="w-3 h-3 animate-spin motion-reduce:animate-none"
-									/>
-									<Icon v-else name="lucide:plus" class="w-3 h-3" />
-									{{ t('dashboard.audience.contacts.detail.topics.addToTopic') }}
-									<Icon name="lucide:chevron-down" class="w-3 h-3" />
-								</UiButton>
-
-								<!-- Dropdown Menu -->
-								<Transition
-									enter-active-class="duration-(--motion-moderate) ease-spring"
-									enter-from-class="opacity-0 translate-y-1"
-									enter-to-class="opacity-100 translate-y-0"
-									leave-active-class="duration-(--motion-moderate-exit) ease-exit"
-									leave-from-class="opacity-100 translate-y-0"
-									leave-to-class="opacity-0 translate-y-1"
-								>
-									<div
-										v-if="isAddToTopicDropdownOpen && availableTopicsToAdd.length > 0"
-										class="absolute right-0 mt-2 w-56 bg-bg-elevated border border-border-subtle rounded-xl shadow-lg z-10 py-1 max-h-64 overflow-y-auto"
-									>
-										<button
-											v-for="list in availableTopicsToAdd"
-											:key="list._id"
-											class="w-full px-3 py-2 text-left text-sm text-text-primary hover:bg-bg-surface flex items-center gap-2 transition-colors"
-											:disabled="isAddingToTopic"
-											@click="handleAddToTopic(list._id)"
-										>
-											<Icon name="lucide:tag" class="w-4 h-4 text-brand flex-shrink-0" />
-											<span class="truncate">{{ list.name }}</span>
-										</button>
-									</div>
-								</Transition>
-
-								<!-- Empty Dropdown Message -->
-								<Transition
-									enter-active-class="duration-(--motion-moderate) ease-spring"
-									enter-from-class="opacity-0 translate-y-1"
-									enter-to-class="opacity-100 translate-y-0"
-									leave-active-class="duration-(--motion-moderate-exit) ease-exit"
-									leave-from-class="opacity-100 translate-y-0"
-									leave-to-class="opacity-0 translate-y-1"
-								>
-									<div
-										v-if="
-											isAddToTopicDropdownOpen &&
-											availableTopicsToAdd.length === 0 &&
-											allTopics &&
-											allTopics.length > 0
-										"
-										class="absolute right-0 mt-2 w-56 bg-bg-elevated border border-border-subtle rounded-xl shadow-lg z-10 p-3"
-									>
-										<p class="text-sm text-text-tertiary text-center">
-											{{ t('dashboard.audience.contacts.detail.topics.allTopics') }}
-										</p>
-									</div>
-								</Transition>
-							</div>
-						</div>
-
-						<div v-if="contactTopics && contactTopics.length > 0" class="space-y-2">
-							<div
-								v-for="list in contactTopics"
-								:key="list._id"
-								class="group flex items-center gap-2 p-2 rounded-lg bg-bg-surface"
-							>
-								<Icon name="lucide:tag" class="w-4 h-4 text-brand flex-shrink-0" />
-								<div class="flex-1 min-w-0">
-									<NuxtLink
-										:to="`/dashboard/audience/topics/${list._id}`"
-										class="text-text-primary text-sm truncate hover:text-brand transition-colors block"
-									>
-										{{ list.name }}
-									</NuxtLink>
-								</div>
-								<UiTooltip :text="t('dashboard.audience.contacts.detail.topics.remove')">
-									<button
-										class="p-1 rounded text-text-tertiary opacity-0 group-hover:opacity-100 hover:text-error hover:bg-error-subtle transition-[color,background-color,opacity]"
-										:aria-label="t('dashboard.audience.contacts.detail.topics.remove')"
-										@click="handleRemoveFromTopic(list._id)"
-									>
-										<Icon name="lucide:x" class="w-3 h-3" />
-									</button>
-								</UiTooltip>
-							</div>
-						</div>
-						<div v-else-if="allTopics && allTopics.length === 0" class="text-center py-4">
-							<p class="text-text-tertiary text-sm">
-								{{ t('dashboard.audience.contacts.detail.topics.noneCreated') }}
-							</p>
-							<NuxtLink to="/dashboard/audience/topics" class="text-brand text-sm hover:underline">
-								{{ t('dashboard.audience.contacts.detail.topics.createOne') }}
-							</NuxtLink>
-						</div>
-						<div v-else class="text-center py-4">
-							<p class="text-text-tertiary text-sm">
-								{{ t('dashboard.audience.contacts.detail.topics.none') }}
-							</p>
-						</div>
-					</div>
+					<ContactTopicsCard
+						v-if="isAdmin"
+						v-model:open="isAddToTopicDropdownOpen"
+						:contact-topics="contactTopics"
+						:all-topics="allTopics"
+						:available-topics="availableTopicsToAdd"
+						:is-adding="isAddingToTopic"
+						@add="handleAddToTopic"
+						@remove="handleRemoveFromTopic"
+					/>
 				</div>
 			</div>
 		</template>
 
 		<!-- Delete Confirmation Modal -->
-		<Teleport to="body">
-			<Transition
-				enter-active-class="duration-(--motion-moderate) ease-spring"
-				enter-from-class="opacity-0"
-				enter-to-class="opacity-100"
-				leave-active-class="duration-(--motion-moderate-exit) ease-exit"
-				leave-from-class="opacity-100"
-				leave-to-class="opacity-0"
-			>
-				<div
-					v-if="showDeleteConfirm"
-					class="fixed inset-0 z-50 flex items-center justify-center p-4"
-				>
-					<!-- Backdrop -->
-					<div class="absolute inset-0 bg-scrim/60" @click="showDeleteConfirm = false" />
-
-					<!-- Modal -->
-					<div
-						class="relative bg-bg-elevated border border-border-subtle rounded-2xl p-6 w-full max-w-md"
-					>
-						<div class="flex items-center gap-4 mb-4">
-							<div class="p-3 rounded-full bg-error-subtle flex items-center justify-center">
-								<Icon name="lucide:trash-2" class="w-6 h-6 text-error" />
-							</div>
-							<div>
-								<h3 class="text-lg font-semibold text-text-primary">
-									{{ t('dashboard.audience.contacts.detail.deleteDialog.title') }}
-								</h3>
-								<p class="text-sm text-text-secondary">
-									{{ t('dashboard.audience.contacts.detail.deleteDialog.subtitle') }}
-								</p>
-							</div>
-						</div>
-
-						<I18nT
-							keypath="dashboard.audience.contacts.detail.deleteDialog.body"
-							tag="p"
-							class="text-text-secondary mb-6"
-							scope="global"
-						>
-							<template #email>
-								<span class="font-medium text-text-primary">{{ contact?.email }}</span>
-							</template>
-						</I18nT>
-
-						<div class="flex items-center justify-end gap-3">
-							<UiButton
-								variant="secondary"
-								:disabled="isDeleting"
-								@click="showDeleteConfirm = false"
-							>
-								{{ t('common.cancel') }}
-							</UiButton>
-							<UiButton variant="danger" :disabled="isDeleting" @click="confirmDelete">
-								<UiSpinner v-if="isDeleting" class="mr-2" size="xs" tone="inverse" />
-								{{
-									isDeleting
-										? t('dashboard.audience.contacts.detail.deleting')
-										: t('dashboard.audience.contacts.detail.deleteDialog.title')
-								}}
-							</UiButton>
-						</div>
-					</div>
-				</div>
-			</Transition>
-		</Teleport>
+		<ContactDeleteDialog
+			v-model:open="showDeleteConfirm"
+			:email="contact?.email"
+			:is-deleting="isDeleting"
+			@confirm="confirmDelete"
+		/>
 	</div>
 </template>
