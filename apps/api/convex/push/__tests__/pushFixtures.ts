@@ -8,8 +8,11 @@ import { convexTest } from 'convex-test';
 import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import schema from '../../schema';
 import betterAuthSchema from '../../betterAuth/schema';
-import { components } from '../../_generated/api';
+import { components, internal } from '../../_generated/api';
 import type { Doc, Id } from '../../_generated/dataModel';
+import type { Infer } from 'convex/values';
+import type { pushEventValidator } from '../../lib/validators/push';
+import type { PushDelivery } from '../dispatch';
 import { betterAuthModules } from '../../__tests__/testModules';
 import { _resetSingletonOrgCacheForTests } from '../../lib/sessionOrganization';
 
@@ -211,4 +214,23 @@ export function quietWindowAroundNow(): {
 		endMinute: (minute + 30) % 1440,
 		days: [0, 1, 2, 3, 4, 5, 6],
 	};
+}
+
+/**
+ * One event through this release's delivery path, without the network: the
+ * plan `push/send.deliver` reads, then its commit with no push answers (the
+ * devices quiet hours hold back are counted). Returns the pushes to make.
+ */
+export async function planAndHold(
+	t: T,
+	userId: string,
+	event: Infer<typeof pushEventValidator>
+): Promise<PushDelivery[]> {
+	const plan = await t.query(internal.push.delivery.planDelivery, { userId, event });
+	await t.mutation(internal.push.delivery.recordDelivery, {
+		userId,
+		held: plan.held,
+		outcomes: [],
+	});
+	return plan.deliveries;
 }

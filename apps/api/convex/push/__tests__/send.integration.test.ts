@@ -7,7 +7,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { internal } from '../../_generated/api';
 import { enableFeatures } from '../../__tests__/factories';
-import { VAPID_ENV, pushHarness, seedDevice, seedMailbox, seedMessage } from './pushFixtures';
+import {
+	VAPID_ENV,
+	pushHarness,
+	quietWindowAroundNow,
+	seedDevice,
+	seedMailbox,
+	seedMessage,
+} from './pushFixtures';
 
 const guard = vi.hoisted(() => ({
 	calls: [] as Array<{ url: string; init: Record<string, unknown> }>,
@@ -92,6 +99,44 @@ describe('push.send.deliver', () => {
 		const row = await t.run((ctx) => ctx.db.get(device));
 		expect(row).not.toBeNull();
 		expect(row?.lastSuccessAt).toBeUndefined();
+	});
+
+	it("holds a quiet device back in the same commit as the other devices' answers", async () => {
+		const t = await pushHarness(modules);
+		await enableFeatures(t, ['postbox']);
+		const { mailboxId, inboxId } = await seedMailbox(t, 'user-a');
+		const { messageId } = await seedMessage(t, { mailboxId, folderId: inboxId });
+		const quiet = await seedDevice(t, 'user-a', {
+			endpoint: 'https://push.example.com/quiet',
+			timeZone: 'UTC',
+		});
+		const awake = await seedDevice(t, 'user-a', {
+			endpoint: 'https://push.example.com/awake',
+			// Nine hours from UTC: outside a window that is open in UTC now.
+			timeZone: 'Asia/Tokyo',
+		});
+		await t.run(async (ctx) => {
+			await ctx.db.insert('mailUserSettings', {
+				userId: 'user-a',
+				autoAdvance: 'next',
+				quietHours: quietWindowAroundNow(),
+				createdAt: 1,
+				updatedAt: 1,
+			});
+		});
+
+		await t.action(internal.push.send.deliver, {
+			userId: 'user-a',
+			event: { kind: 'mail', messageId },
+		});
+
+		expect(guard.calls.map((call) => call.url)).toEqual(['https://push.example.com/awake']);
+		const held = await t.run((ctx) => ctx.db.get(quiet));
+		expect(held?.quietDeferredCount).toBe(1);
+		expect(held?.lastSuccessAt).toBeUndefined();
+		expect((await t.run((ctx) => ctx.db.get(awake)))?.lastSuccessAt).toBeTypeOf('number');
+		const scheduled = await t.run((ctx) => ctx.db.system.query('_scheduled_functions').collect());
+		expect(scheduled.filter((job) => job.name === 'push/send:deliverQuietSummary')).toHaveLength(1);
 	});
 
 	it('sends nothing when the VAPID keys are gone', async () => {
