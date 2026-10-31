@@ -13,7 +13,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import schema from '../../schema';
 import { recordUploadedBlob } from '../../__tests__/uploadFixtures.testlib';
 import type { Id } from '../../_generated/dataModel';
-import { api } from '../../_generated/api';
+import { api, internal } from '../../_generated/api';
 import { MAX_ARCHIVE_BYTES } from '../archiveImport';
 import { modules, seedMailbox, seedFolder } from './helpers.testlib';
 import { readMailboxUsage } from '../mailboxUsage';
@@ -468,6 +468,29 @@ describe('archive import', () => {
 		expect(await t.mutation(api.mail.archiveImport.cancel, { importId: started.importId })).toBe(
 			false
 		);
+	});
+
+	it("leaves a job the pass commit closed alone when the previous release's batch commit arrives", async () => {
+		const t = convexTest(schema, modules);
+		const mailboxId = await seedMailboxWithFolders(t);
+		const started = await importArchive(
+			t,
+			mailboxId,
+			takeoutMessage({ messageId: 'one@x', subject: 'One' })
+		);
+		if (!started.ok) throw new Error('import did not start');
+
+		const late = await t.mutation(internal.mail.archiveImport.recordProgress, {
+			importId: started.importId,
+			cursorBytes: 0,
+			importedDelta: 5,
+			skippedDelta: 5,
+			labelsCreatedDelta: 5,
+		});
+
+		expect(late).toEqual({ stillImporting: false });
+		const status = await t.query(api.mail.archiveImport.getStatus, { mailboxId });
+		expect(status).toMatchObject({ status: 'completed', messagesImported: 1, messagesSkipped: 0 });
 	});
 
 	it('is invisible to a caller who cannot reach the mailbox', async () => {
