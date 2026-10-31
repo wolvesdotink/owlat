@@ -61,6 +61,9 @@ export const start = authedAction({
 		const expiresAt = now + PROBE_TIMEOUT_MS;
 		const token = createDeliverabilityProbeToken(webhookSecret, expiresAt);
 		const recipient = `deliverability-probe+${token}@${returnPathDomain}`;
+		// checkpoint: the attempt is claimed before the irreversible probe send; create
+		// schedules expire at expiresAt, which times out an attempt a crash leaves in
+		// sending, and a second start meanwhile reports this attempt instead of sending.
 		const created = (await ctx.runMutation(internal.delivery.checklistLoopbackState.create, {
 			organizationId,
 			attemptId,
@@ -71,6 +74,7 @@ export const start = authedAction({
 			expiresAt,
 		})) as { created: boolean; status: LoopbackStatus };
 		if (!created.created) return { status: created.status };
+		let providerMessageId: string | null;
 		try {
 			const accepted = (await ctx.runAction(internal.systemMail.sendSystemEmail, {
 				to: recipient,
@@ -80,13 +84,13 @@ export const start = authedAction({
 					'<p>This is an automated Owlat end-to-end deliverability probe.</p>' +
 					'<p>The configured probe receiver should return the correlation token with observed SPF, DKIM, DMARC, TLS, sending-IP, and PTR evidence.</p>',
 			})) as { providerMessageId: string };
-			const status = (await ctx.runMutation(internal.delivery.checklistLoopbackState.markAccepted, {
-				organizationId,
-				attemptId,
-				providerMessageId: accepted.providerMessageId,
-			})) as LoopbackStatus | 'missing';
-			return { status };
+			providerMessageId = accepted.providerMessageId;
 		} catch {
+			providerMessageId = null;
+		}
+		// The one commit: settle the attempt with what the provider answered. Both
+		// leave an attempt that inbound evidence or expiry already moved alone.
+		if (providerMessageId === null) {
 			const status = (await ctx.runMutation(
 				internal.delivery.checklistLoopbackState.markSendFailed,
 				{
@@ -98,6 +102,12 @@ export const start = authedAction({
 			)) as LoopbackStatus | 'missing';
 			return { status };
 		}
+		const status = (await ctx.runMutation(internal.delivery.checklistLoopbackState.markAccepted, {
+			organizationId,
+			attemptId,
+			providerMessageId,
+		})) as LoopbackStatus | 'missing';
+		return { status };
 	},
 });
 

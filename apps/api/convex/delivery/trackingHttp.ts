@@ -92,34 +92,23 @@ export const trackOpen = httpAction(async (ctx, request) => {
 		});
 	}
 
-	// Rate limit check (graceful - always return pixel, but skip recording if rate limited)
+	// One commit spends the per-IP `emailTracking` token and, inside the budget,
+	// records the open. The pixel is returned whatever happens to it.
 	const ip = getClientIp(request);
-	const { ok } = await ctx.runMutation(internal.lib.publicRateLimit.checkPublicRateLimit, {
-		limitType: 'emailTracking',
-		key: ip,
-	});
-
-	// Only record if not rate limited
-	if (ok) {
-		try {
-			// Record the open event (fire and forget - we return pixel regardless).
-			// Only the coarse client class leaves this handler; the User-Agent and
-			// IP it was judged on are not stored (see `automatedOpens.ts`).
-			const agent = classifyOpenRequest({
-				userAgent: request.headers.get('User-Agent'),
-				clientIp: ip,
-			});
-			await ctx.runMutation(internal.delivery.sendLifecycle.transition, {
-				send: {
-					kind: 'campaign',
-					id: emailSendId as Id<'emailSends'>,
-				},
-				transition: { to: 'opened', at: Date.now(), agent },
-			});
-		} catch {
-			// Log error but still return pixel to avoid broken images
-			logError('Failed to record open event for:', emailSendId);
-		}
+	try {
+		// Only the coarse client class leaves this handler; the User-Agent and IP
+		// it was judged on are not stored (see `automatedOpens.ts`).
+		const agent = classifyOpenRequest({
+			userAgent: request.headers.get('User-Agent'),
+			clientIp: ip,
+		});
+		await ctx.runMutation(internal.delivery.tracking.recordTrackingHit, {
+			clientIp: ip,
+			event: { emailSendId, transition: { to: 'opened', at: Date.now(), agent } },
+		});
+	} catch {
+		// Log error but still return pixel to avoid broken images
+		logError('Failed to record open event for:', emailSendId);
 	}
 
 	// Always return 1x1 transparent GIF
@@ -209,36 +198,29 @@ export const trackClick = httpAction(async (ctx, request) => {
 		}
 	}
 
-	// Rate limit check (graceful - always redirect, but skip recording if rate limited)
+	// One commit spends the per-IP `emailTracking` token, also for a target that
+	// is not followed, and, inside the budget, records the click. The redirect is
+	// the same whatever happens to it.
 	const ip = getClientIp(request);
-	const { ok } = await ctx.runMutation(internal.lib.publicRateLimit.checkPublicRateLimit, {
-		limitType: 'emailTracking',
-		key: ip,
-	});
-
-	// Only record if not rate limited
-	if (ok && hasValidTarget && emailSendId && encodedUrl) {
-		try {
-			// Record the click event. As with opens, only the coarse client class
-			// leaves this handler (see `automatedClicks.ts`); the redirect below
-			// is the same whatever it is.
-			const agent = classifyClickRequest({ userAgent: request.headers.get('User-Agent') });
-			await ctx.runMutation(internal.delivery.sendLifecycle.transition, {
-				send: {
-					kind: 'campaign',
-					id: emailSendId as Id<'emailSends'>,
-				},
-				transition: {
-					to: 'clicked',
-					at: Date.now(),
-					url: redirectUrl,
-					agent,
-				},
-			});
-		} catch {
-			// Log error but still redirect user
-			logError('Failed to record click event for:', emailSendId);
-		}
+	const isRecordable = hasValidTarget && emailSendId !== undefined && encodedUrl !== undefined;
+	try {
+		// As with opens, only the coarse client class leaves this handler (see
+		// `automatedClicks.ts`).
+		const agent = classifyClickRequest({ userAgent: request.headers.get('User-Agent') });
+		await ctx.runMutation(internal.delivery.tracking.recordTrackingHit, {
+			clientIp: ip,
+			...(isRecordable
+				? {
+						event: {
+							emailSendId,
+							transition: { to: 'clicked' as const, at: Date.now(), url: redirectUrl, agent },
+						},
+					}
+				: {}),
+		});
+	} catch {
+		// Log error but still redirect user
+		logError('Failed to record click event for:', emailSendId);
 	}
 
 	// Always redirect to the original URL

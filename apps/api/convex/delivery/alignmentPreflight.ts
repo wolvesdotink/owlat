@@ -23,7 +23,7 @@
  * see records `unknown`, which HOLDS the cell at s=0.
  */
 
-import { v } from 'convex/values';
+import { v, type ObjectType } from 'convex/values';
 import { paginationOptsValidator } from 'convex/server';
 import {
 	ALIGNMENT_SWEEP_PAGE_SIZE,
@@ -32,7 +32,8 @@ import {
 	type ReferenceArmInput,
 } from '@owlat/shared/deliverabilityAlignment';
 import { normalizeDomain } from '@owlat/shared';
-import { internalQuery, type QueryCtx } from '../_generated/server';
+import { internalQuery, type MutationCtx, type QueryCtx } from '../_generated/server';
+import { internal } from '../_generated/api';
 import { internalMutation } from '../lib/writeFence';
 import type { Doc } from '../_generated/dataModel';
 import { authedQuery } from '../lib/authedFunctions';
@@ -255,39 +256,90 @@ export const listDueAlignmentTargets = internalQuery({
 	},
 });
 
+const alignmentResultFields = {
+	domain: v.string(),
+	verdict: alignmentVerdictValidator,
+	checks: v.array(alignmentCheckValidator),
+	isMeasurementDegraded: v.boolean(),
+	measurementDegradedReason: v.optional(v.string()),
+	checkedAt: v.number(),
+	nextCheckDueAt: v.number(),
+};
+export type AlignmentSweepResult = ObjectType<typeof alignmentResultFields>;
+
 /** Persist one pre-flight verdict. Idempotent per (organization, domain). */
-export const recordAlignmentResult = internalMutation({
+async function writeAlignmentResult(
+	ctx: MutationCtx,
+	organizationId: string,
+	result: AlignmentSweepResult
+): Promise<void> {
+	const domain = normalizeDomain(result.domain);
+	const existing = await loadAlignmentState(ctx, organizationId, domain);
+	const row = {
+		organizationId,
+		domain,
+		verdict: result.verdict,
+		checks: result.checks,
+		isMeasurementDegraded: result.isMeasurementDegraded,
+		measurementDegradedReason: result.measurementDegradedReason,
+		checkedAt: result.checkedAt,
+		nextCheckDueAt: result.nextCheckDueAt,
+		updatedAt: result.checkedAt,
+	};
+	if (existing) {
+		// A stale result must never overwrite a fresher one (out-of-order sweeps).
+		if (existing.checkedAt > result.checkedAt) return;
+		await ctx.db.patch(existing._id, row);
+		return;
+	}
+	await ctx.db.insert('deliverabilityAlignmentStates', row);
+}
+
+/**
+ * The sweep run's one commit: every verdict it gathered, and the continuation
+ * when the walk did not finish. A domain that stopped being verified while its
+ * DNS was being read gets no row; the sweep no longer targets it.
+ */
+export const commitAlignmentSweep = internalMutation({
 	args: {
-		domain: v.string(),
-		verdict: alignmentVerdictValidator,
-		checks: v.array(alignmentCheckValidator),
-		isMeasurementDegraded: v.boolean(),
-		measurementDegradedReason: v.optional(v.string()),
-		checkedAt: v.number(),
-		nextCheckDueAt: v.number(),
+		results: v.array(v.object(alignmentResultFields)),
+		cursor: v.union(v.string(), v.null()),
+		isDone: v.boolean(),
 	},
-	handler: async (ctx, args) => {
+	handler: async (ctx, args): Promise<{ checked: number }> => {
 		const organizationId = await getSingletonOrganizationId(ctx);
-		const domain = normalizeDomain(args.domain);
-		const existing = await loadAlignmentState(ctx, organizationId, domain);
-		const row = {
-			organizationId,
-			domain,
-			verdict: args.verdict,
-			checks: args.checks,
-			isMeasurementDegraded: args.isMeasurementDegraded,
-			measurementDegradedReason: args.measurementDegradedReason,
-			checkedAt: args.checkedAt,
-			nextCheckDueAt: args.nextCheckDueAt,
-			updatedAt: args.checkedAt,
-		};
-		if (existing) {
-			// A stale result must never overwrite a fresher one (out-of-order sweeps).
-			if (existing.checkedAt > args.checkedAt) return;
-			await ctx.db.patch(existing._id, row);
-			return;
+		let checked = 0;
+		for (const result of args.results) {
+			// `result.domain` is the stored name the target was built from.
+			const domain = await ctx.db
+				.query('domains')
+				.withIndex('by_domain', (q) => q.eq('domain', result.domain))
+				.first();
+			if (domain?.status !== 'verified') continue;
+			await writeAlignmentResult(ctx, organizationId, result);
+			checked += 1;
 		}
-		await ctx.db.insert('deliverabilityAlignmentStates', row);
+		if (!args.isDone) {
+			await ctx.scheduler.runAfter(
+				500,
+				internal.delivery.alignmentPreflightGather.runAlignmentPreflightSweep,
+				{ cursor: args.cursor }
+			);
+		}
+		return { checked };
+	},
+});
+
+/**
+ * One verdict on its own. Nothing in this release calls it: an action of the
+ * previous release still mid-sweep during the deploy does, and the stale-result
+ * guard keeps its older verdict off a fresher one the new commit wrote. Remove
+ * after release 0.6.17.
+ */
+export const recordAlignmentResult = internalMutation({
+	args: alignmentResultFields,
+	handler: async (ctx, args) => {
+		await writeAlignmentResult(ctx, await getSingletonOrganizationId(ctx), args);
 	},
 });
 
