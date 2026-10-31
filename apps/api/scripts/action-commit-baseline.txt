@@ -71,9 +71,6 @@ convex/e2ee/discovery.ts:refreshExpiringRecipientKeys #3
 convex/e2ee/discovery.ts:refreshExpiringRecipientKeys #4
 convex/e2ee/keysNode.ts:remintLegacyProfile #2
 convex/e2ee/lifecycleNode.ts:runReSealVault #2
-convex/emailBlocks/rendering.ts:reRenderEmails #2
-convex/emailBlocks/rendering.ts:reRenderEmails #3
-convex/emailBlocks/rendering.ts:reRenderEmails #4
 convex/inbox/inboundIngest.ts:ingestFromWebhook #2
 convex/mail/ai/composeDraft.ts:answer #10
 convex/mail/ai/composeDraft.ts:answer #11
