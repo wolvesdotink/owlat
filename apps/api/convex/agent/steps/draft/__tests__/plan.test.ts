@@ -6,11 +6,10 @@
  * it fills.
  */
 
-import { getFunctionName } from 'convex/server';
 import { describe, expect, it, vi } from 'vitest';
 import type { Id } from '../../../../_generated/dataModel';
 import { draftHashOf } from '../../../../mail/interpret/responsePlanRules';
-import { loadDraftPlan, recordDraftPlan } from '../plan';
+import { draftPlanWrite, loadDraftPlan } from '../plan';
 import { slotItemLink } from '../../clarify/items';
 import {
 	buildSlotPrompt,
@@ -68,24 +67,21 @@ describe('loadDraftPlan', () => {
 	});
 });
 
-describe('recordDraftPlan', () => {
-	it('stores the checked plan against the hash of the draft as written', async () => {
+describe('draftPlanWrite', () => {
+	it('returns the checked plan against the hash of the draft as written, for the commit', async () => {
 		const plan = (await loadDraftPlan(
 			{ runQuery: vi.fn(async () => loaded) } as never,
 			inboundId,
 			threadId
 		))!;
-		const runMutation = vi.fn(async () => null);
 		const checked = {
 			coverage: [{ itemId, verdict: 'addressed' as const, spans: [{ start: 0, end: 5 }] }],
 			fileClaims: [],
 			newPromises: [],
 			isIncomplete: false,
 		};
-		await recordDraftPlan({ runMutation } as never, plan, 'Your refund is on its way.', checked);
-		const [ref, args] = runMutation.mock.calls[0] as unknown as [never, Record<string, unknown>];
-		expect(getFunctionName(ref)).toContain('responsePlanDraft:recordCheck');
-		expect(args).toMatchObject({
+		expect(await draftPlanWrite(plan, 'Your refund is on its way.', checked)).toMatchObject({
+			kind: 'draft_plan',
 			draftRef: { kind: 'inboundDraft', id: inboundId },
 			threadRevision: 4,
 			coverage: checked.coverage,
@@ -99,21 +95,16 @@ describe('recordDraftPlan', () => {
 		});
 	});
 
-	it('stores a pending plan without a self-check answer, and never throws', async () => {
+	it('is a pending plan without a self-check answer', async () => {
 		const plan = (await loadDraftPlan(
 			{ runQuery: vi.fn(async () => loaded) } as never,
 			inboundId,
 			threadId
 		))!;
-		const runMutation = vi.fn(async (_ref: unknown, _args: unknown) => null);
-		await recordDraftPlan({ runMutation } as never, plan, 'Hi', null);
-		expect(runMutation.mock.calls[0]![1]).toMatchObject({ coverage: [], verdict: 'pending' });
-		const failing = vi.fn(async () => {
-			throw new Error('write failed');
+		expect(await draftPlanWrite(plan, 'Hi', null)).toMatchObject({
+			coverage: [],
+			verdict: 'pending',
 		});
-		await expect(
-			recordDraftPlan({ runMutation: failing } as never, plan, 'Hi', null)
-		).resolves.toBe(undefined);
 	});
 });
 

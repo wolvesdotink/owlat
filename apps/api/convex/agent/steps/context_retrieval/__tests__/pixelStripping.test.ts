@@ -35,7 +35,6 @@ function makeCtx(message: Record<string, unknown>) {
 			hasQueryableVectors: false,
 		},
 		actions: { knowledge: [], semanticFileProcessing: [] },
-		mutations: { recordContextTier: null },
 	});
 }
 

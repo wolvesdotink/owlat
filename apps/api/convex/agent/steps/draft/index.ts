@@ -25,11 +25,12 @@ import { draftWriterRoute } from './writerRoute';
 import { buildReplySubject } from '../../../lib/emailAddress';
 import type { Id } from '../../../_generated/dataModel';
 import type { AgentStepModule } from '../types';
+import type { StepWrite } from '../../stepWrites';
 import { buildRecallKnowledgeTool, MAX_RECALL_CALLS } from './recall';
 import { teamRoot } from '../../shared/agentSpend';
 import { boundedRoot } from '../../../lib/llm/actionDeadline';
 import { draftAttachmentPatch } from './attachment';
-import { loadDraftPlan, recordDraftPlan } from './plan';
+import { draftPlanWrite, loadDraftPlan } from './plan';
 import {
 	checkTeamDraftGaps,
 	DRAFT_HELD_REASON,
@@ -170,6 +171,7 @@ export const draftStep: AgentStepModule<'draft', DraftInput, DraftOutput> = {
 		let voiceGuidance: string | null = null;
 		if (message?.to) {
 			try {
+				// checkpoint: a read that may schedule the mailbox's stale voice-profile refresh, due whatever this draft comes to.
 				const res = await ctx.runMutation(internal.mail.ai.voiceProfile.getGuidanceForRecipient, {
 					recipient: message.to,
 				});
@@ -322,44 +324,50 @@ export const draftStep: AgentStepModule<'draft', DraftInput, DraftOutput> = {
 		if (!isGapsAccepted) {
 			const gaps = await checkTeamDraftGaps(ctx, input.inboundMessageId, draftBody, message);
 			if (gaps.kind !== 'complete') {
-				if (gaps.kind === 'unaskable') {
-					await ctx.runMutation(internal.inbox.stepOutputs.recordAgentDecision, {
-						inboundMessageId: input.inboundMessageId,
-						decision: 'human_review',
-						reason: DRAFT_HELD_REASON,
-						confidence: input.classification.confidence,
-					});
-				}
-				return { output: { ...draftOutput, gapHold: gaps }, tokenUsage, modelUsed };
+				const writes: StepWrite[] =
+					gaps.kind === 'unaskable'
+						? [
+								{
+									kind: 'agent_decision',
+									decision: 'human_review',
+									reason: DRAFT_HELD_REASON,
+									confidence: input.classification.confidence,
+								},
+							]
+						: [];
+				return { output: { ...draftOutput, gapHold: gaps }, tokenUsage, modelUsed, writes };
 			}
 		}
 
-		// Persist the draft fields (in-state side effect); the route
-		// step reads them. The advisory, human-confirmed, contact-scoped attachment
+		// The draft fields, stored with the step (in-state); the route step reads
+		// them. The advisory, human-confirmed, contact-scoped attachment
 		// suggestion (fail-soft — see ./attachment.ts) folds in as an optional patch.
-		await ctx.runMutation(internal.inbox.stepOutputs.recordDraftOutput, {
-			inboundMessageId: input.inboundMessageId,
-			draftResponse: draftBody,
-			draftSubject: replySubject,
-			confidenceScore: input.classification.confidence,
-			...(draftQuality ? { draftQuality } : {}),
-			// The write-side fence stores gaps only with this consent.
-			...(isGapsAccepted ? { isGapsAccepted: true } : {}),
-			// A cheap-first draft is for review only (the `cheap_first_draft` gate).
-			...(route === 'cheap_first' ? { isCheapFirstDraft: true } : {}),
-			...(await draftAttachmentPatch(
-				ctx,
-				input.context,
-				message?.contactId,
-				ownerAttachment,
-				root
-			)),
-		});
+		const writes: StepWrite[] = [
+			{
+				kind: 'draft_output',
+				draftResponse: draftBody,
+				draftSubject: replySubject,
+				confidenceScore: input.classification.confidence,
+				...(draftQuality ? { draftQuality } : {}),
+				// The write-side fence stores gaps only with this consent.
+				...(isGapsAccepted ? { isGapsAccepted: true } : {}),
+				// A cheap-first draft is for review only (the `cheap_first_draft` gate).
+				...(route === 'cheap_first' ? { isCheapFirstDraft: true } : {}),
+				...(await draftAttachmentPatch(
+					ctx,
+					input.context,
+					message?.contactId,
+					ownerAttachment,
+					root
+				)),
+			},
+		];
 
 		// Bound to this draft's hash and the items' revisions; the gate re-reads it.
-		if (plan) await recordDraftPlan(ctx, plan, draftBody, planCoverage);
+		const planWrite = plan ? await draftPlanWrite(plan, draftBody, planCoverage) : null;
+		if (planWrite) writes.push(planWrite);
 
-		return { output: draftOutput, tokenUsage, modelUsed };
+		return { output: draftOutput, tokenUsage, modelUsed, writes };
 	},
 
 	route(output, _input, runCtx) {

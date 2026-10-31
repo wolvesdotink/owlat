@@ -59,7 +59,6 @@ function makeCtx(opts: {
 		mutations: {
 			getGuidanceForRecipient: () =>
 				typeof opts.guidance === 'function' ? opts.guidance() : opts.guidance,
-			recordDraftOutput: null,
 		},
 	});
 }

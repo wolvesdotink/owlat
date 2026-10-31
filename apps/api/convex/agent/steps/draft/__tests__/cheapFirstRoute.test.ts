@@ -8,7 +8,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { makeStepCtx } from '../../__tests__/stepCtx';
+import { makeStepCtx, writesOf } from '../../__tests__/stepCtx';
 import type { SharedDraftParams } from '../../../shared/draftService';
 
 const mocks = vi.hoisted(() => ({
@@ -54,7 +54,6 @@ const input: DraftInput = {
 };
 
 function stepCtx(routes: { policy?: unknown; shadow?: unknown }) {
-	const recorded: Array<Record<string, unknown>> = [];
 	const queried: string[] = [];
 	const ctx = makeStepCtx<Parameters<typeof draftStep.execute>[0]>({
 		queries: {
@@ -73,15 +72,9 @@ function stepCtx(routes: { policy?: unknown; shadow?: unknown }) {
 			evaluateForMessage: { stances: [] },
 			loadPlanInput: null,
 		},
-		mutations: {
-			recordDraftOutput: (args) => {
-				recorded.push(args as Record<string, unknown>);
-				return undefined;
-			},
-		},
 		actions: { suggestAttachments: null },
 	});
-	return { ctx, recorded, queried };
+	return { ctx, queried };
 }
 
 beforeEach(() => {
@@ -112,8 +105,9 @@ describe('draftWriterRoute', () => {
 
 describe('draftStep with the writer route', () => {
 	it('switch off (default): one writer on today’s capable tier, no mark', async () => {
-		const { ctx, recorded } = stepCtx({ policy: { cheapFirstWriter: 'off' } });
-		await draftStep.execute(ctx, input);
+		const { ctx } = stepCtx({ policy: { cheapFirstWriter: 'off' } });
+		const { writes } = await draftStep.execute(ctx, input);
+		const recorded = writesOf(writes, 'draft_output');
 
 		const [params] = mocks.shared;
 		expect(params?.writer).toBeUndefined();
@@ -123,11 +117,12 @@ describe('draftStep with the writer route', () => {
 	});
 
 	it('switch on, shadow mode on: the fast writer first, the capable escalation, and the review-only mark', async () => {
-		const { ctx, recorded } = stepCtx({
+		const { ctx } = stepCtx({
 			policy: { cheapFirstWriter: 'reviewed' },
 			shadow: { enabled: true },
 		});
-		await draftStep.execute(ctx, input);
+		const { writes } = await draftStep.execute(ctx, input);
+		const recorded = writesOf(writes, 'draft_output');
 
 		const [params] = mocks.shared;
 		await params!.resolveModel();
@@ -140,11 +135,12 @@ describe('draftStep with the writer route', () => {
 	});
 
 	it('switch on, shadow mode off (the draft could auto-send): today’s writer, no mark', async () => {
-		const { ctx, recorded } = stepCtx({
+		const { ctx } = stepCtx({
 			policy: { cheapFirstWriter: 'reviewed' },
 			shadow: { enabled: false },
 		});
-		await draftStep.execute(ctx, input);
+		const { writes } = await draftStep.execute(ctx, input);
+		const recorded = writesOf(writes, 'draft_output');
 
 		expect(mocks.shared[0]?.writer).toBeUndefined();
 		expect(recorded[0]).not.toHaveProperty('isCheapFirstDraft');

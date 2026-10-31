@@ -54,7 +54,7 @@ const input: DraftInput = {
 const DRAFT_USAGE = { promptTokens: 40, completionTokens: 20, totalTokens: 60 };
 const CHECK_USAGE = { promptTokens: 4, completionTokens: 2, totalTokens: 6 };
 
-function makeCtx(recordDraftOutput: () => unknown = () => undefined) {
+function makeCtx() {
 	const ledger: Array<{ feature: string; tokenUsage: unknown; modelUsed: unknown }> = [];
 	const ctx = makeStepCtx<Parameters<typeof draftStep.execute>[0]>({
 		queries: {
@@ -63,7 +63,6 @@ function makeCtx(recordDraftOutput: () => unknown = () => undefined) {
 			evaluateForMessage: { stances: [] },
 		},
 		mutations: {
-			recordDraftOutput,
 			llmUsage: (args) => {
 				const call = args as {
 					feature: string;
@@ -113,19 +112,19 @@ describe('draftStep.execute — draft spend (#1256)', () => {
 		]);
 	});
 
-	it('keeps the generation in the ledger when persisting the draft fails afterwards', async () => {
+	it('writes the generation to the ledger before the draft goes to the commit', async () => {
 		mocks.runLlmTextWithTools.mockResolvedValueOnce({
 			text: 'Your order shipped yesterday.',
 			tokenUsage: DRAFT_USAGE,
 			modelUsed: 'draft-model',
 		});
-		const { ctx, ledger } = makeCtx(() => {
-			throw new Error('write conflict');
-		});
+		const { ctx, ledger } = makeCtx();
 
-		// The step fails with no result, so the walker stores no usage on
-		// agentActions; the ledger already holds the paid calls.
-		await expect(draftStep.execute(ctx, input)).rejects.toThrow('write conflict');
+		// The step records no draft itself (the context has no route for it): the
+		// walker's commit stores it. A commit that fails afterwards loses no spend,
+		// because the ledger already holds the paid calls.
+		const { writes } = await draftStep.execute(ctx, input);
+		expect(writes?.map((write) => write.kind)).toEqual(['draft_output']);
 		expect(ledger.map((row) => row.feature)).toEqual(['agent_draft', 'agent_draft_selfcheck']);
 		expect(ledger[0]!.tokenUsage).toEqual(DRAFT_USAGE);
 	});
