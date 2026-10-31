@@ -697,6 +697,26 @@ describe('GET /send/receipt/:workAttemptId', () => {
 		expect(await response.json()).toMatchObject({ state: 'accepted', messageId: 'send-stable' });
 	});
 
+	it.each([
+		['the legacy literal 1', '1'],
+		['null', 'null'],
+		['an array', JSON.stringify([{ state: 'accepted', messageId: 'm', acceptedAt: 1 }])],
+		[
+			'an accepted receipt without acceptedAt',
+			JSON.stringify({ state: 'accepted', messageId: 'm' }),
+		],
+		['a non-string messageId', JSON.stringify({ state: 'accepted', messageId: 7, acceptedAt: 1 })],
+		[
+			'a reserved receipt timed as accepted',
+			JSON.stringify({ state: 'reserved', messageId: 'm', acceptedAt: 1 }),
+		],
+	])('answers absent for %s', async (_label, stored) => {
+		const redis = fakeRedis({ get: vi.fn().mockResolvedValue(stored) });
+		const response = await receiptApp(redis, { isMasterKey: true }).request('/send/receipt/work-1');
+		expect(response.status).toBe(200);
+		expect(await response.json()).toEqual({ state: 'absent' });
+	});
+
 	it('enforces master-only access through the real /send/* authentication middleware', async () => {
 		const receipt = JSON.stringify({
 			state: 'accepted',

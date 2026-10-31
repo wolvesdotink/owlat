@@ -6,6 +6,7 @@ import { requirePlatformAdmin } from '~~/server/utils/requireAdmin';
 import { resolveVerifiedComposeTemplate } from '~~/server/utils/composeUpdate';
 import { getInstanceSecret, callUpdater } from '~~/server/utils/updater';
 import { readJsonBody } from '~~/server/utils/jsonBody';
+import { decodeUpdaterReport, type UpdaterReport } from '~~/server/utils/updaterResponses';
 import {
 	MIGRATIONS_PENDING_STATUS,
 	MIGRATIONS_UNVERIFIED_STATUS,
@@ -132,12 +133,7 @@ export default defineEventHandler(async (event) => {
 	}
 
 	// 3. Dispatch to the updater sidecar.
-	let updaterResult: {
-		success?: boolean;
-		error?: string;
-		rollout?: string;
-		steps?: { step: string; ok?: boolean; stdout: string; stderr: string }[];
-	} = {};
+	let updaterResult: UpdaterReport = {};
 	let updaterOk = false;
 	let updaterStatus = 0;
 
@@ -149,7 +145,8 @@ export default defineEventHandler(async (event) => {
 			signal: AbortSignal.timeout(UPDATE_REQUEST_TIMEOUT_MS),
 		});
 
-		updaterResult = (await updaterResp.json()) as typeof updaterResult;
+		// A body that is not an object reports nothing; the status still decides.
+		updaterResult = decodeUpdaterReport(await updaterResp.json()) ?? {};
 		updaterOk = updaterResp.ok;
 		updaterStatus = updaterResp.status;
 	} catch (err) {

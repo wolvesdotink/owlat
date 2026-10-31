@@ -147,6 +147,43 @@ describe('POST /api/system/apply-profiles — updater proxying', () => {
 		});
 	});
 
+	it.each<[string, unknown]>([
+		['null', null],
+		['an array', [{ error: 'docker compose up failed' }]],
+		['a string', 'docker compose up failed'],
+	])('maps a failure answered with %s to the generic 502', async (_label, payload) => {
+		callUpdaterMock.mockResolvedValue(updaterResponse(false, payload));
+
+		await expect(callRoute()).rejects.toMatchObject({
+			statusCode: 502,
+			message: 'Applying profiles failed',
+			data: {},
+		});
+	});
+
+	it('drops mistyped report fields and keeps the ones it does not read', async () => {
+		callUpdaterMock.mockResolvedValue(
+			updaterResponse(
+				false,
+				{
+					error: { reason: 'up failed' },
+					profiles: ['ai', 7],
+					steps: [{ step: 'up', stdout: '', stderr: 3 }],
+					details: 'kept for the UI',
+				},
+				409
+			)
+		);
+
+		await expect(callRoute()).rejects.toMatchObject({
+			statusCode: 409,
+			message: 'Another change is still being applied',
+			data: { details: 'kept for the UI' },
+		});
+		const error = await callRoute().catch((err: { data: object }) => err);
+		expect(Object.keys((error as { data: object }).data)).toEqual(['details']);
+	});
+
 	it('maps an unreachable updater to 502', async () => {
 		callUpdaterMock.mockRejectedValue(new Error('fetch failed'));
 

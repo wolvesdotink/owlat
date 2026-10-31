@@ -19,6 +19,7 @@ import {
 	type SyntheticPostboxRow,
 } from '../listWorkload';
 import type { PostboxListScenario } from '../scenarios';
+import { decodePostboxRows } from '../wireRows';
 import { counter, percentile, timing, type Sample } from '../stats';
 import { component } from './components';
 import { nextFrame, sum, type Probe } from './probe';
@@ -29,10 +30,7 @@ export function postboxList(scenario: PostboxListScenario) {
 	const rows = postboxListWorkload(scenario);
 	const data = shallowRef<SyntheticPostboxRow[] | undefined>(undefined);
 	const deliver = (next: readonly SyntheticPostboxRow[]) => {
-		data.value = shareStructure(
-			data.value,
-			JSON.parse(JSON.stringify(next)) as SyntheticPostboxRow[]
-		);
+		data.value = shareStructure(data.value, decodePostboxRows(JSON.parse(JSON.stringify(next))));
 	};
 	deliver(rows);
 

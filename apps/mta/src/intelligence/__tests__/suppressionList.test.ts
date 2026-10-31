@@ -136,6 +136,44 @@ describe('suppressionList', () => {
 		});
 	});
 
+	describe('metadata that is not valid', () => {
+		const at = Date.parse('2026-03-01T00:00:00Z');
+		it.each<[string, unknown]>([
+			['null', null],
+			['an array', [{ reason: 'manual', suppressedAt: at }]],
+			['an empty object', {}],
+			['a reason this build does not know', { reason: 'later_reason', suppressedAt: at }],
+			[
+				'an owned mirror with an unknown reason',
+				{ reason: 'later_reason', source: 'convex-reconcile', suppressedAt: at },
+			],
+			[
+				'a non-numeric suppressedAt',
+				{ reason: 'soft_bounce', source: 'convex-reconcile', suppressedAt: String(at) },
+			],
+			['a non-string source', { reason: 'manual', source: 7, suppressedAt: at }],
+			[
+				'a non-numeric expiresAt',
+				{ reason: 'soft_bounce', source: 'convex-reconcile', suppressedAt: at, expiresAt: 'soon' },
+			],
+		])('keeps a block whose metadata is %s', async (_label, blob) => {
+			const raw = JSON.stringify(blob);
+			await redis.set(metaKeyFor('kept@example.com'), raw);
+			await redis.sadd(SUPPRESSION_SET, 'kept@example.com');
+
+			await suppressBulk(redis, [
+				{ email: 'kept@example.com', reason: 'soft_bounce', source: 'convex-reconcile' },
+			]);
+			expect(await redis.get(metaKeyFor('kept@example.com'))).toBe(raw);
+			expect(await unsuppressMirror(redis, 'kept@example.com', 'convex-reconcile', at)).toBe(false);
+			expect(await isSuppressed(redis, 'kept@example.com')).toBe(true);
+			expect(await getSuppressionStatus(redis, 'kept@example.com')).toEqual({ suppressed: true });
+			expect((await exportSuppressionList(redis)).entries).toEqual([
+				{ email: 'kept@example.com', orphan: true },
+			]);
+		});
+	});
+
 	describe('suppress TTL behavior', () => {
 		it('hard_bounce has no expiry', async () => {
 			await suppress(redis, 'hard@example.com', 'hard_bounce');
