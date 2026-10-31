@@ -1,3 +1,0 @@
-# Action commits past the first, one line each: <module>:<action> #<n>.
-# Frozen debt for scripts/check-action-commits.sh; delete lines as actions
-# are converted to one commit, never add them.

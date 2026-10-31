@@ -670,11 +670,11 @@ most `runMutation` calls one run can make, from the syntax tree
 (`scripts/lib/actionCommits.ts`: branches and early returns take the costlier
 path, a `switch` clause that falls through adds to the next, a loop's body,
 condition and increment and a per-item callback count twice, same-module helpers are followed by lexical
-scope, also when passed by name, other modules are not). Every commit past the first is a line in
-`scripts/action-commit-baseline.txt`, frozen debt: a new multi-commit action
-fails, and converting one fails until its lines are deleted. A marker that
-exempts no call, or gives no reason, fails too. Convert an action on its own,
-with characterization tests of what it writes landed first.
+scope, also when passed by name, other modules are not). There is no
+baseline: an action that can commit more than once fails. A marker that
+exempts no call, or gives no reason, fails too. Fold the extra commits into
+the action's one commit mutation, or mark a write that may stand alone as a
+checkpoint; never exempt an action from the gate.
 
 Converting an action leaves the internal mutations it used to call without a
 caller. Keep them for one release in `scripts/entryWiringPreviousRelease.ts`:
