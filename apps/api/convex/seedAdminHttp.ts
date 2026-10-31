@@ -2,10 +2,16 @@ import { v } from 'convex/values';
 import { decodeJson } from '@owlat/worker-protocol/decodeJson';
 import { httpAction } from './_generated/server';
 import { components, internal } from './_generated/api';
-import { betterAuthAdapterArgs } from './lib/betterAuthAdapterArgs';
 import { requireInstanceSecret } from './lib/instanceSecret';
 import { logError } from './lib/runtimeLog';
 import { errorResponse, jsonResponse } from './lib/httpResponse';
+import {
+	ALREADY_SEEDED,
+	USERS_EXIST,
+	adminSeedAnswer,
+	planAdminSeed,
+	type AdminSeedAnswer,
+} from './auth/seedAdminDecision';
 
 /**
  * HTTP action to seed the first admin user on a local instance.
@@ -14,6 +20,7 @@ import { errorResponse, jsonResponse } from './lib/httpResponse';
  * the global instance.
  *
  * Protected by X-Instance-Secret header. One-shot: refuses if any user exists.
+ * Everything is written by one commit (`auth/seedAdminCommit.ts`).
  *
  * POST /seed/admin
  * Headers: X-Instance-Secret: <instance secret>
@@ -58,175 +65,27 @@ export const seedAdmin = httpAction(async (ctx, request) => {
 	// always answered: the error categories have no 413.
 	const decoded = await decodeJson(request, seedAdminBody, 100_000);
 	if (!decoded.ok) return errorResponse('invalid_input', decoded.failure.message);
-	const body = decoded.value;
+	const plan = planAdminSeed(decoded.value);
+	if (!plan.ok) return answer(plan.answer);
 
-	if (!body.email || !body.name || !body.passwordHash) {
-		return errorResponse('invalid_input', 'Missing required fields: email, name, passwordHash');
-	}
-
-	// One-shot check: refuse if any user already exists…
+	// Cheap early rejects before the commit: a user exists, or the durable
+	// latch is stamped (the user probe re-arms if every user is deleted; the
+	// latch does not). The commit re-checks both atomically with its writes.
 	const existingUser = await ctx.runQuery(components.betterAuth.adapter.findMany, {
 		model: 'user',
 		where: [],
 		paginationOpts: { cursor: null, numItems: 1 },
 	});
-
-	if (existingUser && existingUser.page && existingUser.page.length > 0) {
-		return errorResponse('already_exists', 'Users already exist. Seed endpoint is one-shot only.');
-	}
-
-	// Fast path: refuse before any write if the durable latch is already stamped,
-	// even when no user rows remain. The user probe above re-arms if every user is
-	// deleted; this latch does not. (The authoritative, race-free gate is the
-	// atomic claim below — this is just a cheap early reject.)
+	if (existingUser?.page && existingUser.page.length > 0) return answer(USERS_EXIST);
 	const alreadySeeded = await ctx.runQuery(
 		internal.workspaces.settings.hasCompletedAdminSeedInternal,
 		{}
 	);
-	if (alreadySeeded) {
-		return errorResponse('already_exists', 'Admin seed has already completed on this instance.');
-	}
-
-	// The org display name is needed both to seed `instanceSettings.defaultFromName`
-	// and to name the organization row later, so derive it once up front.
-	const orgName = `${body.name}'s Team`;
-
-	// Create the instanceSettings singleton, or fill the seed columns onto the row
-	// a cron already created, BEFORE the atomic latch claim, so the seed's settings
-	// columns are persisted and the claim always has a row to stamp. No latch
-	// here — the claim below owns stamping it.
-	await ctx.runMutation(internal.workspaces.settings.createInternal, {
-		timezone: 'UTC',
-		defaultFromName: orgName,
-		isMigrationMode: body.isMigrationMode ?? false,
-	});
-
-	// ATOMICALLY claim the durable one-shot latch BEFORE creating any user. The
-	// claim reads and stamps `adminSeedCompletedAt` in a SINGLE transaction and
-	// returns whether THIS request won it, so two concurrent /seed/admin calls
-	// can't both pass a check-then-write and both seed — the loser gets a 409.
-	// A failure AFTER the claim leaves the latch set (fail-closed) — recovering a
-	// half-seeded instance is an operator action.
-	const { claimed } = await ctx.runMutation(
-		internal.workspaces.settings.claimAdminSeedInternal,
-		{}
-	);
-	if (!claimed) {
-		return errorResponse('already_exists', 'Admin seed has already completed on this instance.');
-	}
+	if (alreadySeeded) return answer(ALREADY_SEEDED);
 
 	try {
-		const now = new Date();
-		const nowMs = now.getTime();
-
-		// Create the BetterAuth user. The component's adapter GENERATES the row
-		// id (`_id`) and its `create` validator REJECTS a client-supplied `id`
-		// (older code passed one and 500'd at runtime against the deployed
-		// component). Capture the returned doc and use its `_id` as the
-		// canonical user id for every foreign-key reference — that is exactly
-		// the id BetterAuth resolves at login (the adapter derives the
-		// better-auth id from `_id`; see getDocId in @convex-dev/better-auth).
-		const userDoc = (await ctx.runMutation(components.betterAuth.adapter.create, {
-			input: betterAuthAdapterArgs({
-				model: 'user',
-				data: {
-					email: body.email,
-					name: body.name,
-					emailVerified: true,
-					createdAt: nowMs,
-					updatedAt: nowMs,
-				},
-			}),
-		})) as unknown as { _id: string };
-		const userId = userDoc._id;
-
-		// Create BetterAuth account record with the hashed password
-		await ctx.runMutation(components.betterAuth.adapter.create, {
-			input: betterAuthAdapterArgs({
-				model: 'account',
-				data: {
-					userId,
-					providerId: 'credential',
-					accountId: userId,
-					password: body.passwordHash,
-					createdAt: nowMs,
-					updatedAt: nowMs,
-				},
-			}),
-		});
-
-		// Create BetterAuth organization
-		// Collapse runs of `-` and strip leading/trailing `-` so an email local
-		// part like `+++@x.com` doesn't yield the all-dashes slug `---`.
-		const slugBase = body.email
-			.split('@')[0]
-			?.toLowerCase()
-			.replace(/[^a-z0-9]+/g, '-')
-			.replace(/^-+|-+$/g, '');
-		const orgSlug = slugBase && slugBase.length > 0 ? slugBase : 'org';
-
-		const orgDoc = (await ctx.runMutation(components.betterAuth.adapter.create, {
-			input: betterAuthAdapterArgs({
-				model: 'organization',
-				data: {
-					name: orgName,
-					slug: orgSlug,
-					createdAt: nowMs,
-				},
-			}),
-		})) as unknown as { _id: string };
-		const orgId = orgDoc._id;
-
-		// Create BetterAuth member record (owner role)
-		await ctx.runMutation(components.betterAuth.adapter.create, {
-			input: betterAuthAdapterArgs({
-				model: 'member',
-				data: {
-					userId,
-					organizationId: orgId,
-					role: 'owner',
-					createdAt: nowMs,
-				},
-			}),
-		});
-
-		// Create userProfile record
-		await ctx.runMutation(internal.auth.userProfiles.createInternal, {
-			authUserId: userId,
-			email: body.email,
-			name: body.name,
-		});
-
-		// The instanceSettings singleton (timezone, defaultFromName, migration mode)
-		// was already created by `createInternal`, and its durable one-shot latch
-		// stamped by the atomic `claimAdminSeedInternal` claim above, before any
-		// user was created.
-
-		// Give the setup user the operator surface too. On a single-org self-host
-		// the person who ran setup owns both the org and the box, so withholding
-		// System & Updates / Backups / Operator from them only meant NOBODY could
-		// reach those pages without a `convex run` against the container.
-		//
-		// Deliberately best-effort: the account, org and settings above are all
-		// written by now and the one-shot latch is claimed, so throwing here would
-		// leave a half-seeded instance that no retry can finish. If the grant
-		// fails, the owner can still claim it from the admin hub
-		// (`claimInitialPlatformAdmin`) — a worse first-run, not a broken one.
-		try {
-			await ctx.runMutation(internal.platformAdmin.bootstrap.seedInitialPlatformAdmin, {});
-		} catch (error) {
-			logError('[seedAdmin] platform-admin grant failed (instance is still usable):', error);
-		}
-
-		// Persist the wizard's chosen feature flags (if provided) so the
-		// selections take effect at runtime instead of falling back to defaults.
-		if (body.flags && Object.keys(body.flags).length > 0) {
-			await ctx.runMutation(internal.workspaces.featureFlags.setAllInternal, {
-				flags: body.flags,
-			});
-		}
-
-		return jsonResponse({ success: true, userId }, 201);
+		const result = await ctx.runMutation(internal.auth.seedAdminCommit.commitAdminSeed, plan.seed);
+		return answer(adminSeedAnswer(result));
 	} catch (error) {
 		// Locked error envelope — log the real cause server-side, return a fixed
 		// message so an internal error never leaks its detail to the HTTP caller.
@@ -234,3 +93,10 @@ export const seedAdmin = httpAction(async (ctx, request) => {
 		return errorResponse('internal', 'Internal error');
 	}
 });
+
+function answer(seedAnswer: AdminSeedAnswer): Response {
+	if (seedAnswer.kind === 'created') {
+		return jsonResponse({ success: true, userId: seedAnswer.userId }, 201);
+	}
+	return errorResponse(seedAnswer.category, seedAnswer.message);
+}

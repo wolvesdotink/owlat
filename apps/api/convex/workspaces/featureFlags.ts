@@ -286,8 +286,8 @@ export const setFeaturePack = adminMutation({
 
 /** Validate, cascade-resolve, and persist the whole flag map onto the
  * `featureFlagSettings` singleton. Shared by the admin mutation and the
- * setup-seed internal mutation so both stay the sole writer of the map. */
-async function writeAllFlags(ctx: MutationCtx, flags: FeatureFlagState) {
+ * setup seed (`auth/seedAdminCommit.ts`) so both stay the sole writer of the map. */
+export async function writeAllFlags(ctx: MutationCtx, flags: FeatureFlagState) {
 	for (const key of Object.keys(flags)) {
 		const definition = getFeatureFlagDefinition(FEATURE_FLAG_REGISTRY, key);
 		if (!definition) {

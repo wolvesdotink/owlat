@@ -18,9 +18,8 @@
  *                         could write these fields.
  *   - `remove`           — opens (or joins) the **Organization deletion**
  *                         job; owner-only.
- *   - `createInternal`   — idempotent bootstrap (called by
- *                         `seedAdminHttp.ts`); fills the seed columns onto a
- *                         row another writer created first.
+ *   - `createInternal`   — idempotent bootstrap; fills the seed columns onto
+ *                         a row another writer created first.
  *
  * The row itself is created by `upsertInstanceSettings` in
  * `lib/instanceSettings.ts`, the one insert site every column owner shares.
@@ -255,7 +254,7 @@ function seedColumnDefaults(args: SeedColumnArgs) {
  * Fill the seed columns onto an existing, still-unlatched singleton, plus any
  * `extra` columns (the latch itself). Only columns that are still undefined are
  * written. No user exists before the seed, so a value already there came from
- * an earlier seed step (`createInternal` runs before the claim) and is kept.
+ * an earlier bootstrap step (`createInternal`) and is kept.
  * The caller checks the latch: a latched row is never passed in.
  */
 async function applySeedColumns(
@@ -316,14 +315,14 @@ export const createInternal = internalMutation({
  * unset, stamps it — creating the `instanceSettings` singleton (with the seed's
  * settings columns) when none exists yet. Returns `{ claimed }`.
  *
- * `seedAdminHttp.ts` calls this BEFORE creating any user. Because the check and the
+ * The `/seed/admin` commit (`auth/seedAdminCommit.ts`) claims it BEFORE creating
+ * any user, in the transaction that creates them. Because the check and the
  * write happen in one Convex transaction (OCC-serialized on the singleton), two
- * concurrent `/seed/admin` requests can no longer both pass a separate
+ * concurrent `/seed/admin` requests cannot both pass a separate
  * check-then-write and both seed: exactly one wins the claim, the loser reads the
- * now-stamped latch and gets a 409. A seed that fails AFTER a successful claim
- * leaves the latch set — fail-closed: no second unauthenticated bootstrap can
- * mint a fresh owner on the instance. Recovering from a half-seed therefore needs
- * operator action, which is the intended posture for a one-shot endpoint.
+ * now-stamped latch and gets a 409. A seed that fails rolls the claim back with
+ * everything else it wrote, so the instance is either fully seeded and latched
+ * or untouched and still seedable.
  */
 export const claimAdminSeedInternal = internalMutation({
 	args: {
@@ -331,28 +330,34 @@ export const claimAdminSeedInternal = internalMutation({
 		defaultFromName: v.optional(v.string()),
 		isMigrationMode: v.optional(v.boolean()),
 	},
-	handler: async (ctx, args): Promise<{ claimed: boolean }> => {
-		const now = Date.now();
-		const existing = await getInstanceSettings(ctx.db);
-		if (existing) {
-			// Already latched ⇒ a prior seed claimed it; refuse (concurrent loser or
-			// a re-run against a de-populated instance).
-			if (existing.adminSeedCompletedAt !== undefined) {
-				return { claimed: false };
-			}
-			// Unlatched: stamp the latch and fill the seed columns another writer
-			// left unset, in this same transaction.
-			await applySeedColumns(ctx, existing, args, { adminSeedCompletedAt: now });
-			return { claimed: true };
-		}
-		await upsertInstanceSettings(
-			ctx,
-			{ adminSeedCompletedAt: now },
-			{ now, onCreate: seedColumnDefaults(args) }
-		);
-		return { claimed: true };
-	},
+	handler: async (ctx, args): Promise<{ claimed: boolean }> => claimAdminSeed(ctx, args),
 });
+
+/** The claim itself, for a commit that seeds in the same transaction (`auth/seedAdminCommit.ts`). */
+export async function claimAdminSeed(
+	ctx: MutationCtx,
+	args: SeedColumnArgs
+): Promise<{ claimed: boolean }> {
+	const now = Date.now();
+	const existing = await getInstanceSettings(ctx.db);
+	if (existing) {
+		// Already latched ⇒ a prior seed claimed it; refuse (concurrent loser or
+		// a re-run against a de-populated instance).
+		if (existing.adminSeedCompletedAt !== undefined) {
+			return { claimed: false };
+		}
+		// Unlatched: stamp the latch and fill the seed columns another writer
+		// left unset, in this same transaction.
+		await applySeedColumns(ctx, existing, args, { adminSeedCompletedAt: now });
+		return { claimed: true };
+	}
+	await upsertInstanceSettings(
+		ctx,
+		{ adminSeedCompletedAt: now },
+		{ now, onCreate: seedColumnDefaults(args) }
+	);
+	return { claimed: true };
+}
 
 /**
  * Whether the durable admin-seed latch has been stamped. Read by
