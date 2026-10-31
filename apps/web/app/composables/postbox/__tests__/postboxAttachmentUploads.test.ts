@@ -440,7 +440,7 @@ describe('xhrPutFile', () => {
 	it('reports determinate upload progress and ignores progress it cannot compute', () => {
 		const { xhr, onProgress } = withScriptedXhr();
 		xhr!.progress({ lengthComputable: true, loaded: 25, total: 100 });
-		xhr!.progress({ lengthComputable: false, loaded: 50, total: 0 });
+		xhr!.progress({ lengthComputable: false, loaded: 50, total: 100 });
 		xhr!.progress({ lengthComputable: true, loaded: 0, total: 0 });
 		xhr!.progress({ lengthComputable: true, loaded: 100, total: 100 });
 		expect(onProgress.mock.calls).toEqual([[0.25], [1]]);
