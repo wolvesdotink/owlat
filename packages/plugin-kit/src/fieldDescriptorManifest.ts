@@ -31,7 +31,8 @@ import {
 	validateDescriptorSafeArray,
 	validateKnownFields,
 } from './manifestValue';
-import { MAX_SETTINGS_OPTIONS, RESERVED_FIELD_KEYS } from './settingsSchema';
+import { RESERVED_FIELD_KEYS } from './settingsSchema';
+import { MAX_SETTINGS_OPTIONS } from './settingsSchemaLimits';
 
 /** A field key is an identifier, not a path: no dots, no dashes, no digits first. */
 const FIELD_KEY = /^[a-zA-Z][a-zA-Z0-9]*$/;

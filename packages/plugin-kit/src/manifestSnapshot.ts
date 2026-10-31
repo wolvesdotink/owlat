@@ -2,7 +2,7 @@ import { isPluginContributionKind } from './contributions';
 import { addManifestIssue, type PluginManifestIssue } from './manifestIssues';
 import { PLUGIN_SEND_TRANSPORT_MAX_ENV_VARS } from './sendTransport';
 import { PLUGIN_SEND_TRANSPORT_MAX_CREDENTIAL_FIELDS } from './sendTransportCredentials';
-import { MAX_SETTINGS_FIELDS, MAX_SETTINGS_OPTIONS } from './settingsSchema';
+import { MAX_SETTINGS_FIELDS, MAX_SETTINGS_OPTIONS } from './settingsSchemaLimits';
 
 // Manifests are static declarations: these limits leave ample composition room
 // while bounding validation work at the public `unknown` input boundary. The
