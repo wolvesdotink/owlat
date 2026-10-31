@@ -18,14 +18,14 @@ import {
 import type { SetupSendingKind } from '@owlat/shared/setupSendingConfig';
 
 /** One single-value prompt's wording. */
-export interface FieldPromptCopy {
+interface FieldPromptCopy {
 	readonly message: string;
 	/** Overrides the field's catalog placeholder. */
 	readonly placeholder?: string;
 }
 
 /** The wording of the prompts a `host-port` endpoint field expands into. */
-export interface EndpointPromptCopy {
+interface EndpointPromptCopy {
 	/** The preset picker, shown when the field carries presets. */
 	readonly preset: string;
 	readonly host: FieldPromptCopy;
