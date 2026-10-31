@@ -163,17 +163,13 @@ const decisionLabel = computed(() => {
 
 <template>
 	<div>
-		<header class="mb-6 flex items-start gap-3">
-			<UiIconBox icon="lucide:activity" size="lg" variant="brand" rounded="xl" />
-			<div>
-				<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">{{ headline }}</h1>
-				<p class="mt-1 max-w-2xl text-sm text-text-secondary">{{ subhead }}</p>
+		<UiPageHeader class="mb-6" :title="headline" :description="subhead">
+			<template v-if="windowLabel" #meta>
 				<I18nT
-					v-if="windowLabel"
 					keypath="dashboard.admin.delivery.advanced.measurement.windowNote"
 					tag="p"
 					scope="global"
-					class="mt-1 text-xs text-text-secondary"
+					class="text-xs text-text-secondary"
 				>
 					<template #reported>
 						<span data-testid="measurement-window">{{ windowLabel }}</span>
@@ -182,8 +178,8 @@ const decisionLabel = computed(() => {
 						<span data-testid="measurement-decision-window">{{ decisionLabel }}</span>
 					</template>
 				</I18nT>
-			</div>
-		</header>
+			</template>
+		</UiPageHeader>
 
 		<!--
 			No `empty` binding: the query always answers with the full cell product,
