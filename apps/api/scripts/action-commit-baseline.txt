@@ -1,8 +1,6 @@
 # Action commits past the first, one line each: <module>:<action> #<n>.
 # Frozen debt for scripts/check-action-commits.sh; delete lines as actions
 # are converted to one commit, never add them.
-convex/agentHealth.ts:rollupMetrics #2
-convex/agentHealth.ts:rollupMetrics #3
 convex/autonomyFeedback.ts:adjustThresholds #2
 convex/autonomyFeedback.ts:adjustThresholds #3
 convex/autonomyFeedback.ts:adjustThresholds #4
