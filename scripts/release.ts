@@ -65,7 +65,6 @@ function fail(message: string): never {
 
 const rawArgs = process.argv.slice(2);
 const flags = new Set(rawArgs.filter((a) => a.startsWith('--')));
-const positional = rawArgs.filter((a) => !a.startsWith('--'));
 const dryRun = flags.has('--dry-run');
 const noCommit = flags.has('--no-commit');
 const push = flags.has('--push');
@@ -75,7 +74,7 @@ const known = new Set(['--dry-run', '--no-commit', '--push', '--any-branch']);
 for (const flag of flags) {
 	if (!known.has(flag)) fail(`unknown flag ${flag}`);
 }
-const request = positional[0];
+const request = rawArgs.find((a) => !a.startsWith('--'));
 if (!request)
 	fail(
 		'usage: bun run release:cut <version|major|minor|patch|rc> [--dry-run] [--no-commit] [--push] [--any-branch]'

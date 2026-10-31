@@ -120,12 +120,12 @@ describe('smtp-server parity — SMTP framing', () => {
 		const { port: ourPort } = await startListener(ourOptions({ maxMessageBytes: 1024 }));
 		const script = [{ send: 'EHLO caps.test', expectClose: false }];
 
-		const [ourEhlo] = (
+		const ourEhlo = (
 			await converse(ourPort, [...script, { send: 'QUIT', expectClose: true }])
-		).filter((r) => r.code === 250);
-		const [oracleEhlo] = (
+		).find((r) => r.code === 250);
+		const oracleEhlo = (
 			await converse(oracle.port, [...script, { send: 'QUIT', expectClose: true }])
-		).filter((r) => r.code === 250);
+		).find((r) => r.code === 250);
 
 		expect(ourEhlo?.code).toBe(250);
 		expect(oracleEhlo?.code).toBe(250);

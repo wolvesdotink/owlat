@@ -7,6 +7,7 @@ import type { WorkerTimers } from './env.js';
 import { configuredOpencodeBin, convexUrl, loadWorkerTimers } from './config.js';
 import { startHeartbeat } from './heartbeat.js';
 import { startWireReports } from './wireReport.js';
+import { createPollLoop } from './pollLoop.js';
 
 // Route both crash channels through the worker's own log stream. Node ≥15 ends
 // the process on either one already, so what changes is that the event explaining
@@ -27,38 +28,17 @@ process.on('unhandledRejection', (reason) => {
 	process.exit(1);
 });
 
-// Signal handling for the poll loop. There is no listener to close: the worker
-// pulls work, so "stop accepting" means "do not start another iteration". A
-// task already running keeps running — cutting it in half would strand its
-// branch and its Convex row, and the row is reclaimed at the next boot anyway.
-// Docker's grace period therefore still bounds a long task, but the common case
-// (a signal during the idle sleep, which is where the worker spends nearly all
-// of its time) now exits cleanly and immediately.
-let stopping = false;
-let interruptSleep: (() => void) | undefined;
+// A signal stops the poll loop between steps (see pollLoop.ts); the task in
+// progress finishes first.
+const pollLoop = createPollLoop();
 
 function requestStop(signal: NodeJS.Signals): void {
-	if (stopping) return;
-	stopping = true;
+	if (!pollLoop.requestStop()) return;
 	log(`${signal} received — finishing the current poll iteration, then exiting`);
-	interruptSleep?.();
 }
 
 process.on('SIGTERM', () => requestStop('SIGTERM'));
 process.on('SIGINT', () => requestStop('SIGINT'));
-
-/** Idle between polls, cut short by a shutdown signal. */
-function sleepUntilNextPoll(pollIntervalMs: number): Promise<void> {
-	return new Promise<void>((resolve) => {
-		const timer = setTimeout(resolve, pollIntervalMs);
-		interruptSleep = () => {
-			clearTimeout(timer);
-			resolve();
-		};
-	}).finally(() => {
-		interruptSleep = undefined;
-	});
-}
 
 async function pollForTasks(pollCodeTasks: () => Promise<void>): Promise<void> {
 	try {
@@ -161,13 +141,13 @@ async function main(): Promise<void> {
 	// generalized Tier-3 plugin-task queue) through the shared sandbox seam.
 	// The code-task poller also repeats the code-task reclaim above, between
 	// tasks, after a run whose final report never reached the backend.
-	while (!stopping) {
-		await pollForTasks(pollCodeTasks);
-		if (stopping) break;
-		await pollForPluginTasks(timers.pluginJobHeartbeatMs);
-		if (stopping) break;
-		await sleepUntilNextPoll(timers.pollIntervalMs);
-	}
+	await pollLoop.run(
+		{
+			pollCodeTasks: () => pollForTasks(pollCodeTasks),
+			pollPluginTasks: () => pollForPluginTasks(timers.pluginJobHeartbeatMs),
+		},
+		timers.pollIntervalMs
+	);
 
 	// Exit explicitly: the Convex client keeps its websocket open, so returning
 	// from main() alone would leave the process alive past the signal.

@@ -58,7 +58,7 @@ function htmlToText(html: string): string {
 /** Last meaningful path segment of a URL, so "…/hero-banner.png" reads as "hero-banner.png". */
 function fileNameFromUrl(url: string): string {
 	const withoutQuery = url.split(/[?#]/)[0] ?? '';
-	const segment = withoutQuery.split('/').filter(Boolean).pop();
+	const segment = withoutQuery.split('/').findLast(Boolean);
 	return segment ?? '';
 }
 

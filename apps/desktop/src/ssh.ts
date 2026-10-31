@@ -64,8 +64,7 @@ export function sshExecStream(
 	command: string,
 	onEvent: (event: ExecEvent) => void
 ): Promise<number> {
-	const channel = new Channel<ExecEvent>();
-	channel.onmessage = onEvent;
+	const channel = new Channel<ExecEvent>(onEvent);
 	return invoke<number>('ssh_exec_stream', { sessionId, command, onEvent: channel });
 }
 
@@ -117,8 +116,7 @@ export function sshPushImages(
 	images: string[],
 	onEvent: (event: ExecEvent) => void
 ): Promise<void> {
-	const channel = new Channel<ExecEvent>();
-	channel.onmessage = onEvent;
+	const channel = new Channel<ExecEvent>(onEvent);
 	return invoke('ssh_push_images', { sessionId, images, onEvent: channel });
 }
 
@@ -134,8 +132,7 @@ export function localDockerBuild(
 	build: LocalBuild,
 	onEvent: (event: ExecEvent) => void
 ): Promise<number> {
-	const channel = new Channel<ExecEvent>();
-	channel.onmessage = onEvent;
+	const channel = new Channel<ExecEvent>(onEvent);
 	return invoke<number>('local_docker_build', { sessionId, localDir, build, onEvent: channel });
 }
 

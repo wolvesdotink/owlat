@@ -84,7 +84,9 @@ describe('parseMessage fuzz — 10k mutations never throw and stay bounded', () 
 				expect(msg.html === false || typeof msg.html === 'string').toBe(true);
 				ok = true;
 			} catch (err) {
-				throw new Error(`parseMessage threw on mutation ${String(i)}: ${String(err)}`);
+				throw new Error(`parseMessage threw on mutation ${String(i)}: ${String(err)}`, {
+					cause: err,
+				});
 			}
 			if (ok) parsed++;
 		}

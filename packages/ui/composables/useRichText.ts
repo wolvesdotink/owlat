@@ -174,11 +174,11 @@ export function useRichText(options: UseRichTextOptions) {
 			const list = li.parentElement;
 			if (list && list.tagName.toLowerCase() === targetListTag) {
 				const fragment = document.createDocumentFragment();
-				Array.from(list.children).forEach((child) => {
+				for (const child of Array.from(list.children)) {
 					const p = document.createElement('p');
 					while (child.firstChild) p.appendChild(child.firstChild);
 					fragment.appendChild(p);
-				});
+				}
 				list.replaceWith(fragment);
 				notify();
 				return;

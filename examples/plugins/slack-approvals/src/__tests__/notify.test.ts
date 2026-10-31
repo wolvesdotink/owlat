@@ -67,4 +67,21 @@ describe('createSlackNotifier', () => {
 		expect(sent).toHaveLength(1);
 		expect(sent[0]!.channel).toBe('C9');
 	});
+
+	it('calls a method-style sender with the message alone and the config as receiver', async () => {
+		const calls: Array<{ receiver: unknown; args: unknown[] }> = [];
+		const config = {
+			channel: 'C9',
+			postMessage(this: unknown, ...args: [SlackMessage]) {
+				calls.push({ receiver: this, args });
+				return Promise.resolve();
+			},
+		};
+		await createSlackNotifier(config).postApprovalRequest(request, { subject: 'Re: hi' });
+		expect(calls).toHaveLength(1);
+		expect(calls[0]!.receiver).toBe(config);
+		expect(calls[0]!.args).toEqual([
+			buildApprovalMessage(request, { subject: 'Re: hi' }, { channel: 'C9' }),
+		]);
+	});
 });

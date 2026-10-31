@@ -18,9 +18,9 @@ export const DEFAULT_ITEM_ALIAS = 'item';
  */
 export function normalizeRepeat(
 	current: Partial<BlockRepeat> | undefined,
-	patch: Partial<BlockRepeat>,
+	patch: Partial<BlockRepeat>
 ): BlockRepeat {
-	const merged = { ...(current ?? {}), ...patch };
+	const merged = { ...current, ...patch };
 	const alias = merged.itemAlias?.trim();
 	const next: BlockRepeat = {
 		variable: merged.variable ?? '',

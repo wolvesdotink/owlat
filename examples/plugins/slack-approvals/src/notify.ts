@@ -95,14 +95,17 @@ export function buildApprovalMessage(
 export function createSlackNotifier(config: SlackNotifierConfig): ApprovalNotifier {
 	return {
 		async postApprovalRequest(request, payload) {
-			await config.postMessage(
-				buildApprovalMessage(request, payload, {
-					channel: config.channel,
-					...(config.maxSubjectCodePoints === undefined
-						? {}
-						: { maxSubjectCodePoints: config.maxSubjectCodePoints }),
-				})
-			);
+			const message = buildApprovalMessage(request, payload, {
+				channel: config.channel,
+				...(config.maxSubjectCodePoints === undefined
+					? {}
+					: { maxSubjectCodePoints: config.maxSubjectCodePoints }),
+			});
+			// The injected sender wraps Slack's chat.postMessage, which takes no
+			// target origin (it is not Window#postMessage). Bound so a sender
+			// written as a method still sees `config` as its receiver.
+			const sendToSlack = config.postMessage.bind(config);
+			await sendToSlack(message);
 		},
 	};
 }

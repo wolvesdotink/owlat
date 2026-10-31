@@ -38,7 +38,7 @@ describe('expandMacros (RFC 7208 §7)', () => {
 		const expanded = expandMacros('%{i}', '2001:db8::1', 'd.com');
 		const nibbles = expanded.split('.');
 		expect(nibbles).toHaveLength(32);
-		expect(nibbles.join('')).toBe('2001' + '0db8' + '0000'.repeat(5) + '0001');
+		expect(nibbles.join('')).toBe('20010db8' + '0000'.repeat(5) + '0001');
 	});
 
 	it('leaves %{i} verbatim when the sender IP is unparsable', () => {

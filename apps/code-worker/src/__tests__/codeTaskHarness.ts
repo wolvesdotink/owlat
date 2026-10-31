@@ -236,7 +236,7 @@ export function createGitHub() {
 			faults.findOutages -= 1;
 			throw new Error('GitHub unavailable');
 		}
-		return prs.filter((pr) => pr.head === head && pr.base === base).at(-1)?.url ?? null;
+		return prs.findLast((pr) => pr.head === head && pr.base === base)?.url ?? null;
 	});
 	const create = vi.fn(async (details: { head: string; base: string }) => {
 		if (prs.some((pr) => pr.head === details.head && pr.base === details.base)) {
