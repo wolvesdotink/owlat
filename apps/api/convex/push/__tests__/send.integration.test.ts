@@ -105,3 +105,33 @@ describe('push.send.deliver', () => {
 		expect(guard.calls).toHaveLength(0);
 	});
 });
+
+describe('push.send.deliverQuietSummary', () => {
+	it('posts the roll-up once, clears the held count and stamps the device', async () => {
+		const t = await pushHarness(modules);
+		const device = await seedDevice(t, 'user-a', {
+			endpoint: 'https://push.example.com/summary',
+			quietDeferredCount: 3,
+			quietSummaryAt: Date.now(),
+		});
+		await t.action(internal.push.send.deliverQuietSummary, { subscriptionId: device });
+		expect(guard.calls.map((call) => call.url)).toEqual(['https://push.example.com/summary']);
+		const row = await t.run((ctx) => ctx.db.get(device));
+		expect(row?.quietDeferredCount).toBeUndefined();
+		expect(row?.quietSummaryAt).toBeUndefined();
+		expect(row?.lastSuccessAt).toBeTypeOf('number');
+
+		// A second run of the same job finds nothing held and posts nothing.
+		await t.action(internal.push.send.deliverQuietSummary, { subscriptionId: device });
+		expect(guard.calls).toHaveLength(1);
+	});
+
+	it('prunes a device whose push service says it is gone', async () => {
+		const t = await pushHarness(modules);
+		const device = await seedDevice(t, 'user-a', { quietDeferredCount: 1 });
+		guard.statusFor = () => 410;
+		await t.action(internal.push.send.deliverQuietSummary, { subscriptionId: device });
+		expect(guard.calls).toHaveLength(1);
+		expect(await t.run((ctx) => ctx.db.get(device))).toBeNull();
+	});
+});
