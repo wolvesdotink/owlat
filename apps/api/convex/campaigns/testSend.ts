@@ -154,7 +154,7 @@ export const sendTestEmail = authedAction({
 			html: composed.html,
 			recipients: [args.testEmail],
 		});
-		if (queued.kind === 'no_provider') throw new Error(queued.message);
+		if (queued.kind === 'no_provider') throwInvalidState(queued.message);
 
 		return {
 			success: true,

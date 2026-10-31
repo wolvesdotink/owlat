@@ -331,46 +331,23 @@ type PlanBucketArgs = HopSendContext & {
 // when they go out. The commit inserts the rows and schedules the enqueue
 // chunks (`campaigns/walkerCommit.ts`); the orchestrator's only enqueue site.
 function planBucket(args: PlanBucketArgs): PageBucket {
-	const recipients = args.recipients.map((r) => ({
-		contactId: r._id,
-		email: r.email,
-		firstName: r.firstName,
-		lastName: r.lastName,
-		// Projected by audience resolution from the already-loaded contact:
-		// the engagement score rides the envelope to the MTA's priority
-		// bands. Undefined for an unscored contact and simply omitted.
-		engagementScore: r.engagementScore,
-		personalizedSubject: personalizeSubject({
-			kind: 'campaign',
-			template: { subject: args.subject, htmlContent: '' },
-			contactInfo: { email: r.email, firstName: r.firstName, lastName: r.lastName },
-		}),
-		...(args.plannedSendTimes?.has(r._id)
-			? { sendTimeGroup: args.plannedSendTimes.get(r._id)!.group }
-			: {}),
-	}));
-
-	// The instant each recipient goes out at, keyed by the group it shares.
-	let sendAtFor: (r: CampaignRecipient) => { key: string; sendAt?: number } = () => ({
-		key: 'now',
-	});
-	if (args.plannedSendTimes) {
-		// One group per proposed instant. The enqueue at that instant goes
-		// through the same governed path as any other, so the MTA's pacing, the
-		// ramp ceilings and the deliverability gates still own throughput.
-		const planned = args.plannedSendTimes;
-		sendAtFor = (r) => {
-			const sendAt = planned.get(r._id)?.at ?? args.now;
+	const { plannedSendTimes } = args;
+	const fallbackZone = isValidTimeZone(args.defaultTimezone) ? args.defaultTimezone : 'UTC';
+	// When a recipient goes out, keyed by the group it shares with others.
+	const sendInstant = (r: CampaignRecipient): { key: string; sendAt?: number } => {
+		if (plannedSendTimes) {
+			// One group per proposed instant. The enqueue at that instant goes
+			// through the same governed path as any other, so the MTA's pacing,
+			// the ramp ceilings and the deliverability gates still own throughput.
+			const sendAt = plannedSendTimes.get(r._id)?.at ?? args.now;
 			return { key: String(sendAt), sendAt };
-		};
-	} else if (args.useTimezone) {
-		// Group by the recipient's IANA zone, then resolve the next
-		// `scheduledHour:scheduledMinute` local instant per zone — DST-correct,
-		// unlike a static UTC-offset table. Recipients without a valid zone fall
-		// back to the org-level timezone (General settings) when it is a valid
-		// zone, otherwise to UTC.
-		const fallbackZone = isValidTimeZone(args.defaultTimezone) ? args.defaultTimezone : 'UTC';
-		sendAtFor = (r) => {
+		}
+		if (args.useTimezone) {
+			// Group by the recipient's IANA zone, then resolve the next
+			// `scheduledHour:scheduledMinute` local instant per zone — DST-correct,
+			// unlike a static UTC-offset table. Recipients without a valid zone fall
+			// back to the org-level timezone (General settings) when it is a valid
+			// zone, otherwise to UTC.
 			const zone = isValidTimeZone(r.timezone) ? r.timezone : fallbackZone;
 			const sendAt = resolveNextSendTime(
 				zone,
@@ -379,19 +356,35 @@ function planBucket(args: PlanBucketArgs): PageBucket {
 				args.now
 			);
 			return { key: zone, sendAt };
+		}
+		return { key: 'now' };
+	};
+
+	const groups = new Map<string, PageBucket['groups'][number]>();
+	for (const r of args.recipients) {
+		const recipient = {
+			contactId: r._id,
+			email: r.email,
+			firstName: r.firstName,
+			lastName: r.lastName,
+			// Projected by audience resolution from the already-loaded contact:
+			// the engagement score rides the envelope to the MTA's priority
+			// bands. Undefined for an unscored contact and simply omitted.
+			engagementScore: r.engagementScore,
+			personalizedSubject: personalizeSubject({
+				kind: 'campaign',
+				template: { subject: args.subject, htmlContent: '' },
+				contactInfo: { email: r.email, firstName: r.firstName, lastName: r.lastName },
+			}),
+			...(plannedSendTimes?.has(r._id)
+				? { sendTimeGroup: plannedSendTimes.get(r._id)!.group }
+				: {}),
 		};
-	}
-	const groups = new Map<string, { sendAt?: number; recipients: typeof recipients }>();
-	args.recipients.forEach((r, i) => {
-		const { key, sendAt } = sendAtFor(r);
+		const { key, sendAt } = sendInstant(r);
 		const group = groups.get(key);
-		if (group) group.recipients.push(recipients[i]!);
-		else
-			groups.set(key, {
-				...(sendAt === undefined ? {} : { sendAt }),
-				recipients: [recipients[i]!],
-			});
-	});
+		if (group) group.recipients.push(recipient);
+		else groups.set(key, { ...(sendAt === undefined ? {} : { sendAt }), recipients: [recipient] });
+	}
 
 	return {
 		envelope: {
