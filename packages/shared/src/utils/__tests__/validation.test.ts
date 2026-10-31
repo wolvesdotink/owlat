@@ -10,6 +10,14 @@ describe('isValidEmail', () => {
 		expect(isValidEmail('user@example.co.uk')).toBe(true);
 	});
 
+	it('accepts a hyphen or slash in the local part and a hyphen inside a domain label', () => {
+		expect(isValidEmail('first-last@example.com')).toBe(true);
+		expect(isValidEmail('first.last-name@example.com')).toBe(true);
+		expect(isValidEmail('dept/sales@example.com')).toBe(true);
+		expect(isValidEmail('user@mail-host.example.com')).toBe(true);
+		expect(isValidEmail('user@-mail.example.com')).toBe(false);
+	});
+
 	it('rejects emails with consecutive dots in local part', () => {
 		expect(isValidEmail('user..name@example.com')).toBe(false);
 	});

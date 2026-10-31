@@ -277,8 +277,7 @@ export function pullFailureMessage(stderr: string): string {
 	const lastLine = stderr
 		.split('\n')
 		.map((line) => line.trim())
-		.filter(Boolean)
-		.pop();
+		.findLast(Boolean);
 	const reason = lastLine && lastLine.length > 300 ? `${lastLine.slice(0, 300)}…` : lastLine;
 	return reason
 		? `Docker pull failed (${reason}). The update was aborted and nothing changed.`

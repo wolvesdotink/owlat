@@ -8,12 +8,12 @@ function syncTabs() {
 	const blocks = container.value.querySelectorAll('pre');
 	const names: string[] = [];
 
-	blocks.forEach((block, i) => {
+	for (const [i, block] of Array.from(blocks).entries()) {
 		const filename = block.getAttribute('data-filename');
 		const language = block.getAttribute('data-language');
 		const langClass = block.className.match(/language-(\w+)/);
 		names.push(filename || language || langClass?.[1] || `Tab ${i + 1}`);
-	});
+	}
 
 	tabs.value = names;
 	updateVisibility();
@@ -23,13 +23,13 @@ function updateVisibility() {
 	if (!container.value) return;
 	const children = Array.from(container.value.children) as HTMLElement[];
 	let blockIndex = 0;
-	children.forEach((child) => {
-		if (child.classList.contains('code-group-tabs')) return;
+	for (const child of children) {
+		if (child.classList.contains('code-group-tabs')) continue;
 		// Skip Vue comment nodes
-		if (child.nodeType !== 1) return;
+		if (child.nodeType !== 1) continue;
 		child.style.display = blockIndex === activeTab.value ? '' : 'none';
 		blockIndex++;
-	});
+	}
 }
 
 watch(activeTab, updateVisibility);

@@ -294,7 +294,8 @@ export function selectRuntimeEnvVars(env: Record<string, string>): Array<[string
 			plaintext = box.open(value);
 		} catch (e) {
 			throw new Error(
-				`Refusing to push ${key}: its sealed .env value could not be opened (${(e as Error).message}). The token is tampered/corrupt or was sealed under a different INSTANCE_SECRET — re-enter the credential rather than deploying ciphertext as the live value.`
+				`Refusing to push ${key}: its sealed .env value could not be opened (${(e as Error).message}). The token is tampered/corrupt or was sealed under a different INSTANCE_SECRET — re-enter the credential rather than deploying ciphertext as the live value.`,
+				{ cause: e }
 			);
 		}
 		out.push([key, plaintext]);
@@ -352,7 +353,8 @@ export async function pushConvexRuntimeEnv(
 		});
 	} catch (e) {
 		throw new Error(
-			`Could not reach the Convex admin API at ${base} to set runtime env vars: ${(e as Error).message}`
+			`Could not reach the Convex admin API at ${base} to set runtime env vars: ${(e as Error).message}`,
+			{ cause: e }
 		);
 	}
 	if (!res.ok) {

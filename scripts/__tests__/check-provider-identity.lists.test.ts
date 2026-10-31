@@ -248,7 +248,7 @@ describe('provider-identity ratchet, the kind list', () => {
 		const root = sandbox({
 			files: { 'apps/api/convex/delivery/newKind.ts': leak("kind === 'postmark'") },
 			rawEntries:
-				"\t{\n\t\tkind: 'mta',\n\t},\n" + "\t{\n\t\tkind: 'postmark', // the new relay\n\t},\n",
+				"\t{\n\t\tkind: 'mta',\n\t},\n\t{\n\t\tkind: 'postmark', // the new relay\n\t},\n",
 		});
 		const result = runIn(root);
 

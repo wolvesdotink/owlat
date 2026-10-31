@@ -161,10 +161,10 @@ function jargonHits(source: string): string[] {
 	// first), so hits are numbered from where the template content begins.
 	const offset = source.slice(0, (match.index ?? 0) + OPEN.length).split('\n').length - 1;
 	const hits: string[] = [];
-	visible.split('\n').forEach((line, index) => {
+	for (const [index, line] of visible.split('\n').entries()) {
 		if (jargon.test(line)) hits.push(`${offset + index + 1}: ${line.trim()}`);
 		jargon.lastIndex = 0;
-	});
+	}
 	return hits;
 }
 

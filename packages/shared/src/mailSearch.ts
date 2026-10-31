@@ -100,14 +100,14 @@ export interface MailSearchQuery extends MailSearchClause {
  * the same path. `label:` and `in:` also negate, but their operand is a name
  * the backend has to resolve to an id first, so they are handled by name.
  */
-const NEGATABLE_SUBSTRING_OPERATORS: readonly string[] = [
+const NEGATABLE_SUBSTRING_OPERATORS: ReadonlySet<string> = new Set([
 	'from',
 	'to',
 	'cc',
 	'bcc',
 	'subject',
 	'filename',
-];
+]);
 
 /**
  * Split on whitespace, except inside double quotes.
@@ -231,7 +231,7 @@ function parseClause(tokens: SearchToken[]): MailSearchClause | null {
 		if (!val) continue;
 		// The substring operators share one negation path: `-op:v` records an
 		// exclusion instead of a constraint, and several may pile up.
-		if (negated && NEGATABLE_SUBSTRING_OPERATORS.includes(op)) {
+		if (negated && NEGATABLE_SUBSTRING_OPERATORS.has(op)) {
 			pushNegation(clause, op as keyof SearchNegations, val.toLowerCase());
 			continue;
 		}
@@ -328,9 +328,13 @@ export function parseSearchQuery(input: string): MailSearchQuery {
 		if (isOrToken(token)) groups.push([]);
 		else groups[groups.length - 1]!.push(token);
 	}
-	const clauses = groups
-		.map(parseClause)
-		.filter((clause): clause is MailSearchClause => clause !== null);
+	// Every clause that constrains something is kept: the first is the query,
+	// the rest are its OR alternatives.
+	const clauses: MailSearchClause[] = [];
+	for (const group of groups) {
+		const clause = parseClause(group);
+		if (clause !== null) clauses.push(clause);
+	}
 	const [primary, ...rest] = clauses;
 	if (!primary) return { text: '' };
 	return rest.length > 0 ? { ...primary, or: rest } : primary;

@@ -265,8 +265,7 @@ describe('useBlockManagement', () => {
 		it('calls onColumnItemDeleted for columns block items', () => {
 			const ctx = setup([makeColumnsBlock('cols-1')]);
 			ctx.handleDeleteBlock('cols-1');
-			expect(ctx.onColumnItemDeleted).toHaveBeenCalledWith('col-item-1');
-			expect(ctx.onColumnItemDeleted).toHaveBeenCalledWith('col-item-2');
+			expect(ctx.onColumnItemDeleted.mock.calls).toEqual([['col-item-1'], ['col-item-2']]);
 		});
 
 		it('does nothing for nonexistent block', () => {

@@ -176,6 +176,15 @@ describe('parseSearchQuery — single-level OR', () => {
 		expect(parsed.or).toEqual([{ text: 'invoice', labelName: 'billing' }]);
 	});
 
+	it('keeps every alternative after the first, in order', () => {
+		const parsed = parseSearchQuery('from:ines OR from:mei OR OR subject:invoice');
+		expect(parsed.from).toBe('ines');
+		expect(parsed.or).toEqual([
+			{ text: '', from: 'mei' },
+			{ text: '', subject: 'invoice' },
+		]);
+	});
+
 	it('drops an empty alternative so a half-typed OR cannot match everything', () => {
 		const parsed = parseSearchQuery('from:ines OR');
 		expect(parsed.or).toBeUndefined();

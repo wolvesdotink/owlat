@@ -58,7 +58,8 @@ export function classifyAuditJson(
 		parsed = JSON.parse(raw);
 	} catch (error) {
 		throw new Error(
-			`bun audit produced malformed JSON — failing closed: ${error instanceof Error ? error.message : String(error)}`
+			`bun audit produced malformed JSON — failing closed: ${error instanceof Error ? error.message : String(error)}`,
+			{ cause: error }
 		);
 	}
 	if (!isRecord(parsed)) {
