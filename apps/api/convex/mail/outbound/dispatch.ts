@@ -334,7 +334,8 @@ export async function dispatchViaMta(
 				// Per-recipient synchronous bounce — record it now rather
 				// than waiting forever in `queued`.
 				// checkpoint: this recipient's intake is its own send; its refusal stands
-				// even if the action dies later in the fan-out, and a repeat is refused as terminal
+				// even if the action dies later in the fan-out. A repeat leaves the recipient
+				// as it is, and a change away from a terminal outcome is refused
 				await ctx.runMutation(internal.mail.postboxOutboundLifecycle.transition, {
 					mailMessageId,
 					recipientIdx: i,
@@ -362,7 +363,8 @@ export async function dispatchViaMta(
 			// Per-recipient pre-MTA error (network failure, DNS, etc.).
 			// Recipient resolves to `failed` instead of staying `queued`.
 			// checkpoint: this recipient's intake is its own send; its failure stands
-			// even if the action dies later in the fan-out, and a repeat is refused as terminal
+			// even if the action dies later in the fan-out. A repeat leaves the recipient
+			// as it is, and a change away from a terminal outcome is refused
 			await ctx.runMutation(internal.mail.postboxOutboundLifecycle.transition, {
 				mailMessageId,
 				recipientIdx: i,
