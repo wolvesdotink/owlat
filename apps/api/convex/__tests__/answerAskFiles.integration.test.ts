@@ -14,6 +14,7 @@ import schema from '../schema';
 import { api, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { enableFeatures } from './factories';
+import { ATTACHMENT_COMPOSE_LIMITS } from '@owlat/shared/attachments';
 import { runLlmStream, runLlmTextWithTools } from '../lib/llm/dispatch';
 import { searchFilesForRequest } from '../inbox/attachmentSuggest';
 import { seedMessage } from '../mail/__tests__/helpers.testlib';
@@ -413,6 +414,59 @@ describe('upload answers and Files', () => {
 			id: upload,
 			filename: 'invoice-2026-09.pdf',
 		});
+
+		// Sent again once the failure is gone: the upload the session already
+		// holds is not attached a second time, and the draft is written.
+		llm.planFailure = null;
+		const res = await t.action(api.mail.ai.composeDraft.answer, {
+			sessionId,
+			answers: [
+				{
+					questionId: 'file_request',
+					file: { source: 'upload', id: upload, filename: 'invoice-2026-09.pdf' },
+				},
+			],
+		});
+		expect(res.status).toBe('ready');
+		expect((await draftRow(t, draftId)).attachments.map((a) => a.storageId)).toEqual([upload]);
+	});
+
+	it('an upload answer the draft refuses leaves the upload unused and keeps no Files copy', async () => {
+		const t = await makeT();
+		sess.user = { userId: 'user-a', role: 'owner', activeOrganizationId: ORG };
+		const { draftId, sessionId } = await askForUpload(t);
+		const upload = await seedUpload(t, { filename: 'invoice-2026-09.pdf' });
+		await t.run(async (ctx) => {
+			const filler = await ctx.storage.store(new Blob(['x']));
+			await ctx.db.patch(draftId, {
+				attachments: Array.from({ length: ATTACHMENT_COMPOSE_LIMITS.maxCount }, (_, i) => ({
+					storageId: filler,
+					filename: `f${i}`,
+					contentType: 'text/plain',
+					size: 1,
+					isInline: false,
+				})),
+			});
+		});
+
+		await expect(
+			t.action(api.mail.ai.composeDraft.answer, {
+				sessionId,
+				answers: [
+					{
+						questionId: 'file_request',
+						file: { source: 'upload', id: upload, filename: 'invoice-2026-09.pdf' },
+					},
+				],
+			})
+		).rejects.toThrow('Too many attachments');
+
+		expect(await receipt(t, upload)).toMatchObject({ status: 'uploaded' });
+		expect(await t.run(async (ctx) => await ctx.db.query('semanticFiles').collect())).toEqual([]);
+		const target = { kind: 'mailDraft' as const, draftId };
+		const session = await t.query(api.mail.ai.composeDraftStore.getSession, { target });
+		expect(session?.status).toBe('asking');
+		expect(session?.attachedFiles).toEqual([]);
 	});
 
 	it('two answers racing on one session attach the file once', async () => {
