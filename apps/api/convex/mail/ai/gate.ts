@@ -4,7 +4,7 @@
  * runMutation it before spending an LLM call: it enforces the `ai` feature
  * flag, spend admission and a rate limit.
  *
- * Rate-limit keying (#1380). A call with a session is charged to the session
+ * Rate-limit keying. A call with a session is charged to the session
  * user in an interactive per-user bucket. Scheduled work has no session
  * (Convex passes no auth to scheduled functions), so a background caller MUST
  * pass `ownerUserId`, the user whose bucket pays (the mailbox owner, or the
@@ -63,7 +63,7 @@ export const assertAiAllowed = internalMutation({
 
 		// Spend admission: a user-triggered feature needs headroom
 		// outside the triage allowance and the reserve held for the Team
-		// pipeline, read from the complete period aggregate. FAIL-CLOSED (#1333):
+		// pipeline, read from the complete period aggregate. FAIL-CLOSED:
 		// a spend state that cannot be verified refuses. The refusal carries the
 		// stable `AI_BUDGET_EXHAUSTED` code the web shows (U5). Each model call
 		// the action then makes is admitted again at dispatch, with a hold.

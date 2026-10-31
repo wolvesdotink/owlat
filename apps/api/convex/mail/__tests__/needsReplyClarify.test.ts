@@ -81,7 +81,7 @@ describe('sanitizeClarificationQuestions', () => {
 		expect(out[0]!.id).toBe('clarify_0');
 		expect(out[0]!.options).toEqual(['Yes', 'No']);
 		expect(out[0]!.origin).toEqual({ kind: 'email', senderDomain: 'acme.com' });
-		// The legacy English sentence is no longer written (#1186).
+		// The legacy English sentence is not written.
 		expect(out[0]).not.toHaveProperty('attribution');
 	});
 

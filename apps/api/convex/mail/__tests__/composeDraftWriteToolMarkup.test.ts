@@ -1,7 +1,7 @@
 /**
  * Answer mode's draft writer (`writeAnswerDraft`, mail/ai/composeDraftWrite.ts)
- * when the model types its tool call as text, or narrates before a real one
- * (#1254). Every write to the owner's stream buffer is recorded, so the tests
+ * when the model types its tool call as text, or narrates before a real one.
+ * Every write to the owner's stream buffer is recorded, so the tests
  * pin both what the editor is shown while the model writes and what the draft
  * is finalized as. The model is scripted; the buffer and session writes are a
  * fake ctx.

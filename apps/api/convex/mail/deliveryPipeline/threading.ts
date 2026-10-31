@@ -18,11 +18,10 @@
  *      correspondent with it.
  *   4. Anything else starts a new thread.
  *
- * Step 3 used to attach any message to the oldest same-subject thread seen in
- * the last 24h, whoever it was from or to. Two identical outreach mails to two
- * customers became one thread, their replies followed, and the Reply Queue and
- * draft-on-arrival then read one customer's mail as context for the other
- * (issue #817).
+ * Step 3 needs the reply shape and a shared correspondent: matching on subject
+ * alone joins two identical outreach mails to two customers into one thread,
+ * their replies follow, and the Reply Queue and draft-on-arrival then read one
+ * customer's mail as context for the other.
  */
 
 import type { MutationCtx } from '../../_generated/server';

@@ -9,7 +9,7 @@
  * a stranger forever.
  *
  * A row is relationship evidence, so writing one also voids the address's
- * cold-pitch verdicts in the mailbox (#1381, `arrival/coldPitch.ts`).
+ * cold-pitch verdicts in the mailbox (`arrival/coldPitch.ts`).
  *
  * Isolate-safe; not a Convex function.
  */

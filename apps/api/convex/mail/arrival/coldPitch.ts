@@ -1,5 +1,5 @@
 /**
- * Read on arrival (#1381): cold sales pitches, the one owner of who is asked,
+ * Read on arrival: cold sales pitches, the one owner of who is asked,
  * what a verdict does and when it stops counting.
  *
  * WHO IS ASKED. R2 (`r2.ts`, `mail/ai/categoryClassify.ts`) adds the

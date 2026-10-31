@@ -560,7 +560,7 @@ describe('Sol r2 F4: every refusal counts where it is seen', () => {
 	});
 
 	it('the full read gate counts a display-only source in the refusing mutation', async () => {
-		// A configured ceiling whose spend state is not reconciled refuses (#1333).
+		// A configured ceiling whose spend state is not reconciled refuses.
 		vi.stubEnv('AI_SPEND_DAILY_BUDGET_USD', '1');
 		const t = setup();
 		const { source, messageId, threadId } = await arrive(t, { text: ASK });

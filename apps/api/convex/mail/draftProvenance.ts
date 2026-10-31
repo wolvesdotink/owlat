@@ -1,5 +1,5 @@
 /**
- * Who wrote a saved draft (#1346): the AI, a person, or both.
+ * Who wrote a saved draft: the AI, a person, or both.
  *
  * Answered-conversation cleanup (mail/answeredReply.ts) may only take a draft
  * the AI wrote and no person ever touched, so every write records which it

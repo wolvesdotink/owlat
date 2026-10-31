@@ -13,7 +13,7 @@
  * answer counts as no match (`null`).
  *
  * For a sender the cheap evidence leaves open, the same call also answers the
- * cold-pitch question (#1381, `coldPitch.ts`): only a yes counts.
+ * cold-pitch question (`coldPitch.ts`): only a yes counts.
  */
 
 import { v } from 'convex/values';
@@ -66,7 +66,7 @@ export const commitArrivalAiAnswers = internalMutation({
 		category: v.optional(v.object(applyCategoryArgs)),
 		isReleasing: v.optional(v.boolean()),
 		/**
-		 * The model judged this message a cold pitch (#1381), reading the body
+		 * The model judged this message a cold pitch, reading the body
 		 * with this fingerprint (`interpret/sourceVersion.ts`); committed only
 		 * if it still reads so and is still a candidate.
 		 */
@@ -94,7 +94,7 @@ export function unansweredOf(questions: readonly PendingAiFilter[]): ArrivalAiAn
 	return questions.map((q) => ({ filterId: q.filterId, revision: q.revision, answer: null }));
 }
 
-/** The cold-pitch part of the R2 schema (#1381). */
+/** The cold-pitch part of the R2 schema. */
 export const r2ColdPitchSchema = z.enum(['yes', 'no', 'unknown']);
 
 /** Only a yes is a cold pitch; no, unknown or a missing answer is not. Pure. */
@@ -103,7 +103,7 @@ export function isColdPitchAnswer(raw: z.infer<typeof r2ColdPitchSchema> | undef
 }
 
 /**
- * The cold-pitch question (#1381). Conservative by design: a person the
+ * The cold-pitch question. Conservative by design: a person the
  * reader may know, a customer, a request about the reader's own work and
  * an invitation are not pitches, so a wrong yes is rarer than a wrong no.
  */

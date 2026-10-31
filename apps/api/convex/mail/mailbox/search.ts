@@ -223,9 +223,9 @@ async function isAttachmentIndexComplete(
  * `mailMessages`.
  *
  * The junction table (schema/mail.ts, written by `mail/attachmentIndex.ts`) is
- * the only indexable view of what used to be an unindexable array on the
- * message, so this is where `filename:` stops being a post-filter that could
- * only see one page of recent mail and becomes an actual search.
+ * the only indexable view of the message's attachment array, which cannot be
+ * indexed itself. A post-filter over messages would only see one page of recent
+ * mail; this is an actual search.
  *
  * The page unit is an ATTACHMENT, so several files on one message collapse to a
  * single result row (dedup within the page) and the returned page can be

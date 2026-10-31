@@ -324,7 +324,7 @@ export const upsert = postboxMutation({
 			});
 			return existing._id;
 		}
-		// A new address-book row is relationship evidence (#1381).
+		// A new address-book row is relationship evidence.
 		await voidColdPitchVerdictsOfSender(ctx, args.mailboxId, email);
 		return ctx.db.insert('mailContacts', {
 			mailboxId: args.mailboxId,
@@ -374,7 +374,7 @@ export const setVip = postboxMutation({
 			await ctx.db.patch(existing._id, { isVip: args.isVip });
 			return existing._id;
 		}
-		await voidColdPitchVerdictsOfSender(ctx, args.mailboxId, email); // a new row (#1381)
+		await voidColdPitchVerdictsOfSender(ctx, args.mailboxId, email); // a new row
 		// VIP set on someone not yet in the address book — record them so the flag
 		// (and future frecency bumps) have a home. useCount 0: they've never been
 		// mailed, but the VIP flag short-circuits the score regardless.
@@ -414,7 +414,7 @@ export const acceptSender = postboxMutation({
 			await ctx.db.patch(existing._id, { isScreenerAccepted: true });
 			return existing._id;
 		}
-		await voidColdPitchVerdictsOfSender(ctx, args.mailboxId, email); // a new row (#1381)
+		await voidColdPitchVerdictsOfSender(ctx, args.mailboxId, email); // a new row
 		return ctx.db.insert('mailContacts', {
 			mailboxId: args.mailboxId,
 			email,

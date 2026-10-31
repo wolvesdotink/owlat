@@ -539,9 +539,9 @@ describe('draft-on-arrival on an external-only install (postbox=false)', () => {
 	});
 });
 
-// Issue #1131. A shared inbox flushed a backlog, the burst OOM-killed the
-// backend while the classifier waited on the model, and the thread stayed at
-// the heuristic flag with no draft for good.
+// A run can die after its baseline: a shared inbox flushing a backlog can
+// OOM-kill the backend while the classifier waits on the model. The sweep must
+// re-run it, or the thread stays at the heuristic flag with no draft for good.
 describe('a classify run killed after its baseline', () => {
 	it('is re-run by the sweep and ends with the model verdict and a draft', async () => {
 		const t = convexTest(schema, modules);

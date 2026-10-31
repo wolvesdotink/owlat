@@ -1,5 +1,5 @@
 /**
- * The labelled sample for the cold-pitch question (#1381, `../coldPitch.ts`):
+ * The labelled sample for the cold-pitch question (`../coldPitch.ts`):
  * first mail from senders the reader has never written to, each labelled
  * `pitch` (unsolicited sales outreach) or `not_pitch`.
  *

@@ -69,7 +69,7 @@ export const digestForEmail = internalQuery({
 					path: `/dashboard/postbox/inbox/${item.messageId}`,
 				});
 			}
-			// A digest stored before the Cold outreach group (#1381) has no count for it.
+			// A digest stored before the Cold outreach group has no count for it.
 			const more = digest.overflowByKind[kind] ?? 0;
 			if (lines.length > 0 || more > 0) groups.push({ kind, lines, more });
 		}

@@ -177,8 +177,8 @@ describe('groundProposals', () => {
 	});
 
 	it('never silently drops an ask misread as a signature or disclaimer', () => {
-		// "Call Jonas." used to be read as part of a name block; whatever the
-		// segmenter says, grounding keeps the ask visible.
+		// The segmenter may read "Call Jonas." as part of a name block; whatever
+		// it says, grounding keeps the ask visible.
 		const misread = {
 			canonicalText: 'The plan is attached.\nThanks,\nMara\nCall Jonas.\nPlease pay EUR 900.',
 			uncertain: false,

@@ -1,6 +1,6 @@
 /**
- * #1346 through the IMAP-sync ingest mutation (`ingestExternalMessage`) and a
- * client's IMAP APPEND: our own reply hides the conversation's untouched AI
+ * A reply completes the message it answers, through the IMAP-sync ingest
+ * mutation (`ingestExternalMessage`) and a client's IMAP APPEND: our own reply hides the conversation's untouched AI
  * draft, but neither a vacation auto-reply (Auto-Submitted) nor an unsent
  * `\Draft` kept in a custom folder counts as a reply. The `\Draft` flag the
  * worker forwards is stored on the row.

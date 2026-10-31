@@ -4,12 +4,12 @@
  * R2's model call when the delivered message has pending rule questions
  * (`mail/arrival/r2.ts`), split out of `categoryClassify.ts` at
  * the size cap. One call answers the questions from this message's scoped
- * text, the cold-pitch question when the sender is a candidate (#1381,
- * `mail/arrival/coldPitch.ts`) and, when the thread category is still
+ * text, the cold-pitch question when the sender is a candidate
+ * (`mail/arrival/coldPitch.ts`) and, when the thread category is still
  * unresolved, the category too.
  *
  * Behind the same gate as the plain refinement (the `ai` flag and the owner's
- * background rate limit, #1380) and metered as `postbox_category`. A budget
+ * background rate limit) and metered as `postbox_category`. A budget
  * refusal is rethrown so the action defers; a rate-limit refusal comes
  * back as `rateLimited` for the caller's bounded retry; anything else leaves
  * every question unanswered, which counts as no match.
@@ -67,7 +67,7 @@ export async function askCategoryQuestions(
 		category?: { prompt: string; field: z.ZodType<MailCategory> };
 		/** The caller already passed the gate for this call. */
 		isGateChecked?: boolean;
-		/** Also ask the cold-pitch question (#1381); the caller checked the candidate. */
+		/** Also ask the cold-pitch question; the caller checked the candidate. */
 		isColdPitchAsked?: boolean;
 	}
 ): Promise<CategoryQuestionsOutcome> {

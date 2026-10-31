@@ -327,10 +327,10 @@ describe('the seed set is bounded at connect time, never silently truncated', ()
 	});
 });
 
-// REGRESSION (#821). Member erasure used to read `scope !== 'shared'` as
-// "personal", so erasing a non-owner admin hard-deleted every seed they had
-// connected: the seed mailbox in phase 1 and its credential row in phase 2,
-// leaving the org's placement probes pointing at a deleted account.
+// Member erasure must not read `scope !== 'shared'` as "personal": that would
+// hard-delete every seed a non-owner admin connected (the seed mailbox in
+// phase 1 and its credential row in phase 2), leaving the org's placement
+// probes pointing at a deleted account.
 describe('member erasure keeps the seeds an admin connected', () => {
 	it('keeps the seed mailboxes, accounts and owner rows, and still erases personal mail', async () => {
 		const t = newBetterAuthHarness(modules);

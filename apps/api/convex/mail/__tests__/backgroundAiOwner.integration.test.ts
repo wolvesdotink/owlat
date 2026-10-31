@@ -1,9 +1,9 @@
 /**
- * Background Postbox AI is charged to the mailbox owner (#1380).
+ * Background Postbox AI is charged to the mailbox owner.
  *
- * Scheduled actions run without a session, so before #1380 every background
- * gate call shared one 'anon' key: one mailbox's burst rate-limited every other
- * mailbox's refinement. These tests run the real actions with NO session (the
+ * Scheduled actions run without a session. Keyed by session alone, every
+ * background gate call would share one 'anon' key, and one mailbox's burst would
+ * rate-limit every other mailbox's refinement. These tests run the real actions with NO session (the
  * scheduled-function case) and the model seam mocked:
  *
  *   - owner A's empty `postboxAiBackground` bucket refuses A's work only; owner

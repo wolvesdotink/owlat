@@ -1,5 +1,5 @@
 /**
- * Folder membership for the IMAP sequence map (#927), behind
+ * Folder membership for the IMAP sequence map, behind
  * `mailFolderMembership` and `mailFolderUidBlocks` (schema/mailFolderMembership.ts).
  *
  * A non-UID IMAP command addresses messages by position, so the IMAP server

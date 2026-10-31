@@ -95,7 +95,7 @@ export interface FixResult {
 
 /**
  * Whether the thread's override no longer places its newest message: a digest
- * or updates Fix older than an exact-wording candidate (#1384).
+ * or updates Fix older than an exact-wording candidate.
  */
 async function isThreadOverrideOverruled(fix: FixContext): Promise<boolean> {
 	const override = fix.thread.placementOverride;

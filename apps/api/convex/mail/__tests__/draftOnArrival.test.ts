@@ -13,7 +13,7 @@
  *   - A draft with a gap → no slot; its gaps become the thread's questions.
  *   - Happy path → exactly one persistDraftSlot with the quality score as
  *     confidence, after two model calls (the draft and its self-check) and no
- *     alternative-drafts call (#1200). NEVER auto-sends (there is no send call
+ *     alternative-drafts call. NEVER auto-sends (there is no send call
  *     anywhere).
  */
 
@@ -126,7 +126,7 @@ describe('generateDraftOnArrival', () => {
 		const h = makeCtx({ aiOff: true, loaded: makeLoaded() });
 		await generateDraftOnArrival(h.ctx, { threadId: 'thr1' as never });
 		expect(h.persisted).toHaveLength(0);
-		// Only the loader ran: the gate needs the owner it names (#1380).
+		// Only the loader ran: the gate needs the owner it names.
 		expect(h.runQuery).toHaveBeenCalledTimes(1);
 		// The full-read check, then the gate.
 		expect(h.runMutation).toHaveBeenCalledTimes(2);
@@ -154,7 +154,7 @@ describe('generateDraftOnArrival', () => {
 		});
 		const h = makeCtx({ loaded: makeLoaded() });
 		await generateDraftOnArrival(h.ctx, { threadId: 'thr1' as never });
-		// Once: the shared service records it, the caller no longer does (#1256).
+		// Once: the shared service records it, the caller does not.
 		expect(ledgerRows(h.runMutation).filter((row) => row.feature === 'postbox_draft')).toEqual([
 			expect.objectContaining({
 				usage,
@@ -187,7 +187,7 @@ describe('generateDraftOnArrival', () => {
 		expect(slot.confidence).toBe(0.72);
 		expect(slot.quality).toEqual({ score: 0.72, complete: true, grounded: true, flags: [] });
 		// The draft and its self-check, and no alternatives: the slot has no
-		// way to offer them (#1200). The self-check scored low (0.72), the case
+		// way to offer them. The self-check scored low (0.72), the case
 		// that used to buy a third, capable-tier call on every arrival.
 		expect(runLlmTextMock).toHaveBeenCalledTimes(1);
 		expect(runLlmObjectMock).toHaveBeenCalledTimes(1);

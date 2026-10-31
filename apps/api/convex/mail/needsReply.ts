@@ -166,7 +166,7 @@ export const getThreadContext = internalQuery({
 		const ownAddresses = await mailboxOwnAddresses(ctx, mailbox);
 		return {
 			mailboxId: thread.mailboxId,
-			// Whose background AI bucket the clarification is charged to (#1380).
+			// Whose background AI bucket the clarification is charged to.
 			ownerUserId: mailbox.userId,
 			ownerAddress,
 			ownerAddresses: [...ownAddresses],

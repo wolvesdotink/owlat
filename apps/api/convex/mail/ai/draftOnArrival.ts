@@ -79,7 +79,7 @@ export async function generateDraftOnArrival(
 	// Defense-in-depth: refuse if the AI stack is off, even though the schedule
 	// site already flag-gated. assertAiAllowed throws when AI is disabled; that
 	// (and every other failure below) degrades to no slot. Loaded first: the
-	// rate limit is charged to the mailbox owner's background bucket (#1380).
+	// rate limit is charged to the mailbox owner's background bucket.
 	try {
 		// checkpoint: admission before the model calls; the rate-limit token it
 		// consumes stays spent when the draft fails later, so reruns stay bounded.

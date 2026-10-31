@@ -322,7 +322,7 @@ async function applyProjection(
 async function clarifyWithMemory(
 	ctx: ActionCtx,
 	opts: {
-		/** Whose background AI bucket pays (#1380). */
+		/** Whose background AI bucket pays. */
 		ownerUserId: string;
 		transcript: string;
 		fromAddress: string;
@@ -394,7 +394,7 @@ async function slotItemsFor(
 export const draftWithAnswers = internalAction({
 	args: {
 		threadId: v.id('mailThreads'),
-		/** Who answered the card: the rate limit is theirs (#1380). */
+		/** Who answered the card: the rate limit is theirs. */
 		triggeredByUserId: v.optional(v.string()),
 		deferrals: v.optional(v.number()),
 		/** Times it looked again for the thread to be fully read (read on arrival). */

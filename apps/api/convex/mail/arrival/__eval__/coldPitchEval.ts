@@ -1,5 +1,5 @@
 /**
- * The cold-pitch evaluation (#1381): R2's own cold-pitch prompt
+ * The cold-pitch evaluation: R2's own cold-pitch prompt
  * (`../r2.ts r2QuestionsPrompt`) over the labelled sample
  * (`coldPitchSample.ts`), scored against the release gate. The
  * `postbox.coldPitch` flag stays off until a run passes it.

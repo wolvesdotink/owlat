@@ -223,7 +223,7 @@ export const connectShared = authedAction({
 
 /**
  * Rotate / repair the credentials of an external account connected AS A SHARED
- * TEAM INBOX (issue #234): validate → encrypt → persist against the mailbox's
+ * TEAM INBOX: validate → encrypt → persist against the mailbox's
  * linked account, resetting it to `pending` so the worker re-validates. The
  * admin-gated twin of `updateCredentials` — the personal path resolves the
  * caller's live personal account and can never reach a team inbox, so a rotated

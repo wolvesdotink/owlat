@@ -115,10 +115,10 @@ export const cancelShared = externalMailMutation({
 
 /**
  * Learn from a shared team inbox's finished import after the fact. Knowledge
- * indexing is opt-in for a team inbox (see the module header), and the only
- * place to opt in used to be the checkbox before the import started — an
- * import that finished without it had no way back short of re-importing the
- * whole archive. This is that opt-in, given later by the same owner/admin
+ * indexing is opt-in for a team inbox (see the module header), through the
+ * checkbox before the import starts or through this; without it, an import
+ * that finished unchecked has no way back short of re-importing the whole
+ * archive. This is that opt-in, given later by the same owner/admin
  * floor: it re-runs the knowledge sweep over the completed import (refused
  * while an import is still running, or with `ai.knowledge` off).
  */

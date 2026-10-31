@@ -1,5 +1,5 @@
 /**
- * #1381 end to end: a cold sales pitch that asks for a call, from a sender the
+ * Cold pitches end to end: a cold sales pitch that asks for a call, from a sender the
  * owner never wrote to, delivered live through the hosted MX path with every
  * scheduled job run and a stubbed model that calls it a pitch AND says it
  * needs a reply. The screener is off throughout.
@@ -160,7 +160,7 @@ async function versionOf(t: T, id: Id<'mailMessages'>): Promise<string> {
 	return version;
 }
 
-/** The state #1381 asks for: digest, Cold outreach, no queue entry, still in the Inbox. */
+/** The held-out state: digest, Cold outreach, no queue entry, still in the Inbox. */
 async function expectHeldOut(t: T, messageId: Id<'mailMessages'>) {
 	const state = await stateOf(t, messageId);
 	expect(state.record?.coldPitchAt).toBeDefined();

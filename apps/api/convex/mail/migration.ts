@@ -99,8 +99,7 @@ export async function latestMigrationForAccount(
 		messagesTotal: migration.messagesTotal,
 		messagesImported: migration.messagesImported,
 		// Rendered by the wizard's completed card: an import that finished having
-		// LOST messages must say so, or a partial loss is as silent as the total
-		// one used to be.
+		// LOST messages must say so, or a partial loss is silent.
 		messagesFailed: migration.messagesFailed ?? 0,
 		messagesIndexed: migration.messagesIndexed,
 		importPercent,

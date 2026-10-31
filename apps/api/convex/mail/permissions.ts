@@ -125,8 +125,8 @@ export async function requireMailboxAccess(
  * `mailboxId` + `minRole`.
  *
  * For the bulk triage loops (`applyFlags`, `purge`, `moveToRoleWithVerdict`),
- * which used to run the whole gate — two flag reads plus a Better Auth member
- * lookup — once per message. Nothing those loops write can change a decision
+ * which would otherwise run the whole gate — two flag reads plus a Better Auth
+ * member lookup — once per message. Nothing those loops write can change a decision
  * (they patch messages and folders, never mailboxes, memberships, flags or the
  * org role), so a cached decision is the one a fresh check would make. Create
  * it inside the handler and drop it with the handler; never share one across

@@ -1,7 +1,7 @@
 'use node';
 
 /**
- * `fulfil`: copy every file a draft owes onto it (#1257; the debt itself is
+ * `fulfil`: copy every file a draft owes onto it (the debt itself is
  * `draftExpectedAttachments.ts`). Safe to run from any number of tabs at once.
  *
  * A forward is read once, from its raw message: `locateForwardedParts` picks

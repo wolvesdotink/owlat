@@ -1,6 +1,6 @@
 /**
- * Draft provenance through the real draft mutations (#1346,
- * mail/draftProvenance.ts): only a draft the AI wrote and no person touched is
+ * Draft provenance through the real draft mutations
+ * (mail/draftProvenance.ts): only a draft the AI wrote and no person touched is
  * cleaned up once the conversation is answered. Every change a person makes
  * counts, even one that leaves the text alone (a link, a recipient, the
  * subject, an attachment); saves that change nothing and AI writes, a second

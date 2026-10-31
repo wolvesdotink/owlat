@@ -1,5 +1,5 @@
 /**
- * The thread-level stale fence (#1320): a coarse "do not use this thread's AI
+ * The thread-level stale fence: a coarse "do not use this thread's AI
  * interpretation" marker on the mail thread.
  *
  * A re-verified signature verdict can narrow what one of a thread's messages
@@ -144,7 +144,7 @@ export const release = internalMutation({
 		const thread = await ctx.db.get(args.threadId);
 		if (!thread || !isFencedThread(thread)) return false;
 		await ctx.db.patch(args.threadId, { interpretationStaleSince: undefined });
-		// The arrival projection reads the fence (a cold-pitch verdict, #1381):
+		// The arrival projection reads the fence (a cold-pitch verdict):
 		// re-place the thread. Scheduled, as the projection imports this module.
 		await ctx.scheduler.runAfter(0, internal.mail.senders.resortChain.continueResort, {
 			threadIds: [args.threadId],

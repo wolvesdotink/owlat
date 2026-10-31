@@ -2,8 +2,8 @@
  * Nested labels (idea 38) — path creation, reparenting, ordering, pinning, the
  * unread tally and what happens to a branch when its middle is deleted.
  *
- * The properties worth pinning are the ones that used to be impossible on a
- * flat wall of labels: two branches may hold the same leaf name, a reparent may
+ * The properties worth pinning are the ones a flat wall of labels cannot
+ * have: two branches may hold the same leaf name, a reparent may
  * never close a cycle, and deleting a branch promotes its children instead of
  * quietly destroying them.
  */
