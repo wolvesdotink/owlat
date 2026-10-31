@@ -169,7 +169,7 @@ async function mayRefreshInBackground(ctx: MutationCtx): Promise<boolean> {
  * A refresh that has been `refreshing` this long has lost its job (the action
  * died, or its one commit failed); "Refresh now", the next stale read or an
  * import may schedule another. Below it, a press while one runs schedules
- * nothing, so repeated presses cannot queue paid jobs (#1333).
+ * nothing, so repeated presses cannot queue paid jobs.
  */
 export const VOICE_REFRESH_LEASE_MS = 15 * 60 * 1000;
 

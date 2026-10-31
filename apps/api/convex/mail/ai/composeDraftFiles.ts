@@ -53,7 +53,7 @@ export async function attachExistingFile(
  * answer that fails leaves it unused for the next try, and an upload the
  * session already holds (sent again after a draft that failed) or names twice
  * is attached once. It is also kept in Files for the contact unless the owner
- * opted out (plan decision 5), when the caller may add to Files
+ * opted out, when the caller may add to Files
  * (lib/answerFileToFiles.ts); that copy is made after the commit.
  */
 export async function prepareFileAnswer(

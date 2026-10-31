@@ -148,7 +148,7 @@ export async function generateDraftOnArrival(
 			});
 			return;
 		}
-		// One commit: the slot and the plan bound to its text (review F16).
+		// One commit: the slot and the plan bound to its text.
 		await ctx.runMutation(internal.mail.ai.draftOnArrivalStore.persistDraftSlot, {
 			threadId: args.threadId,
 			triggerMessageId: loaded.triggerMessageId,

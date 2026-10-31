@@ -190,7 +190,7 @@ export async function recordPlanCheck(
 	const existing = await readPlanRow(ctx, args.draftRef);
 	if ((existing?.planRevision ?? 0) !== args.planRevision) return { isStored: false };
 	// Nothing purged or erased since the check read, and every item it names
-	// still exists at the revision it read (final review F3).
+	// still exists at the revision it read.
 	if (!(await isStillBound(ctx, args))) return { isStored: false };
 	await upsertPlan(ctx, args.threadRef, args.draftRef, {
 		threadRevision: args.threadRevision,

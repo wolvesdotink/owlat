@@ -135,7 +135,7 @@ export const persistDraftSlot = internalMutation({
 		// deploy that stopped generating variants may still pass them. Remove
 		// in the release after.
 		options: v.optional(v.array(v.string())),
-		/** The thread's checked plan, stored bound to this slot's text (review F16). */
+		/** The thread's checked plan, stored bound to this slot's text. */
 		plan: v.optional(v.object(planCheckFields)),
 	},
 	handler: async (ctx, args) => {

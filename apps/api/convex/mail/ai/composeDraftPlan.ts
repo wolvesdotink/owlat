@@ -126,9 +126,9 @@ export async function loadThreadPlan(
 /**
  * The prepared reply's checked plan, for the slot commit
  * (`draftOnArrivalStore.persistDraftSlot`) to store under the thread's
- * `arrivalDraft` reference, bound to the hash of the text the slot holds
- * (review F16); it moves to the Postbox draft the composer creates from that
- * text (`responsePlan.adoptArrivalPlan`).
+ * `arrivalDraft` reference, bound to the hash of the text the slot holds. It
+ * moves to the Postbox draft the composer creates from that text
+ * (`responsePlan.adoptArrivalPlan`).
  */
 export async function arrivalPlanCheck(
 	plan: ThreadPlan,
