@@ -8,7 +8,7 @@ name: E2E
 # listed in CONTRIBUTING.md under "CI secrets".
 #
 # The job OWNS the test deployment for the length of a run: it wipes the data,
-# pushes this commit's functions, only then drives the browser, and wipes the
+# pushes the checked-out commit's functions, only then drives the browser, and wipes the
 # data again when it is done. Nothing on that deployment survives a run, and two
 # runs must never overlap — hence the constant concurrency group below.
 on:
@@ -104,8 +104,8 @@ jobs:
           CONVEX_TEST_INSTANCE_SECRET: ${{ secrets.CONVEX_TEST_INSTANCE_SECRET }}
         run: bun e2e/reset-deployment.ts
 
-      # The suite drives the app built from THIS commit, so the backend it talks
-      # to has to run this commit's functions too — otherwise a green run only
+      # The suite drives the app built from the checked-out commit, so the backend
+      # it talks to has to run that commit's functions too — otherwise a green run only
       # proves the app agrees with whatever was deployed last.
       #
       # `convex/**/__tests__` must not reach the push: the CLI treats every file

@@ -1,5 +1,5 @@
 /**
- * Header text decoded from the bytes of the message (#1297, #1298).
+ * Header text decoded from the bytes of the message.
  *
  * Every ingest path hands `parseMessage` the raw bytes, which it reads one char
  * per byte. A header may carry UTF-8 unencoded (RFC 6532), so the subject,

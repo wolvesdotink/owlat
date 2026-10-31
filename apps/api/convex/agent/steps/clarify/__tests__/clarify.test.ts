@@ -18,7 +18,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { makeStepCtx } from '../../__tests__/stepCtx';
+import { makeStepCtx, writesOf } from '../../__tests__/stepCtx';
 import { getFunctionName } from 'convex/server';
 
 const mocks = vi.hoisted(() => ({
@@ -69,29 +69,22 @@ type Mode = 'cautious' | 'balanced' | 'confident' | 'off' | null;
 
 /** Fake execute ctx: getMessage returns a message with the given coverage
  * (or null when `coverage` is the string 'missing'); getAskEagernessInternal
- * returns `mode` (null = no setting = today's behaviour). `asked` captures the
- * ask-instrumentation rows written via runMutation. */
+ * returns `mode` (null = no setting = today's behaviour); `lookupFills` answers
+ * `fills`. The step writes nothing itself: there is no mutation route, and the
+ * ask log and answer-memory use come back as writes for the walker's commit. */
 function makeCtx(
 	coverage: unknown | 'missing',
 	mode: Mode = null,
-	fills: { questionId: string; slotType: string; value: string }[] = []
+	fills: { questionId: string; slotType: string; value: string; rowId?: string }[] = []
 ) {
-	const asked: unknown[] = [];
-	const ctx = makeStepCtx<Parameters<typeof clarifyStep.execute>[0]>({
+	return makeStepCtx<Parameters<typeof clarifyStep.execute>[0]>({
 		queries: {
 			getAskEagernessInternal: { mode },
 			getMessage:
 				coverage === 'missing' ? null : { contextCoverage: coverage, contactId: 'contact_test' },
-		},
-		mutations: {
-			recordClarificationAsk: (args) => {
-				asked.push(args);
-				return undefined;
-			},
-			resolveFills: { fills },
+			lookupFills: { fills },
 		},
 	});
-	return Object.assign(ctx, { asked });
 }
 
 const decisionSlot: ReplySlot = {
@@ -323,12 +316,12 @@ describe('clarifyStep.execute — ask-eagerness dial', () => {
 
 	it('Off suppresses asking entirely — no LLM calls, no ask logged', async () => {
 		const ctx = makeCtx({ lowCoverage: true }, 'off');
-		const { output } = await clarifyStep.execute(ctx, makeInput());
+		const { output, writes } = await clarifyStep.execute(ctx, makeInput());
 		expect(output.resolution).toBe('eagerness_off');
 		expect(output.questions).toEqual([]);
 		expect(mocks.runLlmObject).not.toHaveBeenCalled();
 		expect(mocks.runLlmText).not.toHaveBeenCalled();
-		expect(ctx.asked).toHaveLength(0);
+		expect(writesOf(writes, 'clarification_ask')).toHaveLength(0);
 	});
 
 	it('Cautious surfaces every divergent slot (raises no bar)', async () => {
@@ -373,9 +366,10 @@ describe('clarifyStep.execute — ask-eagerness dial', () => {
 	it('logs the ask with its predicted value + dial position when a question is emitted', async () => {
 		mockTwoDivergentSlots();
 		const ctx = makeCtx({ lowCoverage: true }, 'confident');
-		await clarifyStep.execute(ctx, makeInput());
-		expect(ctx.asked).toHaveLength(1);
-		const row = ctx.asked[0] as {
+		const { writes } = await clarifyStep.execute(ctx, makeInput());
+		const asked = writesOf(writes, 'clarification_ask');
+		expect(asked).toHaveLength(1);
+		const row = asked[0] as {
 			source: string;
 			eagerness: string;
 			questionCount: number;
@@ -509,16 +503,23 @@ describe('clarifyStep.execute — answer-memory', () => {
 			});
 		// Memory already holds the answer for the emitted question (clarify_0).
 		const ctx = makeCtx({ lowCoverage: true }, null, [
-			{ questionId: 'clarify_0', slotType: 'decision', value: 'Yes, push to March.' },
+			{
+				questionId: 'clarify_0',
+				slotType: 'decision',
+				value: 'Yes, push to March.',
+				rowId: 'mem_1',
+			},
 		]);
-		const { output } = await clarifyStep.execute(ctx, makeInput());
+		const { output, writes } = await clarifyStep.execute(ctx, makeInput());
 		expect(output.resolution).toBe('memory_filled');
 		expect(output.questions).toEqual([]);
 		expect(output.memoryAnswers).toHaveLength(1);
 		expect(output.memoryAnswers[0]!.answer?.value).toBe('Yes, push to March.');
 		expect(output.memoryAnswers[0]!.answer?.source).toBe('memory');
-		// It was NOT asked — no ask instrumentation row.
-		expect(ctx.asked).toHaveLength(0);
+		// It was NOT asked — no ask instrumentation row; the standing answer's use
+		// is counted by the commit.
+		expect(writesOf(writes, 'clarification_ask')).toHaveLength(0);
+		expect(writesOf(writes, 'standing_answers_used')).toEqual([{ rowIds: ['mem_1'] }]);
 	});
 });
 

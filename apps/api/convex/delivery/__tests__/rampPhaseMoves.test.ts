@@ -597,11 +597,10 @@ describe('a rung that is not on the ladder', () => {
  * below it (the rungs, the refusals, the outstanding evidence) is pinned through
  * `promoteCellPhase` above, which is the only door onto this rule.
  *
- * This case used to run through `rampControllerCron.promoteRampPhase`, a second
- * internalMutation entry over the same rule that no cron registered and no
- * module called. It does not exist, and the four cases it would flatten —
- * the refusals, the top rung, the outstanding evidence — are all pinned through
- * the operator's door above; only the rule's own silence about the actor needed
+ * The case calls the rule directly rather than through a second
+ * internalMutation entry over it: no cron or module needs one, and the cases
+ * such an entry would flatten — the refusals, the top rung, the outstanding
+ * evidence — are all pinned through the operator's door above; only the rule's own silence about the actor needed
  * a home of its own.
  */
 describe('the shared rule writes the row and leaves the audit to its caller', () => {

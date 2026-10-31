@@ -222,6 +222,7 @@ import type * as agent_steps_security_scan_htmlElements from '../agent/steps/sec
 import type * as agent_steps_security_scan_index from '../agent/steps/security_scan/index.js';
 import type * as agent_steps_security_scan_patterns from '../agent/steps/security_scan/patterns.js';
 import type * as agent_steps_types from '../agent/steps/types.js';
+import type * as agent_stepWrites from '../agent/stepWrites.js';
 import type * as agent_walker from '../agent/walker.js';
 import type * as agent_walkerCommit from '../agent/walkerCommit.js';
 import type * as agent_walkerSchedule from '../agent/walkerSchedule.js';
@@ -303,7 +304,6 @@ import type * as auth_accountExportPushQueries from '../auth/accountExportPushQu
 import type * as auth_accountExportQueries from '../auth/accountExportQueries.js';
 import type * as auth_accountExportThreadBriefQueries from '../auth/accountExportThreadBriefQueries.js';
 import type * as auth_accountManagement from '../auth/accountManagement.js';
-import type * as apiV1Http from '../apiV1Http.js';
 import type * as auth_apiAuth from '../auth/apiAuth.js';
 import type * as auth_apiAuthHttp from '../auth/apiAuthHttp.js';
 import type * as auth_apiHandlers from '../auth/apiHandlers.js';
@@ -338,6 +338,7 @@ import type * as auth_passwordReauth from '../auth/passwordReauth.js';
 import type * as auth_registrationGate from '../auth/registrationGate.js';
 import type * as auth_seedAdminCommit from '../auth/seedAdminCommit.js';
 import type * as auth_seedAdminDecision from '../auth/seedAdminDecision.js';
+import type * as auth_seedAdminHttp from '../auth/seedAdminHttp.js';
 import type * as auth_sendReadyNotices from '../auth/sendReadyNotices.js';
 import type * as auth_trustedOrigins from '../auth/trustedOrigins.js';
 import type * as auth_userOnboarding from '../auth/userOnboarding.js';
@@ -403,10 +404,12 @@ import type * as campaigns_capacityPlan from '../campaigns/capacityPlan.js';
 import type * as campaigns_capacityPreflight from '../campaigns/capacityPreflight.js';
 import type * as campaigns_guards from '../campaigns/guards.js';
 import type * as campaigns_lifecycle from '../campaigns/lifecycle.js';
+import type * as campaigns_lifecycleReducer from '../campaigns/lifecycleReducer.js';
 import type * as campaigns_listing from '../campaigns/listing.js';
 import type * as campaigns_deletion from '../campaigns/deletion.js';
 import type * as campaigns_multiDaySendPlan from '../campaigns/multiDaySendPlan.js';
 import type * as campaigns_organization from '../campaigns/organization.js';
+import type * as campaigns_pageBucketPlan from '../campaigns/pageBucketPlan.js';
 import type * as campaigns_pageDecision from '../campaigns/pageDecision.js';
 import type * as campaigns_preflight from '../campaigns/preflight.js';
 import type * as campaigns_scheduling from '../campaigns/scheduling.js';
@@ -417,6 +420,7 @@ import type * as campaigns_sendJob from '../campaigns/sendJob.js';
 import type * as campaigns_sendPlanProgress from '../campaigns/sendPlanProgress.js';
 import type * as campaigns_sendPlanQueries from '../campaigns/sendPlanQueries.js';
 import type * as campaigns_sendPlanning from '../campaigns/sendPlanning.js';
+import type * as campaigns_sendPreparation from '../campaigns/sendPreparation.js';
 import type * as campaigns_sendQueries from '../campaigns/sendQueries.js';
 import type * as campaigns_sendTimeOptimization from '../campaigns/sendTimeOptimization.js';
 import type * as campaigns_sendTimeQueries from '../campaigns/sendTimeQueries.js';
@@ -723,6 +727,7 @@ import type * as delivery_worker from '../delivery/worker.js';
 import type * as delivery_workerEnvelope from '../delivery/workerEnvelope.js';
 import type * as delivery_workerOutcome from '../delivery/workerOutcome.js';
 import type * as delivery_workpool from '../delivery/workpool.js';
+import type * as desktop_refreshCommit from '../desktop/refreshCommit.js';
 import type * as desktop_releaseManifest from '../desktop/releaseManifest.js';
 import type * as desktop_updateReads from '../desktop/updateReads.js';
 import type * as desktop_updateResolver from '../desktop/updateResolver.js';
@@ -849,7 +854,6 @@ import type * as emailCoediting_sessionOps from '../emailCoediting/sessionOps.js
 import type * as emailCoediting_sessions from '../emailCoediting/sessions.js';
 import type * as emailCoediting_sweep from '../emailCoediting/sweep.js';
 import type * as emailCoediting_target from '../emailCoediting/target.js';
-import type * as eventsApi from '../eventsApi.js';
 import type * as files_cards from '../files/cards.js';
 import type * as files_history from '../files/history.js';
 import type * as files_historyCursor from '../files/historyCursor.js';
@@ -1639,6 +1643,8 @@ import type * as providers_domainIdentity from '../providers/domainIdentity.js';
 import type * as providers_feedback from '../providers/feedback.js';
 import type * as providers_feedbackStatus from '../providers/feedbackStatus.js';
 import type * as providerRoutes from '../providerRoutes.js';
+import type * as publicApi_events from '../publicApi/events.js';
+import type * as publicApi_v1Http from '../publicApi/v1Http.js';
 import type * as push_config from '../push/config.js';
 import type * as push_copy from '../push/copy.js';
 import type * as push_delivery from '../push/delivery.js';
@@ -1732,7 +1738,6 @@ import type * as schema_transportOutcomes from '../schema/transportOutcomes.js';
 import type * as schema_webhooks from '../schema/webhooks.js';
 import type * as schema_workspaceDeletion from '../schema/workspaceDeletion.js';
 import type * as schema_workerServers from '../schema/workerServers.js';
-import type * as seedAdminHttp from '../seedAdminHttp.js';
 import type * as seedDemo_index from '../seedDemo/index.js';
 import type * as seedDemo_indexHttp from '../seedDemo/indexHttp.js';
 import type * as seedDemo_loaders_accounts from '../seedDemo/loaders/accounts.js';
@@ -1756,9 +1761,11 @@ import type * as segments_countRefresh from '../segments/countRefresh.js';
 import type * as segments_listing from '../segments/listing.js';
 import type * as semanticFileProcessing from '../semanticFileProcessing.js';
 import type * as semanticFiles from '../semanticFiles.js';
-import type * as shareLinkHttp from '../shareLinkHttp.js';
 import type * as shareLinkQueries from '../shareLinkQueries.js';
 import type * as shareLinks from '../shareLinks.js';
+import type * as shareLinks_links from '../shareLinks/links.js';
+import type * as shareLinks_queries from '../shareLinks/queries.js';
+import type * as shareLinks_viewHttp from '../shareLinks/viewHttp.js';
 import type * as storage from '../storage.js';
 import type * as systemMail from '../systemMail.js';
 import type * as systemUpdates from '../systemUpdates.js';
@@ -1782,6 +1789,7 @@ import type * as transactional_dispatchContent from '../transactional/dispatchCo
 import type * as transactional_dispatchDecision from '../transactional/dispatchDecision.js';
 import type * as transactional_emails from '../transactional/emails.js';
 import type * as transactional_lifecycle from '../transactional/lifecycle.js';
+import type * as transactional_lifecycleReducer from '../transactional/lifecycleReducer.js';
 import type * as transactional_pendingUploads from '../transactional/pendingUploads.js';
 import type * as transactional_sends from '../transactional/sends.js';
 import type * as transactional_translations from '../transactional/translations.js';
@@ -1966,7 +1974,6 @@ declare const fullApi: ApiFromModules<{
 	aiProviderConfig: typeof aiProviderConfig;
 	aiProviderConfigActions: typeof aiProviderConfigActions;
 	auditLogs: typeof auditLogs;
-	apiV1Http: typeof apiV1Http;
 	autonomy: typeof autonomy;
 	autonomyFeedback: typeof autonomyFeedback;
 	autonomyOutcome: typeof autonomyOutcome;
@@ -1977,18 +1984,15 @@ declare const fullApi: ApiFromModules<{
 	confirmationEmail: typeof confirmationEmail;
 	confirmationEmailQueries: typeof confirmationEmailQueries;
 	crons: typeof crons;
-	eventsApi: typeof eventsApi;
 	globalSearch: typeof globalSearch;
 	http: typeof http;
 	mediaAssets: typeof mediaAssets;
 	providerRoutes: typeof providerRoutes;
 	quickQuery: typeof quickQuery;
 	quickQueryGate: typeof quickQueryGate;
-	seedAdminHttp: typeof seedAdminHttp;
 	segments: typeof segments;
 	semanticFileProcessing: typeof semanticFileProcessing;
 	semanticFiles: typeof semanticFiles;
-	shareLinkHttp: typeof shareLinkHttp;
 	shareLinkQueries: typeof shareLinkQueries;
 	shareLinks: typeof shareLinks;
 	storage: typeof storage;
@@ -2060,6 +2064,7 @@ declare const fullApi: ApiFromModules<{
 	'agent/steps/security_scan/index': typeof agent_steps_security_scan_index;
 	'agent/steps/security_scan/patterns': typeof agent_steps_security_scan_patterns;
 	'agent/steps/types': typeof agent_steps_types;
+	'agent/stepWrites': typeof agent_stepWrites;
 	'agent/walker': typeof agent_walker;
 	'agent/walkerCommit': typeof agent_walkerCommit;
 	'agent/walkerSchedule': typeof agent_walkerSchedule;
@@ -2176,6 +2181,7 @@ declare const fullApi: ApiFromModules<{
 	'auth/registrationGate': typeof auth_registrationGate;
 	'auth/seedAdminCommit': typeof auth_seedAdminCommit;
 	'auth/seedAdminDecision': typeof auth_seedAdminDecision;
+	'auth/seedAdminHttp': typeof auth_seedAdminHttp;
 	'auth/sendReadyNotices': typeof auth_sendReadyNotices;
 	'auth/trustedOrigins': typeof auth_trustedOrigins;
 	'auth/userOnboarding': typeof auth_userOnboarding;
@@ -2243,10 +2249,12 @@ declare const fullApi: ApiFromModules<{
 	'campaigns/capacityPreflight': typeof campaigns_capacityPreflight;
 	'campaigns/guards': typeof campaigns_guards;
 	'campaigns/lifecycle': typeof campaigns_lifecycle;
+	'campaigns/lifecycleReducer': typeof campaigns_lifecycleReducer;
 	'campaigns/listing': typeof campaigns_listing;
 	'campaigns/deletion': typeof campaigns_deletion;
 	'campaigns/multiDaySendPlan': typeof campaigns_multiDaySendPlan;
 	'campaigns/organization': typeof campaigns_organization;
+	'campaigns/pageBucketPlan': typeof campaigns_pageBucketPlan;
 	'campaigns/pageDecision': typeof campaigns_pageDecision;
 	'campaigns/preflight': typeof campaigns_preflight;
 	'campaigns/scheduling': typeof campaigns_scheduling;
@@ -2257,6 +2265,7 @@ declare const fullApi: ApiFromModules<{
 	'campaigns/sendPlanProgress': typeof campaigns_sendPlanProgress;
 	'campaigns/sendPlanQueries': typeof campaigns_sendPlanQueries;
 	'campaigns/sendPlanning': typeof campaigns_sendPlanning;
+	'campaigns/sendPreparation': typeof campaigns_sendPreparation;
 	'campaigns/sendQueries': typeof campaigns_sendQueries;
 	'campaigns/sendTimeOptimization': typeof campaigns_sendTimeOptimization;
 	'campaigns/sendTimeQueries': typeof campaigns_sendTimeQueries;
@@ -2572,6 +2581,7 @@ declare const fullApi: ApiFromModules<{
 	'delivery/workerOutcome': typeof delivery_workerOutcome;
 	'delivery/workpool': typeof delivery_workpool;
 }> & ApiFromModules<{
+	'desktop/refreshCommit': typeof desktop_refreshCommit;
 	'desktop/releaseManifest': typeof desktop_releaseManifest;
 	'desktop/updateReads': typeof desktop_updateReads;
 	'desktop/updateResolver': typeof desktop_updateResolver;
@@ -3713,6 +3723,9 @@ declare const fullApi: ApiFromModules<{
 	'providers/feedback': typeof providers_feedback;
 	'providers/feedbackStatus': typeof providers_feedbackStatus;
 }> & ApiFromModules<{
+	'publicApi/events': typeof publicApi_events;
+	'publicApi/v1Http': typeof publicApi_v1Http;
+}> & ApiFromModules<{
 	'push/config': typeof push_config;
 	'push/copy': typeof push_copy;
 	'push/delivery': typeof push_delivery;
@@ -3835,6 +3848,10 @@ declare const fullApi: ApiFromModules<{
 	'segments/countRefresh': typeof segments_countRefresh;
 	'segments/listing': typeof segments_listing;
 }> & ApiFromModules<{
+	'shareLinks/links': typeof shareLinks_links;
+	'shareLinks/queries': typeof shareLinks_queries;
+	'shareLinks/viewHttp': typeof shareLinks_viewHttp;
+}> & ApiFromModules<{
 	'storage/uploadsHttp': typeof storage_uploadsHttp;
 	'storage/uploads': typeof storage_uploads;
 }> & ApiFromModules<{
@@ -3859,6 +3876,7 @@ declare const fullApi: ApiFromModules<{
 	'transactional/dispatchDecision': typeof transactional_dispatchDecision;
 	'transactional/emails': typeof transactional_emails;
 	'transactional/lifecycle': typeof transactional_lifecycle;
+	'transactional/lifecycleReducer': typeof transactional_lifecycleReducer;
 	'transactional/pendingUploads': typeof transactional_pendingUploads;
 	'transactional/sends': typeof transactional_sends;
 	'transactional/translations': typeof transactional_translations;

@@ -22,7 +22,7 @@ import type { SmtpFailureCategory } from '@owlat/shared/smtpBlockCategories';
  * category names are the shared vocabulary in
  * `@owlat/shared/smtpBlockCategories` — this side counts, it does not parse.
  *
- * PRODUCED BY `analytics/smtpResponseCategories.ts` (issue #501), for the
+ * PRODUCED BY `analytics/smtpResponseCategories.ts`, for the
  * controller (`rampControllerInputs.ts`) and the dashboard alike — exactly as its
  * neighbour below is produced from the probe ledger. The MTA reports each
  * classified 4xx/5xx as a TYPED category on an `smtp.classified` webhook; the

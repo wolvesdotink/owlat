@@ -1,9 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import {
-	ENV_BACKUP_SEALED_PREFIX,
-	createEnvBackupBox,
-	isEnvBackupSealedValue,
-} from '@owlat/shared/envBackupBox';
+import { createEnvBackupBox, isEnvBackupSealedValue } from '@owlat/shared/envBackupBox';
 import { jsonRequestEvent } from '../../../__tests__/nitro';
 import type * as ConvexRuntimeEnvModule from '@owlat/shared/convexRuntimeEnv';
 import type * as ComposedSendProviderCatalogModule from '~/utils/composedSendProviderCatalog';
@@ -188,7 +184,6 @@ describe('apply-transport secrets at rest', () => {
 		// .env backup: sealed token, no plaintext anywhere in the written map.
 		const envMap = writtenEnv();
 		const stored = envMap['SMTP_RELAY_PASSWORD']!;
-		expect(stored.startsWith(ENV_BACKUP_SEALED_PREFIX)).toBe(true);
 		expect(isEnvBackupSealedValue(stored)).toBe(true);
 		expect(JSON.stringify(envMap)).not.toContain(PLAINTEXT_PASSWORD);
 		// The sealed token round-trips back to the exact password under INSTANCE_SECRET.

@@ -7,7 +7,7 @@
  * recognises native plugins by `instanceof BuiltinPlugin` against its own
  * class. With two copies, Nuxt's `nuxt:replace` builtin fails that check and
  * runs as a JS-wrapped plugin, and Nuxt runs on a rolldown older than its peer
- * range (#1271). bun.lock does not warn about an unmet peer, so these tests do.
+ * range. bun.lock does not warn about an unmet peer, so these tests do.
  */
 
 import { readFileSync, realpathSync } from 'node:fs';

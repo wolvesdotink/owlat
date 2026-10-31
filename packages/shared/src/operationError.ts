@@ -30,8 +30,8 @@ export type OperationErrorCategory =
 	| 'network';
 
 /**
- * The canonical failure shape every seam serializes. Specifics that used to be
- * bespoke codes ride in `data` — `{ field }`, `{ limit, used }`,
+ * The canonical failure shape every seam serializes. Specifics that would
+ * otherwise be bespoke codes ride in `data` — `{ field }`, `{ limit, used }`,
  * `{ retryAfter }`, a content-scan result — never as a new category.
  */
 export interface OperationError {
@@ -40,11 +40,8 @@ export interface OperationError {
 	data?: Record<string, unknown>;
 }
 
-/**
- * Every category, as a runtime array. The lint guard and the runtime type
- * guards below derive from this so the union has exactly one source.
- */
-export const OPERATION_ERROR_CATEGORIES = [
+/** Every category, as a runtime array, for the runtime type guard below. */
+const OPERATION_ERROR_CATEGORIES = [
 	'unauthenticated',
 	'forbidden',
 	'not_found',

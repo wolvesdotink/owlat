@@ -36,7 +36,7 @@ export interface WorkingHours {
 }
 
 /** Fallback window when no per-user working hours are configured (9–6, Mon–Fri). */
-export const DEFAULT_WORKING_HOURS: WorkingHours = {
+const DEFAULT_WORKING_HOURS: WorkingHours = {
 	startHour: 9,
 	endHour: 18,
 	workdays: [1, 2, 3, 4, 5],

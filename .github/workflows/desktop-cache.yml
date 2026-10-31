@@ -30,7 +30,7 @@ jobs:
             targets: ''
           - os: ubuntu-22.04
             targets: ''
-          - os: macos-14
+          - os: macos-15
             targets: 'aarch64-apple-darwin,x86_64-apple-darwin'
     steps:
       - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2
@@ -53,10 +53,12 @@ jobs:
         with:
           toolchain: ${{ steps.rust.outputs.channel }}
           targets: ${{ matrix.targets }}
+      # The runner label keeps caches from different images apart; must match
+      # the shared-key in _desktop-build.yml.
       - uses: swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           workspaces: apps/desktop/src-tauri
-          shared-key: desktop-release
+          shared-key: desktop-release-${{ matrix.os }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Build release dependencies with the release feature set
         shell: bash

@@ -1,18 +1,17 @@
 /**
  * Relay-domain verification through the sending-domain provider registry.
  *
- * `relayDomainVerified` used to open with `relayProviderType !== 'ses' → false`
- * and inline SES's proof. It now dispatches to the registered provider for the
- * relay kind, which has to leave three things exactly where they were:
+ * `relayDomainVerified` dispatches to the registered provider for the relay
+ * kind rather than special-casing SES, and has to keep three answers:
  *
  *   - SES's verdict, on the full proof and on every way it can be incomplete;
  *   - the honest "unverifiable" answer for kinds with no identity API
  *     (`smtp`, `resend`) and for the owned MTA, which is never a relay;
  *   - the same answer for a kind this deployment has never heard of.
  *
- * Mandrill (Mandrill plan P3.1) added the second kind that CAN answer — from
- * the generic identity table — so it gets a block covering its own proof rather
- * than being the "unknown kind" placeholder it used to be.
+ * Mandrill is the second kind that CAN answer — from the generic identity
+ * table — so it gets a block covering its own proof rather than standing in for
+ * the "unknown kind".
  */
 
 import { describe, expect, it } from 'vitest';

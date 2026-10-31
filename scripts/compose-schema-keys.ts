@@ -1,5 +1,5 @@
 /**
- * Top-level and service keys, checked against the Compose specification (#1368).
+ * Top-level and service keys, checked against the Compose specification.
  *
  * The Docker API checks only see the keys they know about. Compose rejects an
  * unknown key, but it also keeps growing new ones (`use_api_socket` is recent

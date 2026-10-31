@@ -3,10 +3,10 @@
  *
  *   - auth/accountManagement.ts  cancelAccountDeletion (token-gated publicMutation)
  *                                + getPendingDeletionRequest (authedQuery, requireSelf)
- *   - shareLinks.ts              createShareLink / revokeShareLink / listShareLinks
+ *   - shareLinks/links.ts        createShareLink / revokeShareLink / listShareLinks
  *                                (admin/permission gate + polymorphic-target xor invariant)
- *   - shareLinkHttp.ts           GET /share/{token} (public token endpoint)
- *   - shareLinkQueries.ts        getShareLinkByToken (internal: revoked/expired/live)
+ *   - shareLinks/viewHttp.ts     GET /share/{token} (public token endpoint)
+ *   - shareLinks/queries.ts      getShareLinkByToken (internal: revoked/expired/live)
  *   - systemUpdates.ts           checkForUpdates (bespoke platform-admin gate)
  *
  * Auth model under test (single-org deployment):
@@ -353,15 +353,15 @@ describe('accountManagement.getPendingDeletionRequest', () => {
 });
 
 // ============================================================
-// shareLinks.createShareLink
+// shareLinks.links.createShareLink
 // ============================================================
 
-describe('shareLinks.createShareLink', () => {
+describe('shareLinks.links.createShareLink', () => {
 	it('creates a share link for an email template (snapshots html/subject, sets xor target)', async () => {
 		const t = newHarness();
 		const templateId = await seedTemplate(t);
 
-		const res = await t.mutation(api.shareLinks.createShareLink, {
+		const res = await t.mutation(api.shareLinks.links.createShareLink, {
 			emailTemplateId: templateId,
 		});
 		expect(res.token).toHaveLength(24);
@@ -386,7 +386,7 @@ describe('shareLinks.createShareLink', () => {
 		const t = newHarness();
 		const txnId = await seedTransactional(t);
 
-		const res = await t.mutation(api.shareLinks.createShareLink, {
+		const res = await t.mutation(api.shareLinks.links.createShareLink, {
 			transactionalEmailId: txnId,
 		});
 
@@ -401,7 +401,7 @@ describe('shareLinks.createShareLink', () => {
 
 	it('rejects when neither target id is set (xor: at least one)', async () => {
 		const t = newHarness();
-		await expect(t.mutation(api.shareLinks.createShareLink, {})).rejects.toThrow();
+		await expect(t.mutation(api.shareLinks.links.createShareLink, {})).rejects.toThrow();
 	});
 
 	it('rejects when BOTH target ids are set (xor: at most one)', async () => {
@@ -410,7 +410,7 @@ describe('shareLinks.createShareLink', () => {
 		const txnId = await seedTransactional(t);
 
 		await expect(
-			t.mutation(api.shareLinks.createShareLink, {
+			t.mutation(api.shareLinks.links.createShareLink, {
 				emailTemplateId: templateId,
 				transactionalEmailId: txnId,
 			})
@@ -428,7 +428,7 @@ describe('shareLinks.createShareLink', () => {
 		const templateId = await seedTemplate(t, { htmlContent: undefined });
 
 		await expect(
-			t.mutation(api.shareLinks.createShareLink, { emailTemplateId: templateId })
+			t.mutation(api.shareLinks.links.createShareLink, { emailTemplateId: templateId })
 		).rejects.toThrow();
 	});
 
@@ -438,24 +438,24 @@ describe('shareLinks.createShareLink', () => {
 		const templateId = await seedTemplate(t);
 
 		await expect(
-			t.mutation(api.shareLinks.createShareLink, { emailTemplateId: templateId })
+			t.mutation(api.shareLinks.links.createShareLink, { emailTemplateId: templateId })
 		).rejects.toThrow();
 	});
 });
 
 // ============================================================
-// shareLinks.revokeShareLink
+// shareLinks.links.revokeShareLink
 // ============================================================
 
-describe('shareLinks.revokeShareLink', () => {
+describe('shareLinks.links.revokeShareLink', () => {
 	it('marks the link revoked (sets revokedAt)', async () => {
 		const t = newHarness();
 		const templateId = await seedTemplate(t);
-		const { shareLinkId } = await t.mutation(api.shareLinks.createShareLink, {
+		const { shareLinkId } = await t.mutation(api.shareLinks.links.createShareLink, {
 			emailTemplateId: templateId,
 		});
 
-		await t.mutation(api.shareLinks.revokeShareLink, { shareLinkId });
+		await t.mutation(api.shareLinks.links.revokeShareLink, { shareLinkId });
 
 		await t.run(async (ctx) => {
 			const link = await ctx.db.get(shareLinkId);
@@ -466,30 +466,36 @@ describe('shareLinks.revokeShareLink', () => {
 	it('rejects a non-privileged caller (viewer)', async () => {
 		const t = newHarness();
 		const templateId = await seedTemplate(t);
-		const { shareLinkId } = await t.mutation(api.shareLinks.createShareLink, {
+		const { shareLinkId } = await t.mutation(api.shareLinks.links.createShareLink, {
 			emailTemplateId: templateId,
 		});
 
 		sessionMock.role = 'viewer';
-		await expect(t.mutation(api.shareLinks.revokeShareLink, { shareLinkId })).rejects.toThrow();
+		await expect(
+			t.mutation(api.shareLinks.links.revokeShareLink, { shareLinkId })
+		).rejects.toThrow();
 	});
 });
 
 // ============================================================
-// shareLinks.listShareLinks
+// shareLinks.links.listShareLinks
 // ============================================================
 
-describe('shareLinks.listShareLinks', () => {
+describe('shareLinks.links.listShareLinks', () => {
 	it('lists links for an email template, newest first', async () => {
 		const t = newHarness();
 		const templateId = await seedTemplate(t);
 
-		const first = await t.mutation(api.shareLinks.createShareLink, { emailTemplateId: templateId });
-		const second = await t.mutation(api.shareLinks.createShareLink, {
+		const first = await t.mutation(api.shareLinks.links.createShareLink, {
+			emailTemplateId: templateId,
+		});
+		const second = await t.mutation(api.shareLinks.links.createShareLink, {
 			emailTemplateId: templateId,
 		});
 
-		const links = await t.query(api.shareLinks.listShareLinks, { emailTemplateId: templateId });
+		const links = await t.query(api.shareLinks.links.listShareLinks, {
+			emailTemplateId: templateId,
+		});
 		expect(links).toHaveLength(2);
 		// Sorted createdAt desc — most recent createdAt first.
 		expect(links[0]!.createdAt).toBeGreaterThanOrEqual(links[1]!.createdAt);
@@ -502,13 +508,15 @@ describe('shareLinks.listShareLinks', () => {
 		const t = newHarness();
 		// A real-but-unused template id (no share links point at it).
 		const templateId = await seedTemplate(t);
-		const links = await t.query(api.shareLinks.listShareLinks, { emailTemplateId: templateId });
+		const links = await t.query(api.shareLinks.links.listShareLinks, {
+			emailTemplateId: templateId,
+		});
 		expect(links).toEqual([]);
 	});
 
 	it('returns [] when neither target id is provided', async () => {
 		const t = newHarness();
-		const links = await t.query(api.shareLinks.listShareLinks, {});
+		const links = await t.query(api.shareLinks.links.listShareLinks, {});
 		expect(links).toEqual([]);
 	});
 
@@ -516,26 +524,28 @@ describe('shareLinks.listShareLinks', () => {
 		const t = newHarness();
 		const templateId = await seedTemplate(t);
 		const txnId = await seedTransactional(t);
-		await t.mutation(api.shareLinks.createShareLink, { emailTemplateId: templateId });
-		const txnLink = await t.mutation(api.shareLinks.createShareLink, {
+		await t.mutation(api.shareLinks.links.createShareLink, { emailTemplateId: templateId });
+		const txnLink = await t.mutation(api.shareLinks.links.createShareLink, {
 			transactionalEmailId: txnId,
 		});
 
-		const links = await t.query(api.shareLinks.listShareLinks, { transactionalEmailId: txnId });
+		const links = await t.query(api.shareLinks.links.listShareLinks, {
+			transactionalEmailId: txnId,
+		});
 		expect(links).toHaveLength(1);
 		expect(links[0]!._id).toBe(txnLink.shareLinkId);
 	});
 });
 
 // ============================================================
-// shareLinkQueries.getShareLinkByToken (internal)
+// shareLinks.queries.getShareLinkByToken (internal)
 // ============================================================
 
-describe('shareLinkQueries.getShareLinkByToken', () => {
+describe('shareLinks.queries.getShareLinkByToken', () => {
 	it('returns live link data for a valid token', async () => {
 		const t = newHarness();
 		const templateId = await seedTemplate(t);
-		const { token } = await t.mutation(api.shareLinks.createShareLink, {
+		const { token } = await t.mutation(api.shareLinks.links.createShareLink, {
 			emailTemplateId: templateId,
 		});
 
@@ -546,7 +556,7 @@ describe('shareLinkQueries.getShareLinkByToken', () => {
 			});
 		});
 
-		const result = await t.query(internal.shareLinkQueries.getShareLinkByToken, { token });
+		const result = await t.query(internal.shareLinks.queries.getShareLinkByToken, { token });
 		expect(result).not.toBeNull();
 		expect(result).not.toHaveProperty('expired');
 		const data = result as { html: string; subject: string; organizationName: string };
@@ -557,7 +567,7 @@ describe('shareLinkQueries.getShareLinkByToken', () => {
 
 	it('returns null for a bogus token', async () => {
 		const t = newHarness();
-		const result = await t.query(internal.shareLinkQueries.getShareLinkByToken, {
+		const result = await t.query(internal.shareLinks.queries.getShareLinkByToken, {
 			token: 'no-such-token',
 		});
 		expect(result).toBeNull();
@@ -566,12 +576,12 @@ describe('shareLinkQueries.getShareLinkByToken', () => {
 	it('returns null for a revoked token', async () => {
 		const t = newHarness();
 		const templateId = await seedTemplate(t);
-		const { token, shareLinkId } = await t.mutation(api.shareLinks.createShareLink, {
+		const { token, shareLinkId } = await t.mutation(api.shareLinks.links.createShareLink, {
 			emailTemplateId: templateId,
 		});
-		await t.mutation(api.shareLinks.revokeShareLink, { shareLinkId });
+		await t.mutation(api.shareLinks.links.revokeShareLink, { shareLinkId });
 
-		const result = await t.query(internal.shareLinkQueries.getShareLinkByToken, { token });
+		const result = await t.query(internal.shareLinks.queries.getShareLinkByToken, { token });
 		expect(result).toBeNull();
 	});
 
@@ -591,20 +601,20 @@ describe('shareLinkQueries.getShareLinkByToken', () => {
 			return 'expired-token';
 		});
 
-		const result = await t.query(internal.shareLinkQueries.getShareLinkByToken, { token });
+		const result = await t.query(internal.shareLinks.queries.getShareLinkByToken, { token });
 		expect(result).toEqual({ expired: true });
 	});
 });
 
 // ============================================================
-// shareLinkHttp — GET /share/{token}
+// shareLinks/viewHttp — GET /share/{token}
 // ============================================================
 
 describe('GET /share/{token}', () => {
 	it('returns 200 + snapshotted html for a live link', async () => {
 		const t = newHarness();
 		const templateId = await seedTemplate(t);
-		const { token } = await t.mutation(api.shareLinks.createShareLink, {
+		const { token } = await t.mutation(api.shareLinks.links.createShareLink, {
 			emailTemplateId: templateId,
 		});
 		await t.run(async (ctx) => {
@@ -637,10 +647,10 @@ describe('GET /share/{token}', () => {
 	it('returns 404 for a revoked link', async () => {
 		const t = newHarness();
 		const templateId = await seedTemplate(t);
-		const { token, shareLinkId } = await t.mutation(api.shareLinks.createShareLink, {
+		const { token, shareLinkId } = await t.mutation(api.shareLinks.links.createShareLink, {
 			emailTemplateId: templateId,
 		});
-		await t.mutation(api.shareLinks.revokeShareLink, { shareLinkId });
+		await t.mutation(api.shareLinks.links.revokeShareLink, { shareLinkId });
 
 		const res = await t.fetch(`/share/${token}`, { method: 'GET' });
 		expect(res.status).toBe(404);

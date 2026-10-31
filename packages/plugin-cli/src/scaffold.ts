@@ -33,14 +33,14 @@ export const DEFAULT_SCAFFOLD_TEMPLATE: ScaffoldTemplate = 'minimal';
 /**
  * Everything that differs between templates, in ONE record per template.
  *
- * A template used to be three comparisons in two modules — which module exports
- * to merge, which file set to emit, and which completion hint `create` prints —
- * so adding a third meant finding all three, and missing the hint printed the
- * minimal one for a bundle while missing the exports emitted a manifest naming
- * export paths the `package.json` does not declare (a failure that surfaces only
- * at install-time provenance verification, nowhere in this repository's tests).
- * The record is typed `Record<ScaffoldTemplate, …>`, so a template added to the
- * list above does not compile until it answers all three questions here.
+ * A template answers three questions — which module exports to merge, which
+ * file set to emit, and which completion hint `create` prints. Spread over
+ * separate comparisons, a missed hint prints the minimal one for a bundle and
+ * missed exports emit a manifest naming export paths the `package.json` does not
+ * declare (a failure that surfaces only at install-time provenance
+ * verification, nowhere in this repository's tests). The record is typed
+ * `Record<ScaffoldTemplate, …>`, so a template added to the list above does not
+ * compile until it answers all three questions here.
  */
 interface ScaffoldTemplateDefinition {
 	/**

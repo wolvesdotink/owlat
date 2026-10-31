@@ -201,13 +201,3 @@ export function operatingModeFlags(
 	const preset = OPERATING_MODES[key];
 	return resolveFlags({ ...getDefaultFlags(opts), ...preset.flags }, opts);
 }
-
-/**
- * Whether the wizard must collect an email transport for this mode — either
- * because it sends bulk mail (`needsDeliveryProvider`) or because it relies on
- * the built-in MTA for hosted mailboxes / inbound (`needsMta`).
- */
-export function operatingModeNeedsTransport(key: OperatingModeKey): boolean {
-	const preset = OPERATING_MODES[key];
-	return preset.needsDeliveryProvider || preset.needsMta;
-}

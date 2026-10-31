@@ -354,7 +354,7 @@ jobs:
   # Self-host installs pull these images without credentials. GHCR packages
   # created by a GITHUB_TOKEN push default to PRIVATE, and flipping them public
   # is a manual org-settings step with no API — so a brand-new image (or a
-  # visibility regression) ships a release nobody can install (#551). This job
+  # visibility regression) ships a release nobody can install. This job
   # deliberately does NOT log in to GHCR; a failure here fails the caller's
   # `server` job and therefore blocks the draft release from going live.
   verify-anonymous-pull:
@@ -496,7 +496,7 @@ jobs:
   # and wait for web / MTA(+worker) / Redis / ClamAV health. A failure here
   # fails the caller's `server` job and blocks the draft → live flip.
   #
-  # Two volume states, because both have shipped broken before (#551): `fresh`
+  # Two volume states, because each breaks on its own: `fresh`
   # (first install) and `seeded` (volumes created by the PREVIOUS release, the
   # upgrade path — Redis appendonlydir/ClamAV DB ownership only breaks there).
   #

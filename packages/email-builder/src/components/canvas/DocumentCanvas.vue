@@ -299,22 +299,23 @@ function handleInlineEditorMounted(blockId: string, comp: InlineEditorComponentR
 				:style="{ backgroundColor: backgroundColor || '#ffffff' }"
 			>
 				<!-- Background color bubble on the top-right border -->
-				<button
-					ref="bgColorBubbleRef"
-					type="button"
-					class="absolute -top-3 right-4 z-10 flex items-center gap-1.5 h-6 pl-1 pr-2 rounded-full bg-bg-elevated border border-border-subtle shadow-sm cursor-pointer transition-shadow hover:shadow-md"
-					:title="t('builder.canvas.backgroundColor')"
-					:aria-label="t('builder.canvas.backgroundColor')"
-					aria-haspopup="dialog"
-					:aria-expanded="showBgColorPopover"
-					@click="toggleBgColorPopover"
-				>
-					<span
-						class="w-4 h-4 rounded-full border border-border-default shrink-0"
-						:style="{ backgroundColor: backgroundColor || '#ffffff' }"
-					/>
-					<span class="text-[11px] font-medium text-text-secondary leading-none">{{ t('builder.canvas.background') }}</span>
-				</button>
+				<UiTooltip :text="t('builder.canvas.backgroundColor')">
+					<button
+						ref="bgColorBubbleRef"
+						type="button"
+						class="absolute -top-3 right-4 z-10 flex items-center gap-1.5 h-6 pl-1 pr-2 rounded-full bg-bg-elevated border border-border-subtle shadow-sm cursor-pointer transition-shadow hover:shadow-md"
+						:aria-label="t('builder.canvas.backgroundColor')"
+						aria-haspopup="dialog"
+						:aria-expanded="showBgColorPopover"
+						@click="toggleBgColorPopover"
+					>
+						<span
+							class="w-4 h-4 rounded-full border border-border-default shrink-0"
+							:style="{ backgroundColor: backgroundColor || '#ffffff' }"
+						/>
+						<span class="text-[11px] font-medium text-text-secondary leading-none">{{ t('builder.canvas.background') }}</span>
+					</button>
+				</UiTooltip>
 
 				<Teleport to="body">
 					<div

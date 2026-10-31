@@ -91,30 +91,25 @@ export { bucketFor, hash32, MIX_BUCKET_SPACE } from './hash';
  * `armForTransport`, the same function `sendAssignments` records with, rather
  * than through a second copy of the split.
  *
- * WHAT STILL SPELLS A KIND is DATA IN THREE PLACES, none of them this docblock,
- * and none of them derived from another — prose here would go stale the first
- * time a family cleared, with nothing failing:
+ * WHAT STILL SPELLS A KIND is DATA IN TWO PLACES, none of them this docblock,
+ * and neither derived from the other — prose here would go stale the first
+ * time either changed, with nothing failing:
  *
  *   * DECLARATIONS in `apps/api/convex` (`const X = 'ses'`) —
  *     `scripts/check-kind-literal-custody.ts`, which allows none outside the
  *     adapter folders (`domains/providers/mta/index.ts`'s `kind` spells one
  *     inside its own folder). It checks declarations ONLY.
- *   * COMPARISONS that are debt — `scripts/provider-identity-allowlist.txt`,
- *     read by `bun run lint:providers` over `apps/`, `packages/` and
- *     `examples/`. Each entry sits under a family header naming what would
- *     delete it, and the gate fails on an entry that no longer excuses
- *     anything.
- *   * COMPARISONS that are NOT debt — `scripts/provider-identity-collisions.txt`,
- *     for a spelling that belongs to another alphabet: the MTA routing API's
+ *   * COMPARISONS — `bun run lint:providers`, over `apps/`, `packages/` and
+ *     `examples/`, fails every one outside an adapter bundle except a spelling
+ *     that belongs to another alphabet, listed in
+ *     `scripts/provider-identity-collisions.txt`: the MTA routing API's
  *     `'mta' | 'relay' | 'defer'` answer (`delivery/lastMileRouting.ts`), a
  *     docker compose profile, the contact-import source registry. Permanent, and
  *     `path:literal`-qualified so the licence covers that spelling and nothing
- *     else. Rewriting one of these would change a protocol, not remove a
- *     coupling, so it must NOT go in the allowlist — that is what lets the
- *     allowlist reach zero.
+ *     else. There is no list of exempt sites for a comparison that really asks
+ *     a provider's name.
  *
- * Read those three, not this list. For orientation only, what survives is in the setup UI and
- * CLI (`apps/web`, `apps/setup-cli`) and the shared setup validators; the backend carries none.
+ * Read those two, not this list.
  */
 export const OWN_ARM_TRANSPORT_KIND = OWN_SEND_PROVIDER_KIND;
 

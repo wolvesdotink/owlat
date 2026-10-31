@@ -361,7 +361,7 @@ export async function claimAdminSeed(
 
 /**
  * Whether the durable admin-seed latch has been stamped. Read by
- * `seedAdminHttp.ts`'s one-shot gate alongside the "any user exists?" probe: the
+ * `auth/seedAdminHttp.ts`'s one-shot gate alongside the "any user exists?" probe: the
  * probe re-arms if every user is deleted, this latch does not.
  */
 export const hasCompletedAdminSeedInternal = internalQuery({

@@ -55,9 +55,8 @@ const NOT_COPY: Record<string, readonly string[]> = {
 	'components/dialogs/VariableCreateDialog.vue': ['order_id', 'variable'],
 	'components/panel/PropertyField.vue': ['https://'],
 	'components/panel/fields/ColorField.vue': ['#000000'],
-	'preview/components/EmailPreviewer.vue': [
-		'HTML',
-		'AMP',
+	'preview/components/previewer/PreviewToolbar.vue': ['HTML', 'AMP'],
+	'preview/components/previewer/PreviewExportMenu.vue': [
 		'.html',
 		'.txt',
 		'.amp.html',
@@ -65,10 +64,9 @@ const NOT_COPY: Record<string, readonly string[]> = {
 		'email.txt',
 		'email.amp.html',
 	],
-	'preview/components/RenderOptionsPanel.vue': [
+	'preview/components/RenderOptionsPanel.vue': ['LTR', 'RTL'],
+	'preview/components/renderOptions/AdvancedOptions.vue': [
 		'en',
-		'LTR',
-		'RTL',
 		'.custom-class { color: red; }',
 		'https://fonts.googleapis.com/css2?family=...',
 	],

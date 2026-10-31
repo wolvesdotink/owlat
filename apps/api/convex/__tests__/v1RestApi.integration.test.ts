@@ -11,9 +11,9 @@ import {
 	type PublicOperationId,
 } from '@owlat/public-contract/schemas';
 import { httpRouter } from 'convex/server';
-import { registerPublicApiRoutes } from '../apiV1Http';
+import { registerPublicApiRoutes } from '../publicApi/v1Http';
 import * as contactsApi from '../contacts/api';
-import { sendEvent } from '../eventsApi';
+import { sendEvent } from '../publicApi/events';
 import { sendTransactional } from '../transactional/api';
 import { addContactToTopic, removeContactFromTopic } from '../topics/apiHttp';
 import { healthCheck } from '../auth/apiAuthHttp';

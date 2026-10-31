@@ -20,6 +20,7 @@ import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import axe from 'axe-core';
 import { installNuxtStubs } from '~/__tests__/a11y';
 import { createTestI18n } from '~/__tests__/i18n';
+import { focusTooltip } from '~/__tests__/tooltip';
 import { usePostboxListKeyboard } from '~/composables/postbox/usePostboxListKeyboard';
 import { usePostboxOptimisticHide } from '~/composables/postbox/usePostboxOptimisticHide';
 import { usePostboxTriageUndo } from '~/composables/postbox/usePostboxTriageUndo';
@@ -427,6 +428,14 @@ describe('Team Inbox list: accessibility', () => {
 		await mountPage({ admin: false });
 		expect(wrapper.find('[data-testid="inbox-row-checkbox"]').exists()).toBe(false);
 		expect(await listViolations()).toEqual([]);
+	});
+
+	it('names the next order in the sort chip’s tooltip, which keyboard focus opens', async () => {
+		await mountPage();
+		const chip = wrapper.findAll('button').find((b) => b.text().startsWith('Sorted by'))!;
+		expect(chip.attributes('title')).toBeUndefined();
+		expect(chip.text()).toBe('Sorted by needs attention');
+		expect(await focusTooltip(chip)).toBe('Sort by oldest waiting');
 	});
 });
 

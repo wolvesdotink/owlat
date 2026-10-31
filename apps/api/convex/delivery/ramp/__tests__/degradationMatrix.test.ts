@@ -87,7 +87,7 @@ const CASES: readonly MatrixCase[] = [
 		// microsoft cell plus seeds at Outlook; DWELL x2 AND the microsoft cell
 		// ceiling capped ONE PHASE LOWER.
 		//
-		// NOT `smtp_classification` (issue #501): the counts reach Convex now, but
+		// NOT `smtp_classification`: the counts reach Convex, but
 		// the clause that reads them is on the standalone evaluator alone, and this
 		// entry covers relay-equipped deployments whose gate 2 never consults it.
 		integration: 'microsoft_snds',
@@ -156,16 +156,12 @@ const CASES: readonly MatrixCase[] = [
  * search, so the next unclaimable signal is covered by adding a line here instead
  * of by somebody remembering to write a second assertion.
  *
- * `smtp_classification` — the per-ISP block-message signal. It began here as a
- * signal with NO PRODUCER (issue #501): the classifier ran in the MTA and nothing
- * carried its per-category counts into Convex, so `smtpBlocks` was never set. It
- * has one now, and the reason it still may not be named is a narrower one that
- * the missing producer was hiding: the clause that consumes those counts
- * (`evaluateSmtpBlockMessages`) belongs to the STANDALONE evaluator alone, while
- * every entry in this table applies to relay-equipped deployments too. Naming it
- * would tell a relay-equipped operator their cell is measured by something its
- * evaluator never consults — the same defect as before, for a different reason,
- * on a smaller share of deployments.
+ * `smtp_classification` — the per-ISP block-message signal. It has a producer
+ * (the MTA's per-category counts reach Convex), and it still may not be named:
+ * the clause that consumes those counts (`evaluateSmtpBlockMessages`) belongs to
+ * the STANDALONE evaluator alone, while every entry in this table applies to
+ * relay-equipped deployments too. Naming it would tell a relay-equipped operator
+ * their cell is measured by something its evaluator never consults.
  *
  * The gate clause is implemented, reached (`delivery/__tests__/smtpBlockWiring.test.ts`)
  * and pinned (`smtpBlockMessage.test.ts`). What may not come back until the table
@@ -184,7 +180,7 @@ const SOURCES_THE_TABLE_MAY_NOT_CLAIM: readonly { source: string; prose: RegExp 
 ];
 
 /**
- * EVERY NAMED SIGNAL IS A SIGNAL EVERY CELL IT IS NAMED FOR RUNS ON (issue #501).
+ * EVERY NAMED SIGNAL IS A SIGNAL EVERY CELL IT IS NAMED FOR RUNS ON.
  *
  * The table is what the CONTROLLER runs on — `resolveRampDegradation` folds
  * `substitutes` into which actuator a cell drives, which evaluator judges it and
@@ -194,9 +190,9 @@ const SOURCES_THE_TABLE_MAY_NOT_CLAIM: readonly { source: string; prose: RegExp 
  * entry claims that a cell it covers never consults is worse: it tells the
  * controller (and, the day a screen renders the copy, an operator) that a cell
  * is measured by something that never executes for it. `smtp_classification`
- * was exactly that for the Microsoft cell, first because it had no producer at
- * all and now because its one consumer is the standalone evaluator while the
- * `microsoft_snds` row covers relay-equipped cells too. It comes back when the
+ * is exactly that for the Microsoft cell, because its one consumer is the
+ * standalone evaluator while the `microsoft_snds` row covers relay-equipped
+ * cells too. It comes back when the
  * table can express that condition, and this suite is what makes "when" a
  * build failure rather than a memory.
  */

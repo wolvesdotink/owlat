@@ -3,7 +3,7 @@
  * updater, `owlat upgrade`, the manual path in the maintenance docs). Its
  * command deploys the functions and then sets OWLAT_VERSION on the deployment,
  * because Convex functions read the version from the deployment's environment
- * and only setup ever wrote it (issue #1147).
+ * and otherwise only setup writes it.
  *
  * These cases run the REAL docker/convex-deploy.sh under `sh` with a stub
  * `convex` on PATH that logs each call and exits with the code the case asks

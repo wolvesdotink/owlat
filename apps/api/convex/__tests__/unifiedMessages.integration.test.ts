@@ -892,6 +892,70 @@ describe('unifiedMessages.runChannelHealthChecks', () => {
 		});
 	});
 
+	it('records every enabled channel in one run and leaves a disabled one alone', async () => {
+		const t = convexTest(schema, modules);
+		await t.run(async (ctx) => {
+			for (const channel of ['email', 'chat', 'sms'] as const) {
+				await ctx.db.insert('channelConfigs', createTestChannelConfig({ channel }));
+			}
+			await ctx.db.insert(
+				'channelConfigs',
+				createTestChannelConfig({ channel: 'whatsapp', isEnabled: false })
+			);
+		});
+
+		await t.action(internal.unifiedMessages.runChannelHealthChecks);
+
+		const rows = await t.run(async (ctx) => await ctx.db.query('channelConfigs').collect());
+		const byChannel = Object.fromEntries(rows.map((row) => [row.channel, row]));
+		expect(byChannel['email']).toMatchObject({ healthStatus: 'healthy' });
+		expect(byChannel['chat']).toMatchObject({ healthStatus: 'healthy' });
+		expect(byChannel['sms']).toMatchObject({
+			healthStatus: 'down',
+			lastError: 'No credentials configured',
+		});
+		for (const channel of ['email', 'chat', 'sms']) {
+			expect(typeof byChannel[channel]?.lastHealthCheckAt).toBe('number');
+		}
+		expect(byChannel['whatsapp']?.healthStatus).toBeUndefined();
+		expect(byChannel['whatsapp']?.lastHealthCheckAt).toBeUndefined();
+	});
+
+	it('skips a result whose channel config changed after the run read it', async () => {
+		const t = convexTest(schema, modules);
+		await t.run(async (ctx) => {
+			// Credentials were saved after the run found none.
+			await ctx.db.insert(
+				'channelConfigs',
+				createTestChannelConfig({ channel: 'sms', config: 'sealed-credentials' })
+			);
+			await ctx.db.insert(
+				'channelConfigs',
+				createTestChannelConfig({ channel: 'chat', isEnabled: false })
+			);
+		});
+
+		await t.mutation(internal.channels.outboundCommit.recordHealthChecks, {
+			results: [
+				{
+					channel: 'sms',
+					hadCredentials: false,
+					healthStatus: 'down',
+					lastError: 'No credentials configured',
+				},
+				{ channel: 'chat', hadCredentials: false, healthStatus: 'healthy' },
+				{ channel: 'whatsapp', hadCredentials: false, healthStatus: 'down' },
+			],
+		});
+
+		const rows = await t.run(async (ctx) => await ctx.db.query('channelConfigs').collect());
+		expect(rows).toHaveLength(2);
+		for (const row of rows) {
+			expect(row.healthStatus).toBeUndefined();
+			expect(row.lastHealthCheckAt).toBeUndefined();
+		}
+	});
+
 	it('still reports email channels healthy off config presence', async () => {
 		const t = convexTest(schema, modules);
 

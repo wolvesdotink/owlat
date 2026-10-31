@@ -50,9 +50,9 @@ export interface TransportSummaryInput {
  *
  * The two rows are this surface's own wording, kept because renaming a card on a live dashboard is
  * a user-visible change: the hub says "Owlat mail server" where the catalog says "Owlat MTA", and
- * it drops Mandrill's parenthetical. Unifying that copy is a wording decision (recorded in
- * `scripts/provider-identity-allowlist.txt`), not a silent rendering change. `ses`, `resend` and
- * `smtp` needed no row: they already agreed with the catalog, and a new kind simply gets its label.
+ * it drops Mandrill's parenthetical. Unifying that copy is a wording decision, not a silent
+ * rendering change. `ses`, `resend` and `smtp` needed no row: they already agreed with the
+ * catalog, and a new kind simply gets its label.
  */
 const TRANSPORT_LABEL_OVERRIDE: Partial<Record<DeliveryProviderKind, string>> = {
 	mta: 'shared.transportState.labels.mta',

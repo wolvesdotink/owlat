@@ -99,7 +99,7 @@ export const issueSnapshot = internalMutation({
 			) {
 				throw new Error('Routing re-entry envelope does not belong to the Send.');
 			}
-			// THE FIRST-ATTEMPT RECORD (#1208). Every governed attempt passes here
+			// THE FIRST-ATTEMPT RECORD. Every governed attempt passes here
 			// with the start its delivery deadline is measured from, already
 			// admitted above (finite, not in the future). Deferrals and re-entries
 			// carry the same start, so this writes once per Send. A later start

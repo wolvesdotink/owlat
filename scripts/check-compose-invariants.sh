@@ -6,9 +6,8 @@
 # Nothing in CI runs `docker compose config`, so the properties self-hosters
 # depend on are pinned here as text assertions against the checked-in files.
 # This gate is wired as `lint:compose` so that editing a compose file or an env
-# template actually triggers it — the same checks used to live in
-# packages/shared's vitest suite, where they only ran when turbo thought the
-# library had changed.
+# template actually triggers it; in packages/shared's vitest suite they would
+# only run when turbo thought the library had changed.
 #
 # What is pinned:
 #   • Code worker: drives internal Convex functions but must never hold the
@@ -25,7 +24,7 @@
 #   • Docker socket: only the read-only docker-socket-proxy mounts it, and the
 #     privileged Docker API sits on an internal-only network shared with the
 #     updater alone — in the root file, the VPS template and the release file
-#     generated from the root one (#1329: the VPS template had put the proxy
+#     generated from the root one (the VPS template must not put the proxy
 #     on `default`, next to every other service).
 #   • Updater shutdown: both templates give the updater the stop grace its
 #     shutdown budget is computed against (apps/updater/src/lifecycle.ts), and
@@ -179,7 +178,7 @@ for compose in "$root" "$vps" ${release:+"$release"}; do
 	# service without a `      - docker-proxy` line. The same parse rejects
 	# every other route to the socket (a bind of it or a directory above it in
 	# either syntax, volumes_from the proxy, use_api_socket; `:ro` limits none
-	# of them) and any key outside the Compose specification (#1368).
+	# of them) and any key outside the Compose specification.
 	network_violations=$(bun scripts/check-docker-proxy-network.ts "$compose")
 	case $? in
 	0) ok "$label keeps docker-proxy internal, holding only docker-socket-proxy (unpublished) and updater (also on default), and no other service reaches the docker socket" ;;
@@ -412,11 +411,10 @@ else bad "$vps acme service must set IMAP_RUNTIME_USER so acme-entrypoint.sh kno
 
 # --- the IMAP auth rate limiter must have a backing store --------------------
 # Port 993 is internet-facing and LOGIN is the only thing between it and a
-# user's mail, but REDIS_URL used to be set on exactly one service per compose
-# file (mta). apps/imap's brute-force limiter therefore had no counters on every
-# deployment ever made, announced solely by a level-40 line at boot. The app now
-# refuses to start in production without it, so an omission here is a crash-loop
-# rather than a silent hole — pin it in both files.
+# user's mail, so imap needs REDIS_URL as much as mta does: without it the
+# brute-force limiter has no counters, announced solely by a level-40 line at
+# boot. The app refuses to start in production without it, so an omission here
+# is a crash-loop rather than a silent hole — pin it in both files.
 for compose in "$root" "$vps"; do
 	block=$(service_block "$compose" imap)
 	if grep -qE '^ {6}REDIS_URL: redis://:\$\{REDIS_PASSWORD[^}]*\}@redis:6379$' <<<"$block"; then
@@ -490,7 +488,7 @@ fi
 # The check above only covers variables the FEATURE-FLAG REGISTRY names. Nothing
 # covered the variables the compose file itself interpolates, and two got in:
 #
-#   • MTA_SECRET (#317) was added to the root compose and not to the VPS pair,
+#   • MTA_SECRET was added to the root compose and not to the VPS pair,
 #     so the VPS MTA crash-looped on its own boot assertion.
 #   • FBL_DEDUP_PROTOCOL / FBL_DEDUP_CUTOVER_ACK reached the VPS compose but
 #     never the template.

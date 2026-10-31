@@ -8,8 +8,8 @@
  * REAL response shapes, does the gate halt on the ones that mean "we are refusing
  * this sender" and stay quiet on the ones that mean "slow down"?
  *
- * THE CLAUSE IS LIVE (issue #501). The classification still happens in the MTA,
- * but the category now travels as a typed field on an `smtp.classified` webhook
+ * THE CLAUSE IS LIVE. The classification happens in the MTA, and the
+ * category travels as a typed field on an `smtp.classified` webhook
  * and `analytics/smtpResponseCategories.ts` counts it per (cell, arm, UTC day),
  * so both readers supply `input.smtpBlocks` and this halt can fire in a real
  * deployment.

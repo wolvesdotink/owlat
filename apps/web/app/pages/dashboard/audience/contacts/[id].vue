@@ -338,44 +338,48 @@ async function handleRemoveSuppression() {
 							</UiButton>
 						</template>
 						<template v-else-if="canManageContacts">
-							<UiButton
-								variant="secondary"
+							<UiTooltip
 								v-if="contact.doiStatus === 'pending'"
-								class="gap-2"
-								:disabled="isResendingDoi"
-								:title="t('dashboard.audience.contacts.detail.resendDoiTitle')"
-								@click="handleResendDoi"
+								:text="t('dashboard.audience.contacts.detail.resendDoiTitle')"
 							>
-								<Icon
-									v-if="isResendingDoi"
-									name="lucide:loader-2"
-									class="w-4 h-4 animate-spin motion-reduce:animate-none"
-								/>
-								<Icon v-else name="lucide:mail-check" class="w-4 h-4" />
-								{{
-									isResendingDoi
-										? t('dashboard.audience.contacts.detail.sending')
-										: t('dashboard.audience.contacts.detail.resendDoi')
-								}}
-							</UiButton>
+								<UiButton
+									variant="secondary"
+									class="gap-2"
+									:disabled="isResendingDoi"
+									@click="handleResendDoi"
+								>
+									<Icon
+										v-if="isResendingDoi"
+										name="lucide:loader-2"
+										class="w-4 h-4 animate-spin motion-reduce:animate-none"
+									/>
+									<Icon v-else name="lucide:mail-check" class="w-4 h-4" />
+									{{
+										isResendingDoi
+											? t('dashboard.audience.contacts.detail.sending')
+											: t('dashboard.audience.contacts.detail.resendDoi')
+									}}
+								</UiButton>
+							</UiTooltip>
 							<UiButton variant="secondary" class="gap-2" @click="startEditing">
 								<Icon name="lucide:pencil" class="w-4 h-4" />
 								{{ t('common.edit') }}
 							</UiButton>
-							<UiButton
-								variant="secondary"
-								class="gap-2"
-								:disabled="exportRequested"
-								:title="t('dashboard.audience.contacts.detail.exportDataTitle')"
-								@click="handleExportData"
-							>
-								<Icon name="lucide:download" class="w-4 h-4" />
-								{{
-									exportRequested
-										? t('dashboard.audience.contacts.detail.exporting')
-										: t('dashboard.audience.contacts.detail.exportData')
-								}}
-							</UiButton>
+							<UiTooltip :text="t('dashboard.audience.contacts.detail.exportDataTitle')">
+								<UiButton
+									variant="secondary"
+									class="gap-2"
+									:disabled="exportRequested"
+									@click="handleExportData"
+								>
+									<Icon name="lucide:download" class="w-4 h-4" />
+									{{
+										exportRequested
+											? t('dashboard.audience.contacts.detail.exporting')
+											: t('dashboard.audience.contacts.detail.exportData')
+									}}
+								</UiButton>
+							</UiTooltip>
 							<UiButton
 								variant="ghost"
 								class="text-error hover:bg-error-subtle"

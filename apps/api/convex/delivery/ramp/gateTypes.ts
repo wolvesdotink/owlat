@@ -405,8 +405,8 @@ export interface RampGateEvaluationInput {
 	 * Absent means "not observed", which yields no verdict at all — the deferral
 	 * rate behind the clause decides on its own. It never fails and never holds.
 	 *
-	 * SUPPLIED BY BOTH READERS from `analytics/smtpResponseCategories.ts` (issue
-	 * #501): the MTA reports each classified 4xx/5xx as a typed category on an
+	 * SUPPLIED BY BOTH READERS from `analytics/smtpResponseCategories.ts`: the
+	 * MTA reports each classified 4xx/5xx as a typed category on an
 	 * `smtp.classified` webhook, and the counter it lands in is summarized per
 	 * (cell, own arm) over each reader's own window. ABSENT AND ZEROED ARE
 	 * DIFFERENT and the summarizer is what keeps them apart — a window with no

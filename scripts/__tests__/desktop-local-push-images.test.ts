@@ -1,12 +1,11 @@
 /**
  * The desktop wizard's local-push mode builds the stack on the developer's
  * machine and streams the images to a server too small to build them. Its image
- * list was once written by hand and fell behind docker-compose.yml: the MTA's
- * DNS resolver, ClamAV, IMAP, mail-sync and the code-task auxiliaries were
- * never built, so the server tried to pull `:dev` tags no registry has
- * (issue #956).
+ * list, written by hand, falls behind docker-compose.yml: a service it misses
+ * (the MTA's DNS resolver, ClamAV, IMAP, mail-sync, the code-task auxiliaries)
+ * is never built, so the server tries to pull a `:dev` tag no registry has.
  *
- * The wizard now builds exactly COMPOSE_BUILD_SERVICES
+ * The wizard builds exactly COMPOSE_BUILD_SERVICES
  * (packages/shared/src/composeBuildServices.ts). These checks pin that table to
  * the real Compose file and to docker/images.json, so a buildable service added
  * to either fails here until the table lists it.

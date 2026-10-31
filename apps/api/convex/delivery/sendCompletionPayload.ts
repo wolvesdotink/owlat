@@ -6,7 +6,7 @@ import type { WorkerEnvelopeInput } from './workerEnvelope';
 import { isSendWorkerOutcome } from './workerOutcome';
 
 // ============================================================================
-// The stored form of a recorded completion's worker result (#1195).
+// The stored form of a recorded completion's worker result.
 //
 // A PAYLOAD IS NEVER LARGE. What a replay needs from the worker result is small:
 // the provider id and type of an acceptance, a suppression reason, a park's

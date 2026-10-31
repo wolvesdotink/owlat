@@ -14,12 +14,12 @@
  *   3. sender status unsubscribed / auto_archive → archived; digest → digest
  *   4. the sender's placement override
  *   5. a rule placement action, from the arrival record
- *   6. a cold-pitch verdict on the record → digest (#1381)
+ *   6. a cold-pitch verdict on the record → digest
  *   7. the category: newsletter / promotion → digest, notification / receipt
  *      → updates, anything else → today
  *
  * An exact-wording candidate (changed bank details, a legal notice, an invoice
- * with payment details: `exactWordingDetector.ts`) is never buried (#1384):
+ * with payment details: `exactWordingDetector.ts`) is never buried:
  * when steps 3–7 place it in the digest or updates (the sender's digest
  * status, a sender override, a rule, a cold-pitch verdict, the category), it
  * reads as `today` instead. A thread override to the digest or updates that was set before
@@ -87,7 +87,7 @@ function isBuried(placement: Placement): boolean {
 }
 
 /**
- * Whether the thread's override still places this message (#1384): always,
+ * Whether the thread's override still places this message: always,
  * except a digest or updates override set before an exact-wording candidate
  * arrived. The depth decision drops the same override (`arrivalInputs`).
  * Unknown times read as an override set after the message. Pure.

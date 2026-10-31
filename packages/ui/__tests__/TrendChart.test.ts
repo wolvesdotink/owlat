@@ -1,5 +1,5 @@
 /**
- * Axis labels must never be scaled (#783).
+ * Axis labels must never be scaled.
  *
  * The chart used a fixed 320-wide viewBox stretched to `w-full` with
  * `preserveAspectRatio="none"`, so on a wide card every `<text>` glyph was

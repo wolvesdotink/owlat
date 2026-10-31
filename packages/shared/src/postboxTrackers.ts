@@ -227,20 +227,6 @@ export function isTrackingResource(url: string, hints: TrackingHints): boolean {
 	return isKnownTrackerHost(host) || hints.looksLikePixel;
 }
 
-/** Classify one <img ...> tag string. Exported for tests. */
-export function isTrackingPixelTag(tag: string): boolean {
-	const src = attrValue(tag, 'src');
-	if (!src) return false;
-	return isTrackingResource(
-		src,
-		elementTrackingHints({
-			width: attrValue(tag, 'width'),
-			height: attrValue(tag, 'height'),
-			style: attrValue(tag, 'style') ?? '',
-		})
-	);
-}
-
 /** True for a src that is set and is not an inline `data:`/`cid:` part. */
 function isRemoteSrc(src: string | null): boolean {
 	if (!src || normalizeResourceUrl(src) === '') return false;

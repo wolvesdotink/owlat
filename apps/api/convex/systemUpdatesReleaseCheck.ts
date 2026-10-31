@@ -213,68 +213,16 @@ export const checkForUpdates = authedAction({
 			};
 		}
 
-		// Poll GitHub API
-		try {
-			const resp = await fetch(GITHUB_RELEASES_URL, {
-				headers: {
-					Accept: 'application/vnd.github+json',
-					'User-Agent': `owlat-selfhost/${currentVersion}`,
-					'X-GitHub-Api-Version': '2022-11-28',
-				},
-			});
-
-			if (resp.status === 403 || resp.status === 429) {
-				// Rate-limited — return cache if we have it
-				await ctx.runMutation(internal.systemUpdatesReleaseCheck.cacheCheckFailure, {
-					error: 'rate_limited',
-				});
-				const latestVersion = cached?.latestVersion ?? null;
-				return {
-					latestVersion,
-					currentVersion,
-					updateAvailable: latestVersion ? isNewer(latestVersion, currentVersion) : false,
-					releaseNotes: cached?.releaseNotes ?? null,
-					publishedAt: cached?.publishedAt ?? null,
-					checkedAt: now,
-					error: 'rate_limited',
-				};
-			}
-
-			if (!resp.ok) {
-				throwInternal(`GitHub API returned ${resp.status}`);
-			}
-
-			const decoded = decodeLatestRelease(await resp.json());
-			if (!decoded.ok) throwInternal(`GitHub returned an unexpected release (${decoded.issue})`);
-			const release = decoded.value;
-
-			const latestVersion = offeredReleaseVersion(release);
-			const releaseNotes = release.body || '';
-			const publishedAt = release.published_at ? new Date(release.published_at).getTime() : now;
-
-			if (!latestVersion) {
-				// Not a stable `vX.Y.Z` release of the unified line (e.g. a
-				// target-only `server-v*` / `desktop-v*` release, a prerelease,
-				// or a missing tag). Ignore it: keep any cached version and report
-				// no update rather than mis-parsing the tag to 0.0.0.
-				const cachedVersion = cached?.latestVersion ?? null;
-				return {
-					latestVersion: cachedVersion,
-					currentVersion,
-					updateAvailable: cachedVersion ? isNewer(cachedVersion, currentVersion) : false,
-					releaseNotes: cached?.releaseNotes ?? null,
-					publishedAt: cached?.publishedAt ?? null,
-					checkedAt: now,
-					error: null,
-				};
-			}
-
+		// One commit for whatever the poll learned: the release it offers, or the
+		// failure. A release it does not offer writes nothing.
+		const poll = await pollLatestRelease(currentVersion, now);
+		if (poll.kind === 'release') {
+			const { latestVersion, releaseNotes, publishedAt } = poll;
 			await ctx.runMutation(internal.systemUpdatesReleaseCheck.cacheLatestRelease, {
 				latestVersion,
 				releaseNotes,
 				publishedAt,
 			});
-
 			return {
 				latestVersion,
 				currentVersion,
@@ -284,25 +232,74 @@ export const checkForUpdates = authedAction({
 				checkedAt: now,
 				error: null,
 			};
-		} catch (err) {
-			const message = err instanceof Error ? err.message : 'Unknown error';
-			await ctx.runMutation(internal.systemUpdatesReleaseCheck.cacheCheckFailure, {
-				error: message,
-			});
-
-			const latestVersion = cached?.latestVersion ?? null;
-			return {
-				latestVersion,
-				currentVersion,
-				updateAvailable: latestVersion ? isNewer(latestVersion, currentVersion) : false,
-				releaseNotes: cached?.releaseNotes ?? null,
-				publishedAt: cached?.publishedAt ?? null,
-				checkedAt: now,
-				error: message,
-			};
 		}
+		if (poll.kind === 'failed') {
+			await ctx.runMutation(internal.systemUpdatesReleaseCheck.cacheCheckFailure, {
+				error: poll.error,
+			});
+		}
+
+		// Nothing new to offer: answer from the cache.
+		const latestVersion = cached?.latestVersion ?? null;
+		return {
+			latestVersion,
+			currentVersion,
+			updateAvailable: latestVersion ? isNewer(latestVersion, currentVersion) : false,
+			releaseNotes: cached?.releaseNotes ?? null,
+			publishedAt: cached?.publishedAt ?? null,
+			checkedAt: now,
+			error: poll.kind === 'failed' ? poll.error : null,
+		};
 	},
 });
+
+/** What one poll of GitHub's latest release learned. */
+type ReleasePoll =
+	| { kind: 'release'; latestVersion: string; releaseNotes: string; publishedAt: number }
+	| { kind: 'ignored' }
+	| { kind: 'failed'; error: string };
+
+/** Ask GitHub for the latest release. Never throws: a failure is a `failed` poll. */
+async function pollLatestRelease(currentVersion: string, now: number): Promise<ReleasePoll> {
+	try {
+		const resp = await fetch(GITHUB_RELEASES_URL, {
+			headers: {
+				Accept: 'application/vnd.github+json',
+				'User-Agent': `owlat-selfhost/${currentVersion}`,
+				'X-GitHub-Api-Version': '2022-11-28',
+			},
+		});
+
+		// Rate-limited: the answer falls back to the cache.
+		if (resp.status === 403 || resp.status === 429)
+			return { kind: 'failed', error: 'rate_limited' };
+
+		if (!resp.ok) {
+			throwInternal(`GitHub API returned ${resp.status}`);
+		}
+
+		const decoded = decodeLatestRelease(await resp.json());
+		if (!decoded.ok) throwInternal(`GitHub returned an unexpected release (${decoded.issue})`);
+		const release = decoded.value;
+
+		const latestVersion = offeredReleaseVersion(release);
+		if (!latestVersion) {
+			// Not a stable `vX.Y.Z` release of the unified line (e.g. a
+			// target-only `server-v*` / `desktop-v*` release, a prerelease,
+			// or a missing tag). Ignore it: keep any cached version and report
+			// no update rather than mis-parsing the tag to 0.0.0.
+			return { kind: 'ignored' };
+		}
+		return {
+			kind: 'release',
+			latestVersion,
+			releaseNotes: release.body || '',
+			publishedAt: release.published_at ? new Date(release.published_at).getTime() : now,
+		};
+	} catch (err) {
+		return { kind: 'failed', error: err instanceof Error ? err.message : 'Unknown error' };
+	}
+}
 
 /**
  * True if `remote` is strictly newer than `local`. 'dev' (unreleased local

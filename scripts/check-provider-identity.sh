@@ -14,27 +14,24 @@
 # catalog lookup. This gate is what keeps them gone once the sweep is over.
 #
 # Sibling of scripts/check-cross-package-imports.sh: one grep-shaped invariant,
-# plus two small checked-in lists that are strict in BOTH directions, exactly
-# like the file-size baseline — an unlisted violation fails, and
-# a listed site that no longer violates fails too, so a list can only shrink.
+# plus ONE small checked-in list that is strict in BOTH directions, exactly like
+# the file-size baseline — an unlisted violation fails, and a listed site that no
+# longer violates fails too, so the list can only shrink.
 #
-#   scripts/provider-identity-allowlist.txt — DEBT. Sites that predate the rule,
-#     each under the family it belongs to and the piece that clears it. Drives to
-#     zero; that count is what acceptance criterion A1 measures.
 #   scripts/provider-identity-collisions.txt — NOT DEBT. Places where a kind's
 #     spelling belongs to a different vocabulary (the MTA routing API's
 #     'mta' | 'relay' | 'defer' answer, a docker compose profile name, the
-#     contact-import source registry). Nothing clears these because there is no
-#     coupling to remove; keeping them out of the debt list is what lets that
-#     list reach zero.
+#     contact-import source registry). There is no coupling to remove, so these
+#     are the only comparisons against a kind literal the gate accepts outside an
+#     adapter. There is NO debt list: every comparison that asks a provider's
+#     NAME fails, wherever it is.
 #
-# ENTRIES ARE `path` OR `path:literal`. A bare path licenses every kind literal
-# in the file; `path:mta` licenses ONLY that spelling and leaves every other
-# kind in the same file a violation. The collisions list is permanent, so a
-# file-granular licence there would blind the gate forever — apply.post.ts is
-# excused for one docker compose profile, and a real `kind === 'ses'` branch
-# added to that same handler next year must still fail. Debt entries can be
-# either: they are on their way out, so the coarse form costs nothing.
+# ENTRIES ARE `path:literal`, and only that. `path:mta` licenses ONLY that
+# spelling and leaves every other kind in the same file a violation. The list is
+# permanent, so a file-granular licence would blind the gate forever —
+# apply.post.ts is excused for one docker compose profile, and a real
+# `kind === 'ses'` branch added to that same handler next year must still fail.
+# A bare `path` entry is therefore rejected rather than read as "every literal".
 #
 # WHAT IS SCANNED: every tracked .ts/.tsx/.vue under apps/, packages/ and
 # examples/. The backend is where Inventory A lives, but it is not where the
@@ -44,8 +41,7 @@
 # examples/conformance) and the home of the plugin tier — the tier whose whole
 # promise is that a provider ships without host edits, so a kind literal there
 # is the loudest possible contradiction. Those are exactly the files the
-# ecosystem goal has to keep clean, so they are in scope from the start, with
-# today's UI branches carried as named debt rather than as silence.
+# ecosystem goal has to keep clean, so they are in scope like the backend.
 #
 # Deliberately NOT scanned:
 #   * adapter bundles: a directory named after a catalog kind directly under one
@@ -112,10 +108,9 @@
 # the stripped code of the previous two lines joined to the current one, and the
 # hit is reported on the line that completes it.
 #
-# Comments are stripped before matching. House style quotes the literal a seam
-# USED to be spelled with (`this used to read providerType === 'ses'`) in the
-# comment that explains the capability replacing it; that prose is the record of
-# the sweep and must not be what a ratchet punishes. The stripper is a small
+# Comments are stripped before matching. A comment that explains a capability
+# may quote the literal it replaced (`providerType === 'ses'`); prose is not a
+# branch and must not be what a ratchet punishes. The stripper is a small
 # state machine over `//` tails, `/* … */` (inline, trailing or spanning lines,
 # with no assumption that continuation lines start with `*`) and `<!-- … -->`,
 # so prose in any shape is invisible to the match.
@@ -123,7 +118,7 @@
 # IT TRACKS STRINGS TOO, because the alternative fails OPEN. A `//` inside a
 # string is not a comment: a provider doc link on the same line as a branch
 # (`href="https://docs.aws…"` next to `provider === 'ses'`) would hide it, and
-# those links live in exactly the per-vendor panels this gate carries as debt. A
+# those links live in exactly the per-vendor panels this gate exists to catch. A
 # `/*` inside a string is worse — `accept = "*/*"` would open a block comment
 # that never closes, and every line below it in the file would go unread. So
 # string content is kept and comment openers inside it are ignored, with `\`
@@ -139,7 +134,6 @@ cd "$(dirname "$0")/.."
 # caller's collation (which ignores punctuation) and the comparison would drift.
 export LC_ALL=C
 
-allowlist_file="scripts/provider-identity-allowlist.txt"
 collisions_file="scripts/provider-identity-collisions.txt"
 SCAN_PATHS=(apps packages examples)
 # The three per-kind bundle roots plus the file-per-kind webhook adapters. A
@@ -220,61 +214,55 @@ comparison="$comparison|$q($kind_alt)$q[^]]*[]][[:space:]]*[)]?[[:space:]]*[.](i
 # the operator, which no per-line comparison regex can see.
 literal="$q($kind_alt)$q"
 
-# An empty list is a legitimate end state (that is what A1 asks for), so the
-# no-match exit of the filter must not read as an error under `pipefail`.
-# `path  # note` keeps a per-entry note next to the entry rather than in a
-# second copy of the list further up the file.
+# An empty list is a legitimate state, so the no-match exit of the filter must
+# not read as an error under `pipefail`. `path:literal  # note` keeps a
+# per-entry note next to the entry rather than in a second copy of the list
+# further up the file.
 #
-# These two lists keep their own new/stale comparison instead of going through
+# The list keeps its own new/stale comparison instead of going through
 # scripts/ratchet.sh: ratchet compares whole lines, so it would not strip the
-# trailing note, and a bare `path` licenses every literal in its file while
-# `path:literal` licenses one, so whether a site is new or an entry is stale
-# depends on the entry's own form, not on set membership. A plain one-entry-
-# per-line list belongs on scripts/ratchet.sh.
+# trailing note, and an entry licenses one LITERAL on the lines of its file, so
+# whether a site is new or an entry is stale is not set membership. A plain
+# one-entry-per-line list belongs on scripts/ratchet.sh.
 read_list() {
 	{ grep -vE '^[[:space:]]*(#|$)' "$1" || true; } |
 		sed -E 's/[[:space:]]+#.*$//; s/[[:space:]]*$//' | sort -u
 }
 
-for list_file in "$allowlist_file" "$collisions_file"; do
-	[ -f "$list_file" ] && continue
-	echo "FAIL: $list_file is missing; the ratchet cannot tell a sanctioned site" >&2
+if [ ! -f "$collisions_file" ]; then
+	echo "FAIL: $collisions_file is missing; the ratchet cannot tell a sanctioned site" >&2
 	echo "from a new leak without it." >&2
 	exit 1
-done
+fi
 
-allowed_debt=$(read_list "$allowlist_file")
 allowed_collision=$(read_list "$collisions_file")
 
-# `<list tag>\t<path>\t<literal or empty>`, the one form both halves below read.
-split_entries() {
-	awk -v tag="$1" '$0 != "" {
-		path = $0
-		literal = ""
-		i = index(path, ":")
-		if (i > 0) { literal = substr(path, i + 1); path = substr(path, 1, i - 1) }
-		printf "%s\t%s\t%s\n", tag, path, literal
-	}'
-}
-licences=$(
-	printf '%s\n' "$allowed_debt" | split_entries allowlist
-	printf '%s\n' "$allowed_collision" | split_entries collision
-)
+# `<path>\t<literal or empty>`, the one form the halves below read.
+licences=$(printf '%s\n' "$allowed_collision" | awk '$0 != "" {
+	path = $0
+	literal = ""
+	i = index(path, ":")
+	if (i > 0) { literal = substr(path, i + 1); path = substr(path, 1, i - 1) }
+	printf "%s\t%s\n", path, literal
+}')
 
-# A qualified entry whose literal is not a declared kind can never be used, so
-# it would surface as a confusing "stale entry". Say what is actually wrong.
+# Every entry names ONE declared kind. A bare path would license every kind
+# literal in its file forever; a literal that is not a declared kind can never be
+# used, and would otherwise surface as a confusing "stale entry". Say what is
+# actually wrong.
 bad=$(printf '%s\n' "$licences" | awk -F'\t' -v kinds="$kind_words" '
-	$3 != "" {
+	$0 != "" {
+		if ($2 == "") { printf "  %s (licenses the whole file)\n", $1; next }
 		n = split(kinds, k, " ")
-		for (i = 1; i <= n; i++) if (k[i] == $3) next
-		printf "  %s (in the %s list)\n", $2 ":" $3, $1
+		for (i = 1; i <= n; i++) if (k[i] == $2) next
+		printf "  %s (not a declared kind)\n", $1 ":" $2
 	}')
 if [ -n "$bad" ]; then
-	echo "FAIL: entr(y/ies) qualified by something that is not a declared kind:"
+	echo "FAIL: entr(y/ies) in $collisions_file that do not name one declared kind:"
 	echo ""
 	echo "$bad"
 	echo ""
-	echo "The part after the colon must be one of: $kind_words"
+	echo "Write each entry as path:literal, where the literal is one of: $kind_words"
 	exit 1
 fi
 
@@ -425,7 +413,7 @@ fi
 verdict=$(awk -F'\t' -v q="$q" -v kinds="$kind_words" '
 	FNR == NR {
 		if ($0 == "") next
-		n++; tag[n] = $1; lpath[n] = $2; lit[n] = $3; used[n] = 0
+		n++; lpath[n] = $1; lit[n] = $2; used[n] = 0
 		next
 	}
 	{
@@ -438,13 +426,10 @@ verdict=$(awk -F'\t' -v q="$q" -v kinds="$kind_words" '
 		for (i = 1; i <= nk; i++) {
 			if ($0 ~ (q k[i] q)) { present[k[i]] = 1; seen++ }
 		}
-		full = 0
 		for (e = 1; e <= n; e++) {
 			if (lpath[e] != path) continue
-			if (lit[e] == "") { full = 1; used[e] = 1; continue }
 			if (lit[e] in present) { used[e] = 1; delete present[lit[e]] }
 		}
-		if (full) next
 		left = 0
 		for (x in present) left++
 		if (seen == 0 || left > 0) printf "U\t%s\n", $0
@@ -452,7 +437,7 @@ verdict=$(awk -F'\t' -v q="$q" -v kinds="$kind_words" '
 	END {
 		for (e = 1; e <= n; e++) {
 			if (used[e]) continue
-			printf "S\t%s\t%s\n", tag[e], (lit[e] == "" ? lpath[e] : lpath[e] ":" lit[e])
+			printf "S\t%s\n", lpath[e] ":" lit[e]
 		}
 	}
 ' <(printf '%s\n' "$licences") <(printf '%s\n' "$violations"))
@@ -472,9 +457,8 @@ if [ -n "$new" ]; then
 	echo ""
 	echo "Ask the capability, not the name: declare what the seam needs on the"
 	echo "catalog entry (lib/sendProviders/catalog.ts) or on the provider module,"
-	echo "and read it back through the accessor. Do NOT add a line to"
-	echo "$allowlist_file: it enumerates the sites that predate the rule, with"
-	echo "the owner that clears each one, and it only ever shrinks."
+	echo "and read it back through the accessor. There is no list of exempt"
+	echo "sites to add it to."
 	echo ""
 	echo "If the literal is NOT a provider kind — the MTA routing API's answer, a"
 	echo "docker compose profile, a contact-import source — it belongs in"
@@ -483,26 +467,21 @@ if [ -n "$new" ]; then
 	fail=1
 fi
 
-# Both lists are strict in the other direction too: a licence that excused
-# nothing has to go, or the next restatement inherits a pass it did not earn.
-report_stale() {
-	local label="$1" file="$2" tag="$3" stale count
-	stale=$(printf '%s\n' "$verdict" | { grep $'^S\t'"$tag"$'\t' || true; } | cut -f3-)
-	[ -n "$stale" ] || return 0
+# The list is strict in the other direction too: a licence that excused nothing
+# has to go, or the next restatement inherits a pass it did not earn.
+stale=$(printf '%s\n' "$verdict" | { grep $'^S\t' || true; } | cut -f2-)
+if [ -n "$stale" ]; then
 	count=$(printf '%s\n' "$stale" | grep -c .)
-	echo "FAIL: $count stale $label entr(y/ies) in $file (no kind literal left,"
-	echo "or the file is gone):"
+	echo "FAIL: $count stale collision entr(y/ies) in $collisions_file (no kind"
+	echo "literal left, or the file is gone):"
 	echo ""
 	echo "$stale"
 	echo ""
 	echo "Delete these lines — the list only ever moves down."
 	fail=1
-}
-report_stale "allowlist" "$allowlist_file" "allowlist"
-report_stale "collision" "$collisions_file" "collision"
+fi
 
 [ "$fail" -eq 1 ] && exit 1
 
-debt_count=$(printf '%s\n' "$allowed_debt" | grep -c . || true)
 collision_count=$(printf '%s\n' "$allowed_collision" | grep -c . || true)
-echo "ok:   no provider-kind identity checks outside adapters ($debt_count allowlisted site(s) remain, $collision_count vocabulary collision(s))"
+echo "ok:   no provider-kind identity checks outside adapters ($collision_count licensed vocabulary collision(s))"

@@ -1,13 +1,13 @@
 /**
- * #916 cost contract: every execution of the wizard's subscribed recipient
+ * Cost contract: every execution of the wizard's subscribed recipient
  * count, and every step of the exact-count job, has a FIXED read budget, and
  * the job's result equals what the send resolver delivers.
  *
  * Driven over the counting reader (`helpers/instrumentedReader.ts`) because
- * convex-test reports nothing about reads. Before #916 one execution of the
- * readout read ~55,000 documents for a 50,000-member topic (stopping at the
- * 25,000-candidate ceiling) and ~270,000 for a zero-match segment over 100,000
- * contacts, far past the per-execution limits. The fixtures here are smaller to
+ * convex-test reports nothing about reads. A readout that walks the whole
+ * audience in one execution reads ~55,000 documents for a 50,000-member topic
+ * (stopping at the 25,000-candidate ceiling) and ~270,000 for a zero-match
+ * segment over 100,000 contacts, far past the per-execution limits. The fixtures here are smaller to
  * keep the suite fast; the assertions are that cost does not GROW with the
  * audience. Full-size numbers: `metrics/916.md` of the perf run.
  */

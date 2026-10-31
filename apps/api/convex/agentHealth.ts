@@ -7,7 +7,7 @@
  */
 
 import { v, type Infer } from 'convex/values';
-import { internalQuery, internalAction, type ActionCtx } from './_generated/server';
+import { internalQuery, internalAction, type MutationCtx } from './_generated/server';
 import { internalMutation } from './lib/writeFence';
 import type { Doc } from './_generated/dataModel';
 import { adminQuery } from './lib/authedFunctions';
@@ -241,37 +241,68 @@ const agentMetricRowValidator = v.object({
 
 type AgentMetricRow = Infer<typeof agentMetricRowValidator>;
 
+const breakerTypeValidator = v.union(
+	v.literal('llm_failure'),
+	v.literal('confidence_degradation'),
+	v.literal('rejection_spike')
+);
+type BreakerType = Infer<typeof breakerTypeValidator>;
+
 /**
- * Record a rollup window's data points — ALL of them, in ONE transaction.
+ * The one commit of `rollupMetrics`: the window's data points and the circuit
+ * breakers its signals move, in ONE transaction.
  *
- * One window is one observation: writing its seven or eight points through
- * seven or eight separate mutations meant seven or eight transactions (and as
- * many OCC write conflicts on `agentMetrics`) per tick, and a failure partway
- * through left a half-written window on the dashboard — an error_rate with no
- * llm_cost beside it, which reads as "the pipeline was cheap and broken"
- * rather than "the rollup died". Either the window lands or none of it does.
+ * One window is one observation: writing its points through separate
+ * mutations meant as many transactions (and OCC write conflicts on
+ * `agentMetrics`) per tick, and a failure partway through left a half-written
+ * window on the dashboard — an error_rate with no llm_cost beside it, which
+ * reads as "the pipeline was cheap and broken" rather than "the rollup died".
+ * The breakers are read here, in the same transaction that moves them, so a
+ * step `open → half_open → closed` is always taken from the state it stands on.
+ */
+export const commitRollup = internalMutation({
+	args: {
+		metrics: v.array(agentMetricRowValidator),
+		signals: v.object({
+			llm_failure: v.number(),
+			confidence_degradation: v.number(),
+			rejection_spike: v.number(),
+		}),
+	},
+	returns: v.null(),
+	handler: async (ctx, args) => {
+		await insertMetrics(ctx, args.metrics);
+		await applyBreakerSignals(ctx, args.signals);
+		return null;
+	},
+});
+
+async function insertMetrics(ctx: MutationCtx, metrics: AgentMetricRow[]): Promise<void> {
+	const createdAt = Date.now();
+	for (const metric of metrics) {
+		await ctx.db.insert('agentMetrics', { ...metric, createdAt });
+	}
+}
+
+/**
+ * A previous release's rollup writes its window here. Nothing in this release
+ * calls it; remove after release 0.6.17.
  */
 export const recordMetrics = internalMutation({
 	args: { metrics: v.array(agentMetricRowValidator) },
 	returns: v.null(),
 	handler: async (ctx, args) => {
-		const createdAt = Date.now();
-		for (const metric of args.metrics) {
-			await ctx.db.insert('agentMetrics', { ...metric, createdAt });
-		}
+		await insertMetrics(ctx, args.metrics);
 	},
 });
 
 /**
- * Update or create a circuit breaker
+ * A previous release's rollup moves a breaker here. Nothing in this release
+ * calls it; remove after release 0.6.17.
  */
 export const updateCircuitBreaker = internalMutation({
 	args: {
-		breakerType: v.union(
-			v.literal('llm_failure'),
-			v.literal('confidence_degradation'),
-			v.literal('rejection_spike')
-		),
+		breakerType: breakerTypeValidator,
 		state: v.union(v.literal('closed'), v.literal('open'), v.literal('half_open')),
 		currentValue: v.number(),
 	},
@@ -280,32 +311,38 @@ export const updateCircuitBreaker = internalMutation({
 			.query('agentCircuitBreakers')
 			.withIndex('by_breaker_type', (q) => q.eq('breakerType', args.breakerType))
 			.first();
-
-		const now = Date.now();
-
-		if (existing) {
-			const patch: Partial<Doc<'agentCircuitBreakers'>> = {
-				state: args.state,
-				currentValue: args.currentValue,
-			};
-			if (args.state === 'open' && existing.state !== 'open') {
-				patch.trippedAt = now;
-			}
-			if (args.state === 'closed' && existing.state !== 'closed') {
-				patch.recoveredAt = now;
-			}
-			await ctx.db.patch(existing._id, patch);
-		} else {
-			await ctx.db.insert('agentCircuitBreakers', {
-				breakerType: args.breakerType,
-				state: args.state,
-				threshold: getDefaultThreshold(args.breakerType),
-				currentValue: args.currentValue,
-				createdAt: now,
-			});
-		}
+		await writeCircuitBreaker(ctx, existing, args.breakerType, args.state, args.currentValue);
 	},
 });
+
+/** Set a breaker's state and value, stamping the moment it trips or recovers. */
+async function writeCircuitBreaker(
+	ctx: MutationCtx,
+	existing: Doc<'agentCircuitBreakers'> | null | undefined,
+	breakerType: BreakerType,
+	state: Doc<'agentCircuitBreakers'>['state'],
+	currentValue: number
+): Promise<void> {
+	const now = Date.now();
+	if (existing) {
+		const patch: Partial<Doc<'agentCircuitBreakers'>> = { state, currentValue };
+		if (state === 'open' && existing.state !== 'open') {
+			patch.trippedAt = now;
+		}
+		if (state === 'closed' && existing.state !== 'closed') {
+			patch.recoveredAt = now;
+		}
+		await ctx.db.patch(existing._id, patch);
+		return;
+	}
+	await ctx.db.insert('agentCircuitBreakers', {
+		breakerType,
+		state,
+		threshold: getDefaultThreshold(breakerType),
+		currentValue,
+		createdAt: now,
+	});
+}
 
 // ============================================================
 // Internal Action: Metrics Rollup (called by cron)
@@ -330,7 +367,7 @@ export const rollupMetrics = internalAction({
 		const windowStart = now - 5 * 60 * 1000;
 
 		// Every point this window produces, collected first and written once at
-		// the end — see `recordMetrics` for why the window is one transaction.
+		// the end — see `commitRollup` for why the window is one transaction.
 		const metrics: AgentMetricRow[] = [];
 		const record = (metricType: AgentMetricRow['metricType'], value: number) => {
 			metrics.push({ metricType, value, windowStart, windowEnd: now });
@@ -436,14 +473,16 @@ export const rollupMetrics = internalAction({
 		// token count — the dashboard renders this with a "$".
 		record('llm_cost', costTotalUsd);
 
-		await ctx.runMutation(internal.agentHealth.recordMetrics, { metrics });
-
-		// Evaluate all three circuit breakers off this window's signals.
-		await evaluateCircuitBreakers(ctx, {
-			llm_failure: errorRate,
-			confidence_degradation: confidenceDegradation,
-			rejection_spike: rejectionRate,
+		// The window and the three circuit breakers its signals move, in one commit.
+		await ctx.runMutation(internal.agentHealth.commitRollup, {
+			metrics,
+			signals: {
+				llm_failure: errorRate,
+				confidence_degradation: confidenceDegradation,
+				rejection_spike: rejectionRate,
+			},
 		});
+		return null;
 	},
 });
 
@@ -482,8 +521,6 @@ export const getPendingCount = internalQuery({
 // Circuit Breaker Evaluation
 // ============================================================
 
-type BreakerType = 'llm_failure' | 'confidence_degradation' | 'rejection_spike';
-
 /**
  * Evaluate every circuit breaker off the current window's signals. Each
  * breaker follows the same hysteresis state machine: when its value exceeds
@@ -492,36 +529,23 @@ type BreakerType = 'llm_failure' | 'confidence_degradation' | 'rejection_spike';
  * before auto-approval resumes. The `route` step refuses to auto-approve while
  * ANY breaker is open.
  */
-async function evaluateCircuitBreakers(ctx: ActionCtx, values: Record<BreakerType, number>) {
-	const breakers = await ctx.runQuery(internal.agentHealth.getCircuitBreakersInternal);
+async function applyBreakerSignals(ctx: MutationCtx, values: Record<BreakerType, number>) {
+	const breakers = await ctx.db.query('agentCircuitBreakers').collect(); // bounded: fixed small set of breaker types
 	const byType = new Map(breakers.map((b) => [b.breakerType, b]));
 
 	for (const breakerType of Object.keys(values) as BreakerType[]) {
 		const value = values[breakerType];
-		const threshold = getDefaultThreshold(breakerType);
 		const current = byType.get(breakerType);
 
-		if (value > threshold) {
+		if (value > getDefaultThreshold(breakerType)) {
 			// Tripped (or stays tripped).
-			await ctx.runMutation(internal.agentHealth.updateCircuitBreaker, {
-				breakerType,
-				state: 'open' as const,
-				currentValue: value,
-			});
+			await writeCircuitBreaker(ctx, current, breakerType, 'open', value);
 		} else if (current?.state === 'open') {
 			// Value recovered — step to half_open to confirm.
-			await ctx.runMutation(internal.agentHealth.updateCircuitBreaker, {
-				breakerType,
-				state: 'half_open' as const,
-				currentValue: value,
-			});
+			await writeCircuitBreaker(ctx, current, breakerType, 'half_open', value);
 		} else if (current?.state === 'half_open') {
 			// Sustained recovery — close it.
-			await ctx.runMutation(internal.agentHealth.updateCircuitBreaker, {
-				breakerType,
-				state: 'closed' as const,
-				currentValue: value,
-			});
+			await writeCircuitBreaker(ctx, current, breakerType, 'closed', value);
 		}
 	}
 }

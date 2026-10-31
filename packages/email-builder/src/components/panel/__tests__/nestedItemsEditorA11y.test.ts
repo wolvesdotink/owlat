@@ -1,11 +1,11 @@
 // @vitest-environment happy-dom
 //
 // The children list in the property panel is two controls per row: "edit this
-// child" and "remove this child". The row used to be a `role="button"` div
-// wrapping the real Remove button — and a button makes every descendant
-// presentational, so the Remove control was stripped from the accessibility
-// tree: a screen-reader user could hear the row but never reach the one
-// destructive action inside it.
+// child" and "remove this child". The row must not be a `role="button"` div
+// wrapping the real Remove button: a button makes every descendant
+// presentational, so the Remove control would be stripped from the
+// accessibility tree and a screen-reader user could hear the row but never
+// reach the one destructive action inside it.
 //
 // Both controls address a child Block by id. Accordion sections are not
 // Blocks, so their rows show the label only: an Edit or Remove there had

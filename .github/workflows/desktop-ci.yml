@@ -46,7 +46,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-22.04, macos-14, windows-latest]
+        os: [ubuntu-22.04, macos-15, windows-latest]
     steps:
       - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2
         with:
@@ -83,9 +83,12 @@ jobs:
         with:
           toolchain: ${{ steps.rust.outputs.channel }}
 
+      # rust-cache keys only on OS family and CPU arch; the runner label keeps a
+      # new runner image from restoring crates built against the previous one.
       - uses: swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           workspaces: apps/desktop/src-tauri
+          key: ${{ matrix.os }}
 
       # `tauri::generate_context!()` embeds the frontend dist at compile time, so
       # the path must exist. A placeholder is enough for a Rust-only gate: the

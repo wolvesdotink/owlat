@@ -73,7 +73,7 @@ export function generateSecret(length = 32): string {
  * key") if given a non-hex string. Mirrors the legacy installer's
  * `openssl rand -hex <byteLength>`.
  */
-export function generateHexSecret(byteLength = 32): string {
+function generateHexSecret(byteLength = 32): string {
 	const bytes = new Uint8Array(byteLength);
 	webcrypto.getRandomValues(bytes);
 	let out = '';

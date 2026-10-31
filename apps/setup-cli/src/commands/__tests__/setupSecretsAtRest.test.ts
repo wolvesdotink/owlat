@@ -3,12 +3,12 @@ import { chmodSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { selectRuntimeEnvVars } from '@owlat/shared/convexRuntimeEnv';
-import {
-	createEnvBackupBox,
-	isEnvBackupSealedValue,
-	ENV_BACKUP_SEALED_PREFIX,
-} from '@owlat/shared/envBackupBox';
+import { createEnvBackupBox, isEnvBackupSealedValue } from '@owlat/shared/envBackupBox';
 import { readEnvFile, writeEnvFile } from '@owlat/shared/setupEnv';
+
+// The sealed-token prefix is the on-disk format of `.env` files already
+// written, so the tests pin its literal value.
+const ENV_BACKUP_SEALED_PREFIX = 'envsealed:v1:';
 
 /**
  * Secrets-at-rest coverage for the CLI setup writers (the `--config`

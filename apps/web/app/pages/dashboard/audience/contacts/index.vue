@@ -767,30 +767,33 @@ onUnmounted(() => {
 										class="text-left px-6 py-4 density-compact:py-2 text-sm font-medium text-text-secondary"
 										:aria-sort="sortApplies ? getAriaSort('createdAt') : undefined"
 									>
-										<button
-											type="button"
-											class="flex items-center gap-1 py-4 -my-4 density-compact:py-2 density-compact:-my-2 px-1 -mx-1 rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/40"
-											:class="
-												sortApplies
-													? 'hover:text-text-primary'
-													: 'text-text-tertiary cursor-not-allowed'
-											"
-											:aria-disabled="sortApplies ? undefined : 'true'"
-											:title="
+										<UiTooltip
+											:text="
 												sortApplies
 													? undefined
 													: t('dashboard.audience.contacts.index.table.createdSortSearchHint')
 											"
-											aria-describedby="contacts-created-sort-hint"
-											@click="sortApplies && toggleSort('createdAt')"
 										>
-											{{ t('dashboard.audience.contacts.index.table.created') }}
-											<Icon
-												v-if="sortApplies && getSortIcon('createdAt')"
-												:name="getSortIcon('createdAt')!"
-												class="w-4 h-4"
-											/>
-										</button>
+											<button
+												type="button"
+												class="flex items-center gap-1 py-4 -my-4 density-compact:py-2 density-compact:-my-2 px-1 -mx-1 rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/40"
+												:class="
+													sortApplies
+														? 'hover:text-text-primary'
+														: 'text-text-tertiary cursor-not-allowed'
+												"
+												:aria-disabled="sortApplies ? undefined : 'true'"
+												aria-describedby="contacts-created-sort-hint"
+												@click="sortApplies && toggleSort('createdAt')"
+											>
+												{{ t('dashboard.audience.contacts.index.table.created') }}
+												<Icon
+													v-if="sortApplies && getSortIcon('createdAt')"
+													:name="getSortIcon('createdAt')!"
+													class="w-4 h-4"
+												/>
+											</button>
+										</UiTooltip>
 										<!-- Hidden, so it describes the button without joining the header's name. -->
 										<span id="contacts-created-sort-hint" hidden>
 											{{

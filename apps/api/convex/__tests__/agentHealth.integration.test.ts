@@ -624,6 +624,75 @@ describe('agentHealth.rollupMetrics', () => {
 		expect(new Set(metrics.map((m) => m.windowStart)).size).toBe(1);
 	});
 
+	it('trips a breaker open off the window it records, and writes no row for a quiet breaker', async () => {
+		const t = convexTest(schema, modules);
+
+		await t.run(async (ctx) => {
+			const messageId = await ctx.db.insert(
+				'inboundMessages',
+				createTestInboundMessage({ threadId: undefined, contactId: undefined })
+			);
+			// One failure in two actions: error_rate 0.5, over llm_failure's 0.2.
+			await ctx.db.insert(
+				'agentActions',
+				createTestAgentAction({ inboundMessageId: messageId, status: 'failed' })
+			);
+			await ctx.db.insert(
+				'agentActions',
+				createTestAgentAction({ inboundMessageId: messageId, status: 'completed', durationMs: 40 })
+			);
+		});
+
+		await t.action(internal.agentHealth.rollupMetrics);
+
+		const { breakers, errorRate } = await t.run(async (ctx) => ({
+			breakers: await ctx.db.query('agentCircuitBreakers').collect(),
+			errorRate: await ctx.db
+				.query('agentMetrics')
+				.withIndex('by_metric_type_and_window_start', (q) => q.eq('metricType', 'error_rate'))
+				.collect(),
+		}));
+		expect(errorRate.map((m) => m.value)).toEqual([0.5]);
+		// confidence_degradation and rejection_spike stayed under their
+		// thresholds with no row to step down, so nothing is written for them.
+		expect(breakers).toHaveLength(1);
+		expect(breakers[0]).toMatchObject({
+			breakerType: 'llm_failure',
+			state: 'open',
+			currentValue: 0.5,
+			threshold: 0.2,
+		});
+	});
+
+	it('steps an open breaker to half_open, then closed, while the signal stays recovered', async () => {
+		const t = convexTest(schema, modules);
+		const trippedAt = Date.now() - 60_000;
+		await t.run(async (ctx) => {
+			await ctx.db.insert('agentCircuitBreakers', {
+				breakerType: 'llm_failure',
+				state: 'open',
+				threshold: 0.2,
+				currentValue: 0.6,
+				trippedAt,
+				createdAt: trippedAt,
+			});
+		});
+		const breaker = () =>
+			t.run(async (ctx) => (await ctx.db.query('agentCircuitBreakers').collect())[0]);
+
+		await t.action(internal.agentHealth.rollupMetrics);
+		expect(await breaker()).toMatchObject({ state: 'half_open', currentValue: 0, trippedAt });
+
+		await t.action(internal.agentHealth.rollupMetrics);
+		const closed = await breaker();
+		expect(closed).toMatchObject({ state: 'closed', currentValue: 0, trippedAt });
+		expect(typeof closed?.recoveredAt).toBe('number');
+
+		await t.action(internal.agentHealth.rollupMetrics);
+		// A closed breaker under its threshold is left as it is.
+		expect(await breaker()).toEqual(closed);
+	});
+
 	it('records classification_accuracy as 0 when there are no scored classify actions', async () => {
 		const t = convexTest(schema, modules);
 

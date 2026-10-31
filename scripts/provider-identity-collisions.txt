@@ -1,20 +1,17 @@
 # Vocabulary collisions — scripts/check-provider-identity.sh.
 #
-# NOT the allowlist, and deliberately a separate file. Every entry here spells a
+# NOT debt, and the only list the ratchet reads: there are no exempt sites for
+# a comparison that really asks a provider's name. Every entry here spells a
 # string that LOOKS like a send-provider kind but belongs to a different
 # vocabulary that happens to share the spelling. There is no coupling to remove,
-# so no piece owns them and no sweep clears them: carrying them as "debt with an
-# owner" would have made scripts/provider-identity-allowlist.txt permanently
-# non-empty, and acceptance criterion A1 unreachable by construction. Split out,
-# the debt list can actually reach zero and this one can stay honest about being
-# permanent.
+# so no piece owns them and no sweep clears them.
 #
 # ONE ENTRY PER SPELLING, NOT PER FILE. `path:literal` licenses that literal and
-# nothing else; a bare path would license the whole file FOREVER, and these
-# entries never expire — a `kind === 'ses'` branch added to the setup-apply
-# handler next year would inherit a licence granted for a docker compose
-# profile. Anything in these files that is not the named other-alphabet word is
-# still a violation.
+# nothing else, and the script rejects a bare path: it would license the whole
+# file FOREVER, and these entries never expire — a `kind === 'ses'` branch added
+# to the setup-apply handler next year would inherit a licence granted for a
+# docker compose profile. Anything in these files that is not the named
+# other-alphabet word is still a violation.
 #
 # ADDING a line here is a claim that needs evidence in review — name the other
 # alphabet and where it is declared. "It reads better this way" is not another
@@ -40,11 +37,7 @@ apps/api/convex/delivery/lastMileRouting.ts:mta  # decision.kind, beside a candi
 # ── docker compose profile names ──────────────────────────────────────────────
 #
 # A compose PROFILE (packages/shared/src/featureFlags.ts, `getActiveProfiles`)
-# is a deployment topology, not a transport kind. One more file asks the same
-# compose question (apps/web/app/pages/setup/email.vue); it is in the debt list
-# already for OTHER literals, and a whole-file licence there covers this too.
-# When its real leaks are swept, the compose question is what moves here — as
-# quickstart.ts's did when P1.1 swept its own-arm branch.
+# is a deployment topology, not a transport kind.
 #
 # `getActiveProfiles` itself is no longer listed anywhere: the own-arm QUESTION
 # in front of it now reads the catalog (`isOwnSendProviderKind`) and the profile
@@ -52,7 +45,7 @@ apps/api/convex/delivery/lastMileRouting.ts:mta  # decision.kind, beside a candi
 
 apps/setup-cli/src/commands/quickstart.ts:mta  # composeProfilesUnion.includes('mta') — the profile the default self-host ships
 apps/web/server/api/setup/apply.post.ts:mta  # profiles.includes('mta') gates the outbound-IP preflight
-apps/web/app/composables/useSetupEmailStepForm.ts:mta  # getActiveProfiles(…).includes('mta') reads a docker compose profile — the line the email.vue allowlist entry foretold, moved here with the setup form extraction
+apps/web/app/composables/useSetupEmailStepForm.ts:mta  # getActiveProfiles(…).includes('mta') reads a docker compose profile
 
 
 # ── the contact-import source registry ────────────────────────────────────────

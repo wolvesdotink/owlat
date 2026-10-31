@@ -17,8 +17,7 @@
  *                                  surface that seeds one field itself
  *   {@link credentialFieldEnv}     one descriptor → the env variables it owns
  *   {@link transportCredentialEnv} one KIND → the env patch its form writes
- *   {@link credentialValuesFromDraft} / {@link draftCredentialsFromValues}
- *                                  the two directions of the LEGACY bridge
+ *   {@link requiredCredentialError} the first required field left blank
  *
  * VALUES ARE KEYED BY ENV VARIABLE NAME, not by field key. A descriptor's whole
  * purpose is to name the deployment variable it writes, the env patch is what
@@ -28,28 +27,18 @@
  * across providers; env names are unique across the catalog, which is what lets
  * one flat map hold the whole form.
  *
- * THE LEGACY BRIDGE, and the piece that deletes it. `EmailStepDraft` still spells
- * its credential half per vendor (`resendKey`, `ses.region`, `smtp.host`, …)
- * because the SETUP wizard's own pages and its validation rules — the surfaces
- * the seams plan leaves to the descriptor follow-up outside `apps/web/app/**` —
- * are written against that shape and pin it in their suites. So the two
- * functions at the bottom project between the draft and the env-keyed values,
- * in both directions, in ONE place instead of at each call site. Both are
- * exhaustive over `TransportCredentialEnvKey` at COMPILE time: a provider whose
- * credentials the draft cannot carry fails the build here rather than silently
- * writing nothing. When the wizard's draft becomes the values map itself, both
- * functions and this paragraph go with it.
+ * THE SETUP WIZARD'S DRAFT IS THIS MAP. `EmailStepDraft.credentials` holds the
+ * same env-keyed values, so the step's rules, its env patch and the renderer
+ * all read one shape, and a new kind's credentials need no field of their own
+ * on the draft.
  */
 
 import {
 	type SendProviderCredentialField,
 	type SendProviderHostPortField,
 	type SmtpRelayPreset,
-	type TransportCredentialEnvKey,
 } from '@owlat/shared/sendProviderCatalog';
-import type { OutboundTlsMode } from '@owlat/shared/outboundTlsMode';
 import { composedSendProviderCatalogEntry } from '~/utils/composedSendProviderCatalog';
-import type { EmailStepDraft } from './useSetupWizard';
 
 /**
  * The form's state: every credential value the operator has entered, keyed by
@@ -253,69 +242,4 @@ export function secretEnvKeys(kinds: readonly string[]): readonly string[] {
 			.filter((field) => field.kind === 'secret')
 			.map((field) => field.envVar)
 	);
-}
-
-// ── The legacy bridge (see the module docblock) ──────────────────────────────
-
-/** The credential half of {@link EmailStepDraft}, as the wizard still spells it. */
-export type DraftCredentials = Pick<
-	EmailStepDraft,
-	'resendKey' | 'emailitKey' | 'mandrillKey' | 'ses' | 'smtp' | 'outboundTlsMode'
->;
-
-/**
- * Draft → values. Exhaustive over `TransportCredentialEnvKey`, so a catalog
- * entry whose credential fields the draft has no home for is a BUILD failure in
- * this one file rather than a form that silently writes nothing.
- */
-export function credentialValuesFromDraft(
-	draft: EmailStepDraft
-): Record<TransportCredentialEnvKey, string> {
-	return {
-		OUTBOUND_TLS_MODE: draft.outboundTlsMode ?? '',
-		AWS_SES_REGION: draft.ses.region,
-		AWS_SES_ACCESS_KEY_ID: draft.ses.accessKeyId,
-		AWS_SES_SECRET_ACCESS_KEY: draft.ses.secretAccessKey,
-		RESEND_API_KEY: draft.resendKey,
-		EMAILIT_API_KEY: draft.emailitKey ?? '',
-		SMTP_RELAY_HOST: draft.smtp.host,
-		SMTP_RELAY_PORT: draft.smtp.port,
-		SMTP_RELAY_SECURE: String(draft.smtp.secure),
-		SMTP_RELAY_USERNAME: draft.smtp.username,
-		SMTP_RELAY_PASSWORD: draft.smtp.password,
-		MANDRILL_API_KEY: draft.mandrillKey,
-	};
-}
-
-/**
- * Values → draft, the exact inverse of {@link credentialValuesFromDraft} (their
- * round trip is pinned in `__tests__/setupWizardCredentials.test.ts`).
- *
- * `preset` is not a credential and has no env variable — it is the form's memory
- * of WHICH endpoint the operator picked — so it travels beside the values rather
- * than inside them.
- */
-export function draftCredentialsFromValues(
-	values: TransportCredentialValues,
-	preset: SmtpRelayPreset
-): DraftCredentials {
-	return {
-		resendKey: values['RESEND_API_KEY'] ?? '',
-		emailitKey: values['EMAILIT_API_KEY'] ?? '',
-		mandrillKey: values['MANDRILL_API_KEY'] ?? '',
-		ses: {
-			region: values['AWS_SES_REGION'] ?? '',
-			accessKeyId: values['AWS_SES_ACCESS_KEY_ID'] ?? '',
-			secretAccessKey: values['AWS_SES_SECRET_ACCESS_KEY'] ?? '',
-		},
-		smtp: {
-			preset,
-			host: values['SMTP_RELAY_HOST'] ?? '',
-			port: values['SMTP_RELAY_PORT'] ?? '',
-			secure: readBooleanValue(values['SMTP_RELAY_SECURE'], false),
-			username: values['SMTP_RELAY_USERNAME'] ?? '',
-			password: values['SMTP_RELAY_PASSWORD'] ?? '',
-		},
-		outboundTlsMode: (values['OUTBOUND_TLS_MODE'] || undefined) as OutboundTlsMode | undefined,
-	};
 }

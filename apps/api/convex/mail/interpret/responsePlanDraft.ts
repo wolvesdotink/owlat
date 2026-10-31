@@ -159,7 +159,7 @@ export const planCheckFields = {
 	isCheckIncomplete: v.boolean(),
 };
 
-const recordCheckArgs = {
+export const recordCheckArgs = {
 	threadRef: threadRefValidator,
 	draftRef: draftRefValidator,
 	...planCheckFields,

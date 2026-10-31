@@ -1,26 +1,7 @@
 <script setup lang="ts">
-import UiTooltip from '@owlat/ui/components/ui/Tooltip.vue';
 import { ref, computed, watch, onBeforeUnmount } from 'vue';
 // The --ep-* fallbacks load with the previewer, not with every host page.
 import '../styles/variables.css';
-import {
-	Code,
-	Eye,
-	RefreshCw,
-	AlertTriangle,
-	Send,
-	FileText,
-	Zap,
-	Download,
-	Copy,
-	Check,
-	ChevronDown,
-	Settings,
-	GitCompare,
-	X,
-	Sun,
-	Moon,
-} from '@lucide/vue';
 import type {
 	EmailClient,
 	DevicePreset,
@@ -32,15 +13,18 @@ import type {
 	PreviewRenderOptions,
 } from '../types';
 import { devicePresets } from '../data/clients';
-import { useCompatibilityAnalysis } from '../composables/useCompatibilityAnalysis';
-import { applyClientSimulation, type SimulationResult } from '../clientSimulation';
+import { useClientPreview } from '../composables/useClientPreview';
+import { usePlainTextOverride } from '../composables/usePlainTextOverride';
 import { formatHtml } from '../formatHtml';
-import ClientSelector from './ClientSelector.vue';
 import DeviceFrame from './DeviceFrame.vue';
 import { AnalysisPanel, RenderOptionsPanel, DiffPanel } from './lazyPanels';
+import PreviewToolbar from './previewer/PreviewToolbar.vue';
+import PreviewWarningsPanel from './previewer/PreviewWarningsPanel.vue';
+import PreviewClientBanner from './previewer/PreviewClientBanner.vue';
+import PreviewMeta from './previewer/PreviewMeta.vue';
 import { useBuilderI18n } from '../../i18n/useBuilderI18n';
 
-const { t, label } = useBuilderI18n();
+const { t } = useBuilderI18n();
 
 const props = withDefaults(
 	defineProps<{
@@ -147,30 +131,13 @@ const warningsExpanded = ref(false);
 const exportMenuOpen = ref(false);
 const settingsPanelOpen = ref(false);
 const diffPanelOpen = ref(false);
-const copiedFormat = ref<string | null>(null);
 
-// Compatibility analysis
-const {
-	analyzeHtml,
-	cancelAnalysis,
-	report,
-	isAnalyzing,
-	error: analysisError,
-} = useCompatibilityAnalysis();
-
-// Computed
-const simulationResult = computed<SimulationResult>(() => {
-	if (!selectedClient.value || props.useRendererSimulation) {
-		return {
-			html: props.html,
-			removedCssDeclarations: 0,
-			removedElements: 0,
-			strippedAttributes: 0,
-			blockedImages: 0,
-		};
-	}
-	return applyClientSimulation(props.html, selectedClient.value, report.value);
-});
+// The selected client's rendering and its compatibility analysis
+const { report, isAnalyzing, analysisError, simulationResult, runAnalysis } = useClientPreview(
+	props,
+	selectedClient,
+	(result) => emit('compatibility-report', result)
+);
 
 const displayHtml = computed(() => {
 	return simulationResult.value.html;
@@ -187,81 +154,20 @@ const formattedHtml = computed(() => {
 const showCompatibilityPanel = computed(
 	() => props.showCompatibility && viewMode.value === 'preview' && !!selectedClient.value
 );
-const hasSimulationAdjustments = computed(
-	() =>
-		simulationResult.value.removedCssDeclarations > 0 ||
-		simulationResult.value.removedElements > 0 ||
-		simulationResult.value.strippedAttributes > 0 ||
-		simulationResult.value.blockedImages > 0
-);
-const simulationSummary = computed(() => {
-	const result = simulationResult.value;
-	return t('builder.preview.client.adjustments', {
-		declarations: t('builder.preview.client.declarations', {
-			count: result.removedCssDeclarations,
-		}),
-		elements: t('builder.preview.client.elements', { count: result.removedElements }),
-		attributes: t('builder.preview.client.attributes', { count: result.strippedAttributes }),
-		images: t('builder.preview.client.images', { count: result.blockedImages }),
-	});
-});
-
 const hasAnalysisData = computed(
 	() => props.emailAnalysis || props.healthScore || props.validationIssues?.length
 );
 
-// Plain-text override. The stored override is the source of truth; the local
-// draft exists so typing does not wait on a round-trip through the host.
-const plainTextDraft = ref(props.plainTextOverride);
-watch(
-	() => props.plainTextOverride,
-	(v) => {
-		if (v !== plainTextDraft.value) plainTextDraft.value = v;
-	}
-);
-
-const isPlainTextOverridden = computed(() => props.plainTextOverride.trim().length > 0);
-
-// Whether the editor is open, tracked separately from "an override is stored":
-// clearing the textarea mid-edit must not yank the editor out from under the
-// cursor — it only means the generated body wins if the author leaves it empty.
-const isEditingPlainText = ref(isPlainTextOverridden.value);
-watch(isPlainTextOverridden, (overridden) => {
-	// A template loading in with a stored override opens straight into the editor.
-	if (overridden) isEditingPlainText.value = true;
-});
-
-/** The one-line explanation of what recipients on a text-only client will get. */
-const plainTextStatus = computed(() => {
-	if (!isEditingPlainText.value) return t('builder.preview.plainText.generated');
-	return isPlainTextOverridden.value
-		? t('builder.preview.plainText.custom')
-		: t('builder.preview.plainText.empty');
-});
-
-/** What the Text view shows: the author's body when set, else the generated one. */
-const displayPlainText = computed(() =>
-	isPlainTextOverridden.value ? props.plainTextOverride : props.plainText
-);
-
-function startPlainTextOverride() {
-	// Seed from the UNFILLED generated body so variable tokens survive editing.
-	const seed = props.plainTextSource || props.plainText;
-	isEditingPlainText.value = true;
-	plainTextDraft.value = seed;
-	emit('update:plain-text-override', seed);
-}
-
-function updatePlainTextOverride(value: string) {
-	plainTextDraft.value = value;
-	emit('update:plain-text-override', value);
-}
-
-function resetPlainTextOverride() {
-	isEditingPlainText.value = false;
-	plainTextDraft.value = '';
-	emit('update:plain-text-override', '');
-}
+// The Text view's manual plain-text body
+const {
+	plainTextDraft,
+	isEditingPlainText,
+	plainTextStatus,
+	displayPlainText,
+	startPlainTextOverride,
+	updatePlainTextOverride,
+	resetPlainTextOverride,
+} = usePlainTextOverride(props, (value) => emit('update:plain-text-override', value));
 
 // AMP is only needed by the AMP view and the export menu; tell the host when,
 // so it does not render AMP for every preview.
@@ -269,7 +175,6 @@ const ampNeeded = computed(() => viewMode.value === 'amp' || exportMenuOpen.valu
 watch(ampNeeded, (needed) => emit('update:amp-requested', needed));
 onBeforeUnmount(() => {
 	if (ampNeeded.value) emit('update:amp-requested', false);
-	cancelAnalysis();
 });
 
 const hasWarnings = computed(() => (props.renderWarnings?.length ?? 0) > 0);
@@ -288,83 +193,9 @@ function refreshPreview() {
 	runAnalysis();
 }
 
-/**
- * No client, or a different one: drop any analysis in flight along with the
- * last report and failure, which belong to the previous client.
- */
-function clearAnalysis() {
-	cancelAnalysis();
-	report.value = null;
-	analysisError.value = null;
-}
-
-async function runAnalysis() {
-	if (!selectedClient.value) {
-		clearAnalysis();
-		return;
-	}
-
-	const result = await analyzeHtml(props.html, {
-		clients: [selectedClient.value],
-	});
-	// null: a newer analysis (or unmount) superseded this one.
-	if (result) emit('compatibility-report', result);
-}
-
-// Export functions
-async function copyToClipboard(text: string, format: string) {
-	try {
-		await navigator.clipboard.writeText(text);
-		copiedFormat.value = format;
-		setTimeout(() => {
-			copiedFormat.value = null;
-		}, 2000);
-	} catch {
-		// Fallback for older browsers
-		const textarea = document.createElement('textarea');
-		textarea.value = text;
-		textarea.style.position = 'fixed';
-		textarea.style.opacity = '0';
-		document.body.appendChild(textarea);
-		textarea.select();
-		document.execCommand('copy');
-		document.body.removeChild(textarea);
-		copiedFormat.value = format;
-		setTimeout(() => {
-			copiedFormat.value = null;
-		}, 2000);
-	}
-	exportMenuOpen.value = false;
-}
-
-function downloadFile(content: string, filename: string, mimeType: string) {
-	const blob = new Blob([content], { type: mimeType });
-	const url = URL.createObjectURL(blob);
-	const a = document.createElement('a');
-	a.href = url;
-	a.download = filename;
-	document.body.appendChild(a);
-	a.click();
-	document.body.removeChild(a);
-	URL.revokeObjectURL(url);
-	exportMenuOpen.value = false;
-}
-
 function handleRenderOptionsUpdate(options: Partial<PreviewRenderOptions>) {
 	emit('update:render-options', options);
 }
-
-// Watch for HTML and selected client changes
-watch(
-	[() => props.html, selectedClient],
-	([, client], [, previousClient]) => {
-		// Clearing or switching the client stops a manual (Refresh) analysis too,
-		// and the old client's report is never shown as the new client's.
-		if (client?.id !== previousClient?.id) clearAnalysis();
-		if (client && props.autoAnalyze) runAnalysis();
-	},
-	{ immediate: true }
-);
 
 // Close export menu on click outside
 function handleClickOutside(event: MouseEvent) {
@@ -378,208 +209,37 @@ function handleClickOutside(event: MouseEvent) {
 <template>
 	<div class="ep-email-previewer" @click="handleClickOutside">
 		<!-- Toolbar -->
-		<div class="ep-toolbar">
-			<div class="ep-toolbar-left">
-				<!-- View Mode Toggle -->
-				<div v-if="showCodeView" class="ep-view-toggle">
-					<button
-						class="ep-view-btn"
-						:class="{ 'ep-view-active': viewMode === 'preview' }"
-						@click="viewMode = 'preview'"
-					>
-						<Eye class="ep-view-icon" />
-						{{ t('builder.preview.views.preview') }}
-					</button>
-					<button
-						class="ep-view-btn"
-						:class="{ 'ep-view-active': viewMode === 'code' }"
-						@click="viewMode = 'code'"
-					>
-						<Code class="ep-view-icon" />
-						HTML
-					</button>
-					<button
-						class="ep-view-btn"
-						:class="{ 'ep-view-active': viewMode === 'plaintext' }"
-						@click="viewMode = 'plaintext'"
-					>
-						<FileText class="ep-view-icon" />
-						{{ t('builder.preview.views.text') }}
-					</button>
-					<button
-						v-if="ampHtml || ampAvailable"
-						class="ep-view-btn"
-						:class="{ 'ep-view-active': viewMode === 'amp' }"
-						@click="viewMode = 'amp'"
-					>
-						<Zap class="ep-view-icon" />
-						AMP
-					</button>
-				</div>
-
-				<!-- Client & Device Selectors -->
-				<ClientSelector
-					v-if="showDeviceControls"
-					v-model:selected-client="selectedClient"
-					v-model:selected-device="selectedDevice"
-				/>
-			</div>
-
-			<div class="ep-toolbar-right">
-				<!-- Render Warnings Badge: an icon and a count, so the name is spelled out -->
-				<UiTooltip v-if="hasWarnings" :text="t('builder.preview.toolbar.renderWarnings')">
-					<button
-						class="ep-warning-badge"
-						:class="{ 'ep-warning-badge-active': warningsExpanded }"
-						:aria-label="`${t('builder.preview.toolbar.renderWarnings')}: ${renderWarnings!.length}`"
-						@click="warningsExpanded = !warningsExpanded"
-					>
-						<AlertTriangle class="ep-warning-badge-icon" />
-						<span>{{ renderWarnings!.length }}</span>
-					</button>
-				</UiTooltip>
-
-				<!-- Diff Button -->
-				<UiTooltip v-if="hasDiff" :text="t('builder.preview.toolbar.compare')">
-					<button
-						class="ep-control-btn"
-						:class="{ 'ep-control-btn-active': diffPanelOpen }"
-						:aria-label="t('builder.preview.toolbar.compare')"
-						@click="diffPanelOpen = !diffPanelOpen"
-					>
-						<GitCompare class="ep-control-icon" />
-					</button>
-				</UiTooltip>
-
-				<!-- Dark Mode Toggle -->
-				<UiTooltip
-					:text="
-						darkMode
-							? t('builder.preview.toolbar.lightMode')
-							: t('builder.preview.toolbar.darkMode')
-					"
-				>
-					<button
-						class="ep-control-btn"
-						:class="{ 'ep-control-btn-active': darkMode }"
-						:aria-label="
-							darkMode
-								? t('builder.preview.toolbar.lightMode')
-								: t('builder.preview.toolbar.darkMode')
-						"
-						@click="emit('update:dark-mode', !darkMode)"
-					>
-						<Moon v-if="!darkMode" class="ep-control-icon" />
-						<Sun v-else class="ep-control-icon" />
-					</button>
-				</UiTooltip>
-
-				<!-- Settings Button -->
-				<UiTooltip v-if="showRenderOptions" :text="t('builder.preview.toolbar.renderOptions')">
-					<button
-						class="ep-control-btn"
-						:class="{ 'ep-control-btn-active': settingsPanelOpen }"
-						:aria-label="t('builder.preview.toolbar.renderOptions')"
-						@click="settingsPanelOpen = !settingsPanelOpen"
-					>
-						<Settings class="ep-control-icon" />
-					</button>
-				</UiTooltip>
-
-				<!-- Export Dropdown -->
-				<div class="ep-export-wrapper">
-					<UiTooltip :text="t('builder.preview.toolbar.export')">
-						<button
-							class="ep-control-btn"
-							:aria-label="t('builder.preview.toolbar.export')"
-							@click.stop="exportMenuOpen = !exportMenuOpen"
-						>
-							<Download class="ep-control-icon" />
-						</button>
-					</UiTooltip>
-					<div v-if="exportMenuOpen" class="ep-export-menu">
-						<button class="ep-export-item" @click="copyToClipboard(html, 'html')">
-							<Copy class="ep-export-item-icon" />
-							<span>{{ t('builder.preview.export.copyHtml') }}</span>
-							<Check v-if="copiedFormat === 'html'" class="ep-export-check" />
-						</button>
-						<button
-							v-if="displayPlainText"
-							class="ep-export-item"
-							@click="copyToClipboard(displayPlainText, 'text')"
-						>
-							<Copy class="ep-export-item-icon" />
-							<span>{{ t('builder.preview.export.copyText') }}</span>
-							<Check v-if="copiedFormat === 'text'" class="ep-export-check" />
-						</button>
-						<div class="ep-export-divider"></div>
-						<button class="ep-export-item" @click="downloadFile(html, 'email.html', 'text/html')">
-							<Download class="ep-export-item-icon" />
-							<span>{{ t('builder.preview.export.download', { file: '.html' }) }}</span>
-						</button>
-						<button
-							v-if="displayPlainText"
-							class="ep-export-item"
-							@click="downloadFile(displayPlainText, 'email.txt', 'text/plain')"
-						>
-							<Download class="ep-export-item-icon" />
-							<span>{{ t('builder.preview.export.download', { file: '.txt' }) }}</span>
-						</button>
-						<button
-							v-if="ampHtml"
-							class="ep-export-item"
-							@click="downloadFile(ampHtml, 'email.amp.html', 'text/html')"
-						>
-							<Download class="ep-export-item-icon" />
-							<span>{{ t('builder.preview.export.download', { file: '.amp.html' }) }}</span>
-						</button>
-					</div>
-				</div>
-
-				<div v-if="showSendTest" class="ep-toolbar-divider"></div>
-
-				<button
-					v-if="showSendTest"
-					class="ep-action-btn ep-action-primary"
-					:title="t('builder.preview.toolbar.sendTestTitle')"
-					@click="emit('send-test')"
-				>
-					<Send class="ep-action-icon" />
-					<span>{{ t('builder.preview.toolbar.sendTest') }}</span>
-				</button>
-
-				<div class="ep-toolbar-divider"></div>
-
-				<!-- Refresh -->
-				<UiTooltip :text="t('builder.preview.toolbar.refresh')">
-					<button
-						class="ep-control-btn"
-						:aria-label="t('builder.preview.toolbar.refresh')"
-						@click="refreshPreview"
-					>
-						<RefreshCw class="ep-control-icon" />
-					</button>
-				</UiTooltip>
-			</div>
-		</div>
+		<PreviewToolbar
+			v-model:view-mode="viewMode"
+			v-model:selected-client="selectedClient"
+			v-model:selected-device="selectedDevice"
+			v-model:warnings-expanded="warningsExpanded"
+			v-model:diff-panel-open="diffPanelOpen"
+			v-model:settings-panel-open="settingsPanelOpen"
+			v-model:export-menu-open="exportMenuOpen"
+			:html="html"
+			:plain-text="displayPlainText"
+			:amp-html="ampHtml"
+			:amp-available="ampAvailable"
+			:show-code-view="showCodeView"
+			:show-device-controls="showDeviceControls"
+			:render-warnings="renderWarnings"
+			:has-warnings="hasWarnings"
+			:has-diff="hasDiff"
+			:dark-mode="darkMode"
+			:show-render-options="showRenderOptions"
+			:show-send-test="showSendTest"
+			@update:dark-mode="emit('update:dark-mode', $event)"
+			@send-test="emit('send-test')"
+			@refresh="refreshPreview"
+		/>
 
 		<!-- Render Warnings Expanded -->
-		<div v-if="hasWarnings && warningsExpanded" class="ep-warnings-panel">
-			<div class="ep-warnings-header">
-				<span class="ep-warnings-title">
-					<AlertTriangle class="ep-warnings-title-icon" />
-					{{ t('builder.preview.warnings.title', { count: renderWarnings!.length }) }}
-				</span>
-				<button class="ep-warnings-close" @click="warningsExpanded = false">
-					<X class="ep-warnings-close-icon" />
-				</button>
-			</div>
-			<ul class="ep-warnings-list">
-				<li v-for="(warning, idx) in renderWarnings" :key="idx" class="ep-warnings-item">
-					{{ warning }}
-				</li>
-			</ul>
-		</div>
+		<PreviewWarningsPanel
+			v-if="hasWarnings && warningsExpanded"
+			:render-warnings="renderWarnings"
+			@close="warningsExpanded = false"
+		/>
 
 		<!-- Settings Panel -->
 		<RenderOptionsPanel
@@ -613,31 +273,11 @@ function handleClickOutside(event: MouseEvent) {
 				</div>
 
 				<!-- Client Info Banner -->
-				<div v-if="selectedClient" class="ep-client-banner">
-					<span class="ep-client-banner-text">
-						{{ t('builder.preview.client.previewingAs') }}
-						<strong>{{ selectedClient.name }}</strong>
-						<template v-if="selectedClient.renderingEngine">
-							{{ t('builder.preview.client.engine', { engine: selectedClient.renderingEngine }) }}
-						</template>
-					</span>
-					<div class="ep-simulation-note">
-						<AlertTriangle class="ep-simulation-icon" />
-						<span>
-							{{ t('builder.preview.client.simulated') }}
-							<template v-if="hasSimulationAdjustments">
-								{{ simulationSummary }}
-							</template>
-						</span>
-					</div>
-					<span v-if="selectedClient.quirks?.length" class="ep-client-quirks">
-						{{
-							t('builder.preview.client.quirks', {
-								quirks: selectedClient.quirks.map((quirk) => label(quirk)).join(', '),
-							})
-						}}
-					</span>
-				</div>
+				<PreviewClientBanner
+					v-if="selectedClient"
+					:selected-client="selectedClient"
+					:simulation-result="simulationResult"
+				/>
 			</div>
 
 			<!-- Code Mode -->
@@ -706,16 +346,7 @@ function handleClickOutside(event: MouseEvent) {
 		</div>
 
 		<!-- Subject/Preheader Preview -->
-		<div v-if="subject || preheader" class="ep-meta-preview">
-			<div v-if="subject" class="ep-meta-item">
-				<span class="ep-meta-label">{{ t('builder.preview.meta.subject') }}</span>
-				<span class="ep-meta-value">{{ subject }}</span>
-			</div>
-			<div v-if="preheader" class="ep-meta-item">
-				<span class="ep-meta-label">{{ t('builder.preview.meta.preheader') }}</span>
-				<span class="ep-meta-value ep-meta-preheader">{{ preheader }}</span>
-			</div>
-		</div>
+		<PreviewMeta v-if="subject || preheader" :subject="subject" :preheader="preheader" />
 	</div>
 </template>
 
@@ -728,286 +359,6 @@ function handleClickOutside(event: MouseEvent) {
 	border: 1px solid var(--ep-border-default);
 	border-radius: 12px;
 	overflow: hidden;
-}
-
-/* Toolbar */
-.ep-toolbar {
-	display: flex;
-	justify-content: space-between;
-	align-items: center;
-	gap: 16px;
-	padding: 12px 16px;
-	background: var(--ep-bg-elevated);
-	border-bottom: 1px solid var(--ep-border-subtle);
-}
-
-.ep-toolbar-left,
-.ep-toolbar-right {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-}
-
-.ep-toolbar-divider {
-	width: 1px;
-	height: 24px;
-	background: var(--ep-border-subtle);
-}
-
-/* View Toggle */
-.ep-view-toggle {
-	display: flex;
-	background: var(--ep-bg-surface);
-	border-radius: 8px;
-	padding: 2px;
-}
-
-.ep-view-btn {
-	display: flex;
-	align-items: center;
-	gap: 6px;
-	padding: 6px 12px;
-	background: transparent;
-	border: none;
-	border-radius: 6px;
-	color: var(--ep-text-secondary);
-	font-size: 13px;
-	font-weight: 500;
-	cursor: pointer;
-	transition-property: color, background-color, box-shadow;
-	transition-duration: var(--motion-fast, 80ms);
-	transition-timing-function: var(--ease-spring, cubic-bezier(0.25, 1, 0.5, 1));
-}
-
-.ep-view-btn:hover {
-	color: var(--ep-text-primary);
-}
-
-.ep-view-active {
-	background: var(--ep-bg-elevated);
-	color: var(--ep-text-primary);
-	box-shadow: var(--ep-shadow-sm);
-}
-
-.ep-view-icon {
-	width: 14px;
-	height: 14px;
-}
-
-.ep-control-btn {
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	width: 32px;
-	height: 32px;
-	background: transparent;
-	border: none;
-	border-radius: 6px;
-	color: var(--ep-text-tertiary);
-	cursor: pointer;
-	transition-property: color, background-color, opacity;
-	transition-duration: var(--motion-fast, 80ms);
-	transition-timing-function: var(--ease-spring, cubic-bezier(0.25, 1, 0.5, 1));
-}
-
-.ep-control-btn:hover:not(:disabled) {
-	background: var(--ep-bg-surface);
-	color: var(--ep-text-secondary);
-}
-
-.ep-control-btn:disabled {
-	opacity: 0.4;
-	cursor: not-allowed;
-}
-
-.ep-control-btn-active {
-	background: var(--ep-bg-surface);
-	color: var(--ep-brand);
-}
-
-.ep-control-icon {
-	width: 16px;
-	height: 16px;
-}
-
-.ep-action-btn {
-	display: inline-flex;
-	align-items: center;
-	gap: 6px;
-	padding: 8px 12px;
-	border-radius: 8px;
-	border: 1px solid transparent;
-	font-size: 13px;
-	font-weight: 500;
-	cursor: pointer;
-	transition: filter var(--motion-fast, 80ms) var(--ease-spring, cubic-bezier(0.25, 1, 0.5, 1));
-}
-
-.ep-action-primary {
-	background: var(--ep-brand);
-	color: var(--ep-text-inverse);
-}
-
-.ep-action-primary:hover {
-	filter: brightness(1.06);
-}
-
-.ep-action-icon {
-	width: 14px;
-	height: 14px;
-}
-
-/* Warning Badge */
-.ep-warning-badge {
-	display: inline-flex;
-	align-items: center;
-	gap: 4px;
-	padding: 4px 10px;
-	background: var(--ep-warning-subtle);
-	border: 1px solid var(--ep-warning);
-	border-radius: 12px;
-	color: var(--ep-warning);
-	font-size: 12px;
-	font-weight: 600;
-	cursor: pointer;
-	transition-property: color, background-color;
-	transition-duration: var(--motion-fast, 80ms);
-	transition-timing-function: var(--ease-spring, cubic-bezier(0.25, 1, 0.5, 1));
-}
-
-.ep-warning-badge:hover,
-.ep-warning-badge-active {
-	background: var(--ep-warning);
-	color: var(--ep-text-inverse);
-}
-
-.ep-warning-badge-icon {
-	width: 12px;
-	height: 12px;
-}
-
-/* Warnings Panel */
-.ep-warnings-panel {
-	background: var(--ep-warning-subtle);
-	border-bottom: 1px solid var(--ep-border-subtle);
-	padding: 12px 16px;
-}
-
-.ep-warnings-header {
-	display: flex;
-	justify-content: space-between;
-	align-items: center;
-	margin-bottom: 8px;
-}
-
-.ep-warnings-title {
-	display: flex;
-	align-items: center;
-	gap: 6px;
-	font-size: 12px;
-	font-weight: 600;
-	color: var(--ep-warning);
-}
-
-.ep-warnings-title-icon {
-	width: 14px;
-	height: 14px;
-}
-
-.ep-warnings-close {
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	width: 24px;
-	height: 24px;
-	background: transparent;
-	border: none;
-	border-radius: 4px;
-	color: var(--ep-text-tertiary);
-	cursor: pointer;
-}
-
-.ep-warnings-close:hover {
-	background: var(--ep-bg-surface);
-	color: var(--ep-text-primary);
-}
-
-.ep-warnings-close-icon {
-	width: 14px;
-	height: 14px;
-}
-
-.ep-warnings-list {
-	margin: 0;
-	padding: 0 0 0 20px;
-	list-style: disc;
-}
-
-.ep-warnings-item {
-	font-size: 12px;
-	line-height: 1.5;
-	color: var(--ep-text-secondary);
-	padding: 2px 0;
-}
-
-/* Export Dropdown */
-.ep-export-wrapper {
-	position: relative;
-}
-
-.ep-export-menu {
-	position: absolute;
-	top: 100%;
-	right: 0;
-	margin-top: 4px;
-	min-width: 200px;
-	background: var(--ep-bg-elevated);
-	border: 1px solid var(--ep-border-default);
-	border-radius: 8px;
-	box-shadow: var(--ep-shadow-lg);
-	padding: 4px;
-	z-index: 50;
-}
-
-.ep-export-item {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-	width: 100%;
-	padding: 8px 12px;
-	background: transparent;
-	border: none;
-	border-radius: 6px;
-	color: var(--ep-text-secondary);
-	font-size: 13px;
-	cursor: pointer;
-	transition-property: color, background-color;
-	transition-duration: var(--motion-fast, 80ms);
-	transition-timing-function: var(--ease-spring, cubic-bezier(0.25, 1, 0.5, 1));
-}
-
-.ep-export-item:hover {
-	background: var(--ep-bg-surface);
-	color: var(--ep-text-primary);
-}
-
-.ep-export-item-icon {
-	width: 14px;
-	height: 14px;
-	flex-shrink: 0;
-}
-
-.ep-export-check {
-	width: 14px;
-	height: 14px;
-	color: var(--ep-success);
-	margin-left: auto;
-}
-
-.ep-export-divider {
-	height: 1px;
-	background: var(--ep-border-subtle);
-	margin: 4px 0;
 }
 
 /* Content Area */
@@ -1041,49 +392,6 @@ function handleClickOutside(event: MouseEvent) {
 	border: none;
 	background: #ffffff;
 	color-scheme: light only;
-}
-
-/* Client Banner */
-.ep-client-banner {
-	display: flex;
-	flex-direction: column;
-	gap: 4px;
-	padding: 10px 16px;
-	background: var(--ep-bg-surface);
-	border-top: 1px solid var(--ep-border-subtle);
-}
-
-.ep-client-banner-text {
-	font-size: 12px;
-	color: var(--ep-text-secondary);
-}
-
-.ep-client-banner-text strong {
-	color: var(--ep-text-primary);
-}
-
-.ep-simulation-note {
-	display: flex;
-	align-items: flex-start;
-	gap: 6px;
-	padding: 8px 10px;
-	border-radius: 8px;
-	background: var(--ep-warning-subtle);
-	color: var(--ep-warning);
-	font-size: 11px;
-	line-height: 1.4;
-}
-
-.ep-simulation-icon {
-	width: 13px;
-	height: 13px;
-	flex-shrink: 0;
-	margin-top: 1px;
-}
-
-.ep-client-quirks {
-	font-size: 11px;
-	color: var(--ep-text-tertiary);
 }
 
 /* Code Area */
@@ -1145,40 +453,5 @@ function handleClickOutside(event: MouseEvent) {
 	width: 100%;
 	min-height: 320px;
 	resize: vertical;
-}
-
-/* Meta Preview */
-.ep-meta-preview {
-	display: flex;
-	flex-direction: column;
-	gap: 8px;
-	padding: 12px 16px;
-	background: var(--ep-bg-elevated);
-	border-top: 1px solid var(--ep-border-subtle);
-}
-
-.ep-meta-item {
-	display: flex;
-	align-items: baseline;
-	gap: 12px;
-}
-
-.ep-meta-label {
-	flex-shrink: 0;
-	font-size: 11px;
-	font-weight: 600;
-	color: var(--ep-text-tertiary);
-	text-transform: uppercase;
-	letter-spacing: 0.05em;
-}
-
-.ep-meta-value {
-	font-size: 13px;
-	color: var(--ep-text-primary);
-}
-
-.ep-meta-preheader {
-	color: var(--ep-text-secondary);
-	font-style: italic;
 }
 </style>

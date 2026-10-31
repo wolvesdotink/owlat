@@ -81,15 +81,16 @@ onMounted(() => {
 					>
 						{{ t('nav.signIn') }}
 					</a>
-					<a
-						href="https://github.com/wolvesdotink/owlat/releases"
-						class="btn btn-primary px-4 py-2 text-caption no-underline"
-						:aria-label="downloadAriaLabel"
-						:title="t('download.allPlatformsTitle')"
-						@click="onDownloadClick"
-					>
-						{{ t('download.label') }}
-					</a>
+					<UiTooltip :text="t('download.allPlatformsTitle')" side="bottom">
+						<a
+							href="https://github.com/wolvesdotink/owlat/releases"
+							class="btn btn-primary px-4 py-2 text-caption no-underline"
+							:aria-label="downloadAriaLabel"
+							@click="onDownloadClick"
+						>
+							{{ t('download.label') }}
+						</a>
+					</UiTooltip>
 				</div>
 
 				<!-- Mobile hamburger -->

@@ -1,7 +1,6 @@
 /**
- * "Please try again" with nothing to click was the dead end in #818: the alert
- * now takes an optional action, so the surface that shows it can hand the user
- * a real retry.
+ * "Please try again" with nothing to click is a dead end: the alert takes an
+ * optional action, so the surface that shows it can hand the user a real retry.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { defineComponent, h, type App, type Plugin } from 'vue';

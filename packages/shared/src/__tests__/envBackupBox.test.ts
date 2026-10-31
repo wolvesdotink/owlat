@@ -1,12 +1,15 @@
 import { describe, it, expect } from 'vitest';
 import {
-	ENV_BACKUP_SEALED_PREFIX,
 	createEnvBackupBox,
 	isEnvBackupSealedValue,
 	sealRelayPasswordForBackup,
 } from '../envBackupBox';
 
 const SECRET = 'a'.repeat(64); // installer-style 32-byte hex INSTANCE_SECRET
+
+// The sealed-token prefix is the on-disk format of `.env` files already
+// written, so the tests pin its literal value.
+const ENV_BACKUP_SEALED_PREFIX = 'envsealed:v1:';
 
 describe('createEnvBackupBox', () => {
 	it('round-trips a relay password and produces a recognizable sealed token', () => {

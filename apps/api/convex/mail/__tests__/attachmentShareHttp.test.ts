@@ -136,7 +136,17 @@ describe('GET /attachment-share/{token}', () => {
 describe('GET /attachment-share/{token} rate limits', () => {
 	const attacker = { method: 'GET', headers: { 'X-Forwarded-For': '203.0.113.44' } };
 
+	// The limiter reads Date.now(): the failure bucket refills while requests
+	// run, and a capability window starts at a random offset into its minute,
+	// so on a real clock a slow run can cross a refill and get a 200 where the
+	// budget is spent. Only Date is frozen; convex-test still needs real timers.
+	beforeEach(() => {
+		vi.useFakeTimers({ toFake: ['Date'] });
+		vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
+	});
+
 	afterEach(() => {
+		vi.useRealTimers();
 		vi.unstubAllEnvs();
 	});
 

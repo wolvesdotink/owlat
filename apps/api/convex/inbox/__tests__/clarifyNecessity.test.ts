@@ -126,8 +126,8 @@ function teamCtx(
 			getAskEagernessInternal: { mode: null },
 			getMessage: { contextCoverage: { lowCoverage: true }, contactId: 'contact_d5' },
 			routingContext: policy(mode),
+			lookupFills: { fills },
 		},
-		mutations: { recordClarificationAsk: undefined, resolveFills: { fills } },
 	});
 }
 

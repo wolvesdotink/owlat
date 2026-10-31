@@ -9,7 +9,7 @@
  *   - `resolveRecipientPage` — internalQuery, ONE page (the walker's hop).
  *   - `countRecipients`      — public query, the wizard's readout: ONE budgeted
  *                              page inline, else the resumable count job's
- *                              state (`audienceCountJob.ts`, #916).
+ *                              state (`audienceCountJob.ts`).
  *
  * The checkpointed send walker takes ONE page per scheduled hop via
  * `resolveRecipientPageImpl` (one `.paginate()` per execution), and so does
@@ -354,7 +354,7 @@ export async function countRecipientsForAudience(
 // ── Entry 1: the wizard's audience-size readout. Runs the IDENTICAL predicate
 // (the same page resolver) as the send walk, so `eligible` equals the delivered
 // count; `total - eligible` is the honest excluded gap. Bounded per execution;
-// an audience past one page is counted by `audienceCountJob.ts` (#916). ──
+// an audience past one page is counted by `audienceCountJob.ts`. ──
 // all-members: the campaign wizard's audience-size readout for editors, who may
 // send campaigns; returns counts only, never recipients.
 export const countRecipients = campaignsQuery({

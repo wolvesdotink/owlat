@@ -9,10 +9,10 @@
  * Every rate on the wire comes out of `summarizeTransportOutcomeBuckets` — the
  * ONE derivation seam — so the controller's gates and this screen
  * cannot disagree about how a number is DERIVED from a set of rows. WHICH ROWS
- * each is handed used to be a separate question and is no longer: the verdicts
+ * each is handed is settled too: the verdicts
  * on a cell view are reached over the controller's own evaluation window, and
  * the counters beside them are reported over `DASHBOARD_WINDOW_DAYS`, with the
- * query naming both spans on the wire (#510). This module groups buckets into
+ * query naming both spans on the wire. This module groups buckets into
  * days, hands each day's rows to that summarizer, and labels the result. If you
  * find yourself typing `/` next to a counter in this file, you are re-deriving
  * a rate the summarizer already owns.
@@ -67,7 +67,7 @@ export const DASHBOARD_MAX_TREND_DAYS = 30;
  * (`RAMP_AIMD.evaluationWindowMs`) — and deliberately not what any VERDICT on
  * this screen is decided over either. Both arms are summarized a second time
  * over the controller's span before they reach the evaluator, so the two readers
- * agree on the verdict (#510); this constant governs the counters, the rates,
+ * agree on the verdict; this constant governs the counters, the rates,
  * the trend and the confidence cap rendered beside it, all reported over a week
  * rather than over a day.
  */
@@ -247,7 +247,7 @@ interface DashboardConfidence {
  * `ownSent` IS THE REPORTED WINDOW'S SAMPLE, not the deciding span's. This is a
  * judgement about the CELL rendered beside the cell's own counters: "nothing sent
  * yet" has to mean the week the card is showing, and `send_more_volume` invites
- * an operator to fill a week rather than a day (#510). The LEVEL it starts from
+ * an operator to fill a week rather than a day. The LEVEL it starts from
  * is still the evaluator's, over the deciding span.
  *
  * The IMPROVEMENT CODES are this module's, because they are the one thing the
@@ -321,7 +321,7 @@ export interface DashboardCellView {
 	 * `windowStart`/`windowEnd` (`DASHBOARD_WINDOW_DAYS`). NOT the summaries the
 	 * verdict below was reached over: those are the controller's span, which the
 	 * query names separately as `decisionWindowStart`/`decisionWindowEnd`, and a
-	 * screen that renders these two side by side has to say which is which (#510).
+	 * screen that renders these two side by side has to say which is which.
 	 */
 	readonly own: TransportOutcomeSummary;
 	/**
@@ -334,7 +334,7 @@ export interface DashboardCellView {
 	 * THE DECIDED FIELDS — verdict, failed gate, corroboration and every per-gate
 	 * `measurement` are the evaluator's, over the DECIDING span. They are the
 	 * controller's own verdicts on the same rows, not this screen's re-derivation
-	 * of them over a week (#510).
+	 * of them over a week.
 	 */
 	readonly verdict: RampGateEvaluation['verdict'];
 	readonly failedGate: RampGateResult['gate'] | null;
@@ -352,7 +352,7 @@ export interface DashboardCellView {
  * TWO SPANS ARRIVE HERE AND NEITHER IS DERIVED HERE: `own`/`reference` are the REPORTED window's
  * summaries and `evaluation` carries the DECIDING span's verdicts. Keeping them separate arguments
  * is what lets the shell hand each consumer the right one — the confidence denominator takes the
- * reported sample, the gate rows take the evaluator's (#510).
+ * reported sample, the gate rows take the evaluator's.
  */
 export function buildDashboardCellView(input: {
 	readonly cell: DeliverabilityCell;

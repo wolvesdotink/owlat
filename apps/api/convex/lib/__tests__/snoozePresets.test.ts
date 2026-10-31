@@ -17,7 +17,6 @@ import { describe, it, expect } from 'vitest';
 import {
 	detectSnoozeHint,
 	computeSnoozePresets,
-	DEFAULT_WORKING_HOURS,
 	type SnoozePreset,
 	type SnoozePresetKey,
 } from '@owlat/shared/snoozePresets';
@@ -115,9 +114,16 @@ describe('computeSnoozePresets', () => {
 		const presets = computeSnoozePresets({
 			now: sat,
 			tzOffsetMinutes: 0,
-			workingHours: DEFAULT_WORKING_HOURS,
+			workingHours: { startHour: 9, endHour: 18, workdays: [1, 2, 3, 4, 5] },
 		});
 		// Sat/Sun are off → next workday morning is Monday the 12th at 09:00.
+		expect(byKey(presets, 'until_im_back')?.at).toBe(Date.UTC(2026, 0, 12, 9));
+	});
+
+	it('falls back to Mon–Fri workdays starting at 9:00 without configured working hours', () => {
+		// Saturday 06:00: a Saturday workday would wake at 09:00 today.
+		const earlySat = Date.UTC(2026, 0, 10, 6);
+		const presets = computeSnoozePresets({ now: earlySat, tzOffsetMinutes: 0 });
 		expect(byKey(presets, 'until_im_back')?.at).toBe(Date.UTC(2026, 0, 12, 9));
 	});
 });

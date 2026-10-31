@@ -24,7 +24,7 @@ type RetryableOutcome = Extract<SendWorkerOutcome, { kind: 'deferred' | 'accepta
  * Whether a deferral or an open acceptance is re-entered, and after how long;
  * null when the budget has run out and the completion terminalizes instead.
  * One decision for the completion's two arms and for the completion-failure
- * record (#1195), which re-enters the Send itself when the arm threw.
+ * record, which re-enters the Send itself when the arm threw.
  *
  *   - `acceptanceUnknown` is replayed under the SAME idempotency key, so it is
  *     not routing churn and the attempt cap has never bounded it: only the

@@ -1,11 +1,7 @@
 <script setup lang="ts">
 import { OUTBOUND_TLS_MODE_OPTIONS, seedOutboundTlsMode } from '~/composables/setupOutboundTls';
 import type { EmailStepDraft, ProviderChoice } from '~/composables/useSetupWizard';
-import {
-	credentialErrorFor,
-	transportStepIsValid,
-	validateEmailStep,
-} from '~/composables/setupWizardValidation';
+import { transportStepIsValid, validateEmailStep } from '~/composables/setupWizardValidation';
 import { RELAY_REMOVAL_CONFIRMATION } from '@owlat/shared/deliverabilityIndependence';
 import { OWN_SEND_PROVIDER_KIND } from '@owlat/shared/sendProviderCatalog';
 import TransportEditorSummary from './TransportEditorSummary.vue';
@@ -88,7 +84,7 @@ function knownKind(kind: string | null): ProviderChoice {
 // The SAME relay-credential draft the connection wizard's step 1 uses — one
 // provider list, one preset table, one live handshake, one env patch.
 const relay = useRelayCredentialDraft(knownKind(props.currentProvider));
-const { provider, credentialValues, preset, presetOptions, requiredCredentialError } = relay;
+const { provider, credentialValues, preset, presetOptions } = relay;
 
 // Outbound TLS posture for the built-in MTA (direct-MX) is one of that entry's
 // credential fields, so it is seeded into the same map every other credential
@@ -126,7 +122,7 @@ const draft = computed<EmailStepDraft>(() => ({
 	// The editor only ever sets a real transport, so the "none" branch of the
 	// shared validator is unreachable here.
 	requiresProvider: true,
-	...relay.credentialFields.value,
+	credentials: { ...credentialValues },
 	fromEmail: fromEmail.value,
 	fromName: fromName.value,
 }));
@@ -136,21 +132,16 @@ const errors = computed(() => validateEmailStep(draft.value));
 const showErrors = computed(() => submitted.value);
 
 /**
- * The ONE credential error the selected kind can raise, whichever field set it
- * belongs to. Asked of `credentialErrorFor`, beside the rules that produce those
- * keys and exhaustive over them, rather than re-derived from the draft's
- * per-vendor field names here — the wizard's credential step asks the same
- * question, and the two must not be able to answer it differently.
+ * The ONE credential error the selected kind can raise, from the same rules the
+ * setup wizard and the connection wizard's credential step read — so no screen
+ * can announce a sentence another has not learned about.
+ *
+ * Both halves are message keys: the rules module is pure, and only this screen
+ * knows the active locale. The sentence may name the field it is about.
  */
 const credentialError = computed(() => {
-	if (!showErrors.value) return undefined;
-	const ruleError = credentialErrorFor(errors.value);
-	if (ruleError !== undefined) return t(ruleError);
-	// The descriptor gate's sentence names the field it is about, and both halves
-	// are keys: the pure module cannot call `t()`, and only this screen knows the
-	// active locale.
-	const missing = requiredCredentialError.value;
-	return missing === undefined ? undefined : t(missing.key, { field: t(missing.field) });
+	const message = showErrors.value ? errors.value.credentials : undefined;
+	return message === undefined ? undefined : t(message.key, { field: t(message.field) });
 });
 
 /**
@@ -161,9 +152,7 @@ const credentialError = computed(() => {
  * step gains must be classified there instead of silently gating this Apply
  * button on a field this screen does not render.
  */
-const isValid = computed(
-	() => transportStepIsValid(draft.value) && requiredCredentialError.value === undefined
-);
+const isValid = computed(() => transportStepIsValid(draft.value));
 
 // Whether a pre-apply handshake exists at all is the catalog's `setupProbe`
 // (absent ⇒ no cheap check, and the button is not offered).
@@ -231,9 +220,7 @@ async function apply(relayRemovalConfirmation?: string): Promise<void> {
 	noteServerRefusal(null);
 	try {
 		// The wizard's env patch, literally: one helper, one endpoint.
-		const res = await applyTransportEnv(draft.value, relayRemovalConfirmation, {
-			...credentialValues,
-		});
+		const res = await applyTransportEnv(draft.value, relayRemovalConfirmation);
 		if (!res.ok) {
 			// A FAIL-CLOSED REFUSAL IS NOT AN ERROR MESSAGE. The endpoint demands the
 			// phrase whenever it cannot establish that the removal is safe — which

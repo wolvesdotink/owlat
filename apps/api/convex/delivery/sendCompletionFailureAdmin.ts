@@ -10,7 +10,7 @@ import {
 } from './sendCompletionFailures';
 
 // ============================================================================
-// Send completion failures — retention and the operator surface (#1195).
+// Send completion failures — retention and the operator surface.
 //
 // The records themselves, their replay and parked provider events live in
 // `./sendCompletionFailures`. This module deletes old records and gives an

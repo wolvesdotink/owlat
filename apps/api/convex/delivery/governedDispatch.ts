@@ -324,9 +324,9 @@ export async function dispatchGovernedEmail(
 			providerMessageId: providerMessageIdIsPreassigned ? idempotencyKey : dispatched.result.id,
 			providerType: dispatched.providerType,
 			sendLatencyMs: dispatched.latencyMs,
-			// STATED, NOT IMPLIED BY ABSENCE. The consumer used to read whether
-			// this key was PRESENT; a required boolean says which of the two
-			// meanings of "accepted" this was, and cannot be forgotten.
+			// STATED, NOT IMPLIED BY ABSENCE. A required boolean, not whether
+			// this key is PRESENT, says which of the two meanings of "accepted"
+			// this was, and cannot be forgotten.
 			isCustodyHandoff: transportTakesCustody,
 		};
 	}
@@ -345,8 +345,8 @@ export async function dispatchGovernedEmail(
 			// wrote: our own storage, no receiver involved, `local` by the same rule
 			// `MTA_DEFER_REASON_ORIGIN` applies to `lease_persistence` on the decision
 			// endpoint. The message waits the same either way; only the counting
-			// differs, so a lease-store outage can no longer walk a cell towards gate
-			// 2's 25% halt (issue #505).
+			// differs, so a lease-store outage cannot walk a cell towards gate
+			// 2's 25% halt.
 			deferralOrigin:
 				dispatched.result.errorCode === 'ROUTING_LEASE_UNREADABLE' ? 'local' : 'governed',
 			envelopeInput: request.envelopeInput,
@@ -397,7 +397,7 @@ export async function dispatchGovernedEmail(
 	}
 
 	// A provider that refused the address off its own suppression list said so
-	// in this response; mirrored before the send fails (#1243). A seed probe's
+	// in this response; mirrored before the send fails. A seed probe's
 	// address is one of our seed mailboxes and is never suppressed.
 	if (request.sendRef.kind !== 'seedProbe') {
 		await recordSendResponseRefusal(ctx, {

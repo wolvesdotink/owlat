@@ -38,9 +38,7 @@ function receiveOnlyDraft(provider: ProviderChoice): EmailStepDraft {
 	return {
 		provider,
 		requiresProvider: false,
-		resendKey: '',
-		ses: { region: '', accessKeyId: '', secretAccessKey: '' },
-		smtp: { preset: 'custom', host: '', port: '', secure: false, username: '', password: '' },
+		credentials: {},
 		fromEmail: '',
 		fromName: '',
 	};

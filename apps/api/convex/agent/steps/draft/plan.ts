@@ -9,12 +9,13 @@
  * the self-check still lists the draft's file claims and commitments.
  *
  * FAIL-SOFT: a plan that cannot be loaded or stored leaves the draft exactly
- * as it was; the gate then finds no (or a stale) plan and objects.
+ * as it was (the step's commit stores it best-effort); the gate then finds no (or a stale) plan and objects.
  */
 
 import { internal } from '../../../_generated/api';
 import type { ActionCtx } from '../../../_generated/server';
 import type { Id } from '../../../_generated/dataModel';
+import type { StepWrite } from '../../stepWrites';
 import { logError } from '../../../lib/runtimeLog';
 import {
 	toPromptItems,
@@ -80,13 +81,16 @@ export async function loadDraftPlan(
 	}
 }
 
-/** Store the checked plan against the draft as written. */
-export async function recordDraftPlan(
-	ctx: Pick<ActionCtx, 'runMutation'>,
+/**
+ * The checked plan against the draft as written, as the write the step's
+ * commit applies (`responsePlanDraft.recordPlanCheck`), or null when it cannot
+ * be built.
+ */
+export async function draftPlanWrite(
 	plan: DraftPlan,
 	draftBody: string,
 	checked: PlanCoverage | null
-): Promise<void> {
+): Promise<Extract<StepWrite, { kind: 'draft_plan' }> | null> {
 	try {
 		// The ids are the plan's own: the coverage was parsed from its items.
 		const coverage = (checked ?? {
@@ -95,7 +99,8 @@ export async function recordDraftPlan(
 			newPromises: [],
 			isIncomplete: false,
 		}) as PlanCoverage<ItemId>;
-		await ctx.runMutation(internal.mail.interpret.responsePlanDraft.recordCheck, {
+		return {
+			kind: 'draft_plan',
 			threadRef: { kind: 'team', id: plan.threadId },
 			draftRef: { kind: 'inboundDraft', id: plan.inboundMessageId },
 			threadRevision: plan.threadRevision,
@@ -112,8 +117,9 @@ export async function recordDraftPlan(
 			deletionEpoch: plan.deletionEpoch,
 			attachmentSetHash: plan.attachmentSetHash,
 			isCheckIncomplete: coverage.isIncomplete || plan.isOverflow,
-		});
+		};
 	} catch (err) {
-		logError('[draft] storing the response plan failed:', failureText(err));
+		logError('[draft] building the response plan check failed:', failureText(err));
+		return null;
 	}
 }

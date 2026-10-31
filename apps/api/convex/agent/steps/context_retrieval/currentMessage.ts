@@ -110,6 +110,7 @@ async function structuredActions(
 			inboundMessageId,
 		});
 		if (!read.interpretation || read.interpretation.isRerunDue) {
+			// checkpoint: the eligibility snapshot the interpretation run below reads (first snapshot wins).
 			const canRun = await ctx.runMutation(internal.mail.interpret.teamActions.captureInbound, {
 				inboundMessageId,
 			});

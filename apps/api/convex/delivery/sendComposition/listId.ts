@@ -2,11 +2,11 @@
  * Send composition (module) — List-Id leaf (RFC 2919).
  *
  * Single V8-pure builder for the RFC 2919 `List-Id` header, identifying the
- * mailing list a topic campaign was sent on behalf of. Until now Owlat only
- * READ `List-Id` inbound (anti-loop classification) and never STAMPED it
- * outbound, even though every topic has a stable id + name — so receiving
- * MTAs, mailbox filters, and the recipient's "unsubscribe from this list"
- * client affordances had no stable list handle to key on.
+ * mailing list a topic campaign was sent on behalf of. Owlat READS `List-Id`
+ * inbound (anti-loop classification) and STAMPS it outbound too: every topic
+ * has a stable id + name, and receiving MTAs, mailbox filters, and the
+ * recipient's "unsubscribe from this list" client affordances need a stable
+ * list handle to key on.
  *
  * RFC 2919 grammar (the relevant productions):
  *

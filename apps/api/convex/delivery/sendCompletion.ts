@@ -56,7 +56,7 @@ const completionArgs = vOnCompleteArgs(v.object({ sendRef: sendRefValidator }));
 /**
  * The workpool's `onComplete` for every governed send.
  *
- * A SHELL THAT CANNOT LOSE THE RESULT (#1195). The workpool keeps no record of
+ * A SHELL THAT CANNOT LOSE THE RESULT. The workpool keeps no record of
  * an `onComplete` that throws: it retries once, logs, and deletes the work, and
  * with it the only copy of a direct provider's message id. So the completion
  * runs as a nested mutation, whose writes roll back on their own when it

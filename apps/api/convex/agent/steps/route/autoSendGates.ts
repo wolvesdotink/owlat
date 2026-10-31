@@ -15,6 +15,7 @@ import {
 } from '../../../lib/decision/calibration';
 import { decisionAutonomyProblem } from '../../../lib/decision/autoSendContract';
 import { appliedDecisionGate } from './appliedDecisionGate';
+import type { StepWrite } from '../../stepWrites';
 
 export type AutoSendGateDecision =
 	| { readonly safe: true }
@@ -25,6 +26,8 @@ export interface AutoSendGateContext {
 	readonly inboundMessageId: Id<'inboundMessages'>;
 	readonly now: () => number;
 	readonly getMessage: () => Promise<Doc<'inboundMessages'> | null>;
+	/** What a gate records, collected for the route step's commit to apply. */
+	readonly writes: StepWrite[];
 }
 
 export interface CoreAutoSendGate {
@@ -223,21 +226,18 @@ const interpretationIncompleteGate: CoreAutoSendGate = Object.freeze({
 // makes it hold. An unreadable state throws and the runner holds (fail closed).
 const itemCoverageGate: CoreAutoSendGate = Object.freeze({
 	id: 'item_coverage',
-	async evaluate({ action, inboundMessageId }: AutoSendGateContext) {
+	async evaluate({ action, inboundMessageId, writes }: AutoSendGateContext) {
 		const check = await action.runQuery(internal.mail.interpret.planGate.itemCoverageCheck, {
 			inboundMessageId,
 		});
 		if (!check.reason) return safe();
 		if (check.isEnforced) return unsafe(check.reason);
-		try {
-			await action.runMutation(internal.mail.interpret.planGate.recordShadow, {
-				inboundMessageId,
-				objections: check.objections,
-				reason: check.reason,
-			});
-		} catch {
-			// swallowed: shadow logging is best-effort and never changes the decision
-		}
+		// Logged with the route step's commit, best-effort: never changes the decision.
+		writes.push({
+			kind: 'item_coverage_shadow',
+			objections: check.objections,
+			reason: check.reason,
+		});
 		return safe();
 	},
 });
@@ -329,24 +329,31 @@ export async function runPreAutonomyGates(
 	action: ActionCtx,
 	inboundMessageId: Id<'inboundMessages'>
 ): Promise<AutoSendGateDecision> {
-	return runOrderedGates(PRE_AUTONOMY_GATES, createContext(action, inboundMessageId));
+	return runOrderedGates(PRE_AUTONOMY_GATES, createContext(action, inboundMessageId, []));
 }
 
+/** The final gates; what they record is pushed onto `writes` for the step's commit. */
 export async function runCoreFinalAutoSendGates(
 	action: ActionCtx,
-	inboundMessageId: Id<'inboundMessages'>
+	inboundMessageId: Id<'inboundMessages'>,
+	writes: StepWrite[] = []
 ): Promise<AutoSendGateDecision> {
-	return runOrderedGates(CORE_FINAL_AUTO_SEND_GATES, createContext(action, inboundMessageId));
+	return runOrderedGates(
+		CORE_FINAL_AUTO_SEND_GATES,
+		createContext(action, inboundMessageId, writes)
+	);
 }
 
 function createContext(
 	action: ActionCtx,
-	inboundMessageId: Id<'inboundMessages'>
+	inboundMessageId: Id<'inboundMessages'>,
+	writes: StepWrite[]
 ): AutoSendGateContext {
 	let message: Promise<Doc<'inboundMessages'> | null> | undefined;
 	return Object.freeze({
 		action,
 		inboundMessageId,
+		writes,
 		now: Date.now,
 		getMessage: () =>
 			(message ??= action.runQuery(internal.agent.agentPipeline.getMessage, { inboundMessageId })),
