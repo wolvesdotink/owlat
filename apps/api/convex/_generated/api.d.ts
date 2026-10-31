@@ -405,6 +405,7 @@ import type * as campaigns_preflight from '../campaigns/preflight.js';
 import type * as campaigns_scheduling from '../campaigns/scheduling.js';
 import type * as campaigns_send from '../campaigns/send.js';
 import type * as campaigns_sendCommit from '../campaigns/sendCommit.js';
+import type * as campaigns_walkerCommit from '../campaigns/walkerCommit.js';
 import type * as campaigns_sendJob from '../campaigns/sendJob.js';
 import type * as campaigns_sendPlanProgress from '../campaigns/sendPlanProgress.js';
 import type * as campaigns_sendPlanQueries from '../campaigns/sendPlanQueries.js';
@@ -2329,6 +2330,7 @@ declare const fullApi: ApiFromModules<{
 	'campaigns/scheduling': typeof campaigns_scheduling;
 	'campaigns/send': typeof campaigns_send;
 	'campaigns/sendCommit': typeof campaigns_sendCommit;
+	'campaigns/walkerCommit': typeof campaigns_walkerCommit;
 	'campaigns/sendJob': typeof campaigns_sendJob;
 	'campaigns/sendPlanProgress': typeof campaigns_sendPlanProgress;
 	'campaigns/sendPlanQueries': typeof campaigns_sendPlanQueries;

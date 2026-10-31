@@ -4,17 +4,15 @@ import { v } from 'convex/values';
 import { internalAction, type ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { SEND_PAGE_SIZE, type CampaignRecipient } from './audienceCandidates';
-import type { Doc, Id } from '../_generated/dataModel';
+import type { Doc } from '../_generated/dataModel';
 import { getOptional } from '../lib/env';
 import { resolveNextSendTime, isValidTimeZone } from '../lib/emailHelpers';
-import type { CampaignEnqueueEmail } from '../delivery/enqueue';
 import { composeForSend, personalizeSubject } from '../delivery/sendComposition';
 import {
 	bucketPageRecipients,
 	classifyContentScan,
 	classifyStartSendSkip,
 	combineContentScan,
-	isEmptyAudienceComplete,
 	isSendPrepared,
 	makeVariantBucketer,
 } from './sendPlanning';
@@ -25,7 +23,6 @@ import {
 	bucketTemplateId,
 	decideHopPlan,
 	decideHopStart,
-	decidePageEnd,
 	hopSendContext,
 	hopSendSettings,
 	needsSendTimePlanning,
@@ -38,18 +35,6 @@ import { nanoid } from 'nanoid';
 // campaign from `draft|scheduled|sending` through content scan, archive,
 // audience resolution, A/B variant fanout (test cohort), and workpool
 // enqueue. See CONTEXT.md "Campaign send orchestrator (module)".
-/**
- * Recipients handed to ONE `enqueueCampaignEmails` mutation.
- *
- * Both enqueue branches page through this same size. That mutation writes at
- * least one workpool document AND one `sendAssignments` row per recipient in a
- * single transaction, so an unchunked batch walks toward Convex's
- * per-transaction write ceiling. The timezone branch used to hand an entire
- * IANA-zone group over unchunked, which for a single-zone audience is the
- * whole campaign in one mutation.
- */
-const CAMPAIGN_ENQUEUE_CHUNK_SIZE = 50;
-const LIFECYCLE_USER_ORCHESTRATOR = 'system:orchestrator';
 import {
 	scanContent,
 	levelForScore,
@@ -61,6 +46,7 @@ import {
 import { testFractionForSplit } from './sendVariantSplit';
 import { scannedContentDigest, scannedSubject } from './sendCommit';
 import type { ArchiveSnapshot } from './archiveQueries';
+import type { PageBucket } from './walkerCommit';
 import { logWarn } from '../lib/runtimeLog';
 
 // Convex-backed implementation of the email-scanner's `UrlReputationCache`,
@@ -325,10 +311,9 @@ async function composeArchiveSnapshot(
 	return { archiveToken: nanoid(24), archiveHtmlContent: composed.html, archiveSubject: subject };
 }
 
-// ─── Per-variant batch enqueue ─────────────────────────────────────────
+// ─── Per-variant bucket plan ───────────────────────────────────────────
 
-type EnqueueVariantArgs = HopSendContext & {
-	campaignId: Id<'campaigns'>;
+type PlanBucketArgs = HopSendContext & {
 	recipients: ReadonlyArray<CampaignRecipient>;
 	abVariant: 'A' | 'B' | undefined;
 	subject: string;
@@ -337,160 +322,100 @@ type EnqueueVariantArgs = HopSendContext & {
 	plainTextContent?: string;
 	// Send-time optimization: the instant and arm the planner chose per
 	// contact id. Set only for an optimized campaign; replaces both the
-	// timezone grouping and the immediate chunking.
+	// timezone grouping and the immediate send.
 	plannedSendTimes?: ReadonlyMap<string, PlannedSendTime>;
+	now: number;
 };
 
-// Create emailSends rows for a batch (one variant, one language) and
-// schedule enqueueCampaignEmails. Handles both the timezone-grouped and
-// the standard chunk-of-50 paths. The orchestrator's only enqueue site.
-async function enqueueVariantBatch(ctx: ActionCtx, args: EnqueueVariantArgs): Promise<number> {
-	if (args.recipients.length === 0) return 0;
-
-	const sendsToCreate = args.recipients.map((r) => ({
-		campaignId: args.campaignId,
+// One bucket (one variant, one language) of a page, as the page commit takes
+// it: each recipient's personalized subject, and the recipients grouped by
+// when they go out. The commit inserts the rows and schedules the enqueue
+// chunks (`campaigns/walkerCommit.ts`); the orchestrator's only enqueue site.
+function planBucket(args: PlanBucketArgs): PageBucket {
+	const recipients = args.recipients.map((r) => ({
 		contactId: r._id,
-		contactEmail: r.email,
-		contactFirstName: r.firstName,
-		contactLastName: r.lastName,
+		email: r.email,
+		firstName: r.firstName,
+		lastName: r.lastName,
+		// Projected by audience resolution from the already-loaded contact:
+		// the engagement score rides the envelope to the MTA's priority
+		// bands. Undefined for an unscored contact and simply omitted.
+		engagementScore: r.engagementScore,
 		personalizedSubject: personalizeSubject({
 			kind: 'campaign',
 			template: { subject: args.subject, htmlContent: '' },
-			contactInfo: {
-				email: r.email,
-				firstName: r.firstName,
-				lastName: r.lastName,
-			},
+			contactInfo: { email: r.email, firstName: r.firstName, lastName: r.lastName },
 		}),
-		...(args.abVariant !== undefined ? { abVariant: args.abVariant } : {}),
 		...(args.plannedSendTimes?.has(r._id)
 			? { sendTimeGroup: args.plannedSendTimes.get(r._id)!.group }
 			: {}),
 	}));
 
-	// createBatch is idempotent: it inserts a row only for a contact that does
-	// not already have one for this campaign, and returns the (contactId →
-	// emailSendId) join for exactly the rows it inserted THIS call. We enqueue
-	// only those — a recipient skipped as a duplicate (re-run / resumed page)
-	// already has a row in flight and must NOT be enqueued again.
-	const created = await ctx.runMutation(internal.delivery.sends.createBatch, {
-		sends: sendsToCreate,
+	// The instant each recipient goes out at, keyed by the group it shares.
+	let sendAtFor: (r: CampaignRecipient) => { key: string; sendAt?: number } = () => ({
+		key: 'now',
 	});
-	const sendIdByContact = new Map<string, Id<'emailSends'>>(
-		created.map((c) => [c.contactId, c.emailSendId])
-	);
-
-	// The enqueue payload shape is owned by `delivery/enqueue.ts`'s validator —
-	// `timezone` is the one local-only field (it picks the send instant here and
-	// is not part of the envelope).
-	type EmailEnqueueData = CampaignEnqueueEmail & { timezone?: string };
-
-	const emailsToEnqueue: EmailEnqueueData[] = [];
-	for (const r of args.recipients) {
-		const emailSendId = sendIdByContact.get(r._id);
-		if (!emailSendId) continue; // duplicate skipped by createBatch — already enqueued
-		emailsToEnqueue.push({
-			emailSendId,
-			contactId: r._id,
-			email: r.email,
-			firstName: r.firstName,
-			lastName: r.lastName,
-			timezone: r.timezone,
-			// Projected by audience resolution from the already-loaded contact:
-			// the engagement score rides the envelope to the MTA's priority
-			// bands. Undefined for an unscored contact and simply omitted.
-			engagementScore: r.engagementScore,
-		});
-	}
-
-	let totalEnqueued = 0;
-
-	// ONE enqueue payload, two call sites (timezone-grouped and chunked). The
-	// two branches differ only in the recipient slice and the delay, so the
-	// payload — and every future envelope field on it — lives here once.
-	// Every call site chunks: one scheduled `enqueueCampaignEmails` per
-	// `CAMPAIGN_ENQUEUE_CHUNK_SIZE` recipients keeps each transaction (and its
-	// per-recipient assignment writes) bounded.
-	const scheduleChunks = async (recipients: EmailEnqueueData[], delayMs: number) => {
-		for (let i = 0; i < recipients.length; i += CAMPAIGN_ENQUEUE_CHUNK_SIZE) {
-			const chunk = recipients.slice(i, i + CAMPAIGN_ENQUEUE_CHUNK_SIZE);
-			await ctx.scheduler.runAfter(delayMs, internal.delivery.enqueue.enqueueCampaignEmails, {
-				campaignId: args.campaignId,
-				emails: chunk.map(
-					({ emailSendId, contactId, email, firstName, lastName, engagementScore }) => ({
-						emailSendId,
-						contactId,
-						email,
-						firstName,
-						lastName,
-						engagementScore,
-					})
-				),
-				from: args.from,
-				replyTo: args.replyTo,
-				subject: args.subject,
-				htmlContent: args.htmlContent,
-				plainTextContent: args.plainTextContent,
-				convexSiteUrl: args.convexSiteUrl,
-				siteUrl: args.siteUrl,
-				audienceType: args.audienceType,
-				viewInBrowserUrl: args.viewInBrowserUrl,
-				providerType: args.providerType,
-				ipPool: args.ipPool,
-				trackingBaseUrl: args.trackingBaseUrl,
-				organizationId: args.organizationId,
-				listId: args.listId,
-				// Keys the deliverability seed-probe set: the two A/B arms are
-				// different messages and each gets its own placement reading.
-				abVariant: args.abVariant,
-			});
-		}
-	};
-
 	if (args.plannedSendTimes) {
-		// One scheduled enqueue per proposed instant. The enqueue at that instant
-		// goes through the same governed path as any other, so the MTA's pacing,
-		// the ramp ceilings and the deliverability gates still own throughput.
-		const now = Date.now();
-		const recipientsByInstant = new Map<number, EmailEnqueueData[]>();
-		for (const recipient of emailsToEnqueue) {
-			const at = args.plannedSendTimes.get(recipient.contactId)?.at ?? now;
-			const bucket = recipientsByInstant.get(at);
-			if (bucket) bucket.push(recipient);
-			else recipientsByInstant.set(at, [recipient]);
-		}
-		for (const [at, recipientsAtInstant] of recipientsByInstant) {
-			await scheduleChunks(recipientsAtInstant, Math.max(0, at - now));
-			totalEnqueued += recipientsAtInstant.length;
-		}
+		// One group per proposed instant. The enqueue at that instant goes
+		// through the same governed path as any other, so the MTA's pacing, the
+		// ramp ceilings and the deliverability gates still own throughput.
+		const planned = args.plannedSendTimes;
+		sendAtFor = (r) => {
+			const sendAt = planned.get(r._id)?.at ?? args.now;
+			return { key: String(sendAt), sendAt };
+		};
 	} else if (args.useTimezone) {
 		// Group by the recipient's IANA zone, then resolve the next
 		// `scheduledHour:scheduledMinute` local instant per zone — DST-correct,
 		// unlike a static UTC-offset table. Recipients without a valid zone fall
 		// back to the org-level timezone (General settings) when it is a valid
 		// zone, otherwise to UTC.
-		const now = Date.now();
 		const fallbackZone = isValidTimeZone(args.defaultTimezone) ? args.defaultTimezone : 'UTC';
-		const recipientsByZone = new Map<string, EmailEnqueueData[]>();
-		for (const recipient of emailsToEnqueue) {
-			const zone = isValidTimeZone(recipient.timezone) ? recipient.timezone : fallbackZone;
-			const bucket = recipientsByZone.get(zone);
-			if (bucket) bucket.push(recipient);
-			else recipientsByZone.set(zone, [recipient]);
-		}
-
-		for (const [zone, recipientsForZone] of recipientsByZone) {
-			const target = resolveNextSendTime(zone, args.scheduledHour!, args.scheduledMinute!, now);
-			const delayMs = Math.max(0, target - now);
-			await scheduleChunks(recipientsForZone, delayMs);
-			totalEnqueued += recipientsForZone.length;
-		}
-	} else {
-		await scheduleChunks(emailsToEnqueue, 0);
-		totalEnqueued += emailsToEnqueue.length;
+		sendAtFor = (r) => {
+			const zone = isValidTimeZone(r.timezone) ? r.timezone : fallbackZone;
+			const sendAt = resolveNextSendTime(
+				zone,
+				args.scheduledHour!,
+				args.scheduledMinute!,
+				args.now
+			);
+			return { key: zone, sendAt };
+		};
 	}
+	const groups = new Map<string, { sendAt?: number; recipients: typeof recipients }>();
+	args.recipients.forEach((r, i) => {
+		const { key, sendAt } = sendAtFor(r);
+		const group = groups.get(key);
+		if (group) group.recipients.push(recipients[i]!);
+		else
+			groups.set(key, {
+				...(sendAt === undefined ? {} : { sendAt }),
+				recipients: [recipients[i]!],
+			});
+	});
 
-	return totalEnqueued;
+	return {
+		envelope: {
+			from: args.from,
+			replyTo: args.replyTo,
+			subject: args.subject,
+			htmlContent: args.htmlContent,
+			plainTextContent: args.plainTextContent,
+			convexSiteUrl: args.convexSiteUrl,
+			siteUrl: args.siteUrl,
+			audienceType: args.audienceType,
+			viewInBrowserUrl: args.viewInBrowserUrl,
+			providerType: args.providerType,
+			ipPool: args.ipPool,
+			trackingBaseUrl: args.trackingBaseUrl,
+			organizationId: args.organizationId,
+			listId: args.listId,
+			// Keys the deliverability seed-probe set: the two A/B arms are
+			// different messages and each gets its own placement reading.
+			abVariant: args.abVariant,
+		},
+		groups: [...groups.values()],
+	};
 }
 
 // ─── Checkpointed send walker (NON-A/B) ────────────────────────────────
@@ -502,15 +427,12 @@ async function enqueueVariantBatch(ctx: ActionCtx, args: EnqueueVariantArgs): Pr
 //   2. Resolves ONE bounded page of the frozen Audience at the job's cursor
 //      via `resolveRecipientPage` (the same eligibility walk the count and the
 //      A/B path use).
-//   3. Enqueues that page through the existing `enqueueVariantBatch`
-//      (abVariant undefined), grouped by language, idempotently
-//      (createBatch skips contacts that already have a row).
-//   4. Advances the checkpoint (cursor + counters) and bumps the daily send
-//      count for the page.
-//   5. Reschedules itself if more pages remain; otherwise flips the job to
-//      `done` (and, when the whole walk enqueued nobody, completes the
-//      campaign as sent — preserving the empty-audience behaviour the in-line
-//      resolve used to have).
+//   3. Plans that page per (language, variant) bucket (`planBucket`).
+//   4. Commits it once (`walkerCommit.ts:commitCampaignPage`): the rows
+//      (idempotently; a contact that already has one is skipped), their
+//      enqueue, the checkpoint advance, the daily send count, and either the
+//      next hop or, on the last page, `done` (completing the campaign as sent
+//      when the whole walk enqueued nobody).
 //
 // PREP (`startCampaignSend`, non-A/B branch) already ran the content scan,
 // archive snapshot, freeze, and the `→ sending` transition once; this hop only
@@ -519,7 +441,7 @@ async function enqueueVariantBatch(ctx: ActionCtx, args: EnqueueVariantArgs): Pr
 //
 // What the hop decides between its reads and writes (stop, park, the page,
 // the send context, each bucket's content, the page end) is in
-// `pageDecision.ts`, pure; this action loads, enqueues and writes.
+// `pageDecision.ts`, pure; this action loads and plans, the commit writes.
 export const resolveCampaignPage = internalAction({
 	args: {
 		campaignId: v.id('campaigns'),
@@ -635,7 +557,7 @@ export const resolveCampaignPage = internalAction({
 			winningVariant: job.winningVariant,
 		});
 
-		let pageEnqueued = 0;
+		const buckets: PageBucket[] = [];
 		if (page.recipients.length > 0) {
 			const template = await ctx.runQuery(internal.campaigns.sendQueries.getEmailTemplate, {
 				templateId: campaign.emailTemplateId,
@@ -652,54 +574,29 @@ export const resolveCampaignPage = internalAction({
 					})
 				);
 				if (!content) continue;
-				pageEnqueued += await enqueueVariantBatch(ctx, {
-					...context,
-					...content,
-					campaignId,
-					recipients: bucket.recipients,
-					abVariant: bucket.variant,
-					plannedSendTimes,
-				});
+				buckets.push(
+					planBucket({
+						...context,
+						...content,
+						recipients: bucket.recipients,
+						abVariant: bucket.variant,
+						plannedSendTimes,
+						now: Date.now(),
+					})
+				);
 			}
 		}
 
-		const end = decidePageEnd({
-			page,
-			pageEnqueued,
-			slice: hop.slice,
-			planCheckpoint: hop.planCheckpoint,
-		});
-		if (end.dailySendCount !== undefined) {
-			await ctx.runMutation(internal.campaigns.sendQueries.incrementDailySendCountInternal, {
-				count: end.dailySendCount,
-			});
-		}
-		const advanced = await ctx.runMutation(internal.campaigns.sendJob.advanceSendJob, {
+		// COMMIT. The page, its enqueue, the checkpoint and the next hop, or nothing.
+		const committed = await ctx.runMutation(internal.campaigns.walkerCommit.commitCampaignPage, {
 			campaignId,
-			...end.advance,
+			read: { startedAt: job.startedAt, cursor: job.cursor },
+			buckets,
+			page: { nextCursor: page.nextCursor, pageCandidates: page.pageCandidates },
+			planDay: { ...hop.planCheckpoint, enqueuedToday: hop.slice.enqueuedToday },
 		});
-		await ctx.runMutation(internal.campaigns.sendJob.recordSendPlanDay, {
-			campaignId,
-			plan: end.planDay,
-		});
-
-		if (!end.isLastPage) {
-			await ctx.scheduler.runAfter(0, internal.campaigns.send.resolveCampaignPage, { campaignId });
-			return { done: false, pageEnqueued };
-		}
-
-		// Last page: complete NOW only on the empty-audience fast path; otherwise
-		// the per-send completion callback / reconcile cron completes it once the
-		// last queued send clears (the guard no longer blocks once phase is done).
-		if (isEmptyAudienceComplete(settings.variantMode, advanced)) {
-			await ctx.runMutation(internal.campaigns.lifecycle.transition, {
-				campaignId,
-				input: { to: 'sent', at: Date.now() },
-				userId: LIFECYCLE_USER_ORCHESTRATOR,
-			});
-		}
-
-		return { done: true, pageEnqueued };
+		if (committed.kind !== 'committed') return { done: true, pageEnqueued: 0 };
+		return { done: committed.done, pageEnqueued: committed.pageEnqueued };
 	},
 });
 

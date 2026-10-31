@@ -12,10 +12,11 @@
  *     `openSendJob` inside its one commit (`campaigns/sendCommit.ts`), with
  *     `phase: 'resolving'`, `cursor: ''` and a `variantMode`, and schedules the
  *     first hop in the same transaction.
- *   - Each hop reads it via `getSendJob`, enqueues one page (classified by the
- *     job's `variantMode` + deterministic per-contact hash), then calls
- *     `advanceSendJob` to patch `cursor`/counters and (on the last page) flip
- *     `phase: 'done'`.
+ *   - Each hop reads it via `getSendJob` and plans one page (classified by
+ *     the job's `variantMode` + deterministic per-contact hash); its one
+ *     commit (`campaigns/walkerCommit.ts`) inserts and enqueues the page and
+ *     calls `advanceJob` to patch `cursor`/counters and (on the last page)
+ *     flip `phase: 'done'`.
  *   - For the second A/B phase, `sendCampaignWinnerToRemainder` calls
  *     `createSendJob` AGAIN to RESET the same row to a fresh `ab_winner` walk
  *     (`winningVariant` set, `phase: 'resolving'`, `cursor: ''`) and re-drives
@@ -27,7 +28,7 @@
  * the only callers are the orchestrator's own scheduled hops.
  */
 
-import { v } from 'convex/values';
+import { v, type Infer } from 'convex/values';
 import { internalQuery, type MutationCtx, type QueryCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
 import { internalMutation, readActiveWorkspaceDeletion } from '../lib/writeFence';
@@ -180,12 +181,12 @@ export const getSendJob = internalQuery({
 });
 
 /**
- * Advance the checkpoint after one page was enqueued. Patches the cursor to
- * the page's `nextCursor` and sums the page counters. When `nextCursor` is
- * `null` the walk is done — flip `phase: 'done'`; the next reconcile then
- * completes the campaign (the completion guard stops blocking).
- *
- * Returns the new phase so the caller knows whether to reschedule.
+ * `advanceJob` for a page hop of the previous release still running during
+ * the deploy; this release advances inside its page commit. That commit may
+ * already have committed the same page (a re-driven hop), so a job that
+ * already sits at the page's `nextCursor`, or is `done` on the last page, is
+ * returned as it is instead of counting the page twice. Remove after release
+ * N+1.
  */
 export const advanceSendJob = internalMutation({
 	args: {
@@ -194,35 +195,50 @@ export const advanceSendJob = internalMutation({
 		pageEnqueued: v.number(),
 		pageCandidates: v.number(),
 	},
-	handler: async (
-		ctx,
-		args
-	): Promise<{
-		phase: 'resolving' | 'done';
-		enqueuedCount: number;
-		totalCandidates: number;
-	} | null> => {
-		const job = await ctx.db
-			.query('campaignSendJobs')
-			.withIndex('by_campaign', (q) => q.eq('campaignId', args.campaignId))
-			.first();
-		if (!job) return null;
-
-		const enqueuedCount = job.enqueuedCount + args.pageEnqueued;
-		const totalCandidates = job.totalCandidates + args.pageCandidates;
-		const phase: 'resolving' | 'done' = args.nextCursor === null ? 'done' : 'resolving';
-
-		await ctx.db.patch(job._id, {
-			cursor: args.nextCursor ?? job.cursor,
-			enqueuedCount,
-			totalCandidates,
-			phase,
-			updatedAt: Date.now(),
-		});
-
-		return { phase, enqueuedCount, totalCandidates };
+	handler: async (ctx, { campaignId, ...page }) => {
+		const job = await readSendJob(ctx, campaignId);
+		if (job && (page.nextCursor === null ? job.phase === 'done' : job.cursor === page.nextCursor)) {
+			const { phase, enqueuedCount, totalCandidates } = job;
+			return { phase, enqueuedCount, totalCandidates };
+		}
+		return await advanceJob(ctx, campaignId, page);
 	},
 });
+
+/**
+ * Advance the checkpoint after one page was enqueued. Patches the cursor to
+ * the page's `nextCursor` and sums the page counters. When `nextCursor` is
+ * `null` the walk is done — flip `phase: 'done'`; the next reconcile then
+ * completes the campaign (the completion guard stops blocking).
+ *
+ * Returns the new phase so the caller knows whether to reschedule.
+ */
+export async function advanceJob(
+	ctx: MutationCtx,
+	campaignId: Id<'campaigns'>,
+	page: { nextCursor: string | null; pageEnqueued: number; pageCandidates: number }
+): Promise<{
+	phase: 'resolving' | 'done';
+	enqueuedCount: number;
+	totalCandidates: number;
+} | null> {
+	const job = await readSendJob(ctx, campaignId);
+	if (!job) return null;
+
+	const enqueuedCount = job.enqueuedCount + page.pageEnqueued;
+	const totalCandidates = job.totalCandidates + page.pageCandidates;
+	const phase: 'resolving' | 'done' = page.nextCursor === null ? 'done' : 'resolving';
+
+	await ctx.db.patch(job._id, {
+		cursor: page.nextCursor ?? job.cursor,
+		enqueuedCount,
+		totalCandidates,
+		phase,
+		updatedAt: Date.now(),
+	});
+
+	return { phase, enqueuedCount, totalCandidates };
+}
 
 /**
  * Checkpoint the MULTI-DAY SEND PLAN's day state.
@@ -253,7 +269,7 @@ export const advanceSendJob = internalMutation({
  * the scheduling idempotent as well, so at most one hop is ever pending even if
  * the row is re-driven by something else.
  */
-const sendPlanStateValidator = v.object({
+export const sendPlanStateValidator = v.object({
 	planDayKey: v.string(),
 	enqueuedToday: v.number(),
 	planDayIndex: v.number(),
@@ -277,56 +293,58 @@ export const recordSendPlanDay = internalMutation({
 		 */
 		resumeAt: v.optional(v.number()),
 	},
-	handler: async (ctx, args): Promise<{ isResumeAlreadyScheduled: boolean }> => {
-		const job = await ctx.db
-			.query('campaignSendJobs')
-			.withIndex('by_campaign', (q) => q.eq('campaignId', args.campaignId))
-			.first();
-		if (!job) return { isResumeAlreadyScheduled: false };
-		const { plan } = args;
-		// The row was ALREADY parked for exactly this window, so a hop for it is
-		// already pending and a second one would double every counter it writes.
-		const isResumeAlreadyScheduled = args.resumeAt !== undefined && job.resumeAt === args.resumeAt;
-		// A PARKED ROW LEAVES THE WATCHDOG'S STALE RANGE INSTEAD OF FILLING IT.
-		// `redriveStuckSendJobs` pages `by_phase_updatedAt` and only then skips
-		// parked rows, so a park stamped at park time sits inside `updatedAt <
-		// cutoff` for the whole ~24h it waits — and enough concurrent parked walks
-		// fill the page entirely, starving a genuinely stranded walk of its
-		// re-drive. Stamping the RESUME INSTANT keeps the row out of the range
-		// until its window opens, which is exactly when it becomes re-drivable
-		// again. A resume instant that is not in the future cannot do that job, so
-		// it falls back to the clock rather than back-dating the row.
-		const now = Date.now();
-		const parkedUntil = args.resumeAt;
-		const updatedAt =
-			parkedUntil !== undefined && Number.isFinite(parkedUntil) && parkedUntil > now
-				? parkedUntil
-				: now;
-		await ctx.db.patch(job._id, {
-			planDayKey: plan.planDayKey,
-			enqueuedToday: plan.enqueuedToday,
-			planDayIndex: plan.planDayIndex,
-			planTotalDays: plan.planTotalDays,
-			isPlanTruncated: plan.isPlanTruncated,
-			// Only ever SET, never cleared: the denominator is counted once per walk
-			// and a later hop that skipped the count must not erase it. The
-			// lower-bound flag travels with it so the two can never describe
-			// different counts.
-			...(plan.plannedTotal === undefined
-				? {}
-				: {
-						plannedTotal: plan.plannedTotal,
-						isPlannedTotalLowerBound: plan.isPlannedTotalLowerBound === true,
-					}),
-			// Also SET-ONLY: a walk that already attempted the count must never be
-			// told to attempt it again by a later hop that simply skipped it.
-			...(plan.isPlannedTotalCountAttempted === true ? { isPlannedTotalCountAttempted: true } : {}),
-			resumeAt: args.resumeAt,
-			updatedAt,
-		});
-		return { isResumeAlreadyScheduled };
-	},
+	handler: async (ctx, args): Promise<{ isResumeAlreadyScheduled: boolean }> =>
+		await writeSendPlanDay(ctx, args.campaignId, args.plan, args.resumeAt),
 });
+
+/** `recordSendPlanDay` inside the caller's transaction (the walker's page commit). */
+export async function writeSendPlanDay(
+	ctx: MutationCtx,
+	campaignId: Id<'campaigns'>,
+	plan: Infer<typeof sendPlanStateValidator>,
+	resumeAt: number | undefined
+): Promise<{ isResumeAlreadyScheduled: boolean }> {
+	const job = await readSendJob(ctx, campaignId);
+	if (!job) return { isResumeAlreadyScheduled: false };
+	// The row was ALREADY parked for exactly this window, so a hop for it is
+	// already pending and a second one would double every counter it writes.
+	const isResumeAlreadyScheduled = resumeAt !== undefined && job.resumeAt === resumeAt;
+	// A PARKED ROW LEAVES THE WATCHDOG'S STALE RANGE INSTEAD OF FILLING IT.
+	// `redriveStuckSendJobs` pages `by_phase_updatedAt` and only then skips
+	// parked rows, so a park stamped at park time sits inside `updatedAt <
+	// cutoff` for the whole ~24h it waits — and enough concurrent parked walks
+	// fill the page entirely, starving a genuinely stranded walk of its
+	// re-drive. Stamping the RESUME INSTANT keeps the row out of the range
+	// until its window opens, which is exactly when it becomes re-drivable
+	// again. A resume instant that is not in the future cannot do that job, so
+	// it falls back to the clock rather than back-dating the row.
+	const now = Date.now();
+	const updatedAt =
+		resumeAt !== undefined && Number.isFinite(resumeAt) && resumeAt > now ? resumeAt : now;
+	await ctx.db.patch(job._id, {
+		planDayKey: plan.planDayKey,
+		enqueuedToday: plan.enqueuedToday,
+		planDayIndex: plan.planDayIndex,
+		planTotalDays: plan.planTotalDays,
+		isPlanTruncated: plan.isPlanTruncated,
+		// Only ever SET, never cleared: the denominator is counted once per walk
+		// and a later hop that skipped the count must not erase it. The
+		// lower-bound flag travels with it so the two can never describe
+		// different counts.
+		...(plan.plannedTotal === undefined
+			? {}
+			: {
+					plannedTotal: plan.plannedTotal,
+					isPlannedTotalLowerBound: plan.isPlannedTotalLowerBound === true,
+				}),
+		// Also SET-ONLY: a walk that already attempted the count must never be
+		// told to attempt it again by a later hop that simply skipped it.
+		...(plan.isPlannedTotalCountAttempted === true ? { isPlannedTotalCountAttempted: true } : {}),
+		resumeAt,
+		updatedAt,
+	});
+	return { isResumeAlreadyScheduled };
+}
 
 /**
  * Bump `updatedAt` on a send job WITHOUT advancing the cursor. Called by a hop

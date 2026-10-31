@@ -359,18 +359,24 @@ export const upsertUrlReputationVerdict = internalMutation({
 
 // Internal mutation to increment the daily send count after queuing a campaign
 // send page. Shares the pure nextDailySendCount reset logic with the
-// transactional dispatch path.
+// transactional dispatch path. Kept for a send-walker hop of the previous
+// release still running during the deploy, which counts only the rows its own
+// `createBatch` inserted; this release bumps inside the page commit. Remove
+// after release N+1.
 export const incrementDailySendCountInternal = internalMutation({
 	args: { count: v.number() },
-	handler: async (ctx, args) => {
-		// The counter lives on the `sends` counter row (plan 2.4); it is kept only
-		// once the instance exists, as before.
-		const settings = await ctx.db.query('instanceSettings').first();
-		if (!settings) return;
-		const sends = await readInstanceCounter(ctx.db, 'sends');
-		await writeInstanceCounter(ctx, 'sends', nextDailySendCount(sends, args.count, Date.now()));
-	},
+	handler: async (ctx, args) => await bumpDailySendCount(ctx, args.count),
 });
+
+/** `incrementDailySendCountInternal` inside the caller's transaction. */
+export async function bumpDailySendCount(ctx: MutationCtx, count: number): Promise<void> {
+	// The counter lives on the `sends` counter row (plan 2.4); it is kept only
+	// once the instance exists, as before.
+	const settings = await ctx.db.query('instanceSettings').first();
+	if (!settings) return;
+	const sends = await readInstanceCounter(ctx.db, 'sends');
+	await writeInstanceCounter(ctx, 'sends', nextDailySendCount(sends, count, Date.now()));
+}
 
 // `updateCampaignToSending` was deleted. The orchestrator
 // now calls `lifecycle.transition({ to: 'sending' })`.

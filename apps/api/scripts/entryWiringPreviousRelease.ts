@@ -25,6 +25,11 @@ export const PREVIOUS_RELEASE_ENTRIES: Readonly<Record<string, string>> = {
 	'campaigns/sendQueries.ts#storeContentScanResult': 'old campaign send preparations mid-run',
 	'campaigns/archiveQueries.ts#setArchiveSnapshot': 'old campaign send preparations mid-run',
 	'emailTemplates/versions.ts#captureForSend': 'old campaign send preparations mid-run',
+	// A send-walker page now commits once (campaigns/walkerCommit.ts).
+	'delivery/sends.ts#createBatch': 'old campaign send-walker hops mid-page',
+	'campaigns/sendQueries.ts#incrementDailySendCountInternal':
+		'old campaign send-walker hops mid-page',
+	'campaigns/sendJob.ts#advanceSendJob': 'old campaign send-walker hops mid-page',
 	// The expected-attachment copy now lands in one commit (`bindCopy`).
 	'mail/draftExpectedAttachments.ts#stageCopy': 'old draft attachment fulfils mid-copy',
 	'mail/draftExpectedAttachments.ts#bindExpected': 'old draft attachment fulfils mid-copy',

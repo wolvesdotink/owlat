@@ -299,6 +299,99 @@ describe('resolveCampaignPage — what one page hop writes', () => {
 	});
 });
 
+describe('commitCampaignPage — a hop that lost its race writes nothing', () => {
+	async function preparedJob(t: Harness, campaignId: Id<'campaigns'>) {
+		await t.action(internal.campaigns.send.startCampaignSend, { campaignId });
+		const { job } = await readState(t, campaignId);
+		return job!;
+	}
+
+	function commit(
+		t: Harness,
+		campaignId: Id<'campaigns'>,
+		read: { startedAt: number; cursor: string }
+	) {
+		return t.mutation(internal.campaigns.walkerCommit.commitCampaignPage, {
+			campaignId,
+			read,
+			buckets: [
+				{
+					envelope: { from: 'sender@example.com', subject: 'Hi', htmlContent: '<p>Hi</p>' },
+					groups: [{ recipients: [] }],
+				},
+			],
+			page: { nextCursor: 'next', pageCandidates: 1 },
+			planDay: {
+				planDayKey: '2026-10-31',
+				enqueuedToday: 0,
+				planDayIndex: 0,
+				planTotalDays: 1,
+				isPlanTruncated: false,
+			},
+		});
+	}
+
+	it('another hop already advanced the cursor', async () => {
+		const t = convexTest(schema, modules);
+		const { campaignId } = await seedSending(t, { recipients: 1 });
+		const job = await preparedJob(t, campaignId);
+
+		const scheduled = await scheduledBy(t, async () => {
+			expect(
+				await commit(t, campaignId, { startedAt: job.startedAt, cursor: 'elsewhere' })
+			).toEqual({ kind: 'stale', reason: 'Another hop moved the walk during this one' });
+		});
+
+		expect(scheduled).toEqual([]);
+		expect((await readState(t, campaignId)).job).toEqual(job);
+	});
+
+	it('the walk was reset under the hop', async () => {
+		const t = convexTest(schema, modules);
+		const { campaignId } = await seedSending(t, { recipients: 1 });
+		const job = await preparedJob(t, campaignId);
+
+		const result = await commit(t, campaignId, { startedAt: job.startedAt - 1, cursor: '' });
+
+		expect(result.kind).toBe('stale');
+		expect((await readState(t, campaignId)).job).toEqual(job);
+	});
+
+	it('the campaign left sending during the hop', async () => {
+		const t = convexTest(schema, modules);
+		const { campaignId } = await seedSending(t, { recipients: 1 });
+		const job = await preparedJob(t, campaignId);
+		await t.run(async (ctx) => ctx.db.patch(campaignId, { status: 'draft' }));
+
+		const scheduled = await scheduledBy(t, async () => {
+			expect(await commit(t, campaignId, { startedAt: job.startedAt, cursor: '' })).toEqual({
+				kind: 'stale',
+				reason: 'The walk stopped during the hop',
+			});
+		});
+
+		expect(scheduled).toEqual([]);
+		expect((await readState(t, campaignId)).job).toEqual(job);
+	});
+
+	it("a previous release's advance of a page this release committed counts nothing twice", async () => {
+		const t = convexTest(schema, modules);
+		const { campaignId } = await seedSending(t, { recipients: 520 });
+		await t.action(internal.campaigns.send.startCampaignSend, { campaignId });
+		await hop(t, campaignId);
+		const committed = (await readState(t, campaignId)).job!;
+
+		await t.mutation(internal.campaigns.sendJob.advanceSendJob, {
+			campaignId,
+			nextCursor: committed.cursor,
+			pageEnqueued: 500,
+			pageCandidates: 500,
+		});
+
+		expect((await readState(t, campaignId)).job).toEqual(committed);
+	});
+});
+
 describe('sendCampaignWinnerToRemainder — what the winner phase writes', () => {
 	it('freezes the segment, resets the job to an ab_winner walk and schedules one hop', async () => {
 		const t = convexTest(schema, modules);

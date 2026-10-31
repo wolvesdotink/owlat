@@ -1,6 +1,6 @@
-import { v } from 'convex/values';
+import { v, type Infer } from 'convex/values';
 import { internalMutation } from '../lib/writeFence';
-import type { QueryCtx } from '../_generated/server';
+import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { authedQuery } from '../lib/authedFunctions';
 import type { Doc, Id } from '../_generated/dataModel';
 import { getLive, getLiveOrThrow } from '../lib/softDelete';
@@ -163,84 +163,94 @@ export const getStatsByCampaign = authedQuery({
 // SAME page on resume and writes zero new rows. Harmless for the A/B
 // materialize path (it passes a single, already-deduped array). The returned
 // `ids` carry only the rows actually inserted this call.
+const campaignSendInputValidator = v.object({
+	campaignId: v.id('campaigns'),
+	contactId: v.id('contacts'),
+	personalizedSubject: v.optional(v.string()),
+	// Allow passing denormalized contact info to avoid N+1 lookups during batch creation
+	contactEmail: v.optional(v.string()),
+	contactFirstName: v.optional(v.string()),
+	contactLastName: v.optional(v.string()),
+	abVariant: v.optional(abVariantValidator),
+	sendTimeGroup: v.optional(sendTimeGroupValidator),
+});
+
+export type CampaignSendInput = Infer<typeof campaignSendInputValidator>;
+
+// Kept for a send-walker hop of the previous release still running during the
+// deploy; this release inserts inside the walker's page commit. Beside that
+// commit it is safe: a row the commit already inserted is skipped, so it is
+// never returned for a second enqueue. Remove after release N+1.
 export const createBatch = internalMutation({
-	args: {
-		sends: v.array(
-			v.object({
-				campaignId: v.id('campaigns'),
-				contactId: v.id('contacts'),
-				personalizedSubject: v.optional(v.string()),
-				// Allow passing denormalized contact info to avoid N+1 lookups during batch creation
-				contactEmail: v.optional(v.string()),
-				contactFirstName: v.optional(v.string()),
-				contactLastName: v.optional(v.string()),
-				abVariant: v.optional(abVariantValidator),
-				sendTimeGroup: v.optional(sendTimeGroupValidator),
-			})
-		),
-	},
-	handler: async (
-		ctx,
-		args
-	): Promise<{ contactId: Id<'contacts'>; emailSendId: Id<'emailSends'> }[]> => {
-		const now = Date.now();
-		// (contactId → emailSendId) for the rows actually inserted THIS call.
-		// Returning the join (not a positional id array) lets callers enqueue
-		// exactly the newly-created rows even when the idempotent guard skipped
-		// some inputs — a bare positional array would misalign on resume.
-		const created: { contactId: Id<'contacts'>; emailSendId: Id<'emailSends'> }[] = [];
+	args: { sends: v.array(campaignSendInputValidator) },
+	handler: async (ctx, args) => await insertCampaignSends(ctx, args.sends),
+});
 
-		for (const send of args.sends) {
-			// Exactly-once guard: skip a contact that already has a send row for
-			// this campaign. The walker may re-run a committed page on resume.
-			const existing = await ctx.db
-				.query('emailSends')
-				.withIndex('by_campaign_and_contact', (q) =>
-					q.eq('campaignId', send.campaignId).eq('contactId', send.contactId)
-				)
-				.first();
-			if (existing) continue;
+/**
+ * `createBatch` inside the caller's transaction: the send walker's page commit
+ * inserts the rows together with the enqueue chunks and the checkpoint.
+ */
+export async function insertCampaignSends(
+	ctx: MutationCtx,
+	sends: readonly CampaignSendInput[]
+): Promise<{ contactId: Id<'contacts'>; emailSendId: Id<'emailSends'> }[]> {
+	const now = Date.now();
+	// (contactId → emailSendId) for the rows actually inserted THIS call.
+	// Returning the join (not a positional id array) lets callers enqueue
+	// exactly the newly-created rows even when the idempotent guard skipped
+	// some inputs — a bare positional array would misalign on resume.
+	const created: { contactId: Id<'contacts'>; emailSendId: Id<'emailSends'> }[] = [];
 
-			// Use provided contact info or fetch it
-			let contactEmail = send.contactEmail;
-			let contactFirstName = send.contactFirstName;
-			let contactLastName = send.contactLastName;
+	for (const send of sends) {
+		// Exactly-once guard: skip a contact that already has a send row for
+		// this campaign. The walker may re-run a committed page on resume.
+		const existing = await ctx.db
+			.query('emailSends')
+			.withIndex('by_campaign_and_contact', (q) =>
+				q.eq('campaignId', send.campaignId).eq('contactId', send.contactId)
+			)
+			.first();
+		if (existing) continue;
 
-			if (!contactEmail) {
-				const contact = await ctx.db.get(send.contactId);
-				if (!contact) {
-					// Skip sends for deleted contacts
-					continue;
-				}
-				contactEmail = contact.email;
-				contactFirstName = contact.firstName;
-				contactLastName = contact.lastName;
+		// Use provided contact info or fetch it
+		let contactEmail = send.contactEmail;
+		let contactFirstName = send.contactFirstName;
+		let contactLastName = send.contactLastName;
+
+		if (!contactEmail) {
+			const contact = await ctx.db.get(send.contactId);
+			if (!contact) {
+				// Skip sends for deleted contacts
+				continue;
 			}
-
-			// Skip emailless contacts — emailSends is the email send-path
-			// table; phone/SMS/WhatsApp/generic-only contacts can't receive
-			// here and the SNAPSHOT field must be a real address.
-			if (!contactEmail) continue;
-
-			const id = await ctx.db.insert('emailSends', {
-				campaignId: send.campaignId,
-				contactId: send.contactId,
-				// Denormalize contact info to avoid N+1 queries on read
-				contactEmail,
-				contactFirstName,
-				contactLastName,
-				status: 'queued',
-				personalizedSubject: send.personalizedSubject,
-				queuedAt: now,
-				...(send.abVariant !== undefined ? { abVariant: send.abVariant } : {}),
-				...(send.sendTimeGroup !== undefined ? { sendTimeGroup: send.sendTimeGroup } : {}),
-			});
-			created.push({ contactId: send.contactId, emailSendId: id });
+			contactEmail = contact.email;
+			contactFirstName = contact.firstName;
+			contactLastName = contact.lastName;
 		}
 
-		return created;
-	},
-});
+		// Skip emailless contacts — emailSends is the email send-path
+		// table; phone/SMS/WhatsApp/generic-only contacts can't receive
+		// here and the SNAPSHOT field must be a real address.
+		if (!contactEmail) continue;
+
+		const id = await ctx.db.insert('emailSends', {
+			campaignId: send.campaignId,
+			contactId: send.contactId,
+			// Denormalize contact info to avoid N+1 queries on read
+			contactEmail,
+			contactFirstName,
+			contactLastName,
+			status: 'queued',
+			personalizedSubject: send.personalizedSubject,
+			queuedAt: now,
+			...(send.abVariant !== undefined ? { abVariant: send.abVariant } : {}),
+			...(send.sendTimeGroup !== undefined ? { sendTimeGroup: send.sendTimeGroup } : {}),
+		});
+		created.push({ contactId: send.contactId, emailSendId: id });
+	}
+
+	return created;
+}
 
 // Status writes (markAsSent / markAsDelivered / recordOpen / recordClick /
 // markAsBounced / markAsComplained / markAsFailed) were consolidated into
