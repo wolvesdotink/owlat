@@ -43,7 +43,6 @@ import {
 	type ContentFlag,
 	type UrlReputationCache,
 } from '@owlat/email-scanner';
-import { testFractionForSplit } from './sendVariantSplit';
 import { scannedContentDigest, scannedSubject } from './sendCommit';
 import type { ArchiveSnapshot } from './archiveQueries';
 import type { PageBucket } from './walkerCommit';
@@ -612,14 +611,15 @@ interface WinnerRemainderResult {
 // AB test lifecycle to `winner_selected`, this action sends the winner's
 // content to the audience members who were held back from the test cohort.
 //
-// Streams through the SAME checkpointed walker as phase 1: it RESETS the
-// campaign's `campaignSendJobs` row to a fresh `ab_winner` walk (the
-// declared `winningVariant`, the same `testFraction` derived from the
-// immutable `splitPercentage`) and schedules `resolveCampaignPage`. Each hop
-// then re-buckets the page by `hashFraction` and enqueues ONLY the remainder
+// Streams through the SAME checkpointed walker as phase 1: its one commit
+// (`walkerCommit.ts:commitWinnerRemainder`) RESETS the campaign's
+// `campaignSendJobs` row to a fresh `ab_winner` walk (the declared
+// `winningVariant`, the same `testFraction` derived from the immutable
+// `splitPercentage`) and schedules `resolveCampaignPage`. Each hop then
+// re-buckets the page by `hashFraction` and enqueues ONLY the remainder
 // (`h >= testFraction`) with the winning variant. No who-got-the-test scan —
-// remainder membership is recomputable from the hash — and the `createBatch`
-// idempotency guard makes a re-invocation (or resumed page) add zero
+// remainder membership is recomputable from the hash — and the page commit's
+// idempotent insert makes a re-invocation (or resumed page) add zero
 // duplicate rows.
 //
 // Skips (with reason) if: campaign missing, not an A/B test, winner not
@@ -629,56 +629,12 @@ export const sendCampaignWinnerToRemainder = internalAction({
 		campaignId: v.id('campaigns'),
 	},
 	handler: async (ctx, args): Promise<WinnerRemainderResult> => {
-		const campaign = await ctx.runQuery(internal.campaigns.sendQueries.getCampaignForSending, {
+		const committed = await ctx.runMutation(internal.campaigns.walkerCommit.commitWinnerRemainder, {
 			campaignId: args.campaignId,
 		});
-
-		if (!campaign) {
-			return { scheduled: false, skipped: true, reason: 'Campaign not found' };
+		if (committed.kind === 'skipped') {
+			return { scheduled: false, skipped: true, reason: committed.reason };
 		}
-		if (!campaign.isABTest || !campaign.abWinner) {
-			return {
-				scheduled: false,
-				skipped: true,
-				reason: 'Campaign is not an A/B test or winner not declared',
-			};
-		}
-		if (!campaign.emailTemplateId || !campaign.fromEmail || !campaign.audience) {
-			return {
-				scheduled: false,
-				skipped: true,
-				reason: 'Campaign is missing required fields',
-			};
-		}
-		if (!campaign.abTestConfig) {
-			return { scheduled: false, skipped: true, reason: 'Campaign has no A/B config' };
-		}
-
-		// Freeze the audience (idempotent — phase 1 already snapshotted any
-		// segment) so the remainder resolves against the SAME selection the test
-		// phase used. The `testFraction` is re-derived from the
-		// immutable `splitPercentage`, so the `h >= testFraction` remainder
-		// partition is IDENTICAL to the `h < testFraction` cohort phase 1 sent —
-		// the two phases are provably disjoint and exhaustive.
-		const audience = await ctx.runMutation(internal.campaigns.sendQueries.freezeCampaignAudience, {
-			campaignId: args.campaignId,
-		});
-		if (!audience) {
-			return { scheduled: false, skipped: true, reason: 'Campaign has no audience' };
-		}
-
-		await ctx.runMutation(internal.campaigns.sendJob.createSendJob, {
-			campaignId: args.campaignId,
-			audience,
-			variantMode: 'ab_winner',
-			testFraction: testFractionForSplit(campaign.abTestConfig.splitPercentage),
-			splitPercentage: campaign.abTestConfig.splitPercentage,
-			winningVariant: campaign.abWinner,
-		});
-		await ctx.scheduler.runAfter(0, internal.campaigns.send.resolveCampaignPage, {
-			campaignId: args.campaignId,
-		});
-
 		return { scheduled: true };
 	},
 });

@@ -461,6 +461,39 @@ describe('sendCampaignWinnerToRemainder — what the winner phase writes', () =>
 		expect(state.job?.startedAt).toBe(Date.now());
 	});
 
+	it("a previous release's winner-phase reset leaves this release's winner walk alone", async () => {
+		const t = convexTest(schema, modules);
+		const { campaignId } = await seedSending(t, {
+			recipients: 520,
+			campaign: {
+				isABTest: true,
+				abTestStatus: 'winner_selected',
+				abWinner: 'A',
+				abTestConfig: {
+					testType: 'subject',
+					splitPercentage: 50,
+					variantBSubject: 'Variant B {{firstName}}',
+					winnerCriteria: 'manual',
+				},
+			},
+		});
+		await t.action(internal.campaigns.send.sendCampaignWinnerToRemainder, { campaignId });
+		await hop(t, campaignId);
+		const walking = (await readState(t, campaignId)).job!;
+		expect(walking.cursor).not.toBe('');
+
+		await t.mutation(internal.campaigns.sendJob.createSendJob, {
+			campaignId,
+			audience: walking.audience,
+			variantMode: 'ab_winner',
+			testFraction: walking.testFraction,
+			splitPercentage: 50,
+			winningVariant: 'A',
+		});
+
+		expect((await readState(t, campaignId)).job).toEqual(walking);
+	});
+
 	it('writes nothing and schedules nothing when the winner is not declared', async () => {
 		const t = convexTest(schema, modules);
 		const { campaignId } = await seedSending(t, {

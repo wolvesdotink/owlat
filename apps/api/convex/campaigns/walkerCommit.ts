@@ -1,6 +1,7 @@
 /**
  * Campaign send walker commits (module) — the ONE write of a page hop of
- * `resolveCampaignPage` (`campaigns/send.ts`).
+ * `resolveCampaignPage` (`campaigns/send.ts`), and of the A/B winner phase
+ * that restarts the walk (`sendCampaignWinnerToRemainder`).
  *
  * The hop reads the job, the audience page, the route and each bucket's
  * content, and decides who goes out when; this mutation then writes all of it
@@ -29,9 +30,16 @@ import { campaignEnqueueEnvelopeFields, type CampaignEnqueueEmail } from '../del
 import { insertCampaignSends } from '../delivery/sends';
 import { transitionCampaign } from './lifecycle';
 import { decideHopStart, decidePageEnd } from './pageDecision';
-import { bumpDailySendCount } from './sendQueries';
-import { advanceJob, readSendJob, sendPlanStateValidator, writeSendPlanDay } from './sendJob';
+import { bumpDailySendCount, freezeAudience } from './sendQueries';
+import {
+	advanceJob,
+	openSendJob,
+	readSendJob,
+	sendPlanStateValidator,
+	writeSendPlanDay,
+} from './sendJob';
 import { isEmptyAudienceComplete } from './sendPlanning';
+import { testFractionForSplit } from './sendVariantSplit';
 
 const LIFECYCLE_USER_ORCHESTRATOR = 'system:orchestrator';
 
@@ -188,3 +196,50 @@ async function enqueueBucket(
 	}
 	return created.length;
 }
+
+/** Outcome of the winner phase's commit, mapped onto its result by the action. */
+export type WinnerRemainderCommit = { kind: 'scheduled' } | { kind: 'skipped'; reason: string };
+
+/**
+ * The A/B winner phase: freeze the audience (idempotent; phase 1 already
+ * snapshotted any segment), RESET the campaign's send job to a fresh
+ * `ab_winner` walk and schedule its first hop, in one transaction, so a job
+ * reset without its hop (a walk nothing drives until the watchdog finds it)
+ * cannot happen. The `testFraction` is re-derived from the immutable
+ * `splitPercentage`, so the `h >= testFraction` remainder is exactly what the
+ * `h < testFraction` cohort of phase 1 left out.
+ *
+ * A re-invocation resets the walk again; the hop of the walk it replaced finds
+ * a different `startedAt` at its commit and stops, and the new walk skips
+ * every contact that already has a row.
+ */
+export const commitWinnerRemainder = internalMutation({
+	args: { campaignId: v.id('campaigns') },
+	handler: async (ctx, { campaignId }): Promise<WinnerRemainderCommit> => {
+		const campaign = await ctx.db.get(campaignId);
+		if (!campaign) return { kind: 'skipped', reason: 'Campaign not found' };
+		if (!campaign.isABTest || !campaign.abWinner) {
+			return { kind: 'skipped', reason: 'Campaign is not an A/B test or winner not declared' };
+		}
+		if (!campaign.emailTemplateId || !campaign.fromEmail || !campaign.audience) {
+			return { kind: 'skipped', reason: 'Campaign is missing required fields' };
+		}
+		if (!campaign.abTestConfig) return { kind: 'skipped', reason: 'Campaign has no A/B config' };
+
+		const audience = await freezeAudience(ctx, campaignId);
+		if (!audience) return { kind: 'skipped', reason: 'Campaign has no audience' };
+
+		const { splitPercentage } = campaign.abTestConfig;
+		await openSendJob(ctx, {
+			campaignId,
+			audience,
+			variantMode: 'ab_winner',
+			testFraction: testFractionForSplit(splitPercentage),
+			splitPercentage,
+			winningVariant: campaign.abWinner,
+			now: Date.now(),
+		});
+		await ctx.scheduler.runAfter(0, internal.campaigns.send.resolveCampaignPage, { campaignId });
+		return { kind: 'scheduled' };
+	},
+});

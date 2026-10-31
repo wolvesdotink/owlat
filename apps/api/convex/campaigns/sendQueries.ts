@@ -223,6 +223,10 @@ export const getEmailTemplateForLanguage = internalQuery({
  * `frozenFilters`, or a segment whose live Segment is gone (nothing to
  * snapshot) all pass through unchanged. Returns the Audience the orchestrator
  * should resolve against (`null` only if the Campaign has no audience).
+ *
+ * Kept for a winner-phase action of the previous release still running during
+ * the deploy; this release freezes inside `commitWinnerRemainder`. Idempotent,
+ * so it is safe beside that commit. Remove after release N+1.
  */
 export const freezeCampaignAudience = internalMutation({
 	args: { campaignId: v.id('campaigns') },

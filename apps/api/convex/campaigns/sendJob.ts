@@ -17,8 +17,8 @@
  *     commit (`campaigns/walkerCommit.ts`) inserts and enqueues the page and
  *     calls `advanceJob` to patch `cursor`/counters and (on the last page)
  *     flip `phase: 'done'`.
- *   - For the second A/B phase, `sendCampaignWinnerToRemainder` calls
- *     `createSendJob` AGAIN to RESET the same row to a fresh `ab_winner` walk
+ *   - For the second A/B phase, `sendCampaignWinnerToRemainder`'s commit calls
+ *     `openSendJob` AGAIN to RESET the same row to a fresh `ab_winner` walk
  *     (`winningVariant` set, `phase: 'resolving'`, `cursor: ''`) and re-drives
  *     it over the audience, enqueuing only the held-back remainder.
  *   - The completion guard in `lifecycle.ts` refuses to flip the campaign to
@@ -50,13 +50,14 @@ const variantModeValidator = v.union(
  * 'resolving'`, `cursor: ''`, counters 0, supplied mode + Audience snapshot)
  * rather than resuming the prior, already-`done` walk.
  *
- * The winner-remainder action is its only caller: it fires once after winner
- * declaration and resets the job of the send it belongs to on purpose. PREP
- * opens the first-phase job inside its own commit (`openSendJob`). A
- * first-phase call here can only come from a preparation action of the
- * previous release still running during a deploy, and it must not reset a
- * walk the new preparation already started for this send, so it returns that
- * job unchanged (see `findPreparedSendJob`).
+ * Nothing in this release calls it: PREP opens the first-phase job inside its
+ * own commit and the winner phase resets it inside `commitWinnerRemainder`
+ * (both through `openSendJob`). A call here comes from a preparation or
+ * winner-phase action of the previous release still running during a deploy,
+ * and it must not reset a walk this release already started for the same
+ * send: a first-phase call returns the prepared job unchanged (see
+ * `findPreparedSendJob`), and a winner-phase call returns an `ab_winner` walk
+ * for the same winner unchanged. Remove after release N+1.
  */
 export const createSendJob = internalMutation({
 	args: {
@@ -72,6 +73,11 @@ export const createSendJob = internalMutation({
 		if (args.variantMode !== 'ab_winner') {
 			const prepared = await findPreparedSendJob(ctx, args.campaignId);
 			if (prepared) return prepared._id;
+		} else {
+			const job = await readSendJob(ctx, args.campaignId);
+			if (job?.variantMode === 'ab_winner' && job.winningVariant === args.winningVariant) {
+				return job._id;
+			}
 		}
 		return await openSendJob(ctx, { ...args, now: Date.now() });
 	},
