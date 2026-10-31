@@ -6,6 +6,7 @@ import { hasPermission, requirePermission } from '../lib/sessionOrganization';
 import { validateStringLength, STRING_LIMITS } from '../lib/inputGuards';
 import { getOrThrow, throwInvalidInput } from '../_utils/errors';
 import { requireWritableProperty } from './propertyDeletion';
+import { isLiveContact } from '../lib/contactHelpers';
 
 /**
  * Verify a contact exists.
@@ -19,10 +20,16 @@ async function verifyContactExists(
 }
 
 // Query to get all property values for a contact
+// all-members: the contact detail page every role reads (contacts.get is
+// member-readable too).
 export const listByContact = authedQuery({
 	args: { contactId: v.id('contacts') },
 	handler: async (ctx, args) => {
-		await verifyContactExists(ctx, args.contactId);
+		const contact = await verifyContactExists(ctx, args.contactId);
+		// A soft delete keeps the values until the retention sweep, so a deleted
+		// contact's phone or address would still be readable by id; it reads as
+		// having none, the way contacts.get reads it as missing.
+		if (!isLiveContact(contact)) return [];
 
 		return await ctx.db
 			.query('contactPropertyValues')
@@ -74,6 +81,7 @@ export const remove = authedMutation({
 const PROPERTY_VALUE_COUNT_LIMIT = 10_000;
 
 // Query to count how many contacts have values for a given property
+// all-members: a count shown beside a property definition; no values leave.
 export const countByProperty = authedQuery({
 	args: { propertyId: v.id('contactProperties') },
 	handler: async (ctx, args) => {
