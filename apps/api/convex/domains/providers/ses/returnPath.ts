@@ -6,7 +6,7 @@
 
 import { internal } from '../../../_generated/api';
 import { getRequired } from '../../../lib/env';
-import type { SendingDomainReturnPath } from '../types';
+import type { SendingDomainReturnPath } from '../returnPathTypes';
 import { buildSesMailFromRecords, resolveSesMailFrom } from './mailFrom';
 
 export const sesReturnPath: SendingDomainReturnPath = {

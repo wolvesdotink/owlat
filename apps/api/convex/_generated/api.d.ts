@@ -768,6 +768,7 @@ import type * as domains_providers_relayIdentityProviderDetails from '../domains
 import type * as domains_providers_relayIdentityTypes from '../domains/providers/relayIdentityTypes.js';
 import type * as domains_providers_relayIdentityView from '../domains/providers/relayIdentityView.js';
 import type * as domains_providers_relaySurface from '../domains/providers/relaySurface.js';
+import type * as domains_providers_returnPathTypes from '../domains/providers/returnPathTypes.js';
 import type * as domains_providers_ses_index from '../domains/providers/ses/index.js';
 import type * as domains_providers_ses_mailFrom from '../domains/providers/ses/mailFrom.js';
 import type * as domains_providers_ses_referenceArm from '../domains/providers/ses/referenceArm.js';
@@ -2698,6 +2699,7 @@ declare const fullApi: ApiFromModules<{
 	'domains/providers/relayIdentityTypes': typeof domains_providers_relayIdentityTypes;
 	'domains/providers/relayIdentityView': typeof domains_providers_relayIdentityView;
 	'domains/providers/relaySurface': typeof domains_providers_relaySurface;
+	'domains/providers/returnPathTypes': typeof domains_providers_returnPathTypes;
 	'domains/providers/ses/index': typeof domains_providers_ses_index;
 	'domains/providers/ses/mailFrom': typeof domains_providers_ses_mailFrom;
 	'domains/providers/ses/referenceArm': typeof domains_providers_ses_referenceArm;

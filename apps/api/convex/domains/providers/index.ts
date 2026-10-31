@@ -16,8 +16,8 @@
  *
  * The compile-time `satisfies` check on the registry catches missing methods.
  * A kind that supports a custom return-path host also declares `returnPath`
- * (`SendingDomainReturnPath` in `./types.ts`); without it the lifecycle refuses
- * a custom host for that kind.
+ * (`SendingDomainReturnPath` in `./returnPathTypes.ts`); without it the
+ * lifecycle refuses a custom host for that kind.
  */
 
 import {

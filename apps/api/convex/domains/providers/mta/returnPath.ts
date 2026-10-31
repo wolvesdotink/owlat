@@ -13,7 +13,7 @@ import {
 	parseReturnPathRelaySpfTerms,
 	resolveSpfQualifier,
 } from '../../spf';
-import type { SendingDomainReturnPath } from '../types';
+import type { SendingDomainReturnPath } from '../returnPathTypes';
 
 export const mtaReturnPath: SendingDomainReturnPath = {
 	fitsHost: () => true,
