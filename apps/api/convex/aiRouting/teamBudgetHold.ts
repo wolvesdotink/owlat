@@ -27,10 +27,10 @@ import {
 	type BudgetHoldReason,
 	type MissingJudgment,
 } from '@owlat/shared/aiRouting';
-import { internal } from '../_generated/api';
 import type { MutationCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
 import { internalMutation } from '../lib/writeFence';
+import { applyTransition } from '../inbox/processingLifecycle/stepActions';
 import type { BudgetClass } from '../lib/validators/aiRouting';
 import { budgetHeadroom } from './enforcedBudget';
 
@@ -128,9 +128,10 @@ export async function holdForBudget(
 			});
 		}
 	}
-	const outcome = await ctx.runMutation(internal.inbox.processingLifecycle.transition, {
-		inboundMessageId: request.inboundMessageId,
-		input: { to: 'failed', at, errorMessage: BUDGET_HOLD_ERROR_MESSAGE },
+	const outcome = await applyTransition(ctx, request.inboundMessageId, {
+		to: 'failed',
+		at,
+		errorMessage: BUDGET_HOLD_ERROR_MESSAGE,
 	});
 	// A message the lifecycle would not fail (taken over, moved on) is not the
 	// pipeline's any more; the walker stops either way.
