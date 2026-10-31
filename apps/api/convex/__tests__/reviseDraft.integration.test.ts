@@ -259,6 +259,57 @@ describe('reviseDraft — streaming', () => {
 		expect(buffer?.errorMessage).toContain('model exploded');
 	});
 
+	it('keeps the text streamed before a failure in the errored buffer', async () => {
+		const t = await makeT();
+		await enableFeatures(t, ['ai']);
+
+		vi.mocked(runLlmStream).mockImplementation(
+			metered(async (opts) => {
+				await opts.onTextDelta?.('Thanks for the note', 'Thanks for the note');
+				throw new Error('connection reset');
+			})
+		);
+
+		const streamId = await t.mutation(api.mail.draftStreamStore.createDraftStream, {
+			surface: 'review',
+		});
+		const res = await t.action(api.mail.ai.reviseDraft.reviseDraft, {
+			streamId,
+			instruction: 'shorter',
+			currentDraft: 'keep me',
+			surface: 'review',
+		});
+
+		expect(res).toEqual({ text: '', injectionFlagged: false, status: 'error' });
+		const buffer = await t.query(api.mail.draftStreamStore.getDraftStream, { streamId });
+		expect(buffer).toMatchObject({
+			status: 'error',
+			text: 'Thanks for the note',
+			errorMessage: 'connection reset',
+		});
+	});
+
+	it('refuses with AI off before the buffer is touched or the model is called', async () => {
+		const t = await makeT();
+		const streamId = await t.mutation(api.mail.draftStreamStore.createDraftStream, {
+			surface: 'review',
+		});
+		await t.run(async (ctx) => {
+			await ctx.db.patch(streamId, { text: 'what the person had' });
+		});
+
+		await expect(
+			t.action(api.mail.ai.reviseDraft.reviseDraft, {
+				streamId,
+				instruction: 'anything',
+				currentDraft: 'keep me',
+			})
+		).rejects.toThrow();
+		expect(runLlmStream).not.toHaveBeenCalled();
+		const buffer = await t.query(api.mail.draftStreamStore.getDraftStream, { streamId });
+		expect(buffer).toMatchObject({ status: 'streaming', text: 'what the person had' });
+	});
+
 	it('applying the revised text persists as a draft REVISION — agent original preserved, no feedback', async () => {
 		const t = await makeT();
 		await enableFeatures(t, ['ai']);

@@ -177,7 +177,7 @@ const INVENTORY: readonly CallSite[] = [
 	site('mail/interpret/gist.ts', "ctx, 'mail.gist'", 'summarize'),
 	site(
 		'mail/ai/reviseDraft.ts',
-		"ctx, 'mail.compose', args.instruction",
+		"ctx, 'mail.compose', input.instruction",
 		'draft',
 		'resolveLanguageModelForUserText'
 	),

@@ -30,6 +30,11 @@ import { checkDraftGaps } from './gapQuestions';
 import type { AskQuestion } from './composeDraftPolicy';
 import { isFencedThread } from '../interpret/staleFence';
 import { isDraftOnArrivalPaused } from '../draftPause';
+import {
+	isPlanCheckCurrent,
+	planCheckFields,
+	recordPlanCheck,
+} from '../interpret/responsePlanDraft';
 
 /**
  * Load everything the draft-on-arrival action needs for one thread, or `null`
@@ -134,6 +139,8 @@ export const persistDraftSlot = internalMutation({
 		// deploy that stopped generating variants may still pass them. Remove
 		// in the release after.
 		options: v.optional(v.array(v.string())),
+		/** The thread's checked plan, stored bound to this slot's text. */
+		plan: v.optional(v.object(planCheckFields)),
 	},
 	handler: async (ctx, args) => {
 		const thread = await ctx.db.get(args.threadId);
@@ -159,6 +166,13 @@ export const persistDraftSlot = internalMutation({
 			return;
 		}
 
+		const planRef = {
+			threadRef: { kind: 'mail', id: args.threadId },
+			draftRef: { kind: 'arrivalDraft', id: args.threadId },
+		} as const;
+		// The reply was written from this plan: stale plan input keeps no slot either.
+		if (args.plan && !(await isPlanCheckCurrent(ctx, { ...planRef, ...args.plan }))) return;
+
 		await ctx.db.patch(args.threadId, {
 			needsReply: {
 				...thread.needsReply,
@@ -172,6 +186,8 @@ export const persistDraftSlot = internalMutation({
 			},
 			updatedAt: Date.now(),
 		});
+		// In the same commit as the slot: a slot the guards above refused gets no plan.
+		if (args.plan) await recordPlanCheck(ctx, { ...planRef, ...args.plan });
 	},
 });
 
