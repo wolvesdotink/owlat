@@ -11,7 +11,7 @@ import type { EmailJob } from '../../../types.js';
 import type { MtaConfig } from '../../../config.js';
 import type { TLSSocket } from 'node:tls';
 import { getStsTlsOptions } from '../../mtaSts.js';
-import { generateReport } from '../../tlsRpt.js';
+import { generateReport } from '../../tlsRptReport.js';
 import { resolveMxDestination } from '../../mxResolver.js';
 import { resolveDaneMxDestinations } from '../../daneMxResolver.js';
 import { lookupTlsaRecords } from '../../daneResolver.js';
