@@ -39,7 +39,7 @@
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
-import { createSign, generateKeyPairSync } from 'node:crypto';
+import { createSign, generateKeyPairSync, type KeyObject } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { simpleParser } from 'mailparser';
 import { dkimVerify } from 'mailauth';
@@ -72,7 +72,7 @@ interface MailauthTools {
 		values: Record<string, string | number>,
 		folded?: boolean
 	): Buffer | string;
-	getPrivateKey(key: string | Buffer): import('node:crypto').KeyObject;
+	getPrivateKey(key: string | Buffer): KeyObject;
 }
 interface DkimBodyHasher {
 	update(chunk: Buffer): void;

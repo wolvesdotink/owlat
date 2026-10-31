@@ -10,8 +10,8 @@ import type { MailSyncConfig } from '../config.js';
 const { instances, resetInstances } = vi.hoisted(() => {
 	const instances: Array<{
 		account: { accountId: string };
-		start: ReturnType<typeof import('vitest').vi.fn>;
-		stop: ReturnType<typeof import('vitest').vi.fn>;
+		start: ReturnType<typeof vi.fn>;
+		stop: ReturnType<typeof vi.fn>;
 		isStopped: boolean;
 	}> = [];
 	return {

@@ -16,7 +16,7 @@ import tls from 'node:tls';
 
 import { serializeStartTls } from './commands';
 import { SmtpError, type SmtpPhase, type SmtpTlsCause } from './errors';
-import { ReplyReader } from './replyReader';
+import type { ReplyReader } from './replyReader';
 import { isPositiveCompletion } from './reply';
 import {
 	DEFAULT_MIN_TLS_VERSION,

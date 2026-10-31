@@ -1,6 +1,6 @@
 import { parsePluginId, type PluginId } from '@owlat/plugin-kit';
 import { describe, expect, it } from 'vitest';
-import { orderHostedContributions, PluginHostError } from '../index';
+import { orderHostedContributions, type PluginHostError } from '../index';
 
 const pluginId = (value: string): PluginId => parsePluginId(value);
 

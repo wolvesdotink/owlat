@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type * as SetupValidationHttp from '../setupValidationHttp';
 
 // Mock DNS resolution so the re-check sees a public name pointing at an internal
 // address (public-name → internal-IP), without touching the network.
@@ -11,7 +12,7 @@ vi.mock('node:dns/promises', () => ({
 // the test asserts it is NEVER called for an internal-resolving host.
 const fetchProviderMock = vi.fn();
 vi.mock('../setupValidationHttp', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../setupValidationHttp')>();
+	const actual = await importOriginal<typeof SetupValidationHttp>();
 	return { ...actual, fetchSetupProvider: (...args: unknown[]) => fetchProviderMock(...args) };
 });
 

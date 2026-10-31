@@ -9,7 +9,7 @@
  * STARTTLS upgrade can rebind the same connection to TLS.
  */
 
-import { ByteBudget } from './budget.js';
+import type { ByteBudget } from './budget.js';
 import type { SmtpAddress } from './types.js';
 
 const CR = 0x0d;
