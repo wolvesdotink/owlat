@@ -125,6 +125,9 @@ export const run = internalAction({
 				for (const scope of scopes) {
 					let hasMore = true;
 					while (hasMore) {
+						// checkpoint: one batch of a rebuild's clear; the scope's state row
+						// goes with the first batch, so nothing reads or moves the buckets
+						// left behind, and a rebuild re-run drops them.
 						hasMore = await ctx.runMutation(
 							internal.migrations['0048_backfill_counters'].clearScope,
 							{ scope }
@@ -132,6 +135,8 @@ export const run = internalAction({
 					}
 				}
 			}
+			// checkpoint: one owner's scopes; a re-run leaves a ready scope alone and
+			// gives a walking one another step from its cursor, never a fresh walk.
 			const outcome = await ctx.runMutation(
 				internal.migrations['0048_backfill_counters'].startScopes,
 				{ scopes }

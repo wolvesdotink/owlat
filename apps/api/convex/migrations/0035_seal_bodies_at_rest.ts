@@ -259,27 +259,19 @@ async function drainTable(runPage: PageRunner): Promise<number> {
 export const run = internalAction({
 	args: {},
 	handler: async (ctx): Promise<{ sealed: SealCounts }> => {
-		const inboundMessages = await drainTable((a) =>
-			ctx.runMutation(internal.migrations['0035_seal_bodies_at_rest'].sealInboundMessagesPage, a)
-		);
-		const mailMessages = await drainTable((a) =>
-			ctx.runMutation(internal.migrations['0035_seal_bodies_at_rest'].sealMailMessagesPage, a)
-		);
-		const mailMessageBodies = await drainTable((a) =>
-			ctx.runMutation(internal.migrations['0035_seal_bodies_at_rest'].sealMailMessageBodiesPage, a)
-		);
-		const unifiedMessages = await drainTable((a) =>
-			ctx.runMutation(internal.migrations['0035_seal_bodies_at_rest'].sealUnifiedMessagesPage, a)
-		);
-		const mailDrafts = await drainTable((a) =>
-			ctx.runMutation(internal.migrations['0035_seal_bodies_at_rest'].sealMailDraftsPage, a)
-		);
-		const conversationThreads = await drainTable((a) =>
-			ctx.runMutation(
-				internal.migrations['0035_seal_bodies_at_rest'].sealConversationThreadsPage,
-				a
-			)
-		);
+		const migration = internal.migrations['0035_seal_bodies_at_rest'];
+		const sealTable = (page: typeof migration.sealInboundMessagesPage) =>
+			drainTable((args) => {
+				// checkpoint: one page of a table walk; sealing skips a value that is
+				// already sealed, so a re-run after an interrupt redoes nothing.
+				return ctx.runMutation(page, args);
+			});
+		const inboundMessages = await sealTable(migration.sealInboundMessagesPage);
+		const mailMessages = await sealTable(migration.sealMailMessagesPage);
+		const mailMessageBodies = await sealTable(migration.sealMailMessageBodiesPage);
+		const unifiedMessages = await sealTable(migration.sealUnifiedMessagesPage);
+		const mailDrafts = await sealTable(migration.sealMailDraftsPage);
+		const conversationThreads = await sealTable(migration.sealConversationThreadsPage);
 		// Storage blobs (raw `.eml` + body blobs) — an action page, since blob
 		// contents are only readable from an action.
 		const mailBlobs = await drainTable((a) =>

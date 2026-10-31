@@ -76,6 +76,8 @@ export const run = internalAction({
 		let scanned = 0;
 		let moved = 0;
 		for (;;) {
+			// checkpoint: one page of messages, its inserts and column clears in one
+			// commit; a row already moved is skipped, so a re-run moves nothing twice.
 			const result: PageResult = await ctx.runMutation(
 				internal.migrations['0049_move_message_bodies'].movePage,
 				{ cursor }
