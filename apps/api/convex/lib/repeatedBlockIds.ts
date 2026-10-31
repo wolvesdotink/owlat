@@ -1,6 +1,6 @@
 /**
  * Repair for email documents that repeat a Block or accordion-section id
- * (issue #1083, migration 0055).
+ * (migration 0055).
  *
  * Before duplication renewed descendant ids, duplicating a Container, Hero,
  * Columns or Accordion gave only the copied root a new id, and inserting the
@@ -188,8 +188,8 @@ function blockIdsOf(content: string): Set<string> {
  * The row's `translations` with the overlays carried to the ids the editor
  * gave repeated Blocks; null when nothing changes.
  *
- * The editor renews every repeat of a Block id when it loads a document
- * (#1430), with the deterministic `normalizeBlockTreeIds`. Saving that
+ * The editor renews every repeat of a Block id when it loads a document,
+ * with the deterministic `normalizeBlockTreeIds`. Saving that
  * document would otherwise leave each renewed copy without the translation it
  * shared until then. `repeatedBlockIdRenewals` of the stored `previousContent`
  * names the ids the editor chose; each one present in `nextContent` gets, in

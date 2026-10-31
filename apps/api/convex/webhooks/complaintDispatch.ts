@@ -29,7 +29,7 @@ import type { UnresolvedFeedbackSuppression } from '../lib/literalValidators';
  * branches run to completion before the feedback-loop observation is even
  * attempted.
  *
- * ONE ATTRIBUTION RULE FOR EVERY COMPLAINT THAT NAMES NO SEND (#1194, #1227).
+ * ONE ATTRIBUTION RULE FOR EVERY COMPLAINT THAT NAMES NO SEND.
  * A complaint that resolves to a Send moves that Send, whose recipient is the
  * address to block. A complaint that names no Send, because its Message-ID was
  * redacted (RFC 5965 §3.2, e.g. Gmail) or matches nothing here, carries only an
@@ -81,7 +81,7 @@ export async function dispatchComplaint(
 			}
 		)) as TransitionOutcome;
 		if (isSendNotFound(outcome)) {
-			// The id names no Send (#1194): the provider id was never stored, or the
+			// The id names no Send: the provider id was never stored, or the
 			// mail was not sent by this deployment at all. The complaint is stored
 			// for replay either way; the named address is blocked only on proof.
 			const suppression = await suppressAttributedComplainer(ctx, e);

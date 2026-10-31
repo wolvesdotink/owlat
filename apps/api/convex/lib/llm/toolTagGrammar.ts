@@ -1,5 +1,5 @@
 /**
- * The tool-tag grammar behind lib/llm/toolMarkup.ts (#1254), split out to keep
+ * The tool-tag grammar behind lib/llm/toolMarkup.ts, split out to keep
  * that module under the size cap. Pure (no ctx, no 'use node').
  *
  * One hand-written lexer ({@link lexTag}) decides, for the text at a `<`,

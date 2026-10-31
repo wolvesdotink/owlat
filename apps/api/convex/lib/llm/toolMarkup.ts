@@ -1,5 +1,5 @@
 /**
- * Tool-call markup a model typed into its reply text (#1254).
+ * Tool-call markup a model typed into its reply text.
  *
  * A model that does not return a structured tool call can print the call as
  * text instead: `<invoke name="recallKnowledge">`, its `<parameter>`s, then a

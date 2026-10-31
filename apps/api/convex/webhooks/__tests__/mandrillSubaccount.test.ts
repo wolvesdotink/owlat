@@ -1,5 +1,5 @@
 /**
- * Mandrill webhook events from other subaccounts (#1243).
+ * Mandrill webhook events from other subaccounts.
  *
  * A Mandrill webhook carries every subaccount's events. `unsub` and `reject`
  * act on an ADDRESS without a matching Send, so on a shared account another

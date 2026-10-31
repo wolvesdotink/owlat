@@ -78,7 +78,7 @@ describe('webhookPayloads retention cap', () => {
 
 	it('keeps a body that fits the document cap verbatim and still parseable', async () => {
 		const t = convexTest(schema, modules);
-		// 100K code units: below the document cap, so this used to be retained
+		// 100K code units: below the document cap, so this must be retained
 		// byte for byte. A truncated head is not parseable JSON, which is a
 		// downgrade for an adapter that opted into raw retention to replay a
 		// disputed batch — the truncation only has to start where the cap does.

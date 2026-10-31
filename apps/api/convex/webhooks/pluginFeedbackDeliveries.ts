@@ -28,7 +28,7 @@
  * HOW LONG A ROW LIVES depends on what its digest names. A digest that covers
  * the signed timestamp (the parameterized HMAC) names one request, which stops
  * verifying with its tolerance window; the row lives exactly that long, in
- * flight or completed. A Svix digest names a MESSAGE (#1367): the sender
+ * flight or completed. A Svix digest names a MESSAGE: the sender
  * re-signs every retry with a new timestamp, so the same name keeps arriving
  * for as long as the sender retries. Its claim carries `receiptExpiresAt`, and
  * then the row's `expiresAt` is a lease while in flight and the receipt's end
@@ -175,7 +175,7 @@ function inFlightExpiresAt(
  * A completed claim on a digest bound to its timestamp keeps its `expiresAt`:
  * past the signature tolerance window the same bytes can no longer verify, and
  * remembering them buys nothing. A claim that carries `receiptExpiresAt` (a Svix
- * message, #1367) is extended to it here: from now on a re-signed retry of the
+ * message) is extended to it here: from now on a re-signed retry of the
  * message is the lost-acknowledgement case, answered 200 and applied nothing.
  * Only the receipt is kept that long, never the in-flight hold, so a run that
  * dies before reaching here blocks the message for one lease, not two days.

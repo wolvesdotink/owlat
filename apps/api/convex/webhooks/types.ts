@@ -114,7 +114,7 @@ export const INBOUND_REPLAY_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
 /**
  * Set by an adapter on an event the provider says came from outside this
- * deployment's sending scope (Mandrill: another subaccount, #1243). Unless it
+ * deployment's sending scope (Mandrill: another subaccount). Unless it
  * matches one of our Sends by message id, provider and `recipient`, the
  * dispatcher lets it act on no address (`./sendingScope.ts`).
  */
@@ -282,9 +282,9 @@ export type InboundEvent =
 			 * The complainer's address. Alone, when the complaint has no
 			 * recoverable Message-ID (RFC 5965 §3.2, e.g. Gmail FBL redaction).
 			 * Beside a Message-ID, when the provider names who complained: the
-			 * dispatcher reads it only when that id matches no Send (#1194).
+			 * dispatcher reads it only when that id matches no Send.
 			 * Either way it reaches the blocklist only when the event proves this
-			 * deployment sent the mail (`complaintDispatch.ts`, #1227); otherwise
+			 * deployment sent the mail (`complaintDispatch.ts`); otherwise
 			 * the complaint is counted as `unattributed` and the address dropped.
 			 */
 			recipient?: string;
@@ -354,7 +354,7 @@ export type InboundEvent =
 	/**
 	 * ONE classified 4xx/5xx response, for MEASUREMENT ONLY. It moves no send
 	 * status, suppresses nobody and penalises no reputation — the dispatcher routes
-	 * it to a counter and stops there (issue #501). The cell and the arm are NOT on
+	 * it to a counter and stops there. The cell and the arm are NOT on
 	 * the wire: the MTA knows neither, so they are resolved from the send's
 	 * `sendAssignments` row by the same join every other transport outcome uses.
 	 */

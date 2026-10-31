@@ -206,7 +206,7 @@ function mtaSpamScoreOf(raw: unknown): number | undefined {
  * that starts with `$`, contains a byte outside printable ASCII, or runs past
  * 1024 characters. `$x: y` is a perfectly legal RFC 5322 field name, and
  * `@owlat/mail-message` lower-cases whatever it finds before the colon without
- * a charset restriction — so one crafted header used to throw inside the
+ * a charset restriction — so one crafted header would throw inside the
  * route's try/catch, answer 500, and burn the MTA's six retries into the DLQ
  * on a path whose whole invariant is that mail is never dropped. The legacy
  * `/webhooks/mta` route never had this failure only because its dispatcher

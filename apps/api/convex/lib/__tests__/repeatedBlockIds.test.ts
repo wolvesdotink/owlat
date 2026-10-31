@@ -1,5 +1,5 @@
 /**
- * The repeated-id repair behind migration 0055 (issue #1083).
+ * The repeated-id repair behind migration 0055.
  *
  * Emails saved before duplication renewed descendant ids hold copies of
  * composite Blocks that share ids. The repair keeps the first occurrence of

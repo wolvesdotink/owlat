@@ -5,9 +5,9 @@
  * single is the set of things a declaration has to be JOINED to before it means
  * anything: a `requiredEnvVars` name is a promise that `lib/env.ts` can read that
  * variable and that the setup surfaces push it into the Convex function runtime;
- * a `kind` is a promise that an adapter exists. Each of those joins lived in a
- * different file, and until now each was kept by a human remembering to make it —
- * the N+1 checklist in §4 of the plan, executed by hand.
+ * a `kind` is a promise that an adapter exists. Each of those joins lives in a
+ * different file, and without this suite each is kept only by a human
+ * remembering to make it.
  *
  * Every failure they let through is SILENT and LATE:
  *

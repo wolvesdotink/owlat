@@ -236,7 +236,7 @@ async function terminalResult(
 	const latencyMs = Date.now() - startTime;
 	// Health stays keyed by provider KIND: `providerHealth` holds one row per
 	// kind and the routing strategies compare against that field. Instances of a
-	// kind therefore share a health row, exactly as before this refactor.
+	// kind therefore share a health row.
 	await ctx.scheduler.runAfter(0, internal.lib.sendProviders.health.recordSendResult, {
 		providerType: transport.kind,
 		success: result.success,

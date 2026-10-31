@@ -107,8 +107,8 @@ interface LlmStreamResult {
  * Stream errors surface as a thrown error (after any prior text deltas were
  * delivered) for the caller to persist as a `error`/`stopped` message. A
  * failure after a finished step throws an `LlmPartialUsageError` carrying the
- * usage of the finished steps, and an aborted stream returns that usage
- * (#1256): those steps were billed either way.
+ * usage of the finished steps, and an aborted stream returns that usage:
+ * those steps were billed either way.
  */
 /** The stream's step limit: the caller's, capped by its task's tool rounds (Phase 5). */
 function maxStepsOf(opts: LlmStreamOptions): number {

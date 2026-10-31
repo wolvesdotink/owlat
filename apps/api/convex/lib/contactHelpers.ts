@@ -33,7 +33,7 @@ export async function getLiveContact(
  * `by_email` can return deleted rows ahead of the live one: rows sharing an
  * email come back in creation order, and an email edit moves an older row onto
  * an address without changing its creation time. An unfiltered `.first()`
- * landed on a deleted row (#1242).
+ * can land on a deleted row.
  *
  * Read cost: one read on `by_email_and_deleted_at` that stops at the first
  * live row, no matter how many deleted rows share the email.

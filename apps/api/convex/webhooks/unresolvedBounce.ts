@@ -30,13 +30,13 @@ type UnresolvedEvent =
 	| (InboundEventOf<'email.complained'> & { providerMessageId: string });
 
 /**
- * Keep a negative signal whose provider message id matched no Send (#1194).
+ * Keep a negative signal whose provider message id matched no Send.
  *
  * For `email.bounced` / `email.complained` the silent ack hid a real failure
  * class: a bounce the MTA attributed (so the worker-side unattributed-bounce
  * counter never fires) but which is lost at the Convex resolve step, e.g. the
  * VERP-token-vs-stored-providerMessageId mismatch (PR-01), or a send whose
- * provider id never got stored (#1184). So:
+ * provider id never got stored. So:
  *
  *  - a structured `unresolved_bounce` warning goes to the function log, as
  *    before, carrying the event kind and provider message id but never an
@@ -48,7 +48,7 @@ type UnresolvedEvent =
  * complaint handler has already used it, from the event in memory) and not the
  * remote server's diagnostic, which often quotes the recipient: only the SMTP
  * status code read out of it (`bounceStatusCodeOf`). An event from outside the
- * sending scope (#1243) also stores a hash of its recipient keyed by the
+ * sending scope also stores a hash of its recipient keyed by the
  * message id, which avoids a plaintext address but is not anonymous: a guessed
  * address can be confirmed against it. A replay compares it; nothing reads it
  * back.
@@ -86,7 +86,7 @@ export async function recordUnresolvedFeedback(
 
 /**
  * Keep a complaint that arrived WITHOUT a message id and did not prove this
- * deployment sent the mail, so it blocked no one (#1227). Without this row the
+ * deployment sent the mail, so it blocked no one. Without this row the
  * complaint would vanish: there is no Send to move and no address to keep.
  *
  * Same privacy and never-throws rules as {@link recordUnresolvedFeedback}: the
@@ -140,8 +140,8 @@ async function store(
 }
 
 /**
- * What a replay needs to hold an out-of-scope event (#1243,
- * `./sendingScope.ts`) to the same match the webhook could not make yet: the
+ * What a replay needs to hold an out-of-scope event (`./sendingScope.ts`)
+ * to the same match the webhook could not make yet: the
  * recipient, as a hash keyed by the message id. Undefined for an in-scope
  * event, which stores nothing about its recipient.
  */

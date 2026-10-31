@@ -15,11 +15,11 @@ import type { TransitionOutcome } from '../delivery/sendLifecycle';
 import { findSendByProviderMessageId, scopeRecipientHash } from './sendingScopeQueries';
 
 // ============================================================================
-// Unresolved feedback (#1194).
+// Unresolved feedback.
 //
-// A bounce or complaint whose provider message id matched no Send used to be
-// logged and dropped. `./unresolvedBounce.ts` now stores it here instead, and
-// this module owns the rows from then on:
+// A bounce or complaint whose provider message id matched no Send must not be
+// dropped: `./unresolvedBounce.ts` stores it here, and this module owns the
+// rows from then on:
 //   - the replay cron retries each row a few times over the first day, which
 //     covers a webhook that raced the completion storing the id;
 //   - an operator replays every open row after a repair writes ids back
@@ -30,7 +30,7 @@ import { findSendByProviderMessageId, scopeRecipientHash } from './sendingScopeQ
 //     as the raw `webhookPayloads` they came from.
 //
 // A complaint that arrived with NO message id and no proof this deployment
-// sent the mail (#1227) is stored here too, without an id. It can never be
+// sent the mail is stored here too, without an id. It can never be
 // replayed, so `record` writes it already closed (`no_message_id`): it counts
 // in the 30-day numbers and never enters the replay queue or the open backlog.
 //
@@ -98,7 +98,7 @@ function strongerSuppression(
  * bounce never downgrades a hard one.
  *
  * A ROW WITHOUT A MESSAGE ID is a complaint the provider sent with the id
- * redacted (#1227). Nothing identifies a redelivery of it without the address,
+ * redacted. Nothing identifies a redelivery of it without the address,
  * so every call adds a row, and it is closed on arrival because no replay can
  * ever match it.
  *
@@ -193,7 +193,7 @@ async function transitionFor(
 }
 
 /**
- * An out-of-scope row (#1243) whose id now names a Send that is not the match
+ * An out-of-scope row whose id now names a Send that is not the match
  * the webhook was waiting for: another provider kind, or a recipient whose
  * keyed hash differs. Refused, like a lifecycle refusal, rather than applied.
  * No Send yet is not a mismatch; the row stays open for the next replay.
@@ -342,8 +342,8 @@ export const purgeExpired = internalMutation({
 });
 
 /**
- * Operator, before redeploying a release older than #1227: delete every row
- * without a message id, because that release's schema requires one and refuses
+ * Operator, before redeploying an older release whose schema requires a message
+ * id on every row: delete every row without one, because that release refuses
  * to deploy while such rows exist. They are counters with no address, and the
  * retention purge would remove them after 90 days anyway. Walks itself batch by
  * batch; run it again right before the redeploy, and it reports `deleted: 0`

@@ -20,13 +20,12 @@
  * table) and the WRITER (`blockedEmails.addFromEvent`'s dedupe, mirror and
  * audit behaviour, proven against a real database).
  *
- * THE DISPOSITION HALF IS ALSO A PARITY SUITE. The policy used to live in one
- * vendor module the shared `email.failed` handler called by name; it now splits
- * across the Mandrill adapter (which reason is a recipient truth) and one
+ * THE DISPOSITION HALF IS ALSO A PARITY SUITE. The policy splits across the
+ * Mandrill adapter (which reason is a recipient truth) and one
  * provider-agnostic effect table (what Owlat does about one). Every assertion
  * below is stated in terms of the mutations the dispatcher runs, so it holds
- * across that move unchanged — which is the point: a Mandrill deployment must
- * not be able to tell the difference.
+ * however the policy is split between them — which is the point: a Mandrill
+ * deployment must not be able to tell the difference.
  */
 
 import { convexTest } from 'convex-test';
@@ -43,7 +42,7 @@ import {
 import { dispatchInboundEvent } from '../dispatcher';
 
 const RECIPIENT = 'blocked@example.com';
-/** A minute ago: a reject older than the replay window suppresses nobody (#1228). */
+/** A minute ago: a reject older than the replay window suppresses nobody. */
 const EVENT_TS = Math.floor(Date.now() / 1000) - 60;
 
 /** The event the real adapter produces for a reject with this reason. */
@@ -109,7 +108,7 @@ describe('which reject reasons are recipient truths', () => {
 
 	// A `spam` reject is the denylist entry a complaint left (Mandrill adds an
 	// address when its complaint comes back through a feedback loop), so it is
-	// recipient truth and keeps blocking (#1249).
+	// recipient truth and keeps blocking.
 	it('suppresses a spam reject as a complaint, not a bounce', async () => {
 		const calls = await dispatchReject('spam');
 		expect(suppressions(calls)[0]!.args).toMatchObject({ reason: 'complained' });
@@ -142,7 +141,7 @@ describe('which reject reasons are recipient truths', () => {
 	// THE SENDER-SIDE REASONS. Every one of these says something about our
 	// account, our sending domain or our message — none of them about the person.
 	// `rule` is one of them: a rules-engine rule can match the subject, sender,
-	// tags, template or API key, and writes nothing to the denylist (#1249).
+	// tags, template or API key, and writes nothing to the denylist.
 	it.each([
 		'invalid-sender',
 		'invalid',
@@ -207,7 +206,7 @@ describe('which reject reasons are recipient truths', () => {
 	// mailable on ours.
 	it('still fails the send, suppression first', async () => {
 		const calls = await dispatchReject('hard-bounce');
-		// Inside the replay claim the reject is applied under (#1228).
+		// Inside the replay claim the reject is applied under.
 		expect(calls.map((call) => call.name)).toEqual([
 			fnName(internal.webhooks.inboundEventClaims.claim),
 			fnName(internal.blockedEmails.addFromEvent),

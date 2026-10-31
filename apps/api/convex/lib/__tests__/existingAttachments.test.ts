@@ -1,9 +1,9 @@
 /**
  * `readExistingAttachmentBytes` over a raw `.eml` (the "attach existing" path of
  * a Postbox draft and a Team inbox reply, for mail with no stored parts): the
- * copied attachment is the part's bytes exactly. The walk used to read the
- * message through `TextDecoder('latin1')`, which is windows-1252 and changed
- * bytes 0x80-0x9F of an 8-bit or binary part (#1279).
+ * copied attachment is the part's bytes exactly. The walk must not read the
+ * message through `TextDecoder('latin1')`: that is windows-1252 and changes
+ * bytes 0x80-0x9F of an 8-bit or binary part.
  */
 import { describe, expect, it } from 'vitest';
 import type { Id } from '../../_generated/dataModel';

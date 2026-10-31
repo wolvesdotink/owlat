@@ -833,7 +833,7 @@ describe('dispatchInboundEvent — inbound + channel ingestion', () => {
 
 		expect(runActionCalls).toHaveLength(1);
 		expect(runActionCalls[0]?.ref).toBe(ref(internal.e2ee.verifyInboundSignature.forInbound));
-		// The parsed text is the whole displayed body, not a raw message (#1300).
+		// The parsed text is the whole displayed body, not a raw message.
 		expect(runActionCalls[0]?.args).toMatchObject({ bareBody: true });
 		const args = runMutationCalls[0]?.args as Record<string, unknown>;
 		expect(args['isInboundSignatureValid']).toBe(true);
@@ -1128,7 +1128,7 @@ describe('dispatchInboundEvent — unresolved-bounce observability', () => {
 		expect(runMutationCalls[0]?.ref).toBe(
 			ref(internal.delivery.sendLifecycle.transitionByProviderMessageId)
 		);
-		// …and the no-row outcome is stored for replay (#1194), never suppressed:
+		// …and the no-row outcome is stored for replay, never suppressed:
 		// a bounce names no address, and a soft one says nothing about it anyway…
 		expect(runMutationCalls[1]).toEqual({
 			ref: ref(internal.webhooks.unresolvedFeedback.record),
@@ -1222,7 +1222,7 @@ describe('dispatchInboundEvent — unresolved-bounce observability', () => {
 });
 
 /**
- * #1194 — a complaint whose Message-ID matches no send. The complaint is stored
+ * A complaint whose Message-ID matches no send. The complaint is stored
  * either way; the address it names is blocked only when the event PROVES this
  * deployment sent the mail (the MTA's VERP-backed production tag). A provider's
  * signature proves the provider, not which deployment's mail it was about.

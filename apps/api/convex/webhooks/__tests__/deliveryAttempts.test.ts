@@ -1,6 +1,6 @@
 /**
  * Outbound webhook delivery against a real database: the attempt lifecycle
- * (issue #809 finding 7) and the bounded response preview (finding 8).
+ * and the bounded response preview.
  *
  * The delivery action runs by calling its handler directly (see
  * `deliveryHarness.ts`). Timers are faked so nothing the mutations schedule runs on its own:

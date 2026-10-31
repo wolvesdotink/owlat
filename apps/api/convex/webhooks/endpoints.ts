@@ -103,8 +103,7 @@ export const listByOrganization = authedQuery({
 
 // Firing webhook notifications resolves the per-event active set inside the
 // internal webhooks/deliveryQueries.enqueueFanoutDeliveries mutation (scheduled
-// by webhooks/scheduleFanout.ts). A public `listByEvent` authedQuery duplicating that
-// logic used to live here with no caller — removed.
+// by webhooks/scheduleFanout.ts).
 
 // ============ MUTATIONS ============
 

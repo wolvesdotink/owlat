@@ -30,7 +30,7 @@ export async function decrementContactCount(ctx: MutationCtx, delta: number = 1)
  *
  * There is deliberately no counting fallback: a missing cache reads as `null`
  * ("pending") and `contacts/countReconcile.ts` recovers it in bounded
- * transactions, so no reader ever scans the contacts table (#917).
+ * transactions, so no reader ever scans the contacts table.
  */
 export async function getCachedContactCount(ctx: QueryCtx | MutationCtx): Promise<number | null> {
 	return await readCachedContactCount(ctx.db);

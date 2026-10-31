@@ -17,7 +17,7 @@ export const abVariantValidator = v.union(v.literal('A'), v.literal('B'));
 export const bounceTypeValidator = v.union(v.literal('hard'), v.literal('soft'));
 /**
  * What a bounce or complaint whose message id matched no Send did to the
- * address it named (`unresolvedFeedback.suppression`, #1194):
+ * address it named (`unresolvedFeedback.suppression`):
  *  - `suppressed`: on the blocklist, because the event proved this deployment
  *    sent the mail;
  *  - `unattributed`: named an address but carried no such proof, so nothing

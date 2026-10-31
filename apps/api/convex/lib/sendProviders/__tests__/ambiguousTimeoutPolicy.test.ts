@@ -1,5 +1,5 @@
 /**
- * ONE AMBIGUOUS-TIMEOUT POLICY, READ FROM THE CATALOG (issue #860, finding 1).
+ * ONE AMBIGUOUS-TIMEOUT POLICY, READ FROM THE CATALOG.
  *
  * Adapters only report "timed out after dispatch" (`AMBIGUOUS_TIMEOUT`).
  * `sendProviderDispatch` decides the rest from two catalog fields, for every

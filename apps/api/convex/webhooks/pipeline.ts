@@ -50,8 +50,8 @@ const MAX_WEBHOOK_BODY_BYTES = 5 * 1024 * 1024;
  * as before; the send-provider feedback parsers name their kind, which is what
  * lets `./adapters/index.ts` prove at compile time that the key a route is
  * dispatched by IS the source the pipeline rate-limits and audits under. Keyed
- * and sourced are two spellings of one fact, and they used to be kept in
- * agreement only by a runtime test in another folder.
+ * and sourced are two spellings of one fact, and the type keeps them in
+ * agreement.
  */
 export interface InboundParser<S extends string = string> {
 	/** Wire identifier for audit-payload `source` field and logs. */

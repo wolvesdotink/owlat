@@ -1,7 +1,7 @@
 /**
- * The one `[1 s, 1 h]` clamp every remote retry delay goes through (issue #860,
- * finding 8). It used to be restated at four sites, and the copies disagreed on
- * whether a non-finite value was checked at all.
+ * The one `[1 s, 1 h]` clamp every remote retry delay goes through. Restated
+ * per site, the copies would disagree on whether a non-finite value is checked
+ * at all.
  */
 
 import { describe, expect, it } from 'vitest';

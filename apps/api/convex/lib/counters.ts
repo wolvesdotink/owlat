@@ -2,11 +2,11 @@
  * Maintained counts (plan 3.1) — the engine behind `counterBuckets` and
  * `counterScopes` (schema/counters.ts).
  *
- * A count the UI shows used to be a scan: the label rail read up to 2,000 unread
- * messages to tally labels, a section header read up to 100 of its unread rows,
- * the Workbench read 151 messages to print "new mail", and the campaign,
- * template and automation facets walked every row of every status. Every one of
- * those reads a whole document (bodies included) to add one to a number.
+ * A count the UI shows must not be a scan: tallying labels for the label rail
+ * would read up to 2,000 unread messages, a section header up to 100 of its
+ * unread rows, the Workbench 151 messages to print "new mail", and the
+ * campaign, template and automation facets every row of every status. Every one
+ * of those reads a whole document (bodies included) to add one to a number.
  *
  * Here each such number is a bucket row. The write that changes a source row
  * moves its buckets in the SAME transaction: the caller hands
