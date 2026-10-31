@@ -5,6 +5,7 @@ devdep:apps/docs/package.json:@vue/server-renderer
 devdep:apps/web/package.json:@faker-js/faker
 devdep:apps/web/package.json:autoprefixer
 devdep:apps/web/package.json:postcss
+export:apps/desktop/src/window.ts:startDragging
 export:apps/mta/src/bounce/pipeline.ts:PhaseOutcome
 export:apps/mta/src/bounce/types.ts:InboundAttachmentMeta
 export:apps/mta/src/dispatch/pipeline.ts:PhaseOutcome
