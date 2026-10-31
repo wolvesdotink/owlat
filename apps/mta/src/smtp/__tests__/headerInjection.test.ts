@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import Redis from 'ioredis-mock';
+import type * as SmtpClientModule from '@owlat/smtp-client';
 
 /**
  * Regression-lock for audit item PR-43 (Header-injection, RFC 5322 §2.2).
@@ -25,7 +26,7 @@ const { connectMock, sendEnvelopeMock, quitMock, acquireMock, releaseMock } = vi
 }));
 
 vi.mock('@owlat/smtp-client', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('@owlat/smtp-client')>();
+	const actual = await importOriginal<typeof SmtpClientModule>();
 	return {
 		...actual,
 		SmtpConnection: { connect: connectMock },

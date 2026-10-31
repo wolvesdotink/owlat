@@ -1,7 +1,10 @@
 /** Periodic ownership renewal for live distributed SMTP pool leases. */
 
-import type { GlobalConnectionLease, PoolCoordinationProtocol } from './poolGlobalCap.js';
-import { PoolGlobalCap } from './poolGlobalCap.js';
+import type {
+	GlobalConnectionLease,
+	PoolCoordinationProtocol,
+	PoolGlobalCap,
+} from './poolGlobalCap.js';
 
 export interface LeaseHeartbeatTarget {
 	key: string;

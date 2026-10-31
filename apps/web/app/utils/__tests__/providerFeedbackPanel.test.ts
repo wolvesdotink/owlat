@@ -21,6 +21,7 @@ import {
 	providerFeedbackSigningKeyEnvVar,
 	providerFeedbackWebhookUrl,
 } from '../providerFeedbackPanel';
+import type * as SendProviderCatalogModule from '@owlat/shared/sendProviderCatalog';
 
 const SITE = 'https://example.convex.site';
 
@@ -118,7 +119,7 @@ describe('new feedback mechanisms use the transport-keyed status read', () => {
 	): Promise<{ panel: string | undefined; url: string }> {
 		vi.resetModules();
 		vi.doMock('@owlat/shared/sendProviderCatalog', async (importOriginal) => {
-			const actual = await importOriginal<typeof import('@owlat/shared/sendProviderCatalog')>();
+			const actual = await importOriginal<typeof SendProviderCatalogModule>();
 			return {
 				...actual,
 				coreSendProviderCatalogEntry: (asked: string | undefined) =>

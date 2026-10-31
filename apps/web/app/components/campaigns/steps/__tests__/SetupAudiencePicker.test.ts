@@ -8,7 +8,7 @@
 import { mount } from '@vue/test-utils';
 import { describe, expect, it } from 'vitest';
 import type { FunctionReturnType } from 'convex/server';
-import { api } from '@owlat/api';
+import type { api } from '@owlat/api';
 import SetupAudiencePicker from '../SetupAudiencePicker.vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
