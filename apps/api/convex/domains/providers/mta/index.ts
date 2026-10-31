@@ -24,9 +24,12 @@ import {
 } from '../../spf';
 import type { DnsRecord, DnsRecords } from '../../domains';
 import type { MtaIdentity, SendingDomainProviderModule } from '../types';
+import { mtaReturnPath } from './returnPath';
 
 export const mtaProvider: SendingDomainProviderModule<'mta'> = {
 	kind: 'mta',
+
+	returnPath: mtaReturnPath,
 
 	async registerDomain(domain, options) {
 		// Per-domain VERP return-path host: a custom host set on the `domains`

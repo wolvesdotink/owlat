@@ -153,6 +153,32 @@ describe('deployment.relay readiness projection', () => {
 		expect(await readyKinds(await seed('ses', true))).toEqual(['ses']);
 	});
 
+	it('tags each loaded relay identity with the provider kind whose table it came from', async () => {
+		const t = await seed('ses', true);
+		await t.run(async (ctx) => {
+			const domainId = await ctx.db.insert('domains', {
+				domain: 'acme.example',
+				status: 'verified',
+				providerType: 'mta',
+				dnsRecords: {},
+				createdAt: 0,
+				updatedAt: 0,
+			});
+			await ctx.db.insert('sendingDomainSesIdentities', {
+				domainId,
+				dkimTokens: ['t1'],
+				verificationToken: 'token',
+				createdAt: 0,
+				updatedAt: 0,
+			});
+		});
+		const { relayIdentities } = await t.query(internal.delivery.checklist.getVerificationContext, {
+			organizationId: 'organization-id',
+			itemId: 'deployment.relay',
+		});
+		expect(relayIdentities.map((identity) => identity.providerKind)).toEqual(['ses']);
+	});
+
 	it('drops a kind that is not in the catalog at all rather than throwing on it', async () => {
 		// A route row is free-form: a kind retired since the row was written, or one
 		// a newer deployment named, must fail closed and not take the whole
