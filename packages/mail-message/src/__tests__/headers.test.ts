@@ -8,8 +8,10 @@ import {
 	splitHeaderLines,
 	parseHeaders,
 	parseStructuredHeader,
+	parseContentType,
+	getBoundary,
+	isMultipart,
 } from '../parse/headers';
-import { parseContentType, getBoundary, isMultipart } from '../parse/contentType';
 
 describe('unfold', () => {
 	it('collapses CRLF folding whitespace into a single space', () => {

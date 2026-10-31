@@ -110,7 +110,6 @@ export const ROOT_GATES: readonly RootGate[] = [
 			`{apps,packages,scripts,examples}/**/${CODE}`,
 			'oxlintrc.json',
 			'**/.oxlintrc.json',
-			'scripts/lint-warning-baseline.json',
 			// the Convex rules read the builder classification there
 			'apps/api/scripts/lib/convex-builders.sh',
 		],

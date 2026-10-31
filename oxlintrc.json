@@ -336,29 +336,6 @@
 				"@typescript-eslint/no-explicit-any": "off",
 				"no-unused-vars": "off"
 			}
-		},
-		{
-			"files": [
-				"**/convex/conditions/index.ts",
-				"**/convex/conditions/segmentMatch.ts",
-				"**/convex/delivery/sendAssignmentRouting.ts",
-				"**/convex/delivery/sendAssignments.ts",
-				"**/convex/lib/sendProviders/cellRoute.ts",
-				"**/convex/lib/sendProviders/routeMixContext.ts",
-				"**/convex/mail/filterRun.ts",
-				"**/convex/mail/filters.ts",
-				"**/src/parse/contentType.ts",
-				"**/src/parse/headers.ts",
-				"**/src/scaffoldSendProvider.ts",
-				"**/src/scaffoldSendProviderModules.ts",
-				"**/src/scaffoldSendProviderStubs.ts",
-				"**/src/manifestSnapshot.ts",
-				"**/src/manifestValue.ts",
-				"**/src/settingsSchema.ts"
-			],
-			"rules": {
-				"import/no-cycle": "warn"
-			}
 		}
 	],
 	// Convex codegen output carries a blanket `/* eslint-disable */` that would

@@ -1,9 +1,9 @@
 /**
- * oxlint's `--format json` report, as the lint gates read it: the warning
- * ratchet (check-lint-warnings.ts), the owlat finding generator
+ * oxlint's `--format json` report, as the lint gates read it: the zero-warning
+ * gate (check-lint-warnings.ts), the owlat finding generator
  * (owlat-lint-findings.ts) and the AST-gate parity check (ast-gate-parity.ts).
- * Each of them turns a diagnostic into a baseline key or a site, so a report of
- * the wrong shape (an oxlint upgrade that renamed a field) must fail the gate
+ * They turn a diagnostic into a verdict, a baseline key or a site, so a report
+ * of the wrong shape (an oxlint upgrade that renamed a field) must fail the gate
  * rather than produce keys that silently match nothing.
  */
 import { arrayOf, decodeJson, type Decoder, integer, object, optional, string } from './json';
@@ -34,3 +34,11 @@ const decodeReport = object({ diagnostics: arrayOf(decodeDiagnostic) });
 export function parseLintReport(stdout: string): LintDiagnostic[] {
 	return decodeJson(stdout, decodeReport, 'oxlint report').diagnostics;
 }
+
+/**
+ * A warning from an `owlat/*` rule. A rule that lands with debt is a warning,
+ * and scripts/check-owlat-lint.sh owns those findings against its own baseline,
+ * so the zero-warning gate leaves them to it: each finding has one owner.
+ */
+export const isOwlatWarning = (diagnostic: Pick<LintDiagnostic, 'code' | 'severity'>): boolean =>
+	diagnostic.severity === 'warning' && (diagnostic.code ?? '').startsWith('owlat(');

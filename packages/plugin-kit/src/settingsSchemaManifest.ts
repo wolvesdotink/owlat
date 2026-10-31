@@ -18,11 +18,11 @@ import {
 	validateKnownFields,
 } from './manifestValue';
 import {
-	MAX_SETTINGS_FIELDS,
 	MAX_TEXT_LENGTH,
 	SETTINGS_FIELD_KINDS,
 	type PluginSettingsFieldKind,
 } from './settingsSchema';
+import { MAX_SETTINGS_FIELDS } from './settingsSchemaLimits';
 
 /**
  * Manifest-time validation of the optional `settingsSchema` top-level field.

@@ -29,7 +29,7 @@ export {
 	type StructuredHeader,
 } from './parse/headers';
 
-export { parseContentType, getBoundary, isMultipart, type ContentType } from './parse/contentType';
+export { parseContentType, getBoundary, isMultipart, type ContentType } from './parse/headers';
 
 export { parseDate } from './parse/date';
 
