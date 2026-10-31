@@ -2,15 +2,14 @@
  * THE settings table: every Preferences destination, the section it belongs to,
  * the gate it is registered behind, and the individual controls that live on it.
  *
- * Settings destinations used to be declared in four hand-maintained places — the
- * sidebar table (`dashboardNavigationCore.ts`), the breadcrumb table
- * (`breadcrumbRoutes.ts`), the hub's link grid (`PreferencesMailLinks.vue`) and
- * each page's own back link — and they had already drifted apart: aliases,
- * vacation, snippets, writing voice and app passwords existed as pages but were
- * missing from the sidebar table, so ⌘K could not find them, and the hub's grid
- * was rendered behind `v-if="hasMail"`, which left them with no entry point at
- * all on an instance without mail. This module is the single declaration all of
- * those surfaces now read.
+ * Settings destinations appear in four places — the sidebar table
+ * (`dashboardNavigationCore.ts`), the breadcrumb table (`breadcrumbRoutes.ts`),
+ * the hub's link grid (`PreferencesMailLinks.vue`) and each page's own back
+ * link. Hand-maintained copies drift apart: a page missing from the sidebar
+ * table is one ⌘K cannot find, and a page reachable only from the hub's grid
+ * (rendered behind `v-if="hasMail"`) has no entry point at all on an instance
+ * without mail. This module is the single declaration all of those surfaces
+ * read.
  *
  * Every entry also declares its CONTROLS — the individual switches a person
  * actually looks for ("dark mode", "auto-advance", "notify me about") — each

@@ -1,5 +1,5 @@
 /**
- * The contacts page's import callbacks against the real `useCsvImport` (#897).
+ * The contacts page's import callbacks against the real `useCsvImport`.
  *
  * The page used to turn a failed `importBatch` into an all-zero success, and
  * ignored the property registration's result. The composable's own suite covers

@@ -73,7 +73,7 @@ export function countRequestRetryDelay(failures: number, random: () => number = 
 }
 
 /**
- * The campaign recipient readout for one audience (#916).
+ * The campaign recipient readout for one audience.
  *
  * `countRecipients` reads at most one bounded page per execution. For an
  * audience bigger than that it returns a lower bound and says no exact count

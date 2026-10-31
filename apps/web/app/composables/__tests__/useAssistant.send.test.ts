@@ -1,5 +1,5 @@
 /**
- * `useAssistant.send` reports whether the question was accepted (#1049), so
+ * `useAssistant.send` reports whether the question was accepted, so
  * the composer can keep it until then, and a retry after a failed first
  * message reuses the conversation that send created instead of making a
  * second, empty one.

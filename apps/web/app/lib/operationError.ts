@@ -194,7 +194,7 @@ export function operationToastCopy(
 const SLOW_READ = /timed out|timeout/i;
 
 /**
- * The copy for a failed READ (the read half of the Operation error seam, #721).
+ * The copy for a failed READ (the read half of the Operation error seam).
  *
  * A query failure reaches the page as whatever the Convex client threw, and its
  * raw message is not something to show a user ("[CONVEX Q(topics/topics:list)]

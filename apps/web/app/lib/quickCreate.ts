@@ -2,11 +2,11 @@
  * The QUICK-CREATE registry: what this app can create, in what order, and the
  * gate each verb is registered behind.
  *
- * Creation used to be a property of whichever page you happened to be standing
- * on — the composer lived in the Postbox, "Add contact" lived on the contacts
- * list, and a new campaign lived three clicks into Marketing. So the answer to
- * "make something" depended on where you already were, and on a phone there was
- * no answer at all. This table is the one place that knows the verbs, so the
+ * Creation must not be a property of whichever page you happen to be standing
+ * on (the composer in the Postbox, "Add contact" on the contacts list, a new
+ * campaign three clicks into Marketing): the answer to "make something" would
+ * depend on where you already were, and on a phone there would be no answer at
+ * all. This table is the one place that knows the verbs, so the
  * header split-button, the mobile create sheet and (eventually) the palette's
  * create group all offer the same list under the same rules.
  *

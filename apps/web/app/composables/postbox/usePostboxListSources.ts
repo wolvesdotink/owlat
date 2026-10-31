@@ -70,7 +70,7 @@ export function usePostboxListSources(args: {
 	});
 
 	// The read behind the renderer on screen, so a failure shows as the error
-	// state of the view that failed instead of its "All clear" (#721, #1099). The
+	// state of the view that failed instead of its "All clear". The
 	// grouped renderers each have their own; flat and bundled read the flat feed.
 	const ownRead = computed(() => {
 		if (conversationsEnabled.value) return conversations;

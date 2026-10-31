@@ -242,7 +242,7 @@ describe('useAnswerModeAssist: the starter reply of the queue', () => {
 		preparedAttach.mockClear();
 	});
 
-	// Issue #1131: the arrival draft opened the page; the person then gave the
+	// The arrival draft opened the page; the person then gave the
 	// invoices, and the reply written from them must arrive with them.
 	it('replaces the arrival draft and attaches the answered files', async () => {
 		const composer = composerMock();

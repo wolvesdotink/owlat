@@ -1,7 +1,7 @@
 // @vitest-environment node
 /**
  * The setup must wait out the welcome stamp's slowest recovery, or a retry
- * that would have committed fails the setup instead (#1203 review).
+ * that would have committed fails the setup instead.
  */
 import { describe, expect, it } from 'vitest';
 import { welcomeStampWorstCaseMs } from '~/lib/welcomeStamp';

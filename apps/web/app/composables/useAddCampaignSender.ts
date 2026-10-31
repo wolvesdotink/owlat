@@ -9,7 +9,7 @@ import { useLocalized } from '~/composables/useLocalized';
  * verified-domain advisory for that address, and the create call.
  *
  * Settings → Campaign senders and the campaign wizard's inline "Add a sender"
- * (#785) are the same add path, so they share this rather than each carrying a
+ * are the same add path, so they share this rather than each carrying a
  * copy of the query, the advisory and the mutation.
  */
 export function useAddCampaignSender(options: { operationLabel: () => string }) {

@@ -6,7 +6,7 @@ export const FOLLOW_LATEST_THRESHOLD_PX = 80;
 
 /**
  * Keep a scrolling feed pinned to its newest content only while the reader is
- * there (#1050).
+ * there.
  *
  * The feed follows new content while the reader is within
  * {@link FOLLOW_LATEST_THRESHOLD_PX} of the end. Scrolling up past that stops

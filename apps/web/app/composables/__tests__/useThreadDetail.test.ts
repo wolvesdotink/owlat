@@ -174,7 +174,7 @@ describe('useThreadDetail', () => {
 		});
 	});
 
-	// #807 — an answered thread takes a follow-up: its own send, keyed to the
+	// An answered thread takes a follow-up: its own send, keyed to the
 	// thread, never the edit → approve path of the answered message.
 	describe('follow-ups', () => {
 		it('sends a follow-up on the thread without touching the draft path', async () => {

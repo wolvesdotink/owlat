@@ -298,7 +298,7 @@ describe('useBreadcrumbs', () => {
 
 	/**
 	 * The mailbox's own pages fell through to the slug fallback, so search read
-	 * "Postbox > Search" beside folders that read "Inboxes > Inbox" (#776).
+	 * "Postbox > Search" beside folders that read "Inboxes > Inbox".
 	 */
 	describe('postbox page trails', () => {
 		it.each([

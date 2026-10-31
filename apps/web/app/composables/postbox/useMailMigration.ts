@@ -81,7 +81,7 @@ export function canLearnFromImport(
 /**
  * When a throttle-paused import picks up again, or `null` when it is not
  * paused. The backend holds an import whose provider ran out of its daily
- * download budget at `importing` with a `resumesAt` (#760) — a wait, not a
+ * download budget at `importing` with a `resumesAt` — a wait, not a
  * failure — and clears it once the resumed walk records a batch. A resume time
  * already behind `now` means the walk is due to start again, so it no longer
  * reads as paused even before that first batch lands.

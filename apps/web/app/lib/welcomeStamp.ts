@@ -1,12 +1,12 @@
 /**
- * Stamp `welcomedAt` from the welcome screen, retrying a failed attempt (#1203).
+ * Stamp `welcomedAt` from the welcome screen, retrying a failed attempt.
  *
  * The stamp is sent straight after sign-in, when the Convex client may still be
  * re-authenticating (the `auth` middleware activates the organization, and each
  * session signal re-runs `setAuth`) and when a cold deployment can time a
- * function out. One failed attempt used to be final: the member was sent back to
- * `/welcome` in their next session, and the E2E setup waited on a cache entry
- * that was never written.
+ * function out. One failed attempt must not be final: the member would be sent
+ * back to `/welcome` in their next session, and the E2E setup would wait on a
+ * cache entry that is never written.
  *
  * Each attempt waits until the client is authenticated, so the mutation never
  * goes out as an anonymous caller, then sends it with a deadline. A failure is

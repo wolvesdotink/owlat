@@ -229,7 +229,7 @@ describe('useConvexQuery', () => {
 			expect(data.value).toEqual({ ok: true });
 
 			// Transition to skip: no pending request, so isLoading must not be
-			// pinned true. Previously-loaded data is retained.
+			// pinned true. Data loaded before the skip is retained.
 			skip.value = true;
 			await nextTick();
 			expect(isLoading.value).toBe(false);

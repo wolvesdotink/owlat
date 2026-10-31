@@ -1,6 +1,6 @@
 /**
  * The inbox list hands its read error through, so a failed list is not an
- * empty one (#721). A skipped query reports no error of its own (#1099).
+ * empty one. A skipped query reports no error of its own.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ref } from 'vue';

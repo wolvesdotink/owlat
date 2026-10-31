@@ -160,7 +160,7 @@ describe('routePaletteTargets', () => {
 });
 
 /**
- * #799: one destination, one row. A page that only redirects lands where
+ * One destination, one row. A page that only redirects lands where
  * another row already goes, so the palette never offers it.
  */
 describe('palette targets and redirect-only pages', () => {

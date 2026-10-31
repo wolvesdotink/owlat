@@ -5,11 +5,10 @@ import type { RecipientKeyStatus } from '~/utils/recipientKeyStatus';
  * The thread correspondent's PUBLIC sealing-key status (Sealed Mail, flag
  * `sealedMail`), read ONCE for the whole conversation.
  *
- * Previously owned by PostboxThreadSealSurfaces, which rendered both trust
- * surfaces itself. The two have different homes now: the key-change
- * banner is an alarm and stays at thread level, while the key PANEL — pinned
- * fingerprint, first seen, source, the human verification ritual — moved into
- * the sender's trust chip popover. Hoisting the query here keeps that one
+ * The two trust surfaces have different homes: the key-change banner is an
+ * alarm and stays at thread level, while the key PANEL — pinned fingerprint,
+ * first seen, source, the human verification ritual — lives in the sender's
+ * trust chip popover. Hoisting the query here keeps that one
  * subscription per thread, and lets the chip go amber on a key change without
  * opening a second read.
  *
