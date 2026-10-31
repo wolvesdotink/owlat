@@ -5,7 +5,6 @@ export * from './operatingModes';
 export {
 	type OperationErrorCategory,
 	type OperationError,
-	OPERATION_ERROR_CATEGORIES,
 	categoryToHttpStatus,
 	extractOperationError,
 } from './operationError';
@@ -241,16 +240,7 @@ export type { ValidationIssue } from './validation';
 export {
 	emailClients,
 	fullSupport,
-	// Pluggable registries
 	emailClientRegistry,
-	blockCompatibilityRegistry,
-	registerEmailClient,
-	unregisterEmailClient,
-	registerBlockCompatibility,
-	unregisterBlockCompatibility,
-	getAllEmailClients,
-	getEmailClientInfo,
-	mergeBlockCompatibility,
 	lookupClientSupport,
 } from './compatibility/index';
 export type {

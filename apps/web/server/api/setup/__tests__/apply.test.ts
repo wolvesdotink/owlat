@@ -2,11 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterAll } from 'vitest';
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import {
-	ENV_BACKUP_SEALED_PREFIX,
-	createEnvBackupBox,
-	isEnvBackupSealedValue,
-} from '@owlat/shared/envBackupBox';
+import { createEnvBackupBox, isEnvBackupSealedValue } from '@owlat/shared/envBackupBox';
 import { getDefaultFlags } from '@owlat/shared/featureFlags';
 import { jsonRequestEvent } from '../../../__tests__/nitro';
 import type * as SetupEnvModule from '@owlat/shared/setupEnv';
@@ -131,7 +127,6 @@ describe('POST /api/setup/apply — relay password at rest', () => {
 		// .env backup: sealed token, no plaintext anywhere in the written map.
 		const env = writtenEnv();
 		const stored = env['SMTP_RELAY_PASSWORD']!;
-		expect(stored.startsWith(ENV_BACKUP_SEALED_PREFIX)).toBe(true);
 		expect(isEnvBackupSealedValue(stored)).toBe(true);
 		expect(JSON.stringify(env)).not.toContain(PLAINTEXT_PASSWORD);
 		// The sealed token round-trips back to the exact password under INSTANCE_SECRET.

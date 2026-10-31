@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { ConvexError } from 'convex/values';
-import { OPERATION_ERROR_CATEGORIES } from '@owlat/shared/operationError';
+import type { OperationErrorCategory } from '@owlat/shared/operationError';
 import {
 	normalizeToOperationError,
 	categoryTreatment,
@@ -16,6 +16,22 @@ import { createTestI18n } from '~/__tests__/i18n';
 
 /** The real catalog, so the copy assertions stay assertions about English. */
 const { t } = createTestI18n().global;
+
+// Every category, checked against the union: a missing key or a removed
+// category fails the typecheck, so the loops below cover each one.
+const OPERATION_ERROR_CATEGORIES = Object.keys({
+	unauthenticated: true,
+	forbidden: true,
+	not_found: true,
+	invalid_input: true,
+	already_exists: true,
+	conflict: true,
+	invalid_state: true,
+	rate_limited: true,
+	limit_reached: true,
+	internal: true,
+	network: true,
+} satisfies Record<OperationErrorCategory, true>) as OperationErrorCategory[];
 const copyFor = (op: Parameters<typeof operationCopy>[0]) =>
 	resolveOperationCopy(operationCopy(op), (key) => t(key));
 

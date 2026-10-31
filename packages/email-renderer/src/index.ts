@@ -75,8 +75,7 @@ export {
 } from './sanitize';
 
 // Compatibility — per-block data owned by Block modules, surfaced via the
-// Compatibility walker. Plugin extension points (registerEmailClient,
-// registerBlockCompatibility) still live in @owlat/shared.
+// Compatibility walker. Client metadata lives in @owlat/shared.
 export {
 	getBlockCompatibility,
 	getPropertyCompatibility,

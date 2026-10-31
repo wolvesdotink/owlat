@@ -1,9 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-	applyLinkTransparency,
-	stripTrackingParams,
-	textClaimedHost,
-} from '../postboxLinkTransparency';
+import { applyLinkTransparency } from '../postboxLinkTransparency';
 
 describe('applyLinkTransparency — destination tooltip', () => {
 	it('adds a title with the real destination host', () => {
@@ -146,55 +142,68 @@ describe('applyLinkTransparency — fail-soft', () => {
 	});
 });
 
-describe('stripTrackingParams', () => {
-	it('strips only tracking params', () => {
-		expect(stripTrackingParams('https://example.com/a?utm_campaign=x&page=2#frag')).toBe(
+/** The rewritten href of a single anchor. */
+function hrefAfter(href: string): string | undefined {
+	const out = applyLinkTransparency(`<a href="${href}">x</a>`);
+	return /href="([^"]*)"/.exec(out)?.[1];
+}
+
+describe('applyLinkTransparency — tracking param rewrite', () => {
+	it('strips only tracking params and keeps the fragment', () => {
+		expect(hrefAfter('https://example.com/a?utm_campaign=x&amp;page=2#frag')).toBe(
 			'https://example.com/a?page=2#frag'
 		);
 	});
 
 	it('strips adjacent and repeated tracking params', () => {
 		expect(
-			stripTrackingParams(
-				'https://example.com/a?utm_source=x&utm_medium=y&fbclid=1&page=2&utm_source=z#frag'
+			hrefAfter(
+				'https://example.com/a?utm_source=x&amp;utm_medium=y&amp;fbclid=1&amp;page=2&amp;utm_source=z#frag'
 			)
 		).toBe('https://example.com/a?page=2#frag');
 	});
 
 	it('drops the dangling ? when all params were tracking noise', () => {
-		expect(stripTrackingParams('https://example.com/a?utm_source=x')).toBe('https://example.com/a');
+		expect(hrefAfter('https://example.com/a?utm_source=x')).toBe('https://example.com/a');
 	});
 
 	it('never touches host or path', () => {
-		const out = stripTrackingParams('https://sub.example.com/deep/path?gclid=1&x=y');
-		expect(out.startsWith('https://sub.example.com/deep/path?')).toBe(true);
-	});
-
-	it('returns non-https URLs unchanged', () => {
-		expect(stripTrackingParams('http://example.com/?utm_source=x')).toBe(
-			'http://example.com/?utm_source=x'
+		expect(hrefAfter('https://sub.example.com/deep/path?gclid=1&amp;x=y')).toBe(
+			'https://sub.example.com/deep/path?x=y'
 		);
-		expect(stripTrackingParams('mailto:a@b.com?utm_source=x')).toBe('mailto:a@b.com?utm_source=x');
 	});
 
-	it('returns a malformed URL unchanged', () => {
-		expect(stripTrackingParams('https://')).toBe('https://');
+	it('leaves a non-http(s) href with tracking params unchanged', () => {
+		const html = '<a href="mailto:a@b.com?utm_source=x">mail</a>';
+		expect(applyLinkTransparency(html)).toBe(html);
+	});
+
+	it('leaves an href with no host unchanged', () => {
+		const html = '<a href="https://">x</a>';
+		expect(applyLinkTransparency(html)).toBe(html);
 	});
 });
 
-describe('textClaimedHost', () => {
-	it('parses a full URL', () => {
-		expect(textClaimedHost('https://www.paypal.com/secure')).toBe('paypal.com');
+/** Whether the anchor's visible text is flagged as naming another host. */
+function flagged(href: string, text: string): boolean {
+	return applyLinkTransparency(`<a href="${href}">${text}</a>`).includes('→');
+}
+
+describe('applyLinkTransparency — host the visible text claims', () => {
+	it('reads a full URL, ignoring a leading www.', () => {
+		expect(flagged('https://paypal.com/x', 'https://www.paypal.com/secure')).toBe(false);
+		expect(flagged('https://evil.example/x', 'https://www.paypal.com/secure')).toBe(true);
 	});
 
-	it('parses a bare domain with a path', () => {
-		expect(textClaimedHost('example.co.uk/path?q=1')).toBe('example.co.uk');
+	it('reads a bare domain with a path, ignoring a leading www.', () => {
+		expect(flagged('https://example.co.uk/', 'example.co.uk/path?q=1')).toBe(false);
+		expect(flagged('https://example.co.uk/', 'www.example.co.uk/path')).toBe(false);
+		expect(flagged('https://evil.example/', 'example.co.uk/path?q=1')).toBe(true);
 	});
 
-	it('rejects plain words and numbers', () => {
-		expect(textClaimedHost('Click here')).toBeNull();
-		expect(textClaimedHost('v2.10')).toBeNull();
-		expect(textClaimedHost('1.5')).toBeNull();
-		expect(textClaimedHost('')).toBeNull();
+	it('claims no host for plain words, numbers or empty text', () => {
+		for (const text of ['Click here', 'v2.10', '1.5', '']) {
+			expect(flagged('https://evil.example/', text), text).toBe(false);
+		}
 	});
 });

@@ -6,9 +6,8 @@
  * deliberately excludes tests, comments, type-only imports and package
  * re-export barrels.
  *
- * scripts/check-shared-production-exports.sh feeds this into scripts/ratchet.sh,
- * which owns the comparison against
- * scripts/shared-production-export-baseline.txt.
+ * scripts/check-shared-production-exports.sh feeds this into
+ * scripts/ratchet.sh --zero, which fails on any entry.
  */
 
 import { readdirSync, readFileSync } from 'node:fs';

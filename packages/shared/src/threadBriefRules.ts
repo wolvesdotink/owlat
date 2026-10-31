@@ -137,7 +137,7 @@ const FACET_RISK: Record<ItemFacet, number> = {
 };
 
 /** An item's risk: its riskiest facet, -1 with no facets. */
-export function itemFacetRisk(facets: readonly ItemFacet[]): number {
+function itemFacetRisk(facets: readonly ItemFacet[]): number {
 	let risk = -1;
 	for (const facet of facets) risk = Math.max(risk, FACET_RISK[facet]);
 	return risk;
@@ -223,7 +223,7 @@ export function isConsequential(item: ConsequentialInput): boolean {
 // ── Lifecycle edges ────────────────────────────────────────────────────────
 
 /** The reducer's legal status edges. `superseded` is terminal; `untracked → open` is user-only. */
-export const LEGAL_STATUS_EDGES: Readonly<Record<ItemStatus, readonly ItemStatus[]>> = {
+const LEGAL_STATUS_EDGES: Readonly<Record<ItemStatus, readonly ItemStatus[]>> = {
 	open: ['done', 'declined', 'superseded', 'untracked'],
 	done: ['open'],
 	declined: ['open'],

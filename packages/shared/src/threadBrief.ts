@@ -145,7 +145,7 @@ export const FACT_STATUSES = ['current', 'superseded', 'retracted'] as const;
 /** @public Contract type for the thread brief lanes. */
 export type FactStatus = (typeof FACT_STATUSES)[number];
 
-export const FACT_VALUE_KINDS = ['date', 'money', 'ref', 'url', 'text'] as const;
+const FACT_VALUE_KINDS = ['date', 'money', 'ref', 'url', 'text'] as const;
 /** @public Contract type for the thread brief lanes. */
 export type FactValueKind = (typeof FACT_VALUE_KINDS)[number];
 
@@ -253,12 +253,7 @@ export function defaultActivityVisibility(type: ActivityType): ActivityVisibilit
  * message (`mail`), a team inbound message (`inbound`), a sent Postbox message
  * (`outboundMail`) or a finalized team send (`teamReply`).
  */
-export const INTERPRETATION_SOURCE_KINDS = [
-	'mail',
-	'inbound',
-	'outboundMail',
-	'teamReply',
-] as const;
+const INTERPRETATION_SOURCE_KINDS = ['mail', 'inbound', 'outboundMail', 'teamReply'] as const;
 /** @public Contract type for the thread brief lanes. */
 export type InterpretationSourceKind = (typeof INTERPRETATION_SOURCE_KINDS)[number];
 
