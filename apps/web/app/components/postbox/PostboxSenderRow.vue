@@ -71,16 +71,17 @@ function onStatus(value: string) {
 				}}
 				<!-- Keep is already the selected segment, so the control cannot say
 				     "I chose Keep": this records it, and the suggestion goes away. -->
-				<button
-					type="button"
-					class="text-text-secondary font-medium whitespace-nowrap hover:underline disabled:opacity-50"
-					:disabled="busy"
-					:title="t('postbox.senders.keepAsIsTitle')"
-					data-testid="sender-keep-as-is"
-					@click="emit('setStatus', 'keep')"
-				>
-					{{ t('postbox.senders.keepAsIs') }}
-				</button>
+				<UiTooltip :text="t('postbox.senders.keepAsIsTitle')">
+					<button
+						type="button"
+						class="text-text-secondary font-medium whitespace-nowrap hover:underline disabled:opacity-50"
+						:disabled="busy"
+						data-testid="sender-keep-as-is"
+						@click="emit('setStatus', 'keep')"
+					>
+						{{ t('postbox.senders.keepAsIs') }}
+					</button>
+				</UiTooltip>
 			</p>
 			<p
 				v-if="resultKey"

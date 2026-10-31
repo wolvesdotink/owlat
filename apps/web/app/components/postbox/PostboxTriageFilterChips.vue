@@ -116,45 +116,47 @@ const searchToken = computed(() =>
 			{{ t(`postbox.priority.filter.${placement}`) }}
 			<Icon name="lucide:x" class="w-3 h-3" aria-hidden="true" />
 		</button>
-		<button
-			v-for="chip in visibleChips"
-			:key="chip.value"
-			type="button"
-			class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs whitespace-nowrap transition-colors duration-(--motion-fast) outline-none focus-visible:ring-1 focus-visible:ring-brand/40"
-			:class="
-				filter === chip.value
-					? 'bg-brand-subtle border-brand/25 text-brand font-medium'
-					: 'border-border-default bg-bg-surface text-text-secondary hover:text-text-primary hover:border-border-strong'
-			"
-			:aria-pressed="filter === chip.value"
-			:title="countHint"
-			@click="emit('select-filter', chip.value)"
-		>
-			{{ t(chip.labelKey) }}
-			<span
-				class="text-2xs tabular-nums"
-				:class="filter === chip.value ? 'text-brand' : 'text-text-tertiary'"
-				:aria-label="countHint ? `${countLabel(chip.value)} — ${countHint}` : undefined"
-				>{{ countLabel(chip.value) }}</span
+		<UiTooltip v-for="chip in visibleChips" :key="chip.value" :text="countHint">
+			<button
+				type="button"
+				class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs whitespace-nowrap transition-colors duration-(--motion-fast) outline-none focus-visible:ring-1 focus-visible:ring-brand/40"
+				:class="
+					filter === chip.value
+						? 'bg-brand-subtle border-brand/25 text-brand font-medium'
+						: 'border-border-default bg-bg-surface text-text-secondary hover:text-text-primary hover:border-border-strong'
+				"
+				:aria-pressed="filter === chip.value"
+				@click="emit('select-filter', chip.value)"
 			>
-		</button>
+				{{ t(chip.labelKey) }}
+				<span
+					class="text-2xs tabular-nums"
+					:class="filter === chip.value ? 'text-brand' : 'text-text-tertiary'"
+					:aria-label="countHint ? `${countLabel(chip.value)} — ${countHint}` : undefined"
+					>{{ countLabel(chip.value) }}</span
+				>
+			</button>
+		</UiTooltip>
 		<!-- The chip's own grammar, handed to the search that owns it. The token
 		     IS the label: it fits the pane where a sentence does not, and it is
 		     the thing worth teaching — the chip and `is:unread` are the same
 		     predicate, spelled twice. The sentence stays as the accessible name. -->
-		<NuxtLink
+		<UiTooltip
 			v-if="searchPath && searchToken"
-			:to="searchPath"
-			class="inline-flex items-center gap-1 px-1.5 py-1 rounded font-mono text-2xs text-text-tertiary whitespace-nowrap hover:text-brand focus-visible:ring-1 focus-visible:ring-brand/40 outline-none"
-			:aria-label="
-				t('components.postbox.postboxTriageFilterChips.openInSearchTitle', { token: searchToken })
-			"
-			:title="
+			:text="
 				t('components.postbox.postboxTriageFilterChips.openInSearchTitle', { token: searchToken })
 			"
 		>
-			<Icon name="lucide:search" class="w-3 h-3" aria-hidden="true" />
-			{{ searchToken }}
-		</NuxtLink>
+			<NuxtLink
+				:to="searchPath"
+				class="inline-flex items-center gap-1 px-1.5 py-1 rounded font-mono text-2xs text-text-tertiary whitespace-nowrap hover:text-brand focus-visible:ring-1 focus-visible:ring-brand/40 outline-none"
+				:aria-label="
+					t('components.postbox.postboxTriageFilterChips.openInSearchTitle', { token: searchToken })
+				"
+			>
+				<Icon name="lucide:search" class="w-3 h-3" aria-hidden="true" />
+				{{ searchToken }}
+			</NuxtLink>
+		</UiTooltip>
 	</div>
 </template>

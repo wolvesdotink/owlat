@@ -254,15 +254,16 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 			</header>
 			<ul class="flex flex-col gap-0.5">
 				<li v-for="saved in pinnedSearches" :key="saved._id" class="group flex items-center">
-					<NuxtLink
-						:to="savedSearchPath(saved.rawQuery)"
-						class="flex-1 flex items-center gap-2 px-2.5 py-1 rounded text-sm hover:bg-bg-surface min-w-0"
-						:class="{ 'bg-bg-surface text-brand': activeSavedQuery === saved.rawQuery }"
-						:title="saved.rawQuery"
-					>
-						<Icon name="lucide:search" class="w-4 h-4 flex-shrink-0" />
-						<span class="truncate">{{ saved.name }}</span>
-					</NuxtLink>
+					<UiTooltip :text="saved.rawQuery">
+						<NuxtLink
+							:to="savedSearchPath(saved.rawQuery)"
+							class="flex-1 flex items-center gap-2 px-2.5 py-1 rounded text-sm hover:bg-bg-surface min-w-0"
+							:class="{ 'bg-bg-surface text-brand': activeSavedQuery === saved.rawQuery }"
+						>
+							<Icon name="lucide:search" class="w-4 h-4 flex-shrink-0" />
+							<span class="truncate">{{ saved.name }}</span>
+						</NuxtLink>
+					</UiTooltip>
 					<UiTooltip :text="t('components.postbox.postboxFolderRail.unpinSearch')">
 						<button
 							type="button"

@@ -68,42 +68,40 @@ const movableFolders = computed(() =>
 					t('components.postbox.postboxQuickActionsBar.selected', { count: bulk.count.value })
 				}}</span>
 				<span class="w-px h-4 bg-border-subtle mx-1" />
-				<UiButton
-					variant="ghost"
-					size="sm"
-					class="gap-1.5 px-2 py-1"
-					:title="t('components.postbox.postboxQuickActionsBar.markReadTitle')"
-					@click="bulk.markRead(true)"
-				>
-					<template #iconLeft>
-						<Icon name="lucide:mail-open" class="w-4 h-4" />
-					</template>
-					{{ t('components.postbox.postboxQuickActionsBar.read') }}
-				</UiButton>
-				<UiButton
-					variant="ghost"
-					size="sm"
-					class="gap-1.5 px-2 py-1"
-					:title="t('components.postbox.postboxQuickActionsBar.markUnreadTitle')"
-					@click="bulk.markRead(false)"
-				>
-					<template #iconLeft>
-						<Icon name="lucide:mail" class="w-4 h-4" />
-					</template>
-					{{ t('components.postbox.postboxQuickActionsBar.unread') }}
-				</UiButton>
-				<UiButton
-					variant="ghost"
-					size="sm"
-					class="gap-1.5 px-2 py-1"
-					:title="t('components.postbox.postboxQuickActionsBar.starTitle')"
-					@click="bulk.star(true)"
-				>
-					<template #iconLeft>
-						<Icon name="lucide:star" class="w-4 h-4" />
-					</template>
-					{{ t('components.postbox.postboxQuickActionsBar.star') }}
-				</UiButton>
+				<UiTooltip :text="t('components.postbox.postboxQuickActionsBar.markReadTitle')">
+					<UiButton
+						variant="ghost"
+						size="sm"
+						class="gap-1.5 px-2 py-1"
+						@click="bulk.markRead(true)"
+					>
+						<template #iconLeft>
+							<Icon name="lucide:mail-open" class="w-4 h-4" />
+						</template>
+						{{ t('components.postbox.postboxQuickActionsBar.read') }}
+					</UiButton>
+				</UiTooltip>
+				<UiTooltip :text="t('components.postbox.postboxQuickActionsBar.markUnreadTitle')">
+					<UiButton
+						variant="ghost"
+						size="sm"
+						class="gap-1.5 px-2 py-1"
+						@click="bulk.markRead(false)"
+					>
+						<template #iconLeft>
+							<Icon name="lucide:mail" class="w-4 h-4" />
+						</template>
+						{{ t('components.postbox.postboxQuickActionsBar.unread') }}
+					</UiButton>
+				</UiTooltip>
+				<UiTooltip :text="t('components.postbox.postboxQuickActionsBar.starTitle')">
+					<UiButton variant="ghost" size="sm" class="gap-1.5 px-2 py-1" @click="bulk.star(true)">
+						<template #iconLeft>
+							<Icon name="lucide:star" class="w-4 h-4" />
+						</template>
+						{{ t('components.postbox.postboxQuickActionsBar.star') }}
+					</UiButton>
+				</UiTooltip>
 				<span class="w-px h-4 bg-border-subtle mx-1" />
 				<div class="relative">
 					<UiButton
@@ -138,34 +136,38 @@ const movableFolders = computed(() =>
 				<!-- Pushes the outcomes (archive / delete) away from the state verbs
 				     on a wide pane, and folds away when the row wraps. -->
 				<span class="flex-1 min-w-0" />
-				<UiButton
-					variant="ghost"
-					size="sm"
-					class="gap-1.5 px-2 py-1"
-					:title="t('components.postbox.postboxQuickActionsBar.archiveTitle')"
-					@click="bulk.archiveSelected()"
-				>
-					<template #iconLeft>
-						<Icon name="lucide:archive" class="w-4 h-4" />
-					</template>
-					{{ t('components.postbox.postboxQuickActionsBar.archive') }}
-				</UiButton>
+				<UiTooltip :text="t('components.postbox.postboxQuickActionsBar.archiveTitle')">
+					<UiButton
+						variant="ghost"
+						size="sm"
+						class="gap-1.5 px-2 py-1"
+						@click="bulk.archiveSelected()"
+					>
+						<template #iconLeft>
+							<Icon name="lucide:archive" class="w-4 h-4" />
+						</template>
+						{{ t('components.postbox.postboxQuickActionsBar.archive') }}
+					</UiButton>
+				</UiTooltip>
 				<!-- "Delete" is "move to Trash"; inside Trash there is nowhere left to
 				     move to, so the verb that folder DOES have (Delete forever, with
 				     its confirm) is offered by the overflow instead. -->
-				<UiButton
+				<UiTooltip
 					v-if="props.folderRole !== 'trash'"
-					variant="danger-ghost"
-					size="sm"
-					class="gap-1.5 px-2 py-1"
-					:title="t('components.postbox.postboxQuickActionsBar.deleteTitle')"
-					@click="bulk.trashSelected()"
+					:text="t('components.postbox.postboxQuickActionsBar.deleteTitle')"
 				>
-					<template #iconLeft>
-						<Icon name="lucide:trash" class="w-4 h-4" />
-					</template>
-					{{ t('common.delete') }}
-				</UiButton>
+					<UiButton
+						variant="danger-ghost"
+						size="sm"
+						class="gap-1.5 px-2 py-1"
+						@click="bulk.trashSelected()"
+					>
+						<template #iconLeft>
+							<Icon name="lucide:trash" class="w-4 h-4" />
+						</template>
+						{{ t('common.delete') }}
+					</UiButton>
+				</UiTooltip>
 				<PostboxBulkOverflowMenu :mailbox-id="mailboxId" :folder-role="folderRole" />
 				<span class="w-px h-4 bg-border-subtle mx-1" />
 				<UiTooltip :text="t('components.postbox.postboxQuickActionsBar.clearSelectionTitle')">

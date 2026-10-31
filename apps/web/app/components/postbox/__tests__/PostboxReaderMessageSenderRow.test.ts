@@ -16,6 +16,8 @@ import { mount } from '@vue/test-utils';
 import PostboxReaderMessage from '../PostboxReaderMessage.vue';
 import { readerContextProvide } from './readerContextFixture';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+import { tooltipOf } from '~/__tests__/tooltip';
+import { formatDateTime } from '~/utils/formatters';
 
 beforeAll(() => {
 	Object.assign(globalThis, {
@@ -132,5 +134,28 @@ describe('PostboxReaderMessage reduced disclosure cue', () => {
 		expect(mountCard(false).find('[data-testid="reader-message-details-cue"]').exists()).toBe(
 			false
 		);
+	});
+});
+
+describe('PostboxReaderMessage sender row tooltips', () => {
+	it('says what the sender name opens in a tooltip, not a native title', () => {
+		for (const [reduced, text] of [
+			[false, 'Everything from this sender'],
+			[true, 'Show recipients and details'],
+		] as const) {
+			const w = mountCard(reduced);
+			const sender = w.get('[data-testid="reader-message-sender-row"] button');
+			expect(sender.attributes('title')).toBeUndefined();
+			expect(tooltipOf(w, sender)).toBe(text);
+		}
+	});
+
+	it('gives the relative time its full date in a tooltip', () => {
+		const w = mountCard(false);
+		const time = w
+			.findAll('[data-testid="reader-message-indicators"] button')
+			.find((button) => button.text() === '2h')!;
+		expect(time.attributes('title')).toBeUndefined();
+		expect(tooltipOf(w, time)).toBe(formatDateTime(message.receivedAt));
 	});
 });
