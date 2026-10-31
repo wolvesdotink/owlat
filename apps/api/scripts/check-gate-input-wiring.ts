@@ -30,7 +30,7 @@ const KNOWN_UNSUPPLIED: readonly string[] = [];
 /** The two production readers, named rather than counted. */
 const REQUIRED_SUPPLIERS: readonly string[] = [
 	'delivery/rampControllerInputs.ts',
-	'delivery/deliverabilityDashboard.ts',
+	'delivery/deliverabilityDashboardCell.ts',
 ];
 /** Fields only one reader supplies today, mapped to that reader. Exact. */
 const KNOWN_ONE_SIDED: Readonly<Record<string, string>> = {};
