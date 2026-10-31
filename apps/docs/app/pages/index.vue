@@ -1,8 +1,8 @@
 <script setup lang="ts">
-definePageMeta({ layout: 'home' })
+definePageMeta({ layout: 'home' });
 
-const { t } = useI18n()
-const localePath = useLocalePath()
+const { t } = useI18n();
+const localePath = useLocalePath();
 
 // Getters: the strings are read when the tags are rendered, not frozen at the
 // locale that happened to be active while this component was setting up.
@@ -11,29 +11,29 @@ useSeoMeta({
 	ogTitle: () => t('home.seo.title'),
 	description: () => t('home.seo.description'),
 	ogDescription: () => t('home.seo.description'),
-})
+});
 
-defineOgImage('Docs', { title: t('brand.docs'), description: t('home.seo.ogDescription') })
+defineOgImage('Docs', { title: t('brand.docs'), description: t('home.seo.ogDescription') });
 
-const visible = ref(false)
-const activeTab = ref<'sdk' | 'java' | 'curl'>('sdk')
+const visible = ref(false);
+const activeTab = ref<'sdk' | 'java' | 'curl'>('sdk');
 
 const tabFiles: Record<'sdk' | 'java' | 'curl', string> = {
 	sdk: 'send.ts',
 	java: 'Send.java',
 	curl: 'terminal',
-}
+};
 
-const { target: linksRef, isVisible: linksVisible } = useScrollReveal()
-const { target: guidesRef, isVisible: guidesVisible } = useScrollReveal()
-const { target: codeRef, isVisible: codeVisible } = useScrollReveal()
-const { target: ossRef, isVisible: ossVisible } = useScrollReveal()
+const { target: linksRef, isVisible: linksVisible } = useScrollReveal();
+const { target: guidesRef, isVisible: guidesVisible } = useScrollReveal();
+const { target: codeRef, isVisible: codeVisible } = useScrollReveal();
+const { target: ossRef, isVisible: ossVisible } = useScrollReveal();
 
 onMounted(() => {
 	requestAnimationFrame(() => {
-		visible.value = true
-	})
-})
+		visible.value = true;
+	});
+});
 
 const sections = computed(() => [
 	{
@@ -61,7 +61,7 @@ const sections = computed(() => [
 		href: localePath('/examples'),
 		icon: 'M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z',
 	},
-])
+]);
 
 const popularGuides = computed(() =>
 	[
@@ -72,7 +72,7 @@ const popularGuides = computed(() =>
 		{ key: 'contacts', href: '/guide/contacts' },
 		{ key: 'deliverability', href: '/guide/deliverability' },
 	].map((guide) => ({ ...guide, href: localePath(guide.href) }))
-)
+);
 </script>
 
 <template>
@@ -99,16 +99,41 @@ const popularGuides = computed(() =>
 						</p>
 
 						<div class="hero-actions anim-actions">
-							<NuxtLink :to="localePath('/guide/getting-started')" class="btn btn-primary group no-underline">
+							<NuxtLink
+								:to="localePath('/guide/getting-started')"
+								class="btn btn-primary group no-underline"
+							>
 								<span>{{ t('home.hero.startGuide') }}</span>
-								<svg class="arrow-nudge" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+								<svg
+									class="arrow-nudge"
+									width="15"
+									height="15"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="2.5"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									aria-hidden="true"
+								>
 									<path d="M5 12h14" />
 									<path d="m12 5 7 7-7 7" />
 								</svg>
 							</NuxtLink>
 							<NuxtLink :to="localePath('/api')" class="btn btn-hairline group no-underline">
 								<span>{{ t('home.hero.exploreApi') }}</span>
-								<svg class="arrow-nudge" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+								<svg
+									class="arrow-nudge"
+									width="15"
+									height="15"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="2.5"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									aria-hidden="true"
+								>
 									<path d="M5 12h14" />
 									<path d="m12 5 7 7-7 7" />
 								</svg>
@@ -155,7 +180,16 @@ const popularGuides = computed(() =>
 					>
 						<div class="section-card-header">
 							<div class="section-icon">
-								<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+								<svg
+									width="18"
+									height="18"
+									viewBox="0 0 24 24"
+									fill="none"
+									stroke="currentColor"
+									stroke-width="1.5"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+								>
 									<path :d="section.icon" />
 								</svg>
 							</div>
@@ -165,7 +199,17 @@ const popularGuides = computed(() =>
 						<p class="section-description">
 							{{ t(`home.sections.${section.key}.description`) }}
 						</p>
-						<svg class="section-arrow" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+						<svg
+							class="section-arrow"
+							width="16"
+							height="16"
+							viewBox="0 0 16 16"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+						>
 							<path d="M3.33 8h9.34M8.67 4l4 4-4 4" />
 						</svg>
 					</NuxtLink>
@@ -196,7 +240,17 @@ const popularGuides = computed(() =>
 					>
 						<h3 class="guide-title">{{ t(`home.guides.${guide.key}.title`) }}</h3>
 						<p class="guide-description">{{ t(`home.guides.${guide.key}.description`) }}</p>
-						<svg class="guide-arrow" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+						<svg
+							class="guide-arrow"
+							width="14"
+							height="14"
+							viewBox="0 0 16 16"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+						>
 							<path d="M3.33 8h9.34M8.67 4l4 4-4 4" />
 						</svg>
 					</NuxtLink>
@@ -249,7 +303,10 @@ const popularGuides = computed(() =>
 					<div class="code-body">
 						<!-- TypeScript -->
 						<Transition name="code-fade" mode="out-in">
-							<pre v-if="activeTab === 'sdk'" key="sdk"><code><span class="c-kw">import</span> { Owlat } <span class="c-kw">from</span> <span class="c-str">'@owlat/sdk-js'</span>
+							<pre
+								v-if="activeTab === 'sdk'"
+								key="sdk"
+							><code><span class="c-kw">import</span> { Owlat } <span class="c-kw">from</span> <span class="c-str">'@owlat/sdk-js'</span>
 
 <span class="c-kw">const</span> owlat = <span class="c-kw">new</span> <span class="c-fn">Owlat</span>(<span class="c-str">'lm_live_...'</span>)
 
@@ -272,7 +329,10 @@ const popularGuides = computed(() =>
 })</code></pre>
 
 							<!-- Java -->
-							<pre v-else-if="activeTab === 'java'" key="java"><code><span class="c-kw">import</span> com.owlat.sdk.Owlat;
+							<pre
+								v-else-if="activeTab === 'java'"
+								key="java"
+							><code><span class="c-kw">import</span> com.owlat.sdk.Owlat;
 <span class="c-kw">import</span> com.owlat.sdk.model.transactional.*;
 
 Owlat owlat = <span class="c-kw">new</span> <span class="c-fn">Owlat</span>(<span class="c-str">"lm_live_..."</span>);
@@ -292,7 +352,10 @@ Contact contact = owlat.<span class="c-fn">contacts</span>().<span class="c-fn">
 );</code></pre>
 
 							<!-- cURL -->
-							<pre v-else key="curl"><code><span class="c-comment"># Send a transactional email</span>
+							<pre
+								v-else
+								key="curl"
+							><code><span class="c-comment"># Send a transactional email</span>
 curl -X POST https://your-deployment.convex.site/api/v1/transactional \
   -H <span class="c-str">"Authorization: Bearer lm_live_..."</span> \
   -H <span class="c-str">"Content-Type: application/json"</span> \
@@ -316,7 +379,9 @@ curl -X POST https://your-deployment.convex.site/api/v1/transactional \
 					<div class="oss-content">
 						<div class="oss-icon-row">
 							<svg class="oss-icon" width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
-								<path d="M12 .3a12 12 0 0 0-3.8 23.38c.6.11.82-.26.82-.58l-.01-2.05c-3.34.73-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.08-.74.08-.73.08-.73 1.2.09 1.84 1.24 1.84 1.24 1.07 1.83 2.8 1.3 3.49 1 .1-.78.42-1.3.76-1.6-2.67-.31-5.47-1.34-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.13-.3-.54-1.52.12-3.18 0 0 1-.32 3.3 1.23a11.5 11.5 0 0 1 6.02 0c2.28-1.55 3.29-1.23 3.29-1.23.66 1.66.25 2.88.12 3.18a4.65 4.65 0 0 1 1.24 3.22c0 4.61-2.81 5.62-5.48 5.92.43.37.81 1.1.81 2.22l-.01 3.29c0 .32.21.7.82.58A12 12 0 0 0 12 .3" />
+								<path
+									d="M12 .3a12 12 0 0 0-3.8 23.38c.6.11.82-.26.82-.58l-.01-2.05c-3.34.73-4.04-1.61-4.04-1.61-.55-1.39-1.34-1.76-1.34-1.76-1.08-.74.08-.73.08-.73 1.2.09 1.84 1.24 1.84 1.24 1.07 1.83 2.8 1.3 3.49 1 .1-.78.42-1.3.76-1.6-2.67-.31-5.47-1.34-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.13-.3-.54-1.52.12-3.18 0 0 1-.32 3.3 1.23a11.5 11.5 0 0 1 6.02 0c2.28-1.55 3.29-1.23 3.29-1.23.66 1.66.25 2.88.12 3.18a4.65 4.65 0 0 1 1.24 3.22c0 4.61-2.81 5.62-5.48 5.92.43.37.81 1.1.81 2.22l-.01 3.29c0 .32.21.7.82.58A12 12 0 0 0 12 .3"
+								/>
 							</svg>
 							<span class="oss-label">
 								<I18nT keypath="home.oss.label" tag="span" scope="global">
@@ -336,7 +401,18 @@ curl -X POST https://your-deployment.convex.site/api/v1/transactional \
 							class="btn btn-hairline btn-sm group oss-link no-underline"
 						>
 							<span>{{ t('home.oss.cta') }}</span>
-							<svg class="arrow-nudge" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+							<svg
+								class="arrow-nudge"
+								width="14"
+								height="14"
+								viewBox="0 0 16 16"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="2"
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								aria-hidden="true"
+							>
 								<path d="M3.33 8h9.34M8.67 4l4 4-4 4" />
 							</svg>
 						</a>
@@ -933,9 +1009,20 @@ curl -X POST https://your-deployment.convex.site/api/v1/transactional \
 }
 
 /* ── Syntax Highlighting (tokenized via main.css — flips with color mode) ── */
-.c-kw { color: var(--color-brand); font-weight: 500; }
-.c-fn { color: var(--color-syntax-fn); }
-.c-str { color: var(--color-syntax-str); }
-.c-prop { color: var(--color-text-primary); }
-.c-comment { color: var(--color-text-tertiary); }
+.c-kw {
+	color: var(--color-brand);
+	font-weight: 500;
+}
+.c-fn {
+	color: var(--color-syntax-fn);
+}
+.c-str {
+	color: var(--color-syntax-str);
+}
+.c-prop {
+	color: var(--color-text-primary);
+}
+.c-comment {
+	color: var(--color-text-tertiary);
+}
 </style>
