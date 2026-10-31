@@ -55,7 +55,7 @@ export async function enableFeatures(
 		const settings = await ctx.db.query('instanceSettings').first();
 		if (settings) {
 			await ctx.db.patch(settings._id, {
-				featureFlags: { ...(settings.featureFlags ?? {}), ...featureFlags },
+				featureFlags: { ...settings.featureFlags, ...featureFlags },
 				updatedAt: now,
 			});
 			return;

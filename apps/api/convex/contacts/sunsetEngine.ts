@@ -61,11 +61,12 @@ import {
  * Module-private: the quiet clock is reset by the WIDER set below, and exporting
  * both would invite a caller to pick the wrong one.
  */
-const SUNSET_ENGAGEMENT_LITERALS: readonly ContactActivityType[] =
+const SUNSET_ENGAGEMENT_LITERALS: ReadonlySet<ContactActivityType> = new Set(
 	CONTACT_ACTIVITY_TYPE_LITERALS.filter((literal) => {
 		const mapped = ENGAGEMENT_ACTIVITY_MAP[literal];
 		return mapped !== null && mapped !== 'bounce' && mapped !== 'complaint';
-	});
+	})
+);
 
 /**
  * The literals that are an EXPLICIT ACT BY THE CONTACT but carry no open/click
@@ -100,8 +101,7 @@ const SUNSET_CONSENT_LITERAL_SET: ReadonlySet<string> = new Set(SUNSET_CONSENT_L
  */
 export const SUNSET_QUIET_RESETTING_LITERALS: readonly ContactActivityType[] =
 	CONTACT_ACTIVITY_TYPE_LITERALS.filter(
-		(literal) =>
-			SUNSET_ENGAGEMENT_LITERALS.includes(literal) || SUNSET_CONSENT_LITERAL_SET.has(literal)
+		(literal) => SUNSET_ENGAGEMENT_LITERALS.has(literal) || SUNSET_CONSENT_LITERAL_SET.has(literal)
 	);
 
 type SunsetTransition = {

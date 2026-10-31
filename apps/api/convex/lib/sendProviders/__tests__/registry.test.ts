@@ -252,7 +252,7 @@ describe('EmailErrorCode + isRetryableErrorCode', () => {
 	// added without a decision in both places is the drift this list catches — it
 	// grew `ROUTING_LEASE_UNREADABLE` (issue #505) exactly that way.
 	it('ships exactly these codes, each named on the wire by its own key', () => {
-		expect([...Object.values(EmailErrorCode)].sort()).toEqual([
+		expect(Object.values(EmailErrorCode).sort()).toEqual([
 			'AMBIGUOUS_TIMEOUT',
 			'AUTH_FAILED',
 			'CONTENT_REJECTED',

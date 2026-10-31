@@ -304,7 +304,7 @@ export const reorderSteps = automationsMutation({
 		const orderedSteps = await Promise.all(args.stepOrder.map((id) => ctx.db.get(id)));
 		const oldToNew = new Map<number, number | null>();
 		const conditionSteps: Doc<'automationSteps'>[] = [];
-		orderedSteps.forEach((step, i) => {
+		for (const [i, step] of orderedSteps.entries()) {
 			// EVERY supplied id must resolve to a live step OF THIS automation.
 			// Validating up front — before any patch — stops a caller renumbering
 			// (and thereby corrupting the run-order of) steps belonging to an
@@ -316,7 +316,7 @@ export const reorderSteps = automationsMutation({
 			}
 			oldToNew.set(step.stepIndex, i);
 			if (step.stepType === 'condition') conditionSteps.push(step);
-		});
+		}
 		await remapConditionBranches(ctx, conditionSteps, oldToNew, now);
 
 		for (let i = 0; i < args.stepOrder.length; i++) {
