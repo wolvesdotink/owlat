@@ -143,8 +143,9 @@ describe('runAlignmentPreflightSweep writes', () => {
 		expect(await alignmentRows(t)).toHaveLength(perRun);
 		const [continuation, ...others] = await scheduledSweeps(t);
 		expect(others).toEqual([]);
-		expect(continuation?.scheduledTime).toBe(NOW + 500);
-		const cursor = (continuation?.args[0] as { cursor: string | null }).cursor;
+		if (!continuation) throw new Error('no continuation was scheduled');
+		expect(continuation.scheduledTime).toBe(NOW + 500);
+		const cursor = (continuation.args[0] as { cursor: string | null }).cursor;
 		expect(typeof cursor).toBe('string');
 
 		await t.action(internal.delivery.alignmentPreflightGather.runAlignmentPreflightSweep, {
