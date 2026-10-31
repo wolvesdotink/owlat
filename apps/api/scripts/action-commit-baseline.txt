@@ -7,6 +7,3 @@ convex/desktop/updates.ts:refreshReleases #4
 convex/desktop/updates.ts:refreshReleases #5
 convex/desktop/updates.ts:refreshReleases #6
 convex/desktop/updates.ts:refreshReleases #7
-convex/unifiedMessages.ts:runChannelHealthChecks #2
-convex/unifiedMessages.ts:runChannelHealthChecks #3
-convex/unifiedMessages.ts:runChannelHealthChecks #4

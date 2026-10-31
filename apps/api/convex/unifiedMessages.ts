@@ -7,6 +7,7 @@
  */
 
 import { v, type ObjectType } from 'convex/values';
+import type { FunctionArgs } from 'convex/server';
 import { internalQuery, internalAction } from './_generated/server';
 import { internalMutation } from './lib/writeFence';
 import type { MutationCtx } from './_generated/server';
@@ -576,29 +577,41 @@ export const resolveOutboundThread = internalMutation({
 	},
 });
 
+/** A channel's health as a check found it. */
+export const channelHealthFields = {
+	healthStatus: healthStatusValidator,
+	lastError: v.optional(v.string()),
+};
+
 /**
- * Update channel health status (called by health check cron)
+ * Stamp a health check's result on a channel's config row. An absent
+ * `lastError` keeps the last one recorded.
  */
+export async function writeChannelHealth(
+	ctx: MutationCtx,
+	configId: Id<'channelConfigs'>,
+	health: ObjectType<typeof channelHealthFields>
+): Promise<void> {
+	const now = Date.now();
+	await ctx.db.patch(configId, {
+		healthStatus: health.healthStatus,
+		lastHealthCheckAt: now,
+		...(health.lastError !== undefined ? { lastError: health.lastError } : {}),
+		updatedAt: now,
+	});
+}
+
+/** The commit of `channels/outbound.probeChannelHealth`. */
 export const updateChannelHealth = internalMutation({
-	args: {
-		channel: unifiedMessageChannelValidator,
-		healthStatus: healthStatusValidator,
-		lastError: v.optional(v.string()),
-	},
-	handler: async (ctx, args) => {
+	args: { channel: unifiedMessageChannelValidator, ...channelHealthFields },
+	handler: async (ctx, { channel, ...health }) => {
 		const config = await ctx.db
 			.query('channelConfigs')
-			.withIndex('by_channel', (q) => q.eq('channel', args.channel))
+			.withIndex('by_channel', (q) => q.eq('channel', channel))
 			.first();
 
 		if (!config) return;
-
-		await ctx.db.patch(config._id, {
-			healthStatus: args.healthStatus,
-			lastHealthCheckAt: Date.now(),
-			...(args.lastError !== undefined ? { lastError: args.lastError } : {}),
-			updatedAt: Date.now(),
-		});
+		await writeChannelHealth(ctx, config._id, health);
 	},
 });
 
@@ -607,55 +620,65 @@ export const updateChannelHealth = internalMutation({
 // ============================================================
 
 /**
- * Run health checks on all enabled channels
+ * Run health checks on all enabled channels. A configured SMS/WhatsApp/webhook
+ * channel is probed by `channels/outbound.probeChannelHealth`, which records
+ * its own result; every other result lands in one commit at the end.
  */
 export const runChannelHealthChecks = internalAction({
 	args: {},
 	returns: v.null(),
 	handler: async (ctx) => {
 		const configs = await ctx.runQuery(internal.unifiedMessages.getEnabledChannels);
+		const results: ChannelHealthResult[] = [];
 
 		for (const config of configs) {
+			const checked = { channel: config.channel, hadCredentials: Boolean(config.config) };
+			// Email/chat have no outbound provider adapter here (email health
+			// is tracked by the existing providerHealth system; chat is native),
+			// so config-presence is the only available signal.
+			if (config.channel === 'email' || config.channel === 'chat') {
+				results.push({ ...checked, healthStatus: 'healthy' });
+				continue;
+			}
+
+			// For SMS/WhatsApp/Webhook: fast-path the unconfigured case, then
+			// run the adapter's REAL healthCheck() probe (Twilio/Meta/webhook)
+			// for configured channels. The probe needs node:crypto to decrypt
+			// the stored creds, so it lives in a `'use node'` action — a channel
+			// with revoked/invalid credentials surfaces degraded/down instead of
+			// reporting healthy off mere config-blob presence.
+			if (!config.config) {
+				results.push({
+					...checked,
+					healthStatus: 'down',
+					lastError: 'No credentials configured',
+				});
+				continue;
+			}
+
 			try {
-				// Email/chat have no outbound provider adapter here (email health
-				// is tracked by the existing providerHealth system; chat is native),
-				// so config-presence is the only available signal.
-				if (config.channel === 'email' || config.channel === 'chat') {
-					await ctx.runMutation(internal.unifiedMessages.updateChannelHealth, {
-						channel: config.channel,
-						healthStatus: 'healthy',
-					});
-					continue;
-				}
-
-				// For SMS/WhatsApp/Webhook: fast-path the unconfigured case, then
-				// run the adapter's REAL healthCheck() probe (Twilio/Meta/webhook)
-				// for configured channels. The probe needs node:crypto to decrypt
-				// the stored creds, so it lives in a `'use node'` action — a channel
-				// with revoked/invalid credentials surfaces degraded/down instead of
-				// reporting healthy off mere config-blob presence.
-				if (!config.config) {
-					await ctx.runMutation(internal.unifiedMessages.updateChannelHealth, {
-						channel: config.channel,
-						healthStatus: 'down',
-						lastError: 'No credentials configured',
-					});
-					continue;
-				}
-
 				await ctx.runAction(internal.channels.outbound.probeChannelHealth, {
 					channel: config.channel,
 				});
 			} catch (error) {
-				await ctx.runMutation(internal.unifiedMessages.updateChannelHealth, {
-					channel: config.channel,
+				results.push({
+					...checked,
 					healthStatus: 'down',
 					lastError: error instanceof Error ? error.message : String(error),
 				});
 			}
 		}
+
+		if (results.length > 0) {
+			await ctx.runMutation(internal.channels.outboundCommit.recordHealthChecks, { results });
+		}
+		return null;
 	},
 });
+
+type ChannelHealthResult = FunctionArgs<
+	typeof internal.channels.outboundCommit.recordHealthChecks
+>['results'][number];
 
 /**
  * Internal query to get enabled channel configs
