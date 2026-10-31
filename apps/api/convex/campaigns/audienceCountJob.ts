@@ -1,6 +1,6 @@
 /**
  * Audience count job (module) — the resumable exact count behind the campaign
- * wizard's recipient readout (#916).
+ * wizard's recipient readout.
  *
  * The subscribed `countRecipients` query only ever reads one budgeted page. An
  * audience bigger than that is counted here: `request` opens (or reuses) the

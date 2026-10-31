@@ -6,15 +6,15 @@
  *   - the ADMIN FLOOR is real: an anonymous caller and an editor member are both
  *     refused before a seed row or an SNDS row is read;
  *   - the read is ORG-SCOPED: another organization's seed mailboxes are never
- *     counted, even though the handler no longer derives the org id itself at
+ *     counted, even though the handler does not derive the org id itself at
  *     all — it takes the one the floor admitted;
  *   - the permission gate runs ONCE per execution, and NOTHING else looks a
- *     session up. The handler used to call `requireOrgPermission` again purely to
- *     obtain `activeOrganizationId` (two BetterAuth session + `member`
+ *     session up. Calling `requireOrgPermission` again to obtain
+ *     `activeOrganizationId` would cost two BetterAuth session + `member`
  *     resolutions on a query the hub live-subscribes and every seed /
- *     `sndsIpDailyStats` write invalidates), then `getBetterAuthSession` for the
- *     cheaper claim read. `adminQuery` threads its own resolved session in, so
- *     both extra reads are gone and the count is 1 + 0;
+ *     `sndsIpDailyStats` write invalidates, and `getBetterAuthSession` for the
+ *     claim read one more. `adminQuery` threads its own resolved session in, so
+ *     the count is 1 + 0;
  *   - the org scope can never be silently dropped: a session with no active
  *     organization is refused by the floor rather than read cross-tenant.
  *

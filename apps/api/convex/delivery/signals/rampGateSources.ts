@@ -37,8 +37,8 @@
  * KEYS COME FROM THE SHARED VOCABULARY, not from `RampGateId`: `bounce_rate`,
  * `complaint_rate`, `engagement_ratio` and `seed_placement` are the shared
  * OUTCOME sources and `persistent_defers` is a shared INFRASTRUCTURE source, and
- * that correspondence — the ramp measures exactly the signals the routing
- * vocabulary declares — was until now nowhere written down. `gate` carries the
+ * this module is where that correspondence — the ramp measures exactly the
+ * signals the routing vocabulary declares — is written down. `gate` carries the
  * ramp's own id alongside it, because that is what the audit row and the
  * operator notification key off.
  */

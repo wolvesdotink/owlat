@@ -67,17 +67,11 @@ export const checkTestSendRateLimit = internalMutation({
 
 // Campaign send/fail counter bumps live on sendLifecycle's effect list
 // (`campaign_stats_sent` on the `sent` reducer, `campaign_stats_failed` on
-// the `failed` reducer). The historical
-// `recordEmailSendResult` mutation has been removed — its only caller was
-// the deleted `onEmailComplete`, and its handler silently ignored the
-// `failed` arg, so the effect-based replacement also fixes a previously
-// undercounted statsFailed counter.
+// the `failed` reducer), not in a mutation here.
 //
-// Campaign status transitions (markCampaignSent, updateCampaignToSending,
-// setCampaignPendingReview, revertCampaignToDraft) used to live here.
-// They were deleted — the **Campaign lifecycle (module)** at
-// `convex/campaigns/lifecycle.ts` is now the only writer of `campaigns.status`.
-// Callers (the campaign-send orchestrator) call
+// Campaign status transitions do not live here either: the **Campaign
+// lifecycle (module)** at `convex/campaigns/lifecycle.ts` is the only writer
+// of `campaigns.status`. Callers (the campaign-send orchestrator) call
 // `internal.campaigns.lifecycle.transition` directly.
 
 // Internal query to get campaign for sending (with minimal data)

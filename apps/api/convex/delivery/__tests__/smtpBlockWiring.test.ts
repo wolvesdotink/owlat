@@ -1,6 +1,6 @@
 /**
  * GATE 2'S BLOCK CLAUSE HAS A PRODUCTION SUPPLIER — end to end, through the REAL
- * readers (issue #501).
+ * readers.
  *
  * The sibling of `seedGateWiring.test.ts`, one gate over. `smtpBlockMessage.test.ts`
  * has always proved the clause's ARITHMETIC by handing it an observation; what

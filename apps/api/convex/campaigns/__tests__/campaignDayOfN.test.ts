@@ -102,8 +102,8 @@ describe('campaignSendPlanProgress', () => {
 
 	/**
 	 * THE SAME LENGTH, THE OPPOSITE FACT — end to end from the planner that
-	 * produced the checkpoint. Truncation used to be re-derived here as
-	 * `planTotalDays >= MAX_PLAN_DAYS`, which told an operator whose send is
+	 * produced the checkpoint. Truncation must not be re-derived here as
+	 * `planTotalDays >= MAX_PLAN_DAYS`, which tells an operator whose send is
 	 * fully scheduled — the last recipient goes out on day MAX_PLAN_DAYS — that
 	 * it runs "more than 60 days". A schedule that covers its audience is
 	 * complete however long it is.

@@ -614,7 +614,7 @@ describe('reader opens and clicks become contact activities', () => {
 	});
 });
 
-// #1189: a bounced or complained row keeps its status on a reader open or
+// A bounced or complained row keeps its status on a reader open or
 // click, so the first-open / first-click marker has to be written anyway, or
 // every later open would count as the first one again.
 describe('reader opens and clicks on a bounced or complained send', () => {
@@ -641,7 +641,7 @@ describe('reader opens and clicks on a bounced or complained send', () => {
 	const kindsOf = (effects: ReadonlyArray<{ kind: string }>) => effects.map((e) => e.kind);
 	// A complained row records the engagement but feeds nothing back into the
 	// contact: no activity row (engagement score, `hasOpened` / `hasClicked`)
-	// and no send-time profile update (#1225).
+	// and no send-time profile update.
 	const CONTACT_EFFECTS = new Set(['send_time_engagement', 'contact_activity']);
 	const ROWS = [
 		{ label: 'hard-bounced', row: { status: 'bounced', bounceType: 'hard' }, isComplaint: false },
@@ -728,7 +728,7 @@ describe('reader opens and clicks on a bounced or complained send', () => {
 	});
 });
 
-// #1225: an open or click on a bounced or complained row is delivery evidence,
+// An open or click on a bounced or complained row is delivery evidence,
 // but not authenticated evidence, so it must not clear the counter that
 // escalates repeated soft bounces into a suppression.
 describe('reduceDeliveryObservation for engagement after feedback', () => {

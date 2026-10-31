@@ -264,7 +264,7 @@ export async function loadCellInput(
 	});
 
 	// WHAT THE RECEIVERS SAID, over the SAME evaluation window the rates above are
-	// taken over (issue #501). A second bounded index read per cell rather than a
+	// taken over. A second bounded index read per cell rather than a
 	// column on the outcome rows: the categories are an open-ended vocabulary
 	// written once per ATTEMPT, and the counters beside them are a closed one
 	// written once per recipient transition.

@@ -89,8 +89,8 @@ export interface RampDegradation {
 	 * so a renderer derives them from that list at the point it renders them.
 	 *
 	 * NOTHING DOES TODAY, and that is worth saying plainly rather than leaving as an
-	 * implication. A `rampCellConfidence` projection over this list was removed
-	 * because no screen ever consumed it (issue #515). The delivery dashboard grades
+	 * implication. There is no projection over this list, because no screen
+	 * would consume one. The delivery dashboard grades
 	 * a cell with `dashboardConfidence` (`../deliverabilityDashboardView.ts`), which
 	 * answers in machine-readable improvement CODES rendered by
 	 * `apps/web/app/utils/deliverabilityMeasurement.ts` — so the operator copy for

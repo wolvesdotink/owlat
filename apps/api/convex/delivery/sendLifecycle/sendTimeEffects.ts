@@ -79,7 +79,7 @@ export function sendTimeEngagementEffects(
 	agent?: OpenAgent
 ): SendTimeEngagementEffect[] {
 	if (ref.kind !== 'campaign' || !send.contactId) return [];
-	// A complaint ends what the contact's profile learns from this send (#1225).
+	// A complaint ends what the contact's profile learns from this send.
 	if (send.status === 'complained') return [];
 	if (engagement === 'open' && agent !== 'client') return [];
 	return [{ kind: 'send_time_engagement', contactId: send.contactId, engagement, at }];
