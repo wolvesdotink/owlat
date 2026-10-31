@@ -172,7 +172,7 @@ async function handleSaveWorkingHours(payload: {
 }
 
 // How reviewers rated recent replies, for the feedback card.
-const { data: feedbackStats } = useConvexQuery(api.autonomyFeedback.getFeedbackStats, () =>
+const { data: feedbackStats } = useConvexQuery(api.autonomy.feedback.getFeedbackStats, () =>
 	agentEnabled.value ? { hoursBack: 24 } : 'skip'
 );
 </script>

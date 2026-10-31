@@ -3,7 +3,7 @@
  * a clarifying question" trust setting, and the pure policy + instrumentation
  * helpers the clarify surfaces read.
  *
- * The dial sits ALONGSIDE Graduated Autonomy (autonomy.ts) so the two read as
+ * The dial sits ALONGSIDE Graduated Autonomy (autonomy/policy.ts) so the two read as
  * one coherent trust control: autonomy decides when Owlat may act without me,
  * eagerness decides when it should stop and ask me. Horvitz act / ask /
  * stay-silent banding — the dial only moves the ASK band.

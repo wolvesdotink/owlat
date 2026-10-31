@@ -12,7 +12,7 @@
  *   - a NEUTRAL reply is never mislabeled (conservative: false-negatives
  *     preferred), and a classification failure records nothing (fail-soft);
  *   - a reply to a HUMAN-reviewed send is never attributed a negative outcome;
- *   - the recorded rows are exactly the input `autonomy.adjustThresholds`
+ *   - the recorded rows are exactly the input `autonomy.feedback.adjustThresholds`
  *     consumes (getRecentFeedbackInternal).
  *
  * The LLM dispatch seam + provider factory are mocked — no live model.
@@ -136,7 +136,7 @@ async function feedbackRows(t: ReturnType<typeof convexTest>) {
 	return await t.run(async (ctx) => ctx.db.query('autonomyFeedback').collect());
 }
 
-describe('autonomyOutcome.recordOutcomeFeedback', () => {
+describe('autonomy.outcome.recordOutcomeFeedback', () => {
 	it('records a bounce as NEGATIVE (rejected) feedback for the original category', async () => {
 		const t = convexTest(schema, modules);
 		await t.run(async (ctx) => {
@@ -147,7 +147,7 @@ describe('autonomyOutcome.recordOutcomeFeedback', () => {
 		});
 		const { originalId } = await seedAutoSentOnThread(t, { category: 'billing', confidence: 0.8 });
 
-		await t.mutation(internal.autonomyOutcome.recordOutcomeFeedback, {
+		await t.mutation(internal.autonomy.outcome.recordOutcomeFeedback, {
 			inboundMessageId: originalId,
 			signal: 'bounce',
 		});
@@ -168,7 +168,7 @@ describe('autonomyOutcome.recordOutcomeFeedback', () => {
 		const t = convexTest(schema, modules);
 		const { originalId } = await seedAutoSentOnThread(t, { category: 'support' });
 
-		await t.mutation(internal.autonomyOutcome.recordOutcomeFeedback, {
+		await t.mutation(internal.autonomy.outcome.recordOutcomeFeedback, {
 			inboundMessageId: originalId,
 			signal: 'complaint',
 		});
@@ -186,7 +186,7 @@ describe('autonomyOutcome.recordOutcomeFeedback', () => {
 		const t = convexTest(schema, modules);
 		const { originalId } = await seedAutoSentOnThread(t, { category: 'sales' });
 
-		await t.mutation(internal.autonomyOutcome.recordOutcomeFeedback, {
+		await t.mutation(internal.autonomy.outcome.recordOutcomeFeedback, {
 			inboundMessageId: originalId,
 			signal: 'clarification_unedited_send',
 		});
@@ -212,7 +212,7 @@ describe('autonomyOutcome.recordOutcomeFeedback', () => {
 			return id;
 		});
 
-		await t.mutation(internal.autonomyOutcome.recordOutcomeFeedback, {
+		await t.mutation(internal.autonomy.outcome.recordOutcomeFeedback, {
 			inboundMessageId: ghostId,
 			signal: 'bounce',
 		});
@@ -221,7 +221,7 @@ describe('autonomyOutcome.recordOutcomeFeedback', () => {
 	});
 });
 
-describe('autonomyOutcome.getReplyOutcomeContext', () => {
+describe('autonomy.outcome.getReplyOutcomeContext', () => {
 	it('links a reply to a prior AUTO-sent message on the same thread', async () => {
 		const t = convexTest(schema, modules);
 		const { threadId, originalId } = await seedAutoSentOnThread(t);
@@ -237,7 +237,7 @@ describe('autonomyOutcome.getReplyOutcomeContext', () => {
 			} as never)
 		);
 
-		const ctx = await t.query(internal.autonomyOutcome.getReplyOutcomeContext, {
+		const ctx = await t.query(internal.autonomy.outcome.getReplyOutcomeContext, {
 			replyMessageId: replyId,
 		});
 		expect(ctx).toEqual({ wasAutoSent: true, originalMessageId: originalId, isScanned: false });
@@ -259,7 +259,7 @@ describe('autonomyOutcome.getReplyOutcomeContext', () => {
 		);
 
 		expect(
-			await t.query(internal.autonomyOutcome.getReplyOutcomeContext, { replyMessageId: replyId })
+			await t.query(internal.autonomy.outcome.getReplyOutcomeContext, { replyMessageId: replyId })
 		).toBeNull();
 	});
 });
@@ -464,16 +464,16 @@ describe('outcome feedback flows into adjustThresholds input', () => {
 		const { originalId } = await seedAutoSentOnThread(t, { category: 'support' });
 
 		// Two negative outcomes (bounce + complaint) captured without any human review.
-		await t.mutation(internal.autonomyOutcome.recordOutcomeFeedback, {
+		await t.mutation(internal.autonomy.outcome.recordOutcomeFeedback, {
 			inboundMessageId: originalId,
 			signal: 'bounce',
 		});
-		await t.mutation(internal.autonomyOutcome.recordOutcomeFeedback, {
+		await t.mutation(internal.autonomy.outcome.recordOutcomeFeedback, {
 			inboundMessageId: originalId,
 			signal: 'complaint',
 		});
 
-		const feedback = await t.query(internal.autonomyFeedback.getRecentFeedbackInternal, {
+		const feedback = await t.query(internal.autonomy.feedback.getRecentFeedbackInternal, {
 			category: 'support',
 		});
 		expect(feedback).toHaveLength(2);

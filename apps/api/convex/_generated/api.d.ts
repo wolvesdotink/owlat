@@ -375,6 +375,10 @@ import type * as autonomy from '../autonomy.js';
 import type * as autonomyFeedback from '../autonomyFeedback.js';
 import type * as autonomyOutcome from '../autonomyOutcome.js';
 import type * as autonomySuggestions from '../autonomySuggestions.js';
+import type * as autonomy_feedback from '../autonomy/feedback.js';
+import type * as autonomy_outcome from '../autonomy/outcome.js';
+import type * as autonomy_policy from '../autonomy/policy.js';
+import type * as autonomy_suggestions from '../autonomy/suggestions.js';
 import type * as backups from '../backups.js';
 import type * as blockedEmails_lookup from '../blockedEmails/lookup.js';
 import type * as blockedEmails from '../blockedEmails.js';
@@ -2218,6 +2222,11 @@ declare const fullApi: ApiFromModules<{
 	'automations/steps/catalog': typeof automations_steps_catalog;
 	'automations/steps/pluginStep': typeof automations_steps_pluginStep;
 	'automations/triggers/catalog': typeof automations_triggers_catalog;
+}> & ApiFromModules<{
+	'autonomy/feedback': typeof autonomy_feedback;
+	'autonomy/outcome': typeof autonomy_outcome;
+	'autonomy/policy': typeof autonomy_policy;
+	'autonomy/suggestions': typeof autonomy_suggestions;
 }> & ApiFromModules<{
 	'blockedEmails/lookup': typeof blockedEmails_lookup;
 }> & ApiFromModules<{

@@ -1,191 +1,47 @@
 /**
- * Post-send outcome feedback
- *
- * Captures REAL-WORLD post-send outcomes (angry replies / bounces / complaints,
- * and unedited answered-clarification sends) as autonomy feedback, so the
- * self-tuning loop stays calibrated as auto-send volume grows — outcomes on
- * messages the human never reviewed still tune the thresholds and feed the
- * rejection-spike circuit breaker.
- *
- * Split out of `autonomy.ts` to keep that module under the file-size ratchet;
- * the recorded rows are plain `autonomyFeedback` rows written through the same
- * `internal.autonomyFeedback.recordFeedback` writer the human path uses.
+ * Previous-release paths of `autonomy/outcome.ts`. The autonomy settings page in
+ * a tab opened before the deploy still lists and acknowledges auto-demotions
+ * through `autonomyOutcome:*` by path, a previous release's outcome
+ * classification still running when this one deploys calls these internal
+ * functions by their old paths, and so does an outcome record the previous
+ * release's bounce or complaint handling queued. Each function keeps its old
+ * path, builder, auth floor, arguments and result shape, and runs the same body
+ * as its replacement. Remove after release 0.6.17.
  */
-
 import { v } from 'convex/values';
 import { internalQuery } from './_generated/server';
 import { internalMutation } from './lib/writeFence';
-import type { MutationCtx } from './_generated/server';
-import type { Id } from './_generated/dataModel';
-import { internal } from './_generated/api';
 import { adminQuery, authedMutation } from './lib/authedFunctions';
 import { hasPermission, requirePermission } from './lib/sessionOrganization';
 import { assertFeatureEnabled } from './lib/featureFlags';
-import { extractEmail } from './lib/emailAddress';
-import { recordAuditLog } from './lib/auditLog';
-import { getSenderRule } from './lib/autonomyRules';
+import { internal } from './_generated/api';
+import {
+	markDemotionAcknowledged,
+	type ReplyOutcomeContext,
+	outcomeSignalValidator,
+	readAutoDemotions,
+	recordOutcome,
+} from './autonomy/outcome';
 
-/**
- * The real-world post-send outcome signals that can be captured for a message
- * that was AUTO-sent (or, for the positive clarification case, sent by the
- * owner unedited). Each maps deterministically to an `autonomyFeedback.action`
- * so the existing threshold-adjustment cron and rejection-spike circuit breaker
- * consume them unchanged — an angry reply / bounce / complaint reads as a
- * `rejected`, an unedited answered-clarification send as an `approved`.
- */
-const OUTCOME_SIGNAL = {
-	reply_negative: 'rejected',
-	bounce: 'rejected',
-	complaint: 'rejected',
-	clarification_unedited_send: 'approved',
-} as const;
-
-type OutcomeSignal = keyof typeof OUTCOME_SIGNAL;
-
-const outcomeSignalValidator = v.union(
-	v.literal('reply_negative'),
-	v.literal('bounce'),
-	v.literal('complaint'),
-	v.literal('clarification_unedited_send')
-);
-
-/**
- * Record a real-world post-send OUTCOME as autonomy feedback, attributed to the
- * ORIGINAL auto-sent message's category/sender (not the reply's). This is the
- * second signal source that keeps the self-tuning loop calibrated as auto-send
- * volume grows: outcomes on messages the human never reviewed still tune the
- * thresholds and feed the rejection-spike breaker.
- *
- * Fail-soft and conservative:
- *   - a missing original message is a no-op (nothing to attribute to);
- *   - the category comes from the original message's classification (`other`
- *     when unclassified), so the signal always lands somewhere;
- *   - the caller only ever passes a signal it is CONFIDENT about — a neutral
- *     reply is filtered out UPSTREAM (see agent/outcomeFeedback), never here.
- */
+/** Remove after release 0.6.17; this release calls `autonomy/outcome:recordOutcomeFeedback`. */
 export const recordOutcomeFeedback = internalMutation({
 	args: {
 		inboundMessageId: v.id('inboundMessages'),
 		signal: outcomeSignalValidator,
 	},
-	handler: async (ctx, args) => {
-		const message = await ctx.db.get(args.inboundMessageId);
-		if (!message) return; // original message gone — nothing to attribute
-
-		const category = message.classification?.category ?? 'other';
-		const action = OUTCOME_SIGNAL[args.signal as OutcomeSignal];
-		const agentConfidence = message.confidenceScore ?? message.classification?.confidence ?? 0;
-
-		await ctx.runMutation(internal.autonomyFeedback.recordFeedback, {
-			category,
-			action,
-			agentConfidence,
-			userFeedback: `post-send outcome: ${args.signal}`,
-			inboundMessageId: args.inboundMessageId,
-			source: 'outcome',
-			outcomeSignal: args.signal,
-		});
-
-		// First-class INCIDENT: a confirmed BAD auto-send outcome (angry reply /
-		// bounce / complaint — all of which map to `rejected`) is not just a
-		// calibration data point. It auto-DEMOTES the exact sender/category slice
-		// that produced it to draft-only so the agent stops auto-replying to that
-		// sender immediately, and records the incident for the autonomy UI to
-		// surface. A GOOD outcome (`clarification_unedited_send` → `approved`)
-		// never demotes.
-		if (action === 'rejected') {
-			const sender = extractEmail(message.from ?? '');
-			if (sender) {
-				await demoteSenderToDraftOnly(ctx, category, sender, args.signal);
-			}
-		}
-	},
+	handler: async (ctx, args) => await recordOutcome(ctx, args),
 });
 
-/**
- * Auto-demote a (category, sender) slice to DRAFT-ONLY after a confirmed bad
- * auto-send outcome. Upserts a DISABLED per-sender autonomy rule (an
- * `isEnabled: false` per-sender rule is the existing "never auto-send this
- * sender" opt-out; see lib/autonomyRules.ts) and stamps the incident markers so
- * the UI can surface it as a first-class alert the operator acknowledges.
- * Idempotent: a repeat bad outcome refreshes the incident timestamp.
- */
-async function demoteSenderToDraftOnly(
-	ctx: MutationCtx,
-	category: string,
-	sender: string,
-	signal: OutcomeSignal
-): Promise<void> {
-	const db = ctx.db;
-	const now = Date.now();
-	const reason = `Auto-demoted to draft-only after a confirmed bad auto-send outcome (${signal})`;
-	const existing = await getSenderRule(db, category, sender);
-
-	if (existing) {
-		await db.patch(existing._id, {
-			isEnabled: false,
-			autoDemotedAt: now,
-			autoDemotedReason: reason,
-			autoDemotedSignal: signal,
-			demotionAcknowledgedAt: undefined,
-			updatedAt: now,
-		});
-		return;
-	}
-
-	await db.insert('autonomyRules', {
-		category,
-		sender,
-		autoApproveThreshold: 0.9,
-		maxDailyAutoActions: 10,
-		isEnabled: false,
-		autoDemotedAt: now,
-		autoDemotedReason: reason,
-		autoDemotedSignal: signal,
-		createdAt: now,
-		updatedAt: now,
-	});
-}
-
-// ============================================================
-// Demotion incidents (user-facing alert surface)
-// ============================================================
-
-/**
- * Admin-gated read of unacknowledged auto-demotion incidents for the autonomy
- * settings UI. Each row is a (category, sender) slice that was auto-demoted to
- * draft-only after a confirmed bad auto-send outcome and not yet dismissed.
- * Newest first. Bounded: one row per demoted sender.
- */
+/** Remove after release 0.6.17; this release calls `autonomy/outcome:listAutoDemotions`. */
 export const listAutoDemotions = adminQuery({
 	args: {},
 	handler: async (ctx) => {
 		await assertFeatureEnabled(ctx, 'ai.autonomy');
-		const rows = await ctx.db.query('autonomyRules').collect(); // bounded: category + per-sender rules
-		const incidents = [];
-		for (const row of rows) {
-			if (row.autoDemotedAt != null && row.demotionAcknowledgedAt == null) {
-				incidents.push({
-					_id: row._id,
-					category: row.category,
-					sender: row.sender ?? null,
-					autoDemotedAt: row.autoDemotedAt,
-					autoDemotedReason: row.autoDemotedReason ?? null,
-					autoDemotedSignal: row.autoDemotedSignal ?? null,
-				});
-			}
-		}
-		incidents.sort((a, b) => b.autoDemotedAt - a.autoDemotedAt);
-		return incidents;
+		return await readAutoDemotions(ctx);
 	},
 });
 
-/**
- * Acknowledge (dismiss) an auto-demotion incident. Clears the alert marker only;
- * the sender stays DRAFT-ONLY (the disabled per-sender rule is untouched) — an
- * operator who wants to re-enable auto-send for the sender does so deliberately
- * via the per-sender toggle. Owner/admin only.
- */
+/** Remove after release 0.6.17; this release calls `autonomy/outcome:acknowledgeAutoDemotion`. */
 export const acknowledgeAutoDemotion = authedMutation({
 	args: { ruleId: v.id('autonomyRules') },
 	returns: v.null(),
@@ -195,60 +51,15 @@ export const acknowledgeAutoDemotion = authedMutation({
 			'Only owners and admins can manage autonomy'
 		);
 		await assertFeatureEnabled(ctx, 'ai.autonomy');
-		const rule = await ctx.db.get(args.ruleId);
-		if (!rule || rule.autoDemotedAt == null) return null; // already cleared — idempotent
-		await ctx.db.patch(args.ruleId, { demotionAcknowledgedAt: Date.now() });
-		await recordAuditLog(ctx, {
-			userId: session.userId,
-			action: 'agent.demotion_acknowledged',
-			resource: 'autonomy_rule',
-			resourceId: args.ruleId,
-			details: { category: rule.category, sender: rule.sender ?? null },
-		});
-		return null;
+		return await markDemotionAcknowledged(ctx, args.ruleId, session.userId);
 	},
 });
 
-/**
- * Load the fields the outcome-classification action needs about a prior
- * auto-sent message: whether it was actually AUTO-sent (so a human-reviewed
- * send is never mislabeled) and the linked original message id. Session-less
- * — consumed by the `agent/outcomeFeedback` node action.
- */
+/** Remove after release 0.6.17; this release calls `autonomy/outcome:getReplyOutcomeContext`. */
 export const getReplyOutcomeContext = internalQuery({
 	args: { replyMessageId: v.id('inboundMessages') },
-	handler: async (
-		ctx,
-		args
-	): Promise<{
-		wasAutoSent: boolean;
-		originalMessageId: Id<'inboundMessages'>;
-		/** The pipeline's security scan of the reply has landed (`securityFlags`). */
-		isScanned: boolean;
-	} | null> => {
-		const reply = await ctx.db.get(args.replyMessageId);
-		if (!reply?.threadId) return null;
-
-		// Find the most recent PRIOR message on the thread that the agent
-		// AUTO-sent (route step's `auto_approve` decision that reached `sent`).
-		// Scan newest-first and stop at the first auto-sent original.
-		const priors = await ctx.db
-			.query('inboundMessages')
-			.withIndex('by_thread', (q) => q.eq('threadId', reply.threadId))
-			.order('desc')
-			.take(50);
-
-		for (const prior of priors) {
-			if (prior._id === reply._id) continue;
-			if (prior.receivedAt >= reply.receivedAt) continue; // must precede the reply
-			if (prior.processingStatus === 'sent' && prior.agentDecision?.decision === 'auto_approve') {
-				return {
-					wasAutoSent: true,
-					originalMessageId: prior._id,
-					isScanned: reply.securityFlags !== undefined,
-				};
-			}
-		}
-		return null;
-	},
+	// The read touches the shared-inbox tables, so it stays inside the internal
+	// query at the new path rather than in a helper a public function could call.
+	handler: async (ctx, args): Promise<ReplyOutcomeContext | null> =>
+		await ctx.runQuery(internal.autonomy.outcome.getReplyOutcomeContext, args),
 });

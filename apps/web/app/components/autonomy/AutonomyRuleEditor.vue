@@ -31,10 +31,10 @@ const emit = defineEmits<{
 	cancelled: [];
 }>();
 
-const { run: upsertRule } = useBackendOperation(api.autonomy.upsertRule, {
+const { run: upsertRule } = useBackendOperation(api.autonomy.policy.upsertRule, {
 	label: () => t('components.autonomy.autonomyRuleEditor.saveOperation'),
 });
-const { run: deleteRule } = useBackendOperation(api.autonomy.deleteRule, {
+const { run: deleteRule } = useBackendOperation(api.autonomy.policy.deleteRule, {
 	label: () => t('components.autonomy.autonomyRuleEditor.deleteOperation'),
 });
 
