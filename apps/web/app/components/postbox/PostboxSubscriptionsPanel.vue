@@ -205,6 +205,9 @@ function lastReadLabel(sender: PostboxSubscriptionSender): string {
 					:key="sender.senderEmail"
 					class="px-5 py-3 flex flex-wrap items-center gap-x-3 gap-y-1"
 				>
+					<!-- A manual-only box is aria-disabled, not disabled: a disabled input
+					     leaves the tab order, so keyboard focus could never open the hint
+					     saying why. Cancelling the click keeps it from ticking. -->
 					<UiTooltip
 						:text="
 							sender.method === 'one-click'
@@ -215,9 +218,10 @@ function lastReadLabel(sender: PostboxSubscriptionSender): string {
 						<input
 							:id="`subscription-${sender.senderEmail}`"
 							type="checkbox"
-							class="shrink-0 h-4 w-4"
+							class="shrink-0 h-4 w-4 aria-disabled:opacity-50 aria-disabled:cursor-not-allowed"
 							:checked="selected.has(sender.senderEmail)"
-							:disabled="sender.method !== 'one-click'"
+							:aria-disabled="sender.method !== 'one-click' ? 'true' : undefined"
+							@click="sender.method !== 'one-click' && $event.preventDefault()"
 							@change="toggle(sender.senderEmail)"
 						/>
 					</UiTooltip>

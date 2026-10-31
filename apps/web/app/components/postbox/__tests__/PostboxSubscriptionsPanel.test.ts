@@ -16,7 +16,7 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { ref } from 'vue';
 import { installConfirm, type ConfirmDriver } from '~/__tests__/confirm';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
-import { tooltipOf } from '~/__tests__/tooltip';
+import { focusTooltip, tooltipOf } from '~/__tests__/tooltip';
 
 import PostboxSubscriptionsPanel from '../PostboxSubscriptionsPanel.vue';
 
@@ -127,7 +127,8 @@ describe('PostboxSubscriptionsPanel', () => {
 	it('cannot tick a sender the batch is unable to finish, and unsubscribes it on its own', async () => {
 		const w = mountPanel();
 		const boxes = w.findAll('input[type="checkbox"]');
-		expect(boxes[2]!.attributes('disabled')).toBeDefined();
+		expect(boxes[2]!.attributes('aria-disabled')).toBe('true');
+		expect(boxes[0]!.attributes('aria-disabled')).toBeUndefined();
 		// Why it is disabled, in a tooltip; the one-click boxes need none.
 		expect(boxes[2]!.attributes('title')).toBeUndefined();
 		expect(tooltipOf(w, boxes[2]!)).toBe(
@@ -144,6 +145,22 @@ describe('PostboxSubscriptionsPanel', () => {
 			{ messageId: 'msg-manual' },
 			{ mailboxId: 'mb1', name: 'Manual Only' }
 		);
+	});
+
+	it('keeps a manual-only box focusable for its hint, and a click never ticks it', async () => {
+		const w = mount(PostboxSubscriptionsPanel, {
+			props: { mailboxId: 'mb1' as never },
+			global: { plugins: [createTestI18n()], stubs },
+			attachTo: document.body,
+		});
+		const box = w.findAll('input[type="checkbox"]')[2]!;
+		expect(await focusTooltip(box)).toBe(
+			'This sender has no one-click endpoint, so it has to be finished on their own page.'
+		);
+		await box.trigger('click');
+		expect((box.element as HTMLInputElement).checked).toBe(false);
+		expect(w.text()).not.toContain('has to be finished on its own page');
+		w.unmount();
 	});
 
 	it('"select all" picks the one-click senders only', async () => {
