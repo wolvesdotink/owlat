@@ -33,11 +33,16 @@ import {
 	type DecisionResult,
 } from '../../decisionProviders/types';
 import { registeredQuestionSets, isRegisteredQuestionSet } from '../catalog';
-import { choice, noul, score, type DecisionQuestion, type QuestionSet } from '../questions';
-import type { DecisionAnswer } from '../questions';
+import {
+	choice,
+	noul,
+	score,
+	type DecisionAnswer,
+	type DecisionQuestion,
+	type QuestionSet,
+} from '../questions';
 import { llmDecisionAdapter } from '../../decisionProviders/llm';
-import { typesafeDecisionAdapter } from '../../decisionProviders/typesafe';
-import { PINNED_DECISION_MODEL } from '../../decisionProviders/typesafe';
+import { PINNED_DECISION_MODEL, typesafeDecisionAdapter } from '../../decisionProviders/typesafe';
 import { DEFAULT_LOCAL_DECISION_MODEL, localDecisionAdapter } from '../../decisionProviders/local';
 import type * as LlmDispatchModule from '../../llm/dispatch';
 

@@ -2,6 +2,8 @@
 import { computed } from 'vue';
 import type { PropertyField as PropertyFieldType } from '../../schema/types';
 import type {
+	BlockCondition,
+	BlockRepeat,
 	EditorBlock,
 	Variable,
 	EmailTheme,
@@ -30,7 +32,6 @@ import GradientEditor from './GradientEditor.vue';
 // Shared UI
 import FieldLabel from '../ui/FieldLabel.vue';
 
-import type { BlockCondition, BlockRepeat } from '../../types';
 import {
 	type ConditionOperator,
 	conditionOperatorOptions,

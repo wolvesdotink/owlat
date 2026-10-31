@@ -59,6 +59,7 @@ import type { Doc, Id } from '../_generated/dataModel';
 import {
 	classifySeedFolder,
 	planSeedHygiene,
+	type SeedConfidence,
 	type SeedObservation,
 	type SeedProviderRollup,
 } from '@owlat/shared/seedPlacement';
@@ -67,7 +68,6 @@ import {
 	type PlacementImprovementHint,
 	type PlacementSourceKind,
 } from '@owlat/shared/placementAdapter';
-import type { SeedConfidence } from '@owlat/shared/seedPlacement';
 import { loadSeedAccounts } from './seedAccounts';
 import {
 	buildSeedPlacementSweeps,

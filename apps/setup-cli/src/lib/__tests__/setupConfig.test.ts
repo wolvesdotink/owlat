@@ -5,9 +5,9 @@ import {
 	SetupConfigError,
 	resolveSetupFlags,
 	buildSetupFromConfig,
+	buildEnvPatchFromConfig,
 	type SetupConfig,
 } from '../setupConfig';
-import { buildEnvPatchFromConfig } from '../setupConfig';
 import {
 	SETUP_SENDING_CATALOG_ENTRIES,
 	sendingConfigFromCredentials,

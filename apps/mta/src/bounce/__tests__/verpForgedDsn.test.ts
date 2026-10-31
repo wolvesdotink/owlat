@@ -30,8 +30,7 @@ import { reportPartsOf } from './helpers/reportParts.js';
 import { buildVerpAddress } from '../verp.js';
 import { parseFblOrDsnPhase } from '../phases/parseFblOrDsn.js';
 import { reduce } from '../outcome.js';
-import type { BasePhaseCtx, PhaseDeps } from '../types.js';
-import type { BounceAttempt } from '../types.js';
+import type { BasePhaseCtx, BounceAttempt, PhaseDeps } from '../types.js';
 
 /** `parseBounce` with the report parts derived from the fixture (see {@link reportPartsOf}). */
 function pb(parsed: ParsedMessage, envelopeRcptTo?: string) {

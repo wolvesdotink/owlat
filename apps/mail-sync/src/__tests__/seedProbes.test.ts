@@ -10,8 +10,8 @@
 
 import { describe, it, expect } from 'vitest';
 import { extractLinkTargets, extractProbeLinkTargets } from '../seedMailbox.js';
-import { chooseHygieneClickTarget } from '../seedProbes.js';
 import {
+	chooseHygieneClickTarget,
 	runSeedProbeSweep,
 	type SeedMailboxSession,
 	type SeedProbeDeps,

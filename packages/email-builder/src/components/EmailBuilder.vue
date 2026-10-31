@@ -74,7 +74,7 @@ import { defaultTheme } from '../defaults';
 import { getBlock, getContainerItemTypes, getColumnItemTypes } from '../registry';
 
 // Schema
-import '../schema'; // Side-effect: registers all schemas
+// Loading the module registers every block schema as a side effect.
 import { getSchema } from '../schema';
 
 // Components

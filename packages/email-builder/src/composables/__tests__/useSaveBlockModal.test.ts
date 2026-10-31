@@ -2,8 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { computed, createApp } from 'vue';
 import { useSaveBlockModal } from '../useSaveBlockModal';
 import { EmailBuilderHandlersKey } from '../useEmailBuilderHandlers';
-import type { EmailBuilderHandlers } from '../../types';
-import type { EditorBlock, TextBlockContent } from '../../types';
+import type { EditorBlock, EmailBuilderHandlers, TextBlockContent } from '../../types';
 
 function makeTextBlock(id: string): EditorBlock {
 	return { id, type: 'text', content: { html: 'Hello' } as TextBlockContent };

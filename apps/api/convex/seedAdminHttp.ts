@@ -1,8 +1,7 @@
 import { v } from 'convex/values';
 import { decodeJson } from '@owlat/worker-protocol/decodeJson';
 import { httpAction } from './_generated/server';
-import { components } from './_generated/api';
-import { internal } from './_generated/api';
+import { components, internal } from './_generated/api';
 import { betterAuthAdapterArgs } from './lib/betterAuthAdapterArgs';
 import { requireInstanceSecret } from './lib/instanceSecret';
 import { logError } from './lib/runtimeLog';

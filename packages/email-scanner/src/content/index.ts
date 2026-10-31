@@ -18,13 +18,13 @@ import { extractUrls } from './phishingUrls.js';
 import { decodeHtmlEntities } from './htmlEntities.js';
 import { capContentScanInput, removeSpans, replaceTags } from './htmlScan.js';
 
-// Side-effect imports — each module registers its rule(s) at load time.
-// Order matches the legacy in-line orchestration in this file:
-//   spam-keywords → phishing-urls → homoglyphs
+// Side-effect imports — each module registers its rule(s) at load time, in
+// first-import order. phishing-urls is loaded by the extractUrls import above,
+// so it registers first:
+//   phishing-urls → spam-keywords → homoglyphs
 //     → caps-abuse + excessive-punctuation (both from subjectAnalysis)
 //     → prohibited-content
 import './spamKeywords.js';
-import './phishingUrls.js';
 import './homoglyphs.js';
 import './subjectAnalysis.js';
 import './prohibitedContent.js';
