@@ -53,6 +53,10 @@ convex/delivery/sendLifecycle
 # Closes the inbound message, follow-up and thread an inbox reply carried.
 !convex/delivery/sendLifecycle/sourceFinalization.ts
 
+# Send completion decisions; the mutation (delivery/sendCompletion.ts) is the
+# shell.
+convex/delivery/sendCompletionDecision.ts
+
 # Inbound processing lifecycle.
 convex/inbox/processingLifecycle
 # Effect runner and dispatcher.
