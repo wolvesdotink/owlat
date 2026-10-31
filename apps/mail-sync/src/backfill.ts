@@ -1,7 +1,7 @@
 /**
  * Historical backfill — the migration counterpart to forward sync.
  *
- * Forward sync (connection.ts:pollFolder) only ever pulls NEW mail: it records
+ * Forward sync (forwardSync.ts) only ever pulls NEW mail: it records
  * each folder's high-water UID and fetches `lastSeenUid+1:*` going forward. A
  * migration ("Migrate from Google") needs the OLD mail too, so this walks each
  * folder's UID space DOWN from the high-water mark to UID 1 in descending
@@ -11,7 +11,7 @@
  * `externalMailFolderSync.backfillCursor`, so a worker restart resumes
  * mid-folder, and the split between messages that landed and messages that did
  * not (`messagesImported` / `messagesFailed`). This module is dependency-injected (no ImapFlow / Convex imports)
- * so the descending-walk logic is unit-testable; `connection.ts` wires the real
+ * so the descending-walk logic is unit-testable; `backfillRunner.ts` wires the real
  * IMAP fetch + Convex mutations in.
  */
 
@@ -127,7 +127,7 @@ export interface BackfillFolderDeps {
 	/** Cooperative cancellation (worker stop). */
 	isStopped(): boolean;
 	/** Runs between two batches of the same folder, once the first one's
-	 * progress is persisted. connection.ts forward-polls the INBOX here: the walk
+	 * progress is persisted. The connection forward-polls the INBOX here: the walk
 	 * keeps another folder selected, so INBOX IDLE is off for as long as the
 	 * folder takes, and new mail would otherwise wait for the periodic poll.
 	 * Not called after the folder's last batch — the next folder's own INBOX poll

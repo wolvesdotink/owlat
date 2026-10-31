@@ -100,7 +100,7 @@ function fakeClient(messages: FakeMessage[]) {
 
 type ConnectionInternals = {
 	client: unknown;
-	makeBackfillDeps(uidValidity: number, migrationId: string): BackfillFolderDeps;
+	backfill: { makeBackfillDeps(uidValidity: number, migrationId: string): BackfillFolderDeps };
 };
 
 /** `known` is what `findKnownMessageIds` answers; `throws` makes it fail. */
@@ -136,7 +136,7 @@ describe('backfill fetchBatch — envelope first, bodies only for unknown mail',
 		const { conn, query } = newConnection({ known: ['<already@example.com>'] });
 		conn.client = client;
 
-		const out = await conn.makeBackfillDeps(1, 'mig_1').fetchBatch('INBOX', 10, 11);
+		const out = await conn.backfill.makeBackfillDeps(1, 'mig_1').fetchBatch('INBOX', 10, 11);
 
 		// Phase 1 listed the whole range by envelope; phase 2 asked for UID 11 alone.
 		expect(client.calls[0]).toMatchObject({ range: '10:11', wantsEnvelope: true });
@@ -158,7 +158,7 @@ describe('backfill fetchBatch — envelope first, bodies only for unknown mail',
 		const { conn, query } = newConnection({ known: [] });
 		conn.client = client;
 
-		const out = await conn.makeBackfillDeps(1, 'mig_1').fetchBatch('INBOX', 4, 4);
+		const out = await conn.backfill.makeBackfillDeps(1, 'mig_1').fetchBatch('INBOX', 4, 4);
 
 		// Nothing to look up, so the lookup is skipped entirely.
 		expect(query).not.toHaveBeenCalled();
@@ -175,7 +175,7 @@ describe('backfill fetchBatch — envelope first, bodies only for unknown mail',
 		const { conn } = newConnection({ throws: true });
 		conn.client = client;
 
-		const out = await conn.makeBackfillDeps(1, 'mig_1').fetchBatch('INBOX', 10, 11);
+		const out = await conn.backfill.makeBackfillDeps(1, 'mig_1').fetchBatch('INBOX', 10, 11);
 
 		expect(client.calls[1]).toMatchObject({ range: '10,11', wantsSource: true });
 		expect(out.every((m) => m.alreadyPresent === undefined)).toBe(true);
@@ -192,7 +192,7 @@ describe('backfill fetchBatch — envelope first, bodies only for unknown mail',
 		const { conn } = newConnection({ known: [] });
 		conn.client = client;
 
-		const out = await conn.makeBackfillDeps(1, 'mig_1').fetchBatch('INBOX', 10, 11);
+		const out = await conn.backfill.makeBackfillDeps(1, 'mig_1').fetchBatch('INBOX', 10, 11);
 
 		expect(out).toHaveLength(2);
 		expect(out.find((m) => m.uid === 10)).toMatchObject({ source: null });
@@ -209,7 +209,7 @@ describe('backfill fetchBatch — envelope first, bodies only for unknown mail',
 		const { conn } = newConnection({ known: [] });
 		conn.client = client;
 
-		await conn.makeBackfillDeps(1, 'mig_1').fetchBatch('INBOX', 1, 120);
+		await conn.backfill.makeBackfillDeps(1, 'mig_1').fetchBatch('INBOX', 1, 120);
 
 		const sourceCalls = client.calls.filter((c) => c.wantsSource);
 		expect(sourceCalls).toHaveLength(3); // 50 + 50 + 20

@@ -44,7 +44,7 @@
  * when it passes. `failed` stays for the walks that will not heal by waiting.
  *
  * Pure (no ImapFlow / Convex imports) so the policy is unit-testable on its own;
- * `connection.ts` holds the state and applies the decisions.
+ * `backfillRunner.ts` holds the state and applies the decisions.
  */
 
 /** How many consecutive runs may store nothing before the import is failed. */

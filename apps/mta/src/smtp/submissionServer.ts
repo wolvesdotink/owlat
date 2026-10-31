@@ -21,50 +21,36 @@
  *
  * The old `sessionAuth` WeakMap is gone: the authenticated identity lives in the
  * listener's typed per-connection session state ({@link SubmissionSessionState}).
+ *
+ * The AUTH hook lives in submissionAuth.ts, the DATA hook in submissionData.ts
+ * and the session state they share in submissionSession.ts; this module
+ * assembles them into the 587 and 465 listeners.
  */
 
 import {
 	createSmtpListener,
 	type SmtpListener,
-	type SmtpSession,
 	type SmtpHandlerResult,
-	type SmtpAuthOutcome,
 	type SmtpAddress,
 	type SmtpTlsConfig,
 	type SmtpAdmission,
 } from '@owlat/smtp-listener';
-import {
-	parseMessage,
-	parseMimeTree,
-	walkLeaves,
-	transferDecode,
-	type AddressObject,
-} from '@owlat/mail-message';
-import { secretMatches } from '@owlat/shared/constantTimeEqual';
 import type { Queue } from 'groupmq';
 import type Redis from 'ioredis';
 import type { EmailJob } from '../types.js';
 import type { MtaConfig } from '../config.js';
 import { assertSubmissionTlsConfigured } from '../config.js';
-import { lookupCredential } from '../auth/credentials.js';
-import { verifyPostboxAppPassword } from '../auth/postboxAuth.js';
-import { buildGroupKey, extractDomain } from '../queue/groups.js';
-import { mapToPriority, priorityToOrderMs } from '../intelligence/engagementPriority.js';
 import { logger } from '../monitoring/logger.js';
 import { MAX_ATTACHMENT_BYTES } from '@owlat/shared/attachments';
 import { ipRateLimitKey } from '@owlat/shared/ipAddress';
-import { emailDomain } from '@owlat/shared/spfAlignment';
-import { enqueueReconciledIntake } from '../queue/intakeEnqueue.js';
-import { checkAuthThrottle, recordAuthFailure } from './submissionSecurity.js';
 import { createConnectionLimiter } from '../lib/connectionSlots.js';
 import {
-	bindSubmissionClientRequest,
-	normalizeEnvelopeAddress,
-	resolveSubmissionIdentity,
 	SUBMISSION_DEDUPLICATION_MAIL_PARAMETER,
 	SUBMISSION_IDEMPOTENCY_MAIL_PARAMETER,
-	submissionRecipientJobId,
 } from './submissionIdentity.js';
+import { buildAuthenticate } from './submissionAuth.js';
+import { buildOnData } from './submissionData.js';
+import type { SubmissionSession, SubmissionSessionState } from './submissionSession.js';
 
 /**
  * Hard cap for buffered submitted MIME (advertised via EHLO SIZE AND enforced by
@@ -75,349 +61,6 @@ const MAX_SUBMISSION_BYTES = MAX_ATTACHMENT_BYTES;
 
 /** Deliberate 587/465 command-idle policy (the listener default is 5 minutes). */
 export const SUBMISSION_COMMAND_TIMEOUT_MS = 120_000;
-
-/** The authenticated identity of a submission session. */
-export interface AuthenticatedSession {
-	organizationId: string;
-	credentialName: string;
-	/**
-	 * The organization's verified sending domains (lowercased) for a per-org
-	 * credential session. When present, the DATA hook rejects a From whose domain
-	 * is not in this set (H2 cross-tenant From-forgery guard). Absent for the
-	 * master session (broad send) and for legacy credentials created before the
-	 * field existed — see {@link OrgCredential.allowedDomains}.
-	 */
-	allowedDomains?: readonly string[];
-	/** Set when authenticated via a Postbox app password (per-user). */
-	postbox?: {
-		mailboxId: string;
-		mailboxAddress: string;
-		appPasswordId: string;
-		userId: string;
-	};
-}
-
-/**
- * Typed per-connection listener state. Replaces the old `sessionAuth` WeakMap:
- * the `authenticate` hook writes {@link SubmissionSessionState.auth} on success
- * and the DATA hook reads it back — no side table, no forgeable posture.
- */
-export interface SubmissionSessionState {
-	auth?: AuthenticatedSession;
-}
-
-type Session = SmtpSession<SubmissionSessionState>;
-
-/** Dependencies for the exported handler factories (DI for tests). */
-export interface SubmissionDeps {
-	queue: Queue<EmailJob>;
-	redis: Redis;
-	config: MtaConfig;
-}
-
-/**
- * Best-effort client identifier for the app-password "Last used" column — the
- * EHLO/HELO name the client announced. (The old smtp-server path also consulted
- * a reverse-DNS `clientHostname`; the in-house listener performs no reverse DNS,
- * so the announced EHLO name is the single source — see the PR body.)
- */
-function clientName(session: Session): string | undefined {
-	const ehlo = typeof session.clientHostname === 'string' ? session.clientHostname.trim() : '';
-	return ehlo || undefined;
-}
-
-/** Best-effort remote IP from the session (for throttling / limiting). */
-function sessionRemoteIp(session: Session): string {
-	return session.remoteAddress || 'unknown';
-}
-
-function submissionRecipients(session: Session): string[] {
-	const seen = new Set<string>();
-	const recipients: string[] = [];
-	for (const recipient of session.rcptTo) {
-		const normalized = normalizeEnvelopeAddress(recipient.address);
-		if (!normalized || seen.has(normalized)) continue;
-		seen.add(normalized);
-		recipients.push(normalized);
-	}
-	return recipients;
-}
-
-/**
- * AUTH handler: master key -> per-org credential -> Postbox app password.
- * Exported (factory form) so the auth chain is unit-testable.
- *
- * Every path that fails records a per-IP failure and is gated by a per-IP
- * failed-attempt throttle, so the master key and per-org credentials cannot be
- * brute-forced by reconnecting (RFC 4954 §4). A successful AUTH leaves the
- * counter alone, so it cannot be used to refill the budget. The listener
- * collapses every failure to one `535 5.7.8` on the wire (no auth oracle),
- * so the throttle rejection is byte-identical to a wrong secret.
- */
-export function buildAuthenticate(deps: Pick<SubmissionDeps, 'redis' | 'config'>) {
-	const { redis, config } = deps;
-	return async function authenticate(
-		credentials: { username: string; password: string },
-		session: Session
-	): Promise<SmtpAuthOutcome> {
-		const remoteIp = sessionRemoteIp(session);
-		// Record the failure and fail generically so we never leak which AUTH path
-		// the secret was rejected by.
-		const fail = async (logCtx?: Record<string, unknown>): Promise<SmtpAuthOutcome> => {
-			try {
-				await recordAuthFailure(redis, remoteIp);
-			} catch (err) {
-				logger.error({ err, remoteIp }, 'Failed to record SMTP auth failure');
-			}
-			if (logCtx) logger.warn(logCtx, 'SMTP auth failed');
-			return { ok: false };
-		};
-
-		// Throttle gate: refuse AUTH once an IP has burned its failure budget within
-		// the window, checked before any secret comparison so a flood of guesses is
-		// cut off rather than running the full chain each time.
-		let allowed = true;
-		try {
-			allowed = await checkAuthThrottle(redis, remoteIp, config.submissionMaxAuthFailuresPerIp);
-		} catch (err) {
-			// Fail-open on throttle-store errors so Redis hiccups don't lock out
-			// legitimate clients; the master-key compare is still constant-time-safe.
-			logger.error({ err, remoteIp }, 'SMTP auth throttle check failed');
-		}
-		if (!allowed) {
-			logger.warn({ remoteIp }, 'SMTP auth throttled — too many failed attempts');
-			return { ok: false };
-		}
-
-		const apiKey = credentials.password;
-		const username = credentials.username;
-		if (!apiKey) {
-			return fail();
-		}
-
-		try {
-			// Master key — constant-time compare like every other secret check.
-			if (secretMatches(apiKey, config.apiKey)) {
-				session.state.auth = { organizationId: '__master__', credentialName: 'master' };
-				return { ok: true, user: 'master' };
-			}
-
-			// Per-org credential (campaigns / transactional path).
-			const credential = await lookupCredential(redis, apiKey);
-			if (credential) {
-				session.state.auth = {
-					organizationId: credential.organizationId,
-					credentialName: credential.name,
-					...(credential.allowedDomains ? { allowedDomains: credential.allowedDomains } : {}),
-				};
-				return { ok: true, user: credential.name };
-			}
-
-			// Postbox app password (per-user) — username MUST be the mailbox address.
-			// Skip the round-trip if it doesn't look like an email.
-			if (username && username.includes('@')) {
-				const result = await verifyPostboxAppPassword(config, username, apiKey, 'smtp', {
-					clientName: clientName(session),
-					remoteIp,
-				});
-				if (result) {
-					session.state.auth = {
-						organizationId: result.organizationId,
-						credentialName: `postbox:${username.toLowerCase()}`,
-						postbox: {
-							mailboxId: result.mailboxId,
-							mailboxAddress: username.toLowerCase(),
-							appPasswordId: result.appPasswordId,
-							userId: result.userId,
-						},
-					};
-					return { ok: true, user: username };
-				}
-			}
-
-			return fail({ username, remoteIp });
-		} catch (err) {
-			logger.error({ err }, 'SMTP auth error');
-			return fail();
-		}
-	};
-}
-
-/** The first From address, lowercased (identity for the forgery guard + DKIM domain). */
-function firstFrom(field: AddressObject | AddressObject[] | undefined): string {
-	if (!field) return '';
-	const obj = Array.isArray(field) ? field[0] : field;
-	return obj?.value[0]?.address?.toLowerCase() ?? '';
-}
-
-/**
- * Recover the AMP alternative (`text/x-amp-html`) from a raw (binary-string)
- * message, if present. `parseMessage` neither folds a `text/x-amp-html` part
- * into `html`/`text` nor (absent a filename/attachment disposition) surfaces it
- * in `attachments`, so the AMP alternative is recovered by walking the MIME tree
- * directly — preserving the behavior the old `mailparser`-attachment path
- * provided (RFC 2046 §5.1.4).
- *
- * The first `text/x-amp-html` leaf in document order wins, decoded with the
- * package's single `transferDecode` (7bit / QP / base64 — one decoder, no second
- * copy). NOTE (sanctioned divergence, PR body): `MimeNode.rawBody` is CRLF→LF
- * normalized for nested non-`message/*` leaves, so a multi-line
- * AMP document's `job.amp` carries LF line endings rather than the wire's CRLF.
- * This is immaterial: the sender re-encodes the part when re-emitting it, applying
- * canonical CRLF + transfer-encoding on the way out.
- */
-function extractAmpHtml(binary: string): string | undefined {
-	let amp: string | undefined;
-	walkLeaves(parseMimeTree(binary), (leaf) => {
-		if (amp !== undefined) return; // first-in-document-order wins
-		if (leaf.contentType.value !== 'text/x-amp-html') return;
-		const bytes = transferDecode(leaf.rawBody, leaf.headers.last('content-transfer-encoding'));
-		amp = Buffer.from(bytes).toString('utf-8');
-	});
-	return amp;
-}
-
-/**
- * DATA handler: parse the body, extract recipients, enforce the From-forgery
- * guard for Postbox sessions, and fan out one queue job per recipient. Exported
- * for tests. Returns a rejection {@link SmtpHandlerResult} to refuse, or nothing
- * to accept with the listener's default 250.
- */
-export function buildOnData(deps: Pick<SubmissionDeps, 'queue' | 'redis'>) {
-	const { queue, redis } = deps;
-	return async function onData(message: Buffer, session: Session): Promise<SmtpHandlerResult> {
-		try {
-			const authData = session.state.auth;
-			if (!authData) {
-				return { code: 530, enhanced: '5.7.0', text: 'Authentication required' };
-			}
-
-			// The listener hands us the fully-buffered, byte-budget-bounded (I4),
-			// dot-decoded message. `parseMessage` reads it as a binary string.
-			const binary = message.toString('latin1');
-			const parsed = parseMessage(binary);
-
-			const recipients = submissionRecipients(session);
-
-			if (recipients.length === 0) {
-				return { code: 554, enhanced: '5.5.0', text: 'No valid recipients' };
-			}
-
-			const fromAddress = firstFrom(parsed.from);
-			const fromDomain = emailDomain(fromAddress);
-			const envelope = session.mailFrom;
-			if (!envelope?.address) {
-				return { code: 503, enhanced: '5.5.1', text: 'MAIL FROM required' };
-			}
-			const identity = resolveSubmissionIdentity(authData, envelope, parsed.headers, message);
-			if (!identity.ok) {
-				return { code: 554, enhanced: '5.5.4', text: identity.message };
-			}
-
-			// RFC 2046 §5.1.4: preserve the AMP alternative so the sender re-emits the
-			// `text/x-amp-html` part (see {@link extractAmpHtml}).
-			const amp = extractAmpHtml(binary);
-
-			// Postbox sessions MUST send From: their bound mailbox. Anyone who
-			// exfiltrates an app password should not be able to forge identities.
-			if (authData.postbox && fromAddress !== authData.postbox.mailboxAddress) {
-				logger.warn(
-					{ expected: authData.postbox.mailboxAddress, got: fromAddress },
-					'SMTP submission rejected — From-address mismatch'
-				);
-				return {
-					code: 553,
-					enhanced: '5.7.1',
-					text: 'From address must match authenticated mailbox',
-				};
-			}
-
-			// Per-org credential sessions (not Postbox, not the master key) MUST send
-			// From a domain in their organization's verified-sending-domain set (H2).
-			// Otherwise a per-org credential could send From any domain and — before
-			// the org-scoped DKIM guard — have it signed with another tenant's key.
-			// The master session (organizationId '__master__') carries no allowedDomains
-			// and keeps broad send; legacy credentials with none recorded stay unscoped
-			// here (the DKIM signer is the fail-closed backstop). A present-but-empty
-			// set authorizes no domain (fail-closed).
-			if (!authData.postbox && authData.allowedDomains) {
-				const allowed = new Set(authData.allowedDomains.map((domain) => domain.toLowerCase()));
-				if (!allowed.has(fromDomain)) {
-					logger.warn(
-						{ organizationId: authData.organizationId, fromDomain },
-						'SMTP submission rejected — From domain not in organization verified set'
-					);
-					return {
-						code: 553,
-						enhanced: '5.7.1',
-						text: 'From domain is not authorized for this organization',
-					};
-				}
-			}
-
-			const clientRequestBinding = await bindSubmissionClientRequest(redis, identity, recipients);
-			if (clientRequestBinding === 'conflict' || clientRequestBinding === 'recipient-expansion') {
-				return {
-					code: 554,
-					enhanced: '5.5.4',
-					text:
-						clientRequestBinding === 'conflict'
-							? 'Idempotency key is already bound to different message content or sender'
-							: 'Idempotency key cannot add recipients after first use',
-				};
-			}
-
-			// Fan out: one job per recipient.
-			let queued = 0;
-			for (const to of recipients) {
-				// Postbox-prefixed messageId so the bounce/sent webhook can look the
-				// row back up — same convention as the webmail dispatch path.
-				const prefix = authData.postbox ? `pb-smtp-${authData.postbox.mailboxId}` : 'smtp';
-				const messageId = submissionRecipientJobId(prefix, identity.fingerprint, to);
-				const job: EmailJob & { intakeReceiptId: string } = {
-					messageId,
-					intakeReceiptId: messageId,
-					to,
-					from: fromAddress,
-					subject: parsed.subject ?? '(no subject)',
-					html: parsed.html || `<pre>${parsed.text ?? ''}</pre>`,
-					text: parsed.text,
-					...(amp ? { amp } : {}),
-					ipPool: 'transactional',
-					...(authData.postbox ? { queueLane: 'postbox' as const } : {}),
-					organizationId: authData.organizationId,
-					dkimDomain: fromDomain,
-					firstEnqueuedAt: Date.now(),
-				};
-
-				const domain = extractDomain(to);
-				const groupId = buildGroupKey(job.ipPool, domain, job.queueLane);
-				const priority = mapToPriority(undefined);
-
-				await enqueueReconciledIntake(queue, redis, {
-					groupId,
-					data: job,
-					orderMs: priorityToOrderMs(priority),
-				});
-				queued++;
-			}
-
-			logger.info(
-				{
-					from: fromAddress,
-					recipients: recipients.length,
-					queued,
-					submissionIdentityMode: identity.mode,
-				},
-				'SMTP submission accepted'
-			);
-			return;
-		} catch (err) {
-			logger.error({ err }, 'SMTP submission processing error');
-			return { code: 451, enhanced: '4.3.0', text: 'Processing failed' };
-		}
-	};
-}
 
 /** Per-IP connection counters for 587 and 465 (key prefix and window are deploy-stable). */
 const SUBMISSION_CONNECTION_PREFIX = 'mta:submission:conn:';
@@ -467,7 +110,7 @@ function submissionAdmission(config: MtaConfig, redis: Redis): SmtpAdmission {
  * factories and so the gate is directly testable.
  */
 export function buildOnMailFrom() {
-	return function onMailFrom(_address: SmtpAddress, session: Session): SmtpHandlerResult {
+	return function onMailFrom(_address: SmtpAddress, session: SubmissionSession): SmtpHandlerResult {
 		return session.authenticated
 			? undefined
 			: { code: 530, enhanced: '5.7.0', text: 'Authentication required' };

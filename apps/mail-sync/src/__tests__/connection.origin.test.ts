@@ -4,7 +4,7 @@
  * `origin` is what tells the Convex side whether a message is arriving NOW or
  * being imported from history: `mail/external/delivery.ts` enqueues the Reply
  * Queue + category classification for `'sync'` inbox mail and nothing else. The
- * flag is only ever correct if the two call sites in connection.ts pass the
+ * flag is only ever correct if the two call sites (forwardSync.ts, backfillRunner.ts) pass the
  * right literal, so both are exercised here against a mocked `ingestMessage`:
  * the forward poll loop and the backfill dependency handed to `backfillFolder`.
  */
@@ -83,7 +83,7 @@ type ConnectionInternals = {
 		}
 	>;
 	pollFolder(remoteName: string, role: string): Promise<void>;
-	makeBackfillDeps(uidValidity: number, migrationId: string): BackfillFolderDeps;
+	backfill: { makeBackfillDeps(uidValidity: number, migrationId: string): BackfillFolderDeps };
 };
 
 function newConnection(): ConnectionInternals {
@@ -119,7 +119,7 @@ describe('ingest origin at the connection call sites', () => {
 
 	it("tags the backfill dependency's ingest as 'backfill'", async () => {
 		const conn = newConnection();
-		const deps = conn.makeBackfillDeps(7, 'mig_1');
+		const deps = conn.backfill.makeBackfillDeps(7, 'mig_1');
 
 		await deps.ingest('INBOX', 'inbox', 17, RAW, new Set<string>());
 

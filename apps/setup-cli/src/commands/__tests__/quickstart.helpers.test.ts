@@ -2,14 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { mkdtemp, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import {
-	parseFlags,
-	dnsInstructions,
-	formatSummary,
-	resolveComposeVersionPin,
-	composeImageSource,
-	composeUpArgs,
-} from '../quickstart.js';
+import { parseFlags, dnsInstructions, formatSummary } from '../quickstartPrompts.js';
+import { resolveComposeVersionPin, composeImageSource, composeUpArgs } from '../quickstartStack.js';
 import { mergeEnv, readEnv, writeEnv } from '../../lib/env.js';
 import type { SetupConfig } from '../../lib/setupConfig.js';
 
