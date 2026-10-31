@@ -16,9 +16,9 @@ import {
 	decodeQpHexEscapes,
 	decodeEncodedWords,
 	headerBytesToText,
+	type ContentType,
 	type MessageHeaders,
 } from './headers';
-import { type ContentType } from './contentType';
 import { decodeCharset } from './charset';
 
 /** Hard ceiling on multipart nesting depth; beyond it a node is left as a leaf. */

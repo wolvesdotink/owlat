@@ -1,63 +1,64 @@
 /**
- * Freeze existing warnings by file, rule, and offending source text. The
- * comparison is exact in both directions: a new or increased warning fails, and
- * so does a baseline entry whose warnings were fixed, so the baseline never
- * holds slack a fixed warning could silently come back into.
+ * Zero-warning lint gate: oxlint over every workspace with `--deny-warnings`,
+ * failing on any error and on any warning. The one exception is a warning from
+ * an `owlat/*` rule: a rule that lands with debt is configured as a warning and
+ * scripts/check-owlat-lint.sh owns it against its own baseline, so counting it
+ * here too would give each finding two owners.
+ *
+ * Fails closed: a crashed or killed oxlint, an exit status other than 0 or 1,
+ * a report that does not parse, or an exit 1 with nothing reported (oxlint
+ * failed without saying why) all fail, so no tool failure reads as a clean run.
  */
-import { readFileSync } from 'node:fs';
-import { resolve, relative } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { decodeJson, integer, JsonShapeError, recordOf } from './json';
-import { type LintDiagnostic, parseLintReport } from './lint-diagnostics';
+import { JsonShapeError } from './json';
+import { isOwlatWarning, type LintDiagnostic, parseLintReport } from './lint-diagnostics';
 
-export function warningKey(diagnostic: LintDiagnostic, source: Buffer): string {
-	const span = diagnostic.labels?.[0]?.span;
-	const token = span
-		? source.subarray(span.offset, span.offset + span.length).toString('utf8')
-		: '';
-	return JSON.stringify([diagnostic.filename, diagnostic.code, diagnostic.message, token]);
+/** The parts of a finished oxlint process the verdict depends on. */
+export interface LintRun {
+	error?: Error;
+	signal: NodeJS.Signals | null;
+	status: number | null;
+	stdout: string;
+	stderr: string;
 }
 
-/**
- * A warning from an `owlat/*` rule. Those are ratcheted by
- * scripts/check-owlat-lint.sh against their own baseline, so this gate skips
- * them rather than freezing the same findings twice.
- */
-export const isOwlatWarning = (diagnostic: Pick<LintDiagnostic, 'code' | 'severity'>): boolean =>
-	diagnostic.severity === 'warning' && (diagnostic.code ?? '').startsWith('owlat(');
-
-/** The warnings this gate freezes: every warning except the owlat ones. */
-export const ratchetedWarnings = (diagnostics: LintDiagnostic[]): LintDiagnostic[] =>
-	diagnostics.filter(
-		(diagnostic) => diagnostic.severity === 'warning' && !isOwlatWarning(diagnostic)
-	);
-
-export interface WarningDrift {
-	/** Keys whose live count exceeds the baseline: fix the new warnings. */
-	regressions: string[];
-	/** Keys whose baseline exceeds the live count: lower or delete the entry. */
-	stale: string[];
+export interface LintVerdict {
+	ok: boolean;
+	/** One line per finding or failure, for stderr. */
+	problems: string[];
 }
 
-export function compareWarnings(
-	actual: Record<string, number>,
-	baseline: Record<string, number>
-): WarningDrift {
-	const drift: WarningDrift = { regressions: [], stale: [] };
-	for (const key of new Set([...Object.keys(actual), ...Object.keys(baseline)])) {
-		const count = actual[key] ?? 0;
-		const frozen = baseline[key] ?? 0;
-		if (count > frozen) drift.regressions.push(`${key}: ${count} warnings (baseline ${frozen})`);
-		else if (count < frozen) drift.stale.push(`${key}: ${count} warnings (baseline ${frozen})`);
+const formatDiagnostic = (diagnostic: LintDiagnostic): string => {
+	const line = diagnostic.labels?.[0]?.span.line;
+	const at = line === undefined ? diagnostic.filename : `${diagnostic.filename}:${line}`;
+	return `${at}: ${diagnostic.severity} ${diagnostic.code ?? '(oxlint)'}: ${diagnostic.message}`;
+};
+
+export function lintVerdict(run: LintRun): LintVerdict {
+	// oxlint exits 1 when it reports anything under --deny-warnings; any other
+	// outcome means it did not finish linting.
+	if (run.error || run.signal || (run.status !== 0 && run.status !== 1)) {
+		const reason = run.error?.message ?? run.signal ?? `exit status ${run.status}`;
+		return { ok: false, problems: [`oxlint did not finish (${reason}): ${run.stderr.trim()}`] };
 	}
-	return drift;
-}
-
-/** The frozen warning counts, by key. */
-function readBaseline(root: string): Record<string, number> {
-	const path = 'scripts/lint-warning-baseline.json';
-	return decodeJson(readFileSync(resolve(root, path), 'utf8'), recordOf(integer), path);
+	let diagnostics: LintDiagnostic[];
+	try {
+		diagnostics = parseLintReport(run.stdout);
+	} catch (error) {
+		if (!(error instanceof JsonShapeError)) throw error;
+		return { ok: false, problems: [error.message] };
+	}
+	if (run.status === 1 && diagnostics.length === 0) {
+		return {
+			ok: false,
+			problems: [`oxlint exited 1 without reporting a diagnostic: ${run.stderr.trim()}`],
+		};
+	}
+	// Every error and every warning, except the owlat warnings their own gate owns.
+	const problems = diagnostics.filter((d) => !isOwlatWarning(d)).map(formatDiagnostic);
+	return { ok: problems.length === 0, problems };
 }
 
 function main(): number {
@@ -79,46 +80,15 @@ function main(): number {
 		],
 		{ cwd: root, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 }
 	);
-	if (run.error || run.signal || (run.status !== 0 && run.status !== 1)) {
-		console.error(run.error ?? run.stderr ?? 'oxlint failed');
-		return 1;
-	}
-	let diagnostics: LintDiagnostic[];
-	let baseline: Record<string, number>;
-	try {
-		diagnostics = parseLintReport(run.stdout);
-		baseline = readBaseline(root);
-	} catch (error) {
-		if (!(error instanceof JsonShapeError)) throw error;
-		console.error(error.message);
-		return 1;
-	}
-	const counts: Record<string, number> = {};
-	const errors = diagnostics.filter((d) => d.severity === 'error');
-	for (const diagnostic of ratchetedWarnings(diagnostics)) {
-		const filename = resolve(root, diagnostic.filename);
-		const normalized = { ...diagnostic, filename: relative(root, filename) };
-		const key = warningKey(normalized, readFileSync(filename));
-		counts[key] = (counts[key] ?? 0) + 1;
-	}
-	const { regressions, stale } = compareWarnings(counts, baseline);
-	for (const error of errors) console.error(`${error.filename}: ${error.code}: ${error.message}`);
-	if (regressions.length) {
-		console.error(`FAIL: ${regressions.length} warning key(s) above the baseline:`);
-		for (const line of regressions) console.error(`  ${line}`);
-		console.error('Fix these warnings. Do not raise scripts/lint-warning-baseline.json.');
-	}
-	if (stale.length) {
-		console.error(`FAIL: ${stale.length} stale key(s) in scripts/lint-warning-baseline.json:`);
-		for (const line of stale) console.error(`  ${line}`);
+	const verdict = lintVerdict(run);
+	if (!verdict.ok) {
+		for (const problem of verdict.problems) console.error(problem);
 		console.error(
-			'These warnings were fixed. Lower each count to the live one, or delete the key at 0.'
+			`FAIL: lint must report no errors and no warnings (${verdict.problems.length} problem(s)).`
 		);
+		return 1;
 	}
-	if (errors.length || regressions.length || stale.length) return 1;
-	console.info(
-		`Lint warning ratchet passed (${Object.values(counts).reduce((a, b) => a + b, 0)} grandfathered warnings).`
-	);
+	console.info('Lint passed with no errors and no warnings.');
 	return 0;
 }
 
