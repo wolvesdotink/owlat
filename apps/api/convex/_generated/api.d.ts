@@ -239,6 +239,7 @@ import type * as aiRouting_embeddingRebuildState from '../aiRouting/embeddingReb
 import type * as aiRouting_embeddingReembed from '../aiRouting/embeddingReembed.js';
 import type * as aiRouting_embeddingReembedCommit from '../aiRouting/embeddingReembedCommit.js';
 import type * as aiRouting_embeddingReembedJobs from '../aiRouting/embeddingReembedJobs.js';
+import type * as aiRouting_embeddingReembedPage from '../aiRouting/embeddingReembedPage.js';
 import type * as aiRouting_embeddingRowReembed from '../aiRouting/embeddingRowReembed.js';
 import type * as aiRouting_embeddingSpaces from '../aiRouting/embeddingSpaces.js';
 import type * as aiRouting_enforcedBudget from '../aiRouting/enforcedBudget.js';
@@ -2153,6 +2154,7 @@ declare const fullApi: ApiFromModules<{
 	'aiRouting/embeddingReembed': typeof aiRouting_embeddingReembed;
 	'aiRouting/embeddingReembedCommit': typeof aiRouting_embeddingReembedCommit;
 	'aiRouting/embeddingReembedJobs': typeof aiRouting_embeddingReembedJobs;
+	'aiRouting/embeddingReembedPage': typeof aiRouting_embeddingReembedPage;
 	'aiRouting/embeddingRowReembed': typeof aiRouting_embeddingRowReembed;
 	'aiRouting/embeddingSpaces': typeof aiRouting_embeddingSpaces;
 	'aiRouting/policy': typeof aiRouting_policy;

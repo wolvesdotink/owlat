@@ -12,7 +12,6 @@ convex/aiRouting/batchPoller.ts:poll #2
 convex/aiRouting/batchPoller.ts:poll #3
 convex/aiRouting/batchPoller.ts:poll #4
 convex/aiRouting/embeddingCoverage.ts:scan #2
-convex/aiRouting/embeddingReembed.ts:runBatch #2
 convex/aiRouting/embeddingReembed.ts:startReembed #2
 convex/assistant/runner.ts:run #2
 convex/assistant/runner.ts:runForChat #2

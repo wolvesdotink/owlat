@@ -11,8 +11,8 @@
  *     searchable space yet (a hosted deployment's first upgrade): it measures
  *     the configured space (one call, admitted when paid), activates it and
  *     starts the job.
- *   - `runBatch` embeds one page of a job and commits it, then schedules the
- *     next. A paid batch is admitted first.
+ *   - `runBatch` embeds one page of a job and commits it together with the
+ *     next batch, a retry or a pause. A paid batch is admitted first.
  *
  * Every embedding call goes through `embedForIndex`, the one place the ledger
  * lane meters (task `embedding.index`).
@@ -35,7 +35,7 @@ import {
 	resolveEmbedderForSpace,
 } from '../lib/aiRouting/embedderForSpace';
 import { buildIndexEmbedder, readEmbeddingConfigSnapshot } from '../lib/llmProvider';
-import { PAID_EMBEDDING_REFUSAL, REEMBED_PAGE_ATTEMPTS } from './embeddingReembedJobs';
+import { PAID_EMBEDDING_REFUSAL } from './embeddingReembedJobs';
 import { isPaidEmbeddingAdmissionAvailable } from '../lib/aiRouting/embeddingAdmission';
 import { runAdmittedEmbedding, type DispatchCounter } from '../lib/aiRouting/embeddingDispatch';
 import { embeddingTableValidator } from '../lib/validators/embedding';
@@ -204,9 +204,6 @@ export const reembedRow = internalAction({
 	},
 });
 
-/** Wait before retrying a page whose rows did not all land, per attempt. */
-const RETRY_DELAY_MS = 30_000;
-
 export const runBatch = internalAction({
 	args: {
 		jobId: v.id('embeddingReembedJobs'),
@@ -295,8 +292,9 @@ export const runBatch = internalAction({
 			}
 		}
 
-		const commit = await ctx.runMutation(internal.aiRouting.embeddingReembedJobs.reembedCommit, {
+		await ctx.runMutation(internal.aiRouting.embeddingReembedCommit.commitBatch, {
 			...job,
+			attempt,
 			phase: page.phase,
 			continueCursor: page.continueCursor,
 			isDone: page.isDone,
@@ -305,22 +303,5 @@ export const runBatch = internalAction({
 			space,
 			results,
 		});
-		if (commit.outcome === 'continue') {
-			await ctx.scheduler.runAfter(0, internal.aiRouting.embeddingReembed.runBatch, job);
-		} else if (commit.outcome === 'retry') {
-			if (attempt >= REEMBED_PAGE_ATTEMPTS) {
-				// Keep the cursor: a resume (the kickoff, or an admin) retries the page.
-				await pause(
-					'provider_unavailable',
-					`${commit.unresolved} item(s) could not be embedded after ${attempt} attempts.`
-				);
-				return;
-			}
-			await ctx.scheduler.runAfter(
-				RETRY_DELAY_MS * attempt,
-				internal.aiRouting.embeddingReembed.runBatch,
-				{ ...job, attempt: attempt + 1 }
-			);
-		}
 	},
 });
