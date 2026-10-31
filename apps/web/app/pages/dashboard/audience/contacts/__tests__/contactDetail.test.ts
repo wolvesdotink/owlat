@@ -8,6 +8,8 @@
  * - "Activity" and "Timeline" were two tabs for what sounds like one thing; the
  *   activity log now sits under the messages in a single Timeline tab.
  * - A contact that failed to load is not a deleted one (#721).
+ * - Export data and Resend confirmation explain themselves in tooltips that
+ *   keyboard focus opens too, not in native titles.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
@@ -15,11 +17,13 @@ import { ref } from 'vue';
 import ContactDetail from '../[id].vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { installNuxtStubs, queryResult } from '~/__tests__/a11y';
+import { tooltipOf } from '~/__tests__/tooltip';
 
 const isAdmin = ref(true);
 const activityTimelineGate = vi.fn();
 const contactError = ref<Error | null>(null);
 const refetchContact = vi.fn();
+const doiStatus = ref('confirmed');
 
 const CONTACT = {
 	_id: 'ct_1',
@@ -47,6 +51,7 @@ beforeEach(() => {
 	activityTimelineGate.mockReset();
 	contactError.value = null;
 	refetchContact.mockReset();
+	doiStatus.value = 'confirmed';
 	installNuxtStubs({
 		...i18nStubs,
 		useRouteId: () => ref('ct_1'),
@@ -76,7 +81,7 @@ beforeEach(() => {
 			};
 		},
 		useContactDetail: () => ({
-			contact: ref(contactError.value ? undefined : CONTACT),
+			contact: ref(contactError.value ? undefined : { ...CONTACT, doiStatus: doiStatus.value }),
 			contactLoading: ref(false),
 			contactError,
 			refetchContact,
@@ -202,6 +207,22 @@ describe('contact page', () => {
 		const wrapper = mountPage();
 
 		expect(tabLabels(wrapper)).toEqual(['Profile', 'Timeline']);
+		wrapper.unmount();
+	});
+
+	it('explains Export data and Resend confirmation in tooltips, not native titles', () => {
+		doiStatus.value = 'pending';
+		const wrapper = mountPage();
+		const button = (label: string) =>
+			wrapper.findAll('button').find((candidate) => candidate.text() === label)!;
+
+		expect(tooltipOf(wrapper, button('Export data'))).toBe(
+			"Export this contact's personal data (GDPR access request)"
+		);
+		expect(tooltipOf(wrapper, button('Resend confirmation'))).toBe(
+			'Re-send the double-opt-in confirmation email to this pending contact'
+		);
+		expect(wrapper.findAll('button[title]')).toHaveLength(0);
 		wrapper.unmount();
 	});
 

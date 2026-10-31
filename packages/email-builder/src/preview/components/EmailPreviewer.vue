@@ -538,15 +538,12 @@ function handleClickOutside(event: MouseEvent) {
 
 				<div v-if="showSendTest" class="ep-toolbar-divider"></div>
 
-				<button
-					v-if="showSendTest"
-					class="ep-action-btn ep-action-primary"
-					:title="t('builder.preview.toolbar.sendTestTitle')"
-					@click="emit('send-test')"
-				>
-					<Send class="ep-action-icon" />
-					<span>{{ t('builder.preview.toolbar.sendTest') }}</span>
-				</button>
+				<UiTooltip v-if="showSendTest" :text="t('builder.preview.toolbar.sendTestTitle')">
+					<button class="ep-action-btn ep-action-primary" @click="emit('send-test')">
+						<Send class="ep-action-icon" />
+						<span>{{ t('builder.preview.toolbar.sendTest') }}</span>
+					</button>
+				</UiTooltip>
 
 				<div class="ep-toolbar-divider"></div>
 

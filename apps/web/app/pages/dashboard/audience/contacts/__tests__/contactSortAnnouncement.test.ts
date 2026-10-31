@@ -14,6 +14,7 @@ import { nextTick } from 'vue';
 import ContactsIndex from '../index.vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { installNuxtStubs, paginatedResult, queryResult } from '~/__tests__/a11y';
+import { tooltipOf } from '~/__tests__/tooltip';
 import QueryBoundary from '~/components/ui/QueryBoundary.vue';
 import { useBulkOperation } from '~/composables/useBulkOperation';
 import { useBulkSelection } from '~/composables/useBulkSelection';
@@ -148,11 +149,12 @@ describe('contacts table sort announcement', () => {
 		expect(createdSortButton(wrapper).find('icon-stub').exists()).toBe(false);
 		expect(sortHint(wrapper)).toBe('Search results are ordered by relevance');
 
-		// The control is inert but stays focusable, and says why on hover too.
+		// The control is inert but stays focusable, and its tooltip says why.
 		const button = createdSortButton(wrapper);
 		expect(button.attributes('aria-disabled')).toBe('true');
 		expect(button.attributes('disabled')).toBeUndefined();
-		expect(button.attributes('title')).toBe('Search results are ordered by relevance');
+		expect(button.attributes('title')).toBeUndefined();
+		expect(tooltipOf(wrapper, button)).toBe('Search results are ordered by relevance');
 		await button.trigger('click');
 		expect(listArgs().order).toBe('desc');
 		expect(sortedHeaders(wrapper)).toHaveLength(0);
@@ -167,7 +169,7 @@ describe('contacts table sort announcement', () => {
 		expectOneTruthfulAriaSort(wrapper);
 		expect(createdSortButton(wrapper).find('icon-stub').exists()).toBe(true);
 		expect(createdSortButton(wrapper).attributes('aria-disabled')).toBeUndefined();
-		expect(createdSortButton(wrapper).attributes('title')).toBeUndefined();
+		expect(tooltipOf(wrapper, createdSortButton(wrapper))).toBeUndefined();
 		wrapper.unmount();
 	});
 });

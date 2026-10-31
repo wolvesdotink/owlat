@@ -5,6 +5,7 @@
 // naming no variable is flagged because the send path renders it empty.
 import { describe, it, expect, afterEach } from 'vitest';
 import { mount, type VueWrapper } from '@vue/test-utils';
+import { nextTick } from 'vue';
 import SubjectFields from '../SubjectFields.vue';
 import type { Variable } from '../../../types';
 
@@ -34,6 +35,16 @@ function mountFields(subject: string, extra: Record<string, unknown> = {}) {
 		attachTo: document.body,
 	});
 	return wrapper;
+}
+
+/** The tooltip text keyboard focus on the control opens, or null. */
+async function focusedTooltip(control: Element): Promise<string | null> {
+	(control as HTMLElement).focus();
+	await nextTick();
+	const text = document.querySelector('[role="tooltip"]')?.textContent?.trim() ?? null;
+	(control as HTMLElement).blur();
+	await nextTick();
+	return text;
 }
 
 const subjectInput = (w: VueWrapper) =>
@@ -89,6 +100,16 @@ describe('SubjectFields', () => {
 		const w = mountFields('   ');
 		expect(w.text()).toContain('No subject yet');
 		expect(subjectInput(w).attributes('aria-describedby')).toBeTruthy();
+	});
+
+	it('explains the insert and new-variable buttons in tooltips keyboard focus opens', async () => {
+		const w = mountFields('Hi');
+		const insert = w.get('[data-testid="subject-insert-variable"]');
+		const define = w.findAll('button').find((b) => b.text() === 'New variable')!;
+
+		expect(await focusedTooltip(insert.element)).toBe('Insert a variable into the subject');
+		expect(await focusedTooltip(define.element)).toBe('Define a new data variable for this email');
+		expect(w.findAll('[title]')).toHaveLength(0);
 	});
 
 	it('hides the insert button when there is nothing to insert', () => {
