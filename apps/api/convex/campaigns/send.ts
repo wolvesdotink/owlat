@@ -1,13 +1,10 @@
 'use node';
 
 import { v } from 'convex/values';
-import { internalAction, type ActionCtx } from '../_generated/server';
+import { internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
-import { SEND_PAGE_SIZE, type CampaignRecipient } from './audienceCandidates';
-import type { Doc } from '../_generated/dataModel';
+import { SEND_PAGE_SIZE } from './audienceCandidates';
 import { getOptional } from '../lib/env';
-import { resolveNextSendTime, isValidTimeZone } from '../lib/emailHelpers';
-import { composeForSend, personalizeSubject } from '../delivery/sendComposition';
 import {
 	bucketPageRecipients,
 	classifyContentScan,
@@ -16,7 +13,6 @@ import {
 	isSendPrepared,
 	makeVariantBucketer,
 } from './sendPlanning';
-import type { PlannedSendTime } from './sendTimeOptimization';
 import {
 	NO_PROVIDER_RETRY_MS,
 	bucketContent,
@@ -28,9 +24,7 @@ import {
 	needsSendTimePlanning,
 	planSendTimes,
 	shouldCountAudience,
-	type HopSendContext,
 } from './pageDecision';
-import { nanoid } from 'nanoid';
 // Campaign send orchestrator (module) — the single live action that takes a
 // campaign from `draft|scheduled|sending` through content scan, archive,
 // audience resolution, A/B variant fanout (test cohort), and workpool
@@ -41,49 +35,12 @@ import {
 	checkUrlReputation,
 	urlReputationToFlags,
 	type ContentFlag,
-	type UrlReputationCache,
 } from '@owlat/email-scanner';
 import { scannedContentDigest, scannedSubject } from './sendCommit';
-import type { ArchiveSnapshot } from './archiveQueries';
 import type { PageBucket } from './walkerCommit';
 import { logWarn } from '../lib/runtimeLog';
-
-// Convex-backed implementation of the email-scanner's `UrlReputationCache`,
-// persisting Safe Browsing verdicts in the `urlReputationCache` table so
-// repeated links across campaign content scans are served from cache rather
-// than re-querying Google. `get` honors the stored TTL (a miss past expiry);
-// `set` upserts by url hash. Caching is best-effort — a cache read/write
-// failure must not abort the scan, so both paths swallow errors and degrade to
-// an uncached check.
-function makeUrlReputationCache(ctx: ActionCtx): UrlReputationCache {
-	return {
-		async get(urlHash) {
-			try {
-				return await ctx.runQuery(internal.campaigns.sendQueries.getUrlReputationVerdict, {
-					urlHash,
-				});
-			} catch {
-				return null;
-			}
-		},
-		async set(urlHash, verdict) {
-			try {
-				// checkpoint: a best-effort verdict cache, not campaign state; a write
-				// that stands after the send fails costs nothing but a cache hit.
-				await ctx.runMutation(internal.campaigns.sendQueries.upsertUrlReputationVerdict, {
-					urlHash,
-					verdict: verdict.verdict,
-					source: verdict.source,
-					threats: verdict.threats,
-					checkedAt: verdict.checkedAt,
-					expiresAt: verdict.expiresAt,
-				});
-			} catch {
-				// Best-effort cache write — ignore.
-			}
-		},
-	};
-}
+import { composeArchiveSnapshot, makeUrlReputationCache } from './sendPreparation';
+import { planBucket } from './pageBucketPlan';
 
 // Internal action invoked by the per-minute scheduler tick to start sending
 // any due scheduled campaigns. Delegates to the orchestrator for each due
@@ -285,130 +242,6 @@ export const startCampaignSend = internalAction({
 		};
 	},
 });
-
-/**
- * The public archive copy, when the campaign archives (its own setting, else
- * the org's `campaigns.archive` default) and SITE_URL is set. The "view in
- * browser" URL is re-derived per page by the walker from the stored
- * `archiveToken`, so only the snapshot is composed here.
- */
-async function composeArchiveSnapshot(
-	ctx: ActionCtx,
-	campaign: Doc<'campaigns'>,
-	subject: string,
-	htmlContent: string
-): Promise<ArchiveSnapshot | undefined> {
-	const siteUrl = getOptional('SITE_URL');
-	if (!siteUrl) return undefined;
-	const resolvedFlags = await ctx.runQuery(internal.workspaces.featureFlags.getResolvedFlags, {});
-	const archiveEnabled = campaign.archiveEnabled ?? resolvedFlags['campaigns.archive'] ?? false;
-	if (!archiveEnabled) return undefined;
-	const composed = composeForSend({
-		kind: 'archive_snapshot',
-		template: { subject, htmlContent },
-	});
-	return { archiveToken: nanoid(24), archiveHtmlContent: composed.html, archiveSubject: subject };
-}
-
-// ─── Per-variant bucket plan ───────────────────────────────────────────
-
-type PlanBucketArgs = HopSendContext & {
-	recipients: ReadonlyArray<CampaignRecipient>;
-	abVariant: 'A' | 'B' | undefined;
-	subject: string;
-	htmlContent: string;
-	/** Pre-generated (or author-overridden) text/plain body; default language only. */
-	plainTextContent?: string;
-	// Send-time optimization: the instant and arm the planner chose per
-	// contact id. Set only for an optimized campaign; replaces both the
-	// timezone grouping and the immediate send.
-	plannedSendTimes?: ReadonlyMap<string, PlannedSendTime>;
-	now: number;
-};
-
-// One bucket (one variant, one language) of a page, as the page commit takes
-// it: each recipient's personalized subject, and the recipients grouped by
-// when they go out. The commit inserts the rows and schedules the enqueue
-// chunks (`campaigns/walkerCommit.ts`); the orchestrator's only enqueue site.
-function planBucket(args: PlanBucketArgs): PageBucket {
-	const { plannedSendTimes } = args;
-	const fallbackZone = isValidTimeZone(args.defaultTimezone) ? args.defaultTimezone : 'UTC';
-	// When a recipient goes out, keyed by the group it shares with others.
-	const sendInstant = (r: CampaignRecipient): { key: string; sendAt?: number } => {
-		if (plannedSendTimes) {
-			// One group per proposed instant. The enqueue at that instant goes
-			// through the same governed path as any other, so the MTA's pacing,
-			// the ramp ceilings and the deliverability gates still own throughput.
-			const sendAt = plannedSendTimes.get(r._id)?.at ?? args.now;
-			return { key: String(sendAt), sendAt };
-		}
-		if (args.useTimezone) {
-			// Group by the recipient's IANA zone, then resolve the next
-			// `scheduledHour:scheduledMinute` local instant per zone — DST-correct,
-			// unlike a static UTC-offset table. Recipients without a valid zone fall
-			// back to the org-level timezone (General settings) when it is a valid
-			// zone, otherwise to UTC.
-			const zone = isValidTimeZone(r.timezone) ? r.timezone : fallbackZone;
-			const sendAt = resolveNextSendTime(
-				zone,
-				args.scheduledHour!,
-				args.scheduledMinute!,
-				args.now
-			);
-			return { key: zone, sendAt };
-		}
-		return { key: 'now' };
-	};
-
-	const groups = new Map<string, PageBucket['groups'][number]>();
-	for (const r of args.recipients) {
-		const recipient = {
-			contactId: r._id,
-			email: r.email,
-			firstName: r.firstName,
-			lastName: r.lastName,
-			// Projected by audience resolution from the already-loaded contact:
-			// the engagement score rides the envelope to the MTA's priority
-			// bands. Undefined for an unscored contact and simply omitted.
-			engagementScore: r.engagementScore,
-			personalizedSubject: personalizeSubject({
-				kind: 'campaign',
-				template: { subject: args.subject, htmlContent: '' },
-				contactInfo: { email: r.email, firstName: r.firstName, lastName: r.lastName },
-			}),
-			...(plannedSendTimes?.has(r._id)
-				? { sendTimeGroup: plannedSendTimes.get(r._id)!.group }
-				: {}),
-		};
-		const { key, sendAt } = sendInstant(r);
-		const group = groups.get(key);
-		if (group) group.recipients.push(recipient);
-		else groups.set(key, { ...(sendAt === undefined ? {} : { sendAt }), recipients: [recipient] });
-	}
-
-	return {
-		envelope: {
-			from: args.from,
-			replyTo: args.replyTo,
-			subject: args.subject,
-			htmlContent: args.htmlContent,
-			plainTextContent: args.plainTextContent,
-			convexSiteUrl: args.convexSiteUrl,
-			siteUrl: args.siteUrl,
-			audienceType: args.audienceType,
-			viewInBrowserUrl: args.viewInBrowserUrl,
-			providerType: args.providerType,
-			ipPool: args.ipPool,
-			trackingBaseUrl: args.trackingBaseUrl,
-			organizationId: args.organizationId,
-			listId: args.listId,
-			// Keys the deliverability seed-probe set: the two A/B arms are
-			// different messages and each gets its own placement reading.
-			abVariant: args.abVariant,
-		},
-		groups: [...groups.values()],
-	};
-}
 
 // ─── Checkpointed send walker (NON-A/B) ────────────────────────────────
 //
