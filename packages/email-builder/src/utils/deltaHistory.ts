@@ -1,5 +1,6 @@
 import { compare, applyPatch, type Operation } from 'fast-json-patch';
 import type { HistoryState } from '../composables/useHistory';
+import { plainClone } from './plainClone';
 
 export interface HistoryCheckpoint {
 	type: 'checkpoint';
@@ -30,7 +31,7 @@ export function generatePatches(
  * Apply patches to a state and return the new state
  */
 export function applyPatches(state: HistoryState, patches: Operation[]): HistoryState {
-	const cloned = JSON.parse(JSON.stringify(state));
+	const cloned = plainClone(state);
 	applyPatch(cloned, patches);
 	return cloned;
 }
@@ -65,7 +66,7 @@ export function reconstructState(entries: HistoryEntry[], targetIndex: number): 
 	}
 
 	const checkpoint = entries[checkpointIndex] as HistoryCheckpoint;
-	let state = JSON.parse(JSON.stringify(checkpoint.state)) as HistoryState;
+	const state = plainClone(checkpoint.state);
 
 	// Apply forward patches to reach target
 	for (let i = checkpointIndex + 1; i <= targetIndex; i++) {

@@ -1,3 +1,4 @@
+import { isRecord } from '@owlat/shared/utils/guards';
 import { fn } from '../../convex.js';
 import { logger } from '../../logger.js';
 import { parseList } from '../../parser.js';
@@ -5,6 +6,12 @@ import type { CommandSession, ImapCommandModule } from '../types.js';
 import { resolveFolderByName } from '../helpers/folders.js';
 import { appendEnvelope } from './envelope.js';
 import { serverFailure } from '../helpers/replies.js';
+
+/** The storage id a Convex storage upload answers with (`{ storageId }`). */
+function uploadedStorageId(body: unknown): string | undefined {
+	const storageId = isRecord(body) ? body['storageId'] : undefined;
+	return typeof storageId === 'string' && storageId.length > 0 ? storageId : undefined;
+}
 
 export interface AppendArgs {
 	readonly folderName: string;
@@ -129,7 +136,13 @@ export const appendModule: ImapCommandModule<AppendArgs> = {
 					finalize(`${tag} NO APPEND storage upload failed`);
 					return;
 				}
-				const { storageId } = (await uploadRes.json()) as { storageId: string };
+				// An answer without a storage id is a failed upload: the message
+				// must not be filed pointing at bytes that were never stored.
+				const storageId = uploadedStorageId(await uploadRes.json().catch(() => undefined));
+				if (storageId === undefined) {
+					finalize(`${tag} NO APPEND storage upload failed`);
+					return;
+				}
 
 				const envelope = appendEnvelope(rawBuffer);
 

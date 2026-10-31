@@ -794,4 +794,22 @@ describe('doctor --json — report contents', () => {
 			'LLM_API_KEY is set (required by an active feature)'
 		);
 	});
+
+	it.each([
+		['null', 'null'],
+		['a list', '[{"campaigns":true}]'],
+		['a flag that is not a boolean', '{"campaigns":"yes"}'],
+		['a plugin override that is not a boolean', '{"plugin.policy-pack":1}'],
+	])('fails the flag state check for a file holding %s', async (_name, flags) => {
+		const { report } = await runBoth({ ...FIXTURES['healthy']!, flags });
+		expect(report.checks.find((check) => check.id === 'flags.state')?.status).toBe('fail');
+	});
+
+	it('reads a flag file with an unknown key and a plugin override as valid', async () => {
+		const { report } = await runBoth({
+			...FIXTURES['healthy']!,
+			flags: JSON.stringify({ campaigns: true, 'plugin.policy-pack': false, retired: 'x' }),
+		});
+		expect(report.checks.find((check) => check.id === 'flags.state')).toBeUndefined();
+	});
 });

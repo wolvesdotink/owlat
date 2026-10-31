@@ -354,6 +354,42 @@ describe('createHttpClient', () => {
 				code: 'internal',
 			});
 		});
+
+		it.each([
+			['null', null],
+			['a list', [{ error: { message: 'x', category: 'y' } }]],
+			['an error that is a string', { error: 'boom' }],
+			['an error that is a list', { error: ['boom'] }],
+			['a message and category of the wrong type', { error: { message: 42, category: { c: 1 } } }],
+		])('should use the fallbacks for an error body holding %s', async (_name, body) => {
+			mockFetch(500, body);
+			const http = createClient();
+
+			const error = await http.get('/test').then(
+				() => expect.fail('should have thrown'),
+				(err: unknown) => err
+			);
+			expect(error).toBeInstanceOf(OwlatError);
+			expect(error).toMatchObject({ message: 'Unknown error', code: 'internal', statusCode: 500 });
+			expect((error as OwlatError).data).toBeUndefined();
+		});
+
+		it('should drop error data that is not an object and keep the readable fields', async () => {
+			mockFetch(
+				429,
+				{ error: { message: 'Slow down', category: 'rate_limited', data: 'retry later' } },
+				{ 'Retry-After': '30' }
+			);
+			const http = createClient();
+
+			const error = await http.get('/test').then(
+				() => expect.fail('should have thrown'),
+				(err: unknown) => err
+			);
+			expect(error).toBeInstanceOf(RateLimitError);
+			expect(error).toMatchObject({ message: 'Slow down', retryAfter: 30 });
+			expect((error as RateLimitError).data).toBeUndefined();
+		});
 	});
 
 	describe('network and timeout errors', () => {
