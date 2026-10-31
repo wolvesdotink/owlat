@@ -244,6 +244,3 @@ convex/webhooks/pluginFeedbackHttp.ts:pluginFeedbackWebhook #3
 convex/webhooks/pluginFeedbackHttp.ts:pluginFeedbackWebhook #4
 convex/webhooks/pluginFeedbackHttp.ts:pluginFeedbackWebhook #5
 convex/webhooks/pluginFeedbackHttp.ts:pluginFeedbackWebhook #6
-convex/workspaces/deletion/walker.ts:drive #2
-convex/workspaces/deletion/walker.ts:drive #3
-convex/workspaces/deletion/walker.ts:drive #4
