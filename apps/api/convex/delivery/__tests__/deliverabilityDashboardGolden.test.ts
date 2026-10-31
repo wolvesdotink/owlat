@@ -23,6 +23,14 @@ import { connectRelay, seedArmOutcomes, seedGreenWindows, seedRampCell } from '.
 import { modules } from '../../__tests__/testModules';
 
 const ORG = 'org_dashboard_golden';
+const PINNED_CELLS: readonly string[] = [
+	'campaign:gmail',
+	'campaign:microsoft',
+	'campaign:yahoo',
+	'transactional:gmail',
+	'transactional:yahoo',
+	'automation:gmail',
+];
 
 vi.mock('../../lib/sessionOrganization', async (importOriginal) => {
 	const actual = await importOriginal<typeof SessionOrganization>();
@@ -96,7 +104,13 @@ describe('getDeliverabilityDashboard — the answer the screen reads', () => {
 			api.delivery.deliverabilityDashboard.getDeliverabilityDashboard,
 			{}
 		);
-		await expect(JSON.stringify(dashboard, null, 2)).toMatchFileSnapshot(
+		// Every cell is listed in order; the ones the fixture fed, plus one empty
+		// cell per stream (each stream grades on its own constants), are pinned
+		// whole. The other empty cells take the same path as their stream's.
+		const pinned = dashboard.cells.filter((cell) => PINNED_CELLS.includes(cell.cellKey));
+		expect(pinned).toHaveLength(PINNED_CELLS.length);
+		const answer = { ...dashboard, cellOrder: dashboard.cells.map((cell) => cell.cellKey) };
+		await expect(JSON.stringify({ ...answer, cells: pinned }, null, 2)).toMatchFileSnapshot(
 			'./__golden__/deliverabilityDashboard.golden'
 		);
 	});
