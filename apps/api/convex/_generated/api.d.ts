@@ -418,6 +418,7 @@ import type * as campaigns_senders from '../campaigns/senders.js';
 import type * as campaigns_sendingReadiness from '../campaigns/sendingReadiness.js';
 import type * as campaigns_statShards from '../campaigns/statShards.js';
 import type * as campaigns_testSend from '../campaigns/testSend.js';
+import type * as campaigns_testSendCommit from '../campaigns/testSendCommit.js';
 import type * as channels_adapters_index from '../channels/adapters/index.js';
 import type * as channels_adapters_sms from '../channels/adapters/sms.js';
 import type * as channels_adapters_types from '../channels/adapters/types.js';
@@ -2343,6 +2344,7 @@ declare const fullApi: ApiFromModules<{
 	'campaigns/sendingReadiness': typeof campaigns_sendingReadiness;
 	'campaigns/statShards': typeof campaigns_statShards;
 	'campaigns/testSend': typeof campaigns_testSend;
+	'campaigns/testSendCommit': typeof campaigns_testSendCommit;
 	'channels/adapters/index': typeof channels_adapters_index;
 	'channels/adapters/sms': typeof channels_adapters_sms;
 	'channels/adapters/types': typeof channels_adapters_types;

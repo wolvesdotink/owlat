@@ -135,6 +135,9 @@ async function spendBurstOnOutsiders(send: () => Promise<unknown>) {
 describe('sendTestEmail', () => {
 	it('queues one test Send, seeds the default sender and schedules its retention', async () => {
 		const { t, campaignId } = await setup();
+		const { transactionalEmailPool } = await import('../delivery/workpool');
+		const enqueueAction = vi.mocked(transactionalEmailPool.enqueueAction);
+		enqueueAction.mockClear();
 
 		const result = await t.action(api.campaigns.testSend.sendTestEmail, {
 			campaignId,
@@ -160,6 +163,19 @@ describe('sendTestEmail', () => {
 		expect(state.retention.map((job) => job.args[0])).toEqual([
 			{ sendId: state.sends[0]!._id, queuedAt: state.sends[0]!.queuedAt },
 		]);
+		expect(enqueueAction.mock.calls).toHaveLength(1);
+		expect(enqueueAction.mock.calls[0]?.[2]).toMatchObject({
+			envelopeInput: {
+				kind: 'transactional',
+				deliveryDomain: 'member_test',
+				to: 'ann@example.com',
+				from: expect.stringContaining('news@example.com'),
+				replyTo: 'reply@example.com',
+				organizationId: 'org-1',
+				sendId: state.sends[0]!._id,
+				template: { subject: '[TEST] Hello Test', htmlContent: expect.stringContaining('Hi Test') },
+			},
+		});
 	});
 
 	it('a refused recipient still spends a rate-limit token and queues nothing', async () => {

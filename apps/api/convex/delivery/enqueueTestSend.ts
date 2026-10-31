@@ -1,4 +1,6 @@
-import { v } from 'convex/values';
+import { v, type Infer } from 'convex/values';
+import type { MutationCtx } from '../_generated/server';
+import type { Id } from '../_generated/dataModel';
 import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
 import { enqueueGovernedSend } from './governedEnqueue';
@@ -19,67 +21,84 @@ import { selectedSendProviderReady } from '../lib/sendProviders/capability';
 /** Test-preview Sends outlive the MTA's four-day queue ceiling, then self-delete. */
 export const TEST_SEND_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 
+/** What a test Send carries; the caller owns recipient and sender authorization. */
+const testSendArgs = {
+	email: v.string(),
+	organizationId: v.string(),
+	from: v.string(),
+	replyTo: v.optional(v.string()),
+	subject: v.string(),
+	html: v.string(),
+};
+const testSendValidator = v.object(testSendArgs);
+
+export const NO_TEST_SEND_PROVIDER_MESSAGE =
+	'No email delivery provider is configured. Set EMAIL_PROVIDER (+ credentials) before sending a test preview.';
+
 /**
  * Queue a member-only test preview through the same durable governed path as
  * every other Send. The caller owns recipient/sender authorization; this
  * mutation owns the durable SendRef, workpool completion, and bounded cleanup.
+ *
+ * Kept for a test-send action of the previous release still running during
+ * the deploy; this release queues inside `campaigns/testSendCommit.ts`. Each
+ * call queues the one preview its caller asked for, so it never repeats one
+ * that commit queued. Remove after release N+1.
  */
 export const enqueueTestSend = internalMutation({
-	args: {
-		email: v.string(),
-		organizationId: v.string(),
-		from: v.string(),
-		replyTo: v.optional(v.string()),
-		subject: v.string(),
-		html: v.string(),
-	},
+	args: testSendArgs,
 	handler: async (ctx, args) => {
-		// A preview has ONE caller (`campaigns/testSend.ts`), reached from an
-		// authed member action that surfaces a throw to the operator directly, so
-		// it keeps the throw rather than adopting the intake outcome union: there
-		// is no second call site to keep in agreement, and nothing here ever
-		// string-matched the message (which is why the shared magic-string
-		// constant this used to import could be deleted outright).
 		if (!(await selectedSendProviderReady(ctx, undefined))) {
-			throw new Error(
-				'No email delivery provider is configured. Set EMAIL_PROVIDER (+ credentials) before sending a test preview.'
-			);
+			throw new Error(NO_TEST_SEND_PROVIDER_MESSAGE);
 		}
-		const queuedAt = Date.now();
-		const sendId = await ctx.db.insert('transactionalSends', {
-			kind: 'test' as const,
-			email: args.email,
-			subject: args.subject,
-			status: 'queued',
-			queuedAt,
-		});
-
-		await enqueueGovernedSend(
-			ctx,
-			{ kind: 'transactional', id: sendId },
-			{
-				envelopeInput: {
-					kind: 'transactional' as const,
-					deliveryDomain: 'member_test' as const,
-					messageType: 'transactional' as const,
-					emailPurpose: 'transactional' as const,
-					to: args.email,
-					from: args.from,
-					replyTo: args.replyTo,
-					organizationId: args.organizationId,
-					sendId,
-					template: { subject: args.subject, htmlContent: args.html },
-				},
-			}
-		);
-		await ctx.scheduler.runAfter(
-			TEST_SEND_RETENTION_MS,
-			internal.delivery.enqueueTestSend.deleteExpiredTestSend,
-			{ sendId, queuedAt }
-		);
-		return { sendId };
+		return { sendId: await queueTestSend(ctx, args) };
 	},
 });
+
+/**
+ * `enqueueTestSend` inside the caller's transaction, once the caller has found
+ * a delivery provider ready (`selectedSendProviderReady`): the test-send
+ * commit checks that once for all of its recipients and answers a missing
+ * provider with an outcome, so the rate-limit token it spent stays spent.
+ */
+export async function queueTestSend(
+	ctx: MutationCtx,
+	args: Infer<typeof testSendValidator>
+): Promise<Id<'transactionalSends'>> {
+	const queuedAt = Date.now();
+	const sendId = await ctx.db.insert('transactionalSends', {
+		kind: 'test' as const,
+		email: args.email,
+		subject: args.subject,
+		status: 'queued',
+		queuedAt,
+	});
+
+	await enqueueGovernedSend(
+		ctx,
+		{ kind: 'transactional', id: sendId },
+		{
+			envelopeInput: {
+				kind: 'transactional' as const,
+				deliveryDomain: 'member_test' as const,
+				messageType: 'transactional' as const,
+				emailPurpose: 'transactional' as const,
+				to: args.email,
+				from: args.from,
+				replyTo: args.replyTo,
+				organizationId: args.organizationId,
+				sendId,
+				template: { subject: args.subject, htmlContent: args.html },
+			},
+		}
+	);
+	await ctx.scheduler.runAfter(
+		TEST_SEND_RETENTION_MS,
+		internal.delivery.enqueueTestSend.deleteExpiredTestSend,
+		{ sendId, queuedAt }
+	);
+	return sendId;
+}
 
 /** Idempotent per-row retention callback; seven days exceeds every MTA retry window. */
 export const deleteExpiredTestSend = internalMutation({

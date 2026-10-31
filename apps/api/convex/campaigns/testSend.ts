@@ -4,6 +4,8 @@ import { v } from 'convex/values';
 import { authedAction } from '../lib/authedFunctions';
 import type { ActionCtx } from '../_generated/server';
 import { internal, api } from '../_generated/api';
+import type { FunctionArgs } from 'convex/server';
+import type { TestSendCommit } from './testSendCommit';
 import type { EmailSendParams } from '../lib/sendProviders';
 import { composeForSend } from '../delivery/sendComposition';
 import { formatFromAddress } from '../lib/emailProviders/domainVerification';
@@ -90,6 +92,33 @@ export async function enqueueGovernedTestEmail(
 	return { sendId };
 }
 
+/**
+ * The one commit of a test send (`campaigns/testSendCommit.ts`): the sender
+ * gate, the rate limit, the member-inbox check and the queued Sends. Throws
+ * the gate's refusal; a missing delivery provider is returned, because the two
+ * actions report it differently.
+ */
+async function queueTestSends(
+	ctx: Pick<ActionCtx, 'runMutation'>,
+	args: FunctionArgs<typeof internal.campaigns.testSendCommit.commitTestSends>
+): Promise<Extract<TestSendCommit, { kind: 'queued' | 'no_provider' }>> {
+	const outcome = await ctx.runMutation(internal.campaigns.testSendCommit.commitTestSends, args);
+	if (outcome.kind === 'sender_not_allowed')
+		throwForbidden(senderNotAllowedMessage(args.fromEmail));
+	if (outcome.kind === 'rate_limited') {
+		throwRateLimited(
+			'Too many test emails — please wait a moment and try again.',
+			outcome.retryAfter
+		);
+	}
+	if (outcome.kind === 'recipient_not_member') {
+		throwForbidden(
+			`Test emails can only be sent to your organization's own member addresses. "${outcome.email}" is not a member of this organization.`
+		);
+	}
+	return outcome;
+}
+
 // Action to send a test email for a campaign
 // all-members: sending a test email is the emails:test capability (all members);
 // the sending domain must be verified.
@@ -139,12 +168,6 @@ export const sendTestEmail = authedAction({
 			);
 		}
 
-		await assertCampaignSenderAllowed(ctx, campaign.fromEmail);
-
-		// Rate-limit + restrict the recipient to an org-member inbox so the
-		// preview action can't be used to relay mail to arbitrary addresses.
-		const organizationId = await guardTestSend(ctx, [args.testEmail]);
-
 		// Get email template content for specified language (or default)
 		const langContent = await ctx.runQuery(
 			internal.campaigns.sendQueries.getEmailTemplateForLanguage,
@@ -190,23 +213,22 @@ export const sendTestEmail = authedAction({
 		const langSuffix = args.language ? ` (${args.language.toUpperCase()})` : '';
 		const testSubject = `[TEST${langSuffix}] ${composed.subject}`;
 
-		// Queue a durable test Send through the normal worker → governed dispatch
-		// → completion chain. The action reports queue acceptance, not delivery.
-		const { sendId } = await enqueueGovernedTestEmail(
-			ctx,
-			{
-				to: args.testEmail,
-				from,
-				replyTo: campaign.replyTo,
-				subject: testSubject,
-				html: composed.html,
-			},
-			organizationId
-		);
+		// COMMIT. Queue a durable test Send through the normal worker → governed
+		// dispatch → completion chain, behind the sender, rate-limit and
+		// member-inbox gates. The action reports queue acceptance, not delivery.
+		const queued = await queueTestSends(ctx, {
+			fromEmail: campaign.fromEmail,
+			from,
+			replyTo: campaign.replyTo,
+			subject: testSubject,
+			html: composed.html,
+			recipients: [args.testEmail],
+		});
+		if (queued.kind === 'no_provider') throw new Error(queued.message);
 
 		return {
 			success: true,
-			id: sendId,
+			id: queued.sendIds[0],
 			message: `Test email queued for ${args.testEmail}`,
 			language: langContent.resolvedLanguage,
 		};

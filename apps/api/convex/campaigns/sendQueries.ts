@@ -1,5 +1,5 @@
 import { v } from 'convex/values';
-import { internalQuery, type MutationCtx } from '../_generated/server';
+import { internalQuery, type MutationCtx, type QueryCtx } from '../_generated/server';
 import type { Id } from '../_generated/dataModel';
 import { internalMutation } from '../lib/writeFence';
 import { components } from '../_generated/api';
@@ -21,8 +21,22 @@ import { getLive, isLive } from '../lib/softDelete';
  * recipient allowlist the lowest-privilege member could use the action as an
  * open relay to spray high-credibility phishing at arbitrary external victims.
  * On a single-org deployment the `userProfiles` table IS the member roster, so
- * its emails are exactly the legitimate preview targets. Inherits the caller's
- * identity through `ctx.runQuery` (and re-asserts org membership).
+ * its emails are exactly the legitimate preview targets.
+ */
+export async function readMemberInboxes(ctx: QueryCtx): Promise<string[]> {
+	// 1-per-user on a single-org instance — the member roster, bounded.
+	const profiles = await ctx.db.query('userProfiles').collect(); // bounded: org member roster (single-org deployment: tiny)
+	return profiles
+		.map((p) => p.email?.toLowerCase())
+		.filter((e): e is string => typeof e === 'string' && e.length > 0);
+}
+
+/**
+ * `readMemberInboxes` for a test-send action of the previous release still
+ * running during the deploy; this release checks recipients inside
+ * `campaigns/testSendCommit.ts`. A read, so it is safe beside that commit.
+ * Inherits the caller's identity through `ctx.runQuery` (and re-asserts org
+ * membership). Remove after release N+1.
  */
 export const getTestSendAllowedRecipients = internalQuery({
 	args: {},
@@ -30,13 +44,8 @@ export const getTestSendAllowedRecipients = internalQuery({
 		ctx
 	): Promise<{ allowed: string[]; callerUserId: string; organizationId: string }> => {
 		const session = await requireOrgMember(ctx);
-		// 1-per-user on a single-org instance — the member roster, bounded.
-		const profiles = await ctx.db.query('userProfiles').collect(); // bounded: org member roster (single-org deployment: tiny)
-		const allowed = profiles
-			.map((p) => p.email?.toLowerCase())
-			.filter((e): e is string => typeof e === 'string' && e.length > 0);
 		return {
-			allowed,
+			allowed: await readMemberInboxes(ctx),
 			callerUserId: session.userId,
 			organizationId: session.activeOrganizationId,
 		};
