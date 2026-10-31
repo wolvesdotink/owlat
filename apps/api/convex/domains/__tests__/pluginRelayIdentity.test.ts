@@ -30,11 +30,14 @@ const KIND = 'plugin.mail-pack.postmark';
 const PLUGIN_ID = 'mail-pack';
 const DOMAIN = 'sender.example.com';
 
-const { registerDomainMock, checkDomainMock, authorizeMock } = vi.hoisted(() => ({
-	registerDomainMock: vi.fn(),
-	checkDomainMock: vi.fn(),
-	authorizeMock: vi.fn(),
-}));
+const { registerDomainMock, checkDomainMock, authorizeMock, recordOutcomeMock } = vi.hoisted(
+	() => ({
+		registerDomainMock: vi.fn(),
+		checkDomainMock: vi.fn(),
+		authorizeMock: vi.fn(),
+		recordOutcomeMock: vi.fn(),
+	})
+);
 
 vi.mock('../../plugins/sendTransportCatalog.generated', () => ({
 	BUNDLED_PLUGIN_SEND_TRANSPORT_CATALOG: Object.freeze([
@@ -92,7 +95,9 @@ vi.mock('../../plugins/hostedContributionAuthorization', async () => {
 	return {
 		...actual,
 		authorizeHostedContribution: (...args: unknown[]) => authorizeMock(...args),
-		recordHostedContributionOutcome: async () => {},
+		recordHostedContributionOutcome: async (...args: unknown[]) => {
+			recordOutcomeMock(...args);
+		},
 	};
 });
 
@@ -133,6 +138,7 @@ beforeEach(() => {
 	registerDomainMock.mockReset();
 	checkDomainMock.mockReset();
 	authorizeMock.mockReset().mockResolvedValue(true);
+	recordOutcomeMock.mockReset();
 	vi.stubEnv('PLUGIN_POSTMARK_TOKEN', 'token-value');
 });
 
@@ -426,5 +432,49 @@ describe('every failure path refuses to look like evidence', () => {
 
 		expect(result).toEqual({ outcome: 'unavailable' });
 		expect(await rows(t)).toEqual([]);
+	});
+});
+
+describe('every identity call that reaches the provider question audits once', () => {
+	/** The `(pluginId, kind, outcome)` of each audit row the call wrote. */
+	const audited = () =>
+		recordOutcomeMock.mock.calls.map((call) => [call[2], call[3], call[4]] as const);
+
+	it('audits a check as completed, with the row written', async () => {
+		const t = convexTest(schema, modules);
+		registerDomainMock.mockResolvedValue(providerState());
+
+		await t.action(internal.domains.pluginRelay.provision, { kind: KIND, domain: DOMAIN });
+
+		expect(audited()).toEqual([[PLUGIN_ID, KIND, 'completed']]);
+		expect(await rows(t)).toHaveLength(1);
+	});
+
+	it('audits an unset credential and an outage as failed', async () => {
+		const t = convexTest(schema, modules);
+		vi.stubEnv('PLUGIN_POSTMARK_TOKEN', '');
+		await t.action(internal.domains.pluginRelay.provision, { kind: KIND, domain: DOMAIN });
+		vi.stubEnv('PLUGIN_POSTMARK_TOKEN', 'token-value');
+		registerDomainMock.mockResolvedValue({ outcome: 'unavailable', error: 'down' });
+		await t.action(internal.domains.pluginRelay.provision, { kind: KIND, domain: DOMAIN });
+
+		expect(audited()).toEqual([
+			[PLUGIN_ID, KIND, 'failed'],
+			[PLUGIN_ID, KIND, 'failed'],
+		]);
+	});
+
+	it('writes no outcome audit for a denied call, only its deferred retry', async () => {
+		const t = convexTest(schema, modules);
+		registerDomainMock.mockResolvedValue(providerState());
+		await t.action(internal.domains.pluginRelay.provision, { kind: KIND, domain: DOMAIN });
+		recordOutcomeMock.mockReset();
+		authorizeMock.mockReset().mockResolvedValue(false);
+
+		await t.action(internal.domains.pluginRelay.refreshIdentity, { kind: KIND, domain: DOMAIN });
+
+		expect(checkDomainMock).not.toHaveBeenCalled();
+		expect(audited()).toEqual([]);
+		expect((await rows(t))[0]!.nextCheckDueAt).toBeGreaterThan(Date.now());
 	});
 });

@@ -439,3 +439,83 @@ describe('e2ee/discovery · discoverRecipientKey starts over when its read goes 
 		expect(row?.pinnedPublicKeyArmored).toBe('KEY:A');
 	});
 });
+
+describe('e2ee/discovery · refreshExpiringRecipientKeys re-discovers expired pins', () => {
+	const BOB = 'bob@sealed.example.org';
+	const CAROL = 'carol@sealed.example.org';
+	let bobBinary: Uint8Array;
+	let bobFp: string;
+
+	beforeAll(async () => {
+		const armored = readFileSync(
+			new URL('../../../fixtures/sealed-mail/pgp-mime/keys/bob.pub.asc', import.meta.url),
+			'utf8'
+		);
+		const key = await openpgp.readKey({ armoredKey: armored });
+		bobBinary = key.write();
+		bobFp = key.getFingerprint().toUpperCase();
+	});
+
+	afterEach(() => {
+		vi.unstubAllGlobals();
+		vi.useRealTimers();
+	});
+
+	async function seedPinned(
+		t: ConvexTestCtx,
+		address: string,
+		fingerprint: string,
+		expiresAt: number
+	) {
+		return await t.run(async (ctx: RunCtx) =>
+			ctx.db.insert('recipientKeys', {
+				address,
+				domain: 'sealed.example.org',
+				outcome: 'trusted',
+				pinnedFingerprint: fingerprint,
+				pinnedPublicKeyArmored: `KEY:${fingerprint}`,
+				observedFingerprint: fingerprint,
+				observedPublicKeyArmored: `KEY:${fingerprint}`,
+				source: 'wkd',
+				revision: 1,
+				expiresAt,
+				discoveredAt: 1,
+				updatedAt: 1,
+			})
+		);
+	}
+
+	it('refreshes each expired pinned row and leaves a fresh one alone', async () => {
+		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+		const t = await setup();
+		const expiredId = await seedPinned(t, BOB, bobFp, Date.now() - 1);
+		const freshId = await seedPinned(t, CAROL, KEY_A, Date.now() + DAY);
+		const fetched: string[] = [];
+		vi.stubGlobal('fetch', async (input: string | URL) => {
+			const url = new URL(String(input));
+			fetched.push(url.searchParams.get('l') ?? url.pathname);
+			if (!url.pathname.startsWith('/.well-known/openpgpkey/hu/')) {
+				return new Response(null, { status: 404 });
+			}
+			return new Response(bobBinary.slice(), { status: 200 });
+		});
+
+		const result = await t.action(internal.e2ee.discovery.refreshExpiringRecipientKeys, {});
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+		expect(result).toEqual({ refreshed: 1 });
+		expect(fetched).toContain('bob');
+		expect(fetched).not.toContain('carol');
+		const [expired, fresh] = await t.run(async (ctx: RunCtx) =>
+			Promise.all([ctx.db.get(expiredId), ctx.db.get(freshId)])
+		);
+		expect(expired).toMatchObject({
+			outcome: 'trusted',
+			pinnedFingerprint: bobFp,
+			observedFingerprint: bobFp,
+			revision: 1,
+		});
+		expect(expired!.expiresAt).toBeGreaterThan(Date.now());
+		expect(fresh!.updatedAt).toBe(1);
+	});
+});
