@@ -24,6 +24,7 @@ const showToast = vi.fn();
 let sent: Array<Record<string, unknown>>;
 let hooks: Map<string, Hook>;
 let app: App | null;
+let nuxtRoot: HTMLElement;
 
 async function loadPlugin(): Promise<ErrorPlugin> {
 	vi.stubGlobal('defineNuxtPlugin', (def: unknown) => def);
@@ -87,7 +88,9 @@ beforeEach(() => {
 	showToast.mockClear();
 	window.history.replaceState({}, '', '/desktop/welcome');
 	document.title = 'Welcome';
-	document.body.innerHTML = '<div id="__nuxt"></div>';
+	nuxtRoot = document.createElement('div');
+	nuxtRoot.id = '__nuxt';
+	document.body.append(nuxtRoot);
 	vi.stubGlobal('__TAURI_INTERNALS__', {
 		invoke: (cmd: string, args: { event: string; payload: Record<string, unknown> }) => {
 			if (cmd === 'plugin:event|emit' && args.event === 'owlat-e2e') sent.push(args.payload);
@@ -101,7 +104,7 @@ afterEach(() => {
 	app?.unmount();
 	for (const remove of probeCleanups.splice(0)) remove();
 	vi.unstubAllGlobals();
-	document.body.innerHTML = '';
+	nuxtRoot.remove();
 });
 
 describe('error handler plugin and the desktop renderer probe', () => {
