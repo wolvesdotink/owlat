@@ -95,6 +95,7 @@ vi.mock('../../plugins/hostedContributionAuthorization', async () => {
 	return {
 		...actual,
 		authorizeHostedContribution: (...args: unknown[]) => authorizeMock(...args),
+		isHostedContributionAuthorized: (...args: unknown[]) => authorizeMock(...args),
 		recordHostedContributionOutcome: async (...args: unknown[]) => {
 			recordOutcomeMock(...args);
 		},
@@ -476,5 +477,38 @@ describe('every identity call that reaches the provider question audits once', (
 		expect(checkDomainMock).not.toHaveBeenCalled();
 		expect(audited()).toEqual([]);
 		expect((await rows(t))[0]!.nextCheckDueAt).toBeGreaterThan(Date.now());
+	});
+});
+
+describe('an identity call writes its row and its audit together', () => {
+	it('leaves no row when its outcome audit cannot be written', async () => {
+		const t = convexTest(schema, modules);
+		registerDomainMock.mockResolvedValue(providerState());
+		recordOutcomeMock.mockImplementation(() => {
+			throw new Error('audit unavailable');
+		});
+
+		await expect(
+			t.action(internal.domains.pluginRelay.provision, { kind: KIND, domain: DOMAIN })
+		).rejects.toThrow('audit unavailable');
+
+		expect(await rows(t)).toEqual([]);
+	});
+
+	it('writes nothing for a denial when the plugin is re-enabled before it commits', async () => {
+		const t = convexTest(schema, modules);
+		registerDomainMock.mockResolvedValue(providerState());
+		await t.action(internal.domains.pluginRelay.provision, { kind: KIND, domain: DOMAIN });
+		const before = (await rows(t))[0]!;
+		authorizeMock.mockReset().mockResolvedValueOnce(false).mockResolvedValue(true);
+
+		const result = await t.action(internal.domains.pluginRelay.refreshIdentity, {
+			kind: KIND,
+			domain: DOMAIN,
+		});
+
+		expect(result).toEqual({ outcome: 'denied' });
+		expect(checkDomainMock).not.toHaveBeenCalled();
+		expect((await rows(t))[0]!.nextCheckDueAt).toBe(before.nextCheckDueAt);
 	});
 });

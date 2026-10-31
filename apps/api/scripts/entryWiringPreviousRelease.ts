@@ -46,6 +46,15 @@ export const PREVIOUS_RELEASE_ENTRIES: Readonly<Record<string, string>> = {
 	'mail/ai/composeDraftStore.ts#replaceSession': 'old Answer mode starts mid-run',
 	'mail/ai/composeDraftStore.ts#captureSessionAnswers': 'old Answer mode answers mid-run',
 	'mail/ai/composeDraftStore.ts#setDraftFollowUp': 'old Answer mode starts and answers mid-run',
+	// The plugin relay identity call now commits once through
+	// domains/pluginRelayMutations.ts `commitIdentityCall` / `commitDeniedCall`.
+	'domains/pluginRelayMutations.ts#recordCheck': 'old plugin relay identity calls mid-run',
+	'domains/pluginRelayMutations.ts#recordCheckFailure': 'old plugin relay identity calls mid-run',
+	'domains/pluginRelayMutations.ts#deferDeniedCheck': 'old plugin relay identity calls mid-run',
+	'plugins/sendTransportDomainIdentityAuthorization.ts#authorizeIdentityCall':
+		'old plugin relay identity calls mid-run',
+	'plugins/sendTransportDomainIdentityAuthorization.ts#recordOutcome':
+		'old plugin relay identity calls mid-run',
 	// System & updates now reads maintenance/workerRegistry.ts `getForAdmin`.
 	'mail/imap/serverRegistry.ts#getForAdmin':
 		'the previous IMAP servers card on System & updates, in tabs opened before the deploy',

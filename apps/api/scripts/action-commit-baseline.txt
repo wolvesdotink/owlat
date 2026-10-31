@@ -57,10 +57,6 @@ convex/desktop/updates.ts:refreshReleases #4
 convex/desktop/updates.ts:refreshReleases #5
 convex/desktop/updates.ts:refreshReleases #6
 convex/desktop/updates.ts:refreshReleases #7
-convex/domains/pluginRelay.ts:provision #2
-convex/domains/pluginRelay.ts:provision #3
-convex/domains/pluginRelay.ts:refreshIdentity #2
-convex/domains/pluginRelay.ts:refreshIdentity #3
 convex/domains/providers/registerAction.ts:run #2
 convex/domains/providers/registerAction.ts:run #3
 convex/inbox/inboundIngest.ts:ingestFromWebhook #2
