@@ -2,7 +2,7 @@
  * The Team Inbox's budget hold (#1333): at the spend ceiling,
  * a message is queued for a person instead of being drafted.
  *
- * The walker asks {@link holdIfOverBudget} before each step whose model call
+ * The walker asks {@link holdForBudget} before each step whose model call
  * is paid: context retrieval (interpretation and the query embedding),
  * classify (triage allowance), clarify and draft. The security scan is not
  * asked: its deterministic checks always run, and its model guard is admitted
@@ -22,9 +22,14 @@
  */
 
 import { v } from 'convex/values';
-import { BUDGET_HOLD_ERROR_MESSAGE, type MissingJudgment } from '@owlat/shared/aiRouting';
+import {
+	BUDGET_HOLD_ERROR_MESSAGE,
+	type BudgetHoldReason,
+	type MissingJudgment,
+} from '@owlat/shared/aiRouting';
 import { internal } from '../_generated/api';
-import type { Doc } from '../_generated/dataModel';
+import type { MutationCtx } from '../_generated/server';
+import type { Doc, Id } from '../_generated/dataModel';
 import { internalMutation } from '../lib/writeFence';
 import type { BudgetClass } from '../lib/validators/aiRouting';
 import { budgetHeadroom } from './enforcedBudget';
@@ -80,58 +85,71 @@ const teamPaidStepValidator = v.union(
 	v.literal('draft')
 );
 
+export interface BudgetHoldRequest {
+	readonly inboundMessageId: Id<'inboundMessages'>;
+	readonly step: TeamPaidStep;
+	/** The dispatch was already refused (from the walker's catch): hold without asking. */
+	readonly refusedReason?: BudgetHoldReason;
+	/** The step row of the refused dispatch: closed as `abandoned`, so no cron retries it. */
+	readonly refusedActionId?: Id<'agentActions'>;
+}
+
 /**
  * Hold the message when the step has no headroom, or when its dispatch was
- * already refused (`refusedReason`, from the walker's catch). Returns whether
- * the walker must stop.
+ * already refused. Returns whether the walker must stop.
  */
+export async function holdForBudget(
+	ctx: MutationCtx,
+	request: BudgetHoldRequest
+): Promise<{ isHeld: boolean }> {
+	const message = await ctx.db.get(request.inboundMessageId);
+	if (!message) return { isHeld: false };
+	let reason = request.refusedReason;
+	if (reason === undefined) {
+		const verdict = await budgetHeadroom(ctx, {
+			priority: 'pipeline',
+			budgetClass: TEAM_PAID_STEPS[request.step].budgetClass,
+		});
+		if (verdict.isAdmitted) {
+			// A run with headroom clears the hold an earlier run left.
+			if (message.budgetHold) await ctx.db.patch(message._id, { budgetHold: undefined });
+			return { isHeld: false };
+		}
+		reason = verdict.reason;
+	}
+	const at = Date.now();
+	if (request.refusedActionId) {
+		const action = await ctx.db.get(request.refusedActionId);
+		if (action && action.status !== 'abandoned') {
+			await ctx.db.patch(action._id, {
+				status: 'abandoned',
+				errorMessage: BUDGET_HOLD_ERROR_MESSAGE,
+				completedAt: at,
+			});
+		}
+	}
+	const outcome = await ctx.runMutation(internal.inbox.processingLifecycle.transition, {
+		inboundMessageId: request.inboundMessageId,
+		input: { to: 'failed', at, errorMessage: BUDGET_HOLD_ERROR_MESSAGE },
+	});
+	// A message the lifecycle would not fail (taken over, moved on) is not the
+	// pipeline's any more; the walker stops either way.
+	if (outcome.ok) {
+		await ctx.db.patch(message._id, {
+			budgetHold: { reason, missingJudgments: missingJudgmentsAt(request.step, message), at },
+		});
+	}
+	return { isHeld: true };
+}
+
+/** The walker's ask before a paid step and after a refused one ({@link holdForBudget}). */
 export const holdIfOverBudget = internalMutation({
 	args: {
 		inboundMessageId: v.id('inboundMessages'),
 		step: teamPaidStepValidator,
 		refusedReason: v.optional(reasonValidator),
-		/** The step row of the refused dispatch: closed as `abandoned`, so no cron retries it. */
 		refusedActionId: v.optional(v.id('agentActions')),
 	},
 	returns: v.object({ isHeld: v.boolean() }),
-	handler: async (ctx, args) => {
-		const message = await ctx.db.get(args.inboundMessageId);
-		if (!message) return { isHeld: false };
-		let reason = args.refusedReason;
-		if (reason === undefined) {
-			const verdict = await budgetHeadroom(ctx, {
-				priority: 'pipeline',
-				budgetClass: TEAM_PAID_STEPS[args.step].budgetClass,
-			});
-			if (verdict.isAdmitted) {
-				// A run with headroom clears the hold an earlier run left.
-				if (message.budgetHold) await ctx.db.patch(message._id, { budgetHold: undefined });
-				return { isHeld: false };
-			}
-			reason = verdict.reason;
-		}
-		const at = Date.now();
-		if (args.refusedActionId) {
-			const action = await ctx.db.get(args.refusedActionId);
-			if (action && action.status !== 'abandoned') {
-				await ctx.db.patch(action._id, {
-					status: 'abandoned',
-					errorMessage: BUDGET_HOLD_ERROR_MESSAGE,
-					completedAt: at,
-				});
-			}
-		}
-		const outcome = await ctx.runMutation(internal.inbox.processingLifecycle.transition, {
-			inboundMessageId: args.inboundMessageId,
-			input: { to: 'failed', at, errorMessage: BUDGET_HOLD_ERROR_MESSAGE },
-		});
-		// A message the lifecycle would not fail (taken over, moved on) is not the
-		// pipeline's any more; the walker stops either way.
-		if (outcome.ok) {
-			await ctx.db.patch(message._id, {
-				budgetHold: { reason, missingJudgments: missingJudgmentsAt(args.step, message), at },
-			});
-		}
-		return { isHeld: true };
-	},
+	handler: (ctx, args) => holdForBudget(ctx, args),
 });

@@ -2,9 +2,6 @@
 # Frozen debt for scripts/check-action-commits.sh; delete lines as actions
 # are converted to one commit, never add them.
 convex/agent/walker.ts:resumeDraft #2
-convex/agent/walker.ts:runStep #2
-convex/agent/walker.ts:runStep #3
-convex/agent/walker.ts:runStep #4
 convex/agentHealth.ts:rollupMetrics #2
 convex/agentHealth.ts:rollupMetrics #3
 convex/aiRouting/batchPoller.ts:poll #2

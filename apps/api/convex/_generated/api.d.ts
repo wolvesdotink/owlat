@@ -223,6 +223,8 @@ import type * as agent_steps_security_scan_index from '../agent/steps/security_s
 import type * as agent_steps_security_scan_patterns from '../agent/steps/security_scan/patterns.js';
 import type * as agent_steps_types from '../agent/steps/types.js';
 import type * as agent_walker from '../agent/walker.js';
+import type * as agent_walkerCommit from '../agent/walkerCommit.js';
+import type * as agent_walkerSchedule from '../agent/walkerSchedule.js';
 import type * as agent_walkerTransition from '../agent/walkerTransition.js';
 import type * as agentConfigMutations from '../agentConfigMutations.js';
 import type * as agentHealth from '../agentHealth.js';
@@ -887,6 +889,7 @@ import type * as inbox_processingLifecycle_draftFields from '../inbox/processing
 import type * as inbox_processingLifecycle_effects from '../inbox/processingLifecycle/effects.js';
 import type * as inbox_processingLifecycle_failure from '../inbox/processingLifecycle/failure.js';
 import type * as inbox_processingLifecycle_reducers from '../inbox/processingLifecycle/reducers.js';
+import type * as inbox_processingLifecycle_stepActions from '../inbox/processingLifecycle/stepActions.js';
 import type * as inbox_processingLifecycle_takeover from '../inbox/processingLifecycle/takeover.js';
 import type * as inbox_processingLifecycle_types from '../inbox/processingLifecycle/types.js';
 import type * as inbox_queries from '../inbox/queries.js';
@@ -2151,6 +2154,8 @@ declare const fullApi: ApiFromModules<{
 	'agent/steps/security_scan/patterns': typeof agent_steps_security_scan_patterns;
 	'agent/steps/types': typeof agent_steps_types;
 	'agent/walker': typeof agent_walker;
+	'agent/walkerCommit': typeof agent_walkerCommit;
+	'agent/walkerSchedule': typeof agent_walkerSchedule;
 	'agent/walkerTransition': typeof agent_walkerTransition;
 	'aiRouting/admission': typeof aiRouting_admission;
 	'aiRouting/admissionState': typeof aiRouting_admissionState;
@@ -2815,6 +2820,7 @@ declare const fullApi: ApiFromModules<{
 	'inbox/processingLifecycle/effects': typeof inbox_processingLifecycle_effects;
 	'inbox/processingLifecycle/failure': typeof inbox_processingLifecycle_failure;
 	'inbox/processingLifecycle/reducers': typeof inbox_processingLifecycle_reducers;
+	'inbox/processingLifecycle/stepActions': typeof inbox_processingLifecycle_stepActions;
 	'inbox/processingLifecycle/takeover': typeof inbox_processingLifecycle_takeover;
 	'inbox/processingLifecycle/types': typeof inbox_processingLifecycle_types;
 	'inbox/queries': typeof inbox_queries;

@@ -111,6 +111,8 @@ vi.mock('../steps/context_retrieval', () => ({
 }));
 
 import { resumeDraft, runStep } from '../walker';
+import type { StepOutcome } from '../walkerCommit';
+import { scheduleAfterCoreStep } from '../walkerSchedule';
 
 type WalkerHandler = (ctx: unknown, args: Record<string, unknown>) => Promise<void>;
 const runStepHandler = (runStep as unknown as { _handler: WalkerHandler })._handler;
@@ -146,42 +148,9 @@ function createHarness() {
 			if (name.endsWith(':getMessage')) return message;
 			throw new Error(`Unexpected query ${name}`);
 		}),
-		runMutation: vi.fn(async (reference: unknown, args: Record<string, unknown>) => {
-			const name = getFunctionName(reference as never);
-			if (name.endsWith(':authorizeExecution')) {
-				return !revoked.has(args['stepKind'] as string);
-			}
-			if (name.endsWith(':recordStepBegin')) {
-				const actionId = `action-${++actionCounter}`;
-				actionStatuses.set(actionId, 'running');
-				return { actionId };
-			}
-			if (name.endsWith(':recordStepEnd')) {
-				actionStatuses.set(args['actionId'] as string, 'completed');
-				return;
-			}
-			if (name.endsWith(':recordStepFail')) {
-				actionStatuses.set(args['actionId'] as string, 'failed');
-				return;
-			}
-			if (name.endsWith(':recordOutcome')) return;
-			if (name.endsWith(':transition')) {
-				if (rejectedTransitions > 0) {
-					rejectedTransitions -= 1;
-					return { ok: false, reason: 'fixture rejection' };
-				}
-				const input = args['input'] as Record<string, unknown>;
-				const actionId = (input['completedActionId'] ?? input['failingActionId']) as
-					| string
-					| undefined;
-				if (actionId) {
-					actionStatuses.set(actionId, input['failingActionId'] ? 'failed' : 'completed');
-				}
-				message['processingStatus'] = input['to'];
-				return { ok: true, applied: 'transitioned' };
-			}
-			throw new Error(`Unexpected mutation ${name}`);
-		}),
+		runMutation: vi.fn(async (reference: unknown, args: Record<string, unknown>) =>
+			mutate(getFunctionName(reference as never), args)
+		),
 		scheduler: {
 			runAfter: vi.fn(async (_delay: number, _reference: unknown, args: ScheduledStep) => {
 				if (rejectScheduling) throw new Error('fixture scheduler unavailable');
@@ -189,6 +158,70 @@ function createHarness() {
 			}),
 		},
 	};
+	/**
+	 * The mutations the walker calls, by name. The walker's commits
+	 * (`walkerCommit.ts`) run here over the same fixture lifecycle, with the
+	 * real next-hop scheduling.
+	 */
+	async function mutate(name: string, args: Record<string, unknown>): Promise<unknown> {
+		if (name.endsWith(':beginStep')) {
+			const { actionId } = (await mutate(':recordStepBegin', args)) as { actionId: string };
+			return { kind: 'begun', actionId };
+		}
+		if (name.endsWith(':commitStep')) {
+			const outcome = args['outcome'] as StepOutcome;
+			const id = args['inboundMessageId'] as never;
+			const kind = args['kind'] as never;
+			if (outcome.kind === 'in_state' || outcome.kind === 'done') {
+				await mutate(':recordStepEnd', { actionId: args['actionId'] });
+				if (outcome.kind === 'in_state')
+					await scheduleAfterCoreStep(ctx as never, id, kind, outcome.nextStep);
+				return;
+			}
+			if (outcome.kind === 'transition') {
+				const applied = (await mutate(':transition', { input: outcome.input })) as { ok: boolean };
+				if (!applied.ok) return mutate(':recordStepFail', { actionId: args['actionId'] });
+				if (outcome.nextStep) await scheduleAfterCoreStep(ctx as never, id, kind, outcome.nextStep);
+				return;
+			}
+			return mutate(':transition', {
+				input: { to: 'failed', at: 0, failingActionId: args['actionId'] },
+			});
+		}
+		if (name.endsWith(':authorizeExecution')) {
+			return !revoked.has(args['stepKind'] as string);
+		}
+		if (name.endsWith(':recordStepBegin')) {
+			const actionId = `action-${++actionCounter}`;
+			actionStatuses.set(actionId, 'running');
+			return { actionId };
+		}
+		if (name.endsWith(':recordStepEnd')) {
+			actionStatuses.set(args['actionId'] as string, 'completed');
+			return;
+		}
+		if (name.endsWith(':recordStepFail')) {
+			actionStatuses.set(args['actionId'] as string, 'failed');
+			return;
+		}
+		if (name.endsWith(':recordOutcome')) return;
+		if (name.endsWith(':transition')) {
+			if (rejectedTransitions > 0) {
+				rejectedTransitions -= 1;
+				return { ok: false, reason: 'fixture rejection' };
+			}
+			const input = args['input'] as Record<string, unknown>;
+			const actionId = (input['completedActionId'] ?? input['failingActionId']) as
+				| string
+				| undefined;
+			if (actionId) {
+				actionStatuses.set(actionId, input['failingActionId'] ? 'failed' : 'completed');
+			}
+			message['processingStatus'] = input['to'];
+			return { ok: true, applied: 'transitioned' };
+		}
+		throw new Error(`Unexpected mutation ${name}`);
+	}
 	return {
 		actionStatuses,
 		ctx,

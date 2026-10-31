@@ -1,10 +1,41 @@
 /**
- * The walker's lifecycle TransitionInput assembly, split out of `./walker.ts`
- * to hold it under the size cap.
+ * The walker's step outcome and lifecycle TransitionInput assembly, split out
+ * of `./walker.ts` to hold it under the size cap.
  */
 
 import type { Id } from '../_generated/dataModel';
-import type { AgentStepResult, RouteTransition } from './steps/types';
+import type { AgentRoute, AgentStepResult, RouteTransition } from './steps/types';
+import type { StepOutcome } from './walkerCommit';
+
+/** What a step that ran to its route came to, for the walker's step commit. */
+export function routedOutcome(
+	route: AgentRoute,
+	result: AgentStepResult<unknown>,
+	actionId: Id<'agentActions'>,
+	durationMs: number
+): StepOutcome {
+	switch (route.kind) {
+		case 'in_state':
+			return { kind: 'in_state', ...stepEnd(result, durationMs), nextStep: route.nextStep };
+		case 'done':
+			return { kind: 'done', ...stepEnd(result, durationMs) };
+		case 'transition':
+			return {
+				kind: 'transition',
+				input: assembleTransition(route.transition, actionId, result, durationMs),
+				...(route.nextStep ? { nextStep: route.nextStep } : {}),
+			};
+	}
+}
+
+function stepEnd(result: AgentStepResult<unknown>, durationMs: number) {
+	return {
+		output: JSON.stringify(result.output),
+		durationMs,
+		modelUsed: result.modelUsed,
+		tokenUsage: result.tokenUsage,
+	};
+}
 
 /**
  * Walker-assembled lifecycle TransitionInput. Adds the bookkeeping
