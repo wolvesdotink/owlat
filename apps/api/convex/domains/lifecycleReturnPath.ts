@@ -1,8 +1,8 @@
 /**
  * Sending domain lifecycle — per-domain VERP return-path editor.
  *
- * `setReturnPathHost` (the edit), `reconcileReturnPathAfterRegistration` (the
- * repair a registration runs after it lands) and `recordReturnPathPushResult`
+ * `setReturnPathHost` (the edit), `reconcileReturnPathAfterRegistrationIn` (the
+ * repair a registration runs as it lands) and `recordReturnPathPushResult`
  * (the provider push's terminal outcome), plus the `mailFrom` bundle builder the
  * first two share. Writes only through `patchDomainRecords` (see the module map
  * in `lifecycle.ts`).
@@ -12,7 +12,10 @@
  */
 
 import { v } from 'convex/values';
+import type { MutationCtx } from '../_generated/server';
+import type { Id } from '../_generated/dataModel';
 import { internalMutation } from '../lib/writeFence';
+import { logError } from '../lib/runtimeLog';
 import { normalizeReturnPathHost } from '@owlat/shared/returnPathHost';
 import { patchDomainRecords } from './lifecycle';
 import type { DnsRecords, VerificationResults } from './lifecycleReducer';
@@ -203,12 +206,89 @@ export const setReturnPathHost = internalMutation({
  * DB `mailFrom`, the provider, and `returnPathHost` diverge, and a same-host
  * re-save short-circuits (`changed: false`), so nothing self-heals.
  *
- * The registration action calls this as a MUTATION right after its transition —
- * serializable with `setReturnPathHost`, so it observes the committed host with
- * no TOCTOU. If the stored host differs from the one registration built records
- * for, it regenerates the `mailFrom` records for the CURRENT host and schedules a
- * reflection, converging records + provider onto the stored host. (A yet-later
- * edit runs on a `pending` domain and self-heals via the normal edit path.)
+ * The registration commit (`providers/registerCommit.ts`) runs this in the
+ * transaction that lands the transition — serializable with `setReturnPathHost`,
+ * so it observes the committed host with no TOCTOU. If the stored host differs
+ * from the one registration built records for, it regenerates the `mailFrom`
+ * records for the CURRENT host and schedules a reflection, converging records +
+ * provider onto the stored host. (A yet-later edit runs on a `pending` domain
+ * and self-heals via the normal edit path.)
+ */
+export async function reconcileReturnPathAfterRegistrationIn(
+	ctx: MutationCtx,
+	args: { domainId: Id<'domains'>; registeredReturnPathHost?: string; userId: string }
+): Promise<void> {
+	const domain = await ctx.db.get(args.domainId);
+	if (!domain) return;
+	const providerType = returnPathProviderKind(domain.providerType);
+	if (providerType === null) return;
+
+	const currentHost = domain.returnPathHost;
+	// No divergence — registration built records for the host still stored.
+	if (currentHost === args.registeredReturnPathHost) return;
+	// The host was cleared mid-registration (no clear path exists today, but stay
+	// safe): nothing concrete to reflect, leave the registered records in place.
+	if (currentHost === undefined) return;
+
+	// A build that throws (a provider misconfiguration) must not fail the
+	// registration that runs this in its transaction, so it is logged and the
+	// registered records stand. Only the build is caught: it runs before any
+	// write, and a throw after the writes below must roll the commit back.
+	let mailFromRecords: ReturnType<typeof buildReturnPathMailFrom>;
+	try {
+		mailFromRecords = buildReturnPathMailFrom(providerType, domain.domain, currentHost);
+	} catch (error) {
+		logError(`[domains] Return-path repair after registering ${args.domainId} failed:`, error);
+		return;
+	}
+	const dnsRecords = domain.dnsRecords as DnsRecords;
+	const nextDnsRecords: DnsRecords = { ...dnsRecords };
+	if (mailFromRecords) {
+		nextDnsRecords.mailFrom = mailFromRecords;
+	} else {
+		delete nextDnsRecords.mailFrom;
+	}
+
+	// The published MAIL FROM record changed under the customer — drop its stale
+	// verification result so the UI prompts a re-publish of just that record.
+	const verificationResults = domain.verificationResults as VerificationResults | undefined;
+	const nextVerificationResults: VerificationResults | undefined = verificationResults
+		? { ...verificationResults, mailFrom: undefined }
+		: undefined;
+
+	await patchDomainRecords(
+		ctx,
+		domain,
+		{
+			// Status is already `pending` (the transition just set it); the changed
+			// mailFrom is re-verified under that same pending state.
+			dnsRecords: nextDnsRecords,
+			returnPathHostSyncError: undefined,
+			...(nextVerificationResults !== undefined
+				? { verificationResults: nextVerificationResults }
+				: {}),
+			updatedAt: Date.now(),
+		},
+		{
+			userId: args.userId,
+			action: 'sending_domain.return_path_changed',
+			details: {
+				domain: domain.domain,
+				previousReturnPathHost: args.registeredReturnPathHost ?? null,
+				newReturnPathHost: currentHost,
+				applied: 'reconciled_after_registration',
+			},
+		}
+	);
+
+	await scheduleReturnPathReflection(ctx, providerType, args.domainId, currentHost);
+}
+
+/**
+ * {@link reconcileReturnPathAfterRegistrationIn} as its own mutation. Kept for
+ * one release: registrations of the previous release still call it by path
+ * after their transition. It finds nothing to do once the registration commit
+ * has already reconciled. Remove after release 0.6.17.
  */
 export const reconcileReturnPathAfterRegistration = internalMutation({
 	args: {
@@ -216,62 +296,7 @@ export const reconcileReturnPathAfterRegistration = internalMutation({
 		registeredReturnPathHost: v.optional(v.string()),
 		userId: v.string(),
 	},
-	handler: async (ctx, args): Promise<void> => {
-		const domain = await ctx.db.get(args.domainId);
-		if (!domain) return;
-		const providerType = returnPathProviderKind(domain.providerType);
-		if (providerType === null) return;
-
-		const currentHost = domain.returnPathHost;
-		// No divergence — registration built records for the host still stored.
-		if (currentHost === args.registeredReturnPathHost) return;
-		// The host was cleared mid-registration (no clear path exists today, but stay
-		// safe): nothing concrete to reflect, leave the registered records in place.
-		if (currentHost === undefined) return;
-
-		const mailFromRecords = buildReturnPathMailFrom(providerType, domain.domain, currentHost);
-		const dnsRecords = domain.dnsRecords as DnsRecords;
-		const nextDnsRecords: DnsRecords = { ...dnsRecords };
-		if (mailFromRecords) {
-			nextDnsRecords.mailFrom = mailFromRecords;
-		} else {
-			delete nextDnsRecords.mailFrom;
-		}
-
-		// The published MAIL FROM record changed under the customer — drop its stale
-		// verification result so the UI prompts a re-publish of just that record.
-		const verificationResults = domain.verificationResults as VerificationResults | undefined;
-		const nextVerificationResults: VerificationResults | undefined = verificationResults
-			? { ...verificationResults, mailFrom: undefined }
-			: undefined;
-
-		await patchDomainRecords(
-			ctx,
-			domain,
-			{
-				// Status is already `pending` (the transition just set it); the changed
-				// mailFrom is re-verified under that same pending state.
-				dnsRecords: nextDnsRecords,
-				returnPathHostSyncError: undefined,
-				...(nextVerificationResults !== undefined
-					? { verificationResults: nextVerificationResults }
-					: {}),
-				updatedAt: Date.now(),
-			},
-			{
-				userId: args.userId,
-				action: 'sending_domain.return_path_changed',
-				details: {
-					domain: domain.domain,
-					previousReturnPathHost: args.registeredReturnPathHost ?? null,
-					newReturnPathHost: currentHost,
-					applied: 'reconciled_after_registration',
-				},
-			}
-		);
-
-		await scheduleReturnPathReflection(ctx, providerType, args.domainId, currentHost);
-	},
+	handler: (ctx, args): Promise<void> => reconcileReturnPathAfterRegistrationIn(ctx, args),
 });
 
 /**

@@ -764,6 +764,7 @@ import type * as domains_providers_plugin_index from '../domains/providers/plugi
 import type * as domains_providers_plugin_persistence from '../domains/providers/plugin/persistence.js';
 import type * as domains_providers_plugin_state from '../domains/providers/plugin/state.js';
 import type * as domains_providers_registerAction from '../domains/providers/registerAction.js';
+import type * as domains_providers_registerCommit from '../domains/providers/registerCommit.js';
 import type * as domains_providers_relayIdentityPersistence from '../domains/providers/relayIdentityPersistence.js';
 import type * as domains_providers_relayIdentityProof from '../domains/providers/relayIdentityProof.js';
 import type * as domains_providers_relayIdentityProviderDetails from '../domains/providers/relayIdentityProviderDetails.js';
@@ -2696,6 +2697,7 @@ declare const fullApi: ApiFromModules<{
 	'domains/providers/plugin/persistence': typeof domains_providers_plugin_persistence;
 	'domains/providers/plugin/state': typeof domains_providers_plugin_state;
 	'domains/providers/registerAction': typeof domains_providers_registerAction;
+	'domains/providers/registerCommit': typeof domains_providers_registerCommit;
 	'domains/providers/relayIdentityPersistence': typeof domains_providers_relayIdentityPersistence;
 	'domains/providers/relayIdentityProof': typeof domains_providers_relayIdentityProof;
 	'domains/providers/relayIdentityProviderDetails': typeof domains_providers_relayIdentityProviderDetails;

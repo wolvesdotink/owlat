@@ -130,6 +130,8 @@ async function spendRateLimitToken(
 	pluginId: string | null
 ): Promise<Response | null> {
 	const ip = getClientIp(request);
+	// checkpoint: the token is spent before anything else and stays spent whatever
+	// the request does next; a limiter that does not record cannot limit.
 	const { ok, retryAfter } = await ctx.runMutation(
 		internal.lib.publicRateLimit.checkPublicRateLimit,
 		{
@@ -220,14 +222,20 @@ async function deliver(
 	}
 
 	// (6) AUTHORIZATION, after authenticity so that a stranger cannot make us
-	// write audit rows, and before the replay claim so a denial leaves no state.
-	// A disabled plugin or a revoked grant stops inbound events as surely as it
-	// stops outbound sends.
-	const authorized = await ctx.runMutation(
-		internal.plugins.sendTransportWebhookAuthorization.authorizeDelivery,
-		{ pluginId, transportKind: definition.kind }
+	// write audit rows, and before the replay claim so a denial leaves no state
+	// but its audit row. A disabled plugin or a revoked grant stops inbound events
+	// as surely as it stops outbound sends. Asked as a read; a refusal is then
+	// audited by `authorizeDelivery`, which rechecks, as this request's one write.
+	const authorizationArgs = { pluginId, transportKind: definition.kind };
+	const isAuthorized = await ctx.runQuery(
+		internal.plugins.sendTransportWebhookAuthorization.checkDelivery,
+		authorizationArgs
 	);
-	if (!authorized) {
+	if (!isAuthorized) {
+		await ctx.runMutation(
+			internal.plugins.sendTransportWebhookAuthorization.authorizeDelivery,
+			authorizationArgs
+		);
 		return jsonResponse(403, { error: 'Plugin webhook delivery is not authorized' });
 	}
 
@@ -235,6 +243,9 @@ async function deliver(
 	// race in a single mutation and exactly one wins. The loser is told which
 	// case it lost to, because the two are answered differently — see
 	// `duplicateResponse`.
+	// checkpoint: the claim is taken before the batch is dispatched (one
+	// transaction per event), so another copy of this delivery is answered as in
+	// flight meanwhile; this run ends it with `complete` or `release`.
 	const claimed = await ctx.runMutation(internal.webhooks.pluginFeedbackDeliveries.claim, {
 		pluginId,
 		transportKind: definition.kind,
@@ -262,14 +273,9 @@ async function deliver(
 		await storeRawPayload(ctx, definition.kind, rawBody);
 	}
 
+	let processed: number;
 	try {
-		return await applyDelivery(
-			ctx,
-			pluginId,
-			webhook,
-			verification.deliveryDigest,
-			module.parseEvents(rawBody)
-		);
+		processed = await applyDelivery(ctx, definition.kind, module.parseEvents(rawBody));
 	} catch (error) {
 		// The claim goes back: a body we could not apply is a delivery that did not
 		// happen, and the provider's retry must not be mistaken for an attack.
@@ -289,6 +295,9 @@ async function deliver(
 		await recordOutcome(ctx, pluginId, definition.kind, 'failed');
 		return jsonResponse(...deliveryFailureResponse(error));
 	}
+	await markCompleted(ctx, pluginId, definition.kind, verification.deliveryDigest);
+	await recordOutcome(ctx, pluginId, definition.kind, 'completed');
+	return jsonResponse(200, { success: true, processed });
 }
 
 /**
@@ -366,6 +375,9 @@ function deliveryFailureResponse(error: unknown): [number, Record<string, unknow
  */
 async function storeRawPayload(ctx: ActionCtx, kind: string, rawBody: string): Promise<void> {
 	try {
+		// checkpoint: best-effort retention, kept even when the body then fails to
+		// parse (the delivery an operator most needs the bytes of); a failed write
+		// never fails the delivery.
 		await ctx.runMutation(internal.webhooks.payloads.store, {
 			source: kind,
 			rawPayload: rawBody,
@@ -375,37 +387,28 @@ async function storeRawPayload(ctx: ActionCtx, kind: string, rawBody: string): P
 	}
 }
 
-async function applyDelivery(
-	ctx: ActionCtx,
-	pluginId: string,
-	webhook: HostedSendTransportWebhook,
-	deliveryDigest: string,
-	parsed: unknown
-): Promise<Response> {
-	const { definition } = webhook;
+/** Revalidate and dispatch the plugin's events; returns how many were applied. */
+async function applyDelivery(ctx: ActionCtx, kind: string, parsed: unknown): Promise<number> {
 	// (9) The plugin's output is untrusted input, exactly as a send attempt's
 	// result is: the host re-validates every field and refuses anything it cannot
 	// attribute. A throw here is the payload's fault, not ours — 400, or 413 with
 	// the limit named when the batch was merely bigger than we accept.
-	const events = parsePluginFeedbackEvents(parsed, definition.kind);
+	const events = parsePluginFeedbackEvents(parsed, kind);
 
 	// (10) In order, sequentially, whole batch fails together — the same rule the
 	// core pipeline dispatches by, shared rather than restated (`./inboundHttp`).
 	// A throw propagates to `deliver`, which releases the claim and audits.
 	await dispatchEventsInOrder(ctx, events);
-	await markCompleted(ctx, pluginId, definition.kind, deliveryDigest);
-	await recordOutcome(ctx, pluginId, definition.kind, 'completed');
-	return jsonResponse(200, { success: true, processed: events.length });
+	return events.length;
 }
 
 /**
  * Turn our in-flight claim into a receipt, and stamp the channel as alive.
  *
  * ONLY REACHED WITH EVERY EVENT ALREADY DISPATCHED, which decides how its own
- * failure is handled: NEVER by throwing. A rejection here would land in
- * `deliver`'s catch, which releases the replay claim and answers a non-2xx — so
- * the provider would redeliver bytes we had applied, against a claim we had just
- * given back. The claim then simply expires while still in flight — with the
+ * failure is handled: NEVER by throwing. A rejection here would answer a non-2xx
+ * — so the provider would redeliver bytes we had applied, against a claim we
+ * still held. The claim then simply expires while still in flight — with the
  * signature tolerance window, or for a Svix message with its in-flight lease —
  * and a redelivery before that is answered retryably rather than acknowledged;
  * one after it is applied again, the at-least-once fallback. The failure
@@ -439,11 +442,10 @@ async function markCompleted(
  * WHICH IS WHY IT NEVER THROWS, exactly as `storeRawPayload` never throws.
  * Scheduling can itself fail (an unavailable scheduler, a scheduling limit), and
  * the `'completed'` call happens AFTER the events are already in the delivery
- * record: letting that rejection escape would land in `deliver`'s catch, release
- * the replay claim and answer 400 — so the provider would redeliver bytes we had
- * applied, against a claim we had just given back, and apply them twice. The
- * guarantee this function's scheduling exists to provide would be undone by its
- * own failure. A row we could not even schedule is logged and nothing else.
+ * record: letting that rejection escape would answer a non-2xx, so the provider
+ * would redeliver bytes we had applied. The guarantee this function's scheduling
+ * exists to provide would be undone by its own failure. A row we could not even
+ * schedule is logged and nothing else.
  */
 async function recordOutcome(
 	ctx: ActionCtx,
