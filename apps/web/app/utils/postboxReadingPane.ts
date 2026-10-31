@@ -2,10 +2,10 @@
  * Postbox reading-pane layout — where the reader sits relative to the message
  * list, and how big the list pane is.
  *
- * The three panes used to have ONE hardcoded geometry: a 384px list on the
- * left, the reader filling whatever was left, at every width. On a wide monitor
- * that hands the reader a 1400px measure (a line-length problem); on a laptop
- * the list truncates every subject; and there was no way to move the seam.
+ * ONE hardcoded geometry for the three panes (a 384px list on the left, the
+ * reader filling whatever is left, at every width) fails both ways: on a wide
+ * monitor it hands the reader a 1400px measure (a line-length problem), and on
+ * a laptop the list truncates every subject. So the seam moves:
  *
  *   - 'right'  → today's side-by-side layout, now with a resizable list WIDTH.
  *                The default, so an unset preference is exactly the geometry

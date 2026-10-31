@@ -5,11 +5,10 @@
  * files (they only run in the v8 runtime), so the action in mailOutbound.ts
  * (`'use node'`) calls into these via `internal.mail.outboundQueries.*`.
  *
- * The claim/revert/writeSentMessage trio that used to live here moved to
- * the Mail draft lifecycle module — the sole writer of `mailDrafts.state`
- * and the multi-table send-success cascade. The only thing
- * left in this file is the threading-header lookup the dispatcher does
- * before building the RFC 5322 envelope.
+ * The claim/revert/writeSentMessage trio lives in the Mail draft lifecycle
+ * module — the sole writer of `mailDrafts.state` and the multi-table
+ * send-success cascade. This file holds only the threading-header lookup the
+ * dispatcher does before building the RFC 5322 envelope.
  */
 
 import { v } from 'convex/values';

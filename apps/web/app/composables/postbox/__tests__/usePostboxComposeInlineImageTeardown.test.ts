@@ -4,7 +4,7 @@ import { withSetup } from '~/__tests__/withSetup';
 import { createTestI18n } from '~/__tests__/i18n';
 
 /**
- * #1285: a pasted image whose upload finishes after its composer closed is not
+ * A pasted image whose upload finishes after its composer closed is not
  * attached to that composer's draft. The upload stays an unbound receipt,
  * which expires and is deleted by the abandoned-uploads sweep
  * (`storage/uploads.ts` `cleanup`), so nothing is left on any draft.

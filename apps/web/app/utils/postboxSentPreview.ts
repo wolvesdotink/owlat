@@ -49,7 +49,7 @@ export interface SentPreview {
  * shared derivation, so simple-mode and designer drafts are previewed the same
  * way they are sent.
  *
- * A pasted image is `<img data-inline-cid="X">` in the body with no src (#1301).
+ * A pasted image is `<img data-inline-cid="X">` in the body with no src.
  * The send path points it at `cid:X`, which a browser cannot load, so the
  * preview points it at the URL the editor shows the draft's part from
  * (`inlineImageUrl`) instead, at the same step. One without a URL yet keeps no

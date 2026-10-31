@@ -113,7 +113,7 @@ export function useInbox(gate?: Ref<boolean>) {
 	// Normalised on read: the stored value predates the "oldest waiting" order,
 	// and a browser holding something unknown must not select a nonexistent
 	// backend index.
-	// `?filter=waiting-24h` used to be a tab; it now means "Open, longest wait
+	// `?filter=waiting-24h` is an old tab's link; it means "Open, longest wait
 	// first". That order holds for this view only: following an old link must
 	// not rewrite the viewer's saved sort. Picking a sort drops the override.
 	const legacySort = ref<InboxSort | null>(legacyInboxSort(route.query['filter']) ?? null);

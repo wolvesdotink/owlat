@@ -117,9 +117,9 @@ describe('partitionTodayMessages', () => {
 	});
 
 	it('auto-files a page-3 row whose thread is outside the newest 50', () => {
-		// Regression: the category used to be joined client-side from a
-		// `listThreads` subscription capped at the newest 50 threads, so a
-		// newsletter further down the feed leaked back into "Received today".
+		// The category rides on the row. Joined client-side from a `listThreads`
+		// subscription capped at the newest 50 threads, a newsletter further down
+		// the feed would leak back into "Received today".
 		// Three pages of fifty of today's rows, each on its own thread.
 		const rows = Array.from({ length: 149 }, (_, i) =>
 			msg({ receivedAt: local(6, 9) - i, threadId: `t-${i}`, category: 'person' })

@@ -1,6 +1,6 @@
 /**
- * The stale fence (#1320, `staleFence.ts`) at the boundaries Sol's round 5
- * found open, each shown leaking before the fence and closed after it:
+ * The stale fence (`staleFence.ts`) at the boundaries an interpretation can
+ * leak through, each shown leaking without the fence and closed with it:
  *
  *   - the Daily Brief email reads digest snapshots taken before the fence;
  *   - an arrival draft written from the old plan, late or already stored;

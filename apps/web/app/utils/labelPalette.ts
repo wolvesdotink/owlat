@@ -1,7 +1,7 @@
 /**
  * Preset colours for mailbox labels, derived from the Fluid Functionalism
  * semantic tokens (packages/ui/assets/css/tokens.css) rather than the generic
- * Tailwind swatch palette that used to live inline in PostboxLabelManager.
+ * Tailwind swatch palette.
  *
  * A label's colour is persisted as a concrete hex string (it is applied via an
  * inline `background-color` and can be rendered outside a themed context), so

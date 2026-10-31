@@ -158,7 +158,7 @@ export const acknowledgeSeedRotation = adminMutation({
  *
  * Without this the connect cap is a dead end — `_connectSeedInternal` refuses
  * the (limit+1)th seed with "Disconnect one before connecting another", and
- * until now nothing in the product could. The retired row stays: the placement
+ * nothing else in the product can. The retired row stays: the placement
  * measurements that named it (`seedPlacementProbes`) must keep resolving, and
  * `takeLiveSeedAccounts` counts by status, so a disconnected seed frees its slot
  * under the cap without erasing what it measured.

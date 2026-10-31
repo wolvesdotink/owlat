@@ -18,7 +18,7 @@
  *
  * "THE CHECKS' WINDOW", NEVER "THIS WINDOW". Every number here is the
  * evaluator's, over the DECIDING span, under a card whose table covers the wider
- * reported one — so the sentence names whose window it means (#510).
+ * reported one — so the sentence names whose window it means.
  */
 
 import { formatNumber, formatPercentage } from '~/utils/formatters';
@@ -264,7 +264,7 @@ export function gateExplanation(gate: DeliverabilityDashboardGate): LocalizedTex
 	// the server's `gateTypes.ts`), and it reads as a share OF those responses
 	// rather than as a rate over a sample — so it gets its own whole sentence.
 	//
-	// REACHABLE SINCE ISSUE #501 CLOSED: the MTA's classified responses now land in
+	// REACHABLE: the MTA's classified responses land in
 	// a per-(cell, arm, day) counter, so a standalone cell whose window is at least
 	// 0.5% refusals renders this sentence.
 	if (gate.status === 'halt' && gate.reason === 'block_message_detected') {

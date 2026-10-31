@@ -1,5 +1,5 @@
 /**
- * The display `src` of the images pasted into the Postbox editor (#1285).
+ * The display `src` of the images pasted into the Postbox editor.
  *
  * An inline image is `<img data-inline-cid="X">` in the body, with its bytes on
  * the draft row as the inline part with Content-ID `X`. What the editor shows it

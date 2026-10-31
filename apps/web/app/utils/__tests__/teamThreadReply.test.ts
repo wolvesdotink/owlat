@@ -73,14 +73,14 @@ describe('replyBlocker', () => {
 		expect(needsTakeOver('security_check')).toBe(true);
 	});
 
-	// #807: the takeover wins over the agent's unfinished draft.
+	// The takeover wins over the agent's unfinished draft.
 	it('lets a person reply while the agent is still drafting, by taking it over', () => {
 		expect(replyBlocker('drafting')).toBeNull();
 		expect(needsTakeOver('drafting')).toBe(true);
 		expect(replyNotice('drafting')).toBe('takesOverDraft');
 	});
 
-	// #807: an answered message takes a second message, not a takeover.
+	// An answered message takes a second message, not a takeover.
 	it('sends a follow-up on an answered email message', () => {
 		expect(replyBlocker('sent')).toBeNull();
 		expect(isFollowUp('sent')).toBe(true);

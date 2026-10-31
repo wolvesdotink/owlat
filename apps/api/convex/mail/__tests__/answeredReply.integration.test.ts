@@ -1,5 +1,5 @@
 /**
- * A response completes the reply it answers (#1346): the generated reply goes,
+ * A response completes the reply it answers: the generated reply goes,
  * and a saved AI draft no person touched is hidden as obsoleted, whether the
  * response was sent through Owlat (once the correspondent's transport
  * accepted it; a Bcc copy does not count) or detected through sync/APPEND

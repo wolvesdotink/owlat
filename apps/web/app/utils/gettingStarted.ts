@@ -244,11 +244,11 @@ export interface GettingStartedInput {
 /**
  * The way BACK into the guided welcome — the personal section's last row.
  *
- * `/welcome` used to be one-shot: the first-login middleware routes a member
- * there exactly once (while `welcomedAt` is unset — see `shouldRouteToWelcome`),
- * so a single click on "I'll do this later" put the two-minute fresh-start setup
- * out of reach forever, with nothing in the app pointing back at it. The screen
- * itself was always reachable by URL; nothing linked to it.
+ * The first-login middleware routes a member to `/welcome` exactly once (while
+ * `welcomedAt` is unset — see `shouldRouteToWelcome`), so without a way back a
+ * single click on "I'll do this later" would put the two-minute fresh-start
+ * setup out of reach for good. The screen is reachable by URL, and this row is
+ * the link to it.
  *
  * So this is a LINK, not a task: it is {@link GettingStartedStep.informational},
  * carries no completion, and is left out of the progress counts. It disappears

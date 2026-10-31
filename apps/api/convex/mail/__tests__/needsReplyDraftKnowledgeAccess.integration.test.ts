@@ -1,6 +1,6 @@
 /**
  * The Reply Queue's starter draft never carries knowledge kept to shared-inbox
- * readers (#1322 review round 2). The draft lands on the card, and every
+ * readers. The draft lands on the card, and every
  * member of the mailbox reads it through `getPreparedDraft`, so the recall
  * tool the draft runs with must search what members may see. Here the real
  * `draftWithAnswers` action runs with the real recall tool and the real

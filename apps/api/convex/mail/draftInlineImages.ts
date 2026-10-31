@@ -1,5 +1,5 @@
 /**
- * Display URLs for the images pasted into a draft's body (#1285).
+ * Display URLs for the images pasted into a draft's body.
  *
  * The Simple composer stores a pasted image as an inline part on the draft row
  * and marks its place in the body with `<img data-inline-cid="X">`. The saved

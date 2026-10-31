@@ -76,7 +76,7 @@ export async function draftClarificationReply(
 	ctx: ActionCtx,
 	args: {
 		threadId: Id<'mailThreads'>;
-		/** The person whose answer scheduled this draft (#1380); absent on older jobs. */
+		/** The person whose answer scheduled this draft; absent on older jobs. */
 		triggeredByUserId?: string;
 		/** Times it looked again for the thread to be fully read (read on arrival). */
 		fullReadWaits?: number;
@@ -110,7 +110,7 @@ export async function draftClarificationReply(
 		// refusal (AI off, rate-limited) is expected and stays silent. A person
 		// asked for this draft, so it is charged to them, not to the mailbox's
 		// arrival volume; a job scheduled before that was recorded falls back to
-		// the owner (#1380).
+		// the owner.
 		try {
 			await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {
 				ownerUserId: args.triggeredByUserId ?? context.ownerUserId,
@@ -247,7 +247,7 @@ export async function draftClarificationReply(
 							})
 					);
 					// The comparison draft goes through the same markup check as the
-					// real one (#1254); markup would read as divergence it is not.
+					// real one; markup would read as divergence it is not.
 					const baselineDraft = stripLeakedToolMarkup(baseline.text);
 					if (baselineDraft.kind !== 'unusable') {
 						const delta = measureDraftDelta(draft, baselineDraft.text.trim());

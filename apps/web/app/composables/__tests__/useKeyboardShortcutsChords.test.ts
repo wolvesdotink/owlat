@@ -1,10 +1,10 @@
 /**
  * THE DISPATCHER'S CHORDS AND AVAILABILITY.
  *
- * Cmd/Ctrl chords used to be answered by hand-written listeners (⌘\, ⌘, and
- * ⌘J in the dashboard layout) that no remap could reach. They are catalog ids
- * now, so the dispatcher resolves a modifier chord like any other, fires it
- * while a text field has focus (as the browser's own chords do) and leaves
+ * Cmd/Ctrl chords (⌘\, ⌘, and ⌘J) are catalog ids, not hand-written
+ * listeners, so a remap can reach them. The dispatcher resolves a modifier
+ * chord like any other, fires it while a text field has focus (as the
+ * browser's own chords do) and leaves
  * every chord nothing is bound to with the browser. `when` lets a surface say
  * a command cannot run right now without unregistering it.
  */

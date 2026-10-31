@@ -1,6 +1,6 @@
 /**
- * Remote-resource consent over the real sanitizer output. Each bypass from
- * issue #1327 (CSS backgrounds, a srcset with no src, a data: src with a remote
+ * Remote-resource consent over the real sanitizer output. Each bypass
+ * (CSS backgrounds, a srcset with no src, a data: src with a remote
  * srcset) must be withheld while images are blocked and seen by the tracker
  * count, and must still render once the user shows images.
  */

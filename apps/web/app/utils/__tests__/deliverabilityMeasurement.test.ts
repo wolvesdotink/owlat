@@ -11,7 +11,7 @@
  * sample is ten probes — is a number the operator would act on and be wrong
  * about.
  *
- * THE BLOCK-MESSAGE BRANCH IS REACHABLE SERVER-SIDE (issue #501) — the MTA's
+ * THE BLOCK-MESSAGE BRANCH IS REACHABLE SERVER-SIDE — the MTA's
  * classified responses land in a per-(cell, arm, day) counter that both readers
  * of the gate input summarize, so a standalone cell whose window is at least 0.5%
  * refusals renders this sentence. It was pinned through the whole time it could
@@ -427,7 +427,7 @@ describe('gateExplanation — a hold is never rendered as a fault', () => {
 });
 
 /**
- * THE TWO SPANS ARE NAMED FROM THE SERVER'S BOUNDS (#510).
+ * THE TWO SPANS ARE NAMED FROM THE SERVER'S BOUNDS.
  *
  * The screen reports counters over a week and renders verdicts reached over the
  * ramp controller's own window. Both labels are DERIVED — a screen holding its

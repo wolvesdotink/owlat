@@ -95,10 +95,10 @@ describe('removesReferenceArm', () => {
 	});
 
 	/**
-	 * The #513 shape: a relay configured through `EMAIL_PROVIDER` alone has no
-	 * transport id, and the guard used to read the missing id as "no relay" and
-	 * stay quiet — the operator only met the server's raw refusal. `unsafe` is
-	 * the fact that matters, and it already implies the relay exists.
+	 * A relay configured through `EMAIL_PROVIDER` alone has no transport id. The
+	 * guard must not read the missing id as "no relay" and stay quiet, leaving the
+	 * operator only the server's raw refusal. `unsafe` is the fact that matters,
+	 * and it already implies the relay exists.
 	 */
 	it('fires on an env-configured relay whose transport id is unknown', () => {
 		summary.value = independenceSummary({ referenceTransportId: null });

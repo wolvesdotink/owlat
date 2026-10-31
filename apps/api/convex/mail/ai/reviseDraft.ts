@@ -25,8 +25,8 @@
  * failure degrades to the existing draft (the buffer settles `error`, the client
  * keeps what the human already had) and never wedges anything.
  *
- * Tool-call markup (#1254, lib/llm/toolMarkup.ts): a draft saved before that fix
- * can still open with the markup a model typed instead of calling its tool.
+ * Tool-call markup (lib/llm/toolMarkup.ts): a saved draft can open with the
+ * markup a model typed instead of calling its tool.
  * The current draft loses a leading markup prefix before it reaches the model,
  * and a draft with markup elsewhere is refused rather than revised around it.
  * The buffer only ever shows the part of the revision that cannot be markup,

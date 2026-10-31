@@ -58,7 +58,7 @@ export async function resolveScreenerEnabled(
  * Compute the unified priority score for a needs-reply result and apply the
  * first-time-sender screener. Returns the result with `priorityScore` set, or
  * `null` when the screener held an unknown sender out of the queue, or the
- * message carries a cold-pitch verdict (#1381, `mail/arrival/coldPitch.ts`).
+ * message carries a cold-pitch verdict (`mail/arrival/coldPitch.ts`).
  * Generic in the result shape so `needsReply.applyResult` keeps its exact
  * validator type.
  */

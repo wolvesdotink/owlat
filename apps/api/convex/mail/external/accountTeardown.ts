@@ -50,8 +50,7 @@ const PURGE_CHUNK = 200;
 
 /**
  * WHO ended the connection. The three answers differ in what else has to happen,
- * and every one of those differences used to be a separate call site getting it
- * subtly wrong:
+ * and each difference is decided here, not at the call sites:
  *
  *   'member' — the owner disconnected (or retired a seed): hide the mailbox,
  *              stop a running import.

@@ -2,9 +2,9 @@
  * Plan 1.13 / C6: the mailbox gate is decided once per mailbox inside one
  * handler, not once per message.
  *
- * The bulk triage mutations (setFlags, purge, reportSpam) used to run the whole
- * gate per message: two feature-flag reads plus a Better Auth `member` lookup
- * (`getBetterAuthSessionWithRole`). They now reuse the session the
+ * Running the whole gate per message would cost two feature-flag reads plus a
+ * Better Auth `member` lookup (`getBetterAuthSessionWithRole`) each. The bulk
+ * triage mutations (setFlags, purge, reportSpam) reuse the session the
  * `postboxMutation` floor resolved and memoize the decision per mailbox, so a
  * bulk call costs one member lookup (the floor's) and a flag read count that
  * does not grow with the number of messages. The decisions themselves must not

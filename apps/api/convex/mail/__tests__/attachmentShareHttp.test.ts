@@ -130,7 +130,7 @@ describe('GET /attachment-share/{token}', () => {
 	});
 });
 
-// Issue #1323: the route follows the common public-token policy
+// The route follows the common public-token policy
 // (lib/publicTokenPolicy.ts). Only a token that can be served gets a bucket of
 // its own; anything else spends the bounded failure budget.
 describe('GET /attachment-share/{token} rate limits', () => {

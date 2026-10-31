@@ -1,12 +1,12 @@
 /**
  * The palette's recent-search memory, scope-tagged.
  *
- * There used to be two stores: the palette's flat `owlat_recent_searches` list
- * of object-search terms, and the Postbox search bar's private
- * `owlat_postbox_recent_searches`. With one overlay serving every corpus, two
- * histories would surface a `from:ines has:attachment` under a knowledge
- * question, so the two fold into one map keyed by {@link PaletteScope} and the
- * overlay only ever offers the history of the scope you are in.
+ * One overlay serves every corpus, so a single shared history would surface a
+ * `from:ines has:attachment` under a knowledge question. The palette's flat
+ * `owlat_recent_searches` list of object-search terms and the Postbox search
+ * bar's `owlat_postbox_recent_searches` fold into one map keyed by
+ * {@link PaletteScope}, and the overlay only ever offers the history of the
+ * scope you are in.
  *
  * Both older shapes are read on load: a flat array is the pre-scope palette
  * history and lands in `everything`, and the search bar's key is absorbed into

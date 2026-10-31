@@ -4,8 +4,8 @@ import { useCsvImport } from '../useCsvImport';
 
 // The contacts import end to end through the real papaparse: a real `File`
 // goes in, nothing is mocked between the file input and the mapping step.
-// `useCsvImport.test.ts` mocks papaparse, which is how #910 (every
-// single-column file rejected before mapping) went unnoticed.
+// `useCsvImport.test.ts` mocks papaparse, so only this file can catch the real
+// parser rejecting a single-column file before mapping.
 const { t } = createTestI18n().global;
 
 function selectFile(

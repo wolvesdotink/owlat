@@ -1,6 +1,7 @@
 /**
  * What a change does to the web entry bundle, against its base commit.
- * Report-only: the blocking check is `check-bundle-budget.ts`.
+ * Report-only: the blocking checks are `check-bundle-budget.ts` (the entry)
+ * and `report-bundle-closures.ts` (routes and deferred features).
  *
  * The entry gate fails only once the closure crosses the budget, so a feature
  * that adds a few hundred bytes passes, and so does the next one, until an

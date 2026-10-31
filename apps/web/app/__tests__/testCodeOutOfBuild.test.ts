@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 /**
- * Test tooling stays out of the production build (#1172).
+ * Test tooling stays out of the production build.
  *
  * Nuxt registers every file it finds under `pages/`, `components/` and the
  * other app folders, and Nitro auto-imports everything under `server/utils/`.

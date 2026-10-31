@@ -1,5 +1,5 @@
 /**
- * The round trip between the campaign wizard and the email editor (#1048).
+ * The round trip between the campaign wizard and the email editor.
  *
  * The wizard's state is its URL (`/dashboard/campaigns/new?id=…&step=…`), and
  * sender, audience and subject are persisted on each step's Next, so leaving

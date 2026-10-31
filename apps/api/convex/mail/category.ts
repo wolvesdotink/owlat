@@ -254,7 +254,7 @@ export const getThreadCategoryContext = internalQuery({
 
 		return {
 			latestMessageId: thread.latestMessageId,
-			// Whose background AI bucket the refinement is charged to (#1380).
+			// Whose background AI bucket the refinement is charged to.
 			ownerUserId: view.ownerUserId,
 			senderEmail: signals.senderEmail,
 			override: signals.override,
@@ -418,7 +418,7 @@ export const recategorize = postboxMutation({
 				latestInbound.fromAddress
 			);
 			await recordOwnerCorrection(ctx, { mailMessageId: latestInbound._id });
-			// An owner choice about the sender: their cold-pitch verdicts no longer stand (#1381).
+			// An owner choice about the sender: their cold-pitch verdicts no longer stand.
 			await voidColdPitchVerdictsOfSender(ctx, thread.mailboxId, latestInbound.fromAddress);
 		}
 

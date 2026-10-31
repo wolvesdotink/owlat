@@ -150,7 +150,7 @@ export async function noteArrivalRun(
 }
 
 /**
- * The exact-wording screen of the message's own scoped text (#1384), from the
+ * The exact-wording screen of the message's own scoped text, from the
  * run that scoped it: written when it changed, then the projection is
  * recomputed (a candidate never reads as digest or updates). A message
  * without a record is left alone. Returns whether a record was patched.

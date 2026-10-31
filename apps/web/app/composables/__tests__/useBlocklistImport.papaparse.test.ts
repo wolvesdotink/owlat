@@ -4,8 +4,8 @@ import { useBlocklistImport } from '../useBlocklistImport';
 
 // The suppression import end to end through the real papaparse: a real `File`
 // goes in, nothing is mocked between the file input and the preview step.
-// One address per line is the format the upload step asks for, and before
-// #910 every such file was rejected by papaparse's delimiter guess.
+// One address per line is the format the upload step asks for, and papaparse's
+// delimiter guess must not reject such a file.
 const i18n = createTestI18n();
 
 async function selectFile(imp: ReturnType<typeof useBlocklistImport>, text: string, name: string) {

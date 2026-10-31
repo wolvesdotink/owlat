@@ -187,11 +187,11 @@ async function unconfirmedRelayRemoval(
 	// second question to ask here — asking it anyway would put a second definition
 	// of "no relay" one layer away from its home.
 	//
-	// THAT DEFINITION IS THE ONE THING THIS SKIP DEPENDS ON, and it was wrong until
-	// #513: the summary keyed on "exactly one relay kind", so a deployment with a
-	// relay in `EMAIL_PROVIDER` and another in `providerRoutes` answered `safe`
-	// and this line waved through the removal of an arm cells were still leaning
-	// on. It now keys on `isRelayConfigured`, and the pin for that shape lives in
+	// THAT DEFINITION IS THE ONE THING THIS SKIP DEPENDS ON: the summary keys on
+	// `isRelayConfigured`, not on "exactly one relay kind", or a deployment with a
+	// relay in `EMAIL_PROVIDER` and another in `providerRoutes` would answer
+	// `safe` and this line would wave through the removal of an arm cells are
+	// still leaning on. The pin for that shape lives in
 	// `__tests__/apply-transport-relay-removal.test.ts`.
 	if (summary.relayRemoval.kind === 'safe') return null;
 	const { consequence, safeDate } = relayRemovalConsequenceCopy({

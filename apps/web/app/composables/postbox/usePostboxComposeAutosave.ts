@@ -22,11 +22,11 @@
  *
  * `flush()` and `settlePendingSave()` resolve to the Operation envelope, and
  * `ok: true` means one thing only: the server acknowledged the snapshot the
- * editor holds NOW (#895). A failed write, a write of an older snapshot, or a
+ * editor holds NOW. A failed write, a write of an older snapshot, or a
  * draft row that could not be created is `ok: false`, and the failure has
  * already been surfaced by the operation that failed.
  *
- * Nothing is written while a reopened draft is still loading (#896): every
+ * Nothing is written while a reopened draft is still loading: every
  * write is a complete snapshot, and before the row arrives that snapshot holds
  * empty recipients and an empty body, which `drafts.update` would store over
  * the saved ones.

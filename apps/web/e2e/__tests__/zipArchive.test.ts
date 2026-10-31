@@ -1,6 +1,6 @@
 // @vitest-environment node
 /**
- * The strict archive reader behind the report secret scan (#1203 review). It
+ * The strict archive reader behind the report secret scan. It
  * must read Playwright's archives as they are, and refuse, by throwing, any
  * archive whose structure does not account for every byte, so the scanner
  * quarantines the report instead of publishing what it could not read.

@@ -121,11 +121,10 @@ export class BasePage {
 	/**
 	 * Assert we are actually ON this page.
 	 *
-	 * This used to be `waitForSelector('h1')`, which is true of the login page, of
-	 * a dashboard the router bounced us to, and of every error shell — so when a
-	 * guard redirected, the spec sailed past `goto()` and failed 15 seconds later
-	 * on an unrelated-looking selector. Twenty-six failures presented that way,
-	 * and two app bugs hid behind them.
+	 * `waitForSelector('h1')` is not enough: it is true of the login page, of a
+	 * dashboard the router bounced us to, and of every error shell — so when a
+	 * guard redirects, the spec would sail past `goto()` and fail 15 seconds later
+	 * on an unrelated-looking selector.
 	 *
 	 * Naming the redirect is the whole point: assert the page's own H1, and fail
 	 * loudly if we landed on the sign-in page instead.

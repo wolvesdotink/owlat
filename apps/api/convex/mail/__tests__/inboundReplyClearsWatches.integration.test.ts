@@ -7,8 +7,8 @@
  * cleared by the shared post-insert hook
  * (mail/deliveryPipeline/afterInsert.ts::runPostInsertInboundEffects).
  *
- * Only hosted MX delivery used to run the clears, so on a connected Gmail or
- * Fastmail mailbox a synced reply left the reminder armed and the snoozed
+ * Both delivery paths must run the clears: otherwise, on a connected Gmail or
+ * Fastmail mailbox, a synced reply leaves the reminder armed and the snoozed
  * message hidden until its cap. These cases pin the rule for both paths: a
  * reply from someone else clears both watches; the owner's own Sent copy and
  * a history backfill clear nothing.

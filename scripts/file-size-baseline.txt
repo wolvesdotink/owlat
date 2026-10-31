@@ -8,15 +8,6 @@ apps/api/convex/topics/subscription.ts
 apps/api/convex/topics/topics.ts
 apps/api/convex/transactional/lifecycle.ts
 apps/api/convex/unifiedMessages.ts
-apps/docs/app/components/content/ArchDataModel.vue
-apps/docs/app/components/content/ArchEmail.vue
-apps/docs/app/components/content/ArchKnowledgeGraph.vue
-apps/docs/app/components/content/ArchRoadmap.vue
-apps/docs/app/components/content/ArchSecurityModel.vue
-apps/docs/app/components/content/ArchSystem.vue
-apps/docs/app/components/content/ArchVerificationQueue.vue
-apps/docs/app/components/content/EmailArchitecture.vue
-apps/docs/app/components/content/ScopeMap.vue
 apps/web/app/components/campaigns/steps/ReviewStep.vue
 apps/web/app/components/postbox/PostboxThreadReader.vue
 apps/web/app/components/translation/Manager.vue

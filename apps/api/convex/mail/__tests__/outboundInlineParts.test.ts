@@ -4,8 +4,8 @@ import type { DraftRow } from '../rfc822';
 import { bufferDraftAttachments } from '../outbound/build';
 
 /**
- * #1272: a reopened draft no longer shows its inline body image as a file chip,
- * but the image stays on the row. The message is built from the row, so it
+ * A reopened draft does not show its inline body image as a file chip, but the
+ * image stays on the row. The message is built from the row, so it
  * carries the image for as long as the body shows it, beside the files.
  * (The composer side is `usePostboxComposeReopenAttachments.test.ts` in web.)
  */
@@ -30,10 +30,10 @@ const LOGO = {
 	isInline: true,
 	contentId: 'logo@owlat.inline',
 };
-/** How the Simple editor stored an embedded image before #1285: a session blob: src. */
+/** An embedded image as older Simple-editor drafts store it: a session blob: src. */
 const LOGO_BODY =
 	'<p>Attached.</p><p><img src="blob:http://localhost/preview" data-inline-cid="logo@owlat.inline"></p>';
-/** How it stores one since #1285: the marker and no src at all. */
+/** As the Simple editor stores one: the marker and no src at all. */
 const LOGO_BODY_NO_SRC =
 	'<p>Attached.</p><p><img data-inline-cid="logo@owlat.inline" style="max-width:100%;height:auto"></p>';
 

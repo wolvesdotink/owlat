@@ -21,7 +21,7 @@
  * `loadRawEml` reads a single `.eml`: the parser wants the binary-safe form, it
  * is what keeps a byte offset a byte offset, and it turns back into the very
  * bytes of the archive for the stored raw message. Not `TextDecoder('latin1')`,
- * which is windows-1252 and changed bytes 0x80-0x9F (#1279).
+ * which is windows-1252 and changed bytes 0x80-0x9F.
  *
  * `'use node'` because the parse side of `@owlat/mail-message` hands attachment
  * bytes back as a `Buffer`.

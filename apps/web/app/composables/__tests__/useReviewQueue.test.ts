@@ -158,7 +158,7 @@ describe('useReviewQueue', () => {
 		});
 	});
 
-	// #1185: the agent's `[[...]]` gaps are stored gap-guarded, so Approve is
+	// The agent's `[[...]]` gaps are stored gap-guarded, so Approve is
 	// refused (DRAFT_HAS_GAPS) until they are filled. The queue card says so in
 	// its own words, counting the gaps, instead of a generic failure toast.
 	describe('a draft with gaps left', () => {

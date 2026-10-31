@@ -177,7 +177,7 @@ describe('round 2', () => {
 	});
 
 	it('reads provenance from `origin` only, never a legacy sentence', () => {
-		// The schema no longer has `attribution` (#1224); a stray one is ignored
+		// The schema has no `attribution`; a stray one is ignored
 		// rather than parsed into an origin.
 		const stray: AskProvenance & { attribution?: string } = {
 			attribution:

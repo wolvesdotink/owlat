@@ -59,7 +59,7 @@ const MAX_VARIABLES = 20;
 
 /**
  * The composer's allowlist, minus every image source a saved reply could never
- * show (#1293). A pasted image's bytes are a part of its draft, marked with
+ * show. A pasted image's bytes are a part of its draft, marked with
  * `data-inline-cid`, which the allowlist drops along with the session's `blob:`
  * preview; a `cid:` src names a part of another message. Kept, an image left
  * with no source would be inserted into later drafts and go out empty. So a

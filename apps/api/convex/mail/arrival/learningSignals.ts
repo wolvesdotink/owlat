@@ -220,7 +220,7 @@ export async function noteOwnerReply(
 	const mailbox = await ctx.db.get(message.mailboxId);
 	if (!mailbox || !isPersonalMailbox(mailbox)) return;
 	if (!isOwnMessage(message, await mailboxOwnAddresses(ctx, mailbox))) return;
-	// A reply clears the thread's cold-pitch verdict (#1381).
+	// A reply clears the thread's cold-pitch verdict.
 	await clearColdPitchOnReply(ctx, message.threadId);
 	if (message.outbound === undefined) {
 		// Sent from another client: the correspondence an Owlat send records itself.

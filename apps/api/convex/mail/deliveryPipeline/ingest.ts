@@ -38,8 +38,8 @@ const INLINE_BODY_THRESHOLD_BYTES = 64 * 1024;
  * Inline a parsed body when it fits the threshold; otherwise stash it as a
  * storage blob so the reader can lazy-fetch it. Bodies over the threshold are
  * NOT stored inline on the row (they'd bloat every list read and can exceed
- * Convex value limits) — previously they were simply dropped, so newsletters /
- * long threads rendered blank. Action-only (needs `ctx.storage.store`).
+ * Convex value limits), and dropping them would render newsletters / long
+ * threads blank. Action-only (needs `ctx.storage.store`).
  */
 export async function splitBodyForStorage(
 	ctx: { storage: BlobStore },

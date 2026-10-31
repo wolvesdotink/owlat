@@ -115,7 +115,7 @@ const classifyThreadArgs = {
 	baselineApplied: v.optional(v.boolean()),
 	/** Runs this work deferred at the spend ceiling. */
 	deferrals: v.optional(v.number()),
-	/** Runs this work tried again after a rate-limited gate (#1380). */
+	/** Runs this work tried again after a rate-limited gate. */
 	rateLimitRetries: v.optional(v.number()),
 	/**
 	 * Read on arrival R2: the delivered message. Its pending rule
@@ -148,7 +148,7 @@ async function retryRateLimited(
 
 /**
  * R2 for a category already settled (an override, a heuristic label): this
- * message's questions and the cold-pitch question for a candidate (#1381),
+ * message's questions and the cold-pitch question for a candidate,
  * in one call; either alone is enough to make it. A heuristic label does not
  * keep a pitch out of Needs you (a settled reply verdict outranks it), so a
  * candidate is asked here too. The answers are committed through the rules
@@ -207,7 +207,7 @@ export const classifyThread = internalAction({
 						messageId: args.messageId,
 					})
 				: [];
-			// #1381: a sender the cheap evidence leaves open also gets the cold-pitch question.
+			// A sender the cheap evidence leaves open also gets the cold-pitch question.
 			const isColdPitchAsked = args.messageId
 				? await ctx.runQuery(internal.mail.arrival.coldPitch.isAskable, {
 						messageId: args.messageId,
@@ -267,8 +267,8 @@ export const classifyThread = internalAction({
 			let settled: MailCategory = 'other';
 			try {
 				// Same gate as the user-triggered Postbox AI: `ai` feature flag +
-				// rate limit, charged to the mailbox owner's background bucket
-				// (#1380). Throws when disabled/limited → the `other` baseline stays.
+				// rate limit, charged to the mailbox owner's background bucket.
+				// Throws when disabled/limited → the `other` baseline stays.
 				await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {
 					ownerUserId: context.ownerUserId,
 				});

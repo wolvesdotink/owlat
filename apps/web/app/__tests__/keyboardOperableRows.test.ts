@@ -1,7 +1,6 @@
 /**
- * Accessibility contract for the interactive rows that used to be mouse-only
- * <div @click> / <tr @click> elements on the delivery (webhooks) and
- * send (marketing, transactional) pages. They are exposed to assistive tech
+ * Accessibility contract for the clickable <div @click> / <tr @click> rows on
+ * the delivery (webhooks) and send (marketing, transactional) pages. They are exposed to assistive tech
  * and the keyboard as real buttons: focusable (tabindex="0"), announced
  * (role="button"), operable with Enter and Space, and — for the expandable
  * delivery row — reflecting open/closed state via aria-expanded.
@@ -15,12 +14,12 @@
  *
  * The segment and topic lists share `components/audience/AudienceListTable.vue`.
  * Its rows are not buttons: the keyboard route to an item is the link on its
- * name. The topic table used to be a mouse-only `<tr @click>` with no route at
- * all, and its edit/delete buttons had no focus ring.
+ * name. A mouse-only `<tr @click>` would leave the topic table with no keyboard
+ * route at all, and its edit/delete buttons must show a focus ring.
  *
  * The automations list (`components/automations/ListTable.vue`, with
- * `RowActions.vue` in both layouts) follows the same rule. Its names used to be
- * a mouse-only `<span @click>`.
+ * `RowActions.vue` in both layouts) follows the same rule. Its names are
+ * links, not a mouse-only `<span @click>`.
  */
 import { describe, it, expect, vi } from 'vitest';
 import { defineComponent, h, nextTick, useSlots, type Component } from 'vue';

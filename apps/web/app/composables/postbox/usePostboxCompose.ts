@@ -130,7 +130,7 @@ export function usePostboxCompose(seed: ComposerSeed, options: ComposeOptions = 
 	// The AI left `[[...]]` gaps in this draft before (from the saved row).
 	const isGapGuarded = ref(false);
 	// A reopened draft's fields start empty and fill in when `drafts.get`
-	// answers; until then nothing may write or send the snapshot (#896).
+	// answers; until then nothing may write or send the snapshot.
 	const initialHydration = ref<InitialHydrationState>(seed.draftId ? 'loading' : 'ready');
 	// The body editor is withheld until then too, unless the seed brought the
 	// body: typing into an empty-looking editor would replace a saved body the

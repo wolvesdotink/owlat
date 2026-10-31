@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
- * The Convex client drops its auth config after a definitive failure, so a tab
- * whose session is still valid stayed anonymous until a reload (#1223). These
+ * The Convex client drops its auth config after a definitive failure, and a tab
+ * whose session is still valid must not stay anonymous until a reload. These
  * cases run the plugin against the real token fetcher (lib/convex-auth.ts) and
  * the real auth-ready state, with `fetch` stubbed and a client that follows the
  * Convex auth manager's rules: a null token from the plain and the forced fetch

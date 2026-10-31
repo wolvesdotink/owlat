@@ -1,5 +1,5 @@
 /**
- * A response completes the reply it answers (#1346).
+ * A response completes the reply it answers.
  *
  * Once we have answered a conversation, an AI reply left behind makes it look
  * unanswered and invites a second response. There are two kinds:

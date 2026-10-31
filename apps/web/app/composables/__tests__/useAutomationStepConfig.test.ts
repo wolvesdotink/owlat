@@ -16,7 +16,7 @@ const i18n = createTestI18n();
 type Outcome = { ok: true; result: null } | { ok: false };
 
 /**
- * Autosave for the open step (#1043). The update mutation is held open by the
+ * Autosave for the open step. The update mutation is held open by the
  * test, so a save can be observed while it is pending, made to fail, and
  * overlapped by later edits.
  */

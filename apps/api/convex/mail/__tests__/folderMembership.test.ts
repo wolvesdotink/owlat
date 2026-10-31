@@ -1,5 +1,5 @@
 /**
- * IMAP folder membership (#927): the UID blocks behind the IMAP server's
+ * IMAP folder membership: the UID blocks behind the IMAP server's
  * sequence map stay exactly the folder's UIDs through every write path, a
  * backfill that races those writes, an interrupted backfill, and a rebuild.
  *

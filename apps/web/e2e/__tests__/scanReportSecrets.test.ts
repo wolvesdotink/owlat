@@ -1,7 +1,7 @@
 // @vitest-environment node
 /**
- * The report gate the E2E workflow runs before uploading `playwright-report/`
- * (#1203 review): a known dummy secret must be found wherever a Playwright HTML
+ * The report gate the E2E workflow runs before uploading `playwright-report/`:
+ * a known dummy secret must be found wherever a Playwright HTML
  * report can carry it (an attachment, a trace archive, the report data embedded
  * in index.html), and a clean report must pass.
  *
