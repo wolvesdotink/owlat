@@ -60,7 +60,6 @@ convex/delivery/checklistVerification.ts:sweep #3
 convex/delivery/checklistVerification.ts:verifyNow #2
 convex/delivery/checklistVerification.ts:verifyNow #3
 convex/delivery/sndsPoll.ts:poll #2
-convex/delivery/statusActions.ts:sendTest #2
 convex/delivery/trackingHttp.ts:trackClick #2
 convex/delivery/trackingHttp.ts:trackOpen #2
 convex/delivery/warmingSync.ts:syncWarmingState #2

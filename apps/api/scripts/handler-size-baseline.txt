@@ -3,8 +3,5 @@
 # scripts/check-handler-size.sh: when a handler shrinks, write its new length
 # (or delete the line once it is under the cap); never raise a length or add a line.
 convex/auth/accountExport.ts:exportUserDataPage 204
-convex/delivery/deliverabilityDashboard.ts:getDeliverabilityDashboard 236
-convex/delivery/sendCompletion.ts:applyCompletion 228
-convex/delivery/statusActions.ts:sendTest 182
 convex/seedAdminHttp.ts:seedAdmin 189
 convex/semanticFileProcessing.ts:processFile 243
