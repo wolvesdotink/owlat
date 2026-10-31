@@ -71,6 +71,8 @@ convex/inbox/processingLifecycle
 !convex/inbox/processingLifecycle/effects.ts
 # Cancels a delayed auto-send: scheduler, clock and audit log.
 !convex/inbox/processingLifecycle/autoSendCancel.ts
+# The transition entry and a step's agentActions row writes: database handle and clock.
+!convex/inbox/processingLifecycle/stepActions.ts
 
 # Sending-domain lifecycle reducer.
 convex/domains/lifecycleReducer.ts
