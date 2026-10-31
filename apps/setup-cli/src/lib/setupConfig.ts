@@ -25,7 +25,11 @@ import {
 	type FeaturePackKey,
 } from '@owlat/shared/featureFlags';
 import { ensureSecrets } from '@owlat/shared/setupSecrets';
-import { OUTBOUND_TLS_MODES, isOutboundTlsMode } from '@owlat/shared/outboundTlsMode';
+import type {
+	SendProviderCredentialField,
+	SendProviderHostPortField,
+} from '@owlat/shared/sendProviderCatalog';
+import { SETUP_SENDING_CATALOG_ENTRIES, sendingConfigEnv } from '@owlat/shared/setupSendingConfig';
 import { mergeEnv, type EnvMap } from './env';
 import { applySetupDefaults } from './setupEnvDefaults';
 import { isValidEmail } from './validators';
@@ -169,51 +173,72 @@ export function parseSetupConfig(raw: unknown): SetupConfig {
 	// Closes the silent "campaigns:true but no provider" CI/SSH path.
 	if (config.sending === undefined && needsDeliveryProvider(resolveSetupFlags(config))) {
 		throw new SetupConfigError(
-			'config.sending is required when campaigns, transactional, or automations are enabled. Set sending.provider to mta, resend, emailit, ses, or smtp, or disable bulk sending.'
+			`config.sending is required when campaigns, transactional, or automations are enabled. Set sending.provider to ${new Intl.ListFormat('en', { type: 'disjunction' }).format(SENDING_KINDS)}, or disable bulk sending.`
 		);
 	}
 
 	return config;
 }
 
+/**
+ * The setup config's sending kinds, in catalog order, for the messages that list
+ * them.
+ */
+const SENDING_KINDS = SETUP_SENDING_CATALOG_ENTRIES.map((entry) => entry.kind);
+
+/**
+ * Checks `config.sending` against its kind's catalog credential fields. The
+ * property names are the fields' keys (a `host-port` field is `host` / `port` /
+ * `secure`), the same mapping {@link sendingConfigEnv} writes through.
+ *
+ * Required values are checked before optional ones, so a config that is missing
+ * a credential is told that first, ahead of a malformed port or TLS flag.
+ */
 function parseSending(value: unknown): void {
 	const sending = asObject(value, 'config.sending');
-	switch (sending['provider']) {
-		case 'mta':
-			if (
-				sending['outboundTlsMode'] !== undefined &&
-				(typeof sending['outboundTlsMode'] !== 'string' ||
-					!isOutboundTlsMode(sending['outboundTlsMode']))
-			) {
-				throw new SetupConfigError(
-					`config.sending.outboundTlsMode must be one of ${OUTBOUND_TLS_MODES.join(', ')}`
-				);
-			}
-			return;
-		case 'resend':
-		case 'emailit':
-			asString(sending['apiKey'], 'config.sending.apiKey');
-			return;
-		case 'ses':
-			asString(sending['region'], 'config.sending.region');
-			asString(sending['accessKeyId'], 'config.sending.accessKeyId');
-			asString(sending['secretAccessKey'], 'config.sending.secretAccessKey');
-			return;
-		case 'smtp':
-			asString(sending['host'], 'config.sending.host');
-			asString(sending['username'], 'config.sending.username');
-			asString(sending['password'], 'config.sending.password');
+	const provider = sending['provider'];
+	const entry = SETUP_SENDING_CATALOG_ENTRIES.find((e) => e.kind === provider);
+	if (entry === undefined) {
+		throw new SetupConfigError(
+			`config.sending.provider must be one of ${SENDING_KINDS.join(', ')}`
+		);
+	}
+	for (const field of entry.credentialFields) {
+		if (!field.required) continue;
+		if (field.kind === 'host-port') asString(sending['host'], 'config.sending.host');
+		else parseCredentialValue(field, sending[field.key]);
+	}
+	for (const field of entry.credentialFields) {
+		if (field.kind === 'host-port') {
 			if (sending['port'] !== undefined && typeof sending['port'] !== 'number') {
 				throw new SetupConfigError('config.sending.port must be a number');
 			}
 			if (sending['secure'] !== undefined && typeof sending['secure'] !== 'boolean') {
 				throw new SetupConfigError('config.sending.secure must be a boolean');
 			}
-			return;
-		default:
-			throw new SetupConfigError(
-				'config.sending.provider must be one of mta, resend, emailit, ses, smtp'
-			);
+		} else if (!field.required && sending[field.key] !== undefined) {
+			parseCredentialValue(field, sending[field.key]);
+		}
+	}
+}
+
+/** Checks one credential field's value against what its field kind accepts. */
+function parseCredentialValue(
+	field: Exclude<SendProviderCredentialField, SendProviderHostPortField>,
+	value: unknown
+): void {
+	const name = `config.sending.${field.key}`;
+	if (field.kind === 'select' || (field.kind === 'region-select' && field.options)) {
+		const allowed = (field.options ?? []).map((option) => option.value);
+		if (typeof value !== 'string' || !allowed.includes(value)) {
+			throw new SetupConfigError(`${name} must be one of ${allowed.join(', ')}`);
+		}
+	} else if (field.kind === 'boolean') {
+		if (typeof value !== 'boolean') throw new SetupConfigError(`${name} must be a boolean`);
+	} else if (field.kind === 'number') {
+		if (typeof value !== 'number') throw new SetupConfigError(`${name} must be a number`);
+	} else {
+		asString(value, name);
 	}
 }
 
@@ -266,41 +291,8 @@ export function buildEnvPatchFromConfig(config: SetupConfig): EnvMap {
 	const patch: EnvMap = {};
 
 	if (config.sending) {
-		switch (config.sending.provider) {
-			case 'mta':
-				patch['EMAIL_PROVIDER'] = 'mta';
-				if (config.sending.outboundTlsMode !== undefined) {
-					patch['OUTBOUND_TLS_MODE'] = config.sending.outboundTlsMode;
-				}
-				break;
-			case 'resend':
-				patch['EMAIL_PROVIDER'] = 'resend';
-				patch['RESEND_API_KEY'] = config.sending.apiKey;
-				break;
-			case 'emailit':
-				patch['EMAIL_PROVIDER'] = 'emailit';
-				patch['EMAILIT_API_KEY'] = config.sending.apiKey;
-				break;
-			case 'ses':
-				patch['EMAIL_PROVIDER'] = 'ses';
-				patch['AWS_SES_REGION'] = config.sending.region;
-				patch['AWS_SES_ACCESS_KEY_ID'] = config.sending.accessKeyId;
-				patch['AWS_SES_SECRET_ACCESS_KEY'] = config.sending.secretAccessKey;
-				break;
-			case 'smtp':
-				// Port/TLS have safe backend defaults, so emit them only when set.
-				patch['EMAIL_PROVIDER'] = 'smtp';
-				patch['SMTP_RELAY_HOST'] = config.sending.host;
-				patch['SMTP_RELAY_USERNAME'] = config.sending.username;
-				patch['SMTP_RELAY_PASSWORD'] = config.sending.password;
-				if (config.sending.port !== undefined) {
-					patch['SMTP_RELAY_PORT'] = String(config.sending.port);
-				}
-				if (config.sending.secure !== undefined) {
-					patch['SMTP_RELAY_SECURE'] = config.sending.secure ? 'true' : 'false';
-				}
-				break;
-		}
+		patch['EMAIL_PROVIDER'] = config.sending.provider;
+		Object.assign(patch, sendingConfigEnv(config.sending));
 	}
 
 	if (config.ai) {
