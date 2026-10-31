@@ -116,4 +116,9 @@ export const PREVIOUS_RELEASE_ENTRIES: Readonly<Record<string, string>> = {
 	'autonomyFeedback.ts#updateThreshold': 'old threshold adjustments mid-run',
 	'autonomySuggestions.ts#recordGraduationSuggestion': 'old threshold adjustments mid-run',
 	'autonomySuggestions.ts#clearGraduationSuggestion': 'old threshold adjustments mid-run',
+	// The desktop release refresh now commits once (desktop/refreshCommit.ts
+	// `commitRefresh`); remove after release 0.6.17.
+	'desktop/updates.ts#cacheRelease': 'old desktop release refreshes mid-run',
+	'desktop/updates.ts#recordCheck': 'old desktop release refreshes mid-run',
+	'desktop/updates.ts#pruneReleases': 'old desktop release refreshes mid-run',
 };

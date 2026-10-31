@@ -1,9 +1,3 @@
 # Action commits past the first, one line each: <module>:<action> #<n>.
 # Frozen debt for scripts/check-action-commits.sh; delete lines as actions
 # are converted to one commit, never add them.
-convex/desktop/updates.ts:refreshReleases #2
-convex/desktop/updates.ts:refreshReleases #3
-convex/desktop/updates.ts:refreshReleases #4
-convex/desktop/updates.ts:refreshReleases #5
-convex/desktop/updates.ts:refreshReleases #6
-convex/desktop/updates.ts:refreshReleases #7
