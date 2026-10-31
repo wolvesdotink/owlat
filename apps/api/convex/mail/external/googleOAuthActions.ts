@@ -187,6 +187,9 @@ export const complete = authedAction({
 	args: { code: v.string(), state: v.string() },
 	handler: async (ctx, args): Promise<{ mailboxId: Id<'mailboxes'>; returnTo: string }> => {
 		await assertExternalEnabled(ctx);
+		// checkpoint: the single-use state is consumed before the code exchange,
+		// and stays consumed when the exchange fails: a retry starts a fresh
+		// handshake instead of replaying a spent code.
 		const stateRow = await ctx.runMutation(
 			internal.mail.external.googleOAuth._consumeStateInternal,
 			{ state: args.state }

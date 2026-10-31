@@ -5,7 +5,7 @@ import { createTestI18n } from '~/__tests__/i18n';
 import type * as Uploads from '~/composables/postbox/postboxAttachmentUploads';
 
 /**
- * #1273 in the Team inbox reply composer: cancelling an upload while
+ * The Team inbox reply composer: cancelling an upload while
  * `replyAttachments.add` runs. The add commits after the cancel, so the
  * composer takes that entry back off the thread (by its id) and holds Send
  * until it has.

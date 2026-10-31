@@ -95,7 +95,7 @@ describe('canLearnFromImport', () => {
 });
 
 /**
- * #760: an import whose provider spent its daily download budget is held at
+ * An import whose provider spent its daily download budget is held at
  * `importing` with a resume time, and must read as a wait with an end rather
  * than as a stalled or failed import.
  */

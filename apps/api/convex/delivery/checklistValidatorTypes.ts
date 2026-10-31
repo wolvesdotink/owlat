@@ -1,68 +1,25 @@
 import type { DeliverabilityChecklistStatus, DeliverabilityCheckId } from '@owlat/shared';
 import type { Doc, Id } from '../_generated/dataModel';
-import type { SendProviderKind } from '../lib/sendProviders/types';
 import type { SendingDomainProviderKind } from '../domains/providers/types';
 
 /**
- * WHOSE relay proof `ChecklistVerificationContext.relayIdentities` carries.
+ * One relay proof row, tagged with the sending-domain provider kind whose
+ * identity it is.
  *
- * The context loader reads exactly one table — the frozen
- * `sendingDomainSesIdentities` sibling (`delivery/checklist.ts`'s
- * `loadRelayIdentities`) — so those rows prove one kind's identities and no
- * other's. This constant is the DECLARATION of that fact, sitting beside the
- * field whose type already commits to the table; it is not an identity check,
- * and the validator that reads it compares a configured relay kind against this
- * constant rather than against a literal, exactly as the own-arm sites do.
+ * The validator credits a proof only to the relay kind the row names. A
+ * deployment that switches its fallback to another relay keeps its old rows
+ * (nothing deletes them on a switch, and `verifyDomain` keeps refreshing them),
+ * so crediting "every relay identity is proven" without asking whose rows they
+ * are would report a relay that holds ZERO identities as ready.
  *
- * It exists because the two halves of `deployment.relay` must move together: a
- * deployment that switches its fallback from SES to another relay keeps its old
- * SES sibling rows (nothing deletes them on a switch, and `verifyDomain` keeps
- * refreshing them), so crediting "every relay identity is proven" from those
- * rows would report a relay that holds ZERO identities as ready. THE PATTERN
- * THAT RETIRES IT NOW EXISTS: `providerRoutes.listRelayDomainIdentities` asks
- * each registered kind to describe a domain (`describeRelayIdentity`, see the
- * sending-domain section of `docs/abstractions.md`) instead of reading one
- * vendor's table, and this validator's own context can load its rows the same
- * way — at which point this constant is replaced by asking the loaded rows which
- * kind they belong to, and nothing else in the validator changes.
- *
- * TWO NAMESPACES, ONE STRING, PINNED. The rows belong to a SENDING-DOMAIN
- * provider (they are that provider's identity table), and the validator
- * compares this constant to `deliverabilityFallback.relayProviderType`, which
- * is a SEND-TRANSPORT kind off the route row. Those are different unions that
- * happen to spell this provider the same way, exactly like the own-arm pair —
- * and that pair carries a build-time equality assertion
- * (`domains/providers/index.ts`) precisely because the assumption is otherwise
- * invisible. Without the twin assertions below, a deployment where the two
- * unions diverge would take `identitiesReady` to false for every proven SES
- * route and warn on `deployment.relay` forever, with no test failing. Declared
- * `as const` rather than annotated so the literal type survives to be asserted;
- * both assertions are paid at build time and cost nothing at runtime.
- *
- * NOT DEFINITIONAL: it is a statement about WHICH TABLE the context loader reads, and it is deleted
- * by the generic `sendingDomainRelayIdentities` read. It is enumerated under the
- * `frozen-sibling-read` family, with that owner, in `SURVIVING_KIND_LITERALS`
- * (`scripts/check-kind-literal-custody.ts`), which fails the moment this declaration is deleted
- * without the entry going with it. That map is the register for kind DECLARATIONS in the backend;
- * the comparison ratchet's allowlist carries COMPARISONS, and this file is deliberately absent from
- * it because it makes none.
+ * The tag is a sending-domain provider kind and the route names a send-transport
+ * kind. They are compared as strings: every send kind that can prove a domain
+ * has a domain provider of the same spelling
+ * (`_ApiVerifiedKindsHaveDomainProviders`, `domains/providers/index.ts`).
  */
-export const RELAY_IDENTITY_PROOF_KIND = 'ses' as const;
-
-/**
- * Generic CONSTRAINTS, not a conditional type: a conditional resolves to
- * `never` and compiles, which would make this pin silent. Argument 1 is "the
- * rows really are this sending-domain provider's identities"; argument 2 is
- * "and the route field the validator compares it to spells it the same".
- */
-type AssertProofKindSpansBothNamespaces<
-	_Identities extends SendingDomainProviderKind,
-	_Route extends SendProviderKind,
-> = true;
-export type _RelayIdentityProofKindSpansBothNamespaces = AssertProofKindSpansBothNamespaces<
-	typeof RELAY_IDENTITY_PROOF_KIND,
-	typeof RELAY_IDENTITY_PROOF_KIND
->;
+export type ChecklistRelayIdentity = Doc<'sendingDomainSesIdentities'> & {
+	readonly providerKind: SendingDomainProviderKind;
+};
 
 export type ChecklistObservation = {
 	validator: string;
@@ -84,7 +41,7 @@ export type ChecklistVerificationContext = {
 	settings: Doc<'instanceSettings'> | null;
 	warming: Doc<'warmingState'> | null;
 	routes: Doc<'providerRoutes'>[];
-	relayIdentities: Doc<'sendingDomainSesIdentities'>[];
+	relayIdentities: ChecklistRelayIdentity[];
 	tracking: Doc<'trackingDomains'>[];
 	postmaster: Doc<'googlePostmasterStats'> | null;
 	/**

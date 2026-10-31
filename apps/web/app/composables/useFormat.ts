@@ -18,8 +18,8 @@ export type FormattableDate = Date | number | string | undefined | null;
  * So the locale is not a parameter here at all: it comes from the active
  * vue-i18n instance, the date and number styles come from that instance's
  * `datetimeFormats`/`numberFormats` (`i18n/formats.ts`), the relative times
- * come from `Intl.RelativeTimeFormat`, and the two literals that used to be
- * hard-coded English — "Never" and "Invalid date" — come from the catalog like
+ * come from `Intl.RelativeTimeFormat`, and the two literals "Never" and
+ * "Invalid date" are never hard-coded English: they come from the catalog like
  * every other string a person reads.
  *
  * `useFormat()` also INSTALLS its locale into `utils/formatters.ts`, so the call

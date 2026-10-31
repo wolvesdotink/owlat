@@ -16,6 +16,10 @@
  */
 
 import { validateEmailitKey } from './emailitSetupValidator';
+import {
+	coreSendProviderCatalogEntry,
+	type CORE_SEND_PROVIDER_CATALOG_ENTRIES,
+} from './sendProviderCatalog';
 import { fetchSetupProvider, type ValidationResult } from './setupValidationHttp';
 import { isBlockedSsrfHost, resolvesToBlockedAddress } from './setupSsrfGuard';
 
@@ -23,13 +27,22 @@ export type { ValidationResult } from './setupValidationHttp';
 export { validateEmailitKey } from './emailitSetupValidator';
 export { validateSmtpRelay, type SmtpRelayInput } from './setupSmtpRelayValidator';
 
-export type SetupProvider =
-	| 'resend'
-	| 'emailit'
-	| 'openai'
-	| 'openrouter'
-	| 'posthog'
-	| 'safebrowsing';
+/** Every validator name a core catalog entry's `setupProbe` declares. */
+export type SetupProbeValidator = Extract<
+	(typeof CORE_SEND_PROVIDER_CATALOG_ENTRIES)[number],
+	{ readonly setupProbe: { readonly validator: string } }
+>['setupProbe']['validator'];
+
+/** The setup probes {@link validateProvider} can run: the ones that take one API key. */
+type ApiKeySetupProbe = Exclude<SetupProbeValidator, 'validateSmtpRelay'>;
+
+/** The send-provider kinds whose catalog `setupProbe` takes one API key. */
+type ApiKeyProbeKind = Extract<
+	(typeof CORE_SEND_PROVIDER_CATALOG_ENTRIES)[number],
+	{ readonly setupProbe: { readonly validator: ApiKeySetupProbe } }
+>['kind'];
+
+export type SetupProvider = ApiKeyProbeKind | 'openai' | 'openrouter' | 'posthog' | 'safebrowsing';
 
 export async function validateOpenAIKey(
 	apiKey: string,
@@ -132,17 +145,39 @@ export async function validateGoogleSafeBrowsingKey(apiKey: string): Promise<Val
 	}
 }
 
-/** Dispatch to the right validator by provider name (used by the web endpoint). */
+/**
+ * The API-key probes a send-provider catalog entry can name, by validator name.
+ * The `satisfies` fails the build when an entry declares a new API-key validator
+ * without a row here.
+ */
+const API_KEY_SETUP_PROBES = {
+	validateResendKey,
+	validateEmailitKey,
+} satisfies Record<ApiKeySetupProbe, (apiKey: string) => Promise<ValidationResult>>;
+
+/** The API-key probe the catalog declares for `kind`, if it declares one. */
+function apiKeySetupProbe(
+	kind: string
+): ((apiKey: string) => Promise<ValidationResult>) | undefined {
+	const validator = coreSendProviderCatalogEntry(kind)?.setupProbe?.validator;
+	if (validator === undefined || !Object.hasOwn(API_KEY_SETUP_PROBES, validator)) return undefined;
+	return API_KEY_SETUP_PROBES[validator as ApiKeySetupProbe];
+}
+
+/**
+ * Dispatch to the right validator by provider name (used by the web endpoint).
+ * A send-provider kind runs the API-key probe its catalog `setupProbe` names;
+ * the SMTP relay probe needs a host and credentials rather than a key, so it is
+ * called directly.
+ */
 export async function validateProvider(
 	provider: SetupProvider,
 	apiKey: string,
 	host?: string
 ): Promise<ValidationResult> {
+	const probe = apiKeySetupProbe(provider);
+	if (probe) return probe(apiKey);
 	switch (provider) {
-		case 'resend':
-			return validateResendKey(apiKey);
-		case 'emailit':
-			return validateEmailitKey(apiKey);
 		case 'openai':
 			return validateOpenAIKey(apiKey);
 		case 'openrouter':

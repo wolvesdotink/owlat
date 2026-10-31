@@ -83,6 +83,8 @@ export const handleGithubWebhook = httpAction(async (ctx, request) => {
 	// rolls. Same trade-off as every other webhook source; set the proxy mode to
 	// get per-IP isolation.
 	const ip = getClientIp(request);
+	// checkpoint: the token is spent before the body is read and stays spent
+	// whatever the request does next; a limiter that does not record cannot limit.
 	const { ok: rateOk, retryAfter } = await ctx.runMutation(
 		internal.lib.publicRateLimit.checkPublicRateLimit,
 		{ limitType: 'webhookIngestion', key: `github:${ip}` }

@@ -90,7 +90,7 @@ export function usePostboxSignedBody<M extends SignedBodyMessage>(source: {
 	);
 
 	// A verdict from before scopes were recorded is withheld, so ask the server
-	// to verify the message again (#1320); the row picks up the scoped verdict
+	// to verify the message again; the row picks up the scoped verdict
 	// when it lands. At most once per expansion, whatever the answer: collapsing
 	// the card lets the next expansion ask again while the verdict has no scope.
 	// A request still on its way is not sent twice, until it has had

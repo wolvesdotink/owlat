@@ -25,6 +25,19 @@ export const PREVIOUS_RELEASE_ENTRIES: Readonly<Record<string, string>> = {
 	'campaigns/sendQueries.ts#storeContentScanResult': 'old campaign send preparations mid-run',
 	'campaigns/archiveQueries.ts#setArchiveSnapshot': 'old campaign send preparations mid-run',
 	'emailTemplates/versions.ts#captureForSend': 'old campaign send preparations mid-run',
+	// A send-walker page now commits once (campaigns/walkerCommit.ts).
+	'delivery/sends.ts#createBatch': 'old campaign send-walker hops mid-page',
+	'campaigns/sendQueries.ts#incrementDailySendCountInternal':
+		'old campaign send-walker hops mid-page',
+	'campaigns/sendJob.ts#advanceSendJob': 'old campaign send-walker hops mid-page',
+	// The A/B winner phase now commits once (campaigns/walkerCommit.ts).
+	'campaigns/sendQueries.ts#freezeCampaignAudience': 'old A/B winner phases mid-run',
+	// The test sends now commit once (campaigns/testSendCommit.ts).
+	'campaigns/senders.ts#seedDefaultSender': 'old test sends mid-run',
+	'campaigns/senders.ts#checkSenderAllowed': 'old test sends mid-run',
+	'delivery/enqueueTestSend.ts#enqueueTestSend': 'old test sends mid-run',
+	'campaigns/sendJob.ts#createSendJob':
+		'old campaign send preparations and A/B winner phases mid-run',
 	// The delivery actions below now commit once; remove after release 0.6.17.
 	'delivery/alignmentPreflight.ts#recordAlignmentResult': 'old alignment sweeps mid-run',
 	'delivery/warmingSync.ts#upsertWarmingState': 'old warming syncs mid-run',
@@ -50,9 +63,32 @@ export const PREVIOUS_RELEASE_ENTRIES: Readonly<Record<string, string>> = {
 	'mail/ai/composeDraftStore.ts#replaceSession': 'old Answer mode starts mid-run',
 	'mail/ai/composeDraftStore.ts#captureSessionAnswers': 'old Answer mode answers mid-run',
 	'mail/ai/composeDraftStore.ts#setDraftFollowUp': 'old Answer mode starts and answers mid-run',
+	// The plugin relay identity call now commits once through
+	// domains/pluginRelayMutations.ts `commitIdentityCall` / `commitDeniedCall`.
+	'domains/pluginRelayMutations.ts#recordCheck': 'old plugin relay identity calls mid-run',
+	'domains/pluginRelayMutations.ts#recordCheckFailure': 'old plugin relay identity calls mid-run',
+	'domains/pluginRelayMutations.ts#deferDeniedCheck': 'old plugin relay identity calls mid-run',
+	'plugins/sendTransportDomainIdentityAuthorization.ts#authorizeIdentityCall':
+		'old plugin relay identity calls mid-run',
+	'plugins/sendTransportDomainIdentityAuthorization.ts#recordOutcome':
+		'old plugin relay identity calls mid-run',
+	// Sending-domain registration now lands its outcome and return-path repair in
+	// domains/providers/registerCommit.ts `commitRegistration`.
+	'domains/lifecycleReturnPath.ts#reconcileReturnPathAfterRegistration':
+		'old sending-domain registrations mid-run',
 	// System & updates now reads maintenance/workerRegistry.ts `getForAdmin`.
 	'mail/imap/serverRegistry.ts#getForAdmin':
 		'the previous IMAP servers card on System & updates, in tabs opened before the deploy',
+	// push/send.deliver now plans in push/delivery.ts and holds quiet devices
+	// in its commit after the pushes. Remove after release N+1.
+	'push/dispatch.ts#prepareDelivery': 'old push deliveries mid-run',
+	// `filterCompile.compile` now starts through startCompile, which schedules
+	// the compile. Remove after release N+1.
+	'mail/filterCompileStore.ts#startDraft': 'old rule compiles mid-run',
+	// The channel dispatch and the delivery poll now commit through
+	// channels/outboundCommit.ts. Remove after release N+1.
+	'unifiedMessages.ts#recordOutbound': 'old channel dispatches mid-run',
+	'unifiedMessages.ts#updateDeliveryStatus': 'old channel delivery polls mid-run',
 	// `/seed/admin` now writes through one commit (auth/seedAdminCommit.ts); the
 	// latch claim keeps an old and a new seed from both running.
 	'workspaces/settings.ts#createInternal': 'old /seed/admin requests mid-run',

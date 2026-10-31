@@ -1,5 +1,5 @@
 /**
- * The list pane's error state follows the renderer on screen (#1099). The
+ * The list pane's error state follows the renderer on screen. The
  * grouped views (conversations, categories, sections) each read their own
  * query while the flat feed keeps loading, so a failed grouped read used to
  * render the grouped list's "All clear" under a healthy flat feed.

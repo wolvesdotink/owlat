@@ -612,9 +612,9 @@ describe('useCsvImport', () => {
 	});
 
 	/**
-	 * #897: a failed batch used to come back from the page as an all-zero
-	 * success, so 201 rows with the second batch failing ended "complete" with
-	 * 101 imported, 0 failed and nothing to retry.
+	 * A failed batch must come back from the page as a failure, not an all-zero
+	 * success: 201 rows with the second batch failing must not end "complete"
+	 * with 101 imported, 0 failed and nothing to retry.
 	 */
 	describe('failed batches', () => {
 		const rows201 = Array.from({ length: 201 }, (_, i) => [`user${i + 1}@example.com`]);
@@ -1062,10 +1062,10 @@ describe('useCsvImport', () => {
 	});
 
 	/**
-	 * #1042: `email` and `secondary_email` were both auto-mapped to Email. The
-	 * preview and validation read the first column, serialization let the last
-	 * nonempty one win, so the preview showed contact0@ and the import wrote
-	 * billing0@.
+	 * Only one column may be auto-mapped to an identity field. With `email` and
+	 * `secondary_email` both mapped to Email, the preview and validation read the
+	 * first column and serialization let the last nonempty one win, so the
+	 * preview showed contact0@ and the import wrote billing0@.
 	 */
 	describe('one column per identity field', () => {
 		// Ten rows with distinct addresses; rows 2, 5 and 8 have a blank secondary cell and

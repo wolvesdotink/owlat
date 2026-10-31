@@ -27,6 +27,7 @@
  * the instance first.
  */
 
+import type { FunctionArgs } from 'convex/server';
 import { v } from 'convex/values';
 import { resolvePluginTransportConfig } from '../lib/sendProviders/pluginTransportConfig';
 import { logError } from '../lib/runtimeLog';
@@ -70,7 +71,7 @@ export const refreshIdentity = internalAction({
 
 /**
  * The whole call, once, for both directions — resolve, authorize, configure, ask,
- * persist, audit.
+ * then persist and audit in one commit.
  *
  * EVERY GATE FAILS CLOSED AND WRITES NOTHING BUT A RETRY. An unregistered kind, a
  * revoked grant and a missing credential all stop before the module runs, and
@@ -100,16 +101,19 @@ async function runIdentityCall(
 	// REAUTHORIZED PER CALL, not once at composition: an operator who disabled the
 	// plugin or revoked its grant has stopped it acting, and a scheduled provider
 	// call under this deployment's credential is exactly the kind of acting they
-	// meant.
-	const isAuthorized = await ctx.runMutation(
-		internal.plugins.sendTransportDomainIdentityAuthorization.authorizeIdentityCall,
-		{ pluginId: definition.pluginId, transportKind: kind }
+	// meant. Asked as a read: the run writes once, at its end.
+	const { pluginId } = definition;
+	const isAuthorized = await ctx.runQuery(
+		internal.plugins.sendTransportDomainIdentityAuthorization.checkIdentityCall,
+		{ pluginId, transportKind: kind }
 	);
 	if (!isAuthorized) {
 		// THE RETRY STILL MOVES, or the sweep never stops: `nextCheckDueAt` is what
 		// takes a row out of the due set, and a plugin left disabled is a steady
-		// state rather than a moment. Nothing else is written — see the mutation.
-		await ctx.runMutation(internal.domains.pluginRelayMutations.deferDeniedCheck, {
+		// state rather than a moment. The commit audits the denial and moves the
+		// retry; nothing else is written — see the mutation.
+		await ctx.runMutation(internal.domains.pluginRelayMutations.commitDeniedCall, {
+			pluginId,
 			kind,
 			domain,
 		});
@@ -132,17 +136,19 @@ async function runIdentityCall(
 		// rejecting it, which is the same operator action ("set the variable") and
 		// the same write rule — the stored SPF/DKIM verdicts are not evidence about
 		// a missing key and must not be overwritten by one.
-		await recordFailure(ctx, kind, domain, true, 'required configuration variable is unset');
-		await recordOutcome(ctx, definition.pluginId, kind, 'failed');
+		await commitCall(ctx, pluginId, kind, domain, {
+			outcome: 'failed',
+			isAuthFailure: true,
+			error: 'required configuration variable is unset',
+		});
 		return 'auth_failed';
 	}
 
 	const checkedAt = Date.now();
 	const result = await callModule(module[call], kind, domain, config);
 	if (result.outcome === 'ok') {
-		await ctx.runMutation(internal.domains.pluginRelayMutations.recordCheck, {
-			kind,
-			domain,
+		await commitCall(ctx, pluginId, kind, domain, {
+			outcome: 'ok',
 			// Spread into mutable arrays for the validator's sake only: the parsed
 			// observation is frozen, and Convex's `v.array` argument type is not
 			// `readonly`.
@@ -153,11 +159,13 @@ async function runIdentityCall(
 			},
 			checkedAt,
 		});
-		await recordOutcome(ctx, definition.pluginId, kind, 'completed');
 		return 'checked';
 	}
-	await recordFailure(ctx, kind, domain, result.outcome === 'auth_failed', result.error);
-	await recordOutcome(ctx, definition.pluginId, kind, 'failed');
+	await commitCall(ctx, pluginId, kind, domain, {
+		outcome: 'failed',
+		isAuthFailure: result.outcome === 'auth_failed',
+		error: result.error,
+	});
 	return result.outcome;
 }
 
@@ -184,30 +192,18 @@ async function callModule(
 	}
 }
 
-async function recordFailure(
-	ctx: ActionCtx,
-	kind: string,
-	domain: string,
-	isAuthFailure: boolean,
-	error: string
-): Promise<void> {
-	await ctx.runMutation(internal.domains.pluginRelayMutations.recordCheckFailure, {
-		kind,
-		domain,
-		isAuthFailure,
-		error,
-	});
-}
-
-async function recordOutcome(
+/** The run's one write: the row's verdict or failure, with the audited outcome. */
+async function commitCall(
 	ctx: ActionCtx,
 	pluginId: string,
 	kind: string,
-	outcome: 'completed' | 'failed'
+	domain: string,
+	result: FunctionArgs<typeof internal.domains.pluginRelayMutations.commitIdentityCall>['result']
 ): Promise<void> {
-	await ctx.runMutation(internal.plugins.sendTransportDomainIdentityAuthorization.recordOutcome, {
+	await ctx.runMutation(internal.domains.pluginRelayMutations.commitIdentityCall, {
 		pluginId,
-		transportKind: kind,
-		outcome,
+		kind,
+		domain,
+		result,
 	});
 }

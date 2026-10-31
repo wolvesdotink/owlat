@@ -2,9 +2,8 @@
  * Ask scope for the command palette: the knowledge + files question, answered
  * with citations inside the overlay.
  *
- * This is the whole of what `QuickQueryPanel` used to be — the same
- * `quickQuery.ask` action, the same `QueryResult` rendering — minus the second
- * modal it lived in. ⌘⇧K survives as an alias that opens the overlay already on
+ * The `quickQuery.ask` action with `QueryResult` rendering, inside the palette
+ * rather than a second modal. ⌘⇧K is an alias that opens the overlay already on
  * this scope, and `?` reaches it from anywhere.
  *
  * The `ai.knowledge` gate stays where it was: the backend action asserts it, the

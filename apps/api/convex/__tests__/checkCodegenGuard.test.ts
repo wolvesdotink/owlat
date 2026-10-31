@@ -3,6 +3,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { FULL_API_COMMENT } from '../../scripts/apiDeclarationChunks';
 
 const temporaryDirectories: string[] = [];
 const guard = resolve(import.meta.dirname, '..', '..', 'scripts', 'check-codegen.sh');
@@ -42,6 +43,7 @@ describe('Convex codegen guard', () => {
 			const { source, declaration } = fixture(
 				[
 					`import type * as delivery_example from ${quote}../delivery/example.js${quote};`,
+					...FULL_API_COMMENT,
 					'declare const fullApi: ApiFromModules<{',
 					`\t${quote}delivery/example${quote}: typeof delivery_example;`,
 					'}>;',
@@ -50,6 +52,26 @@ describe('Convex codegen guard', () => {
 			expect(runGuard(source, declaration)).toContain('imports and maps every Convex module');
 		}
 	);
+
+	it('rejects a fullApi declared as one map over every directory', () => {
+		const { source, declaration } = fixture(
+			[
+				"import type * as delivery_example from '../delivery/example.js';",
+				"import type * as mail_example from '../mail/example.js';",
+				'declare const fullApi: ApiFromModules<{',
+				"\t'delivery/example': typeof delivery_example;",
+				"\t'mail/example': typeof mail_example;",
+				'}>;',
+			].join('\n')
+		);
+		mkdirSync(join(source, 'mail'), { recursive: true });
+		writeFileSync(join(source, 'mail', 'example.ts'), 'export const value = 1;\n');
+		expect(() => runGuard(source, declaration)).toThrow(
+			expect.objectContaining({
+				stderr: expect.stringContaining('without the per-directory ApiFromModules chunks'),
+			})
+		);
+	});
 
 	it('rejects an imported module omitted from fullApi', () => {
 		const { source, declaration } = fixture(

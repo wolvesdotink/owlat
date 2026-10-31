@@ -40,7 +40,8 @@ import {
 } from '../lib/softDelete';
 import type { ErasureBudget } from '../contacts/erasure/budget';
 import { throwNotFound } from '../_utils/errors';
-import { applyUsageCountDelta, reconcileRestoredLinks } from '../emailBlocks/module';
+import { applyUsageCountDelta } from '../emailBlocks/module';
+import { reconcileRestoredLinks } from '../emailBlocks/consumers';
 import { deleteCoeditState } from '../emailCoediting/sweep';
 import { deleteTemplateVersions } from './versions';
 

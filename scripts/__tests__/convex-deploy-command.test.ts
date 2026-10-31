@@ -73,7 +73,7 @@ async function runDeploy(options: RunOptions = {}) {
 }
 
 const DEPLOY_CALL =
-	'deploy --url http://convex:3210 --admin-key convex-self-hosted|0123456789abcdef';
+	'deploy --codegen disable --url http://convex:3210 --admin-key convex-self-hosted|0123456789abcdef';
 
 describe('docker/convex-deploy.sh', () => {
 	it('deploys the functions, then sets OWLAT_VERSION on the deployment to the image version', async () => {

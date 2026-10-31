@@ -112,8 +112,8 @@ export function createSavedBlockSaveHandler(
 }
 
 /**
- * Produce the EmailBuilderHandlers the builder injects (zero config: the part
- * that used to be copied across the editor pages) and the media-picker state
+ * Produce the EmailBuilderHandlers the builder injects (zero config: every
+ * editor page shares this rather than its own copy) and the media-picker state
  * its "pick from library" opens.
  */
 export function provideEmailEditorHandlers() {

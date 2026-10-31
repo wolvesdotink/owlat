@@ -15,6 +15,7 @@ import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import { createSecretBox, type SecretBoxEnvelope } from '../../lib/credentialCrypto';
 import { E2EE_KEY_BOX, openPrivateKey, reSealPrivateKey, sealPrivateKey } from '../sealing';
+import { runReSealVault } from '../lifecycleNode';
 import { modules } from './sealedMailTestHelpers';
 
 const SECRET_OLD = 'instance-secret-generation-1';
@@ -112,5 +113,55 @@ describe('e2ee/sealing INSTANCE_SECRET rotation', () => {
 				.map((r) => openPrivateKey(r.sealedPrivateKey));
 		});
 		expect(finalValues).toEqual(['NEW-ROW-KEY', 'OLD-ROW-KEY']);
+	});
+});
+
+describe('e2ee/lifecycle re-seal against a key replaced mid-run', () => {
+	afterEach(() => {
+		vi.unstubAllEnvs();
+	});
+
+	it('leaves a row whose envelope changed since it was read', async () => {
+		const t = convexTest(schema, modules);
+		vi.stubEnv('INSTANCE_SECRET', SECRET_NEW);
+		await seedKeyRow(t, 'rotated@sealed.example.com', sealWith(SECRET_NEW, 'NEW-KEY'));
+		const [row] = await t.run(async (ctx) => ctx.db.query('keyVault').collect());
+
+		const result = await t.mutation(internal.e2ee.lifecycle.updateSealedPrivateKey, {
+			id: row!._id,
+			sealedPrivateKey: sealWith(SECRET_NEW, 'OLD-KEY'),
+			expectedSealedPrivateKey: sealWith(SECRET_OLD, 'OLD-KEY'),
+		});
+
+		expect(result).toEqual({ updated: false });
+		const after = await t.run(async (ctx) => ctx.db.get(row!._id));
+		expect(openPrivateKey(after!.sealedPrivateKey)).toBe('NEW-KEY');
+	});
+
+	it('binds each write to the envelope it re-sealed and counts only the rows it wrote', async () => {
+		vi.stubEnv('INSTANCE_SECRET', SECRET_NEW);
+		vi.stubEnv('INSTANCE_SECRET_PREVIOUS', SECRET_OLD);
+		const kept = sealWith(SECRET_OLD, 'KEPT');
+		const replaced = sealWith(SECRET_OLD, 'REPLACED');
+		const writes: Record<string, unknown>[] = [];
+		const ctx = {
+			runQuery: async () => [
+				{ id: 'kept', sealedPrivateKey: kept },
+				{ id: 'replaced', sealedPrivateKey: replaced },
+			],
+			runMutation: async (_reference: unknown, args: Record<string, unknown>) => {
+				writes.push(args);
+				return { updated: args['id'] === 'kept' };
+			},
+		};
+		const run = (
+			runReSealVault as unknown as {
+				_handler: (ctx: unknown, args: unknown) => Promise<unknown>;
+			}
+		)._handler;
+
+		await expect(run(ctx, {})).resolves.toEqual({ reSealed: 1, failed: 0 });
+		expect(writes.map((write) => write['expectedSealedPrivateKey'])).toEqual([kept, replaced]);
+		expect(openPrivateKey(writes[0]!['sealedPrivateKey'] as SecretBoxEnvelope)).toBe('KEPT');
 	});
 });

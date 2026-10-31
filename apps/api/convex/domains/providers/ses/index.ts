@@ -20,6 +20,7 @@ import { buildSesMailFromRecords, resolveSesMailFrom } from './mailFrom';
 import { sesReferenceArm } from './referenceArm';
 import { sesRelayIdentityFacts } from './relayIdentityView';
 import { sesRelayDomainVerified } from './relayVerification';
+import { sesReturnPath } from './returnPath';
 import type { DnsRecord, DnsRecords } from '../../domains';
 import type {
 	ProviderCheckResult,
@@ -34,6 +35,8 @@ import type {
 // own comment, and `../index.ts`'s `_relayProofTypecheck`).
 export const sesProvider: RelayProvingProviderModule<'ses'> = {
 	kind: 'ses',
+
+	returnPath: sesReturnPath,
 
 	async registerDomain(domain, options) {
 		const ses = createSESIdentityManager();

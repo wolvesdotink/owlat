@@ -7,8 +7,8 @@
  * to name an existing row). Two jobs:
  *
  *   - MERGE (reopen only): the composer stays editable while `drafts.get` is
- *     in flight, which makes the first answer a merge, not an assignment
- *     (#896). Every field the person changed before it arrived is touched (the
+ *     in flight, which makes the first answer a merge, not an assignment.
+ *     Every field the person changed before it arrived is touched (the
  *     shared tracker, `usePostboxComposeTouched`) and keeps their value; every
  *     other field takes the row's. Until then the state stays 'loading' (or
  *     'error' when the read failed), and autosave and send refuse to write a

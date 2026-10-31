@@ -285,8 +285,8 @@ describe('the way back into the welcome flow', () => {
 
 	it('offers it however much of the personal checklist is already done', () => {
 		// Every real step but the last: the member is deep into onboarding and has
-		// long since been "welcomed", which is exactly when /welcome used to be
-		// unreachable.
+		// long since been "welcomed", which is exactly when the first-login
+		// redirect no longer leads to /welcome.
 		const personalCompleted = new Set<ChecklistStepId>(['mailboxReady', 'aiConnected']);
 		const model = buildGettingStarted(input({ role: 'admin', personalCompleted }));
 		expect(allStepIds(model)).toContain(FINISH_SETUP_STEP.id);

@@ -1,5 +1,5 @@
 /**
- * The composer-target seam (#812): what each destination lets a composer do,
+ * The composer-target seam: what each destination lets a composer do,
  * and the pre-send checks that apply to it.
  */
 import { describe, expect, it } from 'vitest';

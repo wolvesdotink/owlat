@@ -3,11 +3,9 @@ import type { Id } from '@owlat/api/dataModel';
 /**
  * The one "Manage folders & labels" surface, and who is allowed to open it.
  *
- * Folder and label CRUD used to be scattered across the rail: a new-folder
- * button, an inline name input, per-row rename pencils and delete trashcans, a
- * new-label button, a second inline input, and a separate label-manager modal —
- * setup-time verbs occupying permanent chrome in the column you use to navigate.
- * They now live in one dialog, and the rail rows are pure navigation.
+ * Folder and label CRUD (create, rename, delete) are setup-time verbs, so they
+ * live in one dialog rather than as permanent chrome in the column you use to
+ * navigate, and the rail rows are pure navigation.
  *
  * The dialog keeps several ENTRY points (the rail's "More" group, a right-click
  * on any folder or label row) but exactly one rendering, so this is shared

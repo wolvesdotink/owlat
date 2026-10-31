@@ -9,7 +9,7 @@ import type { RenderOptions } from '../useEmailHtmlRendering';
 import { EMAIL_RENDERER_VERSION } from '@owlat/email-renderer/version';
 
 /**
- * The translation table's write (issue #1000): the overlay text and the HTML
+ * The translation table's write: the overlay text and the HTML
  * the send path delivers are built from one frozen row and travel together,
  * named by that row's revision. Rendered with the real email renderer, so the
  * assertions read what a recipient would get.

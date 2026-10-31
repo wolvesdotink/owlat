@@ -10,7 +10,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import { enableFeatures } from '../../__tests__/factories';
-import { VAPID_ENV, pushHarness, seedDevice, seedMailbox, seedMessage } from './pushFixtures';
+import {
+	VAPID_ENV,
+	planAndHold,
+	pushHarness,
+	seedDevice,
+	seedMailbox,
+	seedMessage,
+} from './pushFixtures';
 
 // Sibling `push/*` modules glob in as `../foo.ts`; convex-test resolves function
 // paths from the convex root, so re-root them to `../../push/foo.ts`.
@@ -87,10 +94,7 @@ async function seedDiscussion(t: T, options: { sealed: boolean }) {
 }
 
 async function prepareMention(t: T, messageId: Id<'chatMessages'>) {
-	const deliveries = await t.mutation(internal.push.dispatch.prepareDelivery, {
-		userId: USER,
-		event: { kind: 'chat', messageId, reason: 'mention' },
-	});
+	const deliveries = await planAndHold(t, USER, { kind: 'chat', messageId, reason: 'mention' });
 	return deliveries.map((delivery) => JSON.parse(delivery.payload));
 }
 

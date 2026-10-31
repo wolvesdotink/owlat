@@ -1,5 +1,5 @@
 /**
- * usePostboxCursorFeed — failed reads (#721).
+ * usePostboxCursorFeed — failed reads.
  *
  * A Postbox list renders `firstPageError` as its error state, so only a failed
  * FIRST page may set it: a failed "Load more" must leave the rows already on

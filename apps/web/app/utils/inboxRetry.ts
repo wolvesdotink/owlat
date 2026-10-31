@@ -5,7 +5,7 @@ import {
 } from '@owlat/shared/inboxRetry';
 
 /**
- * What Retry will do with a failed Team inbox message, as i18n keys (#1220).
+ * What Retry will do with a failed Team inbox message, as i18n keys.
  * The plan comes from the same rule the server applies
  * (`inbox/mutations.retryFailedMessage`), so the button never promises a
  * re-send the server turns into a re-draft, or the other way round.
@@ -35,8 +35,8 @@ export function inboxRetryCopy(message: InboxRetryFacts): InboxRetryCopy {
 
 /**
  * The toast after Retry went through, keyed by the plan the server reports it
- * took. A backend from before #1220 reports none and still re-drafts every
- * message, so the toast then stays neutral rather than guess.
+ * took. A backend without the plan field reports none and still re-drafts
+ * every message, so the toast then stays neutral rather than guess.
  */
 export function inboxRetryToast(taken: InboxRetryPlan | undefined): string {
 	return taken ? `dashboard.inbox.retry.${taken}.toast` : 'dashboard.inbox.retry.started';

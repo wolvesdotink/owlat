@@ -317,15 +317,25 @@
 	},
 	"overrides": [
 		{
-			// A maintenance script's stdout is its output: reports, generated
-			// records another gate parses, the result a developer reads. Product
-			// code keeps the global allowance, which has no console.log.
+			// A maintenance script's or a CLI command's stdout is its output:
+			// reports, generated records another gate parses, the result a
+			// developer reads. Product code keeps the global allowance, which has
+			// no console.log. The setup CLI's entry point and commands and the
+			// email preview generator are such programs outside a scripts
+			// directory; the setup CLI's lib/ stays under the global rule.
 			// Run from the root, oxlint matches these against the repository-
 			// relative path; a workspace `lint` (`--config ../../oxlintrc.json`)
 			// matches them against the absolute path, so the workspace patterns
 			// need the leading "**/". Root scripts are linted from the root only.
 			// scripts/__tests__/oxlint-console.test.ts runs both.
-			"files": ["scripts/**", "**/apps/*/scripts/**", "**/packages/*/scripts/**"],
+			"files": [
+				"scripts/**",
+				"**/apps/*/scripts/**",
+				"**/packages/*/scripts/**",
+				"**/apps/setup-cli/src/index.ts",
+				"**/apps/setup-cli/src/commands/**",
+				"**/packages/email-renderer/src/preview/generate.ts"
+			],
 			"rules": {
 				"no-console": ["error", { "allow": ["log", "info", "warn", "error"] }]
 			}

@@ -138,22 +138,22 @@ value is not a crash) and falls back to `mta`. Registering an adapter therefore
 makes a kind _reachable_; naming it in `EMAIL_PROVIDER` is what makes new
 domains use it.
 
-**But registering an adapter is not yet the whole wiring.** Relay-identity
-provisioning is: both the forward path (a domain reaching `verified`) and the
-catch-up drain walk this registry and ask `ensureRelayIdentity`, so a newly
-registered kind is on both the moment it registers (the seams plan's P0.4).
-What `domains/returnPathProviders.ts` still carries `providerType` branches for is the
-RETURN-PATH family — which `mailFrom` bundle a custom return-path host
-publishes, and which reflection action pushes it to the provider — and a new
-kind silently gets neither. That capability has no home on the adapter
-interface yet. It is one of the surviving families of kind literals, and the
-families are DATA rather than prose, split by what the literal is. A kind
-_declaration_ (`const X = 'ses'`) is enumerated by `SURVIVING_KIND_LITERALS` in
-`apps/api/scripts/check-kind-literal-custody.ts`, with
-its family and its owner; a _comparison_ — the return-path branches included —
-is enumerated by the ratchet's allowlist below. Both fail in both directions:
-an unenumerated literal fails, and an entry whose literal has been swept fails
-until it is deleted.
+Relay-identity provisioning walks the same registry: both the forward path (a
+domain reaching `verified`) and the catch-up drain ask `ensureRelayIdentity`, so
+a newly registered kind is on both the moment it registers. So does the custom
+return path: a kind that supports one declares `returnPath`
+(`SendingDomainReturnPath` — which hosts fit, the `mailFrom` bundle a host
+publishes, the reflection action that tells the provider, and the host the
+bounce envelope uses), and the lifecycle's create check, `setReturnPathHost`, its
+post-registration reconcile and the checklist's return-path item all look it up
+through `domains/returnPathProviders.ts`. A kind without it refuses a custom host.
+
+Kind literals outside the adapter folders are checked by two gates, split by
+what the literal is. A kind _declaration_ (`const X = 'ses'`) inside
+`apps/api/convex` fails `apps/api/scripts/check-kind-literal-custody.ts`
+outright; a _comparison_ is enumerated by the ratchet's allowlist below, which
+fails in both directions: an unenumerated literal fails, and an entry whose
+literal has been swept fails until it is deleted.
 
 The comparison half is `bun run lint:providers`
 (`scripts/check-provider-identity.sh`), the CI gate that carries the rule across

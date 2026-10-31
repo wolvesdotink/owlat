@@ -18,6 +18,7 @@ vi.stubGlobal('onBeforeUnmount', onBeforeUnmount);
 import PostboxMailboxConnectForm from '../PostboxMailboxConnectForm.vue';
 import PostboxGoogleSignIn from '../PostboxGoogleSignIn.vue';
 import { createTestI18n, expectFullyLocalized, i18nStubs } from '~/__tests__/i18n';
+import { tooltipOf } from '~/__tests__/tooltip';
 
 vi.stubGlobal('useI18n', i18nStubs.useI18n);
 import type { MailProvider } from '~/utils/mailAutodiscover';
@@ -46,6 +47,7 @@ const CONNECT = 'Connect mailbox';
 const CONNECT_SHARED = 'Connect team inbox';
 const UPDATE = 'Update mail credentials';
 const UPDATE_SHARED = 'Update team inbox credentials';
+const TEST = 'Test mail connection';
 
 // One distinct run mock per backend operation, keyed on its label.
 let runs: Map<string, ReturnType<typeof vi.fn>>;
@@ -243,6 +245,34 @@ describe('PostboxMailboxConnectForm submit dispatch', () => {
 		expect(runFor(CONNECT)).toBeDefined();
 		expect(runFor(CONNECT)!).toHaveBeenCalledTimes(1);
 		expect(runFor(CONNECT_SHARED)).not.toHaveBeenCalled();
+	});
+});
+
+describe('PostboxMailboxConnectForm Test connection', () => {
+	const testButton = (wrapper: VueWrapper) =>
+		wrapper.findAll('button').find((button) => button.text() === 'Test connection')!;
+
+	it('stays reachable without a password, says why in a tooltip, and tests nothing', async () => {
+		const wrapper = mountForm({ mode: 'connect' });
+		const button = testButton(wrapper);
+		expect(button.attributes('title')).toBeUndefined();
+		expect(button.attributes('disabled')).toBeUndefined();
+		expect(button.attributes('aria-disabled')).toBe('true');
+		expect(tooltipOf(wrapper, button)).toBe('Enter the password to test the connection');
+		await button.trigger('click');
+		await flushPromises();
+		expect(runFor(TEST)).not.toHaveBeenCalled();
+	});
+
+	it('runs the test once the password is in, with no tooltip left to explain', async () => {
+		const wrapper = mountForm({ mode: 'connect' });
+		await fill(wrapper);
+		const button = testButton(wrapper);
+		expect(button.attributes('aria-disabled')).toBeUndefined();
+		expect(tooltipOf(wrapper, button)).toBeUndefined();
+		await button.trigger('click');
+		await flushPromises();
+		expect(runFor(TEST)).toHaveBeenCalledTimes(1);
 	});
 });
 

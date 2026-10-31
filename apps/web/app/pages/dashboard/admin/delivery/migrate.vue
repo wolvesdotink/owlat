@@ -122,14 +122,11 @@ const STATE_CLASS: Readonly<Record<MigrationStepState, string>> = {
 
 <template>
 	<div>
-		<div class="mb-6">
-			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-				{{ t('dashboard.admin.delivery.migrate.title') }}
-			</h1>
-			<p class="mt-2 max-w-3xl text-sm text-text-secondary">
-				{{ t('dashboard.admin.delivery.migrate.lede') }}
-			</p>
-		</div>
+		<UiPageHeader
+			class="mb-6"
+			:title="t('dashboard.admin.delivery.migrate.title')"
+			:description="t('dashboard.admin.delivery.migrate.lede')"
+		/>
 
 		<ol class="space-y-4" data-testid="migration-steps">
 			<li

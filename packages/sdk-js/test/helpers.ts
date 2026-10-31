@@ -34,10 +34,6 @@ export function mockFetch(options: MockFetchOptions = {}) {
 	return mockFn;
 }
 
-export function mockFetchError(error: Error) {
-	return vi.spyOn(globalThis, 'fetch').mockRejectedValue(error);
-}
-
 export const TEST_RATE_LIMIT_HEADERS: Record<string, string> = {
 	'X-RateLimit-Limit': '100',
 	'X-RateLimit-Remaining': '99',

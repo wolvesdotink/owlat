@@ -54,7 +54,7 @@ test.describe('app shell', () => {
 	test('lets the page show the blob: images and PDF it creates itself', async ({ page }) => {
 		// The attachment lightbox, chip thumbnails, pasted-image previews and the
 		// upload size probes all load `URL.createObjectURL` output. Under a policy
-		// without `blob:` the browser refuses them with nothing thrown (#1292), so
+		// without `blob:` the browser refuses them with nothing thrown, so
 		// this loads one of each the way those surfaces do and reads the outcome.
 		await page.addInitScript(() => {
 			(window as unknown as { __cspViolations: string[] }).__cspViolations = [];

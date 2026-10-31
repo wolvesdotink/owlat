@@ -3,14 +3,14 @@
 import { v } from 'convex/values';
 import { authedAction } from '../lib/authedFunctions';
 import type { ActionCtx } from '../_generated/server';
-import { internal, api } from '../_generated/api';
-import type { EmailSendParams } from '../lib/sendProviders';
+import { internal } from '../_generated/api';
+import type { FunctionArgs } from 'convex/server';
+import type { TestSendCommit } from './testSendCommit';
 import { composeForSend } from '../delivery/sendComposition';
 import { formatFromAddress } from '../lib/emailProviders/domainVerification';
 import { senderNotAllowedMessage } from './senders';
 import { assertCampaignsEnabledInAction } from './_helpers';
 import { isValidEmail } from '../lib/inputGuards';
-import { normalizeEmail } from '@owlat/shared';
 import {
 	throwNotFound,
 	throwInvalidInput,
@@ -22,72 +22,32 @@ import {
 import { isLive } from '../lib/softDelete';
 
 /**
- * Guard the test/preview send actions: per-user rate limit + restrict
- * recipients to the org's own member inboxes. Test sends emit real, unscanned,
- * caller-controllable HTML from the verified sending domain, so a member could
- * otherwise relay phishing to arbitrary external addresses. Throws on violation.
+ * The one commit of a test send (`campaigns/testSendCommit.ts`): the verified
+ * sending domain, the sender gate, the rate limit, the member-inbox check and
+ * the queued Sends. Throws the gate's refusal; a missing delivery provider is returned, because the two
+ * actions report it differently.
  */
-async function guardTestSend(
-	ctx: Pick<ActionCtx, 'runQuery' | 'runMutation'>,
-	recipients: string[]
-): Promise<string> {
-	const { allowed, callerUserId, organizationId } = await ctx.runQuery(
-		internal.campaigns.sendQueries.getTestSendAllowedRecipients,
-		{}
-	);
-	const rl = await ctx.runMutation(internal.campaigns.sendQueries.checkTestSendRateLimit, {
-		userId: callerUserId,
-	});
-	if (!rl.ok) {
-		throwRateLimited('Too many test emails — please wait a moment and try again.', rl.retryAfter);
+async function queueTestSends(
+	ctx: Pick<ActionCtx, 'runMutation'>,
+	args: FunctionArgs<typeof internal.campaigns.testSendCommit.commitTestSends>
+): Promise<Extract<TestSendCommit, { kind: 'queued' | 'no_provider' }>> {
+	const outcome = await ctx.runMutation(internal.campaigns.testSendCommit.commitTestSends, args);
+	if (outcome.kind === 'domain_not_verified') throwInvalidState(outcome.message);
+	if (outcome.kind === 'sender_not_allowed') {
+		throwForbidden(senderNotAllowedMessage(args.fromEmail));
 	}
-	const allowedSet = new Set(allowed);
-	for (const email of recipients) {
-		if (!allowedSet.has(normalizeEmail(email))) {
-			throwForbidden(
-				`Test emails can only be sent to your organization's own member addresses. "${email}" is not a member of this organization.`
-			);
-		}
+	if (outcome.kind === 'rate_limited') {
+		throwRateLimited(
+			'Too many test emails — please wait a moment and try again.',
+			outcome.retryAfter
+		);
 	}
-	return organizationId;
-}
-
-/**
- * Curated-sender gate for the test/preview actions (2026-07-10 plan, decision
- * 8): a test send uses the same from-address a real send would, so hold it to
- * the same list/toggle rule the campaign pre-flight enforces. The dedicated
- * verified-domain check each caller runs first stays the floor. Throws
- * `forbidden` with the shared `senderNotAllowedMessage` copy on violation.
- */
-async function assertCampaignSenderAllowed(
-	ctx: Pick<ActionCtx, 'runQuery' | 'runMutation'>,
-	fromEmail: string
-): Promise<void> {
-	// Self-heal the common post-upgrade case (empty curated list, toggle OFF, no
-	// management UI until d2/d3) before gating: seed the org default sender so a
-	// test send from the org's own default address keeps working. Idempotent — a
-	// no-op read once any sender exists.
-	await ctx.runMutation(internal.campaigns.senders.seedDefaultSender, {});
-	const allowed = await ctx.runQuery(internal.campaigns.senders.checkSenderAllowed, { fromEmail });
-	if (!allowed) {
-		throwForbidden(senderNotAllowedMessage(fromEmail));
+	if (outcome.kind === 'recipient_not_member') {
+		throwForbidden(
+			`Test emails can only be sent to your organization's own member addresses. "${outcome.email}" is not a member of this organization.`
+		);
 	}
-}
-
-export async function enqueueGovernedTestEmail(
-	ctx: ActionCtx,
-	params: EmailSendParams,
-	organizationId: string
-) {
-	const { sendId } = await ctx.runMutation(internal.delivery.enqueueTestSend.enqueueTestSend, {
-		email: params.to,
-		organizationId,
-		from: params.from,
-		replyTo: params.replyTo,
-		subject: params.subject,
-		html: params.html,
-	});
-	return { sendId };
+	return outcome;
 }
 
 // Action to send a test email for a campaign
@@ -126,24 +86,6 @@ export const sendTestEmail = authedAction({
 		if (!campaign.fromEmail) {
 			throwInvalidState('Campaign has no from email');
 		}
-
-		// Validate sending domain is verified
-		const domainStatus = await ctx.runQuery(api.domains.domains.getEmailDomainVerificationStatus, {
-			email: campaign.fromEmail,
-		});
-
-		if (!domainStatus.verified) {
-			throwInvalidState(
-				domainStatus.error ||
-					`Cannot send test email: domain "${domainStatus.domain}" is not verified. Please verify this domain in Settings > Domains.`
-			);
-		}
-
-		await assertCampaignSenderAllowed(ctx, campaign.fromEmail);
-
-		// Rate-limit + restrict the recipient to an org-member inbox so the
-		// preview action can't be used to relay mail to arbitrary addresses.
-		const organizationId = await guardTestSend(ctx, [args.testEmail]);
 
 		// Get email template content for specified language (or default)
 		const langContent = await ctx.runQuery(
@@ -190,23 +132,22 @@ export const sendTestEmail = authedAction({
 		const langSuffix = args.language ? ` (${args.language.toUpperCase()})` : '';
 		const testSubject = `[TEST${langSuffix}] ${composed.subject}`;
 
-		// Queue a durable test Send through the normal worker → governed dispatch
-		// → completion chain. The action reports queue acceptance, not delivery.
-		const { sendId } = await enqueueGovernedTestEmail(
-			ctx,
-			{
-				to: args.testEmail,
-				from,
-				replyTo: campaign.replyTo,
-				subject: testSubject,
-				html: composed.html,
-			},
-			organizationId
-		);
+		// COMMIT. Queue a durable test Send through the normal worker → governed
+		// dispatch → completion chain, behind the sender, rate-limit and
+		// member-inbox gates. The action reports queue acceptance, not delivery.
+		const queued = await queueTestSends(ctx, {
+			fromEmail: campaign.fromEmail,
+			from,
+			replyTo: campaign.replyTo,
+			subject: testSubject,
+			html: composed.html,
+			recipients: [args.testEmail],
+		});
+		if (queued.kind === 'no_provider') throwInvalidState(queued.message);
 
 		return {
 			success: true,
-			id: sendId,
+			id: queued.sendIds[0],
 			message: `Test email queued for ${args.testEmail}`,
 			language: langContent.resolvedLanguage,
 		};
@@ -252,25 +193,6 @@ export const sendTestEmailFromTemplate = authedAction({
 			}
 		}
 
-		// Rate-limit + restrict recipients to org-member inboxes so the preview
-		// action can't relay attacker-controlled HTML to arbitrary external
-		// addresses from the verified sending domain.
-		const organizationId = await guardTestSend(ctx, args.testEmails);
-
-		// Validate sending domain is verified
-		const domainStatus = await ctx.runQuery(api.domains.domains.getEmailDomainVerificationStatus, {
-			email: args.fromEmail,
-		});
-
-		if (!domainStatus.verified) {
-			throwInvalidState(
-				domainStatus.error ||
-					`Cannot send test email: domain "${domainStatus.domain}" is not verified. Please verify this domain in Settings > Domains.`
-			);
-		}
-
-		await assertCampaignSenderAllowed(ctx, args.fromEmail);
-
 		// Build from address
 		const from = formatFromAddress(args.fromEmail, args.fromName);
 
@@ -291,54 +213,32 @@ export const sendTestEmailFromTemplate = authedAction({
 		const personalizedSubject = `[TEST] ${composed.subject}`;
 		const personalizedHtml = composed.html;
 
-		// Send to all test recipients via the dispatch helper (uniform
-		// retry + health recording per attempt).
-		const results: Array<{ email: string; success: boolean; error?: string }> = [];
-
-		for (const testEmail of args.testEmails) {
-			try {
-				await enqueueGovernedTestEmail(
-					ctx,
-					{
-						to: testEmail,
-						from,
-						subject: personalizedSubject,
-						html: personalizedHtml,
-					},
-					organizationId
-				);
-				results.push({
-					email: testEmail,
-					success: true,
-				});
-			} catch (error) {
-				results.push({
-					email: testEmail,
-					success: false,
-					error: error instanceof Error ? error.message : 'Unknown error',
-				});
-			}
-		}
-
-		const successCount = results.filter((r) => r.success).length;
-		const failedCount = results.filter((r) => !r.success).length;
-
-		if (failedCount > 0 && successCount === 0) {
+		// COMMIT. One queued test Send per recipient, behind the sender,
+		// rate-limit and member-inbox gates (a non-member recipient refuses the
+		// whole call, so the preview cannot relay to an arbitrary address). All
+		// recipients are queued or none is.
+		const queued = await queueTestSends(ctx, {
+			fromEmail: args.fromEmail,
+			from,
+			subject: personalizedSubject,
+			html: personalizedHtml,
+			recipients: args.testEmails,
+		});
+		if (queued.kind === 'no_provider') {
 			throwInternal(
-				`Failed to send test emails: ${results
-					.filter((r) => !r.success)
-					.map((r) => `${r.email}: ${r.error}`)
+				`Failed to send test emails: ${args.testEmails
+					.map((email) => `${email}: ${queued.message}`)
 					.join(', ')}`
 			);
 		}
+		const results: Array<{ email: string; success: boolean; error?: string }> = args.testEmails.map(
+			(email) => ({ email, success: true })
+		);
 
 		return {
 			success: true,
 			results,
-			message:
-				failedCount > 0
-					? `Queued ${successCount} test email(s), ${failedCount} failed to queue`
-					: `Test email${successCount > 1 ? 's' : ''} queued for ${args.testEmails.join(', ')}`,
+			message: `Test email${results.length > 1 ? 's' : ''} queued for ${args.testEmails.join(', ')}`,
 		};
 	},
 });

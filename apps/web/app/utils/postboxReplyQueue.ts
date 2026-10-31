@@ -13,7 +13,7 @@ export type ReplyQueueUrgency = 'high' | 'normal' | 'low';
 /**
  * The one answer queue, narrowed to one mailbox. The personal Reply Queue page
  * is gone; every "waiting on your reply" entry in the mailbox links here so a
- * mailbox count and the queue it opens always describe the same rows (#767).
+ * mailbox count and the queue it opens always describe the same rows.
  */
 export function answerQueueHrefFor(mailboxId: string): string {
 	return `/dashboard/answer?in=${encodeURIComponent(mailboxId)}`;

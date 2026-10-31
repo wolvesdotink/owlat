@@ -10,6 +10,7 @@
  * back out. The page hides the bar when AI is off.
  */
 import { useAnswerAiFocus } from '~/composables/useAnswerMode';
+import { useShortcutLabels } from '~/composables/useShortcutLabels';
 import type { AskPhase } from '~/composables/useAnswerAskSession';
 
 const props = withDefaults(
@@ -43,6 +44,10 @@ function submit() {
 }
 
 const unregister = useAnswerAiFocus().register(() => inputEl.value?.focus());
+
+// The tooltip is about the key that lands here, so it shows only while that key fires.
+const { labelFor } = useShortcutLabels();
+const jumpKey = computed(() => labelFor('answer.draftWithAi'));
 onBeforeUnmount(unregister);
 
 const statusLine = computed(() => {
@@ -77,23 +82,27 @@ const inputId = useId();
 				maxlength="500"
 				data-testid="answer-ai-instruction"
 			/>
-			<UiButton
-				type="submit"
-				size="sm"
-				variant="secondary"
-				class="shrink-0"
-				:disabled="busy || isHeld"
-				:title="t('components.answer.aiBar.shortcut')"
-				data-testid="answer-ai-draft"
+			<UiTooltip
+				:text="jumpKey ? t('components.answer.aiBar.shortcut') : undefined"
+				:shortcut="jumpKey ?? undefined"
 			>
-				<Icon
-					v-if="busy"
-					name="lucide:loader-2"
-					class="mr-1 size-3.5 animate-spin motion-reduce:animate-none"
-					aria-hidden="true"
-				/>
-				{{ t('components.answer.aiBar.draft') }}
-			</UiButton>
+				<UiButton
+					type="submit"
+					size="sm"
+					variant="secondary"
+					class="shrink-0"
+					:disabled="busy || isHeld"
+					data-testid="answer-ai-draft"
+				>
+					<Icon
+						v-if="busy"
+						name="lucide:loader-2"
+						class="mr-1 size-3.5 animate-spin motion-reduce:animate-none"
+						aria-hidden="true"
+					/>
+					{{ t('components.answer.aiBar.draft') }}
+				</UiButton>
+			</UiTooltip>
 		</form>
 		<p
 			v-if="statusLine"

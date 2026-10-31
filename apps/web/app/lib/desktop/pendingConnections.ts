@@ -6,8 +6,8 @@
  * token back via `owlat://auth?ott=…&state=…`, and `completeConnection()` looks
  * the nonce up again to learn WHICH instance is being connected.
  *
- * That lookup used to read an in-memory Map, which made the cold-start path
- * impossible: if the app was not already running, macOS LAUNCHES it to deliver
+ * That lookup cannot read an in-memory Map, which would make the cold-start
+ * path impossible: if the app was not already running, macOS LAUNCHES it to deliver
  * the deep link, so the process handling `owlat://auth` is a brand-new one whose
  * Map is empty — every such handshake died as a bogus "state mismatch". Keeping
  * the records in `localStorage` (the webview's durable origin storage, which

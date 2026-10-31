@@ -1,6 +1,6 @@
 /**
  * What the phone tab bar's "More" lists: every top-level destination the tab
- * bar does not already hold (#778).
+ * bar does not already hold.
  *
  * "More" used to open the whole navigation drawer, the same one the header's
  * menu button opens, so the phone offered two routes to one long list and

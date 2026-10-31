@@ -6,7 +6,8 @@
  *   - every write to `emailBlocks` (insert + update + delete)
  *   - every update to `emailBlocks.usageCount` (called from both consumer
  *     lifecycles' `update_block_usage_counts` effect — the canonical path)
- *   - the propagation walker that touches consumer rows in
+ *   - the propagation walker (`emailBlocks/consumers.ts`, run only from
+ *     this module's effects) that touches consumer rows in
  *     `emailTemplates` (live ones; `reconcileRestoredLinks` catches up a
  *     restored one) + `transactionalEmails` after a saved-block content
  *     change (replaces nested blocks atomically with `htmlRenderState.stale:
@@ -16,7 +17,7 @@
  * Not a lifecycle in the `status`-column sense — saved blocks have no
  * state machine. Mirrors the **Topic subscription (module)** shape: row
  * writes (create, update, duplicate, remove) emit a typed atomic effect
- * list. The walker is one private helper consumed by three effect handlers.
+ * list. The walker is one helper consumed by three effect handlers.
  *
  * Effects:
  *   audit_log                 — fires on every entry.
@@ -28,25 +29,22 @@
  */
 
 import { v } from 'convex/values';
-import { normalizeBlockTreeIds } from '@owlat/shared/blockTree';
-import type { SavedBlockRef } from '@owlat/shared/types';
 import type { MutationCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { recordAuditLog, type AuditAction } from '../lib/auditLog';
 import { rerenderBlocksPool } from './renderingPool';
-import { nextContentRevision } from '../lib/contentRevision';
 import { sanitizeStoredBlocksJson } from '../lib/emailContentSanitize';
+import {
+	detachLinkedBlocks,
+	parseContentBlocks,
+	renameLinkedBlocks,
+	replaceLinkedBlocks,
+	walkConsumers,
+} from './consumers';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
-
-interface EditorBlock {
-	id: string;
-	type: string;
-	content: unknown;
-	savedBlockRef?: SavedBlockRef;
-}
 
 type SavedBlockCreateOutcome = {
 	ok: true;
@@ -99,201 +97,6 @@ type Effect =
 			templateIds: Id<'emailTemplates'>[];
 			transactionalIds: Id<'transactionalEmails'>[];
 	  };
-
-// ─── Walker (canonical parseContentBlocks lives here) ───────────────────────
-
-/**
- * Parse email content JSON into an array of EditorBlocks. Handles the
- * three content-JSON shapes that exist on disk: multi-block
- * `{ blocks: [...] }`, legacy bare array, and single-block
- * `{ type, content }`.
- *
- * A Block or accordion section without an id (legacy content never had one)
- * gets one, the same deterministic id the editor's `parseStoredBlocks`
- * gives it, so the renderer never meets an id-less Block (#1432) and a
- * translation overlay keyed by that id applies here too. Repeated ids are
- * kept: renewing one on read would detach the copy from the overlay it
- * shares without anything being written.
- *
- * Exported so the `'use node'` rerender action in `rendering.ts` can
- * reuse the canonical implementation rather than re-declare it.
- */
-export function parseContentBlocks(contentJson: string): EditorBlock[] {
-	try {
-		return normalizeBlockTreeIds(contentEntries(JSON.parse(contentJson)));
-	} catch {
-		return [];
-	}
-}
-
-/** The stored entry list for whichever content shape `parsed` is. */
-function contentEntries(parsed: { blocks?: unknown; type?: unknown; content?: unknown } | null) {
-	if (parsed?.blocks && Array.isArray(parsed.blocks)) {
-		return parsed.blocks as EditorBlock[];
-	}
-	if (Array.isArray(parsed)) {
-		return parsed as EditorBlock[];
-	}
-	if (parsed?.type && parsed?.content) {
-		return [parsed as EditorBlock];
-	}
-	return [];
-}
-
-function serializeContentBlocks(blocks: EditorBlock[]): string {
-	return JSON.stringify(blocks);
-}
-
-interface WalkResult {
-	templateIds: Id<'emailTemplates'>[];
-	transactionalIds: Id<'transactionalEmails'>[];
-}
-
-/**
- * Walk both consumer tables for every row whose `linkedBlockIds`
- * contains `blockId`. For each row, run the transform on its parsed
- * block list; if the transform returns a non-null array, patch the row
- * with the serialized content. `extraPatch` is merged into every patched
- * row (used by `propagate_content` to set `htmlRenderState.stale: true`
- * atomically with the content write; and by `detach_all` to strip the
- * `linkedBlockIds` array entry).
- */
-async function walkConsumers(
-	ctx: MutationCtx,
-	blockId: Id<'emailBlocks'>,
-	transform: (blocks: EditorBlock[]) => EditorBlock[] | null,
-	extraPatch?: (row: Doc<'emailTemplates'> | Doc<'transactionalEmails'>) => Record<string, unknown>
-): Promise<WalkResult> {
-	const templateIds: Id<'emailTemplates'>[] = [];
-	const transactionalIds: Id<'transactionalEmails'>[] = [];
-	const now = Date.now();
-
-	// bounded: emailTemplates is intrinsically small (one row per saved
-	// template). Convex doesn't natively index array fields; an
-	// `emailBlockConsumers` sidecar is a possible follow-up.
-	const templates = await ctx.db.query('emailTemplates').collect(); // bounded: email templates (org-scale library)
-	for (const template of templates) {
-		// A template in Recently deleted keeps the content it was deleted with;
-		// `reconcileRestoredLinks` catches it up when it is restored.
-		if (template.deletedAt !== undefined) continue;
-		const linkedBlockIds = template.linkedBlockIds ?? [];
-		if (!linkedBlockIds.includes(blockId)) continue;
-
-		const blocks = parseContentBlocks(template.content);
-		const updated = transform(blocks);
-		if (!updated) continue;
-
-		const patch: Record<string, unknown> = {
-			content: serializeContentBlocks(updated),
-			// The content changed under any open editor: its draft is now stale.
-			contentRevision: nextContentRevision(template),
-			updatedAt: now,
-			...extraPatch?.(template),
-		};
-		await ctx.db.patch(template._id, patch as Partial<Doc<'emailTemplates'>>);
-		templateIds.push(template._id);
-	}
-
-	// bounded: transactionalEmails is intrinsically small (one row per
-	// per-instance transactional template).
-	const transactionalEmails = await ctx.db.query('transactionalEmails').collect(); // bounded: transactional-email templates (org-scale library)
-	for (const email of transactionalEmails) {
-		const linkedBlockIds = email.linkedBlockIds ?? [];
-		if (!linkedBlockIds.includes(blockId)) continue;
-
-		const blocks = parseContentBlocks(email.content);
-		const updated = transform(blocks);
-		if (!updated) continue;
-
-		const patch: Record<string, unknown> = {
-			content: serializeContentBlocks(updated),
-			// The content changed under any open editor: its draft is now stale.
-			contentRevision: nextContentRevision(email),
-			updatedAt: now,
-			...extraPatch?.(email),
-		};
-		await ctx.db.patch(email._id, patch as Partial<Doc<'transactionalEmails'>>);
-		transactionalIds.push(email._id);
-	}
-
-	return { templateIds, transactionalIds };
-}
-
-/**
- * Replace each group of blocks referencing `savedBlockId` with a freshly
- * cloned copy of `newBlocks`, preserving the original `groupId` and the
- * updated `blockName`. Returns null when no group references the block
- * (so the walker can skip the patch).
- */
-function replaceLinkedBlocks(
-	emailBlocks: EditorBlock[],
-	savedBlockId: string,
-	newBlocks: EditorBlock[],
-	newName: string
-): EditorBlock[] | null {
-	const groupIds = new Set<string>();
-	for (const block of emailBlocks) {
-		if (block.savedBlockRef?.blockId === savedBlockId) {
-			groupIds.add(block.savedBlockRef.groupId);
-		}
-	}
-	if (groupIds.size === 0) return null;
-
-	const result: EditorBlock[] = [];
-	const processedGroups = new Set<string>();
-
-	for (const block of emailBlocks) {
-		if (block.savedBlockRef?.blockId === savedBlockId) {
-			const groupId = block.savedBlockRef.groupId;
-			if (!processedGroups.has(groupId)) {
-				processedGroups.add(groupId);
-				for (const newBlock of newBlocks) {
-					result.push({
-						...JSON.parse(JSON.stringify(newBlock)),
-						id: `block_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`,
-						savedBlockRef: {
-							blockId: savedBlockId,
-							groupId,
-							blockName: newName,
-						},
-					});
-				}
-			}
-		} else {
-			result.push(block);
-		}
-	}
-	return result;
-}
-
-function renameLinkedBlocks(
-	emailBlocks: EditorBlock[],
-	savedBlockId: string,
-	newName: string
-): EditorBlock[] | null {
-	let changed = false;
-	for (const block of emailBlocks) {
-		if (block.savedBlockRef?.blockId === savedBlockId) {
-			block.savedBlockRef.blockName = newName;
-			changed = true;
-		}
-	}
-	return changed ? emailBlocks : null;
-}
-
-function detachLinkedBlocks(
-	emailBlocks: EditorBlock[],
-	savedBlockId: string
-): EditorBlock[] | null {
-	let changed = false;
-	for (const block of emailBlocks) {
-		if (block.savedBlockRef?.blockId === savedBlockId) {
-			delete block.savedBlockRef;
-			changed = true;
-		}
-	}
-	return changed ? emailBlocks : null;
-}
 
 // ─── Effect runner ──────────────────────────────────────────────────────────
 
@@ -572,53 +375,6 @@ export const remove = internalMutation({
 		return { ok: true };
 	},
 });
-
-/**
- * The link changes a template restored from Recently deleted missed while the
- * walker passed it by: references to saved blocks deleted meanwhile are
- * detached (`savedBlockRef` and `linkedBlockIds` entry, as `detach_all` does)
- * and renamed blocks' names updated. Content edits to a block are not applied:
- * the template comes back as it was deleted, and the next edit of the block
- * reaches it like any other consumer. Returns the patch, or undefined when
- * nothing changed. The caller applies the usage counts of the kept links.
- */
-export async function reconcileRestoredLinks(
-	ctx: MutationCtx,
-	template: Doc<'emailTemplates'>
-): Promise<
-	| Pick<Doc<'emailTemplates'>, 'content' | 'linkedBlockIds' | 'contentRevision' | 'updatedAt'>
-	| undefined
-> {
-	const linkedBlockIds = template.linkedBlockIds ?? [];
-	if (linkedBlockIds.length === 0) return undefined;
-	const names = new Map<string, string | null>();
-	for (const blockId of linkedBlockIds) {
-		names.set(blockId, (await ctx.db.get(blockId as Id<'emailBlocks'>))?.name ?? null);
-	}
-
-	const blocks = parseContentBlocks(template.content);
-	let changed = false;
-	for (const block of blocks) {
-		const ref = block.savedBlockRef;
-		if (!ref || !names.has(ref.blockId)) continue;
-		const name = names.get(ref.blockId);
-		if (name === null) {
-			delete block.savedBlockRef;
-			changed = true;
-		} else if (name !== undefined && name !== ref.blockName) {
-			ref.blockName = name;
-			changed = true;
-		}
-	}
-	const kept = linkedBlockIds.filter((id) => names.get(id) !== null);
-	if (!changed && kept.length === linkedBlockIds.length) return undefined;
-	return {
-		content: changed ? serializeContentBlocks(blocks) : template.content,
-		linkedBlockIds: kept,
-		contentRevision: changed ? nextContentRevision(template) : template.contentRevision,
-		updatedAt: Date.now(),
-	};
-}
 
 /**
  * Cross-cutting helper for the **Email template lifecycle (module)** and

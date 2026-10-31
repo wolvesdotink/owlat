@@ -1,8 +1,8 @@
 /**
  * The web presentation map for knowledge entries has to cover every entry type
- * and source the backend can store. It once knew seven of the nine types, so
- * policy and FAQ entries (canonical answers) rendered with an empty circle, had
- * no filter tab and showed their source as the raw value "curated" (#805).
+ * and source the backend can store. An entry type it misses renders with an
+ * empty circle and gets no filter tab, and a source it misses shows as the raw
+ * value (such as "curated").
  */
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';

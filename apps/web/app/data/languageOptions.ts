@@ -81,7 +81,7 @@ export interface TimezoneOption {
 
 /**
  * The single timezone catalog for contact-level pickers (value '' = "use the
- * campaign default"). Previously inlined in `useContactDetail`.
+ * campaign default").
  */
 export const timezoneOptions: TimezoneOption[] = [
 	{ value: '', label: 'shared.data.languageOptions.notSetCampaignDefault' },

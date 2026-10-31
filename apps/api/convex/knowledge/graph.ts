@@ -4,103 +4,65 @@
  * CRUD operations and search for typed knowledge entries.
  * Supports semantic search (vector), full-text search, and
  * contact-scoped retrieval.
+ *
+ * Every function of the graph is registered here, so callers address it as
+ * `knowledge.graph.*`. The handlers that read or write `knowledgeRelations`
+ * stay in this file, the relation seam `scripts/check-graph-scope.sh`
+ * reviews; the other handlers live beside it: `entryReads.ts`,
+ * `entryWrites.ts` and `policyEntries.ts`.
  */
 
 import { v } from 'convex/values';
-import { literalUnion } from '../lib/literalUnion';
 import { internalQuery } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
-import type { MutationCtx } from '../_generated/server';
-import type { Doc, Id } from '../_generated/dataModel';
+import type { Doc } from '../_generated/dataModel';
 import { publicQuery } from '../lib/authedFunctions';
-import { hasPermission, requirePermission } from '../lib/sessionOrganization';
-import type { MutationSessionContext } from '../lib/sessionOrganization';
 import { isSharedInboxReader } from '../inbox/access';
 import {
 	isKnowledgeEntryVisible,
 	knowledgeAdminMutation,
 	knowledgeMutation,
 	loadWritableEntry,
-	pageLimit,
 	resolveKnowledgeViewer,
-	takeVisibleEntries,
 } from './visibility';
 import { batchGet } from '../_utils/batchLoader';
-import { throwForbidden, throwInvalidInput } from '../_utils/errors';
-import { entryKeysForType } from '../lib/aiRouting/embeddingRegistry';
+import { throwInvalidInput } from '../_utils/errors';
+import { relationTypeValidator } from '../schema/knowledge';
+import { readOpenCommitments, type OpenCommitment } from './commitmentFacets';
+import { syncEntryContacts } from './entryContacts';
 import {
-	noteCorpusInsert,
-	patchCorpusRow,
-	vectorFieldsForCommit,
-} from '../lib/aiRouting/embeddingActivation';
-import { measuredEmbeddingSpaceValidator } from '../lib/validators/embedding';
-import { logInfo } from '../lib/runtimeLog';
-import { findDuplicateEntry, resolveMemberAccess } from './entryDedupe';
+	ftsRankedIdsArgs,
+	ftsRankedIdsHandler,
+	getByContactArgs,
+	getByContactHandler,
+	getByIdsArgs,
+	getByIdsHandler,
+	listAllArgs,
+	listAllHandler,
+	listByTypeArgs,
+	listByTypeHandler,
+	searchArgs,
+	searchHandler,
+} from './entryReads';
 import {
-	entryTypeValidator,
-	relationTypeValidator,
-	commitmentStatusValidator,
-	POLICY_ENTRY_TYPES,
-	knowledgeEntriesFields,
-} from '../schema/knowledge';
-import { optionalFields, pick } from '../lib/validators/fields';
+	createEntryArgs,
+	createEntryHandler,
+	recordAccessArgs,
+	recordAccessHandler,
+	requireCuratedWriter,
+	saveEntryArgs,
+	saveEntryHandler,
+	setCommitmentStatusArgs,
+	setCommitmentStatusHandler,
+	updateEntryArgs,
+	updateEntryHandler,
+} from './entryWrites';
 import {
-	commitmentFacetsOf,
-	readOpenCommitments,
-	syncCommitmentFacets,
-	type CommitmentFacets,
-	type OpenCommitment,
-} from './commitmentFacets';
-
-// ============================================================
-// Contact junction helpers
-// ============================================================
-
-/**
- * Write the `knowledgeEntryContacts` junction rows that mirror an entry's
- * `contactIds`. The array lives on the entry for the reads that still want it
- * inline; the junction is the index-able copy `getByContact` queries. Each row
- * carries the entry's open-commitment facets (knowledge/commitmentFacets.ts).
- * Call this right after inserting an entry — the entry is brand-new, so there
- * are no stale junction rows to reconcile. For an in-place edit or teardown use
- * `syncEntryContacts` (delete-then-reinsert) instead.
- */
-async function insertEntryContacts(
-	ctx: MutationCtx,
-	entryId: Id<'knowledgeEntries'>,
-	contactIds: Id<'contacts'>[] | undefined,
-	facets: CommitmentFacets
-): Promise<void> {
-	if (!contactIds) return;
-	// De-dup the input so a contactId repeated in the array yields one row.
-	for (const contactId of new Set(contactIds)) {
-		await ctx.db.insert('knowledgeEntryContacts', { entryId, contactId, ...facets });
-	}
-}
-
-/**
- * Reconcile the `knowledgeEntryContacts` junction rows for an entry whose
- * `contactIds` may already have rows. Delete-then-reinsert, so it is correct for
- * an in-place `contactIds` edit (`updateEntry`) and teardown
- * (`contactIds = undefined` deletes all rows, used by `deleteEntry`). Mirrors
- * `semanticFiles.ts:syncFileContacts`.
- */
-async function syncEntryContacts(
-	ctx: MutationCtx,
-	entryId: Id<'knowledgeEntries'>,
-	contactIds: Id<'contacts'>[] | undefined,
-	facets?: CommitmentFacets
-): Promise<void> {
-	const existing = await ctx.db
-		.query('knowledgeEntryContacts')
-		.withIndex('by_entry', (q) => q.eq('entryId', entryId))
-		.collect(); // bounded: junction rows for one entry (contacts per entry)
-	for (const row of existing) await ctx.db.delete(row._id);
-	// De-dup so a contactId repeated in the array yields one row.
-	for (const contactId of new Set(contactIds ?? [])) {
-		await ctx.db.insert('knowledgeEntryContacts', { entryId, contactId, ...facets });
-	}
-}
+	createPolicyEntryArgs,
+	createPolicyEntryHandler,
+	listPoliciesArgs,
+	listPoliciesHandler,
+} from './policyEntries';
 
 // ============================================================
 // Queries
@@ -109,52 +71,21 @@ async function syncEntryContacts(
 /**
  * Search knowledge entries by text query (full-text search)
  */
+// authz: entryReads.searchHandler gates the read on resolveKnowledgeViewer.
 export const search = publicQuery({
 	// public: soft-auth — org members only; returns empty for anonymous/non-members
-	args: {
-		searchQuery: v.string(),
-		entryType: v.optional(entryTypeValidator),
-		limit: v.optional(v.number()),
-	},
-	handler: async (ctx, args) => {
-		const viewer = await resolveKnowledgeViewer(ctx);
-		if (!viewer) return [];
-
-		const limit = pageLimit(args.limit, 25);
-
-		const searchQuery = ctx.db
-			.query('knowledgeEntries')
-			.withSearchIndex('search_knowledge', (q) => {
-				let sq = q.search('searchableText', args.searchQuery);
-				if (args.entryType) {
-					sq = sq.eq('entryType', args.entryType);
-				}
-				return sq;
-			});
-
-		return await takeVisibleEntries(searchQuery, viewer.canReadInbox, limit);
-	},
+	args: searchArgs,
+	handler: searchHandler,
 });
 
 /**
  * Get knowledge entries by type
  */
+// authz: entryReads.listByTypeHandler gates the read on resolveKnowledgeViewer.
 export const listByType = publicQuery({
 	// public: soft-auth — org members only; returns empty for anonymous/non-members
-	args: {
-		entryType: entryTypeValidator,
-		limit: v.optional(v.number()),
-	},
-	handler: async (ctx, args) => {
-		const viewer = await resolveKnowledgeViewer(ctx);
-		if (!viewer) return [];
-
-		const rows = ctx.db
-			.query('knowledgeEntries')
-			.withIndex('by_entry_type', (q) => q.eq('entryType', args.entryType))
-			.order('desc');
-		return await takeVisibleEntries(rows, viewer.canReadInbox, pageLimit(args.limit, 50));
-	},
+	args: listByTypeArgs,
+	handler: listByTypeHandler,
 });
 
 /**
@@ -163,18 +94,11 @@ export const listByType = publicQuery({
  * (the `by_entry_type` index), so the UI fell back to 'fact' and the All tab
  * silently showed only facts.
  */
+// authz: entryReads.listAllHandler gates the read on resolveKnowledgeViewer.
 export const listAll = publicQuery({
 	// public: soft-auth — org members only; returns empty for anonymous/non-members
-	args: {
-		limit: v.optional(v.number()),
-	},
-	handler: async (ctx, args) => {
-		const viewer = await resolveKnowledgeViewer(ctx);
-		if (!viewer) return [];
-
-		const rows = ctx.db.query('knowledgeEntries').withIndex('by_created_at').order('desc');
-		return await takeVisibleEntries(rows, viewer.canReadInbox, pageLimit(args.limit, 50));
-	},
+	args: listAllArgs,
+	handler: listAllHandler,
 });
 
 /**
@@ -234,63 +158,16 @@ export const getEntry = publicQuery({
 /**
  * Get knowledge entries linked to a specific contact
  */
+// authz: entryReads.getByContactHandler gates the read on resolveKnowledgeViewer.
 export const getByContact = publicQuery({
 	// public: soft-auth — org members only; returns empty for anonymous/non-members
-	args: {
-		contactId: v.id('contacts'),
-		limit: v.optional(v.number()),
-	},
-	handler: async (ctx, args) => {
-		const viewer = await resolveKnowledgeViewer(ctx);
-		if (!viewer) return [];
-
-		const limit = pageLimit(args.limit, 20);
-		const now = Date.now();
-
-		// Query the index-able `knowledgeEntryContacts` mirror by contact, then
-		// hydrate the entries. Complete (no 500-row truncation) and O(matches),
-		// not a scan of the newest 500 entries filtered in JS.
-		const links = await ctx.db
-			.query('knowledgeEntryContacts')
-			.withIndex('by_contact', (q) => q.eq('contactId', args.contactId))
-			.collect(); // bounded: junction rows for one contact (knowledge per person)
-
-		const entryMap = await batchGet(
-			ctx,
-			links.map((link) => link.entryId)
-		);
-
-		return [...entryMap.values()]
-			.filter(
-				(e): e is Doc<'knowledgeEntries'> =>
-					e !== null &&
-					!(e.expiresAt !== undefined && e.expiresAt < now) &&
-					isKnowledgeEntryVisible(viewer.canReadInbox, e)
-			)
-			.sort((a, b) => b.createdAt - a.createdAt)
-			.slice(0, limit);
-	},
+	args: getByContactArgs,
+	handler: getByContactHandler,
 });
 
 // ============================================================
 // Mutations
 // ============================================================
-
-/**
- * Curated answers (`isAuthoritative`) are what the agent quotes to customers
- * ahead of everything else, so only owners and admins may write them. Members
- * keep editing and deleting the rest of the graph.
- */
-function requireCuratedWriter(
-	session: MutationSessionContext,
-	entry: Pick<Doc<'knowledgeEntries'>, 'isAuthoritative'>
-): void {
-	if (entry.isAuthoritative !== true) return;
-	requirePermission(
-		hasPermission(session.role, 'organization:manage'),
-		'Only owners and admins can change a curated answer'
-	);
-}
 
 /**
  * Create a new knowledge entry.
@@ -303,68 +180,8 @@ function requireCuratedWriter(
  */
 // all-members: any org member can author knowledge; admin-only would block the AI assistant's primary write path
 export const createEntry = knowledgeMutation({
-	args: {
-		...pick(knowledgeEntriesFields, [
-			'entryType',
-			'title',
-			'content',
-			'sourceType',
-			'sourceId',
-			'contactIds',
-			'threadId',
-			'tags',
-			'expiresAt',
-		]),
-		// Defaults to 0.8 for a manually authored entry.
-		confidence: v.optional(knowledgeEntriesFields.confidence),
-	},
-	handler: async (ctx, args, session) => {
-		// A hand-authored entry is `manual`. The other sources name a pipeline
-		// (extraction, files, chat, imported mail), and `agent_extracted` in
-		// particular marks an entry as Team Inbox-derived (inbox/access.ts), so a
-		// client does not get to claim one. Curated answers have their own
-		// admin path (createPolicyEntry).
-		if (args.sourceType !== 'manual') {
-			throwInvalidInput('Knowledge entries created by hand have the source Manual.');
-		}
-		// A thread link makes the entry Team Inbox-derived (inbox/access.ts), so
-		// only a reader may set one.
-		if (args.threadId !== undefined && !isSharedInboxReader(session)) {
-			throwForbidden('Linking knowledge to a Team Inbox thread requires Team Inbox access');
-		}
-
-		const now = Date.now();
-
-		const entry = {
-			entryType: args.entryType,
-			title: args.title,
-			content: args.content,
-			sourceType: args.sourceType,
-			sourceId: args.sourceId,
-			contactIds: args.contactIds,
-			threadId: args.threadId,
-			// Stamped on every write of this release (knowledge/entryDedupe.ts):
-			// a manual entry is member-visible unless a thread link keeps it to
-			// Team Inbox readers.
-			memberAccess: args.threadId === undefined ? ('members' as const) : ('restricted' as const),
-			embedding: [], // Will be populated by extraction pipeline
-			confidence: args.confidence ?? 0.8,
-			lastValidatedAt: now,
-			expiresAt: args.expiresAt,
-			tags: args.tags,
-			searchableText: `${args.title} ${args.content}`,
-			createdAt: now,
-			updatedAt: now,
-		};
-		const entryId = await ctx.db.insert('knowledgeEntries', entry);
-
-		// Mirror contactIds into the index-able junction (powers getByContact).
-		await insertEntryContacts(ctx, entryId, args.contactIds, commitmentFacetsOf(entry));
-		// A new embedding input: a local embedder embeds it now.
-		await noteCorpusInsert(ctx, 'knowledgeEntries', entryId);
-
-		return entryId;
-	},
+	args: createEntryArgs,
+	handler: createEntryHandler,
 });
 
 /**
@@ -379,74 +196,8 @@ export const createEntry = knowledgeMutation({
  */
 // all-members: any org member can correct knowledge they author; mirrors createEntry's write tier
 export const updateEntry = knowledgeMutation({
-	args: {
-		entryId: v.id('knowledgeEntries'),
-		...optionalFields(
-			pick(knowledgeEntriesFields, [
-				'entryType',
-				'title',
-				'content',
-				'sourceType',
-				'contactIds',
-				'confidence',
-				'tags',
-				'expiresAt',
-			])
-		),
-	},
-	handler: async (ctx, args, session) => {
-		const entry = await loadWritableEntry(ctx, session, args.entryId);
-		if (!entry) return null;
-		requireCuratedWriter(session, entry);
-		// The source records where an entry came from, and decides whether it is
-		// Team Inbox-derived (inbox/access.ts); an edit cannot rewrite it.
-		if (args.sourceType !== undefined && args.sourceType !== entry.sourceType) {
-			throwInvalidInput('The source of a knowledge entry cannot be changed.');
-		}
-
-		const now = Date.now();
-		const patch: Partial<Doc<'knowledgeEntries'>> = {
-			updatedAt: now,
-			lastValidatedAt: now,
-		};
-		if (args.entryType !== undefined) {
-			patch.entryType = args.entryType;
-			// The space-and-type vector filter key follows the type.
-			Object.assign(patch, entryKeysForType(entry, args.entryType));
-		}
-		if (args.title !== undefined) patch.title = args.title;
-		if (args.content !== undefined) patch.content = args.content;
-		if (args.contactIds !== undefined) patch.contactIds = args.contactIds;
-		if (args.confidence !== undefined) patch.confidence = args.confidence;
-		if (args.tags !== undefined) patch.tags = args.tags;
-		if (args.expiresAt !== undefined) patch.expiresAt = args.expiresAt;
-
-		// Recompute the FTS searchField from the (possibly new) title + content so
-		// the edit stays findable via `search` / `ftsRankedIds`.
-		const nextTitle = args.title ?? entry.title;
-		const nextContent = args.content ?? entry.content;
-		patch.searchableText = `${nextTitle} ${nextContent}`;
-
-		// Through the one corpus writer: an edited title or content
-		// clears every vector column, and an edit that changes eligibility (an
-		// expired entry revived) marks a staged rebuild; either way a local
-		// embedder re-embeds the entry.
-		await patchCorpusRow(ctx, 'knowledgeEntries', entry, patch);
-
-		// Reconcile the index-able junction when contactIds is edited in place;
-		// otherwise re-project its open-commitment facets (type / expiry edits).
-		const next = { ...entry, ...patch };
-		if (args.contactIds !== undefined) {
-			await syncEntryContacts(ctx, args.entryId, args.contactIds, commitmentFacetsOf(next));
-		} else {
-			await syncCommitmentFacets(ctx, args.entryId, next);
-		}
-
-		// Return the edited id (a non-undefined success sentinel) so the web
-		// `useBackendOperation` caller can tell a void success from the `undefined`
-		// it returns on failure — otherwise the edit modal never closes.
-		return args.entryId;
-	},
+	args: updateEntryArgs,
+	handler: updateEntryHandler,
 });
 
 /**
@@ -514,77 +265,8 @@ export const deleteEntry = knowledgeMutation({
  * Save a knowledge entry from the agent pipeline (internal)
  */
 export const saveEntry = internalMutation({
-	// `contentHash` (computed by the 'use node' extraction action) enables the
-	// cross-source write-dedup leg below and the deterministic linker's
-	// exact-dup lookups.
-	args: {
-		...pick(knowledgeEntriesFields, [
-			'entryType',
-			'title',
-			'content',
-			'sourceType',
-			'sourceId',
-			'contactIds',
-			'threadId',
-			'embedding',
-			'embeddingModel',
-			'embeddingGeneratedAt',
-			'confidence',
-			'tags',
-			'expiresAt',
-			'contentHash',
-		]),
-		// The space the job measured for `embedding`; the vector is stamped with it,
-		// or dropped when the configuration moved on (vectorFieldsForCommit).
-		// Optional for previous-release jobs, whose vector is dropped; required
-		// after release N+1.
-		embeddingSpace: v.optional(measuredEmbeddingSpaceValidator),
-	},
-	handler: async (ctx, { embeddingSpace, ...args }) => {
-		const now = Date.now();
-		// Write-level idempotency (knowledge/entryDedupe.ts): an entry from the
-		// same source with this title, or one with the same normalized content
-		// under the same contact scope, is returned instead of a duplicate. The
-		// extraction asks the same question before it embeds (M4); this check in
-		// the transaction is what closes the race between two extractions of one
-		// source: the second writer's reads conflict with the first's committed
-		// insert under Convex OCC, so it sees it here and no-ops. The duplicate
-		// already carries its junction rows, so none are written.
-		//
-		// Who may see it comes from the source, resolved here in the write
-		// (entryDedupe.ts `resolveMemberAccess`), never from the caller: an
-		// extraction from a previous release passes nothing.
-		const memberAccess = await resolveMemberAccess(ctx, args);
-		const dup = await findDuplicateEntry(ctx, { ...args, memberAccess });
-		if (dup) {
-			if (dup.needsRestriction) await ctx.db.patch(dup.id, { memberAccess: 'restricted' });
-			return dup.id;
-		}
-		const { embedding, embeddingModel: _model, embeddingGeneratedAt: _at, ...fields } = args;
-		const { isStale, fields: vector } = await vectorFieldsForCommit(
-			ctx,
-			{ embedding, space: embeddingSpace },
-			{ entryType: args.entryType }
-		);
-		if (isStale) logInfo('[knowledge.saveEntry] stale embedding space, stored without vector');
-		const entry = {
-			...fields,
-			memberAccess,
-			...(vector as { embedding: number[] }),
-			searchableText: `${args.title} ${args.content}`,
-			lastValidatedAt: now,
-			createdAt: now,
-			updatedAt: now,
-		};
-		const entryId = await ctx.db.insert('knowledgeEntries', entry);
-		// A new row: a staged rebuild learns it may lack its vector.
-		await noteCorpusInsert(ctx, 'knowledgeEntries', entryId);
-
-		// Mirror contactIds into the index-able junction (powers getByContact).
-		await insertEntryContacts(ctx, entryId, args.contactIds, commitmentFacetsOf(entry));
-
-		return entryId;
-	},
+	args: saveEntryArgs,
+	handler: saveEntryHandler,
 });
 
 /**
@@ -675,9 +357,6 @@ export const removeRelation = knowledgeMutation({
 // Curated policy / FAQ authoring surface
 // ============================================================
 
-/** Validator for the curated entry types (policy / faq). */
-const policyEntryTypeValidator = literalUnion(POLICY_ENTRY_TYPES);
-
 /**
  * Author (or edit) a curated canonical answer — the minimal FAQ surface.
  *
@@ -693,117 +372,19 @@ const policyEntryTypeValidator = literalUnion(POLICY_ENTRY_TYPES);
  */
 // admin-only: a curated answer outranks every extracted fact and is quoted to customers
 export const createPolicyEntry = knowledgeAdminMutation({
-	args: {
-		entryId: v.optional(v.id('knowledgeEntries')),
-		entryType: v.optional(policyEntryTypeValidator),
-		title: v.string(),
-		content: v.string(),
-		tags: v.optional(v.array(v.string())),
-		expiresAt: v.optional(v.number()),
-	},
-	handler: async (ctx, args) => {
-		if (args.title.trim().length === 0 || args.content.trim().length === 0) {
-			throwInvalidInput('A curated answer needs both a question and an answer.');
-		}
-
-		const now = Date.now();
-		const entryType = args.entryType ?? 'faq';
-		const searchableText = `${args.title} ${args.content}`;
-
-		if (args.entryId) {
-			const existing = await ctx.db.get(args.entryId);
-			if (!existing) return null;
-			// Through the one corpus writer: input and eligibility
-			// (expiry) changes clear the stale vectors and mark a staged rebuild.
-			await patchCorpusRow(ctx, 'knowledgeEntries', existing, {
-				entryType,
-				...entryKeysForType(existing, entryType),
-				title: args.title,
-				content: args.content,
-				sourceType: 'curated',
-				// Where it came from, for sharing it with members later
-				// (knowledge/sharing.ts). Re-saving a curated answer keeps what
-				// it recorded; one written before the field stays unknown.
-				curatedFromSourceType:
-					existing.sourceType === 'curated' ? existing.curatedFromSourceType : existing.sourceType,
-				isAuthoritative: true,
-				tags: args.tags,
-				expiresAt: args.expiresAt,
-				searchableText,
-				lastValidatedAt: now,
-				updatedAt: now,
-			});
-			// A policy / faq is never a commitment: drop the entry's junction rows
-			// out of the open-commitments index if it was one.
-			await syncCommitmentFacets(ctx, args.entryId, {
-				...existing,
-				entryType,
-				expiresAt: args.expiresAt,
-			});
-			return args.entryId;
-		}
-
-		const policyId = await ctx.db.insert('knowledgeEntries', {
-			entryType,
-			title: args.title,
-			content: args.content,
-			sourceType: 'curated',
-			curatedFromSourceType: 'curated',
-			isAuthoritative: true,
-			// Stamped on every write of this release (knowledge/entryDedupe.ts).
-			memberAccess: 'members',
-			embedding: [], // filled by the embedding pipeline; FTS works immediately
-			confidence: 1.0, // a human-authored canonical answer is fully trusted
-			lastValidatedAt: now,
-			expiresAt: args.expiresAt,
-			tags: args.tags,
-			searchableText,
-			createdAt: now,
-			updatedAt: now,
-		});
-		await noteCorpusInsert(ctx, 'knowledgeEntries', policyId);
-		return policyId;
-	},
+	args: createPolicyEntryArgs,
+	handler: createPolicyEntryHandler,
 });
 
 /**
  * List curated canonical answers (policy / faq), newest first — the read side of
  * the FAQ authoring surface.
  */
+// authz: policyEntries.listPoliciesHandler gates the read on resolveKnowledgeViewer.
 export const listPolicies = publicQuery({
 	// public: soft-auth — org members only; returns empty for anonymous/non-members
-	args: {
-		limit: v.optional(v.number()),
-	},
-	handler: async (ctx, args) => {
-		const viewer = await resolveKnowledgeViewer(ctx);
-		if (!viewer) return [];
-
-		const limit = pageLimit(args.limit, 100);
-		const out: Doc<'knowledgeEntries'>[] = [];
-		for (const entryType of POLICY_ENTRY_TYPES) {
-			const rows = await ctx.db
-				.query('knowledgeEntries')
-				.withIndex('by_entry_type', (q) => q.eq('entryType', entryType))
-				.order('desc')
-				.take(limit);
-			// Only human-curated canonical answers belong in the FAQ surface. The
-			// extraction pipeline can emit `policy`/`faq` entries typed by the LLM
-			// (sourceType 'agent_extracted', never authoritative); those must not
-			// intermix with hand-authored answers here.
-			for (const row of rows) {
-				if (
-					row.sourceType === 'curated' &&
-					row.isAuthoritative === true &&
-					isKnowledgeEntryVisible(viewer.canReadInbox, row)
-				) {
-					out.push(row);
-				}
-			}
-		}
-		out.sort((a, b) => b.createdAt - a.createdAt);
-		return out.slice(0, limit);
-	},
+	args: listPoliciesArgs,
+	handler: listPoliciesHandler,
 });
 
 /**
@@ -814,27 +395,8 @@ export const listPolicies = publicQuery({
  */
 // all-members: any org member can resolve a commitment; mirrors createEntry's write tier
 export const setCommitmentStatus = knowledgeMutation({
-	args: {
-		entryId: v.id('knowledgeEntries'),
-		commitmentStatus: commitmentStatusValidator,
-		dueAt: v.optional(v.number()),
-	},
-	handler: async (ctx, args, session) => {
-		const entry = await loadWritableEntry(ctx, session, args.entryId);
-		if (!entry) return null;
-
-		const now = Date.now();
-		const patch: Partial<Doc<'knowledgeEntries'>> = {
-			commitmentStatus: args.commitmentStatus,
-			updatedAt: now,
-			lastValidatedAt: now,
-		};
-		if (args.dueAt !== undefined) patch.dueAt = args.dueAt;
-		await ctx.db.patch(args.entryId, patch);
-		// Same transaction: the open-commitments index never disagrees with the status.
-		await syncCommitmentFacets(ctx, args.entryId, { ...entry, ...patch });
-		return args.entryId;
-	},
+	args: setCommitmentStatusArgs,
+	handler: setCommitmentStatusHandler,
 });
 
 // ============================================================
@@ -850,19 +412,8 @@ export const setCommitmentStatus = knowledgeMutation({
  * `knowledge/retrieval.ts:semanticSearch` for the action that calls this.
  */
 export const getByIds = internalQuery({
-	args: {
-		ids: v.array(v.id('knowledgeEntries')),
-	},
-	handler: async (ctx, args) => {
-		// Independent ids: one deduplicated, parallel read.
-		const byId = await batchGet(ctx, args.ids);
-		const out: Doc<'knowledgeEntries'>[] = [];
-		for (const id of args.ids) {
-			const entry = byId.get(id);
-			if (entry) out.push(entry);
-		}
-		return out;
-	},
+	args: getByIdsArgs,
+	handler: getByIdsHandler,
 });
 
 /**
@@ -907,20 +458,8 @@ export const getOpenCommitmentsByContact = internalQuery({
  * is the retrieval `limit`). Silently skips ids that have since been deleted.
  */
 export const recordAccess = internalMutation({
-	args: {
-		ids: v.array(v.id('knowledgeEntries')),
-	},
-	handler: async (ctx, args) => {
-		const now = Date.now();
-		for (const id of args.ids) {
-			const entry = await ctx.db.get(id);
-			if (!entry) continue;
-			await ctx.db.patch(id, {
-				accessCount: (entry.accessCount ?? 0) + 1,
-				lastAccessedAt: now,
-			});
-		}
-	},
+	args: recordAccessArgs,
+	handler: recordAccessHandler,
 });
 
 /**
@@ -931,19 +470,6 @@ export const recordAccess = internalMutation({
  * ranking. Internal: scope/feature gating is the caller's job.
  */
 export const ftsRankedIds = internalQuery({
-	args: {
-		queryText: v.string(),
-		entryType: v.optional(entryTypeValidator),
-		limit: v.number(),
-	},
-	handler: async (ctx, args): Promise<Id<'knowledgeEntries'>[]> => {
-		const rows = await ctx.db
-			.query('knowledgeEntries')
-			.withSearchIndex('search_knowledge', (q) => {
-				const sq = q.search('searchableText', args.queryText);
-				return args.entryType ? sq.eq('entryType', args.entryType) : sq;
-			})
-			.take(args.limit);
-		return rows.map((r) => r._id);
-	},
+	args: ftsRankedIdsArgs,
+	handler: ftsRankedIdsHandler,
 });

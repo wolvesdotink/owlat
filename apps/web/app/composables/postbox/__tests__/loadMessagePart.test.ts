@@ -6,7 +6,7 @@
  *   - a stored part comes back as a Blob of its own bytes and type
  *   - the minted URL is reused for 50 minutes after it arrived, so the
  *     browser's private cache of that URL can answer a second open
- *   - how long is counted on the device's clock alone (#1294): a device clock
+ *   - how long is counted on the device's clock alone: a device clock
  *     behind or ahead of the server's neither reuses an expired URL nor stops
  *     reusing a good one
  *   - a reused URL the proxy refuses is minted once more before giving up

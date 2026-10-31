@@ -119,21 +119,24 @@ async function confirmRevoke() {
 								: t('components.postbox.postboxSharedLinksSettings.copy')
 						}}
 					</UiButton>
-					<UiButton
+					<UiTooltip
 						v-if="row.publicUrl"
-						variant="secondary"
-						size="sm"
-						:disabled="isSaving"
-						:title="t('components.postbox.postboxSharedLinksSettings.limitTitle')"
-						:aria-label="
-							t('components.postbox.postboxSharedLinksSettings.limitAriaLabel', {
-								filename: row.filename,
-							})
-						"
-						@click="setScope(row._id as Id<'mailAttachmentShares'>, 'mailbox')"
+						:text="t('components.postbox.postboxSharedLinksSettings.limitTitle')"
 					>
-						{{ t('components.postbox.postboxSharedLinksSettings.limit') }}
-					</UiButton>
+						<UiButton
+							variant="secondary"
+							size="sm"
+							:disabled="isSaving"
+							:aria-label="
+								t('components.postbox.postboxSharedLinksSettings.limitAriaLabel', {
+									filename: row.filename,
+								})
+							"
+							@click="setScope(row._id as Id<'mailAttachmentShares'>, 'mailbox')"
+						>
+							{{ t('components.postbox.postboxSharedLinksSettings.limit') }}
+						</UiButton>
+					</UiTooltip>
 					<!-- The file survives a narrowing, so the owner keeps a way in even
 					     once the public URL is gone. -->
 					<UiButton

@@ -1793,8 +1793,8 @@ Effects:
   patches `htmlRenderState: { stale: true, failureCount: 0 }`
   atomically with the content patch. The pre-deepening duplicated
   `parseContentBlocks` (lived in both `lib/linkedBlockPropagation.ts`
-  and `linkedBlockRender.ts`) collapses into the module's private
-  walker.
+  and `linkedBlockRender.ts`) collapses into the one walker in
+  `convex/emailBlocks/consumers.ts`, which only the module's effects run.
 - `propagate_name` — same walker, mutates only `savedBlockRef.blockName`
   on each embedded block. No HTML re-render scheduled — block names
   aren't in rendered HTML.
@@ -1824,8 +1824,8 @@ deferred decision; the durable flag makes the surface available when
 the decision lands.
 
 Replaces `lib/linkedBlockPropagation.ts` (deleted; its three
-propagation helpers become reducer effects, its walker helpers become
-private to `module.ts`, its usage-count delta helper becomes the
+propagation helpers become reducer effects, its walker helpers move to
+`emailBlocks/consumers.ts` behind the module's effects, its usage-count delta helper becomes the
 cross-cutting `applyUsageCountDelta`) and absorbs the open-coded
 `if (contentChanged) … else if (nameChanged)` branch at
 `emailBlocks.ts:196-225` into the `update` reducer's classification.

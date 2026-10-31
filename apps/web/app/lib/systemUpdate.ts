@@ -172,13 +172,12 @@ export type RolloutReading =
 /**
  * Where the update the progress card is watching stands, from one /health poll.
  *
- * The card used to call an update complete as soon as the web container ran the
- * target version. That happens during `up`, before the updater has checked the
- * rest of the stack, and the updater's answer, the only place its verdict was,
- * normally dies with the web container it recreates. The updater now keeps the
- * verdict and serves it on /health, tagged with the attempt id the browser
- * sent, so a record left by an earlier attempt at the same version is never
- * read as this one's.
+ * The web container running the target version does not mean the update is
+ * complete: that happens during `up`, before the updater has checked the rest
+ * of the stack, and the updater's HTTP answer normally dies with the web
+ * container it recreates. The updater keeps the verdict and serves it on
+ * /health, tagged with the attempt id the browser sent, so a record left by an
+ * earlier attempt at the same version is never read as this one's.
  *
  * With no record for this attempt (an updater that predates the record, or the
  * rollout was run by the previous updater and this one was started after it),

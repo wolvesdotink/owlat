@@ -3,11 +3,11 @@
  *
  * The core providers — recent searches, the two Mail-scope providers (grammar
  * completions + live deep-search hits), route-scoped Team Inbox threads, verbs,
- * sidebar-context switch, settings
- * controls, object search, mail, and navigation — used to live as inline closures inside
+ * sidebar-context switch, settings controls, object search, mail, and
+ * navigation — live here rather than as inline closures inside
  * `AppCommandPalette.vue`, so their ids, priorities, group keys, `order`/`cap`
- * values, and idle-vs-query gating conditions were untestable without mounting
- * the component. This factory extracts that composition, taking the reactive
+ * values, and idle-vs-query gating conditions are testable without mounting
+ * the component. This factory holds that composition, taking the reactive
  * reads as injected getters (the PP-15 `dashboardNavigation.ts` pattern) so the
  * component supplies its state and the built-in behavior the palette must
  * preserve is pinned by `__tests__/commandPaletteCore.test.ts`.

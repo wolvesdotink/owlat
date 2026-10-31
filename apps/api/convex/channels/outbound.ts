@@ -152,6 +152,8 @@ export const dispatchOutbound = internalAction({
 	},
 	returns: v.null(),
 	handler: async (ctx, args) => {
+		// The one commit of every outcome below: the timeline row and the approved
+		// reply's step together (`channels/outboundCommit.ts`).
 		const record = async (
 			status: 'sent' | 'failed',
 			externalMessageId?: string,
@@ -160,33 +162,22 @@ export const dispatchOutbound = internalAction({
 			// Recording the timeline row requires a thread (unifiedMessages.threadId
 			// is non-null in the schema). The autonomy/routing + agent-reply callers
 			// always supply one; if absent we log and skip the row.
-			if (args.threadId) {
-				await ctx.runMutation(internal.unifiedMessages.recordOutbound, {
-					threadId: args.threadId,
-					channel: args.channel,
-					contactId: args.contactId,
-					content: JSON.stringify(args.content),
-					externalMessageId,
-					status,
-					...(error ? { metadata: JSON.stringify({ error }) } : {}),
-				});
-			} else {
+			if (!args.threadId) {
 				console.warn(
 					`[channels] dispatchOutbound(${args.channel}) had no threadId; outbound row not recorded`
 				);
+				if (!args.inboundMessageId) return;
 			}
-
-			// Completion for an approved agent reply: flip the inbound message off
-			// the real outcome (sent vs failed), mirroring delivery/sendCompletion.
-			if (args.inboundMessageId) {
-				await ctx.runMutation(internal.inbox.processingLifecycle.transition, {
-					inboundMessageId: args.inboundMessageId,
-					input:
-						status === 'sent'
-							? { to: 'sent', at: Date.now() }
-							: { to: 'failed', at: Date.now(), errorMessage: error ?? 'Channel dispatch failed' },
-				});
-			}
+			await ctx.runMutation(internal.channels.outboundCommit.recordDispatch, {
+				channel: args.channel,
+				contactId: args.contactId,
+				...(args.threadId ? { threadId: args.threadId } : {}),
+				content: JSON.stringify(args.content),
+				status,
+				...(externalMessageId !== undefined ? { externalMessageId } : {}),
+				...(error ? { error } : {}),
+				...(args.inboundMessageId ? { inboundMessageId: args.inboundMessageId } : {}),
+			});
 		};
 
 		// Read the channel config, decrypt its creds, and build the matching
@@ -335,6 +326,10 @@ export const pollDeliveryStatus = internalAction({
 			return adapterCache.get(channel) ?? null;
 		};
 
+		const updates: Array<{
+			messageId: (typeof pending)[number]['messageId'];
+			status: 'delivered' | 'read' | 'failed';
+		}> = [];
 		for (const row of pending) {
 			try {
 				const adapter = await adapterFor(row.channel);
@@ -343,15 +338,17 @@ export const pollDeliveryStatus = internalAction({
 				// `queued`/`sent` are not a forward transition — only persist a move
 				// to a terminal/progressed state to avoid a no-op write every tick.
 				if (status === 'delivered' || status === 'read' || status === 'failed') {
-					await ctx.runMutation(internal.unifiedMessages.updateDeliveryStatus, {
-						messageId: row.messageId,
-						status,
-					});
+					updates.push({ messageId: row.messageId, status });
 				}
 			} catch {
 				// Fail-safe: a provider/network error means the status is simply
 				// unknown right now; leave the row at `sent` and re-poll next tick.
 			}
+		}
+		// One commit for the whole poll; a row it does not reach stays `sent` and
+		// is polled again next tick.
+		if (updates.length > 0) {
+			await ctx.runMutation(internal.channels.outboundCommit.recordDeliveryStatuses, { updates });
 		}
 		return null;
 	},

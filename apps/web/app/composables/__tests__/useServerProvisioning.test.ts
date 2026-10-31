@@ -615,7 +615,7 @@ describe('useServerProvisioning — log cap, failure tail, secrets cleanup', () 
 	});
 });
 
-// ---- #956: local-push builds and pushes every first-party image -----------
+// ---- local-push builds and pushes every first-party image -----------------
 
 describe('useServerProvisioning — local-push images come from the Compose services', () => {
 	const pushCreds: ServerCredentials = {
@@ -673,7 +673,7 @@ describe('useServerProvisioning — local-push images come from the Compose serv
 	});
 });
 
-// ---- #953: the uploaded setup config never outlives the install -----------
+// ---- the uploaded setup config never outlives the install -----------------
 
 describe('useServerProvisioning — setup config cleanup on every outcome', () => {
 	const CLEANUP = "rm -f '/opt/owlat/.owlat-setup.json'";
@@ -769,7 +769,7 @@ describe('useServerProvisioning — setup config cleanup on every outcome', () =
 	});
 });
 
-// ---- #952: leaving the wizard stops what is running ------------------------
+// ---- leaving the wizard stops what is running ------------------------------
 
 describe('useServerProvisioning — leaving the wizard mid-flight', () => {
 	it('cancels a long installer, removes the config, disconnects, and starts nothing after', async () => {

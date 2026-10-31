@@ -36,6 +36,7 @@ import { postboxBodyImageProps } from '~/utils/postboxImageAllowlist';
 import { providePostboxReaderContext } from '~/composables/postbox/usePostboxReaderContext';
 import { prefersReducedMotion } from '@owlat/ui/composables/useReducedMotion';
 import { usePostboxThreadFind } from '~/composables/postbox/usePostboxThreadFind';
+import { useShortcutLabels } from '~/composables/useShortcutLabels';
 
 export type AnswerConversationView = 'summary' | 'full';
 
@@ -221,6 +222,9 @@ function openSenderProfile(msg: { fromAddress: string; fromName?: string | null 
 }
 
 const showViewToggle = computed(() => allMessages.value.length > 1);
+// The toggle's tooltip is about its key, so it shows only while that key fires.
+const { labelFor } = useShortcutLabels();
+const viewKey = computed(() => labelFor('answer.toggleView'));
 
 // The brief's source markers: open the source message, bring it into
 // view and flash it, so "which message said that?" is one click.
@@ -256,23 +260,27 @@ onBeforeUnmount(() => clearTimeout(highlightTimer));
 				:aria-label="t('components.answer.mode.viewLabel')"
 				class="inline-flex rounded-md border border-border-subtle bg-bg-elevated p-0.5 text-xs"
 			>
-				<button
+				<UiTooltip
 					v-for="option in ['summary', 'full'] as const"
 					:key="option"
-					type="button"
-					class="rounded px-2.5 py-1"
-					:class="
-						view === option
-							? 'bg-(--surface-2-selected) text-text-primary'
-							: 'text-text-tertiary hover:text-text-primary'
-					"
-					:aria-pressed="view === option"
-					:title="t('components.answer.mode.viewShortcut')"
-					:data-testid="`answer-view-${option}`"
-					@click="view = option"
+					:text="viewKey ? t('components.answer.mode.viewShortcut') : undefined"
+					:shortcut="viewKey ?? undefined"
 				>
-					{{ t(`components.answer.mode.view.${option}`) }}
-				</button>
+					<button
+						type="button"
+						class="rounded px-2.5 py-1"
+						:class="
+							view === option
+								? 'bg-(--surface-2-selected) text-text-primary'
+								: 'text-text-tertiary hover:text-text-primary'
+						"
+						:aria-pressed="view === option"
+						:data-testid="`answer-view-${option}`"
+						@click="view = option"
+					>
+						{{ t(`components.answer.mode.view.${option}`) }}
+					</button>
+				</UiTooltip>
 			</div>
 		</div>
 

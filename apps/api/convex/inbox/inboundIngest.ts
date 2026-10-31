@@ -27,10 +27,7 @@ import { base64ToBytes, bytesToBinaryString } from '../lib/bytes';
 import { storeSealedBlob } from '../lib/sealedBlob';
 import { getMtaConfig } from '../mail/mtaClient';
 import { scanInboundAttachments, type InboundScanResult } from '../mail/deliveryPipeline/scan';
-import {
-	captureAttachments,
-	type AttachmentCaptureOutcome,
-} from '../mail/deliveryPipeline/capture';
+import { captureAttachments } from '../mail/deliveryPipeline/capture';
 import { NOTHING_UNCLEARED } from '../mail/deliveryPipeline/attachmentParts';
 import { resolveDmarcRouting, type DmarcOverride } from '../mail/deliveryPipeline/routing';
 import { inboundEmailMessageValidator } from '../webhooks/adapters/inboundRegistry';
@@ -242,6 +239,7 @@ export const ingestFromWebhook = internalAction({
 		// scoping, the unverifiable-From refusal and the AI-ingest budget all
 		// live inside `captureAttachments`, shared with the personal-mailbox
 		// route so the two cannot enforce different policy.
+		let marker: AttachmentIndexing | undefined;
 		try {
 			const outcome = await captureAttachments(ctx, {
 				parts: cleanParts,
@@ -269,16 +267,22 @@ export const ingestFromWebhook = internalAction({
 					headers: headerEvidenceFromMap(args.mail.headers),
 				}),
 			});
-			await recordCaptureOutcome(ctx, inboundMessageId, outcome);
+			// EVERY outcome is recorded, not just the budget one: a part refused for
+			// its size or its type is exactly as unread by the assistant as one the
+			// budget refused, and an unmarked row renders as though the file had
+			// been indexed.
+			marker = indexingMarkerOf(outcome);
 		} catch (err) {
 			logError('[Inbound Webhook] attachment capture failed', err);
 			// THE LAST SILENT EXIT. Capture can throw after the row exists — the
 			// contact lookup, the budget mutation, or `storage.store` failing with
 			// three of five parts already ingested — and an unmarked row renders
-			// exactly like one the assistant read cover to cover. `markIndexing`
-			// never throws, so saying so here cannot cost the delivery.
-			await markIndexing(ctx, inboundMessageId, 'skipped_failed');
+			// exactly like one the assistant read cover to cover.
+			marker = 'skipped_failed';
 		}
+		// One write for either outcome. `markIndexing` never throws, so recording
+		// the marker cannot cost the delivery.
+		if (marker) await markIndexing(ctx, inboundMessageId, marker);
 
 		return { inboundMessageId, isDuplicate: false };
 	},
@@ -301,22 +305,6 @@ async function dropStagedBlob(
 ): Promise<void> {
 	if (!rawStorageId) return;
 	await deleteBlobQuietly(ctx.storage, rawStorageId, '[Inbound Webhook] staged raw', { messageId });
-}
-
-/**
- * Turn what capture did into the marker the thread view reads.
- *
- * EVERY outcome is recorded, not just the budget one: a part refused for its
- * size or its type is exactly as unread by the assistant as one the budget
- * refused, and an unmarked row renders as though the file had been indexed.
- */
-async function recordCaptureOutcome(
-	ctx: ActionCtx,
-	inboundMessageId: Id<'inboundMessages'>,
-	outcome: AttachmentCaptureOutcome
-): Promise<void> {
-	const marker = indexingMarkerOf(outcome);
-	if (marker) await markIndexing(ctx, inboundMessageId, marker);
 }
 
 /** Record the capture outcome on the row; never fails the ingest. */

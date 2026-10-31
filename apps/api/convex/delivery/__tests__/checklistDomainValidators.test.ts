@@ -730,6 +730,87 @@ describe('domain checklist validation', () => {
 		expect(observation.diagnostic).toContain('active provider return-path');
 	});
 
+	// The active return path is the provider's answer, so the same live records
+	// pass for a kind that stamps them and fail for one that does not.
+	const liveBounceRecords = {
+		mailFrom: [
+			{ type: 'TXT', hostname: 'bounce.example.test', value: 'v=spf1 ip4:203.0.113.10 -all' },
+		],
+	};
+	const liveBounceLookups = {
+		mailFrom: [{ verified: true, foundValue: 'v=spf1 ip4:203.0.113.10 -all' }],
+	};
+
+	it('normalizes the configured MTA host and the global fallback before comparing', async () => {
+		vi.mocked(runDnsLookups).mockResolvedValue(liveBounceLookups as never);
+		await expect(
+			observeDomainCheck(
+				{} as never,
+				'domain.return_path',
+				context({ returnPathHost: 'Bounce.Example.Test.' }, liveBounceRecords),
+				false
+			)
+		).resolves.toMatchObject({ status: 'pass' });
+		vi.stubEnv('MTA_RETURN_PATH_DOMAIN', ' BOUNCE.example.test. ');
+		await expect(
+			observeDomainCheck({} as never, 'domain.return_path', context({}, liveBounceRecords), false)
+		).resolves.toMatchObject({ status: 'pass' });
+	});
+
+	it('fails an MTA domain with no configured host and no global fallback', async () => {
+		vi.stubEnv('MTA_RETURN_PATH_DOMAIN', '');
+		vi.mocked(runDnsLookups).mockResolvedValue(liveBounceLookups as never);
+		const observation = await observeDomainCheck(
+			{} as never,
+			'domain.return_path',
+			context({}, liveBounceRecords),
+			false
+		);
+		expect(observation.status).toBe('fail');
+		expect(observation.diagnostic).toContain('active provider return-path');
+	});
+
+	it('fails an SES domain whose configured host is outside the sending domain', async () => {
+		vi.mocked(runDnsLookups).mockResolvedValue(liveBounceLookups as never);
+		const observation = await observeDomainCheck(
+			{} as never,
+			'domain.return_path',
+			context(
+				{ providerType: 'ses', returnPathHost: 'bounce.elsewhere.test' },
+				{
+					mailFrom: [
+						{
+							type: 'TXT',
+							hostname: 'bounce.elsewhere.test',
+							value: 'v=spf1 ip4:203.0.113.10 -all',
+						},
+					],
+				}
+			),
+			false
+		);
+		expect(observation.status).toBe('fail');
+		expect(observation.diagnostic).toContain('active provider return-path');
+	});
+
+	it.each([
+		['mandrill', 'mandrill'],
+		['a legacy row with no recorded kind', undefined],
+	])(
+		'fails %s: it has no return path of ours, whatever DNS shows',
+		async (_label, providerType) => {
+			vi.mocked(runDnsLookups).mockResolvedValue(liveBounceLookups as never);
+			const observation = await observeDomainCheck(
+				{} as never,
+				'domain.return_path',
+				context({ providerType, returnPathHost: 'bounce.example.test' }, liveBounceRecords),
+				false
+			);
+			expect(observation.status).toBe('fail');
+			expect(observation.diagnostic).toContain('active provider return-path');
+		}
+	);
+
 	it('retries when MAIL FROM MX passes but SPF has an existing mismatch', async () => {
 		vi.stubEnv('MTA_RETURN_PATH_DOMAIN', 'bounce.global.test');
 		vi.mocked(runDnsLookups).mockResolvedValue({

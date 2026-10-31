@@ -12,7 +12,7 @@
  */
 
 import type { Id } from '../../_generated/dataModel';
-import type { RevertReason, SentInputContext, TransitionOutcome } from '../draftLifecycle/types';
+import type { SentInputContext, TransitionOutcome } from '../draftLifecycle/types';
 import type { DraftRow } from '../rfc822';
 import { unsealedSendNeedsConsent, type OutboundEncryptionInfo } from '../sealPolicy';
 
@@ -122,8 +122,6 @@ export type AfterSentPlan =
 			readonly log: DispatchLog;
 			/** Drop the stored `.eml`: the cascade that would own it did not run. */
 			readonly isRawDeleted: boolean;
-			/** Return the draft to the composer for this reason. */
-			readonly revert?: RevertReason;
 	  };
 
 export function decideAfterSent(
@@ -156,7 +154,6 @@ export function decideAfterSent(
 					message: `[Outbound] Refusing to dispatch draft ${draftId}: from-address "${draft.fromAddress}" is not in the allowed set for sending mailbox ${sendingMailboxId(draft)} (thread mailbox ${draft.mailboxId})`,
 				},
 				isRawDeleted: true,
-				revert: 'from_revoked',
 			};
 		}
 		return {

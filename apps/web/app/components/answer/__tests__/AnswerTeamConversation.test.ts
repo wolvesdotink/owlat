@@ -12,6 +12,7 @@ import { mount } from '@vue/test-utils';
 
 import AnswerTeamConversation from '../AnswerTeamConversation.vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+import { focusTooltip } from '~/__tests__/tooltip';
 
 const message = (id: string, creation: number, over: Record<string, unknown> = {}) => ({
 	_id: id,
@@ -38,9 +39,11 @@ beforeAll(() => {
 function mountColumn(
 	messages: unknown[],
 	view: 'summary' | 'full' = 'full',
-	extra: Record<string, unknown> = {}
+	extra: Record<string, unknown> = {},
+	options: { attachTo?: HTMLElement } = {}
 ) {
 	return mount(AnswerTeamConversation, {
+		...options,
 		props: {
 			messages: messages as never,
 			contact: null,
@@ -256,5 +259,22 @@ describe('AnswerTeamConversation, a citation', () => {
 		expect(host.classList.contains('ring-2')).toBe(false);
 		host.remove();
 		vi.useRealTimers();
+	});
+});
+
+describe('AnswerTeamConversation, view toggle', () => {
+	it('names the view key in a tooltip on keyboard focus, not a native title', async () => {
+		const w = mountColumn(
+			[message('a', 1), message('b', 2)],
+			'summary',
+			{},
+			{
+				attachTo: document.body,
+			}
+		);
+		const full = w.get('[data-testid="answer-view-full"]');
+		expect(full.attributes('title')).toBeUndefined();
+		expect(await focusTooltip(full)).toBe('Switch the view T');
+		w.unmount();
 	});
 });

@@ -167,9 +167,9 @@ let committed = false;
  * the new workspace's keychain entry, record the workspace, and reload into it.
  *
  * Throws — and leaves NOTHING behind — unless a real session came back. A
- * half-finished handshake used to be persisted as a fully connected workspace
- * (with an empty `userId`), which the router then bounced straight back to
- * /desktop/welcome: the server looked "added" while being unusable.
+ * half-finished handshake persisted as a fully connected workspace (with an
+ * empty `userId`) would be bounced by the router straight back to
+ * /desktop/welcome: the server would look "added" while being unusable.
  */
 export function completeConnection(params: { ott: string; state: string }): Promise<void> {
 	const run = completionQueue.then(() => (committed ? undefined : connect(params)));

@@ -152,31 +152,34 @@ onUnmounted(() => document.removeEventListener('keydown', handleEscape));
 
 					<!-- Create button -->
 					<div class="p-3 border-b border-border-subtle">
-						<UiButton
-							size="sm"
-							class="w-full"
-							:disabled="hasUnsavedChanges || isCreating"
-							:title="
+						<UiTooltip
+							:text="
 								hasUnsavedChanges
 									? t('components.shareLinksPopover.saveFirst')
 									: t('components.shareLinksPopover.createTitle')
 							"
-							@click="handleCreate"
 						>
-							<template #iconLeft>
-								<Icon
-									v-if="isCreating"
-									name="lucide:loader-2"
-									class="w-4 h-4 animate-spin motion-reduce:animate-none"
-								/>
-								<Icon v-else name="lucide:plus" class="w-4 h-4" />
-							</template>
-							{{
-								isCreating
-									? t('components.shareLinksPopover.creating')
-									: t('components.shareLinksPopover.create')
-							}}
-						</UiButton>
+							<UiButton
+								size="sm"
+								class="w-full"
+								:disabled="hasUnsavedChanges || isCreating"
+								@click="handleCreate"
+							>
+								<template #iconLeft>
+									<Icon
+										v-if="isCreating"
+										name="lucide:loader-2"
+										class="w-4 h-4 animate-spin motion-reduce:animate-none"
+									/>
+									<Icon v-else name="lucide:plus" class="w-4 h-4" />
+								</template>
+								{{
+									isCreating
+										? t('components.shareLinksPopover.creating')
+										: t('components.shareLinksPopover.create')
+								}}
+							</UiButton>
+						</UiTooltip>
 						<p v-if="hasUnsavedChanges" class="text-xs text-text-tertiary mt-1.5">
 							{{ t('components.shareLinksPopover.unsavedHint') }}
 						</p>

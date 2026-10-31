@@ -133,19 +133,20 @@ const jumpTo = (entry: ChecklistEntry) => {
 					/>
 				</div>
 			</div>
-			<UiButton
-				variant="secondary"
-				class="gap-1.5 text-sm py-1.5 px-3 shrink-0 self-start"
-				:title="t('components.domains.dnsChecklistSummary.copyTitle')"
-				data-testid="dns-copy-zone"
-				@click="handleCopy"
-			>
-				<Icon
-					:name="isCopied('zone-file') ? 'lucide:check' : 'lucide:clipboard-copy'"
-					:class="['w-4 h-4', isCopied('zone-file') && 'text-success']"
-				/>
-				{{ isCopied('zone-file') ? t('common.copied') : copyLabel }}
-			</UiButton>
+			<UiTooltip :text="t('components.domains.dnsChecklistSummary.copyTitle')">
+				<UiButton
+					variant="secondary"
+					class="gap-1.5 text-sm py-1.5 px-3 shrink-0 self-start"
+					data-testid="dns-copy-zone"
+					@click="handleCopy"
+				>
+					<Icon
+						:name="isCopied('zone-file') ? 'lucide:check' : 'lucide:clipboard-copy'"
+						:class="['w-4 h-4', isCopied('zone-file') && 'text-success']"
+					/>
+					{{ isCopied('zone-file') ? t('common.copied') : copyLabel }}
+				</UiButton>
+			</UiTooltip>
 		</div>
 
 		<!-- One link per record still to do, named as the row is. -->

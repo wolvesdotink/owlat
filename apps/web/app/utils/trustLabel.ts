@@ -106,7 +106,7 @@ export const TRUST_FLAG_COPY: ReadonlyArray<{ pattern: RegExp; reason: string }>
 /** Fallback for a flag the copy table doesn't recognize — never the raw string. */
 export const TRUST_GENERIC_REASON = 'shared.trustLabel.reasons.generic';
 
-/** Shown when the self-check itself failed (previously the "Unverified" badge). */
+/** Shown when the self-check itself failed; that is not an "Unverified" verdict. */
 export const TRUST_UNCHECKED_REASON = 'shared.trustLabel.reasons.unchecked';
 
 /** Translate ONE self-check flag into plain language (generic on no match). */
