@@ -145,7 +145,6 @@ convex/mail/external/googleOAuthActions.ts:complete #2
 convex/mail/filterCompile.ts:compile #2
 convex/mail/filterCompile.ts:compile #3
 convex/mail/filterCompile.ts:compileDraft #2
-convex/mail/interpret/coverage.ts:check #2
 convex/mail/migrationIndexing.ts:runIndexChunk #2
 convex/mail/migrationIndexing.ts:runIndexChunk #3
 convex/mail/migrationIndexing.ts:runIndexChunk #4
