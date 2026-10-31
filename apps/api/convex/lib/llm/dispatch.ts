@@ -242,7 +242,7 @@ type LlmTextWithToolsOptions = {
  * Usage is the sum of every step that finished, in every attempt: the SDK's
  * `usage` is the last step's only, and a retried attempt paid for the steps it
  * finished before it failed. When the loop fails after a finished step, the
- * error is an `LlmPartialUsageError` carrying that usage (#1256). Each step is
+ * error is an `LlmPartialUsageError` carrying that usage. Each step is
  * one provider request on the meter; the step a failure interrupted is
  * recorded as a failed request with no reported usage.
  */
@@ -349,7 +349,7 @@ function billedUsageOf(error: unknown): RawUsage {
 /**
  * One structured-output call: `generateObject` behind the shared retry policy.
  *
- * Usage is the sum of every attempt the provider billed (#1260). A completion
+ * Usage is the sum of every attempt the provider billed. A completion
  * that fails the schema is paid for and then retried like any other failure, so
  * a success after two schema failures returns the usage of all three calls.
  * When the call fails for good after a billed attempt, the error is an

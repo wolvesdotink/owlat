@@ -1285,7 +1285,7 @@ describe('a plugin whose provider signs with svix', () => {
 });
 
 /**
- * A REPLAY THAT GOES STALE WHILE IT IS BEING AUTHORIZED (#1328 review).
+ * A REPLAY THAT GOES STALE WHILE IT IS BEING AUTHORIZED.
  *
  * The route verifies, then awaits authorization, then claims. A completed
  * delivery's receipt lives exactly as long as its signature can verify — so a
@@ -1412,7 +1412,7 @@ describe('a replay whose window closes during authorization', () => {
 });
 
 /**
- * A SVIX MESSAGE THE SENDER RETRIES, RE-SIGNED (#1367).
+ * A SVIX MESSAGE THE SENDER RETRIES, RE-SIGNED.
  *
  * Svix signs every attempt with the attempt's own timestamp. When we apply a
  * batch and our 2xx is lost (a timeout, a reset connection), the retry is the

@@ -2,16 +2,12 @@
  * PROVIDER FEEDBACK ADAPTER REGISTRY — the feedback plane's seam.
  *
  * A send transport that reports its own outcomes posts them to a route of ours.
- * That used to be a hand-wired pair per kind — a thin `httpAction` file at the
- * convex root (`sesWebhook.ts`, `resendWebhook.ts`, `mtaWebhook.ts`,
- * `mandrillWebhook.ts`), each doing nothing but naming an adapter, plus the
- * route in `http.ts` that imported it. Four files that had to be remembered, all
- * saying the same sentence, and nothing anywhere said they had to exist: a kind
+ * Without this registry nothing would say that route has to exist: a kind
  * could declare `hasProviderFeedback: true`, get a panel in the delivery UI
  * telling an operator to paste an endpoint into a provider console, and have no
  * endpoint behind it.
  *
- * Adding a feedback-reporting provider is now: write `./<kind>.ts`, add one line
+ * Adding a feedback-reporting provider is: write `./<kind>.ts`, add one line
  * here, add the static route in `http.ts`. The first two are compile-enforced by
  * the guards below; the third is enforced at runtime by
  * `lib/sendProviders/__tests__/feedbackRoutes.test.ts`, which walks the real

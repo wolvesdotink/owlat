@@ -153,7 +153,7 @@ export const needsReplyClarificationQuestionValidator = v.object({
 	// question. Questions stored before it existed carried an English
 	// `attribution` sentence instead; migration 0066
 	// (backfill_clarification_origin) converted those, and the field is gone
-	// from the schema (#1224), so a deployment that still holds one rejects
+	// from the schema, so a deployment that still holds one rejects
 	// this schema on deploy. Optional because a question with no provenance
 	// shows no trust line rather than an invented one.
 	origin: v.optional(clarificationOriginValidator),

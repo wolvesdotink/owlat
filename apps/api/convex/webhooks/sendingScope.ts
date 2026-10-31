@@ -1,5 +1,5 @@
 /**
- * Feedback from outside this deployment's sending scope (#1243).
+ * Feedback from outside this deployment's sending scope.
  *
  * A Mandrill webhook belongs to the whole ACCOUNT, so on an account shared with
  * other senders it carries every subaccount's events. Two of them act on an

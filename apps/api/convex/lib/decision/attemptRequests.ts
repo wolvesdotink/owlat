@@ -66,7 +66,7 @@ export interface AttemptTags {
 /**
  * What a failed attempt was billed for: a response the codec rejected
  * (`DecisionWireError`), or a language call whose billed completions never
- * fitted the schema (`LlmPartialUsageError`, #1260). Anything else bills
+ * fitted the schema (`LlmPartialUsageError`). Anything else bills
  * nothing we can see.
  */
 export function billedUsage(error: unknown): { usage?: TokenUsage; modelUsed?: string } {

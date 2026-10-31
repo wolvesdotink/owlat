@@ -41,7 +41,7 @@ export function registerWebhookCrons(crons: Crons): void {
 		{}
 	);
 
-	// Sweep expired provider-event replay claims (#1228). Rows expire a week after
+	// Sweep expired provider-event replay claims. Rows expire a week after
 	// their event; the claim hot path sweeps too, but only while events arrive.
 	crons.interval(
 		'cleanup provider event replay claims',
@@ -60,7 +60,7 @@ export function registerWebhookCrons(crons: Crons): void {
 		{}
 	);
 
-	// Retry bounces and complaints that matched no Send (#1194) while their id may
+	// Retry bounces and complaints that matched no Send while their id may
 	// still turn up; one index range read when nothing is due.
 	crons.interval(
 		'replay unresolved feedback',

@@ -88,7 +88,7 @@ export const mailDraftAttachmentValidator = v.object({
 
 /**
  * A file a draft was opened to carry that the draft owes until it is attached
- * (mail/draftExpectedAttachments.ts, #1257): an RSVP's generated `.ics`, or one
+ * (mail/draftExpectedAttachments.ts): an RSVP's generated `.ics`, or one
  * attachment of a forwarded message. `owed` holds Send; `attached` names the
  * blob that settled it; `removed` is the person taking it out. A generated
  * file's text is kept only while it is owed.

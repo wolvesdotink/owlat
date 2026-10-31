@@ -110,7 +110,7 @@ describe('SES feedback dispatch', () => {
 		expect(runMutationCalls[0]!.args).toMatchObject({ transition: { to: 'complained' } });
 	});
 
-	// #1227: SES proves which provider reported the mail, not which deployment
+	// SES proves which provider reported the mail, not which deployment
 	// sent it, so a redacted complaint is counted and blocks no one.
 	it('counts a redacted complaint without blocking the address (no recoverable message id)', async () => {
 		const { ctx, runMutationCalls } = makeCtx();

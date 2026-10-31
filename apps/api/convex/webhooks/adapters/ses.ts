@@ -420,7 +420,7 @@ export const sesAdapter: InboundAdapter<'ses'> = {
 				if (providerMessageId) {
 					// The complainer rides along when SES names exactly one, so a
 					// complaint whose Message-ID matches no send can still reach the
-					// blocklist by address (#1194). Several names cannot say who.
+					// blocklist by address. Several names cannot say who.
 					const complainer = complained.length === 1 ? complained[0]?.emailAddress : undefined;
 					return {
 						kind: 'email.complained',
@@ -433,7 +433,7 @@ export const sesAdapter: InboundAdapter<'ses'> = {
 				// No recoverable Message-ID → pass the complained address on (RFC
 				// 5965 §3.2 parity with the MTA path). SES carries no proof of which
 				// deployment sent the mail, so the dispatcher counts it as
-				// unattributed rather than blocking it (#1227).
+				// unattributed rather than blocking it.
 				const recipient = complained[0]?.emailAddress;
 				if (recipient) {
 					return { kind: 'email.complained', recipient, providerType: 'ses', at: complaintAt };

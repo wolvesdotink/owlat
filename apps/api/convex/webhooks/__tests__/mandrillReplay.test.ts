@@ -1,5 +1,5 @@
 /**
- * Mandrill replay safety (#1228).
+ * Mandrill replay safety.
  *
  * Mandrill signs a webhook with no timestamp and gives an event no id, so the
  * same signed batch verifies every time it arrives. Two events act on an
@@ -87,7 +87,7 @@ const SAVED_ENV = { ...process.env };
 
 beforeEach(() => {
 	process.env['MANDRILL_WEBHOOK_KEY'] = WEBHOOK_KEY;
-	// A deployment that sends through Mandrill, so its account default is in scope (#1243).
+	// A deployment that sends through Mandrill, so its account default is in scope.
 	process.env['MANDRILL_API_KEY'] = 'mandrill-test-api-key';
 	process.env['CONVEX_SITE_URL'] = SITE_URL;
 	delete process.env['RATE_LIMIT_TRUSTED_PROXY'];
@@ -572,8 +572,8 @@ describe('an unsub never undoes a re-subscribe it predates', () => {
 // ═══ spam ═════════════════════════════════════════════════════════════════
 
 describe('a replayed spam event', () => {
-	// Past the window there is no key, and #1214's rule applies: every delivery
-	// of an unresolved report counts as an occurrence. The count is
+	// Past the window there is no key, and the unresolved-feedback rule applies:
+	// every delivery of an unresolved report counts as an occurrence. The count is
 	// informational (the operator status sample) and blocks no one.
 	it('past the dedupe window counts each delivery as #1214 does, and blocks no one', async () => {
 		const t = setupTest();

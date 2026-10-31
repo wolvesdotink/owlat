@@ -186,8 +186,8 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
 
 	// Background Postbox AI (category refinement, clarification, draft on
 	// arrival, commitment extraction, the Reply Queue starter draft), keyed per
-	// mailbox owner (#1380). Scheduled work has no session, so it used to share
-	// one 'anon' key in `postboxAiPerUser` across the whole instance. Sized for
+	// mailbox owner: scheduled work has no session, so keying it like
+	// `postboxAiPerUser` would put the whole instance on one 'anon' key. Sized for
 	// one person's arrival burst: one message spends at most three gated calls
 	// (refinement, clarification, draft), so the capacity covers a ~40-message
 	// IMAP catch-up and the rate ~20 such messages a minute after it. Spend is

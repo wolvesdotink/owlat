@@ -1,5 +1,5 @@
 /**
- * Every caller of `sendProviderDispatch` mirrors a send-response refusal (#1243).
+ * Every caller of `sendProviderDispatch` mirrors a send-response refusal.
  *
  * A provider can refuse an address off its own reject list in the send
  * response. The Mandrill webhook drops a later out-of-scope `reject` that

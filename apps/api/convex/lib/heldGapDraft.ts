@@ -1,5 +1,5 @@
 /**
- * The read side of "no team draft with silent gaps" (#1343): an agent draft
+ * The read side of "no team draft with silent gaps": an agent draft
  * with `[[...]]` gaps nobody agreed to is not shown, however it was stored.
  *
  * The draft step and the write-side fence (`inbox/stepOutputs.recordDraftOutput`)

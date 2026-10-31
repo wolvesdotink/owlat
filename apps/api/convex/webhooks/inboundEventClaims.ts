@@ -3,7 +3,7 @@
  *
  * Mandrill signs a webhook with no timestamp and gives an event no id, so a
  * redelivered batch, or a request someone captured and posts again, verifies
- * every time (#1228). Most of what such an event does is idempotent in the Send
+ * every time. Most of what such an event does is idempotent in the Send
  * lifecycle anyway. What is not is an effect on an ADDRESS: a `reject` mirrored
  * into the blocklist after an operator removed the row, an `unsub` after the
  * contact re-subscribed. The adapter derives an address-free `replayKey` for

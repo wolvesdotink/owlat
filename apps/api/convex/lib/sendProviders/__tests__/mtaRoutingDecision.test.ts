@@ -171,7 +171,7 @@ describe('MTA routing decision client', () => {
 		}
 	);
 
-	// ISSUE #505: the intake 409 that is NOT governance. A lease the MTA could not
+	// The intake 409 that is NOT governance. A lease the MTA could not
 	// read back is its own store failing, so it must arrive as its own code and
 	// not be folded into the `ROUTING_DECISION_` prefix match above — that bucket
 	// is the one gate 2 halts a cell over.

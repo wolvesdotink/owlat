@@ -1,5 +1,5 @@
 /**
- * The measured half of an embedding space's identity (#1334).
+ * The measured half of an embedding space's identity.
  *
  * The configuration names a target (`lib/embeddingSpace.ts`): provider,
  * endpoint, model, requested width. Two facts only the provider knows complete

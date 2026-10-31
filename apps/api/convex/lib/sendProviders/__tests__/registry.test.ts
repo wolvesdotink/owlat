@@ -249,8 +249,7 @@ describe('EmailErrorCode + isRetryableErrorCode', () => {
 	// EXHAUSTIVE, because the enum is a registry two other tables key off: the
 	// dispatch helper's retry predicate below, and `governedDispatch`'s deferral
 	// branch, which reads a code to decide whose fault a deferral is. A member
-	// added without a decision in both places is the drift this list catches — it
-	// grew `ROUTING_LEASE_UNREADABLE` (issue #505) exactly that way.
+	// added without a decision in both places is the drift this list catches.
 	it('ships exactly these codes, each named on the wire by its own key', () => {
 		expect(Object.values(EmailErrorCode).sort()).toEqual([
 			'AMBIGUOUS_TIMEOUT',

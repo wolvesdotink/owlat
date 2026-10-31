@@ -41,7 +41,7 @@ export const MANDRILL_SEND_TIMEOUT_MESSAGE = 'Mandrill send timed out';
  *    Mandrill account) and `invalid-sender`.
  *  - Content/policy: `rule`, an account rules-engine "reject message" action.
  *    A rule can match the subject, sender, tags, template or API key, so it is
- *    not a fact about the recipient and suppresses no one (#1249).
+ *    not a fact about the recipient and suppresses no one.
  *  - Quota: `test-mode-limit` — a test key's send allowance, which is a rate
  *    limit in every sense that matters to the dispatch loop.
  */

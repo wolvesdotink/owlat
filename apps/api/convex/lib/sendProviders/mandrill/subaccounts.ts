@@ -1,5 +1,5 @@
 /**
- * The Mandrill subaccounts this deployment sends under (#1243).
+ * The Mandrill subaccounts this deployment sends under.
  *
  * Each CONFIGURED Mandrill transport sends under the subaccount its
  * `MANDRILL_SUBACCOUNT` names, read exactly as the send adapter reads it in
