@@ -271,7 +271,7 @@ describe('provider-identity ratchet, a string is not a comment', () => {
 
 	it('sees a comparison on a line that also carries a URL', () => {
 		// `//` inside a string is not a comment. Provider doc links sit in exactly
-		// the per-vendor panels the allowlist carries as debt, so this is both a
+		// the per-vendor panels this gate exists to catch, so this is both a
 		// natural accident and a one-character deliberate bypass.
 		const root = sandbox({
 			files: {

@@ -14021,7 +14021,6 @@
 			"campaignIpsLabel": "Campaign IPs",
 			"ehloHostnameHelp": "Set each IP PTR exactly to its EHLO hostname, then point that hostname back to the IP.",
 			"ehloHostnameLabel": "Default EHLO / PTR hostname",
-			"emailitKeyLabel": "Emailit API key",
 			"errors": {
 				"missingToken": "Enter the setup token printed by `owlat setup` to verify the provider, then try again.",
 				"validationFailed": "Could not validate the provider. Try again."
@@ -14035,8 +14034,6 @@
 			"fromIdentityOptional": "(optional)",
 			"fromNameLabel": "From name",
 			"intro": "Pick how Owlat sends mail. You can change this later in Settings.",
-			"mandrillHint": "Mailchimp Transactional → Settings → API keys. Bounce and complaint feedback needs a webhook too — Delivery → Provider has the URL and the events to enable once setup is done.",
-			"mandrillKeyLabel": "Mailchimp Transactional API key",
 			"mtaIdentityHeading": "Outbound IP identity",
 			"mtaIdentityIntro": "The MTA profile is enabled. Enter the public source IPs and the hostname their PTR records resolve to before launch.",
 			"next": "Next: Admin account",
@@ -14074,21 +14071,12 @@
 					"label": "SMTP relay"
 				}
 			},
-			"resendKeyLabel": "Resend API key",
 			"reverseDnsBody": "Every sending IP above needs a PTR record pointing at its EHLO hostname. You set it where you rent the IP — your hosting provider's console — not in your DNS zone. Setup checks it before it completes, and no mail leaves the server until it matches.",
 			"reverseDnsHeading": "Reverse DNS (PTR) — set this before you finish",
-			"sesAccessKeyLabel": "Access key ID",
-			"sesRegionLabel": "Region",
-			"sesSecretKeyLabel": "Secret access key",
 			"setupTokenHelp": "Printed by the owlat setup command when it enabled setup mode. Required to verify the provider and launch.",
 			"setupTokenLabel": "Setup token",
 			"smtpHostHelp": "The relay handles delivery, so authentication (SPF/DKIM) is set up on the relay's side, not Owlat's.",
-			"smtpHostLabel": "Server host",
-			"smtpPortLabel": "Port",
 			"smtpPresetHint": "Prefills the server, port, and encryption. Pick Custom for any other SMTP server.",
-			"smtpPresetLabel": "Provider preset",
-			"smtpSecureLabel": "Implicit TLS (port 465). Leave off for STARTTLS on 587.",
-			"smtpUsernameLabel": "Username",
 			"title": "How should Owlat send {accent}?",
 			"titleAccent": "mail",
 			"transactionalIpsHelp": "Comma-separated public IPv4 addresses.",

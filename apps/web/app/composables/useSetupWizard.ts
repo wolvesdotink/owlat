@@ -26,13 +26,8 @@ import {
 	type SmtpRelayPreset,
 } from '@owlat/shared/setupSendingPresets';
 import { isOwnSendProviderKind, type SendTransportKind } from '@owlat/shared/sendProviderCatalog';
-import type { OutboundTlsMode } from '@owlat/shared/outboundTlsMode';
 import { buildMtaIdentityEnv, type MtaIdentityDraft } from '~/utils/setupMtaIdentity';
-import {
-	credentialValuesFromDraft,
-	transportCredentialEnv,
-	type TransportCredentialValues,
-} from './setupWizardCredentials';
+import { transportCredentialEnv, type TransportCredentialValues } from './setupWizardCredentials';
 import { SETUP_DRAFT_STORAGE_KEY, readSetupDraft, serializeSetupDraft } from './setupWizardDraft';
 import { usePageExitGuard } from './usePageExitGuard';
 import {
@@ -49,8 +44,7 @@ export type SmtpPreset = SmtpRelayPreset;
 
 // The outbound-TLS selector surface (option list, `seedOutboundTlsMode`, and the
 // `OutboundTlsMode` re-export) lives in the sibling `setupOutboundTls` module,
-// split out to keep this file under the file-size ratchet. This file still uses
-// the `OutboundTlsMode` type for the email step draft below.
+// split out to keep this file under the file-size ratchet.
 
 // ── Steps ────────────────────────────────────────────────────────────────────
 
@@ -110,44 +104,18 @@ export interface AdminDraft {
 	password: string;
 }
 
-export interface SesCredentials {
-	region: string;
-	accessKeyId: string;
-	secretAccessKey: string;
-}
-
-export interface SmtpRelayDraft {
-	preset: SmtpPreset;
-	host: string;
-	/** Kept as a string because it's a form field; blank ⇒ backend default 587. */
-	port: string;
-	/** true ⇒ implicit TLS (usually 465); false ⇒ STARTTLS upgrade (587). */
-	secure: boolean;
-	username: string;
-	password: string;
-}
-
 export interface EmailStepDraft {
 	provider: ProviderChoice;
 	/** Whether the chosen features force a real delivery provider (no "none"). */
 	requiresProvider: boolean;
-	resendKey: string;
-	/** Emailit API key. Optional for compatibility with persisted pre-Emailit drafts. */
-	emailitKey?: string;
 	/**
-	 * Mailchimp Transactional (Mandrill) API key. One field, because that is the
-	 * whole sending credential — the webhook signing key, the subaccount and the
-	 * IP pool are set in `.env` out of band (see `PROVIDER_ENV_KEYS`).
+	 * Every credential the step holds, keyed by the deployment variable it is
+	 * written to — the same map `TransportCredentialFields.vue` renders from the
+	 * selected entry's `credentialFields` descriptors. Values for kinds other than
+	 * `provider` may be present (switching transport keeps what was typed); only
+	 * the selected kind's descriptors are validated or written.
 	 */
-	mandrillKey: string;
-	ses: SesCredentials;
-	smtp: SmtpRelayDraft;
-	/**
-	 * Outbound TLS posture for the built-in MTA. Optional — omitted drafts (and
-	 * every non-`mta` transport) fall back to the `opportunistic` default, which
-	 * is byte-identical to the historic behaviour.
-	 */
-	outboundTlsMode?: OutboundTlsMode;
+	credentials: TransportCredentialValues;
 	/** MTA can be enabled by receiving profiles even when delivery uses a relay. */
 	mtaProfileEnabled?: boolean;
 	mtaIdentity?: MtaIdentityDraft;
@@ -166,8 +134,8 @@ export interface EmailStepDraft {
 /**
  * Build the env patch for the email step from the current draft, starting from
  * the existing env. Pure so it can be unit-tested and reused by the page's
- * `next()` handler. Resend keys are validated over the network in the page
- * before this is committed; this only assembles values.
+ * `next()` handler. A kind that declares a `setupProbe` is checked over the
+ * network in the page before this is committed; this only assembles values.
  *
  * NO PER-PROVIDER IF-CHAIN. This function must not restate, as imperative
  * code, the mapping the catalog declares (one `if (draft.provider === …)` per
@@ -180,8 +148,7 @@ export interface EmailStepDraft {
  */
 export function buildProviderEnv(
 	existing: Record<string, string>,
-	draft: EmailStepDraft,
-	credentialValues: TransportCredentialValues = credentialValuesFromDraft(draft)
+	draft: EmailStepDraft
 ): Record<string, string> {
 	const next: Record<string, string> = { ...existing };
 	for (const key of [...PROVIDER_ENV_KEYS, ...COMPOSED_TRANSPORT_CREDENTIAL_ENV_KEYS]) {
@@ -190,7 +157,7 @@ export function buildProviderEnv(
 
 	if (isComposedSendProviderKind(draft.provider)) {
 		next['EMAIL_PROVIDER'] = draft.provider;
-		Object.assign(next, transportCredentialEnv(draft.provider, credentialValues));
+		Object.assign(next, transportCredentialEnv(draft.provider, draft.credentials));
 	}
 	// The sending IPs and the EHLO identity are the OWN ARM's — the one
 	// legitimate identity question, asked through the catalog's `tier: 'own'`
@@ -249,7 +216,7 @@ export interface SetupSummary {
  *
  * The delivery hub, the transport editor's picker and this step each still word the own MTA
  * slightly differently; unifying that copy is a deliberate wording decision, not something a
- * rendering refactor gets to do silently (recorded in `scripts/provider-identity-allowlist.txt`).
+ * rendering refactor gets to do silently.
  */
 const RECEIVE_ONLY_LABEL = 'shared.useSetupWizard.provider.receiveOnly';
 

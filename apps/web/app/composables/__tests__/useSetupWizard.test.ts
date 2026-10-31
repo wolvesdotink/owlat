@@ -12,7 +12,6 @@ import {
 	SMTP_RELAY_PRESETS,
 	type AdminDraft,
 	type EmailStepDraft,
-	type SmtpRelayDraft,
 } from '../useSetupWizard';
 import {
 	adminIsValid,
@@ -36,22 +35,11 @@ const validAdmin: AdminDraft = {
 	password: 'a-very-long-password',
 };
 
-const blankSmtp: SmtpRelayDraft = {
-	preset: 'custom',
-	host: '',
-	port: '',
-	secure: false,
-	username: '',
-	password: '',
-};
-
 function emailDraft(overrides: Partial<EmailStepDraft> = {}): EmailStepDraft {
 	return {
 		provider: 'mta',
 		requiresProvider: true,
-		resendKey: '',
-		ses: { region: 'us-east-1', accessKeyId: '', secretAccessKey: '' },
-		smtp: { ...blankSmtp },
+		credentials: { AWS_SES_REGION: 'us-east-1' },
 		mtaIdentity: {
 			transactionalIps: '203.0.113.10',
 			campaignIps: '203.0.113.11',
@@ -63,16 +51,15 @@ function emailDraft(overrides: Partial<EmailStepDraft> = {}): EmailStepDraft {
 	};
 }
 
-/** A complete, valid Mailgun-preset relay draft for the happy-path tests. */
-function smtpRelay(overrides: Partial<SmtpRelayDraft> = {}): SmtpRelayDraft {
+/** A complete, valid Mailgun-preset relay, as the env-keyed values the form holds. */
+function smtpRelay(overrides: Record<string, string> = {}): Record<string, string> {
 	const preset = SMTP_RELAY_PRESETS.mailgun;
 	return {
-		preset: 'mailgun',
-		host: preset.host,
-		port: preset.port,
-		secure: preset.secure,
-		username: 'postmaster@mg.acme.test',
-		password: 'relay-secret',
+		SMTP_RELAY_HOST: preset.host,
+		SMTP_RELAY_PORT: preset.port,
+		SMTP_RELAY_SECURE: String(preset.secure),
+		SMTP_RELAY_USERNAME: 'postmaster@mg.acme.test',
+		SMTP_RELAY_PASSWORD: 'relay-secret',
 		...overrides,
 	};
 }
@@ -159,49 +146,53 @@ describe('email step navigation gate', () => {
 	});
 
 	it('cannot advance with Resend selected but no API key', () => {
-		const draft = emailDraft({ provider: 'resend', resendKey: '' });
+		const draft = emailDraft({ provider: 'resend', credentials: { RESEND_API_KEY: '' } });
 		expect(validateEmailStep(draft)).toMatchObject({
-			resendKey: 'shared.setupWizardValidation.email.resendKeyRequired',
+			credentials: { key: 'shared.setupWizardValidation.email.resendKeyRequired' },
 		});
 	});
 
 	it('cannot advance with SES selected but missing credentials', () => {
 		const draft = emailDraft({ provider: 'ses' });
 		expect(validateEmailStep(draft)).toMatchObject({
-			ses: 'shared.setupWizardValidation.email.sesIncomplete',
+			credentials: { key: 'shared.setupWizardValidation.email.sesIncomplete' },
 		});
 	});
 
 	it('cannot advance with an SMTP relay missing host/username/password', () => {
-		const draft = emailDraft({ provider: 'smtp', smtp: { ...blankSmtp } });
+		const draft = emailDraft({ provider: 'smtp', credentials: {} });
 		expect(validateEmailStep(draft)).toMatchObject({
-			smtp: 'shared.setupWizardValidation.email.smtpIncomplete',
+			credentials: { key: 'shared.setupWizardValidation.email.smtpIncomplete' },
 		});
 	});
 
 	it('cannot advance with an SMTP relay host but missing credentials', () => {
 		const draft = emailDraft({
 			provider: 'smtp',
-			smtp: smtpRelay({ username: '', password: '' }),
+			credentials: smtpRelay({ SMTP_RELAY_USERNAME: '', SMTP_RELAY_PASSWORD: '' }),
 		});
 		expect(validateEmailStep(draft)).toMatchObject({
-			smtp: 'shared.setupWizardValidation.email.smtpIncomplete',
+			credentials: { key: 'shared.setupWizardValidation.email.smtpIncomplete' },
 		});
 	});
 
 	it('rejects a non-numeric or out-of-range SMTP port', () => {
 		for (const port of ['abc', '70000']) {
 			expect(
-				validateEmailStep(emailDraft({ provider: 'smtp', smtp: smtpRelay({ port }) })).smtp
+				validateEmailStep(
+					emailDraft({ provider: 'smtp', credentials: smtpRelay({ SMTP_RELAY_PORT: port }) })
+				).credentials?.key
 			).toBe('shared.setupWizardValidation.email.smtpPortInvalid');
 		}
 	});
 
 	it('accepts a complete SMTP relay (blank port defaults to 587)', () => {
-		expect(emailStepIsValid(emailDraft({ provider: 'smtp', smtp: smtpRelay({ port: '' }) }))).toBe(
-			true
-		);
-		expect(emailStepIsValid(emailDraft({ provider: 'smtp', smtp: smtpRelay() }))).toBe(true);
+		expect(
+			emailStepIsValid(
+				emailDraft({ provider: 'smtp', credentials: smtpRelay({ SMTP_RELAY_PORT: '' }) })
+			)
+		).toBe(true);
+		expect(emailStepIsValid(emailDraft({ provider: 'smtp', credentials: smtpRelay() }))).toBe(true);
 	});
 
 	it('ships prefilled STARTTLS-on-587 presets for each named relay', () => {
@@ -228,7 +219,7 @@ describe('email step navigation gate', () => {
 	it('requires the outbound IP and EHLO identity whenever the MTA profile is enabled', () => {
 		const draft = emailDraft({
 			provider: 'smtp',
-			smtp: smtpRelay(),
+			credentials: smtpRelay(),
 			mtaProfileEnabled: true,
 			mtaIdentity: {
 				transactionalIps: '',
@@ -246,7 +237,7 @@ describe('buildProviderEnv', () => {
 	it('writes the provider and its credentials, clearing stale keys', () => {
 		const env = buildProviderEnv(
 			{ AWS_SES_REGION: 'eu-west-1', RESEND_API_KEY: 'old' },
-			emailDraft({ provider: 'resend', resendKey: 're_live_123' })
+			emailDraft({ provider: 'resend', credentials: { RESEND_API_KEY: 're_live_123' } })
 		);
 		expect(env['EMAIL_PROVIDER']).toBe('resend');
 		expect(env['RESEND_API_KEY']).toBe('re_live_123');
@@ -263,7 +254,7 @@ describe('buildProviderEnv', () => {
 	it('writes the SMTP relay env from a preset draft, defaulting a blank port to 587', () => {
 		const env = buildProviderEnv(
 			{ RESEND_API_KEY: 'old' },
-			emailDraft({ provider: 'smtp', smtp: smtpRelay({ port: '' }) })
+			emailDraft({ provider: 'smtp', credentials: smtpRelay({ SMTP_RELAY_PORT: '' }) })
 		);
 		expect(env['EMAIL_PROVIDER']).toBe('smtp');
 		expect(env['SMTP_RELAY_HOST']).toBe('smtp.mailgun.org');
@@ -280,7 +271,10 @@ describe('buildProviderEnv', () => {
 	it('writes an explicit SMTP port and implicit-TLS flag when set', () => {
 		const env = buildProviderEnv(
 			{},
-			emailDraft({ provider: 'smtp', smtp: smtpRelay({ port: '465', secure: true }) })
+			emailDraft({
+				provider: 'smtp',
+				credentials: smtpRelay({ SMTP_RELAY_PORT: '465', SMTP_RELAY_SECURE: 'true' }),
+			})
 		);
 		expect(env['SMTP_RELAY_PORT']).toBe('465');
 		expect(env['SMTP_RELAY_SECURE']).toBe('true');
@@ -289,7 +283,7 @@ describe('buildProviderEnv', () => {
 	it('clears stale SMTP relay keys when switching to another provider', () => {
 		const env = buildProviderEnv(
 			{ EMAIL_PROVIDER: 'smtp', SMTP_RELAY_HOST: 'smtp.old.test', SMTP_RELAY_PASSWORD: 'x' },
-			emailDraft({ provider: 'resend', resendKey: 're_new' })
+			emailDraft({ provider: 'resend', credentials: { RESEND_API_KEY: 're_new' } })
 		);
 		expect(env['EMAIL_PROVIDER']).toBe('resend');
 		expect(env['SMTP_RELAY_HOST']).toBeUndefined();
@@ -325,7 +319,7 @@ describe('buildProviderEnv', () => {
 	it('writes MTA identity env even when direct delivery uses an SMTP relay', () => {
 		const env = buildProviderEnv(
 			{},
-			emailDraft({ provider: 'smtp', smtp: smtpRelay(), mtaProfileEnabled: true })
+			emailDraft({ provider: 'smtp', credentials: smtpRelay(), mtaProfileEnabled: true })
 		);
 		expect(env).toMatchObject({
 			EMAIL_PROVIDER: 'smtp',
@@ -342,7 +336,7 @@ describe('review step renders the collected config', () => {
 			{},
 			emailDraft({
 				provider: 'resend',
-				resendKey: 're_1',
+				credentials: { RESEND_API_KEY: 're_1' },
 				fromEmail: 'team@acme.test',
 				fromName: 'Acme',
 			})
@@ -360,7 +354,7 @@ describe('review step renders the collected config', () => {
 	});
 
 	it('summarizes an SMTP relay install', () => {
-		const env = buildProviderEnv({}, emailDraft({ provider: 'smtp', smtp: smtpRelay() }));
+		const env = buildProviderEnv({}, emailDraft({ provider: 'smtp', credentials: smtpRelay() }));
 		const summary = buildSetupSummary(getDefaultFlags(), env, validAdmin);
 		expect(summary.provider).toBe('smtp');
 		expect(summary.providerLabel).toBe('SMTP relay');

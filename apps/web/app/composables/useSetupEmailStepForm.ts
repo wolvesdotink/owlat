@@ -4,7 +4,14 @@
  * the step's pure rules validate.
  *
  * The step page owns the submit flow (the live provider check, the env commit
- * and the navigation); this composable owns the state that flow reads. Splitting
+ * and the navigation); this composable owns the state that flow reads.
+ *
+ * THE CREDENTIALS ARE THE CATALOG'S. They live in the shared relay draft
+ * (`useRelayCredentialDraft`) as one map keyed by env variable, seeded from the
+ * selected entry's `credentialFields` descriptors and from the collected `env`,
+ * and the page renders them with `TransportCredentialFields.vue` — so a kind's
+ * fields, defaults, required flags and pre-apply probe are declared once, in its
+ * catalog entry, and this step has no per-vendor field of its own. Splitting
  * them the way `setupWizardValidation` and `setupOutboundTls` were split out of
  * `useSetupWizard` keeps the page a form and its file under the size ratchet.
  *
@@ -16,13 +23,9 @@
 
 import type { ComputedRef, Ref } from 'vue';
 import { getActiveProfiles, type FeatureFlagState } from '@owlat/shared/featureFlags';
-import {
-	SMTP_RELAY_PRESETS,
-	type EmailStepDraft,
-	type ProviderChoice,
-	type SmtpPreset,
-} from './useSetupWizard';
+import type { EmailStepDraft, ProviderChoice } from './useSetupWizard';
 import { validateEmailStep } from './setupWizardValidation';
+import { useRelayCredentialDraft } from './useRelayCredentialDraft';
 
 /** One delivery-transport choice card: message keys plus its icon. */
 export interface ProviderOption {
@@ -84,27 +87,6 @@ const PROVIDER_OPTIONS: ProviderOption[] = [
 	},
 ];
 
-/**
- * Vendor names from the shared preset table (`@owlat/shared`, also read by the
- * setup CLI): not app copy, so they are rendered as the table spells them.
- */
-const SMTP_PRESET_OPTIONS = (Object.keys(SMTP_RELAY_PRESETS) as SmtpPreset[]).map((key) => ({
-	value: key,
-	label: SMTP_RELAY_PRESETS[key].label,
-}));
-
-/**
- * Restore a matching relay preset from a previously-entered host, otherwise fall
- * back to Custom (an unrecognised host is one the operator typed themselves).
- */
-function resolveSmtpPreset(host: string): SmtpPreset {
-	if (!host) return 'mailgun';
-	const match = (Object.keys(SMTP_RELAY_PRESETS) as SmtpPreset[]).find(
-		(p) => p !== 'custom' && SMTP_RELAY_PRESETS[p].host === host
-	);
-	return match ?? 'custom';
-}
-
 export function useSetupEmailStepForm(wizard: {
 	/** The wizard's collected env — the seed for every field below. */
 	env: Ref<Record<string, string>>;
@@ -116,44 +98,23 @@ export function useSetupEmailStepForm(wizard: {
 
 	// Seed from prior values so navigating back does not wipe operator input.
 	const initialProvider = (env.value['EMAIL_PROVIDER'] as ProviderChoice | undefined) ?? null;
-	const provider = ref<ProviderChoice>(
-		initialProvider ?? (requiresProvider.value ? 'mta' : 'none')
-	);
-	const mtaProfileEnabled = computed(() =>
-		getActiveProfiles(flags.value, { deliveryProvider: provider.value }).includes('mta')
-	);
 	const transactionalIps = ref(env.value['IP_POOLS_TRANSACTIONAL'] ?? '');
 	const campaignIps = ref(env.value['IP_POOLS_CAMPAIGN'] ?? '');
 	const ehloHostname = ref(env.value['EHLO_HOSTNAME'] ?? '');
-	const resendKey = ref(env.value['RESEND_API_KEY'] ?? '');
-	const emailitKey = ref(env.value['EMAILIT_API_KEY'] ?? '');
-	const mandrillKey = ref(env.value['MANDRILL_API_KEY'] ?? '');
-	const sesRegion = ref(env.value['AWS_SES_REGION'] ?? 'us-east-1');
-	const sesAccess = ref(env.value['AWS_SES_ACCESS_KEY_ID'] ?? '');
-	const sesSecret = ref(env.value['AWS_SES_SECRET_ACCESS_KEY'] ?? '');
 	const fromEmail = ref(env.value['DEFAULT_FROM_EMAIL'] ?? '');
 	const fromName = ref(env.value['DEFAULT_FROM_NAME'] ?? '');
 
-	const initialSmtpHost = env.value['SMTP_RELAY_HOST'] ?? '';
-	const initialSmtpPreset = resolveSmtpPreset(initialSmtpHost);
-	const smtpPreset = ref<SmtpPreset>(initialSmtpPreset);
-	const smtpHost = ref(initialSmtpHost || SMTP_RELAY_PRESETS[initialSmtpPreset].host);
-	const smtpPort = ref(env.value['SMTP_RELAY_PORT'] ?? SMTP_RELAY_PRESETS[initialSmtpPreset].port);
-	const smtpSecure = ref(
-		env.value['SMTP_RELAY_SECURE'] !== undefined
-			? env.value['SMTP_RELAY_SECURE'] === 'true'
-			: SMTP_RELAY_PRESETS[initialSmtpPreset].secure
+	// Seeded from the collected env, so navigating back keeps every credential the
+	// operator typed — for the selected kind and for any kind they switched away
+	// from — and the relay endpoint's preset is the one its saved host matches.
+	const relay = useRelayCredentialDraft(
+		initialProvider ?? (requiresProvider.value ? 'mta' : 'none'),
+		env.value
 	);
-	const smtpUsername = ref(env.value['SMTP_RELAY_USERNAME'] ?? '');
-	const smtpPassword = ref(env.value['SMTP_RELAY_PASSWORD'] ?? '');
-
-	watch(smtpPreset, (preset) => {
-		if (preset === 'custom') return;
-		const cfg = SMTP_RELAY_PRESETS[preset];
-		smtpHost.value = cfg.host;
-		smtpPort.value = cfg.port;
-		smtpSecure.value = cfg.secure;
-	});
+	const { provider, credentialValues, preset, presetOptions, canValidateLive } = relay;
+	const mtaProfileEnabled = computed(() =>
+		getActiveProfiles(flags.value, { deliveryProvider: provider.value }).includes('mta')
+	);
 
 	// "No email for now" is only a choice when nothing enabled needs a provider.
 	const providerOptions = computed(() =>
@@ -165,22 +126,7 @@ export function useSetupEmailStepForm(wizard: {
 	const draft = computed<EmailStepDraft>(() => ({
 		provider: provider.value,
 		requiresProvider: requiresProvider.value,
-		resendKey: resendKey.value,
-		emailitKey: emailitKey.value,
-		mandrillKey: mandrillKey.value,
-		ses: {
-			region: sesRegion.value,
-			accessKeyId: sesAccess.value,
-			secretAccessKey: sesSecret.value,
-		},
-		smtp: {
-			preset: smtpPreset.value,
-			host: smtpHost.value,
-			port: smtpPort.value,
-			secure: smtpSecure.value,
-			username: smtpUsername.value,
-			password: smtpPassword.value,
-		},
+		credentials: { ...credentialValues },
 		mtaProfileEnabled: mtaProfileEnabled.value,
 		mtaIdentity: {
 			transactionalIps: transactionalIps.value,
@@ -201,21 +147,13 @@ export function useSetupEmailStepForm(wizard: {
 		transactionalIps,
 		campaignIps,
 		ehloHostname,
-		resendKey,
-		emailitKey,
-		mandrillKey,
-		sesRegion,
-		sesAccess,
-		sesSecret,
+		credentialValues,
+		preset,
+		presetOptions,
+		canValidateLive,
+		validateLive: relay.validateLive,
 		fromEmail,
 		fromName,
-		smtpPreset,
-		smtpHost,
-		smtpPort,
-		smtpSecure,
-		smtpUsername,
-		smtpPassword,
-		smtpPresetOptions: SMTP_PRESET_OPTIONS,
 		providerOptions,
 		draft,
 		errors,
