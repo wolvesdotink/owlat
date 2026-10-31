@@ -18,44 +18,43 @@
  * Non-interactive: --assume-yes + --mode + --email/--password/--no-seed for CI.
  */
 
-import { intro, outro, select, isCancel, log, confirm, text } from '@clack/prompts';
+import { intro, outro, log } from '@clack/prompts';
 import pc from 'picocolors';
 import { join } from 'node:path';
 import { existsSync } from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
-import { spawn } from 'node:child_process';
 import { mergeEnv, readEnv, writeEnv } from '../lib/env';
 import { waitForUrl } from '../lib/dockerHealth';
-import {
-	generateConvexAdminKey,
-	deployConvexFunctions,
-	setConvexEnvVars,
-	selectRuntimeEnvVars,
-	looksLikeRealAdminKey,
-} from '../lib/convexDeploy';
-import { isOwnSendProviderKind } from '@owlat/shared/sendProviderCatalog';
-import { createReporter, progressSpinner, SetupStep, type Reporter } from '../lib/progress';
-import { resolveLocalHost, resolveLocalUrls } from '../lib/localHost';
+import { createReporter, progressSpinner, SetupStep } from '../lib/progress';
+import { resolveLocalUrls } from '../lib/localHost';
 import { parseSetupConfig, type SetupConfig } from '../lib/setupConfig';
 import { buildCaddyfile } from '../lib/caddyfile';
-import { isValidEmail } from '../lib/validators';
 import { runSetup } from './setup';
 import { bootstrap, resolveAdminPassword } from './bootstrap-org';
 import { runSeed } from './seed';
 import { installSampleData } from './sampleData';
 import type { CliOptions } from '../lib/cliOptions';
 import { ProvisioningCheckpoint, type CheckpointInputs } from '../lib/provisioningCheckpoint';
-import { probeMtaIdentityHealth } from './doctor';
-import { createDoctorRedactor } from '../lib/doctorText';
-import { applyOutboundIpDefaults, detectPrimaryIpv4 } from '../lib/outboundIp';
 import {
-	announceReverseDns,
-	plannedOutboundIdentities,
-	reverseDnsInstructions,
-	checkReverseDns,
-} from '../lib/reverseDns';
-
-export type Mode = 'populated' | 'blank' | 'custom';
+	askYesNo,
+	dnsInstructions,
+	formatSummary,
+	parseFlags,
+	pickMode,
+	promptEmail,
+	promptText,
+	type Mode,
+} from './quickstartPrompts';
+import {
+	composeImageSource,
+	dockerComposeUp,
+	dockerReachable,
+	prepareComposeProfiles,
+	resolveComposeVersionPin,
+	resolveSourceRevision,
+	verifyMonorepo,
+} from './quickstartStack';
+import { deployBackend, verifyMtaIdentity } from './quickstartBackend';
 
 interface RunOptions extends CliOptions {
 	/** Build the stack images from this source tree instead of pulling published tags. */
@@ -69,16 +68,6 @@ interface RunOptions extends CliOptions {
 	 * (`ghcr.io/.../<svc>:X.Y.Z`) instead of the never-pushed `:dev` sentinel.
 	 */
 	owlatVersion?: string;
-}
-
-export interface ParsedFlags {
-	mode?: Mode;
-	email?: string;
-	name?: string;
-	password?: string;
-	skipSeed?: boolean;
-	forceSeed?: boolean;
-	restart?: boolean;
 }
 
 export async function runQuickstart(opts: RunOptions): Promise<number> {
@@ -212,58 +201,14 @@ export async function runQuickstart(opts: RunOptions): Promise<number> {
 		}
 	}
 
-	// Step 4: docker compose up.
-	// MERGE the TLS profile into whatever COMPOSE_PROFILES the .env already
-	// declares (the default self-host ships `mta`) rather than replacing it.
-	// docker compose reads COMPOSE_PROFILES from .env, and the built-in MTA is
-	// now an opt-in profile, so overwriting it with just `tls` would silently
-	// drop the MTA (and any other feature profile) and break mail. Persist the
-	// union into .env FIRST so the updater sidecar, manual `docker compose up`,
-	// and scripts/restore.sh keep the same services; the process-env copy below
-	// covers this immediate bring-up.
-	const envForProfiles = await readEnv(envPath);
-	const existingProfiles = (envForProfiles['COMPOSE_PROFILES'] ?? '')
-		.split(',')
-		.map((p) => p.trim())
-		.filter(Boolean);
-	const composeProfilesUnion = Array.from(new Set([...existingProfiles, ...composeProfiles]));
-	if (composeProfilesUnion.length) {
-		await writeEnv(
-			envPath,
-			mergeEnv(envForProfiles, { COMPOSE_PROFILES: composeProfilesUnion.join(',') })
-		);
-	}
-
-	// Direct delivery needs a real source address. docker-compose.yml defaults
-	// IP_POOLS_* to 127.0.0.1, whose PTR can never match EHLO_HOSTNAME, so the
-	// MTA's identity gate below would always fail. Default both pools to the
-	// box's primary IPv4 unless the operator already chose one.
-	if (composeProfilesUnion.includes('mta')) {
-		const envForPools = await readEnv(envPath);
-		const detected = detectPrimaryIpv4();
-		if (applyOutboundIpDefaults(envForPools, detected)) {
-			await writeEnv(envPath, envForPools);
-			reporter.log(`Sending pools default to this server's address ${detected}`);
-		} else if (!detected && !envForPools['IP_POOLS_TRANSACTIONAL']) {
-			reporter.log(
-				'Could not detect a routable IPv4 for the sending pools; set IP_POOLS_TRANSACTIONAL and IP_POOLS_CAMPAIGN in .env',
-				'stderr'
-			);
-		}
-		// Reverse DNS is the one record the installer cannot create on the
-		// operator's behalf, and the MTA identity gate further down refuses to let
-		// the stack finish without it. Ask for it HERE — before anything comes up —
-		// so a missing PTR is a five-minute detour through the provider console
-		// instead of an install that dies on `FCrDNS blocked for <ip>` having never
-		// mentioned the record existed.
-		await announceReverseDns(plannedOutboundIdentities(envForPools), envForPools, {
-			// A config-file, --assume-yes or machine-driven run has nobody at the
-			// keyboard to go set the record; it gets the same instructions, without
-			// the re-check prompt (which would hang a non-TTY install forever).
-			interactive: !opts.assumeYes && !config && !reporter.isJson,
-			emit: (line, stream) => reporter.log(line, stream),
-		});
-	}
+	// Step 4: docker compose up, with the profiles persisted and the sending
+	// pools readied first (prepareComposeProfiles).
+	const composeProfilesUnion = await prepareComposeProfiles(
+		envPath,
+		composeProfiles,
+		reporter,
+		!opts.assumeYes && !config && !reporter.isJson
+	);
 
 	const knownAdminEmail = shouldBootstrap
 		? (config?.admin.email ?? flags.email ?? (opts.assumeYes ? 'dev@example.com' : undefined))
@@ -311,70 +256,12 @@ export async function runQuickstart(opts: RunOptions): Promise<number> {
 	reporter.ok('Stack is up');
 	await checkpoint.complete('compose-up');
 
-	// A direct-delivery install is not complete until the MTA's own live
-	// validator confirms every configured IP. The worker is already fail-closed,
-	// so bringing the container up to perform this probe cannot leak a send.
 	const envAfterCompose = await readEnv(envPath);
-	if (composeProfilesUnion.includes('mta')) {
-		const localMtaUrl = `http://${resolveLocalHost(process.env)}:${envAfterCompose['MTA_HTTP_PORT'] ?? '3100'}`;
-		reporter.step(SetupStep.MtaIdentity, 'Verifying outbound IP identity');
-		// The MTA finishes its boot-time identity, source-address and DNSBL
-		// sweeps before it opens the listener, and each sweep may wait on DNS
-		// and a bounded Convex alert. Allow for all of that before giving up.
-		try {
-			await waitForUrl({ url: `${localMtaUrl}/health`, timeoutMs: 120_000 });
-		} catch (err) {
-			reporter.fail(
-				`MTA health endpoint did not become ready: ${(err as Error).message}. Inspect it with \`docker compose logs mta\`.`
-			);
-			reporter.done(false);
-			return 1;
-		}
-		// Pass the master key so the probe can force a live re-check rather than
-		// read the boot sweep's stored verdict: an operator who fixed their PTR
-		// after the first attempt re-runs quickstart, and `docker compose up -d`
-		// does not restart an unchanged MTA container to re-observe it.
-		const identityFindings = await probeMtaIdentityHealth(
-			localMtaUrl,
-			envAfterCompose['MTA_API_KEY']
-		);
-		const redact = createDoctorRedactor(envAfterCompose);
-		for (const finding of identityFindings) {
-			const message = redact(finding.message);
-			reporter.log(`${finding.ok ? '✓' : '✗'} ${message}`, finding.ok ? 'stdout' : 'stderr');
-			if (finding.ok) log.success(message);
-			else log.error(message);
-		}
-		const failedIdentity = identityFindings.find((finding) => !finding.ok);
-		if (failedIdentity) {
-			// Spell the fix out again rather than leaving the operator with one
-			// `FCrDNS blocked` line: the record lives at the hosting provider, and
-			// the run that just stopped resumes from its checkpoint once it is live.
-			const lines = reverseDnsInstructions(
-				await checkReverseDns(plannedOutboundIdentities(envAfterCompose), envAfterCompose)
-			);
-			if (lines.length === 0) {
-				// This process resolves the records correctly, yet the MTA — which was
-				// just asked to re-observe — still refuses. What differs is the
-				// resolver: its cache is holding the previous answer, and a PTR TTL
-				// runs to a day. Restarting the container is what clears it.
-				lines.push(
-					'Reverse DNS resolves correctly from the installer, but the MTA still reports the old verdict — its DNS resolver is holding the previous answer.',
-					'Run `docker compose restart mta`, then re-run this install.'
-				);
-			}
-			for (const line of lines) {
-				log.warn(line);
-				reporter.log(line, 'stderr');
-			}
-			log.info(
-				`Re-run ${pc.cyan('owlat quickstart')} once the PTR record resolves — provisioning resumes where it stopped.`
-			);
-			reporter.fail(redact(failedIdentity.message));
-			reporter.done(false);
-			return 1;
-		}
-		reporter.ok('Every outbound IP passed FCrDNS readiness');
+	if (
+		composeProfilesUnion.includes('mta') &&
+		!(await verifyMtaIdentity(envAfterCompose, reporter))
+	) {
+		return 1;
 	}
 
 	// Step 5: wait for the Convex backend's sync/`/version` endpoint — served on
@@ -537,416 +424,4 @@ export async function runQuickstart(opts: RunOptions): Promise<number> {
 	});
 	outro(formatSummary({ mode, adminEmail, baseUrl: env['NUXT_PUBLIC_CONVEX_URL'] || localCloud }));
 	return 0;
-}
-
-/**
- * The DNS records a domain install needs before its public URLs work. The
- * server's own public IP isn't reliably known from inside the box, so the
- * target is described rather than printed.
- */
-export function dnsInstructions(config: SetupConfig): string[] {
-	if (!config.network) return [];
-	const hosts = [
-		config.network.siteUrl,
-		config.network.convexUrl,
-		config.network.convexSiteUrl,
-	].map((u) => new URL(u).hostname);
-	const pad = Math.max(...hosts.map((h) => h.length)) + 2;
-	const lines = [
-		"DNS records required for public access (point them at this server's public IP):",
-		...hosts.map((h) => `  ${h.padEnd(pad)}A    <server IP>`),
-	];
-	// The OWN arm, asked through the catalog rather than spelled again: only
-	// our own MTA needs an EHLO A record and a bounce-domain MX pointed here.
-	if (isOwnSendProviderKind(config.sending?.provider) && config.domain) {
-		lines.push(
-			`  ${config.domain.ehloHostname.padEnd(pad)}A    <server IP>`,
-			...(config.domain.bounceDomain
-				? [`  ${config.domain.bounceDomain.padEnd(pad)}MX   ${config.domain.ehloHostname}`]
-				: []),
-			// PTR is not a zone record — it is set wherever the IP is rented, and no
-			// mail leaves the box until it matches. It earns its own line.
-			"Reverse DNS (PTR), set in your VPS provider's console, not your DNS zone:",
-			`  <server IP>${' '.repeat(Math.max(1, pad - 11))}PTR  ${config.domain.ehloHostname}`
-		);
-	}
-	lines.push(
-		'TLS certificates are issued automatically once DNS resolves; keep ports 80/443 open.'
-	);
-	return lines;
-}
-
-/**
- * Turn the EMPTY freshly-booted backend into a working deployment:
- *   1. mint the backend admin key (if not already real) and persist to .env
- *   2. deploy apps/api functions + schema + http routes
- *   3. push the function-runtime env vars into the deployment
- *
- * Steps 2–3 run through the `convex-deploy` container, which reads the admin
- * key from .env (compose interpolation) — hence step 1 writes it first.
- *
- * Seeding does NOT change what happens here: demo content for a real install
- * goes through `POST /sample-data/install`, so nothing has to flip
- * `OWLAT_DEV_MODE` (which would also unlock `POST /dev/reset` and disable
- * BetterAuth rate limiting on a production instance).
- */
-async function deployBackend(
-	owlatDir: string,
-	envPath: string,
-	reporter: Reporter,
-	buildLocal: boolean,
-	checkpoint: ProvisioningCheckpoint,
-	composeProfiles: string[]
-): Promise<number> {
-	const s = progressSpinner();
-
-	// 1. Admin key — must be issued by the running backend.
-	let env = await readEnv(envPath);
-	reporter.step(SetupStep.AdminKey, 'Minting the Convex admin key');
-	if (!looksLikeRealAdminKey(env['CONVEX_ADMIN_KEY'])) {
-		s.start('Generating Convex admin key from the backend');
-		try {
-			const key = await generateConvexAdminKey(owlatDir);
-			env = { ...env, CONVEX_ADMIN_KEY: key };
-			await writeEnv(envPath, env);
-			s.stop(pc.green('Admin key generated and saved to .env'));
-			await reapplyEnvToRunningStack(owlatDir, composeProfiles);
-			reporter.ok();
-		} catch (e) {
-			s.stop(pc.red(`Could not generate admin key: ${(e as Error).message}`));
-			reporter.fail((e as Error).message);
-			return 1;
-		}
-	} else {
-		reporter.skip('already present in .env');
-	}
-	await checkpoint.complete('admin-key');
-
-	// 2. Deploy functions.
-	reporter.step(SetupStep.DeployFunctions, 'Deploying backend functions');
-	if (checkpoint.isComplete('deploy-functions')) {
-		reporter.skip('completed in an earlier run');
-	} else {
-		s.start('Deploying Convex functions (apps/api) — first run pulls/builds the deployer image');
-		try {
-			// buildLocal: the deployer image is built from source here; the later
-			// env-set call reuses it (compose only pulls when the image is missing).
-			await deployConvexFunctions(
-				owlatDir,
-				(line) => {
-					s.message(line.slice(0, 80));
-					reporter.log(line);
-				},
-				buildLocal
-			);
-			s.stop(pc.green('Convex functions deployed'));
-			reporter.ok();
-			await checkpoint.complete('deploy-functions');
-		} catch (e) {
-			s.stop(pc.red(`${(e as Error).message}`));
-			reporter.fail((e as Error).message);
-			return 1;
-		}
-	}
-
-	// 3. Push function-runtime env vars into the deployment. This is also the
-	// reseed step for secrets sealed at rest in the `.env` backup (envsealed:v1:…
-	// tokens, e.g. the SMTP relay password written by the in-app transport
-	// editor): `selectRuntimeEnvVars` unseals them so the deployment receives the
-	// WORKING plaintext credential, and FAILS CLOSED on a tampered/orphaned token
-	// rather than deploying ciphertext as a live credential.
-	let runtimeVars: Array<[string, string]>;
-	try {
-		runtimeVars = selectRuntimeEnvVars(env);
-	} catch (e) {
-		reporter.step(SetupStep.EnvSet, 'Setting function-runtime env var(s)');
-		reporter.fail((e as Error).message);
-		return 1;
-	}
-	reporter.step(SetupStep.EnvSet, `Setting ${runtimeVars.length} function-runtime env var(s)`);
-	s.start(`Setting ${runtimeVars.length} Convex function-runtime env var(s)`);
-	try {
-		await setConvexEnvVars(owlatDir, runtimeVars, (line) => reporter.log(line));
-		s.stop(pc.green('Function-runtime env vars set'));
-		reporter.ok();
-		await checkpoint.complete('runtime-env');
-	} catch (e) {
-		s.stop(pc.red(`${(e as Error).message}`));
-		reporter.fail((e as Error).message);
-		return 1;
-	}
-
-	return 0;
-}
-
-/**
- * Decide the `OWLAT_VERSION` value to pin into `.env` for compose interpolation
- * BEFORE the first `docker compose up`, or `undefined` to leave it unset.
- *
- *   - Local-source installs (`buildLocal` / `localImages`) pin the `dev`
- *     sentinel so compose builds from this tree / uses pre-pushed dev images.
- *   - A release install threads the resolved semver (e.g. `1.2.3`) through from
- *     install.sh; pinning it makes compose pull the cosign-signed release
- *     images (`ghcr.io/.../<svc>:X.Y.Z`) rather than the never-pushed `:dev`
- *     sentinel — which would otherwise rebuild every image from source or fail
- *     "manifest unknown".
- *   - A branch/`main`/commit install has no matching immutable image tag, so
- *     return `undefined` and let the compose default (`dev` → build from
- *     source) stand.
- */
-export function resolveComposeVersionPin(opts: {
-	buildLocal?: boolean;
-	localImages?: boolean;
-	owlatVersion?: string;
-}): string | undefined {
-	if (opts.buildLocal || opts.localImages) return 'dev';
-	const version = opts.owlatVersion?.trim();
-	// Only a bare semver corresponds to a published, signed release image tag.
-	if (version && /^\d+\.\d+\.\d+/.test(version)) return version;
-	return undefined;
-}
-
-export function parseFlags(args: string[]): ParsedFlags {
-	const out: ParsedFlags = {};
-	for (let i = 0; i < args.length; i++) {
-		const arg = args[i]!;
-		if (!arg.startsWith('--')) continue;
-		const eq = arg.indexOf('=');
-		const [k, raw] = eq === -1 ? [arg, args[i + 1]] : [arg.slice(0, eq), arg.slice(eq + 1)];
-		if (k === '--mode' && (raw === 'populated' || raw === 'blank' || raw === 'custom'))
-			out.mode = raw;
-		else if (k === '--email') out.email = raw;
-		else if (k === '--name') out.name = raw;
-		else if (k === '--password') out.password = raw;
-		else if (k === '--no-seed') out.skipSeed = true;
-		else if (k === '--seed') out.forceSeed = true;
-		else if (k === '--restart') out.restart = true;
-	}
-	return out;
-}
-
-async function resolveSourceRevision(owlatDir: string): Promise<{ sourceRevision?: string }> {
-	return new Promise((resolve) => {
-		const proc = spawn('git', ['rev-parse', 'HEAD'], {
-			cwd: owlatDir,
-			stdio: ['ignore', 'pipe', 'ignore'],
-		});
-		let stdout = '';
-		proc.stdout?.on('data', (chunk: Buffer) => {
-			stdout += chunk.toString();
-		});
-		proc.on('close', (code) => {
-			const revision = stdout.trim();
-			resolve(code === 0 && revision ? { sourceRevision: revision } : {});
-		});
-		proc.on('error', () => resolve({}));
-	});
-}
-
-function verifyMonorepo(dir: string): boolean {
-	return existsSync(join(dir, 'turbo.json'));
-}
-
-async function dockerReachable(): Promise<boolean> {
-	return new Promise((resolve) => {
-		const proc = spawn('docker', ['info'], { stdio: 'ignore' });
-		proc.on('close', (code) => resolve(code === 0));
-		proc.on('error', () => resolve(false));
-	});
-}
-
-/**
- * Where the first bring-up gets the first-party images from: `build` from this
- * source tree (`--build-local`), `preloaded` (`--local-images`: the desktop
- * built them elsewhere and loaded them onto this host, under a `dev` tag no
- * registry has), or the compose default (`pull`, or build what has no tag).
- */
-export type ComposeImageSource = 'build' | 'preloaded' | 'default';
-
-export function composeImageSource(opts: {
-	buildLocal?: boolean;
-	localImages?: boolean;
-}): ComposeImageSource {
-	if (opts.buildLocal) return 'build';
-	if (opts.localImages) return 'preloaded';
-	return 'default';
-}
-
-/**
- * The `docker compose up` arguments for an image source. Preloaded images must
- * never be rebuilt here: the local-images install exists for hosts that cannot
- * afford the build, so a missing image fails the run (with compose naming it)
- * instead of silently starting a build.
- */
-export function composeUpArgs(source: ComposeImageSource): string[] {
-	if (source === 'build') return ['compose', 'up', '-d', '--build'];
-	if (source === 'preloaded') return ['compose', 'up', '-d', '--no-build'];
-	return ['compose', 'up', '-d'];
-}
-
-async function dockerComposeUp(
-	cwd: string,
-	profiles: string[] = [],
-	source: ComposeImageSource = 'default'
-): Promise<number> {
-	const s = progressSpinner();
-	s.start(
-		source === 'build'
-			? 'Running `docker compose up -d --build` (building images from source — this can take several minutes)'
-			: 'Running `docker compose up -d` (this may take a minute on first run)'
-	);
-	// COMPOSE_PROFILES activates optional services (e.g. `tls` for the Caddy edge
-	// proxy on a domain install) for this bring-up.
-	const env = profiles.length
-		? { ...process.env, COMPOSE_PROFILES: profiles.join(',') }
-		: undefined;
-	const code = await spawnExitCode('docker', composeUpArgs(source), { cwd, env });
-	if (code !== 0) {
-		s.stop(pc.red(`docker compose up failed with exit code ${code}`));
-		return code;
-	}
-	s.stop(pc.green('Stack is up'));
-	return 0;
-}
-
-/**
- * Re-apply `.env` to the already-running stack after the Convex admin key lands.
- *
- * The stack's first `docker compose up` necessarily happens BEFORE the admin key
- * exists: only an already-running backend can mint it (`generateConvexAdminKey`),
- * and `ensureSecrets` deliberately refuses to fabricate one. Docker bakes a
- * container's environment at CREATE time, so every service that consumes the key
- * — imap, mail-sync, convex-fn-proxy — was created holding an EMPTY one. Each of
- * those throws `CONVEX_ADMIN_KEY is required` on boot and, under
- * `restart: unless-stopped`, crash-loops on it forever. Nothing else in the run
- * touches them again (the remaining compose calls are one-shot
- * `run --rm convex-deploy`), so without this step a fresh install with Postbox or
- * external mail enabled ships a permanently broken container. A live instance
- * burnt 11h that way before anyone noticed.
- *
- * A second plain `up -d` is the whole fix, and `--force-recreate` is deliberately
- * NOT used: compose compares each service's config hash against its running
- * container and recreates only those whose resolved environment actually changed.
- * That is exactly the key consumers. `convex` — which we just waited to become
- * healthy — keeps its hash and is left alone.
- *
- * Non-fatal: the key is already persisted, so a failure here is fully recoverable
- * with `owlat start`, and aborting mid-deploy would be worse than reporting it.
- */
-async function reapplyEnvToRunningStack(cwd: string, profiles: string[]): Promise<void> {
-	const s = progressSpinner();
-	s.start('Applying the admin key to containers created before it existed');
-	const env = profiles.length
-		? { ...process.env, COMPOSE_PROFILES: profiles.join(',') }
-		: undefined;
-	const code = await spawnExitCode('docker', ['compose', 'up', '-d'], { cwd, env });
-	if (code !== 0) {
-		s.stop(
-			pc.yellow(
-				`Could not re-apply .env to the running stack (exit ${code}). Services that need ` +
-					'the admin key (imap, mail-sync) may crash-loop until you run `owlat start`.'
-			)
-		);
-		return;
-	}
-	s.stop(pc.green('Admin key applied to the running stack'));
-}
-
-function spawnExitCode(
-	cmd: string,
-	args: string[],
-	opts: { cwd: string; env?: NodeJS.ProcessEnv }
-): Promise<number> {
-	return new Promise((resolve) => {
-		const proc = spawn(cmd, args, { cwd: opts.cwd, env: opts.env, stdio: 'inherit' });
-		proc.on('close', (code) => resolve(code ?? 1));
-		proc.on('error', () => resolve(1));
-	});
-}
-
-async function pickMode(fromFlag: Mode | undefined, assumeYes: boolean): Promise<Mode | null> {
-	if (fromFlag) return fromFlag;
-	if (assumeYes) return 'populated';
-	const options: Array<{ label: string; value: Mode; hint?: string }> = [
-		{
-			label: 'Explore with sample data — admin + a realistic populated instance',
-			value: 'populated',
-			hint: 'contacts, topics, templates, a sent campaign; remove it any time with `owlat sample-data remove`',
-		},
-		{
-			label: 'Blank — no admin, no data',
-			value: 'blank',
-			hint: 'test the real /auth/register signup flow',
-		},
-		{
-			label: 'Custom — decide per step',
-			value: 'custom',
-		},
-	];
-	const choice = await select({
-		message: 'How do you want to start?',
-		options,
-		initialValue: 'populated',
-	});
-	if (isCancel(choice)) return null;
-	return choice as Mode;
-}
-
-async function askYesNo(message: string, initial: boolean, assumeYes: boolean): Promise<boolean> {
-	if (assumeYes) return initial;
-	const result = await confirm({ message, initialValue: initial });
-	if (isCancel(result)) return false;
-	return result;
-}
-
-async function promptEmail(): Promise<string | undefined> {
-	const result = await text({
-		message: 'Admin email',
-		validate: (v) => (isValidEmail(v ?? '') ? undefined : 'Enter a valid email'),
-	});
-	if (isCancel(result)) return undefined;
-	return result;
-}
-
-async function promptText(message: string): Promise<string | undefined> {
-	const result = await text({ message });
-	if (isCancel(result)) return undefined;
-	return result;
-}
-
-export function formatSummary(args: { mode: Mode; adminEmail?: string; baseUrl: string }): string {
-	const lines: string[] = [pc.green('Quickstart complete!')];
-	lines.push('');
-	lines.push(`Web app:   ${pc.cyan('http://localhost:3000')}`);
-	lines.push(`Convex:    ${pc.cyan(args.baseUrl)}`);
-	if (args.mode === 'blank') {
-		lines.push(`Mode:      ${pc.yellow('Blank — sign up at /auth/register')}`);
-	} else if (args.adminEmail) {
-		lines.push(`Admin:     ${pc.cyan(args.adminEmail)}`);
-	}
-	lines.push('');
-	lines.push(pc.dim('View logs:  docker compose logs -f web'));
-	if (args.mode === 'populated') {
-		lines.push(pc.dim('Sample data: owlat sample-data remove   (deletes only the sample rows)'));
-	}
-	lines.push(pc.dim('Wipe + retest signup:  bunx owlat-setup reset'));
-	// Backups are operator-owned: there is no managed/off-box backup, so always
-	// spell out the command and what it protects. This block must stay even in
-	// blank mode — a fresh install finishing with no backup plan is the gap.
-	lines.push('');
-	lines.push(
-		pc.bold('Back up your data — nothing is backed up automatically until you turn it on:')
-	);
-	lines.push(
-		`  ${pc.cyan('owlat backup')}                  one-off snapshot of the Convex data volume (your database), Redis + .env`
-	);
-	lines.push(
-		`  ${pc.cyan('owlat backup-schedule enable')}  schedule automatic backups (daily; systemd timer, cron fallback)`
-	);
-	lines.push(
-		pc.dim(
-			'  Recommended: run "owlat backup-schedule enable" for daily backups before you put real data in.'
-		)
-	);
-	return lines.join('\n');
 }

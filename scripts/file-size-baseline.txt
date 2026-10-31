@@ -21,7 +21,6 @@ apps/docs/app/components/content/EmailArchitecture.vue
 apps/docs/app/components/content/ScopeMap.vue
 apps/docs/app/components/content/SmtpSession.vue
 apps/docs/app/pages/index.vue
-apps/setup-cli/src/commands/quickstart.ts
 apps/web/app/components/campaigns/steps/ReviewStep.vue
 apps/web/app/components/contacts/CsvImportModal.vue
 apps/web/app/components/contacts/IntegrationImportModal.vue
