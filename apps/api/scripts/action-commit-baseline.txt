@@ -194,7 +194,6 @@ convex/seedAdminHttp.ts:seedAdmin #6
 convex/seedAdminHttp.ts:seedAdmin #7
 convex/seedAdminHttp.ts:seedAdmin #8
 convex/seedAdminHttp.ts:seedAdmin #9
-convex/seedDemo/messages.ts:seedMailboxMessages #2
 convex/systemUpdatesReleaseCheck.ts:checkForUpdates #2
 convex/unifiedMessages.ts:runChannelHealthChecks #2
 convex/unifiedMessages.ts:runChannelHealthChecks #3
