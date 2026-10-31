@@ -3,11 +3,11 @@
  *
  * Each `contributes.<bucket>[]` entry is a plain object whose `id` becomes the
  * local half of `plugin.<pluginId>.<localId>`, and most carry a `label` and a
- * static `module` export. Those rules used to be restated in every bucket's
- * validator, and the copies drifted: one bucket accepted `constructor` as an id,
- * two accepted untrimmed labels, and the duplicate-id wording differed. A
- * `*Manifest.ts` file now states only the fields that are its own and calls
- * these for the rest.
+ * static `module` export. Those rules live here once: copies restated in each
+ * bucket's validator drift (one accepting `constructor` as an id, another an
+ * untrimmed label, each wording the duplicate-id error its own way). A
+ * `*Manifest.ts` file states only the fields that are its own and calls these
+ * for the rest.
  *
  * Internal to the package: nothing here is exported from `./index`.
  */

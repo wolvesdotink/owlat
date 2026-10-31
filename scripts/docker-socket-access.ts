@@ -1,5 +1,5 @@
 /**
- * Docker socket access, read off the parsed compose file (#1368).
+ * Docker socket access, read off the parsed compose file.
  *
  * Isolating docker-socket-proxy on the internal docker-proxy network only helps
  * if the proxy is the one way to the Docker engine. A service on `network_mode:

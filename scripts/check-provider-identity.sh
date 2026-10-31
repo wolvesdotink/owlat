@@ -108,10 +108,9 @@
 # the stripped code of the previous two lines joined to the current one, and the
 # hit is reported on the line that completes it.
 #
-# Comments are stripped before matching. House style quotes the literal a seam
-# USED to be spelled with (`this used to read providerType === 'ses'`) in the
-# comment that explains the capability replacing it; that prose is the record of
-# the sweep and must not be what a ratchet punishes. The stripper is a small
+# Comments are stripped before matching. A comment that explains a capability
+# may quote the literal it replaced (`providerType === 'ses'`); prose is not a
+# branch and must not be what a ratchet punishes. The stripper is a small
 # state machine over `//` tails, `/* … */` (inline, trailing or spanning lines,
 # with no assumption that continuation lines start with `*`) and `<!-- … -->`,
 # so prose in any shape is invisible to the match.

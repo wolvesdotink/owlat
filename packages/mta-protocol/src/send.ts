@@ -7,15 +7,14 @@
  * the handler's `mode` parameter is what enforces that; so this is one
  * declaration with the per-mode rules stated on the fields.
  *
- * Until now it was typed on neither side of the wire: a private `interface
- * SendRequest` in `apps/mta/src/routes/send.ts` faced FOUR unannotated object
- * literals in Convex — the dispatch adapter
- * (`lib/sendProviders/mta/index.ts`), the Postbox send (`mail/outbound.ts`) and
- * the mailbox forward and vacation auto-reply (`mail/deliveryHooks.ts`) — whose
- * only contract with it was that all five had been edited by the same hand. All
- * five are bound to this declaration now, which matters most for the three
- * fields only the Postbox producers set (`sealedMimeBase64`, `amp`,
- * `allowedFromAddresses`): those had no typed producer at all.
+ * Both sides of the wire are bound to it: the MTA's handler
+ * (`apps/mta/src/routes/send.ts`) and the four producers in Convex — the
+ * dispatch adapter (`lib/sendProviders/mta/index.ts`), the Postbox send
+ * (`mail/outbound.ts`) and the mailbox forward and vacation auto-reply
+ * (`mail/deliveryHooks.ts`). Without it their only contract would be that all
+ * five were edited by the same hand, and the three fields only the Postbox
+ * producers set (`sealedMimeBase64`, `amp`, `allowedFromAddresses`) would have
+ * no typed producer at all.
  */
 
 import {

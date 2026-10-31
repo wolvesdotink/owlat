@@ -7,8 +7,8 @@
  * shape a writer actually stored: `stored` is the value whose `JSON.stringify`
  * is the row's string column, `field` names that column. Only version 1 exists
  * today; its fixtures cover what earlier v1 writers left out (fields added
- * later, sparse seed content, pre-normalization numeric strings, ids repeated
- * before #1083) and the three envelopes a row can hold.
+ * later, sparse seed content, pre-normalization numeric strings, repeated ids)
+ * and the three envelopes a row can hold.
  *
  * The rules (storedBlockCorpus.test.ts and apps/api's storedBlockCorpus test
  * enforce them, scripts/check-stored-block-corpus.ts guards the history):

@@ -3,8 +3,8 @@
  *
  * Each case builds a miniature `.output` (the traced server `package.json`, the
  * client manifest and a `public/_nuxt` directory of chunks) and runs the real
- * script against it. The leaking inputs are the shapes #1172 found in a real
- * build of apps/web.
+ * script against it. The leaking inputs are shapes found in a real build of
+ * apps/web.
  */
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';

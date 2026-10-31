@@ -276,7 +276,7 @@ describe('normalizeBlockTreeIds', () => {
 	it('gives the same ids when filling and renewing happen in separate calls', () => {
 		// The editor fills on read (`parseStoredBlocks`) and renews on load; the
 		// server predicts the renewals in one call. A section filled before a
-		// repeated Block must not shift the id that Block gets (#1430 review).
+		// repeated Block must not shift the id that Block gets.
 		const fixtures: Array<() => Raw[]> = [
 			() => [text('a'), text('a'), raw('accordion', { sections: [{ items: [] }] }, 'acc')],
 			() => [

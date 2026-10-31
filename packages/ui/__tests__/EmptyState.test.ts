@@ -50,7 +50,7 @@ describe('UiEmptyState — the landing ladder', () => {
 
 		const heading = el.querySelector('h2');
 		expect(heading?.textContent?.trim()).toBe('No webhooks yet');
-		// …and not as the bolded paragraph it used to be.
+		// …and not as a bolded paragraph.
 		expect(el.querySelector('p')?.textContent ?? '').not.toContain('No webhooks yet');
 
 		unmount();
@@ -66,8 +66,8 @@ describe('UiEmptyState — the landing ladder', () => {
 	});
 
 	it('shows no eyebrow on a plain empty state unless the caller passes one', () => {
-		// "Nothing here yet" used to be the fallback, and it read wrong on every
-		// page where empty is the good outcome (Updates, Quarantine, Failed).
+		// A "Nothing here yet" fallback reads wrong on every page where empty is
+		// the good outcome (Updates, Quarantine, Failed).
 		const empty = mountEmptyState({ title: 'No webhooks yet' });
 		expect(empty.el.querySelector('.lp-eyebrow')).toBeNull();
 		expect(empty.el.textContent).not.toContain('Nothing here yet');

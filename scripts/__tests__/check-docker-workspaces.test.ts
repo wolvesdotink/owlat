@@ -312,7 +312,7 @@ describe('docker workspace-manifest guard', () => {
 	/**
 	 * A two-workspace graph: `lib` depends on `dep`, both in-repo. This is the
 	 * `@owlat/shared` → `@owlat/mail-message` edge that broke the updater and
-	 * setup images in PR #733, reduced to its smallest form.
+	 * setup images, reduced to its smallest form.
 	 */
 	const CLOSURE_WORKSPACES = {
 		'package.json': JSON.stringify({

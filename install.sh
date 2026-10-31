@@ -399,9 +399,9 @@ run_wizard() {
 		info "Pulling setup wizard image ${setup_image}…"
 		local pull_output
 		if ! pull_output=$(docker pull "$setup_image" 2>&1); then
-			# Fail LOUDLY before falling back: swallowing this error once hid a
-			# release whose GHCR packages were private (403 on every pull) behind
-			# a silent switch to the legacy wizard (#554). The docker error names
+			# Fail LOUDLY before falling back: swallowed, this error hides a
+			# release whose GHCR packages are private (403 on every pull) behind
+			# a silent switch to the legacy wizard. The docker error names
 			# the actual cause (denied / manifest unknown / network) — show it.
 			error "Failed to pull the setup wizard image: ${setup_image}"
 			printf '%s\n' "$pull_output" | tail -n 5 | sed 's/^/    /' >&2
