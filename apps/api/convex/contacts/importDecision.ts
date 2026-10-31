@@ -54,9 +54,10 @@ export function emptyImportOutcome(withinBatchDuplicates: number): ImportOutcome
 	};
 }
 
-/** List an error on the outcome while the list has room. */
-export function noteImportError(outcome: ImportOutcome, message: string): void {
-	if (outcome.errors.length < ERROR_CAP) outcome.errors.push(message);
+/** The outcome with an error listed, while the list has room. */
+export function noteImportError(outcome: ImportOutcome, message: string): ImportOutcome {
+	if (outcome.errors.length >= ERROR_CAP) return outcome;
+	return { ...outcome, errors: [...outcome.errors, message] };
 }
 
 /**
@@ -69,25 +70,30 @@ export function rowEmail(row: ImportRow): { email: string } | { error: string } 
 	return { email };
 }
 
-/** Count one resolved row by what resolution did with it. */
-export function countResolution(outcome: ImportOutcome, action: string): void {
-	if (action === 'created') outcome.imported++;
-	else if (action === 'updated') outcome.updated++;
-	else outcome.skipped++;
+/** The outcome with one resolved row counted by what resolution did with it. */
+export function countResolution(outcome: ImportOutcome, action: string): ImportOutcome {
+	if (action === 'created') return { ...outcome, imported: outcome.imported + 1 };
+	if (action === 'updated') return { ...outcome, updated: outcome.updated + 1 };
+	return { ...outcome, skipped: outcome.skipped + 1 };
 }
 
-/** Fold one row's property writes into the outcome and the skipped-key tally. */
+/** The outcome and skipped-key tally with one row's property writes folded in. */
 export function countRowProperties(
 	outcome: ImportOutcome,
-	summary: { written: number; autoRegistered: number; skippedKeys: string[] },
-	skippedKeyCounts: Map<string, number>
-): void {
-	outcome.propertiesSet += summary.written;
-	outcome.propertiesAutoRegistered += summary.autoRegistered;
-	for (const key of summary.skippedKeys) {
-		skippedKeyCounts.set(key, (skippedKeyCounts.get(key) ?? 0) + 1);
-		outcome.propertiesSkipped++;
-	}
+	summary: { written: number; autoRegistered: number; skippedKeys: readonly string[] },
+	skippedKeyCounts: ReadonlyMap<string, number>
+): { outcome: ImportOutcome; skippedKeyCounts: ReadonlyMap<string, number> } {
+	const counts = new Map(skippedKeyCounts);
+	for (const key of summary.skippedKeys) counts.set(key, (counts.get(key) ?? 0) + 1);
+	return {
+		outcome: {
+			...outcome,
+			propertiesSet: outcome.propertiesSet + summary.written,
+			propertiesAutoRegistered: outcome.propertiesAutoRegistered + summary.autoRegistered,
+			propertiesSkipped: outcome.propertiesSkipped + summary.skippedKeys.length,
+		},
+		skippedKeyCounts: counts,
+	};
 }
 
 type ImportActivity = Extract<
@@ -148,13 +154,15 @@ export function doiAttestInput(
 export function noteSkippedKeys(
 	outcome: ImportOutcome,
 	skippedKeyCounts: ReadonlyMap<string, number>
-): void {
+): ImportOutcome {
+	let next = outcome;
 	for (const [key, count] of skippedKeyCounts.entries()) {
-		noteImportError(
-			outcome,
+		next = noteImportError(
+			next,
 			`Property '${key}' is not registered; values dropped for ${count} row(s).`
 		);
 	}
+	return next;
 }
 
 /**

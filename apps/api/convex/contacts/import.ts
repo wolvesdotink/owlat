@@ -233,10 +233,10 @@ export const importBatch = internalMutation({
 			deduplicateContactsByEmail(args.rows);
 
 		const catalog = await loadPropertyCatalog(ctx);
-		const outcome = emptyImportOutcome(withinBatchDuplicates);
+		let outcome = emptyImportOutcome(withinBatchDuplicates);
 
 		// Keys skipped across rows, for one batch-level summary line per key.
-		const skippedKeyCounts = new Map<string, number>();
+		let skippedKeyCounts: ReadonlyMap<string, number> = new Map();
 
 		// Resolved contacts (id + normalized email) for post-loop topic subscription.
 		const resolvedByEmail = new Map<Id<'contacts'>, string>();
@@ -247,7 +247,7 @@ export const importBatch = internalMutation({
 			const resolved = rowEmail(row);
 			if ('error' in resolved) {
 				outcome.failed++;
-				noteImportError(outcome, resolved.error);
+				outcome = noteImportError(outcome, resolved.error);
 				continue;
 			}
 			const normalizedEmail = resolved.email;
@@ -264,7 +264,7 @@ export const importBatch = internalMutation({
 						language: row.language,
 					},
 				});
-				countResolution(outcome, action);
+				outcome = countResolution(outcome, action);
 
 				// A merge that changed a built-in field must fire the
 				// `contact_updated` automation trigger — the resolution module
@@ -287,7 +287,11 @@ export const importBatch = internalMutation({
 					source,
 					catalog
 				);
-				countRowProperties(outcome, propertySummary, skippedKeyCounts);
+				({ outcome, skippedKeyCounts } = countRowProperties(
+					outcome,
+					propertySummary,
+					skippedKeyCounts
+				));
 
 				const activity = rowActivity(action, row, propertySummary.written, contactId, now);
 				if (activity) {
@@ -306,12 +310,15 @@ export const importBatch = internalMutation({
 			} catch (error) {
 				outcome.failed++;
 				const message = error instanceof Error ? error.message : 'Unknown error';
-				noteImportError(outcome, `Failed to process ${row.email ?? '(unknown)'}: ${message}`);
+				outcome = noteImportError(
+					outcome,
+					`Failed to process ${row.email ?? '(unknown)'}: ${message}`
+				);
 			}
 		}
 
 		// Batch-level summary lines for skipped property keys (CSV/API only).
-		noteSkippedKeys(outcome, skippedKeyCounts);
+		outcome = noteSkippedKeys(outcome, skippedKeyCounts);
 
 		// Per-topic subscribeMany coalescing.
 		if (args.topicAssignments && resolvedByEmail.size > 0) {
@@ -327,7 +334,7 @@ export const importBatch = internalMutation({
 					outcome.addedToTopics += countAddedToTopic(result.outcomes);
 				} catch (error) {
 					const message = error instanceof Error ? error.message : 'Unknown error';
-					noteImportError(
+					outcome = noteImportError(
 						outcome,
 						`Failed to subscribe ${contactIds.length} contact(s) to topic: ${message}`
 					);

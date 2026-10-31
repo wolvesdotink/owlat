@@ -12,6 +12,7 @@ import {
 	countRowProperties,
 	doiAttestInput,
 	emptyImportOutcome,
+	type ImportOutcome,
 	noteImportError,
 	noteSkippedKeys,
 	rowActivity,
@@ -34,15 +35,16 @@ describe('rowEmail', () => {
 
 describe('the outcome', () => {
 	it('starts with the within-batch duplicates as skipped and counts resolutions', () => {
-		const outcome = emptyImportOutcome(2);
-		for (const action of ['created', 'updated', 'matched']) countResolution(outcome, action);
+		let outcome = emptyImportOutcome(2);
+		for (const action of ['created', 'updated', 'matched'])
+			outcome = countResolution(outcome, action);
 		expect(outcome).toMatchObject({ imported: 1, updated: 1, skipped: 3, failed: 0 });
 	});
 
 	it('caps the error list at fifty, summary lines included', () => {
-		const outcome = emptyImportOutcome(0);
-		for (let i = 0; i < 49; i++) noteImportError(outcome, `e${i}`);
-		noteSkippedKeys(
+		let outcome = emptyImportOutcome(0);
+		for (let i = 0; i < 49; i++) outcome = noteImportError(outcome, `e${i}`);
+		outcome = noteSkippedKeys(
 			outcome,
 			new Map([
 				['company', 2],
@@ -56,19 +58,40 @@ describe('the outcome', () => {
 	});
 
 	it('tallies property writes and skipped keys across rows', () => {
-		const outcome = emptyImportOutcome(0);
-		const counts = new Map<string, number>();
-		countRowProperties(outcome, { written: 2, autoRegistered: 1, skippedKeys: ['x'] }, counts);
-		countRowProperties(outcome, { written: 0, autoRegistered: 0, skippedKeys: ['x', 'y'] }, counts);
-		expect(outcome).toMatchObject({
+		const first = countRowProperties(
+			emptyImportOutcome(0),
+			{ written: 2, autoRegistered: 1, skippedKeys: ['x'] },
+			new Map()
+		);
+		const second = countRowProperties(
+			first.outcome,
+			{ written: 0, autoRegistered: 0, skippedKeys: ['x', 'y'] },
+			first.skippedKeyCounts
+		);
+		expect(second.outcome).toMatchObject({
 			propertiesSet: 2,
 			propertiesAutoRegistered: 1,
 			propertiesSkipped: 3,
 		});
-		expect([...counts]).toEqual([
+		expect([...second.skippedKeyCounts]).toEqual([
 			['x', 2],
 			['y', 1],
 		]);
+	});
+
+	it('leaves the outcome, its error list and the tally it was given unchanged', () => {
+		const outcome = Object.freeze({ ...emptyImportOutcome(0), errors: Object.freeze(['e0']) });
+		const counts = new Map([['x', 1]]);
+		const given = structuredClone({ outcome, counts: [...counts] });
+		const summary = { written: 1, autoRegistered: 1, skippedKeys: ['x'] };
+		const frozen = outcome as unknown as ImportOutcome;
+		for (let i = 0; i < 2; i++) {
+			expect(countResolution(frozen, 'created').imported).toBe(1);
+			expect(noteImportError(frozen, 'e1').errors).toEqual(['e0', 'e1']);
+			expect(countRowProperties(frozen, summary, counts).skippedKeyCounts.get('x')).toBe(2);
+			expect(noteSkippedKeys(frozen, counts).errors).toHaveLength(2);
+		}
+		expect({ outcome, counts: [...counts] }).toEqual(given);
 	});
 });
 
