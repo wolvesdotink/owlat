@@ -50,6 +50,7 @@ async function loadPlugin(i18n: unknown) {
 		vueApp: Object.assign(vueApp, { provide }),
 		$i18n: i18n,
 		$posthog: { value: { capture } },
+		hook: vi.fn(),
 	});
 }
 
