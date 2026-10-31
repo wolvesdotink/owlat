@@ -72,9 +72,9 @@ export async function pruneReleaseCache(ctx: MutationCtx): Promise<void> {
 
 /**
  * The one commit of a refresh: the releases it downloaded, the prune, and the
- * check with its error, if any. The prune runs only when the listing was read
- * to its end: a refresh cut short changes the cache by what it downloaded and
- * nothing else.
+ * check with its error, if any. The prune is skipped when the first listing
+ * page failed or the walk threw, so such a refresh changes the cache by what
+ * it downloaded and nothing else. A failure on a later page still prunes.
  */
 export const commitRefresh = internalMutation({
 	args: {
