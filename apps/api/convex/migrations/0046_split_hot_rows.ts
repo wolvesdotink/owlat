@@ -70,6 +70,8 @@ export const run = internalAction({
 		let cursor: string | null = null;
 		let mailboxUsage = 0;
 		for (;;) {
+			// checkpoint: one page of mailboxes; a usage row that already exists is
+			// left alone, so a re-run redoes nothing.
 			const page: { created: number; cursor: string; isDone: boolean } = await ctx.runMutation(
 				internal.migrations['0046_split_hot_rows'].splitMailboxUsagePage,
 				{ cursor }
