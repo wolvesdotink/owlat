@@ -6,7 +6,8 @@
  * One pass over an uploaded archive: read a window of bytes, cut messages out
  * of it with `@owlat/shared/mboxArchive`, parse each with
  * `@owlat/mail-message`, insert it through the shared delivered-message path,
- * commit the byte offset, and reschedule itself until the file is consumed.
+ * then commit the byte offset together with the next pass (or the job's close)
+ * until the file is consumed.
  *
  * WHY A BUDGET PER RUN. An archive can hold tens of thousands of messages and a
  * Convex action has a lifetime; a single greedy pass would die partway through
@@ -116,6 +117,9 @@ async function ingestEntry(
 		? parsed.references.join(' ')
 		: parsed.references;
 
+	// checkpoint: one message per transaction, deduped on its Message-ID within the
+	// mailbox, so a pass that re-reads bytes after its last committed offset inserts
+	// nothing twice; the pass commits the offset it reached once it stops.
 	return await ctx.runMutation(internal.mail.archiveImport.ingestArchiveMessage, {
 		importId: job._id,
 		// The default for an archive with no Gmail label header. `.eml` files and
@@ -198,11 +202,12 @@ export const runChunk = internalAction({
 		let skipped = 0;
 		let labelsCreated = 0;
 		let cursor = Math.min(job.cursorBytes, bytes.length);
+		let failure: string | undefined;
 		const consume = async (entries: MboxEntry[]) => {
 			for (const entry of entries) {
 				const outcome = await ingestEntry(ctx, job, entry);
 				// A full mailbox ends the import: every later message would be
-				// refused too. The catch below commits what landed and fails the job.
+				// refused too. The commit below records what landed and fails the job.
 				if (outcome.overQuota) throw new Error(MAILBOX_FULL_ERROR);
 				if (outcome.imported) imported++;
 				if (outcome.skipped) skipped++;
@@ -250,46 +255,21 @@ export const runChunk = internalAction({
 				}
 			}
 		} catch (error) {
-			// Commit what this pass did manage before surfacing the failure, so a
-			// retry does not re-walk messages the mailbox already holds.
-			await ctx.runMutation(internal.mail.archiveImport.recordProgress, {
-				importId: args.importId,
-				cursorBytes: cursor,
-				importedDelta: imported,
-				skippedDelta: skipped,
-				labelsCreatedDelta: labelsCreated,
-			});
-			await ctx.runMutation(internal.mail.archiveImport.finishJob, {
-				importId: args.importId,
-				status: 'failed',
-				lastError: error instanceof Error ? error.message : 'The archive could not be read.',
-			});
-			return;
+			// Commit what this pass did manage along with the failure, so a retry
+			// does not re-walk messages the mailbox already holds.
+			failure = error instanceof Error ? error.message : 'The archive could not be read.';
 		}
 
-		const progress: { stillImporting: boolean } = await ctx.runMutation(
-			internal.mail.archiveImport.recordProgress,
-			{
-				importId: args.importId,
-				cursorBytes: cursor,
-				importedDelta: imported,
-				skippedDelta: skipped,
-				labelsCreatedDelta: labelsCreated,
-			}
-		);
-		// Cancelled mid-pass: stop here rather than rescheduling. The messages this
-		// pass inserted stay — they are real mail now.
-		if (!progress.stillImporting) return;
-
-		if (cursor >= bytes.length) {
-			await ctx.runMutation(internal.mail.archiveImport.finishJob, {
-				importId: args.importId,
-				status: 'completed',
-			});
-			return;
-		}
-		await ctx.scheduler.runAfter(0, internal.mail.archiveImportRun.runChunk, {
+		// Cancelled mid-pass, the commit writes nothing and schedules nothing. The
+		// messages this pass inserted stay — they are real mail now.
+		await ctx.runMutation(internal.mail.archiveImport.commitPass, {
 			importId: args.importId,
+			cursorBytes: cursor,
+			importedDelta: imported,
+			skippedDelta: skipped,
+			labelsCreatedDelta: labelsCreated,
+			isConsumed: cursor >= bytes.length,
+			...(failure !== undefined ? { failure } : {}),
 		});
 	},
 });

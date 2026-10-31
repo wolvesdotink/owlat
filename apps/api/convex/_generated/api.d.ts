@@ -238,7 +238,9 @@ import type * as aiRouting_embeddingCoverage from '../aiRouting/embeddingCoverag
 import type * as aiRouting_embeddingRebuild from '../aiRouting/embeddingRebuild.js';
 import type * as aiRouting_embeddingRebuildState from '../aiRouting/embeddingRebuildState.js';
 import type * as aiRouting_embeddingReembed from '../aiRouting/embeddingReembed.js';
+import type * as aiRouting_embeddingReembedCommit from '../aiRouting/embeddingReembedCommit.js';
 import type * as aiRouting_embeddingReembedJobs from '../aiRouting/embeddingReembedJobs.js';
+import type * as aiRouting_embeddingReembedPage from '../aiRouting/embeddingReembedPage.js';
 import type * as aiRouting_embeddingRowReembed from '../aiRouting/embeddingRowReembed.js';
 import type * as aiRouting_embeddingSpaces from '../aiRouting/embeddingSpaces.js';
 import type * as aiRouting_enforcedBudget from '../aiRouting/enforcedBudget.js';
@@ -945,6 +947,7 @@ import type * as knowledge_graphAnalyticsRecompute from '../knowledge/graphAnaly
 import type * as knowledge_graphTraversal from '../knowledge/graphTraversal.js';
 import type * as knowledge_maintenance from '../knowledge/maintenance.js';
 import type * as knowledge_messageBackfill from '../knowledge/messageBackfill.js';
+import type * as knowledge_messageBackfillChunk from '../knowledge/messageBackfillChunk.js';
 import type * as knowledge_relationDecay from '../knowledge/relationDecay.js';
 import type * as knowledge_retrieval from '../knowledge/retrieval.js';
 import type * as knowledge_sharing from '../knowledge/sharing.js';
@@ -1463,6 +1466,7 @@ import type * as mail_messagePurge from '../mail/messagePurge.js';
 import type * as mail_migration from '../mail/migration.js';
 import type * as mail_migrationBackfill from '../mail/migrationBackfill.js';
 import type * as mail_migrationIndexing from '../mail/migrationIndexing.js';
+import type * as mail_migrationIndexingCommit from '../mail/migrationIndexingCommit.js';
 import type * as mail_migrationShared from '../mail/migrationShared.js';
 import type * as mail_mtaClient from '../mail/mtaClient.js';
 import type * as mail_mute from '../mail/mute.js';
@@ -2163,7 +2167,9 @@ declare const fullApi: ApiFromModules<{
 	'aiRouting/embeddingRebuild': typeof aiRouting_embeddingRebuild;
 	'aiRouting/embeddingRebuildState': typeof aiRouting_embeddingRebuildState;
 	'aiRouting/embeddingReembed': typeof aiRouting_embeddingReembed;
+	'aiRouting/embeddingReembedCommit': typeof aiRouting_embeddingReembedCommit;
 	'aiRouting/embeddingReembedJobs': typeof aiRouting_embeddingReembedJobs;
+	'aiRouting/embeddingReembedPage': typeof aiRouting_embeddingReembedPage;
 	'aiRouting/embeddingRowReembed': typeof aiRouting_embeddingRowReembed;
 	'aiRouting/embeddingSpaces': typeof aiRouting_embeddingSpaces;
 	'aiRouting/policy': typeof aiRouting_policy;
@@ -2869,6 +2875,7 @@ declare const fullApi: ApiFromModules<{
 	'knowledge/graphTraversal': typeof knowledge_graphTraversal;
 	'knowledge/maintenance': typeof knowledge_maintenance;
 	'knowledge/messageBackfill': typeof knowledge_messageBackfill;
+	'knowledge/messageBackfillChunk': typeof knowledge_messageBackfillChunk;
 	'knowledge/relationDecay': typeof knowledge_relationDecay;
 	'knowledge/retrieval': typeof knowledge_retrieval;
 	'knowledge/sharing': typeof knowledge_sharing;
@@ -3387,6 +3394,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/migration': typeof mail_migration;
 	'mail/migrationBackfill': typeof mail_migrationBackfill;
 	'mail/migrationIndexing': typeof mail_migrationIndexing;
+	'mail/migrationIndexingCommit': typeof mail_migrationIndexingCommit;
 	'mail/migrationShared': typeof mail_migrationShared;
 	'mail/mtaClient': typeof mail_mtaClient;
 	'mail/mute': typeof mail_mute;

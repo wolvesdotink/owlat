@@ -240,31 +240,82 @@ export const loadJob = internalQuery({
 		await ctx.db.get(args.importId),
 });
 
+const passProgressArgs = {
+	importId: v.id('mailArchiveImports'),
+	cursorBytes: v.number(),
+	importedDelta: v.number(),
+	skippedDelta: v.number(),
+	labelsCreatedDelta: v.number(),
+};
+
+/** Advance an importing job's resume offset and add one pass's counters. */
+async function addPassProgress(
+	ctx: MutationCtx,
+	job: Doc<'mailArchiveImports'>,
+	args: {
+		cursorBytes: number;
+		importedDelta: number;
+		skippedDelta: number;
+		labelsCreatedDelta: number;
+	}
+): Promise<Doc<'mailArchiveImports'>> {
+	const progress = {
+		// Never rewind: a retried run re-reads bytes it already committed, and
+		// the counters above are the only thing that must not double-count.
+		cursorBytes: Math.max(job.cursorBytes, args.cursorBytes),
+		messagesImported: job.messagesImported + args.importedDelta,
+		messagesSkipped: job.messagesSkipped + args.skippedDelta,
+		labelsCreated: job.labelsCreated + args.labelsCreatedDelta,
+		updatedAt: Date.now(),
+	};
+	await ctx.db.patch(job._id, progress);
+	return { ...job, ...progress };
+}
+
 /**
- * Commit one batch: advance the resume offset and add the batch's counters.
- * Returns whether the job is still importing, so the runner stops promptly at a
- * batch boundary when the user cancelled mid-archive.
+ * Commit one runner pass: its offset and counters, then, in the same
+ * transaction, close the job (the archive is consumed, or the pass failed
+ * with `failure`) or schedule the next pass. A job that stopped importing
+ * meanwhile (the user cancelled) is left as it is: `stopped`. The messages
+ * the pass inserted stay either way; they are real mail now.
+ */
+export const commitPass = internalMutation({
+	args: {
+		...passProgressArgs,
+		isConsumed: v.boolean(),
+		failure: v.optional(v.string()),
+	},
+	handler: async (ctx, args): Promise<'continued' | 'closed' | 'stopped'> => {
+		const job = await ctx.db.get(args.importId);
+		if (!job || job.status !== 'importing') return 'stopped';
+		const advanced = await addPassProgress(ctx, job, args);
+		if (args.failure !== undefined) {
+			await finalizeJob(ctx, advanced, 'failed', args.failure);
+			return 'closed';
+		}
+		if (args.isConsumed) {
+			await finalizeJob(ctx, advanced, 'completed');
+			return 'closed';
+		}
+		await ctx.scheduler.runAfter(0, internal.mail.archiveImportRun.runChunk, {
+			importId: job._id,
+		});
+		return 'continued';
+	},
+});
+
+/**
+ * The previous release's batch commit (its runner then closed the job or
+ * rescheduled itself in separate calls). Adds only the counters that runner
+ * passes; a job `commitPass` already closed is no longer importing and is
+ * left alone. Remove after release N+1.
  */
 export const recordProgress = internalMutation({
-	args: {
-		importId: v.id('mailArchiveImports'),
-		cursorBytes: v.number(),
-		importedDelta: v.number(),
-		skippedDelta: v.number(),
-		labelsCreatedDelta: v.number(),
-	},
+	args: passProgressArgs,
 	handler: async (ctx, args): Promise<{ stillImporting: boolean }> => {
 		const job = await ctx.db.get(args.importId);
 		if (!job || job.status !== 'importing') return { stillImporting: false };
-		await ctx.db.patch(job._id, {
-			// Never rewind: a retried run re-reads bytes it already committed, and
-			// the counters above are the only thing that must not double-count.
-			cursorBytes: Math.max(job.cursorBytes, args.cursorBytes),
-			messagesImported: job.messagesImported + args.importedDelta,
-			messagesSkipped: job.messagesSkipped + args.skippedDelta,
-			labelsCreated: job.labelsCreated + args.labelsCreatedDelta,
-			updatedAt: Date.now(),
-		});
+		await addPassProgress(ctx, job, args);
 		return { stillImporting: true };
 	},
 });
