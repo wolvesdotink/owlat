@@ -63,4 +63,13 @@ export const PREVIOUS_RELEASE_ENTRIES: Readonly<Record<string, string>> = {
 	// channels/outboundCommit.ts. Remove after release N+1.
 	'unifiedMessages.ts#recordOutbound': 'old channel dispatches mid-run',
 	'unifiedMessages.ts#updateDeliveryStatus': 'old channel delivery polls mid-run',
+	// `/seed/admin` now writes through one commit (auth/seedAdminCommit.ts); the
+	// latch claim keeps an old and a new seed from both running.
+	'workspaces/settings.ts#createInternal': 'old /seed/admin requests mid-run',
+	'workspaces/settings.ts#claimAdminSeedInternal': 'old /seed/admin requests mid-run',
+	'auth/userProfiles.ts#createInternal': 'old /seed/admin requests mid-run',
+	'workspaces/featureFlags.ts#setAllInternal': 'old /seed/admin requests mid-run',
+	// An export row now stages through one commit (`stageArtifact`).
+	'auth/accountExportArtifacts.ts#acquireArtifactLease': 'old account export pages mid-run',
+	'auth/accountExportArtifacts.ts#registerArtifact': 'old account export pages mid-run',
 };

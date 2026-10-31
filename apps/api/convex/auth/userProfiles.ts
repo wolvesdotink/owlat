@@ -1,5 +1,7 @@
 import { v } from 'convex/values';
 import { appLocaleValidator } from '../lib/convexValidators';
+import type { Id } from '../_generated/dataModel';
+import type { MutationCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import { authedIdentityMutation } from '../lib/authedFunctions';
 import {
@@ -78,30 +80,35 @@ export const createInternal = internalMutation({
 		email: v.string(),
 		name: v.optional(v.string()),
 	},
-	handler: async (ctx, args) => {
-		// Idempotent: return existing profile if already created
-		const existing = await ctx.db
-			.query('userProfiles')
-			.withIndex('by_auth_user_id', (q) => q.eq('authUserId', args.authUserId))
-			.first();
-
-		if (existing) {
-			return existing._id;
-		}
-
-		const now = Date.now();
-
-		return await ctx.db.insert('userProfiles', {
-			authUserId: args.authUserId,
-			// Normalized so it matches the canonical `by_email` lookups the claim
-			// paths perform (same binding as the public `create`).
-			email: normalizeEmail(args.email),
-			name: args.name,
-			createdAt: now,
-			updatedAt: now,
-		});
-	},
+	handler: async (ctx, args) => ensureUserProfile(ctx, args),
 });
+
+/** Create the profile for a BetterAuth user, or return the one it already has. */
+export async function ensureUserProfile(
+	ctx: MutationCtx,
+	args: { authUserId: string; email: string; name?: string }
+): Promise<Id<'userProfiles'>> {
+	const existing = await ctx.db
+		.query('userProfiles')
+		.withIndex('by_auth_user_id', (q) => q.eq('authUserId', args.authUserId))
+		.first();
+
+	if (existing) {
+		return existing._id;
+	}
+
+	const now = Date.now();
+
+	return await ctx.db.insert('userProfiles', {
+		authUserId: args.authUserId,
+		// Normalized so it matches the canonical `by_email` lookups the claim
+		// paths perform (same binding as the public `create`).
+		email: normalizeEmail(args.email),
+		name: args.name,
+		createdAt: now,
+		updatedAt: now,
+	});
+}
 
 /**
  * Remember the interface language this person just picked.
