@@ -1,0 +1,106 @@
+/*
+ * The frame and list rows ClientDropdown and DeviceDropdown share. Each one
+ * includes this file as its own scoped style, so the rules stay scoped to it.
+ */
+
+/* Dropdown */
+.ep-dropdown {
+	position: absolute;
+	top: calc(100% + 8px);
+	left: 0;
+	min-width: 280px;
+	max-height: 400px;
+	overflow-y: auto;
+	background: var(--ep-bg-elevated);
+	border: 1px solid var(--ep-border-default);
+	border-radius: 12px;
+	box-shadow: var(--ep-shadow-lg);
+	z-index: 100;
+}
+
+.ep-dropdown-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding: 12px 16px;
+	border-bottom: 1px solid var(--ep-border-subtle);
+	font-size: 12px;
+	font-weight: 600;
+	color: var(--ep-text-secondary);
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+}
+
+.ep-dropdown-section {
+	padding: 12px;
+	border-bottom: 1px solid var(--ep-border-subtle);
+}
+
+.ep-dropdown-section:last-child {
+	border-bottom: none;
+}
+
+.ep-dropdown-section-title {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin-bottom: 8px;
+	font-size: 11px;
+	font-weight: 600;
+	color: var(--ep-text-tertiary);
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+}
+
+/* Client List */
+.ep-client-list,
+.ep-device-list {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.ep-client-item,
+.ep-device-item {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 8px 10px;
+	background: transparent;
+	border: none;
+	border-radius: 6px;
+	color: var(--ep-text-primary);
+	font-size: 13px;
+	text-align: left;
+	cursor: pointer;
+	transition: background var(--motion-fast, 80ms) var(--ease-spring, cubic-bezier(0.25, 1, 0.5, 1));
+}
+
+.ep-client-item:hover,
+.ep-device-item:hover {
+	background: var(--ep-bg-surface);
+}
+
+.ep-client-item.ep-client-selected,
+.ep-device-item.ep-device-selected {
+	background: var(--ep-brand-subtle);
+}
+
+.ep-client-item-name,
+.ep-device-name {
+	flex: 1;
+}
+
+.ep-client-item-share,
+.ep-device-size {
+	font-size: 11px;
+	color: var(--ep-text-tertiary);
+	font-variant-numeric: tabular-nums;
+}
+
+.ep-client-check,
+.ep-device-check {
+	width: 16px;
+	height: 16px;
+	color: var(--ep-brand);
+}
