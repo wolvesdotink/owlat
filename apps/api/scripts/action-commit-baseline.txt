@@ -24,7 +24,6 @@ convex/auth/accountExport.ts:exportUserDataPage #4
 convex/auth/accountExport.ts:exportUserDataPage #5
 convex/auth/accountExport.ts:exportUserDataPage #6
 convex/auth/accountExport.ts:exportUserDataPage #7
-convex/auth/erasure/walker.ts:drive #2
 convex/automations/stepWalker.ts:executeStep #2
 convex/autonomyFeedback.ts:adjustThresholds #2
 convex/autonomyFeedback.ts:adjustThresholds #3
