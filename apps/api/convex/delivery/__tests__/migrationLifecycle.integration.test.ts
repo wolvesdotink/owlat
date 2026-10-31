@@ -24,6 +24,7 @@
 
 import { convexTest } from 'convex-test';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type * as SessionOrganization from '../../lib/sessionOrganization';
 import schema from '../../schema';
 import { api, internal } from '../../_generated/api';
 import type { Doc } from '../../_generated/dataModel';
@@ -69,7 +70,7 @@ const K_CLEAN = CONSERVATIVE.cleanWindowsRequired;
 const FIRST_RUNG = RAMP_PHASE_CEILINGS[0];
 
 vi.mock('../../lib/sessionOrganization', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../../lib/sessionOrganization')>();
+	const actual = await importOriginal<typeof SessionOrganization>();
 	return {
 		...actual,
 		getSingletonOrganizationId: vi.fn().mockResolvedValue('org_mandrill_migration'),

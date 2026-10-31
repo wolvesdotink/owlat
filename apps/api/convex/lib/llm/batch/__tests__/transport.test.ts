@@ -83,3 +83,51 @@ describe('a request without its own record is missing, not unbilled', () => {
 		expect(await resultOf(anthropic(results))).toEqual({ kind: 'canceled' });
 	});
 });
+
+describe('a create reply without a readable batch id is an uncertain submission', () => {
+	const anthropicRequest = {
+		url: 'https://api.anthropic.com/v1/messages',
+		body: { model: 'claude-test', max_tokens: 1, messages: [] },
+	};
+	const openaiRequest = {
+		url: 'https://api.openai.com/v1/chat/completions',
+		body: { model: 'gpt-test', messages: [] },
+	};
+
+	it.each([
+		['a numeric id', { id: 7 }],
+		['null', null],
+		['a list', [{ id: 'b1' }]],
+	])('Anthropic: %s may still have created a batch', async (_label, reply) => {
+		const fetchFn = vi.fn(async () => json(reply));
+		const transport = batchTransport('anthropic-native', 'sk-ant-test', fetchFn);
+
+		const failure = await transport.submit('req-1', anthropicRequest).catch((error) => error);
+		expect(failure).toMatchObject({ name: 'BatchSubmitError', isDefinite: false });
+	});
+
+	it('OpenAI: a create reply without an id keeps the uploaded file and is not definite', async () => {
+		const fetchFn = vi.fn(async (url: string) => {
+			if (url.endsWith('/files')) return json({ id: 'file-1' });
+			if (url.endsWith('/batches')) return json({ id: 42 });
+			throw new Error(`unexpected ${url}`);
+		});
+		const transport = batchTransport('openai-native', 'sk-test', fetchFn);
+
+		const failure = await transport.submit('req-1', openaiRequest).catch((error) => error);
+		expect(failure).toMatchObject({ name: 'BatchSubmitError', isDefinite: false });
+		// Only a definite refusal deletes the file: this batch may exist and read it.
+		expect(fetchFn.mock.calls.map(([url]) => url)).toEqual([
+			'https://api.openai.com/v1/files',
+			'https://api.openai.com/v1/batches',
+		]);
+	});
+
+	it('OpenAI: an upload reply without an id is definite (a file bills nothing)', async () => {
+		const fetchFn = vi.fn(async () => json({ id: null }));
+		const transport = batchTransport('openai-native', 'sk-test', fetchFn);
+
+		const failure = await transport.submit('req-1', openaiRequest).catch((error) => error);
+		expect(failure).toMatchObject({ name: 'BatchSubmitError', isDefinite: true });
+	});
+});

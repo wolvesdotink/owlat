@@ -48,8 +48,7 @@ vi.mock('../lib/sessionOrganization', async () => {
 		requireOrgPermission: vi
 			.fn()
 			.mockImplementation(async (_ctx: unknown, permission: string, message?: string) => {
-				const mod: typeof import('../lib/sessionOrganization') =
-					actual as typeof import('../lib/sessionOrganization');
+				const mod: typeof sessionOrganization = actual as typeof sessionOrganization;
 				mod.requirePermission(
 					mod.hasPermission(
 						sessionMock.user.role as Parameters<typeof mod.hasPermission>[0],

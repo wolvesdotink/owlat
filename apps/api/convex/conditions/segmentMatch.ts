@@ -24,6 +24,7 @@
  * in one walk and log-and-zero on corrupt data rather than silently swallow.
  */
 
+import { isRecord } from '@owlat/shared/utils/guards';
 import type { DatabaseReader } from '../_generated/server';
 import type { Doc } from '../_generated/dataModel';
 import {
@@ -62,15 +63,29 @@ export interface ParsedSegmentFilters {
 type ConditionsLookup = Awaited<ReturnType<typeof preloadConditionsLookup>>;
 
 /**
- * Normalize stored filters into typed conditions. Throws on bad JSON or a
- * condition shape/operator/field violation — corrupt data, not user input.
+ * The filter envelope: `logic` is AND or OR, and `conditions` a list (absent
+ * or null on older rows, meaning none). The conditions themselves are checked
+ * by the registry's `parseCondition`, not here.
+ */
+function filtersEnvelopeOf(value: unknown): SegmentFilters {
+	if (!isRecord(value)) throw new Error('Segment filters are not an object');
+	const logic = value['logic'];
+	if (logic !== 'AND' && logic !== 'OR') throw new Error('Segment filter logic is not AND or OR');
+	const conditions = value['conditions'] ?? [];
+	if (!Array.isArray(conditions)) throw new Error('Segment filter conditions are not a list');
+	return { logic, conditions };
+}
+
+/**
+ * Normalize stored filters into typed conditions. Throws on bad JSON, a
+ * malformed envelope, or a condition shape/operator/field violation — corrupt
+ * data, not user input.
  */
 export function parseSegmentFilters(input: string | SegmentFilters): ParsedSegmentFilters {
-	const raw: SegmentFilters =
-		typeof input === 'string' ? (JSON.parse(input) as SegmentFilters) : input;
+	const raw = filtersEnvelopeOf(typeof input === 'string' ? JSON.parse(input) : input);
 	return {
 		logic: raw.logic,
-		conditions: (raw.conditions ?? []).map((c) => parseCondition(c)),
+		conditions: raw.conditions.map((c) => parseCondition(c)),
 	};
 }
 

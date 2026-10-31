@@ -1,10 +1,15 @@
 import { createHash } from 'node:crypto';
+import { arrayOf, boolean, type Decoder, object, string } from '../json';
 import { classifyReleaseTag } from './release-policy';
 export interface PublishedRelease {
 	tag_name: string;
 	draft: boolean;
 	prerelease: boolean;
 }
+/** One page of the release list (`repos/<repo>/releases`). */
+export const decodePublishedReleases: Decoder<PublishedRelease[]> = arrayOf(
+	object({ tag_name: string, draft: boolean, prerelease: boolean })
+);
 export function stableVersion(tag: string): number[] | null {
 	const match = /^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.exec(tag);
 	if (!match) return null;

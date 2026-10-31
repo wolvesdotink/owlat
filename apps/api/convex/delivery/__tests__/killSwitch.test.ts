@@ -10,6 +10,7 @@
 
 import { convexTest } from 'convex-test';
 import { describe, expect, it, vi } from 'vitest';
+import type * as SessionOrganization from '../../lib/sessionOrganization';
 import schema from '../../schema';
 import { api, internal } from '../../_generated/api';
 import { allDeliverabilityCells } from '@owlat/shared/deliverabilityRouting';
@@ -29,7 +30,7 @@ import { modules } from '../../__tests__/testModules';
 // talks to the auth component; the harness has no component, so the suite mocks
 // it exactly as the transportOutcomes suites do.
 vi.mock('../../lib/sessionOrganization', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../../lib/sessionOrganization')>();
+	const actual = await importOriginal<typeof SessionOrganization>();
 	return {
 		...actual,
 		getSingletonOrganizationId: vi.fn().mockResolvedValue('org_ramp_kill_switch'),

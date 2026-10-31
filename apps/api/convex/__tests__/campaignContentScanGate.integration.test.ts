@@ -31,6 +31,7 @@ import {
 } from './factories';
 import type { Id } from '../_generated/dataModel';
 import { expectScheduledFailure } from './helpers/scheduledFailures';
+import type * as EmailScannerModule from '@owlat/email-scanner';
 
 // The functions below need configuration this suite only stubs inside its
 // tests (or not at all), and their jobs fire after that is gone. These tests
@@ -57,7 +58,7 @@ vi.mock('../lib/sessionOrganization', async () => {
 // `levelForScore`, so each test drives the outcome by returning a score:
 // >= 40 blocked, >= 15 suspicious, else clean. Default is clean.
 vi.mock('@owlat/email-scanner', async (importOriginal) => {
-	const original = await importOriginal<typeof import('@owlat/email-scanner')>();
+	const original = await importOriginal<typeof EmailScannerModule>();
 	return {
 		...original,
 		scanContent: vi.fn(() => ({

@@ -266,6 +266,33 @@ describe('e2ee/keys', () => {
 		expect(manifest!.signature).toContain('PGP SIGNATURE');
 	});
 
+	it('re-signs instead of serving a cached manifest that does not decode', async () => {
+		const t = convexTest(schema, modules);
+		await enableSealedMail(t);
+		await insertMailbox(t, 'primary@sealed.example.com');
+		await t.action(internal.e2ee.keysNode.runBackfill, {});
+		const first = await t.action(api.e2ee.manifest.getSignedManifest, {});
+		expect(first).not.toBeNull();
+
+		// Same cache key, damaged body: a field of the wrong type.
+		await t.run(async (ctx) => {
+			const row = await ctx.db
+				.query('keyVault')
+				.withIndex('by_kind', (q) => q.eq('kind', 'instance'))
+				.first();
+			await ctx.db.patch(row!._id, {
+				cachedManifest: {
+					...row!.cachedManifest!,
+					signedManifestJson: JSON.stringify({ ...first, generatedAt: 'yesterday' }),
+				},
+			});
+		});
+
+		const served = await t.action(api.e2ee.manifest.getSignedManifest, {});
+		expect(typeof served!.generatedAt).toBe('number');
+		expect(served!.signature).toContain('PGP SIGNATURE');
+	});
+
 	it('stops publishing the manifest when Sealed Mail is turned OFF', async () => {
 		const t = convexTest(schema, modules);
 		await insertMailbox(t, 'primary@sealed.example.com');

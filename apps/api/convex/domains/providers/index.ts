@@ -32,6 +32,7 @@ import {
 	RELAY_DOMAIN_IDENTITY_PROVIDERS,
 } from '../../providers/domainIdentity';
 import type { ApiVerifiedSendProviderKind } from '../../lib/sendProviders/catalog';
+import type { OWN_ARM_TRANSPORT_KIND } from '../../lib/sendProviders/strategies/adaptive_mix';
 import type { RelayIdentityProviderModule } from './relayIdentityTypes';
 import type {
 	RelayProvingProviderModule,
@@ -96,14 +97,14 @@ export const OWN_SENDING_DOMAIN_PROVIDER_KIND = SENDING_DOMAIN_PROVIDERS.mta.kin
  * and the fallback refuses to relay it, and the only symptom is a runtime
  * refusal on a real send.
  *
- * A `typeof import(...)` in type position, so nothing at runtime imports the
- * strategy barrel from the domain-provider registry — the constraint is paid
- * for entirely at build time. Asserted in BOTH directions: each literal type
- * must be assignable to the other, so widening either declaration fails here
- * too. Its runtime twin is one line in `./__tests__/registry.test.ts`.
+ * The constant comes in through an `import type`, which is erased, so nothing
+ * at runtime imports the strategy barrel from the domain-provider registry —
+ * the constraint is paid for entirely at build time. Asserted in BOTH
+ * directions: each literal type must be assignable to the other, so widening
+ * either declaration fails here too. Its runtime twin is one line in
+ * `./__tests__/registry.test.ts`.
  */
-type OwnArmTransportKind =
-	typeof import('../../lib/sendProviders/strategies/adaptive_mix').OWN_ARM_TRANSPORT_KIND;
+type OwnArmTransportKind = typeof OWN_ARM_TRANSPORT_KIND;
 type AssertOwnKindsAgree<
 	_A extends OwnArmTransportKind,
 	_B extends OwnSendingDomainProviderKind,

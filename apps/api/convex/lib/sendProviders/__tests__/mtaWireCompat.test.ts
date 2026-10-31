@@ -214,6 +214,52 @@ describe('Convex -> MTA send intake bytes', () => {
 		expect(attempt).not.toHaveProperty('acceptanceUnknown');
 	});
 
+	it.each([
+		['a numeric message id', '{"success":true,"id":42}'],
+		['a success flag that is not true', '{"success":"yes","id":"send-fixture-1"}'],
+	])('refuses an accepted answer with %s rather than recording it', async (_label, bytes) => {
+		// Only a string id may become the caller's message id. The body is a
+		// definite failure like any other unusable 2xx answer, never acceptance-unknown.
+		stubFetch(new Response(bytes, { status: 200 }));
+		const attempt = await mtaSendProvider.sendEmail(resolveSendTransport('mta'), {
+			to: 'recipient@example.com',
+			from: 'sender@mail.example.org',
+			subject: 'malformed id',
+			html: '<p>malformed id</p>',
+		});
+		expect(attempt).toEqual({
+			success: false,
+			errorMessage: 'MTA returned unsuccessful response',
+			errorCode: EmailErrorCode.UNKNOWN,
+		});
+	});
+
+	it('surfaces only a string `error` of a refused 2xx answer', async () => {
+		stubFetch(new Response('{"success":false,"error":{"detail":"x"}}', { status: 200 }));
+		const attempt = await mtaSendProvider.sendEmail(resolveSendTransport('mta'), {
+			to: 'recipient@example.com',
+			from: 'sender@mail.example.org',
+			subject: 'object error',
+			html: '<p>object error</p>',
+		});
+		expect(attempt).toEqual({
+			success: false,
+			errorMessage: 'MTA returned unsuccessful response',
+			errorCode: EmailErrorCode.UNKNOWN,
+		});
+	});
+
+	it('reads a 2xx `null` answer as acceptance-unknown, as an unreadable body', async () => {
+		stubFetch(new Response('null', { status: 200 }));
+		const attempt = await mtaSendProvider.sendEmail(resolveSendTransport('mta'), {
+			to: 'recipient@example.com',
+			from: 'sender@mail.example.org',
+			subject: 'null',
+			html: '<p>null</p>',
+		});
+		expect(attempt).toMatchObject({ success: false, acceptanceUnknown: true });
+	});
+
 	it('reads a pending intake reservation as acceptance-unknown, never as failure', async () => {
 		stubFetch(new Response(SEND_INTAKE_PENDING_BYTES, { status: 409 }));
 		const attempt = await mtaSendProvider.sendEmail(resolveSendTransport('mta'), {

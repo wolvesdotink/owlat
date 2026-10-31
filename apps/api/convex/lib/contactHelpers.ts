@@ -1,6 +1,28 @@
-import type { Doc } from '../_generated/dataModel';
+import type { Doc, Id } from '../_generated/dataModel';
 import type { DatabaseReader } from '../_generated/server';
 import { normalizeEmail } from './inputGuards';
+
+/**
+ * Whether `contact` exists and is not soft-deleted. A soft-deleted contact keeps
+ * its email and names on the row (and its activities and automation runs keep
+ * pointing at it) until the retention sweep, so every member-facing read that
+ * resolves a contact by id, directly or as a join, treats a deleted one as
+ * missing, the boundary `contacts.get` draws.
+ */
+export function isLiveContact(
+	contact: Doc<'contacts'> | null | undefined
+): contact is Doc<'contacts'> {
+	return contact != null && contact.deletedAt === undefined;
+}
+
+/** The contact with this id if it is live (see {@link isLiveContact}), else null. */
+export async function getLiveContact(
+	ctx: { db: DatabaseReader },
+	contactId: Id<'contacts'>
+): Promise<Doc<'contacts'> | null> {
+	const contact = await ctx.db.get(contactId);
+	return isLiveContact(contact) ? contact : null;
+}
 
 /**
  * The live (not soft-deleted) contact with this email, or null.

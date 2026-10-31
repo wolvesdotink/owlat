@@ -151,6 +151,10 @@ function onCheckboxClick(event: MouseEvent) {
 }
 
 const rowId = computed(() => `inbox-row-${props.thread._id}`);
+// A computed, so the Open link's tooltip, whose slot builds the link, tracks
+// only the href: reading `thread` there would re-render the tooltip and its link
+// on every change to the row's data.
+const threadHref = computed(() => `/dashboard/inbox/${props.thread._id}`);
 
 const timestamp = computed(() => props.thread.lastMessageAt ?? props.thread._creationTime);
 
@@ -210,7 +214,7 @@ function rowAction(event: MouseEvent, action: 'resolve' | 'snooze') {
 					:id="rowId"
 					role="option"
 					:aria-selected="canManage ? selected : focused"
-					:to="`/dashboard/inbox/${thread._id}`"
+					:to="threadHref"
 					class="pbx-row-link block w-full text-left px-4 py-3 density-compact:py-1.5 rounded-lg hover:bg-(--surface-1-hover) transition-colors"
 					:class="{
 						'ring-1 ring-inset ring-brand/50': focused,
@@ -409,7 +413,7 @@ function rowAction(event: MouseEvent, action: 'resolve' | 'snooze') {
 					</UiTooltip>
 					<UiTooltip :text="t('common.open')">
 						<NuxtLink
-							:to="`/dashboard/inbox/${thread._id}`"
+							:to="threadHref"
 							class="p-1 rounded hover:bg-bg-surface text-text-tertiary hover:text-text-primary inline-flex"
 							:aria-label="t('components.inbox.inboxThreadRow.openThread')"
 							@click.stop

@@ -14,7 +14,7 @@
 
 import type { MutationCtx } from '../_generated/server';
 import type { CoeditTarget } from '../lib/validators/coediting';
-import { findSession, linkedBlockIdsOf, type CoeditSession, type StoredRootBlock } from './target';
+import { findSession, linkedBlockIdsOf, sessionDocOf, type CoeditSession } from './target';
 
 /** The update arguments a save takes from the session instead of the payload. */
 export interface CoeditSaveOverrides {
@@ -46,8 +46,8 @@ export async function loadCoeditSave(
 	const session = await findSession(ctx, target);
 	if (!session) return null;
 
-	const blocks = JSON.parse(session.content) as StoredRootBlock[];
-	const fields = JSON.parse(session.fields) as Record<string, unknown>;
+	// A draft that does not decode refuses the save, so it cannot replace the email.
+	const { blocks, fields } = sessionDocOf(session);
 	const text = (key: string) => (typeof fields[key] === 'string' ? fields[key] : undefined);
 	const plainTextOverride = text('plainTextOverride');
 	const overrides: CoeditSaveOverrides = {

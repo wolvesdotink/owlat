@@ -2,6 +2,7 @@ import { convexTest } from 'convex-test';
 import { describe, it, expect, vi } from 'vitest';
 import schema from '../schema';
 import { api } from '../_generated/api';
+import type * as SessionOrganizationModule from '../lib/sessionOrganization';
 
 // Inbound shared-inbox email
 // CONTENT is owner/admin-only. The same bodies are mirrored into unifiedMessages
@@ -19,7 +20,7 @@ import { api } from '../_generated/api';
 let currentRole: 'owner' | 'admin' | 'editor' = 'owner';
 
 vi.mock('../lib/sessionOrganization', async () => {
-	const actual = await vi.importActual<typeof import('../lib/sessionOrganization')>(
+	const actual = await vi.importActual<typeof SessionOrganizationModule>(
 		'../lib/sessionOrganization'
 	);
 	return {

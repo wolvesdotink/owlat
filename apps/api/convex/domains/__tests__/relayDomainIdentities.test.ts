@@ -84,7 +84,13 @@ vi.mock('../../lib/sessionOrganization', async () => {
 	return {
 		...actual,
 		getSingletonOrganizationId: vi.fn().mockResolvedValue(TEST_ORG_ID),
-		requireOrgMember: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
+		// Denial is a non-admin role on the floor's session: the read checks the
+		// permission on the session its `authedQuery` floor threads in.
+		requireOrgMember: vi.fn().mockImplementation(async () => ({
+			userId: 'test-user',
+			role: permissionState.allowed ? 'owner' : 'editor',
+			activeOrganizationId: TEST_ORG_ID,
+		})),
 		isActiveOrgMember: vi.fn().mockResolvedValue(true),
 		getUserIdFromSession: vi.fn().mockResolvedValue('test-user'),
 		getMutationContext: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
@@ -266,7 +272,7 @@ describe('a bundled plugin relay identity', () => {
 	it('stays admin-gated, exactly as the vendor-shaped read it replaced was', async () => {
 		const t = harness();
 		permissionState.allowed = false;
-		await expect(listRows(t)).rejects.toThrow('Missing required permission');
+		await expect(listRows(t)).rejects.toThrow("You don't have permission to perform this action");
 	});
 });
 

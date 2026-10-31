@@ -27,6 +27,7 @@ import {
 	createTestInboundMessage,
 	enableFeatures,
 } from './factories';
+import type * as SessionOrganizationModule from '../lib/sessionOrganization';
 
 // Mutable role each test selects.
 let mockRole: OrganizationRole = 'owner';
@@ -40,7 +41,7 @@ function throwForbidden(): never {
 }
 
 vi.mock('../lib/sessionOrganization', async () => {
-	const actual = await vi.importActual<typeof import('../lib/sessionOrganization')>(
+	const actual = await vi.importActual<typeof SessionOrganizationModule>(
 		'../lib/sessionOrganization'
 	);
 	const ctx = () => ({ userId: 'test-user', role: mockRole });

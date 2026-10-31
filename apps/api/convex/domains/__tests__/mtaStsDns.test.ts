@@ -22,6 +22,7 @@ import schema from '../../schema';
 import { api } from '../../_generated/api';
 import { verifyMtaStsPublication, buildMtaStsTxtValue } from '@owlat/shared/mtaStsPolicy';
 import type { OrganizationRole } from '../../lib/sessionOrganization';
+import type * as SessionOrganizationModule from '../../lib/sessionOrganization';
 
 let mockRole: OrganizationRole = 'admin';
 
@@ -34,7 +35,7 @@ function throwForbidden(): never {
 }
 
 vi.mock('../../lib/sessionOrganization', async () => {
-	const actual = await vi.importActual<typeof import('../../lib/sessionOrganization')>(
+	const actual = await vi.importActual<typeof SessionOrganizationModule>(
 		'../../lib/sessionOrganization'
 	);
 	const ctx = () => ({ userId: 'test-user', role: mockRole });

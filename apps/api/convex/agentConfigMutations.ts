@@ -12,7 +12,7 @@ import type { Doc } from './_generated/dataModel';
 import { internal } from './_generated/api';
 import { publicQuery, adminMutation } from './lib/authedFunctions';
 import { recordAuditLog } from './lib/auditLog';
-import { requireAdminContext, isActiveOrgMember } from './lib/sessionOrganization';
+import { isActiveOrgMember } from './lib/sessionOrganization';
 import { clampHumanApproveUndoDelayMs } from './inbox/processingLifecycle/effects';
 import { optionalFields, pick } from './lib/validators/fields';
 import { agentConfigFields } from './schema/autonomy';
@@ -82,9 +82,7 @@ export const updateConfig = adminMutation({
 			'isItemCoverageEnforced',
 		])
 	),
-	handler: async (ctx, args) => {
-		const { userId } = await requireAdminContext(ctx);
-
+	handler: async (ctx, args, { userId }) => {
 		const configs = await ctx.db.query('agentConfig').take(1);
 		const now = Date.now();
 

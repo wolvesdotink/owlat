@@ -1,4 +1,4 @@
-import { convexTest } from 'convex-test';
+import type { convexTest } from 'convex-test';
 import { internal } from '../../_generated/api';
 
 /** Materialize every Gmail volume rollup currently queued by a test. */

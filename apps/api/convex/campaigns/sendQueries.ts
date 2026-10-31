@@ -6,6 +6,7 @@ import { components } from '../_generated/api';
 import { contentScanResultsFields } from '../schema/delivery';
 import type { StoredAudience } from './audience';
 import { logError } from '../lib/runtimeLog';
+import { pickHtmlTranslation } from '../lib/emailJson';
 import { nextDailySendCount } from '../lib/sendingLimits';
 import { readInstanceCounter, writeInstanceCounter } from '../lib/instanceCounters';
 import { requireOrgMember } from '../lib/sessionOrganization';
@@ -131,12 +132,6 @@ export const getEmailTemplate = internalQuery({
 	},
 });
 
-// Type for HTML translation stored in htmlTranslations field
-interface HtmlTranslation {
-	htmlContent: string;
-	subject: string;
-}
-
 // Internal query to get email template HTML for a specific language
 // Returns htmlContent and subject for the requested language with fallback
 export const getEmailTemplateForLanguage = internalQuery({
@@ -185,21 +180,18 @@ export const getEmailTemplateForLanguage = internalQuery({
 		// row without the list restricts nothing.
 		const supported = template.supportedLanguages?.includes(requestedLanguage) ?? true;
 		if (supported && template.htmlTranslations) {
-			try {
-				const htmlTranslations: Record<string, HtmlTranslation> = JSON.parse(
-					template.htmlTranslations
-				);
-				const translation = htmlTranslations[requestedLanguage];
-				if (translation?.htmlContent) {
-					return {
-						htmlContent: translation.htmlContent,
-						subject: translation.subject,
-						resolvedLanguage: requestedLanguage,
-					};
-				}
-			} catch (e) {
-				logError(`Failed to parse htmlTranslations for template ${template._id}:`, e);
-				// Fall through to default language
+			const translation = pickHtmlTranslation(template.htmlTranslations, requestedLanguage);
+			if (!translation.ok) {
+				// Fall through to the default language.
+				logError(`Failed to read htmlTranslations for template ${template._id}:`, {
+					issue: translation.issue,
+				});
+			} else if (translation.value?.htmlContent) {
+				return {
+					htmlContent: translation.value.htmlContent,
+					subject: translation.value.subject,
+					resolvedLanguage: requestedLanguage,
+				};
 			}
 		}
 

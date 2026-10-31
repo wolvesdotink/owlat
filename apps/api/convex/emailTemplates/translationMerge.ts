@@ -15,6 +15,7 @@
  */
 
 import { childBlockLists, mapChildBlockLists } from '@owlat/shared/blockTree';
+import { isRecord } from '@owlat/shared/utils/guards';
 
 export interface TranslatableBlockContent {
 	html?: string; // for text blocks
@@ -26,6 +27,16 @@ export interface BlockLikeItem {
 	id: string;
 	type: string;
 	content: Record<string, unknown>;
+}
+
+/** Whether a parsed value has the shape of a stored Block: an id, a type and a content object. */
+export function isBlockLikeItem(value: unknown): value is BlockLikeItem {
+	return (
+		isRecord(value) &&
+		typeof value['id'] === 'string' &&
+		typeof value['type'] === 'string' &&
+		isRecord(value['content'])
+	);
 }
 
 // Merge the overlay into an item and, through the shared Block-tree child
@@ -60,13 +71,19 @@ function extractFromItem(
 	translatableContent: Record<string, TranslatableBlockContent>
 ): void {
 	const content: TranslatableBlockContent = {};
+	// Only text is carried over: a non-string value in a stored block is not
+	// translatable text and must not become an overlay field.
+	const text = (key: string): string | undefined => {
+		const value = item.content[key];
+		return typeof value === 'string' && value !== '' ? value : undefined;
+	};
 
-	if (item.type === 'text' && item.content['html']) {
-		content.html = item.content['html'] as string;
-	} else if (item.type === 'button' && item.content['text']) {
-		content.buttonText = item.content['text'] as string;
-	} else if (item.type === 'image' && item.content['alt']) {
-		content.alt = item.content['alt'] as string;
+	if (item.type === 'text' && text('html') !== undefined) {
+		content.html = text('html');
+	} else if (item.type === 'button' && text('text') !== undefined) {
+		content.buttonText = text('text');
+	} else if (item.type === 'image' && text('alt') !== undefined) {
+		content.alt = text('alt');
 	}
 
 	// Only add if there's translatable content
@@ -75,28 +92,39 @@ function extractFromItem(
 	}
 
 	for (const list of childBlockLists(item)) {
-		for (const child of list) extractFromItem(child, translatableContent);
+		for (const child of list) {
+			if (isBlockLikeItem(child)) extractFromItem(child, translatableContent);
+		}
 	}
+}
+
+/**
+ * The stored Block list of a block JSON document, or null when the document is
+ * not JSON or not a list of Blocks (every entry with an id, a type and a
+ * content object).
+ */
+export function parseBlockList(blocksJson: string): BlockLikeItem[] | null {
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(blocksJson);
+	} catch {
+		return null;
+	}
+	return Array.isArray(parsed) && parsed.every(isBlockLikeItem) ? parsed : null;
 }
 
 /**
  * The translatable text of a block JSON document, keyed by block id: the
  * overlay a language would need to render exactly as this content does.
  * Changing the default language stores the outgoing default as this overlay.
+ * A document that is not a Block list has no translatable text.
  */
 export function extractTranslatableContent(
 	blocksJson: string
 ): Record<string, TranslatableBlockContent> {
-	try {
-		const blocks = JSON.parse(blocksJson) as BlockLikeItem[];
-		const translatableContent: Record<string, TranslatableBlockContent> = {};
-
-		for (const block of blocks) {
-			extractFromItem(block, translatableContent);
-		}
-
-		return translatableContent;
-	} catch {
-		return {};
+	const translatableContent: Record<string, TranslatableBlockContent> = {};
+	for (const block of parseBlockList(blocksJson) ?? []) {
+		extractFromItem(block, translatableContent);
 	}
+	return translatableContent;
 }

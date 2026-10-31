@@ -42,6 +42,7 @@
  */
 
 import { v } from 'convex/values';
+import { decodeJsonText } from '@owlat/worker-protocol/decodeJson';
 import { internal } from '../_generated/api';
 import type { Doc } from '../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
@@ -136,15 +137,31 @@ function isScanFinished(
 	return actions[0]?._id === scan._id && isAgentOffStop(scan.output);
 }
 
-/** The scan's recorded output routed `agent_off`: a clean scan with the agent off. */
+/**
+ * The fields of a recorded scan output that {@link scanDisposition} reads. The
+ * output carries more (the security flags, the MTA verdict); those are not
+ * read here.
+ */
+const dispositionFactsValidator = v.object({
+	isInjection: v.boolean(),
+	maxConfidence: v.number(),
+	phishingDetected: v.boolean(),
+	spamScore: v.number(),
+	agentEnabled: v.boolean(),
+	isMtaVerdictTerminal: v.optional(v.boolean()),
+	isEarlyRuleArchive: v.optional(v.boolean()),
+});
+
+/**
+ * The scan's recorded output routed `agent_off`: a clean scan with the agent
+ * off. An output that does not decode is not one.
+ */
 function isAgentOffStop(output: string | undefined): boolean {
 	if (output === undefined) return false;
-	try {
-		const facts = JSON.parse(output) as DispositionFacts;
-		return typeof facts.agentEnabled === 'boolean' && scanDisposition(facts) === 'agent_off';
-	} catch {
-		return false;
-	}
+	const decoded = decodeJsonText(output, dispositionFactsValidator);
+	if (!decoded.ok) return false;
+	const facts: DispositionFacts = decoded.value;
+	return scanDisposition(facts) === 'agent_off';
 }
 
 /** The per-message facts the thread composer needs to apply {@link takeOverRefusal}. */

@@ -1020,6 +1020,7 @@ import type * as lib_draftVariants from '../lib/draftVariants.js';
 import type * as lib_emailAddress from '../lib/emailAddress.js';
 import type * as lib_emailContentSanitize from '../lib/emailContentSanitize.js';
 import type * as lib_emailHelpers from '../lib/emailHelpers.js';
+import type * as lib_emailJson from '../lib/emailJson.js';
 import type * as lib_emailProviders_domainVerification from '../lib/emailProviders/domainVerification.js';
 import type * as lib_emailProviders_mtaIdentity from '../lib/emailProviders/mtaIdentity.js';
 import type * as lib_emailProviders_sesIdentity from '../lib/emailProviders/sesIdentity.js';
@@ -1045,6 +1046,7 @@ import type * as lib_instanceCounters from '../lib/instanceCounters.js';
 import type * as lib_instanceSecret from '../lib/instanceSecret.js';
 import type * as lib_instanceSettings from '../lib/instanceSettings.js';
 import type * as lib_ipBlocklist from '../lib/ipBlocklist.js';
+import type * as lib_jsonText from '../lib/jsonText.js';
 import type * as lib_knowledgeDedup from '../lib/knowledgeDedup.js';
 import type * as lib_knowledgeEdges from '../lib/knowledgeEdges.js';
 import type * as lib_knowledgePrecedence from '../lib/knowledgePrecedence.js';
@@ -1143,6 +1145,7 @@ import type * as lib_sendProviders_mandrill_client from '../lib/sendProviders/ma
 import type * as lib_sendProviders_mandrill_errors from '../lib/sendProviders/mandrill/errors.js';
 import type * as lib_sendProviders_mandrill_index from '../lib/sendProviders/mandrill/index.js';
 import type * as lib_sendProviders_mandrill_subaccounts from '../lib/sendProviders/mandrill/subaccounts.js';
+import type * as lib_sendProviders_mta_answer from '../lib/sendProviders/mta/answer.js';
 import type * as lib_sendProviders_mta_index from '../lib/sendProviders/mta/index.js';
 import type * as lib_sendProviders_mta_refusal from '../lib/sendProviders/mta/refusal.js';
 import type * as lib_sendProviders_pluginEnvNamespace from '../lib/sendProviders/pluginEnvNamespace.js';
@@ -2928,6 +2931,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/emailAddress': typeof lib_emailAddress;
 	'lib/emailContentSanitize': typeof lib_emailContentSanitize;
 	'lib/emailHelpers': typeof lib_emailHelpers;
+	'lib/emailJson': typeof lib_emailJson;
 	'lib/emailProviders/domainVerification': typeof lib_emailProviders_domainVerification;
 	'lib/emailProviders/mtaIdentity': typeof lib_emailProviders_mtaIdentity;
 	'lib/emailProviders/sesIdentity': typeof lib_emailProviders_sesIdentity;
@@ -2953,6 +2957,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/instanceSecret': typeof lib_instanceSecret;
 	'lib/instanceSettings': typeof lib_instanceSettings;
 	'lib/ipBlocklist': typeof lib_ipBlocklist;
+	'lib/jsonText': typeof lib_jsonText;
 	'lib/knowledgeDedup': typeof lib_knowledgeDedup;
 	'lib/knowledgeEdges': typeof lib_knowledgeEdges;
 	'lib/knowledgePrecedence': typeof lib_knowledgePrecedence;
@@ -3051,6 +3056,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/sendProviders/mandrill/errors': typeof lib_sendProviders_mandrill_errors;
 	'lib/sendProviders/mandrill/index': typeof lib_sendProviders_mandrill_index;
 	'lib/sendProviders/mandrill/subaccounts': typeof lib_sendProviders_mandrill_subaccounts;
+	'lib/sendProviders/mta/answer': typeof lib_sendProviders_mta_answer;
 	'lib/sendProviders/mta/index': typeof lib_sendProviders_mta_index;
 	'lib/sendProviders/mta/refusal': typeof lib_sendProviders_mta_refusal;
 	'lib/sendProviders/pluginEnvNamespace': typeof lib_sendProviders_pluginEnvNamespace;

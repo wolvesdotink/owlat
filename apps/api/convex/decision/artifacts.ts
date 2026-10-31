@@ -16,6 +16,7 @@
  */
 
 import { v } from 'convex/values';
+import { decodeJsonText } from '@owlat/worker-protocol/decodeJson';
 import type { Doc, Id } from '../_generated/dataModel';
 import { internalQuery, type MutationCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
@@ -51,6 +52,9 @@ export const DECISION_ANSWERS_VERSION = 1;
 const SUBJECT_ARTIFACT_BATCH = 64;
 
 const labelsValidator = v.record(v.string(), v.string());
+
+/** The stored `answers` JSON, as far as a reuse reads it. */
+const storedAnswersValidator = v.object({ labels: v.optional(labelsValidator) });
 
 export type ClaimOutcome =
 	| { readonly outcome: 'claimed'; readonly leaseExpiresAt: number }
@@ -273,8 +277,9 @@ export const answeredLabels = internalQuery({
 			return null;
 		}
 		if (row.contextVersion !== args.contextVersion) return null;
-		const stored = JSON.parse(row.answers) as { labels?: DecisionLabels };
-		return stored.labels ?? null;
+		// Answers that do not decode are not reused: the caller asks again.
+		const stored = decodeJsonText(row.answers, storedAnswersValidator);
+		return stored.ok ? (stored.value.labels ?? null) : null;
 	},
 });
 

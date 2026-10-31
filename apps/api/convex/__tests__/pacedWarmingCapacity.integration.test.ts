@@ -28,9 +28,10 @@ import { PACE_AIMD } from '../delivery/ramp/paceConfig';
 import { DESTINATION_PROVIDER_KEYS } from '@owlat/shared/deliverabilityRouting';
 import type { StoredAudience } from '../campaigns/audience';
 import type { Id } from '../_generated/dataModel';
+import type * as SessionOrganizationModule from '../lib/sessionOrganization';
 
 vi.mock('../lib/sessionOrganization', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../lib/sessionOrganization')>();
+	const actual = await importOriginal<typeof SessionOrganizationModule>();
 	return {
 		...actual,
 		getSingletonOrganizationId: vi.fn().mockResolvedValue('org_paced_capacity'),

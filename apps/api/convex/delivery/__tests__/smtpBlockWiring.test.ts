@@ -31,6 +31,7 @@
 
 import { convexTest } from 'convex-test';
 import { describe, expect, it, vi } from 'vitest';
+import type * as SessionOrganization from '../../lib/sessionOrganization';
 import schema from '../../schema';
 import { api } from '../../_generated/api';
 import type { DeliverabilityCell } from '@owlat/shared/deliverabilityRouting';
@@ -52,7 +53,7 @@ const ORG = 'org_smtp_block_wiring';
 const CELL: DeliverabilityCell = { stream: 'campaign', destinationProvider: 'gmail' };
 
 vi.mock('../../lib/sessionOrganization', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../../lib/sessionOrganization')>();
+	const actual = await importOriginal<typeof SessionOrganization>();
 	return {
 		...actual,
 		requireOrgMember: vi.fn(async () => ({

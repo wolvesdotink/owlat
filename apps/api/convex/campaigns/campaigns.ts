@@ -22,6 +22,8 @@ import {
 import { requireDraftCampaign } from './guards';
 
 // Query to get campaign with related data (template, topic, segment)
+// all-members: every member may manage and send campaigns (campaigns:manage
+// includes editors); the joined template, topic and segment are member-readable.
 export const getWithRelations = campaignsQuery({
 	args: { campaignId: v.id('campaigns') },
 	handler: async (ctx, args) => {
@@ -257,6 +259,7 @@ export const restore = campaignsMutation({
 /**
  * List campaigns with cursor-based pagination.
  */
+// all-members: every member may manage and send campaigns (campaigns:manage includes editors).
 export const list = campaignsQuery({
 	args: {
 		status: v.optional(campaignStatusValidator),

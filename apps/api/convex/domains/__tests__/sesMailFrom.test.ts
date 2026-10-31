@@ -29,6 +29,8 @@ import schema from '../../schema';
 import { api, internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import type { OrganizationRole } from '../../lib/sessionOrganization';
+import type * as SessionOrganizationModule from '../../lib/sessionOrganization';
+import type * as SesIdentityModule from '../../lib/emailProviders/sesIdentity';
 
 // ─── Mocks ──────────────────────────────────────────────────────────────────
 
@@ -43,7 +45,7 @@ function throwForbidden(): never {
 }
 
 vi.mock('../../lib/sessionOrganization', async () => {
-	const actual = await vi.importActual<typeof import('../../lib/sessionOrganization')>(
+	const actual = await vi.importActual<typeof SessionOrganizationModule>(
 		'../../lib/sessionOrganization'
 	);
 	const ctx = () => ({ userId: 'test-user', role: mockRole });
@@ -71,7 +73,7 @@ const SES_REGION = 'us-east-1';
 const setupMailFromMock = vi.fn();
 const sesRegisterMock = vi.fn();
 vi.mock('../../lib/emailProviders/sesIdentity', async (importActual) => {
-	const actual = await importActual<typeof import('../../lib/emailProviders/sesIdentity')>();
+	const actual = await importActual<typeof SesIdentityModule>();
 	return {
 		...actual,
 		createSESIdentityManager: () => ({

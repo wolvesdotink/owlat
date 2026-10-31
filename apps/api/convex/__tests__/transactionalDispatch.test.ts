@@ -331,6 +331,27 @@ describe('selectContent (pure)', () => {
 		expect(out.subject).toBe('Hi');
 		expect(out.resolvedLanguage).toBe('en');
 	});
+
+	it.each([
+		['a numeric subject', { de: { htmlContent: '<p>Hallo</p>', subject: 3 } }],
+		['no html', { de: { subject: 'Hallo' } }],
+		['an entry that is a string', { de: '<p>Hallo</p>' }],
+	])('falls back to default when the language has %s', (_label, translations) => {
+		const out = selectContent('de', 'en', '<p>Hi</p>', 'Hi', JSON.stringify(translations));
+		expect(out).toEqual({ html: '<p>Hi</p>', subject: 'Hi', resolvedLanguage: 'en' });
+	});
+
+	it('serves a well-formed language next to a malformed one', () => {
+		const translations = JSON.stringify({
+			de: { htmlContent: '<p>Hallo</p>', subject: 'Hallo' },
+			fr: { htmlContent: 1 },
+		});
+		expect(selectContent('de', 'en', '<p>Hi</p>', 'Hi', translations)).toEqual({
+			html: '<p>Hallo</p>',
+			subject: 'Hallo',
+			resolvedLanguage: 'de',
+		});
+	});
 });
 
 describe('mergeAttachments (pure)', () => {
@@ -357,6 +378,13 @@ describe('mergeAttachments (pure)', () => {
 		const reqs = [{ filename: 'r.pdf', url: 'https://example.com/r.pdf' }];
 		const merged = mergeAttachments(tpl, reqs);
 		expect(merged?.map((a) => a.filename)).toEqual(['t.pdf', 'r.pdf']);
+	});
+
+	it('ignores template attachments that are not a list of { filename, url }', () => {
+		const reqs = [{ filename: 'r.pdf', url: 'https://example.com/r.pdf' }];
+		for (const tpl of ['{"filename":"t.pdf"}', '[{"filename":"t.pdf","url":5}]', '[null]']) {
+			expect(mergeAttachments(tpl, reqs)?.map((a) => a.filename)).toEqual(['r.pdf']);
+		}
 	});
 
 	it('ignores malformed template JSON gracefully', () => {

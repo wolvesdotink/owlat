@@ -6,6 +6,7 @@
  */
 
 import { v } from 'convex/values';
+import { validatorDecoder } from '@owlat/worker-protocol/decodeJson';
 import { internalQuery, internalAction } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
@@ -168,6 +169,11 @@ export const markVerifiedInternal = internalMutation({
 	},
 });
 
+/** A DNS-over-HTTPS JSON answer, as far as the CNAME check reads it. */
+const decodeDnsAnswer = validatorDecoder(
+	v.object({ Answer: v.optional(v.array(v.object({ type: v.number(), data: v.string() }))) })
+);
+
 /**
  * DNS verification action for tracking domains.
  * Uses fetch to resolve CNAME and verify it points to the expected target.
@@ -196,9 +202,16 @@ export const verifyTrackingDomainDns = internalAction({
 				return { verified: false, error: 'DNS query failed' };
 			}
 
-			const data = (await response.json()) as {
-				Answer?: Array<{ type: number; data: string }>;
-			};
+			const decoded = decodeDnsAnswer(await response.json());
+			if (!decoded.ok) {
+				logWarn('[Tracking Domain DNS] DNS answer could not be read', {
+					trackingDomainId: args.trackingDomainId,
+					domain: args.domain,
+					issue: decoded.issue,
+				});
+				return { verified: false, error: 'DNS query failed' };
+			}
+			const data = decoded.value;
 
 			// Check if any CNAME answer matches the expected target
 			const cnameAnswers = data.Answer?.filter((a) => a.type === 5) ?? [];

@@ -25,6 +25,7 @@
 
 import { convexTest } from 'convex-test';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type * as SessionOrganization from '../../../lib/sessionOrganization';
 import schema from '../../../schema';
 import { internal } from '../../../_generated/api';
 import { modules } from '../../../__tests__/testModules';
@@ -55,7 +56,7 @@ import {
 const ORG = 'org_mandrill_reference_arm';
 
 vi.mock('../../../lib/sessionOrganization', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../../../lib/sessionOrganization')>();
+	const actual = await importOriginal<typeof SessionOrganization>();
 	return {
 		...actual,
 		getSingletonOrganizationId: vi.fn().mockResolvedValue('org_mandrill_reference_arm'),

@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { join, normalize } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
 	coverageWorkspaces,
@@ -5,9 +8,14 @@ import {
 	groupWorkspaces,
 	expectedJobs,
 	assertJobResults,
+	parseExpectedJobs,
+	parseJobResults,
+	parseTestGroup,
 	selectCiWork,
 	type Task,
 } from '../ci/selection';
+
+const REPOSITORY_ROOT = fileURLToPath(new URL('../..', import.meta.url));
 const task = (name: string): Task => ({
 	task: 'test:coverage',
 	package: `@owlat/${name}`,
@@ -93,6 +101,13 @@ describe('CI work selection', () => {
 			'docs/x.md',
 		])
 			expect(desktopSpaSelected(false, false, [file])).toBe(false);
+		// Every module the inspector imports changes what it checks.
+		const inspector = readFileSync(join(REPOSITORY_ROOT, 'scripts/check-desktop-spa.ts'), 'utf8');
+		const imported = [...inspector.matchAll(/from '(\.{1,2}\/[^']+)'/g)].map((match) =>
+			normalize(join('scripts', `${match[1]}.ts`))
+		);
+		expect(imported).toContain('scripts/json.ts');
+		for (const file of imported) expect(desktopSpaSelected(false, false, [file]), file).toBe(true);
 		const selection = { groups: [], images: [], api: false, web: false, mta: false, java: false };
 		expect(expectedJobs({ ...selection, desktopSpa: true })).toContain('desktop-spa');
 		expect(expectedJobs({ ...selection, desktopSpa: false })).not.toContain('desktop-spa');
@@ -154,5 +169,40 @@ describe('CI work selection', () => {
 				images,
 			})
 		).toMatchObject({ java: true });
+	});
+});
+
+describe('CI matrix inputs', () => {
+	const group = {
+		id: 1,
+		workspaces: [{ package: '@owlat/shared', name: 'shared', directory: 'packages/shared' }],
+	};
+
+	it('read the test group, the expected jobs and the job results as Actions writes them', () => {
+		expect(parseTestGroup(JSON.stringify(group))).toEqual(group);
+		expect(parseExpectedJobs('["detect","lint"]')).toEqual(['detect', 'lint']);
+		expect(parseJobResults('{"detect":{"result":"success","outputs":{"api":"true"}}}')).toEqual({
+			detect: { result: 'success', outputs: { api: 'true' } },
+		});
+		expect(parseJobResults(undefined)).toEqual({});
+	});
+
+	it('refuse a group, manifest or result of the wrong shape', () => {
+		expect(() => parseTestGroup(undefined)).toThrow('Missing CI test group');
+		expect(() => parseTestGroup('null')).toThrow('CI_GROUP must be an object');
+		expect(() =>
+			parseTestGroup(JSON.stringify({ workspaces: [{ package: '@owlat/shared', name: 'shared' }] }))
+		).toThrow('CI_GROUP.workspaces[0].directory must be a string');
+		expect(() => parseExpectedJobs(undefined)).toThrow('Missing expected CI job manifest');
+		expect(() => parseExpectedJobs('"detect,lint"')).toThrow('CI_EXPECTED must be an array');
+		expect(() => parseExpectedJobs('["detect",1]')).toThrow('CI_EXPECTED[1] must be a string');
+		// An array would read as jobs "0" and "1"; a bare string as a success.
+		expect(() => parseJobResults('[{"result":"success"}]')).toThrow('CI_NEEDS must be an object');
+		expect(() => parseJobResults('{"detect":"success"}')).toThrow(
+			'CI_NEEDS.detect must be an object'
+		);
+		expect(() => parseJobResults('{"detect":{"result":true}}')).toThrow(
+			'CI_NEEDS.detect.result must be a string'
+		);
 	});
 });

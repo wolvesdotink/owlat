@@ -37,6 +37,7 @@ import {
 	TypeSafeDecisionError,
 	typesafeDecisionAdapter,
 } from '../typesafe';
+import type * as SsrfGuardModule from '../../ssrfGuard';
 
 // The guarded fetcher, stubbed so the default (non-injected) path can be
 // asserted without DNS or a socket. The guard's own error classes stay real —
@@ -423,7 +424,7 @@ describe('typesafeDecisionAdapter.ask() — failures with no status', () => {
 
 	it('turns the guard refusing a redirect into an actionable base-URL error', async () => {
 		const { RedirectRefusedError } =
-			await vi.importActual<typeof import('../../ssrfGuard')>('../../ssrfGuard');
+			await vi.importActual<typeof SsrfGuardModule>('../../ssrfGuard');
 		const fetchImpl = vi.fn(async () => {
 			throw new RedirectRefusedError('Blocked fetch of "https://api.typesafe.ai/v1/systemone"');
 		}) as unknown as ReturnType<typeof respondWith>;
@@ -448,8 +449,7 @@ describe('typesafeDecisionAdapter.ask() — failures with no status', () => {
 	});
 
 	it('names a blocked destination without blaming the network', async () => {
-		const { SsrfBlockedError } =
-			await vi.importActual<typeof import('../../ssrfGuard')>('../../ssrfGuard');
+		const { SsrfBlockedError } = await vi.importActual<typeof SsrfGuardModule>('../../ssrfGuard');
 		const fetchImpl = vi.fn(async () => {
 			throw new SsrfBlockedError('Blocked fetch of "https://internal.test/v1/systemone"');
 		}) as unknown as ReturnType<typeof respondWith>;

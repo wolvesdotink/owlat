@@ -8,7 +8,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { TestConvex } from 'convex-test';
-import schema from '../schema';
+import type schema from '../schema';
 import { internal, components } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { resetSessionMock } from './gdprSessionMock';

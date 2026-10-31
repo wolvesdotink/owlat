@@ -46,9 +46,10 @@ import { mandrillReferenceArm, mandrillRelayDomainVerified } from '../relayVerif
 import type { MandrillIdentity } from '../../types';
 
 import { modules } from '../../../../__tests__/testModules';
+import type * as SessionOrganizationModule from '../../../../lib/sessionOrganization';
 
 vi.mock('../../../../lib/sessionOrganization', async () => {
-	const actual = await vi.importActual<typeof import('../../../../lib/sessionOrganization')>(
+	const actual = await vi.importActual<typeof SessionOrganizationModule>(
 		'../../../../lib/sessionOrganization'
 	);
 	return {

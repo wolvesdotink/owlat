@@ -33,9 +33,7 @@ let mockUserId: string | null = 'user-A';
 let mockRole: OrganizationRole | null = 'owner';
 
 vi.mock('../lib/sessionOrganization', async () => {
-	const actual = await vi.importActual<typeof import('../lib/sessionOrganization')>(
-		'../lib/sessionOrganization'
-	);
+	const actual = await vi.importActual<typeof sessionOrganization>('../lib/sessionOrganization');
 	return {
 		...actual,
 		// Dynamic, not a fixed resolved value: this is the floor every query in the

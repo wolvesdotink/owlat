@@ -90,6 +90,8 @@ async function loadAutomationWithSteps(
 }
 
 // List automations using session-based context.
+// all-members: the automation list is readable by every member; only the writes
+// below require automations:manage (automations/guards.ts).
 export const list = automationsQuery({
 	args: {
 		status: v.optional(v.union(v.literal('draft'), v.literal('active'), v.literal('paused'))),
@@ -104,6 +106,8 @@ export const list = automationsQuery({
 });
 
 // Get a single automation by ID with its steps
+// all-members: the read-only automation view every member may open (step
+// configs hold no credentials; plugin secrets stay in the deployment env).
 export const get = automationsQuery({
 	args: {
 		automationId: v.id('automations'),
@@ -116,6 +120,8 @@ export const get = automationsQuery({
 });
 
 // Get automation with related data (email templates for email steps)
+// all-members: the same read-only automation view as `get`, joined with the
+// templates and topic every member may also read.
 export const getWithRelations = automationsQuery({
 	args: {
 		automationId: v.id('automations'),
@@ -150,6 +156,7 @@ export const getWithRelations = automationsQuery({
 
 // Count automations by status — the descriptor's `byStatus` facet returns
 // per-status counts plus their `total`.
+// all-members: per-status counts behind the member-readable automation list.
 export const countByStatus = automationsQuery({
 	args: {},
 	handler: async (ctx) => {

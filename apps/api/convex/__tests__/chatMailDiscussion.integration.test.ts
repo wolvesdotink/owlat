@@ -179,6 +179,12 @@ describe('chat.mailDiscussion — mailbox readers', () => {
 		// The generic chat read path agrees with the mailbox gate.
 		const listed = await t.query(api.chat.messages.listMessages, { roomId: first.roomId });
 		expect(listed.messages).toHaveLength(2);
+		// So does getRoom: a mailbox reader sees the room, though no chat roster has them.
+		expect(await t.query(api.chat.rooms.getRoom, { roomId: first.roomId })).toMatchObject({
+			_id: first.roomId,
+			isMember: false,
+			myRole: null,
+		});
 	});
 
 	it('lets an org admin with no mailbox row read, like the mailbox gate does', async () => {
@@ -313,7 +319,9 @@ describe('chat.mailDiscussion — mentions', () => {
 	it('drops a discussion mention from the feed once mailbox access is gone', async () => {
 		const t = newBetterAuthHarness();
 		const { threadId, mailboxId } = await seed(t);
-		await postAs(t, 'user-owner', threadId, '@user-member please look');
+		const { roomId } = await postAs(t, 'user-owner', threadId, '@user-member please look');
+		setUser('user-member');
+		expect(await t.query(api.chat.rooms.getRoom, { roomId })).not.toBeNull();
 
 		await t.run(async (ctx) => {
 			const row = await ctx.db
@@ -327,5 +335,7 @@ describe('chat.mailDiscussion — mentions', () => {
 
 		setUser('user-member');
 		expect(await t.query(api.chat.mentions.listMyUnreadMentions, {})).toEqual([]);
+		expect(await t.query(api.chat.mentions.countMyVisibleUnreadMentions, {})).toBe(0);
+		expect(await t.query(api.chat.rooms.getRoom, { roomId })).toBeNull();
 	});
 });

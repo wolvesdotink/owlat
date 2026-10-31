@@ -28,6 +28,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import schema from '../schema';
 import { api, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
+import type * as ErrorsModule from '../_utils/errors';
+import type * as SessionOrganizationModule from '../lib/sessionOrganization';
 
 const sessionMock = vi.hoisted(() => ({
 	subject: 'owner-user',
@@ -35,12 +37,12 @@ const sessionMock = vi.hoisted(() => ({
 }));
 
 vi.mock('../lib/sessionOrganization', async () => {
-	const actual = await vi.importActual<typeof import('../lib/sessionOrganization')>(
+	const actual = await vi.importActual<typeof SessionOrganizationModule>(
 		'../lib/sessionOrganization'
 	);
 	// `requirePermission` is an assertion function, which TypeScript refuses to
 	// call through a namespace binding — raise the same forbidden error directly.
-	const errors = await vi.importActual<typeof import('../_utils/errors')>('../_utils/errors');
+	const errors = await vi.importActual<typeof ErrorsModule>('../_utils/errors');
 	const session = () => ({
 		userId: sessionMock.subject,
 		role: sessionMock.role,

@@ -2,7 +2,6 @@ import { v } from 'convex/values';
 import type { QueryCtx } from './_generated/server';
 import type { Id } from './_generated/dataModel';
 import { internalQuery } from './_generated/server';
-import { getBetterAuthSessionWithRole, getUserIdFromSession } from './lib/sessionOrganization';
 import { authedQuery } from './lib/authedFunctions';
 import { loadAccessibleMailboxes } from './mail/permissions';
 import { batchGet } from './_utils/batchLoader';
@@ -190,19 +189,16 @@ export const search = authedQuery({
 		query: v.string(),
 		limit: v.optional(v.number()),
 	},
-	handler: async (ctx, args): Promise<GlobalSearchResults> => {
-		await getUserIdFromSession(ctx);
+	handler: async (ctx, args, session): Promise<GlobalSearchResults> => {
 		// Mail is the one category scoped to the CALLER rather than to the org, so
-		// the mailbox set is derived from their session here (own mailboxes +
+		// the mailbox set is derived from the floor's session (own mailboxes +
 		// explicit shared memberships, active only) and never taken from an
 		// argument.
-		const session = await getBetterAuthSessionWithRole(ctx);
-		const organizationId = session?.activeOrganizationId;
-		const mailboxIds = organizationId
-			? (await loadAccessibleMailboxes(ctx, session.userId, organizationId))
-					.filter((mailbox) => mailbox.status === 'active')
-					.map((mailbox) => mailbox._id)
-			: [];
+		const mailboxIds = (
+			await loadAccessibleMailboxes(ctx, session.userId, session.activeOrganizationId)
+		)
+			.filter((mailbox) => mailbox.status === 'active')
+			.map((mailbox) => mailbox._id);
 		return runGlobalSearch(ctx, args.query, args.limit, mailboxIds);
 	},
 });

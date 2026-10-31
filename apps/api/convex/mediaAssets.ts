@@ -7,7 +7,7 @@ import { v } from 'convex/values';
 import { paginationOptsValidator, type PaginationResult } from 'convex/server';
 import type { Doc } from './_generated/dataModel';
 import { getInstanceSettings } from './lib/instanceSettings';
-import { requireOrgPermission } from './lib/sessionOrganization';
+import { hasPermission, requirePermission } from './lib/sessionOrganization';
 import { getOrThrow, throwInvalidState, throwInvalidInput, throwNotFound } from './_utils/errors';
 import { isChatAttachment, assertUnregisteredMediaStorage } from './chat/attachmentAccess';
 import { consumeUpload, deleteOwnedUpload, storedFileSize } from './storage/uploads';
@@ -174,15 +174,14 @@ export const create = authedMutation({
 		alt: v.optional(v.string()),
 		tags: v.optional(v.array(v.string())),
 	},
-	handler: async (ctx, args) => {
+	handler: async (ctx, args, session) => {
 		validateStringLength(args.filename, STRING_LIMITS.FILENAME, 'filename');
 		validateStringLength(args.mimeType, STRING_LIMITS.MIME_TYPE, 'mimeType');
 		if (args.alt !== undefined) validateStringLength(args.alt, STRING_LIMITS.DESCRIPTION, 'alt');
 		for (const tag of args.tags ?? []) validateStringLength(tag, STRING_LIMITS.TAG, 'Tag');
 
-		const session = await requireOrgPermission(
-			ctx,
-			'media:manage',
+		requirePermission(
+			hasPermission(session.role, 'media:manage'),
 			'Only owners and admins can create media assets'
 		);
 
@@ -383,13 +382,12 @@ export const update = authedMutation({
 		alt: v.optional(v.string()),
 		tags: v.optional(v.array(v.string())),
 	},
-	handler: async (ctx, args) => {
+	handler: async (ctx, args, session) => {
 		if (args.alt !== undefined) validateStringLength(args.alt, STRING_LIMITS.DESCRIPTION, 'alt');
 		for (const tag of args.tags ?? []) validateStringLength(tag, STRING_LIMITS.TAG, 'Tag');
 
-		await requireOrgPermission(
-			ctx,
-			'media:manage',
+		requirePermission(
+			hasPermission(session.role, 'media:manage'),
 			'Only owners and admins can update media assets'
 		);
 		const asset = await getOrThrow(ctx, args.assetId, 'Media asset');
@@ -413,10 +411,9 @@ export const update = authedMutation({
  */
 export const bulkDelete = authedMutation({
 	args: { assetIds: v.array(v.id('mediaAssets')) },
-	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'media:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'media:manage'),
 			'Only owners and admins can bulk-delete media assets'
 		);
 

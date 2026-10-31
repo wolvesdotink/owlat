@@ -12,12 +12,7 @@
  * synthetic identity keeps the re-walk from storing it twice.
  */
 
-import {
-	backfillSubject,
-	checkBackfillRun,
-	type BackfillState,
-	type IngestCallState,
-} from './oracle';
+import { backfillSubject, checkBackfillRun, type BackfillState } from './oracle';
 import type { KillStack } from './stack';
 
 const IMAP_USER = 'migrate@owlat.test';
@@ -66,7 +61,7 @@ export async function runBackfillScenario(
 	log(`killed mail-sync with UID ${HELD_UID} stored but unanswered; restarted`);
 
 	await stack.waitFor('convex.backfill.complete', BUDGET_MS);
-	const { ingestCalls } = await stack.state<{ ingestCalls: IngestCallState[] }>();
+	const { ingestCalls } = await stack.state();
 	const ofAccount = (table: string, key: string, id: string) =>
 		backend.rows(table).filter((row) => row[key] === id);
 	const state = {

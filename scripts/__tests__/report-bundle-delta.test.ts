@@ -239,4 +239,23 @@ describe('the delta report command', () => {
 		expect(result.status).toBe(2);
 		expect(result.stderr).toContain('cannot read the report');
 	});
+
+	it('refuses a report whose closures are not the shape the comparison reads', () => {
+		const head = report(236 * 1024);
+		const dir = files({
+			'head.json': head,
+			'routes.json': JSON.stringify({
+				...head,
+				routes: [{ key: '/x', beyondEntry: { gzip: '9' } }],
+			}),
+			'chunks.json': JSON.stringify({ ...head, entry: { ...head.entry, chunks: {} } }),
+			'array.json': '[]',
+		});
+
+		for (const name of ['routes.json', 'chunks.json', 'array.json']) {
+			const result = run([join(dir, 'head.json'), join(dir, name)]);
+			expect(result.status).toBe(2);
+			expect(result.stderr).toContain(`cannot read the report ${join(dir, name)}: report`);
+		}
+	});
 });

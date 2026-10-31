@@ -1,5 +1,6 @@
 import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type * as SessionOrganization from '../../lib/sessionOrganization';
 import { api, internal } from '../../_generated/api';
 import schema from '../../schema';
 import {
@@ -32,9 +33,7 @@ import { resolveLastMileRoutePlanFromDb } from '../../lib/sendProviders/route';
 // satisfied for the wizard's step-4 read to run at all. Only the two session
 // helpers are replaced; everything else in the module is the real thing.
 vi.mock('../../lib/sessionOrganization', async () => {
-	const actual = await vi.importActual<typeof import('../../lib/sessionOrganization')>(
-		'../../lib/sessionOrganization'
-	);
+	const actual = await vi.importActual<typeof SessionOrganization>('../../lib/sessionOrganization');
 	return {
 		...actual,
 		getSingletonOrganizationId: vi.fn().mockResolvedValue('org-a'),

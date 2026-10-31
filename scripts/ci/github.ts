@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import { decodeJson, type Decoder } from '../json';
 function apiOutput(path: string, paginate = false): string {
 	for (let attempt = 0; attempt < 3; attempt++) {
 		try {
@@ -18,8 +19,9 @@ function apiOutput(path: string, paginate = false): string {
 export function isTransientAPIError(message: string) {
 	return /HTTP (?:5\d\d|429)|ETIMEDOUT|ECONNRESET/.test(message);
 }
-export function github<T>(path: string): T {
-	return JSON.parse(apiOutput(path)) as T;
+/** One API answer, checked by `decode`. */
+export function github<T>(path: string, decode: Decoder<T>): T {
+	return decodeJson(apiOutput(path), decode, `GitHub ${path}`);
 }
 
 // gh --paginate prints concatenated JSON documents. Avoid --slurp, which is
@@ -55,8 +57,16 @@ export function jsonPages(text: string): unknown[] {
 	if (start >= 0 || !pages.length) throw new Error('Incomplete paginated JSON');
 	return pages;
 }
-export function githubPages<T>(path: string): T[] {
-	return jsonPages(apiOutput(path, true)).flat() as T[];
+/**
+ * Every page of a paginated answer, each checked by `decodePage` and the items
+ * concatenated. A list endpoint's page is an array; an envelope endpoint's page
+ * is an object, and its decoder returns the list inside it.
+ */
+export function githubPages<T>(path: string, decodePage: Decoder<T[]>): T[] {
+	return decodePages(apiOutput(path, true), decodePage, `GitHub ${path}`);
+}
+export function decodePages<T>(text: string, decodePage: Decoder<T[]>, label: string): T[] {
+	return jsonPages(text).flatMap((page, index) => decodePage(page, `${label} page ${index + 1}`));
 }
 export function repository(): string {
 	const repo =

@@ -91,6 +91,23 @@ describe('parseSegmentFilters throws on corrupt filters (callers decide)', () =>
 	it('throws on invalid JSON string', () => {
 		expect(() => parseSegmentFilters('not json {{{')).toThrow();
 	});
+
+	it.each([
+		['logic outside AND/OR', '{"logic":"XOR","conditions":[]}'],
+		['conditions that are not a list', '{"logic":"AND","conditions":{"kind":"x"}}'],
+		['a JSON scalar', '42'],
+		['null', 'null'],
+	])('throws on stored filters with %s', (_label, stored) => {
+		expect(() => parseSegmentFilters(stored)).toThrow();
+	});
+
+	it('reads omitted or null conditions on older rows as no conditions', () => {
+		expect(parseSegmentFilters('{"logic":"OR"}')).toEqual({ logic: 'OR', conditions: [] });
+		expect(parseSegmentFilters('{"logic":"AND","conditions":null}')).toEqual({
+			logic: 'AND',
+			conditions: [],
+		});
+	});
 });
 
 describe('matchLiveContacts (segment preview)', () => {

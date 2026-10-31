@@ -25,6 +25,7 @@ import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import { modules } from '../../__tests__/testModules';
 import type { Id } from '../../_generated/dataModel';
+import type * as DomainProvidersModule from '../providers';
 
 vi.mock('node:dns/promises', () => ({
 	default: {
@@ -47,7 +48,7 @@ const { runProviderCheck } = vi.hoisted(() => ({
 }));
 
 vi.mock('../providers', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../providers')>();
+	const actual = await importOriginal<typeof DomainProvidersModule>();
 	return {
 		...actual,
 		providerFor: (kind: string) =>

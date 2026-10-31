@@ -42,6 +42,8 @@ on:
       - 'patches/groupmq@*'
       - 'bun.lock'
       - 'scripts/kill-tests/**'
+      # The decoder module scripts/kill-tests/backend.ts reads the backend's answers with.
+      - 'scripts/json.ts'
       - '.github/workflows/kill-tests.yml'
   schedule:
     - cron: '45 4 * * *' # nightly, after the update-flow run
