@@ -104,7 +104,10 @@ function onDrop(event: DragEvent) {
 function bindTarget(el: HTMLElement, target: ReplyDropTarget | null | undefined) {
 	if (target) {
 		targets.set(el, target);
-		el.setAttribute(DROP_ATTR, '');
+		// Runs on every row update: rewriting an attribute that is already there
+		// still records a DOM mutation, so a row that only changed its text would
+		// pay for an attribute write too.
+		if (!el.hasAttribute(DROP_ATTR)) el.setAttribute(DROP_ATTR, '');
 	} else {
 		targets.delete(el);
 		el.removeAttribute(DROP_ATTR);
