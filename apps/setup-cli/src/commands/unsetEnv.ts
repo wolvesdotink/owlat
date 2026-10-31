@@ -1,4 +1,3 @@
-/* eslint-disable no-console -- a CLI command reports to the terminal */
 /**
  * `owlat-setup unset-env <KEY...>` — clear Convex function-runtime keys from
  * the running deployment AND from `.env`. Run by `owlat unset-env`.

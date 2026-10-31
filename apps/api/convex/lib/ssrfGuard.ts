@@ -19,7 +19,7 @@
 import { promises as dns, lookup as dnsLookup } from 'dns';
 import { isIP } from 'net';
 import type { LookupAddress, LookupAllOptions } from 'dns';
-import { Agent } from 'undici';
+import { Agent, type Dispatcher } from 'undici';
 import { readStreamPrefix } from '@owlat/shared';
 
 // The literal-IP classification lives in the runtime-agnostic lib/ipBlocklist so
@@ -202,12 +202,13 @@ export function fetchWithGuardedDispatcher(
 	input: string | URL,
 	init: RequestInit = {}
 ): Promise<Response> {
-	return fetch(input, {
+	// `dispatcher` is an undici-specific fetch option, absent from the DOM
+	// RequestInit lib types but honoured by the Node action runtime's fetch.
+	const guardedInit: RequestInit & { dispatcher: Dispatcher } = {
 		...init,
-		// @ts-expect-error `dispatcher` is an undici-specific fetch option not in
-		// the DOM RequestInit lib types, but valid in the Node action runtime.
 		dispatcher: guardedDispatcher(),
-	});
+	};
+	return fetch(input, guardedInit);
 }
 
 /** Thrown by {@link readCappedBytes} when a response body exceeds the cap. */
