@@ -156,7 +156,7 @@ export function withReferenceArm(
  * two evaluators, only later. A caller asking the same question of a DIFFERENT
  * ROW SET is asking about ITS OWN rows and scopes to them — the dashboard's
  * trend plots a relay series when the relay carried something inside the days
- * the chart plots (`deliverabilityDashboard.ts`), and re-scoping that one to 24h
+ * the chart plots (`deliverabilityDashboardCell.ts`), and re-scoping that one to 24h
  * would erase the very days that explain the absent arm. `loadCellInput` states
  * the rule inline over the summary it already holds — as the dashboard now does
  * too, asking it of the very summary it grades — and is pinned against this one

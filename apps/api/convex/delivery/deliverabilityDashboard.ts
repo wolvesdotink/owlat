@@ -76,53 +76,22 @@
  * belongs to the chart's own rows (see the `buildDashboardTrend` call below).
  */
 
-import {
-	allDeliverabilityCells,
-	deliverabilityCellKey,
-	resolveOwnShare,
-} from '@owlat/shared/deliverabilityRouting';
+import { allDeliverabilityCells, deliverabilityCellKey } from '@owlat/shared/deliverabilityRouting';
 import { authedQuery } from '../lib/authedFunctions';
 import { getSingletonOrganizationId } from '../lib/sessionOrganization';
 import { readCellArmBuckets } from '../analytics/transportOutcomes';
 import { hasSeedAccounts } from '../analytics/seedAccounts';
 import { summarizeSeedPlacementSweeps } from '../analytics/seedPlacement';
-import { seedSweepsForCell } from '../analytics/seedPlacementSweeps';
-import {
-	readCellArmCategoryBuckets,
-	summarizeSmtpBlockObservation,
-} from '../analytics/smtpResponseCategories';
-import {
-	deferralTelemetryReadSince,
-	hasUsableDeferralTelemetry,
-	summarizeTransportOutcomeBuckets,
-} from '../analytics/transportOutcomeSummary';
+import { readCellArmCategoryBuckets } from '../analytics/smtpResponseCategories';
 import { relayConfiguration } from './relayConfiguration';
-import { RAMP_AIMD } from './ramp/controllerConfig';
-import { RAMP_STREAM_CONFIGS } from './ramp/gateConfig';
-import { referenceArmGateEvaluator, trailingBaselineGateEvaluator } from './ramp/gateEvaluation';
+import { loadRampDeploymentPresence } from './rampIntegrationPresence';
+import { readRouteStatesByProvider } from './deliverabilityDashboardHelpers';
+import type { DashboardCellView } from './deliverabilityDashboardView';
 import {
-	degradedStreamConfig,
-	resolveRampDegradation,
-	usesTrailingBaseline,
-	usesUnsubscribeProxy,
-} from './ramp/degradation';
-import {
-	hasReferenceArmOutcomes,
-	loadRampDeploymentPresence,
-	withReferenceArm,
-} from './rampIntegrationPresence';
-import {
-	engagementGateFor,
-	pickRouteState,
-	readRouteStatesByProvider,
-	trailingBaselineFor,
-} from './deliverabilityDashboardHelpers';
-import {
-	buildDashboardCellView,
-	buildDashboardTrend,
-	dashboardWindow,
-	type DashboardCellView,
-} from './deliverabilityDashboardView';
+	assembleDashboardCell,
+	dashboardSpans,
+	type DashboardGridFacts,
+} from './deliverabilityDashboardCell';
 
 export interface DeliverabilityDashboard {
 	readonly generatedAt: number;
@@ -198,7 +167,9 @@ export const getDeliverabilityDashboard = authedQuery({
 		// function below it is pure. There is deliberately no `now` arg —
 		// a caller-supplied clock on a public read makes a stale window look fresh.
 		const now = Date.now();
-		const window = dashboardWindow(now);
+		// The reported window, the deciding span and the read bound, all from this
+		// one clock reading (`./deliverabilityDashboardCell`).
+		const spans = dashboardSpans(now);
 		// BOTH READINGS OF THE RELAY LIST, from ONE scan (`relayConfiguration`), and
 		// neither of them is the evaluator predicate — see the module note.
 		//   - `referenceTransportId` NAMES the second arm for the screen's copy, and
@@ -206,208 +177,55 @@ export const getDeliverabilityDashboard = authedQuery({
 		//   - `isRelayConfigured` answers "does this deployment own a relay AT ALL",
 		//     which is the question the `connect_reference_transport` offer asks.
 		const { referenceTransportId, isRelayConfigured } = await relayConfiguration(ctx);
-		const routeStates = await readRouteStatesByProvider(ctx, organizationId);
-		// THE DEPLOYMENT HALF OF THE SUBSTITUTION MAP, read ONCE for the whole grid
-		// through the reader the controller's tick uses. Every entry but the reference
-		// arm is deployment-level; that one is completed per cell below, from its rows.
-		const deploymentPresence = await loadRampDeploymentPresence(ctx, { organizationId, now });
-		// ONE read for the whole screen: seed COVERAGE is an org-level fact (are
-		// there seed mailboxes at all), not a per-cell one, and it only lowers
-		// confidence — a deployment with none is supported, never nagged.
-		// ONE row through the seed index, not a placement window: the screen needs
-		// the boolean, and the roll-up it used to buy it from scans the probe index,
-		// expands one observation per probe and fans out a `db.get` per account.
-		const hasSeedCoverage = await hasSeedAccounts(ctx.db, organizationId);
-		// GATE 5'S EVIDENCE, from the SAME reader the controller uses and read ONCE
-		// for the whole grid rather than once per cell — the probe ledger read is
-		// org-wide and every cell takes its own slice out of the index. A deployment
-		// with no probes gets an empty index and every cell's gate 5 holds, which is
-		// what it should say: the screen reports the verdict the controller would
-		// reach, not a friendlier one.
-		const seedSweeps = await summarizeSeedPlacementSweeps(ctx.db, organizationId, now);
-		// THE REPORTED WINDOW: the seven UTC days every counter, rate and trend point
-		// on this screen is summarized over. Nothing is GRADED over it.
-		const reportedWindow = { since: window.sinceDay, until: window.untilDay };
-		// THE DECIDING SPAN: the controller's own evaluation window, anchored on the
-		// same clock its tick anchors on, so both arms reach the evaluator over the
-		// days the cron's arms cover and no others (#510). It answers the reference
-		// arm's PRESENCE predicate too — `RAMP_REFERENCE_ARM_WINDOW_MS` is pinned
-		// equal to this constant. Cell-independent, so it is derived once.
-		const decisionWindow = { since: now - RAMP_AIMD.evaluationWindowMs };
-		// THE SAME LOWER BOUND THE CONTROLLER READS FROM, through the same helper:
-		// the screen's own 30-day baseline bound is derived from tomorrow's UTC
-		// boundary and the controller's from `now`, and gate 2's instrument check
-		// must not be asked of a row set one of them cannot see. Cell-independent,
-		// so it is derived once rather than per cell.
-		const readWindow = {
-			since: Math.min(window.readSinceDay, deferralTelemetryReadSince(now)),
-			until: window.untilDay,
+		const grid: DashboardGridFacts = {
+			now,
+			spans,
+			isRelayConfigured,
+			routeStates: await readRouteStatesByProvider(ctx, organizationId),
+			// THE DEPLOYMENT HALF OF THE SUBSTITUTION MAP, read ONCE for the whole grid
+			// through the reader the controller's tick uses. Every entry but the
+			// reference arm is deployment-level; that one is completed per cell, from
+			// its rows.
+			deploymentPresence: await loadRampDeploymentPresence(ctx, { organizationId, now }),
+			// ONE read for the whole screen: seed COVERAGE is an org-level fact (are
+			// there seed mailboxes at all), not a per-cell one, and it only lowers
+			// confidence — a deployment with none is supported, never nagged.
+			// ONE row through the seed index, not a placement window: the screen needs
+			// the boolean, and the roll-up it used to buy it from scans the probe index,
+			// expands one observation per probe and fans out a `db.get` per account.
+			hasSeedCoverage: await hasSeedAccounts(ctx.db, organizationId),
+			// GATE 5'S EVIDENCE, from the SAME reader the controller uses and read ONCE
+			// for the whole grid rather than once per cell — the probe ledger read is
+			// org-wide and every cell takes its own slice out of the index. A
+			// deployment with no probes gets an empty index and every cell's gate 5
+			// holds, which is what it should say: the screen reports the verdict the
+			// controller would reach, not a friendlier one.
+			seedSweeps: await summarizeSeedPlacementSweeps(ctx.db, organizationId, now),
 		};
 
 		const cells: DashboardCellView[] = [];
 		for (const cell of allDeliverabilityCells()) {
 			const cellKey = deliverabilityCellKey(cell);
-			// Bounded: ≤30 days × shard count per arm, and the aging cron caps the
-			// table at 90 days regardless.
-			const ownBuckets = await readCellArmBuckets(ctx.db, {
-				organizationId,
-				cell: cellKey,
-				arm: 'own',
-				...readWindow,
-			});
-			// READ UNCONDITIONALLY, because whether this cell HAS a second arm is a
-			// question about these very rows: skipping the read when no single relay
-			// kind is configured is what made a two-relay deployment look standalone
-			// to the screen and two-armed to the controller. An arm nothing sends
-			// through costs one empty index read per cell and answers honestly.
-			const referenceBuckets = await readCellArmBuckets(ctx.db, {
-				organizationId,
-				cell: cellKey,
-				arm: 'reference',
-				...readWindow,
-			});
-
-			// WHAT THE RECEIVERS SAID, over the DECIDING span (issue #501) — the same
-			// rows and the same summarizer the controller reads, over the controller's
-			// own window, because this observation exists only to be GRADED: gate 2's
-			// block clause takes it, and a clause graded over the reported seven days
-			// would reach verdicts the cron never reached — the exact divergence #510
-			// closed for the outcome summaries. `null` for a cell with no classified
-			// responses in the window, so the block clause holds its verdict rather
-			// than rendering a measured zero.
-			const smtpBlocks = summarizeSmtpBlockObservation(
-				await readCellArmCategoryBuckets(ctx.db, {
-					organizationId,
-					cell: cellKey,
-					arm: 'own',
-					...decisionWindow,
-				}),
-				decisionWindow
-			);
-
-			// TWO SUMMARIES PER ARM, ONE INDEX READ EACH: the DECIDING pair the
-			// evaluator grades and the REPORTED pair the cards render. The second
-			// summary costs nothing the read has not already paid for, and it is the
-			// whole of #510's fix — the screen used to hand the evaluator the reported
-			// pair, and so reached verdicts the cron never reached.
-			const decisionOwn = summarizeTransportOutcomeBuckets(ownBuckets, decisionWindow);
-			const reportedOwn = summarizeTransportOutcomeBuckets(ownBuckets, reportedWindow);
-			const ownTrailingBaseline = trailingBaselineFor(ownBuckets, window);
-			// THE ONE PREDICATE (`hasReferenceArmOutcomes`) OVER THE SUMMARY IT GRADES
-			// — the arm is ABSENT, not empty, when nothing was sent through it, and
-			// "when" has to mean the same days on both sides. Asked over this screen's
-			// seven days instead, a relay switched off yesterday would keep the
-			// two-armed evaluator on screen for six more days.
-			const decisionReference = summarizeTransportOutcomeBuckets(referenceBuckets, decisionWindow);
-			const hasReferenceArm = hasReferenceArmOutcomes(decisionReference);
-			// THE ARM THE EVALUATOR IS GIVEN, and the COLUMN the screen renders beside
-			// the own arm — one arm over two spans, present or absent together, so a
-			// card can never show a relay column the verdict was not graded on.
-			const referenceArm = hasReferenceArm ? decisionReference : null;
-			const windowReference = summarizeTransportOutcomeBuckets(referenceBuckets, reportedWindow);
-			const reference = hasReferenceArm ? windowReference : null;
-			const routeState = pickRouteState(routeStates.get(cell.destinationProvider) ?? [], cell);
-			const cellSeeds = seedSweepsForCell(seedSweeps, cell);
-			// THE SUBSTITUTION FOLD DECIDES, exactly as it does in `loadCellInput`:
-			// which evaluator runs and which complaint line applies are read off ONE
-			// resolution of this cell's presence map, never off an `if` here.
-			const degradation = resolveRampDegradation({
-				presence: withReferenceArm(deploymentPresence, hasReferenceArm),
-				provider: cell.destinationProvider,
-			});
-			const evaluator = usesTrailingBaseline(degradation)
-				? trailingBaselineGateEvaluator
-				: referenceArmGateEvaluator;
-
-			const evaluation = evaluator.evaluate({
-				// THE TABLE'S CONSTANTS, not the shipped ones. The tightening the fold
-				// applies is not advisory — a deployment with no feedback loop is
-				// judged against a complaint ceiling half as wide, and the controller
-				// acts on that number. A screen showing the equipped ceiling passes
-				// cells the cron is failing (`complaintMax` 0.1% against 0.05%).
-				//
-				// The operator's PRESET is deliberately not read here: it tunes
-				// `increaseStep` and `cleanWindowsRequired`, and neither reaches a gate
-				// verdict — they size the controller's MOVE, which this screen reports
-				// from the route state rather than re-deriving.
-				config: degradedStreamConfig(RAMP_STREAM_CONFIGS[cell.stream], degradation),
-				// THE DECIDING PAIR, never the reported one (#510).
-				own: decisionOwn,
-				reference: referenceArm,
-				// The trailing twin's second series, DISJOINT from the evaluation
-				// window by construction. The reference-arm evaluator has a concurrent
-				// arm and ignores it.
-				ownTrailingBaseline,
-				// THROUGH THE FOLD, never off the presence map — `usesUnsubscribeProxy`
-				// is the table's answer to "is there a real feedback loop on this
-				// cell?", and the controller asks the same resolution.
-				hasComplaintFeedback: !usesUnsubscribeProxy(degradation),
-				// This cell's slice of the one ledger read; absent on both arms for a
-				// cell the poller has classified nothing for, which HOLDS gate 5.
-				ownSeeds: cellSeeds.own,
-				referenceSeeds: cellSeeds.reference,
-				// THE SAME OBSERVATION THE CONTROLLER MAKES, over the same span of the
-				// same rows (`hasUsableDeferralTelemetry`). Gate 2 holds on a cell whose
-				// `deferred` counter has no writer instead of reporting a 0% pass, and a
-				// screen that skipped this would render "Healthy" beside a verdict the
-				// controller reached as "Not enough data yet". The predicate anchors its
-				// span on the CLOCK and clamps its rows to it, so the two cannot differ
-				// even where their read bounds do.
-				hasDeferralTelemetry: hasUsableDeferralTelemetry(ownBuckets, now),
-				// ABSENT, NEVER ZEROED — the same distinction the controller reads,
-				// drawn in the same summarizer over the same rows.
-				smtpBlocks,
-				engagement: engagementGateFor({
-					cell,
-					own: decisionOwn,
-					reference: referenceArm,
-					// THE FLOOR'S RECENT ARM is seven days on both sides, so the REPORTED
-					// summary is the one to hand it; the deciding one would compare a day
-					// against a month.
-					ownRecent: reportedOwn,
-					ownPriorBaseline: ownTrailingBaseline,
-					now,
-				}),
-				previousCleanStreak: routeState?.cleanStreak ?? 0,
-				now,
-			});
-
+			const armRows = { organizationId, cell: cellKey, ...spans.readWindow };
 			cells.push(
-				buildDashboardCellView({
+				assembleDashboardCell(grid, {
 					cell,
 					cellKey,
-					ownShare: resolveOwnShare(routeState),
-					phaseCeiling: routeState?.phaseCeiling ?? null,
-					// THE REPORTED PAIR: columns, counters and the honesty denominator are
-					// the seven reported days. The VERDICT beside them travels inside
-					// `evaluation`, over the deciding span.
-					own: reportedOwn,
-					reference,
-					evaluation,
-					hasSeedCoverage,
-					// THE CAP TAKES THE MEASURED ARM: a cell is graded `high` only where
-					// a concurrent arm actually produced the comparison the level claims,
-					// and pinning that to the deployment's relay list graded a cell by a
-					// relay that never carried it.
-					hasReferenceArm,
-					// THE OFFER TAKES THE CONFIGURED ONE, because "connect a relay you
-					// already pay for" is advice about the deployment and nobody with a
-					// relay connected can act on it. Off the measurement it would appear
-					// and disappear day to day on a low-volume cell of a fully relayed
-					// deployment, on the days that relay happened to carry nothing.
-					hasRelayConfigured: isRelayConfigured,
-					trend: buildDashboardTrend({
-						ownBuckets,
-						// THE SAME PREDICATE, OVER THE CHART'S OWN ROWS. A chart is a
-						// question about the days it plots, so the series exists when the
-						// relay carried something inside the plotted window — not when it
-						// carried something in the last 24 hours. Scoping this to the
-						// evaluator's span would erase the very days that explain why the
-						// arm is gone; scoping it to nothing at all would draw a flat line
-						// of zeros that reads as a relay sending nothing.
-						referenceBuckets: hasReferenceArmOutcomes(windowReference) ? referenceBuckets : null,
-						sinceDay: window.sinceDay,
-						untilDay: window.untilDay,
+					// Bounded: ≤30 days × shard count per arm, and the aging cron caps the
+					// table at 90 days regardless.
+					ownBuckets: await readCellArmBuckets(ctx.db, { ...armRows, arm: 'own' }),
+					// READ UNCONDITIONALLY, because whether this cell HAS a second arm is a
+					// question about these very rows: skipping the read when no single relay
+					// kind is configured is what made a two-relay deployment look standalone
+					// to the screen and two-armed to the controller. An arm nothing sends
+					// through costs one empty index read per cell and answers honestly.
+					referenceBuckets: await readCellArmBuckets(ctx.db, { ...armRows, arm: 'reference' }),
+					// Over the DECIDING span only: these responses exist to be graded.
+					ownCategoryBuckets: await readCellArmCategoryBuckets(ctx.db, {
+						organizationId,
+						cell: cellKey,
+						arm: 'own',
+						...spans.decisionWindow,
 					}),
 				})
 			);
@@ -415,16 +233,16 @@ export const getDeliverabilityDashboard = authedQuery({
 
 		return {
 			generatedAt: now,
-			windowStart: window.sinceDay,
-			windowEnd: window.untilDay,
+			windowStart: spans.window.sinceDay,
+			windowEnd: spans.window.untilDay,
 			// THE SPAN THE VERDICTS WERE REACHED OVER, on the wire beside the reported
 			// one so the screen can name both (#510). Open-ended in the summary, so its
 			// end is the read's own clock — the `now` every gate was evaluated at.
-			decisionWindowStart: decisionWindow.since,
+			decisionWindowStart: spans.decisionWindow.since,
 			decisionWindowEnd: now,
 			referenceTransportId,
 			isRelayConfigured,
-			hasSeedCoverage,
+			hasSeedCoverage: grid.hasSeedCoverage,
 			cells,
 		};
 	},
