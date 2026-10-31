@@ -63,7 +63,6 @@ convex/domains/pluginRelay.ts:refreshIdentity #2
 convex/domains/pluginRelay.ts:refreshIdentity #3
 convex/domains/providers/registerAction.ts:run #2
 convex/domains/providers/registerAction.ts:run #3
-convex/e2ee/discovery.ts:discoverRecipientKey #2
 convex/e2ee/keysNode.ts:remintLegacyProfile #2
 convex/e2ee/lifecycleNode.ts:runReSealVault #2
 convex/inbox/inboundIngest.ts:ingestFromWebhook #2

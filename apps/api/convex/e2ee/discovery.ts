@@ -157,26 +157,51 @@ type DiscoveryOutcome = {
 };
 
 /**
- * How many times one discovery starts over after its commit found the row
- * changed underneath it. Each retry re-reads the row and fetches again (the
- * cache check is skipped: the row was just written by the competing commit, so
- * it always looks fresh), so the committed observation is always newer than the
- * state it transitions from, and a key that differs from the competing pin is
- * recorded as `keyChanged` rather than dropped.
+ * How many times one discovery starts over after the row changed underneath its
+ * fetch. Each retry re-reads the row and fetches again (the cache check is
+ * skipped: the row was just written by the competing commit, so it always looks
+ * fresh), so the committed observation is always newer than the state it
+ * transitions from, and a key that differs from the competing pin is recorded
+ * as `keyChanged` rather than dropped.
  */
 const MAX_DISCOVERY_ATTEMPTS = 3;
+
+/** The arguments of the one write a discovery pass ends in. */
+type DiscoveryCommit =
+	| {
+			kind: 'miss';
+			args: {
+				address: string;
+				domain: string;
+				instanceFingerprint?: string;
+				expiresAt: number;
+			};
+	  }
+	| {
+			kind: 'found';
+			args: {
+				address: string;
+				domain: string;
+				basis: { revision: number; pinnedFingerprint?: string };
+				fingerprint: string;
+				publicKeyArmored: string;
+				source: 'wkd';
+				rotation?: { oldFingerprint: string; newFingerprint: string };
+				instanceFingerprint?: string;
+				expiresAt: number;
+			};
+	  };
 
 /**
  * Discover (or refresh) the key for one address and persist the discovery +
  * TOFU pin decision. Cache-aware (skips a fresh row unless `force`) and
- * flag-gated (a no-op when Sealed Mail is off). Hoisted out of the action
- * handler so the cron can call it directly — that removes the action→action
- * hop (a Convex antipattern within one runtime) and the same-module `internal`
- * self-reference that would otherwise collapse this module's wired-api types.
+ * flag-gated (a no-op when Sealed Mail is off).
  *
- * The pin decision itself is made by `recipientKeys.commitDiscoveredKey` against
- * the row at commit time; when another writer got there first the commit
- * reports `stale` and this starts over from a fresh read.
+ * Reads and fetches first, then writes once. A found key is only committed
+ * against the row it was read against: when `checkDiscoveryBasis` reports that
+ * another writer moved the row during the fetch, this starts over from a fresh
+ * read. The pin decision itself is made by `recipientKeys.commitDiscoveredKey`
+ * against the row at commit time.
  */
 async function runRecipientKeyDiscovery(
 	ctx: ActionCtx,
@@ -187,26 +212,69 @@ async function runRecipientKeyDiscovery(
 	}
 	const address = normalizeEmail(args.address);
 	let latest: DiscoveryOutcome['outcome'] = 'notFound';
-	for (let attempt = 0; attempt < MAX_DISCOVERY_ATTEMPTS; attempt++) {
-		const result = await discoverOnce(ctx, address, {
+	let pending: DiscoveryCommit | undefined;
+	for (let attempt = 0; attempt < MAX_DISCOVERY_ATTEMPTS && !pending; attempt++) {
+		const pass = await discoverOnce(ctx, address, {
 			...args,
 			force: args.force || attempt > 0,
 		});
-		if (!('stale' in result)) return result;
-		latest = result.current ?? 'notFound';
+		if ('outcome' in pass) return pass;
+		if (pass.kind === 'miss') {
+			pending = pass;
+		} else {
+			const basis = await ctx.runQuery(internal.e2ee.recipientKeys.checkDiscoveryBasis, {
+				address,
+				basis: pass.args.basis,
+			});
+			if (basis.isCurrent) pending = pass;
+			else latest = basis.outcome ?? 'notFound';
+		}
 	}
-	// Other writers kept committing between our read and our commit; each of
+	// Other writers kept committing between our read and our fetch's end; each of
 	// those is at least as fresh as what we would have written, so report the
 	// row they left.
-	return { outcome: latest };
+	if (!pending) return { outcome: latest };
+	return await commitDiscovery(ctx, pending, args.skipManifest);
 }
 
-/** One read -> fetch -> commit pass of {@link runRecipientKeyDiscovery}. */
+/**
+ * The one write of a discovery. A miss never drops an existing pin: it only
+ * refreshes metadata on the row as it is at commit time, and re-checks sooner.
+ */
+async function commitDiscovery(
+	ctx: ActionCtx,
+	pending: DiscoveryCommit,
+	skipManifest: boolean | undefined
+): Promise<DiscoveryOutcome> {
+	if (pending.kind === 'miss') {
+		await ctx.runMutation(internal.e2ee.recipientKeys.recordDiscoveryMiss, pending.args);
+		return { outcome: 'notFound' };
+	}
+	const committed = await ctx.runMutation(
+		internal.e2ee.recipientKeys.commitDiscoveredKey,
+		pending.args
+	);
+	if (committed.status === 'committed') {
+		return { outcome: committed.outcome, action: committed.action };
+	}
+	// Another writer committed between the basis check and this commit, so
+	// nothing was written. A fresh, forced discovery records our observation
+	// against the row that writer left, so a key that differs from its pin
+	// still surfaces as `keyChanged`.
+	await ctx.scheduler.runAfter(0, internal.e2ee.discovery.discoverRecipientKey, {
+		address: pending.args.address,
+		force: true,
+		...(skipManifest ? { skipManifest: true } : {}),
+	});
+	return { outcome: committed.outcome ?? 'notFound' };
+}
+
+/** One read -> fetch pass of {@link runRecipientKeyDiscovery}; writes nothing. */
 async function discoverOnce(
 	ctx: ActionCtx,
 	address: string,
 	args: { force?: boolean; skipManifest?: boolean }
-): Promise<DiscoveryOutcome | { stale: true; current: DiscoveryOutcome['outcome'] | null }> {
+): Promise<DiscoveryOutcome | DiscoveryCommit> {
 	const now = Date.now();
 	const cached = await ctx.runQuery(internal.e2ee.recipientKeys.getCached, {
 		address,
@@ -221,16 +289,16 @@ async function discoverOnce(
 	});
 	const domain = address.slice(address.lastIndexOf('@') + 1);
 
-	// A discovery MISS never drops an existing pin — it only refreshes metadata
-	// on the row as it is at commit time, and re-checks sooner.
 	if (fetched.outcome === 'notFound') {
-		await ctx.runMutation(internal.e2ee.recipientKeys.recordDiscoveryMiss, {
-			address,
-			domain,
-			instanceFingerprint: fetched.instanceFingerprint,
-			expiresAt: now + TTL_NEGATIVE_MS,
-		});
-		return { outcome: 'notFound' };
+		return {
+			kind: 'miss',
+			args: {
+				address,
+				domain,
+				instanceFingerprint: fetched.instanceFingerprint,
+				expiresAt: now + TTL_NEGATIVE_MS,
+			},
+		};
 	}
 
 	const observedFingerprint = fetched.fingerprint;
@@ -252,25 +320,26 @@ async function discoverOnce(
 				)
 			: false;
 
-	const committed = await ctx.runMutation(internal.e2ee.recipientKeys.commitDiscoveredKey, {
-		address,
-		domain,
-		basis: {
-			revision: cached?.revision ?? 0,
-			pinnedFingerprint: pinnedFingerprint ?? undefined,
+	return {
+		kind: 'found',
+		args: {
+			address,
+			domain,
+			basis: {
+				revision: cached?.revision ?? 0,
+				pinnedFingerprint: pinnedFingerprint ?? undefined,
+			},
+			fingerprint: observedFingerprint,
+			publicKeyArmored: fetched.publicKeyArmored,
+			source: fetched.source,
+			rotation:
+				rotationSignatureValid && pinnedFingerprint !== null
+					? { oldFingerprint: pinnedFingerprint, newFingerprint: observedFingerprint }
+					: undefined,
+			instanceFingerprint: fetched.instanceFingerprint,
+			expiresAt: now + TTL_FOUND_MS,
 		},
-		fingerprint: observedFingerprint,
-		publicKeyArmored: fetched.publicKeyArmored,
-		source: fetched.source,
-		rotation:
-			rotationSignatureValid && pinnedFingerprint !== null
-				? { oldFingerprint: pinnedFingerprint, newFingerprint: observedFingerprint }
-				: undefined,
-		instanceFingerprint: fetched.instanceFingerprint,
-		expiresAt: now + TTL_FOUND_MS,
-	});
-	if (committed.status === 'stale') return { stale: true, current: committed.outcome };
-	return { outcome: committed.outcome, action: committed.action };
+	};
 }
 
 /**

@@ -14,11 +14,13 @@
 
 import { readFileSync } from 'node:fs';
 import { convexTest } from 'convex-test';
+import { getFunctionName } from 'convex/server';
 import * as openpgp from 'openpgp';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
 import { api, internal } from '../../_generated/api';
 import type { MutationCtx } from '../../_generated/server';
+import { discoverRecipientKey } from '../discovery';
 import { enableSealedMail, modules, type ConvexTestCtx } from './sealedMailTestHelpers';
 
 vi.mock('../../lib/sessionOrganization', async () => {
@@ -424,6 +426,45 @@ describe('e2ee/discovery · discoverRecipientKey starts over when its read goes 
 		const row = await readRow(t, BOB);
 		expect(row?.pinnedFingerprint).toBe(KEY_A);
 		expect(row?.observedFingerprint).toBe(KEY_A);
+	});
+
+	it('schedules a fresh discovery when the row moves between its check and its commit', async () => {
+		stubWkd({ wkd: true, duringFirstFetch: async () => {} });
+		const scheduled: { name: string; args: unknown }[] = [];
+		const ctx = {
+			runQuery: async (reference: unknown) => {
+				const name = getFunctionName(reference as never);
+				if (name.endsWith(':isSealedMailEnabled')) return true;
+				if (name.endsWith(':getCached')) return null;
+				if (name.endsWith(':checkDiscoveryBasis')) return { isCurrent: true, outcome: null };
+				throw new Error(`unexpected query ${name}`);
+			},
+			runMutation: async (reference: unknown) => {
+				const name = getFunctionName(reference as never);
+				if (name.endsWith(':commitDiscoveredKey')) return { status: 'stale', outcome: 'trusted' };
+				throw new Error(`unexpected mutation ${name}`);
+			},
+			scheduler: {
+				runAfter: async (_delay: number, reference: unknown, args: unknown) => {
+					scheduled.push({ name: getFunctionName(reference as never), args });
+				},
+			},
+		};
+		const run = (
+			discoverRecipientKey as unknown as {
+				_handler: (ctx: unknown, args: unknown) => Promise<unknown>;
+			}
+		)._handler;
+
+		await expect(run(ctx, { address: BOB, skipManifest: true })).resolves.toEqual({
+			outcome: 'trusted',
+		});
+		expect(scheduled).toEqual([
+			{
+				name: 'e2ee/discovery:discoverRecipientKey',
+				args: { address: BOB, force: true, skipManifest: true },
+			},
+		]);
 	});
 
 	it('keeps a pin committed while its failed lookup was outstanding', async () => {
