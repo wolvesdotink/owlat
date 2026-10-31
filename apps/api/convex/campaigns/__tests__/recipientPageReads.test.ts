@@ -1,5 +1,5 @@
 /**
- * Recipient-page read cost (#915).
+ * Recipient-page read cost.
  *
  * The send walker resolves one page per hop. Every supporting read on that page
  * (segment condition lookups, the suppression gate) must be scoped to the

@@ -1,14 +1,14 @@
 /**
  * Campaign send-stat sharding (module).
  *
- * The Send lifecycle's `campaign_stats_*` effects used to read-modify-write the
+ * The Send lifecycle's `campaign_stats_*` effects must not read-modify-write the
  * single `campaigns` row on every recipient event (sent/delivered/opened/clicked/
- * bounced). During a blast that serialized ~workpool-parallelism concurrent RMWs
- * on one document, so the whole `transition` mutation OCC-retried on the campaign
- * counter. Now each event bumps a RANDOM shard of `campaignStatShards` — different
+ * bounced): during a blast that serializes ~workpool-parallelism concurrent RMWs
+ * on one document, so the whole `transition` mutation OCC-retries on the campaign
+ * counter. Each event bumps a RANDOM shard of `campaignStatShards` — different
  * rows, no contention — and a rollup cron sums the shards into `campaigns.stats*`,
- * which stays the read interface (readers are unchanged; stats refresh on the
- * rollup cadence rather than live-per-event). Mirrors the `sendingReputation`
+ * which is the read interface (stats refresh on the rollup cadence rather than
+ * live-per-event). Mirrors the `sendingReputation`
  * shard idiom.
  */
 

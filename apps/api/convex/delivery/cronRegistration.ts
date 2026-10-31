@@ -269,7 +269,7 @@ export function registerDeliveryCrons(crons: Crons): void {
 		{}
 	);
 
-	// Send completions that threw (#1195): replay the recorded outcomes whose
+	// Send completions that threw: replay the recorded outcomes whose
 	// backoff ran out, and delete old records (resolved after 30 days, exhausted
 	// after 90). Each tick with nothing to do is one index range read.
 	crons.interval(
@@ -285,7 +285,7 @@ export function registerDeliveryCrons(crons: Crons): void {
 		{}
 	);
 
-	// Sends no completion reached (#1208): fail a queued Send with no provider
+	// Sends no completion reached: fail a queued Send with no provider
 	// id once its recorded first attempt is past the four-day delivery deadline
 	// plus a day, so its campaign can complete. Sends without a recorded first
 	// attempt are left to an operator (`delivery/stuckSendSweepAdmin.ts`). A tick

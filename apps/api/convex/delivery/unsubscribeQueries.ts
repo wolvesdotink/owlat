@@ -28,7 +28,7 @@ type RelayUnsubscribeSkipped = { success: true; skipped: 'resubscribed_after_eve
  * Token-independent on purpose: the error states are exactly the ones where no
  * token resolves. It returns only what every campaign already carries in its
  * From header — the instance's default sender name and address — plus the
- * workspace logo, which exists to be shown on exactly these pages (#810).
+ * workspace logo, which exists to be shown on exactly these pages.
  *
  * The sign-in and invitation pages read it too: they are the same kind of
  * page, reached without an account.
@@ -169,7 +169,7 @@ async function applyPublicUnsubscribe(
  * deleted since the send — returns `not_found` rather than throwing, so the
  * webhook acknowledges instead of asking the relay to redeliver forever.
  *
- * `eventAt` (#1228) is when the relay saw the person leave. The event reports
+ * `eventAt` is when the relay saw the person leave. The event reports
  * what they were subscribed to THEN, so a late or replayed one must not undo a
  * re-subscribe that came after it — see {@link applyRelayUnsubscribe}.
  */

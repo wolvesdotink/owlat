@@ -1,6 +1,6 @@
 /**
  * Audience count state (helper) — what identifies an audience DEFINITION for
- * the resumable exact count (#916), and how the subscribed wizard readout finds
+ * the resumable exact count, and how the subscribed wizard readout finds
  * the count job for the definition it is showing.
  *
  * Kept apart from `audienceCountJob.ts` so the public `countRecipients` query

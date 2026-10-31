@@ -144,12 +144,11 @@ interface RelativeArmHoldReasons extends ArmHoldReasons {
  * `reference_evidence_stale` there would send that operator hunting for a relay
  * problem that does not exist.
  *
- * ONE TABLE, THREE READERS. The reference/baseline pairing used to be spelled
- * three times — once per evidence kind inside `evidenceReason`, again in
- * `notADenominatorReason`, and a third time reason-to-reason in the standalone
- * evaluator's re-reasoning guard. Adding a fourth hold kind meant editing all
- * three, and any two of them could drift while still typechecking. Here the
- * pairing exists exactly once and all three readers index it.
+ * ONE TABLE, THREE READERS. The reference/baseline pairing exists exactly once
+ * and all three readers index it: `evidenceReason` (once per evidence kind),
+ * `notADenominatorReason`, and the standalone evaluator's reason-to-reason
+ * re-reasoning guard. Spelled in each, a new hold kind would mean editing all
+ * three, and any two of them could drift while still typechecking.
  *
  * `own` HAS NO `notADenominator` ENTRY, deliberately: the own arm is the
  * NUMERATOR of every relative comparison in this module, and a numerator of zero

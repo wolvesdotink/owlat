@@ -23,7 +23,7 @@ import type { EmailSendDoc, SendRef, TransactionalSendDoc, TransitionInput } fro
 // (`sendTimeEffects.ts`) and never reads these rows, so it does not count an
 // engagement twice.
 //
-// ENGAGEMENT AFTER FEEDBACK (#1225). An open or click can still arrive after
+// ENGAGEMENT AFTER FEEDBACK. An open or click can still arrive after
 // a send took a bounce or a complaint. The dispatcher lets it through on two
 // of those rows, as engagement only (the status stays):
 //

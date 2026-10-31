@@ -156,7 +156,7 @@ async function dispatch(
 	const isAttributableRemoteAcceptance =
 		input.to === 'delivered' && canAttributeRemoteAcceptance(send, input.at);
 	// A reader open or click on a soft-bounced or complained row is recorded as
-	// engagement without moving the status (#1225; the reducers keep the status
+	// engagement without moving the status (the reducers keep the status
 	// and gate the first-open effects). A hard-bounced row stays refused. See
 	// `./sendLifecycle/engagementActivity` for why.
 	const isEngagementAfterFeedback =
@@ -379,7 +379,7 @@ export const transitionByProviderMessageId = internalMutation({
 		if (!ref) return { ok: false, reason: 'send_not_found' };
 		// A Send whose completion threw is still `queued` with this id stamped on
 		// it: replay the completion first, and park the event if it still cannot
-		// land (#1195).
+		// land.
 		return await applyProviderFeedback(ctx, ref, args.transition, () =>
 			dispatch(ctx, ref, args.transition)
 		);
@@ -454,7 +454,7 @@ export const transitionMtaByProviderMessageId = internalMutation({
 		if (args.isCompletionCall === true) return await apply();
 		// An SMTP relay's DSN reaches our own bounce server and lands here, so a
 		// relay Send whose completion threw needs the same replay and parking as
-		// the provider webhooks (#1195).
+		// the provider webhooks.
 		return await applyProviderFeedback(ctx, ref, args.transition, apply);
 	},
 });

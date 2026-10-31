@@ -10,11 +10,11 @@ import { MAX_SEND_TIME_WINDOW_HOURS } from '../campaigns/sendTimeOptimization';
 import { unresolvedCompletionFailures } from './sendCompletionFeedback';
 
 // ============================================================================
-// Lost-send sweep (#1208).
+// Lost-send sweep.
 //
 // A Send stays `queued` with no provider message id when no completion ever
 // reached it: work the workpool lost, or a completion that threw before
-// `sendCompletionFailures` existed (#1184). Provider feedback cannot find it
+// `sendCompletionFailures` existed. Provider feedback cannot find it
 // (it has no id), so its campaign stays `sending`. This module fails such a
 // Send with `SEND_COMPLETION_LOST` once nothing can still settle it.
 //
@@ -49,7 +49,7 @@ import { unresolvedCompletionFailures } from './sendCompletionFeedback';
 // `LOST_SEND_PAGE_MAX_BYTES` (2 MiB) per page, continued by cursor so rows it
 // skips are passed over rather than read again. The page only reads; each
 // candidate is judged and failed in a transaction of its own (`failLostSend`,
-// scheduled), so a Send whose lifecycle throws (the #1184 fault) rolls back
+// scheduled), so a Send whose lifecycle throws rolls back
 // alone and the next pass tries it again.
 //
 // ONE PASS AT A TIME. Each pass kind (table x mode) holds a lease row

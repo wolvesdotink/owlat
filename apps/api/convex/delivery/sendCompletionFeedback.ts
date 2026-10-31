@@ -6,7 +6,7 @@ import type { parkedFeedbackTransitionValidator } from '../schema/sendCompletion
 import { clampUtf8 } from './sendCompletionPayload';
 
 // ============================================================================
-// Provider feedback parked on a recorded send completion (#1195).
+// Provider feedback parked on a recorded send completion.
 //
 // A Send whose completion threw stays `queued` until the record replays, and
 // the lifecycle refuses terminal provider feedback against `queued`. The two

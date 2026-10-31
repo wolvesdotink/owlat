@@ -15,7 +15,7 @@ import {
 } from './stuckSendSweep';
 
 // ============================================================================
-// Lost-send sweep — the operator surface (#1208). The sweep itself and the
+// Lost-send sweep — the operator surface. The sweep itself and the
 // rules for what is lost live in `./stuckSendSweep`; this module shows the
 // queue and fails the Sends the cron cannot judge (apps/docs "Platform
 // operations").
@@ -111,7 +111,7 @@ export const status = internalQuery({
 /**
  * Operator: fail the queued Sends with no provider id and no recorded first
  * attempt that were created before `createdBefore`, in both send tables. These
- * are the rows the cron cannot judge: the #1184 Sends, written before
+ * are the rows the cron cannot judge: Sends written before
  * `firstAttemptAt` existed, and work the workpool lost before its first
  * attempt. `createdBefore` must be at least `UNANCHORED_MIN_AGE_MS` (eight days)
  * in the past, the longest a live Send can wait for its first attempt plus its

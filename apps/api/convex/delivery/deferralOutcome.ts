@@ -21,15 +21,15 @@
  * (`MTA_DEFER_REASON_ORIGIN`, declared once in `@owlat/mta-protocol` —
  * `packages/mta-protocol/src/routingDecision.ts` — and read by both ends).
  *
- * BOTH SOURCES ENFORCE THAT RULE, on either side of one distinction the MTA now
- * makes on the wire (issue #505). The adapter routes a 409 carrying a
+ * BOTH SOURCES ENFORCE THAT RULE, on either side of one distinction the MTA
+ * makes on the wire. The adapter routes a 409 carrying a
  * `ROUTING_DECISION_` code into a `governed` transport defer — an aged-out or
  * no-longer-binding lease, a breaker or IP generation that moved, all of them
  * the MTA declining THIS IDENTITY — while a lease it could not READ answers
  * `ROUTING_LEASE_UNREADABLE` instead (`routes/sendRoutingLease.ts`), which the
  * `ROUTING_DEFERRED` branch in `governedDispatch.ts` marks `local` beside the
  * `lease_persistence` case. A truncated or corrupt lease record is our own
- * storage failing and no longer spends gate 2's budget. ONE HONEST RESIDUE: a
+ * storage failing and does not spend gate 2's budget. ONE HONEST RESIDUE: a
  * lease key that is simply GONE reads as absent, and a Redis `GET` cannot tell a
  * key that aged out of its 15-minute TTL from one an eviction or an empty-replica
  * failover took — the MTA keeps calling that `governed`, because the ordinary

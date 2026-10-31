@@ -62,7 +62,7 @@ export const RAMP_INTEGRATION_FRESHNESS_MS = 3 * DAY_MS;
  * it both chooses the cell's evaluator and grades both arms over THIS span — a
  * screen that chose over its own would keep the two-armed evaluator for six days
  * after the relay went quiet while the cron had already switched, and one that
- * GRADED over its own reached verdicts the cron never reached (#510). A reader
+ * GRADED over its own reached verdicts the cron never reached. A reader
  * asking about a DIFFERENT ROW SET (the same screen's trend, over the days its
  * chart plots) is not choosing an evaluator and does not anchor here.
  */

@@ -11,13 +11,12 @@
  * precisely so that this gate cannot be walked around.
  *
  * ONE WRITE PATH, ONE ENTRY. `applyRampPhasePromotion` is the whole rule and
- * `promoteCellPhase` is the only door onto it. A machine-facing internalMutation
- * shell over the same rule shipped alongside it and was removed: no
- * cron registered it and no module called it, so it was a second entry to a gate
- * with nothing behind it — and the second entry is always the one that drifts.
- * `apps/api/scripts/check-entry-wiring.ts` is what keeps a replacement from
- * arriving unwired — it asks the question of the whole backend now, not just of
- * `delivery/ramp*.ts` (#509). Should a genuine server-side flow ever need to promote, the rule is
+ * `promoteCellPhase` is the only door onto it. There is no machine-facing
+ * internalMutation shell over the same rule: with no cron or module calling it,
+ * it would be a second entry to a gate with nothing behind it — and the second
+ * entry is always the one that drifts. `apps/api/scripts/check-entry-wiring.ts`
+ * is what keeps one from arriving unwired, and it asks the question of the whole
+ * backend, not just of `delivery/ramp*.ts`. Should a genuine server-side flow ever need to promote, the rule is
  * already the shared one; give it an entry AND the caller in the same change.
  *
  * THE HARD STOPS BOUND A PROMOTION TOO, through `readRampIncreaseBlock` — the

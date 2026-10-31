@@ -67,7 +67,7 @@ export function reduceDeliveryObservation(
 	// A failure applies no contact penalty, so authenticated acceptance clears
 	// any soft-bounce history that predates it regardless of arrival order.
 	// `keepsSoftBounceCount` is set for an open or click on a bounced or
-	// complained row (#1225). A pixel fetch or tracked click is not
+	// complained row. A pixel fetch or tracked click is not
 	// authenticated, and a forwarded copy fires it too, so it must not reset the
 	// counter that escalates repeated soft bounces into a suppression. A provider
 	// acceptance stamped after a bounce is refused, and a pixel gets no more.

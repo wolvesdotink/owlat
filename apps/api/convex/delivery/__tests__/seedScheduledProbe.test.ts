@@ -1,6 +1,6 @@
 /**
  * THE SCHEDULED SEED PROBE — gate 5's evidence for the streams with no campaign
- * to shadow (P4-7, issue #500).
+ * to shadow (P4-7).
  *
  * Gate 5 could reach a verdict only on `campaign` cells, because
  * `delivery/seedShadowCopy.ts` is the only producer of probe rows and it
