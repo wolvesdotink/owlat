@@ -575,6 +575,51 @@ describe('autonomyFeedback.adjustThresholds', () => {
 		});
 	});
 
+	it('settles every category in one run and leaves sender and disabled rules alone', async () => {
+		const t = convexTest(schema, modules);
+		const ids = await t.run(async (ctx) => ({
+			support: await ctx.db.insert(
+				'autonomyRules',
+				createTestAutonomyRule({ category: 'support', autoApproveThreshold: 0.5 })
+			),
+			supportSender: await ctx.db.insert(
+				'autonomyRules',
+				createTestAutonomyRule({
+					category: 'support',
+					sender: 'ada@example.com',
+					autoApproveThreshold: 0.7,
+				})
+			),
+			billing: await ctx.db.insert(
+				'autonomyRules',
+				createTestAutonomyRule({ category: 'billing', autoApproveThreshold: 0.8 })
+			),
+			sales: await ctx.db.insert(
+				'autonomyRules',
+				createTestAutonomyRule({ category: 'sales', autoApproveThreshold: 0.5, isEnabled: false })
+			),
+		}));
+		await seedFeedback(t, 'support', [
+			{ action: 'rejected', count: 4 },
+			{ action: 'approved', count: 2 },
+		]);
+		await seedFeedback(t, 'billing', [{ action: 'approved', count: 20 }]);
+		await seedFeedback(t, 'sales', [{ action: 'rejected', count: 6 }]);
+
+		await t.action(internal.autonomyFeedback.adjustThresholds);
+
+		await t.run(async (ctx) => {
+			const threshold = async (id: Id<'autonomyRules'>) =>
+				(await ctx.db.get(id))!.autoApproveThreshold;
+			expect(await threshold(ids.support)).toBeCloseTo(0.6);
+			expect(await threshold(ids.supportSender)).toBe(0.7);
+			expect(await threshold(ids.billing)).toBe(0.8);
+			expect(await threshold(ids.sales)).toBe(0.5);
+			const suggestions = await ctx.db.query('autonomySuggestions').collect();
+			expect(suggestions.map((s) => s.category)).toEqual(['billing']);
+		});
+	});
+
 	it('clears a stale suggestion when the same category later tightens', async () => {
 		const t = convexTest(schema, modules);
 		await t.run(async (ctx) => {

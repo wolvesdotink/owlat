@@ -276,6 +276,27 @@ describe('desktop.updates.refreshReleases', () => {
 		expect((await checkState(t))?.error).toBe('network down');
 	});
 
+	it('keeps what it cached before a failure partway through, and records the failure', async () => {
+		const t = harness();
+		stubFetch({
+			releases: [githubRelease('v0.4.7'), githubRelease('v0.4.6')],
+			manifests: { 'v0.4.7': manifestFor('0.4.7') },
+		});
+		const listed = vi.mocked(fetch).getMockImplementation()!;
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (input: string) => {
+				if (input.includes('/v0.4.6/')) throw new Error('connection reset');
+				return listed(input);
+			})
+		);
+
+		await t.action(internal.desktop.updates.refreshReleases, {});
+
+		expect((await cachedReleases(t)).map((row) => row.version)).toEqual(['0.4.7']);
+		expect((await checkState(t))?.error).toBe('connection reset');
+	});
+
 	it('does not re-download a manifest it has already cached', async () => {
 		const t = harness();
 		const plan = {
