@@ -43,6 +43,7 @@
 import { internal } from '../../../_generated/api';
 import type { Id } from '../../../_generated/dataModel';
 import type { AgentStepModule } from '../types';
+import type { StepWrite } from '../../stepWrites';
 import { runCoreFinalAutoSendGates, runPreAutonomyGates } from './autoSendGates';
 import { runHostedAutoSendGates } from './pluginAutoSendGates';
 import {
@@ -125,9 +126,10 @@ export function resolveAutoApproveScore(
  */
 export async function runFinalAutoSendGates(
 	ctx: Parameters<AgentStepModule<'route', RouteInput, RouteOutput>['execute']>[0],
-	inboundMessageId: Id<'inboundMessages'>
+	inboundMessageId: Id<'inboundMessages'>,
+	writes: StepWrite[] = []
 ): Promise<{ safe: true } | { safe: false; reason: string }> {
-	const coreDecision = await runCoreFinalAutoSendGates(ctx, inboundMessageId);
+	const coreDecision = await runCoreFinalAutoSendGates(ctx, inboundMessageId, writes);
 	return coreDecision.safe ? runHostedAutoSendGates(ctx, inboundMessageId) : coreDecision;
 }
 
@@ -143,6 +145,9 @@ export const routeStep: AgentStepModule<'route', RouteInput, RouteOutput> = {
 
 	async execute(ctx, input) {
 		type Decision = { decision: 'auto_approve' | 'human_review'; reason: string };
+		// What the step records, applied by its commit: the gates' observations,
+		// the shadow observation and the decision itself.
+		const writes: StepWrite[] = [];
 
 		// The auto-approve threshold is compared against DRAFT quality, not the
 		// classifier confidence. When the self-check is unknown/failed this is
@@ -171,7 +176,7 @@ export const routeStep: AgentStepModule<'route', RouteInput, RouteOutput> = {
 			// Auto-approval is only honoured if the final outbound safety gate
 			// passes; otherwise it degrades to human review with the gate's reason.
 			const autoApprove = async (reason: string): Promise<Decision> => {
-				const gate = await runFinalAutoSendGates(ctx, input.inboundMessageId);
+				const gate = await runFinalAutoSendGates(ctx, input.inboundMessageId, writes);
 				return gate.safe
 					? { decision: 'auto_approve', reason }
 					: { decision: 'human_review', reason: gate.reason };
@@ -201,7 +206,7 @@ export const routeStep: AgentStepModule<'route', RouteInput, RouteOutput> = {
 				if (autonomy.allowed) {
 					// Apply the outbound safety gate BEFORE charging the daily cap, so
 					// a withheld send doesn't consume an auto-reply slot.
-					const gate = await runFinalAutoSendGates(ctx, input.inboundMessageId);
+					const gate = await runFinalAutoSendGates(ctx, input.inboundMessageId, writes);
 					if (!gate.safe) return { decision: 'human_review', reason: gate.reason };
 
 					// Shadow mode never sends, so it must not spend a daily-cap slot
@@ -221,6 +226,7 @@ export const routeStep: AgentStepModule<'route', RouteInput, RouteOutput> = {
 					// re-checks it under a single serialized transaction, so two
 					// concurrent route steps can't both auto-approve past the cap.
 					// Route on its result.
+					// checkpoint: the daily-cap reservation the decision routes on; a run that dies after it spends one slot and sends nothing.
 					const charge = await ctx.runMutation(internal.autonomy.incrementDailyCount, {
 						category: input.category,
 						// Charge the SAME effective rule the decision used (per-sender
@@ -281,8 +287,8 @@ export const routeStep: AgentStepModule<'route', RouteInput, RouteOutput> = {
 		// DEFAULT posture, and what "Draft only" sets), the decision computed above
 		// is logged as a would-have-sent observation and the message is routed to
 		// human review regardless: NOTHING auto-sends while shadow is on. The flip
-		// to human review happens FIRST and outside the try, so a logging failure
-		// can only lose the observation, never turn into a send.
+		// to human review happens FIRST, and the commit applies the observation
+		// best-effort, so a logging failure can only lose it, never turn into a send.
 		if (shadowEnabled) {
 			const wouldHaveSent = decision === 'auto_approve';
 			const decidedReason = reason;
@@ -291,40 +297,35 @@ export const routeStep: AgentStepModule<'route', RouteInput, RouteOutput> = {
 				reason =
 					'Shadow mode: the agent would have auto-sent this reply — logged to the graduation scorecard, not sent. Routing to human review.';
 			}
-			try {
-				await ctx.runMutation(internal.agent.shadowScorecard.recordShadowDecision, {
-					inboundMessageId: input.inboundMessageId,
-					category: input.category,
-					wouldHaveSent,
-					reason: decidedReason,
-					confidence: input.confidence,
-					...(input.draftQuality && typeof input.draftQuality.score === 'number'
-						? { draftQualityScore: input.draftQuality.score }
-						: {}),
-				});
-			} catch {
-				// swallowed: shadow logging is best-effort; the message stays in review
-			}
+			writes.push({
+				kind: 'shadow_decision',
+				category: input.category,
+				wouldHaveSent,
+				reason: decidedReason,
+				confidence: input.confidence,
+				...(input.draftQuality && typeof input.draftQuality.score === 'number'
+					? { draftQualityScore: input.draftQuality.score }
+					: {}),
+			});
 		}
 
-		// Persist the decision + reason + confidence onto the inbound message so
+		// The decision + reason + confidence, recorded on the inbound message so
 		// the review UI can explain WHY ("Sent because… / Held because…"). This is
 		// a READ-SIDE MIRROR of the decision the `route()` result already carries —
-		// it changes NO routing. FAIL-SOFT: explainability is best-effort, so a
-		// persistence failure must degrade to "no rationale shown" and never wedge
-		// the walker or block the send/review transition.
-		try {
-			await ctx.runMutation(internal.inbox.stepOutputs.recordAgentDecision, {
-				inboundMessageId: input.inboundMessageId,
-				decision,
-				reason,
-				confidence: input.confidence,
-			});
-		} catch {
-			// swallowed: the routing decision below stands regardless
-		}
+		// it changes NO routing. FAIL-SOFT: the commit applies it best-effort, so a
+		// failure degrades to "no rationale shown" and never wedges the walker or
+		// blocks the send/review transition.
+		writes.push({
+			kind: 'agent_decision',
+			decision,
+			reason,
+			confidence: input.confidence,
+		});
 
-		return { output: { decision, reason, confidence: input.confidence, category: input.category } };
+		return {
+			output: { decision, reason, confidence: input.confidence, category: input.category },
+			writes,
+		};
 	},
 
 	route(output, _input, _runCtx) {

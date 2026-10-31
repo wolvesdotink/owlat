@@ -1,6 +1,7 @@
 /**
- * The security scan schedules the message-only triage shadow only for a
- * message it lets through (the guard ran and passed; nothing quarantined,
+ * The security scan schedules the message-only triage shadow (returned for
+ * its commit, which schedules it: `decision/schedule.ts` `scheduleTeamBundle`)
+ * only for a message it lets through (the guard ran and passed; nothing quarantined,
  * archived or stopped it), and only while `triageBundle` is at `shadow`. The
  * scan's own outcome is the same either way. No live model.
  */
@@ -8,7 +9,7 @@
 import { getFunctionName } from 'convex/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { resolveRoutingPolicy, type RoutingPolicyRow } from '@owlat/shared/aiRouting';
-import { makeStepCtx } from '../../__tests__/stepCtx';
+import { makeStepCtx, writesOf } from '../../__tests__/stepCtx';
 import type { Id } from '../../../../_generated/dataModel';
 
 const mocks = vi.hoisted(() => ({ runLlmObject: vi.fn() }));
@@ -16,6 +17,7 @@ vi.mock('../../../../lib/llm/dispatch', () => ({ runLlmObject: mocks.runLlmObjec
 vi.mock('../../../../lib/llmProvider', () => ({ resolveLanguageModel: () => 'mock-model' }));
 
 import { securityScanStep } from '../index';
+import { scheduleTeamBundle, type TeamBundle } from '../../../../decision/schedule';
 
 const inboundMessageId = 'msg_triage' as Id<'inboundMessages'>;
 const input = { inboundMessageId };
@@ -46,7 +48,6 @@ async function scan(
 				getResolved: resolveRoutingPolicy(policy),
 				schedulingGate: { policy: resolveRoutingPolicy(policy), isAllowed: true },
 			},
-			mutations: { recordSecurityScan: null },
 		}),
 		scheduler: {
 			runAfter: vi.fn(async (_delay: number, reference: unknown) => {
@@ -54,7 +55,10 @@ async function scan(
 			}),
 		},
 	} as unknown as Parameters<typeof securityScanStep.execute>[0];
-	const { output } = await securityScanStep.execute(ctx, input);
+	const { output, writes } = await securityScanStep.execute(ctx, input);
+	for (const write of writesOf(writes, 'decision_bundle')) {
+		await scheduleTeamBundle(ctx, inboundMessageId, write['bundle'] as TeamBundle);
+	}
 	return { scheduled, route: securityScanStep.route(output, input, runCtx) };
 }
 

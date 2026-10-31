@@ -3,26 +3,22 @@
  *
  * The route step already computes a precise human-readable reason for every
  * auto-approve / human-review outcome; this asserts that reason — plus the
- * decision and the classifier confidence — is now MIRRORED onto the inbound
- * message via `recordAgentDecision`, so the review UI can show "Sent because… /
- * Held because…". The routing decision itself is unchanged (the returned
- * output.decision matches what was persisted).
- *
- * FAIL-SOFT: a throwing `recordAgentDecision` must NOT change or block the
- * decision the step returns.
+ * decision and the classifier confidence — is MIRRORED onto the inbound
+ * message by an `agent_decision` write the walker's step commit applies, so the
+ * review UI can show "Sent because… / Held because…". The routing decision
+ * itself is unchanged (the returned output.decision matches the write). The
+ * commit applies it best-effort (agent/__tests__/stepWrites.test.ts).
  */
 
 import { describe, it, expect } from 'vitest';
-import { makeStepCtx } from '../../__tests__/stepCtx';
+import { makeStepCtx, writeOf } from '../../__tests__/stepCtx';
 import { routeStep, type RouteInput } from '../index';
 import type { Id } from '../../../../_generated/dataModel';
 
 const messageId = 'msg_test' as Id<'inboundMessages'>;
 const cleanDraft = 'Thanks for reaching out — happy to help with your order.';
 
-/** Captures the args handed to recordAgentDecision for persistence assertions. */
-function makeCtx(opts: { autonomyThreshold?: number; recordThrows?: boolean }) {
-	const recorded: { value: Record<string, unknown> | null } = { value: null };
+function makeCtx(opts: { autonomyThreshold?: number }) {
 	const ctx = makeStepCtx<Parameters<typeof routeStep.execute>[0]>({
 		queries: {
 			getCircuitBreakersInternal: [],
@@ -56,14 +52,9 @@ function makeCtx(opts: { autonomyThreshold?: number; recordThrows?: boolean }) {
 		},
 		mutations: {
 			incrementDailyCount: { allowed: true },
-			recordAgentDecision: (args) => {
-				if (opts.recordThrows) throw new Error('boom');
-				recorded.value = args as Record<string, unknown>;
-				return null;
-			},
 		},
 	});
-	return { ctx, recorded };
+	return { ctx };
 }
 
 function input(over: Partial<RouteInput> = {}): RouteInput {
@@ -85,15 +76,14 @@ const lowQuality = {
 
 describe('routeStep.execute — decision persistence', () => {
 	it('mirrors an auto_approve decision + reason + confidence onto the message', async () => {
-		const { ctx, recorded } = makeCtx({ autonomyThreshold: 0.7 });
-		const { output } = await routeStep.execute(
+		const { ctx } = makeCtx({ autonomyThreshold: 0.7 });
+		const { output, writes } = await routeStep.execute(
 			ctx,
 			input({ confidence: 0.81, draftQuality: highQuality })
 		);
 
 		expect(output.decision).toBe('auto_approve');
-		expect(recorded.value).toEqual({
-			inboundMessageId: messageId,
+		expect(writeOf(writes, 'agent_decision')).toEqual({
 			decision: 'auto_approve',
 			reason: output.reason,
 			// The CLASSIFIER confidence (input.confidence), not the gate score.
@@ -102,24 +92,25 @@ describe('routeStep.execute — decision persistence', () => {
 	});
 
 	it('mirrors a human_review decision + reason when the draft quality is low', async () => {
-		const { ctx, recorded } = makeCtx({ autonomyThreshold: 0.7 });
-		const { output } = await routeStep.execute(
+		const { ctx } = makeCtx({ autonomyThreshold: 0.7 });
+		const { output, writes } = await routeStep.execute(
 			ctx,
 			input({ confidence: 0.95, draftQuality: lowQuality })
 		);
 
 		expect(output.decision).toBe('human_review');
-		expect(recorded.value?.['decision']).toBe('human_review');
-		expect(recorded.value?.['reason']).toBe(output.reason);
+		const recorded = writeOf(writes, 'agent_decision');
+		expect(recorded?.['decision']).toBe('human_review');
+		expect(recorded?.['reason']).toBe(output.reason);
 	});
 
-	it('FAILS SOFT: a throwing recordAgentDecision does not change or block the decision', async () => {
-		const { ctx } = makeCtx({ autonomyThreshold: 0.7, recordThrows: true });
-		const { output } = await routeStep.execute(
+	it('records nothing itself: the decision is a write for the commit', async () => {
+		// No mutation route answers `recordAgentDecision`: calling it would throw.
+		const { ctx } = makeCtx({ autonomyThreshold: 0.7 });
+		const { writes } = await routeStep.execute(
 			ctx,
 			input({ confidence: 0.81, draftQuality: highQuality })
 		);
-		// Decision still stands even though persistence threw.
-		expect(output.decision).toBe('auto_approve');
+		expect(writes?.map((write) => write.kind)).toEqual(['agent_decision']);
 	});
 });

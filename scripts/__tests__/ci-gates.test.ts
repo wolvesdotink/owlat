@@ -45,8 +45,9 @@ const isFile = (path: string) =>
 
 /**
  * Every repo file a `lint:*` command reaches: the scripts it names, the
- * scripts those shell scripts run (comment lines skipped), and the relative
- * imports of the TypeScript ones, followed transitively. An edit to any of
+ * scripts those shell scripts run (comment lines skipped), the relative
+ * imports of the TypeScript ones, followed transitively, and the data files
+ * (baselines, allowlists) the shell scripts' code names. An edit to any of
  * them can change the gate's result, so each has to be one of its inputs.
  */
 function gateScriptClosure(command: string): string[] {
@@ -65,6 +66,8 @@ function gateScriptClosure(command: string): string[] {
 				.join('\n');
 			for (const match of code.matchAll(/\bscripts\/[\w./-]+\.(?:sh|ts)\b/g))
 				if (isFile(match[0])) queue.push(match[0]);
+			// Kept even when missing, so a reference to a deleted baseline shows up.
+			for (const match of code.matchAll(/\bscripts\/[\w./-]+\.(?:txt|json)\b/g)) seen.add(match[0]);
 		} else if (file.endsWith('.ts')) {
 			for (const match of source.matchAll(
 				/(?:\bfrom\s+|\bimport\s*\(\s*|\bimport\s+)['"](\.{1,2}\/[^'"]+)['"]/g
@@ -107,15 +110,21 @@ describe('root gate manifest', () => {
 		expect(selects('compose', ['scripts/docker-socket-access.ts'])).toBe(true);
 		expect(selects('desktop-invoke', ['scripts/desktop-invoke-scan.ts'])).toBe(true);
 		expect(selects('desktop-invoke', ['scripts/desktop-invoke-vue.ts'])).toBe(true);
+		// Baselines are deleted as their debt is paid, so how many exist says
+		// nothing. What has to hold: every data file a gate's code names exists
+		// and is one of that gate's inputs (the loop above), and every baseline
+		// or allowlist on disk is read by some gate rather than left behind.
+		const readByGates = new Set(
+			ROOT_GATES.flatMap((entry) => gateScriptClosure(rootScripts[`lint:${entry.name}`]!))
+		);
+		for (const file of readByGates)
+			if (/\.(?:txt|json)$/.test(file)) expect(isFile(file), `missing: ${file}`).toBe(true);
+		expect(readByGates).toContain('scripts/file-size-baseline.txt');
+		expect(readByGates).toContain('scripts/provider-identity-collisions.txt');
 		const dataFiles = readdirSync(join(REPOSITORY_ROOT, 'scripts')).filter((file) =>
 			/baseline|allowlist|collisions/.test(file)
 		);
-		expect(dataFiles.length).toBeGreaterThan(5);
-		for (const file of dataFiles)
-			expect(
-				ROOT_GATES.some((entry) => matchesAny(`scripts/${file}`, entry.paths)),
-				file
-			).toBe(true);
+		for (const file of dataFiles) expect(readByGates.has(`scripts/${file}`), file).toBe(true);
 	});
 
 	it('declares the base variable of every gate that compares with a base commit', () => {

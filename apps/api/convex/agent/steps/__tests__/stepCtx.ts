@@ -1,4 +1,5 @@
 import { getFunctionName } from 'convex/server';
+import type { StepWrite } from '../../stepWrites';
 
 /**
  * A route answers one generated function. A plain value is returned as-is; a
@@ -45,4 +46,25 @@ export function makeStepCtx<Ctx>(routes: StepCtxRoutes): Ctx {
 		runAction: dispatcher('runAction', routes.actions ?? {}),
 		runMutation: dispatcher('runMutation', routes.mutations ?? {}),
 	} as unknown as Ctx;
+}
+
+/**
+ * The writes of `kind` a step's `execute` returned for its commit, each as a
+ * plain record (minus `kind`).
+ */
+export function writesOf(
+	writes: readonly StepWrite[] | undefined,
+	kind: StepWrite['kind']
+): Record<string, unknown>[] {
+	return (writes ?? [])
+		.filter((w) => w.kind === kind)
+		.map(({ kind: _kind, ...fields }) => fields as Record<string, unknown>);
+}
+
+/** The first write of `kind` (see {@link writesOf}), or null when there is none. */
+export function writeOf(
+	writes: readonly StepWrite[] | undefined,
+	kind: StepWrite['kind']
+): Record<string, unknown> | null {
+	return writesOf(writes, kind)[0] ?? null;
 }

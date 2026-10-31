@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { makeStepCtx } from '../../__tests__/stepCtx';
+import { makeStepCtx, writeOf } from '../../__tests__/stepCtx';
 import type { Id } from '../../../../_generated/dataModel';
 import { contextRetrievalStep } from '../index';
 
@@ -49,9 +49,7 @@ type Legs = {
 	}>;
 };
 
-/** Captures the args handed to recordContextTier for persistence assertions. */
 function makeCtx(legs: Legs) {
-	const recorded: { value: Record<string, unknown> | null } = { value: null };
 	const message = {
 		from: 'sender@example.com',
 		to: 'me@hl.camp',
@@ -79,20 +77,14 @@ function makeCtx(legs: Legs) {
 			// semanticFileProcessing.semanticSearch
 			semanticFileProcessing: legs.files ?? [],
 		},
-		mutations: {
-			recordContextTier: (args) => {
-				recorded.value = args as Record<string, unknown>;
-				return null;
-			},
-		},
 	});
 
-	return { ctx, recorded };
+	return { ctx };
 }
 
 describe('contextRetrievalStep.execute — coverage signal', () => {
 	it('reflects populated legs and is NOT low-coverage when knowledge hits exist', async () => {
-		const { ctx, recorded } = makeCtx({
+		const { ctx } = makeCtx({
 			contactId,
 			threadId,
 			contact: { email: 'sender@example.com' },
@@ -125,7 +117,8 @@ describe('contextRetrievalStep.execute — coverage signal', () => {
 			files: [{ filename: 'invoice.pdf', title: 'Invoice 123' }],
 		});
 
-		const { output } = await contextRetrievalStep.execute(ctx, input);
+		const { output, writes } = await contextRetrievalStep.execute(ctx, input);
+		const recorded = { value: writeOf(writes, 'context_tier') };
 
 		expect(output.coverage).toEqual({
 			contact: true,
@@ -139,19 +132,19 @@ describe('contextRetrievalStep.execute — coverage signal', () => {
 
 		// Persisted alongside contextTier on the inbound message.
 		expect(recorded.value).not.toBeNull();
-		expect(recorded.value?.['inboundMessageId']).toBe(messageId);
 		expect(recorded.value?.['contextTier']).toBe('normal');
 		expect(recorded.value?.['contextCoverage']).toEqual(output.coverage);
 	});
 
 	it('is low-coverage when every grounding leg is empty', async () => {
-		const { ctx, recorded } = makeCtx({
+		const { ctx } = makeCtx({
 			// No contactId → no contact/activities; no threadId → no thread.
 			knowledge: [],
 			files: [],
 		});
 
-		const { output } = await contextRetrievalStep.execute(ctx, input);
+		const { output, writes } = await contextRetrievalStep.execute(ctx, input);
+		const recorded = { value: writeOf(writes, 'context_tier') };
 
 		expect(output.coverage).toEqual({
 			contact: false,

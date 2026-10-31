@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { makeStepCtx } from '../../__tests__/stepCtx';
+import { makeStepCtx, writesOf } from '../../__tests__/stepCtx';
 import { getFunctionName } from 'convex/server';
 import { routeStep } from '../index';
 import type { Id } from '../../../../_generated/dataModel';
@@ -36,10 +36,10 @@ type Recorded = {
 /**
  * Fake ctx where autonomy PERMITS auto-approval and the draft is clean, so the
  * decision computed by `decide()` is auto_approve — then shadow mode decides
- * whether it actually sends. `shadowEnabled` toggles the shadow gate; captured
- * `recordShadowDecision` args are pushed into `recorded`.
+ * whether it actually sends. `shadowEnabled` toggles the shadow gate. The step
+ * returns its shadow observation as a write for the walker's commit.
  */
-function makeCtx(shadowEnabled: boolean, recorded: Recorded[]) {
+function makeCtx(shadowEnabled: boolean) {
 	return makeStepCtx<Parameters<typeof routeStep.execute>[0]>({
 		queries: {
 			getBudgetStatus: { autonomousAutoSendAllowed: true },
@@ -62,21 +62,19 @@ function makeCtx(shadowEnabled: boolean, recorded: Recorded[]) {
 		},
 		mutations: {
 			incrementDailyCount: { allowed: true },
-			recordShadowDecision: (args) => {
-				recorded.push(args as Recorded);
-				return null;
-			},
-			recordAgentDecision: null,
 		},
 	});
 }
 
+const shadowWrites = (writes: Parameters<typeof writesOf>[0]) =>
+	writesOf(writes, 'shadow_decision') as Recorded[];
+
 describe('routeStep.execute — shadow mode', () => {
 	it('logs a would-have-sent observation and routes to human review instead of sending', async () => {
-		const recorded: Recorded[] = [];
-		const ctx = makeCtx(true, recorded);
+		const ctx = makeCtx(true);
 
-		const { output } = await routeStep.execute(ctx, sampleInput);
+		const { output, writes } = await routeStep.execute(ctx, sampleInput);
+		const recorded = shadowWrites(writes);
 
 		// No send: decision is downgraded to human review with the shadow reason.
 		expect(output.decision).toBe('human_review');
@@ -99,7 +97,6 @@ describe('routeStep.execute — shadow mode', () => {
 	});
 
 	it('records a would-hold observation when the decision was already human review', async () => {
-		const recorded: Recorded[] = [];
 		// checkPermissionInternal denies → decision is human_review before shadow.
 		const ctx = {
 			runQuery: async (ref: unknown) => {
@@ -116,69 +113,39 @@ describe('routeStep.execute — shadow mode', () => {
 				if (name.includes('getShadowMode')) return { enabled: true };
 				throw new Error(`unexpected runQuery: ${name}`);
 			},
-			runMutation: async (ref: unknown, args: unknown) => {
+			runMutation: async (ref: unknown) => {
 				const name = getFunctionName(ref as Parameters<typeof getFunctionName>[0]);
-				if (name.includes('recordShadowDecision')) {
-					recorded.push(args as Recorded);
-					return null;
-				}
-				if (name.includes('recordAgentDecision')) return null;
 				throw new Error(`unexpected runMutation: ${name}`);
 			},
 		} as unknown as Parameters<typeof routeStep.execute>[0];
 
-		const { output } = await routeStep.execute(ctx, sampleInput);
+		const { output, writes } = await routeStep.execute(ctx, sampleInput);
+		const recorded = shadowWrites(writes);
 		expect(output.decision).toBe('human_review');
 		expect(recorded).toHaveLength(1);
 		expect(recorded[0]!.wouldHaveSent).toBe(false);
 	});
 
 	it('sends for real (auto_approve) when shadow mode is off', async () => {
-		const recorded: Recorded[] = [];
-		const ctx = makeCtx(false, recorded);
+		const ctx = makeCtx(false);
 
-		const { output } = await routeStep.execute(ctx, sampleInput);
+		const { output, writes } = await routeStep.execute(ctx, sampleInput);
 
 		expect(output.decision).toBe('auto_approve');
-		expect(recorded).toHaveLength(0);
+		expect(shadowWrites(writes)).toHaveLength(0);
 	});
 
-	it('stays in human review when the shadow log write throws', async () => {
-		const ctx = makeStepCtx<Parameters<typeof routeStep.execute>[0]>({
-			queries: {
-				getBudgetStatus: { autonomousAutoSendAllowed: true },
-				interpretationHold: { reason: null },
-				itemCoverageCheck: { objections: [], reason: null, isEnforced: false },
-				appliedVerdictInputs: {
-					applied: [],
-					isTruncated: false,
-					isItemCoverageEnforced: false,
-					current: null,
-				},
-				getCircuitBreakersInternal: [],
-				checkPermissionInternal: { mode: 'enabled', allowed: true, reason: 'rule permits' },
-				getMessage: {
-					from: 'Alice Customer <alice@customer.example>',
-					draftResponse: cleanDraft,
-					securityFlags: { guardUnavailable: false },
-				},
-				getShadowMode: { enabled: true },
-			},
-			mutations: {
-				incrementDailyCount: { allowed: true },
-				recordShadowDecision: () => {
-					throw new Error('scorecard write failed');
-				},
-				recordAgentDecision: null,
-			},
-		});
+	it('routes to human review before the observation is recorded, by the commit', async () => {
+		// No mutation route: the step records nothing itself, so a failing shadow
+		// write (best-effort in the commit) can never turn into a send.
+		const ctx = makeCtx(true);
 
-		const { output } = await routeStep.execute(ctx, sampleInput);
+		const { output, writes } = await routeStep.execute(ctx, sampleInput);
 		expect(output.decision).toBe('human_review');
+		expect(writes?.map((write) => write.kind)).toEqual(['shadow_decision', 'agent_decision']);
 	});
 
 	it('treats an unreadable shadow setting as shadow on', async () => {
-		const recorded: Recorded[] = [];
 		const ctx = makeStepCtx<Parameters<typeof routeStep.execute>[0]>({
 			queries: {
 				getBudgetStatus: { autonomousAutoSendAllowed: true },
@@ -201,18 +168,11 @@ describe('routeStep.execute — shadow mode', () => {
 					throw new Error('config read failed');
 				},
 			},
-			mutations: {
-				recordShadowDecision: (args) => {
-					recorded.push(args as Recorded);
-					return null;
-				},
-				recordAgentDecision: null,
-			},
 		});
 
-		const { output } = await routeStep.execute(ctx, sampleInput);
+		const { output, writes } = await routeStep.execute(ctx, sampleInput);
 		expect(output.decision).toBe('human_review');
-		expect(recorded).toHaveLength(1);
+		expect(shadowWrites(writes)).toHaveLength(1);
 	});
 
 	it('does not charge the per-category daily cap while shadow is on', async () => {
@@ -242,8 +202,6 @@ describe('routeStep.execute — shadow mode', () => {
 					charged.push(args);
 					return { allowed: true };
 				},
-				recordShadowDecision: null,
-				recordAgentDecision: null,
 			},
 		});
 

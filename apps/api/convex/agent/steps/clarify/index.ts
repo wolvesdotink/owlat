@@ -74,6 +74,7 @@ import { boundedOptions } from './options';
 import { loadSlotItems, slotItemLink, type ClarifySlotItem } from './items';
 import { answerKindForSlot } from '../../../inbox/clarificationAnswers';
 import type { AgentStepModule } from '../types';
+import type { StepWrite } from '../../stepWrites';
 import { teamClarifySurface, teamOpenSlots } from './judge';
 import { rethrowAdmissionRefusal } from '../../../analytics/backgroundDeferral';
 
@@ -308,14 +309,15 @@ export const clarifyStep: AgentStepModule<'clarify', ClarifyInput, ClarifyOutput
 			// ANSWER-MEMORY: before asking, look up a stored standing answer for each
 			// candidate question (scoped to this message's contact + org-general) and
 			// fill the slot silently instead of re-asking. Fail-soft: any lookup error
-			// → no fills → ask exactly as today. See inbox/clarificationMemory.ts.
-			let fills: { questionId: string; value: string }[] = [];
+			// → no fills → ask exactly as today. See inbox/clarificationMemory.ts. The
+			// use of each answer is counted with the step, by its commit.
+			let fills: { questionId: string; value: string; rowId: Id<'clarificationMemory'> }[] = [];
 			if (candidateQuestions.length > 0) {
 				try {
 					const message = await ctx.runQuery(internal.agent.agentPipeline.getMessage, {
 						inboundMessageId: input.inboundMessageId,
 					});
-					const result = await ctx.runMutation(internal.inbox.clarificationMemory.resolveFills, {
+					const result = await ctx.runQuery(internal.inbox.clarificationMemory.lookupFills, {
 						contactId: message?.contactId,
 						questions: candidateQuestions.map((q) => ({
 							id: q.id,
@@ -356,25 +358,28 @@ export const clarifyStep: AgentStepModule<'clarify', ClarifyInput, ClarifyOutput
 				tokenUsage = addTokenUsage(tokenUsage, localized.tokenUsage);
 			}
 
-			// Instrument only the questions we ACTUALLY ask (memory-filled ones are
-			// not asks). Isolated so a logging failure never drops the questions or
-			// wedges the walker.
+			// The writes the step's commit applies: a use of each standing answer
+			// that filled a question, and the ask log of the questions we ACTUALLY
+			// ask (memory-filled ones are not asks). Both best-effort there, so a
+			// logging failure never drops the questions or wedges the walker.
+			const writes: StepWrite[] = [];
+			if (fills.length > 0) {
+				writes.push({ kind: 'standing_answers_used', rowIds: fills.map((f) => f.rowId) });
+			}
 			if (questions.length > 0) {
-				try {
-					const slotTypes = questions.map((q) => q.slotType);
-					await ctx.runMutation(internal.inbox.clarificationLog.recordClarificationAsk, {
-						source: 'agent',
-						slotTypes,
-						questionCount: questions.length,
-						predictedValue: predictedAskValue(slotTypes),
-						eagerness: mode,
-					});
-				} catch {
-					// Observability only — never let it affect routing.
-				}
+				const slotTypes = questions.map((q) => q.slotType);
+				writes.push({
+					kind: 'clarification_ask',
+					source: 'agent',
+					slotTypes,
+					questionCount: questions.length,
+					predictedValue: predictedAskValue(slotTypes),
+					eagerness: mode,
+				});
 			}
 
 			return {
+				writes,
 				output: {
 					questions,
 					memoryAnswers,

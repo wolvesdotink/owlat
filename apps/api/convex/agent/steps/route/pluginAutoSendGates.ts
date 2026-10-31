@@ -88,6 +88,7 @@ export async function runHostedAutoSendGates(
 
 		let authorized: boolean;
 		try {
+			// checkpoint: the authorization (and a denial's audit row) taken before the plugin's code runs.
 			authorized = await action.runMutation(
 				internal.plugins.autonomyGateAuthorization.authorizeExecution,
 				{ pluginId, gateKind: definition.kind }
@@ -111,6 +112,7 @@ export async function runHostedAutoSendGates(
 				await recordFailure(action, pluginId, definition.kind, 'autonomy_gate_invalid');
 				return invalidGateResult(definition.label);
 			}
+			// checkpoint: the audit of plugin code that already ran, true whatever the step comes to.
 			await action.runMutation(internal.plugins.autonomyGateAuthorization.recordOutcome, {
 				pluginId,
 				gateKind: definition.kind,
@@ -267,6 +269,7 @@ async function recordFailure(
 	gateKind: string,
 	reasonCode: FailureReason
 ): Promise<void> {
+	// checkpoint: the audit of plugin code that already ran, true whatever the step comes to.
 	await action
 		.runMutation(internal.plugins.autonomyGateAuthorization.recordOutcome, {
 			pluginId,

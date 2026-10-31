@@ -225,8 +225,8 @@ describe('clarify', () => {
 			queries: {
 				getAskEagernessInternal: { mode: null },
 				getMessage: { contextCoverage: { lowCoverage: true }, contactId: 'contact_test' },
+				lookupFills: { fills: [] },
 			},
-			mutations: { recordClarificationAsk: undefined, resolveFills: { fills: [] } },
 		});
 	const slots = {
 		object: {
