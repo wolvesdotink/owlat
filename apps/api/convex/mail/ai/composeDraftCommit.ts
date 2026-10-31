@@ -47,8 +47,8 @@ async function attachUploads(
 }
 
 /**
- * The session's file references, checked against the draft once this commit's
- * uploads are on it. An upload the session already held (sent again after a
+ * The session's file references, checked against the draft once the answer's
+ * fresh uploads are on it. An upload the session already held (sent again after a
  * draft that failed) may have been removed from the draft since, its blob
  * with it: one this answer names is refused, so the owner uploads it again,
  * and one it no longer names is dropped, so the drafter is never told a
