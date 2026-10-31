@@ -12,6 +12,7 @@ import {
 	route,
 	type Redirect,
 } from '~/__tests__/middlewareHarness';
+import type * as SetupGlobalModule from '../setup.global';
 
 vi.mock('~/lib/auth-client', () => authClientMock());
 
@@ -19,7 +20,7 @@ type Middleware = (
 	to: RouteLocationNormalized,
 	from: RouteLocationNormalized
 ) => Redirect | undefined;
-type SetupModule = typeof import('../setup.global');
+type SetupModule = typeof SetupGlobalModule;
 
 async function load(setupMode: boolean) {
 	let mod!: SetupModule;

@@ -16,7 +16,7 @@
  */
 
 import type { FunctionReturnType } from 'convex/server';
-import { api } from '@owlat/api';
+import type { api } from '@owlat/api';
 import type { OrganizationRole } from '~/composables/useOrganization';
 
 export interface RoleDefinition {

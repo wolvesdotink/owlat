@@ -3,7 +3,7 @@ import { emailTemplateTypeValidator } from '../lib/convexValidators';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
-import { requireOrgPermission } from '../lib/sessionOrganization';
+import { hasPermission, requirePermission } from '../lib/sessionOrganization';
 import { validateStringLength, STRING_LIMITS } from '../lib/inputGuards';
 import { countFacet } from '../lib/listing';
 import { emailTemplateListing } from './listing';
@@ -30,10 +30,9 @@ export const createFromPreset = authedMutation({
 		type: emailTemplateTypeValidator,
 		defaultLanguage: v.optional(v.string()),
 	},
-	handler: async (ctx, args): Promise<Id<'emailTemplates'>> => {
-		const { userId } = await requireOrgPermission(
-			ctx,
-			'templates:manage',
+	handler: async (ctx, args, session): Promise<Id<'emailTemplates'>> => {
+		requirePermission(
+			hasPermission(session.role, 'templates:manage'),
 			'Only owners and admins can create email templates'
 		);
 		// Validate input lengths
@@ -48,7 +47,7 @@ export const createFromPreset = authedMutation({
 			// The preset, restyled with the brand kit.
 			content: await brandedNewEmailContent(ctx, args.content),
 			defaultLanguage: args.defaultLanguage,
-			userId,
+			userId: session.userId,
 		});
 
 		return outcome.templateId;

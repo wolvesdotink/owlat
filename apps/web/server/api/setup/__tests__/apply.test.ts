@@ -9,6 +9,8 @@ import {
 } from '@owlat/shared/envBackupBox';
 import { getDefaultFlags } from '@owlat/shared/featureFlags';
 import { jsonRequestEvent } from '../../../__tests__/nitro';
+import type * as SetupEnvModule from '@owlat/shared/setupEnv';
+import type * as ConvexRuntimeEnvModule from '@owlat/shared/convexRuntimeEnv';
 
 /**
  * Secrets-at-rest test for `POST /api/setup/apply` (the web setup wizard's final
@@ -28,11 +30,11 @@ const { pushMock, readMock, writeMock, identityPreflightMock } = vi.hoisted(() =
 }));
 
 vi.mock('@owlat/shared/setupEnv', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('@owlat/shared/setupEnv')>();
+	const actual = await importOriginal<typeof SetupEnvModule>();
 	return { ...actual, readEnvFile: readMock, writeEnvFile: writeMock };
 });
 vi.mock('@owlat/shared/convexRuntimeEnv', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('@owlat/shared/convexRuntimeEnv')>();
+	const actual = await importOriginal<typeof ConvexRuntimeEnvModule>();
 	return { ...actual, pushConvexRuntimeEnv: pushMock };
 });
 vi.mock('../../../utils/mtaIdentityPreflight', () => ({

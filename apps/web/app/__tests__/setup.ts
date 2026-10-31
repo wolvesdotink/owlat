@@ -32,6 +32,7 @@ import {
 	provide,
 	inject,
 } from 'vue';
+import type * as VueModule from 'vue';
 import { useConfirm } from '~/composables/useConfirm';
 
 registerNuxtComponents();
@@ -83,27 +84,27 @@ vi.stubGlobal('useConfirm', useConfirm);
 
 // Type augmentation for global scope
 declare global {
-	const ref: (typeof import('vue'))['ref'];
-	const computed: (typeof import('vue'))['computed'];
-	const reactive: (typeof import('vue'))['reactive'];
-	const readonly: (typeof import('vue'))['readonly'];
-	const watch: (typeof import('vue'))['watch'];
-	const watchEffect: (typeof import('vue'))['watchEffect'];
-	const onMounted: (typeof import('vue'))['onMounted'];
-	const onUnmounted: (typeof import('vue'))['onUnmounted'];
-	const onBeforeUnmount: (typeof import('vue'))['onBeforeUnmount'];
-	const nextTick: (typeof import('vue'))['nextTick'];
-	const toRef: (typeof import('vue'))['toRef'];
-	const toRefs: (typeof import('vue'))['toRefs'];
-	const toValue: (typeof import('vue'))['toValue'];
-	const toRaw: (typeof import('vue'))['toRaw'];
-	const unref: (typeof import('vue'))['unref'];
-	const isRef: (typeof import('vue'))['isRef'];
-	const shallowRef: (typeof import('vue'))['shallowRef'];
-	const triggerRef: (typeof import('vue'))['triggerRef'];
-	const getCurrentInstance: (typeof import('vue'))['getCurrentInstance'];
-	const getCurrentScope: (typeof import('vue'))['getCurrentScope'];
-	const onScopeDispose: (typeof import('vue'))['onScopeDispose'];
-	const useId: (typeof import('vue'))['useId'];
-	type Ref<T> = import('vue').Ref<T>;
+	const ref: typeof VueModule.ref;
+	const computed: typeof VueModule.computed;
+	const reactive: typeof VueModule.reactive;
+	const readonly: typeof VueModule.readonly;
+	const watch: typeof VueModule.watch;
+	const watchEffect: typeof VueModule.watchEffect;
+	const onMounted: typeof VueModule.onMounted;
+	const onUnmounted: typeof VueModule.onUnmounted;
+	const onBeforeUnmount: typeof VueModule.onBeforeUnmount;
+	const nextTick: typeof VueModule.nextTick;
+	const toRef: typeof VueModule.toRef;
+	const toRefs: typeof VueModule.toRefs;
+	const toValue: typeof VueModule.toValue;
+	const toRaw: typeof VueModule.toRaw;
+	const unref: typeof VueModule.unref;
+	const isRef: typeof VueModule.isRef;
+	const shallowRef: typeof VueModule.shallowRef;
+	const triggerRef: typeof VueModule.triggerRef;
+	const getCurrentInstance: typeof VueModule.getCurrentInstance;
+	const getCurrentScope: typeof VueModule.getCurrentScope;
+	const onScopeDispose: typeof VueModule.onScopeDispose;
+	const useId: typeof VueModule.useId;
+	type Ref<T> = VueModule.Ref<T>;
 }

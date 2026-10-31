@@ -24,6 +24,7 @@ import { api, internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import { createTestContact } from '../../__tests__/factories';
 import type { OrganizationRole } from '../../lib/sessionOrganization';
+import type * as SessionOrganizationModule from '../../lib/sessionOrganization';
 import { SUNSET_MIN_WINDOW_DAYS } from '@owlat/shared/sunsetPolicy';
 import { daysAgo, harness, type Harness } from './sunsetFixtures';
 
@@ -32,7 +33,7 @@ import { daysAgo, harness, type Harness } from './sunsetFixtures';
 const caller = vi.hoisted(() => ({ role: 'admin' as OrganizationRole }));
 
 vi.mock('../../lib/sessionOrganization', async () => {
-	const actual = await vi.importActual<typeof import('../../lib/sessionOrganization')>(
+	const actual = await vi.importActual<typeof SessionOrganizationModule>(
 		'../../lib/sessionOrganization'
 	);
 	const session = () => ({

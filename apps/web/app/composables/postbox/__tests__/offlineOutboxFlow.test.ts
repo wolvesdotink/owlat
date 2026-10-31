@@ -23,6 +23,7 @@ import { effectScope, ref, nextTick } from 'vue';
 import { createTestI18n } from '~/__tests__/i18n';
 import { queryResult } from '~/__tests__/queryStubs';
 import { DEFAULT_UNDO_SEND_SECONDS } from '@owlat/shared/undoSendPolicy';
+import type * as PostboxOfflineStoreModule from '~/utils/postboxOfflineStore';
 
 // The composables under test are stood up OUTSIDE a component setup here, so
 // the `useI18n` auto-import resolves straight to a catalog-backed composer —
@@ -119,7 +120,7 @@ class FakeOfflineWriteError extends Error {
 // path and this fake store must agree on what "claimed" means, and a divergent
 // re-implementation here would test nothing.
 vi.mock('~/utils/postboxOfflineStore', async (importActual) => {
-	const actual = await importActual<typeof import('~/utils/postboxOfflineStore')>();
+	const actual = await importActual<typeof PostboxOfflineStoreModule>();
 	return {
 		...actual,
 		OfflineWriteError: FakeOfflineWriteError,

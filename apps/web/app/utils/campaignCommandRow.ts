@@ -3,7 +3,7 @@
  * (attention roll-up + headline rates precomputed once) and the row component
  * renders them, so the type lives here where both can import it.
  */
-import { api } from '@owlat/api';
+import type { api } from '@owlat/api';
 import type { FunctionReturnType } from 'convex/server';
 import type { CampaignAttentionReason } from '~/utils/campaignAttention';
 

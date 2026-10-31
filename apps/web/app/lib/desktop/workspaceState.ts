@@ -12,6 +12,9 @@
 import { ref } from 'vue';
 import type { WorkspaceConfig, WorkspaceStoreShape } from '~/lib/desktop/workspaceTypes';
 import type { SessionPersistence } from '~/lib/desktop/keychainStorage';
+// Type-only: the Tauri bridges themselves load lazily in `keychain()` / `store()`.
+import type * as DesktopKeychainBridge from '@owlat/desktop/src/keychain';
+import type * as DesktopWorkspaceBridge from '@owlat/desktop/src/workspace';
 
 /**
  * A failure the connect UI shows the user. The functions that throw it run at
@@ -33,8 +36,8 @@ export class WorkspaceConnectionError extends Error {
 export const workspaces = ref<WorkspaceConfig[]>([]);
 export const activeId = ref<string | null>(null);
 
-type KeychainBridge = typeof import('@owlat/desktop/src/keychain');
-type WorkspaceBridge = typeof import('@owlat/desktop/src/workspace');
+type KeychainBridge = typeof DesktopKeychainBridge;
+type WorkspaceBridge = typeof DesktopWorkspaceBridge;
 
 export async function keychain(): Promise<KeychainBridge> {
 	return import('@owlat/desktop/src/keychain');

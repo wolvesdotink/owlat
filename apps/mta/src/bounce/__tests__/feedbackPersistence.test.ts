@@ -1,4 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type * as PipelineModule from '../pipeline.js';
+import type * as ServerHelpersModule from '../serverHelpers.js';
+import type * as FblProcessorModule from '../fblProcessor.js';
 
 const mocks = vi.hoisted(() => ({
 	runPipeline: vi.fn(),
@@ -12,7 +15,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('../pipeline.js', async (importOriginal) => ({
-	...(await importOriginal<typeof import('../pipeline.js')>()),
+	...(await importOriginal<typeof PipelineModule>()),
 	runPipeline: mocks.runPipeline,
 }));
 vi.mock('../outcome.js', () => ({ reduce: mocks.reduce }));
@@ -20,11 +23,11 @@ vi.mock('../feedbackProvenance.js', () => ({
 	attachFeedbackProvenance: mocks.attachFeedbackProvenance,
 }));
 vi.mock('../serverHelpers.js', async (importOriginal) => ({
-	...(await importOriginal<typeof import('../serverHelpers.js')>()),
+	...(await importOriginal<typeof ServerHelpersModule>()),
 	logAttempt: vi.fn(),
 }));
 vi.mock('../fblProcessor.js', async (importOriginal) => ({
-	...(await importOriginal<typeof import('../fblProcessor.js')>()),
+	...(await importOriginal<typeof FblProcessorModule>()),
 	completeComplaint: mocks.completeComplaint,
 	releaseComplaint: mocks.releaseComplaint,
 	runComplaintEffect: mocks.runComplaintEffect,

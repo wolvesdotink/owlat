@@ -25,6 +25,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import Redis from 'ioredis-mock';
 import type RealRedis from 'ioredis';
 import { dkimVerify } from 'mailauth';
+import type * as SmtpClientModule from '@owlat/smtp-client';
+import type * as MtaStsModule from '../mtaSts.js';
 
 const { connectMock, sendEnvelopeMock } = vi.hoisted(() => ({
 	connectMock: vi.fn(),
@@ -32,7 +34,7 @@ const { connectMock, sendEnvelopeMock } = vi.hoisted(() => ({
 }));
 
 vi.mock('@owlat/smtp-client', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('@owlat/smtp-client')>();
+	const actual = await importOriginal<typeof SmtpClientModule>();
 	return {
 		...actual,
 		SmtpConnection: { connect: connectMock },
@@ -62,7 +64,7 @@ vi.mock('../daneMxResolver.js', () => ({
 	resolveDaneMxDestinations: vi.fn().mockResolvedValue({ status: 'not-found' }),
 }));
 vi.mock('../mtaSts.js', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../mtaSts.js')>();
+	const actual = await importOriginal<typeof MtaStsModule>();
 	return {
 		...actual,
 		getStsTlsOptions: vi.fn().mockResolvedValue({

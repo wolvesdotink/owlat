@@ -17,6 +17,7 @@ const KEY = 'state';
 
 type StoreShape = { workspaces: unknown[]; activeWorkspaceId: string | null };
 
+/** @public The web app reaches this through a lazy `import()` of this module, which knip cannot trace. */
 export async function loadWorkspaceStore(): Promise<StoreShape> {
 	try {
 		const store = await load(FILE);
@@ -28,6 +29,7 @@ export async function loadWorkspaceStore(): Promise<StoreShape> {
 	return { workspaces: [], activeWorkspaceId: null };
 }
 
+/** @public The web app reaches this through a lazy `import()` of this module, which knip cannot trace. */
 export async function saveWorkspaceStore(state: StoreShape): Promise<void> {
 	try {
 		const store = await load(FILE);

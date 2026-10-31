@@ -4,7 +4,7 @@ import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import { paginationOptsValidator } from 'convex/server';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
-import { hasPermission, requireOrgPermission, requirePermission } from '../lib/sessionOrganization';
+import { hasPermission, requirePermission } from '../lib/sessionOrganization';
 import { getLive, getLiveOrThrow } from '../lib/softDelete';
 import { restoreTemplate } from './deletion';
 import { listResources } from '../lib/listing';
@@ -79,10 +79,9 @@ export const update = authedMutation({
 		// replacement writes no second audit entry (emailTemplates/versions.ts).
 		autosave: v.optional(v.boolean()),
 	},
-	handler: async (ctx, rawArgs) => {
-		const session = await requireOrgPermission(
-			ctx,
-			'templates:manage',
+	handler: async (ctx, rawArgs, session) => {
+		requirePermission(
+			hasPermission(session.role, 'templates:manage'),
 			'Only owners and admins can update email templates'
 		);
 		const coedit = await loadCoeditSave(
@@ -160,10 +159,9 @@ export const publish = authedMutation({
 		// the caller was looking at.
 		expectedContentRevision: v.optional(v.number()),
 	},
-	handler: async (ctx, args) => {
-		const session = await requireOrgPermission(
-			ctx,
-			'templates:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'templates:manage'),
 			'Only owners and admins can publish email templates'
 		);
 
@@ -206,10 +204,9 @@ export const publish = authedMutation({
 // Mutation to unpublish an email template (revert to draft)
 export const unpublish = authedMutation({
 	args: { templateId: v.id('emailTemplates') },
-	handler: async (ctx, args) => {
-		const session = await requireOrgPermission(
-			ctx,
-			'templates:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'templates:manage'),
 			'Only owners and admins can unpublish email templates'
 		);
 
@@ -233,10 +230,9 @@ export const unpublish = authedMutation({
 // Mutation to duplicate an email template
 export const duplicate = authedMutation({
 	args: { templateId: v.id('emailTemplates') },
-	handler: async (ctx, args): Promise<Id<'emailTemplates'>> => {
-		const session = await requireOrgPermission(
-			ctx,
-			'templates:manage',
+	handler: async (ctx, args, session): Promise<Id<'emailTemplates'>> => {
+		requirePermission(
+			hasPermission(session.role, 'templates:manage'),
 			'Only owners and admins can duplicate email templates'
 		);
 
@@ -257,10 +253,9 @@ export const duplicate = authedMutation({
 // restorable for 30 days (emailTemplates/deletion.ts).
 export const remove = authedMutation({
 	args: { templateId: v.id('emailTemplates') },
-	handler: async (ctx, args) => {
-		const session = await requireOrgPermission(
-			ctx,
-			'templates:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'templates:manage'),
 			'Only owners and admins can delete email templates'
 		);
 
@@ -295,10 +290,9 @@ export const changeType = authedMutation({
 		type: emailTemplateTypeValidator,
 		forceWhilePublished: v.optional(v.boolean()),
 	},
-	handler: async (ctx, args) => {
-		const session = await requireOrgPermission(
-			ctx,
-			'templates:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'templates:manage'),
 			'Only owners and admins can change template type'
 		);
 
@@ -363,10 +357,9 @@ export const create = authedMutation({
 		previewText: v.optional(v.string()),
 		content: v.optional(v.string()),
 	},
-	handler: async (ctx, args): Promise<Id<'emailTemplates'>> => {
-		const session = await requireOrgPermission(
-			ctx,
-			'templates:manage',
+	handler: async (ctx, args, session): Promise<Id<'emailTemplates'>> => {
+		requirePermission(
+			hasPermission(session.role, 'templates:manage'),
 			'Only owners and admins can create email templates'
 		);
 
