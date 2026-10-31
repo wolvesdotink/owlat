@@ -139,7 +139,7 @@ const fail = (errorMessage: string, errorCode: string): CompletionStep => ({
  * — so the telemetry names the SHAPE (its own field names, and the discriminant
  * if it carries a readable one) and never the contents.
  */
-export function describeUnreadableResult(value: unknown): string {
+function describeUnreadableResult(value: unknown): string {
 	if (value === null) return 'null';
 	if (typeof value !== 'object') return typeof value;
 	if (Array.isArray(value)) return 'array';
