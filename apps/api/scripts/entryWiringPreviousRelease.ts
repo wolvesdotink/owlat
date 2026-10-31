@@ -28,4 +28,6 @@ export const PREVIOUS_RELEASE_ENTRIES: Readonly<Record<string, string>> = {
 	// System & updates now reads maintenance/workerRegistry.ts `getForAdmin`.
 	'mail/imap/serverRegistry.ts#getForAdmin':
 		'the previous IMAP servers card on System & updates, in tabs opened before the deploy',
+	// The channel dispatch now commits through channels/outboundCommit.ts. Remove after release N+1.
+	'unifiedMessages.ts#recordOutbound': 'old channel dispatches mid-run',
 };

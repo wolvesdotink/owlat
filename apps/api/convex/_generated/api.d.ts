@@ -423,6 +423,7 @@ import type * as channels_adapters_webhook from '../channels/adapters/webhook.js
 import type * as channels_adapters_whatsapp from '../channels/adapters/whatsapp.js';
 import type * as channels_credentials from '../channels/credentials.js';
 import type * as channels_outbound from '../channels/outbound.js';
+import type * as channels_outboundCommit from '../channels/outboundCommit.js';
 import type * as chat__helpers from '../chat/_helpers.js';
 import type * as chat_attachments from '../chat/attachments.js';
 import type * as chat_dms from '../chat/dms.js';
@@ -2335,6 +2336,7 @@ declare const fullApi: ApiFromModules<{
 	'channels/adapters/whatsapp': typeof channels_adapters_whatsapp;
 	'channels/credentials': typeof channels_credentials;
 	'channels/outbound': typeof channels_outbound;
+	'channels/outboundCommit': typeof channels_outboundCommit;
 	'chat/_helpers': typeof chat__helpers;
 	'chat/attachments': typeof chat_attachments;
 	'chat/dms': typeof chat_dms;

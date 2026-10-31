@@ -6,7 +6,7 @@
  * Provides a unified timeline view per thread and per contact.
  */
 
-import { v } from 'convex/values';
+import { v, type ObjectType } from 'convex/values';
 import { internalQuery, internalAction } from './_generated/server';
 import { internalMutation } from './lib/writeFence';
 import type { MutationCtx } from './_generated/server';
@@ -143,58 +143,71 @@ export const getChannelConfigs = authedQuery({
 // Mutations
 // ============================================================
 
+const recordOutboundArgs = {
+	threadId: v.id('conversationThreads'),
+	channel: unifiedMessageChannelValidator,
+	contactId: v.optional(v.id('contacts')),
+	memberId: v.optional(v.string()),
+	content: v.string(),
+	externalMessageId: v.optional(v.string()),
+	status: v.optional(
+		v.union(v.literal('queued'), v.literal('sent'), v.literal('delivered'), v.literal('failed'))
+	),
+	metadata: v.optional(v.string()),
+};
+
 /**
- * Record an outbound message from any channel
+ * Record an outbound message from any channel. No caller in this release: the
+ * channel dispatch commits through `channels/outboundCommit.ts`, which shares
+ * {@link insertOutboundMessage}. Remove after release N+1.
  */
 export const recordOutbound = internalMutation({
-	args: {
-		threadId: v.id('conversationThreads'),
-		channel: unifiedMessageChannelValidator,
-		contactId: v.optional(v.id('contacts')),
-		memberId: v.optional(v.string()),
-		content: v.string(),
-		externalMessageId: v.optional(v.string()),
-		status: v.optional(
-			v.union(v.literal('queued'), v.literal('sent'), v.literal('delivered'), v.literal('failed'))
-		),
-		metadata: v.optional(v.string()),
-	},
-	handler: async (ctx, args) => {
-		const now = Date.now();
-		const id = await ctx.db.insert('unifiedMessages', {
-			threadId: args.threadId,
-			channel: args.channel,
-			direction: 'outbound',
-			contactId: args.contactId,
-			memberId: args.memberId,
-			...(await sealUnifiedMessageContentAtWrite(args.content)),
-			externalMessageId: args.externalMessageId,
-			status: args.status ?? 'queued',
-			metadata: args.metadata,
-			createdAt: now,
-		});
-
-		// Stamp the channel's last successful send so the dashboard channel card
-		// has a live signal (the field is otherwise never written). A `sent`
-		// status is the provider's synchronous acceptance, the same point the
-		// timeline row is recorded, for the SMS/WhatsApp/generic manual and
-		// agent-reply paths that flow through channels/outbound.dispatchOutbound.
-		if (args.status === 'sent') {
-			await stampChannelLastSuccessfulSend(ctx, args.channel, now);
-		}
-		// A message that reached the customer is a reply: it closes the thread's
-		// response clock (inbox/sla/clock.ts). A person's channel reply has no
-		// inbound message to complete, so this is the only place it is seen.
-		if (args.status === 'sent' || args.status === 'delivered') {
-			await threadTransition(ctx, {
-				threadId: args.threadId,
-				input: { kind: 'reply_sent', at: now },
-			});
-		}
-
-		return id;
-	},
+	args: recordOutboundArgs,
+	handler: async (ctx, args) => await insertOutboundMessage(ctx, args),
 });
+
+/**
+ * Insert an outbound timeline row, stamp the channel's last successful send
+ * and close the thread's response clock when it reached the customer.
+ */
+export async function insertOutboundMessage(
+	ctx: MutationCtx,
+	args: ObjectType<typeof recordOutboundArgs>
+): Promise<Id<'unifiedMessages'>> {
+	const now = Date.now();
+	const id = await ctx.db.insert('unifiedMessages', {
+		threadId: args.threadId,
+		channel: args.channel,
+		direction: 'outbound',
+		contactId: args.contactId,
+		memberId: args.memberId,
+		...(await sealUnifiedMessageContentAtWrite(args.content)),
+		externalMessageId: args.externalMessageId,
+		status: args.status ?? 'queued',
+		metadata: args.metadata,
+		createdAt: now,
+	});
+
+	// Stamp the channel's last successful send so the dashboard channel card
+	// has a live signal (the field is otherwise never written). A `sent`
+	// status is the provider's synchronous acceptance, the same point the
+	// timeline row is recorded, for the SMS/WhatsApp/generic manual and
+	// agent-reply paths that flow through channels/outbound.dispatchOutbound.
+	if (args.status === 'sent') {
+		await stampChannelLastSuccessfulSend(ctx, args.channel, now);
+	}
+	// A message that reached the customer is a reply: it closes the thread's
+	// response clock (inbox/sla/clock.ts). A person's channel reply has no
+	// inbound message to complete, so this is the only place it is seen.
+	if (args.status === 'sent' || args.status === 'delivered') {
+		await threadTransition(ctx, {
+			threadId: args.threadId,
+			input: { kind: 'reply_sent', at: now },
+		});
+	}
+
+	return id;
+}
 
 /**
  * Update delivery status of an outbound message. Called by the channel
