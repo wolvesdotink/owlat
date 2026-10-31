@@ -38,13 +38,16 @@ const queryArgs = computed(() => {
 	return 'skip' as const;
 });
 
-const { data: shareLinks } = useConvexQuery(api.shareLinks.listShareLinks, () => queryArgs.value);
+const { data: shareLinks } = useConvexQuery(
+	api.shareLinks.links.listShareLinks,
+	() => queryArgs.value
+);
 
 // Mutations
-const { run: createShareLink } = useBackendOperation(api.shareLinks.createShareLink, {
+const { run: createShareLink } = useBackendOperation(api.shareLinks.links.createShareLink, {
 	label: () => t('components.shareLinksPopover.createOperation'),
 });
-const { run: revokeShareLink } = useBackendOperation(api.shareLinks.revokeShareLink, {
+const { run: revokeShareLink } = useBackendOperation(api.shareLinks.links.revokeShareLink, {
 	label: () => t('components.shareLinksPopover.revokeOperation'),
 });
 

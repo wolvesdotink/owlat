@@ -1,17 +1,17 @@
 import { v } from 'convex/values';
 import { decodeJson } from '@owlat/worker-protocol/decodeJson';
-import { httpAction } from './_generated/server';
-import { components, internal } from './_generated/api';
-import { requireInstanceSecret } from './lib/instanceSecret';
-import { logError } from './lib/runtimeLog';
-import { errorResponse, jsonResponse } from './lib/httpResponse';
+import { httpAction } from '../_generated/server';
+import { components, internal } from '../_generated/api';
+import { requireInstanceSecret } from '../lib/instanceSecret';
+import { logError } from '../lib/runtimeLog';
+import { errorResponse, jsonResponse } from '../lib/httpResponse';
 import {
 	ALREADY_SEEDED,
 	USERS_EXIST,
 	adminSeedAnswer,
 	planAdminSeed,
 	type AdminSeedAnswer,
-} from './auth/seedAdminDecision';
+} from './seedAdminDecision';
 
 /**
  * HTTP action to seed the first admin user on a local instance.

@@ -225,12 +225,12 @@ describe('token-bearing reads return no capability', () => {
 	});
 });
 
-describe('shareLinks.listShareLinks delivers the token to link managers only', () => {
+describe('shareLinks.links.listShareLinks delivers the token to link managers only', () => {
 	it.each([OWNER, ADMIN] as const)(
 		'%s receives the token the copy action needs',
 		async (caller) => {
 			const { t, seed, templateId } = await fixture();
-			const links = await as(t, seed, caller).query(api.shareLinks.listShareLinks, {
+			const links = await as(t, seed, caller).query(api.shareLinks.links.listShareLinks, {
 				emailTemplateId: templateId,
 			});
 			expect(links.map((link) => link.token)).toEqual([SHARE_TOKEN]);
@@ -240,7 +240,9 @@ describe('shareLinks.listShareLinks delivers the token to link managers only', (
 	it('refuses an editor', async () => {
 		const { t, seed, templateId } = await fixture();
 		await expect(
-			as(t, seed, EDITOR).query(api.shareLinks.listShareLinks, { emailTemplateId: templateId })
+			as(t, seed, EDITOR).query(api.shareLinks.links.listShareLinks, {
+				emailTemplateId: templateId,
+			})
 		).rejects.toMatchObject({ data: { category: 'forbidden' } });
 	});
 });

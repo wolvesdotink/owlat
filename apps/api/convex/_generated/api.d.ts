@@ -303,7 +303,6 @@ import type * as auth_accountExportPushQueries from '../auth/accountExportPushQu
 import type * as auth_accountExportQueries from '../auth/accountExportQueries.js';
 import type * as auth_accountExportThreadBriefQueries from '../auth/accountExportThreadBriefQueries.js';
 import type * as auth_accountManagement from '../auth/accountManagement.js';
-import type * as apiV1Http from '../apiV1Http.js';
 import type * as auth_apiAuth from '../auth/apiAuth.js';
 import type * as auth_apiAuthHttp from '../auth/apiAuthHttp.js';
 import type * as auth_apiHandlers from '../auth/apiHandlers.js';
@@ -338,6 +337,7 @@ import type * as auth_passwordReauth from '../auth/passwordReauth.js';
 import type * as auth_registrationGate from '../auth/registrationGate.js';
 import type * as auth_seedAdminCommit from '../auth/seedAdminCommit.js';
 import type * as auth_seedAdminDecision from '../auth/seedAdminDecision.js';
+import type * as auth_seedAdminHttp from '../auth/seedAdminHttp.js';
 import type * as auth_sendReadyNotices from '../auth/sendReadyNotices.js';
 import type * as auth_trustedOrigins from '../auth/trustedOrigins.js';
 import type * as auth_userOnboarding from '../auth/userOnboarding.js';
@@ -849,7 +849,6 @@ import type * as emailCoediting_sessionOps from '../emailCoediting/sessionOps.js
 import type * as emailCoediting_sessions from '../emailCoediting/sessions.js';
 import type * as emailCoediting_sweep from '../emailCoediting/sweep.js';
 import type * as emailCoediting_target from '../emailCoediting/target.js';
-import type * as eventsApi from '../eventsApi.js';
 import type * as files_cards from '../files/cards.js';
 import type * as files_history from '../files/history.js';
 import type * as files_historyCursor from '../files/historyCursor.js';
@@ -1639,6 +1638,8 @@ import type * as providers_domainIdentity from '../providers/domainIdentity.js';
 import type * as providers_feedback from '../providers/feedback.js';
 import type * as providers_feedbackStatus from '../providers/feedbackStatus.js';
 import type * as providerRoutes from '../providerRoutes.js';
+import type * as publicApi_events from '../publicApi/events.js';
+import type * as publicApi_v1Http from '../publicApi/v1Http.js';
 import type * as push_config from '../push/config.js';
 import type * as push_copy from '../push/copy.js';
 import type * as push_delivery from '../push/delivery.js';
@@ -1732,7 +1733,6 @@ import type * as schema_transportOutcomes from '../schema/transportOutcomes.js';
 import type * as schema_webhooks from '../schema/webhooks.js';
 import type * as schema_workspaceDeletion from '../schema/workspaceDeletion.js';
 import type * as schema_workerServers from '../schema/workerServers.js';
-import type * as seedAdminHttp from '../seedAdminHttp.js';
 import type * as seedDemo_index from '../seedDemo/index.js';
 import type * as seedDemo_indexHttp from '../seedDemo/indexHttp.js';
 import type * as seedDemo_loaders_accounts from '../seedDemo/loaders/accounts.js';
@@ -1756,9 +1756,11 @@ import type * as segments_countRefresh from '../segments/countRefresh.js';
 import type * as segments_listing from '../segments/listing.js';
 import type * as semanticFileProcessing from '../semanticFileProcessing.js';
 import type * as semanticFiles from '../semanticFiles.js';
-import type * as shareLinkHttp from '../shareLinkHttp.js';
 import type * as shareLinkQueries from '../shareLinkQueries.js';
 import type * as shareLinks from '../shareLinks.js';
+import type * as shareLinks_links from '../shareLinks/links.js';
+import type * as shareLinks_queries from '../shareLinks/queries.js';
+import type * as shareLinks_viewHttp from '../shareLinks/viewHttp.js';
 import type * as storage from '../storage.js';
 import type * as systemMail from '../systemMail.js';
 import type * as systemUpdates from '../systemUpdates.js';
@@ -1966,7 +1968,6 @@ declare const fullApi: ApiFromModules<{
 	aiProviderConfig: typeof aiProviderConfig;
 	aiProviderConfigActions: typeof aiProviderConfigActions;
 	auditLogs: typeof auditLogs;
-	apiV1Http: typeof apiV1Http;
 	autonomy: typeof autonomy;
 	autonomyFeedback: typeof autonomyFeedback;
 	autonomyOutcome: typeof autonomyOutcome;
@@ -1977,18 +1978,15 @@ declare const fullApi: ApiFromModules<{
 	confirmationEmail: typeof confirmationEmail;
 	confirmationEmailQueries: typeof confirmationEmailQueries;
 	crons: typeof crons;
-	eventsApi: typeof eventsApi;
 	globalSearch: typeof globalSearch;
 	http: typeof http;
 	mediaAssets: typeof mediaAssets;
 	providerRoutes: typeof providerRoutes;
 	quickQuery: typeof quickQuery;
 	quickQueryGate: typeof quickQueryGate;
-	seedAdminHttp: typeof seedAdminHttp;
 	segments: typeof segments;
 	semanticFileProcessing: typeof semanticFileProcessing;
 	semanticFiles: typeof semanticFiles;
-	shareLinkHttp: typeof shareLinkHttp;
 	shareLinkQueries: typeof shareLinkQueries;
 	shareLinks: typeof shareLinks;
 	storage: typeof storage;
@@ -2176,6 +2174,7 @@ declare const fullApi: ApiFromModules<{
 	'auth/registrationGate': typeof auth_registrationGate;
 	'auth/seedAdminCommit': typeof auth_seedAdminCommit;
 	'auth/seedAdminDecision': typeof auth_seedAdminDecision;
+	'auth/seedAdminHttp': typeof auth_seedAdminHttp;
 	'auth/sendReadyNotices': typeof auth_sendReadyNotices;
 	'auth/trustedOrigins': typeof auth_trustedOrigins;
 	'auth/userOnboarding': typeof auth_userOnboarding;
@@ -3713,6 +3712,9 @@ declare const fullApi: ApiFromModules<{
 	'providers/feedback': typeof providers_feedback;
 	'providers/feedbackStatus': typeof providers_feedbackStatus;
 }> & ApiFromModules<{
+	'publicApi/events': typeof publicApi_events;
+	'publicApi/v1Http': typeof publicApi_v1Http;
+}> & ApiFromModules<{
 	'push/config': typeof push_config;
 	'push/copy': typeof push_copy;
 	'push/delivery': typeof push_delivery;
@@ -3834,6 +3836,10 @@ declare const fullApi: ApiFromModules<{
 }> & ApiFromModules<{
 	'segments/countRefresh': typeof segments_countRefresh;
 	'segments/listing': typeof segments_listing;
+}> & ApiFromModules<{
+	'shareLinks/links': typeof shareLinks_links;
+	'shareLinks/queries': typeof shareLinks_queries;
+	'shareLinks/viewHttp': typeof shareLinks_viewHttp;
 }> & ApiFromModules<{
 	'storage/uploadsHttp': typeof storage_uploadsHttp;
 	'storage/uploads': typeof storage_uploads;
