@@ -94,3 +94,15 @@ convex/campaigns/multiDaySendPlan.ts
 convex/campaigns/sendVariantSplit.ts
 convex/campaigns/sendTimeOptimization.ts
 convex/delivery/sendComposition/listId.ts
+
+# Approved agent reply decisions; the action (agent/agentPipeline.ts
+# sendApprovedReply) is the shell.
+convex/agent/approvedReplyDecision.ts
+
+# Hosted MX delivery decisions; the mutation (mail/delivery.ts
+# deliverToMailbox) is the shell.
+convex/mail/deliveryPipeline/mailboxDecision.ts
+
+# Contact import decisions; the mutation (contacts/import.ts importBatch) is
+# the shell.
+convex/contacts/importDecision.ts

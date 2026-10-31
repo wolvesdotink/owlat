@@ -33,10 +33,23 @@ import { resolveContact } from './resolution';
 import { autoRegisterProperty, loadPropertyCatalog, type PropertyCatalog } from './propertyCatalog';
 import { deduplicateContactsByEmail } from '../lib/contactHelpers';
 import { incrementContactCount } from '../lib/contactCountHelpers';
-import { isValidEmail, normalizeEmail, STRING_LIMITS } from '../lib/inputGuards';
+import { STRING_LIMITS } from '../lib/inputGuards';
 import { recordContactActivity } from '../contactActivities/writer';
 import { jsonPrimitiveValue } from '../lib/convexValidators';
 import { duplicateHandlingValidator } from '../lib/literalValidators';
+import {
+	buildPerTopicLists,
+	countAddedToTopic,
+	countResolution,
+	countRowProperties,
+	doiAttestInput,
+	emptyImportOutcome,
+	type ImportOutcome,
+	noteImportError,
+	noteSkippedKeys,
+	rowActivity,
+	rowEmail,
+} from './importDecision';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -44,30 +57,7 @@ export const IMPORT_SOURCE_LITERALS = ['csv', 'api', 'mailchimp', 'stripe'] as c
 
 export type ImportSource = (typeof IMPORT_SOURCE_LITERALS)[number];
 
-export type ImportRow = {
-	email: string;
-	firstName?: string;
-	lastName?: string;
-	language?: string;
-	properties?: Record<string, string | number | boolean | null>;
-};
-
-export type TopicAssignments =
-	| { kind: 'single'; topicId: Id<'topics'> }
-	| { kind: 'per_row'; map: Record<string, Id<'topics'>[]> };
-
-export type ImportOutcome = {
-	imported: number;
-	updated: number;
-	skipped: number;
-	failed: number;
-	errors: string[];
-	addedToTopics: number;
-	propertiesSet: number;
-	propertiesAutoRegistered: number;
-	propertiesSkipped: number;
-	activitiesRecorded: number;
-};
+export type { ImportOutcome, ImportRow, TopicAssignments } from './importDecision';
 
 // ─── Validators ─────────────────────────────────────────────────────────────
 
@@ -104,8 +94,6 @@ const doiAttestValidator = v.object({
  * on the web UI shell (`contacts/contacts.ts:importBatch`); now uniform.
  */
 const IMPORT_BATCH_MAX_ROWS = 500;
-
-const ERROR_CAP = 50;
 
 // ─── Internal helpers ───────────────────────────────────────────────────────
 
@@ -211,38 +199,6 @@ async function applyRowProperties(
 	return summary;
 }
 
-/**
- * Build per-topic contact-id lists from the `topicAssignments` input. The
- * `single` shape produces a one-entry map keyed by the single topicId; the
- * `per_row` shape coalesces per email → topicIds.
- *
- * `subscribeMany` is called once per distinct topic — the per-call coalescing
- * keeps the `cachedMemberCount` patch to one DB write per topic.
- */
-function buildPerTopicLists(
-	assignments: TopicAssignments,
-	contactEmailById: ReadonlyMap<Id<'contacts'>, string>
-): Map<Id<'topics'>, Id<'contacts'>[]> {
-	const perTopic = new Map<Id<'topics'>, Id<'contacts'>[]>();
-	if (assignments.kind === 'single') {
-		const allContactIds = Array.from(contactEmailById.keys());
-		if (allContactIds.length > 0) {
-			perTopic.set(assignments.topicId, allContactIds);
-		}
-		return perTopic;
-	}
-	for (const [contactId, email] of contactEmailById.entries()) {
-		const topicIds = assignments.map[email];
-		if (!topicIds || topicIds.length === 0) continue;
-		for (const topicId of topicIds) {
-			const list = perTopic.get(topicId) ?? [];
-			list.push(contactId);
-			perTopic.set(topicId, list);
-		}
-	}
-	return perTopic;
-}
-
 // ─── Public entry ───────────────────────────────────────────────────────────
 
 const importBatchArgsValidator = {
@@ -277,41 +233,24 @@ export const importBatch = internalMutation({
 			deduplicateContactsByEmail(args.rows);
 
 		const catalog = await loadPropertyCatalog(ctx);
+		const outcome = emptyImportOutcome(withinBatchDuplicates);
 
-		const outcome: ImportOutcome = {
-			imported: 0,
-			updated: 0,
-			skipped: withinBatchDuplicates,
-			failed: 0,
-			errors: [],
-			addedToTopics: 0,
-			propertiesSet: 0,
-			propertiesAutoRegistered: 0,
-			propertiesSkipped: 0,
-			activitiesRecorded: 0,
-		};
-
-		// Track keys skipped across rows so the batch-level summary line can
-		// aggregate (`"Property 'COMPANY' is not registered; values dropped
-		// for 5 rows."`).
+		// Keys skipped across rows, for one batch-level summary line per key.
 		const skippedKeyCounts = new Map<string, number>();
 
-		// Track resolved contacts (id + normalized email) for post-loop topic
-		// subscription. Mailchimp/Stripe rows come in already-lowercased;
-		// CSV/API may not — we always normalize before resolution.
+		// Resolved contacts (id + normalized email) for post-loop topic subscription.
 		const resolvedByEmail = new Map<Id<'contacts'>, string>();
 
 		const now = Date.now();
 
 		for (const row of deduplicatedRows) {
-			const normalizedEmail = row.email ? normalizeEmail(row.email) : undefined;
-			if (!normalizedEmail || !isValidEmail(normalizedEmail)) {
+			const resolved = rowEmail(row);
+			if ('error' in resolved) {
 				outcome.failed++;
-				if (outcome.errors.length < ERROR_CAP) {
-					outcome.errors.push(`Invalid email: ${row.email ?? '(empty)'}`);
-				}
+				noteImportError(outcome, resolved.error);
 				continue;
 			}
+			const normalizedEmail = resolved.email;
 
 			try {
 				const { contactId, action, changedProperties } = await resolveContact(ctx, {
@@ -325,10 +264,7 @@ export const importBatch = internalMutation({
 						language: row.language,
 					},
 				});
-
-				if (action === 'created') outcome.imported++;
-				else if (action === 'updated') outcome.updated++;
-				else outcome.skipped++;
+				countResolution(outcome, action);
 
 				// A merge that changed a built-in field must fire the
 				// `contact_updated` automation trigger — the resolution module
@@ -351,43 +287,11 @@ export const importBatch = internalMutation({
 					source,
 					catalog
 				);
-				outcome.propertiesSet += propertySummary.written;
-				outcome.propertiesAutoRegistered += propertySummary.autoRegistered;
-				for (const key of propertySummary.skippedKeys) {
-					skippedKeyCounts.set(key, (skippedKeyCounts.get(key) ?? 0) + 1);
-					outcome.propertiesSkipped++;
-				}
+				countRowProperties(outcome, propertySummary, skippedKeyCounts);
 
-				// Activity recording. For newly-created contacts: one `created`
-				// row. For existing contacts that received property writes:
-				// one `property_updated` row (aggregated across all property
-				// writes for this row to avoid timeline noise).
-				if (action === 'created') {
-					await recordContactActivity(ctx, {
-						literal: 'created',
-						contactId,
-						metadata: { source: 'import' },
-						occurredAt: now,
-					});
-					outcome.activitiesRecorded++;
-				} else if (propertySummary.written > 0) {
-					// Use the first written key as the representative key in
-					// the activity row's metadata — the row is summary-level,
-					// not per-property.
-					const firstKey =
-						Object.keys(row.properties ?? {}).find((k) => {
-							const v = row.properties?.[k];
-							return v !== null && v !== undefined && v !== '';
-						}) ?? 'properties';
-					await recordContactActivity(ctx, {
-						literal: 'property_updated',
-						contactId,
-						metadata: {
-							propertyKey: firstKey,
-							newValue: `${propertySummary.written} value(s) updated`,
-						},
-						occurredAt: now,
-					});
+				const activity = rowActivity(action, row, propertySummary.written, contactId, now);
+				if (activity) {
+					await recordContactActivity(ctx, activity);
 					outcome.activitiesRecorded++;
 				}
 
@@ -396,31 +300,18 @@ export const importBatch = internalMutation({
 				if (args.doiAttest) {
 					await ctx.runMutation(internal.contacts.doiLifecycle.transition, {
 						contactId,
-						input: {
-							to: 'confirmed',
-							at: now,
-							source: 'admin_attest',
-							attestSource: args.doiAttest.attestSource,
-							...(args.doiAttest.triggeredBy ? { triggeredBy: args.doiAttest.triggeredBy } : {}),
-						},
+						input: doiAttestInput(args.doiAttest, now),
 					});
 				}
 			} catch (error) {
 				outcome.failed++;
-				if (outcome.errors.length < ERROR_CAP) {
-					const message = error instanceof Error ? error.message : 'Unknown error';
-					outcome.errors.push(`Failed to process ${row.email ?? '(unknown)'}: ${message}`);
-				}
+				const message = error instanceof Error ? error.message : 'Unknown error';
+				noteImportError(outcome, `Failed to process ${row.email ?? '(unknown)'}: ${message}`);
 			}
 		}
 
 		// Batch-level summary lines for skipped property keys (CSV/API only).
-		for (const [key, count] of skippedKeyCounts.entries()) {
-			if (outcome.errors.length >= ERROR_CAP) break;
-			outcome.errors.push(
-				`Property '${key}' is not registered; values dropped for ${count} row(s).`
-			);
-		}
+		noteSkippedKeys(outcome, skippedKeyCounts);
 
 		// Per-topic subscribeMany coalescing.
 		if (args.topicAssignments && resolvedByEmail.size > 0) {
@@ -433,18 +324,13 @@ export const importBatch = internalMutation({
 						source: 'import',
 						...(args.siteUrl ? { siteUrl: args.siteUrl } : {}),
 					});
-					for (const sub of result.outcomes) {
-						if (sub.ok && (sub.action === 'subscribed' || sub.action === 'pending_doi')) {
-							outcome.addedToTopics++;
-						}
-					}
+					outcome.addedToTopics += countAddedToTopic(result.outcomes);
 				} catch (error) {
-					if (outcome.errors.length < ERROR_CAP) {
-						const message = error instanceof Error ? error.message : 'Unknown error';
-						outcome.errors.push(
-							`Failed to subscribe ${contactIds.length} contact(s) to topic: ${message}`
-						);
-					}
+					const message = error instanceof Error ? error.message : 'Unknown error';
+					noteImportError(
+						outcome,
+						`Failed to subscribe ${contactIds.length} contact(s) to topic: ${message}`
+					);
 				}
 			}
 		}

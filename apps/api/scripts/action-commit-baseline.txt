@@ -1,7 +1,6 @@
 # Action commits past the first, one line each: <module>:<action> #<n>.
 # Frozen debt for scripts/check-action-commits.sh; delete lines as actions
 # are converted to one commit, never add them.
-convex/agent/agentPipeline.ts:sendApprovedReply #2
 convex/agent/walker.ts:resumeDraft #2
 convex/agent/walker.ts:runStep #2
 convex/agent/walker.ts:runStep #3
