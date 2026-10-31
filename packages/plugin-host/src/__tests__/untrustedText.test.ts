@@ -1,6 +1,6 @@
 import { parsePluginId } from '@owlat/plugin-kit';
 import { describe, expect, it, vi } from 'vitest';
-import { applyPluginUntrustedTextPolicy, PluginHostError } from '../index';
+import { applyPluginUntrustedTextPolicy, type PluginHostError } from '../index';
 
 const policyPackId = parsePluginId('policy-pack');
 

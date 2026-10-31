@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { composeBundledPlugins, PluginCompositionError } from '../composition';
+import { composeBundledPlugins, type PluginCompositionError } from '../composition';
 
 function manifest(id: string, capabilities: readonly string[] = []) {
 	return { id, version: '1.0.0', capabilities };

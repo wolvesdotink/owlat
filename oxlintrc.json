@@ -67,7 +67,7 @@
 		"@typescript-eslint/no-non-null-asserted-optional-chain": "error",
 		"@typescript-eslint/prefer-optional-chain": "error",
 		"no-unsafe-optional-chaining": "error",
-		"@typescript-eslint/consistent-type-imports": "warn",
+		"@typescript-eslint/consistent-type-imports": "error",
 		"import/no-duplicates": "warn",
 		"unicorn/no-array-for-each": "warn",
 		"import/no-cycle": "error",
