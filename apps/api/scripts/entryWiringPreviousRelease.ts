@@ -27,6 +27,9 @@ export const PREVIOUS_RELEASE_ENTRIES: Readonly<Record<string, string>> = {
 	'emailTemplates/versions.ts#captureForSend': 'old campaign send preparations mid-run',
 	// The archive import runner now commits a pass with mail/archiveImport.ts `commitPass`.
 	'mail/archiveImport.ts#recordProgress': 'old archive import passes mid-run',
+	// The indexing sweep now commits a chunk with mail/migrationIndexingCommit.ts `commitIndexChunk`.
+	'mail/migrationIndexing.ts#patchIndexProgress': 'old mailbox indexing chunks mid-run',
+	'mail/migrationIndexing.ts#finalizeMigration': 'old mailbox indexing chunks mid-run',
 	// System & updates now reads maintenance/workerRegistry.ts `getForAdmin`.
 	'mail/imap/serverRegistry.ts#getForAdmin':
 		'the previous IMAP servers card on System & updates, in tabs opened before the deploy',

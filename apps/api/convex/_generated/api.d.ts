@@ -1450,6 +1450,7 @@ import type * as mail_messagePurge from '../mail/messagePurge.js';
 import type * as mail_migration from '../mail/migration.js';
 import type * as mail_migrationBackfill from '../mail/migrationBackfill.js';
 import type * as mail_migrationIndexing from '../mail/migrationIndexing.js';
+import type * as mail_migrationIndexingCommit from '../mail/migrationIndexingCommit.js';
 import type * as mail_migrationShared from '../mail/migrationShared.js';
 import type * as mail_mtaClient from '../mail/mtaClient.js';
 import type * as mail_mute from '../mail/mute.js';
@@ -3361,6 +3362,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/migration': typeof mail_migration;
 	'mail/migrationBackfill': typeof mail_migrationBackfill;
 	'mail/migrationIndexing': typeof mail_migrationIndexing;
+	'mail/migrationIndexingCommit': typeof mail_migrationIndexingCommit;
 	'mail/migrationShared': typeof mail_migrationShared;
 	'mail/mtaClient': typeof mail_mtaClient;
 	'mail/mute': typeof mail_mute;

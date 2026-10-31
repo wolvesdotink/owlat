@@ -642,6 +642,36 @@ describe('migrationIndexing — cancel during indexing is sticky', () => {
 			expect(m!.indexCursorReceivedAt).toBeUndefined();
 		});
 	});
+
+	it('a chunk committed after a cancel writes nothing and schedules no next chunk', async () => {
+		const t = convexTest(schema, modules);
+		let s!: Seeded;
+		let migrationId!: Id<'mailboxMigrations'>;
+		await t.run(async (ctx) => {
+			s = await seedMailbox(ctx);
+			migrationId = await seedMigration(ctx, s, { status: 'cancelled' });
+		});
+
+		for (const outcome of ['more', 'done'] as const) {
+			expect(
+				await t.mutation(internal.mail.migrationIndexingCommit.commitIndexChunk, {
+					migrationId,
+					outcome,
+					deltaIndexed: 5,
+					cursorReceivedAt: 2000,
+					chunkSize: 30,
+					nextChunkDelayMs: 0,
+				})
+			).toBe('stopped');
+		}
+
+		await t.run(async (ctx) => {
+			const m = await ctx.db.get(migrationId);
+			expect(m).toMatchObject({ status: 'cancelled', messagesIndexed: 0 });
+			expect(m!.indexCursorReceivedAt).toBeUndefined();
+			expect(await ctx.db.system.query('_scheduled_functions').collect()).toHaveLength(0);
+		});
+	});
 });
 
 // =====================================================================

@@ -36,7 +36,7 @@ import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { isFeatureEnabled } from '../lib/featureFlags';
 import { resolveContact } from '../contacts/resolution';
-import { markOnboardingStep } from '../auth/userOnboarding';
+import { addIndexProgress, finalizeIndexing } from './migrationIndexingCommit';
 import { normalizeEmail } from '@owlat/shared';
 import { logError } from '../lib/runtimeLog';
 import { loadExtractableMail } from './knowledgeScreen';
@@ -194,7 +194,12 @@ function splitDisplayName(name: string | undefined): {
 	return { firstName: parts[0], lastName: parts.slice(1).join(' ') };
 }
 
-/** Advance the index cursor and bump the swept-message counter. */
+/**
+ * Advance the index cursor and bump the swept-message counter: the previous
+ * release's chunk commit (its runner then rescheduled or finalized in separate
+ * calls). A migration `commitIndexChunk` already finalized is no longer
+ * indexing and is left alone. Remove after release N+1.
+ */
 export const patchIndexProgress = internalMutation({
 	args: {
 		migrationId: v.id('mailboxMigrations'),
@@ -207,12 +212,7 @@ export const patchIndexProgress = internalMutation({
 		// Only touch a still-indexing row: a chunk that was in flight when the
 		// user cancelled (status → 'cancelled') must not resurrect the counter.
 		if (!migration || migration.status !== 'indexing') return;
-		await ctx.db.patch(args.migrationId, {
-			messagesIndexed: migration.messagesIndexed + args.deltaIndexed,
-			indexCursorReceivedAt: args.cursorReceivedAt ?? migration.indexCursorReceivedAt,
-			indexCursorId: args.cursorId ?? migration.indexCursorId,
-			updatedAt: Date.now(),
-		});
+		await addIndexProgress(ctx, migration, args);
 	},
 });
 
@@ -281,7 +281,11 @@ export const reindexMigration = internalMutation({
 		await startReindexSweep(ctx, await ctx.db.get(args.migrationId)),
 });
 
-/** Move the migration to a terminal state. */
+/**
+ * Move the migration to a terminal state: the previous release's runner
+ * finalized through this; `commitIndexChunk` now does it in the chunk's own
+ * commit. Remove after release N+1.
+ */
 export const finalizeMigration = internalMutation({
 	args: {
 		migrationId: v.id('mailboxMigrations'),
@@ -299,25 +303,7 @@ export const finalizeMigration = internalMutation({
 		// a chunk is in flight); without this guard the final chunk would overwrite
 		// the cancellation back to 'completed' and silently undo the user's intent.
 		if (!migration || migration.status !== 'indexing') return;
-		const now = Date.now();
-		await ctx.db.patch(args.migrationId, {
-			status: args.status,
-			completedAt: now,
-			updatedAt: now,
-			lastError: args.errorMessage ?? migration.lastError,
-		});
-		// Only a sweep that ran to its natural end counts as knowledge indexed for
-		// the migration owner's onboarding checklist — a mid-sweep feature disable
-		// finalizes with status 'completed' too, but leaves the step unmarked. A
-		// `shared` migration indexed a TEAM inbox (org infrastructure, opt-in), so
-		// it never counts toward the admin's personal checklist either.
-		if (
-			args.status === 'completed' &&
-			args.indexingRanToCompletion === true &&
-			migration.scope !== 'shared'
-		) {
-			await markOnboardingStep(ctx, migration.userId, 'knowledgeIndexed');
-		}
+		await finalizeIndexing(ctx, migration, args);
 	},
 });
 
@@ -348,6 +334,9 @@ async function indexOneMessage(
 		if (!(await loadExtractableMail(ctx, msg._id))) return;
 
 		// Scope the knowledge to the sender (quiet find-or-create).
+		// checkpoint: the find-or-create upserts by address and never overwrites a
+		// contact, so a re-swept message resolves the same contact; the extraction
+		// below needs its id before it runs.
 		const { contactId } = await ctx.runMutation(
 			internal.mail.migrationIndexing.resolveSenderContact,
 			{ email: msg.fromAddress, fromName: msg.fromName ?? undefined }
@@ -373,11 +362,69 @@ async function indexOneMessage(
 	}
 }
 
+/** What one chunk did, for `commitIndexChunk`; `null`: nothing to commit. */
+type IndexedChunk = {
+	outcome: 'more' | 'done' | 'disabled' | 'failed';
+	deltaIndexed: number;
+	cursorReceivedAt?: number;
+	cursorId?: Id<'mailMessages'>;
+	errorMessage?: string;
+};
+
+/**
+ * Read one chunk and extract its messages. Commits nothing but the per-message
+ * sender contacts: the caller commits what it returns.
+ */
+async function indexChunk(
+	ctx: ActionCtx,
+	args: { migrationId: Id<'mailboxMigrations'>; chunkSize: number }
+): Promise<IndexedChunk | null> {
+	const migration = await ctx.runQuery(internal.mail.migrationIndexing.loadMigration, {
+		migrationId: args.migrationId,
+	});
+	if (!migration) return null;
+	if (migration.status !== 'indexing') return null; // cancelled / already done
+
+	// Honor a mid-sweep feature disable: the import is kept, indexing stops.
+	const enabled = await ctx.runQuery(internal.mail.migrationIndexing.isKnowledgeEnabled, {});
+	if (!enabled) return { outcome: 'disabled', deltaIndexed: 0 };
+
+	const { messages, hasMore } = await ctx.runQuery(internal.mail.migrationIndexing.nextIndexChunk, {
+		mailboxId: migration.mailboxId,
+		cursorReceivedAt: migration.indexCursorReceivedAt,
+		cursorId: migration.indexCursorId,
+		limit: args.chunkSize,
+	});
+
+	// Work through the chunk a few messages at a time, and stop taking new
+	// ones once the time budget is spent: one extraction is a 20-60s LLM
+	// call, so a whole chunk in sequence outran Convex's action limit, and
+	// an action killed mid-chunk never reschedules — the migration sat at
+	// `indexing` forever. Whatever is left is the next invocation's.
+	// The first group always runs, so every invocation makes progress.
+	const startedAt = Date.now();
+	let processed = 0;
+	while (processed < messages.length) {
+		if (processed > 0 && Date.now() - startedAt >= CHUNK_TIME_BUDGET_MS) break;
+		const group = messages.slice(processed, processed + INDEX_CONCURRENCY);
+		await Promise.all(group.map((msg) => indexOneMessage(ctx, args.migrationId, msg)));
+		processed += group.length;
+	}
+	const done = messages.slice(0, processed);
+	const last = done[done.length - 1];
+	return {
+		outcome: hasMore || processed < messages.length ? 'more' : 'done',
+		deltaIndexed: done.length,
+		cursorReceivedAt: last?.receivedAt,
+		cursorId: last?._id,
+	};
+}
+
 /**
  * Process one chunk of imported messages through `extractFromMailMessage`,
- * advance the cursor, and either reschedule for the next chunk or finalize the
- * migration as `completed`. Scheduled by `mail/migration.completeBackfillImport`
- * once the import phase is done.
+ * then commit its cursor together with the next chunk or the migration's
+ * terminal state (`commitIndexChunk`). Scheduled by
+ * `mail/migration.completeBackfillImport` once the import phase is done.
  */
 export const runIndexChunk = internalAction({
 	args: {
@@ -390,98 +437,29 @@ export const runIndexChunk = internalAction({
 	handler: async (ctx, args) => {
 		// One model budget for this action, from its start.
 		anchorActionDeadline(ctx);
-		const interChunkDelay = args.interChunkDelayMs ?? INTER_CHUNK_DELAY_MS;
+		let chunk: IndexedChunk | null;
 		try {
-			const migration = await ctx.runQuery(internal.mail.migrationIndexing.loadMigration, {
-				migrationId: args.migrationId,
-			});
-			if (!migration) return;
-			if (migration.status !== 'indexing') return; // cancelled / already done
-
-			// Honor a mid-sweep feature disable: the import is kept, indexing stops.
-			const enabled = await ctx.runQuery(internal.mail.migrationIndexing.isKnowledgeEnabled, {});
-			if (!enabled) {
-				await ctx.runMutation(internal.mail.migrationIndexing.finalizeMigration, {
-					migrationId: args.migrationId,
-					status: 'completed',
-					// Sweep cut off mid-flight — import kept, but knowledge is incomplete.
-					indexingRanToCompletion: false,
-				});
-				return;
-			}
-
-			const { messages, hasMore } = await ctx.runQuery(
-				internal.mail.migrationIndexing.nextIndexChunk,
-				{
-					mailboxId: migration.mailboxId,
-					cursorReceivedAt: migration.indexCursorReceivedAt,
-					cursorId: migration.indexCursorId,
-					limit: args.chunkSize,
-				}
-			);
-
-			// Work through the chunk a few messages at a time, and stop taking new
-			// ones once the time budget is spent: one extraction is a 20-60s LLM
-			// call, so a whole chunk in sequence outran Convex's action limit, and
-			// an action killed mid-chunk never reschedules — the migration sat at
-			// `indexing` forever. Whatever is left is the next invocation's.
-			// The first group always runs, so every invocation makes progress.
-			const startedAt = Date.now();
-			let processed = 0;
-			while (processed < messages.length) {
-				if (processed > 0 && Date.now() - startedAt >= CHUNK_TIME_BUDGET_MS) break;
-				const group = messages.slice(processed, processed + INDEX_CONCURRENCY);
-				await Promise.all(group.map((msg) => indexOneMessage(ctx, args.migrationId, msg)));
-				processed += group.length;
-			}
-			const done = messages.slice(0, processed);
-			const last = done[done.length - 1];
-			const deltaIndexed = done.length;
-			const lastReceivedAt = last?.receivedAt;
-			const lastId = last?._id;
-			const moreToDo = hasMore || processed < messages.length;
-
-			await ctx.runMutation(internal.mail.migrationIndexing.patchIndexProgress, {
-				migrationId: args.migrationId,
-				deltaIndexed,
-				cursorReceivedAt: lastReceivedAt,
-				cursorId: lastId,
-			});
-
-			if (moreToDo) {
-				await ctx.scheduler.runAfter(
-					interChunkDelay,
-					internal.mail.migrationIndexing.runIndexChunk,
-					{
-						migrationId: args.migrationId,
-						chunkSize: args.chunkSize,
-						interChunkDelayMs: args.interChunkDelayMs,
-					}
-				);
-			} else {
-				await ctx.runMutation(internal.mail.migrationIndexing.finalizeMigration, {
-					migrationId: args.migrationId,
-					status: 'completed',
-					indexingRanToCompletion: true,
-				});
-			}
+			chunk = await indexChunk(ctx, args);
 		} catch (err) {
-			const message = err instanceof Error ? err.message : String(err);
 			// The chunk is abandoned and the migration row is marked failed below,
 			// so the operator sees this in the UI as well as in the logs.
 			logError('[mailMigration] runIndexChunk failed', {
 				migrationId: args.migrationId,
 				error: err,
 			});
-			try {
-				await ctx.runMutation(internal.mail.migrationIndexing.finalizeMigration, {
-					migrationId: args.migrationId,
-					status: 'failed',
-					errorMessage: message,
-				});
-			} catch {
-				// finalize best-effort
-			}
+			chunk = {
+				outcome: 'failed',
+				deltaIndexed: 0,
+				errorMessage: err instanceof Error ? err.message : String(err),
+			};
 		}
+		if (!chunk) return;
+		await ctx.runMutation(internal.mail.migrationIndexingCommit.commitIndexChunk, {
+			migrationId: args.migrationId,
+			...chunk,
+			chunkSize: args.chunkSize,
+			interChunkDelayMs: args.interChunkDelayMs,
+			nextChunkDelayMs: args.interChunkDelayMs ?? INTER_CHUNK_DELAY_MS,
+		});
 	},
 });
