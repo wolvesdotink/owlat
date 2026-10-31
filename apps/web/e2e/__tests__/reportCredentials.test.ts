@@ -173,12 +173,37 @@ describe('storageStateSecrets', () => {
 		]);
 	});
 
-	it.each([['not json'], ['{}'], ['{"cookies":[{"name":"a","value":1}]}']])(
-		'throws on %s rather than reading it as "no cookies"',
-		(json) => {
-			expect(() => storageStateSecrets(json)).toThrow();
-		}
-	);
+	it.each([
+		['not json'],
+		['{}'],
+		['null'],
+		['[]'],
+		['{"cookies":{"name":"a","value":"long-enough-cookie-value"}}'],
+		['{"cookies":[{"name":"a","value":1}]}'],
+		['{"cookies":[null]}'],
+		['{"cookies":["long-enough-cookie-value"]}'],
+		['{"cookies":[],"origins":{"localStorage":[]}}'],
+		['{"cookies":[],"origins":[null]}'],
+		['{"cookies":[],"origins":[{"localStorage":"long-enough-storage-value"}]}'],
+		['{"cookies":[],"origins":[{"localStorage":[null]}]}'],
+	])('throws on %s rather than reading it as "no cookies"', (json) => {
+		expect(() => storageStateSecrets(json)).toThrow();
+	});
+
+	it('skips a localStorage value that is not a string and keeps reading', () => {
+		const state = JSON.stringify({
+			cookies: [],
+			origins: [
+				{ localStorage: [{ name: 'count', value: 1_234_567_890_123_456 }] },
+				{ localStorage: [{ name: 'cache', value: 'dummy-long-local-storage-value' }] },
+				{ origin: 'http://localhost:3000' },
+			],
+		});
+
+		expect(storageStateSecrets(state)).toEqual([
+			{ label: 'storage-state localStorage value', value: 'dummy-long-local-storage-value' },
+		]);
+	});
 });
 
 describe('scan-report-secrets CLI, run credentials', () => {

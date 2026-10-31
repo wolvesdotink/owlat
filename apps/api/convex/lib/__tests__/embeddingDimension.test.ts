@@ -41,7 +41,9 @@ describe('toIndexVector', () => {
 	});
 
 	it('throws on a too-wide vector and names the index width', () => {
-		expect(() => toIndexVector(new Array(3072).fill(0))).toThrow(String(EMBEDDING_DIMENSIONS));
+		expect(() => toIndexVector(Array.from({ length: 3072 }, () => 0))).toThrow(
+			String(EMBEDDING_DIMENSIONS)
+		);
 	});
 
 	it('throws on an empty vector', () => {

@@ -25,6 +25,7 @@
  */
 
 import { describe, expect, it, vi } from 'vitest';
+import type * as SessionOrganizationModule from '../../lib/sessionOrganization';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import { newHarness } from '../../__tests__/testModules';
@@ -54,7 +55,7 @@ import {
 // registered in the convex-test harness — the same override every other writer
 // suite in this folder uses.
 vi.mock('../../lib/sessionOrganization', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../../lib/sessionOrganization')>();
+	const actual = await importOriginal<typeof SessionOrganizationModule>();
 	return { ...actual, getSingletonOrganizationId: vi.fn().mockResolvedValue('org_outcomes') };
 });
 

@@ -26,6 +26,8 @@ export type { Condition as FilterCondition } from './conditions/types';
 export type { SegmentFilters } from './conditions';
 
 // Get a single segment by ID
+// all-members: segments are campaign audiences, which every role picks when
+// it builds a campaign; writing them needs segments:manage.
 export const get = authedQuery({
 	args: { id: v.id('segments') },
 	handler: async (ctx, args) => {
@@ -261,6 +263,7 @@ export const remove = authedMutation({
  * List segments (session-auth shell). Paginated { page, … } contract via the
  * Listing engine.
  */
+// all-members: the campaign audience picker every role uses.
 export const list = authedQuery({
 	args: {
 		paginationOpts: paginationOptsValidator,

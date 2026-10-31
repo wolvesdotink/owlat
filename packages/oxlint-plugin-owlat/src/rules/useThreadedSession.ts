@@ -23,9 +23,6 @@ import type { AstNode, Rule } from '../types.ts';
  * function, on its exported name. A handler that must resolve its own session
  * says why: `// session: <reason>` inside the definition or in the comment
  * lines directly above it.
- *
- * Handlers that predate the threading are frozen debt: the rule is a warning
- * and scripts/owlat-lint-baseline.txt ratchets them (scripts/check-owlat-lint.sh).
  */
 
 interface Options extends ScopeOptions {

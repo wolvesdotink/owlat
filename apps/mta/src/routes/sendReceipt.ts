@@ -5,6 +5,7 @@ import type Redis from 'ioredis';
 import type { AuthContext } from '../server.js';
 import type { EmailJob } from '../types.js';
 import { GOVERNED_MTA_MAX_MESSAGE_AGE_MS } from '@owlat/shared';
+import { isRecord } from '@owlat/shared/utils/guards';
 
 export type IntakeReceipt =
 	| { state: 'reserved'; messageId: string; reservedAt: number }
@@ -26,17 +27,22 @@ export function parseIntakeReceipt(value: string | null): IntakeReceipt | null {
 	// Its deterministic GroupMQ job is checked by the caller before treating it
 	// as accepted.
 	if (value === '1') return null;
+	let parsed: unknown;
 	try {
-		const parsed = JSON.parse(value) as Record<string, unknown>;
-		if (
-			typeof parsed['messageId'] === 'string' &&
-			((parsed['state'] === 'reserved' && typeof parsed['reservedAt'] === 'number') ||
-				(parsed['state'] === 'accepted' && typeof parsed['acceptedAt'] === 'number'))
-		) {
-			return parsed as IntakeReceipt;
-		}
+		parsed = JSON.parse(value);
 	} catch {
 		// Malformed receipts are never positive acceptance evidence.
+		return null;
+	}
+	if (!isRecord(parsed)) return null;
+	const { state, messageId, reservedAt, acceptedAt } = parsed;
+	if (typeof messageId !== 'string') return null;
+	// Fields this build does not know stay on the receipt the lookup route answers with.
+	if (state === 'reserved' && typeof reservedAt === 'number') {
+		return { ...parsed, state, messageId, reservedAt };
+	}
+	if (state === 'accepted' && typeof acceptedAt === 'number') {
+		return { ...parsed, state, messageId, acceptedAt };
 	}
 	return null;
 }

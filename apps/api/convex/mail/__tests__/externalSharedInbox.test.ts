@@ -110,7 +110,7 @@ async function enableFlags(
 		const settings = await ctx.db.query('instanceSettings').first();
 		if (settings) {
 			await ctx.db.patch(settings._id, {
-				featureFlags: { ...(settings.featureFlags ?? {}), ...flags },
+				featureFlags: { ...settings.featureFlags, ...flags },
 			});
 			return;
 		}

@@ -24,6 +24,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import Redis from 'ioredis-mock';
 import type RealRedis from 'ioredis';
 import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
+import type * as DeliverabilityRoutingModule from '@owlat/shared/deliverabilityRouting';
 
 /**
  * Not a real mailbox provider — deliberately absent from the shipped taxonomy.
@@ -46,7 +47,7 @@ vi.mock('../monitoring/logger.js', () => ({
 }));
 
 vi.mock('@owlat/shared/deliverabilityRouting', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('@owlat/shared/deliverabilityRouting')>();
+	const actual = await importOriginal<typeof DeliverabilityRoutingModule>();
 	shipped.keys = actual.DESTINATION_PROVIDER_KEYS;
 	return {
 		...actual,

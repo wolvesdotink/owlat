@@ -15,6 +15,7 @@ import type { MutationCtx } from '../_generated/server';
 /**
  * List all API keys for an organization (active and revoked)
  */
+// token-safe: every row leaves with keyHash projected out (see the return).
 export const listByTeam = authedQuery({
 	args: {
 		includeRevoked: v.optional(v.boolean()),

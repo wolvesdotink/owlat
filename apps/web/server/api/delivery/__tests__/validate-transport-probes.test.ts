@@ -65,6 +65,7 @@ import {
 } from '~/composables/setupWizardCredentials';
 import { probeRequestBuilder } from '~/composables/useRelayCredentialDraft';
 import { jsonRequestEvent } from '../../../__tests__/nitro';
+import type * as RequireOrgAdminModule from '~~/server/utils/requireOrgAdmin';
 
 /** Which validator the route reached, recorded by the stubs installed below. */
 const { probeCalls } = vi.hoisted(() => ({ probeCalls: [] as string[] }));
@@ -279,7 +280,7 @@ describe('the live-check endpoint takes exactly the kinds the catalog says can b
  */
 describe('POST /api/delivery/validate-transport — the real org-admin gate', () => {
 	it('rejects an unauthenticated call with 401 before running any probe', async () => {
-		const real = await vi.importActual<typeof import('~~/server/utils/requireOrgAdmin')>(
+		const real = await vi.importActual<typeof RequireOrgAdminModule>(
 			'~~/server/utils/requireOrgAdmin'
 		);
 		requireOrgAdminMock.mockImplementation(real.requireOrgAdmin);

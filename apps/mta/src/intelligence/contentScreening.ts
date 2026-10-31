@@ -12,6 +12,7 @@ import type {
 	MtaContentScreeningVerdict,
 } from '@owlat/mta-protocol/contentScreening';
 import { isIdentifierAligned } from '@owlat/shared/spfAlignment';
+import { isRecord } from '@owlat/shared/utils/guards';
 import type { EmailJob } from '../types.js';
 import type { MtaConfig } from '../config.js';
 import { logger } from '../monitoring/logger.js';
@@ -182,11 +183,19 @@ export async function getUrlBlocklist(redis: Redis): Promise<string[]> {
 
 // ─── Rspamd Integration ────────────────────────────────────────────
 
+/** The parts of rspamd's `/checkv2` verdict the screening reads. */
 interface RspamdResponse {
 	score: number;
-	required_score: number;
-	action: 'no action' | 'greylist' | 'add header' | 'rewrite subject' | 'soft reject' | 'reject';
-	symbols?: Record<string, { score: number; description?: string }>;
+	/** `no action`, `greylist`, `add header`, `rewrite subject`, `soft reject` or `reject`. */
+	action?: string;
+}
+
+/** A verdict without a numeric score scores nothing: the caller fails open. */
+function decodeRspamdResponse(value: unknown): RspamdResponse | null {
+	if (!isRecord(value)) return null;
+	const { score, action } = value;
+	if (typeof score !== 'number' || !Number.isFinite(score)) return null;
+	return { score, ...(typeof action === 'string' ? { action } : {}) };
 }
 
 /** The headers and body rspamd scores; a header without a value is left out. */
@@ -199,7 +208,7 @@ interface RspamdMessage {
 
 /**
  * Ask rspamd to score a message. Resolves `null` on any failure (non-OK status,
- * timeout, network error): every caller fails open.
+ * timeout, network error, a verdict without a score): every caller fails open.
  */
 async function scoreWithRspamd(
 	rspamdUrl: string,
@@ -235,7 +244,10 @@ async function scoreWithRspamd(
 				return null; // Fail open
 			}
 
-			return (await response.json()) as RspamdResponse;
+			const verdict = decodeRspamdResponse(await response.json());
+			if (!verdict)
+				logger.warn('Rspamd returned a verdict without a score — allowing content through');
+			return verdict;
 		} finally {
 			clearTimeout(timeout);
 		}

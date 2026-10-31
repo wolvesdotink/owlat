@@ -1,7 +1,11 @@
 import { Readable } from 'node:stream';
 import { defineEventHandler, createError, getHeader, getQuery, setHeader } from 'h3';
 import { MAX_ARCHIVE_IMPORT_BYTES } from '@owlat/shared/mboxArchive';
+import { isRecord } from '@owlat/shared/utils/guards';
 import { getInstanceSecret } from '../../utils/updater';
+
+const nonEmptyString = (value: unknown): string | undefined =>
+	typeof value === 'string' && value !== '' ? value : undefined;
 
 /** Stream bytes to native Convex storage; only this server can attest the returned id. */
 export default defineEventHandler(async (event) => {
@@ -26,6 +30,13 @@ export default defineEventHandler(async (event) => {
 			signal: AbortSignal.timeout(15_000),
 		});
 	};
+	/** Best effort: a failed release must not mask the error being answered. */
+	const abort = async (body: object) => {
+		await control('abort', body).then(
+			(response) => void response.body?.cancel().catch(() => undefined),
+			() => undefined
+		);
+	};
 	const begin = await control('begin', { token });
 	if (!begin.ok) {
 		void begin.body?.cancel().catch(() => undefined);
@@ -34,7 +45,14 @@ export default defineEventHandler(async (event) => {
 			message: 'Upload unavailable or token expired',
 		});
 	}
-	const { uploadId, uploadUrl } = (await begin.json()) as { uploadId: string; uploadUrl: string };
+	const started: unknown = await begin.json().catch(() => null);
+	const uploadId = isRecord(started) ? nonEmptyString(started['uploadId']) : undefined;
+	const uploadUrl = isRecord(started) ? nonEmptyString(started['uploadUrl']) : undefined;
+	if (!uploadId || !uploadUrl) {
+		// A session the backend did open is released rather than left to expire.
+		if (uploadId) await abort({ uploadId });
+		throw createError({ statusCode: 502, message: 'Upload unavailable or token expired' });
+	}
 	let storageId: string | undefined;
 	let isTooLarge = false;
 	try {
@@ -70,21 +88,17 @@ export default defineEventHandler(async (event) => {
 			void native.body?.cancel().catch(() => undefined);
 			throw new Error('Storage rejected upload');
 		}
-		const result = (await native.json()) as { storageId?: unknown };
-		if (typeof result.storageId !== 'string') throw new Error('Invalid storage response');
-		storageId = result.storageId;
+		const result: unknown = await native.json();
+		const returned = isRecord(result) ? result['storageId'] : undefined;
+		if (typeof returned !== 'string') throw new Error('Invalid storage response');
+		storageId = returned;
 		const finish = await control('finish', { uploadId, storageId });
 		void finish.body?.cancel().catch(() => undefined);
 		if (!finish.ok) throw new Error('Upload receipt could not be saved');
 		return { storageId };
 	} catch {
 		// This id came from the native upload response, never from browser input.
-		await control('abort', { uploadId, storageId }).then(
-			(response) => {
-				void response.body?.cancel().catch(() => undefined);
-			},
-			() => undefined
-		);
+		await abort({ uploadId, storageId });
 		throw createError({
 			statusCode: isTooLarge ? 413 : 502,
 			message: isTooLarge ? 'File too large' : 'Upload failed; request a new upload URL',

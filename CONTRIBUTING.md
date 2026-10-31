@@ -118,12 +118,9 @@ of `bun run lint` and will fail CI, including:
 - `lint:env` — all `process.env.*` reads must go through `convex/lib/env.ts`.
 - `lint:patterns` — Convex best-practice ratchets (always declare `args:`,
   index don't filter, bound `.collect()`, no `console.log`).
-- `lint:session-threading` — handlers on the org-scoped builders must use the
-  session their auth floor already resolved instead of re-resolving it
-  (frozen-baseline ratchet, `apps/api/scripts/check-session-threading.sh`).
 - `lint:ast-gate-parity` (root, in `ci:lint`) — the AST rules in
   `packages/oxlint-plugin-owlat` that replace the crypto, env, log-PII, error,
-  raw-builder, session-threading and feature-floor scripts run beside them;
+  raw-builder and feature-floor scripts run beside them;
   this diffs the two finding sets per rule and fails on any difference not
   listed with its reason in `scripts/ast-gate-parity.ts`.
 - `lint:feature-floors` — handlers in a feature-gated family use its
@@ -230,10 +227,9 @@ bun run lint:deadcode   # == bash scripts/check-dead-code.sh
 It runs [`knip`](https://knip.dev) (config: `knip.jsonc`) restricted to
 dead-_code_ issue types (unused files / exports / types / members), normalises
 the result to a sorted list, and compares it against
-`scripts/dead-code-baseline.txt`. The ratchet is strict in both directions, like
-`apps/api/scripts/check-query-authz.sh`: a **new** orphan that is not in the
-baseline fails, and a **stale** baseline entry that is no longer dead fails
-(delete the line so the debt only ever goes down). Do not add new lines to the
+`scripts/dead-code-baseline.txt`. The ratchet is strict in both directions: a
+**new** orphan that is not in the baseline fails, and a **stale** baseline entry
+that is no longer dead fails (delete the line so the debt only ever goes down). Do not add new lines to the
 baseline — fix or intentionally re-anchor the export instead. The dependency /
 unlisted / unresolved knip categories are deliberately excluded (knip does not
 model bun catalogs, Nuxt aliases, or transitive deps, so they are noise here).

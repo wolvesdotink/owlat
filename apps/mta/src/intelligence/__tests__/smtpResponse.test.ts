@@ -202,6 +202,25 @@ describe('smtpResponse', () => {
 		});
 	});
 
+	describe('corrupt response history', () => {
+		it.each<[string, unknown]>([
+			['a string code', { code: '550' }],
+			['a missing code', { enhancedCode: '5.7.1' }],
+			['null', null],
+			['an array', [550]],
+		])('never counts an entry with %s towards blocking or degraded', async (_label, entry) => {
+			await recordResponse(redis, 'corrupt.example', 250);
+			const [codesKey] = (await redis.keys('*:codes')) as string[];
+			for (let i = 0; i < 11; i++) await redis.lpush(codesKey!, JSON.stringify(entry));
+			await recordResponse(redis, 'corrupt.example', 421);
+
+			expect(await redis.hget(smtpResponseStateKey('corrupt.example'), 'healthStatus')).toBe(
+				'healthy'
+			);
+			expect(await shouldDefer(redis, 'corrupt.example')).toBe(0);
+		});
+	});
+
 	describe('getDomainHealth', () => {
 		it('returns null for unknown domain', async () => {
 			const result = await getDomainHealth(redis, 'unknown.com');

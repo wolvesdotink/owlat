@@ -23,6 +23,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import Redis from 'ioredis-mock';
+import type * as MtaStsModule from '../mtaSts.js';
 
 // Resolvers/config deps are mocked (per-test policy + MX); the connection pool,
 // @owlat/smtp-client, and tlsRpt are REAL so the `conn.secured` read and the
@@ -35,7 +36,7 @@ vi.mock('../mxResolver.js', () => ({
 	}),
 }));
 vi.mock('../mtaSts.js', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../mtaSts.js')>();
+	const actual = await importOriginal<typeof MtaStsModule>();
 	return {
 		...actual,
 		getStsTlsOptions: vi.fn().mockResolvedValue({

@@ -17,6 +17,7 @@ import {
 	route,
 	type Redirect,
 } from '~/__tests__/middlewareHarness';
+import type * as FeatureGlobalModule from '../feature.global';
 
 vi.mock('~/lib/auth-client', () => authClientMock());
 
@@ -24,7 +25,7 @@ type Middleware = (
 	to: RouteLocationNormalized,
 	from: RouteLocationNormalized
 ) => Redirect | undefined;
-type FeatureModule = typeof import('../feature.global');
+type FeatureModule = typeof FeatureGlobalModule;
 
 let pathRule: FeatureModule['pathRule'];
 let PATH_FEATURE_RULES: FeatureModule['PATH_FEATURE_RULES'];

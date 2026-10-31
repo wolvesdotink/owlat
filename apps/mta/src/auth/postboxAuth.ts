@@ -9,6 +9,7 @@
 
 import { signMtaRequest } from '@owlat/mta-protocol/signer';
 import { normalizePeerIp } from '@owlat/shared/ipAddress';
+import { isRecord } from '@owlat/shared/utils/guards';
 import type { MtaConfig } from '../config.js';
 import { logger } from '../monitoring/logger.js';
 
@@ -35,6 +36,23 @@ export interface PostboxAuthClient {
 }
 
 const TIMEOUT_MS = 5_000;
+
+const isId = (value: unknown): value is string => typeof value === 'string' && value !== '';
+
+/**
+ * The endpoint answers `{ ok: true, …identifiers }` or `{ ok: false }`. Only a
+ * literal `ok: true` carrying every identifier authenticates; anything else,
+ * a truthy `ok` with an identifier missing included, is a refusal.
+ */
+function decodeVerifyResponse(value: unknown): PostboxAuthResult | null {
+	if (!isRecord(value) || value['ok'] !== true) return null;
+	const { mailboxId, appPasswordId, userId, organizationId } = value;
+	if (!isId(mailboxId) || !isId(appPasswordId) || !isId(userId) || !isId(organizationId)) {
+		logger.warn('verify-credential answered ok without the identifiers');
+		return null;
+	}
+	return { mailboxId, appPasswordId, userId, organizationId };
+}
 
 export async function verifyPostboxAppPassword(
 	config: MtaConfig,
@@ -72,22 +90,8 @@ export async function verifyPostboxAppPassword(
 			logger.warn({ status: res.status, address }, 'verify-credential non-OK');
 			return null;
 		}
-		const json = (await res.json()) as
-			| {
-					ok: true;
-					mailboxId: string;
-					appPasswordId: string;
-					userId: string;
-					organizationId: string;
-			  }
-			| { ok: false };
-		if (!json.ok) return null;
-		return {
-			mailboxId: json.mailboxId,
-			appPasswordId: json.appPasswordId,
-			userId: json.userId,
-			organizationId: json.organizationId,
-		};
+		const json: unknown = await res.json();
+		return decodeVerifyResponse(json);
 	} catch (err) {
 		clearTimeout(t);
 		logger.warn({ err, address }, 'verify-credential request failed');

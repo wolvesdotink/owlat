@@ -17,6 +17,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type * as MailAuthModule from '@owlat/mail-auth';
 
 vi.mock('../../monitoring/logger.js', () => ({
 	logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -26,7 +27,7 @@ vi.mock('../../monitoring/logger.js', () => ({
 // verdict. `checkSpf` lives in `@owlat/mail-auth` (Own-the-Inbound A1); only it
 // is overridden — the rest keep their real (here-unused) implementations.
 vi.mock('@owlat/mail-auth', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('@owlat/mail-auth')>();
+	const actual = await importOriginal<typeof MailAuthModule>();
 	return { ...actual, checkSpf: vi.fn() };
 });
 

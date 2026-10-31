@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type * as PipelineModule from '../pipeline.js';
 
 vi.mock('@owlat/mail-auth', () => ({
 	checkSpf: vi.fn(),
@@ -24,7 +25,7 @@ vi.mock('../../webhooks/convexNotifier.js', () => ({
 	queueConvexWebhook: vi.fn(async () => undefined),
 }));
 vi.mock('../pipeline.js', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../pipeline.js')>();
+	const actual = await importOriginal<typeof PipelineModule>();
 	return { ...actual, runPipeline: vi.fn(async () => ({ kind: 'dropSilently' })) };
 });
 vi.mock('../../monitoring/logger.js', () => ({

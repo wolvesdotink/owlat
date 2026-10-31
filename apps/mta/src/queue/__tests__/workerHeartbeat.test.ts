@@ -7,6 +7,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import Redis from 'ioredis-mock';
+import type RealRedis from 'ioredis';
 
 // groupmq's Worker/Queue open real Redis machinery on construction; the
 // heartbeat contract is independent of them, so stub the module.
@@ -29,7 +30,7 @@ const HEARTBEAT_KEY = 'mta:worker:heartbeat';
 const SERVER_ID = 'mta-1';
 
 function makeRedis() {
-	return new Redis() as unknown as import('ioredis').default;
+	return new Redis() as unknown as RealRedis;
 }
 
 describe('worker heartbeat', () => {

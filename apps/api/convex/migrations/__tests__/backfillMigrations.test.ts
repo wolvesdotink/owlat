@@ -13,6 +13,8 @@
 
 import { convexTest } from 'convex-test';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import type * as SessionOrganizationModule from '../../lib/sessionOrganization';
+import type * as MtaIdentityModule from '../../lib/emailProviders/mtaIdentity';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import { modules } from '../../__tests__/testModules';
@@ -20,7 +22,7 @@ import { InternalFailure } from '../../_utils/errors';
 
 // Resolve the domain owner without a real BetterAuth org (this is an action).
 vi.mock('../../lib/sessionOrganization', async (importActual) => {
-	const actual = await importActual<typeof import('../../lib/sessionOrganization')>();
+	const actual = await importActual<typeof SessionOrganizationModule>();
 	return { ...actual, getSingletonOrganizationId: vi.fn(async () => 'org-1') };
 });
 
@@ -28,7 +30,7 @@ const registerDomainMock = vi.fn();
 const listOrgCredentialsMock = vi.fn();
 const setCredentialAllowedDomainsMock = vi.fn();
 vi.mock('../../lib/emailProviders/mtaIdentity', async (importActual) => {
-	const actual = await importActual<typeof import('../../lib/emailProviders/mtaIdentity')>();
+	const actual = await importActual<typeof MtaIdentityModule>();
 	return {
 		...actual,
 		createMtaIdentityManager: () => ({

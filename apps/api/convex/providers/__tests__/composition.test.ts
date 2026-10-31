@@ -237,7 +237,7 @@ describe('a bundled webhook reaches the verifier registry as its own scheme', ()
 				Object.freeze({ kind: KIND, pluginId: PLUGIN_ID, module: { parseEvents: () => [] } }),
 			]),
 		}));
-		const feedback = (await import('../feedback')) as typeof import('../feedback');
+		const feedback = await import('../feedback');
 		return feedback.providerFeedbackFor(KIND as never);
 	}
 

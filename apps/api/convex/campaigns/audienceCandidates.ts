@@ -13,7 +13,7 @@ import type { QueryCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { Infer } from 'convex/values';
 import type { StoredAudience } from './audience';
-import { segmentFiltersValidator } from '../lib/convexValidators';
+import type { segmentFiltersValidator } from '../lib/convexValidators';
 import { logWarn } from '../lib/runtimeLog';
 import { normalizeEmail } from '../lib/inputGuards';
 import { loadSuppressionSet, loadSuppressionSetBounded } from '../lib/suppression';

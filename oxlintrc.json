@@ -231,10 +231,8 @@
 				]
 			}
 		],
-		// A warning: handlers that predate session threading are frozen debt in
-		// scripts/owlat-lint-baseline.txt (scripts/check-owlat-lint.sh).
 		"owlat/use-threaded-session": [
-			"warn",
+			"error",
 			{
 				"files": ["apps/api/convex/**"],
 				"ignore": ["apps/api/convex/lib/**"],

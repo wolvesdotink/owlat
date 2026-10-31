@@ -10,6 +10,7 @@
 
 import { convexTest } from 'convex-test';
 import { describe, expect, it, vi } from 'vitest';
+import type * as SessionOrganizationModule from '../../lib/sessionOrganization';
 import schema from '../../schema';
 import {
 	recordTransportOutcomeForCell,
@@ -29,7 +30,7 @@ import {
 } from './transportOutcomesFixtures';
 
 vi.mock('../../lib/sessionOrganization', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../../lib/sessionOrganization')>();
+	const actual = await importOriginal<typeof SessionOrganizationModule>();
 	// The literal, not the `OUTCOME_ORG` import: `vi.mock` factories are hoisted
 	// above the imports, so referencing one here is a TDZ error at load time.
 	return { ...actual, getSingletonOrganizationId: vi.fn().mockResolvedValue('org_outcomes') };

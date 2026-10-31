@@ -154,6 +154,35 @@ describe('deferred handoff receipts', () => {
 		);
 	});
 
+	it('keeps receipt fields it does not know when it promotes', async () => {
+		const first = await defer('root-job', createJob());
+		const key = handoffKey(chainOf('root-job'));
+		const stored = JSON.parse((await redis.get(key))!) as Record<string, unknown>;
+		await redis.set(key, JSON.stringify({ ...stored, state: 'reserved', addedLater: 1 }));
+
+		await promoteDeferredHandoff(redis as never, first.data);
+		expect(JSON.parse((await redis.get(key))!)).toMatchObject({ state: 'accepted', addedLater: 1 });
+	});
+
+	it.each<[string, (stored: Record<string, unknown>) => unknown]>([
+		['null', () => null],
+		['an array', (stored) => [stored]],
+		['a missing successor', (stored) => ({ ...stored, successorJobId: undefined })],
+		['a non-numeric delay', (stored) => ({ ...stored, delay: '60000' })],
+		['an unknown state', (stored) => ({ ...stored, state: 'committed' })],
+	])('refuses to promote through a receipt that is %s', async (_label, corrupt) => {
+		const first = await defer('root-job', createJob());
+		const key = handoffKey(chainOf('root-job'));
+		const stored = JSON.parse((await redis.get(key))!) as Record<string, unknown>;
+		const raw = JSON.stringify(corrupt(stored));
+		await redis.set(key, raw);
+
+		await expect(promoteDeferredHandoff(redis as never, first.data)).rejects.toThrow(
+			'missing or bound to another message'
+		);
+		expect(await redis.get(key)).toBe(raw);
+	});
+
 	it('drains a job enqueued before chains existed through its per-successor key', async () => {
 		// Exactly what an in-flight ladder looks like across the deploy: a job
 		// carrying only the successor id its receipt was written under.

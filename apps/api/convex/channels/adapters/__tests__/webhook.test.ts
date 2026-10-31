@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { OutboundMessage } from '../index';
 
 // The outbound POST now goes through the SSRF guard, so the socket (fetchGuarded)
 // is mocked — the real guard would do live DNS on the example host. The shape
@@ -11,7 +12,6 @@ vi.mock('../../../lib/ssrfGuard', async () => ({
 }));
 
 const { WebhookAdapter } = await import('../index');
-type OutboundMessage = import('../index').OutboundMessage;
 
 const baseMessage: OutboundMessage = {
 	contactId: 'c1',

@@ -21,10 +21,10 @@
 # in knip.jsonc for the same reason (the Nuxt `css:` array and @import chains
 # are not traced).
 #
-# scripts/ratchet.sh runs the comparison, strict in BOTH directions exactly like
-# query-authz: a NEW dead-code entry not present in the baseline fails
-# (regression), and a STALE baseline entry that knip no longer reports fails —
-# delete the line so the debt count only ever goes down.
+# scripts/ratchet.sh runs the comparison, strict in BOTH directions: a NEW
+# dead-code entry not present in the baseline fails (regression), and a STALE
+# baseline entry that knip no longer reports fails — delete the line so the
+# debt count only ever goes down.
 #
 # Normalised line format (sorted, stable, no line/col so edits don't churn it):
 #   file:<path>                       an entire unused file

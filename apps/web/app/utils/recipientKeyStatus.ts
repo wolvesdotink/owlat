@@ -1,5 +1,5 @@
 import type { FunctionReturnType } from 'convex/server';
-import { api } from '@owlat/api';
+import type { api } from '@owlat/api';
 
 /**
  * One recipient's PUBLIC sealing-key trust state — the non-null result of
