@@ -155,13 +155,6 @@ convex/mail/migrationIndexing.ts:runIndexChunk #7
 convex/mail/outbound.ts:dispatchDraft #2
 convex/mail/senders/unsubscribeActions.ts:unsubscribe #2
 convex/mail/subscriptions.ts:unsubscribeAndArchive #2
-convex/migrations/0042_recompute_mailbox_used_bytes.ts:run #2
-convex/migrations/0042_recompute_mailbox_used_bytes.ts:run #3
-convex/migrations/0042_recompute_mailbox_used_bytes.ts:run #4
-convex/migrations/0042_recompute_mailbox_used_bytes.ts:run #5
-convex/migrations/0042_recompute_mailbox_used_bytes.ts:run #6
-convex/migrations/0042_recompute_mailbox_used_bytes.ts:run #7
-convex/migrations/0042_recompute_mailbox_used_bytes.ts:run #8
 convex/migrations/0044_private_chat_media.ts:run #10
 convex/migrations/0044_private_chat_media.ts:run #11
 convex/migrations/0044_private_chat_media.ts:run #12
