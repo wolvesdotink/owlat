@@ -26,9 +26,16 @@ import {
 	readMailMessageBodiesForAccountExport,
 } from '../lib/messageBodyExport';
 import { sealedBlobUrl, storeSealedBlob } from '../lib/sealedBlob';
+import {
+	artifactScope,
+	exportPageSize,
+	mailMessageExportRow,
+	membershipExportRows,
+	splitDraftForExport,
+} from './accountExportDecision';
 
-const ACCOUNT_EXPORT_PAGE_SIZE = 100;
-const ACCOUNT_EXPORT_CONTENT_PAGE_SIZE = 1;
+/** How often one row restages when its artifact keeps changing under it. */
+const MAX_STAGING_PASSES = 3;
 const accountExportResourceValidator = literalUnion([
 	'organizationMemberships',
 	...ACCOUNT_EXPORT_ORGANIZATION_RESOURCES,
@@ -60,19 +67,6 @@ const USER_SCOPED_EXPORT_QUERIES: Record<
 	threadViewerState: internal.auth.accountExportThreadBriefQueries.listOwnThreadViewerState,
 };
 
-function isContentResource(resource: string): boolean {
-	return (
-		resource === 'mailMessages' ||
-		resource === 'mailDrafts' ||
-		resource === 'emailTemplates' ||
-		resource === 'transactionalEmails'
-	);
-}
-
-function artifactScope(resource: string, rowId: string): string {
-	return `${resource}:${rowId}`;
-}
-
 async function contentAddressedArtifactKey(scope: string, bytes: Uint8Array): Promise<string> {
 	const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes as BufferSource));
 	const digestHex = [...digest].map((byte) => byte.toString(16).padStart(2, '0')).join('');
@@ -91,20 +85,11 @@ interface StagedAccountExportContent {
 	contentLeaseToken: string;
 }
 
-async function releaseStagedArtifactLease(
-	ctx: ActionCtx,
-	args: {
-		userId: string;
-		sessionId: Id<'accountExportSessions'>;
-		artifactId: Id<'accountExportArtifacts'>;
-		leaseToken: string;
-	}
-): Promise<void> {
-	await ctx
-		.runMutation(internal.auth.accountExportArtifacts.releaseArtifact, args)
-		.catch(() => undefined);
-}
-
+/**
+ * Stage one row's content as a leased artifact. The download link is minted
+ * before the lease is taken, so a link that cannot be minted leaves no lease
+ * behind; a blob stored here that ends up registered by nobody is deleted.
+ */
 async function stageAccountExportContent(
 	ctx: ActionCtx,
 	args: {
@@ -115,86 +100,59 @@ async function stageAccountExportContent(
 	}
 ): Promise<StagedAccountExportContent> {
 	const bytes = new TextEncoder().encode(JSON.stringify(args.content));
+	const owner = { userId: args.userId, sessionId: args.sessionId };
 	const artifactKey = await contentAddressedArtifactKey(args.artifactScope, bytes);
 	const leaseToken = crypto.randomUUID();
-	const existing: Doc<'accountExportArtifacts'> | null = await ctx.runQuery(
+	let found: Doc<'accountExportArtifacts'> | null = await ctx.runQuery(
 		internal.auth.accountExportArtifacts.findArtifact,
-		{
-			userId: args.userId,
-			sessionId: args.sessionId,
-			artifactKey,
-		}
+		{ ...owner, artifactKey }
 	);
-	if (existing) {
-		const leasedArtifact: Doc<'accountExportArtifacts'> | null = await ctx.runMutation(
-			internal.auth.accountExportArtifacts.acquireArtifactLease,
-			{
-				userId: args.userId,
-				sessionId: args.sessionId,
-				artifactId: existing._id,
-				leaseToken,
-			}
-		);
-		if (leasedArtifact) {
-			try {
-				return {
-					contentDownloadUrl: await artifactUrl(ctx, leasedArtifact.storageId),
-					contentArtifactId: leasedArtifact._id,
-					contentLeaseToken: leaseToken,
-				};
-			} catch (error) {
-				await releaseStagedArtifactLease(ctx, {
-					userId: args.userId,
-					sessionId: args.sessionId,
-					artifactId: leasedArtifact._id,
-					leaseToken,
-				});
-				throw error;
-			}
-		}
-		// The last prior consumer may have acknowledged between the lookup and
-		// lease mutation. Restage below instead of failing a retry-safe page.
-	}
-
-	const storageId = await storeSealedBlob(ctx.storage, bytes, 'application/json');
-	try {
-		const registered: { artifact: Doc<'accountExportArtifacts'>; created: boolean } =
-			await ctx.runMutation(internal.auth.accountExportArtifacts.registerArtifact, {
-				userId: args.userId,
-				sessionId: args.sessionId,
+	for (let pass = 0; pass < MAX_STAGING_PASSES; pass++) {
+		const isFreshBlob = found === null;
+		const storageId = found
+			? found.storageId
+			: await storeSealedBlob(ctx.storage, bytes, 'application/json');
+		try {
+			const contentDownloadUrl = await artifactUrl(ctx, storageId);
+			// checkpoint: a staged artifact stands alone; its content-addressed key
+			// lets a retried page lease it again instead of staging it twice, and
+			// one never acknowledged is swept with its session (expireSession).
+			const staged = await ctx.runMutation(internal.auth.accountExportArtifacts.stageArtifact, {
+				...owner,
 				artifactKey,
 				storageId,
+				isFreshBlob,
 				contentLength: bytes.byteLength,
 				leaseToken,
 			});
-		if (!registered.created) await ctx.storage.delete(storageId);
-		try {
-			return {
-				contentDownloadUrl: await artifactUrl(ctx, registered.artifact.storageId),
-				contentArtifactId: registered.artifact._id,
-				contentLeaseToken: leaseToken,
-			};
+			if (staged.kind === 'staged') {
+				return {
+					contentDownloadUrl,
+					contentArtifactId: staged.artifactId,
+					contentLeaseToken: leaseToken,
+				};
+			}
+			// The artifact found was released, or another blob took the key, in between.
+			found = staged.artifact;
 		} catch (error) {
-			await releaseStagedArtifactLease(ctx, {
-				userId: args.userId,
-				sessionId: args.sessionId,
-				artifactId: registered.artifact._id,
-				leaseToken,
-			});
+			if (isFreshBlob) await discardUnregisteredBlob(ctx, { ...owner, artifactKey }, storageId);
 			throw error;
 		}
-	} catch (error) {
-		try {
-			const registered = await ctx.runQuery(internal.auth.accountExportArtifacts.findArtifact, {
-				userId: args.userId,
-				sessionId: args.sessionId,
-				artifactKey,
-			});
-			if (!registered || registered.storageId !== storageId) await ctx.storage.delete(storageId);
-		} catch {
-			await ctx.storage.delete(storageId);
-		}
-		throw error;
+	}
+	throw new Error('Account export artifact changed while it was staged; retry the page');
+}
+
+/** Delete a blob this page stored unless the session's artifact under the key holds it. */
+async function discardUnregisteredBlob(
+	ctx: ActionCtx,
+	args: { userId: string; sessionId: Id<'accountExportSessions'>; artifactKey: string },
+	storageId: Id<'_storage'>
+): Promise<void> {
+	try {
+		const registered = await ctx.runQuery(internal.auth.accountExportArtifacts.findArtifact, args);
+		if (!registered || registered.storageId !== storageId) await ctx.storage.delete(storageId);
+	} catch {
+		await ctx.storage.delete(storageId);
 	}
 }
 
@@ -294,12 +252,14 @@ export const exportUserDataPage = authedAction({
 			userId: args.userId,
 			sessionId: args.exportSessionId,
 		});
-		const paginationOpts = {
-			cursor: args.cursor ?? null,
-			numItems: isContentResource(args.resource)
-				? ACCOUNT_EXPORT_CONTENT_PAGE_SIZE
-				: ACCOUNT_EXPORT_PAGE_SIZE,
-		};
+		const paginationOpts = { cursor: args.cursor ?? null, numItems: exportPageSize(args.resource) };
+		const stage = (rowId: string, content: Record<string, unknown>) =>
+			stageAccountExportContent(ctx, {
+				userId: args.userId,
+				sessionId: args.exportSessionId,
+				artifactScope: artifactScope(args.resource, rowId),
+				content,
+			});
 		if (args.resource === 'organizationMemberships') {
 			const result: {
 				page?: unknown[];
@@ -314,29 +274,17 @@ export const exportUserDataPage = authedAction({
 				organizationId: string;
 				role: string;
 			}>;
-			const page = (
-				await Promise.all(
-					memberships.map(async (membership) => {
-						const organization = (await ctx.runQuery(components.betterAuth.adapter.findOne, {
+			const organizations = await Promise.all(
+				memberships.map(
+					async (membership) =>
+						(await ctx.runQuery(components.betterAuth.adapter.findOne, {
 							model: 'organization',
 							where: [{ field: '_id', value: membership.organizationId }],
-						})) as { _id: string; name: string; slug?: string | null } | null;
-						return organization
-							? {
-									organizationId: membership.organizationId,
-									role: membership.role,
-									organization: {
-										_id: organization._id,
-										name: organization.name,
-										slug: organization.slug,
-									},
-								}
-							: null;
-					})
+						})) as { _id: string; name: string; slug?: string | null } | null
 				)
-			).filter((row) => row !== null);
+			);
 			return serializeAccountExportPage({
-				page,
+				page: membershipExportRows(memberships, organizations),
 				isDone: result?.isDone ?? true,
 				continueCursor: result?.continueCursor ?? '',
 			});
@@ -377,12 +325,7 @@ export const exportUserDataPage = authedAction({
 							template as Doc<'transactionalEmails'>,
 							authorizedMedia
 						);
-				const stagedContent = await stageAccountExportContent(ctx, {
-					userId: args.userId,
-					sessionId: args.exportSessionId,
-					artifactScope: artifactScope(args.resource, template._id),
-					content,
-				});
+				const stagedContent = await stage(template._id, content);
 				page.push({
 					...(isEmailTemplate
 						? projectEmailTemplateMetadata(template as Doc<'emailTemplates'>)
@@ -419,21 +362,7 @@ export const exportUserDataPage = authedAction({
 			const page = await Promise.all(
 				result.page.map(async (message) => {
 					const bodies = await readMailMessageBodiesForAccountExport(ctx.storage, message);
-					const stagedContent = await stageAccountExportContent(ctx, {
-						userId: args.userId,
-						sessionId: args.exportSessionId,
-						artifactScope: artifactScope(args.resource, message._id),
-						content: bodies,
-					});
-					const {
-						rawStorageId: _raw,
-						textBodyStorageId: _textStorage,
-						htmlBodyStorageId: _htmlStorage,
-						textBodyInline: _textInline,
-						htmlBodyInline: _htmlInline,
-						...safeMessage
-					} = message;
-					return { ...safeMessage, ...stagedContent };
+					return { ...mailMessageExportRow(message), ...(await stage(message._id, bodies)) };
 				})
 			);
 			return serializeAccountExportPage({ ...result, page });
@@ -448,27 +377,8 @@ export const exportUserDataPage = authedAction({
 			const page = await Promise.all(
 				result.page.map(async (draft) => {
 					const opened = await openMailDraftForAccountExport(ctx.storage, draft);
-					const { bodyHtml, bodyText, bodyBlocks, bodyAvailability, attachments, ...safeDraft } =
-						opened;
-					const stagedContent = await stageAccountExportContent(ctx, {
-						userId: args.userId,
-						sessionId: args.exportSessionId,
-						artifactScope: artifactScope(args.resource, draft._id),
-						content: {
-							bodyHtml,
-							...(bodyText === undefined ? {} : { bodyText }),
-							...(bodyBlocks === undefined ? {} : { bodyBlocks }),
-							bodyAvailability,
-							attachments,
-						},
-					});
-					return {
-						...safeDraft,
-						attachments: attachments.map(
-							({ contentBase64: _content, ...attachment }) => attachment
-						),
-						...stagedContent,
-					};
+					const { row, content } = splitDraftForExport(opened);
+					return { ...row, ...(await stage(draft._id, content)) };
 				})
 			);
 			return serializeAccountExportPage({ ...result, page });
