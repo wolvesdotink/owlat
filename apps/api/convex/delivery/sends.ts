@@ -35,11 +35,15 @@ async function loadCampaignSendsForReport(
 }
 
 // Get a single email send by ID
+// all-members: campaign report data. Every role holds campaigns:manage, and
+// the campaign report pages are open to editors.
 export const get = authedQuery({
 	args: { id: v.id('emailSends') },
 	handler: async (ctx, args) => {
 		const send = await ctx.db.get(args.id);
-		if (!send) return null;
+		// An erased send (contact erasure) reads as absent, as transactional
+		// sends do.
+		if (!send || send.deletedAt !== undefined) return null;
 
 		// A campaign in Recently deleted reads as missing, the same as a purged
 		// one: the send stays as delivery history without its name or subject.
@@ -64,6 +68,8 @@ export const get = authedQuery({
 });
 
 // Get statistics for a campaign (bounded by CAMPAIGN_REPORT_SEND_SCAN_LIMIT)
+// all-members: campaign report data. Every role holds campaigns:manage, and
+// the campaign report pages are open to editors.
 export const getStatsByCampaign = authedQuery({
 	args: { campaignId: v.id('campaigns') },
 	handler: async (ctx, args) => {
@@ -245,6 +251,8 @@ export const createBatch = internalMutation({
 
 // Get opens timeline data for a campaign (grouped by hour, bounded by
 // CAMPAIGN_REPORT_SEND_SCAN_LIMIT)
+// all-members: campaign report data. Every role holds campaigns:manage, and
+// the campaign report pages are open to editors.
 export const getOpensTimeline = authedQuery({
 	args: { campaignId: v.id('campaigns') },
 	handler: async (ctx, args) => {
@@ -275,6 +283,8 @@ export const getOpensTimeline = authedQuery({
 });
 
 // Get contacts who opened a campaign (with pagination)
+// all-members: campaign report data. Every role holds campaigns:manage, and
+// the campaign report pages are open to editors.
 export const getOpenedContacts = authedQuery({
 	args: {
 		campaignId: v.id('campaigns'),
@@ -318,6 +328,8 @@ export const getOpenedContacts = authedQuery({
 });
 
 // Get contacts who clicked in a campaign (with pagination)
+// all-members: campaign report data. Every role holds campaigns:manage, and
+// the campaign report pages are open to editors.
 export const getClickedContacts = authedQuery({
 	args: {
 		campaignId: v.id('campaigns'),
@@ -361,6 +373,8 @@ export const getClickedContacts = authedQuery({
 });
 
 // Get link click stats aggregated by URL for a campaign (for click heatmap)
+// all-members: campaign report data. Every role holds campaigns:manage, and
+// the campaign report pages are open to editors.
 export const getLinkClickStats = authedQuery({
 	args: { campaignId: v.id('campaigns') },
 	handler: async (ctx, args) => {

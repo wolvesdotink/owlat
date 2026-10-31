@@ -15,14 +15,15 @@ import { defineComponent, h, shallowRef } from 'vue';
 import { shareStructure } from '~/lib/structuralSharing';
 import type { ChatHistoryScenario } from '../scenarios';
 import { counter, percentile, timing, type Sample } from '../stats';
-import { CHAT_CURRENT_USER_ID, chatHistoryWorkload, type SyntheticChatRow } from '../workload';
+import { decodeChatRows } from '../wireRows';
+import { CHAT_CURRENT_USER_ID, chatHistoryWorkload } from '../workload';
 import { component } from './components';
 import { nextFrame, sum, type Probe } from './probe';
 
 export function chatHistory(scenario: ChatHistoryScenario) {
 	const rows = chatHistoryWorkload(scenario);
 	const data = shallowRef(
-		shareStructure(undefined, JSON.parse(JSON.stringify(rows)) as SyntheticChatRow[])
+		shareStructure(undefined, decodeChatRows(JSON.parse(JSON.stringify(rows))))
 	);
 
 	const ChatMessageList = component('ChatMessageList');

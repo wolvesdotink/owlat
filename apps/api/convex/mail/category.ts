@@ -71,7 +71,7 @@ const PROMOTION_SUBJECT =
 
 /** Local-parts of automated/system senders that emit notifications. */
 const NOTIFICATION_LOCAL_PART =
-	/^(notif(y|ication)?s?|alerts?|updates?|no-?reply|do-?not-?reply|donotreply|system|auto(mated)?|mailer|bot|support|team|hello|info|news|account|security)([+._\-].*)?$/i;
+	/^(notif(y|ication)?s?|alerts?|updates?|no-?reply|do-?not-?reply|donotreply|system|auto(mated)?|mailer|bot|support|team|hello|info|news|account|security)([+._-].*)?$/i;
 
 export interface MailCategoryInput {
 	/** From address of the latest inbound message (any case). */

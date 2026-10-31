@@ -23,6 +23,9 @@ import { beginMemberErasure, resumeRequestWithoutProfile } from './erasure/lifec
  * Convex runtime limits and fail. Migrating to a streamed/paginated CSV
  * action is tracked separately.
  */
+// token-safe: each contact is copied field by field into the CSV columns
+// (email, names, source, timezone, dates, topics, properties); the DOI token
+// and its expiry are never copied.
 export const exportContactsForOrganization = authedQuery({
 	args: {},
 	handler: async (ctx, _args, session) => {

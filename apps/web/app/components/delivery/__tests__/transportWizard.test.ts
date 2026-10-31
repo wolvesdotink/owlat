@@ -38,11 +38,12 @@ import {
 	stubDoh,
 	type WizardProps,
 } from '~/__tests__/transportWizardHarness';
+import type * as TransportAlignmentProbeModule from '~/utils/transportAlignmentProbe';
 
 // The real probe, wrapped so ONE case can make it throw. Everything else runs
 // the shipped gather + evaluator against the DNS fixture.
 vi.mock('~/utils/transportAlignmentProbe', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('~/utils/transportAlignmentProbe')>();
+	const actual = await importOriginal<typeof TransportAlignmentProbeModule>();
 	return { ...actual, runAlignmentProbe: vi.fn(actual.runAlignmentProbe) };
 });
 

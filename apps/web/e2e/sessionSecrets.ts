@@ -1,3 +1,4 @@
+import { isRecord } from '@owlat/shared/utils/guards';
 import type { NamedSecret } from './scanReportSecrets';
 
 /**
@@ -35,15 +36,19 @@ export function withUrlHosts(secrets: NamedSecret[]): NamedSecret[] {
 	return result;
 }
 
-interface StorageState {
-	cookies?: Array<{ name?: unknown; value?: unknown }>;
-	origins?: Array<{ localStorage?: Array<{ name?: unknown; value?: unknown }> }>;
-}
-
 function add(secrets: NamedSecret[], label: string, value: string): void {
 	if (value.length < MIN_VALUE_LENGTH) return;
 	if (secrets.some((secret) => secret.value === value)) return;
 	secrets.push({ label, value });
+}
+
+/** `value` as a list of objects; throws, naming `what`, on anything else. */
+function objectList(value: unknown, what: string): Record<string, unknown>[] {
+	if (!Array.isArray(value)) throw new Error(`${what} is not a list`);
+	return value.map((entry) => {
+		if (!isRecord(entry)) throw new Error(`${what} holds an entry that is not an object`);
+		return entry;
+	});
 }
 
 /**
@@ -51,33 +56,41 @@ function add(secrets: NamedSecret[], label: string, value: string): void {
  * long enough to be a credential. A cookie counts as stored, URL-decoded, and
  * as the token before its signature (BetterAuth signs `token.signature`).
  *
- * Throws on a file that is not a storage state: the caller must not treat an
- * unreadable one as "no cookies".
+ * Throws on a file that is not a storage state, and on any part of one that
+ * can hold a credential but cannot be read: the caller must not treat an
+ * unreadable one as "no cookies". A localStorage value that is not a string
+ * holds no credential text and is skipped.
  */
 export function storageStateSecrets(json: string): NamedSecret[] {
-	const state = JSON.parse(json) as StorageState;
-	if (typeof state !== 'object' || state === null || !Array.isArray(state.cookies)) {
+	const state: unknown = JSON.parse(json);
+	if (!isRecord(state) || !Array.isArray(state['cookies'])) {
 		throw new Error('not a Playwright storage state');
 	}
 	const secrets: NamedSecret[] = [];
-	for (const cookie of state.cookies) {
-		if (typeof cookie.value !== 'string') throw new Error('cookie without a string value');
-		const label = `session cookie ${typeof cookie.name === 'string' ? cookie.name : '(unnamed)'}`;
-		let decoded = cookie.value;
+	for (const cookie of objectList(state['cookies'], 'cookies')) {
+		const { name, value } = cookie;
+		if (typeof value !== 'string') throw new Error('cookie without a string value');
+		const label = `session cookie ${typeof name === 'string' ? name : '(unnamed)'}`;
+		let decoded = value;
 		try {
-			decoded = decodeURIComponent(cookie.value);
+			decoded = decodeURIComponent(value);
 		} catch {
 			// Not URL-encoded; the stored value is all there is.
 		}
-		add(secrets, label, cookie.value);
+		add(secrets, label, value);
 		add(secrets, label, decoded);
 		add(secrets, `${label} token`, decoded.split('.')[0] ?? '');
 	}
-	for (const origin of state.origins ?? []) {
-		for (const item of origin.localStorage ?? []) {
+	const origins = state['origins'] === undefined ? [] : objectList(state['origins'], 'origins');
+	for (const origin of origins) {
+		const items =
+			origin['localStorage'] === undefined
+				? []
+				: objectList(origin['localStorage'], 'localStorage');
+		for (const item of items) {
 			// Keys can hold a user id, so the label does not name them.
-			if (typeof item.value !== 'string') continue;
-			add(secrets, 'storage-state localStorage value', item.value);
+			if (typeof item['value'] !== 'string') continue;
+			add(secrets, 'storage-state localStorage value', item['value']);
 		}
 	}
 	return secrets;

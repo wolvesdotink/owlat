@@ -206,9 +206,9 @@ function renderChoice(id: string, question: ChoiceQuestion): string {
 
 function renderScore(id: string, question: ScoreQuestion): string {
 	const lines = [`### ${id} — ordered score`, question.instructions, 'Levels, lowest first:'];
-	question.criteria.forEach((level, index) => {
+	for (const [index, level] of question.criteria.entries()) {
 		lines.push(`${index + FIRST_LEVEL}. ${level}`);
-	});
+	}
 	lines.push(
 		`Answer with the whole number ${FIRST_LEVEL} to ${question.criteria.length} of the level that fits best.`
 	);

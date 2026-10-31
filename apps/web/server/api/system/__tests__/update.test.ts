@@ -227,6 +227,57 @@ describe('POST /api/system/update — audit trail', () => {
 	});
 });
 
+describe('POST /api/system/update — updater reports of the wrong shape', () => {
+	it.each<[string, unknown]>([
+		['null', null],
+		['an array', [{ success: true }]],
+		['a string', 'ok'],
+	])('takes a 200 answered with %s as applied, without steps', async (_label, payload) => {
+		callUpdaterMock.mockResolvedValue(updaterResponse(true, payload));
+
+		const result = await callRoute();
+
+		expect(result).toMatchObject({ success: true, runId: 'run-id-1', steps: undefined });
+		expect(convexCalls()[1]).toEqual({
+			name: 'systemUpdates:recordUpdateFinish',
+			args: { runId: 'run-id-1', status: 'success', steps: undefined, error: undefined },
+		});
+	});
+
+	it('records steps in exactly the shape the audit row stores', async () => {
+		callUpdaterMock.mockResolvedValue(
+			updaterResponse(true, {
+				success: true,
+				steps: SIDECAR_STEPS.map((step) => ({ ...step, durationMs: 1200 })),
+			})
+		);
+
+		await callRoute();
+
+		expect(convexCalls()[1]?.args['steps']).toEqual(SIDECAR_STEPS);
+	});
+
+	it('drops a malformed step list and a non-string error from a failure report', async () => {
+		callUpdaterMock.mockResolvedValue(
+			updaterResponse(false, {
+				error: { message: 'pull failed' },
+				steps: [{ step: 'pull', ok: 'no', stdout: '', stderr: 'manifest unknown' }],
+				details: 'kept for the UI',
+			})
+		);
+
+		await expect(callRoute()).rejects.toMatchObject({
+			statusCode: 502,
+			message: 'Update failed',
+			data: { details: 'kept for the UI' },
+		});
+		expect(convexCalls()[1]).toEqual({
+			name: 'systemUpdates:recordUpdateFinish',
+			args: { runId: 'run-id-1', status: 'failed', steps: undefined, error: undefined },
+		});
+	});
+});
+
 describe('POST /api/system/update — rollouts that are not plain successes', () => {
 	const STARTED = {
 		error:

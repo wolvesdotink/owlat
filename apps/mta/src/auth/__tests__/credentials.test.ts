@@ -4,6 +4,7 @@ import {
 	createCredential,
 	lookupCredential,
 	revokeCredential,
+	listAllCredentials,
 	listCredentials,
 	listCredentialsWithKeys,
 	setAllowedDomains,
@@ -164,6 +165,52 @@ describe('credentials', () => {
 			expect(credsB.length).toBe(1);
 			expect(credsA[0]!.credential.organizationId).toBe('org-a');
 			expect(credsB[0]!.credential.organizationId).toBe('org-b');
+		});
+	});
+
+	describe('stored blobs that are not a credential', () => {
+		const valid = { organizationId: 'org-bad', name: 'Key', createdAt: 1_700_000_000_000 };
+		const malformed: Array<[string, unknown]> = [
+			['null', null],
+			['a primitive', 'owlat'],
+			['an array', [valid]],
+			['an empty object', {}],
+			['no organizationId', { ...valid, organizationId: undefined }],
+			['a non-string name', { ...valid, name: 7 }],
+			['a non-numeric createdAt', { ...valid, createdAt: 'yesterday' }],
+			['a non-numeric lastUsedAt', { ...valid, lastUsedAt: 'now' }],
+			['allowedDomains that is not an array', { ...valid, allowedDomains: 'brand.com' }],
+			['allowedDomains with a non-string entry', { ...valid, allowedDomains: ['brand.com', 1] }],
+		];
+
+		it.each(malformed)('refuses %s without rewriting Redis', async (_label, blob) => {
+			const raw = JSON.stringify(blob);
+			await redis.set('mta:cred:owlat_bad', raw);
+			await redis.sadd('mta:cred-index:org-bad', 'owlat_bad');
+
+			expect(await lookupCredential(redis, 'owlat_bad')).toBeNull();
+			expect(await setAllowedDomains(redis, 'owlat_bad', ['brand.com'])).toBe(false);
+			expect(await revokeCredential(redis, 'owlat_bad')).toBe(false);
+			expect(await listCredentials(redis, 'org-bad')).toEqual([]);
+			expect(await listCredentialsWithKeys(redis, 'org-bad')).toEqual([]);
+			// The mock's store is shared across tests, so only this key is asserted.
+			const prefixes = (await listAllCredentials(redis)).map((c) => c.apiKeyPrefix);
+			expect(prefixes).not.toContain('owlat_bad...');
+			expect(await redis.get('mta:cred:owlat_bad')).toBe(raw);
+		});
+
+		it('keeps a legacy credential without allowedDomains and fields it does not know', async () => {
+			await redis.set(
+				'mta:cred:owlat_legacy',
+				JSON.stringify({ ...valid, provisionedBy: 'backfill' })
+			);
+			const cred = await lookupCredential(redis, 'owlat_legacy');
+			expect(cred).toMatchObject({ ...valid, provisionedBy: 'backfill' });
+			expect(cred!.allowedDomains).toBeUndefined();
+
+			expect(await setAllowedDomains(redis, 'owlat_legacy', ['Brand.com'])).toBe(true);
+			const stored = JSON.parse((await redis.get('mta:cred:owlat_legacy'))!) as unknown;
+			expect(stored).toMatchObject({ provisionedBy: 'backfill', allowedDomains: ['brand.com'] });
 		});
 	});
 });

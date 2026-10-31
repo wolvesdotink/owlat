@@ -10,7 +10,7 @@
  * (single-message reads), `mailbox/search.ts`.
  */
 
-import { mailCategoryLabelValidator } from '../../lib/literalValidators';
+import type { mailCategoryLabelValidator } from '../../lib/literalValidators';
 import { v, type Infer } from 'convex/values';
 import { publicQuery } from '../../lib/authedFunctions';
 import { mailSortOrderValidator } from '../../lib/validators/mailSettings';

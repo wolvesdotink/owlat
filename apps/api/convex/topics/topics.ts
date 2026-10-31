@@ -16,6 +16,7 @@ import { validateStringLength, STRING_LIMITS } from '../lib/inputGuards';
 import { getOrThrow, throwNotFound } from '../_utils/errors';
 import { trackEvent } from '../lib/posthogHelpers';
 import { batchGet } from '../_utils/batchLoader';
+import { getLiveContact } from '../lib/contactHelpers';
 import {
 	DOI_TOKEN_TTL_MS,
 	findContactByConfirmationToken,
@@ -37,6 +38,8 @@ async function getTopicImpl(ctx: QueryCtx, topicId: Id<'topics'>) {
 }
 
 // Query to get a single topic by ID.
+// all-members: topics are campaign audiences and subscription lists every role
+// reads; writing them needs topics:manage.
 export const get = authedQuery({
 	args: { topicId: v.id('topics') },
 	handler: async (ctx, args) => getTopicImpl(ctx, args.topicId),
@@ -50,6 +53,8 @@ export const getInternal = internalQuery({
 });
 
 // Query to get contacts in a topic (paginated)
+// all-members: the topic's member list, read like contacts.list; deleted
+// contacts are skipped and the rest redacted below.
 export const getContacts = authedQuery({
 	args: {
 		topicId: v.id('topics'),
@@ -115,9 +120,13 @@ async function getTopicsForContactImpl(ctx: QueryCtx, contactId: Id<'contacts'>)
 	return topics.filter((l): l is NonNullable<typeof l> => l !== null);
 }
 
+// all-members: the topics panel on the contact detail page every role reads.
+// A soft-deleted contact keeps its memberships until the retention sweep, so
+// it reads as subscribed to nothing, the way contacts.get reads it as missing.
 export const getTopicsForContact = authedQuery({
 	args: { contactId: v.id('contacts') },
-	handler: async (ctx, args) => getTopicsForContactImpl(ctx, args.contactId),
+	handler: async (ctx, args) =>
+		(await getLiveContact(ctx, args.contactId)) ? getTopicsForContactImpl(ctx, args.contactId) : [],
 });
 
 // Internal variant for the API-key REST route (no Convex session).
@@ -409,6 +418,7 @@ export const getContactByDoiToken = internalQuery({
 
 // Query to get detailed contact information within a topic context
 // Returns contact info, membership details, email history from campaigns targeting this topic, and engagement stats
+// all-members: the topic member detail page every role reads.
 export const getContactInTopicDetails = authedQuery({
 	args: {
 		topicId: v.id('topics'),
@@ -421,8 +431,9 @@ export const getContactInTopicDetails = authedQuery({
 			return null;
 		}
 
-		// Fetch the contact
-		const contact = await ctx.db.get(args.contactId);
+		// A soft-deleted contact keeps its email, names and membership until the
+		// retention sweep; it reads as missing here as it does in contacts.get.
+		const contact = await getLiveContact(ctx, args.contactId);
 		if (!contact) {
 			return null;
 		}
@@ -575,6 +586,7 @@ export const resendDoiConfirmation = authedMutation({
  * List all topics with cursor-based pagination (session-auth shell).
  * Thin wrapper over the Listing engine.
  */
+// all-members: the topic list every role picks audiences from.
 export const list = authedQuery({
 	args: {
 		paginationOpts: paginationOptsValidator,

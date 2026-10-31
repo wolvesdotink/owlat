@@ -19,6 +19,7 @@ import { createHash } from 'crypto';
 import type Redis from 'ioredis';
 import type { DeliveryDomain } from '@owlat/shared';
 import { isCorrelationId } from '@owlat/shared/correlation';
+import { isRecord } from '@owlat/shared/utils/guards';
 import type { BounceAttempt } from './types.js';
 import type { EmailJob } from '../types.js';
 import { parseCampaignFromFeedbackId } from '../intelligence/campaignComplaintRate.js';
@@ -81,38 +82,52 @@ export async function recordFeedbackProvenance(redis: Redis, job: EmailJob): Pro
 	}
 }
 
-function parseRecord(value: string | null, expectedMessageId: string): FeedbackProvenance | null {
-	if (!value) return null;
+/** JSON text as an object, or `null` when it does not parse to one. */
+function parseObject(value: string): Record<string, unknown> | null {
 	try {
-		const parsed = JSON.parse(value) as Record<string, unknown>;
-		const campaignId = parsed['campaignId'];
-		const isKnownCampaignId =
-			campaignId === undefined ||
-			(typeof campaignId === 'string' &&
-				parseCampaignFromFeedbackId(`campaign:${campaignId}:known:known`) === campaignId);
-		if (
-			parsed['messageId'] === expectedMessageId &&
-			(parsed['deliveryDomain'] === 'production' || parsed['deliveryDomain'] === 'member_test') &&
-			typeof parsed['organizationId'] === 'string' &&
-			parsed['organizationId'].length > 0 &&
-			parsed['organizationId'].length <= 128 &&
-			typeof parsed['recipient'] === 'string' &&
-			parsed['recipient'].length > 0 &&
-			parsed['recipient'].length <= 320 &&
-			isKnownCampaignId
-		) {
-			// A malformed correlation id costs the log join, never the attribution:
-			// it is dropped rather than failing the whole record.
-			const { correlationId, ...record } = parsed;
-			return {
-				...(record as unknown as FeedbackProvenance),
-				...(isCorrelationId(correlationId) ? { correlationId } : {}),
-			};
-		}
+		const parsed: unknown = JSON.parse(value);
+		return isRecord(parsed) ? parsed : null;
 	} catch {
-		// Corrupt state is unknown, never production evidence.
+		return null;
 	}
-	return null;
+}
+
+function isDeliveryDomain(value: unknown): value is DeliveryDomain {
+	return value === 'production' || value === 'member_test';
+}
+
+const isBoundedString = (value: unknown, maxLength: number): value is string =>
+	typeof value === 'string' && value.length > 0 && value.length <= maxLength;
+
+function parseRecord(value: string | null, expectedMessageId: string): FeedbackProvenance | null {
+	// Corrupt state is unknown, never production evidence.
+	const parsed = value ? parseObject(value) : null;
+	if (!parsed) return null;
+	const { messageId, deliveryDomain, organizationId, recipient, campaignId, correlationId } =
+		parsed;
+	const isKnownCampaignId =
+		campaignId === undefined ||
+		(typeof campaignId === 'string' &&
+			parseCampaignFromFeedbackId(`campaign:${campaignId}:known:known`) === campaignId);
+	if (
+		messageId !== expectedMessageId ||
+		!isDeliveryDomain(deliveryDomain) ||
+		!isBoundedString(organizationId, 128) ||
+		!isBoundedString(recipient, 320) ||
+		!isKnownCampaignId
+	) {
+		return null;
+	}
+	return {
+		messageId: expectedMessageId,
+		deliveryDomain,
+		organizationId,
+		recipient,
+		...(typeof campaignId === 'string' ? { campaignId } : {}),
+		// A malformed correlation id costs the log join, never the attribution:
+		// it is dropped rather than failing the whole record.
+		...(isCorrelationId(correlationId) ? { correlationId } : {}),
+	};
 }
 
 async function recipientDomain(
@@ -125,14 +140,9 @@ async function recipientDomain(
 	const values = await redis.zrange(key, '0', '-1');
 	const domains = new Set<DeliveryDomain>();
 	for (const value of values) {
-		try {
-			const parsed = JSON.parse(value) as Record<string, unknown>;
-			if (parsed['domain'] === 'production' || parsed['domain'] === 'member_test') {
-				domains.add(parsed['domain']);
-			}
-		} catch {
-			return 'unknown';
-		}
+		const parsed = parseObject(value);
+		if (!parsed) return 'unknown';
+		if (isDeliveryDomain(parsed['domain'])) domains.add(parsed['domain']);
 	}
 	return domains.size === 1 ? [...domains][0]! : 'unknown';
 }

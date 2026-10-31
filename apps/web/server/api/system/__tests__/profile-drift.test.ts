@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { getActiveProfiles } from '@owlat/shared/featureFlags';
+import type * as RequireAdminModule from '~~/server/utils/requireAdmin';
 
 /**
  * Route tests for `GET /api/system/profile-drift` (plan FU4): the durable
@@ -215,6 +216,26 @@ describe('GET /api/system/profile-drift — updater unreachable', () => {
 		expect(result.error).toContain('401');
 	});
 
+	it.each<[string, unknown]>([
+		['null', null],
+		['an array', [{ profiles: ['clamav'] }]],
+		['a string', 'clamav'],
+	])('maps a profile-state answer that is %s to reachable:false', async (_label, payload) => {
+		callUpdaterMock.mockResolvedValue(updaterResponse(payload));
+
+		const result = await callRoute();
+
+		expect(result).toEqual({
+			reachable: false,
+			drifted: false,
+			missingProfiles: [],
+			staleProfiles: [],
+			services: [],
+			error: 'Updater profile-state answered with an unreadable body',
+		});
+		expect(queryMock).not.toHaveBeenCalled();
+	});
+
 	it('maps a missing INSTANCE_SECRET to reachable:false, never a 503 throw', async () => {
 		getInstanceSecretMock.mockImplementation(() => {
 			throw Object.assign(new Error('Drift probe not configured (INSTANCE_SECRET missing)'), {
@@ -236,9 +257,7 @@ describe('GET /api/system/profile-drift — updater unreachable', () => {
  */
 describe('GET /api/system/profile-drift — the real platform-admin gate', () => {
 	it('rejects an unauthenticated call with 401 before touching the updater', async () => {
-		const real = await vi.importActual<typeof import('~~/server/utils/requireAdmin')>(
-			'~~/server/utils/requireAdmin'
-		);
+		const real = await vi.importActual<typeof RequireAdminModule>('~~/server/utils/requireAdmin');
 		requirePlatformAdminMock.mockImplementation(real.requirePlatformAdmin);
 		vi.stubGlobal('useRuntimeConfig', () => ({
 			public: { convexUrl: 'https://convex.example.com', siteUrl: 'https://owlat.example' },

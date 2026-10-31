@@ -21,7 +21,7 @@
 import type { TestConvex } from 'convex-test';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { newBetterAuthHarness } from '../../__tests__/testModules';
-import schema from '../../schema';
+import type schema from '../../schema';
 import { api, internal, components } from '../../_generated/api';
 
 const sessionMock = vi.hoisted(() => ({

@@ -5,6 +5,9 @@ import {
 	isEnvBackupSealedValue,
 } from '@owlat/shared/envBackupBox';
 import { jsonRequestEvent } from '../../../__tests__/nitro';
+import type * as ConvexRuntimeEnvModule from '@owlat/shared/convexRuntimeEnv';
+import type * as ComposedSendProviderCatalogModule from '~/utils/composedSendProviderCatalog';
+import type * as RequireOrgAdminModule from '~~/server/utils/requireOrgAdmin';
 
 /**
  * Secrets-at-rest tests for `POST /api/delivery/apply-transport`: the `.env`
@@ -61,14 +64,14 @@ vi.mock('@owlat/shared/setupEnv', () => ({
 	writeEnvFile: writeMock,
 }));
 vi.mock('@owlat/shared/convexRuntimeEnv', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('@owlat/shared/convexRuntimeEnv')>();
+	const actual = await importOriginal<typeof ConvexRuntimeEnvModule>();
 	return { ...actual, pushConvexRuntimeEnv: pushMock };
 });
 vi.mock('~/generated/sendTransportCatalog.generated', () => ({
 	BUNDLED_PLUGIN_SEND_TRANSPORT_CATALOG: pluginCatalog,
 }));
 vi.mock('~/utils/composedSendProviderCatalog', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('~/utils/composedSendProviderCatalog')>();
+	const actual = await importOriginal<typeof ComposedSendProviderCatalogModule>();
 	return {
 		...actual,
 		COMPOSED_TRANSPORT_CREDENTIAL_ENV_KEYS: [PLUGIN_TOKEN_ENV],
@@ -274,7 +277,7 @@ describe('apply-transport secrets at rest', () => {
  */
 describe('POST /api/delivery/apply-transport — the real org-admin gate', () => {
 	it('rejects an unauthenticated call with 401 before touching .env or the live env store', async () => {
-		const real = await vi.importActual<typeof import('~~/server/utils/requireOrgAdmin')>(
+		const real = await vi.importActual<typeof RequireOrgAdminModule>(
 			'~~/server/utils/requireOrgAdmin'
 		);
 		requireOrgAdminMock.mockImplementation(real.requireOrgAdmin);

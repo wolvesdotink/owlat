@@ -17,6 +17,7 @@ import {
 import type { IpPoolConfig, DkimKeyConfig } from './types.js';
 import { assertMtaSecretStrength } from './lib/mtaSecretStrength.js';
 import { loadDaneConfig, type DaneMode } from './daneConfig.js';
+import { parseDkimKeys } from './dkimKeysConfig.js';
 import { assertValidEhloHostname } from './ehloConfig.js';
 import {
 	loadGovernedDeliveryConfig,
@@ -356,18 +357,7 @@ export function loadConfig(): MtaConfig {
 		process.env['MTA_ALLOW_UNVERIFIED_FCRDNS']
 	);
 
-	// Parse DKIM keys from JSON env var
-	let dkimKeys: Record<string, DkimKeyConfig> = {};
-	const dkimKeysRaw = process.env['DKIM_KEYS'];
-	if (dkimKeysRaw) {
-		try {
-			dkimKeys = JSON.parse(dkimKeysRaw);
-		} catch {
-			throw new Error(
-				'DKIM_KEYS must be valid JSON: {"domain.com":{"selector":"s1","privateKey":"..."}}'
-			);
-		}
-	}
+	const dkimKeys = parseDkimKeys(process.env['DKIM_KEYS']);
 
 	// Refuse to boot an insecure submission listener: when submission is enabled
 	// the cert/key MUST be present so STARTTLS can be required before AUTH

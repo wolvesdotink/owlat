@@ -44,6 +44,10 @@ import { getInstanceSettings, upsertInstanceSettings } from '../lib/instanceSett
 import { beginWorkspaceDeletion } from './deletion/job';
 import { hasPermission, requirePermission } from '../lib/sessionOrganization';
 
+// all-members: the singleton settings row drives every member's dashboard
+// (feature flags, sender defaults, theme, timezone). It holds no credential:
+// a plugin's secret fields name an environment variable and are never stored.
+// Writing it needs settings:manage.
 export const get = authedQuery({
 	args: {},
 	handler: async (ctx) => {

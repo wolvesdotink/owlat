@@ -1,12 +1,11 @@
 # The one span scanner for top-level public Convex definitions.
 #
-# Shared by check-permissions, check-query-authz, check-session-threading,
-# check-token-redaction and check-errors, which used to carry four copies of
-# this state machine plus a fifth variant. A check keeps only its predicate, as
-# three hook functions, and runs them through the scanner with
-# convex_defs_program from scripts/lib/convex-builders.sh (awk takes either
-# `-f` files or program text, so the scanner and the fragment are joined into
-# one program):
+# Shared by check-permissions, check-query-authz, check-token-redaction and
+# check-errors, which used to carry copies of this state machine. A check keeps
+# only its predicate, as three hook functions, and runs them through the
+# scanner with convex_defs_program from scripts/lib/convex-builders.sh (awk
+# takes either `-f` files or program text, so the scanner and the fragment are
+# joined into one program):
 #
 #   program=$(convex_defs_program '
 #       function on_start() { … }   # a span opened on this line

@@ -20,6 +20,7 @@ import {
 	type SyntheticInboxThread,
 } from '../listWorkload';
 import type { TeamInboxScenario } from '../scenarios';
+import { decodeInboxThreads } from '../wireRows';
 import { counter, timing, type Sample } from '../stats';
 import { autoImported } from './autoImports';
 import { component } from './components';
@@ -45,10 +46,7 @@ export function teamInbox(scenario: TeamInboxScenario) {
 	const threads = teamInboxWorkload(scenario);
 	const data = shallowRef<SyntheticInboxThread[] | undefined>(undefined);
 	const deliver = (next: readonly SyntheticInboxThread[]) => {
-		data.value = shareStructure(
-			data.value,
-			JSON.parse(JSON.stringify(next)) as SyntheticInboxThread[]
-		);
+		data.value = shareStructure(data.value, decodeInboxThreads(JSON.parse(JSON.stringify(next))));
 	};
 	deliver(threads);
 	const now = shallowRef(SCENARIO_NOW);

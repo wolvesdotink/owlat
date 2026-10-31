@@ -24,6 +24,7 @@
 import { convexTest } from 'convex-test';
 import { enableFeatures } from '../../__tests__/factories';
 import { afterEach, describe, expect, it, vi, beforeEach } from 'vitest';
+import type * as SessionOrganizationModule from '../../lib/sessionOrganization';
 import schema from '../../schema';
 import { api, internal } from '../../_generated/api';
 import type { Doc, Id } from '../../_generated/dataModel';
@@ -61,8 +62,7 @@ vi.mock('../../lib/sessionOrganization', async () => {
 		requireOrgPermission: vi
 			.fn()
 			.mockImplementation(async (_ctx: unknown, permission: string, message?: string) => {
-				const mod: typeof import('../../lib/sessionOrganization') =
-					actual as typeof import('../../lib/sessionOrganization');
+				const mod: typeof SessionOrganizationModule = actual as typeof SessionOrganizationModule;
 				mod.requirePermission(
 					mod.hasPermission(
 						'owner' as Parameters<typeof mod.hasPermission>[0],

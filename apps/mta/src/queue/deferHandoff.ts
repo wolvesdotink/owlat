@@ -2,6 +2,7 @@ import { createHash } from 'crypto';
 import type { Queue } from 'groupmq';
 import type Redis from 'ioredis';
 import { GOVERNED_MTA_MAX_MESSAGE_AGE_MS } from '@owlat/shared';
+import { isRecord } from '@owlat/shared/utils/guards';
 import type { EmailJob } from '../types.js';
 
 interface DeferredHandoffReceipt {
@@ -49,23 +50,40 @@ function deferChainId(job: EmailJob, predecessorJobId: string): string {
 	return job.deferChainId ?? `chain-${createHash('sha256').update(predecessorJobId).digest('hex')}`;
 }
 
+/**
+ * The stored receipt, or `null` when there is none or it is corrupt. Fields
+ * this build does not know stay on it, so the accepted rewrite keeps them.
+ */
 function parseReceipt(raw: string | null): DeferredHandoffReceipt | null {
 	if (!raw) return null;
+	let value: unknown;
 	try {
-		const value = JSON.parse(raw) as Record<string, unknown>;
-		if (
-			(value['state'] === 'reserved' || value['state'] === 'accepted') &&
-			typeof value['messageId'] === 'string' &&
-			typeof value['successorJobId'] === 'string' &&
-			typeof value['groupId'] === 'string' &&
-			typeof value['delay'] === 'number' &&
-			typeof value['reservedAt'] === 'number' &&
-			(value['acceptedAt'] === undefined || typeof value['acceptedAt'] === 'number')
-		) {
-			return value as unknown as DeferredHandoffReceipt;
-		}
+		value = JSON.parse(raw);
 	} catch {
 		// Corrupt handoffs fail closed in their caller.
+		return null;
+	}
+	if (!isRecord(value)) return null;
+	const { state, messageId, successorJobId, groupId, delay, reservedAt, acceptedAt } = value;
+	if (
+		(state === 'reserved' || state === 'accepted') &&
+		typeof messageId === 'string' &&
+		typeof successorJobId === 'string' &&
+		typeof groupId === 'string' &&
+		typeof delay === 'number' &&
+		typeof reservedAt === 'number' &&
+		(acceptedAt === undefined || typeof acceptedAt === 'number')
+	) {
+		return {
+			...value,
+			state,
+			messageId,
+			successorJobId,
+			groupId,
+			delay,
+			reservedAt,
+			...(acceptedAt === undefined ? {} : { acceptedAt }),
+		};
 	}
 	return null;
 }

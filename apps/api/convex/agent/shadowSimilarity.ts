@@ -22,9 +22,8 @@ function editDistance(a: string[], b: string[]): number {
 	if (b.length === 0) return a.length;
 
 	// Two-row rolling DP: O(a.length) memory.
-	let prev = new Array<number>(b.length + 1);
-	let curr = new Array<number>(b.length + 1);
-	for (let j = 0; j <= b.length; j++) prev[j] = j;
+	let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+	let curr = Array.from({ length: b.length + 1 }, () => 0);
 
 	for (let i = 1; i <= a.length; i++) {
 		curr[0] = i;

@@ -8,11 +8,11 @@
  * were therefore outside the gate's sight entirely, and a new one that forgot
  * its membership check would have passed.
  *
- * The cases here run the REAL script's `--generate` half (the violation lister,
- * before the shared ratchet compares it to the baseline) against throwaway
- * `apps/api` trees, and pin each way a read can satisfy the rule: a recognized
- * gate call, a soft-fail predicate, an `// authz:` / `// all-members:` opt-out —
- * plus the cases that must still be reported.
+ * Most cases run the REAL script's `--generate` half (the violation lister)
+ * against throwaway `apps/api` trees, and pin each way a read can satisfy the
+ * rule: a recognized gate call, a soft-fail predicate, an `// authz:` /
+ * `// all-members:` opt-out — plus the cases that must still be reported. The
+ * last block runs the gate itself, which has no baseline to fall back on.
  */
 
 import { afterAll, describe, expect, it } from 'vitest';
@@ -323,6 +323,33 @@ describe('convex query authorization ratchet', () => {
 		it('says nothing about a file with no public function', async () => {
 			const internal = read('internalQuery', "\t\tawait ctx.db.query('conversationThreads');");
 			expect(await violations({ 'convex/maintenance/sweep.ts': internal })).toEqual([]);
+		});
+	});
+
+	describe('the gate itself', () => {
+		it('passes a tree where every read decides', async () => {
+			const root = await apiTree(
+				{
+					'convex/mail/queries.ts': read(
+						'authedQuery',
+						'\t\t// all-members: the folder list is member-visible by design'
+					),
+				},
+				roots
+			);
+			const result = await runGate(root, GATE);
+			expect(result.code).toBe(0);
+			expect(result.output).toContain('no baseline, none allowed');
+		});
+
+		it('fails on a single read without a decision', async () => {
+			const root = await apiTree(
+				{ 'convex/mail/queries.ts': read('authedQuery', '\t\tawait ctx.db.query("x");') },
+				roots
+			);
+			const result = await runGate(root, GATE);
+			expect(result.code).toBe(1);
+			expect(result.output).toContain('convex/mail/queries.ts:listThreads');
 		});
 	});
 });

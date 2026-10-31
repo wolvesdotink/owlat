@@ -418,7 +418,7 @@ describe('Organization deletion step modules — storage purge', () => {
 				sourceType: 'email_attachment',
 				storageId: fileSid,
 				version: 1,
-				embedding: new Array(1536).fill(0),
+				embedding: Array.from({ length: 1536 }, () => 0),
 				createdAt: Date.now(),
 				updatedAt: Date.now(),
 			});

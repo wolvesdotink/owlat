@@ -43,7 +43,12 @@ export function setSession(userId: string, role: Role, activeOrganizationId = 'o
 }
 
 /** The floor each org-scoped builder resolves (`lib/authedFunctions.ts`). */
-export type Floor = 'requireOrgMember' | 'getMutationContext' | 'requireAdminContext';
+export type Floor =
+	| 'requireOrgMember'
+	| 'getMutationContext'
+	| 'requireAdminContext'
+	// adminQuery's floor.
+	| 'requireOrgPermission';
 
 /** Every helper that resolves a session, floor or not. */
 const RESOLVERS = [

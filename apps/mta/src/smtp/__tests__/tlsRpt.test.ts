@@ -208,6 +208,44 @@ describe('tlsRpt', () => {
 			expect(starttls!['failed-session-count']).toBe(2);
 		});
 
+		it('skips stored failure details that are missing fields', async () => {
+			const today = new Date().toISOString().split('T')[0]!;
+			await recordTlsResult(
+				redis,
+				'example.com',
+				'certificate-expired',
+				'mx2.example.com',
+				'10.0.0.2'
+			);
+			const failureKey = `mta:tls-rpt:example.com:${today}:failures`;
+			for (const corrupt of [
+				null,
+				['certificate-expired', 'mx2.example.com', '10.0.0.2'],
+				{ type: 'certificate-expired', mxHost: 'mx2.example.com' },
+				{ type: 'validation-failure', mxHost: 7, sendingIp: '10.0.0.9' },
+				{ mxHost: 'mx9.example.com', sendingIp: '10.0.0.9' },
+			]) {
+				await redis.rpush(failureKey, JSON.stringify(corrupt));
+			}
+
+			const report = await generateReport(
+				redis,
+				'example.com',
+				today,
+				'Owlat MTA',
+				'postmaster@owlat.com'
+			);
+
+			expect(report!.policies[0]!['failure-details']).toEqual([
+				{
+					'result-type': 'certificate-expired',
+					'sending-mta-ip': '10.0.0.2',
+					'receiving-mx-hostname': 'mx2.example.com',
+					'failed-session-count': 1,
+				},
+			]);
+		});
+
 		it('uses UTC day bounds for the date-range and a non-empty report-id', async () => {
 			const today = new Date().toISOString().split('T')[0]!;
 			await recordTlsResult(redis, 'example.com', 'success', 'mx1.example.com', '10.0.0.1');
