@@ -27,8 +27,13 @@ import {
 	PLUGIN_UNAVAILABLE_RETRY_MS,
 	type PluginRelayObservation,
 } from './providers/plugin/state';
+import type { MutationCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import { relayIdentityStatusValidator } from '../lib/literalValidators';
+import {
+	authorizeIdentityCallIn,
+	recordIdentityCallOutcome,
+} from '../plugins/sendTransportDomainIdentityAuthorization';
 
 const recordVerdictValidator = v.object({
 	isValid: v.boolean(),
@@ -45,11 +50,88 @@ const observationValidator = v.object({
 });
 
 /**
- * Persist a call that produced a verdict.
+ * What one identity call came back with, as the host read it: a verdict, or a
+ * failure (a rejected credential, a missing one, an outage, an unreadable
+ * answer).
  *
- * `checkedAt` is the caller's, not `Date.now()`: it dates the EVIDENCE, and the
- * relay proof's freshness bound reads it. Stamping the write time would let a row
- * written long after the call it describes look fresher than the fact it holds.
+ * A verdict's `checkedAt` is the caller's, not `Date.now()`: it dates the
+ * EVIDENCE, and the relay proof's freshness bound reads it. Stamping the write
+ * time would let a row written long after the call it describes look fresher
+ * than the fact it holds.
+ */
+const callResultValidator = v.union(
+	v.object({
+		outcome: v.literal('ok'),
+		observation: observationValidator,
+		checkedAt: v.number(),
+	}),
+	v.object({
+		outcome: v.literal('failed'),
+		isAuthFailure: v.boolean(),
+		error: v.string(),
+	})
+);
+
+/**
+ * The one write of an identity call that got as far as asking the provider, or
+ * that a missing credential stopped: the row's verdict or failure, and the
+ * call's audited outcome, in one transaction.
+ *
+ * Authorization is not rechecked here. The provider call has already happened
+ * by now, and what it found is evidence about the domain whether or not the
+ * plugin is still enabled.
+ */
+export const commitIdentityCall = internalMutation({
+	args: {
+		pluginId: v.string(),
+		kind: v.string(),
+		domain: v.string(),
+		result: callResultValidator,
+	},
+	handler: async (ctx, args) => {
+		const { result } = args;
+		if (result.outcome === 'ok') {
+			await upsertPluginRelayIdentity(
+				ctx,
+				args.kind,
+				args.domain,
+				result.observation as PluginRelayObservation,
+				result.checkedAt
+			);
+		} else {
+			await writeCheckFailure(ctx, args.kind, args.domain, result.isAuthFailure, result.error);
+		}
+		await recordIdentityCallOutcome(
+			ctx,
+			args.pluginId,
+			args.kind,
+			result.outcome === 'ok' ? 'completed' : 'failed'
+		);
+	},
+});
+
+/**
+ * The one write of an identity call the host refused to make. Rechecks the
+ * authorization in this transaction, which audits the refusal, and moves the
+ * retry for the reasons `deferDeniedCheck` gives. A plugin re-enabled since the
+ * action's read gets nothing written: its row stays due and the next sweep
+ * asks the provider.
+ */
+export const commitDeniedCall = internalMutation({
+	args: { pluginId: v.string(), kind: v.string(), domain: v.string() },
+	handler: async (ctx, args): Promise<{ isDenied: boolean }> => {
+		if (await authorizeIdentityCallIn(ctx, args.pluginId, args.kind)) {
+			return { isDenied: false };
+		}
+		await schedulePluginRelayRetry(ctx, args.kind, args.domain, Date.now(), PLUGIN_DENIED_RETRY_MS);
+		return { isDenied: true };
+	},
+});
+
+/**
+ * Persist a call that produced a verdict. Kept for one release: identity
+ * actions of the previous release still call it by path during the deploy.
+ * Remove after release 0.6.17.
  */
 export const recordCheck = internalMutation({
 	args: {
@@ -78,6 +160,25 @@ export const recordCheck = internalMutation({
  * identity untouched and only moves the retry. Neither refreshes `lastCheckedAt`
  * — see `providers/plugin/persistence.ts`.
  */
+async function writeCheckFailure(
+	ctx: MutationCtx,
+	kind: string,
+	domain: string,
+	isAuthFailure: boolean,
+	error: string
+): Promise<void> {
+	const now = Date.now();
+	if (isAuthFailure) {
+		await markPluginRelayIdentityFailed(ctx, kind, domain, error, now);
+		return;
+	}
+	await schedulePluginRelayRetry(ctx, kind, domain, now, PLUGIN_UNAVAILABLE_RETRY_MS);
+}
+
+/**
+ * {@link writeCheckFailure} as its own mutation. Kept for one release, like
+ * `recordCheck`. Remove after release 0.6.17.
+ */
 export const recordCheckFailure = internalMutation({
 	args: {
 		kind: v.string(),
@@ -86,12 +187,7 @@ export const recordCheckFailure = internalMutation({
 		error: v.string(),
 	},
 	handler: async (ctx, args) => {
-		const now = Date.now();
-		if (args.isAuthFailure) {
-			await markPluginRelayIdentityFailed(ctx, args.kind, args.domain, args.error, now);
-			return;
-		}
-		await schedulePluginRelayRetry(ctx, args.kind, args.domain, now, PLUGIN_UNAVAILABLE_RETRY_MS);
+		await writeCheckFailure(ctx, args.kind, args.domain, args.isAuthFailure, args.error);
 	},
 });
 
@@ -113,6 +209,9 @@ export const recordCheckFailure = internalMutation({
  * alive, and must not be able to condemn a credential nobody rejected. The delay
  * is the slower {@link PLUGIN_DENIED_RETRY_MS} because a denial is a decision
  * rather than an outage.
+ *
+ * Kept for one release, like `recordCheck`; `commitDeniedCall` makes this write
+ * now. Remove after release 0.6.17.
  */
 export const deferDeniedCheck = internalMutation({
 	args: { kind: v.string(), domain: v.string() },

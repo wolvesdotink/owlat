@@ -1,9 +1,11 @@
 import { PLUGIN_SEND_TRANSPORT_CAPABILITY } from '@owlat/plugin-kit';
 import { v } from 'convex/values';
+import { internalQuery, type MutationCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import { pluginSendTransportDomainIdentityDefinition } from './sendTransportDomainIdentityCatalog';
 import {
 	authorizeHostedContribution,
+	isHostedContributionAuthorized,
 	recordHostedContributionOutcome,
 	type HostedContributionAuthorizationSpec,
 } from './hostedContributionAuthorization';
@@ -37,14 +39,52 @@ const SPEC: HostedContributionAuthorizationSpec = {
 	definitionFor: pluginSendTransportDomainIdentityDefinition,
 };
 
-/** Rechecks flag, grant, environment, and singleton scope before a provider call. */
+/**
+ * Whether an identity call may be made now: flag, grant, environment, and
+ * singleton scope, read without writing. The identity action asks this before
+ * its provider call; a refusal is audited by the commit that defers the row
+ * (`authorizeIdentityCallIn`, inside `domains/pluginRelayMutations.ts`).
+ */
+export const checkIdentityCall = internalQuery({
+	args: { pluginId: v.string(), transportKind: v.string() },
+	handler: (ctx, args): Promise<boolean> =>
+		isHostedContributionAuthorized(ctx, SPEC, args.pluginId, args.transportKind),
+});
+
+/** Rechecks the identity call's authorization in the caller's transaction, auditing a denial. */
+export function authorizeIdentityCallIn(
+	ctx: MutationCtx,
+	pluginId: string,
+	transportKind: string
+): Promise<boolean> {
+	return authorizeHostedContribution(ctx, SPEC, pluginId, transportKind);
+}
+
+/** Audits the outcome of an identity call in the caller's transaction. */
+export function recordIdentityCallOutcome(
+	ctx: MutationCtx,
+	pluginId: string,
+	transportKind: string,
+	outcome: 'completed' | 'failed'
+): Promise<void> {
+	return recordHostedContributionOutcome(ctx, SPEC, pluginId, transportKind, outcome);
+}
+
+/**
+ * Rechecks flag, grant, environment, and singleton scope before a provider call.
+ * Kept for one release: identity actions of the previous release still call it
+ * by path during the deploy. Remove after release 0.6.17.
+ */
 export const authorizeIdentityCall = internalMutation({
 	args: { pluginId: v.string(), transportKind: v.string() },
 	handler: (ctx, args): Promise<boolean> =>
-		authorizeHostedContribution(ctx, SPEC, args.pluginId, args.transportKind),
+		authorizeIdentityCallIn(ctx, args.pluginId, args.transportKind),
 });
 
-/** Persists only attribution and the outcome of an authorized identity call. */
+/**
+ * Persists only attribution and the outcome of an authorized identity call.
+ * Kept for one release, like `authorizeIdentityCall`. Remove after release 0.6.17.
+ */
 export const recordOutcome = internalMutation({
 	args: {
 		pluginId: v.string(),
@@ -52,5 +92,5 @@ export const recordOutcome = internalMutation({
 		outcome: completedOrFailedValidator,
 	},
 	handler: (ctx, args): Promise<void> =>
-		recordHostedContributionOutcome(ctx, SPEC, args.pluginId, args.transportKind, args.outcome),
+		recordIdentityCallOutcome(ctx, args.pluginId, args.transportKind, args.outcome),
 });

@@ -20,7 +20,6 @@ import {
 	runPipeline as runPipelineGeneric,
 	type ComposedPipeline,
 	type Phase as GenericPhase,
-	type PhaseOutcome as GenericPhaseOutcome,
 	type Pipeline as GenericPipeline,
 	type PipelineResult as GenericPipelineResult,
 } from '../lib/phasePipeline.js';
@@ -38,16 +37,6 @@ export type DispatchTerminal =
 	| { kind: 'drop'; status: 'screened' | 'suppressed'; reason: string };
 
 /**
- * Outcome a phase emits per execution.
- *
- * - `continue` carries the ctx for the next phase. Most phases pass it
- *   through unchanged (`Phase<X, X>`); the two enriching phases
- *   (`resolvePool`, `selectIp`) widen the ctx type.
- * - `defer` / `drop` short-circuit the pipeline (see `DispatchTerminal`).
- */
-export type PhaseOutcome<TOut extends BasePhaseCtx> = GenericPhaseOutcome<TOut, DispatchTerminal>;
-
-/**
  * One step in the pipeline. The runner discovers the step's name via this
  * record so logs and telemetry can attribute defers to the phase that
  * emitted them.
@@ -60,7 +49,7 @@ export type Phase<TIn extends BasePhaseCtx, TOut extends BasePhaseCtx> = Generic
 >;
 
 /**
- * The pipeline's collected output. Mirrors `PhaseOutcome` but is what the
+ * The pipeline's collected output. Mirrors a phase's outcome but is what the
  * runner returns — the caller (handler.ts) translates `defer` into a
  * `DeferError` throw.
  */

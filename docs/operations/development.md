@@ -83,8 +83,13 @@ mirrors `apps/api/package.json` and `apps/api/convex` without any `__tests__`
 directory into `.owlat-dev/api` and pushes from there, which is what the
 deploy image does too (`docker/convex-deploy.Dockerfile`). The watcher runs
 with codegen off, so a push never rewrites the committed `_generated/`.
-After adding a function module, update `convex/_generated/api.d.ts` as before
-(`bun run --cwd apps/api lint` checks it).
+After adding a function module, add its import and `fullApi` entry to
+`convex/_generated/api.d.ts`, then run `bun run --cwd apps/api codegen:chunks`
+(`bun run --cwd apps/api lint` checks both). `fullApi` is split into one
+`ApiFromModules` per top-level directory: a single map over all ~1,900 modules
+exceeds TypeScript's relation budget and turns `api` and `internal` into
+`never`. For the same reason every deploy runs with `--codegen disable` and
+typechecks the committed declaration.
 
 ### Ports
 

@@ -13,10 +13,6 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { getCurrentWindow, Effect } from '@tauri-apps/api/window';
 
-export async function startDragging(): Promise<void> {
-	await getCurrentWindow().startDragging();
-}
-
 /** @public The web app reaches this through a lazy `import()` of this module, which knip cannot trace. */
 export async function minimizeWindow(): Promise<void> {
 	await getCurrentWindow().minimize();

@@ -15,7 +15,7 @@
 #
 # Sibling of scripts/check-cross-package-imports.sh: one grep-shaped invariant,
 # plus two small checked-in lists that are strict in BOTH directions, exactly
-# like the file-size and dead-code baselines — an unlisted violation fails, and
+# like the file-size baseline — an unlisted violation fails, and
 # a listed site that no longer violates fails too, so a list can only shrink.
 #
 #   scripts/provider-identity-allowlist.txt — DEBT. Sites that predate the rule,
