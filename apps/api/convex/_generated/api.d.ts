@@ -437,6 +437,7 @@ import type * as chat_rooms from '../chat/rooms.js';
 import type * as codeWorkTasks from '../codeWorkTasks.js';
 import type * as conditions_contact_property_index from '../conditions/contact_property/index.js';
 import type * as conditions_email_activity_index from '../conditions/email_activity/index.js';
+import type * as conditions_evaluation from '../conditions/evaluation.js';
 import type * as conditions_index from '../conditions/index.js';
 import type * as conditions_liveContactScan from '../conditions/liveContactScan.js';
 import type * as conditions_segmentMatch from '../conditions/segmentMatch.js';
@@ -1168,6 +1169,7 @@ import type * as lib_sendProviders_routeInputs from '../lib/sendProviders/routeI
 import type * as lib_sendProviders_routeMixContext from '../lib/sendProviders/routeMixContext.js';
 import type * as lib_sendProviders_routing from '../lib/sendProviders/routing.js';
 import type * as lib_sendProviders_ses_index from '../lib/sendProviders/ses/index.js';
+import type * as lib_sendProviders_shareSplit from '../lib/sendProviders/shareSplit.js';
 import type * as lib_sendProviders_smtp_config from '../lib/sendProviders/smtp/config.js';
 import type * as lib_sendProviders_smtp_index from '../lib/sendProviders/smtp/index.js';
 import type * as lib_sendProviders_smtp_returnPath from '../lib/sendProviders/smtp/returnPath.js';
@@ -2355,6 +2357,7 @@ declare const fullApi: ApiFromModules<{
 	codeWorkTasks: typeof codeWorkTasks;
 	'conditions/contact_property/index': typeof conditions_contact_property_index;
 	'conditions/email_activity/index': typeof conditions_email_activity_index;
+	'conditions/evaluation': typeof conditions_evaluation;
 	'conditions/index': typeof conditions_index;
 	'conditions/liveContactScan': typeof conditions_liveContactScan;
 	'conditions/segmentMatch': typeof conditions_segmentMatch;
@@ -3086,6 +3089,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/sendProviders/routeMixContext': typeof lib_sendProviders_routeMixContext;
 	'lib/sendProviders/routing': typeof lib_sendProviders_routing;
 	'lib/sendProviders/ses/index': typeof lib_sendProviders_ses_index;
+	'lib/sendProviders/shareSplit': typeof lib_sendProviders_shareSplit;
 	'lib/sendProviders/smtp/config': typeof lib_sendProviders_smtp_config;
 	'lib/sendProviders/smtp/index': typeof lib_sendProviders_smtp_index;
 	'lib/sendProviders/smtp/returnPath': typeof lib_sendProviders_smtp_returnPath;

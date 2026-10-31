@@ -22,8 +22,8 @@ import {
 	type DeliverabilityRouteInput,
 } from './routing';
 import type { MixContext } from './strategies';
+import { isShareSplitRoute } from './shareSplit';
 import {
-	isShareSplitRoute,
 	mixContextFor,
 	resolveAddressCell,
 	type PrecomputedRouteInputs,

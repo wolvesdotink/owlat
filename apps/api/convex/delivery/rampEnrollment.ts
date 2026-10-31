@@ -72,7 +72,7 @@ import type { MutationCtx } from '../_generated/server';
 import { adminMutation } from '../lib/authedFunctions';
 import { getSingletonOrganizationId } from '../lib/sessionOrganization';
 import { loadRouteStateCell } from '../lib/deliverabilityRouteState';
-import { isStreamShareSplitRouted } from '../lib/sendProviders/routeMixContext';
+import { isStreamShareSplitRouted } from '../lib/sendProviders/shareSplit';
 import { configuredRelayKinds } from './relayConfiguration';
 import { RAMP_INITIAL_PHASE_CEILING } from './ramp/controllerConfig';
 import { RAMP_STREAM_CONFIGS } from './ramp/gateConfig';

@@ -34,8 +34,8 @@ import {
 	conditionsLookupReadsPerContact,
 	conditionsLookupReadsPerBatch,
 	evaluateOne,
-	type Condition,
-} from './index';
+} from './evaluation';
+import type { Condition } from './types';
 import {
 	forEachLiveContactChunk,
 	type LiveScanOptions,

@@ -1,0 +1,202 @@
+/**
+ * Per-Condition evaluation: the kind registry, raw-condition parsing, the
+ * lookup preload and `evaluateOne`. Segment matching (`./segmentMatch`) builds
+ * on this module, and `./index` re-exports both, so this file must not import
+ * either of them back.
+ */
+
+import type { DatabaseReader } from '../_generated/server';
+import type { Doc } from '../_generated/dataModel';
+import { contactPropertyConditionModule } from './contact_property';
+import { emailActivityConditionModule } from './email_activity';
+import { topicMembershipConditionModule } from './topic_membership';
+import type { Condition, ConditionKind, ConditionOfKind, ConditionTypeModule } from './types';
+import { isCoreConditionKind, isPluginConditionKind } from './catalog';
+
+// ============== Module registry ==============
+
+const CONDITION_MODULES = {
+	contact_property: contactPropertyConditionModule,
+	email_activity: emailActivityConditionModule,
+	topic_membership: topicMembershipConditionModule,
+} as const satisfies {
+	[K in ConditionKind]: ConditionTypeModule<K, unknown>;
+};
+
+export function conditionTypeModuleFor<K extends ConditionKind>(
+	kind: K
+): (typeof CONDITION_MODULES)[K] {
+	return CONDITION_MODULES[kind];
+}
+
+// ============== Parsing ==============
+
+/**
+ * Parse a raw persisted condition (from `segments.filters[]` or
+ * `automationSteps.config.condition`) into a typed `Condition`.
+ *
+ * Throws on shape/operator/field violations — callers should treat that as
+ * a corrupt-data condition, not user input.
+ */
+export function parseCondition(raw: unknown): Condition {
+	if (!raw || typeof raw !== 'object') {
+		throw new Error('Condition must be an object');
+	}
+	const kind = (raw as { kind?: unknown }).kind;
+	if (typeof kind !== 'string') {
+		throw new Error('Condition must have a string `kind` discriminator');
+	}
+	if (isCoreConditionKind(kind)) {
+		return conditionTypeModuleFor(kind).parseCondition(raw) as Condition;
+	}
+	// Plugin condition kinds are namespaced and carry editor metadata through the
+	// host (see `conditions/catalog.ts`), but the shared segment matcher does not
+	// yet evaluate them — a persisted plugin condition would only arrive here via
+	// the audience/segment surface, which owns its own gating. Reject it
+	// explicitly rather than mislabel it as corrupt data.
+	if (isPluginConditionKind(kind)) {
+		throw new Error(`Plugin condition kind "${kind}" is not evaluable in this context`);
+	}
+	throw new Error(`Unknown condition kind "${kind}"`);
+}
+
+// ============== Multi-kind evaluation ==============
+
+/**
+ * Preloaded lookup data, keyed by condition kind. Each entry is the typed
+ * Lookup returned by that kind's `preloadLookup`.
+ *
+ * Internal — produced by `preloadConditionsLookup`, consumed by `evaluateOne`.
+ */
+type ConditionsLookup = {
+	[K in ConditionKind]?: unknown;
+};
+
+/** Bucket conditions by kind, preserving order within a kind. */
+function groupByKind(conditions: readonly Condition[]): Map<ConditionKind, Condition[]> {
+	const grouped = new Map<ConditionKind, Condition[]>();
+	for (const c of conditions) {
+		const list = grouped.get(c.kind);
+		if (list) list.push(c);
+		else grouped.set(c.kind, [c]);
+	}
+	return grouped;
+}
+
+/**
+ * Sum one of the module registry's read-cost dimensions across every kind
+ * present in `conditions`.
+ *
+ * `groupByKind` erases the correlation between the map key and its bucket's
+ * element type, so calling a per-kind cost function needs a cast. Keeping that
+ * cast in ONE place is the point of this helper: each cost dimension is then a
+ * one-line export, and a future third dimension adds no third copy.
+ */
+function sumLookupReads(
+	conditions: readonly Condition[],
+	dimension: 'lookupReadsPerContact' | 'lookupReadsPerBatch'
+): number {
+	let reads = 0;
+	for (const [kind, list] of groupByKind(conditions)) {
+		const cost = conditionTypeModuleFor(kind)[dimension] as (
+			conds: ConditionOfKind<typeof kind>[]
+		) => number;
+		reads += cost(list as ConditionOfKind<typeof kind>[]);
+	}
+	return reads;
+}
+
+/**
+ * How many DOCUMENT reads {@link preloadConditionsLookupForContacts} costs PER
+ * CONTACT for `conditions` — the sum of each kind's own per-contact fan-out.
+ *
+ * The binding capacity pre-flight budgets its audience scan in DOCUMENTS
+ * (Convex caps a function execution at 16,384 of them), and a segment carrying
+ * two `topic_membership` conditions costs three documents per contact, not one.
+ * Charging rows instead of documents is how a "bounded" scan quietly blows the
+ * limit; this is the multiplier that makes the budget honest.
+ */
+export function conditionsLookupReadsPerContact(conditions: readonly Condition[]): number {
+	return sumLookupReads(conditions, 'lookupReadsPerContact');
+}
+
+/**
+ * How many DOCUMENT reads ONE call to {@link preloadConditionsLookupForContacts}
+ * costs regardless of batch size — each kind's fixed set-up.
+ *
+ * A batched scan calls the preload once per batch, so this is charged once per
+ * batch on top of the per-contact multiplier. Omitting it left the budget
+ * under-charged by a fixed cost on every batch, which is precisely the drift
+ * that makes a "bounded" scan overrun the Convex per-execution read limit.
+ */
+export function conditionsLookupReadsPerBatch(conditions: readonly Condition[]): number {
+	return sumLookupReads(conditions, 'lookupReadsPerBatch');
+}
+
+/**
+ * Pre-fetch all data needed to evaluate `conditions` over many contacts in
+ * O(1) per condition. Group conditions by kind, hand each batch to the kind's
+ * module, and store the typed lookup keyed by kind.
+ */
+export async function preloadConditionsLookup(
+	ctx: { db: DatabaseReader },
+	conditions: Condition[]
+): Promise<ConditionsLookup> {
+	const grouped = groupByKind(conditions);
+
+	const out: ConditionsLookup = {};
+	for (const [kind, list] of grouped) {
+		// Each module's preload accepts only its own kind — narrowed by the kind key.
+		out[kind] = await (
+			conditionTypeModuleFor(kind).preloadLookup as (
+				ctx: { db: DatabaseReader },
+				conds: ConditionOfKind<typeof kind>[]
+			) => Promise<unknown>
+		)(ctx, list as ConditionOfKind<typeof kind>[]);
+	}
+	return out;
+}
+
+/**
+ * Bounded variant of {@link preloadConditionsLookup}: resolve the same lookup
+ * shape for just `contacts` (one contact, or one page of a cursor-checkpointed
+ * walk) via per-contact point reads instead of front-loading whole columns.
+ * Produces the identical `ConditionsLookup` that `evaluateOne` consumes, so the
+ * matcher is unchanged — only the read profile differs.
+ */
+export async function preloadConditionsLookupForContacts(
+	ctx: { db: DatabaseReader },
+	conditions: Condition[],
+	contacts: readonly Doc<'contacts'>[]
+): Promise<ConditionsLookup> {
+	const grouped = groupByKind(conditions);
+
+	const out: ConditionsLookup = {};
+	for (const [kind, list] of grouped) {
+		out[kind] = await (
+			conditionTypeModuleFor(kind).preloadLookupForContacts as (
+				ctx: { db: DatabaseReader },
+				conds: ConditionOfKind<typeof kind>[],
+				contacts: readonly Doc<'contacts'>[]
+			) => Promise<unknown>
+		)(ctx, list as ConditionOfKind<typeof kind>[], contacts);
+	}
+	return out;
+}
+
+/**
+ * Evaluate a single condition against a contact using a preloaded lookup.
+ * Dispatches to the per-kind module.
+ */
+export function evaluateOne(
+	condition: Condition,
+	contact: Doc<'contacts'>,
+	lookup: ConditionsLookup
+): boolean {
+	const module = conditionTypeModuleFor(condition.kind);
+	return (module.evaluate as (c: Condition, contact: Doc<'contacts'>, l: unknown) => boolean)(
+		condition,
+		contact,
+		lookup[condition.kind]
+	);
+}
