@@ -67,23 +67,17 @@ const endpoints = computed(() => [
 
 <template>
 	<div>
-		<div class="mb-8">
-			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-				{{ t('dashboard.admin.team.api.docs.title') }}
-			</h1>
-			<I18nT
-				keypath="dashboard.admin.team.api.docs.intro"
-				tag="p"
-				scope="global"
-				class="text-text-secondary mt-1"
-			>
-				<template #settingsLink>
-					<NuxtLink to="/dashboard/admin/team/api" class="link">{{
-						t('dashboard.admin.team.api.docs.introLink')
-					}}</NuxtLink>
-				</template>
-			</I18nT>
-		</div>
+		<UiPageHeader class="mb-8" :title="t('dashboard.admin.team.api.docs.title')">
+			<template #description>
+				<I18nT keypath="dashboard.admin.team.api.docs.intro" tag="span" scope="global">
+					<template #settingsLink>
+						<NuxtLink to="/dashboard/admin/team/api" class="link">{{
+							t('dashboard.admin.team.api.docs.introLink')
+						}}</NuxtLink>
+					</template>
+				</I18nT>
+			</template>
+		</UiPageHeader>
 
 		<UiCard class="mb-6">
 			<h2 class="text-sm font-medium text-text-secondary mb-2">

@@ -159,17 +159,11 @@ const dateRangeOptions = computed(() => [
 
 <template>
 	<div>
-		<!-- Header -->
-		<div class="mb-6">
-			<div class="flex items-center justify-between">
-				<div>
-					<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-						{{ t('dashboard.admin.team.audit.title') }}
-					</h1>
-					<p class="mt-1 text-text-secondary">{{ t('dashboard.admin.team.audit.subtitle') }}</p>
-				</div>
-			</div>
-		</div>
+		<UiPageHeader
+			class="mb-6"
+			:title="t('dashboard.admin.team.audit.title')"
+			:description="t('dashboard.admin.team.audit.subtitle')"
+		/>
 
 		<!-- Admins-only gate (audit trail is privileged) -->
 		<div

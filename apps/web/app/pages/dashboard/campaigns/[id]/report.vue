@@ -359,14 +359,24 @@ const loadPrevClicked = () => {
 						<Icon name="lucide:arrow-left" class="w-4 h-4" />
 						{{ t('dashboard.campaigns.detail.report.backToCampaigns') }}
 					</NuxtLink>
-					<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-						<div>
-							<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-								{{ campaign.name }}
-							</h1>
-							<p
-								class="mt-1 text-text-secondary text-sm flex flex-wrap items-center gap-x-2 gap-y-1"
-							>
+					<UiPageHeader :title="campaign.name">
+						<template #meta>
+							<div class="text-text-secondary text-sm flex flex-wrap items-center gap-x-2 gap-y-1">
+								<span
+									:class="[
+										'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium',
+										statusBadge.tone,
+									]"
+								>
+									<Icon
+										:name="statusBadge.icon"
+										:class="[
+											'w-3 h-3',
+											statusBadge.spin ? 'animate-spin motion-reduce:animate-none' : '',
+										]"
+									/>
+									{{ statusBadge.label }}
+								</span>
 								<span class="inline-flex items-center gap-1.5">
 									<Icon name="lucide:clock" class="w-4 h-4" />
 									{{ timingLine }}
@@ -383,13 +393,13 @@ const loadPrevClicked = () => {
 										}}
 									</span>
 								</template>
-							</p>
+							</div>
 							<!--
 								THE MULTI-DAY SEND PLAN, present from the moment the send starts. Renders nothing for an ordinary same-day send.
 							-->
 							<CampaignSendPlanLine :progress="sendPlan" class="mt-1" />
-						</div>
-						<div class="flex items-center gap-3">
+						</template>
+						<template #actions>
 							<UiButton
 								variant="secondary"
 								class="gap-2"
@@ -408,23 +418,8 @@ const loadPrevClicked = () => {
 										: t('common.duplicate')
 								}}
 							</UiButton>
-							<span
-								:class="[
-									'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium',
-									statusBadge.tone,
-								]"
-							>
-								<Icon
-									:name="statusBadge.icon"
-									:class="[
-										'w-3 h-3',
-										statusBadge.spin ? 'animate-spin motion-reduce:animate-none' : '',
-									]"
-								/>
-								{{ statusBadge.label }}
-							</span>
-						</div>
-					</div>
+						</template>
+					</UiPageHeader>
 				</div>
 
 				<!-- The story first: one sentence, then the funnel it comes from. -->
