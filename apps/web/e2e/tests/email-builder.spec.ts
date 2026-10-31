@@ -23,16 +23,18 @@ test.describe('Email Builder', () => {
 	});
 
 	test('create new template from blank and open editor', async ({ page }) => {
-		await editor.gotoNewTemplate();
-		await editor.waitForEditorReady();
+		const name = await editor.gotoNewTemplate();
+		await editor.waitForDraftReady(name);
 
-		// Verify we're in the editor - should see Save button
-		await expect(editor.saveButton).toBeVisible({ timeout: 10_000 });
+		// A new template is a draft, and a draft saves itself: the header shows
+		// its save state where a published template has a Save button.
+		await expect(editor.saveState).toHaveText('Saved');
+		await expect(page.getByRole('button', { name: 'Save', exact: true })).toHaveCount(0);
 	});
 
 	test('adding a text block gives an editable area', async ({ page }) => {
-		await editor.gotoNewTemplate();
-		await editor.waitForEditorReady();
+		const name = await editor.gotoNewTemplate();
+		await editor.waitForDraftReady(name);
 
 		// A blank template starts with an EMPTY document, so there is nothing
 		// contenteditable on screen yet — the old version of this test asserted
@@ -46,14 +48,18 @@ test.describe('Email Builder', () => {
 		});
 	});
 
-	test('save template updates save button state', async ({ page }) => {
-		await editor.gotoNewTemplate();
-		await editor.waitForEditorReady();
+	test('an edit to a draft is saved without a Save button', async ({ page }) => {
+		const name = await editor.gotoNewTemplate();
+		await editor.waitForDraftReady(name);
+		// Nothing has been saved on this page yet: no age beside the state.
+		await expect(editor.saveStatus).toHaveText('Saved');
 
-		// Save the template
-		await editor.save();
+		const renamed = `${name} renamed`;
+		await editor.nameField.fill(renamed);
+		await editor.waitForAutosaveAcknowledged();
 
-		// Verify save completed (button should be enabled again)
-		await expect(editor.saveButton).toBeEnabled({ timeout: 10_000 });
+		// The acknowledgement is the server's: a fresh load shows the edit.
+		await page.reload();
+		await editor.waitForDraftReady(renamed);
 	});
 });

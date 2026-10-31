@@ -41,6 +41,7 @@ import {
 	parseComposePs,
 } from '@owlat/shared/containerHealth';
 import { readEnv } from '../lib/env';
+import { parseFlagState } from '../lib/flagState';
 import {
 	DoctorReportBuilder,
 	renderDoctorCheckLine,
@@ -128,9 +129,12 @@ export async function collectDoctorReport(
 	const statePath = join(owlatDir, '.owlat-flags.json');
 	let flags: FeatureFlagState = {};
 	if (existsSync(statePath)) {
-		try {
-			flags = JSON.parse(await readFile(statePath, 'utf-8')) as FeatureFlagState;
-		} catch {
+		const stored = await readFile(statePath, 'utf-8')
+			.then(parseFlagState)
+			.catch(() => undefined);
+		if (stored) {
+			flags = stored;
+		} else {
 			report.record({
 				check: 'flags.state',
 				ok: false,

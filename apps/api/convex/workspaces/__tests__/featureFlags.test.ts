@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import schema from '../../schema';
 import { api, internal } from '../../_generated/api';
 import type { OrganizationRole } from '../../lib/sessionOrganization';
+import type * as SessionOrganizationModule from '../../lib/sessionOrganization';
 import { DEFAULT_CHUNK_SIZE } from '../../knowledge/messageBackfill';
 
 vi.mock('../../plugins/plugins.generated', () => ({
@@ -44,7 +45,7 @@ vi.mock('../../plugins/plugins.generated', () => ({
 let mockRole: OrganizationRole = 'owner';
 
 vi.mock('../../lib/sessionOrganization', async () => {
-	const actual = await vi.importActual<typeof import('../../lib/sessionOrganization')>(
+	const actual = await vi.importActual<typeof SessionOrganizationModule>(
 		'../../lib/sessionOrganization'
 	);
 	return {

@@ -16,6 +16,8 @@ type ListedProperty = Doc<'contactProperties'> & { deletion?: PropertyDeletionVi
 // Query to list the contact properties. A property being deleted is left out
 // (pickers must not offer it) unless the caller asks for it: the admin page
 // shows it with its deletion progress.
+// all-members: the property definitions back the contact form, filters and
+// segment rules every role uses; writing them needs contacts:manage.
 export const listByOrganization = authedQuery({
 	args: { includePendingDeletion: v.optional(v.boolean()) },
 	handler: async (ctx, args): Promise<ListedProperty[]> => {

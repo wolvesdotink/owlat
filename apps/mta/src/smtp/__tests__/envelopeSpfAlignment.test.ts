@@ -21,6 +21,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import Redis from 'ioredis-mock';
 import { isSpfAligned, emailDomain } from '@owlat/shared/spfAlignment';
+import type * as SmtpClientModule from '@owlat/smtp-client';
 
 const { connectMock, sendEnvelopeMock, quitMock, acquireMock, releaseMock } = vi.hoisted(() => ({
 	connectMock: vi.fn(),
@@ -31,7 +32,7 @@ const { connectMock, sendEnvelopeMock, quitMock, acquireMock, releaseMock } = vi
 }));
 
 vi.mock('@owlat/smtp-client', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('@owlat/smtp-client')>();
+	const actual = await importOriginal<typeof SmtpClientModule>();
 	return {
 		...actual,
 		SmtpConnection: { connect: connectMock },

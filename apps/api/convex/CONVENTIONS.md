@@ -178,20 +178,20 @@ Never re-derive that context inside the handler. `getMutationContext(ctx)` /
 `requireOrgMember(ctx)` / `getBetterAuthSessionWithRole(ctx)` called under one of
 these builders is a SECOND BetterAuth session read plus a second `member`
 component query, on every execution of a function the dashboard may
-live-subscribe. `scripts/check-session-threading.sh` ratchets this (frozen
-baseline in `scripts/session-threading-baseline.txt`, both directions strict;
-`// session: <reason>` opts a handler out when the re-resolution is deliberate).
-The `owlat/use-threaded-session` oxlint rule checks the same thing on the AST,
-with its debt in `scripts/owlat-lint-baseline.txt`. `ctx` and `args` are untouched, and a handler declaring only
-`(ctx)` or `(ctx, args)` is unaffected — the parameter is there when you want it.
+live-subscribe. The `owlat/use-threaded-session` oxlint rule fails lint on such
+a call (an error, no baseline); `// session: <reason>` opts a handler out when
+the re-resolution is deliberate. `ctx` and `args` are untouched, and a handler
+declaring only `(ctx)` or `(ctx, args)` is unaffected — the parameter is there
+when you want it.
 `authedIdentityMutation` (identity, not an org session) and `authedAction`
 (enforced in another function's context) have nothing to thread and keep the raw
 builder signature.
 
 The wrapper only enforces the auth floor; privileged writes still layer a
-`requirePermission(hasPermission(session.role, '<scope>:<verb>'))` (or the
-query/mutation-compatible `requireOrgPermission(ctx, '<scope>:<verb>')`) check
-inside the handler. `internalQuery`/`internalMutation`/`internalAction` and
+`requirePermission(hasPermission(session.role, '<scope>:<verb>'))` check on the
+threaded session inside the handler (`requireOrgPermission(ctx, …)` is for
+functions whose builder threads no session, such as an `internalQuery` an
+action calls). `internalQuery`/`internalMutation`/`internalAction` and
 `httpAction` are unaffected (server-only, or a separately-authenticated HTTP
 surface). HTTP routes that call into a session-gated function from an
 API-key/no-session context must call an `internal*` sibling (see
@@ -302,7 +302,7 @@ to `FAMILIES` and the builder names to `EXPECTED_BUILDERS` in
 `check-entry-wiring.ts`.
 
 The definition gates (`check-permissions`, `check-query-authz`,
-`check-session-threading`, `check-token-redaction`, `check-errors`) need no
+`check-token-redaction`, `check-errors`) need no
 edits for a composition: they read their builder families from source through
 `scripts/lib/convex-builders.sh`: every `(export )?const X = featureGated(Any)(<base>, …)`
 under `convex/` inherits its base's kind and auth floor. A new **base** builder
@@ -356,10 +356,10 @@ such a secret:
 | `webhooks`   | `secret`                                     | the HMAC signing secret             |
 
 `scripts/check-token-redaction.sh` (wired into `bun run lint`) is the read-side
-sibling of `check-permissions.sh`: a **ratchet** that fails CI on any _new_
-query that serializes to the browser (`authedQuery`, `adminQuery`, `publicQuery`
-and their `featureGated` compositions) which scans one of these tables
-(`ctx.db.query('…')`) without stripping the secret. Satisfy it one of three ways:
+sibling of `check-permissions.sh`. It has no baseline and fails CI on any query
+that serializes to the browser (`authedQuery`, `adminQuery`, `publicQuery` and
+their `featureGated` compositions) which scans one of these tables
+(`ctx.db.query('…')`) without stripping the secret. Satisfy it one of two ways:
 
 - **Redaction/projection helper** — `redactContactCapabilityFields` (returns the
   `PublicContact` shape, `contacts/listing.ts`) or `stripWebhookSecret`
@@ -367,11 +367,10 @@ and their `featureGated` compositions) which scans one of these tables
   add its name to the helper regex in the script.
 - **`// token-safe: <reason>` comment** — inside the handler or on the line above
   the `export const`, when the read genuinely returns no secret (projects to a
-  token-free shape, returns only counts/ids, etc.).
-- **`scripts/token-redaction-baseline.txt`** — the frozen set of reads reviewed
-  when the gate landed (count-only / id-only / field-projected / admin-gated
-  reads that leak no token). Do **not** add new entries; delete an entry once its
-  read is redacted or annotated so the ratchet only moves down.
+  token-free shape, returns only counts/ids, etc.). An admin role gate alone is
+  not a reason. The one read that returns a secret on purpose,
+  `shareLinks.listShareLinks`, hands a link manager the token it shares, and is
+  also the reviewed exception in `lib/__tests__/publicReturnRedaction.test.ts`.
 
 ## Process-log PII
 

@@ -1,7 +1,7 @@
 import type { ContentFlag, ContentScanLevel } from '@owlat/email-scanner';
 import type { Doc } from '../_generated/dataModel';
 import { hashFraction, variantForHash } from './sendVariantSplit';
-import { orderByEngagement, planTodaysSlice, type SendPlanState } from './multiDaySendPlan';
+import { orderByEngagement, type planTodaysSlice, type SendPlanState } from './multiDaySendPlan';
 import { nextUtcDayStart } from '../lib/clock';
 
 /**

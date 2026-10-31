@@ -262,6 +262,35 @@ describe('ingestMessage', () => {
 		expect(action).not.toHaveBeenCalled();
 	});
 
+	it.each([
+		['null', null],
+		['a list', [{ storageId: 'kg_raw_1', size: 1234 }]],
+		['no storage id', { size: 1234 }],
+		['a numeric storage id', { storageId: 42, size: 1234 }],
+		['an empty storage id', { storageId: '', size: 1234 }],
+		['no size', { storageId: 'kg_raw_1' }],
+		['a size given as text', { storageId: 'kg_raw_1', size: '1234' }],
+		['a negative size', { storageId: 'kg_raw_1', size: -1 }],
+		['a fractional size', { storageId: 'kg_raw_1', size: 1.5 }],
+	])('throws without ingesting when the upload answers %s', async (_name, answer) => {
+		mockUpload({ json: async () => answer });
+		const { client, action } = mockConvex();
+
+		await expect(
+			ingestMessage(client, UPLOAD, {
+				accountId: 'acct_1',
+				folderRole: 'inbox',
+				remoteName: 'INBOX',
+				remoteUid: 42,
+				remoteUidValidity: 7,
+				raw: Buffer.from(RAW),
+				flags: new Set<string>(),
+				origin: 'sync',
+			})
+		).rejects.toThrow(/raw upload failed: HTTP 200 unexpected answer/);
+		expect(action).not.toHaveBeenCalled();
+	});
+
 	it('reflects IMAP flags into flagSeen / flagFlagged', async () => {
 		const { client, lastPayload } = mockConvex();
 		await ingestMessage(client, UPLOAD, {

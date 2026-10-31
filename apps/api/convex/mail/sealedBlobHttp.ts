@@ -101,7 +101,7 @@ export const serveSealedBlob = httpAction(async (ctx, request) => {
 				// script or navigate; a sandbox CSP neutralises an HTML/SVG type that
 				// slipped the allowlist.
 				'Content-Security-Policy': "default-src 'none'; sandbox",
-				...(cors ?? {}),
+				...cors,
 			},
 		});
 	} catch (err) {

@@ -3,6 +3,7 @@
  */
 
 import type { MtaRoutingReentry } from '@owlat/mta-protocol';
+import type { DeliveryDomain } from '@owlat/shared';
 import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
 import type { FblSourceIspToken } from './bounce/fblProcessor.js';
 
@@ -74,7 +75,7 @@ export interface EmailJob {
 	/** Organization ID for circuit breaker and webhook correlation */
 	organizationId: string;
 	/** Authenticated production-vs-member-preview effect domain. */
-	deliveryDomain?: import('@owlat/shared').DeliveryDomain;
+	deliveryDomain?: DeliveryDomain;
 	/** Engagement score 0-100 from Convex contact activity (for priority ordering) */
 	engagementScore?: number;
 	/** Domain for DKIM signing */
@@ -365,9 +366,9 @@ export interface BounceClassification {
 	originalMessageId?: string;
 	organizationId?: string;
 	/** Server-persisted production/test attribution for delayed feedback. */
-	deliveryDomain?: import('@owlat/shared').DeliveryDomain;
+	deliveryDomain?: DeliveryDomain;
 	/** Unknown/mixed provenance is explicitly non-destructive. */
-	feedbackProvenance?: import('@owlat/shared').DeliveryDomain | 'unknown';
+	feedbackProvenance?: DeliveryDomain | 'unknown';
 	/**
 	 * The original job's correlation id, read from the server-persisted send
 	 * record (never from the report) and echoed on the delayed-feedback webhook.

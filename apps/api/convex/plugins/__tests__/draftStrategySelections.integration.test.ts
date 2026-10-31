@@ -5,25 +5,17 @@ import schema from '../../schema';
 
 const auth = vi.hoisted(() => ({ role: 'owner' as 'owner' | 'editor' }));
 
+// The floors reject anonymous callers; the handlers check the role on the
+// session the floor threads them, with the real permission map.
 vi.mock('../../lib/sessionOrganization', async () => ({
 	...(await vi.importActual('../../lib/sessionOrganization')),
 	getMutationContext: vi.fn(async (ctx: { auth: { getUserIdentity(): Promise<unknown> } }) => {
 		if (!(await ctx.auth.getUserIdentity())) throw new Error('unauthenticated');
-		return { userId: 'owner', role: auth.role };
-	}),
-	requireAdminContext: vi.fn(async (ctx: { auth: { getUserIdentity(): Promise<unknown> } }) => {
-		if (!(await ctx.auth.getUserIdentity())) throw new Error('unauthenticated');
-		if (auth.role === 'editor') throw new Error('forbidden');
-		return { userId: 'owner', role: auth.role };
+		return { userId: 'owner', role: auth.role, activeOrganizationId: 'tenant' };
 	}),
 	requireOrgMember: vi.fn(async (ctx: { auth: { getUserIdentity(): Promise<unknown> } }) => {
 		if (!(await ctx.auth.getUserIdentity())) throw new Error('unauthenticated');
 		return { userId: 'owner', role: auth.role, activeOrganizationId: 'tenant' };
-	}),
-	requireOrgPermission: vi.fn(async (ctx: { auth: { getUserIdentity(): Promise<unknown> } }) => {
-		if (!(await ctx.auth.getUserIdentity())) throw new Error('unauthenticated');
-		if (auth.role === 'editor') throw new Error('forbidden');
-		return { userId: 'owner', role: auth.role };
 	}),
 	getSingletonOrganizationId: vi.fn().mockResolvedValue('tenant'),
 }));

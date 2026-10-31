@@ -21,7 +21,7 @@ const ALL_PERMISSIONS: Permission[] = [
 	'emails:test',
 ];
 
-const OWNER_ONLY: Permission[] = ['organization:delete'];
+const OWNER_ONLY: ReadonlySet<Permission> = new Set(['organization:delete']);
 const PUBLIC_PERMISSIONS: Permission[] = ['emails:test'];
 // Editors run the marketing send pipeline end-to-end (2026-07-10 experience
 // plan, decision 8) now that the curated-sender guardrail exists. This is the
@@ -35,11 +35,11 @@ const EDITOR_CAMPAIGN_PERMISSIONS: Permission[] = [
 ];
 // Everything an editor may do: the public member permissions plus the campaign
 // pipeline. Any permission NOT in this set must be denied to editors.
-const EDITOR_ALLOWED: Permission[] = [
+const EDITOR_ALLOWED: ReadonlySet<Permission> = new Set([
 	...PUBLIC_PERMISSIONS,
 	...EDITOR_CAMPAIGN_PERMISSIONS,
 	'contacts:annotate',
-];
+]);
 
 describe('hasPermission', () => {
 	it('owner has every permission', () => {
@@ -50,14 +50,14 @@ describe('hasPermission', () => {
 
 	it('admin has all permissions except owner-only ones', () => {
 		for (const perm of ALL_PERMISSIONS) {
-			const expected = !OWNER_ONLY.includes(perm);
+			const expected = !OWNER_ONLY.has(perm);
 			expect(hasPermission('admin', perm)).toBe(expected);
 		}
 	});
 
 	it('editor has exactly the public + campaign-pipeline permissions and nothing more', () => {
 		for (const perm of ALL_PERMISSIONS) {
-			const expected = EDITOR_ALLOWED.includes(perm);
+			const expected = EDITOR_ALLOWED.has(perm);
 			expect(hasPermission('editor', perm)).toBe(expected);
 		}
 	});

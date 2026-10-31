@@ -27,17 +27,11 @@
 #     the line directly above the `export const`:
 #       // token-safe: <why no row-level redaction is needed here — e.g. the
 #       //             handler projects to a token-free shape, returns only
-#       //             counts/ids, or is held to an admin role gate>
-#   * is listed in scripts/token-redaction-baseline.txt — the frozen set of
-#     reads reviewed at the time this gate landed (P4 already fixed the real
-#     leaks; the baseline entries are the count-only / id-only / field-projected
-#     / admin-gated reads that return no bearer token). Like check-query-authz.sh
-#     this is a RATCHET, not a baseline-0 hard gate.
+#       //             counts/ids, or hands a capability to the one caller
+#       //             entitled to hold it>
 #
-# scripts/ratchet.sh runs the comparison, strict in both directions: an unlisted
-# read fails (a NEW query returning a token-bearing table with no redaction),
-# and a stale baseline entry fails (the query was fixed/removed/annotated —
-# delete its line so the count only goes down).
+# There is no baseline. The comparison runs through `scripts/ratchet.sh
+# --zero`, so any read this script reports fails CI.
 #
 # Scope note: the grep matches inline `.query('<table>')` scans inside a query
 # span — the enumeration path where these leaks happen (getRecent,
@@ -57,23 +51,16 @@ repo_root="$(cd "$(dirname "$0")/../../.." && pwd)"
 self="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
 cd "$(dirname "$0")/.."
 
+# `check-token-redaction.sh [root]` runs the gate, `--generate [root]` prints
+# the violation set. The scan root defaults to the real convex/ tree; the vitest
+# self-test (checkTokenRedaction.ratchet.test.ts) points it at throwaway
+# fixture trees.
 if [ "${1:-}" = "--generate" ]; then
 	generate_root="${2:-convex}"
 else
 	generate_root=""
+	scan_root="${1:-convex}"
 fi
-
-write_flag=""
-if [ "${1:-}" = "--write-baseline" ]; then
-	write_flag="--write-baseline"
-	shift
-fi
-
-# Optional overrides let the vitest self-test (checkTokenRedaction.ratchet.test.ts)
-# point the scan and the baseline at a throwaway fixture tree; production runs
-# take the defaults (the real convex/ tree and the frozen baseline).
-scan_root="${1:-convex}"
-baseline_file="${2:-scripts/token-redaction-baseline.txt}"
 
 # shellcheck source=lib/convex-builders.sh
 . scripts/lib/convex-builders.sh
@@ -114,18 +101,14 @@ if [ -n "$generate_root" ]; then
 fi
 
 exec "$repo_root/scripts/ratchet.sh" \
-	--baseline "$baseline_file" \
-	--seed "bash apps/api/scripts/check-token-redaction.sh --write-baseline" \
-	--ok "no new token-bearing read without redaction" \
-	--new-header "FAIL: {n} new read(s) returning a token-bearing table with no redaction." \
+	--zero \
+	--ok "every token-bearing read redacts or justifies its rows" \
+	--new-header "FAIL: {n} read(s) returning a token-bearing table with no redaction." \
 	--new-advice "A public read that queries contacts / shareLinks / apiKeys / webhooks
 serializes the row — including its bearer secret — straight to the client.
   - run the rows through redactContactCapabilityFields / stripWebhookSecret
     (or add a new per-table redactor to the helper regex in this script), or
   - add a '// token-safe: <reason>' comment stating why no row-level
     redaction is needed (projects to a token-free shape / counts / ids /
-    admin role gate).
-Do NOT add new entries to {baseline} — it is frozen debt." \
-	--stale-header "FAIL: {n} stale entr(y/ies) in {baseline} (read fixed, removed, or annotated):" \
-	${write_flag:+--write-baseline} \
+    a capability the caller is entitled to receive)." \
 	-- bash "$self" --generate "$scan_root"

@@ -375,53 +375,6 @@ const CASES: readonly ParityCase[] = [
 		],
 	},
 	{
-		gate: 'session-threading',
-		files: {
-			'apps/api/convex/workspaces/rename.ts': lines(
-				AUTHED,
-				SERVER,
-				"import { getMutationContext, requireOrgPermission } from '../lib/sessionOrganization';",
-				'export const rename = authedMutation({',
-				'\thandler: async (ctx) => {',
-				'\t\tconst { userId } = await getMutationContext(ctx);',
-				'\t},',
-				'});',
-				'export const threaded = authedMutation({',
-				'\thandler: async (ctx, args, session) => session.userId,',
-				'});',
-				'// session: switches the active org before reading',
-				'export const optedOut = authedMutation({',
-				'\thandler: async (ctx) => getMutationContext(ctx),',
-				'});',
-				'export const soft = publicQuery({',
-				'\thandler: async (ctx) => requireOrgPermission(ctx, "x"),',
-				'});',
-				'export const sync = internalMutation({',
-				'\thandler: async (ctx) => getMutationContext(ctx),',
-				'});'
-			),
-			// Only the rule: a wrapped definition and an aliased builder.
-			'apps/api/convex/workspaces/missed.ts': lines(
-				"import { authedQuery as read } from '../lib/authedFunctions';",
-				"import { getMutationContext } from '../lib/sessionOrganization';",
-				'export const wrapped =',
-				'\tread({',
-				'\t\thandler: async (ctx) => getMutationContext(ctx),',
-				'\t});'
-			),
-			// Only the gate: a helper named in a comment.
-			'apps/api/convex/workspaces/prose.ts': lines(
-				AUTHED,
-				'export const get = authedQuery({',
-				"\t// the floor already ran requireOrgPermission(ctx, 'organization:manage')",
-				'\thandler: async (ctx, args, session) => session.activeOrganizationId,',
-				'});'
-			),
-		},
-		onlyOld: ['apps/api/convex/workspaces/prose.ts:get'],
-		onlyNew: ['apps/api/convex/workspaces/missed.ts:wrapped'],
-	},
-	{
 		gate: 'feature-floors',
 		files: {
 			'apps/api/convex/mail/moves.ts': lines(

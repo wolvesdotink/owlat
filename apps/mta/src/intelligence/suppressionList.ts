@@ -16,6 +16,7 @@
 
 import type Redis from 'ioredis';
 import { normalizeEmail } from '@owlat/shared';
+import { isRecord } from '@owlat/shared/utils/guards';
 import { logger } from '../monitoring/logger.js';
 import { expireIfDue } from './suppressionExpiry.js';
 import {
@@ -48,6 +49,42 @@ const PERMANENT_REASONS: ReadonlySet<SuppressionReason> = new Set([
 	'manual',
 ]);
 
+const REASONS: ReadonlySet<unknown> = new Set<SuppressionReason>([
+	...PERMANENT_REASONS,
+	'soft_bounce',
+]);
+
+const isReason = (value: unknown): value is SuppressionReason => REASONS.has(value);
+
+const isTimestamp = (value: unknown): value is number =>
+	typeof value === 'number' && Number.isFinite(value);
+
+/**
+ * Stored metadata, or `null` when it is not valid. Every caller treats `null`
+ * as "unknown": the address stays suppressed, and neither a Convex mirror
+ * write nor a mirror delete may take over or remove a block whose metadata it
+ * cannot read.
+ */
+function decodeSuppressionMeta(raw: string): SuppressionMeta | null {
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(raw);
+	} catch {
+		return null;
+	}
+	if (!isRecord(parsed)) return null;
+	const { reason, source, suppressedAt, expiresAt } = parsed;
+	if (!isReason(reason) || !isTimestamp(suppressedAt)) return null;
+	if (source !== undefined && typeof source !== 'string') return null;
+	if (expiresAt !== undefined && !isTimestamp(expiresAt)) return null;
+	return {
+		reason,
+		...(source === undefined ? {} : { source }),
+		suppressedAt,
+		...(expiresAt === undefined ? {} : { expiresAt }),
+	};
+}
+
 function assertPipelineSucceeded(
 	results: Array<[Error | null, unknown]> | null,
 	operation: string
@@ -79,12 +116,8 @@ async function queueSuppressionWrite(
 		for (let attempt = 0; attempt < 5; attempt++) {
 			const raw = await redis.get(key);
 			if (raw) {
-				let previous: SuppressionMeta;
-				try {
-					previous = JSON.parse(raw);
-				} catch {
-					return;
-				}
+				const previous = decodeSuppressionMeta(raw);
+				if (!previous) return;
 				if (
 					previous.source !== 'convex-blocklist' &&
 					previous.source !== 'convex-reconcile' &&
@@ -124,12 +157,8 @@ export async function unsuppressMirror(
 	const normalized = normalizeEmail(email);
 	const raw = await redis.get(`${SUPPRESSION_META_PREFIX}${normalized}`);
 	if (!raw) return false;
-	let meta: SuppressionMeta;
-	try {
-		meta = JSON.parse(raw);
-	} catch {
-		return false;
-	}
+	const meta = decodeSuppressionMeta(raw);
+	if (!meta) return false;
 	if (meta.source !== source || meta.suppressedAt !== suppressedAt) return false;
 	const result = await redis.eval(
 		`
@@ -439,11 +468,5 @@ export async function getSuppressionStats(redis: Redis): Promise<{
  */
 async function getMetadata(redis: Redis, normalizedEmail: string): Promise<SuppressionMeta | null> {
 	const data = await redis.get(`${SUPPRESSION_META_PREFIX}${normalizedEmail}`);
-	if (!data) return null;
-
-	try {
-		return JSON.parse(data);
-	} catch {
-		return null;
-	}
+	return data ? decodeSuppressionMeta(data) : null;
 }

@@ -1,5 +1,6 @@
 import { convexTest } from 'convex-test';
 import { describe, it, expect, vi } from 'vitest';
+import type * as SessionOrganizationModule from '../../lib/sessionOrganization';
 import schema from '../../schema';
 import { api } from '../../_generated/api';
 
@@ -15,7 +16,7 @@ const sessionMocks = vi.hoisted(() => ({
 }));
 
 vi.mock('../../lib/sessionOrganization', async () => {
-	const actual = await vi.importActual<typeof import('../../lib/sessionOrganization')>(
+	const actual = await vi.importActual<typeof SessionOrganizationModule>(
 		'../../lib/sessionOrganization'
 	);
 	return {

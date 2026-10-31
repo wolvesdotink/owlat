@@ -458,6 +458,30 @@ describe('mtaSts', () => {
 			expect(await getStsTlsOptions(redis, 'example.com')).toEqual(ENFORCE_OPTS);
 			expect(fetchTextMock).toHaveBeenCalledTimes(1);
 		});
+
+		it.each<[string, (policy: Record<string, unknown>) => unknown]>([
+			['null', () => null],
+			['an array', (policy) => [policy]],
+			['an unknown mode', (policy) => ({ ...policy, mode: 'strict' })],
+			['an mx that is not a list', (policy) => ({ ...policy, mx: 'mail.example.com' })],
+			['a non-string mx entry', (policy) => ({ ...policy, mx: ['mail.example.com', 7] })],
+			['a string maxAge', (policy) => ({ ...policy, maxAge: '86400' })],
+			['a numeric version', (policy) => ({ ...policy, version: 1 })],
+		])('treats a cache entry with %s as absent and refetches', async (_label, corrupt) => {
+			const policy = {
+				mode: 'testing',
+				mx: ['mail.example.com'],
+				maxAge: 86400,
+				version: 'id-1',
+				cachedAt: Date.now(),
+			};
+			await redis.set(`${CACHE_PREFIX}example.com`, JSON.stringify(corrupt(policy)));
+			resolveTxtMock.mockResolvedValue(dnsRecord('id-1'));
+			stubFetch(ENFORCE_BODY);
+
+			expect(await getStsTlsOptions(redis, 'example.com')).toEqual(ENFORCE_OPTS);
+			expect(fetchTextMock).toHaveBeenCalledTimes(1);
+		});
 	});
 
 	// Issue #1326 review: the fetch gate (mtaStsFetchGate.ts) limits fetches,

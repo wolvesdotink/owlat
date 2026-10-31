@@ -6,7 +6,11 @@
  * Archive is also a sweep handle (`data-sweep-handle`), read by the row.
  */
 defineProps<{
-	msg: { flagFlagged: boolean; flagSeen: boolean };
+	// The two flags, not the row's message: each tooltip's slot reads its flag,
+	// and a slot that read the message object would re-render its tooltip on
+	// every change to the row (a new snippet, the other flag).
+	flagged: boolean;
+	seen: boolean;
 	/** A Priority row explains its placement from here. */
 	whyHereShown: boolean;
 }>();
@@ -36,7 +40,7 @@ const { t } = useI18n();
 		</UiTooltip>
 		<UiTooltip
 			:text="
-				msg.flagFlagged
+				flagged
 					? t('components.postbox.postboxThreadRow.unstar')
 					: t('components.postbox.postboxThreadRow.star')
 			"
@@ -45,7 +49,7 @@ const { t } = useI18n();
 				type="button"
 				class="p-1 rounded hover:bg-bg-surface text-text-tertiary hover:text-warning"
 				:aria-label="
-					msg.flagFlagged
+					flagged
 						? t('components.postbox.postboxThreadRow.unstar')
 						: t('components.postbox.postboxThreadRow.star')
 				"
@@ -56,7 +60,7 @@ const { t } = useI18n();
 		</UiTooltip>
 		<UiTooltip
 			:text="
-				msg.flagSeen
+				seen
 					? t('components.postbox.postboxThreadRow.markUnread')
 					: t('components.postbox.postboxThreadRow.markRead')
 			"
@@ -65,13 +69,13 @@ const { t } = useI18n();
 				type="button"
 				class="p-1 rounded hover:bg-bg-surface text-text-tertiary hover:text-text-primary"
 				:aria-label="
-					msg.flagSeen
+					seen
 						? t('components.postbox.postboxThreadRow.markUnread')
 						: t('components.postbox.postboxThreadRow.markRead')
 				"
 				@click="emit('action', $event, 'toggle-read')"
 			>
-				<Icon :name="msg.flagSeen ? 'lucide:mail' : 'lucide:mail-open'" class="w-4 h-4" />
+				<Icon :name="seen ? 'lucide:mail' : 'lucide:mail-open'" class="w-4 h-4" />
 			</button>
 		</UiTooltip>
 		<UiTooltip :text="t('components.postbox.postboxThreadRow.archiveSweepHint')">

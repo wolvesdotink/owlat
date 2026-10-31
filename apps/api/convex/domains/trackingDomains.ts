@@ -113,6 +113,8 @@ export const verifyTrackingDomain = authedMutation({
 // verification through the internal markVerifiedInternal mutation.)
 
 // List tracking domains for org
+// all-members: the rows are a hostname, its public CNAME target and its
+// verification state; changing them needs organization:manage.
 export const listTrackingDomains = authedQuery({
 	args: {},
 	handler: async (ctx) => {

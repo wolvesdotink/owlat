@@ -41,8 +41,28 @@ type PackageMetadata = {
 	scripts?: Record<string, string>;
 };
 
+function isObject(value: unknown): value is Record<string, unknown> {
+	return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** The manifest fields the smoke reads; a manifest without them fails it. */
 function readPackageMetadata(root: string): PackageMetadata {
-	return JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as PackageMetadata;
+	const manifest: unknown = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
+	const fields: Record<string, unknown> = isObject(manifest) ? manifest : {};
+	const { name, version, scripts } = fields;
+	if (typeof name !== 'string' || typeof version !== 'string') {
+		throw new Error(`${root}/package.json has no name or version`);
+	}
+	if (scripts === undefined) return { name, version };
+	if (!isObject(scripts)) throw new Error(`${root}/package.json has scripts that are not a map`);
+	const commands: Record<string, string> = {};
+	for (const [script, command] of Object.entries(scripts)) {
+		if (typeof command !== 'string') {
+			throw new Error(`${root}/package.json script "${script}" is not a command`);
+		}
+		commands[script] = command;
+	}
+	return { name, version, scripts: commands };
 }
 
 function archivePathFor(metadata: PackageMetadata): string {
@@ -247,10 +267,13 @@ void gate;
 	const typescriptBin = resolve(packageRoot, '../../node_modules/typescript/bin/tsc');
 	run('node', [typescriptBin, '--project', 'tsconfig.json'], consumerRoot);
 
-	const installedManifest = JSON.parse(
+	const installedManifest: unknown = JSON.parse(
 		readFileSync(join(consumerRoot, 'node_modules/@owlat/plugin-kit/package.json'), 'utf8')
-	) as { exports?: Record<string, unknown> };
-	if (!installedManifest.exports?.['.']) throw new Error('Installed package has no root export');
+	);
+	const installedExports = isObject(installedManifest) ? installedManifest['exports'] : undefined;
+	if (!isObject(installedExports) || !installedExports['.']) {
+		throw new Error('Installed package has no root export');
+	}
 } finally {
 	cleanPackageLegalFiles();
 	rmSync(temporaryRoot, { recursive: true, force: true });

@@ -7,17 +7,52 @@
  * (as errors, or as warnings for the rules whose debt the owlat lint ratchet
  * holds) and makes a stale suppression fail.
  */
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PARALLEL_GATE_TIMEOUT_MS } from '../../../../vitest.timeouts';
-import { type Diagnostic, lintFixtures } from './runOxlint.ts';
+import { type Diagnostic, lintFixtures, REPOSITORY_ROOT } from './runOxlint.ts';
 
 // Vitest reads a pragma anywhere in this file's text, so the fixture builds it.
 const PRAGMA_TAG = '@vitest-environment';
 
+// The Convex rules derive their builder list from these two files, so the
+// fixture tree carries the real ones.
+const CONVEX_BUILDER_INPUTS = [
+	'apps/api/convex/lib/authedFunctions.ts',
+	'apps/api/scripts/lib/convex-builders.sh',
+] as const;
+const convexBuilderInputs = Object.fromEntries(
+	CONVEX_BUILDER_INPUTS.map((path) => [path, readFileSync(join(REPOSITORY_ROOT, path), 'utf8')])
+);
+const AUTHED_MUTATION = "import { authedMutation } from '../lib/authedFunctions';";
+
 const FIXTURES: Record<string, string> = {
+	...convexBuilderInputs,
+	// A handler that resolves the session its builder's floor already resolved.
+	'apps/api/convex/workspaces/reResolvedSession.ts': [
+		AUTHED_MUTATION,
+		"import { requireOrgPermission } from '../lib/sessionOrganization';",
+		'export const rename = authedMutation({',
+		'\targs: {},',
+		'\thandler: async (ctx) => {',
+		"\t\tawait requireOrgPermission(ctx, 'organization:manage');",
+		'\t},',
+		'});',
+		'',
+	].join('\n'),
+	'apps/api/convex/workspaces/threadedSession.ts': [
+		AUTHED_MUTATION,
+		"import { hasPermission, requirePermission } from '../lib/sessionOrganization';",
+		'export const rename = authedMutation({',
+		'\targs: {},',
+		'\thandler: async (_ctx, _args, session) => {',
+		"\t\trequirePermission(hasPermission(session.role, 'organization:manage'));",
+		'\t},',
+		'});',
+		'',
+	].join('\n'),
 	'clean.test.ts': [
 		"import { describe, expect, it } from 'vitest';",
 		'',
@@ -407,9 +442,14 @@ describe.each(['.', 'apps/web'])('oxlint run from %s with the root config', (cwd
 		expect(errorCodes(byFile.get('backoff.ts'))).toEqual(['owlat(no-inline-backoff)']);
 	});
 
-	it('warns about a cast of parsed JSON for the ratchet', () => {
-		expect(errorCodes(byFile.get('uncheckedJson.ts'))).toEqual([]);
-		expect(warningCodes(byFile.get('uncheckedJson.ts'))).toEqual(['owlat(no-unchecked-json-cast)']);
+	it('reports a cast of parsed JSON as an error', () => {
+		expect(errorCodes(byFile.get('uncheckedJson.ts'))).toEqual(['owlat(no-unchecked-json-cast)']);
+		expect(warningCodes(byFile.get('uncheckedJson.ts'))).toEqual([]);
+	});
+
+	it('fails a handler that resolves the session its floor already resolved', () => {
+		expect(errorCodes(byFile.get('reResolvedSession.ts'))).toEqual(['owlat(use-threaded-session)']);
+		expect(byFile.get('threadedSession.ts')).toBeUndefined();
 	});
 
 	it('reports a suppression that does not say why', () => {

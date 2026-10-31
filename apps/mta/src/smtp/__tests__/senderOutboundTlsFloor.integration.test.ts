@@ -22,6 +22,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import Redis from 'ioredis-mock';
+import type * as MtaStsModule from '../mtaSts.js';
 
 vi.mock('../mxResolver.js', () => ({
 	resolveMxDestination: vi.fn().mockResolvedValue({
@@ -31,7 +32,7 @@ vi.mock('../mxResolver.js', () => ({
 	}),
 }));
 vi.mock('../mtaSts.js', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../mtaSts.js')>();
+	const actual = await importOriginal<typeof MtaStsModule>();
 	return {
 		...actual,
 		// No MTA-STS policy — the ONLY thing raising the floor here is the local

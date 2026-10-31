@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type * as SessionOrganizationModule from '../../lib/sessionOrganization';
+import type * as ConvexValuesModule from 'convex/values';
 
 /**
  * Editor-boundary gating for adding a plugin automation step. `addStep` must
@@ -14,7 +16,7 @@ const requireAuth = vi.hoisted(() => vi.fn(async () => undefined));
 const requireDraft = vi.hoisted(() => vi.fn(async () => undefined));
 
 vi.mock('../steps/catalog', async () => {
-	const { v } = await vi.importActual<typeof import('convex/values')>('convex/values');
+	const { v } = await vi.importActual<typeof ConvexValuesModule>('convex/values');
 	return {
 		isCoreStepKind: (kind: string) => !kind.startsWith('plugin.'),
 		isPluginStepKind: (kind: string) => kind.startsWith('plugin.'),
@@ -28,7 +30,7 @@ vi.mock('../../plugins/authorization', () => ({
 	requireAuthenticatedBundledPlugin: requireAuth,
 }));
 vi.mock('../../lib/sessionOrganization', async () => {
-	const actual = await vi.importActual<typeof import('../../lib/sessionOrganization')>(
+	const actual = await vi.importActual<typeof SessionOrganizationModule>(
 		'../../lib/sessionOrganization'
 	);
 	return { ...actual, getMutationContext: vi.fn(async () => ({ userId: 'u', role: 'owner' })) };

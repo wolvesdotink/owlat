@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { isProxy, reactive } from 'vue';
 import {
 	generatePatches,
 	applyPatches,
@@ -209,5 +210,28 @@ describe('reconstructState', () => {
 		// Should reconstruct from checkpoint at index 2
 		const result = reconstructState(entries, 3);
 		expect(result.name).toBe('Fourth');
+	});
+
+	it('rebuilds a reactive checkpoint as plain data under the JSON rules', () => {
+		const block = { id: 'a', type: 'text', content: { html: '<p>A</p>', note: undefined } };
+		const checkpoint = reactive(makeState({ blocks: [block as unknown as EditorBlock] }));
+		const changed = makeState({ name: 'Changed', blocks: [block as unknown as EditorBlock] });
+		const { patches } = generatePatches(
+			makeState({ blocks: [block as unknown as EditorBlock] }),
+			changed
+		);
+
+		const result = reconstructState(
+			[
+				{ type: 'checkpoint', state: checkpoint },
+				{ type: 'delta', patches, reversePatches: [] },
+			],
+			1
+		);
+
+		expect(isProxy(result) || isProxy(result.blocks) || isProxy(result.blocks[0])).toBe(false);
+		expect(result).toEqual(JSON.parse(JSON.stringify({ ...changed })));
+		expect('note' in (result.blocks[0]!.content as object)).toBe(false);
+		expect(checkpoint.name).toBe('Test Email');
 	});
 });

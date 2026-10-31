@@ -15,7 +15,7 @@ import { SMTPServer } from 'smtp-server';
 import type { AddressInfo } from 'node:net';
 import { SmtpConnection, sendEnvelope, quit, type SendResult } from '@owlat/smtp-client';
 import { MX_CERT, MX_KEY } from './certFixture.js';
-import { SmtpConnectionPool, type AcquireOptions } from '../connectionPool.js';
+import type { AcquireOptions, SmtpConnectionPool } from '../connectionPool.js';
 import type { EmailJob } from '../../types.js';
 import type { MtaConfig } from '../../config.js';
 

@@ -1,4 +1,5 @@
 import { extractOperationError } from '@owlat/shared/operationError';
+import { isRecord } from '@owlat/shared/utils/guards';
 import { ConvexHttpClient } from 'convex/browser';
 import type { H3Event } from 'h3';
 import { buildInternalTokenUrl } from './internalTokenUrl';
@@ -43,8 +44,10 @@ export async function authedConvexClient(event: H3Event): Promise<ConvexHttpClie
 		throw createError({ statusCode: 401, message: 'Not authenticated' });
 	}
 
-	const { token } = (await tokenResp.json()) as { token?: string | null };
-	if (!token) {
+	// Only a non-empty string reaches setAuth; any other answer is no session.
+	const payload: unknown = await tokenResp.json().catch(() => null);
+	const token = isRecord(payload) ? payload['token'] : undefined;
+	if (typeof token !== 'string' || !token) {
 		throw createError({ statusCode: 401, message: 'No auth token' });
 	}
 

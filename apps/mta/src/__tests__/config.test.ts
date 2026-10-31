@@ -181,6 +181,42 @@ describe('loadConfig', () => {
 		});
 	});
 
+	it('keeps the owning organization of a DKIM_KEYS entry', () => {
+		process.env['DKIM_KEYS'] = JSON.stringify({
+			'owlat.com': { selector: 's1', privateKey: 'pk-test', organizationId: 'org-1' },
+		});
+		expect(loadConfig().dkimKeys['owlat.com']).toEqual({
+			selector: 's1',
+			privateKey: 'pk-test',
+			organizationId: 'org-1',
+		});
+	});
+
+	it.each([
+		['null', 'null', 'keyed by domain'],
+		['an array', '[]', 'keyed by domain'],
+		['a string', '"owlat.com"', 'keyed by domain'],
+		['a key that is not an object', '{"owlat.com":"pk-test"}', 'DKIM_KEYS["owlat.com"]'],
+		[
+			'a key without a selector',
+			'{"owlat.com":{"privateKey":"pk-test"}}',
+			'DKIM_KEYS["owlat.com"]',
+		],
+		[
+			'a non-string private key',
+			'{"owlat.com":{"selector":"s1","privateKey":42}}',
+			'DKIM_KEYS["owlat.com"]',
+		],
+		[
+			'a non-string owner',
+			'{"owlat.com":{"selector":"s1","privateKey":"pk-test","organizationId":7}}',
+			'DKIM_KEYS["owlat.com"]',
+		],
+	])('refuses to boot when DKIM_KEYS is %s', (_label, raw, message) => {
+		process.env['DKIM_KEYS'] = raw;
+		expect(() => loadConfig()).toThrow(message);
+	});
+
 	it('throws when IP pool is empty after filtering', () => {
 		process.env['IP_POOLS_TRANSACTIONAL'] = '  ,  , ';
 		expect(() => loadConfig()).toThrow('at least one IP');
