@@ -254,7 +254,6 @@ export const ROOT_GATES: readonly RootGate[] = [
 			'packages/email-builder/src/',
 			'scripts/check-native-title.sh',
 			'scripts/native-title-findings.ts',
-			'scripts/native-title-baseline.txt',
 			RATCHET,
 		],
 	},

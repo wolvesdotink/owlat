@@ -69,7 +69,7 @@ route 22 pages/dashboard/admin/instance/plugins/[id].vue
 route 18 pages/dashboard/admin/instance/plugins/index.vue
 route 22 pages/dashboard/admin/instance/properties.vue
 route 14 pages/dashboard/admin/instance/sealed-mail.vue
-route 24 pages/dashboard/admin/operator/index.vue
+route 27 pages/dashboard/admin/operator/index.vue
 route 28 pages/dashboard/admin/system/index.vue
 route 5 pages/dashboard/admin/team/api/docs.vue
 route 27 pages/dashboard/admin/team/api/index.vue

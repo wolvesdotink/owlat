@@ -667,19 +667,22 @@ const formatExpiryTime = (expiresAt: Date) => {
 							</UiTooltip>
 							<!-- An expired invite's obvious next step is a fresh email, so it
 							     gets a labelled button instead of a bare icon. -->
-							<UiButton
+							<UiTooltip
 								v-if="isInviteExpired(invite)"
-								variant="outline"
-								size="sm"
-								:title="t('dashboard.admin.team.invites.resend')"
-								:loading="resendingId === invite.id"
-								:disabled="resendingId === invite.id"
-								data-testid="invite-resend-labelled"
-								@click="handleResend(invite)"
+								:text="t('dashboard.admin.team.invites.resend')"
 							>
-								<Icon v-if="resendingId !== invite.id" name="lucide:send" class="w-4 h-4 mr-2" />
-								{{ t('dashboard.admin.team.invites.resendShort') }}
-							</UiButton>
+								<UiButton
+									variant="outline"
+									size="sm"
+									:loading="resendingId === invite.id"
+									:disabled="resendingId === invite.id"
+									data-testid="invite-resend-labelled"
+									@click="handleResend(invite)"
+								>
+									<Icon v-if="resendingId !== invite.id" name="lucide:send" class="w-4 h-4 mr-2" />
+									{{ t('dashboard.admin.team.invites.resendShort') }}
+								</UiButton>
+							</UiTooltip>
 							<UiTooltip v-else :text="t('dashboard.admin.team.invites.resend')">
 								<UiButton
 									variant="ghost"

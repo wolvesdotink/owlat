@@ -105,16 +105,13 @@ async function handleResolve(threadId: Id<'conversationThreads'>) {
 				     to ask what the channels have been doing, so it is where the messages
 				     that never made it belong — with a live count, like the review queue's
 				     button on the inbox list. -->
-				<UiButton
-					variant="secondary"
-					to="/dashboard/admin/delivery/failed"
-					class="gap-2"
-					:title="t('dashboard.inbox.activity.failedMessagesTitle')"
-				>
-					<Icon name="lucide:alert-triangle" class="w-4 h-4" />
-					{{ t('dashboard.inbox.activity.failedMessages') }}
-					<UiBadge v-if="failedCount" variant="error" size="sm">{{ failedCount }}</UiBadge>
-				</UiButton>
+				<UiTooltip :text="t('dashboard.inbox.activity.failedMessagesTitle')">
+					<UiButton variant="secondary" to="/dashboard/admin/delivery/failed" class="gap-2">
+						<Icon name="lucide:alert-triangle" class="w-4 h-4" />
+						{{ t('dashboard.inbox.activity.failedMessages') }}
+						<UiBadge v-if="failedCount" variant="error" size="sm">{{ failedCount }}</UiBadge>
+					</UiButton>
+				</UiTooltip>
 			</template>
 		</UiPageHeader>
 
