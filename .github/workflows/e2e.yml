@@ -124,7 +124,8 @@ jobs:
           set -euo pipefail
           find apps/api/convex -type d -name __tests__ -prune -exec rm -rf {} +
           cd apps/api
-          bunx convex deploy --yes
+          # Committed codegen only: see docker/convex-deploy.sh.
+          bunx convex deploy --yes --codegen disable
 
       - name: Install Playwright browsers
         timeout-minutes: 10
