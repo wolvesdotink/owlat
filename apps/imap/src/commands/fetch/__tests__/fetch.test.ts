@@ -217,6 +217,13 @@ describe('FETCH body sections', () => {
 		expect(lines[0]).not.toContain('Subject: Hi');
 	});
 
+	it('separates several body sections with one space, in request order', async () => {
+		const { lines } = await run('(BODY[TEXT] BODY[HEADER])');
+		expect(lines[0]).toContain(
+			'BODY[TEXT] {11}\r\nHello world BODY[HEADER] {15}\r\nSubject: Hi\r\n\r\n)'
+		);
+	});
+
 	it('(3) BODY[]<0.5> returns a 5-octet partial', async () => {
 		const { lines } = await run('(BODY[]<0.5>)');
 		// The first 5 octets of the whole message ("Subje"), 5-octet literal.
