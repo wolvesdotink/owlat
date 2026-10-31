@@ -305,6 +305,32 @@ describe('a draft owes its expected attachments', () => {
 		expect((await row(t, draftId))?.expectedAttachments?.[0]?.state).toBe('owed');
 	});
 
+	it('leaves no copy behind when a compose limit refuses it: no blob, no receipt', async () => {
+		const t = convexTest();
+		const { draftId } = await rsvpDraft(t);
+		const filler = await t.run((ctx) => ctx.storage.store(new Blob(['x'])));
+		await t.run(async (ctx) => {
+			await ctx.db.patch(draftId, {
+				attachments: Array.from({ length: ATTACHMENT_COMPOSE_LIMITS.maxCount }, (_, i) => ({
+					storageId: filler,
+					filename: `f${i}`,
+					contentType: 'text/plain',
+					size: 1,
+					isInline: false,
+				})),
+			});
+		});
+		const receipts = () =>
+			t.run(async (ctx) => (await ctx.db.query('storageUploads').collect()).length);
+		const blobsBefore = await blobCount(t);
+		const receiptsBefore = await receipts();
+		expect(await t.action(api.mail.draftExpectedAttachmentsFulfil.fulfil, { draftId })).toEqual({
+			failed: [{ key: 'generated:0', filename: 'reply.ics', reason: 'tooMany' }],
+		});
+		expect(await blobCount(t)).toBe(blobsBefore);
+		expect(await receipts()).toBe(receiptsBefore);
+	});
+
 	it('settles an attached file as removed when its chip is removed like any attachment', async () => {
 		const t = convexTest();
 		const { draftId } = await rsvpDraft(t);

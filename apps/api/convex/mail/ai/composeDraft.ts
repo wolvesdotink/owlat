@@ -27,21 +27,23 @@
  */
 
 import { v, type Infer } from 'convex/values';
+import type { FunctionReturnType } from 'convex/server';
 import { authedAction } from '../../lib/authedFunctions';
-import { api, internal } from '../../_generated/api';
+import { internal } from '../../_generated/api';
 import type { ActionCtx } from '../../_generated/server';
 import type { Doc, Id } from '../../_generated/dataModel';
 import { MAX_ASK_ROUNDS } from '@owlat/shared/answerMode';
 import { isAppLocale } from '@owlat/shared/appLocales';
 import { logError } from '../../lib/runtimeLog';
 import { throwInvalidInput } from '../../_utils/errors';
-import {
-	answerAskTargetValidator,
-	type AnswerAskTarget,
-	type AnswerDraftContext,
-} from '../../lib/validators/answerAsk';
+import { answerAskTargetValidator, type AnswerDraftContext } from '../../lib/validators/answerAsk';
 import { clarificationFileRefValidator } from '../../lib/validators/clarification';
-import { copyExistingIntoDraft } from '../attachExisting';
+import {
+	attachExistingFile,
+	prepareFileAnswer,
+	type KeepCopy,
+	type PendingUpload,
+} from './composeDraftFiles';
 import { candidateForLabel } from '../../inbox/clarificationAnswers';
 import { throwAskSessionClaimed, toAskSessionView, type AskSessionView } from './composeDraftStore';
 import { draftContextOf, loadAnswerContext } from './composeDraftLoad';
@@ -68,87 +70,26 @@ import { NUDGE_GAP_CHECK, draftInstruction } from './nudgeDraft';
 const MAX_INSTRUCTION_CHARS = 2000;
 const MAX_ANSWER_CHARS = 2000;
 
-/** Where a file answer goes: the target, and the contact Files copies are linked to. */
-interface FileOwner {
-	target: AnswerAskTarget;
-	contactId?: Id<'contacts'> | undefined;
-}
-
-/**
- * Attach a file answer. A draft gets the file itself (a fresh upload is
- * consumed by `drafts.addAttachment`, an existing file is copied in); a team
- * thread only gets the reference checked and reported. An upload is also kept
- * in Files for the contact unless the owner opted out (plan decision 5), when
- * the caller may add to Files (lib/answerFileToFiles.ts).
- */
-async function attachFileAnswer(
-	ctx: ActionCtx,
-	session: FileOwner,
-	file: AskFileRef,
-	keepCopy: boolean
-): Promise<AskFileRef> {
-	const filename =
-		file.filename
-			.replace(/[\r\n\t]/g, ' ')
-			.trim()
-			.slice(0, 255) || 'attachment';
-	if (file.source === 'upload') {
-		const storageId = file.id as Id<'_storage'>;
-		const info = await ctx.runQuery(internal.mail.ai.composeDraftContext.ownUploadInfo, {
-			storageId,
-		});
-		if (keepCopy && session.contactId && info.canSaveToFiles) {
-			await keepCopyInFiles(ctx, session, {
-				storageId,
-				filename,
-				contentType: info.contentType,
-			});
-		}
-		if (session.target.kind === 'mailDraft') {
-			await ctx.runMutation(api.mail.drafts.addAttachment, {
-				draftId: session.target.draftId,
-				storageId,
-				filename,
-				contentType: info.contentType,
-				size: info.size,
-			});
-		}
-		return { source: 'upload', id: storageId, filename };
-	}
-	if (session.target.kind === 'mailDraft') {
-		const copied = await copyExistingIntoDraft(ctx, {
-			draftId: session.target.draftId,
-			source: file.source,
-			id: file.id,
-		});
-		return { source: file.source, id: file.id, filename: copied.filename };
-	}
-	const readable = await ctx.runQuery(internal.mail.attachExisting.resolveReadableFile, {
-		source: file.source,
-		id: file.id,
-	});
-	return { source: file.source, id: file.id, filename: readable.filename };
-}
-
 /** Save a second copy of an uploaded answer to Files. Best-effort. */
 async function keepCopyInFiles(
 	ctx: ActionCtx,
-	session: FileOwner,
-	file: { storageId: Id<'_storage'>; filename: string; contentType: string }
+	contactId: Id<'contacts'>,
+	file: KeepCopy
 ): Promise<void> {
-	if (!session.contactId) return;
 	let copyId: Id<'_storage'> | undefined;
 	try {
 		const blob = await ctx.storage.get(file.storageId);
 		if (!blob) return;
 		copyId = await ctx.storage.store(blob);
+		// checkpoint: a best-effort copy in Files the owner asked to keep, made
+		// once the answer landed; a refusal or failure drops only this copy.
 		await ctx.runMutation(internal.mail.ai.composeDraftContext.keepAnswerFileCopy, {
 			storageId: copyId,
 			filename: file.filename,
 			// The stored blob carries the upload's type when the metadata lacks one.
 			contentType:
 				file.contentType === 'application/octet-stream' && blob.type ? blob.type : file.contentType,
-			contactId: session.contactId,
+			contactId,
 		});
 	} catch (err) {
 		logError('[composeDraft] keeping a copy in Files failed:', err);
@@ -172,6 +113,8 @@ async function releaseSession(
 	status: 'asking' | 'error'
 ): Promise<void> {
 	try {
+		// checkpoint: hands back this run's `drafting` claim after a failure; what
+		// the run committed before it stays, and the owner goes on from there.
 		await ctx.runMutation(internal.mail.ai.composeDraftStore.updateSession, {
 			sessionId,
 			status,
@@ -183,32 +126,19 @@ async function releaseSession(
 	}
 }
 
-/** Write the draft for a session and return the settled view. */
+/**
+ * Write the draft for a session its commit left `drafting` and return the
+ * settled view. `writeAnswerDraft` settles the session itself, also when the
+ * model fails.
+ */
 async function draftNow(
 	ctx: ActionCtx,
 	session: Doc<'answerAskSessions'>,
 	context: AnswerDraftContext,
 	/** The owner agreed to gaps ("Draft with what I have", or asking off). */
-	allowGaps: boolean
+	allowGaps: boolean,
+	followUp: ReturnType<typeof followUpFor>
 ): Promise<AskSessionView> {
-	const now = Date.now();
-	const followUp = followUpFor(
-		session.questions,
-		session.fileRequest?.label,
-		now,
-		session.timeZone
-	);
-	if (followUp?.at !== undefined) {
-		await ctx.runMutation(internal.mail.ai.composeDraftStore.updateSession, {
-			sessionId: session._id,
-			status: 'drafting',
-			followUpAt: followUp.at,
-		});
-		await ctx.runMutation(internal.mail.ai.composeDraftStore.setDraftFollowUp, {
-			sessionId: session._id,
-			remindAt: followUp.at,
-		});
-	}
 	await requireFullRead(ctx, session.target);
 	const plan = await loadAnswerPlan(ctx, session);
 	await writeAnswerDraft(ctx, {
@@ -256,6 +186,8 @@ export const start = authedAction({
 	handler: async (ctx, args): Promise<AskSessionView> => {
 		// One model budget for this action, from its start.
 		anchorActionDeadline(ctx);
+		// checkpoint: admission before the model calls; the rate-limit token it
+		// consumes stays spent when the start fails later, so retries stay bounded.
 		await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {});
 		const note = args.instruction?.trim().slice(0, MAX_INSTRUCTION_CHARS) || undefined;
 		const instruction = draftInstruction(args.purpose, note);
@@ -288,16 +220,10 @@ export const start = authedAction({
 		if (gap.autoAttach) {
 			try {
 				attachedFiles.push(
-					await attachFileAnswer(
-						ctx,
-						{ target: args.target, contactId: context.contactId },
-						{
-							source: gap.autoAttach.source,
-							id: gap.autoAttach.id,
-							filename: gap.autoAttach.filename,
-						},
-						false
-					)
+					await attachExistingFile(ctx, args.target, {
+						source: gap.autoAttach.source,
+						id: gap.autoAttach.id,
+					})
 				);
 			} catch (err) {
 				logError('[composeDraft] attaching the matched file failed:', err);
@@ -313,7 +239,11 @@ export const start = authedAction({
 
 		const isAsking = gap.mayAsk && questions.some((q) => !q.answer);
 		const draftContext = draftContextOf(context);
-		const session = await ctx.runMutation(internal.mail.ai.composeDraftStore.replaceSession, {
+		const followUp = isAsking
+			? undefined
+			: followUpFor(questions, gap.fileRequest?.label, Date.now(), timeZone);
+		// One commit: the session, and the follow-up a session drafting now promises.
+		const session = await ctx.runMutation(internal.mail.ai.composeDraftCommit.commitStart, {
 			target: args.target,
 			...(instruction ? { instruction } : {}),
 			locale,
@@ -325,11 +255,12 @@ export const start = authedAction({
 			...(gap.fileRequest ? { fileRequest: gap.fileRequest } : {}),
 			...(draftContext ? { draftContext } : {}),
 			...(timeZone ? { timeZone } : {}),
+			...(followUp?.at !== undefined ? { followUpAt: followUp.at } : {}),
 		});
 		if (isAsking) return toAskSessionView(session);
 		try {
 			// Asking turned off is the owner's standing "draft with what I have".
-			return await draftNow(ctx, session, context, !gap.mayAsk);
+			return await draftNow(ctx, session, context, !gap.mayAsk, followUp);
 		} catch (err) {
 			// Before its stream settles the session would stay busy for good.
 			await releaseSession(ctx, session._id, 'error');
@@ -346,8 +277,9 @@ const givenAnswerValidator = v.object({
 });
 
 /**
- * Fold the owner's answers into the session's questions, attaching file
- * answers on the way, and open round 2 when "It isn't ready yet" asks for it.
+ * Fold the owner's answers into the session's questions, preparing file
+ * answers on the way (their uploads and Files copies wait for the commit), and
+ * open round 2 when "It isn't ready yet" asks for it.
  */
 async function applyAnswers(
 	ctx: ActionCtx,
@@ -360,6 +292,9 @@ async function applyAnswers(
 	const questions: AskQuestion[] = session.questions.map((q) => ({ ...q }));
 	let attachedFiles = [...session.attachedFiles];
 	const answered: string[] = [];
+	const uploads: PendingUpload[] = [];
+	const keeps: KeepCopy[] = [];
+	const seen = new Set<string>();
 	for (const given of answers) {
 		const question = questions.find((q) => q.id === given.questionId);
 		if (!question) continue;
@@ -374,7 +309,16 @@ async function applyAnswers(
 			(picked ? { source: picked.source, id: picked.id, filename: picked.filename } : undefined);
 		if (givenFile) {
 			if (question.answerKind !== 'file') throwInvalidInput('Only a file question takes a file');
-			const ref = await attachFileAnswer(ctx, session, givenFile, given.keepCopy !== false);
+			const prepared = await prepareFileAnswer(
+				ctx,
+				session,
+				givenFile,
+				given.keepCopy !== false,
+				seen
+			);
+			if (prepared.upload) uploads.push(prepared.upload);
+			if (prepared.keep) keeps.push(prepared.keep);
+			const { ref } = prepared;
 			question.answer = { value: ref.filename, at: now, source: 'user', file: ref };
 			attachedFiles = [
 				...attachedFiles.filter((f) => !(f.source === ref.source && f.id === ref.id)),
@@ -405,7 +349,10 @@ async function applyAnswers(
 		);
 		questions.push(followUpQuestion!);
 	}
-	return { questions, attachedFiles, answered, opensRoundTwo };
+	const followUp = opensRoundTwo
+		? undefined
+		: followUpFor(questions, session.fileRequest?.label, now, timeZone);
+	return { questions, attachedFiles, answered, opensRoundTwo, uploads, keeps, followUp };
 }
 
 /**
@@ -424,6 +371,8 @@ export const answer = authedAction({
 	handler: async (ctx, args): Promise<AskSessionView> => {
 		// One model budget for this action, from its start.
 		anchorActionDeadline(ctx);
+		// checkpoint: admission before the model calls; the rate-limit token it
+		// consumes stays spent when the answer fails later, so retries stay bounded.
 		await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {});
 		const session = await ctx.runQuery(internal.mail.ai.composeDraftStore.getOwnSession, {
 			sessionId: args.sessionId,
@@ -432,59 +381,55 @@ export const answer = authedAction({
 		if (args.skip !== true && leavesQuestionsOpen(session.questions, args.answers)) {
 			throwInvalidInput('Answer every question, or draft with what you have');
 		}
-		// Claim the session before anything is attached: a second call racing
-		// this one (a double tap, a retry after a slow first call) is refused
-		// here instead of attaching the same file again and opening a second
-		// stream under the first.
+		// checkpoint: the claim, taken before anything is attached. A second call
+		// racing this one (a double tap, a retry after a slow first call) is
+		// refused here instead of attaching the same file again and opening a
+		// second stream under the first; a failure below hands it back.
 		await ctx.runMutation(internal.mail.ai.composeDraftStore.updateSession, {
 			sessionId: session._id,
 			status: 'drafting',
 			expectStatus: 'asking',
 		});
 		const timeZone = normalizeTimeZone(args.timeZone) ?? session.timeZone;
+		let applied: Awaited<ReturnType<typeof applyAnswers>>;
+		let committed: FunctionReturnType<typeof internal.mail.ai.composeDraftCommit.commitAnswers>;
 		try {
-			return await answerClaimed(ctx, session, args, timeZone);
+			applied = await applyAnswers(ctx, session, args.answers, args.skip === true, timeZone);
+			// One commit: the uploads, the answers (or round 2), the remembered
+			// answers and the follow-up, under the claim taken above.
+			committed = await ctx.runMutation(internal.mail.ai.composeDraftCommit.commitAnswers, {
+				sessionId: session._id,
+				status: applied.opensRoundTwo ? 'asking' : 'drafting',
+				round: applied.opensRoundTwo ? session.round + 1 : session.round,
+				questions: applied.questions,
+				attachedFiles: applied.attachedFiles,
+				...(timeZone ? { timeZone } : {}),
+				uploads: applied.uploads,
+				answeredIds: applied.answered,
+				...(applied.followUp?.at !== undefined ? { followUpAt: applied.followUp.at } : {}),
+			});
 		} catch (err) {
 			// Hand the questions back, with the answers already stored, so the
 			// owner can fix an answer or send them again: a failed file answer, a
-			// briefing refused for budget, a draft that never opened its stream.
+			// briefing refused for budget.
+			await releaseSession(ctx, session._id, 'asking');
+			throw err;
+		}
+		// Taken from under this run: nothing was written, and the claim is not ours to hand back.
+		if (committed.outcome === 'claimed') throwAskSessionClaimed();
+		if (session.contactId) {
+			for (const keep of applied.keeps) await keepCopyInFiles(ctx, session.contactId, keep);
+		}
+		const updated = committed.session;
+		if (applied.opensRoundTwo) return toAskSessionView(updated);
+		try {
+			// The context `start` built; rebuilt only for a session that has none.
+			const context = updated.draftContext ?? (await loadAnswerContext(ctx, session.target));
+			return await draftNow(ctx, updated, context, args.skip === true, applied.followUp);
+		} catch (err) {
+			// A draft that never opened its stream: the questions come back, answered.
 			await releaseSession(ctx, session._id, 'asking');
 			throw err;
 		}
 	},
 });
-
-/** `answer` past its claim: apply the answers, then round 2 or the draft. */
-async function answerClaimed(
-	ctx: ActionCtx,
-	session: Doc<'answerAskSessions'>,
-	args: { answers: ReadonlyArray<Infer<typeof givenAnswerValidator>>; skip?: boolean },
-	timeZone: string | undefined
-): Promise<AskSessionView> {
-	const { questions, attachedFiles, answered, opensRoundTwo } = await applyAnswers(
-		ctx,
-		session,
-		args.answers,
-		args.skip === true,
-		timeZone
-	);
-	const updated = await ctx.runMutation(internal.mail.ai.composeDraftStore.updateSession, {
-		sessionId: session._id,
-		status: opensRoundTwo ? 'asking' : 'drafting',
-		expectStatus: 'drafting',
-		round: opensRoundTwo ? session.round + 1 : session.round,
-		questions,
-		attachedFiles,
-		...(timeZone ? { timeZone } : {}),
-	});
-	if (answered.length > 0) {
-		await ctx.runMutation(internal.mail.ai.composeDraftStore.captureSessionAnswers, {
-			sessionId: session._id,
-			questionIds: answered,
-		});
-	}
-	if (opensRoundTwo) return toAskSessionView(updated);
-	// The context `start` built; rebuilt only for a session that has none.
-	const context = updated.draftContext ?? (await loadAnswerContext(ctx, session.target));
-	return await draftNow(ctx, updated, context, args.skip === true);
-}
