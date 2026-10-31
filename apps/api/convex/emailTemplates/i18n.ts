@@ -1,6 +1,6 @@
 import { v } from 'convex/values';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
-import { requireOrgPermission } from '../lib/sessionOrganization';
+import { hasPermission, requirePermission } from '../lib/sessionOrganization';
 import {
 	assertEditableForPublishableChange,
 	withRenderedTranslations,
@@ -57,10 +57,9 @@ export const addTranslation = authedMutation({
 		// write is refused with `conflict` if the row has moved on since.
 		expectedContentRevision: v.optional(v.number()),
 	},
-	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'templates:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'templates:manage'),
 			'Only owners and admins can manage template translations'
 		);
 		const template = await getLiveOrThrow(ctx, args.templateId, 'Email template');
@@ -100,10 +99,9 @@ export const updateTranslation = authedMutation({
 		// write is refused with `conflict` if the row has moved on since.
 		expectedContentRevision: v.optional(v.number()),
 	},
-	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'templates:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'templates:manage'),
 			'Only owners and admins can manage template translations'
 		);
 		const template = await getLiveOrThrow(ctx, args.templateId, 'Email template');
@@ -132,10 +130,9 @@ export const removeTranslation = authedMutation({
 		// write is refused with `conflict` if the row has moved on since.
 		expectedContentRevision: v.optional(v.number()),
 	},
-	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'templates:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'templates:manage'),
 			'Only owners and admins can manage template translations'
 		);
 		const template = await getLiveOrThrow(ctx, args.templateId, 'Email template');
@@ -173,10 +170,9 @@ export const setDefaultLanguage = authedMutation({
 		// write is refused with `conflict` if the row has moved on since.
 		expectedContentRevision: v.optional(v.number()),
 	},
-	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'templates:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'templates:manage'),
 			'Only owners and admins can manage template translations'
 		);
 		const template = await getLiveOrThrow(ctx, args.templateId, 'Email template');

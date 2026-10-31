@@ -2,9 +2,9 @@ import { v } from 'convex/values';
 import { authedMutation, authedQuery } from '../lib/authedFunctions';
 import { internalQuery, type QueryCtx } from '../_generated/server';
 import {
-	requireAdminContext,
-	requireOrgPermission,
 	getSingletonOrganizationId,
+	hasPermission,
+	requirePermission,
 } from '../lib/sessionOrganization';
 import { DRAFT_STRATEGY_CATALOG, isRegisteredDraftStrategy } from './draftStrategyCatalog';
 import { ALLOWED_CATEGORIES } from '../agent/steps/draft/sanitize';
@@ -64,8 +64,8 @@ export const resolveForDraft = internalQuery({
 
 export const listCatalog = authedQuery({
 	args: {},
-	handler: async (ctx) => {
-		await requireOrgPermission(ctx, 'settings:manage');
+	handler: async (ctx, _args, session) => {
+		requirePermission(hasPermission(session.role, 'settings:manage'));
 		const organizationId = await getSingletonOrganizationId(ctx);
 		const rows = await ctx.db
 			.query('draftStrategySelections')
@@ -84,8 +84,11 @@ export const listCatalog = authedQuery({
 
 export const setSelection = authedMutation({
 	args: { scope: scopeValidator, strategyKind: v.string() },
-	handler: async (ctx, args) => {
-		await requireAdminContext(ctx);
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'organization:manage'),
+			'Only owners and admins can perform this action'
+		);
 		if (!isRegisteredDraftStrategy(args.strategyKind))
 			throw new TypeError('Unknown draft strategy');
 		if (args.scope.type === 'classification' && !isDraftClassificationScope(args.scope.id))
