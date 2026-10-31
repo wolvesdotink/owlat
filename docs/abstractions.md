@@ -151,9 +151,8 @@ through `domains/returnPathProviders.ts`. A kind without it refuses a custom hos
 Kind literals outside the adapter folders are checked by two gates, split by
 what the literal is. A kind _declaration_ (`const X = 'ses'`) inside
 `apps/api/convex` fails `apps/api/scripts/check-kind-literal-custody.ts`
-outright; a _comparison_ is enumerated by the ratchet's allowlist below, which
-fails in both directions: an unenumerated literal fails, and an entry whose
-literal has been swept fails until it is deleted.
+outright; a _comparison_ fails the ratchet below unless the spelling belongs to
+another vocabulary and is listed as such.
 
 The comparison half is `bun run lint:providers`
 (`scripts/check-provider-identity.sh`), the CI gate that carries the rule across
@@ -177,17 +176,15 @@ and the comment stripper tracks string literals — a `//` in a doc link or a `*
 in a glob is not a comment, and reading one as a comment is how a text gate goes
 quietly blind.
 
-Two checked-in files license the rest, both strict in both directions so they
-can only shrink: `scripts/provider-identity-allowlist.txt` is debt, written once
-per entry under a family header naming the piece that deletes it, and its entry
-count is what "zero identity checks" is measured against;
-`scripts/provider-identity-collisions.txt` is the permanent set where the
+One checked-in file licenses the rest, strict in both directions so it can only
+shrink: `scripts/provider-identity-collisions.txt` is the permanent set where the
 spelling belongs to a different vocabulary (the MTA routing API's answer, a
 docker compose profile, the contact-import registry) and there is no coupling to
-remove. Entries in both files are qualified `path:literal` (the script still
-parses bare `path`, but the debt list no longer uses it), because a whole-file
-licence would excuse a real kind branch added to that file later — the exact
-blindness bare entries showed when `emailit` arrived.
+remove. There is no debt list: a comparison that asks a provider's name fails
+wherever it is. Entries are qualified `path:literal`, and the script rejects a
+bare `path`, because a whole-file licence would excuse a real kind branch added
+to that file later — the exact blindness bare entries showed when `emailit`
+arrived.
 
 The two checks are disjoint, not overlapping: declarations in the backend belong
 to the vitest one, comparisons everywhere belong to the ratchet, and neither

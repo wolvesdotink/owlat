@@ -162,12 +162,32 @@ describe('the draft’s state', () => {
 		expect(draft.credentialValues['AWS_SES_REGION']).toBe('us-east-1');
 	});
 
-	it('projects the env-keyed values back onto the shipped draft shape', () => {
-		const draft = useRelayCredentialDraft('smtp');
-		draft.credentialValues['SMTP_RELAY_USERNAME'] = 'postmaster';
-		draft.credentialValues['SMTP_RELAY_SECURE'] = 'true';
-		expect(draft.credentialFields.value.smtp.username).toBe('postmaster');
-		expect(draft.credentialFields.value.smtp.secure).toBe(true);
+	it('seeds from values a surface already holds, and picks the preset their host names', () => {
+		// The setup wizard re-opens its email step from the env it collected, so a
+		// step the operator returns to shows what they entered — for a named relay,
+		// on that relay's preset rather than on the first one.
+		const draft = useRelayCredentialDraft('smtp', {
+			SMTP_RELAY_HOST: 'smtp.postmarkapp.com',
+			SMTP_RELAY_USERNAME: 'postmaster',
+			RESEND_API_KEY: 're_live_1',
+			UNRELATED: 'ignored',
+		});
+		expect(draft.preset.value).toBe('postmark');
+		expect(draft.credentialValues['SMTP_RELAY_USERNAME']).toBe('postmaster');
+		expect(draft.credentialValues['RESEND_API_KEY']).toBe('re_live_1');
+		expect(draft.credentialValues['UNRELATED']).toBeUndefined();
+		// A declared default still fills a variable the seed does not hold.
+		expect(draft.credentialValues['AWS_SES_REGION']).toBe('us-east-1');
+	});
+
+	it('seeds a host no preset names onto the hand-entered endpoint', () => {
+		const draft = useRelayCredentialDraft('smtp', { SMTP_RELAY_HOST: 'relay.acme.test' });
+		expect(draft.preset.value).toBe('custom');
+		expect(draft.credentialValues['SMTP_RELAY_HOST']).toBe('relay.acme.test');
+	});
+
+	it('seeds the first preset when nothing names a host', () => {
+		expect(useRelayCredentialDraft('smtp').preset.value).toBe('mailgun');
 	});
 
 	it('drops every secret the catalog declares, for every kind, in one call', () => {

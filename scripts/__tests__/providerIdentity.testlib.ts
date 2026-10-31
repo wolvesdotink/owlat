@@ -3,9 +3,9 @@
  * (check-provider-identity*.test.ts).
  *
  * `sandbox()` builds a miniature repository — the real script, a written
- * allowlist and collisions list, a catalog to parse, and whatever source files
- * the case seeds — so a case can prove what the gate does with a violation
- * without touching the repository the gate guards.
+ * collisions list, a catalog to parse, and whatever source files the case
+ * seeds — so a case can prove what the gate does with a violation without
+ * touching the repository the gate guards.
  */
 
 import { execFileSync, spawnSync } from 'node:child_process';
@@ -14,7 +14,6 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 
 export const SCRIPT = resolve(import.meta.dirname, '../check-provider-identity.sh');
-export const ALLOWLIST = resolve(import.meta.dirname, '../provider-identity-allowlist.txt');
 export const COLLISIONS = resolve(import.meta.dirname, '../provider-identity-collisions.txt');
 export const REPO_ROOT = resolve(import.meta.dirname, '../..');
 
@@ -41,13 +40,12 @@ export function cleanupSandboxes(): void {
 }
 
 /**
- * A miniature repository: the real script, a written allowlist, a kind
+ * A miniature repository: the real script, a written collisions list, a kind
  * declaration for it to parse, and whatever source files the case seeds. The
  * script reads `git ls-files`, so the tree is staged.
  */
 export function sandbox(options: {
 	files: Record<string, string>;
-	allowlist?: string[];
 	collisions?: string[];
 	kinds?: string[] | null;
 	/**
@@ -67,10 +65,6 @@ export function sandbox(options: {
 
 	mkdirSync(join(root, 'scripts'), { recursive: true });
 	copyFileSync(SCRIPT, join(root, 'scripts/check-provider-identity.sh'));
-	writeFileSync(
-		join(root, 'scripts/provider-identity-allowlist.txt'),
-		`# sandbox allowlist\n${(options.allowlist ?? []).join('\n')}\n`
-	);
 	writeFileSync(
 		join(root, 'scripts/provider-identity-collisions.txt'),
 		`# sandbox collisions\n${(options.collisions ?? []).join('\n')}\n`

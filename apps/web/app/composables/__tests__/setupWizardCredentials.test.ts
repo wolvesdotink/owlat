@@ -30,8 +30,6 @@ import {
 import {
 	credentialFieldEnv,
 	credentialFieldsFor,
-	credentialValuesFromDraft,
-	draftCredentialsFromValues,
 	hostPortFieldFor,
 	seedCredentialValues,
 	secretEnvKeys,
@@ -39,7 +37,7 @@ import {
 } from '../setupWizardCredentials';
 import { buildProviderEnv, buildSetupSummary, type EmailStepDraft } from '../useSetupWizard';
 import { getDefaultFlags } from '@owlat/shared/featureFlags';
-import { credentialErrorFor, validateEmailStep } from '../setupWizardValidation';
+import { validateEmailStep } from '../setupWizardValidation';
 import { createTestI18n } from '~/__tests__/i18n';
 
 /** The real catalog's `t`, for the module-scope names the review step resolves. */
@@ -119,10 +117,9 @@ const EXPECTED_FIELDS: Record<string, ExpectedField[]> = {
 			envVars: ['SMTP_RELAY_HOST', 'SMTP_RELAY_PORT', 'SMTP_RELAY_SECURE'],
 			required: true,
 			// THE ONE HINT THAT MOVED, and it moved by ADDITION: the in-app editor
-			// showed it, the wizard's step did not, and a descriptor has one. Ratified
-			// in `scripts/provider-identity-allowlist.txt` — the composite's own
-			// docblock argues the pair must hint together, since the port input beside
-			// it always showed its declared default.
+			// showed it, the wizard's step did not, and a descriptor has one. The
+			// composite's own docblock argues the pair must hint together, since the
+			// port input beside it always showed its declared default.
 			placeholder: 'smtp.mailgun.org',
 		},
 		{
@@ -214,11 +211,7 @@ function draft(overrides: Partial<EmailStepDraft> = {}): EmailStepDraft {
 	return {
 		provider: 'mta',
 		requiresProvider: true,
-		resendKey: '',
-		emailitKey: '',
-		mandrillKey: '',
-		ses: { region: '', accessKeyId: '', secretAccessKey: '' },
-		smtp: { preset: 'custom', host: '', port: '', secure: false, username: '', password: '' },
+		credentials: {},
 		fromEmail: '',
 		fromName: '',
 		...overrides,
@@ -407,25 +400,6 @@ describe('the blank form', () => {
 	});
 });
 
-describe('the legacy draft bridge', () => {
-	it('round-trips every credential the wizard draft can carry', () => {
-		const values = {
-			...FILLED_VALUES['mta'],
-			...FILLED_VALUES['ses'],
-			...FILLED_VALUES['resend'],
-			...FILLED_VALUES['smtp'],
-			...FILLED_VALUES['mandrill'],
-			...FILLED_VALUES['emailit'],
-		};
-		const credentials = draftCredentialsFromValues(values, 'mailgun');
-		expect(credentialValuesFromDraft({ ...draft(), ...credentials })).toEqual(values);
-	});
-
-	it('reads a blank outbound-TLS floor as unset rather than as an empty mode', () => {
-		expect(draftCredentialsFromValues({}, 'custom').outboundTlsMode).toBeUndefined();
-	});
-});
-
 /**
  * The whole path, through the SHIPPED entry point: what the wizard and the
  * editor actually call. A refactor that got the descriptors right but wired
@@ -433,18 +407,15 @@ describe('the legacy draft bridge', () => {
  */
 describe('buildProviderEnv writes exactly the selected kind’s credentials', () => {
 	it.each(CATALOG_KINDS)('for %s, and clears every other kind’s', (kind) => {
-		const credentials = draftCredentialsFromValues(
-			{
-				...FILLED_VALUES['mta'],
-				...FILLED_VALUES['ses'],
-				...FILLED_VALUES['resend'],
-				...FILLED_VALUES['smtp'],
-				...FILLED_VALUES['mandrill'],
-				...FILLED_VALUES['emailit'],
-			},
-			'mailgun'
-		);
-		const env = buildProviderEnv({}, draft({ provider: kind, ...credentials }));
+		const credentials = {
+			...FILLED_VALUES['mta'],
+			...FILLED_VALUES['ses'],
+			...FILLED_VALUES['resend'],
+			...FILLED_VALUES['smtp'],
+			...FILLED_VALUES['mandrill'],
+			...FILLED_VALUES['emailit'],
+		};
+		const env = buildProviderEnv({}, draft({ provider: kind, credentials }));
 		expect(env).toEqual({ EMAIL_PROVIDER: kind, ...EXPECTED_ENV[kind] });
 	});
 });
@@ -483,52 +454,71 @@ describe('the review step names every choice as it always has', () => {
 });
 
 /**
- * THE ONE CREDENTIAL ERROR, for both surfaces at once.
+ * THE ONE CREDENTIAL ERROR, read off the descriptors for every kind.
  *
- * The transport editor and the wizard's credential step both need "the message
- * for the selected kind, whichever field set it belongs to". They used to spell
- * that out as an identical `errors.resendKey ?? errors.mandrillKey ?? …` chain
- * in two templates — per-vendor knowledge in a `.vue` file, duplicated, and
- * silently non-exhaustive: a new key rendered nowhere while Apply refused.
+ * Which fields are required is each descriptor's `required` flag; the sentence
+ * is the one each incumbent's form has always shown, pinned here as words so a
+ * refactor of the rule cannot quietly reword the screen.
  */
-describe('credentialErrorFor', () => {
-	const filled: Record<string, Partial<EmailStepDraft>> = {
-		mta: {},
-		ses: { ses: { region: 'eu-west-1', accessKeyId: 'AKIA', secretAccessKey: 's' } },
-		resend: { resendKey: 're_1' },
-		smtp: {
-			smtp: {
-				preset: 'custom',
-				host: 'smtp.acme.test',
-				port: '',
-				secure: false,
-				username: 'u',
-				password: 'p',
-			},
-		},
-		mandrill: { mandrillKey: 'md-1' },
-		emailit: { emailitKey: 'em_1' },
+describe('the credential rule', () => {
+	const SHIPPED_SENTENCES: Record<string, string | undefined> = {
+		mta: undefined,
+		ses: 'Region, access key ID, and secret access key are all required for SES.',
+		resend: 'Enter your Resend API key.',
+		smtp: 'Server host, username, and password are all required for an SMTP relay.',
+		mandrill: 'Enter your Mailchimp Transactional (Mandrill) API key.',
+		emailit: 'Enter your Emailit API key.',
 	};
 
-	it.each(CATALOG_KINDS)('surfaces %s’s missing-credential message', (kind) => {
-		const errors = validateEmailStep(draft({ provider: kind }));
-		const message = credentialErrorFor(errors);
+	it.each(CATALOG_KINDS)('words %s’s missing credentials as it always has', (kind) => {
+		const message = validateEmailStep(draft({ provider: kind })).credentials;
 		// The own MTA collects no credential that can be missing; every relay does.
-		if (kind === 'mta') expect(message).toBeUndefined();
-		else expect(typeof message).toBe('string');
+		expect(message === undefined ? undefined : t(message.key, { field: t(message.field) })).toBe(
+			SHIPPED_SENTENCES[kind]
+		);
 	});
 
 	it.each(CATALOG_KINDS)('says nothing once %s’s credentials are filled in', (kind) => {
-		expect(credentialErrorFor(validateEmailStep(draft({ provider: kind, ...filled[kind] })))).toBe(
+		expect(
+			validateEmailStep(draft({ provider: kind, credentials: FILLED_VALUES[kind] })).credentials
+		).toBeUndefined();
+	});
+
+	it.each(CATALOG_KINDS)(
+		'reports %s as incomplete when any ONE required field is blank',
+		(kind) => {
+			// A rule that only checked the first field would let the rest through.
+			for (const field of credentialFieldsFor(kind)) {
+				if (field.required !== true) continue;
+				const credentials = { ...FILLED_VALUES[kind], [field.envVar]: '  ' };
+				expect(validateEmailStep(draft({ provider: kind, credentials })).credentials).toEqual({
+					key: expect.any(String),
+					field: field.label,
+				});
+			}
+		}
+	);
+
+	it('rejects an endpoint port that is not a port, and accepts a blank one', () => {
+		for (const port of ['abc', '0', '70000']) {
+			const credentials = { ...FILLED_VALUES['smtp'], SMTP_RELAY_PORT: port };
+			const message = validateEmailStep(draft({ provider: 'smtp', credentials })).credentials;
+			expect(message === undefined ? undefined : t(message.key)).toBe(
+				'Port must be a whole number between 1 and 65535 (leave blank for 587).'
+			);
+		}
+		const blank = { ...FILLED_VALUES['smtp'], SMTP_RELAY_PORT: '' };
+		expect(validateEmailStep(draft({ provider: 'smtp', credentials: blank })).credentials).toBe(
 			undefined
 		);
 	});
 
-	it('ignores the errors that are not about credentials', () => {
-		// A bad From address and a missing MTA identity both belong to other
-		// controls on the screen; announcing either beside the API key would point
-		// the operator at the wrong field.
-		expect(credentialErrorFor({ fromEmail: 'bad address', mtaIdentity: 'no PTR' })).toBeUndefined();
-		expect(credentialErrorFor({})).toBeUndefined();
+	it('validates only the selected kind, whatever else the map holds', () => {
+		// Switching transport keeps what was typed for the old one; a half-filled
+		// SES form must not block a complete Resend one.
+		const credentials = { ...FILLED_VALUES['resend'], AWS_SES_ACCESS_KEY_ID: '' };
+		expect(
+			validateEmailStep(draft({ provider: 'resend', credentials })).credentials
+		).toBeUndefined();
 	});
 });

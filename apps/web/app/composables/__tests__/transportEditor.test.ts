@@ -27,16 +27,7 @@ function draft(overrides: Partial<EmailStepDraft> = {}): EmailStepDraft {
 	return {
 		provider: 'mta',
 		requiresProvider: true,
-		resendKey: '',
-		ses: { region: 'us-east-1', accessKeyId: '', secretAccessKey: '' },
-		smtp: {
-			preset: 'custom',
-			host: '',
-			port: '',
-			secure: false,
-			username: '',
-			password: '',
-		},
+		credentials: { AWS_SES_REGION: 'us-east-1' },
 		fromEmail: '',
 		fromName: '',
 		...overrides,
@@ -45,7 +36,10 @@ function draft(overrides: Partial<EmailStepDraft> = {}): EmailStepDraft {
 
 describe('transport editor — picker + preset reuse', () => {
 	it('emits EMAIL_PROVIDER=resend plus the key for a Resend transport', () => {
-		const env = buildProviderEnv({}, draft({ provider: 'resend', resendKey: 're_live_abc' }));
+		const env = buildProviderEnv(
+			{},
+			draft({ provider: 'resend', credentials: { RESEND_API_KEY: 're_live_abc' } })
+		);
 		expect(env['EMAIL_PROVIDER']).toBe('resend');
 		expect(env['RESEND_API_KEY']).toBe('re_live_abc');
 		expect(env['AWS_SES_ACCESS_KEY_ID']).toBeUndefined();
@@ -56,7 +50,11 @@ describe('transport editor — picker + preset reuse', () => {
 			{},
 			draft({
 				provider: 'ses',
-				ses: { region: 'eu-west-1', accessKeyId: 'AKIA', secretAccessKey: 'shh' },
+				credentials: {
+					AWS_SES_REGION: 'eu-west-1',
+					AWS_SES_ACCESS_KEY_ID: 'AKIA',
+					AWS_SES_SECRET_ACCESS_KEY: 'shh',
+				},
 			})
 		);
 		expect(env['EMAIL_PROVIDER']).toBe('ses');
@@ -71,13 +69,12 @@ describe('transport editor — picker + preset reuse', () => {
 			{},
 			draft({
 				provider: 'smtp',
-				smtp: {
-					preset: 'mailgun',
-					host: preset.host,
-					port: preset.port,
-					secure: preset.secure,
-					username: 'postmaster',
-					password: 'pw',
+				credentials: {
+					SMTP_RELAY_HOST: preset.host,
+					SMTP_RELAY_PORT: preset.port,
+					SMTP_RELAY_SECURE: String(preset.secure),
+					SMTP_RELAY_USERNAME: 'postmaster',
+					SMTP_RELAY_PASSWORD: 'pw',
 				},
 			})
 		);
@@ -89,7 +86,10 @@ describe('transport editor — picker + preset reuse', () => {
 	});
 
 	it('starting from an empty base emits only transport keys (nothing carried over)', () => {
-		const env = buildProviderEnv({}, draft({ provider: 'resend', resendKey: 're_x' }));
+		const env = buildProviderEnv(
+			{},
+			draft({ provider: 'resend', credentials: { RESEND_API_KEY: 're_x' } })
+		);
 		for (const key of Object.keys(env)) {
 			expect(PROVIDER_ENV_KEYS).toContain(key);
 		}
@@ -98,23 +98,38 @@ describe('transport editor — picker + preset reuse', () => {
 
 describe('transport editor — validation gating', () => {
 	it('blocks apply for Resend without a key', () => {
-		expect(emailStepIsValid(draft({ provider: 'resend', resendKey: '' }))).toBe(false);
-		expect(validateEmailStep(draft({ provider: 'resend', resendKey: '' })).resendKey).toBeTruthy();
+		expect(
+			emailStepIsValid(draft({ provider: 'resend', credentials: { RESEND_API_KEY: '' } }))
+		).toBe(false);
+		expect(
+			validateEmailStep(draft({ provider: 'resend', credentials: { RESEND_API_KEY: '' } }))
+				.credentials
+		).toBeTruthy();
 	});
 
 	it('blocks apply for SMTP missing host/username/password', () => {
 		const d = draft({
 			provider: 'smtp',
-			smtp: { preset: 'custom', host: '', port: '', secure: false, username: '', password: '' },
+			credentials: {
+				SMTP_RELAY_HOST: '',
+				SMTP_RELAY_PORT: '',
+				SMTP_RELAY_SECURE: 'false',
+				SMTP_RELAY_USERNAME: '',
+				SMTP_RELAY_PASSWORD: '',
+			},
 		});
 		expect(emailStepIsValid(d)).toBe(false);
-		expect(validateEmailStep(d).smtp).toBeTruthy();
+		expect(validateEmailStep(d).credentials).toBeTruthy();
 	});
 
 	it('blocks apply for SES missing credentials', () => {
 		const d = draft({
 			provider: 'ses',
-			ses: { region: 'us-east-1', accessKeyId: '', secretAccessKey: '' },
+			credentials: {
+				AWS_SES_REGION: 'us-east-1',
+				AWS_SES_ACCESS_KEY_ID: '',
+				AWS_SES_SECRET_ACCESS_KEY: '',
+			},
 		});
 		expect(emailStepIsValid(d)).toBe(false);
 	});
@@ -122,13 +137,12 @@ describe('transport editor — validation gating', () => {
 	it('allows a complete SMTP transport', () => {
 		const d = draft({
 			provider: 'smtp',
-			smtp: {
-				preset: 'custom',
-				host: 'smtp.example.com',
-				port: '587',
-				secure: false,
-				username: 'user',
-				password: 'pw',
+			credentials: {
+				SMTP_RELAY_HOST: 'smtp.example.com',
+				SMTP_RELAY_PORT: '587',
+				SMTP_RELAY_SECURE: 'false',
+				SMTP_RELAY_USERNAME: 'user',
+				SMTP_RELAY_PASSWORD: 'pw',
 			},
 		});
 		expect(emailStepIsValid(d)).toBe(true);
@@ -157,12 +171,18 @@ describe('transport editor — the subset of the email step it owns', () => {
 	// Every rule the screen CAN meet still gates it — the predicate is a subset,
 	// not a bypass.
 	it('still blocks on each error this screen renders a field for', () => {
-		expect(transportStepIsValid(draft({ provider: 'resend', resendKey: '' }))).toBe(false);
+		expect(
+			transportStepIsValid(draft({ provider: 'resend', credentials: { RESEND_API_KEY: '' } }))
+		).toBe(false);
 		expect(
 			transportStepIsValid(
 				draft({
 					provider: 'ses',
-					ses: { region: 'us-east-1', accessKeyId: '', secretAccessKey: '' },
+					credentials: {
+						AWS_SES_REGION: 'us-east-1',
+						AWS_SES_ACCESS_KEY_ID: '',
+						AWS_SES_SECRET_ACCESS_KEY: '',
+					},
 				})
 			)
 		).toBe(false);
@@ -187,7 +207,7 @@ describe('transport editor — outbound TLS mode (OUTBOUND_TLS_MODE)', () => {
 	it('emits the chosen outbound TLS mode for the built-in MTA transport', () => {
 		const env = buildProviderEnv(
 			{},
-			draft({ provider: 'mta', outboundTlsMode: 'require-verified' })
+			draft({ provider: 'mta', credentials: { OUTBOUND_TLS_MODE: 'require-verified' } })
 		);
 		expect(env['EMAIL_PROVIDER']).toBe('mta');
 		expect(env['OUTBOUND_TLS_MODE']).toBe('require-verified');
@@ -200,20 +220,20 @@ describe('transport editor — outbound TLS mode (OUTBOUND_TLS_MODE)', () => {
 
 	it('never emits OUTBOUND_TLS_MODE for a relay/API transport (their TLS is the provider’s concern)', () => {
 		for (const env of [
-			buildProviderEnv({}, draft({ provider: 'resend', resendKey: 'k' })),
+			buildProviderEnv({}, draft({ provider: 'resend', credentials: { RESEND_API_KEY: 'k' } })),
 			buildProviderEnv(
 				{},
 				draft({
 					provider: 'smtp',
-					smtp: {
-						preset: 'custom',
-						host: 'h',
-						port: '587',
-						secure: false,
-						username: 'u',
-						password: 'p',
+					credentials: {
+						SMTP_RELAY_HOST: 'h',
+						SMTP_RELAY_PORT: '587',
+						SMTP_RELAY_SECURE: 'false',
+						SMTP_RELAY_USERNAME: 'u',
+						SMTP_RELAY_PASSWORD: 'p',
+						// A floor left in the form from the own arm must not leak into a relay's patch.
+						OUTBOUND_TLS_MODE: 'require-verified',
 					},
-					outboundTlsMode: 'require-verified',
 				})
 			),
 		]) {
@@ -233,7 +253,10 @@ describe('transport editor — outbound TLS mode (OUTBOUND_TLS_MODE)', () => {
 		// Seeded from the active OUTBOUND_TLS_MODE, exactly as the editor does.
 		const seeded = seedOutboundTlsMode('require-verified');
 		expect(seeded).toBe('require-verified');
-		const env = buildProviderEnv({}, draft({ provider: 'mta', outboundTlsMode: seeded }));
+		const env = buildProviderEnv(
+			{},
+			draft({ provider: 'mta', credentials: { OUTBOUND_TLS_MODE: seeded } })
+		);
 		expect(env['OUTBOUND_TLS_MODE']).toBe('require-verified');
 	});
 
@@ -250,25 +273,28 @@ describe('transport editor — server allowlist invariant', () => {
 		// Union of keys across every provider kind + optional From identity.
 		const all = new Set<string>();
 		for (const env of [
-			buildProviderEnv({}, draft({ provider: 'resend', resendKey: 'k' })),
+			buildProviderEnv({}, draft({ provider: 'resend', credentials: { RESEND_API_KEY: 'k' } })),
 			buildProviderEnv(
 				{},
 				draft({
 					provider: 'ses',
-					ses: { region: 'r', accessKeyId: 'a', secretAccessKey: 's' },
+					credentials: {
+						AWS_SES_REGION: 'r',
+						AWS_SES_ACCESS_KEY_ID: 'a',
+						AWS_SES_SECRET_ACCESS_KEY: 's',
+					},
 				})
 			),
 			buildProviderEnv(
 				{},
 				draft({
 					provider: 'smtp',
-					smtp: {
-						preset: 'custom',
-						host: 'h',
-						port: '25',
-						secure: true,
-						username: 'u',
-						password: 'p',
+					credentials: {
+						SMTP_RELAY_HOST: 'h',
+						SMTP_RELAY_PORT: '25',
+						SMTP_RELAY_SECURE: 'true',
+						SMTP_RELAY_USERNAME: 'u',
+						SMTP_RELAY_PASSWORD: 'p',
 					},
 				})
 			),
