@@ -6,17 +6,76 @@ adds a new service image.
 
 ## Cutting a release
 
+Every unified release goes through a release candidate. The candidate runs the
+whole pipeline, and the stable release is its commit, tagged once that run is
+green:
+
 ```sh
-bun run release:cut <version|major|minor|patch>   # bump + changelog + commit + tag
-# curate the generated CHANGELOG.md section, then:
-git push origin main v<X.Y.Z>
+bun run release:cut <major|minor|patch|X.Y.Z> --no-commit # prepare X.Y.Z: bump + changelog + schema snapshot
+# curate the generated CHANGELOG.md section, then commit and tag the candidate:
+git add -A && git commit -m "chore(release): vX.Y.Z-rc.1"
+git tag -a vX.Y.Z-rc.1 -m "Owlat vX.Y.Z-rc.1"
+git push origin main vX.Y.Z-rc.1
+# wait for release.yml to pass on the candidate, test it (below), then:
+bun run release:promote vX.Y.Z-rc.1 --push    # tag vX.Y.Z on the candidate's commit
 ```
+
+Without `--no-commit`, `release:cut` commits and tags the candidate itself
+(add `--push` to push both). The stable release is the candidate's commit, so
+changelog edits made after the tag exist only in a later commit: they reach a
+release only through the next candidate (`release:cut rc`).
+
+A fix found while testing goes to main as usual, then
+`bun run release:cut rc` cuts `vX.Y.Z-rc.2` from main: it keeps the prepared
+versions, adds what landed since `rc.1` to the version's CHANGELOG section
+and moves the schema snapshot forward. To fold in hand-written notes under
+[Unreleased] or curate the section again, cut it with `--no-commit` as above
+and commit and tag `vX.Y.Z-rc.2` after curating. Only the newest candidate can be
+promoted. `release:cut` refuses to prepare a new version while the prepared one
+is unreleased: cut its next candidate or promote one first.
+
+What a candidate does, and what it never does:
+
+|                                                                                             | Candidate `vX.Y.Z-rc.N`          | Stable `vX.Y.Z` |
+| ------------------------------------------------------------------------------------------- | -------------------------------- | --------------- |
+| Verification, server images, desktop apps, install gates                                    | yes                              | yes             |
+| Update gate from the previous stable release, before publication                            | yes                              | yes             |
+| GitHub release                                                                              | prerelease, never "latest"       | "latest"        |
+| Image aliases (`latest`, `X.Y`)                                                             | no                               | yes             |
+| `install.sh`, `owlat upgrade`, the in-app update check, the desktop updater's `latest.json` | not by default                   | yes             |
+| Managed desktop updates                                                                     | only on the `prerelease` channel | yes             |
+
+The `resolve` job of `release.yml` (`scripts/ci/release-gate.ts`) enforces
+this. A candidate must sit on a prepared commit, where the root `package.json`
+already holds `X.Y.Z`. A stable tag must point at the commit of the newest
+`vX.Y.Z-rc.N`, which has to be published as a prerelease, and the newest
+`release.yml` run for that candidate must have succeeded. Anything else stops
+before a build. `release:promote` runs the same check before it creates the
+tag. The stable run builds the artifacts again from that same commit, so they
+carry the stable version and signatures.
+
+Testing a candidate means installing it by name, never by default:
+
+```sh
+curl -fsSL https://get.owlat.app | OWLAT_REF=vX.Y.Z-rc.N bash   # fresh install
+owlat upgrade --version X.Y.Z-rc.N                           # an existing test install
+```
+
+Desktop apps get it from the candidate's release assets, or through managed
+desktop updates on the `prerelease` channel. The candidate's artifacts carry
+`X.Y.Z-rc.N`; the Windows installer's MSI version is `X.Y.Z.N`, because
+Windows Installer versions are numeric (`scripts/ci/msi-version.ts`).
+
+Other prerelease tags (`vX.Y.Z-beta.1`) still publish a prerelease the same
+way, but can never be promoted.
 
 The curated section is also the release's notes: `release.yml` builds the
 GitHub Release body with `scripts/release-body.ts`, which puts that section
 first and the update instructions after it, and the in-app update card shows
-the section to admins. A tag without a CHANGELOG section fails before anything
-is built. Preview the body with
+the section to admins. A candidate's body is the `X.Y.Z` section under a
+release-candidate note, so the candidate and the stable release carry the same
+notes. A tag without a CHANGELOG section fails before anything is built.
+Preview the body with
 `bun scripts/release-body.ts <X.Y.Z> --repo wolvesdotink/owlat`.
 
 `release:cut` also moves the schema-compatibility guard forward: it snapshots
@@ -29,7 +88,7 @@ in `apps/api/convex/CONVENTIONS.md`). To redo the snapshot by hand, for example
 after a cut made without the script:
 
 ```sh
-bun run --cwd apps/api schema-compat:refresh   # snapshots the newest vX.Y.Z tag
+bun run --cwd apps/api schema-compat:refresh   # snapshots the newest stable vX.Y.Z tag
 git add apps/api/convex/__tests__/schemaCompat/previousRelease.json
 git commit -m "test(api): snapshot the v<X.Y.Z> schema for the compat guard"
 ```
@@ -43,6 +102,7 @@ Pushing the tag triggers one of three pipelines:
 | Tag              | Workflow                | Ships                                                                                        |
 | ---------------- | ----------------------- | -------------------------------------------------------------------------------------------- |
 | `vX.Y.Z`         | `release.yml` (unified) | server images + desktop apps + install assets — the line `install.sh` and the updater follow |
+| `vX.Y.Z-rc.N`    | `release.yml` (unified) | the same, published as a prerelease that nothing follows by default                          |
 | `server-vX.Y.Z`  | `server-release.yml`    | server images + compose assets only                                                          |
 | `desktop-vX.Y.Z` | `desktop-release.yml`   | desktop apps only                                                                            |
 
@@ -89,6 +149,58 @@ Release is created as a DRAFT up front; every job below must pass before the
    release on amd64 (the upgrade path — Redis/ClamAV volume-ownership
    regressions only show up there), plus `fresh` on an arm64 runner to prove
    the multi-arch manifests actually boot there.
+7. **`update-gate`** — the in-app update from the highest published stable
+   release below this version (`scripts/ci/aliases.ts` `previousRelease`; a
+   candidate starts from the stable release below `X.Y.Z`) to this draft,
+   through `update-flow.yml` (see "The update gate" below). `update-target`
+   downloads the draft's compose template and checksum with the workflow's
+   credentials, from the tag the caller created (`server-vX.Y.Z` for a
+   server-only release), and hands them over as a run artifact. A first
+   release with no earlier stable release skips the gate with a notice.
+
+### The update gate
+
+`update-flow.yml` runs two scenarios, each on its own runner and each against
+a Docker daemon of its own (`scripts/e2e-update-flow-dind.sh`: a pinned
+`docker:dind` container whose image store is a named volume, with the whole
+harness running inside it and no host socket mounted; its cleanup removes
+only the container and volume that carry its own random owner label), because the updater
+prunes images and the harness takes its stack down with its volumes. Before
+either update it installs the previous release, seeds Convex data through it
+(its sample data plus one queued Send, with no way to send mail) and records a
+baseline: the named contact, sent campaign and its Sends, draft campaign and
+queued Send, plus every document within two id references of them, keyed by
+id (`scripts/e2e-update-flow-data.sh`).
+
+- **success**: the previous release's shipped updater applies this release's
+  template unchanged. The stack has to land on it (compose file, `.env`, every
+  image, the updater replaced, the Convex deployment's `OWLAT_VERSION`), and
+  every baseline document must still exist with every field it had,
+  deep-equal, and no added soft-delete marker. Other added fields are allowed,
+  except on the queued Send, which must be identical. The campaign stats
+  rollup runs before both snapshots, so its counters compare strictly. A
+  migration that rewrites one of those fields on purpose lists it in that
+  script's `DATA_REWRITE_ALLOWLIST`.
+- **rollback**: this release's own updater applies the same template with
+  web's healthcheck made to fail (`scripts/e2e-update-flow-rollback.sh`), so
+  the snapshot, the deploy and `up` succeed and the release then fails the
+  readiness check. While it waits there, the harness deletes the seeded
+  contact through the new functions and overwrites a Redis sentinel, and
+  fails if the rollback had already begun. The updater has to answer HTTP 500
+  with rollout `rolled-back` after a successful restore and readiness check,
+  and the stack has to be the previous release again: its compose file,
+  override and `.env` byte for byte, the same image on every service, the
+  updater not replaced, web and the deployment reporting the previous version,
+  the sentinel's old value and every baseline document as the previous release
+  wrote it (no rewrite allowance applies).
+
+Outside the nightly and dispatched runs, so in the release gate and on pull
+requests, a pair the flow cannot test (an updater without rollback, a target
+naming images that no longer pull) fails instead of passing with a warning.
+Pull requests that touch the updater or the flow run both scenarios with the
+PR's updater, built inside the dedicated daemon. The nightly run checks the
+latest published pair and cannot cover every intermediate release when several
+ship between runs.
 
 ## Caches and post-publish checks
 
@@ -121,24 +233,6 @@ dispatched run on main succeeds before cutting the next release tag. This checks
 GitHub's reusable-workflow/queue handling, which PR CI cannot exercise. On the
 first warm desktop release, record the compiled crate count per OS; also compare
 ARM64 build times and exact-commit reuse rates over the next few releases.
-
-The unified workflow explicitly calls Update flow after publication, using the
-highest earlier stable unified version and this release's version. This tests
-the actual previous updater applying the new release. Before the update it
-seeds Convex data through the previous release (its sample data plus one queued
-Send, with no way to send mail) and records a baseline: the named contact, sent
-campaign and its Sends, draft campaign and queued Send, plus every document
-within two id references of them, keyed by id. After the update it reloads those
-ids (`scripts/e2e-update-flow-data.sh`). Every document must still exist with
-every field it had, deep-equal, and no added soft-delete marker. Other added
-fields are allowed, except on the queued Send, which must be identical. The
-campaign stats rollup runs before both snapshots, so its counters compare
-strictly. A migration that rewrites one of those fields on purpose lists it in
-that script's `DATA_REWRITE_ALLOWLIST`. The rollout result is a
-post-publication check; the three install gates above still block publication.
-GitHub suppresses release events created using GITHUB_TOKEN, so the handoff is
-`workflow_call` rather than `release: published`. Nightly checks remain useful
-but cannot cover every intermediate release when several ship between runs.
 
 To reproduce the timing/cache baseline with read-only GitHub access:
 

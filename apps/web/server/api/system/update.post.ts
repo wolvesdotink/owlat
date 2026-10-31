@@ -1,9 +1,12 @@
 import type { Id } from '@owlat/api/dataModel';
 import { api } from '@owlat/api';
+import { v } from 'convex/values';
 import { isValidTargetVersion } from '@owlat/shared/releaseArtifacts';
 import { requirePlatformAdmin } from '~~/server/utils/requireAdmin';
 import { resolveVerifiedComposeTemplate } from '~~/server/utils/composeUpdate';
 import { getInstanceSecret, callUpdater } from '~~/server/utils/updater';
+import { readJsonBody } from '~~/server/utils/jsonBody';
+import { decodeUpdaterReport, type UpdaterReport } from '~~/server/utils/updaterResponses';
 import {
 	MIGRATIONS_PENDING_STATUS,
 	MIGRATIONS_UNVERIFIED_STATUS,
@@ -48,6 +51,15 @@ import {
  * The web container will be restarted by the updater mid-flight. The UI
  * handles this by polling /api/internal/updater-health with retry.
  */
+/**
+ * Presence and syntax of the version are checked below, with the route's own
+ * message; a malformed `attempt` is dropped there rather than refused.
+ */
+const updateBody = v.object({
+	targetVersion: v.optional(v.string()),
+	attempt: v.optional(v.any()),
+});
+
 export default defineEventHandler(async (event) => {
 	const client = await requirePlatformAdmin(event);
 
@@ -55,11 +67,11 @@ export default defineEventHandler(async (event) => {
 		'In-app updates not configured (INSTANCE_SECRET missing)'
 	);
 
-	const body = await readBody<{ targetVersion?: string; attempt?: unknown }>(event);
-	const targetVersion = body?.targetVersion?.trim() || '';
+	const body = await readJsonBody(event, updateBody, { emptyBody: {} });
+	const targetVersion = body.targetVersion?.trim() || '';
 	// The browser's id for this attempt; the updater echoes it on /health so the
 	// progress card can find this update's verdict after the restart.
-	const rawAttempt = body?.attempt;
+	const rawAttempt: unknown = body.attempt;
 	const attempt = isUpdateAttemptId(rawAttempt) ? rawAttempt : undefined;
 
 	if (!isValidTargetVersion(targetVersion)) {
@@ -121,12 +133,7 @@ export default defineEventHandler(async (event) => {
 	}
 
 	// 3. Dispatch to the updater sidecar.
-	let updaterResult: {
-		success?: boolean;
-		error?: string;
-		rollout?: string;
-		steps?: { step: string; ok?: boolean; stdout: string; stderr: string }[];
-	} = {};
+	let updaterResult: UpdaterReport = {};
 	let updaterOk = false;
 	let updaterStatus = 0;
 
@@ -138,7 +145,8 @@ export default defineEventHandler(async (event) => {
 			signal: AbortSignal.timeout(UPDATE_REQUEST_TIMEOUT_MS),
 		});
 
-		updaterResult = (await updaterResp.json()) as typeof updaterResult;
+		// A body that is not an object reports nothing; the status still decides.
+		updaterResult = decodeUpdaterReport(await updaterResp.json()) ?? {};
 		updaterOk = updaterResp.ok;
 		updaterStatus = updaterResp.status;
 	} catch (err) {

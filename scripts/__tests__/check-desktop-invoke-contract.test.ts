@@ -11,7 +11,6 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
-import { PARALLEL_GATE_TIMEOUT_MS } from '../../vitest.timeouts';
 import {
 	checkDesktopInvokeContract,
 	IPC_COMMANDS_FILE,
@@ -616,6 +615,20 @@ describe('the desktop invoke contract gate', () => {
 		]);
 	});
 
+	it('refuses a capability file whose permissions are not identifiers', async () => {
+		const window = `${IMPORT}invoke('plugin:store|load');\n`;
+		for (const [permissions, message] of [
+			['store:default', 'default.json.permissions must be an array'],
+			[[{ identifier: 42 }], 'default.json.permissions[0] must be a permission identifier'],
+			[[null], 'default.json.permissions[0] must be a permission identifier'],
+		] as const) {
+			const capability = JSON.stringify({ windows: ['main'], permissions });
+			await expect(
+				check({ 'apps/desktop/src-tauri/capabilities/default.json': capability, [WINDOW]: window })
+			).rejects.toThrow(message);
+		}
+	});
+
 	it('passes a plugin command granted by the real capability files', async () => {
 		const root = await fixture({
 			[WINDOW]: `${IMPORT}invoke('plugin:notification|is_permission_granted');\n`,
@@ -653,19 +666,13 @@ describe('the desktop invoke contract gate', () => {
 		]);
 	});
 
-	// Parses every scanned file of the real tree (~1.3s alone, several times that
-	// under a loaded lint:script-tests run), so it takes the shared gate budget
-	// rather than vitest's 5s default (vitest.timeouts.ts). The other cases scan
-	// a few fixture files.
-	it(
-		'passes on this repository',
-		async () => {
-			const result = await checkDesktopInvokeContract();
-			expect(result.problems).toEqual([]);
-			expect(result.calls.length).toBeGreaterThan(20);
-		},
-		PARALLEL_GATE_TIMEOUT_MS
-	);
+	// Parses every scanned file of the real tree. The other cases scan a few
+	// fixture files.
+	it('passes on this repository', async () => {
+		const result = await checkDesktopInvokeContract();
+		expect(result.problems).toEqual([]);
+		expect(result.calls.length).toBeGreaterThan(20);
+	});
 
 	it('fails on this repository once a Rust command is renamed', async () => {
 		const root = await mkdtemp(join(tmpdir(), 'owlat-invoke-contract-real-'));

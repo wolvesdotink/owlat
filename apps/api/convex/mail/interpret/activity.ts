@@ -1,5 +1,5 @@
 /**
- * The append-only per-thread activity log (SPEC §5 "Activity writers").
+ * The append-only per-thread activity log.
  *
  * {@link appendActivity} is THE writer: the reducer, the reactions and every
  * pipeline hook (sends, bookings, assignments, mutes …) append through it, in

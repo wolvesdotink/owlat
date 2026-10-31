@@ -121,6 +121,52 @@ describe('mailchimpProvider', () => {
 			expect(result.nextCursor).toBe(null);
 		});
 
+		it.each([
+			['members that are not a list', { members: {}, total_items: 0 }],
+			['a member without an address', { members: [{ status: 'subscribed' }], total_items: 1 }],
+			['no total', { members: [] }],
+		])('fails on a page with %s instead of reading it as empty', async (_label, page) => {
+			global.fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify(page), { status: 200 }));
+
+			await expect(mailchimpProvider.fetchPage({ config: baseConfig, cursor: '' })).rejects.toThrow(
+				/malformed members page/
+			);
+		});
+
+		it('keeps only text names and leaves an ADDRESS merge field out of the properties', async () => {
+			global.fetch = vi.fn().mockResolvedValue(
+				new Response(
+					JSON.stringify({
+						members: [
+							{
+								email_address: 'x@example.com',
+								status: 'subscribed',
+								merge_fields: { FNAME: 7, LNAME: 'Doe', ADDRESS: { city: 'Berlin' }, SCORE: 3 },
+							},
+						],
+						total_items: 1,
+					}),
+					{ status: 200 }
+				)
+			);
+
+			const result = await mailchimpProvider.fetchPage({ config: baseConfig, cursor: '' });
+
+			expect(result.rows).toEqual([
+				{ email: 'x@example.com', firstName: undefined, lastName: 'Doe', properties: { SCORE: 3 } },
+			]);
+		});
+
+		it('refuses a cursor whose fields have the wrong types', async () => {
+			global.fetch = vi.fn();
+			const cursor = JSON.stringify({ pass: 'audience', offset: 0, since: 'x', last: 5 });
+
+			await expect(mailchimpProvider.fetchPage({ config: baseConfig, cursor })).rejects.toThrow(
+				/Unrecognized Mailchimp import cursor/
+			);
+			expect(global.fetch).not.toHaveBeenCalled();
+		});
+
 		it('drops empty merge_field values from properties', async () => {
 			global.fetch = vi.fn().mockResolvedValue(
 				new Response(

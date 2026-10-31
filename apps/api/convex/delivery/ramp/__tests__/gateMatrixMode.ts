@@ -1,5 +1,5 @@
 /**
- * THE STANDALONE MATRIX (plan D3's "the degraded path must not rot").
+ * THE STANDALONE MATRIX (the degraded path must not rot).
  *
  * The whole gate suite runs TWICE in CI — once with a reference arm and external
  * data present, once fully standalone — and this module is what tells a suite

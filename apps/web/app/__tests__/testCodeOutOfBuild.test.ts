@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 /**
- * Test tooling stays out of the production build (#1172).
+ * Test tooling stays out of the production build.
  *
  * Nuxt registers every file it finds under `pages/`, `components/` and the
  * other app folders, and Nitro auto-imports everything under `server/utils/`.
@@ -17,7 +17,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
  */
 
 vi.mock('@tailwindcss/vite', () => ({ default: () => [] }));
-vi.mock('../../scripts/uiLayerIcons', () => ({ uiLayerIconNames: () => [] }));
+vi.mock('../../scripts/uiLayerIcons', () => ({
+	uiLayerIconNames: () => [],
+	ICON_SCAN_EXCLUDE: [],
+}));
 
 const webRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const uiLayerRoot = resolve(webRoot, '..', '..', 'packages', 'ui');

@@ -73,7 +73,7 @@ echo "ok:   no relative imports crossing package boundaries (use @owlat/* specif
 # ── The one-way edge: nothing in packages/ may import a wire package ──
 #
 # The two wire packages are LEAVES: apps import them, packages/ does not.
-# `@owlat/mta-protocol` (D7, Convex<->MTA) and `@owlat/worker-protocol`
+# `@owlat/mta-protocol` (Convex<->MTA) and `@owlat/worker-protocol`
 # (Convex<->IMAP/mail-sync) both depend on `@owlat/shared` because their wires
 # are stated in terms of the shared vocabularies, and re-declaring any of them
 # to buy literal zero-dependency status would trade one duplication for a worse

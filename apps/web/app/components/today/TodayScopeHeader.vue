@@ -88,12 +88,9 @@ const kindLabel = computed(() =>
 			<Icon v-if="kind === 'team'" name="lucide:bot" class="size-4 text-text-tertiary" />
 			<span v-else class="size-2.5 shrink-0 rounded-[3px]" :class="swatch" aria-hidden="true" />
 			<h2 id="workbench-scope-name" class="text-base font-medium text-text-primary">
-				<NuxtLink
-					:to="inboxHref"
-					class="hover:underline"
-					:title="t('components.today.scope.openInbox')"
-					>{{ name }}</NuxtLink
-				>
+				<UiTooltip :text="t('components.today.scope.openInbox')">
+					<NuxtLink :to="inboxHref" class="hover:underline">{{ name }}</NuxtLink>
+				</UiTooltip>
 			</h2>
 			<span v-if="address" class="hidden truncate text-xs text-text-tertiary sm:inline">{{
 				address

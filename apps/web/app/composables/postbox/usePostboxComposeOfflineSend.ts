@@ -22,12 +22,17 @@ import { composeDraftFields } from '~/utils/postboxDraftFields';
 import type { OfflineComposePayload } from '~/utils/postboxOfflineStore';
 import type { ComposerAttachment } from './usePostboxComposeAttachments';
 import type { ComposerMode } from './usePostboxCompose';
+import type { PostboxAfterReply } from '~/utils/postboxAfterReply';
 
 /** Per-send overrides, passed through to the queued payload verbatim. */
 export type SendOpts = {
 	undoSendDelayMs?: number;
 	scheduledSendAt?: number;
 	allowUnsealed?: boolean;
+	/** A reply's after-send action: 'done' archives its conversation once sent. */
+	afterSend?: PostboxAfterReply;
+	/** When the sender chose it; a replayed send archives no mail newer than this. */
+	afterSendChosenAt?: number;
 };
 
 export interface OfflineSendSources {
@@ -89,8 +94,12 @@ export function usePostboxComposeOfflineSend(sources: OfflineSendSources) {
 			// already had their undo window while it sat in the queue). Baking the
 			// undo preference in here would re-arm that hold after reconnect, with
 			// no toast left to cancel it — so the window travels beside the payload
-			// instead, where only the toast reads it.
-			sendOptions: opts,
+			// instead, where only the toast reads it. A "done" choice carries the
+			// moment it was made: the replay archives no mail that arrived later.
+			sendOptions:
+				opts?.afterSend === 'done'
+					? { ...opts, afterSendChosenAt: opts.afterSendChosenAt ?? Date.now() }
+					: opts,
 		};
 		return sources.queue(payload, sources.undoSendDelayMs());
 	};

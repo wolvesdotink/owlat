@@ -1,5 +1,5 @@
 /**
- * Thread brief erasure, the thread level (SPEC §5 "Erasure"): when a thread is
+ * Thread brief erasure, the thread level: when a thread is
  * deleted, every row of the thread brief tables that names it goes, and so do
  * the links into its items from outside them (`purgeLinks.ts`), each item's
  * links cleared before the item.

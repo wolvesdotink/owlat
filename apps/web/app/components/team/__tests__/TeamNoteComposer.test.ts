@@ -1,5 +1,5 @@
 /**
- * The team composer (plan §4.3): "Internal note" and "Reply to <name>" are
+ * The team composer: "Internal note" and "Reply to <name>" are
  * explicit modes, each with its own unsent text; `#` links a note to an
  * action; the reply hands its text to Answer mode; and with the `chat`
  * feature off a shared mailbox offers only the reply.

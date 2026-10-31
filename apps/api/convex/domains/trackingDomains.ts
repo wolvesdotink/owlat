@@ -6,11 +6,12 @@
  */
 
 import { v } from 'convex/values';
+import { validatorDecoder } from '@owlat/worker-protocol/decodeJson';
 import { internalQuery, internalAction } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
-import { requireAdminContext } from '../lib/sessionOrganization';
+import { hasPermission, requirePermission } from '../lib/sessionOrganization';
 import { getOrThrow, throwAlreadyExists } from '../_utils/errors';
 import { getOptional } from '../lib/env';
 import { logError, logWarn } from '../lib/runtimeLog';
@@ -49,8 +50,11 @@ export const addTrackingDomain = authedMutation({
 	args: {
 		domain: v.string(),
 	},
-	handler: async (ctx, args) => {
-		await requireAdminContext(ctx);
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'organization:manage'),
+			'Only owners and admins can perform this action'
+		);
 
 		// Ensure domain is not already registered
 		const existing = await ctx.db
@@ -81,8 +85,11 @@ export const verifyTrackingDomain = authedMutation({
 	args: {
 		trackingDomainId: v.id('trackingDomains'),
 	},
-	handler: async (ctx, args) => {
-		await requireAdminContext(ctx);
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'organization:manage'),
+			'Only owners and admins can perform this action'
+		);
 
 		const td = await getOrThrow(ctx, args.trackingDomainId, 'Tracking domain');
 
@@ -106,6 +113,8 @@ export const verifyTrackingDomain = authedMutation({
 // verification through the internal markVerifiedInternal mutation.)
 
 // List tracking domains for org
+// all-members: the rows are a hostname, its public CNAME target and its
+// verification state; changing them needs organization:manage.
 export const listTrackingDomains = authedQuery({
 	args: {},
 	handler: async (ctx) => {
@@ -118,8 +127,11 @@ export const removeTrackingDomain = authedMutation({
 	args: {
 		trackingDomainId: v.id('trackingDomains'),
 	},
-	handler: async (ctx, args) => {
-		await requireAdminContext(ctx);
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'organization:manage'),
+			'Only owners and admins can perform this action'
+		);
 
 		await getOrThrow(ctx, args.trackingDomainId, 'Tracking domain');
 
@@ -159,6 +171,11 @@ export const markVerifiedInternal = internalMutation({
 	},
 });
 
+/** A DNS-over-HTTPS JSON answer, as far as the CNAME check reads it. */
+const decodeDnsAnswer = validatorDecoder(
+	v.object({ Answer: v.optional(v.array(v.object({ type: v.number(), data: v.string() }))) })
+);
+
 /**
  * DNS verification action for tracking domains.
  * Uses fetch to resolve CNAME and verify it points to the expected target.
@@ -187,9 +204,16 @@ export const verifyTrackingDomainDns = internalAction({
 				return { verified: false, error: 'DNS query failed' };
 			}
 
-			const data = (await response.json()) as {
-				Answer?: Array<{ type: number; data: string }>;
-			};
+			const decoded = decodeDnsAnswer(await response.json());
+			if (!decoded.ok) {
+				logWarn('[Tracking Domain DNS] DNS answer could not be read', {
+					trackingDomainId: args.trackingDomainId,
+					domain: args.domain,
+					issue: decoded.issue,
+				});
+				return { verified: false, error: 'DNS query failed' };
+			}
+			const data = decoded.value;
 
 			// Check if any CNAME answer matches the expected target
 			const cnameAnswers = data.Answer?.filter((a) => a.type === 5) ?? [];

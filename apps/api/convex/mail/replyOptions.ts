@@ -10,8 +10,8 @@
  * `aiDraftStreams` buffer. The client renders each option as it arrives
  * instead of waiting 5–20 s for the whole object.
  *
- * The draft service no longer asks for full alternative drafts (#1200): no
- * screen let a reviewer pick one.
+ * The draft service does not ask for full alternative drafts: no screen lets
+ * a reviewer pick one.
  *
  * Precomputing options during draft-on-arrival was the other way to hide the
  * latency. It was not taken: draft-on-arrival already prepares one full draft
@@ -207,7 +207,7 @@ export async function streamReplyOptions(
 				modelUsed: undefined,
 			};
 		}
-		// A budget refusal carries the stable code the web reads (D1).
+		// A budget refusal carries the stable code the web reads.
 		const message = admissionRefusalOf(error)
 			? AI_BUDGET_ERROR_CODE
 			: error instanceof Error

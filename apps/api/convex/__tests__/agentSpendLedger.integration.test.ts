@@ -199,7 +199,7 @@ describe('Team Inbox agent spend in the ledger (#1259)', () => {
 		expect(status.daily.spentUsd).toBeCloseTo(5 * CALL_COST);
 	});
 
-	it('holds the message for a person before the draft once the agent’s own spend crosses the ceiling (D1)', async () => {
+	it('holds the message for a person before the draft once the agent’s own spend crosses the ceiling', async () => {
 		// Three calls ($1.05: guard, classify, clarify) cross the $1 ceiling, so
 		// the draft, the next paid step, never runs.
 		process.env['AI_SPEND_DAILY_BUDGET_USD'] = '1';

@@ -8,10 +8,13 @@
  * Stored as an id array (a Set does not survive JSON), exposed as a Set so the
  * tree flattener can ask membership questions in O(1).
  */
+
+import { readStoredStringList } from '~/utils/storedValue';
+
 const STORAGE_KEY = 'postbox-label-collapsed';
 
 export function usePostboxLabelCollapse() {
-	const { data, set } = useLocalStorage<string[]>(STORAGE_KEY, []);
+	const { data, set } = useLocalStorage<string[]>(STORAGE_KEY, [], readStoredStringList);
 	const collapsedIds = computed(() => new Set(data.value));
 
 	function toggle(labelId: string) {

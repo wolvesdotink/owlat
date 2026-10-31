@@ -15,7 +15,7 @@ const props = defineProps<{
 	// account data. Undefined for illustrative sample-data charts (not
 	// refreshable).
 	dataQuery?: string | null;
-	/** Generation was refused for budget (D1): shown in place of the page, localized. */
+	/** Generation was refused for budget: shown in place of the page, localized. */
 	budgetRefusal?: unknown;
 }>();
 
@@ -95,43 +95,57 @@ const handleRemove = async () => {
 				</div>
 			</div>
 			<div class="flex items-center gap-1 flex-shrink-0 ml-3">
-				<button
+				<UiTooltip
 					v-if="isLiveData"
-					class="p-1.5 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors disabled:opacity-50"
-					:title="t('components.visualizations.visualizationCard.refreshTooltip')"
-					:disabled="isRefreshing"
-					@click="handleRefresh"
+					:text="t('components.visualizations.visualizationCard.refreshTooltip')"
 				>
-					<Icon
-						name="lucide:refresh-cw"
-						class="w-4 h-4"
-						:class="{ 'animate-spin motion-reduce:animate-none': isRefreshing }"
-					/>
-				</button>
-				<button
-					class="p-1.5 rounded transition-colors"
-					:class="
-						pinned
-							? 'text-brand bg-brand-subtle hover:bg-brand-subtle/80'
-							: 'text-text-tertiary hover:text-text-primary hover:bg-bg-surface'
-					"
-					:title="
+					<button
+						class="p-1.5 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors disabled:opacity-50"
+						:aria-label="t('components.visualizations.visualizationCard.refreshTooltip')"
+						:disabled="isRefreshing"
+						@click="handleRefresh"
+					>
+						<Icon
+							name="lucide:refresh-cw"
+							class="w-4 h-4"
+							:class="{ 'animate-spin motion-reduce:animate-none': isRefreshing }"
+						/>
+					</button>
+				</UiTooltip>
+				<UiTooltip
+					:text="
 						pinned
 							? t('components.visualizations.visualizationCard.unpinTooltip')
 							: t('components.visualizations.visualizationCard.pinTooltip')
 					"
-					:disabled="isTogglingPin"
-					@click="handleTogglePin"
 				>
-					<Icon :name="pinned ? 'lucide:pin-off' : 'lucide:pin'" class="w-4 h-4" />
-				</button>
-				<button
-					class="p-1.5 rounded text-text-tertiary hover:text-error hover:bg-error-subtle transition-colors"
-					:title="t('components.visualizations.visualizationCard.removeTooltip')"
-					@click="showConfirmRemove = true"
-				>
-					<Icon name="lucide:trash-2" class="w-4 h-4" />
-				</button>
+					<button
+						class="p-1.5 rounded transition-colors"
+						:class="
+							pinned
+								? 'text-brand bg-brand-subtle hover:bg-brand-subtle/80'
+								: 'text-text-tertiary hover:text-text-primary hover:bg-bg-surface'
+						"
+						:aria-label="
+							pinned
+								? t('components.visualizations.visualizationCard.unpinTooltip')
+								: t('components.visualizations.visualizationCard.pinTooltip')
+						"
+						:disabled="isTogglingPin"
+						@click="handleTogglePin"
+					>
+						<Icon :name="pinned ? 'lucide:pin-off' : 'lucide:pin'" class="w-4 h-4" />
+					</button>
+				</UiTooltip>
+				<UiTooltip :text="t('components.visualizations.visualizationCard.removeTooltip')">
+					<button
+						class="p-1.5 rounded text-text-tertiary hover:text-error hover:bg-error-subtle transition-colors"
+						:aria-label="t('components.visualizations.visualizationCard.removeTooltip')"
+						@click="showConfirmRemove = true"
+					>
+						<Icon name="lucide:trash-2" class="w-4 h-4" />
+					</button>
+				</UiTooltip>
 			</div>
 		</div>
 

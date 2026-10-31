@@ -13,7 +13,7 @@ import type { QueryCtx } from '../_generated/server';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { Infer } from 'convex/values';
 import type { StoredAudience } from './audience';
-import { segmentFiltersValidator } from '../lib/convexValidators';
+import type { segmentFiltersValidator } from '../lib/convexValidators';
 import { logWarn } from '../lib/runtimeLog';
 import { normalizeEmail } from '../lib/inputGuards';
 import { loadSuppressionSet, loadSuppressionSetBounded } from '../lib/suppression';
@@ -211,7 +211,7 @@ const TOPIC_DOCUMENTS_PER_CANDIDATE = 2;
  * Suppressed addresses a BUDGETED scan will read. The blocklist is intrinsically
  * small (one row per suppressed address), but "small" is not a bound, and the
  * budgeted caller runs inside a send mutation where an unbounded collect is both
- * a read-limit risk and an OCC-conflict surface (D16). Exceeding it is reported
+ * a read-limit risk and an OCC-conflict surface. Exceeding it is reported
  * through `ExamineBudget.suppressionTruncated`, never thrown.
  */
 const SUPPRESSION_SCAN_LIMIT = 2_000;
@@ -358,8 +358,8 @@ export async function* streamAudienceCandidates(
 	// caller (the binding capacity pre-flight) runs inside `campaigns.scheduling
 	// .schedule`. An unbounded collect there would
 	// exceed the Convex per-execution read limit, turning a failure to MEASURE
-	// into a blocked SEND (D2), and would drag the whole junction table into the
-	// mutation's OCC read set (D16). So the budgeted path preloads per BATCH of
+	// into a blocked SEND, and would drag the whole junction table into the
+	// mutation's OCC read set. So the budgeted path preloads per BATCH of
 	// examined contacts via point reads instead. Unbudgeted callers (the reactive
 	// wizard readout) keep the shipped whole-column preload unchanged.
 	if (budget) {

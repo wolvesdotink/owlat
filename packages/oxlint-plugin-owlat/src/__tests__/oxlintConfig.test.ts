@@ -7,17 +7,52 @@
  * (as errors, or as warnings for the rules whose debt the owlat lint ratchet
  * holds) and makes a stale suppression fail.
  */
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PARALLEL_GATE_TIMEOUT_MS } from '../../../../vitest.timeouts';
-import { type Diagnostic, lintFixtures } from './runOxlint.ts';
+import { type Diagnostic, lintFixtures, REPOSITORY_ROOT } from './runOxlint.ts';
 
 // Vitest reads a pragma anywhere in this file's text, so the fixture builds it.
 const PRAGMA_TAG = '@vitest-environment';
 
+// The Convex rules derive their builder list from these two files, so the
+// fixture tree carries the real ones.
+const CONVEX_BUILDER_INPUTS = [
+	'apps/api/convex/lib/authedFunctions.ts',
+	'apps/api/scripts/lib/convex-builders.sh',
+] as const;
+const convexBuilderInputs = Object.fromEntries(
+	CONVEX_BUILDER_INPUTS.map((path) => [path, readFileSync(join(REPOSITORY_ROOT, path), 'utf8')])
+);
+const AUTHED_MUTATION = "import { authedMutation } from '../lib/authedFunctions';";
+
 const FIXTURES: Record<string, string> = {
+	...convexBuilderInputs,
+	// A handler that resolves the session its builder's floor already resolved.
+	'apps/api/convex/workspaces/reResolvedSession.ts': [
+		AUTHED_MUTATION,
+		"import { requireOrgPermission } from '../lib/sessionOrganization';",
+		'export const rename = authedMutation({',
+		'\targs: {},',
+		'\thandler: async (ctx) => {',
+		"\t\tawait requireOrgPermission(ctx, 'organization:manage');",
+		'\t},',
+		'});',
+		'',
+	].join('\n'),
+	'apps/api/convex/workspaces/threadedSession.ts': [
+		AUTHED_MUTATION,
+		"import { hasPermission, requirePermission } from '../lib/sessionOrganization';",
+		'export const rename = authedMutation({',
+		'\targs: {},',
+		'\thandler: async (_ctx, _args, session) => {',
+		"\t\trequirePermission(hasPermission(session.role, 'organization:manage'));",
+		'\t},',
+		'});',
+		'',
+	].join('\n'),
 	'clean.test.ts': [
 		"import { describe, expect, it } from 'vitest';",
 		'',
@@ -58,10 +93,135 @@ const FIXTURES: Record<string, string> = {
 		'declare function ready(): boolean;',
 		'',
 	].join('\n'),
-	'timeout.test.ts': [
+	// A sleep helper in its own module: driven by fake timers in one test file,
+	// left on the real clock in the other.
+	'helpers/sleep.ts': [
+		'export function sleep(ms: number): Promise<void> {',
+		'\treturn new Promise((resolve) => setTimeout(resolve, ms));',
+		'}',
+		'',
+	].join('\n'),
+	'helpers/importedSleep.test.ts': [
+		"import { it, vi } from 'vitest';",
+		"import { sleep } from './sleep';",
+		'',
+		"it('sleeps on fake time', async () => {",
+		'\tvi.useFakeTimers();',
+		'\tconst slept = sleep(50);',
+		'\tawait vi.advanceTimersByTimeAsync(50);',
+		'\tawait slept;',
+		'});',
+		'',
+	].join('\n'),
+	'helpers/importedRealSleep.test.ts': [
+		"import { it } from 'vitest';",
+		"import { sleep } from './sleep';",
+		'',
+		"it('sleeps on the real clock', async () => {",
+		'\tawait sleep(50);',
+		'});',
+		'',
+	].join('\n'),
+	// A helper that starts a bookkeeping interval and resolves on a timeout:
+	// faking the interval alone leaves the timeout on the real clock.
+	'helpers/mixedSleep.ts': [
+		'export function sleep(ms: number): Promise<void> {',
+		'\treturn new Promise((resolve) => {',
+		'\t\tsetInterval(tick, 10);',
+		'\t\tsetTimeout(resolve, ms);',
+		'\t});',
+		'}',
+		'',
+		'declare function tick(): void;',
+		'',
+	].join('\n'),
+	'helpers/importedMixedSleep.test.ts': [
+		"import { it, vi } from 'vitest';",
+		"import { sleep } from './mixedSleep';",
+		'',
+		"it('fakes the interval only', async () => {",
+		"\tvi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });",
+		'\tconst slept = sleep(50);',
+		'\tawait vi.advanceTimersByTimeAsync(50);',
+		'\tawait slept;',
+		'});',
+		'',
+	].join('\n'),
+	// A helper exported as a timer sleep and then rebound to a real wait.
+	'helpers/reassignedSleep.ts': [
+		"import { scheduler } from 'node:timers/promises';",
+		'',
+		'export let sleep = (ms: number): Promise<unknown> =>',
+		'\tnew Promise((resolve) => setTimeout(resolve, ms));',
+		'sleep = (ms: number) => scheduler.wait(ms);',
+		'',
+	].join('\n'),
+	'helpers/importedReassignedSleep.test.ts': [
+		"import { it, vi } from 'vitest';",
+		"import { sleep } from './reassignedSleep';",
+		'',
+		"it('fakes timers the rebound helper never uses', async () => {",
+		'\tvi.useFakeTimers();',
+		'\tconst slept = sleep(50);',
+		'\tawait vi.advanceTimersByTimeAsync(50);',
+		'\tawait slept;',
+		'});',
+		'',
+	].join('\n'),
+	// A helper whose timer resolves with a promise that waits on the real
+	// clock: the result adopts it, so fake time does not settle the wait.
+	'helpers/adoptingSleep.ts': [
+		"import { scheduler } from 'node:timers/promises';",
+		'',
+		'const pending = scheduler.wait(60_000);',
+		'',
+		'export function sleep(ms: number): Promise<unknown> {',
+		'\treturn new Promise((resolve) => setTimeout(() => resolve(pending), ms));',
+		'}',
+		'',
+	].join('\n'),
+	'helpers/importedAdoptingSleep.test.ts': [
+		"import { it, vi } from 'vitest';",
+		"import { sleep } from './adoptingSleep';",
+		'',
+		"it('fakes the timer whose result adopts a real wait', async () => {",
+		'\tvi.useFakeTimers();',
+		'\tconst slept = sleep(50);',
+		'\tawait vi.advanceTimersByTimeAsync(50);',
+		'\tawait slept;',
+		'});',
+		'',
+	].join('\n'),
+	'milestones.test.ts': [
 		"import { it } from 'vitest';",
 		'',
+		"it('steps through held work', async () => {",
+		'\tawait started(3);',
+		'\tfor (let step = 3; step > 0; step--) {',
+		'\t\trelease();',
+		'\t\tawait new Promise((resolve) => setTimeout(resolve, 0));',
+		'\t}',
+		'});',
+		'',
+		'declare function started(count: number): Promise<void>;',
+		'declare function release(): void;',
+		'',
+	].join('\n'),
+	'timeout.test.ts': [
+		"import { beforeAll, it } from 'vitest';",
+		'',
+		'beforeAll(() => {}, 20_000);',
 		"it('slow', async () => {}, 30_000);",
+		"it('slower', { timeout: 60_000 }, async () => {});",
+		"it.skip('later', () => {});",
+		'',
+	].join('\n'),
+	'sharedBudget.test.ts': [
+		"import { it } from 'vitest';",
+		"import { PARALLEL_GATE_TIMEOUT_MS } from '../vitest.timeouts';",
+		'',
+		"it('boots a tool', async () => {}, PARALLEL_GATE_TIMEOUT_MS);",
+		"it.skipIf(process.platform === 'win32')('uses a unix socket', () => {});",
 		'',
 	].join('\n'),
 	'quarantined.test.ts': [
@@ -80,6 +240,12 @@ const FIXTURES: Record<string, string> = {
 	'backoff.ts': [
 		'export function retryDelayMs(attempt: number): number {',
 		'\treturn Math.min(1_000 * 2 ** attempt, 60_000);',
+		'}',
+		'',
+	].join('\n'),
+	'uncheckedJson.ts': [
+		'export async function read(request: Request): Promise<{ to: string }> {',
+		'\treturn (await request.json()) as { to: string };',
 		'}',
 		'',
 	].join('\n'),
@@ -139,6 +305,51 @@ const FIXTURES: Record<string, string> = {
 		"export const count: number = 'one';",
 		'',
 	].join('\n'),
+	// The body-reset rule covers the test files of every workspace, run from the
+	// root or from a workspace; `document` is a global the browser env provides.
+	'apps/web/app/__tests__/bodyReset.test.ts': [
+		"import { afterEach } from 'vitest';",
+		'',
+		'afterEach(() => {',
+		"\tdocument.body.innerHTML = '';",
+		'});',
+		'',
+	].join('\n'),
+	// Removing a node found inside each child, one child's own children, a
+	// filtered subset of the children, only the children a condition picks,
+	// children down to a bound above zero, or every child after the first
+	// leaves the body in place.
+	'apps/web/app/__tests__/bodyOwnedRemoval.test.ts': [
+		"import { afterEach } from 'vitest';",
+		'',
+		'afterEach(() => {',
+		"\tfor (const child of document.body.children) child.querySelector('[data-owned]')?.remove();",
+		'\tfor (const node of document.body.children[0].children) node.remove();',
+		"\tfor (const node of [...document.body.children].filter((el) => el.matches('.toast'))) node.remove();",
+		"\tfor (const child of document.body.children) { if (child.hasAttribute('data-owned')) child.remove(); }",
+		'\twhile (document.body.childElementCount > 1) document.body.lastElementChild!.remove();',
+		'\twhile (document.body.children[1]) document.body.children[1].remove();',
+		'});',
+		'',
+	].join('\n'),
+	'packages/email-builder/src/__tests__/bodyResetEmailBuilder.test.ts': [
+		"import { afterEach } from 'vitest';",
+		'',
+		'afterEach(() => {',
+		"\tdocument.body.innerHTML = '';",
+		'});',
+		'',
+	].join('\n'),
+	'packages/shared/src/__tests__/bodyResetShared.test.ts': [
+		"import { afterEach } from 'vitest';",
+		'',
+		'afterEach(() => {',
+		'\tdocument.body.replaceChildren();',
+		'});',
+		'',
+	].join('\n'),
+	// Application code is outside the rule: it may write a document it owns.
+	'packages/shared/src/bodyWrite.ts': ["document.body.innerHTML = '';", ''].join('\n'),
 };
 
 let fixtureDirectory: string;
@@ -146,7 +357,9 @@ let fixtureDirectory: string;
 beforeAll(() => {
 	fixtureDirectory = mkdtempSync(join(tmpdir(), 'owlat-oxlint-plugin-'));
 	for (const [name, source] of Object.entries(FIXTURES)) {
-		writeFileSync(join(fixtureDirectory, name), source);
+		const path = join(fixtureDirectory, name);
+		mkdirSync(dirname(path), { recursive: true });
+		writeFileSync(path, source);
 	}
 });
 
@@ -175,24 +388,44 @@ describe.each(['.', 'apps/web'])('oxlint run from %s with the root config', (cwd
 		expect(errorCodes(byFile.get('loop.test.ts'))).toEqual(['owlat(no-test-in-loop)']);
 	});
 
-	it('warns about a real-clock sleep, a polling loop and an elapsed-time check', () => {
-		expect(errorCodes(byFile.get('timing.test.ts'))).toEqual([]);
-		expect(warningCodes(byFile.get('timing.test.ts'))).toEqual([
+	it('rejects a polling loop, a real-clock sleep and an elapsed-time check', () => {
+		expect(errorCodes(byFile.get('timing.test.ts')).sort()).toEqual([
 			'owlat(no-polling-loop-in-tests)',
 			'owlat(no-real-time-wait-in-tests)',
 			'owlat(no-wall-clock-in-tests)',
 		]);
+		expect(warningCodes(byFile.get('timing.test.ts'))).toEqual([]);
+	});
+
+	it('follows a sleep helper imported from a sibling module to the timer fake time drives', () => {
+		expect(byFile.get('importedSleep.test.ts')).toBeUndefined();
+		expect(errorCodes(byFile.get('importedRealSleep.test.ts'))).toEqual([
+			'owlat(no-real-time-wait-in-tests)',
+		]);
+		expect(errorCodes(byFile.get('importedMixedSleep.test.ts'))).toEqual([
+			'owlat(no-real-time-wait-in-tests)',
+		]);
+		expect(errorCodes(byFile.get('importedReassignedSleep.test.ts'))).toEqual([
+			'owlat(no-real-time-wait-in-tests)',
+		]);
+		expect(errorCodes(byFile.get('importedAdoptingSleep.test.ts'))).toEqual([
+			'owlat(no-real-time-wait-in-tests)',
+		]);
+	});
+
+	it('accepts a test that awaits its milestone and then steps a fixed number of times', () => {
+		expect(byFile.get('milestones.test.ts')).toBeUndefined();
 	});
 
 	it('reports a per-file test environment pragma', () => {
 		expect(errorCodes(byFile.get('pragma.test.ts'))).toEqual(['owlat(no-test-environment-pragma)']);
 	});
 
-	it('reports a local test timeout and a retry in a vitest config for the ratchet', () => {
-		expect(warningCodes(byFile.get('timeout.test.ts'))).toEqual([
-			'owlat(no-test-timeout-or-unreasoned-skip)',
-		]);
-		expect(warningCodes(byFile.get('vitest.config.ts'))).toEqual([
+	it('rejects local test and hook timeouts, an unreasoned skip and a retry in a vitest config', () => {
+		expect(errorCodes(byFile.get('timeout.test.ts'))).toEqual(
+			Array(4).fill('owlat(no-test-timeout-or-unreasoned-skip)')
+		);
+		expect(errorCodes(byFile.get('vitest.config.ts'))).toEqual([
 			'owlat(no-test-timeout-or-unreasoned-skip)',
 		]);
 	});
@@ -201,8 +434,22 @@ describe.each(['.', 'apps/web'])('oxlint run from %s with the root config', (cwd
 		expect(byFile.get('quarantined.test.ts')).toBeUndefined();
 	});
 
+	it('accepts a shared budget and a skip gated on a real condition', () => {
+		expect(byFile.get('sharedBudget.test.ts')).toBeUndefined();
+	});
+
 	it('reports exponential backoff computed outside the retry policy module', () => {
 		expect(errorCodes(byFile.get('backoff.ts'))).toEqual(['owlat(no-inline-backoff)']);
+	});
+
+	it('reports a cast of parsed JSON as an error', () => {
+		expect(errorCodes(byFile.get('uncheckedJson.ts'))).toEqual(['owlat(no-unchecked-json-cast)']);
+		expect(warningCodes(byFile.get('uncheckedJson.ts'))).toEqual([]);
+	});
+
+	it('fails a handler that resolves the session its floor already resolved', () => {
+		expect(errorCodes(byFile.get('reResolvedSession.ts'))).toEqual(['owlat(use-threaded-session)']);
+		expect(byFile.get('threadedSession.ts')).toBeUndefined();
 	});
 
 	it('reports a suppression that does not say why', () => {
@@ -240,6 +487,24 @@ describe.each(['.', 'apps/web'])('oxlint run from %s with the root config', (cwd
 		expect(stale.map((d) => [d.severity, d.message])).toEqual([
 			['error', expect.stringMatching(/^Unused oxlint-disable directive/)],
 		]);
+	});
+
+	it('reports a whole-body reset in the tests of every workspace', () => {
+		for (const name of [
+			'bodyReset.test.ts',
+			'bodyResetEmailBuilder.test.ts',
+			'bodyResetShared.test.ts',
+		]) {
+			expect(errorCodes(byFile.get(name)), name).toEqual(['owlat(no-document-body-reset)']);
+		}
+	});
+
+	it('leaves application code that writes the body alone', () => {
+		expect(byFile.get('bodyWrite.ts')).toBeUndefined();
+	});
+
+	it('accepts a loop over the body that removes only some of its nodes', () => {
+		expect(byFile.get('bodyOwnedRemoval.test.ts')).toBeUndefined();
 	});
 
 	it('leaves a clean test file alone', () => {

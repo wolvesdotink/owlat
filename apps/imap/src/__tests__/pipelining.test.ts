@@ -12,8 +12,9 @@
  * Also covered here: the only line IDLE accepts is DONE (RFC 2177), and
  * nothing a client sends after LOGOUT is dispatched.
  *
- * Every Convex read and write resolves a few milliseconds later (fake
- * timers), so a command dispatched too early overtakes the one before it.
+ * Every Convex read and write is held until the test answers it, one at a
+ * time in the order they were made, so a command dispatched too early
+ * overtakes the one before it.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -82,8 +83,8 @@ const config: ImapConfig = {
 	owlatVersion: 'dev',
 };
 
-/** Every backend call answers after this many (fake) milliseconds. */
-const LATENCY_MS = 3;
+/** Fake time that passes between two answers of the backend. */
+const ANSWER_MS = 3;
 
 interface Message {
 	readonly uid: number;
@@ -160,12 +161,24 @@ function makeBackend() {
 		customFlags: [],
 	});
 
-	/** Functions a test wants to answer slowly, e.g. to keep a FETCH running. */
+	/**
+	 * Functions a test wants answered last, e.g. to keep a FETCH running: a
+	 * call to one is answered only once no other call is held.
+	 */
 	const slow = new Set<string>();
+	/** Calls not answered yet, oldest first; each computes its reply when answered. */
+	const held: Array<{ slow: boolean; reply: () => void }> = [];
 	const answer = <T>(compute: () => T, name = ''): Promise<T> =>
-		new Promise((resolve) =>
-			setTimeout(() => resolve(compute()), slow.has(name) ? 10 * LATENCY_MS : LATENCY_MS)
-		);
+		new Promise((resolve) => {
+			held.push({ slow: slow.has(name), reply: () => resolve(compute()) });
+		});
+	/** Answer the oldest held call (a slow one only when nothing else is held). */
+	const answerNext = (): boolean => {
+		const index = held.findIndex((call) => !call.slow);
+		const [next] = held.splice(index === -1 ? 0 : index, 1);
+		next?.reply();
+		return next !== undefined;
+	};
 
 	const query = vi.fn((ref: AnyFunctionReference, args: Record<string, unknown>) =>
 		answer(() => {
@@ -250,12 +263,16 @@ function makeBackend() {
 			.filter(([ref]) => getFunctionName(ref as AnyFunctionReference) === name)
 			.map(([, args]) => args as Record<string, unknown>);
 
-	return { folders, convex: { query, mutation, action }, calls, slow };
+	return { folders, convex: { query, mutation, action }, calls, slow, answerNext };
 }
+
+/** The backend behind each test's socket, for `sendSegment` to answer. */
+const backends = new WeakMap<MockSocket, ReturnType<typeof makeBackend>>();
 
 function connect() {
 	const socket = new MockSocket();
 	const backend = makeBackend();
+	backends.set(socket, backend);
 	const connection = new ImapConnection(
 		socket as unknown as Socket,
 		config,
@@ -266,10 +283,20 @@ function connect() {
 	return { connection, socket, ...backend };
 }
 
+/**
+ * Answer the backend's held calls one by one, letting each answer play out
+ * (and fake time pass) before the next, until no call is held.
+ */
+async function answerAll(socket: MockSocket): Promise<void> {
+	const backend = backends.get(socket)!;
+	do await vi.advanceTimersByTimeAsync(ANSWER_MS);
+	while (backend.answerNext());
+}
+
 /** Send one segment (one or more CRLF-terminated lines) and let it all run. */
 async function sendSegment(socket: MockSocket, ...lines: string[]): Promise<void> {
 	socket.receive(lines.map((l) => `${l}\r\n`).join(''));
-	await vi.advanceTimersByTimeAsync(100);
+	await answerAll(socket);
 }
 
 /** The lines written since `mark` (a previous `socket.lines().length`). */
@@ -427,10 +454,10 @@ describe('pipelined commands run in order (RFC 3501 §5.5)', () => {
 
 		socket.receive('a2 FETCH 1 (UID)\r\na3 FETCH 2 (UID)\r\na4 STATUS Archive (MESSAGES)\r\n');
 		expect(socket.paused).toBe(false);
-		// Both FETCHes read before either backend call (LATENCY_MS) answers.
+		// Both FETCHes read before either backend call is answered.
 		await vi.advanceTimersByTimeAsync(1);
 		expect(calls('mail/imap/fetch:fetchEnvelopes').length - fetches).toBe(2);
-		await vi.advanceTimersByTimeAsync(100);
+		await answerAll(socket);
 
 		// They ran side by side, so they may complete in any order.
 		expect(
@@ -448,7 +475,7 @@ describe('pipelined commands run in order (RFC 3501 §5.5)', () => {
 		expect(socket.paused).toBe(true);
 		expect(socket.lines()).not.toContain('a2 OK NOOP completed');
 
-		await vi.advanceTimersByTimeAsync(100);
+		await answerAll(socket);
 		expect(socket.paused).toBe(false);
 		expect(socket.lines().slice(-2)).toEqual([
 			'a1 OK [READ-WRITE] SELECT completed',

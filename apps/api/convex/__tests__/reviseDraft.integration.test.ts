@@ -8,6 +8,9 @@ import { runLlmStream } from '../lib/llm/dispatch';
 import { persistMeteredSpend } from '../analytics/meteredSpend';
 import type * as MeteredSpendModule from '../analytics/meteredSpend';
 import { metered } from '../analytics/__tests__/meteredDispatch.testlib';
+import type * as LlmDispatchModule from '../lib/llm/dispatch';
+import type * as LlmProviderModule from '../lib/llmProvider';
+import type * as SessionOrganizationModule from '../lib/sessionOrganization';
 
 /**
  * Whole-draft REVISE-by-instruction (mail/ai/reviseDraft.reviseDraft): the action
@@ -22,7 +25,7 @@ const modules = import.meta.glob('../**/*.*s');
 const sess = vi.hoisted(() => ({ user: { userId: 'user-a', role: 'owner' as const } }));
 
 vi.mock('../lib/sessionOrganization', async () => {
-	const actual = await vi.importActual<typeof import('../lib/sessionOrganization')>(
+	const actual = await vi.importActual<typeof SessionOrganizationModule>(
 		'../lib/sessionOrganization'
 	);
 	return {
@@ -36,14 +39,14 @@ vi.mock('../lib/sessionOrganization', async () => {
 			activeOrganizationId: 'org-a',
 			role: sess.user.role,
 		})),
-		// The D7 apply path persists through `inbox.mutations.editDraft`
+		// The revision apply path persists through `inbox.mutations.editDraft`
 		// (adminMutation), whose floor resolves via requireAdminContext.
 		requireAdminContext: vi.fn(async () => sess.user),
 	};
 });
 
 vi.mock('../lib/llmProvider', async () => {
-	const actual = await vi.importActual<typeof import('../lib/llmProvider')>('../lib/llmProvider');
+	const actual = await vi.importActual<typeof LlmProviderModule>('../lib/llmProvider');
 	return {
 		...actual,
 		resolveLanguageModel: vi.fn(() => 'test-model'),
@@ -52,7 +55,7 @@ vi.mock('../lib/llmProvider', async () => {
 });
 
 vi.mock('../lib/llm/dispatch', async () => {
-	const actual = await vi.importActual<typeof import('../lib/llm/dispatch')>('../lib/llm/dispatch');
+	const actual = await vi.importActual<typeof LlmDispatchModule>('../lib/llm/dispatch');
 	return { ...actual, runLlmStream: vi.fn() };
 });
 
@@ -256,7 +259,58 @@ describe('reviseDraft — streaming', () => {
 		expect(buffer?.errorMessage).toContain('model exploded');
 	});
 
-	it('applying the revised text persists as a draft REVISION — agent original preserved, no feedback (D7)', async () => {
+	it('keeps the text streamed before a failure in the errored buffer', async () => {
+		const t = await makeT();
+		await enableFeatures(t, ['ai']);
+
+		vi.mocked(runLlmStream).mockImplementation(
+			metered(async (opts) => {
+				await opts.onTextDelta?.('Thanks for the note', 'Thanks for the note');
+				throw new Error('connection reset');
+			})
+		);
+
+		const streamId = await t.mutation(api.mail.draftStreamStore.createDraftStream, {
+			surface: 'review',
+		});
+		const res = await t.action(api.mail.ai.reviseDraft.reviseDraft, {
+			streamId,
+			instruction: 'shorter',
+			currentDraft: 'keep me',
+			surface: 'review',
+		});
+
+		expect(res).toEqual({ text: '', injectionFlagged: false, status: 'error' });
+		const buffer = await t.query(api.mail.draftStreamStore.getDraftStream, { streamId });
+		expect(buffer).toMatchObject({
+			status: 'error',
+			text: 'Thanks for the note',
+			errorMessage: 'connection reset',
+		});
+	});
+
+	it('refuses with AI off before the buffer is touched or the model is called', async () => {
+		const t = await makeT();
+		const streamId = await t.mutation(api.mail.draftStreamStore.createDraftStream, {
+			surface: 'review',
+		});
+		await t.run(async (ctx) => {
+			await ctx.db.patch(streamId, { text: 'what the person had' });
+		});
+
+		await expect(
+			t.action(api.mail.ai.reviseDraft.reviseDraft, {
+				streamId,
+				instruction: 'anything',
+				currentDraft: 'keep me',
+			})
+		).rejects.toThrow();
+		expect(runLlmStream).not.toHaveBeenCalled();
+		const buffer = await t.query(api.mail.draftStreamStore.getDraftStream, { streamId });
+		expect(buffer).toMatchObject({ status: 'streaming', text: 'what the person had' });
+	});
+
+	it('applying the revised text persists as a draft REVISION — agent original preserved, no feedback', async () => {
 		const t = await makeT();
 		await enableFeatures(t, ['ai']);
 
@@ -297,7 +351,7 @@ describe('reviseDraft — streaming', () => {
 		expect(res.status).toBe('complete');
 
 		// The AiReviseBox apply persists through editDraft — revision-appending,
-		// never an in-place overwrite (D7): the agent original survives as
+		// never an in-place overwrite: the agent original survives as
 		// revision 0 and NO autonomy feedback fires at save time (the 'edited'
 		// signal is approve-time-only).
 		await t.mutation(api.inbox.mutations.editDraft, {

@@ -17,6 +17,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import schema from '../../schema';
 import { api } from '../../_generated/api';
 import type { OrganizationRole } from '../../lib/sessionOrganization';
+import type * as SessionOrganizationModule from '../../lib/sessionOrganization';
 
 // Mutable role each test selects.
 let mockRole: OrganizationRole = 'admin';
@@ -30,8 +31,8 @@ function throwForbidden(): never {
 }
 
 vi.mock('../../lib/sessionOrganization', async () => {
-	const actual = await vi.importActual<typeof import('../../lib/sessionOrganization')>(
-		'../../lib/sessionOrganization',
+	const actual = await vi.importActual<typeof SessionOrganizationModule>(
+		'../../lib/sessionOrganization'
 	);
 	const ctx = () => ({ userId: 'test-user', role: mockRole });
 	return {
@@ -61,7 +62,7 @@ const domainsGlob = Object.fromEntries(
 	Object.entries(import.meta.glob('../**/*.*s')).map(([path, mod]) => [
 		path.replace(/^\.\.\//, '../../domains/'),
 		mod,
-	]),
+	])
 );
 const modules = { ...rootGlob, ...domainsGlob };
 

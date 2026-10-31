@@ -7,7 +7,9 @@ import { dirname, resolve } from 'node:path';
  * The Team inbox thread's keys are catalog ids in the `inbox` scope, bound
  * through the app-wide dispatcher, so a remap on the shortcuts page moves them
  * and the "?" sheet lists them. The list's keys (move, open, assign) are the
- * `inboxList` scope, so assign and move can never share a key. What a press DOES under that scope (the new
+ * `inboxList` scope, so assign and move can never share a key. What the list's
+ * keys do to its rows is driven by real key events in `inboxListTriage.test.ts`.
+ * What a press DOES under that scope (the new
  * key fires once, the old one stops, `n` comes back to "new item" outside) is
  * driven by real key events in `useKeyboardShortcutsChords.test.ts`; like the
  * other suites beside it, this one asserts the page's wiring against its
@@ -33,6 +35,15 @@ describe('Team inbox keys', () => {
 	it("answers every key of the list in the list's own scope", () => {
 		expect(list).toContain("useShortcutScope('inboxList')");
 		expect(list).toContain("scope: 'inboxList'");
-		expect(list).toContain("resolveActiveChord(key, ['inboxList']) === 'inboxList.assignToMe'");
+		expect(list).toContain("resolveActiveChord(key, ['inboxList'])");
+		expect(list).toContain("id === 'inboxList.toggleSelect'");
+		for (const id of [
+			'inboxList.assignToMe',
+			'inboxList.resolve',
+			'inboxList.snooze',
+			'inboxList.assign',
+		]) {
+			expect(list).toContain(`case '${id}':`);
+		}
 	});
 });

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import UiTooltip from '@owlat/ui/components/ui/Tooltip.vue';
 import { ref } from 'vue';
 import type { Component } from 'vue';
 import type { BlockType } from '../../types';
@@ -44,26 +45,26 @@ function handleAdd(type: BlockType) {
 		:aria-label="t('builder.canvas.quickInsert')"
 		class="flex items-center justify-center gap-1 py-2 mb-2"
 	>
-		<button
-			v-for="block in quickBlocks"
-			:key="block.type"
-			class="flex items-center justify-center w-8 h-8 rounded-lg border border-transparent bg-transparent text-text-secondary cursor-pointer transition-all duration-(--motion-moderate) hover:bg-bg-surface-hover hover:text-text-primary hover:border-border-subtle"
-			:title="label(block.label)"
-			:aria-label="label(block.label)"
-			type="button"
-			@click="handleAdd(block.type)"
-		>
-			<component :is="block.icon" :size="16" />
-		</button>
-		<button
-			class="flex items-center justify-center w-8 h-8 rounded-lg border border-dashed border-border-default bg-transparent text-text-tertiary cursor-pointer transition-all duration-(--motion-moderate) hover:bg-bg-surface-hover hover:text-text-secondary hover:border-border-strong"
-			:title="t('builder.canvas.moreBlocksTitle')"
-			:aria-label="t('builder.canvas.moreBlocksTitle')"
-			:aria-expanded="showMore"
-			type="button"
-			@click="showMore = !showMore"
-		>
-			<Plus :size="16" />
-		</button>
+		<UiTooltip v-for="block in quickBlocks" :key="block.type" :text="label(block.label)">
+			<button
+				class="flex items-center justify-center w-8 h-8 rounded-lg border border-transparent bg-transparent text-text-secondary cursor-pointer transition-colors duration-(--motion-moderate) hover:bg-bg-surface-hover hover:text-text-primary hover:border-border-subtle"
+				:aria-label="label(block.label)"
+				type="button"
+				@click="handleAdd(block.type)"
+			>
+				<component :is="block.icon" :size="16" />
+			</button>
+		</UiTooltip>
+		<UiTooltip :text="t('builder.canvas.moreBlocksTitle')">
+			<button
+				class="flex items-center justify-center w-8 h-8 rounded-lg border border-dashed border-border-default bg-transparent text-text-tertiary cursor-pointer transition-colors duration-(--motion-moderate) hover:bg-bg-surface-hover hover:text-text-secondary hover:border-border-strong"
+				:aria-label="t('builder.canvas.moreBlocksTitle')"
+				:aria-expanded="showMore"
+				type="button"
+				@click="showMore = !showMore"
+			>
+				<Plus :size="16" />
+			</button>
+		</UiTooltip>
 	</div>
 </template>

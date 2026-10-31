@@ -6,7 +6,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defineComponent, h, nextTick, ref } from 'vue';
-import { mount, type VueWrapper } from '@vue/test-utils';
+import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { installNuxtStubs } from '~/__tests__/a11y';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import type { PaletteGroup, PaletteItem } from '~/lib/commandPalette';
@@ -15,7 +15,6 @@ import {
 	registerCommandPaletteProvider,
 	useCommandPaletteRegistry,
 } from '~/composables/useCommandPaletteRegistry';
-import { useCopyToClipboard } from '~/composables/useCopyToClipboard';
 import { useCommandPaletteObjectRecents } from '~/composables/useCommandPaletteObjectRecents';
 import {
 	type PostboxThreadCommandSources,
@@ -24,16 +23,18 @@ import {
 
 const showToast = vi.fn();
 const routePath = { value: '/dashboard/postbox/inbox/m1' };
+const flags = { chat: true };
 
 beforeEach(() => {
 	localStorage.clear();
 	showToast.mockClear();
+	flags.chat = true;
 	installNuxtStubs({
 		...i18nStubs,
 		registerCommandPaletteProvider,
-		useCopyToClipboard,
 		useRoute: () => ({ path: routePath.value }),
 		useToast: () => ({ showToast }),
+		useFeatureFlag: () => ({ isEnabled: (flag: string) => flag !== 'chat' || flags.chat }),
 		usePostboxActiveMailbox: () => ({ setActiveMailboxId: vi.fn() }),
 		navigateTo: vi.fn(),
 	});
@@ -53,9 +54,12 @@ function sources(
 		threadId: () => 't1',
 		mailboxId: () => 'mb1',
 		href: () => '/dashboard/postbox/inbox/m1',
+		link: () => ({ kind: 'postbox', messageId: 'm1', mailboxId: 'mb1', folder: 'inbox' }),
+		shareInChat: vi.fn(),
 		hintText: () => 'Invoice 4471',
 		isMuted: () => false,
 		isAlerted: () => false,
+		isPinned: () => false,
 		followUp: () => ({ state: 'none' }),
 		canTranslate: () => true,
 		labels: () => [{ _id: 'l1', name: 'Work' }],
@@ -70,6 +74,7 @@ function sources(
 		moveTo: vi.fn(),
 		toggleMute: vi.fn(),
 		toggleAlert: vi.fn(),
+		togglePin: vi.fn(),
 		translate: vi.fn(),
 		...overrides,
 	};
@@ -175,15 +180,39 @@ describe('usePostboxThreadCommandSurface', () => {
 		expect(below.runAction).toHaveBeenCalledWith('archive');
 	});
 
-	it('copies an absolute link to the conversation', async () => {
+	it('copies an absolute link to the conversation, naming its mailbox', async () => {
 		const writeText = vi.fn(async () => {});
 		Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
 		mountReader(sources());
 		row('postbox:thread-copy-link').run();
-		await nextTick();
-		await nextTick();
-		expect(writeText).toHaveBeenCalledWith(`${window.location.origin}/dashboard/postbox/inbox/m1`);
+		await flushPromises();
+		expect(writeText).toHaveBeenCalledExactlyOnceWith(
+			`${window.location.origin}/dashboard/postbox/inbox/m1?mailbox=mb1`
+		);
 		expect(showToast).toHaveBeenCalledWith('Link copied');
+	});
+
+	it('says so when the clipboard refuses the link', async () => {
+		const writeText = vi.fn(async () => {
+			throw new Error('denied');
+		});
+		Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+		mountReader(sources());
+		row('postbox:thread-copy-link').run();
+		await flushPromises();
+		expect(showToast).toHaveBeenCalledWith('Could not copy the link', 'error');
+	});
+
+	it('opens this reader’s Share in chat dialog, and offers none while chat is off', () => {
+		const src = sources();
+		mountReader(src);
+		row('postbox:thread-share-in-chat').run();
+		expect(src.shareInChat).toHaveBeenCalledTimes(1);
+
+		flags.chat = false;
+		expect(threadGroup()?.items.map((item) => item.id)).not.toContain(
+			'postbox:thread-share-in-chat'
+		);
 	});
 
 	it('records the conversation for Jump back, but not as the place to jump to while open', () => {

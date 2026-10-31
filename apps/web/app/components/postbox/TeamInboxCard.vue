@@ -203,32 +203,29 @@ const createdOn = computed(() =>
 						<Icon name="lucide:refresh-cw" class="w-4 h-4 mr-1.5" />
 						{{ reconnecting ? t('common.cancel') : t('dashboard.admin.team.inboxes.reconnect') }}
 					</UiButton>
-					<UiButton
-						variant="ghost"
-						size="sm"
-						:title="t('dashboard.admin.team.inboxes.openInboxTitle')"
-						@click="emit('open')"
-					>
-						<Icon name="lucide:arrow-right" class="w-4 h-4 mr-1.5" />
-						{{ t('dashboard.admin.team.inboxes.openInbox') }}
-					</UiButton>
+					<UiTooltip :text="t('dashboard.admin.team.inboxes.openInboxTitle')">
+						<UiButton variant="ghost" size="sm" @click="emit('open')">
+							<Icon name="lucide:arrow-right" class="w-4 h-4 mr-1.5" />
+							{{ t('dashboard.admin.team.inboxes.openInbox') }}
+						</UiButton>
+					</UiTooltip>
 					<!-- Suspended inboxes are refused by `requireMailboxAccess`, so the
 					     panel would open on a card that can only report an error. -->
-					<UiButton
-						v-if="canImport"
-						variant="ghost"
-						size="sm"
-						data-testid="team-inbox-import-toggle"
-						:aria-expanded="importing"
-						:title="t('dashboard.admin.team.inboxes.import.actionTitle')"
-						@click="emit('toggleImport')"
-					>
-						<Icon
-							:name="importing ? 'lucide:chevron-up' : 'lucide:download'"
-							class="w-4 h-4 mr-1.5"
-						/>
-						{{ importing ? t('common.done') : t('dashboard.admin.team.inboxes.import.action') }}
-					</UiButton>
+					<UiTooltip v-if="canImport" :text="t('dashboard.admin.team.inboxes.import.actionTitle')">
+						<UiButton
+							variant="ghost"
+							size="sm"
+							data-testid="team-inbox-import-toggle"
+							:aria-expanded="importing"
+							@click="emit('toggleImport')"
+						>
+							<Icon
+								:name="importing ? 'lucide:chevron-up' : 'lucide:download'"
+								class="w-4 h-4 mr-1.5"
+							/>
+							{{ importing ? t('common.done') : t('dashboard.admin.team.inboxes.import.action') }}
+						</UiButton>
+					</UiTooltip>
 					<UiButton
 						variant="secondary"
 						size="sm"
@@ -238,38 +235,47 @@ const createdOn = computed(() =>
 						<Icon :name="expanded ? 'lucide:chevron-up' : 'lucide:users'" class="w-4 h-4 mr-1.5" />
 						{{ expanded ? t('common.done') : t('dashboard.admin.team.inboxes.manageMembers') }}
 					</UiButton>
-					<UiButton
+					<UiTooltip
 						v-if="sealedMailEnabled"
-						variant="ghost"
-						size="sm"
-						:title="t('dashboard.admin.team.inboxes.rotateKeyTitle')"
-						:aria-label="t('dashboard.admin.team.inboxes.rotateKeyTitle')"
-						@click="emit('rotateKey')"
+						:text="t('dashboard.admin.team.inboxes.rotateKeyTitle')"
 					>
-						<Icon name="lucide:key-round" class="w-4 h-4" />
-					</UiButton>
-					<UiButton
+						<UiButton
+							variant="ghost"
+							size="sm"
+							:aria-label="t('dashboard.admin.team.inboxes.rotateKeyTitle')"
+							@click="emit('rotateKey')"
+						>
+							<Icon name="lucide:key-round" class="w-4 h-4" />
+						</UiButton>
+					</UiTooltip>
+					<UiTooltip
 						v-if="sealedMailEnabled"
-						variant="ghost"
-						size="sm"
-						class="text-error hover:text-error"
-						:title="t('dashboard.admin.team.inboxes.revokeKeyTitle')"
-						:aria-label="t('dashboard.admin.team.inboxes.revokeKeyTitle')"
-						@click="emit('revokeKey')"
+						:text="t('dashboard.admin.team.inboxes.revokeKeyTitle')"
 					>
-						<Icon name="lucide:shield-off" class="w-4 h-4" />
-					</UiButton>
-					<UiButton
+						<UiButton
+							variant="ghost"
+							size="sm"
+							class="text-error hover:text-error"
+							:aria-label="t('dashboard.admin.team.inboxes.revokeKeyTitle')"
+							@click="emit('revokeKey')"
+						>
+							<Icon name="lucide:shield-off" class="w-4 h-4" />
+						</UiButton>
+					</UiTooltip>
+					<UiTooltip
 						v-if="inbox.kind === 'external'"
-						variant="ghost"
-						size="sm"
-						class="text-error hover:text-error"
-						:title="t('dashboard.admin.team.inboxes.deleteInboxTitle')"
-						:aria-label="t('dashboard.admin.team.inboxes.deleteInboxTitle')"
-						@click="emit('purge')"
+						:text="t('dashboard.admin.team.inboxes.deleteInboxTitle')"
 					>
-						<Icon name="lucide:trash-2" class="w-4 h-4" />
-					</UiButton>
+						<UiButton
+							variant="ghost"
+							size="sm"
+							class="text-error hover:text-error"
+							:aria-label="t('dashboard.admin.team.inboxes.deleteInboxTitle')"
+							@click="emit('purge')"
+						>
+							<Icon name="lucide:trash-2" class="w-4 h-4" />
+						</UiButton>
+					</UiTooltip>
 				</div>
 			</div>
 

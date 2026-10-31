@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * "Draft to Jonas saved · Resume": the reply left in Answer mode, offered back
- * on the list it returned to (plan §02, "Leaving never throws work away").
+ * on the list it returned to ("Leaving never throws work away").
  *
  * One line in the list's banner slot, for the mailbox the draft belongs to.
  * Resume reopens Answer mode on the same draft; the × drops the offer, never
@@ -44,14 +44,15 @@ const resumeHref = computed(() =>
 		<NuxtLink :to="resumeHref" class="shrink-0 text-brand hover:underline">
 			{{ t('components.postbox.postboxAnswerDraftBar.resume') }}
 		</NuxtLink>
-		<button
-			type="button"
-			class="-my-2 -mr-2 flex size-11 shrink-0 items-center justify-center rounded text-text-tertiary hover:text-text-primary"
-			:aria-label="t('components.postbox.postboxAnswerDraftBar.dismiss')"
-			:title="t('components.postbox.postboxAnswerDraftBar.dismiss')"
-			@click="clear()"
-		>
-			<Icon name="lucide:x" class="size-3.5" />
-		</button>
+		<UiTooltip :text="t('components.postbox.postboxAnswerDraftBar.dismiss')">
+			<button
+				type="button"
+				class="-my-2 -mr-2 flex size-11 shrink-0 items-center justify-center rounded text-text-tertiary hover:text-text-primary"
+				:aria-label="t('components.postbox.postboxAnswerDraftBar.dismiss')"
+				@click="clear()"
+			>
+				<Icon name="lucide:x" class="size-3.5" />
+			</button>
+		</UiTooltip>
 	</div>
 </template>

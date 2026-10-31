@@ -10,10 +10,15 @@
  *                    connected or re-authorized); answers 202 at once
  *   POST /remote-ops — an account has queued write-backs; replay them now
  *   GET  /health
+ *   GET  /metrics — Prometheus process metrics; unauthenticated like the MTA's,
+ *                   since the port is not published
  */
 
 import { Hono, type Context } from 'hono';
+import { v } from 'convex/values';
+import { decodeJson, type Checked, type JsonChecker } from '@owlat/worker-protocol/decodeJson';
 import { secretMatches } from '@owlat/shared/constantTimeEqual';
+import type { MetricsSource } from '@owlat/shared/nodeMetrics';
 
 /** http(s) only, and the origin must be one of the configured Convex origins. */
 export function isAllowedEmlUrl(raw: string, allowedOrigins: string[]): boolean {
@@ -32,21 +37,49 @@ import type { ConvexClient } from './convex.js';
 import { fetchWorkerCredentials } from './convex.js';
 import type { MailSyncConfig } from './config.js';
 import { fileSentCopyInBackground, sendViaExternal, testConnection } from './send.js';
-import type { ProtocolCreds, RecipientResult } from './send.js';
+import type { RecipientResult } from './send.js';
 import { logger } from './logger.js';
 
-interface TestBody {
-	imap: ProtocolCreds;
-	smtp: ProtocolCreds;
-}
-interface SendBody {
-	externalAccountId: string;
-	from: string;
-	recipients: string[];
-	rawEmlUrl: string;
-}
+const protocolCreds = v.object({
+	host: v.string(),
+	port: v.number(),
+	secure: v.boolean(),
+	username: v.string(),
+	password: v.string(),
+	accessToken: v.optional(v.string()),
+});
+const testBody = v.object({ imap: protocolCreds, smtp: protocolCreds });
+const sendBody = v.object({
+	externalAccountId: v.string(),
+	from: v.string(),
+	recipients: v.array(v.string()),
+	rawEmlUrl: v.string(),
+});
+const remoteOpsBody = v.object({ accountId: v.string() });
+
+/** Every body here is a few fields, or one message's recipient list. */
+const BODY_MAX_BYTES = 1024 * 1024;
 
 /**
+ * Read a route's JSON body to the checked value, or the 400/413 answering it.
+ * `message` is the route's own refusal text: every body that does not fit
+ * gets that one message, and only a 413 says something else.
+ */
+async function readBody<C extends JsonChecker>(
+	c: Context,
+	checker: C,
+	message: string
+): Promise<{ ok: true; value: Checked<C> } | { ok: false; response: Response }> {
+	const result = await decodeJson(c.req.raw, checker, BODY_MAX_BYTES);
+	if (result.ok) return result;
+	const { status } = result.failure;
+	if (status !== 413) return { ok: false, response: c.json({ error: message }, status) };
+	// A refused body may be partly unread, so the connection cannot carry
+	// another request after it.
+	c.header('Connection', 'close');
+	return { ok: false, response: c.json({ error: result.failure.message }, status) };
+}
+
 /**
  * Deadline for fetching the outgoing `.eml` back from Convex (at most 8 MiB, from
  * a storage proxy on the same network). A hung fetch answers 502 instead of
@@ -66,6 +99,8 @@ export interface ServerHooks {
 	requestReconcile?: () => void;
 	/** Replay one account's write-back queue (AccountManager.requestRemoteOps). */
 	requestRemoteOps?: RemoteOpsRequester;
+	/** The process registry served on `GET /metrics`; the route is absent without it. */
+	metrics?: MetricsSource;
 }
 
 /** The worker's routes, without a listener (tests drive it through `app.request`). */
@@ -90,6 +125,13 @@ export function createApp(
 
 	app.get('/health', (c) => c.json({ ok: true, service: 'owlat-mail-sync' }));
 
+	const { metrics } = hooks;
+	if (metrics) {
+		app.get('/metrics', async (c) =>
+			c.body(await metrics.metrics(), 200, { 'Content-Type': metrics.contentType })
+		);
+	}
+
 	// Convex pokes this after a connect so the new account's IMAP connection
 	// opens now rather than on the next reconcile tick (up to 30 s later). The
 	// pass itself runs in the background: the caller only needs to know the
@@ -100,32 +142,28 @@ export function createApp(
 	});
 
 	app.post('/test', async (c) => {
-		const body = (await c.req.json().catch(() => null)) as TestBody | null;
-		if (!body?.imap || !body?.smtp) {
-			return c.json({ error: 'imap and smtp credentials required' }, 400);
-		}
-		return c.json(await testConnection(body));
+		const read = await readBody(c, testBody, 'imap and smtp credentials required');
+		if (!read.ok) return read.response;
+		return c.json(await testConnection(read.value));
 	});
 
 	// Fire-and-forget: the drain runs on the account's connection, and the
 	// backend only needs to know the nudge arrived.
 	app.post('/remote-ops', async (c) => {
-		const body = (await c.req.json().catch(() => null)) as { accountId?: unknown } | null;
-		if (typeof body?.accountId !== 'string' || !body.accountId) {
-			return c.json({ error: 'accountId required' }, 400);
-		}
-		return c.json({ accepted: hooks.requestRemoteOps?.(body.accountId) ?? false }, 202);
+		const read = await readBody(c, remoteOpsBody, 'accountId required');
+		if (!read.ok) return read.response;
+		const { accountId } = read.value;
+		if (!accountId) return c.json({ error: 'accountId required' }, 400);
+		return c.json({ accepted: hooks.requestRemoteOps?.(accountId) ?? false }, 202);
 	});
 
 	app.post('/send', async (c) => {
-		const body = (await c.req.json().catch(() => null)) as SendBody | null;
-		if (
-			!body?.externalAccountId ||
-			!body.from ||
-			!Array.isArray(body.recipients) ||
-			!body.rawEmlUrl
-		) {
-			return c.json({ error: 'externalAccountId, from, recipients, rawEmlUrl required' }, 400);
+		const required = 'externalAccountId, from, recipients, rawEmlUrl required';
+		const read = await readBody(c, sendBody, required);
+		if (!read.ok) return read.response;
+		const body = read.value;
+		if (!body.externalAccountId || !body.from || !body.rawEmlUrl) {
+			return c.json({ error: required }, 400);
 		}
 
 		const credentialsResult = await fetchWorkerCredentials(convex, body.externalAccountId);

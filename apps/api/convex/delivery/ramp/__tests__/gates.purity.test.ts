@@ -1,8 +1,8 @@
 /**
- * PURITY (plan D15). The decision functions take data and return verdicts; the
+ * PURITY. The decision functions take data and return verdicts; the
  * cron is a thin shell that loads, calls and writes. The static half — no module
  * of the decision core contains a clock, a random source, an environment read or
- * a database handle — is `scripts/check-ramp-purity.sh` (part of `bun run lint`).
+ * a database handle — is `scripts/check-purity.sh` (part of `bun run lint`).
  * This is the behavioural half: identical inputs give identical outputs,
  * arguments are not mutated, and shifting the injected clock (and nothing else)
  * is what changes the verdict.

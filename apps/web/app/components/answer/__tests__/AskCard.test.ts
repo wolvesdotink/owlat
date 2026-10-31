@@ -1,5 +1,5 @@
 /**
- * "N things before I write this" (plan §05):
+ * "N things before I write this":
  *   - the header counts the questions and says no draft is written yet;
  *   - one input per kind: chips with "Something else...", free text, a number,
  *     a date (chips plus a picker), a file (FileAsk);

@@ -131,7 +131,7 @@ describe('useReviewQueue', () => {
 		});
 	});
 
-	// Piece D1': saved drafts ("Saved · edited by you") float to the top of the
+	// Saved drafts ("Saved · edited by you") float to the top of the
 	// queue, most recently saved first; the rest keep the server's order.
 	describe('saved-first sort bump', () => {
 		it('bumps saved drafts above untouched ones, newest save first', () => {
@@ -158,7 +158,7 @@ describe('useReviewQueue', () => {
 		});
 	});
 
-	// #1185: the agent's `[[...]]` gaps are stored gap-guarded, so Approve is
+	// The agent's `[[...]]` gaps are stored gap-guarded, so Approve is
 	// refused (DRAFT_HAS_GAPS) until they are filled. The queue card says so in
 	// its own words, counting the gaps, instead of a generic failure toast.
 	describe('a draft with gaps left', () => {

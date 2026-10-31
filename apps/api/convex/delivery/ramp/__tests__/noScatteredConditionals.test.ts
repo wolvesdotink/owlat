@@ -1,5 +1,5 @@
 /**
- * THE STRUCTURAL GUARD (plan D3) — the substitutions are DATA, or this fails.
+ * THE STRUCTURAL GUARD — the substitutions are DATA, or this fails.
  *
  * The source-level half (no conditional on the decision path names an
  * integration; the table has exactly ONE fold, `degradation.ts`, and the

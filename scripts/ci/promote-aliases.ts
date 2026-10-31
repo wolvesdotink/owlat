@@ -2,15 +2,25 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { arrayOf, boolean, object, string } from '../json';
+import { aliasReleases, composeDigests, publishedDigests } from './aliases';
+import { parsePublishedImages } from './docker-images';
 import { github, githubPages, repository } from './github';
-import { aliasReleases, composeDigests, publishedDigests, type PublishedRelease } from './aliases';
 const repo = repository(),
 	owner = repo.split('/')[0]!.toLowerCase();
 // Caller holds the single repository promotion lock. Every invocation selects
 // current published state, so replacing a pending invocation cannot roll back
 // aliases or lose a release. Only unified stable releases claim these aliases.
-const releases = githubPages<PublishedRelease & { assets: { name: string }[] }>(
-	`repos/${repo}/releases?per_page=100`
+const releases = githubPages(
+	`repos/${repo}/releases?per_page=100`,
+	arrayOf(
+		object({
+			tag_name: string,
+			draft: boolean,
+			prerelease: boolean,
+			assets: arrayOf(object({ name: string })),
+		})
+	)
 );
 for (const { release, aliases } of aliasReleases(
 	releases.filter((release) =>
@@ -20,12 +30,14 @@ for (const { release, aliases } of aliasReleases(
 	const version = release.tag_name.slice(1),
 		directory = mkdtempSync(join(tmpdir(), 'owlat-aliases-'));
 	try {
-		const manifest = github<{ content: string }>(
-			`repos/${repo}/contents/docker/images.json?ref=${release.tag_name}`
+		const manifest = github(
+			`repos/${repo}/contents/docker/images.json?ref=${release.tag_name}`,
+			object({ content: string })
 		);
-		const images = JSON.parse(Buffer.from(manifest.content, 'base64').toString()) as {
-			name: string;
-		}[];
+		const images = parsePublishedImages(
+			Buffer.from(manifest.content, 'base64').toString(),
+			`docker/images.json at ${release.tag_name}`
+		);
 		const names = images.map((image) => image.name);
 		if (
 			!names.length ||
@@ -59,9 +71,7 @@ for (const { release, aliases } of aliasReleases(
 			readFileSync(join(directory, `docker-compose-${version}.yml.sha256`), 'utf8'),
 			version,
 			owner,
-			images
-				.filter((image) => (image as { rootCompose?: string }).rootCompose === 'ghcr')
-				.map((image) => image.name)
+			images.filter((image) => image.rootCompose === 'ghcr').map((image) => image.name)
 		);
 		for (const image of composed)
 			if (digests.find((item) => item.name === image.name)?.digest !== image.digest)

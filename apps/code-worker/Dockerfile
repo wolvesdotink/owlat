@@ -32,7 +32,7 @@ RUN cd apps/code-worker && bun run build
 
 # ── Runtime deps stage ───────────────────────────────────────────────
 # Production-only install scoped to this package: yields a minimal
-# node_modules (convex, octokit, execa + transitives) without devDeps.
+# node_modules (convex, octokit, plugin-kit + transitives) without devDeps.
 FROM oven/bun:1.4-alpine AS proddeps
 
 WORKDIR /build
@@ -91,6 +91,10 @@ RUN addgroup -S -g 10001 sandbox \
 
 ENV NODE_ENV=production
 ENV WORKSPACE_ROOT=/workspace
+
+# The release the worker reports with its wire version (src/wireReport.ts).
+ARG OWLAT_VERSION=dev
+ENV OWLAT_VERSION=${OWLAT_VERSION}
 
 # NOTE: intentionally NO `USER` directive — the main process runs as root (uid 0)
 # so it can setuid to `sandbox` for untrusted children (see comment above).

@@ -1,5 +1,8 @@
+import { v } from 'convex/values';
 import { requirePlatformAdmin } from '~~/server/utils/requireAdmin';
+import { readJsonBody } from '~~/server/utils/jsonBody';
 import { getInstanceSecret, callUpdater } from '~~/server/utils/updater';
+import { decodeUpdaterReport, type UpdaterReport } from '~~/server/utils/updaterResponses';
 
 /**
  * In-app "Apply & restart" entry point: session-authed proxy from
@@ -12,32 +15,18 @@ import { getInstanceSecret, callUpdater } from '~~/server/utils/updater';
  * profiles itself, so this route can only request states the
  * registry can produce.
  */
+const applyProfilesBody = v.object({ flags: v.record(v.string(), v.boolean()) });
+
 export default defineEventHandler(async (event) => {
 	await requirePlatformAdmin(event);
 
 	const instanceSecret = getInstanceSecret('In-app apply not configured (INSTANCE_SECRET missing)');
 
-	const body = await readBody<{ flags?: unknown }>(event);
-	const flags = body?.flags;
-	if (
-		typeof flags !== 'object' ||
-		flags === null ||
-		Array.isArray(flags) ||
-		Object.values(flags).some((value) => typeof value !== 'boolean')
-	) {
-		throw createError({
-			statusCode: 400,
-			message: 'Invalid flags (expected an object mapping flag keys to booleans)',
-		});
-	}
+	const { flags } = await readJsonBody(event, applyProfilesBody, {
+		invalidMessage: 'Invalid flags (expected an object mapping flag keys to booleans)',
+	});
 
-	let result: {
-		success?: boolean;
-		error?: string;
-		profiles?: string[];
-		steps?: { step: string; stdout?: string; stderr?: string }[];
-		services?: unknown;
-	} = {};
+	let result: UpdaterReport = {};
 	let updaterOk = false;
 	let updaterStatus = 0;
 
@@ -51,7 +40,8 @@ export default defineEventHandler(async (event) => {
 			// recovery and its readiness check before the updater answers.
 			signal: AbortSignal.timeout(10 * 60 * 1000),
 		});
-		result = (await updaterResp.json()) as typeof result;
+		// A body that is not an object reports nothing; the status still decides.
+		result = decodeUpdaterReport(await updaterResp.json()) ?? {};
 		updaterOk = updaterResp.ok;
 		updaterStatus = updaterResp.status;
 	} catch (err) {

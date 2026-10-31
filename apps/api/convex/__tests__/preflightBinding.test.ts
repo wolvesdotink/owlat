@@ -5,7 +5,7 @@
  * provably cannot finish; the tail then silently expires in the MTA queue.
  * These tests prove the refusal is real (with a structured multi-day plan
  * attached), that a finishable campaign is untouched, and — the case the plan
- * cares about most (D2/D10) — that UNKNOWN capacity never blocks a send.
+ * cares about most — that UNKNOWN capacity never blocks a send.
  */
 
 import { convexTest } from 'convex-test';
@@ -78,7 +78,7 @@ describe('pre-flight capacity gate — binding refusal', () => {
 	});
 });
 
-describe('pre-flight capacity gate — never a false blocker (D2/D10)', () => {
+describe('pre-flight capacity gate — never a false blocker', () => {
 	it('allows the send when there is no warming state at all', async () => {
 		const t = convexTest(schema, modules);
 		const campaignId = await seedSendableCampaign(t, 600);
@@ -403,7 +403,7 @@ describe('pre-flight capacity gate — the cap must actually bind campaign traff
 	 * configuration — here `single` selects the SES entry while an MTA entry is
 	 * also enabled, which is a hybrid relay selection with no relay proof. The
 	 * gate loses the selected route to that throw and has no other handle on the
-	 * campaign's dispatch kind, so it holds and allows (D10) — and says so, with
+	 * campaign's dispatch kind, so it holds and allows — and says so, with
 	 * `dispatch_unknown` rather than the reassuring `not_own_mta`. The two are
 	 * NOT interchangeable: one means the cap provably does not apply, the other
 	 * means we could not tell.
@@ -516,7 +516,7 @@ describe('getCampaignCapacityPlan — the UI preview', () => {
 
 		// The preview is rendered from the FIRST wizard step onward, before an
 		// audience exists. Nothing to judge is not a fault: it is `capacityKnown:
-		// false`, `fits: true` — the panel simply does not render (D2).
+		// false`, `fits: true` — the panel simply does not render.
 		const plan = await t.query(api.campaigns.capacityPreflight.getCampaignCapacityPlan, {
 			fromEmail: 'sender@verified.example.com',
 		});

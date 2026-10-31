@@ -1,5 +1,5 @@
 /**
- * Read on arrival (SPEC §6.4): delayed actions. A rule's `archiveAfter` and
+ * Read on arrival: delayed actions. A rule's `archiveAfter` and
  * the opt-in code detector each create ONE delayed archive of the message
  * they matched, anchored on that message (its receive time, its order key,
  * the folder it sat in), deduplicated by `actionKey`.

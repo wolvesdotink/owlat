@@ -1,9 +1,9 @@
 <script setup lang="ts">
 /**
  * The action row under one expanded message in the reader: Star, Reply,
- * Reply all, Forward and the ⋯ overflow (report spam, block, filter, print,
- * download the original). Split out of PostboxReaderMessage so Answer mode can
- * render the same card without it (plan §09: you are already replying).
+ * Reply all, Forward and the ⋯ overflow (copy link, share in chat, report
+ * spam, block, filter, print, download the original). Split out of PostboxReaderMessage so Answer mode can
+ * render the same card without it (you are already replying there).
  * Presentational; every verb is emitted back to the reader.
  */
 import { usePostboxOriginalEml } from '~/composables/postbox/usePostboxOriginalEml';
@@ -24,9 +24,12 @@ const emit = defineEmits<{
 	(e: 'block-sender'): void;
 	(e: 'create-filter'): void;
 	(e: 'print'): void;
+	(e: 'copy-link'): void;
+	(e: 'share-in-chat'): void;
 }>();
 
 const { t } = useI18n();
+const { isEnabled: isFeatureEnabled } = useFeatureFlag();
 
 const starLabel = computed(() =>
 	props.starred
@@ -48,17 +51,18 @@ const MENU_ITEM_CLASS =
 	     pinned open everywhere hover never fires. The ⋯ holds what is left
 	     once the duplicates are gone. -->
 	<div class="mt-4 flex items-center gap-2">
-		<UiButton
-			variant="ghost"
-			type="button"
-			:class="starred ? 'text-warning' : 'text-text-tertiary'"
-			:title="starLabel"
-			:aria-label="starLabel"
-			:aria-pressed="starred"
-			@click="emit('toggle-star')"
-		>
-			<Icon name="lucide:star" class="w-4 h-4" :class="{ 'fill-current': starred }" />
-		</UiButton>
+		<UiTooltip :text="starLabel">
+			<UiButton
+				variant="ghost"
+				type="button"
+				:class="starred ? 'text-warning' : 'text-text-tertiary'"
+				:aria-label="starLabel"
+				:aria-pressed="starred"
+				@click="emit('toggle-star')"
+			>
+				<Icon name="lucide:star" class="w-4 h-4" :class="{ 'fill-current': starred }" />
+			</UiButton>
+		</UiTooltip>
 		<UiButton variant="ghost" type="button" @click="emit('reply')">
 			<Icon name="lucide:reply" class="w-4 h-4 mr-1.5" />
 			{{ t('components.postbox.postboxThreadReader.reply') }}
@@ -85,6 +89,31 @@ const MENU_ITEM_CLASS =
 		<span class="flex-1" />
 		<PostboxOverflowMenu :label="t('components.postbox.postboxThreadReader.moreActions')">
 			<template #default="{ close }">
+				<button
+					type="button"
+					role="menuitem"
+					:class="MENU_ITEM_CLASS"
+					@click="
+						emit('copy-link');
+						close();
+					"
+				>
+					<Icon name="lucide:link" class="w-4 h-4 text-text-tertiary" />
+					{{ t('shared.conversationLink.copyLink') }}
+				</button>
+				<button
+					v-if="isFeatureEnabled('chat')"
+					type="button"
+					role="menuitem"
+					:class="MENU_ITEM_CLASS"
+					@click="
+						emit('share-in-chat');
+						close();
+					"
+				>
+					<Icon name="lucide:message-square-share" class="w-4 h-4 text-text-tertiary" />
+					{{ t('shared.conversationLink.shareInChat') }}
+				</button>
 				<button
 					type="button"
 					role="menuitem"

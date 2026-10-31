@@ -11,7 +11,7 @@
  */
 
 import type { Id } from '../_generated/dataModel';
-import { EDGE_CONFIDENCE_TAGS, EDGE_PROVENANCES } from '../schema/knowledge';
+import type { EDGE_CONFIDENCE_TAGS, EDGE_PROVENANCES } from '../schema/knowledge';
 import { contactScopesCanLink } from './contactScope';
 
 /** How sure we are an edge is real. Derived from the schema's single source. */

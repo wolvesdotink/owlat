@@ -2,8 +2,8 @@
 import type { PresencePerson } from '~/components/inbox/InboxThreadPresence.vue';
 
 /**
- * Who else is on this Team inbox thread, as one line in Answer mode's top bar
- * (plan §07): "Priya is viewing", "Priya is replying", or "3 people here" with
+ * Who else is on this Team inbox thread, as one line in Answer mode's top bar:
+ * "Priya is viewing", "Priya is replying", or "3 people here" with
  * their avatars. A replier comes first, since that is what holds Send.
  * Renders nothing when the person is alone on the thread.
  */
@@ -38,9 +38,9 @@ const replying = computed(() => ordered.value[0]?.mode === 'replying');
 		data-testid="answer-team-presence"
 	>
 		<span class="flex shrink-0 -space-x-1.5">
-			<span v-for="person in ordered.slice(0, 3)" :key="person.userId" class="ui-presence-ring">
+			<UiPresenceRing v-for="person in ordered.slice(0, 3)" :key="person.userId">
 				<UiAvatar :name="person.name" :image="person.image" size="xs" deterministic-color />
-			</span>
+			</UiPresenceRing>
 		</span>
 		<span class="truncate">{{ label }}</span>
 	</span>

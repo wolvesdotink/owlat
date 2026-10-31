@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
+import { computed, ref, watch } from 'vue';
 import { createTestI18n } from '~/__tests__/i18n';
-import { organizationTranslator, planOwnershipTransfer } from '../useOrganization';
+import { planOwnershipTransfer } from '../useOrganization';
+import { organizationTranslator } from '../useOrganizationSession';
 
 // `planOwnershipTransfer` is module scope, so it throws the message KEY and
 // `transferOwnership` resolves it; resolving it here keeps the assertions on
@@ -89,7 +91,9 @@ describe('organizationTranslator (middleware-context guard)', () => {
  * subscriber behind. One `useAuth()` per composable call, closed over.
  */
 describe('useOrganization session wiring', () => {
-	const activeOrganization = ref<{ id: string } | null>({ id: 'org-1' });
+	// A fresh ref per case: an earlier case's detached members watcher stays
+	// subscribed to the ref it was built on, and must not see this case's switch.
+	let activeOrganization = ref<{ id: string } | null>({ id: 'org-1' });
 	const listMembers = vi.fn(async () => ({
 		data: { members: [{ id: 'm-owner', userId: 'u-owner', role: 'owner' }] },
 	}));
@@ -97,6 +101,7 @@ describe('useOrganization session wiring', () => {
 
 	beforeEach(() => {
 		vi.resetModules();
+		activeOrganization = ref<{ id: string } | null>({ id: 'org-1' });
 		listMembers.mockClear();
 		listInvitations.mockClear();
 		vi.doMock('~/lib/auth-client', () => ({
@@ -109,7 +114,10 @@ describe('useOrganization session wiring', () => {
 			removeMember: vi.fn(),
 			updateMemberRole: vi.fn(),
 			cancelInvitation: vi.fn(),
-			setActiveOrganization: vi.fn(),
+			setActiveOrganization: async ({ organizationId }: { organizationId: string }) => {
+				activeOrganization.value = { id: organizationId };
+				return { data: { id: organizationId }, error: null };
+			},
 			updateOrganization: vi.fn(),
 			getFullOrganization: vi.fn(),
 		}));
@@ -120,6 +128,13 @@ describe('useOrganization session wiring', () => {
 			return state.get(key);
 		});
 		vi.stubGlobal('useBackendOperation', () => ({ run: vi.fn() }));
+		// `afterEach` unstubs the setup file's auto-import globals too, so every
+		// case puts back the ones these composables use. No component instance:
+		// called the way the guards call them.
+		vi.stubGlobal('ref', ref);
+		vi.stubGlobal('computed', computed);
+		vi.stubGlobal('watch', watch);
+		vi.stubGlobal('getCurrentInstance', () => null);
 	});
 
 	afterEach(() => {
@@ -144,5 +159,58 @@ describe('useOrganization session wiring', () => {
 
 		expect(useAuthSpy).toHaveBeenCalledOnce();
 		expect(organization.currentMemberRole.value).toBe('owner');
+	});
+
+	it('refreshes a roster a page is holding when the switch comes through the session', async () => {
+		vi.stubGlobal('useAuth', () => ({
+			user: ref({ id: 'u-owner' }),
+			refetch: vi.fn(async () => null),
+		}));
+		const { useOrganization } = await import('../useOrganization');
+		const { useOrganizationSession } = await import('../useOrganizationSession');
+		const organization = useOrganization();
+		await organization.fetchMembers({ force: true });
+		listMembers.mockClear();
+
+		// Re-selecting the active organization changes nothing the members
+		// watcher sees, and the lists are inside their cache TTL: only the
+		// forced refresh that `setActive` awaits loads them.
+		await useOrganizationSession().setActive('org-1');
+
+		expect(listMembers).toHaveBeenCalledWith({ query: { organizationId: 'org-1' } });
+	});
+
+	it("keeps the planner's refusal as the cause of the translated transfer error", async () => {
+		vi.stubGlobal('useAuth', () => ({
+			user: ref({ id: 'u-admin' }),
+			refetch: vi.fn(async () => null),
+		}));
+		const { useOrganization } = await import('../useOrganization');
+		const organization = useOrganization();
+		await organization.fetchMembers({ force: true });
+
+		const failure = await organization.transferOwnership('m-owner').then(
+			() => null,
+			(err: unknown) => err as Error
+		);
+		expect(failure?.message).toBe('shared.useOrganization.errors.notCurrentOwner');
+		expect(failure?.cause).toBeInstanceOf(Error);
+		expect(failure?.cause).toMatchObject({
+			message: 'shared.useOrganization.errors.notCurrentOwner',
+		});
+	});
+
+	it('loads no roster on a switch when no page asked for one', async () => {
+		vi.stubGlobal('useAuth', () => ({
+			user: ref({ id: 'u-owner' }),
+			refetch: vi.fn(async () => null),
+		}));
+		const { useOrganizationSession } = await import('../useOrganizationSession');
+		const { useOrganization } = await import('../useOrganization');
+		useOrganization();
+
+		await useOrganizationSession().setActive('org-2');
+
+		expect(listMembers).not.toHaveBeenCalled();
 	});
 });

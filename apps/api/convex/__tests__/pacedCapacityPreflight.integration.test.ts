@@ -33,9 +33,10 @@ import {
 	type TestRunner,
 } from './preflightFixtures';
 import type { StoredAudience } from '../campaigns/audience';
+import type * as SessionOrganizationModule from '../lib/sessionOrganization';
 
 vi.mock('../lib/sessionOrganization', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../lib/sessionOrganization')>();
+	const actual = await importOriginal<typeof SessionOrganizationModule>();
 	return {
 		...actual,
 		getSingletonOrganizationId: vi.fn().mockResolvedValue('org_paced_preflight'),
@@ -51,7 +52,7 @@ useMtaPreflightEnv();
 /**
  * A retreated dial on every campaign cell — the half that reaches production.
  *
- * Iterates the WHOLE taxonomy (D8), not a copy of it: a sixth destination
+ * Iterates the WHOLE taxonomy, not a copy of it: a sixth destination
  * provider has to be seeded and asserted here too, rather than leaving its
  * preflight path silently unexercised while the suite stays green.
  */
@@ -139,7 +140,7 @@ describe('the binding capacity pre-flight reads the pace dial', () => {
 		);
 	});
 
-	it('an UNDIALED deployment gets exactly the shipped verdict (D2)', async () => {
+	it('an UNDIALED deployment gets exactly the shipped verdict', async () => {
 		const t = convexTest(schema, modules);
 		await seedWarmingState(t);
 		const audience = await seedTopicAudience(t);

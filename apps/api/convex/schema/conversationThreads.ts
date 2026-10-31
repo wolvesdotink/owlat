@@ -2,6 +2,7 @@ import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
 import { teamReplyAttachmentsValidator } from '../lib/validators/teamReplyAttachment';
 import { conversationThreadSlaFields } from '../lib/validators/inboxSla';
+import { conversationThreadAutoCloseFields } from '../lib/validators/inboxAutoClose';
 import { teamThreadPriorityValidator } from '../lib/validators/teamThreadPriority';
 
 /**
@@ -71,6 +72,8 @@ export const conversationThreadTables = {
 		replyAttachments: v.optional(teamReplyAttachmentsValidator), // the composer's, see validator
 		// Response targets (SLA) clock + reply metrics, see lib/validators/inboxSla.ts.
 		...conversationThreadSlaFields,
+		// Auto-close of quiet waiting threads, see lib/validators/inboxAutoClose.ts.
+		...conversationThreadAutoCloseFields,
 		createdAt: v.number(),
 	})
 		.index('by_status', ['status'])

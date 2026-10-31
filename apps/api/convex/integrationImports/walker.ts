@@ -15,7 +15,6 @@
  *     (`pageCommit.ts`), which writes the page's effects, its counts and the
  *     next hop (or the terminal status) in one fenced transaction.
  *   - `completeImport`, `getImportById` — terminal patch and hop-entry read.
- *     `updateImportProgress` is kept only for hops of the previous release.
  *   - `recovery.ts` re-issues a page whose hop was lost.
  *
  * The walker never branches on `provider`. Per-provider HTTP knowledge
@@ -28,16 +27,13 @@ import { internalAction, internalQuery } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
-import { requireOrgPermission } from '../lib/sessionOrganization';
+import { hasPermission, requirePermission } from '../lib/sessionOrganization';
 import { assertFeatureEnabled } from '../lib/featureFlags';
 import { throwInvalidInput, throwInvalidState, getOrThrow } from '../_utils/errors';
 import { providerFor } from './providers';
 import {
-	addSuppressionCounts,
 	integrationProviderConfigValidator,
 	RetryableProviderError,
-	ZERO_SUPPRESSION_COUNTS,
-	suppressionCountsValidator,
 	type FetchPageResult,
 	type IntegrationProviderConfig,
 	type IntegrationProviderKind,
@@ -111,8 +107,11 @@ export const startIntegrationImport = authedMutation({
 		handleDuplicates: duplicateHandlingValidator,
 		topicId: v.optional(v.id('topics')),
 	},
-	handler: async (ctx, args) => {
-		await requireOrgPermission(ctx, 'imports:manage', 'Only owners and admins can start imports');
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'imports:manage'),
+			'Only owners and admins can start imports'
+		);
 
 		// Per-provider feature flags — the Settings toggles must actually gate
 		// the import, not just exist.
@@ -175,8 +174,11 @@ export const cancelImport = authedMutation({
 	args: {
 		importId: v.id('integrationImports'),
 	},
-	handler: async (ctx, args) => {
-		await requireOrgPermission(ctx, 'imports:manage', 'Only owners and admins can cancel imports');
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'imports:manage'),
+			'Only owners and admins can cancel imports'
+		);
 		const importRecord = await getOrThrow(ctx, args.importId, 'Import');
 
 		if (importRecord.status !== 'running') {
@@ -192,11 +194,16 @@ export const cancelImport = authedMutation({
 /**
  * Returns the most-recent running import (when one exists) or otherwise
  * the most-recent completed/failed one. Drives the import progress modal
- * in the frontend.
+ * in the frontend. Owner/admin only, like starting and cancelling a run: the
+ * row carries the provider's error messages and the run's cursor.
  */
 export const getImportProgress = authedQuery({
 	args: {},
-	handler: async (ctx) => {
+	handler: async (ctx, _args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'imports:manage'),
+			'Only owners and admins can view imports'
+		);
 		const running = await ctx.db
 			.query('integrationImports')
 			.withIndex('by_status', (q) => q.eq('status', 'running'))
@@ -211,6 +218,51 @@ export const getImportProgress = authedQuery({
 });
 
 // ─── Internal action: page-by-page worker ───────────────────────────────────
+
+/** One page from the provider, or why the run must end. */
+type FetchedPage = { ok: true; result: FetchPageResult } | { ok: false; error: string };
+
+/**
+ * Open the sealed credential and fetch one page, retrying on
+ * `RetryableProviderError` up to MAX_RETRIES. Writes nothing: the caller
+ * commits the page, or ends the run with the returned error.
+ */
+async function fetchProviderPage(
+	config: IntegrationProviderConfig,
+	cursor: string
+): Promise<FetchedPage> {
+	const adapter = providerFor(config.provider);
+
+	// Unseal the provider credential in memory for this hop's outbound call
+	// only. The sealed config stays what the commit schedules the next hop
+	// with, so the plaintext key never re-enters scheduled args. A credential
+	// that no longer opens (the instance secret changed) can never succeed on a
+	// retry, so it ends the run with a reason instead of leaving it running
+	// with nothing behind it.
+	let liveConfig: IntegrationProviderConfig;
+	try {
+		liveConfig = await openConfigCredential(config);
+	} catch (err) {
+		return {
+			ok: false,
+			error: `Could not open the stored provider credential: ${err instanceof Error ? err.message : 'Unknown error'}`,
+		};
+	}
+
+	// `RetryableProviderError` → backoff + retry up to MAX_RETRIES. Any other
+	// thrown `Error` → fail the import.
+	for (let attempt = 0; ; attempt++) {
+		try {
+			return { ok: true, result: await adapter.fetchPage({ config: liveConfig, cursor }) };
+		} catch (err) {
+			if (err instanceof RetryableProviderError && attempt < MAX_RETRIES) {
+				await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+				continue;
+			}
+			return { ok: false, error: err instanceof Error ? err.message : 'Unknown error' };
+		}
+	}
+}
 
 /**
  * Process one page of an in-flight **Integration import**:
@@ -240,53 +292,18 @@ export const processIntegrationPage = internalAction({
 		});
 		if (!importRecord || !isCurrentPage(importRecord, identity)) return;
 
-		const failRun = (errorMessage: string) =>
-			ctx.runMutation(internal.integrationImports.walker.completeImport, {
+		const fetched = await fetchProviderPage(args.config, args.cursor);
+		if (!fetched.ok) {
+			await ctx.runMutation(internal.integrationImports.walker.completeImport, {
 				importId: args.importId,
 				status: 'failed',
-				errorMessage,
+				errorMessage: fetched.error,
 				...identity,
 			});
-
-		const adapter = providerFor(args.config.provider);
-
-		// Unseal the provider credential in memory for this hop's outbound call
-		// only. `args.config` stays sealed and is what the commit schedules the
-		// next hop with, so the plaintext key never re-enters scheduled args. A
-		// credential that no longer opens (the instance secret changed) can never
-		// succeed on a retry, so it ends the run with a reason instead of leaving
-		// it running with nothing behind it.
-		let liveConfig: IntegrationProviderConfig;
-		try {
-			liveConfig = await openConfigCredential(args.config);
-		} catch (err) {
-			await failRun(
-				`Could not open the stored provider credential: ${err instanceof Error ? err.message : 'Unknown error'}`
-			);
 			return;
 		}
 
-		// Retry loop. `RetryableProviderError` → backoff + retry up to
-		// MAX_RETRIES. Any other thrown `Error` → fail the import.
-		let result: FetchPageResult | null = null;
-		for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-			try {
-				result = await adapter.fetchPage({
-					config: liveConfig,
-					cursor: args.cursor,
-				});
-				break;
-			} catch (err) {
-				if (err instanceof RetryableProviderError && attempt < MAX_RETRIES) {
-					await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
-					continue;
-				}
-				await failRun(err instanceof Error ? err.message : 'Unknown error');
-				return;
-			}
-		}
-		if (!result) return;
-
+		const { result } = fetched;
 		await ctx.runMutation(internal.integrationImports.pageCommit.commitIntegrationPage, {
 			importId: args.importId,
 			...identity,
@@ -301,63 +318,6 @@ export const processIntegrationPage = internalAction({
 });
 
 // ─── Internal mutations / queries ───────────────────────────────────────────
-
-// ============== v0.6.5 compatibility shim — remove after release N+1 ==============
-
-/**
- * Patch per-page counter sums and the next opaque cursor, for a page hop of
- * the previous release that is still running when this one deploys (it calls
- * this after its own contact and suppression writes, before it schedules the
- * next hop). Nothing in this release calls it.
- *
- * It only touches a row that release started: a row with a page count belongs
- * to this release's commit, and counting a legacy hop into it as well would
- * count one page twice when the recovery sweep has already re-issued it.
- */
-export const updateImportProgress = internalMutation({
-	args: {
-		importId: v.id('integrationImports'),
-		imported: v.number(),
-		updated: v.number(),
-		skipped: v.number(),
-		failed: v.number(),
-		errors: v.array(v.string()),
-		totalEstimate: v.optional(v.number()),
-		suppressionCounts: v.optional(suppressionCountsValidator),
-		newCursor: v.string(),
-	},
-	handler: async (ctx, args) => {
-		const record = await ctx.db.get(args.importId);
-		if (!record) return;
-
-		// Don't advance counters/cursor on an import the user already cancelled
-		// (or that already reached a terminal state).
-		if (record.status !== 'running' || record.pagesCommitted !== undefined) return;
-
-		const mergedErrors = [...record.errors, ...args.errors].slice(0, 20);
-
-		await ctx.db.patch(args.importId, {
-			imported: record.imported + args.imported,
-			updated: record.updated + args.updated,
-			skipped: record.skipped + args.skipped,
-			failed: record.failed + args.failed,
-			errors: mergedErrors,
-			cursor: args.newCursor,
-			lastPageAt: Date.now(),
-			...(args.totalEstimate !== undefined ? { totalEstimate: args.totalEstimate } : {}),
-			...(args.suppressionCounts
-				? {
-						suppressionCounts: addSuppressionCounts(
-							record.suppressionCounts ?? ZERO_SUPPRESSION_COUNTS,
-							args.suppressionCounts
-						),
-					}
-				: {}),
-		});
-	},
-});
-
-// ============== end of v0.6.5 compatibility shim ==============
 
 /**
  * Terminal patch — flips `status` from `'running'` to `'completed'` or

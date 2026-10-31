@@ -15,16 +15,9 @@
  *   3. Add one entry to `SENDING_DOMAIN_PROVIDERS` below.
  *
  * The compile-time `satisfies` check on the registry catches missing methods.
- *
- * WHAT THAT ONE FOLDER DOES NOT YET COVER. Both relay-identity provisioning
- * paths now walk this registry, so a registered kind is reached end to end for
- * identities. What the lifecycle still carries of its own is the RETURN-PATH
- * family — `setReturnPathHost` and its post-registration reconcile
- * (`domains/lifecycleReturnPath.ts`) branch on `providerType`, through
- * `domains/returnPathProviders.ts`, to decide which bundle of `mailFrom` records
- * to publish and which reflection action to schedule, so a newly registered kind
- * silently gets neither. That is a separate capability from the identity seams
- * below and it has no home on this interface yet.
+ * A kind that supports a custom return-path host also declares `returnPath`
+ * (`SendingDomainReturnPath` in `./returnPathTypes.ts`); without it the
+ * lifecycle refuses a custom host for that kind.
  */
 
 import {
@@ -32,6 +25,7 @@ import {
 	RELAY_DOMAIN_IDENTITY_PROVIDERS,
 } from '../../providers/domainIdentity';
 import type { ApiVerifiedSendProviderKind } from '../../lib/sendProviders/catalog';
+import type { OWN_ARM_TRANSPORT_KIND } from '../../lib/sendProviders/strategies/adaptive_mix';
 import type { RelayIdentityProviderModule } from './relayIdentityTypes';
 import type {
 	RelayProvingProviderModule,
@@ -96,14 +90,14 @@ export const OWN_SENDING_DOMAIN_PROVIDER_KIND = SENDING_DOMAIN_PROVIDERS.mta.kin
  * and the fallback refuses to relay it, and the only symptom is a runtime
  * refusal on a real send.
  *
- * A `typeof import(...)` in type position, so nothing at runtime imports the
- * strategy barrel from the domain-provider registry — the constraint is paid
- * for entirely at build time. Asserted in BOTH directions: each literal type
- * must be assignable to the other, so widening either declaration fails here
- * too. Its runtime twin is one line in `./__tests__/registry.test.ts`.
+ * The constant comes in through an `import type`, which is erased, so nothing
+ * at runtime imports the strategy barrel from the domain-provider registry —
+ * the constraint is paid for entirely at build time. Asserted in BOTH
+ * directions: each literal type must be assignable to the other, so widening
+ * either declaration fails here too. Its runtime twin is one line in
+ * `./__tests__/registry.test.ts`.
  */
-type OwnArmTransportKind =
-	typeof import('../../lib/sendProviders/strategies/adaptive_mix').OWN_ARM_TRANSPORT_KIND;
+type OwnArmTransportKind = typeof OWN_ARM_TRANSPORT_KIND;
 type AssertOwnKindsAgree<
 	_A extends OwnArmTransportKind,
 	_B extends OwnSendingDomainProviderKind,

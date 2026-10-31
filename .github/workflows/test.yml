@@ -241,7 +241,34 @@ jobs:
           path: apps/web/coverage/
           retention-days: 14
 
-  # THE STANDALONE MATRIX (deliverability plan D2/D3). The ramp controller has two
+  # The real-browser component tests (apps/web/vitest.browser.config.ts): what
+  # happy-dom cannot show, such as a virtual list under real scrolling, a
+  # modal's native Tab trap, or a picker placed from the caret's real box. Kept
+  # out of the coverage shards because it needs Chrome, and selected whenever
+  # the web suite is. A run takes well under a minute once Chrome is installed.
+  test-web-browser:
+    name: Test web (browser)
+    needs: detect
+    if: needs.detect.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: ./.github/actions/setup-bun
+      # The project launches Playwright's `chrome` channel (the perf scenarios'
+      # browser too), installed explicitly so the version is the current stable
+      # release rather than whatever the runner image ships.
+      - name: Install Google Chrome
+        timeout-minutes: 10
+        run: cd apps/web && bunx playwright install --with-deps chrome
+      - name: Run the browser tests
+        timeout-minutes: 10
+        run: bun run --cwd apps/web test:browser
+
+  # THE STANDALONE MATRIX. The ramp controller has two
   # gate implementations behind one interface: the concurrent reference-arm one,
   # and the trailing-baseline one a deployment with zero third-party accounts
   # runs. A deployment with no ESP is a SUPPORTED CONFIGURATION, so the whole gate
@@ -333,6 +360,11 @@ jobs:
           # metadata).
           STORED_BLOCK_CORPUS_PUSH_BEFORE: ${{ github.event.before }}
           STORED_BLOCK_CORPUS_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          # The gates that diff a pull request against its target branch
+          # (format, comment-policy, stored-block-corpus) compare with this
+          # commit, not origin/<base>, so a push to the target branch while the
+          # job runs cannot change their base. Empty on other events.
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
 
   typecheck:
     name: Typecheck
@@ -402,10 +434,8 @@ jobs:
         with:
           bun-version-file: package.json
 
-      # The same copy also feeds the test-code check: the server's traced
-      # package.json and the client manifest must name no test package, test
-      # route or vitest module (#1172).
-      - name: Check the web entry bundle budget and test code
+      - name: Copy the web build out of the image
+        id: web-output
         if: matrix.name == 'web'
         run: |
           set -euo pipefail
@@ -417,16 +447,91 @@ jobs:
           docker cp "$cid:/app/server/chunks/virtual/precomputed.mjs" "$out/server/chunks/virtual/"
           docker cp "$cid:/app/server/package.json" "$out/server/"
           docker cp "$cid:/app/public/_nuxt" "$out/public/"
-          bun scripts/check-bundle-budget.ts "$out"
-          bun scripts/check-web-build-test-code.ts "$out"
 
-      # Report-only (plan item OW-076): what each page and each lazily loaded
-      # feature adds on top of the entry closure, read from the same copy. There
-      # is no budget yet, so a change in these numbers never fails the job.
-      - name: Report web route and deferred-feature closures
+      # The same copy also feeds the test-code check: the server's traced
+      # package.json and the client manifest must name no test package, test
+      # route or vitest module.
+      - name: Check the web entry bundle budget and test code
         if: matrix.name == 'web'
-        continue-on-error: true
+        run: |
+          set -euo pipefail
+          bun scripts/check-bundle-budget.ts "$RUNNER_TEMP/web-output"
+          bun scripts/check-web-build-test-code.ts "$RUNNER_TEMP/web-output"
+
+      # What each page and each lazily loaded feature adds on top of the entry
+      # closure, read from the same copy and checked against
+      # scripts/bundle-closure-budgets.txt. Blocking: a closure over its
+      # budget, without a budget line, or a line for a closure that is gone
+      # fails the job.
+      - name: Report web route and deferred-feature closures
+        # This and the steps below also run when the entry budget check
+        # failed, which is when the numbers matter most.
+        if: matrix.name == 'web' && !cancelled() && steps.web-output.outcome == 'success'
         run: bun scripts/report-bundle-closures.ts "$RUNNER_TEMP/web-output"
+
+      # The same report as JSON, kept as an artifact named by the commit, so a
+      # later pull request can compare against its exact base commit. The
+      # toolchain id names the image recipe the build ran in.
+      # This step, Keep and Compare stay continue-on-error: they only feed and
+      # read the kept artifacts, so they depend on the artifact service and on
+      # the base commit's report still existing (30-day retention), which no
+      # change in a pull request can fix. The budgets are the blocking checks.
+      - name: Record the web bundle report
+        if: matrix.name == 'web' && !cancelled() && steps.web-output.outcome == 'success'
+        continue-on-error: true
+        env:
+          BUNDLE_REPORT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          BUNDLE_REPORT_TOOLCHAIN="bun-$(bun --version)+web-dockerfile-$(sha256sum apps/web/Dockerfile | cut -c1-12)"
+          export BUNDLE_REPORT_TOOLCHAIN
+          mkdir -p "$RUNNER_TEMP/web-bundle"
+          bun scripts/report-bundle-closures.ts "$RUNNER_TEMP/web-output" --json > "$RUNNER_TEMP/web-bundle/report.json"
+
+      # Non-blocking: an artifact upload can fail for reasons outside the change.
+      - name: Keep the web bundle report
+        if: matrix.name == 'web' && !cancelled() && steps.web-output.outcome == 'success'
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: web-bundle-${{ github.sha }}
+          path: ${{ runner.temp }}/web-bundle/report.json
+          if-no-files-found: ignore
+          overwrite: true
+          retention-days: 30
+
+      # Delta and headroom against the base commit (a pull request's base, or
+      # the previous tip for a push), in the job summary. Only the base
+      # commit's own kept report is compared; without one the summary says so
+      # and gives no delta. Non-blocking for the artifact reasons above.
+      - name: Compare the web entry bundle with the base commit
+        if: matrix.name == 'web' && !cancelled() && steps.web-output.outcome == 'success'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          set -uo pipefail
+          report="$RUNNER_TEMP/web-bundle/report.json"
+          base_dir="$RUNNER_TEMP/web-bundle-base"
+          reason=""
+          if [ -z "$BASE_SHA" ] || [ "$BASE_SHA" = "0000000000000000000000000000000000000000" ]; then
+            reason="This run has no base commit to compare with."
+          else
+            id=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=web-bundle-$BASE_SHA&per_page=20" \
+              --jq '[.artifacts[] | select(.expired == false and .workflow_run.head_sha == env.BASE_SHA)][0].id // empty' || true)
+            if [ -z "$id" ]; then
+              reason="No report was kept for the base commit: its run may still be in progress, may have failed before the report, or the report expired."
+            elif ! { gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$id/zip" > "$RUNNER_TEMP/web-bundle-base.zip" \
+              && unzip -q -o "$RUNNER_TEMP/web-bundle-base.zip" -d "$base_dir"; }; then
+              reason="The base commit's report could not be downloaded."
+            fi
+          fi
+          if [ -n "$reason" ]; then
+            bun scripts/report-bundle-delta.ts "$report" --base-sha "$BASE_SHA" --unavailable "$reason"
+          else
+            bun scripts/report-bundle-delta.ts "$report" "$base_dir/report.json" --base-sha "$BASE_SHA"
+          fi
 
       - name: Smoke-test packaged Node runtime
         if: matrix.runtimeSmoke == true
@@ -522,6 +627,7 @@ jobs:
         test-api-merge,
         test-web,
         test-web-merge,
+        test-web-browser,
         ramp-gate-matrix,
         lint,
         typecheck,

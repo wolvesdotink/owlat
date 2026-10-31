@@ -29,7 +29,12 @@
  * row for one composition), the page says so instead.
  */
 import type { Id } from '@owlat/api/dataModel';
-import type { MirrorFieldName, MirrorFields } from '~/utils/postboxDraftMirror';
+import {
+	copyMirrorFields,
+	plainMirrorFields,
+	type MirrorFieldName,
+	type MirrorFields,
+} from '~/utils/postboxDraftMirror';
 import type { ComposerSeed } from './usePostboxCompose';
 
 /** A composer seed plus, on a plain reply, the extras Reply-All would add. */
@@ -49,6 +54,19 @@ export interface RecoverySource {
 	/** The mount that parked it (its own later leaves replace it). */
 	mountId: string;
 	parkedAt: number;
+}
+
+/** A plain copy of a recovery source (session state is reactive; IndexedDB cannot clone a proxy). */
+export function copyRecoverySource(source: RecoverySource): RecoverySource {
+	return {
+		id: source.id,
+		fields: copyMirrorFields(source.fields),
+		present: [...source.present],
+		base: plainMirrorFields(source.base),
+		rowless: source.rowless,
+		mountId: source.mountId,
+		parkedAt: source.parkedAt,
+	};
 }
 
 export interface ComposeRequest {
@@ -72,16 +90,6 @@ const COMPOSE_PATH = '/dashboard/compose';
 const STORAGE_PREFIX = 'owlat:compose-request:';
 /** As long as the server keeps a request nonce bound to its draft. */
 export const COMPOSE_REQUEST_TTL_MS = 14 * 24 * 60 * 60 * 1000;
-
-/**
- * The compose page's instance key: one per compose request (`?c=`), so a new
- * open remounts the editor while the page's own URL rewrite, which keeps `c`,
- * does not. Lives here because `definePageMeta` is hoisted out of the page.
- */
-export function composePageKey(rawRequestKey: unknown): string {
-	const value = Array.isArray(rawRequestKey) ? rawRequestKey[0] : rawRequestKey;
-	return `compose:${typeof value === 'string' ? value : ''}`;
-}
 
 /** A colon-free random id (request keys, nonces, mounts, sources). */
 export function composeRandomId(): string {

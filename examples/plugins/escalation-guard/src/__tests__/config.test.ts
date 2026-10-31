@@ -8,8 +8,9 @@ describe('assertPlainObject', () => {
 	});
 
 	it('rejects everything that is not a plain object, with the caller message', () => {
-		class Config {}
-		for (const value of [null, undefined, 1, 'x', true, [], new Config(), new Date()]) {
+		// An object whose prototype is neither Object.prototype nor null.
+		const instance: object = Object.create({ kind: 'config' });
+		for (const value of [null, undefined, 1, 'x', true, [], instance, new Date()]) {
 			expect(() => assertPlainObject(value, 'bad config'), String(value)).toThrow(
 				EscalationConfigError
 			);

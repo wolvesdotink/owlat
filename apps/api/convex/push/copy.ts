@@ -24,6 +24,18 @@ export interface PushPayload {
 	tag: string;
 	/** In-app path the click opens or focuses. */
 	url: string;
+	/**
+	 * Buttons on the notification, each opening its own in-app path. Where the
+	 * platform shows no buttons, a click still opens `url`.
+	 */
+	actions?: PushAction[];
+}
+
+export interface PushAction {
+	/** Stable id the service worker hands back on click. */
+	action: string;
+	title: string;
+	url: string;
 }
 
 interface Copy {

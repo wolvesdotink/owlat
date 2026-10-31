@@ -1,14 +1,14 @@
 /**
- * Response plans (SPEC §6): the store's reads and writes, shared by the public
+ * Response plans: the store's reads and writes, shared by the public
  * functions (`responsePlan.ts`), the drafters' internal ones
  * (`responsePlanDraft.ts`) and the gate (`planGate.ts`). No Convex functions.
  *
- * Revision binding (review D1): a plan row carries `planRevision`, bumped by
+ * Revision binding: a plan row carries `planRevision`, bumped by
  * every stance write. A coverage result is stored with the plan revision it
  * was computed for (`checkedPlanRevision`), the draft hash, the thread and
  * item revisions and the attachment-set hash, and only while the row's
- * revision is still the one the check read (compare-and-set). No silent caps
- * (D2): every relevant item up to a generous bound is loaded; past it the plan
+ * revision is still the one the check read (compare-and-set). No silent caps:
+ * every relevant item up to a generous bound is loaded; past it the plan
  * is marked overflowing, and an overflowing check is incomplete.
  *
  * Item text is read unsealed for the prompt; claims and promises are sealed

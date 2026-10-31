@@ -137,7 +137,7 @@ describe('backup.sh → restore.sh carries the CLI feature flags', () => {
 		const rewritten = await readFile(join(install.dir, 'docker-compose.override.yml'), 'utf8');
 		expect(overrideProfiles(rewritten)).toEqual(SOURCE_PROFILES);
 		expect(overrideProfiles(rewritten)).not.toContain('clamav');
-	}, 30_000);
+	});
 });
 
 describe('restore.sh over an existing install', () => {
@@ -202,8 +202,8 @@ describe('restore.sh over an existing install', () => {
 		expect(result.out).toContain(SYNC_STEP);
 		const names = await readdir(install.dir);
 		expect(names).not.toContain(MIRROR);
-		const kept = names.filter((n) => n.startsWith(`${MIRROR}.before-restore-`));
-		await expect(readFile(join(install.dir, kept[0] ?? ''), 'utf8')).resolves.toBe(CURRENT_FLAGS);
+		const kept = names.find((n) => n.startsWith(`${MIRROR}.before-restore-`));
+		await expect(readFile(join(install.dir, kept ?? ''), 'utf8')).resolves.toBe(CURRENT_FLAGS);
 	});
 
 	it('warns on a fresh host when the archive predates the mirror', async () => {

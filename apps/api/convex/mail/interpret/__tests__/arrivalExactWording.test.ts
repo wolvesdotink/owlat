@@ -1,5 +1,5 @@
 /**
- * Read on arrival, #1384: payment and legal mail is never buried in the
+ * Read on arrival: payment and legal mail is never buried in the
  * digest or updates. An exact-wording candidate (changed bank details, a
  * legal notice, an invoice with payment details) is read in full when the
  * budget and the owner limit allow, and placed in Today either way, whatever
@@ -29,7 +29,8 @@ import { rateLimiter } from '../../../lib/rateLimiter';
 import { senderKeyOf } from '../../senders/profiles';
 import { attachThreadState } from '../../mailbox/rowThreadState';
 import { freshTextOf } from '../../arrival/scopedInput';
-import { scopeForInterpretation, segmentScoped } from '../scope';
+import { segmentScoped } from '../scope';
+import { scopeForInterpretation } from '../scopeLoad';
 import { sourceVersionOf } from '../sourceVersion';
 import { loadBriefRow } from '../briefRow';
 

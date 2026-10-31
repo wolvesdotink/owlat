@@ -40,7 +40,7 @@ const resolvedFlags = computed<Record<string, boolean>>(
 );
 
 // Enabling `mail.external` here changes the docker-profile set (the mail-sync
-// worker), so this card shares the features page's out-of-sync banner (D4).
+// worker), so this card shares the features page's out-of-sync banner.
 const { trackFlagChange } = useProfileSync();
 
 const { run: updateSettings, isLoading: isSavingSettings } = useBackendOperation(
@@ -143,7 +143,7 @@ async function confirmAndEnable() {
 		</div>
 
 		<!-- Enabling the import capability changes the docker-profile set, so
-		     the shared out-of-sync banner surfaces here too (D4). -->
+		     the shared out-of-sync banner surfaces here too. -->
 		<ProfileSyncBanner :flags="resolvedFlags" class="mt-4" />
 
 		<UiConfirmationDialog

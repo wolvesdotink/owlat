@@ -14,6 +14,7 @@
 
 import { resolve } from 'node:path';
 import { writeFile } from 'node:fs/promises';
+import { v } from 'convex/values';
 import {
 	getActiveProfiles,
 	isDeliveryProviderKind,
@@ -37,14 +38,16 @@ import {
 	selectRuntimeEnvVars,
 } from '@owlat/shared/convexRuntimeEnv';
 import { preflightMtaIdentities } from '../../utils/mtaIdentityPreflight';
+import { readJsonBody } from '../../utils/jsonBody';
 
-interface ApplyBody {
-	flags: FeatureFlagState;
-	env: Record<string, string>;
-	admin: { email: string; name: string; password: string };
+const applyBody = v.object({
+	flags: v.record(v.string(), v.boolean()),
+	env: v.optional(v.record(v.string(), v.string())),
+	// Email syntax and password length are checked below, with the wizard's wording.
+	admin: v.object({ email: v.string(), name: v.string(), password: v.string() }),
 	/** "Moving from another platform?" — persisted to instanceSettings.isMigrationMode. */
-	isMigrationMode?: boolean;
-}
+	isMigrationMode: v.optional(v.boolean()),
+});
 
 /**
  * A file write after provisioning that failed: which file, and why. The wizard
@@ -101,15 +104,12 @@ export default defineEventHandler(
 		// and rewrite .env. Missing/wrong token -> 401.
 		requireSetupToken(event);
 
-		const body = await readBody<ApplyBody>(event);
-		if (!body?.flags || !body?.admin?.email) {
-			throw createError({ statusCode: 400, message: 'flags, env, and admin are required.' });
-		}
+		const body = await readJsonBody(event, applyBody);
 
 		if (!/^.+@.+\..+$/.test(body.admin.email)) {
 			return { ok: false, message: 'Invalid admin email.' };
 		}
-		if (!meetsMinPasswordLength(body.admin.password ?? '')) {
+		if (!meetsMinPasswordLength(body.admin.password)) {
 			return {
 				ok: false,
 				message: `Admin password must be at least ${MIN_PASSWORD_LENGTH} characters.`,
@@ -121,10 +121,7 @@ export default defineEventHandler(
 		// (e.g. DEFAULT_FROM_NAME) would be reconstructed on the next read as a
 		// separate, attacker-controlled env line (e.g. an injected INSTANCE_SECRET).
 		for (const [key, value] of Object.entries(body.env ?? {})) {
-			if (typeof value !== 'string') {
-				return { ok: false, message: `Env value for ${key} must be a string.` };
-			}
-			if (/[\r\n\0]/.test(value)) {
+			if (value.includes('\r') || value.includes('\n') || value.includes('\0')) {
 				return {
 					ok: false,
 					message: `Env value for ${key} must not contain control characters (newline, carriage return, or NUL).`,
@@ -137,7 +134,9 @@ export default defineEventHandler(
 		// are moving from another platform, align the plumbing by enabling it before
 		// the cascade resolves. A fresh-start install leaves the flag untouched.
 		const isMigrationMode = body.isMigrationMode === true;
-		const flags = isMigrationMode ? { ...body.flags, 'mail.external': true } : body.flags;
+		const flags: FeatureFlagState = isMigrationMode
+			? { ...body.flags, 'mail.external': true }
+			: body.flags;
 
 		// Resolve dependency cascade so we never persist an inconsistent flag set.
 		const resolved = resolveFlags(flags);

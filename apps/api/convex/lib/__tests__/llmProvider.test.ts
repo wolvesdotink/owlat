@@ -1,3 +1,4 @@
+import { setImmediate as nextTurn } from 'node:timers/promises';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { ActionCtx } from '../../_generated/server';
 import type { Doc } from '../../_generated/dataModel';
@@ -434,20 +435,21 @@ describe('llmProvider', () => {
 
 		it('resolveAiConfig decrypts both keys, in parallel', async () => {
 			const { resolveAiConfig } = await import('../llmProvider');
-			let inFlight = 0;
-			let maxInFlight = 0;
 			const { ctx, runAction } = makeCtx(twoKeyRow());
-			runAction.mockImplementation(async () => {
-				inFlight += 1;
-				maxInFlight = Math.max(maxInFlight, inFlight);
-				await new Promise((resolve) => setTimeout(resolve, 5));
-				inFlight -= 1;
-				return 'decrypted-key';
-			});
-			const cfg = await resolveAiConfig(ctx);
+			// Every decrypt is held until the test answers it.
+			const held: Array<() => void> = [];
+			runAction.mockImplementation(
+				() => new Promise<string>((resolve) => held.push(() => resolve('decrypted-key')))
+			);
+			const resolving = resolveAiConfig(ctx);
+			// Everything before the decrypts is answered by stubs, so one event-loop
+			// turn lets every decrypt the code starts without waiting start.
+			await nextTurn();
+			expect(decrypted(runAction).sort()).toEqual(['emb-ct', 'lang-ct']);
+			for (const answer of held) answer();
+			const cfg = await resolving;
 			expect(cfg.language.clientConfig.apiKey).toBe('decrypted-key');
 			expect(cfg.embedding.clientConfig.apiKey).toBe('decrypted-key');
-			expect(maxInFlight).toBe(2);
 		});
 
 		it('keeps decrypted keys for five minutes while the row is unchanged', async () => {

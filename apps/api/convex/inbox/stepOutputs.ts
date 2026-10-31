@@ -11,7 +11,7 @@
  * change NO routing on their own. FAIL-SOFT: callers wrap these so a persistence
  * failure degrades to "no metadata shown" and never wedges the walker.
  *
- * The two D13 writers at the end (`recordSecurityScan`, `recordLateGuard`) are
+ * The two guard-marker writers at the end (`recordSecurityScan`, `recordLateGuard`) are
  * the exception to "fail-soft": they store the `guardNotRun` marker and its
  * clearing, which later autonomous paths read, so their callers let a failure
  * surface.
@@ -140,7 +140,7 @@ export const recordDraftOutput = internalMutation({
 		// Advisory attachment suggestion (see lib/validators/attachment.ts). Absent unless
 		// the inbound asked for a document and a contact-scoped file matched.
 		attachmentSuggestions: v.optional(attachmentSuggestionsValidator),
-		// The draft was written cheap-first (D2): never auto-sent.
+		// The draft was written cheap-first: never auto-sent.
 		isCheapFirstDraft: v.optional(v.boolean()),
 		// Standing consent to gaps (asking is turned off). The owner's own
 		// "Draft with what I have" is read from the stored clarification.
@@ -248,7 +248,7 @@ export const recordSecurityScan = internalMutation({
 });
 
 /**
- * D13: record a model guard that ran late, the first time a generative
+ * Record a model guard that ran late, the first time a generative
  * consumer reached a message whose scan skipped it (agent/steps/security_scan/
  * guard.ts `runGuardBeforeAutonomy`), and answer with the message's
  * AUTHORITATIVE standing, which the caller acts on instead of its own verdict.
@@ -283,7 +283,7 @@ export const recordLateGuard = internalMutation({
 });
 
 /**
- * D13 and #1339: where a Team message stands before thread interpretation reads
+ * Guard placement: where a Team message stands before thread interpretation reads
  * it (agent/steps/security_scan/disposition.ts `guardStanding`). The message
  * rides along only when its guard still has to run, so the caller can run it.
  */

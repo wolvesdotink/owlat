@@ -87,7 +87,7 @@ export function composeCampaign(input: CampaignComposeInput): ComposerOutput {
 	}
 
 	// A seed shadow copy has no `emailSendId` (that is what keeps it out of
-	// every denominator, D18) but must still carry the tracking pixel and the
+	// every denominator) but must still carry the tracking pixel and the
 	// wrapped redirect links a subscriber's copy carries — those are exactly the
 	// features spam filters weigh, so a probe without them measures a different
 	// message. It therefore tracks under its OPAQUE PROBE ID, which the shipped

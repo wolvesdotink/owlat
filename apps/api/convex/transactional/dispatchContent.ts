@@ -8,6 +8,15 @@
 // merging. Kept in their own module so they can be unit-tested in isolation.
 // `dispatch.ts` re-exports them, so existing import paths stay stable.
 
+import { v } from 'convex/values';
+import { decodeJsonText } from '@owlat/worker-protocol/decodeJson';
+import { pickHtmlTranslation } from '../lib/emailJson';
+
+/** A template-side attachment as the template's `attachments` JSON stores it. */
+const templateAttachmentsValidator = v.array(
+	v.object({ filename: v.string(), contentType: v.optional(v.string()), url: v.string() })
+);
+
 export type AttachmentRef = {
 	filename: string;
 	contentType?: string;
@@ -93,7 +102,8 @@ export function resolveLanguage(
 /**
  * Pick `htmlContent` + `subject` for the resolved language from the
  * template's `htmlTranslations` JSON (or fall back to the default
- * top-level fields). Invalid JSON is treated as no translations.
+ * top-level fields). A blob or entry that does not decode is treated as no
+ * translation for the language.
  */
 export function selectContent(
 	language: string,
@@ -110,21 +120,13 @@ export function selectContent(
 		};
 	}
 
-	try {
-		const translations = JSON.parse(htmlTranslationsJson) as Record<
-			string,
-			{ htmlContent: string; subject: string }
-		>;
-		const picked = translations[language];
-		if (picked) {
-			return {
-				html: picked.htmlContent,
-				subject: picked.subject,
-				resolvedLanguage: language,
-			};
-		}
-	} catch {
-		// Invalid JSON in translations — fall through to the default content.
+	const picked = pickHtmlTranslation(htmlTranslationsJson, language);
+	if (picked.ok && picked.value) {
+		return {
+			html: picked.value.htmlContent,
+			subject: picked.value.subject,
+			resolvedLanguage: language,
+		};
 	}
 
 	return {
@@ -138,7 +140,8 @@ export function selectContent(
  * Merge template-side attachments (parsed from the template's `attachments`
  * JSON blob) with request-side attachments (already resolved by the HTTP
  * shell). Template attachments come first; request attachments are appended.
- * Invalid JSON on the template side is treated as no template attachments.
+ * Template-side JSON that is not a list of attachments is treated as no
+ * template attachments.
  */
 export function mergeAttachments(
 	templateAttachmentsJson: string | undefined,
@@ -147,19 +150,13 @@ export function mergeAttachments(
 	let templateAttachments: { filename: string; contentType?: string; url: string }[] = [];
 
 	if (templateAttachmentsJson) {
-		try {
-			const parsed = JSON.parse(templateAttachmentsJson) as {
-				filename: string;
-				contentType?: string;
-				url: string;
-			}[];
-			templateAttachments = parsed.map((a) => ({
+		const parsed = decodeJsonText(templateAttachmentsJson, templateAttachmentsValidator);
+		if (parsed.ok) {
+			templateAttachments = parsed.value.map((a) => ({
 				filename: a.filename,
 				contentType: a.contentType,
 				url: a.url,
 			}));
-		} catch {
-			// Invalid JSON — ignore template attachments.
 		}
 	}
 

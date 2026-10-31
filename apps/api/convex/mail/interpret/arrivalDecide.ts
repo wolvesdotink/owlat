@@ -1,5 +1,5 @@
 /**
- * Read on arrival (SPEC §2.2, §2.3, §2.6): the run's depth decision for a
+ * Read on arrival: the run's depth decision for a
  * Postbox arrival read, in one mutation once the run has scoped the message
  * (it brings the security-mail and exact-wording screens of the text).
  * Admission, the owner bucket and the category wait came first, before any
@@ -12,7 +12,7 @@
  *       a display-only read the background budget refuses counts too.
  *
  * The exact-wording screen is stored on the arrival record first, whatever
- * the depth (#1384): a candidate never reads as digest or updates. Admission
+ * the depth: a candidate never reads as digest or updates. Admission
  * lets a source its text-blind decision counts go on uncharged; when the
  * screen lifts it to a read here, the read takes its owner token here, and
  * over the owner limit it is counted instead (`arrivalAdmit.ts`).
@@ -23,7 +23,7 @@
  * of a full read is read in full again when eager demand reaches it (Sol r1
  * F2): this same source turning eager, or a full-read prerequisite
  * (`fullRead.ts`). With the preference off a display-only source was
- * deferred at dispatch (D10); one that reaches a run anyway keeps today's
+ * deferred at dispatch; one that reaches a run anyway keeps today's
  * full read.
  *
  * Every settlement here and in {@link settleArrivalCount} is bound to the
@@ -171,7 +171,7 @@ export async function arrivalInputs(
 	const thread = await ctx.db.get(message.threadId);
 	const profile = await senderProfileOf(ctx, message.mailboxId, message.fromAddress);
 	const record = await loadArrivalRecord(ctx, message._id);
-	// A thread override older than an exact-wording candidate does not count it (#1384).
+	// A thread override older than an exact-wording candidate does not count it.
 	const threadOverride =
 		thread?.placementOverride &&
 		doesThreadOverrideHold(
@@ -230,7 +230,7 @@ export const decideArrivalDepth = internalMutation({
 		) {
 			return { kind: 'sourceChanged' };
 		}
-		// The screen lands whatever the depth: open work is placed too (#1384).
+		// The screen lands whatever the depth: open work is placed too.
 		// A purge or scope conversion since the run's load writes none of it.
 		if (await isSettlementCurrent(ctx, message, args.deletionEpoch)) {
 			await noteExactWordingScreen(ctx, message._id, args.isExactWordingCandidate);
@@ -266,7 +266,7 @@ export const decideArrivalDepth = internalMutation({
 		let choice: ArrivalDepthChoice & { depth: Depth } = { ...first, depth: first.depth };
 		let degradedBy: DegradedBy | undefined;
 		// The owner bucket was taken at admission, unless admission's text-blind
-		// decision counted the source (#1384); the budget is display-only's own.
+		// decision counted the source; the budget is display-only's own.
 		if (choice.depth === 'full' || choice.depth === 'gist') {
 			if (!(await chargeOwnerRead(ctx, row, mailbox.userId))) {
 				choice = refusedCount({ key: ARRIVAL_ADMISSION_REASONS.ownerLimit });
@@ -302,7 +302,7 @@ export const decideArrivalDepth = internalMutation({
 
 /**
  * The exact-wording screen of a source admission counted over the owner limit
- * before it was scoped (`arrivalRun.screenCountedArrival`, #1384): stored on
+ * before it was scoped (`arrivalRun.screenCountedArrival`): stored on
  * its arrival record, so a candidate reads as `today`. The screen is a pure
  * function of the message's own scoped text, so it is written only when that
  * text is still the one screened (`sourceChanged`: the caller screens again)

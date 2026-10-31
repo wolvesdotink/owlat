@@ -11,16 +11,13 @@
  * Runs against the real request record (session state + sessionStorage); the
  * composer is a stub exposing what the page uses of it.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { defineComponent, nextTick, ref } from 'vue';
-import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
 
 import ComposePage from '../compose.vue';
-import {
-	composePageKey,
-	usePostboxComposeNav,
-	type ComposeSpec,
-} from '~/composables/postbox/usePostboxComposeNav';
+import { usePostboxComposeNav, type ComposeSpec } from '~/composables/postbox/usePostboxComposeNav';
+import { composePageKey } from '~/utils/composePageKey';
 import type { ParkableSnapshot } from '~/composables/postbox/usePostboxComposeRow';
 import { MIRROR_FIELD_NAMES, type MirrorFields } from '~/utils/postboxDraftMirror';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
@@ -76,9 +73,6 @@ const back = vi.fn();
 const navigate = vi.fn(async (..._args: unknown[]) => {});
 let states: Record<string, unknown>;
 const currentMailbox = ref<{ _id: string } | null>({ _id: 'mbx-1' });
-
-// A page left mounted keeps its window listeners (Esc, pagehide) for the next case.
-enableAutoUnmount(afterEach);
 
 beforeEach(() => {
 	query = {};

@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
-import { describe, it, expect, afterEach, vi } from 'vitest';
-import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
+import { describe, it, expect, vi } from 'vitest';
+import { flushPromises, mount } from '@vue/test-utils';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { diffEmails } from '@owlat/email-renderer';
@@ -22,15 +22,8 @@ const sourceFiles = (dir: string): string[] =>
 		return /\.(ts|vue)$/.test(name) ? [path] : [];
 	});
 
-let wrapper: VueWrapper | null = null;
-afterEach(() => {
-	wrapper?.unmount();
-	wrapper = null;
-	document.body.innerHTML = '';
-});
-
 const mountPreviewer = (props: Record<string, unknown> = {}) => {
-	wrapper = mount(EmailPreviewer, {
+	const wrapper = mount(EmailPreviewer, {
 		props: {
 			html: '<html><body><p>Hello</p></body></html>',
 			autoAnalyze: false,
@@ -64,7 +57,7 @@ describe('EmailPreviewer — lazily loaded panels', () => {
 
 	it('opens render options from the gear and keeps focus on it', async () => {
 		const w = mountPreviewer({ renderOptions: { baseWidth: 640 } });
-		const gear = w.find<HTMLButtonElement>('button[title="Render options"]');
+		const gear = w.find<HTMLButtonElement>('button[aria-label="Render options"]');
 		gear.element.focus();
 		await gear.trigger('click');
 		await settle();
@@ -89,7 +82,7 @@ describe('EmailPreviewer — lazily loaded panels', () => {
 			'<html><body><p>Hello</p></body></html>'
 		);
 		const w = mountPreviewer({ emailDiff: diff });
-		const button = w.find<HTMLButtonElement>('button[title="Compare changes"]');
+		const button = w.find<HTMLButtonElement>('button[aria-label="Compare changes"]');
 		button.element.focus();
 		await button.trigger('click');
 		await settle();

@@ -1,5 +1,5 @@
 /**
- * D1 — Per-domain VERP return-path host.
+ * Per-domain VERP return-path host.
  *
  * A sending domain may register its OWN bounce/return-path host at DKIM
  * registration time (`POST /dkim/{domain}/register` with `{ returnPathHost }`),
@@ -26,6 +26,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import Redis from 'ioredis-mock';
 import type RealRedis from 'ioredis';
+import type * as SmtpClientModule from '@owlat/smtp-client';
+import type * as MtaStsModule from '../mtaSts.js';
 
 const { connectMock, sendEnvelopeMock } = vi.hoisted(() => ({
 	connectMock: vi.fn(),
@@ -33,7 +35,7 @@ const { connectMock, sendEnvelopeMock } = vi.hoisted(() => ({
 }));
 
 vi.mock('@owlat/smtp-client', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('@owlat/smtp-client')>();
+	const actual = await importOriginal<typeof SmtpClientModule>();
 	return {
 		...actual,
 		SmtpConnection: { connect: connectMock },
@@ -67,7 +69,7 @@ vi.mock('../daneMxResolver.js', () => ({
 	resolveDaneMxDestinations: vi.fn().mockResolvedValue({ status: 'not-found' }),
 }));
 vi.mock('../mtaSts.js', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../mtaSts.js')>();
+	const actual = await importOriginal<typeof MtaStsModule>();
 	return {
 		...actual,
 		getStsTlsOptions: vi.fn().mockResolvedValue({
@@ -149,7 +151,7 @@ function createMockDsn(overrides: Partial<ParsedMessage> = {}): ParsedMessage {
 	} as ParsedMessage;
 }
 
-describe('D1 — per-domain VERP return-path host', () => {
+describe('per-domain VERP return-path host', () => {
 	let redis: RealRedis;
 
 	beforeEach(() => {
@@ -324,7 +326,7 @@ describe('D1 — per-domain VERP return-path host', () => {
 			});
 			expect(res.status).toBe(400);
 			const json = (await res.json()) as { error: string };
-			expect(json.error).toMatch(/JSON object/i);
+			expect(json.error).toBe('Invalid request body: $: expected object');
 
 			// Nothing was registered on the rejected request.
 			dkimStore.clearCache();
@@ -462,7 +464,7 @@ describe('D1 — per-domain VERP return-path host', () => {
 		});
 
 		it('accepts punycode / IDN TLDs (must not diverge from the shared validator)', () => {
-			// A host that passes the shared DNS-hostname validator (which D2 uses)
+			// A host that passes the shared DNS-hostname validator (which the Convex side uses)
 			// must not 400 here, so an alphabetic-only TLD rule is wrong.
 			expect(normalizeReturnPathHost('bounce.example.xn--p1ai')).toBe('bounce.example.xn--p1ai');
 			expect(normalizeReturnPathHost('mail.xn--80akhbyknj4f')).toBe('mail.xn--80akhbyknj4f');

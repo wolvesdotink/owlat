@@ -26,6 +26,8 @@ import {
 	postboxShareLinkStatusKey,
 	postboxShareLinkSummary,
 } from '~/utils/postboxShareLink';
+import { POSTBOX_PREFERENCE_DEFAULTS } from '~/utils/postboxPreferenceDefaults';
+import SettingsResetToDefault from '~/components/settings/ResetToDefault.vue';
 
 const { t } = useI18n();
 const localized = useLocalized();
@@ -33,7 +35,19 @@ const localized = useLocalized();
 const { currentMailbox } = usePostboxMailbox();
 const mailboxId = computed(() => currentMailbox.value?._id ?? null);
 const { shares, revoke, setScope, openOwnCopy, isSaving } = usePostboxAttachmentShares(mailboxId);
-const { shareLinkExpiryDays, setShareLinkExpiryDays } = usePostboxSettings();
+const {
+	shareLinkExpiryDays,
+	setShareLinkExpiryDays,
+	isSaving: isSavingSettings,
+	isLoading: isSettingsLoading,
+} = usePostboxSettings();
+
+// Hidden while the settings row loads: 14 days is then only the fallback.
+const expiryChanged = computed(
+	() =>
+		!isSettingsLoading.value &&
+		shareLinkExpiryDays.value !== POSTBOX_PREFERENCE_DEFAULTS.shareLinkExpiryDays
+);
 const { copy, isCopied } = useCopyToClipboard();
 
 type ShareRow = (typeof shares.value)[number];
@@ -105,21 +119,24 @@ async function confirmRevoke() {
 								: t('components.postbox.postboxSharedLinksSettings.copy')
 						}}
 					</UiButton>
-					<UiButton
+					<UiTooltip
 						v-if="row.publicUrl"
-						variant="secondary"
-						size="sm"
-						:disabled="isSaving"
-						:title="t('components.postbox.postboxSharedLinksSettings.limitTitle')"
-						:aria-label="
-							t('components.postbox.postboxSharedLinksSettings.limitAriaLabel', {
-								filename: row.filename,
-							})
-						"
-						@click="setScope(row._id as Id<'mailAttachmentShares'>, 'mailbox')"
+						:text="t('components.postbox.postboxSharedLinksSettings.limitTitle')"
 					>
-						{{ t('components.postbox.postboxSharedLinksSettings.limit') }}
-					</UiButton>
+						<UiButton
+							variant="secondary"
+							size="sm"
+							:disabled="isSaving"
+							:aria-label="
+								t('components.postbox.postboxSharedLinksSettings.limitAriaLabel', {
+									filename: row.filename,
+								})
+							"
+							@click="setScope(row._id as Id<'mailAttachmentShares'>, 'mailbox')"
+						>
+							{{ t('components.postbox.postboxSharedLinksSettings.limit') }}
+						</UiButton>
+					</UiTooltip>
 					<!-- The file survives a narrowing, so the owner keeps a way in even
 					     once the public URL is gone. -->
 					<UiButton
@@ -174,6 +191,13 @@ async function confirmRevoke() {
 			<span class="text-xs text-text-tertiary">
 				{{ t('components.postbox.postboxSharedLinksSettings.expiryHint') }}
 			</span>
+			<SettingsResetToDefault
+				class="ml-auto"
+				:changed="expiryChanged"
+				:label="t('components.settings.resetToDefault.names.shareLinkExpiry')"
+				:disabled="isSavingSettings"
+				@reset="setShareLinkExpiryDays(POSTBOX_PREFERENCE_DEFAULTS.shareLinkExpiryDays)"
+			/>
 		</footer>
 
 		<UiConfirmationDialog

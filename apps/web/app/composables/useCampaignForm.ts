@@ -1,4 +1,4 @@
-import { ref, computed, nextTick, type Ref } from 'vue';
+import { ref, computed, getCurrentScope, nextTick, onScopeDispose, watch, type Ref } from 'vue';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { SenderPickerHandle } from '~/utils/campaignSenderPicker';
@@ -24,6 +24,10 @@ export interface CampaignFormErrors {
  * test-email sending to the CampaignsTestEmailModal component. The recipients
  * come from useCampaignAudience and the From from the wizard's sender picker,
  * whose `validate()` guards every save (`senderPicker` is its template ref).
+ *
+ * Save draft stores the form's fields; the send-time choices (date, time,
+ * delivery) are stored only by a completed Schedule, so leaving keeps asking
+ * about them after a Save draft.
  */
 export function useCampaignForm(
 	campaignId: Ref<Id<'campaigns'>>,
@@ -177,6 +181,7 @@ export function useCampaignForm(
 	// Reuses the shared composable + dialog. `onSave` closes over `actions`
 	// (assigned below) and only runs after the user confirms "Save", by which
 	// point it exists; it throws on a failed save so the user stays on the page.
+	const { showToast } = useToast();
 	const {
 		showDialog: showUnsavedChangesDialog,
 		isSavingBeforeLeave,
@@ -188,13 +193,73 @@ export function useCampaignForm(
 	} = useUnsavedChanges({
 		onSave: async () => {
 			if (!(await actions.handleSave())) throw new Error('Save failed');
+			// The dialog stays open: say why, so Discard is a choice and not a guess.
+			if (scheduleChanged.value) {
+				showToast(t('shared.useCampaignForm.toasts.scheduleNotSaved'), 'warning');
+			}
 		},
 	});
 
-	// Clears the dirty flag after a successful save/schedule/send so the route
+	// Clears the dirty state after a successful save/schedule/send so the route
 	// guard doesn't prompt on the action's own navigation. Bound below once the
 	// dirty tracker exists.
 	let markCleanForm: () => void = () => {};
+
+	// ─── Tracked Fields ─────────────────────────────────────────────────
+
+	// What Save draft stores (and Send and Schedule save first).
+	const formSources = [
+		() => campaignName.value,
+		() => fromName.value,
+		() => fromEmail.value,
+		() => replyTo.value,
+		() => audienceType.value,
+		() => selectedTopicId.value,
+		() => selectedSegmentId.value,
+		() => selectedTemplateId.value,
+		() => campaignSubject.value,
+		() => archiveEnabled.value,
+		() => abTest.abTestEnabled.value,
+		() => abTest.abTestType.value,
+		() => abTest.abVariantBSubject.value,
+		() => abTest.abVariantBTemplateId.value,
+		() => abTest.abSplitPercentage.value,
+		() => abTest.abWinnerCriteria.value,
+		() => abTest.abTestDuration.value,
+	];
+	// The send-time choices, which only a completed Schedule stores. Bound
+	// below once the actions (which own them) exist.
+	let scheduleSources: (() => unknown)[] = [];
+	const serialize = (sources: (() => unknown)[]) => JSON.stringify(sources.map((read) => read()));
+	// The send-time choices as loaded, or as the last completed action left them.
+	const scheduleBaseline = ref<string | null>(null);
+	const scheduleChanged = computed(
+		() => scheduleBaseline.value !== null && serialize(scheduleSources) !== scheduleBaseline.value
+	);
+
+	// Send and Schedule act on what the server holds once their saves landed,
+	// while the form stays editable. What they act on is what the form showed
+	// when they began: this campaign, every field they save and, for
+	// Schedule, its send-time choices. Asked right before the final mutation.
+	let isMounted = true;
+	if (getCurrentScope()) {
+		onScopeDispose(() => {
+			isMounted = false;
+		});
+	}
+	const runFinal = (
+		kind: 'send' | 'schedule',
+		perform: (current: () => boolean) => Promise<boolean>
+	) => {
+		const target = () =>
+			JSON.stringify([
+				campaignId.value,
+				serialize(formSources),
+				kind === 'schedule' ? serialize(scheduleSources) : null,
+			]);
+		const began = target();
+		return perform(() => isMounted && target() === began);
+	};
 
 	// ─── Actions (delegated) ────────────────────────────────────────────
 
@@ -206,8 +271,20 @@ export function useCampaignForm(
 		isScheduled,
 		validateForm,
 		handleSaveFields,
-		onSaved: () => markCleanForm(),
+		final: runFinal,
+		onSaved: (scope) => {
+			markCleanForm();
+			// Save draft leaves the send-time choices as they were stored.
+			if (scope === 'all') scheduleBaseline.value = serialize(scheduleSources);
+		},
 	});
+	scheduleSources = [
+		() => actions.scheduledDate.value,
+		() => actions.scheduledTime.value,
+		() => actions.sendTiming.value.mode,
+		() => actions.sendTiming.value.windowHours,
+		() => actions.sendTiming.value.holdoutPercent,
+	];
 
 	// ─── Form Initialization + Dirty Tracking ───────────────────────────
 
@@ -230,36 +307,17 @@ export function useCampaignForm(
 
 			actions.initializeSchedule(campaign.scheduledAt, campaign);
 			abTest.initializeFromCampaign(campaign);
+			scheduleBaseline.value = serialize(scheduleSources);
 
 			isFormInitialized.value = true;
 		},
-		watchSources: [
-			() => campaignName.value,
-			() => fromName.value,
-			() => fromEmail.value,
-			() => replyTo.value,
-			() => audienceType.value,
-			() => selectedTopicId.value,
-			() => selectedSegmentId.value,
-			() => selectedTemplateId.value,
-			() => campaignSubject.value,
-			() => archiveEnabled.value,
-			() => actions.scheduledDate.value,
-			() => actions.scheduledTime.value,
-			() => actions.sendTiming.value.mode,
-			() => actions.sendTiming.value.windowHours,
-			() => actions.sendTiming.value.holdoutPercent,
-			() => abTest.abTestEnabled.value,
-			() => abTest.abTestType.value,
-			() => abTest.abVariantBSubject.value,
-			() => abTest.abVariantBTemplateId.value,
-			() => abTest.abSplitPercentage.value,
-			() => abTest.abWinnerCriteria.value,
-			() => abTest.abTestDuration.value,
-		],
-		onDirtyChange: setHasChanges,
+		watchSources: formSources,
 	});
 	markCleanForm = markClean;
+	// Leaving asks while the fields or the send-time choices would be lost.
+	watch([hasChanges, scheduleChanged], ([fields, schedule]) => setHasChanges(fields || schedule), {
+		immediate: true,
+	});
 
 	// The sender picker settles the loaded From onto its curated row once, and
 	// may write that sender's current name and address (or the default sender
@@ -295,7 +353,7 @@ export function useCampaignForm(
 
 	// The language codes the template picker offers. A code outside the catalog
 	// keeps its uppercased self, exactly as before.
-	const LANGUAGE_CODES = [
+	const LANGUAGE_CODES: ReadonlySet<string> = new Set([
 		'en',
 		'de',
 		'fr',
@@ -316,12 +374,10 @@ export function useCampaignForm(
 		'no',
 		'fi',
 		'cs',
-	];
+	]);
 
 	const getLanguageLabel = (code: string): string =>
-		LANGUAGE_CODES.includes(code)
-			? t(`shared.useCampaignForm.languages.${code}`)
-			: code.toUpperCase();
+		LANGUAGE_CODES.has(code) ? t(`shared.useCampaignForm.languages.${code}`) : code.toUpperCase();
 
 	return {
 		// Data

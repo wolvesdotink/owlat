@@ -9,7 +9,7 @@
  * That `blob:` preview dies with the tab, so the draft stores the image without
  * a `src` (`serializeComposerBody`) and `fillSources()` puts one back after
  * every write of the body: this session's preview, else the URL of the row's
- * inline part (`sources`, #1285), which is what a reopened draft shows. An
+ * inline part (`sources`), which is what a reopened draft shows. An
  * image with neither has no src at all (a dead `blob:` from an older body
  * included) until its URL arrives.
  *
@@ -125,13 +125,15 @@ export function usePostboxInlineImages(opts: InlineImagesOptions) {
 		const el = opts.editorRef.value;
 		const present = new Set<string>();
 		if (el) {
-			el.querySelectorAll('img[data-inline-cid]').forEach((node) => {
+			for (const node of el.querySelectorAll('img[data-inline-cid]')) {
 				const cid = node.getAttribute('data-inline-cid');
 				if (cid) present.add(cid);
-			});
+			}
 		}
 		const onRemove = opts.onRemoveEmbeddedImage();
-		for (const cid of [...knownInlineCids]) {
+		// Deleting the entry being visited is safe in Set iteration, and
+		// `onRemove` only drops a composer part; it never adds a cid here.
+		for (const cid of knownInlineCids) {
 			if (!present.has(cid)) {
 				knownInlineCids.delete(cid);
 				onRemove?.(cid);

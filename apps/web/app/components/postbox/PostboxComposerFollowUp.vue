@@ -40,17 +40,18 @@ const title = computed(() =>
 </script>
 
 <template>
-	<UiButton
-		variant="ghost"
-		type="button"
-		:class="{ 'text-brand': remindAt }"
-		:title="title"
-		:aria-label="title"
-		:aria-pressed="!!remindAt"
-		:disabled="disabled"
-		@click="toggle"
-	>
-		<Icon name="lucide:alarm-clock" class="w-4 h-4" />
-		<Icon v-if="remindAt" name="lucide:check" class="w-3 h-3 -ml-1" />
-	</UiButton>
+	<UiTooltip :text="title">
+		<UiButton
+			variant="ghost"
+			type="button"
+			:class="{ 'text-brand': remindAt }"
+			:aria-label="title"
+			:aria-pressed="!!remindAt"
+			:disabled="disabled"
+			@click="toggle"
+		>
+			<Icon name="lucide:alarm-clock" class="w-4 h-4" />
+			<Icon v-if="remindAt" name="lucide:check" class="w-3 h-3 -ml-1" />
+		</UiButton>
+	</UiTooltip>
 </template>

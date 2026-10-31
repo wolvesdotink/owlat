@@ -66,4 +66,41 @@ describe('verifyPostboxAppPassword', () => {
 		});
 		expect(signedBody()).not.toHaveProperty('ip');
 	});
+
+	it('authenticates only an ok response carrying every identifier', async () => {
+		const verified = {
+			ok: true,
+			mailboxId: 'mbx_1',
+			appPasswordId: 'ap_1',
+			userId: 'user_1',
+			organizationId: 'org_1',
+		};
+		fetchMock.mockResolvedValueOnce(
+			new Response(JSON.stringify({ ...verified, addedLater: 'field' }))
+		);
+		await expect(
+			verifyPostboxAppPassword(config, 'jane@example.com', 'pw', 'smtp')
+		).resolves.toEqual({
+			mailboxId: 'mbx_1',
+			appPasswordId: 'ap_1',
+			userId: 'user_1',
+			organizationId: 'org_1',
+		});
+
+		const malformed: unknown[] = [
+			null,
+			'ok',
+			[verified],
+			{ ...verified, ok: 'true' },
+			{ ...verified, mailboxId: undefined },
+			{ ...verified, userId: '' },
+			{ ...verified, organizationId: 42 },
+		];
+		for (const body of malformed) {
+			fetchMock.mockResolvedValueOnce(new Response(JSON.stringify(body)));
+			await expect(
+				verifyPostboxAppPassword(config, 'jane@example.com', 'pw', 'smtp')
+			).resolves.toBeNull();
+		}
+	});
 });

@@ -139,7 +139,7 @@ watch(editValue, () => {
 			<textarea
 				ref="textareaRef"
 				v-model="editValue"
-				class="w-full min-h-[80px] p-2 pb-8 text-sm bg-bg-base border border-brand rounded-lg text-text-primary resize-none focus:outline-none focus:ring-1 focus:ring-brand"
+				class="input min-h-[80px] pb-8 resize-none"
 				:placeholder="placeholderText"
 				:aria-label="fieldName"
 				:aria-describedby="hintId"
@@ -148,24 +148,26 @@ watch(editValue, () => {
 			/>
 			<p :id="hintId" class="sr-only">{{ t('components.translation.cell.editHint') }}</p>
 			<div class="absolute bottom-2 right-2 flex gap-1">
-				<button
-					type="button"
-					class="p-1 rounded hover:bg-bg-surface text-text-tertiary hover:text-success transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-					:title="saveTitle"
-					:aria-label="saveTitle"
-					@click="saveEdit"
-				>
-					<Icon name="lucide:check" class="w-4 h-4" />
-				</button>
-				<button
-					type="button"
-					class="p-1 rounded hover:bg-bg-surface text-text-tertiary hover:text-error transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-					:title="t('components.translation.cell.cancelTitle')"
-					:aria-label="t('components.translation.cell.cancelTitle')"
-					@click="cancelEdit"
-				>
-					<Icon name="lucide:x" class="w-4 h-4" />
-				</button>
+				<UiTooltip :text="saveTitle">
+					<button
+						type="button"
+						class="p-1 rounded hover:bg-bg-surface text-text-tertiary hover:text-success transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+						:aria-label="saveTitle"
+						@click="saveEdit"
+					>
+						<Icon name="lucide:check" class="w-4 h-4" />
+					</button>
+				</UiTooltip>
+				<UiTooltip :text="t('components.translation.cell.cancelTitle')">
+					<button
+						type="button"
+						class="p-1 rounded hover:bg-bg-surface text-text-tertiary hover:text-error transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+						:aria-label="t('components.translation.cell.cancelTitle')"
+						@click="cancelEdit"
+					>
+						<Icon name="lucide:x" class="w-4 h-4" />
+					</button>
+				</UiTooltip>
 			</div>
 		</div>
 

@@ -373,13 +373,15 @@ export function scoreFromState(args: {
  */
 function normalizeActivities(
 	activities: readonly EngagementActivity[],
-	now: number
+	now: number,
+	meter: { steps: number } | undefined
 ): { ordered: EngagementActivity[]; discarded: number } {
 	const ordered: EngagementActivity[] = [];
 	const seen = new Set<string>();
 	let discarded = 0;
 
 	for (const activity of activities) {
+		if (meter) meter.steps += 1;
 		if (!Number.isFinite(activity.occurredAt)) {
 			discarded += 1;
 			continue;
@@ -394,7 +396,10 @@ function normalizeActivities(
 		ordered.push({ kind: activity.kind, occurredAt });
 	}
 
-	ordered.sort((a, b) => a.occurredAt - b.occurredAt);
+	ordered.sort((a, b) => {
+		if (meter) meter.steps += 1;
+		return a.occurredAt - b.occurredAt;
+	});
 	return { ordered, discarded };
 }
 
@@ -405,15 +410,19 @@ function normalizeActivities(
  *
  * Work is O(n log n) in the number of activities supplied and allocates one
  * array plus one Set of that size; callers are responsible for bounding the
- * list (the loader takes the newest N inside the lookback window).
+ * list (the loader takes the newest N inside the lookback window). `meter`,
+ * when given, counts that work: one step per activity read, per sort
+ * comparison and per fold.
  */
 export function computeEngagementScore(args: {
 	activities: readonly EngagementActivity[];
 	tenureStartedAt: number;
 	now: number;
+	meter?: { steps: number };
 }): EngagementScoreResult {
 	const now = Number.isFinite(args.now) ? args.now : 0;
-	const { ordered, discarded } = normalizeActivities(args.activities, now);
+	const { meter } = args;
+	const { ordered, discarded } = normalizeActivities(args.activities, now, meter);
 
 	const counts: EngagementActivityCounts = {
 		openCount: 0,
@@ -431,6 +440,7 @@ export function computeEngagementScore(args: {
 	let stateAt = ordered[0]?.occurredAt ?? now;
 
 	for (const activity of ordered) {
+		if (meter) meter.steps += 1;
 		const folded = foldActivity(state, stateAt, activity);
 		state = folded.state;
 		stateAt = folded.stateAt;

@@ -38,7 +38,7 @@ const FEED_URL = 'https://sendersupport.olc.protection.outlook.com/snds/ada/exam
  * The poller folds ACROSS feeds into a single accumulator, because SNDS ranges
  * overlap and one (IP, day) can appear in two feeds. A one-shot single-feed
  * aggregate has no production caller, so it lives here rather than as an
- * exported seam nothing uses (D20).
+ * exported seam nothing uses.
  */
 function aggregateSndsDays(rows: readonly SndsFeedRow[]): SndsDayObservation[] {
 	const fold = createSndsDayFold();

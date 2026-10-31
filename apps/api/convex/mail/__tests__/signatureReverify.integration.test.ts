@@ -1,5 +1,5 @@
 /**
- * Re-verifying a signed message stored before verdicts recorded a scope (#1320).
+ * Re-verifying a signed message stored before verdicts recorded a scope.
  *
  * Rows are seeded the way an older release left them: the raw `.eml` in
  * storage and an `inboundSignatureInfo` with no `scope`, which the reader

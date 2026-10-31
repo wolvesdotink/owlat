@@ -17,7 +17,7 @@ import { htmlToPlainText } from '@owlat/shared/html';
 import { openInboundMessageBody } from '../lib/messageBodyInbound';
 import { internalQuery } from '../_generated/server';
 import { adminQuery, authedMutation } from '../lib/authedFunctions';
-import { requireOrgPermission } from '../lib/sessionOrganization';
+import { hasPermission, requirePermission } from '../lib/sessionOrganization';
 import { assertFeatureEnabled, isFeatureEnabled } from '../lib/featureFlags';
 import { getOrThrow, throwInvalidInput } from '../_utils/errors';
 import {
@@ -63,10 +63,9 @@ export const create = authedMutation({
 		isEnabled: v.optional(v.boolean()),
 		compiledModel: v.optional(v.string()),
 	},
-	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'organization:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'organization:manage'),
 			'Only owners and admins can change handling rules'
 		);
 		const instruction = args.instruction.trim();
@@ -97,10 +96,9 @@ export const update = authedMutation({
 		isEnabled: v.optional(v.boolean()),
 		compiledModel: v.optional(v.string()),
 	},
-	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'organization:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'organization:manage'),
 			'Only owners and admins can change handling rules'
 		);
 		await getOrThrow(ctx, args.ruleId, 'Handling rule');
@@ -128,10 +126,9 @@ export const update = authedMutation({
 /** Revoke a rule. Idempotent. Owner/admin only. */
 export const remove = authedMutation({
 	args: { ruleId: v.id('handlingRules') },
-	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'organization:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'organization:manage'),
 			'Only owners and admins can delete handling rules'
 		);
 		const existing = await ctx.db.get(args.ruleId);

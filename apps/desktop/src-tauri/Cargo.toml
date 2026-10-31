@@ -39,9 +39,10 @@ ignore = { version = "0.4", optional = true }
 
 # Desktop notification ACTIONS. The notification plugin only renders action
 # buttons / emits action events on mobile, so we drive them through the
-# underlying native crates directly per-OS. Both are already transitive deps of
-# tauri-plugin-notification, so this adds no new build cost; Windows has no
-# equivalent here and falls back to a plain notification.
+# underlying native crates directly per-OS. All three are already transitive deps
+# of tauri-plugin-notification (through notify-rust), so this adds no new build
+# cost. Windows gets click activation for link notifications, not action
+# buttons.
 [target.'cfg(target_os = "macos")'.dependencies]
 mac-notification-sys = "0.6"
 # Toggle the native traffic-light buttons (close/miniaturize/zoom) so they can
@@ -64,6 +65,9 @@ block2 = "0.6"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 notify-rust = "4"
+
+[target.'cfg(windows)'.dependencies]
+tauri-winrt-notification = "0.7"
 
 # `killpg`, so cancelling a local image build also stops the Docker CLI's
 # plugin processes (src/ssh/dev.rs). Already in the tree through tauri.

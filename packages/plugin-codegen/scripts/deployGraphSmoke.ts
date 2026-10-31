@@ -2,15 +2,6 @@ import { spawnSync } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-interface TurboTask {
-	readonly taskId: string;
-	readonly dependencies: readonly string[];
-}
-
-interface TurboDryRun {
-	readonly tasks: readonly TurboTask[];
-}
-
 const workspaceRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 const dryRun = spawnSync(
 	process.execPath,
@@ -28,8 +19,7 @@ if (dryRun.status !== 0) {
 	throw new Error(`Plugin deploy graph inspection failed: ${dryRun.stderr.trim()}`);
 }
 
-const graph = JSON.parse(dryRun.stdout) as TurboDryRun;
-const tasks = new Map(graph.tasks.map((task) => [task.taskId, task.dependencies]));
+const tasks = taskDependencies(JSON.parse(dryRun.stdout));
 assertDependencies(tasks, '@owlat/api#deploy', ['//#plugins:check', '@owlat/plugin-host#build']);
 assertDependencies(tasks, '@owlat/plugin-host#build', ['@owlat/plugin-kit#build']);
 
@@ -46,4 +36,32 @@ function assertDependencies(
 	if (missing.length > 0) {
 		throw new Error(`${taskId} is missing required dependencies: ${missing.join(', ')}`);
 	}
+}
+
+/**
+ * Each task's dependencies in a `turbo run --dry=json` report. A report of
+ * another shape fails the smoke: a task this cannot read is not a task whose
+ * dependencies are known.
+ */
+function taskDependencies(report: unknown): Map<string, readonly string[]> {
+	const listed = isObject(report) ? report['tasks'] : undefined;
+	if (!Array.isArray(listed)) throw new Error('Turbo dry run did not list its tasks');
+	const tasks = new Map<string, readonly string[]>();
+	for (const task of listed) {
+		const taskId = isObject(task) ? task['taskId'] : undefined;
+		const dependencies = isObject(task) ? task['dependencies'] : undefined;
+		if (
+			typeof taskId !== 'string' ||
+			!Array.isArray(dependencies) ||
+			!dependencies.every((dependency) => typeof dependency === 'string')
+		) {
+			throw new Error('Turbo dry run listed a task without an id or dependencies');
+		}
+		tasks.set(taskId, dependencies);
+	}
+	return tasks;
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+	return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

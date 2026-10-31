@@ -8,7 +8,7 @@
  * injection-safe DNS FQDN before it is ever persisted or used.
  *
  * This is the SINGLE source of truth for return-path-host acceptance, shared by
- * the MTA (which validates the D1 register-endpoint body) and the Convex backend
+ * the MTA (which validates the register-endpoint body) and the Convex backend
  * (which validates the `setReturnPathHost` mutation + the atomic add-domain
  * path). The two sides MUST agree exactly: the Convex `asDnsName` primitive is
  * deliberately laxer (it accepts single labels like `localhost` and underscore

@@ -253,7 +253,7 @@ describe('TodaySourceLink', () => {
 	});
 });
 
-describe('TodayAnswerCard · brief rows (SPEC §7)', () => {
+describe('TodayAnswerCard · brief rows', () => {
 	const row = (over: Record<string, unknown>) => ({
 		threadId: 't1',
 		messageId: 'm1',

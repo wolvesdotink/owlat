@@ -1,5 +1,5 @@
 /**
- * ENROLMENT — the one door onto the ramp (plan D1, D3, D14).
+ * ENROLMENT — the one door onto the ramp.
  *
  * Before this mutation exists nothing in production ever writes an `ownShare`:
  * the MTA snapshot writes stream-less rows, the controller skips a cell without
@@ -14,7 +14,7 @@
  *     the four conditions on the only promotion route a yahoo/apple/other cell
  *     has — and the rung is the ladder's FIRST one on BOTH paths, because a rung
  *     is earned and the actuator is not a property of the enrolment;
- *   - it writes the D12 audit pair, so the first entry in a cell's timeline says
+ *   - it writes the audit pair, so the first entry in a cell's timeline says
  *     who put it on the ramp and at what share;
  *   - an already-managed cell is refused rather than reset, and an enrolment that
  *     would RAISE today's effective share meets the same hard stops a
@@ -23,6 +23,7 @@
 
 import { convexTest } from 'convex-test';
 import { describe, expect, it, vi } from 'vitest';
+import type * as SessionOrganization from '../../lib/sessionOrganization';
 import schema from '../../schema';
 import { api, internal } from '../../_generated/api';
 import { modules } from '../../__tests__/testModules';
@@ -52,7 +53,7 @@ const session = vi.hoisted(() => ({ organizationId: 'org_ramp_enrollment', isAdm
 // harness does not have), and the ADMIN FLOOR is real rather than stubbed away —
 // flipping `session.isAdmin` exercises the gate the card's claim rests on.
 vi.mock('../../lib/sessionOrganization', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../../lib/sessionOrganization')>();
+	const actual = await importOriginal<typeof SessionOrganization>();
 	return {
 		...actual,
 		getSingletonOrganizationId: vi.fn(async () => session.organizationId),
@@ -133,7 +134,7 @@ describe('the ESP path', () => {
 
 		const row = await readManagedCell(t);
 		expect(row?.ownShare).toBe(RAMP_STREAM_CONFIGS.campaign.initialShareFraction);
-		// The derived boolean view stays consistent with the share (plan D1): at 2%
+		// The derived boolean view stays consistent with the share: at 2%
 		// the relay carries the rest, so the fallback IS active.
 		expect(row?.isFallbackActive).toBe(true);
 		expect(row?.phaseCeiling).toBe(RAMP_INITIAL_PHASE_CEILING);
@@ -143,7 +144,7 @@ describe('the ESP path', () => {
 		expect(row?.phaseCeilingSince).toBeGreaterThan(0);
 		expect(row?.cleanStreak).toBe(0);
 		// Enrolment IS a mix generation: the cell's recipients are assigned to two
-		// arms for the first time (plan D7).
+		// arms for the first time.
 		expect(row?.mixVersion).toBe(1);
 		expect(row?.graduatedAt).toBeUndefined();
 	});
@@ -183,7 +184,7 @@ describe('the own-server path', () => {
 	});
 
 	/**
-	 * THE ACTUATOR IS NOT A PROPERTY OF THE ENROLMENT (plan D3). It is re-resolved
+	 * THE ACTUATOR IS NOT A PROPERTY OF THE ENROLMENT. It is re-resolved
 	 * every tick from OBSERVED reference-arm traffic, so a cell enrolled with no
 	 * relay can be share-actuated next week — an operator connects an ESP, or a
 	 * force-advance, a pin or a hard stop puts traffic on it. A ceiling banked at
@@ -237,7 +238,7 @@ describe('the fork’s answer and the controller’s converge', () => {
 	});
 });
 
-describe('the audit pair (plan D12)', () => {
+describe('the audit pair', () => {
 	it('records who enrolled the cell, and the move it made', async () => {
 		const t = harness();
 		await seedRampCell(t, { organizationId: ORG, omitManagedCell: true });

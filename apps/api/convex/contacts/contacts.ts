@@ -6,7 +6,7 @@ import type { Id } from '../_generated/dataModel';
 import type { ImportOutcome } from './import';
 import { paginationOptsValidator } from 'convex/server';
 import { internal } from '../_generated/api';
-import { requireOrgPermission } from '../lib/sessionOrganization';
+import { hasPermission, requirePermission } from '../lib/sessionOrganization';
 import { listResources, countFacet } from '../lib/listing';
 import { contactListing, redactContactCapabilityFields } from './listing';
 import { contactCreateSourceValidator } from '../lib/validators/contacts';
@@ -24,6 +24,8 @@ import { duplicateHandlingValidator } from '../lib/literalValidators';
 import { batchGet } from '../_utils/batchLoader';
 
 // Query to get a single contact by ID (session-authenticated client callers).
+// all-members: editors view contacts (only writes need contacts:manage); the row
+// is redacted of its capability fields and soft-deleted contacts read as null.
 export const get = authedQuery({
 	args: { contactId: v.id('contacts') },
 	handler: async (ctx, args) => {
@@ -89,6 +91,8 @@ export const getInternal = internalQuery({
  * Listing engine — search is relevance-ordered and genuinely multi-page (the
  * `'search'` sentinel is gone), soft-delete rides the index.
  */
+// all-members: the contact list editors browse; the listing engine redacts
+// capability fields and skips soft-deleted rows.
 export const list = authedQuery({
 	args: {
 		search: v.optional(v.string()),
@@ -124,10 +128,9 @@ export const create = authedMutation({
 		source: v.optional(contactCreateSourceValidator),
 		language: v.optional(v.string()),
 	},
-	handler: async (ctx, args) => {
-		const session = await requireOrgPermission(
-			ctx,
-			'contacts:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'contacts:manage'),
 			'Only owners and admins can create contacts'
 		);
 
@@ -149,10 +152,9 @@ export const update = authedMutation({
 		timezone: v.optional(v.string()),
 		language: v.optional(v.string()),
 	},
-	handler: async (ctx, { contactId, ...fields }) => {
-		const session = await requireOrgPermission(
-			ctx,
-			'contacts:manage',
+	handler: async (ctx, { contactId, ...fields }, session) => {
+		requirePermission(
+			hasPermission(session.role, 'contacts:manage'),
 			'Only owners and admins can update contacts'
 		);
 
@@ -170,11 +172,10 @@ export const updateNotes = authedMutation({
 		contactId: v.id('contacts'),
 		notes: v.string(),
 	},
-	handler: async (ctx, args) => {
+	handler: async (ctx, args, session) => {
 		validateStringLength(args.notes, STRING_LIMITS.DESCRIPTION, 'Notes');
-		const session = await requireOrgPermission(
-			ctx,
-			'contacts:annotate',
+		requirePermission(
+			hasPermission(session.role, 'contacts:annotate'),
 			'You do not have permission to annotate contacts'
 		);
 		const contact = await ctx.db.get(args.contactId);
@@ -203,12 +204,11 @@ export const remove = authedMutation({
 	args: {
 		contactId: v.id('contacts'),
 	},
-	handler: async (ctx, args) => {
+	handler: async (ctx, args, session) => {
 		const contact = await ctx.db.get(args.contactId);
 
-		const session = await requireOrgPermission(
-			ctx,
-			'contacts:manage',
+		requirePermission(
+			hasPermission(session.role, 'contacts:manage'),
 			'Only owners and admins can delete contacts'
 		);
 
@@ -237,10 +237,9 @@ export const bulkDelete = authedMutation({
 	args: {
 		contactIds: v.array(v.id('contacts')),
 	},
-	handler: async (ctx, args) => {
-		const session = await requireOrgPermission(
-			ctx,
-			'contacts:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'contacts:manage'),
 			'Only owners and admins can delete contacts'
 		);
 
@@ -328,10 +327,9 @@ export const importBatch = authedMutation({
 			})
 		),
 	},
-	handler: async (ctx, args) => {
-		const session = await requireOrgPermission(
-			ctx,
-			'contacts:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'contacts:manage'),
 			'Only owners and admins can import contacts'
 		);
 

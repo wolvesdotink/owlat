@@ -1,5 +1,5 @@
 /**
- * ⇧E / ⇧O from the open message (SPEC §5): the sender chords name the sender
+ * ⇧E / ⇧O from the open message: the sender chords name the sender
  * by the message, and a one-click sender gets the chip's confirm with its host.
  */
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';

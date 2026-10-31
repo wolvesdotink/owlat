@@ -22,6 +22,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 // Query to get audience stats for dashboard (for HTTP API)
 // Uses cached contact count for O(1) performance.
+// all-members: three org-wide counts for the audience tabs every member sees.
 export const getAudienceStats = authedQuery({
 	args: {},
 	handler: async (ctx) => {
@@ -56,6 +57,8 @@ function growthDays(perDay: ReadonlyMap<string, number>, now: number) {
 }
 
 // Query to get subscriber growth over time (last 30 days, for HTTP API)
+// all-members: a daily count series for the audience panel; no contact rows.
+// token-safe: the fallback scan reads contacts only to bucket createdAt by day.
 export const getSubscriberGrowth = authedQuery({
 	args: {},
 	handler: async (ctx) => {
@@ -102,6 +105,8 @@ export const getSubscriberGrowth = authedQuery({
 
 // Query to get recent contacts (newly added, for HTTP API)
 // Uses database-level ordering and limiting for efficiency
+// all-members: the editor-visible recent contacts card; rows leave through the
+// same capability-field redaction as every member-readable contact read.
 export const getRecent = authedQuery({
 	args: {
 		limit: v.optional(v.number()),

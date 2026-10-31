@@ -4,11 +4,8 @@ import type { PluginPackageName } from '@owlat/plugin-host';
 import { PluginCliError } from './errors';
 import { toPosix } from './paths';
 import { minimalFiles } from './scaffoldMinimal';
-import {
-	SEND_PROVIDER_MODULE_EXPORTS,
-	sendProviderFiles,
-	sendProviderNames,
-} from './scaffoldSendProvider';
+import { SEND_PROVIDER_MODULE_EXPORTS, sendProviderFiles } from './scaffoldSendProvider';
+import { sendProviderNames } from './scaffoldSendProviderNames';
 
 /** One scaffolded file, keyed by its POSIX path relative to the plugin directory. */
 export type ScaffoldFiles = ReadonlyMap<string, string>;
@@ -19,7 +16,7 @@ export type ScaffoldFiles = ReadonlyMap<string, string>;
  *  - `minimal`       an empty manifest declaring nothing. The default, because
  *                    most plugins contribute something other than a transport
  *                    and every bucket is one `contributes` key away.
- *  - `send-provider` a complete send-transport bundle (the seams plan's D4/P3.4):
+ *  - `send-provider` a complete send-transport bundle:
  *                    send module, feedback webhook, sending-domain identity,
  *                    capability declarations, credential form and test stubs.
  *                    Emitted whole rather than in pieces because the halves are

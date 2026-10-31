@@ -240,7 +240,7 @@ const matchTerm = computed(() => (pendingArgument.value ? searchQuery.value : se
 const flatItems = computed(() => (open.value ? flattenGroups(groups.value) : []));
 const flatIndexById = computed(() => {
 	const map = new Map<string, number>();
-	flatItems.value.forEach((item, index) => map.set(item.id, index));
+	for (const [index, item] of flatItems.value.entries()) map.set(item.id, index);
 	return map;
 });
 const hasAnyResults = computed(() => flatItems.value.length > 0);
@@ -407,10 +407,10 @@ onBeforeUnmount(() => detachTriggers?.());
 		</Transition>
 
 		<Transition
-			enter-active-class="transition-all duration-(--motion-moderate)"
+			enter-active-class="transition-[opacity,scale] duration-(--motion-moderate)"
 			enter-from-class="opacity-0 scale-95"
 			enter-to-class="opacity-100 scale-100"
-			leave-active-class="transition-all duration-(--motion-moderate-exit)"
+			leave-active-class="transition-[opacity,scale] duration-(--motion-moderate-exit)"
 			leave-from-class="opacity-100 scale-100"
 			leave-to-class="opacity-0 scale-95"
 		>
@@ -428,17 +428,17 @@ onBeforeUnmount(() => detachTriggers?.());
 					     is bound to cycling the scope, so the chip could never be reached
 					     by it anyway, and leaving it out of the tab ring keeps the focus
 					     trap's "first focusable" on the input, where typing belongs. -->
-					<button
-						v-if="!pendingArgument"
-						type="button"
-						tabindex="-1"
-						class="flex-shrink-0 text-xs font-medium px-2 py-1 rounded-full bg-brand/10 text-brand hover:bg-brand/20 transition-colors duration-(--motion-fast)"
-						:aria-label="t('components.appCommandPalette.scopeLabel')"
-						:title="t('components.appCommandPalette.scopeLabel')"
-						@click="cycleScope"
-					>
-						{{ scopeLabel }}
-					</button>
+					<UiTooltip v-if="!pendingArgument" :text="t('components.appCommandPalette.scopeLabel')">
+						<button
+							type="button"
+							tabindex="-1"
+							class="flex-shrink-0 text-xs font-medium px-2 py-1 rounded-full bg-brand/10 text-brand hover:bg-brand/20 transition-colors duration-(--motion-fast)"
+							:aria-label="t('components.appCommandPalette.scopeLabel')"
+							@click="cycleScope"
+						>
+							{{ scopeLabel }}
+						</button>
+					</UiTooltip>
 					<span
 						v-else
 						class="flex-shrink-0 text-xs px-2 py-1 rounded bg-bg-surface text-text-secondary"
@@ -450,7 +450,7 @@ onBeforeUnmount(() => detachTriggers?.());
 						v-model="searchQuery"
 						type="text"
 						:placeholder="placeholder"
-						class="flex-1 bg-transparent text-text-primary placeholder-text-tertiary outline-none text-base"
+						class="input-bare flex-1 text-base"
 						role="combobox"
 						aria-expanded="true"
 						aria-controls="app-cmdk-list"

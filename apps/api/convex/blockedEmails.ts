@@ -1,9 +1,8 @@
 import { v } from 'convex/values';
 import type { Id } from './_generated/dataModel';
-import { internalQuery } from './_generated/server';
 import { internalMutation } from './lib/writeFence';
 import { authedQuery, authedMutation } from './lib/authedFunctions';
-import { requireOrgPermission } from './lib/sessionOrganization';
+import { hasPermission, requirePermission } from './lib/sessionOrganization';
 import {
 	isValidEmail,
 	normalizeEmail,
@@ -42,6 +41,9 @@ function deriveBlockSourceType(source: {
 }
 
 // List the most recent blocked emails (most-recent-first) with optional reason filter.
+// all-members: the suppression list every member may read before sending (the
+// audience Suppressions page). The provider audit evidence behind a row stays
+// admin-only in `listProviderProvenance`.
 export const listByTeam = authedQuery({
 	args: {
 		// Every stored reason is filterable, the sunset engine's `unengaged`
@@ -90,8 +92,8 @@ export const listByTeam = authedQuery({
  */
 export const listProviderProvenance = authedQuery({
 	args: {},
-	handler: async (ctx) => {
-		await requireOrgPermission(ctx, 'organization:manage');
+	handler: async (ctx, _args, session) => {
+		requirePermission(hasPermission(session.role, 'organization:manage'));
 		const entries = await ctx.db
 			.query('auditLogs')
 			.withIndex('by_action', (q) => q.eq('action', 'blocklist.provider_suppressed'))
@@ -119,6 +121,7 @@ export const listProviderProvenance = authedQuery({
 });
 
 // Get blocked email record by email (returns the record or null)
+// all-members: the suppression state the contact detail page shows every member.
 export const getByEmail = authedQuery({
 	args: {
 		email: v.string(),
@@ -137,14 +140,13 @@ export const add = authedMutation({
 		sourceEmailSendId: v.optional(v.id('emailSends')),
 		sourceTransactionalSendId: v.optional(v.id('transactionalSends')),
 	},
-	handler: async (ctx, args) => {
+	handler: async (ctx, args, session) => {
 		validateStringLength(args.email, STRING_LIMITS.EMAIL, 'email');
 		if (args.notes !== undefined)
 			validateStringLength(args.notes, STRING_LIMITS.DESCRIPTION, 'notes');
 
-		const session = await requireOrgPermission(
-			ctx,
-			'contacts:manage',
+		requirePermission(
+			hasPermission(session.role, 'contacts:manage'),
 			'Only owners and admins can manage the blocklist'
 		);
 		const normalizedEmail = normalizeEmail(args.email);
@@ -195,10 +197,9 @@ export const add = authedMutation({
 // Remove an email from the blocklist
 export const remove = authedMutation({
 	args: { blockedEmailId: v.id('blockedEmails') },
-	handler: async (ctx, args) => {
-		const session = await requireOrgPermission(
-			ctx,
-			'contacts:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'contacts:manage'),
 			'Only owners and admins can manage the blocklist'
 		);
 		const blockedEmail = await getOrThrow(ctx, args.blockedEmailId, 'Blocked email');
@@ -263,10 +264,9 @@ export const bulkAdd = authedMutation({
 			})
 		),
 	},
-	handler: async (ctx, args) => {
-		const session = await requireOrgPermission(
-			ctx,
-			'contacts:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'contacts:manage'),
 			'Only owners and admins can manage the blocklist'
 		);
 
@@ -339,21 +339,10 @@ export const bulkAdd = authedMutation({
 
 // Get count of blocked emails by reason. Each count saturates at
 // BLOCKLIST_VIEW_LIMIT, matching the capped list view (see countBlockedByReason).
+// all-members: per-reason counts behind the member-readable suppression list.
 export const getCountsByReason = authedQuery({
 	args: {},
 	handler: async (ctx) => await countBlockedByReason(ctx),
-});
-
-/**
- * Remove after release N+1: v0.5.5 compatibility. v0.5.5's worker re-checked a
- * campaign recipient here, and a worker in flight across the deploy still does
- * (CONVENTIONS.md, "Old clients and workers"). Now: marketingDispatchGate.
- */
-export const isBlockedInternal = internalQuery({
-	args: {
-		email: v.string(),
-	},
-	handler: async (ctx, args) => (await findBlockedByEmail(ctx, args.email)) !== null,
 });
 
 // Internal function to add to blocklist from bounce/complaint handler

@@ -4,6 +4,10 @@ import {
 	createEnvBackupBox,
 	isEnvBackupSealedValue,
 } from '@owlat/shared/envBackupBox';
+import { jsonRequestEvent } from '../../../__tests__/nitro';
+import type * as ConvexRuntimeEnvModule from '@owlat/shared/convexRuntimeEnv';
+import type * as ComposedSendProviderCatalogModule from '~/utils/composedSendProviderCatalog';
+import type * as RequireOrgAdminModule from '~~/server/utils/requireOrgAdmin';
 
 /**
  * Secrets-at-rest tests for `POST /api/delivery/apply-transport`: the `.env`
@@ -60,14 +64,14 @@ vi.mock('@owlat/shared/setupEnv', () => ({
 	writeEnvFile: writeMock,
 }));
 vi.mock('@owlat/shared/convexRuntimeEnv', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('@owlat/shared/convexRuntimeEnv')>();
+	const actual = await importOriginal<typeof ConvexRuntimeEnvModule>();
 	return { ...actual, pushConvexRuntimeEnv: pushMock };
 });
 vi.mock('~/generated/sendTransportCatalog.generated', () => ({
 	BUNDLED_PLUGIN_SEND_TRANSPORT_CATALOG: pluginCatalog,
 }));
 vi.mock('~/utils/composedSendProviderCatalog', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('~/utils/composedSendProviderCatalog')>();
+	const actual = await importOriginal<typeof ComposedSendProviderCatalogModule>();
 	return {
 		...actual,
 		COMPOSED_TRANSPORT_CREDENTIAL_ENV_KEYS: [PLUGIN_TOKEN_ENV],
@@ -91,7 +95,7 @@ interface ApplyResult {
 async function callRoute(): Promise<ApplyResult> {
 	const mod = await import('../apply-transport.post');
 	const handler = mod.default as unknown as (event: unknown) => Promise<ApplyResult>;
-	return handler({});
+	return handler(jsonRequestEvent(body));
 }
 
 function smtpPatch(): Record<string, string> {
@@ -113,10 +117,6 @@ beforeEach(() => {
 	body = { providerEnv: smtpPatch() };
 
 	vi.stubGlobal('defineEventHandler', <T>(handler: T) => handler);
-	vi.stubGlobal(
-		'readBody',
-		vi.fn(async () => body)
-	);
 	vi.stubGlobal('createError', (opts: { statusCode: number; message: string }) =>
 		Object.assign(new Error(opts.message), { statusCode: opts.statusCode })
 	);
@@ -154,7 +154,7 @@ describe('apply-transport secrets at rest', () => {
 			EMAIL_PROVIDER: PLUGIN_KIND,
 			[PLUGIN_TOKEN_ENV]: 'tok-live',
 		});
-	}, 15_000);
+	});
 
 	it('pushes the PLAINTEXT relay password live but writes the SEALED form to the .env backup', async () => {
 		readMock.mockResolvedValue({
@@ -243,25 +243,32 @@ describe('apply-transport secrets at rest', () => {
 		expect(writeMock).not.toHaveBeenCalled();
 	});
 
-	it('rejects a newline in an allowlisted value before writing or pushing (env injection)', async () => {
-		readMock.mockResolvedValue({
-			CONVEX_ADMIN_KEY: 'convex-self-hosted|deadbeef',
-			CONVEX_SITE_URL: 'http://convex:3211',
-			INSTANCE_SECRET,
-		});
-		// DEFAULT_FROM_NAME is allowlisted, but a newline in its value would inject an
-		// arbitrary extra `.env` line (here a forged INSTANCE_SECRET).
-		body = {
-			providerEnv: {
-				...smtpPatch(),
-				DEFAULT_FROM_NAME: 'Acme\nINSTANCE_SECRET=attacker-owned',
-			},
-		};
+	it.each([
+		['a newline', '\n'],
+		['a carriage return', '\r'],
+		['a NUL', '\0'],
+	])(
+		'rejects %s in an allowlisted value before writing or pushing (env injection)',
+		async (_c, char) => {
+			readMock.mockResolvedValue({
+				CONVEX_ADMIN_KEY: 'convex-self-hosted|deadbeef',
+				CONVEX_SITE_URL: 'http://convex:3211',
+				INSTANCE_SECRET,
+			});
+			// DEFAULT_FROM_NAME is allowlisted, but a line break in its value would inject
+			// an arbitrary extra `.env` line (here a forged INSTANCE_SECRET).
+			body = {
+				providerEnv: {
+					...smtpPatch(),
+					DEFAULT_FROM_NAME: `Acme${char}INSTANCE_SECRET=attacker-owned`,
+				},
+			};
 
-		await expect(callRoute()).rejects.toMatchObject({ statusCode: 400 });
-		expect(pushMock).not.toHaveBeenCalled();
-		expect(writeMock).not.toHaveBeenCalled();
-	});
+			await expect(callRoute()).rejects.toMatchObject({ statusCode: 400 });
+			expect(pushMock).not.toHaveBeenCalled();
+			expect(writeMock).not.toHaveBeenCalled();
+		}
+	);
 });
 
 /**
@@ -270,7 +277,7 @@ describe('apply-transport secrets at rest', () => {
  */
 describe('POST /api/delivery/apply-transport — the real org-admin gate', () => {
 	it('rejects an unauthenticated call with 401 before touching .env or the live env store', async () => {
-		const real = await vi.importActual<typeof import('~~/server/utils/requireOrgAdmin')>(
+		const real = await vi.importActual<typeof RequireOrgAdminModule>(
 			'~~/server/utils/requireOrgAdmin'
 		);
 		requireOrgAdminMock.mockImplementation(real.requireOrgAdmin);

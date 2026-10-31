@@ -2,7 +2,7 @@
 	"name": "@owlat/worker-protocol",
 	"version": "0.6.16",
 	"private": true,
-	"description": "The Convex<->worker wire contract: the arguments and results of every Convex function the IMAP server and the mail-sync worker call, declared once as Convex validators. apps/api registers them as `args`/`returns`; the workers derive their types from them and check every result at runtime.",
+	"description": "The Convex<->worker wire contract: the arguments and results of every Convex function the IMAP server and the mail-sync worker call, declared once as Convex validators. apps/api registers them as `args`/`returns`; the workers derive their types from them and check every result at runtime. Also the request-body decoder (`/decodeJson`) every HTTP ingress reads JSON through.",
 	"homepage": "https://owlat.app",
 	"license": "Apache-2.0",
 	"type": "module",
@@ -18,6 +18,14 @@
 		"./validatorMatch": {
 			"types": "./src/validatorMatch.ts",
 			"import": "./src/validatorMatch.ts"
+		},
+		"./literalUnion": {
+			"types": "./src/literalUnion.ts",
+			"import": "./src/literalUnion.ts"
+		},
+		"./decodeJson": {
+			"types": "./src/decodeJson.ts",
+			"import": "./src/decodeJson.ts"
 		},
 		"./fields": {
 			"types": "./src/fields.ts",

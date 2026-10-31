@@ -42,7 +42,7 @@ import {
 import type { Doc } from '../_generated/dataModel';
 import { throwInvalidState } from '../_utils/errors';
 import { organizationDeletionTableValidator } from '../workspaces/deletion/steps/_common';
-import { NON_TENANT_TABLES } from './tenantTables';
+import { NON_TENANT_TABLES } from './nonTenantTables';
 
 /** Every table the workspace deletion sweeps: the ones the fence closes. */
 const FENCED_TABLES: ReadonlySet<string> = new Set(

@@ -13,8 +13,9 @@ import { v } from 'convex/values';
 import { authedMutation, authedQuery } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
-import { requireOrgPermission } from '../lib/sessionOrganization';
+import { hasPermission, requirePermission } from '../lib/sessionOrganization';
 import { throwNotFound } from '../_utils/errors';
+import { isRecord } from '@owlat/shared/utils/guards';
 
 // Userless audit attribution — saved-block mutations historically have
 // no session check (mirrors the pre-deepening behavior). Audit logs
@@ -23,38 +24,27 @@ const SYSTEM_USER_ID = 'system:email_block_api';
 
 // ─── Content parsing for `blockCount` denormalization in reads ──────────────
 
-interface SingleBlockContent {
-	type: string;
-	content: unknown;
-}
-
-interface MultiBlockContent {
-	blocks: Array<{ id: string; type: string; content: unknown }>;
-}
-
-type ParsedBlockContent = SingleBlockContent | MultiBlockContent;
-
-function isMultiBlockContent(content: ParsedBlockContent): content is MultiBlockContent {
-	return 'blocks' in content && Array.isArray(content.blocks);
-}
-
+/**
+ * How many Blocks a saved block's content holds: the length of a
+ * `{ blocks: [...] }` envelope, 1 for a single `{ type, content }` block, and 0
+ * for anything else, unparseable JSON included.
+ */
 function getBlockCount(contentJson: string): number {
+	let parsed: unknown;
 	try {
-		const parsed = JSON.parse(contentJson) as ParsedBlockContent;
-		if (isMultiBlockContent(parsed)) {
-			return parsed.blocks.length;
-		}
-		if (parsed && typeof parsed === 'object' && 'type' in parsed && 'content' in parsed) {
-			return 1;
-		}
-		return 0;
+		parsed = JSON.parse(contentJson);
 	} catch {
 		return 0;
 	}
+	if (!isRecord(parsed)) return 0;
+	if (Array.isArray(parsed['blocks'])) return parsed['blocks'].length;
+	return 'type' in parsed && 'content' in parsed ? 1 : 0;
 }
 
 // ─── Read queries (unchanged) ───────────────────────────────────────────────
 
+// all-members: the saved-block library every role inserts into emails;
+// writing it needs templates:manage.
 export const get = authedQuery({
 	args: { blockId: v.id('emailBlocks') },
 	handler: async (ctx, args) => {
@@ -67,6 +57,7 @@ export const get = authedQuery({
 	},
 });
 
+// all-members: the block count on the send overview.
 export const getStatsByTeam = authedQuery({
 	args: {},
 	handler: async (ctx) => {
@@ -78,6 +69,8 @@ export const getStatsByTeam = authedQuery({
 	},
 });
 
+// all-members: the saved-block library every role inserts into emails;
+// writing it needs templates:manage.
 export const list = authedQuery({
 	args: {
 		search: v.optional(v.string()),
@@ -129,10 +122,9 @@ export const create = authedMutation({
 		description: v.optional(v.string()),
 		content: v.string(),
 	},
-	handler: async (ctx, args): Promise<Id<'emailBlocks'>> => {
-		await requireOrgPermission(
-			ctx,
-			'templates:manage',
+	handler: async (ctx, args, session): Promise<Id<'emailBlocks'>> => {
+		requirePermission(
+			hasPermission(session.role, 'templates:manage'),
 			'Only owners and admins can create saved blocks'
 		);
 		const outcome = await ctx.runMutation(internal.emailBlocks.module.create, {
@@ -158,10 +150,9 @@ export const update = authedMutation({
 		description: v.optional(v.string()),
 		content: v.optional(v.string()),
 	},
-	handler: async (ctx, args): Promise<Id<'emailBlocks'>> => {
-		await requireOrgPermission(
-			ctx,
-			'templates:manage',
+	handler: async (ctx, args, session): Promise<Id<'emailBlocks'>> => {
+		requirePermission(
+			hasPermission(session.role, 'templates:manage'),
 			'Only owners and admins can update saved blocks'
 		);
 		const outcome = await ctx.runMutation(internal.emailBlocks.module.update, {
@@ -186,10 +177,9 @@ export const update = authedMutation({
  */
 export const duplicate = authedMutation({
 	args: { blockId: v.id('emailBlocks') },
-	handler: async (ctx, args): Promise<Id<'emailBlocks'>> => {
-		await requireOrgPermission(
-			ctx,
-			'templates:manage',
+	handler: async (ctx, args, session): Promise<Id<'emailBlocks'>> => {
+		requirePermission(
+			hasPermission(session.role, 'templates:manage'),
 			'Only owners and admins can duplicate saved blocks'
 		);
 		const outcome = await ctx.runMutation(internal.emailBlocks.module.duplicate, {
@@ -210,10 +200,9 @@ export const duplicate = authedMutation({
  */
 export const remove = authedMutation({
 	args: { blockId: v.id('emailBlocks') },
-	handler: async (ctx, args): Promise<void> => {
-		await requireOrgPermission(
-			ctx,
-			'templates:manage',
+	handler: async (ctx, args, session): Promise<void> => {
+		requirePermission(
+			hasPermission(session.role, 'templates:manage'),
 			'Only owners and admins can delete saved blocks'
 		);
 		const outcome = await ctx.runMutation(internal.emailBlocks.module.remove, {

@@ -8,11 +8,9 @@
  *
  * Each adapter owns the whole translation for its source: the vendor envelope
  * (Resend / Postmark / Mailgun all have different shells) and the inner field
- * extraction. Until the D10 honesty pass, the Resend adapter borrowed the inner
- * half from a bidirectional `EmailAdapter` whose other three methods were
- * fictions (a `send` that hard-returned failure, a `healthCheck` that
- * hard-returned healthy, a `validateSignature` that hard-returned true); that
- * class is gone and its one real method is inlined below, unchanged.
+ * extraction. An adapter here is inbound only: it does not borrow the inner
+ * half from a bidirectional channel adapter, whose send, health and
+ * signature methods would be fictions for an inbound-only source.
  *
  * This lived in `@owlat/channels` until that package was folded away: one
  * module behind a workspace boundary only this folder ever crossed, mirroring
@@ -21,6 +19,7 @@
  */
 
 import { v, type Infer } from 'convex/values';
+import { decodeJsonValue, type JsonBody } from '@owlat/worker-protocol/decodeJson';
 import { logWarn } from '../../lib/runtimeLog';
 import { spamVerdictValidator } from '../../lib/convexValidators';
 
@@ -108,52 +107,77 @@ export const inboundEmailMessageValidator = v.object({
 export type InboundEmailMessage = Infer<typeof inboundEmailMessageValidator>;
 
 /**
- * The MTA's `inbound.received` envelope as it arrives on the wire.
+ * The MTA's `inbound.received` envelope, checked before a field of it is read.
  *
- * Exported because the route handler (`inbox/inboundWebhookHttp.ts`) needs the
- * same shape this adapter casts to: it audits the envelope identifiers and
- * forwards `rawBytesBase64`, which is the one field that never becomes part of
- * `InboundEmailMessage` (the bytes are sealed into storage, not carried on the
- * row). Re-declaring it there was how `partIndex` came to be spelled in four
- * places for one wire change.
+ * Exported because the route handler (`inbox/inboundWebhookHttp.ts`) decodes
+ * the same shape this adapter reads: it forwards `rawBytesBase64`, which is
+ * the one field that never becomes part of `InboundEmailMessage` (the bytes
+ * are sealed into storage, not carried on the row). Re-declaring it there was
+ * how `partIndex` came to be spelled in four places for one wire change.
  *
- * A CAST OVER WIRE DATA, not a promise: every field is what the sender sent,
- * which is why `parseInbound` defaults rather than asserts.
+ * TWO KINDS OF FIELD. The ones `InboundEmailMessage` carries as they are
+ * (addresses, subject, bodies, verdict strings, the timestamp) are checked
+ * here: the ingest action's validator would refuse a wrong type anyway, one
+ * `ctx.runAction` later as a 500, and a 400 that names the path is the same
+ * outcome said earlier. The ones a sender influences and this adapter already
+ * projects (`headers`, `attachments`, the spam verdict and score, the ARC
+ * flag) stay `unknown`: dropping a bad element there keeps the mail, which a
+ * refusal would not.
  */
-export interface MtaInboundWirePayload {
-	event?: string;
-	messageId?: string;
-	organizationId?: string;
-	message?: string;
-	timestamp: number;
-	inboundPayload: {
-		from: string;
-		to: string;
-		subject: string;
-		textBody?: string;
-		htmlBody?: string;
-		headers: Record<string, string>;
-		date?: string;
-		messageId?: string;
-		inReplyTo?: string;
-		references?: string;
+export const mtaInboundWirePayloadValidator = v.object({
+	timestamp: v.number(),
+	inboundPayload: v.object({
+		from: v.string(),
+		to: v.string(),
+		subject: v.string(),
+		textBody: v.optional(v.string()),
+		htmlBody: v.optional(v.string()),
+		headers: v.optional(v.any()),
+		messageId: v.optional(v.string()),
+		inReplyTo: v.optional(v.string()),
+		references: v.optional(v.string()),
 		/** The whole received message, base64 RFC822. Absent on an older MTA. */
-		rawBytesBase64?: string;
-		/** Exactly the element shape the validator above defines — not a fifth spelling of it. */
-		attachments: InboundEmailMessage['attachments'];
-		spfResult?: string;
-		dkimResult?: string;
-		dmarcResult?: string;
-		dmarcPolicy?: string;
-		envelopeFromDomain?: string;
-		dkimSigningDomain?: string;
-		arcCv?: string;
-		arcSealerDomain?: string;
-		arcAttestsOriginalPass?: boolean;
+		rawBytesBase64: v.optional(v.string()),
+		attachments: v.optional(v.any()),
+		spfResult: v.optional(v.string()),
+		dkimResult: v.optional(v.string()),
+		dmarcResult: v.optional(v.string()),
+		dmarcPolicy: v.optional(v.string()),
+		envelopeFromDomain: v.optional(v.string()),
+		dkimSigningDomain: v.optional(v.string()),
+		arcCv: v.optional(v.string()),
+		arcSealerDomain: v.optional(v.string()),
+		arcAttestsOriginalPass: v.optional(v.any()),
 		/** The MTA's spam verdict, the same fields the mailbox payload carries. */
-		spamScore?: number;
-		spamVerdict?: string;
+		spamScore: v.optional(v.any()),
+		spamVerdict: v.optional(v.any()),
+	}),
+});
+
+type CheckedInboundPayload = Infer<typeof mtaInboundWirePayloadValidator>['inboundPayload'];
+
+/** A decoded envelope. The projected fields are `unknown`, never `any`. */
+export interface MtaInboundWirePayload {
+	timestamp: number;
+	inboundPayload: Omit<
+		CheckedInboundPayload,
+		'headers' | 'attachments' | 'arcAttestsOriginalPass' | 'spamScore' | 'spamVerdict'
+	> & {
+		headers?: unknown;
+		attachments?: unknown;
+		arcAttestsOriginalPass?: unknown;
+		spamScore?: unknown;
+		spamVerdict?: unknown;
 	};
+}
+
+/**
+ * Check an `inbound.received` envelope. Both routes that carry one (the
+ * team-inbox route and the legacy `/webhooks/mta` pipeline) call this, so they
+ * refuse the same bodies.
+ */
+export function decodeMtaInboundWire(raw: unknown): JsonBody<MtaInboundWirePayload> {
+	return decodeJsonValue(raw, mtaInboundWirePayloadValidator);
 }
 
 const MTA_SPAM_VERDICTS: ReadonlySet<string> = new Set(['ham', 'spam', 'quarantine']);
@@ -313,7 +337,14 @@ class MtaInboundAdapter implements InboundChannelAdapter {
 	source: InboundSource = 'mta';
 
 	parseInbound(raw: unknown): InboundEmailMessage {
-		const env = raw as MtaInboundWirePayload;
+		const decoded = decodeMtaInboundWire(raw);
+		if (!decoded.ok) {
+			const { failure } = decoded;
+			throw new TypeError(
+				`mta inbound.received: ${failure.kind === 'invalid' ? failure.issue : failure.message}`
+			);
+		}
+		const env = decoded.value;
 		// Named `input` on purpose: check-body-access.sh treats a body-field read
 		// off any other receiver as a stored-row read, and this file is the ingest
 		// boundary — everything it reads came off the wire, never out of the DB.
@@ -333,10 +364,9 @@ class MtaInboundAdapter implements InboundChannelAdapter {
 			references: input.references,
 			// Sender-influenced elements, projected to the four fields the
 			// validator declares — see `storableAttachments`. Defaulted, not
-			// asserted: this shape is a cast over wire data, and on the
-			// team-inbox route a throw here would 500 a request the MTA reads as
-			// retryable — six attempts and then the DLQ, which is mail lost where
-			// nobody looks.
+			// asserted: the wire check leaves this list `unknown` on purpose.
+			// Refusing a delivery over attachment metadata would send intact
+			// mail through the MTA's retries into the DLQ, where nobody looks.
 			attachments: storableAttachments(input.attachments, messageId),
 			timestamp: env.timestamp,
 			spfResult: input.spfResult,

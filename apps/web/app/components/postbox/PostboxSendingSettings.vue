@@ -21,12 +21,27 @@ import {
 	POSTBOX_UNDO_SEND_SECONDS,
 	type PostboxUndoSendSeconds,
 } from '~/utils/postboxUndoSendWindow';
+import { POSTBOX_PREFERENCE_DEFAULTS } from '~/utils/postboxPreferenceDefaults';
+import PreferencesSettingRow from '~/components/preferences/PreferencesSettingRow.vue';
 
 const { t } = useI18n();
 
 // ── Undo-send window ─────────────────────────────────────────────────────────
 // Not gated on anything: the hold applies to every send from this account.
-const { undoSendSeconds, setUndoSendSeconds, isSaving } = usePostboxSettings();
+const {
+	undoSendSeconds,
+	setUndoSendSeconds,
+	isSaving,
+	isLoading: isSettingsLoading,
+} = usePostboxSettings();
+
+// Hidden until the settings row answers: while it loads the window reads as the
+// fallback, which is not a choice anyone made.
+const undoSendChanged = computed(
+	() =>
+		!isSettingsLoading.value &&
+		undoSendSeconds.value !== POSTBOX_PREFERENCE_DEFAULTS.undoSendSeconds
+);
 
 function onUndoSendChange(event: Event) {
 	const raw = Number((event.target as HTMLSelectElement).value);
@@ -117,15 +132,16 @@ async function choose(preference: 'external' | 'instance') {
 		<!-- Undo send: how long a message is held after Send. "Off" dispatches
 		     immediately, which is why the help text says so out loud — there is
 		     then no undo toast to catch a mistake with. -->
-		<div class="px-5 py-4 flex items-center justify-between gap-4">
-			<div class="min-w-0">
-				<label for="postbox-undo-send" class="font-medium text-sm block">
-					{{ t('components.postbox.postboxSendingSettings.undoSendLabel') }}
-				</label>
-				<p class="text-xs text-text-tertiary mt-0.5">
-					{{ t('components.postbox.postboxSendingSettings.undoSendHelp') }}
-				</p>
-			</div>
+		<PreferencesSettingRow
+			first
+			layout="switch"
+			control-id="postbox-undo-send"
+			:label="t('components.postbox.postboxSendingSettings.undoSendLabel')"
+			:help="t('components.postbox.postboxSendingSettings.undoSendHelp')"
+			:changed="undoSendChanged"
+			:disabled="isSaving"
+			@reset="setUndoSendSeconds(POSTBOX_PREFERENCE_DEFAULTS.undoSendSeconds)"
+		>
 			<select
 				id="postbox-undo-send"
 				class="input w-32 shrink-0"
@@ -138,7 +154,7 @@ async function choose(preference: 'external' | 'instance') {
 					{{ undoSendLabel(seconds) }}
 				</option>
 			</select>
-		</div>
+		</PreferencesSettingRow>
 
 		<!-- Outbound transport. Self-hides for a hosted-only user, who
 		     has no external mailbox and so nothing to choose. -->
@@ -146,7 +162,10 @@ async function choose(preference: 'external' | 'instance') {
 			<div class="border-t border-border-subtle" />
 			<!-- Loading -->
 			<div v-if="isLoading" class="p-8 flex justify-center">
-				<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary" />
+				<Icon
+					name="lucide:loader-2"
+					class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary"
+				/>
 			</div>
 
 			<!-- Error: the subscription failed. Don't silently drop the section. -->

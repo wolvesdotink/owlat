@@ -17,11 +17,22 @@ import {
 	type WireHandshakeDeps,
 } from './wireHandshake.js';
 import { installCrashHandlers } from '@owlat/shared/nodeShutdown';
+import { startNodeMetrics } from '@owlat/shared/nodeMetrics';
+import { startMetricsServer } from './metricsServer.js';
 import { pathToFileURL } from 'node:url';
 
 export async function main() {
 	const config = loadConfig();
 	const convex = createConvexClient(config);
+	// Up before the handshake wait, so a server held back by a version mismatch
+	// can still be scraped and still reports a stalled loop.
+	const metrics = startNodeMetrics({ log: logger });
+	const metricsServer = config.metricsPort
+		? startMetricsServer(metrics.registry, {
+				port: config.metricsPort,
+				host: config.listenAddress,
+			})
+		: null;
 
 	// Report this server's release and wire version, and serve only once the
 	// backend speaks its contract.
@@ -73,6 +84,8 @@ export async function main() {
 	const shutdown = installImapShutdown(imap, {
 		disconnect: () => {
 			stopReports();
+			metrics.stop();
+			metricsServer?.stop();
 			redis?.disconnect();
 		},
 		exit: (code) => process.exit(code || exitCode),

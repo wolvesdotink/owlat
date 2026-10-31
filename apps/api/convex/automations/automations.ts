@@ -10,7 +10,7 @@ import { requireAutomationManage, requireAutomation, requireDraftAutomation } fr
 import { paginationOptsValidator } from 'convex/server';
 import { automationsQuery, automationsMutation } from './_helpers';
 import type { Doc, Id } from '../_generated/dataModel';
-import type { QueryCtx } from '../_generated/server';
+import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { getOrThrow, throwInvalidState } from '../_utils/errors';
 import { hasPermission, requirePermission } from '../lib/sessionOrganization';
@@ -90,6 +90,8 @@ async function loadAutomationWithSteps(
 }
 
 // List automations using session-based context.
+// all-members: the automation list is readable by every member; only the writes
+// below require automations:manage (automations/guards.ts).
 export const list = automationsQuery({
 	args: {
 		status: v.optional(v.union(v.literal('draft'), v.literal('active'), v.literal('paused'))),
@@ -104,6 +106,8 @@ export const list = automationsQuery({
 });
 
 // Get a single automation by ID with its steps
+// all-members: the read-only automation view every member may open (step
+// configs hold no credentials; plugin secrets stay in the deployment env).
 export const get = automationsQuery({
 	args: {
 		automationId: v.id('automations'),
@@ -116,6 +120,8 @@ export const get = automationsQuery({
 });
 
 // Get automation with related data (email templates for email steps)
+// all-members: the same read-only automation view as `get`, joined with the
+// templates and topic every member may also read.
 export const getWithRelations = automationsQuery({
 	args: {
 		automationId: v.id('automations'),
@@ -150,6 +156,7 @@ export const getWithRelations = automationsQuery({
 
 // Count automations by status — the descriptor's `byStatus` facet returns
 // per-status counts plus their `total`.
+// all-members: per-status counts behind the member-readable automation list.
 export const countByStatus = automationsQuery({
 	args: {},
 	handler: async (ctx) => {
@@ -263,7 +270,39 @@ function reasonToMessage(
 			return 'Automation must have at least one step to be activated';
 		case 'invalid_trigger_config':
 			return 'Automation trigger is missing required configuration';
+		case 'status_changed':
+			return 'The automation was paused or resumed since; nothing was undone';
 	}
+}
+
+/**
+ * What a pause or resume returns: `statusChangedAt` is the stamp its
+ * transition wrote, which an undo passes back as `ifStatusChangedAt`; null
+ * when the automation was already in that state and nothing changed.
+ */
+type StatusChangeResult = { statusChangedAt: number | null };
+
+const statusChangeArgs = {
+	automationId: v.id('automations'),
+	// Set by an undo: see `lifecycle.transition`.
+	ifStatusChangedAt: v.optional(v.number()),
+};
+
+async function changeStatus(
+	ctx: MutationCtx,
+	args: { automationId: Id<'automations'>; ifStatusChangedAt?: number },
+	to: 'active' | 'paused',
+	userId: string
+): Promise<StatusChangeResult> {
+	const at = Date.now();
+	const outcome = await ctx.runMutation(internal.automations.lifecycle.transition, {
+		automationId: args.automationId,
+		input: { to, at },
+		userId,
+		...(args.ifStatusChangedAt !== undefined ? { ifStatusChangedAt: args.ifStatusChangedAt } : {}),
+	});
+	if (!outcome.ok) throwInvalidState(reasonToMessage(outcome.reason));
+	return { statusChangedAt: outcome.applied === 'transitioned' ? at : null };
 }
 
 // Activate an automation — auth shell over `lifecycle.transition`.
@@ -285,35 +324,21 @@ export const activate = automationsMutation({
 
 // Pause an automation — auth shell over `lifecycle.transition`.
 export const pause = automationsMutation({
-	args: {
-		automationId: v.id('automations'),
-	},
-	handler: async (ctx, args) => {
+	args: statusChangeArgs,
+	handler: async (ctx, args): Promise<StatusChangeResult> => {
 		// authz: requireAutomationManage enforces automations:manage
 		const session = await requireAutomationManage(ctx, 'pause automations');
-		const outcome = await ctx.runMutation(internal.automations.lifecycle.transition, {
-			automationId: args.automationId,
-			input: { to: 'paused', at: Date.now() },
-			userId: session.userId,
-		});
-		if (!outcome.ok) throwInvalidState(reasonToMessage(outcome.reason));
+		return await changeStatus(ctx, args, 'paused', session.userId);
 	},
 });
 
 // Resume a paused automation — auth shell over `lifecycle.transition`.
 export const resume = automationsMutation({
-	args: {
-		automationId: v.id('automations'),
-	},
-	handler: async (ctx, args) => {
+	args: statusChangeArgs,
+	handler: async (ctx, args): Promise<StatusChangeResult> => {
 		// authz: requireAutomationManage enforces automations:manage
 		const session = await requireAutomationManage(ctx, 'resume automations');
-		const outcome = await ctx.runMutation(internal.automations.lifecycle.transition, {
-			automationId: args.automationId,
-			input: { to: 'active', at: Date.now() },
-			userId: session.userId,
-		});
-		if (!outcome.ok) throwInvalidState(reasonToMessage(outcome.reason));
+		return await changeStatus(ctx, args, 'active', session.userId);
 	},
 });
 

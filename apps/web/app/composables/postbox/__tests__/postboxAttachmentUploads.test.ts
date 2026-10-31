@@ -349,6 +349,103 @@ describe('createAttachmentUploads state machine', () => {
 });
 
 describe('xhrPutFile', () => {
+	/**
+	 * An XHR the test drives by dispatching the events a real one fires: the
+	 * upload only learns its outcome through listeners, never `on*` properties.
+	 */
+	class ScriptedXhr extends EventTarget {
+		static last: ScriptedXhr | null = null;
+		upload = new EventTarget();
+		status = 0;
+		responseText = '';
+		abortCalls = 0;
+		open() {}
+		setRequestHeader() {}
+		send() {
+			ScriptedXhr.last = this;
+		}
+		abort() {
+			this.abortCalls += 1;
+			this.dispatchEvent(new Event('abort'));
+		}
+		answer(status: number, body: string) {
+			this.status = status;
+			this.responseText = body;
+			this.dispatchEvent(new Event('load'));
+		}
+		progress(init: { lengthComputable: boolean; loaded: number; total: number }) {
+			this.upload.dispatchEvent(Object.assign(new Event('progress'), init));
+		}
+	}
+
+	function withScriptedXhr(signal = new AbortController().signal) {
+		const realXhr = globalThis.XMLHttpRequest;
+		globalThis.XMLHttpRequest = ScriptedXhr as unknown as typeof XMLHttpRequest;
+		ScriptedXhr.last = null;
+		const onProgress = vi.fn();
+		try {
+			const put = xhrPutFile('https://upload.example', makeFile('a.txt', 10), 'text/plain', {
+				signal,
+				onProgress,
+			});
+			return { put, onProgress, xhr: ScriptedXhr.last as ScriptedXhr | null };
+		} finally {
+			globalThis.XMLHttpRequest = realXhr;
+		}
+	}
+
+	async function putAnswering(status: number, body: string): Promise<string> {
+		const { put, xhr } = withScriptedXhr();
+		xhr!.answer(status, body);
+		return put;
+	}
+
+	it('resolves the storage id of a well-formed response', async () => {
+		await expect(putAnswering(200, JSON.stringify({ storageId: 'st_1' }))).resolves.toBe('st_1');
+	});
+
+	it.each([
+		['a non-string id', JSON.stringify({ storageId: 42 })],
+		['an empty id', JSON.stringify({ storageId: '' })],
+		['no id', JSON.stringify({})],
+		['a null body', 'null'],
+	])('rejects a response with %s instead of resolving it', async (_case, body) => {
+		await expect(putAnswering(200, body)).rejects.toThrow('Upload response missing storageId');
+	});
+
+	it('rejects a response that is not JSON', async () => {
+		await expect(putAnswering(200, '<html>proxy error</html>')).rejects.toThrow(
+			'Upload response was not valid JSON'
+		);
+	});
+
+	it('rejects a non-2xx answer with its status', async () => {
+		await expect(putAnswering(413, '')).rejects.toThrow('Upload failed (413)');
+	});
+
+	it('rejects on a network error', async () => {
+		const { put, xhr } = withScriptedXhr();
+		xhr!.dispatchEvent(new Event('error'));
+		await expect(put).rejects.toThrow('Upload network error');
+	});
+
+	it('aborts the request in flight and rejects with an AbortError', async () => {
+		const controller = new AbortController();
+		const { put, xhr } = withScriptedXhr(controller.signal);
+		controller.abort();
+		await expect(put).rejects.toMatchObject({ name: 'AbortError' });
+		expect(xhr!.abortCalls).toBe(1);
+	});
+
+	it('reports determinate upload progress and ignores progress it cannot compute', () => {
+		const { xhr, onProgress } = withScriptedXhr();
+		xhr!.progress({ lengthComputable: true, loaded: 25, total: 100 });
+		xhr!.progress({ lengthComputable: false, loaded: 50, total: 100 });
+		xhr!.progress({ lengthComputable: true, loaded: 0, total: 0 });
+		xhr!.progress({ lengthComputable: true, loaded: 100, total: 100 });
+		expect(onProgress.mock.calls).toEqual([[0.25], [1]]);
+	});
+
 	it('rejects with an AbortError when the signal was aborted before the request went out', async () => {
 		const opened = vi.fn();
 		class FakeXhr {
@@ -367,12 +464,13 @@ describe('xhrPutFile', () => {
 				signal: controller.signal,
 				onProgress: () => {},
 			});
+			// Settled before the next macrotask: nothing went out to wait for.
 			const settled = await Promise.race([
 				put.then(
 					() => 'resolved',
 					(err: unknown) => (err as { name?: string }).name
 				),
-				new Promise<string>((r) => setTimeout(() => r('pending'), 50)),
+				tick().then(() => 'pending'),
 			]);
 			expect(settled).toBe('AbortError');
 			expect(opened).not.toHaveBeenCalled();

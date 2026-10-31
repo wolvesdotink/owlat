@@ -1,5 +1,5 @@
 /**
- * Deliverability dashboard — the org-scoped read queries (plan D2, D5, D14).
+ * Deliverability dashboard — the org-scoped read queries.
  *
  * What this file pins:
  *
@@ -10,13 +10,14 @@
  *   - CROSS-TENANT READS ARE REFUSED: another organization's buckets are never
  *     summed in, and a caller who is not an org member gets nothing at all;
  *   - the STANDALONE configuration (no reference transport) is clean: every
- *     cell reports `reference: null`, no gate fails, nothing throws (plan D2);
- *   - a legacy, share-less route state resolves through D1's helper;
- *   - thin data HOLDS rather than failing (plan D10).
+ *     cell reports `reference: null`, no gate fails, nothing throws;
+ *   - a legacy, share-less route state resolves through the share helper;
+ *   - thin data HOLDS rather than failing.
  */
 
 import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type * as SessionOrganization from '../../lib/sessionOrganization';
 import schema from '../../schema';
 import { api } from '../../_generated/api';
 import type { Doc } from '../../_generated/dataModel';
@@ -35,7 +36,7 @@ const OTHER_ORG = 'org_intruder';
 const sessionMocks = vi.hoisted(() => ({ refuse: false }));
 
 vi.mock('../../lib/sessionOrganization', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../../lib/sessionOrganization')>();
+	const actual = await importOriginal<typeof SessionOrganization>();
 	return {
 		...actual,
 		requireOrgMember: vi.fn(async () => {
@@ -188,7 +189,7 @@ describe('getDeliverabilityDashboard — derived rates', () => {
 /**
  * TWO SPANS ON ONE SCREEN, AND THE QUERY SAYS WHICH IS WHICH (#510).
  *
- * The counters are the week plan D2/D5 specifies; the verdicts are the
+ * The counters are a seven-day week, derived on read; the verdicts are the
  * controller's own evaluation window, so the screen cannot report a gate the
  * cron never reached. `seedGateWiring.test.ts` pins the agreement against the
  * cron's own loader on the issue's fixture — what is pinned HERE is the wire:
@@ -322,7 +323,7 @@ describe('getDeliverabilityDashboard — tenant isolation', () => {
 			api.delivery.deliverabilityDashboard.getDeliverabilityDashboard,
 			{}
 		);
-		// No row for THIS org: D1's default — the own MTA carries everything.
+		// No row for THIS org: the default share — the own MTA carries everything.
 		expect(gmailCell(dashboard).ownShare).toBe(1);
 	});
 
@@ -419,7 +420,7 @@ describe('getDeliverabilityDashboard — window composition', () => {
 		// has no denominator, holds, and the standalone ratio hold is reported.
 		expect(gate.status).toBe('insufficient_data');
 		expect(gate.measurement.referenceSample).toBeNull();
-		// Thin evidence is never a failure (D10) — and the engaged slice being
+		// Thin evidence is never a failure — and the engaged slice being
 		// inside the window cannot flatter the comparison either.
 		expect(gmailCell(dashboard).verdict).not.toBe('fail');
 	});
@@ -458,7 +459,7 @@ describe('getDeliverabilityDashboard — states are the feature', () => {
 	});
 
 	/**
-	 * THE REGRESSION THIS TEST EXISTS FOR (plan D14).
+	 * THE REGRESSION THIS TEST EXISTS FOR.
 	 *
 	 * A standalone cell with real volume decides its DEFERRAL gate — which is
 	 * genuinely high-confidence direct measurement — while the two-armed gates
@@ -703,7 +704,7 @@ describe('getDeliverabilityDashboard — states are the feature', () => {
 		}
 	});
 
-	it('resolves a LEGACY share-less route state through D1’s helper', async () => {
+	it('resolves a LEGACY share-less route state through the share helper', async () => {
 		const t = convexTest(schema, modules);
 		await t.run(async (ctx) => {
 			await ctx.db.insert('deliverabilityRouteStates', {

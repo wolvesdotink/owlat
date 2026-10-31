@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Provider-identity ratchet — the SEAMS plan's D2 ("capabilities, not identity;
+# Provider-identity ratchet ("capabilities, not identity;
 # enforced by a ratchet, not vigilance").
 #
 # A send provider is described by the capability catalog
@@ -15,7 +15,7 @@
 #
 # Sibling of scripts/check-cross-package-imports.sh: one grep-shaped invariant,
 # plus two small checked-in lists that are strict in BOTH directions, exactly
-# like the file-size and dead-code baselines — an unlisted violation fails, and
+# like the file-size baseline — an unlisted violation fails, and
 # a listed site that no longer violates fails too, so a list can only shrink.
 #
 #   scripts/provider-identity-allowlist.txt — DEBT. Sites that predate the rule,
@@ -78,7 +78,7 @@
 #
 # The narrower sibling is `apps/api/scripts/
 # check-kind-literal-custody.ts`: over apps/api/convex ONLY, it catches a kind
-# DECLARATION (`const RELAY_IDENTITY_PROOF_KIND = 'ses'` — the same fact with one
+# DECLARATION (`const RELAY_KIND = 'ses'` — the same fact with one
 # hop). Declarations are not a repo-wide rule (a catalog entry, an adapter, an
 # event payload and a fixture all legitimately write their own name), which is
 # why that half stays scoped to the backend. COMPARISONS ARE THIS SCRIPT'S RULE
@@ -147,7 +147,7 @@ SCAN_PATHS=(apps packages examples)
 ADAPTER_ROOTS=(lib/sendProviders domains/providers integrationImports/providers webhooks/adapters)
 
 # The kinds, from their single declaration: the catalog entries themselves
-# (P1.1 / D1 — SEND_TRANSPORT_KINDS is now `CATALOG.map(entry => entry.kind)`,
+# (SEND_TRANSPORT_KINDS is `CATALOG.map(entry => entry.kind)`,
 # so there is no literal array left to read). Parsed rather than restated so the
 # ratchet cannot drift from the catalog.
 #
@@ -167,7 +167,7 @@ ADAPTER_ROOTS=(lib/sendProviders domains/providers integrationImports/providers 
 # fail-closed branch below. A per-line parser has a third outcome the array had
 # not: it can read four kinds out of five, leave `kinds` non-empty, print `ok:`
 # and un-ratchet every `=== '<the fifth>'` in the repo with no signal — the
-# "vigilance, not a ratchet" failure D2 exists to prevent, made invisible by a
+# "vigilance, not a ratchet" failure the ratchet exists to prevent, made invisible by a
 # green gate. So the entry OPENINGS inside the same region are counted too, and
 # a disagreement between the two counts fails exactly like reading nothing.
 kinds_source="packages/shared/src/sendProviderCatalogData.ts"

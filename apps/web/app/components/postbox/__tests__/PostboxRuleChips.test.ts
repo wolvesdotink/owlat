@@ -1,5 +1,5 @@
 /**
- * Plain-language rules (read on arrival, SPEC §6.1, §6.2): a rule reads as a
+ * Plain-language rules (read on arrival): a rule reads as a
  * line of chips with its folder and label names resolved, and the dry run
  * says where each match came from, including mail it could not test.
  */

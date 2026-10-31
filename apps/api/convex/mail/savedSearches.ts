@@ -7,7 +7,7 @@
  * the search page reads, which makes a saved search and a bookmarked URL the
  * same artifact.
  *
- * Mailbox-scoped like labels (`labels.ts`) and snippets (`snippets.ts`): a
+ * Mailbox-scoped like labels (`labels.ts`): a
  * query naming this mailbox's folders and labels means nothing in another one.
  * Every function re-checks mailbox access; nothing here trusts an id argument.
  */

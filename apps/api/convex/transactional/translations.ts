@@ -1,6 +1,6 @@
 import { v } from 'convex/values';
 import { transactionalMutation, transactionalQuery } from './_helpers';
-import { requireOrgPermission } from '../lib/sessionOrganization';
+import { hasPermission, requirePermission } from '../lib/sessionOrganization';
 import { getOrThrow } from '../_utils/errors';
 import {
 	assertEditableForPublishableChange,
@@ -20,6 +20,8 @@ import {
  * Get transactional email content for a specific language
  * Returns the content for the requested language, falling back to default language if not available
  */
+// all-members: the transactional template library every role reads; writing
+// it needs templates:manage.
 export const getForLanguage = transactionalQuery({
 	args: {
 		id: v.id('transactionalEmails'),
@@ -57,10 +59,9 @@ export const addTranslation = transactionalMutation({
 		// write is refused with `conflict` if the row has moved on since.
 		expectedContentRevision: v.optional(v.number()),
 	},
-	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'templates:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'templates:manage'),
 			'Only owners and admins can manage transactional email translations'
 		);
 		const email = await getOrThrow(ctx, args.id, 'Transactional email');
@@ -100,10 +101,9 @@ export const updateTranslation = transactionalMutation({
 		// write is refused with `conflict` if the row has moved on since.
 		expectedContentRevision: v.optional(v.number()),
 	},
-	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'templates:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'templates:manage'),
 			'Only owners and admins can manage transactional email translations'
 		);
 		const email = await getOrThrow(ctx, args.id, 'Transactional email');
@@ -134,10 +134,9 @@ export const removeTranslation = transactionalMutation({
 		// write is refused with `conflict` if the row has moved on since.
 		expectedContentRevision: v.optional(v.number()),
 	},
-	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'templates:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'templates:manage'),
 			'Only owners and admins can manage transactional email translations'
 		);
 		const email = await getOrThrow(ctx, args.id, 'Transactional email');

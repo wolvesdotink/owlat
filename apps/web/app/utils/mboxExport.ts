@@ -11,8 +11,8 @@
  * quoted by `serializeMboxEntry` without being decoded, and written to the sink
  * as bytes. A message is MIME, not text: parts carry their own charsets and
  * attachments are arbitrary bytes, so writing it as a string (which the file
- * stream encodes as UTF-8) grew every byte at or above 0x80 into two or three
- * and mangled everything the archive is for (#1280).
+ * stream encodes as UTF-8) would grow every byte at or above 0x80 into two or
+ * three and mangle everything the archive is for.
  */
 
 import { api } from '@owlat/api';

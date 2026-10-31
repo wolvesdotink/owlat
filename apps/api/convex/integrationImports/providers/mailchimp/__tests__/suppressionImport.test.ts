@@ -1,5 +1,5 @@
 /**
- * Mailchimp suppression carry-over (plan D9, P4.1) — adapter routing + the
+ * Mailchimp suppression carry-over — adapter routing + the
  * end-to-end walk that turns it into state.
  *
  * The thing under test is a migration promise: a team that unsubscribed 4,000

@@ -24,5 +24,31 @@
  */
 export const PARALLEL_GATE_TIMEOUT_MS = 60_000;
 
+/**
+ * The budget for a suite whose cost is its population: one that seeds more rows
+ * than a production limit allows (a transaction's reads, a deferral pass, a
+ * send cap) into convex-test and drives them to the end. convex-test answers
+ * every query by scanning and sorting the table in memory, so such a suite
+ * grows with the square of its population, and a population shrunk below the
+ * limit no longer tests the limit.
+ *
+ * Measured on CI's sharded API job, the slowest of these tests takes about 40s,
+ * two thirds of the budget above. Three times that budget leaves them the
+ * fourfold headroom the suites under it get. A package names the suites that
+ * take this budget in its vitest config; every other suite keeps the one above.
+ */
+export const POPULATION_SUITE_TIMEOUT_MS = 3 * PARALLEL_GATE_TIMEOUT_MS;
+
 /** Vitest's built-in default, which the budget above deliberately replaces. */
 export const VITEST_DEFAULT_TIMEOUT_MS = 5_000;
+
+/**
+ * The budget for one report-only benchmark run (`bun run perf:bench`,
+ * scripts/perf-bench/run.ts). A benchmark spec times a fixed number of calls,
+ * so its length is the machine's speed times the sample count, and the driver
+ * runs it alone on a quiet machine. The budget only has to stop a run that never
+ * ends, so it sits well above the slowest family. The driver passes it on the
+ * command line; no workspace config sets it, because ordinary test runs skip the
+ * benchmark blocks and keep their own budget for hang detection.
+ */
+export const PERF_BENCH_TIMEOUT_MS = 10 * 60_000;

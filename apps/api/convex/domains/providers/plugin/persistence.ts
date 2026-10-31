@@ -15,7 +15,7 @@
  *
  * Rows live in the generic `sendingDomainRelayIdentities` table under
  * `providerKind: 'plugin.<id>.<local>'` — a plain string field, additive, no
- * schema change (D10: rows, not columns).
+ * schema change (rows, not columns).
  */
 
 import {

@@ -3,6 +3,20 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import schema from '../schema';
 import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import { createTestContact, createTestTopic } from './factories';
+import {
+	apiErrorResponseSchema,
+	PUBLIC_OPERATIONS,
+	publicOperation,
+	successBodySchema,
+	type PublicOperationId,
+} from '@owlat/public-contract/schemas';
+import { httpRouter } from 'convex/server';
+import { registerPublicApiRoutes } from '../apiV1Http';
+import * as contactsApi from '../contacts/api';
+import { sendEvent } from '../eventsApi';
+import { sendTransactional } from '../transactional/api';
+import { addContactToTopic, removeContactFromTopic } from '../topics/apiHttp';
+import { healthCheck } from '../auth/apiAuthHttp';
 
 /**
  * End-to-end tests for the public `/api/v1/*` REST API, driven through
@@ -107,6 +121,23 @@ function authHeaders(key: string): Record<string, string> {
 	};
 }
 
+/**
+ * Check a response against the public contract: the operation's documented
+ * success status and body, envelope included, with no undocumented field.
+ */
+async function expectContractSuccess(operationId: PublicOperationId, res: Response) {
+	const operation = publicOperation(operationId);
+	expect(res.status).toBe(operation.success.status);
+	const body: unknown = await res.clone().json();
+	expect(successBodySchema(operation).safeParse(body).error?.issues).toBeUndefined();
+}
+
+/**
+ * A JSON array nested a few thousand levels deep, still well inside the body
+ * size cap: deep enough to overflow a recursive walk of the body.
+ */
+const DEEPLY_NESTED_JSON = `${'['.repeat(6000)}0${']'.repeat(6000)}`;
+
 const SAVED_ENV = { ...process.env };
 beforeEach(() => {
 	// Some handlers read SITE_URL via lib/env getOptional — keep it unset so the
@@ -195,6 +226,7 @@ describe('GET /api/v1/contacts (listContacts → contacts:read)', () => {
 		});
 		const res = await t.fetch('/api/v1/contacts', { method: 'GET', headers: authHeaders(key) });
 		expect(res.status).toBe(200);
+		await expectContractSuccess('listContacts', res);
 		const body = await res.json();
 		expect(Array.isArray(body.data)).toBe(true);
 		expect(body.pagination).toBeDefined();
@@ -237,6 +269,7 @@ describe('POST /api/v1/contacts (createContact → contacts:write)', () => {
 			body: JSON.stringify({ email: 'created@example.com', firstName: 'Cre', lastName: 'Ated' }),
 		});
 		expect(res.status).toBe(201);
+		await expectContractSuccess('createContact', res);
 		const body = await res.json();
 		expect(body.data.email).toBe('created@example.com');
 		expect(body.data.firstName).toBe('Cre');
@@ -254,6 +287,20 @@ describe('POST /api/v1/contacts (createContact → contacts:write)', () => {
 		});
 		expect(res.status).toBe(400);
 	});
+
+	it.each(['', '"__proto__":0,'])(
+		'201 ignoring a deeply nested unknown field (prefix %j)',
+		async (prefix) => {
+			const t = setupTest();
+			const key = await seedKey(t, ['contacts:write']);
+			const res = await t.fetch('/api/v1/contacts', {
+				method: 'POST',
+				headers: authHeaders(key),
+				body: `{${prefix}"email":"deep@example.com","extra":${DEEPLY_NESTED_JSON}}`,
+			});
+			await expectContractSuccess('createContact', res);
+		}
+	);
 
 	it('400 invalid_input for malformed JSON body', async () => {
 		const t = setupTest();
@@ -340,6 +387,7 @@ describe('GET /api/v1/contacts/{idOrEmail} (getContact → contacts:read)', () =
 			headers: authHeaders(key),
 		});
 		expect(res.status).toBe(200);
+		await expectContractSuccess('getContact', res);
 		const body = await res.json();
 		expect(body.data.email).toBe('by-email@example.com');
 	});
@@ -355,6 +403,7 @@ describe('GET /api/v1/contacts/{idOrEmail} (getContact → contacts:read)', () =
 			headers: authHeaders(key),
 		});
 		expect(res.status).toBe(200);
+		await expectContractSuccess('getContact', res);
 		const body = await res.json();
 		expect(body.data.id).toBe(id);
 		expect(body.data.email).toBe('by-id@example.com');
@@ -429,6 +478,7 @@ describe('PUT /api/v1/contacts/{idOrEmail} (updateContact → contacts:write)', 
 			body: JSON.stringify({ firstName: 'New' }),
 		});
 		expect(res.status).toBe(200);
+		await expectContractSuccess('updateContact', res);
 		const body = await res.json();
 		expect(body.data.firstName).toBe('New');
 	});
@@ -529,6 +579,7 @@ describe('DELETE /api/v1/contacts/{idOrEmail} (deleteContact → contacts:write)
 			headers: authHeaders(key),
 		});
 		expect(res.status).toBe(200);
+		await expectContractSuccess('deleteContact', res);
 		const body = await res.json();
 		expect(body.data.deleted).toBe(true);
 		// The row is genuinely gone (hard delete for API-key path).
@@ -612,6 +663,7 @@ describe('POST /api/v1/events (sendEvent → events:write)', () => {
 			}),
 		});
 		expect(res.status).toBe(201);
+		await expectContractSuccess('sendEvent', res);
 		const body = await res.json();
 		expect(body.data.eventName).toBe('signed_up');
 		expect(body.data.contactCreated).toBe(true);
@@ -650,6 +702,39 @@ describe('POST /api/v1/events (sendEvent → events:write)', () => {
 		expect(res.status).toBe(400);
 		const body = await res.json();
 		expect(body.error.category).toBe('invalid_input');
+	});
+
+	it('400 invalid_input for a deeply nested eventProperties value (not 500)', async () => {
+		const t = setupTest();
+		const key = await seedKey(t, ['events:write']);
+		const res = await t.fetch('/api/v1/events', {
+			method: 'POST',
+			headers: authHeaders(key),
+			body: `{"email":"deep@example.com","eventName":"signed_up","eventProperties":{"bad":${DEEPLY_NESTED_JSON}}}`,
+		});
+		expect(res.status).toBe(400);
+		const body = await res.json();
+		expect(body.error).toMatchObject({
+			category: 'invalid_input',
+			message: 'eventProperties must be an object of string, number, boolean or null values',
+		});
+	});
+
+	it('400 invalid_input for a nested eventProperties value held under a __proto__ key', async () => {
+		const t = setupTest();
+		const key = await seedKey(t, ['events:write']);
+		// Raw JSON: JSON.stringify of an object literal cannot produce an own __proto__ key.
+		const res = await t.fetch('/api/v1/events', {
+			method: 'POST',
+			headers: authHeaders(key),
+			body: '{"email":"absent@example.com","eventName":"signed_up","eventProperties":{"__proto__":[1]}}',
+		});
+		expect(res.status).toBe(400);
+		const body = await res.json();
+		expect(body.error).toMatchObject({
+			category: 'invalid_input',
+			message: 'eventProperties must be an object of string, number, boolean or null values',
+		});
 	});
 });
 
@@ -707,6 +792,23 @@ describe('POST /api/v1/transactional (sendTransactional → transactional:send)'
 		expect(res.status).toBe(400);
 		const body = await res.json();
 		expect(body.error.category).toBe('invalid_input');
+	});
+
+	it('400 invalid_input for a nested dataVariables value held under a __proto__ key', async () => {
+		const t = setupTest();
+		const key = await seedKey(t, ['transactional:send']);
+		// Raw JSON: JSON.stringify of an object literal cannot produce an own __proto__ key.
+		const res = await t.fetch('/api/v1/transactional', {
+			method: 'POST',
+			headers: authHeaders(key),
+			body: '{"email":"to@example.com","slug":"no-such-template","dataVariables":{"__proto__":{"nested":true}}}',
+		});
+		expect(res.status).toBe(400);
+		const body = await res.json();
+		expect(body.error).toMatchObject({
+			category: 'invalid_input',
+			message: 'dataVariables must be an object of string, number, boolean or null values',
+		});
 	});
 
 	it('404 not_found when the slug resolves to no template (scope passes, dispatch runs)', async () => {
@@ -817,6 +919,7 @@ describe('POST /api/v1/topics/{id}/contacts (addContactToTopic → topics:write)
 			body: JSON.stringify({ email: 'member@example.com' }),
 		});
 		expect(res.status).toBe(201);
+		await expectContractSuccess('addContactToTopic', res);
 		const body = await res.json();
 		expect(body.data.success).toBe(true);
 		expect(body.data.topicId).toBe(topicId);
@@ -889,6 +992,7 @@ describe('DELETE /api/v1/topics/{id}/contacts/{x} (removeContactFromTopic → to
 			headers: authHeaders(key),
 		});
 		expect(res.status).toBe(200);
+		await expectContractSuccess('removeContactFromTopic', res);
 		const body = await res.json();
 		expect(body.data.success).toBe(true);
 		expect(body.data.removed).toBe(true);
@@ -928,6 +1032,7 @@ describe('DELETE /api/v1/topics/{id}/contacts/{x} (removeContactFromTopic → to
 			headers: authHeaders(key),
 		});
 		expect(res.status).toBe(200);
+		await expectContractSuccess('removeContactFromTopic', res);
 		const body = await res.json();
 		expect(body.data.success).toBe(true);
 
@@ -955,6 +1060,7 @@ describe('DELETE /api/v1/topics/{id}/contacts/{x} (removeContactFromTopic → to
 			headers: authHeaders(key),
 		});
 		expect(res.status).toBe(200);
+		await expectContractSuccess('removeContactFromTopic', res);
 		const body = await res.json();
 		expect(body.data.removed).toBe(false);
 	});
@@ -987,7 +1093,7 @@ describe('an all-scope key satisfies every route', () => {
 
 		// contacts:read
 		const list = await t.fetch('/api/v1/contacts', { method: 'GET', headers: authHeaders(key) });
-		expect(list.status).toBe(200);
+		await expectContractSuccess('listContacts', list);
 
 		// contacts:write (create a fresh contact)
 		const create = await t.fetch('/api/v1/contacts', {
@@ -995,7 +1101,7 @@ describe('an all-scope key satisfies every route', () => {
 			headers: authHeaders(key),
 			body: JSON.stringify({ email: 'omni-new@example.com' }),
 		});
-		expect(create.status).toBe(201);
+		await expectContractSuccess('createContact', create);
 
 		// topics:write
 		const addToTopic = await t.fetch(`/api/v1/topics/${topicId}/contacts`, {
@@ -1003,6 +1109,95 @@ describe('an all-scope key satisfies every route', () => {
 			headers: authHeaders(key),
 			body: JSON.stringify({ email: 'omni@example.com' }),
 		});
-		expect(addToTopic.status).toBe(201);
+		await expectContractSuccess('addContactToTopic', addToTopic);
+	});
+});
+
+// ─── The public contract ────────────────────────────────────────────────────
+
+/** The handler each contract operation routes to. */
+const HANDLERS: Record<PublicOperationId, unknown> = {
+	getHealth: healthCheck,
+	listContacts: contactsApi.listContacts,
+	createContact: contactsApi.createContact,
+	getContact: contactsApi.getContact,
+	updateContact: contactsApi.updateContact,
+	deleteContact: contactsApi.deleteContact,
+	sendEvent,
+	sendTransactional,
+	addContactToTopic,
+	removeContactFromTopic,
+};
+
+/** A concrete path for a contract path template: each `{param}` gets a sample value. */
+const concretePath = (template: string) => template.replace(/\{\w+\}/g, 'k57sample000000000');
+
+describe('the public contract (@owlat/public-contract)', () => {
+	const router = httpRouter();
+	registerPublicApiRoutes(router);
+
+	it('routes every documented operation to its handler', () => {
+		for (const operation of PUBLIC_OPERATIONS) {
+			const match = router.lookup(concretePath(operation.path), operation.method);
+			expect(match?.[0], operation.operationId).toBe(HANDLERS[operation.operationId]);
+		}
+	});
+
+	it('documents every route other than the CORS preflights', () => {
+		for (const [path, method] of router.getRoutes()) {
+			if (method === 'OPTIONS') continue;
+			const documented = PUBLIC_OPERATIONS.some(
+				(operation) =>
+					operation.method === method &&
+					router.lookup(concretePath(operation.path), operation.method)?.[2] === path
+			);
+			expect(documented, `${method} ${path}`).toBe(true);
+		}
+	});
+
+	it('enforces the scope each keyed operation documents, with the documented error body', async () => {
+		const t = setupTest();
+		const keyed = PUBLIC_OPERATIONS.filter((operation) => operation.scope !== null);
+		for (const [index, operation] of keyed.entries()) {
+			const key = await seedKey(
+				t,
+				ALL_SCOPES.filter((scope) => scope !== operation.scope),
+				`scope${index}${'a'.repeat(40)}`
+			);
+			const res = await t.fetch(concretePath(operation.path), {
+				method: operation.method,
+				headers: authHeaders(key),
+				...(operation.request ? { body: JSON.stringify({ email: 'ada@example.com' }) } : {}),
+			});
+			expect(res.status, operation.operationId).toBe(403);
+			const body: unknown = await res.json();
+			expect(apiErrorResponseSchema.safeParse(body).error?.issues).toBeUndefined();
+			expect(JSON.stringify(body)).toContain(String(operation.scope));
+		}
+	});
+
+	it('answers the health probe with the documented body', async () => {
+		const t = setupTest();
+		const res = await t.fetch('/api/v1/health', { method: 'GET' });
+		await expectContractSuccess('getHealth', res);
+	});
+
+	it('answers a malformed body with the documented error body', async () => {
+		const t = setupTest();
+		const key = await seedKey(t, ALL_SCOPES);
+		const res = await t.fetch('/api/v1/transactional', {
+			method: 'POST',
+			headers: authHeaders(key),
+			body: JSON.stringify({ email: 'ada@example.com', slug: 'welcome', dataVariables: { a: [] } }),
+		});
+		expect(res.status).toBe(400);
+		const body: unknown = await res.json();
+		expect(apiErrorResponseSchema.safeParse(body).error?.issues).toBeUndefined();
+		expect(body).toMatchObject({
+			error: {
+				category: 'invalid_input',
+				message: 'dataVariables must be an object of string, number, boolean or null values',
+			},
+		});
 	});
 });

@@ -19,8 +19,11 @@
  */
 
 import type { PluginPackageName } from '@owlat/plugin-host';
-import type { SendProviderNames } from './scaffoldSendProvider';
-import { SEND_PROVIDER_ENV_CONSTANTS, sendProviderEnvVars } from './scaffoldSendProvider';
+import {
+	SEND_PROVIDER_ENV_CONSTANTS,
+	sendProviderEnvVars,
+	type SendProviderNames,
+} from './scaffoldSendProviderNames';
 
 export function manifestTestSource(names: SendProviderNames): string {
 	const c = SEND_PROVIDER_ENV_CONSTANTS;

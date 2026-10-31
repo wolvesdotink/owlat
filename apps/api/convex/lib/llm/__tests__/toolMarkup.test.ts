@@ -4,8 +4,48 @@
  * shows while the model writes.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { stripLeakedToolMarkup, visibleDraftStreamText } from '../toolMarkup';
+import { lexTag } from '../toolTagGrammar';
+import type * as GrammarModule from '../toolTagGrammar';
+
+/**
+ * The work toolMarkup asks of the grammar, counted: lexer calls, the characters
+ * each lexer call reads (through a string that counts index reads), and the
+ * characters each closing-tag search spans (to its match, or to the end).
+ */
+const work = vi.hoisted(() => ({ lexes: 0, lexedChars: 0, closingChars: 0 }));
+
+vi.mock('../toolTagGrammar', async (importOriginal) => {
+	const actual = await importOriginal<typeof GrammarModule>();
+	const countingReads = (text: string): string =>
+		new Proxy(Object(text) as object, {
+			get(target, key) {
+				if (typeof key === 'string' && /^\d+$/.test(key)) work.lexedChars += 1;
+				const value: unknown = Reflect.get(target, key);
+				return typeof value === 'function' ? value.bind(target) : value;
+			},
+		}) as unknown as string;
+	return {
+		...actual,
+		lexTag: (text: string, at: number) => {
+			work.lexes += 1;
+			return actual.lexTag(countingReads(text), at);
+		},
+		closingTagEnd: (text: string, name: string, from: number) => {
+			const end = actual.closingTagEnd(text, name, from);
+			work.closingChars += (end === -1 ? text.length : end) - from;
+			return end;
+		},
+	};
+});
+
+/** The grammar work one call does, counted from zero. */
+function counted(run: () => unknown): typeof work {
+	Object.assign(work, { lexes: 0, lexedChars: 0, closingChars: 0 });
+	run();
+	return { ...work };
+}
 
 const REPLY =
 	'Hi John,\n\nThanks for getting in touch. We have rooms on those dates.\n\nBest,\nAda';
@@ -231,18 +271,52 @@ describe('hostile input stays linear', () => {
 		['namespaces', '<a:b:c:d:'.repeat(20_000)],
 		['a huge namespace', `<${'a'.repeat(200_000)}:invoke name="x">`],
 	];
-	// A time budget, not a work count (#1315): the lexer's reads are bounded at
-	// several return points in toolTagGrammar.ts, too many to meter cheaply. The
-	// budget is over 50 times what each shape takes on a developer machine
-	// (15-35 ms), so a CI runner meets it with room to spare. A lexer that
-	// rereads the rest of the text from every tag takes 8 to 80 seconds on
-	// these shapes on the same machine.
-	const BUDGET_MS = 2_000;
+	// Counted, not timed: a loaded runner cannot fail a count. Each `<` is lexed
+	// at most once by each scan, plus a second look at the reply's start and the
+	// last `<`; a lexer call reads a bounded window (each character of the
+	// grammar's limits added up, read at most twice: LEX_READS); and the
+	// closing-tag searches of one scan never overlap. A lexer that rereads the
+	// rest of the text from every tag, or a scan that searches from every opener
+	// to the end, does n^2 / 2 work on these shapes.
+	const LEX_READS = 2 * (1 + 1 + 64 + 32 + 4 + 32 + 1 + 32 + 1 + 200 + 1 + 32 + 1);
 	it.each(shapes)('%s', (_label, text) => {
-		const started = performance.now();
-		stripLeakedToolMarkup(text);
-		visibleDraftStreamText(text);
-		expect(performance.now() - started).toBeLessThan(BUDGET_MS);
+		const openers = text.split('<').length - 1;
+		for (const run of [stripLeakedToolMarkup, visibleDraftStreamText]) {
+			const done = counted(() => run(text));
+			expect(done.lexes, `${run.name} lexer calls`).toBeLessThanOrEqual(openers + 2);
+			expect(done.lexedChars, `${run.name} lexed`).toBeLessThanOrEqual(LEX_READS * done.lexes);
+			expect(done.closingChars, `${run.name} closing searches`).toBeLessThanOrEqual(text.length);
+		}
+	});
+});
+
+describe('the lexer reads a bounded window past each `<`', () => {
+	// The window is the tag up to the limit and one character past it, each
+	// read at most twice.
+	it.each([
+		['a word past the 64-character limit', `<${'a'.repeat(200_000)}`, 'none', 1 + 64 + 1],
+		[
+			'spaces past the 32-character run after a name',
+			`<tool_call${' '.repeat(200_000)}>`,
+			'broken',
+			10 + 32 + 1,
+		],
+		[
+			'a name value past the 200-character limit',
+			`<invoke name="${'a'.repeat(200_000)}">`,
+			'broken',
+			14 + 200 + 1,
+		],
+	])('stops reading %s', (_label, text, kind, window) => {
+		const done = counted(() => expect(lexTag(text, 0).kind).toBe(kind));
+		expect(done.lexedChars).toBeLessThanOrEqual(2 * window);
+	});
+
+	it('accepts runs exactly at the limits and refuses one character more', () => {
+		expect(lexTag(`<tool_call${' '.repeat(32)}>`, 0).kind).toBe('tag');
+		expect(lexTag(`<tool_call${' '.repeat(33)}>`, 0).kind).toBe('broken');
+		expect(lexTag(`<invoke name="${'a'.repeat(200)}">`, 0).kind).toBe('tag');
+		expect(lexTag(`<invoke name="${'a'.repeat(201)}">`, 0).kind).toBe('broken');
 	});
 });
 
@@ -348,5 +422,5 @@ describe('grammar fuzz: every valid leading tag, at every chunk boundary', () =>
 			expect(visibleDraftStreamText(full)).toBe(reply);
 		}
 		expect(leaks).toBe(0);
-	}, 60_000);
+	});
 });

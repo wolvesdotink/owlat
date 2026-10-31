@@ -10,6 +10,7 @@
  * `workerWireMailSync*.test.ts` seed exactly this and record each answer.
  */
 
+import { workerWireWindow } from '@owlat/shared/workerWire';
 import type { MAIL_SYNC_ENDPOINTS } from '../mailSync/index';
 import type { LegacyWireFixtures, WireFixtures } from './types';
 import { MAIL_SYNC_REMOTE_WIRE_FIXTURES } from './mailSyncRemote';
@@ -46,6 +47,13 @@ export const MAIL_SYNC_FIXTURE_OAUTH_CREDENTIALS = {
 	// Not `ya29.`-prefixed: SAST flags real Google token shapes outside test dirs.
 	imapAccessToken: 'google-fixture-access',
 	smtpAccessToken: 'google-fixture-access',
+};
+
+/** The backend's side of the mail-sync contract, as every report answer carries it. */
+const MAIL_SYNC_WIRE = workerWireWindow('mail-sync');
+const backendWire = {
+	backendWireVersion: MAIL_SYNC_WIRE.current,
+	minSupportedWireVersion: MAIL_SYNC_WIRE.minSupported,
 };
 
 export const MAIL_SYNC_WIRE_FIXTURES = {
@@ -177,6 +185,13 @@ export const MAIL_SYNC_WIRE_FIXTURES = {
 		{ name: 'paused', value: { outcome: 'paused' } },
 		{ name: 'given up', value: { outcome: 'failed' } },
 		{ name: 'not importing', value: { outcome: 'ignored' } },
+	],
+	reportWorker: [
+		{ name: 'current', value: { ...backendWire, compatible: true } },
+		{
+			name: 'backend older',
+			value: { ...backendWire, compatible: false, reason: 'backend_older' },
+		},
 	],
 	...MAIL_SYNC_REMOTE_WIRE_FIXTURES,
 } satisfies WireFixtures<typeof MAIL_SYNC_ENDPOINTS>;

@@ -44,7 +44,11 @@ interface TemplateRow {
 const text = (id: string, html: string) =>
 	({ id, type: 'text', content: { html } }) as unknown as EditorBlock;
 
-const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+/**
+ * Let `ms` of the co-edit timers (the send delay, retries, heartbeats) pass on
+ * the fake clock, running whatever they start.
+ */
+const elapse = (ms: number) => vi.advanceTimersByTimeAsync(ms);
 
 interface SessionRow {
 	sessionId: string;
@@ -76,6 +80,8 @@ let mutation: ReturnType<typeof vi.fn>;
 let canManage: boolean;
 
 beforeEach(() => {
+	// Only the timers: presence rows and sessions keep reading the real date.
+	vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] });
 	queries = {
 		'sessions.get': ref(undefined),
 		'presence.list': ref({ now: Date.now(), people: [] }),
@@ -119,6 +125,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+	vi.useRealTimers();
 	vi.unstubAllGlobals();
 });
 
@@ -186,6 +193,67 @@ describe('useEmailEditorBridge with co-editing', () => {
 		unmount();
 	});
 
+	it.each([
+		['content that is not JSON', { content: '[{' }],
+		['content that is not a list', { content: '{"blocks":[]}' }],
+		['a Block without an id', { content: JSON.stringify([{ type: 'text', content: {} }]) }],
+		[
+			'a Block with null content',
+			{ content: JSON.stringify([{ id: 'x', type: 'text', content: null }]) },
+		],
+		['a Block without content', { content: JSON.stringify([{ id: 'x', type: 'text' }]) }],
+		['fields that are not an object', { fields: '["Welcome"]' }],
+		['a text field that is not a string', { fields: JSON.stringify({ plainTextOverride: {} }) }],
+		['a subject that is not a string', { fields: JSON.stringify({ subject: 42 }) }],
+		['attachments that are not a list', { fields: JSON.stringify({ attachments: 'a.pdf' }) }],
+		[
+			'an unsubscribe flag that is not a boolean',
+			{ fields: JSON.stringify({ showUnsubscribe: 'yes' }) },
+		],
+	])('edits the classic way when the first session state has %s', async (_case, extra) => {
+		const { bridge, unmount } = setup();
+		queries['sessions.get']!.value = sessionRow(1, [text('a', 'Shared A')], extra);
+		await settle();
+
+		expect(bridge.isConnecting.value).toBe(false);
+		// The row's content, not an empty canvas or the unreadable state.
+		expect(bridge.blocks.value.map((b) => b.id)).toEqual(['a', 'b']);
+		unmount();
+	});
+
+	it('shows a session whose fields include one this build does not know', async () => {
+		const { bridge, unmount } = setup();
+		queries['sessions.get']!.value = sessionRow(1, [text('a', 'Shared A')], {
+			fields: JSON.stringify({ subject: 'Hello', plainTextOverride: 'Plain', futureField: 7 }),
+		});
+		await settle();
+
+		expect(bridge.isConnecting.value).toBe(false);
+		expect(bridge.blocks.value.map((b) => b.id)).toEqual(['a']);
+		unmount();
+	});
+
+	it('keeps what it shows when a later session state is unreadable', async () => {
+		const { bridge, builder, unmount } = setup();
+		queries['sessions.get']!.value = sessionRow(1, [text('a', 'Alpha')]);
+		await settle();
+		bridge.builderRef.value = builder;
+
+		queries['sessions.get']!.value = sessionRow(2, [text('a', 'Alpha')], { content: 'null' });
+		await settle();
+		expect(bridge.blocks.value.map((b) => b.id)).toEqual(['a']);
+		expect(builder.applyRemoteOps).not.toHaveBeenCalled();
+		expect(builder.loadState).not.toHaveBeenCalled();
+
+		// The next readable state is taken as usual.
+		queries['sessions.get']!.value = sessionRow(3, [text('a', 'Alpha'), text('n', 'New')]);
+		await settle();
+		expect(builder.applyRemoteOps).toHaveBeenCalledWith([
+			{ kind: 'insert', block: text('n', 'New'), afterId: 'a' },
+		]);
+		unmount();
+	});
+
 	it('sends a local edit as a block operation based on the version it saw', async () => {
 		const { bridge, unmount } = setup();
 		queries['sessions.get']!.value = sessionRow(1, [text('a', 'Alpha')]);
@@ -194,7 +262,7 @@ describe('useEmailEditorBridge with co-editing', () => {
 		bridge.blocks.value = [text('a', 'Alpha edited')];
 		await settle();
 		expect(bridge.hasChanges.value).toBe(true);
-		await wait(400);
+		await elapse(400);
 
 		const call = mutation.mock.calls.find(([fn]) => fn === 'sessions.applyOps');
 		expect(call?.[1]).toMatchObject({
@@ -227,7 +295,8 @@ describe('useEmailEditorBridge with co-editing', () => {
 		await settle();
 
 		const pending = bridge.save();
-		await wait(50);
+		// The save reaches the point where it waits for the server to catch up.
+		await elapse(0);
 		queries['sessions.get']!.value = sessionRow(4, [text('a', 'Alpha')], {
 			savedVersion: 4,
 			baseRevision: 3,
@@ -273,7 +342,7 @@ describe('useEmailEditorBridge with co-editing', () => {
 		await settle();
 		expect(bridge.isConnecting.value).toBe(false);
 		expect(bridge.blocks.value.map((b) => (b.content as { html: string }).html)).toEqual(['Alpha']);
-		await wait(400);
+		await elapse(400);
 		expect(mutation).not.toHaveBeenCalledWith('sessions.applyOps', expect.anything());
 		unmount();
 	});
@@ -297,7 +366,7 @@ describe('useEmailEditorBridge with co-editing', () => {
 
 		bridge.blocks.value = [text('a', 'Alpha<br>edited')];
 		await settle();
-		await wait(1200);
+		await elapse(1200);
 
 		const sends = mutation.mock.calls.filter(([fn]) => fn === 'sessions.applyOps');
 		expect(sends).toHaveLength(1);
@@ -344,7 +413,7 @@ describe('useEmailEditorBridge with co-editing', () => {
 		bridge.onCollabFocus({ selectedRootId: 'a', inlineEditRootId: 'a' });
 		await settle();
 		const last = () =>
-			mutation.mock.calls.filter(([fn]) => fn === 'presence.heartbeat').at(-1)?.[1] as
+			mutation.mock.calls.findLast(([fn]) => fn === 'presence.heartbeat')?.[1] as
 				| { leaseBlockId: string | null }
 				| undefined;
 		expect(last()?.leaseBlockId).toBe('a');

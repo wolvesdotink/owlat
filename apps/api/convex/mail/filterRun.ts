@@ -4,7 +4,7 @@
  * A filter only ever sees mail that arrives after it: the pile that motivated
  * writing it stays exactly as it was. This walks `mailMessages` by cursor,
  * re-evaluates the filter's conditions per page with the SAME predicate the
- * delivery pipeline uses (`filters.filterConditionsMatch`), and applies its
+ * delivery pipeline uses (`filtersEval.filterConditionsMatch`), and applies its
  * actions — one bounded page per transaction, rescheduling itself, with a job
  * row for progress and cancel. Same shape as `mail/attachmentBackfill.ts`.
  *
@@ -25,7 +25,7 @@ import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { requireMailboxAccess } from './permissions';
 import { getOrThrow, throwForbidden, throwInvalidInput } from '../_utils/errors';
-import { evalMessageFromRow, filterConditionsMatch } from './filters';
+import { evalMessageFromRow, filterConditionsMatch } from './filtersEval';
 import { moveMessagesToFolder, rebuildThreadAggregates } from './messageActions';
 import { isMessageSnoozed } from '../lib/mailSnooze';
 import { cancelJob, readJob, startJob } from './_jobLifecycle';
@@ -51,7 +51,7 @@ const SAFE_ACTION_TYPES = new Set([
 	// section, so `mail/sections.ts` reads the mail back under "Everything else".
 	'pinToSection',
 	// sendToDigest / placeInUpdates / placeInNeedsMe / archiveAfter / notify are
-	// not retroactive: explicit no-ops here, handled by lane rules (SPEC §6.3).
+	// not retroactive: explicit no-ops here, handled by lane rules.
 ]);
 
 /**

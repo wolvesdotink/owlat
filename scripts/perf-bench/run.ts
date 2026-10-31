@@ -5,7 +5,9 @@
  *
  *   bun run perf:bench -- --machine "reference laptop" [--runs 5]
  *     [--family structural-sharing|preview-regenerate|postbox-strip-scaling|
- *      postbox-consent-scaling] [--out dir]
+ *      postbox-consent-scaling|api-regex-scaling|web-regex-scaling|
+ *      scan-content-scaling|mail-message-regex-scaling|shared-regex-scaling]
+ *     [--out dir]
  *
  * Families:
  * - structural-sharing: `shareStructure` (apps/web/app/lib/structuralSharing.ts)
@@ -19,6 +21,12 @@
  * - postbox-consent-scaling: `applyPostboxImageConsent` (apps/web) the same way.
  *   The tests count work and never time it; these two families report the
  *   wall-clock ratio, which also sees regex backtracking no counter can.
+ * - api-regex-scaling, web-regex-scaling, scan-content-scaling,
+ *   mail-message-regex-scaling, shared-regex-scaling: the hostile inputs whose
+ *   cost is spent inside regular expressions (security scan, analytics
+ *   sanitizer, content rules, HTML-to-text, exact-wording detection, ...), at
+ *   n and 4n. Their tests count the hand-written scans and bound the input;
+ *   only these families see the regex engine's own time.
  *
  * Each run is a separate `vitest run` of the family's spec with
  * OWLAT_PERF_BENCH_OUT set, so engine state never carries over between runs and
@@ -35,9 +43,12 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { cpus, loadavg, platform, release, arch, totalmem } from 'node:os';
 import { join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
+import { readPackageManifest, requiredVersion } from '../package-manifest';
+import { readFamilyResult } from './familyResult';
 import type { FamilyResult } from './sample';
 import { PERF_BENCH_OUT_ENV } from './sample';
 import { aggregateFamily, aggregateScaling, renderReport, type ReportContext } from './stats';
+import { PERF_BENCH_TIMEOUT_MS } from '../../vitest.timeouts';
 
 const ROOT = resolve(import.meta.dir, '../..');
 const VITEST = join(ROOT, 'node_modules/.bin/vitest');
@@ -58,6 +69,26 @@ const FAMILIES = {
 	'postbox-consent-scaling': {
 		workspace: 'apps/web',
 		spec: 'app/utils/__tests__/postboxRemoteResources.perf.test.ts',
+	},
+	'api-regex-scaling': {
+		workspace: 'apps/api',
+		spec: 'convex/__tests__/hostileRegexInputs.perf.test.ts',
+	},
+	'web-regex-scaling': {
+		workspace: 'apps/web',
+		spec: 'app/lib/__tests__/hostileRegexInputs.perf.test.ts',
+	},
+	'scan-content-scaling': {
+		workspace: 'packages/email-scanner',
+		spec: 'src/__tests__/hostileRegexInputs.perf.test.ts',
+	},
+	'mail-message-regex-scaling': {
+		workspace: 'packages/mail-message',
+		spec: 'src/__tests__/hostileRegexInputs.perf.test.ts',
+	},
+	'shared-regex-scaling': {
+		workspace: 'packages/shared',
+		spec: 'src/__tests__/hostileRegexInputs.perf.test.ts',
 	},
 } as const;
 type FamilyName = keyof typeof FAMILIES;
@@ -124,8 +155,10 @@ function main(): number {
 		os: `${platform()} ${release()} ${arch()}`,
 		cpuGovernor: readOrUnknown('/sys/devices/system/cpu/cpu0/cpufreq/scaling_governor'),
 		bun: Bun.version,
-		vitest: JSON.parse(readFileSync(join(ROOT, 'node_modules/vitest/package.json'), 'utf8'))
-			.version,
+		vitest: requiredVersion(
+			readPackageManifest(join(ROOT, 'node_modules/vitest/package.json')),
+			'vitest/package.json'
+		),
 		commit: `${git(['rev-parse', '--short=12', 'HEAD'])}${dirty ? ' (uncommitted changes)' : ''}`,
 		startedAt,
 		loadBefore: loadAverage(),
@@ -141,11 +174,17 @@ function main(): number {
 			// A reused --out directory must not let an earlier run's file stand in for this one.
 			rmSync(resultPath, { force: true });
 			console.error(`[perf-bench] ${name} run ${i}/${runs}`);
-			const proc = spawnSync(VITEST, ['run', spec, '--maxWorkers=1'], {
-				cwd: join(ROOT, workspace),
-				env: { ...process.env, [PERF_BENCH_OUT_ENV]: resultPath },
-				encoding: 'utf8',
-			});
+			// The benchmark budget replaces the workspace's own for this run only;
+			// the specs set none, so an ordinary test run never waits that long.
+			const proc = spawnSync(
+				VITEST,
+				['run', spec, '--maxWorkers=1', `--testTimeout=${PERF_BENCH_TIMEOUT_MS}`],
+				{
+					cwd: join(ROOT, workspace),
+					env: { ...process.env, [PERF_BENCH_OUT_ENV]: resultPath },
+					encoding: 'utf8',
+				}
+			);
 			writeFileSync(join(outDir, `${name}.run-${i}.log`), `${proc.stdout}${proc.stderr}`);
 			if (proc.status !== 0 || !existsSync(resultPath)) {
 				console.error(
@@ -153,7 +192,7 @@ function main(): number {
 				);
 				return 1;
 			}
-			results.push(JSON.parse(readFileSync(resultPath, 'utf8')) as FamilyResult);
+			results.push(readFamilyResult(resultPath));
 		}
 		collected.push({ runs: results });
 	}

@@ -4,6 +4,8 @@ import type { Id } from '@owlat/api/dataModel';
 import type { EditorBlock } from '@owlat/email-builder';
 import { coeditBlockKey, type CoeditDocument, type CoeditOp } from '@owlat/shared/coeditOps';
 import { nextDelay, type RetryPolicy } from '@owlat/shared/retryPolicy';
+import { isRecord } from '@owlat/shared/utils/guards';
+import { decodeJsonText, guardDecoder } from '@owlat/worker-protocol/decodeJson';
 import { CoeditSync, type CoeditOutgoing, type CoeditServerState } from '~/lib/coeditSync';
 
 /**
@@ -45,6 +47,18 @@ export interface EmailCoeditingOptions {
 	applyRemote: (ops: CoeditOp<EditorBlock>[]) => void;
 	/** Values that change with every local edit. */
 	changeSignals: WatchSource<unknown>[];
+	/**
+	 * New sends of this tab's edits wait while this is true (a leave is being
+	 * decided, and its Discard must still find them unsent). Others' edits
+	 * keep arriving; an explicit save (`flushNow`) still sends.
+	 */
+	held?: () => boolean;
+	/**
+	 * Another owner decides what happens to this tab's unsent edits, and
+	 * nothing is sent when the editor closes (a draft's autosave session,
+	 * whose leave prompt saves or drops them).
+	 */
+	managed?: () => boolean;
 }
 
 /** The editor fields a session shares (`lib/validators/coediting.ts` on the server). */
@@ -83,6 +97,61 @@ function serialize({ op, baseVersion }: CoeditOutgoing<EditorBlock>) {
 	}
 }
 
+/**
+ * A Block of a session document. The document is canonical (the server
+ * stores what the editors sent), so every Block has the id the sync keys it by.
+ * Its `content` is an object: the canvas and the renderers read a Block's
+ * fields straight off it.
+ */
+function isSessionBlock(value: unknown): value is EditorBlock {
+	return (
+		isRecord(value) &&
+		typeof value['id'] === 'string' &&
+		value['id'] !== '' &&
+		typeof value['type'] === 'string' &&
+		isRecord(value['content'])
+	);
+}
+
+/**
+ * Whether `value` is what the editor holds in shared field `name`, as the
+ * server checks a sent value (`isValidFieldValue` in
+ * `emailCoediting/target.ts`). A field this build does not know is ignored
+ * when shown, so any value passes.
+ */
+function isSessionFieldValue(name: string, value: unknown): boolean {
+	switch (name as CoeditFieldName) {
+		case 'name':
+		case 'subject':
+		case 'plainTextOverride':
+			return typeof value === 'string';
+		case 'attachments':
+			return Array.isArray(value);
+		case 'showUnsubscribe':
+			return typeof value === 'boolean';
+		default:
+			return true;
+	}
+}
+
+const sessionBlocksDecoder = guardDecoder(
+	(value): value is EditorBlock[] => Array.isArray(value) && value.every(isSessionBlock),
+	'$: expected an array of Blocks'
+);
+const sessionFieldsDecoder = guardDecoder(
+	(value): value is Record<string, unknown> =>
+		isRecord(value) &&
+		Object.entries(value).every(([name, field]) => isSessionFieldValue(name, field)),
+	'$: expected an object of shared field values'
+);
+
+/** The document of a session row, or null when its JSON is not one. */
+function readSessionDoc(row: { content: string; fields: string }): CoeditEditorDoc | null {
+	const blocks = decodeJsonText(row.content, sessionBlocksDecoder);
+	const fields = decodeJsonText(row.fields, sessionFieldsDecoder);
+	return blocks.ok && fields.ok ? { blocks: blocks.value, fields: fields.value } : null;
+}
+
 function isSessionGone(error: unknown): boolean {
 	const data = (error as { data?: { data?: { reason?: unknown } } } | null)?.data;
 	return data?.data?.reason === 'coedit_session_gone';
@@ -100,6 +169,11 @@ export function useEmailCoediting(opts: EmailCoeditingOptions) {
 	const hasUnsent = ref(false);
 	/** Sends are failing; edits are kept and retried. */
 	const isOffline = ref(false);
+	/**
+	 * Counts this tab's own edits as they are made, not when they are sent:
+	 * until the session has an edit, only the leave guards cover it.
+	 */
+	const localEdits = ref(0);
 
 	const canCoedit = computed(() => !isRoleLoading.value && can('templates:manage'));
 	const target = computed(() => opts.target());
@@ -180,6 +254,9 @@ export function useEmailCoediting(opts: EmailCoeditingOptions) {
 	let sendTimer: ReturnType<typeof setTimeout> | null = null;
 	// Sends that failed in a row since the last one the server took.
 	let sendFailures = 0;
+	// This tab discarded what it has not sent: nothing of it goes out, also
+	// not when it closes. Its next edit sends again.
+	let dropsUnsent = false;
 	const refreshUnsent = () => {
 		hasUnsent.value = sync.hasUnsent(opts.read());
 	};
@@ -223,35 +300,50 @@ export function useEmailCoediting(opts: EmailCoeditingOptions) {
 	};
 
 	function scheduleSend(delay = SEND_DELAY_MS) {
-		if (status.value !== 'active' || sendTimer !== null) return;
+		if (status.value !== 'active' || sendTimer !== null || dropsUnsent) return;
 		sendTimer = setTimeout(() => {
 			sendTimer = null;
+			// Held: sent once the hold ends (or dropped by its Discard).
+			if (opts.held?.()) return;
 			void send().then((didSend) => {
 				if (didSend && sync.hasUnsent(opts.read())) scheduleSend();
 			});
 		}, delay);
 	}
 
+	if (opts.held) {
+		watch(opts.held, (isHeld) => {
+			if (!isHeld && hasUnsent.value) scheduleSend();
+		});
+	}
+
 	watch(opts.changeSignals, () => {
 		if (status.value !== 'active') return;
 		refreshUnsent();
+		// Others' edits arrive already sent; a change leaving something unsent is this tab's.
+		if (hasUnsent.value) {
+			localEdits.value += 1;
+			dropsUnsent = false;
+		}
 		scheduleSend();
 	});
 
 	/**
 	 * Send everything this tab has and wait until the server applied it, so a
 	 * save that follows includes it. Gives up after a few rounds; what is
-	 * still unsent then stays unsaved (the editor stays dirty).
+	 * still unsent then stays unsaved (the editor stays dirty). Resolves
+	 * whether nothing is left unsent.
 	 */
-	const flushNow = async () => {
+	const flushNow = async (): Promise<boolean> => {
 		if (sendTimer !== null) {
 			clearTimeout(sendTimer);
 			sendTimer = null;
 		}
 		for (let round = 0; round < 5; round++) {
-			if (!sync.hasUnsent(opts.read())) return;
+			if (!sync.hasUnsent(opts.read())) return true;
 			if (!(await send())) await nextChange(CATCH_UP_MS);
 		}
+		return !sync.hasUnsent(opts.read());
 	};
 
 	// ── Receiving ───────────────────────────────────────────────────────
@@ -262,15 +354,20 @@ export function useEmailCoediting(opts: EmailCoeditingOptions) {
 			void open();
 			return;
 		}
+		const doc = readSessionDoc(row);
+		if (!doc) {
+			// An unreadable state is never shown or taken as the server's: the
+			// editor keeps what it holds, and a tab still joining edits the
+			// classic way instead.
+			if (status.value === 'connecting') status.value = 'unavailable';
+			return;
+		}
 		const state: CoeditServerState<EditorBlock> = {
 			sessionId: row.sessionId,
 			version: row.version,
 			savedVersion: row.savedVersion,
 			baseRevision: row.baseRevision,
-			doc: {
-				blocks: JSON.parse(row.content) as EditorBlock[],
-				fields: JSON.parse(row.fields) as Record<string, unknown>,
-			},
+			doc,
 		};
 		const local = opts.read();
 		const result = sync.receive(state, local);
@@ -321,6 +418,16 @@ export function useEmailCoediting(opts: EmailCoeditingOptions) {
 		}
 	};
 
+	/**
+	 * Throw away only this tab's edits that have not reached the session; what
+	 * it already sent is part of the shared draft the others are looking at.
+	 */
+	const dropUnsent = () => {
+		dropsUnsent = true;
+		if (sendTimer !== null) clearTimeout(sendTimer);
+		sendTimer = null;
+	};
+
 	/** Wait (briefly) until the session reports a save of at least `version`. */
 	const untilSaved = async (version: number) => {
 		for (let round = 0; round < 2; round++) {
@@ -336,8 +443,10 @@ export function useEmailCoediting(opts: EmailCoeditingOptions) {
 	onUnmounted(() => {
 		if (sendTimer !== null) clearTimeout(sendTimer);
 		// Best effort: hand over what this tab still has before it goes, unless
-		// it is leaving because it threw its changes away.
-		if (status.value === 'active' && !isDiscarding) void send();
+		// it is leaving because it threw its changes away, or its owner decides.
+		if (status.value === 'active' && !isDiscarding && !dropsUnsent && !opts.managed?.()) {
+			void send();
+		}
 		notifyWaiters();
 	});
 
@@ -349,6 +458,8 @@ export function useEmailCoediting(opts: EmailCoeditingOptions) {
 		hasUnsent,
 		hasSharedChanges,
 		isOffline,
+		/** Changes with every edit made in this tab (not with others' edits). */
+		localEdits,
 		/** Hold the version `blockId` was seen at while this tab edits it (edit lease). */
 		pinBlock: (blockId: string) => sync.pin(coeditBlockKey(blockId)),
 		unpinBlock: (blockId: string) => sync.unpin(coeditBlockKey(blockId)),
@@ -357,6 +468,12 @@ export function useEmailCoediting(opts: EmailCoeditingOptions) {
 		flushNow,
 		untilSaved,
 		resetShared,
+		dropUnsent,
+		/**
+		 * Whether this tab holds edits the session has not taken, read from the
+		 * editor now: `hasUnsent` follows only once the change watchers ran.
+		 */
+		unsentNow: () => status.value === 'active' && !dropsUnsent && sync.hasUnsent(opts.read()),
 	};
 }
 

@@ -6,9 +6,8 @@
  * Scheduled by the **Sending domain lifecycle (module)** at
  * `convex/domains/lifecycle.ts`. The lifecycle passes the domain's
  * `providerType`; this action resolves the adapter via `providerFor(kind)`
- * and runs the provider API call, then calls back into the lifecycle's
- * `transition` to land the `registering → pending` / `registering → failed`
- * outcome atomically. The lifecycle never branches on `providerType` — the
+ * and runs the provider API call, then lands the `registering → pending` /
+ * `registering → failed` outcome in one commit (`registerCommit.ts`). The lifecycle never branches on `providerType` — the
  * provider variation lives entirely behind the `providerFor` seam.
  */
 
@@ -25,6 +24,7 @@ import { getSingletonOrganizationId } from '../../lib/sessionOrganization';
 import { providerFor } from './index';
 import { resolveSesMailFrom } from './ses/mailFrom';
 import type { SendingDomainProviderKind } from './types';
+import type { SendingDomainTransitionInput } from '../lifecycleReducer';
 
 const LIFECYCLE_USER_PROVIDER_REGISTER = 'system:provider_register';
 
@@ -59,9 +59,10 @@ export const run = internalAction({
 		}
 
 		const at = Date.now();
-		let registered = false;
+		let input: SendingDomainTransitionInput;
+		let describeRegistered: string | undefined;
 		try {
-			// Thread the domain's per-domain VERP return-path host (D1/D2) so the
+			// Thread the domain's per-domain VERP return-path host so the
 			// adapter reflects it to the provider and builds the `mailFrom` SPF
 			// record on that host. Absent ⇒ the adapter falls back to the global
 			// `MTA_RETURN_PATH_DOMAIN` (historic behavior).
@@ -136,53 +137,49 @@ export const run = internalAction({
 						}
 					: providerDnsRecords;
 
-			await ctx.runMutation(internal.domains.lifecycle.transition, {
-				domainId: args.domainId,
-				input: {
-					to: 'pending',
-					at,
-					dnsRecords,
-					identity,
-				},
-				userId: LIFECYCLE_USER_PROVIDER_REGISTER,
-			});
-			registered = true;
-
-			logInfo(
-				`[${tag}] Domain ${domain.domain} registered successfully with ${adapter.describeIdentity(identity)}`
-			);
+			input = { to: 'pending', at, dnsRecords, identity };
+			describeRegistered = adapter.describeIdentity(identity);
 		} catch (error) {
 			const message = error instanceof Error ? error.message : `Unknown ${tag} error`;
 			logError(`[${tag}] Failed to register domain ${domain.domain}:`, message);
-
-			await ctx.runMutation(internal.domains.lifecycle.transition, {
-				domainId: args.domainId,
-				input: {
-					to: 'failed',
-					at,
-					error: message,
-				},
-				userId: LIFECYCLE_USER_PROVIDER_REGISTER,
-			});
+			input = { to: 'failed', at, error: message };
 		}
 
-		// Reconcile a return-path edit that committed while our (slow) provider I/O
-		// ran: the `registering` guard in `setReturnPathHost` deferred its records to
-		// us, but we built `dnsRecords`/reflected for the host as read at the top. This
-		// serializable mutation regenerates the records + reflects the CURRENT host
-		// when it moved, closing the register-vs-edit window (a same-host re-save would
-		// otherwise short-circuit and never self-heal). Run OUTSIDE the try and only on
-		// success: registration itself is already committed, so an exotic reconcile
-		// throw (e.g. SES with a missing region) must not poison a registered domain
-		// back to `failed`; and on a failed registration there is nothing to reconcile.
-		if (registered) {
-			await ctx.runMutation(
-				internal.domains.lifecycleReturnPath.reconcileReturnPathAfterRegistration,
+		// One commit: the outcome, and for a registered domain the repair of a
+		// return-path edit that committed while the provider call ran (the
+		// `registering` guard in `setReturnPathHost` deferred its records to us, but
+		// we built records for the host as read at the top). See
+		// `registerCommit.ts`.
+		try {
+			await ctx.runMutation(internal.domains.providers.registerCommit.commitRegistration, {
+				domainId: args.domainId,
+				input,
+				registeredReturnPathHost: domain.returnPathHost,
+				userId: LIFECYCLE_USER_PROVIDER_REGISTER,
+			});
+		} catch (error) {
+			if (input.to !== 'pending') throw error;
+			// The provider registered the domain but its answer could not be
+			// written (it failed the transition's validation, say). A mutation that
+			// throws writes nothing, so the domain is still `registering` and
+			// nothing else will move it; record the failure instead, in a
+			// commit of its own, so an operator can retry.
+			const message = error instanceof Error ? error.message : `Unknown ${tag} error`;
+			logError(`[${tag}] Failed to record registration of ${domain.domain}:`, message);
+			await ctx.scheduler.runAfter(
+				0,
+				internal.domains.providers.registerCommit.commitRegistration,
 				{
 					domainId: args.domainId,
-					registeredReturnPathHost: domain.returnPathHost,
+					input: { to: 'failed', at, error: message },
 					userId: LIFECYCLE_USER_PROVIDER_REGISTER,
 				}
+			);
+			return;
+		}
+		if (describeRegistered !== undefined) {
+			logInfo(
+				`[${tag}] Domain ${domain.domain} registered successfully with ${describeRegistered}`
 			);
 		}
 	},
@@ -372,8 +369,8 @@ async function runReturnPathReflection(
 }
 
 /**
- * Reflect a domain's changed per-domain VERP return-path host (D1/D2) to the
- * MTA. POSTs the host to the D1 register endpoint, which is idempotent for the
+ * Reflect a domain's changed per-domain VERP return-path host to the
+ * MTA. POSTs the host to the MTA's register endpoint, which is idempotent for the
  * DKIM key — so this sets ONLY the return-path host, never the signing key.
  * All retry/supersession/give-up handling lives in {@link runReturnPathReflection}.
  */

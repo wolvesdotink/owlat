@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import UiTooltip from '@owlat/ui/components/ui/Tooltip.vue';
 import { ref, computed, watch, onBeforeUnmount } from 'vue';
 // The --ep-* fallbacks load with the previewer, not with every host page.
 import '../styles/variables.css';
@@ -425,64 +426,77 @@ function handleClickOutside(event: MouseEvent) {
 			</div>
 
 			<div class="ep-toolbar-right">
-				<!-- Render Warnings Badge -->
-				<button
-					v-if="hasWarnings"
-					class="ep-warning-badge"
-					:class="{ 'ep-warning-badge-active': warningsExpanded }"
-					:title="t('builder.preview.toolbar.renderWarnings')"
-					@click="warningsExpanded = !warningsExpanded"
-				>
-					<AlertTriangle class="ep-warning-badge-icon" />
-					<span>{{ renderWarnings!.length }}</span>
-				</button>
+				<!-- Render Warnings Badge: an icon and a count, so the name is spelled out -->
+				<UiTooltip v-if="hasWarnings" :text="t('builder.preview.toolbar.renderWarnings')">
+					<button
+						class="ep-warning-badge"
+						:class="{ 'ep-warning-badge-active': warningsExpanded }"
+						:aria-label="`${t('builder.preview.toolbar.renderWarnings')}: ${renderWarnings!.length}`"
+						@click="warningsExpanded = !warningsExpanded"
+					>
+						<AlertTriangle class="ep-warning-badge-icon" />
+						<span>{{ renderWarnings!.length }}</span>
+					</button>
+				</UiTooltip>
 
 				<!-- Diff Button -->
-				<button
-					v-if="hasDiff"
-					class="ep-control-btn"
-					:class="{ 'ep-control-btn-active': diffPanelOpen }"
-					:title="t('builder.preview.toolbar.compare')"
-					@click="diffPanelOpen = !diffPanelOpen"
-				>
-					<GitCompare class="ep-control-icon" />
-				</button>
+				<UiTooltip v-if="hasDiff" :text="t('builder.preview.toolbar.compare')">
+					<button
+						class="ep-control-btn"
+						:class="{ 'ep-control-btn-active': diffPanelOpen }"
+						:aria-label="t('builder.preview.toolbar.compare')"
+						@click="diffPanelOpen = !diffPanelOpen"
+					>
+						<GitCompare class="ep-control-icon" />
+					</button>
+				</UiTooltip>
 
 				<!-- Dark Mode Toggle -->
-				<button
-					class="ep-control-btn"
-					:class="{ 'ep-control-btn-active': darkMode }"
-					:title="
+				<UiTooltip
+					:text="
 						darkMode
 							? t('builder.preview.toolbar.lightMode')
 							: t('builder.preview.toolbar.darkMode')
 					"
-					@click="emit('update:dark-mode', !darkMode)"
 				>
-					<Moon v-if="!darkMode" class="ep-control-icon" />
-					<Sun v-else class="ep-control-icon" />
-				</button>
+					<button
+						class="ep-control-btn"
+						:class="{ 'ep-control-btn-active': darkMode }"
+						:aria-label="
+							darkMode
+								? t('builder.preview.toolbar.lightMode')
+								: t('builder.preview.toolbar.darkMode')
+						"
+						@click="emit('update:dark-mode', !darkMode)"
+					>
+						<Moon v-if="!darkMode" class="ep-control-icon" />
+						<Sun v-else class="ep-control-icon" />
+					</button>
+				</UiTooltip>
 
 				<!-- Settings Button -->
-				<button
-					v-if="showRenderOptions"
-					class="ep-control-btn"
-					:class="{ 'ep-control-btn-active': settingsPanelOpen }"
-					:title="t('builder.preview.toolbar.renderOptions')"
-					@click="settingsPanelOpen = !settingsPanelOpen"
-				>
-					<Settings class="ep-control-icon" />
-				</button>
+				<UiTooltip v-if="showRenderOptions" :text="t('builder.preview.toolbar.renderOptions')">
+					<button
+						class="ep-control-btn"
+						:class="{ 'ep-control-btn-active': settingsPanelOpen }"
+						:aria-label="t('builder.preview.toolbar.renderOptions')"
+						@click="settingsPanelOpen = !settingsPanelOpen"
+					>
+						<Settings class="ep-control-icon" />
+					</button>
+				</UiTooltip>
 
 				<!-- Export Dropdown -->
 				<div class="ep-export-wrapper">
-					<button
-						class="ep-control-btn"
-						:title="t('builder.preview.toolbar.export')"
-						@click.stop="exportMenuOpen = !exportMenuOpen"
-					>
-						<Download class="ep-control-icon" />
-					</button>
+					<UiTooltip :text="t('builder.preview.toolbar.export')">
+						<button
+							class="ep-control-btn"
+							:aria-label="t('builder.preview.toolbar.export')"
+							@click.stop="exportMenuOpen = !exportMenuOpen"
+						>
+							<Download class="ep-control-icon" />
+						</button>
+					</UiTooltip>
 					<div v-if="exportMenuOpen" class="ep-export-menu">
 						<button class="ep-export-item" @click="copyToClipboard(html, 'html')">
 							<Copy class="ep-export-item-icon" />
@@ -537,13 +551,15 @@ function handleClickOutside(event: MouseEvent) {
 				<div class="ep-toolbar-divider"></div>
 
 				<!-- Refresh -->
-				<button
-					class="ep-control-btn"
-					:title="t('builder.preview.toolbar.refresh')"
-					@click="refreshPreview"
-				>
-					<RefreshCw class="ep-control-icon" />
-				</button>
+				<UiTooltip :text="t('builder.preview.toolbar.refresh')">
+					<button
+						class="ep-control-btn"
+						:aria-label="t('builder.preview.toolbar.refresh')"
+						@click="refreshPreview"
+					>
+						<RefreshCw class="ep-control-icon" />
+					</button>
+				</UiTooltip>
 			</div>
 		</div>
 
@@ -758,7 +774,9 @@ function handleClickOutside(event: MouseEvent) {
 	font-size: 13px;
 	font-weight: 500;
 	cursor: pointer;
-	transition: all var(--motion-fast, 80ms) var(--ease-spring, cubic-bezier(0.25, 1, 0.5, 1));
+	transition-property: color, background-color, box-shadow;
+	transition-duration: var(--motion-fast, 80ms);
+	transition-timing-function: var(--ease-spring, cubic-bezier(0.25, 1, 0.5, 1));
 }
 
 .ep-view-btn:hover {
@@ -787,7 +805,9 @@ function handleClickOutside(event: MouseEvent) {
 	border-radius: 6px;
 	color: var(--ep-text-tertiary);
 	cursor: pointer;
-	transition: all var(--motion-fast, 80ms) var(--ease-spring, cubic-bezier(0.25, 1, 0.5, 1));
+	transition-property: color, background-color, opacity;
+	transition-duration: var(--motion-fast, 80ms);
+	transition-timing-function: var(--ease-spring, cubic-bezier(0.25, 1, 0.5, 1));
 }
 
 .ep-control-btn:hover:not(:disabled) {
@@ -850,7 +870,9 @@ function handleClickOutside(event: MouseEvent) {
 	font-size: 12px;
 	font-weight: 600;
 	cursor: pointer;
-	transition: all var(--motion-fast, 80ms) var(--ease-spring, cubic-bezier(0.25, 1, 0.5, 1));
+	transition-property: color, background-color;
+	transition-duration: var(--motion-fast, 80ms);
+	transition-timing-function: var(--ease-spring, cubic-bezier(0.25, 1, 0.5, 1));
 }
 
 .ep-warning-badge:hover,
@@ -959,7 +981,9 @@ function handleClickOutside(event: MouseEvent) {
 	color: var(--ep-text-secondary);
 	font-size: 13px;
 	cursor: pointer;
-	transition: all var(--motion-fast, 80ms) var(--ease-spring, cubic-bezier(0.25, 1, 0.5, 1));
+	transition-property: color, background-color;
+	transition-duration: var(--motion-fast, 80ms);
+	transition-timing-function: var(--ease-spring, cubic-bezier(0.25, 1, 0.5, 1));
 }
 
 .ep-export-item:hover {

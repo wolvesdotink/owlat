@@ -27,6 +27,7 @@
  */
 
 import { api } from '@owlat/api';
+import { plainClone } from '@owlat/email-builder/plain-clone';
 import type { Id } from '@owlat/api/dataModel';
 import {
 	getPostboxOfflineStore,
@@ -101,7 +102,7 @@ export function __resetPostboxOfflineOutboxState() {
  * side's `toPlain`).
  */
 function toPlainPayload(payload: OfflineComposePayload): OfflineComposePayload {
-	return JSON.parse(JSON.stringify(payload)) as OfflineComposePayload;
+	return plainClone(payload);
 }
 
 /**
@@ -205,7 +206,7 @@ export function usePostboxOfflineOutbox(mailboxId?: MaybeRefOrGetter<string | un
 				),
 				'error'
 			);
-			throw new Error('Send failed');
+			throw new Error('Send failed', { cause: err });
 		}
 		await refreshCounts(ns);
 		return {
@@ -310,6 +311,8 @@ export function usePostboxOfflineOutbox(mailboxId?: MaybeRefOrGetter<string | un
 			undoSendDelayMs: p.sendOptions?.undoSendDelayMs ?? 0,
 			scheduledSendAt: p.sendOptions?.scheduledSendAt,
 			allowUnsealed: p.sendOptions?.allowUnsealed,
+			afterSend: p.sendOptions?.afterSend,
+			afterSendChosenAt: p.sendOptions?.afterSendChosenAt,
 		});
 	}
 

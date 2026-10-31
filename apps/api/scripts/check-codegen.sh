@@ -50,8 +50,15 @@ done < <(find "$CONVEX_ROOT" -name '*.ts' \
 
 if [ "$missing" -gt 0 ]; then
 	echo "FAIL: $missing Convex module import/mapping(s) absent from _generated/api.d.ts."
-	echo "      Run 'npx convex codegen' in apps/api and commit the result."
+	echo "      Run 'bun run codegen' in apps/api, or add the entries by hand and run"
+	echo "      'bun run codegen:chunks', and commit the result."
 	exit 1
 fi
 
 echo "ok:   _generated/api.d.ts imports and maps every Convex module"
+
+# `convex codegen` declares fullApi as one ApiFromModules over every module,
+# which TypeScript cannot type at this size (api/internal silently become
+# never); the declaration must stay split into the per-directory chunks that
+# scripts/apiDeclarationChunks.ts writes.
+bun scripts/codegen-api-chunks.ts --check "$GEN"

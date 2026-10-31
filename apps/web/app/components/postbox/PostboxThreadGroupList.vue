@@ -9,7 +9,9 @@ import { POSTBOX_ROW_HEIGHT, POSTBOX_VIRTUAL_THRESHOLD } from '~/utils/postboxDe
 import { usePostboxVirtualList } from '~/composables/postbox/usePostboxVirtualList';
 import { usePostboxListAutoLoad } from '~/composables/postbox/usePostboxListAutoLoad';
 import { usePostboxListNow } from '~/composables/postbox/usePostboxListClock';
+import { usePostboxPinRowDrag } from '~/composables/postbox/usePostboxMessageDrag';
 import type { PostboxConversationThread } from './PostboxConversationRow.vue';
+import { folderAnswerOrigin, useListAnswerOrigin } from '~/composables/useAnswerMode';
 
 const props = defineProps<{
 	threads: PostboxConversationThread[];
@@ -23,6 +25,8 @@ const emit = defineEmits<{ (e: 'load-more'): void }>();
 
 const { t } = useI18n();
 usePostboxListNow(); // one minute clock for every row's timestamp
+// A row drags its conversation onto the Inbox's pinned band.
+const pinDrag = usePostboxPinRowDrag();
 
 function threadTo(thread: { latestMessageId?: string }) {
 	return thread.latestMessageId
@@ -31,11 +35,19 @@ function threadTo(thread: { latestMessageId?: string }) {
 }
 
 const threadsRef = computed(() => props.threads);
-// What a row opens, in row order: previous/next in Zen walk this.
-const visibleIds = computed(() =>
-	props.threads.flatMap((thread) => (thread.latestMessageId ? [thread.latestMessageId] : []))
+// What a row opens and its conversation, in row order: previous/next in Zen
+// walk this, and so does a reply marked done that was opened from here.
+const rows = computed(() =>
+	props.threads.flatMap((thread) =>
+		thread.latestMessageId ? [{ id: thread.latestMessageId, threadId: thread._id }] : []
+	)
 );
+const visibleIds = computed(() => rows.value.map((row) => row.id));
 defineExpose({ visibleIds });
+useListAnswerOrigin({
+	rows: () => rows.value,
+	origin: () => folderAnswerOrigin(props.folderRole, props.activeMessageId),
+});
 const { focusedIndex, activeId, onKeydown } = usePostboxListKeyboard({
 	items: threadsRef,
 	resetKey: computed(() => props.folderRole),
@@ -133,7 +145,9 @@ const { handleScroll } = usePostboxListAutoLoad({
 					"
 				>
 					<PostboxConversationRow
+						v-bind="pinDrag.source(thread.latestMessageId, thread.latestSubject)"
 						:thread="thread"
+						:folder-role="folderRole"
 						:dom-id="`postbox-thread-${thread._id}`"
 						:to="threadTo(thread)"
 						:selected="focusedIndex === windowStart + localI"

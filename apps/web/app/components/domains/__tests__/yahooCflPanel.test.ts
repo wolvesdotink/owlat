@@ -6,16 +6,17 @@
  * status, so these tests feed it each guide shape and assert what an operator
  * can see and do.
  *
- * D2 is the load-bearing assertion: a domain that never enrolls renders as a
+ * Absence blocking nothing is the load-bearing assertion: a domain that never enrolls renders as a
  * CALM unstarted option — no error, no warning styling, no "setup incomplete"
  * nag — and states which complaint signal the yahoo cell runs on instead, with
- * the confidence caveat spelled out (D14).
+ * the confidence caveat spelled out.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ref, type Ref } from 'vue';
 import { mount, flushPromises } from '@vue/test-utils';
 
 import YahooCflPanel from '../YahooCflPanel.vue';
+import { installConfirm, type ConfirmDriver } from '~/__tests__/confirm';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 // The panel renders its copy through vue-i18n; `useI18n` is a Nuxt auto-import.
@@ -153,15 +154,13 @@ function mountPanel(guide: unknown, canManage = true) {
 
 // "Start over" names its consequence in a confirmation before it fires, so every
 // fixture has to decide what the operator answered.
-const confirmSpy = vi.fn((_message?: string) => true);
+let confirmDriver: ConfirmDriver;
 
 beforeEach(() => {
 	queryArgs = undefined;
-	confirmSpy.mockClear();
-	confirmSpy.mockReturnValue(true);
-	vi.stubGlobal('confirm', confirmSpy);
-	window.confirm = confirmSpy;
+	confirmDriver = installConfirm();
 });
+afterEach(() => confirmDriver.dispose());
 
 describe('the four guided steps', () => {
 	it('renders all four steps with their action and their "how to tell it worked"', () => {
@@ -242,8 +241,12 @@ describe('the controls', () => {
 		expect(mountPanel(NOT_STARTED).find('[data-testid="yahoocfl-reset"]').exists()).toBe(false);
 		const w = mountPanel(LAPSED);
 		await w.get('[data-testid="yahoocfl-reset"]').trigger('click');
-		expect(confirmSpy).toHaveBeenCalledTimes(1);
 		await flushPromises();
+		expect(confirmDriver.pending).toHaveLength(1);
+		expect(runs['resetEnrollment']).not.toHaveBeenCalled();
+		confirmDriver.answer(true);
+		await flushPromises();
+		expect(runs['resetEnrollment']).toHaveBeenCalledTimes(1);
 		expect(runs['resetEnrollment']).toHaveBeenCalledWith({ domainId: 'domain_1' });
 	});
 
@@ -309,17 +312,43 @@ describe('the controls', () => {
 	});
 
 	it('does NOT reset unless the operator confirms, and names the consequence when asking', async () => {
-		confirmSpy.mockReturnValue(false);
 		const w = mountPanel(ENROLLED);
 		await w.get('[data-testid="yahoocfl-reset"]').trigger('click');
 		await flushPromises();
+		const asked = confirmDriver.pending[0]!;
+		expect(asked.title).toBe('Clear this domain’s Yahoo enrollment record?');
+		expect(asked.confirmText).toBe('Start over');
+		// All three consequences are named, one per line: our record, Yahoo's own
+		// enrollment, and what happens to complaint measurement afterwards.
+		const lines = asked.body!.split('\n');
+		expect(lines).toHaveLength(3);
+		expect(lines[0]).toContain('Our record is cleared');
+		expect(lines[1]).toContain('Yahoo’s own enrollment is untouched');
+		expect(lines[2]).toContain('unsubscribe-rate proxy');
+
+		confirmDriver.answer(false);
+		await flushPromises();
 		expect(runs['resetEnrollment']).not.toHaveBeenCalled();
-		const asked = String(confirmSpy.mock.calls[0]?.[0] ?? '');
-		// All three consequences are named: our record, Yahoo's own enrollment, and
-		// what happens to complaint measurement afterwards.
-		expect(asked).toContain('Our record is cleared');
-		expect(asked).toContain('Yahoo’s own enrollment is untouched');
-		expect(asked).toContain('unsubscribe-rate proxy');
+	});
+
+	it('resets the domain it asked about, even if the panel moves to another meanwhile', async () => {
+		const w = mountPanel(ENROLLED);
+		await w.get('[data-testid="yahoocfl-reset"]').trigger('click');
+		await flushPromises();
+		await w.setProps({ domainId: 'domain_2' as never });
+		confirmDriver.answer(true);
+		await flushPromises();
+		expect(runs['resetEnrollment']).toHaveBeenCalledWith({ domainId: 'domain_1' });
+	});
+
+	it('resets nothing when the panel goes away with the question open', async () => {
+		const w = mountPanel(ENROLLED);
+		await w.get('[data-testid="yahoocfl-reset"]').trigger('click');
+		await flushPromises();
+		w.unmount();
+		await flushPromises();
+		expect(confirmDriver.pending).toEqual([]);
+		expect(runs['resetEnrollment']).not.toHaveBeenCalled();
 	});
 
 	it('shows no controls, and does not subscribe, for a member who cannot manage domains', () => {
@@ -332,7 +361,7 @@ describe('the controls', () => {
 	});
 });
 
-describe('D2 — never enrolling is a supported configuration', () => {
+describe('never enrolling is a supported configuration', () => {
 	it('states the substituted signal and its caveat instead of a nag', () => {
 		const w = mountPanel(NOT_STARTED);
 		const confidence = w.get('[data-testid="yahoocfl-confidence"]').text();

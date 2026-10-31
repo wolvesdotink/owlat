@@ -1,5 +1,5 @@
 /**
- * How a sender is named by the Senders calls (SPEC §5): by
+ * How a sender is named by the Senders calls: by
  * `{mailboxId, senderDigest}` (the Senders page) or by a message from it (the
  * reader's ⇧E / ⇧O and chip, the Subscriptions panel).
  *

@@ -1,10 +1,9 @@
 /**
  * THE DELIVERY CONFIG PAGE'S FEEDBACK PANEL, pinned per kind.
  *
- * This is the one behaviour P1.2 changed on a shipped dashboard: the SNS card
- * and its live `getLastSesEventAt` poll used to be gated on
- * `status.provider === 'ses'` — trivially auditable by grep — and are now gated
- * on a catalog declaration, which is not. A flipped `hasProviderFeedback`, a
+ * The SNS card and its live `getLastSesEventAt` poll are gated on a catalog
+ * declaration, not on `status.provider === 'ses'`, and unlike that literal a
+ * catalog declaration cannot be audited by grep. A flipped `hasProviderFeedback`, a
  * mistyped `webhookPath` or a dropped `setupPanel` would make a live panel
  * appear or vanish with the whole suite still green, so every kind's answer is
  * written down here as a literal.
@@ -21,6 +20,7 @@ import {
 	providerFeedbackSigningKeyEnvVar,
 	providerFeedbackWebhookUrl,
 } from '../providerFeedbackPanel';
+import type * as SendProviderCatalogModule from '@owlat/shared/sendProviderCatalog';
 
 const SITE = 'https://example.convex.site';
 
@@ -118,7 +118,7 @@ describe('new feedback mechanisms use the transport-keyed status read', () => {
 	): Promise<{ panel: string | undefined; url: string }> {
 		vi.resetModules();
 		vi.doMock('@owlat/shared/sendProviderCatalog', async (importOriginal) => {
-			const actual = await importOriginal<typeof import('@owlat/shared/sendProviderCatalog')>();
+			const actual = await importOriginal<typeof SendProviderCatalogModule>();
 			return {
 				...actual,
 				coreSendProviderCatalogEntry: (asked: string | undefined) =>

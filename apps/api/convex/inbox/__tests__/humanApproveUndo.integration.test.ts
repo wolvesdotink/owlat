@@ -1,5 +1,5 @@
 /**
- * Undo window for HUMAN approvals (adoption-gaps piece C1, decision D5).
+ * Undo window for HUMAN approvals (adoption-gaps piece C1).
  *
  * A human Approve now schedules its send behind
  * `agentConfig.humanApproveUndoDelayMs` (default 15s, clamped 0–120s),

@@ -2,6 +2,15 @@
 import { useAcknowledgedDraft } from '~/composables/useAcknowledgedDraft';
 import { useComposerDraft } from '~/composables/useComposerDrafts';
 import { isImeComposing } from '~/utils/imeComposition';
+import {
+	caretOnFirstLine,
+	caretOnLastLine,
+	composerRecallDirection,
+	stepPromptHistory,
+	type ComposerRecallDirection,
+	type PromptHistoryEntry,
+	type PromptHistoryPosition,
+} from '~/utils/composerRecall';
 
 const props = defineProps<{
 	/**
@@ -14,6 +23,14 @@ const props = defineProps<{
 	disabled?: boolean;
 	/** Keeps the unsent question on this device under this name. */
 	draftTarget?: string | null;
+	/** The questions asked in the open conversation, oldest first, for ↑ / ↓. */
+	promptHistory?: readonly PromptHistoryEntry[];
+	/**
+	 * The conversation `promptHistory` belongs to. One box serves every
+	 * conversation, so a question recalled in one is never stepped from in
+	 * another.
+	 */
+	historyKey?: string | null;
 }>();
 const emit = defineEmits<{ stop: [] }>();
 
@@ -77,6 +94,39 @@ const sendText = async (value: string) => {
 	await send();
 };
 
+// The entry ↑ / ↓ last put in the box, and the conversation it came from.
+const recalled = shallowRef<{
+	key: string | null | undefined;
+	position: PromptHistoryPosition;
+} | null>(null);
+
+/**
+ * ↑ in an empty box brings back the last question; further ↑ / ↓ step through
+ * the earlier ones while the box still holds exactly the recalled text and the
+ * caret has no line left to move to. True when the key was used.
+ */
+const stepHistory = (direction: ComposerRecallDirection, field: HTMLTextAreaElement): boolean => {
+	if (props.disabled || isSending.value) return false;
+	const last = recalled.value;
+	const position = last && last.key === props.historyKey ? last.position : null;
+	if (position === null && text.value !== '') return false;
+	if (!(direction === 'older' ? caretOnFirstLine(field) : caretOnLastLine(field))) return false;
+	const step = stepPromptHistory({
+		direction,
+		entries: props.promptHistory ?? [],
+		position,
+		current: text.value,
+	});
+	if (!step) return false;
+	recalled.value = step.position ? { key: props.historyKey, position: step.position } : null;
+	text.value = step.prompt;
+	nextTick(() => {
+		grow();
+		field.setSelectionRange(field.value.length, field.value.length);
+	});
+	return true;
+};
+
 const focus = () => textareaRef.value?.focus();
 
 defineExpose({ sendText, focus });
@@ -84,6 +134,11 @@ defineExpose({ sendText, focus });
 const handleKeydown = (event: KeyboardEvent) => {
 	// An IME's confirming Enter finishes the word, it does not send (#1052).
 	if (isImeComposing(event)) return;
+	const direction = composerRecallDirection(event);
+	if (direction && textareaRef.value && stepHistory(direction, textareaRef.value)) {
+		event.preventDefault();
+		return;
+	}
 	if (event.key === 'Enter' && !event.shiftKey) {
 		event.preventDefault();
 		void send();
@@ -113,44 +168,44 @@ const handleKeydown = (event: KeyboardEvent) => {
 					:disabled="disabled"
 					:aria-describedby="hintId"
 					rows="1"
-					class="flex-1 resize-none bg-bg-surface border border-border-subtle rounded-xl px-4 py-2.5 text-sm text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand transition-colors disabled:opacity-60"
+					class="input flex-1 resize-none disabled:opacity-60"
 					@keydown="handleKeydown"
 					@input="grow"
 				/>
 
-				<UiButton
-					v-if="streaming"
-					variant="secondary"
-					class="flex-shrink-0 w-10 h-10 p-0 rounded-xl"
-					:title="t('components.assistant.assistantComposer.stop')"
-					:aria-label="t('components.assistant.assistantComposer.stop')"
-					@click="emit('stop')"
-				>
-					<Icon name="lucide:square" class="w-4 h-4" />
-				</UiButton>
+				<UiTooltip v-if="streaming" :text="t('components.assistant.assistantComposer.stop')">
+					<UiButton
+						variant="secondary"
+						class="flex-shrink-0 w-10 h-10 p-0 rounded-xl"
+						:aria-label="t('components.assistant.assistantComposer.stop')"
+						@click="emit('stop')"
+					>
+						<Icon name="lucide:square" class="w-4 h-4" />
+					</UiButton>
+				</UiTooltip>
 				<!-- Send is `.btn-primary` — monochrome by design. A solid terracotta
 				     fill pinned to the bottom of a full-height pane is the most saturated
 				     thing on the screen, and this one competed with the assistant's own
 				     accents (the sparkles glyph, the user bubble). UiButton also brings
 				     the disabled state, which used to be a third recipe written by hand. -->
-				<UiButton
-					v-else
-					variant="primary"
-					:disabled="!canSend"
-					class="flex-shrink-0 w-10 h-10 p-0 rounded-xl"
-					:title="t('common.send')"
-					:aria-label="t('common.send')"
-					:aria-busy="isSending || undefined"
-					data-testid="assistant-send"
-					@click="send"
-				>
-					<Icon
-						v-if="isSending"
-						name="lucide:loader-2"
-						class="w-4 h-4 animate-spin motion-reduce:animate-none"
-					/>
-					<Icon v-else name="lucide:send" class="w-4 h-4" />
-				</UiButton>
+				<UiTooltip v-else :text="t('common.send')">
+					<UiButton
+						variant="primary"
+						:disabled="!canSend"
+						class="flex-shrink-0 w-10 h-10 p-0 rounded-xl"
+						:aria-label="t('common.send')"
+						:aria-busy="isSending || undefined"
+						data-testid="assistant-send"
+						@click="send"
+					>
+						<Icon
+							v-if="isSending"
+							name="lucide:loader-2"
+							class="w-4 h-4 animate-spin motion-reduce:animate-none"
+						/>
+						<Icon v-else name="lucide:send" class="w-4 h-4" />
+					</UiButton>
+				</UiTooltip>
 			</div>
 			<div aria-live="polite">
 				<p

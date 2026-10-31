@@ -1,7 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { jsonRequestEvent } from '../../../__tests__/nitro';
+import type * as RequireAdminModule from '~~/server/utils/requireAdmin';
 
 /**
- * Route tests for `POST /api/system/apply-profiles` (plan D4): platform-admin
+ * Route tests for `POST /api/system/apply-profiles`: platform-admin
  * session auth mirroring /api/system/update, body-shape validation, and the
  * proxy to the updater sidecar's /apply-profiles — forwarding flags (never
  * profile strings) with the instance secret, surfacing updater failures as
@@ -35,7 +37,7 @@ interface RouteResult {
 async function callRoute(): Promise<RouteResult> {
 	const mod = await import('../apply-profiles.post');
 	const handler = mod.default as unknown as (event: unknown) => Promise<RouteResult>;
-	return handler({});
+	return handler(jsonRequestEvent(body));
 }
 
 function updaterResponse(ok: boolean, payload: unknown, status = ok ? 200 : 500) {
@@ -53,10 +55,6 @@ beforeEach(() => {
 	body = { flags: { 'mail.external': true, ai: false } };
 
 	vi.stubGlobal('defineEventHandler', <T>(handler: T) => handler);
-	vi.stubGlobal(
-		'readBody',
-		vi.fn(async () => body)
-	);
 	vi.stubGlobal('createError', (opts: { statusCode: number; message: string; data?: unknown }) =>
 		Object.assign(new Error(opts.message), { statusCode: opts.statusCode, data: opts.data })
 	);
@@ -150,6 +148,43 @@ describe('POST /api/system/apply-profiles — updater proxying', () => {
 		});
 	});
 
+	it.each<[string, unknown]>([
+		['null', null],
+		['an array', [{ error: 'docker compose up failed' }]],
+		['a string', 'docker compose up failed'],
+	])('maps a failure answered with %s to the generic 502', async (_label, payload) => {
+		callUpdaterMock.mockResolvedValue(updaterResponse(false, payload));
+
+		await expect(callRoute()).rejects.toMatchObject({
+			statusCode: 502,
+			message: 'Applying profiles failed',
+			data: {},
+		});
+	});
+
+	it('drops mistyped report fields and keeps the ones it does not read', async () => {
+		callUpdaterMock.mockResolvedValue(
+			updaterResponse(
+				false,
+				{
+					error: { reason: 'up failed' },
+					profiles: ['ai', 7],
+					steps: [{ step: 'up', stdout: '', stderr: 3 }],
+					details: 'kept for the UI',
+				},
+				409
+			)
+		);
+
+		await expect(callRoute()).rejects.toMatchObject({
+			statusCode: 409,
+			message: 'Another change is still being applied',
+			data: { details: 'kept for the UI' },
+		});
+		const error = await callRoute().catch((err: { data: object }) => err);
+		expect(Object.keys((error as { data: object }).data)).toEqual(['details']);
+	});
+
 	it('maps an unreachable updater to 502', async () => {
 		callUpdaterMock.mockRejectedValue(new Error('fetch failed'));
 
@@ -166,9 +201,7 @@ describe('POST /api/system/apply-profiles — updater proxying', () => {
  */
 describe('POST /api/system/apply-profiles — the real platform-admin gate', () => {
 	it('rejects an unauthenticated call with 401 before touching the updater', async () => {
-		const real = await vi.importActual<typeof import('~~/server/utils/requireAdmin')>(
-			'~~/server/utils/requireAdmin'
-		);
+		const real = await vi.importActual<typeof RequireAdminModule>('~~/server/utils/requireAdmin');
 		requirePlatformAdminMock.mockImplementation(real.requirePlatformAdmin);
 		vi.stubGlobal('useRuntimeConfig', () => ({
 			public: { convexUrl: 'https://convex.example.com', siteUrl: 'https://owlat.example' },

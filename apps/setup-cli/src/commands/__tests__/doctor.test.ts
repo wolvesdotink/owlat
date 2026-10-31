@@ -166,11 +166,11 @@ describe('doctor — evaluateMtaHealth', () => {
 			},
 		};
 		const withHint = evaluateMtaHealth(blocked, { MTA_VPS_PROVIDER: 'digitalocean' });
-		const failed = withHint.filter((finding) => !finding.ok);
-		expect(text(failed[0])).toContain('DigitalOcean blocks SMTP ports');
+		const failed = withHint.find((finding) => !finding.ok);
+		expect(text(failed)).toContain('DigitalOcean blocks SMTP ports');
 
 		const generic = evaluateMtaHealth(blocked, {});
-		expect(text(generic.filter((finding) => !finding.ok)[0])).toMatch(/block/i);
+		expect(text(generic.find((finding) => !finding.ok))).toMatch(/block/i);
 
 		expect(
 			evaluateMtaHealth(healthy, { MTA_VPS_PROVIDER: 'digitalocean' }).every(

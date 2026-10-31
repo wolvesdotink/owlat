@@ -191,6 +191,9 @@ export async function deliverRegressionEmailHandler(
 	}
 
 	const attemptToken = dependencies.randomId();
+	// checkpoint: claims the recipients before the irreversible sends; the claim
+	// schedules expireRecipientAttempts, which settles a claim a crash strands as
+	// outcome unknown rather than mailing that admin a second time.
 	const prepared = await ctx.runMutation(
 		internal.delivery.checklistAlertState.prepareRecipientAttempts,
 		{

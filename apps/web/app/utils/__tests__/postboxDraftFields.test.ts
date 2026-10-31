@@ -1,6 +1,6 @@
 /**
  * One draft-field snapshot for autosave and the offline send payload, and the
- * device mirror reading the same message (issue #864, finding 14).
+ * device mirror reading the same message.
  *
  * Autosave and the offline payload write `composeDraftFields` itself. The
  * mirror records every field in every mode (blocks included, so a simple-mode

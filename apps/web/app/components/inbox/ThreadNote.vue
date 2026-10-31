@@ -107,28 +107,28 @@ async function saveEdit(body: string): Promise<boolean> {
 				v-if="!note.isDeleted && !editing && (canEdit || canDelete)"
 				class="ui-hover-reveal ml-auto flex shrink-0 items-center gap-0.5"
 			>
-				<button
-					v-if="canEdit && save"
-					type="button"
-					class="rounded p-1 text-text-tertiary hover:bg-bg-surface hover:text-text-primary"
-					:title="t('components.inbox.notes.edit')"
-					:aria-label="t('components.inbox.notes.edit')"
-					data-testid="thread-note-edit"
-					@click="editing = true"
-				>
-					<Icon name="lucide:pencil" class="size-3.5" />
-				</button>
-				<button
-					v-if="canDelete"
-					type="button"
-					class="rounded p-1 text-text-tertiary hover:bg-bg-surface hover:text-error"
-					:title="t('components.inbox.notes.delete')"
-					:aria-label="t('components.inbox.notes.delete')"
-					data-testid="thread-note-delete"
-					@click="emit('delete')"
-				>
-					<Icon name="lucide:trash-2" class="size-3.5" />
-				</button>
+				<UiTooltip v-if="canEdit && save" :text="t('components.inbox.notes.edit')">
+					<button
+						type="button"
+						class="rounded p-1 text-text-tertiary hover:bg-bg-surface hover:text-text-primary"
+						:aria-label="t('components.inbox.notes.edit')"
+						data-testid="thread-note-edit"
+						@click="editing = true"
+					>
+						<Icon name="lucide:pencil" class="size-3.5" />
+					</button>
+				</UiTooltip>
+				<UiTooltip v-if="canDelete" :text="t('components.inbox.notes.delete')">
+					<button
+						type="button"
+						class="rounded p-1 text-text-tertiary hover:bg-bg-surface hover:text-error"
+						:aria-label="t('components.inbox.notes.delete')"
+						data-testid="thread-note-delete"
+						@click="emit('delete')"
+					>
+						<Icon name="lucide:trash-2" class="size-3.5" />
+					</button>
+				</UiTooltip>
 			</span>
 		</header>
 
@@ -139,16 +139,17 @@ async function saveEdit(body: string): Promise<boolean> {
 		>
 			{{ t('components.inbox.notes.deleted') }}
 		</p>
-		<InboxNoteComposer
-			v-else-if="editing && save"
-			class="mt-2"
-			:submit="saveEdit"
-			:candidates-for="candidatesFor"
-			:initial-body="note.body"
-			editing
-			autofocus
-			@cancel="editing = false"
-		/>
+		<AppErrorBoundary v-else-if="editing && save" surface="composer" :reset-keys="[note._id]">
+			<InboxNoteComposer
+				class="mt-2"
+				:submit="saveEdit"
+				:candidates-for="candidatesFor"
+				:initial-body="note.body"
+				editing
+				autofocus
+				@cancel="editing = false"
+			/>
+		</AppErrorBoundary>
 		<p
 			v-else
 			class="mt-1.5 whitespace-pre-wrap break-words text-sm text-text-primary"

@@ -3,13 +3,13 @@ import type { Id } from '@owlat/api/dataModel';
 import { useShortcutLabels } from '~/composables/useShortcutLabels';
 
 /**
- * The calm reader's header line (read on arrival §3, plan §6): the subject,
+ * The calm reader's header line (read on arrival §3): the subject,
  * Reply, Archive and ONE ⋯ menu. Nothing else sits between the subject and
  * the strip: the follow-up chip, the team badge, the labels and the
  * cross-surface link moved into the strip's Details row.
  *
- * The ⋯ menu holds the conversation's state as checkable items (alert on
- * reply, muted, back-from-snooze, mark-read under the `manual` policy), the
+ * The ⋯ menu holds the conversation's state as checkable items (pinned, alert
+ * on reply, muted, back-from-snooze, mark-read under the `manual` policy), the
  * ways into the strip that also work without one ("Why is this here?",
  * "Details", and "Full brief", the only way to the brief when the viewer turned
  * the strip off), and the verbs that left the old Overview's button row (Snooze,
@@ -30,6 +30,8 @@ const props = defineProps<{
 		notifyOnReplyAt?: number;
 		/** Just came back from snooze (mail/snooze.ts sweep); cleared on open. */
 		snoozeReturnedAt?: number;
+		/** In the Inbox's pinned band (mail/pins.ts). */
+		pinnedAt?: number;
 	} | null;
 	/** Offer the explicit mark-read affordance (markReadPolicy 'manual', unread thread). */
 	showMarkRead?: boolean;
@@ -47,6 +49,7 @@ const emit = defineEmits<{
 	(e: 'toggle-mute'): void;
 	(e: 'mark-read'): void;
 	(e: 'toggle-alert'): void;
+	(e: 'toggle-pin'): void;
 	(e: 'reply'): void;
 	(e: 'archive'): void;
 	(e: 'snooze'): void;
@@ -59,11 +62,12 @@ const emit = defineEmits<{
 const { t } = useI18n();
 // Reply and Archive run the same reader action as their keys, so their
 // tooltips and accessible shortcuts name the key as this person has it bound.
-const { ariaFor, titleWithShortcut } = useShortcutLabels();
+const { ariaFor } = useShortcutLabels();
 const headerEl = ref<HTMLElement | null>(null);
 
 const isMuted = computed(() => props.thread?.mutedAt != null);
 const isAlerted = computed(() => props.thread?.notifyOnReplyAt != null);
+const isPinned = computed(() => props.thread?.pinnedAt != null);
 const cameBackFromSnooze = computed(() => props.thread?.snoozeReturnedAt != null);
 
 // The "(2)" count must not wrap onto a line of its own, so the subject's last
@@ -101,32 +105,36 @@ const ICON_CLASS = 'w-3.5 h-3.5 flex-shrink-0 text-text-tertiary';
 				<template v-else>{{ subjectText }}</template>
 			</h1>
 			<!-- The thread's two verbs. On a phone they shrink to icons. -->
-			<UiButton
-				variant="ghost"
-				size="sm"
-				class="flex-shrink-0"
-				:aria-label="t('postbox.reader.header.reply')"
-				:title="titleWithShortcut(t('postbox.reader.header.reply'), 'postbox.reply')"
-				:aria-keyshortcuts="ariaFor('postbox.reply')"
-				data-testid="thread-header-reply"
-				@click="emit('reply')"
-			>
-				<Icon name="lucide:reply" class="w-4 h-4 sm:hidden" aria-hidden="true" />
-				<span class="max-sm:sr-only">{{ t('postbox.reader.header.reply') }}</span>
-			</UiButton>
-			<UiButton
-				variant="ghost"
-				size="sm"
-				class="flex-shrink-0"
-				:aria-label="t('postbox.reader.header.archive')"
-				:title="titleWithShortcut(t('postbox.reader.header.archive'), 'postbox.archive')"
-				:aria-keyshortcuts="ariaFor('postbox.archive')"
-				data-testid="thread-header-archive"
-				@click="emit('archive')"
-			>
-				<Icon name="lucide:archive" class="w-4 h-4 sm:hidden" aria-hidden="true" />
-				<span class="max-sm:sr-only">{{ t('postbox.reader.header.archive') }}</span>
-			</UiButton>
+			<UiTooltip :text="t('postbox.reader.header.reply')">
+				<template #shortcut><UiShortcut id="postbox.reply" /></template>
+				<UiButton
+					variant="ghost"
+					size="sm"
+					class="flex-shrink-0"
+					:aria-label="t('postbox.reader.header.reply')"
+					:aria-keyshortcuts="ariaFor('postbox.reply')"
+					data-testid="thread-header-reply"
+					@click="emit('reply')"
+				>
+					<Icon name="lucide:reply" class="w-4 h-4 sm:hidden" aria-hidden="true" />
+					<span class="max-sm:sr-only">{{ t('postbox.reader.header.reply') }}</span>
+				</UiButton>
+			</UiTooltip>
+			<UiTooltip :text="t('postbox.reader.header.archive')">
+				<template #shortcut><UiShortcut id="postbox.archive" /></template>
+				<UiButton
+					variant="ghost"
+					size="sm"
+					class="flex-shrink-0"
+					:aria-label="t('postbox.reader.header.archive')"
+					:aria-keyshortcuts="ariaFor('postbox.archive')"
+					data-testid="thread-header-archive"
+					@click="emit('archive')"
+				>
+					<Icon name="lucide:archive" class="w-4 h-4 sm:hidden" aria-hidden="true" />
+					<span class="max-sm:sr-only">{{ t('postbox.reader.header.archive') }}</span>
+				</UiButton>
+			</UiTooltip>
 			<!-- Host-owned thread actions (the reader's "Discuss" toggle). -->
 			<slot name="actions" />
 			<PostboxOverflowMenu
@@ -204,46 +212,69 @@ const ICON_CLASS = 'w-3.5 h-3.5 flex-shrink-0 text-text-tertiary';
 					</button>
 					<div class="my-1 border-t border-border-subtle" role="separator" />
 					<!-- The conversation's state, made checkable. -->
-					<button
-						type="button"
-						role="menuitemcheckbox"
-						:aria-checked="isAlerted"
-						:class="ITEM_CLASS"
-						:title="t('components.postbox.postboxThreadHeader.alertedHint')"
-						data-testid="thread-menu-alert"
-						@click="
-							emit('toggle-alert');
-							close();
-						"
-					>
-						<Icon
-							name="lucide:check"
-							class="w-3.5 h-3.5 flex-shrink-0 text-brand"
-							:class="{ invisible: !isAlerted }"
-							aria-hidden="true"
-						/>
-						{{ t('components.postbox.postboxThreadHeader.alertOnReply') }}
-					</button>
-					<button
-						type="button"
-						role="menuitemcheckbox"
-						:aria-checked="isMuted"
-						:class="ITEM_CLASS"
-						:title="t('components.postbox.postboxThreadHeader.unmuteHint')"
-						data-testid="thread-menu-mute"
-						@click="
-							emit('toggle-mute');
-							close();
-						"
-					>
-						<Icon
-							name="lucide:check"
-							class="w-3.5 h-3.5 flex-shrink-0 text-brand"
-							:class="{ invisible: !isMuted }"
-							aria-hidden="true"
-						/>
-						{{ t('components.postbox.postboxThreadHeader.muteConversation') }}
-					</button>
+					<UiTooltip :text="t('components.postbox.postboxThreadHeader.pinHint')">
+						<button
+							type="button"
+							role="menuitemcheckbox"
+							:aria-checked="isPinned"
+							:class="ITEM_CLASS"
+							data-testid="thread-menu-pin"
+							@click="
+								emit('toggle-pin');
+								close();
+							"
+						>
+							<Icon
+								name="lucide:check"
+								class="w-3.5 h-3.5 flex-shrink-0 text-brand"
+								:class="{ invisible: !isPinned }"
+								aria-hidden="true"
+							/>
+							{{ t('components.postbox.postboxThreadHeader.pinConversation') }}
+						</button>
+					</UiTooltip>
+					<UiTooltip :text="t('components.postbox.postboxThreadHeader.alertedHint')">
+						<button
+							type="button"
+							role="menuitemcheckbox"
+							:aria-checked="isAlerted"
+							:class="ITEM_CLASS"
+							data-testid="thread-menu-alert"
+							@click="
+								emit('toggle-alert');
+								close();
+							"
+						>
+							<Icon
+								name="lucide:check"
+								class="w-3.5 h-3.5 flex-shrink-0 text-brand"
+								:class="{ invisible: !isAlerted }"
+								aria-hidden="true"
+							/>
+							{{ t('components.postbox.postboxThreadHeader.alertOnReply') }}
+						</button>
+					</UiTooltip>
+					<UiTooltip :text="t('components.postbox.postboxThreadHeader.unmuteHint')">
+						<button
+							type="button"
+							role="menuitemcheckbox"
+							:aria-checked="isMuted"
+							:class="ITEM_CLASS"
+							data-testid="thread-menu-mute"
+							@click="
+								emit('toggle-mute');
+								close();
+							"
+						>
+							<Icon
+								name="lucide:check"
+								class="w-3.5 h-3.5 flex-shrink-0 text-brand"
+								:class="{ invisible: !isMuted }"
+								aria-hidden="true"
+							/>
+							{{ t('components.postbox.postboxThreadHeader.muteConversation') }}
+						</button>
+					</UiTooltip>
 					<!-- Mark-read is an ACTION, not a state, and only exists under the
 					     manual mark-read policy while the thread still has unread mail. -->
 					<button

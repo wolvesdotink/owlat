@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { trimTrailingBlankBlocks } from '../postboxBodyTidy';
+import { SCALING_FACTOR, nbspBlockEndingInText } from '../../lib/__tests__/hostileRegexInputs';
 
 describe('trimTrailingBlankBlocks', () => {
 	it("drops Outlook's trailing spacer paragraphs but keeps the closing tags", () => {
@@ -35,13 +36,14 @@ describe('trimTrailingBlankBlocks', () => {
 		expect(trimTrailingBlankBlocks('<p>Hi</p><p>  </p>')).toBe('<p>Hi</p>');
 	});
 
-	it('stays fast on a trailing block of nbsp that ends in text', () => {
+	it('keeps a trailing block of nbsp that ends in text', () => {
 		// Overlapping alternatives made this backtrack exponentially: 32 nbsp
-		// took ~18 s in V8, and every two more roughly quadrupled it.
-		const hostile = `<p>Hi</p><p>${' '.repeat(4000)}x</p>`;
-		const started = performance.now();
+		// took ~18 s in V8, and every two more roughly quadrupled it. The time
+		// this input takes is reported by `bun run perf:bench` (family
+		// web-regex-scaling); here it must come back unchanged.
+		const hostile = nbspBlockEndingInText(SCALING_FACTOR * 1_000);
+		expect(hostile).toContain('\u00a0'.repeat(4_000));
 		expect(trimTrailingBlankBlocks(hostile)).toBe(hostile);
-		expect(performance.now() - started).toBeLessThan(1_000);
 	});
 
 	it('only looks at the tail of a long body', () => {

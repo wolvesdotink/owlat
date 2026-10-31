@@ -39,9 +39,6 @@ function emit(payload: Record<string, unknown>): void {
 	for (const cb of listeners) cb(payload);
 }
 
-/** Let the fire-and-forget handlers (and their dynamic imports) run out. */
-const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
-
 interface StoredMessage {
 	mailboxId: string;
 	fromAddress: string;
@@ -153,7 +150,7 @@ const message: StoredMessage = {
 	subject: 'Hello',
 };
 
-// ── #950: one subscription per owner ────────────────────────────────────────
+// ── one subscription per owner ──────────────────────────────────────────────
 
 describe('notification routing subscription lifetime', () => {
 	it('disposing the owner removes its listener', async () => {
@@ -181,7 +178,7 @@ describe('notification routing subscription lifetime', () => {
 		expect(listeners.size).toBe(1);
 
 		emit({ action: 'reply', messageId: 'm1', reply: 'Thanks!' });
-		await settle();
+		await second.idle();
 
 		expect(backend.names()).toEqual([
 			'mail/mailbox/messages:getMessage',
@@ -196,13 +193,14 @@ describe('notification routing subscription lifetime', () => {
 		const ctx = context({ convex: backend.client });
 		await setup(ctx).ready;
 		await setup(ctx).ready;
-		await setup(ctx).ready;
+		const last = setup(ctx);
+		await last.ready;
 		expect(listeners.size).toBe(1);
 
 		emit({ action: 'archive', messageId: 'm1' });
-		await settle();
+		await last.idle();
 		emit({ action: 'read', messageId: 'm1' });
-		await settle();
+		await last.idle();
 
 		expect(backend.names()).toEqual([
 			'mail/messageActions:archive',
@@ -237,7 +235,7 @@ describe('notification routing subscription lifetime', () => {
 		expect(listeners.size).toBe(1);
 
 		emit({ action: 'read', messageId: 'm1' });
-		await settle();
+		await Promise.all([first.idle(), second.idle()]);
 		expect(backend.names()).toEqual(['mail/messageActions:markRead']);
 	});
 
@@ -250,17 +248,18 @@ describe('notification routing subscription lifetime', () => {
 
 	it('routes a duplicated delivery of the same native notification once', async () => {
 		const backend = fakeBackend({ m1: message });
-		await setup(context({ convex: backend.client })).ready;
+		const routing = setup(context({ convex: backend.client }));
+		await routing.ready;
 
 		emit({ action: 'archive', messageId: 'm1', notificationId: 41 });
 		emit({ action: 'archive', messageId: 'm1', notificationId: 41 });
-		await settle();
+		await routing.idle();
 
 		expect(backend.names()).toEqual(['mail/messageActions:archive']);
 	});
 });
 
-// ── #951: actions run in the workspace that sent the notification ───────────
+// ── actions run in the workspace that sent the notification ─────────────────
 
 describe('notification actions keep their workspace', () => {
 	// Both instances have a message called `m1` (ids are instance-scoped, so they
@@ -345,6 +344,38 @@ describe('notification actions keep their workspace', () => {
 		expect(ctx.switchTo).toHaveBeenCalledWith('ws-a', '/dashboard/postbox/inbox/m1');
 		expect(ctx.navigate).not.toHaveBeenCalled();
 		expect(ctx.storage?.getItem(PENDING_NOTIFICATION_ACTION_KEY)).toBeNull();
+		expect(b.calls).toEqual([]);
+	});
+
+	it('a link notification opens its page here, or in the workspace that sent it', async () => {
+		const b = instanceB();
+		const here = context({ convex: b.client, activeId: 'ws-b', known: ['ws-a', 'ws-b'] });
+		await handleNotificationAction(
+			{ action: 'navigate', url: '/dashboard/campaigns/c1/report', workspaceId: 'ws-b' },
+			here
+		);
+		expect(here.navigate).toHaveBeenCalledWith('/dashboard/campaigns/c1/report');
+		expect(here.switchTo).not.toHaveBeenCalled();
+
+		const elsewhere = context({ convex: b.client, activeId: 'ws-b', known: ['ws-a', 'ws-b'] });
+		await handleNotificationAction(
+			{ action: 'navigate', url: '/dashboard/automations/a1', workspaceId: 'ws-a' },
+			elsewhere
+		);
+		expect(elsewhere.switchTo).toHaveBeenCalledWith('ws-a', '/dashboard/automations/a1');
+		expect(elsewhere.navigate).not.toHaveBeenCalled();
+		expect(elsewhere.storage?.getItem(PENDING_NOTIFICATION_ACTION_KEY)).toBeNull();
+
+		const gone = context({ convex: b.client, activeId: 'ws-b', known: ['ws-b'] });
+		await handleNotificationAction(
+			{ action: 'navigate', url: '/dashboard/automations/a1', workspaceId: 'ws-gone' },
+			gone
+		);
+		expect(gone.onUnavailable).toHaveBeenCalledWith({
+			type: 'navigate',
+			path: '/dashboard/automations/a1',
+		});
+		expect(gone.switchTo).not.toHaveBeenCalled();
 		expect(b.calls).toEqual([]);
 	});
 

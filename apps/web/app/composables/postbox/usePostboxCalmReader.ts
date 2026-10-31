@@ -1,5 +1,5 @@
 /**
- * The calm reader's chrome state (read on arrival §3, plan §6), kept out of
+ * The calm reader's chrome state (read on arrival §3), kept out of
  * PostboxThreadReader.vue: what sits between the header and the first body.
  *
  *  - the one notice (`pickReaderNotice`: danger > key change > left draft >
@@ -22,6 +22,7 @@ import { pickReaderNotice, readerDangerOf } from '~/utils/postboxReaderNotice';
 import { useAnswerLeftDraft } from '~/composables/useAnswerMode';
 import { usePostboxWhyHere } from '~/composables/postbox/usePostboxWhyHere';
 import { deriveSenderAuth, senderAuthInputOf, type SenderAuthMessage } from '~/utils/senderAuth';
+import type { PostboxReaderCardChrome } from '~/composables/postbox/usePostboxReaderContext';
 
 type ImageKind = PostboxImageBannerState['kind'];
 
@@ -105,7 +106,7 @@ export function usePostboxCalmReader(opts: {
 	 * suspicious mail: its images never load on their own, so its "Show images"
 	 * must stay beside the body, not in closed Details behind the danger notice.
 	 */
-	function cardOf(messageId: string) {
+	function cardOf(messageId: string): PostboxReaderCardChrome {
 		const isLatest = messageId === opts.latest.value?._id;
 		const details = opts.detailsEl.value ?? null;
 		const inPlace = imageKinds.value[messageId] === 'suspicious';

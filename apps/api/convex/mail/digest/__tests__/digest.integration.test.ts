@@ -1,5 +1,5 @@
 /**
- * The digest (SPEC §6.5): selection (newest 200, ≤5 lines per kind, per-kind
+ * The digest: selection (newest 200, ≤5 lines per kind, per-kind
  * overflow, exact or "200+"), the claim with its attempt bound, one batched
  * `mail.digest` call with allowlisted refs and verbatim spans, the commit
  * through the one guarded writer, digest-only eligibility in `listDue`, and
@@ -585,6 +585,37 @@ describe('review r2', () => {
 		expect((await t.action(internal.mail.briefEmailActions.deliverDueBriefs, {})).delivered).toBe(
 			1
 		);
+	});
+
+	it('F7: a deferred brief whose delivery cannot land ends its wait, unstamped', async () => {
+		const { t, mailboxId } = await digestSetup(1, { briefEmail: true });
+		await holdClaim(t, mailboxId, NOW);
+		await t.action(internal.mail.briefEmailActions.deliverDueBriefs, {});
+		expect((await settings(t))!.dailyBriefDeferredAt).toBe(NOW);
+
+		// The next tick renders the brief, but the mailbox has no Inbox to file it in.
+		await t.run(async (ctx) => {
+			const inbox = await ctx.db
+				.query('mailFolders')
+				.withIndex('by_mailbox_and_role', (q) => q.eq('mailboxId', mailboxId).eq('role', 'inbox'))
+				.first();
+			await ctx.db.delete(inbox!._id);
+		});
+		const storedBefore = await t.run(
+			async (ctx) => (await ctx.db.system.query('_storage').collect()).length
+		);
+		vi.setSystemTime(NOW + 15 * 60_000);
+		expect((await t.action(internal.mail.briefEmailActions.deliverDueBriefs, {})).delivered).toBe(
+			0
+		);
+		expect((await settings(t))!.dailyBriefDeferredAt).toBeUndefined();
+		expect((await settings(t))!.lastDailyBriefEmailAt).toBeUndefined();
+		// The rendered copy nothing files is dropped again.
+		const storedAfter = await t.run(
+			async (ctx) => (await ctx.db.system.query('_storage').collect()).length
+		);
+		expect(storedAfter).toBe(storedBefore);
+		expect((await digestsOf(t, mailboxId))[0]!.state).toBe('generated');
 	});
 
 	it('F7: every pass sweeps deferrals past their bound or already delivered', async () => {

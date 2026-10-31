@@ -64,36 +64,39 @@ function folderAriaLabel(folder: PostboxFolderRow): string {
 
 <template>
 	<nav class="flex flex-col gap-0.5" :class="{ 'items-center': collapsed }">
-		<NuxtLink
+		<UiTooltip
 			v-for="folder in folders"
 			:key="folder._id"
-			:to="`/dashboard/postbox/${folder.role}`"
-			class="rounded text-sm hover:bg-bg-surface"
-			:class="[
-				collapsed
-					? 'relative flex items-center justify-center w-9 h-9'
-					: 'flex items-center gap-2 px-2.5 py-1.5',
-				{ 'bg-bg-surface text-brand': activeFolder === folder.role },
-				{ 'pbx-drop-target': drop.isOverFolder(folder._id) },
-			]"
-			:title="collapsed ? folderLabel(folder) : undefined"
-			:aria-label="collapsed ? folderAriaLabel(folder) : undefined"
-			v-on="drop.folder(folder)"
+			:text="collapsed ? folderLabel(folder) : undefined"
 		>
-			<Icon :name="ICON_BY_ROLE[folder.role ?? ''] ?? 'lucide:folder'" class="w-4 h-4" />
-			<template v-if="!collapsed">
-				<span class="flex-1 capitalize">{{ folderLabel(folder) }}</span>
-				<span v-if="folder.unseenCount > 0" class="text-xs font-medium text-text-secondary">{{
-					folder.unseenCount
-				}}</span>
-			</template>
-			<!-- Collapsed: unread count as a corner badge so the number stays
-			     visible without the label. -->
-			<span
-				v-else-if="folder.unseenCount > 0"
-				class="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 rounded-full bg-brand text-text-inverse text-[10px] leading-4 font-medium text-center"
-				>{{ folder.unseenCount > 99 ? '99+' : folder.unseenCount }}</span
+			<NuxtLink
+				:to="`/dashboard/postbox/${folder.role}`"
+				class="rounded text-sm hover:bg-bg-surface"
+				:class="[
+					collapsed
+						? 'relative flex items-center justify-center w-9 h-9'
+						: 'flex items-center gap-2 px-2.5 py-1.5',
+					{ 'bg-bg-surface text-brand': activeFolder === folder.role },
+					{ 'pbx-drop-target': drop.isOverFolder(folder._id) },
+				]"
+				:aria-label="collapsed ? folderAriaLabel(folder) : undefined"
+				v-on="drop.folder(folder)"
 			>
-		</NuxtLink>
+				<Icon :name="ICON_BY_ROLE[folder.role ?? ''] ?? 'lucide:folder'" class="w-4 h-4" />
+				<template v-if="!collapsed">
+					<span class="flex-1 capitalize">{{ folderLabel(folder) }}</span>
+					<span v-if="folder.unseenCount > 0" class="text-xs font-medium text-text-secondary">{{
+						folder.unseenCount
+					}}</span>
+				</template>
+				<!-- Collapsed: unread count as a corner badge so the number stays
+				     visible without the label. -->
+				<span
+					v-else-if="folder.unseenCount > 0"
+					class="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 rounded-full bg-brand text-text-inverse text-[10px] leading-4 font-medium text-center"
+					>{{ folder.unseenCount > 99 ? '99+' : folder.unseenCount }}</span
+				>
+			</NuxtLink>
+		</UiTooltip>
 	</nav>
 </template>

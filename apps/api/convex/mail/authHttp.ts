@@ -11,6 +11,8 @@ import { BodyTooLargeError, readBodyText } from '../lib/readBody';
  * don't have to ship the Convex admin key to the MTA.
  */
 
+import { v } from 'convex/values';
+import { decodeJsonText } from '@owlat/worker-protocol/decodeJson';
 import { httpAction } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { logError } from '../lib/runtimeLog';
@@ -22,6 +24,26 @@ import {
 } from '../webhooks/mtaSignature';
 import { getClientIp } from '../lib/publicRateLimit';
 import { ipRateLimitKey, normalizePeerIp } from '@owlat/shared/ipAddress';
+
+/**
+ * Every field is optional on the wire: presence is the handler's check, after
+ * the rate limit, so a body missing a field still counts against the limit
+ * and answers `Missing fields`.
+ */
+const verifyCredentialBody = v.object({
+	address: v.optional(v.string()),
+	password: v.optional(v.string()),
+	scope: v.optional(v.union(v.literal('imap'), v.literal('smtp'))),
+	// Optional client identifier (e.g. the SMTP EHLO hostname) the MTA forwards
+	// so successful submissions populate the app-password "Last used"
+	// device/client column, mirroring the IMAP ID path.
+	clientName: v.optional(v.string()),
+	// The submission client's address as the MTA saw it on the socket. The HTTP
+	// caller here is the MTA itself, so the request's own source address says
+	// nothing about which client is logging in. An MTA that predates the field,
+	// or sends one that is not an address, falls back to the request source.
+	ip: v.optional(v.any()),
+});
 
 export const handleVerifyCredential = httpAction(async (ctx, request) => {
 	if (request.method !== 'POST') {
@@ -65,24 +87,11 @@ export const handleVerifyCredential = httpAction(async (ctx, request) => {
 		});
 	}
 
-	let payload: {
-		address?: string;
-		password?: string;
-		scope?: 'imap' | 'smtp';
-		// Optional client identifier (e.g. the SMTP EHLO hostname) the MTA
-		// forwards so successful submissions populate the app-password
-		// "Last used" device/client column, mirroring the IMAP ID path.
-		clientName?: string;
-		// The submission client's address as the MTA saw it on the socket. The
-		// HTTP caller here is the MTA itself, so the request's own source address
-		// says nothing about which client is logging in.
-		ip?: unknown;
-	};
-	try {
-		payload = JSON.parse(bodyText);
-	} catch {
-		return new Response(JSON.stringify({ error: 'Invalid JSON' }), { status: 400 });
+	const decoded = decodeJsonText(bodyText, verifyCredentialBody);
+	if (!decoded.ok) {
+		return new Response(JSON.stringify({ error: decoded.failure.message }), { status: 400 });
 	}
+	const payload = decoded.value;
 
 	// Key verify's per-IP auth-failure throttle on the client the MTA reports in
 	// the signed body. A body without a usable ip comes from an MTA that predates
@@ -96,6 +105,8 @@ export const handleVerifyCredential = httpAction(async (ctx, request) => {
 	// share the MTA's one bucket: a burst of checks for other clients would 429 a
 	// legitimate login, and the MTA counts that as the client's auth failure. The
 	// per-client bucket still bounds how many checks one client can cause.
+	// checkpoint: admission before the password check; the token stays spent
+	// whatever the check answers, which is what bounds guessing.
 	const { ok: rateOk, retryAfter } = await ctx.runMutation(
 		internal.lib.publicRateLimit.checkPublicRateLimit,
 		{ limitType: 'webhookIngestion', key: `mta-verify-credential:${ipRateLimitKey(clientIp)}` }

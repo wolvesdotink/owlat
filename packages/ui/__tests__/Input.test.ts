@@ -69,7 +69,7 @@ describe('UiInput attribute forwarding', () => {
 
 		const input = wrapper.get('input');
 		expect(input.classes()).not.toContain('mt-2');
-		expect(input.classes()).toContain('ui-input-control');
+		expect(input.classes()).toContain('input');
 		expect(input.attributes('style')).toBeUndefined();
 	});
 

@@ -315,6 +315,33 @@ export const sanitizeEditorHtml = (html: string): string => {
 	return sanitizeHtmlLib(html, EDITOR_HTML_SANITIZE_CONFIG);
 };
 
+/** The JSON escape for one code unit, or undefined when it can stay as is. */
+const escapeJsonCodeUnit = (code: number): string | undefined => {
+	switch (code) {
+		case 0x5c: // \
+			return '\\\\';
+		case 0x22: // "
+			return '\\"';
+		case 0x3c: // <
+			return '\\u003c';
+		case 0x08:
+			return '\\b';
+		case 0x09:
+			return '\\t';
+		case 0x0a:
+			return '\\n';
+		case 0x0c:
+			return '\\f';
+		case 0x0d:
+			return '\\r';
+		case 0x2028:
+		case 0x2029:
+			return `\\u${code.toString(16)}`;
+		default:
+			return code < 0x20 ? `\\u${code.toString(16).padStart(4, '0')}` : undefined;
+	}
+};
+
 /**
  * Escape a value for safe interpolation into a JSON string literal.
  *
@@ -331,26 +358,15 @@ export const sanitizeEditorHtml = (html: string): string => {
  * back to `<`, control chars round-trip — so benign values render unchanged.
  */
 export const escapeJsonValue = (str: string): string => {
-	return str.replace(/[\\"<\u0000-\u001f\u2028\u2029]/g, (ch) => {
-		switch (ch) {
-			case '\\':
-				return '\\\\';
-			case '"':
-				return '\\"';
-			case '<':
-				return '\\u003c';
-			case '\b':
-				return '\\b';
-			case '\t':
-				return '\\t';
-			case '\n':
-				return '\\n';
-			case '\f':
-				return '\\f';
-			case '\r':
-				return '\\r';
-			default:
-				return `\\u${ch.charCodeAt(0).toString(16).padStart(4, '0')}`;
-		}
-	});
+	// One pass over UTF-16 code units: every character listed above is a single
+	// code unit, and surrogate pairs pass through untouched.
+	let out = '';
+	let copied = 0;
+	for (let i = 0; i < str.length; i++) {
+		const escaped = escapeJsonCodeUnit(str.charCodeAt(i));
+		if (escaped === undefined) continue;
+		out += str.slice(copied, i) + escaped;
+		copied = i + 1;
+	}
+	return copied === 0 ? str : out + str.slice(copied);
 };

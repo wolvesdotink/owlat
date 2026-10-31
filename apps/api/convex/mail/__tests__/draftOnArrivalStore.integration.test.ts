@@ -272,3 +272,103 @@ describe('no arrival draft while the owner has questions to answer', () => {
 		expect(flag?.clarification?.questions.map((q) => q.id)).toEqual(['q1', 'q2']);
 	});
 });
+
+describe('the slot and its plan land in one commit', () => {
+	const plan = {
+		threadRevision: 1,
+		itemRevisions: [],
+		stances: [],
+		coverage: [],
+		fileClaims: [],
+		newPromises: [],
+		draftHash: 'slot-hash',
+		verdict: 'covered' as const,
+		planRevision: 0,
+		deletionEpoch: 0,
+		attachmentSetHash: 'none',
+		isCheckIncomplete: false,
+	};
+	const arrivalPlans = (t: TestConvex<typeof schema>) =>
+		t.run(async (ctx) =>
+			(await ctx.db.query('draftResponsePlans').collect()).filter(
+				(row) => row.draftKind === 'arrivalDraft'
+			)
+		);
+
+	it('stores the plan with the slot it is bound to', async () => {
+		const t = convexTest(schema, modules);
+		const { threadId, ids } = await seedThread(
+			t,
+			[{ from: CUSTOMER, body: 'Does Friday work?' }],
+			0
+		);
+
+		await t.mutation(internal.mail.ai.draftOnArrivalStore.persistDraftSlot, {
+			threadId,
+			triggerMessageId: ids[0]!,
+			draft: 'Hi Chris, Friday works.',
+			confidence: 0.8,
+			plan,
+		});
+
+		expect((await t.run((ctx) => ctx.db.get(threadId)))?.needsReply?.draftSlot?.draft).toBe(
+			'Hi Chris, Friday works.'
+		);
+		expect(await arrivalPlans(t)).toEqual([
+			expect.objectContaining({ mailThreadId: threadId, draftHash: 'slot-hash' }),
+		]);
+	});
+
+	it('stores no plan for a slot the guards refused, even over an older slot', async () => {
+		const t = convexTest(schema, modules);
+		const { threadId, ids } = await seedThread(
+			t,
+			[
+				{ from: CUSTOMER, body: 'Does Friday work?' },
+				{ from: CUSTOMER, body: 'Or Monday?' },
+			],
+			1
+		);
+		await t.mutation(internal.mail.ai.draftOnArrivalStore.persistDraftSlot, {
+			threadId,
+			triggerMessageId: ids[1]!,
+			draft: 'Hi Chris, Monday works.',
+			confidence: 0.8,
+		});
+
+		// A run that drafted for the earlier trigger lands late.
+		await t.mutation(internal.mail.ai.draftOnArrivalStore.persistDraftSlot, {
+			threadId,
+			triggerMessageId: ids[0]!,
+			draft: 'Hi Chris, Friday works.',
+			confidence: 0.8,
+			plan,
+		});
+
+		expect((await t.run((ctx) => ctx.db.get(threadId)))?.needsReply?.draftSlot?.draft).toBe(
+			'Hi Chris, Monday works.'
+		);
+		expect(await arrivalPlans(t)).toEqual([]);
+	});
+
+	it('stores no slot written from a plan that went stale on the same trigger', async () => {
+		const t = convexTest(schema, modules);
+		const { threadId, ids } = await seedThread(
+			t,
+			[{ from: CUSTOMER, body: 'Does Friday work?' }],
+			0
+		);
+
+		// The thread was purged while the reply was drafted: its epoch moved on.
+		await t.mutation(internal.mail.ai.draftOnArrivalStore.persistDraftSlot, {
+			threadId,
+			triggerMessageId: ids[0]!,
+			draft: 'Hi Chris, Friday works.',
+			confidence: 0.8,
+			plan: { ...plan, deletionEpoch: 1 },
+		});
+
+		expect((await t.run((ctx) => ctx.db.get(threadId)))?.needsReply?.draftSlot).toBeUndefined();
+		expect(await arrivalPlans(t)).toEqual([]);
+	});
+});

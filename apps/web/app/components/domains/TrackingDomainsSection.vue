@@ -240,33 +240,36 @@ const handleVerify = async (id: Id<'trackingDomains'>) => {
 					</div>
 
 					<div class="flex items-center gap-2">
-						<UiButton
-							variant="secondary"
-							class="gap-1.5 text-sm py-1.5 px-3"
-							:title="t('components.domains.trackingDomainsSection.verifyTitle')"
-							:disabled="verifyingId === td._id"
-							@click.stop="handleVerify(td._id)"
-						>
-							<Icon
-								v-if="verifyingId === td._id"
-								name="lucide:loader-2"
-								class="w-4 h-4 animate-spin motion-reduce:animate-none"
-							/>
-							<Icon v-else name="lucide:refresh-cw" class="w-4 h-4" />
-							{{
-								verifyingId === td._id
-									? t('components.domains.trackingDomainsSection.verifying')
-									: t('components.domains.trackingDomainsSection.verify')
-							}}
-						</UiButton>
-						<UiButton
-							variant="ghost"
-							class="p-2 text-error hover:bg-error/10"
-							:title="t('components.domains.trackingDomainsSection.removeTitle')"
-							@click.stop="deleteModal.open(td)"
-						>
-							<Icon name="lucide:trash-2" class="w-4 h-4" />
-						</UiButton>
+						<UiTooltip :text="t('components.domains.trackingDomainsSection.verifyTitle')">
+							<UiButton
+								variant="secondary"
+								class="gap-1.5 text-sm py-1.5 px-3"
+								:disabled="verifyingId === td._id"
+								@click.stop="handleVerify(td._id)"
+							>
+								<Icon
+									v-if="verifyingId === td._id"
+									name="lucide:loader-2"
+									class="w-4 h-4 animate-spin motion-reduce:animate-none"
+								/>
+								<Icon v-else name="lucide:refresh-cw" class="w-4 h-4" />
+								{{
+									verifyingId === td._id
+										? t('components.domains.trackingDomainsSection.verifying')
+										: t('components.domains.trackingDomainsSection.verify')
+								}}
+							</UiButton>
+						</UiTooltip>
+						<UiTooltip :text="t('components.domains.trackingDomainsSection.removeTitle')">
+							<UiButton
+								variant="ghost"
+								class="p-2 text-error hover:bg-error/10"
+								:aria-label="t('components.domains.trackingDomainsSection.removeTitle')"
+								@click.stop="deleteModal.open(td)"
+							>
+								<Icon name="lucide:trash-2" class="w-4 h-4" />
+							</UiButton>
+						</UiTooltip>
 						<div
 							:class="[
 								'w-5 h-5 flex items-center justify-center transition-transform',
@@ -377,7 +380,9 @@ const handleVerify = async (id: Id<'trackingDomains'>) => {
 /* Expand transition (mirrors the Sending Domains rows) */
 .expand-enter-active,
 .expand-leave-active {
-	transition: all var(--motion-moderate) var(--ease-spring);
+	transition-property: opacity, max-height;
+	transition-duration: var(--motion-moderate);
+	transition-timing-function: var(--ease-spring);
 	overflow: hidden;
 }
 

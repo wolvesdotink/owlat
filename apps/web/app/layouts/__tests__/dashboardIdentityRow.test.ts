@@ -67,7 +67,6 @@ function authStub(pending: boolean): Record<string, unknown> {
 beforeEach(() => {
 	route.path = '/dashboard';
 	route.fullPath = '/dashboard';
-	document.body.innerHTML = '';
 });
 
 function mountLayout(pending = false): VueWrapper {
@@ -180,7 +179,7 @@ describe('dashboard sidebar — one accent', () => {
 		const wrapper = mountLayout(false);
 
 		// Today is active at /dashboard; it is the widest selection recipe in the
-		// rail and the old Home link used to be `bg-brand-subtle text-brand`.
+		// rail, and it must not fall back to `bg-brand-subtle text-brand`.
 		const home = document.querySelector('aside nav a[href="/dashboard"]');
 		expect(home?.className).toContain('bg-(--surface-2-selected)');
 		expect(home?.className).toContain('text-text-primary');

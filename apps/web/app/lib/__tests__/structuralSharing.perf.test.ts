@@ -152,7 +152,7 @@ describe('Postbox list page fixture fidelity', () => {
 const output = perfBenchOutput();
 
 describe.runIf(output)('structural sharing benchmark (perf:bench only)', () => {
-	it('samples shareStructure on every update', { timeout: 300_000 }, () => {
+	it('samples shareStructure on every update', () => {
 		const tasks = SIZES.flatMap((size) =>
 			listUpdates(size).map((update) =>
 				sampleTask(`${update.name}, ${size} rows`, () => shareStructure(update.prev, update.next), {

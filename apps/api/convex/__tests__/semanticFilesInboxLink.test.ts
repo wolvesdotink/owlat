@@ -26,8 +26,6 @@ vi.mock('../lib/sessionOrganization', async () => {
 		...actual,
 		requireOrgMember: vi.fn(async () => sessionFor()),
 		getMutationContext: vi.fn(async () => sessionFor()),
-		// The setup write below stays admin-only regardless of who is reading.
-		requireAdminContext: vi.fn(async () => adminSession),
 		isActiveOrgMember: vi.fn().mockResolvedValue(true),
 		getUserIdFromSession: vi.fn(async () => sessionFor().userId),
 	};
@@ -37,11 +35,16 @@ const modules = import.meta.glob('../**/*.*s');
 
 type Harness = ReturnType<typeof convexTest>;
 
-/** A file linked to an inbox conversation, created through the real mutations. */
+/**
+ * A file linked to an inbox conversation, created through the real mutations.
+ * The upload is admin-only, so it runs as the owner whoever reads afterwards.
+ */
 async function linkedFile(t: Harness): Promise<{
 	fileId: Id<'semanticFiles'>;
 	threadId: Id<'conversationThreads'>;
 }> {
+	const reader = role.current;
+	role.current = 'owner';
 	const threadId = await t.run((ctx) =>
 		ctx.db.insert('conversationThreads', {
 			subject: 'Refund for order 4417',
@@ -64,6 +67,7 @@ async function linkedFile(t: Harness): Promise<{
 		sourceType: 'upload',
 		threadId,
 	});
+	role.current = reader;
 	return { fileId, threadId };
 }
 

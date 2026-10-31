@@ -1,5 +1,5 @@
 /**
- * THE OPERATOR CONTROLS, END TO END (plan D12, P3-6).
+ * THE OPERATOR CONTROLS, END TO END.
  *
  * Each control writes through an org-scoped, admin-gated mutation; each lands in
  * BOTH the audit log and the decision timeline; and none of them can reach
@@ -15,6 +15,7 @@
 
 import { convexTest } from 'convex-test';
 import { describe, expect, it, vi } from 'vitest';
+import type * as SessionOrganization from '../../lib/sessionOrganization';
 import schema from '../../schema';
 import { api } from '../../_generated/api';
 import { FORCE_ADVANCE_CONFIRMATION } from '@owlat/shared/deliverabilityIndependence';
@@ -42,7 +43,7 @@ const session = vi.hoisted(() => ({ organizationId: 'org_ramp_controls', isAdmin
 // admin floor are mocked for the same reason — the role gate itself is covered
 // where it belongs, in the authedFunctions suites.
 vi.mock('../../lib/sessionOrganization', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../../lib/sessionOrganization')>();
+	const actual = await importOriginal<typeof SessionOrganization>();
 	return {
 		...actual,
 		getSingletonOrganizationId: vi.fn(async () => session.organizationId),
@@ -176,13 +177,13 @@ describe('force-advance', () => {
 		});
 		const row = await readManagedCell(t);
 		expect(row?.ownShare).toBe(0.9);
-		// The derived view stays consistent with the share (plan D1): at 0.9 the
+		// The derived view stays consistent with the share: at 0.9 the
 		// relay still carries a tenth of the cell, so the fallback IS active.
 		expect(row?.isFallbackActive).toBe(true);
 		// Nothing about a manual move is earned.
 		expect(row?.cleanStreak).toBe(0);
 		expect(row?.greenSince).toBeUndefined();
-		// A manual move is a new mix generation (plan D7).
+		// A manual move is a new mix generation.
 		expect(row?.mixVersion).toBe(3);
 		expect(await auditActions(t)).toContain('deliverability_ramp.force_advanced');
 		const recorded = await decisions(t);
@@ -513,7 +514,7 @@ describe('an unmanaged cell', () => {
 });
 
 /**
- * WHAT THE ROW TELLS THE OPERATOR, AND WHICH DIAL IT NAMES (plan D3, D12).
+ * WHAT THE ROW TELLS THE OPERATOR, AND WHICH DIAL IT NAMES.
  *
  * A `mixDecisions` message is read back for as long as the timeline keeps it, so
  * it has to be true about the cell it was written on. Both controls are expressed

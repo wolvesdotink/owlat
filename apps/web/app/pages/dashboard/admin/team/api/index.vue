@@ -402,20 +402,24 @@ const activeKeysCount = computed(() => {
 											@keyup.enter="saveRename"
 											@keyup.esc="renamingId = null"
 										/>
-										<button
-											class="p-1 text-success hover:bg-success/10 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-											:title="t('common.save')"
-											@click="saveRename"
-										>
-											<Icon name="lucide:check" class="w-4 h-4" />
-										</button>
-										<button
-											class="p-1 text-text-tertiary hover:bg-bg-surface-hover rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-											:title="t('common.cancel')"
-											@click="renamingId = null"
-										>
-											<Icon name="lucide:x" class="w-4 h-4" />
-										</button>
+										<UiTooltip :text="t('common.save')">
+											<button
+												class="p-1 text-success hover:bg-success/10 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+												:aria-label="t('common.save')"
+												@click="saveRename"
+											>
+												<Icon name="lucide:check" class="w-4 h-4" />
+											</button>
+										</UiTooltip>
+										<UiTooltip :text="t('common.cancel')">
+											<button
+												class="p-1 text-text-tertiary hover:bg-bg-surface-hover rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+												:aria-label="t('common.cancel')"
+												@click="renamingId = null"
+											>
+												<Icon name="lucide:x" class="w-4 h-4" />
+											</button>
+										</UiTooltip>
 									</div>
 									<span v-else class="text-text-primary font-medium">{{ key.name }}</span>
 								</td>
@@ -460,29 +464,39 @@ const activeKeysCount = computed(() => {
 								</td>
 								<td class="py-4 pl-4 pr-6">
 									<div class="flex items-center justify-end gap-1">
-										<button
+										<UiTooltip
 											v-if="canManage && renamingId !== key._id"
-											class="p-2 rounded-lg text-text-tertiary hover:text-brand hover:bg-brand/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-											:title="t('dashboard.admin.team.api.index.actions.rename')"
-											@click="startRename(key._id, key.name)"
+											:text="t('dashboard.admin.team.api.index.actions.rename')"
 										>
-											<Icon name="lucide:pencil" class="w-4 h-4" />
-										</button>
-										<button
+											<button
+												class="p-2 rounded-lg text-text-tertiary hover:text-brand hover:bg-brand/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+												:aria-label="t('dashboard.admin.team.api.index.actions.rename')"
+												@click="startRename(key._id, key.name)"
+											>
+												<Icon name="lucide:pencil" class="w-4 h-4" />
+											</button>
+										</UiTooltip>
+										<UiTooltip
 											v-if="key.isActive"
-											class="p-2 rounded-lg text-text-tertiary hover:text-warning hover:bg-warning/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-											:title="t('dashboard.admin.team.api.index.actions.revoke')"
-											@click="openRevokeModal(key._id, key.name)"
+											:text="t('dashboard.admin.team.api.index.actions.revoke')"
 										>
-											<Icon name="lucide:eye-off" class="w-4 h-4" />
-										</button>
-										<button
-											class="p-2 rounded-lg text-text-tertiary hover:text-error hover:bg-error/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-											:title="t('dashboard.admin.team.api.index.actions.delete')"
-											@click="openDeleteModal(key._id, key.name)"
-										>
-											<Icon name="lucide:trash-2" class="w-4 h-4" />
-										</button>
+											<button
+												class="p-2 rounded-lg text-text-tertiary hover:text-warning hover:bg-warning/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+												:aria-label="t('dashboard.admin.team.api.index.actions.revoke')"
+												@click="openRevokeModal(key._id, key.name)"
+											>
+												<Icon name="lucide:eye-off" class="w-4 h-4" />
+											</button>
+										</UiTooltip>
+										<UiTooltip :text="t('dashboard.admin.team.api.index.actions.delete')">
+											<button
+												class="p-2 rounded-lg text-text-tertiary hover:text-error hover:bg-error/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+												:aria-label="t('dashboard.admin.team.api.index.actions.delete')"
+												@click="openDeleteModal(key._id, key.name)"
+											>
+												<Icon name="lucide:trash-2" class="w-4 h-4" />
+											</button>
+										</UiTooltip>
 									</div>
 								</td>
 							</tr>

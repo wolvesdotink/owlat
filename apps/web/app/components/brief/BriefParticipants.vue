@@ -1,8 +1,8 @@
 <script setup lang="ts">
 /**
- * "People": who is in the thread and in what role (plan §4.1). Someone who
+ * "People": who is in the thread and in what role. Someone who
  * only appears on cc is said so, because an ask addressed to them is not
- * yours (plan §8).
+ * yours.
  */
 import type { ParticipantView } from '../../../../api/convex/mail/interpret/briefShape';
 import BriefSection from './BriefSection.vue';

@@ -1,5 +1,5 @@
 /**
- * The weekly Senders line of the Daily Brief (SPEC §5): on Mondays the
+ * The weekly Senders line of the Daily Brief: on Mondays the
  * persisted brief carries the rarely-read count and the "you open everything
  * from X in Updates" senders; on other days it carries nothing.
  */

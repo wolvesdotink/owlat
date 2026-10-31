@@ -2,7 +2,7 @@ import { v } from 'convex/values';
 import { authedQuery, authedMutation } from './lib/authedFunctions';
 import { nanoid } from 'nanoid';
 import { getOptional } from './lib/env';
-import { requireOrgPermission, requirePermission, hasPermission } from './lib/sessionOrganization';
+import { requirePermission, hasPermission } from './lib/sessionOrganization';
 import { getOrThrow, throwInvalidInput, throwInvalidState } from './_utils/errors';
 import { UNSTAMPED_RENDERER_VERSION } from './lib/rendererVersion';
 import { getLive, getLiveOrThrow } from './lib/softDelete';
@@ -19,10 +19,9 @@ export const createShareLink = authedMutation({
 		emailTemplateId: v.optional(v.id('emailTemplates')),
 		transactionalEmailId: v.optional(v.id('transactionalEmails')),
 	},
-	handler: async (ctx, args) => {
-		const session = await requireOrgPermission(
-			ctx,
-			'shareLinks:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'shareLinks:manage'),
 			'Only owners and admins can create share links'
 		);
 
@@ -92,10 +91,9 @@ export const revokeShareLink = authedMutation({
 	args: {
 		shareLinkId: v.id('shareLinks'),
 	},
-	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'shareLinks:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'shareLinks:manage'),
 			'Only owners and admins can revoke share links'
 		);
 		await getOrThrow(ctx, args.shareLinkId, 'Share link');
@@ -115,6 +113,10 @@ export const revokeShareLink = authedMutation({
  * (`revokeShareLink`) already require. The only reader (ShareLinksPopover) is an
  * admin surface whose create/revoke actions already demand this permission.
  */
+// token-safe: the token is the payload, not a leak. A share link exists to be
+// handed out, the popover's copy action rebuilds the /share URL from it, and
+// only a shareLinks:manage holder (who can mint and revoke links) receives it.
+// publicReturnRedaction.test.ts lists this as its one reviewed exception.
 export const listShareLinks = authedQuery({
 	args: {
 		emailTemplateId: v.optional(v.id('emailTemplates')),

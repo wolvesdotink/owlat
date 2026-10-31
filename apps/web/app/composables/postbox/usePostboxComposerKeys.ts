@@ -1,6 +1,7 @@
 /**
- * Keyboard shortcuts for the Postbox composer:
- * Cmd/Ctrl+Enter send, Cmd/Ctrl+Shift+Enter schedule, Esc minimize.
+ * Keyboard shortcuts for the Postbox composer: Cmd/Ctrl+Enter send,
+ * Cmd/Ctrl+Alt+Enter send with the opposite after-reply action,
+ * Cmd/Ctrl+Shift+Enter schedule, Esc minimize.
  *
  * The returned handler is meant to be bound on the composer ROOT element with
  * `@keydown.capture` — NOT globally — so each mounted composer only
@@ -10,6 +11,7 @@
 import type { Ref } from 'vue';
 import { resolveComposerKeyAction } from '~/utils/postboxComposerKeys';
 import { isImeComposing } from '~/utils/imeComposition';
+import { chordAriaKeyShortcut, formatChordLabel } from '~/utils/shortcutLabels';
 
 export function usePostboxComposerKeys(options: {
 	/** The composer root element the keydown listener is bound to. */
@@ -20,6 +22,8 @@ export function usePostboxComposerKeys(options: {
 	/** Whether the schedule-send dialog is currently open. */
 	scheduleOpen: Ref<boolean>;
 	onSend: () => void;
+	/** Cmd/Ctrl+Alt+Enter: send, doing the opposite of the after-reply setting. */
+	onSendAlternate: () => void;
 	onSchedule: () => void;
 	onMinimize: () => void;
 }) {
@@ -33,6 +37,13 @@ export function usePostboxComposerKeys(options: {
 			? t('shared.postbox.usePostboxComposerKeys.sendMac')
 			: t('shared.postbox.usePostboxComposerKeys.send')
 	);
+	// The two chords that send, for the Send menu: Send's own and the opposite action's.
+	const sendChords = computed(() => ({
+		send: formatChordLabel('mod+Enter', isMac.value),
+		alternate: formatChordLabel('mod+alt+Enter', isMac.value),
+		sendAria: chordAriaKeyShortcut('mod+Enter', isMac.value) ?? undefined,
+		alternateAria: chordAriaKeyShortcut('mod+alt+Enter', isMac.value) ?? undefined,
+	}));
 	const scheduleShortcutHint = computed(() =>
 		isMac.value
 			? t('shared.postbox.usePostboxComposerKeys.scheduleMac')
@@ -67,6 +78,8 @@ export function usePostboxComposerKeys(options: {
 		event.stopPropagation();
 		if (action === 'send') {
 			options.onSend();
+		} else if (action === 'sendAlternate') {
+			options.onSendAlternate();
 		} else if (action === 'schedule') {
 			options.onSchedule();
 		} else {
@@ -74,5 +87,5 @@ export function usePostboxComposerKeys(options: {
 		}
 	}
 
-	return { sendShortcutHint, scheduleShortcutHint, onComposerKeydown };
+	return { sendShortcutHint, scheduleShortcutHint, sendChords, onComposerKeydown };
 }

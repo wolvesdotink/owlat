@@ -2,19 +2,21 @@ import { api } from '@owlat/api';
 import { effectScope, type EffectScope } from 'vue';
 import type { OrganizationRole } from '@owlat/shared/organizationPermissions';
 import {
-	useActiveOrganization,
-	useListOrganizations,
 	listMembers as listOrgMembers,
 	listInvitations as listOrgInvitations,
 	inviteMember as inviteOrgMember,
 	removeMember as removeOrgMember,
 	updateMemberRole as updateOrgMemberRole,
 	cancelInvitation as cancelOrgInvitation,
-	setActiveOrganization,
 	updateOrganization as updateOrg,
 	getFullOrganization as getFullOrg,
 } from '~/lib/auth-client';
 import { mapFromBetterAuthRole } from './useActiveMemberRole';
+import {
+	organizationTranslator,
+	setRosterRefreshAfterSwitch,
+	useOrganizationSession,
+} from './useOrganizationSession';
 
 export interface PendingMailboxInput {
 	localpart: string;
@@ -125,80 +127,25 @@ let watchSetUp = false;
 // pages that show a roster call `fetchMembers`. Once one has, an organization
 // switch refreshes the lists it is holding.
 let membersWanted = false;
-const ORGANIZATION_SYNC_TIMEOUT_MS = 5_000;
 
-/**
- * The message catalog, resolved where one exists.
- *
- * `useOrganization` is called from route middleware (the `admin`-gated pages'
- * guard reads `currentMemberRole` / permission flags) as well as from page
- * setups, and `useI18n()` THROWS outside a component instance — which would 500
- * every `admin`-gated route. Middleware only reads org state; it never reaches a
- * branch that produces user copy, so outside a component the fallback degrades a
- * key to itself rather than taking the app down. Mirrors `useAuth.ts`.
- */
-export function organizationTranslator(): (key: string) => string {
-	if (!getCurrentInstance()) return (key: string) => key;
-	const { t } = useI18n();
-	return (key: string) => t(key);
-}
+let membersScope: EffectScope | null = null;
 
 /**
  * Composable for managing BetterAuth organization membership.
  * Uses shared state (useState) so all callers share the same data and
  * only one set of HTTP requests is made per organization switch.
+ * The active organization and switching come from `useOrganizationSession`.
  */
-/**
- * The BetterAuth organization stores, subscribed ONCE for the app's lifetime.
- *
- * They are nanostore-backed and release their listener only through
- * `onScopeDispose`, so a call made where no effect scope is active — route
- * middleware after its first `await`, which is how the `auth` and `admin` guards
- * reach this composable — subscribed forever. One listener per navigation over
- * 117 guarded pages. Both stores are app-wide singletons upstream, so a single
- * subscriber is also the correct shape; a DETACHED scope owns it so no caller's
- * teardown can freeze the refs for everyone else. The module explicitly stops its detached scopes on hot replacement
- * before the replacement module builds new subscriptions.
- */
-let organizationScope: EffectScope | null = null;
-let membersScope: EffectScope | null = null;
-
-let organizationStores: {
-	activeOrganization: ReturnType<typeof useActiveOrganization>;
-	organizationsList: ReturnType<typeof useListOrganizations>;
-} | null = null;
-
-function betterAuthOrganizationStores(): NonNullable<typeof organizationStores> {
-	if (!organizationStores) {
-		organizationScope = effectScope(true);
-		organizationScope.run(() => {
-			organizationStores = {
-				activeOrganization: useActiveOrganization(),
-				organizationsList: useListOrganizations(),
-			};
-		});
-		// `run` is a no-op on a stopped scope, and a fresh detached one is never
-		// stopped — but say so rather than asserting a null away.
-		if (!organizationStores) {
-			throw new Error('useOrganization: could not build the better-auth organization stores');
-		}
-	}
-	return organizationStores;
-}
-
 export function useOrganization() {
 	const t = organizationTranslator();
 	// Built here, not inside the async bodies below. Those run after an `await`,
 	// where there is no effect scope and no component instance — so a `useAuth()`
 	// there would leak whatever it subscribes to and silently take the
 	// no-instance branch of its translator.
-	const {
-		user: sessionUser,
-		refetch: refetchSession,
-		activeOrganizationId: sessionOrganizationId,
-	} = useAuth();
-	const { activeOrganization: activeOrgRef, organizationsList: orgsListRef } =
-		betterAuthOrganizationStores();
+	const auth = useAuth();
+	const { user: sessionUser, activeOrganizationId: sessionOrganizationId } = auth;
+	const { organization, organizationId, organizations, activeOrganizationError, setActive } =
+		useOrganizationSession(auth);
 
 	// Shared reactive state via useState — all instances share the same refs
 	const members = useState<OrganizationMember[]>('org-members', () => []);
@@ -215,30 +162,6 @@ export function useOrganization() {
 	// when a loaded roster shows this member's role.
 	const currentMemberRole = useState<OrganizationRole | null>('org-current-role', () => null);
 
-	// Computed values - BetterAuth hooks return refs with nested data/isPending
-	const organization = computed(() => {
-		const orgData = activeOrgRef.value;
-		return orgData?.data ?? null;
-	});
-
-	const organizationId = computed(() => organization.value?.id ?? null);
-
-	/**
-	 * The active-organization request failed.
-	 *
-	 * It settles with an error rather than an organization when the session still
-	 * names an organization the user is no longer in — better-auth only clears
-	 * `activeOrganizationId` when a member removes THEMSELVES, so an admin
-	 * removing someone leaves that person's open tab pointing at a `FORBIDDEN`
-	 * — and on any transient failure, such as the backend restarting mid-update.
-	 *
-	 * That is a settled answer: no organization is coming, so no role is coming
-	 * either. Callers that wait for the role must stop waiting, or the guards
-	 * stall for their whole timeout on every navigation and every page that folds
-	 * this into its loading flag spins forever.
-	 */
-	const activeOrganizationError = computed(() => activeOrgRef.value?.error ?? null);
-
 	const isLoading = computed(() => {
 		// Only track our own loading state (members/invitations fetch).
 		// Don't rely on BetterAuth's isPending — it can get stuck when the
@@ -248,45 +171,12 @@ export function useOrganization() {
 		return isLoadingMembers.value;
 	});
 
-	const organizationsList = computed(() => {
-		const orgsData = orgsListRef.value;
-		return orgsData?.data ?? [];
-	});
-
 	// Permission checks
 	const canManageMembers = computed(() => {
 		return currentMemberRole.value === 'owner' || currentMemberRole.value === 'admin';
 	});
 
 	const isOwner = computed(() => currentMemberRole.value === 'owner');
-
-	async function waitForActiveOrganization(
-		orgId: string,
-		timeoutMs = ORGANIZATION_SYNC_TIMEOUT_MS
-	) {
-		if (organizationId.value === orgId) {
-			return;
-		}
-
-		await new Promise<void>((resolve, reject) => {
-			const timeoutId = setTimeout(() => {
-				stop();
-				reject(new Error(t('shared.useOrganization.errors.organizationSyncTimeout')));
-			}, timeoutMs);
-
-			const stop = watch(
-				organizationId,
-				(currentOrganizationId) => {
-					if (currentOrganizationId === orgId) {
-						clearTimeout(timeoutId);
-						stop();
-						resolve();
-					}
-				},
-				{ immediate: true }
-			);
-		});
-	}
 
 	/**
 	 * Fetch organization members and invitations.
@@ -533,7 +423,7 @@ export function useOrganization() {
 		try {
 			steps = planOwnershipTransfer(members.value, sessionUser.value?.id, newOwnerMemberId);
 		} catch (error) {
-			if (error instanceof Error) throw new Error(t(error.message));
+			if (error instanceof Error) throw new Error(t(error.message), { cause: error });
 			throw error;
 		}
 
@@ -638,33 +528,6 @@ export function useOrganization() {
 	}
 
 	/**
-	 * Set the active organization
-	 */
-	async function setActive(orgId: string) {
-		const result = await setActiveOrganization({
-			organizationId: orgId,
-		});
-
-		if (result.error) {
-			throw new Error(
-				result.error.message || t('shared.useOrganization.errors.setActiveOrganizationFailed')
-			);
-		}
-
-		await refetchSession({
-			force: true,
-			expected: 'authenticated',
-			activeOrganizationId: orgId,
-		});
-		await waitForActiveOrganization(orgId);
-		// The role follows the session on its own (`useActiveMemberRole`); the
-		// lists are refreshed only when a page is holding them.
-		if (membersWanted) await fetchMembers({ force: true });
-
-		return result.data;
-	}
-
-	/**
 	 * Update the organization name or slug
 	 */
 	async function update(data: { name?: string; slug?: string; logo?: string }) {
@@ -719,6 +582,10 @@ export function useOrganization() {
 	// refetch the member list for anybody.
 	if (!watchSetUp) {
 		watchSetUp = true;
+		// A switch refreshes the lists only once a page has asked for them.
+		setRosterRefreshAfterSwitch(async () => {
+			if (membersWanted) await fetchMembers({ force: true });
+		});
 		membersScope = effectScope(true);
 		membersScope.run(() => {
 			watch(
@@ -749,7 +616,7 @@ export function useOrganization() {
 		// State
 		organization,
 		organizationId,
-		organizations: organizationsList,
+		organizations,
 		members,
 		invitations,
 		currentMemberRole,
@@ -780,9 +647,6 @@ export function useOrganization() {
 // Detached scopes outlive their callers and must be stopped on hot replacement.
 if (import.meta.hot) {
 	import.meta.hot.dispose(() => {
-		organizationScope?.stop();
-		organizationScope = null;
-		organizationStores = null;
 		membersScope?.stop();
 		membersScope = null;
 		watchSetUp = false;

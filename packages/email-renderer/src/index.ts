@@ -2,7 +2,16 @@ export { renderEmailHtml, renderBlockFragment } from './renderer';
 export { renderAmpEmail } from './amp';
 export { diffEmails } from './diff';
 export type { EmailDiff, EmailDiffChange } from './diff';
-export { analyzeEmail, getEmailHealthScore, suggestOptimizations } from './analyzer';
+export { diffTemplateVersions } from './templateDiff';
+export type {
+	BlockChange,
+	FieldChange,
+	MetaChange,
+	TemplateDiff,
+	TemplateDiffSide,
+} from './templateDiff';
+export { analyzeEmail, suggestOptimizations } from './analyzer';
+export { getEmailHealthScore } from './emailHealthScore';
 export { renderPlainText, resolvePlainText, hasPlainTextOverride } from './plaintext';
 export { renderDraftBodies } from './draftBodies';
 export type { DraftBodies, DraftBodySource, RenderDraftBodiesOptions } from './draftBodies';
@@ -19,7 +28,6 @@ export {
 export type { BlockRenderer } from './blocks';
 export {
 	registerBlockModule,
-	unregisterBlockModule,
 	finalizeBlockRegistry,
 	isBlockRegistryFrozen,
 	moduleFor,
@@ -45,6 +53,7 @@ export {
 } from './simulators';
 export type { ClientSimulator } from './simulators';
 export type {
+	BlockChangeKind,
 	RenderOptions,
 	RenderContext,
 	TargetClient,
@@ -71,19 +80,8 @@ export {
 export {
 	getBlockCompatibility,
 	getPropertyCompatibility,
-	getCriticalProperties,
-	getHandledFeatures,
-	getClientIssues,
-	getClientPropertyIssues,
 	getAudienceReach,
 	scoreBlockCompatibility,
-	getBlockLimitationSummary,
-	getSafeBlockConfig,
-	checkPropertyCompatibility,
 	featuresFor,
 	propertiesFor,
-	allBlockTypes,
-	allFeatures,
-	allProperties,
 } from './compatibility';
-export type { BlockTaggedFeature, BlockTaggedProperty, BlockLimitation } from './compatibility';

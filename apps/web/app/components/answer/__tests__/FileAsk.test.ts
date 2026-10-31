@@ -1,5 +1,5 @@
 /**
- * The answer to a file question (plan §06):
+ * The answer to a file question:
  *   - "choose a file" opens the OS picker and uploads; the answer names the
  *     upload and keeps a copy unless "Don't keep a copy" is ticked;
  *   - a type the upload policy refuses is refused here, before uploading;

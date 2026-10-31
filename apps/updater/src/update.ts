@@ -2,97 +2,109 @@
  * POST /update — apply a release to the running stack.
  *
  * The order is the whole design: validate the caller's template, prove the
- * Docker API can finish the job, make room on the disk, stage the template, pull, deploy the Convex
- * functions against the still-running old backend, and only then promote the
- * file and recreate the containers. Every one of those steps up to the promote
- * can fail leaving the running stack exactly as it was.
+ * Docker API can finish the job, make room on the disk, stage the template,
+ * pull, snapshot the data and configuration, deploy the Convex functions
+ * against the still-running old backend, and only then promote the file and
+ * recreate the containers.
  *
- * The recreate is the exception, and the only step that can leave the instance
- * dark: there is no old state left to keep by then. It gets the other half of
- * the guarantee instead — when it fails, the stack is started back up and the
- * caller is told, in as many words, whether the instance is serving.
+ * The snapshot (snapshot.ts) is what makes the rest reversible. Until the new
+ * release is confirmed ready, a deploy that failed once its container had
+ * started (which cannot show that Convex rejected it, deployRun.ts), a
+ * promote or recreate that failed, or a release that does not pass the
+ * readiness check puts the stack back on it (rollback.ts) and answers
+ * `rolled-back`. Once the release is confirmed
+ * ready the snapshot is kept, and only the operator can restore it
+ * (`owlat rollback`). Restoring discards what was written after the
+ * snapshot, which is why it is never automatic after that point.
  *
  * A recreate that exits 0 has only STARTED the release. Success is reported
  * once the started services meet the readiness contract in readiness.ts, and
  * every answer from the recreate on carries a `rollout` state:
  *
  *   - `healthy`: `up` succeeded and every service passed the readiness check;
- *   - `started`: `up` succeeded, but the readiness check did not pass in time;
- *   - `partially-applied`: `up` failed and the stack was started forward again
- *     (there is no rollback: the old release's containers are gone by then).
+ *   - `rolled-back`: the release failed and the previous one is serving again;
+ *   - `started`: `up` succeeded, but readiness was not confirmed and there was
+ *     no snapshot to go back to (`OWLAT_UPDATE_SNAPSHOT=off`), or the updater
+ *     stopped waiting because it is shutting down;
+ *   - `partially-applied`: `up` failed without a snapshot, and the stack was
+ *     started forward again;
+ *   - `failed`: the rollback itself did not bring the previous release back.
  *
- * A service that was already failing before the update does not make the
- * rollout `started`; it comes back as a warning (readiness.ts). The verdict is
- * also written to the install directory for /health (rolloutState.ts), since
- * the web container that asked is normally recreated before the answer.
+ * A service that was already failing before the update does not fail the
+ * rollout; it comes back as a warning (readiness.ts). The verdict is also
+ * written to the install directory for /health (rolloutState.ts), since the
+ * web container that asked is normally recreated before the answer.
  *
- * A SIGTERM splits the handler at the same line. Before the promote, the
+ * A SIGTERM splits the handler at the promote. Before the deploy starts, the
  * rollout backs out: the Docker command in flight is stopped, the staged file
- * removed, and the verdict is `interrupted` with the running stack unchanged.
- * From the promote on it finishes `up` (the shutdown waits for it, see
- * lifecycle.ts), stops waiting for readiness, and says the release was started
- * but not confirmed. A process killed anyway leaves a record that is still in
- * flight, which the next start turns into an `interrupted` verdict
+ * and the snapshot removed, and the verdict is `interrupted` with the running
+ * stack unchanged. Once the deploy has started the backend may already run
+ * the new functions, so a SIGTERM up to the promote stops without claiming
+ * that: the staged file goes, the snapshot is kept for `owlat rollback`. From
+ * the promote on it finishes `up` (the shutdown waits for it, see
+ * lifecycle.ts), stops waiting for readiness, and says the release was
+ * started but not confirmed. A process killed anyway leaves a record that is
+ * still in flight, which the next start turns into an `interrupted` verdict
  * (`reconcileInterruptedUpdate`).
- *
- * Split out of server.ts, which also owns /health, /configure-ip and
- * /rotate-env (CONVENTIONS.md ~500 LOC rule). The rollout's own plumbing — the
- * preflight, the service list, the self-replacement hand-off — lives in
- * rollout.ts.
  */
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { readFile, rm, unlink, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { rm, writeFile } from 'node:fs/promises';
 import { errorMessage } from '@owlat/shared';
-import { writeOwnerOnlyFile } from '@owlat/shared/ownerOnlyFile';
 import {
-	applyEnvUpdates,
 	isRateLimited,
 	parseReleaseVersionFromTemplate,
 	validateComposeTemplate,
 } from './security.js';
-import { exec, json, OWLAT_DIR, readBody, requireAuth, UPDATE_STEP_BOUNDS } from './http.js';
+import { exec, json, OWLAT_DIR, requireAuth, UPDATE_STEP_BOUNDS } from './http.js';
+import { readJsonBody } from './jsonBody.js';
 import { shutdownSignal } from './lifecycle.js';
+import { parserDecoder } from '@owlat/worker-protocol/decodeJson';
+import { readUpdateBody } from './requestBodies.js';
 import {
 	composeArgv,
 	dockerApiPreflight,
-	recoverStackAfterFailedUp,
-	scheduleUpdaterRecreateSafely,
 	servicesToRecreate,
 	withOverrideFile,
 } from './rollout.js';
 import { diskSpacePreflight, pullFailureMessage, reclaimUnusedImages } from './storage.js';
-import { failingBeforeRollout, verifyReadiness } from './readiness.js';
+import { failingBeforeRollout } from './readiness.js';
 import { deployTarget } from './deployTarget.js';
+import {
+	deployContainerName,
+	deployRunArgs,
+	failedDeploy,
+	removeContainer,
+	removeUpdateContainers,
+	resolveInstallation,
+} from './deployRun.js';
+import { discardSnapshot, markSnapshot, readSnapshot, type Snapshot } from './snapshot.js';
+import { captureSnapshot, recoverInterruptedCapture } from './snapshotCapture.js';
+import {
+	applyRelease,
+	COMPOSE_FILE,
+	rollingBack,
+	SNAPSHOT_KEPT,
+	STAGED_FILE,
+	type Answer,
+} from './updateApply.js';
 import {
 	interruptedVerdict,
 	isAttemptId,
 	readRecord,
 	writeLastRollout,
 	type LastRollout,
-	type RolloutOutcome,
 } from './rolloutState.js';
-
-interface UpdateAnswer {
-	error?: string;
-	rollout?: RolloutOutcome;
-	[key: string]: unknown;
-}
-
-const COMPOSE_FILE = join(OWLAT_DIR, 'docker-compose.yml');
-
-/**
- * Where a caller's template waits until pull and convex-deploy have succeeded.
- * The live docker-compose.yml is only replaced after both — it used to be
- * overwritten first, so a failed update left a half-applied breaking template
- * behind that the next manual `docker compose up` would silently complete.
- */
-const STAGED_FILE = join(OWLAT_DIR, 'docker-compose.next.yml');
 
 /** The answer to a rollout that backed out because the updater is stopping. */
 const BACKED_OUT =
 	'The updater is shutting down, so the update stopped before the release was applied. ' +
 	'The running stack was not changed; run the update again once the updater is back.';
+
+/** The answer to a rollout the shutdown stopped after its deploy began. */
+const STOPPED_AFTER_DEPLOY =
+	'The updater is shutting down, and stopped the update after convex-deploy had started: the ' +
+	'new Convex functions may be live while the other containers still run the previous release. ' +
+	'Run the update again once the updater is back to bring the rest of the stack to the same release.';
 
 /**
  * Settle an update the previous process never finished. Run once at startup,
@@ -105,58 +117,47 @@ const BACKED_OUT =
  */
 export async function reconcileInterruptedUpdate(): Promise<LastRollout | null> {
 	await rm(STAGED_FILE, { force: true }).catch(() => {});
+	await recoverInterruptedCapture().catch((err) =>
+		console.error('[update] could not settle an interrupted snapshot:', err)
+	);
 	const record = readRecord();
 	if (!record || record.phase === 'done') return null;
 
-	const verdict = { ...interruptedVerdict(record), finishedAt: Date.now() };
+	// A snapshot taken by an update that never started its deploy describes
+	// the stack as it still is. One whose deploy started (the journal records
+	// it before the deploy runs, whatever the rollout record managed to say)
+	// is what `owlat rollback` restores, and nothing rolls back to it on its
+	// own any more.
+	let note = '';
+	const found = readSnapshot();
+	const snapshot = found && found.takenAt >= record.startedAt ? found : null;
+	if (snapshot?.state === 'armed' && !snapshot.deployStarted && !record.committed) {
+		await discardSnapshot();
+	} else if (snapshot?.state === 'armed' || snapshot?.state === 'kept') {
+		if (snapshot.state === 'armed') {
+			try {
+				markSnapshot(snapshot, 'kept');
+			} catch (err) {
+				console.error('[update] could not record the snapshot as kept:', err);
+			}
+		}
+		note = SNAPSHOT_KEPT;
+	}
+
+	const interrupted = interruptedVerdict({
+		...record,
+		deployStarted: record.deployStarted || snapshot?.deployStarted,
+	});
+	const verdict = {
+		...interrupted,
+		summary: `${interrupted.summary}${note}`,
+		finishedAt: Date.now(),
+	};
 	writeLastRollout(verdict);
 	console.error(
 		`[update] the previous updater stopped during an update to ${record.targetVersion ?? 'the current release'}: ${verdict.summary}`
 	);
 	return verdict;
-}
-
-/**
- * Move `.env`'s `OWLAT_VERSION` pin to the release we are applying.
- *
- * `.env` is what compose interpolates, so this one line is the CONFIGURED
- * version of the whole deployment: the web container reports it as the running
- * version (Settings → System & Updates, and the `versionFrom` of the next
- * update), `owlat doctor` and /health diff it against the running containers to
- * decide whether anything still needs recreating, and the locally built
- * sidecars take their image tag from it. Nothing else in the update path writes
- * it — so while this was missing, a SUCCESSFUL update left the dashboard
- * insisting the old version was still installed, with the same update still
- * "available", and /health reporting permanent version drift.
- *
- * Called after the compose file is promoted and before `up -d`, so the
- * recreated containers are the ones that pick the new value up. That only
- * holds because the compose children run without an `OWLAT_VERSION` of their
- * own (`COMPOSE_SHADOWED_VARS` in http.ts): compose reads its OWN environment
- * before `--env-file`, and the updater is a service in the very file it is
- * applying, so for three releases it handed compose the version it was created
- * at and this pin reached nothing the rollout recreated.
- *
- * A single allowlisted key, appended when absent, through the same hardened
- * rewriter the secret rotation uses.
- */
-async function pinConfiguredVersion(
-	version: string
-): Promise<{ ok: boolean; stdout: string; stderr: string }> {
-	const envFile = join(OWLAT_DIR, '.env');
-	try {
-		const content = await readFile(envFile, 'utf-8');
-		const rewrite = applyEnvUpdates(content, { OWLAT_VERSION: version }, ['OWLAT_VERSION'], {
-			appendMissing: true,
-		});
-		if (!rewrite.ok) {
-			return { ok: false, stdout: '', stderr: rewrite.reason };
-		}
-		await writeOwnerOnlyFile(envFile, rewrite.content);
-		return { ok: true, stdout: `OWLAT_VERSION pinned to ${version}`, stderr: '' };
-	} catch (err) {
-		return { ok: false, stdout: '', stderr: `Cannot update .env: ${errorMessage(err)}` };
-	}
 }
 
 export async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
@@ -172,21 +173,14 @@ export async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 		return json(res, 429, { error: 'Too many update requests. Try again later.' });
 	}
 
-	let composeTemplate: string | undefined;
-	let attempt: string | undefined;
-
-	try {
-		const raw = await readBody(req);
-		if (raw) {
-			const body = JSON.parse(raw);
-			composeTemplate = body.composeTemplate;
-			// The caller's id for this attempt, echoed on /health so it can tell
-			// this update's verdict from an earlier one's.
-			if (isAttemptId(body.attempt)) attempt = body.attempt;
-		}
-	} catch {
-		// No body or invalid JSON — proceed without compose template update
-	}
+	// No body updates without a new compose template; a body that is not one is
+	// refused here, before the rollout touches Docker, state or disk.
+	const body = await readJsonBody(req, res, parserDecoder(readUpdateBody), { emptyBody: {} });
+	if (!body) return;
+	const { composeTemplate } = body;
+	// The caller's id for this attempt, echoed on /health so it can tell this
+	// update's verdict from an earlier one's. A malformed id is dropped.
+	const attempt = isAttemptId(body.attempt) ? body.attempt : undefined;
 
 	const steps: { step: string; ok?: boolean; stdout: string; stderr: string }[] = [];
 
@@ -212,11 +206,7 @@ export async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 		phase: 'applying',
 	};
 	writeLastRollout(record);
-	const answer = (
-		status: number,
-		body: UpdateAnswer,
-		verdict: { summary?: string; warnings?: string[] } = {}
-	) => {
+	const answer: Answer = (status, body, verdict = {}) => {
 		writeLastRollout({
 			...record,
 			phase: 'done',
@@ -228,7 +218,14 @@ export async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 		json(res, status, body);
 	};
 
+	// What an attempt that stops before the promote leaves behind: the staged
+	// template, and a snapshot of a stack it never changed.
+	let snapshot: Snapshot | null = null;
 	const discardStaged = async () => {
+		if (snapshot) {
+			snapshot = null;
+			await discardSnapshot().catch(() => {});
+		}
 		if (!composeTemplate) return;
 		try {
 			await rm(STAGED_FILE, { force: true });
@@ -236,11 +233,26 @@ export async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 			// best-effort cleanup
 		}
 	};
-	// Every step up to the promote backs out on a SIGTERM (see the header).
+	// Every step before the deploy backs out on a SIGTERM (see the header).
 	const backOut = async () => {
 		await discardStaged();
 		console.error('[update] stopped before the release was applied: the updater is shutting down');
 		return answer(503, { error: BACKED_OUT, rollout: 'interrupted', steps });
+	};
+	// From the deploy to the promote it stops, but keeps the snapshot.
+	const stopAfterDeploy = async () => {
+		if (composeTemplate) await rm(STAGED_FILE, { force: true }).catch(() => {});
+		let error = STOPPED_AFTER_DEPLOY;
+		if (snapshot) {
+			try {
+				snapshot = markSnapshot(snapshot, 'kept');
+			} catch (err) {
+				console.error('[update] could not record the snapshot as kept:', err);
+			}
+			error += SNAPSHOT_KEPT;
+		}
+		console.error('[update] stopped after convex-deploy started: the updater is shutting down');
+		return answer(503, { error, rollout: 'interrupted', steps });
 	};
 
 	// Step 2: Prove the Docker API will let this rollout finish before anything
@@ -315,11 +327,62 @@ export async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 		return answer(500, { error, steps });
 	}
 
-	// Step 5 (P2.4 / S5): deploy Convex functions BEFORE restarting app
-	// containers. If the new schema is incompatible with the deploy, we
-	// bail out here — the running Web/MTA containers keep serving the old
-	// (still compatible) code rather than being restarted against a half-
-	// deployed backend.
+	// Step 4b: what was already broken before the release touched it, so the
+	// verdict can tell the rollout's failures from the stack's. Read before the
+	// snapshot pauses convex and redis.
+	const baseline = await servicesToRecreate();
+	const preExisting = baseline.error
+		? new Map<string, string>()
+		: await failingBeforeRollout(baseline.services, await composeArgv());
+
+	// Step 4c: no deploy or copy helper an earlier update or rollback of this
+	// installation left behind (a shutdown, a client that lost the daemon) may
+	// keep running alongside this one, whether or not that update took a
+	// snapshot, so it is stopped before anything else changes, and the update
+	// is refused when it cannot be. Which containers are this installation's
+	// is read once here and used for every container this update starts.
+	const refuseEarly = async (error: string) => {
+		await discardStaged();
+		steps.push({ step: 'earlier-deploy', ok: false, stdout: '', stderr: error });
+		console.error('[update] refused before deploying:', error);
+		return answer(500, { error, steps });
+	};
+	const installation = await resolveInstallation();
+	if (!installation.ok) {
+		return refuseEarly(
+			`Cannot tell which containers belong to this install, so an earlier update's could not be stopped (${installation.reason}). Nothing was changed.`
+		);
+	}
+	const earlier = await removeUpdateContainers(installation.id);
+	if (!earlier.ok) {
+		return refuseEarly(
+			`Cannot stop a container an earlier update started (${earlier.reason}). Nothing was changed.`
+		);
+	}
+
+	// Step 4d: snapshot the data and configuration the rest of the rollout
+	// changes (snapshot.ts). No snapshot, no update: without one a failed
+	// release cannot be rolled back, unless `.env` opts out.
+	const captured = await captureSnapshot({
+		targetVersion: record.targetVersion,
+		signal: stopping,
+		installation: installation.id,
+	});
+	steps.push(captured.step);
+	if (captured.kind === 'taken') snapshot = captured.snapshot;
+	if (stopping.aborted) return backOut();
+	if (captured.kind === 'refused') {
+		await discardStaged();
+		console.error('[update] refused before deploying:', captured.step.stderr);
+		return answer(captured.status, { error: captured.step.stderr, steps });
+	}
+
+	// Step 5: deploy Convex functions BEFORE restarting app containers. If the
+	// new schema is incompatible with the deploy, we bail out here — the
+	// running Web/MTA containers keep serving the old (still compatible) code
+	// rather than being restarted against a half-deployed backend. With a
+	// snapshot the data is also put back, since a failed deploy cannot show
+	// that Convex refused it (below).
 	//
 	// It deploys to the convex that is already serving, as it is — never one
 	// `run` recreated first (deployTarget.ts).
@@ -333,168 +396,82 @@ export async function handleUpdate(req: IncomingMessage, res: ServerResponse) {
 		const error = `convex is not serving — ${backend.detail}; update aborted, running stack untouched. Check \`docker compose logs convex\`, bring it back up, then retry.`;
 		return answer(500, { error, steps });
 	}
-	const noDeps = backend.kind === 'serving' ? ['--no-deps'] : [];
+	const noDeps = backend.kind === 'serving';
+
+	// From here the backend may run the new functions before anything else
+	// changes, so a snapshot of this update is never discarded as describing an
+	// untouched stack. The journal is fsynced first; the rollout record is
+	// best-effort.
+	if (snapshot) {
+		try {
+			snapshot = markSnapshot(snapshot, 'armed', { deployStarted: true });
+		} catch (err) {
+			await discardStaged();
+			const error = `Cannot record the snapshot before convex-deploy: ${errorMessage(err)}. Nothing was changed.`;
+			return answer(500, { error, steps });
+		}
+	}
+	record.deployStarted = true;
+	writeLastRollout(record);
+	const rollBackOr = rollingBack({ record, steps, answer, snapshot, preExisting });
+
+	// Labelled with this installation, so a rollback or the next update can
+	// find and stop this deploy if it outlives this request (deployRun.ts).
+	const deployName = deployContainerName(snapshot?.id);
 	const deploy = await exec(
 		'docker',
-		[...deployArgs, '--profile', 'deploy', 'run', '--rm', ...noDeps, 'convex-deploy'],
+		[...deployArgs, ...deployRunArgs(deployName, noDeps, installation.id)],
 		OWLAT_DIR,
-		{ signal: stopping, timeoutMs: UPDATE_STEP_BOUNDS.convexDeployMs }
+		{
+			signal: stopping,
+			timeoutMs: UPDATE_STEP_BOUNDS.convexDeployMs,
+		}
 	);
 	steps.push({ step: 'convex-deploy', ...deploy });
-	if (stopping.aborted) return backOut();
+	// The deploy may still be running; `owlat rollback` stops it first.
+	if (stopping.aborted) return stopAfterDeploy();
 
 	if (!deploy.ok) {
-		await discardStaged();
-		// A deploy cut off by its bound may still finish inside Convex.
-		const error = deploy.stderr.includes('timed out after')
-			? 'convex-deploy timed out — update aborted before any container was replaced, but the new functions may still go live; run the update again to bring the rest of the stack to the same release'
-			: 'convex-deploy failed — update aborted, running stack untouched';
-		return answer(500, { error, steps });
-	}
-
-	// The line a SIGTERM no longer backs out across: from here the rollout
-	// changes what the host is configured to run, and finishing `up` is what
-	// keeps the containers in line with it. Recorded first, so a process that
-	// is killed anyway leaves a record saying which side of the line it was on.
-	record.committed = true;
-	writeLastRollout(record);
-
-	// Step 6: Promote the staged template now that pull + deploy succeeded.
-	if (composeTemplate) {
-		try {
-			await writeFile(COMPOSE_FILE, composeTemplate, 'utf-8');
-			await unlink(STAGED_FILE);
-			steps.push({ step: 'write-compose', stdout: 'Compose file updated', stderr: '' });
-		} catch (err) {
+		// Only a deploy that never started provably changed nothing in Convex.
+		// Anything else (a push Convex refused, one it committed while the CLI
+		// lost the answer, a run cut off by its bound, a client that lost the
+		// daemon) may have gone live, against containers on the old release.
+		const timedOut = deploy.stderr.includes('timed out after');
+		const outcome = await failedDeploy(deployName, timedOut);
+		if (outcome.unchanged) {
+			await removeContainer(deployName);
+			await discardStaged();
 			return answer(500, {
-				error: 'Failed to promote compose file',
-				details: errorMessage(err),
+				error:
+					'convex-deploy failed before its container started — update aborted, running stack untouched',
 				steps,
 			});
 		}
-
-		// Step 7: Move the configured version with the compose file it belongs
-		// to. Not fatal on failure: the promoted template pins every image by
-		// digest, so `up -d` still deploys the right bytes — the cost is a
-		// dashboard that misreports the installed version, which the recorded
-		// step makes visible instead of silent.
-		const version = parseReleaseVersionFromTemplate(composeTemplate);
-		if (version) {
-			steps.push({ step: 'pin-version', ...(await pinConfiguredVersion(version)) });
-		}
-	}
-
-	// Step 8: Apply — recreate changed containers now that the schema is live.
-	// Runs against the promoted docker-compose.yml (+ any override file and
-	// COMPOSE_PROFILES from .env, so profile-gated feature services update too),
-	// naming every service EXCEPT the two the rollout itself runs through: an
-	// unqualified `up` recreates the updater and the Docker socket proxy too,
-	// and stopping either one kills the compose command issuing the rollout.
-	const plan = await servicesToRecreate();
-	if (plan.error) {
-		steps.push({ step: 'up', ok: false, stdout: '', stderr: plan.error });
-		return answer(500, { error: `docker compose up failed: ${plan.error}`, steps });
-	}
-
-	// What was already broken before the release touched it, so the verdict
-	// can tell the rollout's failures from the stack's.
-	const compose = await composeArgv();
-	const preExisting = await failingBeforeRollout(plan.services, compose);
-
-	// No signal: a recreate cut short is what leaves services stopped.
-	const up = await exec(
-		'docker',
-		[...compose, 'up', '-d', '--remove-orphans', ...plan.services],
-		OWLAT_DIR
-	);
-	steps.push({ step: 'up', ...up });
-
-	if (!up.ok) {
-		// The one failure in this handler that the running stack does NOT survive:
-		// every earlier step is ordered so that failing it changes nothing, but by
-		// the time `up` runs the release is pulled, deployed and promoted, and a
-		// recreate that dies halfway leaves its services stopped. So there is
-		// nothing to roll back to — recovery is to finish starting them.
-		const recovery = await recoverStackAfterFailedUp(plan.services);
-		steps.push(recovery);
-		// In this sidecar's own log too. An operator whose instance just went dark
-		// reads `docker logs owlat-updater-1` long before they think to re-trigger
-		// the update to see a step list — and until now it said nothing at all.
-		console.error('[update] `up` failed:', up.stderr);
-		console.error(
-			`[update] recovery ${recovery.ok ? 'succeeded' : 'failed'}:`,
-			recovery.ok ? recovery.stdout : recovery.stderr
-		);
-
-		return answer(500, {
-			error: recovery.ok
-				? 'docker compose up failed — the stack was restarted and is serving again, ' +
-					'but the release may be only partly applied. Re-run the update.'
-				: `docker compose up failed and the stack is not fully running. ${recovery.stderr}`,
-			rollout: 'partially-applied' satisfies RolloutOutcome,
-			steps,
+		const failure = timedOut
+			? 'convex-deploy timed out, and the new functions might have gone live behind the old containers.'
+			: `convex-deploy failed without showing whether it changed Convex (${outcome.detail}), and the new functions might have gone live behind the old containers.`;
+		// Only the staged template goes: the snapshot is what the rollback
+		// restores, and the rollback stops the deploy before it does.
+		if (composeTemplate) await rm(STAGED_FILE, { force: true }).catch(() => {});
+		return rollBackOr(failure, async () => {
+			const stopped = await removeContainer(deployName);
+			const error =
+				(timedOut ? 'convex-deploy timed out' : `convex-deploy failed (${outcome.detail})`) +
+				' — update aborted before any container was replaced, but the new functions may have gone live; ' +
+				'run the update again to bring the rest of the stack to the same release' +
+				(stopped.ok
+					? ''
+					: `. The deploy could not be stopped (${stopped.reason}): \`docker rm --force ${deployName}\` on the host stops it`);
+			return answer(500, { error, steps });
 		});
 	}
-
-	// Step 9: `up` has started the release; wait (bounded, per the cadence each
-	// service declares) until it is serving.
-	writeLastRollout({ ...record, phase: 'verifying' });
-	const readiness = await verifyReadiness(plan.services, compose, { preExisting });
-	steps.push({
-		step: 'readiness',
-		ok: readiness.ready,
-		stdout: readiness.ready ? readiness.summary : '',
-		stderr: readiness.ready ? '' : readiness.summary,
-	});
-	if (!readiness.ready) console.error('[update] release started but not ready:', readiness.summary);
-
-	// Step 10: Hand this container's own replacement to a helper that outlives
-	// it, so the updater does not stay a release behind forever. Reported, never
-	// fatal. It runs whether or not the readiness check passed: the new release
-	// is promoted and running either way, and an updater left on the old image
-	// is one more thing out of step with it.
-	steps.push(await scheduleUpdaterRecreateSafely());
-
-	if (readiness.interrupted) {
-		return answer(
-			503,
-			{
-				error:
-					'The release was applied and its containers started, but the updater is shutting ' +
-					`down and stopped checking whether they are serving. ${readiness.summary} Check ` +
-					'`docker compose ps` on the host.',
-				rollout: 'started' satisfies RolloutOutcome,
-				warnings: readiness.warnings,
-				steps,
-			},
-			{ warnings: readiness.warnings }
+	const cleaned = await removeContainer(deployName);
+	if (!cleaned.ok) {
+		console.error(
+			`[update] could not remove the finished deploy container ${deployName}:`,
+			cleaned.reason
 		);
 	}
 
-	if (!readiness.ready) {
-		return answer(
-			500,
-			{
-				error:
-					'The release was applied and its containers started, but the stack did not pass the ' +
-					`readiness check. ${readiness.summary} Check \`docker compose ps\` and the logs of the ` +
-					'services named above on the host.',
-				rollout: 'started' satisfies RolloutOutcome,
-				warnings: readiness.warnings,
-				steps,
-			},
-			{ warnings: readiness.warnings }
-		);
-	}
-
-	answer(
-		200,
-		{
-			success: true,
-			rollout: 'healthy' satisfies RolloutOutcome,
-			warnings: readiness.warnings,
-			steps,
-		},
-		{ summary: readiness.summary, warnings: readiness.warnings }
-	);
+	return applyRelease({ record, steps, answer, composeTemplate, snapshot, preExisting });
 }

@@ -7,6 +7,7 @@
  */
 
 import { Hono } from 'hono';
+import { v } from 'convex/values';
 import type Redis from 'ioredis';
 import type { MtaConfig } from '../config.js';
 import { masterKeyAuth } from '../auth/masterKeyAuth.js';
@@ -16,6 +17,10 @@ import {
 	setOutboundTlsOverride,
 } from '../smtp/outboundTlsOverrides.js';
 import { isOutboundTlsMode, OUTBOUND_TLS_MODES } from '../smtp/tlsPolicy.js';
+import { readJsonBody } from '../lib/jsonBody.js';
+
+// Presence and membership are checked below, with their own messages.
+const overrideBody = v.object({ domain: v.optional(v.string()), mode: v.optional(v.string()) });
 
 export function createOutboundTlsRoutes(redis: Redis, config: MtaConfig) {
 	const app = new Hono();
@@ -31,9 +36,9 @@ export function createOutboundTlsRoutes(redis: Redis, config: MtaConfig) {
 
 	// Set (or replace) a domain's override.
 	app.post('/', async (c) => {
-		const body = await c.req
-			.json<{ domain?: string; mode?: string }>()
-			.catch(() => ({}) as { domain?: string; mode?: string });
+		const read = await readJsonBody(c, overrideBody, { emptyBody: {} });
+		if (!read.ok) return read.response;
+		const body = read.value;
 		if (!body.domain || !body.mode) {
 			return c.json({ error: 'domain and mode are required' }, 400);
 		}

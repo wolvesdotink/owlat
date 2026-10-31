@@ -217,19 +217,27 @@ export const tick = internalMutation({
 export const drive = internalAction({
 	args: { jobId: v.id('contactPropertyDeletionJobs') },
 	handler: async (ctx, { jobId }): Promise<void> => {
+		let failure: string | undefined;
 		for (let i = 0; i < TICKS_PER_DRIVE; i++) {
 			let outcome: TickOutcome;
 			try {
+				// checkpoint: one tick deletes one bounded page of the property's values and
+				// counts it on the job row; the next tick reads the values still left, so a
+				// tick a second chain repeats deletes nothing twice.
 				outcome = await ctx.runMutation(internal.contacts.propertyDeletion.tick, { jobId });
 			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error);
-				await ctx.runMutation(internal.contacts.propertyDeletion.recordFailure, {
-					jobId,
-					error: message.slice(0, MAX_ERROR_CHARS),
-				});
-				return;
+				failure = error instanceof Error ? error.message : String(error);
+				break;
 			}
 			if (outcome !== 'more') return;
+		}
+		if (failure !== undefined) {
+			// The tick that threw rolled back; this records it and schedules the retry.
+			await ctx.runMutation(internal.contacts.propertyDeletion.recordFailure, {
+				jobId,
+				error: failure.slice(0, MAX_ERROR_CHARS),
+			});
+			return;
 		}
 		await ctx.scheduler.runAfter(0, internal.contacts.propertyDeletion.drive, { jobId });
 	},

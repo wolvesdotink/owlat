@@ -5,7 +5,7 @@
  * card's key hints follow a remap.
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
 import { ref } from 'vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import type { AnswerCardControls } from '~/utils/answerCard';
@@ -29,7 +29,6 @@ beforeAll(() => {
 	vi.stubGlobal('navigateTo', navigateTo);
 });
 
-enableAutoUnmount(afterEach);
 afterEach(() => resetShortcutPreferences());
 
 const controls: AnswerCardControls = {

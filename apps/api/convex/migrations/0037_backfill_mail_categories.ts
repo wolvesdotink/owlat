@@ -18,6 +18,8 @@ export const run = internalAction({
 			mailboxId: args.mailboxId,
 		});
 		for (const threadId of threadIds) {
+			// checkpoint: one thread's enqueue; a classified thread drops out of the
+			// next run's list, and enqueueing an unclassified one again is harmless.
 			await ctx.runMutation(internal.mail.categoryArrival.enqueue, { threadId });
 		}
 		return { scheduled: threadIds.length };

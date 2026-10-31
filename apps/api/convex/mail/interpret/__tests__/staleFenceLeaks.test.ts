@@ -1,6 +1,6 @@
 /**
- * The stale fence (#1320, `staleFence.ts`) at the boundaries Sol's round 5
- * found open, each shown leaking before the fence and closed after it:
+ * The stale fence (`staleFence.ts`) at the boundaries an interpretation can
+ * leak through, each shown leaking without the fence and closed with it:
  *
  *   - the Daily Brief email reads digest snapshots taken before the fence;
  *   - an arrival draft written from the old plan, late or already stored;
@@ -38,8 +38,11 @@ vi.mock('../../../lib/sessionOrganization', async () => {
 	};
 });
 
-const SUMMARY = 'Pay account 999 today';
-const STALE_DRAFT = 'I will pay account 999.';
+// The leak checks search serialized results that also carry timestamps and
+// document ids, so the marker must be a string no number or id can contain.
+const ACCOUNT = 'ACCT-KESTREL';
+const SUMMARY = `Pay account ${ACCOUNT} today`;
+const STALE_DRAFT = `I will pay account ${ACCOUNT}.`;
 
 beforeEach(() => {
 	vi.stubEnv('INSTANCE_SECRET', 'unit-test-instance-secret-value');
@@ -132,14 +135,16 @@ describe('the stale fence at the boundaries round 5 found open', () => {
 		const due = await t.query(internal.mail.briefEmail.listDue, { now });
 		expect(due[0]?.items).toHaveLength(1);
 		expect(due[0]?.items[0]?.subtitle).toBeUndefined();
-		expect(JSON.stringify(due)).not.toContain('999');
+		expect(JSON.stringify(due)).not.toContain(ACCOUNT);
 	});
 
 	it('neither keeps nor shows an arrival draft written from the old plan', async () => {
 		const t = convexTest(schema, modules);
 		const { mailboxId, messageId, threadId } = await seedThread(t);
 		await storeSlot(t, threadId);
-		const slot = () => t.query(api.mail.needsReply.getDraftSlot, { threadId });
+		const slot = async () =>
+			(await t.query(api.mail.mailbox.messages.listThreadMessages, { messageId }))?.thread
+				?.needsReply?.draftSlot;
 		const queued = async () =>
 			(await t.query(api.mail.needsReply.listQueue, { mailboxId })).items.find(
 				(i) => i.threadId === threadId
@@ -158,10 +163,8 @@ describe('the stale fence at the boundaries round 5 found open', () => {
 		expect((await t.run((ctx) => ctx.db.get(threadId)))!.needsReply?.draftSlot).toBeUndefined();
 		// One that slipped in anyway is never shown.
 		await storeSlot(t, threadId);
-		expect(await slot()).toBeNull();
+		expect(await slot()).toBeUndefined();
 		expect((await queued())?.hasDraftSlot).toBe(false);
-		const thread = await t.query(api.mail.mailbox.messages.listThreadMessages, { messageId });
-		expect(thread?.thread?.needsReply?.draftSlot).toBeUndefined();
 	});
 
 	it('hides a stored plan check and refuses a late one', async () => {
@@ -361,7 +364,7 @@ describe('the stale fence at the boundaries round 5 found open', () => {
 			(i) => i.threadId === threadId
 		);
 		expect(queued?.clarification?.draft).toBeUndefined();
-		expect(JSON.stringify(shown)).not.toContain('999');
+		expect(JSON.stringify(shown)).not.toContain(ACCOUNT);
 	});
 
 	it('keeps nothing of a Draft with AI stream that started before the fence', async () => {
@@ -416,7 +419,7 @@ describe('the stale fence at the boundaries round 5 found open', () => {
 		expect(
 			await t.mutation(internal.mail.draftStreamStore.appendDraftStream, {
 				streamId,
-				text: 'I will pay account 999',
+				text: `I will pay account ${ACCOUNT}`,
 			})
 		).toEqual({ stop: true });
 		await t.mutation(internal.mail.draftStreamStore.finalizeDraftStream, {

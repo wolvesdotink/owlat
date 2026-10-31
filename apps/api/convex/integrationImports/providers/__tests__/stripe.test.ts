@@ -96,6 +96,21 @@ describe('stripeProvider', () => {
 			expect(result.totalEstimate).toBeUndefined();
 		});
 
+		it.each([
+			['data that is not a list', { data: null, has_more: false }],
+			['a customer without an id', { data: [{ email: 'a@example.com' }], has_more: true }],
+			[
+				'metadata that is not text',
+				{ data: [{ id: 'c', metadata: { tier: 2 } }], has_more: false },
+			],
+		])('fails on a page with %s instead of reading it as empty', async (_label, page) => {
+			global.fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify(page), { status: 200 }));
+
+			await expect(stripeProvider.fetchPage({ config: baseConfig, cursor: '' })).rejects.toThrow(
+				/malformed customer page/
+			);
+		});
+
 		it('drops customers without email', async () => {
 			global.fetch = vi.fn().mockResolvedValue(
 				new Response(

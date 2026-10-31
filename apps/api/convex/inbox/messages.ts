@@ -21,7 +21,6 @@ import { createContact } from '../contacts/creation';
 import { recordContactActivity } from '../contactActivities/writer';
 import { findOrCreateForEmail } from './threads/module';
 import { releaseClockIfNothingOwed } from './sla/threadClock';
-import { buildMessagePreview } from '../lib/textPreview';
 import { applyInboxStatsDelta } from '../lib/inboxStats';
 import { isFeatureEnabled } from '../lib/featureFlags';
 import { recordInboundMirror } from '../unifiedMessages';
@@ -29,7 +28,6 @@ import { logError, logInfo, logWarn } from '../lib/runtimeLog';
 import { redactEmailAddress, redactSubject } from '@owlat/shared/logRedaction';
 import { rateLimiter } from '../lib/rateLimiter';
 import { extractEmail, normalizeSubject } from '../lib/emailAddress';
-import { isAutomatedMail } from '../lib/inboundClassification';
 import { isSuppressed } from '../lib/suppression';
 import { inboundBodyColumns, inboundMirrorContent } from './bodyStorage';
 import { attachmentIndexingValidator } from '../lib/literalValidators';
@@ -39,9 +37,16 @@ import {
 	type InboundReceiveResult,
 } from './receiveInbound';
 import { invalidateSenderMemoryOnAuthFailure } from '../decision/senderMemory';
+import {
+	coalesceWindowFor,
+	decidePipelineStart,
+	extractNameFromEmail,
+	inboundMessageRow,
+	planArrival,
+} from './receiveDecision';
 
 // Re-exported for existing importers of this module.
-export { extractEmail, normalizeSubject };
+export { extractEmail, extractNameFromEmail, normalizeSubject };
 
 /**
  * How many rows sharing one `Message-ID` the idempotency check will look at.
@@ -52,13 +57,6 @@ export { extractEmail, normalizeSubject };
  * of times, not thousands.
  */
 const DUPLICATE_SCAN_LIMIT = 16;
-
-/** Headroom over the 4,000 characters `classifyReplyOutcome` reads after it
- * collapses whitespace. */
-const REPLY_TEXT_ARG_CHARS = 64 * 1024;
-
-/** How much of each part the thread preview is built from. */
-const PREVIEW_SOURCE_CHARS = 200_000;
 
 /**
  * The stored row this delivery would duplicate, or `null`.
@@ -76,6 +74,10 @@ const PREVIEW_SOURCE_CHARS = 200_000;
  * which on a route with a never-drop invariant is the worst possible outcome.
  * A retry of the SAME delivery always repeats the same `from` and `to`, so
  * idempotency is unaffected.
+ *
+ * Without it a retried delivery inserts a second row, bumps the thread's
+ * messageCount again, leaves another sealed `.eml` blob behind and charges the
+ * attachment budget twice.
  *
  * Bounded by `DUPLICATE_SCAN_LIMIT` — see there for why.
  */
@@ -107,7 +109,7 @@ export const receiveMessage = internalMutation({
 		// Everything that came off the wire — one spelling, shared with the
 		// sealed-mail writer in `e2ee/open.decryptAndReceive`.
 		...inboundMessageArgs,
-		// Sealed Mail (E4, D3): mirrored unsealing flags from the decrypt-on-ingest
+		// Sealed Mail: mirrored unsealing flags from the decrypt-on-ingest
 		// action on the AI-inbox path. `textBody`/`htmlBody` above are ALREADY the
 		// decrypted plaintext when `sealed` is set (the action opened the message
 		// before calling this mutation), so the agent pipeline + the unified mirror
@@ -118,7 +120,7 @@ export const receiveMessage = internalMutation({
 		isSignatureValid: v.optional(v.boolean()),
 		signerFingerprint: v.optional(v.string()),
 		signerInstance: v.optional(v.string()),
-		// F1 (D9): mirrored display fields of the inbound SIGNED-but-not-encrypted
+		// F1: mirrored display fields of the inbound SIGNED-but-not-encrypted
 		// PGP verdict, computed by e2ee/verifyInboundSignature on the dispatcher
 		// path for clearsigned bodies. Distinct from the sealed mirror above —
 		// signed plaintext makes no encryption claim. Both optional so every
@@ -137,25 +139,14 @@ export const receiveMessage = internalMutation({
 	returns: inboundReceiveResultValidator,
 	handler: async (ctx, args): Promise<InboundReceiveResult> => {
 		// ── 0. Idempotency ──
-		// The MTA aborts its webhook fetch after 10 s and retries with backoff,
-		// but aborting the client does NOT stop the Convex action it started: a
-		// message whose malware scan and attachment capture run long is delivered
-		// again while the first attempt is still in flight. Without this check
-		// each retry inserted another row, bumped the thread's messageCount again,
-		// left another sealed `.eml` blob behind and charged the attachment budget
-		// a second time. The check lives HERE, in the mutation, because this is
-		// the only place it and the insert are one transaction — an action-level
-		// pre-check cannot see a row that has not been written yet.
-		//
-		// The envelope test itself is `findStoredDuplicate`, shared with the
-		// action's cheap pre-check so the two can never disagree about what
-		// counts as the same delivery.
+		// The MTA retries a webhook it aborted after 10 s while the first attempt
+		// may still be running, so a slow scan is delivered twice. Only here are
+		// the check and the insert one transaction; `findStoredDuplicate` is the
+		// envelope test the ingest action's cheap pre-check shares.
 		const duplicate = await findStoredDuplicate(ctx.db, args);
 		if (duplicate) {
-			// WARN, not info: this is mail that arrived and was deliberately not
-			// stored. The envelope is here so an operator answering "we sent it and
-			// you never got it" can find the decision in the log — redacted, because
-			// the answer only needs the lines to line up, not the plaintext.
+			// WARN, not info: mail that arrived and was deliberately not stored,
+			// logged with the redacted envelope so the decision can be found.
 			logWarn('[Inbound Email] duplicate delivery — re-acknowledged, nothing stored', {
 				messageId: args.messageId,
 				from: redactEmailAddress(args.from),
@@ -170,17 +161,16 @@ export const receiveMessage = internalMutation({
 			};
 		}
 
-		const senderEmail = extractEmail(args.from);
-		const normalizedSubj = normalizeSubject(args.subject);
+		const plan = planArrival(args);
 		const now = Date.now();
 
 		// ── 1. Resolve contact ──
 		const { contactId } = await createContact(ctx, {
 			channel: 'email',
-			identifier: senderEmail,
+			identifier: plan.senderEmail,
 			source: 'inbound',
 			mode: 'upsert',
-			contactFields: { firstName: extractNameFromEmail(args.from) },
+			contactFields: { firstName: plan.senderFirstName },
 		});
 
 		// ── 2. Resolve or create conversation thread ──
@@ -189,18 +179,13 @@ export const receiveMessage = internalMutation({
 		// messageCount / lastMessageAt maintenance and reopen-if-closed.
 		const { threadId } = await findOrCreateForEmail(ctx, {
 			contactId,
-			contactIdentifier: senderEmail,
+			contactIdentifier: plan.senderEmail,
 			subject: args.subject,
-			normalizedSubject: normalizedSubj,
+			normalizedSubject: plan.normalizedSubject,
 			inReplyTo: args.inReplyTo,
 			references: args.references,
 			occurredAt: now,
-			// Sliced first: a 140-character preview need not convert or collapse a
-			// 10 MiB body inside a mutation's time budget.
-			preview: buildMessagePreview({
-				text: args.textBody?.slice(0, PREVIEW_SOURCE_CHARS),
-				html: args.htmlBody?.slice(0, PREVIEW_SOURCE_CHARS),
-			}),
+			preview: plan.preview,
 		});
 
 		// ── 3. Store the inbound message ──
@@ -209,47 +194,12 @@ export const receiveMessage = internalMutation({
 		// ingest action already moved to storage is referenced, not inlined.
 		// Readers go through lib/messageBodyInbound.ts for either shape.
 		const bodyColumns = await inboundBodyColumns(args);
-		// Confirmed malware quarantines the row instead of drafting on it — the
-		// team-inbox analogue of the personal-mailbox route's `infected → Spam`
-		// routing. The message is STORED either way: this path has a hard
-		// never-drop invariant, and an operator still needs to see what arrived.
-		const isInfected = args.virusVerdict === 'infected';
-		const inboundMessageId = await ctx.db.insert('inboundMessages', {
-			messageId: args.messageId,
-			from: args.from,
-			to: args.to,
-			subject: args.subject,
-			...bodyColumns,
-			inReplyTo: args.inReplyTo,
-			references: args.references,
-			headers: args.headers,
-			attachmentMeta: args.attachmentMeta,
-			attachmentMetaVersion: args.attachmentMetaVersion,
-			threadId,
-			contactId,
-			processingStatus: isInfected ? 'quarantined' : 'received',
-			receivedAt: args.timestamp,
-			rawStorageId: args.rawStorageId,
-			rawSize: args.rawSize,
-			virusVerdict: args.virusVerdict,
-			mtaSpamVerdict: args.mtaSpamVerdict,
-			mtaSpamScore: args.mtaSpamScore,
-			// Written here and cleared only by the retention sweep, so the marker
-			// and the blob it stands for have exactly one writer each.
-			isRawRetained: args.rawStorageId ? (true as const) : undefined,
-			spfResult: args.spfResult,
-			dkimResult: args.dkimResult,
-			dmarcResult: args.dmarcResult,
-			dmarcPolicy: args.dmarcPolicy,
-			isSealed: args.isSealed,
-			isSignatureValid: args.isSignatureValid,
-			signerFingerprint: args.signerFingerprint,
-			signerInstance: args.signerInstance,
-			isInboundSignatureValid: args.isInboundSignatureValid,
-			inboundSignerFingerprint: args.inboundSignerFingerprint,
-		});
+		const inboundMessageId = await ctx.db.insert(
+			'inboundMessages',
+			inboundMessageRow(args, { bodyColumns, threadId, contactId, isInfected: plan.isInfected })
+		);
 		await applyInboxStatsDelta(ctx, null, 'received');
-		// D12: a DMARC failure invalidates what is remembered about the sender.
+		// A DMARC failure invalidates what is remembered about the sender.
 		await invalidateSenderMemoryOnAuthFailure(
 			ctx,
 			{ scope: 'team_inbox' },
@@ -259,25 +209,18 @@ export const receiveMessage = internalMutation({
 		// A quarantined arrival needs no reply, but the thread write above started
 		// a response clock for it (inbox/sla/clock.ts); it never passes through the
 		// lifecycle edge that would stop it.
-		if (isInfected) await releaseClockIfNothingOwed(ctx, threadId, inboundMessageId);
+		if (plan.isInfected) await releaseClockIfNothingOwed(ctx, threadId, inboundMessageId);
 
 		// ── Capture post-send OUTCOME signal (graduated-autonomy learning) ──
-		// If this inbound message is a REPLY on a thread whose prior message the
-		// agent AUTO-sent, the reply's sentiment is a real-world calibration
-		// signal — otherwise the self-tuning loop only ever learns from the
-		// shrinking human-reviewed subset (see agent/outcomeFeedback.ts). Cheap
-		// tier + fail-soft: scheduled out-of-band so it can never block or fail
-		// ingest, gated to actual replies, and re-verified as auto-sent inside
-		// the action before anything is recorded.
-		const isReply = Boolean(args.inReplyTo || args.references);
-		const replyText = args.textBody ?? args.htmlBody;
-		if (isReply && replyText && !isInfected && (await isFeatureEnabled(ctx, 'ai.agent'))) {
+		// A reply on a thread whose prior message the agent AUTO-sent is a
+		// real-world calibration signal (agent/outcomeFeedback.ts). Scheduled
+		// out-of-band and fail-soft so it can never block or fail ingest; the
+		// action re-verifies the auto-send before recording anything.
+		if (plan.replyFeedbackText !== undefined && (await isFeatureEnabled(ctx, 'ai.agent'))) {
 			try {
-				// The classifier reads its first 4,000 characters; a multi-megabyte
-				// body has no business in the scheduled job's arguments.
 				await ctx.scheduler.runAfter(0, internal.agent.outcomeFeedback.classifyReplyOutcome, {
 					replyMessageId: inboundMessageId,
-					replyText: replyText.slice(0, REPLY_TEXT_ARG_CHARS),
+					replyText: plan.replyFeedbackText,
 				});
 			} catch (err) {
 				logError('[Inbound Email] Failed to schedule reply-outcome classification:', err);
@@ -285,20 +228,15 @@ export const receiveMessage = internalMutation({
 		}
 
 		// ── Mirror into the unified contact timeline ──
-		// Inbound email is a genuine cross-channel CONVERSATION: it has a real
-		// conversationThread and the per-contact UnifiedTimelineTab interleaves it
-		// with SMS/WhatsApp/chat rows. Mirror it alongside the channel writer in
-		// webhooks/channels.ts:processInboundChannel. Idempotent on the SMTP
-		// Message-ID (re-delivery), and best-effort: a mirror failure must never
-		// fail receiveMessage / make the MTA retry a message we already stored.
-		//
-		// BOUNDARY: only conversational email is mirrored. Campaign /
-		// transactional / automation OUTBOUND sends are not conversations — they
-		// have no inbound thread, would force invented threadIds, and would
-		// re-introduce a per-send write into unifiedMessages. They already surface
-		// in the Activity tab via contactActivities. Do NOT mirror them here; the
-		// only outbound email that belongs in unifiedMessages is a threaded agent
-		// reply (see delivery/sendCompletion.ts).
+		// Inbound email is a genuine cross-channel CONVERSATION, interleaved with
+		// SMS/WhatsApp/chat rows on the contact's timeline, alongside the channel
+		// writer in webhooks/channels.ts:processInboundChannel. Idempotent on the
+		// SMTP Message-ID, and best-effort: a mirror failure must never fail the
+		// receive or make the MTA retry a message we already stored. Only
+		// conversational email is mirrored: campaign / transactional / automation
+		// sends have no inbound thread and surface through contactActivities; the
+		// one outbound email that belongs in unifiedMessages is a threaded agent
+		// reply (delivery/sendCompletion.ts).
 		try {
 			await recordInboundMirror(ctx, {
 				threadId,
@@ -313,109 +251,62 @@ export const receiveMessage = internalMutation({
 			logError('[Inbound Email] Failed to mirror into unified timeline:', err);
 		}
 
-		// Log inbound activity on the contact
 		await recordContactActivity(ctx, {
 			literal: 'inbound_received',
 			contactId,
-			metadata: {
-				emailSubject: args.subject,
-			},
+			metadata: { emailSubject: args.subject },
 			occurredAt: now,
 		});
 
 		// ── Blocklist / suppression auto-archive ──
-		// A sender on the CAN-SPAM / honor-suppression blocklist (`blockedEmails`)
-		// has been hard-blocked (spam complaint, hard bounce, or a manual
-		// `blockSender` on a prior message). We must NOT drop the mail — the
-		// inbound path has a hard never-drop invariant (SMTP 5xx rejection is not
-		// an option here) — so store-but-skip: the message is already persisted
-		// above, and we archive it via the same lifecycle edge `blockSender` uses
-		// (`received → archived`, reason `sender_blocked`) and skip the entire AI
-		// classify/route pipeline. This mirrors the store-but-skip shape of the
-		// auto-responder and rate-cap branches below.
-		// SCOPE `'transactional'`: this gate is about a sender we hard-blocked, not
-		// about bulk-mail hygiene. A contact who stopped opening campaigns and then
-		// writes to us is engaging — auto-archiving that reply unread would hide
-		// the clearest possible evidence that they are still there.
-		if (await isSuppressed(ctx, senderEmail, { scope: 'transactional' })) {
+		// A hard-blocked sender (spam complaint, hard bounce, manual
+		// `blockSender`) is stored-but-skipped, never dropped: archived through
+		// the same lifecycle edge `blockSender` uses, with no AI pipeline. SCOPE
+		// `'transactional'`: this is about senders we blocked, not bulk-mail
+		// hygiene — a contact who stopped opening campaigns and writes to us is
+		// engaging, and auto-archiving that reply would hide it.
+		const logContext = { contactId, threadId, from: redactEmailAddress(args.from) };
+		if (await isSuppressed(ctx, plan.senderEmail, { scope: 'transactional' })) {
 			await ctx.runMutation(internal.inbox.processingLifecycle.transition, {
 				inboundMessageId,
-				input: {
-					to: 'archived',
-					at: now,
-					reason: 'sender_blocked',
-				},
+				input: { to: 'archived', at: now, reason: 'sender_blocked' },
 			});
-			logInfo('[Inbound Email] blocklisted sender mail stored and archived without AI processing', {
-				contactId,
-				threadId,
-				from: redactEmailAddress(args.from),
-			});
+			logInfo(
+				'[Inbound Email] blocklisted sender mail stored and archived without AI processing',
+				logContext
+			);
 			return { inboundMessageId, threadId, contactId, isDuplicate: false };
 		}
 
-		// ── Mail-loop / auto-responder suppression ──
-		// The AI inbox address is public, so vacation autoresponders, mailing-list
-		// blasts, and forged self-sends would otherwise each trigger a full
-		// guard+classify+capable-draft+extract pipeline run — and an auto-reply to
-		// an auto-responder forms a loop. The Postbox vacation/forwarding path
-		// already drops these via the same RFC 3834 check (mail/deliveryHooks.ts);
-		// apply it here BEFORE spending any model budget. Store-but-skip, the same
-		// shape as the rate-limit cap below.
-		const suppressed =
-			isInfected ||
-			isAutomatedMail(parseHeaders(args.headers)) ||
-			senderEmail === extractEmail(args.to);
-
 		// ── 4. Schedule the agent pipeline (Agent walker starts at security_scan) ──
-		// When coalescing is enabled (agentConfig.coalesceWindowMs > 0), bursts
-		// on the same thread are debounced into a single pipeline run; the
-		// coalesce batch starts the walker for the leader once the window
-		// settles. Otherwise, start immediately.
-		let deferred = false;
-		if (!suppressed && (await isFeatureEnabled(ctx, 'ai.agent'))) {
+		// With a coalesce window, a burst on one thread is debounced into one run
+		// that the coalesce batch starts for the leader once the window settles.
+		let isCoalesced = false;
+		if (!plan.isPipelineSkipped && (await isFeatureEnabled(ctx, 'ai.agent'))) {
 			const config = await ctx.db.query('agentConfig').first();
-			const windowMs = config?.coalesceWindowMs ?? 0;
-			if (windowMs > 0) {
+			const windowMs = coalesceWindowFor(plan, config?.coalesceWindowMs);
+			if (windowMs !== undefined) {
 				const { shouldDefer } = await ctx.runMutation(internal.agent.coalescing.shouldCoalesce, {
 					threadId,
 					messageId: inboundMessageId,
 					coalesceWindowMs: windowMs,
 				});
-				deferred = shouldDefer;
+				isCoalesced = shouldDefer;
 			}
 		}
 
-		if (isInfected) {
-			logInfo('[Inbound Email] malware found — mail stored quarantined, AI pipeline skipped', {
-				contactId,
-				threadId,
-				from: redactEmailAddress(args.from),
-			});
-		} else if (suppressed) {
-			logInfo('[Inbound Email] automated/self-send mail stored without AI processing', {
-				contactId,
-				threadId,
-				from: redactEmailAddress(args.from),
-			});
-		} else if (!deferred) {
-			// Cost cap: each pipeline run spends multiple LLM calls (guard +
-			// classify + capable-tier draft + extract). Inbound email volume is
-			// attacker-controlled (the AI inbox address is public, and distinct
-			// threads defeat coalescing), so gate the START on a per-sender AND a
-			// global rate limit. Over the cap we keep the stored message but skip
-			// the expensive pipeline — bounding model-cost / quota exhaustion from
-			// a flood while never dropping mail.
+		const start = decidePipelineStart(plan, isCoalesced);
+		if (start.kind === 'skip') {
+			logInfo(start.message, logContext);
+		} else if (start.kind === 'start_within_caps') {
 			const perSender = await rateLimiter.limit(ctx, 'agentPipelinePerSender', {
 				key: contactId,
 			});
-			const globalOk = perSender.ok
+			const isGlobalOk = perSender.ok
 				? (await rateLimiter.limit(ctx, 'agentPipelineGlobal', { key: 'global' })).ok
 				: false;
-			if (perSender.ok && globalOk) {
-				await ctx.scheduler.runAfter(0, internal.agent.walker.start, {
-					inboundMessageId,
-				});
+			if (perSender.ok && isGlobalOk) {
+				await ctx.scheduler.runAfter(0, internal.agent.walker.start, { inboundMessageId });
 			} else {
 				logError(
 					'[Inbound Email] Agent pipeline cost cap hit — message stored without AI processing',
@@ -465,36 +356,3 @@ export const setAttachmentIndexing = internalMutation({
 		return null;
 	},
 });
-
-/**
- * Parse the serialized inbound header map (a JSON string of header→value, see
- * webhooks/dispatcher.ts) defensively. A malformed blob must never fail the
- * receive — we just treat it as no headers.
- */
-function parseHeaders(raw: string | undefined): Record<string, string> {
-	if (!raw) return {};
-	try {
-		const parsed: unknown = JSON.parse(raw);
-		if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-			return parsed as Record<string, string>;
-		}
-	} catch {
-		// Not valid JSON — fall through to the empty-headers default.
-	}
-	return {};
-}
-
-/**
- * Extract a first name from the "Name <email>" format
- */
-export function extractNameFromEmail(fromField: string): string | undefined {
-	// Try "First Last <email>" format
-	const nameMatch = fromField.match(/^([^<]+)</);
-	if (nameMatch?.[1]) {
-		const fullName = nameMatch[1].trim().replace(/"/g, '');
-		if (fullName) {
-			return fullName.split(/\s+/)[0]; // Return first name
-		}
-	}
-	return undefined;
-}

@@ -23,6 +23,7 @@ import { api, internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import type { OrganizationRole } from '../../lib/sessionOrganization';
 import { expectScheduledFailure } from '../../__tests__/helpers/scheduledFailures';
+import type * as SessionOrganizationModule from '../../lib/sessionOrganization';
 
 // The flow under test schedules the functions below, which this suite's
 // module map leaves out (or which need a setup it does not make). Their jobs
@@ -45,7 +46,7 @@ function throwForbidden(): never {
 }
 
 vi.mock('../../lib/sessionOrganization', async () => {
-	const actual = await vi.importActual<typeof import('../../lib/sessionOrganization')>(
+	const actual = await vi.importActual<typeof SessionOrganizationModule>(
 		'../../lib/sessionOrganization'
 	);
 	const ctx = () => ({ userId: 'test-user', role: mockRole });

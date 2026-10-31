@@ -28,9 +28,10 @@ import { PACE_AIMD } from '../delivery/ramp/paceConfig';
 import { DESTINATION_PROVIDER_KEYS } from '@owlat/shared/deliverabilityRouting';
 import type { StoredAudience } from '../campaigns/audience';
 import type { Id } from '../_generated/dataModel';
+import type * as SessionOrganizationModule from '../lib/sessionOrganization';
 
 vi.mock('../lib/sessionOrganization', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../lib/sessionOrganization')>();
+	const actual = await importOriginal<typeof SessionOrganizationModule>();
 	return {
 		...actual,
 		getSingletonOrganizationId: vi.fn().mockResolvedValue('org_paced_capacity'),
@@ -71,7 +72,7 @@ async function seedWarming(t: Harness): Promise<void> {
 /**
  * A retreated dial on every campaign cell — the half that reaches production.
  *
- * Iterates the WHOLE taxonomy (D8), not a copy of it: a sixth destination
+ * Iterates the WHOLE taxonomy, not a copy of it: a sixth destination
  * provider has to be seeded and asserted here too, rather than leaving its
  * paced-capacity path silently unexercised while the suite stays green.
  */
@@ -194,7 +195,7 @@ describe('the pace dial reaches every campaign-facing consumer, or none', () => 
 		expect(dialed?.remainingToday).toBe(dialed?.byDay[0]);
 	});
 
-	it('NO dial at all leaves the projection exactly as the shipped one (D2)', async () => {
+	it('NO dial at all leaves the projection exactly as the shipped one', async () => {
 		const t = convexTest(schema, modules);
 		await seedWarming(t);
 

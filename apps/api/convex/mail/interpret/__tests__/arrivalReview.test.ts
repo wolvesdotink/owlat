@@ -2,7 +2,7 @@
  * Read on arrival, Sol review r1 (F1–F8, F12, F13): each case fails without
  * its fix.
  *
- *   F1  a D10-deferred source stays deferred through its category write
+ *   F1  a deferred source stays deferred through its category write
  *   F2  eager demand reads a gisted source in full; the full-read prerequisite
  *       upgrades a thread's gist-only mail, oldest first, and the plan says so
  *   F3  eager work over the owner limit persists its continuation
@@ -169,7 +169,7 @@ async function epochOf(t: Test, threadId: Id<'mailThreads'>) {
 	});
 }
 
-describe('Sol r1 F1: D10 deferrals survive the category write', () => {
+describe('deferrals survive the category write', () => {
 	it('a deferred source is never stamped, never woken, and a stray run reads nothing', async () => {
 		const t = setup();
 		await enableFeatures(t, ['ai']);
@@ -560,7 +560,7 @@ describe('Sol r2 F4: every refusal counts where it is seen', () => {
 	});
 
 	it('the full read gate counts a display-only source in the refusing mutation', async () => {
-		// A configured ceiling whose spend state is not reconciled refuses (#1333).
+		// A configured ceiling whose spend state is not reconciled refuses.
 		vi.stubEnv('AI_SPEND_DAILY_BUDGET_USD', '1');
 		const t = setup();
 		const { source, messageId, threadId } = await arrive(t, { text: ASK });

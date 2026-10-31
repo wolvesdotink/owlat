@@ -33,6 +33,7 @@
  */
 
 import { v } from 'convex/values';
+import type { MutationCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
@@ -41,6 +42,7 @@ import {
 	actionTypeValidator,
 	failedActionStatus,
 	transitionInputValidator,
+	type TransitionInput,
 	type TransitionOutcome,
 } from './processingLifecycle/types';
 import { dispatch } from './processingLifecycle/effects';
@@ -87,12 +89,20 @@ export const transition = internalMutation({
 		inboundMessageId: v.id('inboundMessages'),
 		input: transitionInputValidator,
 	},
-	handler: async (ctx, args): Promise<TransitionOutcome> => {
-		const message = await ctx.db.get(args.inboundMessageId);
-		if (!message) return { ok: false, reason: 'message_not_found' };
-		return await dispatch(ctx, message, args.input);
-	},
+	handler: async (ctx, args): Promise<TransitionOutcome> =>
+		await applyProcessingTransition(ctx, args.inboundMessageId, args.input),
 });
+
+/** {@link transition} inside another module's commit, in its transaction. */
+export async function applyProcessingTransition(
+	ctx: MutationCtx,
+	inboundMessageId: Id<'inboundMessages'>,
+	input: TransitionInput
+): Promise<TransitionOutcome> {
+	const message = await ctx.db.get(inboundMessageId);
+	if (!message) return { ok: false, reason: 'message_not_found' };
+	return await dispatch(ctx, message, input);
+}
 
 // ─── Agent-action mutations (used inside a single processingStatus) ─────────
 //

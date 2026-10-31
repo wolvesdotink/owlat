@@ -1,5 +1,5 @@
 /**
- * THE STATES ARE THE FEATURE (plan D2, D10, D14).
+ * THE STATES ARE THE FEATURE.
  *
  * insufficient_data, zero volume, no relay, no integration and low confidence are
  * the states a real deployment spends most of its life in. Every one of them must
@@ -164,7 +164,36 @@ describe('calm states', () => {
 	});
 
 	/**
-	 * A DORMANT RUNG SAID PLAINLY (plan D3, D14). With no second sender the phase
+	 * THE SNAP IS TO THE GREATEST RUNG AT OR BELOW THE STORED NUMBER: an
+	 * in-between ceiling offers every rung up to the one beneath it, and a missing
+	 * or non-finite one falls back to the lowest rung.
+	 */
+	it.each([
+		[0.65, 0.5],
+		[0.8, 0.8],
+		[0.99, 0.8],
+		[1, 1],
+		[0.25, 0.25],
+		[null, 0.25],
+		[Number.NaN, 0.25],
+		[Number.POSITIVE_INFINITY, 0.25],
+	])('offers resets up to rung %s → %s', (phaseCeiling, highest) => {
+		const wrapper = mount(RampCellControls, {
+			props: { cell: cellControl({ phaseCeiling }), hasRelayConfigured: true },
+			global: { plugins: [createTestI18n()] },
+		});
+		for (const rung of [0.25, 0.5, 0.8, 1]) {
+			const disabled = wrapper
+				.find(`[data-testid="ramp-control-phase-${rung}"]`)
+				.attributes('disabled');
+			if (rung <= highest) expect(disabled, `rung ${rung}`).toBeUndefined();
+			else expect(disabled, `rung ${rung}`).toBeDefined();
+		}
+		wrapper.unmount();
+	});
+
+	/**
+	 * A DORMANT RUNG SAID PLAINLY. With no second sender the phase
 	 * ladder bounds nothing — the server records the rung and holds the share — so
 	 * copy calling it the cell's governing ceiling describes a 75% cut this
 	 * deployment cannot make and would not want.
@@ -199,8 +228,8 @@ describe('calm states', () => {
 	});
 
 	/**
-	 * THE PROMISE ON THE BUTTON AND THE ROW IN THE TIMELINE ARE ONE CLAIM (plan D3,
-	 * D14), SO THEY READ ONE FACT. The server's `pauseMessage` and `pinMessage` cut
+	 * THE PROMISE ON THE BUTTON AND THE ROW IN THE TIMELINE ARE ONE CLAIM,
+	 * SO THEY READ ONE FACT. The server's `pauseMessage` and `pinMessage` cut
 	 * on `readsShareDial` — `bindsPhaseLadder` over the cell's degradation — and
 	 * `cell.isShareRamped` is that same answer carried onto the screen. Cutting this
 	 * copy on the ROUTE TABLE instead is what made the pre-click sentence and the
@@ -297,7 +326,7 @@ describe('calm states', () => {
 	});
 
 	/**
-	 * THE ARM SHUFFLE IS AN ESP-PATH CLAIM (plan D7, D14). A pace-path cell has one
+	 * THE ARM SHUFFLE IS AN ESP-PATH CLAIM. A pace-path cell has one
 	 * arm — no `adaptive_mix` route builds a mix at all — so a promotion re-shuffles
 	 * nobody there, and the state is reachable from the first minute: a standalone
 	 * enrolment opens at full share on the 25% rung, with the button live.
@@ -624,7 +653,7 @@ describe('control refusals', () => {
 
 	/**
 	 * THE PROMOTION REFUSAL CARRIES A LIST, and a list the page drops is a "not
-	 * yet" with nothing to act on — the exact shape D12/D14 exist to prevent.
+	 * yet" with nothing to act on — the exact shape the refusal list exists to prevent.
 	 */
 	it('lists what the next phase rung is still waiting on', async () => {
 		stubPage({
@@ -818,7 +847,7 @@ describe('control refusals', () => {
 });
 
 /**
- * SAY THE QUIET PART (plan D14). A standalone deployment can still pick a faster
+ * SAY THE QUIET PART. A standalone deployment can still pick a faster
  * pace — it is their deployment — but it must be told what that pace is running
  * on, in the same calm register as every other state here.
  */

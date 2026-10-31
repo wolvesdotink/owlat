@@ -8,15 +8,14 @@ import { threadPageArgs } from './postboxThreadPage';
 /**
  * The open message's queries, started from the route's message id (plan 2.5).
  *
- * Opening a message used to be a chain: the mailbox guard waited for the
- * mailbox list, the layout for the list page (or `getMessage`), the reader
- * mounted and only then subscribed its thread, and the body came last from an
- * action. The page now calls this with the route param, before the mailbox
- * guard has resolved, so the thread (`listThreadMessages`) and the inline body
- * (`getMessageInlineBody`) load in parallel with the list. The reader asks for
- * the same queries with the same args and joins these subscriptions through
- * the shared registry instead of starting its own. A body stored as a blob
- * starts its download from here too.
+ * Opening a message must not be a chain (the mailbox guard waiting for the
+ * mailbox list, the layout for the list page, the reader subscribing its thread
+ * only once mounted, the body last). The page calls this with the route param,
+ * before the mailbox guard has resolved, so the thread (`listThreadMessages`)
+ * and the inline body (`getMessageInlineBody`) load in parallel with the list.
+ * The reader asks for the same queries with the same args and joins these
+ * subscriptions through the shared registry instead of starting its own. A
+ * body stored as a blob starts its download from here too.
  *
  * Both queries check mailbox access on the server; nothing here renders.
  */
@@ -77,8 +76,8 @@ export function usePostboxActiveMessage<Row extends { _id: string }>(source: {
 /**
  * `usePostboxActiveMessage` plus the read's outcome, for a surface whose main
  * content is the message (Answer mode, the reader pane). The by-id fetch is the
- * last source, so its `error` means the message could not be read at all
- * (#721), and its `null` answer means there is no such message for this viewer:
+ * last source, so its `error` means the message could not be read at all,
+ * and its `null` answer means there is no such message for this viewer:
  * deleted, moved by another client, purged, or its mailbox no longer shared
  * (`notFound`). A skipped fetch reports neither.
  */

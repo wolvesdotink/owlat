@@ -19,7 +19,7 @@
 // selected block and is owned by the editor's global keydown routing
 // (utils/editorKeyboard, covered by its own test). Here we only assert the
 // canvas does not also steal it.
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, onTestFinished } from 'vitest';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { Trash2 } from '@lucide/vue';
 import DocumentCanvas from '../DocumentCanvas.vue';
@@ -57,21 +57,12 @@ const blocks = (): EditorBlock[] => [
 	button('b-3', 'Shop the sale'),
 ];
 
-let wrapper: VueWrapper | null = null;
-
 function mountCanvas(props: { blocks: EditorBlock[]; selectedBlockId: string | null }) {
-	wrapper = mount(DocumentCanvas, {
+	return mount(DocumentCanvas, {
 		attachTo: document.body,
 		props: { theme: defaultTheme as Required<EmailTheme>, ...props },
 	});
-	return wrapper;
 }
-
-afterEach(() => {
-	wrapper?.unmount();
-	wrapper = null;
-	document.body.innerHTML = '';
-});
 
 describe('canvas list semantics', () => {
 	it('exposes the block list as a named list with one item per block', () => {
@@ -236,6 +227,7 @@ describe('canvas focus tracks selection', () => {
 		// caret out of the control the user is operating.
 		const outside = document.createElement('button');
 		document.body.appendChild(outside);
+		onTestFinished(() => outside.remove());
 		outside.focus();
 
 		await w.setProps({ selectedBlockId: 'b-2' });

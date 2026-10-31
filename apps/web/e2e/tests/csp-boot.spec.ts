@@ -54,7 +54,7 @@ test.describe('app shell', () => {
 	test('lets the page show the blob: images and PDF it creates itself', async ({ page }) => {
 		// The attachment lightbox, chip thumbnails, pasted-image previews and the
 		// upload size probes all load `URL.createObjectURL` output. Under a policy
-		// without `blob:` the browser refuses them with nothing thrown (#1292), so
+		// without `blob:` the browser refuses them with nothing thrown, so
 		// this loads one of each the way those surfaces do and reads the outcome.
 		await page.addInitScript(() => {
 			(window as unknown as { __cspViolations: string[] }).__cspViolations = [];
@@ -87,18 +87,28 @@ test.describe('app shell', () => {
 		});
 		expect(imageLoaded, 'a blob: image did not load').toBe(true);
 
-		await page.evaluate(() => {
+		// The object's own outcome is the milestone: it loads, or it errors (a
+		// refused URL errors too, and also reports a violation). The listeners go
+		// on before the URL is set, so neither event can be missed.
+		const pdfOutcome = await page.evaluate(async () => {
 			const pdf = new Blob(['%PDF-1.4\n%%EOF\n'], { type: 'application/pdf' });
+			const url = URL.createObjectURL(pdf);
 			const object = document.createElement('object');
+			const outcome = new Promise<string>((resolve) => {
+				object.addEventListener('load', () => resolve('load'));
+				object.addEventListener('error', () => resolve('error'));
+				document.addEventListener('securitypolicyviolation', (event) => {
+					if (event.blockedURI === url) resolve(`refused by ${event.violatedDirective}`);
+				});
+			});
 			object.type = 'application/pdf';
-			object.data = URL.createObjectURL(pdf);
+			object.data = url;
 			object.width = '200';
 			object.height = '200';
 			document.body.appendChild(object);
+			return outcome;
 		});
-		// A refused object reports its violation as it starts to load; give it
-		// the moment that takes.
-		await page.waitForTimeout(1_000);
+		expect(pdfOutcome, 'a blob: PDF object did not load').toBe('load');
 
 		const violations = await page.evaluate(
 			() => (window as unknown as { __cspViolations: string[] }).__cspViolations

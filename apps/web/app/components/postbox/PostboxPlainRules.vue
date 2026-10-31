@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * Rules in your words (read on arrival, SPEC §6.1, §6.2): the section at the
+ * Rules in your words (read on arrival): the section at the
  * top of the Filters page. The person writes a sentence; Owlat compiles it
  * into a rule they check before it is saved. Rules that need judgement carry
  * one AI question, answered once per message as it arrives. Every rule can be
@@ -19,6 +19,8 @@ import {
 	type RuleDraftRow,
 	type RuleDryRunResult,
 } from '~/composables/postbox/usePostboxRules';
+import { POSTBOX_PREFERENCE_DEFAULTS } from '~/utils/postboxPreferenceDefaults';
+import SettingsResetToDefault from '~/components/settings/ResetToDefault.vue';
 
 const props = defineProps<{
 	mailboxId: Id<'mailboxes'>;
@@ -36,7 +38,11 @@ const { drafts, compile, confirm, discard, test, isCompiling, isTesting } =
 	usePostboxRules(mailboxIdRef);
 const { folders } = usePostboxFolders(mailboxIdRef);
 const { labels } = usePostboxLabels(mailboxIdRef);
-const { codeAutoArchive, setCodeAutoArchive } = usePostboxSettings();
+const { codeAutoArchive, setCodeAutoArchive, isSaving, isLoading } = usePostboxSettings();
+// Hidden while the settings row loads: "off" is then only the fallback.
+const codeAutoArchiveChanged = computed(
+	() => !isLoading.value && codeAutoArchive.value !== POSTBOX_PREFERENCE_DEFAULTS.codeAutoArchive
+);
 
 const rules = computed(() => props.filters.filter((filter) => isPlainLanguageRule(filter)));
 
@@ -214,7 +220,15 @@ async function testRule(filterId: Id<'mailFilters'>) {
 				@update:model-value="(on: boolean) => setCodeAutoArchive(on)"
 			/>
 			<div>
-				<p class="text-sm font-medium">{{ t('postbox.rules.codes.label') }}</p>
+				<div class="flex items-center gap-2">
+					<p class="text-sm font-medium">{{ t('postbox.rules.codes.label') }}</p>
+					<SettingsResetToDefault
+						:changed="codeAutoArchiveChanged"
+						:label="t('postbox.rules.codes.label')"
+						:disabled="isSaving"
+						@reset="setCodeAutoArchive(POSTBOX_PREFERENCE_DEFAULTS.codeAutoArchive)"
+					/>
+				</div>
 				<p class="text-xs text-text-secondary">{{ t('postbox.rules.codes.help') }}</p>
 			</div>
 		</div>

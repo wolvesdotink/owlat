@@ -24,6 +24,7 @@ import {
 import schema from '../../schema';
 import { api, internal } from '../../_generated/api';
 import type { OrganizationRole } from '../../lib/sessionOrganization';
+import type * as SessionOrganizationModule from '../../lib/sessionOrganization';
 
 // Mutable role each test selects — `getTlsReportSummary` is `adminQuery`
 // (→ `requireOrgPermission('organization:manage')`), so the role distinction is
@@ -39,7 +40,7 @@ function throwForbidden(): never {
 }
 
 vi.mock('../../lib/sessionOrganization', async () => {
-	const actual = await vi.importActual<typeof import('../../lib/sessionOrganization')>(
+	const actual = await vi.importActual<typeof SessionOrganizationModule>(
 		'../../lib/sessionOrganization'
 	);
 	const ctx = () => ({ userId: 'test-user', role: mockRole });

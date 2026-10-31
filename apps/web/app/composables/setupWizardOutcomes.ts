@@ -1,5 +1,5 @@
 /**
- * The setup wizard's first question, asked in the team's words (#770).
+ * The setup wizard's first question, asked in the team's words.
  *
  * The mode step used to open with eight operator presets ("CRM only",
  * "IMAP-only", "Team inbox + AI agent", …) that overlapped and assumed the

@@ -226,6 +226,13 @@ export interface GettingStartedInput {
 	 * around an audience it cannot carry — see {@link sentCampaignDescription}.
 	 */
 	sendCapacityToday: number | null;
+	/**
+	 * The person explicitly asked to see the checklist (palette, account menu).
+	 * Each section the viewer may see then shows despite its stored dismissal or
+	 * completion, so a finished or hidden checklist can always be opened again.
+	 * Dismissing ends it.
+	 */
+	reopened?: boolean;
 }
 
 /**
@@ -237,17 +244,17 @@ export interface GettingStartedInput {
 /**
  * The way BACK into the guided welcome — the personal section's last row.
  *
- * `/welcome` used to be one-shot: the first-login middleware routes a member
- * there exactly once (while `welcomedAt` is unset — see `shouldRouteToWelcome`),
- * so a single click on "I'll do this later" put the two-minute fresh-start setup
- * out of reach forever, with nothing in the app pointing back at it. The screen
- * itself was always reachable by URL; nothing linked to it.
+ * The first-login middleware routes a member to `/welcome` exactly once (while
+ * `welcomedAt` is unset — see `shouldRouteToWelcome`), so without a way back a
+ * single click on "I'll do this later" would put the two-minute fresh-start
+ * setup out of reach for good. The screen is reachable by URL, and this row is
+ * the link to it.
  *
  * So this is a LINK, not a task: it is {@link GettingStartedStep.informational},
  * carries no completion, and is left out of the progress counts. It disappears
  * with the rest of the personal section once that section's real steps are done
  * or dismissed — a member with nothing left to set up is not offered a setup
- * flow.
+ * flow — and comes back with it when the checklist is explicitly reopened.
  */
 export const FINISH_SETUP_STEP: Omit<GettingStartedStep, 'completed'> = {
 	id: 'finishSetup',
@@ -311,8 +318,9 @@ const EMPTY_MODEL: GettingStartedModel = {
  * Build the adaptive "Getting started" model. The instance section shows only
  * for admins and only while the instance onboarding is unfinished and not
  * dismissed; the personal section shows for anyone whose personal checklist is
- * unfinished and not dismissed. The card is visible when either section has
- * content, and the dismissal scope is the union of the active sections.
+ * unfinished and not dismissed. An explicit reopen shows both regardless. The
+ * card is visible when either section has content, and the dismissal scope is
+ * the union of the active sections.
  */
 export function buildGettingStarted(input: GettingStartedInput): GettingStartedModel {
 	if (input.isLoading) return EMPTY_MODEL;
@@ -320,8 +328,9 @@ export function buildGettingStarted(input: GettingStartedInput): GettingStartedM
 	const sections: GettingStartedSection[] = [];
 
 	// Instance go-live section — admins only.
+	const reopened = input.reopened === true;
 	const instanceActive =
-		input.role === 'admin' && !input.instanceDismissed && !input.instanceComplete;
+		input.role === 'admin' && (reopened || (!input.instanceDismissed && !input.instanceComplete));
 	if (instanceActive) {
 		// Lead with the one readiness step that defers both pre-send halves to the
 		// Delivery hub. It's done only when a transport AND a verified domain are
@@ -356,7 +365,7 @@ export function buildGettingStarted(input: GettingStartedInput): GettingStartedM
 	// A member is asked for their own three steps only; the rest of the personal
 	// list (AI provider, mailbox provisioning, the first test send) is an admin's.
 	const personalComplete = isChecklistComplete(input.mode, input.personalCompleted, input.role);
-	const personalActive = !input.userDismissed && !personalComplete;
+	const personalActive = reopened || (!input.userDismissed && !personalComplete);
 	if (personalActive) {
 		const steps: GettingStartedStep[] = visibleChecklistSteps(input.mode, input.role).map(
 			(step) => {

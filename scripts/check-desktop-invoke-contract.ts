@@ -51,6 +51,7 @@ import {
 	syntaxErrors,
 } from './desktop-invoke-scan';
 import { type CompiledSfc, compileSfc } from './desktop-invoke-vue';
+import { arrayOf, decodeJson, object, oneOf, optional, string } from './json';
 
 const REPOSITORY_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -177,6 +178,19 @@ const CORE_PLUGINS = new Set([
 	'window',
 ]);
 
+/** A Tauri capability file: each permission is an identifier or an object naming one. */
+const decodeCapability = object({
+	permissions: optional(
+		arrayOf(
+			oneOf<string | { identifier?: string }>(
+				'a permission identifier or an object with one',
+				string,
+				object({ identifier: optional(string) })
+			)
+		)
+	),
+});
+
 /** Every permission any capability file grants (release and dev). */
 async function capabilityPermissions(root: string): Promise<Set<string>> {
 	const permissions = new Set<string>();
@@ -188,9 +202,8 @@ async function capabilityPermissions(root: string): Promise<Set<string>> {
 			continue;
 		}
 		for (const name of names.filter((n) => n.endsWith('.json'))) {
-			const json = JSON.parse(await readFile(join(root, dir, name), 'utf8')) as {
-				permissions?: (string | { identifier?: string })[];
-			};
+			const path = join(dir, name);
+			const json = decodeJson(await readFile(join(root, path), 'utf8'), decodeCapability, path);
 			for (const entry of json.permissions ?? []) {
 				const id = typeof entry === 'string' ? entry : entry.identifier;
 				if (id) permissions.add(id);

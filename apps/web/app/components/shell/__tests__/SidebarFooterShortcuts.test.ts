@@ -3,11 +3,17 @@
  * Linux user used to be told ⌘J and ⌘⇧F, keys their keyboard does not have.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { enableAutoUnmount, mount } from '@vue/test-utils';
+import { mount } from '@vue/test-utils';
 import { ref } from 'vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+import { focusTooltip } from '~/__tests__/tooltip';
 import { applyShortcutPreferences, resetShortcutPreferences } from '~/utils/shortcutScope';
 import SidebarFooter from '../SidebarFooter.vue';
+
+const showChecklist = vi.hoisted(() => vi.fn(async () => {}));
+vi.mock('~/composables/useGettingStartedControls', () => ({
+	useGettingStartedControls: () => ({ showChecklist }),
+}));
 
 const MAC_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36';
 const WINDOWS_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
@@ -25,7 +31,6 @@ beforeEach(() => {
 		useKeyboardShortcuts: () => ({ openHelpModal: vi.fn() }),
 	});
 });
-enableAutoUnmount(afterEach);
 afterEach(() => {
 	delete (window.navigator as { userAgent?: string }).userAgent;
 	resetShortcutPreferences();
@@ -42,6 +47,7 @@ async function openMenu(userAgent: string) {
 			components: { NuxtLink: NuxtLinkStub },
 			stubs: { Icon: true, UiSkeleton: true, UiThemeToggle: true },
 		},
+		attachTo: document.body,
 	});
 	await wrapper.get('button[aria-haspopup="menu"]').trigger('click');
 	return wrapper;
@@ -56,16 +62,14 @@ describe('account menu shortcut hints', () => {
 		const wrapper = await openMenu(WINDOWS_UA);
 		expect(hints(wrapper)).toEqual(['Ctrl+J', 'Ctrl+Shift+F', '?']);
 		const settings = wrapper.get('a[href="/dashboard/preferences"]');
-		expect(settings.attributes('title')).toBe('Settings (Ctrl+,)');
+		expect(await focusTooltip(settings)).toBe('Settings Ctrl+,');
 		expect(settings.attributes('aria-keyshortcuts')).toBe('Control+,');
 	});
 
 	it('say ⌘ on a Mac, in the browser too', async () => {
 		const wrapper = await openMenu(MAC_UA);
 		expect(hints(wrapper)).toEqual(['⌘J', '⇧⌘F', '?']);
-		expect(wrapper.get('a[href="/dashboard/preferences"]').attributes('title')).toBe(
-			'Settings (⌘,)'
-		);
+		expect(await focusTooltip(wrapper.get('a[href="/dashboard/preferences"]'))).toBe('Settings ⌘,');
 	});
 
 	it('tell assistive tech the same keys', async () => {
@@ -75,6 +79,7 @@ describe('account menu shortcut hints', () => {
 			'Control+j',
 			'Control+Shift+F',
 			'?',
+			undefined,
 			undefined,
 		]);
 	});
@@ -87,7 +92,23 @@ describe('account menu shortcut hints', () => {
 		const wrapper = await openMenu(WINDOWS_UA);
 		expect(hints(wrapper)).toEqual(['Ctrl+U', 'Ctrl+Shift+F', '?']);
 		const settings = wrapper.get('a[href="/dashboard/preferences"]');
-		expect(settings.attributes('title')).toBe('Settings (Ctrl+.)');
+		expect(await focusTooltip(settings)).toBe('Settings Ctrl+.');
 		expect(settings.attributes('aria-keyshortcuts')).toBe('Control+.');
+	});
+});
+
+describe('account menu setup checklist', () => {
+	it('brings the checklist back and closes the menu', async () => {
+		showChecklist.mockClear();
+		const wrapper = await openMenu(WINDOWS_UA);
+		const item = wrapper
+			.findAll('[role="menuitem"]')
+			.find((el) => el.text() === 'Show setup checklist');
+		expect(item).toBeDefined();
+
+		await item!.trigger('click');
+
+		expect(showChecklist).toHaveBeenCalledTimes(1);
+		expect(wrapper.find('[role="menu"]').exists()).toBe(false);
 	});
 });

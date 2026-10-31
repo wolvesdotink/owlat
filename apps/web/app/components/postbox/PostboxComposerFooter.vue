@@ -7,6 +7,9 @@
  * and its own ⋯ items (the `menu` slot). Props only a mailbox draft uses are
  * optional.
  *
+ * A reply's Send is a split button (`sendActions`): Send does what the "after
+ * replying" setting says, its menu offers both ways (PostboxComposerSendButton).
+ *
  * Slots: `send-hint` (beside Send), `menu` (first in ⋯, receives `close`),
  * `notes` (under the pre-send checks). Both composers pass `savedReplies`, which
  * puts the saved-reply picker beside the paperclip.
@@ -20,6 +23,9 @@ import type { InlineImageSources } from '~/composables/postbox/usePostboxInlineI
 import SavedReplyComposerTools from '~/components/savedReply/SavedReplyComposerTools.vue';
 import type { PreflightFinding } from '~/utils/postboxPreflight';
 import { usePostboxInsertAvailability } from '~/composables/postbox/usePostboxInsertAvailability';
+import type { ComposerSendActions, PostboxAfterReply } from '~/utils/postboxAfterReply';
+import { POSTBOX_SEND_AND_LABELS } from '~/utils/postboxAfterReply';
+import PostboxComposerSendButton from './PostboxComposerSendButton.vue';
 
 const props = defineProps<{
 	/** What the composer's target allows; hides the controls it cannot use. */
@@ -36,6 +42,8 @@ const props = defineProps<{
 	isScheduled?: boolean;
 	sendShortcutHint?: string;
 	scheduleShortcutHint?: string;
+	/** A reply's two ways to send (keep in Inbox / mark done); unset is a plain Send. */
+	sendActions?: ComposerSendActions;
 	showSignaturePicker?: boolean;
 	signatures?: { _id: Id<'mailSignatures'>; name: string }[];
 	activeSignatureId?: Id<'mailSignatures'> | null;
@@ -74,7 +82,8 @@ const followUpRemindAt = defineModel<number | null>('followUpRemindAt', {
 const bodyHtml = defineModel<string>('bodyHtml', { default: '' });
 
 const emit = defineEmits<{
-	(e: 'send'): void;
+	/** `action`: a Send menu entry's explicit choice; the button sends none. */
+	(e: 'send', action?: PostboxAfterReply): void;
 	(e: 'schedule'): void;
 	(e: 'add-files', files: File[]): void;
 	(e: 'signature-change', event: Event): void;
@@ -105,12 +114,14 @@ const sendAsName = computed(() => {
 });
 
 // While an upload is in flight the Send button is disabled (canSend is false);
-// explain the wait in its tooltip instead of showing the keyboard hint.
-const sendTitle = computed(() =>
-	props.isUploading
-		? t('components.postbox.postboxComposerFooter.uploadingTitle')
-		: props.sendShortcutHint
-);
+// explain the wait in its tooltip instead of showing the keyboard hint. A
+// reply's Send says what it does with the conversation.
+const sendTitle = computed(() => {
+	if (props.isUploading) return t('components.postbox.postboxComposerFooter.uploadingTitle');
+	const actions = props.sendActions;
+	if (!actions) return props.sendShortcutHint;
+	return `${t(POSTBOX_SEND_AND_LABELS[actions.primary])} (${actions.chords[actions.primary]})`;
+});
 
 // The file input lives here alongside the attach button that triggers it; the
 // selected files are emitted to the composer, which owns the upload state. On
@@ -154,7 +165,7 @@ function onPickFiles(event: Event) {
 <template>
 	<footer class="px-3 py-2 border-t border-border-subtle flex flex-col gap-1.5">
 		<!-- Send, attach, schedule, the follow-up chip, ⋯ and the save state on
-		     one row (plan §04). It does not fit a phone (or the narrowest split
+		     one row. It does not fit a phone (or the narrowest split
 		     column) beside "Show quoted text" and the status: the status group
 		     wraps to its own line, right-aligned, instead of the buttons painting
 		     over it. Coach/Revise and Discard live in ⋯. -->
@@ -163,25 +174,15 @@ function onPickFiles(event: Event) {
 			data-testid="composer-footer-row"
 		>
 			<div class="flex items-center gap-2 min-w-0">
-				<UiButton
-					type="button"
-					class="shrink-0 whitespace-nowrap"
-					:title="sendTitle"
+				<PostboxComposerSendButton
 					:disabled="!canSend || sending || isScheduled"
-					data-testid="composer-send"
-					@click="emit('send')"
-				>
-					<Icon
-						v-if="sending"
-						name="lucide:loader-2"
-						class="w-4 h-4 mr-1.5 animate-spin motion-reduce:animate-none"
-					/>
-					<Icon v-else :name="sendIcon ?? 'lucide:send'" class="w-4 h-4 mr-1.5" />
-					{{
-						sendLabel ??
-						(sending ? t('components.postbox.postboxComposerFooter.sending') : t('common.send'))
-					}}
-				</UiButton>
+					:sending="sending"
+					:title="sendTitle"
+					:label="sendLabel"
+					:icon="sendIcon"
+					:actions="sendActions"
+					@send="(action) => emit('send', action)"
+				/>
 				<slot name="send-hint" />
 				<span
 					v-if="sendAsName"
@@ -193,15 +194,17 @@ function onPickFiles(event: Event) {
 				<!-- The composer uploads its own files only onto a draft row; a team
 				     reply's files go through the host's panel under the editor. -->
 				<template v-if="capabilities.attachments === 'draft'">
-					<UiButton
-						variant="ghost"
-						type="button"
-						class="shrink-0"
-						:title="t('components.postbox.postboxComposerFooter.attachFiles')"
-						@click="onAttachClick"
-					>
-						<Icon name="lucide:paperclip" class="w-4 h-4" />
-					</UiButton>
+					<UiTooltip :text="t('components.postbox.postboxComposerFooter.attachFiles')">
+						<UiButton
+							variant="ghost"
+							type="button"
+							class="shrink-0"
+							:aria-label="t('components.postbox.postboxComposerFooter.attachFiles')"
+							@click="onAttachClick"
+						>
+							<Icon name="lucide:paperclip" class="w-4 h-4" />
+						</UiButton>
+					</UiTooltip>
 					<!-- A proxy for the paperclip button above, opened by `.click()` and
 				     never seen or tabbed to. Out of the accessibility tree explicitly:
 				     `class="hidden"` is a stylesheet away from being an unlabelled,
@@ -218,19 +221,19 @@ function onPickFiles(event: Event) {
 				</template>
 				<SavedReplyComposerTools v-if="savedReplies" :api="savedReplies" />
 				<!-- Schedule and the follow-up chip sit on the row itself. -->
-				<UiButton
-					v-if="capabilities.schedule"
-					variant="ghost"
-					type="button"
-					class="shrink-0"
-					:title="scheduleShortcutHint"
-					:aria-label="t('components.postbox.postboxComposerFooter.scheduleSend')"
-					:disabled="!canSend || sending || isScheduled"
-					data-testid="composer-schedule"
-					@click="emit('schedule')"
-				>
-					<Icon name="lucide:clock" class="w-4 h-4" />
-				</UiButton>
+				<UiTooltip v-if="capabilities.schedule" :text="scheduleShortcutHint">
+					<UiButton
+						variant="ghost"
+						type="button"
+						class="shrink-0"
+						:aria-label="t('components.postbox.postboxComposerFooter.scheduleSend')"
+						:disabled="!canSend || sending || isScheduled"
+						data-testid="composer-schedule"
+						@click="emit('schedule')"
+					>
+						<Icon name="lucide:clock" class="w-4 h-4" />
+					</UiButton>
+				</UiTooltip>
 				<PostboxComposerFollowUp
 					v-if="capabilities.replyReminder"
 					v-model:remind-at="followUpRemindAt"
@@ -255,7 +258,7 @@ function onPickFiles(event: Event) {
 							<select
 								:value="activeSignatureId ?? ''"
 								:disabled="bodyPending"
-								class="ml-auto bg-bg-surface border border-border-subtle rounded px-1.5 py-1 text-xs outline-none"
+								class="input input-sm ml-auto w-auto"
 								:aria-label="t('components.postbox.postboxComposerFooter.signature')"
 								@change="emit('signature-change', $event)"
 							>

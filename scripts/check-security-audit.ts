@@ -8,8 +8,6 @@ export const ACKNOWLEDGED_ADVISORIES: Readonly<Record<string, string>> = Object.
 		'image-size@2.0.2 has no upstream release; patches/image-size@2.0.2.patch rejects zero, truncated, and non-advancing ICNS entries.',
 	'GHSA-5P2G-FCMC-QVQQ':
 		'image-size@2.0.2 has no upstream release; patches/image-size@2.0.2.patch rejects undersized and non-advancing HEIF/JXL boxes.',
-	'GHSA-86W9-CPQP-85RV':
-		'node-forge@1.4.0 has no upstream fix; it only reaches the dev server through listhen, which generates a self-signed certificate and never verifies an RSA signature. Drop this once node-forge ships a fix.',
 	'GHSA-VFJ7-8CJW-P6XM':
 		'braces@3.0.3 has no upstream fix; it only arrives through micromatch@4.0.8 at build time (nitropack via globby/fast-glob, @intlify/unplugin-vue-i18n via fast-glob, and the @nuxt/content module in apps/docs), which expand glob patterns from repository config, never request input. The apps/web Nitro output does not ship braces or micromatch, apps/docs and apps/marketing deploy as static files behind nginx, and no other workspace depends on it. Drop this once braces ships a fix.',
 	'GHSA-X6JW-M9V5-85VH': `simple-git@3.36.0 has no fixed 3.x release; ${SIMPLE_GIT_VIA_NUXT_DEVTOOLS}`,
@@ -60,7 +58,8 @@ export function classifyAuditJson(
 		parsed = JSON.parse(raw);
 	} catch (error) {
 		throw new Error(
-			`bun audit produced malformed JSON — failing closed: ${error instanceof Error ? error.message : String(error)}`
+			`bun audit produced malformed JSON — failing closed: ${error instanceof Error ? error.message : String(error)}`,
+			{ cause: error }
 		);
 	}
 	if (!isRecord(parsed)) {

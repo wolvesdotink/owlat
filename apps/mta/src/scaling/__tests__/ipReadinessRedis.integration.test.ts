@@ -1,8 +1,11 @@
-import { execFileSync } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
-import Redis from 'ioredis';
+import type Redis from 'ioredis';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { dockerRedisAvailable } from '../../__tests__/helpers/redisCluster.js';
+import {
+	startRedisStandaloneFixture,
+	stopRedisStandaloneFixture,
+	type RedisStandaloneFixture,
+} from '../../__tests__/helpers/redisStandalone.js';
 import type { MtaConfig } from '../../config.js';
 import { queueConvexWebhook } from '../../webhooks/convexNotifier.js';
 import {
@@ -21,44 +24,14 @@ vi.mock('../../webhooks/convexNotifier.js', () => ({
 }));
 
 describe.runIf(dockerRedisAvailable())('IP readiness atomicity on standalone Redis', () => {
-	const port = 19_000 + Math.floor(Math.random() * 1_000);
-	const container = `owlat-ip-readiness-${randomUUID().slice(0, 8)}`;
 	const ip = '2001:db8::10';
+	let fixture: RedisStandaloneFixture | undefined;
 	let redis: Redis;
 
 	beforeAll(async () => {
-		execFileSync(
-			'docker',
-			[
-				'run',
-				'-d',
-				'--rm',
-				'--network',
-				'host',
-				'--name',
-				container,
-				'redis:7-alpine',
-				'redis-server',
-				'--port',
-				String(port),
-				'--appendonly',
-				'no',
-				'--protected-mode',
-				'no',
-			],
-			{ stdio: 'ignore' }
-		);
-		redis = new Redis(port, '127.0.0.1', { lazyConnect: true, maxRetriesPerRequest: 1 });
-		for (let attempt = 0; attempt < 30; attempt++) {
-			try {
-				await redis.connect();
-				break;
-			} catch {
-				await new Promise((resolve) => setTimeout(resolve, 100));
-			}
-		}
-		await redis.ping();
-	}, 15_000);
+		fixture = await startRedisStandaloneFixture('ip-readiness');
+		redis = fixture.client;
+	});
 
 	beforeEach(async () => {
 		await redis.flushall();
@@ -66,12 +39,7 @@ describe.runIf(dockerRedisAvailable())('IP readiness atomicity on standalone Red
 	});
 
 	afterAll(async () => {
-		await redis?.quit();
-		try {
-			execFileSync('docker', ['rm', '-f', container], { stdio: 'ignore' });
-		} catch {
-			// Container may already have exited; --rm handled it.
-		}
+		await stopRedisStandaloneFixture(fixture);
 	});
 
 	it('atomically emits one pending marker across racing generation-CAS blocks', async () => {
@@ -128,61 +96,102 @@ describe.runIf(dockerRedisAvailable())('IP readiness atomicity on standalone Red
 		}
 	}
 
-	it('fairly drains 50k markers across empty pages, restart, additions, and concurrent flushers', async () => {
-		const initialMarkerCount = 50_000;
-		const addedMarkerCount = 137;
-		await seedMarkers(1, initialMarkerCount);
+	/** One HSCAN a flusher sent: the cursor it started from and the one Redis returned. */
+	interface ScanPage {
+		from: string;
+		next: string;
+	}
 
-		const countBeforeDrain = await redis.hlen(IP_READINESS_ALERTS_PENDING);
-		let injectedEmptyPage = false;
-		const redisWithEmptyPage = new Proxy(redis, {
+	/**
+	 * `client` with every HSCAN recorded into `pages`. With `emptyFirstPage`, the
+	 * first scan answers an empty page with a non-zero cursor, which Redis may do
+	 * on any sparse hash table.
+	 */
+	function recordingScans(client: Redis, pages: ScanPage[], emptyFirstPage = false): Redis {
+		let injectEmptyPage = emptyFirstPage;
+		return new Proxy(client, {
 			get(target, property, receiver) {
 				if (property === 'hscan') {
 					return async (...args: Parameters<Redis['hscan']>) => {
-						if (!injectedEmptyPage) {
-							injectedEmptyPage = true;
-							return ['1', []] as [string, string[]];
-						}
-						return await target.hscan(...args);
+						const page: [string, string[]] = injectEmptyPage
+							? ['1', []]
+							: await target.hscan(...args);
+						injectEmptyPage = false;
+						pages.push({ from: String(args[1]), next: page[0] });
+						return page;
 					};
 				}
 				const value: unknown = Reflect.get(target, property, receiver);
 				return typeof value === 'function' ? value.bind(target) : value;
 			},
 		});
+	}
+
+	// Each marker value is longer than Redis's 64-byte `hash-max-listpack-value`,
+	// so the pending hash is a hash table at any field count (the encoding
+	// assertion below pins this): HSCAN pages through it and the drain's deletes
+	// shrink it mid-scan. A flusher that restarted its scan from cursor 0 would
+	// rescan an ever longer drained prefix; on a large enough hash its page limit
+	// runs out before it reaches a marker and the backlog stalls. The recorded
+	// cursors prove the resumption directly, at any size.
+	it('drains a paged hash in cursor order across empty pages, restart, additions, and concurrent flushers', async () => {
+		const initialMarkerCount = 300;
+		const addedMarkerCount = 137;
+		await seedMarkers(1, initialMarkerCount);
+		expect(await redis.object('ENCODING', IP_READINESS_ALERTS_PENDING)).toBe('hashtable');
+
+		const pages: ScanPage[] = [];
 		expect(
-			await flushPendingIpReadinessAlerts(redisWithEmptyPage, {} as MtaConfig)
+			await flushPendingIpReadinessAlerts(recordingScans(redis, pages, true), {} as MtaConfig)
 		).toBeLessThanOrEqual(IP_READINESS_ALERT_FLUSH_BATCH_SIZE);
-		expect(injectedEmptyPage).toBe(true);
-		expect(await redis.hget(IP_READINESS_ALERT_SCAN_STATE, 'cursor')).not.toBe('1');
+		// The empty page neither ended the pass nor reset the cursor.
+		expect(pages[0]).toEqual({ from: '0', next: '1' });
+		expect(pages[1]?.from).toBe('1');
+		expect(await redis.hget(IP_READINESS_ALERT_SCAN_STATE, 'cursor')).toBe(pages.at(-1)!.next);
 
 		// Simulate a process restart: the new client has no in-memory scan state.
+		const restarted = redis.duplicate();
 		await redis.quit();
-		redis = new Redis(port, '127.0.0.1', { maxRetriesPerRequest: 1 });
+		redis = restarted;
+		// Teardown quits the fixture's client, which is now the restarted one.
+		fixture!.client = restarted;
 		await redis.ping();
 		const persistedCursor = await redis.hget(IP_READINESS_ALERT_SCAN_STATE, 'cursor');
 		expect(persistedCursor).toMatch(/^\d+$/);
 
 		await seedMarkers(initialMarkerCount + 1, initialMarkerCount + addedMarkerCount);
-		let invocations = 0;
-		while ((await redis.hlen(IP_READINESS_ALERTS_PENDING)) > 0 && invocations < 2_000) {
+		const remaining = await redis.hlen(IP_READINESS_ALERTS_PENDING);
+		const flusher = recordingScans(redis, pages);
+		// Each pass that holds the lock queues up to one batch, so a fair drain
+		// needs about one pass per batch; twice that allows for passes that only
+		// cross empty pages, and a stalled scan exceeds it.
+		const passLimit = 2 * Math.ceil(remaining / IP_READINESS_ALERT_FLUSH_BATCH_SIZE);
+		let passes = 0;
+		while ((await redis.hlen(IP_READINESS_ALERTS_PENDING)) > 0 && passes <= passLimit) {
 			const results =
-				invocations % 7 === 0
+				passes % 7 === 0
 					? await Promise.all([
-							flushPendingIpReadinessAlerts(redis, {} as MtaConfig),
-							flushPendingIpReadinessAlerts(redis, {} as MtaConfig),
-							flushPendingIpReadinessAlerts(redis, {} as MtaConfig),
+							flushPendingIpReadinessAlerts(flusher, {} as MtaConfig),
+							flushPendingIpReadinessAlerts(flusher, {} as MtaConfig),
+							flushPendingIpReadinessAlerts(flusher, {} as MtaConfig),
 						])
-					: [await flushPendingIpReadinessAlerts(redis, {} as MtaConfig)];
+					: [await flushPendingIpReadinessAlerts(flusher, {} as MtaConfig)];
 			expect(results.every((processed) => processed <= IP_READINESS_ALERT_FLUSH_BATCH_SIZE)).toBe(
 				true
 			);
-			invocations += 1;
+			passes += 1;
 		}
-		expect(invocations).toBeLessThan(2_000);
+		expect(passes).toBeLessThanOrEqual(passLimit);
 		expect(await redis.hlen(IP_READINESS_ALERTS_PENDING)).toBe(0);
+		// Every page started where the one before it ended: across passes, the
+		// restart and the concurrent flushers, the scan never went back to 0
+		// before Redis said a full iteration was done.
+		const restartedFrom = pages.findIndex(
+			(page, index) => index > 0 && page.from !== pages[index - 1]!.next
+		);
+		expect(restartedFrom).toBe(-1);
 		const ids = vi.mocked(queueConvexWebhook).mock.calls.map((call) => call[3]);
-		expect(ids).toHaveLength(countBeforeDrain + addedMarkerCount);
+		expect(ids).toHaveLength(initialMarkerCount + addedMarkerCount);
 		expect(new Set(ids).size).toBe(ids.length);
-	}, 120_000);
+	});
 });

@@ -1,5 +1,5 @@
 /**
- * The composer's view of the files its draft owes (#1257): an RSVP's generated
+ * The composer's view of the files its draft owes: an RSVP's generated
  * `.ics`, a forward's attachments. The draft row is the record
  * (`mail/draftExpectedAttachments.ts` on the server), so every tab that shows
  * the draft agrees on what is still owed:

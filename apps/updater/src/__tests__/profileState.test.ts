@@ -3,6 +3,7 @@ import { createServer, type Server } from 'node:http';
 import { mkdtempSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type * as Security from '../security.js';
 
 /**
  * GET /profile-state — the read-only half of the profile control plane (plan
@@ -34,7 +35,7 @@ function commandLines(): string[] {
 }
 
 vi.mock('../security.js', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../security.js')>();
+	const actual = await importOriginal<typeof Security>();
 	return { ...actual, isRateLimited: rateLimitedMock };
 });
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { detectExactWording } from '../exactWordingDetector';
+import { wordingBait } from './hostileRegexInputs';
 
 const kinds = (text: string, subject?: string) =>
 	detectExactWording({ text, ...(subject !== undefined ? { subject } : {}) });
@@ -87,10 +88,18 @@ describe('detectExactWording: negatives', () => {
 		expect(kinds('Bitteüberweisen')).toEqual([]);
 	});
 
-	it('stays fast on long adversarial input', () => {
-		const text = `${'A1'.repeat(50_000)} ${'DE00 '.repeat(20_000)} ${'notice of '.repeat(5000)}`;
-		const start = performance.now();
-		detectExactWording({ text });
-		expect(performance.now() - start).toBeLessThan(500);
+	it('reads only the first 20,000 characters of a long body', () => {
+		// The patterns' time on bait is reported by `bun run perf:bench` (family
+		// shared-regex-scaling); what holds here is that a body never feeds them
+		// more than the cap, however long it is.
+		const iban = 'DE89 3704 0044 0532 0130 00';
+		const bait = wordingBait(5_000);
+		expect(bait.length).toBeGreaterThan(20_000);
+		expect(detectExactWording({ text: bait })).toEqual([]);
+		// An IBAN that ends at the cap is read; one character later it is cut.
+		const endingAt = (end: number) => `${'x'.repeat(end - iban.length - 1)} ${iban}`;
+		expect(endingAt(20_000)).toHaveLength(20_000);
+		expect(kinds(endingAt(20_000))).toEqual(['payment_details']);
+		expect(kinds(`${endingAt(20_001)}${bait}`)).toEqual([]);
 	});
 });

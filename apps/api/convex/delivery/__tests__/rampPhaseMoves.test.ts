@@ -1,9 +1,9 @@
 /**
- * A PHASE CEILING RISES ONE WAY ONLY (plan D3, D12).
+ * A PHASE CEILING RISES ONE WAY ONLY.
  *
  * The rung is the biggest lever on the ramp: it bounds what the AIMD ladder may
  * climb to, and moving it re-shuffles which arm EVERY recipient of the cell
- * lands in. Plan D3 guards it with a table of evidence routes — an external
+ * lands in. It is guarded with a table of evidence routes — an external
  * reading for the cell, or four corroborating self-hosted conditions — and a
  * gate that guards one of two doors is not a gate. So this suite pins the shape
  * rather than only the arithmetic:
@@ -23,6 +23,7 @@
 
 import { convexTest } from 'convex-test';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type * as SessionOrganization from '../../lib/sessionOrganization';
 import schema from '../../schema';
 import { api } from '../../_generated/api';
 import { modules } from '../../__tests__/testModules';
@@ -42,7 +43,7 @@ const HOUR_MS = 60 * 60 * 1000;
 const session = vi.hoisted(() => ({ organizationId: 'org_ramp_phase_moves', isAdmin: true }));
 
 vi.mock('../../lib/sessionOrganization', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../../lib/sessionOrganization')>();
+	const actual = await importOriginal<typeof SessionOrganization>();
 	return {
 		...actual,
 		getSingletonOrganizationId: vi.fn(async () => session.organizationId),
@@ -159,7 +160,7 @@ describe('reset-to-phase is downward-only', () => {
 });
 
 /**
- * A RUNG BOUNDS THE SHARE DIAL, SO IT BOUNDS ONLY A CELL THAT HAS ONE (plan D3).
+ * A RUNG BOUNDS THE SHARE DIAL, SO IT BOUNDS ONLY A CELL THAT HAS ONE.
  *
  * STANDALONE MEANS NO SECOND SENDER AT ALL, and both halves of that are stated
  * here: no `providerRoutes` relay and no `EMAIL_PROVIDER` naming one (asserted
@@ -285,7 +286,7 @@ describe('a reset where there is no second sender', () => {
 
 /**
  * A CONFIGURED RELAY IS A SECOND SENDER EVEN WITH NOTHING FLOWING THROUGH IT
- * (plan D14 x D3) — and this is the cell the control exists for.
+ * — and this is the cell the control exists for.
  *
  * A GRADUATED cell sits at full share with the relay on standby, so by
  * construction it produces no reference-arm outcomes at all. A door that asked
@@ -408,7 +409,7 @@ describe('promotion is the upward door', () => {
 		const row = await readManagedCell(t);
 		expect(row?.phaseCeiling).toBe(0.5);
 		expect(row?.phaseCeilingSince).toBeGreaterThan(0);
-		// A promotion IS a new mix generation (plan D7).
+		// A promotion IS a new mix generation.
 		expect(row?.mixVersion).toBe(3);
 		// IT MOVES THE CEILING, NOT THE SHARE: the share still has to earn each step.
 		expect(row?.ownShare).toBe(0.2);
@@ -431,7 +432,7 @@ describe('promotion is the upward door', () => {
 		expect(result.refusal).toBe('promotion_evidence_outstanding');
 		expect(result.phaseCeiling).toBe(0.5);
 		// Every applicable route's unmet conditions come back BY NAME so the screen
-		// can say what would unlock the rung (plan D12/D14).
+		// can say what would unlock the rung.
 		expect(result.outstanding).toContain('google_compliance_pass');
 		expect(result.outstanding).toContain('dnsbl_clean_streak');
 		expect((await readManagedCell(t))?.phaseCeiling).toBe(0.5);
@@ -598,7 +599,7 @@ describe('a rung that is not on the ladder', () => {
  *
  * This case used to run through `rampControllerCron.promoteRampPhase`, a second
  * internalMutation entry over the same rule that no cron registered and no
- * module called. It was removed under D20, and the four cases it flattened —
+ * module called. It does not exist, and the four cases it would flatten —
  * the refusals, the top rung, the outstanding evidence — are all pinned through
  * the operator's door above; only the rule's own silence about the actor needed
  * a home of its own.
@@ -627,7 +628,7 @@ describe('the shared rule writes the row and leaves the audit to its caller', ()
 		expect(row?.phaseCeilingSince).toBeGreaterThanOrEqual(before);
 		// A promotion IS a new mix generation on the ESP path.
 		expect(row?.mixVersion).toBe(3);
-		// THE POINT: the rule attributes nothing, so the D12 pair is the caller's to
+		// THE POINT: the rule attributes nothing, so the audit pair is the caller's to
 		// write. `promoteCellPhase` writes it; a caller that forgot to would leave the
 		// cell's timeline showing an unexplained jump in its ceiling.
 		expect(await auditActions(t)).toHaveLength(0);

@@ -23,6 +23,10 @@ import { MAIL_CATEGORY_META } from '~/utils/mailCategory';
 import { senderRowMarkerOf } from '~/utils/senderAuth';
 import { usePostboxListNow } from '~/composables/postbox/usePostboxListClock';
 import { provideBriefLines } from '~/composables/postbox/usePostboxBriefLines';
+import { usePostboxPinRowDrag } from '~/composables/postbox/usePostboxMessageDrag';
+import { vReplyDrop } from '~/composables/useReplyFileDrop';
+import { replyDropForMessage } from '~/utils/replyFileDrop';
+import { folderAnswerOrigin, useListAnswerOrigin } from '~/composables/useAnswerMode';
 
 const props = defineProps<{
 	entries: Array<PostboxFeedEntry<PostboxThreadRowMessage>>;
@@ -47,6 +51,8 @@ const { t } = useI18n();
 // The viewer's brief preference for every row (no AI lines when it is off).
 provideBriefLines(usePostboxSettings().autoSummarize);
 usePostboxListNow(); // one minute clock for every row's timestamp
+// A message row drags its conversation onto the Inbox's pinned band.
+const pinDrag = usePostboxPinRowDrag();
 
 // The sender-trust marker gate, resolved once for the list (not per row).
 const { isEnabled } = useFeatureFlag();
@@ -68,8 +74,14 @@ const navigableMessages = computed(() =>
 	)
 );
 
-// Previous/next in Zen walk the same order.
+// Previous/next in Zen walk the same order, and so does a reply marked done
+// that was opened from here.
 defineExpose({ visibleIds: computed(() => navigableMessages.value.map((m) => String(m._id))) });
+useListAnswerOrigin({
+	rows: () =>
+		navigableMessages.value.map((m) => ({ id: String(m._id), threadId: m.threadId ?? null })),
+	origin: () => folderAnswerOrigin(props.folderRole, props.activeMessageId),
+});
 
 const { focusedIndex, activeId, onKeydown } = usePostboxListKeyboard({
 	items: navigableMessages,
@@ -118,7 +130,9 @@ function focusIndexOf(messageId: string): number {
 					:class="{ 'pbx-row-danger': isDanger(entry.message) }"
 				>
 					<NuxtLink
+						v-bind="pinDrag.source(String(entry.message._id), entry.message.subject)"
 						:id="`postbox-bundled-${String(entry.message._id)}`"
+						v-reply-drop="replyDropForMessage(entry.message, folderRole)"
 						role="option"
 						:aria-selected="focusedIndex === focusIndexOf(String(entry.message._id))"
 						:to="messageTo(entry.message)"
@@ -171,22 +185,25 @@ function focusIndexOf(messageId: string): number {
 						<!-- Unsubscribe only where a batch can actually perform it: a
 						     sender with a plain web page needs a human on that page, and
 						     offering it here would be a promise this row cannot keep. -->
-						<button
+						<UiTooltip
 							v-if="bundleOneClickSenders(entry.messages).length > 0"
-							type="button"
-							class="flex-shrink-0 rounded px-2 py-1 text-xs text-text-tertiary hover:text-text-primary hover:bg-bg-elevated outline-none focus-visible:ring-1 focus-visible:ring-brand/50 disabled:opacity-50"
-							:disabled="busy"
-							:title="t('components.postbox.postboxThreadBundleList.unsubscribeHint')"
-							@click="
-								emit(
-									'unsubscribe-bundle',
-									bundleOneClickSenders(entry.messages),
-									bundleMessageIds(entry.messages)
-								)
-							"
+							:text="t('components.postbox.postboxThreadBundleList.unsubscribeHint')"
 						>
-							{{ t('components.postbox.postboxThreadBundleList.unsubscribe') }}
-						</button>
+							<button
+								type="button"
+								class="flex-shrink-0 rounded px-2 py-1 text-xs text-text-tertiary hover:text-text-primary hover:bg-bg-elevated outline-none focus-visible:ring-1 focus-visible:ring-brand/50 disabled:opacity-50"
+								:disabled="busy"
+								@click="
+									emit(
+										'unsubscribe-bundle',
+										bundleOneClickSenders(entry.messages),
+										bundleMessageIds(entry.messages)
+									)
+								"
+							>
+								{{ t('components.postbox.postboxThreadBundleList.unsubscribe') }}
+							</button>
+						</UiTooltip>
 						<button
 							type="button"
 							class="flex-shrink-0 rounded px-2 py-1 text-xs text-text-tertiary hover:text-text-primary hover:bg-bg-elevated outline-none focus-visible:ring-1 focus-visible:ring-brand/50 disabled:opacity-50"
@@ -211,7 +228,9 @@ function focusIndexOf(messageId: string): number {
 							:class="{ 'pbx-row-danger': isDanger(message) }"
 						>
 							<NuxtLink
+								v-bind="pinDrag.source(String(message._id), message.subject)"
 								:id="`postbox-bundled-${String(message._id)}`"
+								v-reply-drop="replyDropForMessage(message, folderRole)"
 								role="option"
 								:aria-selected="focusedIndex === focusIndexOf(String(message._id))"
 								:to="messageTo(message)"

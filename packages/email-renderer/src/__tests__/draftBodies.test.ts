@@ -84,6 +84,44 @@ describe('renderDraftBodies', () => {
 		expect(bodies.text).toContain('Fallback body');
 	});
 
+	it.each([
+		['null', 'null'],
+		['an object', '{"blocks":[]}'],
+		['a string', '"<p>Design</p>"'],
+		['an entry that is not an object', '["text"]'],
+		['an entry without a type', '[{"id":"a","content":{"html":"<p>Design</p>"}}]'],
+		['an entry with a numeric type', '[{"id":"a","type":3,"content":{}}]'],
+		['an entry without content', '[{"id":"a","type":"text"}]'],
+		['an entry whose content is a list', '[{"id":"a","type":"text","content":["x"]}]'],
+	])('falls back to bodyHtml and reports blocks holding %s', (_name, bodyBlocks) => {
+		const onBlockParseError = vi.fn();
+		const bodies = renderDraftBodies(
+			{ composerMode: 'full', bodyBlocks, bodyHtml: '<p>Fallback body</p>' },
+			{ onBlockParseError }
+		);
+		expect(onBlockParseError).toHaveBeenCalledOnce();
+		expect(bodies.html).toContain('Fallback body');
+		expect(bodies.text).toContain('Fallback body');
+	});
+
+	it('renders Blocks without an id and of a type no module renders', () => {
+		const onBlockParseError = vi.fn();
+		const bodies = renderDraftBodies(
+			{
+				composerMode: 'full',
+				bodyBlocks: JSON.stringify([
+					{ type: 'text', content: { html: '<p>Legacy without id</p>' } },
+					{ id: 'p', type: 'plugin.unknown-block', content: {} },
+				]),
+				bodyHtml: '<p>Fallback body</p>',
+			},
+			{ onBlockParseError }
+		);
+		expect(onBlockParseError).not.toHaveBeenCalled();
+		expect(bodies.html).toContain('Legacy without id');
+		expect(bodies.html).not.toContain('Fallback body');
+	});
+
 	it('treats an empty designer as simple mode rather than rendering nothing', () => {
 		const bodies = renderDraftBodies({
 			composerMode: 'full',

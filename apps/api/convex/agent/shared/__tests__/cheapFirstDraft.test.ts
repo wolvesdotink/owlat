@@ -1,5 +1,5 @@
 /**
- * The cheap-first writer (plan Phase 4, D2) end to end through the real meter,
+ * The cheap-first writer end to end through the real meter,
  * dispatch, self-check, admission and ledger mutations (a convex-test
  * instance behind an action ctx). The SDK is scripted per model.
  *
@@ -323,7 +323,7 @@ describe('runSharedDraft with the cheap-first writer', () => {
 		expect((await rows(t)).filter((row) => row.modelUsed === 'gpt-4o')).toHaveLength(3);
 	});
 
-	it('refuses before any request when the whole path does not fit (D1)', async () => {
+	it('refuses before any request when the whole path does not fit', async () => {
 		const { t, ctx } = await setup('0.0001');
 		provider({ fast: [reply('ok.')] });
 

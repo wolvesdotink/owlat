@@ -579,3 +579,55 @@ describe('useEditorDirtyTracking change signals', () => {
 		expect(editor.hasChanges.value).toBe(false);
 	});
 });
+
+describe('useEditorDirtyTracking while another owner holds the draft', () => {
+	function setupOwned(initial: Row) {
+		const owned = ref(true);
+		const source = ref<Row | null>(initial);
+		const name = ref('');
+		const initialize = vi.fn((row: Row) => {
+			name.value = row.name;
+		});
+		const tracker = useEditorDirtyTracking({
+			source,
+			initialize,
+			watchSources: [() => name.value],
+			revision: (row) => row.contentRevision ?? 0,
+			active: () => !owned.value,
+		});
+		return { owned, source, name, initialize, ...tracker };
+	}
+
+	it('loads the first row, then only notes rows and counts no edits', async () => {
+		const editor = setupOwned({ _id: 't1', name: 'Loaded', contentRevision: 3 });
+		await settle();
+		expect(editor.name.value).toBe('Loaded');
+		editor.name.value = 'Edited by the other owner';
+		await nextTick();
+		expect(editor.hasChanges.value).toBe(false);
+		editor.source.value = { _id: 't1', name: 'Newer', contentRevision: 4 };
+		await settle();
+		expect(editor.initialize).toHaveBeenCalledOnce();
+		expect(editor.name.value).toBe('Edited by the other owner');
+	});
+
+	it('takes the draft back on its base, dirty when the other owner had unsaved work', async () => {
+		const editor = setupOwned({ _id: 't1', name: 'Loaded', contentRevision: 3 });
+		await settle();
+		editor.name.value = 'Unsaved';
+		await nextTick();
+		editor.owned.value = false;
+		editor.resume({ _id: 't1', name: 'Loaded', contentRevision: 3 }, true);
+		expect(editor.hasChanges.value).toBe(true);
+		expect(editor.beginSubmit().revision).toBe(3);
+		// A newer row does not replace the unsaved draft…
+		editor.source.value = { _id: 't1', name: 'Theirs', contentRevision: 4 };
+		await settle();
+		expect(editor.name.value).toBe('Unsaved');
+		// …and a clean hand-back follows the server again.
+		editor.resume(null, false);
+		editor.source.value = { _id: 't1', name: 'Theirs again', contentRevision: 5 };
+		await settle();
+		expect(editor.name.value).toBe('Theirs again');
+	});
+});

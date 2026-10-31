@@ -1,6 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { checkSafeBrowsing, normalizeUrl, hashUrl } from '../urls/safeBrowsing.js';
-import { InMemoryUrlCache, isExpired, createCachedVerdict, CLEAN_TTL_MS, FLAGGED_TTL_MS } from '../urls/cache.js';
+import {
+	InMemoryUrlCache,
+	isExpired,
+	createCachedVerdict,
+	CLEAN_TTL_MS,
+	FLAGGED_TTL_MS,
+} from '../urls/cache.js';
 import { checkUrlReputation, urlReputationToFlags } from '../urls/index.js';
 
 describe('URL reputation checking', () => {
@@ -118,15 +124,18 @@ describe('URL reputation checking', () => {
 		it('returns malicious for flagged URLs', async () => {
 			globalThis.fetch = vi.fn().mockResolvedValue({
 				ok: true,
-				json: () => Promise.resolve({
-					matches: [{
-						threatType: 'SOCIAL_ENGINEERING',
-						platformType: 'ANY_PLATFORM',
-						threat: { url: 'https://phishing-site.com' },
-						cacheDuration: '300s',
-						threatEntryType: 'URL',
-					}],
-				}),
+				json: () =>
+					Promise.resolve({
+						matches: [
+							{
+								threatType: 'SOCIAL_ENGINEERING',
+								platformType: 'ANY_PLATFORM',
+								threat: { url: 'https://phishing-site.com' },
+								cacheDuration: '300s',
+								threatEntryType: 'URL',
+							},
+						],
+					}),
 			});
 
 			const results = await checkSafeBrowsing(['https://phishing-site.com'], 'test-key');
@@ -142,19 +151,66 @@ describe('URL reputation checking', () => {
 				text: () => Promise.resolve('Forbidden'),
 			});
 
-			await expect(checkSafeBrowsing(['https://example.com'], 'bad-key'))
-				.rejects.toThrow('Safe Browsing API error: 403');
+			await expect(checkSafeBrowsing(['https://example.com'], 'bad-key')).rejects.toThrow(
+				'Safe Browsing API error: 403'
+			);
+		});
+
+		const match = {
+			threatType: 'MALWARE',
+			platformType: 'ANY_PLATFORM',
+			threat: { url: 'https://evil.example' },
+			cacheDuration: '300s',
+			threatEntryType: 'URL',
+		};
+
+		it.each([
+			['null', null],
+			['a string', 'clean'],
+			['a list', []],
+			['matches that are not a list', { matches: { 0: match } }],
+			['a match without a threat type', { matches: [{ ...match, threatType: undefined }] }],
+			['a match without a threat', { matches: [{ ...match, threat: null }] }],
+			['a match whose threat url is not text', { matches: [{ ...match, threat: { url: 5 } }] }],
+			['a match that is not an object', { matches: [match, 'MALWARE'] }],
+		])('throws instead of reporting clean for an answer with %s', async (_name, answer) => {
+			globalThis.fetch = vi
+				.fn()
+				.mockResolvedValue({ ok: true, json: () => Promise.resolve(answer) });
+
+			await expect(checkSafeBrowsing(['https://evil.example'], 'test-key')).rejects.toThrow(
+				/Safe Browsing API answered/
+			);
+		});
+
+		it('caches nothing as clean when the answer cannot be read', async () => {
+			globalThis.fetch = vi
+				.fn()
+				.mockResolvedValue({ ok: true, json: () => Promise.resolve('clean') });
+			const cache = new InMemoryUrlCache();
+			const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+			await checkUrlReputation('<a href="https://evil.example">x</a>', {
+				apiKey: 'test-key',
+				cache,
+			});
+
+			expect(await cache.get(await hashUrl('https://evil.example'))).toBeNull();
+			expect(warn).toHaveBeenCalledWith(expect.stringContaining('Safe Browsing API check failed'));
+			warn.mockRestore();
 		});
 	});
 
 	describe('urlReputationToFlags', () => {
 		it('creates high-severity flag for malicious URLs', () => {
-			const flags = urlReputationToFlags([{
-				url: 'https://evil.com',
-				verdict: 'malicious',
-				source: 'google_safe_browsing',
-				threats: ['MALWARE'],
-			}]);
+			const flags = urlReputationToFlags([
+				{
+					url: 'https://evil.com',
+					verdict: 'malicious',
+					source: 'google_safe_browsing',
+					threats: ['MALWARE'],
+				},
+			]);
 
 			expect(flags).toHaveLength(1);
 			expect(flags[0]!.type).toBe('malicious_url');
@@ -162,23 +218,27 @@ describe('URL reputation checking', () => {
 		});
 
 		it('creates medium-severity flag for suspicious URLs', () => {
-			const flags = urlReputationToFlags([{
-				url: 'https://sketchy.com',
-				verdict: 'suspicious',
-				source: 'google_safe_browsing',
-				threats: ['UNWANTED_SOFTWARE'],
-			}]);
+			const flags = urlReputationToFlags([
+				{
+					url: 'https://sketchy.com',
+					verdict: 'suspicious',
+					source: 'google_safe_browsing',
+					threats: ['UNWANTED_SOFTWARE'],
+				},
+			]);
 
 			expect(flags).toHaveLength(1);
 			expect(flags[0]!.severity).toBe('medium');
 		});
 
 		it('returns empty for safe URLs', () => {
-			const flags = urlReputationToFlags([{
-				url: 'https://safe.com',
-				verdict: 'safe',
-				source: 'google_safe_browsing',
-			}]);
+			const flags = urlReputationToFlags([
+				{
+					url: 'https://safe.com',
+					verdict: 'safe',
+					source: 'google_safe_browsing',
+				},
+			]);
 
 			expect(flags).toHaveLength(0);
 		});
@@ -207,10 +267,9 @@ describe('URL reputation checking', () => {
 		});
 
 		it('returns empty for HTML with no links', async () => {
-			const results = await checkUrlReputation(
-				'<html><body><p>No links here</p></body></html>',
-				{ apiKey: 'test-key' }
-			);
+			const results = await checkUrlReputation('<html><body><p>No links here</p></body></html>', {
+				apiKey: 'test-key',
+			});
 
 			expect(results).toHaveLength(0);
 		});

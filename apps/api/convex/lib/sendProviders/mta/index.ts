@@ -17,12 +17,7 @@ import {
 	type MtaRoutingDecision,
 	type MtaRoutingDecisionRequest,
 } from '@owlat/mta-protocol/routingDecision';
-import {
-	isMtaSendErrorCode,
-	type MtaSendAccepted,
-	type MtaSendRefused,
-	type MtaSendRequestDraft,
-} from '@owlat/mta-protocol/send';
+import { isMtaSendErrorCode, type MtaSendRequestDraft } from '@owlat/mta-protocol/send';
 import {
 	EmailErrorCode,
 	httpStatusToErrorCode,
@@ -36,6 +31,7 @@ import {
 } from '../types';
 import { clampRetryAfterMs, LOCAL_DEFER_MS } from '../errors';
 import { decodeMtaRefusal, mtaConflictOf } from './refusal';
+import { readMtaSendAnswer } from './answer';
 import { bytesToBase64 } from '../../bytes';
 import { sendProviderCatalogEntry } from '../catalog';
 import { transportEnvOptional } from '../transportEnv';
@@ -53,7 +49,7 @@ const MTA_DECISION_TIMEOUT_MS = 5_000;
  * presenting one server's decision to another. The caller passes the transport
  * it is about to send through.
  *
- * `input` IS the request body, typed against its one declaration (D7) rather
+ * `input` IS the request body, typed against its one declaration rather
  * than restated field by field: the MTA's `validRequest` checks an EXACT key
  * list, so a field added to `MtaRoutingDecisionRequest` and honoured there while
  * this producer still emitted the old body would be answered 400 — and a 400 is
@@ -256,7 +252,7 @@ export const mtaSendProvider: SendProviderModule<'mta'> = {
 
 		const fromDomain = extractDomainOrNull(params.from) ?? '';
 
-		// The intake wire, typed against its one declaration (D7). Every key here
+		// The intake wire, typed against its one declaration. Every key here
 		// is a field the MTA's handler reads off `MtaSendRequest`; `JSON.stringify`
 		// drops the undefined ones exactly as it always has, so the bytes are
 		// unchanged and a field renamed on either side no longer compiles on both.
@@ -339,22 +335,23 @@ export const mtaSendProvider: SendProviderModule<'mta'> = {
 				};
 			}
 
-			// Read through a PARTIAL of both answer shapes rather than narrowing the
-			// union with `in`. `in` THROWS on a primitive right-hand side, so a 2xx
-			// body that is a JSON scalar (`123`, `true`, `"queued"`) would land in
-			// the outer catch and be reported `acceptanceUnknown` — a definite
-			// refusal turned into a reconciliation replay by
-			// `delivery/governedDispatch.ts`. Plain property access reads `undefined`
-			// off a scalar and still throws on `null`, which is exactly what this
-			// path did before it was typed: same narrowing at the call sites, same
-			// runtime behaviour on every body.
-			const result = (await response.json()) as Partial<MtaSendAccepted & MtaSendRefused>;
-
-			if (result.success && result.id) {
-				return { success: true, id: result.id };
+			// Every body maps onto a branch explicitly (`./answer`): a JSON scalar is
+			// a definite failure, `null` is acceptance-unknown, a non-JSON body
+			// throws into the catch below.
+			const answer = readMtaSendAnswer(await response.json());
+			if (answer.kind === 'accepted') {
+				return { success: true, id: answer.id };
+			}
+			if (answer.kind === 'unreadable') {
+				return {
+					success: false,
+					errorMessage: answer.reason,
+					errorCode: this.categorizeError(answer.reason),
+					acceptanceUnknown: true,
+				};
 			}
 
-			const errorText = result.error ?? 'MTA returned unsuccessful response';
+			const errorText = answer.error ?? 'MTA returned unsuccessful response';
 			return {
 				success: false,
 				errorMessage: errorText,

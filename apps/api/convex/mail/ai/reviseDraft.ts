@@ -25,8 +25,8 @@
  * failure degrades to the existing draft (the buffer settles `error`, the client
  * keeps what the human already had) and never wedges anything.
  *
- * Tool-call markup (#1254, lib/llm/toolMarkup.ts): a draft saved before that fix
- * can still open with the markup a model typed instead of calling its tool.
+ * Tool-call markup (lib/llm/toolMarkup.ts): a saved draft can open with the
+ * markup a model typed instead of calling its tool.
  * The current draft loses a leading markup prefix before it reaches the model,
  * and a draft with markup elsewhere is refused rather than revised around it.
  * The buffer only ever shows the part of the revision that cannot be markup,
@@ -34,6 +34,7 @@
  */
 
 import { v } from 'convex/values';
+import type { FunctionArgs } from 'convex/server';
 import { authedAction } from '../../lib/authedFunctions';
 import { internal } from '../../_generated/api';
 import { resolveLanguageModelForUserText } from '../../lib/llmProvider';
@@ -43,6 +44,7 @@ import { createThrottledStreamFlusher } from '../../lib/llm/streamFlusher';
 import { meterFor, persistMeteredSpend, type LlmSpendTarget } from '../../analytics/meteredSpend';
 import { newRootRequest, type LlmCallMeter } from '../../lib/llm/requestMeter';
 import type { ActionCtx } from '../../_generated/server';
+import type { Id } from '../../_generated/dataModel';
 import { logWarn } from '../../lib/runtimeLog';
 import {
 	detectInjection,
@@ -119,10 +121,121 @@ export function buildRevisePrompt(args: {
 	return { system, prompt };
 }
 
+type ReviseResult = {
+	text: string;
+	injectionFlagged: boolean;
+	status: 'complete' | 'error';
+	/**
+	 * Why an `error` is the user's to fix: the draft they asked to revise
+	 * holds tool-call markup. Optional and additive, so a client that does
+	 * not read it shows its generic failure, as before.
+	 */
+	errorCode?: typeof DRAFT_HAS_TOOL_MARKUP;
+};
+
+/** How the buffer settles: `finalizeDraftStream`'s arguments past the stream id. */
+type BufferSettle = Omit<
+	FunctionArgs<typeof internal.mail.draftStreamStore.finalizeDraftStream>,
+	'streamId'
+>;
+
+/**
+ * Run the model over the draft, streaming into the buffer, and say how the
+ * buffer settles. Writes nothing past the stream's partial text: the caller
+ * settles the buffer once. Never throws for a model failure.
+ */
+async function streamRevision(
+	ctx: ActionCtx,
+	streamId: Id<'aiDraftStreams'>,
+	meter: LlmCallMeter,
+	input: { system: string; prompt: string; instruction: string }
+): Promise<{ settle: BufferSettle; result: ReviseResult }> {
+	// Throttled flush to the reactive buffer; a `stop` (client discarded the
+	// buffer) cooperatively aborts the model stream. aiDraftStreams has no
+	// 'stopped' status, so an aborted revise settles 'complete' or 'error'
+	// below exactly as before.
+	const stream = createThrottledStreamFlusher({
+		intervalMs: FLUSH_INTERVAL_MS,
+		patch: (text) => {
+			// checkpoint: partial text the composer subscribed to this buffer renders
+			// while the model streams; the caller's settle overwrites it.
+			return ctx.runMutation(internal.mail.draftStreamStore.appendDraftStream, {
+				streamId,
+				text: visibleDraftStreamText(text),
+			});
+		},
+	});
+	try {
+		const result = await runLlmStream({
+			meter,
+			// The draft + instruction are the caller's OWN trusted text, a safe
+			// complexity signal; fail-soft routing keeps the capable 'draft'
+			// tier for anything non-trivial (today's quality).
+			model: await resolveLanguageModelForUserText(ctx, 'mail.compose', input.instruction),
+			system: input.system,
+			messages: [{ role: 'user', content: input.prompt }],
+			temperature: 0.4,
+			abortSignal: stream.signal,
+			onTextDelta: stream.onText,
+		});
+
+		const revised = stripLeakedToolMarkup(result.text || stream.text);
+		// Markup, or a revision cut off at its output ceiling: never a finished draft.
+		if (revised.kind === 'unusable' || result.isTruncated === true) {
+			return {
+				settle: {
+					text: '',
+					status: 'error',
+					errorMessage:
+						revised.kind === 'unusable'
+							? 'The revision came back as tool-call markup. Try again.'
+							: 'The revision was too long and was cut off. Try a shorter instruction.',
+				},
+				result: { text: '', injectionFlagged: false, status: 'error' },
+			};
+		}
+		const finalText = revised.text.trim();
+		// Safety scan runs on the FINAL text ONLY (never mid-stream). Advisory:
+		// a hit flags the buffer for the human; it never blocks or auto-sends.
+		const outbound = detectInjection(finalText);
+		const injectionFlagged =
+			outbound.detected && outbound.confidence >= INJECTION_CONFIDENCE_THRESHOLD;
+		return {
+			settle: {
+				text: finalText,
+				status: 'complete',
+				injectionFlagged,
+				model: result.modelUsed,
+				tokenUsage: result.tokenUsage,
+			},
+			result: { text: finalText, injectionFlagged, status: 'complete' },
+		};
+	} catch (error) {
+		// FAIL-SOFT: settle the buffer as errored; the client keeps whatever
+		// draft the human already had. Never rethrow into the caller's UI flow.
+		// A budget refusal carries the stable code the web reads.
+		const message = admissionRefusalOf(error)
+			? AI_BUDGET_ERROR_CODE
+			: error instanceof Error
+				? error.message
+				: 'Revise failed';
+		return {
+			settle: {
+				text: visibleDraftStreamText(stream.text).trim(),
+				status: 'error',
+				errorMessage: message.slice(0, 500),
+			},
+			result: { text: '', injectionFlagged: false, status: 'error' },
+		};
+	}
+}
+
 /**
  * Stream a whole-draft revision into an `aiDraftStreams` buffer the caller owns.
  * The client creates the buffer (draftStreamStore.createDraftStream), subscribes
- * to it, then calls this. Returns the final text + advisory injection flag.
+ * to it, then calls this. Returns the final text + advisory injection flag. The
+ * buffer settles in one commit; the gate, the buffer's reset and the streamed
+ * partial text are the checkpoints before it.
  */
 // authz: org membership enforced by authedAction; the `ai` flag + per-user rate
 // limit enforced by aiGate.assertAiAllowed. `beginDraftStream` proves the caller
@@ -138,24 +251,15 @@ export const reviseDraft = authedAction({
 		mailboxId: v.optional(v.id('mailboxes')),
 		surface: v.optional(draftSurfaceValidator),
 	},
-	handler: async (
-		ctx,
-		args
-	): Promise<{
-		text: string;
-		injectionFlagged: boolean;
-		status: 'complete' | 'error';
-		/**
-		 * Why an `error` is the user's to fix: the draft they asked to revise
-		 * holds tool-call markup. Optional and additive, so a client that does
-		 * not read it shows its generic failure, as before.
-		 */
-		errorCode?: typeof DRAFT_HAS_TOOL_MARKUP;
-	}> => {
+	handler: async (ctx, args): Promise<ReviseResult> => {
 		// One model budget for this action, from its start.
 		anchorActionDeadline(ctx);
+		// checkpoint: admission before the model call; the rate-limit token it
+		// consumes stays spent when the revision fails later, so retries stay bounded.
 		await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {});
 		// Ownership check + reset the buffer to a clean streaming state.
+		// checkpoint: the composer subscribed to this buffer shows it streaming
+		// while the model runs; the settle below ends that state.
 		await ctx.runMutation(internal.mail.draftStreamStore.beginDraftStream, {
 			streamId: args.streamId,
 		});
@@ -168,106 +272,44 @@ export const reviseDraft = authedAction({
 		});
 
 		const current = stripLeakedToolMarkup(args.currentDraft);
+		let settle: BufferSettle;
+		let result: ReviseResult;
+		let meter: LlmCallMeter | null = null;
 		if (current.kind === 'unusable') {
-			await ctx.runMutation(internal.mail.draftStreamStore.finalizeDraftStream, {
-				streamId: args.streamId,
+			settle = {
 				text: '',
 				status: 'error',
 				errorMessage: 'The draft contains tool-call markup. Remove it, then try again.',
-			});
-			return {
+			};
+			result = {
 				text: '',
 				injectionFlagged: false,
 				status: 'error',
 				errorCode: DRAFT_HAS_TOOL_MARKUP,
 			};
-		}
-
-		const { system, prompt } = buildRevisePrompt({
-			instruction: args.instruction,
-			currentDraft: current.text,
-			threadContext: args.threadContext,
-			voiceGuidance,
-		});
-
-		// Throttled flush to the reactive buffer; a `stop` (client discarded the
-		// buffer) cooperatively aborts the model stream. aiDraftStreams has no
-		// 'stopped' status, so an aborted revise settles 'complete' or 'error'
-		// below exactly as before.
-		const stream = createThrottledStreamFlusher({
-			intervalMs: FLUSH_INTERVAL_MS,
-			patch: (text) =>
-				ctx.runMutation(internal.mail.draftStreamStore.appendDraftStream, {
-					streamId: args.streamId,
-					text: visibleDraftStreamText(text),
-				}),
-		});
-
-		const meter = meterFor(ctx, { ...REVISE_SPEND, root: newRootRequest('postbox_action') });
-		try {
-			const result = await runLlmStream({
-				meter,
-				// The draft + instruction are the caller's OWN trusted text, a safe
-				// complexity signal; fail-soft routing keeps the capable 'draft'
-				// tier for anything non-trivial (today's quality).
-				model: await resolveLanguageModelForUserText(ctx, 'mail.compose', args.instruction),
+		} else {
+			const { system, prompt } = buildRevisePrompt({
+				instruction: args.instruction,
+				currentDraft: current.text,
+				threadContext: args.threadContext,
+				voiceGuidance,
+			});
+			meter = meterFor(ctx, { ...REVISE_SPEND, root: newRootRequest('postbox_action') });
+			({ settle, result } = await streamRevision(ctx, args.streamId, meter, {
 				system,
-				messages: [{ role: 'user', content: prompt }],
-				temperature: 0.4,
-				abortSignal: stream.signal,
-				onTextDelta: stream.onText,
-			});
-
-			const revised = stripLeakedToolMarkup(result.text || stream.text);
-			// Markup, or a revision cut off at its output ceiling: never a finished draft.
-			if (revised.kind === 'unusable' || result.isTruncated === true) {
-				await ctx.runMutation(internal.mail.draftStreamStore.finalizeDraftStream, {
-					streamId: args.streamId,
-					text: '',
-					status: 'error',
-					errorMessage:
-						revised.kind === 'unusable'
-							? 'The revision came back as tool-call markup. Try again.'
-							: 'The revision was too long and was cut off. Try a shorter instruction.',
-				});
-				await recordReviseSpend(ctx, meter);
-				return { text: '', injectionFlagged: false, status: 'error' };
-			}
-			const finalText = revised.text.trim();
-			// Safety scan runs on the FINAL text ONLY (never mid-stream). Advisory:
-			// a hit flags the buffer for the human; it never blocks or auto-sends.
-			const outbound = detectInjection(finalText);
-			const injectionFlagged =
-				outbound.detected && outbound.confidence >= INJECTION_CONFIDENCE_THRESHOLD;
-
-			await ctx.runMutation(internal.mail.draftStreamStore.finalizeDraftStream, {
-				streamId: args.streamId,
-				text: finalText,
-				status: 'complete',
-				injectionFlagged,
-				model: result.modelUsed,
-				tokenUsage: result.tokenUsage,
-			});
-			await recordReviseSpend(ctx, meter);
-			return { text: finalText, injectionFlagged, status: 'complete' };
-		} catch (error) {
-			// FAIL-SOFT: settle the buffer as errored; the client keeps whatever
-			// draft the human already had. Never rethrow into the caller's UI flow.
-			// Steps the stream finished before the failure were billed.
-			await recordReviseSpend(ctx, meter);
-			// D1: a budget refusal carries the stable code the web reads.
-			const message = admissionRefusalOf(error)
-				? AI_BUDGET_ERROR_CODE
-				: error instanceof Error
-					? error.message
-					: 'Revise failed';
-			await ctx.runMutation(internal.mail.draftStreamStore.finalizeDraftStream, {
-				streamId: args.streamId,
-				text: visibleDraftStreamText(stream.text).trim(),
-				status: 'error',
-				errorMessage: message.slice(0, 500),
-			});
-			return { text: '', injectionFlagged: false, status: 'error' };
+				prompt,
+				instruction: args.instruction,
+			}));
 		}
+		try {
+			await ctx.runMutation(internal.mail.draftStreamStore.finalizeDraftStream, {
+				streamId: args.streamId,
+				...settle,
+			});
+		} finally {
+			// Steps the stream finished were billed, also when the settle failed.
+			if (meter) await recordReviseSpend(ctx, meter);
+		}
+		return result;
 	},
 });

@@ -9,19 +9,19 @@
  *
  * The join is asserted through `readAssignmentForSend` rather than through a
  * query shell: it IS the read every caller goes through, and a shell wrapping it
- * with no consumer is the speculative seam D20 forbids.
+ * with no consumer is a speculative seam.
  */
 
 import { convexTest } from 'convex-test';
 import { describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
-import { internal } from '../../_generated/api';
 import { createTestSendAssignment } from '../../__tests__/factories';
 import { readAssignmentForSend } from '../sendAssignments';
 import { TENANT_TABLES } from '../../lib/tenantTables';
 import { ORGANIZATION_DELETION_STEPS, STEPS } from '../../workspaces/deletion/steps/registry';
 
 import { modules } from '../../__tests__/testModules';
+import { runDeletionStepBatch } from '../../__tests__/helpers/workspaceDeletionFence';
 
 vi.mock('../../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../../lib/sessionOrganization');
@@ -72,19 +72,7 @@ describe('sendAssignments tenant isolation', () => {
 			await ctx.db.insert('sendAssignments', assignment(ORG_B, 'send_b1', 1_800_000_000_000));
 		});
 
-		await t.mutation(internal.workspaces.deletion.walker.runStep, {
-			table: 'sendAssignments',
-		});
-		// The walker chains follow-up hops; drain then cancel so no scheduled
-		// job outlives the test.
-		await t.finishInProgressScheduledFunctions();
-		await t.run(async (ctx) => {
-			for (const job of await ctx.db.system.query('_scheduled_functions').collect()) {
-				if (job.state.kind === 'pending' || job.state.kind === 'inProgress') {
-					await ctx.scheduler.cancel(job._id);
-				}
-			}
-		});
+		await runDeletionStepBatch(t, 'sendAssignments');
 
 		// This deployment hosts one organization, so the wipe is total.
 		const remaining = await t.run(async (ctx) => ctx.db.query('sendAssignments').collect());

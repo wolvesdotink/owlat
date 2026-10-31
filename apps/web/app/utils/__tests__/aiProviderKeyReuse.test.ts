@@ -57,7 +57,7 @@ describe('aiSaveRefusalOf', () => {
 
 	it('claims nothing else, nor a refusal naming an unknown plane', () => {
 		expect(aiSaveRefusalOf({ category: 'internal', message: 'x' })).toBeNull();
-		// The pre-provenance embedding lock no longer exists (D8 switch path).
+		// No pre-provenance embedding lock: a switch goes through the embedding switch path.
 		expect(
 			aiSaveRefusalOf({
 				category: 'conflict',

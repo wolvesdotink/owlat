@@ -11,6 +11,7 @@
  * the guard runs outside a component `setup()`, so that crash fails this file.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { flushPromises } from '@vue/test-utils';
 import { api } from '@owlat/api';
 import { getCurrentInstance } from 'vue';
 import type { RouteLocationNormalized } from 'vue-router';
@@ -90,7 +91,9 @@ describe('admin middleware', () => {
 			settled = true;
 			return result;
 		});
-		await new Promise((resolve) => setTimeout(resolve, 20));
+		await flushPromises();
+		// The lookup went out and the guard is still waiting for its answer.
+		expect(getActiveMember).toHaveBeenCalledOnce();
 		expect(settled).toBe(false);
 
 		releaseRole();
@@ -131,15 +134,27 @@ describe('admin middleware', () => {
 		// timeout and spin every page that folds this into a loading flag.
 		signIn({ role: 'owner' });
 		session.activeOrganizationError.value = { message: 'FORBIDDEN' };
-		const { middleware } = await load();
+		// The guard's waits give up after a timeout. On a clock that never moves,
+		// a guard that waits instead of deciding stays undecided.
+		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+		try {
+			const { middleware } = await load();
 
-		const decision = await Promise.race([
-			middleware(to, to),
-			new Promise((resolve) => setTimeout(() => resolve('HUNG'), 500)),
-		]);
+			let settled = false;
+			const decision = middleware(to, to).then((result) => {
+				settled = true;
+				return result;
+			});
+			await flushPromises();
 
-		expect(decision, 'the guard waited on a request that had already settled').not.toBe('HUNG');
-		expect(decision).toEqual({ redirect: '/dashboard', options: { replace: true } });
+			expect(settled, 'the guard waited on a request that had already settled').toBe(true);
+			await expect(decision).resolves.toEqual({
+				redirect: '/dashboard',
+				options: { replace: true },
+			});
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	it('fails closed to Home when the role cannot be loaded', async () => {
@@ -199,7 +214,7 @@ describe('admin middleware', () => {
 			settled = true;
 			return result;
 		});
-		await new Promise((resolve) => setTimeout(resolve, 20));
+		await flushPromises();
 		expect(settled).toBe(false);
 
 		session.pending.value = false;

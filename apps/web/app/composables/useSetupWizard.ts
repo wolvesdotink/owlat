@@ -34,6 +34,7 @@ import {
 	type TransportCredentialValues,
 } from './setupWizardCredentials';
 import { SETUP_DRAFT_STORAGE_KEY, readSetupDraft, serializeSetupDraft } from './setupWizardDraft';
+import { usePageExitGuard } from './usePageExitGuard';
 import {
 	COMPOSED_TRANSPORT_CREDENTIAL_ENV_KEYS,
 	composedSendProviderCatalogEntry,
@@ -94,10 +95,10 @@ export function setupStepPath(stepId: SetupStepId): string {
  * What the wizard's provider picker can be set to: any kind the catalog
  * declares, or the receive-only answer.
  *
- * DERIVED, never restated — this used to be the fifth independent
- * spelling of the kind union (the catalog, `SEND_TRANSPORT_KINDS`,
- * `DELIVERY_PROVIDER_KINDS`, `RelayProviderChoice` and this one), so a provider
- * had to be remembered here as well as declared. `'none'` is this surface's own
+ * DERIVED, never restated: a fifth independent spelling of the kind union
+ * (beside the catalog, `SEND_TRANSPORT_KINDS`, `DELIVERY_PROVIDER_KINDS` and
+ * `RelayProviderChoice`) would make a provider something to remember here as
+ * well as declare. `'none'` is this surface's own
  * word and belongs to no provider: it means "no delivery transport at all",
  * which is a legal answer for a receive-only install and never a catalog entry.
  */
@@ -168,15 +169,14 @@ export interface EmailStepDraft {
  * `next()` handler. Resend keys are validated over the network in the page
  * before this is committed; this only assembles values.
  *
- * THE PER-PROVIDER IF-CHAIN IS GONE. This function used
- * to restate, as imperative code, the same mapping the catalog declares: one
- * `if (draft.provider === …)` per vendor, each naming that vendor's env
- * variables and its normalisation rules. It now writes whatever the selected
- * entry's `credentialFields` declare, through `transportCredentialEnv` — so a
- * sixth provider reaches this patch by existing in the catalog, and the rules
- * that used to be per-vendor (trim the relay host, default a blank port to 587,
- * always emit the own MTA's TLS floor) are per FIELD KIND, stated once beside
- * the descriptors they belong to.
+ * NO PER-PROVIDER IF-CHAIN. This function must not restate, as imperative
+ * code, the mapping the catalog declares (one `if (draft.provider === …)` per
+ * vendor, each naming that vendor's env variables and its normalisation rules).
+ * It writes whatever the selected entry's `credentialFields` declare, through
+ * `transportCredentialEnv` — so a sixth provider reaches this patch by existing
+ * in the catalog, and the normalisation rules (trim the relay host, default a
+ * blank port to 587, always emit the own MTA's TLS floor) are per FIELD KIND,
+ * stated once beside the descriptors they belong to.
  */
 export function buildProviderEnv(
 	existing: Record<string, string>,
@@ -431,14 +431,7 @@ export function useSetupWizard() {
 			setupToken.value !== '' ||
 			Object.keys(env.value).length > 0;
 
-		const onBeforeUnload = (e: BeforeUnloadEvent) => {
-			if (!completed.value && hasDraftData()) {
-				e.preventDefault();
-				e.returnValue = '';
-			}
-		};
-		onMounted(() => window.addEventListener('beforeunload', onBeforeUnload));
-		onUnmounted(() => window.removeEventListener('beforeunload', onBeforeUnload));
+		usePageExitGuard(() => !completed.value && hasDraftData());
 	}
 
 	const resolved = computed(() => resolveFlags(flags.value));

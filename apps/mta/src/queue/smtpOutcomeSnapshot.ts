@@ -98,7 +98,7 @@ export function isAttemptSnapshot(value: unknown): value is SmtpAttemptSnapshot 
 	const route = destination as Record<string, unknown>;
 	return (
 		typeof route['recipientDomain'] === 'string' &&
-		// The taxonomy's own guard (D8), not a third copy of the key list: a copy
+		// The taxonomy's own guard, not a third copy of the key list: a copy
 		// here would reject a sixth destination provider's replays as corrupt.
 		isDestinationProviderKey(route['providerKey']) &&
 		typeof route['throttleKey'] === 'string' &&

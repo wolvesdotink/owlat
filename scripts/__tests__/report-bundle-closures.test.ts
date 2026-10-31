@@ -3,19 +3,22 @@
  *
  * Each case builds a miniature `.output` (a Nitro renderer naming the entry,
  * the precomputed client manifest and a `public/_nuxt` directory of chunks)
- * and runs the real script against it. The manifest and import shapes are the
+ * and runs the real script against it, with a budgets file of its own. The
+ * manifest and import shapes are the
  * ones a real `nuxt build` of apps/web emits: pages and lazily imported
  * components keyed by source path, shared chunks by an `_<hash>.js` id with a
  * chunk name, and `import()` quoted with backticks.
  */
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, describe, expect, it } from 'vitest';
+import { parseClosureBudgets, suggestedBudgetKiB } from '../bundle-closure';
 import { scriptGzipSizes } from './bundleGzip.testlib';
 
 const SCRIPT = resolve(import.meta.dirname, '../report-bundle-closures.ts');
+const COMMITTED_BUDGETS = resolve(import.meta.dirname, '../bundle-closure-budgets.txt');
 
 const sandboxes: string[] = [];
 
@@ -65,8 +68,45 @@ function build(
 	return root;
 }
 
+/** Generous budgets for every closure of the CHUNKS build. */
+const ROOMY = [
+	'route 1024 pages/emails/[id]/edit.vue',
+	'route 1024 pages/index.vue',
+	'deferred 1024 components/SendTestEmailModal.vue',
+].join('\n');
+
+/** A budgets file in its own sandbox, so the committed one never applies. */
+function budgetsFile(text: string, keep = sandboxes): string {
+	const dir = mkdtempSync(join(tmpdir(), 'owlat-bundle-budgets-'));
+	keep.push(dir);
+	const path = join(dir, 'budgets.txt');
+	writeFileSync(path, `# fixture budgets\n${text}\n`);
+	return path;
+}
+
+/** One ROOMY file for every default run, so two runs print the same header. */
+const roomyKeep: string[] = [];
+const roomyBudgets = budgetsFile(ROOMY, roomyKeep);
+afterAll(() => {
+	for (const dir of roomyKeep) rmSync(dir, { recursive: true, force: true });
+});
+
 function run(outputDir: string, ...flags: string[]) {
-	const result = spawnSync('bun', [SCRIPT, outputDir, ...flags], { encoding: 'utf8' });
+	return runWith({}, outputDir, ...flags);
+}
+
+/** Run with these provenance variables only; CI's own are never inherited. */
+function runWith(env: Record<string, string>, outputDir: string, ...flags: string[]) {
+	const {
+		BUNDLE_REPORT_SHA: _sha,
+		BUNDLE_REPORT_TOOLCHAIN: _toolchain,
+		...inherited
+	} = process.env;
+	const budgets = flags.includes('--budgets') ? [] : ['--budgets', roomyBudgets];
+	const result = spawnSync('bun', [SCRIPT, outputDir, ...flags, ...budgets], {
+		encoding: 'utf8',
+		env: { ...inherited, ...env },
+	});
 	return {
 		status: result.status ?? -1,
 		stdout: result.stdout,
@@ -76,6 +116,7 @@ function run(outputDir: string, ...flags: string[]) {
 
 interface Closure {
 	key: string;
+	budgetKiB: number | null;
 	root: string;
 	importers?: string[];
 	closure: { files: number; raw: number; gzip: number };
@@ -87,8 +128,12 @@ interface Closure {
 	};
 }
 interface Report {
-	meta: { assets: string; budget: null };
-	entry: { key: string; closure: { files: number; raw: number; gzip: number } };
+	meta: { assets: string; budget: string; sha: string | null; toolchain: string | null };
+	entry: {
+		key: string;
+		closure: { files: number; raw: number; gzip: number };
+		chunks: { key: string; gzip: number }[];
+	};
 	routes: Closure[];
 	deferred: Closure[];
 }
@@ -151,10 +196,20 @@ describe('the route and deferred-feature closure report', () => {
 		const gz = (file: string) => sizes[file] as number;
 		const result = report(output);
 
-		expect(result.meta).toEqual({ assets: 'javascript-only', budget: null });
+		expect(result.meta).toEqual({
+			assets: 'javascript-only',
+			budget: 'budgets.txt',
+			sha: null,
+			toolchain: null,
+		});
 		expect(result.entry).toEqual({
 			key: '../node_modules/nuxt/dist/app/entry.js',
 			closure: { files: 2, raw: raw('entry.js', 'vue.js'), gzip: gz('entry.js') + gz('vue.js') },
+			// The entry closure's own chunks, largest first, named like the rest.
+			chunks: [
+				{ key: '../node_modules/nuxt/dist/app/entry.js', gzip: gz('entry.js') },
+				{ key: 'vue', gzip: gz('vue.js') },
+			].sort((a, b) => b.gzip - a.gzip || (a.key < b.key ? -1 : 1)),
 		});
 		expect(result.routes.map((route) => route.key)).toEqual([
 			'pages/emails/[id]/edit.vue',
@@ -163,6 +218,7 @@ describe('the route and deferred-feature closure report', () => {
 
 		const [edit, index] = result.routes as [Closure, Closure];
 		expect(edit.root).toBe('edit.js');
+		expect(edit.budgetKiB).toBe(1024);
 		expect(edit.closure.files).toBe(4);
 		expect(edit.beyondEntry.chunks).toEqual([
 			{ file: 'builder.js', label: 'src', gzip: gz('builder.js') },
@@ -174,6 +230,19 @@ describe('the route and deferred-feature closure report', () => {
 		expect(edit.beyondEntry.chunks.map((chunk) => chunk.file)).not.toContain('modal.js');
 
 		expect(index.beyondEntry).toMatchObject({ files: 1, raw: raw('index.js') });
+	});
+
+	it('names the commit and toolchain it was taken from when CI says so', () => {
+		const output = build(CHUNKS, RESOURCES);
+		const result = JSON.parse(
+			runWith(
+				{ BUNDLE_REPORT_SHA: 'abc123', BUNDLE_REPORT_TOOLCHAIN: 'bun-1.4.2+docker-0f00' },
+				output,
+				'--json'
+			).stdout
+		) as Report;
+
+		expect(result.meta).toMatchObject({ sha: 'abc123', toolchain: 'bun-1.4.2+docker-0f00' });
 	});
 
 	it('reports every lazily imported chunk as a deferred feature with its importers', () => {
@@ -218,7 +287,7 @@ describe('the route and deferred-feature closure report', () => {
 		]);
 	});
 
-	it('prints the same sorted report on every run and never fails on size', () => {
+	it('prints the same sorted report on every run, the entry budget aside', () => {
 		const output = build(
 			{
 				...CHUNKS,
@@ -236,11 +305,12 @@ describe('the route and deferred-feature closure report', () => {
 
 		expect(first.status).toBe(0);
 		expect(second.stdout).toBe(first.stdout);
-		expect(first.stdout).toContain('report-only, no budget');
+		expect(first.stdout).toContain(`budgets: ${roomyBudgets}`);
+		expect(first.stdout).toContain('Every route and deferred feature is within its budget.');
 		expect(first.stdout).toContain('Totals count JavaScript chunks only');
 		const pageRows = first.stdout
 			.split('\n')
-			.map((line) => line.trim().split(/\s+/).at(3))
+			.map((line) => line.trim().split(/\s+/).at(4))
 			.filter((key) => key?.startsWith('pages/'));
 		expect(pageRows).toEqual(['pages/emails/[id]/edit.vue', 'pages/index.vue']);
 		expect(first.stdout).toMatch(
@@ -283,5 +353,123 @@ describe('the route and deferred-feature closure report', () => {
 
 		expect(result.output).toContain('report-bundle-closures: no server build');
 		expect(result.status).toBe(2);
+	});
+});
+
+describe('the route and deferred-feature budgets', () => {
+	/** The CHUNKS build with the editor page's builder well over a 4 KiB budget. */
+	const heavyEditor = () =>
+		build(
+			{ ...CHUNKS, 'builder.js': `export const b="${incompressible(8 * 1024)}";\n` },
+			RESOURCES
+		);
+	const budgets = (edit: number, modal = 1024) =>
+		budgetsFile(
+			[
+				`route ${edit} pages/emails/[id]/edit.vue`,
+				'route 1024 pages/index.vue',
+				`deferred ${modal} components/SendTestEmailModal.vue`,
+			].join('\n')
+		);
+
+	it('fails when a page closure is over its budget, and passes once it fits', () => {
+		const output = heavyEditor();
+
+		const failing = run(output, '--budgets', budgets(4));
+		expect(failing.status).toBe(1);
+		expect(failing.output).toContain('1 closure is over budget');
+		expect(failing.output).toMatch(
+			/route pages\/emails\/\[id\]\/edit\.vue: [\d.]+ KB gzip, over its 4 KB budget/
+		);
+		expect(failing.output).not.toContain('pages/index.vue: ');
+
+		expect(run(output, '--budgets', budgets(64)).status).toBe(0);
+	});
+
+	it('fails when a deferred feature closure is over its budget', () => {
+		const result = run(build(CHUNKS, RESOURCES), '--budgets', budgets(1024, 0));
+
+		expect(result.status).toBe(1);
+		expect(result.output).toMatch(
+			/deferred components\/SendTestEmailModal\.vue: [\d.]+ KB gzip, over its 0 KB budget/
+		);
+	});
+
+	it('records an over-budget build as JSON without failing', () => {
+		const result = run(heavyEditor(), '--json', '--budgets', budgets(4));
+		const edit = (JSON.parse(result.stdout) as Report).routes.find(
+			(route) => route.key === 'pages/emails/[id]/edit.vue'
+		);
+
+		expect(result.status).toBe(0);
+		expect(edit?.budgetKiB).toBe(4);
+		expect(edit?.beyondEntry.gzip).toBeGreaterThan(4 * 1024);
+	});
+
+	it('fails on a closure without a budget line and prints the line to add', () => {
+		const output = build(CHUNKS, RESOURCES);
+		const gzip = report(output).routes.find((route) => route.key === 'pages/index.vue')?.beyondEntry
+			.gzip as number;
+
+		const result = run(
+			output,
+			'--budgets',
+			budgetsFile(
+				'route 1024 pages/emails/[id]/edit.vue\ndeferred 1024 components/SendTestEmailModal.vue'
+			)
+		);
+
+		expect(result.status).toBe(1);
+		expect(result.output).toContain('1 closure has no budget');
+		expect(result.output).toContain(`  route ${suggestedBudgetKiB(gzip)} pages/index.vue`);
+	});
+
+	it('fails on a budget line whose closure the build no longer has', () => {
+		const result = run(
+			build(CHUNKS, RESOURCES),
+			'--budgets',
+			budgetsFile(`${ROOMY}\nroute 12 pages/removed.vue`)
+		);
+
+		expect(result.status).toBe(1);
+		expect(result.output).toContain('names a closure this build does not have');
+		expect(result.output).toContain('  route 12 pages/removed.vue');
+	});
+
+	it('refuses a malformed budgets file', () => {
+		const result = run(
+			build(CHUNKS, RESOURCES),
+			'--budgets',
+			budgetsFile('route big pages/index.vue')
+		);
+
+		expect(result.output).toContain('line 2 is not');
+		expect(result.status).toBe(2);
+	});
+
+	it('parses budget lines, keys with spaces included, and rejects repeats', () => {
+		const parsed = parseClosureBudgets(
+			'# header\n\nroute 12 pages/index.vue\ndeferred 3 (unnamed) <- entry, pages/p.vue\n'
+		);
+
+		expect([...parsed.route]).toEqual([['pages/index.vue', 12]]);
+		expect([...parsed.deferred]).toEqual([['(unnamed) <- entry, pages/p.vue', 3]]);
+		expect(() => parseClosureBudgets('route 1 a.vue\nroute 2 a.vue')).toThrow(
+			'line 2 repeats route a.vue'
+		);
+	});
+
+	it('starts a budget at the size plus the larger of 10% and 2 KiB, in whole KiB', () => {
+		expect(suggestedBudgetKiB(0)).toBe(2);
+		expect(suggestedBudgetKiB(10 * 1024)).toBe(12);
+		expect(suggestedBudgetKiB(100 * 1024)).toBe(110);
+		expect(suggestedBudgetKiB(100 * 1024 + 1)).toBe(111);
+	});
+
+	it('commits a budgets file that parses and budgets both routes and deferred features', () => {
+		const committed = parseClosureBudgets(readFileSync(COMMITTED_BUDGETS, 'utf8'));
+
+		expect(committed.route.size).toBeGreaterThan(0);
+		expect(committed.deferred.size).toBeGreaterThan(0);
 	});
 });

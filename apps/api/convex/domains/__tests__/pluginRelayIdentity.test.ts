@@ -1,6 +1,6 @@
 /**
  * THE ROWS LAND IN `sendingDomainRelayIdentities`, KEYED BY THE NAMESPACED KIND
- * (the seams plan's P3.2, and D10's rows-not-columns half).
+ * (rows, not columns).
  *
  * The registry gate beside this one proves the READ — that a plugin identity row
  * resolves through `relayDomainVerification` end to end. This one proves the
@@ -23,16 +23,21 @@
 
 import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type * as HostedContributionAuthorizationModule from '../../plugins/hostedContributionAuthorization';
+import type * as SessionOrganizationModule from '../../lib/sessionOrganization';
 
 const KIND = 'plugin.mail-pack.postmark';
 const PLUGIN_ID = 'mail-pack';
 const DOMAIN = 'sender.example.com';
 
-const { registerDomainMock, checkDomainMock, authorizeMock } = vi.hoisted(() => ({
-	registerDomainMock: vi.fn(),
-	checkDomainMock: vi.fn(),
-	authorizeMock: vi.fn(),
-}));
+const { registerDomainMock, checkDomainMock, authorizeMock, recordOutcomeMock } = vi.hoisted(
+	() => ({
+		registerDomainMock: vi.fn(),
+		checkDomainMock: vi.fn(),
+		authorizeMock: vi.fn(),
+		recordOutcomeMock: vi.fn(),
+	})
+);
 
 vi.mock('../../plugins/sendTransportCatalog.generated', () => ({
 	BUNDLED_PLUGIN_SEND_TRANSPORT_CATALOG: Object.freeze([
@@ -84,18 +89,21 @@ vi.mock('../../plugins/sendTransportDomainIdentityModules.generated', () => ({
  * provider call at all.
  */
 vi.mock('../../plugins/hostedContributionAuthorization', async () => {
-	const actual = await vi.importActual<
-		typeof import('../../plugins/hostedContributionAuthorization')
-	>('../../plugins/hostedContributionAuthorization');
+	const actual = await vi.importActual<typeof HostedContributionAuthorizationModule>(
+		'../../plugins/hostedContributionAuthorization'
+	);
 	return {
 		...actual,
 		authorizeHostedContribution: (...args: unknown[]) => authorizeMock(...args),
-		recordHostedContributionOutcome: async () => {},
+		isHostedContributionAuthorized: (...args: unknown[]) => authorizeMock(...args),
+		recordHostedContributionOutcome: async (...args: unknown[]) => {
+			recordOutcomeMock(...args);
+		},
 	};
 });
 
 vi.mock('../../lib/sessionOrganization', async () => {
-	const actual = await vi.importActual<typeof import('../../lib/sessionOrganization')>(
+	const actual = await vi.importActual<typeof SessionOrganizationModule>(
 		'../../lib/sessionOrganization'
 	);
 	return { ...actual, getSingletonOrganizationId: vi.fn().mockResolvedValue('org-a') };
@@ -131,6 +139,7 @@ beforeEach(() => {
 	registerDomainMock.mockReset();
 	checkDomainMock.mockReset();
 	authorizeMock.mockReset().mockResolvedValue(true);
+	recordOutcomeMock.mockReset();
 	vi.stubEnv('PLUGIN_POSTMARK_TOKEN', 'token-value');
 });
 
@@ -157,7 +166,7 @@ describe('provision writes the identity row', () => {
 			spf: row?.spf,
 			dkim: row?.dkim,
 		}).toEqual({
-			// D10: a plain string field on the generic table. No schema change, no
+			// A plain string field on the generic table. No schema change, no
 			// per-provider sibling, no column for the tier.
 			providerKind: KIND,
 			domain: DOMAIN,
@@ -424,5 +433,82 @@ describe('every failure path refuses to look like evidence', () => {
 
 		expect(result).toEqual({ outcome: 'unavailable' });
 		expect(await rows(t)).toEqual([]);
+	});
+});
+
+describe('every identity call that reaches the provider question audits once', () => {
+	/** The `(pluginId, kind, outcome)` of each audit row the call wrote. */
+	const audited = () =>
+		recordOutcomeMock.mock.calls.map((call) => [call[2], call[3], call[4]] as const);
+
+	it('audits a check as completed, with the row written', async () => {
+		const t = convexTest(schema, modules);
+		registerDomainMock.mockResolvedValue(providerState());
+
+		await t.action(internal.domains.pluginRelay.provision, { kind: KIND, domain: DOMAIN });
+
+		expect(audited()).toEqual([[PLUGIN_ID, KIND, 'completed']]);
+		expect(await rows(t)).toHaveLength(1);
+	});
+
+	it('audits an unset credential and an outage as failed', async () => {
+		const t = convexTest(schema, modules);
+		vi.stubEnv('PLUGIN_POSTMARK_TOKEN', '');
+		await t.action(internal.domains.pluginRelay.provision, { kind: KIND, domain: DOMAIN });
+		vi.stubEnv('PLUGIN_POSTMARK_TOKEN', 'token-value');
+		registerDomainMock.mockResolvedValue({ outcome: 'unavailable', error: 'down' });
+		await t.action(internal.domains.pluginRelay.provision, { kind: KIND, domain: DOMAIN });
+
+		expect(audited()).toEqual([
+			[PLUGIN_ID, KIND, 'failed'],
+			[PLUGIN_ID, KIND, 'failed'],
+		]);
+	});
+
+	it('writes no outcome audit for a denied call, only its deferred retry', async () => {
+		const t = convexTest(schema, modules);
+		registerDomainMock.mockResolvedValue(providerState());
+		await t.action(internal.domains.pluginRelay.provision, { kind: KIND, domain: DOMAIN });
+		recordOutcomeMock.mockReset();
+		authorizeMock.mockReset().mockResolvedValue(false);
+
+		await t.action(internal.domains.pluginRelay.refreshIdentity, { kind: KIND, domain: DOMAIN });
+
+		expect(checkDomainMock).not.toHaveBeenCalled();
+		expect(audited()).toEqual([]);
+		expect((await rows(t))[0]!.nextCheckDueAt).toBeGreaterThan(Date.now());
+	});
+});
+
+describe('an identity call writes its row and its audit together', () => {
+	it('leaves no row when its outcome audit cannot be written', async () => {
+		const t = convexTest(schema, modules);
+		registerDomainMock.mockResolvedValue(providerState());
+		recordOutcomeMock.mockImplementation(() => {
+			throw new Error('audit unavailable');
+		});
+
+		await expect(
+			t.action(internal.domains.pluginRelay.provision, { kind: KIND, domain: DOMAIN })
+		).rejects.toThrow('audit unavailable');
+
+		expect(await rows(t)).toEqual([]);
+	});
+
+	it('writes nothing for a denial when the plugin is re-enabled before it commits', async () => {
+		const t = convexTest(schema, modules);
+		registerDomainMock.mockResolvedValue(providerState());
+		await t.action(internal.domains.pluginRelay.provision, { kind: KIND, domain: DOMAIN });
+		const before = (await rows(t))[0]!;
+		authorizeMock.mockReset().mockResolvedValueOnce(false).mockResolvedValue(true);
+
+		const result = await t.action(internal.domains.pluginRelay.refreshIdentity, {
+			kind: KIND,
+			domain: DOMAIN,
+		});
+
+		expect(result).toEqual({ outcome: 'denied' });
+		expect(checkDomainMock).not.toHaveBeenCalled();
+		expect((await rows(t))[0]!.nextCheckDueAt).toBe(before.nextCheckDueAt);
 	});
 });

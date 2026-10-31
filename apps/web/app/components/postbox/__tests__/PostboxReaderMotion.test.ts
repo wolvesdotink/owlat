@@ -21,7 +21,7 @@ const read = (path: string) => readFileSync(fileURLToPath(new URL(path, import.m
 const motion = read('../../../assets/css/postbox-motion.css');
 const tokens = read('../../../../../../packages/ui/assets/css/tokens.css');
 const hosts = {
-	layout: read('../PostboxLayout.vue'),
+	layout: read('../PostboxReaderPane.vue'),
 	overlay: read('../PostboxTodayReaderOverlay.vue'),
 	today: read('../PostboxTodayView.vue'),
 };

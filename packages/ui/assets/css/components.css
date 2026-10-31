@@ -55,8 +55,15 @@
 		@apply bg-error/10 text-error border border-error/20 hover:bg-error/20;
 	}
 
+	/* Single source of the field look, as `.btn` is for buttons. UiInput,
+	   UiTextarea and the UiSelect trigger compose it; a native <input>, <select>
+	   or <textarea> carries it directly, adding layout classes only
+	   (scripts/check-ui-controls.ts, docs/web-ui.md). The focus ring is
+	   `focus-within`, which matches a focused control itself as well as a
+	   wrapper whose bare control has focus, so a field with a prefix or chips is
+	   a `.input` wrapper around an `.input-bare` control. */
 	.input {
-		@apply w-full px-3 py-2 min-h-9 text-sm leading-5 bg-surface-1 shadow-surface-1 rounded-xl text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-1 focus:ring-brand transition-[box-shadow,background-color] duration-(--motion-fast) ease-spring;
+		@apply w-full px-3 py-2 min-h-9 text-sm leading-5 bg-surface-1 shadow-surface-1 rounded-lg text-text-primary placeholder:text-text-tertiary focus:outline-none focus-within:ring-1 focus-within:ring-brand transition-[box-shadow,background-color] duration-(--motion-fast) ease-spring;
 	}
 
 	.input-sm {
@@ -64,7 +71,19 @@
 	}
 
 	.input-error {
-		@apply ring-1 ring-error focus:ring-error;
+		@apply ring-1 ring-error focus-within:ring-error;
+	}
+
+	/* An internal note: the warm tint says the text stays inside the team. */
+	.input-note {
+		@apply bg-warning/5;
+	}
+
+	/* A control inside a surface that already draws the field (a composer, the
+	   command palette, a recipient chip row, a `.input` wrapper). It draws no
+	   chrome of its own, and the surrounding surface shows focus. */
+	.input-bare {
+		@apply bg-transparent text-text-primary placeholder:text-text-tertiary outline-none;
 	}
 
 	.label {
@@ -137,10 +156,12 @@
 		min-height: 44px;
 		min-width: 44px;
 	}
-	.input,
-	.ui-input-control,
-	.ui-select-control {
+	.input {
 		min-height: 44px;
+		font-size: 16px;
+	}
+	/* Below 16px a mobile browser zooms the page when the field takes focus. */
+	.input-bare {
 		font-size: 16px;
 	}
 }

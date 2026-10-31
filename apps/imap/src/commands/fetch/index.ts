@@ -153,10 +153,10 @@ export const fetchModule: ImapCommandModule<FetchArgs> = {
 								'utf8'
 							),
 						];
-						bodyRequests.forEach((req, i) => {
+						for (const [i, req] of bodyRequests.entries()) {
 							if (i > 0) parts.push(SPACE);
 							parts.push(...bodySectionParts(req, raw));
-						});
+						}
 						parts.push(CLOSE_PAREN);
 						send(Buffer.concat(parts));
 					} else {

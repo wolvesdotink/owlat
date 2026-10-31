@@ -1,5 +1,6 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import { plainClone } from '@owlat/email-builder/plain-clone';
 import type { FilterLogic, FilterCondition, SegmentFilters } from './useSegmentFilters';
 import { conditionEditorModuleFor } from './conditions';
 import type { Condition } from './conditions';
@@ -87,7 +88,7 @@ export function useSegmentForm() {
 				return;
 			}
 			// Plain-object clone of the reactive filters for the action argument.
-			const filtersArg = JSON.parse(JSON.stringify(filters)) as typeof segmentForm.filters;
+			const filtersArg = plainClone(filters);
 			countTimer = setTimeout(async () => {
 				const seq = ++countSeq;
 				const result = await estimateAudience({ filters: filtersArg });

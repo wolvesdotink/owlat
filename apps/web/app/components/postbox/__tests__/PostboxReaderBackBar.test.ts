@@ -24,7 +24,6 @@ let wrapper: VueWrapper | null = null;
 afterEach(() => {
 	wrapper?.unmount();
 	wrapper = null;
-	document.body.innerHTML = '';
 });
 
 function mountBar(props: { zen: boolean; activeMessageId?: string }) {
@@ -85,12 +84,11 @@ describe('PostboxReaderBackBar', () => {
 	it('names the step keys as the person has them mapped', () => {
 		const titles = (w: VueWrapper) =>
 			w
-				.findAll('button')
-				.slice(1)
-				.map((b) => b.attributes('title'));
+				.findAllComponents({ name: 'UiTooltip' })
+				.map((tooltip) => [tooltip.props('text'), tooltip.props('shortcut')]);
 		expect(titles(mountBar({ zen: true }))).toEqual([
-			'Previous conversation (k)',
-			'Next conversation (j)',
+			['Previous conversation', 'k'],
+			['Next conversation', 'j'],
 		]);
 		wrapper?.unmount();
 		applyShortcutPreferences(SHORTCUT_PRESET_DEFAULT, [
@@ -98,8 +96,8 @@ describe('PostboxReaderBackBar', () => {
 		]);
 		// Only the arrow is left, and the arrows scroll here: no key to name.
 		expect(titles(mountBar({ zen: true }))).toEqual([
-			'Previous conversation (k)',
-			'Next conversation',
+			['Previous conversation', 'k'],
+			['Next conversation', undefined],
 		]);
 	});
 });

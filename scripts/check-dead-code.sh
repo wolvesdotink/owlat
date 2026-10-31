@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 #
-# Dead-code ratchet. Runs knip (config: knip.jsonc) over the whole monorepo,
+# Dead-code gate. Runs knip (config: knip.jsonc) over the whole monorepo,
 # restricted to the dead-CODE issue types — unused files, exports, types,
-# enum/class members and duplicate exports — and compares the result against a
-# frozen baseline (scripts/dead-code-baseline.txt). This is the file-and-export
+# enum/class members and duplicate exports — and fails on any entry: there is
+# no baseline, so the report must be empty. This is the file-and-export
 # sibling of apps/api/scripts/check-query-authz.sh: it exists because the repo
 # has a documented history of orphaned exports / zero-caller modules accreting
 # silently (speculative seams: authProviders/, repositories/, dead providers)
@@ -21,10 +21,9 @@
 # in knip.jsonc for the same reason (the Nuxt `css:` array and @import chains
 # are not traced).
 #
-# scripts/ratchet.sh runs the comparison, strict in BOTH directions exactly like
-# query-authz: a NEW dead-code entry not present in the baseline fails
-# (regression), and a STALE baseline entry that knip no longer reports fails —
-# delete the line so the debt count only ever goes down.
+# scripts/ratchet.sh --zero runs the comparison. A symbol that is kept on
+# purpose without an importer (a framework entrypoint, a published barrel) is
+# declared in knip.jsonc, never listed in a file next to this script.
 #
 # Normalised line format (sorted, stable, no line/col so edits don't churn it):
 #   file:<path>                       an entire unused file
@@ -138,14 +137,13 @@ if [ "${1:-}" = "--generate" ]; then
 fi
 
 exec scripts/ratchet.sh \
-	--baseline scripts/dead-code-baseline.txt \
-	--seed "bash scripts/check-dead-code.sh --write-baseline" \
-	--ok "no new dead code" \
-	--new-header "FAIL: {n} new dead-code entr(y/ies) not in {baseline}:" \
-	--new-advice "Either delete the dead file/export/dependency, or — if it is
-intentionally kept — tag it for knip (e.g. a JSDoc '@public' / add the
-file to an entry glob in knip.jsonc). Do NOT add new lines to
-{baseline}; it is frozen debt." \
-	--stale-header "FAIL: {n} stale entr(y/ies) in {baseline} (no longer dead):" \
+	--zero \
+	--ok "no dead code" \
+	--new-header "FAIL: {n} dead-code entr(y/ies):" \
+	--new-advice "Delete the dead file/export/dependency. If something outside
+the source graph really consumes it (a framework convention, a
+published barrel, a spawned script), declare that consumer in
+knip.jsonc (an entry glob, includeEntryExports or ignoreDependencies)
+with a comment naming it." \
 	"$@" \
 	-- bash "$self" --generate

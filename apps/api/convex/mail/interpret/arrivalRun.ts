@@ -1,5 +1,5 @@
 /**
- * Read on arrival, the run's side (SPEC §2.3): which runs are arrival reads,
+ * Read on arrival, the run's side: which runs are arrival reads,
  * the depth decision once the message is scoped (`arrivalDecide.ts`), and
  * the answers a run gives for the outcomes that end it there.
  *
@@ -18,7 +18,8 @@ import { detectExactWording } from '@owlat/shared/exactWordingDetector';
 import { freshTextOf } from '../arrival/scopedInput';
 import { logWarn } from '../../lib/runtimeLog';
 import { isSecurityMail } from './eligibility';
-import { scopeForInterpretation, segmentScoped } from './scope';
+import { segmentScoped } from './scope';
+import { scopeForInterpretation } from './scopeLoad';
 import type { ArrivalVerdict } from './arrivalDecide';
 import type { ArrivalAdmission } from './arrivalAdmit';
 import type { InterpretArgs, InterpretRunResult, Restart } from './runShape';
@@ -64,7 +65,7 @@ const COUNTED_SCREEN_ATTEMPTS = 3;
 /**
  * Admission counted a display-only source over the owner limit before
  * anything of it was read: still screen its own text for exact wording, so a
- * candidate is never placed in the digest or updates (#1384). No model call;
+ * candidate is never placed in the digest or updates. No model call;
  * a fenced thread or a scope that fails screens nothing. The screen is
  * written only against the body and deletion epoch it was taken from
  * (`noteCountedArrivalScreen`); a body that changed in between is screened

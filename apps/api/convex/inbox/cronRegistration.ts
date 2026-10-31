@@ -6,7 +6,8 @@ type Crons = ReturnType<typeof cronJobs>;
 /**
  * Team-inbox thread crons. The first two moved here unchanged from
  * `convex/crons.ts` when that file reached the 500-LOC cap (same names,
- * cadences and arguments); the breach sweep joined them.
+ * cadences and arguments); the breach sweep and the auto-close sweep joined
+ * them.
  */
 export function registerTeamInboxCrons(crons: Crons): void {
 	// Team-inbox snooze sweep — float snoozed conversation threads back into the
@@ -34,6 +35,16 @@ export function registerTeamInboxCrons(crons: Crons): void {
 		'inbox flag response target breaches',
 		{ minutes: 1 },
 		internal.inbox.sla.breaches.sweep,
+		{}
+	);
+
+	// Auto-close — resolve threads that have waited on the customer for the
+	// configured number of quiet days (inbox/autoClose.ts). A no-op while the
+	// rule is off. Hourly: the period is counted in days.
+	crons.interval(
+		'inbox auto-close quiet threads',
+		{ hours: 1 },
+		internal.inbox.autoClose.sweep,
 		{}
 	);
 }

@@ -1,11 +1,12 @@
 /**
  * The shared ratchet runner's own gate.
  *
- * scripts/ratchet.sh is now the single comparison behind eight baselines, so a
- * mistake in it is a mistake in all eight at once — and every mistake a ratchet
- * can make is silent: a runner that ignores a new entry, or that quietly treats
- * a failed generator as "everything got fixed", is indistinguishable from
- * `exit 0`. Each rule is therefore proved by a pair, green beside red.
+ * scripts/ratchet.sh is the single comparison behind most of the repo's
+ * ratchets, so a mistake in it is a mistake in all of them at once — and every
+ * mistake a ratchet can make is silent: a runner that ignores a new entry, or
+ * that quietly treats a failed generator as "everything got fixed", is
+ * indistinguishable from `exit 0`. Each rule is therefore proved by a pair,
+ * green beside red.
  */
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -159,6 +160,17 @@ describe('the ratchet runner, when it cannot compare', () => {
 	});
 });
 
+describe('the ratchet runner, misused', () => {
+	it.each([
+		['--baseline', ['--baseline', 'baseline.txt']],
+		['--zero', ['--zero']],
+	])('refuses to run %s without a generator command', (_mode, flags) => {
+		const run = spawnSync('bash', [RATCHET, ...flags, '--'], { encoding: 'utf8' });
+		expect(run.stderr).toContain('no generator command after --');
+		expect(run.status).toBe(2);
+	});
+});
+
 describe('the ratchet runner, reseeding', () => {
 	it('writes the current set and keeps the baseline’s comment header', () => {
 		const run = ratchet({
@@ -186,5 +198,68 @@ describe('the ratchet runner, where it writes', () => {
 		const quiet = ratchet({ current: ['c:three'], baseline: [], flags: ['--stderr'] });
 		expect(quiet.stderr).toContain('c:three');
 		expect(quiet.stdout).toBe('');
+	});
+});
+
+/**
+ * Run the runner in `--zero` mode in a throwaway directory holding no
+ * baseline file. The generator echoes `current`, or fails with
+ * `generatorExit`.
+ */
+function zero(options: { current: string[]; flags?: string[]; generatorExit?: number }): Result {
+	const dir = mkdtempSync(join(tmpdir(), 'owlat-ratchet-zero-'));
+	sandboxes.push(dir);
+	const generator =
+		options.generatorExit === undefined
+			? `printf '%s\\n' ${options.current.map((line) => `'${line}'`).join(' ')}`
+			: `echo 'generator broke' >&2; exit ${options.generatorExit}`;
+	const run = spawnSync(
+		'bash',
+		[
+			RATCHET,
+			'--zero',
+			'--ok',
+			'no things',
+			...(options.flags ?? []),
+			'--',
+			'bash',
+			'-c',
+			generator,
+		],
+		{ cwd: dir, encoding: 'utf8' }
+	);
+	return { status: run.status ?? -1, stdout: run.stdout, stderr: run.stderr };
+}
+
+describe('the ratchet runner, with --zero and no baseline', () => {
+	it('passes a clean generator without any baseline file', () => {
+		const run = zero({ current: [] });
+		expect(run.stdout).toBe('ok:   no things (no baseline, none allowed)\n');
+		expect(run.status).toBe(0);
+	});
+
+	it('fails every entry the generator reports, and names each', () => {
+		const run = zero({ current: ['a:one', 'b:two'] });
+		expect(run.stdout).toContain('FAIL: 2 entr(y/ies) found; this gate allows none:');
+		expect(run.stdout).toContain('a:one');
+		expect(run.stdout).toContain('b:two');
+		expect(run.stdout).not.toContain('stale');
+		expect(run.status).toBe(1);
+	});
+
+	it('propagates a failed generator instead of reporting an empty set as clean', () => {
+		const run = zero({ current: [], generatorExit: 3 });
+		expect(run.status).toBe(3);
+		expect(run.stdout).not.toContain('ok:');
+	});
+
+	it.each([
+		['--baseline', ['--baseline', 'baseline.txt']],
+		['--seed', ['--seed', 'bash scripts/check-thing.sh --write-baseline']],
+		['--write-baseline', ['--write-baseline']],
+	])('refuses %s, which would give the gate a baseline again', (_flag, flags) => {
+		const run = zero({ current: ['a:one'], flags });
+		expect(run.stderr).toContain('usage:');
+		expect(run.status).toBe(2);
 	});
 });

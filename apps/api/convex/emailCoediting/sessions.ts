@@ -37,11 +37,11 @@ import {
 	loadTarget,
 	rootBlocksOf,
 	rowFields,
+	sessionDocOf,
 	targetFields,
 	TARGET_FIELDS,
 	type CoeditRow,
 	type CoeditSession,
-	type StoredRootBlock,
 } from './target';
 import {
 	MAX_COEDIT_ID_LENGTH,
@@ -76,10 +76,7 @@ function seedFrom(target: CoeditTarget, row: CoeditRow, version: number, now: nu
 
 function sessionState(session: CoeditSession): SessionState {
 	return {
-		doc: {
-			blocks: JSON.parse(session.content) as StoredRootBlock[],
-			fields: JSON.parse(session.fields) as Record<string, unknown>,
-		},
+		doc: sessionDocOf(session),
 		writes: session.writes,
 		version: session.version,
 	};

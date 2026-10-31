@@ -12,7 +12,7 @@ function streamOf(chunks: Buffer[], opts: { sizeExceeded?: boolean } = {}) {
 
 // ---------------------------------------------------------------------------
 // Ported verbatim from apps/mta/src/lib/__tests__/dataStream.test.ts — the byte
-// budget MUST preserve those exact semantics (D5).
+// budget MUST preserve those exact semantics.
 // ---------------------------------------------------------------------------
 describe('collectDataStream (ported dataStream semantics)', () => {
 	it('collects a message within the budget', async () => {
@@ -40,29 +40,42 @@ describe('collectDataStream (ported dataStream semantics)', () => {
 		expect(result.ok).toBe(false);
 	});
 
-	it('destroys the stream past the abort factor', async () => {
-		const s = new PassThrough() as PassThrough & { sizeExceeded?: boolean };
+	/**
+	 * A stream of `count` 1 KiB chunks that records whether it was destroyed;
+	 * `readableEnded` tells whether its consumer read it to the end.
+	 */
+	function trackedStream(count: number) {
+		let sent = 0;
+		const s = new Readable({
+			read() {
+				this.push(sent < count ? Buffer.alloc(1024, 1) : null);
+				sent++;
+			},
+		}) as Readable & { sizeExceeded?: boolean };
 		let destroyed = false;
 		const origDestroy = s.destroy.bind(s);
 		s.destroy = ((err?: Error) => {
 			destroyed = true;
 			return origDestroy(err);
 		}) as typeof s.destroy;
+		return { s, destroyed: () => destroyed };
+	}
 
-		const writer = (async () => {
-			for (let i = 0; i < 100 && !destroyed; i++) {
-				if (!s.write(Buffer.alloc(1024, 1))) {
-					await new Promise((r) => s.once('drain', r));
-				}
-				await new Promise((r) => setImmediate(r));
-			}
-			if (!destroyed) s.end();
-		})();
-
-		const result = await collectDataStream(s, 1024, 4);
-		await writer;
+	it('destroys the stream past the abort factor', async () => {
+		// 1 KiB budget, 4x abort ceiling: the fifth chunk crosses 4 KiB.
+		const tracked = trackedStream(100);
+		const result = await collectDataStream(tracked.s, 1024, 4);
 		expect(result.ok).toBe(false);
-		expect(destroyed).toBe(true);
+		expect(tracked.destroyed()).toBe(true);
+		expect(tracked.s.readableEnded).toBe(false);
+	});
+
+	it('drains without destroying up to exactly the abort factor', async () => {
+		const tracked = trackedStream(4);
+		const result = await collectDataStream(tracked.s, 1024, 4);
+		expect(result.ok).toBe(false);
+		// Read to the end: no early abort at the boundary.
+		expect(tracked.s.readableEnded).toBe(true);
 	});
 
 	it('honors smtp-server sizeExceeded even when bytes fit the budget', async () => {

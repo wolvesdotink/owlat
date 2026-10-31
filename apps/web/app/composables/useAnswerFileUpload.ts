@@ -1,5 +1,5 @@
 /**
- * Uploading a file that answers a file question (Answer mode, plan §06).
+ * Uploading a file that answers a file question (Answer mode).
  *
  * The same upload the composer's paperclip does (a one-shot upload URL, then
  * the bytes), minus the attach step: the answer names the fresh upload, and the

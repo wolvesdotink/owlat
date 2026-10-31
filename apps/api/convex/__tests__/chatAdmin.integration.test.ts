@@ -23,6 +23,7 @@ import schema from '../schema';
 import { recordUploadedBlob } from './uploadFixtures.testlib';
 import { api } from '../_generated/api';
 import { enableFeatures } from './factories';
+import type * as SessionOrganizationModule from '../lib/sessionOrganization';
 
 // Mutable session mock so each test can pick a user/role. Mirrors the
 // chat.integration.test.ts pattern.
@@ -34,7 +35,13 @@ vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
 	return {
 		...actual,
-		requireOrgMember: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
+		// The query floor answers for the same switchable caller as the mutation
+		// floor: chat reads take the caller from the session their builder threads.
+		requireOrgMember: vi.fn().mockImplementation(async () => ({
+			userId: sessionMock.user.id,
+			role: sessionMock.user.role,
+			activeOrganizationId: 'test-org',
+		})),
 		isActiveOrgMember: vi.fn().mockResolvedValue(true),
 		getUserIdFromSession: vi.fn().mockImplementation(async () => sessionMock.user.id),
 		getMutationContext: vi.fn().mockImplementation(async () => ({
@@ -45,8 +52,7 @@ vi.mock('../lib/sessionOrganization', async () => {
 		requireOrgPermission: vi
 			.fn()
 			.mockImplementation(async (_ctx: unknown, permission: string, message?: string) => {
-				const mod: typeof import('../lib/sessionOrganization') =
-					actual as typeof import('../lib/sessionOrganization');
+				const mod: typeof SessionOrganizationModule = actual as typeof SessionOrganizationModule;
 				mod.requirePermission(
 					mod.hasPermission(
 						sessionMock.user.role as Parameters<typeof mod.hasPermission>[0],

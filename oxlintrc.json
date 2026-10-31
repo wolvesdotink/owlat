@@ -11,8 +11,8 @@
 		"reportUnusedDisableDirectives": "error"
 	},
 	"categories": {
-		"suspicious": "warn",
-		"perf": "warn"
+		"suspicious": "error",
+		"perf": "error"
 	},
 	"env": {
 		"browser": true,
@@ -45,7 +45,7 @@
 		],
 		"no-unused-vars": "error",
 		"no-console": [
-			"warn",
+			"error",
 			{
 				"allow": ["info", "warn", "error"]
 			}
@@ -67,9 +67,9 @@
 		"@typescript-eslint/no-non-null-asserted-optional-chain": "error",
 		"@typescript-eslint/prefer-optional-chain": "error",
 		"no-unsafe-optional-chaining": "error",
-		"@typescript-eslint/consistent-type-imports": "warn",
-		"import/no-duplicates": "warn",
-		"unicorn/no-array-for-each": "warn",
+		"@typescript-eslint/consistent-type-imports": "error",
+		"import/no-duplicates": "error",
+		"unicorn/no-array-for-each": "error",
 		"import/no-cycle": "error",
 		"no-underscore-dangle": "off",
 		// Sequential awaits are deliberate across the codebase: ordered Convex
@@ -84,15 +84,23 @@
 		"import/no-unassigned-import": "off",
 		"owlat/require-suppression-reason": "error",
 		"owlat/no-test-in-loop": "error",
+		// The vitest setups of the workspaces that mount components unmount every
+		// mount after each test, and a test removes the nodes it appended, so no
+		// test wipes the document to clean up. The rule reads test files only.
+		"owlat/no-document-body-reset": "error",
 		// Exponential backoff goes through @owlat/shared/retryPolicy (nextDelay).
 		"owlat/no-inline-backoff": "error",
-		"owlat/no-test-timeout-or-unreasoned-skip": "warn",
+		"owlat/no-test-timeout-or-unreasoned-skip": "error",
 		// Test timing: no real-clock sleeps, no elapsed wall-clock measurements, no
-		// polling loops. Warnings while existing tests still break them; every
-		// remaining finding is frozen in scripts/owlat-lint-baseline.txt.
-		"owlat/no-real-time-wait-in-tests": "warn",
-		"owlat/no-wall-clock-in-tests": "warn",
-		"owlat/no-polling-loop-in-tests": "warn",
+		// polling loops.
+		"owlat/no-real-time-wait-in-tests": "error",
+		"owlat/no-polling-loop-in-tests": "error",
+		// A test asserts on events and counts; wall-clock ratios belong in
+		// `bun run perf:bench`.
+		"owlat/no-wall-clock-in-tests": "error",
+		// Parsed JSON is decoded to `unknown` and checked, never typed by a cast
+		// (@owlat/worker-protocol/decodeJson).
+		"owlat/no-unchecked-json-cast": "error",
 		// Shortcuts in the web app go through the shortcut registry. Scoped by the
 		// rule's own path-suffix `files`, not an override, so the root gates and
 		// apps/web's own lint agree. Every raw keydown listener left carries a
@@ -141,6 +149,167 @@
 							"apps/web/server/api/storage/__tests__/upload.test.ts",
 							"apps/web/server/utils/__tests__/updater.test.ts"
 						]
+					},
+					{
+						// The mail render worker's pipeline and entry: a dedicated worker
+						// has no DOM, and node is the environment without one, so a stage
+						// that reaches for `document` fails here.
+						"environment": "node",
+						"files": [
+							"apps/web/app/utils/__tests__/postboxRenderPipeline.test.ts",
+							"apps/web/app/workers/__tests__/postboxRender.worker.test.ts"
+						]
+					}
+				]
+			}
+		],
+		// The boundary rules below replaced text-matching gates (scripts/check-*.sh)
+		// that still run beside them for one release; scripts/ast-gate-parity.ts
+		// diffs the two finding sets per rule. `files` / `ignore` / `allow` paths are
+		// repository-relative globs matched as a path suffix (see the plugin README),
+		// and every rule skips test files. Each `allow` entry says why.
+		"owlat/no-crypto-primitives": [
+			"error",
+			{
+				"files": ["apps/**", "packages/**"],
+				"ignore": ["**/*.d.ts", "**/*.d.mts", "**/*.d.cts"],
+				"allow": [
+					{
+						"files": ["apps/api/convex/lib/crypto.ts"],
+						"reason": "the Convex compare and HMAC (V8 isolate and 'use node')"
+					},
+					{
+						"files": ["packages/shared/src/constantTimeEqual.ts"],
+						"reason": "the Node compare (@owlat/shared/constantTimeEqual)"
+					},
+					{
+						"files": ["apps/convex-fn-proxy/src/allowlist.ts"],
+						"reason": "hash-then-compare copy; the proxy has no workspace dependencies"
+					}
+				]
+			}
+		],
+		"owlat/no-process-env": [
+			"error",
+			{
+				"files": ["apps/api/convex/**"],
+				"allow": [
+					{
+						"files": ["apps/api/convex/lib/env.ts"],
+						"reason": "the one reader: getRequired / getOptional / getWithDefault over the EnvKey union"
+					}
+				]
+			}
+		],
+		"owlat/no-log-pii": ["error", { "files": ["apps/api/convex/**"] }],
+		"owlat/convex-error-taxonomy": [
+			"error",
+			{
+				"files": ["apps/api/convex/**"],
+				"allow": [
+					{
+						"files": ["apps/api/convex/_utils/errors.ts"],
+						"reason": "the throw* helpers that emit the canonical { category, message, data? } payload"
+					},
+					{
+						"files": ["apps/api/convex/lib/llm/admissionPort.ts"],
+						"reason": "AdmissionRefusedError subclasses ConvexError in the Operation error shape ({ category: 'forbidden', message, data }) so a refused paid call reaches the client unchanged while the LLM router reads its typed reason"
+					}
+				]
+			}
+		],
+		"owlat/no-raw-convex-builder": [
+			"error",
+			{
+				"files": ["apps/api/convex/**"],
+				"allow": [
+					{
+						"files": ["apps/api/convex/lib/authedFunctions.ts"],
+						"reason": "defines the secure-by-default builders on top of the raw ones"
+					}
+				]
+			}
+		],
+		"owlat/use-threaded-session": [
+			"error",
+			{
+				"files": ["apps/api/convex/**"],
+				"ignore": ["apps/api/convex/lib/**"],
+				"kinds": ["query", "mutation"],
+				"floors": ["member", "role"],
+				"helpers": [
+					"getMutationContext",
+					"getUserIdFromSession",
+					"getBetterAuthSessionWithRole",
+					"getBetterAuthSession",
+					"requireOrgMember",
+					"requireOrgPermission",
+					"requireAdminContext",
+					"requireOwnerContext"
+				]
+			}
+		],
+		"owlat/feature-floor-in-builder": [
+			"error",
+			{
+				"files": ["apps/api/convex/**"],
+				// A flag and the folder its gated builders cover. Add a pair when a
+				// folder gains its gated builders.
+				"families": [
+					{ "flag": "mail.external", "files": ["apps/api/convex/mail/**"] },
+					{ "flag": "transactional", "files": ["apps/api/convex/transactional/**"] },
+					{ "flag": "campaigns", "files": ["apps/api/convex/campaigns/**"] },
+					{ "flag": "automations", "files": ["apps/api/convex/automations/**"] },
+					{ "flag": "forms", "files": ["apps/api/convex/forms/**"] },
+					{ "flag": "ai.knowledge", "files": ["apps/api/convex/knowledge/**"] },
+					{ "flag": "calendar.booking", "files": ["apps/api/convex/booking/**"] },
+					{ "flag": "inbox", "files": ["apps/api/convex/inbox/sla/**"] }
+				],
+				// Postbox handlers use postboxQuery / postboxMutation, the external
+				// mailbox family the externalMail* builders.
+				"bareBuilders": {
+					"builders": ["authedQuery", "authedMutation"],
+					"files": ["apps/api/convex/mail/**"]
+				},
+				// Justified sites, not debt: each must stay as it is.
+				"allow": [
+					{
+						"reason": "Soft-auth publicQuery reads in the mail.external family keep an inline assertFeatureEnabled(ctx, 'mail.external'), marked // flag-inline:, because a gated publicQuery would slip past the raw-builder ban and its // public: rule.",
+						"sites": [
+							"apps/api/convex/mail/external/accounts.ts:getForCurrentUser",
+							"apps/api/convex/mail/mailboxMove.ts:moveStatus",
+							"apps/api/convex/mail/migration.ts:getStatus",
+							"apps/api/convex/mail/sendingSwitch.ts:sendingSwitchStatus"
+						]
+					},
+					{
+						"reason": "Soft-fails to null (isFeatureEnabled) rather than throwing: the admin page renders it beside other cards and reads null as no team inbox import.",
+						"sites": ["apps/api/convex/mail/migrationShared.ts:getStatusShared"]
+					},
+					{
+						"reason": "Reachable before any mail flag is on (mail/_helpers.ts exemptions): the mailbox request / fresh-start guard a mailbox-less member sees, invitation acceptance, and the team roster's mailbox column.",
+						"sites": [
+							"apps/api/convex/mail/mailboxRequest.ts:freshStartStatus",
+							"apps/api/convex/mail/mailboxRequest.ts:provisionFromRequest",
+							"apps/api/convex/mail/mailboxRequest.ts:request",
+							"apps/api/convex/mail/memberMailboxStatus.ts:byMembers",
+							"apps/api/convex/mail/pendingInboxMembership.ts:claimInboxMemberships",
+							"apps/api/convex/mail/pendingMailbox.ts:cancelForInvitation",
+							"apps/api/convex/mail/pendingMailbox.ts:claimForInvitation",
+							"apps/api/convex/mail/pendingMailbox.ts:setForInvitation"
+						]
+					},
+					{
+						"reason": "Instance capability, not mail data: a boolean from env presence that the connect form reads to pick its branch.",
+						"sites": ["apps/api/convex/mail/external/googleOAuth.ts:isConfigured"]
+					},
+					{
+						"reason": "The AI handling rules serve the ai.autonomy surface, not Postbox (mail/_helpers.ts exemption).",
+						"sites": [
+							"apps/api/convex/mail/handlingRules.ts:create",
+							"apps/api/convex/mail/handlingRules.ts:remove",
+							"apps/api/convex/mail/handlingRules.ts:update"
+						]
 					}
 				]
 			}
@@ -148,33 +317,34 @@
 	},
 	"overrides": [
 		{
+			// A maintenance script's or a CLI command's stdout is its output:
+			// reports, generated records another gate parses, the result a
+			// developer reads. Product code keeps the global allowance, which has
+			// no console.log. The setup CLI's entry point and commands and the
+			// email preview generator are such programs outside a scripts
+			// directory; the setup CLI's lib/ stays under the global rule.
+			// Run from the root, oxlint matches these against the repository-
+			// relative path; a workspace `lint` (`--config ../../oxlintrc.json`)
+			// matches them against the absolute path, so the workspace patterns
+			// need the leading "**/". Root scripts are linted from the root only.
+			// scripts/__tests__/oxlint-console.test.ts runs both.
+			"files": [
+				"scripts/**",
+				"**/apps/*/scripts/**",
+				"**/packages/*/scripts/**",
+				"**/apps/setup-cli/src/index.ts",
+				"**/apps/setup-cli/src/commands/**",
+				"**/packages/email-renderer/src/preview/generate.ts"
+			],
+			"rules": {
+				"no-console": ["error", { "allow": ["log", "info", "warn", "error"] }]
+			}
+		},
+		{
 			"files": ["**/__tests__/**", "**/*.test.ts", "**/*.spec.ts"],
 			"rules": {
 				"@typescript-eslint/no-explicit-any": "off",
 				"no-unused-vars": "off"
-			}
-		},
-		{
-			"files": [
-				"**/convex/conditions/index.ts",
-				"**/convex/conditions/segmentMatch.ts",
-				"**/convex/delivery/sendAssignmentRouting.ts",
-				"**/convex/delivery/sendAssignments.ts",
-				"**/convex/lib/sendProviders/cellRoute.ts",
-				"**/convex/lib/sendProviders/routeMixContext.ts",
-				"**/convex/mail/filterRun.ts",
-				"**/convex/mail/filters.ts",
-				"**/src/parse/contentType.ts",
-				"**/src/parse/headers.ts",
-				"**/src/scaffoldSendProvider.ts",
-				"**/src/scaffoldSendProviderModules.ts",
-				"**/src/scaffoldSendProviderStubs.ts",
-				"**/src/manifestSnapshot.ts",
-				"**/src/manifestValue.ts",
-				"**/src/settingsSchema.ts"
-			],
-			"rules": {
-				"import/no-cycle": "warn"
 			}
 		}
 	],

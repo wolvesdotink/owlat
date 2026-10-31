@@ -3,9 +3,10 @@
  * `scheduledSendAt`, `undoToken`, and the multi-table send-success cascade.
  *
  * Owns the three-state machine `draft → pending_send | scheduled → draft (revert) |
- * sent (terminal, deletes the row)`. Three entry points: `create` (initial
- * insert), `transition` (direct, by draftId), and `transitionByUndoToken`
- * (undo-button path keyed by `undoToken`). Reducers return { patch, effects,
+ * sent (terminal, deletes the row)`. Four entry points: `create` (initial
+ * insert), `transition` (direct, by draftId), `commitSent` (the dispatch hop's
+ * `→ sent`, reverting a revoked From in the same transaction) and
+ * `transitionByUndoToken` (undo-button path keyed by `undoToken`). Reducers return { patch, effects,
  * applied }; the runner is the only place that touches the DB or the
  * scheduler.
  *
@@ -30,12 +31,14 @@
  *     - patch_mailbox_bytes            — usedBytes += rawSize
  *     - delete_attachment_storage      — frees the draft's attachment blobs
  *     - record_recipients_in_address_book
+ *     - schedule_reply_done            — archives the answered conversation
+ *                                        ("send and mark done" only)
  *     - delete_draft_row               — terminal row delete
  *     - audit_log('postbox_draft.sent')
  */
 
 import { v } from 'convex/values';
-import { internalQuery } from '../_generated/server';
+import { internalQuery, type MutationCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import type { Id } from '../_generated/dataModel';
 import { logError } from '../lib/runtimeLog';
@@ -43,7 +46,11 @@ import { isFeatureEnabled } from '../lib/featureFlags';
 import { hasActiveSigningKey, loadRecipientKeyStates } from './outboundQueries';
 import { deriveSealState, type SealState } from './sealPolicy';
 import { dispatch } from './draftLifecycle/effects';
-import { transitionInputValidator, type TransitionOutcome } from './draftLifecycle/types';
+import {
+	transitionInputValidator,
+	type TransitionInput,
+	type TransitionOutcome,
+} from './draftLifecycle/types';
 
 /**
  * Initial-insert path. The first writer of `mailDrafts.state` (with the
@@ -100,22 +107,69 @@ export const transition = internalMutation({
 	args: {
 		draftId: v.id('mailDrafts'),
 		input: transitionInputValidator,
+		// The undo token the caller's work belongs to. A dispatch hop reads the
+		// draft long before it commits, and by then the send it started for may
+		// have been cancelled and a new one queued under a fresh token (Send now,
+		// undo then Send again). The state alone cannot tell the two sends apart,
+		// so the token is compared here, in the same transaction as the write.
+		expectedUndoToken: v.optional(v.string()),
+	},
+	handler: async (ctx, args): Promise<TransitionOutcome> => await applyTransition(ctx, args),
+});
+
+/**
+ * The dispatch hop's commit (`mail/outbound.ts dispatchDraft`): the `→ sent`
+ * transition, and when the From is no longer allowed, the revert to the
+ * composer in the same transaction, so a refused send never leaves the draft
+ * in `pending_send` with nothing left to move it. Returns the `→ sent`
+ * outcome either way; the hop reads `from_revoked` from it.
+ */
+export const commitSent = internalMutation({
+	args: {
+		draftId: v.id('mailDrafts'),
+		input: transitionInputValidator,
+		expectedUndoToken: v.string(),
 	},
 	handler: async (ctx, args): Promise<TransitionOutcome> => {
-		const draft = await ctx.db.get(args.draftId);
-		if (!draft) {
-			return { ok: false, reason: 'draft_not_found', draftId: args.draftId };
-		}
-		const outcome = await dispatch(ctx, draft, args.input);
-		// Log reverts so an operator can see why a draft popped back to
-		// Drafts unexpectedly. The audit-log row carries the structured
-		// reason; the runtime log is for live debugging.
-		if (outcome.ok && args.input.to === 'draft' && args.input.reason !== 'user_cancel') {
-			logError(`[DraftLifecycle] Reverted draft ${args.draftId} → 'draft': ${args.input.reason}`);
+		const outcome = await applyTransition(ctx, args);
+		if (!outcome.ok && outcome.reason === 'from_revoked') {
+			await applyTransition(ctx, {
+				draftId: args.draftId,
+				expectedUndoToken: args.expectedUndoToken,
+				input: { to: 'draft', at: Date.now(), reason: 'from_revoked' },
+			});
 		}
 		return outcome;
 	},
 });
+
+/** {@link transition}'s body: the undo-token check, then the lifecycle dispatch. */
+async function applyTransition(
+	ctx: MutationCtx,
+	args: { draftId: Id<'mailDrafts'>; input: TransitionInput; expectedUndoToken?: string }
+): Promise<TransitionOutcome> {
+	const draft = await ctx.db.get(args.draftId);
+	if (!draft) {
+		return { ok: false, reason: 'draft_not_found', draftId: args.draftId };
+	}
+	if (args.expectedUndoToken !== undefined && draft.undoToken !== args.expectedUndoToken) {
+		return {
+			ok: false,
+			reason: 'undo_token_mismatch',
+			draftId: args.draftId,
+			from: draft.state,
+			to: args.input.to,
+		};
+	}
+	const outcome = await dispatch(ctx, draft, args.input);
+	// Log reverts so an operator can see why a draft popped back to
+	// Drafts unexpectedly. The audit-log row carries the structured
+	// reason; the runtime log is for live debugging.
+	if (outcome.ok && args.input.to === 'draft' && args.input.reason !== 'user_cancel') {
+		logError(`[DraftLifecycle] Reverted draft ${args.draftId} → 'draft': ${args.input.reason}`);
+	}
+	return outcome;
+}
 
 /**
  * Same as `transition`, but keyed by `undoToken` rather than draftId. Used by

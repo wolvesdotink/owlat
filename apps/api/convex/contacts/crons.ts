@@ -8,7 +8,7 @@
  * original jobs kept their names, cadences and arguments byte-for-byte.
  */
 
-import { cronJobs } from 'convex/server';
+import type { cronJobs } from 'convex/server';
 import { internal } from '../_generated/api';
 
 type Crons = ReturnType<typeof cronJobs>;

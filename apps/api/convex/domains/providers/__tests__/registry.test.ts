@@ -1,16 +1,8 @@
 /**
  * Sending-domain provider registry.
  *
- * PLAN NUMBERS IN THIS FILE ARE THE MANDRILL PLAN'S (`D6` = kill the 'ses'-only
- * gates, `D7` = one generic relay-identity table + this registry; `P3.1` = the
- * Mandrill domain-identity adapter). The seams plan that owns the branch
- * numbers those differently — its D6 is the webhook registry and its D7 is the
- * `@owlat/mta-protocol` package — so the qualification is written out once here
- * rather than left to the reader. This work is the seams plan's P0.3, and its
- * `domainVerification` field is adopted by that plan's D1.
- *
  * The registry is what turned the two hard-coded relay gates into capability
- * lookups: routing asks the CATALOG whether a kind may relay (Mandrill D6), and
+ * lookups: routing asks the CATALOG whether a kind may relay, and
  * the relay-verification seam asks THIS registry whether the kind can prove a
  * domain. Both halves have to stay in agreement, and the agreement is enforced
  * at compile time — so these tests pin the runtime half (lookup + guard) and
@@ -30,6 +22,7 @@ import {
 	type SendingDomainProviderModule,
 } from '../index';
 import { toRelayIdentityProvider } from '../relaySurface';
+import { returnPathProviderFor } from '../../returnPathProviders';
 import { OWN_ARM_TRANSPORT_KIND } from '../../../lib/sendProviders/strategies';
 import {
 	SEND_PROVIDER_CATALOG,
@@ -48,7 +41,7 @@ describe('SENDING_DOMAIN_PROVIDERS', () => {
 	});
 
 	it('names our own infrastructure with the same string the send arms do', () => {
-		// D3 sanctions ONE identity check — own infrastructure vs. everything else
+		// There is ONE sanctioned identity check — own infrastructure vs. everything else
 		// — and this pins that the two type domains spell it identically.
 		// `providerRoutes.setRoute` demands an enabled arm of
 		// `OWN_ARM_TRANSPORT_KIND` while the relay-identity drain three functions
@@ -107,7 +100,25 @@ describe('SENDING_DOMAIN_PROVIDERS', () => {
 	});
 });
 
-describe('completeness against the send-provider catalog (Mandrill D6/D7)', () => {
+describe('custom return-path support', () => {
+	it('is declared by the MTA and SES modules and by no other kind', () => {
+		const declaring = Object.values(SENDING_DOMAIN_PROVIDERS)
+			.filter((provider) => provider.returnPath !== undefined)
+			.map((provider) => provider.kind)
+			.sort();
+		expect(declaring).toEqual(['mta', 'ses']);
+	});
+
+	it('is what returnPathProviderFor hands back, and nothing for an unknown or missing kind', () => {
+		expect(returnPathProviderFor('mta')).toBe(providerFor('mta').returnPath);
+		expect(returnPathProviderFor('ses')).toBe(providerFor('ses').returnPath);
+		expect(returnPathProviderFor('mandrill')).toBeNull();
+		expect(returnPathProviderFor(undefined)).toBeNull();
+		expect(returnPathProviderFor('constructor')).toBeNull();
+	});
+});
+
+describe('completeness against the send-provider catalog', () => {
 	/**
 	 * The runtime twin of the `_ApiVerifiedKindsHaveDomainProviders` mapped-type
 	 * guard in `../index.ts`. That guard is the real enforcement — it fails the
@@ -178,7 +189,7 @@ describe('completeness against the send-provider catalog (Mandrill D6/D7)', () =
 	const relayContractByCapability = [
 		{
 			method: 'relayDomainVerified',
-			// The read half (Mandrill D6). A kind the catalog promises can prove a
+			// The read half. A kind the catalog promises can prove a
 			// domain, whose provider has no way to prove it, answers "unverified"
 			// forever.
 		},

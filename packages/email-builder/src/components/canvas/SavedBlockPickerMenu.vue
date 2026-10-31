@@ -73,7 +73,7 @@ onUnmounted(() => {
 	<Teleport to="body">
 		<div
 			ref="menuEl"
-			class="light fixed z-[10000] w-80 max-h-[360px] flex flex-col bg-bg-elevated border border-border-subtle rounded-[10px] shadow-[0_4px_6px_-1px_rgba(0,0,0,0.15),0_10px_20px_-2px_rgba(0,0,0,0.2)] animate-eb-slide-up"
+			class="light fixed z-(--z-menu) w-80 max-h-[360px] flex flex-col bg-bg-elevated border border-border-subtle rounded-[10px] shadow-[0_4px_6px_-1px_rgba(0,0,0,0.15),0_10px_20px_-2px_rgba(0,0,0,0.2)] animate-eb-slide-up"
 			:style="{ top: `${position.top}px`, left: `${position.left}px` }"
 			@keydown="handleKeydown"
 		>

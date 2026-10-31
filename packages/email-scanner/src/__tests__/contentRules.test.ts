@@ -35,6 +35,18 @@ describe('contentRules — registry lifecycle', () => {
 		]);
 	});
 
+	it('registers built-in rules in import order, which fixes flag iteration order', () => {
+		expect(contentRules.keys()).toEqual([
+			'phishing-urls',
+			'spam-keywords',
+			'homoglyphs',
+			'caps-abuse',
+			'excessive-punctuation',
+			'prohibited-content',
+			'sender-impersonation',
+		]);
+	});
+
 	it('register stores a new rule by id', () => {
 		const rule: ContentScanRule = { id: 'stub-1', scan: () => [] };
 		registerContentRule(rule);

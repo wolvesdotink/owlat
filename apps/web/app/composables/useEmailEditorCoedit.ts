@@ -2,9 +2,15 @@ import { computed, ref, watch, type Ref } from 'vue';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { BuilderCollabFocus, EditorBlock } from '@owlat/email-builder';
+import { plainClone } from '@owlat/email-builder/plain-clone';
 import { applyCoeditOps, type CoeditOp } from '@owlat/shared/coeditOps';
 import { canonicalJson } from '@owlat/shared/canonicalJson';
-import { useEmailCoediting, type CoeditEditorDoc, type CoeditTarget } from './useEmailCoediting';
+import {
+	useEmailCoediting,
+	type CoeditEditorDoc,
+	type CoeditTarget,
+	type EmailCoeditingOptions,
+} from './useEmailCoediting';
 import { useEmailEditorPresence } from './useEmailEditorPresence';
 
 /**
@@ -41,12 +47,11 @@ export interface CoeditNoticeView {
 	replacedBy: string;
 }
 
-const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
-
 export function useEmailEditorCoedit(
 	target: () => CoeditTarget | null,
 	host: EmailEditorCoeditHost,
-	rowRevision: () => number | undefined
+	rowRevision: () => number | undefined,
+	control: Pick<EmailCoeditingOptions, 'held' | 'managed'> = {}
 ) {
 	const { t } = useI18n();
 	const client = useConvex();
@@ -63,13 +68,13 @@ export function useEmailEditorCoedit(
 		else if (key === 'subject') host.subject.value = String(value ?? '');
 		else {
 			const field = host.fields[key];
-			if (field) field.value = clone(value);
+			if (field) field.value = plainClone(value);
 		}
 	};
 
 	/** Show a whole state, as the builder's explicit load path. */
 	const hydrate = (doc: CoeditEditorDoc) => {
-		const blocks = clone(doc.blocks) as EditorBlock[];
+		const blocks = plainClone(doc.blocks) as EditorBlock[];
 		host.blocks.value = blocks;
 		for (const [key, value] of Object.entries(doc.fields)) setField(key, value);
 		host.builder()?.loadState({ blocks, name: host.name.value, subject: host.subject.value });
@@ -77,7 +82,7 @@ export function useEmailEditorCoedit(
 
 	/** Other people's edits: through the builder, which keeps selection and undo. */
 	const applyRemote = (incoming: CoeditOp<EditorBlock>[]) => {
-		const ops = clone(incoming);
+		const ops = plainClone(incoming);
 		const builder = host.builder();
 		const shared = ops.filter(
 			(op) => op.kind !== 'field' || op.field === 'name' || op.field === 'subject'
@@ -112,6 +117,7 @@ export function useEmailEditorCoedit(
 		hydrate,
 		applyRemote,
 		changeSignals,
+		...control,
 	});
 
 	const focus = ref<BuilderCollabFocus>({ selectedRootId: null, inlineEditRootId: null });

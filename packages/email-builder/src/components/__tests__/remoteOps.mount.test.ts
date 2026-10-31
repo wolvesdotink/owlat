@@ -4,7 +4,7 @@
 // must land on the canvas without taking the selection away, and undo here
 // must keep stepping through this editor's own edits only. A block someone
 // else holds is outlined with their name and cannot be selected.
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import type { CoeditOp } from '@owlat/shared/coeditOps';
 import EmailBuilder from '../EmailBuilder.vue';
@@ -24,10 +24,8 @@ interface BuilderApi {
 	applyRemoteOps: (ops: CoeditOp<EditorBlock>[]) => void;
 }
 
-let wrapper: VueWrapper | null = null;
-
 async function mountBuilder(blocks: EditorBlock[], remoteMarks?: Record<string, RemoteBlockMark>) {
-	wrapper = mount(EmailBuilder, {
+	const wrapper = mount(EmailBuilder, {
 		props: { blocks, subject: 'Subject', name: 'Name', variables: [], remoteMarks },
 		global: {
 			provide: {
@@ -44,12 +42,6 @@ async function mountBuilder(blocks: EditorBlock[], remoteMarks?: Record<string, 
 
 const api = (w: VueWrapper) => w.vm as unknown as BuilderApi;
 const blockEl = (w: VueWrapper, id: string) => w.find(`[data-block-id="${id}"]`);
-
-afterEach(() => {
-	wrapper?.unmount();
-	wrapper = null;
-	document.body.innerHTML = '';
-});
 
 describe('EmailBuilder applyRemoteOps', () => {
 	it("applies another person's edits and keeps the selection", async () => {

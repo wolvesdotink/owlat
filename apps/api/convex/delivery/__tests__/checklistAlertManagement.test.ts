@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { api } from '../../_generated/api';
 import type { MutationCtx } from '../../_generated/server';
 import schema from '../../schema';
+import { requireAdminContext, requireOrgPermission } from '../../lib/sessionOrganization';
 
 vi.mock('../../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../../lib/sessionOrganization');
@@ -149,5 +150,28 @@ describe('deliverability alert management', () => {
 		expect(state.recipient).not.toHaveProperty('attemptStartedAt');
 		expect(state.recipient).not.toHaveProperty('nextAttemptAt');
 		expect(state.recipient).not.toHaveProperty('unavailableReason');
+	});
+
+	it("reads another organization's alert as missing, on the floor session alone", async () => {
+		const t = convexTest(schema, modules);
+		const alertId = await t.run(async (ctx) => {
+			const alertId = await insertRegressionAlert(ctx, 'foreign-org');
+			await ctx.db.patch(alertId, { organizationId: 'other-org' });
+			return alertId;
+		});
+		vi.mocked(requireAdminContext).mockClear();
+		vi.mocked(requireOrgPermission).mockClear();
+
+		await expect(
+			t.mutation(api.delivery.checklistAlertManagement.acknowledge, { alertId })
+		).rejects.toThrow(/Deliverability alert not found/);
+		await expect(
+			t.mutation(api.delivery.checklistAlertManagement.resolve, { alertId })
+		).rejects.toThrow(/Deliverability alert not found/);
+		expect((await t.run(async (ctx) => ctx.db.get(alertId)))?.acknowledgedAt).toBeUndefined();
+		// The admin floor resolves the session once per call; the alert lookup
+		// reuses it instead of resolving again.
+		expect(vi.mocked(requireAdminContext)).toHaveBeenCalledTimes(2);
+		expect(vi.mocked(requireOrgPermission)).not.toHaveBeenCalled();
 	});
 });

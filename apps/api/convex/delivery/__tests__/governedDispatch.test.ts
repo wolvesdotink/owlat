@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type * as SendProviderCatalog from '../../lib/sendProviders/catalog';
 import { GOVERNED_MTA_MAX_MESSAGE_AGE_MS } from '@owlat/shared';
 import { getFunctionName } from 'convex/server';
 import { internal } from '../../_generated/api';
@@ -15,7 +16,7 @@ const sendProviderDispatch = vi.hoisted(() => vi.fn());
  * The declaration the catalog accessors report, steerable per test so one send
  * can be replayed under semantics that deliberately disagree with its kind —
  * the only way to prove the boundary reads the catalog rather than the kind
- * name (plan D2). `null` is pass-through: every test that does not call
+ * name. `null` is pass-through: every test that does not call
  * `declare()` sees the real catalog, and every test resets it afterwards.
  */
 const declared = vi.hoisted(() => ({
@@ -28,7 +29,7 @@ const declared = vi.hoisted(() => ({
 vi.mock('../lastMileRouting', () => ({ resolveLastMileRouting }));
 vi.mock('../../lib/sendProviders/dispatch', () => ({ sendProviderDispatch }));
 vi.mock('../../lib/sendProviders/catalog', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../../lib/sendProviders/catalog')>();
+	const actual = await importOriginal<typeof SendProviderCatalog>();
 	return {
 		...actual,
 		acceptanceSemanticsFor: (kind: SendProviderKind) =>
@@ -593,7 +594,7 @@ describe('dispatchGovernedEmail', () => {
 	});
 
 	/**
-	 * AN AMBIGUOUS TIMEOUT ON A RELAY (plan D4).
+	 * AN AMBIGUOUS TIMEOUT ON A RELAY.
 	 *
 	 * The MTA reconciles by REPLAYING the attempt — its idempotency key is the MTA
 	 * message id, so a repeat costs nothing. Mandrill's `send-raw` has no
@@ -642,7 +643,7 @@ describe('dispatchGovernedEmail', () => {
 		});
 
 		it('carries NOTHING a caller could re-dispatch from', async () => {
-			// D4: the lost response may sit on top of an accepted and delivered
+			// The lost response may sit on top of an accepted and delivered
 			// message. The absence of an envelope and of a provider message id is the
 			// structural guarantee — not a comment asking the callback to behave.
 			ambiguousRouting('mandrill');
@@ -830,7 +831,7 @@ describe('a provider refusal that carries a suppression', () => {
 });
 
 /**
- * THE GOVERNED BOUNDARY ASKS THE CATALOG, NOT THE KIND (plan P0.1 / D2).
+ * THE GOVERNED BOUNDARY ASKS THE CATALOG, NOT THE KIND.
  *
  * Four behaviours used to be spelled `providerKind === 'mta'` in
  * `governedDispatch.ts`: the pre-dispatch identity binding, the message-id

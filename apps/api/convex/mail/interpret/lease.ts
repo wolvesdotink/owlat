@@ -1,5 +1,5 @@
 /**
- * The per-source run lease (SPEC §2.5). One interpretation run of a source at
+ * The per-source run lease. One interpretation run of a source at
  * a time, whoever dispatched it: delivery, the category wake or its ceiling,
  * the stale sweep, the Reply Queue classifier, an open of the thread. Without
  * it two overlapping runs could both pass the replay dedupe (`run.ts`) before

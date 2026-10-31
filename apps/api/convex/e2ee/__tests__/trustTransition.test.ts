@@ -14,11 +14,13 @@
 
 import { readFileSync } from 'node:fs';
 import { convexTest } from 'convex-test';
+import { getFunctionName } from 'convex/server';
 import * as openpgp from 'openpgp';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import schema from '../../schema';
 import { api, internal } from '../../_generated/api';
 import type { MutationCtx } from '../../_generated/server';
+import { discoverRecipientKey } from '../discovery';
 import { enableSealedMail, modules, type ConvexTestCtx } from './sealedMailTestHelpers';
 
 vi.mock('../../lib/sessionOrganization', async () => {
@@ -319,98 +321,6 @@ describe('e2ee/recipientKeys · reacceptKeyChange', () => {
 	});
 });
 
-/** The v0.6.5 write path, still reachable by a discovery action mid-run at deploy. */
-describe('e2ee/recipientKeys · upsertDiscovery (previous-release shim)', () => {
-	const legacyUpsert = (
-		t: ConvexTestCtx,
-		fields: {
-			outcome: 'trusted' | 'keyChanged' | 'notFound';
-			pinned?: string;
-			observed?: string;
-			armored?: string;
-			ttl?: number;
-		}
-	) =>
-		t.mutation(internal.e2ee.recipientKeys.upsertDiscovery, {
-			address: ADDRESS,
-			domain: DOMAIN,
-			outcome: fields.outcome,
-			pinnedFingerprint: fields.pinned,
-			pinnedPublicKeyArmored: fields.pinned
-				? (fields.armored ?? `KEY:${fields.pinned}`)
-				: undefined,
-			observedFingerprint: fields.observed,
-			observedPublicKeyArmored: fields.observed
-				? (fields.armored ?? `KEY:${fields.observed}`)
-				: undefined,
-			source: 'wkd',
-			expiresAt: Date.now() + (fields.ttl ?? DAY),
-		});
-
-	it('pins a first key on a row with no pin', async () => {
-		const t = await setup();
-		await legacyUpsert(t, { outcome: 'trusted', pinned: KEY_A, observed: KEY_A });
-		const row = await readRow(t);
-		expect(row?.outcome).toBe('trusted');
-		expect(row?.pinnedFingerprint).toBe(KEY_A);
-		expect(row?.revision).toBe(1);
-	});
-
-	it('does not replace a pin with a decision made against an older row', async () => {
-		const t = await setup();
-		await seedRow(t, { outcome: 'trusted', pinned: KEY_A, observed: KEY_A, revision: 1 });
-		// The old action saw no pin, so it believed KEY_B was a first use.
-		await legacyUpsert(t, { outcome: 'trusted', pinned: KEY_B, observed: KEY_B });
-		const row = await readRow(t);
-		expect(row?.outcome).toBe('trusted');
-		expect(row?.pinnedFingerprint).toBe(KEY_A);
-		expect(row?.revision).toBe(1);
-	});
-
-	it('does not clear a pending key change', async () => {
-		const t = await setup();
-		await seedRow(t, { outcome: 'keyChanged', pinned: KEY_A, observed: KEY_B, revision: 2 });
-		await legacyUpsert(t, { outcome: 'trusted', pinned: KEY_A, observed: KEY_A });
-		expect((await readRow(t))?.outcome).toBe('keyChanged');
-	});
-
-	it('treats a v0.6.5 miss on a pinned row as freshness only', async () => {
-		const t = await setup();
-		await seedRow(t, { outcome: 'trusted', pinned: KEY_A, observed: KEY_A, revision: 1 });
-		const before = await readRow(t);
-		// What v0.6.5 sends on a miss: the cached outcome and key fields copied
-		// back, with the short negative TTL.
-		await legacyUpsert(t, {
-			outcome: 'trusted',
-			pinned: KEY_A,
-			observed: KEY_A,
-			armored: 'KEY:A-cached-copy',
-			ttl: 60 * 60 * 1000,
-		});
-		const row = await readRow(t);
-		expect(row?.outcome).toBe('trusted');
-		expect(row?.pinnedFingerprint).toBe(KEY_A);
-		expect(row?.pinnedPublicKeyArmored).toBe(`KEY:${KEY_A}`);
-		expect(row?.observedPublicKeyArmored).toBe(`KEY:${KEY_A}`);
-		expect(row?.revision).toBe(1);
-		expect(row!.expiresAt).toBeLessThan(before!.expiresAt);
-	});
-
-	it('does not pin a key the old action itself held as a change', async () => {
-		const t = await setup();
-		await legacyUpsert(t, { outcome: 'keyChanged', pinned: KEY_A, observed: KEY_B });
-		expect(await readRow(t)).toBeNull();
-	});
-
-	it('writes a plain negative entry for a miss on an unknown address', async () => {
-		const t = await setup();
-		await legacyUpsert(t, { outcome: 'notFound' });
-		const row = await readRow(t);
-		expect(row?.outcome).toBe('notFound');
-		expect(row?.pinnedFingerprint).toBeUndefined();
-	});
-});
-
 describe('e2ee/discovery · discoverRecipientKey starts over when its read goes stale', () => {
 	const BOB = 'bob@sealed.example.org';
 	let bobBinary: Uint8Array;
@@ -518,6 +428,45 @@ describe('e2ee/discovery · discoverRecipientKey starts over when its read goes 
 		expect(row?.observedFingerprint).toBe(KEY_A);
 	});
 
+	it('schedules a fresh discovery when the row moves between its check and its commit', async () => {
+		stubWkd({ wkd: true, duringFirstFetch: async () => {} });
+		const scheduled: { name: string; args: unknown }[] = [];
+		const ctx = {
+			runQuery: async (reference: unknown) => {
+				const name = getFunctionName(reference as never);
+				if (name.endsWith(':isSealedMailEnabled')) return true;
+				if (name.endsWith(':getCached')) return null;
+				if (name.endsWith(':checkDiscoveryBasis')) return { isCurrent: true, outcome: null };
+				throw new Error(`unexpected query ${name}`);
+			},
+			runMutation: async (reference: unknown) => {
+				const name = getFunctionName(reference as never);
+				if (name.endsWith(':commitDiscoveredKey')) return { status: 'stale', outcome: 'trusted' };
+				throw new Error(`unexpected mutation ${name}`);
+			},
+			scheduler: {
+				runAfter: async (_delay: number, reference: unknown, args: unknown) => {
+					scheduled.push({ name: getFunctionName(reference as never), args });
+				},
+			},
+		};
+		const run = (
+			discoverRecipientKey as unknown as {
+				_handler: (ctx: unknown, args: unknown) => Promise<unknown>;
+			}
+		)._handler;
+
+		await expect(run(ctx, { address: BOB, skipManifest: true })).resolves.toEqual({
+			outcome: 'trusted',
+		});
+		expect(scheduled).toEqual([
+			{
+				name: 'e2ee/discovery:discoverRecipientKey',
+				args: { address: BOB, force: true, skipManifest: true },
+			},
+		]);
+	});
+
 	it('keeps a pin committed while its failed lookup was outstanding', async () => {
 		const t = await setup();
 		stubWkd({ wkd: false, duringFirstFetch: async () => void (await competingFirstUse(t)) });
@@ -529,5 +478,85 @@ describe('e2ee/discovery · discoverRecipientKey starts over when its read goes 
 		expect(row?.outcome).toBe('trusted');
 		expect(row?.pinnedFingerprint).toBe(KEY_A);
 		expect(row?.pinnedPublicKeyArmored).toBe('KEY:A');
+	});
+});
+
+describe('e2ee/discovery · refreshExpiringRecipientKeys re-discovers expired pins', () => {
+	const BOB = 'bob@sealed.example.org';
+	const CAROL = 'carol@sealed.example.org';
+	let bobBinary: Uint8Array;
+	let bobFp: string;
+
+	beforeAll(async () => {
+		const armored = readFileSync(
+			new URL('../../../fixtures/sealed-mail/pgp-mime/keys/bob.pub.asc', import.meta.url),
+			'utf8'
+		);
+		const key = await openpgp.readKey({ armoredKey: armored });
+		bobBinary = key.write();
+		bobFp = key.getFingerprint().toUpperCase();
+	});
+
+	afterEach(() => {
+		vi.unstubAllGlobals();
+		vi.useRealTimers();
+	});
+
+	async function seedPinned(
+		t: ConvexTestCtx,
+		address: string,
+		fingerprint: string,
+		expiresAt: number
+	) {
+		return await t.run(async (ctx: RunCtx) =>
+			ctx.db.insert('recipientKeys', {
+				address,
+				domain: 'sealed.example.org',
+				outcome: 'trusted',
+				pinnedFingerprint: fingerprint,
+				pinnedPublicKeyArmored: `KEY:${fingerprint}`,
+				observedFingerprint: fingerprint,
+				observedPublicKeyArmored: `KEY:${fingerprint}`,
+				source: 'wkd',
+				revision: 1,
+				expiresAt,
+				discoveredAt: 1,
+				updatedAt: 1,
+			})
+		);
+	}
+
+	it('refreshes each expired pinned row and leaves a fresh one alone', async () => {
+		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+		const t = await setup();
+		const expiredId = await seedPinned(t, BOB, bobFp, Date.now() - 1);
+		const freshId = await seedPinned(t, CAROL, KEY_A, Date.now() + DAY);
+		const fetched: string[] = [];
+		vi.stubGlobal('fetch', async (input: string | URL) => {
+			const url = new URL(String(input));
+			fetched.push(url.searchParams.get('l') ?? url.pathname);
+			if (!url.pathname.startsWith('/.well-known/openpgpkey/hu/')) {
+				return new Response(null, { status: 404 });
+			}
+			return new Response(bobBinary.slice(), { status: 200 });
+		});
+
+		const result = await t.action(internal.e2ee.discovery.refreshExpiringRecipientKeys, {});
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+		expect(result).toEqual({ refreshed: 1 });
+		expect(fetched).toContain('bob');
+		expect(fetched).not.toContain('carol');
+		const [expired, fresh] = await t.run(async (ctx: RunCtx) =>
+			Promise.all([ctx.db.get(expiredId), ctx.db.get(freshId)])
+		);
+		expect(expired).toMatchObject({
+			outcome: 'trusted',
+			pinnedFingerprint: bobFp,
+			observedFingerprint: bobFp,
+			revision: 1,
+		});
+		expect(expired!.expiresAt).toBeGreaterThan(Date.now());
+		expect(fresh!.updatedAt).toBe(1);
 	});
 });

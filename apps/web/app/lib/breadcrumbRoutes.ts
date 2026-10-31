@@ -66,9 +66,9 @@ export const MARKETING_TEMPLATES = {
 /**
  * The Preferences trails, projected out of the settings registry.
  *
- * Preferences pages used to be restated here by hand, so a new page had to be
- * remembered in the sidebar table, in this one, and in the hub's link grid; the
- * three had already drifted. One declaration means a registry entry gets its
+ * Restating Preferences pages here by hand would mean remembering a new page in
+ * the sidebar table, in this one, and in the hub's link grid, and the three
+ * drift. One declaration means a registry entry gets its
  * crumb — with the SAME words the left nav and the hub print for it — for free.
  * Gates are deliberately ignored: a crumb describes where you are, and if a
  * gate let you reach the page the trail must still name it.

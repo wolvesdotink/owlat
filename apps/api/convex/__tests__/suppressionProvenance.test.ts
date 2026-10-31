@@ -1,6 +1,6 @@
 /**
  * "Who put this here?" — the read that makes a provider-driven suppression
- * distinguishable from a colleague's decision (plan D9, piece P3.2).
+ * distinguishable from a colleague's decision.
  *
  * A Mandrill reject lands in `blockedEmails` with no operator behind it, and
  * (for `unsub`/rule rejects) with reason `manual` — indistinguishable on the row
@@ -20,9 +20,10 @@ import { describe, expect, it, vi } from 'vitest';
 import schema from '../schema';
 import { api, internal } from '../_generated/api';
 import { modules } from './testModules';
+import type * as SessionOrganizationModule from '../lib/sessionOrganization';
 
 vi.mock('../lib/sessionOrganization', async () => {
-	const actual = await vi.importActual<typeof import('../lib/sessionOrganization')>(
+	const actual = await vi.importActual<typeof SessionOrganizationModule>(
 		'../lib/sessionOrganization'
 	);
 	return {

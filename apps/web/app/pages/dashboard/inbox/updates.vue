@@ -5,6 +5,8 @@ import type { FunctionReturnType } from 'convex/server';
 import { categoryIcon } from '~/utils/agentCategories';
 import { formatDateTime } from '~/utils/formatters';
 import { useReviewListKeys } from '~/composables/useReviewListKeys';
+import { useUpdatesDismissSweep } from '~/composables/useUpdatesDismissSweep';
+import PostboxSweepStatus from '~/components/postbox/PostboxSweepStatus.vue';
 
 /**
  * Updates — the team-inbox dashboard of mail that needs no reply.
@@ -24,8 +26,8 @@ import { useReviewListKeys } from '~/composables/useReviewListKeys';
  * through the normal review queue and can never auto-send).
  *
  * A row shows the subject and the first lines of the message as the sender
- * wrote them (`preview`, quoted history cut). No model-written summary (D7,
- * thread brief): an old row's stored classifier summary is not shown.
+ * wrote them (`preview`, quoted history cut). No model-written summary:
+ * an old row's stored classifier summary is not shown.
  */
 const { t } = useI18n();
 
@@ -154,16 +156,6 @@ function openThread(row: UpdateRow) {
 	if (threadId) navigateTo(`/dashboard/inbox/${threadId}`);
 }
 
-const rowDomId = (row: UpdateRow) => `update-${row._id}`;
-const { focusedIndex, activeId, onKeydown, hints } = useReviewListKeys<UpdateRow>({
-	items: visibleRows,
-	resetKey: view,
-	rowDomId,
-	onOpen: openThread,
-	onDismiss: (row) => void onDismiss(row),
-	onRequestReply: (row) => void onRequestReply(row),
-});
-
 function senderLabel(item: UpdateItem): string {
 	const contact = item.contact;
 	const name = [contact?.firstName, contact?.lastName].filter(Boolean).join(' ').trim();
@@ -199,10 +191,31 @@ const groups = computed<{ tone: Tone | null; rows: UpdateRow[] }[]>(() => {
 	})).filter((group) => group.rows.length > 0);
 });
 
+/** The rows in the order they render, which both the keyboard and a sweep walk. */
+const displayRows = computed(() => groups.value.flatMap((group) => group.rows));
+
 /** Position of a row in the flat keyboard order, for the listbox focus ring. */
 function flatIndex(row: UpdateRow): number {
-	return visibleRows.value.findIndex((r) => r._id === row._id);
+	return displayRows.value.findIndex((r) => r._id === row._id);
 }
+
+const rowDomId = (row: UpdateRow) => `update-${row._id}`;
+const { focusedIndex, activeId, onKeydown, hints } = useReviewListKeys<UpdateRow>({
+	items: displayRows,
+	resetKey: view,
+	rowDomId,
+	onOpen: openThread,
+	onDismiss: (row) => void onDismiss(row),
+	onRequestReply: (row) => void onRequestReply(row),
+});
+
+const dismissSweep = useUpdatesDismissSweep({
+	rows: displayRows,
+	scopeKey: () => view.value,
+	canDismiss: () => isAdmin.value && !isSpamView.value,
+	actionInProgress,
+	rowHide: { hide: hideRow, unhide: unhideRow },
+});
 
 function categoryLabel(category: string | undefined): string {
 	const key = `dashboard.inbox.detail.categories.${category ?? 'other'}`;
@@ -322,7 +335,9 @@ function kindLabel(kind: string | undefined): string | undefined {
 				:aria-label="t('dashboard.inbox.updates.listAriaLabel')"
 				:aria-activedescendant="activeId"
 				tabindex="0"
+				:ref="dismissSweep.listEl"
 				class="space-y-8 outline-none"
+				:class="{ 'select-none': dismissSweep.active.value }"
 				@keydown="onKeydown"
 			>
 				<li v-for="group in groups" :key="group.tone ?? 'all'" role="presentation">
@@ -346,9 +361,13 @@ function kindLabel(kind: string | undefined): string | undefined {
 							:aria-selected="flatIndex(row) === focusedIndex"
 							class="group lp-card p-4 outline-none"
 							:class="flatIndex(row) === focusedIndex ? 'ring-2 ring-brand/60' : ''"
+							:data-sweep-row="row._id"
 							data-testid="update-row"
 						>
-							<div class="flex items-start gap-3">
+							<div
+								class="flex items-start gap-3"
+								:class="{ 'opacity-40': dismissSweep.markOf(row._id) === 'dismiss' }"
+							>
 								<UiAvatar
 									:name="senderLabel(row.item)"
 									:email="row.item.message.from"
@@ -404,18 +423,17 @@ function kindLabel(kind: string | undefined): string | undefined {
 												<Icon name="lucide:external-link" class="h-3 w-3" />
 												{{ t('dashboard.inbox.updates.open') }}
 											</UiButton>
-											<template v-if="isSpamView">
-												<UiButton
-													variant="ghost"
-													size="sm"
-													class="gap-1 text-error hover:bg-error-subtle"
-													:disabled="actionInProgress === row._id"
-													@click.stop="pendingBlock = row"
-												>
-													<Icon name="lucide:ban" class="h-3 w-3" />
-													{{ t('dashboard.inbox.updates.blockSender') }}
-												</UiButton>
-											</template>
+											<UiButton
+												v-if="isSpamView"
+												variant="ghost"
+												size="sm"
+												class="gap-1 text-error hover:bg-error-subtle"
+												:disabled="actionInProgress === row._id"
+												@click.stop="pendingBlock = row"
+											>
+												<Icon name="lucide:ban" class="h-3 w-3" />
+												{{ t('dashboard.inbox.updates.blockSender') }}
+											</UiButton>
 											<template v-else>
 												<UiButton
 													variant="ghost"
@@ -427,16 +445,19 @@ function kindLabel(kind: string | undefined): string | undefined {
 													<Icon name="lucide:reply" class="h-3 w-3" />
 													{{ t('dashboard.inbox.updates.requestReply') }}
 												</UiButton>
-												<UiButton
-													variant="secondary"
-													size="sm"
-													class="gap-1"
-													:disabled="actionInProgress === row._id"
-													@click.stop="onDismiss(row)"
-												>
-													<Icon name="lucide:check" class="h-3 w-3" />
-													{{ t('dashboard.inbox.updates.dismiss') }}
-												</UiButton>
+												<UiTooltip :text="t('dashboard.inbox.updates.dismissSweepHint')">
+													<UiButton
+														variant="secondary"
+														size="sm"
+														class="gap-1"
+														:disabled="actionInProgress === row._id"
+														@pointerdown="dismissSweep.start(row._id, $event)"
+														@click.stop="onDismiss(row)"
+													>
+														<Icon name="lucide:check" class="h-3 w-3" />
+														{{ t('dashboard.inbox.updates.dismiss') }}
+													</UiButton>
+												</UiTooltip>
 											</template>
 										</div>
 									</div>
@@ -454,6 +475,7 @@ function kindLabel(kind: string | undefined): string | undefined {
 				</li>
 			</ul>
 		</UiQueryBoundary>
+		<PostboxSweepStatus :status="dismissSweep.status.value" />
 
 		<UiConfirmationDialog
 			v-if="isAdmin"

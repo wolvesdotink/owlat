@@ -4,10 +4,9 @@
  * (`apps/api/convex/auditActions/catalog.ts` → `AUDIT_ACTION_LITERALS`),
  * imported across the `@owlat/api` package boundary.
  *
- * Previously the audit page kept a hand-maintained copy of the literal list, so
- * a new backend action silently never appeared in the filter dropdown (it had
- * already drifted — `sending_domain.dkim_rotated` was missing). Deriving the
- * list here means a new backend action shows up in the filter automatically, and
+ * A hand-maintained copy of the literal list drifts: a new backend action
+ * silently never appears in the filter dropdown. Deriving the list here means a
+ * new backend action shows up in the filter automatically, and
  * the parity test (`useAuditLogPresentation.test.ts`) fails the build if any
  * literal is left ungrouped.
  *
@@ -132,10 +131,10 @@ export function buildActionTypeGroups(): ActionTypeGroup[] {
 	}));
 	// Index each prefix to its group for O(1) assignment.
 	const prefixToGroup = new Map<string, ActionTypeGroup>();
-	ACTION_GROUP_SPECS.forEach((spec, i) => {
+	for (const [i, spec] of ACTION_GROUP_SPECS.entries()) {
 		const group = groups[i]!;
 		for (const prefix of spec.prefixes) prefixToGroup.set(prefix, group);
-	});
+	}
 
 	for (const action of AUDIT_ACTION_LITERALS) {
 		const group = prefixToGroup.get(actionPrefix(action));

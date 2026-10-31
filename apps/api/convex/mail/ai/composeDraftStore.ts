@@ -13,7 +13,7 @@
  * person's session.
  */
 
-import { v } from 'convex/values';
+import { v, type ObjectType } from 'convex/values';
 import { internalQuery, type MutationCtx, type QueryCtx } from '../../_generated/server';
 import { internalMutation } from '../../lib/writeFence';
 import type { Doc, Id } from '../../_generated/dataModel';
@@ -22,9 +22,9 @@ import { answerModeQuery } from '../_helpers';
 import { isFeatureEnabled } from '../../lib/featureFlags';
 import { requireMailboxAccess } from '../permissions';
 import { isSharedInboxReader } from '../../inbox/access';
-import { captureStandingAnswers } from '../../inbox/clarificationMemory';
 import { deletePlansForDraft } from '../interpret/responsePlanState';
 import { requireOrgMember, type MutationSessionContext } from '../../lib/sessionOrganization';
+import { armDraftFollowUp, captureOwnAnswers } from './composeDraftAnswerWrites';
 import {
 	answerAskStatusValidator,
 	answerAskTargetKey,
@@ -42,12 +42,7 @@ import { throwForbidden, throwInvalidState, throwNotFound } from '../../_utils/e
 import { isThreadInterpretationFenced } from '../interpret/staleFence';
 import { mailThreadOf } from './answerStreamFence';
 import { DRAFT_PAUSED_STALE_INTERPRETATION } from '@owlat/shared/answerMode';
-import {
-	FILE_QUESTION_ID,
-	FOLLOW_UP_QUESTION_ID,
-	type AskFileRef,
-	type AskQuestion,
-} from './composeDraftPolicy';
+import type { AskFileRef, AskQuestion } from './composeDraftPolicy';
 
 /** What the web reads: the session without its internal bookkeeping. */
 export interface AskSessionView {
@@ -192,7 +187,7 @@ export function throwAskSessionClaimed(): never {
 }
 
 /**
- * Drop every ask session of a draft, and its response plan (SPEC §6): the
+ * Drop every ask session of a draft, and its response plan: the
  * draft's Answer mode state goes with the draft (discard, send, teardown).
  */
 export async function deleteAskSessionsForDraft(
@@ -286,7 +281,7 @@ async function isAiDraftedTarget(ctx: QueryCtx, target: AnswerAskTarget): Promis
 }
 
 /**
- * The send guard of plan §05: an Answer mode "draft with gaps" marks each
+ * The send guard: an Answer mode "draft with gaps" marks each
  * missing fact `[[...]]`, and sending one would ship the marker to the
  * recipient, so a send is refused (`DRAFT_HAS_GAPS`) until the person fills or
  * deletes it. Only a target the AI wrote into is checked (an ask session, or
@@ -315,7 +310,7 @@ export async function assertNoAnswerGaps(
 }
 
 /** The session when the calling identity owns it; throws otherwise. */
-async function requireOwnSession(
+export async function requireOwnSession(
 	ctx: QueryCtx,
 	sessionId: Id<'answerAskSessions'>
 ): Promise<Doc<'answerAskSessions'>> {
@@ -333,7 +328,7 @@ export const getOwnSession = internalQuery({
 	handler: async (ctx, args) => await requireOwnSession(ctx, args.sessionId),
 });
 
-const sessionFields = {
+export const sessionFields = {
 	instruction: v.optional(v.string()),
 	locale: v.string(),
 	status: answerAskStatusValidator,
@@ -346,31 +341,44 @@ const sessionFields = {
 	timeZone: v.optional(v.string()),
 };
 
+const replaceSessionArgs = { target: answerAskTargetValidator, ...sessionFields };
+
 /**
  * Store a fresh session for the caller, replacing the caller's previous one on
  * the same target (one live session per target and person).
  */
+export async function replaceOwnSession(
+	ctx: MutationCtx,
+	session: MutationSessionContext,
+	args: ObjectType<typeof replaceSessionArgs>
+): Promise<Doc<'answerAskSessions'>> {
+	if (!(await canReachTarget(ctx, args.target, session))) throwForbidden('Target not accessible');
+	const previous = await findOwnSession(ctx, args.target, session.userId);
+	if (previous) await deleteSessionRow(ctx, previous);
+	const now = Date.now();
+	const { target, ...fields } = args;
+	const id = await ctx.db.insert('answerAskSessions', {
+		ownerId: session.userId,
+		organizationId: session.activeOrganizationId,
+		target,
+		targetKey: answerAskTargetKey(target),
+		round: 1,
+		...fields,
+		createdAt: now,
+		updatedAt: now,
+	});
+	return (await ctx.db.get(id))!;
+}
+
+/**
+ * {@link replaceOwnSession} on its own. `start` commits through
+ * `composeDraftCommit.commitStart` now; kept for a previous-release `start`
+ * mid-run, whose own new session it stores. Remove after release N+1.
+ */
 export const replaceSession = internalMutation({
-	args: { target: answerAskTargetValidator, ...sessionFields },
-	handler: async (ctx, args): Promise<Doc<'answerAskSessions'>> => {
-		const session = await requireOrgMember(ctx);
-		if (!(await canReachTarget(ctx, args.target, session))) throwForbidden('Target not accessible');
-		const previous = await findOwnSession(ctx, args.target, session.userId);
-		if (previous) await deleteSessionRow(ctx, previous);
-		const now = Date.now();
-		const { target, ...fields } = args;
-		const id = await ctx.db.insert('answerAskSessions', {
-			ownerId: session.userId,
-			organizationId: session.activeOrganizationId,
-			target,
-			targetKey: answerAskTargetKey(target),
-			round: 1,
-			...fields,
-			createdAt: now,
-			updatedAt: now,
-		});
-		return (await ctx.db.get(id))!;
-	},
+	args: replaceSessionArgs,
+	handler: async (ctx, args): Promise<Doc<'answerAskSessions'>> =>
+		await replaceOwnSession(ctx, await requireOrgMember(ctx), args),
 });
 
 /**
@@ -436,44 +444,23 @@ export const openSessionStream = internalMutation({
 });
 
 /**
- * Remember the owner's own answers per contact (inbox/clarificationMemory.ts),
- * so the next request pre-picks them as "last time". Only typed answers to the
- * slot questions: a file, the file question's "not ready" and the one-off
- * follow-up date are not standing facts. Fail-soft like every other capture.
+ * {@link captureOwnAnswers} on its own, for a previous-release `answer`
+ * mid-run (its answers now land in `composeDraftCommit.commitAnswers`).
+ * Remove after release N+1.
  */
 export const captureSessionAnswers = internalMutation({
 	args: { sessionId: v.id('answerAskSessions'), questionIds: v.array(v.string()) },
-	handler: async (ctx, args): Promise<{ stored: number }> => {
-		const row = await requireOwnSession(ctx, args.sessionId);
-		const wanted = new Set(args.questionIds);
-		const answers = [];
-		for (const q of row.questions) {
-			if (!wanted.has(q.id) || !q.answer || q.answer.source !== 'user') continue;
-			if (q.id === FILE_QUESTION_ID || q.id === FOLLOW_UP_QUESTION_ID || q.answer.file) continue;
-			answers.push({ slotType: q.slotType, questionText: q.text, value: q.answer.value });
-		}
-		if (answers.length === 0) return { stored: 0 };
-		try {
-			return await captureStandingAnswers(ctx, {
-				contactId: row.contactId,
-				fromAddress: row.counterpartAddress,
-				source: row.target.kind === 'teamThread' ? 'agent' : 'reply_queue',
-				answers,
-			});
-		} catch {
-			return { stored: 0 };
-		}
-	},
+	handler: async (ctx, args): Promise<{ stored: number }> =>
+		await captureOwnAnswers(ctx, await requireOwnSession(ctx, args.sessionId), args.questionIds),
 });
 
-/** Arm the draft's "remind me" follow-up at the date the reply promises. */
+/**
+ * {@link armDraftFollowUp} on its own, for a previous-release `start` or
+ * `answer` mid-run (the follow-up now lands in their one commit). Remove
+ * after release N+1.
+ */
 export const setDraftFollowUp = internalMutation({
 	args: { sessionId: v.id('answerAskSessions'), remindAt: v.number() },
-	handler: async (ctx, args): Promise<void> => {
-		const row = await requireOwnSession(ctx, args.sessionId);
-		if (row.target.kind !== 'mailDraft') return;
-		const draft = await ctx.db.get(row.target.draftId);
-		if (!draft || draft.state !== 'draft') return;
-		await ctx.db.patch(draft._id, { followUpRemindAt: args.remindAt, lastEditedAt: Date.now() });
-	},
+	handler: async (ctx, args): Promise<void> =>
+		await armDraftFollowUp(ctx, await requireOwnSession(ctx, args.sessionId), args.remindAt),
 });

@@ -1,11 +1,11 @@
 /**
- * Read on arrival end to end (SPEC §2): the interpretation run decides how
+ * Read on arrival end to end: the interpretation run decides how
  * deep a display-only Postbox message is read when it arrives, with a stubbed
  * model.
  *
  *   - a display-only notification gets a gist; a newsletter is counted; a
  *     reply candidate gets the full read; a refused budget counts; the
- *     preference off keeps D10's deferral;
+ *     preference off keeps the deferral;
  *   - the per-source lease keeps two runs from buying two reads;
  *   - a later reply candidate upgrades the thread's gisted message;
  *   - the projection follows the needs-reply verdict and is never taken over
@@ -32,7 +32,12 @@ import { rateLimiter } from '../../../lib/rateLimiter';
 import { CATEGORY_DEPTH_WAIT_MS } from '../arrivalDecide';
 import { senderKeyOf } from '../../senders/profiles';
 
-const llm = vi.hoisted(() => ({ runLlmObject: vi.fn(), refuseNext: false }));
+const llm = vi.hoisted(() => ({
+	runLlmObject: vi.fn(),
+	refuseNext: false,
+	/** Holds the next model call open: `entered` once it is in, until `release` settles. */
+	hold: undefined as undefined | { entered: () => void; release: Promise<void> },
+}));
 
 vi.mock('../../../lib/llm/dispatch', async () => {
 	const { metered } = await import('../../../analytics/__tests__/meteredDispatch.testlib');
@@ -73,9 +78,15 @@ function extraction(segmentId: string) {
 
 beforeEach(() => {
 	llm.refuseNext = false;
+	llm.hold = undefined;
 	llm.runLlmObject.mockReset();
 	llm.runLlmObject.mockImplementation(async ({ schema: s }: { schema: unknown }) => {
-		await new Promise((resolve) => setTimeout(resolve, 10));
+		const hold = llm.hold;
+		if (hold) {
+			llm.hold = undefined;
+			hold.entered();
+			await hold.release;
+		}
 		if (llm.refuseNext) throw new AdmissionRefusedError('daily_ceiling', 'stub');
 		if (s === gistOutputSchema) {
 			return {
@@ -270,7 +281,7 @@ describe('read on arrival: the depth of a display-only message', () => {
 		});
 	});
 
-	it('the preference off keeps D10: the message waits for the open', async () => {
+	it('the preference off keeps the deferral: the message waits for the open', async () => {
 		const t = setup();
 		await enableFeatures(t, ['ai']);
 		const { messageId } = await seedMailThread(t, { text: NOTICE, isReadOnArrival: false });
@@ -308,7 +319,17 @@ describe('read on arrival: lease, upgrade, projection', () => {
 	it('the lease keeps two overlapping runs from buying two gists', async () => {
 		const t = setup();
 		const { source } = await arrive(t, { category: 'notification' });
-		const results = await Promise.all([run(t, source), run(t, source)]);
+		let entered!: () => void;
+		const inModel = new Promise<void>((resolve) => (entered = resolve));
+		let release!: () => void;
+		llm.hold = { entered, release: new Promise<void>((resolve) => (release = resolve)) };
+		const first = run(t, source);
+		// The first run holds the lease and is inside its gist call; a second run
+		// of the source starts now and has to answer without one.
+		await inModel;
+		const second = await run(t, source);
+		release();
+		const results = [await first, second];
 		expect(gistCalls()).toBe(1);
 		expect(results.map((r) => r.status).sort()).toEqual(['busy', 'skipped']);
 		// A later run finds the source terminal: nothing more is bought.

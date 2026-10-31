@@ -6,6 +6,10 @@ import {
 	type TranslatableBlockContent,
 } from '@owlat/api/translationMerge';
 import { EMAIL_RENDERER_VERSION } from '@owlat/email-renderer/version';
+import {
+	readTranslationOverlays,
+	type StoredTranslationOverlay,
+} from '~/utils/translationOverlays';
 import { useEmailHtmlRendering, type RenderOptions } from './useEmailHtmlRendering';
 
 /**
@@ -18,7 +22,7 @@ import { useEmailHtmlRendering, type RenderOptions } from './useEmailHtmlRenderi
  * content, and a write built on an old row is never merged over a newer one.
  */
 
-/** One language's translatable text, as stored in the row's `translations` blob. */
+/** One language's translatable text, as a translation write sends it. */
 export interface TranslationOverlay {
 	subject: string;
 	previewText?: string;
@@ -43,7 +47,13 @@ export interface TranslationBase {
 	content: string;
 	/** Default subject, which a newly added language starts from. */
 	subject: string;
-	translations: Record<string, TranslationOverlay>;
+	translations: Record<string, StoredTranslationOverlay>;
+	/**
+	 * Set when the row's `translations` could not be read: the cells show no
+	 * text, and no write is built on the base, since it would replace the
+	 * language's stored text with what this read could not see.
+	 */
+	translationsUnreadable?: true;
 	/** The row's content revision; the write is refused if it moved. */
 	revision: number;
 }
@@ -58,25 +68,19 @@ interface TranslatableRow {
 
 /** Freeze the server row into the base a write is built on. */
 export function translationBaseOf(row: TranslatableRow): TranslationBase {
-	let translations: Record<string, TranslationOverlay> = {};
-	try {
-		translations = row.translations
-			? (JSON.parse(row.translations) as Record<string, TranslationOverlay>)
-			: {};
-	} catch {
-		translations = {};
-	}
+	const translations = readTranslationOverlays(row.translations);
 	return {
 		content: row.content,
 		subject: row.subject,
-		translations,
+		translations: translations ?? {},
+		...(translations ? {} : { translationsUnreadable: true as const }),
 		revision: row.contentRevision ?? 0,
 	};
 }
 
 /** The stored value of `field` in `overlay`, or '' when there is none. */
 export function readOverlayField(
-	overlay: TranslationOverlay | undefined,
+	overlay: StoredTranslationOverlay | undefined,
 	field: TranslationField
 ): string {
 	if (!overlay) return '';
@@ -87,13 +91,17 @@ export function readOverlayField(
 
 /** A copy of `overlay` with the edits applied; the input is left untouched. */
 function applyEdits(
-	overlay: TranslationOverlay | undefined,
+	overlay: StoredTranslationOverlay | undefined,
 	edits: readonly TranslationFieldEdit[]
 ): TranslationOverlay {
-	const next: TranslationOverlay = overlay
-		? (JSON.parse(JSON.stringify(overlay)) as TranslationOverlay)
-		: { subject: '', blocks: {} };
-	next.blocks ??= {};
+	const blocks: Record<string, TranslatableBlockContent> = {};
+	for (const [blockId, text] of Object.entries(overlay?.blocks ?? {}))
+		blocks[blockId] = { ...text };
+	const next: TranslationOverlay = {
+		subject: overlay?.subject ?? '',
+		...(overlay?.previewText !== undefined ? { previewText: overlay.previewText } : {}),
+		blocks,
+	};
 	for (const { field, value } of edits) {
 		if (field.kind === 'subject') next.subject = value;
 		else if (field.kind === 'previewText') next.previewText = value;
@@ -138,6 +146,9 @@ export function buildTranslationUpdate(
 	edits: readonly TranslationFieldEdit[],
 	renderOptions: RenderOptions
 ): TranslationUpdatePayload {
+	if (base.translationsUnreadable) {
+		throw new Error('Could not read the translations stored on the email');
+	}
 	const overlay = applyEdits(base.translations[language], edits);
 	return {
 		language,

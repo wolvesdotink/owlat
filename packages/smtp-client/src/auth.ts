@@ -20,7 +20,7 @@
 
 import { isLoopbackIp } from '@owlat/shared/ipAddress';
 import { serializeAuth, serializeAuthContinuation, type EhloCapabilities } from './commands';
-import { SmtpConnection } from './connection';
+import type { SmtpConnection } from './connection';
 import { SmtpError, type SmtpAuthCause } from './errors';
 import { isPositiveIntermediate, type SmtpReply } from './reply';
 import { errorFromReply } from './envelope';

@@ -5,7 +5,7 @@
  * reachable only from an internal cron and must not enumerate organizations to
  * find old rows. Read off the schema object, and EXHAUSTIVE on purpose: an
  * index nobody reads on a per-recipient or per-response table is the write
- * amplification D16 exists to bound.
+ * amplification to keep bounded.
  */
 import { describe, expect, it } from 'vitest';
 import schema from '../schema';

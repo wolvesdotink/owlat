@@ -2,10 +2,11 @@
  * Inline `:shortcode:` emoji picker for the Postbox composer.
  *
  * Typing `:` followed by >=2 characters opens a compact popover of fuzzy-matched
- * emoji at the caret (same lean caret-anchored placement as the ghost overlay,
- * via the shared `measureCaretRect`); arrow keys move the selection, Enter/Tab
- * inserts the emoji char (plain text), Esc closes and leaves the literal `:sm`
- * text untouched.
+ * emoji at the caret; arrow keys move the highlight, Enter/Tab inserts the
+ * emoji char (plain text), Esc closes and leaves the literal `:sm` text
+ * untouched. The list, its highlight and its keys are the shared
+ * `UiSuggestionPopover` (rendered by `PostboxEmojiPicker`); this controller
+ * keeps the trigger, the matching and the insertion.
  *
  * The sibling ASCII-smiley conversion (`:)` -> 🙂 on space, one undo step) is NOT
  * here — it rides the shared markdown-shortcut one-shot-undo plumbing in
@@ -16,14 +17,15 @@
  * file-size ratchet. The picker is opt-in (`enabled`) so the editor's other mount
  * sites (e.g. signatures) never surface it. Nothing here calls the network.
  */
-import type { Ref } from 'vue';
+import { shallowRef, type Ref } from 'vue';
+import type { SuggestionListHandle } from '@owlat/ui/utils/listboxField';
+import { selectionCaretAnchor, type VirtualAnchor } from '@owlat/ui/utils/popoverAnchor';
 import { detectShortcodeTrigger, fuzzyFilterEmoji } from '~/utils/postboxEmojiShortcodes';
 import type { PostboxEmoji } from '~/utils/postboxEmojiData';
-import { measureCaretRect } from '~/utils/postboxCaretRect';
+import { isImeComposing } from '~/utils/imeComposition';
 
 export interface EmojiPickerOptions {
 	editorRef: Ref<HTMLElement | null>;
-	surfaceRef: Ref<HTMLElement | null>;
 	/** True when the picker is enabled (Postbox composer only). */
 	enabled: () => boolean;
 	/**
@@ -41,8 +43,19 @@ const MAX_RESULTS = 8;
 export function usePostboxEmojiPicker(opts: EmojiPickerOptions) {
 	const open = ref(false);
 	const items = ref<PostboxEmoji[]>([]);
-	const activeIndex = ref(0);
-	const style = ref<Record<string, string> | null>(null);
+	// The caret box the list hangs from, measured when the trigger was read.
+	const anchor = shallowRef<VirtualAnchor | null>(null);
+	// The rendered list, which owns ↑ ↓ Enter Tab and the highlight.
+	const list = shallowRef<SuggestionListHandle | null>(null);
+
+	/**
+	 * Template ref for the rendered list. One stable function: an inline arrow
+	 * would be a new ref every render, which Vue answers by clearing and
+	 * re-setting it, and that write would render again.
+	 */
+	function bindList(rendered: unknown) {
+		list.value = rendered as SuggestionListHandle | null;
+	}
 
 	// The trigger span being replaced on insert (`:` + query length).
 	let triggerLen = 0;
@@ -50,8 +63,7 @@ export function usePostboxEmojiPicker(opts: EmojiPickerOptions) {
 	function close() {
 		open.value = false;
 		items.value = [];
-		activeIndex.value = 0;
-		style.value = null;
+		anchor.value = null;
 		triggerLen = 0;
 	}
 
@@ -64,19 +76,6 @@ export function usePostboxEmojiPicker(opts: EmojiPickerOptions) {
 		const node = sel.focusNode;
 		if (!node || node.nodeType !== Node.TEXT_NODE || !el.contains(node)) return null;
 		return (node.textContent ?? '').slice(0, sel.focusOffset);
-	}
-
-	/** Place the popover just below the caret; hide it if the rect is unmeasurable. */
-	function position() {
-		const rect = measureCaretRect(opts.surfaceRef.value);
-		if (!rect) {
-			style.value = null;
-			return;
-		}
-		style.value = {
-			left: `${rect.left}px`,
-			top: `${rect.bottom + 4}px`,
-		};
 	}
 
 	/** Re-evaluate the trigger at the caret after an input/selection change. */
@@ -102,9 +101,9 @@ export function usePostboxEmojiPicker(opts: EmojiPickerOptions) {
 		}
 		triggerLen = 1 + trigger.query.length; // colon + query
 		items.value = hits;
-		activeIndex.value = 0;
+		// No caret box (an unmeasurable caret): the list stays hidden.
+		anchor.value = selectionCaretAnchor(opts.editorRef.value);
 		open.value = true;
-		void nextTick(position);
 	}
 
 	/** Select the `:query` span immediately before the caret and replace it with `text`. */
@@ -132,59 +131,34 @@ export function usePostboxEmojiPicker(opts: EmojiPickerOptions) {
 		close();
 	}
 
-	function insertActive() {
-		const emoji = items.value[activeIndex.value];
-		if (emoji) insert(emoji);
-	}
-
-	function move(delta: number) {
-		if (!open.value || items.value.length === 0) return;
-		const count = items.value.length;
-		activeIndex.value = (activeIndex.value + delta + count) % count;
-	}
-
-	function setActive(index: number) {
-		if (index >= 0 && index < items.value.length) activeIndex.value = index;
-	}
-
 	/**
 	 * Keydown handler; returns true when the picker consumed the event so the
-	 * editor stops its own handling (arrows/Enter/Tab/Esc while open).
+	 * editor stops its own handling (arrows/Enter/Tab/Esc while open). A pick
+	 * comes back through `insert`.
 	 */
 	function handleKeydown(event: KeyboardEvent): boolean {
-		if (!open.value) return false;
-		switch (event.key) {
-			case 'ArrowDown':
-				event.preventDefault();
-				move(1);
-				return true;
-			case 'ArrowUp':
-				event.preventDefault();
-				move(-1);
-				return true;
-			case 'Enter':
-			case 'Tab':
-				event.preventDefault();
-				insertActive();
-				return true;
-			case 'Escape':
-				event.preventDefault();
-				close(); // leave the literal `:sm` text as typed
-				return true;
-			default:
-				return false;
+		// An IME's keys (Escape cancels its composition) stay the IME's.
+		if (!open.value || isImeComposing(event)) return false;
+		if (list.value?.handleKeydown(event)) return true;
+		// The shown list's escape layer takes Esc first; this covers a list
+		// that could not be placed.
+		if (event.key === 'Escape') {
+			event.preventDefault();
+			close(); // leave the literal `:sm` text as typed
+			return true;
 		}
+		return false;
 	}
 
 	return {
 		open,
 		items,
-		activeIndex,
-		style,
+		anchor,
+		list,
+		bindList,
 		refresh,
 		close,
 		insert,
-		setActive,
 		handleKeydown,
 	};
 }

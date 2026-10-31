@@ -1,5 +1,5 @@
 /**
- * The reducer's decisions, pure (SPEC §4 `reduce.ts`): given the thread's
+ * The reducer's decisions, pure (`reduce.ts`): given the thread's
  * current items and facts and one message's grounded result, what changes.
  * `reduce.ts` loads the state, calls {@link planReduction}, and writes the
  * plan (sealing text) in one transaction.

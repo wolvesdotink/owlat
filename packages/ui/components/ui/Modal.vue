@@ -237,11 +237,11 @@ useModalFocus(
  * so dismissal reads crisp and final.
  */
 .modal-enter-active {
-	transition: all var(--motion-slow) var(--ease-spring-bounce);
+	transition: opacity var(--motion-slow) var(--ease-spring-bounce);
 }
 
 .modal-leave-active {
-	transition: all var(--motion-slow-exit) var(--ease-exit);
+	transition: opacity var(--motion-slow-exit) var(--ease-exit);
 }
 
 .modal-enter-from,
@@ -308,5 +308,17 @@ useModalFocus(
 	.modal-leave-to .modal-panel {
 		transform: none;
 	}
+}
+
+/* The app's own "Reduce motion" setting (the data-motion floor in base.css). */
+:root[data-motion='reduce'] .modal-panel,
+:root[data-motion='reduce'] .modal-enter-active .modal-panel,
+:root[data-motion='reduce'] .modal-leave-active .modal-panel {
+	transition: none;
+}
+
+:root[data-motion='reduce'] .modal-enter-from .modal-panel,
+:root[data-motion='reduce'] .modal-leave-to .modal-panel {
+	transform: none;
 }
 </style>

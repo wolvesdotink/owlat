@@ -103,7 +103,8 @@ async function seedWorld(): Promise<World> {
 		);
 		const versionId = await ctx.db.insert('emailTemplateVersions', {
 			templateId,
-			trigger: 'save',
+			// A send snapshot, so the latest-send read has something to show live.
+			trigger: 'send',
 			content: '[]',
 			name: 'Autumn body',
 			subject: 'Autumn',
@@ -205,6 +206,11 @@ const PROBES: Record<string, Probe> = {
 			t.query(api.automations.analytics.getStepAnalytics, { automationId }),
 		shownWhileLive: true,
 	},
+	'automations/health.ts:summaries': {
+		read: ({ t, automationId }) =>
+			t.query(api.automations.health.summaries, { automationIds: [automationId] }),
+		shownWhileLive: true,
+	},
 	'automations/automations.ts:get': {
 		read: ({ t, automationId }) => t.query(api.automations.automations.get, { automationId }),
 		shownWhileLive: true,
@@ -275,6 +281,10 @@ const PROBES: Record<string, Probe> = {
 	},
 	'emailTemplates/versions.ts:get': {
 		read: ({ t, versionId }) => t.query(api.emailTemplates.versions.get, { versionId }),
+		shownWhileLive: true,
+	},
+	'emailTemplates/versions.ts:latestSend': {
+		read: ({ t, templateId }) => t.query(api.emailTemplates.versions.latestSend, { templateId }),
 		shownWhileLive: true,
 	},
 	'emailTemplates/versions.ts:list': {

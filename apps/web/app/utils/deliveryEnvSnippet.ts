@@ -52,7 +52,7 @@ function shellQuote(value: string): string {
 }
 
 /**
- * The missing variable names, ORDERED BY THE CATALOG ENTRY (the seams plan's D1/D5):
+ * The missing variable names, ORDERED BY THE CATALOG ENTRY:
  * the active kind's `requiredEnvVars`, in the order it declares them, filtered
  * to the ones the status query reports missing.
  *
@@ -93,7 +93,7 @@ const ENV_APPLY_COMMAND = 'owlat apply';
  * `owlat apply`, not `owlat restart`: a restart keeps each container's old
  * environment and pushes nothing to the Convex deployment, so neither an
  * interpolated MTA setting (EHLO_HOSTNAMES) nor a provider credential read by
- * Convex functions would take effect (#839). `apply` recreates the containers
+ * Convex functions would take effect. `apply` recreates the containers
  * whose config changed and pushes the function-runtime keys.
  *
  * Names only by default, like the snippet — the value is the `<value>`

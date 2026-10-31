@@ -3,11 +3,10 @@
  *
  * BetterAuth hands the client one string — an `otpauth://totp/...` URI — and a
  * list of backup codes, and considers its job done. Turning that into something
- * a person can actually enrol with is three jobs, all pure, all here:
+ * a person can actually enrol with is three jobs, all pure:
  *
- *  1. a QR the camera can read, without shipping a QR dependency's SVG string
- *     into `v-html` (we take uqr's boolean matrix and emit ONE `<path>` the
- *     template renders as data — no raw markup crosses the boundary);
+ *  1. a QR the camera can read (`accountTwoFactorQr.ts`, kept apart so the
+ *     QR encoder loads with the enrolment screen and not with every sign-in);
  *  2. the manual fallback, because a camera is not always the thing in front of
  *     you: the same secret, grouped in fours, typeable;
  *  3. a backup-codes file that still means something in six months, when it is
@@ -16,8 +15,6 @@
  * No `useI18n`, no auth client, no DOM. The download is assembled as a string
  * and handed to the caller.
  */
-
-import { encode } from 'uqr';
 
 /** The parts of an `otpauth://` URI a person may need to see or retype. */
 export type TotpEnrolment = {
@@ -72,41 +69,6 @@ export function parseTotpUri(uri: string | null | undefined): TotpEnrolment | nu
 export function groupSecret(secret: string): string {
 	const compact = secret.replace(/\s+/g, '').toUpperCase();
 	return (compact.match(/.{1,4}/g) ?? []).join(' ');
-}
-
-/** A QR ready to render as a single SVG `<path>`, with no markup string. */
-export type TotpQrCode = {
-	/** Modules per side. The viewBox is `0 0 size size`; one module is one unit. */
-	size: number;
-	/** The `d` attribute: one sub-path per horizontal run of dark modules. */
-	path: string;
-};
-
-/**
- * Encode a TOTP URI as QR path data.
- *
- * Horizontal runs are merged into one rectangle each, which is what keeps the
- * path an order of magnitude shorter than a per-module `<rect>` soup and lets
- * the whole code live in the DOM as a single node.
- */
-export function totpQrCode(uri: string): TotpQrCode {
-	const { size, data } = encode(uri, { ecc: 'M', border: 1 });
-	const segments: string[] = [];
-
-	for (let y = 0; y < data.length; y++) {
-		const row = data[y]!;
-		let runStart = -1;
-		for (let x = 0; x <= row.length; x++) {
-			const dark = x < row.length && row[x] === true;
-			if (dark && runStart === -1) runStart = x;
-			if (!dark && runStart !== -1) {
-				segments.push(`M${runStart} ${y}h${x - runStart}v1h-${x - runStart}z`);
-				runStart = -1;
-			}
-		}
-	}
-
-	return { size, path: segments.join('') };
 }
 
 /**

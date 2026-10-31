@@ -1,6 +1,6 @@
 /**
  * THE PARK — what happens to a Send whose acceptance is genuinely unknown on a
- * transport that cannot be asked again (plan D4).
+ * transport that cannot be asked again.
  *
  * Mandrill's `send-raw` has no idempotency surface, so a lost response may sit
  * on top of an accepted and delivered message: replaying it (the MTA's
@@ -18,6 +18,7 @@
 
 import { convexTest } from 'convex-test';
 import { describe, expect, it, vi } from 'vitest';
+import type * as SessionOrganization from '../../lib/sessionOrganization';
 import type { WorkId } from '@convex-dev/workpool';
 import { GOVERNED_MTA_MAX_MESSAGE_AGE_MS } from '@owlat/shared';
 import type { Id } from '../../_generated/dataModel';
@@ -29,7 +30,7 @@ import { seedAssignedSend } from '../../analytics/__tests__/transportOutcomesFix
 // The singleton-org lookup goes through the BetterAuth component, which is not
 // registered in the convex-test harness.
 vi.mock('../../lib/sessionOrganization', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../../lib/sessionOrganization')>();
+	const actual = await importOriginal<typeof SessionOrganization>();
 	return { ...actual, getSingletonOrganizationId: vi.fn().mockResolvedValue('org_ambiguous') };
 });
 
@@ -78,7 +79,7 @@ describe('an ambiguous-acceptance send on a feedback-capable relay', () => {
 		expect(jobs[0]?.scheduledTime).toBe(startedAt + GOVERNED_MTA_MAX_MESSAGE_AGE_MS);
 	});
 
-	it('never re-dispatches the attempt (D4) and never counts a deferral', async () => {
+	it('never re-dispatches the attempt and never counts a deferral', async () => {
 		const t = convexTest(schema, modules);
 		const { sendId } = await t.run(async (ctx) => await seedAssignedSend(ctx));
 

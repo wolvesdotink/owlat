@@ -2,15 +2,14 @@
  * THE settings table: every Preferences destination, the section it belongs to,
  * the gate it is registered behind, and the individual controls that live on it.
  *
- * Settings destinations used to be declared in four hand-maintained places — the
- * sidebar table (`dashboardNavigationCore.ts`), the breadcrumb table
- * (`breadcrumbRoutes.ts`), the hub's link grid (`PreferencesMailLinks.vue`) and
- * each page's own back link — and they had already drifted apart: aliases,
- * vacation, snippets, writing voice and app passwords existed as pages but were
- * missing from the sidebar table, so ⌘K could not find them, and the hub's grid
- * was rendered behind `v-if="hasMail"`, which left them with no entry point at
- * all on an instance without mail. This module is the single declaration all of
- * those surfaces now read.
+ * Settings destinations appear in four places — the sidebar table
+ * (`dashboardNavigationCore.ts`), the breadcrumb table (`breadcrumbRoutes.ts`),
+ * the hub's link grid (`PreferencesMailLinks.vue`) and each page's own back
+ * link. Hand-maintained copies drift apart: a page missing from the sidebar
+ * table is one ⌘K cannot find, and a page reachable only from the hub's grid
+ * (rendered behind `v-if="hasMail"`) has no entry point at all on an instance
+ * without mail. This module is the single declaration all of those surfaces
+ * read.
  *
  * Every entry also declares its CONTROLS — the individual switches a person
  * actually looks for ("dark mode", "auto-advance", "notify me about") — each
@@ -23,6 +22,8 @@
  * `useI18n`, so every consumer resolves them at its own render boundary.
  */
 import type { FeatureFlagKey } from '@owlat/shared/featureFlags';
+import type { OrganizationRole } from '@owlat/shared/organizationPermissions';
+import { alertSoundKindsFor } from './alertSoundRules';
 import { fuzzyMatch } from './commandPalette';
 
 /** Where the Preferences tree lives. Everything under it is registry-owned. */
@@ -30,12 +31,15 @@ export const SETTINGS_ROOT = '/dashboard/preferences';
 
 /**
  * The ambient inputs a gate reads. Deliberately a subset of
- * `NavigationEnvironment` (no role — no personal preference is role-gated), so a
- * `SettingsGate` is assignable wherever a navigation gate is expected.
+ * `NavigationEnvironment`, so a `SettingsGate` is assignable wherever a
+ * navigation gate is expected. `role` is optional: no destination is
+ * role-gated, only a control whose card shows rows by role (the alert sounds),
+ * and a caller that omits it reaches none of those rows.
  */
 export interface SettingsEnvironment {
 	isFeatureEnabled(flag: FeatureFlagKey): boolean;
 	isDesktop: boolean;
+	role?: OrganizationRole | null;
 }
 
 export type SettingsGate = (env: SettingsEnvironment) => boolean;
@@ -49,9 +53,19 @@ export const hasMail: SettingsGate = (env) =>
 	env.isFeatureEnabled('postbox') || env.isFeatureEnabled('mail.external');
 const desktopOnly: SettingsGate = (env) => env.isDesktop;
 const browserOnly: SettingsGate = (env) => !env.isDesktop;
-/** Something on this instance can send a Web Push: mail, the shared inbox or chat. */
+/** Some alert sound can reach this person: the card's own predicate, so search matches it. */
+const hasAlertSounds: SettingsGate = (env) => alertSoundKindsFor(env).length > 0;
+/** Campaigns, automations or transactional sending: marketing notifications can fire. */
+const hasMarketingNotices: SettingsGate = (env) =>
+	env.isFeatureEnabled('campaigns') ||
+	env.isFeatureEnabled('automations') ||
+	env.isFeatureEnabled('transactional');
+/** Something on this instance can send a Web Push: mail, the shared inbox, chat or marketing. */
 const hasPushSource: SettingsGate = (env) =>
-	hasMail(env) || env.isFeatureEnabled('inbox') || env.isFeatureEnabled('chat');
+	hasMail(env) ||
+	env.isFeatureEnabled('inbox') ||
+	env.isFeatureEnabled('chat') ||
+	hasMarketingNotices(env);
 const all =
 	(...gates: readonly SettingsGate[]): SettingsGate =>
 	(env) =>
@@ -145,6 +159,11 @@ export const SETTINGS_REGISTRY: readonly SettingsEntry[] = [
 		section: 'general',
 		controls: [
 			control('appearance', 'appearance'),
+			control('mailTextSize', 'comfort'),
+			control('readingWidth', 'comfort'),
+			control('listDensity', 'comfort'),
+			control('highContrast', 'comfort'),
+			control('reduceMotion', 'comfort'),
 			control('language', 'language'),
 			control('autoAdvance', 'reading', hasMail),
 			control('markRead', 'reading', hasMail),
@@ -152,6 +171,7 @@ export const SETTINGS_REGISTRY: readonly SettingsEntry[] = [
 			control('readingPane', 'reading', hasMail),
 			control('swipeActions', 'reading', hasMail),
 			control('replyDefault', 'reading', hasMail),
+			control('afterReply', 'reading', hasMail),
 			control('writingSuggestions', 'reading', all(hasMail, flag('ai'))),
 			control('autoSummarize', 'reading', all(hasMail, flag('ai'))),
 			control('sendSound', 'reading', hasMail),
@@ -257,12 +277,16 @@ export const SETTINGS_REGISTRY: readonly SettingsEntry[] = [
 		path: `${SETTINGS_ROOT}/device`,
 		icon: 'lucide:monitor',
 		section: 'device',
-		// Everything on this page is device-local: Web Push and the offline read
-		// cache (any browser) plus the desktop app's own switches. Each section
-		// self-hides, and the page disappears entirely on an instance with none.
-		gate: any(desktopOnly, hasMail, all(browserOnly, hasPushSource)),
+		// Device-local: Web Push and the offline read cache (any browser) plus
+		// the desktop app's own switches; with them, the marketing notification
+		// switches that decide what push and the desktop notify about. Each
+		// section self-hides, and the page disappears entirely on an instance
+		// with none.
+		gate: any(desktopOnly, hasMail, hasMarketingNotices, all(browserOnly, hasPushSource)),
 		controls: [
 			control('pushNotifications', 'push', all(browserOnly, hasPushSource)),
+			control('marketingNotifications', 'marketing-notifications', hasMarketingNotices),
+			control('alertSounds', 'alert-sounds', hasAlertSounds),
 			control('offlineCache', 'offline', hasMail),
 			control('notifyAbout', 'notifications', all(desktopOnly, hasMail)),
 			control('quietHours', 'notifications', all(desktopOnly, hasMail)),
@@ -386,16 +410,16 @@ export function filterByKeywords<T extends KeywordSearchable>(items: T[], rawQue
 	if (!query) return [...items];
 
 	const scored: { item: T; rank: number; score: number; index: number }[] = [];
-	items.forEach((item, index) => {
+	for (const [index, item] of items.entries()) {
 		const onLabel = fuzzyMatch(item.label, query);
 		if (onLabel) {
 			scored.push({ item, rank: 0, score: onLabel.score, index });
-			return;
+			continue;
 		}
 		const onSubtitle = item.subtitle ? fuzzyMatch(item.subtitle, query) : null;
 		if (onSubtitle) {
 			scored.push({ item, rank: 1, score: onSubtitle.score, index });
-			return;
+			continue;
 		}
 		let best: number | null = null;
 		for (const word of item.keywords) {
@@ -403,7 +427,7 @@ export function filterByKeywords<T extends KeywordSearchable>(items: T[], rawQue
 			if (hit && (best === null || hit.score > best)) best = hit.score;
 		}
 		if (best !== null) scored.push({ item, rank: 2, score: best, index });
-	});
+	}
 
 	return scored
 		.sort((a, b) => a.rank - b.rank || b.score - a.score || a.index - b.index)

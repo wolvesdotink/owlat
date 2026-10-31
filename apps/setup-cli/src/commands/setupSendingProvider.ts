@@ -1,34 +1,59 @@
 /**
  * Terminal-wizard picker for the instance-level outbound transport.
  *
- * One deployment sends through exactly one transport: its own MTA, Amazon SES,
- * a generic SMTP relay (Mailgun / Postmark / SendGrid / Brevo / custom — every
- * one speaks plain SMTP submission, so a single set of `SMTP_RELAY_*` env vars
- * drives them all), or Resend. Extracted from `setup.ts` so that file stays
- * focused and under the size ratchet; the web wizard's equivalent lives in
+ * One deployment sends through exactly one transport: its own MTA or one of the
+ * relays. Extracted from `setup.ts` so that file stays focused and under the
+ * size ratchet; the web wizard's equivalent lives in
  * `apps/web/app/pages/setup/email.vue`.
  *
- * Credential-bearing choices are validated for real before they are persisted
- * (Resend key request, SMTP handshake + AUTH), so an operator finds a bad
- * host/port/credential here rather than at first send.
+ * The picker reads the send-provider catalog and names no provider: the choices
+ * are the kinds a setup config can carry, the prompts are each entry's REQUIRED
+ * credential fields in declaration order (an optional field such as the MTA's
+ * TLS floor keeps its backend default, as it always has here), and the values
+ * are written to the env variables those fields name. The wording lives in
+ * `./setupSendingProviderCopy`.
+ *
+ * Credential-bearing choices are validated for real before they are persisted,
+ * through the probe the entry's `setupProbe` names (Resend key request, SMTP
+ * handshake + AUTH), so an operator finds a bad host/port/credential here rather
+ * than at first send.
  */
 
-import { select, password, text, confirm, group, isCancel } from '@clack/prompts';
+import { select, password, text, confirm, isCancel } from '@clack/prompts';
+import type {
+	CoreSendProviderCatalogEntry,
+	SendProviderCredentialField,
+	SendProviderHostPortField,
+} from '@owlat/shared/sendProviderCatalog';
+import type { SendingConfig } from '@owlat/shared/setupConfigTypes';
+import {
+	SETUP_SENDING_CATALOG_ENTRIES,
+	sendingConfigFromCredentials,
+	type SetupSendingKind,
+} from '@owlat/shared/setupSendingConfig';
+import type { SetupProbeValidator } from '@owlat/shared/setupValidators';
 import { validateWithSpinner } from '../lib/progress';
 import { type EnvMap } from '../lib/env';
-import { validateEmailitKey, validateResendKey, validateSmtpRelay } from '../lib/validators';
-import { SMTP_RELAY_PRESETS, type SmtpRelayPreset } from '@owlat/shared/setupSendingPresets';
+import {
+	validateEmailitKey,
+	validateResendKey,
+	validateSmtpRelay,
+	type ValidationResult,
+} from '../lib/validators';
+import { endpointPrompt, fieldPrompt, pickerOption } from './setupSendingProviderCopy';
 
-/** A relay port is optional (backend defaults to 587), but if given must parse
- * to a real port — mirrors the web step's `isValidSmtpPort`. Returns an error
- * string for clack's `validate:` when invalid. */
-function validatePortInput(value: string | undefined): string | undefined {
-	const trimmed = (value ?? '').trim();
-	if (trimmed === '') return undefined;
-	if (!/^\d+$/.test(trimmed)) return 'Port must be digits only (leave blank for 587).';
-	const n = Number.parseInt(trimmed, 10);
-	if (n < 1 || n > 65535) return 'Port must be between 1 and 65535.';
-	return undefined;
+/** A relay port is optional (blank means the field's default), but if given must
+ * parse to a real port — mirrors the web step's `isValidSmtpPort`. Returns an
+ * error string for clack's `validate:` when invalid. */
+function portValidator(portDefault: string): (value: string | undefined) => string | undefined {
+	return (value) => {
+		const trimmed = (value ?? '').trim();
+		if (trimmed === '') return undefined;
+		if (!/^\d+$/.test(trimmed)) return `Port must be digits only (leave blank for ${portDefault}).`;
+		const n = Number.parseInt(trimmed, 10);
+		if (n < 1 || n > 65535) return 'Port must be between 1 and 65535.';
+		return undefined;
+	};
 }
 
 /** Reject an empty required field at the prompt instead of deferring to the
@@ -37,153 +62,192 @@ function requireNonEmpty(label: string): (value: string | undefined) => string |
 	return (value) => ((value ?? '').trim() === '' ? `${label} is required.` : undefined);
 }
 
-/** `group()` without an `onCancel` keeps running the remaining prompts on Ctrl-C
- * and stores the cancel symbol in the results, so downstream `.trim()` on a
- * symbol would throw. Detect a cancel in any field so the caller can bail out
- * cleanly (`return null`), matching every single-prompt path. */
-function groupCancelled(results: Record<string, unknown>): boolean {
-	return Object.values(results).some((value) => isCancel(value));
+/** Collected values, keyed by the env variable each field writes. */
+type CredentialValues = Record<string, string>;
+
+/** Reads one string property of a mapped sending config. */
+function configText(config: SendingConfig, key: string): string {
+	const value = (config as unknown as Readonly<Record<string, unknown>>)[key];
+	return typeof value === 'string' ? value : '';
+}
+
+/**
+ * One probe per validator name the catalog declares, worded per validator. The
+ * `satisfies` fails the build when an entry names a validator with no row here.
+ */
+const SETUP_PROBES = {
+	validateResendKey: {
+		spinner: (label: string) => `Validating ${label} key`,
+		run: (config: SendingConfig) => validateResendKey(configText(config, 'apiKey')),
+	},
+	validateEmailitKey: {
+		spinner: (label: string) => `Validating ${label} key`,
+		run: (config: SendingConfig) => validateEmailitKey(configText(config, 'apiKey')),
+	},
+	validateSmtpRelay: {
+		spinner: (label: string) => `Validating ${label}`,
+		run: (config: SendingConfig) => {
+			const props = config as unknown as Readonly<Record<string, unknown>>;
+			return validateSmtpRelay({
+				host: configText(config, 'host'),
+				port: typeof props['port'] === 'number' ? props['port'] : 587,
+				secure: props['secure'] === true,
+				username: configText(config, 'username'),
+				password: configText(config, 'password'),
+			});
+		},
+	},
+} satisfies Record<
+	SetupProbeValidator,
+	{
+		spinner: (label: string) => string;
+		run: (config: SendingConfig) => Promise<ValidationResult>;
+	}
+>;
+
+/**
+ * Prompts one single-value field into `values`, with the control its field kind
+ * calls for. Returns false on cancel. A secret is stored verbatim, as the web
+ * credential form stores it; typed text is trimmed, so the value that is probed
+ * is the value that is written.
+ */
+async function promptField(
+	entry: CoreSendProviderCatalogEntry,
+	field: Exclude<SendProviderCredentialField, SendProviderHostPortField>,
+	values: CredentialValues
+): Promise<boolean> {
+	const copy = fieldPrompt(entry, field);
+	const validate = field.required ? requireNonEmpty(copy.message) : undefined;
+	let answer: string | boolean | symbol;
+	if (field.kind === 'secret') {
+		answer = await password({ message: copy.message, validate });
+	} else if (field.kind === 'boolean') {
+		answer = await confirm({ message: copy.message, initialValue: field.default ?? false });
+	} else if (field.kind === 'select' || (field.kind === 'region-select' && field.options)) {
+		answer = await select({
+			message: copy.message,
+			options: (field.options ?? []).map((option) => ({
+				value: option.value,
+				label: option.value,
+			})),
+			initialValue: field.default,
+		});
+	} else {
+		const placeholder =
+			copy.placeholder ?? ('placeholder' in field ? field.placeholder : undefined);
+		answer = await text({
+			message: copy.message,
+			placeholder,
+			validate: field.kind === 'number' ? numberValidator(validate) : validate,
+		});
+	}
+	if (isCancel(answer)) return false;
+	values[field.envVar] =
+		typeof answer === 'boolean' ? String(answer) : field.kind === 'secret' ? answer : answer.trim();
+	return true;
+}
+
+/** A number field accepts blank (when optional) or a finite number. */
+function numberValidator(
+	required: ((value: string | undefined) => string | undefined) | undefined
+): (value: string | undefined) => string | undefined {
+	return (value) => {
+		const missing = required?.(value);
+		if (missing !== undefined) return missing;
+		const trimmed = (value ?? '').trim();
+		return trimmed === '' || Number.isFinite(Number(trimmed)) ? undefined : 'Enter a number.';
+	};
+}
+
+/**
+ * Prompts a relay endpoint: an optional preset, then host, port and implicit TLS.
+ * Port and TLS are always written, so a re-run of setup over an existing install
+ * cannot leave a stale port (setup.ts applies the result with
+ * `mergeEnv(existing, patch)`) that differs from the one the probe just checked.
+ */
+async function promptEndpoint(
+	entry: CoreSendProviderCatalogEntry,
+	field: SendProviderHostPortField,
+	values: CredentialValues
+): Promise<boolean> {
+	const copy = endpointPrompt(entry, field);
+	let defaults = { host: '', port: field.portDefault, secure: field.secureDefault };
+	if (field.presets) {
+		const presets = field.presets;
+		const preset = await select({
+			message: copy.preset,
+			options: Object.entries(presets).map(([value, row]) => ({ label: row.label, value })),
+		});
+		if (isCancel(preset)) return false;
+		defaults = presets[preset] ?? defaults;
+	}
+
+	const host = await text({
+		message: copy.host.message,
+		placeholder: defaults.host || copy.host.placeholder || field.placeholder,
+		initialValue: defaults.host,
+		validate: field.required ? requireNonEmpty(copy.host.message) : undefined,
+	});
+	if (isCancel(host)) return false;
+	const port = await text({
+		message: copy.port,
+		placeholder: field.portDefault,
+		initialValue: defaults.port,
+		validate: portValidator(field.portDefault),
+	});
+	if (isCancel(port)) return false;
+	const secure = await confirm({ message: copy.secure, initialValue: defaults.secure });
+	if (isCancel(secure)) return false;
+
+	const trimmedPort = port.trim();
+	values[field.envVar] = host.trim();
+	values[field.portEnvVar] = String(
+		Number.parseInt(trimmedPort === '' ? field.portDefault : trimmedPort, 10)
+	);
+	values[field.secureEnvVar] = secure ? 'true' : 'false';
+	return true;
+}
+
+/** Runs the entry's catalog probe on the collected values. True when it passes. */
+async function probe(
+	entry: CoreSendProviderCatalogEntry,
+	values: CredentialValues
+): Promise<boolean> {
+	const validator = entry.setupProbe?.validator as SetupProbeValidator | undefined;
+	if (validator === undefined || !Object.hasOwn(SETUP_PROBES, validator)) return true;
+	const mapped = sendingConfigFromCredentials(
+		entry.kind as SetupSendingKind,
+		(envVar) => values[envVar]
+	);
+	// Every check the mapper makes (blank required value, port range, declared
+	// option) already ran at the prompt, so a refusal here means nothing to probe.
+	if (!mapped.ok) return false;
+	const config = mapped.config;
+	const { spinner, run } = SETUP_PROBES[validator];
+	return validateWithSpinner(spinner(entry.label), () => run(config));
 }
 
 export async function pickSendingProvider(): Promise<EnvMap | null> {
-	const provider = await select({
+	const kind = await select({
 		message: 'Email sending provider',
-		options: [
-			{ label: 'Run your own MTA (self-hosted)', value: 'mta', hint: 'no third-party' },
-			{ label: 'Amazon SES', value: 'ses', hint: 'managed, needs an AWS account' },
-			{
-				label: 'SMTP relay',
-				value: 'smtp',
-				hint: 'Mailgun / Postmark / SendGrid / Brevo / custom',
-			},
-			{ label: 'Resend', value: 'resend', hint: 'managed API' },
-			{ label: 'Emailit', value: 'emailit', hint: 'managed API' },
-		],
+		options: SETUP_SENDING_CATALOG_ENTRIES.map((entry) => ({
+			value: entry.kind,
+			...pickerOption(entry),
+		})),
 	});
-	if (isCancel(provider)) return null;
+	if (isCancel(kind)) return null;
+	const entry = SETUP_SENDING_CATALOG_ENTRIES.find((e) => e.kind === kind);
+	if (entry === undefined) return null;
 
-	if (provider === 'mta') {
-		return { EMAIL_PROVIDER: 'mta' };
+	const values: CredentialValues = {};
+	for (const field of entry.credentialFields) {
+		if (!field.required) continue;
+		const answered =
+			field.kind === 'host-port'
+				? await promptEndpoint(entry, field, values)
+				: await promptField(entry, field, values);
+		if (!answered) return null;
 	}
-
-	if (provider === 'resend') {
-		const apiKey = await password({ message: 'Resend API key (re_...)' });
-		if (isCancel(apiKey)) return null;
-		if (
-			!(await validateWithSpinner('Validating Resend key', () =>
-				validateResendKey(apiKey as string)
-			))
-		) {
-			return null;
-		}
-		return { EMAIL_PROVIDER: 'resend', RESEND_API_KEY: apiKey as string };
-	}
-
-	if (provider === 'emailit') {
-		// Blocked at the prompt, like the SMTP credentials below, rather than left to
-		// the network probe: a bare Enter here sent an empty bearer token to Emailit
-		// and turned any transport failure into an unreadable message, because the
-		// validator redacts by splitting the failure text ON THE KEY. That redaction
-		// now guards the empty key too — this stops the operator getting there at all.
-		const apiKey = await password({
-			message: 'Emailit API key',
-			validate: requireNonEmpty('Emailit API key'),
-		});
-		if (isCancel(apiKey)) return null;
-		if (
-			!(await validateWithSpinner('Validating Emailit key', () =>
-				validateEmailitKey(apiKey as string)
-			))
-		) {
-			return null;
-		}
-		return { EMAIL_PROVIDER: 'emailit', EMAILIT_API_KEY: apiKey as string };
-	}
-
-	if (provider === 'ses') {
-		const result = await group({
-			region: () => text({ message: 'AWS SES region', placeholder: 'us-east-1' }),
-			accessKey: () => password({ message: 'AWS_ACCESS_KEY_ID' }),
-			secretKey: () => password({ message: 'AWS_SECRET_ACCESS_KEY' }),
-		});
-		if (groupCancelled(result)) return null;
-		return {
-			EMAIL_PROVIDER: 'ses',
-			AWS_SES_REGION: result.region,
-			AWS_SES_ACCESS_KEY_ID: result.accessKey,
-			AWS_SES_SECRET_ACCESS_KEY: result.secretKey,
-		};
-	}
-
-	if (provider === 'smtp') {
-		const preset = await select({
-			message: 'SMTP relay provider',
-			options: (Object.keys(SMTP_RELAY_PRESETS) as SmtpRelayPreset[]).map((key) => ({
-				label: SMTP_RELAY_PRESETS[key].label,
-				value: key,
-			})),
-		});
-		if (isCancel(preset)) return null;
-		const defaults = SMTP_RELAY_PRESETS[preset];
-
-		const result = await group({
-			host: () =>
-				text({
-					message: 'SMTP host',
-					placeholder: defaults.host || 'smtp.example.com',
-					initialValue: defaults.host,
-					validate: requireNonEmpty('SMTP host'),
-				}),
-			port: () =>
-				text({
-					message: 'SMTP port',
-					placeholder: '587',
-					initialValue: defaults.port,
-					validate: validatePortInput,
-				}),
-			secure: () =>
-				confirm({
-					message: 'Use implicit TLS (port 465)? No = STARTTLS on 587',
-					initialValue: defaults.secure,
-				}),
-			username: () =>
-				text({ message: 'SMTP username', validate: requireNonEmpty('SMTP username') }),
-			password: () =>
-				password({ message: 'SMTP password', validate: requireNonEmpty('SMTP password') }),
-		});
-		if (groupCancelled(result)) return null;
-
-		// The port that gets validated is the port that gets persisted: the prompt
-		// already guaranteed digits in range (or blank ⇒ 587), so parse once and
-		// reuse the same number for both the handshake and the env value.
-		const trimmedPort = result.port.trim();
-		const port = trimmedPort === '' ? 587 : Number.parseInt(trimmedPort, 10);
-
-		const ok = await validateWithSpinner('Validating SMTP relay', () =>
-			validateSmtpRelay({
-				host: result.host,
-				port,
-				secure: result.secure,
-				username: result.username,
-				password: result.password,
-			})
-		);
-		if (!ok) return null;
-
-		// Always write the port. setup.ts applies this patch with
-		// mergeEnv(existing, patch) = { ...existing, ...patch }, and re-running
-		// setup over an existing install is supported — omitting the key on the
-		// default would let a stale SMTP_RELAY_PORT (e.g. 465) survive and diverge
-		// from the port the handshake just validated.
-		return {
-			EMAIL_PROVIDER: 'smtp',
-			SMTP_RELAY_HOST: result.host,
-			SMTP_RELAY_PORT: String(port),
-			SMTP_RELAY_USERNAME: result.username,
-			SMTP_RELAY_PASSWORD: result.password,
-			SMTP_RELAY_SECURE: result.secure ? 'true' : 'false',
-		};
-	}
-
-	return null;
+	if (!(await probe(entry, values))) return null;
+	return { EMAIL_PROVIDER: entry.kind, ...values };
 }

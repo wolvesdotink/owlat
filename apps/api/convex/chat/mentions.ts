@@ -8,8 +8,7 @@
 import { v } from 'convex/values';
 import type { QueryCtx, MutationCtx } from '../_generated/server';
 import type { Id } from '../_generated/dataModel';
-import { getMutationContext, getUserIdFromSession } from '../lib/sessionOrganization';
-import { chatQuery, chatMutation, loadDiscussionMailboxForSession } from './_helpers';
+import { chatQuery, chatMutation, loadRoomReadAccess } from './_helpers';
 import { getOrThrow } from '../_utils/errors';
 import { batchGet } from '../_utils/batchLoader';
 
@@ -45,10 +44,11 @@ export async function resolveMentionsToMemberIds(
  * List the caller's unread mentions, newest first. Each row includes a small
  * preview of the message that triggered the mention.
  */
+// authz: self — only the caller's own mentions, each still readable under loadRoomReadAccess (chat/_helpers.ts)
 export const listMyUnreadMentions = chatQuery({
 	args: { limit: v.optional(v.number()) },
-	handler: async (ctx, args) => {
-		const userId = await getUserIdFromSession(ctx);
+	handler: async (ctx, args, session) => {
+		const { userId } = session;
 		return await loadVisibleUnreadMentions(ctx, userId, args.limit);
 	},
 });
@@ -60,14 +60,14 @@ export const listMyUnreadMentions = chatQuery({
  * thread the caller can no longer read is not counted; `countMyUnreadMentions`
  * stays the raw index count the chat badge uses.
  */
-// authz: self — only the caller's own mentions; a mail-thread discussion's mentions also need that mailbox's access
+// authz: self — only the caller's own mentions, each still readable under loadRoomReadAccess (chat/_helpers.ts)
 export const countMyVisibleUnreadMentions = chatQuery({
 	args: { limit: v.optional(v.number()) },
 	handler: async (ctx, args, session): Promise<number> =>
 		(await loadVisibleUnreadMentions(ctx, session.userId, args.limit)).length,
 });
 
-/** The caller's unread mentions the feed shows (message and room still there, mailbox readable). */
+/** The caller's unread mentions the feed shows (message still there, room still readable). */
 async function loadVisibleUnreadMentions(ctx: QueryCtx, userId: string, requested?: number) {
 	const limit = Math.max(1, Math.min(requested ?? 50, 200));
 	const mentions = await ctx.db
@@ -91,14 +91,12 @@ async function loadVisibleUnreadMentions(ctx: QueryCtx, userId: string, requeste
 		),
 	]);
 
-	// A mention in a mail-thread discussion points at the email thread, not a
-	// chat room, and is only shown while the caller can still read that
-	// thread's mailbox (access can be revoked after the mention was written).
-	// One mailbox check per distinct discussion room on the page.
-	const discussionAccess = new Map<
-		string,
-		Awaited<ReturnType<typeof loadDiscussionMailboxForSession>>
-	>();
+	// A mention is shown only while the caller can still read its room: a
+	// private channel or DM they left or were removed from drops out (the
+	// mention row survives the removal), and a mail-thread discussion needs its
+	// mailbox to be readable now, not when the mention was written. One read
+	// check per distinct room on the page.
+	const roomAccess = new Map<string, Awaited<ReturnType<typeof loadRoomReadAccess>>>();
 
 	const result = [];
 	for (const mention of mentions) {
@@ -106,26 +104,26 @@ async function loadVisibleUnreadMentions(ctx: QueryCtx, userId: string, requeste
 		if (!message || message.deletedAt) continue;
 		const room = rooms.get(mention.roomId);
 		if (!room) continue;
-		let mailThread: {
+		const key = room._id.toString();
+		if (!roomAccess.has(key)) {
+			roomAccess.set(key, await loadRoomReadAccess(ctx, room, userId));
+		}
+		const access = roomAccess.get(key);
+		if (!access) continue;
+		// A mail-thread discussion points at the email thread, not a chat room.
+		const thread = access.discussion?.thread ?? null;
+		const mailThread: {
 			threadId: Id<'mailThreads'>;
 			mailboxId: Id<'mailboxes'>;
 			latestMessageId: Id<'mailMessages'> | null;
-		} | null = null;
-		let roomName = room.name;
-		if (room.purpose) {
-			const key = room._id.toString();
-			if (!discussionAccess.has(key)) {
-				discussionAccess.set(key, await loadDiscussionMailboxForSession(ctx, room));
-			}
-			const access = discussionAccess.get(key);
-			if (!access) continue;
-			mailThread = {
-				threadId: access.thread._id,
-				mailboxId: access.thread.mailboxId,
-				latestMessageId: access.thread.latestMessageId ?? null,
-			};
-			roomName = access.thread.latestSubject;
-		}
+		} | null = thread
+			? {
+					threadId: thread._id,
+					mailboxId: thread.mailboxId,
+					latestMessageId: thread.latestMessageId ?? null,
+				}
+			: null;
+		const roomName = thread ? thread.latestSubject : room.name;
 		result.push({
 			_id: mention._id,
 			roomId: mention.roomId,
@@ -144,10 +142,12 @@ async function loadVisibleUnreadMentions(ctx: QueryCtx, userId: string, requeste
 /**
  * Compact count of unread mentions for the nav badge.
  */
+// authz: self — counts only the caller's own mention rows (keyed by the session
+// user) and returns no room or message content, so it stays the raw row count.
 export const countMyUnreadMentions = chatQuery({
 	args: {},
-	handler: async (ctx) => {
-		const userId = await getUserIdFromSession(ctx);
+	handler: async (ctx, _args, session) => {
+		const { userId } = session;
 		const mentions = await ctx.db
 			.query('chatMentions')
 			.withIndex('by_mentioned_unread', (q) =>
@@ -162,8 +162,8 @@ export const countMyUnreadMentions = chatQuery({
 // authz: self — a member marks only their own mentions read.
 export const markMentionRead = chatMutation({
 	args: { mentionId: v.id('chatMentions') },
-	handler: async (ctx, args) => {
-		const { userId } = await getMutationContext(ctx);
+	handler: async (ctx, args, session) => {
+		const { userId } = session;
 		const mention = await getOrThrow(ctx, args.mentionId, 'Mention');
 		if (mention.mentionedMemberId !== userId) {
 			// Silently no-op — don't leak existence of others' mentions.
@@ -180,10 +180,11 @@ export const markMentionRead = chatMutation({
  * Filtered by an optional `query` prefix (case-insensitive match on name or
  * email prefix). The org member table is small so a single scan suffices.
  */
+// all-members: the org member directory (name, email, avatar) every member sees
+// in the mention picker; deleted profiles are excluded.
 export const searchOrgMembersForMention = chatQuery({
 	args: { query: v.optional(v.string()) },
 	handler: async (ctx, args) => {
-		await getUserIdFromSession(ctx);
 		const q = args.query?.trim().toLowerCase() ?? '';
 
 		const profiles = await ctx.db.query('userProfiles').take(500);

@@ -15,6 +15,9 @@
  *                                          system-source transitions).
  *   start_ab_test_if_enabled             — cross-machine; fires on
  *                                          → sending when isABTest.
+ *   notify_marketing                     — fires on → scheduled (the
+ *                                          15-minute reminder) and → sent
+ *                                          (the "finished" notice).
  *
  * `userId` discriminates user-driven vs system-source:
  *   - user mutations pass session.userId.
@@ -39,6 +42,12 @@ import {
 	sendTimeOptimizationValidator,
 	type SendTimeOptimizationSettings,
 } from '../lib/validators/sendTime';
+import type { MarketingNoticeEvent } from '../lib/validators/marketingNotifications';
+import {
+	CAMPAIGN_FINISHED_SETTLE_MS,
+	campaignReminderDelayMs,
+	scheduleMarketingNotice,
+} from '../marketing/noticeEvents';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -177,6 +186,13 @@ type Effect =
 			userId: string;
 	  }
 	| {
+			// Marketing notifications: "finished" a few minutes after → sent, and
+			// the "sends in 15 min" reminder on → scheduled.
+			kind: 'notify_marketing';
+			event: MarketingNoticeEvent;
+			delayMs: number;
+	  }
+	| {
 			kind: 'start_ab_test_if_enabled';
 			campaignId: Id<'campaigns'>;
 			/** Sub-tag prefixed with `system:` — the AB test lifecycle records
@@ -247,6 +263,24 @@ function reduce(
 			kind: 'schedule_campaign_send_orchestrator',
 			campaignId: campaign._id,
 			delayMs,
+		});
+		const reminderDelayMs = campaignReminderDelayMs(input.scheduledAt, input.at);
+		if (reminderDelayMs !== null) {
+			effects.push({
+				kind: 'notify_marketing',
+				event: {
+					kind: 'campaign_reminder',
+					campaignId: campaign._id,
+					scheduledAt: input.scheduledAt,
+				},
+				delayMs: reminderDelayMs,
+			});
+		}
+	} else if (input.to === 'sent') {
+		effects.push({
+			kind: 'notify_marketing',
+			event: { kind: 'campaign_finished', campaignId: campaign._id },
+			delayMs: CAMPAIGN_FINISHED_SETTLE_MS,
 		});
 	} else if (input.to === 'sending') {
 		effects.push({
@@ -457,6 +491,10 @@ async function applyEffects(ctx: MutationCtx, effects: ReadonlyArray<Effect>): P
 				});
 				break;
 			}
+			case 'notify_marketing': {
+				await scheduleMarketingNotice(ctx, effect.event, effect.delayMs);
+				break;
+			}
 			case 'start_ab_test_if_enabled': {
 				// Cross-machine reach: load the campaign fresh, check isABTest,
 				// delegate to the AB test lifecycle. The reducer that emitted
@@ -533,14 +571,27 @@ export const transition = internalMutation({
 		input: transitionInputValidator,
 		userId: v.string(),
 	},
-	handler: async (ctx, args): Promise<CampaignTransitionOutcome> => {
-		// A campaign in Recently deleted keeps its status (a scheduled one was
-		// unscheduled on the way in), so nothing can send it until it is restored.
-		const campaign = await getLive(ctx, args.campaignId);
-		if (!campaign) return { ok: false, reason: 'campaign_not_found' };
-		return await dispatch(ctx, campaign, args.input, args.userId);
-	},
+	handler: async (ctx, args): Promise<CampaignTransitionOutcome> =>
+		await transitionCampaign(ctx, args.campaignId, args.input, args.userId),
 });
+
+/**
+ * `transition` inside the caller's own transaction, for a mutation that
+ * commits a status change together with the rows it belongs to (the send
+ * preparation commit). Same guards, patch and effects as the mutation.
+ */
+export async function transitionCampaign(
+	ctx: MutationCtx,
+	campaignId: Id<'campaigns'>,
+	input: CampaignTransitionInput,
+	userId: string
+): Promise<CampaignTransitionOutcome> {
+	// A campaign in Recently deleted keeps its status (a scheduled one was
+	// unscheduled on the way in), so nothing can send it until it is restored.
+	const campaign = await getLive(ctx, campaignId);
+	if (!campaign) return { ok: false, reason: 'campaign_not_found' };
+	return await dispatch(ctx, campaign, input, userId);
+}
 
 // ─── Batch-completion (sending → sent) ──────────────────────────────────────
 //

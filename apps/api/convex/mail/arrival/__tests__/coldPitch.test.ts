@@ -1,5 +1,5 @@
 /**
- * #1381, the pure parts: who is asked the cold-pitch question, the R2 prompt
+ * Cold pitches, the pure parts: who is asked the cold-pitch question, the R2 prompt
  * that asks it, the digest group it lands in, and the labelled sample's
  * release gate.
  */

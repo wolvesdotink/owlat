@@ -1,0 +1,85 @@
+name: Kill tests
+
+# SIGKILL the real MTA and mail-sync images in the middle of their work, start
+# them again, and check what survived in a throwaway self-hosted Convex backend
+# running this commit's functions (scripts/kill-tests/run.ts): every Send is
+# persisted in a terminal state with one body at the receiver, a Send cut off
+# after its body is persisted as an ambiguous failure and never resent, and a
+# backfill killed mid-batch still stores every message exactly once, with its
+# cursor and counters complete.
+#
+# A separate workflow rather than a Test Summary job: it builds three images,
+# pushes the functions and waits out GroupMQ's stalled-job recovery (minutes),
+# so it runs on the pull requests that can change crash recovery or the
+# backend half of the outcome, nightly, and on dispatch. Needs no secrets: the
+# backend is created and destroyed by the run.
+
+on:
+  pull_request:
+    paths:
+      - 'apps/mta/**'
+      - 'apps/mail-sync/**'
+      # The backend half of the outcome: MTA webhook handling and the Send
+      # lifecycle, external-mail ingest and dedup, the import and its cursors.
+      - 'apps/api/convex/webhooks/**'
+      - 'apps/api/convex/delivery/sendLifecycle*'
+      - 'apps/api/convex/delivery/sendLifecycle/**'
+      - 'apps/api/convex/mail/external/**'
+      - 'apps/api/convex/mail/migration*'
+      - 'apps/api/convex/mail/deliveryPipeline/**'
+      - 'apps/api/convex/schema/**'
+      - 'docker/convex-backend.Dockerfile'
+      - 'scripts/dev-stack/stage.ts'
+      - 'packages/email-scanner/**'
+      - 'packages/mail-auth/**'
+      - 'packages/mail-canon/**'
+      - 'packages/mail-message/**'
+      - 'packages/mta-protocol/**'
+      - 'packages/shared/**'
+      - 'packages/smtp-client/**'
+      - 'packages/smtp-listener/**'
+      - 'packages/worker-protocol/**'
+      - 'patches/groupmq@*'
+      - 'bun.lock'
+      - 'scripts/kill-tests/**'
+      # The decoder module scripts/kill-tests/backend.ts reads the backend's answers with.
+      - 'scripts/json.ts'
+      - '.github/workflows/kill-tests.yml'
+  schedule:
+    - cron: '45 4 * * *' # nightly, after the update-flow run
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kill-tests-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  kill-tests:
+    name: Kill tests (mta, mail-sync)
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      # The orchestrator pushes the functions with the workspace's Convex CLI
+      # and seeds through the Convex client, so it needs the install; the
+      # worker images install their own dependencies.
+      - uses: ./.github/actions/setup-bun
+        timeout-minutes: 10
+
+      # The function push bundles @owlat/plugin-kit and @owlat/provider-kit
+      # through their built dist/ entries, which `bun install` does not build.
+      - name: Build the workspace libraries the api imports
+        timeout-minutes: 10
+        run: ./node_modules/.bin/turbo run build --filter='@owlat/api^...'
+
+      - name: Kill and restart the MTA and mail-sync
+        timeout-minutes: 30
+        run: bun scripts/kill-tests/run.ts

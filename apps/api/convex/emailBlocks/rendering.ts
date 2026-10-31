@@ -88,6 +88,9 @@ export const reRenderEmails = internalAction({
 			(await ctx.runQuery(internal.emailBlocks.renderingPool.getEmailTheme, {})) ?? undefined;
 
 		for (const templateId of args.templateIds) {
+			// checkpoint: one consumer row per transaction, guarded by the revision it was
+			// rendered from and leaving the row current (not stale); the workpool's retry
+			// of the job renders each row again from what is stored, which is harmless.
 			await rerenderConsumerRow({
 				load: () => ctx.runQuery(internal.emailBlocks.renderingPool.getTemplate, { templateId }),
 				render: (template) => rerenderRow(template, 'personalization', theme),
@@ -104,6 +107,9 @@ export const reRenderEmails = internalAction({
 		}
 
 		for (const emailId of args.transactionalIds) {
+			// checkpoint: one consumer row per transaction, guarded by the revision it was
+			// rendered from and leaving the row current (not stale); the workpool's retry
+			// of the job renders each row again from what is stored, which is harmless.
 			await rerenderConsumerRow({
 				load: () =>
 					ctx.runQuery(internal.emailBlocks.renderingPool.getTransactionalEmail, { emailId }),

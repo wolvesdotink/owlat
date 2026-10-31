@@ -345,7 +345,7 @@ const primaryButton =
 			<textarea
 				v-model="composeBody"
 				rows="6"
-				class="input w-full text-sm resize-y mb-4"
+				class="input w-full resize-y mb-4"
 				:placeholder="t('components.agentTasks.reviewFocusFlow.replyPlaceholder')"
 			/>
 			<TaskActions
@@ -367,7 +367,7 @@ const primaryButton =
 				ref="fillField"
 				v-model="composeBody"
 				rows="8"
-				class="input w-full text-sm resize-y mb-4"
+				class="input w-full resize-y mb-4"
 				:aria-label="t('components.agentTasks.reviewFocusFlow.fillLabel')"
 				:aria-describedby="fillGapCount > 0 ? fillReasonId : undefined"
 				data-testid="team-card-fill"

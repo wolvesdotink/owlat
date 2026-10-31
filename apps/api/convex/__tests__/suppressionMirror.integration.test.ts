@@ -320,6 +320,32 @@ describe('blockedEmails → MTA /suppression mirror', () => {
 		]);
 	});
 
+	it('stops before any delete when an export page does not decode', async () => {
+		const t = convexTest(schema, modules);
+		const fetchSpy = vi.mocked(global.fetch);
+		fetchSpy.mockImplementation(async (input) => {
+			if (String(input).includes('/suppression/export')) {
+				return new Response(
+					JSON.stringify({
+						entries: [
+							{ email: 'stale@example.com', source: 'convex-reconcile', suppressedAt: 456 },
+							{ email: 7, source: 'convex-reconcile', suppressedAt: 789 },
+						],
+					}),
+					{ status: 200 }
+				);
+			}
+			return new Response(JSON.stringify({ success: true }), { status: 200 });
+		});
+
+		await expect(t.action(internal.delivery.suppressionMirror.reconcile, {})).rejects.toThrow(
+			/malformed page/
+		);
+		expect(
+			fetchSpy.mock.calls.some((call) => (call[1] as RequestInit | undefined)?.method === 'DELETE')
+		).toBe(false);
+	});
+
 	it('does not resurrect an expired soft-bounce mirror', async () => {
 		const t = convexTest(schema, modules);
 		await t.run((ctx) =>

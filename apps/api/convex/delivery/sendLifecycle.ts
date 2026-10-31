@@ -328,6 +328,18 @@ async function dispatch(
 	};
 }
 
+/**
+ * `transition` for a commit that is already inside a mutation (the tracking
+ * endpoints spend their rate-limit token and record the event in one).
+ */
+export async function applySendTransition(
+	ctx: MutationCtx,
+	ref: SendRef,
+	input: TransitionInput
+): Promise<TransitionOutcome> {
+	return await dispatch(ctx, ref, input);
+}
+
 // ─── Public mutations ───────────────────────────────────────────────────────
 
 /**
@@ -345,7 +357,7 @@ async function dispatch(
 export const transition = internalMutation({
 	args: { send: sendRefValidator, transition: transitionInputValidator },
 	handler: async (ctx, args): Promise<TransitionOutcome> => {
-		return await dispatch(ctx, args.send, args.transition);
+		return await applySendTransition(ctx, args.send, args.transition);
 	},
 });
 

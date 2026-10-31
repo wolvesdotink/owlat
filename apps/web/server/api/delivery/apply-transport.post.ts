@@ -46,6 +46,7 @@
  */
 
 import { resolve } from 'node:path';
+import { v } from 'convex/values';
 import {
 	planTransportEnvChange,
 	UnexpectedTransportEnvKeyError,
@@ -63,6 +64,7 @@ import { api } from '@owlat/api';
 import type { FunctionReturnType } from 'convex/server';
 import type { ConvexHttpClient } from 'convex/browser';
 import { requireOrgAdmin } from '~~/server/utils/requireOrgAdmin';
+import { readJsonBody } from '~~/server/utils/jsonBody';
 import { localizeEn } from '~~/server/utils/localizedText';
 import { relayRemovalConsequenceCopy } from '~/utils/deliverabilityRamp';
 import {
@@ -70,12 +72,12 @@ import {
 	isComposedSendProviderKind,
 } from '~/utils/composedSendProviderCatalog';
 
-interface ApplyBody {
+const applyBody = v.object({
 	/** The provider-key patch from the wizard's `buildProviderEnv` — SET keys only. */
-	providerEnv: Record<string, string>;
+	providerEnv: v.record(v.string(), v.string()),
 	/** The phrase an operator typed to confirm losing the relay, when they did. */
-	relayRemovalConfirmation?: string;
-}
+	relayRemovalConfirmation: v.optional(v.string()),
+});
 
 interface ApplyResult {
 	ok: boolean;
@@ -185,11 +187,11 @@ async function unconfirmedRelayRemoval(
 	// second question to ask here — asking it anyway would put a second definition
 	// of "no relay" one layer away from its home.
 	//
-	// THAT DEFINITION IS THE ONE THING THIS SKIP DEPENDS ON, and it was wrong until
-	// #513: the summary keyed on "exactly one relay kind", so a deployment with a
-	// relay in `EMAIL_PROVIDER` and another in `providerRoutes` answered `safe`
-	// and this line waved through the removal of an arm cells were still leaning
-	// on. It now keys on `isRelayConfigured`, and the pin for that shape lives in
+	// THAT DEFINITION IS THE ONE THING THIS SKIP DEPENDS ON: the summary keys on
+	// `isRelayConfigured`, not on "exactly one relay kind", or a deployment with a
+	// relay in `EMAIL_PROVIDER` and another in `providerRoutes` would answer
+	// `safe` and this line would wave through the removal of an arm cells are
+	// still leaning on. The pin for that shape lives in
 	// `__tests__/apply-transport-relay-removal.test.ts`.
 	if (summary.relayRemoval.kind === 'safe') return null;
 	const { consequence, safeDate } = relayRemovalConsequenceCopy({
@@ -209,22 +211,17 @@ async function unconfirmedRelayRemoval(
 export default defineEventHandler(async (event): Promise<ApplyResult> => {
 	const client = await requireOrgAdmin(event);
 
-	const body = await readBody<ApplyBody>(event);
-	const patch = body?.providerEnv;
-	if (!patch || typeof patch !== 'object') {
-		throw createError({ statusCode: 400, message: 'providerEnv is required.' });
-	}
+	const body = await readJsonBody(event, applyBody);
 
-	// Only string values may be written (the allowlist itself is enforced by
-	// `planTransportEnvChange` below, which rejects any non-transport key).
+	// Only string values may be written, which the body's validator has checked
+	// (the allowlist itself is enforced by `planTransportEnvChange` below, which
+	// rejects any non-transport key).
+	const patch = body.providerEnv;
 	for (const [key, value] of Object.entries(patch)) {
-		if (typeof value !== 'string') {
-			throw createError({ statusCode: 400, message: `Env value for ${key} must be a string.` });
-		}
 		// The allowlist gates which KEYS may be written, but an allowlisted value
 		// (e.g. DEFAULT_FROM_NAME) carrying a newline would inject arbitrary extra
 		// `.env` lines through the line-oriented writer. Reject control chars here.
-		if (/[\r\n\0]/.test(value)) {
+		if (value.includes('\r') || value.includes('\n') || value.includes('\0')) {
 			throw createError({
 				statusCode: 400,
 				message: `Env value for ${key} must not contain control characters (newline, carriage return, or NUL).`,
@@ -270,7 +267,7 @@ export default defineEventHandler(async (event): Promise<ApplyResult> => {
 	// own from the moment this returns.
 	const resultingProvider = (merged['EMAIL_PROVIDER'] ?? '').trim();
 	if (resultingProvider === '' || isOwnSendProviderKind(resultingProvider)) {
-		const refusal = await unconfirmedRelayRemoval(client, body?.relayRemovalConfirmation);
+		const refusal = await unconfirmedRelayRemoval(client, body.relayRemovalConfirmation);
 		if (refusal !== null) return refusal;
 	}
 

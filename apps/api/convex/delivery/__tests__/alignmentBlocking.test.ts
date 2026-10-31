@@ -18,6 +18,7 @@
 
 import { convexTest, type TestConvex } from 'convex-test';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type * as SessionOrganization from '../../lib/sessionOrganization';
 import schema from '../../schema';
 import { api, internal } from '../../_generated/api';
 import {
@@ -37,9 +38,7 @@ import {
 import { modules } from '../../__tests__/testModules';
 
 vi.mock('../../lib/sessionOrganization', async () => {
-	const actual = await vi.importActual<typeof import('../../lib/sessionOrganization')>(
-		'../../lib/sessionOrganization'
-	);
+	const actual = await vi.importActual<typeof SessionOrganization>('../../lib/sessionOrganization');
 	return {
 		...actual,
 		getSingletonOrganizationId: vi.fn().mockResolvedValue('org-a'),
@@ -283,11 +282,11 @@ describe('what counts as a second arm comes from the transport surface', () => {
 		expect(page.targets[0]?.reference.kind).toBe('unknown');
 	});
 
-	// D2, and the whole reason a standalone domain is never a target: the gate is
+	// Absence blocks nothing, and the whole reason a standalone domain is never a target: the gate is
 	// answered from the LIVE transport surface, so it opens with no row at all —
 	// no DNS is gathered and no `single_arm` row is written for anyone to later
 	// misread as evidence about two arms.
-	it('opens the gate with no relay anywhere, without gathering or storing anything (D2)', async () => {
+	it('opens the gate with no relay anywhere, without gathering or storing anything', async () => {
 		stubTransportEnv();
 		const t = convexTest(schema, modules);
 		await seedDomain(t, { relay: null });
@@ -479,7 +478,7 @@ describe('the readiness read', () => {
 		expect(rows[0]?.measurementDegradedReason).toContain('custom return path');
 	});
 
-	it('reports single_arm as a plain verdict with no remedy copy (D2)', async () => {
+	it('reports single_arm as a plain verdict with no remedy copy', async () => {
 		stubTransportEnv();
 		const t = convexTest(schema, modules);
 		await seedDomain(t, { relay: null });

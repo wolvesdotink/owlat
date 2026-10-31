@@ -178,25 +178,29 @@ Never re-derive that context inside the handler. `getMutationContext(ctx)` /
 `requireOrgMember(ctx)` / `getBetterAuthSessionWithRole(ctx)` called under one of
 these builders is a SECOND BetterAuth session read plus a second `member`
 component query, on every execution of a function the dashboard may
-live-subscribe. `scripts/check-session-threading.sh` ratchets this (frozen
-baseline in `scripts/session-threading-baseline.txt`, both directions strict;
-`// session: <reason>` opts a handler out when the re-resolution is deliberate). `ctx` and `args` are untouched, and a handler declaring only
-`(ctx)` or `(ctx, args)` is unaffected — the parameter is there when you want it.
+live-subscribe. The `owlat/use-threaded-session` oxlint rule fails lint on such
+a call (an error, no baseline); `// session: <reason>` opts a handler out when
+the re-resolution is deliberate. `ctx` and `args` are untouched, and a handler
+declaring only `(ctx)` or `(ctx, args)` is unaffected — the parameter is there
+when you want it.
 `authedIdentityMutation` (identity, not an org session) and `authedAction`
 (enforced in another function's context) have nothing to thread and keep the raw
 builder signature.
 
 The wrapper only enforces the auth floor; privileged writes still layer a
-`requirePermission(hasPermission(session.role, '<scope>:<verb>'))` (or the
-query/mutation-compatible `requireOrgPermission(ctx, '<scope>:<verb>')`) check
-inside the handler. `internalQuery`/`internalMutation`/`internalAction` and
+`requirePermission(hasPermission(session.role, '<scope>:<verb>'))` check on the
+threaded session inside the handler (`requireOrgPermission(ctx, …)` is for
+functions whose builder threads no session, such as an `internalQuery` an
+action calls). `internalQuery`/`internalMutation`/`internalAction` and
 `httpAction` are unaffected (server-only, or a separately-authenticated HTTP
 surface). HTTP routes that call into a session-gated function from an
 API-key/no-session context must call an `internal*` sibling (see
 `contacts.contacts.getInternal`, `topics.topics.addContactInternal`).
 
 `scripts/check-public-functions.sh` (wired into `bun run lint`) bans the bare
-builders outside `lib/authedFunctions.ts` — a forgotten gate fails CI.
+builders outside `lib/authedFunctions.ts` — a forgotten gate fails CI. The
+`owlat/no-raw-convex-builder` oxlint rule enforces the same ban by import
+rather than by spelling, so an aliased import or a namespace member fails too.
 
 ### The workspace write fence
 
@@ -290,17 +294,22 @@ bare `authedQuery` / `authedMutation` export under `convex/mail/`.
 `scripts/feature-floor-baseline.txt` lists only the justified sites (the
 soft-auth reads and the modules `mail/_helpers.ts` exempts), each group with its
 reason. A new entry means a handler skipped its gated builder: use the builder.
+The `owlat/feature-floor-in-builder` oxlint rule enforces the same thing on the
+AST; its families and justified sites are listed under that rule in the root
+`oxlintrc.json`, so a new family or site goes there as well as here.
 When you give another folder gated builders, add its `<flag> <path prefix>` pair
 to `FAMILIES` and the builder names to `EXPECTED_BUILDERS` in
 `check-entry-wiring.ts`.
 
 The definition gates (`check-permissions`, `check-query-authz`,
-`check-session-threading`, `check-token-redaction`, `check-errors`) need no
+`check-token-redaction`, `check-errors`) need no
 edits for a composition: they read their builder families from source through
 `scripts/lib/convex-builders.sh`: every `(export )?const X = featureGated(Any)(<base>, …)`
 under `convex/` inherits its base's kind and auth floor. A new **base** builder
 exported from `lib/authedFunctions.ts` must be classified in that helper's
-`CONVEX_BASE_BUILDERS` table; until it is, every one of those gates fails.
+`CONVEX_BASE_BUILDERS` table; until it is, every one of those gates fails. The
+Convex oxlint rules (`owlat/convex-error-taxonomy`, `owlat/use-threaded-session`,
+`owlat/feature-floor-in-builder`) derive the same table from the same inputs.
 
 ## Permissions
 
@@ -347,10 +356,10 @@ such a secret:
 | `webhooks`   | `secret`                                     | the HMAC signing secret             |
 
 `scripts/check-token-redaction.sh` (wired into `bun run lint`) is the read-side
-sibling of `check-permissions.sh`: a **ratchet** that fails CI on any _new_
-query that serializes to the browser (`authedQuery`, `adminQuery`, `publicQuery`
-and their `featureGated` compositions) which scans one of these tables
-(`ctx.db.query('…')`) without stripping the secret. Satisfy it one of three ways:
+sibling of `check-permissions.sh`. It has no baseline and fails CI on any query
+that serializes to the browser (`authedQuery`, `adminQuery`, `publicQuery` and
+their `featureGated` compositions) which scans one of these tables
+(`ctx.db.query('…')`) without stripping the secret. Satisfy it one of two ways:
 
 - **Redaction/projection helper** — `redactContactCapabilityFields` (returns the
   `PublicContact` shape, `contacts/listing.ts`) or `stripWebhookSecret`
@@ -358,11 +367,10 @@ and their `featureGated` compositions) which scans one of these tables
   add its name to the helper regex in the script.
 - **`// token-safe: <reason>` comment** — inside the handler or on the line above
   the `export const`, when the read genuinely returns no secret (projects to a
-  token-free shape, returns only counts/ids, etc.).
-- **`scripts/token-redaction-baseline.txt`** — the frozen set of reads reviewed
-  when the gate landed (count-only / id-only / field-projected / admin-gated
-  reads that leak no token). Do **not** add new entries; delete an entry once its
-  read is redacted or annotated so the ratchet only moves down.
+  token-free shape, returns only counts/ids, etc.). An admin role gate alone is
+  not a reason. The one read that returns a secret on purpose,
+  `shareLinks.listShareLinks`, hands a link manager the token it shares, and is
+  also the reviewed exception in `lib/__tests__/publicReturnRedaction.test.ts`.
 
 ## Process-log PII
 
@@ -386,14 +394,17 @@ correlate — across the MTA boundary and across restarts — while the plaintex
 never lands.
 
 `scripts/check-log-pii.sh` (wired into `bun run lint`) enforces this with a
-**baseline of zero**: a `logInfo`/`logWarn`/`logError`/`logDebug`/`console.*`
-call whose payload carries a `from` / `to` / `subject` / `email` / `recipient` /
+**baseline of zero**: a `logInfo`/`logWarn`/`logError`/`logDebug`/`logEvent`/`console.*`
+call whose payload (for `logEvent`, its `detail` object too) carries a `from` / `to` / `subject` / `email` / `recipient` /
 `rcptTo` / `mailFrom` / `address` / `sender` key fails unless the value passes
 through a redaction helper. Qualified names — `fromDomain`, `toCount`,
 `senderId`, `recipientHash` — are out of scope by construction; a domain, a
 count, an id or a digest is not the address. A value that is genuinely not a
 correspondent address opts out with `// log-pii-safe: <reason>` inside the call
-or in the comment block directly above it.
+or in the comment block directly above it. The `owlat/no-log-pii` oxlint rule
+checks each payload property on the AST: shorthand and quoted keys count, a
+redacted neighbour on the same line does not excuse a raw value, and a long call
+has no line cap.
 
 This is about **process logs only**. `auditLogs`, delivery-log rows and anything
 else persisted on purpose and read back by the UI keep the addresses they need;
@@ -615,6 +626,95 @@ env at runtime via `vi.stubEnv` and `delete process.env.X`.
 
 The `bun run lint:env` script enforces this.
 
+## Actions commit once
+
+Every `ctx.runMutation` an action makes is its own transaction. An action that
+writes through several of them leaves the earlier writes in place when it fails
+between two, and the next run starts from a state no code path meant to
+produce: a campaign in `sending` with no send job, a version row for a send
+that never went out. So an action has three phases, in this order:
+
+1. **Read** with `ctx.runQuery`. Decide what to do from what was read.
+2. **External I/O**: provider calls, fetches, LLM calls, anything outside the
+   database. Nothing is written yet.
+3. **Commit once**: one mutation that writes everything the action decided and
+   schedules what comes next (`ctx.scheduler.runAfter` inside the mutation is
+   transactional, so the next hop exists exactly when the writes do).
+
+The commit mutation re-checks its preconditions, because the world moved
+during phase 2: the status the action read, the guards it applied, the row it
+is about to complete, and the identity of what the I/O worked on. When the
+input changed (an edited template under a content scan), the commit writes
+nothing and either skips or schedules a fresh run; it never commits a decision
+made on stale input. It returns an outcome the action maps to its result
+instead of throwing on a lost race.
+
+To reuse the writes other modules own, call their `MutationCtx` helpers inside
+the commit, not their internal mutations: `transitionCampaign`
+(`campaigns/lifecycle.ts`), `captureTemplateVersion`
+(`emailTemplates/versions.ts`), `openSendJob` (`campaigns/sendJob.ts`). The
+owning module's internal mutation stays a thin wrapper over the same helper,
+so there is one implementation. `campaigns/sendCommit.ts` (the commit of
+`campaigns/send.ts:startCampaignSend`) is the worked example.
+
+A write that is meant to stand on its own if the action fails after it is a
+**checkpoint**, and says so with a `// checkpoint: <why it may stand alone>`
+line directly above the statement making the call: one page of a chunked walk
+that the next page resumes from, a lease or reservation claimed before an
+irreversible external effect, a best-effort cache. One database commit cannot
+make an external effect atomic; a claim before it, and a commit after it, is
+the protocol for that.
+
+`scripts/check-action-commits.sh` (in `bun run lint`) counts, per action, the
+most `runMutation` calls one run can make, from the syntax tree
+(`scripts/lib/actionCommits.ts`: branches and early returns take the costlier
+path, a `switch` clause that falls through adds to the next, a loop's body,
+condition and increment and a per-item callback count twice, same-module helpers are followed by lexical
+scope, also when passed by name, other modules are not). Every commit past the first is a line in
+`scripts/action-commit-baseline.txt`, frozen debt: a new multi-commit action
+fails, and converting one fails until its lines are deleted. A marker that
+exempts no call, or gives no reason, fails too. Convert an action on its own,
+with characterization tests of what it writes landed first.
+
+Converting an action leaves the internal mutations it used to call without a
+caller. Keep them for one release in `scripts/entryWiringPreviousRelease.ts`:
+an action of the previous release still running during the deploy calls them
+by path. It can call them after the new commit already did the same work,
+so each one must leave that work alone: `createSendJob` and
+`setArchiveSnapshot` return early once `findPreparedSendJob`
+(`campaigns/sendJob.ts`) finds the send prepared, also after it completed:
+the emails it already mailed still point at what the commit wrote.
+
+## Decision cores
+
+A handler loads, decides and writes. When the deciding grows, it moves into a
+pure module beside the handler: functions that take what the handler loaded
+(rows, query answers, injected `now`, ids and configuration) and return what
+to write, what to schedule and what to answer, as typed data. The handler
+keeps every read and write, in the order the decisions describe; it calls the
+core between them, and a decision that needs the result of a write (an
+inserted id, an idempotent enqueue count, a coalescing verdict) is a second
+stage the handler calls once it has that result. Never pass an I/O callback
+into a core. `delivery/ramp/controller.ts` (`nextShare`) and the
+`…Decision.ts` modules next to the longest handlers
+(`campaigns/pageDecision.ts`, `transactional/dispatchDecision.ts`,
+`inbox/receiveDecision.ts`, `contacts/sunsetSweepDecision.ts`,
+`mail/outbound/decision.ts`) are the worked examples.
+
+A core is listed in `scripts/purity-roots.txt`, so `check-purity.sh` refuses a
+clock, randomness, environment read, timer, network call or database handle
+in it. Its tests drive it with plain objects and check that the same input
+gives the same plan; the handler's integration tests stay, to prove the plan
+is what runs. Authoritative checks that must be atomic with a write (an undo
+token, a status re-check, an idempotency guard) stay in the mutation that
+writes; a core may pre-check them, never replace them.
+
+`scripts/check-handler-size.sh` (in `bun run lint`) measures every registered
+handler from the syntax tree (`scripts/lib/handlerSize.ts`: the handler
+function's own lines, comments included). There is no baseline: a handler
+longer than the cap in `scripts/handler-size-census.ts` fails, and the cap is
+never raised to admit one.
+
 ## Convex best practices
 
 This codebase tracks the official Convex AI/cursor rules
@@ -624,8 +724,10 @@ This codebase tracks the official Convex AI/cursor rules
   `internalQuery`, `internalMutation`, `internalAction`. For zero-arg
   functions use `args: {}`. The `lint:patterns` check enforces this.
 - **Index, don't filter.** Prefer `.withIndex('by_x', q => q.eq('x', val))`
-  over `.query('table').filter(...)`. New `.filter()` call sites must not
-  push the count above the baseline in `scripts/check-convex-patterns.sh`.
+  over `.query('table').filter(...)`. `scripts/check-convex-patterns.sh`
+  holds each anti-pattern count to its exact baseline: a new full-scan
+  `.filter()` fails, and fixing one means lowering the baseline in the same
+  change.
 - **Bound `.collect()`.** Use `.take(n)`, pagination
   (`paginationOptsValidator`), or a cached counter for any table that can
   grow unboundedly. If a scan is intentional (e.g. an intrinsically tiny
@@ -867,12 +969,11 @@ drain running functions first and the scheduler keeps every job N-1 queued:
 
 When N stops calling a function, keep it for a release at its old path with
 its old arguments and result shape, delegating to the new code, and list it in
-`PREVIOUS_RELEASE_ENTRIES` in `apps/api/scripts/entryWiringPreviousRelease.ts`
-(the webhook fanout and delivery functions and the automation step walker's
-old transitions are there). Such a shim must be safe against N's own code
-running beside it: it must never repeat a side effect N already performed, nor
-move state N already moved. Mark each one, and each N-1-only branch in N's
-code, with a `remove after release N+1` comment; the next release deletes them.
+`PREVIOUS_RELEASE_ENTRIES` in `apps/api/scripts/entryWiringPreviousRelease.ts`.
+Such a shim must be safe against N's own code running beside it: it must never
+repeat a side effect N already performed, nor move state N already moved. Mark
+each one, and each N-1-only branch in N's code, with a `remove after release
+N+1` comment; the next release deletes them.
 Where N-1 can have left work half done (an action killed between two of its
 calls), N also ships the sweep that finds it and finishes or ends it, as
 `automations/stalledRuns.ts` does for automation runs.
@@ -905,6 +1006,32 @@ calls it for every IMAP login.
   notes tell operators to run it and update the IMAP container before
   updating the backend.
 
+**Worker wire versions.** Every separately deployed worker (the IMAP server,
+mail-sync, the MTA, the code-worker) has its own wire version, independent of
+the others, in `@owlat/shared/workerWire` (the IMAP entry reads
+`@owlat/shared/imapWire`). Each worker reports it at startup and every 5
+minutes to `maintenance/workerRegistry`: mail-sync through `:report`, the
+code-worker through `:reportCodeWorker` (its proxy allows nothing that could
+record another service), the MTA over the signed `/webhooks/mta-worker-report`
+route, and the IMAP server's `mail/imap/serverRegistry:report` records there
+too. `npx convex run maintenance/workerRegistry:status` and Settings → System &
+updates show, per service, which builds reported and the version skew.
+
+- Bump a worker's `current` in the PR that changes its contract, under the same
+  rules as the IMAP wire version; the code-worker also keeps its number in
+  `apps/code-worker/src/wireVersion.ts` (its image does not ship the shared
+  package; a test keeps the two equal).
+- A migration that removes or rewrites what a worker below some version still
+  reads or writes is a contract step: its manifest entry declares
+  `requiresWorkers: { <service>: <version> }`. Nothing starts or resumes it
+  (the runner holds it; `beginMigrationRun` throws for the CLI, a cron or any
+  other caller of its `run`) while a worker of that service reported a lower
+  version within the last 15 minutes, or while the service runs here (it is
+  configured, or reported this week) and no live worker has reported the
+  version yet (`readWorkerWaits`).
+  Workers from before reporting are invisible to this check, so it does not
+  replace the N-1 window: it only adds this deployment's own evidence.
+
 **Migration manifest.** A release that needs data work ships a manifest listing,
 per migration: its module (`migrations/NNNN_name:run`), whether it must finish
 before users are let back in or may run in the background, whether a later
@@ -915,7 +1042,8 @@ chat-media migration. Every ledger-backed migration is also listed in
 stepping stone (`__tests__/manifest.test.ts` fails on one that is missing).
 Settings → System & updates reads that list with the ledger to show what is
 pending and runs it through each migration's own `run` (`migrations/admin.ts`);
-the in-app update refuses to start while a stepping stone is unfinished. When a
+the in-app update refuses to start while a stepping stone is unfinished, and a
+contract step with `requiresWorkers` waits there until the workers have moved. When a
 later release has made a migration moot (its contract removed what the
 migration converts), move it to `RETIRED_MIGRATIONS` in that release.
 
@@ -983,8 +1111,8 @@ arguments of jobs the previous release scheduled on internal functions, HTTP
 routes, JSON stored in strings or what values mean, and it is no substitute for
 upgrading a real previous-release dataset. The release E2E install does not do
 that either: its seeded leg carries over Redis and ClamAV volumes, not Convex
-data. The update flow (`scripts/e2e-update-flow.sh`, run after each release and
-nightly) does: the previous release writes a contact, a sent and a draft
+data. The update flow (`scripts/e2e-update-flow.sh`, run before each release is
+published and nightly) does: the previous release writes a contact, a sent and a draft
 campaign and a queued Send. After the in-app update, those documents, the
 campaign's Sends and every document within two id references of them must still
 exist with every field they had, deep-equal, and no added soft-delete marker.
@@ -1123,12 +1251,33 @@ discriminator. See `shareLinks.targetType` and `blockedEmails.sourceType`.
   `emailSends.contactFirstName`, `emailSends.contactLastName` — they record
   what we sent, not the contact's current state. Touching them post-send is
   a corruption bug.
-- Aggregated fields (computed from child rows) are marked with `// AGGREGATED —`.
-  Examples: `campaigns.statsSent` etc. Update only via the dedicated
-  aggregator — for campaign send stats this is the Send lifecycle's effect
-  system (`campaign_stats_sent` / `campaign_stats_failed` etc. in
-  `delivery/sendLifecycle.ts`); never write these from a user-facing
-  mutation. Track freshness with `statsUpdatedAt`/`cachedCountUpdatedAt`.
+- Aggregated fields (a cache of what other rows already record) are marked
+  with `// AGGREGATED [<id>] —`, where `<id>` is the field's entry in
+  `maintenance/derivedFields/registry.ts`. Examples: `campaigns.statsSent` etc.
+  Update only via the dedicated aggregator — for campaign send stats this is
+  the Send lifecycle's effect system (`campaign_stats_sent` /
+  `campaign_stats_failed` etc. in `delivery/sendLifecycle.ts`); never write
+  these from a user-facing mutation. Track freshness with
+  `statsUpdatedAt`/`cachedCountUpdatedAt`.
+- A field may only be marked `AGGREGATED` if it is registered with a
+  `recompute(ctx, parent, budget)` adapter (`maintenance/derivedFields/adapters.ts`)
+  that recounts one parent from its source rows within a row and byte budget.
+  The hourly `derived fields: sample drift` cron
+  (`maintenance/derivedFields/sampler.ts`) visits a few parents per field in
+  turn, logs a difference once as `derived_field.drift` and repairs it in the
+  same transaction as the recount. A recount that would outrun its budget, or
+  whose source is incomplete (rows aged out, a rebuild not finished), writes
+  nothing. A lifetime total whose source rows may be removed uses the
+  `raise_only` policy: the cache is raised to the recount, never lowered.
+- A tally or event stamp that is the only record of what it counts (each
+  saved-reply use, each SMTP response) is marked `// COUNTER [<id>] —` and
+  registered with the reason nothing can recompute it. It is not sampled.
+  Moving a field from `AGGREGATED` to `COUNTER` needs that reason; a field
+  that other rows do record stays `AGGREGATED`, label or no label.
+- `__tests__/derivedFieldRegistry.test.ts` fails on a label without a
+  registered id, an id under the other label, a label that does not sit on the
+  fields its entry names (including shared validator spreads), or an entry
+  whose fields are not in the schema.
 
 ### Cascade contracts
 

@@ -5,7 +5,7 @@
  * states, the DKIM-domain precondition, the report observation that keeps the
  * enrollment live, the re-check that is DERIVED ON READ (there is no cron and no
  * re-check write — the lapse verdict is a function of `lastReportAt` and the
- * clock), and the D2 proof that a deployment which never enrolls renders cleanly
+ * clock), and the proof that a deployment which never enrolls renders cleanly
  * and gets the documented substitution instead of an error.
  *
  * Adversarial: an unknown domain, an oversized/malformed reported domain, a
@@ -20,6 +20,7 @@ import { api, internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import type { OrganizationRole } from '../../lib/sessionOrganization';
 import { YAHOO_CFL_LAPSE_SILENCE_MS, YAHOO_CFL_REPORT_COALESCE_MS } from '@owlat/shared/yahooCfl';
+import type * as SessionOrganizationModule from '../../lib/sessionOrganization';
 
 let mockRole: OrganizationRole = 'admin';
 
@@ -32,7 +33,7 @@ function throwForbidden(): never {
 }
 
 vi.mock('../../lib/sessionOrganization', async () => {
-	const actual = await vi.importActual<typeof import('../../lib/sessionOrganization')>(
+	const actual = await vi.importActual<typeof SessionOrganizationModule>(
 		'../../lib/sessionOrganization'
 	);
 	const ctx = () => ({ userId: 'test-user', role: mockRole, activeOrganizationId: 'org-a' });
@@ -119,7 +120,7 @@ async function auditRows(t: Harness) {
 
 beforeEach(() => {
 	mockRole = 'admin';
-	// The mutations read the wall clock (D15 keeps the clock OUT of the pure core,
+	// The mutations read the wall clock (the clock stays OUT of the pure core,
 	// so the shell is the only place it is read); pin it so each transition lands
 	// on a known timestamp.
 	vi.useFakeTimers();
@@ -571,7 +572,7 @@ describe('the re-check, derived on read', () => {
 	});
 });
 
-describe('D2 — never enrolling is a supported configuration', () => {
+describe('never enrolling is a supported configuration', () => {
 	it('serves the guide with the relative proxy substitution and no error state', async () => {
 		const t = convexTest(schema, modules);
 		const domainId = await seedDomain(t, { domain: 'mail.p.test' });
@@ -594,7 +595,7 @@ describe('D2 — never enrolling is a supported configuration', () => {
 		const domainId = await seedDomain(t, { domain: 'mail.q.test' });
 		// `getGuide` takes only a domain id. The CFBL-Address feed lands with P2-7;
 		// until then the server answers `false` itself, so a caller cannot steer the
-		// reported confidence or the displayed trip point (D20 — no speculative seam).
+		// reported confidence or the displayed trip point (no speculative seam).
 		const guide = await t.withIdentity(identity).query(api.domains.yahooCfl.getGuide, { domainId });
 		expect(guide?.complaintSignal).toMatchObject({
 			source: 'unsubscribe_rate_proxy',

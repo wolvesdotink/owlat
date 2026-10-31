@@ -1,9 +1,9 @@
 /**
  * The bounded LIFO stack behind the Postbox's "Undo" (Cmd/Ctrl+Z).
  *
- * Triage used to keep exactly ONE undoable action: archiving three messages in
- * a row left only the third reversible, and the second Cmd+Z did nothing. This
- * is the same registry generalised to a stack — newest first, capped at
+ * With exactly ONE undoable action, archiving three messages in a row would
+ * leave only the third reversible, and the second Cmd+Z would do nothing. So
+ * the undo registry is a stack — newest first, capped at
  * {@link POSTBOX_UNDO_STACK_LIMIT} entries, each with its own deadline, so a
  * burst of triage can be walked back in the order it happened.
  *
@@ -25,6 +25,19 @@ export interface PostboxUndoEntry {
 	id: string;
 	/** Absolute deadline; a Cmd+Z after this is ignored even if a timer lags. */
 	expiresAt: number;
+	/**
+	 * The notice this entry is shown in. Consecutive actions of one kind share a
+	 * notice ("Archived 3 messages · Undo all"); every other entry has its own.
+	 */
+	groupId?: string;
+	/**
+	 * What the action was, as a semantic kind plus its scope (`archive`,
+	 * `move:<folderId>`): never a translated label. Entries without one never
+	 * share a notice.
+	 */
+	groupKey?: string;
+	/** How many items the action touched, for the shared notice's total. */
+	count?: number;
 }
 
 /**
@@ -91,4 +104,56 @@ export function popUndoEntry<E extends PostboxUndoEntry>(
 		entry: entry ?? null,
 		expired: pruned.expired,
 	};
+}
+
+/**
+ * The notice a new action of kind `groupKey` joins, or null when it starts its
+ * own. Only CONSECUTIVE actions share one: the newest live entry must have the
+ * same key, and its notice must still be on screen (`isOpen`), so a dismissed
+ * notice is never revived and "archive, trash, archive" stays three notices.
+ */
+export function joinableUndoGroup<E extends PostboxUndoEntry>(
+	stack: readonly E[],
+	groupKey: string | undefined,
+	now: number,
+	isOpen: (groupId: string) => boolean
+): string | null {
+	if (!groupKey) return null;
+	const newest = stack.find((e) => e.expiresAt > now);
+	if (!newest?.groupId || newest.groupKey !== groupKey) return null;
+	return isOpen(newest.groupId) ? newest.groupId : null;
+}
+
+/** A notice's entries, newest first (the stack's own order). */
+export function undoGroupMembers<E extends PostboxUndoEntry>(
+	stack: readonly E[],
+	groupId: string
+): E[] {
+	return stack.filter((e) => e.groupId === groupId);
+}
+
+/** How many items a notice's entries touched between them. */
+export function undoGroupTotal(members: readonly PostboxUndoEntry[]): number {
+	return members.reduce((sum, e) => sum + Math.max(1, e.count ?? 1), 0);
+}
+
+/**
+ * Take every live entry of one notice off the stack at once ("Undo all"),
+ * newest first, so they are reversed in the opposite order they happened. Like
+ * {@link popUndoEntry}, expired entries come back separately for clean-up and
+ * are never handed out.
+ */
+export function takeUndoGroup<E extends PostboxUndoEntry>(
+	stack: readonly E[],
+	groupId: string,
+	now: number
+): { stack: E[]; entries: E[]; expired: E[] } {
+	const pruned = pruneUndoStack(stack, now);
+	const entries: E[] = [];
+	const rest: E[] = [];
+	for (const e of pruned.stack) {
+		if (e.groupId === groupId) entries.push(e);
+		else rest.push(e);
+	}
+	return { stack: rest, entries, expired: pruned.expired };
 }

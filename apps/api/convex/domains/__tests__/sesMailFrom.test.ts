@@ -1,8 +1,8 @@
 /**
  * SES custom MAIL FROM parity — X1.
  *
- * D2 wired a per-domain `returnPathHost` through the built-in MTA and rejected
- * SES-backed domains with `unsupported_provider`. X1 lifts that: a return-path
+ * The built-in MTA takes a per-domain `returnPathHost`, and SES-backed domains
+ * are not refused with `unsupported_provider` for it either: a return-path
  * host on an SES domain configures SES's custom MAIL FROM (a subdomain of the
  * sending domain) + the MX/SPF-TXT records SES requires, so provider choice does
  * not change the feature set. This gate locks:
@@ -29,6 +29,8 @@ import schema from '../../schema';
 import { api, internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import type { OrganizationRole } from '../../lib/sessionOrganization';
+import type * as SessionOrganizationModule from '../../lib/sessionOrganization';
+import type * as SesIdentityModule from '../../lib/emailProviders/sesIdentity';
 
 // ─── Mocks ──────────────────────────────────────────────────────────────────
 
@@ -43,7 +45,7 @@ function throwForbidden(): never {
 }
 
 vi.mock('../../lib/sessionOrganization', async () => {
-	const actual = await vi.importActual<typeof import('../../lib/sessionOrganization')>(
+	const actual = await vi.importActual<typeof SessionOrganizationModule>(
 		'../../lib/sessionOrganization'
 	);
 	const ctx = () => ({ userId: 'test-user', role: mockRole });
@@ -71,7 +73,7 @@ const SES_REGION = 'us-east-1';
 const setupMailFromMock = vi.fn();
 const sesRegisterMock = vi.fn();
 vi.mock('../../lib/emailProviders/sesIdentity', async (importActual) => {
-	const actual = await importActual<typeof import('../../lib/emailProviders/sesIdentity')>();
+	const actual = await importActual<typeof SesIdentityModule>();
 	return {
 		...actual,
 		createSESIdentityManager: () => ({
@@ -451,6 +453,6 @@ describe('returnPath.setReturnPathHost — SES via the public mutation', () => {
 				domainId,
 				returnPathHost: 'bounce.acme.com',
 			})
-		).rejects.toThrow(/permission/i);
+		).rejects.toThrow(/Only owners and admins can manage sending domains/);
 	});
 });

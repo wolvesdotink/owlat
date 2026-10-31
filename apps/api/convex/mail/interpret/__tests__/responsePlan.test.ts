@@ -261,7 +261,7 @@ describe('coverage.check', () => {
 	const draft =
 		'Hi Jonas,\nthe signed contract follows tomorrow. Tuesday at 10:00 works for the call. I’ve attached the agenda.';
 
-	it('reports a spend-admission refusal instead of reading it as a model fault (D1)', async () => {
+	it('reports a spend-admission refusal instead of reading it as a model fault', async () => {
 		const t = harness();
 		const s = await setup(t);
 		runLlmObjectMock.mockRejectedValueOnce(new AdmissionRefusedError('daily_ceiling', 'ceiling'));
@@ -370,6 +370,23 @@ describe('coverage.check', () => {
 		expect(result?.coverage.find((c) => c.itemId === s.call)?.verdict).toBe('skipped');
 		expect(result?.fileClaims).toEqual([expect.objectContaining({ isMatched: false })]);
 	});
+
+	it('stores an unchecked result as pending, bound to the text it read', async () => {
+		const t = harness();
+		const s = await setup(t);
+		runLlmObjectMock.mockRejectedValueOnce(new AdmissionRefusedError('daily_ceiling', 'ceiling'));
+		const result = await t.action(api.mail.interpret.coverage.check, {
+			threadRef: s.ref,
+			draftRef: s.draftRef,
+			draftText: draft,
+		});
+		expect(result).toMatchObject({ isChecked: false, isStored: true });
+		const view = await t.query(api.mail.interpret.responsePlan.get, {
+			threadRef: s.ref,
+			draftRef: s.draftRef,
+		});
+		expect(view).toMatchObject({ verdict: 'pending', draftHash: result?.draftHash });
+	});
 });
 
 describe('a draft’s plan goes with the draft', () => {
@@ -393,7 +410,7 @@ describe('review round 1', () => {
 	const USAGE_ = { promptTokens: 1, completionTokens: 1, totalTokens: 2 };
 	const empty = { coverage: [], fileClaims: [], promises: [] };
 
-	it('F2/D1: a stance write bumps the revision and leaves the old check pending', async () => {
+	it('a stance write bumps the revision and leaves the old check pending', async () => {
 		const t = harness();
 		const s = await setup(t);
 		runLlmObjectMock.mockResolvedValue({ object: empty, tokenUsage: USAGE_, modelUsed: 'm' });
@@ -445,7 +462,7 @@ describe('review round 1', () => {
 		expect(result?.fileClaims).toEqual([expect.objectContaining({ isMatched: false })]);
 	});
 
-	it('F1/D2: items past the bound are counted as overflow, not dropped silently', async () => {
+	it('items past the bound are counted as overflow, not dropped silently', async () => {
 		const t = harness();
 		const s = await setup(t);
 		await t.run(async (ctx) => {

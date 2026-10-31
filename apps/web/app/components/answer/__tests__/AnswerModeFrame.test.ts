@@ -46,7 +46,6 @@ afterEach(() => {
 		value: realVisualViewport,
 		configurable: true,
 	});
-	document.body.innerHTML = '';
 });
 
 function mountFrame(props: Record<string, unknown> = {}) {

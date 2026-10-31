@@ -3,9 +3,12 @@
  * cascade-deleter of `emailTemplateVersions`.
  *
  * Capture sites (all of them):
- *   `emails.update`            → trigger `save`
+ *   `emails.update`            → trigger `save` (an autosave replaces the
+ *                                same person's save row from the same window,
+ *                                `selectAutosaveVersion`)
  *   `emails.publish`           → trigger `publish`
- *   `campaigns/send.ts` PREP   → trigger `send` (via `captureForSend`)
+ *   `campaigns/sendCommit.ts`  → trigger `send` (the send preparation commit,
+ *                                for Variant B's template too in a content test)
  *   `emailCoediting/sessions.ts` → trigger `conflict` (a co-editor's change replaced)
  *
  * Restore is deliberately NOT a mutation here: the editor loads a snapshot into
@@ -25,9 +28,12 @@ import { getOrThrow, throwNotFound } from '../_utils/errors';
 import { getLive } from '../lib/softDelete';
 import type { ErasureBudget } from '../contacts/erasure/budget';
 import {
+	AUTOSAVE_VERSION_SCAN,
 	VERSION_HISTORY_LIMIT,
 	VERSION_PRUNE_BATCH,
+	autosaveWindowStart,
 	fingerprintSnapshot,
+	selectAutosaveVersion,
 	selectVersionsToEvict,
 	shouldCaptureVersion,
 	type TemplateVersionTrigger,
@@ -46,9 +52,34 @@ async function latestVersion(
 }
 
 /**
+ * The save row an autosave by `userId` replaces (`selectAutosaveVersion`):
+ * read from the current window only, and at most `AUTOSAVE_VERSION_SCAN` rows.
+ */
+async function autosaveVersionToReplace(
+	ctx: QueryCtx,
+	templateId: Id<'emailTemplates'>,
+	userId: string,
+	now: number
+): Promise<Doc<'emailTemplateVersions'> | null> {
+	const recent = await ctx.db
+		.query('emailTemplateVersions')
+		.withIndex('by_template_and_created_at', (q) =>
+			q.eq('templateId', templateId).gte('createdAt', autosaveWindowStart(now))
+		)
+		.order('desc')
+		.take(AUTOSAVE_VERSION_SCAN);
+	return selectAutosaveVersion(recent, { userId, now });
+}
+
+/**
  * Snapshot a template, unless the previous snapshot already records the same
- * content under the same trigger. Returns the new row id, or null when the
- * capture was deduplicated away.
+ * content under the same trigger. Returns the new row id (null when the
+ * capture was deduplicated away).
+ *
+ * With `autosave`, a save that follows the same person's save from the same
+ * window continues that burst (`continuesBurst`), also when co-editors saved
+ * in between: its row takes the earlier one's place (deleted, then the new
+ * one inserted; a stored snapshot is never rewritten).
  *
  * Runs in the caller's transaction: a save that rolls back must not leave a
  * version row claiming content that was never stored.
@@ -59,8 +90,9 @@ export async function captureTemplateVersion(
 		template: Doc<'emailTemplates'>;
 		trigger: TemplateVersionTrigger;
 		userId: string;
+		autosave?: boolean;
 	}
-): Promise<Id<'emailTemplateVersions'> | null> {
+): Promise<{ versionId: Id<'emailTemplateVersions'> | null; continuesBurst: boolean }> {
 	const { template, trigger, userId } = args;
 	const fingerprint = fingerprintSnapshot({
 		name: template.name,
@@ -69,9 +101,28 @@ export async function captureTemplateVersion(
 	});
 
 	const previous = await latestVersion(ctx, template._id);
-	if (!shouldCaptureVersion(previous, { contentHash: fingerprint.contentHash, trigger })) {
-		return null;
+	const now = Date.now();
+	const replaced =
+		args.autosave === true && trigger === 'save'
+			? await autosaveVersionToReplace(ctx, template._id, userId, now)
+			: null;
+	const continuesBurst = replaced !== null;
+	// The fingerprint leaves out the preview text, but a send record must hold
+	// what went out, so a send whose preview text differs is a new snapshot.
+	const sameSendPreview =
+		trigger !== 'send' || (previous?.previewText ?? '') === (template.previewText ?? '');
+	if (
+		sameSendPreview &&
+		!shouldCaptureVersion(previous, { contentHash: fingerprint.contentHash, trigger })
+	) {
+		// A repeated send of unchanged content keeps one row, but the review's
+		// "last send" must still date the newest send, not the first.
+		if (previous && trigger === 'send') {
+			await ctx.db.patch(previous._id, { lastSentAt: now });
+		}
+		return { versionId: null, continuesBurst };
 	}
+	if (replaced) await ctx.db.delete(replaced._id);
 
 	const versionId = await ctx.db.insert('emailTemplateVersions', {
 		templateId: template._id,
@@ -84,7 +135,7 @@ export async function captureTemplateVersion(
 		contentBytes: fingerprint.contentBytes,
 		contentHash: fingerprint.contentHash,
 		createdBy: userId,
-		createdAt: Date.now(),
+		createdAt: now,
 	});
 
 	// Enforce retention. Steady state evicts one row; the read is bounded by
@@ -98,7 +149,7 @@ export async function captureTemplateVersion(
 		await ctx.db.delete(stale._id);
 	}
 
-	return versionId;
+	return { versionId, continuesBurst };
 }
 
 /**
@@ -127,9 +178,10 @@ export async function deleteTemplateVersions(
 }
 
 /**
- * Capture a `send` snapshot from an action (the campaign send orchestrator has
- * no `ctx.db`). Silently no-ops on a template that vanished mid-send —
- * recording history must never be able to fail a send.
+ * Capture a `send` snapshot from an action. Silently no-ops on a template that
+ * vanished mid-send — recording history must never be able to fail a send.
+ * The send preparation now captures inside its own commit; this stays for
+ * preparations the previous release still has in flight.
  */
 export const captureForSend = internalMutation({
 	args: {
@@ -187,5 +239,50 @@ export const get = authedQuery({
 		const version = await getOrThrow(ctx, args.versionId, 'Template version');
 		if (!(await getLive(ctx, version.templateId))) throwNotFound('Template version');
 		return version;
+	},
+});
+
+/**
+ * The newest `send` snapshot of a template, for the campaign review's "changed
+ * since the last send": the body the template's most recent campaign send
+ * started with (captured in that send's preparation commit, whichever campaign
+ * it was), when that send started, and whether the template still holds the
+ * same body, subject and preview text.
+ *
+ * Null when the history holds no send: the template was never sent, or that
+ * snapshot was evicted by the retention cap. The caller says so instead of
+ * comparing against an older event. A template in Recently deleted reads as
+ * having no history, like `list`.
+ */
+// all-members: the same snapshot `get` returns to every org member.
+export const latestSend = authedQuery({
+	args: { templateId: v.id('emailTemplates') },
+	handler: async (ctx, args) => {
+		const template = await getLive(ctx, args.templateId);
+		if (!template) return null;
+		const version = await ctx.db
+			.query('emailTemplateVersions')
+			.withIndex('by_template_and_trigger_and_created_at', (q) =>
+				q.eq('templateId', args.templateId).eq('trigger', 'send')
+			)
+			.order('desc')
+			.first();
+		if (!version) return null;
+		return {
+			version: {
+				_id: version._id,
+				name: version.name,
+				subject: version.subject,
+				contentBytes: version.contentBytes,
+				createdAt: version.createdAt,
+				// When the newest send started: later than `createdAt` when an
+				// unchanged template was sent again into the same snapshot.
+				sentAt: version.lastSentAt ?? version.createdAt,
+			},
+			unchanged:
+				version.content === template.content &&
+				version.subject === template.subject &&
+				(version.previewText ?? '') === (template.previewText ?? ''),
+		};
 	},
 });

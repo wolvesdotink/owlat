@@ -1,4 +1,4 @@
-import type { RateLimitInfo, ApiErrorResponse, RequestOptions } from '../types/common';
+import type { RateLimitInfo, RequestOptions } from '../types/common';
 import {
 	OwlatError,
 	AuthenticationError,
@@ -101,6 +101,38 @@ function createError(
 		default:
 			return new OwlatError(message, code, statusCode, rateLimit, data);
 	}
+}
+
+/**
+ * The parts of an error body's `{ error: { message, category, data } }`
+ * envelope that are usable: a field that is missing, empty or of the wrong
+ * type takes the generic fallback, as an empty or non-JSON body does.
+ */
+function errorEnvelope(rawBody: string): {
+	message: string;
+	category: string;
+	data: Record<string, unknown> | undefined;
+} {
+	let parsed: unknown;
+	try {
+		parsed = rawBody ? JSON.parse(rawBody) : undefined;
+	} catch {
+		parsed = undefined;
+	}
+	const error = isObject(parsed) ? parsed['error'] : undefined;
+	const fields: Record<string, unknown> = isObject(error) ? error : {};
+	const message = fields['message'];
+	const category = fields['category'];
+	const data = fields['data'];
+	return {
+		message: typeof message === 'string' && message ? message : 'Unknown error',
+		category: typeof category === 'string' && category ? category : 'internal',
+		data: isObject(data) ? data : undefined,
+	};
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+	return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 /** Status codes that are safe to retry (transient server errors) */
@@ -351,17 +383,7 @@ export function createHttpClient(
 			// the error envelope defensively: an empty or non-JSON body falls
 			// back to the generic category/message rather than throwing.
 			if (!response.ok) {
-				let errorBody: ApiErrorResponse | undefined;
-				if (rawBody) {
-					try {
-						errorBody = JSON.parse(rawBody) as ApiErrorResponse;
-					} catch {
-						errorBody = undefined;
-					}
-				}
-				const message = errorBody?.error?.message || 'Unknown error';
-				const category = errorBody?.error?.category || 'internal';
-				const data = errorBody?.error?.data;
+				const { message, category, data } = errorEnvelope(rawBody);
 				const retryAfterHeader = response.headers.get('Retry-After');
 				const retryAfterData =
 					typeof data?.['retryAfter'] === 'number' ? data['retryAfter'] : undefined;

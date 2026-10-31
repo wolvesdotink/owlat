@@ -3,6 +3,8 @@ import { announcedPageLabel, shouldMoveFocusToMain } from '~/utils/liveAnnounce'
 import { useSectionNavigation } from '~/composables/useSectionNavigation';
 import { CORE_NAV_HREFS } from '~/lib/dashboardNavigationCore';
 import { UNDO_TOAST_REGION_ID } from '~/utils/undoToastRegion';
+import type { ShellPageBoundaryKey } from '~/lib/pageBoundary';
+import AppErrorBoundary from '~/components/AppErrorBoundary.vue';
 import { useCommandPaletteHost } from '~/composables/useCommandPaletteHost';
 import { useMountOnFirst } from '~/composables/useMountOnFirst';
 import { usePerfMark } from '~/composables/usePerfMark';
@@ -67,6 +69,9 @@ function onToggleCollapse() {
 const showSectionNavigation = computed(() => !!activeSection.value && !showAppNavigation.value);
 const sectionNavigationTarget = ref<HTMLElement | null>(null);
 provide('section-navigation-target', sectionNavigationTarget);
+// Handed down from this lazy layout chunk to keep the boundary out of the
+// entry bundle (see ShellPageBoundaryKey).
+provide('owlat:shell-page-boundary' satisfies ShellPageBoundaryKey, AppErrorBoundary);
 
 // Settings' Back returns to the last page of real work, however many settings
 // pages were visited in between.
@@ -377,8 +382,21 @@ watch(isFocusMode, (active) => {
 // shared control so the event name lives in one place.
 const { open: openCommandPalette } = useCommandPalette();
 
-// Initialize desktop notifications (no-op in browser)
-useDesktopNotifications();
+// Unread mail is read once and badged everywhere from the same count: the
+// browser tab (title prefix + dotted favicon) and, in the desktop app, the
+// dock/taskbar icon plus native notifications. The desktop app has no tab and
+// paints the count natively, so the tab badge stays browser-only.
+const unreadBadge = useUnreadBadge();
+const { isDesktop: isDesktopApp } = useDesktopContext();
+useTabBadge(() => (isDesktopApp.value ? null : unreadBadge.count.value));
+useDesktopNotifications(unreadBadge);
+// The opt-in alert chimes (armed replies, assignments, agent questions) read
+// the same unread peek, in the browser and the desktop app alike.
+useAlertSounds(unreadBadge);
+
+// Campaign, delivery, automation and sending-domain notices: in-app toast
+// everywhere, native notification on the desktop app.
+useMarketingNotices();
 
 // "You can send now" — one in-app toast for a member whose onboarding first-send
 // step was blocked while the instance had no outbound transport.
@@ -537,30 +555,34 @@ const sidebarDesktopClass = computed(() => {
 				:aria-label="t('shell.dashboard.sidebarContextGroup')"
 			>
 				<div :class="isCollapsed ? 'flex flex-col gap-1' : 'flex gap-1'">
-					<button
+					<UiTooltip
 						v-for="context in sidebarContexts"
 						:key="context.key"
-						type="button"
-						:aria-pressed="activeContext === context.key"
-						:class="[
-							'flex items-center justify-center gap-1.5 rounded-lg text-xs font-medium transition-colors',
-							isCollapsed ? 'p-2' : 'flex-1 px-2 py-1.5',
-							activeContext === context.key
-								? 'bg-(--surface-2-selected) text-text-primary'
-								: 'text-text-secondary hover:text-text-primary hover:bg-(--surface-2-hover)',
-						]"
-						:title="isCollapsed ? t(context.label) : undefined"
-						@click="switchContext(context.key)"
+						:text="isCollapsed ? t(context.label) : undefined"
 					>
-						<Icon
-							:name="context.icon"
+						<button
+							type="button"
+							:aria-pressed="activeContext === context.key"
 							:class="[
-								isCollapsed ? 'w-5 h-5' : 'w-3.5 h-3.5',
-								activeContext === context.key ? 'text-text-primary' : 'text-text-tertiary',
+								'flex items-center justify-center gap-1.5 rounded-lg text-xs font-medium transition-colors',
+								isCollapsed ? 'p-2' : 'flex-1 px-2 py-1.5',
+								activeContext === context.key
+									? 'bg-(--surface-2-selected) text-text-primary'
+									: 'text-text-secondary hover:text-text-primary hover:bg-(--surface-2-hover)',
 							]"
-						/>
-						<span v-if="!isCollapsed">{{ t(context.label) }}</span>
-					</button>
+							:aria-label="isCollapsed ? t(context.label) : undefined"
+							@click="switchContext(context.key)"
+						>
+							<Icon
+								:name="context.icon"
+								:class="[
+									isCollapsed ? 'w-5 h-5' : 'w-3.5 h-3.5',
+									activeContext === context.key ? 'text-text-primary' : 'text-text-tertiary',
+								]"
+							/>
+							<span v-if="!isCollapsed">{{ t(context.label) }}</span>
+						</button>
+					</UiTooltip>
 				</div>
 			</div>
 
@@ -629,6 +651,9 @@ const sidebarDesktopClass = computed(() => {
 						: 'min-h-[calc(100dvh-var(--titlebar-h,0px)-4rem-2.25rem-1px)] lg:min-h-[calc(100dvh-var(--titlebar-h,0px)-4rem)]'
 				"
 			>
+				<!-- A page that fails to render falls back in here, inside the shell
+				     (AppPageOutlet reads ShellPageBoundaryKey): the rail, the header
+				     and the palette stay usable. -->
 				<slot />
 			</main>
 		</div>
@@ -644,6 +669,9 @@ const sidebarDesktopClass = computed(() => {
 		<!-- Compose over the current page (the top-bar button, the palette and
 		     the c chord), never by navigating to the mailbox. -->
 		<ShellComposerOverlay />
+
+		<!-- Files dragged onto a conversation: the hint, and the reply it opens. -->
+		<ShellReplyDropHint />
 
 		<!-- Where every undo countdown toast lands (mail send, review approve,
 		     campaign send): one bottom-left column, so two live windows stack

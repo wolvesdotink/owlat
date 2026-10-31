@@ -2,10 +2,11 @@ import { v } from 'convex/values';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import type { QueryCtx, MutationCtx } from '../_generated/server';
 import type { Id } from '../_generated/dataModel';
-import { getUserIdFromSession, requireOrgPermission } from '../lib/sessionOrganization';
+import { hasPermission, requirePermission } from '../lib/sessionOrganization';
 import { validateStringLength, STRING_LIMITS } from '../lib/inputGuards';
 import { getOrThrow, throwInvalidInput } from '../_utils/errors';
 import { requireWritableProperty } from './propertyDeletion';
+import { isLiveContact } from '../lib/contactHelpers';
 
 /**
  * Verify a contact exists.
@@ -19,11 +20,16 @@ async function verifyContactExists(
 }
 
 // Query to get all property values for a contact
+// all-members: the contact detail page every role reads (contacts.get is
+// member-readable too).
 export const listByContact = authedQuery({
 	args: { contactId: v.id('contacts') },
 	handler: async (ctx, args) => {
-		await getUserIdFromSession(ctx);
-		await verifyContactExists(ctx, args.contactId);
+		const contact = await verifyContactExists(ctx, args.contactId);
+		// A soft delete keeps the values until the retention sweep, so a deleted
+		// contact's phone or address would still be readable by id; it reads as
+		// having none, the way contacts.get reads it as missing.
+		if (!isLiveContact(contact)) return [];
 
 		return await ctx.db
 			.query('contactPropertyValues')
@@ -38,10 +44,9 @@ export const remove = authedMutation({
 		contactId: v.id('contacts'),
 		propertyId: v.id('contactProperties'),
 	},
-	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'contacts:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'contacts:manage'),
 			'Only owners and admins can modify contact properties'
 		);
 
@@ -76,11 +81,10 @@ export const remove = authedMutation({
 const PROPERTY_VALUE_COUNT_LIMIT = 10_000;
 
 // Query to count how many contacts have values for a given property
+// all-members: a count shown beside a property definition; no values leave.
 export const countByProperty = authedQuery({
 	args: { propertyId: v.id('contactProperties') },
 	handler: async (ctx, args) => {
-		await getUserIdFromSession(ctx);
-
 		// Verify property exists
 		await getOrThrow(ctx, args.propertyId, 'Property');
 
@@ -103,10 +107,9 @@ export const bulkSet = authedMutation({
 			})
 		),
 	},
-	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'contacts:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'contacts:manage'),
 			'Only owners and admins can modify contact properties'
 		);
 

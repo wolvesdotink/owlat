@@ -1,5 +1,5 @@
 /**
- * "Draft a nudge" (SPEC §7): a follow-up the owner sends when the other side
+ * "Draft a nudge": a follow-up the owner sends when the other side
  * owes them a reply (mail/nudges.ts finds those). It runs the ordinary Answer
  * mode drafter (`composeDraft.start` with `purpose: 'nudge'`) on a reply
  * draft of the thread, so the owner's voice, the thread's language, the

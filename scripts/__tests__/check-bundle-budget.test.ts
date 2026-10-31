@@ -4,7 +4,7 @@
  * Each case builds a miniature `.output` (a Nitro renderer naming the entry and
  * a `public/_nuxt` directory of chunks) and runs the real script against it.
  * Random base64 barely compresses, so a chunk of it weighs about three quarters
- * of its size in gzip and lands reliably on one side of the 256 KB budget.
+ * of its size in gzip and lands reliably on one side of the 250 KB budget.
  */
 import { spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
@@ -54,7 +54,7 @@ describe('the entry-bundle budget', () => {
 	it('passes a small entry', () => {
 		const result = run(build({ 'entry.js': 'console.log("boot");\n' }));
 
-		expect(result.output).toContain('Within the 256 KB gzip budget');
+		expect(result.output).toContain('Within the 250 KB gzip budget');
 		expect(result.status).toBe(0);
 	});
 
@@ -62,11 +62,11 @@ describe('the entry-bundle budget', () => {
 		const result = run(
 			build({
 				'entry.js': 'import { blob } from "./big.js";\nconsole.log(blob);\n',
-				'big.js': incompressible(260),
+				'big.js': incompressible(264),
 			})
 		);
 
-		expect(result.output).toContain('over the 256 KB budget');
+		expect(result.output).toContain('over the 250 KB budget');
 		expect(result.output).toContain('big.js');
 		expect(result.status).toBe(1);
 	});
@@ -76,7 +76,7 @@ describe('the entry-bundle budget', () => {
 			build({
 				'entry.js': 'import "./a.js";\n',
 				'a.js': 'import{x}from"./b.js";x();\n',
-				'b.js': incompressible(260),
+				'b.js': incompressible(264),
 			})
 		);
 
@@ -106,7 +106,7 @@ describe('the entry-bundle budget', () => {
 		const result = run(
 			build({
 				'entry.js': 'const load = () => import("./big.js");\nload();\n',
-				'big.js': incompressible(260),
+				'big.js': incompressible(264),
 			})
 		);
 

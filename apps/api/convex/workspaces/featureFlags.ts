@@ -34,14 +34,13 @@
 import { v } from 'convex/values';
 import { internalQuery, type MutationCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
-import { publicQuery, authedQuery, authedMutation } from '../lib/authedFunctions';
+import { publicQuery, authedQuery, adminMutation } from '../lib/authedFunctions';
 import { isDeliveryConfigured } from '../lib/sendProviders/capability';
 import { isEnvPresent } from '../lib/env';
 import { internal } from '../_generated/api';
 import { startFirstRunBackfill } from '../knowledge/backfillJobs';
 import { createMessageBackfillJob, DEFAULT_CHUNK_SIZE } from '../knowledge/messageBackfill';
 import { createEdgeBackfillJob } from '../knowledge/edgeBackfill';
-import { requireAdminContext } from '../lib/sessionOrganization';
 import {
 	applyToggle,
 	applyPackToggle,
@@ -152,15 +151,13 @@ export const getFlagsConfigStatus = authedQuery({
  * of any prior backfill job). Cascade-driven enables do NOT trigger the
  * backfill — the explicit-only semantic is load-bearing.
  */
-export const setFeatureFlag = authedMutation({
+export const setFeatureFlag = adminMutation({
 	args: {
 		flag: v.string(),
 		value: v.boolean(),
 		approvedCapabilities: v.optional(v.array(v.string())),
 	},
-	handler: async (ctx, args) => {
-		const session = await requireAdminContext(ctx);
-
+	handler: async (ctx, args, session) => {
 		const definition = getFeatureFlagDefinition(FEATURE_FLAG_REGISTRY, args.flag);
 		if (!definition) {
 			throwInvalidInput(`Unknown feature flag: ${args.flag}`);
@@ -267,14 +264,12 @@ export const setFeatureFlag = authedMutation({
 	},
 });
 
-export const setFeaturePack = authedMutation({
+export const setFeaturePack = adminMutation({
 	args: {
 		pack: v.string(),
 		value: v.boolean(),
 	},
 	handler: async (ctx, args) => {
-		await requireAdminContext(ctx);
-
 		if (!Object.prototype.hasOwnProperty.call(FEATURE_PACKS, args.pack)) {
 			throwInvalidInput(`Unknown feature pack: ${args.pack}`);
 		}
@@ -291,8 +286,8 @@ export const setFeaturePack = authedMutation({
 
 /** Validate, cascade-resolve, and persist the whole flag map onto the
  * `featureFlagSettings` singleton. Shared by the admin mutation and the
- * setup-seed internal mutation so both stay the sole writer of the map. */
-async function writeAllFlags(ctx: MutationCtx, flags: FeatureFlagState) {
+ * setup seed (`auth/seedAdminCommit.ts`) so both stay the sole writer of the map. */
+export async function writeAllFlags(ctx: MutationCtx, flags: FeatureFlagState) {
 	for (const key of Object.keys(flags)) {
 		const definition = getFeatureFlagDefinition(FEATURE_FLAG_REGISTRY, key);
 		if (!definition) {
@@ -328,12 +323,11 @@ async function writeAllFlags(ctx: MutationCtx, flags: FeatureFlagState) {
 	return await writeFeatureFlagSettings(ctx, patch);
 }
 
-export const setAllFeatureFlags = authedMutation({
+export const setAllFeatureFlags = adminMutation({
 	args: {
 		flags: v.record(v.string(), v.boolean()),
 	},
 	handler: async (ctx, args) => {
-		await requireAdminContext(ctx);
 		return writeAllFlags(ctx, args.flags as FeatureFlagState);
 	},
 });

@@ -34,6 +34,7 @@
 			"typescript": "^6.0.3",
 			"vitest": "^4.1.11",
 			"@vitest/coverage-v8": "^4.1.11",
+			"@vitest/browser-playwright": "4.1.11",
 			"@types/node": "^25.6.0",
 			"happy-dom": "^21.0.4",
 			"vue-tsc": "^3.2.7"
@@ -49,8 +50,8 @@
 			},
 			"convex": {
 				"convex": "^1.43.0",
-				"better-auth": ">=1.6.22 <1.7.0",
-				"@convex-dev/better-auth": "^0.12.5"
+				"better-auth": "1.7.14",
+				"@convex-dev/better-auth": "0.12.6"
 			},
 			"ai": {
 				"ai": "^6.0.168",
@@ -71,6 +72,7 @@
 		"dev:marketing": "bun --env-file=.env --env-file=.env.local run turbo dev --filter=@owlat/marketing",
 		"dev:seed": "bun scripts/dev-seed.ts",
 		"dev:stack": "bun scripts/dev-stack.ts",
+		"capture": "bun apps/web/e2e/capture/run.ts",
 		"setup:worktree": "bun scripts/setup-worktree.ts",
 		"build": "turbo build",
 		"build:web": "turbo build --filter=@owlat/web",
@@ -93,9 +95,11 @@
 		"lint:page-headers": "bash scripts/check-page-headers.sh",
 		"lint:branding": "bash scripts/check-branding.sh",
 		"lint:format": "bash scripts/check-format.sh",
+		"lint:comment-policy": "bun scripts/check-comment-policy.ts",
 		"lint:imports": "bash scripts/check-cross-package-imports.sh",
 		"lint:providers": "bash scripts/check-provider-identity.sh",
-		"lint:ui-buttons": "bun scripts/check-ui-buttons.ts",
+		"lint:ui-controls": "bun scripts/check-ui-controls.ts",
+		"lint:native-title": "bash scripts/check-native-title.sh",
 		"lint:desktop-invoke": "bun scripts/check-desktop-invoke-contract.ts",
 		"lint:tokens": "bun scripts/check-palette-classes.ts && bun scripts/check-token-contrast.ts",
 		"lint:member-jargon": "bun scripts/check-member-jargon.ts",
@@ -105,6 +109,7 @@
 		"lint:compose": "bash scripts/check-compose-invariants.sh",
 		"lint:html-to-text": "bash scripts/check-html-to-text.sh",
 		"lint:crypto-primitives": "bash scripts/check-crypto-primitives.sh",
+		"lint:ast-gate-parity": "bun scripts/ast-gate-parity.ts",
 		"lint:mail-services": "bash scripts/check-mail-service-guards.sh",
 		"lint:source-bytes": "bash scripts/check-source-nul-bytes.sh",
 		"lint:no-pr-assets": "bun scripts/check-no-pr-assets.ts",
@@ -136,7 +141,8 @@
 		"test:ramp": "bun run --cwd apps/api test:ramp",
 		"perf:bench": "bun scripts/perf-bench/run.ts",
 		"goldens:update": "bun --cwd packages/mail-message run goldens:update",
-		"release:cut": "bun scripts/release.ts"
+		"release:cut": "bun scripts/release.ts",
+		"release:promote": "bun scripts/release-promote.ts"
 	},
 	"dependencies": {
 		"nuxt": "4.5.2",
@@ -151,6 +157,7 @@
 	"overrides": {
 		"@ai-sdk/provider-utils": "^4.0.38",
 		"@babel/core": "^7.29.6",
+		"better-auth": "1.7.14",
 		"brace-expansion": "^5.0.12",
 		"browserslist": "^4.28.8",
 		"devalue": "^5.9.2",
@@ -159,11 +166,12 @@
 		"fflate": "^0.4.9",
 		"hono": "^4.13.5",
 		"ip-address": "^10.7.2",
-		"joi": "^18.2.5",
+		"joi": "^18.3.1",
 		"js-cookie": "^3.0.8",
 		"js-yaml": "^3.15.2",
 		"launch-editor": "^2.14.2",
 		"linkify-it": "^5.0.2",
+		"node-forge": "^1.4.2",
 		"nodemailer": "10.0.10",
 		"nuxt": "4.5.2",
 		"nuxt-og-image": "6.7.4",
@@ -186,7 +194,8 @@
 	"packageManager": "bun@1.4.2",
 	"patchedDependencies": {
 		"image-size@2.0.2": "patches/image-size@2.0.2.patch",
-		"groupmq@1.1.0": "patches/groupmq@1.1.0.patch"
+		"groupmq@1.1.0": "patches/groupmq@1.1.0.patch",
+		"@convex-dev/better-auth@0.12.6": "patches/@convex-dev%2Fbetter-auth@0.12.6.patch"
 	},
 	"trustedDependencies": [
 		"@owlat/ui"

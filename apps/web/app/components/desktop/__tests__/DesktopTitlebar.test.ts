@@ -15,13 +15,14 @@
  * `windowTitleFor` mapping kept, so the title assertions cover the production
  * label→title rule rather than a local re-derivation.
  */
-import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
-import { enableAutoUnmount, mount } from '@vue/test-utils';
+import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
+import { mount } from '@vue/test-utils';
 import { ref, computed } from 'vue';
 
 import DesktopTitlebar from '../DesktopTitlebar.vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { WORKSPACE_ACCENTS } from '~/lib/desktop/workspaceTypes';
+import type * as WindowModule from '@owlat/desktop/src/window';
 
 const { setWindowTitleMock, setWindowThemeMock } = vi.hoisted(() => ({
 	setWindowTitleMock: vi.fn().mockResolvedValue(undefined),
@@ -29,15 +30,13 @@ const { setWindowTitleMock, setWindowThemeMock } = vi.hoisted(() => ({
 }));
 
 vi.mock('@owlat/desktop/src/window', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('@owlat/desktop/src/window')>();
+	const actual = await importOriginal<typeof WindowModule>();
 	return {
 		...actual,
 		setWindowTitle: setWindowTitleMock,
 		setWindowTheme: setWindowThemeMock,
 	};
 });
-
-enableAutoUnmount(afterEach);
 
 type Ws = { id: string; label: string; accentColor: string };
 

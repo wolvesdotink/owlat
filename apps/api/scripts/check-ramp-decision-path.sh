@@ -2,7 +2,7 @@
 #
 # check-ramp-decision-path.sh
 #
-# The ramp substitutions are DATA (plan D3): the degradation matrix has exactly
+# The ramp substitutions are DATA: the degradation matrix has exactly
 # one fold, convex/delivery/ramp/degradation.ts, and the modules that DECIDE
 # reach its constants only through that fold. Three source-level rules:
 #   1. no line of the decision path names an integration (an account, not a
@@ -22,6 +22,7 @@ decision_path=(
 	convex/delivery/ramp/controllerConfig.ts
 	convex/delivery/ramp/gates.ts
 	convex/delivery/ramp/gateEvaluation.ts
+	convex/delivery/ramp/tickDecision.ts
 	convex/delivery/signals/rampGateSources.ts
 	convex/delivery/rampControllerInputs.ts
 	convex/delivery/rampControllerCron.ts

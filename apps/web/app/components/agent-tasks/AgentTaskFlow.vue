@@ -20,6 +20,7 @@
  * Explicitly imported by consumers (never via the path-prefixed auto-import).
  */
 import { useShortcutLabels } from '~/composables/useShortcutLabels';
+import { meterFillStyle } from '@owlat/ui/utils/meterFill';
 
 withDefaults(
 	defineProps<{
@@ -118,50 +119,58 @@ const MAX_DOTS = 9;
 						class="inline-flex items-center gap-0.5"
 						data-testid="task-flow-browse"
 					>
-						<button
-							type="button"
-							data-testid="task-flow-back"
-							class="inline-flex items-center justify-center w-6 h-6 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors duration-(--motion-fast) disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-text-tertiary"
-							:disabled="!canGoBack"
-							:title="t('components.agentTasks.agentTaskFlow.backTitle')"
-							:aria-label="t('components.agentTasks.agentTaskFlow.back')"
-							@click="emit('back')"
-						>
-							<Icon name="lucide:chevron-left" class="w-4 h-4" aria-hidden="true" />
-						</button>
-						<button
-							type="button"
-							data-testid="task-flow-next"
-							class="inline-flex items-center justify-center w-6 h-6 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors duration-(--motion-fast) disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-text-tertiary"
-							:disabled="!canGoNext"
-							:title="t('components.agentTasks.agentTaskFlow.nextTitle')"
-							:aria-label="t('components.agentTasks.agentTaskFlow.next')"
-							@click="emit('next')"
-						>
-							<Icon name="lucide:chevron-right" class="w-4 h-4" aria-hidden="true" />
-						</button>
+						<UiTooltip :text="t('components.agentTasks.agentTaskFlow.backTitle')">
+							<button
+								type="button"
+								data-testid="task-flow-back"
+								class="inline-flex items-center justify-center w-6 h-6 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors duration-(--motion-fast) disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-text-tertiary"
+								:disabled="!canGoBack"
+								:aria-label="t('components.agentTasks.agentTaskFlow.back')"
+								@click="emit('back')"
+							>
+								<Icon name="lucide:chevron-left" class="w-4 h-4" aria-hidden="true" />
+							</button>
+						</UiTooltip>
+						<UiTooltip :text="t('components.agentTasks.agentTaskFlow.nextTitle')">
+							<button
+								type="button"
+								data-testid="task-flow-next"
+								class="inline-flex items-center justify-center w-6 h-6 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors duration-(--motion-fast) disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-text-tertiary"
+								:disabled="!canGoNext"
+								:aria-label="t('components.agentTasks.agentTaskFlow.next')"
+								@click="emit('next')"
+							>
+								<Icon name="lucide:chevron-right" class="w-4 h-4" aria-hidden="true" />
+							</button>
+						</UiTooltip>
 					</div>
-					<button
+					<UiTooltip
 						v-if="canUndo"
-						type="button"
-						class="inline-flex items-center gap-1 text-xs text-text-tertiary hover:text-text-primary transition-colors duration-(--motion-fast)"
-						:title="
-							t('components.agentTasks.agentTaskFlow.undoTitle', { keys: chordLabel('mod+z') })
-						"
-						@click="emit('undo')"
+						:text="t('components.agentTasks.agentTaskFlow.undoTitle')"
+						:shortcut="chordLabel('mod+z')"
 					>
-						<Icon name="lucide:undo-2" class="w-3.5 h-3.5" />
-						{{ t('components.agentTasks.agentTaskFlow.undo') }}
-					</button>
-					<button
-						type="button"
-						class="inline-flex items-center gap-1 text-xs text-text-tertiary hover:text-text-primary transition-colors duration-(--motion-fast)"
-						:title="t('components.agentTasks.agentTaskFlow.exitTitle')"
-						@click="emit('exit')"
+						<button
+							type="button"
+							class="inline-flex items-center gap-1 text-xs text-text-tertiary hover:text-text-primary transition-colors duration-(--motion-fast)"
+							@click="emit('undo')"
+						>
+							<Icon name="lucide:undo-2" class="w-3.5 h-3.5" />
+							{{ t('components.agentTasks.agentTaskFlow.undo') }}
+						</button>
+					</UiTooltip>
+					<UiTooltip
+						:text="t('components.agentTasks.agentTaskFlow.exit')"
+						:shortcut="chordLabel('Escape')"
 					>
-						<Icon name="lucide:x" class="w-3.5 h-3.5" />
-						{{ t('components.agentTasks.agentTaskFlow.exit') }}
-					</button>
+						<button
+							type="button"
+							class="inline-flex items-center gap-1 text-xs text-text-tertiary hover:text-text-primary transition-colors duration-(--motion-fast)"
+							@click="emit('exit')"
+						>
+							<Icon name="lucide:x" class="w-3.5 h-3.5" />
+							{{ t('components.agentTasks.agentTaskFlow.exit') }}
+						</button>
+					</UiTooltip>
 				</div>
 			</div>
 
@@ -178,7 +187,7 @@ const MAX_DOTS = 9;
 					<span
 						v-for="i in total"
 						:key="i"
-						class="h-1.5 rounded-full transition-all duration-(--motion-moderate)"
+						class="h-1.5 rounded-full transition-[width,background-color] duration-(--motion-moderate)"
 						:class="
 							(complete ? true : i < position)
 								? 'w-5 bg-brand'
@@ -197,10 +206,8 @@ const MAX_DOTS = 9;
 					:aria-valuemax="total"
 				>
 					<div
-						class="h-full bg-brand rounded-full transition-all duration-(--motion-slow)"
-						:style="{
-							width: `${Math.round(((complete ? total : position - 1) / total) * 100)}%`,
-						}"
+						class="ui-meter-fill h-full bg-brand rounded-full transition-transform duration-(--motion-slow)"
+						:style="meterFillStyle(((complete ? total : position - 1) / total) * 100)"
 					/>
 				</div>
 			</div>

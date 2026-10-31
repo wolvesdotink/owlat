@@ -12,12 +12,15 @@ import { sentPreviewSrcdoc } from '~/utils/postboxSentPreview';
  * The attachment lightbox, the composer's chip thumbnails and pasted-image
  * previews, and the upload dimension probes all load `blob:` URLs the page
  * creates itself. A policy that leaves `blob:` out refuses every one of them
- * silently: a broken image, a PDF fallback, an upload stored without its size
- * (#1292). The same file sets the strict directives, so both are pinned here.
+ * silently: a broken image, a PDF fallback, an upload stored without its size.
+ * The same file sets the strict directives, so both are pinned here.
  */
 
 vi.mock('@tailwindcss/vite', () => ({ default: () => [] }));
-vi.mock('../../scripts/uiLayerIcons', () => ({ uiLayerIconNames: () => [] }));
+vi.mock('../../scripts/uiLayerIcons', () => ({
+	uiLayerIconNames: () => [],
+	ICON_SCAN_EXCLUDE: [],
+}));
 
 const here = dirname(fileURLToPath(import.meta.url));
 

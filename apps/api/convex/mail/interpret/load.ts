@@ -1,5 +1,5 @@
 /**
- * Interpretation state for one source message (SPEC §4 step 3, `load.ts`).
+ * Interpretation state for one source message.
  *
  * `loadForInterpretation` is the run's one read before the model call:
  *   - the source: which thread it belongs to, its date, subject and direction,
@@ -46,7 +46,8 @@ import {
 	type InterpretInputItem,
 	type InterpretInputParticipant,
 } from './schema';
-import type { ReduceResult } from './reduceInput';
+import { reduceResultValidator, type ReduceResult } from './reduceInput';
+import { decodeJsonString } from '../../lib/jsonText';
 
 type ReadCtx = Pick<QueryCtx, 'db'>;
 
@@ -216,7 +217,7 @@ export interface SourceInfo {
 	mailboxId?: Id<'mailboxes'>;
 	/** The user whose locale and time zone apply (mailbox owner), when there is one. */
 	ownerUserId?: string;
-	/** Team thread assignee: the default item assignee (D4). */
+	/** Team thread assignee: the default item assignee. */
 	threadAssigneeUserId?: string;
 	threadMessageCount: number;
 	participants: InterpretInputParticipant[];
@@ -362,14 +363,12 @@ export async function ownerTimeZone(ctx: ReadCtx, userId: string | undefined): P
 	return settings?.timezone ?? 'UTC';
 }
 
-/** The stored result of an extraction, or null when it has none or it does not parse. */
+/** The stored result of an extraction, or null when it is absent or does not open or decode. */
 export async function readResult(row: Doc<'messageInterpretations'>): Promise<ReduceResult | null> {
 	if (!row.payload) return null;
-	try {
-		return JSON.parse(await openMessageBody(row.payload)) as ReduceResult;
-	} catch {
-		return null;
-	}
+	const text = await openMessageBody(row.payload).catch(() => null);
+	const decoded = text === null ? null : decodeJsonString(text, reduceResultValidator);
+	return decoded?.ok ? decoded.value : null;
 }
 
 /** The stored result of one extraction (a replayed run hands it to its caller). */

@@ -1,5 +1,5 @@
 /**
- * Calling the reducer directly the way a run does (lease.ts, SPEC §2.5): a
+ * Calling the reducer directly the way a run does (lease.ts): a
  * source with a snapshot row commits only with its current lease token, so
  * a test that drives `applyInterpretation` itself claims the lease first,
  * exactly like `runApply.withSourceLease`. A source without a row has no

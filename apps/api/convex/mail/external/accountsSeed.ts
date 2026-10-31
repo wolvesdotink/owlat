@@ -35,11 +35,11 @@ import { throwInvalidInput, throwNotFound } from '../../_utils/errors';
  * Connect a DELIVERABILITY SEED mailbox — step 1 of the placement probe.
  *
  * Deliberately the same table, the same sealed-credential envelope and the
- * same IMAP client as every other external account (D4/no second credential
+ * same IMAP client as every other external account (no second credential
  * model); it differs only in what it is FOR. Unlike `_connectInternal` there
  * is no one-live-per-user guard: an operator connects a handful of seeds, and
  * a seed is not a personal inbox. Zero seed accounts stays a fully supported
- * configuration (D2) — this is opt-in, never a setup step.
+ * configuration — this is opt-in, never a setup step.
  *
  * The provisioned mailbox carries `scope: 'seed'`, which is what keeps the
  * operator's consumer address out of THEIR OWN Postbox: the mailbox row has to
@@ -110,7 +110,7 @@ export const _connectSeedInternal = internalMutation({
  * would ever render it. The sweep's own stamp (`seedRotationRemindedAt`)
  * de-duplicates the audit entry and nothing more.
  *
- * D2: acknowledging is advisory housekeeping. Not acknowledging blocks nothing,
+ * Acknowledging is advisory housekeeping. Not acknowledging blocks nothing,
  * and a never-rotated seed keeps being measured — it just measures less well.
  *
  * WHO CALLS IT. The delivery admin hub renders this control beside each due
@@ -123,12 +123,11 @@ export const _connectSeedInternal = internalMutation({
  */
 export const acknowledgeSeedRotation = adminMutation({
 	args: { accountId: v.id('externalMailAccounts') },
-	handler: async (ctx, args) => {
-		const s = await requireAdminContext(ctx);
+	handler: async (ctx, args, session) => {
 		const account = await ctx.db.get(args.accountId);
 		// Tenant scoping before existence: a foreign id must not be distinguishable
 		// from a missing one.
-		if (!account || account.organizationId !== s.activeOrganizationId) {
+		if (!account || account.organizationId !== session.activeOrganizationId) {
 			throwNotFound('Seed mailbox');
 		}
 		if (account.purpose !== 'seed') throwInvalidInput('Not a deliverability seed mailbox.');
@@ -140,8 +139,8 @@ export const acknowledgeSeedRotation = adminMutation({
 		});
 		// Provider + age only, exactly like the reminder it answers.
 		await recordAuditLog(ctx, {
-			userId: s.userId,
-			organizationId: s.activeOrganizationId,
+			userId: session.userId,
+			organizationId: session.activeOrganizationId,
 			action: 'seed_mailbox.rotation_acknowledged',
 			resource: 'seed_mailbox',
 			resourceId: args.accountId,
@@ -159,7 +158,7 @@ export const acknowledgeSeedRotation = adminMutation({
  *
  * Without this the connect cap is a dead end — `_connectSeedInternal` refuses
  * the (limit+1)th seed with "Disconnect one before connecting another", and
- * until now nothing in the product could. The retired row stays: the placement
+ * nothing else in the product can. The retired row stays: the placement
  * measurements that named it (`seedPlacementProbes`) must keep resolving, and
  * `takeLiveSeedAccounts` counts by status, so a disconnected seed frees its slot
  * under the cap without erasing what it measured.

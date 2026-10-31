@@ -642,14 +642,14 @@ describe('reader opens and clicks on a bounced or complained send', () => {
 	// A complained row records the engagement but feeds nothing back into the
 	// contact: no activity row (engagement score, `hasOpened` / `hasClicked`)
 	// and no send-time profile update (#1225).
-	const CONTACT_EFFECTS = ['send_time_engagement', 'contact_activity'];
+	const CONTACT_EFFECTS = new Set(['send_time_engagement', 'contact_activity']);
 	const ROWS = [
 		{ label: 'hard-bounced', row: { status: 'bounced', bounceType: 'hard' }, isComplaint: false },
 		{ label: 'soft-bounced', row: { status: 'bounced', bounceType: 'soft' }, isComplaint: false },
 		{ label: 'complained', row: { status: 'complained' }, isComplaint: true },
 	] as const;
 	const expectedKinds = (kinds: string[], isComplaint: boolean) =>
-		isComplaint ? kinds.filter((kind) => !CONTACT_EFFECTS.includes(kind)) : kinds;
+		isComplaint ? kinds.filter((kind) => !CONTACT_EFFECTS.has(kind)) : kinds;
 
 	it.each(ROWS)('counts only the first reader open on a $label send', ({ row, isComplaint }) => {
 		const send = campaignSend({ ...row, sentAt: SENT_AT });

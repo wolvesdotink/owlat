@@ -13,6 +13,7 @@ import { computed, ref } from 'vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import PostboxFolderRail from '../PostboxFolderRail.vue';
 import PostboxRailLink from '../PostboxRailLink.vue';
+import { tooltipOf } from '~/__tests__/tooltip';
 
 const replyCount = ref(2);
 const collapsed = ref(false);
@@ -90,9 +91,10 @@ describe('PostboxFolderRail', () => {
 	});
 
 	it('says which mailbox the count covers', () => {
-		const link = mountRail().find('a[href="/dashboard/answer?in=mbx-1"]');
+		const rail = mountRail();
+		const link = rail.find('a[href="/dashboard/answer?in=mbx-1"]');
 		expect(link.text()).toContain('2 in Ada');
-		expect(link.attributes('title')).toBe('Answer queue, 2 waiting in Ada');
+		expect(tooltipOf(rail, link)).toBe('Answer queue, 2 waiting in Ada');
 	});
 
 	it('keeps a number badge and a scoped name on the icon strip', () => {

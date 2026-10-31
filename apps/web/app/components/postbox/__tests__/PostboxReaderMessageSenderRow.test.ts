@@ -1,5 +1,5 @@
 /**
- * The message card's sender row at phone widths (plan §10): the trust chip ran
+ * The message card's sender row at phone widths: the trust chip ran
  * off the card's right edge at 390px, because the row never wrapped and the
  * chip never shrinks. The wrap is for phones only; desktop keeps one line. happy-dom cannot lay out, so what is pinned is the
  * structure the fix relies on: a wrapping row, a sender that may shrink and
@@ -14,7 +14,10 @@ import { defineComponent, h } from 'vue';
 import { mount } from '@vue/test-utils';
 
 import PostboxReaderMessage from '../PostboxReaderMessage.vue';
+import { readerContextProvide } from './readerContextFixture';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+import { tooltipOf } from '~/__tests__/tooltip';
+import { formatDateTime } from '~/utils/formatters';
 
 beforeAll(() => {
 	Object.assign(globalThis, {
@@ -44,24 +47,20 @@ function mountCard(reduced: boolean) {
 	return mount(PostboxReaderMessage, {
 		props: {
 			message: message as never,
-			mailboxId: 'mbx_1',
 			expanded: true,
 			relativeTime: '2h',
 			starred: false,
 			showReplyAll: false,
 			showSenderControls: true,
-			authEnabled: true,
-			sealedEnabled: false,
 			secureClass: 'none',
 			hideBody: false,
-			showRenderToggle: false,
 			forcedLight: false,
 			images: { senderImagesAllowed: false, autoLoadImages: false, suspicious: false },
 			hasInvite: false,
-			reduced,
 		},
 		global: {
 			plugins: [createTestI18n()],
+			provide: readerContextProvide({ authEnabled: true, reduced }),
 			components: {
 				UiAvatar: marker('UiAvatar'),
 				PostboxTrustChip: marker('PostboxTrustChip'),
@@ -135,5 +134,28 @@ describe('PostboxReaderMessage reduced disclosure cue', () => {
 		expect(mountCard(false).find('[data-testid="reader-message-details-cue"]').exists()).toBe(
 			false
 		);
+	});
+});
+
+describe('PostboxReaderMessage sender row tooltips', () => {
+	it('says what the sender name opens in a tooltip, not a native title', () => {
+		for (const [reduced, text] of [
+			[false, 'Everything from this sender'],
+			[true, 'Show recipients and details'],
+		] as const) {
+			const w = mountCard(reduced);
+			const sender = w.get('[data-testid="reader-message-sender-row"] button');
+			expect(sender.attributes('title')).toBeUndefined();
+			expect(tooltipOf(w, sender)).toBe(text);
+		}
+	});
+
+	it('gives the relative time its full date in a tooltip', () => {
+		const w = mountCard(false);
+		const time = w
+			.findAll('[data-testid="reader-message-indicators"] button')
+			.find((button) => button.text() === '2h')!;
+		expect(time.attributes('title')).toBeUndefined();
+		expect(tooltipOf(w, time)).toBe(formatDateTime(message.receivedAt));
 	});
 });

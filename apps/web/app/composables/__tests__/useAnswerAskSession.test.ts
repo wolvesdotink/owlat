@@ -184,7 +184,7 @@ describe('useAnswerAskSession', () => {
 		).toBe(false);
 	});
 
-	it('reads the guard refusal as held, with no toast, until the target changes (D13)', async () => {
+	it('reads the guard refusal as held, with no toast, until the target changes', async () => {
 		const draftId = ref<string | null>('d1');
 		const { api } = host(composerMock(), draftId);
 		const held = {
@@ -706,16 +706,34 @@ describe('useAnswerAskSession: the pre-draft hook (review F11)', () => {
 			order.push('answer');
 			return { ok: true, result: session({ updatedAt: 2 }) };
 		});
-		const beforeDraft = vi.fn(async (target: unknown) => {
-			await new Promise((resolve) => setTimeout(resolve, 5));
+		// The hook stays pending until the test releases it, so a server call
+		// made without awaiting it would show up while it is still held.
+		let release!: () => void;
+		const beforeDraft = vi.fn((target: unknown) => {
 			order.push(`before:${(target as { draftId: string }).draftId}`);
+			return new Promise<void>((resolve) => {
+				release = () => {
+					order.push('released');
+					resolve();
+				};
+			});
 		});
 		const { api } = host(composerMock(), ref<string | null>('d1'), beforeDraft);
-		await api.start('');
+		const starting = api.start('');
+		await flushPromises();
+		expect(order).toEqual(['before:d1']);
+		expect(runs['start']).not.toHaveBeenCalled();
+		release();
+		await starting;
 		data['getSession']!.value = session({ status: 'asking' });
 		await flushPromises();
-		await api.answer([]);
-		expect(order).toEqual(['before:d1', 'start', 'before:d1', 'answer']);
+		const answering = api.answer([]);
+		await flushPromises();
+		expect(order).toEqual(['before:d1', 'released', 'start', 'before:d1']);
+		expect(runs['answer']).not.toHaveBeenCalled();
+		release();
+		await answering;
+		expect(order).toEqual(['before:d1', 'released', 'start', 'before:d1', 'released', 'answer']);
 	});
 });
 

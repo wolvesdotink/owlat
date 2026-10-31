@@ -6,7 +6,7 @@
  * every other outcome is the one `applyResult` reached before (the held-out
  * thread leaves the queue, a let-in sender is clarified as before).
  *
- * D10: a delivered message that is no reply candidate, and whose only consumer
+ * A delivered message that is no reply candidate, and whose only consumer
  * is the reader display, is not interpreted by the run; it waits for the
  * thread to be opened.
  */
@@ -209,7 +209,7 @@ describe('L3: the screener runs before Postbox clarification', () => {
 	});
 });
 
-describe('D10: the classify run defers a display-only non-candidate', () => {
+describe('the classify run defers a display-only non-candidate', () => {
 	it('a no-reply notification is not interpreted until the thread is opened', async () => {
 		const t = convexTest(schema, modules);
 		rateLimiterTest.register(t);
@@ -218,8 +218,8 @@ describe('D10: the classify run defers a display-only non-candidate', () => {
 			isScreenerOn: false,
 			sender: 'no-reply@shop.example.com',
 		});
-		// Delivery captured the eligibility snapshot, outstanding. D10 defers
-		// with read on arrival off (with it on, the run reads it now, SPEC §2.1).
+		// Delivery captured the eligibility snapshot, outstanding. It is deferred
+		// with read on arrival off (with it on, the run reads it now).
 		await t.run(async (ctx) => {
 			await captureInterpretSource(ctx, { source: { kind: 'mail', id: messageId }, isLive: true });
 			const message = (await ctx.db.get(messageId))!;

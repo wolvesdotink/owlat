@@ -33,6 +33,7 @@ const props = defineProps<{
 
 const { t } = useI18n();
 const { showToast } = useToast();
+const confirm = useConfirm();
 
 const mailboxIdRef = computed(() => props.mailboxId);
 const bulk = usePostboxBulkActions(mailboxIdRef);
@@ -99,25 +100,24 @@ const unsubscribeOp = useBackendOperation(api.mail.subscriptions.unsubscribeAndA
 });
 
 async function unsubscribeSelected() {
+	// Read before asking: the answer comes back later, and the request must go
+	// to exactly the senders and rows the question named.
+	const mailboxId = props.mailboxId;
 	const senderEmails = unsubscribableSenders.value.map((sender) => sender.senderEmail);
+	const messageIds = bulk.ids.value;
 	if (senderEmails.length === 0) return;
 	// N state-changing POSTs at third parties — always behind an explicit yes.
-	if (
-		!window.confirm(
-			t(
-				'components.postbox.postboxQuickActionsBar.unsubscribeConfirm',
-				{ count: senderEmails.length },
-				senderEmails.length
-			)
-		)
-	) {
-		return;
-	}
-	const outcome = await unsubscribeOp.run({
-		mailboxId: props.mailboxId,
-		senderEmails,
-		messageIds: bulk.ids.value,
+	const confirmed = await confirm({
+		title: t(
+			'components.postbox.postboxQuickActionsBar.unsubscribeConfirm',
+			{ count: senderEmails.length },
+			senderEmails.length
+		),
+		confirmText: t('components.postbox.postboxQuickActionsBar.unsubscribe'),
+		variant: 'warning',
 	});
+	if (!confirmed) return;
+	const outcome = await unsubscribeOp.run({ mailboxId, senderEmails, messageIds });
 	if (!outcome.ok) return;
 	// Every line, not just the headline: "2 unsubscribed" alone hides the 148
 	// archived and the one that still needs finishing by hand.
@@ -133,11 +133,18 @@ async function unsubscribeSelected() {
 // it behind a confirm. Only offered from Trash, where "Delete" already means
 // "remove for good" rather than "move to Trash".
 async function purgeSelected() {
-	const n = bulk.count.value;
+	// The ids the question counted, not whatever is selected once it is answered.
+	const messageIds = bulk.ids.value;
+	const n = messageIds.length;
 	if (n === 0) return;
-	if (!window.confirm(t('components.postbox.postboxQuickActionsBar.purgeConfirm', { count: n }, n)))
-		return;
-	await bulk.purgeSelected();
+	const confirmed = await confirm({
+		title: t('components.postbox.postboxQuickActionsBar.purgeConfirm', { count: n }, n),
+		body: t('components.postbox.postboxQuickActionsBar.purgeConfirmBody'),
+		confirmText: t('components.postbox.postboxQuickActionsBar.deleteForever'),
+		variant: 'danger',
+	});
+	if (!confirmed) return;
+	await bulk.purgeSelected(messageIds);
 }
 
 /** One string, so five near-identical items cannot drift apart. */
@@ -189,102 +196,112 @@ const ITEM_CLASS =
 				</div>
 				<div class="my-1 border-t border-border-subtle" />
 				<!-- Snooze, or its swap in the folder snoozing put them in. -->
-				<button
+				<UiTooltip
 					v-if="props.folderRole !== 'snoozed'"
-					type="button"
-					role="menuitem"
-					:class="ITEM_CLASS"
-					:title="t('components.postbox.postboxQuickActionsBar.snoozeTitle')"
-					@click="
-						snoozeOpen = true;
-						close();
-					"
+					:text="t('components.postbox.postboxQuickActionsBar.snoozeTitle')"
 				>
-					<Icon name="lucide:clock" class="w-4 h-4 flex-shrink-0 text-text-tertiary" />
-					{{ t('components.postbox.postboxQuickActionsBar.snooze') }}
-				</button>
-				<button
-					v-else
-					type="button"
-					role="menuitem"
-					:class="ITEM_CLASS"
-					:title="t('components.postbox.postboxQuickActionsBar.unsnoozeTitle')"
-					@click="
-						unsnoozeSelected();
-						close();
-					"
-				>
-					<Icon name="lucide:alarm-clock-off" class="w-4 h-4 flex-shrink-0 text-text-tertiary" />
-					{{ t('components.postbox.postboxQuickActionsBar.unsnooze') }}
-				</button>
+					<button
+						type="button"
+						role="menuitem"
+						:class="ITEM_CLASS"
+						@click="
+							snoozeOpen = true;
+							close();
+						"
+					>
+						<Icon name="lucide:clock" class="w-4 h-4 flex-shrink-0 text-text-tertiary" />
+						{{ t('components.postbox.postboxQuickActionsBar.snooze') }}
+					</button>
+				</UiTooltip>
+				<UiTooltip v-else :text="t('components.postbox.postboxQuickActionsBar.unsnoozeTitle')">
+					<button
+						type="button"
+						role="menuitem"
+						:class="ITEM_CLASS"
+						@click="
+							unsnoozeSelected();
+							close();
+						"
+					>
+						<Icon name="lucide:alarm-clock-off" class="w-4 h-4 flex-shrink-0 text-text-tertiary" />
+						{{ t('components.postbox.postboxQuickActionsBar.unsnooze') }}
+					</button>
+				</UiTooltip>
 				<!-- Spam, or its swap in Spam itself. -->
-				<button
+				<UiTooltip
 					v-if="props.folderRole === 'spam'"
-					type="button"
-					role="menuitem"
-					:class="ITEM_CLASS"
-					:title="t('components.postbox.postboxQuickActionsBar.notSpamTitle')"
-					@click="
-						bulk.notSpamSelected();
-						close();
-					"
+					:text="t('components.postbox.postboxQuickActionsBar.notSpamTitle')"
 				>
-					<Icon name="lucide:shield-check" class="w-4 h-4 flex-shrink-0 text-text-tertiary" />
-					{{ t('components.postbox.postboxQuickActionsBar.notSpam') }}
-				</button>
-				<button
-					v-else
-					type="button"
-					role="menuitem"
-					:class="ITEM_CLASS"
-					:title="t('components.postbox.postboxQuickActionsBar.spamTitle')"
-					@click="
-						bulk.reportSpamSelected();
-						close();
-					"
-				>
-					<Icon name="lucide:shield-alert" class="w-4 h-4 flex-shrink-0 text-text-tertiary" />
-					{{ t('components.postbox.postboxQuickActionsBar.spam') }}
-				</button>
+					<button
+						type="button"
+						role="menuitem"
+						:class="ITEM_CLASS"
+						@click="
+							bulk.notSpamSelected();
+							close();
+						"
+					>
+						<Icon name="lucide:shield-check" class="w-4 h-4 flex-shrink-0 text-text-tertiary" />
+						{{ t('components.postbox.postboxQuickActionsBar.notSpam') }}
+					</button>
+				</UiTooltip>
+				<UiTooltip v-else :text="t('components.postbox.postboxQuickActionsBar.spamTitle')">
+					<button
+						type="button"
+						role="menuitem"
+						:class="ITEM_CLASS"
+						@click="
+							bulk.reportSpamSelected();
+							close();
+						"
+					>
+						<Icon name="lucide:shield-alert" class="w-4 h-4 flex-shrink-0 text-text-tertiary" />
+						{{ t('components.postbox.postboxQuickActionsBar.spam') }}
+					</button>
+				</UiTooltip>
 				<!-- Unsubscribe + archive: only offered when the selection actually
 				     holds One-Click list mail, so it is never a dead item. -->
-				<button
+				<UiTooltip
 					v-if="unsubscribableSenders.length > 0"
-					type="button"
-					role="menuitem"
-					:class="ITEM_CLASS"
-					:disabled="unsubscribeOp.isLoading.value"
-					:title="
+					:text="
 						t(
 							'components.postbox.postboxQuickActionsBar.unsubscribeTitle',
 							{ count: unsubscribableSenders.length },
 							unsubscribableSenders.length
 						)
 					"
-					@click="
-						unsubscribeSelected();
-						close();
-					"
 				>
-					<Icon name="lucide:bell-off" class="w-4 h-4 flex-shrink-0 text-text-tertiary" />
-					{{ t('components.postbox.postboxQuickActionsBar.unsubscribe') }}
-				</button>
-				<!-- Delete forever: Trash only, where "delete" already happened once. -->
-				<template v-if="props.folderRole === 'trash'">
-					<div class="my-1 border-t border-border-subtle" />
 					<button
 						type="button"
 						role="menuitem"
-						:class="[ITEM_CLASS, 'text-error hover:bg-error/10']"
-						:title="t('components.postbox.postboxQuickActionsBar.deleteForeverTitle')"
+						:class="ITEM_CLASS"
+						:disabled="unsubscribeOp.isLoading.value"
 						@click="
-							purgeSelected();
+							unsubscribeSelected();
 							close();
 						"
 					>
-						<Icon name="lucide:trash-2" class="w-4 h-4 flex-shrink-0" />
-						{{ t('components.postbox.postboxQuickActionsBar.deleteForever') }}
+						<Icon name="lucide:bell-off" class="w-4 h-4 flex-shrink-0 text-text-tertiary" />
+						{{ t('components.postbox.postboxQuickActionsBar.unsubscribe') }}
 					</button>
+				</UiTooltip>
+				<!-- Delete forever: Trash only, where "delete" already happened once. -->
+				<template v-if="props.folderRole === 'trash'">
+					<div class="my-1 border-t border-border-subtle" />
+					<UiTooltip :text="t('components.postbox.postboxQuickActionsBar.deleteForeverTitle')">
+						<button
+							type="button"
+							role="menuitem"
+							:class="[ITEM_CLASS, 'text-error hover:bg-error/10']"
+							@click="
+								purgeSelected();
+								close();
+							"
+						>
+							<Icon name="lucide:trash-2" class="w-4 h-4 flex-shrink-0" />
+							{{ t('components.postbox.postboxQuickActionsBar.deleteForever') }}
+						</button>
+					</UiTooltip>
 				</template>
 			</template>
 		</PostboxOverflowMenu>

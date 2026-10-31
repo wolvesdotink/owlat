@@ -10,6 +10,7 @@ import {
 	type OnboardingMode,
 } from '~/utils/welcomeFlow';
 import { useLocalized } from '~/composables/useLocalized';
+import { useGettingStartedControls } from '~/composables/useGettingStartedControls';
 
 /**
  * The single, adaptive "Getting started" surface. It REPLACES the three
@@ -179,6 +180,10 @@ const personalCompleted = computed<ReadonlySet<ChecklistStepId>>(() =>
 	})
 );
 
+// An explicit "Show setup checklist" reopens Today's card, not the Postbox one.
+const { reopenRequest, dismiss } = useGettingStartedControls();
+const isReopened = computed(() => !props.personalOnly && reopenRequest.value > 0);
+
 const instanceFlags = computed<Record<InstanceFlagId, boolean>>(() => ({
 	sendPathReady: instanceProgress.value?.sendPathReady ?? false,
 	addedContacts: instanceProgress.value?.addedContacts ?? false,
@@ -214,6 +219,7 @@ const model = computed(() =>
 		personalCompleted: personalCompleted.value,
 		sendPathReady: sendPathReady.value,
 		sendCapacityToday: sendCapacityToday.value,
+		reopened: isReopened.value,
 	})
 );
 
@@ -225,10 +231,24 @@ const focusedStepId = computed(() =>
 	typeof route.query['step'] === 'string' ? route.query['step'] : null
 );
 
-const expanded = ref(!props.compact || focusedStepId.value !== null);
+const expanded = ref(!props.compact || focusedStepId.value !== null || isReopened.value);
 watch(focusedStepId, (stepId) => {
 	if (stepId) expanded.value = true;
 });
+
+// Asked for explicitly: expand, scroll and focus, even if it was already open.
+const expandedCard = ref<HTMLElement | null>(null);
+watch(
+	[() => model.value.visible, reopenRequest],
+	async ([visible]) => {
+		if (!import.meta.client || !visible || !isReopened.value) return;
+		expanded.value = true;
+		await nextTick();
+		expandedCard.value?.scrollIntoView({ block: 'nearest' });
+		expandedCard.value?.focus({ preventScroll: true });
+	},
+	{ immediate: true }
+);
 
 function stepDomId(stepId: string): string {
 	return `getting-started-step-${stepId}`;
@@ -252,29 +272,15 @@ const progressPercentage = computed(() => {
 });
 
 // One dismiss action covering whatever the card is currently showing.
-const { run: dismissInstance } = useBackendOperation(api.auth.onboarding.dismiss, {
-	label: () => t('components.dashboard.gettingStarted.dismissInstanceOperation'),
-});
-const { run: dismissUser } = useBackendOperation(api.auth.userOnboarding.dismiss, {
-	label: () => t('components.dashboard.gettingStarted.dismissUserOperation'),
-});
-
-async function handleDismiss() {
-	const scope = model.value.dismissalScope;
-	const jobs: Promise<unknown>[] = [];
-	if (scope === 'instance' || scope === 'both')
-		jobs.push(dismissInstance({ userId: props.userId }));
-	if (scope === 'user' || scope === 'both') jobs.push(dismissUser({ userId: props.userId }));
-	await Promise.all(jobs);
-}
+const handleDismiss = () => dismiss(model.value.dismissalScope, props.userId);
 </script>
 
 <template>
 	<Transition
-		enter-active-class="transition-all duration-(--motion-moderate) ease-spring"
+		enter-active-class="transition-[opacity,translate] duration-(--motion-moderate) ease-spring"
 		enter-from-class="opacity-0 -translate-y-2"
 		enter-to-class="opacity-100 translate-y-0"
-		leave-active-class="transition-all duration-(--motion-moderate-exit) ease-exit"
+		leave-active-class="transition-[opacity,translate] duration-(--motion-moderate-exit) ease-exit"
 		leave-from-class="opacity-100 translate-y-0"
 		leave-to-class="opacity-0 -translate-y-2"
 	>
@@ -312,18 +318,21 @@ async function handleDismiss() {
 			>
 				{{ t('components.dashboard.gettingStarted.continue') }}
 			</UiButton>
-			<button
-				class="rounded-lg p-1.5 text-text-tertiary transition-colors hover:bg-bg-surface hover:text-text-secondary"
-				:title="t('common.dismiss')"
-				:aria-label="t('components.dashboard.gettingStarted.dismissLabel')"
-				@click="handleDismiss"
-			>
-				<Icon name="lucide:x" class="h-4 w-4" />
-			</button>
+			<UiTooltip :text="t('common.dismiss')">
+				<button
+					class="rounded-lg p-1.5 text-text-tertiary transition-colors hover:bg-bg-surface hover:text-text-secondary"
+					:aria-label="t('components.dashboard.gettingStarted.dismissLabel')"
+					@click="handleDismiss"
+				>
+					<Icon name="lucide:x" class="h-4 w-4" />
+				</button>
+			</UiTooltip>
 		</section>
 		<section
 			v-else-if="model.visible"
-			class="card mb-8"
+			ref="expandedCard"
+			class="card mb-8 outline-none"
+			tabindex="-1"
 			role="region"
 			:aria-label="t('components.dashboard.gettingStarted.title')"
 		>
@@ -340,14 +349,15 @@ async function handleDismiss() {
 						</p>
 					</div>
 				</div>
-				<button
-					class="rounded-lg p-1.5 text-text-tertiary transition-colors hover:bg-bg-surface hover:text-text-secondary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
-					:title="t('common.dismiss')"
-					:aria-label="t('components.dashboard.gettingStarted.dismissLabel')"
-					@click="handleDismiss"
-				>
-					<Icon name="lucide:x" class="h-4 w-4" />
-				</button>
+				<UiTooltip :text="t('common.dismiss')">
+					<button
+						class="rounded-lg p-1.5 text-text-tertiary transition-colors hover:bg-bg-surface hover:text-text-secondary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+						:aria-label="t('components.dashboard.gettingStarted.dismissLabel')"
+						@click="handleDismiss"
+					>
+						<Icon name="lucide:x" class="h-4 w-4" />
+					</button>
+				</UiTooltip>
 			</div>
 
 			<!-- Progress -->
@@ -395,7 +405,7 @@ async function handleDismiss() {
 							:id="stepDomId(step.id)"
 							:key="step.id"
 							:to="step.blocked ? undefined : step.href"
-							class="group flex items-center gap-3 rounded-xl border p-3 transition-all focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+							class="group flex items-center gap-3 rounded-xl border p-3 transition-[background-color,border-color,box-shadow] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
 							:class="[
 								step.completed
 									? 'border-success/20 bg-success/5'

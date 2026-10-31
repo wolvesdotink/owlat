@@ -3,7 +3,7 @@ import tailwindcss from '@tailwindcss/vite';
 import type { PluginOption } from 'vite';
 import { I18N_MODULES, I18N_OPTIONS } from './i18n/catalogModule';
 import { FONT_OPTIONS, NUXT_LINK_DEFAULTS, publicAssetCompression } from './scripts/deliveryTuning';
-import { uiLayerIconNames } from './scripts/uiLayerIcons';
+import { ICON_SCAN_EXCLUDE, uiLayerIconNames } from './scripts/uiLayerIcons';
 
 // Local default endpoints, single-sourced so the CSP connect-src and the
 // runtimeConfig fallbacks (and the PostHog plugin) can't drift.
@@ -118,11 +118,11 @@ export default defineNuxtConfig({
 				// SPA shell's inline scripts without it → blank window, and the
 				// packaged app's enforcement boundary is tauri.conf.json's CSP.
 				'style-src': ["'self'", 'https:', "'unsafe-inline'"],
-				// The offline app shell worker (/sw.js). Same value on both branches
-				// — it is only ever registered from this origin, and the desktop
-				// build ships no worker at all. Stated explicitly rather than left to
+				// The offline shell worker (/sw.js) and the mail render worker (a
+				// /_nuxt/ module, lib/postboxRenderWorker); same value on both branches,
+				// both load only from this origin. Stated explicitly rather than left to
 				// the worker-src → script-src fallback, so tightening script-src (or
-				// adding a default-src) can never silently stop the worker from
+				// adding a default-src) can never silently stop the shell worker from
 				// registering, which would degrade to a blank offline window.
 				'worker-src': ["'self'"],
 				'script-src':
@@ -339,6 +339,7 @@ export default defineNuxtConfig({
 				// `scripts/check-icon-names.sh` fails the lint if a referenced icon is
 				// unresolvable or sits in a file outside these globs.
 				globInclude: ['**/*.{vue,jsx,tsx,ts,md,mdc,mdx,yml,yaml}'],
+				globExclude: ICON_SCAN_EXCLUDE, // the defaults plus test files
 			},
 			sizeLimitKb: 512,
 		},
@@ -354,7 +355,9 @@ export default defineNuxtConfig({
 			// and it is now the right one.
 			viewport: 'width=device-width, initial-scale=1, viewport-fit=cover',
 			link: [
-				{ rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' },
+				// Keyed so the dashboard's unread badge (useTabBadge) can swap in the
+				// dotted icon under the same key instead of adding a second icon link.
+				{ key: 'favicon', rel: 'icon', type: 'image/svg+xml', href: '/favicon.svg' },
 				// iOS ignores the manifest's icons for "Add to Home Screen" and uses
 				// this one (full-bleed: iOS applies its own corner mask).
 				{ rel: 'apple-touch-icon', sizes: '180x180', href: '/apple-touch-icon.png' },

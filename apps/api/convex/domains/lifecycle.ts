@@ -47,8 +47,8 @@
  *
  * The status machine never branches on `providerType`; provider variation lives
  * behind the **Sending domain provider adapter (module)** seam
- * (`providers/index.ts`). The return-path family is the exception; its kind
- * branches are confined to `returnPathProviders.ts`.
+ * (`providers/index.ts`), the custom return path included
+ * (`returnPathProviders.ts`).
  *
  * There is no `requestVerification` entry point. The
  * FE calls the DNS verifier (`dnsVerification.verifyDomain`) directly for
@@ -59,7 +59,6 @@ import { v } from 'convex/values';
 import type { WithoutSystemFields } from 'convex/server';
 import type { MutationCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
-import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { AuditAction } from '../lib/auditLog';
 import { refuse } from '../lib/lifecycle';
@@ -88,7 +87,7 @@ import {
 	type SendingDomainTransitionOutcome,
 } from './lifecycleReducer';
 import { applyEffects } from './lifecycleEffects';
-import { returnPathHostFits, returnPathProviderKind } from './returnPathProviders';
+import { returnPathProviderFor } from './returnPathProviders';
 
 /**
  * Synthetic `userId` tag for user-driven public-mutation transitions. The
@@ -244,16 +243,16 @@ export const create = internalMutation({
 			: 'mta';
 
 		// Validate the optional return-path host up front, mirroring
-		// `setReturnPathHost` exactly (shared strict validator; MTA/SES only; SES
-		// requires a subdomain of the sending domain) so a bad host fails create
+		// `setReturnPathHost` exactly (shared strict validator, then the provider's
+		// own return-path support and host constraint) so a bad host fails create
 		// cleanly rather than after the row + registration are scheduled.
 		let returnPathHost: string | undefined;
 		if (args.returnPathHost !== undefined) {
 			const host = normalizeReturnPathHost(args.returnPathHost);
 			if (host === null) return { ok: false, reason: 'invalid_return_path_host' };
-			const returnPathKind = returnPathProviderKind(providerKind);
-			if (returnPathKind === null) return { ok: false, reason: 'return_path_unsupported' };
-			if (!returnPathHostFits(returnPathKind, normalized, host)) {
+			const returnPath = returnPathProviderFor(providerKind);
+			if (returnPath === null) return { ok: false, reason: 'return_path_unsupported' };
+			if (!returnPath.fitsHost(normalized, host)) {
 				return { ok: false, reason: 'return_path_not_subdomain' };
 			}
 			returnPathHost = host;
@@ -305,17 +304,26 @@ export const create = internalMutation({
 	},
 });
 
+/** Land `input` on the domain in the caller's transaction (`transition`'s body). */
+export async function transitionDomain(
+	ctx: MutationCtx,
+	domainId: Id<'domains'>,
+	input: SendingDomainTransitionInput,
+	userId: string
+): Promise<SendingDomainTransitionOutcome> {
+	const domain = await ctx.db.get(domainId);
+	if (!domain) return { ok: false, reason: 'domain_not_found' };
+	return await dispatch(ctx, domain, input, userId);
+}
+
 export const transition = internalMutation({
 	args: {
 		domainId: v.id('domains'),
 		input: transitionInputValidator,
 		userId: v.string(),
 	},
-	handler: async (ctx, args): Promise<SendingDomainTransitionOutcome> => {
-		const domain = await ctx.db.get(args.domainId);
-		if (!domain) return { ok: false, reason: 'domain_not_found' };
-		return await dispatch(ctx, domain, args.input, args.userId);
-	},
+	handler: (ctx, args): Promise<SendingDomainTransitionOutcome> =>
+		transitionDomain(ctx, args.domainId, args.input, args.userId),
 });
 
 /**
@@ -437,61 +445,3 @@ export const removeSendingDomain = {
 };
 
 export const remove = internalMutation(removeSendingDomain);
-
-// ============== v0.6.3 compatibility shims — remove after release N+1 ==============
-//
-// v0.6.3 called these three editors at `domains/lifecycle` from actions: the
-// registration and return-path push actions (`providers/registerAction.ts`) and
-// the webhook dispatcher. An action running when this release deploys finishes
-// on v0.6.3's code, but each ctx.runMutation it makes resolves against the NEW
-// deployment (CONVENTIONS.md, "Old clients and workers against new functions").
-// So they stay for one release at their old path with their old arguments and
-// result, delegating to the editor's new home. The public mutations that call
-// the other editors run in one transaction and need no shim.
-
-/** Remove after release N+1: v0.6.3 compatibility (see the section comment above). */
-export const reconcileReturnPathAfterRegistration = internalMutation({
-	args: {
-		domainId: v.id('domains'),
-		registeredReturnPathHost: v.optional(v.string()),
-		userId: v.string(),
-	},
-	handler: async (ctx, args): Promise<void> => {
-		await ctx.runMutation(
-			internal.domains.lifecycleReturnPath.reconcileReturnPathAfterRegistration,
-			args
-		);
-	},
-});
-
-/** Remove after release N+1: v0.6.3 compatibility (see the section comment above). */
-export const recordReturnPathPushResult = internalMutation({
-	args: {
-		domainId: v.id('domains'),
-		returnPathHost: v.string(),
-		error: v.optional(v.string()),
-		attempts: v.optional(v.number()),
-		userId: v.string(),
-	},
-	handler: async (ctx, args): Promise<void> => {
-		await ctx.runMutation(internal.domains.lifecycleReturnPath.recordReturnPathPushResult, args);
-	},
-});
-
-/** Remove after release N+1: v0.6.3 compatibility (see the section comment above). */
-export const recordDkimRotation = internalMutation({
-	args: {
-		domain: v.string(),
-		selector: v.string(),
-		dnsRecord: v.string(),
-		phase: v.union(v.literal('pending'), v.literal('activated')),
-		userId: v.string(),
-	},
-	handler: async (
-		ctx,
-		args
-	): Promise<
-		| { ok: true; phase: 'pending' | 'activated'; selector: string; changed: boolean }
-		| { ok: false; reason: 'domain_not_found' }
-	> => await ctx.runMutation(internal.domains.lifecycleDkim.recordDkimRotation, args),
-});

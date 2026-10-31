@@ -270,7 +270,7 @@ const sourceLabel = computed(() => {
 							<input
 								v-model="editTitleInput"
 								type="text"
-								class="input input-sm text-lg font-semibold"
+								class="input input-sm font-semibold"
 								:placeholder="t('dashboard.files.detail.titlePlaceholder')"
 								@keyup.enter="saveTitle"
 								@keyup.escape="cancelEditTitle"

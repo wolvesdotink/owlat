@@ -25,6 +25,8 @@ import { internal } from '../../_generated/api';
 import type { Doc, Id } from '../../_generated/dataModel';
 import { modules } from '../../__tests__/testModules';
 import { expectScheduledFailure } from '../../__tests__/helpers/scheduledFailures';
+import type * as SessionOrganizationModule from '../../lib/sessionOrganization';
+import type * as DomainProvidersModule from '../providers';
 
 // The functions below need configuration this suite only stubs inside its
 // tests (or not at all), and their jobs fire after that is gone. These tests
@@ -42,7 +44,7 @@ beforeEach(() => {
  * BetterAuth's adapter.
  */
 vi.mock('../../lib/sessionOrganization', async () => {
-	const actual = await vi.importActual<typeof import('../../lib/sessionOrganization')>(
+	const actual = await vi.importActual<typeof SessionOrganizationModule>(
 		'../../lib/sessionOrganization'
 	);
 	return { ...actual, getSingletonOrganizationId: vi.fn().mockResolvedValue('org-a') };
@@ -77,7 +79,7 @@ const { ensureMockRelayIdentity } = vi.hoisted(() => ({
 // resolves to nothing at all (which is what a relay with no identity API looks
 // like to the registry — it is filtered out, not registered with a hole).
 vi.mock('../providers', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../providers')>();
+	const actual = await importOriginal<typeof DomainProvidersModule>();
 	const mockRelayProvider = {
 		kind: MOCK_RELAY_KIND,
 		ensureRelayIdentity: ensureMockRelayIdentity,
@@ -214,7 +216,7 @@ describe('provision_relay_identity_if_enabled asks the registry, not a list of k
 	});
 
 	it('leaves a domain hosted at a provider of its own alone', async () => {
-		// D3's one sanctioned identity check, read from the registry's single
+		// The one sanctioned identity check, read from the registry's single
 		// declaration: a relay identity COEXISTS only on a domain whose primary
 		// provider is our own MTA. A domain already hosted at a relay owns its
 		// identity through the ordinary lifecycle.

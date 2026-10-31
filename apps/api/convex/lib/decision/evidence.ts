@@ -8,9 +8,9 @@
  *
  * The state is the message ALONE: its sender, recipients, header signals,
  * subject and segmented body. No history, no retrieval, no later message and
- * no label. Two reasons. D11 asks triage before retrieval and interpretation,
+ * no label. Two reasons. Triage runs before retrieval and interpretation,
  * so it can only read the message. And a Team thread's earlier messages may
- * still be waiting for the D13 guard, which would turn a shadow observation
+ * still be waiting for the injection guard, which would turn a shadow observation
  * into paid guard calls.
  *
  * Redaction:
@@ -87,7 +87,8 @@ export interface DecisionEvidence {
 /**
  * A segmented body as evidence: each segment's kind and text. The body is
  * scoped and segmented by interpretation's own helpers
- * (`mail/interpret/scope.ts` `scopeForInterpretation` and `segmentScoped`), so
+ * (`mail/interpret/scopeLoad.ts` `scopeForInterpretation` and
+ * `mail/interpret/scope.ts` `segmentScoped`), so
  * an encrypted body never becomes evidence, a clearsigned message is read only
  * inside its signed block, and hidden HTML is stripped.
  */

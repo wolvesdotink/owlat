@@ -75,7 +75,6 @@ const OPTIONS: { intent: RewriteIntent; label: string; icon: string }[] = [
 			type="button"
 			class="inline-flex items-center gap-1 rounded px-1.5 py-1 text-xs text-text-secondary hover:bg-bg-surface disabled:opacity-50"
 			:disabled="loading"
-			:title="t(opt.label)"
 			@click="pick(opt.intent)"
 		>
 			<Icon
@@ -87,22 +86,23 @@ const OPTIONS: { intent: RewriteIntent; label: string; icon: string }[] = [
 			<span>{{ t(opt.label) }}</span>
 		</button>
 		<div class="relative">
-			<button
-				type="button"
-				class="inline-flex items-center gap-1 rounded px-1.5 py-1 text-xs text-text-secondary hover:bg-bg-surface disabled:opacity-50"
-				:disabled="loading"
-				:title="t('components.postbox.postboxRewriteActions.translateTitle')"
-				@click="showTranslate = !showTranslate"
-			>
-				<Icon
-					v-if="loading && activeIntent === 'translate'"
-					name="lucide:loader-2"
-					class="h-3.5 w-3.5 animate-spin motion-reduce:animate-none"
-				/>
-				<Icon v-else name="lucide:languages" class="h-3.5 w-3.5" />
-				<span>{{ t('components.postbox.postboxRewriteActions.translate') }}</span>
-				<Icon name="lucide:chevron-down" class="h-3 w-3" />
-			</button>
+			<UiTooltip :text="t('components.postbox.postboxRewriteActions.translateTitle')">
+				<button
+					type="button"
+					class="inline-flex items-center gap-1 rounded px-1.5 py-1 text-xs text-text-secondary hover:bg-bg-surface disabled:opacity-50"
+					:disabled="loading"
+					@click="showTranslate = !showTranslate"
+				>
+					<Icon
+						v-if="loading && activeIntent === 'translate'"
+						name="lucide:loader-2"
+						class="h-3.5 w-3.5 animate-spin motion-reduce:animate-none"
+					/>
+					<Icon v-else name="lucide:languages" class="h-3.5 w-3.5" />
+					<span>{{ t('components.postbox.postboxRewriteActions.translate') }}</span>
+					<Icon name="lucide:chevron-down" class="h-3 w-3" />
+				</button>
+			</UiTooltip>
 			<div
 				v-if="showTranslate"
 				class="absolute left-0 top-full mt-1 min-w-[9rem] rounded-lg border border-border-subtle bg-bg-elevated py-1 shadow-lg z-40"

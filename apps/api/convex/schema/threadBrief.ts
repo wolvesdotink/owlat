@@ -150,9 +150,9 @@ export const threadBriefTables = {
 		retryCount: v.optional(v.number()),
 		nextRetryAt: v.optional(v.number()),
 		// Consecutive runs deferred because spend admission refused the run's
-		// one hold (D1, Sol r4): they back `nextRetryAt` off (`retry.ts`).
+		// one hold (Sol r4): they back `nextRetryAt` off (`retry.ts`).
 		budgetDeferrals: v.optional(v.number()),
-		// A spend refusal the run met (D1): a replay reports it, so a caller that
+		// A spend refusal the run met: a replay reports it, so a caller that
 		// defers or holds on a refusal does so again (clarify lane, Sol r2 F1).
 		budgetRefusal: v.optional(runBudgetRefusalValidator),
 		// Transitions (indexes into the payload's `transitions`) on an obligation
@@ -243,7 +243,7 @@ export const threadBriefTables = {
 		responsible: participantRefValidator,
 		beneficiary: v.optional(participantRefValidator),
 		responsibility: itemResponsibilityValidator,
-		// Team: the teammate working on it (D4). Never changes responsibility.
+		// Team: the teammate working on it. Never changes responsibility.
 		assigneeUserId: v.optional(v.string()),
 		status: itemStatusValidator,
 		disposition: itemDispositionValidator,
@@ -402,7 +402,7 @@ export const threadBriefTables = {
 		// up on (outstanding.ts): never complete while either is above zero.
 		pendingSources: v.optional(v.number()),
 		unreadSources: v.optional(v.number()),
-		// D10: sources deferred until the thread is opened (`interpretSources.isDeferred`).
+		// Sources deferred until the thread is opened (`interpretSources.isDeferred`).
 		// The reader shows the brief's deferred state while above zero.
 		deferredSources: v.optional(v.number()),
 		// Compaction cache (mail threads only, disposable): per locale, JSON. Sealed.
@@ -415,7 +415,7 @@ export const threadBriefTables = {
 				de: v.optional(v.string()), // sealed
 			})
 		),
-		// Read on arrival (SPEC §2.4, §2.5): the extractive gist (quotes sealed)
+		// Read on arrival: the extractive gist (quotes sealed)
 		// and the sources settled as skipped or gist-only (settled, not pending).
 		gist: v.optional(threadBriefGistValidator),
 		skippedSources: v.optional(v.number()),

@@ -7,6 +7,7 @@ import {
 	type HistoryState,
 } from '@owlat/email-builder';
 import { api } from '@owlat/api';
+import { plainClone } from '@owlat/email-builder/plain-clone';
 import { campaignReturnTarget } from '~/lib/campaignCompose';
 import type { PresendSource } from '~/composables/usePresendChecks';
 import { useRecordPaletteObjectOpen } from '~/composables/useCommandPaletteObjectRecents';
@@ -45,17 +46,7 @@ useRecordPaletteObjectOpen(() =>
 const commitTemplate = useEditorSaveOperation(api.emailTemplates.emails.update, {
 	label: () => t('dashboard.send.emails.detail.edit.operations.save'),
 });
-const { run: publishTemplate, isLoading: isPublishing } = useBackendOperation(
-	api.emailTemplates.emails.publish,
-	{ label: () => t('dashboard.send.emails.detail.edit.operations.publish') }
-);
-const { run: unpublishTemplate, isLoading: isUnpublishing } = useBackendOperation(
-	api.emailTemplates.emails.unpublish,
-	{ label: () => t('dashboard.send.emails.detail.edit.operations.unpublish') }
-);
-const { showToast } = useToast();
-const isPublished = computed(() => template.value?.status === 'published');
-const isChangingPublication = computed(() => isPublishing.value || isUnpublishing.value);
+const isDraft = computed(() => template.value?.status === 'draft');
 
 // Organization email theme (incl. baseWidth) from the shared source.
 const { emailTheme, brand } = useEmailTheme();
@@ -96,6 +87,7 @@ const {
 	coediting,
 	isConnecting,
 	onCollabFocus,
+	autosave: drafts,
 } = useEmailEditorBridge({
 	source: template,
 	revision: (row) => row.contentRevision ?? 0,
@@ -106,6 +98,8 @@ const {
 		fields: { plainTextOverride },
 	},
 	canKeepDraft: sameDefaultLanguage,
+	// A draft saves itself; a published one keeps Save (it refuses edits until unpublished).
+	autosave: { enabled: () => isDraft.value },
 	initialize: (t, ctx) => {
 		ctx.name.value = t.name;
 		ctx.subject.value = t.subject;
@@ -131,8 +125,17 @@ const {
 			},
 			renderOptions: { theme: emailTheme.value, variableType: 'personalization' },
 			commit: async (payload) =>
-				(await commitTemplate({ templateId: id, ...payload, coeditVersion: base.coeditVersion }))
-					.contentRevision,
+				(
+					await commitTemplate(
+						{
+							templateId: id,
+							...payload,
+							coeditVersion: base.coeditVersion,
+							autosave: base.autosave,
+						},
+						{ quiet: base.autosave }
+					)
+				).contentRevision,
 		});
 	},
 });
@@ -143,13 +146,21 @@ const {
 // tell apart from the live query echoing the saved document back, so it drops
 // it. `loadState` re-seeds the canvas and emits back into these refs, which
 // marks the editor dirty and records the restore as one more undoable step.
-// Nothing is persisted until the user saves.
+// A draft then saves it like any edit; a published template waits for Save.
 const handleRestoreVersion = (state: HistoryState) => {
 	blocks.value = state.blocks;
 	name.value = state.name;
 	subject.value = state.subject;
 	builderRef.value?.loadState(state);
 };
+
+// History "Compare": the canvas as it is now, unsaved edits included, copied
+// so the comparison holds still while editing goes on.
+const readCurrentState = (): HistoryState => ({
+	blocks: plainClone(blocks.value),
+	name: name.value,
+	subject: subject.value,
+});
 
 // "Check email": the campaign pre-send checks on the canvas as it is now,
 // saved or not. The HTML is rendered once per click (the canvas keeps moving
@@ -166,7 +177,7 @@ const {
 } = usePresendChecks(() => presendSnapshot.value);
 
 function checkEmail() {
-	const snapshot = JSON.parse(JSON.stringify(blocks.value)) as typeof blocks.value;
+	const snapshot = plainClone(blocks.value);
 	presendSnapshot.value = {
 		html: renderBlocksToHtml(snapshot, {
 			theme: emailTheme.value,
@@ -221,30 +232,13 @@ const handleTranslations = () => {
 	router.push(`/dashboard/send/emails/${templateId.value}/translations`);
 };
 
-async function handlePublicationToggle() {
-	if (isPublished.value) {
-		const result = await unpublishTemplate({ templateId: templateId.value });
-		if (result.ok) showToast(t('dashboard.send.emails.detail.edit.toasts.unpublished'));
-		return;
-	}
-	// Publish puts the stored HTML live, which unsaved edits are not part of.
-	// The button holds Publish while dirty; this covers any other caller.
-	if (hasChanges.value) return;
-	const row = template.value;
-	if (!row?.htmlContent) {
-		showToast(t('dashboard.send.emails.detail.edit.toasts.saveBeforePublish'), 'error');
-		return;
-	}
-	// The server publishes the row's own stored HTML, and refuses while a
-	// saved-block rerender is still bringing it up to date. The revision makes
-	// a write landing after this click refuse the publish instead of putting
-	// a version live that this tab never showed.
-	const result = await publishTemplate({
-		templateId: templateId.value,
-		expectedContentRevision: row.contentRevision ?? 0,
-	});
-	if (result.ok) showToast(t('dashboard.send.emails.detail.edit.toasts.published'));
-}
+// Publish and unpublish; a draft saves what is pending through its queue first.
+const { isPublished, isChangingPublication, togglePublication } = useTemplatePublication({
+	templateId,
+	template,
+	hasChanges,
+	draft: () => (isDraft.value ? (drafts?.autosave ?? null) : null),
+});
 </script>
 
 <template>
@@ -344,6 +338,10 @@ async function handlePublicationToggle() {
 						@settings="handleSettings"
 						@send-test="handleSendTest"
 					>
+						<!-- A draft saves itself: its save state stands where Save was. -->
+						<template v-if="isDraft && drafts" #save-status>
+							<DraftSaveStatus :autosave="drafts.autosave" />
+						</template>
 						<!-- Toolbar actions -->
 						<template #toolbar-actions>
 							<EmailEditorPresence
@@ -353,49 +351,49 @@ async function handlePublicationToggle() {
 							/>
 							<EmailTemplatePublishButton
 								:is-published="isPublished"
-								:has-changes="hasChanges"
+								:has-changes="isDraft && drafts ? false : hasChanges"
 								:has-stored-html="Boolean(template?.htmlContent)"
 								:loading="isChangingPublication"
-								@toggle="handlePublicationToggle"
+								@toggle="togglePublication"
 							/>
 							<EmailTemplateHistoryPanel
 								:template-id="templateId"
 								:has-unsaved-changes="hasChanges"
+								:autosaves="isDraft && !!drafts"
+								:read-current="readCurrentState"
 								@restore="handleRestoreVersion"
 							/>
 							<ShareLinksPopover
 								:email-template-id="templateId"
 								:has-unsaved-changes="hasChanges"
 							/>
-							<UiButton
-								variant="outline"
-								size="sm"
-								:title="t('dashboard.send.emails.detail.edit.checkEmail')"
-								data-testid="editor-check-email"
-								@click="checkEmail"
-							>
-								<template #iconLeft>
-									<Icon name="lucide:list-checks" class="w-4 h-4" />
-								</template>
-								<!-- Icon-only below 2xl, where the toolbar is short of room. -->
-								<span class="max-2xl:sr-only">{{
-									t('dashboard.send.emails.detail.edit.checkEmail')
-								}}</span>
-							</UiButton>
-							<UiButton
-								variant="outline"
-								size="sm"
-								:title="t('dashboard.send.emails.detail.edit.manageTranslations')"
-								@click="handleTranslations"
-							>
-								<template #iconLeft>
-									<Icon name="lucide:languages" class="w-4 h-4" />
-								</template>
-								<!-- Icon-only below 2xl, where the toolbar is short of room. -->
-								<span class="max-2xl:sr-only">{{
-									t('dashboard.send.emails.detail.edit.translations')
-								}}</span>
-							</UiButton>
+							<UiTooltip :text="t('dashboard.send.emails.detail.edit.checkEmail')">
+								<UiButton
+									variant="outline"
+									size="sm"
+									data-testid="editor-check-email"
+									@click="checkEmail"
+								>
+									<template #iconLeft>
+										<Icon name="lucide:list-checks" class="w-4 h-4" />
+									</template>
+									<!-- Icon-only below 2xl, where the toolbar is short of room. -->
+									<span class="max-2xl:sr-only">{{
+										t('dashboard.send.emails.detail.edit.checkEmail')
+									}}</span>
+								</UiButton>
+							</UiTooltip>
+							<UiTooltip :text="t('dashboard.send.emails.detail.edit.manageTranslations')">
+								<UiButton variant="outline" size="sm" @click="handleTranslations">
+									<template #iconLeft>
+										<Icon name="lucide:languages" class="w-4 h-4" />
+									</template>
+									<!-- Icon-only below 2xl, where the toolbar is short of room. -->
+									<span class="max-2xl:sr-only">{{
+										t('dashboard.send.emails.detail.edit.translations')
+									}}</span>
+								</UiButton>
+							</UiTooltip>
 						</template>
 					</EmailBuilder>
 				</UiErrorBoundary>

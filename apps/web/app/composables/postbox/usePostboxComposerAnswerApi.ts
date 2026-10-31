@@ -1,6 +1,6 @@
 /**
  * What Answer mode's page and its AI pieces may do to the composer they sit
- * around (plan §04 to §06), in one object the composer exposes and hands to its
+ * around, in one object the composer exposes and hands to its
  * `#above-editor` slot:
  *
  *  - read what was written (plain text, for the ask coverage check);
@@ -10,6 +10,8 @@
  *    recording the AI's text as the draft's baseline, like every AI draft, so
  *    the edit-learning loop can compare it with what is sent;
  *  - take the AI draft back out ("AI draft · Discard");
+ *  - quote a passage selected in the conversation, beside what was written
+ *    rather than in place of it;
  *  - take the attachments the server added, attach dropped files, set the
  *    follow-up reminder a promised date implies, and focus the body.
  *
@@ -30,6 +32,7 @@ import type { ComposerAttachment } from './usePostboxComposeAttachments';
 import { freshDraftText, replaceAnswerText, splitAnswerBody } from '~/utils/answerDraft';
 import { setAiWrittenText } from '~/utils/postboxAiWrittenText';
 import { formatTime } from '~/utils/formatters';
+import { insertSelectedQuote } from '~/utils/postboxSelectedQuote';
 
 export interface AnswerComposerApi {
 	/** What was written, as plain text (no quote, no signature). */
@@ -48,6 +51,15 @@ export interface AnswerComposerApi {
 	applyAiDraft: (text: string, opts?: { offerKey?: string | null }) => Promise<void>;
 	/** Put back what was written before the AI draft. */
 	discardAiDraft: () => void;
+	/**
+	 * Add a selected passage's quote block (`buildSelectedQuote`) after the
+	 * passages already quoted, before the signature and the quoted original.
+	 * What was written, the envelope and the signature stay as they are, and an
+	 * AI draft replacing the written part later leaves the quote in place.
+	 * Absent where the reply is plain text (the Team inbox's), which offers no
+	 * "Quote in reply".
+	 */
+	insertQuote?: (blockHtml: string) => void;
 	/** The draft's attachments as the server now has them. */
 	setAttachments: (list: readonly ComposerAttachment[]) => void;
 	addFiles: (files: File[]) => Promise<void>;
@@ -128,6 +140,10 @@ export function usePostboxComposerAnswerApi(opts: {
 			void opts.flush().then((saved) => {
 				if (saved.ok && saved.result) void recordDiscard.run({ draftId: saved.result });
 			});
+		},
+		insertQuote(blockHtml) {
+			opts.bodyHtml.value = insertSelectedQuote(opts.bodyHtml.value, blockHtml);
+			opts.focusBody();
 		},
 		setAttachments(list) {
 			opts.attachments.value = list.map((a) => ({

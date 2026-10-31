@@ -28,6 +28,7 @@ import {
 	type SubdomainLayoutInput,
 	type SubdomainLayoutProposal,
 } from '../streamSubdomains';
+import type * as SessionOrganizationModule from '../../lib/sessionOrganization';
 
 /**
  * Monitor-only on both signing hosts — the shipped default a freshly registered
@@ -45,7 +46,7 @@ const MINTED_DKIM_VALUE = 'v=DKIM1; k=rsa; p=MIIBIjAN-fixture';
 const mockRole: OrganizationRole = 'admin';
 
 vi.mock('../../lib/sessionOrganization', async () => {
-	const actual = await vi.importActual<typeof import('../../lib/sessionOrganization')>(
+	const actual = await vi.importActual<typeof SessionOrganizationModule>(
 		'../../lib/sessionOrganization'
 	);
 	const ctx = () => ({ userId: 'test-user', role: mockRole, activeOrganizationId: 'org-a' });

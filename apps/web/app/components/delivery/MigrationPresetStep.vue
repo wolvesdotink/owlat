@@ -2,7 +2,7 @@
 /**
  * The one-click migration preset.
  *
- * WHAT IT WRITES (plan §10, D8): all three message types onto `adaptive_mix`
+ * WHAT IT WRITES: all three message types onto `adaptive_mix`
  * over `[mta, mandrill]` with Mandrill as the deliverability-fallback relay, and
  * all three streams onto the `conservative` ramp preset. Six writes, composed on
  * the client from two shipped mutations rather than hidden behind a seventh: a
@@ -16,7 +16,7 @@
  * screens. The pre-flight below asks the backend's own question
  * (`fallbackRelayIssue`) first, which is what keeps that case rare.
  *
- * The D8 warning is not a blocker. A second enabled relay does not make the
+ * The single-reference-relay warning is not a blocker. A second enabled relay does not make the
  * write invalid; it degrades alignment confidence, which holds the ramp at 0%
  * while everything looks healthy. That is a judgement for the operator, stated
  * plainly, next to the alignment plane's own notice.

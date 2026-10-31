@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * An item's stance in Answer mode (plan §6): how the reply takes it on —
+ * An item's stance in Answer mode: how the reply takes it on —
  * Accept / Decline / Defer / Ask, or Answer / Decline / Defer, by what kind of
  * ask it is (`stanceChoicesFor`) — and "File missing" when the draft says a
  * file is attached that is not. "Addressed in draft" is the item's own state

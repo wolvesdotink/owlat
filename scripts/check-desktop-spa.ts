@@ -32,15 +32,34 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
+import {
+	arrayOf,
+	decodeJson,
+	type Decoder,
+	JsonShapeError,
+	object,
+	optional,
+	recordOf,
+	string,
+} from './json';
 
 const workspace = resolve(import.meta.dirname, '..');
 const tauriDir = join(workspace, 'apps/desktop/src-tauri');
 
+const decodeTauriConfig = object({
+	build: optional(object({ frontendDist: optional(string) })),
+});
+
 function defaultDist(): string {
-	const config = JSON.parse(readFileSync(join(tauriDir, 'tauri.conf.json'), 'utf8')) as {
-		build?: { frontendDist?: string };
-	};
-	const dist = config.build?.frontendDist;
+	let dist: string | undefined;
+	try {
+		const text = readFileSync(join(tauriDir, 'tauri.conf.json'), 'utf8');
+		dist = decodeJson(text, decodeTauriConfig, 'tauri.conf.json').build?.frontendDist;
+	} catch (error) {
+		if (!(error instanceof JsonShapeError)) throw error;
+		console.error(`check-desktop-spa: ${error.message}.`);
+		process.exit(2);
+	}
 	if (!dist) {
 		console.error('check-desktop-spa: tauri.conf.json has no build.frontendDist.');
 		process.exit(2);
@@ -69,6 +88,28 @@ function problem(message: string, from?: string): void {
 	if (from) where.add(show(from));
 	problems.set(message, where);
 }
+
+/** `text` checked by `decode`; a file of the wrong shape is a problem of `from`, not a crash. */
+function decodeOrReport<T>(
+	text: string,
+	decode: Decoder<T>,
+	label: string,
+	from?: string
+): T | undefined {
+	try {
+		return decodeJson(text, decode, label);
+	} catch (error) {
+		if (!(error instanceof JsonShapeError)) throw error;
+		problem(error.message, from);
+		return undefined;
+	}
+}
+
+const decodeImportMap = object({ imports: optional(recordOf(string)) });
+/** The image lists of a web app manifest; members other than `src` are not read. */
+const imageList = optional(arrayOf(object({ src: optional(string) })));
+const decodeWebManifest = object({ icons: imageList, screenshots: imageList });
+const decodeLatestBuild = object({ id: optional(string) });
 
 function walk(dir: string, out: string[] = []): string[] {
 	for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -182,8 +223,8 @@ for (const page of pages) {
 	}
 	if (entries === 0) problem('the page loads no module entry that resolves', page);
 	for (const match of html.matchAll(/<script\b[^>]*type="importmap"[^>]*>([\s\S]*?)<\/script>/gi)) {
-		const map = JSON.parse(match[1] as string) as { imports?: Record<string, string> };
-		for (const target of Object.values(map.imports ?? {})) reference(target, page);
+		const map = decodeOrReport(match[1] ?? '', decodeImportMap, 'import map', page);
+		for (const target of Object.values(map?.imports ?? {})) reference(target, page);
 	}
 	const buildId = /\bbuildId:"([^"]+)"/.exec(html)?.[1];
 	if (buildId) buildIds.set(page, buildId);
@@ -195,10 +236,9 @@ for (const page of pages) {
 if (manifestLink) {
 	const target = localTarget(manifestLink.ref, manifestLink.from);
 	if (target && isFile(target)) {
-		const manifest = JSON.parse(readFileSync(target, 'utf8')) as Record<string, unknown>;
-		const images = ['icons', 'screenshots'].flatMap((key) =>
-			Array.isArray(manifest[key]) ? (manifest[key] as { src?: string }[]) : []
-		);
+		const text = readFileSync(target, 'utf8');
+		const manifest = decodeOrReport(text, decodeWebManifest, show(target), manifestLink.from);
+		const images = [...(manifest?.icons ?? []), ...(manifest?.screenshots ?? [])];
 		for (const image of images) if (image.src) reference(image.src, target);
 	}
 }
@@ -213,8 +253,9 @@ const latest = join(dist, `${assetsDir}builds/latest.json`);
 if (!isFile(latest)) {
 	problem(`${show(latest)} is missing`);
 } else {
-	const { id } = JSON.parse(readFileSync(latest, 'utf8')) as { id?: string };
-	if (!id) problem(`${show(latest)} names no build id`);
+	const build = decodeOrReport(readFileSync(latest, 'utf8'), decodeLatestBuild, show(latest));
+	const id = build?.id;
+	if (build && !id) problem(`${show(latest)} names no build id`);
 	for (const [page, pageId] of buildIds) {
 		if (id && pageId !== id) problem(`the page is build ${pageId}, ${show(latest)} is ${id}`, page);
 	}

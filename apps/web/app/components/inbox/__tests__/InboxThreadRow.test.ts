@@ -18,6 +18,7 @@ import { mount } from '@vue/test-utils';
 import InboxThreadRow, { type InboxThreadRowThread } from '../InboxThreadRow.vue';
 import PostboxRowCore from '../../postbox/PostboxRowCore.vue';
 import StatusChip from '../StatusChip.vue';
+import UiPresenceRing from '@owlat/ui/components/ui/PresenceRing.vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 // Every visible string flows through vue-i18n now: mount with the real catalog
@@ -65,7 +66,7 @@ function mountRow(
 		},
 		global: {
 			plugins: [createTestI18n()],
-			components: { PostboxRowCore, InboxStatusChip: StatusChip },
+			components: { PostboxRowCore, InboxStatusChip: StatusChip, UiPresenceRing },
 			stubs: {
 				Icon: true,
 				UiAvatar: UiAvatarStub,
@@ -128,6 +129,20 @@ describe('InboxThreadRow', () => {
 		expect(w.find('.ui-presence-ring').exists()).toBe(false);
 	});
 
+	it('says when the auto-close sweep resolved the thread, and only while it stays resolved', () => {
+		const closed = mountRow({ status: 'resolved', autoClosedAt: Date.now() - 1000 });
+		expect(closed.find('[data-testid="status-chip-auto-closed"]').text()).toBe(
+			'· Closed automatically'
+		);
+		expect(closed.text()).toContain('Resolved');
+
+		const manual = mountRow({ status: 'resolved' });
+		expect(manual.find('[data-testid="status-chip-auto-closed"]').exists()).toBe(false);
+
+		const reopened = mountRow({ status: 'open', autoClosedAt: Date.now() - 1000 });
+		expect(reopened.find('[data-testid="status-chip-auto-closed"]').exists()).toBe(false);
+	});
+
 	it('shows the assignee without a ring when the assignee is not there', () => {
 		const w = mountRow({ assignee: { name: 'Jordan Lee', email: 'jordan@team.com' } }, false);
 		expect(w.text()).toContain('Jordan Lee');
@@ -162,6 +177,34 @@ describe('InboxThreadRow', () => {
 	});
 });
 
+describe('InboxThreadRow selection', () => {
+	it('selects from its checkbox without opening, and extends with Shift', async () => {
+		const w = mountRow({});
+		const box = w.get('[data-testid="inbox-row-checkbox"]');
+		expect(box.attributes('aria-label')).toBe('Select');
+		await box.trigger('click');
+		await box.trigger('click', { shiftKey: true });
+		expect(w.emitted('toggle-select')).toEqual([[false], [true]]);
+		expect(w.emitted('open')).toBeUndefined();
+	});
+
+	it('reports selection, not focus, as the option state for a manager', () => {
+		const selected = mountRow({}, undefined, { selected: true, focused: false });
+		expect(selected.get('[role="option"]').attributes('aria-selected')).toBe('true');
+		expect(selected.get('[data-testid="inbox-row-checkbox"]').attributes('aria-label')).toBe(
+			'Deselect'
+		);
+		const focused = mountRow({}, undefined, { selected: false, focused: true });
+		expect(focused.get('[role="option"]').attributes('aria-selected')).toBe('false');
+	});
+
+	it('keeps the read-only row without a checkbox, its option state on focus', () => {
+		const w = mountRow({}, undefined, { canManage: false, focused: true });
+		expect(w.find('[data-testid="inbox-row-checkbox"]').exists()).toBe(false);
+		expect(w.get('[role="option"]').attributes('aria-selected')).toBe('true');
+	});
+});
+
 describe('InboxThreadRow response-target chip', () => {
 	const NOW = 10_000_000;
 	function mountAt(thread: Partial<InboxThreadRowThread>) {
@@ -182,7 +225,7 @@ describe('InboxThreadRow response-target chip', () => {
 			},
 			global: {
 				plugins: [createTestI18n()],
-				components: { PostboxRowCore, InboxStatusChip: StatusChip },
+				components: { PostboxRowCore, InboxStatusChip: StatusChip, UiPresenceRing },
 				stubs: {
 					Icon: true,
 					UiAvatar: UiAvatarStub,

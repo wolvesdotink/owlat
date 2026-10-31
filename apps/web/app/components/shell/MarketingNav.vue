@@ -136,26 +136,30 @@ const activeAutomationId = computed(
 
 <template>
 	<div class="flex flex-col gap-px">
-		<NuxtLink
+		<UiTooltip
 			v-if="campaignsOn"
-			to="/dashboard/marketing"
-			:title="props.collapsed ? t('components.shell.marketing.overview') : undefined"
-			:aria-current="isActive('/dashboard/marketing', true) ? 'page' : undefined"
-			class="flex items-center gap-2.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors"
-			:class="[
-				isActive('/dashboard/marketing', true)
-					? 'bg-(--surface-2-selected) text-text-primary'
-					: 'text-text-secondary hover:bg-(--surface-2-hover) hover:text-text-primary',
-				props.collapsed ? 'justify-center' : '',
-			]"
+			:text="props.collapsed ? t('components.shell.marketing.overview') : undefined"
 		>
-			<Icon
-				name="lucide:chart-no-axes-column"
-				class="size-4.5 shrink-0"
-				:class="isActive('/dashboard/marketing', true) ? 'text-brand' : 'text-text-tertiary'"
-			/>
-			<span v-if="!props.collapsed">{{ t('components.shell.marketing.overview') }}</span>
-		</NuxtLink>
+			<NuxtLink
+				to="/dashboard/marketing"
+				:aria-label="props.collapsed ? t('components.shell.marketing.overview') : undefined"
+				:aria-current="isActive('/dashboard/marketing', true) ? 'page' : undefined"
+				class="flex items-center gap-2.5 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors"
+				:class="[
+					isActive('/dashboard/marketing', true)
+						? 'bg-(--surface-2-selected) text-text-primary'
+						: 'text-text-secondary hover:bg-(--surface-2-hover) hover:text-text-primary',
+					props.collapsed ? 'justify-center' : '',
+				]"
+			>
+				<Icon
+					name="lucide:chart-no-axes-column"
+					class="size-4.5 shrink-0"
+					:class="isActive('/dashboard/marketing', true) ? 'text-brand' : 'text-text-tertiary'"
+				/>
+				<span v-if="!props.collapsed">{{ t('components.shell.marketing.overview') }}</span>
+			</NuxtLink>
+		</UiTooltip>
 
 		<template v-if="!props.collapsed">
 			<template v-if="campaignsOn">
@@ -173,14 +177,15 @@ const activeAutomationId = computed(
 						/>
 						{{ t('components.shell.marketing.campaigns') }}
 					</button>
-					<NuxtLink
-						to="/dashboard/campaigns/new"
-						class="flex size-6 items-center justify-center rounded text-text-tertiary hover:text-text-primary"
-						:aria-label="t('components.shell.marketing.newCampaign')"
-						:title="t('components.shell.marketing.newCampaign')"
-					>
-						<Icon name="lucide:plus" class="size-3.5" />
-					</NuxtLink>
+					<UiTooltip :text="t('components.shell.marketing.newCampaign')">
+						<NuxtLink
+							to="/dashboard/campaigns/new"
+							class="flex size-6 items-center justify-center rounded text-text-tertiary hover:text-text-primary"
+							:aria-label="t('components.shell.marketing.newCampaign')"
+						>
+							<Icon name="lucide:plus" class="size-3.5" />
+						</NuxtLink>
+					</UiTooltip>
 				</div>
 				<div v-if="!isCollapsed('campaigns')" class="space-y-px">
 					<ShellThreadRow
@@ -270,33 +275,34 @@ const activeAutomationId = computed(
 				</NuxtLink>
 			</div>
 
-			<NuxtLink
-				v-if="isAdmin && healthLevel"
-				to="/dashboard/admin/delivery"
-				class="mt-3 flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs text-text-secondary hover:bg-(--surface-2-hover)"
-				:title="healthReason ?? undefined"
-			>
-				<Icon
-					:name="healthLevel === 'ok' ? 'lucide:circle-check' : 'lucide:circle-alert'"
-					class="size-4"
-					:class="
+			<!-- The reason in full: the line below truncates it. -->
+			<UiTooltip v-if="isAdmin && healthLevel" :text="healthReason || undefined">
+				<NuxtLink
+					to="/dashboard/admin/delivery"
+					class="mt-3 flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs text-text-secondary hover:bg-(--surface-2-hover)"
+				>
+					<Icon
+						:name="healthLevel === 'ok' ? 'lucide:circle-check' : 'lucide:circle-alert'"
+						class="size-4"
+						:class="
+							healthLevel === 'ok'
+								? 'text-success'
+								: healthLevel === 'warn'
+									? 'text-warning'
+									: 'text-error'
+						"
+					/>
+					<span class="truncate">{{
 						healthLevel === 'ok'
-							? 'text-success'
-							: healthLevel === 'warn'
-								? 'text-warning'
-								: 'text-error'
-					"
-				/>
-				<span class="truncate">{{
-					healthLevel === 'ok'
-						? t('components.shell.marketing.deliveryHealthy')
-						: (healthReason ?? t('components.shell.marketing.deliveryNeedsAttention'))
-				}}</span>
-			</NuxtLink>
+							? t('components.shell.marketing.deliveryHealthy')
+							: (healthReason ?? t('components.shell.marketing.deliveryNeedsAttention'))
+					}}</span>
+				</NuxtLink>
+			</UiTooltip>
 		</template>
 
 		<template v-else>
-			<NuxtLink
+			<UiTooltip
 				v-for="link in [
 					{
 						to: '/dashboard/campaigns',
@@ -306,12 +312,16 @@ const activeAutomationId = computed(
 					...links,
 				]"
 				:key="link.to"
-				:to="link.to"
-				:title="link.label"
-				class="flex justify-center rounded-lg py-2 text-text-tertiary hover:bg-(--surface-2-hover) hover:text-text-primary"
+				:text="link.label"
 			>
-				<Icon :name="link.icon" class="size-4.5" />
-			</NuxtLink>
+				<NuxtLink
+					:to="link.to"
+					:aria-label="link.label"
+					class="flex justify-center rounded-lg py-2 text-text-tertiary hover:bg-(--surface-2-hover) hover:text-text-primary"
+				>
+					<Icon :name="link.icon" class="size-4.5" />
+				</NuxtLink>
+			</UiTooltip>
 		</template>
 	</div>
 </template>

@@ -1,5 +1,5 @@
 /**
- * THE RELAY LIST, ASKED ABOUT A NEW TRANSPORT (P1.3, plan D8).
+ * THE RELAY LIST, ASKED ABOUT A NEW TRANSPORT.
  *
  * `relayConfiguration.ts` is the ONE reading of "which transports are the second
  * arm", and seven readers take their answer from it: the alignment pre-flight
@@ -110,7 +110,7 @@ describe('configuredRelayKinds discovers Mandrill', () => {
 			],
 		});
 
-		// Zero relays is the STANDALONE configuration (D2) — a supported one, and
+		// Zero relays is the STANDALONE configuration — a supported one, and
 		// the answer a disabled relay must give rather than a phantom second arm.
 		expect(await read(t)).toEqual({
 			kinds: [],
@@ -139,7 +139,7 @@ describe('configuredRelayKinds discovers Mandrill', () => {
 	});
 });
 
-describe('more than one relay has no single second arm (D8)', () => {
+describe('more than one relay has no single second arm', () => {
 	it('lists both kinds and refuses to name a reference transport', async () => {
 		// The configuration the plan tells a migrating operator to avoid: keep
 		// Mandrill the only non-MTA kind in routes, or alignment confidence

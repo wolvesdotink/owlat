@@ -247,6 +247,32 @@ describe('delayed feedback provenance', () => {
 		expect(reduce(attributed, {} as never).effects).toEqual([]);
 	});
 
+	it.each([null, 'production', 42, [{ deliveryDomain: 'production' }]])(
+		'treats a persisted record that is not an object (%j) as unknown',
+		async (blob) => {
+			await recordFeedbackProvenance(redis, job('not-an-object', 'production'));
+			const [messageKey] = (await redis.keys('mta:{feedback}:message:*')) as string[];
+			await redis.set(messageKey!, JSON.stringify(blob));
+
+			const attributed = await attachFeedbackProvenance(redis, attributedFbl('not-an-object'));
+			expect(attributed.kind === 'fbl' && attributed.arf.feedbackProvenance).toBe('unknown');
+			expect(reduce(attributed, {} as never).effects).toEqual([]);
+		}
+	);
+
+	it.each([null, 7, '"production"', ['production']])(
+		'resolves a recipient index holding a non-object observation (%j) as unknown',
+		async (member) => {
+			await recordFeedbackProvenance(redis, job('indexed', 'production'));
+			const [recipientIndex] = (await redis.keys('mta:{feedback}:recipient:*')) as string[];
+			await redis.zadd(recipientIndex!, String(Date.now()), JSON.stringify(member));
+
+			const attributed = await attachFeedbackProvenance(redis, redacted());
+			expect(attributed.kind === 'fbl' && attributed.arf).not.toHaveProperty('deliveryDomain');
+			expect(attributed.kind === 'fbl' && attributed.arf.feedbackProvenance).toBe('unknown');
+		}
+	);
+
 	it('expires exact and redacted indexes after the shared feedback retention', async () => {
 		vi.useFakeTimers();
 		vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));

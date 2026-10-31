@@ -1,11 +1,11 @@
 /**
  * The shell's rarely used overlays stay off the boot path.
  *
- * The command palette and the "?" shortcut sheet used to be mounted with the
- * layout, which put the palette's providers and search composables into every
- * dashboard page's first load. They now mount the first time they are asked
- * for. What has to hold is that nobody can tell: the very first Cmd/Ctrl+K
- * opens the palette with the caret in its input, exactly as before, even though
+ * The command palette and the "?" shortcut sheet mount the first time they are
+ * asked for: mounted with the layout, they would put the palette's providers and
+ * search composables into every dashboard page's first load. What has to hold
+ * is that nobody can tell: the very first Cmd/Ctrl+K opens the palette with the
+ * caret in its input, as an eagerly mounted one would, even though
  * the component did not exist when the key went down.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -59,7 +59,6 @@ beforeEach(() => {
 	paletteLoads = 0;
 	isHelpModalOpen.value = false;
 	localStorage.clear();
-	document.body.innerHTML = '';
 	installNuxtStubs({
 		...i18nStubs,
 		...dashboardShellStubs(),
@@ -95,7 +94,6 @@ let wrapper: VueWrapper | null = null;
 afterEach(() => {
 	wrapper?.unmount();
 	wrapper = null;
-	document.body.innerHTML = '';
 });
 
 function mountLayout(): VueWrapper {

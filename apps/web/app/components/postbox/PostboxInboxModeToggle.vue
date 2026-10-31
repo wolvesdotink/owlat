@@ -28,7 +28,7 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
-const { ariaFor, chordAria, titleWithShortcut } = useShortcutLabels();
+const { ariaFor, chordAria } = useShortcutLabels();
 
 // The B key follows the preset (Gmail's frees it), Cmd/Ctrl-B is fixed.
 const keyShortcuts = computed(() =>
@@ -42,18 +42,15 @@ const options = computed(() => [
 </script>
 
 <template>
-	<UiSegmentedControl
-		size="sm"
-		:aria-keyshortcuts="keyShortcuts"
-		:aria-label="t('components.postbox.postboxInboxModeToggle.label')"
-		:title="
-			titleWithShortcut(
-				t('components.postbox.postboxInboxModeToggle.title'),
-				'postbox.toggleBrowse'
-			)
-		"
-		:options="options"
-		:model-value="mode"
-		@update:model-value="emit('select', $event === 'browse' ? 'browse' : 'today')"
-	/>
+	<UiTooltip :text="t('components.postbox.postboxInboxModeToggle.title')">
+		<template #shortcut><UiShortcut id="postbox.toggleBrowse" /></template>
+		<UiSegmentedControl
+			size="sm"
+			:aria-keyshortcuts="keyShortcuts"
+			:aria-label="t('components.postbox.postboxInboxModeToggle.label')"
+			:options="options"
+			:model-value="mode"
+			@update:model-value="emit('select', $event === 'browse' ? 'browse' : 'today')"
+		/>
+	</UiTooltip>
 </template>

@@ -7,6 +7,7 @@ import { registerContactHygieneCrons } from './contacts/crons';
 import { registerTeamInboxCrons } from './inbox/cronRegistration';
 import { registerSeedPlacementCrons } from './analytics/cronRegistration';
 import { registerWebhookCrons } from './webhooks/cronRegistration';
+import { registerAutomationCrons } from './automations/cronRegistration';
 
 const crons = cronJobs();
 
@@ -82,34 +83,9 @@ crons.interval(
 	{}
 );
 
-// Roll sharded automation run counters (automationStatShards) into
-// automations.stats* (deriving statsActive) so the read cache stays fresh as
-// contacts enter and runs complete.
-crons.interval(
-	'rollup automation stats',
-	{ minutes: 1 },
-	internal.automations.statShards.rollupAutomationStats,
-	{}
-);
-
-// Process pending automation delays every 5 minutes
-// Catches delay steps that may have been missed due to system issues
-crons.interval(
-	'process pending delays',
-	{ minutes: 5 },
-	internal.automations.stepWalker.processPendingDelays
-);
-
-// Recover automation runs left `running` with no active step run (a step walker
-// action that died between two of its calls). Pages through every running run,
-// so it runs a few times a day rather than every few minutes; see
-// automations/stalledRuns.ts.
-crons.interval(
-	'recover stalled automation runs',
-	{ hours: 6 },
-	internal.automations.stalledRuns.sweepStalledRuns,
-	{}
-);
+// Automation crons (stat rollup, pending delays, stalled-run recovery, health
+// bucket pruning) live beside the functions they schedule.
+registerAutomationCrons(crons);
 
 // Sample "can this instance send at all?" and, on the no-transport → transport
 // edge, notify every member still waiting on their onboarding first send

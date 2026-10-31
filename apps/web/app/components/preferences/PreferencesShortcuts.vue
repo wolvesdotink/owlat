@@ -24,6 +24,8 @@ import { formatChordLabel } from '~/utils/shortcutLabels';
 import { shortcutSettingsSections } from '~/utils/shortcutSettingsRows';
 import { useShortcutIsMac } from '~/composables/useShortcutLabels';
 import { useShortcutPreferences } from '~/composables/useShortcutPreferences';
+import { POSTBOX_PREFERENCE_DEFAULTS } from '~/utils/postboxPreferenceDefaults';
+import SettingsResetToDefault from '~/components/settings/ResetToDefault.vue';
 import PreferencesShortcutRow, { type ShortcutRowRefusal } from './PreferencesShortcutRow.vue';
 
 const { t } = useI18n();
@@ -33,6 +35,7 @@ const {
 	bindings,
 	conflicts,
 	isSaving,
+	isLoading,
 	setPreset,
 	remapShortcut,
 	clearShortcutOverride,
@@ -131,6 +134,11 @@ const presetOptions = computed(() =>
 );
 
 const hasOverrides = computed(() => overridesById.value.size > 0);
+
+// Hidden while the settings row loads: the shipped map is then only the fallback.
+const presetChanged = computed(
+	() => !isLoading.value && preset.value !== POSTBOX_PREFERENCE_DEFAULTS.shortcutPreset
+);
 </script>
 
 <template>
@@ -141,13 +149,24 @@ const hasOverrides = computed(() => overridesById.value.size > 0);
 		</header>
 
 		<div class="grid gap-4 px-5 py-4 border-b border-border-subtle sm:grid-cols-2">
-			<UiSelect
-				:model-value="preset"
-				:label="t(`${ns}.presetLabel`)"
-				:options="presetOptions"
-				:disabled="isSaving"
-				@update:model-value="setPreset($event as ShortcutPreset)"
-			/>
+			<!-- The marker sits on the select's own label line, at its far end, so the
+			     select keeps naming itself and its listbox from its label. -->
+			<div class="relative">
+				<UiSelect
+					:model-value="preset"
+					:label="t(`${ns}.presetLabel`)"
+					:options="presetOptions"
+					:disabled="isSaving"
+					@update:model-value="setPreset($event as ShortcutPreset)"
+				/>
+				<SettingsResetToDefault
+					class="absolute right-0 top-0"
+					:changed="presetChanged"
+					:label="t(`${ns}.presetLabel`)"
+					:disabled="isSaving"
+					@reset="setPreset(POSTBOX_PREFERENCE_DEFAULTS.shortcutPreset)"
+				/>
+			</div>
 			<UiInput
 				v-model="query"
 				:label="t(`${ns}.filterLabel`)"

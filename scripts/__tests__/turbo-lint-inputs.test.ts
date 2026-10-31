@@ -87,7 +87,7 @@ beforeAll(() => {
 				},
 			])
 	);
-}, 120_000);
+});
 
 function lintTask(packageName: string): LintTask {
 	const task = lintTasks.get(packageName);

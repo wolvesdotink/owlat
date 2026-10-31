@@ -6,7 +6,7 @@ import { paginationOptsValidator } from 'convex/server';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { nanoid } from 'nanoid';
-import { requireOrgPermission } from '../lib/sessionOrganization';
+import { hasPermission, requirePermission } from '../lib/sessionOrganization';
 import { countIndexRange } from '../lib/pagination';
 import { getOptional } from '../lib/env';
 import { listResources } from '../lib/listing';
@@ -16,6 +16,7 @@ import { validateStringLength, STRING_LIMITS } from '../lib/inputGuards';
 import { getOrThrow, throwNotFound } from '../_utils/errors';
 import { trackEvent } from '../lib/posthogHelpers';
 import { batchGet } from '../_utils/batchLoader';
+import { getLiveContact } from '../lib/contactHelpers';
 import {
 	DOI_TOKEN_TTL_MS,
 	findContactByConfirmationToken,
@@ -37,6 +38,8 @@ async function getTopicImpl(ctx: QueryCtx, topicId: Id<'topics'>) {
 }
 
 // Query to get a single topic by ID.
+// all-members: topics are campaign audiences and subscription lists every role
+// reads; writing them needs topics:manage.
 export const get = authedQuery({
 	args: { topicId: v.id('topics') },
 	handler: async (ctx, args) => getTopicImpl(ctx, args.topicId),
@@ -50,6 +53,8 @@ export const getInternal = internalQuery({
 });
 
 // Query to get contacts in a topic (paginated)
+// all-members: the topic's member list, read like contacts.list; deleted
+// contacts are skipped and the rest redacted below.
 export const getContacts = authedQuery({
 	args: {
 		topicId: v.id('topics'),
@@ -115,9 +120,13 @@ async function getTopicsForContactImpl(ctx: QueryCtx, contactId: Id<'contacts'>)
 	return topics.filter((l): l is NonNullable<typeof l> => l !== null);
 }
 
+// all-members: the topics panel on the contact detail page every role reads.
+// A soft-deleted contact keeps its memberships until the retention sweep, so
+// it reads as subscribed to nothing, the way contacts.get reads it as missing.
 export const getTopicsForContact = authedQuery({
 	args: { contactId: v.id('contacts') },
-	handler: async (ctx, args) => getTopicsForContactImpl(ctx, args.contactId),
+	handler: async (ctx, args) =>
+		(await getLiveContact(ctx, args.contactId)) ? getTopicsForContactImpl(ctx, args.contactId) : [],
 });
 
 // Internal variant for the API-key REST route (no Convex session).
@@ -136,8 +145,11 @@ export const update = authedMutation({
 		displayOrder: v.optional(v.number()),
 		isDefault: v.optional(v.boolean()),
 	},
-	handler: async (ctx, args) => {
-		await requireOrgPermission(ctx, 'topics:manage', 'Only owners and admins can manage topics');
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'topics:manage'),
+			'Only owners and admins can manage topics'
+		);
 		// Validate input lengths
 		if (args.name) validateStringLength(args.name, STRING_LIMITS.NAME, 'Name');
 		if (args.description)
@@ -179,8 +191,11 @@ export const update = authedMutation({
 // Mutation to delete a topic and all its memberships
 export const remove = authedMutation({
 	args: { topicId: v.id('topics') },
-	handler: async (ctx, args) => {
-		await requireOrgPermission(ctx, 'topics:manage', 'Only owners and admins can manage topics');
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'topics:manage'),
+			'Only owners and admins can manage topics'
+		);
 		await getOrThrow(ctx, args.topicId, 'Topic');
 
 		// Delete all memberships associated with this topic
@@ -268,10 +283,9 @@ const addContactSessionArgs = {
 
 export const addContact = authedMutation({
 	args: addContactSessionArgs,
-	handler: async (ctx, args): Promise<AddContactResult> => {
-		await requireOrgPermission(
-			ctx,
-			'topics:manage',
+	handler: async (ctx, args, session): Promise<AddContactResult> => {
+		requirePermission(
+			hasPermission(session.role, 'topics:manage'),
 			'Only owners and admins can manage topic membership'
 		);
 		return addContactImpl(ctx, { ...args, siteUrl: getOptional('SITE_URL') || '' });
@@ -305,10 +319,9 @@ async function removeContactImpl(
 
 export const removeContact = authedMutation({
 	args: removeContactArgs,
-	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'topics:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'topics:manage'),
 			'Only owners and admins can manage topic membership'
 		);
 		await removeContactImpl(ctx, args);
@@ -405,6 +418,7 @@ export const getContactByDoiToken = internalQuery({
 
 // Query to get detailed contact information within a topic context
 // Returns contact info, membership details, email history from campaigns targeting this topic, and engagement stats
+// all-members: the topic member detail page every role reads.
 export const getContactInTopicDetails = authedQuery({
 	args: {
 		topicId: v.id('topics'),
@@ -417,8 +431,9 @@ export const getContactInTopicDetails = authedQuery({
 			return null;
 		}
 
-		// Fetch the contact
-		const contact = await ctx.db.get(args.contactId);
+		// A soft-deleted contact keeps its email, names and membership until the
+		// retention sweep; it reads as missing here as it does in contacts.get.
+		const contact = await getLiveContact(ctx, args.contactId);
 		if (!contact) {
 			return null;
 		}
@@ -532,10 +547,9 @@ export const resendDoiConfirmation = authedMutation({
 	args: {
 		contactId: v.id('contacts'),
 	},
-	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'topics:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'topics:manage'),
 			'Only owners and admins can resend confirmations'
 		);
 		// Resolve the confirmation-link host server-side from SITE_URL — never
@@ -572,6 +586,7 @@ export const resendDoiConfirmation = authedMutation({
  * List all topics with cursor-based pagination (session-auth shell).
  * Thin wrapper over the Listing engine.
  */
+// all-members: the topic list every role picks audiences from.
 export const list = authedQuery({
 	args: {
 		paginationOpts: paginationOptsValidator,
@@ -591,15 +606,14 @@ export const create = authedMutation({
 		displayOrder: v.optional(v.number()),
 		isDefault: v.optional(v.boolean()),
 	},
-	handler: async (ctx, args) => {
+	handler: async (ctx, args, session) => {
 		// Validate input lengths
 		validateStringLength(args.name, STRING_LIMITS.NAME, 'Name');
 		if (args.description)
 			validateStringLength(args.description, STRING_LIMITS.DESCRIPTION, 'Description');
 
-		const session = await requireOrgPermission(
-			ctx,
-			'topics:manage',
+		requirePermission(
+			hasPermission(session.role, 'topics:manage'),
 			'Only owners and admins can create topics'
 		);
 

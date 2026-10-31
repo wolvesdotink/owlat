@@ -5,10 +5,12 @@
  */
 
 import { Hono } from 'hono';
+import { v } from 'convex/values';
 import type Redis from 'ioredis';
 import type { MtaConfig } from '../config.js';
 import * as ispProfiles from '../config/ispProfiles.js';
 import { masterKeyAuth } from '../auth/masterKeyAuth.js';
+import { readJsonBody } from '../lib/jsonBody.js';
 import { isOutboundTlsMode } from '@owlat/shared';
 import { isDestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
 import type { DestinationProviderProfile } from '../types.js';
@@ -94,15 +96,12 @@ export function createIspProfileRoutes(redis: Redis, config: MtaConfig): Hono {
 		}
 		const provider = rawProvider;
 
-		let body: unknown;
-		try {
-			body = await c.req.json();
-		} catch {
-			return c.json({ error: 'Invalid JSON body' }, 400);
-		}
+		// The patch's own parser checks every field and answers in its own words.
+		const read = await readJsonBody(c, v.any());
+		if (!read.ok) return read.response;
 
 		try {
-			const profile = await ispProfiles.setProfile(redis, provider, parseProfilePatch(body));
+			const profile = await ispProfiles.setProfile(redis, provider, parseProfilePatch(read.value));
 			return c.json({ provider, profile });
 		} catch (err) {
 			const message = err instanceof Error ? err.message : 'Unknown error';

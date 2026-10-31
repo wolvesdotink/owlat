@@ -128,7 +128,7 @@ export async function stageMessageParts(
 		}
 		const calendar = extractFirstPartByType(rawBinary, 'text/calendar');
 		// Transcoded, not relabelled: an invite declaring iso-8859-1 or
-		// windows-1252 would otherwise be read back as broken UTF-8 (#1299).
+		// windows-1252 would otherwise be read back as broken UTF-8.
 		const calendarStorageId = calendar
 			? await store(
 					new TextEncoder().encode(decodePartText(calendar)),

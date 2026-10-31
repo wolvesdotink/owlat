@@ -1,0 +1,44 @@
+{
+	"name": "@owlat/public-contract",
+	"version": "0.6.16",
+	"private": true,
+	"description": "The public REST API contract: request and response schemas, the operation table and the generated OpenAPI document. The API server validates with it, the JavaScript SDK takes its types from it and the Java SDK's tests check against the OpenAPI document.",
+	"homepage": "https://owlat.app",
+	"license": "Apache-2.0",
+	"type": "module",
+	"sideEffects": false,
+	"main": "./src/types.ts",
+	"module": "./src/types.ts",
+	"types": "./src/types.ts",
+	"exports": {
+		".": {
+			"types": "./src/types.ts",
+			"import": "./src/types.ts"
+		},
+		"./schemas": {
+			"types": "./src/schemas.ts",
+			"import": "./src/schemas.ts"
+		},
+		"./openapi.json": "./openapi.json"
+	},
+	"scripts": {
+		"lint": "oxlint --config ../../oxlintrc.json src scripts && bun scripts/openapi.ts --check",
+		"lint:fix": "oxlint --config ../../oxlintrc.json src scripts --fix",
+		"typecheck": "tsc --noEmit",
+		"test": "vitest run",
+		"test:watch": "vitest",
+		"test:coverage": "vitest run --coverage",
+		"openapi": "bun scripts/openapi.ts",
+		"openapi:check": "bun scripts/openapi.ts --check"
+	},
+	"dependencies": {
+		"@owlat/shared": "workspace:*",
+		"zod": "^4.6.6"
+	},
+	"devDependencies": {
+		"@types/node": "catalog:",
+		"@vitest/coverage-v8": "catalog:",
+		"typescript": "catalog:",
+		"vitest": "catalog:"
+	}
+}

@@ -3,7 +3,11 @@ import type { BlockCondition } from '../types';
 export type ConditionOperator = BlockCondition['operator'];
 
 /** Operators that compare the variable against a `value`. The rest only test presence. */
-const VALUE_OPERATORS: readonly ConditionOperator[] = ['equals', 'notEquals', 'contains'];
+const VALUE_OPERATORS: ReadonlySet<ConditionOperator> = new Set([
+	'equals',
+	'notEquals',
+	'contains',
+]);
 
 export const conditionOperatorOptions: { label: string; value: ConditionOperator }[] = [
 	{ label: 'Exists', value: 'exists' },
@@ -18,7 +22,7 @@ export const DEFAULT_CONDITION_OPERATOR: ConditionOperator = 'exists';
 
 /** Whether the given operator needs an accompanying `value` input. */
 export function conditionNeedsValue(operator: ConditionOperator | undefined): boolean {
-	return VALUE_OPERATORS.includes(operator ?? DEFAULT_CONDITION_OPERATOR);
+	return VALUE_OPERATORS.has(operator ?? DEFAULT_CONDITION_OPERATOR);
 }
 
 /**
@@ -30,9 +34,9 @@ export function conditionNeedsValue(operator: ConditionOperator | undefined): bo
  */
 export function normalizeCondition(
 	current: Partial<BlockCondition> | undefined,
-	patch: Partial<BlockCondition>,
+	patch: Partial<BlockCondition>
 ): BlockCondition {
-	const merged = { ...(current ?? {}), ...patch };
+	const merged = { ...current, ...patch };
 	const operator = merged.operator ?? DEFAULT_CONDITION_OPERATOR;
 	const next: BlockCondition = {
 		variable: merged.variable ?? '',

@@ -9,7 +9,7 @@
  * strategies, the deliverability fallback, the measurement plane's reference
  * arm, the return-path fold and the credential form. This manifest declares all
  * three executable halves at once (send + feedback webhook + sending-domain
- * identity) plus the capability vocabulary D4 gave the tier, and its suite
+ * identity) plus the capability vocabulary of the plugin tier, and its suite
  * (`../../__tests__/pluginProviderParity.test.ts`) drives the composed result
  * through the SHIPPED core modules.
  *

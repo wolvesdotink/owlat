@@ -1,6 +1,6 @@
 /**
  * P4-7 — BIMI is OFFERED at p=quarantine or stricter, carries the VMC note,
- * and is NEVER a nag (D2).
+ * and is NEVER a nag.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -149,7 +149,7 @@ describe('at p=quarantine the offer is made', () => {
 	});
 });
 
-describe('D2 — BIMI never blocks anything', () => {
+describe('BIMI never blocks anything', () => {
 	it('no shape of the offer is ever required or a nag', () => {
 		const shapes = [
 			offerBimiRecord({ domain: 'mail.example.com', dmarcPolicy: 'none' }),
@@ -195,7 +195,7 @@ describe('a logo or VMC URL that cannot be published degrades to no record', () 
 		const offer = offerBimiRecord({ ...eligible, logoUrl });
 		expect(offer.record).toBeNull();
 		expect(offer.rejectedInputs).toEqual(['logoUrl']);
-		// Still an offer, never an error state (D2).
+		// Still an offer, never an error state.
 		expect(offer.offered).toBe(true);
 		expect(offer.required).toBe(false);
 		expect(offer.nag).toBe(false);

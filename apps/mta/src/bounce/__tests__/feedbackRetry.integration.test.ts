@@ -1,12 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Redis from 'ioredis-mock';
+import type * as ConvexNotifierModule from '../../webhooks/convexNotifier.js';
 
 const mocks = vi.hoisted(() => ({
 	queueConvexWebhook: vi.fn(),
 }));
 
 vi.mock('../../webhooks/convexNotifier.js', async (importOriginal) => ({
-	...(await importOriginal<typeof import('../../webhooks/convexNotifier.js')>()),
+	...(await importOriginal<typeof ConvexNotifierModule>()),
 	queueConvexWebhook: mocks.queueConvexWebhook,
 }));
 vi.mock('../../monitoring/logger.js', () => ({

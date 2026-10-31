@@ -1,5 +1,5 @@
 /**
- * What the setup wizard's review step shows, in the operator's terms (#773).
+ * What the setup wizard's review step shows, in the operator's terms.
  *
  * The review used to list raw flag keys (`campaigns.archive`, `scan.content`)
  * as chips and leave Launch disabled with no reason next to it. This module

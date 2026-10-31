@@ -3,7 +3,7 @@
  *
  * A plugin declares operator-facing fields in two places — the platform's
  * `settingsSchema` (`./settingsSchemaManifest`) and a send transport's credential
- * form (`./sendTransportCredentialsManifest`, the seams plan's D5) — and both are
+ * form (`./sendTransportCredentialsManifest`) — and both are
  * "the same five kinds": `string`, `secret`, `number`, `boolean`, `select`. The
  * bounds a key, a label, a description, a numeric range and a select's options
  * are held to are therefore ONE rule, and it is stated here rather than twice.
@@ -31,7 +31,8 @@ import {
 	validateDescriptorSafeArray,
 	validateKnownFields,
 } from './manifestValue';
-import { MAX_SETTINGS_OPTIONS, RESERVED_FIELD_KEYS } from './settingsSchema';
+import { RESERVED_FIELD_KEYS } from './settingsSchema';
+import { MAX_SETTINGS_OPTIONS } from './settingsSchemaLimits';
 
 /** A field key is an identifier, not a path: no dots, no dashes, no digits first. */
 const FIELD_KEY = /^[a-zA-Z][a-zA-Z0-9]*$/;

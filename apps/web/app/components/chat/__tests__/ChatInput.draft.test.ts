@@ -113,16 +113,16 @@ describe('ChatInput drafts', () => {
 		expect(chips(again)).toEqual(['Remove attachment brief.pdf']);
 		expect(reload.input('room2').get('textarea').element.value).toBe('');
 
-		const rows = reload
+		const launches = reload
 			.sidebar()
 			.findAll('button')
-			.filter((b) => b.text().includes('launches'));
-		expect(rows[0]!.find('[data-testid="draft-marker"]').exists()).toBe(true);
+			.find((b) => b.text().includes('launches'));
+		expect(launches!.find('[data-testid="draft-marker"]').exists()).toBe(true);
 		const general = reload
 			.sidebar()
 			.findAll('button')
-			.filter((b) => b.text().includes('general'));
-		expect(general[0]!.find('[data-testid="draft-marker"]').exists()).toBe(false);
+			.find((b) => b.text().includes('general'));
+		expect(general!.find('[data-testid="draft-marker"]').exists()).toBe(false);
 	});
 
 	it('never offers one person’s draft to the next', async () => {

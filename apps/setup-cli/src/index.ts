@@ -1,5 +1,4 @@
 #!/usr/bin/env bun
-/* eslint-disable no-console */
 /**
  * Owlat Setup CLI — entry point.
  *
@@ -16,6 +15,8 @@
  *   unset-env
  *            Clear Convex function-runtime keys from the deployment and .env
  *            (push-env never deletes one).
+ *   support-bundle
+ *            Collect a redacted, read-only diagnostics archive for a bug report.
  */
 
 import { runSetup } from './commands/setup';
@@ -25,6 +26,7 @@ import { runEnv } from './commands/env';
 import { runPushEnv } from './commands/pushEnv';
 import { runUnsetEnv } from './commands/unsetEnv';
 import { runDoctor } from './commands/doctorRun';
+import { runSupportBundle } from './commands/supportBundle';
 import { runQuickstart } from './commands/quickstart';
 import { runBootstrapOrg } from './commands/bootstrap-org';
 import { runSeed } from './commands/seed';
@@ -65,6 +67,11 @@ Commands:
                      .env (push-env never deletes one; needs the Docker socket).
   doctor [--json]    Diagnose a broken install. --json prints the same checks
                      as one machine-readable report (secrets redacted).
+  support-bundle [--lines N] [--output FILE|-]
+                     Write one .tar.gz for a bug report: doctor report, compose
+                     status, the last N log lines per service (allowlist-
+                     redacted, default 200), versions, migration ledger and
+                     the last rollout verdict. Read-only; needs the Docker socket.
 
 Options:
   --web              Force web wizard (browser-based).
@@ -130,6 +137,8 @@ async function main(): Promise<number> {
 				return await runUnsetEnv(opts);
 			case 'doctor':
 				return await runDoctor(opts);
+			case 'support-bundle':
+				return await runSupportBundle({ ...opts, cliVersion: VERSION });
 			default:
 				console.error(`Unknown command: ${command}`);
 				help();

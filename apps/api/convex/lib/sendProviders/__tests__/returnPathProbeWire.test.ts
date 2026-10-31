@@ -1,5 +1,5 @@
 /**
- * THE PROBE WIRE IS A PER-ADAPTER CAPABILITY (plan D5).
+ * THE PROBE WIRE IS A PER-ADAPTER CAPABILITY.
  *
  * A return-path verdict is written against ONE transport id, so the send that
  * produced it must have left through THAT transport's adapter. Before `mandrill`
@@ -14,11 +14,12 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { VERP_KEY_MIN_BYTES, parseVerpAddress } from '@owlat/shared/verp';
+import type * as SmtpClientModule from '@owlat/smtp-client';
 
 const sendMessage = vi.hoisted(() => vi.fn());
 
 vi.mock('@owlat/smtp-client', async (importOriginal) => ({
-	...(await importOriginal<typeof import('@owlat/smtp-client')>()),
+	...(await importOriginal<typeof SmtpClientModule>()),
 	sendMessage,
 }));
 

@@ -26,7 +26,7 @@
  *     a domain — never a full address, a password, or a subject.
  *   - Every dependency is injected, so the whole sweep — including hygiene —
  *     is testable with no network at all.
- *   - D2: zero seed mailboxes means zero work items and a no-op sweep. It
+ *   - Absence blocks nothing: zero seed mailboxes means zero work items and a no-op sweep. It
  *     never throws, never warns, and never blocks anything.
  */
 

@@ -31,19 +31,13 @@
  * previously-invalid ASCII address stays invalid.
  */
 export const emailRegex =
-	/^(?:(?![\p{C}\p{Z}])[a-zA-Z0-9!#$%&'*+\/=?^_`{|}~\u{80}-\u{10FFFF}\-])+(?:\.(?:(?![\p{C}\p{Z}])[a-zA-Z0-9!#$%&'*+\/=?^_`{|}~\u{80}-\u{10FFFF}\-])+)*@(?:(?:(?![\p{C}\p{Z}])[a-zA-Z0-9\u{80}-\u{10FFFF}])(?:(?:(?![\p{C}\p{Z}])[a-zA-Z0-9\u{80}-\u{10FFFF}\-])*(?:(?![\p{C}\p{Z}])[a-zA-Z0-9\u{80}-\u{10FFFF}]))?\.)+(?:(?![\p{C}\p{Z}])[a-zA-Z\u{80}-\u{10FFFF}]){2,}$/u;
+	/^(?:(?![\p{C}\p{Z}])[a-zA-Z0-9!#$%&'*+/=?^_`{|}~\u{80}-\u{10FFFF}-])+(?:\.(?:(?![\p{C}\p{Z}])[a-zA-Z0-9!#$%&'*+/=?^_`{|}~\u{80}-\u{10FFFF}-])+)*@(?:(?:(?![\p{C}\p{Z}])[a-zA-Z0-9\u{80}-\u{10FFFF}])(?:(?:(?![\p{C}\p{Z}])[a-zA-Z0-9\u{80}-\u{10FFFF}-])*(?:(?![\p{C}\p{Z}])[a-zA-Z0-9\u{80}-\u{10FFFF}]))?\.)+(?:(?![\p{C}\p{Z}])[a-zA-Z\u{80}-\u{10FFFF}]){2,}$/u;
 
 /**
  * Domain validation regex
  * Matches valid domain names (e.g., example.com, mail.example.co.uk)
  */
 export const domainRegex = /^(?!-)[A-Za-z0-9-]+([-.][A-Za-z0-9]+)*\.[A-Za-z]{2,}$/;
-
-/**
- * Slug validation regex
- * Matches URL-safe slugs (lowercase letters, numbers, hyphens)
- */
-export const slugRegex = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 // ============================================================================
 // Validation Functions
@@ -68,8 +62,8 @@ export function isValidDomain(domain: string): boolean {
  */
 export function isValidUrl(url: string): boolean {
 	try {
-		new URL(url);
-		return true;
+		// The constructor throws on anything that does not parse.
+		return new URL(url).protocol !== '';
 	} catch {
 		return false;
 	}

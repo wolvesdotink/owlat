@@ -305,7 +305,7 @@ describe('draftClarificationReply', () => {
 
 		const off = makeCtx({ gateThrows: true });
 		await draftClarificationReply(off.ctx, { threadId });
-		// Only the context read ran: the gate needs the owner it names (#1380).
+		// Only the context read ran: the gate needs the owner it names.
 		expect(off.raw.runQuery).toHaveBeenCalledOnce();
 		expect(mocks.runSharedDraft).toHaveBeenCalledOnce();
 	});

@@ -3,12 +3,14 @@
  *
  * One `mailUserSettings` row per BetterAuth user at most, spanning all of
  * the user's mailboxes (these are reader-behavior preferences of the
- * person, not properties of a mailbox). Currently a single preference:
+ * person, not properties of a mailbox). Among them:
  *
  *   - `autoAdvance` — what the thread reader does after the open message
  *     is triaged away (archive / trash / snooze / spam): open the next
  *     conversation in list order (default), the previous one, or go back
  *     to the list.
+ *   - `afterReply` — whether sending a reply keeps its conversation in the
+ *     Inbox (default) or marks it done (see mail/replyDone.ts).
  *
  * Mirrors the vacation/forwarding modules' get/update shape; rows are
  * keyed by the session user rather than a mailbox id.
@@ -18,6 +20,7 @@ import { v } from 'convex/values';
 import { publicQuery } from '../lib/authedFunctions';
 import { postboxMutation } from './_helpers';
 import {
+	mailAfterReplyValidator,
 	mailAutoAdvanceValidator,
 	mailReplyDefaultValidator,
 	mailDensityValidator,
@@ -59,6 +62,7 @@ export const get = publicQuery({
 			isReadOnArrival: row.isReadOnArrival,
 			isCodeAutoArchiveOn: row.isCodeAutoArchiveOn,
 			replyDefault: row.replyDefault,
+			afterReply: row.afterReply,
 			density: row.density,
 			viewMode: row.viewMode,
 			readingPane: row.readingPane,
@@ -67,6 +71,9 @@ export const get = publicQuery({
 			inboxMode: row.inboxMode,
 			sortOrder: row.sortOrder,
 			isSendSoundOn: row.isSendSoundOn,
+			isReplyAlertSoundOn: row.isReplyAlertSoundOn,
+			isAssignmentSoundOn: row.isAssignmentSoundOn,
+			isQuestionSoundOn: row.isQuestionSoundOn,
 			isAutoLoadImagesOn: row.isAutoLoadImagesOn,
 			undoSendSeconds: row.undoSendSeconds,
 			notifyAbout: row.notifyAbout,
@@ -95,11 +102,12 @@ export const update = postboxMutation({
 		autoAdvance: v.optional(mailAutoAdvanceValidator),
 		isWritingSuggestionsOn: v.optional(v.boolean()),
 		isAutoSummarizeOn: v.optional(v.boolean()),
-		// Read on arrival (SPEC §2.1): absent = on.
+		// Read on arrival: absent = on.
 		isReadOnArrival: v.optional(v.boolean()),
-		// Read on arrival (SPEC §6.4): archive codes and sign-in links after a day; absent = off.
+		// Read on arrival: archive codes and sign-in links after a day; absent = off.
 		isCodeAutoArchiveOn: v.optional(v.boolean()),
 		replyDefault: v.optional(mailReplyDefaultValidator),
+		afterReply: v.optional(mailAfterReplyValidator),
 		density: v.optional(mailDensityValidator),
 		viewMode: v.optional(mailViewModeValidator),
 		readingPane: v.optional(mailReadingPaneValidator),
@@ -131,12 +139,10 @@ export const update = postboxMutation({
 	},
 	// authz: self-scoped — upserts only the caller's own settings row (keyed
 	// by the session userId; no cross-user id is accepted).
-	handler: async (ctx, args) => {
-		const s = await getBetterAuthSessionWithRole(ctx);
-		if (!s) return null; // unreachable past the authedMutation floor
+	handler: async (ctx, args, session) => {
 		const existing = await ctx.db
 			.query('mailUserSettings')
-			.withIndex('by_user', (q) => q.eq('userId', s.userId))
+			.withIndex('by_user', (q) => q.eq('userId', session.userId))
 			.first();
 		const now = Date.now();
 		const patch: {
@@ -146,6 +152,7 @@ export const update = postboxMutation({
 			isReadOnArrival?: boolean;
 			isCodeAutoArchiveOn?: boolean;
 			replyDefault?: (typeof args)['replyDefault'];
+			afterReply?: (typeof args)['afterReply'];
 			density?: (typeof args)['density'];
 			viewMode?: (typeof args)['viewMode'];
 			readingPane?: (typeof args)['readingPane'];
@@ -179,6 +186,7 @@ export const update = postboxMutation({
 		if (args.isCodeAutoArchiveOn !== undefined)
 			patch.isCodeAutoArchiveOn = args.isCodeAutoArchiveOn;
 		if (args.replyDefault !== undefined) patch.replyDefault = args.replyDefault;
+		if (args.afterReply !== undefined) patch.afterReply = args.afterReply;
 		if (args.density !== undefined) patch.density = args.density;
 		if (args.viewMode !== undefined) patch.viewMode = args.viewMode;
 		if (args.readingPane !== undefined) patch.readingPane = args.readingPane;
@@ -226,7 +234,7 @@ export const update = postboxMutation({
 			// only set another preference.
 			autoAdvance: args.autoAdvance ?? 'next',
 			...patch,
-			userId: s.userId,
+			userId: session.userId,
 			createdAt: now,
 			updatedAt: now,
 		});

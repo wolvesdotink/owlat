@@ -22,6 +22,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import Redis from 'ioredis-mock';
+import type * as MtaStsModule from '../mtaSts.js';
 
 vi.mock('../mxResolver.js', () => ({
 	resolveMxDestination: vi.fn().mockResolvedValue({
@@ -31,7 +32,7 @@ vi.mock('../mxResolver.js', () => ({
 	}),
 }));
 vi.mock('../mtaSts.js', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../mtaSts.js')>();
+	const actual = await importOriginal<typeof MtaStsModule>();
 	return {
 		...actual,
 		// No MTA-STS policy — the ONLY thing raising the floor here is the local
@@ -60,7 +61,7 @@ vi.mock('../../monitoring/logger.js', () => ({
 
 import { sendToMx } from '../sender.js';
 import { pool } from '../connectionPool.js';
-import { generateReport } from '../tlsRpt.js';
+import { generateReport } from '../tlsRptReport.js';
 import {
 	type ServerProbe,
 	startServer,
@@ -123,7 +124,7 @@ describe('sendToMx honours OUTBOUND_TLS_MODE: bounce + TLS-RPT under a required 
 		expect(probe.dataReached()).toBe(false);
 
 		expect(await failureTypes()).toContain('starttls-not-supported');
-	}, 15000);
+	});
 
 	it('require-verified: a self-signed MX soft-bounces and records certificate-not-trusted', async () => {
 		probe = await startServer({ advertiseStartTls: true });
@@ -141,7 +142,7 @@ describe('sendToMx honours OUTBOUND_TLS_MODE: bounce + TLS-RPT under a required 
 		expect(probe.dataReached()).toBe(false);
 
 		expect(await failureTypes()).toContain('certificate-not-trusted');
-	}, 15000);
+	});
 
 	it('opportunistic (default): the SAME no-STARTTLS receiver still gets the mail — the floor switch is what changes the outcome', async () => {
 		probe = await startServer({ advertiseStartTls: false });
@@ -159,7 +160,7 @@ describe('sendToMx honours OUTBOUND_TLS_MODE: bounce + TLS-RPT under a required 
 		expect(result.success).toBe(true);
 		expect(probe.dataReached()).toBe(true);
 		expect(await failureTypes()).toContain('starttls-not-supported');
-	}, 15000);
+	});
 
 	it('Gmail provider policy refuses plaintext even when the local mode is opportunistic', async () => {
 		probe = await startServer({ advertiseStartTls: false });
@@ -206,5 +207,5 @@ describe('sendToMx honours OUTBOUND_TLS_MODE: bounce + TLS-RPT under a required 
 		expect(result.bounceType).toBe('soft');
 		expect(result.error).toContain('TLS required');
 		expect(probe.dataReached()).toBe(false);
-	}, 15000);
+	});
 });

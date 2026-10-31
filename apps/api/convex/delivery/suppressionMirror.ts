@@ -21,6 +21,7 @@
  */
 
 import { v } from 'convex/values';
+import { validatorDecoder } from '@owlat/worker-protocol/decodeJson';
 import { literalUnion } from '../lib/literalUnion';
 import { internalAction, internalQuery } from '../_generated/server';
 import { internal } from '../_generated/api';
@@ -230,6 +231,23 @@ function reconcilePriority(row: ReconcileRow): number {
 	return { soft_bounce: 1, manual: 2, hard_bounce: 3, complaint: 4 }[reason];
 }
 
+/**
+ * One page of the MTA's `GET /suppression/export`. Only the fields the
+ * reconciliation reads are checked; metadata it does not read is left alone.
+ */
+const decodeExportPage = validatorDecoder(
+	v.object({
+		entries: v.array(
+			v.object({
+				email: v.string(),
+				source: v.optional(v.string()),
+				suppressedAt: v.optional(v.number()),
+			})
+		),
+		nextCursor: v.optional(v.string()),
+	})
+);
+
 async function requireMtaResponse(response: Response, operation: string): Promise<void> {
 	if (!response.ok) throw new Error(`${operation} returned HTTP ${response.status}`);
 }
@@ -308,10 +326,13 @@ export const reconcile = internalAction({
 				FETCH_TIMEOUTS.bulkSync
 			);
 			await requireMtaResponse(response, 'MTA suppression export');
-			const page = (await response.json()) as {
-				entries: Array<{ email: string; source?: string; suppressedAt?: number }>;
-				nextCursor?: string;
-			};
+			// A page that does not decode stops the run before any delete: an
+			// export this build cannot read is never taken as a list of removals.
+			const decoded = decodeExportPage(await response.json());
+			if (!decoded.ok) {
+				throw new Error(`MTA suppression export returned a malformed page (${decoded.issue})`);
+			}
+			const page = decoded.value;
 			for (const entry of page.entries) {
 				const row = authoritative.get(entry.email);
 				if (row && !isMarketingOnlyBlockReason(row.reason) && !isExpiredSoftBounce(row)) continue;

@@ -15,6 +15,7 @@ import { enqueuePush } from '../events';
 import { runPostInsertInboundEffects } from '../../mail/deliveryPipeline/afterInsert';
 import { insertRoomMessage } from '../../chat/messageInsert';
 import {
+	planAndHold,
 	VAPID_ENV,
 	pushHarness,
 	quietWindowAroundNow,
@@ -60,7 +61,7 @@ async function setSettings(t: T, fields: Record<string, unknown>) {
 }
 
 async function prepare(t: T, event: Parameters<typeof enqueuePush>[2], userId = USER) {
-	const deliveries = await t.mutation(internal.push.dispatch.prepareDelivery, { userId, event });
+	const deliveries = await planAndHold(t, userId, event);
 	return deliveries.map((delivery) => ({ ...delivery, payload: JSON.parse(delivery.payload) }));
 }
 

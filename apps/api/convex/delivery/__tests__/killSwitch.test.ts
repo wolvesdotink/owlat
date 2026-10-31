@@ -10,6 +10,7 @@
 
 import { convexTest } from 'convex-test';
 import { describe, expect, it, vi } from 'vitest';
+import type * as SessionOrganization from '../../lib/sessionOrganization';
 import schema from '../../schema';
 import { api, internal } from '../../_generated/api';
 import { allDeliverabilityCells } from '@owlat/shared/deliverabilityRouting';
@@ -29,7 +30,7 @@ import { modules } from '../../__tests__/testModules';
 // talks to the auth component; the harness has no component, so the suite mocks
 // it exactly as the transportOutcomes suites do.
 vi.mock('../../lib/sessionOrganization', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../../lib/sessionOrganization')>();
+	const actual = await importOriginal<typeof SessionOrganization>();
 	return {
 		...actual,
 		getSingletonOrganizationId: vi.fn().mockResolvedValue('org_ramp_kill_switch'),
@@ -264,7 +265,7 @@ describe('the kill switch, through the cron', () => {
 	});
 
 	// A PROMOTION IS A MOVE. It raises the phase ceiling AND bumps `mixVersion`,
-	// which re-shuffles which arm every recipient of the cell lands in (plan D7) —
+	// which re-shuffles which arm every recipient of the cell lands in —
 	// the last thing anyone wants mid-incident, while the controller is
 	// deliberately frozen. "Everything held still" has to mean everything.
 	it('refuses a phase promotion while the switch is engaged', async () => {

@@ -7,7 +7,7 @@ import { v } from 'convex/values';
 import { paginationOptsValidator, type PaginationResult } from 'convex/server';
 import type { Doc } from './_generated/dataModel';
 import { getInstanceSettings } from './lib/instanceSettings';
-import { requireOrgPermission } from './lib/sessionOrganization';
+import { hasPermission, requirePermission } from './lib/sessionOrganization';
 import { getOrThrow, throwInvalidState, throwInvalidInput, throwNotFound } from './_utils/errors';
 import { isChatAttachment, assertUnregisteredMediaStorage } from './chat/attachmentAccess';
 import { consumeUpload, deleteOwnedUpload, storedFileSize } from './storage/uploads';
@@ -27,6 +27,9 @@ import { MAX_LIBRARY_FILE_BYTES, MAX_LIBRARY_FILE_MB } from '@owlat/shared/attac
  * List media assets for the organization (paginated).
  * Supports full-text search and tag filtering.
  */
+// all-members: the shared media library every role uses in the email editor;
+// chat attachments are dropped (their room owns that read), and writing the
+// library needs media:manage.
 export const list = authedQuery({
 	args: {
 		paginationOpts: paginationOptsValidator,
@@ -77,6 +80,7 @@ export const list = authedQuery({
 // read budget. Totals saturate at the cap (matching contacts.getTimelineStats).
 const MEDIA_SCAN_LIMIT = 20_000;
 
+// all-members: count and size of the shared library, chat attachments left out.
 export const getStats = authedQuery({
 	args: {},
 	handler: async (ctx) => {
@@ -143,6 +147,7 @@ export const countUsage = authedQuery({
 /**
  * Collect all unique tags from the organization's media library.
  */
+// all-members: the tag filter of the shared library, chat attachments left out.
 export const listTags = authedQuery({
 	args: {},
 	handler: async (ctx) => {
@@ -174,15 +179,14 @@ export const create = authedMutation({
 		alt: v.optional(v.string()),
 		tags: v.optional(v.array(v.string())),
 	},
-	handler: async (ctx, args) => {
+	handler: async (ctx, args, session) => {
 		validateStringLength(args.filename, STRING_LIMITS.FILENAME, 'filename');
 		validateStringLength(args.mimeType, STRING_LIMITS.MIME_TYPE, 'mimeType');
 		if (args.alt !== undefined) validateStringLength(args.alt, STRING_LIMITS.DESCRIPTION, 'alt');
 		for (const tag of args.tags ?? []) validateStringLength(tag, STRING_LIMITS.TAG, 'Tag');
 
-		const session = await requireOrgPermission(
-			ctx,
-			'media:manage',
+		requirePermission(
+			hasPermission(session.role, 'media:manage'),
 			'Only owners and admins can create media assets'
 		);
 
@@ -383,13 +387,12 @@ export const update = authedMutation({
 		alt: v.optional(v.string()),
 		tags: v.optional(v.array(v.string())),
 	},
-	handler: async (ctx, args) => {
+	handler: async (ctx, args, session) => {
 		if (args.alt !== undefined) validateStringLength(args.alt, STRING_LIMITS.DESCRIPTION, 'alt');
 		for (const tag of args.tags ?? []) validateStringLength(tag, STRING_LIMITS.TAG, 'Tag');
 
-		await requireOrgPermission(
-			ctx,
-			'media:manage',
+		requirePermission(
+			hasPermission(session.role, 'media:manage'),
 			'Only owners and admins can update media assets'
 		);
 		const asset = await getOrThrow(ctx, args.assetId, 'Media asset');
@@ -413,10 +416,9 @@ export const update = authedMutation({
  */
 export const bulkDelete = authedMutation({
 	args: { assetIds: v.array(v.id('mediaAssets')) },
-	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'media:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'media:manage'),
 			'Only owners and admins can bulk-delete media assets'
 		);
 

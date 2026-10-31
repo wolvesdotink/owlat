@@ -2,14 +2,15 @@
 /**
  * The Team inbox thread header's actions. Reply is the one primary action; the
  * thread's state (assignee, snooze, status) and any chat channel already
- * discussing it sit beside it on wide screens, while starting a new discussion
- * waits in a ⋯ menu. Below `sm` everything but Reply folds into that one menu
- * instead of wrapping off the edge.
+ * discussing it sit beside it on wide screens, while starting a new discussion,
+ * copying the thread's link and sharing it in chat wait in a ⋯ menu. Below `sm`
+ * everything but Reply folds into that one menu instead of wrapping off the edge.
  *
- * The plain actions (discuss in chat, snooze / unsnooze) are described once in
- * `simpleActions` and rendered as buttons or menu items. Assignment and status
- * have a richer wide form (an avatar popover, a status menu) and a compact one
- * (assign to me, "mark as" items), so each gets both renderings here.
+ * The plain actions (discuss in chat, copy link, share in chat, auto-close
+ * on / off, snooze / unsnooze) are described once in `simpleActions` and
+ * rendered as buttons or menu items. Assignment and status have a richer wide
+ * form (an avatar popover, a status menu) and a compact one (assign to me,
+ * "mark as" items), so each gets both renderings here.
  *
  * Presentation only: the page owns the data and the writes.
  */
@@ -29,6 +30,11 @@ const props = defineProps<{
 	assignedMemberName: string | null;
 	isSnoozed: boolean;
 	currentStatus: ThreadStatus;
+	/**
+	 * This thread's auto-close switch (`utils/inboxAutoClose.ts`); `null` or
+	 * absent hides it (the rule is off and the thread never opted out).
+	 */
+	autoClose?: 'on' | 'off' | null;
 }>();
 
 const emit = defineEmits<{
@@ -38,6 +44,10 @@ const emit = defineEmits<{
 	snooze: [];
 	unsnooze: [];
 	status: [status: ThreadStatus];
+	copyLink: [];
+	shareInChat: [];
+	/** Turn auto-close off (`true`) or back on (`false`) for this thread. */
+	autoClose: [isDisabled: boolean];
 }>();
 
 const { t } = useI18n();
@@ -86,6 +96,33 @@ const simpleActions = computed<SimpleAction[]>(() => {
 			});
 		}
 	}
+	actions.push({
+		key: 'copy-link',
+		icon: 'lucide:link',
+		label: t('shared.conversationLink.copyLink'),
+		run: () => emit('copyLink'),
+	});
+	if (props.chatEnabled) {
+		actions.push({
+			key: 'share-in-chat',
+			icon: 'lucide:message-square-share',
+			label: t('shared.conversationLink.shareInChat'),
+			run: () => emit('shareInChat'),
+		});
+	}
+	if (props.isAdmin && props.autoClose) {
+		const isOn = props.autoClose === 'on';
+		actions.push({
+			key: 'auto-close',
+			icon: isOn ? 'lucide:timer-off' : 'lucide:timer',
+			label: t(
+				isOn
+					? 'dashboard.inbox.detail.autoClose.turnOff'
+					: 'dashboard.inbox.detail.autoClose.turnOn'
+			),
+			run: () => emit('autoClose', isOn),
+		});
+	}
 	return actions;
 });
 
@@ -126,16 +163,15 @@ const snoozeAction = computed<SimpleAction>(() =>
 		</UiButton>
 
 		<div class="hidden sm:flex items-center gap-2">
-			<NuxtLink
-				v-for="action in inlineActions"
-				:key="action.key"
-				:to="action.to!"
-				class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-brand-subtle text-text-primary hover:bg-brand-subtle/70 transition-colors"
-				:title="action.title"
-			>
-				<Icon :name="action.icon" class="w-3.5 h-3.5 text-brand" />
-				{{ action.label }}
-			</NuxtLink>
+			<UiTooltip v-for="action in inlineActions" :key="action.key" :text="action.title">
+				<NuxtLink
+					:to="action.to!"
+					class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-brand-subtle text-text-primary hover:bg-brand-subtle/70 transition-colors"
+				>
+					<Icon :name="action.icon" class="w-3.5 h-3.5 text-brand" />
+					{{ action.label }}
+				</NuxtLink>
+			</UiTooltip>
 			<!-- Assignee picker — avatar popover (Me / members / Unassign). `open`
 			     is a controlled prop: without the binding the popover never opens. -->
 			<InboxAssignPopover
@@ -212,11 +248,7 @@ const snoozeAction = computed<SimpleAction>(() =>
 					/>
 				</UiDropdownMenuItem>
 			</UiDropdownMenu>
-			<UiDropdownMenu
-				v-if="overflowActions.length > 0"
-				v-model:open="wideMenuOpen"
-				position="right"
-			>
+			<UiDropdownMenu v-model:open="wideMenuOpen" position="right">
 				<template #trigger>
 					<UiButton
 						variant="ghost"

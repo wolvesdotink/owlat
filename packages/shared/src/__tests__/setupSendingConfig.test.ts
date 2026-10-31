@@ -3,7 +3,9 @@ import { CORE_SEND_PROVIDER_CATALOG_ENTRIES } from '../sendProviderCatalog';
 import {
 	SETUP_SENDING_CATALOG_ENTRIES,
 	isSetupSendingKind,
+	sendingConfigEnv,
 	sendingConfigFromCredentials,
+	type SetupSendingKind,
 } from '../setupSendingConfig';
 
 const reader = (values: Record<string, string>) => (envVar: string) => values[envVar];
@@ -176,5 +178,51 @@ describe('sendingConfigFromCredentials', () => {
 			expect(result.problem.reason).toBe('missing');
 			expect(result.problem.field.kind).toBe('host-port');
 		}
+	});
+});
+
+describe('sendingConfigEnv', () => {
+	const values: Record<SetupSendingKind, Record<string, string>> = {
+		mta: { OUTBOUND_TLS_MODE: 'require' },
+		ses: {
+			AWS_SES_REGION: 'eu-west-1',
+			AWS_SES_ACCESS_KEY_ID: 'AKIA',
+			AWS_SES_SECRET_ACCESS_KEY: ' secret ',
+		},
+		resend: { RESEND_API_KEY: 're_key' },
+		smtp: {
+			SMTP_RELAY_HOST: 'smtp.example.com',
+			SMTP_RELAY_PORT: '2525',
+			SMTP_RELAY_SECURE: 'false',
+			SMTP_RELAY_USERNAME: 'u',
+			SMTP_RELAY_PASSWORD: 'p',
+		},
+		emailit: { EMAILIT_API_KEY: 'em_key' },
+	};
+
+	it('covers every setup kind', () => {
+		expect(Object.keys(values)).toEqual(SETUP_SENDING_CATALOG_ENTRIES.map((e) => e.kind));
+	});
+
+	it.each(Object.entries(values) as [SetupSendingKind, Record<string, string>][])(
+		'%s: writes back the variables its config was read from',
+		(kind, env) => {
+			const result = sendingConfigFromCredentials(kind, reader(env));
+			if (!result.ok) throw new Error(`mapper refused ${kind}`);
+			expect(sendingConfigEnv(result.config)).toEqual(env);
+		}
+	);
+
+	it('writes nothing for an optional value the config leaves out', () => {
+		expect(sendingConfigEnv({ provider: 'mta' })).toEqual({});
+		expect(sendingConfigEnv({ provider: 'smtp', host: 'h', username: 'u', password: 'p' })).toEqual(
+			{ SMTP_RELAY_HOST: 'h', SMTP_RELAY_USERNAME: 'u', SMTP_RELAY_PASSWORD: 'p' }
+		);
+	});
+
+	it('writes an implicit-TLS flag as true / false', () => {
+		expect(
+			sendingConfigEnv({ provider: 'smtp', host: 'h', secure: true, username: 'u', password: 'p' })
+		).toMatchObject({ SMTP_RELAY_SECURE: 'true' });
 	});
 });

@@ -69,7 +69,7 @@ function revealTop(rowTop: number, rowHeight: number, scrollTop: number, viewpor
 
 /**
  * Given a target row index, return the `scrollTop` that brings it fully into
- * view with "nearest" semantics. Used to keep the keyboard-focused row visible
+ * view with "nearest" semantics. This keeps the keyboard-focused row visible
  * even when it isn't currently mounted.
  */
 export function scrollTopToRevealIndex(o: {

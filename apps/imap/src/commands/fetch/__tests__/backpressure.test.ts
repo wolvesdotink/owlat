@@ -12,6 +12,7 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import net from 'node:net';
+import { setImmediate as nextTurn } from 'node:timers/promises';
 import { getFunctionName } from 'convex/server';
 import { fetchModule, type FetchArgs } from '../index.js';
 import type { FetchEnvelope } from '../format.js';
@@ -64,6 +65,7 @@ function body(uid: number, size: number): Buffer {
 /** Mock Convex backend for one folder of `count` messages plus a counting storage stub. */
 function backend(count: number, bodySize: number) {
 	const counts = { convex: 0, downloads: 0 };
+	const downloadWaiters: Array<{ count: number; resolve: () => void }> = [];
 	const convex = {
 		query: vi.fn(async (fnRef: AnyFunctionReference, params: Record<string, unknown>) => {
 			counts.convex++;
@@ -111,13 +113,13 @@ function backend(count: number, bodySize: number) {
 		'fetch',
 		vi.fn(async (url: string, init?: { signal?: AbortSignal }) => {
 			counts.downloads++;
-			await new Promise<void>((resolve, reject) => {
-				const t = setTimeout(resolve, 1);
-				init?.signal?.addEventListener('abort', () => {
-					clearTimeout(t);
-					reject(init.signal!.reason);
-				});
-			});
+			for (const waiter of downloadWaiters.filter((w) => counts.downloads >= w.count)) {
+				downloadWaiters.splice(downloadWaiters.indexOf(waiter), 1);
+				waiter.resolve();
+			}
+			// Answers at once, after a microtask; a cancelled FETCH's request fails.
+			await Promise.resolve();
+			init?.signal?.throwIfAborted();
 			const bytes = body(Number(new URL(url).searchParams.get('uid')), bodySize);
 			return {
 				ok: true,
@@ -126,7 +128,10 @@ function backend(count: number, bodySize: number) {
 			};
 		})
 	);
-	return { convex, counts };
+	/** Resolves once `n` downloads have started. */
+	const downloaded = (n: number) =>
+		new Promise<void>((resolve) => downloadWaiters.push({ count: n, resolve }));
+	return { convex, counts, downloaded };
 }
 
 const FOLDER = (count: number) => ({
@@ -156,7 +161,27 @@ function selectedState(count: number): ConnectionState {
 	};
 }
 
-const settle = () => new Promise((resolve) => setTimeout(resolve, 30));
+/**
+ * Lets the FETCH run as far as it can without the test: every stub answers at
+ * once, so after one event-loop turn whatever could follow has happened.
+ */
+const settle = () => nextTurn();
+
+/**
+ * A `waitForDrain` that parks the FETCH on its first call until `release()`,
+ * and resolves `parked` at that moment.
+ */
+function drainGate(blocking: () => boolean = () => true) {
+	let release: () => void = () => {};
+	let markParked!: () => void;
+	const parked = new Promise<void>((resolve) => (markParked = resolve));
+	const waitForDrain = () => {
+		if (!blocking()) return undefined;
+		markParked();
+		return new Promise<void>((resolve) => (release = resolve));
+	};
+	return { waitForDrain, parked, release: () => release() };
+}
 
 afterEach(() => {
 	vi.unstubAllGlobals();
@@ -180,11 +205,10 @@ describe('FETCH pacing and cancellation (module)', () => {
 	}
 
 	it('stops downloading while the socket is over budget, and resumes on drain', async () => {
-		let release: () => void = () => {};
 		let blocked = true;
-		const h = start(() =>
-			blocked ? new Promise<void>((resolve) => (release = resolve)) : undefined
-		);
+		const drain = drainGate(() => blocked);
+		const h = start(drain.waitForDrain);
+		await drain.parked;
 		await settle();
 		// One response went out and is waiting for drain; only the downloads
 		// already in the ordered window may have started.
@@ -192,20 +216,21 @@ describe('FETCH pacing and cancellation (module)', () => {
 		expect(h.counts.downloads).toBeLessThanOrEqual(RAW_DOWNLOAD_CONCURRENCY + 1);
 
 		blocked = false;
-		release();
+		drain.release();
 		await h.session.completion;
 		expect(h.lines.filter((l) => l.startsWith('* '))).toHaveLength(COUNT);
 		expect(h.lines.at(-1)).toBe('a001 OK FETCH completed');
 	});
 
 	it('issues no Convex call or download after cancel, sends nothing more, and completes', async () => {
-		let release: () => void = () => {};
-		const h = start(() => new Promise<void>((resolve) => (release = resolve)));
+		const drain = drainGate();
+		const h = start(drain.waitForDrain);
+		await drain.parked;
 		await settle();
 		const before = { ...h.counts, lines: h.lines.length };
 
 		h.session.cancel();
-		release();
+		drain.release();
 		await h.session.completion;
 		await settle();
 
@@ -252,12 +277,14 @@ describe('forEachOrdered with an async emit', () => {
 		const controller = new AbortController();
 		let started = 0;
 		let settled = 0;
+		/** Each started item waits for the test to finish it. */
+		const finish = new Map<number, () => void>();
 		const done = forEachOrdered(
 			Array.from({ length: 20 }, (_, i) => i),
 			4,
 			async (n) => {
 				started++;
-				await new Promise((resolve) => setTimeout(resolve, 5));
+				await new Promise<void>((resolve) => finish.set(n, resolve));
 				settled++;
 				return n;
 			},
@@ -266,7 +293,25 @@ describe('forEachOrdered with an async emit', () => {
 			},
 			controller.signal
 		);
-		await expect(done).rejects.toThrow('gone');
+		let rejected = false;
+		const outcome = done.catch((error: unknown) => {
+			rejected = true;
+			throw error;
+		});
+		const aborted = new Promise((resolve) =>
+			controller.signal.addEventListener('abort', resolve, { once: true })
+		);
+
+		// Items 0 and 1 finish; emitting 1 aborts while later items are in flight.
+		finish.get(0)!();
+		finish.get(1)!();
+		await aborted;
+		await settle();
+		expect(rejected).toBe(false);
+		expect(started).toBeGreaterThan(settled);
+
+		for (const [n, end] of finish) if (n > 1) end();
+		await expect(outcome).rejects.toThrow('gone');
 		expect(started).toBe(settled);
 		expect(started).toBeLessThanOrEqual(6);
 	});
@@ -323,12 +368,75 @@ describe('FETCH over a real TCP socket to a client that stops reading', () => {
 	const COUNT = 300;
 	const SIZE = 256 * 1024;
 
+	/**
+	 * Collects what the client receives and resolves `completed(tag)` once the
+	 * tagged reply has arrived in full. Tagged lines are matched on a rolling
+	 * tail of the stream, so a line split across chunks is still seen, and a
+	 * reply that lands before the test asks for it is remembered.
+	 */
+	function replies(client: net.Socket) {
+		const chunks: Buffer[] = [];
+		const done = new Set<string>();
+		const waiters: Array<{ tag: string; resolve: () => void; reject: (err: Error) => void }> = [];
+		let tail = '';
+		let gone: Error | null = null;
+		const wake = () => {
+			for (const waiter of waiters.filter((w) => done.has(w.tag) || gone)) {
+				waiters.splice(waiters.indexOf(waiter), 1);
+				if (done.has(waiter.tag)) waiter.resolve();
+				else waiter.reject(gone!);
+			}
+		};
+		client.on('data', (chunk: Buffer) => {
+			chunks.push(chunk);
+			tail = (tail + chunk.toString('latin1')).slice(-4096);
+			for (const match of tail.matchAll(/\r\n([a-z0-9]+) (?:OK|NO|BAD)[^\r\n]*\r\n/g)) {
+				done.add(match[1]!);
+			}
+			wake();
+		});
+		const end = () => {
+			gone ??= new Error('connection closed before the tagged reply');
+			wake();
+		};
+		client.on('close', end);
+		client.on('error', end);
+		return {
+			chunks,
+			completed(tag: string) {
+				return new Promise<void>((resolve, reject) => {
+					waiters.push({ tag, resolve, reject });
+					wake();
+				});
+			},
+			/** Forget what was received so far (the bytes and the tags). */
+			clear() {
+				chunks.length = 0;
+				done.clear();
+				tail = '';
+			},
+		};
+	}
+
 	it('keeps the server queue at the output budget, then delivers every octet', async () => {
 		const b = backend(COUNT, SIZE);
-		const serverSockets: net.Socket[] = [];
 		const connections: ImapConnection[] = [];
+		// The server side, observed without changing it: the peak of its queue
+		// sampled at every write, and the moment the FETCH first parks on
+		// `drain` (the drain waiter is the only thing that listens for it).
+		let peakQueued = 0;
+		let markPaced!: () => void;
+		const paced = new Promise<void>((resolve) => (markPaced = resolve));
 		const server = net.createServer((sock) => {
-			serverSockets.push(sock);
+			const write = sock.write.bind(sock) as (...args: unknown[]) => boolean;
+			sock.write = ((...args: unknown[]) => {
+				const ok = write(...args);
+				peakQueued = Math.max(peakQueued, sock.writableLength);
+				return ok;
+			}) as typeof sock.write;
+			sock.on('newListener', (event) => {
+				if (event === 'drain') markPaced();
+			});
 			connections.push(
 				new ImapConnection(
 					sock,
@@ -343,42 +451,33 @@ describe('FETCH over a real TCP socket to a client that stops reading', () => {
 		await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
 		const { port } = server.address() as net.AddressInfo;
 		const client = net.connect(port, '127.0.0.1');
-		const chunks: Buffer[] = [];
-		const waitFor = async (tag: string) => {
-			for (;;) {
-				const text = Buffer.concat(chunks.slice(-2)).toString('latin1');
-				if (text.includes(`\r\n${tag} `) && text.endsWith('\r\n')) return;
-				await new Promise((resolve) => setTimeout(resolve, 5));
-			}
-		};
-		client.on('data', (chunk: Buffer) => chunks.push(chunk));
+		const received = replies(client);
 		try {
 			client.write('a1 LOGIN "a@owlat.test" "pw"\r\n');
-			await waitFor('a1');
+			await received.completed('a1');
 			client.write('a2 SELECT INBOX\r\n');
-			await waitFor('a2');
-			chunks.length = 0;
+			await received.completed('a2');
+			received.clear();
 
 			client.pause();
+			// Unpaced, the server would download every body and finish the
+			// FETCH without ever waiting; that also ends this wait, so the
+			// download bound below fails instead of the test hanging.
+			const allDownloaded = b.downloaded(COUNT);
 			client.write(`a3 FETCH 1:${COUNT} BODY.PEEK[]\r\n`);
-			// Let the server run until it stops making progress.
-			let last = -1;
-			let peakQueued = 0;
-			for (let i = 0; i < 100 && b.counts.downloads !== last; i++) {
-				last = b.counts.downloads;
-				await new Promise((resolve) => setTimeout(resolve, 50));
-				peakQueued = Math.max(peakQueued, serverSockets[0]!.writableLength);
-			}
+			await Promise.race([paced, allDownloaded]);
 			// Unpaced, the whole 75 MiB response sat in the queue and every
-			// body was downloaded. Paced, the queue holds the 1 MiB budget
-			// plus one response, and downloads stop once the kernel buffers
-			// are full.
-			expect(peakQueued).toBeLessThanOrEqual(1024 * 1024 + SIZE + 1024);
+			// body was downloaded. Paced, the FETCH parks on drain once the
+			// kernel buffers are full and the queue is past the 1 MiB budget,
+			// with the queue never more than the budget plus one response.
 			expect(b.counts.downloads).toBeLessThan(COUNT / 2);
+			expect(peakQueued).toBeGreaterThan(OUTPUT_BUDGET_BYTES);
+			expect(peakQueued).toBeLessThanOrEqual(OUTPUT_BUDGET_BYTES + SIZE + 1024);
 
 			client.resume();
-			await waitFor('a3');
-			const wire = Buffer.concat(chunks);
+			await received.completed('a3');
+			expect(peakQueued).toBeLessThanOrEqual(OUTPUT_BUDGET_BYTES + SIZE + 1024);
+			const wire = Buffer.concat(received.chunks);
 			// Literal framing and octets intact, in sequence order.
 			let at = 0;
 			for (let seq = 1; seq <= COUNT; seq++) {
@@ -395,5 +494,5 @@ describe('FETCH over a real TCP socket to a client that stops reading', () => {
 			client.destroy();
 			await new Promise<void>((resolve) => server.close(() => resolve()));
 		}
-	}, 30_000);
+	});
 });

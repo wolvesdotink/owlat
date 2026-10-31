@@ -1,5 +1,5 @@
 /**
- * The FEEDBACK half of a bundled send transport (the seams plan's D6): the event
+ * The FEEDBACK half of a bundled send transport: the event
  * vocabulary a plugin's webhook module may report, the two limits one delivery is
  * bound by, and the parse-only module contract itself.
  *
@@ -10,6 +10,8 @@
  * (`PluginSendTransportWebhookDefinition`) stays beside the transport definition
  * it hangs off.
  */
+
+import type { ProviderFeedbackEvent } from '@owlat/provider-kit';
 
 /**
  * The feedback vocabulary a plugin transport may report, as the four facts the
@@ -46,7 +48,7 @@ export type PluginWebhookFeedbackKind = (typeof PLUGIN_WEBHOOK_FEEDBACK_KINDS)[n
  * Every field is re-validated by the host before it is trusted: plugin output is
  * untrusted input, exactly as a send attempt's result is.
  */
-export type PluginWebhookFeedbackEvent = import('@owlat/provider-kit').ProviderFeedbackEvent;
+export type PluginWebhookFeedbackEvent = ProviderFeedbackEvent;
 
 /**
  * Largest request body the feedback route reads, in BYTES of UTF-8 (not string

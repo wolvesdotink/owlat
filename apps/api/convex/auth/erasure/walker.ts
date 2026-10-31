@@ -172,6 +172,9 @@ export const drive = internalAction({
 	args: { jobId: v.id('memberErasureJobs'), lease: v.optional(v.string()) },
 	handler: async (ctx, { jobId, lease }): Promise<void> => {
 		try {
+			// checkpoint: one tick saves where its phase stopped together with scheduling
+			// the next step under the job's lease, and a step holding an older lease does
+			// nothing; recordFailure below only runs when this tick threw and rolled back.
 			await ctx.runMutation(internal.auth.erasure.walker.tick, { jobId, lease });
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);

@@ -1,5 +1,5 @@
 /**
- * Plain-language rules (SPEC §6.1): the asynchronous compile into a
+ * Plain-language rules: the asynchronous compile into a
  * `mailRuleDrafts` row (`compiling` → `ready` | `failed`), the name-resolved,
  * validated preview, and confirming it into a filter with `origin` and
  * `sourceText`.
@@ -7,7 +7,7 @@
 
 import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import { convexTest } from 'convex-test';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import schema from '../../../schema';
 import type { Id } from '../../../_generated/dataModel';
 import { api } from '../../../_generated/api';
@@ -64,7 +64,12 @@ beforeEach(() => {
 	}));
 });
 
+afterEach(() => {
+	vi.useRealTimers();
+});
+
 async function setup(opts: { ai?: boolean; scope?: 'shared' } = {}) {
+	vi.useFakeTimers();
 	const t = convexTest(schema, modules);
 	rateLimiterTest.register(t);
 	await enableFeatures(t, opts.ai === false ? ['postbox'] : ['ai', 'postbox']);
@@ -76,8 +81,11 @@ async function setup(opts: { ai?: boolean; scope?: 'shared' } = {}) {
 	return { t, mailboxId, folders, finance };
 }
 
+/** Compile, then run the scheduled `compileDraft` that settles the draft. */
 async function compile(t: T, mailboxId: Id<'mailboxes'>, text = 'Supplier invoices go to Finance') {
-	return await t.action(api.mail.filterCompile.compile, { mailboxId, sourceText: text });
+	const started = await t.action(api.mail.filterCompile.compile, { mailboxId, sourceText: text });
+	await t.finishAllScheduledFunctions(vi.runAllTimers);
+	return started;
 }
 
 describe('previewFromCompiled', () => {
@@ -109,6 +117,24 @@ describe('previewFromCompiled', () => {
 });
 
 describe('compile and confirm', () => {
+	it('returns with the draft compiling and its compile scheduled, before any model call', async () => {
+		const { t, mailboxId } = await setup();
+		const { draftId } = await t.action(api.mail.filterCompile.compile, {
+			mailboxId,
+			sourceText: 'Supplier invoices go to Finance',
+		});
+		const [draft] = await t.query(api.mail.filterCompileStore.recentDrafts, { mailboxId });
+		expect(draft).toMatchObject({ _id: draftId, status: 'compiling' });
+		const scheduled = await t.run((ctx) => ctx.db.system.query('_scheduled_functions').collect());
+		expect(scheduled.map((job) => [job.name, job.args[0]])).toEqual([
+			['mail/filterCompile:compileDraft', { draftId }],
+		]);
+		expect(llm.runLlmObject).not.toHaveBeenCalled();
+		await t.finishAllScheduledFunctions(vi.runAllTimers);
+		const [settled] = await t.query(api.mail.filterCompileStore.recentDrafts, { mailboxId });
+		expect(settled!.status).toBe('ready');
+	});
+
 	it('lands a ready draft the person confirms into a plain-language filter', async () => {
 		const { t, mailboxId, finance } = await setup();
 		const { draftId } = await compile(t, mailboxId);

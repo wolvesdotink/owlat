@@ -1,8 +1,5 @@
-import type {
-	FeatureFlagKey,
-	PluginFeatureFlagDefinition,
-	PluginFeatureFlagKey,
-} from './featureFlags';
+import type { PluginFeatureFlagDefinition } from './featureFlagDefinitions';
+import type { FeatureFlagKey, PluginFeatureFlagKey } from './featureFlagRuntime';
 
 export const MAX_PLUGIN_FEATURE_FLAGS = 128;
 export const INVALID_PLUGIN_FEATURE_FLAG_DEFINITION = 'Invalid plugin feature flag definition';

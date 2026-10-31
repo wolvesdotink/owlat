@@ -11,6 +11,11 @@ import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import SidebarFooter from '../SidebarFooter.vue';
 import ConversationsNav from '../ConversationsNav.vue';
 
+// The account menu's "Show setup checklist" needs a Convex client; not under test here.
+vi.mock('~/composables/useGettingStartedControls', () => ({
+	useGettingStartedControls: () => ({ showChecklist: vi.fn() }),
+}));
+
 let flags: Set<string>;
 let path: string;
 

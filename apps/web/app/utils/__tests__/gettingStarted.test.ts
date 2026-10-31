@@ -285,8 +285,8 @@ describe('the way back into the welcome flow', () => {
 
 	it('offers it however much of the personal checklist is already done', () => {
 		// Every real step but the last: the member is deep into onboarding and has
-		// long since been "welcomed", which is exactly when /welcome used to be
-		// unreachable.
+		// long since been "welcomed", which is exactly when the first-login
+		// redirect no longer leads to /welcome.
 		const personalCompleted = new Set<ChecklistStepId>(['mailboxReady', 'aiConnected']);
 		const model = buildGettingStarted(input({ role: 'admin', personalCompleted }));
 		expect(allStepIds(model)).toContain(FINISH_SETUP_STEP.id);
@@ -310,6 +310,39 @@ describe('the way back into the welcome flow', () => {
 		);
 		expect(model.visible).toBe(false);
 		expect(allStepIds(model)).not.toContain(FINISH_SETUP_STEP.id);
+	});
+});
+
+describe('an explicit reopen shows the checklist again', () => {
+	const everyAdminStep = new Set(visibleChecklistSteps('fresh', 'admin').map((s) => s.id));
+
+	it('shows a finished and dismissed admin checklist, both sections, with the way back to /welcome', () => {
+		const finished = {
+			role: 'admin' as const,
+			instanceComplete: true,
+			instanceDismissed: true,
+			userDismissed: true,
+			personalCompleted: everyAdminStep,
+		};
+		expect(buildGettingStarted(input(finished)).visible).toBe(false);
+
+		const model = buildGettingStarted(input({ ...finished, reopened: true }));
+		expect(sectionIds(model)).toEqual(['instance', 'personal']);
+		expect(model.dismissalScope).toBe('both');
+		expect(allStepIds(model)).toContain(FINISH_SETUP_STEP.id);
+	});
+
+	it('gives a member their own section only, never the instance one', () => {
+		const model = buildGettingStarted(
+			input({ role: 'member', userDismissed: true, instanceDismissed: true, reopened: true })
+		);
+		expect(sectionIds(model)).toEqual(['personal']);
+		expect(model.dismissalScope).toBe('user');
+	});
+
+	it('still waits for loading', () => {
+		const model = buildGettingStarted(input({ role: 'admin', isLoading: true, reopened: true }));
+		expect(model.visible).toBe(false);
 	});
 });
 

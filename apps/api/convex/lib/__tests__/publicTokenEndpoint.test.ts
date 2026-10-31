@@ -133,6 +133,15 @@ describe('parseBody', () => {
 		});
 	});
 
+	it('keeps the last value of a repeated urlencoded key', async () => {
+		const request = new Request('http://x/', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+			body: 'tag=first&name=foo&tag=last',
+		});
+		await expect(parseBody(request, 'formData')).resolves.toEqual({ tag: 'last', name: 'foo' });
+	});
+
 	it('parses JSON within mode "formData"', async () => {
 		const request = new Request('http://x/', {
 			method: 'POST',

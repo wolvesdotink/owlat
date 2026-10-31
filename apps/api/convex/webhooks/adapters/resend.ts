@@ -16,38 +16,32 @@
  * decided to consume them; that's a future decision.
  */
 
+import { v } from 'convex/values';
 import { constantTimeEqual, hmacSha256Base64 } from '../security';
 import { classifyBounceMessage } from '@owlat/shared/bounceClassification';
 import type { InboundParser } from '../pipeline';
 import type { InboundEvent } from '../types';
+import { decodeWebhookBody, decodeWebhookValue } from './webhookBody';
 
-type ResendEventType =
-	| 'email.sent'
-	| 'email.delivered'
-	| 'email.delivery_delayed'
-	| 'email.complained'
-	| 'email.bounced'
-	| 'email.opened'
-	| 'email.clicked';
+/**
+ * Every Resend event carries a `type` and a `data` object, and only the two
+ * kinds the adapter acts on have their consumed fields checked, so an event we
+ * acknowledge and drop is never refused over a field we do not read.
+ */
+const resendEnvelopeValidator = v.object({
+	type: v.string(),
+	data: v.record(v.string(), v.any()),
+});
 
-interface ResendWebhookPayload {
-	type: ResendEventType;
-	created_at: string;
-	data: {
-		created_at: string;
-		email_id: string;
-		from: string;
-		to: string[];
-		subject: string;
-		bounce?: { message: string };
-		click?: {
-			ipAddress: string;
-			link: string;
-			timestamp: string;
-			userAgent: string;
-		};
-	};
-}
+/** The fields a bounce or complaint is built from. */
+const resendFeedbackValidator = v.object({
+	created_at: v.string(),
+	data: v.object({
+		email_id: v.string(),
+		to: v.optional(v.array(v.string())),
+		bounce: v.optional(v.object({ message: v.optional(v.string()) })),
+	}),
+});
 
 const SVIX_TIMESTAMP_TOLERANCE_SECONDS = 300; // 5 minutes
 
@@ -112,11 +106,17 @@ export const resendAdapter: InboundParser<'resend'> = {
 	source: 'resend',
 
 	parseEvent(rawBody): InboundEvent | null {
-		const payload = JSON.parse(rawBody) as ResendWebhookPayload;
+		const envelope = decodeWebhookBody(rawBody, resendEnvelopeValidator, 'resend');
+		if (envelope.type !== 'email.bounced' && envelope.type !== 'email.complained') {
+			// Other Resend events are acknowledged but not consumed today; see
+			// module docstring.
+			return null;
+		}
+		const payload = decodeWebhookValue(envelope, resendFeedbackValidator, 'resend');
 		const at = new Date(payload.created_at).getTime();
 		const providerMessageId = payload.data.email_id;
 
-		switch (payload.type) {
+		switch (envelope.type) {
 			case 'email.bounced': {
 				const bounceMessage = payload.data.bounce?.message ?? '';
 				return {
@@ -141,10 +141,6 @@ export const resendAdapter: InboundParser<'resend'> = {
 					...(to.length === 1 && to[0] ? { recipient: to[0] } : {}),
 				};
 			}
-			// Other Resend events are acknowledged but not consumed today; see
-			// module docstring.
-			default:
-				return null;
 		}
 	},
 };

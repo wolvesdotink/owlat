@@ -33,10 +33,8 @@ import { llmRootContextValidator } from './lib/llmUsageTags';
 import { extractText as extractPdfText, getDocumentProxy } from 'unpdf';
 import { isContactScopeVisible } from './lib/contactScope';
 import { mailCaptureScopeValidator } from './lib/semanticFileAccess';
-import { buildFileSearchableText } from './lib/fileSearchText';
 import { reciprocalRankFusion } from './lib/rrf';
 import { injectionRisk } from './knowledge/extraction';
-import { scrubTags, slugifyTag, truncateForLLM } from './lib/semanticFileText';
 import { classifyExtraction, extractionPlaceholder } from './lib/fileExtraction';
 import { anchorActionDeadline, boundedRoot } from './lib/llm/actionDeadline';
 import {
@@ -47,6 +45,13 @@ import {
 	reusableSummary,
 } from './analytics/backgroundDeferral';
 import { aiProviderConfigured, sendSummaryThroughBatch, summarizeFile } from './lib/semanticFileAi';
+import {
+	emptyFileMetadata,
+	feedsKnowledgeGraph,
+	planFileSummary,
+	processedFileMetadata,
+	type FileSummary,
+} from './files/processFileDecision';
 
 /**
  * Process a newly uploaded file: extract text, generate summary,
@@ -65,7 +70,6 @@ export const processFile = internalAction({
 	handler: async (ctx, args) => {
 		// One model budget for this action, from its start.
 		anchorActionDeadline(ctx);
-		// Get file metadata
 		const file = await ctx.runQuery(internal.semanticFiles.getInternal, { fileId: args.fileId });
 		if (!file) return;
 		// Every model call processing this file groups under one root.
@@ -107,21 +111,13 @@ export const processFile = internalAction({
 			// searchable on a file we can't extract text from.
 			await ctx.runMutation(internal.semanticFiles.updateProcessedMetadata, {
 				fileId: args.fileId,
-				embedding: [],
-				searchableText: buildFileSearchableText({
-					filename: file.filename,
-					tags: file.tags,
-				}),
+				...emptyFileMetadata(file),
 			});
 			return;
 		}
 
-		// Prompt-injection guard on the untrusted extracted body. The text is fed
-		// verbatim into the summarize/tag LLM prompt below, and its output is
-		// persisted and later surfaced back to the assistant, so a planted
-		// instruction could poison downstream models. When the deterministic
-		// patterns flag the body, skip the LLM summarization/tag step entirely
-		// (never feed poisoned text to a model) and fall back to filename metadata.
+		// Prompt-injection guard on the untrusted extracted body: a flagged body
+		// never reaches the summarize/tag model (planFileSummary).
 		const injectionReason = injectionRisk(extractedText);
 		if (injectionReason) {
 			logInfo('[semantic_file] extracted text tripped the injection guard; skipping AI summary', {
@@ -130,10 +126,8 @@ export const processFile = internalAction({
 			});
 		}
 
-		// Without a provider this action used to throw at the embedding step, so
-		// the file never got its extracted text stored, and the backfill re-ran it
-		// into the same error for two hours.
-		// At the spend ceiling the paid steps defer to a later run.
+		// Without a provider, or deferred at the spend ceiling, the file still gets
+		// everything that needs no model; the paid steps defer to a later run.
 		const aiConfigured =
 			(await aiProviderConfigured(ctx)) &&
 			!(await deferFileForBudget(
@@ -150,34 +144,24 @@ export const processFile = internalAction({
 		}
 
 		// 2. Generate summary and tags via LLM
-		const textForAI = truncateForLLM(extractedText, 8000);
-		let summary = '';
-		let autoTags: string[] = [];
-		let title = file.title;
 		// Paid stages spend admission refuses are owed to a later run.
 		const owed = owedFileStages(ctx, args.fileId, args.deferrals);
-		const reused = reusableSummary(file, args.stages);
+		const plan = planFileSummary({
+			injectionReason,
+			reused: reusableSummary(file, args.stages),
+			batchedSummary: args.batchedSummary,
+			extractedText,
+			isAiConfigured: aiConfigured,
+			title: file.title,
+			filename: file.filename,
+		});
+		let fileSummary: FileSummary =
+			plan.kind === 'settled' ? plan : { title: plan.title, summary: '', autoTags: [] };
 		// The summary went to a provider batch: the embedding and the graph wait for it.
 		let isSummaryBatched = false;
-
-		if (injectionReason) {
-			// Poisoned extracted text: don't hand it to the model. Keep filename-only
-			// metadata so the file is still searchable without an AI round-trip.
-			title = title || file.filename;
-		} else if (reused) {
-			// A deferred run whose summary already landed: only the embedding is owed.
-			({ title, summary, autoTags } = reused);
-		} else if (args.batchedSummary) {
-			// L14: the summary came back from the provider's batch API.
-			title = title || args.batchedSummary.title;
-			summary = args.batchedSummary.summary;
-			autoTags = args.batchedSummary.tags;
-		} else if (textForAI.length > 50 && !aiConfigured) {
-			// No model to ask: the same fallback as a failed call below.
-			title = title || file.filename;
-		} else if (textForAI.length > 50) {
+		if (plan.kind === 'ask') {
 			try {
-				const summaryInput = { file, fileCtx, textForAI, root: fileRoot };
+				const summaryInput = { file, fileCtx, textForAI: plan.textForAI, root: fileRoot };
 				// L14: out to the provider's batch API when the switch allows; this
 				// file is processed again with the summary once it is back.
 				isSummaryBatched = await sendSummaryThroughBatch(ctx, {
@@ -186,9 +170,11 @@ export const processFile = internalAction({
 				});
 				if (!isSummaryBatched) {
 					const result = await summarizeFile(ctx, summaryInput);
-					title = title || result.title;
-					summary = result.summary;
-					autoTags = result.tags;
+					fileSummary = {
+						title: plan.title || result.title,
+						summary: result.summary,
+						autoTags: result.tags,
+					};
 				}
 			} catch (error) {
 				logError('[semantic_file] summarize/tag call failed', {
@@ -196,17 +182,17 @@ export const processFile = internalAction({
 					filename: file.filename,
 					error,
 				});
-				// D1: a refused call is owed, with the embedding that reads its summary.
+				// A refused call is owed, with the embedding that reads its summary.
 				owed.note(error, ['summary', 'embedding']);
 				// Fallback: use filename as title
-				title = title || file.filename;
+				fileSummary = { title: plan.title || file.filename, summary: '', autoTags: [] };
 			}
 		}
 
 		// 3. Generate embedding
 		let embedding: number[] = [];
 		let embeddingSpace: MeasuredSpace | undefined;
-		const embeddingText = fileEmbeddingInput({ title, summary, extractedText });
+		const embeddingText = fileEmbeddingInput({ ...fileSummary, extractedText });
 
 		if (aiConfigured && embeddingText && !isSummaryBatched) {
 			// Resolve OUTSIDE the try so a misconfigured embedder surfaces an
@@ -234,69 +220,22 @@ export const processFile = internalAction({
 			}
 		}
 
-		// 3b. Inherit tags from the conversation/contact context the file was
-		// shared in (e.g. a file dropped in a "Q3 financials" thread with
-		// "Acme Corp" gets q3-financials / acme-corp).
-		const contextTags = [fileCtx.threadSubject, ...fileCtx.contactNames]
-			.filter((s): s is string => Boolean(s))
-			.map(slugifyTag)
-			.filter(Boolean);
-		autoTags = Array.from(new Set([...autoTags, ...contextTags]));
-
-		// Scrub any auto-tag that carries an injection attempt before it is
-		// persisted, indexed into `searchableText`, and surfaced back to a model via
-		// retrieval. The auto-tags are LLM-derived from untrusted file content.
-		autoTags = scrubTags(autoTags);
-
-		// 3c. Version provenance: a coarse diff summary vs the previous version.
-		let changeSummary: string | undefined;
-		if (fileCtx.previousText && extractedText && !extractedText.startsWith('[')) {
-			const prevWords = fileCtx.previousText.trim().split(/\s+/).filter(Boolean).length;
-			const curWords = extractedText.trim().split(/\s+/).filter(Boolean).length;
-			const delta = curWords - prevWords;
-			changeSummary =
-				delta === 0
-					? 'Content length unchanged from previous version'
-					: `${Math.abs(delta)} words ${delta > 0 ? 'added' : 'removed'} vs previous version`;
-		}
-
-		// 4. Build searchable text
-		const searchableText = buildFileSearchableText({
-			filename: file.filename,
-			title,
-			summary,
-			tags: file.tags,
-			autoTags,
-			extractedText,
-		});
-
-		// 5. Store results
+		// 4. Store results: context tags, scrubbed auto-tags, version diff, search text.
 		await ctx.runMutation(internal.semanticFiles.updateProcessedMetadata, {
 			fileId: args.fileId,
-			title,
-			summary,
-			extractedText: extractedText.slice(0, 50000), // Cap stored text
-			autoTags,
-			embedding,
-			// Stamped with the measured space and its model, or dropped when the
-			// configuration moved on (updateProcessedMetadata).
-			embeddingSpace,
-			searchableText,
-			changeSummary,
+			...processedFileMetadata({
+				file,
+				context: fileCtx,
+				summary: fileSummary,
+				extractedText,
+				embedding,
+				embeddingSpace,
+			}),
 		});
 
-		// 6. Feed the file into the knowledge graph (files → knowledge, the
-		// "intelligence flows up" path). Skip when there's no real extracted
-		// text (binary stubs like "[PDF file: …]"), or no model to extract with.
-		if (
-			aiConfigured &&
-			!isSummaryBatched &&
-			// A run that owes only the embedding already fed the graph.
-			(args.stages === undefined || args.stages.includes('summary')) &&
-			extractedText &&
-			!extractedText.startsWith('[') &&
-			extractedText.length > 80
-		) {
+		// 5. Feed the file into the knowledge graph.
+		const graphInput = { isAiConfigured: aiConfigured, isSummaryBatched, extractedText };
+		if (feedsKnowledgeGraph({ ...graphInput, stages: args.stages })) {
 			await ctx.runAction(internal.knowledge.extraction.extractFromFile, {
 				fileId: args.fileId,
 				// Awaited: the extraction spends from this action's clock.

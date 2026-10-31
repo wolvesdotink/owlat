@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import UiTooltip from '@owlat/ui/components/ui/Tooltip.vue';
 /**
  * Four-sided box editor for a block's padding or margin.
  *
@@ -112,104 +113,103 @@ const sides: readonly Side[] = ['Top', 'Right', 'Bottom', 'Left'];
 				role="group"
 				:aria-label="boxText('mode')"
 			>
-				<button
-					v-for="(m, index) in modes"
-					:key="m"
-					class="flex items-center justify-center w-[26px] h-[22px] border-none cursor-pointer transition-[background-color,color] duration-(--motion-fast)"
-					:class="[
-						index > 0 ? 'border-l border-l-border-subtle' : '',
-						mode === m
-							? 'bg-brand text-white'
-							: 'bg-transparent text-text-disabled hover:bg-bg-surface-hover hover:text-text-tertiary',
-					]"
-					type="button"
-					:title="modeTitle(m)"
-					:aria-label="modeTitle(m)"
-					:aria-pressed="mode === m"
-					@click="setMode(m)"
-				>
-					<!-- Uniform: solid square outline -->
-					<svg v-if="m === 'uniform'" width="12" height="12" viewBox="0 0 12 12" fill="none">
-						<rect
-							x="1.5"
-							y="1.5"
-							width="9"
-							height="9"
-							rx="1.5"
-							stroke="currentColor"
-							stroke-width="1.5"
-						/>
-					</svg>
-					<!-- Axis pairs: square with crosshair -->
-					<svg v-else-if="m === 'axis'" width="12" height="12" viewBox="0 0 12 12" fill="none">
-						<rect
-							x="1.5"
-							y="1.5"
-							width="9"
-							height="9"
-							rx="1.5"
-							stroke="currentColor"
-							stroke-width="1.5"
-						/>
-						<line
-							x1="6"
-							y1="1.5"
-							x2="6"
-							y2="10.5"
-							stroke="currentColor"
-							stroke-width="1"
-							opacity="0.45"
-						/>
-						<line
-							x1="1.5"
-							y1="6"
-							x2="10.5"
-							y2="6"
-							stroke="currentColor"
-							stroke-width="1"
-							opacity="0.45"
-						/>
-					</svg>
-					<!-- Individual: four separate edges -->
-					<svg v-else width="12" height="12" viewBox="0 0 12 12" fill="none">
-						<line
-							x1="3"
-							y1="1.5"
-							x2="9"
-							y2="1.5"
-							stroke="currentColor"
-							stroke-width="1.5"
-							stroke-linecap="round"
-						/>
-						<line
-							x1="10.5"
-							y1="3"
-							x2="10.5"
-							y2="9"
-							stroke="currentColor"
-							stroke-width="1.5"
-							stroke-linecap="round"
-						/>
-						<line
-							x1="9"
-							y1="10.5"
-							x2="3"
-							y2="10.5"
-							stroke="currentColor"
-							stroke-width="1.5"
-							stroke-linecap="round"
-						/>
-						<line
-							x1="1.5"
-							y1="9"
-							x2="1.5"
-							y2="3"
-							stroke="currentColor"
-							stroke-width="1.5"
-							stroke-linecap="round"
-						/>
-					</svg>
-				</button>
+				<UiTooltip v-for="(m, index) in modes" :key="m" :text="modeTitle(m)">
+					<button
+						class="flex items-center justify-center w-[26px] h-[22px] border-none cursor-pointer transition-[background-color,color] duration-(--motion-fast)"
+						:class="[
+							index > 0 ? 'border-l border-l-border-subtle' : '',
+							mode === m
+								? 'bg-brand text-white'
+								: 'bg-transparent text-text-disabled hover:bg-bg-surface-hover hover:text-text-tertiary',
+						]"
+						type="button"
+						:aria-label="modeTitle(m)"
+						:aria-pressed="mode === m"
+						@click="setMode(m)"
+					>
+						<!-- Uniform: solid square outline -->
+						<svg v-if="m === 'uniform'" width="12" height="12" viewBox="0 0 12 12" fill="none">
+							<rect
+								x="1.5"
+								y="1.5"
+								width="9"
+								height="9"
+								rx="1.5"
+								stroke="currentColor"
+								stroke-width="1.5"
+							/>
+						</svg>
+						<!-- Axis pairs: square with crosshair -->
+						<svg v-else-if="m === 'axis'" width="12" height="12" viewBox="0 0 12 12" fill="none">
+							<rect
+								x="1.5"
+								y="1.5"
+								width="9"
+								height="9"
+								rx="1.5"
+								stroke="currentColor"
+								stroke-width="1.5"
+							/>
+							<line
+								x1="6"
+								y1="1.5"
+								x2="6"
+								y2="10.5"
+								stroke="currentColor"
+								stroke-width="1"
+								opacity="0.45"
+							/>
+							<line
+								x1="1.5"
+								y1="6"
+								x2="10.5"
+								y2="6"
+								stroke="currentColor"
+								stroke-width="1"
+								opacity="0.45"
+							/>
+						</svg>
+						<!-- Individual: four separate edges -->
+						<svg v-else width="12" height="12" viewBox="0 0 12 12" fill="none">
+							<line
+								x1="3"
+								y1="1.5"
+								x2="9"
+								y2="1.5"
+								stroke="currentColor"
+								stroke-width="1.5"
+								stroke-linecap="round"
+							/>
+							<line
+								x1="10.5"
+								y1="3"
+								x2="10.5"
+								y2="9"
+								stroke="currentColor"
+								stroke-width="1.5"
+								stroke-linecap="round"
+							/>
+							<line
+								x1="9"
+								y1="10.5"
+								x2="3"
+								y2="10.5"
+								stroke="currentColor"
+								stroke-width="1.5"
+								stroke-linecap="round"
+							/>
+							<line
+								x1="1.5"
+								y1="9"
+								x2="1.5"
+								y2="3"
+								stroke="currentColor"
+								stroke-width="1.5"
+								stroke-linecap="round"
+							/>
+						</svg>
+					</button>
+				</UiTooltip>
 			</div>
 		</div>
 

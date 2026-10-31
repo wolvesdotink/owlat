@@ -2,21 +2,40 @@
  * The dashboard layout owns the notification-action subscription through
  * `useDesktopNotifications`. These specs mount the real composable the way the
  * layout does and pin two contracts: the subscription lives exactly as long as
- * its owner (#950), and every actionable notification names the workspace it
- * was sent from (#951).
+ * its owner, and every actionable notification names the workspace it
+ * was sent from.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { defineComponent, h, ref } from 'vue';
-import { mount, type VueWrapper } from '@vue/test-utils';
+import { defineComponent, h, nextTick, ref } from 'vue';
+import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
+import type * as NotificationActions from '~/lib/desktop/notificationActions.client';
+import type { NotificationRouting } from '~/lib/desktop/notificationActions.client';
 
-const { listeners, bridge, sendActionableNotification } = vi.hoisted(() => ({
+const { listeners, bridge, sendActionableNotification, routings } = vi.hoisted(() => ({
 	listeners: new Set<(payload: Record<string, unknown>) => void>(),
 	bridge: {
 		registrationGate: null as Promise<void> | null,
 		windowLabel: 'main',
 	},
 	sendActionableNotification: vi.fn(async (..._args: unknown[]) => {}),
+	routings: [] as NotificationRouting[],
 }));
+
+// The real routing, recorded so a test can await its registration and the
+// actions it handles instead of guessing how long they take.
+vi.mock('~/lib/desktop/notificationActions.client', async (importOriginal) => {
+	const actual = await importOriginal<typeof NotificationActions>();
+	return {
+		...actual,
+		setupNotificationActionRouting: (
+			...args: Parameters<typeof actual.setupNotificationActionRouting>
+		) => {
+			const routing = actual.setupNotificationActionRouting(...args);
+			routings.push(routing);
+			return routing;
+		},
+	};
+});
 
 vi.mock('@owlat/desktop/src/notifications', () => ({
 	onNotificationAction: async (cb: (payload: Record<string, unknown>) => void) => {
@@ -85,14 +104,27 @@ function stubNuxt(): void {
 	vi.stubGlobal('navigateTo', vi.fn());
 }
 
-const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
+/** The routing the latest mount registered. */
+function lastRouting(): NotificationRouting {
+	const routing = routings.at(-1);
+	if (!routing) throw new Error('the composable registered no notification routing');
+	return routing;
+}
+
+/** Run the unread watcher and the toast it sends through the lazily imported bridge. */
+async function deliver(): Promise<void> {
+	await nextTick();
+	await vi.dynamicImportSettled();
+	await flushPromises();
+}
 
 async function mountDashboard(): Promise<VueWrapper> {
 	const { useDesktopNotifications } = await import('../useDesktopNotifications');
+	const { useUnreadBadge } = await import('../useUnreadBadge');
 	return mount(
 		defineComponent({
 			setup() {
-				useDesktopNotifications();
+				useDesktopNotifications(useUnreadBadge());
 				return () => h('div');
 			},
 		})
@@ -111,19 +143,20 @@ beforeEach(() => {
 	copy.mockClear();
 	switchTo.mockClear();
 	sessionStorage.clear();
+	routings.length = 0;
 });
 
 describe('useDesktopNotifications: notification action subscription', () => {
 	it('dashboard → welcome → dashboard keeps exactly one listener', async () => {
 		const first = await mountDashboard();
-		await settle();
+		await lastRouting().ready;
 		expect(listeners.size).toBe(1);
 
 		first.unmount(); // off to /desktop/welcome
 		expect(listeners.size).toBe(0);
 
 		const second = await mountDashboard();
-		await settle();
+		await lastRouting().ready;
 		expect(listeners.size).toBe(1);
 		second.unmount();
 		expect(listeners.size).toBe(0);
@@ -136,7 +169,7 @@ describe('useDesktopNotifications: notification action subscription', () => {
 		const wrapper = await mountDashboard();
 		wrapper.unmount();
 		release();
-		await settle();
+		await lastRouting().ready;
 
 		expect(listeners.size).toBe(0);
 	});
@@ -144,7 +177,7 @@ describe('useDesktopNotifications: notification action subscription', () => {
 	it('a compose window mounting the composable does not subscribe', async () => {
 		bridge.windowLabel = 'compose';
 		const wrapper = await mountDashboard();
-		await settle();
+		await lastRouting().ready;
 		expect(listeners.size).toBe(0);
 		wrapper.unmount();
 	});
@@ -154,7 +187,7 @@ describe('useDesktopNotifications: workspace provenance', () => {
 	it('names the sending workspace on every actionable notification', async () => {
 		const wrapper = await mountDashboard();
 		unread.value = { total: 0, messages: [] };
-		await settle();
+		await deliver();
 
 		unread.value = {
 			total: 1,
@@ -170,7 +203,7 @@ describe('useDesktopNotifications: workspace provenance', () => {
 				},
 			],
 		};
-		await settle();
+		await deliver();
 
 		expect(sendActionableNotification).toHaveBeenCalledTimes(1);
 		expect(sendActionableNotification.mock.calls[0]?.slice(2)).toEqual(['m1', 'inbox', 'ws-a']);
@@ -185,11 +218,12 @@ describe('useDesktopNotifications: a reply that cannot reach its workspace', () 
 		});
 		try {
 			const wrapper = await mountDashboard();
-			await settle();
+			const routing = lastRouting();
+			await routing.ready;
 			for (const cb of listeners) {
 				cb({ action: 'reply', messageId: 'm1', reply: 'See you at 3', workspaceId: 'ws-b' });
 			}
-			await settle();
+			await routing.idle();
 
 			expect(switchTo).not.toHaveBeenCalled();
 			expect(showToast).toHaveBeenCalledTimes(1);

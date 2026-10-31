@@ -9,6 +9,7 @@
 import { internalAction } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
+import type { Id } from '../_generated/dataModel';
 
 const BATCH_SIZE = 50;
 const STALE_THRESHOLD_MS = 5_000; // dispatch any draft >5s overdue
@@ -60,7 +61,7 @@ export const dispatchOverdueDrafts = internalAction({
 			full,
 		}: {
 			items: Array<{
-				draftId: import('../_generated/dataModel').Id<'mailDrafts'>;
+				draftId: Id<'mailDrafts'>;
 				undoToken: string;
 			}>;
 			full: boolean;

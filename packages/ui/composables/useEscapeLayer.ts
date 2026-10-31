@@ -1,4 +1,5 @@
 import { onScopeDispose, watch, type Ref } from 'vue';
+import { isComposingKey } from '../utils/composingKey';
 
 /**
  * A layer's Escape handler. Returning `false` declines the press: it goes on
@@ -20,7 +21,7 @@ const layers: EscapeLayer[] = [];
  * register in no longer decides who gets the key.
  */
 function handleKeydown(event: KeyboardEvent) {
-	if (event.key !== 'Escape' || event.isComposing || event.defaultPrevented) return;
+	if (event.key !== 'Escape' || isComposingKey(event) || event.defaultPrevented) return;
 	const top = layers.at(-1);
 	// A layer without a handler (a dialog that handles Escape itself) lets the
 	// press through, and still keeps it from the layers underneath.

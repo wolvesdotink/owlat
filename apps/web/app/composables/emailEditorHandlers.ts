@@ -6,8 +6,8 @@ import {
 	type SavedBlock,
 } from '@owlat/email-builder';
 import { api } from '@owlat/api';
-import type { Id } from '@owlat/api/dataModel';
 import { getImageDimensions } from '~/utils/getImageDimensions';
+import { uploadedStorageId } from '~/utils/storageUpload';
 import { SurfacedOperationError } from '~/lib/operationError';
 import { withPendingHold } from '~/lib/pendingOperations';
 import type { BackendOperationResult } from './useBackendOperation';
@@ -61,11 +61,10 @@ async function uploadImage(deps: UploadImageDeps, file: File): Promise<ImageUplo
 		throw new Error('Failed to upload image');
 	}
 
-	const uploadResult = (await response.json()) as { storageId?: unknown };
-	if (typeof uploadResult.storageId !== 'string' || uploadResult.storageId.length === 0) {
+	const storageId = uploadedStorageId(await response.json().catch(() => undefined));
+	if (storageId === null) {
 		throw new Error('Image upload did not return a storage ID');
 	}
-	const storageId = uploadResult.storageId as Id<'_storage'>;
 
 	// Auto-save to media library FIRST: `storage.getUrl` only resolves blobs
 	// backed by a `mediaAssets` row (cross-resource IDOR guard), so the asset
@@ -113,8 +112,8 @@ export function createSavedBlockSaveHandler(
 }
 
 /**
- * Produce the EmailBuilderHandlers the builder injects (zero config: the part
- * that used to be copied across the editor pages) and the media-picker state
+ * Produce the EmailBuilderHandlers the builder injects (zero config: every
+ * editor page shares this rather than its own copy) and the media-picker state
  * its "pick from library" opens.
  */
 export function provideEmailEditorHandlers() {

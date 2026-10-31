@@ -1,14 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { createLocalPerfTrace, observeLongTasks, type SubscriptionCounts } from '../localPerfTrace';
 import {
-	createLocalPerfTrace,
 	DEFAULT_TRACE_LIMIT,
 	LOCAL_PERF_TRACE_KEY,
 	MAX_TRACE_LIMIT,
 	MIN_TRACE_LIMIT,
-	observeLongTasks,
 	readLocalPerfTraceLimit,
-	type SubscriptionCounts,
-} from '../localPerfTrace';
+} from '../localPerfTraceOptIn';
 
 const BUILD = {
 	version: '0.7.0',

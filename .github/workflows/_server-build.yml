@@ -7,8 +7,10 @@ name: _server-build
 # (release.yml) and the server-only `server-v*` release (server-release.yml).
 #
 # Beyond building, this core GATES the release: verify-anonymous-pull (every
-# GHCR package publicly pullable) and e2e-install (a full compose install from
-# the draft release's own artifacts, fresh + upgraded volumes) must pass before
+# GHCR package publicly pullable), e2e-install (a full compose install from
+# the draft release's own artifacts, fresh + upgraded volumes) and update-gate
+# (the previous stable release updating to this one through the in-app
+# updater, and a release that fails readiness rolled back) must pass before
 # the caller's `publish` job may flip the draft live. See docs/RELEASING.md.
 #
 # Contract: the caller has already created a (draft) Release for `tag`.
@@ -596,19 +598,21 @@ jobs:
 
       # The upgrade path: find the newest published stable release that shipped
       # a compose asset. Empty output (first release ever) turns the seeded leg
-      # into a no-op rather than a failure.
+      # into a no-op rather than a failure. Release candidates can fill whole
+      # pages ahead of it, so read every page; `sed -n 1p` (not `head`) drains
+      # the stream so gh never dies of SIGPIPE under pipefail.
       - name: Resolve previous release (seeded leg)
         id: prev
         if: matrix.volumes == 'seeded'
         run: |
           set -euo pipefail
-          prev_tag=$(gh api "repos/${{ github.repository }}/releases?per_page=100" --jq '
-            [.[]
-             | select(.draft == false and .prerelease == false)
-             | select(.tag_name | test("^(server-)?v[0-9]+\\.[0-9]+\\.[0-9]+$"))
-             | select(.tag_name != "'"$TAG"'")
-             | select([.assets[].name] | any(startswith("docker-compose-")))
-            ][0].tag_name // empty')
+          prev_tag=$(gh api --paginate "repos/${{ github.repository }}/releases?per_page=100" --jq '
+            .[]
+            | select(.draft == false and .prerelease == false)
+            | select(.tag_name | test("^(server-)?v[0-9]+\\.[0-9]+\\.[0-9]+$"))
+            | select(.tag_name != "'"$TAG"'")
+            | select([.assets[].name] | any(startswith("docker-compose-")))
+            | .tag_name' | sed -n 1p)
           if [ -z "$prev_tag" ]; then
             echo "No previous installable release found — seeded leg is a no-op on the first release."
           else
@@ -763,3 +767,76 @@ jobs:
             echo "── previous-release seed logs (tail) ──"
             docker compose -f prev-compose.yml logs --tail 100 || true
           fi
+
+  # ── Update gate: the previous stable release updates to this draft ───────────
+  # Before publication, so a release whose in-app update breaks, or whose
+  # updater cannot roll a failed release back, never goes live. Both
+  # publication paths reach this through their `server` job. The starting point
+  # is the highest published stable release below this version
+  # (scripts/ci/aliases.ts previousRelease), which is what installs upgrade
+  # from; a candidate starts from the stable release below its base version.
+  #
+  # The target is this draft's own compose template, downloaded with this
+  # workflow's credentials (a draft has no anonymous URL) from the tag the
+  # caller created, which is `server-v<version>` for a server-only release, and
+  # handed to the update flow as a run artifact.
+  #
+  # The first release that has no earlier stable release to update from skips
+  # the gate, and says so.
+  update-target:
+    name: Resolve the update pair
+    needs: [verify-anonymous-pull, upload-release-assets]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      from: ${{ steps.pair.outputs.from }}
+      artifact: ${{ steps.target.outputs.artifact }}
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      VERSION: ${{ inputs.version }}
+      TAG: ${{ inputs.tag }}
+    steps:
+      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: package.json
+      - id: pair
+        name: Resolve the release to update from
+        run: bun scripts/ci/resolve-update.ts
+      - name: Report a first release
+        if: steps.pair.outputs.from == ''
+        run: echo "::notice::No published stable release below ${VERSION}, so there is nothing to update from and the update gate is skipped."
+      - id: target
+        name: Download this draft's compose template
+        if: steps.pair.outputs.from != ''
+        run: |
+          set -euo pipefail
+          dir="${RUNNER_TEMP}/update-target"
+          mkdir -p "$dir"
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern "docker-compose-${VERSION}.yml*" --dir "$dir" --clobber
+          (cd "$dir" && sha256sum -c "docker-compose-${VERSION}.yml.sha256")
+          echo "artifact=update-target-${VERSION}" >> "$GITHUB_OUTPUT"
+      - name: Hand the template to the update flow
+        if: steps.pair.outputs.from != ''
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: update-target-${{ inputs.version }}
+          path: ${{ runner.temp }}/update-target/
+          if-no-files-found: error
+          retention-days: 7
+
+  update-gate:
+    name: Update gate
+    needs: [update-target]
+    if: needs.update-target.outputs.from != ''
+    uses: ./.github/workflows/update-flow.yml
+    with:
+      from: ${{ needs.update-target.outputs.from }}
+      to: ${{ inputs.version }}
+      target_artifact: ${{ needs.update-target.outputs.artifact }}

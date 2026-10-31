@@ -54,8 +54,6 @@ const nestedDocument = (): EditorBlock[] => [
 	}),
 ];
 
-let wrapper: VueWrapper | null = null;
-
 /** Let the lazily loaded nested previews mount. */
 async function settle() {
 	for (let i = 0; i < 5; i++) {
@@ -65,7 +63,7 @@ async function settle() {
 }
 
 async function mountBuilder(blocks: EditorBlock[]) {
-	wrapper = mount(EmailBuilder, {
+	const wrapper = mount(EmailBuilder, {
 		attachTo: document.body,
 		props: { blocks, subject: 'Subject', name: 'Name', variables: [] },
 		global: {
@@ -133,9 +131,6 @@ const command = (id: string): SlashCommand => ({
 
 afterEach(() => {
 	vi.useRealTimers();
-	wrapper?.unmount();
-	wrapper = null;
-	document.body.innerHTML = '';
 });
 
 describe('EmailBuilder inline editing of nested text Blocks', () => {

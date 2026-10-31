@@ -1,13 +1,21 @@
 import { v } from 'convex/values';
 import { authedQuery } from '../lib/authedFunctions';
+import { hasPermission, requirePermission } from '../lib/sessionOrganization';
 import { redactContactCapabilityFields } from './listing';
+
+// The three reads below feed the contacts page's CSV export and its "select
+// all" bulk actions, which are owner/admin only, like the full-workspace export
+// (`auth.accountManagement.exportContactsForOrganization`). An editor still
+// browses contacts one page at a time through `contacts.list`.
+const EXPORT_DENIED = 'Only owners and admins can export contacts';
 
 // Query to export all contacts (for CSV export, HTTP API)
 export const listForExportByOrganization = authedQuery({
 	args: {
 		search: v.optional(v.string()),
 	},
-	handler: async (ctx, args) => {
+	handler: async (ctx, args, session) => {
+		requirePermission(hasPermission(session.role, 'contacts:manage'), EXPORT_DENIED);
 		const search = args.search?.toLowerCase().trim();
 
 		let contacts;
@@ -48,7 +56,8 @@ export const getPropertyValuesForContacts = authedQuery({
 	args: {
 		contactIds: v.array(v.id('contacts')),
 	},
-	handler: async (ctx, args) => {
+	handler: async (ctx, args, session) => {
+		requirePermission(hasPermission(session.role, 'contacts:manage'), EXPORT_DENIED);
 		if (args.contactIds.length === 0) {
 			return {};
 		}
@@ -93,11 +102,13 @@ export const getPropertyValuesForContacts = authedQuery({
 const SELECT_ALL_LIMIT = 10000;
 
 // Query to get all contact IDs (for bulk selection, HTTP API)
+// token-safe: returns contact ids and a truncation flag, no row fields.
 export const listAllIdsByOrganization = authedQuery({
 	args: {
 		search: v.optional(v.string()),
 	},
-	handler: async (ctx, args) => {
+	handler: async (ctx, args, session) => {
+		requirePermission(hasPermission(session.role, 'contacts:manage'), EXPORT_DENIED);
 		const search = args.search?.toLowerCase().trim();
 
 		// Soft-deleted (GDPR-erased) contacts must never be included in a bulk

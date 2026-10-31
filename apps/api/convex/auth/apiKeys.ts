@@ -1,6 +1,6 @@
 import { v } from 'convex/values';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
-import { requireOrgPermission } from '../lib/sessionOrganization';
+import { hasPermission, requirePermission } from '../lib/sessionOrganization';
 import { validateStringLength, STRING_LIMITS } from '../lib/inputGuards';
 import { getOrThrow, throwInvalidInput, throwInvalidState } from '../_utils/errors';
 import { API_SCOPES, unknownScopes, tier2OnlyScopes } from './apiScopes';
@@ -15,14 +15,14 @@ import type { MutationCtx } from '../_generated/server';
 /**
  * List all API keys for an organization (active and revoked)
  */
+// token-safe: every row leaves with keyHash projected out (see the return).
 export const listByTeam = authedQuery({
 	args: {
 		includeRevoked: v.optional(v.boolean()),
 	},
-	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'organization:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'organization:manage'),
 			'Only owners and admins can view API keys'
 		);
 		const { includeRevoked = false } = args;
@@ -64,10 +64,9 @@ export const create = authedMutation({
 		// restrict the manifest), and it can be revoked in one shot by pluginId.
 		pluginId: v.optional(v.string()),
 	},
-	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'organization:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'organization:manage'),
 			'Only owners and admins can create API keys'
 		);
 		// Validate input lengths
@@ -188,10 +187,9 @@ export const updateName = authedMutation({
 		keyId: v.id('apiKeys'),
 		name: v.string(),
 	},
-	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'organization:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'organization:manage'),
 			'Only owners and admins can manage API keys'
 		);
 		const { keyId, name } = args;
@@ -218,10 +216,9 @@ export const revoke = authedMutation({
 	args: {
 		keyId: v.id('apiKeys'),
 	},
-	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'organization:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'organization:manage'),
 			'Only owners and admins can revoke API keys'
 		);
 		const key = await getOrThrow(ctx, args.keyId, 'API key');
@@ -265,10 +262,9 @@ export const remove = authedMutation({
 	args: {
 		keyId: v.id('apiKeys'),
 	},
-	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'organization:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'organization:manage'),
 			'Only owners and admins can delete API keys'
 		);
 		await getOrThrow(ctx, args.keyId, 'API key');

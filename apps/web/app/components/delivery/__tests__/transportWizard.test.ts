@@ -38,11 +38,12 @@ import {
 	stubDoh,
 	type WizardProps,
 } from '~/__tests__/transportWizardHarness';
+import type * as TransportAlignmentProbeModule from '~/utils/transportAlignmentProbe';
 
 // The real probe, wrapped so ONE case can make it throw. Everything else runs
 // the shipped gather + evaluator against the DNS fixture.
 vi.mock('~/utils/transportAlignmentProbe', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('~/utils/transportAlignmentProbe')>();
+	const actual = await importOriginal<typeof TransportAlignmentProbeModule>();
 	return { ...actual, runAlignmentProbe: vi.fn(actual.runAlignmentProbe) };
 });
 
@@ -130,7 +131,7 @@ describe('transport wizard — pure state machine', () => {
 		const base = { checks: [], isMeasurementDegraded: false, measurementDegradedReason: null };
 		const at = { checkedAt: 0, nextCheckDueAt: 0 };
 		expect(alignmentStepStatus({ ...base, ...at, verdict: 'aligned' })).toBe('passed');
-		// D2: no reference transport is a PASS with plain copy, never a warning.
+		// No reference transport is a PASS with plain copy, never a warning.
 		expect(alignmentStepStatus({ ...base, ...at, verdict: 'single_arm' })).toBe('passed');
 		expect(alignmentStepStatus({ ...base, ...at, verdict: 'blocked' })).toBe('failed');
 		expect(alignmentStepStatus({ ...base, ...at, verdict: 'unknown' })).toBe('unknown');
@@ -150,7 +151,7 @@ describe('transport wizard — pure state machine', () => {
 			expect(alignmentStepStatus(result)).toBe(entry.status);
 			expect(entry.summary.length).toBeGreaterThan(0);
 		}
-		// D2 again, in the words the operator reads: nothing to align is a fact,
+		// Absence blocks nothing, in the words the operator reads: nothing to align is a fact,
 		// not a fault.
 		expect(localized(ALIGNMENT_VERDICT_PRESENTATION.single_arm.summary)).toContain(
 			'nothing to align yet'

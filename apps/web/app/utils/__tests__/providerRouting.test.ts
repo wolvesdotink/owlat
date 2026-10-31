@@ -78,7 +78,7 @@ describe('provider routing catalog presentation', () => {
 	});
 });
 
-describe('deliverability-fallback relay eligibility (plan D6)', () => {
+describe('deliverability-fallback relay eligibility', () => {
 	const providers = [
 		{ providerType: 'mta', isEnabled: true },
 		{ providerType: 'ses', isEnabled: false },

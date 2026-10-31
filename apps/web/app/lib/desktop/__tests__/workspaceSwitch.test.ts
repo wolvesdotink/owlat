@@ -103,7 +103,7 @@ describe('workspace switch flag lifecycle', () => {
 
 describe('switch skeleton DOM', () => {
 	afterEach(() => {
-		document.querySelectorAll('[data-owlat-switch-skeleton]').forEach((el) => el.remove());
+		for (const el of document.querySelectorAll('[data-owlat-switch-skeleton]')) el.remove();
 	});
 
 	it('mounts a single skeleton and is idempotent', () => {
@@ -123,7 +123,7 @@ describe('hideSwitchSkeleton removal paths', () => {
 	afterEach(() => {
 		vi.useRealTimers();
 		vi.unstubAllGlobals();
-		document.querySelectorAll(SKELETON_SELECTOR).forEach((el) => el.remove());
+		for (const el of document.querySelectorAll(SKELETON_SELECTOR)) el.remove();
 	});
 
 	it('cuts immediately under reduced motion', () => {

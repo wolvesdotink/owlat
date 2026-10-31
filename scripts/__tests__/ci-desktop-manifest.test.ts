@@ -84,3 +84,32 @@ it('validates a draft by numeric ID and downloads only its manifest asset', asyn
 		verifyDesktopRelease('example/repo', 'v1.2.3', '42', releaseFetcher, assetFetcher)
 	).toThrow('exactly one');
 });
+
+it('reads the updater manifest and the release only in the shape GitHub serves them', async () => {
+	const { decodeDesktopRelease, parseDesktopManifest } = await import('../ci/desktop-manifest');
+	const text = JSON.stringify({ ...manifest, notes: 'x', pub_date: '2026-01-01T00:00:00Z' });
+	expect(parseDesktopManifest(text, 'latest.json')).toMatchObject(manifest);
+	const broken = structuredClone(manifest) as unknown as { platforms: Record<string, unknown> };
+	broken.platforms['linux-x86_64'] = { url: 42, signature: 'signed' };
+	expect(() => parseDesktopManifest(JSON.stringify(broken), 'latest.json')).toThrow(
+		'latest.json.platforms.linux-x86_64.url must be a string'
+	);
+	expect(() =>
+		parseDesktopManifest(JSON.stringify({ ...manifest, platforms: [] }), 'latest.json')
+	).toThrow('latest.json.platforms must be an object');
+	expect(() => parseDesktopManifest('{"version":', 'latest.json')).toThrow('not valid JSON');
+
+	const release = {
+		id: 42,
+		tag_name: 'v1.2.3',
+		draft: true,
+		assets: [{ id: 100, name: 'latest.json', url: 'https://x', browser_download_url: 'https://y' }],
+	};
+	expect(decodeDesktopRelease(release, 'release')).toEqual(release);
+	expect(() => decodeDesktopRelease({ ...release, id: '42' }, 'release')).toThrow(
+		'release.id must be an integer'
+	);
+	expect(() =>
+		decodeDesktopRelease({ ...release, assets: [{ ...release.assets[0], id: '100' }] }, 'release')
+	).toThrow('release.assets[0].id must be an integer');
+});

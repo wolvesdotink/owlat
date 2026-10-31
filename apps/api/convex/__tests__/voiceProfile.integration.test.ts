@@ -18,7 +18,9 @@ import { api, internal } from '../_generated/api';
 import { AI_BUDGET_ERROR_CODE } from '@owlat/shared/aiRouting';
 import type { Id } from '../_generated/dataModel';
 import { enableFeatures } from './factories';
-import { VOICE_STALE_MS } from '../mail/ai/voiceProfile';
+import { VOICE_REFRESH_LEASE_MS, VOICE_STALE_MS } from '../mail/ai/voiceProfile';
+import type * as LlmDispatchModule from '../lib/llm/dispatch';
+import type * as LlmProviderModule from '../lib/llmProvider';
 
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
@@ -38,12 +40,12 @@ vi.mock('../lib/sessionOrganization', async () => {
 const runLlmObjectMock = vi.hoisted(() => vi.fn());
 
 vi.mock('../lib/llmProvider', async () => {
-	const actual = await vi.importActual<typeof import('../lib/llmProvider')>('../lib/llmProvider');
+	const actual = await vi.importActual<typeof LlmProviderModule>('../lib/llmProvider');
 	return { ...actual, resolveLanguageModel: vi.fn(() => 'test-model') };
 });
 
 vi.mock('../lib/llm/dispatch', async () => {
-	const actual = await vi.importActual<typeof import('../lib/llm/dispatch')>('../lib/llm/dispatch');
+	const actual = await vi.importActual<typeof LlmDispatchModule>('../lib/llm/dispatch');
 	return { ...actual, runLlmObject: runLlmObjectMock };
 });
 
@@ -230,6 +232,50 @@ describe('mail.voiceProfileActions.refresh', () => {
 		expect(row?.status).toBe('idle');
 		expect(row?.profile).toBeUndefined();
 	});
+
+	it('fails soft when the model fails: the flag is released and the previous profile stays', async () => {
+		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
+		await enableFeatures(t, ['ai']);
+		const mailboxId = await seedMailboxWithSent(t, ['One.', 'Two.', 'Three.']);
+		const previous = {
+			greetings: ['Hi'],
+			signOffs: ['Best'],
+			formality: 3,
+			brevity: 3,
+			languages: ['English'],
+			isEmojiUser: false,
+			examplePhrasings: [],
+		};
+		await t.run(async (ctx) => {
+			const now = Date.now();
+			await ctx.db.insert('mailVoiceProfiles', {
+				mailboxId,
+				isEnabled: true,
+				status: 'refreshing',
+				profile: previous,
+				sampleCount: 5,
+				sentCountAtCompute: 5,
+				lastComputedAt: now,
+				createdAt: now,
+				updatedAt: now,
+			});
+		});
+		runLlmObjectMock.mockRejectedValue(new Error('model down'));
+
+		await t.action(internal.mail.ai.voiceProfileActions.refresh, { mailboxId });
+
+		expect(runLlmObjectMock).toHaveBeenCalledTimes(1);
+		const row = await t.run(async (ctx) =>
+			ctx.db
+				.query('mailVoiceProfiles')
+				.withIndex('by_mailbox', (q) => q.eq('mailboxId', mailboxId))
+				.first()
+		);
+		expect(row?.status).toBe('idle');
+		expect(row?.profile).toEqual(previous);
+		expect(row?.sampleCount).toBe(5);
+	});
 });
 
 describe('mail.voiceProfile.getGuidanceForMailbox', () => {
@@ -312,6 +358,30 @@ describe('mail.voiceProfile.getGuidanceForMailbox', () => {
 		// Stale profile is still served immediately (never blocks).
 		expect(res.guidance).toContain('Typical greetings: Hi');
 		expect((await statusOf(t, mailboxId))?.status).toBe('refreshing');
+	});
+
+	it('takes over a refresh whose lease ran out, and leaves one within it alone', async () => {
+		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
+		await enableFeatures(t, ['ai']);
+		const mailboxId = await seedProfile(t, Date.now() - VOICE_STALE_MS - 1);
+		const row = (await statusOf(t, mailboxId))!;
+		const markRefreshing = (updatedAt: number) =>
+			t.run(async (ctx) => {
+				await ctx.db.patch(row._id, { status: 'refreshing', updatedAt });
+			});
+
+		await markRefreshing(Date.now() - VOICE_REFRESH_LEASE_MS + 60_000);
+		await t.mutation(internal.mail.ai.voiceProfile.getGuidanceForMailbox, { mailboxId });
+		expect(await refreshJobs(t)).toBe(0);
+
+		// The run that held it died, or its commit failed: the row stayed refreshing.
+		await markRefreshing(Date.now() - VOICE_REFRESH_LEASE_MS - 1);
+		await t.mutation(internal.mail.ai.voiceProfile.getGuidanceForMailbox, { mailboxId });
+		expect(await refreshJobs(t)).toBe(1);
+		expect((await statusOf(t, mailboxId))?.updatedAt).toBeGreaterThan(
+			Date.now() - VOICE_REFRESH_LEASE_MS
+		);
 	});
 
 	it('defers a stale refresh while spend admission says no: no job is scheduled (#1333)', async () => {

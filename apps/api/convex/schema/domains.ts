@@ -34,7 +34,7 @@ export const domainTables = {
 		),
 		// DNS records the customer must publish (SPF, DKIM, DMARC, MAIL-FROM).
 		dnsRecords: dnsRecordsValidator,
-		// Per-domain VERP return-path host (D1/D2). Absent ⇒ the domain uses the
+		// Per-domain VERP return-path host. Absent ⇒ the domain uses the
 		// deployment-global `MTA_RETURN_PATH_DOMAIN` env for its bounce envelope /
 		// MAIL FROM — the historic behavior — so existing rows need no backfill.
 		// When set, the MTA stamps `bounce+…@<returnPathHost>` for this domain's
@@ -163,7 +163,7 @@ export const domainTables = {
 	// machine itself is pure and lives in `@owlat/shared/yahooCfl`; this table
 	// only persists its record. Written by `domains/yahooCfl.ts`.
 	//
-	// D2: absence is a SUPPORTED CONFIGURATION. A domain with no row here is
+	// Absence is a SUPPORTED CONFIGURATION. A domain with no row here is
 	// simply `not_started` — the yahoo cell's complaint gate substitutes the
 	// CFBL feed or the unsubscribe-rate proxy and carries a confidence
 	// caveat. It is never an error and never blocks a send or a promotion.
@@ -211,7 +211,7 @@ export const domainTables = {
 	// reporting organization plus its `report-id` (RFC 8460 §4.1) so a
 	// re-delivered report is idempotent without conflating different reporters.
 	// Operator deliverability telemetry — instance infrastructure,
-	// not org business data (see lib/tenantTables.ts NON_TENANT_TABLES).
+	// not org business data (see lib/nonTenantTables.ts NON_TENANT_TABLES).
 	// Written only by `domains/tlsReports.ts:ingest`.
 	tlsReports: defineTable({
 		// RFC 8460 report-id — unique within the reporting organization.

@@ -1,5 +1,5 @@
 /**
- * THE AUDIT TRAIL (plan D12), against real table writes.
+ * THE AUDIT TRAIL, against real table writes.
  *
  * The contract this file exists to pin:
  *   - a row for EVERY evaluation, including the no-ops;
@@ -17,6 +17,7 @@
 
 import { convexTest } from 'convex-test';
 import { describe, expect, it, vi } from 'vitest';
+import type * as SessionOrganization from '../../lib/sessionOrganization';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import type { MutationCtx } from '../../_generated/server';
@@ -57,7 +58,7 @@ const ORG = 'org_ramp_audit';
 // resolver; the pure cases in this file insert with `ORG` directly, so both
 // halves have to agree on the same tenant.
 vi.mock('../../lib/sessionOrganization', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../../lib/sessionOrganization')>();
+	const actual = await importOriginal<typeof SessionOrganization>();
 	return {
 		...actual,
 		getSingletonOrganizationId: vi.fn().mockResolvedValue('org_ramp_audit'),
@@ -302,7 +303,7 @@ describe('mixDecisions — the notice fires on a change, not on a condition', ()
 
 		const rows = await t.run(async (ctx) => await ctx.db.query('mixDecisions').collect());
 		expect(rows).toHaveLength(2);
-		// Both evaluations are audited (D12) — only the ANNOUNCEMENT is once.
+		// Both evaluations are audited — only the ANNOUNCEMENT is once.
 		expect(rows[0]?.direction).toBe('decrease');
 		expect(rows[0]?.adminNotice).toContain('blocklist');
 		expect(rows[1]?.reason).toBe('dnsbl');
@@ -424,7 +425,7 @@ describe('mixDecisions — the notice fires on a change, not on a condition', ()
 	it('never announces the seed tripwire while it is still uncorroborated', async () => {
 		// It carries a `failedGate`, so a cause-only trigger would announce it — but
 		// this is the branch in which the controller has decided NOT to act on the
-		// signal (plan D17). Nothing moved and nothing froze; the remedy sentence
+		// signal. Nothing moved and nothing froze; the remedy sentence
 		// would be "go and find out whether this is real".
 		const t = convexTest(schema, modules);
 		await record(
@@ -674,7 +675,7 @@ describe('mixDecisions — the human-readable-reason KPI', () => {
 });
 
 /**
- * `auditLogs` FOLLOWS THE CHANGE, NOT THE NUMBER (plan D12).
+ * `auditLogs` FOLLOWS THE CHANGE, NOT THE NUMBER.
  *
  * The card's predicate is "every automatic change also emits an audit-log
  * entry", which is wider than "the share moved". A gate breach on a cell already
@@ -837,7 +838,7 @@ const REASON_VOCABULARY_MATCHES: Exact<
 	RampDecisionReason
 > = true;
 const GATE_VOCABULARY_MATCHES: Exact<Infer<typeof rampGateIdValidator>, RampGateId> = true;
-/** The SECOND actuator's vocabulary, under the same rule (plan D3, D12). */
+/** The SECOND actuator's vocabulary, under the same rule. */
 const PACE_VOCABULARY_MATCHES: Exact<
 	Infer<typeof paceDecisionReasonValidator>,
 	PaceDecisionReason

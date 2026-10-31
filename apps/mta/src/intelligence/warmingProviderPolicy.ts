@@ -46,7 +46,7 @@ export const PROVIDER_WARMING_POLICY = Object.freeze({
 	 */
 	retryPressureWindowTtlSeconds: 6 * 60 * 60,
 	/**
-	 * D10 — minimum sample. Below this many sends in the window the gate returns
+	 * Minimum sample. Below this many sends in the window the gate returns
 	 * `insufficient_data` and NOTHING moves: a single bounce must never be able
 	 * to halve a provider's cap, and a single clean message must never widen it.
 	 * Chosen so one bounce (2%) stays under the 3% deceleration threshold while
@@ -54,7 +54,7 @@ export const PROVIDER_WARMING_POLICY = Object.freeze({
 	 */
 	minimumSampleSends: 50,
 	/**
-	 * D9 — AIMD asymmetry. Retreat is instant; advance costs this many
+	 * AIMD asymmetry. Retreat is instant; advance costs this many
 	 * CONSECUTIVE clean, minimum-sample days.
 	 */
 	cleanDaysForRecovery: 3,
@@ -177,7 +177,7 @@ export type ProviderCapVerdict = ProviderCapDecision['verdict'];
  * thresholds, evaluated on this provider's own outcomes plus the per-ISP
  * volume-pressure verdicts the SMTP classifier produced.
  *
- * The AIMD asymmetry of D9/D10 is enforced here, not by the caller:
+ * The AIMD asymmetry (expensive to advance, cheap to hold) is enforced here, not by the caller:
  *  - below `minimumSampleSends` the verdict is `insufficient_data` and NOTHING
  *    moves — the ratios are not even computed;
  *  - a breach tightens x0.5 immediately and resets the clean streak;

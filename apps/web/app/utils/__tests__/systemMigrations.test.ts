@@ -50,6 +50,19 @@ describe('displayState', () => {
 		expect(displayState(row(), NOW)).toBe('pending');
 	});
 
+	it('shows a pending contract step that waits for a worker as waiting', () => {
+		const wait = {
+			service: 'mta' as const,
+			requiredWireVersion: 2,
+			reason: 'lagging' as const,
+			oldestLiveWireVersion: 1,
+		};
+		expect(displayState(row({ waitingForWorkers: [wait] }), NOW)).toBe('waiting');
+		// From a backend without the field: nothing to wait for.
+		expect(displayState(row({ waitingForWorkers: undefined }), NOW)).toBe('pending');
+		expect(displayState(row({ waitingForWorkers: [] }), NOW)).toBe('pending');
+	});
+
 	it('passes the other states through', () => {
 		for (const state of ['completed', 'failed', 'interrupted'] as const) {
 			expect(displayState(row({ state }), NOW)).toBe(state);

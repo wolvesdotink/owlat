@@ -48,6 +48,22 @@ interface RawMailbox {
 export const MAX_ADDRESS_HEADER_LENGTH = 16 * 1024;
 
 /**
+ * Counts the characters the address scans read, for the tests that hold them
+ * to linear work: the list scan's pass, each mailbox's comment pass and
+ * angle-addr split, and each group-name check's search for `@`.
+ */
+interface AddressScanMeter {
+	chars: number;
+}
+
+/** Whether `buf` holds an `@`, metering the characters the search reads. */
+function includesAt(buf: string, meter: AddressScanMeter | undefined): boolean {
+	const at = buf.indexOf('@');
+	if (meter) meter.chars += at === -1 ? buf.length : at + 1;
+	return at !== -1;
+}
+
+/**
  * Strip RFC 5322 CFWS comments (`(...)`, nesting- and quoted-pair-aware) from a
  * mailbox token, returning the comment-free text and the comment contents in
  * order. Parentheses inside a quoted string are literal and are NOT treated as
@@ -152,7 +168,7 @@ function stripAddressSeparators(address: string): string | null {
  * core for minutes. This scan is O(n) and produces identical results for every
  * valid input (verified against the differential mailparser oracle).
  */
-function parseMailbox(input: string): RawMailbox | null {
+function parseMailbox(input: string, meter?: AddressScanMeter): RawMailbox | null {
 	// The same defensive bound {@link parseAddressList} applies, repeated here
 	// because a mailbox is also parsed WITHOUT going through the list scan:
 	// `parseMailboxAddress` is the entry point `@owlat/shared`'s single-address
@@ -165,6 +181,8 @@ function parseMailbox(input: string): RawMailbox | null {
 	}
 	const { stripped, comments } = stripComments(input);
 	const trimmed = stripped.trim();
+	// One pass for the comments, at most one more for the angle-addr split.
+	if (meter) meter.chars += input.length + trimmed.length;
 	if (!trimmed) return null;
 	// A comment stands in as the display name only when no explicit phrase exists.
 	const commentName = comments.length > 0 ? comments.join(' ').trim() || undefined : undefined;
@@ -219,8 +237,8 @@ const NAME_NEEDS_QUOTING = /[()<>[\]:;@\\",.]/;
  * (`Smith, John <j@x>`) is a list separator there and would truncate the name.
  * `@owlat/shared`'s `parseAddress` is the adapter over this.
  */
-export function parseMailboxAddress(raw: string): EmailAddress | null {
-	const parsed = parseMailbox(raw);
+export function parseMailboxAddress(raw: string, meter?: AddressScanMeter): EmailAddress | null {
+	const parsed = parseMailbox(raw, meter);
 	if (!parsed) return null;
 	return {
 		name: parsed.name === undefined ? '' : displayName(parsed.name),
@@ -242,7 +260,7 @@ function displayName(raw: string): string {
  * honoring quoted strings, angle brackets, and `name: … ;` group syntax so a
  * comma inside any of those does not split the list.
  */
-export function parseAddressList(input: string): EmailAddress[] {
+export function parseAddressList(input: string, meter?: AddressScanMeter): EmailAddress[] {
 	// Defensive bound: never scan more than MAX_ADDRESS_HEADER_LENGTH bytes of a
 	// single address header. A legitimate header is orders of magnitude shorter;
 	// truncating a hostile one keeps this loop (and every per-token parse it
@@ -263,12 +281,13 @@ export function parseAddressList(input: string): EmailAddress[] {
 			buf = '';
 			return;
 		}
-		const addr = parseMailboxAddress(buf);
+		const addr = parseMailboxAddress(buf, meter);
 		if (addr) target.push(addr);
 		buf = '';
 	};
 
 	for (let i = 0; i < input.length; i++) {
+		if (meter) meter.chars += 1;
 		const ch = input[i]!;
 		// Inside an RFC 5322 comment: buffer bytes verbatim (parseMailbox strips the
 		// comment later) so an inner `,` / `:` / `;` / `<` / `>` cannot split the list
@@ -312,7 +331,7 @@ export function parseAddressList(input: string): EmailAddress[] {
 			buf += ch;
 			continue;
 		}
-		if (ch === ':' && group === null && !buf.includes('@')) {
+		if (ch === ':' && group === null && !includesAt(buf, meter)) {
 			group = { name: displayName(buf.trim()), members: [] };
 			buf = '';
 			continue;

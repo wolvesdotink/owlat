@@ -27,41 +27,34 @@
  * batch classifies the embedder it resolved again before dispatching.
  */
 
-import type {
-	EmbeddingSpaceState,
-	ReembedJobStatus,
-	ReembedPauseReason,
-} from '@owlat/shared/aiRouting';
 import { v } from 'convex/values';
 import type { Doc, Id } from '../_generated/dataModel';
 import { internal } from '../_generated/api';
-import { internalQuery, type DatabaseReader, type MutationCtx } from '../_generated/server';
+import { internalQuery, type MutationCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import { adminMutation } from '../lib/authedFunctions';
 import { requireOrgPermission } from '../lib/sessionOrganization';
 import { recordAuditLog } from '../lib/auditLog';
 import { throwConflict, throwInvalidState, throwNotFound } from '../_utils/errors';
-import { isSpaceLocal, patchCorpusRow } from '../lib/aiRouting/embeddingActivation';
+import { isSpaceLocal } from '../lib/aiRouting/embeddingActivation';
 import {
 	assertExpectedSpace,
 	assertExpectedTarget,
-	ownsColumn,
 	readConfiguredTarget,
 	readSearchableSpace,
-	slotFields,
 	spaceRefOf,
 	vectorInSpace,
-	type SpaceDoc,
 } from '../lib/aiRouting/embeddingRegistry';
-import { embeddingSpaceIdentityKey } from '../lib/aiRouting/embeddingKeys';
 import { embeddingTargetKey } from '../lib/embeddingSpace';
 import { corpusRowInput, inputFingerprint } from '../lib/aiRouting/embeddingInputs';
 import { isPaidEmbeddingAdmissionAvailable } from '../lib/aiRouting/embeddingAdmission';
+import { reembedPauseReasonValidator } from '../lib/validators/embedding';
 import {
-	embeddingTableValidator,
-	measuredEmbeddingSpaceValidator,
-	reembedPauseReasonValidator,
-} from '../lib/validators/embedding';
+	commitReembedPage,
+	liveTarget,
+	pauseRunningJob,
+	reembedPageArgs,
+} from './embeddingReembedPage';
 
 type Job = Doc<'embeddingReembedJobs'>;
 type EmbeddingTable = Job['phase'];
@@ -73,27 +66,6 @@ export const REEMBED_STALL_MS = 15 * 60_000;
 
 /** Attempts at one page before the job pauses (`provider_unavailable`). */
 export const REEMBED_PAGE_ATTEMPTS = 3;
-
-/**
- * The space a job writes into must still be what its kind expects: a staged
- * space for a rebuild; for a re-embed, the searchable space (active and still
- * the configured target), so a job the configuration has left stops at once.
- */
-async function liveTarget(
-	db: DatabaseReader,
-	job: Pick<Job, 'kind' | 'targetSpaceId'>
-): Promise<SpaceDoc | null> {
-	let target: SpaceDoc | null;
-	if (job.kind === 'rebuild') {
-		const staged = await db.get(job.targetSpaceId);
-		const expected: EmbeddingSpaceState = 'staged';
-		target = staged?.state === expected ? staged : null;
-	} else {
-		const searchable = await readSearchableSpace(db);
-		target = searchable?._id === job.targetSpaceId ? searchable : null;
-	}
-	return target && (await ownsColumn(db, target)) ? target : null;
-}
 
 /** The input a row is embedded from, or null when it is not eligible (`corpusRowInput`). */
 export function rowInput(
@@ -140,23 +112,6 @@ export const reembedPage = internalQuery({
 	},
 });
 
-async function endJob(
-	ctx: MutationCtx,
-	job: Job,
-	status: Extract<ReembedJobStatus, 'paused' | 'cancelled' | 'failed'>,
-	reason: ReembedPauseReason | undefined,
-	lastError?: string
-): Promise<void> {
-	const now = Date.now();
-	await ctx.db.patch(job._id, {
-		status,
-		pausedReason: reason,
-		...(lastError !== undefined ? { lastError: lastError.slice(0, 500) } : {}),
-		...(status === 'paused' ? {} : { finishedAt: now }),
-		updatedAt: now,
-	});
-}
-
 /**
  * Commit one page: write each fresh vector into the target space's column,
  * then either advance
@@ -165,106 +120,15 @@ async function endJob(
  * moves to the next; the last one completes the job. A vector measured in
  * another space than the target ends the job: the configuration or the served
  * model moved, and the kickoff starts over.
+ *
+ * The previous release's batch commit (its runner then rescheduled or paused
+ * in separate calls); `embeddingReembedCommit.commitBatch` now does both in
+ * one. A page the new commit already landed has no candidates left, and a job
+ * it paused or ended is no longer running. Remove after release N+1.
  */
 export const reembedCommit = internalMutation({
-	args: {
-		jobId: v.id('embeddingReembedJobs'),
-		generation: v.number(),
-		phase: embeddingTableValidator,
-		continueCursor: v.string(),
-		isDone: v.boolean(),
-		scanned: v.number(),
-		failed: v.number(),
-		space: v.optional(measuredEmbeddingSpaceValidator),
-		results: v.array(
-			v.object({ id: v.string(), vector: v.array(v.float64()), fingerprint: v.string() })
-		),
-	},
-	handler: async (
-		ctx,
-		args
-	): Promise<{ outcome: 'continue' | 'retry' | 'stop'; unresolved: number }> => {
-		const stop = { outcome: 'stop' as const, unresolved: 0 };
-		const job = await ctx.db.get(args.jobId);
-		if (!job || job.status !== 'running' || job.generation !== args.generation) return stop;
-		if (job.phase !== args.phase) return stop;
-		const target = await liveTarget(ctx.db, job);
-		if (!target) {
-			await endJob(ctx, job, 'cancelled', 'space_changed');
-			return stop;
-		}
-		if (args.space) {
-			const { source: _source, ...identity } = args.space;
-			if (embeddingSpaceIdentityKey(identity) !== target.identityKey) {
-				await endJob(ctx, job, 'cancelled', 'space_changed');
-				await ctx.scheduler.runAfter(0, internal.aiRouting.embeddingReembed.kickoff, {
-					isForced: true,
-				});
-				return stop;
-			}
-		}
-
-		const now = Date.now();
-		const ref = spaceRefOf(target);
-		const entryTypeOf = (row: Doc<'knowledgeEntries'> | Doc<'semanticFiles'>) =>
-			job.phase === 'knowledgeEntries' ? (row as Doc<'knowledgeEntries'>).entryType : undefined;
-		let embedded = 0;
-		let unresolved = args.failed;
-		for (const result of args.results) {
-			const id = ctx.db.normalizeId(job.phase, result.id);
-			const row = id ? await ctx.db.get(id) : null;
-			if (!row || vectorInSpace(row, ref)) continue;
-			const text = rowInput(job.phase, row, now);
-			if (!text) continue;
-			if (inputFingerprint(text) !== result.fingerprint) {
-				unresolved += 1;
-				continue;
-			}
-			await patchCorpusRow(
-				ctx,
-				job.phase,
-				row,
-				slotFields(target, result.vector, { now, entryType: entryTypeOf(row) }),
-				{ written: target.slot }
-			);
-			embedded += 1;
-		}
-
-		const counters = {
-			embeddedCount: job.embeddedCount + embedded,
-			failedCount: job.failedCount + unresolved,
-			pausedReason: undefined,
-			updatedAt: now,
-		};
-		if (unresolved > 0) {
-			// Keep the cursor: the retry re-reads the page, whose landed rows are no
-			// longer candidates.
-			await ctx.db.patch(job._id, counters);
-			return { outcome: 'retry', unresolved };
-		}
-		const advanced = {
-			...counters,
-			scannedCount: job.scannedCount + args.scanned,
-		};
-		if (!args.isDone) {
-			await ctx.db.patch(job._id, { ...advanced, cursor: args.continueCursor });
-			return { outcome: 'continue', unresolved: 0 };
-		}
-		if (job.phase === 'knowledgeEntries') {
-			await ctx.db.patch(job._id, { ...advanced, phase: 'semanticFiles', cursor: undefined });
-			return { outcome: 'continue', unresolved: 0 };
-		}
-		await ctx.db.patch(job._id, {
-			...advanced,
-			cursor: undefined,
-			status: 'completed',
-			finishedAt: now,
-		});
-		await ctx.scheduler.runAfter(0, internal.aiRouting.embeddingCoverage.requestScan, {
-			isForced: true,
-		});
-		return stop;
-	},
+	args: reembedPageArgs,
+	handler: async (ctx, args) => commitReembedPage(ctx, args),
 });
 
 /** Pause a running job (`budget`, `provider_unavailable`) without moving its cursor. */
@@ -275,11 +139,7 @@ export const pauseJob = internalMutation({
 		reason: reembedPauseReasonValidator,
 		lastError: v.optional(v.string()),
 	},
-	handler: async (ctx, args) => {
-		const job = await ctx.db.get(args.jobId);
-		if (!job || job.status !== 'running' || job.generation !== args.generation) return;
-		await endJob(ctx, job, 'paused', args.reason, args.lastError);
-	},
+	handler: async (ctx, args) => pauseRunningJob(ctx, args),
 });
 
 /** The running or paused job, if any. One job runs at a time. */
@@ -347,87 +207,108 @@ const LOCAL_REEMBED_INTERVAL_MS = 24 * 60 * 60_000;
  * The local re-embed the kickoff asks for: resume a stalled or provider-paused
  * job, or start a `reembed` of the active space when none ran in the last day
  * (or `isForced`: a switch, an attestation, a settings save). Paid jobs are
- * never started here.
+ * never started here. The previous release's kickoff calls it after its own
+ * activation; this release's kickoff commits both in `activateLocalSpace`, and
+ * a job either started is `busy` to the other. Remove after release N+1.
  */
 export const startLocalReembed = internalMutation({
 	args: { spaceId: v.id('embeddingSpaces'), isForced: v.boolean() },
-	handler: async (ctx, args): Promise<'started' | 'resumed' | 'busy' | 'skipped'> => {
-		const open = await readOpenJob(ctx);
-		const now = Date.now();
-		if (open) {
-			const isStalled = open.status === 'running' && now - open.updatedAt > REEMBED_STALL_MS;
-			const isProviderPaused =
-				open.status === 'paused' && open.pausedReason === 'provider_unavailable' && !open.isPaid;
-			if (isStalled || isProviderPaused) {
-				await resumeJobRecord(ctx, open);
-				return 'resumed';
-			}
-			return 'busy';
-		}
-		const active = await readSearchableSpace(ctx.db);
-		// Never a paid job from here: only a target that is local by the ledger's rule.
-		if (!active || active._id !== args.spaceId || !isSpaceLocal(active)) return 'skipped';
-		if (!args.isForced) {
-			const last = await ctx.db
-				.query('embeddingReembedJobs')
-				.withIndex('by_target_space', (q) => q.eq('targetSpaceId', active._id))
-				.order('desc')
-				.first();
-			if (last?.finishedAt !== undefined && now - last.finishedAt < LOCAL_REEMBED_INTERVAL_MS) {
-				return 'skipped';
-			}
-		}
-		await startJob(ctx, { kind: 'reembed', targetSpaceId: active._id, isPaid: false });
-		return 'started';
-	},
+	handler: async (ctx, args) => startLocalReembedJob(ctx, args),
 });
+
+/** {@link startLocalReembed} inside the caller's transaction. */
+export async function startLocalReembedJob(
+	ctx: MutationCtx,
+	args: { spaceId: Id<'embeddingSpaces'>; isForced: boolean }
+): Promise<'started' | 'resumed' | 'busy' | 'skipped'> {
+	const open = await readOpenJob(ctx);
+	const now = Date.now();
+	if (open) {
+		const isStalled = open.status === 'running' && now - open.updatedAt > REEMBED_STALL_MS;
+		const isProviderPaused =
+			open.status === 'paused' && open.pausedReason === 'provider_unavailable' && !open.isPaid;
+		if (isStalled || isProviderPaused) {
+			await resumeJobRecord(ctx, open);
+			return 'resumed';
+		}
+		return 'busy';
+	}
+	const active = await readSearchableSpace(ctx.db);
+	// Never a paid job from here: only a target that is local by the ledger's rule.
+	if (!active || active._id !== args.spaceId || !isSpaceLocal(active)) return 'skipped';
+	if (!args.isForced) {
+		const last = await ctx.db
+			.query('embeddingReembedJobs')
+			.withIndex('by_target_space', (q) => q.eq('targetSpaceId', active._id))
+			.order('desc')
+			.first();
+		if (last?.finishedAt !== undefined && now - last.finishedAt < LOCAL_REEMBED_INTERVAL_MS) {
+			return 'skipped';
+		}
+	}
+	await startJob(ctx, { kind: 'reembed', targetSpaceId: active._id, isPaid: false });
+	return 'started';
+}
 
 // ── Admin controls ─────────────────────────────────────────────────────────
 
 /**
- * Start an admin re-embed into the searchable space, after
- * `embeddingReembed.startReembed` checked the caller, admission and (when no
- * space was searchable yet) measured and activated the configured one.
+ * Start an admin re-embed into the searchable space: the previous release's
+ * `embeddingReembed.startReembed` called it after activating the space in a
+ * call of its own; `embeddingReembedCommit.startReembedCommit` now does both
+ * in one. A start the new commit already made is an open job, refused here.
+ * Remove after release N+1.
  */
 export const startReembedJob = internalMutation({
 	args: {
 		expectedSpaceId: v.optional(v.id('embeddingSpaces')),
 		expectedTargetKey: v.optional(v.string()),
 	},
-	handler: async (ctx, args): Promise<Id<'embeddingReembedJobs'>> => {
-		const session = await requireOrgPermission(ctx, 'organization:manage');
-		const active = await readSearchableSpace(ctx.db);
-		assertExpectedSpace(active, args.expectedSpaceId);
-		const target = await readConfiguredTarget(ctx.db);
-		assertExpectedTarget(target ? embeddingTargetKey(target) : null, args.expectedTargetKey);
-		if (!active) {
-			throwInvalidState('The configured embedding model has no active space yet.');
-		}
-		if (await readOpenJob(ctx)) {
-			throwConflict('A re-embed or rebuild is already running. Wait for it, or cancel it first.');
-		}
-		// Paid or not is the target's own endpoint, read in this transaction.
-		const isPaid = !isSpaceLocal(active);
-		if (isPaid && !isPaidEmbeddingAdmissionAvailable()) {
-			throwInvalidState(PAID_EMBEDDING_REFUSAL);
-		}
-		const jobId = await startJob(ctx, {
-			kind: 'reembed',
-			targetSpaceId: active._id,
-			isPaid,
-			startedBy: session.userId,
-		});
-		await recordAuditLog(ctx, {
-			userId: session.userId,
-			organizationId: session.activeOrganizationId,
-			action: 'embedding_reembed.started',
-			resource: 'embedding_space',
-			resourceId: active._id,
-			details: { jobId, kind: 'reembed', isPaid },
-		});
-		return jobId;
-	},
+	handler: async (ctx, args) => startAdminReembedJob(ctx, args),
 });
+
+/**
+ * Start an admin re-embed into the searchable space, inside the caller's
+ * transaction, after the caller's action checked the caller and admission.
+ * Throws on a space or target other than the one confirmed, an open job, or a
+ * paid job without spend admission.
+ */
+export async function startAdminReembedJob(
+	ctx: MutationCtx,
+	args: { expectedSpaceId?: Id<'embeddingSpaces'>; expectedTargetKey?: string }
+): Promise<Id<'embeddingReembedJobs'>> {
+	const session = await requireOrgPermission(ctx, 'organization:manage');
+	const active = await readSearchableSpace(ctx.db);
+	assertExpectedSpace(active, args.expectedSpaceId);
+	const target = await readConfiguredTarget(ctx.db);
+	assertExpectedTarget(target ? embeddingTargetKey(target) : null, args.expectedTargetKey);
+	if (!active) {
+		throwInvalidState('The configured embedding model has no active space yet.');
+	}
+	if (await readOpenJob(ctx)) {
+		throwConflict('A re-embed or rebuild is already running. Wait for it, or cancel it first.');
+	}
+	// Paid or not is the target's own endpoint, read in this transaction.
+	const isPaid = !isSpaceLocal(active);
+	if (isPaid && !isPaidEmbeddingAdmissionAvailable()) {
+		throwInvalidState(PAID_EMBEDDING_REFUSAL);
+	}
+	const jobId = await startJob(ctx, {
+		kind: 'reembed',
+		targetSpaceId: active._id,
+		isPaid,
+		startedBy: session.userId,
+	});
+	await recordAuditLog(ctx, {
+		userId: session.userId,
+		organizationId: session.activeOrganizationId,
+		action: 'embedding_reembed.started',
+		resource: 'embedding_space',
+		resourceId: active._id,
+		details: { jobId, kind: 'reembed', isPaid },
+	});
+	return jobId;
+}
 
 /** The refusal of paid embedding work while spend admission is absent. */
 export const PAID_EMBEDDING_REFUSAL =

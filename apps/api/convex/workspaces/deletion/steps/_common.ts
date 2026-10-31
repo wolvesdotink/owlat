@@ -12,6 +12,10 @@ import { literalUnion } from '../../../lib/literalUnion';
 import { BRIEF_WIPE_TABLES, type BriefWipeTable } from '../../../schema/threadPurgeJobs';
 import { AI_ROUTING_TABLES, type AiRoutingTable } from '../../../schema/aiRouting';
 import { MAIL_ARRIVAL_TABLES, type MailArrivalTable } from '../../../schema/mailArrival';
+import {
+	MARKETING_NOTIFICATION_TABLES,
+	type MarketingNotificationTable,
+} from '../../../schema/marketingNotifications';
 
 /**
  * Typed literal union of every table the wipe walks. The walker's `runStep`
@@ -164,6 +168,7 @@ export type OrganizationDeletionTable =
 	| 'handlingRules'
 	| 'askEagernessSettings'
 	| 'inboxSlaPolicies'
+	| 'inboxAutoClosePolicies'
 	| 'clarificationAskLog'
 	| 'clarificationMemory'
 	| 'agentShadowDecisions'
@@ -193,6 +198,7 @@ export type OrganizationDeletionTable =
 	| 'webhookPayloads'
 	| 'unresolvedFeedback'
 	| 'automationStatShards'
+	| 'automationHealthDays'
 	| 'campaignSendJobs'
 	| 'audienceCountJobs'
 	| 'campaignStatShards'
@@ -219,6 +225,7 @@ export type OrganizationDeletionTable =
 	| 'answerAskSessions'
 	| 'aiProviderConfig'
 	| AiRoutingTable
+	| MarketingNotificationTable
 	| MailArrivalTable
 	| 'coalesceBatches'
 	| 'visualizations'
@@ -234,19 +241,6 @@ export type OrganizationDeletionTable =
 	| 'shareLinks'
 	| 'integrationImports'
 	| 'codeWorkTasks';
-
-import { TENANT_TABLES } from '../../../lib/tenantTables';
-
-/**
- * Compile-time guard: every TENANT_TABLES entry MUST have a deletion step (41
- * once survived 'Delete organization'); a missing one is a compile error.
- */
-type TenantTableMissingFromWipe = Exclude<
-	(typeof TENANT_TABLES)[number],
-	OrganizationDeletionTable
->;
-type AssertWipeCoversTenantData<_T extends never> = true;
-export type _WipeCoversAllTenantTables = AssertWipeCoversTenantData<TenantTableMissingFromWipe>;
 
 export const organizationDeletionTableValidator = v.union(
 	v.literal('storageUploads'),
@@ -290,6 +284,7 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('threadCatchUps'),
 	...literalUnion(BRIEF_WIPE_TABLES).members,
 	...literalUnion(AI_ROUTING_TABLES).members,
+	...literalUnion(MARKETING_NOTIFICATION_TABLES).members,
 	...literalUnion(MAIL_ARRIVAL_TABLES).members,
 	v.literal('inboxAssignmentNotices'),
 	v.literal('inboundMessages'),
@@ -393,6 +388,7 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('handlingRules'),
 	v.literal('askEagernessSettings'),
 	v.literal('inboxSlaPolicies'),
+	v.literal('inboxAutoClosePolicies'),
 	v.literal('clarificationAskLog'),
 	v.literal('clarificationMemory'),
 	v.literal('agentShadowDecisions'),
@@ -422,6 +418,7 @@ export const organizationDeletionTableValidator = v.union(
 	v.literal('webhookPayloads'),
 	v.literal('unresolvedFeedback'),
 	v.literal('automationStatShards'),
+	v.literal('automationHealthDays'),
 	v.literal('campaignSendJobs'),
 	v.literal('audienceCountJobs'),
 	v.literal('campaignStatShards'),

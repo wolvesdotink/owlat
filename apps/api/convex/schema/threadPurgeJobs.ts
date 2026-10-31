@@ -37,7 +37,7 @@ export const purgeCursorValidator = v.object({
 });
 
 /**
- * Thread brief purge jobs (SPEC §5 "Erasure", "Scope change"): one resumable
+ * Thread brief purge jobs ("Scope change"): one resumable
  * walk over a thread's ranges, a page at a time, with a durable cursor per
  * range. The job row is deleted when every range is exhausted.
  *
@@ -75,7 +75,7 @@ export const threadPurgeJobTables = {
 		updatedAt: v.number(),
 	})
 		.index('by_job_key', ['jobKey'])
-		// The thread's unfinished jobs: D3 holds auto-send while one exists.
+		// The thread's unfinished jobs: auto-send holds while one exists.
 		.index('by_mail_thread', ['mailThreadId'])
 		.index('by_conversation_thread', ['conversationThreadId']),
 };

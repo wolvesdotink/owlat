@@ -12,6 +12,7 @@
  */
 
 import { Hono } from 'hono';
+import { v } from 'convex/values';
 import type Redis from 'ioredis';
 import type { MtaConfig } from '../config.js';
 import {
@@ -21,14 +22,17 @@ import {
 } from '../inbound/mailboxResolver.js';
 import { masterKeyAuth } from '../auth/masterKeyAuth.js';
 import { setInboundTlsRequired } from '../inbound/inboundTlsPolicy.js';
+import { readJsonBody } from '../lib/jsonBody.js';
 
-interface CacheEntryBody {
-	mailboxId: string;
-	organizationId: string;
-	quotaBytes?: number;
-	usedBytes?: number;
-	isInboundTlsRequired?: boolean;
-}
+const cacheEntryBody = v.object({
+	mailboxId: v.string(),
+	organizationId: v.string(),
+	quotaBytes: v.optional(v.number()),
+	usedBytes: v.optional(v.number()),
+	isInboundTlsRequired: v.optional(v.boolean()),
+});
+
+const inboundTlsPolicyBody = v.object({ isRequired: v.boolean() });
 
 export function createMailboxRoutes(redis: Redis, config: MtaConfig) {
 	const app = new Hono();
@@ -42,12 +46,11 @@ export function createMailboxRoutes(redis: Redis, config: MtaConfig) {
 		if (!address || !address.includes('@')) {
 			return c.json({ error: 'Invalid address' }, 400);
 		}
-		const body = await c.req.json<CacheEntryBody>();
+		const read = await readJsonBody(c, cacheEntryBody);
+		if (!read.ok) return read.response;
+		const body = read.value;
 		if (!body.mailboxId || !body.organizationId) {
 			return c.json({ error: 'mailboxId and organizationId are required' }, 400);
-		}
-		if (body.isInboundTlsRequired !== undefined && typeof body.isInboundTlsRequired !== 'boolean') {
-			return c.json({ error: 'isInboundTlsRequired must be a boolean' }, 400);
 		}
 		await setMailboxCache(redis, address, {
 			mailboxId: body.mailboxId,
@@ -64,12 +67,13 @@ export function createMailboxRoutes(redis: Redis, config: MtaConfig) {
 	// Update the instance-wide SMTP acceptance floor immediately after an
 	// owner/admin changes it in Convex. Missing state defaults to required.
 	app.post('/inbound-tls-policy', async (c) => {
-		const body = await c.req.json<{ isRequired?: unknown }>();
-		if (typeof body.isRequired !== 'boolean') {
-			return c.json({ error: 'isRequired must be a boolean' }, 400);
-		}
-		await setInboundTlsRequired(redis, body.isRequired);
-		return c.json({ success: true, isRequired: body.isRequired });
+		const read = await readJsonBody(c, inboundTlsPolicyBody, {
+			invalidMessage: 'isRequired must be a boolean',
+		});
+		if (!read.ok) return read.response;
+		const { isRequired } = read.value;
+		await setInboundTlsRequired(redis, isRequired);
+		return c.json({ success: true, isRequired });
 	});
 
 	// Remove cache entry.

@@ -4,7 +4,14 @@ import type { Id } from '@owlat/api/dataModel';
 import { useOrganization } from '~/composables/useOrganization';
 import { teamThreadPreview } from '~/utils/teamThreadPreviews';
 import { formatRelativeTime } from '~/utils/formatters';
-import { otherWaitingDrafts, pickReplyTarget, replySubject } from '~/utils/teamThreadReply';
+import {
+	isChannelMessage,
+	otherWaitingDrafts,
+	pickReplyTarget,
+	replySubject,
+} from '~/utils/teamThreadReply';
+import { vReplyDrop } from '~/composables/useReplyFileDrop';
+import type { ReplyDropTarget } from '~/utils/replyFileDrop';
 import { countMentionsOf, type ReplyEntry } from '~/utils/teamStream';
 import { useTeamThread } from '~/composables/team/useTeamThread';
 import { useZenMode } from '~/composables/useZenMode';
@@ -20,6 +27,8 @@ import {
 } from '~/utils/teamThreadPriority';
 import { useTeamThreadCommandSurface } from '~/composables/team/useTeamThreadCommandSurface';
 import { useRecordPaletteObjectOpen } from '~/composables/useCommandPaletteObjectRecents';
+import { isAutoClosed, threadAutoCloseFact, threadAutoCloseSwitch } from '~/utils/inboxAutoClose';
+import { useConversationLink } from '~/composables/useConversationLink';
 
 const { t, locale } = useI18n();
 // Zen: the conversation and the reply only; the side cards wait outside.
@@ -52,6 +61,7 @@ const {
 	handleUnsnooze,
 	handleAssign,
 	handleSetPriority,
+	handleSetAutoClose,
 } = useThreadDetail(threadId);
 const { isEnabled: isFeatureEnabled } = useFeatureFlag();
 const answerNav = useAnswerModeNav();
@@ -220,6 +230,13 @@ const replySenderLabel = computed(() => {
 	}
 	return replyTarget.value?.from ?? '';
 });
+// Files dropped on the thread reply to it with them, as Reply does. Only for a
+// viewer who may reply, and only by email: a channel reply carries no files.
+const replyDrop = computed<ReplyDropTarget | null>(() =>
+	isAdmin.value && replyTarget.value && !isChannelMessage(replyTarget.value)
+		? { kind: 'team', id: threadId.value, recipient: replySenderLabel.value }
+		: null
+);
 // ── The stream: emails, replies, internal notes and what happened, in one order ──
 const team = useTeamThread({
 	target: () => ({ kind: 'team', id: threadId.value }),
@@ -264,6 +281,12 @@ async function onSetPriority(next: TeamThreadPriority) {
 	}
 }
 
+// "Copy link" / "Share in chat…" (header ⋯ and palette). The link opens for
+// whoever can read the Team Inbox; it grants nothing by itself.
+const { copyConversationLink } = useConversationLink();
+const copyThreadLink = () => void copyConversationLink({ kind: 'team', threadId: threadId.value });
+const showShareInChat = ref(false);
+
 // ⌘K on this thread: every verb the page has (`~/lib/commandPaletteThreadSurfaces`),
 // and the thread joins the palette's "Jump back" list.
 useTeamThreadCommandSurface({
@@ -286,6 +309,9 @@ useTeamThreadCommandSurface({
 	// After the palette has closed and handed focus back.
 	onAddNote: () => window.setTimeout(() => composer.value?.focus('note'), 0),
 	onSetPriority: (next) => void onSetPriority(next),
+	onCopyLink: copyThreadLink,
+	canShareInChat: () => chatEnabled.value,
+	onShareInChat: () => (showShareInChat.value = true),
 });
 useRecordPaletteObjectOpen(() =>
 	thread.value
@@ -365,6 +391,37 @@ const currentStatus = computed<(typeof statusOptions)[number]>(() => {
 	// Legacy `closed` (and anything unexpected) reads as Resolved.
 	return status === 'open' || status === 'waiting' ? status : 'resolved';
 });
+
+// Auto-close: the rule's state for this thread (when it will close, whether
+// it opted out), the switch in the header's ⋯ menu, and the notice with Reopen
+// over a thread the sweep resolved.
+const { data: autoClose } = useConvexQuery(api.inbox.autoClose.getThreadAutoClose, () =>
+	isAdmin.value ? { threadId: threadId.value } : 'skip'
+);
+const autoCloseSwitch = computed(() => threadAutoCloseSwitch(autoClose.value ?? null));
+const autoCloseFact = computed(() => threadAutoCloseFact(autoClose.value ?? null));
+const isReopening = ref(false);
+async function onReopen() {
+	isReopening.value = true;
+	try {
+		const result = await handleStatusChange('open');
+		if (result.ok) showToast(t('dashboard.inbox.detail.autoClose.reopenedToast'));
+	} finally {
+		isReopening.value = false;
+	}
+}
+async function onAutoClose(isDisabled: boolean) {
+	const result = await handleSetAutoClose(isDisabled);
+	if (result.ok && result.result.changed) {
+		showToast(
+			t(
+				isDisabled
+					? 'dashboard.inbox.detail.autoClose.turnedOffToast'
+					: 'dashboard.inbox.detail.autoClose.turnedOnToast'
+			)
+		);
+	}
+}
 
 // Chat integration: surface existing chat channels that already discuss this
 // thread, and offer to spin up a new one. Only active when the chat flag is
@@ -495,14 +552,27 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 					:assigned-member-name="assignedMemberName"
 					:is-snoozed="isSnoozed"
 					:current-status="currentStatus"
+					:auto-close="autoCloseSwitch"
 					@reply="openReply()"
 					@assign="onAssign"
 					@new-channel="showNewChannel = true"
 					@snooze="showSnoozeDialog = true"
 					@unsnooze="onUnsnooze"
 					@status="handleStatusChange"
+					@auto-close="onAutoClose"
+					@copy-link="copyThreadLink"
+					@share-in-chat="showShareInChat = true"
 				/>
 			</div>
+
+			<InboxAutoClosedNotice
+				v-if="isAutoClosed(thread) && thread.autoClosedAt"
+				:auto-closed-at="thread.autoClosedAt"
+				:quiet-days="autoClose?.autoClosedQuietDays ?? null"
+				:can-reopen="isAdmin"
+				:busy="isReopening"
+				@reopen="onReopen"
+			/>
 
 			<PostboxSnoozeDialog
 				:open="showSnoozeDialog"
@@ -517,6 +587,12 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 				@close="showNewChannel = false"
 				@created="onChannelCreated"
 			/>
+			<LazyChatLinkEmailDialog
+				v-if="showShareInChat && chatEnabled"
+				:conversation="{ kind: 'team', threadId }"
+				audience="team"
+				@close="showShareInChat = false"
+			/>
 
 			<!-- From xl the side column keeps a fixed width instead of a third of an
 			     ever wider page. -->
@@ -526,6 +602,7 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 			>
 				<!-- The thread as one stream; the open actions pinned above it. -->
 				<div
+					v-reply-drop="replyDrop"
 					class="space-y-4"
 					:class="isZen ? '' : 'lg:col-span-2 xl:col-span-1'"
 					data-testid="team-thread-main"
@@ -573,17 +650,18 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 					/>
 
 					<!-- Internal note or Reply to the customer (Answer mode), each with its own draft. -->
-					<TeamNoteComposer
-						v-if="isAdmin"
-						ref="composer"
-						v-model:reply-draft="replyDraft"
-						:draft-key="teamNoteDraftKey(threadId)"
-						:reply-name="replyTarget ? replySenderLabel : null"
-						:items="team.items.value"
-						:candidates-for="team.candidatesFor"
-						:submit-note="team.postNote"
-						@reply="openReply()"
-					/>
+					<AppErrorBoundary v-if="isAdmin" surface="composer">
+						<TeamNoteComposer
+							ref="composer"
+							v-model:reply-draft="replyDraft"
+							:draft-key="teamNoteDraftKey(threadId)"
+							:reply-name="replyTarget ? replySenderLabel : null"
+							:items="team.items.value"
+							:candidates-for="team.candidatesFor"
+							:submit-note="team.postNote"
+							@reply="openReply()"
+						/>
+					</AppErrorBoundary>
 				</div>
 
 				<div v-if="!isZen" class="space-y-6">
@@ -659,6 +737,24 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 								>
 									{{ formatRelativeTime(thread.lastMessageAt) }}
 								</time>
+							</div>
+							<!-- Auto-close READS here and is switched in the header's ⋯ menu. -->
+							<div v-if="autoCloseFact" data-testid="thread-auto-close-fact">
+								<p class="text-xs text-text-tertiary">
+									{{ t('dashboard.inbox.detail.autoClose.label') }}
+								</p>
+								<p v-if="'dueAt' in autoCloseFact" class="text-sm text-text-primary">
+									<time
+										:datetime="new Date(autoCloseFact.dueAt).toISOString()"
+										:title="absoluteTime(autoCloseFact.dueAt)"
+									>
+										{{ t(autoCloseFact.key, { time: formatRelativeTime(autoCloseFact.dueAt) }) }}
+									</time>
+								</p>
+								<p v-else-if="'days' in autoCloseFact" class="text-sm text-text-primary">
+									{{ t(autoCloseFact.key, { days: autoCloseFact.days }, autoCloseFact.days) }}
+								</p>
+								<p v-else class="text-sm text-text-primary">{{ t(autoCloseFact.key) }}</p>
 							</div>
 						</div>
 					</div>

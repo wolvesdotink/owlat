@@ -35,7 +35,7 @@ import {
 } from '@owlat/shared/deliverabilityRouting';
 import type { MutationCtx } from '../_generated/server';
 import { adminMutation } from '../lib/authedFunctions';
-import { getMutationContext, getSingletonOrganizationId } from '../lib/sessionOrganization';
+import { getSingletonOrganizationId } from '../lib/sessionOrganization';
 import { loadRouteStateCell } from '../lib/deliverabilityRouteState';
 import { nextPhaseCeiling, normalizePhaseCeiling } from './ramp/controllerConfig';
 import { evaluatePhasePromotion, type PromotionConditionId } from './ramp/phasePromotion';
@@ -202,8 +202,8 @@ export const promoteCellPhase = adminMutation({
 		stream: deliverabilityStreamValidator,
 		destinationProvider: destinationProviderValidator,
 	},
-	handler: async (ctx, args): Promise<RampPromotionResult> => {
-		const { userId } = await getMutationContext(ctx);
+	handler: async (ctx, args, session): Promise<RampPromotionResult> => {
+		const { userId } = session;
 		const organizationId = await getSingletonOrganizationId(ctx);
 		const cell: DeliverabilityCell = {
 			stream: args.stream,

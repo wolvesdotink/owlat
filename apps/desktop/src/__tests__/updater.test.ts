@@ -1,13 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// Mock the Tauri IPC surface: `invoke` is a spy, `Channel` a stand-in whose
+// Mock the Tauri IPC surface: `invoke` is a spy, `Channel` a stand-in that
+// takes its handler through the constructor like the real one, and whose
 // `onmessage` the fake command drives so progress events can be asserted.
 // Hoisted so the spies exist when the factory runs.
 const { invokeMock, listenMock, FakeChannel } = vi.hoisted(() => ({
 	invokeMock: vi.fn(),
 	listenMock: vi.fn(),
 	FakeChannel: class {
-		onmessage: ((event: unknown) => void) | null = null;
+		constructor(readonly onmessage?: (event: unknown) => void) {}
 	},
 }));
 type FakeChannel = InstanceType<typeof FakeChannel>;

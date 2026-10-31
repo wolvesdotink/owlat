@@ -16,6 +16,8 @@ type ListedProperty = Doc<'contactProperties'> & { deletion?: PropertyDeletionVi
 // Query to list the contact properties. A property being deleted is left out
 // (pickers must not offer it) unless the caller asks for it: the admin page
 // shows it with its deletion progress.
+// all-members: the property definitions back the contact form, filters and
+// segment rules every role uses; writing them needs contacts:manage.
 export const listByOrganization = authedQuery({
 	args: { includePendingDeletion: v.optional(v.boolean()) },
 	handler: async (ctx, args): Promise<ListedProperty[]> => {
@@ -40,8 +42,8 @@ export const create = authedMutation({
 		label: v.string(),
 		type: fieldTypeValidator,
 	},
-	handler: async (ctx, args) => {
-		await requireContactsManage(ctx);
+	handler: async (ctx, args, session) => {
+		requireContactsManage(session);
 
 		// Check if property with same key already exists
 		const existing = await ctx.db
@@ -73,8 +75,8 @@ export const update = authedMutation({
 		propertyId: v.id('contactProperties'),
 		label: v.optional(v.string()),
 	},
-	handler: async (ctx, args) => {
-		await requireContactsManage(ctx);
+	handler: async (ctx, args, session) => {
+		requireContactsManage(session);
 
 		const property = await getOrThrow(ctx, args.propertyId, 'Property');
 		if (isPropertyPendingDeletion(property)) {
@@ -99,7 +101,7 @@ export const update = authedMutation({
 export const remove = authedMutation({
 	args: { propertyId: v.id('contactProperties') },
 	handler: async (ctx, args, session): Promise<'deleted' | 'pending'> => {
-		await requireContactsManage(ctx);
+		requireContactsManage(session);
 
 		const property = await getOrThrow(ctx, args.propertyId, 'Property');
 		return await requestPropertyDeletion(ctx, property, session.userId);

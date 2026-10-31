@@ -14,7 +14,7 @@ import type { DeliveryDomain, GovernedMessageType } from '@owlat/shared';
 import type { MtaRoutingReentry } from '@owlat/mta-protocol/send';
 import { getOptional } from '../env';
 import { isSendProviderKind, type SendProviderKind } from './catalog';
-import { EmailErrorCode, type EmailSendAttempt } from './errors';
+import type { EmailErrorCode, EmailSendAttempt } from './errors';
 import type { SystemMailExtrasCapableModule } from './systemMailExtras';
 import type { SendTransportId, SendTransportRecord } from './transports';
 
@@ -142,8 +142,8 @@ export interface MtaExtras {
 	/** Domain for DKIM signing */
 	dkimDomain?: string;
 	organizationId?: string;
-	messageType?: import('@owlat/shared').GovernedMessageType;
-	deliveryDomain?: import('@owlat/shared').DeliveryDomain;
+	messageType?: GovernedMessageType;
+	deliveryDomain?: DeliveryDomain;
 	intakePath?: 'system';
 	routingLease?: string;
 	/** Decision input bound into the authenticated routing lease. */

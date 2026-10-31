@@ -38,10 +38,12 @@ import { startLeaderElection, isLeader, stopLeaderElection } from './lib/leaderE
 import { fetchPostmasterData } from './monitoring/postmaster.js';
 import { checkRotationStatus, activatePendingKey } from './smtp/dkimRotation.js';
 import type { DkimRotationNotifier } from './smtp/dkimRotation.js';
-import { generateAndSendReports as sendTlsReports } from './smtp/tlsRpt.js';
+import { generateAndSendReports as sendTlsReports } from './smtp/tlsRptReport.js';
 import { notifyConvex } from './webhooks/convexNotifier.js';
 import { sweepWebhookDlq } from './webhooks/dlqSweeper.js';
 import { logger } from './monitoring/logger.js';
+import { startMtaWireReports } from './monitoring/wireReport.js';
+import { startProcessing } from './lib/startProcessing.js';
 import { stopIntake } from './lib/stopIntake.js';
 import { fireAndForget } from './lib/fireAndForget.js';
 import { installCrashHandlers, installShutdown, pinoShutdownLog } from '@owlat/shared/nodeShutdown';
@@ -360,8 +362,17 @@ export async function main() {
 		6 * 60 * 60 * 1000
 	);
 
-	// ── 15. Start GroupMQ worker ──
-	await worker.run();
+	// ── 15. Start the GroupMQ worker, then report this replica's wire version ──
+	// (every replica, not only the leader). The loop is not awaited: it runs
+	// until the worker stops, and the shutdown hooks below must be installed now.
+	const wireReports = startProcessing({
+		worker,
+		startReports: () => startMtaWireReports(config),
+		onLoopFailure: (err) => {
+			logger.fatal({ err }, 'GroupMQ worker loop failed');
+			process.exit(1);
+		},
+	});
 	logger.info('GroupMQ worker started');
 
 	// ── Graceful shutdown ──
@@ -391,7 +402,7 @@ export async function main() {
 					suppressionSweepInterval,
 				],
 				// Stop claiming liveness the moment we start draining.
-				stops: [() => bounceTlsReload.stop(), stopHeartbeat],
+				stops: [() => bounceTlsReload.stop(), stopHeartbeat, wireReports.stop],
 				listeners: [
 					[bounceServer, 'Bounce server close failed'],
 					[submissionServer, 'Submission server close failed'],

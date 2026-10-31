@@ -94,24 +94,28 @@ function moveProvider(index: number, direction: -1 | 1) {
 				<div class="flex items-center gap-3 p-3">
 					<!-- Reorder -->
 					<div class="flex flex-col">
-						<button
-							type="button"
-							class="p-0.5 text-text-tertiary hover:text-text-primary disabled:opacity-30"
-							:disabled="index === 0"
-							:title="t('dashboard.admin.delivery.providerRouting.editModal.moveUp')"
-							@click="moveProvider(index, -1)"
-						>
-							<Icon name="lucide:chevron-up" class="w-4 h-4" />
-						</button>
-						<button
-							type="button"
-							class="p-0.5 text-text-tertiary hover:text-text-primary disabled:opacity-30"
-							:disabled="index === providers.length - 1"
-							:title="t('dashboard.admin.delivery.providerRouting.editModal.moveDown')"
-							@click="moveProvider(index, 1)"
-						>
-							<Icon name="lucide:chevron-down" class="w-4 h-4" />
-						</button>
+						<UiTooltip :text="t('dashboard.admin.delivery.providerRouting.editModal.moveUp')">
+							<button
+								type="button"
+								class="p-0.5 text-text-tertiary hover:text-text-primary disabled:opacity-30"
+								:disabled="index === 0"
+								:aria-label="t('dashboard.admin.delivery.providerRouting.editModal.moveUp')"
+								@click="moveProvider(index, -1)"
+							>
+								<Icon name="lucide:chevron-up" class="w-4 h-4" />
+							</button>
+						</UiTooltip>
+						<UiTooltip :text="t('dashboard.admin.delivery.providerRouting.editModal.moveDown')">
+							<button
+								type="button"
+								class="p-0.5 text-text-tertiary hover:text-text-primary disabled:opacity-30"
+								:disabled="index === providers.length - 1"
+								:aria-label="t('dashboard.admin.delivery.providerRouting.editModal.moveDown')"
+								@click="moveProvider(index, 1)"
+							>
+								<Icon name="lucide:chevron-down" class="w-4 h-4" />
+							</button>
+						</UiTooltip>
 					</div>
 
 					<!-- Enabled toggle + name -->
@@ -159,7 +163,7 @@ function moveProvider(index: number, direction: -1 | 1) {
 							type="number"
 							min="0"
 							max="100"
-							class="input w-20 text-sm"
+							class="input w-20"
 							:disabled="!provider.isEnabled"
 						/>
 						<span class="text-xs text-text-tertiary">{{

@@ -11,6 +11,7 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { EMPTY_ACTIVE_MARKS } from '@owlat/ui/composables/useRichText';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+import { tooltipOf } from '~/__tests__/tooltip';
 
 import PostboxFloatingFormatBar from '../PostboxFloatingFormatBar.vue';
 import PostboxEditorToolbar from '../PostboxEditorToolbar.vue';
@@ -48,13 +49,13 @@ describe('PostboxFloatingFormatBar', () => {
 	it('renders the format toolbar when a selection anchors the bar', () => {
 		const wrapper = mountBar();
 		expect(wrapper.find('[data-testid="postbox-floating-format-bar"]').exists()).toBe(true);
-		// Format buttons are present (Bold has a recognizable title).
-		expect(wrapper.find('button[title^="Bold"]').exists()).toBe(true);
+		// Format buttons are present (Bold has a recognizable name).
+		expect(wrapper.find('button[aria-label="Bold"]').exists()).toBe(true);
 	});
 
 	it('forwards a format command to the parent', async () => {
 		const wrapper = mountBar();
-		await wrapper.find('button[title^="Bold"]').trigger('click');
+		await wrapper.find('button[aria-label="Bold"]').trigger('click');
 		expect(wrapper.emitted('bold')).toHaveLength(1);
 	});
 
@@ -66,13 +67,27 @@ describe('PostboxFloatingFormatBar', () => {
 	it('renders the AI actions in the same combined bar when showAiActions is on', () => {
 		const wrapper = mountBar({ showAiActions: true, aiLanguages: ['Spanish'] });
 		// Both the format buttons AND the AI actions live in the one bar.
-		expect(wrapper.find('button[title^="Bold"]').exists()).toBe(true);
+		expect(wrapper.find('button[aria-label="Bold"]').exists()).toBe(true);
 		expect(wrapper.find('[data-testid="postbox-rewrite-actions"]').exists()).toBe(true);
 	});
 
 	it('forwards an AI action selection as ai-select', async () => {
 		const wrapper = mountBar({ showAiActions: true, aiLanguages: ['Spanish'] });
-		await wrapper.find('button[title="Shorter"]').trigger('click');
+		const shorter = wrapper
+			.findAll('[data-testid="postbox-rewrite-actions"] button')
+			.find((button) => button.text() === 'Shorter');
+		await shorter!.trigger('click');
 		expect(wrapper.emitted('ai-select')?.[0]).toEqual([{ intent: 'shorter' }]);
+	});
+
+	it('gives the rewrite buttons no tooltip that repeats their label; Translate keeps its own', () => {
+		const wrapper = mountBar({ showAiActions: true, aiLanguages: ['Spanish'] });
+		const buttons = wrapper.findAll('[data-testid="postbox-rewrite-actions"] button');
+		const shorter = buttons.find((button) => button.text() === 'Shorter')!;
+		expect(shorter.attributes('title')).toBeUndefined();
+		expect(tooltipOf(wrapper, shorter)).toBeUndefined();
+		const translate = buttons.find((button) => button.text() === 'Translate')!;
+		expect(translate.attributes('title')).toBeUndefined();
+		expect(tooltipOf(wrapper, translate)).toBe('Translate…');
 	});
 });

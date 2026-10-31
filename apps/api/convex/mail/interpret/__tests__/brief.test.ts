@@ -9,7 +9,7 @@ import schema from '../../../schema';
 import { api, internal } from '../../../_generated/api';
 import type { Id } from '../../../_generated/dataModel';
 import { selectPromptItems } from '../load';
-import { resolveThreadDefaultView } from '../preferences';
+import { threadRefToFields } from '../../../lib/validators/threadRef';
 import { gapOf, sinceLastSeenOf } from '../briefRead';
 import { MAX_PROMPT_ITEMS } from '../schema';
 import { captureInterpretSource } from '../sources';
@@ -279,37 +279,23 @@ describe('viewer state', () => {
 		expect(view.forYou.find((i) => i.text === 'Book the room')?.isNew).toBe(true);
 	});
 
-	it('stores and clears a per-thread view override, personal mail threads only', async () => {
+	it('returns a per-thread view override the viewer has stored', async () => {
 		const t = convexTest(schema, modules);
 		const { threadId } = await seedMailThread(t);
 		const ref = { kind: 'mail' as const, id: threadId };
-		await t.mutation(api.mail.interpret.brief.setViewOverride, {
-			threadRef: ref,
-			view: 'conversation',
-		});
-		const read = () =>
-			t.run(async (ctx) =>
-				ctx.db
-					.query('threadViewerState')
-					.withIndex('by_user_and_mail_thread', (q) =>
-						q.eq('userId', 'user-A').eq('mailThreadId', threadId)
-					)
-					.first()
-			);
-		expect((await read())?.viewOverride).toBe('conversation');
+		await t.run((ctx) =>
+			ctx.db.insert('threadViewerState', {
+				...threadRefToFields(ref),
+				userId: 'user-A',
+				viewOverride: 'conversation',
+				seenInterpretationRevision: 0,
+				seenActivitySeq: 0,
+				updatedAt: Date.now(),
+			})
+		);
 		expect(
 			await t.query(api.mail.interpret.brief.get, { threadRef: ref, locale: 'en' })
 		).toMatchObject({ viewOverride: 'conversation' });
-		await t.mutation(api.mail.interpret.brief.setViewOverride, { threadRef: ref, view: null });
-		expect((await read())?.viewOverride).toBeUndefined();
-
-		const team = await seedTeamThread(t);
-		await expect(
-			t.mutation(api.mail.interpret.brief.setViewOverride, {
-				threadRef: { kind: 'team', id: team.threadId },
-				view: 'overview',
-			})
-		).rejects.toThrow();
 	});
 
 	it('refuses markSeen on a thread the caller cannot read', async () => {
@@ -319,30 +305,6 @@ describe('viewer state', () => {
 		await expect(
 			t.mutation(api.mail.interpret.brief.markSeen, { threadRef: { kind: 'mail', id: threadId } })
 		).rejects.toThrow();
-	});
-});
-
-describe('view preference (D1)', () => {
-	it('defaults to Overview, Conversation when auto-summarize is off, and the explicit choice wins', () => {
-		expect(resolveThreadDefaultView(null)).toBe('overview');
-		expect(resolveThreadDefaultView({ isAutoSummarizeOn: false })).toBe('conversation');
-		expect(
-			resolveThreadDefaultView({ isAutoSummarizeOn: false, threadDefaultView: 'overview' })
-		).toBe('overview');
-	});
-
-	it('saves the default on a team-only install', async () => {
-		const t = convexTest(schema, modules);
-		await seedTeamThread(t); // turns `inbox` on, no Postbox flag
-		expect(await t.query(api.mail.interpret.preferences.getViewPreference, {})).toEqual({
-			threadDefaultView: 'overview',
-			isExplicit: false,
-		});
-		await t.mutation(api.mail.interpret.preferences.setThreadDefaultView, { view: 'conversation' });
-		expect(await t.query(api.mail.interpret.preferences.getViewPreference, {})).toEqual({
-			threadDefaultView: 'conversation',
-			isExplicit: true,
-		});
 	});
 });
 

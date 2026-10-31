@@ -1,5 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import Redis from 'ioredis-mock';
 import type RealRedis from 'ioredis';
 import {
@@ -287,6 +286,26 @@ describe('contentScreening', () => {
 				verdict: 'accept',
 				sizeLimitKb: 500,
 			});
+		});
+
+		it.each<[string, unknown]>([
+			['null', null],
+			['an array', [{ score: 99, action: 'reject' }]],
+			['no score', { action: 'reject' }],
+			['a string score', { score: '99', action: 'reject' }],
+		])('fails open on a verdict with %s, for the preview and the send', async (_label, body) => {
+			const scored = { ...config, rspamdUrl: 'http://rspamd:11333' };
+			vi.stubGlobal(
+				'fetch',
+				vi.fn().mockImplementation(async () => new Response(JSON.stringify(body)))
+			);
+			expect(await previewScreening(redis, { subject: 'Hi', html: '<p>x</p>' }, scored)).toEqual({
+				enabled: true,
+				verdict: 'accept',
+				sizeLimitKb: 500,
+			});
+			const job = createTestEmailJob({ html: '<p>x</p>' });
+			expect((await screenContent(redis, job, scored)).allowed).toBe(true);
 		});
 	});
 });

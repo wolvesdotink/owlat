@@ -1,10 +1,10 @@
 /**
- * THE REGISTRY CONTRACT (seams plan D9).
+ * THE REGISTRY CONTRACT.
  *
  * Two claims, and the second is the one worth writing:
  *
  *  1. EVERY SOURCE DECLARES ITS ABSENCE — a behaviour, a sentence an operator
- *     can read, and the non-blocking promise plan D2 makes on every one of them.
+ *     can read, and the promise that an absent source never blocks.
  *  2. THE DECLARATION IS TRUE. A field saying "absent means substitute" that no
  *     test drives is a comment with a colon in it, so every source is driven
  *     with its evidence removed and its ACTUAL answer is checked against what it
@@ -117,7 +117,7 @@ const NO_SIGNAL: Readonly<Record<SignalSourceKey, () => SignalCollection<unknown
 describe('every registered source declares its absence', () => {
 	it.each(allSignalSources())('$key declares a non-blocking absence', (source) => {
 		expect(SIGNAL_SOURCE_KINDS).toContain(source.kind);
-		// D2 in one assertion: an absent source may never block. The field is typed
+		// One assertion: an absent source may never block. The field is typed
 		// `false`, so this pins the VALUE against a cast rather than the type.
 		expect(source.absence.isBlocking).toBe(false);
 		expect(source.absence.note.length).toBeGreaterThan(0);
@@ -168,7 +168,7 @@ describe('the declared absence is what actually happens', () => {
 			case 'hold': {
 				// A holding source STILL ANSWERS: the aggregator has to weigh the hold
 				// above `pass`, so an absent reading here would be the ramp advancing
-				// on nothing (plan D10).
+				// on nothing.
 				expect(collected.available).toBe(true);
 				if (!collected.available) return;
 				const status: RampGateStatus = (collected.reading as RampGateResult).status;

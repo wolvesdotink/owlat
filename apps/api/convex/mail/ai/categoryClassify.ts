@@ -18,7 +18,7 @@
  *      inbound mail, so it is framed as untrusted DATA (SYSTEM_GUARD), mirroring
  *      mail/ai/assist.ts. The result only ever updates the advisory grouping — it never
  *      sends or modifies mail. A rate-limited gate is retried, backed off, up to
- *      {@link MAX_RATE_LIMIT_RETRIES} times; a budget refusal defers (D1).
+ *      {@link MAX_RATE_LIMIT_RETRIES} times; a budget refusal defers.
  */
 
 import { v, type ObjectType } from 'convex/values';
@@ -115,10 +115,10 @@ const classifyThreadArgs = {
 	baselineApplied: v.optional(v.boolean()),
 	/** Runs this work deferred at the spend ceiling. */
 	deferrals: v.optional(v.number()),
-	/** Runs this work tried again after a rate-limited gate (#1380). */
+	/** Runs this work tried again after a rate-limited gate. */
 	rateLimitRetries: v.optional(v.number()),
 	/**
-	 * Read on arrival R2 (SPEC §6.2): the delivered message. Its pending rule
+	 * Read on arrival R2: the delivered message. Its pending rule
 	 * questions are answered too, from its own text, even when the category
 	 * settles without the model.
 	 */
@@ -148,7 +148,7 @@ async function retryRateLimited(
 
 /**
  * R2 for a category already settled (an override, a heuristic label): this
- * message's questions and the cold-pitch question for a candidate (#1381),
+ * message's questions and the cold-pitch question for a candidate,
  * in one call; either alone is enough to make it. A heuristic label does not
  * keep a pitch out of Needs you (a settled reply verdict outranks it), so a
  * candidate is asked here too. The answers are committed through the rules
@@ -201,13 +201,13 @@ export const classifyThread = internalAction({
 				threadId: args.threadId,
 			});
 			if (!context) return;
-			// R2: this message's pending rule questions (the rules hook; SPEC §6.2).
+			// R2: this message's pending rule questions (the rules hook).
 			const questions = args.messageId
 				? await ctx.runQuery(internal.mail.arrival.r2.arrivalQuestions, {
 						messageId: args.messageId,
 					})
 				: [];
-			// #1381: a sender the cheap evidence leaves open also gets the cold-pitch question.
+			// A sender the cheap evidence leaves open also gets the cold-pitch question.
 			const isColdPitchAsked = args.messageId
 				? await ctx.runQuery(internal.mail.arrival.coldPitch.isAskable, {
 						messageId: args.messageId,
@@ -267,8 +267,8 @@ export const classifyThread = internalAction({
 			let settled: MailCategory = 'other';
 			try {
 				// Same gate as the user-triggered Postbox AI: `ai` feature flag +
-				// rate limit, charged to the mailbox owner's background bucket
-				// (#1380). Throws when disabled/limited → the `other` baseline stays.
+				// rate limit, charged to the mailbox owner's background bucket.
+				// Throws when disabled/limited → the `other` baseline stays.
 				await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {
 					ownerUserId: context.ownerUserId,
 				});
@@ -350,7 +350,7 @@ export const classifyThread = internalAction({
 					settled = resolved.label;
 				}
 			} catch (error) {
-				rethrowAdmissionRefusal(error); // a budget refusal defers the run (D1)
+				rethrowAdmissionRefusal(error); // a budget refusal defers the run
 				// Rate-limited: try again, backed off and bounded, instead of
 				// keeping the baseline for good. The retry runs the bundle below.
 				const limited = rateLimitRefusalOf(error);
@@ -364,7 +364,7 @@ export const classifyThread = internalAction({
 			}
 
 			// Phase 2: the category and disposition bundle runs BESIDE the
-			// refinement, for ambiguous mail only, and never moves the thread (D9).
+			// refinement, for ambiguous mail only, and never moves the thread.
 			// Off by default: nothing is scheduled.
 			await schedulePostboxMessageBundle(ctx, {
 				threadId: args.threadId,

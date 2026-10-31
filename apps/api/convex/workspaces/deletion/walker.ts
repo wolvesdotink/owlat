@@ -42,7 +42,6 @@ import { logError } from '../../lib/runtimeLog';
 import { readActiveWorkspaceDeletion } from '../../lib/writeFence';
 import {
 	abortWorkspaceDeletion,
-	beginWorkspaceDeletion,
 	nextTable,
 	readDeletionProgress,
 	readLatestDeletionJob,
@@ -54,8 +53,6 @@ import {
 } from './job';
 import { isTransactionLimitError } from '../../lib/convexLimitErrors';
 import { shrunkPageRows } from './quiesce';
-import { organizationDeletionTableValidator } from './steps/_common';
-import { ORGANIZATION_DELETION_STEPS, STEPS } from './steps/registry';
 
 export { nextTable };
 
@@ -90,19 +87,27 @@ export const drive = internalAction({
 			{}
 		);
 		if (job === null || job.jobId !== jobId || !job.isActive || job.status === 'failed') return;
+		let failure: string | undefined;
 		for (let i = 0; i < TICKS_PER_DRIVE; i++) {
 			let outcome: DeletionTickOutcome;
 			try {
+				// checkpoint: one tick is one transaction of the job and saves the step it
+				// reached on the progress row, where the next tick resumes; every step is
+				// idempotent, so a tick a second chain repeats deletes nothing twice.
 				outcome = await ctx.runMutation(internal.workspaces.deletion.walker.tick, { jobId });
 			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error);
-				await ctx.runMutation(internal.workspaces.deletion.walker.recordFailure, {
-					jobId,
-					error: message.slice(0, MAX_ERROR_CHARS),
-				});
-				return;
+				failure = error instanceof Error ? error.message : String(error);
+				break;
 			}
 			if (outcome !== 'more') return;
+		}
+		if (failure !== undefined) {
+			// The tick that threw rolled back; this records it and schedules the retry.
+			await ctx.runMutation(internal.workspaces.deletion.walker.recordFailure, {
+				jobId,
+				error: failure.slice(0, MAX_ERROR_CHARS),
+			});
+			return;
 		}
 		await ctx.scheduler.runAfter(0, internal.workspaces.deletion.walker.drive, { jobId });
 	},
@@ -194,37 +199,4 @@ export const abort = internalMutation({
 export const status = internalQuery({
 	args: {},
 	handler: async (ctx): Promise<DeletionJobSummary | null> => readLatestDeletionJob(ctx.db),
-});
-
-// ============== previous-release entry points — remove after the next release ==============
-//
-// The previous release scheduled `start` from `settings.remove` and the account
-// deletion cron, and chained `runStep` hops through the tables with no job row.
-// Jobs it queued before the deploy still arrive here by path.
-
-/** The previous release's entry point: now opens (or joins) the job. */
-export const start = internalMutation({
-	args: {},
-	handler: async (ctx): Promise<void> => {
-		await beginWorkspaceDeletion(ctx, { source: 'previous_release' });
-	},
-});
-
-/**
- * The previous release's self-scheduled hop. Runs its batch, then adopts the
- * walk into a job that resumes at the table the hop would have continued with
- * (after quiescing the scheduler), so the rest of it is fenced, checkpointed
- * and verified. When a job already exists its chain owns progress and the hop
- * stops after its batch.
- */
-export const runStep = internalMutation({
-	args: { table: organizationDeletionTableValidator },
-	handler: async (ctx, { table }): Promise<void> => {
-		const { hasMore } = await ORGANIZATION_DELETION_STEPS[table].deleteBatch(ctx);
-		if (await readActiveWorkspaceDeletion(ctx.db)) return;
-		// Past the last table there is nothing left to sweep: re-sweeping the
-		// (empty) last one costs one transaction and leads straight to verify.
-		const resumeAt = (hasMore ? table : nextTable(table)) ?? STEPS[STEPS.length - 1] ?? STEPS[0];
-		await beginWorkspaceDeletion(ctx, { source: 'previous_release' }, resumeAt);
-	},
 });

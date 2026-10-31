@@ -30,19 +30,23 @@ import {
 	offlineCacheNamespace,
 	wipeOfflineReadCache,
 } from '~/utils/postboxOfflineCacheScope';
+import { plainClone } from '@owlat/email-builder/plain-clone';
 import { scheduleIdle } from '~/lib/scheduleIdle';
 
 const STORAGE_KEY = 'owlat:postbox:offline-cache-enabled';
+
+/** "Store recent mail on this device" on a device that never chose. */
+export const POSTBOX_OFFLINE_CACHE_DEFAULT = true;
 
 /**
  * Deep plain-copy for values headed to IndexedDB's structured-clone boundary.
  * Convex query results are reactive proxies; passing one straight to
  * structured-clone throws and permanently disables the cache, so we strip all
- * reactivity to a plain JSON snapshot first.
+ * reactivity to a plain JSON-shaped snapshot first.
  */
 function toPlain<T>(value: readonly T[]): T[] {
 	try {
-		return JSON.parse(JSON.stringify(value)) as T[];
+		return plainClone([...value]);
 	} catch {
 		return [...value];
 	}
@@ -202,7 +206,7 @@ export function usePostboxOfflineCache(mailboxId?: MaybeRefOrGetter<string | nul
 		// Default ON everywhere (plan Q2); an explicit saved choice wins, so a
 		// device where the user switched it off stays off.
 		const stored = IS_CLIENT ? localStorage.getItem(STORAGE_KEY) : null;
-		enabledRef = ref(stored === null ? true : stored === '1');
+		enabledRef = ref(stored === null ? POSTBOX_OFFLINE_CACHE_DEFAULT : stored === '1');
 	}
 	const enabled = enabledRef;
 

@@ -24,6 +24,7 @@ import {
 import type { SmtpPreset } from '~/composables/useSetupWizard';
 import { localized, wizardStubs } from '~/__tests__/transportWizardHarness';
 import { expectFullyLocalized } from '~/__tests__/i18n';
+import type * as SetupWizardCredentialsModule from '~/composables/setupWizardCredentials';
 
 /**
  * PROVIDER N+1, INJECTED — the descriptor shapes the vocabulary allows and no
@@ -61,7 +62,7 @@ const { NEXT_KIND, NEXT_FIELDS } = vi.hoisted(() => ({
 }));
 
 vi.mock('~/composables/setupWizardCredentials', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('~/composables/setupWizardCredentials')>();
+	const actual = await importOriginal<typeof SetupWizardCredentialsModule>();
 	return {
 		...actual,
 		credentialFieldsFor: (kind: string | null | undefined) =>

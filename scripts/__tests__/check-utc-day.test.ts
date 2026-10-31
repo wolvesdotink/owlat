@@ -1,8 +1,10 @@
 /**
- * Conformance for the UTC-day ratchet (`apps/api/scripts/check-utc-day.sh`).
+ * Conformance for the UTC-day gate (`apps/api/scripts/check-utc-day.sh`).
  *
- * The cases run the REAL script's `--generate` half against throwaway
- * `apps/api` trees and pin what it reports: a hand-rolled day start
+ * The gate has no baseline: it hands its findings to `scripts/ratchet.sh
+ * --zero`, so any one fails. The first cases run the REAL script's
+ * `--generate` half against throwaway `apps/api` trees and pin what it
+ * reports: a hand-rolled day start
  * (`setUTCHours(0, 0, 0, 0)`) or day key (`toISOString().slice(0, 10)`,
  * `.split('T')[0]`) under `convex/`, outside `lib/clock.ts`, tests and
  * generated code. Prose that names a spelling is not code and is not reported.
@@ -20,6 +22,7 @@ const REPOSITORY_ROOT = fileURLToPath(new URL('../..', import.meta.url));
 
 const run = promisify(execFile);
 
+const RATCHET = 'scripts/ratchet.sh';
 const GATE = 'apps/api/scripts/check-utc-day.sh';
 
 const roots: string[] = [];
@@ -29,12 +32,18 @@ afterAll(async () => {
 	roots.length = 0;
 });
 
-/** `file:spelling` entries the gate reports for a throwaway tree holding `files`. */
-async function violations(files: Record<string, string>): Promise<string[]> {
-	const root = await mkdtemp(join(tmpdir(), 'owlat-utc-day-gate-'));
+/**
+ * A throwaway repository holding the REAL gate, the REAL ratchet runner it
+ * execs, and `files` under `apps/api/`. `bare` leaves out the source roots the
+ * generator scans.
+ */
+async function tree(files: Record<string, string>, bare = false): Promise<string> {
+	const root = await mkdtemp(join(tmpdir(), 'owlat-api-gate-'));
 	roots.push(root);
 
-	await mkdir(join(root, 'apps/api/convex'), { recursive: true });
+	if (!bare) {
+		await mkdir(join(root, 'apps/api/convex'), { recursive: true });
+	}
 	for (const [path, contents] of Object.entries(files)) {
 		const target = join(root, 'apps/api', path);
 		await mkdir(dirname(target), { recursive: true });
@@ -42,9 +51,26 @@ async function violations(files: Record<string, string>): Promise<string[]> {
 	}
 	await mkdir(join(root, 'apps/api/scripts'), { recursive: true });
 	await copyFile(join(REPOSITORY_ROOT, GATE), join(root, GATE));
+	await mkdir(join(root, 'scripts'), { recursive: true });
+	await copyFile(join(REPOSITORY_ROOT, RATCHET), join(root, RATCHET));
+	return root;
+}
 
-	const { stdout } = await run('bash', [GATE, '--generate'], { cwd: root });
+/** `file:spelling` entries the gate reports for a throwaway tree holding `files`. */
+async function violations(files: Record<string, string>): Promise<string[]> {
+	const { stdout } = await run('bash', [GATE, '--generate'], { cwd: await tree(files) });
 	return stdout.split('\n').filter((line) => line.length > 0);
+}
+
+/** Run the whole gate (generator plus runner) in `root`. */
+async function gate(root: string): Promise<{ code: number; output: string }> {
+	try {
+		const { stdout, stderr } = await run('bash', [GATE], { cwd: root });
+		return { code: 0, output: `${stdout}${stderr}` };
+	} catch (error) {
+		const failure = error as { code?: number; stdout?: string; stderr?: string };
+		return { code: failure.code ?? 1, output: `${failure.stdout ?? ''}${failure.stderr ?? ''}` };
+	}
 }
 
 describe('convex UTC-day ratchet', () => {
@@ -99,5 +125,45 @@ describe('convex UTC-day ratchet', () => {
 				'convex/lib/stamp.ts': 'const minute = new Date(at).toISOString().slice(0, 16);\n',
 			})
 		).toEqual([]);
+	});
+});
+
+describe('convex UTC-day ratchet, as a gate with no baseline', () => {
+	it('passes a clean tree without any baseline file', async () => {
+		const result = await gate(
+			await tree({
+				'convex/lib/caps.ts':
+					"import { utcDayStart } from './clock';\nconst start = utcDayStart(now);\n",
+			})
+		);
+		expect(result.output).toContain('(no baseline, none allowed)');
+		expect(result.code).toBe(0);
+	});
+
+	it('fails a tree with one occurrence and names it', async () => {
+		const result = await gate(
+			await tree({ 'convex/lib/caps.ts': 'const start = new Date(now).setUTCHours(0, 0, 0, 0);\n' })
+		);
+		expect(result.code).toBe(1);
+		expect(result.output).toContain(
+			'FAIL: 1 hand-rolled UTC day primitive(s) outside convex/lib/clock.ts:'
+		);
+		expect(result.output).toContain('convex/lib/caps.ts:');
+	});
+
+	it('propagates a generator failure instead of passing an empty tree', async () => {
+		const result = await gate(await tree({}, true));
+		expect(result.code).toBe(1);
+		expect(result.output).toContain('convex/ missing');
+		expect(result.output).not.toContain('ok:');
+	});
+
+	it('refuses to seed a baseline with --write-baseline', async () => {
+		const root = await tree({
+			'convex/lib/caps.ts': 'const start = new Date(now).setUTCHours(0, 0, 0, 0);\n',
+		});
+		await expect(run('bash', [GATE, '--write-baseline'], { cwd: root })).rejects.toMatchObject({
+			code: 2,
+		});
 	});
 });

@@ -10,57 +10,6 @@
  * deletes these entries edits data, not the walk.
  */
 export const PREVIOUS_RELEASE_ENTRIES: Readonly<Record<string, string>> = {
-	'webhooks/fanout.ts#fanoutEvent': 'fanout jobs queued before the deploy',
-	'webhooks/fanout.ts#deliverEvent': 'single-target jobs queued before the deploy',
-	'webhooks/deliveryQueries.ts#getWebhooksForEvent': 'old fanout actions mid-run',
-	'webhooks/deliveryQueries.ts#getWebhook': 'old fanout/delivery actions mid-run',
-	'webhooks/deliveryQueries.ts#createDeliveryLog': 'old fanout actions mid-run',
-	'webhooks/deliveryQueries.ts#markDeliverySuccess': 'old delivery actions mid-run',
-	'webhooks/deliveryQueries.ts#markDeliveryRetrying': 'old delivery actions mid-run',
-	'webhooks/deliveryQueries.ts#markDeliveryFailed': 'old delivery actions mid-run',
-	'automations/lifecycle.ts#recordRunFailure': 'old step walker actions mid-run',
-	'integrationImports/walker.ts#updateImportProgress': 'old import page actions mid-run',
-	'automations/stepExecutorQueries.ts#advanceAutomationRun': 'old step walker actions mid-run',
-	'automations/stepExecutorQueries.ts#cancelAutomationRun': 'old step walker actions mid-run',
-	'automations/stepExecutorQueries.ts#completeAutomationRun': 'old step walker actions mid-run',
-	'automations/stepExecutorQueries.ts#createStepRun': 'old step walker actions mid-run',
-	'automations/stepExecutorQueries.ts#getAutomationRunWithContact':
-		'old step walker actions mid-run',
-	'automations/stepExecutorQueries.ts#getAutomationStep': 'old step walker actions mid-run',
-	'automations/stepExecutorQueries.ts#getAutomationSteps': 'old step walker actions mid-run',
-	'automations/stepExecutorQueries.ts#markStepCompleted': 'old step walker actions mid-run',
-	'automations/stepExecutorQueries.ts#markStepExecuting': 'old step walker actions mid-run',
-	'automations/stepExecutorQueries.ts#markStepFailed': 'old step walker actions mid-run',
-	'automations/stepExecutorQueries.ts#markStepsSkipped': 'old step walker actions mid-run',
-	'blockedEmails.ts#isBlockedInternal': 'old email worker actions mid-run',
-	'e2ee/recipientKeys.ts#upsertDiscovery': 'old recipient-key discovery actions mid-run',
-	'domains/lifecycle.ts#reconcileReturnPathAfterRegistration': 'old registration actions mid-run',
-	'domains/lifecycle.ts#recordReturnPathPushResult': 'old return-path push actions mid-run',
-	'domains/lifecycle.ts#recordDkimRotation': 'old webhook dispatcher actions mid-run',
-	'workspaces/deletion/walker.ts#start': 'deletion starts queued before the deploy',
-	'workspaces/deletion/walker.ts#runStep': 'the previous walker chain, mid-deletion',
-	'mail/mailbox/messages.ts#getMessageBody':
-		'the previous web reader, in tabs opened before the deploy (plan 2.5)',
-	'contacts/dataExport.ts#exportContactData':
-		'the previous contact page, in tabs opened before the deploy (#900)',
-	'mail/snippets.ts#list': 'the previous Postbox composer, in tabs opened before the deploy',
-	'mail/snippets.ts#create': 'the previous snippets page, in tabs opened before the deploy',
-	'mail/snippets.ts#update': 'the previous snippets page, in tabs opened before the deploy',
-	'mail/snippets.ts#remove': 'the previous snippets page, in tabs opened before the deploy',
-	'mail/needsReply.ts#getDraftSlot':
-		'the previous Answer queue card, in tabs opened before the deploy (#1188)',
-	'analytics/llmUsage.ts#record':
-		'spend writes the previous release scheduled, and its actions mid-run (spend ledger)',
-	'mail/interpret/brief.ts#setViewOverride':
-		'the previous reader view switch, in tabs opened before the deploy (read on arrival §3)',
-	'mail/interpret/preferences.ts#getViewPreference':
-		'the previous reader and "Open threads on" row, in tabs opened before the deploy (read on arrival §3)',
-	// Read on arrival §5: the chip now calls mail/senders/unsubscribeActions.ts
-	// `unsubscribe`; this shim delegates to it with the old {ok, error?} answer.
-	'mail/unsubscribe.ts#performOneClick':
-		'the previous Unsubscribe chip, in desktop bundles and tabs opened before the deploy (read on arrival §5)',
-	'mail/interpret/preferences.ts#setThreadDefaultView':
-		'the previous "Open threads on" row, in tabs opened before the deploy (read on arrival §3)',
 	// The whole-chain, whole-row history; the web now pages files/history.ts.
 	// Removal waits for an inventory of API, SDK and plugin callers too.
 	'semanticFiles.ts#getVersionHistory':
@@ -73,4 +22,80 @@ export const PREVIOUS_RELEASE_ENTRIES: Readonly<Record<string, string>> = {
 		'the previous Files page and Answer file picker, in tabs opened before the deploy',
 	'semanticFiles.ts#listByContact':
 		'the previous contact Files tab and Team Answer attach menu, in tabs opened before the deploy',
+	'campaigns/sendQueries.ts#storeContentScanResult': 'old campaign send preparations mid-run',
+	'campaigns/archiveQueries.ts#setArchiveSnapshot': 'old campaign send preparations mid-run',
+	'emailTemplates/versions.ts#captureForSend': 'old campaign send preparations mid-run',
+	// A send-walker page now commits once (campaigns/walkerCommit.ts).
+	'delivery/sends.ts#createBatch': 'old campaign send-walker hops mid-page',
+	'campaigns/sendQueries.ts#incrementDailySendCountInternal':
+		'old campaign send-walker hops mid-page',
+	'campaigns/sendJob.ts#advanceSendJob': 'old campaign send-walker hops mid-page',
+	// The A/B winner phase now commits once (campaigns/walkerCommit.ts).
+	'campaigns/sendQueries.ts#freezeCampaignAudience': 'old A/B winner phases mid-run',
+	// The test sends now commit once (campaigns/testSendCommit.ts).
+	'campaigns/senders.ts#seedDefaultSender': 'old test sends mid-run',
+	'campaigns/senders.ts#checkSenderAllowed': 'old test sends mid-run',
+	'delivery/enqueueTestSend.ts#enqueueTestSend': 'old test sends mid-run',
+	'campaigns/sendJob.ts#createSendJob':
+		'old campaign send preparations and A/B winner phases mid-run',
+	// The delivery actions below now commit once; remove after release 0.6.17.
+	'delivery/alignmentPreflight.ts#recordAlignmentResult': 'old alignment sweeps mid-run',
+	'delivery/warmingSync.ts#upsertWarmingState': 'old warming syncs mid-run',
+	'delivery/deliverabilityRouting.ts#applySnapshot': 'old warming syncs mid-run',
+	// The archive import runner now commits a pass with mail/archiveImport.ts `commitPass`.
+	'mail/archiveImport.ts#recordProgress': 'old archive import passes mid-run',
+	// The indexing sweep now commits a chunk with mail/migrationIndexingCommit.ts `commitIndexChunk`.
+	'mail/migrationIndexing.ts#patchIndexProgress': 'old mailbox indexing chunks mid-run',
+	'mail/migrationIndexing.ts#finalizeMigration': 'old mailbox indexing chunks mid-run',
+	// The message backfill now commits a chunk with knowledge/messageBackfillChunk.ts `commitChunk`.
+	'knowledge/messageBackfill.ts#patchProgress': 'old message backfill chunks mid-run',
+	'knowledge/messageBackfill.ts#finalizeJob': 'old message backfill chunks mid-run',
+	// The re-embed actions now commit through aiRouting/embeddingReembedCommit.ts.
+	'aiRouting/embeddingReembedJobs.ts#startLocalReembed': 'old re-embed kickoffs mid-run',
+	'aiRouting/embeddingReembedJobs.ts#reembedCommit': 'old re-embed batches mid-run',
+	'aiRouting/embeddingReembedJobs.ts#startReembedJob': 'old admin re-embed starts mid-run',
+	'aiRouting/embeddingSpaces.ts#ensureConfigured': 'old re-embed kickoffs and admin starts mid-run',
+	// The expected-attachment copy now lands in one commit (`bindCopy`).
+	'mail/draftExpectedAttachments.ts#stageCopy': 'old draft attachment fulfils mid-copy',
+	'mail/draftExpectedAttachments.ts#bindExpected': 'old draft attachment fulfils mid-copy',
+	'mail/draftExpectedAttachments.ts#dropCopy': 'old draft attachment fulfils mid-copy',
+	// Answer mode's start and answer now commit through mail/ai/composeDraftCommit.ts.
+	'mail/ai/composeDraftStore.ts#replaceSession': 'old Answer mode starts mid-run',
+	'mail/ai/composeDraftStore.ts#captureSessionAnswers': 'old Answer mode answers mid-run',
+	'mail/ai/composeDraftStore.ts#setDraftFollowUp': 'old Answer mode starts and answers mid-run',
+	// The plugin relay identity call now commits once through
+	// domains/pluginRelayMutations.ts `commitIdentityCall` / `commitDeniedCall`.
+	'domains/pluginRelayMutations.ts#recordCheck': 'old plugin relay identity calls mid-run',
+	'domains/pluginRelayMutations.ts#recordCheckFailure': 'old plugin relay identity calls mid-run',
+	'domains/pluginRelayMutations.ts#deferDeniedCheck': 'old plugin relay identity calls mid-run',
+	'plugins/sendTransportDomainIdentityAuthorization.ts#authorizeIdentityCall':
+		'old plugin relay identity calls mid-run',
+	'plugins/sendTransportDomainIdentityAuthorization.ts#recordOutcome':
+		'old plugin relay identity calls mid-run',
+	// Sending-domain registration now lands its outcome and return-path repair in
+	// domains/providers/registerCommit.ts `commitRegistration`.
+	'domains/lifecycleReturnPath.ts#reconcileReturnPathAfterRegistration':
+		'old sending-domain registrations mid-run',
+	// System & updates now reads maintenance/workerRegistry.ts `getForAdmin`.
+	'mail/imap/serverRegistry.ts#getForAdmin':
+		'the previous IMAP servers card on System & updates, in tabs opened before the deploy',
+	// push/send.deliver now plans in push/delivery.ts and holds quiet devices
+	// in its commit after the pushes. Remove after release N+1.
+	'push/dispatch.ts#prepareDelivery': 'old push deliveries mid-run',
+	// `filterCompile.compile` now starts through startCompile, which schedules
+	// the compile. Remove after release N+1.
+	'mail/filterCompileStore.ts#startDraft': 'old rule compiles mid-run',
+	// The channel dispatch and the delivery poll now commit through
+	// channels/outboundCommit.ts. Remove after release N+1.
+	'unifiedMessages.ts#recordOutbound': 'old channel dispatches mid-run',
+	'unifiedMessages.ts#updateDeliveryStatus': 'old channel delivery polls mid-run',
+	// `/seed/admin` now writes through one commit (auth/seedAdminCommit.ts); the
+	// latch claim keeps an old and a new seed from both running.
+	'workspaces/settings.ts#createInternal': 'old /seed/admin requests mid-run',
+	'workspaces/settings.ts#claimAdminSeedInternal': 'old /seed/admin requests mid-run',
+	'auth/userProfiles.ts#createInternal': 'old /seed/admin requests mid-run',
+	'workspaces/featureFlags.ts#setAllInternal': 'old /seed/admin requests mid-run',
+	// An export row now stages through one commit (`stageArtifact`).
+	'auth/accountExportArtifacts.ts#acquireArtifactLease': 'old account export pages mid-run',
+	'auth/accountExportArtifacts.ts#registerArtifact': 'old account export pages mid-run',
 };

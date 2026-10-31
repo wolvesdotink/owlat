@@ -240,6 +240,23 @@ describe('handleGithubWebhook (/webhooks/github)', () => {
 		expect(task?.status).toBe('merged');
 	});
 
+	it('refuses (400) a signed merge whose PR url is not a string, and mutates nothing', async () => {
+		const t = setupTest();
+		const body = JSON.stringify({ action: 'closed', pull_request: { merged: true, html_url: 42 } });
+		const sig = await hmacSha256Hex('gh-test-secret', body);
+
+		const res = await t.fetch(GITHUB_PATH, {
+			method: 'POST',
+			body,
+			headers: {
+				'Content-Type': 'application/json',
+				'x-hub-signature-256': `sha256=${sig}`,
+				'x-github-event': 'pull_request',
+			},
+		});
+		expect(res.status).toBe(400);
+	});
+
 	it('does NOT mutate the task when the signature is invalid', async () => {
 		const t = setupTest();
 		const PR_URL = 'https://github.com/acme/repo/pull/99';
@@ -386,6 +403,20 @@ describe('handleVerifyCredential (/webhooks/mta-verify-credential)', () => {
 		expect(res.status).toBe(200);
 		const json = await res.json();
 		expect(json).toEqual({ ok: false });
+	});
+
+	it('refuses (400) a signed request naming an unknown scope, before verifying anything', async () => {
+		const t = setupTest();
+		const body = JSON.stringify({ address: 'user@example.com', password: 'app-pw', scope: 'pop3' });
+		const ts = nowSeconds();
+		const sig = await hmacSha256Hex('mta-test-secret', `${ts}.${body}`);
+		const res = await t.fetch(VERIFY_PATH, {
+			method: 'POST',
+			body,
+			headers: signedHeaders(ts, body, sig),
+		});
+		expect(res.status).toBe(400);
+		expect(await res.json()).toMatchObject({ error: expect.stringMatching(/\$\.scope/) });
 	});
 
 	it('rejects (405) on a non-POST method', async () => {

@@ -22,7 +22,7 @@
  *
  *   1. A REROUTE IS A SHORTFALL THE CONTROLLER CAN SEE — the own arm did not
  *      carry the share the cell is set to, and that reaches the `mixDecisions`
- *      snapshot (plan D12) as evidence an operator can read, never as a rung.
+ *      snapshot as evidence an operator can read, never as a rung.
  *   2. AND IT LOWERS THE PROJECTION of what the own arm will carry.
  *   3. BUT IT MUST NOT RAISE THE CEILING. That is the runaway loop the design
  *      has to avoid: were the ceiling divided by the OWN arm's volume, every
@@ -34,6 +34,7 @@
 
 import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type * as SessionOrganization from '../../lib/sessionOrganization';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import { modules } from '../../__tests__/testModules';
@@ -60,7 +61,7 @@ import {
 } from './capacityFixtures';
 
 vi.mock('../../lib/sessionOrganization', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../../lib/sessionOrganization')>();
+	const actual = await importOriginal<typeof SessionOrganization>();
 	return {
 		...actual,
 		getSingletonOrganizationId: vi.fn().mockResolvedValue('org_ramp_capacity'),

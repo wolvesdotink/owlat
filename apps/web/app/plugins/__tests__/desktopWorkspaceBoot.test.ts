@@ -1,23 +1,33 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { flushPromises } from '@vue/test-utils';
 
 // The desktop boot plugin exposes the SPA router on `window.__NUXT_ROUTER__` so
 // the native application menu (src-tauri `window::navigate_to`) can push routes
 // client-side instead of forcing a full document reload. This is the one
 // genuinely-new client branch of the router-nav piece; cover it directly.
 //
-// The plugin transitively pulls in the workspace store, keychain, deep-link and
-// updater bridges — none relevant to the router exposure — so stub them all so
-// the module imports cleanly and its `setup` runs without a real Tauri runtime.
+// The boot implementation (lib/desktop/desktopBoot.client.ts, which the plugin
+// imports only on the desktop) pulls in the workspace store, keychain, deep-link
+// and updater bridges — none relevant to the router exposure — so stub them all
+// so the module imports cleanly and its `setup` runs without a real Tauri runtime.
 
 const loadWorkspaces = vi.fn(async (..._args: unknown[]) => {});
 vi.mock('~/composables/useDesktopWorkspaces', () => ({
 	loadWorkspaces: (...args: unknown[]) => loadWorkspaces(...args),
 }));
 
+let desktopRuntime = true;
 vi.mock('~/lib/desktop/activeWorkspace', () => ({
-	isDesktopRuntime: () => true,
+	isDesktopRuntime: () => desktopRuntime,
 	getActiveWorkspace: () => null,
 }));
+
+// Counts evaluations of the boot implementation; the real module runs.
+const bootModuleLoads = vi.fn();
+vi.mock('~/lib/desktop/desktopBoot.client', async (importOriginal) => {
+	bootModuleLoads();
+	return importOriginal();
+});
 
 const applyWorkspaceAccent = vi.fn();
 vi.mock('~/lib/desktop/workspaceAccent', () => ({
@@ -78,11 +88,18 @@ async function loadBootPlugin(): Promise<BootPlugin> {
 
 describe('desktop boot plugin — SPA router exposure', () => {
 	beforeEach(() => {
+		// Every boot starts a splash reveal on these timers. Each case finishes
+		// its own in afterEach, so none lands in a later case's count.
+		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'requestAnimationFrame'] });
 		loadWorkspaces.mockClear();
 		delete (window as { __NUXT_ROUTER__?: unknown }).__NUXT_ROUTER__;
 	});
 
-	afterEach(() => {
+	afterEach(async () => {
+		await vi.runAllTimersAsync();
+		await vi.dynamicImportSettled();
+		await flushPromises();
+		vi.useRealTimers();
 		vi.unstubAllGlobals();
 	});
 
@@ -110,9 +127,6 @@ describe('desktop boot plugin — SPA router exposure', () => {
 	});
 
 	it('installs the native-window behaviour and reveals the window on the splash, not on mount', async () => {
-		// Let the reveals the earlier cases started land before counting.
-		await new Promise((resolve) => setTimeout(resolve, SPLASH_PAINT_FALLBACK_MS + 50));
-		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'requestAnimationFrame'] });
 		const hooks = new Map<string, () => void>();
 		const nuxtApp = {
 			$router: { push: vi.fn() },
@@ -129,22 +143,18 @@ describe('desktop boot plugin — SPA router exposure', () => {
 				})
 		);
 
-		try {
-			const plugin = await loadBootPlugin();
-			const setup = plugin.setup(nuxtApp);
+		const plugin = await loadBootPlugin();
+		const setup = plugin.setup(nuxtApp);
 
-			expect(installNativeFeel).toHaveBeenCalledTimes(1);
-			// The window is built hidden; nothing shows it before the splash paints…
-			expect(windowReady).not.toHaveBeenCalled();
-			// …and one frame later it does, while the boot is still running.
-			await vi.advanceTimersByTimeAsync(SPLASH_PAINT_FALLBACK_MS);
-			await vi.waitFor(() => expect(windowReady).toHaveBeenCalledTimes(1));
+		await vi.waitFor(() => expect(installNativeFeel).toHaveBeenCalledTimes(1));
+		// The window is built hidden; nothing shows it before the splash paints…
+		expect(windowReady).not.toHaveBeenCalled();
+		// …and one frame later it does, while the boot is still running.
+		await vi.advanceTimersByTimeAsync(SPLASH_PAINT_FALLBACK_MS);
+		await vi.waitFor(() => expect(windowReady).toHaveBeenCalledTimes(1));
 
-			finishBoot();
-			await setup;
-		} finally {
-			vi.useRealTimers();
-		}
+		finishBoot();
+		await setup;
 		// Mounting asks again as a backstop; the native side shows a window once.
 		hooks.get('app:mounted')?.();
 		await vi.waitFor(() => expect(windowReady).toHaveBeenCalledTimes(2));
@@ -176,5 +186,61 @@ describe('desktop boot plugin — SPA router exposure', () => {
 		expect(loadWorkspaces).toHaveBeenCalledWith(
 			expect.objectContaining({ preferredActiveId: null })
 		);
+	});
+
+	it('does not resolve before the workspace load does, across the import of the boot code', async () => {
+		const nuxtApp = { $router: { push: vi.fn() }, hook: vi.fn() };
+		loadWorkspaces.mockClear();
+		let finishBoot!: () => void;
+		loadWorkspaces.mockImplementationOnce(
+			() =>
+				new Promise<void>((resolve) => {
+					finishBoot = resolve;
+				})
+		);
+		let settled = false;
+
+		const plugin = await loadBootPlugin();
+		const setup = plugin.setup(nuxtApp).then(() => {
+			settled = true;
+		});
+		await vi.waitFor(() => expect(loadWorkspaces).toHaveBeenCalledTimes(1));
+		// Nuxt runs `convex.client.ts` once this plugin resolves: it must not
+		// resolve while the workspace and keychain session are still loading,
+		// however many microtasks pass.
+		for (let i = 0; i < 20; i += 1) await Promise.resolve();
+		expect(settled).toBe(false);
+
+		finishBoot();
+		await setup;
+		expect(settled).toBe(true);
+	});
+});
+
+describe('desktop boot plugin — web runtime', () => {
+	beforeEach(() => {
+		desktopRuntime = false;
+		bootModuleLoads.mockClear();
+		loadWorkspaces.mockClear();
+		installNativeFeel.mockClear();
+		delete (window as { __NUXT_ROUTER__?: unknown }).__NUXT_ROUTER__;
+	});
+
+	afterEach(() => {
+		desktopRuntime = true;
+		vi.unstubAllGlobals();
+	});
+
+	it('returns at once and never loads the boot code', async () => {
+		vi.resetModules();
+		const nuxtApp = { $router: { push: vi.fn() }, hook: vi.fn() };
+
+		const plugin = await loadBootPlugin();
+		await plugin.setup(nuxtApp);
+
+		expect(bootModuleLoads).not.toHaveBeenCalled();
+		expect(loadWorkspaces).not.toHaveBeenCalled();
+		expect(installNativeFeel).not.toHaveBeenCalled();
+		expect((window as { __NUXT_ROUTER__?: unknown }).__NUXT_ROUTER__).toBeUndefined();
 	});
 });

@@ -60,6 +60,12 @@ describe('security audit parser', () => {
 		expect(() => classifyAuditJson(raw)).toThrow(/failing closed/);
 	});
 
+	it('keeps the JSON parse error as the cause of malformed input', () => {
+		expect(() => classifyAuditJson('{not-json')).toThrow(
+			expect.objectContaining({ cause: expect.any(SyntaxError) })
+		);
+	});
+
 	it.each(['[]', '{"example":{}}', '{"example":[{"severity":"high"}]}'])(
 		'fails closed for an unexpected audit shape: %s',
 		(raw) => {
@@ -71,7 +77,6 @@ describe('security audit parser', () => {
 		expect(ACKNOWLEDGED_ADVISORIES).toEqual({
 			'GHSA-W3RX-R6R6-PGPR': expect.stringContaining('patches/image-size@2.0.2.patch'),
 			'GHSA-5P2G-FCMC-QVQQ': expect.stringContaining('patches/image-size@2.0.2.patch'),
-			'GHSA-86W9-CPQP-85RV': expect.stringContaining('listhen'),
 			'GHSA-VFJ7-8CJW-P6XM': expect.stringContaining('micromatch@4.0.8 at build time'),
 			'GHSA-X6JW-M9V5-85VH': expect.stringContaining('@nuxt/devtools@3.4.1'),
 			'GHSA-G4WM-2VF7-VFGR': expect.stringContaining('@nuxt/devtools@3.4.1'),

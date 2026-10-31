@@ -16,13 +16,14 @@
  *     ages out on that horizon.
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import type * as MessagesModule from '../messages';
 import type * as SealedBlobModule from '../../lib/sealedBlob';
 import { permanentlyDeleteContactWithRelations } from '../../lib/contactMutations';
 import { DAY_MS } from '../../lib/constants';
+import { runDeletionStepBatch } from '../../__tests__/helpers/workspaceDeletionFence';
 import {
 	MIB,
 	SECRET,
@@ -33,6 +34,7 @@ import {
 	storedBlobCount,
 	type TestConvex,
 } from './largeBodies.testlib';
+import { drainScheduled } from './scheduledWork.testlib';
 
 const hooks = vi.hoisted(() => ({
 	blindPreCheck: false,
@@ -87,6 +89,8 @@ vi.mock('../../lib/sealedBlob', async (importOriginal) => {
 });
 
 beforeEach(() => {
+	// Every delivery's pipeline waits on a fake timer until ingestHuge drains it.
+	vi.useFakeTimers();
 	hooks.blindPreCheck = false;
 	hooks.failReceive = false;
 	hooks.failStoreCall = 0;
@@ -97,28 +101,9 @@ beforeEach(() => {
 	vi.stubEnv('MTA_API_KEY', '');
 });
 
-/**
- * Let the background work a delivery scheduled (the agent pipeline, on real
- * timers) run to completion. Left running, it raced whatever the test did
- * next: a workspace deletion that began while a pipeline step was in flight
- * put the write fence up under that step, and the step's next `agentActions`
- * write was refused (#1269); and a redelivery's `storage.delete` issued while
- * one of the pipeline's mutations was open ran inside that transaction (see
- * `drainScheduled` in inboundIngest.test.ts). This waits on the in-flight
- * promises themselves, so a slow step under load is waited for, not timed out.
- */
-async function drainScheduled(t: TestConvex): Promise<void> {
-	for (let round = 0; round < 50; round++) {
-		await new Promise((resolve) => setTimeout(resolve, 0));
-		await t.finishInProgressScheduledFunctions();
-		const functions = await t.run((ctx) => ctx.db.system.query('_scheduled_functions').collect());
-		const busy = functions.some(
-			(fn) => fn.state.kind === 'pending' || fn.state.kind === 'inProgress'
-		);
-		if (!busy) return;
-	}
-	throw new Error('scheduled functions did not settle');
-}
+afterEach(() => {
+	vi.useRealTimers();
+});
 
 /** A message with BOTH parts too large for the row: two body blobs, its pipeline settled. */
 async function ingestHuge(t: TestConvex, messageId: string) {
@@ -212,7 +197,7 @@ describe('deleting the row deletes its body', () => {
 		await ingestHuge(t, 'workspace-1@example.com');
 		const row = await onlyRow(t);
 
-		await t.mutation(internal.workspaces.deletion.walker.runStep, { table: 'inboundMessages' });
+		await runDeletionStepBatch(t, 'inboundMessages');
 
 		expect(await t.run((ctx) => ctx.db.query('inboundMessages').collect())).toHaveLength(0);
 		expect(await bodyBlobsExist(t, [row.textBodyStorageId, row.htmlBodyStorageId])).toEqual([

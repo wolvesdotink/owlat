@@ -1,10 +1,9 @@
 /**
  * Step-run and run transitions (helpers) — every state change the automation
  * step walker makes, as plain functions over a mutation context. The walker's
- * mutations (`stepOrchestration.ts`), the stalled-run sweep (`stalledRuns.ts`),
- * run deletion (`runDeletion.ts`) and the one-release compatibility shims in
- * `stepExecutorQueries.ts` all go through these, so the counter arithmetic and
- * the "a terminal row never moves again" rule live in one place.
+ * mutations (`stepOrchestration.ts`), the stalled-run sweep (`stalledRuns.ts`)
+ * and run deletion (`runDeletion.ts`) all go through these, so the counter
+ * arithmetic and the "a terminal row never moves again" rule live in one place.
  */
 
 import type { MutationCtx } from '../_generated/server';
@@ -13,6 +12,8 @@ import type { Doc, Id } from '../_generated/dataModel';
 import { computeEntryDelay } from './steps';
 import { recordAutomationRunFailure } from './lifecycle';
 import { bumpAutomationStats } from './statShards';
+import { recordAutomationHealth } from './health';
+import type { AutomationRunEndReason } from '../lib/validators/automations';
 
 // ============== Denormalized step-run status counters ==============
 
@@ -162,15 +163,6 @@ export async function recentStepRunsOf(
 		.take(RECENT_STEP_RUNS);
 }
 
-/** The run's pending or executing step run, if it has one. */
-export async function activeStepRunOf(
-	ctx: MutationCtx,
-	automationRunId: Id<'automationRuns'>
-): Promise<Doc<'automationStepRuns'> | null> {
-	const recent = await recentStepRunsOf(ctx, automationRunId);
-	return recent.find((stepRun) => !isTerminalStepRunStatus(stepRun.status)) ?? null;
-}
-
 // ============== Runs ==============
 
 /**
@@ -196,17 +188,29 @@ export async function completeRun(
 	}
 }
 
-/** Finalize a still-running run as `cancelled` (see {@link completeRun}). */
+/**
+ * Finalize a still-running run as `cancelled` (see {@link completeRun}),
+ * stamping `endReason` when the cancel is a health problem the list reports.
+ * Returns the run it cancelled, or null when there was nothing to cancel, so a
+ * caller counts a failure or a stall only for the one transaction that ended
+ * the run.
+ */
 export async function cancelRun(
 	ctx: MutationCtx,
-	automationRunId: Id<'automationRuns'>
-): Promise<void> {
+	automationRunId: Id<'automationRuns'>,
+	endReason?: AutomationRunEndReason
+): Promise<Doc<'automationRuns'> | null> {
 	const run = await ctx.db.get(automationRunId);
-	if (!run || run.status !== 'running') return;
+	if (!run || run.status !== 'running') return null;
 
-	await ctx.db.patch(automationRunId, { status: 'cancelled', completedAt: Date.now() });
+	await ctx.db.patch(automationRunId, {
+		status: 'cancelled',
+		completedAt: Date.now(),
+		...(endReason ? { endReason } : {}),
+	});
 	// Sharded counter — statsActive is derived by the rollup.
 	await bumpAutomationStats(ctx, run.automationId, { statsCancelled: 1 });
+	return run;
 }
 
 // ============== Walker transitions ==============
@@ -293,19 +297,35 @@ export function skipUnsubscribedStepAndAdvance(
 	});
 }
 
-/** Fail the step run and cancel its run, optionally counting a run failure. */
+/**
+ * Fail the step run and cancel its run, optionally counting a run failure
+ * toward the breaker.
+ *
+ * `stepFault` says whether the step itself failed (its retries ran out, it was
+ * interrupted past recovery, the run hit the step cap) rather than its context
+ * going away (the automation was paused, the step removed). Only a step fault
+ * marks the run `step_failed` and counts toward the list's failures, once: a
+ * duplicate firing finds the run already ended and counts nothing.
+ */
 export async function failStepAndCancelRun(
 	ctx: MutationCtx,
 	stepRun: Doc<'automationStepRuns'>,
 	errorMessage: string,
-	options: { countRunFailure: boolean }
+	options: { countRunFailure: boolean; stepFault: boolean }
 ): Promise<void> {
 	await transitionStepRun(ctx, stepRun, 'failed', {
 		completedAt: Date.now(),
 		errorMessage,
 		leaseExpiresAt: undefined,
 	});
-	await cancelRun(ctx, stepRun.automationRunId);
+	const cancelled = await cancelRun(
+		ctx,
+		stepRun.automationRunId,
+		options.stepFault ? 'step_failed' : undefined
+	);
+	if (cancelled && options.stepFault) {
+		await recordAutomationHealth(ctx, cancelled.automationId, 'failed');
+	}
 	if (options.countRunFailure) {
 		const run = await ctx.db.get(stepRun.automationRunId);
 		if (run) await recordAutomationRunFailure(ctx, run.automationId);

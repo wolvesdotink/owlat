@@ -4,7 +4,7 @@
 // deep watcher. An edit the counter misses is an edit the host never saves, so
 // these drive the real component through edits of each kind and check that
 // every one reaches the host exactly once.
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import EmailBuilder from '../EmailBuilder.vue';
 import DocumentCanvas from '../canvas/DocumentCanvas.vue';
@@ -26,10 +26,8 @@ function columns(id: string): EditorBlock {
 	return block;
 }
 
-let wrapper: VueWrapper | null = null;
-
 async function mountBuilder(blocks: EditorBlock[]) {
-	wrapper = mount(EmailBuilder, {
+	const wrapper = mount(EmailBuilder, {
 		props: { blocks, subject: 'Subject', name: 'Name', variables: [] },
 		global: {
 			provide: {
@@ -50,12 +48,6 @@ async function mountBuilder(blocks: EditorBlock[]) {
 }
 
 const emits = (w: VueWrapper) => (w.emitted('update:blocks') ?? []) as [EditorBlock[]][];
-
-afterEach(() => {
-	wrapper?.unmount();
-	wrapper = null;
-	document.body.innerHTML = '';
-});
 
 describe('EmailBuilder update:blocks', () => {
 	it('does not emit for the blocks it was mounted with', async () => {

@@ -36,14 +36,14 @@ const nextId = computed(() =>
 );
 
 /**
- * "(j)" after a step's label: the key that steps here, as the person has it
- * mapped. Only plain keys count, since those are what the handler below takes.
+ * The key that steps here, as the person has it mapped, for the step's
+ * tooltip. Only plain keys count, since those are what the handler below takes.
  */
-function keyHint(id: 'postbox.next' | 'postbox.previous'): string {
+function stepKey(id: 'postbox.next' | 'postbox.previous'): string | undefined {
 	const chord = shortcutBindings.value.byId
 		.get(id)
 		?.find((step) => !step.startsWith('Arrow') && !step.includes('+') && !step.includes(' '));
-	return chord ? ` (${formatChord(chord, false).join('')})` : '';
+	return chord ? formatChord(chord, false).join('') : undefined;
 }
 
 function open(id: string | null) {
@@ -84,26 +84,34 @@ const stepClass =
 			<span class="truncate capitalize">{{ folderName }}</span>
 		</button>
 		<template v-if="zen">
-			<button
-				type="button"
-				:class="stepClass"
-				:disabled="!previousId"
-				:title="t('components.postbox.readerBackBar.previous') + keyHint('postbox.previous')"
-				:aria-label="t('components.postbox.readerBackBar.previous')"
-				@click="open(previousId)"
+			<UiTooltip
+				:text="t('components.postbox.readerBackBar.previous')"
+				:shortcut="stepKey('postbox.previous')"
 			>
-				<Icon name="lucide:chevron-up" class="size-4" />
-			</button>
-			<button
-				type="button"
-				:class="stepClass"
-				:disabled="!nextId"
-				:title="t('components.postbox.readerBackBar.next') + keyHint('postbox.next')"
-				:aria-label="t('components.postbox.readerBackBar.next')"
-				@click="open(nextId)"
+				<button
+					type="button"
+					:class="stepClass"
+					:disabled="!previousId"
+					:aria-label="t('components.postbox.readerBackBar.previous')"
+					@click="open(previousId)"
+				>
+					<Icon name="lucide:chevron-up" class="size-4" />
+				</button>
+			</UiTooltip>
+			<UiTooltip
+				:text="t('components.postbox.readerBackBar.next')"
+				:shortcut="stepKey('postbox.next')"
 			>
-				<Icon name="lucide:chevron-down" class="size-4" />
-			</button>
+				<button
+					type="button"
+					:class="stepClass"
+					:disabled="!nextId"
+					:aria-label="t('components.postbox.readerBackBar.next')"
+					@click="open(nextId)"
+				>
+					<Icon name="lucide:chevron-down" class="size-4" />
+				</button>
+			</UiTooltip>
 		</template>
 	</div>
 </template>

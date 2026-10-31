@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest';
+import { describe, it, expect, vi, beforeEach, beforeAll, afterEach } from 'vitest';
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -22,19 +22,20 @@ vi.mock('../../auth/credentials.js', () => ({ lookupCredential: lookupCredential
 vi.mock('../../auth/postboxAuth.js', () => ({ verifyPostboxAppPassword: verifyAppPasswordMock }));
 
 import {
-	buildAuthenticate,
-	buildOnData,
 	buildOnMailFrom,
 	createSubmissionServer,
 	createImplicitTlsSubmissionServer,
 	SUBMISSION_COMMAND_TIMEOUT_MS,
-	type SubmissionSessionState,
-	type AuthenticatedSession,
 } from '../submissionServer.js';
+import { buildAuthenticate } from '../submissionAuth.js';
+import { buildOnData } from '../submissionData.js';
+import type { SubmissionSessionState, AuthenticatedSession } from '../submissionSession.js';
 import type { MtaConfig } from '../../config.js';
 import type { EmailJob } from '../../types.js';
 import type { Queue } from 'groupmq';
 import { promoteIntakeReceipt } from '../../routes/sendReceipt.js';
+import { watchSlotScripts } from '../../__tests__/helpers/connectionSlotScripts.js';
+import { socketClosed } from '../../__tests__/helpers/socketClosed.js';
 import { prepareSignedMessage } from '../send/compose.js';
 import { parseMessage } from '@owlat/mail-message';
 import {
@@ -136,6 +137,10 @@ function acceptingDataHarness() {
 beforeEach(() => {
 	lookupCredentialMock.mockReset().mockResolvedValue(null);
 	verifyAppPasswordMock.mockReset().mockResolvedValue(null);
+});
+
+afterEach(() => {
+	vi.useRealTimers();
 });
 
 describe('submission authenticate — auth chain', () => {
@@ -570,6 +575,9 @@ describe('submission onData — recipients, forgery guard, fan-out', () => {
 	});
 
 	it('does not extend a client-key binding horizon on matching retries', async () => {
+		// The mock Redis counts TTLs against Date.now(), so fake Date alone lets
+		// the retry land later without real time passing.
+		vi.useFakeTimers({ toFake: ['Date'] });
 		const { queue, receiptRedis, onData } = acceptingDataHarness();
 		const session = makeSession({
 			authenticated: true,
@@ -586,7 +594,7 @@ describe('submission onData — recipients, forgery guard, fan-out', () => {
 		const [bindingKey] = await receiptRedis.keys('mta:submission-idempotency:*');
 		expect(bindingKey).toBeDefined();
 		const initialTtl = await receiptRedis.pttl(bindingKey!);
-		await new Promise((resolve) => setTimeout(resolve, 25));
+		vi.advanceTimersByTime(25);
 		expect(await onData(data, session as never)).toBeUndefined();
 		const retryTtl = await receiptRedis.pttl(bindingKey!);
 
@@ -935,7 +943,7 @@ describe('submission authenticate — per-IP brute-force throttle', () => {
 		}
 		// The 4th attempt is refused by the throttle BEFORE comparing the secret —
 		// even the correct master key is rejected while locked out, and the outcome
-		// is byte-identical to a normal rejection (no auth oracle — D6).
+		// is byte-identical to a normal rejection (no auth oracle).
 		const { outcome } = await authCallIp(
 			{ username: 'x', password: 'master-secret-key' },
 			'5.5.5.5',
@@ -1157,14 +1165,6 @@ describe('submission TLS gate — wire-level', () => {
 		conn.write(`${line}\r\n`);
 	}
 
-	async function waitFor(check: () => Promise<boolean>, timeoutMs = 1_000): Promise<void> {
-		const deadline = Date.now() + timeoutMs;
-		while (!(await check())) {
-			if (Date.now() >= deadline) throw new Error('timed out waiting for condition');
-			await new Promise((resolve) => setTimeout(resolve, 10));
-		}
-	}
-
 	const plainAuth = (user: string, pass: string): string =>
 		Buffer.from(`\0${user}\0${pass}`, 'utf8').toString('base64');
 
@@ -1291,6 +1291,7 @@ describe('submission TLS gate — wire-level', () => {
 		// Own keyspace (ioredis-mock shares one per host:port), so another case's
 		// late slot release cannot move this counter.
 		const liveRedis = new Redis({ port: 16479 }) as unknown as RealRedis;
+		const slots = watchSlotScripts(liveRedis);
 		const server = createSubmissionServer(
 			queue,
 			liveRedis,
@@ -1314,7 +1315,9 @@ describe('submission TLS gate — wire-level', () => {
 			expect(await liveRedis.get(key)).toBe('2');
 
 			for (const c of held) c.end();
-			await waitFor(async () => (await liveRedis.exists(key)) === 0);
+			// One release per granted slot; the refused connection never held one.
+			await slots.released(2);
+			expect(await liveRedis.exists(key)).toBe(0);
 		} finally {
 			for (const c of held) c.end();
 			await server.close();
@@ -1361,26 +1364,19 @@ describe('submission TLS gate — wire-level', () => {
 			// Plaintext connect: the server speaks TLS from the first byte, so it
 			// never emits a 220 SMTP banner. A plaintext EHLO is a malformed
 			// ClientHello and the connection is torn down — no greeting.
-			const result = await new Promise<'no-banner' | 'banner'>((resolve, reject) => {
+			// Settled by the teardown; a listener that kept the socket open fails
+			// on the runner's budget.
+			const result = await new Promise<'no-banner' | 'banner'>((resolve) => {
 				const sock = net.connect(port, '127.0.0.1');
 				let sawBanner = false;
-				const timer = setTimeout(() => {
-					sock.destroy();
-					resolve(sawBanner ? 'banner' : 'no-banner');
-				}, 500);
 				sock.on('connect', () => send(sock, 'EHLO client.test'));
 				sock.on('data', (chunk: Buffer) => {
 					if (chunk.toString('utf8').startsWith('220 ')) sawBanner = true;
 				});
-				sock.on('error', () => {
-					clearTimeout(timer);
-					resolve('no-banner');
-				});
+				sock.on('error', () => {});
 				sock.on('close', () => {
-					clearTimeout(timer);
 					resolve(sawBanner ? 'banner' : 'no-banner');
 				});
-				sock.on('timeout', () => reject(new Error('unexpected socket timeout')));
 			});
 			expect(result).toBe('no-banner');
 		} finally {
@@ -1390,6 +1386,7 @@ describe('submission TLS gate — wire-level', () => {
 
 	it('465: silent pre-handshake sockets consume and release the per-IP connection cap', async () => {
 		const liveRedis = new Redis() as unknown as RealRedis;
+		const slots = watchSlotScripts(liveRedis);
 		const server = createImplicitTlsSubmissionServer(
 			queue,
 			liveRedis,
@@ -1403,24 +1400,18 @@ describe('submission TLS gate — wire-level', () => {
 				first.once('connect', resolve);
 				first.once('error', reject);
 			});
-			await waitFor(async () => (await liveRedis.get('mta:submission:conn:127.0.0.1')) === '1');
+			await slots.acquired(1);
+			expect(await liveRedis.get('mta:submission:conn:127.0.0.1')).toBe('1');
 
+			// The over-cap socket is destroyed before any handshake, possibly with a
+			// reset. A listener that kept it open fails this on the runner's budget.
 			second = net.connect(port, '127.0.0.1');
-			await new Promise<void>((resolve, reject) => {
-				const timer = setTimeout(() => reject(new Error('over-cap socket stayed open')), 1_000);
-				second!.once('error', () => {
-					clearTimeout(timer);
-					resolve();
-				});
-				second!.once('close', () => {
-					clearTimeout(timer);
-					resolve();
-				});
-			});
+			await socketClosed(second);
 			expect(await liveRedis.get('mta:submission:conn:127.0.0.1')).toBe('1');
 
 			first.destroy();
-			await waitFor(async () => (await liveRedis.exists('mta:submission:conn:127.0.0.1')) === 0);
+			await slots.released(1);
+			expect(await liveRedis.exists('mta:submission:conn:127.0.0.1')).toBe(0);
 		} finally {
 			first.destroy();
 			second?.destroy();
@@ -1461,10 +1452,15 @@ describe('submission TLS gate — wire-level', () => {
 	it('waits for admission before starting a TLS handshake', async () => {
 		const liveRedis = new Redis() as unknown as RealRedis;
 		let decide!: (n: number) => void;
+		let markAsked!: () => void;
+		const admissionAsked = new Promise<void>((resolve) => {
+			markAsked = resolve;
+		});
 		vi.spyOn(liveRedis, 'eval').mockImplementationOnce(
 			() =>
 				new Promise<number>((resolve) => {
 					decide = resolve;
+					markAsked();
 				}) as never
 		);
 		const server = createImplicitTlsSubmissionServer(queue, liveRedis, tlsConfig());
@@ -1476,15 +1472,20 @@ describe('submission TLS gate — wire-level', () => {
 		client.on('secureConnect', () => {
 			secured = true;
 		});
-		client.on('data', (chunk) => {
-			greeting += chunk.toString();
+		const greeted = new Promise<void>((resolve) => {
+			client.on('data', (chunk) => {
+				greeting += chunk.toString();
+				if (greeting.startsWith('220 ')) resolve();
+			});
 		});
 		try {
-			await new Promise((resolve) => setTimeout(resolve, 100));
+			// The admission verdict is pending: the listener has not replayed the
+			// TLS handler, so the client cannot be secured or greeted yet.
+			await admissionAsked;
 			expect(secured).toBe(false);
 			expect(greeting).toBe('');
 			decide(1);
-			await waitFor(async () => greeting.startsWith('220 '));
+			await greeted;
 			expect(secured).toBe(true);
 		} finally {
 			decide?.(0);

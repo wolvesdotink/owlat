@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * One sender on the Senders page (SPEC §5): who it is, how much it sent in
+ * One sender on the Senders page: who it is, how much it sent in
  * about 90 days, how much of that was read (the bar), its kind, and the
  * Keep / Digest / Auto-archive / Unsubscribe control the arrival ladder obeys.
  *
@@ -71,16 +71,17 @@ function onStatus(value: string) {
 				}}
 				<!-- Keep is already the selected segment, so the control cannot say
 				     "I chose Keep": this records it, and the suggestion goes away. -->
-				<button
-					type="button"
-					class="text-text-secondary font-medium whitespace-nowrap hover:underline disabled:opacity-50"
-					:disabled="busy"
-					:title="t('postbox.senders.keepAsIsTitle')"
-					data-testid="sender-keep-as-is"
-					@click="emit('setStatus', 'keep')"
-				>
-					{{ t('postbox.senders.keepAsIs') }}
-				</button>
+				<UiTooltip :text="t('postbox.senders.keepAsIsTitle')">
+					<button
+						type="button"
+						class="text-text-secondary font-medium whitespace-nowrap hover:underline disabled:opacity-50"
+						:disabled="busy"
+						data-testid="sender-keep-as-is"
+						@click="emit('setStatus', 'keep')"
+					>
+						{{ t('postbox.senders.keepAsIs') }}
+					</button>
+				</UiTooltip>
 			</p>
 			<p
 				v-if="resultKey"

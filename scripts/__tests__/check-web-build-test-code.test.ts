@@ -127,6 +127,19 @@ describe('the test-code-in-the-build gate', () => {
 		expect(result.status).toBe(1);
 	});
 
+	it('refuses a traced package.json whose dependencies are not a name map', () => {
+		const root = build();
+		writeFileSync(
+			join(root, 'server/package.json'),
+			JSON.stringify({ name: '@owlat/web-prod', dependencies: ['vitest'] })
+		);
+
+		const result = run(root);
+
+		expect(result.output).toContain('dependencies must be an object');
+		expect(result.status).toBe(2);
+	});
+
 	it('refuses an output without a server build', () => {
 		const root = mkdtempSync(join(tmpdir(), 'owlat-build-test-code-'));
 		sandboxes.push(root);

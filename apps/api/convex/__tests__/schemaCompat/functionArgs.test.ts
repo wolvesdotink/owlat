@@ -38,7 +38,19 @@ import { readSnapshot } from './snapshot';
  * `PREVIOUS_RELEASE_ENTRIES` in `scripts/entryWiringPreviousRelease.ts`). Name
  * it here in that same PR; drop the entry at the next snapshot refresh.
  */
-const RETIRED_FUNCTIONS: ReadonlySet<string> = new Set();
+const RETIRED_FUNCTIONS: ReadonlySet<string> = new Set([
+	'contacts/dataExport:exportContactData',
+	'mail/interpret/brief:setViewOverride',
+	'mail/interpret/preferences:getViewPreference',
+	'mail/interpret/preferences:setThreadDefaultView',
+	'mail/mailbox/messages:getMessageBody',
+	'mail/needsReply:getDraftSlot',
+	'mail/snippets:create',
+	'mail/snippets:list',
+	'mail/snippets:remove',
+	'mail/snippets:update',
+	'mail/unsubscribe:performOneClick',
+]);
 
 /**
  * Arguments the current release deliberately removed, per function, as paths
@@ -64,10 +76,13 @@ async function currentFunctions(
 describe('previous-release calls are still accepted', () => {
 	const snapshot = readSnapshot();
 	let current: Record<string, FunctionSignature> = {};
+	/** What the snapshot's callers would hit against `functions`, deliberate retirements set aside. */
+	const gapsAgainst = (functions: Readonly<Record<string, FunctionSignature>>) =>
+		callIncompatibilities(snapshot.functions, functions, RETIRED_FUNCTIONS, RETIRED_ARGUMENTS);
 
 	beforeAll(async () => {
 		current = await currentFunctions(snapshot.functions);
-	}, 120_000);
+	});
 
 	it('the snapshot holds the public functions and the worker-called internal ones', () => {
 		const signatures = Object.values(snapshot.functions);
@@ -76,9 +91,7 @@ describe('previous-release calls are still accepted', () => {
 	});
 
 	it(`every call ${snapshot.release} could make is accepted by the current functions`, () => {
-		expect(
-			callIncompatibilities(snapshot.functions, current, RETIRED_FUNCTIONS, RETIRED_ARGUMENTS)
-		).toEqual([]);
+		expect(gapsAgainst(current)).toEqual([]);
 	});
 
 	it('every current signature contains itself (no false gap on real validators)', () => {
@@ -99,7 +112,7 @@ describe('previous-release calls are still accepted', () => {
 		const { [path]: renamed, ...withoutEndpoint } = current;
 		expect(renamed).toBeDefined();
 		expect(
-			callIncompatibilities(snapshot.functions, {
+			gapsAgainst({
 				...withoutEndpoint,
 				[`${path}V2`]: renamed as FunctionSignature,
 			})
@@ -115,12 +128,10 @@ describe('previous-release calls are still accepted', () => {
 				value: { ...fields, cursor: { fieldType: { type: 'string' }, optional } },
 			},
 		});
-		expect(
-			callIncompatibilities(snapshot.functions, { ...current, [path]: withArg(true) })
-		).toEqual([]);
-		expect(
-			callIncompatibilities(snapshot.functions, { ...current, [path]: withArg(false) })
-		).toEqual([`${path}: cursor: new and required`]);
+		expect(gapsAgainst({ ...current, [path]: withArg(true) })).toEqual([]);
+		expect(gapsAgainst({ ...current, [path]: withArg(false) })).toEqual([
+			`${path}: cursor: new and required`,
+		]);
 	});
 
 	/** `current` with one argument of `path` replaced. */
@@ -142,8 +153,7 @@ describe('previous-release calls are still accepted', () => {
 
 	it('a real string argument turned into an id fails', () => {
 		expect(
-			callIncompatibilities(
-				snapshot.functions,
+			gapsAgainst(
 				withArgument('mail/filters:create', 'name', {
 					fieldType: { type: 'id', tableName: 'users' },
 					optional: false,
@@ -155,8 +165,7 @@ describe('previous-release calls are still accepted', () => {
 	it('a new required argument named like an inherited property fails', () => {
 		for (const name of ['constructor', 'toString', '__proto__']) {
 			expect(
-				callIncompatibilities(
-					snapshot.functions,
+				gapsAgainst(
 					withArgument('mail/filters:create', name, {
 						fieldType: { type: 'string' },
 						optional: false,
@@ -169,8 +178,7 @@ describe('previous-release calls are still accepted', () => {
 	it('a real worker argument union narrowed, or an optional one made required, fails', () => {
 		const path = 'mail/imap/flags:storeFlags';
 		expect(
-			callIncompatibilities(
-				snapshot.functions,
+			gapsAgainst(
 				withArgument(path, 'mode', {
 					fieldType: {
 						type: 'union',
@@ -184,8 +192,7 @@ describe('previous-release calls are still accepted', () => {
 			)
 		).toEqual([`${path}: mode: accepted "remove", now only "set" | "add"`]);
 		expect(
-			callIncompatibilities(
-				snapshot.functions,
+			gapsAgainst(
 				withArgument(path, 'unchangedSinceModseq', {
 					fieldType: { type: 'number' },
 					optional: false,

@@ -8,6 +8,7 @@ import {
 	removeLanguage,
 	resolveForLanguage,
 	serializeTranslations,
+	updateTranslationPatch,
 	TEMPLATE_TRANSLATABLE_FIELDS,
 	TRANSACTIONAL_TRANSLATABLE_FIELDS,
 	type Translation,
@@ -52,7 +53,84 @@ describe('parse/serialize translations blob', () => {
 	});
 });
 
+describe('a stored translations blob is decoded, not cast', () => {
+	it.each([
+		['a subject that is not a string', { de: { subject: 7, blocks: {} } }],
+		['block text that is not a string', { de: { subject: 'Hallo', blocks: { b1: { html: 5 } } } }],
+		['an overlay that is a list', { de: [] }],
+		['a JSON scalar', 42],
+	])('refuses a blob with %s instead of serving or rewriting it', (_label, blob) => {
+		expect(() => parseTranslations(JSON.stringify(blob))).toThrow(/malformed/);
+		// A write on top of it would otherwise replace the damaged blob.
+		expect(() =>
+			addLanguage(
+				templateEntity({ translations: JSON.stringify(blob) }),
+				'fr',
+				TEMPLATE_TRANSLATABLE_FIELDS
+			)
+		).toThrow(/malformed/);
+	});
+
+	it('reads an older overlay without subject or blocks, falling back to the default', () => {
+		const entity = templateEntity({
+			translations: JSON.stringify({ de: { previewText: 'Vorschau' } }),
+			supportedLanguages: ['en', 'de'],
+		});
+		expect(resolveForLanguage(entity, 'de', TEMPLATE_TRANSLATABLE_FIELDS)).toEqual({
+			resolvedLanguage: 'de',
+			subject: 'Welcome',
+			previewText: 'Vorschau',
+			content: CONTENT,
+		});
+	});
+
+	it('keeps a field a newer release stored on an overlay', () => {
+		const blob = { de: { subject: 'Hallo', blocks: {}, tone: 'formal' } };
+		expect(parseTranslations(JSON.stringify(blob))).toEqual(blob);
+	});
+});
+
+describe('updateTranslationPatch refuses malformed block text', () => {
+	const entity = templateEntity({
+		translations: JSON.stringify({ de: { subject: 'Hallo', blocks: {} } }),
+		supportedLanguages: ['en', 'de'],
+	});
+
+	it.each([
+		['an html value that is a number', '{"b1":{"html":5}}'],
+		['a list', '[{"html":"<p>Hi</p>"}]'],
+		['text that is not JSON', '{"b1":'],
+	])('rejects %s as invalid input', (_label, blocks) => {
+		expect(
+			categoryOf(() =>
+				updateTranslationPatch(entity, { language: 'de', blocks }, TEMPLATE_TRANSLATABLE_FIELDS)
+			)
+		).toBe('invalid_input');
+	});
+
+	it('stores well-formed block text', () => {
+		const patch = updateTranslationPatch(
+			entity,
+			{ language: 'de', blocks: '{"b1":{"html":"<p>Hallo</p>"}}' },
+			TEMPLATE_TRANSLATABLE_FIELDS
+		);
+		expect(parseTranslations(patch.translations)['de']!.blocks).toEqual({
+			b1: { html: '<p>Hallo</p>' },
+		});
+	});
+});
+
 describe('extractTranslatableContent', () => {
+	it('carries over only string text, and nothing from a document that is not a Block list', () => {
+		const content = JSON.stringify([
+			{ id: 'b1', type: 'text', content: { html: 5 } },
+			{ id: 'b2', type: 'button', content: { text: 'Click' } },
+		]);
+		expect(extractTranslatableContent(content)).toEqual({ b2: { buttonText: 'Click' } });
+		expect(extractTranslatableContent('{"blocks":[]}')).toEqual({});
+		expect(extractTranslatableContent('[{"id":"b1","type":"text"}]')).toEqual({});
+	});
+
 	it('extracts translatable text keyed by block id, ignoring styling', () => {
 		expect(extractTranslatableContent(CONTENT)).toEqual({
 			b1: { html: '<p>Hello</p>' },
@@ -136,7 +214,7 @@ describe('addLanguage', () => {
 			},
 		]);
 		const patch = addLanguage(templateEntity({ content }), 'de', TEMPLATE_TRANSLATABLE_FIELDS);
-		const html = parseTranslations(patch.translations)['de']!.blocks['b1']!.html;
+		const html = parseTranslations(patch.translations)['de']!.blocks!['b1']!.html;
 		expect(html).toContain('Hi');
 		expect(html).not.toContain('onerror');
 	});
@@ -269,7 +347,7 @@ describe('Hero descendants', () => {
 	] as const)('seeds and resolves a language through the hero for a %s', (kind, fields) => {
 		const entity = templateEntity({ content: HERO_CONTENT });
 		const seeded = parseTranslations(addLanguage(entity, 'de', fields).translations);
-		expect(Object.keys(seeded['de']!.blocks).sort()).toEqual([
+		expect(Object.keys(seeded['de']!.blocks!).sort()).toEqual([
 			'h-btn',
 			'h-deep',
 			'h-img',

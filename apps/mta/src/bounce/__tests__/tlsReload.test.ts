@@ -53,7 +53,7 @@ beforeAll(() => {
 	// /health's verdict tells the two apart.
 	oldPair = generatePair('old.example.com');
 	newPair = generatePair(HOST);
-}, 30000);
+});
 
 describe('startBounceTlsReload', () => {
 	let dir: string;

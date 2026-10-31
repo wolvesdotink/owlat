@@ -7,7 +7,7 @@
  * A bundle call is paid traffic on the inbound path, so it may run only under
  * admission:
  *
- * - `shadow`: inside the D4 allowance, through the admission lane's
+ * - `shadow`: inside the shadow allowance, through the admission lane's
  *   `analytics/shadowAdmission.ts` `admitShadow` (the task's switch at
  *   `shadow`, the counted message share, the shadow money limit, background
  *   priority, budget class `shadow`).
@@ -132,7 +132,7 @@ export async function admitBundle(
 	request: BundleAdmissionRequest
 ): Promise<BundleAdmission> {
 	if (request.mode === 'shadow') {
-		// D4: the switch, the counted message quota, the shadow allowance.
+		// The switch, the counted message quota, the shadow allowance.
 		const shadow = await admitShadow(ctx, {
 			task: request.task,
 			subjectKey: request.subjectKey,

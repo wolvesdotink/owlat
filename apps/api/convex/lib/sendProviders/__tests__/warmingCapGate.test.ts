@@ -27,6 +27,7 @@ import {
 } from '@owlat/shared/deliverabilityRouting';
 import { DELIVERABILITY_SIGNAL_MAX_AGE_MS } from '../../../delivery/deliverabilityRouting';
 import { campaignWarmingCapBinds, type WarmingCapVerdict } from '../warmingCapGate';
+import type * as SessionOrganizationModule from '../../sessionOrganization';
 
 const singletonOrg = vi.hoisted(() => ({
 	/**
@@ -40,7 +41,7 @@ const singletonOrg = vi.hoisted(() => ({
 }));
 
 vi.mock('../../sessionOrganization', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../../sessionOrganization')>();
+	const actual = await importOriginal<typeof SessionOrganizationModule>();
 	const { ConvexError } = await import('convex/values');
 	return {
 		...actual,
@@ -321,7 +322,7 @@ describe('adaptive_mix — the verdict comes from the MIX, not from EMAIL_PROVID
  * every recipient of the cell goes to the relay. A floor of 0.9 there
  * OVER-counts own-arm volume — and the floor is what licenses the refusal, so
  * the error lands as a multi-day refusal quoted to a campaign that dispatches to
- * SES. That is the false blocker D2 forbids, in the one configuration this
+ * SES. That is a false blocker, in the one configuration this
  * branch exists for: a ramped cell carrying a live infrastructure signal.
  */
 describe('adaptive_mix — a relayed cell contributes nothing to the floor', () => {

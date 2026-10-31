@@ -13,7 +13,7 @@
  *   - A draft with a gap → no slot; its gaps become the thread's questions.
  *   - Happy path → exactly one persistDraftSlot with the quality score as
  *     confidence, after two model calls (the draft and its self-check) and no
- *     alternative-drafts call (#1200). NEVER auto-sends (there is no send call
+ *     alternative-drafts call. NEVER auto-sends (there is no send call
  *     anywhere).
  */
 
@@ -60,6 +60,7 @@ vi.mock('../../lib/llmProvider', () => ({
 import { generateDraftOnArrival } from '../ai/draftOnArrival';
 import { ledgerRows } from '../../analytics/__tests__/meteredDispatch.testlib';
 import { LlmPartialUsageError } from '../../lib/llm/partialUsage';
+import { draftHashOf } from '@owlat/shared/threadBriefRules';
 
 type Persisted = { draft: string; confidence: number; quality?: unknown; options?: string[] };
 
@@ -125,7 +126,7 @@ describe('generateDraftOnArrival', () => {
 		const h = makeCtx({ aiOff: true, loaded: makeLoaded() });
 		await generateDraftOnArrival(h.ctx, { threadId: 'thr1' as never });
 		expect(h.persisted).toHaveLength(0);
-		// Only the loader ran: the gate needs the owner it names (#1380).
+		// Only the loader ran: the gate needs the owner it names.
 		expect(h.runQuery).toHaveBeenCalledTimes(1);
 		// The full-read check, then the gate.
 		expect(h.runMutation).toHaveBeenCalledTimes(2);
@@ -153,7 +154,7 @@ describe('generateDraftOnArrival', () => {
 		});
 		const h = makeCtx({ loaded: makeLoaded() });
 		await generateDraftOnArrival(h.ctx, { threadId: 'thr1' as never });
-		// Once: the shared service records it, the caller no longer does (#1256).
+		// Once: the shared service records it, the caller does not.
 		expect(ledgerRows(h.runMutation).filter((row) => row.feature === 'postbox_draft')).toEqual([
 			expect.objectContaining({
 				usage,
@@ -186,7 +187,7 @@ describe('generateDraftOnArrival', () => {
 		expect(slot.confidence).toBe(0.72);
 		expect(slot.quality).toEqual({ score: 0.72, complete: true, grounded: true, flags: [] });
 		// The draft and its self-check, and no alternatives: the slot has no
-		// way to offer them (#1200). The self-check scored low (0.72), the case
+		// way to offer them. The self-check scored low (0.72), the case
 		// that used to buy a third, capable-tier call on every arrival.
 		expect(runLlmTextMock).toHaveBeenCalledTimes(1);
 		expect(runLlmObjectMock).toHaveBeenCalledTimes(1);
@@ -269,6 +270,60 @@ describe('generateDraftOnArrival', () => {
 		const h = makeCtx({ loaded: makeLoaded() });
 		await generateDraftOnArrival(h.ctx, { threadId: 'thr1' as never });
 		expect(h.persisted).toHaveLength(0);
+	});
+
+	it("binds the thread's plan to the text the slot holds", async () => {
+		const h = makeCtx({ loaded: makeLoaded() });
+		const plan = {
+			items: [
+				{
+					id: 'item1',
+					revision: 3,
+					intent: 'question',
+					facets: [],
+					responsibility: 'us',
+					text: 'Does Friday work?',
+				},
+			],
+			stances: [{ itemId: 'item1', stance: 'answer' }],
+			threadRevision: 7,
+			planRevision: 2,
+			deletionEpoch: 1,
+			isOverflow: false,
+		};
+		// The self-check and the plan's coverage check read their own fields.
+		const checked = {
+			object: {
+				score: 0.72,
+				complete: true,
+				grounded: true,
+				flags: [],
+				coverage: [],
+				fileClaims: [],
+				promises: [],
+			},
+			tokenUsage: undefined,
+			modelUsed: 'mock-model',
+		};
+		runLlmObjectMock.mockResolvedValueOnce(checked).mockResolvedValueOnce(checked);
+		h.runQuery.mockImplementation(async (ref: unknown) => {
+			const name = getFunctionName(ref as Parameters<typeof getFunctionName>[0]);
+			if (name.includes('responsePlanDraft')) return plan;
+			return name.includes('resolveForDraft') ? 'default' : makeLoaded();
+		});
+		await generateDraftOnArrival(h.ctx, { threadId: 'thr1' as never });
+
+		expect(h.persisted).toHaveLength(1);
+		// One commit: the slot carries the plan bound to its text.
+		expect(h.persisted[0]).toMatchObject({ draft: 'PERSONAL DRAFT BODY' });
+		expect((h.persisted[0] as { plan?: unknown }).plan).toMatchObject({
+			threadRevision: 7,
+			planRevision: 2,
+			deletionEpoch: 1,
+			itemRevisions: [{ itemId: 'item1', revision: 3 }],
+			stances: plan.stances,
+			draftHash: await draftHashOf('PERSONAL DRAFT BODY'),
+		});
 	});
 
 	it('FAIL-SOFT: an empty generated body persists nothing', async () => {

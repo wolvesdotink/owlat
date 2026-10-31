@@ -56,7 +56,7 @@ export default defineConfig({
 			// So the global `on-first-retry` would never record a trace here, and a
 			// setup failure skips every spec that depends on it. Locally, keep one
 			// whenever it fails: network, console and DOM are what tell a slow
-			// deployment from a Convex client that never re-authenticated (#1203).
+			// deployment from a Convex client that never re-authenticated.
 			// In CI the redacted console and network log stand in for it (see
 			// the comment on `CI` above).
 			use: { trace: CI ? 'off' : 'retain-on-failure' },
@@ -67,6 +67,10 @@ export default defineConfig({
 			// that is precisely the case where its answer matters most.
 			name: 'shell',
 			testMatch: /csp-boot\.spec\.ts/,
+			// Full Chromium in headless mode, not the default headless shell: the
+			// shell has no PDF viewer, so a blob: PDF <object> errors there under
+			// any CSP and the PDF check could never see a load.
+			use: { channel: 'chromium' },
 		},
 		{
 			name: 'chromium',

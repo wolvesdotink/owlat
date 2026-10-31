@@ -1,5 +1,5 @@
 /**
- * Sealed Mail recovery kit — hard gate (E6, part b; locked decision D7).
+ * Sealed Mail recovery kit — hard gate (part b).
  *
  *   1. PURE assembly — the plain-language instructions + filename are exactly the
  *      agreed copy (asserted verbatim, the honesty audit).

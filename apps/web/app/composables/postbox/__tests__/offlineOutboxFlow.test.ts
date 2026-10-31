@@ -1,5 +1,5 @@
 /**
- * Offline outbox flow (adoption-gaps D8, piece E2) — the queue+drain seam
+ * Offline outbox flow — the queue+drain seam
  * between usePostboxCompose.send() and usePostboxOfflineOutbox.
  *
  *   - an offline send enqueues the FULL payload and returns a synthetic
@@ -23,6 +23,7 @@ import { effectScope, ref, nextTick } from 'vue';
 import { createTestI18n } from '~/__tests__/i18n';
 import { queryResult } from '~/__tests__/queryStubs';
 import { DEFAULT_UNDO_SEND_SECONDS } from '@owlat/shared/undoSendPolicy';
+import type * as PostboxOfflineStoreModule from '~/utils/postboxOfflineStore';
 
 // The composables under test are stood up OUTSIDE a component setup here, so
 // the `useI18n` auto-import resolves straight to a catalog-backed composer —
@@ -119,7 +120,7 @@ class FakeOfflineWriteError extends Error {
 // path and this fake store must agree on what "claimed" means, and a divergent
 // re-implementation here would test nothing.
 vi.mock('~/utils/postboxOfflineStore', async (importActual) => {
-	const actual = await importActual<typeof import('~/utils/postboxOfflineStore')>();
+	const actual = await importActual<typeof PostboxOfflineStoreModule>();
 	return {
 		...actual,
 		OfflineWriteError: FakeOfflineWriteError,
@@ -376,7 +377,13 @@ describe('offline send', () => {
 		goOffline();
 		fakeOutbox.failEnqueue = true;
 
-		await expect(composer.send()).rejects.toThrow('Send failed');
+		const failure = await composer.send().then(
+			() => null,
+			(err: unknown) => err as Error
+		);
+		expect(failure?.message).toBe('Send failed');
+		// The store's diagnostic error stays attached for whoever logs the failure.
+		expect(failure?.cause).toBeInstanceOf(FakeOfflineWriteError);
 		expect(toasts).toContain(i18n.global.t('shared.postbox.offlineOutbox.outOfStorage'));
 		expect(fakeOutbox.list('mbx-1')).toHaveLength(0);
 		// Nothing was kept anywhere, so there is nothing to undo.
@@ -606,6 +613,33 @@ describe('drain on reconnect', () => {
 		expect(backend.callsFor('drafts.send').map((c) => c.args['undoSendDelayMs'])).toEqual([0, 0]);
 	});
 
+	it('replays a reply marked done with the moment the sender chose it', async () => {
+		const composer = await makeComposer({ subject: 'Done offline' });
+		goOffline();
+		const before = Date.now();
+		await composer.send({ afterSend: 'done' });
+		const after = Date.now();
+		const queued = fakeOutbox.list('mbx-1')[0]!.payload.sendOptions;
+		expect(queued?.afterSend).toBe('done');
+		expect(queued?.afterSendChosenAt).toBeGreaterThanOrEqual(before);
+		expect(queued?.afterSendChosenAt).toBeLessThanOrEqual(after);
+
+		const outbox = await makeOutbox();
+		goOnline();
+		await outbox.drain();
+		expect(backend.callsFor('drafts.send')[0]!.args).toMatchObject({
+			afterSend: 'done',
+			afterSendChosenAt: queued?.afterSendChosenAt,
+		});
+	});
+
+	it('queues a done with the time it was chosen, not the time it was queued', async () => {
+		const composer = await makeComposer({ subject: 'Chosen earlier' });
+		goOffline();
+		await composer.send({ afterSend: 'done', afterSendChosenAt: 1_000 });
+		expect(fakeOutbox.list('mbx-1')[0]!.payload.sendOptions?.afterSendChosenAt).toBe(1_000);
+	});
+
 	it('keeps failed items with lastError and still sends the rest', async () => {
 		const composer = await makeComposer({ subject: 'Poisoned' });
 		goOffline();
@@ -742,6 +776,14 @@ describe('online path', () => {
 		});
 		// The outbox never sees an online send.
 		expect(fakeOutbox.list('mbx-1')).toHaveLength(0);
+	});
+
+	it('passes a reply’s after-send action with the moment it was chosen', async () => {
+		const composer = await makeComposer({ subject: 'Done online' });
+		await composer.send({ afterSend: 'done', afterSendChosenAt: 1_000 });
+		const args = backend.callsFor('drafts.send')[0]!.args;
+		expect(args['afterSend']).toBe('done');
+		expect(args['afterSendChosenAt']).toBe(1_000);
 	});
 
 	it('still throws on a non-network backend reject (no silent queueing)', async () => {

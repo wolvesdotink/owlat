@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type Redis from 'ioredis';
 import type { MtaConfig } from '../../config.js';
+import type * as DlqModule from '../dlq.js';
 
 const listEligibleIds = vi.hoisted(() => vi.fn());
 const claimOne = vi.hoisted(() => vi.fn());
@@ -15,7 +16,7 @@ vi.mock('../convexNotifier.js', () => ({ deliverClaimedWebhook }));
 
 const { sweepWebhookDlq, WEBHOOK_DLQ_SWEEP_BATCH_SIZE } = await import('../dlqSweeper.js');
 const { webhookDlqRetryDelayMs, WEBHOOK_DLQ_AUTO_RETRY_LIMIT } =
-	await vi.importActual<typeof import('../dlq.js')>('../dlq.js');
+	await vi.importActual<typeof DlqModule>('../dlq.js');
 
 const redis = {} as Redis;
 const config = {} as MtaConfig;

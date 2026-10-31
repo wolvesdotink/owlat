@@ -7,6 +7,8 @@
  * how often we ask again, and what a failed call is allowed to overwrite.
  */
 
+import { v, type Infer } from 'convex/values';
+import { decodeJsonText } from '@owlat/worker-protocol/decodeJson';
 import { CURRENT_RELAY_IDENTITY_PROVIDER_DETAILS_VERSION } from '../../../lib/constants';
 import { MANDRILL_DKIM_SELECTOR } from './records';
 import type { MandrillDomainState } from './api';
@@ -38,17 +40,18 @@ export const MANDRILL_CHECK_INTERVAL_MS = {
 export const MANDRILL_UNAVAILABLE_RETRY_MS = 15 * 60 * 1000;
 
 /** The `providerDetails` blob for a Mandrill identity (versioned). */
-interface MandrillProviderDetails {
-	readonly kind: 'mandrill';
+const mandrillProviderDetailsValidator = v.object({
+	kind: v.literal('mandrill'),
 	/** Mandrill's aggregate signing verdict. */
-	readonly isValidSigning: boolean;
+	isValidSigning: v.boolean(),
 	/** Ownership verification timestamp, when Mandrill has recorded one. */
-	readonly verifiedAt?: number;
+	verifiedAt: v.optional(v.number()),
 	/** The `mandrill_verify.<key>` TXT token, when this account offers one. */
-	readonly verifyTxtKey?: string;
+	verifyTxtKey: v.optional(v.string()),
 	/** Why the last call could not produce a verdict, when it could not. */
-	readonly lastError?: string;
-}
+	lastError: v.optional(v.string()),
+});
+type MandrillProviderDetails = Infer<typeof mandrillProviderDetailsValidator>;
 
 /**
  * Is this domain provably able to send signed mail through Mandrill?
@@ -143,12 +146,8 @@ export function parseMandrillProviderDetails(
 	) {
 		return null;
 	}
-	try {
-		const parsed = JSON.parse(raw) as MandrillProviderDetails;
-		return parsed.kind === 'mandrill' ? parsed : null;
-	} catch {
-		return null;
-	}
+	const parsed = decodeJsonText(raw, mandrillProviderDetailsValidator);
+	return parsed.ok ? parsed.value : null;
 }
 
 /**

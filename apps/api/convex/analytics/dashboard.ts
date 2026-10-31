@@ -1,9 +1,9 @@
 import { v } from 'convex/values';
-import { authedQuery } from '../lib/authedFunctions';
-import { getUserIdFromSession } from '../lib/sessionOrganization';
+import { adminQuery, authedQuery } from '../lib/authedFunctions';
 import { getCachedContactCount } from '../lib/contactCountHelpers';
 import { readDailyStats } from '../lib/sendDailyStats';
 import { batchGet } from '../_utils/batchLoader';
+import { isLiveContact } from '../lib/contactHelpers';
 
 // Get dashboard stats for the instance.
 //
@@ -13,11 +13,11 @@ import { batchGet } from '../_utils/batchLoader';
 // plus `transactionalSends.take(5000)` on every subscriber, which
 // fan-out-invalidated on every send-lifecycle mutation — the dashboard
 // was the hottest reactive read in the system.
+// all-members: instance-wide aggregate counts and rates (the editor-visible
+// campaign performance card); no rows, names or addresses.
 export const getStats = authedQuery({
 	args: {},
 	handler: async (ctx) => {
-		await getUserIdFromSession(ctx);
-
 		// `null` while no count is cached: pending, recovered in the background
 		// (contacts/countReconcile.ts). Never a scan of the contacts table.
 		const totalContacts: number | null = await getCachedContactCount(ctx);
@@ -52,13 +52,14 @@ export const getStats = authedQuery({
 });
 
 // Get recent activity for the dashboard
-// Combines audit logs (organization actions) and contact activities (email events)
-export const getRecentActivity = authedQuery({
+// Combines audit logs (organization actions) and contact activities (email events).
+// Admin-gated like `auditLogs.list`: the feed narrates audit entries (member
+// invitations, settings changes), which are not a member-level read.
+export const getRecentActivity = adminQuery({
 	args: {
 		limit: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
-		await getUserIdFromSession(ctx);
 		const limit = args.limit ?? 10;
 
 		// Get recent audit logs (organization member actions)
@@ -100,9 +101,10 @@ export const getRecentActivity = authedQuery({
 			contactActivities.map((activity) => activity.contactId)
 		);
 		for (const activity of contactActivities) {
-			// Get contact details for display
+			// Get contact details for display. A soft-deleted contact's name and
+			// email stay on its row until the retention sweep; it reads as unknown.
 			const contact = activityContacts.get(activity.contactId);
-			const contactName = contact
+			const contactName = isLiveContact(contact)
 				? contact.firstName || contact.email?.split('@')[0] || 'User'
 				: 'Unknown';
 

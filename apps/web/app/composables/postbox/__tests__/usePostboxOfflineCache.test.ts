@@ -70,13 +70,13 @@ let desktop = false;
 beforeEach(() => {
 	desktop = false;
 	fakeStore.writesDisabled = false;
-	[
+	for (const v of [
 		...Object.values(fakeStore),
 		...Object.values(fakeFolderStore),
 		...Object.values(fakeDriver),
-	].forEach((v) => {
+	]) {
 		if (typeof v === 'function' && 'mockClear' in v) (v as ReturnType<typeof vi.fn>).mockClear();
-	});
+	}
 	kv.clear();
 	authUser.value = { id: USER };
 	localStorage.clear();

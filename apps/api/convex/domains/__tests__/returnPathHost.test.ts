@@ -1,9 +1,9 @@
 /**
- * Per-domain VERP return-path host — Convex side (D2).
+ * Per-domain VERP return-path host — Convex side.
  *
- * The D1 MTA API added an optional `returnPathHost` to `/dkim/{domain}/register`
- * (tri-state: absent = no change, string = set, null = clear). D2 wires the
- * Convex backend to it end to end. This gate locks:
+ * The MTA's `/dkim/{domain}/register` takes an optional `returnPathHost`
+ * (tri-state: absent = no change, string = set, null = clear), and the
+ * Convex backend uses it end to end. This gate locks:
  *
  *   1. Registration default vs override — the MTA HTTP client sends the correct
  *      tri-state body, and `mtaProvider.registerDomain` builds the `mailFrom`
@@ -32,6 +32,8 @@ import schema from '../../schema';
 import { api, internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import type { OrganizationRole } from '../../lib/sessionOrganization';
+import type * as SessionOrganizationModule from '../../lib/sessionOrganization';
+import type * as MtaIdentityModule from '../../lib/emailProviders/mtaIdentity';
 
 // ─── Mocks ──────────────────────────────────────────────────────────────────
 
@@ -47,7 +49,7 @@ function throwForbidden(): never {
 }
 
 vi.mock('../../lib/sessionOrganization', async () => {
-	const actual = await vi.importActual<typeof import('../../lib/sessionOrganization')>(
+	const actual = await vi.importActual<typeof SessionOrganizationModule>(
 		'../../lib/sessionOrganization'
 	);
 	const ctx = () => ({ userId: 'test-user', role: mockRole });
@@ -77,7 +79,7 @@ vi.mock('../../lib/sessionOrganization', async () => {
 // request construction.
 const registerDomainMock = vi.fn();
 vi.mock('../../lib/emailProviders/mtaIdentity', async (importActual) => {
-	const actual = await importActual<typeof import('../../lib/emailProviders/mtaIdentity')>();
+	const actual = await importActual<typeof MtaIdentityModule>();
 	return {
 		...actual,
 		createMtaIdentityManager: () => ({
@@ -172,9 +174,9 @@ afterEach(() => {
 
 // ─── 1. Registration: default vs override ─────────────────────────────────────
 
-describe('MTA HTTP client — returnPathHost tri-state body (D1 contract)', () => {
+describe('MTA HTTP client — returnPathHost tri-state body', () => {
 	async function captureRequest(
-		call: (m: import('../../lib/emailProviders/mtaIdentity').MtaIdentityManager) => Promise<unknown>
+		call: (m: MtaIdentityModule.MtaIdentityManager) => Promise<unknown>
 	): Promise<RequestInit> {
 		const fetchMock = vi.fn().mockResolvedValue(
 			new Response(
@@ -388,7 +390,7 @@ describe('returnPath.setReturnPathHost — authorization', () => {
 				domainId,
 				returnPathHost: 'bounce.acme.com',
 			})
-		).rejects.toThrow(/permission/i);
+		).rejects.toThrow(/Only owners and admins can manage sending domains/);
 
 		await t.run(async (ctx) => {
 			const domain = await ctx.db.get(domainId);

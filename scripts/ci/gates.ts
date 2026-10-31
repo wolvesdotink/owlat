@@ -110,7 +110,8 @@ export const ROOT_GATES: readonly RootGate[] = [
 			`{apps,packages,scripts,examples}/**/${CODE}`,
 			'oxlintrc.json',
 			'**/.oxlintrc.json',
-			'scripts/lint-warning-baseline.json',
+			// the Convex rules read the builder classification there
+			'apps/api/scripts/lib/convex-builders.sh',
 		],
 	},
 	{
@@ -123,6 +124,7 @@ export const ROOT_GATES: readonly RootGate[] = [
 			'**/.oxlintrc.json',
 			'scripts/check-owlat-lint.sh',
 			'scripts/owlat-lint-baseline.txt',
+			'apps/api/scripts/lib/convex-builders.sh',
 			RATCHET,
 		],
 	},
@@ -144,6 +146,8 @@ export const ROOT_GATES: readonly RootGate[] = [
 			'install.sh',
 			'turbo.json',
 			'tsconfig.base.json',
+			// The config this suite runs under.
+			'vitest.config.ts',
 			'vitest.shared.ts',
 			'vitest.timeouts.ts',
 			'oxlintrc.json',
@@ -164,7 +168,6 @@ export const ROOT_GATES: readonly RootGate[] = [
 			'**/tsconfig*.json',
 			'knip.jsonc',
 			'scripts/check-dead-code.sh',
-			'scripts/dead-code-baseline.txt',
 			'scripts/check-shared-production-exports.sh',
 			'scripts/shared-production-export-baseline.txt',
 			RATCHET,
@@ -179,6 +182,9 @@ export const ROOT_GATES: readonly RootGate[] = [
 			'packages/provider-kit/',
 			'packages/plugin-kit/',
 			'scripts/check-build-graph.ts',
+			'scripts/json.ts',
+			'scripts/package-manifest.ts',
+			'scripts/turbo-json.ts',
 		],
 	},
 	{
@@ -216,6 +222,17 @@ export const ROOT_GATES: readonly RootGate[] = [
 		baseEnv: 'OXFMT_BASE',
 	},
 	{
+		// Reads the comments of the lines a change adds, in code, shell and YAML.
+		name: 'comment-policy',
+		paths: [
+			CODE_ANYWHERE,
+			'**/*.{sh,bash,yml,yaml}',
+			'scripts/check-comment-policy.ts',
+			'scripts/comment-policy.ts',
+		],
+		baseEnv: 'COMMENT_POLICY_BASE',
+	},
+	{
 		name: 'imports',
 		paths: [CODE_ANYWHERE, '**/package.json', 'scripts/check-cross-package-imports.sh'],
 	},
@@ -228,7 +245,21 @@ export const ROOT_GATES: readonly RootGate[] = [
 			'scripts/provider-identity-collisions.txt',
 		],
 	},
-	{ name: 'ui-buttons', paths: ['apps/web/app/', 'scripts/check-ui-buttons.ts'] },
+	{ name: 'ui-controls', paths: ['apps/web/app/', 'scripts/check-ui-controls.ts'] },
+	{
+		name: 'native-title',
+		paths: [
+			'apps/web/app/',
+			'apps/marketing/',
+			'apps/docs/',
+			'packages/ui/',
+			'packages/email-builder/src/',
+			'scripts/check-native-title.sh',
+			'scripts/native-title-findings.ts',
+			'scripts/native-title-baseline.txt',
+			RATCHET,
+		],
+	},
 	{
 		name: 'desktop-invoke',
 		paths: [
@@ -238,6 +269,7 @@ export const ROOT_GATES: readonly RootGate[] = [
 			'scripts/check-desktop-invoke-contract.ts',
 			'scripts/desktop-invoke-scan.ts',
 			'scripts/desktop-invoke-vue.ts',
+			'scripts/json.ts',
 		],
 	},
 	{
@@ -339,6 +371,20 @@ export const ROOT_GATES: readonly RootGate[] = [
 	{
 		name: 'crypto-primitives',
 		paths: [`{apps,packages}/**/${CODE}`, 'scripts/check-crypto-primitives.sh'],
+	},
+	{
+		// Runs the text gates the owlat boundary rules replace beside those rules
+		// and diffs their findings, until the text gates are retired.
+		name: 'ast-gate-parity',
+		paths: [
+			`{apps,packages}/**/${CODE}`,
+			'oxlintrc.json',
+			'apps/api/scripts/',
+			'scripts/ast-gate-parity.ts',
+			'scripts/check-crypto-primitives.sh',
+			'scripts/json.ts',
+			'scripts/lint-diagnostics.ts',
+		],
 	},
 	// Scans every tracked source, config and doc file.
 	{ name: 'source-bytes', paths: [ANYWHERE] },

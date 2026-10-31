@@ -25,7 +25,7 @@ const BLOCK_TAGS = new Set([
  * selection outside the editor.
  */
 export function getSelectionInsideEditor(
-	editor: HTMLElement | null,
+	editor: HTMLElement | null
 ): { sel: Selection; range: Range } | null {
 	if (!editor || typeof window === 'undefined') return null;
 	const sel = window.getSelection();
@@ -43,26 +43,23 @@ export function getSelectionInsideEditor(
 export function findAncestor(
 	editor: HTMLElement | null,
 	node: Node | null,
-	tagNames: string | string[],
+	tagNames: string | string[]
 ): HTMLElement | null {
-	const tags = (Array.isArray(tagNames) ? tagNames : [tagNames]).map((t) =>
-		t.toLowerCase(),
+	const tags = new Set(
+		(Array.isArray(tagNames) ? tagNames : [tagNames]).map((t) => t.toLowerCase())
 	);
 	let current: Node | null = node;
 	while (current && current !== editor) {
 		if (current.nodeType === Node.ELEMENT_NODE) {
 			const el = current as HTMLElement;
-			if (tags.includes(el.tagName.toLowerCase())) return el;
+			if (tags.has(el.tagName.toLowerCase())) return el;
 		}
 		current = current.parentNode;
 	}
 	return null;
 }
 
-export function getNearestBlock(
-	editor: HTMLElement | null,
-	node: Node | null,
-): HTMLElement | null {
+export function getNearestBlock(editor: HTMLElement | null, node: Node | null): HTMLElement | null {
 	let current: Node | null = node;
 	while (current && current !== editor) {
 		if (current.nodeType === Node.ELEMENT_NODE) {
@@ -81,10 +78,7 @@ export function unwrapElement(el: HTMLElement): void {
 	parent.removeChild(el);
 }
 
-export function replaceTagPreservingChildren(
-	el: HTMLElement,
-	newTag: string,
-): HTMLElement {
+export function replaceTagPreservingChildren(el: HTMLElement, newTag: string): HTMLElement {
 	const replacement = document.createElement(newTag);
 	while (el.firstChild) replacement.appendChild(el.firstChild);
 	el.replaceWith(replacement);

@@ -102,14 +102,6 @@ export const RESERVED_FIELD_KEYS: ReadonlySet<string> = RESERVED_LOCAL_IDS;
 /** Upper bound on any text field's length, shared by both validators. */
 export const MAX_TEXT_LENGTH = 8_192;
 
-/**
- * Domain bounds on a settings schema's size, shared by the manifest-time
- * validator (`settingsSchemaManifest`) and the pre-validation snapshotter
- * (`manifestSnapshot`) so the two layers can never drift out of sync.
- */
-export const MAX_SETTINGS_FIELDS = 64;
-export const MAX_SETTINGS_OPTIONS = 64;
-
 // ─── Runtime helpers (host + client safe; operate on validated schemas) ──────
 
 export interface RedactedPluginSettings {

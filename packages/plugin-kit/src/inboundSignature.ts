@@ -4,7 +4,7 @@
  *
  * It lives in its own leaf module because two contributions now declare one:
  * import providers (their vendor callbacks) and send transports (their feedback
- * webhook, the seams plan's D6/P2.2). The types were originally written for the
+ * webhook). The types were first written for the
  * first and were read out of `./importProvider`; they are re-exported from there
  * so existing imports keep resolving.
  *

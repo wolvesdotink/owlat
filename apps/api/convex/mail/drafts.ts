@@ -13,8 +13,8 @@
  */
 
 import { v } from 'convex/values';
-import { consumeUpload, deleteOwnedUpload, storedFileSize } from '../storage/uploads';
-import { claimThreadAnswerUpload } from './needsReplyPrepared';
+import { deleteOwnedUpload } from '../storage/uploads';
+import { attachUploadArgs, attachUploadToDraft } from './draftAttachUpload';
 import { internalQuery } from '../_generated/server';
 import type { MutationCtx } from '../_generated/server';
 import { authedAction, publicQuery } from '../lib/authedFunctions';
@@ -22,10 +22,9 @@ import { postboxQuery, postboxMutation } from './_helpers';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { normalizeEmail } from '@owlat/shared';
-import { ATTACHMENT_COMPOSE_LIMITS, MAX_ATTACHMENT_BYTES } from '@owlat/shared/attachments';
 import { requireMailboxAccess } from './permissions';
 import { resolveSendAsIdentitiesForCtx } from './identities';
-import { getOrThrow, throwForbidden, throwInvalidInput } from '../_utils/errors';
+import { getOrThrow, throwForbidden } from '../_utils/errors';
 import { sealBodyAtWrite } from '../lib/messageBody';
 import { assertStateIs } from './draftLifecycle/reducers';
 import { isFeatureEnabled } from '../lib/featureFlags';
@@ -38,10 +37,11 @@ import {
 	listForMailboxHandler,
 } from './draftQueries';
 import { cancelPendingSendHandler, cancelScheduledSendHandler, sendHandler } from './draftSend';
+import { mailAfterReplyValidator } from '../lib/validators/mailSettings';
 import { copyExistingIntoDraft } from './attachExisting';
 import { existingAttachmentSourceValidator } from '../lib/existingAttachments';
 import { deleteDraftRow } from './answeredReply';
-import { aiWritePatch, editPatch, humanEdit, provenancePatch } from './draftProvenance';
+import { aiWritePatch, editPatch, provenancePatch } from './draftProvenance';
 import { expectedAttachmentsFor, withoutAttachment } from './draftExpectedAttachments';
 import { expectedAttachmentRequestValidator } from '../lib/validators/mailContent';
 import {
@@ -284,64 +284,11 @@ export const setIdentity = postboxMutation({
 	},
 });
 
+// authz: attachUploadToDraft (mail/draftAttachUpload.ts) requires mailbox access to the draft and the caller's own upload receipt.
 export const addAttachment = postboxMutation({
-	args: {
-		draftId: v.id('mailDrafts'),
-		storageId: v.id('_storage'),
-		filename: v.string(),
-		contentType: v.string(),
-		size: v.number(),
-		isInline: v.optional(v.boolean()),
-		contentId: v.optional(v.string()),
-	},
+	args: attachUploadArgs,
 	handler: async (ctx, args, session) => {
-		const draft = await getOrThrow(ctx, args.draftId, 'Draft');
-		const owned = await requireMailboxAccess(ctx, draft.mailboxId);
-		if (!owned.ok) throwForbidden('Draft not accessible');
-		assertStateIs(draft, 'draft');
-		// An upload answered on the Reply Queue is held by the thread until a
-		// draft of it takes it over; any other is the caller's fresh upload.
-		const isTakenFromThread = await claimThreadAnswerUpload(
-			ctx,
-			args.storageId,
-			draft,
-			session.activeOrganizationId
-		);
-		if (!isTakenFromThread) {
-			await consumeUpload(ctx, args.storageId, session, `mailDrafts:${args.draftId}`);
-		}
-		if (draft.attachments.length >= ATTACHMENT_COMPOSE_LIMITS.maxCount) {
-			throwInvalidInput('Too many attachments');
-		}
-		const size = await storedFileSize(ctx, args.storageId);
-		if (size <= 0 || size > MAX_ATTACHMENT_BYTES)
-			throwInvalidInput('Attachment size exceeds the allowed limit');
-		// Inline images are transmitted too. Re-read legacy attachment sizes so
-		// previously underreported rows cannot evade the total-byte limit.
-		const existingSizes = await Promise.all(
-			draft.attachments.map((attachment) => storedFileSize(ctx, attachment.storageId))
-		);
-		if (
-			existingSizes.reduce((total, bytes) => total + bytes, size) >
-			ATTACHMENT_COMPOSE_LIMITS.maxTotalBytes
-		) {
-			throwInvalidInput('Attachments exceed the total size limit');
-		}
-
-		await ctx.db.patch(args.draftId, {
-			attachments: [
-				...draft.attachments,
-				{
-					storageId: args.storageId,
-					filename: args.filename,
-					contentType: args.contentType,
-					size,
-					isInline: args.isInline ?? false,
-					contentId: args.contentId,
-				},
-			],
-			...humanEdit(Date.now()),
-		});
+		await attachUploadToDraft(ctx, session, args);
 		// Return a truthy result so callers can distinguish success from the
 		// undefined that useBackendOperation.run yields on a failed/void call.
 		return { ok: true };
@@ -453,6 +400,11 @@ export const send = postboxMutation({
 		undoSendDelayMs: v.optional(v.number()),
 		scheduledSendAt: v.optional(v.number()),
 		allowUnsealed: v.optional(v.boolean()),
+		// A reply only: 'done' archives its conversation once it is sent. Absent
+		// is 'keep'. `afterSendChosenAt` is when the sender chose, for a send the
+		// offline outbox replays later.
+		afterSend: v.optional(mailAfterReplyValidator),
+		afterSendChosenAt: v.optional(v.number()),
 	},
 	handler: sendHandler,
 });

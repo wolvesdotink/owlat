@@ -2,7 +2,7 @@
  * The sending-readiness sentence. This is a COPY AUDIT: the whole point of the
  * surface is that an operator meets the ramp cap before pressing send, so the
  * assertions are about what each state is allowed to claim (deliverability plan
- * D14 — say exactly what is known):
+ * Say exactly what is known):
  *   - a cap that could not be measured says nothing at all
  *   - a spent day is never rendered as "about 0 contacts"
  *   - a growth the projection does not show is never promised

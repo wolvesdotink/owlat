@@ -1,10 +1,11 @@
 /**
- * One Senders row (SPEC §5): the read bar, the kind, the status control and
+ * One Senders row: the read bar, the kind, the status control and
  * the markers under the name. The row only emits; the panel runs the calls.
  */
 import { describe, it, expect, beforeAll } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+import { tooltipOf } from '~/__tests__/tooltip';
 import PostboxSenderRow from '../PostboxSenderRow.vue';
 import type { PostboxSenderRow as Row } from '~/utils/postboxSenders';
 
@@ -66,6 +67,13 @@ describe('PostboxSenderRow', () => {
 		await w.get('[data-testid="sender-keep-as-is"]').trigger('click');
 		expect(w.emitted('setStatus')).toEqual([['keep']]);
 		expect(mountRow().find('[data-testid="sender-keep-as-is"]').exists()).toBe(false);
+	});
+
+	it('explains Keep as is in a tooltip, not a native title', () => {
+		const w = mountRow({ suggestion: 'digest' });
+		const keep = w.get('[data-testid="sender-keep-as-is"]');
+		expect(keep.attributes('title')).toBeUndefined();
+		expect(tooltipOf(w, keep)).toBe('Keep this sender as it is and stop suggesting a change');
 	});
 
 	it('shows the drafts-paused marker with Resume', async () => {

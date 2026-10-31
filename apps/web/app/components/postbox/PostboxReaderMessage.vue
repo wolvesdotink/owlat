@@ -11,10 +11,12 @@
  * overflow (spam, block, filter, print, original). The dark-render toggle,
  * delivery strip and scheduling chip live in the message-details disclosure.
  *
- * The calm reader (read on arrival §3) hands the LATEST message `detailsTo`:
- * its trust chip, unsubscribe chip and message details then render in the
- * strip's Details row instead of the card, and `hideDanger` leaves the spam /
- * DMARC line to the thread's notice slot.
+ * What every card of the reader shares (mailbox, flags, theme, Answer mode's
+ * reduced cut, where the chrome renders) comes from the reader context, so
+ * the props are per-message only. The calm reader (read on arrival §3) routes
+ * the LATEST message's trust chip, unsubscribe chip and message details into
+ * the strip's Details row instead of the card, and leaves the spam / DMARC
+ * line to the thread's notice slot (`chromeOf`).
  */
 import { extractEmailAddress } from '~/utils/emailAddress';
 import { formatDateTime } from '~/utils/formatters';
@@ -26,14 +28,13 @@ import type { RecipientKeyStatus } from '~/utils/recipientKeyStatus';
 import type { PostboxReaderMessage } from './PostboxThreadReader.vue';
 import type { AttachmentMeta } from '~/utils/attachmentMeta';
 import { usePostboxSignedBody } from '~/composables/postbox/usePostboxSignedBody';
+import { usePostboxReaderContext } from '~/composables/postbox/usePostboxReaderContext';
 import type { CitedQuote } from '~/utils/postboxQuoteHighlight';
 import { isCalendarInviteAttachment } from '~/utils/postboxSchedulingChip';
 import type { PostboxBodyImageProps, PostboxImageBannerState } from '~/utils/postboxImageAllowlist';
 
 const props = defineProps<{
 	message: PostboxReaderMessage;
-	/** The reader's mailbox — the thread's, not necessarily this message's. */
-	mailboxId: string;
 	expanded: boolean;
 	/** Pre-formatted "24m" — the reader owns the minute tick that refreshes it. */
 	relativeTime: string;
@@ -42,10 +43,6 @@ const props = defineProps<{
 	showReplyAll: boolean;
 	/** False for our own messages — no VIP/accept-sender controls on ourselves. */
 	showSenderControls: boolean;
-	/** Feature flag `senderAuthBadges`. */
-	authEnabled: boolean;
-	/** Feature flag `sealedMail`. */
-	sealedEnabled: boolean;
 	secureClass: SecureMessageClass;
 	/** Encrypted or clearsigned — the badge renders the readable half instead. */
 	hideBody: boolean;
@@ -53,35 +50,16 @@ const props = defineProps<{
 	delivery?: OutboundDelivery | null;
 	/** Proposed times of a plain-prose scheduling request; null renders no chip. */
 	schedulingTimes?: string[] | null;
-	/** The app is in dark mode, so the per-message light-render escape hatch applies. */
-	showRenderToggle: boolean;
 	forcedLight: boolean;
 	images: PostboxBodyImageProps;
-	ownEmail?: string;
 	/** This message carries a real .ics invite (PostboxInviteCard renders it). */
 	hasInvite: boolean;
 	/** The correspondent's sealing-key status, when THIS sender is them. */
 	sealStatus?: RecipientKeyStatus | null;
-	/** `${messageId}:${part}` of the attachment currently being fetched, if any. */
-	downloadingAttachment?: string | null;
-	/** Mount the body now instead of when it nears the viewport (printing). */
-	eagerBody?: boolean;
 	/** The thread brief's latest-update sentence for this message (personal only). */
 	latestLine?: string | null;
 	/** A cited quote in this message: scroll to it and mark it (an empty quote scrolls only). */
 	citeQuote?: CitedQuote | null;
-	/**
-	 * Answer mode's cut of the card (plan §09): no action row, the trust chip
-	 * only when the sender is not verified, and To/Cc, the unsubscribe chip and
-	 * the message details behind a click on the sender name.
-	 */
-	reduced?: boolean;
-	/** The calm reader's Details panel: the card's chips render there (§3). */
-	detailsTo?: HTMLElement | null;
-	/** Where the image banner renders instead of above the body (Details). */
-	imageBannerTo?: HTMLElement | null;
-	/** The thread's notice slot says the danger; the card does not repeat it. */
-	hideDanger?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -96,6 +74,8 @@ const emit = defineEmits<{
 	(e: 'block-sender'): void;
 	(e: 'create-filter'): void;
 	(e: 'print'): void;
+	(e: 'copy-link'): void;
+	(e: 'share-in-chat'): void;
 	(e: 'preview-attachment', att: AttachmentMeta, all: AttachmentMeta[]): void;
 	(e: 'download-attachment', att: AttachmentMeta): void;
 	(e: 'trackers', detection: TrackerDetection): void;
@@ -112,12 +92,17 @@ const emit = defineEmits<{
 const { t } = useI18n();
 
 const msg = computed(() => props.message);
+const reader = usePostboxReaderContext();
+const chrome = computed(() => reader.chromeOf(msg.value._id));
+// Find in conversation: the active match mounts its body even off screen.
+const find = computed(() => reader.findOf(msg.value._id));
+const findCount = computed(() => reader.findCountOf(msg.value._id));
 
 // Reduced cards fold the recipient lines and details behind the sender name.
 const metaOpen = ref(false);
-const showMeta = computed(() => !props.reduced || metaOpen.value);
+const showMeta = computed(() => !reader.reduced || metaOpen.value);
 function onSenderClick() {
-	if (props.reduced) metaOpen.value = !metaOpen.value;
+	if (reader.reduced) metaOpen.value = !metaOpen.value;
 	else emit('open-sender-profile');
 }
 
@@ -160,11 +145,11 @@ const senderAuthSummary = computed(() => {
 
 const showSpamBanner = computed(
 	() =>
-		!props.hideDanger &&
-		(msg.value.spamVerdict === 'spam' || (!props.authEnabled && msg.value.dmarcResult === 'fail'))
+		!chrome.value.hideDanger &&
+		(msg.value.spamVerdict === 'spam' || (!reader.authEnabled && msg.value.dmarcResult === 'fail'))
 );
 
-// A cited quote (plan §4.2): bring the message into view; the body marks the
+// A cited quote: bring the message into view; the body marks the
 // words, or reports that it could not find that exact passage.
 const sectionEl = ref<HTMLElement | null>(null);
 const isCiteMissed = ref(false);
@@ -220,6 +205,12 @@ const renderToggleLabel = computed(() =>
 			</p>
 		</div>
 		<span
+			v-if="findCount > 0"
+			class="rounded bg-warning/15 px-1.5 text-xs tabular-nums text-text-secondary"
+			data-testid="reader-message-find-count"
+			>{{ t('components.postbox.threadFind.rowCount', { count: findCount }, findCount) }}</span
+		>
+		<span
 			class="text-xs text-text-tertiary tabular-nums whitespace-nowrap flex-shrink-0"
 			:title="formatDateTime(msg.receivedAt)"
 		>
@@ -258,47 +249,50 @@ const renderToggleLabel = computed(() =>
 					data-testid="reader-message-sender-row"
 				>
 					<!-- Plan idea 45: the sender line opens what the mailbox knows of them. -->
-					<button
-						type="button"
-						class="min-w-0 break-words text-left hover:underline"
-						:title="
-							reduced
+					<UiTooltip
+						:text="
+							reader.reduced
 								? t('components.postbox.postboxReaderMessage.showDetails')
 								: t('components.postbox.postboxSenderProfile.open')
 						"
-						:aria-expanded="reduced ? metaOpen : undefined"
-						@click="onSenderClick"
 					>
-						<span class="font-medium text-text-primary">
-							{{ msg.fromName || msg.fromAddress }}
-						</span>
-						<span v-if="msg.fromName" class="text-text-tertiary text-sm">
-							&lt;{{ msg.fromAddress }}&gt;
-						</span>
-						<!-- Reduced, the name is a disclosure; say so without a hover. -->
-						<Icon
-							v-if="reduced"
-							name="lucide:chevron-down"
-							class="ml-0.5 inline size-3.5 align-middle text-text-tertiary transition-transform motion-reduce:transition-none"
-							:class="{ 'rotate-180': metaOpen }"
-							aria-hidden="true"
-							data-testid="reader-message-details-cue"
-						/>
-					</button>
+						<button
+							type="button"
+							class="min-w-0 break-words text-left hover:underline"
+							:aria-expanded="reader.reduced ? metaOpen : undefined"
+							@click="onSenderClick"
+						>
+							<span class="font-medium text-text-primary">
+								{{ msg.fromName || msg.fromAddress }}
+							</span>
+							<span v-if="msg.fromName" class="text-text-tertiary text-sm">
+								&lt;{{ msg.fromAddress }}&gt;
+							</span>
+							<!-- Reduced, the name is a disclosure; say so without a hover. -->
+							<Icon
+								v-if="reader.reduced"
+								name="lucide:chevron-down"
+								class="ml-0.5 inline size-3.5 align-middle text-text-tertiary transition-transform motion-reduce:transition-none"
+								:class="{ 'rotate-180': metaOpen }"
+								aria-hidden="true"
+								data-testid="reader-message-details-cue"
+							/>
+						</button>
+					</UiTooltip>
 					<div
 						class="ml-auto flex max-w-full flex-shrink-0 items-center gap-2"
 						data-testid="reader-message-indicators"
 					>
 						<!-- Five indicators, one pixel budget: the popover holds the auth
 						     badge, security / sealed badge, trackers, sealing key, controls. -->
-						<Teleport :to="detailsTo" :disabled="!detailsTo"
+						<Teleport :to="chrome.detailsTo" :disabled="!chrome.detailsTo"
 							><PostboxTrustChip
-								:mailbox-id="mailboxId"
+								:mailbox-id="reader.mailboxId"
 								:from-address="msg.fromAddress"
-								:auth-enabled="authEnabled"
+								:auth-enabled="reader.authEnabled"
 								:auth="authInput"
 								:heuristics="msg.senderHeuristics"
-								:sealed-enabled="sealedEnabled"
+								:sealed-enabled="reader.sealedEnabled"
 								:sealed="msg.inboundEncryptionInfo"
 								:signature="shownSignature"
 								:secure-class="shownSecureClass"
@@ -307,17 +301,18 @@ const renderToggleLabel = computed(() =>
 								:show-sender-controls="showSenderControls"
 								:seal-status="sealStatus"
 								:show-security-detail="!holdBody"
-								:hide-when-ok="reduced"
+								:hide-when-ok="reader.reduced"
 								@seal-refetch="emit('seal-refetch')"
 						/></Teleport>
-						<button
-							type="button"
-							class="text-xs text-text-tertiary tabular-nums whitespace-nowrap hover:text-text-primary"
-							:title="formatDateTime(msg.receivedAt)"
-							@click="emit('toggle-expanded')"
-						>
-							{{ relativeTime }}
-						</button>
+						<UiTooltip :text="formatDateTime(msg.receivedAt)">
+							<button
+								type="button"
+								class="text-xs text-text-tertiary tabular-nums whitespace-nowrap hover:text-text-primary"
+								@click="emit('toggle-expanded')"
+							>
+								{{ relativeTime }}
+							</button>
+						</UiTooltip>
 					</div>
 				</div>
 				<p v-if="showMeta" class="text-text-secondary text-xs mt-0.5">
@@ -335,19 +330,19 @@ const renderToggleLabel = computed(() =>
 					</span>
 				</p>
 				<button
-					v-if="reduced && metaOpen"
+					v-if="reader.reduced && metaOpen"
 					type="button"
 					class="mt-1 text-xs text-brand hover:underline"
 					@click="emit('open-sender-profile')"
 				>
 					{{ t('components.postbox.postboxSenderProfile.open') }}
 				</button>
-				<Teleport :to="detailsTo" :disabled="!detailsTo">
+				<Teleport :to="chrome.detailsTo" :disabled="!chrome.detailsTo">
 					<PostboxUnsubscribeChip
 						v-if="msg.unsubscribe && showMeta"
 						class="mt-1.5"
 						:message-id="msg._id"
-						:mailbox-id="mailboxId"
+						:mailbox-id="reader.mailboxId"
 						:unsubscribe="msg.unsubscribe"
 						:sender-name="msg.fromName || msg.fromAddress"
 					/>
@@ -356,10 +351,9 @@ const renderToggleLabel = computed(() =>
 				     message-scoped details that used to be permanent chrome. -->
 					<PostboxMessageDetails v-if="showMeta" :message-id="msg._id">
 						<button
-							v-if="showRenderToggle"
+							v-if="reader.appIsDark"
 							type="button"
 							class="mt-3 inline-flex items-center gap-1.5 text-text-tertiary hover:text-text-primary"
-							:title="renderToggleLabel"
 							:aria-label="renderToggleLabel"
 							:aria-pressed="forcedLight"
 							@click="emit('toggle-forced-light')"
@@ -434,24 +428,25 @@ const renderToggleLabel = computed(() =>
 			v-else-if="holdBody"
 			:klass="shownSecureClass"
 			:message="badgeMessage"
-			:sealed="sealedEnabled ? msg.inboundEncryptionInfo : undefined"
+			:sealed="reader.sealedEnabled ? msg.inboundEncryptionInfo : undefined"
 			:signature="shownSignature"
 			:omits-content="signedView.kind === 'signed' && signedView.omitsContent"
 		/>
-		<!-- Off-screen bodies wait as a sized placeholder until near the viewport (plan D8). -->
+		<!-- Off-screen bodies wait as a sized placeholder until near the viewport. -->
 		<PostboxLazyBody
 			v-else
 			:message-id="msg._id"
 			:force-light="forcedLight"
 			:images="images"
-			:eager="eagerBody"
+			:eager="reader.eagerBody || find?.active != null"
 		>
 			<PostboxMessageBody
 				:message="msg"
 				:force-light="forcedLight"
 				v-bind="images"
 				:highlight-quote="citeQuote"
-				:image-banner-to="imageBannerTo"
+				:find="find"
+				:image-banner-to="chrome.imageBannerTo"
 				@image-state="emit('image-state', $event)"
 				@cite-located="isCiteMissed = !$event"
 				@trackers="emit('trackers', $event)"
@@ -465,14 +460,14 @@ const renderToggleLabel = computed(() =>
 		<PostboxInviteCard
 			v-if="hasInvite && !signedOnly && shownAttachments.some(isCalendarInviteAttachment)"
 			:message-id="msg._id"
-			:mailbox-id="mailboxId"
-			:own-email="ownEmail"
+			:mailbox-id="reader.mailboxId"
+			:own-email="reader.ownEmail"
 		/>
 
 		<PostboxMessageAttachments
 			:attachments="shownAttachments"
 			:message-id="msg._id"
-			:downloading-key="downloadingAttachment"
+			:downloading-key="reader.downloadingAttachment"
 			:is-preview-enabled="!signedOnly"
 			:indexing="msg.attachmentIndexing"
 			@preview="(att, all) => emit('preview-attachment', att, all)"
@@ -482,7 +477,7 @@ const renderToggleLabel = computed(() =>
 		<!-- Star / Reply / Reply all / Forward / ⋯. Answer mode drops the row:
 		     you are already replying, and the rest stays in the normal reader. -->
 		<PostboxReaderMessageActions
-			v-if="!reduced"
+			v-if="!reader.reduced"
 			:message-id="msg._id"
 			:starred="starred"
 			:show-reply-all="showReplyAll"
@@ -494,6 +489,8 @@ const renderToggleLabel = computed(() =>
 			@block-sender="emit('block-sender')"
 			@create-filter="emit('create-filter')"
 			@print="emit('print')"
+			@copy-link="emit('copy-link')"
+			@share-in-chat="emit('share-in-chat')"
 		/>
 	</section>
 </template>

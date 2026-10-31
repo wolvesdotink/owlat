@@ -70,6 +70,10 @@ describe('selectRuntimeEnvVars', () => {
 			expect(() =>
 				selectRuntimeEnvVars({ INSTANCE_SECRET, SMTP_RELAY_PASSWORD: tampered })
 			).toThrow(/SMTP_RELAY_PASSWORD.*could not be opened/s);
+			// The open failure stays attached for diagnosis.
+			expect(() =>
+				selectRuntimeEnvVars({ INSTANCE_SECRET, SMTP_RELAY_PASSWORD: tampered })
+			).toThrow(expect.objectContaining({ cause: expect.any(Error) }));
 		});
 
 		it('fails CLOSED when a token was sealed under a different INSTANCE_SECRET', () => {
@@ -190,9 +194,15 @@ describe('pushConvexRuntimeEnv', () => {
 	});
 
 	it('throws a clear error when the admin API is unreachable', async () => {
-		const fetchMock = vi.fn().mockRejectedValue(new Error('ECONNREFUSED'));
-		await expect(
-			pushConvexRuntimeEnv('http://convex:3210', 'k', [['EMAIL_PROVIDER', 'resend']], fetchMock)
-		).rejects.toThrow(/ECONNREFUSED/);
+		const unreachable = new Error('ECONNREFUSED');
+		const fetchMock = vi.fn().mockRejectedValue(unreachable);
+		const push = pushConvexRuntimeEnv(
+			'http://convex:3210',
+			'k',
+			[['EMAIL_PROVIDER', 'resend']],
+			fetchMock
+		);
+		await expect(push).rejects.toThrow(/ECONNREFUSED/);
+		await expect(push).rejects.toMatchObject({ cause: unreachable });
 	});
 });

@@ -229,7 +229,7 @@ export const CFBL_FEEDBACK_ID_HEADER = 'CFBL-Feedback-ID';
  * (`smtp/dkimStore.ts`) gets RFC 9477 complaint feedback, and one that has not
  * gets silence rather than a decorative header.
  *
- * Absence is not an error state (D2): no throw, no warning, no nag — the send
+ * Absence is not an error state: no throw, no warning, no nag — the send
  * proceeds byte-for-byte as it did before the header existed.
  */
 function isCfblHostAlignedWithFrom(cfblHost: string, fromDomain: string): boolean {

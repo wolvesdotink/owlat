@@ -163,8 +163,26 @@ describe('Emailit feedback semantics', () => {
 			).toBeNull()
 	);
 
+	it('refuses an actionable event whose consumed fields have the wrong type', () => {
+		expect(() => emailitAdapter.parseEvent(payload('email.bounced', { status: 550 }))).toThrow(
+			'emailit webhook: $.data.object.status: expected string'
+		);
+		expect(() => emailitAdapter.parseEvent(payload('email.delivered', { to: [7] }))).toThrow(
+			/emailit webhook: \$\.data\.object\.to/
+		);
+		expect(() => emailitAdapter.parseEvent(payload('email.accepted', { id: 9 }))).toThrow(
+			'emailit webhook: $.data.object.id: expected string'
+		);
+	});
+
+	it('acknowledges an ignored kind without checking the fields it discards', () => {
+		expect(
+			emailitAdapter.parseEvent(payload('email.clicked', { status: 550, to: [7] }))
+		).toBeNull();
+	});
+
 	it('fails closed on missing identity, recipient, or timestamp', () => {
-		expect(() => emailitAdapter.parseEvent('{}')).toThrow(/Malformed/);
+		expect(() => emailitAdapter.parseEvent('{}')).toThrow('emailit webhook: $.type: missing');
 		expect(() =>
 			emailitAdapter.parseEvent(payload('email.accepted', { updated_at: 'nope' }))
 		).toThrow(/invalid timestamp/);

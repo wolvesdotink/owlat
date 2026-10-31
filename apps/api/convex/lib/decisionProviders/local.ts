@@ -40,6 +40,7 @@
  * `Retry-After`.
  */
 
+import { isRecord } from '@owlat/shared/utils/guards';
 import { isRetriableLlmError } from '../llm/dispatch';
 import { validateOutboundUrl } from '../outboundUrlValidation';
 import type { ProviderClientConfig } from '../llmProviders/types';
@@ -159,8 +160,9 @@ function retryAfterMs(response: Response): number | undefined {
  */
 async function errorDetail(response: Response): Promise<string> {
 	try {
-		const body = (await response.json()) as { error?: { message?: unknown } } | null;
-		const message = body?.error?.message;
+		const body: unknown = await response.json();
+		const error = isRecord(body) ? body['error'] : undefined;
+		const message = isRecord(error) ? error['message'] : undefined;
 		if (typeof message !== 'string' || message.trim().length === 0) return '';
 		const flat = message.replace(/\s+/g, ' ').trim();
 		return ` ${flat.length > MAX_ERROR_DETAIL_LENGTH ? `${flat.slice(0, MAX_ERROR_DETAIL_LENGTH)}…` : flat}`;
@@ -288,9 +290,11 @@ export const localDecisionAdapter: DecisionProviderAdapter<'local'> = {
 			signal: AbortSignal.timeout(5_000),
 		});
 		if (!response.ok) throw await responseError(response);
-		const body = (await response.json()) as { data?: { id?: unknown }[] } | null;
-		const loaded = (body?.data ?? [])
-			.map((entry) => entry.id)
+		// The OpenAI-style `{ data: [{ id }] }` list; entries without a string id are skipped.
+		const body: unknown = await response.json();
+		const entries = isRecord(body) && Array.isArray(body['data']) ? body['data'] : [];
+		const loaded = entries
+			.map((entry) => (isRecord(entry) ? entry['id'] : undefined))
 			.filter((id): id is string => typeof id === 'string' && id.length > 0);
 		return [...new Set([...loaded, ...LOCAL_DECISION_MODELS])];
 	},

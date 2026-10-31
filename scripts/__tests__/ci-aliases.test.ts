@@ -1,6 +1,12 @@
 import { createHash } from 'node:crypto';
 import { expect, it } from 'vitest';
-import { aliasReleases, previousRelease, publishedDigests, composeDigests } from '../ci/aliases';
+import {
+	aliasReleases,
+	composeDigests,
+	decodePublishedReleases,
+	previousRelease,
+	publishedDigests,
+} from '../ci/aliases';
 const release = (tag_name: string) => ({ tag_name, draft: false, prerelease: false });
 it('reconciles highest published stable unified versions regardless of finish order', () => {
 	const releases = [
@@ -36,4 +42,23 @@ it('binds complete published image lists and compose images to checksums', () =>
 		{ name: 'web', digest },
 	]);
 	expect(() => composeDigests(compose, checksum(compose), '0.6.13', 'example', ['web'])).toThrow();
+});
+it('starts the update flow of a candidate from the stable release below its version', () => {
+	const releases = ['v0.6.16', 'v0.6.15', 'v0.7.0-rc.1', 'server-v0.6.20'].map(release);
+	expect(previousRelease(releases, '0.7.0-rc.2')).toBe('0.6.16');
+	expect(previousRelease(releases, '0.6.16-rc.1')).toBe('0.6.15');
+	expect(previousRelease(releases, '0.7.0')).toBe('0.6.16');
+	expect(() => previousRelease(releases, 'server-v0.7.0')).toThrow();
+});
+
+it('reads a release list page only with each release flagged draft or prerelease', () => {
+	const page = [{ tag_name: 'v1.2.3', draft: false, prerelease: false, assets: [] }];
+	expect(decodePublishedReleases(page, 'releases')).toEqual(page);
+	// A missing flag read as falsy would let a draft claim `latest`.
+	expect(() =>
+		decodePublishedReleases([{ tag_name: 'v1.2.4', prerelease: false }], 'releases')
+	).toThrow('releases[0].draft must be a boolean');
+	expect(() => decodePublishedReleases({ message: 'Not Found' }, 'releases')).toThrow(
+		'releases must be an array'
+	);
 });

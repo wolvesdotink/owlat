@@ -51,6 +51,9 @@ import {
 	type TestWorkspace,
 	type TurboTaskConfig,
 } from './ci/selection';
+import { readDockerImages } from './ci/docker-images';
+import { readPackageManifest } from './package-manifest';
+import { decodeTurboTasks, parseTurboWorkspaces } from './turbo-json';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -186,8 +189,7 @@ function turboJson(root: string, args: string[], env: Record<string, string | un
 	if (run.error) throw run.error;
 	if (run.status !== 0)
 		throw new CheckChangedError(`check:changed: turbo ${args.join(' ')} failed:\n${run.stderr}`);
-	return (JSON.parse(run.stdout) as { packages: { items: { name: string; path: string }[] } })
-		.packages.items;
+	return parseTurboWorkspaces(run.stdout, `turbo ${args.join(' ')}`);
 }
 
 // ---- planning ---------------------------------------------------------------
@@ -334,6 +336,7 @@ export function ciAlsoRuns(plan: Plan): string[] {
 			.join(', ')}`,
 		'test-api': 'the full API suite with coverage',
 		'test-web': 'the full web suite with coverage',
+		'test-web-browser': 'the web component tests in Chrome (bun run --cwd apps/web test:browser)',
 		'test-mta': 'the MTA suite with its Redis integration tests',
 		'docker-build': `image builds: ${ci.images.map((image) => image.name).join(', ')}`,
 		'sdk-java': 'the Java SDK build',
@@ -391,9 +394,7 @@ function readWorkspaces(root: string, affectedEnv: Record<string, string>) {
 	const all = turboJson(root, ['ls', '--output=json'], {});
 	const affected = turboJson(root, ['ls', '--affected', '--output=json'], affectedEnv);
 	const workspaces = all.map((item): WorkspaceInfo => {
-		const manifest = JSON.parse(readFileSync(join(root, item.path, 'package.json'), 'utf8')) as {
-			scripts?: Record<string, string>;
-		};
+		const manifest = readPackageManifest(join(root, item.path, 'package.json'));
 		return { name: item.name, directory: item.path, scripts: manifest.scripts ?? {} };
 	});
 	return { workspaces, affected: new Set(affected.map((item) => item.name)) };
@@ -411,16 +412,17 @@ export function main(argv: string[], root = ROOT): number {
 		return 0;
 	}
 	const { workspaces, affected } = readWorkspaces(root, { TURBO_SCM_BASE: mergeBase });
-	const turbo = parseJsonc(readFileSync(join(root, 'turbo.json'), 'utf8')) as {
-		tasks: Record<string, TurboTaskConfig>;
-	};
+	const turboTasks = decodeTurboTasks(
+		parseJsonc(readFileSync(join(root, 'turbo.json'), 'utf8')),
+		'turbo.json'
+	);
 	const plan = buildPlan({
 		mergeBase,
 		changes,
 		workspaces,
 		affected,
-		turboTasks: turbo.tasks,
-		images: JSON.parse(readFileSync(join(root, '.github/docker-images.json'), 'utf8')),
+		turboTasks,
+		images: readDockerImages(join(root, '.github/docker-images.json')),
 		listDirectory: (directory) => {
 			const path = join(root, directory);
 			return existsSync(path) ? readdirSync(path) : [];

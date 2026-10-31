@@ -1,5 +1,5 @@
 /**
- * The AI spend budget as people read it (D1, U3, U5). Spend admission refuses
+ * The AI spend budget as people read it. Spend admission refuses
  * a paid call with a stable code (`AI_BUDGET_EXHAUSTED`, the reason beside it),
  * a refused draft stream finishes with that code as its `errorMessage`, and a
  * Team message the ceiling held carries `budgetHold`. This module turns each
@@ -73,7 +73,7 @@ export function isBudgetStreamError(errorMessage: string | null | undefined): bo
 	return errorMessage === AI_BUDGET_ERROR_CODE;
 }
 
-/** `inboundMessages.budgetHold`: why a Team message waits for a person (D1). */
+/** `inboundMessages.budgetHold`: why a Team message waits for a person. */
 export interface BudgetHold {
 	reason: BudgetHoldReason;
 	missingJudgments: MissingJudgment[];

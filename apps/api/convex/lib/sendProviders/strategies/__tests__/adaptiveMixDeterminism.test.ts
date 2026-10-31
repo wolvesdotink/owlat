@@ -1,5 +1,5 @@
 /**
- * `adaptive_mix` — determinism and THE ANTI-COHORT PROOF (plan D7).
+ * `adaptive_mix` — determinism and THE ANTI-COHORT PROOF.
  *
  * Three properties, in ascending order of how badly their absence would
  * corrupt the controller:
@@ -69,7 +69,7 @@ describe('adaptive_mix — determinism', () => {
 		}
 		// With six independent fair draws, P(all six agree) = 2 * 0.5^6 ≈ 3.1%.
 		// Salting with contactId ALONE would make this 100% — the fixed-cohort
-		// bias D7 exists to prevent. The bound is generous enough not to flake
+		// bias the per-recipient split exists to prevent. The bound is generous enough not to flake
 		// and tight enough that cohorting cannot hide under it.
 		expect(alwaysSameArm / AUDIENCE.length).toBeLessThan(0.06);
 	});

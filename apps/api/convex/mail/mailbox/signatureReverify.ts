@@ -1,9 +1,9 @@
 /**
- * Re-verify a signed message whose verdict predates verdict scopes (#1320).
+ * Re-verify a signed message whose verdict predates verdict scopes.
  *
- * Since #1316 every inbound signature verdict records what it covers
+ * Every inbound signature verdict records what it covers
  * (`InboundSignatureInfo.scope`), and the reader withholds any verdict without
- * one. Rows verified before that keep an unscoped verdict nobody sees. When the
+ * one. Older rows can hold an unscoped verdict nobody sees. When the
  * reader opens such a message it calls {@link request}, which runs the CURRENT
  * verifier (`e2ee/verifyInboundSignature.forInbound`, the PGP/MIME structure
  * cross-check included) over the stored raw `.eml` and replaces the old verdict
@@ -49,7 +49,7 @@ import { rateLimiter } from '../../lib/rateLimiter';
 import { logError } from '../../lib/runtimeLog';
 import { postboxMutation } from '../_helpers';
 import { requireMailboxAccess } from '../permissions';
-import { isMailReadChangedBy } from '../interpret/scope';
+import { isMailReadChangedBy } from '../interpret/scopeLoad';
 import { fenceThreadInterpretation } from '../interpret/staleFence';
 import { refreshArrivalProjection } from '../arrival/projection';
 import { clearColdPitchOfMessage } from '../arrival/coldPitch';
@@ -151,7 +151,7 @@ function isSettledVerdict(info: { failure?: string; keySource: string }): boolea
  * unscoped verdict is never written. When the new scope changes what
  * interpretation reads (`isReadChanged`) and the message was interpreted, its
  * thread's interpretation is fenced off in the same transaction. A changed
- * read also clears the message's cold-pitch verdict (#1381), which R2 judged
+ * read also clears the message's cold-pitch verdict, which R2 judged
  * on the old read whether or not a full interpretation exists; an R2 answer
  * still in flight is refused by the body fingerprint.
  */
@@ -171,7 +171,7 @@ export const apply = internalMutation({
 		const isFenced = await isInterpreted(ctx, message);
 		if (isFenced) await fenceThreadInterpretation(ctx, message.threadId);
 		const isPitchCleared = await clearColdPitchOfMessage(ctx, args.messageId);
-		// The arrival projection reads both the fence and the verdict (#1381).
+		// The arrival projection reads both the fence and the verdict.
 		if (isFenced || isPitchCleared) await refreshArrivalProjection(ctx, message.threadId);
 		return null;
 	},

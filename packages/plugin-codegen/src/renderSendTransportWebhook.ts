@@ -12,8 +12,8 @@ import {
 } from './renderShared';
 
 /**
- * The feedback half of a bundled send transport (the seams plan's D6, wired by
- * P2.2) — its own module for the same reason crons and the automation
+ * The feedback half of a bundled send transport — its own module for the
+ * same reason crons and the automation
  * registries have theirs: `render.ts` is the composition, not the renderer of
  * every artifact.
  */
@@ -25,7 +25,7 @@ interface RenderedSendTransportWebhook extends PluginModuleFileEntry {
 }
 
 /**
- * The feedback half of every bundled send transport that declares one (D6).
+ * The feedback half of every bundled send transport that declares one.
  *
  * Keyed by the same namespaced kind as the send half, and carrying the plugin id
  * the route is addressed by. The manifest validator has already refused a second

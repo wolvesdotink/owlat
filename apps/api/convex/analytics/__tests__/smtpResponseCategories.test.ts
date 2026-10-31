@@ -25,9 +25,11 @@
  */
 
 import { describe, expect, it, vi } from 'vitest';
+import type * as SessionOrganizationModule from '../../lib/sessionOrganization';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
 import { newHarness } from '../../__tests__/testModules';
+import { runDeletionStepBatch } from '../../__tests__/helpers/workspaceDeletionFence';
 import { utcDayStart } from '../../lib/clock';
 import { TENANT_TABLES } from '../../lib/tenantTables';
 import {
@@ -53,7 +55,7 @@ import {
 // registered in the convex-test harness — the same override every other writer
 // suite in this folder uses.
 vi.mock('../../lib/sessionOrganization', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../../lib/sessionOrganization')>();
+	const actual = await importOriginal<typeof SessionOrganizationModule>();
 	return { ...actual, getSingletonOrganizationId: vi.fn().mockResolvedValue('org_outcomes') };
 });
 
@@ -140,7 +142,7 @@ describe('the classified response reaches a counter at all', () => {
 	it('records NOTHING for a send outside the experiment, and says which', async () => {
 		const t = newHarness();
 		await t.run(async (ctx) => {
-			// No assignment row: a seed shadow copy (plan D18) or a legacy send. It
+			// No assignment row: a seed shadow copy or a legacy send. It
 			// must never enter a denominator.
 			await seedAssignedSend(ctx, { providerMessageId: 'mta-msg-unassigned' });
 		});
@@ -232,7 +234,7 @@ describe('absence and a measured zero are different facts', () => {
 		expect(observation).not.toBeNull();
 		expect(observation?.observed).toBe(3);
 		// The whole vocabulary is carried, not only the block subset: the audit row
-		// (plan D12) is better for knowing the window was all throttling.
+		// is better for knowing the window was all throttling.
 		expect(observation?.blockedByCategory).toEqual({
 			greylisted: 1,
 			rate_limited: 1,
@@ -449,9 +451,7 @@ describe('the rows are tenant data', () => {
 		});
 		expect(await allRows(t)).toHaveLength(1);
 
-		await t.mutation(internal.workspaces.deletion.walker.runStep, {
-			table: 'smtpResponseCategories',
-		});
+		await runDeletionStepBatch(t, 'smtpResponseCategories');
 		expect(await allRows(t)).toEqual([]);
 	});
 });

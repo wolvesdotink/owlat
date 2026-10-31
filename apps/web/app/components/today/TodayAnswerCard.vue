@@ -7,6 +7,8 @@ import { useLocalized } from '~/composables/useLocalized';
 import { parseFromHeader } from '~/utils/todayDigest';
 import { briefMoreChip, briefRowLatest } from '~/utils/briefRowLine';
 import { briefDueDate } from '~/utils/threadBriefContext';
+import { useRowLinkMenu } from '~/composables/useRowLinkMenu';
+import RowContextMenu from '~/components/RowContextMenu.vue';
 import {
 	answerEffortParts,
 	answerSourceParts,
@@ -37,6 +39,12 @@ const props = withDefaults(
 
 const { t, locale } = useI18n();
 const TOP = 3;
+// A row's context menu: open it, or take its link elsewhere.
+const { linkItems, openItem } = useRowLinkMenu();
+const menuFor = (item: AnswerItem) => () => {
+	const href = focusHref(item);
+	return [openItem(href), ...linkItems(href)];
+};
 const top = computed(() => props.items.slice(0, TOP));
 
 const text = useLocalized();
@@ -86,7 +94,7 @@ function rowTitle(item: AnswerItem): string {
 	});
 }
 /**
- * Under the title (plan §7 "Queues and the Workbench"): a personal row names
+ * Under the title: a personal row names
  * the sender, the subject and the brief's latest update; a shared mailbox's
  * row and a team row name the sender and the raw preview, never a summary,
  * whether or not the thread has an item yet.
@@ -236,35 +244,39 @@ const effortLine = computed(() => say(answerEffortParts(props.counts, props.item
 			<ul
 				class="divide-y divide-border-subtle overflow-hidden rounded-xl border border-border-subtle bg-bg-elevated"
 			>
-				<li v-for="item in top" :key="item.id">
-					<NuxtLink
-						:to="focusHref(item)"
-						class="flex items-start gap-3 px-4 py-3 transition-colors hover:bg-bg-surface"
-						data-today-line
-					>
-						<span class="min-w-0 flex-1">
-							<span class="flex min-w-0 items-center gap-1.5">
-								<span class="truncate text-sm font-medium text-text-primary">{{
-									rowTitle(item)
-								}}</span>
-								<span
-									v-if="rowMore(item)"
-									class="shrink-0 rounded-full bg-brand-soft px-1.5 text-2xs font-medium text-brand"
-									>{{ rowMore(item) }}</span
-								>
-							</span>
-							<span v-if="rowDetail(item)" class="block truncate text-xs text-text-tertiary">{{
-								rowDetail(item)
-							}}</span>
-						</span>
-						<span class="flex shrink-0 flex-col items-end gap-1">
-							<span v-if="rowDue(item)" class="text-2xs font-medium text-error">{{
-								rowDue(item)
-							}}</span>
-							<span class="text-2xs text-text-tertiary">{{ rowMeta(item) }}</span>
-						</span>
-					</NuxtLink>
-				</li>
+				<RowContextMenu v-for="item in top" :key="item.id" :items="menuFor(item)">
+					<template #default="{ rowBindings }">
+						<li v-bind="rowBindings">
+							<NuxtLink
+								:to="focusHref(item)"
+								class="flex items-start gap-3 px-4 py-3 transition-colors hover:bg-bg-surface"
+								data-today-line
+							>
+								<span class="min-w-0 flex-1">
+									<span class="flex min-w-0 items-center gap-1.5">
+										<span class="truncate text-sm font-medium text-text-primary">{{
+											rowTitle(item)
+										}}</span>
+										<span
+											v-if="rowMore(item)"
+											class="shrink-0 rounded-full bg-brand-soft px-1.5 text-2xs font-medium text-brand"
+											>{{ rowMore(item) }}</span
+										>
+									</span>
+									<span v-if="rowDetail(item)" class="block truncate text-xs text-text-tertiary">{{
+										rowDetail(item)
+									}}</span>
+								</span>
+								<span class="flex shrink-0 flex-col items-end gap-1">
+									<span v-if="rowDue(item)" class="text-2xs font-medium text-error">{{
+										rowDue(item)
+									}}</span>
+									<span class="text-2xs text-text-tertiary">{{ rowMeta(item) }}</span>
+								</span>
+							</NuxtLink>
+						</li>
+					</template>
+				</RowContextMenu>
 			</ul>
 		</template>
 	</section>

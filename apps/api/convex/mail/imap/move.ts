@@ -293,9 +293,9 @@ export const expungeFolder = internalMutation({
 	returns: expungeFolderContract.returns,
 	handler: async (ctx, args) => {
 		// The caller's wire version. An IMAP server from v0.6.7 or older (wire 0,
-		// sends none) numbered its `* n EXPUNGE` lines from the `sequenceNumbers`
-		// this used to return, and paged on `nextSequenceNumber`. Both are gone,
-		// so such a server is refused here, before the page deletes anything.
+		// sends none) numbers its `* n EXPUNGE` lines from `sequenceNumbers` and
+		// pages on `nextSequenceNumber`, neither of which this returns, so such a
+		// server is refused here, before the page deletes anything.
 		assertImapWireSupported(args.imapWireVersion);
 		const folder = await ctx.db.get(args.folderId);
 		if (!folder) return { uids: [], modseq: 0, done: true };

@@ -4,7 +4,7 @@ import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import { paginationOptsValidator } from 'convex/server';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
-import { hasPermission, requireOrgPermission, requirePermission } from '../lib/sessionOrganization';
+import { hasPermission, requirePermission } from '../lib/sessionOrganization';
 import { getLive, getLiveOrThrow } from '../lib/softDelete';
 import { restoreTemplate } from './deletion';
 import { listResources } from '../lib/listing';
@@ -26,6 +26,8 @@ import { loadCoeditSave, markCoeditSaved } from '../emailCoediting/save';
 
 // Query to get a single email template by ID; null once it is in Recently
 // deleted, so an open editor shows it as gone.
+// all-members: the template library every role picks from when it builds a
+// campaign; writing it needs templates:manage.
 export const get = authedQuery({
 	args: { templateId: v.id('emailTemplates') },
 	handler: async (ctx, args) => {
@@ -72,11 +74,14 @@ export const update = authedMutation({
 		// template has a live session, the session's draft is saved instead of
 		// the payload's blocks and shared fields (emailCoediting/save.ts).
 		coeditVersion: v.optional(v.number()),
+		// The editor's background save of a draft. Its version-history row takes
+		// the place of the same person's row from the last few minutes, and that
+		// replacement writes no second audit entry (emailTemplates/versions.ts).
+		autosave: v.optional(v.boolean()),
 	},
-	handler: async (ctx, rawArgs) => {
-		const session = await requireOrgPermission(
-			ctx,
-			'templates:manage',
+	handler: async (ctx, rawArgs, session) => {
+		requirePermission(
+			hasPermission(session.role, 'templates:manage'),
 			'Only owners and admins can update email templates'
 		);
 		const coedit = await loadCoeditSave(
@@ -107,24 +112,29 @@ export const update = authedMutation({
 		// Snapshot the POST-patch row, in this transaction, so a rolled-back save
 		// leaves no version claiming content that was never stored. Identical
 		// consecutive saves dedupe inside `captureTemplateVersion`.
-		await captureTemplateVersion(ctx, {
+		const capture = await captureTemplateVersion(ctx, {
 			template: { ...template, ...updates },
 			trigger: 'save',
 			userId: session.userId,
+			autosave: args.autosave,
 		});
 
 		// Audit the content/metadata edit — the documented email_template.updated
 		// action was never emitted from this handler.
-		const changedFields = Object.keys(updates).filter(
-			(k) => k !== 'updatedAt' && k !== 'contentRevision'
-		);
-		await recordAuditLog(ctx, {
-			userId: session.userId,
-			action: 'email_template.updated',
-			resource: 'email_template',
-			resourceId: args.templateId,
-			details: { changedFields: changedFields.join(', ') },
-		});
+		// An autosave that continues this person's editing burst (see the
+		// history row above) was already recorded when the burst began.
+		if (!capture.continuesBurst) {
+			const changedFields = Object.keys(updates).filter(
+				(k) => k !== 'updatedAt' && k !== 'contentRevision'
+			);
+			await recordAuditLog(ctx, {
+				userId: session.userId,
+				action: 'email_template.updated',
+				resource: 'email_template',
+				resourceId: args.templateId,
+				details: { changedFields: changedFields.join(', ') },
+			});
+		}
 
 		// The revision this write stored; the editor builds its next save on it.
 		return { templateId: args.templateId, contentRevision: updates.contentRevision };
@@ -149,10 +159,9 @@ export const publish = authedMutation({
 		// the caller was looking at.
 		expectedContentRevision: v.optional(v.number()),
 	},
-	handler: async (ctx, args) => {
-		const session = await requireOrgPermission(
-			ctx,
-			'templates:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'templates:manage'),
 			'Only owners and admins can publish email templates'
 		);
 
@@ -195,10 +204,9 @@ export const publish = authedMutation({
 // Mutation to unpublish an email template (revert to draft)
 export const unpublish = authedMutation({
 	args: { templateId: v.id('emailTemplates') },
-	handler: async (ctx, args) => {
-		const session = await requireOrgPermission(
-			ctx,
-			'templates:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'templates:manage'),
 			'Only owners and admins can unpublish email templates'
 		);
 
@@ -222,10 +230,9 @@ export const unpublish = authedMutation({
 // Mutation to duplicate an email template
 export const duplicate = authedMutation({
 	args: { templateId: v.id('emailTemplates') },
-	handler: async (ctx, args): Promise<Id<'emailTemplates'>> => {
-		const session = await requireOrgPermission(
-			ctx,
-			'templates:manage',
+	handler: async (ctx, args, session): Promise<Id<'emailTemplates'>> => {
+		requirePermission(
+			hasPermission(session.role, 'templates:manage'),
 			'Only owners and admins can duplicate email templates'
 		);
 
@@ -246,10 +253,9 @@ export const duplicate = authedMutation({
 // restorable for 30 days (emailTemplates/deletion.ts).
 export const remove = authedMutation({
 	args: { templateId: v.id('emailTemplates') },
-	handler: async (ctx, args) => {
-		const session = await requireOrgPermission(
-			ctx,
-			'templates:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'templates:manage'),
 			'Only owners and admins can delete email templates'
 		);
 
@@ -284,10 +290,9 @@ export const changeType = authedMutation({
 		type: emailTemplateTypeValidator,
 		forceWhilePublished: v.optional(v.boolean()),
 	},
-	handler: async (ctx, args) => {
-		const session = await requireOrgPermission(
-			ctx,
-			'templates:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'templates:manage'),
 			'Only owners and admins can change template type'
 		);
 
@@ -324,6 +329,8 @@ export const changeType = authedMutation({
 // List email templates (paginated, uniform { page, … } contract). Search is
 // relevance-ordered; otherwise updatedAt-descending with index-native type
 // filtering. The old shell `.collect()`-ed the whole table per call.
+// all-members: the template library every role picks from when it builds a
+// campaign; writing it needs templates:manage.
 export const list = authedQuery({
 	args: {
 		type: v.optional(emailTemplateTypeValidator),
@@ -350,10 +357,9 @@ export const create = authedMutation({
 		previewText: v.optional(v.string()),
 		content: v.optional(v.string()),
 	},
-	handler: async (ctx, args): Promise<Id<'emailTemplates'>> => {
-		const session = await requireOrgPermission(
-			ctx,
-			'templates:manage',
+	handler: async (ctx, args, session): Promise<Id<'emailTemplates'>> => {
+		requirePermission(
+			hasPermission(session.role, 'templates:manage'),
 			'Only owners and admins can create email templates'
 		);
 

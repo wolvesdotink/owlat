@@ -194,7 +194,7 @@ describe('buildClassifyPrompt', () => {
 		expect(prompt).toContain('ISO 639-1');
 	});
 
-	it('no longer asks for an Updates summary (D7)', () => {
+	it('no longer asks for an Updates summary', () => {
 		expect(buildClassifyPrompt('mail')).not.toMatch(/summary/i);
 	});
 });

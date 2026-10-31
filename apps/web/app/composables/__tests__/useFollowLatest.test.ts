@@ -1,6 +1,6 @@
 /**
  * The Assistant feed follows a streaming answer only while the reader is at
- * the end (#1050). Scrolling up to reread is respected across text and
+ * the end. Scrolling up to reread is respected across text and
  * tool/status updates; new content below raises the jump pill instead; the
  * pill (and the member's own send) go back to the end and follow again.
  */

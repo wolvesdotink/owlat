@@ -31,8 +31,10 @@ import { v } from 'convex/values';
 import type { MutationCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
-import type { Doc } from '../_generated/dataModel';
+import type { Doc, Id } from '../_generated/dataModel';
 import { logWarn } from '../lib/runtimeLog';
+import { scheduleMarketingNotice } from '../marketing/noticeEvents';
+import { recordAutomationHealth } from './health';
 import {
 	cancelRun,
 	enterStep,
@@ -74,7 +76,9 @@ async function recoverIfStalled(
 			return 'started';
 		}
 	}
-	await cancelRun(ctx, run._id);
+	if (await cancelRun(ctx, run._id, 'stalled')) {
+		await recordAutomationHealth(ctx, run.automationId, 'stalled', now);
+	}
 	logWarn('[automations] cancelled a stalled run with no active step', {
 		automationRunId: run._id,
 		automationId: run.automationId,
@@ -82,26 +86,74 @@ async function recoverIfStalled(
 	return 'cancelled';
 }
 
+/** Automations whose cancelled runs one sweep tallies for the notification. */
+const MAX_TALLIED_AUTOMATIONS = 100;
+
+type StalledTally = Array<{ automationId: Id<'automations'>; count: number }>;
+
+/**
+ * Add one page's cancelled runs to the sweep's per-automation tally. A run the
+ * sweep restarted needs nobody, so only cancellations count: those contacts
+ * left the automation without finishing it.
+ */
+export function tallyCancelledRuns(
+	tally: StalledTally,
+	cancelled: ReadonlyArray<Id<'automations'>>
+): StalledTally {
+	const next = new Map(tally.map((entry) => [entry.automationId, entry.count]));
+	for (const automationId of cancelled) {
+		if (!next.has(automationId) && next.size >= MAX_TALLIED_AUTOMATIONS) continue;
+		next.set(automationId, (next.get(automationId) ?? 0) + 1);
+	}
+	return [...next].map(([automationId, count]) => ({ automationId, count }));
+}
+
 /**
  * One page of the sweep over every running run; schedules the next page until
- * the index range is exhausted. Registered in `crons.ts`.
+ * the index range is exhausted. Registered in `crons.ts`. The pages carry the
+ * tally of cancelled runs along, and the last page reports one "contacts
+ * stalled" notice per automation for the whole sweep.
  */
 export const sweepStalledRuns = internalMutation({
-	args: { cursor: v.optional(v.string()) },
+	args: {
+		cursor: v.optional(v.string()),
+		startedAt: v.optional(v.number()),
+		stalled: v.optional(
+			v.array(v.object({ automationId: v.id('automations'), count: v.number() }))
+		),
+	},
 	handler: async (ctx, args): Promise<Record<Recovery, number>> => {
 		const now = Date.now();
+		const startedAt = args.startedAt ?? now;
 		const page = await ctx.db
 			.query('automationRuns')
 			.withIndex('by_status', (q) => q.eq('status', 'running'))
 			.paginate({ cursor: args.cursor ?? null, numItems: SWEEP_PAGE });
 
 		const counts: Record<Recovery, number> = { live: 0, started: 0, cancelled: 0 };
-		for (const run of page.page) counts[await recoverIfStalled(ctx, run, now)]++;
+		const cancelled: Id<'automations'>[] = [];
+		for (const run of page.page) {
+			const recovery = await recoverIfStalled(ctx, run, now);
+			counts[recovery]++;
+			if (recovery === 'cancelled') cancelled.push(run.automationId);
+		}
+		const stalled = tallyCancelledRuns(args.stalled ?? [], cancelled);
 
 		if (!page.isDone) {
 			await ctx.scheduler.runAfter(0, internal.automations.stalledRuns.sweepStalledRuns, {
 				cursor: page.continueCursor,
+				startedAt,
+				stalled,
 			});
+		} else {
+			for (const { automationId, count } of stalled) {
+				await scheduleMarketingNotice(ctx, {
+					kind: 'automation_stalled',
+					automationId,
+					count,
+					sweepStartedAt: startedAt,
+				});
+			}
 		}
 		return counts;
 	},

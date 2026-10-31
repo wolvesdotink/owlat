@@ -9,7 +9,7 @@
  *     counter can never disagree with the dashboard counter beside it;
  *   - the exclusions: `failed` is not a transport outcome, a duplicate
  *     transition records nothing twice, a test preview records nothing, and a
- *     send with NO assignment row (a seed shadow copy, plan D18) never enters a
+ *     send with NO assignment row (a seed shadow copy) never enters a
  *     denominator;
  *   - the bump leaves the transition's transaction, and the scheduled entry
  *     point it leaves through admits the vocabulary and nothing else.
@@ -20,6 +20,7 @@
 
 import { convexTest } from 'convex-test';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type * as SessionOrganizationModule from '../../lib/sessionOrganization';
 import { flushScheduled } from '../../__tests__/factories';
 import schema from '../../schema';
 import { internal } from '../../_generated/api';
@@ -56,7 +57,7 @@ import {
 // registered in the convex-test harness. Same override the shipped routing and
 // assignment tests use, so the recorder's org resolution is deterministic.
 vi.mock('../../lib/sessionOrganization', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../../lib/sessionOrganization')>();
+	const actual = await importOriginal<typeof SessionOrganizationModule>();
 	// The literal, not the `OUTCOME_ORG` import: `vi.mock` factories are hoisted
 	// above the imports, so referencing one here is a TDZ error at load time.
 	return { ...actual, getSingletonOrganizationId: vi.fn().mockResolvedValue('org_outcomes') };
@@ -358,7 +359,7 @@ describe('lifecycle transition → one shard of one bucket', () => {
 });
 
 describe('exclusions', () => {
-	it('records nothing for a send with no assignment row (the seed shadow-copy seam, D18)', async () => {
+	it('records nothing for a send with no assignment row (the seed shadow-copy seam)', async () => {
 		const t = convexTest(schema, modules);
 		let sendId: Id<'emailSends'> | undefined;
 		await t.run(async (ctx) => {

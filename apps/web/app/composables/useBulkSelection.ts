@@ -31,11 +31,11 @@ export function useBulkSelection<TId extends string>(options?: {
 	const toggleSelectAll = (currentPageIds: TId[]) => {
 		if (isAllPageSelected(currentPageIds)) {
 			// Deselect all on current page
-			currentPageIds.forEach((id) => selectedIds.value.delete(id));
+			for (const id of currentPageIds) selectedIds.value.delete(id);
 			isSelectAllMatching.value = false;
 		} else {
 			// Select all on current page
-			currentPageIds.forEach((id) => selectedIds.value.add(id));
+			for (const id of currentPageIds) selectedIds.value.add(id);
 		}
 		// Trigger reactivity
 		selectedIds.value = new Set(selectedIds.value);

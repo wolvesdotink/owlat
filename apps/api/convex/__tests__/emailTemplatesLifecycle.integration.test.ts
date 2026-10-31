@@ -5,8 +5,7 @@ import schema from '../schema';
 import { internal } from '../_generated/api';
 import { createTestEmailTemplate } from './factories';
 import { assertEditableForPublishableChange } from '../lib/publishableEmail';
-import type { Id } from '../_generated/dataModel';
-import type { Doc } from '../_generated/dataModel';
+import type { Doc, Id } from '../_generated/dataModel';
 
 const modules = import.meta.glob('../**/*.*s');
 

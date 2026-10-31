@@ -127,8 +127,8 @@ export function useAnswerQueue(opts: { enabled?: () => boolean } = {}) {
 	const counts = computed(() => answerCounts(items.value));
 
 	// Every source whose read failed, keyed like the filter chips. A queue with
-	// nothing in it and a failed source is not "all clear" (#721); one with rows
-	// names what is missing from it (#1099). Try again re-reads the failed ones.
+	// nothing in it and a failed source is not "all clear"; one with rows
+	// names what is missing from it. Try again re-reads the failed ones.
 	// The inbox list only counts while the queue is read: unlike the others it
 	// is not skipped when the queue is idle.
 	const sources = () => [

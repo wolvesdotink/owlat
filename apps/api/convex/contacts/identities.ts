@@ -10,7 +10,7 @@ import { v } from 'convex/values';
 import type { MutationCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
-import { requireOrgPermission } from '../lib/sessionOrganization';
+import { hasPermission, requirePermission } from '../lib/sessionOrganization';
 import type { Doc } from '../_generated/dataModel';
 import { getOrThrow, throwAlreadyExists } from '../_utils/errors';
 import { logInfo } from '../lib/runtimeLog';
@@ -26,6 +26,8 @@ import { redactContactCapabilityFields, type PublicContact } from './listing';
 /**
  * Get all identities for a contact
  */
+// all-members: a contact's channel identifiers, shown on the contact page every
+// member may view; merging them is the gated write.
 export const listByContact = authedQuery({
 	args: { contactId: v.id('contacts') },
 	handler: async (ctx, args) => {
@@ -44,6 +46,8 @@ export const listByContact = authedQuery({
  * member-readable contact read, and soft-deleted contacts are never offered on
  * either side: an erased contact is not a merge source or target.
  */
+// all-members: read-only suggestions on the contact page; mergeContacts itself
+// requires contacts:manage.
 export const getMergeSuggestions = authedQuery({
 	args: { contactId: v.id('contacts') },
 	handler: async (ctx, args) => {
@@ -118,10 +122,9 @@ export const addIdentity = authedMutation({
 		identifier: v.string(),
 		isPrimary: v.optional(v.boolean()),
 	},
-	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'contacts:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'contacts:manage'),
 			'Only owners and admins can manage contacts'
 		);
 
@@ -171,10 +174,9 @@ export const addIdentity = authedMutation({
  */
 export const removeIdentity = authedMutation({
 	args: { identityId: v.id('contactIdentities') },
-	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'contacts:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'contacts:manage'),
 			'Only owners and admins can manage contacts'
 		);
 
@@ -187,10 +189,9 @@ export const removeIdentity = authedMutation({
  */
 export const verifyIdentity = authedMutation({
 	args: { identityId: v.id('contactIdentities') },
-	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'contacts:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'contacts:manage'),
 			'Only owners and admins can manage contacts'
 		);
 
@@ -207,10 +208,9 @@ export const mergeContacts = authedMutation({
 		targetContactId: v.id('contacts'),
 		sourceContactId: v.id('contacts'),
 	},
-	handler: async (ctx, args) => {
-		const { userId } = await requireOrgPermission(
-			ctx,
-			'contacts:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'contacts:manage'),
 			'Only owners and admins can manage contacts'
 		);
 
@@ -236,7 +236,7 @@ export const mergeContacts = authedMutation({
 		// a hard-delete with no forensic trail is exactly what the audit log
 		// exists to prevent.
 		await recordAuditLog(ctx, {
-			userId,
+			userId: session.userId,
 			action: 'contact.merged',
 			resource: 'contact',
 			resourceId: args.targetContactId,

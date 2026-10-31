@@ -255,27 +255,28 @@ const busy = computed(
 									: t('components.postbox.teamInboxMembersPanel.member')
 							}}</span
 						>
-						<UiButton
+						<UiTooltip
 							v-if="canManage && m.role !== 'owner'"
-							variant="ghost"
-							size="sm"
-							:disabled="busy"
-							:title="t('components.postbox.teamInboxMembersPanel.makeOwnerTitle')"
-							@click="askTransfer(m)"
+							:text="t('components.postbox.teamInboxMembersPanel.makeOwnerTitle')"
 						>
-							{{ t('components.postbox.teamInboxMembersPanel.makeOwner') }}
-						</UiButton>
-						<button
+							<UiButton variant="ghost" size="sm" :disabled="busy" @click="askTransfer(m)">
+								{{ t('components.postbox.teamInboxMembersPanel.makeOwner') }}
+							</UiButton>
+						</UiTooltip>
+						<UiTooltip
 							v-if="canManage && m.role !== 'owner'"
-							type="button"
-							class="p-1.5 rounded text-text-tertiary hover:text-error hover:bg-error/10"
-							:title="t('components.postbox.teamInboxMembersPanel.removeMember')"
-							:aria-label="t('components.postbox.teamInboxMembersPanel.removeMember')"
-							:disabled="busy"
-							@click="handleRemove(m.authUserId)"
+							:text="t('components.postbox.teamInboxMembersPanel.removeMember')"
 						>
-							<Icon name="lucide:user-minus" class="w-4 h-4" />
-						</button>
+							<button
+								type="button"
+								class="p-1.5 rounded text-text-tertiary hover:text-error hover:bg-error/10"
+								:aria-label="t('components.postbox.teamInboxMembersPanel.removeMember')"
+								:disabled="busy"
+								@click="handleRemove(m.authUserId)"
+							>
+								<Icon name="lucide:user-minus" class="w-4 h-4" />
+							</button>
+						</UiTooltip>
 					</div>
 				</li>
 			</ul>

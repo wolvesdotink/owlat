@@ -32,6 +32,8 @@ import {
 
 import { readEngagementScore } from './sendEngagementScore.js';
 import { readSystemAttachments } from './sendAttachments.js';
+import { decodeJson } from '@owlat/worker-protocol/decodeJson';
+import { SEND_BODY_MAX_BYTES, sendBodyValidator } from './sendBody.js';
 
 export { createSendReceiptHandler } from './sendReceipt.js';
 
@@ -39,7 +41,7 @@ export { createSendReceiptHandler } from './sendReceipt.js';
 const MAX_SEALED_MIME_BYTES = 25 * 1024 * 1024;
 
 /**
- * The two answers the intake may give, each bound to its one declaration (D7).
+ * The two answers the intake may give, each bound to its one declaration.
  *
  * Every `return` in the handler goes through one of these, for the same reason
  * `/send/decision`'s `decide()` exists: the request half of this wire was typed
@@ -76,13 +78,14 @@ export function createSendHandler(
 			return refuse(c, { error: 'Queue backpressure — try again later' }, 429);
 		}
 
-		// Parse and validate request
-		let body: MtaSendRequest;
-		try {
-			body = await c.req.json<MtaSendRequest>();
-		} catch {
-			return refuse(c, { error: 'Invalid JSON body' }, 400);
+		// Every field is type-checked here; the intake's policy follows below.
+		const decoded = await decodeJson(c.req.raw, sendBodyValidator, SEND_BODY_MAX_BYTES);
+		if (!decoded.ok) {
+			// A refused body may be partly unread; see lib/jsonBody.ts.
+			if (decoded.failure.status === 413) c.header('Connection', 'close');
+			return refuse(c, { error: decoded.failure.message }, decoded.failure.status);
 		}
+		const body: MtaSendRequest = decoded.value;
 
 		// Log-only: a malformed header is dropped, never refused (see
 		// `@owlat/shared/correlation`).

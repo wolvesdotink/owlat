@@ -11,9 +11,11 @@ import { recordDeferralOutcome } from './deferralOutcome';
 import { envelopeInputValidator, retryStateValidator } from './workerEnvelope';
 import { countableSendRefValidator } from '../lib/validators/send';
 import { recordCompletionFailure } from './sendCompletionFailures';
-import { governedRetryDelayMs } from './sendRetryPlan';
-import { isSendWorkerOutcome, type SendWorkerOutcome } from './workerOutcome';
-import type { MarketingIneligibility } from '../lib/marketingEligibility';
+import {
+	completionReadsSend,
+	planCompletionOutcome,
+	readCompletion,
+} from './sendCompletionDecision';
 
 // ============================================================================
 // Send completion (module) — see CONTEXT.md.
@@ -49,36 +51,6 @@ const sendRefValidator = countableSendRefValidator;
 /** The countable Send this callback is bound to (a probe never gets one). */
 type SendCompletionRef = Infer<typeof sendRefValidator>;
 
-/**
- * The one non-delivery this module invents rather than reports.
- *
- * A `returnValue` that satisfies none of the five arms is not a send that
- * failed — it is a send whose FATE IS UNREADABLE, and the two must not share an
- * error code. `WORKPOOL_FAILED` says "the send failed", a claim nothing here
- * has evidence for; this code says exactly what happened, so an operator
- * greping for it finds a seam defect rather than a provider outage, and a
- * dashboard counting provider failures does not absorb it silently.
- */
-const WORKER_RESULT_MALFORMED_CODE = 'WORKER_RESULT_MALFORMED';
-const WORKER_RESULT_MALFORMED_MESSAGE =
-	'The send worker answered with a result this deployment cannot read; the message may or may not have been delivered';
-
-/**
- * A PII-FREE description of a value this module refused.
- *
- * The rejected value can be an envelope, and an envelope carries the recipient
- * — so the telemetry names the SHAPE (its own field names, and the discriminant
- * if it carries a readable one) and never the contents.
- */
-function describeUnreadableResult(value: unknown): string {
-	if (value === null) return 'null';
-	if (typeof value !== 'object') return typeof value;
-	if (Array.isArray(value)) return 'array';
-	const record = value as Record<string, unknown>;
-	const kind = typeof record['kind'] === 'string' ? String(record['kind']) : '<absent>';
-	return `kind=${kind} keys=[${Object.keys(record).sort().join(',')}]`;
-}
-
 const completionArgs = vOnCompleteArgs(v.object({ sendRef: sendRefValidator }));
 
 /**
@@ -105,15 +77,6 @@ export const completeSend = internalMutation({
 });
 
 /**
- * Thrown when a replay would re-enter a Send whose envelope was not stored. Not
- * retryable: the stored record never gains the envelope, so the same replay
- * refuses again.
- */
-function envelopeNotStored(): InternalFailure {
-	return new InternalFailure('delivery.envelope_not_stored', { retryable: false });
-}
-
-/**
  * Translate one worker outcome into the Send's lifecycle. Called by
  * `completeSend` and by a completion-failure replay, never by the workpool.
  *
@@ -121,231 +84,93 @@ function envelopeNotStored(): InternalFailure {
  * envelope (`./sendCompletionPayload`), because the record only replays the
  * terminal branch. A re-entry it would still take refuses rather than send a
  * stub.
+ *
+ * The deciding is `./sendCompletionDecision`; this shell loads the Send when
+ * the arm needs it and runs the one step the plan names.
  */
 export const applyCompletion = internalMutation({
 	args: { ...completionArgs.fields, isEnvelopeStripped: v.optional(v.boolean()) },
 	handler: async (ctx, { workId, result, context, isEnvelopeStripped }) => {
 		const { sendRef } = context;
 		const now = Date.now();
-
-		// THE RUN PRODUCED NO OUTCOME AT ALL. The action threw, or the pool
-		// cancelled the work before it answered. Neither is a worker outcome to be
-		// read, and both are precisely what `WORKPOOL_FAILED` has always named.
-		if (result.kind !== 'success') {
-			await failSend(
-				ctx,
-				sendRef,
-				now,
-				(result.kind === 'failed' ? result.error : '') || 'Unknown error',
-				'WORKPOOL_FAILED'
-			);
-			return;
-		}
-
-		// THE GATE THAT REPLACED THE CAST. The workpool hands `returnValue` back
-		// as `any`, so this is the first and only place its shape is checked —
-		// against the very validator `delivery/worker.ts` declares as its
-		// `returns`. A value that fails is one no build of the worker could have
-		// produced, and it gets a completion path of its own (loud, and named)
-		// rather than being terminalized as an ordinary provider failure.
-		if (!isSendWorkerOutcome(result.returnValue)) {
+		const reading = readCompletion(result);
+		if (reading.kind === 'decided' && reading.unreadableShape !== undefined) {
 			logError('[SendCompletion] Unreadable worker result', {
 				workId,
 				sendKind: sendRef.kind,
 				sendId: sendRef.id,
-				shape: describeUnreadableResult(result.returnValue),
+				shape: reading.unreadableShape,
 			});
-			await failSend(
-				ctx,
-				sendRef,
-				now,
-				WORKER_RESULT_MALFORMED_MESSAGE,
-				WORKER_RESULT_MALFORMED_CODE
-			);
-			return;
 		}
-
-		const outcome: SendWorkerOutcome = result.returnValue;
-		switch (outcome.kind) {
-			// AN AMBIGUITY WITH NO SECOND QUESTION TO ASK. Its own arm,
-			// and the opposite of `acceptanceUnknown` below: that one replays the
-			// attempt (safe — its idempotency key is the transport's message id),
-			// this one must never be replayed, because the lost response may sit on
-			// top of an accepted and delivered message.
-			//
-			// So the Send is PARKED, not retried and not terminalized. It stays
-			// `queued` — "we do not know yet", which is the truth and, unlike
-			// `failed`, is a state a later transition can still leave. At the
-			// cumulative delivery deadline it becomes `failed` with a code that
-			// names the actual condition rather than `WORKPOOL_FAILED`, which reads
-			// as "the send failed".
-			//
-			// WHAT IS AND IS NOT REACHABLE IN THAT WINDOW, said plainly. Provider
-			// feedback joins on the id the provider returned, and the lost response
-			// is precisely why this row never learned one — Mandrill's `send-raw`
-			// carries no caller-supplied correlator that its webhook echoes back
-			// (`metadata` is a `messages/send` parameter, not a `send-raw` one), so
-			// today nothing re-attaches a Mandrill `_id` to a parked row and the
-			// park exists to keep the row HONEST and OPEN, not because a specific
-			// event is expected. A future reconciler (a `messages/info`/`search`
-			// lookup, or a correlator Mandrill agrees to echo) has a `queued` row to
-			// bind to; it would have had nothing to bind to had this terminalized on
-			// the spot.
-			//
-			// The campaign it belongs to stays `sending` until this settles, exactly
-			// as it does for any other queued send awaiting a terminal webhook — the
-			// deadline is the bound (`campaigns/lifecycle.ts:tryCompleteCampaign`).
-			case 'awaitingFeedback': {
-				const send = await ctx.db.get(sendRef.id);
-				if (!send || send.status !== 'queued') return;
-				// This number becomes a scheduled time: a NaN would throw at `runAt`
-				// and a clock-skewed future one would park the row past the deadline
-				// it is supposed to be bounded by. The retry state's own start is
-				// preferred (it is the FIRST attempt's), the arm's copy is the
-				// fallback, and both are normalized to "no later than now", so the
-				// worst case is exactly one deadline's wait.
-				const reported =
-					[outcome.retryState.startedAt, outcome.startedAt].find((candidate) =>
-						Number.isFinite(candidate)
-					) ?? now;
-				const startedAt = Math.min(reported, now);
-				const deadlineAt = governedDeliveryDeadlineAt(startedAt);
-				if (now < deadlineAt) {
-					await ctx.scheduler.runAt(
-						deadlineAt,
-						internal.delivery.sendCompletion.expireUnconfirmedAcceptance,
-						{ sendRef, startedAt }
-					);
-					return;
-				}
-				await ctx.runMutation(internal.delivery.sendCompletion.expireUnconfirmedAcceptance, {
-					sendRef,
-					startedAt,
-				});
-				return;
-			}
-
-			// THE RE-ASKABLE AMBIGUITY. The transport takes custody under an
-			// idempotency key we minted, so the attempt is replayed rather than
-			// guessed at — until the cumulative delivery deadline, past which the
-			// intake question is closed under its own name.
-			case 'acceptanceUnknown': {
-				const send = await ctx.db.get(sendRef.id);
-				if (!send || send.status !== 'queued') return;
-				const retryDelayMs = governedRetryDelayMs(outcome, now);
-				if (retryDelayMs !== null) {
-					if (isEnvelopeStripped === true) throw envelopeNotStored();
-					await ctx.scheduler.runAfter(retryDelayMs, internal.delivery.sendCompletion.retrySend, {
-						sendRef,
-						envelopeInput: outcome.envelopeInput,
-						retryState: outcome.retryState,
+		const plan =
+			reading.kind === 'decided'
+				? reading.plan
+				: planCompletionOutcome({
+						outcome: reading.outcome,
+						send: completionReadsSend(reading.outcome) ? await ctx.db.get(sendRef.id) : null,
+						now,
+						isEnvelopeStripped: isEnvelopeStripped === true,
 					});
-					return;
-				}
+		if (plan.recordsDeferral) await recordDeferralOutcome(ctx, { send: sendRef, at: now });
+
+		const { step } = plan;
+		switch (step.kind) {
+			case 'none':
+				return;
+			case 'refuse':
+				throw new InternalFailure(step.failure, { retryable: false });
+			case 'fail':
+				await failSend(ctx, sendRef, now, step.errorMessage, step.errorCode);
+				return;
+			case 'failByProviderMessageId':
 				await ctx.runMutation(internal.delivery.sendLifecycle.transitionMtaByProviderMessageId, {
 					isCompletionCall: true,
-					providerMessageId: outcome.providerMessageId,
+					providerMessageId: step.providerMessageId,
 					transition: {
 						to: 'failed',
 						at: now,
-						errorMessage:
-							'MTA intake acceptance could not be confirmed before the delivery deadline',
-						errorCode: 'MTA_ACCEPTANCE_UNCONFIRMED',
+						errorMessage: step.errorMessage,
+						errorCode: step.errorCode,
 					},
 				});
 				return;
-			}
-
-			case 'deferred': {
-				// THE DEFERRAL IS THE OBSERVATION, not the retry decision that follows
-				// it. Recorded before the branch below, so a deferral that has run out
-				// of attempts or outlived the delivery deadline — the one that
-				// terminalizes the send — reaches gate 2's numerator exactly like the
-				// ones that are re-enqueued. Rate-limited to one event per send per UTC
-				// day inside the recorder, and fail-soft: it never rolls back the retry.
-				//
-				// ONLY THE GOVERNED HALF. A `local` deferral is this deployment holding
-				// its own message — a policy pause, an idempotency wait, an MTA decision
-				// endpoint we could not reach, an MTA answer reporting any Redis failure
-				// while taking the lease — and gate 2 halts a cell at 25%. Reaching the
-				// MTA is not what makes a deferral governed; the answer being about the
-				// sending identity is. Counting our own outage would take the share to
-				// the floor and revoke the graduation pin over a fault the receiver
-				// never saw.
-				if (outcome.deferralOrigin === 'governed') {
-					await recordDeferralOutcome(ctx, { send: sendRef, at: now });
-				}
-				// Both bounds, attempts and deadline (`./sendRetryPlan`).
-				const retryDelayMs = governedRetryDelayMs(outcome, now);
-				if (retryDelayMs !== null) {
-					if (isEnvelopeStripped === true) throw envelopeNotStored();
-					await ctx.scheduler.runAfter(retryDelayMs, internal.delivery.sendCompletion.retrySend, {
-						sendRef,
-						envelopeInput: outcome.envelopeInput,
-						retryState: outcome.retryState,
-					});
-					return;
-				}
-				// Out of routing attempts, or past the cumulative delivery deadline.
-				// The wait itself ran out, which is a real non-delivery — the shipped
-				// terminalization, unchanged.
-				await failSend(ctx, sendRef, now, 'Unknown error', 'WORKPOOL_FAILED');
+			case 'scheduleExpiry':
+				await ctx.scheduler.runAt(
+					step.runAt,
+					internal.delivery.sendCompletion.expireUnconfirmedAcceptance,
+					{ sendRef, startedAt: step.startedAt }
+				);
 				return;
-			}
-
-			case 'accepted': {
-				if (outcome.isCustodyHandoff) {
-					// Intake is an accepted queue handoff, not remote acceptance. Keep
-					// the Send queued so a later stale-route callback can still
-					// fail/retry; the transport's sent webhook (or a final relay attempt)
-					// owns the terminal edge.
-					const send = await ctx.db.get(sendRef.id);
-					if (send?.status === 'queued') {
-						if (send.providerMessageId && send.providerMessageId !== outcome.providerMessageId) {
-							throw new InternalFailure('delivery.send_identity_conflict', {
-								retryable: false,
-							});
-						}
-						await ctx.db.patch(sendRef.id, {
-							providerMessageId: outcome.providerMessageId,
-							providerType: outcome.providerType,
-						});
-					}
-					return;
-				}
+			case 'expireNow':
+				await ctx.runMutation(internal.delivery.sendCompletion.expireUnconfirmedAcceptance, {
+					sendRef,
+					startedAt: step.startedAt,
+				});
+				return;
+			case 'scheduleRetry':
+				await ctx.scheduler.runAfter(step.delayMs, internal.delivery.sendCompletion.retrySend, {
+					sendRef,
+					envelopeInput: step.envelopeInput,
+					retryState: step.retryState,
+				});
+				return;
+			case 'recordCustody':
+				await ctx.db.patch(sendRef.id, {
+					providerMessageId: step.providerMessageId,
+					providerType: step.providerType,
+				});
+				return;
+			case 'markSent':
 				await ctx.runMutation(internal.delivery.sendLifecycle.transition, {
 					send: sendRef,
 					transition: {
 						to: 'sent',
 						at: now,
-						providerMessageId: outcome.providerMessageId,
-						providerType: outcome.providerType,
+						providerMessageId: step.providerMessageId,
+						providerType: step.providerType,
 					},
 				});
 				return;
-			}
-
-			// Recipient was on the blocklist at the worker's pre-dispatch suppression
-			// re-check — the send was skipped, not delivered. Record a terminal,
-			// suppression-labelled non-delivery so campaign stats and the audit trail
-			// reflect that this was a deliberate honor-suppression skip (not a
-			// provider failure).
-			case 'suppressed': {
-				const refusal = SUPPRESSED_SEND_FAILURE[outcome.reason ?? 'blocklist'];
-				await failSend(ctx, sendRef, now, refusal.message, refusal.code);
-				return;
-			}
-
-			default: {
-				// EXHAUSTIVE BY CONSTRUCTION. A sixth arm added to
-				// `sendWorkerOutcomeValidator` fails to compile here rather than
-				// falling through to a terminal claim about a send nobody read.
-				const unhandled: never = outcome;
-				throw new InternalFailure('delivery.unhandled_worker_outcome', {
-					retryable: false,
-					attrs: { outcomeKind: String((unhandled as { kind?: unknown }).kind) },
-				});
-			}
 		}
 
 		// Provider health recording is intentionally NOT here — the
@@ -353,26 +178,6 @@ export const applyCompletion = internalMutation({
 		// records every attempt uniformly upstream of this module.
 	},
 });
-
-/**
- * How each pre-dispatch refusal is recorded. A blocklist hit keeps its original
- * code; a contact that unsubscribed from everything or was deleted gets its own,
- * so the Send's audit trail says why it did not go out.
- */
-const SUPPRESSED_SEND_FAILURE = {
-	blocklist: {
-		message: 'Recipient suppressed (blocklist) before dispatch',
-		code: 'RECIPIENT_SUPPRESSED',
-	},
-	contact_unsubscribed: {
-		message: 'Contact unsubscribed from marketing before dispatch',
-		code: 'RECIPIENT_UNSUBSCRIBED',
-	},
-	contact_deleted: { message: 'Contact deleted before dispatch', code: 'CONTACT_DELETED' },
-} as const satisfies Record<
-	'blocklist' | MarketingIneligibility,
-	{ message: string; code: string }
->;
 
 /** The single terminal-failure write, so every arm names its own code. */
 async function failSend(

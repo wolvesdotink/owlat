@@ -36,9 +36,8 @@ const UiButtonStub = defineComponent({
 	setup(props, { slots }) {
 		// Single root <button> so the parent's @click falls through natively.
 		// The variant lands on the class list because BOTH footer buttons are
-		// UiButtons now (the confirm button used to be a raw <button> carrying a
-		// hand-written brand fill), so the variant is the only thing that tells
-		// Cancel and Confirm apart from the outside.
+		// UiButtons, neither with a hand-written brand fill, so the variant is the
+		// only thing that tells Cancel and Confirm apart from the outside.
 		return () =>
 			h('button', { class: ['ui-button', `ui-button--${props.variant}`] }, [
 				slots.iconLeft?.(),

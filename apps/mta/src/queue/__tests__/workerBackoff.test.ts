@@ -1,6 +1,7 @@
 /**
  * The worker's backoff for a handler error the handler did not expect. Deferrals
  * re-enqueue themselves with their own delay; this curve only governs throws.
+ * Also the stall cap, the other retry bound the worker is created with.
  */
 import { describe, expect, it, vi } from 'vitest';
 import type IORedis from 'ioredis';
@@ -20,7 +21,8 @@ vi.mock('groupmq', () => ({
 	},
 }));
 
-const { createEmailWorker, unexpectedErrorBackoffMs } = await import('../setup.js');
+const { createEmailWorker, MAX_STALLED_COUNT, unexpectedErrorBackoffMs } =
+	await import('../setup.js');
 
 describe('unexpected handler error backoff', () => {
 	it('waits 2, 8 and 32 minutes after the first three failed runs, then 2 h', () => {
@@ -38,5 +40,17 @@ describe('unexpected handler error backoff', () => {
 		const { backoff } = (worker as unknown as { options: { backoff: (n: number) => number } })
 			.options;
 		expect(backoff).toBe(unexpectedErrorBackoffMs);
+	});
+
+	it('re-runs a job interrupted by a dead worker instead of dead-lettering its first stall', () => {
+		const redis = new Redis() as unknown as IORedis;
+		// 50 is the shipped concurrency, where GroupMQ's own default would be 1.
+		const config = { workerConcurrency: 50, serverId: 'mta-1' } as never;
+		const { worker, stopHeartbeat } = createEmailWorker({} as never, redis, config);
+		stopHeartbeat();
+		const { maxStalledCount } = (worker as unknown as { options: { maxStalledCount: number } })
+			.options;
+		expect(maxStalledCount).toBe(MAX_STALLED_COUNT);
+		expect(maxStalledCount).toBeGreaterThan(1);
 	});
 });

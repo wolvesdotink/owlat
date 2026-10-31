@@ -1,5 +1,5 @@
 /**
- * `drafts.create` idempotency via `clientNonce` (adoption-gaps D8/E2).
+ * `drafts.create` idempotency via `clientNonce`.
  *
  * The offline-outbox drain passes the queued item's id as the draft client
  * nonce so a replay after a lost response reuses the draft the first attempt

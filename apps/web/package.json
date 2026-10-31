@@ -21,10 +21,12 @@
 		"test": "vitest run",
 		"test:watch": "vitest",
 		"test:coverage": "vitest run --coverage",
+		"test:browser": "vitest run --config vitest.browser.config.ts",
 		"test:e2e": "playwright test --config=e2e/playwright.config.ts",
 		"test:e2e:ui": "playwright test --config=e2e/playwright.config.ts --ui",
 		"test:e2e:headed": "playwright test --config=e2e/playwright.config.ts --headed",
-		"perf:scenarios": "bun perf/run.ts"
+		"perf:scenarios": "bun perf/run.ts",
+		"perf:gate": "bun perf/run.ts --repeats 3"
 	},
 	"dependencies": {
 		"@convex-dev/better-auth": "catalog:convex",
@@ -36,6 +38,7 @@
 		"@owlat/plugin-host": "workspace:*",
 		"@owlat/plugin-kit": "workspace:*",
 		"@owlat/shared": "workspace:*",
+		"@owlat/worker-protocol": "workspace:*",
 		"@tailwindcss/vite": "catalog:vue",
 		"better-auth": "catalog:convex",
 		"convex": "catalog:convex",
@@ -51,7 +54,6 @@
 		"vue-router": "^5.0.4"
 	},
 	"devDependencies": {
-		"@faker-js/faker": "^10.6.0",
 		"@iconify-json/lucide": "^1.2.123",
 		"@nuxt/fonts": "catalog:vue",
 		"@nuxt/icon": "^2.2.1",
@@ -62,20 +64,19 @@
 		"@types/papaparse": "^5.5.2",
 		"@types/sanitize-html": "^2.13.0",
 		"@vitejs/plugin-vue": "^6.0.6",
+		"@vitest/browser-playwright": "catalog:",
 		"@vitest/coverage-v8": "catalog:",
 		"@vue/test-utils": "^2.4.6",
-		"autoprefixer": "^10.4.27",
 		"axe-core": "^4.13.0",
 		"cross-env": "^10.1.0",
 		"fake-indexeddb": "^6.2.5",
 		"fflate": "^0.4.9",
 		"happy-dom": "catalog:",
-		"postcss": "^8.5.26",
 		"tailwindcss": "catalog:vue",
 		"typescript": "catalog:",
 		"vite": "8.3.3",
 		"vitest": "catalog:",
-		"vue-i18n": "^11.4.8",
+		"vue-i18n": "^11.4.16",
 		"vue-tsc": "catalog:"
 	}
 }

@@ -1,5 +1,5 @@
 /**
- * Answer mode files and the send guard: the three file outcomes of plan §06 on
+ * Answer mode files and the send guard: the three file outcomes on
  * a Postbox draft, file answers (a fresh upload kept in Files unless the owner
  * opts out, a pick from Files), `mail.drafts.attachExisting` copying a Files row
  * or a mail attachment onto a draft and refusing what the caller may not read,
@@ -14,6 +14,7 @@ import schema from '../schema';
 import { api, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { enableFeatures } from './factories';
+import { ATTACHMENT_COMPOSE_LIMITS } from '@owlat/shared/attachments';
 import { runLlmStream, runLlmTextWithTools } from '../lib/llm/dispatch';
 import { searchFilesForRequest } from '../inbox/attachmentSuggest';
 import { seedMessage } from '../mail/__tests__/helpers.testlib';
@@ -31,6 +32,7 @@ import type * as SessionOrganizationModule from '../lib/sessionOrganization';
 import type * as LlmProviderModule from '../lib/llmProvider';
 import type * as DispatchModule from '../lib/llm/dispatch';
 import type * as AttachmentSuggestModule from '../inbox/attachmentSuggest';
+import type * as ComposeDraftPlanModule from '../mail/ai/composeDraftPlan';
 
 type FoundFile = AttachmentSuggestModule.FoundFile;
 
@@ -39,7 +41,11 @@ const modules = import.meta.glob('../**/*.*s');
 const sess = vi.hoisted(() => ({
 	user: { userId: 'user-a', role: 'member' as 'member' | 'owner', activeOrganizationId: 'org-a' },
 }));
-const llm = vi.hoisted(() => ({ files: [] as FoundFile[] }));
+const llm = vi.hoisted(() => ({
+	files: [] as FoundFile[],
+	// A failure before the draft opens its stream (the response plan's load).
+	planFailure: null as Error | null,
+}));
 
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual<typeof SessionOrganizationModule>(
@@ -83,6 +89,19 @@ vi.mock('../inbox/attachmentSuggest', async () => {
 		'../inbox/attachmentSuggest'
 	);
 	return { ...actual, searchFilesForRequest: vi.fn(async () => llm.files) };
+});
+
+vi.mock('../mail/ai/composeDraftPlan', async () => {
+	const actual = await vi.importActual<typeof ComposeDraftPlanModule>(
+		'../mail/ai/composeDraftPlan'
+	);
+	return {
+		...actual,
+		loadAnswerPlan: vi.fn(async (...args: Parameters<typeof actual.loadAnswerPlan>) => {
+			if (llm.planFailure) throw llm.planFailure;
+			return actual.loadAnswerPlan(...args);
+		}),
+	};
 });
 
 async function makeT() {
@@ -132,6 +151,7 @@ async function receipt(t: Tx, storageId: Id<'_storage'>) {
 beforeEach(() => {
 	sess.user = { userId: 'user-a', role: 'member', activeOrganizationId: ORG };
 	llm.files = [];
+	llm.planFailure = null;
 	vi.mocked(runLlmStream).mockClear();
 	vi.mocked(runLlmTextWithTools).mockClear();
 });
@@ -360,6 +380,123 @@ describe('upload answers and Files', () => {
 		expect((await t.query(api.mail.ai.composeDraftStore.getSession, { target }))?.status).toBe(
 			'asking'
 		);
+	});
+
+	it('an upload answer whose draft fails before its stream keeps the answer and the file', async () => {
+		const t = await makeT();
+		const { draftId, sessionId } = await askForUpload(t);
+		const upload = await seedUpload(t, { filename: 'invoice-2026-09.pdf' });
+		llm.planFailure = new Error('plan read failed');
+
+		await expect(
+			t.action(api.mail.ai.composeDraft.answer, {
+				sessionId,
+				answers: [
+					{
+						questionId: 'file_request',
+						file: { source: 'upload', id: upload, filename: 'invoice-2026-09.pdf' },
+					},
+				],
+			})
+		).rejects.toThrow('plan read failed');
+
+		expect(vi.mocked(runLlmTextWithTools)).not.toHaveBeenCalled();
+		expect((await draftRow(t, draftId)).attachments.map((a) => a.storageId)).toEqual([upload]);
+		expect(await receipt(t, upload)).toMatchObject({ status: 'bound' });
+		const target = { kind: 'mailDraft' as const, draftId };
+		const session = await t.query(api.mail.ai.composeDraftStore.getSession, { target });
+		expect(session?.status).toBe('asking');
+		expect(session?.attachedFiles).toEqual([
+			{ source: 'upload', id: upload, filename: 'invoice-2026-09.pdf' },
+		]);
+		expect(session?.questions.find((q) => q.id === 'file_request')?.answer?.file).toEqual({
+			source: 'upload',
+			id: upload,
+			filename: 'invoice-2026-09.pdf',
+		});
+
+		// Sent again once the failure is gone: the upload the session already
+		// holds is not attached a second time, and the draft is written.
+		llm.planFailure = null;
+		const res = await t.action(api.mail.ai.composeDraft.answer, {
+			sessionId,
+			answers: [
+				{
+					questionId: 'file_request',
+					file: { source: 'upload', id: upload, filename: 'invoice-2026-09.pdf' },
+				},
+			],
+		});
+		expect(res.status).toBe('ready');
+		expect((await draftRow(t, draftId)).attachments.map((a) => a.storageId)).toEqual([upload]);
+	});
+
+	it('a held upload removed from the draft after a failed draft is refused on the retry', async () => {
+		const t = await makeT();
+		const { draftId, sessionId } = await askForUpload(t);
+		const upload = await seedUpload(t, { filename: 'invoice-2026-09.pdf' });
+		const answerWith = (id: Id<'_storage'>) =>
+			t.action(api.mail.ai.composeDraft.answer, {
+				sessionId,
+				answers: [
+					{ questionId: 'file_request', file: { source: 'upload', id, filename: 'invoice.pdf' } },
+				],
+			});
+		llm.planFailure = new Error('plan read failed');
+		await expect(answerWith(upload)).rejects.toThrow('plan read failed');
+		llm.planFailure = null;
+		await t.mutation(api.mail.drafts.removeAttachment, { draftId, storageId: upload });
+
+		await expect(answerWith(upload)).rejects.toThrow('is no longer on the draft');
+		expect(vi.mocked(runLlmStream)).not.toHaveBeenCalled();
+		const target = { kind: 'mailDraft' as const, draftId };
+		expect((await t.query(api.mail.ai.composeDraftStore.getSession, { target }))?.status).toBe(
+			'asking'
+		);
+
+		const replacement = await seedUpload(t, { filename: 'invoice.pdf' });
+		const drafted = await answerWith(replacement);
+		expect(drafted.status).toBe('ready');
+		expect(drafted.attachedFiles.map((f) => f.id)).toEqual([replacement]);
+		expect((await draftRow(t, draftId)).attachments.map((a) => a.storageId)).toEqual([replacement]);
+	});
+
+	it('an upload answer the draft refuses leaves the upload unused and keeps no Files copy', async () => {
+		const t = await makeT();
+		sess.user = { userId: 'user-a', role: 'owner', activeOrganizationId: ORG };
+		const { draftId, sessionId } = await askForUpload(t);
+		const upload = await seedUpload(t, { filename: 'invoice-2026-09.pdf' });
+		await t.run(async (ctx) => {
+			const filler = await ctx.storage.store(new Blob(['x']));
+			await ctx.db.patch(draftId, {
+				attachments: Array.from({ length: ATTACHMENT_COMPOSE_LIMITS.maxCount }, (_, i) => ({
+					storageId: filler,
+					filename: `f${i}`,
+					contentType: 'text/plain',
+					size: 1,
+					isInline: false,
+				})),
+			});
+		});
+
+		await expect(
+			t.action(api.mail.ai.composeDraft.answer, {
+				sessionId,
+				answers: [
+					{
+						questionId: 'file_request',
+						file: { source: 'upload', id: upload, filename: 'invoice-2026-09.pdf' },
+					},
+				],
+			})
+		).rejects.toThrow('Too many attachments');
+
+		expect(await receipt(t, upload)).toMatchObject({ status: 'uploaded' });
+		expect(await t.run(async (ctx) => await ctx.db.query('semanticFiles').collect())).toEqual([]);
+		const target = { kind: 'mailDraft' as const, draftId };
+		const session = await t.query(api.mail.ai.composeDraftStore.getSession, { target });
+		expect(session?.status).toBe('asking');
+		expect(session?.attachedFiles).toEqual([]);
 	});
 
 	it('two answers racing on one session attach the file once', async () => {

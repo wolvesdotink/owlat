@@ -23,8 +23,7 @@
 	"dependencies": {
 		"@octokit/rest": "^22.0.1",
 		"@owlat/plugin-kit": "workspace:*",
-		"convex": "catalog:convex",
-		"execa": "^10.0.1"
+		"convex": "catalog:convex"
 	},
 	"devDependencies": {
 		"@types/node": "catalog:",

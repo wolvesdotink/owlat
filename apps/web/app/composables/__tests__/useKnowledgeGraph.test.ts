@@ -1,7 +1,7 @@
 /**
  * useKnowledgeGraph reads through one of three queries (search, one type, or
  * all types). The error and refetch it hands the page must be the ones of the
- * query the current search / tab is actually using (#721): a failed search must
+ * query the current search / tab is actually using: a failed search must
  * not hide behind a healthy "All" list, and Try again must retry the failed read.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';

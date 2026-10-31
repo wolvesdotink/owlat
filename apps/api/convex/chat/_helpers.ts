@@ -130,30 +130,50 @@ export async function getMembership(
 }
 
 /**
- * Assert the caller can READ a room.
+ * What a member may read a room through, or `null` when they may not read it.
+ * `discussion` carries the mail thread when the room is a mail-thread
+ * discussion, so a caller that shows the thread does not resolve it again.
+ */
+type RoomReadAccess = {
+	discussion: { userId: string; thread: Doc<'mailThreads'> } | null;
+};
+
+/**
+ * THE room-read policy. A read that shows one room or its messages decides
+ * through this (throwing reads via `assertCanReadRoom`, filtered and null reads
+ * by checking for `null`), so a revoked membership hides the room everywhere
+ * at once. The channel lists in chat/rooms.ts apply the same rule as an index
+ * filter over many rooms.
  *
  * Public channels: any authenticated org member can browse.
- * Private channels + DMs: must be a member.
+ * Private channels + DMs: must be a member. An org admin is not an implicit
+ * reader.
  * Mail-thread discussions: must be able to read the thread's mailbox — chat
  * membership is ignored in both directions (these rooms carry none).
  */
+export async function loadRoomReadAccess(
+	ctx: QueryCtx | MutationCtx,
+	room: Doc<'chatRooms'>,
+	memberId: string
+): Promise<RoomReadAccess | null> {
+	if (isMailThreadDiscussion(room)) {
+		const access = await loadDiscussionMailboxForSession(ctx, room);
+		return access && access.userId === memberId ? { discussion: access } : null;
+	}
+	if (room.kind === 'channel' && room.visibility === 'public') {
+		return { discussion: null };
+	}
+	const membership = await getMembership(ctx, room._id, memberId);
+	return membership ? { discussion: null } : null;
+}
+
+/** Assert the caller can READ a room (`loadRoomReadAccess`), else `forbidden`. */
 export async function assertCanReadRoom(
 	ctx: QueryCtx | MutationCtx,
 	room: Doc<'chatRooms'>,
 	memberId: string
 ): Promise<void> {
-	if (isMailThreadDiscussion(room)) {
-		const access = await loadDiscussionMailboxForSession(ctx, room);
-		if (!access || access.userId !== memberId) {
-			throwForbidden('You do not have access to this room');
-		}
-		return;
-	}
-	if (room.kind === 'channel' && room.visibility === 'public') {
-		return;
-	}
-	const membership = await getMembership(ctx, room._id, memberId);
-	if (!membership) {
+	if (!(await loadRoomReadAccess(ctx, room, memberId))) {
 		throwForbidden('You do not have access to this room');
 	}
 }

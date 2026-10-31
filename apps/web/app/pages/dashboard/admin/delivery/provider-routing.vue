@@ -161,7 +161,7 @@ async function handleSave() {
 		showNotification(t('dashboard.admin.delivery.providerRouting.errors.noProvider'), 'error');
 		return;
 	}
-	// The backend's own rule and the backend's own sentence (D6), so the screen
+	// The backend's own rule and the backend's own sentence, so the screen
 	// refuses exactly what `setRoute` would refuse and says the same thing.
 	if (editFallbackEnabled.value) {
 		const issue = fallbackRelayIssue(editProviders.value, editFallbackRelay.value);
@@ -261,20 +261,11 @@ watch(isEditDirty, (dirty) => setHasChanges(dirty), { immediate: true });
 
 <template>
 	<div>
-		<!-- Header -->
-		<div class="mb-6">
-			<div class="flex items-center gap-3">
-				<UiIconBox icon="lucide:route" size="lg" variant="brand" rounded="xl" />
-				<div>
-					<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-						{{ t('dashboard.admin.delivery.providerRouting.title') }}
-					</h1>
-					<p class="mt-1 text-text-secondary">
-						{{ t('dashboard.admin.delivery.providerRouting.lede') }}
-					</p>
-				</div>
-			</div>
-		</div>
+		<UiPageHeader
+			class="mb-6"
+			:title="t('dashboard.admin.delivery.providerRouting.title')"
+			:description="t('dashboard.admin.delivery.providerRouting.lede')"
+		/>
 
 		<!-- First-load skeleton (shaped like the route list) -->
 		<div v-if="isLoading && !routesData" class="card overflow-hidden">

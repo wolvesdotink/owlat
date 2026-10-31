@@ -1,5 +1,5 @@
 /**
- * The team thread stream (plan §4.3): every internal note says "Internal"; a
+ * The team thread stream: every internal note says "Internal"; a
  * team reply shows who sent it to whom and keeps a queued or failed state;
  * what happened reads as system lines; a host renders the emails through its
  * slot; and a note's reactions and linked action show and toggle.

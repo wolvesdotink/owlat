@@ -66,6 +66,9 @@ export async function readOrgReputation(db: DatabaseReader): Promise<ReputationD
  * Get sending overview: warming state, volume, reputation, abuse status.
  * Tier-based limits have been removed — IP warming is handled by the MTA.
  */
+// all-members: editors plan and send campaigns, and the campaign wizard shows
+// this warm-up and reputation readout. Returns a projected operational DTO
+// (sending IPs, caps, rates, abuse status), never the raw instanceSettings row.
 export const getSendingOverview = authedQuery({
 	args: {},
 	handler: async (ctx) => {
@@ -110,6 +113,8 @@ export const getSendingOverview = authedQuery({
 /**
  * Estimate how long a campaign will take to send based on IP warming state.
  */
+// all-members: the campaign wizard's send-duration estimate for editors, who
+// may send campaigns; derived from warm-up capacity only, no org data.
 export const getCampaignSendEstimate = authedQuery({
 	args: {
 		recipientCount: v.number(),

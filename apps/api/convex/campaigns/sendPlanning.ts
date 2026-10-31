@@ -1,7 +1,7 @@
 import type { ContentFlag, ContentScanLevel } from '@owlat/email-scanner';
 import type { Doc } from '../_generated/dataModel';
 import { hashFraction, variantForHash } from './sendVariantSplit';
-import { orderByEngagement, planTodaysSlice, type SendPlanState } from './multiDaySendPlan';
+import { orderByEngagement, type planTodaysSlice, type SendPlanState } from './multiDaySendPlan';
 import { nextUtcDayStart } from '../lib/clock';
 
 /**
@@ -29,11 +29,12 @@ export interface StartSendGuardInput {
  * orchestrator applies them. Returns the skip reason, or `undefined` to
  * proceed.
  *
- * A `sending` campaign is deliberately NOT skipped: race protection against a
- * double orchestrator fire is owned by the campaign lifecycle (`scheduled →
- * sending` is single-write, and a same-state `sending → sending` is recorded
- * but does not refire the effect). The scheduler hop arrives with the status
- * already flipped to `sending`; the cron-tick path arrives with `scheduled`.
+ * A `sending` campaign is deliberately NOT skipped: the hop the lifecycle
+ * schedules on `→ sending` arrives with the status already flipped, and the
+ * cron-tick path arrives with `scheduled`. A second hop for a send that is
+ * already prepared is refused by `isSendPrepared` instead. A campaign held in
+ * `pending_review` waits for a platform admin; approving it moves it to
+ * `sending`, which schedules its own hop.
  */
 export function classifyStartSendSkip(
 	campaign: StartSendGuardInput,
@@ -46,6 +47,7 @@ export function classifyStartSendSkip(
 	if (campaign.status === 'cancelled') return 'Campaign was cancelled';
 	if (campaign.status === 'draft') return 'Campaign was unscheduled';
 	if (campaign.status === 'sent') return 'Campaign was already sent';
+	if (campaign.status === 'pending_review') return 'Campaign is waiting for content review';
 	// `reschedule` patches scheduledAt and schedules a fresh hop but does NOT
 	// cancel the original one, so without this an early-firing stale hop would
 	// transition the campaign to `sending` and send at the OLD time. The correct
@@ -59,6 +61,41 @@ export function classifyStartSendSkip(
 		return 'Not yet due (rescheduled)';
 	}
 	return undefined;
+}
+
+/**
+ * Whether this send already has its job: the campaign is `sending` and its
+ * `campaignSendJobs` row was opened for THIS send (`startedAt` no earlier than
+ * the `sentAt` the `→ sending` transition stamped). The preparation commit
+ * opens the job in the same transaction as that transition, so a second hop
+ * (the lifecycle's own `→ sending` hop, a cron tick racing it, a rescan) finds
+ * the job and must not reset a walk that may already be enqueuing. A row from
+ * an earlier send of the same campaign predates its `sentAt` and is reused.
+ */
+export function isSendPrepared(
+	campaign: { readonly status: string; readonly sentAt?: number },
+	job: { readonly startedAt: number } | null
+): boolean {
+	return campaign.status === 'sending' && wasLatestSendPrepared(campaign, job);
+}
+
+/**
+ * Whether the campaign's latest send got its job, whatever became of that
+ * send since: still `sending`, `sent`, or moved off `sending` part-way. What
+ * its preparation wrote outlives the walk, because the emails it already
+ * mailed keep pointing at it (the archive link), so a stale writer for that
+ * send must leave it alone after completion too. Each `→ sending` transition
+ * stamps a new `sentAt`, so a job opened for an earlier send predates it and
+ * a later send is never taken for this one. Without a `sentAt` the sends
+ * cannot be told apart, and only a running one counts.
+ */
+export function wasLatestSendPrepared(
+	campaign: { readonly status: string; readonly sentAt?: number },
+	job: { readonly startedAt: number } | null
+): boolean {
+	if (job === null) return false;
+	if (campaign.sentAt === undefined) return campaign.status === 'sending';
+	return job.startedAt >= campaign.sentAt;
 }
 
 // ─── startCampaignSend: content-scan verdict ───────────────────────────

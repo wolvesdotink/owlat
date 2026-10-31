@@ -19,6 +19,9 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getFunctionName } from 'convex/server';
 import { api } from '@owlat/api';
 import { RELAY_REMOVAL_CONFIRMATION } from '@owlat/shared/deliverabilityIndependence';
+import { jsonRequestEvent } from '../../../__tests__/nitro';
+import type * as ConvexRuntimeEnvModule from '@owlat/shared/convexRuntimeEnv';
+import type * as RequireOrgAdminModule from '~~/server/utils/requireOrgAdmin';
 
 const { pushMock, readMock, writeMock, requireOrgAdminMock, queryMock } = vi.hoisted(() => ({
 	pushMock: vi.fn(),
@@ -36,7 +39,7 @@ vi.mock('@owlat/shared/setupEnv', () => ({
 	writeEnvFile: writeMock,
 }));
 vi.mock('@owlat/shared/convexRuntimeEnv', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('@owlat/shared/convexRuntimeEnv')>();
+	const actual = await importOriginal<typeof ConvexRuntimeEnvModule>();
 	return { ...actual, pushConvexRuntimeEnv: pushMock };
 });
 
@@ -53,17 +56,16 @@ let body: unknown;
 let routeHandler: (event: unknown) => Promise<ApplyResult>;
 
 async function callRoute(): Promise<ApplyResult> {
-	return await routeHandler({});
+	return await routeHandler(jsonRequestEvent(body));
 }
 
 beforeAll(async () => {
 	// Nuxt transforms this route on first import. Keep that one-time harness cost
-	// outside the behavioral test timeout; a repository-wide parallel run can
-	// otherwise spend the entire default five seconds waiting for a transform.
+	// in a hook, outside the behavioural tests.
 	vi.stubGlobal('defineEventHandler', <T>(handler: T) => handler);
 	const mod = await import('../apply-transport.post');
 	routeHandler = mod.default as unknown as (event: unknown) => Promise<ApplyResult>;
-}, 30_000);
+});
 
 /** The draft an operator applies to stop paying the relay. */
 function ownMtaPatch(): Record<string, string> {
@@ -115,10 +117,6 @@ beforeEach(() => {
 	requireOrgAdminMock.mockReset().mockResolvedValue({ query: queryMock });
 	body = { providerEnv: ownMtaPatch() };
 
-	vi.stubGlobal(
-		'readBody',
-		vi.fn(async () => body)
-	);
 	vi.stubGlobal('createError', (opts: { statusCode: number; message: string }) =>
 		Object.assign(new Error(opts.message), { statusCode: opts.statusCode })
 	);
@@ -240,7 +238,7 @@ describe('apply-transport — disconnecting a relay cells still lean on', () => 
 	});
 
 	/**
-	 * ONE RELAY IN `EMAIL_PROVIDER`, ONE IN `providerRoutes` (#513) — the shape
+	 * ONE RELAY IN `EMAIL_PROVIDER`, ONE IN `providerRoutes` — the shape
 	 * that actually loses the confirmation.
 	 *
 	 * Both count toward `configuredRelayKinds()`, so `referenceTransportId` is
@@ -318,7 +316,7 @@ describe('apply-transport — disconnecting a relay cells still lean on', () => 
  */
 describe('apply-transport relay removal — the real org-admin gate', () => {
 	it('rejects an unauthenticated call with 401 before reading or writing .env', async () => {
-		const real = await vi.importActual<typeof import('~~/server/utils/requireOrgAdmin')>(
+		const real = await vi.importActual<typeof RequireOrgAdminModule>(
 			'~~/server/utils/requireOrgAdmin'
 		);
 		requireOrgAdminMock.mockImplementation(real.requireOrgAdmin);

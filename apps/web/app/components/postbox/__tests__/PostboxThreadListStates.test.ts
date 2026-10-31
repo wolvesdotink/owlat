@@ -103,6 +103,8 @@ beforeAll(() => {
 		return { focusedIndex: ref(-1), activeId: ref(undefined), onKeydown: vi.fn() };
 	});
 	vi.stubGlobal('navigateTo', vi.fn());
+	// The delete guard reads the route a failed delete returns from.
+	vi.stubGlobal('useRouter', () => ({ currentRoute: ref({ path: '/dashboard/postbox/inbox' }) }));
 	vi.stubGlobal('resolvePostboxShortcut', () => undefined);
 	// The list's empty-state copy and operation labels flow through vue-i18n now;
 	// `useI18n` is a Nuxt auto-import, so it has to exist as a global.
@@ -376,7 +378,7 @@ describe('PostboxThreadList drag to a folder', () => {
 		// The dragged row dims while it travels.
 		expect(w.findAll('li.pbx-row-li')[1]!.classes()).toContain('opacity-50');
 
-		await session.value!.moveTo('folder-9' as Id<'mailFolders'>);
+		await session.value!.moveTo!('folder-9' as Id<'mailFolders'>);
 		expect(runSpy).toHaveBeenCalledWith({ messageIds: ['msg-2'], targetFolderId: 'folder-9' });
 		end();
 	});
@@ -398,7 +400,7 @@ describe('PostboxThreadList drag to a folder', () => {
 		);
 
 		runSpy.mockResolvedValueOnce({ ok: true, result: { moved: [] } });
-		await session.value!.moveTo('folder-9' as Id<'mailFolders'>);
+		await session.value!.moveTo!('folder-9' as Id<'mailFolders'>);
 		// One mutation for the lot, and the selection is spent like the bulk Move.
 		expect(runSpy).toHaveBeenCalledTimes(1);
 		expect(runSpy).toHaveBeenCalledWith({
@@ -416,7 +418,7 @@ describe('PostboxThreadList drag to a folder', () => {
 		await dragRow(w, 1);
 		const { session, end } = usePostboxMessageDrag();
 		runSpy.mockResolvedValueOnce({ ok: false });
-		await session.value!.moveTo('folder-9' as Id<'mailFolders'>);
+		await session.value!.moveTo!('folder-9' as Id<'mailFolders'>);
 		expect(clearSelection).not.toHaveBeenCalled();
 		expect(selectedIds.value).toEqual(['msg-1', 'msg-2']);
 		end();

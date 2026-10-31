@@ -4,6 +4,7 @@ import type { Doc, Id } from '../_generated/dataModel';
 import { internalQuery, type MutationCtx, type QueryCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import { requireSelf } from '../lib/sessionOrganization';
+import { stagingStep } from './accountExportDecision';
 
 const ACCOUNT_EXPORT_TTL_MS = 60 * 60 * 1_000;
 const ACCOUNT_EXPORT_MAX_ARTIFACTS = 5_000;
@@ -230,49 +231,115 @@ export const registerArtifact = internalMutation({
 		args
 	): Promise<{ artifact: Doc<'accountExportArtifacts'>; created: boolean }> => {
 		const session = await requireActiveAccountExportSession(ctx, args.userId, args.sessionId);
-		const existing = await ctx.db
-			.query('accountExportArtifacts')
-			.withIndex('by_session_and_key', (q) =>
-				q.eq('sessionId', args.sessionId).eq('artifactKey', args.artifactKey)
-			)
-			.unique();
+		const existing = await findArtifactByKey(ctx, args.sessionId, args.artifactKey);
 		if (existing) {
 			await createArtifactLease(ctx, session, existing, args.leaseToken);
 			return { artifact: existing, created: false };
 		}
-		if (
-			session.artifactCount >= ACCOUNT_EXPORT_MAX_ARTIFACTS ||
-			(session.leaseCount ?? 0) >= ACCOUNT_EXPORT_MAX_LEASES ||
-			session.artifactBytes + args.contentLength > ACCOUNT_EXPORT_MAX_ARTIFACT_BYTES
-		) {
-			throw new Error('Account export staging quota exceeded');
-		}
-		const existingToken = await ctx.db
-			.query('accountExportArtifactLeases')
-			.withIndex('by_token', (q) => q.eq('leaseToken', args.leaseToken))
-			.unique();
-		if (existingToken) throw new Error('Account export artifact lease token collision');
-		const artifactId = await ctx.db.insert('accountExportArtifacts', {
-			sessionId: session._id,
-			artifactKey: args.artifactKey,
-			storageId: args.storageId,
-			contentLength: args.contentLength,
-			activeLeaseCount: 1,
-			createdAt: Date.now(),
-		});
-		await ctx.db.insert('accountExportArtifactLeases', {
-			sessionId: session._id,
-			artifactId,
-			leaseToken: args.leaseToken,
-			createdAt: Date.now(),
-		});
-		await ctx.db.patch(session._id, {
-			artifactCount: session.artifactCount + 1,
-			artifactBytes: session.artifactBytes + args.contentLength,
-			leaseCount: (session.leaseCount ?? 0) + 1,
-		});
+		const artifactId = await insertLeasedArtifact(ctx, session, args);
 		const artifact = await ctx.db.get(artifactId);
 		if (!artifact) throw new Error('Could not register account export artifact');
 		return { artifact, created: true };
 	},
 });
+
+/**
+ * Stage one row's content for download: lease the artifact under
+ * `artifactKey`, or register `storageId` as it (`stagingStep` in
+ * `accountExportDecision.ts`). The caller minted its download link for
+ * `storageId` before calling, so a lease is only ever taken on an artifact
+ * holding that blob. When the key holds another blob, or the artifact the
+ * caller found is gone and it brought no blob of its own, nothing is leased
+ * (a fresh blob the caller stored is deleted) and the caller mints its link
+ * again for the artifact returned.
+ */
+export const stageArtifact = internalMutation({
+	args: {
+		userId: v.string(),
+		sessionId: v.id('accountExportSessions'),
+		artifactKey: v.string(),
+		storageId: v.id('_storage'),
+		/** The caller stored `storageId` for this call; otherwise it is the found artifact's. */
+		isFreshBlob: v.boolean(),
+		contentLength: v.number(),
+		leaseToken: v.string(),
+	},
+	handler: async (
+		ctx,
+		args
+	): Promise<
+		| { kind: 'staged'; artifactId: Id<'accountExportArtifacts'> }
+		| { kind: 'restage'; artifact: Doc<'accountExportArtifacts'> | null }
+	> => {
+		const session = await renewAccountExportSession(ctx, args.userId, args.sessionId);
+		const existing = await findArtifactByKey(ctx, args.sessionId, args.artifactKey);
+		const step = stagingStep(existing, args);
+		if (step === 'lease' && existing) {
+			await createArtifactLease(ctx, session, existing, args.leaseToken);
+			return { kind: 'staged', artifactId: existing._id };
+		}
+		if (step === 'register') {
+			return { kind: 'staged', artifactId: await insertLeasedArtifact(ctx, session, args) };
+		}
+		if (args.isFreshBlob) await ctx.storage.delete(args.storageId);
+		return { kind: 'restage', artifact: existing };
+	},
+});
+
+async function findArtifactByKey(
+	ctx: MutationCtx,
+	sessionId: Id<'accountExportSessions'>,
+	artifactKey: string
+): Promise<Doc<'accountExportArtifacts'> | null> {
+	return await ctx.db
+		.query('accountExportArtifacts')
+		.withIndex('by_session_and_key', (q) =>
+			q.eq('sessionId', sessionId).eq('artifactKey', artifactKey)
+		)
+		.unique();
+}
+
+/** Register a new artifact with its first lease, within the session's quotas. */
+async function insertLeasedArtifact(
+	ctx: MutationCtx,
+	session: Doc<'accountExportSessions'>,
+	args: {
+		artifactKey: string;
+		storageId: Id<'_storage'>;
+		contentLength: number;
+		leaseToken: string;
+	}
+): Promise<Id<'accountExportArtifacts'>> {
+	if (
+		session.artifactCount >= ACCOUNT_EXPORT_MAX_ARTIFACTS ||
+		(session.leaseCount ?? 0) >= ACCOUNT_EXPORT_MAX_LEASES ||
+		session.artifactBytes + args.contentLength > ACCOUNT_EXPORT_MAX_ARTIFACT_BYTES
+	) {
+		throw new Error('Account export staging quota exceeded');
+	}
+	const existingToken = await ctx.db
+		.query('accountExportArtifactLeases')
+		.withIndex('by_token', (q) => q.eq('leaseToken', args.leaseToken))
+		.unique();
+	if (existingToken) throw new Error('Account export artifact lease token collision');
+	const artifactId = await ctx.db.insert('accountExportArtifacts', {
+		sessionId: session._id,
+		artifactKey: args.artifactKey,
+		storageId: args.storageId,
+		contentLength: args.contentLength,
+		activeLeaseCount: 1,
+		createdAt: Date.now(),
+	});
+	await ctx.db.insert('accountExportArtifactLeases', {
+		sessionId: session._id,
+		artifactId,
+		leaseToken: args.leaseToken,
+		createdAt: Date.now(),
+	});
+	await ctx.db.patch(session._id, {
+		artifactCount: session.artifactCount + 1,
+		artifactBytes: session.artifactBytes + args.contentLength,
+		leaseCount: (session.leaseCount ?? 0) + 1,
+	});
+	return artifactId;
+}

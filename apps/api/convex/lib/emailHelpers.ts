@@ -106,7 +106,8 @@ function wallClockToUtc(
 export function isValidTimeZone(timeZone: string | undefined): timeZone is string {
 	if (!timeZone) return false;
 	try {
-		new Intl.DateTimeFormat('en-US', { timeZone });
+		// Building the formatter throws a RangeError for a zone Intl does not know.
+		new Intl.DateTimeFormat('en-US', { timeZone }).resolvedOptions();
 		return true;
 	} catch {
 		return false;

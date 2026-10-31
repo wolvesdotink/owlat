@@ -6,6 +6,13 @@ name: Release (unified)
 #
 #   git tag v0.2.0 && git push origin v0.2.0
 #
+# Releases go through a candidate (docs/RELEASING.md): `bun run release:cut`
+# tags `vX.Y.Z-rc.N`, which runs this whole pipeline (verification, both
+# builds, the install gates and the update gate) and publishes a prerelease
+# that no installer, updater or image alias follows. `bun run release:promote`
+# then tags `vX.Y.Z` on that candidate's commit, and the `resolve` job refuses
+# a stable tag anywhere else (scripts/ci/release-gate.ts).
+#
 # For a single-target fix release, use the dedicated pipelines instead:
 #   git tag server-v0.2.1  && git push origin server-v0.2.1    # server images only
 #   git tag desktop-v0.2.1 && git push origin desktop-v0.2.1    # desktop apps only
@@ -36,17 +43,29 @@ jobs:
   resolve:
     name: Resolve version
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     outputs:
       version: ${{ steps.meta.outputs.version }}
+      channel: ${{ steps.meta.outputs.channel }}
     steps:
       - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2
         with:
           egress-policy: audit
+      # Full history and tags: a stable tag is checked against the candidate
+      # tags on its commit.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: package.json
       - id: meta
-        run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-          echo "Resolved unified release VERSION=${VERSION}"
+        name: Classify the tag and enforce the release policy
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: bun scripts/ci/release-gate.ts
 
   # Gate the entire release on successful full CI of the EXACT tagged commit
   # (shared core: _verify.yml). test.yml only runs on branch push / PRs, which
@@ -91,7 +110,7 @@ jobs:
           name: 'v${{ needs.resolve.outputs.version }}'
           tag_name: ${{ github.ref_name }}
           draft: true # published by the `publish` job once both cores succeed
-          prerelease: ${{ contains(needs.resolve.outputs.version, '-') }}
+          prerelease: ${{ needs.resolve.outputs.channel != 'stable' }}
           body_path: ${{ runner.temp }}/release-body.md
 
   server:
@@ -112,6 +131,10 @@ jobs:
       release_id: ${{ needs.create-release.outputs.release_id }}
     secrets: inherit
 
+  # `server` includes the update gate (_server-build.yml update-gate): the
+  # previous stable release updating to this draft, and a failed release
+  # rolled back. Candidates run it too, from the stable release below their
+  # base version, so an update that breaks shows up before promotion.
   publish:
     name: Publish Release
     needs: [resolve, server, desktop]
@@ -124,11 +147,13 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.ref_name }}
-          VERSION: ${{ needs.resolve.outputs.version }}
+          CHANNEL: ${{ needs.resolve.outputs.channel }}
         run: |
           set -euo pipefail
-          if [[ "$VERSION" == *-* ]]; then
-            gh release edit "$TAG" --repo "${{ github.repository }}" --draft=false --prerelease
+          # Only a stable release may become GitHub's "latest": install.sh, the
+          # desktop updater's latest.json and the server's update check follow it.
+          if [[ "$CHANNEL" != stable ]]; then
+            gh release edit "$TAG" --repo "${{ github.repository }}" --draft=false --prerelease --latest=false
           else
             gh release edit "$TAG" --repo "${{ github.repository }}" --draft=false --latest
           fi
@@ -136,35 +161,5 @@ jobs:
 
   promote-aliases:
     needs: [resolve, publish]
-    if: ${{ !contains(needs.resolve.outputs.version, '-') }}
+    if: needs.resolve.outputs.channel == 'stable'
     uses: ./.github/workflows/promote-aliases.yml
-
-  update-versions:
-    name: Resolve published update pair
-    needs: [resolve, publish]
-    if: ${{ !contains(needs.resolve.outputs.version, '-') }}
-    runs-on: ubuntu-latest
-    outputs:
-      from: ${{ steps.pair.outputs.from }}
-    steps:
-      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2
-        with:
-          egress-policy: audit
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
-        with:
-          bun-version-file: package.json
-      - id: pair
-        env:
-          GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ needs.resolve.outputs.version }}
-        run: bun scripts/ci/resolve-update.ts
-
-  post-publish-update:
-    name: Verify the published update
-    needs: [resolve, update-versions]
-    if: needs.update-versions.outputs.from != ''
-    uses: ./.github/workflows/update-flow.yml
-    with:
-      from: ${{ needs.update-versions.outputs.from }}
-      to: ${{ needs.resolve.outputs.version }}

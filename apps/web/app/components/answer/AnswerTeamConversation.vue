@@ -7,13 +7,15 @@ import { teamConversationOpenIds } from '~/utils/answerTeamConversation';
 import type { TeamStreamEntry } from '../../../../api/convex/mail/interpret/briefShape';
 import type { ReplyEntry } from '~/utils/teamStream';
 import TeamThreadStream from '~/components/team/TeamThreadStream.vue';
+import { prefersReducedMotion } from '@owlat/ui/composables/useReducedMotion';
+import { useShortcutLabels } from '~/composables/useShortcutLabels';
 
 type ThreadData = NonNullable<FunctionReturnType<typeof api.inbox.queries.getThread>>;
 type ThreadMessage = ThreadData['messages'][number];
 type ThreadContact = ThreadData['contact'];
 
 /**
- * Answer mode's left column for a Team inbox thread (plan §07, SPEC §7): the
+ * Answer mode's left column for a Team inbox thread: the
  * team stream in its own order. The customer's messages show with their
  * HTML bodies, rendered by the Postbox's sandboxed body component (quotes
  * folded, remote images behind "Show images"; a body too large for its row
@@ -101,8 +103,7 @@ function reveal(id: string): boolean {
 	if (messageById.value.has(id) && !isOpen(id)) toggle(id);
 	void nextTick(() => {
 		const el = document.querySelector<HTMLElement>(`[data-message-id="${CSS.escape(id)}"]`);
-		const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-		el?.scrollIntoView?.({ block: 'start', behavior: reduce ? 'auto' : 'smooth' });
+		el?.scrollIntoView?.({ block: 'start', behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
 		flashed.value = id;
 		// Reply rows come from the stream component, so ring the element itself too.
 		el?.classList.add('ring-2', 'ring-brand/50');
@@ -156,6 +157,9 @@ function hasStoredBody(message: ThreadMessage): boolean {
 }
 
 const showViewToggle = computed(() => props.messages.length > 1);
+// The toggle's tooltip is about its key, so it shows only while that key fires.
+const { labelFor } = useShortcutLabels();
+const viewKey = computed(() => labelFor('answer.toggleView'));
 </script>
 
 <template>
@@ -169,23 +173,27 @@ const showViewToggle = computed(() => props.messages.length > 1);
 				:aria-label="t('components.answer.mode.viewLabel')"
 				class="inline-flex rounded-md border border-border-subtle bg-bg-elevated p-0.5 text-xs"
 			>
-				<button
+				<UiTooltip
 					v-for="option in ['summary', 'full'] as const"
 					:key="option"
-					type="button"
-					class="rounded px-2.5 py-1"
-					:class="
-						view === option
-							? 'bg-(--surface-2-selected) text-text-primary'
-							: 'text-text-tertiary hover:text-text-primary'
-					"
-					:aria-pressed="view === option"
-					:title="t('components.answer.mode.viewShortcut')"
-					:data-testid="`answer-view-${option}`"
-					@click="view = option"
+					:text="viewKey ? t('components.answer.mode.viewShortcut') : undefined"
+					:shortcut="viewKey ?? undefined"
 				>
-					{{ t(`components.team.answer.view.${option === 'summary' ? 'recent' : 'full'}`) }}
-				</button>
+					<button
+						type="button"
+						class="rounded px-2.5 py-1"
+						:class="
+							view === option
+								? 'bg-(--surface-2-selected) text-text-primary'
+								: 'text-text-tertiary hover:text-text-primary'
+						"
+						:aria-pressed="view === option"
+						:data-testid="`answer-view-${option}`"
+						@click="view = option"
+					>
+						{{ t(`components.team.answer.view.${option === 'summary' ? 'recent' : 'full'}`) }}
+					</button>
+				</UiTooltip>
 			</div>
 		</div>
 
@@ -257,17 +265,19 @@ const showViewToggle = computed(() => props.messages.length > 1);
 						class="px-4 pb-4"
 						data-testid="answer-team-message-body"
 					>
-						<PostboxMessageBody
-							v-if="hasInlineBody(messageOf(entry)!)"
-							:message="bodyOf(messageOf(entry)!)"
-						/>
-						<InboxMessageBody
-							v-else-if="hasStoredBody(messageOf(entry)!)"
-							:message="messageOf(entry)!"
-						/>
-						<p v-else class="text-sm text-text-tertiary">
-							{{ t('dashboard.inbox.detail.noTextContent') }}
-						</p>
+						<AppErrorBoundary surface="messageBody" :reset-keys="[entry.source.id]">
+							<PostboxMessageBody
+								v-if="hasInlineBody(messageOf(entry)!)"
+								:message="bodyOf(messageOf(entry)!)"
+							/>
+							<InboxMessageBody
+								v-else-if="hasStoredBody(messageOf(entry)!)"
+								:message="messageOf(entry)!"
+							/>
+							<p v-else class="text-sm text-text-tertiary">
+								{{ t('dashboard.inbox.detail.noTextContent') }}
+							</p>
+						</AppErrorBoundary>
 						<InboxMessageAttachments :message="messageOf(entry)!" />
 					</div>
 				</article>

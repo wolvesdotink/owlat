@@ -1,6 +1,6 @@
 /**
  * Read on arrival: every arrival row of one mailbox, by table, children first
- * (SPEC §0 "erasure"). One reader per table for the walks that remove a
+ * (for erasure). One reader per table for the walks that remove a
  * mailbox's arrival state wholesale:
  *
  *  - member erasure (`auth/erasure/mailboxPhases.ts`, the `mailboxRecords`

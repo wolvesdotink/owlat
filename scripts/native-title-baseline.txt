@@ -1,0 +1,17 @@
+# Native title tooltips on controls that predate UiTooltip: one line per site,
+# `path<TAB>tag<TAB>attribute`. Frozen debt for scripts/check-native-title.sh:
+# remove a line when its control moves to UiTooltip; never add one.
+apps/marketing/app/components/SiteHeader.vue	a	:title="t('download.allPlatformsTitle')"
+apps/web/app/pages/dashboard/admin/delivery/activity.vue	UiButton	:title="t('dashboard.inbox.activity.failedMessagesTitle')"
+apps/web/app/pages/dashboard/admin/operator/index.vue	UiButton	:title=" hasPromotableUsers ? undefined : t('dashboard.admin.operator.index.admins.allPromoted') "
+apps/web/app/pages/dashboard/admin/team/index.vue	UiButton	:title="t('dashboard.admin.team.invites.resend')"
+apps/web/app/pages/dashboard/assistant/index.vue	button	:title="c.title"
+apps/web/app/pages/dashboard/audience/contacts/[id].vue	UiButton	:title="t('dashboard.audience.contacts.detail.exportDataTitle')"
+apps/web/app/pages/dashboard/audience/contacts/[id].vue	UiButton	:title="t('dashboard.audience.contacts.detail.resendDoiTitle')"
+apps/web/app/pages/dashboard/audience/contacts/index.vue	button	:title=" sortApplies ? undefined : t('dashboard.audience.contacts.index.table.createdSortSearchHint') "
+apps/web/app/pages/dashboard/automations/[id]/edit.vue	UiButton	:title=" !canActivate.valid ? canActivate.reasons.join(', ') : t('dashboard.automations.detail.edit.activateTitle') "
+apps/web/app/pages/dashboard/inbox/index.vue	button	:title=" t('dashboard.inbox.index.sortSwitchTo', { sort: t(INBOX_SORT_META[nextInboxSort(sort, isSlaEnabled)].label), }) "
+packages/email-builder/src/components/canvas/DocumentCanvas.vue	button	:title="t('builder.canvas.backgroundColor')"
+packages/email-builder/src/components/canvas/SubjectFields.vue	button	:title="t('builder.subject.insertVariableTitle')"
+packages/email-builder/src/components/canvas/SubjectFields.vue	button	:title="t('builder.subject.newVariableTitle')"
+packages/email-builder/src/preview/components/EmailPreviewer.vue	button	:title="t('builder.preview.toolbar.sendTestTitle')"

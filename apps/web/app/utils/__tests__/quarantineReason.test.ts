@@ -101,7 +101,7 @@ describe('deriveQuarantineReason', () => {
 	});
 
 	it("puts the spam threshold on the backend's 0-100 scale, at the spam-archive bar", () => {
-		// The same constant the security scan archives spam at, so the two cannot drift (#1336).
+		// The same constant the security scan archives spam at, so the two cannot drift.
 		expect(QUARANTINE_SPAM_SCORE_NOTABLE).toBe(SPAM_ARCHIVE_SCORE);
 
 		// One or a few rule hits (10 or 15 each) are not "high".
@@ -146,7 +146,7 @@ describe('deriveQuarantineReason', () => {
 		);
 	});
 
-	it('says when the model guard was skipped (D13), beside what did fire', () => {
+	it('says when the model guard was skipped, beside what did fire', () => {
 		const reason = deriveQuarantineReason({
 			injectionDetected: false,
 			spamScore: 0,

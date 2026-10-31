@@ -1,5 +1,5 @@
 /**
- * Fix with a reason (SPEC §4.2, §6.1): the reason compiles, after the Fix,
+ * Fix with a reason: the reason compiles, after the Fix,
  * through rules' compile path into the draft the Fix wrote, `ready` with a
  * preview the person still has to confirm (no filter is created), or
  * `failed` when AI is off. The `compileFixRuleDraft` hook is no longer a stub.

@@ -15,7 +15,7 @@
  * The two sanctioned divergence classes:
  *   - enhanced-code enrichment (base code identical; we add the RFC 3463 code
  *     the oracle omits) — I2(c);
- *   - the AUTH-failure base-code collapse (no-auth-oracle, D6/I5) — pre-TLS
+ *   - the AUTH-failure base-code collapse (no-auth-oracle/I5) — pre-TLS
  *     530 vs 538, unsupported-mechanism / cancel 535 vs 504 / 501.
  *
  * A raw-socket runner (not `@owlat/smtp-client`) drives both stacks so the
@@ -120,12 +120,12 @@ describe('smtp-server parity — SMTP framing', () => {
 		const { port: ourPort } = await startListener(ourOptions({ maxMessageBytes: 1024 }));
 		const script = [{ send: 'EHLO caps.test', expectClose: false }];
 
-		const [ourEhlo] = (
+		const ourEhlo = (
 			await converse(ourPort, [...script, { send: 'QUIT', expectClose: true }])
-		).filter((r) => r.code === 250);
-		const [oracleEhlo] = (
+		).find((r) => r.code === 250);
+		const oracleEhlo = (
 			await converse(oracle.port, [...script, { send: 'QUIT', expectClose: true }])
-		).filter((r) => r.code === 250);
+		).find((r) => r.code === 250);
 
 		expect(ourEhlo?.code).toBe(250);
 		expect(oracleEhlo?.code).toBe(250);
@@ -382,14 +382,14 @@ describe('sanctioned enhanced-code enrichment (I2c) — enumerated, not live', (
 });
 
 // ---------------------------------------------------------------------------
-// Enumerated AUTH-failure BASE-CODE divergences (D6/I5 no-auth-oracle). Every
+// Enumerated AUTH-failure BASE-CODE divergences (I5 no-auth-oracle). Every
 // AUTH failure collapses to ONE reply so a probe cannot read the failing stage;
 // smtp-server leaks the stage via distinct codes. We assert OUR code exactly
 // (known from our source), and that the oracle DIVERGES with a different 5xx —
 // each pair enumerated in the fixture, never discovered live.
 // ---------------------------------------------------------------------------
 
-describe('sanctioned AUTH base-code divergence (D6) — enumerated, not live', () => {
+describe('sanctioned AUTH base-code divergence — enumerated, not live', () => {
 	function divergence(id: string): (typeof AUTH_BASE_CODE_DIVERGENCES)[number] {
 		const d = AUTH_BASE_CODE_DIVERGENCES.find((x) => x.id === id);
 		if (!d) throw new Error(`fixture missing divergence ${id}`);

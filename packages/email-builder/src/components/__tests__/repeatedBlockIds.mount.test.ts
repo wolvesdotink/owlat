@@ -78,9 +78,10 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+	// Unmount while the console spies still swallow teardown warnings; the
+	// setup's own unmount would run after they are restored.
 	wrapper?.unmount();
 	wrapper = null;
-	document.body.innerHTML = '';
 	vi.restoreAllMocks();
 });
 

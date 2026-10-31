@@ -13,13 +13,17 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { installShutdown, type ShutdownHandle } from '@owlat/shared/nodeShutdown';
 import type * as Security from '../security.js';
+import { fifoGate, fifoLines } from './fifoChannel.js';
 
 /**
  * The updater under SIGTERM, against a fake `docker` that is a real process.
  *
  * `docker` here is a shell script on PATH: it logs each command, answers the
  * reads the rollout makes, and holds `pull` and `up` open until the test
- * releases them. The handlers spawn it for real, so what is pinned is what the
+ * releases them: it reports its pid on `<step>.ready` and then blocks on the
+ * `release-<step>` pipe (see fifoChannel.ts). A released step stays released
+ * for the rest of the test (`released-<step>`): the self-update helper's
+ * command line holds `up` a second time. The handlers spawn it for real, so what is pinned is what the
  * shutdown actually does to a command in flight: the updater keeps answering
  * while one runs, a rollout that has not promoted its release backs out and
  * stops the command, and one that has finishes its recreate first.
@@ -39,8 +43,8 @@ writeFileSync(
 	`#!/bin/sh
 echo "$*" >> "$FAKE_DOCKER_DIR/calls"
 hold() {
-	echo $$ > "$FAKE_DOCKER_DIR/$1.pid"
-	while [ ! -e "$FAKE_DOCKER_DIR/release-$1" ]; do sleep 0.02; done
+	echo $$ > "$FAKE_DOCKER_DIR/$1.ready"
+	[ -e "$FAKE_DOCKER_DIR/released-$1" ] || read released < "$FAKE_DOCKER_DIR/release-$1"
 }
 case "$*" in
 	*"config --services"*) printf 'web\\nupdater\\n' ;;
@@ -49,8 +53,10 @@ case "$*" in
 	*" pull"*) hold pull ;;
 	*"up -d"*) hold up ;;
 	"run -d"*) echo helper-container-id ;;
+	*"ps --all --quiet"*) printf 'c0ffee000001\\nc0ffee000002\\n' ;;
+	"container inspect"*) printf '{"Id":"c0ffee000001","Running":true,"Service":"convex","Mounts":[]}\\n{"Id":"c0ffee000002","Running":true,"Service":"redis","Mounts":[]}\\n' ;;
 	inspect*org.opencontainers*) ;;
-	inspect*) printf 'ghcr.io/wolvesdotink/updater:0.5.0\\n/srv/owlat:%s:rw \\nowlat_default \\n' "$OWLAT_DIR" ;;
+	inspect*) printf 'ghcr.io/wolvesdotink/updater:0.5.0\\n[{"Type":"bind","Source":"/srv/owlat","Destination":"%s","RW":true}]\\nowlat_default \\n' "$OWLAT_DIR" ;;
 esac
 exit 0
 `
@@ -63,7 +69,7 @@ process.env['FAKE_DOCKER_DIR'] = FAKE;
 process.env['PATH'] = `${join(FAKE, 'bin')}:${process.env['PATH']}`;
 
 const { buildRequestListener } = await import('../server.js');
-const { beginShutdown, setShutdownHandle } = await import('../lifecycle.js');
+const { beginShutdown, setShutdownHandle, shutdownSignal } = await import('../lifecycle.js');
 const { reconcileInterruptedUpdate } = await import('../update.js');
 const { readLastRollout, writeLastRollout } = await import('../rolloutState.js');
 const { fastReadiness } = await import('./readinessStubs.js');
@@ -78,6 +84,23 @@ let readiness: ReturnType<typeof fastReadiness>;
 let handle: ShutdownHandle;
 let exit: ReturnType<typeof vi.fn<(code: number) => void>>;
 
+const STEPS = ['pull', 'up'] as const;
+type Step = (typeof STEPS)[number];
+/** Per test: where each held step reports its start, and the gate it waits on. */
+let ready: Record<Step, ReturnType<typeof fifoLines>> | undefined;
+let gates: Record<Step, ReturnType<typeof fifoGate>> | undefined;
+/** Waiting for the shutdown's next wait on a critical section still in flight. */
+let drainWaiters: Array<() => void> = [];
+
+function closePipes(): void {
+	for (const step of STEPS) {
+		ready?.[step].close();
+		gates?.[step].close();
+	}
+	ready = undefined;
+	gates = undefined;
+}
+
 beforeAll(async () => {
 	readiness = fastReadiness();
 	server = createServer(buildRequestListener());
@@ -89,21 +112,40 @@ beforeAll(async () => {
 afterAll(() => {
 	server.close();
 	readiness.restore();
+	closePipes();
 });
 
 beforeEach(() => {
-	// Removed, not emptied: `hold` waits for its release file to exist.
-	for (const file of ['calls', 'release-pull', 'release-up', 'pull.pid', 'up.pid']) {
+	for (const file of ['calls', 'released-pull', 'released-up']) {
 		rmSync(join(FAKE, file), { force: true });
 	}
+	// Fresh pipes per test: a release an earlier test left unread cannot let
+	// this test's step through.
+	closePipes();
+	ready = {
+		pull: fifoLines(join(FAKE, 'pull.ready')),
+		up: fifoLines(join(FAKE, 'up.ready')),
+	};
+	gates = {
+		pull: fifoGate(join(FAKE, 'release-pull')),
+		up: fifoGate(join(FAKE, 'release-up')),
+	};
 	writeFileSync(join(OWLAT_DIR, '.env'), 'FOO=bar\nOWLAT_VERSION=0.4.16\n');
 	writeFileSync(join(OWLAT_DIR, 'docker-compose.yml'), OLD_COMPOSE);
+	// Each case starts without the snapshot an earlier case's update left.
+	rmSync(join(OWLAT_DIR, '.owlat-update-snapshot'), { recursive: true, force: true });
 	exit = vi.fn<(code: number) => void>();
+	drainWaiters = [];
 	// Signals are delivered by the test (`handle.shutdown`), never by the OS,
-	// and the server is the test's own: the shutdown must not close it.
+	// and the server is the test's own: the shutdown must not close it. Its log
+	// says when the drain waits on a critical section.
 	handle = installShutdown({
 		timeoutMs: 10_000,
-		log: () => {},
+		log: (message) => {
+			if (message === 'shutdown waiting for in-flight critical sections') {
+				for (const resolve of drainWaiters.splice(0)) resolve();
+			}
+		},
 		signals: [],
 		exit,
 		onShutdown: beginShutdown,
@@ -113,26 +155,34 @@ beforeEach(() => {
 
 afterEach(() => {
 	// Whatever a test left holding, let it go so no fake command outlives it.
-	writeFileSync(join(FAKE, 'release-pull'), '');
-	writeFileSync(join(FAKE, 'release-up'), '');
+	release('pull');
+	release('up');
 	setShutdownHandle(undefined);
 });
+
+/**
+ * Let a held step finish, and every later hold of it pass: the marker is
+ * there before the line, so a hold either sees the marker or is already
+ * blocked on the gate the line opens.
+ */
+function release(step: Step): void {
+	writeFileSync(join(FAKE, `released-${step}`), '');
+	gates?.[step].release();
+}
+
+/** Resolves when the shutdown next waits on a critical section; ask before shutting down. */
+function waitsOnCriticalSection(): Promise<void> {
+	return new Promise((resolve) => drainWaiters.push(resolve));
+}
 
 function calls(): string[] {
 	const path = join(FAKE, 'calls');
 	return existsSync(path) ? readFileSync(path, 'utf-8').split('\n').filter(Boolean) : [];
 }
 
-/** Resolve once the fake docker has started `step` (and is holding it). */
-async function started(step: 'pull' | 'up'): Promise<number> {
-	const pidFile = join(FAKE, `${step}.pid`);
-	for (let i = 0; i < 250; i++) {
-		if (existsSync(pidFile) && readFileSync(pidFile, 'utf-8').trim()) {
-			return Number(readFileSync(pidFile, 'utf-8'));
-		}
-		await new Promise((resolve) => setTimeout(resolve, 20));
-	}
-	throw new Error(`fake docker never started ${step}; calls: ${calls().join(' / ')}`);
+/** Resolve with its pid once the fake docker has started `step` (and is holding it). */
+async function started(step: Step): Promise<number> {
+	return Number(await ready![step].next());
 }
 
 function alive(pid: number): boolean {
@@ -168,8 +218,8 @@ describe('while a Docker command runs', () => {
 		});
 		expect(second.status).toBe(409);
 
-		writeFileSync(join(FAKE, 'release-pull'), '');
-		writeFileSync(join(FAKE, 'release-up'), '');
+		release('pull');
+		release('up');
 		expect((await updating).status).toBe(200);
 	});
 });
@@ -206,16 +256,20 @@ describe('SIGTERM during an update', () => {
 	it('after the promote: finishes the recreate before the process may exit', async () => {
 		const updating = update();
 		await started('pull');
-		writeFileSync(join(FAKE, 'release-pull'), '');
+		release('pull');
 		const upPid = await started('up');
 
+		const waiting = waitsOnCriticalSection();
 		const shutting = handle.shutdown('SIGTERM');
-		await new Promise((resolve) => setTimeout(resolve, 200));
+		// The handlers have heard of the shutdown, and the drain waits on the
+		// rollout's critical section, which is held in the recreate.
+		await waiting;
+		expect(shutdownSignal().aborted).toBe(true);
 		// Still recreating: the recreate is not stopped and the exit waits.
 		expect(alive(upPid)).toBe(true);
 		expect(exit).not.toHaveBeenCalled();
 
-		writeFileSync(join(FAKE, 'release-up'), '');
+		release('up');
 		const res = await updating;
 		await shutting;
 

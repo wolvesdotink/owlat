@@ -12,7 +12,7 @@
  * THE COPY AND THE DERIVATION LIVE IN `~/utils/transportDnsGuidance`, which
  * answers from the catalog entry's capabilities and falls back to a per-vendor
  * override where one exists. This file is the disclosure around it, and holds no
- * provider knowledge at all (the seams plan's D5).
+ * provider knowledge at all.
  */
 import { api } from '@owlat/api';
 import { transportDnsGuidance } from '~/utils/transportDnsGuidance';

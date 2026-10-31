@@ -29,7 +29,9 @@
  * the state machine is unit-testable with a mocked transport and never imports
  * Convex or Nuxt-toast context directly.
  */
+import { decodeJsonText } from '@owlat/worker-protocol/decodeJson';
 import { holdPendingWork } from '~/lib/pendingOperations';
+import { storageUploadResponseDecoder } from '~/utils/storageUpload';
 
 /** A committed attachment, matching the parent composable's `attachments` shape. */
 export interface CommittedAttachment {
@@ -335,7 +337,7 @@ export function createAttachmentUploads(deps: AttachmentUploadsDeps) {
 
 /**
  * XHR-based upload primitive: PUTs a File to a Convex upload URL, reporting
- * determinate progress via `upload.onprogress` and honouring an AbortSignal.
+ * determinate progress via the upload `progress` event and honouring an AbortSignal.
  * Resolves the storageId parsed from the JSON response. Used as the real
  * `putFile` transport; tests inject a fake instead.
  */
@@ -355,24 +357,22 @@ export function xhrPutFile(
 		const xhr = new XMLHttpRequest();
 		xhr.open('POST', url, true);
 		xhr.setRequestHeader('Content-Type', contentType);
-		xhr.upload.onprogress = (e) => {
+		xhr.upload.addEventListener('progress', (e) => {
 			if (e.lengthComputable && e.total > 0) onProgress(e.loaded / e.total);
-		};
-		xhr.onload = () => {
+		});
+		xhr.addEventListener('load', () => {
 			if (xhr.status < 200 || xhr.status >= 300) {
 				reject(new Error(`Upload failed (${xhr.status})`));
 				return;
 			}
-			try {
-				const { storageId } = JSON.parse(xhr.responseText) as { storageId: string };
-				if (!storageId) reject(new Error('Upload response missing storageId'));
-				else resolve(storageId);
-			} catch {
-				reject(new Error('Upload response was not valid JSON'));
-			}
-		};
-		xhr.onerror = () => reject(new Error('Upload network error'));
-		xhr.onabort = () => reject(new DOMException('Upload aborted', 'AbortError'));
+			const decoded = decodeJsonText(xhr.responseText, storageUploadResponseDecoder);
+			if (decoded.ok) resolve(decoded.value);
+			else if (decoded.failure.kind === 'invalid') {
+				reject(new Error('Upload response missing storageId'));
+			} else reject(new Error('Upload response was not valid JSON'));
+		});
+		xhr.addEventListener('error', () => reject(new Error('Upload network error')));
+		xhr.addEventListener('abort', () => reject(new DOMException('Upload aborted', 'AbortError')));
 		signal.addEventListener('abort', () => xhr.abort(), { once: true });
 		xhr.send(file);
 	});

@@ -38,7 +38,7 @@ export type FilterActionType =
 	/** Split inbox (idea 24): file into a named inbox SECTION, moving nothing. */
 	| 'pinToSection'
 	| 'discard'
-	/** Read on arrival (SPEC §6.3): placement-only or delayed; the rules UI writes them. */
+	/** Read on arrival: placement-only or delayed; the rules UI writes them. */
 	| ArrivalFilterActionType;
 
 export interface MailFilterCondition {
@@ -58,16 +58,16 @@ export type FilterMatchType = 'all' | 'any';
  * them on a sweep; the UI reads the same set to say when a rule has nothing
  * safe to apply. Mirrors `SAFE_ACTION_TYPES` in mail/filterRun.ts.
  */
-const RETROACTIVE_ACTION_TYPES: readonly FilterActionType[] = [
+const RETROACTIVE_ACTION_TYPES: ReadonlySet<FilterActionType> = new Set<FilterActionType>([
 	'moveToFolder',
 	'addLabel',
 	'markRead',
 	'markFlagged',
 	'pinToSection',
-];
+]);
 
 export function hasRetroactiveActions(actions: readonly FilterAction[]): boolean {
-	return actions.some((action) => RETROACTIVE_ACTION_TYPES.includes(action.type));
+	return actions.some((action) => RETROACTIVE_ACTION_TYPES.has(action.type));
 }
 
 export interface FilterAction {

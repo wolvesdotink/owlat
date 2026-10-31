@@ -12,18 +12,30 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { ConnectableAccount, ConvexClient } from '../convex.js';
 import type { MailSyncConfig } from '../config.js';
+import type * as Shared from '@owlat/shared';
 
 vi.mock('../logger.js', () => ({
 	logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
+// The reconnect backoff is the shared `sleep`. Reaching it at all is the
+// regression, so it rejects: `start()` then fails at once, rather than
+// sleeping out a backoff the test would have to wait for.
+const { backoff } = vi.hoisted(() => ({
+	backoff: vi.fn(async (ms: number): Promise<void> => {
+		throw new Error(`the connect loop backed off for ${ms}ms`);
+	}),
+}));
+vi.mock('@owlat/shared', async (importOriginal) => ({
+	...(await importOriginal<typeof Shared>()),
+	sleep: backoff,
+}));
+
 // A connect attempt must never be reached in these tests; if one is, the
 // constructor throwing is the loudest possible failure.
 vi.mock('imapflow', () => ({
-	ImapFlow: class {
-		constructor() {
-			throw new Error('the connection should never be attempted without credentials');
-		}
+	ImapFlow: function ImapFlow() {
+		throw new Error('the connection should never be attempted without credentials');
 	},
 }));
 
@@ -70,7 +82,7 @@ function mockConvex() {
 }
 
 beforeEach(() => {
-	vi.useRealTimers();
+	backoff.mockClear();
 });
 
 describe('a connection whose account lost its credentials', () => {
@@ -78,13 +90,12 @@ describe('a connection whose account lost its credentials', () => {
 		const { client, action } = mockConvex();
 		const connection = new AccountConnection(ACCOUNT, client, CONFIG);
 
-		// Resolves rather than hanging: no backoff sleep, no retry loop. A retry
-		// would make this exceed the timeout many times over (the first backoff
-		// alone is 5s).
 		await connection.start();
 
+		expect(connection.isStopped).toBe(true);
+		expect(backoff).not.toHaveBeenCalled();
 		expect(action).toHaveBeenCalledTimes(1);
-	}, 2000);
+	});
 
 	it('writes no status back — the teardown already said what is true', async () => {
 		const { client, mutation } = mockConvex();
@@ -96,7 +107,7 @@ describe('a connection whose account lost its credentials', () => {
 			JSON.stringify(reference).includes('setSyncStatus')
 		);
 		expect(statusWrites).toEqual([]);
-	}, 2000);
+	});
 
 	it('stays stopped once the manager tears it down', async () => {
 		const { client, action } = mockConvex();
@@ -105,6 +116,8 @@ describe('a connection whose account lost its credentials', () => {
 		await connection.start();
 		await connection.stop();
 
+		expect(connection.isStopped).toBe(true);
+		expect(backoff).not.toHaveBeenCalled();
 		expect(action).toHaveBeenCalledTimes(1);
-	}, 2000);
+	});
 });

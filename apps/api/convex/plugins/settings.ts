@@ -32,7 +32,7 @@ import {
 } from '@owlat/plugin-kit';
 import { resolveFlags } from '@owlat/shared/featureFlags';
 import { adminQuery, authedMutation } from '../lib/authedFunctions';
-import { requireAdminContext } from '../lib/sessionOrganization';
+import { hasPermission, requirePermission } from '../lib/sessionOrganization';
 import { recordAuditLog } from '../lib/auditLog';
 import { getInstanceSettings, upsertInstanceSettings } from '../lib/instanceSettings';
 import { readFeatureFlagSettings } from '../lib/featureFlagSettings';
@@ -123,8 +123,11 @@ export const setPluginSettings = authedMutation({
 		pluginId: v.string(),
 		values: jsonPrimitiveRecord,
 	},
-	handler: async (ctx, args) => {
-		const session = await requireAdminContext(ctx);
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'organization:manage'),
+			'Only owners and admins can perform this action'
+		);
 		const pluginId = parseBundledPluginId(args.pluginId);
 		const manifest = findBundledManifest(pluginId);
 		if (!manifest) throwInvalidInput('Plugin is not installed');
@@ -185,8 +188,11 @@ export const resetPluginSettings = authedMutation({
 	args: {
 		pluginId: v.string(),
 	},
-	handler: async (ctx, args) => {
-		const session = await requireAdminContext(ctx);
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'organization:manage'),
+			'Only owners and admins can perform this action'
+		);
 		const pluginId = parseBundledPluginId(args.pluginId);
 		const flagKey = pluginFlagKey(pluginId);
 		const manifest = findBundledManifest(pluginId);

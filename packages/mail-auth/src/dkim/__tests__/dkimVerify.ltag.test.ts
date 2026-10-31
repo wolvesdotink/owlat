@@ -1,6 +1,6 @@
 /**
  * DKIM `l=` body-length policy — the ONE sanctioned semantics change on the
- * inbound path (locked decision D2).
+ * inbound path.
  *
  * `l=` lets a signer sign only the first N bytes of the body, which lets an
  * attacker APPEND arbitrary unsigned content to a validly-signed message. The
@@ -66,7 +66,7 @@ function sign(body: string, opts: { readonly l?: number } = {}): Buffer {
 	});
 }
 
-describe('DKIM l= body-length policy (D2 sanctioned improvement)', () => {
+describe('DKIM l= body-length policy (a deliberate improvement over the oracle)', () => {
 	it('control: a full-body signature WITHOUT l= verifies pass', async () => {
 		const body = 'Fully signed body.\r\n';
 		const outcome = await verifyDkim(sign(body), { resolver });

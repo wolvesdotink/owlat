@@ -1,5 +1,5 @@
 /**
- * THE COMPOSITION ORDER (plan D3, P3-7).
+ * THE COMPOSITION ORDER.
  *
  * When both actuators exist they compose in a FIXED order — share first (cheap,
  * instantly reversible, the relay absorbs the difference), pace second (slow,
@@ -235,7 +235,7 @@ describe('composeActuators — the interlock survives the whole evaluation windo
 	});
 
 	it('defers AGAIN when the share takes another step as the window reopens', () => {
-		// Share first, always (plan D3). A cell whose share is still climbing keeps
+		// Share first, always. A cell whose share is still climbing keeps
 		// deferring the slow dial — that is the fixed order, not a stuck interlock.
 		let row: CellRow = {
 			mix: mixState({ share: 0.02, phaseCeiling: 1, cleanStreak: 3 }),

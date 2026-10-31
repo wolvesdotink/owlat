@@ -67,6 +67,8 @@ export const run = internalAction({
 		// one finishes by re-running (the walk restarts from the top and skips
 		// every already-correct row).
 		for (; pages < 1000; pages++) {
+			// checkpoint: one page of the walk; a row whose text is already current
+			// is not rewritten, so a re-run from the top redoes nothing.
 			const result: PageResult = await ctx.runMutation(
 				internal.migrations['0038_rebuild_file_search_text'].rebuildPage,
 				{ cursor }

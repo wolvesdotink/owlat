@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import UiTooltip from '@owlat/ui/components/ui/Tooltip.vue';
 import { computed } from 'vue';
 import {
 	ArrowLeft,
@@ -101,15 +102,16 @@ const redoTitle = computed(() => shortcutTitle('Redo', ['Mod', 'Shift', 'Z']));
 		style="box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15)"
 	>
 		<div class="flex min-w-0 flex-1 items-center gap-2 lg:gap-4">
-			<UiButton
-				variant="ghost"
-				class="!px-2 !py-2"
-				:title="t('builder.header.back')"
-				:aria-label="t('builder.header.back')"
-				@click="emit('back')"
-			>
-				<ArrowLeft class="w-5 h-5" aria-hidden="true" />
-			</UiButton>
+			<UiTooltip :text="t('builder.header.back')">
+				<UiButton
+					variant="ghost"
+					class="!px-2 !py-2"
+					:aria-label="t('builder.header.back')"
+					@click="emit('back')"
+				>
+					<ArrowLeft class="w-5 h-5" aria-hidden="true" />
+				</UiButton>
+			</UiTooltip>
 
 			<div class="flex min-w-0 flex-1 flex-col">
 				<input
@@ -154,66 +156,70 @@ const redoTitle = computed(() => shortcutTitle('Redo', ['Mod', 'Shift', 'Z']));
 			</UiSegmentedControl>
 
 			<!-- Focus Mode Toggle -->
-			<UiButton
-				:variant="isFocusMode ? 'primary' : 'ghost'"
-				class="!px-2 !py-2"
-				:title="focusModeLabel"
-				:aria-label="focusModeLabel"
-				:aria-pressed="isFocusMode"
-				@click="emit('toggle-focus-mode')"
-			>
-				<Minimize2 v-if="isFocusMode" class="w-4 h-4" />
-				<Maximize2 v-else class="w-4 h-4" />
-			</UiButton>
+			<UiTooltip :text="focusModeLabel">
+				<UiButton
+					:variant="isFocusMode ? 'primary' : 'ghost'"
+					class="!px-2 !py-2"
+					:aria-label="focusModeLabel"
+					:aria-pressed="isFocusMode"
+					@click="emit('toggle-focus-mode')"
+				>
+					<Minimize2 v-if="isFocusMode" class="w-4 h-4" />
+					<Maximize2 v-else class="w-4 h-4" />
+				</UiButton>
+			</UiTooltip>
 
 			<!-- Undo/Redo Buttons -->
 			<div class="flex items-center gap-1">
-				<UiButton
-					variant="ghost"
-					class="!px-2 !py-2"
-					:disabled="!canUndo"
-					:title="undoTitle"
-					:aria-label="undoTitle"
-					@click="emit('undo')"
-				>
-					<Undo2 class="w-4 h-4" />
-				</UiButton>
-				<UiButton
-					variant="ghost"
-					class="!px-2 !py-2"
-					:disabled="!canRedo"
-					:title="redoTitle"
-					:aria-label="redoTitle"
-					@click="emit('redo')"
-				>
-					<Redo2 class="w-4 h-4" />
-				</UiButton>
+				<UiTooltip :text="undoTitle">
+					<UiButton
+						variant="ghost"
+						class="!px-2 !py-2"
+						:disabled="!canUndo"
+						:aria-label="undoTitle"
+						@click="emit('undo')"
+					>
+						<Undo2 class="w-4 h-4" />
+					</UiButton>
+				</UiTooltip>
+				<UiTooltip :text="redoTitle">
+					<UiButton
+						variant="ghost"
+						class="!px-2 !py-2"
+						:disabled="!canRedo"
+						:aria-label="redoTitle"
+						@click="emit('redo')"
+					>
+						<Redo2 class="w-4 h-4" />
+					</UiButton>
+				</UiTooltip>
 			</div>
 
 			<!-- Keyboard shortcuts help. Tablets (below lg) rarely have a keyboard,
 			     and the slot is short of room there; `?` still opens the sheet. -->
-			<UiButton
-				variant="ghost"
-				class="!px-2 !py-2 max-lg:!hidden"
-				:title="t('builder.header.shortcutsTitle')"
-				:aria-label="t('builder.header.shortcuts')"
-				@click="emit('show-shortcuts')"
-			>
-				<Keyboard class="w-4 h-4" />
-			</UiButton>
+			<UiTooltip :text="t('builder.header.shortcutsTitle')">
+				<UiButton
+					variant="ghost"
+					class="!px-2 !py-2 max-lg:!hidden"
+					:aria-label="t('builder.header.shortcuts')"
+					@click="emit('show-shortcuts')"
+				>
+					<Keyboard class="w-4 h-4" />
+				</UiButton>
+			</UiTooltip>
 
 			<!-- Restyle the email with the brand kit (confirmed, undoable) -->
-			<UiButton
-				v-if="canApplyBrand"
-				variant="ghost"
-				class="!px-2 !py-2"
-				:title="t('builder.header.applyBrand')"
-				:aria-label="t('builder.header.applyBrand')"
-				data-testid="apply-brand-kit"
-				@click="emit('apply-brand')"
-			>
-				<Palette class="w-4 h-4" />
-			</UiButton>
+			<UiTooltip v-if="canApplyBrand" :text="t('builder.header.applyBrand')">
+				<UiButton
+					variant="ghost"
+					class="!px-2 !py-2"
+					:aria-label="t('builder.header.applyBrand')"
+					data-testid="apply-brand-kit"
+					@click="emit('apply-brand')"
+				>
+					<Palette class="w-4 h-4" />
+				</UiButton>
+			</UiTooltip>
 
 			<div class="w-px h-6 bg-border-default" />
 
@@ -221,23 +227,25 @@ const redoTitle = computed(() => shortcutTitle('Redo', ['Mod', 'Shift', 'Z']));
 			<slot name="toolbar-actions" />
 
 			<!-- Settings Button -->
-			<UiButton
-				v-if="config?.showSettings"
-				variant="ghost"
-				class="!px-2 !py-2"
-				:title="settingsLabel"
-				:aria-label="settingsLabel"
-				@click="emit('settings')"
-			>
-				<Settings class="w-4 h-4" />
-			</UiButton>
+			<UiTooltip v-if="config?.showSettings" :text="settingsLabel">
+				<UiButton
+					variant="ghost"
+					class="!px-2 !py-2"
+					:aria-label="settingsLabel"
+					@click="emit('settings')"
+				>
+					<Settings class="w-4 h-4" />
+				</UiButton>
+			</UiTooltip>
 
-			<!-- Save Button -->
-			<UiButton variant="primary" size="sm" :disabled="isSaving" @click="emit('save')">
-				<Loader2 v-if="isSaving" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
-				<Save v-else class="w-4 h-4" />
-				{{ isSaving ? t('builder.header.saving') : t('builder.header.save') }}
-			</UiButton>
+			<!-- Save Button, or the host's save status where it saves on its own -->
+			<slot name="save-status">
+				<UiButton variant="primary" size="sm" :disabled="isSaving" @click="emit('save')">
+					<Loader2 v-if="isSaving" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
+					<Save v-else class="w-4 h-4" />
+					{{ isSaving ? t('builder.header.saving') : t('builder.header.save') }}
+				</UiButton>
+			</slot>
 		</div>
 	</div>
 </template>

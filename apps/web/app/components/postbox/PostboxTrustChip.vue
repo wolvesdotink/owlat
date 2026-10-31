@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * ONE trust chip per message (plan §05).
+ * ONE trust chip per message.
  *
  * The sender line used to carry up to five competing indicators — the
  * verified-sender badge, the PGP/S-MIME + sealed-mail security badge, the
@@ -56,7 +56,7 @@ const props = defineProps<{
 	showSecurityDetail: boolean;
 	/**
 	 * Answer mode: verified is the quiet default, so the chip renders only when
-	 * there is something to say (plan §09).
+	 * there is something to say.
 	 */
 	hideWhenOk?: boolean;
 }>();
@@ -119,25 +119,28 @@ useEscapeToClose(open);
 		class="relative inline-flex"
 		data-testid="trust-chip"
 	>
-		<button
-			type="button"
-			class="inline-flex items-center gap-1.5 rounded text-xs border focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
-			:class="
-				quiet ? 'border-transparent p-1 hover:bg-bg-surface' : ['px-2 py-0.5', toneClasses.chip]
-			"
-			:aria-expanded="open"
-			:title="label"
-			data-testid="trust-chip-toggle"
-			@click="open = !open"
-		>
-			<Icon :name="chip.icon" class="w-3.5 h-3.5" :class="toneClasses.icon" />
-			<span data-testid="trust-chip-summary" :class="{ 'sr-only': quiet }">{{ label }}</span>
-			<Icon
-				v-if="!quiet"
-				:name="open ? 'lucide:chevron-up' : 'lucide:chevron-down'"
-				class="w-3 h-3 text-text-tertiary"
-			/>
-		</button>
+		<!-- Quiet, the chip is its icon alone and the tooltip says what it is;
+		     otherwise the label is on the chip already. -->
+		<UiTooltip :text="label" :disabled="!quiet">
+			<button
+				type="button"
+				class="inline-flex items-center gap-1.5 rounded text-xs border focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+				:class="
+					quiet ? 'border-transparent p-1 hover:bg-bg-surface' : ['px-2 py-0.5', toneClasses.chip]
+				"
+				:aria-expanded="open"
+				data-testid="trust-chip-toggle"
+				@click="open = !open"
+			>
+				<Icon :name="chip.icon" class="w-3.5 h-3.5" :class="toneClasses.icon" />
+				<span data-testid="trust-chip-summary" :class="{ 'sr-only': quiet }">{{ label }}</span>
+				<Icon
+					v-if="!quiet"
+					:name="open ? 'lucide:chevron-up' : 'lucide:chevron-down'"
+					class="w-3 h-3 text-text-tertiary"
+				/>
+			</button>
+		</UiTooltip>
 
 		<div
 			v-if="open"

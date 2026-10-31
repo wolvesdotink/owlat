@@ -33,8 +33,6 @@ export const SetupStep = {
 	SeedDemo: 'seed-demo',
 } as const;
 
-export type SetupStepId = (typeof SetupStep)[keyof typeof SetupStep];
-
 export type StepStatus = 'running' | 'ok' | 'failed' | 'skipped';
 
 export interface ProgressStepEvent {
@@ -71,17 +69,67 @@ export type ProgressEvent = ProgressStepEvent | ProgressLogEvent | ProgressDoneE
 /**
  * Parse one line of installer output into a {@link ProgressEvent}, or `null` if
  * it is not a sentinel-prefixed progress line (i.e. it is raw log output).
+ *
+ * A sentinel line whose JSON does not hold one of the three events, with every
+ * field the consumer reads of the right type, is not a progress line either: a
+ * consumer reads `status`, `stream` and `ok` straight off the event to drive
+ * its timeline. Fields this build does not know are kept, so a producer may add
+ * one. Step ids stay open strings (see {@link SetupStep}).
  */
 export function parseProgressLine(line: string): ProgressEvent | null {
 	const idx = line.indexOf(PROGRESS_SENTINEL);
 	if (idx === -1) return null;
 	const json = line.slice(idx + PROGRESS_SENTINEL.length).trim();
 	if (!json) return null;
+	let parsed: unknown;
 	try {
-		const parsed = JSON.parse(json) as ProgressEvent;
-		if (parsed && typeof parsed === 'object' && 'event' in parsed) return parsed;
+		parsed = JSON.parse(json);
 	} catch {
 		// Not valid JSON after the sentinel — treat as raw output.
+		return null;
 	}
-	return null;
+	return isProgressEvent(parsed) ? parsed : null;
+}
+
+type Fields = { readonly [key: string]: unknown };
+
+const STEP_STATUSES: ReadonlySet<unknown> = new Set<StepStatus>([
+	'running',
+	'ok',
+	'failed',
+	'skipped',
+]);
+const LOG_STREAMS: ReadonlySet<unknown> = new Set<ProgressLogEvent['stream']>(['stdout', 'stderr']);
+
+function isFields(value: unknown): value is Fields {
+	return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isProgressEvent(value: unknown): value is ProgressEvent {
+	if (!isFields(value) || value['v'] !== 1) return false;
+	const ts = value['ts'];
+	if (typeof ts !== 'number' || !Number.isFinite(ts)) return false;
+	switch (value['event']) {
+		case 'step':
+			return (
+				typeof value['id'] === 'string' &&
+				typeof value['title'] === 'string' &&
+				STEP_STATUSES.has(value['status']) &&
+				optional(value['detail'], 'string') &&
+				optional(value['warn'], 'boolean')
+			);
+		case 'log':
+			return typeof value['line'] === 'string' && LOG_STREAMS.has(value['stream']);
+		case 'done':
+			return (
+				typeof value['ok'] === 'boolean' &&
+				(value['summary'] === undefined || isFields(value['summary']))
+			);
+		default:
+			return false;
+	}
+}
+
+function optional(value: unknown, type: 'string' | 'boolean'): boolean {
+	return value === undefined || typeof value === type;
 }

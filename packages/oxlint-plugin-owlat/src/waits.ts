@@ -26,6 +26,7 @@ import {
 	unwrap,
 	variableOf,
 } from './ast.ts';
+import { importedSleepTimer } from './importedSleep.ts';
 import type { AstNode, Context } from './types.ts';
 
 export type WaitKind = 'sleep' | 'tick';
@@ -41,7 +42,8 @@ export interface Wait {
 	 * vitest's fake timers can replace. Undefined when nothing fake can drive
 	 * the wait: a `node:timers` or `node:timers/promises` import (vitest swaps
 	 * the globals only), Bun's `sleep`, Playwright's `waitForTimeout`, or a
-	 * `sleep` helper whose body this file does not show.
+	 * `sleep` helper whose body neither this file nor a relative import it
+	 * names shows (see importedSleep.ts).
 	 */
 	timer?: string;
 }
@@ -122,7 +124,9 @@ export const isPromiseExecutor = (context: Context, fn: AstNode): boolean => {
  * The wait a `new Promise(executor)` is: an executor that is a timer itself
  * (`new Promise(setImmediate)`) ticks; otherwise the strongest timer the
  * executor starts directly, not from a nested callback (which waits on
- * something else first).
+ * something else first). When it starts delays on more than one timer, faking
+ * one of them does not establish which settles the promise, so the sleep
+ * names no timer fake time could drive.
  */
 export const promiseWait = (context: Context, node: Node): Wait | undefined => {
 	if (node?.type !== 'NewExpression' || !isGlobal(context, node.callee, PROMISE)) return undefined;
@@ -134,20 +138,18 @@ export const promiseWait = (context: Context, node: Node): Wait | undefined => {
 	const body = functionBody(executor);
 	if (!body) return undefined;
 	let found: Wait | undefined;
+	const sleepTimers = new Set<string | undefined>();
 	someDescendant(context.sourceCode.visitorKeys, body, (child) => {
 		if (child.type !== 'CallExpression') return false;
 		const timer = callbackTimer(context, child.callee);
 		if (timer === undefined) return false;
 		const kind = DELAY_TIMERS.has(timer.name) ? delayKind(child.arguments[1], 'tick') : 'tick';
-		found = strongest(found, {
-			kind,
-			node: child,
-			viaHelper: false,
-			timer: timer.global ? timer.name : undefined,
-		});
-		return kind === 'sleep';
+		const name = timer.global ? timer.name : undefined;
+		if (kind === 'sleep') sleepTimers.add(name);
+		found = strongest(found, { kind, node: child, viaHelper: false, timer: name });
+		return false;
 	});
-	return found;
+	return found && sleepTimers.size > 1 ? { ...found, timer: undefined } : found;
 };
 
 /**
@@ -243,10 +245,15 @@ export const callWait = (
 	if (callee?.type === 'Identifier') {
 		if (SLEEP_HELPERS.has(callee.name)) {
 			// Fake timers drive the helper only through the global timer its body
-			// starts; an imported helper's body is out of sight.
+			// starts: a local helper's body is read here, a relative import's by
+			// importedSleep.ts, and any other import's is out of sight.
 			const fn = localFunction(context, callee);
 			const inner = fn && helperWait(context, fn, options.seen ?? new Set());
-			return { kind: delayKind(first, 'sleep'), node, viaHelper: false, timer: inner?.timer };
+			const binding = fn ? undefined : importOf(context, callee);
+			const timer =
+				inner?.timer ??
+				(binding && importedSleepTimer(context.filename, binding.source, binding.imported));
+			return { kind: delayKind(first, 'sleep'), node, viaHelper: false, timer };
 		}
 		if (options.sleepsOnly) return undefined;
 		const binding = importOf(context, callee);

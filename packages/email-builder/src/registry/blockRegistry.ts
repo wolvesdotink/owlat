@@ -22,8 +22,7 @@ import {
 	enrolEmailBlockRegistry,
 	latchEmailBlockRegistriesOnRead,
 } from '@owlat/email-renderer/registry-latch';
-import type { BlockType, BlockContent, EmailTheme } from '../types';
-import type { SlashCommand } from '../types';
+import type { BlockType, BlockContent, EmailTheme, SlashCommand } from '../types';
 import type { BlockAttributeSchema } from '../schema/types';
 import { defaultPadding, defaultMargin } from '../defaults';
 import { getAllEditorModules, editorModuleFor } from '../blocks/_registry';

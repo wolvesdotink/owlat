@@ -60,11 +60,7 @@ describe('Conditional Content Loops (Repeat Blocks)', () => {
 
 		const html = renderEmailHtml(blocks, {
 			variableValues: {
-				items: JSON.stringify([
-					{ name: 'A' },
-					{ name: 'B' },
-					{ name: 'C' },
-				]),
+				items: JSON.stringify([{ name: 'A' }, { name: 'B' }, { name: 'C' }]),
 			},
 		});
 
@@ -151,7 +147,65 @@ describe('Conditional Content Loops (Repeat Blocks)', () => {
 			onWarning: (msg) => warnings.push(msg),
 		});
 
-		expect(warnings.some((w) => w.includes('not valid JSON') || w.includes('not an array'))).toBe(true);
+		expect(warnings.some((w) => w.includes('not valid JSON') || w.includes('not an array'))).toBe(
+			true
+		);
+	});
+
+	it("repeats every entry and fills an object entry's values as text", () => {
+		const warnings: string[] = [];
+		const blocks: EditorBlock[] = [
+			{
+				id: 'item',
+				type: 'text',
+				content: {
+					html: '<p>#{{$index}}: {{row.name}} x{{row.count}}</p>',
+					blockType: 'paragraph',
+					fontSize: 16,
+					textColor: '#333',
+					repeat: { variable: 'rows', itemAlias: 'row' },
+				},
+			},
+		];
+
+		const html = renderEmailHtml(blocks, {
+			variableValues: {
+				rows: JSON.stringify([{ name: 'Tea "Earl"', count: 2 }, 'plain', null, { name: true }]),
+			},
+			onWarning: (msg) => warnings.push(msg),
+		});
+
+		expect(html.match(/data-block-id="item-repeat-\d"/g)).toHaveLength(4);
+		expect(html).toContain('#0: Tea "Earl" x2');
+		expect(html).toContain('#3: true x{{row.count}}');
+		// An entry that is not an object repeats the block as written.
+		expect(html.split('#{{$index}}: {{row.name}} x{{row.count}}')).toHaveLength(3);
+		expect(warnings).toEqual([]);
+	});
+
+	it('skips a block whose repeat variable is a JSON object, not a list', () => {
+		const warnings: string[] = [];
+		const blocks: EditorBlock[] = [
+			{
+				id: 'item',
+				type: 'text',
+				content: {
+					html: '<p>Row {{row.name}}</p>',
+					blockType: 'paragraph',
+					fontSize: 16,
+					textColor: '#333',
+					repeat: { variable: 'rows', itemAlias: 'row' },
+				},
+			},
+		];
+
+		const html = renderEmailHtml(blocks, {
+			variableValues: { rows: JSON.stringify({ 0: { name: 'First' } }) },
+			onWarning: (msg) => warnings.push(msg),
+		});
+
+		expect(html).not.toContain('Row');
+		expect(warnings.some((w) => w.includes('is not an array'))).toBe(true);
 	});
 
 	it('blocks without repeat are rendered normally', () => {

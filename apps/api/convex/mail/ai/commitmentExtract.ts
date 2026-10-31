@@ -76,7 +76,7 @@ export const extractCommitment = internalAction({
 
 			try {
 				// Same gate as the user-triggered Postbox AI: `ai` flag + rate limit
-				// (the owner's background bucket, #1380) + spend budget. Throws when
+				// (the owner's background bucket) + spend budget. Throws when
 				// disabled/limited → no commitment row.
 				await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {
 					ownerUserId: context.ownerUserId,
@@ -125,7 +125,7 @@ export const extractCommitment = internalAction({
 					source: 'llm',
 				});
 			} catch (error) {
-				rethrowAdmissionRefusal(error); // a budget refusal defers the run (D1)
+				rethrowAdmissionRefusal(error); // a budget refusal defers the run
 				// Fail-soft: AI disabled / rate-limited / provider down / bad output —
 				// no commitment row is written (today's behaviour).
 			}

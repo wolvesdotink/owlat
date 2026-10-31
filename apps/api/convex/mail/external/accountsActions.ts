@@ -32,15 +32,25 @@ import { throwInvalidInput } from '../../_utils/errors';
 import { assertExternalEnabled } from './externalFeature';
 import { refreshGoogleAccessToken } from './googleOAuthTokens';
 import { getCredentialsForWorker as getCredentialsForWorkerContract } from '@owlat/worker-protocol/mailSync';
+import { validatorDecoder } from '@owlat/worker-protocol/decodeJson';
+import { decodeJsonString } from '../../lib/jsonText';
 
-interface ProtocolTestResult {
-	ok: boolean;
-	error?: string;
-}
-interface ConnectionTestResult {
-	imap: ProtocolTestResult;
-	smtp: ProtocolTestResult;
-}
+const protocolTestResultValidator = v.object({ ok: v.boolean(), error: v.optional(v.string()) });
+/** The mail-sync worker's `/test` answer: one verdict per protocol. */
+const connectionTestResultValidator = v.object({
+	imap: protocolTestResultValidator,
+	smtp: protocolTestResultValidator,
+});
+type ConnectionTestResult = Infer<typeof connectionTestResultValidator>;
+const decodeConnectionTestResult = validatorDecoder(connectionTestResultValidator);
+
+/** The sealed plaintext of a Google sign-in account. */
+const oauthSecretValidator = v.object({ oauthRefreshToken: v.optional(v.string()) });
+/** The sealed plaintext of a password account (`encodeEnvelope`). */
+const passwordSecretValidator = v.object({
+	imapPassword: v.string(),
+	smtpPassword: v.optional(v.string()),
+});
 
 /**
  * What a worker credential fetch produced (the worker wire contract's
@@ -160,7 +170,7 @@ export const connect = authedAction({
  * Same validation and the same sealed-credential envelope as `connect` — a
  * seed is an ordinary external account that happens to exist so Owlat can mail
  * itself and see where the copy lands. Entirely optional: an install with zero
- * seeds sends normally and every delivery screen renders cleanly (D2).
+ * seeds sends normally and every delivery screen renders cleanly.
  */
 // authz: seed mailbox connect — the enforced floor is ADMIN. authedAction +
 // assertExternalEnabled here; the admin floor (requireAdminContext) and
@@ -213,7 +223,7 @@ export const connectShared = authedAction({
 
 /**
  * Rotate / repair the credentials of an external account connected AS A SHARED
- * TEAM INBOX (issue #234): validate → encrypt → persist against the mailbox's
+ * TEAM INBOX: validate → encrypt → persist against the mailbox's
  * linked account, resetting it to `pending` so the worker re-validates. The
  * admin-gated twin of `updateCredentials` — the personal path resolves the
  * caller's live personal account and can never reach a team inbox, so a rotated
@@ -304,7 +314,12 @@ export const testConnection = authedAction({
 				const error = text || `Mail sync service returned HTTP ${res.status}`;
 				return { imap: { ok: false, error }, smtp: { ok: false, error } };
 			}
-			return (await res.json()) as ConnectionTestResult;
+			const result = decodeConnectionTestResult(await res.json());
+			if (!result.ok) {
+				const error = 'The mail sync service returned an unexpected answer.';
+				return { imap: { ok: false, error }, smtp: { ok: false, error } };
+			}
+			return result.value;
 		} catch (e) {
 			const error = e instanceof Error ? e.message : 'Connection test failed.';
 			return { imap: { ok: false, error }, smtp: { ok: false, error } };
@@ -366,8 +381,8 @@ export const getCredentialsForWorker = internalAction({
 		if (row.authMethod === 'oauth2') {
 			let refreshToken: string | undefined;
 			try {
-				refreshToken = (JSON.parse(decryptSecret(envelope)) as { oauthRefreshToken?: string })
-					.oauthRefreshToken;
+				const secret = decodeJsonString(decryptSecret(envelope), oauthSecretValidator);
+				refreshToken = secret.ok ? secret.value.oauthRefreshToken : undefined;
 			} catch {
 				return { kind: 'unavailable', reason: 'missing' };
 			}
@@ -398,9 +413,11 @@ export const getCredentialsForWorker = internalAction({
 			};
 		}
 
-		let creds: { imapPassword: string; smtpPassword?: string };
+		let creds: Infer<typeof passwordSecretValidator>;
 		try {
-			creds = JSON.parse(decryptSecret(envelope));
+			const secret = decodeJsonString(decryptSecret(envelope), passwordSecretValidator);
+			if (!secret.ok) return { kind: 'unavailable', reason: 'missing' };
+			creds = secret.value;
 		} catch {
 			return { kind: 'unavailable', reason: 'missing' };
 		}

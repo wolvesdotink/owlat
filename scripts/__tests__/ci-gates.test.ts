@@ -132,6 +132,7 @@ describe('root gate manifest', () => {
 		}
 		expect(ROOT_GATES.filter((entry) => entry.baseEnv).map((entry) => entry.name)).toEqual([
 			'format',
+			'comment-policy',
 			'stored-block-corpus',
 		]);
 	});
@@ -182,6 +183,8 @@ describe('root gate manifest', () => {
 		expect(selects('member-jargon', ['apps/web/i18n/locales/en.json'])).toBe(true);
 		expect(selects('script-tests', ['apps/api/convex/mail/send.ts'], ['@owlat/api'])).toBe(false);
 		expect(selects('script-tests', ['packages/shared/src/mime.ts'], ['@owlat/shared'])).toBe(true);
+		expect(selects('script-tests', ['vitest.config.ts'])).toBe(true);
+		expect(selects('script-tests', ['apps/web/vitest.config.ts'], ['@owlat/web'])).toBe(false);
 		// The root manifest and lockfile can change every gate's result.
 		for (const entry of ROOT_GATES) {
 			expect(selects(entry.name, ['package.json'])).toBe(true);

@@ -4,6 +4,8 @@ import type { AuthEnv } from '../../__tests__/helpers/honoAuth.js';
 import type { Context } from 'hono';
 import type Redis from 'ioredis';
 import type { MtaConfig } from '../../config.js';
+import type * as CircuitBreakerModule from '../../intelligence/circuitBreaker.js';
+import type { RoutingLeaseRecord } from '../routingDecision.js';
 
 const breaker = vi.hoisted(() => ({
 	canSend: vi.fn(),
@@ -29,12 +31,11 @@ vi.mock('../../scaling/ipPool.js', () => ({
 	selectIpWithLease: vi.fn().mockResolvedValue({ ip: '192.0.2.10', eligibilityGeneration: 1 }),
 }));
 
-const actualBreaker = await vi.importActual<typeof import('../../intelligence/circuitBreaker.js')>(
+const actualBreaker = await vi.importActual<typeof CircuitBreakerModule>(
 	'../../intelligence/circuitBreaker.js'
 );
 const { createRoutingDecisionHandler, isRoutingLeaseBoundTo, readRoutingLease } =
 	await import('../routingDecision.js');
-type RoutingLeaseRecord = import('../routingDecision.js').RoutingLeaseRecord;
 
 const closed = { allowed: true, state: 'closed' as const, generation: 1 };
 
@@ -362,7 +363,12 @@ describe('reservation rollback', () => {
 
 	function context(json: ReturnType<typeof vi.fn>): Context {
 		return {
-			req: { json: vi.fn().mockResolvedValue(rollbackRequest) },
+			req: {
+				raw: new Request('http://mta.example/send/decision', {
+					method: 'POST',
+					body: JSON.stringify(rollbackRequest),
+				}),
+			},
 			get: vi.fn().mockReturnValue({ isMasterKey: true }),
 			json,
 		} as unknown as Context;

@@ -24,7 +24,7 @@
  *      and is dropped. This is the expensive stage, so it is skipped entirely
  *      when the context-coverage signal says the AI is well-grounded (and it is
  *      never reached at all when stage 1 found no candidate slots). When the
- *      routing policy enforces D5 (`clarifyNecessity`), one necessity judgment
+ *      routing policy enforces the necessity judgment (`clarifyNecessity`), one
  *      replaces the samples and the judge: if the owner must be asked, every
  *      candidate slot is asked (capped by the dial), else none.
  *
@@ -41,7 +41,7 @@
  * missing provider, unreadable coverage) degrades to zero questions →
  * `drafting`, and never a question on uncertainty about its own machinery.
  * A gap the draft then leaves is asked after drafting (../draft/gaps.ts). The
- * one throw is a spend-admission refusal: the walker holds the message (D1).
+ * one throw is a spend-admission refusal: the walker holds the message.
  *
  * Complaint / urgent mail is forked through here too (classify used to skip it
  * straight to a blank human-review box). It runs with CAUTIOUS eagerness — the
@@ -114,7 +114,7 @@ export type ClarifyOutput = {
 		| 'no_candidate_slots'
 		| 'converged'
 		| 'insufficient_samples'
-		/** D5 enforced, and the necessity judgment gave no answer: nothing is asked. */
+		/** The necessity judgment is enforced and gave no answer: nothing is asked. */
 		| 'necessity_unavailable'
 		| 'questions_emitted'
 		| 'memory_filled'
@@ -284,7 +284,7 @@ export const clarifyStep: AgentStepModule<'clarify', ClarifyInput, ClarifyOutput
 			// Stage 1 (typed reply slots, each tied to the open item it fills) and
 			// stage 2 (which open slots to ask): the shared service, on the fast
 			// tier. Stage 2 is today's sampled divergence check, or the necessity
-			// judgment when the routing policy enforces it (D5).
+			// judgment when the routing policy enforces it.
 			const slotItems = await loadSlotItems(ctx, input.inboundMessageId);
 			const surface = teamClarifySurface(ctx, input.inboundMessageId, model);
 			const found = await teamOpenSlots(ctx, surface, input.context, slotItems);
@@ -389,7 +389,7 @@ export const clarifyStep: AgentStepModule<'clarify', ClarifyInput, ClarifyOutput
 				modelUsed,
 			};
 		} catch (error) {
-			rethrowAdmissionRefusal(error); // D1: the walker holds; any other fault drafts as today
+			rethrowAdmissionRefusal(error); // The walker holds; any other fault drafts as today
 			return { output: { questions: [], memoryAnswers: [], resolution: 'fail_soft' } };
 		}
 	},

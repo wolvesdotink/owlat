@@ -5,6 +5,7 @@ import { campaignListing } from './listing';
 
 // Query to count campaigns by status (API-key shell) — the descriptor's
 // `byStatus` facet returns per-status counts plus their `total`.
+// all-members: per-status counts behind the campaign list every member may read.
 export const countByStatusByOrganization = campaignsQuery({
 	args: {},
 	handler: async (ctx) => {

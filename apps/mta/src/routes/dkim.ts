@@ -3,6 +3,7 @@
  */
 
 import { Hono } from 'hono';
+import { v } from 'convex/values';
 import type Redis from 'ioredis';
 import type { MtaConfig } from '../config.js';
 import * as dkimStore from '../smtp/dkimStore.js';
@@ -13,6 +14,26 @@ import { notifyConvex } from '../webhooks/convexNotifier.js';
 import { fireAndForget } from '../lib/fireAndForget.js';
 import { logger } from '../monitoring/logger.js';
 import { normalizeReturnPathHost } from '@owlat/shared/returnPathHost';
+import { readJsonBody } from '../lib/jsonBody.js';
+
+const keyBody = v.object({
+	domain: v.string(),
+	selector: v.string(),
+	privateKey: v.string(),
+	organizationId: v.optional(v.string()),
+});
+
+const registerBody = v.object({
+	// FQDN syntax is checked by normalizeReturnPathHost, with its own message.
+	returnPathHost: v.optional(v.union(v.string(), v.null())),
+	organizationId: v.optional(v.string()),
+});
+
+const selectorBody = v.object({ selector: v.optional(v.string()) });
+const activateBody = v.object({ force: v.optional(v.boolean()) });
+
+/** Callers may send these routes no body at all; that means "no options". */
+const BODY_LESS = { emptyBody: {} } as const;
 
 export function createDkimRoutes(redis: Redis, config: MtaConfig) {
 	const app = new Hono();
@@ -48,12 +69,9 @@ export function createDkimRoutes(redis: Redis, config: MtaConfig) {
 
 	// Add or update a DKIM key
 	app.post('/', async (c) => {
-		const body = await c.req.json<{
-			domain: string;
-			selector: string;
-			privateKey: string;
-			organizationId?: string;
-		}>();
+		const read = await readJsonBody(c, keyBody);
+		if (!read.ok) return read.response;
+		const body = read.value;
 		if (!body.domain || !body.selector || !body.privateKey) {
 			return c.json({ error: 'domain, selector, and privateKey are required' }, 400);
 		}
@@ -86,7 +104,7 @@ export function createDkimRoutes(redis: Redis, config: MtaConfig) {
 	// pre-seeded from DKIM_KEYS), it returns the existing selector + record.
 	// Use /rotate for deliberate key rotation that replaces the active key.
 	//
-	// Optionally accepts a JSON body `{ returnPathHost?: string | null }` (D1): a
+	// Optionally accepts a JSON body `{ returnPathHost?: string | null }`: a
 	// per-sending-domain VERP return-path / bounce host that overrides the global
 	// `RETURN_PATH_DOMAIN` for THIS domain's outbound MAIL FROM. The `returnPathHost`
 	// field is tri-state, and the whole contract is backward compatible:
@@ -105,29 +123,13 @@ export function createDkimRoutes(redis: Redis, config: MtaConfig) {
 	app.post('/:domain/register', async (c) => {
 		const domain = c.req.param('domain').toLowerCase();
 
-		// Distinguish "no body" (legacy call → no override) from "present but
-		// malformed JSON" (client error → 400). We read the raw text first: an
-		// empty/whitespace body is the historic body-less POST; a non-empty body
-		// that fails to parse is a 400 rather than being silently ignored.
-		const rawBody = (await c.req.text().catch(() => '')).trim();
-		let body: { returnPathHost?: unknown; organizationId?: unknown } = {};
-		if (rawBody.length > 0) {
-			let parsed: unknown;
-			try {
-				parsed = JSON.parse(rawBody);
-			} catch {
-				return c.json({ error: 'Request body must be valid JSON' }, 400);
-			}
-			// A well-formed JSON scalar / array / `null` is still not a valid request
-			// body here — only a JSON object carries `returnPathHost`. Reject them with
-			// 400 rather than let a bare `null` crash the hasOwnProperty check below.
-			// (Note: `{ "returnPathHost": null }` — an OBJECT with a null field — is the
-			// documented clear path and is handled downstream, not here.)
-			if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-				return c.json({ error: 'Request body must be a JSON object' }, 400);
-			}
-			body = parsed as { returnPathHost?: unknown; organizationId?: unknown };
-		}
+		// An empty/whitespace body is the body-less POST (no override); a
+		// non-empty body that is not a JSON object of the right field types is a
+		// 400, because only an absent body means "no override". `{ "returnPathHost": null }`
+		// is the documented clear path and is handled below.
+		const read = await readJsonBody(c, registerBody, BODY_LESS);
+		if (!read.ok) return read.response;
+		const body = read.value;
 
 		// Tri-state on the `returnPathHost` key: absent | null (clear) | value (set).
 		const hasField = Object.prototype.hasOwnProperty.call(body, 'returnPathHost');
@@ -146,12 +148,8 @@ export function createDkimRoutes(redis: Redis, config: MtaConfig) {
 
 		// Optional owning organization (H2): binds the domain's DKIM key to a tenant
 		// so it can never be used to sign for another org (see getDkimOptions).
-		// Reject a non-string, and let a cross-org conflict surface as a 409.
-		const organizationId =
-			typeof body.organizationId === 'string' ? body.organizationId : undefined;
-		if (body.organizationId !== undefined && organizationId === undefined) {
-			return c.json({ error: 'organizationId must be a string' }, 400);
-		}
+		// A cross-org conflict surfaces as a 409.
+		const { organizationId } = body;
 
 		let result: Awaited<ReturnType<typeof dkimStore.registerDomainKey>>;
 		try {
@@ -169,7 +167,7 @@ export function createDkimRoutes(redis: Redis, config: MtaConfig) {
 			await dkimStore.clearReturnPathHost(redis, domain);
 		}
 
-		// Echo the resolved return-path host so the caller (D2/Convex) can confirm
+		// Echo the resolved return-path host so the caller (Convex) can confirm
 		// what was persisted. Omitted when the domain has no override.
 		const storedReturnPathHost = await dkimStore.getReturnPathHost(redis, domain);
 		// `result` carries `ownership` (assigned | unchanged | unowned) — echoed via
@@ -197,9 +195,9 @@ export function createDkimRoutes(redis: Redis, config: MtaConfig) {
 	// key set immediately.
 	app.post('/:domain/rotate', async (c) => {
 		const domain = c.req.param('domain').toLowerCase();
-		const body = await c.req
-			.json<{ selector?: string }>()
-			.catch(() => ({}) as { selector?: string });
+		const read = await readJsonBody(c, selectorBody, BODY_LESS);
+		if (!read.ok) return read.response;
+		const body = read.value;
 
 		const existing = await dkimStore.getDkimConfig(redis, domain);
 		if (existing) {
@@ -232,9 +230,9 @@ export function createDkimRoutes(redis: Redis, config: MtaConfig) {
 	// keeps signing with the active key until the new record is published in DNS.
 	app.post('/:domain/rotation', async (c) => {
 		const domain = c.req.param('domain').toLowerCase();
-		const body = await c.req
-			.json<{ selector?: string }>()
-			.catch(() => ({}) as { selector?: string });
+		const read = await readJsonBody(c, selectorBody, BODY_LESS);
+		if (!read.ok) return read.response;
+		const body = read.value;
 		try {
 			const result = await dkimRotation.initiateRotation(redis, domain, {
 				selector: body.selector,
@@ -260,7 +258,9 @@ export function createDkimRoutes(redis: Redis, config: MtaConfig) {
 	// while the record is not yet live.
 	app.post('/:domain/rotation/activate', async (c) => {
 		const domain = c.req.param('domain').toLowerCase();
-		const body = await c.req.json<{ force?: boolean }>().catch(() => ({}) as { force?: boolean });
+		const read = await readJsonBody(c, activateBody, BODY_LESS);
+		if (!read.ok) return read.response;
+		const body = read.value;
 		const result = await dkimRotation.activatePendingKey(
 			redis,
 			domain,

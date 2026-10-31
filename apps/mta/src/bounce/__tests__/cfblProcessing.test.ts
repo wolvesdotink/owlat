@@ -27,9 +27,8 @@ import { buildCfblAddress, buildCfblToken } from '../cfblAddress.js';
 import { buildVerpAddress } from '../verp.js';
 import { attachFeedbackProvenance, recordFeedbackProvenance } from '../feedbackProvenance.js';
 import type { BasePhaseCtx, BounceAttempt, PhaseDeps } from '../types.js';
-import type { BounceClassification } from '../../types.js';
+import type { BounceClassification, EmailJob } from '../../types.js';
 import type { MtaConfig } from '../../config.js';
-import type { EmailJob } from '../../types.js';
 
 const KEY = 'cfbl-processing-test-key';
 const HOST = 'bounces.owlat.test';

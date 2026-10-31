@@ -1,10 +1,12 @@
 import { v } from 'convex/values';
-import { internalQuery } from '../_generated/server';
+import { internalQuery, type MutationCtx, type QueryCtx } from '../_generated/server';
+import type { Id } from '../_generated/dataModel';
 import { internalMutation } from '../lib/writeFence';
 import { components } from '../_generated/api';
 import { contentScanResultsFields } from '../schema/delivery';
 import type { StoredAudience } from './audience';
 import { logError } from '../lib/runtimeLog';
+import { pickHtmlTranslation } from '../lib/emailJson';
 import { nextDailySendCount } from '../lib/sendingLimits';
 import { readInstanceCounter, writeInstanceCounter } from '../lib/instanceCounters';
 import { requireOrgMember } from '../lib/sessionOrganization';
@@ -19,8 +21,20 @@ import { getLive, isLive } from '../lib/softDelete';
  * recipient allowlist the lowest-privilege member could use the action as an
  * open relay to spray high-credibility phishing at arbitrary external victims.
  * On a single-org deployment the `userProfiles` table IS the member roster, so
- * its emails are exactly the legitimate preview targets. Inherits the caller's
- * identity through `ctx.runQuery` (and re-asserts org membership).
+ * its emails are exactly the legitimate preview targets.
+ */
+export async function readMemberInboxes(ctx: QueryCtx): Promise<string[]> {
+	// 1-per-user on a single-org instance — the member roster, bounded.
+	const profiles = await ctx.db.query('userProfiles').collect(); // bounded: org member roster (single-org deployment: tiny)
+	return profiles
+		.map((p) => p.email?.toLowerCase())
+		.filter((e): e is string => typeof e === 'string' && e.length > 0);
+}
+
+/**
+ * `readMemberInboxes` for an action, with the caller's id and organization.
+ * Inherits the caller's identity through `ctx.runQuery` (and re-asserts org
+ * membership).
  */
 export const getTestSendAllowedRecipients = internalQuery({
 	args: {},
@@ -28,13 +42,8 @@ export const getTestSendAllowedRecipients = internalQuery({
 		ctx
 	): Promise<{ allowed: string[]; callerUserId: string; organizationId: string }> => {
 		const session = await requireOrgMember(ctx);
-		// 1-per-user on a single-org instance — the member roster, bounded.
-		const profiles = await ctx.db.query('userProfiles').collect(); // bounded: org member roster (single-org deployment: tiny)
-		const allowed = profiles
-			.map((p) => p.email?.toLowerCase())
-			.filter((e): e is string => typeof e === 'string' && e.length > 0);
 		return {
-			allowed,
+			allowed: await readMemberInboxes(ctx),
 			callerUserId: session.userId,
 			organizationId: session.activeOrganizationId,
 		};
@@ -130,12 +139,6 @@ export const getEmailTemplate = internalQuery({
 	},
 });
 
-// Type for HTML translation stored in htmlTranslations field
-interface HtmlTranslation {
-	htmlContent: string;
-	subject: string;
-}
-
 // Internal query to get email template HTML for a specific language
 // Returns htmlContent and subject for the requested language with fallback
 export const getEmailTemplateForLanguage = internalQuery({
@@ -184,21 +187,18 @@ export const getEmailTemplateForLanguage = internalQuery({
 		// row without the list restricts nothing.
 		const supported = template.supportedLanguages?.includes(requestedLanguage) ?? true;
 		if (supported && template.htmlTranslations) {
-			try {
-				const htmlTranslations: Record<string, HtmlTranslation> = JSON.parse(
-					template.htmlTranslations
-				);
-				const translation = htmlTranslations[requestedLanguage];
-				if (translation?.htmlContent) {
-					return {
-						htmlContent: translation.htmlContent,
-						subject: translation.subject,
-						resolvedLanguage: requestedLanguage,
-					};
-				}
-			} catch (e) {
-				logError(`Failed to parse htmlTranslations for template ${template._id}:`, e);
-				// Fall through to default language
+			const translation = pickHtmlTranslation(template.htmlTranslations, requestedLanguage);
+			if (!translation.ok) {
+				// Fall through to the default language.
+				logError(`Failed to read htmlTranslations for template ${template._id}:`, {
+					issue: translation.issue,
+				});
+			} else if (translation.value?.htmlContent) {
+				return {
+					htmlContent: translation.value.htmlContent,
+					subject: translation.value.subject,
+					resolvedLanguage: requestedLanguage,
+				};
 			}
 		}
 
@@ -230,33 +230,44 @@ export const getEmailTemplateForLanguage = internalQuery({
  * `frozenFilters`, or a segment whose live Segment is gone (nothing to
  * snapshot) all pass through unchanged. Returns the Audience the orchestrator
  * should resolve against (`null` only if the Campaign has no audience).
+ *
+ * Kept for a winner-phase action of the previous release still running during
+ * the deploy; this release freezes inside `commitWinnerRemainder`. Idempotent,
+ * so it is safe beside that commit. Remove after release N+1.
  */
 export const freezeCampaignAudience = internalMutation({
 	args: { campaignId: v.id('campaigns') },
-	handler: async (ctx, args): Promise<StoredAudience | null> => {
-		const campaign = await ctx.db.get(args.campaignId);
-		if (!campaign?.audience) return null;
-		const audience = campaign.audience;
-
-		// Only an un-frozen segment Audience needs a snapshot.
-		if (audience.kind !== 'segment' || audience.frozenFilters) {
-			return audience;
-		}
-
-		const segment = await ctx.db.get(audience.segmentId);
-		// Segment deleted before send and no prior snapshot — nothing to freeze.
-		// Resolution will yield zero recipients (and log) rather than guess.
-		if (!segment) return audience;
-
-		const frozen: StoredAudience = {
-			kind: 'segment',
-			segmentId: audience.segmentId,
-			frozenFilters: segment.filters,
-		};
-		await ctx.db.patch(args.campaignId, { audience: frozen });
-		return frozen;
-	},
+	handler: async (ctx, args): Promise<StoredAudience | null> =>
+		await freezeAudience(ctx, args.campaignId),
 });
+
+/** `freezeCampaignAudience` inside the caller's transaction. */
+export async function freezeAudience(
+	ctx: MutationCtx,
+	campaignId: Id<'campaigns'>
+): Promise<StoredAudience | null> {
+	const campaign = await ctx.db.get(campaignId);
+	if (!campaign?.audience) return null;
+	const audience = campaign.audience;
+
+	// Only an un-frozen segment Audience needs a snapshot.
+	if (audience.kind !== 'segment' || audience.frozenFilters) {
+		return audience;
+	}
+
+	const segment = await ctx.db.get(audience.segmentId);
+	// Segment deleted before send and no prior snapshot — nothing to freeze.
+	// Resolution will yield zero recipients (and log) rather than guess.
+	if (!segment) return audience;
+
+	const frozen: StoredAudience = {
+		kind: 'segment',
+		segmentId: audience.segmentId,
+		frozenFilters: segment.filters,
+	};
+	await ctx.db.patch(campaignId, { audience: frozen });
+	return frozen;
+}
 
 // Internal query to get due scheduled campaigns
 export const getDueScheduledCampaigns = internalQuery({
@@ -359,18 +370,24 @@ export const upsertUrlReputationVerdict = internalMutation({
 
 // Internal mutation to increment the daily send count after queuing a campaign
 // send page. Shares the pure nextDailySendCount reset logic with the
-// transactional dispatch path.
+// transactional dispatch path. Kept for a send-walker hop of the previous
+// release still running during the deploy, which counts only the rows its own
+// `createBatch` inserted; this release bumps inside the page commit. Remove
+// after release N+1.
 export const incrementDailySendCountInternal = internalMutation({
 	args: { count: v.number() },
-	handler: async (ctx, args) => {
-		// The counter lives on the `sends` counter row (plan 2.4); it is kept only
-		// once the instance exists, as before.
-		const settings = await ctx.db.query('instanceSettings').first();
-		if (!settings) return;
-		const sends = await readInstanceCounter(ctx.db, 'sends');
-		await writeInstanceCounter(ctx, 'sends', nextDailySendCount(sends, args.count, Date.now()));
-	},
+	handler: async (ctx, args) => await bumpDailySendCount(ctx, args.count),
 });
+
+/** `incrementDailySendCountInternal` inside the caller's transaction. */
+export async function bumpDailySendCount(ctx: MutationCtx, count: number): Promise<void> {
+	// The counter lives on the `sends` counter row (plan 2.4); it is kept only
+	// once the instance exists, as before.
+	const settings = await ctx.db.query('instanceSettings').first();
+	if (!settings) return;
+	const sends = await readInstanceCounter(ctx.db, 'sends');
+	await writeInstanceCounter(ctx, 'sends', nextDailySendCount(sends, count, Date.now()));
+}
 
 // `updateCampaignToSending` was deleted. The orchestrator
 // now calls `lifecycle.transition({ to: 'sending' })`.

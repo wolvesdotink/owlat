@@ -61,16 +61,17 @@ const dueLabel = computed(() => {
 		>
 			<Icon name="lucide:alarm-clock" class="w-3.5 h-3.5" />
 			{{ dueLabel }}
-			<button
-				type="button"
-				class="p-0.5 rounded-full hover:bg-warning/20"
-				:title="t('components.postbox.postboxFollowUpChip.dismissReminder')"
-				:aria-label="t('components.postbox.postboxFollowUpChip.dismissReminder')"
-				:disabled="busy"
-				@click="cancelWatch"
-			>
-				<Icon name="lucide:x" class="w-3 h-3" />
-			</button>
+			<UiTooltip :text="t('components.postbox.postboxFollowUpChip.dismissReminder')">
+				<button
+					type="button"
+					class="p-0.5 rounded-full hover:bg-warning/20"
+					:aria-label="t('components.postbox.postboxFollowUpChip.dismissReminder')"
+					:disabled="busy"
+					@click="cancelWatch"
+				>
+					<Icon name="lucide:x" class="w-3 h-3" />
+				</button>
+			</UiTooltip>
 		</span>
 		<!-- Armed and waiting -->
 		<span
@@ -80,23 +81,23 @@ const dueLabel = computed(() => {
 		>
 			<Icon name="lucide:alarm-clock" class="w-3.5 h-3.5" />
 			{{ t('components.postbox.postboxFollowUpChip.armedChip', { date: remindLabel }) }}
-			<button
-				type="button"
-				class="p-0.5 rounded-full hover:bg-brand/20"
-				:title="t('components.postbox.postboxFollowUpChip.cancelReminder')"
-				:aria-label="t('components.postbox.postboxFollowUpChip.cancelReminder')"
-				:disabled="busy"
-				@click="cancelWatch"
-			>
-				<Icon name="lucide:x" class="w-3 h-3" />
-			</button>
+			<UiTooltip :text="t('components.postbox.postboxFollowUpChip.cancelReminder')">
+				<button
+					type="button"
+					class="p-0.5 rounded-full hover:bg-brand/20"
+					:aria-label="t('components.postbox.postboxFollowUpChip.cancelReminder')"
+					:disabled="busy"
+					@click="cancelWatch"
+				>
+					<Icon name="lucide:x" class="w-3 h-3" />
+				</button>
+			</UiTooltip>
 		</span>
 		<!-- Not armed; the thread ends on our own sent mail -->
 		<button
 			v-else-if="latestOutboundId"
 			type="button"
 			class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full border border-border-subtle text-xs text-text-tertiary hover:text-text-primary hover:bg-bg-elevated"
-			:title="t('components.postbox.postboxFollowUpChip.remindMe')"
 			:disabled="busy"
 			@click="dialogOpen = true"
 		>

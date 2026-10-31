@@ -8,14 +8,14 @@
  *    that failed or carried an older snapshot, and an edit made while Send's
  *    own save was out, are written again at the Send boundary (up to three
  *    writes); if a write fails, or the fields are still changing after that,
- *    nothing is sent (#895). The composer stays open with the text and its
+ *    nothing is sent. The composer stays open with the text and its
  *    recovery mirror, no undo window is armed, and `draftNotice` says why.
  *  - A TRANSPORT failure (a save or send the connection dropped) is claimed
  *    rather than toasted and hands the composition to the offline outbox, whose
  *    payload is the complete, current snapshot — never an online send of a
  *    stale row.
  *  - A reopened draft sends nothing, online or queued, before its row has
- *    loaded (#896): the snapshot would carry empty stand-ins for everything not
+ *    loaded: the snapshot would carry empty stand-ins for everything not
  *    yet loaded. The one exception is a seed that brought the whole
  *    composition with it (an offline send brought back by undo), which may be
  *    queued again while still offline, as before.
@@ -174,6 +174,8 @@ export function usePostboxComposeSend(o: ComposeSendOptions) {
 				undoSendDelayMs: opts?.undoSendDelayMs ?? o.undoSendDelayMs(),
 				scheduledSendAt: opts?.scheduledSendAt,
 				allowUnsealed: opts?.allowUnsealed,
+				afterSend: opts?.afterSend,
+				afterSendChosenAt: opts?.afterSendChosenAt,
 			})
 		);
 		// `useBackendOperation.run` swallows categorized failures (it has already

@@ -1,8 +1,7 @@
 /**
  * Saved replies: what a row may hold, who sees it in a composer and who may
  * change it. The functions are in `savedReplies.ts`; this module holds the
- * rules they share with the previous release's `snippets.ts`, the erasure and
- * migration 0060.
+ * rules they share with the erasure and migration 0060.
  *
  * The rows live in `mailSnippets`, the table's name from when they were
  * per-mailbox canned responses in the Postbox. A row is one of:
@@ -60,7 +59,7 @@ const MAX_VARIABLES = 20;
 
 /**
  * The composer's allowlist, minus every image source a saved reply could never
- * show (#1293). A pasted image's bytes are a part of its draft, marked with
+ * show. A pasted image's bytes are a part of its draft, marked with
  * `data-inline-cid`, which the allowlist drops along with the session's `blob:`
  * preview; a `cid:` src names a part of another message. Kept, an image left
  * with no source would be inserted into later drafts and go out empty. So a

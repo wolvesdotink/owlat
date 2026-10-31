@@ -118,6 +118,16 @@ jobs:
           echo "Stamped desktop version -> $VERSION"
           grep -n '^version = ' Cargo.toml
 
+      # Windows Installer versions are numeric only, so Tauri refuses to build
+      # the .msi of a prerelease such as 0.7.0-rc.1. Release candidates must
+      # build every artifact the stable release will, so give them one.
+      - name: Set the MSI version of prerelease builds
+        if: runner.os == 'Windows'
+        shell: bash
+        env:
+          TAG: ${{ inputs.tag }}
+        run: bun scripts/ci/msi-version.ts
+
       # Signing env is exported only when the secret actually has a value.
       # GitHub renders unset secrets as EMPTY strings, and tauri-bundler treats
       # a set-but-empty APPLE_CERTIFICATE as "sign with this" — `security

@@ -14,6 +14,7 @@
  */
 
 import { describe, it, expect, afterEach, vi } from 'vitest';
+import type * as CryptoModule from 'crypto';
 
 /**
  * Count every HMAC the module under test computes. Verification probes a range
@@ -23,7 +24,7 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 const { hmacCalls } = vi.hoisted(() => ({ hmacCalls: { count: 0 } }));
 
 vi.mock('crypto', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('crypto')>();
+	const actual = await importOriginal<typeof CryptoModule>();
 	return {
 		...actual,
 		default: actual,

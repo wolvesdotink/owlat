@@ -47,7 +47,7 @@ function textEntity(contentType: string, body: string): MimeEntity {
 
 /** Emit an entity as a child part under `parentBoundary` (no trailing CRLF). */
 function asPart(parentBoundary: string, entity: MimeEntity): string {
-	return `--${parentBoundary}\r\n` + `${entity.headerLines.join('\r\n')}\r\n\r\n${entity.body}`;
+	return `--${parentBoundary}\r\n${entity.headerLines.join('\r\n')}\r\n\r\n${entity.body}`;
 }
 
 /** Join child parts with CRLF and close the multipart with its `--boundary--`. */

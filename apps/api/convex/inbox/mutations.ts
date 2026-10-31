@@ -8,7 +8,6 @@
 import { v } from 'convex/values';
 import { adminMutation } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
-import { getMutationContext } from '../lib/sessionOrganization';
 import { recordAuditLog } from '../lib/auditLog';
 import { isLiveOrgMember, loadProfileSummary } from '../lib/userProfiles';
 import { transition as threadTransition } from './threads/module';
@@ -31,8 +30,8 @@ export const approveDraft = adminMutation({
 	args: {
 		inboundMessageId: v.id('inboundMessages'),
 	},
-	handler: async (ctx, args) => {
-		const { userId } = await getMutationContext(ctx);
+	handler: async (ctx, args, session) => {
+		const { userId } = session;
 
 		const message = await getOrThrow(ctx, args.inboundMessageId, 'Message');
 		if (!message.draftResponse) throwInvalidState('No draft to approve');
@@ -115,8 +114,8 @@ export const rejectDraft = adminMutation({
 		inboundMessageId: v.id('inboundMessages'),
 		reason: v.optional(v.string()),
 	},
-	handler: async (ctx, args) => {
-		const { userId } = await getMutationContext(ctx);
+	handler: async (ctx, args, session) => {
+		const { userId } = session;
 
 		const message = await getOrThrow(ctx, args.inboundMessageId, 'Message');
 
@@ -161,8 +160,8 @@ export const undoAutoSend = adminMutation({
 	args: {
 		inboundMessageId: v.id('inboundMessages'),
 	},
-	handler: async (ctx, args): Promise<CancelAutoSendOutcome> => {
-		const { userId } = await getMutationContext(ctx);
+	handler: async (ctx, args, session): Promise<CancelAutoSendOutcome> => {
+		const { userId } = session;
 
 		// Existence check, mirroring the sibling approve/reject mutations. Authz
 		// is the `adminMutation` wrapper (owner/admin of this single-org
@@ -182,7 +181,7 @@ export const undoAutoSend = adminMutation({
 /**
  * Edit the draft text before approving.
  *
- * Revision-appending per D7: the agent original is preserved as revision 0 and
+ * Revision-appending: the agent original is preserved as revision 0 and
  * the edit becomes the working draft via `appendDraftRevision` — never an
  * in-place overwrite. Records NO autonomy feedback here; the `'edited'` signal
  * fires once at send-fire time iff the sent text differs from the agent
@@ -196,8 +195,8 @@ export const editDraft = adminMutation({
 		// The composer's saved-reply gap guard (draftRevisions.appendDraftRevision).
 		isGapGuarded: v.optional(v.boolean()),
 	},
-	handler: async (ctx, args) => {
-		const { userId } = await getMutationContext(ctx);
+	handler: async (ctx, args, session) => {
+		const { userId } = session;
 
 		const message = await getOrThrow(ctx, args.inboundMessageId, 'Message');
 
@@ -230,8 +229,8 @@ export const assignThread = adminMutation({
 		threadId: v.id('conversationThreads'),
 		assignedTo: v.optional(v.string()), // omit to unassign
 	},
-	handler: async (ctx, args) => {
-		const { userId: actorId } = await getMutationContext(ctx);
+	handler: async (ctx, args, session) => {
+		const { userId: actorId } = session;
 
 		// Validate the assignee is a live org member — assignedTo is a free-form
 		// string, so without this an admin could assign a thread to a bogus,
@@ -315,8 +314,8 @@ export const releaseFromQuarantine = adminMutation({
 	args: {
 		inboundMessageId: v.id('inboundMessages'),
 	},
-	handler: async (ctx, args) => {
-		const { userId } = await getMutationContext(ctx);
+	handler: async (ctx, args, session) => {
+		const { userId } = session;
 
 		const message = await getOrThrow(ctx, args.inboundMessageId, 'Message');
 		if (message.processingStatus !== 'quarantined') {
@@ -363,8 +362,8 @@ export const retryFailedMessage = adminMutation({
 	args: {
 		inboundMessageId: v.id('inboundMessages'),
 	},
-	handler: async (ctx, args) => {
-		const { userId } = await getMutationContext(ctx);
+	handler: async (ctx, args, session) => {
+		const { userId } = session;
 
 		const message = await getOrThrow(ctx, args.inboundMessageId, 'Message');
 		if (message.processingStatus !== 'failed') {
@@ -395,8 +394,8 @@ export const blockSender = adminMutation({
 	args: {
 		inboundMessageId: v.id('inboundMessages'),
 	},
-	handler: async (ctx, args) => {
-		const { userId } = await getMutationContext(ctx);
+	handler: async (ctx, args, session) => {
+		const { userId } = session;
 
 		const message = await getOrThrow(ctx, args.inboundMessageId, 'Message');
 

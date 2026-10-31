@@ -1,9 +1,11 @@
 import { PLUGIN_SEND_TRANSPORT_CAPABILITY } from '@owlat/plugin-kit';
 import { v } from 'convex/values';
+import { internalQuery } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import { pluginSendTransportWebhookDefinition } from './sendTransportWebhookCatalog';
 import {
 	authorizeHostedContribution,
+	isHostedContributionAuthorized,
 	recordHostedContributionOutcome,
 	type HostedContributionAuthorizationSpec,
 } from './hostedContributionAuthorization';
@@ -36,7 +38,21 @@ const SPEC: HostedContributionAuthorizationSpec = {
 	definitionFor: pluginSendTransportWebhookDefinition,
 };
 
-/** Rechecks flag, grant, environment, and singleton scope before events land. */
+/**
+ * Whether a delivery may land now: flag, grant, environment, and singleton
+ * scope, read without writing. The feedback route asks this before it claims
+ * the delivery; on a refusal it calls `authorizeDelivery`, which audits it.
+ */
+export const checkDelivery = internalQuery({
+	args: { pluginId: v.string(), transportKind: v.string() },
+	handler: (ctx, args): Promise<boolean> =>
+		isHostedContributionAuthorized(ctx, SPEC, args.pluginId, args.transportKind),
+});
+
+/**
+ * Rechecks flag, grant, environment, and singleton scope, auditing a denial.
+ * The feedback route's one write for a delivery `checkDelivery` refused.
+ */
 export const authorizeDelivery = internalMutation({
 	args: { pluginId: v.string(), transportKind: v.string() },
 	handler: (ctx, args): Promise<boolean> =>

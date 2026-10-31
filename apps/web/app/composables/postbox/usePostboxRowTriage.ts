@@ -1,10 +1,10 @@
 /**
  * The Postbox list's triage verbs — archive, trash, star, read, snooze (message
- * or whole thread), mute, move, cancel-follow-up — as ONE action source.
+ * or whole thread), mute, pin, move, cancel-follow-up — as ONE action source.
  *
  * PostboxThreadList owns the v-for, windowing and keyboard handling; every
  * entry point it exposes (hover buttons, right-click menu, long-press menu,
- * single-key shortcuts) routes a verb through here, so the optimistic hide,
+ * single-key shortcuts, swipes, sweeps) routes a verb through here, so the optimistic hide,
  * the failure restore and the Cmd+Z undo registration are written once instead
  * of once per entry point.
  *
@@ -19,6 +19,8 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { PostboxFlagOverride } from './usePostboxOptimisticFlags';
+import { chunkForMove, type PostboxMoveUndoKind } from './usePostboxTriageUndo';
+import type { PostboxSwipeAction } from '~/utils/postboxSwipe';
 import {
 	optimisticArchive,
 	optimisticMarkRead,
@@ -28,6 +30,8 @@ import {
 	optimisticSnoozeThread,
 	optimisticTrash,
 } from '~/lib/mailOptimistic/mailUpdaters';
+import { usePostboxPinAction } from './usePostboxPins';
+import { leaveDeletedOpenRow } from './usePostboxDeletedOpenRow';
 
 export function usePostboxRowTriage(args: {
 	/** Hide a row optimistically while its mutation is in flight. */
@@ -38,6 +42,8 @@ export function usePostboxRowTriage(args: {
 	setFlags: (id: Id<'mailMessages'>, patch: PostboxFlagOverride) => void;
 	/** Drop a row's painted flags — the mutation failed, the server value wins. */
 	clearFlags: (id: Id<'mailMessages'>) => void;
+	/** True for the mailbox's Trash folder: a move there is a delete. */
+	isTrashFolder?: (folderId: Id<'mailFolders'>) => boolean;
 }) {
 	const { t } = useI18n();
 	const triageUndo = usePostboxTriageUndo();
@@ -73,6 +79,7 @@ export function usePostboxRowTriage(args: {
 	const setMutedOp = useBackendOperation(api.mail.mute.setMutedForMessage, {
 		label: () => t('components.postbox.postboxThreadList.muteOperation'),
 	});
+	const pinAction = usePostboxPinAction();
 	const moveOp = useBackendOperation(api.mail.messageActions.move, {
 		label: () => t('components.postbox.postboxThreadList.moveOperation'),
 		optimisticUpdate: optimisticMove,
@@ -87,60 +94,111 @@ export function usePostboxRowTriage(args: {
 	 * Run a row-removing mutation: hide first, restore on failure, and register
 	 * the inverse move for the "Undo — Cmd+Z" toast when rows actually moved.
 	 * archive/trash/move all return `{ ok, moved }`, so they share this shape.
-	 * Resolves to whether the mutation landed.
+	 *
+	 * A long range (a sweep, a dragged selection) goes in calls of at most
+	 * `POSTBOX_MESSAGES_PER_MOVE` messages, one after another, so no call
+	 * outgrows a transaction. The first failed call stops the run, so one error
+	 * is shown rather than one per call: its rows and the ones not yet sent come
+	 * back, and what the earlier calls moved stays moved under ONE Undo entry.
+	 * Resolves to whether every call landed.
+	 *
+	 * A delete (`isDelete`) also takes the reader off the open conversation when
+	 * it is among `ids`, and brings it back if that row's call fails.
 	 */
 	async function runRemoving(
 		ids: Id<'mailMessages'>[],
-		undoLabel: string,
-		mutate: () => Promise<
+		undoLabel: (count: number) => string,
+		undoKind: { kind: PostboxMoveUndoKind; scope?: string },
+		mutate: (chunk: Id<'mailMessages'>[]) => Promise<
 			BackendOperationResult<{
 				moved: Parameters<typeof triageUndo.registerMoveBack>[0]['moved'];
 			} | null>
-		>
+		>,
+		isDelete = false
 	) {
-		const unhideAll = () => {
-			for (const id of ids) args.unhide(id);
-		};
+		// Before the hide: the reader's next row comes from the order on screen.
+		const returnToOpenRow = isDelete ? leaveDeletedOpenRow(ids) : null;
 		for (const id of ids) args.hide(id);
-		const outcome = await mutate();
-		if (!outcome.ok || outcome.result === null) {
-			unhideAll();
-			return false;
+		const landed: Id<'mailMessages'>[] = [];
+		const moved: Parameters<typeof triageUndo.registerMoveBack>[0]['moved'] = [];
+		let isAllLanded = true;
+		// A `null` answer is the server's "row already gone" soft-fail: the
+		// reader has nothing to go back to for that call's rows.
+		let alreadyGone = 0;
+		for (const chunk of chunkForMove(ids)) {
+			const outcome = await mutate(chunk);
+			if (!outcome.ok || outcome.result == null) {
+				isAllLanded = false;
+				if (outcome.ok) alreadyGone = chunk.length;
+				break;
+			}
+			landed.push(...chunk);
+			moved.push(...outcome.result.moved);
 		}
-		if (outcome.result.moved.length > 0) {
+		const failed = ids.slice(landed.length);
+		for (const id of failed) args.unhide(id);
+		const notDeleted = failed.slice(alreadyGone);
+		if (notDeleted.length > 0) returnToOpenRow?.(notDeleted);
+		if (moved.length > 0) {
 			triageUndo.registerMoveBack({
-				label: undoLabel,
-				moved: outcome.result.moved,
+				label: undoLabel(landed.length),
+				...undoKind,
+				moved,
 				runMove: (a) => moveOp.run(a),
-				after: unhideAll,
+				after: () => {
+					for (const id of landed) args.unhide(id);
+				},
 			});
 		}
-		return true;
+		return isAllLanded;
 	}
 
-	const archiveMsg = (id: Id<'mailMessages'>) =>
-		runRemoving([id], t('components.postbox.postboxThreadList.archivedUndo'), () =>
-			archiveOp.run({ messageIds: [id] })
-		);
+	/**
+	 * Archive one row or several (a sweep across the Archive buttons) under ONE
+	 * undo entry that puts every one of them back. The ids must share a
+	 * mailbox: the server files each call's messages in its first one's
+	 * Archive folder.
+	 */
+	const archiveMany = (ids: Id<'mailMessages'>[]) =>
+		ids.length === 0
+			? Promise.resolve(false)
+			: runRemoving(
+					ids,
+					(count) =>
+						count > 1
+							? t('shared.postbox.usePostboxBulkActions.undo.archivedMany', { count })
+							: t('components.postbox.postboxThreadList.archivedUndo'),
+					{ kind: 'archived' },
+					(chunk) => archiveOp.run({ messageIds: chunk })
+				);
+
+	const archiveMsg = (id: Id<'mailMessages'>) => archiveMany([id]);
 
 	const trashMsg = (id: Id<'mailMessages'>) =>
-		runRemoving([id], t('components.postbox.postboxThreadList.trashedUndo'), () =>
-			trashOp.run({ messageIds: [id] })
+		runRemoving(
+			[id],
+			() => t('components.postbox.postboxThreadList.trashedUndo'),
+			{ kind: 'trashed' },
+			(chunk) => trashOp.run({ messageIds: chunk }),
+			true
 		);
 
 	/**
-	 * Move one row or several (a dragged selection) in ONE mutation, so the undo
-	 * toast is one entry that puts every one of them back.
+	 * Move one row or several (a dragged selection) under ONE undo entry that
+	 * puts every one of them back.
 	 */
 	const moveMany = (ids: Id<'mailMessages'>[], targetFolderId: Id<'mailFolders'>) =>
 		ids.length === 0
 			? Promise.resolve(false)
 			: runRemoving(
 					ids,
-					ids.length > 1
-						? t('shared.postbox.usePostboxBulkActions.undo.movedMany', { count: ids.length })
-						: t('components.postbox.postboxThreadList.movedUndo'),
-					() => moveOp.run({ messageIds: ids, targetFolderId })
+					(count) =>
+						count > 1
+							? t('shared.postbox.usePostboxBulkActions.undo.movedMany', { count })
+							: t('components.postbox.postboxThreadList.movedUndo'),
+					{ kind: 'moved', scope: targetFolderId },
+					(chunk) => moveOp.run({ messageIds: chunk, targetFolderId }),
+					args.isTrashFolder?.(targetFolderId) === true
 				);
 
 	const moveMsg = (id: Id<'mailMessages'>, targetFolderId: Id<'mailFolders'>) =>
@@ -191,6 +249,51 @@ export function usePostboxRowTriage(args: {
 		if (muted && !outcome.ok) args.unhide(id);
 	}
 
+	/** Mute/unmute a row's conversation (the `m` shortcut + context menu). */
+	function toggleMuteRow(m: { _id: Id<'mailMessages'>; mutedAt?: number }) {
+		void toggleMute(m._id, m.mutedAt == null);
+	}
+
+	/**
+	 * Pin/unpin a row's conversation. A pin moves no mail, so the row stays
+	 * where it is and the band picks the thread up from its own query.
+	 */
+	function togglePinRow(m: { _id: Id<'mailMessages'>; pinnedAt?: number }) {
+		void pinAction.toggle(m._id, m.pinnedAt != null);
+	}
+
+	/**
+	 * A committed swipe on a row. It is a fourth ENTRY POINT, not a fourth
+	 * implementation: every branch lands on the verb the hover buttons, the
+	 * context menu and the single-key shortcuts already call, so the optimistic
+	 * hide and the "Undo — Cmd+Z" registration come along for free. Snooze opens
+	 * the same picker `h` does — a deferral needs a time, and guessing one from a
+	 * gesture is how mail disappears until Thursday.
+	 */
+	function swipeRow(
+		m: { _id: Id<'mailMessages'>; threadId?: string; flagFlagged: boolean; flagSeen: boolean },
+		action: Exclude<PostboxSwipeAction, 'none'>,
+		openSnooze: (id: Id<'mailMessages'>, threadId: string | null) => void
+	) {
+		switch (action) {
+			case 'archive':
+				void archiveMsg(m._id);
+				break;
+			case 'trash':
+				void trashMsg(m._id);
+				break;
+			case 'star':
+				void toggleStar(m._id, !m.flagFlagged);
+				break;
+			case 'read':
+				void toggleRead(m._id, !m.flagSeen);
+				break;
+			case 'snooze':
+				openSnooze(m._id, m.threadId ?? null);
+				break;
+		}
+	}
+
 	function cancelFollowUp(msg: { threadId?: string }) {
 		if (!msg.threadId) return;
 		void cancelFollowUpOp.run({ threadId: msg.threadId as Id<'mailThreads'> });
@@ -198,14 +301,18 @@ export function usePostboxRowTriage(args: {
 
 	return {
 		archiveMsg,
+		archiveMany,
 		trashMsg,
 		moveMsg,
 		moveMany,
 		snoozeMsg,
 		snoozeThread,
 		toggleMute,
+		toggleMuteRow,
+		togglePinRow,
 		toggleStar,
 		toggleRead,
 		cancelFollowUp,
+		swipeRow,
 	};
 }

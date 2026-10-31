@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { cpSync, mkdirSync, readdirSync, readFileSync, rmSync } from 'node:fs';
-import { assertShards, type ShardIdentity } from './shards';
+import { assertShards, parseShardIdentity, type ShardIdentity } from './shards';
 const [workspace, count] = process.argv.slice(2),
 	total = Number(count);
 if (
@@ -16,9 +16,8 @@ const latest = new Map<number, { identity: ShardIdentity; directory: string }>()
 for (const directory of readdirSync(download)) {
 	const match = new RegExp(`^${workspace}-blob-(\\d+)-attempt-(\\d+)$`).exec(directory);
 	if (!match) throw new Error('Unexpected shard artifact');
-	const identity = JSON.parse(
-		readFileSync(`${download}/${directory}/.ci-shards/${match[1]}.json`, 'utf8')
-	) as ShardIdentity;
+	const file = `${directory}/.ci-shards/${match[1]}.json`;
+	const identity = parseShardIdentity(readFileSync(`${download}/${file}`, 'utf8'), file);
 	if (String(identity.shard) !== match[1] || identity.attempt !== match[2])
 		throw new Error('Artifact identity mismatch');
 	const previous = latest.get(identity.shard);

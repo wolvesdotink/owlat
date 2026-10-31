@@ -2,7 +2,7 @@
  * Draft-on-arrival on an EXTERNAL-account mailbox with `postbox` OFF.
  *
  * `postbox.aiDraft` is declared `requires: ['ai']` +
- * `requiresAny: [['postbox', 'mail.external']]` (adoption-gaps decision D2):
+ * `requiresAny: [['postbox', 'mail.external']]`:
  * the draft pipeline needs *a* mailbox source, either source. This proves the
  * full pipeline end-to-end on an external-only install (the no-domain user):
  *
@@ -13,12 +13,12 @@
  *       mail/ai/draftOnArrival.generateForThread (the flag gate under test)
  *     → the scheduled Node action runs the REAL shared draft service (only the
  *       LLM seams mocked) and persists the review slot
- *     → the Reply Queue row says a draft is ready (`hasDraftSlot`) and
- *       `getDraftSlot` returns it.
+ *     → the Reply Queue row says a draft is ready (`hasDraftSlot`) and the
+ *       thread read (`listThreadMessages`) returns it.
  *
  * The control test flips only `mail.external` off: with neither any-of member
  * ON the resolved flag is forced off, nothing is scheduled, and the queue row
- * renders without a slot — today's behaviour, per D10.
+ * renders without a slot.
  *
  * The third case starts one step earlier, at the IMAP-sync ingest itself, on a
  * SHARED (team) inbox: forward sync enqueues the classifier, and the screener
@@ -294,6 +294,12 @@ async function detectAndApplyVerdict(
 	});
 }
 
+/** The thread's review slot as the reader's thread read returns it to the owner. */
+async function draftSlotOf(t: TestConvex<typeof schema>, messageId: Id<'mailMessages'>) {
+	const read = await t.query(api.mail.mailbox.messages.listThreadMessages, { messageId });
+	return read?.thread?.needsReply?.draftSlot;
+}
+
 async function scheduledJobNames(t: TestConvex<typeof schema>): Promise<string[]> {
 	return await t.run(async (ctx) =>
 		(await ctx.db.system.query('_scheduled_functions').collect()).map((job) => job.name)
@@ -337,9 +343,7 @@ describe('draft-on-arrival on an external-only install (postbox=false)', () => {
 		const row = queue.items[0]!;
 		expect(row.kind).toBe('needs_reply');
 		expect(row.hasDraftSlot).toBe(true);
-		const slot = await t.query(api.mail.needsReply.getDraftSlot, {
-			threadId: row.threadId,
-		});
+		const slot = await draftSlotOf(t, row.messageId);
 		expect(slot?.draft).toBe('EXTERNAL DRAFT BODY');
 		expect(slot?.confidence).toBe(0.72);
 		// Human-review only: the message was never marked answered by the pipeline.
@@ -475,9 +479,7 @@ describe('draft-on-arrival on an external-only install (postbox=false)', () => {
 		// and the whole pipeline ran through to the pre-generated draft.
 		const queue = await t.query(api.mail.needsReply.listQueue, { mailboxId });
 		expect(queue.items).toHaveLength(1);
-		const slot = await t.query(api.mail.needsReply.getDraftSlot, {
-			threadId: queue.items[0]!.threadId,
-		});
+		const slot = await draftSlotOf(t, queue.items[0]!.messageId);
 		expect(slot?.draft).toBe('EXTERNAL DRAFT BODY');
 		// One draft per message: the placeholder flag the classifier writes
 		// before the model call does not start a draft of its own.
@@ -537,9 +539,9 @@ describe('draft-on-arrival on an external-only install (postbox=false)', () => {
 	});
 });
 
-// Issue #1131. A shared inbox flushed a backlog, the burst OOM-killed the
-// backend while the classifier waited on the model, and the thread stayed at
-// the heuristic flag with no draft for good.
+// A run can die after its baseline: a shared inbox flushing a backlog can
+// OOM-kill the backend while the classifier waits on the model. The sweep must
+// re-run it, or the thread stays at the heuristic flag with no draft for good.
 describe('a classify run killed after its baseline', () => {
 	it('is re-run by the sweep and ends with the model verdict and a draft', async () => {
 		const t = convexTest(schema, modules);
@@ -580,9 +582,7 @@ describe('a classify run killed after its baseline', () => {
 		const names = await scheduledJobNames(t);
 		expect(names.filter((name) => name.includes('draftOnArrival'))).toHaveLength(1);
 		const queue = await t.query(api.mail.needsReply.listQueue, { mailboxId });
-		const slot = await t.query(api.mail.needsReply.getDraftSlot, {
-			threadId: queue.items[0]!.threadId,
-		});
+		const slot = await draftSlotOf(t, queue.items[0]!.messageId);
 		expect(slot?.draft).toBe('EXTERNAL DRAFT BODY');
 	});
 });

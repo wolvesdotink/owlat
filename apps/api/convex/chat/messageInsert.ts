@@ -130,7 +130,8 @@ export async function insertRoomMessage(
 		}
 	}
 
-	// AGGREGATED: this module is the only writer of these fields.
+	// AGGREGATED [chatRoomActivity] — once a room exists, this module is the only
+	// writer of these fields.
 	await ctx.db.patch(room._id, {
 		lastMessageAt: now,
 		messageCount: (room.messageCount ?? 0) + 1,

@@ -20,7 +20,7 @@
  */
 
 import { v } from 'convex/values';
-import type { Doc, Id } from '../_generated/dataModel';
+import type { Doc } from '../_generated/dataModel';
 import { takeReceivedAtChunk } from '../lib/receivedAtCursor';
 import { internalAction, internalQuery, type MutationCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
@@ -29,14 +29,20 @@ import { internal } from '../_generated/api';
 import { isActiveOrgMember } from '../lib/sessionOrganization';
 import { isFeatureEnabled } from '../lib/featureFlags';
 import { cancelLatestJob, createCappedJob, latestJob } from './backfillJobs';
-import { anchorActionDeadline, boundedRoot } from '../lib/llm/actionDeadline';
-import { rootRequest } from '../lib/llm/requestMeter';
+import { anchorActionDeadline } from '../lib/llm/actionDeadline';
 import { readExtractionProgress } from './extractionProgress';
+import {
+	addChunkProgress,
+	chunkProgressArgs,
+	finishBackfillJob,
+	NOTHING_SCANNED,
+	scanChunk,
+	type ScannedChunk,
+} from './messageBackfillChunk';
 
 // Tunables
 /** Messages per `runChunk` invocation; the flag toggle starts the walk with it. */
 export const DEFAULT_CHUNK_SIZE = 30;
-const INTER_MESSAGE_DELAY_MS = 150;
 const INTER_CHUNK_DELAY_MS = 2000;
 
 // ============================================================
@@ -134,39 +140,24 @@ export function createMessageBackfillJob(ctx: MutationCtx, triggeredBy: string) 
 // ============================================================
 
 /**
- * Patch progress counters and advance cursor.
+ * Patch progress counters and advance cursor: the previous release's chunk
+ * commit (its runner then rescheduled or finalized in separate calls), also
+ * reached at the old path (`agent/knowledgeBackfill.ts`). Remove after
+ * release N+1.
  */
 export const patchProgress = internalMutation({
-	args: {
-		jobId: v.id('knowledgeBackfillJobs'),
-		deltaScanned: v.number(),
-		deltaExtracted: v.number(),
-		deltaSkipped: v.number(),
-		// Optional: an old walker's call (agent/knowledgeBackfill.ts) does not pass it.
-		deltaPartial: v.optional(v.number()),
-		deltaError: v.number(),
-		cursorReceivedAt: v.optional(v.number()),
-		cursorId: v.optional(v.id('inboundMessages')),
-	},
-	handler: async (ctx, args) => {
-		const job = await ctx.db.get(args.jobId);
+	args: { jobId: v.id('knowledgeBackfillJobs'), ...chunkProgressArgs },
+	handler: async (ctx, { jobId, ...progress }) => {
+		const job = await ctx.db.get(jobId);
 		if (!job) return;
-
-		await ctx.db.patch(args.jobId, {
-			scannedCount: job.scannedCount + args.deltaScanned,
-			extractedCount: job.extractedCount + args.deltaExtracted,
-			skippedCount: job.skippedCount + args.deltaSkipped,
-			...(args.deltaPartial ? { partialCount: (job.partialCount ?? 0) + args.deltaPartial } : {}),
-			errorCount: job.errorCount + args.deltaError,
-			cursorReceivedAt: args.cursorReceivedAt ?? job.cursorReceivedAt,
-			cursorId: args.cursorId ?? job.cursorId,
-			updatedAt: Date.now(),
-		});
+		await addChunkProgress(ctx, job, progress);
 	},
 });
 
 /**
- * Move a job to a terminal state.
+ * Move a job to a terminal state: the previous release's runner finalized
+ * through this, also at the old path (`agent/knowledgeBackfill.ts`).
+ * Remove after release N+1.
  */
 export const finalizeJob = internalMutation({
 	args: {
@@ -175,13 +166,7 @@ export const finalizeJob = internalMutation({
 		errorMessage: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
-		const now = Date.now();
-		await ctx.db.patch(args.jobId, {
-			status: args.status,
-			finishedAt: now,
-			updatedAt: now,
-			errorMessage: args.errorMessage,
-		});
+		await finishBackfillJob(ctx, args.jobId, args.status, args.errorMessage);
 	},
 });
 
@@ -191,8 +176,8 @@ export const finalizeJob = internalMutation({
 
 /**
  * Process one chunk of inbound messages through the extraction pipeline,
- * advance the cursor, and either reschedule for the next chunk or finalize
- * the job.
+ * then commit its cursor together with the next chunk or the job's terminal
+ * state (`commitChunk`).
  */
 export const runChunk = internalAction({
 	args: {
@@ -206,124 +191,25 @@ export const runChunk = internalAction({
 	handler: async (ctx, args) => {
 		// One model budget for this action, from its start.
 		anchorActionDeadline(ctx);
-		const interChunkDelay = args.interChunkDelayMs ?? INTER_CHUNK_DELAY_MS;
+		let chunk: ScannedChunk | null;
 		try {
-			const job = await ctx.runQuery(internal.knowledge.messageBackfill.loadJob, {
-				jobId: args.jobId,
-			});
-			if (!job) return;
-			if (job.status !== 'running') return;
-
-			// Honor mid-scan disable.
-			const enabled = await ctx.runQuery(internal.knowledge.messageBackfill.isAgentEnabled, {});
-			if (!enabled) {
-				await ctx.runMutation(internal.knowledge.messageBackfill.finalizeJob, {
-					jobId: args.jobId,
-					status: 'cancelled',
-				});
-				return;
-			}
-
-			const { messages, hasMore } = await ctx.runQuery(
-				internal.knowledge.messageBackfill.nextChunk,
-				{
-					cursorReceivedAt: job.cursorReceivedAt,
-					cursorId: job.cursorId,
-					limit: args.chunkSize,
-				}
-			);
-
-			let deltaScanned = 0;
-			let deltaExtracted = 0;
-			let deltaSkipped = 0;
-			let deltaPartial = 0;
-			let deltaError = 0;
-			let lastReceivedAt: number | undefined;
-			let lastId: Id<'inboundMessages'> | undefined;
-
-			for (const msg of messages) {
-				deltaScanned++;
-				lastReceivedAt = msg.receivedAt;
-				lastId = msg._id;
-
-				// Idempotency: a complete extraction is skipped; one a budget refusal
-				// interrupted is resumed from its stored entries (Sol r3 F3).
-				const isDone = await ctx.runQuery(internal.knowledge.messageBackfill.hasExtraction, {
-					inboundMessageId: msg._id,
-				});
-				if (isDone) {
-					deltaSkipped++;
-					continue;
-				}
-
-				try {
-					await ctx.runAction(internal.knowledge.extraction.extractFromMessage, {
-						inboundMessageId: msg._id,
-						// Awaited: it spends from this sweep's clock.
-						root: boundedRoot(ctx, rootRequest('team', msg._id)),
-					});
-					// Re-check post-call: extractFromMessage silently no-ops on
-					// short bodies, swallows internal errors and defers a budget
-					// refusal. Only a complete extraction counts as "extracted"; one
-					// still in progress is counted apart, and its deferral resumes it.
-					const after = await ctx.runQuery(
-						internal.knowledge.extractionProgress.extractionProgressOf,
-						{ sourceType: 'agent_extracted', sourceId: msg._id }
-					);
-					if (after.isDone) {
-						deltaExtracted++;
-					} else if (after.isPartial) {
-						deltaPartial++;
-					} else {
-						deltaSkipped++;
-					}
-				} catch (err) {
-					deltaError++;
-					console.error('[messageBackfill] extraction error', err);
-				}
-
-				// Light rate-limit pacing between LLM calls.
-				if (INTER_MESSAGE_DELAY_MS > 0) {
-					await new Promise((r) => setTimeout(r, INTER_MESSAGE_DELAY_MS));
-				}
-			}
-
-			await ctx.runMutation(internal.knowledge.messageBackfill.patchProgress, {
-				jobId: args.jobId,
-				deltaScanned,
-				deltaExtracted,
-				deltaSkipped,
-				deltaPartial,
-				deltaError,
-				cursorReceivedAt: lastReceivedAt,
-				cursorId: lastId,
-			});
-
-			if (hasMore) {
-				await ctx.scheduler.runAfter(interChunkDelay, internal.knowledge.messageBackfill.runChunk, {
-					jobId: args.jobId,
-					chunkSize: args.chunkSize,
-					interChunkDelayMs: args.interChunkDelayMs,
-				});
-			} else {
-				await ctx.runMutation(internal.knowledge.messageBackfill.finalizeJob, {
-					jobId: args.jobId,
-					status: 'completed',
-				});
-			}
+			chunk = await scanChunk(ctx, args);
 		} catch (err) {
-			const message = err instanceof Error ? err.message : String(err);
 			console.error('[messageBackfill] runChunk failed', err);
-			try {
-				await ctx.runMutation(internal.knowledge.messageBackfill.finalizeJob, {
-					jobId: args.jobId,
-					status: 'failed',
-					errorMessage: message,
-				});
-			} catch {
-				// finalize best-effort
-			}
+			chunk = {
+				outcome: 'failed',
+				...NOTHING_SCANNED,
+				errorMessage: err instanceof Error ? err.message : String(err),
+			};
 		}
+		if (!chunk) return;
+		await ctx.runMutation(internal.knowledge.messageBackfillChunk.commitChunk, {
+			jobId: args.jobId,
+			...chunk,
+			chunkSize: args.chunkSize,
+			interChunkDelayMs: args.interChunkDelayMs,
+			nextChunkDelayMs: args.interChunkDelayMs ?? INTER_CHUNK_DELAY_MS,
+		});
 	},
 });
 

@@ -112,9 +112,9 @@ export const columnsModule: BlockModule<'columns'> = {
 		});
 
 		if (content.mobileStacking && mobileStackOrder === 'reverse') {
-			columnIndices.forEach((colIdx) => {
+			for (const colIdx of columnIndices) {
 				ctx.responsiveRules.push(`.owlat-col-rev-${colIdx}{display:table-footer-group!important;}`);
-			});
+			}
 			const reversedParts = columnHtmlParts.map((html, i) => {
 				const colIdx = columnIndices[i];
 				return html.replace('class="owlat-col"', `class="owlat-col owlat-col-rev-${colIdx}"`);

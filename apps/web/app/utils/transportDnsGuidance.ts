@@ -2,7 +2,7 @@
  * PER-TRANSPORT DNS GUIDANCE — what an operator has to publish, and prove, for
  * the transport that is actually live.
  *
- * Two layers, and the order matters (the seams plan's D5):
+ * Two layers, and the order matters:
  *
  *  1. the CAPABILITY paragraph, derived from the catalog entry. `tier: 'own'`
  *     and `domainVerification` between them answer "how does this domain become
@@ -50,7 +50,7 @@ type Guidance = Pick<TransportDnsGuidance, 'lead' | 'points'>;
  * WHAT A TRANSPORT WITHOUT ITS OWN PARAGRAPH SAYS, keyed by the capability that
  * decides it.
  *
- *  - `own`  our own MTA — the one identity D3 calls definitional. It publishes
+ *  - `own`  our own MTA — the one identity that is definitional. It publishes
  *           managed records for the domain, so the guidance is about adding
  *           what this app already shows, not about a third party's console. It
  *           is a separate branch rather than a `domainVerification: 'none'`

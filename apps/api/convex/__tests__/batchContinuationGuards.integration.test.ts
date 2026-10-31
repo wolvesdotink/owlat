@@ -237,6 +237,35 @@ describe('the mail resume rechecks the live guards', () => {
 		}
 	);
 
+	it('resolves the sender of kept mail to a contact before it resumes', async () => {
+		const t = newHarness();
+		await enableFeatures(t, ['ai.knowledge']);
+		const { mailMessageId } = await seedMail(t);
+		await complete(t, await seedItem(t, 'knowledge_mail', mailMessageId));
+
+		await t.action(internal.knowledge.batchedMail.resumeMailExtraction, { mailMessageId });
+
+		const contacts = await t.run((c) => c.db.query('contacts').collect());
+		expect(contacts.map((contact) => contact.email)).toEqual(['ana@example.com']);
+	});
+
+	it('drops the marker of mail whose sender resolves to no contact, and creates none', async () => {
+		const t = newHarness();
+		await enableFeatures(t, ['ai.knowledge']);
+		const { mailMessageId } = await seedMail(t);
+		await complete(t, await seedItem(t, 'knowledge_mail', mailMessageId));
+		await t.run((c) => c.db.patch(mailMessageId, { fromAddress: 'not-an-address' }));
+		const contactsBefore = await t.run((c) => c.db.query('contacts').collect());
+
+		await t.action(internal.knowledge.batchedMail.resumeMailExtraction, { mailMessageId });
+
+		expect(await markers(t)).toHaveLength(0);
+		expect(await t.run((c) => c.db.query('knowledgeEntries').collect())).toHaveLength(0);
+		expect(await t.run((c) => c.db.query('contacts').collect())).toHaveLength(
+			contactsBefore.length
+		);
+	});
+
 	it('drops the marker once ai.knowledge went off', async () => {
 		const t = newHarness();
 		await enableFeatures(t, ['ai.knowledge']);

@@ -1,14 +1,15 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import Redis from 'ioredis-mock';
+import type * as LeaderElectionModule from '../leaderElection.js';
 
 vi.mock('../../monitoring/logger.js', () => ({
 	logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
 // We need to re-import the module for each test to reset module-level state
-let startLeaderElection: typeof import('../leaderElection.js').startLeaderElection;
-let isLeader: typeof import('../leaderElection.js').isLeader;
-let stopLeaderElection: typeof import('../leaderElection.js').stopLeaderElection;
+let startLeaderElection: typeof LeaderElectionModule.startLeaderElection;
+let isLeader: typeof LeaderElectionModule.isLeader;
+let stopLeaderElection: typeof LeaderElectionModule.stopLeaderElection;
 
 describe('leaderElection', () => {
 	let redis: InstanceType<typeof Redis>;

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { defineComponent } from 'vue';
-import { pendingArrivalUndos } from '~/composables/postbox/usePostboxArrivalUndo';
+import { pendingArrivalUndos } from '~/lib/pendingArrivalUndos';
 
 // Skip auth-dependent identity tracking on public pages (share, archive, etc.)
 // to avoid unnecessary session/token requests for unauthenticated visitors. It
@@ -36,6 +36,8 @@ const localeHead = useLocaleHead();
 
 // Read-on-arrival undos still finishing on the server outlive the toast or
 // page that started them; their host lives here, only while one is pending.
+// It is lazy: the host subscribes to the queue as it finds it when it mounts,
+// so an undo that finished while its chunk loaded is still announced.
 const hasPendingArrivalUndo = computed(() => pendingArrivalUndos.value.length > 0);
 
 useHead(() => ({ htmlAttrs: localeHead.value.htmlAttrs }));
@@ -53,7 +55,7 @@ useHead(() => ({ htmlAttrs: localeHead.value.htmlAttrs }));
 		<PostHogIdentity v-if="identityTracking" />
 
 		<NuxtLayout>
-			<NuxtPage />
+			<AppPageOutlet />
 		</NuxtLayout>
 
 		<!-- Global toast notifications (client-only to avoid SSR hydration mismatch) -->
@@ -63,7 +65,13 @@ useHead(() => ({ htmlAttrs: localeHead.value.htmlAttrs }));
 			     announcements; app pages only, like identity tracking. Lazy, so
 			     the entry bundle every page boots with stays out of it. -->
 			<LazyShellBackendStatusHost v-if="identityTracking" />
-			<PostboxArrivalUndoHost v-if="hasPendingArrivalUndo" />
+			<LazyPostboxArrivalUndoHost v-if="hasPendingArrivalUndo" />
+			<!-- "Owlat was updated" for a tab older than the server's build; app
+			     pages only. Lazy for the same reason as the status host. -->
+			<LazySystemAppUpdatedBanner v-if="identityTracking" />
+			<!-- The one dialog behind useConfirm(). Not lazy: a question asked
+			     before a lazy chunk arrived would find no host and answer no. -->
+			<ShellConfirmDialogHost />
 		</ClientOnly>
 	</div>
 </template>

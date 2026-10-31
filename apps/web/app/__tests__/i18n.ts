@@ -100,12 +100,12 @@ function renderedStrings(wrapper: VueWrapper): string[] {
 	const carriers: NodeListOf<HTMLElement> = root.querySelectorAll(
 		'[placeholder], [aria-label], [title]'
 	);
-	carriers.forEach((el: HTMLElement) => {
+	for (const el of carriers) {
 		for (const attr of ['placeholder', 'aria-label', 'title']) {
 			const value = el.getAttribute(attr);
 			if (value) strings.push(value);
 		}
-	});
+	}
 	return strings;
 }
 

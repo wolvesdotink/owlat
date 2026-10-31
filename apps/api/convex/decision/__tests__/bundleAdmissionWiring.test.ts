@@ -1,6 +1,6 @@
 /**
  * The decisions lane's admission seam, wired to the admission lane
- * (`decision/bundleAdmission.ts`): a shadow bundle call goes through D4's
+ * (`decision/bundleAdmission.ts`): a shadow bundle call goes through the
  * counted quota and the shadow allowance (`analytics/shadowAdmission.ts`),
  * an advisory one through an ordinary hold (`analytics/admissionPorts.ts`),
  * and a hold the ceiling refuses stops the call before any request leaves,

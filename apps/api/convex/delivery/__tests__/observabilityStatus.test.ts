@@ -27,6 +27,7 @@
 
 import { convexTest } from 'convex-test';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type * as SessionOrganization from '../../lib/sessionOrganization';
 import schema from '../../schema';
 import { api } from '../../_generated/api';
 import { insertExternalAccountRow } from '../../mail/external/accountShared';
@@ -52,7 +53,7 @@ const session = vi.hoisted(() => ({
 }));
 
 vi.mock('../../lib/sessionOrganization', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../../lib/sessionOrganization')>();
+	const actual = await importOriginal<typeof SessionOrganization>();
 	return {
 		...actual,
 		requireOrgPermission: vi.fn(async (_ctx: unknown, permission: Permission) => {

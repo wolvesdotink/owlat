@@ -60,7 +60,7 @@ export type PostboxReaderMessage = {
 	// Sealed Mail (E5): the inbound sealing record (`inboundEncryptionInfo`), only on
 	// mail sealed between Owlat instances; else the structural badge takes over.
 	inboundEncryptionInfo?: InboundEncryptionInfo;
-	// F2 (D9): the signature verdict for PGP-signed mail verified at ingest; absent
+	// F2: the signature verdict for PGP-signed mail verified at ingest; absent
 	// for plaintext and pre-F1 rows (the badge falls back to "not verified").
 	inboundSignatureInfo?: InboundSignatureInfo;
 	flagSeen?: boolean;
@@ -79,6 +79,7 @@ import { formatCompactRelativeTime } from '~/utils/formatters';
 import { useNow } from '~/composables/useNow';
 import { usePostboxReaderBrief } from '~/composables/postbox/usePostboxReaderBrief';
 import { usePostboxCalmReader } from '~/composables/postbox/usePostboxCalmReader';
+import { providePostboxReaderContext } from '~/composables/postbox/usePostboxReaderContext';
 import { usePostboxListQuery } from '~/composables/postbox/usePostboxPlacementFilter';
 import { usePostboxTeamStream } from '~/composables/postbox/usePostboxTeamStream';
 import { usePostboxReaderExpansion } from '~/composables/postbox/usePostboxReaderExpansion';
@@ -104,6 +105,15 @@ import type { TrackerDetection } from '@owlat/shared/postboxTrackers';
 import type { OutboundDelivery } from '~/utils/postboxDeliveryStrip';
 import { optimisticMarkThreadRead } from '~/lib/mailOptimistic/mailUpdaters';
 import type { Placement } from '@owlat/shared/arrival';
+import { vReplyDrop } from '~/composables/useReplyFileDrop';
+import { primaryReplyKindFor } from '~/composables/postbox/postboxReplySpec';
+import { replyDropRecipient, type ReplyDropTarget } from '~/utils/replyFileDrop';
+import type { ConversationLinkTarget } from '~/utils/conversationLink';
+import { useConversationLink } from '~/composables/useConversationLink';
+import {
+	usePostboxThreadFind,
+	type PostboxFindSeed,
+} from '~/composables/postbox/usePostboxThreadFind';
 
 const props = defineProps<{
 	message: PostboxReaderMessage;
@@ -114,6 +124,8 @@ const props = defineProps<{
 	// Overlay hosting (Today's centered reader): auto-advance swaps the reader in
 	// place via `advance`, so triaging never tears down the overlay.
 	advanceInPlace?: boolean;
+	/** Opened from a search result: find opens on its words, that message first. */
+	findSeed?: PostboxFindSeed | null;
 }>();
 
 const emit = defineEmits<{
@@ -253,12 +265,13 @@ const readerThread = computed(
 						dueAt?: number;
 						waitingOn?: string;
 					};
-					// Muted conversation, its opt-in twin (alert me when they reply)
-					// and the transient back-from-snooze marker — all checkable states
-					// in the thread ⋯ menu (mail/mute.ts, mail/threadAlerts.ts,
-					// mail/snooze.ts).
+					// Muted conversation, its opt-in twin (alert me when they reply),
+					// the pin and the transient back-from-snooze marker — all
+					// checkable states in the thread ⋯ menu (mail/mute.ts,
+					// mail/threadAlerts.ts, mail/pins.ts, mail/snooze.ts).
 					mutedAt?: number;
 					notifyOnReplyAt?: number;
+					pinnedAt?: number;
 					snoozeReturnedAt?: number;
 					// The Priority placement (read on arrival §2.8), for "Why here?".
 					arrival?: { placement: Placement };
@@ -267,7 +280,7 @@ const readerThread = computed(
 			| null
 			| undefined
 );
-// The thread brief (SPEC §7, personal mailboxes): the strip, cites, latest lines, reactions.
+// The thread brief (personal mailboxes): the strip, cites, latest lines, reactions.
 // Per-user reader preferences (auto-advance, reply default, mark-read policy, the
 // brief), read before the brief and the mark-read watcher, which both run immediately.
 const { autoAdvance, replyDefault, markReadPolicy, autoSummarize, autoLoadImages } =
@@ -488,6 +501,7 @@ const {
 	openReplyAll,
 	openPrimaryReply,
 	openReplyWithBody,
+	openQuoteReply,
 	openForward,
 	openResend,
 	hasOtherRecipients,
@@ -516,7 +530,7 @@ const authBadgesEnabled = computed(() => isFeatureEnabled('senderAuthBadges'));
 // sealing record. When off, sealed messages fall back to the structural badge.
 const sealedMailEnabled = computed(() => isFeatureEnabled('sealedMail'));
 
-// The thread's correspondent (Sealed Mail 1:1 plane, D5): the first party in the
+// The thread's correspondent (Sealed Mail 1:1 plane): the first party in the
 // conversation who isn't us. Prefer an inbound sender; fall back to a recipient
 // on an all-outbound thread. Drives the thread-level key-change banner + contact
 // key panel. Empty when we can't identify a single counterpart (the container
@@ -654,7 +668,7 @@ function guardLatestReply(run: () => void) {
 }
 
 // Thread-level triage of the OPEN message (archive / trash / star / snooze /
-// mute / label / move / spam / block), the auto-advance that follows it and
+// mute / pin / label / move / spam / block), the auto-advance that follows it and
 // the pickers it opens. Reply / reply-all / forward route back through the
 // composer layer above so they stay behind the sender-auth reply guard.
 const {
@@ -668,6 +682,8 @@ const {
 	toggleMessageStar,
 	toggleOpenThreadMute,
 	toggleOpenThreadAlert,
+	isThreadPinned,
+	toggleOpenThreadPin,
 	snoozeOpenMessage,
 	snoozeOpenMessageUntilReply,
 	applyLabelToOpenMessage,
@@ -709,17 +725,50 @@ const translationTarget = computed(
 );
 const translation = usePostboxReaderTranslation(() => translationTarget.value);
 
+// "Copy link" / "Share in chat…", from any card's ⋯ menu or the palette. The
+// link names the card's message, so it opens the thread at the mail it came from,
+// and the dialog is this reader's own: a second mounted reader never opens it.
+const { copyConversationLink } = useConversationLink();
+function conversationLinkOf(messageId: string): ConversationLinkTarget {
+	return {
+		kind: 'postbox',
+		messageId,
+		mailboxId: props.message.mailboxId,
+		folder: props.folderRole,
+	};
+}
+const shareTarget = shallowRef<ConversationLinkTarget | null>(null);
+
+// Find in conversation (⌘F): collapsed messages, folded quotes and envelopes
+// included. Only the reader on top answers the shortcut.
+const find = usePostboxThreadFind({
+	threadKey,
+	messages: () => allMessages.value,
+	// Encrypted, clearsigned and signed mail shows through its security badge;
+	// its raw body is not what the reader shows, so it is not searched.
+	searchable: (msg) =>
+		secureClass(msg) === 'none' && !(msg as PostboxReaderMessage).inboundSignatureInfo,
+	isExpanded: (id) => expanded.value.has(id),
+	expand: toggleExpanded,
+	pages: threadPages,
+	seed: () => props.findSeed,
+	answersShortcut: () => threadSurface.isTopmost(),
+});
+
 // ⌘K, while a conversation is open, offers every verb this reader has. Runs the
 // actions directly, so it acts on THIS conversation.
-usePostboxThreadCommandSurface({
+const threadSurface = usePostboxThreadCommandSurface({
 	subject: () => props.message.subject,
 	messageId: () => props.message._id,
 	threadId: () => readerThread.value?._id ?? props.message.threadId,
 	mailboxId: () => props.message.mailboxId,
 	href: () => `/dashboard/postbox/${props.folderRole ?? 'inbox'}/${props.message._id}`,
+	link: () => conversationLinkOf(props.message._id),
+	shareInChat: () => (shareTarget.value = conversationLinkOf(props.message._id)),
 	hintText: () => snoozeHintText.value,
 	isMuted: () => readerThread.value?.mutedAt != null,
 	isAlerted: () => readerThread.value?.notifyOnReplyAt != null,
+	isPinned: () => isThreadPinned.value,
 	followUp: () => {
 		if (readerThread.value?.followUp) return { state: 'armed' };
 		const outboundId = latestOutboundId.value;
@@ -736,7 +785,9 @@ usePostboxThreadCommandSurface({
 	moveTo: (folderId) => void moveOpenMessageTo(folderId),
 	toggleMute: toggleOpenThreadMute,
 	toggleAlert: toggleOpenThreadAlert,
+	togglePin: toggleOpenThreadPin,
 	translate: () => void translation.translate(),
+	find: () => find.open(),
 });
 
 // Single-key shortcuts while reading and the Cmd-K palette bridge, both
@@ -758,6 +809,28 @@ const {
 	downloadLightboxAttachment,
 } = usePostboxReaderAttachments();
 
+// What every card shares; the props carry only what differs per message.
+providePostboxReaderContext({
+	mailboxId: () => props.message.mailboxId,
+	authEnabled: authBadgesEnabled,
+	sealedEnabled: sealedMailEnabled,
+	appIsDark,
+	ownEmail,
+	downloadingAttachment,
+	eagerBody: mountAllBodies,
+	reduced: false,
+	chromeOf: calm.cardOf,
+	// A selected passage replies to the message it is from, behind the guard.
+	quoteReply: {
+		canQuote: (messageId) => allMessages.value.some((m) => m._id === messageId),
+		quote: (messageId, passage) => {
+			const msg = allMessages.value.find((m) => m._id === messageId);
+			if (msg) runGuarded(msg, () => void openQuoteReply(msg, passage));
+		},
+	},
+	find,
+});
+
 /**
  * Open the filter builder pre-filled from this message.
  *
@@ -776,11 +849,26 @@ function createFilterFrom(msg: { fromAddress?: string; subject?: string }) {
 	if (Object.keys(query).length === 0) return;
 	void navigateTo({ path: '/dashboard/preferences/filters', query });
 }
+
+// Files dropped on the conversation reply to it the way `r` does: to the latest
+// message, as the person's default reply, behind the sender-auth reply guard.
+const replyDrop = computed<ReplyDropTarget | null>(() => {
+	const latest = latestMessage.value;
+	if (!latest || props.folderRole === 'drafts') return null;
+	return {
+		kind: 'message',
+		id: latest._id,
+		recipient: replyDropRecipient(latest, ownAddresses.value),
+		replyKind: primaryReplyKindFor(replyDefault.value, latest, ownAddresses.value),
+		guard: guardLatestReply,
+	};
+});
 </script>
 
 <template>
 	<article
 		ref="articleEl"
+		v-reply-drop="replyDrop"
 		class="pbx-reader-article p-6 max-w-4xl mx-auto"
 		:class="team.isActive.value ? '' : discussionArticleClass"
 	>
@@ -798,6 +886,7 @@ function createFilterFrom(msg: { fromAddress?: string; subject?: string }) {
 			:show-full-brief="rb.hasFullBrief.value"
 			@toggle-mute="toggleOpenThreadMute"
 			@toggle-alert="toggleOpenThreadAlert"
+			@toggle-pin="toggleOpenThreadPin"
 			@mark-read="markOpenThreadRead"
 			@reply="runReaderAction('reply')"
 			@archive="runReaderAction('archive')"
@@ -808,12 +897,14 @@ function createFilterFrom(msg: { fromAddress?: string; subject?: string }) {
 			@why-here="calm.openWhyHere"
 		>
 			<template #actions>
+				<PostboxThreadFindButton @click="find.open()" />
 				<PostboxThreadDiscussionToggle
 					v-if="discussionThreadId && !team.isActive.value"
 					:thread-id="discussionThreadId"
 				/>
 			</template>
 		</PostboxThreadHeader>
+		<PostboxThreadFindBar :find="find" />
 
 		<PostboxReaderStrip
 			ref="stripEl"
@@ -896,20 +987,16 @@ function createFilterFrom(msg: { fromAddress?: string; subject?: string }) {
 			<template v-for="msg in allMessages" :key="msg._id">
 				<PostboxReaderMessage
 					:message="msg"
-					:mailbox-id="message.mailboxId"
 					:expanded="expanded.has(msg._id)"
 					:relative-time="relativeReceivedAt(msg.receivedAt)"
 					:starred="isMessageStarred(msg)"
 					:show-reply-all="hasOtherRecipients(msg)"
 					:show-sender-controls="!ownAddresses.has(extractEmailAddress(msg.fromAddress))"
-					:auth-enabled="authBadgesEnabled"
-					:sealed-enabled="sealedMailEnabled"
 					:secure-class="secureClass(msg)"
 					:hide-body="hideRawBody(msg)"
 					:tracker="trackerDetection(msg)"
 					:delivery="deliveryFor(msg)"
 					:scheduling-times="schedulingTimesFor(msg)"
-					:show-render-toggle="appIsDark"
 					:forced-light="isForcedLight(msg._id)"
 					:images="
 						postboxBodyImageProps(msg, {
@@ -917,14 +1004,10 @@ function createFilterFrom(msg: { fromAddress?: string; subject?: string }) {
 							isSenderAllowed: imageAllowlist.isAllowed(msg.fromAddress),
 						})
 					"
-					:own-email="ownEmail"
 					:has-invite="!!calendarAttachment(msg)"
 					:seal-status="sealStatusFor(msg)"
-					:downloading-attachment="downloadingAttachment"
-					:eager-body="mountAllBodies"
 					:latest-line="rb.latestFor(msg._id)"
 					:cite-quote="rb.citeQuoteFor(msg._id)"
-					v-bind="calm.cardOf(msg._id)"
 					@image-state="calm.onImageState(msg._id, $event)"
 					@toggle-expanded="toggleExpanded(msg._id)"
 					@open-sender-profile="openSenderProfile(msg)"
@@ -937,6 +1020,8 @@ function createFilterFrom(msg: { fromAddress?: string; subject?: string }) {
 					@block-sender="blockSenderOf(msg._id)"
 					@create-filter="createFilterFrom(msg)"
 					@print="runReaderAction('print')"
+					@copy-link="copyConversationLink(conversationLinkOf(msg._id))"
+					@share-in-chat="shareTarget = conversationLinkOf(msg._id)"
 					@preview-attachment="(att, all) => openAttachmentPreview(msg._id, att, all)"
 					@download-attachment="(att) => handleAttachmentDownload(msg._id, att)"
 					@trackers="onTrackersDetected(msg._id, $event)"
@@ -1008,6 +1093,13 @@ function createFilterFrom(msg: { fromAddress?: string; subject?: string }) {
 			:from-address="senderProfile.fromAddress"
 			:from-name="senderProfile.fromName"
 			@update:open="(open: boolean) => !open && (senderProfile = null)"
+		/>
+
+		<LazyChatLinkEmailDialog
+			v-if="shareTarget"
+			:conversation="shareTarget"
+			:audience="rb.isShared.value ? 'shared' : 'personal'"
+			@close="shareTarget = null"
 		/>
 
 		<!-- Quick Look overlay for image/PDF attachments (Teleports to body). -->

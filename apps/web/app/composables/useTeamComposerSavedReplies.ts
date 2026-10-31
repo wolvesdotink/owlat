@@ -14,8 +14,10 @@
  * stored draft, untouched, the stored guard is the composer's.
  */
 
-import type { Ref } from 'vue';
+import { shallowRef, type Ref } from 'vue';
 import { htmlToPlainText } from '@owlat/shared/html';
+import type { SuggestionListHandle } from '@owlat/ui/utils/listboxField';
+import { anchorToElementBox, type PopoverAnchorTarget } from '@owlat/ui/utils/popoverAnchor';
 import type {
 	EditorSnippet,
 	SnippetPromptRequest,
@@ -149,8 +151,19 @@ export function useTeamComposerSavedReplies(opts: {
 
 	// ── The `;` trigger in the textarea ─────────────────────────────────────
 	const trigger = ref<SnippetTrigger | null>(null);
-	const index = ref(0);
-	const style = ref<Record<string, string> | null>(null);
+	// Where the dropdown hangs: under the `;`, or the textarea when unmeasurable.
+	const anchor = shallowRef<PopoverAnchorTarget | null>(null);
+	// The rendered dropdown, which owns ↑ ↓ Enter Tab and the highlight.
+	const list = shallowRef<SuggestionListHandle | null>(null);
+	/**
+	 * Template ref for the rendered list. One stable function: an inline arrow
+	 * would be a new ref every render, which Vue answers by clearing and
+	 * re-setting it, and that write would render again.
+	 */
+	function bindList(rendered: unknown) {
+		list.value = rendered as SuggestionListHandle | null;
+	}
+
 	// The token last dismissed with Esc, so it stays closed until it changes.
 	let dismissed: string | null = null;
 	const items = computed(() =>
@@ -159,7 +172,13 @@ export function useTeamComposerSavedReplies(opts: {
 
 	function closeTrigger() {
 		trigger.value = null;
-		style.value = null;
+		anchor.value = null;
+	}
+
+	/** Esc or a press elsewhere: closed until the `;token` changes. */
+	function dismissTrigger() {
+		if (trigger.value) dismissed = `${trigger.value.triggerStart}:${trigger.value.query}`;
+		closeTrigger();
 	}
 
 	/** After an edit or a caret move: open, refresh or close the dropdown. */
@@ -175,18 +194,19 @@ export function useTeamComposerSavedReplies(opts: {
 			return closeTrigger();
 		}
 		dismissed = null;
-		if (trigger.value?.triggerStart !== found.triggerStart) index.value = 0;
 		trigger.value = found;
 		// ";)" is a wink, not a shortcut: only open over something to pick.
 		if (items.value.length === 0) return closeTrigger();
-		index.value = Math.min(index.value, items.value.length - 1);
 		const at = textareaCaretOffset(el, found.triggerStart);
-		style.value = at
-			? {
-					left: `${el.offsetLeft + at.left}px`,
-					top: `${el.offsetTop + at.top + at.height + 4}px`,
-				}
-			: { left: `${el.offsetLeft}px`, top: `${el.offsetTop}px` };
+		const box = el.getBoundingClientRect();
+		anchor.value = at
+			? anchorToElementBox(el, {
+					left: box.left + at.left,
+					top: box.top + at.top,
+					width: 1,
+					height: at.height,
+				})
+			: el;
 	}
 
 	function selectFromTrigger(reply: EditorSnippet) {
@@ -218,24 +238,13 @@ export function useTeamComposerSavedReplies(opts: {
 
 	/** The dropdown owns ↑ ↓ Enter Tab Esc while open; then ⌘;. True when consumed. */
 	function handleKeydown(event: KeyboardEvent): boolean {
-		const count = items.value.length;
-		if (trigger.value && style.value && count > 0) {
-			if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-				event.preventDefault();
-				index.value = (index.value + (event.key === 'ArrowDown' ? 1 : count - 1)) % count;
-				return true;
-			}
-			if ((event.key === 'Enter' && !event.metaKey && !event.ctrlKey) || event.key === 'Tab') {
-				event.preventDefault();
-				const chosen = items.value[index.value];
-				if (chosen) selectFromTrigger(chosen);
-				return true;
-			}
+		if (trigger.value && anchor.value && items.value.length > 0) {
+			// A pick comes back through `select`.
+			if (list.value?.handleKeydown(event)) return true;
 			if (event.key === 'Escape') {
 				event.preventDefault();
 				event.stopPropagation();
-				dismissed = `${trigger.value.triggerStart}:${trigger.value.query}`;
-				closeTrigger();
+				dismissTrigger();
 				return true;
 			}
 		}
@@ -248,7 +257,15 @@ export function useTeamComposerSavedReplies(opts: {
 		prompt,
 		submitPrompt,
 		cancelPrompt,
-		dropdown: { items, index, style, select: selectFromTrigger, close: closeTrigger },
+		dropdown: {
+			items,
+			anchor,
+			list,
+			bindList,
+			select: selectFromTrigger,
+			close: closeTrigger,
+			dismiss: dismissTrigger,
+		},
 		refreshTrigger,
 		handleKeydown,
 		handleKeyup,

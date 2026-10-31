@@ -1,7 +1,6 @@
 /**
- * Accessibility contract for the interactive rows that used to be mouse-only
- * <div @click> / <tr @click> elements on the delivery (webhooks) and
- * send (marketing, transactional) pages. They are exposed to assistive tech
+ * Accessibility contract for the clickable <div @click> / <tr @click> rows on
+ * the delivery (webhooks) and send (marketing, transactional) pages. They are exposed to assistive tech
  * and the keyboard as real buttons: focusable (tabindex="0"), announced
  * (role="button"), operable with Enter and Space, and — for the expandable
  * delivery row — reflecting open/closed state via aria-expanded.
@@ -15,12 +14,12 @@
  *
  * The segment and topic lists share `components/audience/AudienceListTable.vue`.
  * Its rows are not buttons: the keyboard route to an item is the link on its
- * name. The topic table used to be a mouse-only `<tr @click>` with no route at
- * all, and its edit/delete buttons had no focus ring.
+ * name. A mouse-only `<tr @click>` would leave the topic table with no keyboard
+ * route at all, and its edit/delete buttons must show a focus ring.
  *
  * The automations list (`components/automations/ListTable.vue`, with
- * `RowActions.vue` in both layouts) follows the same rule. Its names used to be
- * a mouse-only `<span @click>`.
+ * `RowActions.vue` in both layouts) follows the same rule. Its names are
+ * links, not a mouse-only `<span @click>`.
  */
 import { describe, it, expect, vi } from 'vitest';
 import { defineComponent, h, nextTick, useSlots, type Component } from 'vue';
@@ -38,6 +37,7 @@ import AutomationsListTable, {
 import AutomationsRowActions from '~/components/automations/RowActions.vue';
 import { useAutomationBadges } from '~/composables/useAutomationBadges';
 import UiCard from '@owlat/ui/components/ui/Card.vue';
+import UiSwitch from '@owlat/ui/components/ui/Switch.vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { formatDate } from '~/utils/formatters';
 
@@ -268,7 +268,6 @@ describe.each(['table', 'cards'] as const)('automations list %s', (layout) => {
 		status: 'paused',
 		triggerType: 'contact_created',
 		statsActive: 0,
-		createdAt: 0,
 	} as AutomationListItem;
 	const draft = {
 		...paused,
@@ -284,7 +283,7 @@ describe.each(['table', 'cards'] as const)('automations list %s', (layout) => {
 			setup: () => () =>
 				h(
 					AutomationsListTable,
-					{ items: [paused, draft], layout, canManage },
+					{ items: [paused, draft], layout, canManage, health: new Map() },
 					{
 						actions: (slot: { automation: AutomationListItem; touch: boolean }) =>
 							h(AutomationsRowActions, {
@@ -301,6 +300,7 @@ describe.each(['table', 'cards'] as const)('automations list %s', (layout) => {
 		const wrapper = mount(Harness, {
 			global: {
 				plugins: [createTestI18n()],
+				components: { UiSwitch },
 				stubs: {
 					...rowStubs,
 					UiDropdownMenu: sendStubs.UiDropdownMenu,
@@ -333,11 +333,16 @@ describe.each(['table', 'cards'] as const)('automations list %s', (layout) => {
 	it('gives the row actions a name and a focus ring', async () => {
 		const { wrapper, onToggle, onEdit } = mountList();
 		const row = wrapper.findAll(layout === 'table' ? 'tbody tr' : 'li')[0]!;
-		for (const label of ['Activate', 'Edit', 'More actions']) {
+		for (const label of ['Edit', 'More actions']) {
 			const button = row.get(`button[aria-label="${label}"]`);
 			expect(button.classes()).toContain('focus-visible:ring-2');
 		}
-		await row.get('button[aria-label="Activate"]').trigger('click');
+		// The pause/resume control is a switch named for the automation; its
+		// state is aria-checked (off: this one is paused).
+		const toggle = row.get('[role="switch"][aria-label="Active: Re-engagement: 90 days quiet"]');
+		expect(toggle.attributes('aria-checked')).toBe('false');
+		expect(toggle.classes()).toContain('focus-visible:ring-2');
+		await toggle.trigger('click');
 		await row.get('button[aria-label="Edit"]').trigger('click');
 		expect(onToggle).toHaveBeenCalledWith(paused);
 		expect(onEdit).toHaveBeenCalledWith(paused);

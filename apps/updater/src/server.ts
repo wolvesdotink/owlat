@@ -3,11 +3,15 @@ import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { errorMessage } from '@owlat/shared';
+import type { MetricsSource } from '@owlat/shared/nodeMetrics';
 import { writeOwnerOnlyFile } from '@owlat/shared/ownerOnlyFile';
 import { hasVersionDrift, parseConfiguredVersionFromEnv } from '@owlat/shared/containerHealth';
 import { applyEnvUpdates, isRateLimited, isValidIPv4 } from './security.js';
 import { readBuildInfo } from './config.js';
-import { composePsServices, exec, json, OWLAT_DIR, readBody, requireAuth } from './http.js';
+import { composePsServices, exec, json, OWLAT_DIR, requireAuth } from './http.js';
+import { readJsonBody } from './jsonBody.js';
+import { parserDecoder } from '@owlat/worker-protocol/decodeJson';
+import { asRecord, readConfigureIpBody } from './requestBodies.js';
 import {
 	composeArgv,
 	recoverStackAfterFailedUp,
@@ -16,6 +20,7 @@ import {
 	servicesToRecreate,
 } from './rollout.js';
 import { handleUpdate } from './update.js';
+import { handleRollback, handleSnapshotInfo, unfinishedRollback } from './rollback.js';
 import { handleApplyProfiles } from './applyProfiles.js';
 import { critical } from './lifecycle.js';
 import { handlePortChecks } from './portChecks.js';
@@ -89,25 +94,17 @@ async function handleConfigureIp(req: IncomingMessage, res: ServerResponse) {
 		return json(res, 429, { error: 'Too many configure-ip requests.' });
 	}
 
-	let ip: string;
-	let action: 'add' | 'remove';
+	const body = await readJsonBody(
+		req,
+		res,
+		parserDecoder(readConfigureIpBody, 'Missing or invalid "ip" or "action" (add|remove)')
+	);
+	if (!body) return;
+	const { ip, action } = body;
 
-	try {
-		const raw = await readBody(req);
-		const body = JSON.parse(raw);
-		ip = body.ip;
-		action = body.action;
-
-		if (!ip || !action || !['add', 'remove'].includes(action)) {
-			return json(res, 400, { error: 'Missing or invalid "ip" or "action" (add|remove)' });
-		}
-
-		// Strict IPv4 validation using Node's built-in net.isIPv4() + octet range check
-		if (!isValidIPv4(ip)) {
-			return json(res, 400, { error: 'Invalid IPv4 address' });
-		}
-	} catch {
-		return json(res, 400, { error: 'Invalid JSON body' });
+	// Strict IPv4 validation using Node's built-in net.isIPv4() + octet range check
+	if (!isValidIPv4(ip)) {
+		return json(res, 400, { error: 'Invalid IPv4 address' });
 	}
 
 	const steps: { step: string; ok?: boolean; stdout: string; stderr: string }[] = [];
@@ -227,19 +224,8 @@ async function handleRotateEnv(req: IncomingMessage, res: ServerResponse) {
 		return json(res, 429, { error: 'Rotation rate-limited; try again shortly' });
 	}
 
-	interface RotateBody {
-		instanceSecret?: string;
-		convexAdminKey?: string;
-		mtaApiKey?: string;
-		mtaWebhookSecret?: string;
-		redisPassword?: string;
-	}
-	let body: RotateBody;
-	try {
-		body = JSON.parse(await readBody(req)) as RotateBody;
-	} catch {
-		return json(res, 400, { error: 'Invalid JSON body' });
-	}
+	const body = await readJsonBody(req, res, parserDecoder(asRecord, '$: expected object'));
+	if (!body) return;
 
 	// Require ALL fields — partial rotation is a footgun.
 	const fields = [
@@ -249,6 +235,7 @@ async function handleRotateEnv(req: IncomingMessage, res: ServerResponse) {
 		'mtaWebhookSecret',
 		'redisPassword',
 	] as const;
+	const secrets = {} as Record<(typeof fields)[number], string>;
 	for (const f of fields) {
 		const val = body[f];
 		if (typeof val !== 'string' || val.length < 16 || val.length > 256) {
@@ -259,6 +246,7 @@ async function handleRotateEnv(req: IncomingMessage, res: ServerResponse) {
 		if (/[\r\n\x00]/.test(val)) {
 			return json(res, 400, { error: `Field contains illegal character: ${f}` });
 		}
+		secrets[f] = val;
 	}
 
 	const envFile = join(OWLAT_DIR, '.env');
@@ -273,11 +261,11 @@ async function handleRotateEnv(req: IncomingMessage, res: ServerResponse) {
 	// of the secret-rotation primitive — /apply-profiles has its own single-key
 	// list; neither may grow the other's.
 	const updates: Record<string, string> = {
-		INSTANCE_SECRET: body.instanceSecret!,
-		CONVEX_ADMIN_KEY: body.convexAdminKey!,
-		MTA_API_KEY: body.mtaApiKey!,
-		MTA_WEBHOOK_SECRET: body.mtaWebhookSecret!,
-		REDIS_PASSWORD: body.redisPassword!,
+		INSTANCE_SECRET: secrets.instanceSecret,
+		CONVEX_ADMIN_KEY: secrets.convexAdminKey,
+		MTA_API_KEY: secrets.mtaApiKey,
+		MTA_WEBHOOK_SECRET: secrets.mtaWebhookSecret,
+		REDIS_PASSWORD: secrets.redisPassword,
 	};
 
 	// Hardened line-by-line rewrite — preserves comments + ordering; keys absent
@@ -344,13 +332,15 @@ const ROLLOUTS = new Map<string, { kind: RolloutKind; handle: RolloutHandler }>(
 	['/apply-profiles', { kind: 'apply-profiles', handle: handleApplyProfiles }],
 	['/rotate-env', { kind: 'rotate-env', handle: handleRotateEnv }],
 	['/configure-ip', { kind: 'configure-ip', handle: handleConfigureIp }],
+	['/rollback', { kind: 'rollback', handle: handleRollback }],
 ]);
 
 /**
  * The HTTP routing listener, exported separately from the listening socket so
  * tests can mount it on an ephemeral server (index.ts owns the real listen).
  */
-export function buildRequestListener() {
+export function buildRequestListener(options: { metrics?: MetricsSource } = {}) {
+	const { metrics } = options;
 	return async (req: IncomingMessage, res: ServerResponse) => {
 		// Only the path and query are read; the base just makes the URL absolute.
 		const url = new URL(req.url || '/', 'http://localhost');
@@ -364,11 +354,21 @@ export function buildRequestListener() {
 			return;
 		}
 
-		// The four state-changing endpoints run as critical sections: each writes
+		// Process metrics, unauthenticated like /livez and the MTA's /metrics:
+		// compose does not publish this port, and the registry holds process
+		// counters only. It never touches Docker or the install directory.
+		if (metrics && req.method === 'GET' && url.pathname === '/metrics') {
+			const body = await metrics.metrics();
+			res.writeHead(200, { 'Content-Type': metrics.contentType });
+			res.end(body);
+			return;
+		}
+
+		// The state-changing endpoints run as critical sections: each writes
 		// host files and only then reconciles the running containers, so a
 		// SIGTERM landing between those two halves is what leaves the host's
 		// configuration and its running state describing different deployments.
-		// All four recreate containers and read-modify-write `.env`, so they
+		// All of them recreate containers and rewrite `.env`, so they
 		// also take the rollout lock: one cannot run `up` (or rewrite `.env`)
 		// while another is still recreating or waiting for readiness.
 		const rollout = req.method === 'POST' ? ROLLOUTS.get(url.pathname) : undefined;
@@ -382,6 +382,14 @@ export function buildRequestListener() {
 			// process, and until now it did so on a timer, answer or no answer.
 			await critical(() =>
 				exclusively(rollout.kind, res, async () => {
+					// Checked before any of the handler's work, and whatever `.env`
+					// says about snapshots: only a rollback may run over one that
+					// stopped partway.
+					const unfinished = rollout.kind === 'rollback' ? null : unfinishedRollback();
+					if (unfinished) {
+						json(res, 409, { error: unfinished, steps: [] });
+						return;
+					}
 					try {
 						await rollout.handle(req, res);
 					} finally {
@@ -395,6 +403,8 @@ export function buildRequestListener() {
 			await handleProfileState(req, res);
 		} else if (req.method === 'GET' && url.pathname === '/health') {
 			await handleHealth(req, res);
+		} else if (req.method === 'GET' && url.pathname === '/snapshot') {
+			if (requireAuth(req, res)) handleSnapshotInfo(res);
 		} else {
 			json(res, 404, { error: 'Not found' });
 		}

@@ -28,6 +28,8 @@ import type { Id } from '../_generated/dataModel';
  * (or already gone) is dropped rather than rendered as an anonymous row, so it
  * reappears only if that contact is restored.
  */
+// all-members: the contact detail page every role reads; related contacts go
+// through redactContactCapabilityFields.
 export const listByContact = authedQuery({
 	args: { contactId: v.id('contacts') },
 	handler: async (ctx, args) => {
@@ -95,8 +97,8 @@ export const create = authedMutation({
 		relationship: v.string(),
 		confidence: v.optional(v.number()),
 	},
-	handler: async (ctx, args) => {
-		await requireContactsManage(ctx);
+	handler: async (ctx, args, session) => {
+		requireContactsManage(session);
 
 		if (args.fromContactId === args.toContactId) {
 			throwInvalidInput('Cannot create a relationship between a contact and itself');
@@ -139,8 +141,8 @@ export const updateConfidence = authedMutation({
 		relationshipId: v.id('contactRelationships'),
 		confidence: v.number(),
 	},
-	handler: async (ctx, args) => {
-		await requireContactsManage(ctx);
+	handler: async (ctx, args, session) => {
+		requireContactsManage(session);
 
 		await ctx.db.patch(args.relationshipId, { confidence: args.confidence });
 	},
@@ -151,8 +153,8 @@ export const updateConfidence = authedMutation({
  */
 export const remove = authedMutation({
 	args: { relationshipId: v.id('contactRelationships') },
-	handler: async (ctx, args) => {
-		await requireContactsManage(ctx);
+	handler: async (ctx, args, session) => {
+		requireContactsManage(session);
 
 		await ctx.db.delete(args.relationshipId);
 	},

@@ -102,7 +102,7 @@ describe('EmailPreviewer — latest-only compatibility analysis', () => {
 		await vi.dynamicImportSettled();
 		await flushPromises();
 		expect(w.find('.ep-analysis-panel').exists()).toBe(true);
-		await w.find('button[title="Refresh preview"]').trigger('click');
+		await w.find('button[aria-label="Refresh preview"]').trigger('click');
 		expect(w.find('.ep-analysis-spinner').exists()).toBe(true);
 
 		selectClient(null);

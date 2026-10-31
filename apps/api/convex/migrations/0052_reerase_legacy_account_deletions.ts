@@ -67,6 +67,8 @@ export const run = internalAction({
 		let reopened = 0;
 		let skipped = 0;
 		for (;;) {
+			// checkpoint: one page of requests; a reopened request carries its
+			// `authUserId` and is skipped, so a re-run reopens nothing twice.
 			const page: { reopened: number; skipped: number; cursor: string; isDone: boolean } =
 				await ctx.runMutation(
 					internal.migrations['0052_reerase_legacy_account_deletions'].reopenPage,

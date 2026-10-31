@@ -10,7 +10,7 @@ import {
 	throwInvalidState,
 } from '../_utils/errors';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
-import { hasPermission, requireOrgPermission, requirePermission } from '../lib/sessionOrganization';
+import { hasPermission, requirePermission } from '../lib/sessionOrganization';
 import { getOptional } from '../lib/env';
 import {
 	externalReceivingProviderValidator,
@@ -18,7 +18,7 @@ import {
 } from '../lib/convexValidators';
 import { dmarcPolicyValidator } from './dmarc';
 import { LIFECYCLE_USER_PUBLIC_MUTATION } from './lifecycle';
-import {
+import type {
 	dnsRecordValidator,
 	dnsRecordsValidator,
 	verificationResultValidator,
@@ -57,6 +57,9 @@ function serializeDomainRow(domain: DomainRow): DomainRow & {
 // ─── Read queries ──────────────────────────────────────────────────────────
 
 // Query: List all domains
+// all-members: the send-test modal reads it for every role. The DNS records
+// are the values published in public DNS; changing a domain needs
+// organization:manage.
 export const listByOrganization = authedQuery({
 	args: {},
 	handler: async (ctx) => {
@@ -86,14 +89,16 @@ const INBOUND_SMTP_PORT = 25;
 // kept admin-only for parity with the rest of the domain-management surface.
 export const getInboundMailConfig = authedQuery({
 	args: {},
-	handler: async (ctx) => {
-		await requireOrgPermission(ctx, 'organization:manage');
+	handler: async (ctx, _args, session) => {
+		requirePermission(hasPermission(session.role, 'organization:manage'));
 		const mailHost = getOptional('EHLO_HOSTNAME')?.trim() || null;
 		return { mailHost, inboundPort: INBOUND_SMTP_PORT };
 	},
 });
 
 // Query: Get verified domains (for email sending)
+// all-members: the campaign sender picker and the add-account flow pick from
+// it for every role; it returns only names and verification times.
 export const listVerified = authedQuery({
 	args: {},
 	handler: async (ctx) => {
@@ -131,10 +136,9 @@ export const create = authedMutation({
 		receivingMode: v.optional(receivingModeValidator),
 		externalReceivingProvider: v.optional(externalReceivingProviderValidator),
 	},
-	handler: async (ctx, args): Promise<Id<'domains'>> => {
-		await requireOrgPermission(
-			ctx,
-			'organization:manage',
+	handler: async (ctx, args, session): Promise<Id<'domains'>> => {
+		requirePermission(
+			hasPermission(session.role, 'organization:manage'),
 			'Only owners and admins can manage sending domains'
 		);
 		const outcome = await ctx.runMutation(internal.domains.lifecycle.create, {
@@ -179,10 +183,9 @@ export const remove = authedMutation({
 	args: {
 		domainId: v.id('domains'),
 	},
-	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'organization:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'organization:manage'),
 			'Only owners and admins can manage sending domains'
 		);
 		const outcome = await ctx.runMutation(internal.domains.lifecycle.remove, {
@@ -202,10 +205,9 @@ export const regenerateDnsRecords = authedMutation({
 	args: {
 		domainId: v.id('domains'),
 	},
-	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'organization:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'organization:manage'),
 			'Only owners and admins can manage sending domains'
 		);
 		const outcome = await ctx.runMutation(internal.domains.lifecycle.transition, {
@@ -233,10 +235,9 @@ export const setDmarcPolicy = authedMutation({
 		subdomainPolicy: v.optional(dmarcPolicyValidator),
 		pct: v.optional(v.number()),
 	},
-	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'organization:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'organization:manage'),
 			'Only owners and admins can manage sending domains'
 		);
 		if (args.pct !== undefined && (!Number.isInteger(args.pct) || args.pct < 0 || args.pct > 100)) {
@@ -397,6 +398,8 @@ export function memoizedEmailDomainVerification(
 	};
 }
 
+// all-members: answers whether a from-address's domain is verified, for the
+// campaign sender picker and review step every role reaches.
 export const getEmailDomainVerificationStatus = authedQuery({
 	args: {
 		email: v.string(),

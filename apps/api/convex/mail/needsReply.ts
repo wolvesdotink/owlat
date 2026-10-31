@@ -166,7 +166,7 @@ export const getThreadContext = internalQuery({
 		const ownAddresses = await mailboxOwnAddresses(ctx, mailbox);
 		return {
 			mailboxId: thread.mailboxId,
-			// Whose background AI bucket the clarification is charged to (#1380).
+			// Whose background AI bucket the clarification is charged to.
 			ownerUserId: mailbox.userId,
 			ownerAddress,
 			ownerAddresses: [...ownAddresses],
@@ -349,8 +349,8 @@ export const listQueue = publicQuery({
 				// plain needs-reply row. Absent for the deterministic/plain case.
 				clarification: visibleThreadClarification(thread),
 				// Draft-on-arrival review slot (postbox.aiDraft): whether a pre-generated
-				// reply is waiting for review. The draft itself is read by the card that
-				// shows it (`getDraftSlot`, plan C8), not shipped on every row.
+				// reply is waiting for review. The draft itself is read with the thread
+				// (`mailbox/messages.ts` `listThreadMessages`), not shipped on every row.
 				// Never while the row asks questions (mail/needsReplySlot.ts).
 				hasDraftSlot: visibleThreadDraftSlot(thread) !== undefined,
 				fromAddress: trigger.fromAddress,
@@ -412,30 +412,6 @@ export const countQueue = publicQuery({
 		if (!mailbox) return 0;
 		const { needsReply, followUps } = await scanReplyQueue(ctx, args.mailboxId, Date.now());
 		return needsReply.length + followUps.length;
-	},
-});
-
-/**
- * The draft-on-arrival review slot of one flagged thread: the pre-generated
- * reply, its confidence and quality check. The Answer card that
- * shows the thread reads it (plan C8); `listQueue` only says whether one
- * exists (`hasDraftSlot`), so the drafts of the rows nobody opens never travel.
- */
-// public: soft-auth — returns null for anonymous; mailbox access is still enforced in-handler
-export const getDraftSlot = publicQuery({
-	args: { threadId: v.id('mailThreads') },
-	handler: async (ctx, args) => {
-		const thread = await ctx.db.get(args.threadId);
-		if (!thread) return null;
-		const mailbox = await loadReadableMailbox(ctx, thread.mailboxId);
-		if (!mailbox) return null;
-		const slot = visibleThreadDraftSlot(thread);
-		if (!slot) return null;
-		// A slot written before #1200 can carry alternative drafts. No screen
-		// lets anyone pick one, and a web build from before then counts them as
-		// "N options", so they stay on the server.
-		const { options: _legacyOptions, ...shown } = slot;
-		return shown;
 	},
 });
 

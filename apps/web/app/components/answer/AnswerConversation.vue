@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * Answer mode's left column: the conversation being answered, newest last
- * (plan §03, v1).
+ * (v1).
  *
  * The same thread paging and the same message card the reader uses, with the
  * card's chrome cut (`reduced`): no per-message action row, the trust chip only
@@ -33,12 +33,18 @@ import type { PostboxReaderMessage } from '~/components/postbox/PostboxThreadRea
 import { POSTBOX_MARK_READ_DWELL_MS, markReadOnOpen } from '~/utils/postboxMarkReadPolicy';
 import { optimisticMarkThreadRead } from '~/lib/mailOptimistic/mailUpdaters';
 import { postboxBodyImageProps } from '~/utils/postboxImageAllowlist';
+import { providePostboxReaderContext } from '~/composables/postbox/usePostboxReaderContext';
+import { prefersReducedMotion } from '@owlat/ui/composables/useReducedMotion';
+import { usePostboxThreadFind } from '~/composables/postbox/usePostboxThreadFind';
+import { useShortcutLabels } from '~/composables/useShortcutLabels';
 
 export type AnswerConversationView = 'summary' | 'full';
 
 const props = defineProps<{
 	/** The message being answered: the anchor the thread is read through. */
 	message: PostboxReaderMessage;
+	/** A reply is open to take a selected passage ("Quote in reply"). */
+	quotable?: boolean;
 }>();
 
 const view = defineModel<AnswerConversationView>('view', { default: 'summary' });
@@ -46,6 +52,8 @@ const view = defineModel<AnswerConversationView>('view', { default: 'summary' })
 const emit = defineEmits<{
 	/** The conversation's size, for the top bar ("5 messages"). */
 	count: [messageCount: number];
+	/** "Quote in reply": `passage`, selected in `source`, for the open reply. */
+	quote: [source: PostboxReaderMessage, passage: string];
 }>();
 
 const { t } = useI18n();
@@ -175,12 +183,48 @@ const {
 	downloadLightboxAttachment,
 } = usePostboxReaderAttachments();
 
+// Find in conversation (⌘F), the reader's own: what you answer is often
+// something said several messages back.
+const find = usePostboxThreadFind({
+	threadKey,
+	messages: () => allMessages.value,
+	searchable: (msg) =>
+		secureClass(msg as PostboxReaderMessage) === 'none' &&
+		!(msg as PostboxReaderMessage).inboundSignatureInfo,
+	isExpanded: (id) => expanded.value.has(id),
+	expand: toggleExpanded,
+	pages: threadPages,
+});
+
+// Every card in its reduced cut, chrome in place: no calm-reader Details here.
+providePostboxReaderContext({
+	mailboxId: () => props.message.mailboxId,
+	authEnabled: () => isFeatureEnabled('senderAuthBadges'),
+	sealedEnabled: () => isFeatureEnabled('sealedMail'),
+	appIsDark,
+	ownEmail,
+	downloadingAttachment,
+	eagerBody: false,
+	reduced: true,
+	quoteReply: {
+		canQuote: (messageId) => !!props.quotable && allMessages.value.some((m) => m._id === messageId),
+		quote: (messageId, passage) => {
+			const source = allMessages.value.find((m) => m._id === messageId);
+			if (source) emit('quote', source, passage);
+		},
+	},
+	find,
+});
+
 const senderProfile = ref<{ fromAddress: string; fromName: string | null } | null>(null);
 function openSenderProfile(msg: { fromAddress: string; fromName?: string | null }) {
 	senderProfile.value = { fromAddress: msg.fromAddress, fromName: msg.fromName ?? null };
 }
 
 const showViewToggle = computed(() => allMessages.value.length > 1);
+// The toggle's tooltip is about its key, so it shows only while that key fires.
+const { labelFor } = useShortcutLabels();
+const viewKey = computed(() => labelFor('answer.toggleView'));
 
 // The brief's source markers: open the source message, bring it into
 // view and flash it, so "which message said that?" is one click.
@@ -194,8 +238,7 @@ async function reveal(messageId: string) {
 		`[data-answer-message="${CSS.escape(messageId)}"]`
 	);
 	if (!el) return;
-	const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-	el.scrollIntoView({ block: 'start', behavior: reduceMotion ? 'auto' : 'smooth' });
+	el.scrollIntoView({ block: 'start', behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
 	highlightedId.value = messageId;
 	clearTimeout(highlightTimer);
 	highlightTimer = setTimeout(() => (highlightedId.value = null), 1600);
@@ -209,31 +252,39 @@ onBeforeUnmount(() => clearTimeout(highlightTimer));
 		class="mx-auto flex max-w-3xl flex-col gap-2 p-4 md:p-6"
 		data-testid="answer-conversation"
 	>
-		<div v-if="showViewToggle" class="flex justify-end">
+		<div class="flex items-center justify-end gap-2">
+			<PostboxThreadFindButton @click="find.open()" />
 			<div
+				v-if="showViewToggle"
 				role="group"
 				:aria-label="t('components.answer.mode.viewLabel')"
 				class="inline-flex rounded-md border border-border-subtle bg-bg-elevated p-0.5 text-xs"
 			>
-				<button
+				<UiTooltip
 					v-for="option in ['summary', 'full'] as const"
 					:key="option"
-					type="button"
-					class="rounded px-2.5 py-1"
-					:class="
-						view === option
-							? 'bg-(--surface-2-selected) text-text-primary'
-							: 'text-text-tertiary hover:text-text-primary'
-					"
-					:aria-pressed="view === option"
-					:title="t('components.answer.mode.viewShortcut')"
-					:data-testid="`answer-view-${option}`"
-					@click="view = option"
+					:text="viewKey ? t('components.answer.mode.viewShortcut') : undefined"
+					:shortcut="viewKey ?? undefined"
 				>
-					{{ t(`components.answer.mode.view.${option}`) }}
-				</button>
+					<button
+						type="button"
+						class="rounded px-2.5 py-1"
+						:class="
+							view === option
+								? 'bg-(--surface-2-selected) text-text-primary'
+								: 'text-text-tertiary hover:text-text-primary'
+						"
+						:aria-pressed="view === option"
+						:data-testid="`answer-view-${option}`"
+						@click="view = option"
+					>
+						{{ t(`components.answer.mode.view.${option}`) }}
+					</button>
+				</UiTooltip>
 			</div>
 		</div>
+
+		<PostboxThreadFindBar :find="find" />
 
 		<!-- The thread brief (AnswerBriefCard). -->
 		<slot name="brief" :view="view" :messages="allMessages" :reveal="reveal" />
@@ -249,25 +300,20 @@ onBeforeUnmount(() => clearTimeout(highlightTimer));
 		<PostboxReaderMessage
 			v-for="msg in allMessages"
 			:key="msg._id"
-			reduced
 			:data-answer-message="msg._id"
 			:data-answer-anchor="msg._id === message._id ? '' : undefined"
 			class="scroll-mt-4 rounded-md transition-shadow duration-(--motion-fast)"
 			:class="highlightedId === msg._id ? 'ring-2 ring-brand/60' : ''"
 			:message="msg"
-			:mailbox-id="message.mailboxId"
 			:expanded="expanded.has(msg._id)"
 			:relative-time="relativeTime(msg.receivedAt)"
 			:starred="false"
 			:show-reply-all="false"
 			:show-sender-controls="!ownAddresses.has(extractEmailAddress(msg.fromAddress))"
-			:auth-enabled="isFeatureEnabled('senderAuthBadges')"
-			:sealed-enabled="isFeatureEnabled('sealedMail')"
 			:secure-class="secureClass(msg)"
 			:hide-body="hideRawBody(msg)"
 			:tracker="trackerFor(msg)"
 			:scheduling-times="null"
-			:show-render-toggle="appIsDark"
 			:forced-light="isForcedLight(msg._id)"
 			:images="
 				postboxBodyImageProps(msg, {
@@ -275,9 +321,7 @@ onBeforeUnmount(() => clearTimeout(highlightTimer));
 					isSenderAllowed: imageAllowlist.isAllowed(msg.fromAddress),
 				})
 			"
-			:own-email="ownEmail"
 			:has-invite="hasInvite(msg)"
-			:downloading-attachment="downloadingAttachment"
 			@toggle-expanded="toggleExpanded(msg._id)"
 			@open-sender-profile="openSenderProfile(msg)"
 			@toggle-forced-light="toggleForcedLight(msg._id)"

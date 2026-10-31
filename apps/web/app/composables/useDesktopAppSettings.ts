@@ -12,6 +12,7 @@
  * keeping the settings page developable in a plain browser.
  */
 import { isDesktopRuntime } from '~/lib/desktop/activeWorkspace';
+import { plainClone } from '@owlat/email-builder/plain-clone';
 import {
 	defaultDesktopSettings,
 	defaultWorkspaceLocalSettings,
@@ -20,6 +21,8 @@ import {
 	type GlobalDesktopSettings,
 	type WorkspaceLocalSettings,
 } from '~/lib/desktop/settingsTypes';
+// Type-only: the Tauri bridge itself loads lazily in `bridge()` so browser builds never pull it in.
+import type * as DesktopSettingsBridge from '@owlat/desktop/src/settings';
 
 /** localStorage fallback key for the non-Tauri (browser dev) runtime. */
 const WEB_FALLBACK_KEY = 'owlat:desktop-settings';
@@ -33,7 +36,7 @@ let loadPromise: Promise<void> | null = null;
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 let flushOnHide = false;
 
-type SettingsBridge = typeof import('@owlat/desktop/src/settings');
+type SettingsBridge = typeof DesktopSettingsBridge;
 
 async function bridge(): Promise<SettingsBridge> {
 	return import('@owlat/desktop/src/settings');
@@ -75,7 +78,7 @@ async function persistNow(): Promise<void> {
 		clearTimeout(saveTimer);
 		saveTimer = null;
 	}
-	const snapshot = JSON.parse(JSON.stringify(settings.value)) as DesktopSettings;
+	const snapshot = plainClone(settings.value);
 	if (isDesktopRuntime()) {
 		try {
 			await (await bridge()).saveSettingsStore(snapshot);

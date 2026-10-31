@@ -1,5 +1,5 @@
 /**
- * Validators for read on arrival (SPEC §2.9): the arrival record, the thread
+ * Validators for read on arrival: the arrival record, the thread
  * projection and overrides, sender profiles, the undo log, delayed actions,
  * digests, and the fields the plan adds to existing rows (gist, source
  * accounting). The vocabularies come from `@owlat/shared/arrival`, so the

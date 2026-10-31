@@ -661,13 +661,15 @@ const loadPrevClicked = () => {
 												}}
 											</div>
 										</div>
-										<NuxtLink
-											:to="`/dashboard/campaigns/${campaignId}/sends/${send._id}`"
-											class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors duration-(--motion-fast)"
-											:title="t('dashboard.campaigns.detail.report.viewSendDetails')"
-										>
-											<Icon name="lucide:chevron-right" class="w-4 h-4" />
-										</NuxtLink>
+										<UiTooltip :text="t('dashboard.campaigns.detail.report.viewSendDetails')">
+											<NuxtLink
+												:to="`/dashboard/campaigns/${campaignId}/sends/${send._id}`"
+												class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors duration-(--motion-fast)"
+												:aria-label="t('dashboard.campaigns.detail.report.viewSendDetails')"
+											>
+												<Icon name="lucide:chevron-right" class="w-4 h-4" />
+											</NuxtLink>
+										</UiTooltip>
 									</div>
 								</div>
 							</div>
@@ -771,13 +773,15 @@ const loadPrevClicked = () => {
 													}}
 												</div>
 											</div>
-											<NuxtLink
-												:to="`/dashboard/campaigns/${campaignId}/sends/${send._id}`"
-												class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors duration-(--motion-fast)"
-												:title="t('dashboard.campaigns.detail.report.viewSendDetails')"
-											>
-												<Icon name="lucide:chevron-right" class="w-4 h-4" />
-											</NuxtLink>
+											<UiTooltip :text="t('dashboard.campaigns.detail.report.viewSendDetails')">
+												<NuxtLink
+													:to="`/dashboard/campaigns/${campaignId}/sends/${send._id}`"
+													class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors duration-(--motion-fast)"
+													:aria-label="t('dashboard.campaigns.detail.report.viewSendDetails')"
+												>
+													<Icon name="lucide:chevron-right" class="w-4 h-4" />
+												</NuxtLink>
+											</UiTooltip>
 										</div>
 									</div>
 									<div v-if="send.clickedLinks.length > 0" class="ml-13 mt-2 space-y-1">

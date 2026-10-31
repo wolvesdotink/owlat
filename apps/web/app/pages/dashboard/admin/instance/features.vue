@@ -74,7 +74,7 @@ const { run: setFeaturePack, isLoading: isSavingPack } = useBackendOperation(
 );
 
 // Toggles only persist flags in Convex; when they change the derived
-// docker-profile set, the out-of-sync banner offers the explicit Apply (D4).
+// docker-profile set, the out-of-sync banner offers the explicit Apply.
 const { trackFlagChange } = useProfileSync();
 
 const stored = computed<FeatureFlagState>(() => (liveFlags.value ?? {}) as FeatureFlagState);
@@ -270,7 +270,7 @@ async function togglePack(packKey: FeaturePackKey) {
 		/>
 
 		<!-- Persistent apply banner: toggles that change the docker-profile set
-		     leave services out of sync until an explicit Apply (D4). -->
+		     leave services out of sync until an explicit Apply. -->
 		<ProfileSyncBanner :flags="resolved" class="mb-6" />
 
 		<UiQueryBoundary :loading="isLoading && !liveFlags" :error="flagsError" @retry="refetchFlags">

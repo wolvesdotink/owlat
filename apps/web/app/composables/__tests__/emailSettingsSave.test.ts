@@ -11,7 +11,7 @@ import { EMAIL_RENDERER_VERSION } from '@owlat/email-renderer/version';
 /**
  * The template Settings save. Besides routing to `update` / `setDefaultLanguage`,
  * each write carries the delivery HTML rendered from the state it leaves and
- * the revision it was built on (issue #1077). Rendered with the real email
+ * the revision it was built on. Rendered with the real email
  * renderer, so the assertions read what a recipient would get.
  */
 
@@ -42,6 +42,7 @@ const payload = (
 const base = (overrides: Partial<EmailSettingsBase> = {}): EmailSettingsBase => ({
 	content: CONTENT,
 	plainTextOverride: undefined,
+	translations: JSON.stringify({ de: DE }),
 	revision: 7,
 	...overrides,
 });
@@ -339,6 +340,34 @@ describe('emailSettingsSave', () => {
 			expect(setDefaultLanguage.mock.calls[0]![0].plainTextContent).toBe('Handgeschrieben');
 		});
 
+		it.each([
+			['a non-string subject', { de: { ...DE, subject: 1 } }],
+			['Block text that is not a string', { de: { ...DE, blocks: { b1: { html: ['x'] } } } }],
+			['a language that is not an overlay', { de: 'Deutsch' }],
+		])('writes nothing when the overlays hold %s', async (_case, translations) => {
+			const plain = save({
+				updatePayload: payload({ translations: JSON.stringify(translations) }),
+			});
+			expect(await plain.run()).toMatchObject({ status: 'render-failed' });
+			expect(plain.update).not.toHaveBeenCalled();
+		});
+
+		it('swaps content holding an entry that is not a Block, leaving that entry as it is', async () => {
+			const { setDefaultLanguage, run } = save({
+				selectedDefaultLanguage: 'de',
+				updatePayload: payload({ defaultLanguage: 'de' }),
+				base: base({
+					content: JSON.stringify([...JSON.parse(CONTENT), 'stray']),
+				}),
+			});
+
+			await run();
+
+			const swap = setDefaultLanguage.mock.calls[0]![0];
+			expect(swap.htmlContent).toContain('Hallo Welt');
+			expect(swap.htmlContent).toContain('Klick mich');
+		});
+
 		it('writes nothing when the HTML cannot be rendered', async () => {
 			const plain = save({ updatePayload: payload({ translations: 'not json' }) });
 			expect(await plain.run()).toMatchObject({ status: 'render-failed' });
@@ -346,14 +375,41 @@ describe('emailSettingsSave', () => {
 
 			// The swap is rendered before step 1 is written, so a swap that cannot
 			// be rendered leaves the row untouched too.
+			for (const content of ['not json', '{"blocks":[]}', 'null']) {
+				const swap = save({
+					selectedDefaultLanguage: 'de',
+					updatePayload: payload({ defaultLanguage: 'de' }),
+					base: base({ content }),
+				});
+				expect(await swap.run()).toMatchObject({ status: 'render-failed' });
+				expect(swap.update).not.toHaveBeenCalled();
+				expect(swap.setDefaultLanguage).not.toHaveBeenCalled();
+			}
+		});
+
+		it('writes nothing over stored translations it cannot read', async () => {
+			// The form read nothing from the row, so its payload holds a blank
+			// overlay that is valid on its own; saving it would replace the text.
+			const stored = base({ translations: JSON.stringify({ de: 'Recoverable stored text' }) });
+			const blank = JSON.stringify({ de: { subject: '', previewText: '' } });
+			const plain = save({ base: stored, updatePayload: payload({ translations: blank }) });
+			expect(await plain.run()).toMatchObject({ status: 'render-failed' });
+			expect(plain.update).not.toHaveBeenCalled();
+
 			const swap = save({
+				base: stored,
 				selectedDefaultLanguage: 'de',
-				updatePayload: payload({ defaultLanguage: 'de' }),
-				base: base({ content: 'not json' }),
+				updatePayload: payload({ defaultLanguage: 'de', translations: blank }),
 			});
 			expect(await swap.run()).toMatchObject({ status: 'render-failed' });
 			expect(swap.update).not.toHaveBeenCalled();
 			expect(swap.setDefaultLanguage).not.toHaveBeenCalled();
+		});
+
+		it('saves over a row that has no translations yet', async () => {
+			const { update, run } = save({ base: base({ translations: undefined }) });
+			expect(await run()).toEqual({ status: 'saved' });
+			expect(update).toHaveBeenCalledOnce();
 		});
 	});
 });

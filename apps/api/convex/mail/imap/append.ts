@@ -199,8 +199,8 @@ export const appendMessage = internalMutation({
 			await ctx.db.patch(threadId, { latestMessageId: messageId, latestSnoozedUntil: null });
 		}
 		// Our mail sent from a desktop client settles the Reply Queue row and its
-		// obsolete drafts, and records whom we wrote to (a new conversation too,
-		// #1381), as the same mail synced from a provider's Sent folder does.
+		// obsolete drafts, and records whom we wrote to (a new conversation too),
+		// as the same mail synced from a provider's Sent folder does.
 		const antiLoop = args.headerBlock ? extractAntiLoopHeaders(args.headerBlock) : undefined;
 		const isAutomated = isAutomatedResponse(antiLoop);
 		await settleOwnerReply(ctx, messageId, { isAutomated });

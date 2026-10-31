@@ -2,7 +2,7 @@
  * External-mailbox connect argument builders (utils/postboxConnectArgs):
  *   - trims text, coerces port strings, defaults the login to the address, and
  *   - layers the shared-inbox fields (deduped roster, blanked display name) for
- *     the team `connectShared` path (#234).
+ *     the team `connectShared` path.
  */
 import { describe, it, expect } from 'vitest';
 import { buildCredentialArgs, buildSharedConnectArgs } from '../postboxConnectArgs';

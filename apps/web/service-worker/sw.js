@@ -278,7 +278,28 @@ function parsePushPayload(data) {
 		body: text(raw && raw.body, ''),
 		tag: text(raw && raw.tag, undefined),
 		url: safeAppPath(raw && raw.url),
+		actions: parseActions(raw && raw.actions),
 	};
+}
+
+/** Most buttons a notification shows; browsers draw two at best. */
+const MAX_ACTIONS = 2;
+
+/**
+ * The notification's buttons ("Open", "Cancel send"), each with its own in-app
+ * path. Anything malformed is dropped, never shown: a button without a title
+ * or id would be a blank, unroutable button.
+ */
+function parseActions(value) {
+	if (!Array.isArray(value)) return [];
+	const actions = [];
+	for (const entry of value) {
+		if (actions.length >= MAX_ACTIONS) break;
+		if (!entry || typeof entry.action !== 'string' || !entry.action) continue;
+		if (typeof entry.title !== 'string' || !entry.title) continue;
+		actions.push({ action: entry.action, title: entry.title, url: safeAppPath(entry.url) });
+	}
+	return actions;
 }
 
 /**
@@ -319,6 +340,13 @@ async function handlePush(data) {
 		badge: '/icons/badge-96.png',
 		data: { url: payload.url },
 	};
+	if (payload.actions.length > 0) {
+		// Buttons ("Open", "Cancel send"), each routed by its id on click.
+		options.actions = payload.actions.map(({ action, title }) => ({ action, title }));
+		options.data.actionUrls = Object.fromEntries(
+			payload.actions.map((entry) => [entry.action, entry.url])
+		);
+	}
 	if (payload.tag !== TEST_TAG) {
 		const windows = await appWindows();
 		if (windows.some((client) => client.focused && client.visibilityState === 'visible')) {
@@ -362,13 +390,27 @@ async function showAndDismiss(title, options) {
 }
 
 /**
+ * Where a click goes: the button's own path when a button was pressed, the
+ * notification's path for a click on the body (or a button the payload did
+ * not route).
+ */
+function clickTarget(notification, action) {
+	const data = notification.data || {};
+	const actionUrls = data.actionUrls || {};
+	if (typeof action === 'string' && action && Object.hasOwn(actionUrls, action)) {
+		return safeAppPath(actionUrls[action]);
+	}
+	return safeAppPath(data.url);
+}
+
+/**
  * Open what the notification is about: focus an existing Owlat window and ask
  * it to route there (an in-app navigation keeps the loaded app and its live
  * connection), or open a new window when none is around.
  */
-async function handleNotificationClick(notification) {
+async function handleNotificationClick(notification, action) {
 	notification.close();
-	const path = safeAppPath(notification.data && notification.data.url);
+	const path = clickTarget(notification, action);
 	const windows = await appWindows();
 	const existing = windows.find((client) => {
 		try {
@@ -379,10 +421,8 @@ async function handleNotificationClick(notification) {
 	});
 	if (existing) {
 		await existing.focus();
-		// `Client.postMessage` (worker → page) has no targetOrigin parameter; the
-		// rule is written for `window.postMessage`. The client is same-origin by
-		// the check above.
-		// eslint-disable-next-line unicorn/require-post-message-target-origin
+		// The client is same-origin by the check above.
+		// eslint-disable-next-line unicorn/require-post-message-target-origin -- Client.postMessage (worker to page) has no target origin
 		existing.postMessage({ type: 'owlat:navigate', path });
 		return;
 	}
@@ -413,7 +453,7 @@ self.addEventListener('push', (event) => {
 });
 
 self.addEventListener('notificationclick', (event) => {
-	event.waitUntil(handleNotificationClick(event.notification));
+	event.waitUntil(handleNotificationClick(event.notification, event.action));
 });
 
 self.addEventListener('fetch', (event) => {

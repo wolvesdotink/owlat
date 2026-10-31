@@ -44,6 +44,7 @@ import {
 	swipeVelocity,
 	type PostboxSwipeAction,
 	type PostboxSwipeSample,
+	type RowSwipeAction,
 	type PostboxSwipeTrackState,
 } from '~/utils/postboxSwipe';
 
@@ -52,20 +53,27 @@ const POSTBOX_LONG_PRESS_MS = 500;
 /** Movement that turns a hold into a drag (scroll or swipe), so the hold stands down. */
 const POSTBOX_LONG_PRESS_SLOP_PX = 8;
 
-export interface PostboxRowGestureOptions {
+/**
+ * `A` is the verb vocabulary of the surface: the mail verbs for a Postbox row,
+ * the Team Inbox's own for its rows. A row that only wants the long-press
+ * passes `'none'` both ways, and then never claims a horizontal drag.
+ */
+export interface PostboxRowGestureOptions<A extends RowSwipeAction = PostboxSwipeAction> {
 	/** The action a leftward drag fires, read fresh so a settings change lands live. */
-	leftAction: () => PostboxSwipeAction;
+	leftAction: () => A;
 	/** The action a rightward drag fires. */
-	rightAction: () => PostboxSwipeAction;
+	rightAction: () => A;
 	/** A committed swipe. The row emits; the list owns the mutation. */
-	onSwipe: (action: Exclude<PostboxSwipeAction, 'none'>) => void;
+	onSwipe: (action: Exclude<A, 'none'>) => void;
 	/** The hold fired: open the row's context menu at this point. */
 	onLongPress: (row: HTMLElement, point: { x: number; y: number }) => void;
 }
 
-export function usePostboxRowGestures(options: PostboxRowGestureOptions) {
+export function usePostboxRowGestures<A extends RowSwipeAction = PostboxSwipeAction>(
+	options: PostboxRowGestureOptions<A>
+) {
 	/** The reveal track for the drag in progress; null at rest. */
-	const track = shallowRef<PostboxSwipeTrackState | null>(null);
+	const track = shallowRef<PostboxSwipeTrackState<A> | null>(null);
 	/** True while the row is animating back after release (drives the transition). */
 	const settling = ref(false);
 

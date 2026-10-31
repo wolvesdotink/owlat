@@ -17,6 +17,7 @@
 import type { DeliverabilityCell } from '@owlat/shared/deliverabilityRouting';
 import { convexTest } from 'convex-test';
 import { describe, expect, it, vi } from 'vitest';
+import type * as SessionOrganization from '../../lib/sessionOrganization';
 import schema from '../../schema';
 import { api, internal } from '../../_generated/api';
 import { RAMP_AIMD } from '../ramp/controllerConfig';
@@ -32,7 +33,7 @@ import {
 import { modules } from '../../__tests__/testModules';
 
 vi.mock('../../lib/sessionOrganization', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../../lib/sessionOrganization')>();
+	const actual = await importOriginal<typeof SessionOrganization>();
 	return {
 		...actual,
 		getSingletonOrganizationId: vi.fn().mockResolvedValue('org_ramp_hard_stops'),
@@ -309,7 +310,7 @@ describe('hard stops reach the controller through real route-state rows', () => 
 
 		const row = await cellRow(t);
 		expect(row?.ownShare).toBe(CELL_SHARE);
-		// The mix GENERATION never moves on an ordinary evaluation (plan D7).
+		// The mix GENERATION never moves on an ordinary evaluation.
 		expect(row?.mixVersion).toBe(2);
 		const rows = await decisions(t);
 		expect(rows[0]?.adminNotice).toBeUndefined();
@@ -435,7 +436,7 @@ describe('a gate aggregate that is not a reading of the present', () => {
 });
 
 /**
- * WHICH EVALUATOR RUNS IS THE SUBSTITUTION TABLE'S DECISION (P3-8, plan D3).
+ * WHICH EVALUATOR RUNS IS THE SUBSTITUTION TABLE'S DECISION.
  *
  * The pure suites prove each evaluator; the matrix suite proves the fold picks
  * one. Neither proves the CRON reaches the one the fold picked — and the seam
@@ -476,7 +477,7 @@ describe('the cron runs the evaluator the substitution table selects', () => {
 		const t = convexTest(schema, modules);
 		await seed(t);
 		// Own traffic only — a zero-third-party deployment, which is a SUPPORTED
-		// configuration and not a degraded one (plan D2).
+		// configuration and not a degraded one.
 		await seedArmOutcomes(t, { organizationId: ORG, arm: 'own', sent: 800 });
 
 		expect(await evaluatorsUsed(t)).toEqual({ reference: false, trailing: true });
@@ -535,7 +536,7 @@ describe('the cron observes gate 2’s instrument rather than assuming it', () =
 	 * on controller rung 7. A relay-equipped deployment whose warm-up overflow
 	 * routes to the relay instead of deferring would therefore never raise its
 	 * own-MTA share and would restart its fourteen-day graduation clock every
-	 * tick — an ABSENT signal blocking a ramp for ever, which plan D2 forbids.
+	 * tick — an ABSENT signal blocking a ramp for ever, which must never happen.
 	 */
 	it('lets a healthy cell that has never deferred advance once its traffic spans the observation minimum', async () => {
 		const t = convexTest(schema, modules);

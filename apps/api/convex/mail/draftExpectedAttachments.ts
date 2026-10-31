@@ -1,6 +1,6 @@
 /**
  * Files a Postbox draft was opened to carry, owed by the draft until each one
- * is attached (#1257): the generated `.ics` an RSVP answers with, and the
+ * is attached: the generated `.ics` an RSVP answers with, and the
  * attachments of a forwarded (or resent) message.
  *
  * WHY ON THE ROW. The composer used to hand these over in memory and upload
@@ -19,10 +19,10 @@
  *    shared `locateForwardedParts` (the disposition rule forwarding always used),
  *    expands the debt into one entry per part keyed by the raw part index
  *    (`expandForward`, once), and copies each part's bytes from that same
- *    parse. Each copy is receipted as an unclaimed upload the moment it is
- *    stored (`stageCopy`), so one that is never bound is deleted by the upload
- *    sweep; `bindExpected` settles one key exactly once by binding that
- *    receipt, and a second copy of a settled or removed key is dropped.
+ *    parse. Each copy lands in one commit (`bindCopy`): its receipt and its
+ *    binding together, settling one key exactly once, or, for a second copy
+ *    of a settled or removed key (or one a compose limit refuses), the blob
+ *    deleted with no receipt left behind.
  *  - Taking a file out settles it as removed, on every path: `remove` here
  *    (which also takes out a copy that already landed; a forward's key covers
  *    the whole forward, before or after it was expanded), `drafts.removeAttachment` and
@@ -36,7 +36,7 @@
  * Remove.
  */
 
-import { v, type Infer } from 'convex/values';
+import { v, type Infer, type ObjectType } from 'convex/values';
 import { internalQuery, type MutationCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import type { Doc, Id } from '../_generated/dataModel';
@@ -324,7 +324,9 @@ export const expandForward = internalMutation({
 /**
  * Receipt a copy right after it is stored, as an unclaimed upload: if it is
  * never bound (the action dies, deleting a losing copy fails), the upload
- * sweep deletes it like any upload nobody attached.
+ * sweep deletes it like any upload nobody attached. Kept for a `fulfil` of
+ * the previous release still running during the deploy; `bindCopy` receipts
+ * and binds in one commit now. Remove after release N+1.
  */
 export const stageCopy = internalMutation({
 	args: { storageId: v.id('_storage') },
@@ -333,7 +335,11 @@ export const stageCopy = internalMutation({
 	},
 });
 
-/** Delete a copy that was not bound (it lost, or a limit refused it), with its receipt. */
+/**
+ * Delete a copy that was not bound (it lost, or a limit refused it), with its
+ * receipt. Kept for a previous-release `fulfil` mid-run, like `stageCopy`.
+ * Remove after release N+1.
+ */
 export const dropCopy = internalMutation({
 	args: { storageId: v.id('_storage') },
 	handler: async (ctx, args) => {
@@ -341,59 +347,83 @@ export const dropCopy = internalMutation({
 	},
 });
 
+type BindOutcome = 'bound' | 'taken' | 'tooLarge' | 'tooMany' | 'totalTooLarge';
+
+const bindArgs = { draftId: v.id('mailDrafts'), key: v.string(), storageId: v.id('_storage') };
+
+/** Bind a receipted copy to the owed key; the outcome `bindExpected` documents. */
+async function bindStagedCopy(
+	ctx: MutationCtx,
+	args: ObjectType<typeof bindArgs>
+): Promise<{ outcome: BindOutcome }> {
+	const draft = await getOrThrow(ctx, args.draftId, 'Draft');
+	const owned = await requireMailboxAccess(ctx, draft.mailboxId);
+	if (!owned.ok) throwForbidden('Draft not accessible');
+	assertStateIs(draft, 'draft');
+	const entries = draft.expectedAttachments ?? [];
+	const entry = entries.find((e) => e.key === args.key);
+	if (!entry || entry.state !== 'owed') return { outcome: 'taken' };
+	if (draft.attachments.length >= ATTACHMENT_COMPOSE_LIMITS.maxCount) {
+		return { outcome: 'tooMany' };
+	}
+	const size = await storedFileSize(ctx, args.storageId);
+	if (size > MAX_ATTACHMENT_BYTES) return { outcome: 'tooLarge' };
+	const existing = await Promise.all(
+		draft.attachments.map((attachment) => storedFileSize(ctx, attachment.storageId))
+	);
+	if (
+		existing.reduce((total, bytes) => total + bytes, size) > ATTACHMENT_COMPOSE_LIMITS.maxTotalBytes
+	) {
+		return { outcome: 'totalTooLarge' };
+	}
+	// The staged receipt binds to the draft like an upload, so discard and
+	// send free it.
+	const session = await getMutationContext(ctx);
+	await consumeUpload(ctx, args.storageId, session, `mailDrafts:${args.draftId}`);
+	await ctx.db.patch(args.draftId, {
+		attachments: [
+			...draft.attachments,
+			{
+				storageId: args.storageId,
+				filename: entry.filename,
+				contentType: entry.contentType,
+				size,
+				isInline: false,
+			},
+		],
+		expectedAttachments: entries.map((e) =>
+			e.key === args.key ? settled(e, 'attached', args.storageId) : e
+		),
+		...humanEdit(Date.now()),
+	});
+	return { outcome: 'bound' };
+}
+
 /**
  * Put a copied blob on the draft for one owed key, exactly once. `taken` means
  * the key was already settled (another tab attached it, or the person removed
- * it): the caller deletes the blob. A compose limit leaves the key owed.
+ * it): the caller deletes the blob. A compose limit leaves the key owed. Kept
+ * for a previous-release `fulfil` mid-run; `bindCopy` is its one commit now.
+ * Remove after release N+1.
  */
 export const bindExpected = internalMutation({
-	args: { draftId: v.id('mailDrafts'), key: v.string(), storageId: v.id('_storage') },
-	handler: async (
-		ctx,
-		args
-	): Promise<{ outcome: 'bound' | 'taken' | 'tooLarge' | 'tooMany' | 'totalTooLarge' }> => {
-		const draft = await getOrThrow(ctx, args.draftId, 'Draft');
-		const owned = await requireMailboxAccess(ctx, draft.mailboxId);
-		if (!owned.ok) throwForbidden('Draft not accessible');
-		assertStateIs(draft, 'draft');
-		const entries = draft.expectedAttachments ?? [];
-		const entry = entries.find((e) => e.key === args.key);
-		if (!entry || entry.state !== 'owed') return { outcome: 'taken' };
-		if (draft.attachments.length >= ATTACHMENT_COMPOSE_LIMITS.maxCount) {
-			return { outcome: 'tooMany' };
-		}
-		const size = await storedFileSize(ctx, args.storageId);
-		if (size > MAX_ATTACHMENT_BYTES) return { outcome: 'tooLarge' };
-		const existing = await Promise.all(
-			draft.attachments.map((attachment) => storedFileSize(ctx, attachment.storageId))
-		);
-		if (
-			existing.reduce((total, bytes) => total + bytes, size) >
-			ATTACHMENT_COMPOSE_LIMITS.maxTotalBytes
-		) {
-			return { outcome: 'totalTooLarge' };
-		}
-		// The staged receipt binds to the draft like an upload, so discard and
-		// send free it.
-		const session = await getMutationContext(ctx);
-		await consumeUpload(ctx, args.storageId, session, `mailDrafts:${args.draftId}`);
-		await ctx.db.patch(args.draftId, {
-			attachments: [
-				...draft.attachments,
-				{
-					storageId: args.storageId,
-					filename: entry.filename,
-					contentType: entry.contentType,
-					size,
-					isInline: false,
-				},
-			],
-			expectedAttachments: entries.map((e) =>
-				e.key === args.key ? settled(e, 'attached', args.storageId) : e
-			),
-			...humanEdit(Date.now()),
-		});
-		return { outcome: 'bound' };
+	args: bindArgs,
+	handler: async (ctx, args): Promise<{ outcome: BindOutcome }> => await bindStagedCopy(ctx, args),
+});
+
+/**
+ * One copy's commit: receipt the stored blob and bind it to the owed key, or,
+ * when it is not bound (`taken`, a compose limit), delete the blob in the same
+ * commit. A throw (the draft gone, sent, or out of reach) writes nothing and
+ * the caller deletes the blob, which no receipt names.
+ */
+export const bindCopy = internalMutation({
+	args: bindArgs,
+	handler: async (ctx, args): Promise<{ outcome: BindOutcome }> => {
+		await stageServerUpload(ctx, args.storageId, await getMutationContext(ctx));
+		const bound = await bindStagedCopy(ctx, args);
+		if (bound.outcome !== 'bound') await dropUnclaimedUpload(ctx, args.storageId);
+		return bound;
 	},
 });
 

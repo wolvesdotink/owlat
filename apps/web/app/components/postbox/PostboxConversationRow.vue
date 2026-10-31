@@ -11,6 +11,8 @@
  * the subject and no unread count.
  */
 import { usePostboxThreadTimestamp } from '~/composables/postbox/usePostboxListClock';
+import { vReplyDrop } from '~/composables/useReplyFileDrop';
+import { replyDropForMessage } from '~/utils/replyFileDrop';
 
 export type PostboxConversationThread = {
 	_id: string;
@@ -23,6 +25,8 @@ export type PostboxConversationThread = {
 	unreadCount: number;
 	hasFlagged: boolean;
 	hasAttachments: boolean;
+	/** In the Inbox's pinned band (mail/pins.ts). */
+	pinnedAt?: number;
 };
 
 const props = defineProps<{
@@ -34,11 +38,24 @@ const props = defineProps<{
 	selected: boolean;
 	/** The conversation open in the reader. */
 	active?: boolean;
+	/** The folder the list shows; a draft's row takes no reply drop. */
+	folderRole?: string;
 }>();
 
 const { t } = useI18n();
 // Ticks with the list's shared minute clock (usePostboxListClock).
 const formatTimestamp = usePostboxThreadTimestamp();
+
+// Files dropped on the row reply to the conversation's latest message.
+const replyDrop = computed(() => {
+	const { latestMessageId, latestFromAddress } = props.thread;
+	return latestMessageId
+		? replyDropForMessage(
+				{ _id: latestMessageId, fromAddress: latestFromAddress },
+				props.folderRole
+			)
+		: null;
+});
 
 const rowLabel = computed(() =>
 	props.thread.unreadCount > 0
@@ -55,6 +72,7 @@ const rowLabel = computed(() =>
 <template>
 	<NuxtLink
 		:id="domId"
+		v-reply-drop="replyDrop"
 		role="option"
 		:aria-selected="selected"
 		:aria-label="rowLabel"
@@ -78,6 +96,13 @@ const rowLabel = computed(() =>
 		</div>
 		<div class="flex items-center gap-1.5 mt-0.5">
 			<Icon v-if="thread.hasFlagged" name="lucide:star" class="w-3.5 h-3.5 text-warning" />
+			<Icon
+				v-if="thread.pinnedAt"
+				name="lucide:pin"
+				class="w-3.5 h-3.5 text-brand"
+				:title="t('components.postbox.postboxThreadRow.pinnedChip')"
+				:aria-label="t('components.postbox.postboxThreadRow.pinnedChip')"
+			/>
 			<Icon
 				v-if="thread.hasAttachments"
 				name="lucide:paperclip"

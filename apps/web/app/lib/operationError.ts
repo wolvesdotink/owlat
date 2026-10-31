@@ -130,7 +130,7 @@ export function operationCopy(
 ): OperationCopy {
 	const treatment = TREATMENT[op.category];
 	if (treatment.genericCopyKey) return { key: treatment.genericCopyKey };
-	// D1 / U5: a spend-admission refusal reads as the budget sentence for its
+	// A spend-admission refusal reads as the budget sentence for its
 	// reason, in the reader's language, on every surface that shows it.
 	const budgetReason = budgetReasonOf(op);
 	if (budgetReason) return { key: BUDGET_REASON_KEYS[budgetReason] };
@@ -194,7 +194,7 @@ export function operationToastCopy(
 const SLOW_READ = /timed out|timeout/i;
 
 /**
- * The copy for a failed READ (the read half of the Operation error seam, #721).
+ * The copy for a failed READ (the read half of the Operation error seam).
  *
  * A query failure reaches the page as whatever the Convex client threw, and its
  * raw message is not something to show a user ("[CONVEX Q(topics/topics:list)]

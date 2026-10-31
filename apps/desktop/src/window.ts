@@ -13,18 +13,17 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { getCurrentWindow, Effect } from '@tauri-apps/api/window';
 
-export async function startDragging(): Promise<void> {
-	await getCurrentWindow().startDragging();
-}
-
+/** @public The web app reaches this through a lazy `import()` of this module, which knip cannot trace. */
 export async function minimizeWindow(): Promise<void> {
 	await getCurrentWindow().minimize();
 }
 
+/** @public The web app reaches this through a lazy `import()` of this module, which knip cannot trace. */
 export async function toggleMaximizeWindow(): Promise<void> {
 	await getCurrentWindow().toggleMaximize();
 }
 
+/** @public The web app reaches this through a lazy `import()` of this module, which knip cannot trace. */
 export async function closeWindow(): Promise<void> {
 	// Closes the window. Only the Windows/Linux titlebar calls this, and there
 	// closing the main window quits the app (no tray to come back from). macOS
@@ -174,7 +173,11 @@ export async function readZoomLevel(): Promise<number> {
 	return typeof factor === 'number' && Number.isFinite(factor) && factor > 0 ? factor : 1;
 }
 
-/** Subscribe to page-zoom changes made from the View menu. */
+/**
+ * Subscribe to page-zoom changes made from the View menu.
+ *
+ * @public The web app reaches this through a lazy `import()` of this module, which knip cannot trace.
+ */
 export async function onZoomChanged(cb: (factor: number) => void): Promise<UnlistenFn> {
 	return listen<number>('view://zoom', (e) => cb(e.payload));
 }

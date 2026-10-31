@@ -2,7 +2,7 @@ import { v } from 'convex/values';
 import { transactionalMutation, transactionalQuery } from './_helpers';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
-import { requireOrgPermission } from '../lib/sessionOrganization';
+import { hasPermission, requirePermission } from '../lib/sessionOrganization';
 import {
 	getOrThrow,
 	throwAlreadyExists,
@@ -30,6 +30,8 @@ export type DataVariableType = 'string' | 'number' | 'boolean' | 'date';
 /**
  * List all transactional emails for an organization with optional filtering
  */
+// all-members: the transactional template library every role reads; writing
+// it needs templates:manage.
 export const list = transactionalQuery({
 	args: {
 		status: v.optional(
@@ -78,6 +80,8 @@ export const list = transactionalQuery({
 /**
  * Get a single transactional email by ID
  */
+// all-members: the transactional template library every role reads; writing
+// it needs templates:manage.
 export const get = transactionalQuery({
 	args: { id: v.id('transactionalEmails') },
 	handler: async (ctx, args) => {
@@ -88,6 +92,8 @@ export const get = transactionalQuery({
 /**
  * Count transactional emails by status for an organization
  */
+// all-members: the transactional template library every role reads; writing
+// it needs templates:manage.
 export const countByStatus = transactionalQuery({
 	args: {},
 	handler: async (ctx) => {
@@ -114,10 +120,9 @@ export const create = transactionalMutation({
 		dataVariablesSchema: v.optional(dataVariablesSchemaValidator),
 		defaultLanguage: v.optional(v.string()),
 	},
-	handler: async (ctx, args): Promise<Id<'transactionalEmails'>> => {
-		const session = await requireOrgPermission(
-			ctx,
-			'templates:manage',
+	handler: async (ctx, args, session): Promise<Id<'transactionalEmails'>> => {
+		requirePermission(
+			hasPermission(session.role, 'templates:manage'),
 			'Only owners and admins can create transactional emails'
 		);
 		const outcome = await ctx.runMutation(internal.transactional.lifecycle.create, {
@@ -195,10 +200,9 @@ export const update = transactionalMutation({
 		// payload's blocks and shared fields (emailCoediting/save.ts).
 		coeditVersion: v.optional(v.number()),
 	},
-	handler: async (ctx, rawArgs) => {
-		const session = await requireOrgPermission(
-			ctx,
-			'templates:manage',
+	handler: async (ctx, rawArgs, session) => {
+		requirePermission(
+			hasPermission(session.role, 'templates:manage'),
 			'Only owners and admins can update transactional emails'
 		);
 		const coedit = await loadCoeditSave(
@@ -285,10 +289,9 @@ export const publish = transactionalMutation({
 		// with HTML that no longer matches its content.
 		expectedContentRevision: v.optional(v.number()),
 	},
-	handler: async (ctx, args) => {
-		const session = await requireOrgPermission(
-			ctx,
-			'templates:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'templates:manage'),
 			'Only owners and admins can publish transactional emails'
 		);
 		const email = await getOrThrow(ctx, args.id, 'Transactional email');
@@ -324,10 +327,9 @@ export const publish = transactionalMutation({
  */
 export const unpublish = transactionalMutation({
 	args: { id: v.id('transactionalEmails') },
-	handler: async (ctx, args) => {
-		const session = await requireOrgPermission(
-			ctx,
-			'templates:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'templates:manage'),
 			'Only owners and admins can unpublish transactional emails'
 		);
 		const email = await getOrThrow(ctx, args.id, 'Transactional email');
@@ -358,10 +360,9 @@ export const unpublish = transactionalMutation({
  */
 export const duplicate = transactionalMutation({
 	args: { id: v.id('transactionalEmails') },
-	handler: async (ctx, args): Promise<Id<'transactionalEmails'>> => {
-		const session = await requireOrgPermission(
-			ctx,
-			'templates:manage',
+	handler: async (ctx, args, session): Promise<Id<'transactionalEmails'>> => {
+		requirePermission(
+			hasPermission(session.role, 'templates:manage'),
 			'Only owners and admins can duplicate transactional emails'
 		);
 		const outcome = await ctx.runMutation(internal.transactional.lifecycle.duplicate, {
@@ -381,10 +382,9 @@ export const duplicate = transactionalMutation({
  */
 export const remove = transactionalMutation({
 	args: { id: v.id('transactionalEmails') },
-	handler: async (ctx, args) => {
-		const session = await requireOrgPermission(
-			ctx,
-			'templates:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'templates:manage'),
 			'Only owners and admins can delete transactional emails'
 		);
 		const outcome = await ctx.runMutation(internal.transactional.lifecycle.remove, {
@@ -408,10 +408,9 @@ export const updateSchema = transactionalMutation({
 		dataVariablesSchema: dataVariablesSchemaValidator,
 		forceWhilePublished: v.optional(v.boolean()),
 	},
-	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'templates:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'templates:manage'),
 			'Only owners and admins can update transactional email schema'
 		);
 		const email = await getOrThrow(ctx, args.id, 'Transactional email');

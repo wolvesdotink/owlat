@@ -6,11 +6,7 @@
  */
 
 import { v } from 'convex/values';
-import {
-	getMutationContext,
-	getUserIdFromSession,
-	requireOrgPermission,
-} from '../lib/sessionOrganization';
+import { hasPermission, requirePermission } from '../lib/sessionOrganization';
 import { throwAlreadyExists, throwInvalidInput } from '../_utils/errors';
 import {
 	chatQuery,
@@ -18,7 +14,9 @@ import {
 	CHANNEL_DESC_MAX,
 	assertCanAdministerRoom,
 	assertChatTargetsAreOrgMembers,
+	getMembership,
 	getRoomOrThrow,
+	loadRoomReadAccess,
 	normalizeChannelName,
 	requireChannelName,
 } from './_helpers';
@@ -35,8 +33,9 @@ export const createChannel = chatMutation({
 		visibility: chatRoomVisibilityValidator,
 		initialMemberIds: v.optional(v.array(v.string())),
 	},
-	handler: async (ctx, args) => {
-		const { userId } = await requireOrgPermission(ctx, 'chat:participate', 'Chat is not available');
+	handler: async (ctx, args, session) => {
+		requirePermission(hasPermission(session.role, 'chat:participate'), 'Chat is not available');
+		const { userId } = session;
 
 		const name = requireChannelName(args.name);
 		const normalizedName = normalizeChannelName(name);
@@ -109,8 +108,8 @@ export const updateChannel = chatMutation({
 		description: v.optional(v.string()),
 		visibility: v.optional(chatRoomVisibilityValidator),
 	},
-	handler: async (ctx, args) => {
-		const { userId, role } = await getMutationContext(ctx);
+	handler: async (ctx, args, session) => {
+		const { userId, role } = session;
 		const room = await getRoomOrThrow(ctx, args.roomId);
 		if (room.kind !== 'channel') {
 			throwInvalidInput('Only channels can be updated this way');
@@ -163,8 +162,8 @@ export const updateChannel = chatMutation({
  */
 export const archiveChannel = chatMutation({
 	args: { roomId: v.id('chatRooms') },
-	handler: async (ctx, args) => {
-		const { userId, role } = await getMutationContext(ctx);
+	handler: async (ctx, args, session) => {
+		const { userId, role } = session;
 		const room = await getRoomOrThrow(ctx, args.roomId);
 		if (room.kind !== 'channel') {
 			throwInvalidInput('Only channels can be archived');
@@ -179,8 +178,8 @@ export const archiveChannel = chatMutation({
  */
 export const unarchiveChannel = chatMutation({
 	args: { roomId: v.id('chatRooms') },
-	handler: async (ctx, args) => {
-		const { userId, role } = await getMutationContext(ctx);
+	handler: async (ctx, args, session) => {
+		const { userId, role } = session;
 		const room = await getRoomOrThrow(ctx, args.roomId);
 		if (room.kind !== 'channel') {
 			throwInvalidInput('Only channels can be unarchived');
@@ -197,10 +196,13 @@ export const unarchiveChannel = chatMutation({
  *
  * Archived channels are excluded unless `includeArchived` is true.
  */
+// authz: the loadRoomReadAccess rule applied as a filter — public channels for
+// every member, private ones only through the caller's own memberships; the
+// index excludes mail-thread discussions.
 export const listMyChannels = chatQuery({
 	args: { includeArchived: v.optional(v.boolean()) },
-	handler: async (ctx, args) => {
-		const userId = await getUserIdFromSession(ctx);
+	handler: async (ctx, args, session) => {
+		const { userId } = session;
 
 		// Memberships first — used to filter private channels.
 		const memberships = await ctx.db
@@ -236,10 +238,12 @@ export const listMyChannels = chatQuery({
  * List PUBLIC channels in the org for a "browse channels" picker (lets the
  * user join channels they're not yet in). Includes membership info.
  */
+// all-members: public channels are browsable by every member (loadRoomReadAccess);
+// private channels, DMs and mail-thread discussions are filtered out.
 export const listPublicChannels = chatQuery({
 	args: { limit: v.optional(v.number()) },
-	handler: async (ctx, args) => {
-		const userId = await getUserIdFromSession(ctx);
+	handler: async (ctx, args, session) => {
+		const { userId } = session;
 		const limit = Math.max(1, Math.min(args.limit ?? 100, 500));
 
 		const channels = await ctx.db
@@ -269,24 +273,20 @@ export const listPublicChannels = chatQuery({
 
 /**
  * Get a single room with metadata for the caller (membership flag included).
- * Used by the [roomId].vue page to render the header.
+ * Used by the [roomId].vue page to render the header. A room the caller may
+ * not read answers exactly like a missing one (`null`), so its existence does
+ * not leak.
  */
+// authz: loadRoomReadAccess (chat/_helpers.ts) decides; unreadable reads as null.
 export const getRoom = chatQuery({
 	args: { roomId: v.id('chatRooms') },
-	handler: async (ctx, args) => {
-		const userId = await getUserIdFromSession(ctx);
+	handler: async (ctx, args, session) => {
+		const { userId } = session;
 		const room = await ctx.db.get(args.roomId);
 		if (!room) return null;
+		if (!(await loadRoomReadAccess(ctx, room, userId))) return null;
 
-		const membership = await ctx.db
-			.query('chatRoomMembers')
-			.withIndex('by_room_and_member', (q) => q.eq('roomId', room._id).eq('memberId', userId))
-			.first();
-
-		// Private rooms: hide entirely if non-member.
-		if (room.visibility === 'private' && !membership) {
-			return null;
-		}
+		const membership = await getMembership(ctx, room._id, userId);
 
 		return {
 			...room,

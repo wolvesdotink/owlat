@@ -2,6 +2,7 @@
 import type { UploadChip } from '~/composables/postbox/postboxAttachmentUploads';
 import type { AttachmentMeter } from '~/composables/postbox/postboxAttachmentMeter';
 import { useUploadQueueStatus } from '~/composables/postbox/useUploadQueueStatus';
+import { meterFillStyle } from '@owlat/ui/utils/meterFill';
 
 // Two roots: the parent's attributes (`inert` while the draft mirror is busy)
 // belong on the visible row, not on the queue status beside it.
@@ -80,19 +81,22 @@ const queueStatus = useUploadQueueStatus(() => props.uploads);
 				<!-- Idea 10: swap this file for an expiring link in the body. Offered
 				     only once the meter is worried; the file is malware-scanned before it
 				     becomes shareable, so the click takes a moment. -->
-				<button
+				<UiTooltip
 					v-if="offerShare"
-					type="button"
-					class="p-0.5 pointer-coarse:p-2 rounded hover:bg-bg-elevated text-text-tertiary hover:text-accent disabled:opacity-50"
-					:disabled="isSharing || shareDisabled"
-					:title="t('components.postbox.postboxComposerAttachments.shareTitle')"
-					:aria-label="
-						t('components.postbox.postboxComposerAttachments.share', { filename: att.filename })
-					"
-					@click="emit('share', att.storageId)"
+					:text="t('components.postbox.postboxComposerAttachments.shareTitle')"
 				>
-					<Icon name="lucide:link" class="w-3 h-3" />
-				</button>
+					<button
+						type="button"
+						class="p-0.5 pointer-coarse:p-2 rounded hover:bg-bg-elevated text-text-tertiary hover:text-accent disabled:opacity-50"
+						:disabled="isSharing || shareDisabled"
+						:aria-label="
+							t('components.postbox.postboxComposerAttachments.share', { filename: att.filename })
+						"
+						@click="emit('share', att.storageId)"
+					>
+						<Icon name="lucide:link" class="w-3 h-3" />
+					</button>
+				</UiTooltip>
 				<button
 					type="button"
 					class="p-0.5 pointer-coarse:p-2 rounded hover:bg-bg-elevated text-text-tertiary hover:text-text-primary"
@@ -147,18 +151,21 @@ const queueStatus = useUploadQueueStatus(() => props.uploads);
 								})
 					}}
 				</span>
-				<button
+				<UiTooltip
 					v-if="up.status === 'failed'"
-					type="button"
-					class="p-0.5 pointer-coarse:p-2 rounded hover:bg-bg-elevated text-text-tertiary hover:text-text-primary"
-					:aria-label="
-						t('components.postbox.postboxComposerAttachments.retry', { filename: up.filename })
-					"
-					:title="t('components.postbox.postboxComposerAttachments.retryTitle')"
-					@click="emit('retry', up.id)"
+					:text="t('components.postbox.postboxComposerAttachments.retryTitle')"
 				>
-					<Icon name="lucide:rotate-cw" class="w-3 h-3" />
-				</button>
+					<button
+						type="button"
+						class="p-0.5 pointer-coarse:p-2 rounded hover:bg-bg-elevated text-text-tertiary hover:text-text-primary"
+						:aria-label="
+							t('components.postbox.postboxComposerAttachments.retry', { filename: up.filename })
+						"
+						@click="emit('retry', up.id)"
+					>
+						<Icon name="lucide:rotate-cw" class="w-3 h-3" />
+					</button>
+				</UiTooltip>
 				<button
 					type="button"
 					class="p-0.5 pointer-coarse:p-2 rounded hover:bg-bg-elevated text-text-tertiary hover:text-text-primary"
@@ -175,16 +182,16 @@ const queueStatus = useUploadQueueStatus(() => props.uploads);
 				>
 					<Icon name="lucide:x" class="w-3 h-3" />
 				</button>
-				<!-- Progress bar: determinate width, or an indeterminate shimmer -->
+				<!-- Progress bar: determinate fill, or an indeterminate shimmer -->
 				<span
 					v-if="up.status === 'uploading'"
 					class="absolute inset-x-0 bottom-0 h-0.5 bg-bg-elevated"
 					aria-hidden="true"
 				>
 					<span
-						class="block h-full bg-accent transition-[width] duration-(--motion-moderate)"
-						:class="up.indeterminate ? 'w-full animate-pulse motion-reduce:animate-none' : ''"
-						:style="up.indeterminate ? undefined : { width: Math.round(up.progress * 100) + '%' }"
+						class="ui-meter-fill block h-full bg-accent transition-transform duration-(--motion-moderate)"
+						:class="up.indeterminate ? 'animate-pulse motion-reduce:animate-none' : ''"
+						:style="meterFillStyle(up.indeterminate ? 100 : Math.round(up.progress * 100))"
 					/>
 				</span>
 			</span>
@@ -198,9 +205,9 @@ const queueStatus = useUploadQueueStatus(() => props.uploads);
 					aria-hidden="true"
 				>
 					<span
-						class="block h-full rounded-full transition-[width] duration-(--motion-moderate)"
+						class="ui-meter-fill block h-full rounded-full transition-transform duration-(--motion-moderate)"
 						:class="meter.amber ? 'bg-warning' : 'bg-accent'"
-						:style="{ width: Math.min(100, Math.round(meter.ratio * 100)) + '%' }"
+						:style="meterFillStyle(Math.round(meter.ratio * 100))"
 					/>
 				</span>
 				<span

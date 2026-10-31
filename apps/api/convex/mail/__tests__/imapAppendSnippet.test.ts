@@ -1,10 +1,8 @@
 /**
  * IMAP APPEND derives the snippet from the bodies it stores, with the same
- * `buildSnippet` the delivery pipeline uses. The IMAP server used to send its
- * own snippet, built from raw MIME, so an APPENDed multipart message showed
- * boundary lines as its preview. Only IMAP servers from v0.6.3 and older sent
- * one, and the backend no longer serves them (wire version 0), so the argument
- * is gone.
+ * `buildSnippet` the delivery pipeline uses. A snippet built from raw MIME
+ * shows an APPENDed multipart message's boundary lines as its preview, so the
+ * mutation takes no snippet from the IMAP server.
  */
 
 import type { TestConvex } from 'convex-test';

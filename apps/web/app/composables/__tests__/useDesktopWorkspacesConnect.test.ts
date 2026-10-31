@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { flushPromises } from '@vue/test-utils';
 import type { WorkspaceConfig, WorkspaceStoreShape } from '~/lib/desktop/workspaceTypes';
 
 // The desktop connect handshake. These tests pin the invariant that broke a
@@ -311,14 +312,22 @@ describe('completeConnection — the keychain handover', () => {
 		const mod = await freshModule();
 		await mod.loadWorkspaces();
 		const state = await beginConnect(mod);
-		// The current client refreshed its (older) session; the debounce holds it.
-		mod.getActiveKeychainStorage()?.setItem('better-auth_cookie', 'older');
-		getSession.mockImplementation(async () => {
-			return { data: { user: { id: 'user-1' } } };
-		});
+		// The keychain write debounce runs on the fake clock, so the test can
+		// fire whatever the handover left pending instead of sleeping past it.
+		vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+		try {
+			// The current client refreshed its (older) session; the debounce holds it.
+			mod.getActiveKeychainStorage()?.setItem('better-auth_cookie', 'older');
+			getSession.mockImplementation(async () => {
+				return { data: { user: { id: 'user-1' } } };
+			});
 
-		await mod.completeConnection({ ott: 'tok', state });
-		await new Promise((resolve) => setTimeout(resolve, 300));
+			await mod.completeConnection({ ott: 'tok', state });
+			await vi.runOnlyPendingTimersAsync();
+			await flushPromises();
+		} finally {
+			vi.useRealTimers();
+		}
 
 		const writes = [...sessionWrite.mock.calls, ...sessionReplace.mock.calls].filter(
 			([key]) => key === 'owlat-ws:ws-existing'
@@ -382,21 +391,34 @@ describe('completeConnection — two deep links at once', () => {
 		const second = await beginConnect(mod);
 		let inFlight = 0;
 		let overlapped = false;
-		authFetch.mockImplementation(async () => {
+		// Each redeem stays in flight until the test finishes it.
+		const finishRedeem: Array<() => void> = [];
+		authFetch.mockImplementation(() => {
 			inFlight++;
 			overlapped ||= inFlight > 1;
-			await new Promise((resolve) => setTimeout(resolve, 5));
-			inFlight--;
-			return { data: { data: null, error: { status: 500 } }, error: { status: 500 } };
+			return new Promise((resolve) => {
+				finishRedeem.push(() => {
+					inFlight--;
+					resolve({ data: { data: null, error: { status: 500 } }, error: { status: 500 } });
+				});
+			});
 		});
 
-		const results = await Promise.allSettled([
+		const settled = Promise.allSettled([
 			mod.completeConnection({ ott: 'a', state: first }),
 			mod.completeConnection({ ott: 'b', state: second }),
 		]);
+		await flushPromises();
+		// The second completion waits for the first one's redeem to finish.
+		expect(authFetch).toHaveBeenCalledTimes(1);
+
+		finishRedeem[0]!();
+		await flushPromises();
+		expect(authFetch).toHaveBeenCalledTimes(2);
+		finishRedeem[1]!();
+		const results = await settled;
 
 		expect(overlapped).toBe(false);
-		expect(authFetch).toHaveBeenCalledTimes(2);
 		expect(results.map((r) => r.status)).toEqual(['rejected', 'rejected']);
 	});
 
@@ -456,5 +478,58 @@ describe('addWorkspace — reconnecting an existing server', () => {
 			accentColor: '#8c5a7a',
 			addedAt: 1,
 		});
+	});
+});
+
+describe('addWorkspace — an unusable instance answer', () => {
+	it.each([
+		['no Convex URLs', { name: 'Acme' }],
+		['a non-string Convex URL', { ...INSTANCE, convexUrl: 42 }],
+		['a non-string name', { ...INSTANCE, name: { en: 'Acme' } }],
+		['a list', [INSTANCE]],
+		['null', null],
+	])('refuses an answer with %s and opens nothing', async (_case, body) => {
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async () => ({ ok: true, json: async () => body }) as unknown as Response)
+		);
+		const mod = await freshModule();
+		await mod.loadWorkspaces();
+
+		await expect(mod.useDesktopWorkspaces().addWorkspace('acme.test')).rejects.toThrow(
+			'shared.useDesktopWorkspaces.errors.unusableConfig'
+		);
+		expect(openExternal).not.toHaveBeenCalled();
+	});
+
+	it('refuses an answer that is not JSON', async () => {
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(
+				async () =>
+					({
+						ok: true,
+						json: async () => {
+							throw new SyntaxError('Unexpected token <');
+						},
+					}) as unknown as Response
+			)
+		);
+		const mod = await freshModule();
+		await mod.loadWorkspaces();
+
+		const failure = await mod
+			.useDesktopWorkspaces()
+			.addWorkspace('acme.test')
+			.then(
+				() => null,
+				(err: unknown) => err as Error
+			);
+		expect(failure?.message).toBe('shared.useDesktopWorkspaces.errors.unusableConfig');
+		// The key-carrying error the translated one replaced stays reachable.
+		expect(failure?.cause).toMatchObject({
+			messageKey: 'shared.useDesktopWorkspaces.errors.unusableConfig',
+		});
+		expect(openExternal).not.toHaveBeenCalled();
 	});
 });

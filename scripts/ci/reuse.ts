@@ -1,3 +1,14 @@
+import {
+	arrayOf,
+	boolean,
+	decodeJson,
+	type Decoder,
+	integer,
+	nullable,
+	object,
+	recordOf,
+	string,
+} from '../json';
 import { assertJobResults } from './selection';
 export const FULL_JOBS = [
 	'detect',
@@ -9,6 +20,7 @@ export const FULL_JOBS = [
 	'test-api-merge',
 	'test-web',
 	'test-web-merge',
+	'test-web-browser',
 	'test-mta',
 	'docker-build',
 	'sdk-java',
@@ -28,13 +40,43 @@ export interface Run {
 	id: number;
 	run_attempt: number;
 	head_sha: string;
-	head_branch: string;
+	/** GitHub leaves it null when the run has no branch or tag (a detached head). */
+	head_branch: string | null;
 	event: string;
 	path: string;
 	status: string;
 	conclusion: string | null;
 	created_at: string;
 	html_url: string;
+}
+export const decodeRun: Decoder<Run> = object({
+	id: integer,
+	run_attempt: integer,
+	head_sha: string,
+	head_branch: nullable(string),
+	event: string,
+	path: string,
+	status: string,
+	conclusion: nullable(string),
+	created_at: string,
+	html_url: string,
+});
+/** A workflow's run list (`actions/workflows/<file>/runs`). */
+export const decodeWorkflowRuns: Decoder<Run[]> = (value, path) =>
+	object({ workflow_runs: arrayOf(decodeRun) })(value, path).workflow_runs;
+const decodeVerification: Decoder<Verification> = object({
+	version: integer,
+	sha: string,
+	repository: string,
+	runId: string,
+	attempt: string,
+	full: boolean,
+	expected: arrayOf(string),
+	results: recordOf(string),
+});
+/** The `verification.json` a full main CI run uploads. */
+export function parseVerification(text: string, label: string): Verification {
+	return decodeJson(text, decodeVerification, label);
 }
 export function eligibleRun(run: Run, sha: string, now = Date.now()) {
 	const age = now - Date.parse(run.created_at);

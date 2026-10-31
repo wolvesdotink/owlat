@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import UiTooltip from '@owlat/ui/components/ui/Tooltip.vue';
 import { ref, shallowRef, computed, onMounted, onUnmounted, watch } from 'vue';
 import type { Component } from 'vue';
 import type { BlockType, BrandBlockKind } from '../../types';
@@ -170,50 +171,49 @@ function handlePickerSelect(type: BlockType) {
 			aria-orientation="vertical"
 			:aria-label="t('builder.canvas.insertBlock')"
 		>
-			<button
-				v-for="block in quickBlocks"
-				:key="block.type"
-				class="flex items-center justify-center w-[32px] h-[32px] rounded-lg border-none bg-transparent text-text-secondary cursor-pointer transition-all duration-(--motion-moderate) hover:bg-bg-surface-hover hover:text-text-primary active:scale-[0.92]"
-				:title="label(block.label)"
-				:aria-label="t('builder.canvas.addBlock', { block: label(block.label) })"
-				type="button"
-				@click="emit('add-block', block.type)"
-			>
-				<component :is="block.icon" :size="16" />
-			</button>
+			<UiTooltip v-for="block in quickBlocks" :key="block.type" :text="label(block.label)">
+				<button
+					class="flex items-center justify-center w-[32px] h-[32px] rounded-lg border-none bg-transparent text-text-secondary cursor-pointer transition-[color,background-color,scale] duration-(--motion-moderate) hover:bg-bg-surface-hover hover:text-text-primary active:scale-[0.92]"
+					:aria-label="t('builder.canvas.addBlock', { block: label(block.label) })"
+					type="button"
+					@click="emit('add-block', block.type)"
+				>
+					<component :is="block.icon" :size="16" />
+				</button>
+			</UiTooltip>
 
 			<template v-if="brandBlocks && brandBlocks.length > 0">
 				<div class="w-6 h-px bg-border-subtle my-0.5" />
-				<button
-					v-for="kind in brandBlocks"
-					:key="kind"
-					class="flex items-center justify-center w-[32px] h-[32px] rounded-lg border-none bg-transparent text-brand cursor-pointer transition-all duration-(--motion-moderate) hover:bg-bg-surface-hover active:scale-[0.92]"
-					:title="label(BRAND_BUTTONS[kind].label)"
-					:aria-label="
-						t('builder.canvas.addBrandBlock', { block: label(BRAND_BUTTONS[kind].label) })
-					"
-					:data-testid="`add-brand-${kind}`"
-					type="button"
-					@click="emit('add-brand-block', kind)"
-				>
-					<component :is="BRAND_BUTTONS[kind].icon" :size="16" />
-				</button>
+				<UiTooltip v-for="kind in brandBlocks" :key="kind" :text="label(BRAND_BUTTONS[kind].label)">
+					<button
+						class="flex items-center justify-center w-[32px] h-[32px] rounded-lg border-none bg-transparent text-brand cursor-pointer transition-[background-color,scale] duration-(--motion-moderate) hover:bg-bg-surface-hover active:scale-[0.92]"
+						:aria-label="
+							t('builder.canvas.addBrandBlock', { block: label(BRAND_BUTTONS[kind].label) })
+						"
+						:data-testid="`add-brand-${kind}`"
+						type="button"
+						@click="emit('add-brand-block', kind)"
+					>
+						<component :is="BRAND_BUTTONS[kind].icon" :size="16" />
+					</button>
+				</UiTooltip>
 			</template>
 
 			<div class="w-6 h-px bg-border-subtle my-0.5" />
 
-			<button
-				ref="moreButtonRef"
-				class="flex items-center justify-center w-[32px] h-[32px] rounded-lg border border-dashed border-border-default bg-transparent text-text-tertiary cursor-pointer transition-all duration-(--motion-moderate) hover:bg-bg-surface-hover hover:text-text-secondary hover:border-border-strong active:scale-[0.92]"
-				:title="t('builder.canvas.moreBlocksTitle')"
-				:aria-label="t('builder.canvas.moreBlocks')"
-				aria-haspopup="menu"
-				:aria-expanded="showPicker"
-				type="button"
-				@click="showPicker = !showPicker"
-			>
-				<MoreHorizontal :size="16" />
-			</button>
+			<UiTooltip :text="t('builder.canvas.moreBlocksTitle')">
+				<button
+					ref="moreButtonRef"
+					class="flex items-center justify-center w-[32px] h-[32px] rounded-lg border border-dashed border-border-default bg-transparent text-text-tertiary cursor-pointer transition-[color,background-color,border-color,scale] duration-(--motion-moderate) hover:bg-bg-surface-hover hover:text-text-secondary hover:border-border-strong active:scale-[0.92]"
+					:aria-label="t('builder.canvas.moreBlocks')"
+					aria-haspopup="menu"
+					:aria-expanded="showPicker"
+					type="button"
+					@click="showPicker = !showPicker"
+				>
+					<MoreHorizontal :size="16" />
+				</button>
+			</UiTooltip>
 		</div>
 
 		<BlockPickerPopover

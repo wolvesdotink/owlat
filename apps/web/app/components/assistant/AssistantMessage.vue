@@ -10,7 +10,7 @@ export interface AssistantMessageData {
 	status: 'streaming' | 'complete' | 'stopped' | 'error';
 	toolCalls: AssistantToolCall[];
 	errorMessage: string | null;
-	/** The turn's paid call was refused for budget (D1): a code and reason, never a sentence. */
+	/** The turn's paid call was refused for budget: a code and reason, never a sentence. */
 	budgetRefusal?: { code: string; reason: string } | null;
 	model?: string | null;
 	createdAt: number;
@@ -31,7 +31,7 @@ const isCutOff = computed(
 		props.message.errorMessage === ASSISTANT_CUT_OFF_MESSAGE &&
 		hasText.value
 );
-// Refused for budget (D1): the stored code and reason, said in the reader's language.
+// Refused for budget: the stored code and reason, said in the reader's language.
 const isBudgetRefused = computed(() => budgetRefusalReason(props.message.budgetRefusal) !== null);
 // Typing indicator only before any text or tool activity has surfaced.
 const showTyping = computed(
@@ -98,7 +98,7 @@ const showTyping = computed(
 			>
 				{{ t('components.assistant.assistantMessage.cutOff') }}
 			</p>
-			<!-- Refused for budget (D1): said in the reader's language from its reason. -->
+			<!-- Refused for budget: said in the reader's language from its reason. -->
 			<AiBudgetRefusal
 				v-else-if="message.status === 'error' && isBudgetRefused"
 				:refusal="message.budgetRefusal"

@@ -1,13 +1,12 @@
 'use node';
 
 /**
- * One attempt of an interpretation run (`run.ts`, split out at the file-size
- * cap): steps 1–10 of the run's module doc, plus read on arrival (SPEC §2.3):
- * once the message is scoped, a Postbox arrival read asks
- * `arrivalDecide.decideArrivalDepth` how deep to go. `full` goes on as
- * before, `gist` hands over to `gist.ts`, and `count` / `none` were settled
- * by that mutation with no model call. A display-only source whose spend is
- * refused counts instead of retrying (§2.6).
+ * One attempt of an interpretation run (split out of `run.ts` at the file-size
+ * cap): steps 1–10 of the run's module doc, plus read on arrival: a scoped
+ * Postbox arrival asks `arrivalDecide.decideArrivalDepth` how deep to go;
+ * `full` goes on, `gist` hands over to `gist.ts`, and `count` / `none` were
+ * settled by that mutation with no model call. A display-only source whose
+ * spend is refused counts instead of retrying (§2.6).
  */
 
 import type { ActionCtx } from '../../_generated/server';
@@ -30,7 +29,8 @@ import {
 } from './runShape';
 import { groundProposals } from './ground';
 import { isInterpretationEligible, isSecurityMail, isShortMail } from './eligibility';
-import { contentRevisionOf, scopeForInterpretation, segmentScoped } from './scope';
+import { contentRevisionOf, segmentScoped } from './scope';
+import { scopeForInterpretation } from './scopeLoad';
 import { buildInterpretInput, runStatusOf, toReduceResult, verifyClaimsOf } from './pipeline';
 import { needsReplyProjectionOf } from './needsReplyProjection';
 import { interpretRoot } from './verify';
@@ -117,7 +117,7 @@ export async function runOnce(
 	try {
 		isGuardClear = await guardAllowsInterpretation(ctx, args.source, args.root?.deadlineAt);
 	} catch (error) {
-		// The late guard was refused by spend admission: a budget deferral (D1).
+		// The late guard was refused by spend admission: a budget deferral.
 		const refusal = admissionRefusalOf(error);
 		if (!refusal) throw error;
 		const budgetRefusal = { reason: refusal.reason, limit: refusal.limit };
@@ -211,7 +211,7 @@ export async function runOnce(
 				};
 			}
 		}
-		// Read on arrival (SPEC §2.3): how deep an arrival read goes, decided now
+		// Read on arrival: how deep an arrival read goes, decided now
 		// that the message is scoped. `count` / `none` were settled by the decision.
 		const arrivalArgs = isArrivalRead(args, loaded) ? args : null;
 		const arrival = arrivalArgs

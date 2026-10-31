@@ -25,6 +25,28 @@ afterEach(async () => {
 	vi.unstubAllGlobals();
 });
 
+/** Serves the real proxy handler with h3's helpers as the Nitro auto-imports. */
+async function mountProxy(convexSiteUrlInternal: string): Promise<string> {
+	for (const name of [
+		'defineEventHandler',
+		'createError',
+		'readRawBody',
+		'getHeaders',
+		'getHeader',
+		'getRequestIP',
+		'appendResponseHeader',
+		'setHeader',
+		'setResponseStatus',
+	] as const) {
+		vi.stubGlobal(name, h3[name]);
+	}
+	vi.stubGlobal('useRuntimeConfig', () => ({ convexSiteUrlInternal, public: {} }));
+	vi.resetModules();
+	const { default: handler } = await import('../[...]');
+	const app = h3.createApp().use(handler);
+	return listen(createServer(h3.toNodeListener(app)));
+}
+
 describe('auth proxy redirects', () => {
 	it('returns the upstream redirect and session cookies without fetching the callback', async () => {
 		const callbackRequest = vi.fn();
@@ -49,26 +71,7 @@ describe('auth proxy redirects', () => {
 				response.end();
 			})
 		);
-		for (const name of [
-			'defineEventHandler',
-			'createError',
-			'readRawBody',
-			'getHeaders',
-			'getHeader',
-			'getRequestIP',
-			'appendResponseHeader',
-			'setHeader',
-			'setResponseStatus',
-		] as const) {
-			vi.stubGlobal(name, h3[name]);
-		}
-		vi.stubGlobal('useRuntimeConfig', () => ({
-			convexSiteUrlInternal: upstreamOrigin,
-			public: {},
-		}));
-		const { default: handler } = await import('../[...]');
-		const app = h3.createApp().use(handler);
-		const proxyOrigin = await listen(createServer(h3.toNodeListener(app)));
+		const proxyOrigin = await mountProxy(upstreamOrigin);
 		const path = '/api/auth/verify-email?token=invalid&callbackURL=' + encodeURIComponent(location);
 		const response = await fetch(proxyOrigin + path, {
 			redirect: 'manual',
@@ -85,5 +88,45 @@ describe('auth proxy redirects', () => {
 		]);
 		expect(await response.text()).toBe('');
 		expect(callbackRequest).not.toHaveBeenCalled();
+	});
+
+	it('forwards upstream response headers except the ones the proxy owns', async () => {
+		const upstreamOrigin = await listen(
+			createServer((_request, response) => {
+				response.writeHead(200, {
+					'Content-Type': 'application/json',
+					'X-Owlat-Upstream': 'kept',
+					'Set-Cookie': 'better-auth.session_token=s; Path=/; HttpOnly',
+				});
+				response.end('{"ok":true}');
+			})
+		);
+		const proxyOrigin = await mountProxy(upstreamOrigin);
+
+		const response = await fetch(proxyOrigin + '/api/auth/get-session');
+
+		expect(response.status).toBe(200);
+		expect(response.headers.get('x-owlat-upstream')).toBe('kept');
+		expect(response.headers.get('content-type')).toBe('application/json');
+		// Set-Cookie is rewritten by the proxy, not copied verbatim alongside it.
+		expect(response.headers.getSetCookie()).toEqual([
+			'better-auth.session_token=s; Path=/; HttpOnly; SameSite=Lax',
+		]);
+		expect(await response.text()).toBe('{"ok":true}');
+	});
+
+	it('refuses with a 500 and no upstream call when the Convex site URL cannot form a URL', async () => {
+		const proxyOrigin = await mountProxy('not a url');
+		// The proxy's own upstream call goes through the global `fetch`; the test
+		// reaches the proxy with the real one captured first.
+		const realFetch = globalThis.fetch;
+		const upstreamFetch = vi.fn();
+		vi.stubGlobal('fetch', upstreamFetch);
+		const response = await realFetch(proxyOrigin + '/api/auth/get-session');
+
+		// h3 keeps a 500's message out of the response body, so the refusal shows
+		// as the status plus the upstream call that never happened.
+		expect(response.status).toBe(500);
+		expect(upstreamFetch).not.toHaveBeenCalled();
 	});
 });

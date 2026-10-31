@@ -3,6 +3,7 @@ import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { NO_AUTO_MAINTENANCE } from './gitRepository.testlib';
 
 const SCRIPT = resolve(import.meta.dirname, '../check-stored-block-corpus.ts');
 const CORPUS = 'packages/email-renderer/src/__tests__/storedBlocks';
@@ -38,6 +39,7 @@ function repository(): { root: string; base: string } {
 	git(root, ['init', '--quiet', '--initial-branch', 'main']);
 	git(root, ['config', 'user.email', 'test@example.com']);
 	git(root, ['config', 'user.name', 'Corpus Test']);
+	git(root, [...NO_AUTO_MAINTENANCE]);
 	write(root, VERSION_FILE, 'export const EMAIL_RENDERER_VERSION = 2;\n');
 	write(root, `${CORPUS}/retired.json`, '{}\n');
 	write(root, `${CORPUS}/v1/a.json`, '{"stored": []}\n');
@@ -55,6 +57,7 @@ const GATE_ENV = [
 	'GITHUB_ACTIONS',
 	'GITHUB_BASE_REF',
 	'GITHUB_EVENT_NAME',
+	'PR_BASE_SHA',
 	'STORED_BLOCK_CORPUS_BASE',
 	'STORED_BLOCK_CORPUS_DEFAULT_BRANCH',
 	'STORED_BLOCK_CORPUS_PUSH_BEFORE',
@@ -102,6 +105,7 @@ function shallowClone(source: string): string {
 	const root = mkdtempSync(join(tmpdir(), 'owlat-stored-block-corpus-shallow-'));
 	sandboxes.push(root);
 	execFileSync('git', ['clone', '--quiet', '--depth', '1', `file://${source}`, root]);
+	git(root, [...NO_AUTO_MAINTENANCE]);
 	return root;
 }
 
@@ -158,6 +162,27 @@ describe('check-stored-block-corpus', () => {
 		expect(check(root, base).status).toBe(0);
 	});
 
+	it('refuses a retired.json that does not name each version with its migration', () => {
+		const { root, base } = repository();
+		rmSync(join(root, CORPUS, 'v1/a.json'));
+		rmSync(join(root, CORPUS, 'snapshots/renderer-v2/a.html'));
+		// Read through a cast, the array's index "1" retired version 1.
+		for (const [contents, message] of [
+			[
+				'["v0", "migrations/0099_retire_v1_blocks.ts"]',
+				'must map each retired contentBlockVersion',
+			],
+			['{ "1": true }', 'must name the migration that retired contentBlockVersion 1'],
+			['{ "1": "" }', 'must name the migration that retired contentBlockVersion 1'],
+			['{ "1": ', 'is not valid JSON'],
+		]) {
+			write(root, `${CORPUS}/retired.json`, contents!);
+			const result = check(root, base);
+			expect(result.output).toContain(message);
+			expect(result.status).toBe(1);
+		}
+	});
+
 	describe('push events in CI', () => {
 		it('compares a push with the commit before it, even when origin/main is HEAD', () => {
 			const { root, base } = rewrittenOnTop();
@@ -206,6 +231,57 @@ describe('check-stored-block-corpus', () => {
 			const root = shallowClone(source);
 			const result = ciPush(root, base);
 			expect(result.status).toBe(1);
+			expect(result.output).toContain('snapshots/renderer-v2/a.html');
+		});
+	});
+
+	describe('pull requests in CI', () => {
+		/** A pull request run, as the Lint job runs the gate. */
+		const ciPullRequest = (root: string, pinned?: string): Result =>
+			run(root, {
+				CI: 'true',
+				GITHUB_ACTIONS: 'true',
+				GITHUB_BASE_REF: 'main',
+				...(pinned && { PR_BASE_SHA: pinned }),
+			});
+
+		/** `rewrittenOnTop` with an origin whose main moved to HEAD after the checkout. */
+		function targetMovedToHead(): { root: string; base: string } {
+			const repo = rewrittenOnTop();
+			const remote = mkdtempSync(join(tmpdir(), 'owlat-stored-block-corpus-remote-'));
+			sandboxes.push(remote);
+			git(remote, ['init', '--quiet', '--bare']);
+			git(remote, [...NO_AUTO_MAINTENANCE]);
+			git(repo.root, ['remote', 'add', 'origin', remote]);
+			git(repo.root, ['push', '--quiet', 'origin', 'HEAD:refs/heads/main']);
+			setOriginMain(repo.root, repo.base);
+			return repo;
+		}
+
+		it('compares with PR_BASE_SHA, not where origin/main points', () => {
+			const { root, base } = rewrittenOnTop();
+			setOriginMain(root, 'HEAD');
+			const result = ciPullRequest(root, base);
+			expect(result.status).toBe(1);
+			expect(result.output).toContain(`against origin/main at ${base}`);
+		});
+
+		it('keeps the origin/main the checkout has when the remote moves', () => {
+			const { root, base } = targetMovedToHead();
+			for (const pinned of [base, undefined]) {
+				const result = ciPullRequest(root, pinned);
+				expect(result.status, result.output).toBe(1);
+				expect(result.output).toContain('snapshots/renderer-v2/a.html');
+			}
+			expect(git(root, ['rev-parse', 'origin/main'])).toBe(base);
+			expect(git(root, ['rev-parse', '--is-shallow-repository'])).toBe('false');
+		});
+
+		it('fetches a pinned base a shallow checkout lacks', () => {
+			const { root: source, base } = rewrittenOnTop();
+			const root = shallowClone(source);
+			const result = ciPullRequest(root, base);
+			expect(result.status, result.output).toBe(1);
 			expect(result.output).toContain('snapshots/renderer-v2/a.html');
 		});
 	});
@@ -268,6 +344,7 @@ describe('check-stored-block-corpus', () => {
 				`file://${source}`,
 				root,
 			]);
+			git(root, [...NO_AUTO_MAINTENANCE]);
 			return root;
 		}
 

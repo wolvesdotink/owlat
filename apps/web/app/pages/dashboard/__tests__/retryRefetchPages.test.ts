@@ -94,6 +94,7 @@ const FEATURE_STUBS = Object.fromEntries(
 	[
 		'BackupCommandRow',
 		'CampaignsABTestConfig',
+		'CampaignsCampaignCancelIntentDialog',
 		'CampaignsCampaignEditLocked',
 		'CampaignsCapacitySchedulePanel',
 		'CampaignsSendReadinessNote',
@@ -122,6 +123,7 @@ const FEATURE_STUBS = Object.fromEntries(
 		'DeliveryRampNarrativeCard',
 		'DeliveryRampPresetPicker',
 		'DeliveryReferenceRelayNotice',
+		'DraftSaveStatus',
 		'InboxActivityEmptyState',
 		'InboxFilterPills',
 		'InboxQuarantineReason',

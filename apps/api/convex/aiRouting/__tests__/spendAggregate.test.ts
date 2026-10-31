@@ -45,7 +45,7 @@ describe('the spend aggregate reconcile', () => {
 		expect(totals.month).toBe(12_500_000);
 		const state = await t.run((ctx) => ctx.db.query('llmSpendAggregateState').first());
 		expect(state).toMatchObject({ status: 'complete', scannedCount: 12_500 });
-	}, 60_000);
+	});
 
 	it('counts each row once when live writes land between rebuild pages', async () => {
 		const t = newHarness();
@@ -84,7 +84,7 @@ describe('the spend aggregate reconcile', () => {
 		expect(totals.day).toBe(expected);
 		// Live rows carry the generation they were counted under.
 		expect(rows.filter((row) => row.spendGeneration === generation)).toHaveLength(3);
-	}, 60_000);
+	});
 
 	it('leaves rows of an earlier month out of this month', async () => {
 		const t = newHarness();

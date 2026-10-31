@@ -125,15 +125,16 @@ watch(
 			>
 				· {{ count }}
 			</span>
-			<button
-				type="button"
-				class="ml-auto rounded p-1 text-text-tertiary hover:bg-bg-surface-hover hover:text-text-primary focus-visible:ring-1 focus-visible:ring-brand/40 outline-none"
-				:aria-label="t('components.postbox.threadDiscussion.close')"
-				:title="t('components.postbox.threadDiscussion.close')"
-				@click="toggle"
-			>
-				<Icon name="lucide:x" class="w-4 h-4" aria-hidden="true" />
-			</button>
+			<UiTooltip :text="t('components.postbox.threadDiscussion.close')">
+				<button
+					type="button"
+					class="ml-auto rounded p-1 text-text-tertiary hover:bg-bg-surface-hover hover:text-text-primary focus-visible:ring-1 focus-visible:ring-brand/40 outline-none"
+					:aria-label="t('components.postbox.threadDiscussion.close')"
+					@click="toggle"
+				>
+					<Icon name="lucide:x" class="w-4 h-4" aria-hidden="true" />
+				</button>
+			</UiTooltip>
 		</header>
 
 		<div ref="listEl" class="flex-1 min-h-0 overflow-y-auto px-4 py-3">
@@ -184,7 +185,7 @@ watch(
 			<textarea
 				v-model="draft"
 				rows="2"
-				class="w-full resize-none rounded-lg border border-border-subtle bg-bg-base px-3 py-2 text-sm text-text-primary placeholder:text-text-tertiary focus:border-brand-border focus:outline-none"
+				class="input resize-none"
 				:placeholder="placeholder"
 				:aria-label="t('components.postbox.threadDiscussion.composerLabel')"
 				data-testid="thread-discussion-input"

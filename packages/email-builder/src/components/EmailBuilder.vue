@@ -30,6 +30,7 @@ import type {
 	BuilderCollabFocus,
 } from '../types';
 import { applyCoeditOps, type CoeditOp } from '@owlat/shared/coeditOps';
+import { prefersReducedMotion } from '@owlat/ui/composables/useReducedMotion';
 import { normalizeBlockTreeIds } from '@owlat/shared/blockTree';
 import type { ParentContext } from './canvas/types';
 
@@ -73,7 +74,7 @@ import { defaultTheme } from '../defaults';
 import { getBlock, getContainerItemTypes, getColumnItemTypes } from '../registry';
 
 // Schema
-import '../schema'; // Side-effect: registers all schemas
+// Loading the module registers every block schema as a side effect.
 import { getSchema } from '../schema';
 
 // Components
@@ -541,9 +542,10 @@ function selectBlock(blockId: string): boolean {
 	if (location.parent) selectNestedItem(location.root.id, blockId);
 	else handleSelectBlock(blockId);
 	nextTick(() => {
-		blockElements.value
-			.get(location.root.id)
-			?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+		blockElements.value.get(location.root.id)?.scrollIntoView({
+			behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+			block: 'nearest',
+		});
 	});
 	return true;
 }
@@ -589,7 +591,15 @@ function applyRemoteOps(ops: readonly CoeditOp<EditorBlock>[]) {
 // `isInlineEditing` tells a host that text may be typed which the blocks do not
 // hold yet (the inline editor commits when it closes), so replacing the canvas
 // now would leave that text to be committed on top of whatever replaced it.
-defineExpose({ loadState, applyRemoteOps, isInlineEditing, selectBlock });
+// `commitInlineEdit` closes that editor, so a host about to save (or leave)
+// can have the text in the blocks first.
+defineExpose({
+	loadState,
+	applyRemoteOps,
+	isInlineEditing,
+	selectBlock,
+	commitInlineEdit: exitInlineEdit,
+});
 
 // Co-editing focus: which root is selected and which is open in the inline
 // editor, for the host's presence outline and edit lease.
@@ -1002,7 +1012,10 @@ function handleAddTextBlockFromPlaceholder() {
 		enterInlineEdit(newBlock.id);
 		nextTick(() => {
 			const el = blockState.blockElements.value.get(newBlock.id);
-			el?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+			el?.scrollIntoView({
+				behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+				block: 'nearest',
+			});
 		});
 	});
 }
@@ -1167,6 +1180,9 @@ function handleSlashCommandSelect(command: SlashCommand, fromBlockId: string) {
 			>
 				<template v-if="$slots['toolbar-actions']" #toolbar-actions>
 					<slot name="toolbar-actions" />
+				</template>
+				<template v-if="$slots['save-status']" #save-status>
+					<slot name="save-status" />
 				</template>
 			</EditorHeader>
 		</div>

@@ -36,7 +36,18 @@ vi.stubGlobal('useState', (key: string, init: () => unknown) => {
 	if (!stateBuckets.has(key)) stateBuckets.set(key, ref(init()));
 	return stateBuckets.get(key);
 });
-vi.stubGlobal('useToast', () => ({ showToast, removeToast, setToastShortcutHint: vi.fn() }));
+const updateToast = (id: string, patch: { message?: string; action?: StubToast['action'] }) => {
+	const toast = toasts.find((t) => t.id === id);
+	if (!toast) return;
+	if (patch.message !== undefined) toast.message = patch.message;
+	if (patch.action) toast.action = patch.action;
+};
+vi.stubGlobal('useToast', () => ({
+	showToast,
+	removeToast,
+	setToastShortcutHint: vi.fn(),
+	updateToast,
+}));
 // The undo toast's action label is translated, so the real catalog sits behind
 // the `useI18n` auto-import (mirrors usePostboxTriageUndo's own test).
 const i18n = createTestI18n();
@@ -120,5 +131,112 @@ describe('useInboxTriage', () => {
 		expect(ok).toBe(true);
 		expect(ids(visible.value)).toEqual(['a', 'b']);
 		expect(toasts[0]?.message).toBe('Assigned to you');
+	});
+
+	it('collapses consecutive resolves into one toast whose Undo all brings every row back', async () => {
+		const rows = ref<Row[]>([{ _id: 'a' }, { _id: 'b' }, { _id: 'c' }]);
+		const { visible, run } = useInboxTriage(rows);
+		const group = {
+			key: 'inbox:resolved',
+			label: (count: number) => `Resolved ${count} conversations`,
+		};
+		const mutate = vi.fn(async () => ({ ok: true, result: null }) as const);
+		const undone: string[] = [];
+		for (const id of ['a', 'b']) {
+			await run({
+				id,
+				label: 'Resolved',
+				leavesView: true,
+				mutate,
+				inverse: async () => {
+					undone.push(id);
+				},
+				group,
+			});
+		}
+
+		expect(ids(visible.value)).toEqual(['c']);
+		expect(toasts.map((t) => [t.message, t.action?.label])).toEqual([
+			['Resolved 2 conversations', 'Undo all'],
+		]);
+
+		toasts[0]!.action!.onAction();
+		await vi.advanceTimersByTimeAsync(0);
+		expect(undone).toEqual(['b', 'a']);
+		expect(ids(visible.value)).toEqual(['a', 'b', 'c']);
+		expect(toasts).toHaveLength(0);
+	});
+
+	it('keeps a batch of more rows than the undo stack holds as one entry that undoes them all', async () => {
+		const many = Array.from({ length: 12 }, (_, i) => ({ _id: `r${i}` }));
+		const rows = ref<Row[]>([...many, { _id: 'z' }]);
+		const { visible, batch } = useInboxTriage(rows);
+		const group = {
+			key: 'inbox:resolved',
+			label: (count: number) => `Resolved ${count} conversations`,
+		};
+		const undone: string[] = [];
+		const run = batch();
+		const results = await Promise.all(
+			many.map((row) =>
+				run.run({
+					id: row._id,
+					leavesView: true,
+					// One write fails: it is rolled back and left out of the undo.
+					mutate: async () =>
+						row._id === 'r5' ? ({ ok: false } as const) : ({ ok: true, result: null } as const),
+					inverse: async () => {
+						undone.push(row._id);
+					},
+				})
+			)
+		);
+		expect(results.filter(Boolean)).toHaveLength(11);
+		// Nothing is undoable until the run commits.
+		expect(toasts).toHaveLength(0);
+		run.commit({ label: 'Resolved', group, concurrency: 4 });
+
+		const undo = usePostboxTriageUndo();
+		expect(undo.depth.value).toBe(1);
+		expect(ids(visible.value)).toEqual(['r5', 'z']);
+		expect(toasts.map((t) => [t.message, t.action?.label])).toEqual([
+			['Resolved 11 conversations', 'Undo'],
+		]);
+
+		toasts[0]!.action!.onAction();
+		await vi.advanceTimersByTimeAsync(0);
+		expect(undone.sort()).toEqual(
+			many
+				.map((r) => r._id)
+				.filter((id) => id !== 'r5')
+				.sort()
+		);
+		expect(ids(visible.value)).toEqual([...many.map((r) => r._id), 'z']);
+		expect(toasts).toHaveLength(0);
+	});
+
+	it('registers nothing for a batch in which no row landed, and the one-row text for one', async () => {
+		const rows = ref<Row[]>([{ _id: 'a' }, { _id: 'b' }]);
+		const { batch } = useInboxTriage(rows);
+		const group = { key: 'inbox:resolved', label: (count: number) => `Resolved ${count}` };
+		const none = batch();
+		await none.run({
+			id: 'a',
+			leavesView: true,
+			mutate: async () => ({ ok: false }) as const,
+			inverse: vi.fn(),
+		});
+		none.commit({ label: 'Resolved', group });
+		expect(toasts).toHaveLength(0);
+
+		const one = batch();
+		await one.run({
+			id: 'b',
+			leavesView: true,
+			mutate: async () => ({ ok: true, result: null }) as const,
+			inverse: vi.fn(),
+		});
+		one.commit({ label: 'Resolved', group });
+		expect(toasts.map((t) => t.message)).toEqual(['Resolved']);
 	});
 });

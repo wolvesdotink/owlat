@@ -32,7 +32,7 @@ describe('hostile strip bodies', () => {
 const output = perfBenchOutput();
 
 describe.runIf(output)('postbox strip scaling benchmark (perf:bench only)', () => {
-	it('samples stripRemoteImages at n and 4n', { timeout: 300_000 }, () => {
+	it('samples stripRemoteImages at n and 4n', () => {
 		const tasks = HOSTILE_SHAPES.flatMap((shape) =>
 			[shape.n, FACTOR * shape.n].map((n) => {
 				const html = shape.build(n);

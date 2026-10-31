@@ -594,6 +594,33 @@ describe('Google Postmaster v2 collection', () => {
 		expect(await redis.get('mta:postmaster:oauth-access-token')).toBeNull();
 	});
 
+	it.each<[string, unknown]>([
+		['null', null],
+		['an array', [{ access_token: 'token', expires_in: 3600 }]],
+		['a string', 'token'],
+		['a numeric token', { access_token: 42, expires_in: 3600 }],
+		['an empty token', { access_token: '', expires_in: 3600 }],
+	])('stops on an auth failure when the token response is %s', async (_label, body) => {
+		const redis = new Redis();
+		vi.mocked(logger.error).mockClear();
+		// `response(null)` would send no body at all; this sends the JSON `null`.
+		const fetchMock = vi.fn(async (input: string | URL | Request) =>
+			String(input).includes('/token')
+				? new Response(JSON.stringify(body), { headers: { 'content-type': 'application/json' } })
+				: response({ domains: [] })
+		);
+		vi.stubGlobal('fetch', fetchMock);
+
+		await fetchPostmasterData(redis, config);
+
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+		expect(await redis.get('mta:postmaster:oauth-access-token')).toBeNull();
+		expect(logger.error).toHaveBeenCalledWith(
+			{ operation: 'oauth.token', status: 200, category: 'auth' },
+			'Google Postmaster fetch stopped'
+		);
+	});
+
 	it('refreshes one rejected access token and retries the request once', async () => {
 		const redis = new Redis();
 		await redis.set('mta:postmaster:oauth-access-token', 'stale-token');
@@ -902,9 +929,11 @@ describe('Google Postmaster v2 collection', () => {
 
 	it('can acquire a new lease after the previous lease expires', async () => {
 		vi.restoreAllMocks();
+		// The mock Redis expires keys against Date.now(), so fake Date alone moves
+		// the lease past its expiry.
+		vi.useFakeTimers({ toFake: ['Date'] });
 		const redis = new Redis();
-		await redis.set('mta:postmaster:collection-lock', 'expired-worker', 'PX', 1);
-		await new Promise((resolve) => setTimeout(resolve, 5));
+		await redis.set('mta:postmaster:collection-lock', 'expired-worker', 'PX', 5);
 		const fetchMock = vi.fn(async (input: string | URL | Request) =>
 			String(input).includes('/token')
 				? response({ access_token: 'token', expires_in: 3600 })
@@ -912,6 +941,12 @@ describe('Google Postmaster v2 collection', () => {
 		);
 		vi.stubGlobal('fetch', fetchMock);
 
+		// Still inside the other worker's lease: the sweep stands down.
+		vi.advanceTimersByTime(4);
+		await fetchPostmasterData(redis, config);
+		expect(fetchMock).not.toHaveBeenCalled();
+
+		vi.advanceTimersByTime(2);
 		await fetchPostmasterData(redis, config);
 
 		expect(fetchMock).toHaveBeenCalled();

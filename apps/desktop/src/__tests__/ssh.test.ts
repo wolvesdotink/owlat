@@ -1,14 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Mock the Tauri core bridge: invoke is a spy, Channel is a minimal stand-in
-// whose onmessage we can drive to simulate streamed exec events. invokeMock is
+// that takes its handler through the constructor like the real one, and whose
+// onmessage we can drive to simulate streamed exec events. invokeMock is
 // declared via vi.hoisted so it exists when the hoisted vi.mock factory runs.
 const { invokeMock } = vi.hoisted(() => ({ invokeMock: vi.fn() }));
 
 vi.mock('@tauri-apps/api/core', () => ({
 	invoke: (...args: unknown[]) => invokeMock(...args),
 	Channel: class {
-		onmessage: ((msg: unknown) => void) | null = null;
+		constructor(readonly onmessage?: (msg: unknown) => void) {}
 	},
 }));
 
@@ -201,10 +202,14 @@ describe('ssh bridge', () => {
 			services: ['web'],
 		};
 
-		const code = await localDockerBuild('s1', '/home/dev/owlat', build, () => {});
+		const events: ExecEvent[] = [];
+
+		const code = await localDockerBuild('s1', '/home/dev/owlat', build, (e) => events.push(e));
 
 		const [cmd, args] = invokeMock.mock.calls[0]!;
 		expect(cmd).toBe('local_docker_build');
+		args.onEvent.onmessage({ kind: 'stdout', line: '#1 building' });
+		expect(events).toEqual([{ kind: 'stdout', line: '#1 building' }]);
 		expect(Object.keys(args).sort()).toEqual(['build', 'localDir', 'onEvent', 'sessionId']);
 		// The session owns the build, so cancelling it stops the build too.
 		expect(args.sessionId).toBe('s1');

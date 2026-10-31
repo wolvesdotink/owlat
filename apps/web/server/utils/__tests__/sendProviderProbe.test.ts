@@ -85,6 +85,10 @@ describe('runSendProviderProbe', () => {
 		['no host', { ...SMTP, host: '' }],
 		['no username', { ...SMTP, username: undefined }],
 		['no password', { ...SMTP, password: '' }],
+		['a numeric host', { ...SMTP, host: 42 }],
+		['an object username', { ...SMTP, username: { name: 'relay' } }],
+		['a boolean password', { ...SMTP, password: true }],
+		['an array block', [SMTP]],
 	])('smtp answers 400 with %s', async (_label, smtp) => {
 		await expect(
 			runSendProviderProbe('smtp', parseProbeBody({ provider: 'smtp', apiKey: 'key', smtp }))

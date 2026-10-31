@@ -71,7 +71,7 @@ const PROMOTION_SUBJECT =
 
 /** Local-parts of automated/system senders that emit notifications. */
 const NOTIFICATION_LOCAL_PART =
-	/^(notif(y|ication)?s?|alerts?|updates?|no-?reply|do-?not-?reply|donotreply|system|auto(mated)?|mailer|bot|support|team|hello|info|news|account|security)([+._\-].*)?$/i;
+	/^(notif(y|ication)?s?|alerts?|updates?|no-?reply|do-?not-?reply|donotreply|system|auto(mated)?|mailer|bot|support|team|hello|info|news|account|security)([+._-].*)?$/i;
 
 export interface MailCategoryInput {
 	/** From address of the latest inbound message (any case). */
@@ -254,7 +254,7 @@ export const getThreadCategoryContext = internalQuery({
 
 		return {
 			latestMessageId: thread.latestMessageId,
-			// Whose background AI bucket the refinement is charged to (#1380).
+			// Whose background AI bucket the refinement is charged to.
 			ownerUserId: view.ownerUserId,
 			senderEmail: signals.senderEmail,
 			override: signals.override,
@@ -410,7 +410,7 @@ export const recategorize = postboxMutation({
 					updatedAt: now,
 				});
 			}
-			// D12: an owner correction invalidates what decision artifacts and
+			// An owner correction invalidates what decision artifacts and
 			// sender memory hold about this sender's mail here (advisory data).
 			await invalidateSenderMemoryForCorrection(
 				ctx,
@@ -418,7 +418,7 @@ export const recategorize = postboxMutation({
 				latestInbound.fromAddress
 			);
 			await recordOwnerCorrection(ctx, { mailMessageId: latestInbound._id });
-			// An owner choice about the sender: their cold-pitch verdicts no longer stand (#1381).
+			// An owner choice about the sender: their cold-pitch verdicts no longer stand.
 			await voidColdPitchVerdictsOfSender(ctx, thread.mailboxId, latestInbound.fromAddress);
 		}
 

@@ -1,8 +1,7 @@
 import { getFunctionName } from 'convex/server';
 import { describe, it, expect, vi } from 'vitest';
 import { reportTaskFailure } from '../taskProcess.js';
-import { getConvexClient } from '../convexClient.js';
-import type { CodeTaskFailureOutcome } from '../convexClient.js';
+import type { CodeTaskFailureOutcome, getConvexClient } from '../convexClient.js';
 
 /** Records every mutation call and answers `markFailed` with a canned outcome. */
 function fakeClient(outcome: CodeTaskFailureOutcome) {

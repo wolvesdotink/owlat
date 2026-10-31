@@ -3,6 +3,7 @@ import type { FunctionReturnType } from 'convex/server';
 import {
 	DEFAULT_INBOX_FILTER,
 	DEFAULT_INBOX_SORT,
+	INBOX_SORTS,
 	inboxAssigneeArg,
 	inboxAssigneeToQuery,
 	inboxFilterToQuery,
@@ -18,6 +19,7 @@ import {
 	type InboxSort,
 } from '~/utils/inboxFilters';
 import { inboxSlaSliceHolds } from '~/utils/inboxSla';
+import { readStoredChoice } from '~/utils/storedValue';
 import { rememberTeamThreadPreviews } from '~/utils/teamThreadPreviews';
 import { useNow } from '~/composables/useNow';
 
@@ -105,12 +107,13 @@ export function useInbox(gate?: Ref<boolean>) {
 	// ── Sort preference, persisted per user (a6 mechanism = useLocalStorage) ──
 	const { data: storedSort, set: setStoredSort } = useLocalStorage<InboxSort>(
 		SORT_STORAGE_KEY,
-		DEFAULT_INBOX_SORT
+		DEFAULT_INBOX_SORT,
+		readStoredChoice(INBOX_SORTS)
 	);
 	// Normalised on read: the stored value predates the "oldest waiting" order,
 	// and a browser holding something unknown must not select a nonexistent
 	// backend index.
-	// `?filter=waiting-24h` used to be a tab; it now means "Open, longest wait
+	// `?filter=waiting-24h` is an old tab's link; it means "Open, longest wait
 	// first". That order holds for this view only: following an old link must
 	// not rewrite the viewer's saved sort. Picking a sort drops the override.
 	const legacySort = ref<InboxSort | null>(legacyInboxSort(route.query['filter']) ?? null);

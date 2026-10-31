@@ -104,6 +104,8 @@ export const run = internalAction({
 				);
 				for (const [index, assetId] of page.assetIds.entries()) {
 					if (source === 'messages') {
+						// checkpoint: one asset's tag; an asset already tagged is left
+						// alone, so a re-run redoes nothing.
 						updated += await ctx.runMutation(
 							internal.migrations['0044_private_chat_media'].markReferenced,
 							{ assetId }
@@ -117,6 +119,8 @@ export const run = internalAction({
 					previousStorageId = storageId;
 					let aliasCursor: string | null = null;
 					for (;;) {
+						// checkpoint: one page of an alias group; an alias already tagged
+						// is skipped, so a re-run redoes nothing.
 						const aliases: { updated: number; cursor: string; isDone: boolean } =
 							await ctx.runMutation(internal.migrations['0044_private_chat_media'].retagAliases, {
 								assetId,

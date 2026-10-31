@@ -284,20 +284,44 @@ export const deliverBriefEmail = internalMutation({
 				renderedMessageIds: v.array(v.id('mailMessages')),
 			})
 		),
+		/**
+		 * When the delivery pass listed this brief. A delivery stamped since means
+		 * an overlapping pass already sent it, and this one files nothing.
+		 */
+		listedAt: v.optional(v.number()),
+		/**
+		 * The wait this brief was listed under (`deferredSince`). A delivery that
+		 * cannot land, other than for a stale digest, ends it in the same commit.
+		 */
+		endDeferralAt: v.optional(v.number()),
 	},
 	handler: async (ctx, args): Promise<{ delivered: boolean; isDigestStale?: boolean }> => {
+		const settings = await ctx.db
+			.query('mailUserSettings')
+			.withIndex('by_user', (q) => q.eq('userId', args.userId))
+			.first();
+		if (args.listedAt !== undefined && (settings?.lastDailyBriefEmailAt ?? 0) >= args.listedAt) {
+			return { delivered: false };
+		}
+		const notDelivered = async (): Promise<{ delivered: false }> => {
+			if (settings && args.endDeferralAt !== undefined) {
+				await endDeferral(ctx, settings, args.endDeferralAt);
+			}
+			return { delivered: false };
+		};
 		const mailbox = await ctx.db.get(args.mailboxId);
-		if (!mailbox) return { delivered: false };
+		if (!mailbox) return await notDelivered();
 		// The digest must still be generated under this claim (a second delivery
 		// sees it sent and does nothing), and its lines must still be the rendered
-		// ones: a purge, a fence or a scope change since asks for a re-render.
+		// ones: a purge, a fence or a scope change since asks for a re-render,
+		// which keeps the wait.
 		let digest: Doc<'mailDigests'> | null = null;
 		if (args.digest) {
 			const checked = await checkDigestDelivery(ctx, mailbox, args.digest);
 			if (checked.kind !== 'ok') {
 				return checked.kind === 'stale'
 					? { delivered: false, isDigestStale: true }
-					: { delivered: false };
+					: await notDelivered();
 			}
 			digest = checked.digest;
 		}
@@ -307,7 +331,7 @@ export const deliverBriefEmail = internalMutation({
 				q.eq('mailboxId', args.mailboxId).eq('role', 'inbox')
 			)
 			.first();
-		if (!folder) return { delivered: false };
+		if (!folder) return await notDelivered();
 
 		const now = Date.now();
 		const messageId = await insertDeliveredMessage(ctx, {
@@ -335,10 +359,6 @@ export const deliverBriefEmail = internalMutation({
 		await markThreadAsBrief(ctx, messageId);
 		// In the same transaction as the mail: sent, stripped, threads consumed.
 		if (digest) await consumeSentDigest(ctx, digest, { sentMessageId: messageId, sentAt: now });
-		const settings = await ctx.db
-			.query('mailUserSettings')
-			.withIndex('by_user', (q) => q.eq('userId', args.userId))
-			.first();
 		if (settings) {
 			await ctx.db.patch(settings._id, {
 				lastDailyBriefEmailAt: now,
@@ -379,8 +399,9 @@ export const deferBriefEmail = internalMutation({
 });
 
 /**
- * A deferred brief that this pass neither deferred again nor delivered (its
- * digest is no longer busy and nothing was left to send): the wait is over.
+ * A deferred brief that this pass neither deferred again nor tried to deliver
+ * (its digest is no longer busy and nothing was left to send): the wait is
+ * over. A delivery that could not land ends it inside `deliverBriefEmail`.
  * Clears only the deferral it was given.
  */
 export const endBriefDeferral = internalMutation({
@@ -390,10 +411,19 @@ export const endBriefDeferral = internalMutation({
 			.query('mailUserSettings')
 			.withIndex('by_user', (q) => q.eq('userId', args.userId))
 			.first();
-		if (settings?.dailyBriefDeferredAt !== args.deferredAt) return;
-		await ctx.db.patch(settings._id, { dailyBriefDeferredAt: undefined, updatedAt: Date.now() });
+		if (settings) await endDeferral(ctx, settings, args.deferredAt);
 	},
 });
+
+/** Clear the deferral `deferredAt` names, and only that one. */
+async function endDeferral(
+	ctx: MutationCtx,
+	settings: Doc<'mailUserSettings'>,
+	deferredAt: number
+): Promise<void> {
+	if (settings.dailyBriefDeferredAt !== deferredAt) return;
+	await ctx.db.patch(settings._id, { dailyBriefDeferredAt: undefined, updatedAt: Date.now() });
+}
 
 /** Whether a stored deferral is stale: delivered since, or past its bound. Pure. */
 export function isStaleBriefDeferral(

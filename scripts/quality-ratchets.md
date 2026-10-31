@@ -1,19 +1,16 @@
 # Quality ratchets
 
 `bun run lint:warnings` is part of the shared CI/release lint gate. It runs
-oxlint with `--deny-warnings` and compares diagnostics against the frozen
-`lint-warning-baseline.json`. The key is the file, rule, message, and offending
-source token, with a maximum count. Moving a line does not add an exception;
-a new warning, a changed offending token, or an increased count fails. Existing
-errors always fail, as do tool crashes or invalid output. Remove baseline entries
-as warnings are fixed; do not regenerate the baseline to accept new warnings.
+oxlint over every workspace with `--deny-warnings` and fails on any error and
+on any warning; there is no warning baseline. The only warnings it leaves alone
+are those of `owlat/*` rules, which the owlat ratchet below owns. Tool crashes,
+an unexpected exit status and invalid output fail too, so a broken run never
+reads as a clean one. Fix a new warning at its source; do not add a
+warning-level override or a baseline to make one pass.
 
-`import/no-cycle` is an error by default. The initial 17 cycle diagnostics are
-limited to the file patterns at the end of `oxlintrc.json`; these remain warnings
-so existing workspace lint commands can run. They are still covered by the warning
-ratchet. Remove a file's exception when its last cycle is fixed. Patterns are
-relative to either the repository or workspace lint directory; the baseline
-retains exact repository paths.
+`import/no-cycle` is an error everywhere. Break a cycle by moving the shared
+part into a leaf module both sides import, not by importing through a facade
+that re-exports the other side (a re-export is an import edge too).
 
 Owlat's own oxlint rules live in `packages/oxlint-plugin-owlat` and load through
 `jsPlugins` in `oxlintrc.json`, so every workspace lint runs them. A rule with no
@@ -21,8 +18,8 @@ remaining offenders is an error there. A rule that lands with debt is a warning
 instead, and `bun run lint:owlat` (`scripts/check-owlat-lint.sh`) owns it: the
 findings are compared through `scripts/ratchet.sh` against
 `scripts/owlat-lint-baseline.txt`, so a new finding fails and a fixed one must be
-deleted from the baseline. The lint warning ratchet above skips owlat warnings,
-so each finding has one baseline. `oxlintrc.json` also reports unused disable
+deleted from the baseline. The zero-warning gate above skips owlat warnings,
+so each finding has one owner. `oxlintrc.json` also reports unused disable
 directives as errors, and `owlat/require-suppression-reason` asks every
 suppression to say why (`-- reason` or a comment on the line above).
 

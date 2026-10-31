@@ -1,10 +1,11 @@
 /**
- * Routing for desktop notification actions (D13 + D5). The Rust backend emits a
+ * Routing for desktop notification actions. The Rust backend emits a
  * `notification-action` event ({ action: 'open' | 'archive' | 'read' | 'reply',
  * messageId, folderRole, reply? }) when the user interacts with a per-message
- * notification (macOS/Linux). The pure resolver maps that to an app effect; the
- * executor focuses the window and navigates / triages / sends the reply. No-op
- * outside Tauri.
+ * notification (macOS/Linux), and ({ action: 'navigate', url }) when a link
+ * notification (a campaign, automation or sending-domain notice) is clicked.
+ * The pure resolver maps that to an app effect; the executor focuses the window
+ * and navigates / triages / sends the reply. No-op outside Tauri.
  *
  * The `reply` effect (macOS inline reply field) builds a reply spec through the
  * EXISTING draft pipeline — create → set body → send — with NO new send path.
@@ -37,6 +38,7 @@ import {
 	writePendingAction,
 } from '~/lib/desktop/notificationWorkspace';
 import { answerModeHref } from '~/utils/answerMode';
+import { safeRedirect } from '~/utils/safeRedirect';
 
 type NotifMessage = FunctionReturnType<typeof api.mail.mailbox.messages.getMessage>;
 
@@ -45,6 +47,8 @@ export interface NotificationActionPayload {
 	messageId?: unknown;
 	folderRole?: unknown;
 	reply?: unknown;
+	/** The in-app path a clicked link notification opens. */
+	url?: unknown;
 	/** The desktop workspace the notification was sent from. */
 	workspaceId?: unknown;
 	/** Process-unique id of the native notification (see notifications.rs). */
@@ -56,6 +60,7 @@ export type NotifEffect =
 	| { type: 'archive'; messageId: string }
 	| { type: 'read'; messageId: string }
 	| { type: 'reply'; messageId: string; text: string }
+	| { type: 'navigate'; path: string }
 	| null;
 
 function str(v: unknown): string | undefined {
@@ -64,6 +69,12 @@ function str(v: unknown): string | undefined {
 
 /** Pure: map a notification-action payload to an app effect. */
 export function resolveNotificationEffect(payload: NotificationActionPayload): NotifEffect {
+	if (payload?.action === 'navigate') {
+		// The path came back from the OS, so it is held to the same rule as any
+		// redirect: a same-origin app path, or nothing.
+		const path = safeRedirect(payload.url, '');
+		return path ? { type: 'navigate', path } : null;
+	}
 	const messageId = str(payload?.messageId);
 	if (!messageId) return null;
 	if (payload.action === 'archive') return { type: 'archive', messageId };
@@ -243,9 +254,10 @@ export async function runEffect(
 		return;
 	}
 	// Clicking the notification body focuses the window and deep-links to the
-	// thread through the SPA router (no full document reload).
+	// thread (or a link notification's page) through the SPA router, with no
+	// full document reload.
 	await focusMainWindow();
-	navigate(threadPath(effect));
+	navigate(effect.type === 'navigate' ? effect.path : threadPath(effect));
 }
 
 // ── Workspace provenance ────────────────────────────────────────────────────
@@ -310,12 +322,13 @@ export async function handleNotificationAction(
 		workspaces.onUnavailable(effect);
 		return;
 	}
-	// An open needs nothing but the destination. Anything else rides the reload
+	// An open (or a link) needs nothing but the destination. Anything else rides the reload
 	// in sessionStorage. If that cannot be written, a triage action lands on the
 	// thread so the user can act there; a reply stays here, because its words
 	// exist only in this page and the reload would lose them.
 	const carried =
 		effect.type !== 'open' &&
+		effect.type !== 'navigate' &&
 		!!ctx.storage &&
 		writePendingAction(
 			ctx.storage,
@@ -332,11 +345,13 @@ export async function handleNotificationAction(
 		return;
 	}
 	const destination =
-		effect.type === 'open'
-			? threadPath(effect)
-			: carried
-				? '/dashboard'
-				: threadPath({ folderRole: 'inbox', messageId: effect.messageId });
+		effect.type === 'navigate'
+			? effect.path
+			: effect.type === 'open'
+				? threadPath(effect)
+				: carried
+					? '/dashboard'
+					: threadPath({ folderRole: 'inbox', messageId: effect.messageId });
 	await workspaces.switchTo(route.workspaceId, destination);
 }
 
@@ -405,6 +420,12 @@ export interface NotificationRouting {
 	dispose: () => void;
 	/** Settles once registration (and any carried action) has finished. */
 	ready: Promise<void>;
+	/**
+	 * Settles once registration and every action delivered so far have been
+	 * handled. Deliveries run fire-and-forget from the event callback, so this
+	 * is the only point that says their work is done.
+	 */
+	idle: () => Promise<void>;
 }
 
 /**
@@ -427,12 +448,19 @@ export function setupNotificationActionRouting(
 	};
 	activeRouting = dispose;
 
+	const handling = new Set<Promise<void>>();
+	const handle = (payload: NotificationActionPayload) => {
+		const run = handleNotificationAction(payload, ctx).finally(() => handling.delete(run));
+		handling.add(run);
+		return run;
+	};
+
 	const ready = (async () => {
 		try {
 			if (!(await isMainWindow()) || disposed) return;
 			const { onNotificationAction } = await import('@owlat/desktop/src/notifications');
 			const off = await onNotificationAction((payload) => {
-				if (!disposed && firstDelivery(payload)) void handleNotificationAction(payload, ctx);
+				if (!disposed && firstDelivery(payload)) void handle(payload);
 			});
 			// The owner went away while we were registering: drop the late listener.
 			if (disposed) {
@@ -445,5 +473,10 @@ export function setupNotificationActionRouting(
 			// Not running under Tauri.
 		}
 	})();
-	return { dispose, ready };
+	const idle = async () => {
+		await ready;
+		// Deliveries that arrive while earlier ones settle are awaited too.
+		while (handling.size > 0) await Promise.allSettled(handling);
+	};
+	return { dispose, ready, idle };
 }

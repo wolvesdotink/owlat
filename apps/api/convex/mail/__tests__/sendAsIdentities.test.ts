@@ -16,10 +16,9 @@ import { convexTest, type TestConvex } from 'convex-test';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import schema from '../../schema';
 import type { Id } from '../../_generated/dataModel';
-import { api } from '../../_generated/api';
+import { api, internal } from '../../_generated/api';
 import { modules, seedMailbox } from './helpers.testlib';
 import { createTestDomain } from '../../__tests__/factories';
-import { internal } from '../../_generated/api';
 import { resolveSendAsIdentitiesForCtx, isSanctionedSendAsForUser } from '../identities';
 import { readMailboxUsage } from '../mailboxUsage';
 

@@ -1,12 +1,12 @@
 /**
- * Response plans (SPEC §6): the internal reads and the write the node
+ * Response plans: the internal reads and the write the node
  * drafters and Answer mode's coverage check use (the agent `draft` step, draft
  * on arrival, "Draft with AI", `coverage.check`). The public reads and the
  * owner's stance writes are in `responsePlan.ts`.
  */
 
-import { v } from 'convex/values';
-import { internalQuery } from '../../_generated/server';
+import { v, type ObjectType } from 'convex/values';
+import { internalQuery, type MutationCtx } from '../../_generated/server';
 import { internalMutation } from '../../lib/writeFence';
 import { sealBodyAtWrite } from '../../lib/messageBody';
 import { getBetterAuthSessionWithRole } from '../../lib/sessionOrganization';
@@ -142,71 +142,97 @@ async function isStillBound(
 	return true;
 }
 
+/** A checked plan, without the thread and draft it is stored for. */
+export const planCheckFields = {
+	threadRevision: v.number(),
+	itemRevisions: v.array(itemRevisionRefValidator),
+	stances: v.array(responsePlanStanceValidator),
+	coverage: v.array(coverageEntryValidator),
+	fileClaims: v.array(plainClaimValidator),
+	newPromises: v.array(plainPromiseValidator),
+	draftHash: v.string(),
+	verdict: planVerdictValidator,
+	// The plan revision and the brief's deletion epoch the check read.
+	planRevision: v.number(),
+	deletionEpoch: v.number(),
+	attachmentSetHash: v.string(),
+	isCheckIncomplete: v.boolean(),
+};
+
+const recordCheckArgs = {
+	threadRef: threadRefValidator,
+	draftRef: draftRefValidator,
+	...planCheckFields,
+};
+
+/**
+ * Whether the thread is still as the check read it: not fenced, the same plan
+ * revision, nothing purged or erased since, and every item it names still at
+ * the revision it read. Draft on arrival asks before it writes the slot, so a
+ * reply written from stale input is not kept either.
+ */
+export async function isPlanCheckCurrent(
+	ctx: MutationCtx,
+	args: ObjectType<typeof recordCheckArgs>
+): Promise<boolean> {
+	// A check that read a thread now fenced off is not kept (staleFence.ts).
+	if (await isInterpretationFenced(ctx, args.threadRef)) return false;
+	const existing = await readPlanRow(ctx, args.draftRef);
+	if ((existing?.planRevision ?? 0) !== args.planRevision) return false;
+	return await isStillBound(ctx, args);
+}
+
 /**
  * Store a checked plan for a draft (the agent draft step, Answer mode's
  * coverage check, draft on arrival). The caller already applied the reader
  * rule; claim and promise texts are sealed here.
  *
- * Compare-and-set on the plan revision (review D1): the result is written only
+ * Compare-and-set on the plan revision: the result is written only
  * while the stored stances are still the ones the check read
  * (`planRevision`); a result computed for older stances is dropped, never
  * written over newer ones. A draft that no longer replies in the thread, or
  * is no longer a draft (sent, rejected, discarded), is not written either, so
  * a late check cannot recreate a removed plan. Returns whether it stored.
+ * Runs inside the caller's transaction: `recordCheck`, and draft on arrival's
+ * slot commit, which stores the slot and its plan together.
  */
+export async function recordPlanCheck(
+	ctx: MutationCtx,
+	args: ObjectType<typeof recordCheckArgs>
+): Promise<{ isStored: boolean }> {
+	if (!(await isDraftOfThread(ctx, args.draftRef, args.threadRef))) return { isStored: false };
+	if (!(await isDraftLive(ctx, args.draftRef))) return { isStored: false };
+	if (!(await isPlanCheckCurrent(ctx, args))) return { isStored: false };
+	const existing = await readPlanRow(ctx, args.draftRef);
+	await upsertPlan(ctx, args.threadRef, args.draftRef, {
+		threadRevision: args.threadRevision,
+		itemRevisions: args.itemRevisions,
+		stances: args.stances,
+		ownerInputs: existing?.ownerInputs ?? [],
+		coverage: args.coverage,
+		fileClaims: await Promise.all(
+			args.fileClaims.map(async (c) => ({ ...c, text: await sealBodyAtWrite(c.text) }))
+		),
+		newPromises: await Promise.all(
+			args.newPromises.map(async ({ duePhrase, ...p }) => ({
+				...p,
+				text: await sealBodyAtWrite(p.text),
+				// The words only: a promise's deadline is not resolved to a date here.
+				...(duePhrase ? { due: { phrase: duePhrase, isAmbiguous: true } } : {}),
+			}))
+		),
+		draftHash: args.draftHash,
+		verdict: args.verdict,
+		planRevision: args.planRevision,
+		checkedPlanRevision: args.planRevision,
+		attachmentSetHash: args.attachmentSetHash,
+		isCheckIncomplete: args.isCheckIncomplete,
+		updatedAt: Date.now(),
+	});
+	return { isStored: true };
+}
+
 export const recordCheck = internalMutation({
-	args: {
-		threadRef: threadRefValidator,
-		draftRef: draftRefValidator,
-		threadRevision: v.number(),
-		itemRevisions: v.array(itemRevisionRefValidator),
-		stances: v.array(responsePlanStanceValidator),
-		coverage: v.array(coverageEntryValidator),
-		fileClaims: v.array(plainClaimValidator),
-		newPromises: v.array(plainPromiseValidator),
-		draftHash: v.string(),
-		verdict: planVerdictValidator,
-		// The plan revision and the brief's deletion epoch the check read.
-		planRevision: v.number(),
-		deletionEpoch: v.number(),
-		attachmentSetHash: v.string(),
-		isCheckIncomplete: v.boolean(),
-	},
-	handler: async (ctx, args): Promise<{ isStored: boolean }> => {
-		if (!(await isDraftOfThread(ctx, args.draftRef, args.threadRef))) return { isStored: false };
-		if (!(await isDraftLive(ctx, args.draftRef))) return { isStored: false };
-		// A check that read a thread now fenced off is not kept (staleFence.ts).
-		if (await isInterpretationFenced(ctx, args.threadRef)) return { isStored: false };
-		const existing = await readPlanRow(ctx, args.draftRef);
-		if ((existing?.planRevision ?? 0) !== args.planRevision) return { isStored: false };
-		// Nothing purged or erased since the check read, and every item it names
-		// still exists at the revision it read (final review F3).
-		if (!(await isStillBound(ctx, args))) return { isStored: false };
-		await upsertPlan(ctx, args.threadRef, args.draftRef, {
-			threadRevision: args.threadRevision,
-			itemRevisions: args.itemRevisions,
-			stances: args.stances,
-			ownerInputs: existing?.ownerInputs ?? [],
-			coverage: args.coverage,
-			fileClaims: await Promise.all(
-				args.fileClaims.map(async (c) => ({ ...c, text: await sealBodyAtWrite(c.text) }))
-			),
-			newPromises: await Promise.all(
-				args.newPromises.map(async ({ duePhrase, ...p }) => ({
-					...p,
-					text: await sealBodyAtWrite(p.text),
-					// The words only: a promise's deadline is not resolved to a date here.
-					...(duePhrase ? { due: { phrase: duePhrase, isAmbiguous: true } } : {}),
-				}))
-			),
-			draftHash: args.draftHash,
-			verdict: args.verdict,
-			planRevision: args.planRevision,
-			checkedPlanRevision: args.planRevision,
-			attachmentSetHash: args.attachmentSetHash,
-			isCheckIncomplete: args.isCheckIncomplete,
-			updatedAt: Date.now(),
-		});
-		return { isStored: true };
-	},
+	args: recordCheckArgs,
+	handler: async (ctx, args): Promise<{ isStored: boolean }> => await recordPlanCheck(ctx, args),
 });

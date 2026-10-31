@@ -3,6 +3,7 @@ import type { Id } from '@owlat/api/dataModel';
 import type { FunctionReturnType } from 'convex/server';
 import type { Ref } from 'vue';
 import type { BackendOperationResult } from '~/composables/useBackendOperation';
+import { findChatRecallTarget, type ChatRecallTarget } from '~/utils/composerRecall';
 
 /**
  * One chat message as `listMessages` returns it: the stored row plus its
@@ -32,8 +33,8 @@ export function useChatRoom(roomId: Ref<Id<'chatRooms'> | undefined>) {
 	);
 
 	// Growable window over the live message subscription: starts at 100, grows by
-	// 100 up to the backend cap so "Load earlier messages" can reach older history
-	// (previously hard-capped at 100 with no way to load more). Resets per room.
+	// 100 up to the backend cap so "Load earlier messages" can reach older history.
+	// Resets per room.
 	const {
 		limit: messageLimit,
 		loadMore: loadMoreMessages,
@@ -110,6 +111,20 @@ export function useChatRoom(roomId: Ref<Id<'chatRooms'> | undefined>) {
 	const deleteMessage = async (messageId: Id<'chatMessages'>) => {
 		return await deleteMessageMutation({ messageId });
 	};
+
+	/**
+	 * What ↑ in the empty composer opens: `userId`'s newest editable message in
+	 * this room, judged from the list that answered for this room and window.
+	 */
+	const recallTarget = (userId: string): ChatRecallTarget<Id<'chatMessages'>> =>
+		findChatRecallTarget({
+			roomId: roomId.value,
+			userId,
+			messages: messages.value,
+			settled: messagesData.value !== undefined && !messagesLoading.value && !messagesError.value,
+			hasMore: hasMoreMessages.value,
+			canLoadEarlier: !atMaxMessages.value,
+		});
 
 	const joinChannel = async () => {
 		if (!roomId.value) return;
@@ -190,6 +205,7 @@ export function useChatRoom(roomId: Ref<Id<'chatRooms'> | undefined>) {
 		sendMessage,
 		editMessage,
 		deleteMessage,
+		recallTarget,
 		joinChannel,
 		leaveRoom,
 	};

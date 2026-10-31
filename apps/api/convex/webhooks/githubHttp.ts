@@ -25,6 +25,8 @@ import { BodyTooLargeError, readBodyText } from '../lib/readBody';
  * https://docs.github.com/en/webhooks/webhook-events-and-payloads#pull_request
  */
 
+import { v } from 'convex/values';
+import { decodeJsonText } from '@owlat/worker-protocol/decodeJson';
 import { httpAction } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { getOptional } from '../lib/env';
@@ -50,13 +52,20 @@ async function verifyGithubSignature(
 	return constantTimeEqual(expected, provided);
 }
 
-interface GithubPullRequestPayload {
-	action?: string;
-	pull_request?: {
-		merged?: boolean;
-		html_url?: string;
-	};
-}
+/**
+ * The two fields of a `pull_request` delivery this route reads. GitHub's
+ * schema documents `merged` as nullable, and the payload's other fields are
+ * GitHub's to add to, so they are left unread.
+ */
+const githubPullRequestPayload = v.object({
+	action: v.optional(v.string()),
+	pull_request: v.optional(
+		v.object({
+			merged: v.optional(v.union(v.boolean(), v.null())),
+			html_url: v.optional(v.string()),
+		})
+	),
+});
 
 export const handleGithubWebhook = httpAction(async (ctx, request) => {
 	// A request without the signature header cannot verify, so it is refused
@@ -74,6 +83,8 @@ export const handleGithubWebhook = httpAction(async (ctx, request) => {
 	// rolls. Same trade-off as every other webhook source; set the proxy mode to
 	// get per-IP isolation.
 	const ip = getClientIp(request);
+	// checkpoint: the token is spent before the body is read and stays spent
+	// whatever the request does next; a limiter that does not record cannot limit.
 	const { ok: rateOk, retryAfter } = await ctx.runMutation(
 		internal.lib.publicRateLimit.checkPublicRateLimit,
 		{ limitType: 'webhookIngestion', key: `github:${ip}` }
@@ -110,12 +121,9 @@ export const handleGithubWebhook = httpAction(async (ctx, request) => {
 		return new Response('OK', { status: 200 });
 	}
 
-	let payload: GithubPullRequestPayload;
-	try {
-		payload = JSON.parse(rawBody) as GithubPullRequestPayload;
-	} catch {
-		return new Response('Malformed JSON payload', { status: 400 });
-	}
+	const decoded = decodeJsonText(rawBody, githubPullRequestPayload);
+	if (!decoded.ok) return new Response('Malformed JSON payload', { status: 400 });
+	const payload = decoded.value;
 
 	// A merge is a `closed` action with `pull_request.merged === true`. A close
 	// without a merge (PR rejected) is acknowledged but ignored.

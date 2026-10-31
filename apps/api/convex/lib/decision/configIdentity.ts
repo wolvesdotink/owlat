@@ -33,7 +33,7 @@ export interface ResolvedPlaneIdentityInput {
 	readonly kind: DecisionProviderKind;
 	readonly modelId: string;
 	readonly clientConfig: { readonly baseUrl?: string };
-	/** Set when the configured provider cannot answer (D3); `kind` stays the configured one. */
+	/** Set when the configured provider cannot answer; `kind` stays the configured one. */
 	readonly unavailable?: { readonly code: string };
 }
 

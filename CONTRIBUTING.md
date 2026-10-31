@@ -88,6 +88,25 @@ npx vitest --changed              # only tests affected by uncommitted changes
 npx vitest related path/to/file.ts  # only tests that import the given file
 ```
 
+### Real-browser component tests
+
+The web unit suite defaults to happy-dom: no layout, no native focus traversal,
+no ResizeObserver that fires. Behaviour that depends on those (a virtual list's
+window under real scrolling, a modal's Tab trap, which layer an Escape press
+reaches, a caret-anchored picker's placement) is tested in Chrome instead, by
+`apps/web/app/__tests__/browser/*.browser.test.ts`:
+
+```bash
+bun run --cwd apps/web test:browser
+```
+
+It launches the locally installed Google Chrome (`npx playwright install chrome`
+if there is none). Keep the project small: every file costs CI time in a real
+browser, and whatever a fabricated DOM proves just as well belongs in the unit
+suite. Drive the page with `userEvent` from `vitest/browser` (real key presses
+and clicks), and wait for the browser's own events (`app/__tests__/browser/events.ts`),
+never for a timer.
+
 ## Backend conventions
 
 The Convex backend (`apps/api/convex/`) has its own file-layout, naming, and
@@ -99,9 +118,11 @@ of `bun run lint` and will fail CI, including:
 - `lint:env` — all `process.env.*` reads must go through `convex/lib/env.ts`.
 - `lint:patterns` — Convex best-practice ratchets (always declare `args:`,
   index don't filter, bound `.collect()`, no `console.log`).
-- `lint:session-threading` — handlers on the org-scoped builders must use the
-  session their auth floor already resolved instead of re-resolving it
-  (frozen-baseline ratchet, `apps/api/scripts/check-session-threading.sh`).
+- `lint:ast-gate-parity` (root, in `ci:lint`) — the AST rules in
+  `packages/oxlint-plugin-owlat` that replace the crypto, env, log-PII, error,
+  raw-builder and feature-floor scripts run beside them;
+  this diffs the two finding sets per rule and fails on any difference not
+  listed with its reason in `scripts/ast-gate-parity.ts`.
 - `lint:feature-floors` — handlers in a feature-gated family use its
   `featureGated` builder instead of an inline `assertFeatureEnabled`
   (ratchet with a justified-sites baseline,
@@ -135,6 +156,12 @@ of `bun run lint` and will fail CI, including:
   fixture goes only with its `contentBlockVersion` retired in `retired.json`,
   and a snapshot of the current renderer version goes only with its fixture or
   an `EMAIL_RENDERER_VERSION` bump (`scripts/check-stored-block-corpus.ts`).
+- `lint:comment-policy` (root, in `ci:lint`) — on the lines a change adds
+  against its merge base, comments carry no issue numbers, no narration of
+  earlier code and no tags into specs, plans or decision records the
+  repository does not hold. Test titles are checked for those document and
+  decision tags only; an issue number or "previously" in a title passes
+  (CLAUDE.md, "Comments"; `scripts/check-comment-policy.ts`).
 
 The web app's `lint` script (`apps/web`) runs gates of its own, including:
 
@@ -142,7 +169,7 @@ The web app's `lint` script (`apps/web`) runs gates of its own, including:
   `LocalizedText` and rendered with `useLocalized()` (or `resolveLocalized`),
   both from `app/utils/localizedText.ts`, never a restated union or an inline
   `typeof v === 'string' ? t(v) : t(v.key, v.params ?? {})`
-  (frozen-baseline ratchet, `apps/web/scripts/check-localized-text.sh`).
+  (zero-tolerance gate, `apps/web/scripts/check-localized-text.sh`).
 
 ## Code Quality
 
@@ -189,22 +216,20 @@ bun run test:ramp   # the ramp-gate matrix, both legs (see "CI checks")
 
 ### Dead-code gate
 
-A frozen-baseline ratchet keeps orphaned exports, files, and modules from
-accreting silently (the repo has a documented history of speculative seams and
-zero-caller modules). Run it before submitting a PR:
+A zero-tolerance gate keeps orphaned exports, files, modules, and dependencies
+from accreting silently (the repo has a documented history of speculative seams
+and zero-caller modules). Run it before submitting a PR:
 
 ```bash
 bun run lint:deadcode   # == bash scripts/check-dead-code.sh
 ```
 
 It runs [`knip`](https://knip.dev) (config: `knip.jsonc`) restricted to
-dead-_code_ issue types (unused files / exports / types / members), normalises
-the result to a sorted list, and compares it against
-`scripts/dead-code-baseline.txt`. The ratchet is strict in both directions, like
-`apps/api/scripts/check-query-authz.sh`: a **new** orphan that is not in the
-baseline fails, and a **stale** baseline entry that is no longer dead fails
-(delete the line so the debt only ever goes down). Do not add new lines to the
-baseline — fix or intentionally re-anchor the export instead. The dependency /
+dead-_code_ issue types (unused files / exports / types / members) plus unused
+`dependencies` / `devDependencies`, and fails on any entry. There is no
+baseline: delete the orphan. When something outside the source graph really
+consumes it (a framework convention, a published package's barrel, a spawned
+script), declare that consumer in `knip.jsonc` with a comment naming it. The
 unlisted / unresolved knip categories are deliberately excluded (knip does not
 model bun catalogs, Nuxt aliases, or transitive deps, so they are noise here).
 
@@ -217,7 +242,7 @@ package's `entry` list.
 
 `ci:lint` and `ci:verify` both run `scripts/ci-gate.sh`, which runs this gate
 after the turbo lint pass, so a PR that introduces a new orphan fails CI just
-like the other ratchets. Because the hosted GitHub Actions **Lint & Typecheck**
+like the ratchets. Because the hosted GitHub Actions **Lint & Typecheck**
 job runs `bun run ci:lint`, the gate is enforced on every PR there — the same
 path that runs `apps/api/scripts/check-query-authz.sh` — not only when someone
 runs `ci:verify` locally.
@@ -295,7 +320,9 @@ applied. For verification, state what you ran, what you saw and what you
 couldn't check; the proof each kind of change needs is described under
 [Verifying](./CLAUDE.md#verifying). A UI change includes before/after
 screenshots, uploaded to the PR description rather than committed
-(`lint:no-pr-assets` fails on captures under `docs/`).
+(`lint:no-pr-assets` fails on captures under `docs/`). `bun run capture` takes
+them from the local stack
+([how](docs/operations/development.md#screenshots-for-a-ui-pull-request)).
 
 ### CI checks
 
@@ -315,6 +342,9 @@ manual dispatch run the full set as a safety valve.
     per-path floor; the merge validates every report's commit, run, attempt
     and shard identity, then enforces all original thresholds. Successful
     reports from earlier attempts of the same run survive partial reruns.
+  - **Test web (browser).** The real-browser component tests in Chrome
+    (`bun run --cwd apps/web test:browser`), selected whenever the web suite
+    is, outside the coverage shards.
   - **Ramp gates (reference_arm | standalone).** The ramp-controller gate
     suite twice: once equipped, once as a deployment with zero third-party
     accounts. Never affected-filtered. Locally: `bun run test:ramp` runs both

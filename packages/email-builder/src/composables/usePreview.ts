@@ -8,21 +8,26 @@ import type {
 	VariableType,
 } from '../types';
 import { fillPreviewVariables } from '../utils/variables';
-import { renderEmailHtml } from '@owlat/email-renderer';
-import { renderPlainText } from '@owlat/email-renderer';
-import { renderAmpEmail } from '@owlat/email-renderer';
-import { analyzeEmail, getEmailHealthScore, suggestOptimizations } from '@owlat/email-renderer';
-import { validateBlocks } from '@owlat/email-renderer';
-import { diffEmails } from '@owlat/email-renderer';
+import {
+	renderEmailHtml,
+	renderPlainText,
+	renderAmpEmail,
+	analyzeEmail,
+	getEmailHealthScore,
+	suggestOptimizations,
+	validateBlocks,
+	diffEmails,
+} from '@owlat/email-renderer';
 import type {
 	RenderOptions,
 	TargetClient,
 	ValidationLevel,
 	EmailHealthScore,
+	EmailAnalysis,
+	OptimizationSuggestion,
+	ValidationIssue,
+	EmailDiff,
 } from '@owlat/email-renderer';
-import type { EmailAnalysis, OptimizationSuggestion } from '@owlat/email-renderer';
-import type { ValidationIssue } from '@owlat/email-renderer';
-import type { EmailDiff } from '@owlat/email-renderer';
 
 export interface PreviewRenderOptions {
 	baseWidth?: number;

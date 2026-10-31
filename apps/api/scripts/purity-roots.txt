@@ -1,0 +1,133 @@
+# Pure decision cores, checked by scripts/check-purity.sh (part of `bun run lint`).
+#
+#   <path>              guarded file, or directory guarded recursively
+#   !<path> [name...]   shell inside a guarded directory, with the pure names a
+#                       guarded module may import from it
+#
+# A new module in a guarded directory is guarded by default. A shell line needs
+# the reason it cannot be pure; prefer injecting the clock, random source or
+# port over adding one.
+
+# Ramp controller and gates; the cron is the shell (delivery/rampControllerCron.ts).
+convex/delivery/ramp
+convex/delivery/signals
+
+# Decision plane: contracts, catalogs, routing, pricing and evidence rules.
+convex/lib/decision
+# Reserves spend for a native attempt through the LLM admission port.
+!convex/lib/decision/attemptAdmission.ts
+# Turns a deadline into an abort signal against the wall clock.
+!convex/lib/decision/attemptRequests.ts
+# Falls back to the DECISION_PROVIDER environment variable for the kind.
+!convex/lib/decision/configIdentity.ts
+# The attempt loop: clocks, jitter, rate limiter and provider calls.
+!convex/lib/decision/dispatch.ts
+# Convex ports (runQuery/runMutation) the dispatch is handed.
+!convex/lib/decision/ports.ts
+# Sleeps out the backoff on a timer (realSleep).
+!convex/lib/decision/retryRules.ts
+# Settings action that resolves the plane and asks the provider.
+!convex/lib/decision/settingsActions.ts
+
+# Generic legal-edge graph every lifecycle builds on.
+convex/lib/lifecycle.ts
+
+# Mail draft lifecycle: reducers and their typed contract.
+convex/mail/draftLifecycle
+# Dispatcher and effect runner.
+!convex/mail/draftLifecycle/effects.ts
+# Runner for every effect but the `→ sent` cascade (scheduler, audit log, storage).
+!convex/mail/draftLifecycle/nonSentEffects.ts
+# Mints the random undo token the dispatcher hands to the reducers.
+!convex/mail/draftLifecycle/undoToken.ts
+
+# Campaign/transactional send lifecycle.
+convex/delivery/sendLifecycle
+# Effect runner; transportOutcomeEffect must stay next to the Effect union it
+# builds (scripts/check-transport-outcome-wiring.ts).
+!convex/delivery/sendLifecycle/effects.ts transportOutcomeEffect
+# Send store reads; the field projections at the bottom are pure.
+!convex/delivery/sendLifecycle/lookups.ts contactEmailOf nonCampaignActivityProvenance nonCampaignBounceProvenance
+# Reads the sender domain from the database for the reputation effect.
+!convex/delivery/sendLifecycle/outcomeAccounting.ts
+# Closes the inbound message, follow-up and thread an inbox reply carried.
+!convex/delivery/sendLifecycle/sourceFinalization.ts
+
+# Send completion decisions; the mutation (delivery/sendCompletion.ts) is the
+# shell.
+convex/delivery/sendCompletionDecision.ts
+
+# One deliverability dashboard card from the rows the query loaded; the query
+# (delivery/deliverabilityDashboard.ts) is the shell.
+convex/delivery/deliverabilityDashboardCell.ts
+
+# The admin delivery test send's steps and answer; the action
+# (delivery/statusActions.ts) is the shell.
+convex/delivery/deliveryTestDecision.ts
+
+# Inbound processing lifecycle.
+convex/inbox/processingLifecycle
+# Effect runner and dispatcher.
+!convex/inbox/processingLifecycle/effects.ts
+# Cancels a delayed auto-send: scheduler, clock and audit log.
+!convex/inbox/processingLifecycle/autoSendCancel.ts
+
+# Sending-domain lifecycle reducer.
+convex/domains/lifecycleReducer.ts
+
+# Sunset sweep: the per-contact verdict and the batch's own decisions; the
+# sweep (contacts/sunsetSweep.ts) and engine (contacts/sunsetEngine.ts) are
+# the shells around them.
+convex/contacts/sunsetPolicy.ts
+convex/contacts/sunsetSweepDecision.ts
+
+# Personal-mail dispatch decisions; the action (mail/outbound.ts) and its
+# build and transport helpers (mail/outbound/build.ts, dispatch.ts) are the
+# shells. The seal policy is the consent rule they share with the composer.
+convex/mail/outbound/decision.ts
+convex/mail/sealPolicy.ts
+
+# Inbound receive decisions; the mutation (inbox/messages.ts) is the shell.
+# The envelope helpers they read are pure too.
+convex/inbox/receiveDecision.ts
+convex/lib/emailAddress.ts
+convex/lib/inboundClassification.ts
+convex/lib/textPreview.ts
+
+# Transactional intake decisions; the mutation (transactional/dispatch.ts) is
+# the shell.
+convex/transactional/dispatchDecision.ts
+
+# Campaign send walker: one hop's decisions and the plan, split and send-time
+# rules they compose; the orchestrator (campaigns/send.ts) is the shell.
+convex/campaigns/pageDecision.ts
+convex/campaigns/sendPlanning.ts
+convex/campaigns/multiDaySendPlan.ts
+convex/campaigns/sendVariantSplit.ts
+convex/campaigns/sendTimeOptimization.ts
+convex/delivery/sendComposition/listId.ts
+
+# Approved agent reply decisions; the action (agent/agentPipeline.ts
+# sendApprovedReply) is the shell.
+convex/agent/approvedReplyDecision.ts
+
+# Hosted MX delivery decisions; the mutation (mail/delivery.ts
+# deliverToMailbox) is the shell.
+convex/mail/deliveryPipeline/mailboxDecision.ts
+
+# Contact import decisions; the mutation (contacts/import.ts importBatch) is
+# the shell.
+convex/contacts/importDecision.ts
+
+# Semantic file processing decisions; the action
+# (semanticFileProcessing.ts processFile) is the shell.
+convex/files/processFileDecision.ts
+
+# First-admin seed decisions; the HTTP action (seedAdminHttp.ts seedAdmin) and
+# its commit (auth/seedAdminCommit.ts) are the shells.
+convex/auth/seedAdminDecision.ts
+
+# Account export page and staging decisions; the action (auth/accountExport.ts
+# exportUserDataPage) and the staging commit (auth/accountExportArtifacts.ts
+# stageArtifact) are the shells.
+convex/auth/accountExportDecision.ts

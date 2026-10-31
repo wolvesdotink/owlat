@@ -57,11 +57,11 @@ describe('BlockCard', () => {
 	it('hands the block to the page from the menu and the overlay', async () => {
 		const wrapper = render(true);
 		await menuItem(wrapper, 'Delete')!.trigger('click');
-		await wrapper.get('button[title="Delete"]').trigger('click');
+		await wrapper.get('button[aria-label="Delete"]').trigger('click');
 		expect(wrapper.emitted('delete')).toEqual([[block], [block]]);
 
 		await menuItem(wrapper, 'Settings')!.trigger('click');
-		await wrapper.get('button[title="Quick settings"]').trigger('click');
+		await wrapper.get('button[aria-label="Quick settings"]').trigger('click');
 		expect(wrapper.emitted('settings')).toHaveLength(2);
 
 		await menuItem(wrapper, 'Duplicate')!.trigger('click');
@@ -72,15 +72,15 @@ describe('BlockCard', () => {
 		const wrapper = render(true);
 		await wrapper.get('.card').trigger('click');
 		expect(wrapper.emitted('open')).toEqual([[block]]);
-		await wrapper.get('button[title="Edit content"]').trigger('click');
+		await wrapper.get('button[aria-label="Edit content"]').trigger('click');
 		// `.stop` keeps the overlay click from also reaching the card.
 		expect(wrapper.emitted('open')).toHaveLength(2);
 	});
 
 	it('takes every write off both controls without manage rights', () => {
 		const wrapper = render(false);
-		for (const title of ['Quick settings', 'Duplicate', 'Delete']) {
-			expect(wrapper.find(`button[title="${title}"]`).exists()).toBe(false);
+		for (const label of ['Quick settings', 'Duplicate', 'Delete']) {
+			expect(wrapper.find(`button[aria-label="${label}"]`).exists()).toBe(false);
 		}
 		expect(wrapper.findAll('[role="menuitem"]').map((item) => item.text())).toEqual([
 			'Edit content',

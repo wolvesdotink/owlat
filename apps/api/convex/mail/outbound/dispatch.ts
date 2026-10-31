@@ -12,10 +12,13 @@
  *   - {@link dispatchViaExternalWorker} — external mailboxes, a SINGLE POST to
  *     the mail-sync worker, which relays through the user's own SMTP.
  *
- * Both drive `mail.postboxOutboundLifecycle.transition` for per-recipient
- * outcomes; neither builds or seals anything (that is `./build.ts`).
+ * Both record per-recipient outcomes through `mail.postboxOutboundLifecycle`;
+ * neither builds or seals anything (that is `./build.ts`).
  */
 
+import { v } from 'convex/values';
+import { validatorDecoder } from '@owlat/worker-protocol/decodeJson';
+import { isRecord } from '@owlat/shared';
 import type { ActionCtx } from '../../_generated/server';
 import { internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
@@ -29,6 +32,7 @@ import { mapWithConcurrency } from '../../lib/mapWithConcurrency';
 import type { DraftRow } from '../rfc822';
 import type { MtaSendRequest } from '@owlat/mta-protocol/send';
 import type { SealedMime } from '../../e2ee/seal';
+import type { TransitionInput } from '../postboxOutboundLifecycle';
 
 /**
  * How many MTA intake POSTs one send keeps in flight. Each carries its own copy
@@ -38,8 +42,52 @@ import type { SealedMime } from '../../e2ee/seal';
  */
 const POSTBOX_SEND_CONCURRENCY = 6;
 
-interface ExternalSendResult {
-	recipients?: Array<{ address: string; status: 'sent' | 'bounced'; error?: string }>;
+/**
+ * One recipient's verdict in the mail-sync worker's `/send` answer. `status` is
+ * read as a string so a verdict this build does not know counts as sent, as a
+ * missing entry does; only `bounced` is a rejection. `error` is read loosely so
+ * a bounce whose message is not text is still a bounce.
+ */
+const decodeRecipientVerdict = validatorDecoder(
+	v.object({ address: v.string(), status: v.string(), error: v.optional(v.any()) })
+);
+
+interface RecipientVerdict {
+	address: string;
+	status: string;
+	error?: string;
+}
+
+/**
+ * The readable per-recipient verdicts of a `/send` answer, plus a path-only
+ * description of every part that could not be read. Each entry is checked on
+ * its own: a 2xx answer does not by itself mean SMTP accepted the message (the
+ * worker answers an SMTPUTF8 refusal with a 2xx that bounces every recipient),
+ * so one unreadable entry must not discard the bounces listed next to it.
+ */
+function readExternalSendVerdicts(body: unknown): {
+	verdicts: RecipientVerdict[];
+	unreadable: string[];
+} {
+	if (!isRecord(body)) return { verdicts: [], unreadable: ['$: expected object'] };
+	const recipients = body['recipients'];
+	if (recipients === undefined) return { verdicts: [], unreadable: [] };
+	if (!Array.isArray(recipients)) {
+		return { verdicts: [], unreadable: ['$.recipients: expected array'] };
+	}
+	const entries: unknown[] = recipients;
+	const verdicts: RecipientVerdict[] = [];
+	const unreadable: string[] = [];
+	for (const [i, entry] of entries.entries()) {
+		const decoded = decodeRecipientVerdict(entry);
+		if (!decoded.ok) {
+			unreadable.push(decoded.issue.replace(/^\$/, `$.recipients[${i}]`));
+			continue;
+		}
+		const { address, status, error } = decoded.value;
+		verdicts.push({ address, status, ...(typeof error === 'string' ? { error } : {}) });
+	}
+	return { verdicts, unreadable };
 }
 
 /**
@@ -61,20 +109,15 @@ export async function dispatchViaExternalWorker(
 		rfc822MessageId: string;
 	}
 ): Promise<void> {
-	const transitionAll = async (
-		input:
-			| { to: 'sent'; at: number }
-			| { to: 'bounced'; at: number; bounceMessage?: string }
-			| { to: 'failed'; at: number; errorMessage: string; errorCode?: string }
-	) => {
-		for (let i = 0; i < params.recipients.length; i++) {
-			await ctx.runMutation(internal.mail.postboxOutboundLifecycle.transition, {
-				mailMessageId: params.mailMessageId,
-				recipientIdx: i,
-				input,
-			});
-		}
+	// One commit for every recipient's outcome: one `/send` answers them all.
+	const commitOutcomes = async (inputs: TransitionInput[]) => {
+		await ctx.runMutation(internal.mail.postboxOutboundLifecycle.transitionRecipients, {
+			mailMessageId: params.mailMessageId,
+			transitions: inputs.map((input, recipientIdx) => ({ recipientIdx, input })),
+		});
 	};
+	const transitionAll = (input: TransitionInput) =>
+		commitOutcomes(params.recipients.map(() => input));
 
 	const mailSync = getMailSyncConfig();
 	if (!mailSync) {
@@ -109,7 +152,7 @@ export async function dispatchViaExternalWorker(
 		return;
 	}
 
-	let result: ExternalSendResult;
+	let body: unknown;
 	try {
 		const res = await fetchWithTimeout(
 			`${mailSync.baseUrl}/send`,
@@ -137,7 +180,7 @@ export async function dispatchViaExternalWorker(
 			});
 			return;
 		}
-		result = (await res.json()) as ExternalSendResult;
+		body = await res.json();
 	} catch (err) {
 		logError('[Outbound] mail-sync /send error:', err);
 		await transitionAll({
@@ -149,31 +192,25 @@ export async function dispatchViaExternalWorker(
 		return;
 	}
 
-	const perRecipient = result.recipients ?? [];
-	for (let i = 0; i < params.recipients.length; i++) {
-		const addr = params.recipients[i]!;
-		const r = perRecipient.find((x) => x.address.toLowerCase() === addr.toLowerCase());
-		// A 2xx response means SMTP accepted the message; a recipient explicitly
-		// flagged 'bounced' is a per-RCPT rejection. Missing entries default to
-		// sent (accepted by the relay).
-		if (r && r.status === 'bounced') {
-			await ctx.runMutation(internal.mail.postboxOutboundLifecycle.transition, {
-				mailMessageId: params.mailMessageId,
-				recipientIdx: i,
-				input: {
-					to: 'bounced',
-					at: Date.now(),
-					bounceMessage: r.error ?? 'Rejected by SMTP server',
-				},
-			});
-		} else {
-			await ctx.runMutation(internal.mail.postboxOutboundLifecycle.transition, {
-				mailMessageId: params.mailMessageId,
-				recipientIdx: i,
-				input: { to: 'sent', at: Date.now() },
-			});
-		}
+	// Only the parts of the answer that cannot be read fall back to sent, as a
+	// missing entry does: they name no recipient this code could bounce. Every
+	// readable entry keeps its verdict; the log says what was skipped.
+	const { verdicts: perRecipient, unreadable } = readExternalSendVerdicts(body);
+	if (unreadable.length > 0) {
+		logError(`[Outbound] mail-sync /send answered unreadable verdicts (${unreadable.join('; ')})`);
 	}
+	const at = Date.now();
+	await commitOutcomes(
+		params.recipients.map((addr): TransitionInput => {
+			const r = perRecipient.find((x) => x.address.toLowerCase() === addr.toLowerCase());
+			// A recipient flagged 'bounced' was refused (a per-RCPT rejection, or
+			// the worker's SMTPUTF8 refusal of the whole envelope). A recipient with
+			// no readable entry defaults to sent: the worker reported no refusal.
+			return r && r.status === 'bounced'
+				? { to: 'bounced', at, bounceMessage: r.error ?? 'Rejected by SMTP server' }
+				: { to: 'sent', at };
+		})
+	);
 }
 
 /**
@@ -250,7 +287,7 @@ export async function dispatchViaMta(
 						Authorization: `Bearer ${mta.apiKey}`,
 						...correlationHeader(correlationId, 'pbx'),
 					},
-					// The postbox intake wire, typed against its one declaration (D7).
+					// The postbox intake wire, typed against its one declaration.
 					// `sealedMimeBase64`, `amp` and `allowedFromAddresses` exist on
 					// `MtaSendRequest` for THIS producer and the two in
 					// `deliveryHooks.ts` only, so without the annotation they had no
@@ -296,6 +333,9 @@ export async function dispatchViaMta(
 				);
 				// Per-recipient synchronous bounce — record it now rather
 				// than waiting forever in `queued`.
+				// checkpoint: this recipient's intake is its own send; its refusal stands
+				// even if the action dies later in the fan-out. A repeat leaves the recipient
+				// as it is, and a change away from a terminal outcome is refused
 				await ctx.runMutation(internal.mail.postboxOutboundLifecycle.transition, {
 					mailMessageId,
 					recipientIdx: i,
@@ -322,6 +362,9 @@ export async function dispatchViaMta(
 			);
 			// Per-recipient pre-MTA error (network failure, DNS, etc.).
 			// Recipient resolves to `failed` instead of staying `queued`.
+			// checkpoint: this recipient's intake is its own send; its failure stands
+			// even if the action dies later in the fan-out. A repeat leaves the recipient
+			// as it is, and a change away from a terminal outcome is refused
 			await ctx.runMutation(internal.mail.postboxOutboundLifecycle.transition, {
 				mailMessageId,
 				recipientIdx: i,

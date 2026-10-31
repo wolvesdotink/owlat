@@ -27,6 +27,7 @@ import {
 } from './factories';
 import type { Id } from '../_generated/dataModel';
 import { openWorkspaceDeletionFence } from './helpers/workspaceDeletionFence';
+import { readInstanceCounter } from '../lib/instanceCounters';
 import { hashFraction, testFractionForSplit, variantForHash } from '../campaigns/sendVariantSplit';
 
 vi.mock('../lib/sessionOrganization', async () => {
@@ -1252,7 +1253,7 @@ describe('Campaign send walker — the multi-day send plan (P3-7)', () => {
 		expect(await countSends(t, data.campaignId)).toBe(6);
 	});
 
-	it('with NO warming state at all the walk is exactly the shipped single-day one (D2)', async () => {
+	it('with NO warming state at all the walk is exactly the shipped single-day one', async () => {
 		const t = convexTest(schema, modules);
 		const data = await setupWalker(t, 6);
 		await t.action(internal.campaigns.send.startCampaignSend, { campaignId: data.campaignId });
@@ -1261,5 +1262,74 @@ describe('Campaign send walker — the multi-day send plan (P3-7)', () => {
 		const job = await getJob(t, data.campaignId);
 		expect(job?.phase).toBe('done');
 		expect(await countSends(t, data.campaignId)).toBe(6);
+	});
+});
+
+// ─── One hop's stop conditions and per-hop content ─────────────────────────
+// What a hop writes when it must not walk, and the content and counters a
+// walking hop derives from the campaign, pinned before the hop's decisions
+// moved into `campaigns/pageDecision.ts`.
+describe('Campaign send walker — stop conditions and per-hop content', () => {
+	it('stops without writing when the campaign left sending between hops', async () => {
+		const t = convexTest(schema, modules);
+		const data = await setupWalker(t, 5);
+		await t.action(internal.campaigns.send.startCampaignSend, { campaignId: data.campaignId });
+		await t.run(async (ctx) => ctx.db.patch(data.campaignId, { status: 'draft' }));
+
+		const result = await t.action(internal.campaigns.send.resolveCampaignPage, {
+			campaignId: data.campaignId,
+		});
+		expect(result).toEqual({ done: true, pageEnqueued: 0 });
+		expect(await countSends(t, data.campaignId)).toBe(0);
+		const job = await getJob(t, data.campaignId);
+		expect(job?.phase).toBe('resolving');
+		expect(job?.cursor).toBe('');
+		expect(job?.enqueuedCount).toBe(0);
+	});
+
+	it('stops without writing when the walk is already done', async () => {
+		const t = convexTest(schema, modules);
+		const data = await setupWalker(t, 5);
+		await t.action(internal.campaigns.send.startCampaignSend, { campaignId: data.campaignId });
+		await t.action(internal.campaigns.send.resolveCampaignPage, { campaignId: data.campaignId });
+		const before = await getJob(t, data.campaignId);
+		expect(before?.phase).toBe('done');
+
+		const result = await t.action(internal.campaigns.send.resolveCampaignPage, {
+			campaignId: data.campaignId,
+		});
+		expect(result).toEqual({ done: true, pageEnqueued: 0 });
+		expect(await countSends(t, data.campaignId)).toBe(5);
+		expect((await getJob(t, data.campaignId))?.updatedAt).toBe(before?.updatedAt);
+	});
+
+	it("uses the campaign's subject over the template's and bumps the daily count by the page", async () => {
+		const t = convexTest(schema, modules);
+		const data = await setupWalker(t, 3);
+		await t.run(async (ctx) => {
+			await ctx.db.insert('instanceSettings', { createdAt: Date.now() });
+		});
+		await t.action(internal.campaigns.send.startCampaignSend, { campaignId: data.campaignId });
+		await t.run(async (ctx) =>
+			ctx.db.patch(data.campaignId, { subject: 'Campaign subject {{firstName}}' })
+		);
+
+		const result = await t.action(internal.campaigns.send.resolveCampaignPage, {
+			campaignId: data.campaignId,
+		});
+		expect(result).toEqual({ done: true, pageEnqueued: 3 });
+		const sends = await t.run(async (ctx) =>
+			ctx.db
+				.query('emailSends')
+				.withIndex('by_campaign', (q) => q.eq('campaignId', data.campaignId))
+				.collect()
+		);
+		expect(sends.map((send) => send.personalizedSubject).sort()).toEqual([
+			'Campaign subject First0',
+			'Campaign subject First1',
+			'Campaign subject First2',
+		]);
+		const daily = await t.run(async (ctx) => readInstanceCounter(ctx.db, 'sends'));
+		expect(daily.dailySendCount).toBe(3);
 	});
 });

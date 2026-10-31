@@ -12,6 +12,7 @@
  */
 
 import { MAIL_SYNC_MAX_RAW_MESSAGE_BYTES } from '@owlat/shared/mailSyncLimits';
+import { isRecord } from '@owlat/shared/utils/guards';
 import {
 	addressFieldList,
 	parseMessage,
@@ -129,9 +130,10 @@ export const RAW_UPLOAD_TIMEOUT_MS = 60_000;
  * Upload the raw `.eml` and return its Convex storage id.
  *
  * A plain byte body to an HTTP action, which has no 16 MiB function-call cap —
- * that cap is what used to drop every large message. A non-2xx answer throws,
- * so the caller counts the message as failed rather than ingesting a message
- * whose raw bytes were never stored.
+ * that cap is what used to drop every large message. A non-2xx answer, or one
+ * without a storage id and a byte size, throws, so the caller counts the
+ * message as failed rather than ingesting a message whose raw bytes were never
+ * stored.
  */
 async function uploadRawMessage(
 	config: RawUploadConfig,
@@ -150,7 +152,18 @@ async function uploadRawMessage(
 		const detail = await response.text().catch(() => '');
 		throw new Error(`raw upload failed: HTTP ${response.status} ${detail.slice(0, 200)}`);
 	}
-	return (await response.json()) as { storageId: string; size: number };
+	const stored = uploadedRaw(await response.json().catch(() => undefined));
+	if (!stored) throw new Error(`raw upload failed: HTTP ${response.status} unexpected answer`);
+	return stored;
+}
+
+/** The `{ storageId, size }` the raw-upload endpoint answers with, or undefined. */
+function uploadedRaw(body: unknown): { storageId: string; size: number } | undefined {
+	if (!isRecord(body)) return undefined;
+	const { storageId, size } = body;
+	if (typeof storageId !== 'string' || storageId.length === 0) return undefined;
+	if (typeof size !== 'number' || !Number.isSafeInteger(size) || size < 0) return undefined;
+	return { storageId, size };
 }
 
 /** What `ingestMessage` needs to reach the raw-upload endpoint. */

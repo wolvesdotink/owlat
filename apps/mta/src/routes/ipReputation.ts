@@ -8,8 +8,7 @@
 import { Hono } from 'hono';
 import type Redis from 'ioredis';
 import type { MtaConfig } from '../config.js';
-import { getIpMetrics } from '../monitoring/collector.js';
-import { getIspMetrics } from '../monitoring/collector.js';
+import { getIpMetrics, getIspMetrics } from '../monitoring/collector.js';
 import { getWarmingState } from '../intelligence/warming.js';
 import { getState as getCircuitBreakerState } from '../intelligence/circuitBreaker.js';
 import { getPoolStatus } from '../scaling/ipPool.js';
@@ -296,7 +295,7 @@ export function createIpReputationRoutes(redis: Redis, config: MtaConfig): Hono 
 			now
 		);
 		// The consumer's half of this snapshot is declared once, in
-		// `@owlat/mta-protocol` (D7): `delivery/warmingSync.ts` normalizes what
+		// `@owlat/mta-protocol`: `delivery/warmingSync.ts` normalizes what
 		// arrives here against `MtaIpReputationPayload`. This producer is
 		// deliberately WIDER than that contract and weaker in two places — `dnsbl`
 		// and `warmingPhase` are plain strings here, narrowed by the normalizer's

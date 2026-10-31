@@ -6,14 +6,15 @@ import {
 } from '@owlat/shared/featureFlags';
 import { requirePlatformAdmin } from '~~/server/utils/requireAdmin';
 import { getInstanceSecret, callUpdater } from '~~/server/utils/updater';
+import { decodeProfileState } from '~~/server/utils/updaterResponses';
 
 /**
  * Durable services-drift probe (plan FU4): does the running stack still match
  * the current feature-flag state?
  *
- * The "Services out of sync — Apply & restart" banner used to be driven purely
- * by drift a tab happened to observe, so a reload (or a second browser) lost it
- * while the services were still drifted. This route answers the same question
+ * Driven only by drift a tab happens to observe, the "Services out of sync —
+ * Apply & restart" banner would vanish on a reload (or in a second browser)
+ * while the services are still drifted. This route answers the same question
  * from durable state: the updater reports the APPLIED profiles (COMPOSE_PROFILES
  * in the host `.env`), Convex reports the CURRENT resolved flags, and the
  * comparison happens here through the same `getActiveProfiles` derivation
@@ -34,12 +35,6 @@ interface ProfileDriftResult {
 	staleProfiles: string[];
 	services: unknown;
 	error?: string;
-}
-
-interface UpdaterProfileState {
-	profiles?: unknown;
-	deliveryProvider?: unknown;
-	services?: unknown;
 }
 
 const UNREACHABLE: Omit<ProfileDriftResult, 'error'> = {
@@ -63,7 +58,7 @@ export default defineEventHandler(async (event): Promise<ProfileDriftResult> => 
 		return { ...UNREACHABLE, error: errorText(err) };
 	}
 
-	let state: UpdaterProfileState;
+	let state: ReturnType<typeof decodeProfileState>;
 	try {
 		const resp = await callUpdater('/profile-state', instanceSecret, {
 			method: 'GET',
@@ -72,14 +67,16 @@ export default defineEventHandler(async (event): Promise<ProfileDriftResult> => 
 		if (!resp.ok) {
 			return { ...UNREACHABLE, error: `Updater profile-state returned ${resp.status}` };
 		}
-		state = (await resp.json()) as UpdaterProfileState;
+		state = decodeProfileState(await resp.json());
 	} catch (err) {
 		return { ...UNREACHABLE, error: errorText(err) };
 	}
+	if (!state) {
+		return { ...UNREACHABLE, error: 'Updater profile-state answered with an unreadable body' };
+	}
 
-	const applied = Array.isArray(state.profiles) ? state.profiles.filter(isString) : [];
-	const deliveryProvider =
-		typeof state.deliveryProvider === 'string' ? state.deliveryProvider : undefined;
+	const applied = state.profiles;
+	const { deliveryProvider } = state;
 
 	// getFeatureFlags returns the already-resolved map; the plugin registry is
 	// deliberately absent here exactly as it is in the updater's own derivation,
@@ -111,10 +108,6 @@ export default defineEventHandler(async (event): Promise<ProfileDriftResult> => 
 		services: state.services ?? [],
 	};
 });
-
-function isString(value: unknown): value is string {
-	return typeof value === 'string';
-}
 
 function errorText(err: unknown): string {
 	if (err instanceof Error) return err.message;

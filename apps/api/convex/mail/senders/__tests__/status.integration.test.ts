@@ -1,5 +1,5 @@
 /**
- * Sender-status changes as operations (SPEC §2.9, §4.4, §5): each change
+ * Sender-status changes as operations: each change
  * writes its operation header and change rows in the same mutation, stamps the
  * profile's `lastOperationId`, archives the sender's newest Inbox mail for
  * archiving statuses (logged per message), and unsubscribing records local
@@ -406,49 +406,26 @@ describe('the Subscriptions panel batch (one unsubscribe path)', () => {
 		);
 		expect(operations.map((operation) => operation.kind)).toEqual(['unsubscribe']);
 	});
-});
-
-describe('performOneClick (one-release shim for the previous chip)', () => {
-	beforeEach(() => vi.mocked(fetchGuarded).mockReset());
-
-	it('runs the one path and answers in the old {ok} shape', async () => {
+	it('archives a team inbox sender only once its POST was confirmed', async () => {
 		const t = convexTest(schema, modules);
 		rateLimiterTest.register(t);
-		const { mailboxId } = await seedPersonalMailbox(t);
+		const { mailboxId } = await seedPersonalMailbox(t, { scope: 'shared' });
 		const id = (await deliverHosted(t, { unsubscribe: ONE_CLICK }))!;
-		vi.mocked(fetchGuarded).mockResolvedValueOnce(new Response(null, { status: 200 }));
-		expect(await t.action(api.mail.unsubscribe.performOneClick, { messageId: id })).toEqual({
-			ok: true,
-		});
-		const profile = (await profileOf(t, mailboxId))!;
-		expect(profile).toMatchObject({ status: 'unsubscribed', statusSource: 'user' });
-		expect(profile.unsubscribe?.result).toBe('confirmed');
-	});
+		vi.mocked(fetchGuarded)
+			.mockReset()
+			.mockResolvedValueOnce(new Response(null, { status: 500 }))
+			.mockResolvedValueOnce(new Response(null, { status: 200 }));
+		const batch = { mailboxId, senderEmails: [SENDER], messageIds: [id] };
 
-	it('answers {ok: false, error} when the POST fails', async () => {
-		const t = convexTest(schema, modules);
-		rateLimiterTest.register(t);
-		await seedPersonalMailbox(t);
-		const id = (await deliverHosted(t, { unsubscribe: ONE_CLICK }))!;
-		vi.mocked(fetchGuarded).mockResolvedValueOnce(new Response(null, { status: 503 }));
-		expect(await t.action(api.mail.unsubscribe.performOneClick, { messageId: id })).toEqual({
-			ok: false,
-			error: 'http_503',
-		});
-	});
+		const refused = await t.action(api.mail.subscriptions.unsubscribeAndArchive, batch);
+		expect(refused.results).toEqual([
+			{ senderEmail: SENDER, status: 'failed', archived: 0, error: 'http_500' },
+		]);
+		expect(await roleOf(t, id)).toBe('inbox');
 
-	it('changes nothing for a message without a one-click target', async () => {
-		const t = convexTest(schema, modules);
-		rateLimiterTest.register(t);
-		const { mailboxId } = await seedPersonalMailbox(t);
-		const id = (await deliverHosted(t, {
-			unsubscribe: { oneClick: false, httpUrl: 'https://shop.example/u' },
-		}))!;
-		expect(await t.action(api.mail.unsubscribe.performOneClick, { messageId: id })).toEqual({
-			ok: false,
-			error: 'not_one_click',
-		});
-		expect((await profileOf(t, mailboxId))!.status).toBe('keep');
-		expect(fetchGuarded).not.toHaveBeenCalled();
+		const agreed = await t.action(api.mail.subscriptions.unsubscribeAndArchive, batch);
+		expect(agreed.results).toEqual([{ senderEmail: SENDER, status: 'unsubscribed', archived: 1 }]);
+		expect(await roleOf(t, id)).toBe('archive');
+		expect(await profileOf(t, mailboxId)).toBeNull();
 	});
 });

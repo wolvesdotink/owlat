@@ -20,6 +20,11 @@ import { createTestI18n } from '~/__tests__/i18n';
 
 const { t } = createTestI18n().global;
 
+const showChecklist = vi.hoisted(() => vi.fn(async () => {}));
+vi.mock('~/composables/useGettingStartedControls', () => ({
+	useGettingStartedControls: () => ({ showChecklist }),
+}));
+
 let role: 'owner' | 'admin' | 'editor' | null;
 let hasRampStarted: boolean;
 let disabledFlags: string[];
@@ -47,6 +52,7 @@ beforeEach(() => {
 	openCompose = vi.fn(async () => {});
 	openNewContact = vi.fn(async () => {});
 	navigations = [];
+	showChecklist.mockClear();
 
 	vi.stubGlobal('useI18n', () => ({ t }));
 	vi.stubGlobal('useFeatureFlag', () => ({
@@ -106,6 +112,17 @@ describe('verbs', () => {
 
 		expect(openNewContact).toHaveBeenCalledTimes(1);
 		expect(navigations).toEqual([]);
+	});
+
+	it('brings back the setup checklist, for every role', async () => {
+		role = 'editor';
+		const { verbItems } = await providers();
+
+		const verb = byId(verbItems.value, 'verb:show-setup-checklist');
+		expect(verb?.label).toBe('Show setup checklist');
+		verb?.run();
+
+		expect(showChecklist).toHaveBeenCalledTimes(1);
 	});
 
 	it('drops Compose entirely when no mail feature is on', async () => {
@@ -219,5 +236,45 @@ describe('one row per destination', () => {
 	it('files Campaigns under Marketing', async () => {
 		const { navItems } = await providers();
 		expect(byId(navItems.value, 'nav:/dashboard/campaigns')?.subtitle).toBe('Marketing');
+	});
+});
+
+describe('settings controls', () => {
+	const adminControls = (items: PaletteItem[]) =>
+		items.filter((item) => item.id.startsWith('setting:admin:')).map((item) => item.id);
+
+	it('indexes the Workspace controls for an admin, beside the personal ones', async () => {
+		const { settingsItems } = await providers();
+		expect(adminControls(settingsItems.value)).toEqual([
+			'setting:admin:domains:dkim',
+			'setting:admin:aiProvider:aiProviderKey',
+			'setting:admin:aiReplies:autonomy',
+			'setting:admin:rampControls:rampPace',
+			'setting:admin:webhooks:webhookSecret',
+			'setting:admin:brandKit:brandColors',
+		]);
+		expect(byId(settingsItems.value, 'setting:overview:appearance')).toBeDefined();
+	});
+
+	it('offers a member none of them', async () => {
+		role = 'editor';
+		const { settingsItems } = await providers();
+		expect(adminControls(settingsItems.value)).toEqual([]);
+		expect(byId(settingsItems.value, 'setting:overview:appearance')).toBeDefined();
+	});
+
+	it('follows the page gates: no ramp pace before the ramp has started', async () => {
+		hasRampStarted = false;
+		const { settingsItems } = await providers();
+		expect(adminControls(settingsItems.value)).not.toContain('setting:admin:rampControls:rampPace');
+	});
+
+	it('names the control, files it under its page, and deep-links to its anchor', async () => {
+		const { settingsItems } = await providers();
+		const dkim = byId(settingsItems.value, 'setting:admin:domains:dkim');
+		expect(dkim?.label).toBe('DKIM signing');
+		expect(dkim?.subtitle).toBe('Sending domains');
+		dkim?.run();
+		expect(navigations).toEqual(['/dashboard/admin/delivery/domains#sending-domain-list']);
 	});
 });

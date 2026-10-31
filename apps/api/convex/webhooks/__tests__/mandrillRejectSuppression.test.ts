@@ -1,5 +1,5 @@
 /**
- * Mandrill `reject` → suppression sync (plan D9 / piece P2.2).
+ * Mandrill `reject` → suppression sync.
  *
  * The property this suite exists for: DURING A MEASURED MIGRATION THE TWO ARMS
  * MUST SEND TO THE SAME POPULATION. Mandrill's reject list is years of

@@ -133,7 +133,7 @@ export const getMessageContext = internalQuery({
 		).slice(0, 8000);
 		return {
 			mailboxId: message.mailboxId,
-			// Whose background AI bucket the extraction is charged to (#1380).
+			// Whose background AI bucket the extraction is charged to.
 			ownerUserId: mailbox.userId,
 			threadId: message.threadId,
 			ownerAddress: mailbox.address.toLowerCase(),
@@ -206,7 +206,7 @@ const COMMITMENT_SCAN_LIMIT = 50;
 /** Global cap on extractions scheduled per sweep tick. */
 const GLOBAL_EXTRACT_CAP = 40;
 /**
- * Gap between the extractions one tick schedules (#1380). Each is charged to
+ * Gap between the extractions one tick schedules. Each is charged to
  * its owner's `postboxAiBackground` bucket (60/min, capacity 120); spread 3 s
  * apart, a whole tick (≤ 40, ~2 min) adds at most 20 a minute to any one
  * owner, under the refill rate, so a sweep never empties a bucket that the

@@ -63,7 +63,7 @@ export const mailFilterActionValidator = v.object({
 		// so a section is a reading arrangement, never a hiding place.
 		v.literal('pinToSection'),
 		v.literal('discard'),
-		// Read on arrival (SPEC §6.3): sendToDigest, placeInUpdates,
+		// Read on arrival: sendToDigest, placeInUpdates,
 		// placeInNeedsMe, archiveAfter, notify. Placement-only or delayed;
 		// never applied by the manual delivery pass or a retroactive run.
 		...literalUnion(ARRIVAL_FILTER_ACTION_TYPES).members
@@ -104,7 +104,7 @@ export const mailRulesTables = {
 		actions: v.array(mailFilterActionValidator),
 		matchType: v.optional(mailFilterMatchTypeValidator),
 		stopProcessing: v.boolean(),
-		// Read on arrival (SPEC §6.1, §6.2): what the person typed (sealed), an
+		// Read on arrival: what the person typed (sealed), an
 		// AI condition R2 answers, where the rule came from (absent = manual) and
 		// a revision every edit bumps, so a pending answer binds to one version.
 		sourceText: v.optional(v.string()),

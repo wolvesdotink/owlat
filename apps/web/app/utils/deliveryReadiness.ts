@@ -16,11 +16,11 @@ export type { ReadinessGate, ReadinessGateKey, ReadinessGateStatus };
  * The single source of truth for "can this instance actually send mail, and if
  * not, what is missing?".
  *
- * Go-live for a self-hosted Owlat has two halves that used to be asserted in two
- * different places — the setup wizard / delivery config (a transport) and the
- * domains page (a verified, authenticated sending domain) — and the self-host
- * onboarding banner independently re-listed both as if the wizard never ran. This
- * helper is where the two halves finally meet: it DERIVES one combined readiness
+ * Go-live for a self-hosted Owlat has two halves set up in two different
+ * places — the setup wizard / delivery config (a transport) and the domains page
+ * (a verified, authenticated sending domain) — and a banner that re-lists both on
+ * its own reads as if the wizard never ran. This helper is where the two halves
+ * meet: it DERIVES one combined readiness
  * verdict from the real backend state (`getTransportSummary.canSend` +
  * `getDeliveryDomainTable`), so the Delivery hub leads with it and the onboarding
  * banner can defer its pre-send steps to this one place instead of duplicating
@@ -143,8 +143,8 @@ export interface ReadinessAlignmentSource {
 
 /**
  * Fold the live query results into the flat `ReadinessInput` the verdict is
- * derived from. This is the small piece of real derivation the panel used to do
- * inline: which domain we report authentication against, plus the conditional
+ * derived from. This is the small piece of real derivation behind the panel:
+ * which domain we report authentication against, plus the conditional
  * MTA-STS warning.
  *
  * `getDeliveryDomainTable` returns rows already sorted most-active first, so we

@@ -48,7 +48,7 @@ import { recordAuditLog } from '../lib/auditLog';
 import { getInstanceSettings, upsertInstanceSettings } from '../lib/instanceSettings';
 import { isChatAttachment } from '../chat/attachmentAccess';
 import { socialPlatformValidator } from '../lib/validators/brandKit';
-import { parseContentBlocks } from '../emailBlocks/module';
+import { parseContentBlocks } from '../emailBlocks/consumers';
 
 export interface BrandKitView {
 	design: BrandKitDesign;

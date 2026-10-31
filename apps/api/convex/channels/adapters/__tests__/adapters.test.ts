@@ -87,7 +87,7 @@ describe('channel adapters — instantiation', () => {
 	// The set is closed on purpose: `email` is dispatched by the send-provider
 	// seam and `chat` is persisted natively, so neither has (or had) a working
 	// adapter here. The two classes that pretended otherwise were deleted with
-	// the D10 honesty pass; this pins the surface so they cannot creep back.
+	// their callers; this pins the surface so they cannot creep back.
 	it('covers exactly the operator-configurable outbound channels', () => {
 		expect(Object.keys(adapters).sort()).toEqual(['generic', 'sms', 'whatsapp']);
 	});
@@ -144,6 +144,16 @@ describe('SmsAdapter.send — configured path', () => {
 		expect(body.get('To')).toBe('+1999');
 		expect(body.get('From')).toBe('+1555');
 		expect(body.get('Body')).toBe('hi');
+	});
+
+	it('keeps an accepted send a success but records no id Twilio sent as a number', async () => {
+		// The 2xx means Twilio took the message, so it must not read as a failure
+		// (that would send it again); an id that is not a string is never stored.
+		const { result } = await withFetch(respond(201, { sid: 42 }), () =>
+			configuredSms().send(message)
+		);
+
+		expect(result).toEqual({ success: true, externalMessageId: undefined });
 	});
 
 	it('maps a 400 to a failed SendResult carrying the status and provider body', async () => {
@@ -216,6 +226,14 @@ describe('WhatsAppAdapter.send / healthCheck — configured path', () => {
 		expect(result.externalMessageId).toBeUndefined();
 	});
 
+	it('records no externalMessageId when Meta sends a message id that is not a string', async () => {
+		const { result } = await withFetch(respond(200, { messages: [{ id: 7 }] }), () =>
+			configuredWhatsApp().send(message)
+		);
+
+		expect(result).toEqual({ success: true, externalMessageId: undefined });
+	});
+
 	it('maps a non-2xx to a failed SendResult carrying the status and provider body', async () => {
 		const { result } = await withFetch(respond(400, 'invalid recipient'), () =>
 			configuredWhatsApp().send(message)
@@ -254,8 +272,8 @@ describe('WhatsAppAdapter.send / healthCheck — configured path', () => {
 // host path ever called either: the shipped inbound route verifies and parses
 // through `webhooks/adapters/{twilio,meta,generic}.ts`. Keeping a second copy
 // meant a Twilio field change or a `Bearer ` prefix rule could be fixed in one
-// place and silently missed in the other — and they had already drifted. D10
-// deleted the caller-less half; this bucket keeps it deleted, at the type
+// place and silently missed in the other — and they had already drifted. The
+// caller-less half is gone; this bucket keeps it deleted, at the type
 // level (the interface would not compile with a stray member — see the
 // exhaustive literal below), at runtime, and in the source text.
 // =============================================================================
@@ -308,8 +326,8 @@ describe('channel adapters — outbound-only surface', () => {
 // `unifiedMessages.updateChannelHealth`, whose arguments are exactly
 // `healthStatus` + `lastError`. The shape used to declare `lastSuccessfulSend`,
 // `rateLimitRemaining` and `latencyMs` too — the first two never set by any
-// adapter, the third measured on every 5-minute probe and then discarded. D10
-// dropped all three; this keeps a member nobody reads from creeping back.
+// adapter, the third measured on every 5-minute probe and then discarded. All
+// three are gone; this keeps a member nobody reads from creeping back.
 //
 // `apps/api`'s knip entry glob covers every file under `convex/`, so an unused
 // member here is invisible to the dead-code ratchet. This test is the ratchet.

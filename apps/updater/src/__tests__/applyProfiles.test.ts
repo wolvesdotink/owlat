@@ -5,11 +5,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { getActiveProfiles, type FeatureFlagState } from '@owlat/shared/featureFlags';
 import { applyEnvUpdates, validateFlagSnapshot } from '../security.js';
+import type * as Security from '../security.js';
 
 /**
  * POST /apply-profiles — the updater as the SINGLE writer converging
  * COMPOSE_PROFILES in .env, the compose override and the CLI flag mirror from
- * one resolved flag snapshot (plan D3/G2). Exercises the trust boundary (the
+ * one resolved flag snapshot. Exercises the trust boundary (the
  * caller sends flags, never profiles), the hardened .env rewrite, and the
  * per-service health report.
  */
@@ -23,7 +24,7 @@ vi.mock('node:child_process', async () => {
 	return { spawn: spawnFrom(commandMock) };
 });
 vi.mock('../security.js', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../security.js')>();
+	const actual = await importOriginal<typeof Security>();
 	return { ...actual, isRateLimited: rateLimitedMock };
 });
 
@@ -85,7 +86,7 @@ function dockerFixture(file: unknown, args: unknown): string {
 	if (cmd.startsWith('docker inspect')) {
 		return [
 			'ghcr.io/wolvesdotink/updater:0.5.0',
-			`/srv/owlat:${OWLAT_DIR}:rw `,
+			JSON.stringify([{ Type: 'bind', Source: '/srv/owlat', Destination: OWLAT_DIR, RW: true }]),
 			'owlat_default ',
 		].join('\n');
 	}

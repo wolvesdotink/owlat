@@ -28,13 +28,14 @@ import {
 	MANDRILL_SPF_MECHANISM,
 } from '../providers/mandrill/records';
 import { modules } from '../../__tests__/testModules';
+import type * as SessionOrganizationModule from '../../lib/sessionOrganization';
 
 const ORG = 'org-a';
 const OTHER_ORG = 'org-b';
 const NOW = 1_800_000_000_000;
 
 vi.mock('../../lib/sessionOrganization', async () => {
-	const actual = await vi.importActual<typeof import('../../lib/sessionOrganization')>(
+	const actual = await vi.importActual<typeof SessionOrganizationModule>(
 		'../../lib/sessionOrganization'
 	);
 	return {

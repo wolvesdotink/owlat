@@ -2,11 +2,9 @@
  * Mail scope for the command palette: the operator grammar, its autocomplete,
  * and live hits from the real mail search.
  *
- * This is what the Postbox rail's search bar used to be. The grammar itself is
- * unchanged — the same `@owlat/shared/mailSearch` parser reaching the same
- * `mail.mailbox.search.search` query, and the same `~/utils/postboxSearchSuggest`
- * ranking for the token under the caret — it just renders as palette rows now
- * instead of a second input with its own dropdown.
+ * The `@owlat/shared/mailSearch` parser reaches the `mail.mailbox.search.search`
+ * query, and `~/utils/postboxSearchSuggest` ranks the token under the caret. It
+ * renders as palette rows, not as a second input with its own dropdown.
  *
  * Every subscription here is gated on `enabled` AND on a resolved mailbox: the
  * palette is mounted on EVERY dashboard page, so a Mail-scope query must cost
@@ -19,6 +17,7 @@ import type { PaletteItem } from '~/lib/commandPalette';
 import { SEARCH_MIN_QUERY } from '~/lib/commandPaletteCore';
 import { useLocalized } from '~/composables/useLocalized';
 import { parseSearchQuery } from '@owlat/shared/mailSearch';
+import { POSTBOX_FIND_QUERY_PARAM, postboxFindTermsOf } from '~/utils/postboxFindSeed';
 import {
 	activeSearchToken,
 	applySearchSuggestion,
@@ -35,7 +34,7 @@ const MAIL_SEARCH_DEBOUNCE_MS = 250;
 const CONTACT_DEBOUNCE_MS = 200;
 
 /** Operators whose operand the address book completes. */
-const ADDRESS_OPERATORS = ['from', 'to', 'cc', 'bcc'];
+const ADDRESS_OPERATORS: ReadonlySet<string> = new Set(['from', 'to', 'cc', 'bcc']);
 
 export interface CommandPaletteMailScopeOptions {
 	/** The mail query, with any palette mode prefix already stripped. */
@@ -79,7 +78,7 @@ export function useCommandPaletteMailScope(options: CommandPaletteMailScopeOptio
 		setImmediate: setContactPrefix,
 	} = useDebouncedSearch(CONTACT_DEBOUNCE_MS);
 	watch(operand, (current) => {
-		contactPrefix.value = current && ADDRESS_OPERATORS.includes(current.op) ? current.value : '';
+		contactPrefix.value = current && ADDRESS_OPERATORS.has(current.op) ? current.value : '';
 	});
 
 	// keepPreviousData: typing one more letter narrows the list in place instead
@@ -197,24 +196,33 @@ export function useCommandPaletteMailScope(options: CommandPaletteMailScopeOptio
 				isSearchRefetching.value)
 	);
 
-	const hitItems = computed<PaletteItem[]>(() =>
-		(searchData.value?.messages ?? []).map((message) => ({
+	const hitItems = computed<PaletteItem[]>(() => {
+		// Captured now, not when the hit runs: the palette closes (and clears its
+		// box) before it runs the chosen row.
+		const searched = options.query.value;
+		// The searched words travel along, so the conversation opens with them
+		// found (find in conversation).
+		const find = postboxFindTermsOf(parseSearchQuery(searched));
+		return (searchData.value?.messages ?? []).map((message) => ({
 			id: `mail-hit:${message._id}`,
 			objectId: message._id,
 			label: message.subject?.trim() || t('components.appCommandPalette.noSubject'),
 			subtitle: `${message.fromName || message.fromAddress} · ${message.snippet}`.trim(),
 			icon: 'lucide:mail',
 			run: () => {
-				options.onRemember(options.query.value);
+				options.onRemember(searched);
 				// A hit may live in another mailbox (a team inbox); point the Postbox
 				// selection at it first or the thread opens as "not found".
 				if (message.mailboxId) setActiveMailboxId(message.mailboxId);
 				// The Postbox route takes a system-folder role OR a folder id, and the
 				// message document carries the id — no folder read needed.
-				void navigateTo(`/dashboard/postbox/${message.folderId}/${message._id}`);
+				void navigateTo({
+					path: `/dashboard/postbox/${message.folderId}/${message._id}`,
+					query: find ? { [POSTBOX_FIND_QUERY_PARAM]: find } : {},
+				});
 			},
-		}))
-	);
+		}));
+	});
 
 	return { suggestionItems, hitItems, isSearching, resetQuery };
 }

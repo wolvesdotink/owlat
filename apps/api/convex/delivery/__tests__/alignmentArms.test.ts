@@ -13,7 +13,7 @@
  *    domain has no first arm to compare anything against — in favour of a later
  *    one that has;
  *  - the same scan's page bound, so the read cannot grow without one;
- *  - a standalone deployment, whose reference is `{ kind: 'none' }` (D2) and
+ *  - a standalone deployment, whose reference is `{ kind: 'none' }` and
  *    which the evaluator turns into a `single_arm` PASS rather than an error.
  *
  * Plus the PARITY assertion that justifies the shared `buildArms` extraction:
@@ -24,6 +24,7 @@
 
 import { convexTest, type TestConvex } from 'convex-test';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type * as SessionOrganization from '../../lib/sessionOrganization';
 import { MANDRILL_RELAY_PROOF_MAX_AGE_MS } from '@owlat/shared';
 import schema from '../../schema';
 import { api, internal } from '../../_generated/api';
@@ -31,9 +32,7 @@ import { api, internal } from '../../_generated/api';
 import { modules } from '../../__tests__/testModules';
 
 vi.mock('../../lib/sessionOrganization', async () => {
-	const actual = await vi.importActual<typeof import('../../lib/sessionOrganization')>(
-		'../../lib/sessionOrganization'
-	);
+	const actual = await vi.importActual<typeof SessionOrganization>('../../lib/sessionOrganization');
 	return {
 		...actual,
 		getSingletonOrganizationId: vi.fn().mockResolvedValue('org-a'),
@@ -108,7 +107,7 @@ async function seedDomain(
 
 /**
  * A verified Mandrill identity for `domain`, in the GENERIC relay-identity
- * table (D7) — the row P3.1's provider writes and its reference arm reads.
+ * table — the row P3.1's provider writes and its reference arm reads.
  */
 async function seedMandrillIdentity(
 	t: TestConvex<typeof schema>,
@@ -160,7 +159,7 @@ describe('getAlignmentArms with an explicitly named domain', () => {
 		if (result?.reference.kind === 'arm') {
 			expect(result.reference.arm.dkimSelectors).toEqual(['ses-token-1']);
 			// The arms MUST be indistinguishable to the receiver apart from the
-			// selector: same From domain, same d= (D11).
+			// selector: same From domain, same d=.
 			expect(result.reference.arm.fromDomain).toBe(result.ownArm.fromDomain);
 			expect(result.reference.arm.dkimDomain).toBe(result.ownArm.dkimDomain);
 			expect(result.reference.arm.dkimSelectors).not.toEqual(result.ownArm.dkimSelectors);
@@ -260,7 +259,7 @@ describe('getAlignmentArms with no argument — the call the page makes', () => 
 	});
 });
 
-describe('getAlignmentArms on a standalone deployment (D2)', () => {
+describe('getAlignmentArms on a standalone deployment', () => {
 	it('answers with a reference of kind none rather than an error', async () => {
 		stubTransportEnv();
 		const t = convexTest(schema, modules);
@@ -282,7 +281,7 @@ describe('getAlignmentArms on a standalone deployment (D2)', () => {
 	});
 
 	/**
-	 * THE MIGRATION'S ARM READ (plan D8), now that P3.1 has landed. A SOLE
+	 * THE MIGRATION'S ARM READ, now that P3.1 has landed. A SOLE
 	 * Mandrill relay was already a describable configuration to
 	 * `relayConfiguration` (exactly one second arm; see
 	 * `relayConfiguration.test.ts`) but was NOT describable to the alignment
@@ -321,14 +320,14 @@ describe('getAlignmentArms on a standalone deployment (D2)', () => {
 		expect(result?.reference.kind).toBe('arm');
 		if (result?.reference.kind === 'arm') {
 			expect(result.reference.arm.label).toBe('Mandrill relay');
-			// The alignment contract (D11): same From domain, same DKIM `d=`, a
+			// The alignment contract: same From domain, same DKIM `d=`, a
 			// DIFFERENT selector — otherwise the two arms are not comparable.
 			expect(result.reference.arm.fromDomain).toBe(result.ownArm.fromDomain);
 			expect(result.reference.arm.dkimDomain).toBe(result.ownArm.dkimDomain);
 			expect(result.reference.arm.dkimSelectors).toEqual(['mandrill']);
 			expect(result.reference.arm.spfMechanisms).toEqual(['include:spf.mandrillapp.com']);
 			// Mandrill mints its own bounce local part, so it cannot carry our VERP
-			// return path (D5) — bounce attribution on that arm is coarser.
+			// return path — bounce attribution on that arm is coarser.
 			expect(result.reference.arm.supportsCustomReturnPath).toBe(false);
 		}
 	});
@@ -348,7 +347,7 @@ describe('getAlignmentArms on a standalone deployment (D2)', () => {
 		expect((await arms(t))?.reference.kind).toBe('unknown');
 	});
 
-	it('names the multi-relay case distinctly — D8’s "keep Mandrill the only relay"', async () => {
+	it('names the multi-relay case distinctly — "keep Mandrill the only relay"', async () => {
 		// The configuration the plan warns migrating operators away from: two
 		// reference relays, so there is no single second arm for the measurement to
 		// be against, and alignment confidence degrades.

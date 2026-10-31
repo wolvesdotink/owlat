@@ -38,6 +38,8 @@ export type PostboxThreadRowMessage = SenderAuthMessage & {
 	// The row's thread is MUTED (mail/mute.ts) — new mail on it skips the
 	// inbox and never notifies. Present so the silence is legible.
 	mutedAt?: number;
+	// The row's thread is in the Inbox's pinned band (mail/pins.ts).
+	pinnedAt?: number;
 	// The row's thread just came BACK from snooze (mail/snooze.ts sweep).
 	// Transient: the reader clears it the first time the thread is opened.
 	snoozeReturnedAt?: number;
@@ -68,6 +70,8 @@ export type PostboxThreadRowMessage = SenderAuthMessage & {
  */
 import type { ContextMenuItem } from '@owlat/ui/components/ui/ContextMenu.vue';
 import type { PostboxSwipeAction } from '~/utils/postboxSwipe';
+import type { PostboxSweepMark } from '~/utils/postboxSweep';
+import { usePostboxRowSweep } from '~/composables/postbox/usePostboxRowSweep';
 import { usePostboxRowGestures } from '~/composables/postbox/usePostboxRowGestures';
 import { usePostboxMessageDrag } from '~/composables/postbox/usePostboxMessageDrag';
 import { senderRowMarkerOf } from '~/utils/senderAuth';
@@ -75,6 +79,10 @@ import { usePostboxListQuery } from '~/composables/postbox/usePostboxPlacementFi
 import { inject } from 'vue';
 import { usePostboxWhyHere } from '~/composables/postbox/usePostboxWhyHere';
 import { POSTBOX_PRIORITY_ROWS } from '~/utils/postboxPriorityGroups';
+import { vReplyDrop } from '~/composables/useReplyFileDrop';
+import { replyDropForMessage } from '~/utils/replyFileDrop';
+import { useShortcutLabels } from '~/composables/useShortcutLabels';
+import PostboxThreadRowQuickActions from './PostboxThreadRowQuickActions.vue';
 
 const { t } = useI18n();
 // A filtered list (`?placement=`) keeps its filter on the message route.
@@ -102,6 +110,8 @@ const props = defineProps<{
 	 */
 	swipeLeft?: PostboxSwipeAction;
 	swipeRight?: PostboxSwipeAction;
+	/** What a sweep in progress will do to this row on release; null when none covers it. */
+	sweepMark?: PostboxSweepMark | null;
 }>();
 
 const emit = defineEmits<{
@@ -113,6 +123,7 @@ const emit = defineEmits<{
 	archive: [];
 	trash: [];
 	'toggle-mute': [];
+	'toggle-pin': [];
 	'cancel-follow-up': [];
 	/** A committed swipe (idea 21). The list maps it onto its own triage verbs. */
 	swipe: [action: Exclude<PostboxSwipeAction, 'none'>];
@@ -127,12 +138,17 @@ const emit = defineEmits<{
 	 * row, or the whole selection) and the rail's folders are the targets.
 	 */
 	'drag-start': [event: DragEvent];
+	/** A press on the checkbox or the Archive button: the list may turn it into a sweep. */
+	'sweep-start': [kind: 'select' | 'archive', event: PointerEvent];
 }>();
 
 const rowId = computed(() => `postbox-row-${props.msg._id}`);
 
 // Dimmed while it travels; the drag in flight is shared module state.
 const messageDrag = usePostboxMessageDrag();
+
+// Files dropped on the row reply to its message, in Answer mode.
+const replyDrop = computed(() => replyDropForMessage(props.msg, props.folderRole));
 
 /** The row accent for a danger-only sender marker; the body renders the chip. */
 const isDanger = computed(() => senderRowMarkerOf(props.msg, props.trustMarkers) !== null);
@@ -156,7 +172,9 @@ function onCheckboxClick(event: MouseEvent) {
  * Narrow to a literal per branch: Vue types `emit` as an intersection of
  * per-event call signatures, so a union-typed argument matches no overload.
  */
-function triage(e: 'toggle-star' | 'toggle-read' | 'archive' | 'trash' | 'toggle-mute') {
+function triage(
+	e: 'toggle-star' | 'toggle-read' | 'archive' | 'trash' | 'toggle-mute' | 'toggle-pin'
+) {
 	switch (e) {
 		case 'toggle-star':
 			emit('toggle-star');
@@ -172,6 +190,9 @@ function triage(e: 'toggle-star' | 'toggle-read' | 'archive' | 'trash' | 'toggle
 			break;
 		case 'toggle-mute':
 			emit('toggle-mute');
+			break;
+		case 'toggle-pin':
+			emit('toggle-pin');
 			break;
 	}
 }
@@ -203,7 +224,9 @@ function openWhyHere(event: MouseEvent) {
 }
 
 // Right-click / context-menu-key items — the same triage verbs as the hover
-// row-actions (one action source, two entry points).
+// row-actions (one action source, two entry points), each with its list key.
+const { labelFor } = useShortcutLabels();
+const key = (id: string) => labelFor(id) ?? undefined;
 const contextItems = computed<ContextMenuItem[]>(() => [
 	{
 		id: 'star',
@@ -211,6 +234,7 @@ const contextItems = computed<ContextMenuItem[]>(() => [
 			? t('components.postbox.postboxThreadRow.unstar')
 			: t('components.postbox.postboxThreadRow.star'),
 		icon: 'lucide:star',
+		shortcut: key('postbox.star'),
 		run: () => triage('toggle-star'),
 	},
 	{
@@ -219,13 +243,23 @@ const contextItems = computed<ContextMenuItem[]>(() => [
 			? t('components.postbox.postboxThreadRow.markAsUnread')
 			: t('components.postbox.postboxThreadRow.markAsRead'),
 		icon: props.msg.flagSeen ? 'lucide:mail' : 'lucide:mail-open',
+		shortcut: key('postbox.toggleRead'),
 		run: () => triage('toggle-read'),
 	},
 	{
 		id: 'archive',
 		label: t('common.archive'),
 		icon: 'lucide:archive',
+		shortcut: key('postbox.archive'),
 		run: () => triage('archive'),
+	},
+	{
+		id: 'pin',
+		label: props.msg.pinnedAt
+			? t('components.postbox.postboxThreadRow.unpin')
+			: t('components.postbox.postboxThreadRow.pin'),
+		icon: props.msg.pinnedAt ? 'lucide:pin-off' : 'lucide:pin',
+		run: () => triage('toggle-pin'),
 	},
 	{
 		id: 'mute',
@@ -233,6 +267,7 @@ const contextItems = computed<ContextMenuItem[]>(() => [
 			? t('components.postbox.postboxThreadRow.unmute')
 			: t('components.postbox.postboxThreadRow.mute'),
 		icon: props.msg.mutedAt ? 'lucide:bell' : 'lucide:bell-off',
+		shortcut: key('postbox.mute'),
 		run: () => triage('toggle-mute'),
 	},
 	{
@@ -241,6 +276,7 @@ const contextItems = computed<ContextMenuItem[]>(() => [
 		icon: 'lucide:trash',
 		danger: true,
 		separatorBefore: true,
+		shortcut: key('postbox.trash'),
 		run: () => triage('trash'),
 	},
 ]);
@@ -269,6 +305,9 @@ const gestures = usePostboxRowGestures({
 			})
 		),
 });
+
+// A press on the checkbox or the Archive button may start a sweep; the checkbox previews it.
+const { shownSelected, onRowPointerdown, onDragstart } = usePostboxRowSweep(props, emit, gestures);
 
 /** Swallow the click a fired long-press or a swipe leaves behind. */
 function onCapturedClick(event: MouseEvent) {
@@ -300,6 +339,7 @@ function onCapturedClick(event: MouseEvent) {
 			     one the menu pattern uses, and the presentational hop is what lets
 			     the listbox own the link. -->
 			<li
+				v-reply-drop="replyDrop"
 				role="none"
 				class="group relative pbx-row-li"
 				:class="{
@@ -308,6 +348,8 @@ function onCapturedClick(event: MouseEvent) {
 					'pbx-row-swiping': !!gestures.track.value,
 					'opacity-50': messageDrag.isDragged(msg._id),
 				}"
+				:data-sweep-row="msg._id"
+				:data-sweep-mark="sweepMark ?? undefined"
 				draggable="true"
 				style="
 					content-visibility: auto;
@@ -317,12 +359,12 @@ function onCapturedClick(event: MouseEvent) {
 				@keydown="onKeydown"
 				@mouseenter="emit('prefetch')"
 				@focusin="emit('prefetch')"
-				@pointerdown="gestures.onPointerdown"
+				@pointerdown="onRowPointerdown"
 				@pointermove="gestures.onPointermove"
 				@pointerup="gestures.onPointerup"
 				@pointercancel="gestures.onPointercancel"
 				@click.capture="onCapturedClick"
-				@dragstart="emit('drag-start', $event)"
+				@dragstart="onDragstart"
 				@dragend="messageDrag.end()"
 			>
 				<!-- Revealed behind the row while it follows the finger sideways. -->
@@ -337,7 +379,8 @@ function onCapturedClick(event: MouseEvent) {
 					class="pbx-row-link block w-full text-left px-4 py-3 hover:bg-(--surface-1-hover)"
 					:class="{
 						'bg-(--surface-1-selected)': active,
-						'bg-brand/5': selected,
+						'bg-brand/5': shownSelected,
+						'opacity-40': sweepMark === 'archive',
 						'ring-1 ring-inset ring-brand/50': focused,
 						'cursor-pointer': selectable,
 						'pbx-row-settle': gestures.settling.value,
@@ -346,23 +389,26 @@ function onCapturedClick(event: MouseEvent) {
 					@click="selectable ? emit('select') : undefined"
 				>
 					<div class="flex items-start gap-2">
-						<button
-							type="button"
-							class="pbx-row-checkbox mt-0.5 w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center"
-							:class="
-								selected
-									? 'bg-brand border-brand text-text-inverse'
-									: 'border-border-subtle bg-bg-base opacity-0 group-hover:opacity-100'
-							"
-							:aria-label="
-								selected
-									? t('components.postbox.postboxThreadRow.deselect')
-									: t('components.postbox.postboxThreadRow.select')
-							"
-							@click="onCheckboxClick($event)"
-						>
-							<Icon v-if="selected" name="lucide:check" class="w-3 h-3" />
-						</button>
+						<UiTooltip :text="t('components.postbox.postboxThreadRow.selectSweepHint')">
+							<button
+								type="button"
+								class="pbx-row-checkbox mt-0.5 w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center"
+								:class="
+									shownSelected
+										? 'bg-brand border-brand text-text-inverse'
+										: 'border-border-subtle bg-bg-base opacity-0 group-hover:opacity-100'
+								"
+								:aria-label="
+									selected
+										? t('components.postbox.postboxThreadRow.deselect')
+										: t('components.postbox.postboxThreadRow.select')
+								"
+								data-sweep-handle="select"
+								@click="onCheckboxClick($event)"
+							>
+								<Icon v-if="shownSelected" name="lucide:check" class="w-3 h-3" />
+							</button>
+						</UiTooltip>
 						<UiAvatar
 							:name="msg.fromName"
 							:email="msg.fromAddress"
@@ -379,75 +425,13 @@ function onCapturedClick(event: MouseEvent) {
 						/>
 					</div>
 				</component>
-				<!-- Hover quick-actions (single-message triage without a round-trip
-		     through the bulk selection). -->
-				<div
-					class="ui-hover-reveal absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-0.5 bg-bg-elevated/95 rounded px-1 py-0.5 shadow-sm border border-border-subtle"
-				>
-					<button
-						v-if="isWhyHereShown"
-						type="button"
-						class="p-1 rounded hover:bg-bg-surface text-text-tertiary hover:text-text-primary"
-						:title="t('postbox.explain.rowLink')"
-						:aria-label="t('postbox.explain.rowLink')"
-						data-testid="row-why-here"
-						@click="openWhyHere($event)"
-					>
-						<Icon name="lucide:help-circle" class="w-4 h-4" />
-					</button>
-					<button
-						type="button"
-						class="p-1 rounded hover:bg-bg-surface text-text-tertiary hover:text-warning"
-						:title="
-							msg.flagFlagged
-								? t('components.postbox.postboxThreadRow.unstar')
-								: t('components.postbox.postboxThreadRow.star')
-						"
-						:aria-label="
-							msg.flagFlagged
-								? t('components.postbox.postboxThreadRow.unstar')
-								: t('components.postbox.postboxThreadRow.star')
-						"
-						@click="rowAction($event, 'toggle-star')"
-					>
-						<Icon name="lucide:star" class="w-4 h-4" />
-					</button>
-					<button
-						type="button"
-						class="p-1 rounded hover:bg-bg-surface text-text-tertiary hover:text-text-primary"
-						:title="
-							msg.flagSeen
-								? t('components.postbox.postboxThreadRow.markUnread')
-								: t('components.postbox.postboxThreadRow.markRead')
-						"
-						:aria-label="
-							msg.flagSeen
-								? t('components.postbox.postboxThreadRow.markUnread')
-								: t('components.postbox.postboxThreadRow.markRead')
-						"
-						@click="rowAction($event, 'toggle-read')"
-					>
-						<Icon :name="msg.flagSeen ? 'lucide:mail' : 'lucide:mail-open'" class="w-4 h-4" />
-					</button>
-					<button
-						type="button"
-						class="p-1 rounded hover:bg-bg-surface text-text-tertiary hover:text-text-primary"
-						:title="t('common.archive')"
-						:aria-label="t('common.archive')"
-						@click="rowAction($event, 'archive')"
-					>
-						<Icon name="lucide:archive" class="w-4 h-4" />
-					</button>
-					<button
-						type="button"
-						class="p-1 rounded hover:bg-error/10 text-text-tertiary hover:text-error"
-						:title="t('common.delete')"
-						:aria-label="t('common.delete')"
-						@click="rowAction($event, 'trash')"
-					>
-						<Icon name="lucide:trash" class="w-4 h-4" />
-					</button>
-				</div>
+				<PostboxThreadRowQuickActions
+					:flagged="msg.flagFlagged"
+					:seen="msg.flagSeen"
+					:why-here-shown="isWhyHereShown"
+					@why-here="openWhyHere"
+					@action="rowAction"
+				/>
 			</li>
 		</template>
 	</UiContextMenu>

@@ -135,6 +135,7 @@ export const AUDIT_ACTION_LITERALS = [
 	action('settings.workspace_deletion_aborted'),
 	// Team Inbox response targets (SLA) saved: inbox/sla/policy.ts.
 	action('settings.inbox_sla_updated'),
+	action('settings.inbox_auto_close_updated'),
 	// Pluggable AI providers — admin save of the per-org language/embedding
 	// backend config (bring-your-own-key). Fired by aiProviderConfig.
 	action('ai_provider_config.updated'),
@@ -296,6 +297,9 @@ export const AUDIT_ACTION_LITERALS = [
 	// the draft-status projection.
 	action('thread.reopened_by_inbound'),
 	action('thread.status_changed'),
+	// The auto-close sweep resolved a quiet waiting thread (`inbox/autoClose.ts`).
+	action('thread.auto_closed'),
+	action('thread.auto_close_changed'),
 	action('thread.assigned'),
 	action('thread.unassigned'),
 	action('thread.draft_status_changed'),

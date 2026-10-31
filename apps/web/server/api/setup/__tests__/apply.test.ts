@@ -8,6 +8,9 @@ import {
 	isEnvBackupSealedValue,
 } from '@owlat/shared/envBackupBox';
 import { getDefaultFlags } from '@owlat/shared/featureFlags';
+import { jsonRequestEvent } from '../../../__tests__/nitro';
+import type * as SetupEnvModule from '@owlat/shared/setupEnv';
+import type * as ConvexRuntimeEnvModule from '@owlat/shared/convexRuntimeEnv';
 
 /**
  * Secrets-at-rest test for `POST /api/setup/apply` (the web setup wizard's final
@@ -27,11 +30,11 @@ const { pushMock, readMock, writeMock, identityPreflightMock } = vi.hoisted(() =
 }));
 
 vi.mock('@owlat/shared/setupEnv', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('@owlat/shared/setupEnv')>();
+	const actual = await importOriginal<typeof SetupEnvModule>();
 	return { ...actual, readEnvFile: readMock, writeEnvFile: writeMock };
 });
 vi.mock('@owlat/shared/convexRuntimeEnv', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('@owlat/shared/convexRuntimeEnv')>();
+	const actual = await importOriginal<typeof ConvexRuntimeEnvModule>();
 	return { ...actual, pushConvexRuntimeEnv: pushMock };
 });
 vi.mock('../../../utils/mtaIdentityPreflight', () => ({
@@ -61,7 +64,7 @@ interface ApplyResult {
 async function callRoute(): Promise<ApplyResult> {
 	const mod = await import('../apply.post');
 	const handler = mod.default as unknown as (event: unknown) => Promise<ApplyResult>;
-	return handler({});
+	return handler(jsonRequestEvent(body));
 }
 
 function writtenEnv(): Record<string, string> {
@@ -96,10 +99,6 @@ beforeEach(() => {
 	);
 	vi.stubGlobal('defineEventHandler', <T>(handler: T) => handler);
 	vi.stubGlobal('requireSetupToken', vi.fn());
-	vi.stubGlobal(
-		'readBody',
-		vi.fn(async () => body)
-	);
 	vi.stubGlobal('createError', (opts: { statusCode: number; message: string }) =>
 		Object.assign(new Error(opts.message), { statusCode: opts.statusCode })
 	);
@@ -148,16 +147,20 @@ describe('POST /api/setup/apply — relay password at rest', () => {
 });
 
 describe('POST /api/setup/apply — env value hygiene', () => {
-	it('refuses a newline in an env value before seeding or writing (env injection)', async () => {
+	it.each([
+		['a newline', '\n'],
+		['a carriage return', '\r'],
+		['a NUL', '\0'],
+	])('refuses %s in an env value before seeding or writing (env injection)', async (_c, char) => {
 		body = {
 			flags: getDefaultFlags({ hosted: false }),
-			// A newline in the operator-supplied From name would inject an arbitrary
+			// A line break in the operator-supplied From name would inject an arbitrary
 			// extra `.env` line (here a forged INSTANCE_SECRET) through the line-oriented
-			// writer.
+			// writer; a NUL truncates the value wherever C strings read it.
 			env: {
 				EMAIL_PROVIDER: 'smtp',
 				SMTP_RELAY_PASSWORD: PLAINTEXT_PASSWORD,
-				DEFAULT_FROM_NAME: 'Acme\nINSTANCE_SECRET=attacker-owned',
+				DEFAULT_FROM_NAME: `Acme${char}INSTANCE_SECRET=attacker-owned`,
 			},
 			admin: { email: 'admin@example.com', name: 'Admin', password: 'longenoughpw!' },
 		};

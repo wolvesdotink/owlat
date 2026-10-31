@@ -16,7 +16,7 @@ import type { AttachmentMeta } from '~/utils/attachmentMeta';
  * so reopening a file in the lightbox or downloading it after previewing it is
  * served locally. How long a URL is kept is counted on this device from when it
  * arrived, never by comparing the token's `exp` (server time) with the device
- * clock (#1294): a clock running behind kept expired URLs, one running ahead
+ * clock: a clock running behind kept expired URLs, one running ahead
  * kept none. A kept URL the proxy refuses anyway is minted once more before the
  * caller falls back to the whole message.
  */

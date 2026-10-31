@@ -176,8 +176,10 @@ export function installShutdown(options: ShutdownOptions): ShutdownHandle {
 
 		// A critical section may start another one (the updater's apply sequence
 		// does), so drain until the set is empty rather than snapshotting once.
+		// Logged each round: a shutdown that takes long says what it waits for.
 		while (inFlight.size > 0) {
-			await Promise.allSettled([...inFlight]);
+			log('shutdown waiting for in-flight critical sections', { criticalSections: inFlight.size });
+			await Promise.allSettled(inFlight);
 		}
 
 		if (closed) await closed;

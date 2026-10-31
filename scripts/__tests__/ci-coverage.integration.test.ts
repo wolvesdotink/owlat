@@ -54,4 +54,4 @@ it('collects shards without floors but fails merged coverage on a per-path regre
 	} finally {
 		rmSync(directory, { recursive: true, force: true });
 	}
-}, 120_000);
+});

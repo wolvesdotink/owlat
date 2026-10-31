@@ -878,13 +878,15 @@ async function handleRemoveSuppression() {
 										{{ list.name }}
 									</NuxtLink>
 								</div>
-								<button
-									class="p-1 rounded text-text-tertiary opacity-0 group-hover:opacity-100 hover:text-error hover:bg-error-subtle transition-all"
-									:title="t('dashboard.audience.contacts.detail.topics.remove')"
-									@click="handleRemoveFromTopic(list._id)"
-								>
-									<Icon name="lucide:x" class="w-3 h-3" />
-								</button>
+								<UiTooltip :text="t('dashboard.audience.contacts.detail.topics.remove')">
+									<button
+										class="p-1 rounded text-text-tertiary opacity-0 group-hover:opacity-100 hover:text-error hover:bg-error-subtle transition-[color,background-color,opacity]"
+										:aria-label="t('dashboard.audience.contacts.detail.topics.remove')"
+										@click="handleRemoveFromTopic(list._id)"
+									>
+										<Icon name="lucide:x" class="w-3 h-3" />
+									</button>
+								</UiTooltip>
 							</div>
 						</div>
 						<div v-else-if="allTopics && allTopics.length === 0" class="text-center py-4">

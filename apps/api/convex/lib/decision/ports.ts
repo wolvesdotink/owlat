@@ -65,7 +65,7 @@ export function decisionBreakerPort(ctx: ActionCtx): DecisionFallbackBreaker {
 export function decisionUsageRecorder(
 	ctx: ActionCtx,
 	options: {
-		/** `shadow` for a shadow judgment (D4): its rows count against the shadow allowance. */
+		/** `shadow` for a shadow judgment: its rows count against the shadow allowance. */
 		readonly budgetClass?: BudgetClass;
 		/**
 		 * A hold the caller already holds (an interpretation run's, which was

@@ -5,7 +5,7 @@
  *   - {@link markOutstanding}: a source was enqueued (delivery, a send, the
  *     Team Inbox pipeline, a history page, first open). Idempotent on the
  *     snapshot's flag, so a repeated enqueue counts once.
- *   - {@link deferSource}: D10, the source waits for the thread to be opened
+ *   - {@link deferSource}: deferred, the source waits for the thread to be opened
  *     (not outstanding; `threadBriefs.deferredSources`).
  *   - {@link settleSource}: the source has an outcome. `recorded` for any
  *     recorded result (complete, partial, failed, skipped, or a reused one),
@@ -94,12 +94,12 @@ async function shiftCounts(
 	});
 }
 
-/** The fields a deferred source (D10) carries, cleared. */
+/** The fields a deferred source carries, cleared. */
 const NOT_DEFERRED = { isDeferred: undefined, deferredAt: undefined, deferReason: undefined };
 
 /**
  * A source was enqueued for interpretation: outstanding until it has an
- * outcome. A deferred source (D10) enqueued now is no longer deferred.
+ * outcome. A deferred source enqueued now is no longer deferred.
  */
 export async function markOutstanding(ctx: MutationCtx, sourceKey: string): Promise<void> {
 	const snapshot = await snapshotOf(ctx, sourceKey);
@@ -161,7 +161,7 @@ export async function deferSource(
 	return true;
 }
 
-/** A source settled short of a full read (SPEC §2.5), as the run decided it. */
+/** A source settled short of a full read, as the run decided it. */
 export interface ArrivalSettlement {
 	readOutcome: 'gist' | 'skipped';
 	depth: Depth;
@@ -177,7 +177,7 @@ function arrivalDelta(readOutcome: ArrivalSettlement['readOutcome'] | undefined,
 }
 
 /**
- * Read on arrival (SPEC §2.5): the source is settled as gist-only or skipped.
+ * Read on arrival: the source is settled as gist-only or skipped.
  * Terminal: it stops being outstanding or deferred, the stale sweep and the
  * backfill never run it again, and only the upgrade rule (`defer.ts`) reads it
  * in full later. Counted in `threadBriefs.gistSources` / `skippedSources`,
@@ -224,7 +224,7 @@ export async function settleArrivalSource(
 }
 
 /**
- * The upgrade discharge (SPEC §2.3.4): a source settled short of a full read
+ * The upgrade discharge: a source settled short of a full read
  * got a recorded outcome after all (a full read, or the skip, failure or
  * fence its upgrade run recorded). It leaves the gist / skipped count, and it
  * is no longer upgradeable either way, so it can never hold a successor up.

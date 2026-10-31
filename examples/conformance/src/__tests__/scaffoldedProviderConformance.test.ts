@@ -5,7 +5,7 @@
  *
  * P3.3's parity proof (`pluginProviderParity.test.ts`) answers "can a package be
  * a provider?" against a hand-written fixture ESP. This one answers the question
- * D4's policy actually rests on — "is the package we HAND an author already such
+ * the "provider N+1 is a package" policy actually rests on — "is the package we HAND an author already such
  * a provider?" — and it answers it against the generator's real output: the
  * subject is `../fixtures/scaffolded/bundle.ts`, which calls `buildScaffold`,
  * writes the emitted files to a directory, imports the emitted TypeScript and
@@ -452,7 +452,7 @@ describe('none of it required an edit', () => {
 	 * And no production file knows this bundle exists. The scaffolded package is
 	 * written to a temporary directory and named after a stranger's scope, so a
 	 * hit under `apps/` or `packages/` would mean a core module had been taught
-	 * about it — the one thing D4's policy forbids.
+	 * about it — the one thing the package policy forbids.
 	 *
 	 * TWO TEST FILES ARE EXEMPT AND NAMED, each for its own reason.
 	 */
@@ -464,7 +464,7 @@ describe('none of it required an edit', () => {
 		// same id the guide's `create` command scaffolds. A sample declaring a
 		// different one would show a reader a manifest that is not the one the
 		// command they just ran produced.
-		'packages/plugin-kit/src/__tests__/docsSamples.test.ts',
+		'packages/plugin-kit/src/__tests__/docsSamples/sendProviderManifest.ts',
 	].sort();
 
 	/**
@@ -511,14 +511,15 @@ describe('none of it required an edit', () => {
 	 *
 	 * The page's centrepiece manifest is the one thing a reader diffs against their
 	 * freshly scaffolded package, so every name it declares must be a name this
-	 * bundle actually has. The sample lives in `docsSamples.test.ts` (it is
-	 * compiled and executed there) and the guide quotes it verbatim, which is why
-	 * the assertion reads the compiled source rather than the page.
+	 * bundle actually has. The sample lives in plugin-kit's
+	 * `docsSamples/sendProviderManifest.ts` (compiled there and executed by
+	 * `docsSamples.test.ts`) and the guide quotes it verbatim, which is why the
+	 * assertion reads the compiled source rather than the page.
 	 */
 	it('shows a manifest sample declaring the variables this bundle composes', async () => {
 		const { readRepositoryFile } = await import('../repository');
 		const sample = await readRepositoryFile(
-			'packages/plugin-kit/src/__tests__/docsSamples.test.ts'
+			'packages/plugin-kit/src/__tests__/docsSamples/sendProviderManifest.ts'
 		);
 		const region = sample.slice(
 			sample.indexOf('// #region send-provider-manifest'),

@@ -13,7 +13,7 @@ export type ReplyQueueUrgency = 'high' | 'normal' | 'low';
 /**
  * The one answer queue, narrowed to one mailbox. The personal Reply Queue page
  * is gone; every "waiting on your reply" entry in the mailbox links here so a
- * mailbox count and the queue it opens always describe the same rows (#767).
+ * mailbox count and the queue it opens always describe the same rows.
  */
 export function answerQueueHrefFor(mailboxId: string): string {
 	return `/dashboard/answer?in=${encodeURIComponent(mailboxId)}`;
@@ -122,7 +122,7 @@ export interface ReplyQueueItem {
 	/**
 	 * The thread brief's top open item and first "Latest update" line, once
 	 * the thread is interpreted (mail/interpret/briefTop.ts). The row then
-	 * reads the item rather than the ask summary (SPEC §7).
+	 * reads the item rather than the ask summary.
 	 */
 	briefTop?: BriefTopRow;
 }
@@ -163,7 +163,7 @@ export function compareReplyQueueItems(
  * (in the UI `locale`), else the AI's askSummary, else the subject — the
  * deterministic queue must read fine with AI disabled or failed.
  *
- * A shared (team) mailbox is never summarised (SPEC §7): its row reads the top
+ * A shared (team) mailbox is never summarised: its row reads the top
  * item or the subject, never the askSummary. `isShared` comes from the inbox's
  * scope; an actions-mode brief says the same on its own.
  */

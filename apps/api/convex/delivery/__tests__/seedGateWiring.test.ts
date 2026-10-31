@@ -18,6 +18,7 @@
 
 import { convexTest } from 'convex-test';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type * as SessionOrganization from '../../lib/sessionOrganization';
 import schema from '../../schema';
 import { api } from '../../_generated/api';
 import type { DeliverabilityCell } from '@owlat/shared/deliverabilityRouting';
@@ -56,7 +57,7 @@ const HOUR_MS = 60 * 60 * 1000;
 const CELL: DeliverabilityCell = { stream: 'campaign', destinationProvider: 'gmail' };
 
 vi.mock('../../lib/sessionOrganization', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../../lib/sessionOrganization')>();
+	const actual = await importOriginal<typeof SessionOrganization>();
 	return {
 		...actual,
 		requireOrgMember: vi.fn(async () => ({
@@ -741,7 +742,7 @@ describe('the screen picks the evaluator the controller picked', () => {
 	 *
 	 * Now both readers grade both arms over the controller's span, so the VERDICT
 	 * and the DECIDING GATE are the same object on both sides — while the arm the
-	 * card renders is still the seven days plan D2/D5 asks for, spike included.
+	 * card renders is still the seven-day week, spike included.
 	 * That split is the whole fix, so it is asserted in one test: same verdict,
 	 * different reported counters, and the query naming both spans on the wire.
 	 */

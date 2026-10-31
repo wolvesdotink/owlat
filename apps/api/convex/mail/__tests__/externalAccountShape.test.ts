@@ -31,7 +31,13 @@ const CONNECTION = {
 };
 
 /** Keys that must never reach an account row from the connect args. */
-const NOT_A_COLUMN = ['emailAddress', 'displayName', 'memberUserIds', 'seedProvider', 'mailboxId'];
+const NOT_A_COLUMN: ReadonlySet<string> = new Set([
+	'emailAddress',
+	'displayName',
+	'memberUserIds',
+	'seedProvider',
+	'mailboxId',
+]);
 
 function forbiddenKeysIn(value: object, forbidden: (key: string) => boolean): string[] {
 	return Object.keys(value).filter(forbidden);
@@ -49,7 +55,7 @@ describe('pickConnectionFields', () => {
 		};
 		const picked = pickConnectionFields(args);
 		expect(picked).toEqual(CONNECTION);
-		expect(forbiddenKeysIn(picked, (k) => NOT_A_COLUMN.includes(k))).toEqual([]);
+		expect(forbiddenKeysIn(picked, (k) => NOT_A_COLUMN.has(k))).toEqual([]);
 	});
 
 	it('keeps an absent optional field as an explicit undefined so a rotation clears it', () => {
@@ -82,9 +88,7 @@ describe('toPublicAccountView', () => {
 			updatedAt: 0,
 		} as Doc<'externalMailAccounts'>;
 		const view = toPublicAccountView(account);
-		expect(
-			forbiddenKeysIn(view, (k) => k.startsWith('secret') || NOT_A_COLUMN.includes(k))
-		).toEqual([]);
+		expect(forbiddenKeysIn(view, (k) => k.startsWith('secret') || NOT_A_COLUMN.has(k))).toEqual([]);
 		expect(view).toMatchObject({
 			imapHost: 'imap.acme.test',
 			authMethod: 'oauth2',

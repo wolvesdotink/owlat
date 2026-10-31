@@ -21,7 +21,6 @@ import { internalMutation } from '../lib/writeFence';
 import { adminMutation } from '../lib/authedFunctions';
 import { getOrThrow, throwInvalidInput } from '../_utils/errors';
 import { recordAuditLog } from '../lib/auditLog';
-import { getMutationContext } from '../lib/sessionOrganization';
 import { snoozeClockPatch } from './sla/threadClock';
 import { recordTeamSnoozed } from '../mail/interpret/threadEvents';
 
@@ -33,8 +32,8 @@ export const snoozeThread = adminMutation({
 		threadId: v.id('conversationThreads'),
 		until: v.number(),
 	},
-	handler: async (ctx, args) => {
-		const { userId } = await getMutationContext(ctx);
+	handler: async (ctx, args, session) => {
+		const { userId } = session;
 		const thread = await getOrThrow(ctx, args.threadId, 'Thread');
 		const now = Date.now();
 		if (args.until <= now) {
@@ -67,16 +66,20 @@ export const unsnoozeThread = adminMutation({
 	args: {
 		threadId: v.id('conversationThreads'),
 	},
-	handler: async (ctx, args) => {
-		const { userId } = await getMutationContext(ctx);
+	handler: async (ctx, args, session) => {
+		const { userId } = session;
 		const thread = await getOrThrow(ctx, args.threadId, 'Thread');
 		if (thread.snoozedUntil === undefined) {
 			return { success: true };
 		}
+		const now = Date.now();
 		await ctx.db.patch(args.threadId, {
 			snoozedUntil: undefined,
 			snoozeReturnedAt: undefined,
-			...(await snoozeClockPatch(ctx, thread, 'wake', Date.now())),
+			// Waking it by hand restarts the auto-close quiet period, as the wake
+			// cron's `snoozeReturnedAt` does (inbox/autoCloseRules.ts).
+			autoCloseRestartedAt: now,
+			...(await snoozeClockPatch(ctx, thread, 'wake', now)),
 		});
 		await recordAuditLog(ctx, {
 			userId,

@@ -1,5 +1,5 @@
 /**
- * The one evaluation algebra (SPEC §6.2): the arrival hook pass on both live
+ * The one evaluation algebra: the arrival hook pass on both live
  * ingest paths, the pending AI questions, and R2's answers. Ordering,
  * `stopProcessing`, exclusive winners across the manual pass, the hook pass,
  * sender status and late answers, revisions, unknown answers, idempotence,

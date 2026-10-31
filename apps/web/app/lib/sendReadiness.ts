@@ -14,7 +14,7 @@
  * in `~/utils/gettingStarted` owns that one sentence and says why it words the
  * same number differently.
  *
- * The rule throughout is the deliverability plan's D14: say exactly what is
+ * The rule throughout: say exactly what is
  * known and nothing more. An unmeasurable cap produces `null` (the surface
  * renders nothing) rather than a reassuring zero, a growth that the projection
  * does not show is never promised, and an audience the cap cannot carry today is

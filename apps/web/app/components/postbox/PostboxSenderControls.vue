@@ -28,37 +28,40 @@ const { isVip, canAccept, toggleVip, acceptSender, busy } = usePostboxSenderStat
 
 <template>
 	<div class="flex items-center gap-1.5 flex-shrink-0">
-		<button
-			v-if="canAccept"
-			type="button"
-			class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium bg-brand/10 text-brand hover:bg-brand/20 disabled:opacity-50"
-			:title="t('components.postbox.postboxSenderControls.acceptTitle')"
-			:aria-label="t('components.postbox.postboxSenderControls.accept')"
-			:disabled="busy"
-			@click.stop.prevent="acceptSender"
-		>
-			<Icon name="lucide:user-check" class="w-3.5 h-3.5" />
-			{{ t('components.postbox.postboxSenderControls.accept') }}
-		</button>
-		<button
-			type="button"
-			class="text-text-tertiary hover:text-warning disabled:opacity-50"
-			:class="{ 'text-warning': isVip }"
-			:title="
+		<UiTooltip v-if="canAccept" :text="t('components.postbox.postboxSenderControls.acceptTitle')">
+			<button
+				type="button"
+				class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium bg-brand/10 text-brand hover:bg-brand/20 disabled:opacity-50"
+				:aria-label="t('components.postbox.postboxSenderControls.accept')"
+				:disabled="busy"
+				@click.stop.prevent="acceptSender"
+			>
+				<Icon name="lucide:user-check" class="w-3.5 h-3.5" />
+				{{ t('components.postbox.postboxSenderControls.accept') }}
+			</button>
+		</UiTooltip>
+		<UiTooltip
+			:text="
 				isVip
 					? t('components.postbox.postboxSenderControls.removeVip')
 					: t('components.postbox.postboxSenderControls.markVip')
 			"
-			:aria-label="
-				isVip
-					? t('components.postbox.postboxSenderControls.removeVip')
-					: t('components.postbox.postboxSenderControls.markVip')
-			"
-			:aria-pressed="isVip"
-			:disabled="busy"
-			@click.stop.prevent="toggleVip"
 		>
-			<Icon name="lucide:crown" class="w-3.5 h-3.5" :class="{ 'fill-current': isVip }" />
-		</button>
+			<button
+				type="button"
+				class="text-text-tertiary hover:text-warning disabled:opacity-50"
+				:class="{ 'text-warning': isVip }"
+				:aria-label="
+					isVip
+						? t('components.postbox.postboxSenderControls.removeVip')
+						: t('components.postbox.postboxSenderControls.markVip')
+				"
+				:aria-pressed="isVip"
+				:disabled="busy"
+				@click.stop.prevent="toggleVip"
+			>
+				<Icon name="lucide:crown" class="w-3.5 h-3.5" :class="{ 'fill-current': isVip }" />
+			</button>
+		</UiTooltip>
 	</div>
 </template>

@@ -1,6 +1,7 @@
 /**
  * Automation lifecycle (module) — single writer of `automations.status` and
- * its companion fields (`activatedAt`, `pausedAt`, `updatedAt`).
+ * its companion fields (`activatedAt`, `pausedAt`, `statusChangedAt`,
+ * `updatedAt`).
  *
  * Three states: `draft | active | paused`. Four legal edges:
  *   draft   → active            (activate; validates trigger config + ≥1 step)
@@ -31,6 +32,7 @@ import { trackEvent } from '../lib/posthogHelpers';
 import { recordListingCounter } from '../lib/listingCounters';
 import { loadOrderedSteps } from './steps';
 import { getLive } from '../lib/softDelete';
+import { scheduleMarketingNotice } from '../marketing/noticeEvents';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -51,7 +53,12 @@ export type AutomationTransitionOutcome =
 	  }
 	| {
 			ok: false;
-			reason: 'automation_not_found' | 'illegal_edge' | 'no_steps' | 'invalid_trigger_config';
+			reason:
+				| 'automation_not_found'
+				| 'illegal_edge'
+				| 'no_steps'
+				| 'invalid_trigger_config'
+				| 'status_changed';
 			from?: AutomationStatus;
 			to?: AutomationStatus;
 	  };
@@ -195,6 +202,7 @@ function buildPatch(
 			const patch: Record<string, unknown> = {
 				status: 'active',
 				pausedAt: undefined,
+				statusChangedAt: updatedAt,
 				updatedAt,
 				// Clear the failure-breaker counter on (re)activation. Otherwise a
 				// breaker-paused automation resumes still at the threshold, so the
@@ -212,6 +220,7 @@ function buildPatch(
 			return {
 				status: 'paused',
 				pausedAt: updatedAt,
+				statusChangedAt: updatedAt,
 				updatedAt,
 			};
 		case 'draft':
@@ -219,6 +228,7 @@ function buildPatch(
 				status: 'draft',
 				activatedAt: undefined,
 				pausedAt: undefined,
+				statusChangedAt: updatedAt,
 				updatedAt,
 			};
 	}
@@ -346,12 +356,27 @@ export const transition = internalMutation({
 		automationId: v.id('automations'),
 		input: transitionInputValidator,
 		userId: v.string(),
+		// An undo's guard: apply only while `statusChangedAt` still equals the
+		// value the transition being undone wrote. Any later change (another
+		// admin, the failure breaker) refuses it as `status_changed`.
+		ifStatusChangedAt: v.optional(v.number()),
 	},
 	handler: async (ctx, args): Promise<AutomationTransitionOutcome> => {
 		// An automation in Recently deleted keeps the status it was deleted with
 		// (never `active`), so nothing can switch it back on until it is restored.
 		const automation = await getLive(ctx, args.automationId);
 		if (!automation) return { ok: false, reason: 'automation_not_found' };
+		if (
+			args.ifStatusChangedAt !== undefined &&
+			automation.statusChangedAt !== args.ifStatusChangedAt
+		) {
+			return {
+				ok: false,
+				reason: 'status_changed',
+				from: automation.status,
+				to: args.input.to,
+			};
+		}
 		return await dispatch(ctx, automation, args.input, args.userId);
 	},
 });
@@ -392,22 +417,10 @@ export async function recordAutomationRunFailure(
 		});
 		// `automation.status` is still 'active' (the counter patch above doesn't
 		// touch it), so dispatch sees the correct from-state.
-		await dispatch(ctx, automation, { to: 'paused', at: Date.now() }, BREAKER_ACTOR);
+		const pausedAt = Date.now();
+		const outcome = await dispatch(ctx, automation, { to: 'paused', at: pausedAt }, BREAKER_ACTOR);
+		if (outcome.ok) {
+			await scheduleMarketingNotice(ctx, { kind: 'automation_paused', automationId, pausedAt });
+		}
 	}
 }
-
-/**
- * Remove after release N+1: v0.5.5 compatibility. v0.5.5's step walker called
- * this from its action after failing the step and cancelling the run; an
- * action in flight when this release deploys still does (see CONVENTIONS.md,
- * "Old clients and workers against new functions"). It counts nothing: given
- * only the automation, it cannot tell whether that cancel did anything, so
- * the legacy cancel shim (`stepExecutorQueries.cancelAutomationRun`) counts
- * the failure together with the cancel it belongs to.
- */
-export const recordRunFailure = internalMutation({
-	args: {
-		automationId: v.id('automations'),
-	},
-	handler: async () => {},
-});

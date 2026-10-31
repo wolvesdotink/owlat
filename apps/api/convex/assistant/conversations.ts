@@ -18,7 +18,6 @@ import { internalMutation } from '../lib/writeFence';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
-import { getMutationContext, getUserIdFromSession } from '../lib/sessionOrganization';
 import { rateLimiter } from '../lib/rateLimiter';
 import { isSharedInboxReader } from '../inbox/access';
 import { budgetRefusalValidator } from '../lib/validators/aiRouting';
@@ -76,8 +75,7 @@ async function loadOwnedConversation(
 // all-members: a member manages their own private assistant conversations.
 export const createConversation = assistantMutation({
 	args: {},
-	handler: async (ctx): Promise<Id<'aiConversations'>> => {
-		const { userId } = await getMutationContext(ctx);
+	handler: async (ctx, _args, { userId }): Promise<Id<'aiConversations'>> => {
 		const now = Date.now();
 		return ctx.db.insert('aiConversations', {
 			ownerId: userId,
@@ -94,8 +92,7 @@ export const createConversation = assistantMutation({
 // all-members: a member lists their own private assistant conversations (owner-scoped query).
 export const listConversations = assistantQuery({
 	args: {},
-	handler: async (ctx) => {
-		const userId = await getUserIdFromSession(ctx);
+	handler: async (ctx, _args, { userId }) => {
 		const rows = await ctx.db
 			.query('aiConversations')
 			.withIndex('by_owner_and_last_message', (q) => q.eq('ownerId', userId))
@@ -129,8 +126,7 @@ export const listConversations = assistantQuery({
 // all-members: a member reads messages of their own private conversation (ownership checked).
 export const listMessages = assistantQuery({
 	args: { conversationId: v.id('aiConversations') },
-	handler: async (ctx, args) => {
-		const userId = await getUserIdFromSession(ctx);
+	handler: async (ctx, args, { userId }) => {
 		const convo = await ctx.db.get(args.conversationId);
 		if (!convo || convo.deletedAt || convo.ownerId !== userId) return [];
 		// Take the NEWEST MESSAGES_LIMIT (desc) then restore chronological order —
@@ -149,7 +145,7 @@ export const listMessages = assistantQuery({
 			status: m.status,
 			toolCalls: m.toolCalls ?? [],
 			errorMessage: m.errorMessage ?? null,
-			// A budget refusal (D1): the code and reason the web says in the reader's language.
+			// A budget refusal: the code and reason the web says in the reader's language.
 			budgetRefusal: m.budgetRefusal ?? null,
 			model: m.model ?? null,
 			tokenUsage: m.tokenUsage ?? null,
@@ -162,8 +158,7 @@ export const listMessages = assistantQuery({
 // all-members: a member manages their own private assistant conversations.
 export const renameConversation = assistantMutation({
 	args: { conversationId: v.id('aiConversations'), title: v.string() },
-	handler: async (ctx, args) => {
-		const { userId } = await getMutationContext(ctx);
+	handler: async (ctx, args, { userId }) => {
 		await loadOwnedConversation(ctx, args.conversationId, userId);
 		const title = args.title.trim();
 		if (!title) throwInvalidInput('Title cannot be empty');
@@ -177,8 +172,7 @@ export const renameConversation = assistantMutation({
 // all-members: a member manages their own private assistant conversations.
 export const deleteConversation = assistantMutation({
 	args: { conversationId: v.id('aiConversations') },
-	handler: async (ctx, args) => {
-		const { userId } = await getMutationContext(ctx);
+	handler: async (ctx, args, { userId }) => {
 		await loadOwnedConversation(ctx, args.conversationId, userId);
 		await ctx.db.patch(args.conversationId, { deletedAt: Date.now(), updatedAt: Date.now() });
 	},
@@ -245,8 +239,7 @@ export const sendMessage = assistantMutation({
 // all-members: a member stops generation only on their own message (ownership checked).
 export const stopGeneration = assistantMutation({
 	args: { messageId: v.id('aiMessages') },
-	handler: async (ctx, args) => {
-		const { userId } = await getMutationContext(ctx);
+	handler: async (ctx, args, { userId }) => {
 		const msg = await ctx.db.get(args.messageId);
 		if (!msg || msg.ownerId !== userId) return; // never leak existence
 		if (msg.status === 'streaming') {
@@ -345,7 +338,7 @@ export const finalizeAssistantMessage = internalMutation({
 		model: v.optional(v.string()),
 		tokenUsage: v.optional(tokenUsageValidator),
 		errorMessage: v.optional(v.string()),
-		/** A budget refusal (D1): stored as its code and reason, for the web to localize. */
+		/** A budget refusal: stored as its code and reason, for the web to localize. */
 		budgetRefusal: v.optional(budgetRefusalValidator),
 		toolCalls: v.optional(v.array(assistantToolCallValidator)),
 	},

@@ -38,6 +38,7 @@ import {
 	createTestTopic,
 	enableFeatures,
 } from './factories';
+import type * as SessionOrganizationModule from '../lib/sessionOrganization';
 
 // Mutable session mock — flip role per test (owner/admin can schedule + manage;
 // editor cannot).
@@ -46,7 +47,7 @@ const sessionMock = vi.hoisted(() => ({
 }));
 
 vi.mock('../lib/sessionOrganization', async () => {
-	const actual = await vi.importActual<typeof import('../lib/sessionOrganization')>(
+	const actual = await vi.importActual<typeof SessionOrganizationModule>(
 		'../lib/sessionOrganization'
 	);
 	const { realPermissionGate } = await import('./helpers/permissionGateMock');
@@ -206,6 +207,37 @@ describe('campaigns.scheduling.reschedule', () => {
 		expect(audits[0]!.userId).toBe('test-user');
 		// `future` only here to keep a stable reference for the future-date intent.
 		expect(newScheduledAt).toBeGreaterThan(future - 24 * HOUR);
+	});
+
+	it('queues the 15-minute reminder for the new start', async () => {
+		// The scheduler turns the reminder's delay back into a timestamp with its
+		// own Date.now(); hold the clock still so both reads agree to the
+		// millisecond.
+		vi.useFakeTimers({ toFake: ['Date'] });
+		try {
+			const t = setupTest();
+			const campaignId = await seedSchedulableCampaign(t, {
+				scheduledAt: Date.now() + 2 * HOUR,
+			});
+			const newScheduledAt = Date.now() + 48 * HOUR;
+			await t.mutation(api.campaigns.scheduling.reschedule, {
+				campaignId,
+				scheduledAt: newScheduledAt,
+			});
+
+			const reminders = await t.run(async (ctx) =>
+				(await ctx.db.system.query('_scheduled_functions').collect()).filter(
+					(job) => job.name === 'marketing/notifications:fanOut'
+				)
+			);
+			expect(reminders).toHaveLength(1);
+			expect(reminders[0]!.args[0]).toEqual({
+				event: { kind: 'campaign_reminder', campaignId, scheduledAt: newScheduledAt },
+			});
+			expect(reminders[0]!.scheduledTime).toBe(newScheduledAt - 15 * 60 * 1000);
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	it('toggles recipient-timezone staggering and the target local hour on reschedule', async () => {
@@ -487,7 +519,8 @@ describe('campaigns.scheduling.schedule', () => {
 describe('campaigns.testSend.sendTestEmailFromTemplate (recipient allowlist)', () => {
 	it('rejects a well-formed recipient that is NOT an org member inbox', async () => {
 		const t = setupTest();
-		// Seed exactly one member inbox — the allowlist is the userProfiles roster.
+		// Seed exactly one member inbox — the allowlist is the userProfiles roster —
+		// and a verified, curated sender, so the recipient gate is what refuses.
 		await t.run(async (ctx) => {
 			const now = Date.now();
 			await ctx.db.insert('userProfiles', {
@@ -497,6 +530,14 @@ describe('campaigns.testSend.sendTestEmailFromTemplate (recipient allowlist)', (
 				createdAt: now,
 				updatedAt: now,
 			});
+			await ctx.db.insert(
+				'domains',
+				createTestDomain({ domain: 'owlat.test', status: 'verified', lastVerifiedAt: now })
+			);
+			await ctx.db.insert(
+				'campaignSenders',
+				createTestCampaignSender({ email: 'sender@owlat.test' })
+			);
 		});
 
 		// `attacker@evil.test` is a valid email but not a member inbox — the guard
@@ -508,7 +549,7 @@ describe('campaigns.testSend.sendTestEmailFromTemplate (recipient allowlist)', (
 				testEmails: ['attacker@evil.test'],
 				fromEmail: 'sender@owlat.test',
 			})
-		).rejects.toThrow();
+		).rejects.toThrow(/attacker@evil\.test.{0,4} is not a member of this organization/);
 	});
 
 	it('rejects an outright invalid email address before the allowlist check', async () => {

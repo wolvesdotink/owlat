@@ -98,6 +98,10 @@
 			"types": "./src/featureFlags.ts",
 			"import": "./src/featureFlags.ts"
 		},
+		"./featureFlagRuntime": {
+			"types": "./src/featureFlagRuntime.ts",
+			"import": "./src/featureFlagRuntime.ts"
+		},
 		"./organizationPermissions": {
 			"types": "./src/organizationPermissions.ts",
 			"import": "./src/organizationPermissions.ts"
@@ -201,6 +205,10 @@
 		"./constantTimeEqual": {
 			"types": "./src/constantTimeEqual.ts",
 			"import": "./src/constantTimeEqual.ts"
+		},
+		"./cappedStream": {
+			"types": "./src/cappedStream.ts",
+			"import": "./src/cappedStream.ts"
 		},
 		"./passwordPolicy": {
 			"types": "./src/passwordPolicy.ts",
@@ -458,6 +466,14 @@
 			"types": "./src/imapWire.ts",
 			"import": "./src/imapWire.ts"
 		},
+		"./workerWire": {
+			"types": "./src/workerWire.ts",
+			"import": "./src/workerWire.ts"
+		},
+		"./workerWireReporter": {
+			"types": "./src/workerWireReporter.ts",
+			"import": "./src/workerWireReporter.ts"
+		},
 		"./releaseArtifacts": {
 			"types": "./src/releaseArtifacts.ts",
 			"import": "./src/releaseArtifacts.ts"
@@ -477,6 +493,10 @@
 		"./nodeShutdown": {
 			"types": "./src/nodeShutdown.ts",
 			"import": "./src/nodeShutdown.ts"
+		},
+		"./nodeMetrics": {
+			"types": "./src/nodeMetrics.ts",
+			"import": "./src/nodeMetrics.ts"
 		},
 		"./nodeEnv": {
 			"types": "./src/nodeEnv.ts",
@@ -554,6 +574,7 @@
 	},
 	"dependencies": {
 		"@owlat/mail-message": "workspace:*",
+		"prom-client": "^15.1.0",
 		"tldts": "^7.0.30"
 	},
 	"devDependencies": {

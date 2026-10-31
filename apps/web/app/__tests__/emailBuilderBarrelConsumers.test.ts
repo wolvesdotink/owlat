@@ -5,14 +5,15 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 /**
- * WHO MAY LOAD THE EMAIL BUILDER (#1441).
+ * WHO MAY LOAD THE EMAIL BUILDER.
  *
  * The `@owlat/email-builder` barrel evaluates the whole editor: its components,
  * the block registries and the renderer. A page that imports one value from it,
  * even just the unsaved-changes dialog, ships all of that (about 208 KB gzip).
  * These pages and helpers never edit email: they take the dialog from the
- * `@owlat/ui` layer (auto-registered as `UiUnsavedChangesDialog`) and the
- * stored-block reader from the `@owlat/email-builder/stored-blocks` leaf.
+ * `@owlat/ui` layer (auto-registered as `UiUnsavedChangesDialog`), the
+ * stored-block reader from the `@owlat/email-builder/stored-blocks` leaf and
+ * the editor-state clone from the `@owlat/email-builder/plain-clone` leaf.
  * Type-only imports are erased at build time and stay allowed.
  */
 
@@ -76,21 +77,25 @@ describe('non-editor pages stay off the email builder barrel', () => {
 	});
 });
 
-describe('the stored-blocks subpath is a leaf', () => {
+describe.each([
+	['./stored-blocks', 'src/utils/storedBlocks.ts'],
+	['./plain-clone', 'src/utils/plainClone.ts'],
+])('the %s subpath is a leaf', (subpath, entry) => {
 	const manifest = JSON.parse(readFileSync(resolve(builderPackage, 'package.json'), 'utf8')) as {
 		exports: Record<string, { import: string }>;
 	};
 
-	it('points at the stored-block reader', () => {
-		expect(manifest.exports['./stored-blocks']?.import).toBe('./src/utils/storedBlocks.ts');
+	it('points at its module', () => {
+		expect(manifest.exports[subpath]?.import).toBe(`./${entry}`);
 	});
 
 	it('reaches no editor module through its value imports', () => {
 		// Walk the package-relative value imports and re-exports from the subpath entry: the
-		// reader reaches no other builder module (its id repair comes from
-		// @owlat/shared/blockTree), so never a component, a registry or the barrel.
+		// module reaches no other builder module (the stored-block reader's id repair comes
+		// from @owlat/shared/blockTree, the clone needs only Vue), so never a component, a
+		// registry or the barrel.
 		const seen = new Set<string>();
-		const pending = [resolve(builderPackage, manifest.exports['./stored-blocks']!.import)];
+		const pending = [resolve(builderPackage, manifest.exports[subpath]!.import)];
 		while (pending.length > 0) {
 			const file = pending.pop()!;
 			if (seen.has(file)) continue;
@@ -104,6 +109,6 @@ describe('the stored-blocks subpath is a leaf', () => {
 			}
 		}
 		const reached = [...seen].map((file) => file.slice(builderPackage.length + 1)).sort();
-		expect(reached).toEqual(['src/utils/storedBlocks.ts']);
+		expect(reached).toEqual([entry]);
 	});
 });

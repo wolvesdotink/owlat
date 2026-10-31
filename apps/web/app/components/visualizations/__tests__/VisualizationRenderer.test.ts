@@ -66,3 +66,28 @@ describe('VisualizationRenderer resize reports', () => {
 		w.unmount();
 	});
 });
+
+describe('VisualizationRenderer injected resize script', () => {
+	function framedDocument(html: string) {
+		const w = mount(VisualizationRenderer, { props: { html } });
+		const srcdoc = w.find('iframe').attributes('srcdoc') ?? '';
+		w.unmount();
+		return { srcdoc, doc: new DOMParser().parseFromString(srcdoc, 'text/html') };
+	}
+
+	it('closes the script it adds before the body ends', () => {
+		const { srcdoc, doc } = framedDocument('<html><body><div>chart</div></body></html>');
+		expect(srcdoc).toMatch(/report\(\);\n\}\)\(\);\n<\/script><\/body><\/html>$/);
+		const scripts = doc.querySelectorAll('body > script');
+		expect(scripts).toHaveLength(1);
+		expect(scripts[0]!.textContent).toContain('new ResizeObserver(report)');
+		expect(doc.body.querySelector('div')?.textContent).toBe('chart');
+	});
+
+	it('appends a closed script to markup without a body', () => {
+		const { srcdoc } = framedDocument('<div>chart</div>');
+		expect(srcdoc.startsWith('<div>chart</div>')).toBe(true);
+		expect(srcdoc.endsWith('</script>')).toBe(true);
+		expect(srcdoc.match(/<script>/g)).toHaveLength(1);
+	});
+});

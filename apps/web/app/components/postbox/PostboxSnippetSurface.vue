@@ -12,17 +12,22 @@
  */
 import type { SnippetPickerApi } from '~/composables/postbox/usePostboxSnippetPicker';
 
-defineProps<{ picker: SnippetPickerApi }>();
+defineProps<{
+	picker: SnippetPickerApi;
+	/** The contenteditable the `;` is typed into. */
+	field: HTMLElement | null;
+}>();
 </script>
 
 <template>
 	<PostboxSnippetPicker
 		v-if="picker.open.value"
+		:ref="picker.bindList"
 		:items="picker.items.value"
-		:active-index="picker.index.value"
-		:style="picker.style.value"
+		:anchor="picker.anchor.value"
+		:field="field"
 		@select="picker.insert"
-		@hover="(i) => (picker.index.value = i)"
+		@dismiss="picker.dismiss"
 	/>
 	<PostboxSnippetVariableDialog
 		:request="picker.prompt.value"

@@ -4,6 +4,8 @@ import type { Id } from '@owlat/api/dataModel';
 import { hasInboundFeature } from '~/utils/inboundDns';
 import { computeSpfSuggestion, type SpfCoexistenceSuggestion } from '~/utils/spfCoexistence';
 import { useDomainAutoRecheck } from '~/composables/useDomainAutoRecheck';
+import { useSoleDomainDeepLink } from '~/composables/useSoleDomainDeepLink';
+import { prefersReducedMotion } from '@owlat/ui/composables/useReducedMotion';
 import type { DmarcPolicy } from '~/utils/domainStatus';
 
 const { t } = useI18n();
@@ -118,10 +120,10 @@ watch(
 		const { domain: _handled, ...rest } = route.query;
 		void router.replace({ query: rest });
 		void nextTick(() => {
-			const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-			document
-				.getElementById(`domain-${match._id}`)
-				?.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'start' });
+			document.getElementById(`domain-${match._id}`)?.scrollIntoView({
+				behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+				block: 'start',
+			});
 		});
 	},
 	{ immediate: true }
@@ -267,6 +269,13 @@ const toggleDomainExpansion = (domainId: Id<'domains'>) => {
 	});
 };
 
+useSoleDomainDeepLink({
+	hash: () => route.hash,
+	domains: () => domainsData.value,
+	isAnyExpanded: () => expandedDomainId.value !== null,
+	expand: toggleDomainExpansion,
+});
+
 // Gentle auto-recheck while a domain panel is open: the polling lifecycle (which
 // domain, the mirrored "Checking DNS…" flag, teardown) lives in its own
 // composable, over the framework-agnostic poller in `utils/domainAutoRecheck`.
@@ -280,35 +289,26 @@ const { autoRecheckActive } = useDomainAutoRecheck({
 
 <template>
 	<div>
-		<!-- Header -->
-		<div class="mb-6">
-			<!-- Stacked below `sm`: at 390px a side-by-side header leaves the title
-			     and the lede a ~180px column to wrap in. -->
-			<div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-				<div>
-					<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-						{{ t('dashboard.admin.delivery.domains.title') }}
-					</h1>
-					<p class="mt-1 text-text-secondary">
-						{{ t('dashboard.admin.delivery.domains.lede') }}
-					</p>
-				</div>
-				<!-- `shrink-0 whitespace-nowrap`: in a `justify-between` header the lede
-				     squeezed this pill until its label wrapped to two lines and the
-				     full radius turned it into an oval. While the list is empty the
-				     empty state carries the primary "Add your first domain", so this
-				     one steps down to a hairline rather than putting two black pills
-				     on one screen. -->
+		<UiPageHeader
+			class="mb-6"
+			:title="t('dashboard.admin.delivery.domains.title')"
+			:description="t('dashboard.admin.delivery.domains.lede')"
+		>
+			<template #actions>
+				<!-- `whitespace-nowrap`: a wrapped label turns the fully rounded pill
+				     into an oval. While the list is empty the empty state carries the
+				     primary "Add your first domain", so this one steps down to a
+				     hairline rather than putting two black pills on one screen. -->
 				<UiButton
 					:variant="hasNoDomains ? 'secondary' : 'primary'"
-					class="gap-2 shrink-0 self-start whitespace-nowrap sm:self-auto"
+					class="gap-2 whitespace-nowrap"
 					@click="addModal.open()"
 				>
 					<Icon name="lucide:plus" class="w-4 h-4" />
 					{{ t('dashboard.admin.delivery.domains.addDomain') }}
 				</UiButton>
-			</div>
-		</div>
+			</template>
+		</UiPageHeader>
 
 		<!-- First-load skeleton (shaped like the domain list) -->
 		<div v-if="isLoading && !domainsData" class="card overflow-hidden">
@@ -385,6 +385,7 @@ const { autoRecheckActive } = useDomainAutoRecheck({
 			<!-- Empty State -->
 			<UiEmptyState
 				v-else-if="domainsData && domainsData.length === 0"
+				id="sending-domain-list"
 				icon="lucide:globe"
 				:title="t('dashboard.admin.delivery.domains.empty.title')"
 				:description="t('dashboard.admin.delivery.domains.empty.description')"
@@ -398,7 +399,11 @@ const { autoRecheckActive } = useDomainAutoRecheck({
 			</UiEmptyState>
 
 			<!-- Domains List -->
-			<div v-else-if="domainsData && domainsData.length > 0" class="space-y-4">
+			<div
+				v-else-if="domainsData && domainsData.length > 0"
+				id="sending-domain-list"
+				class="space-y-4"
+			>
 				<DomainsRecordRow
 					v-for="domain in domainsData"
 					:id="`domain-${domain._id}`"

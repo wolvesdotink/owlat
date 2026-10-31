@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 # Copy a pure module hands to its renderer has one shape and one resolver:
 # `LocalizedText` and `resolveLocalized` in app/utils/localizedText.ts, bound to
-# a component by `useLocalized()`. The union used to be restated in some thirty
-# files and the resolver pasted into sixty, and two of the copies had already
-# drifted apart on what an already-worded string does.
+# a component by `useLocalized()`. A restated union or a pasted resolver drifts
+# apart from these on what an already-worded string does.
 #
 # The generator prints one `path:<spelling>` line per occurrence under app/ and
 # server/, outside app/utils/localizedText.ts and tests:
@@ -17,9 +16,8 @@
 #                                                       `type BriefText = LocalizedText`)
 #   params ?? {})                                     → useLocalized() / resolveLocalized
 #
-# RATCHET on scripts/ratchet.sh, strict in both directions. The baseline
-# (scripts/localized-text-baseline.txt) lists only files that a parallel rewrite
-# owned when the helper landed; migrate them and delete their lines.
+# Zero-tolerance gate on scripts/ratchet.sh --zero: there is no baseline, so
+# any reported copy fails.
 
 set -uo pipefail
 repo_root="$(cd "$(dirname "$0")/../../.." && pwd)"
@@ -53,8 +51,7 @@ if [ "${1:-}" = "--generate" ]; then
 fi
 
 exec "$repo_root/scripts/ratchet.sh" \
-	--baseline scripts/localized-text-baseline.txt \
-	--seed "bash apps/web/scripts/check-localized-text.sh --write-baseline" \
+	--zero \
 	--ok "no module restates LocalizedText or its resolver outside app/utils/localizedText.ts" \
 	--new-header "FAIL: {n} copy/copies of LocalizedText or its resolver outside app/utils/localizedText.ts:" \
 	--new-advice "Use the shared module instead:
@@ -62,8 +59,6 @@ exec "$repo_root/scripts/ratchet.sh" \
   string | { key; params } union    → the same import (a domain alias may be \`= LocalizedText\`)
   typeof v === 'string' ? t(v) : t(v.key, v.params ?? {})
                                     → const localized = useLocalized(); localized(v)
-                                      (resolveLocalized({ t, te }, v) outside a component)
-Do NOT add lines to {baseline}; it is frozen debt." \
-	--stale-header "FAIL: {n} stale entr(y/ies) in {baseline} (file migrated or removed):" \
+                                      (resolveLocalized({ t, te }, v) outside a component)" \
 	"$@" \
 	-- bash "$self" --generate

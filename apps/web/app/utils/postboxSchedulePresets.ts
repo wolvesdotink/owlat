@@ -38,7 +38,7 @@ const MORNING_HOUR = 9;
 const AFTERNOON_HOUR = 13;
 
 /** `Date.getDay()` indices that count as a weekday for `nextWeekdayMorning`. */
-const WEEKDAYS = [1, 2, 3, 4, 5];
+const WEEKDAYS: ReadonlySet<number> = new Set([1, 2, 3, 4, 5]);
 
 export type SchedulePresetId =
 	| 'recipientMorning'
@@ -230,7 +230,7 @@ export function buildSchedulePresets(inputs: SchedulePresetInputs): SchedulePres
  */
 function daysToNextWeekday(now: number, offsetMinutes: number): number {
 	for (let offset = 1; offset <= 7; offset++) {
-		if (WEEKDAYS.includes(localDayOfWeek(now, offsetMinutes, offset))) return offset;
+		if (WEEKDAYS.has(localDayOfWeek(now, offsetMinutes, offset))) return offset;
 	}
 	// Unreachable: any 7-day window contains a weekday. Keeps the return total.
 	return 1;

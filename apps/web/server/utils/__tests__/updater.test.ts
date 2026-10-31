@@ -27,6 +27,8 @@ let server: Server;
 let baseUrl: URL;
 let received: { url?: string; method?: string; secret?: string; body: string }[] = [];
 let originalDispatcher: unknown;
+/** Called once the fake updater has read a request it is going to answer late. */
+let onRequest: (() => void) | undefined;
 
 async function readSmallBody(req: IncomingMessage): Promise<string> {
 	let body = '';
@@ -47,6 +49,8 @@ beforeAll(async () => {
 			secret: req.headers['x-instance-secret'] as string | undefined,
 			body,
 		});
+		onRequest?.();
+		onRequest = undefined;
 		setTimeout(() => {
 			res.writeHead(200, { 'Content-Type': 'application/json' });
 			res.end(JSON.stringify({ success: true, echo: body }));
@@ -115,14 +119,17 @@ describe('updater transport', () => {
 	});
 
 	it('still ends the call when the caller’s signal fires', async () => {
-		const started = Date.now();
-		await expect(
-			requestUpdater(new URL('/update', baseUrl), 'instance-secret', {
-				method: 'POST',
-				body: '{}',
-				signal: AbortSignal.timeout(100),
-			})
-		).rejects.toMatchObject({ name: 'TimeoutError' });
-		expect(Date.now() - started).toBeLessThan(ANSWER_AFTER_MS);
+		const caller = new AbortController();
+		const arrived = new Promise<void>((resolve) => (onRequest = resolve));
+		const call = requestUpdater(new URL('/update', baseUrl), 'instance-secret', {
+			method: 'POST',
+			body: '{}',
+			signal: caller.signal,
+		});
+		const rejected = expect(call).rejects.toMatchObject({ name: 'TimeoutError' });
+		// The updater has the request and is still working on its answer.
+		await arrived;
+		caller.abort(new DOMException('The operation timed out.', 'TimeoutError'));
+		await rejected;
 	});
 });

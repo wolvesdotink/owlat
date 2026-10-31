@@ -1,5 +1,5 @@
 /**
- * Response plans (SPEC §6): the pure rules. Which items a reply's plan holds,
+ * Response plans: the pure rules. Which items a reply's plan holds,
  * the stance each one starts with, how the owner's choices merge over the
  * defaults, the draft hash a plan is bound to, and the objections of the
  * `item_coverage` auto-send gate.
@@ -26,7 +26,7 @@ import { defaultStance } from '@owlat/shared/threadBriefRules';
 /**
  * Items one plan holds at most (the drafter's prompt lists every one). Past it
  * the plan is marked overflowing and its check is incomplete: nothing is
- * dropped silently (review D2).
+ * dropped silently.
  */
 export const MAX_PLAN_ITEMS = 200;
 
@@ -207,7 +207,7 @@ function sameWords(a: string, b: string): boolean {
 }
 
 /**
- * Whether a commitment stays within what the owner accepted (review D3): it
+ * Whether a commitment stays within what the owner accepted: it
  * names the item, the owner (or a policy) chose to accept that item, and the
  * terms the draft commits to are the item's own: no other amount, no deadline
  * the item does not carry. Anything else is unauthorised.
@@ -238,22 +238,22 @@ export function isCommitmentAuthorised<Id extends string>(
 }
 
 /**
- * Why the gate objects to sending this draft unattended (SPEC §6), in a fixed
+ * Why the gate objects to sending this draft unattended, in a fixed
  * order; empty when it does not. Restrict-only by construction: the caller
  * can only hold a send on the result.
  *
  *   - no plan, or no check of the plan as it stands now (pending, or checked
- *     against an older stance revision: D1);
+ *     against an older stance revision);
  *   - a check of another draft text, another attachment set, or another state
  *     of the thread's items (draft hash, attachment-set hash, thread revision
  *     and every item revision are bound);
  *   - interpretation not complete; more items than a plan holds, or more
- *     claims than a check reads (D2);
+ *     claims than a check reads;
  *   - an item the reply should answer is not addressed: a partial or missing
  *     verdict, or a `clarify` stance; only an explicit `skip` passes an item;
  *   - an item whose owner is unclear;
  *   - a commitment no stance authorised, or one whose terms are not the
- *     accepted item's own (D3);
+ *     accepted item's own;
  *   - a file the draft says is attached and is not.
  */
 export function itemCoverageObjections<Id extends string>(

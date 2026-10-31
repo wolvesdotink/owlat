@@ -9,8 +9,10 @@
 import type { Id } from '@owlat/api/dataModel';
 import { RECATEGORIZE_OPTIONS } from '~/composables/postbox/usePostboxThreadCategories';
 import type { MailCategory } from '~/utils/mailCategory';
+import { usePostboxPinRowDrag } from '~/composables/postbox/usePostboxMessageDrag';
 import type { PostboxConversationThread } from './PostboxConversationRow.vue';
 import type { PostboxThreadListSection } from './PostboxSectionedThreadList.vue';
+import { folderAnswerOrigin, useListAnswerOrigin } from '~/composables/useAnswerMode';
 
 type CategoryThread = PostboxConversationThread & { category?: { label: string } };
 
@@ -30,6 +32,8 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
+// A row drags its conversation onto the Inbox's pinned band.
+const pinDrag = usePostboxPinRowDrag();
 
 function threadTo(thread: { latestMessageId?: string }) {
 	return thread.latestMessageId
@@ -60,18 +64,26 @@ const listSections = computed<PostboxThreadListSection<CategoryThread>[]>(() =>
 	}))
 );
 
-// What a row opens, in row order, skipping collapsed sections: previous/next
-// in Zen walk this.
-const visibleIds = computed(() =>
+// What a row opens and its conversation, in row order, skipping collapsed
+// sections: previous/next in Zen walk this, and so does a reply marked done
+// that was opened from here.
+const rows = computed(() =>
 	props.sections
 		.filter((section) => !props.collapsed[section.key])
 		.flatMap((section) =>
 			section.threads.flatMap((thread) =>
-				thread.latestMessageId ? [String(thread.latestMessageId)] : []
+				thread.latestMessageId
+					? [{ id: String(thread.latestMessageId), threadId: String(thread._id) }]
+					: []
 			)
 		)
 );
+const visibleIds = computed(() => rows.value.map((row) => row.id));
 defineExpose({ visibleIds });
+useListAnswerOrigin({
+	rows: () => rows.value,
+	origin: () => folderAnswerOrigin(props.folderRole, props.activeMessageId),
+});
 
 // "Recategorize as…" picker — driven per row.
 const recategorizeTarget = ref<string | null>(null);
@@ -100,22 +112,25 @@ function pickCategory(label: MailCategory) {
 	>
 		<template #row="{ item: thread, focused }">
 			<PostboxConversationRow
+				v-bind="pinDrag.source(thread.latestMessageId, thread.latestSubject)"
 				:thread="thread"
+				:folder-role="folderRole"
 				:dom-id="rowDomId(thread)"
 				:to="threadTo(thread)"
 				:selected="focused"
 				:active="!!activeMessageId && activeMessageId === thread.latestMessageId"
 			/>
 			<!-- Overflow: recategorize this sender's mail. -->
-			<button
-				type="button"
-				class="absolute top-2 right-2 opacity-0 group-hover:opacity-100 focus:opacity-100 p-1 rounded bg-bg-surface/80 text-text-tertiary hover:text-text-primary"
-				:title="t('components.postbox.postboxThreadCategoryList.recategorize')"
-				:aria-label="t('components.postbox.postboxThreadCategoryList.recategorize')"
-				@click.prevent.stop="recategorizeTarget = thread._id"
-			>
-				<Icon name="lucide:tag" class="w-3.5 h-3.5" />
-			</button>
+			<UiTooltip :text="t('components.postbox.postboxThreadCategoryList.recategorize')">
+				<button
+					type="button"
+					class="absolute top-2 right-2 opacity-0 group-hover:opacity-100 focus:opacity-100 p-1 rounded bg-bg-surface/80 text-text-tertiary hover:text-text-primary"
+					:aria-label="t('components.postbox.postboxThreadCategoryList.recategorize')"
+					@click.prevent.stop="recategorizeTarget = thread._id"
+				>
+					<Icon name="lucide:tag" class="w-3.5 h-3.5" />
+				</button>
+			</UiTooltip>
 		</template>
 	</PostboxSectionedThreadList>
 

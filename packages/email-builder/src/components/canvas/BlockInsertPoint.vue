@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import UiTooltip from '@owlat/ui/components/ui/Tooltip.vue';
 import { ref, shallowRef } from 'vue';
 import type { BlockType } from '../../types';
 import { Plus } from '@lucide/vue';
@@ -47,30 +48,32 @@ function handleSelect(type: BlockType, afterBlockId: string) {
 	>
 		<!-- Horizontal line -->
 		<div
-			class="absolute top-1/2 left-0 right-0 h-px -translate-y-1/2 transition-all duration-(--motion-moderate) origin-center"
+			class="absolute top-1/2 left-0 right-0 h-px -translate-y-1/2 transition-[background-color,scale] duration-(--motion-moderate) origin-center"
 			:class="isHovered || showPicker ? 'bg-brand/20 scale-x-100' : 'bg-transparent scale-x-0'"
 			:style="isHovered || showPicker ? 'animation: eb-insert-line 150ms ease both' : ''"
 		/>
 
 		<!-- Plus button -->
-		<button
-			ref="buttonRef"
-			class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-5 h-5 rounded-full border bg-bg-elevated flex items-center justify-center cursor-pointer transition-all duration-(--motion-moderate) z-[2]"
-			:class="[
-				isHovered || showPicker
-					? 'opacity-100 scale-100'
-					: 'opacity-0 scale-75 pointer-events-none',
-				showPicker
-					? 'border-brand bg-brand text-white'
-					: 'border-brand/40 text-brand/60 hover:bg-brand hover:text-white hover:border-brand',
-			]"
-			type="button"
-			tabindex="-1"
-			:title="t('builder.canvas.insertHere')"
-			@click.stop="showPicker = !showPicker"
-		>
-			<Plus :size="12" :stroke-width="2.5" />
-		</button>
+		<UiTooltip :text="t('builder.canvas.insertHere')">
+			<button
+				ref="buttonRef"
+				class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-5 h-5 rounded-full border bg-bg-elevated flex items-center justify-center cursor-pointer transition-[color,background-color,border-color,opacity,scale] duration-(--motion-moderate) z-[2]"
+				:class="[
+					isHovered || showPicker
+						? 'opacity-100 scale-100'
+						: 'opacity-0 scale-75 pointer-events-none',
+					showPicker
+						? 'border-brand bg-brand text-white'
+						: 'border-brand/40 text-brand/60 hover:bg-brand hover:text-white hover:border-brand',
+				]"
+				type="button"
+				tabindex="-1"
+				:aria-label="t('builder.canvas.insertHere')"
+				@click.stop="showPicker = !showPicker"
+			>
+				<Plus :size="12" :stroke-width="2.5" />
+			</button>
+		</UiTooltip>
 
 		<!-- Block picker popover -->
 		<BlockPickerPopover

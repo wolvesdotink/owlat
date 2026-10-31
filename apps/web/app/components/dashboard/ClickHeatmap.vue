@@ -60,7 +60,7 @@ const processedContent = computed(() => {
 	const links = doc.querySelectorAll('a[href]');
 	const extractedLinks: Array<{ url: string; text: string; stats: LinkStat | null }> = [];
 
-	links.forEach((link, index) => {
+	for (const [index, link] of links.entries()) {
 		const href = link.getAttribute('href') || '';
 		// Skip tracking links, mailto, tel, and anchor links
 		if (
@@ -70,7 +70,7 @@ const processedContent = computed(() => {
 			href.includes('/t/c/') ||
 			href.includes('/unsubscribe')
 		) {
-			return;
+			continue;
 		}
 
 		const text = link.textContent?.trim() || href;
@@ -89,7 +89,7 @@ const processedContent = computed(() => {
 			'style',
 			`${existingStyle}; background: ${heatColor}; box-shadow: 0 0 0 4px ${heatColor}; border-radius: 4px; position: relative;`
 		);
-	});
+	}
 
 	return {
 		html: doc.body.innerHTML,
@@ -157,8 +157,12 @@ const previewSrcdoc = computed(() => {
 				<div class="flex items-center gap-3">
 					<UiIconBox icon="lucide:mouse-pointer-click" size="sm" variant="warning" rounded="lg" />
 					<div>
-						<h3 class="text-lg font-medium text-text-primary">{{ t('components.dashboard.clickHeatmap.detailsTitle') }}</h3>
-						<p class="text-sm text-text-secondary">{{ t('components.dashboard.clickHeatmap.detailsSubtitle') }}</p>
+						<h3 class="text-lg font-medium text-text-primary">
+							{{ t('components.dashboard.clickHeatmap.detailsTitle') }}
+						</h3>
+						<p class="text-sm text-text-secondary">
+							{{ t('components.dashboard.clickHeatmap.detailsSubtitle') }}
+						</p>
 					</div>
 				</div>
 			</div>
@@ -193,7 +197,9 @@ const previewSrcdoc = computed(() => {
 								<div class="text-lg font-semibold text-text-primary">
 									{{ link.stats?.clicks || 0 }}
 								</div>
-								<div class="text-xs text-text-tertiary">{{ t('components.dashboard.clickHeatmap.clicks') }}</div>
+								<div class="text-xs text-text-tertiary">
+									{{ t('components.dashboard.clickHeatmap.clicks') }}
+								</div>
 							</div>
 
 							<!-- Unique Clickers -->
@@ -201,7 +207,9 @@ const previewSrcdoc = computed(() => {
 								<div class="text-lg font-semibold text-warning">
 									{{ link.stats?.uniqueClickers || 0 }}
 								</div>
-								<div class="text-xs text-text-tertiary">{{ t('components.dashboard.clickHeatmap.unique') }}</div>
+								<div class="text-xs text-text-tertiary">
+									{{ t('components.dashboard.clickHeatmap.unique') }}
+								</div>
 							</div>
 
 							<!-- Click Rate -->
@@ -209,7 +217,9 @@ const previewSrcdoc = computed(() => {
 								<div class="text-lg font-semibold text-brand">
 									{{ getClickRate(link.stats?.uniqueClickers || 0).toFixed(1) }}%
 								</div>
-								<div class="text-xs text-text-tertiary">{{ t('components.dashboard.clickHeatmap.rate') }}</div>
+								<div class="text-xs text-text-tertiary">
+									{{ t('components.dashboard.clickHeatmap.rate') }}
+								</div>
 							</div>
 
 							<!-- Heat Indicator -->
@@ -232,7 +242,9 @@ const previewSrcdoc = computed(() => {
 		<!-- No Clicks State -->
 		<div v-else-if="linkStats.length === 0" class="card p-8 text-center">
 			<Icon name="lucide:mouse-pointer-click" class="w-12 h-12 text-text-tertiary mx-auto mb-3" />
-			<p class="text-text-secondary font-medium">{{ t('components.dashboard.clickHeatmap.noClicks') }}</p>
+			<p class="text-text-secondary font-medium">
+				{{ t('components.dashboard.clickHeatmap.noClicks') }}
+			</p>
 			<p class="text-sm text-text-tertiary mt-1">
 				{{ t('components.dashboard.clickHeatmap.noClicksHint') }}
 			</p>
@@ -250,7 +262,7 @@ const previewSrcdoc = computed(() => {
 
 .email-preview :deep(a) {
 	text-decoration: none;
-	transition: all var(--motion-moderate) var(--ease-spring);
+	transition: filter var(--motion-moderate) var(--ease-spring);
 }
 
 .email-preview :deep(a:hover) {

@@ -707,9 +707,10 @@ Responsibilities the per-provider adapter doesn't carry:
 - Retries with backoff (`RetryableProviderError` → retry up to N
   with linear backoff; any other thrown `Error` → fail the
   import immediately).
-- Progress patching via the internal `updateImportProgress`
-  mutation (running counter sums + rolling error list capped at
-  20).
+- Progress patching via the internal `commitIntegrationPage`
+  mutation (`pageCommit.ts`: the page's writes, running counter sums,
+  the rolling error list capped at 20 and the next hop in one
+  transaction).
 - `importBatch` delegation to the **Contact import (module)** with
   `source = provider` and `doiAttest` derived from the adapter's
   `defaultDoiAttest`.
@@ -1332,9 +1333,9 @@ audience-configured, fromEmail-set, abuse-allowed,
 scheduled-time-future, **sending-capacity** — runs in callers _before_
 `lifecycle.transition` to `'scheduled'` / `'sending'`; reducer trusts
 its input), the
-archive-snapshot write (stays in
-`archiveQueries.setArchiveSnapshot`, called by the campaign-send
-orchestrator mid-`sending`, not on the transition to it), the per-Send
+archive-snapshot write (`archiveQueries.writeArchiveSnapshot`, called
+from the send preparation commit in `campaigns/sendCommit.ts`, not by
+the reducer), the per-Send
 stats bumps (Send lifecycle's `campaign_stats_*` effects), or the AB
 test state itself (sibling lifecycle).
 
@@ -1482,10 +1483,14 @@ fanout, and workpool enqueue. Two entry points:
   **Campaign lifecycle (module)**'s `schedule_campaign_send_orchestrator`
   effect (fires on `→ scheduled` with the `scheduledAt`-derived delay
   and on `→ sending` with `0`), and `campaigns/scheduling.ts:reschedule`
-  for direct re-arming. The action runs the prep pipeline once, gates
-  on the **Campaign lifecycle (module)**'s preflight, and writes the
+  for direct re-arming. The action reads, gates on the **Campaign
+  lifecycle (module)**'s preflight and runs the content scan, then
+  writes the whole preparation in one mutation
+  (`campaigns/sendCommit.ts:commitPreparation`): the
   `scheduled → sending` transition if the campaign is still in
-  `scheduled` at fire time. For A/B test campaigns
+  `scheduled` at fire time, the scan outcome, version, archive
+  snapshot, frozen audience, send job and first walker hop. A hop for
+  a send that already has its job is skipped. For A/B test campaigns
   (`isABTest && abTestStatus === 'testing'`) the first-phase send fans
   out a _test cohort_ (see below); for non-A/B campaigns it sends to
   the full audience uniformly.
@@ -1788,8 +1793,8 @@ Effects:
   patches `htmlRenderState: { stale: true, failureCount: 0 }`
   atomically with the content patch. The pre-deepening duplicated
   `parseContentBlocks` (lived in both `lib/linkedBlockPropagation.ts`
-  and `linkedBlockRender.ts`) collapses into the module's private
-  walker.
+  and `linkedBlockRender.ts`) collapses into the one walker in
+  `convex/emailBlocks/consumers.ts`, which only the module's effects run.
 - `propagate_name` — same walker, mutates only `savedBlockRef.blockName`
   on each embedded block. No HTML re-render scheduled — block names
   aren't in rendered HTML.
@@ -1819,8 +1824,8 @@ deferred decision; the durable flag makes the surface available when
 the decision lands.
 
 Replaces `lib/linkedBlockPropagation.ts` (deleted; its three
-propagation helpers become reducer effects, its walker helpers become
-private to `module.ts`, its usage-count delta helper becomes the
+propagation helpers become reducer effects, its walker helpers move to
+`emailBlocks/consumers.ts` behind the module's effects, its usage-count delta helper becomes the
 cross-cutting `applyUsageCountDelta`) and absorbs the open-coded
 `if (contentChanged) … else if (nameChanged)` branch at
 `emailBlocks.ts:196-225` into the `update` reducer's classification.
@@ -4111,7 +4116,7 @@ mail thread, the Team Inbox reader role for a **§ Conversation threads**
 row).
 _Avoid_: Summary (the brief tracks state; the five summary generators it
 replaced are gone), Catch-up (the retired Answer mode card), Overview in code
-("Overview" is the UI name, "brief" the code name, D6).
+("Overview" is the UI name, "brief" the code name).
 
 **Item**:
 One obligation in a thread, a row in `threadItems`: an `intent` (`question |

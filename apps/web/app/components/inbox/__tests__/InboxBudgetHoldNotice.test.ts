@@ -1,5 +1,5 @@
 /**
- * A Team message held for a person at the AI spend budget (D1, U3): which
+ * A Team message held for a person at the AI spend budget: which
  * budget, which AI steps were skipped, and Retry.
  */
 import { beforeAll, describe, expect, it } from 'vitest';

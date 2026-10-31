@@ -13,23 +13,42 @@ interface StubToast {
 }
 
 const toasts: StubToast[] = [];
+const dismissHandlers = new Map<string, () => void>();
 let toastSeq = 0;
 
 const showToast = vi.fn(
 	(
 		message: string,
 		type: string = 'success',
-		options?: { durationMs?: number; action?: { label: string; onAction: () => void } }
+		options?: {
+			durationMs?: number;
+			action?: { label: string; onAction: () => void };
+			onDismiss?: () => void;
+		}
 	): string => {
 		const id = `toast-${++toastSeq}`;
 		toasts.push({ id, message, type, ...(options?.action ? { action: options.action } : {}) });
+		if (options?.onDismiss) dismissHandlers.set(id, options.onDismiss);
 		return id;
 	}
 );
+// Like the real store: removal (by the module or the close button) runs onDismiss once.
 const removeToast = vi.fn((id: string) => {
 	const index = toasts.findIndex((t) => t.id === id);
 	if (index > -1) toasts.splice(index, 1);
+	const onDismiss = dismissHandlers.get(id);
+	dismissHandlers.delete(id);
+	onDismiss?.();
 });
+const updateToast = (
+	id: string,
+	patch: { message?: string; action?: { label: string; onAction: () => void } }
+) => {
+	const toast = toasts.find((t) => t.id === id);
+	if (!toast) return;
+	if (patch.message !== undefined) toast.message = patch.message;
+	if (patch.action) toast.action = patch.action;
+};
 
 let stateBuckets: Map<string, any>;
 vi.stubGlobal('useState', (key: string, init: () => unknown) => {
@@ -42,7 +61,7 @@ const setToastShortcutHint = (id: string, hint: string | undefined) => {
 	if (hint) toast.shortcutHint = hint;
 	else delete toast.shortcutHint;
 };
-vi.stubGlobal('useToast', () => ({ showToast, removeToast, setToastShortcutHint }));
+vi.stubGlobal('useToast', () => ({ showToast, removeToast, setToastShortcutHint, updateToast }));
 
 // The undo action's own label is a translated string, so the real catalog sits
 // behind the `useI18n` auto-import and the toast carries the English a user reads.
@@ -69,6 +88,7 @@ beforeEach(() => {
 	vi.useFakeTimers();
 	stateBuckets = new Map();
 	toasts.length = 0;
+	dismissHandlers.clear();
 	showToast.mockClear();
 	removeToast.mockClear();
 	// The inverses + the window binding live at module scope — drop leftovers.
@@ -114,7 +134,7 @@ describe('usePostboxTriageUndo', () => {
 	it('caps the stack at ten entries, evicting the oldest with its toast', async () => {
 		const undoState = usePostboxTriageUndo();
 		const inverses = Array.from({ length: POSTBOX_UNDO_STACK_LIMIT + 1 }, () => vi.fn());
-		inverses.forEach((inverse, i) => undoState.register({ label: `a${i}`, inverse }));
+		for (const [i, inverse] of inverses.entries()) undoState.register({ label: `a${i}`, inverse });
 
 		expect(undoState.depth.value).toBe(POSTBOX_UNDO_STACK_LIMIT);
 		expect(toasts).toHaveLength(POSTBOX_UNDO_STACK_LIMIT);
@@ -251,6 +271,25 @@ describe('usePostboxTriageUndo', () => {
 		expect(calls).toEqual(['before', 'move:inbox:2', 'move:newsletters:1']);
 	});
 
+	it('registerMoveBack puts a long action back in moves of at most 100, one after another', async () => {
+		const undoState = usePostboxTriageUndo();
+		const calls: string[] = [];
+		const runMove = vi.fn(async (a: { messageIds: unknown[]; targetFolderId: unknown }) => {
+			calls.push(`move:${String(a.targetFolderId)}:${a.messageIds.length}`);
+		});
+		const ids = Array.from({ length: 250 }, (_, i) => `m${i}`);
+
+		undoState.registerMoveBack({
+			label: 'Archived',
+			moved: asMoved(ids.map((messageId) => ({ messageId, sourceFolderId: 'inbox' }))),
+			runMove,
+		});
+
+		expect(await undoState.undo()).toBe(true);
+		expect(calls).toEqual(['move:inbox:100', 'move:inbox:100', 'move:inbox:50']);
+		expect(runMove.mock.calls.flatMap(([a]) => a.messageIds)).toEqual(ids);
+	});
+
 	it('hints the undo chord on the newest toast only, and moves the hint as the stack shrinks', async () => {
 		const undoState = usePostboxTriageUndo();
 		undoState.register({ label: 'Archived', inverse: vi.fn() });
@@ -302,6 +341,182 @@ describe('usePostboxTriageUndo', () => {
 	});
 });
 
+describe('usePostboxTriageUndo — coalesced notices', () => {
+	const runMove = () => Promise.resolve();
+	const archive = (
+		undoState: ReturnType<typeof usePostboxTriageUndo>,
+		messageIds: string[],
+		after?: () => void
+	) =>
+		undoState.registerMoveBack({
+			label: messageIds.length > 1 ? `Archived ${messageIds.length} messages` : 'Archived',
+			kind: 'archived',
+			moved: asMoved(messageIds.map((messageId) => ({ messageId, sourceFolderId: 'inbox' }))),
+			runMove,
+			...(after ? { after } : {}),
+		});
+	const view = () => toasts.map((t) => [t.message, t.shortcutHint, t.action?.label]);
+
+	it('counts consecutive actions of one kind up in one notice', () => {
+		const undoState = usePostboxTriageUndo();
+		archive(undoState, ['m1']);
+		expect(view()).toEqual([['Archived', 'Ctrl+Z to undo', 'Undo']]);
+
+		archive(undoState, ['m2', 'm3', 'm4']);
+		archive(undoState, ['m5']);
+		expect(undoState.depth.value).toBe(3);
+		expect(view()).toEqual([['Archived 5 messages', 'Ctrl+Z undoes the last', 'Undo all']]);
+		expect(showToast).toHaveBeenCalledTimes(1);
+	});
+
+	it('keeps other kinds and other move targets in notices of their own', () => {
+		const undoState = usePostboxTriageUndo();
+		archive(undoState, ['m1']);
+		undoState.registerMoveBack({
+			label: 'Moved to trash',
+			kind: 'trashed',
+			moved: asMoved([{ messageId: 'm2', sourceFolderId: 'inbox' }]),
+			runMove,
+		});
+		// Not consecutive with the first archive: a new notice.
+		archive(undoState, ['m3']);
+		for (const scope of ['f1', 'f2']) {
+			undoState.registerMoveBack({
+				label: 'Moved',
+				kind: 'moved',
+				scope,
+				moved: asMoved([{ messageId: `m-${scope}`, sourceFolderId: 'inbox' }]),
+				runMove,
+			});
+		}
+		// An action without a group never coalesces, even after its own kind.
+		undoState.register({ label: 'Deleted Autumn sale', inverse: vi.fn() });
+		undoState.register({ label: 'Deleted Autumn sale', inverse: vi.fn() });
+		expect(view()).toEqual([
+			['Archived', undefined, 'Undo'],
+			['Moved to trash', undefined, 'Undo'],
+			['Archived', undefined, 'Undo'],
+			['Moved', undefined, 'Undo'],
+			['Moved', undefined, 'Undo'],
+			['Deleted Autumn sale', undefined, 'Undo'],
+			['Deleted Autumn sale', 'Ctrl+Z to undo', 'Undo'],
+		]);
+	});
+
+	it('takes one action per Cmd+Z and counts the notice down', async () => {
+		const undoState = usePostboxTriageUndo();
+		const undone: string[] = [];
+		archive(undoState, ['m1'], () => undone.push('m1'));
+		archive(undoState, ['m2'], () => undone.push('m2'));
+		archive(undoState, ['m3'], () => undone.push('m3'));
+
+		await undoState.undo();
+		expect(undone).toEqual(['m3']);
+		expect(view()).toEqual([['Archived 2 messages', 'Ctrl+Z undoes the last', 'Undo all']]);
+
+		await undoState.undo();
+		expect(view()).toEqual([['Archived', 'Ctrl+Z to undo', 'Undo']]);
+		await undoState.undo();
+		expect(undone).toEqual(['m3', 'm2', 'm1']);
+		expect(toasts).toHaveLength(0);
+	});
+
+	it('Undo all reverses only its own notice, newest first, once each', async () => {
+		const undoState = usePostboxTriageUndo();
+		const undone: string[] = [];
+		const trashInverse = vi.fn();
+		undoState.register({ label: 'Moved to trash', inverse: trashInverse });
+		archive(undoState, ['m1'], () => undone.push('m1'));
+		archive(undoState, ['m2'], () => undone.push('m2'));
+		archive(undoState, ['m3'], () => undone.push('m3'));
+
+		const undoAll = toasts[1]!.action!;
+		expect(undoAll.label).toBe('Undo all');
+		undoAll.onAction();
+		undoAll.onAction();
+		await vi.advanceTimersByTimeAsync(0);
+
+		expect(undone).toEqual(['m3', 'm2', 'm1']);
+		expect(trashInverse).not.toHaveBeenCalled();
+		expect(undoState.depth.value).toBe(1);
+		// The remaining notice holds the newest action now, so it names the chord.
+		expect(view()).toEqual([['Moved to trash', 'Ctrl+Z to undo', 'Undo']]);
+	});
+
+	it('runs a keypress after an Undo all that is still in flight, never beside it', async () => {
+		const undoState = usePostboxTriageUndo();
+		const events: string[] = [];
+		let releaseMove!: () => void;
+		undoState.register({
+			label: 'Moved to trash',
+			inverse: () => {
+				events.push('trash');
+			},
+		});
+		undoState.registerMoveBack({
+			label: 'Archived',
+			kind: 'archived',
+			moved: asMoved([{ messageId: 'm1', sourceFolderId: 'inbox' }]),
+			runMove: () =>
+				new Promise<void>((resolve) => {
+					events.push('archive:start');
+					releaseMove = () => {
+						events.push('archive:end');
+						resolve();
+					};
+				}),
+		});
+
+		toasts[1]!.action!.onAction();
+		const keypress = undoState.undo();
+		await vi.advanceTimersByTimeAsync(0);
+		expect(events).toEqual(['archive:start']);
+
+		releaseMove();
+		expect(await keypress).toBe(true);
+		expect(events).toEqual(['archive:start', 'archive:end', 'trash']);
+	});
+
+	it('gives each action its own deadline: the notice counts down, then goes', () => {
+		const undoState = usePostboxTriageUndo();
+		archive(undoState, ['m1']);
+		vi.advanceTimersByTime(POSTBOX_TRIAGE_UNDO_WINDOW_MS / 2);
+		archive(undoState, ['m2', 'm3']);
+		expect(view()).toEqual([['Archived 3 messages', 'Ctrl+Z undoes the last', 'Undo all']]);
+
+		vi.advanceTimersByTime(POSTBOX_TRIAGE_UNDO_WINDOW_MS / 2 + 1);
+		expect(view()).toEqual([['Archived 2 messages', 'Ctrl+Z to undo', 'Undo']]);
+
+		vi.advanceTimersByTime(POSTBOX_TRIAGE_UNDO_WINDOW_MS / 2);
+		expect(toasts).toHaveLength(0);
+		expect(undoState.canUndo.value).toBe(false);
+	});
+
+	it('drops evicted actions from the count', () => {
+		const undoState = usePostboxTriageUndo();
+		for (let i = 0; i < POSTBOX_UNDO_STACK_LIMIT + 2; i++) archive(undoState, [`m${i}`]);
+		expect(undoState.depth.value).toBe(POSTBOX_UNDO_STACK_LIMIT);
+		expect(view()).toEqual([
+			[`Archived ${POSTBOX_UNDO_STACK_LIMIT} messages`, 'Ctrl+Z undoes the last', 'Undo all'],
+		]);
+	});
+
+	it('never adds to a notice the user closed, while its actions stay on the keyboard', async () => {
+		const undoState = usePostboxTriageUndo();
+		const undone: string[] = [];
+		archive(undoState, ['m1'], () => undone.push('m1'));
+		removeToast(toasts[0]!.id);
+
+		archive(undoState, ['m2'], () => undone.push('m2'));
+		expect(view()).toEqual([['Archived', 'Ctrl+Z to undo', 'Undo']]);
+		expect(undoState.depth.value).toBe(2);
+
+		await undoState.undo();
+		await undoState.undo();
+		expect(undone).toEqual(['m2', 'm1']);
+	});
+});
+
 describe('groupMovedBySourceFolder', () => {
 	it('groups messages per source folder preserving order', () => {
 		const groups = groupMovedBySourceFolder(
@@ -315,5 +530,22 @@ describe('groupMovedBySourceFolder', () => {
 			{ targetFolderId: 'f1', messageIds: ['a', 'c'] },
 			{ targetFolderId: 'f2', messageIds: ['b'] },
 		]);
+	});
+
+	it('splits a folder with more than 100 messages into consecutive groups of at most 100', () => {
+		const ids = Array.from({ length: 201 }, (_, i) => `m${i}`);
+		const groups = groupMovedBySourceFolder(
+			asMoved([
+				...ids.map((messageId) => ({ messageId, sourceFolderId: 'f1' })),
+				{ messageId: 'x', sourceFolderId: 'f2' },
+			])
+		);
+		expect(groups.map((g) => [g.targetFolderId, g.messageIds.length])).toEqual([
+			['f1', 100],
+			['f1', 100],
+			['f1', 1],
+			['f2', 1],
+		]);
+		expect(groups.slice(0, 3).flatMap((g) => g.messageIds)).toEqual(ids);
 	});
 });

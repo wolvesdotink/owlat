@@ -11,12 +11,13 @@ import type { EmailTheme } from '@owlat/shared';
 import { brandKitEmailTheme, resolveBrandKitDesign } from '@owlat/shared/brandKit';
 import type { MutationCtx } from '../_generated/server';
 import { throwInvalidInput } from '../_utils/errors';
-import { parseContentBlocks } from '../emailBlocks/module';
+import { parseContentBlocks } from '../emailBlocks/consumers';
 import {
 	mergeTranslationIntoItem,
 	type BlockLikeItem,
 	type TranslatableBlockContent,
 } from '../emailTemplates/translationMerge';
+import { decodeStoredTranslations, type HtmlTranslation } from './emailJson';
 
 /** Templates personalize per contact; transactional emails interpolate data. */
 export type PublishableEmailVariableType = 'personalization' | 'data';
@@ -83,17 +84,15 @@ export function renderPublishableEmail(
 		: renderPlainText(blocks as Parameters<typeof renderPlainText>[0]);
 
 	let htmlTranslations: string | undefined;
-	if (row.translations && row.supportedLanguages?.length) {
-		const translationsObj: Record<string, { htmlContent: string; subject: string }> = {};
+	// Overlays that do not decode are skipped, and so are the translated renders
+	// when one of them throws: the default-language render still proceeds.
+	const translations = row.translations ? decodeStoredTranslations(row.translations) : undefined;
+	if (translations?.ok && row.supportedLanguages?.length) {
+		const translationsObj: Record<string, HtmlTranslation> = {};
 		try {
-			const translations = JSON.parse(row.translations) as Record<
-				string,
-				{ subject?: string; blocks?: Record<string, TranslatableBlockContent> }
-			>;
-
 			for (const lang of row.supportedLanguages) {
 				if (lang === row.defaultLanguage) continue;
-				const langTranslation = translations[lang];
+				const langTranslation = translations.value[lang];
 				if (!langTranslation) continue;
 
 				const translatedBlocks = mergeTranslatedBlocks(
@@ -109,7 +108,7 @@ export function renderPublishableEmail(
 				};
 			}
 		} catch {
-			// Invalid translations JSON — skip; render still proceeds.
+			// Skip the translated renders, as for an unreadable overlay.
 		}
 
 		if (Object.keys(translationsObj).length > 0) {

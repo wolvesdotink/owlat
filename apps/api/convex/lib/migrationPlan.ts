@@ -68,21 +68,23 @@ export function unfinishedDependencies(
 export interface StartPlan {
 	/** Start (pending) or resume (failed, interrupted) these now, in this order. */
 	start: string[];
-	/** Not started yet: a dependency has not completed. */
+	/** Not started yet: a dependency has not completed, or a worker has not moved. */
 	waiting: string[];
 }
 
 /**
  * Which migrations to start now. A migration starts once every dependency has
- * completed; a running or completed one is never started again. `failed` and
- * `interrupted` ones are resumed only when `resumeStopped` is set: an admin's
- * explicit run does, the runner's own ticks do not (they stop instead, so a
- * page that fails every time is not retried forever).
+ * completed and no worker holds it (`heldByWorkers`: a contract step whose
+ * workers have not all moved to the versions it needs); a running or
+ * completed one is never started again. `failed` and `interrupted` ones are
+ * resumed only when `resumeStopped` is set: an admin's explicit run does, the
+ * runner's own ticks do not (they stop instead, so a page that fails every
+ * time is not retried forever).
  */
 export function planMigrationStarts(
 	entries: readonly PlanEntry[],
 	states: ReadonlyMap<string, MigrationState>,
-	options: { resumeStopped: boolean }
+	options: { resumeStopped: boolean; heldByWorkers?: ReadonlySet<string> }
 ): StartPlan {
 	const start: string[] = [];
 	const waiting: string[] = [];
@@ -90,7 +92,10 @@ export function planMigrationStarts(
 		const state = states.get(entry.migration) ?? 'pending';
 		if (state === 'completed' || state === 'running') continue;
 		if (state !== 'pending' && !options.resumeStopped) continue;
-		if (unfinishedDependencies(entry, states).length > 0) {
+		if (
+			unfinishedDependencies(entry, states).length > 0 ||
+			options.heldByWorkers?.has(entry.migration)
+		) {
 			waiting.push(entry.migration);
 			continue;
 		}

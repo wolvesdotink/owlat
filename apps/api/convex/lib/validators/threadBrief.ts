@@ -1,5 +1,5 @@
 /**
- * Convex validators of the thread brief (SPEC §2): items, facts, activity,
+ * Convex validators of the thread brief: items, facts, activity,
  * evidence, participants, response plans. Every literal union derives from the
  * tuples in `@owlat/shared/threadBrief`, so the schema, the functions and the
  * web read one vocabulary.
@@ -353,7 +353,7 @@ export const streamPositionValidator = v.object({
 	key: v.string(),
 });
 
-/** Eligibility inputs persisted so a retry sees the same ones (SPEC §4 eligibility). */
+/** Eligibility inputs persisted so a retry sees the same ones */
 export const interpretEligibilitySignalsValidator = v.object({
 	isLive: v.boolean(),
 	folder: v.optional(v.string()),

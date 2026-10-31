@@ -10,6 +10,7 @@ import { describe, it, expect, beforeAll, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { reactive } from 'vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+import { focusTooltip, tooltipOf } from '~/__tests__/tooltip';
 import PostboxTriageFilterChips from '../PostboxTriageFilterChips.vue';
 import {
 	POSTBOX_TRIAGE_SEARCH_TOKENS,
@@ -33,13 +34,15 @@ const stubs = {
 	NuxtLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
 };
 
-function mountChips(filter: PostboxTriageFilter) {
+function mountChips(filter: PostboxTriageFilter, countsArePartial = false) {
 	return mount(PostboxTriageFilterChips, {
 		props: {
 			filter,
 			counts: { all: 8, unread: 2, starred: 1, attachments: 2 },
+			countsArePartial,
 		},
 		global: { plugins: [createTestI18n()], stubs },
+		attachTo: document.body,
 	});
 }
 
@@ -76,12 +79,36 @@ describe('PostboxTriageFilterChips open-in-search', () => {
 		expect(link.attributes('aria-label')).toBe('Search all mail for is:unread');
 	});
 
+	it('names the search in a tooltip on focus, not a native title', async () => {
+		const w = mountChips('unread');
+		const link = w.get('a');
+		expect(link.attributes('title')).toBeUndefined();
+		expect(await focusTooltip(link)).toBe('Search all mail for is:unread');
+		w.unmount();
+	});
+
 	it('keeps all four chips regardless', () => {
 		const labels = mountChips('unread')
 			.findAll('button')
 			.map((b) => b.text());
 		expect(labels).toHaveLength(4);
 		expect(labels[0]).toContain('All');
+	});
+});
+
+describe('PostboxTriageFilterChips partial counts', () => {
+	it('says the counts are partial in each chip tooltip, and nothing while they are whole', () => {
+		const partial = mountChips('all', true);
+		for (const chip of partial.findAll('button')) {
+			expect(chip.attributes('title')).toBeUndefined();
+			expect(tooltipOf(partial, chip)).toBe(
+				'Counts cover the messages loaded so far; scroll to load more.'
+			);
+		}
+		partial.unmount();
+		const whole = mountChips('all');
+		expect(tooltipOf(whole, whole.get('button'))).toBeUndefined();
+		whole.unmount();
 	});
 });
 

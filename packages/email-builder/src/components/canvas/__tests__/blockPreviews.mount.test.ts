@@ -9,8 +9,8 @@
 // through unit tests: the button block rendered fine under happy-dom while
 // being invisible in real browsers (white text on a wiped background — see the
 // background-shorthand regression below).
-import { describe, it, expect, afterEach } from 'vitest';
-import { createApp, h, type App } from 'vue';
+import { describe, it, expect, afterEach, vi } from 'vitest';
+import { createApp, h, nextTick, type App, type VNode } from 'vue';
 import DocumentBlock from '../DocumentBlock.vue';
 import DocumentCanvas from '../DocumentCanvas.vue';
 import { getRegisteredTypes } from '../../../registry';
@@ -25,24 +25,48 @@ import type { EditorBlock, EmailTheme, BlockType } from '../../../types';
 // mounts; their HTML output is covered by the renderer package's own tests.
 const IFRAME_TYPES: ReadonlySet<string> = new Set(['table', 'rawHtml', 'video', 'carousel']);
 
-let apps: App[] = [];
+const mounted: { app: App; host: HTMLElement }[] = [];
 afterEach(() => {
-	apps.forEach((a) => a.unmount());
-	apps = [];
-	document.body.innerHTML = '';
+	for (const { app, host } of mounted.splice(0)) {
+		app.unmount();
+		host.remove();
+	}
+	vi.useRealTimers();
 });
 
-function mountBlock(block: EditorBlock): { host: HTMLElement; errors: unknown[] } {
+/**
+ * Mount a plain app into a fresh host in the body. Plain apps are outside the
+ * setup's wrapper auto-unmount, so the afterEach above unmounts each one and
+ * removes its host, also after a failed assertion.
+ */
+function mountApp(render: () => VNode, configure?: (app: App) => void): HTMLElement {
 	const host = document.createElement('div');
 	document.body.appendChild(host);
-	const errors: unknown[] = [];
-	const app = createApp({
-		render: () => h(DocumentBlock, { block, theme: defaultTheme as Required<EmailTheme> }),
-	});
-	app.config.errorHandler = (err) => errors.push(err);
-	app.config.warnHandler = () => {}; // extraneous-prop warnings are asserted elsewhere
+	const app = createApp({ render });
+	configure?.(app);
 	app.mount(host);
-	apps.push(app);
+	mounted.push({ app, host });
+	return host;
+}
+
+/**
+ * Run the debounced fragment render (and the resize it schedules) on the fake
+ * clock, then let the canvas re-render with the result.
+ */
+async function finishRender() {
+	await vi.runOnlyPendingTimersAsync();
+	await nextTick();
+}
+
+function mountBlock(block: EditorBlock): { host: HTMLElement; errors: unknown[] } {
+	const errors: unknown[] = [];
+	const host = mountApp(
+		() => h(DocumentBlock, { block, theme: defaultTheme as Required<EmailTheme> }),
+		(app) => {
+			app.config.errorHandler = (err) => errors.push(err);
+			app.config.warnHandler = () => {}; // extraneous-prop warnings are asserted elsewhere
+		}
+	);
 	return { host, errors };
 }
 
@@ -54,13 +78,14 @@ describe('every registered block type renders on the canvas', () => {
 	});
 
 	it.each(getRegisteredTypes())('renders a default %s block without errors', async (type) => {
+		vi.useFakeTimers();
 		const block = createBlock(type as BlockType, defaultTheme);
 		const { host, errors } = mountBlock(block);
 		expect(errors).toEqual([]);
 		if (IFRAME_TYPES.has(type)) {
-			// Wait out the debounced renderBlockFragment call so the iframe /
+			// Run the debounced renderBlockFragment call so the iframe /
 			// empty-placeholder decision has settled.
-			await new Promise((r) => setTimeout(r, 250));
+			await finishRender();
 			// A content-less default (video without URL, carousel without
 			// images, comment-only rawHtml) must show the labelled
 			// placeholder — never a zero-height invisible sliver.
@@ -75,11 +100,12 @@ describe('every registered block type renders on the canvas', () => {
 	});
 
 	it('shows the empty placeholder for a content-less video block, and a real iframe for a table', async () => {
+		vi.useFakeTimers();
 		const video = createBlock('video', defaultTheme);
 		const { host: videoHost } = mountBlock(video);
 		const table = createBlock('table', defaultTheme);
 		const { host: tableHost } = mountBlock(table);
-		await new Promise((r) => setTimeout(r, 300));
+		await finishRender();
 		expect(videoHost.textContent).toContain('select to configure');
 		expect(videoHost.querySelector('iframe')).toBeNull();
 		expect(tableHost.querySelector('iframe')).toBeTruthy();
@@ -177,13 +203,7 @@ describe('text block edit↔render typography parity', () => {
 			html: 'Heading',
 			textColor: undefined,
 		});
-		const host = document.createElement('div');
-		document.body.appendChild(host);
-		const app = createApp({
-			render: () => h(DocumentBlock, { block, theme: themed }),
-		});
-		app.mount(host);
-		apps.push(app);
+		const host = mountApp(() => h(DocumentBlock, { block, theme: themed }));
 		const style = host.querySelector('h2')?.getAttribute('style') ?? '';
 		expect(style).toContain('font-weight: 800');
 		expect(style).toContain('color: #111111');
@@ -198,20 +218,18 @@ describe('DocumentCanvas renders the seeded demo template', () => {
 	) as EditorBlock[];
 
 	it('renders all three blocks with a visible button fill', () => {
-		const host = document.createElement('div');
-		document.body.appendChild(host);
 		const errors: unknown[] = [];
-		const app = createApp({
-			render: () =>
+		const host = mountApp(
+			() =>
 				h(DocumentCanvas, {
 					blocks,
 					selectedBlockId: null,
 					theme: defaultTheme as Required<EmailTheme>,
 				}),
-		});
-		app.config.errorHandler = (err) => errors.push(err);
-		app.mount(host);
-		apps.push(app);
+			(app) => {
+				app.config.errorHandler = (err) => errors.push(err);
+			}
+		);
 		expect(errors).toEqual([]);
 		expect(host.textContent).toContain('Summer Sale');
 		expect(host.textContent).toContain('Shop the sale');

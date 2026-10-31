@@ -17,10 +17,9 @@
  * (the arm a fallback moves traffic AWAY from), any kind this deployment cannot
  * actually send through, and any route shape `setRoute` would refuse to save.
  *
- * The ROUTE half is what became kind-agnostic. The PROOF half still reads one
- * kind's sibling rows, so the item credits them only to that kind — a relay
- * whose proofs this deployment cannot yet read reports the proof missing, never
- * another provider's proof as its own.
+ * The ROUTE half is kind-agnostic. The PROOF half credits each row only to the
+ * kind the row names — a relay with no rows of its own reports the proof
+ * missing, never another provider's proof as its own.
  */
 
 import { describe, expect, it, vi } from 'vitest';
@@ -30,10 +29,7 @@ vi.mock('../checklistProviderDetection', () => ({
 }));
 
 import { observeDeploymentCheck } from '../checklistDeploymentValidators';
-import {
-	RELAY_IDENTITY_PROOF_KIND,
-	type ChecklistVerificationContext,
-} from '../checklistValidatorTypes';
+import type { ChecklistVerificationContext } from '../checklistValidatorTypes';
 
 const NOW = Date.now();
 
@@ -54,15 +50,20 @@ function route(
 	} as ChecklistVerificationContext['routes'][number];
 }
 
+/** The kind the context loader tags the frozen SES sibling rows with. */
+const PROOF_KIND = 'ses';
+
 /**
  * One fresh, fully proven relay identity, in the frozen SES sibling shape the
- * verification context carries — i.e. a proof of exactly ONE kind's identity
- * ({@link RELAY_IDENTITY_PROOF_KIND}). The cases below hold it constant and vary
- * the ROUTE, so a verdict that changes with the configured relay changed because
- * of the route and not because of the proof.
+ * verification context carries, tagged with the kind it proves. The cases below
+ * hold it constant and vary the ROUTE, so a verdict that changes with the
+ * configured relay changed because of the route and not because of the proof.
  */
-function provenIdentity(): ChecklistVerificationContext['relayIdentities'][number] {
+function provenIdentity(
+	providerKind: ChecklistVerificationContext['relayIdentities'][number]['providerKind'] = PROOF_KIND
+): ChecklistVerificationContext['relayIdentities'][number] {
 	return {
+		providerKind,
 		_id: 'identity-1',
 		_creationTime: NOW,
 		domainId: 'domain-1',
@@ -185,12 +186,9 @@ describe('deployment.relay readiness — every eligible relay counts, not just S
 		expect(
 			await observe(
 				context(
-					[
-						route(RELAY_IDENTITY_PROOF_KIND, ['mta', RELAY_IDENTITY_PROOF_KIND]),
-						route('mandrill', ['mta', 'mandrill']),
-					],
+					[route(PROOF_KIND, ['mta', PROOF_KIND]), route('mandrill', ['mta', 'mandrill'])],
 					[provenIdentity()],
-					[RELAY_IDENTITY_PROOF_KIND, 'mandrill']
+					[PROOF_KIND, 'mandrill']
 				)
 			)
 		).toEqual({
@@ -201,11 +199,7 @@ describe('deployment.relay readiness — every eligible relay counts, not just S
 		// Same rows, same everything — only the configured relay differs.
 		expect(
 			await observe(
-				context(
-					[route(RELAY_IDENTITY_PROOF_KIND, ['mta', RELAY_IDENTITY_PROOF_KIND])],
-					[provenIdentity()],
-					[RELAY_IDENTITY_PROOF_KIND]
-				)
+				context([route(PROOF_KIND, ['mta', PROOF_KIND])], [provenIdentity()], [PROOF_KIND])
 			)
 		).toEqual({
 			status: 'pass',
@@ -242,7 +236,7 @@ describe('deployment.relay readiness — every eligible relay counts, not just S
 
 describe('deployment.relay readiness — fail closed on what it cannot vouch for', () => {
 	it('refuses a fallback that names our own MTA', async () => {
-		// D3's one sanctioned identity, read through `isFallbackRelayEligible`: the
+		// The one sanctioned identity check (own MTA or not), read through `isFallbackRelayEligible`: the
 		// MTA is the arm a fallback moves traffic away from. A route row naming it
 		// would otherwise match an enabled `mta` entry — which every deployment has
 		// — and report a relay that does not exist as ready. Handed a projection
@@ -305,5 +299,46 @@ describe('deployment.relay readiness — fail closed on what it cannot vouch for
 			diagnostic:
 				'The deliverability fallback relay is enabled and every relay identity has a current provider and SPF proof.',
 		});
+	});
+});
+
+describe('deployment.relay readiness — the rows say whose proof they are', () => {
+	it('credits a proof to the kind its row names', async () => {
+		// The same row, tagged with another kind, proves that kind's relay and
+		// stops proving the one it used to.
+		expect(
+			await observe(
+				context(
+					[route('mandrill', ['mta', 'mandrill'])],
+					[provenIdentity('mandrill')],
+					['mandrill']
+				)
+			)
+		).toMatchObject({ status: 'pass' });
+		expect(
+			await observe(
+				context(
+					[route(PROOF_KIND, ['mta', PROOF_KIND])],
+					[provenIdentity('mandrill')],
+					[PROOF_KIND]
+				)
+			)
+		).toMatchObject({ status: 'warn' });
+	});
+
+	it('names the rows’ kinds in the evidence, and none when there are no rows', async () => {
+		const evidence = async (relayIdentities: ChecklistVerificationContext['relayIdentities']) =>
+			(
+				await observeDeploymentCheck(
+					'deployment.relay',
+					context([route('mandrill', ['mta', 'mandrill'])], relayIdentities, ['mandrill']),
+					false
+				)
+			).observedValues.slice(0, 2);
+		expect(await evidence([provenIdentity()])).toEqual([
+			`proof-kind=${PROOF_KIND}`,
+			'configured-relay=mandrill',
+		]);
+		expect(await evidence([])).toEqual(['proof-kind=none', 'configured-relay=mandrill']);
 	});
 });

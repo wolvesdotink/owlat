@@ -57,13 +57,21 @@ class FakeTransport implements ProvisionTransport {
 	// Hold connect() until the test releases it (a handshake in flight).
 	connectGate: Promise<void> | null = null;
 	private cancelled: Array<() => void> = [];
+	private markHung!: () => void;
+	/**
+	 * Resolves once a hanging call (installer or local build) is in flight and
+	 * cancellable: the point a test leaves the wizard mid-flight.
+	 */
+	readonly hung = new Promise<void>((resolve) => (this.markHung = resolve));
 	constructor(private opts: FakeOpts = {}) {}
 
 	/** A call that only ends when the session is cancelled, then rejects like the native side. */
 	private untilCancelled<T>(): Promise<T> {
-		return new Promise<T>((_resolve, reject) => {
+		const call = new Promise<T>((_resolve, reject) => {
 			this.cancelled.push(() => reject(new Error('Cancelled.')));
 		});
+		this.markHung();
+		return call;
 	}
 
 	async cancel(sessionId: string): Promise<void> {
@@ -607,7 +615,7 @@ describe('useServerProvisioning — log cap, failure tail, secrets cleanup', () 
 	});
 });
 
-// ---- #956: local-push builds and pushes every first-party image -----------
+// ---- local-push builds and pushes every first-party image -----------------
 
 describe('useServerProvisioning — local-push images come from the Compose services', () => {
 	const pushCreds: ServerCredentials = {
@@ -665,7 +673,7 @@ describe('useServerProvisioning — local-push images come from the Compose serv
 	});
 });
 
-// ---- #953: the uploaded setup config never outlives the install -----------
+// ---- the uploaded setup config never outlives the install -----------------
 
 describe('useServerProvisioning — setup config cleanup on every outcome', () => {
 	const CLEANUP = "rm -f '/opt/owlat/.owlat-setup.json'";
@@ -761,10 +769,7 @@ describe('useServerProvisioning — setup config cleanup on every outcome', () =
 	});
 });
 
-// ---- #952: leaving the wizard stops what is running ------------------------
-
-/** Let pending promise continuations run (the fake transport resolves at once). */
-const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+// ---- leaving the wizard stops what is running ------------------------------
 
 describe('useServerProvisioning — leaving the wizard mid-flight', () => {
 	it('cancels a long installer, removes the config, disconnects, and starts nothing after', async () => {
@@ -772,7 +777,8 @@ describe('useServerProvisioning — leaving the wizard mid-flight', () => {
 		const p = useServerProvisioning(t);
 		await p.connect(creds);
 		const running = p.provision(config);
-		while (!t.commands.some((c) => c.includes('quickstart'))) await settle();
+		await t.hung;
+		expect(t.commands.at(-1)).toContain('quickstart');
 		t.journal.length = 0;
 
 		await p.disconnect();
@@ -844,7 +850,8 @@ describe('useServerProvisioning — leaving the wizard mid-flight', () => {
 		const p = useServerProvisioning(t);
 		await p.connect({ ...creds, remote: { localSource: '/Users/dev/owlat', localImages: true } });
 		const running = p.provision(config);
-		while (!t.localBuilds.length) await settle();
+		await t.hung;
+		expect(t.localBuilds).toHaveLength(1);
 
 		await p.disconnect();
 		await running;

@@ -11,10 +11,9 @@ import { convexTest } from 'convex-test';
 import { describe, it, expect, vi } from 'vitest';
 import schema from '../schema';
 import { internal } from '../_generated/api';
-import type { Id } from '../_generated/dataModel';
+import type { Doc, Id } from '../_generated/dataModel';
 import { assertStateIs, dedupedRecipients } from '../mail/draftLifecycle/reducers';
 import { DEFAULT_UNDO_SEND_DELAY_MS } from '../mail/draftLifecycle/types';
-import type { Doc } from '../_generated/dataModel';
 
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
@@ -629,6 +628,38 @@ describe('draftLifecycle.transition — to: sent', () => {
 			});
 		}
 	);
+
+	it('refuses a send keyed by an undo token the draft no longer carries', async () => {
+		const t = convexTest(schema, modules);
+		const { mailboxId } = await seedMailboxAndSent(t);
+		const draftId = await seedDraft(t, mailboxId, {
+			state: 'pending_send',
+			undoToken: 'tok-new',
+			scheduledSendAt: Date.now() + 60_000,
+		});
+		const rawStorageId = await storeBlob(t);
+
+		const sent = await t.mutation(internal.mail.draftLifecycle.transition, {
+			draftId,
+			expectedUndoToken: 'tok-old',
+			input: { to: 'sent', at: Date.now(), context: makeSentContext(rawStorageId) },
+		});
+		const reverted = await t.mutation(internal.mail.draftLifecycle.transition, {
+			draftId,
+			expectedUndoToken: 'tok-old',
+			input: { to: 'draft', at: Date.now(), reason: 'scan_blocked' },
+		});
+
+		expect(sent).toMatchObject({ ok: false, reason: 'undo_token_mismatch', from: 'pending_send' });
+		expect(reverted).toMatchObject({ ok: false, reason: 'undo_token_mismatch' });
+		await t.run(async (ctx) => {
+			expect(await ctx.db.get(draftId)).toMatchObject({
+				state: 'pending_send',
+				undoToken: 'tok-new',
+			});
+			expect(await ctx.db.query('mailMessages').collect()).toEqual([]);
+		});
+	});
 
 	it('refuses with from_revoked when fromAddress is no longer in allowed set', async () => {
 		const t = convexTest(schema, modules);

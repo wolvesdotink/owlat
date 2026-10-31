@@ -11,13 +11,14 @@
  * exposing just what the page uses of it.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ref } from 'vue';
+import { reactive, ref } from 'vue';
 import { flushPromises } from '@vue/test-utils';
 import type { OfflineKvDriver } from '~/utils/postboxOfflineStore';
 import { MIRROR_FIELD_NAMES, type MirrorCopy, type MirrorFields } from '~/utils/postboxDraftMirror';
 import { PostboxDraftMirrorStore, mirrorCopyKey } from '~/utils/postboxDraftMirrorStore';
 import type { ParkableSnapshot } from '../usePostboxComposeRow';
 import {
+	copyRecoverySource,
 	usePostboxComposeNav,
 	type ComposeRequest,
 	type ComposeSpec,
@@ -250,6 +251,40 @@ describe('pure helpers', () => {
 			source({ fields: fields({ bodyBlocks: '{nope' }), present: ['bodyBlocks'] })
 		);
 		expect(broken).toEqual({ mailboxId: MBX });
+	});
+
+	it('copyRecoverySource gives a plain copy of a reactive source, lists included', () => {
+		const live = reactive(
+			source({
+				fields: fields({ toAddresses: ['ada@example.com'], subject: 'Parked' }),
+				present: ['toAddresses', 'subject'],
+				base: fields({ subject: 'Row' }),
+			})
+		);
+		const copy = copyRecoverySource(live);
+		expect(copy).toEqual(
+			source({
+				fields: fields({ toAddresses: ['ada@example.com'], subject: 'Parked' }),
+				present: ['toAddresses', 'subject'],
+				base: fields({ subject: 'Row' }),
+			})
+		);
+		expect(() => structuredClone(copy)).not.toThrow();
+		live.fields.toAddresses.push('late@example.com');
+		live.present.push('bodyHtml');
+		expect(copy.fields.toAddresses).toEqual(['ada@example.com']);
+		expect(copy.present).toEqual(['toAddresses', 'subject']);
+	});
+
+	it('seedWithParked skips stored blocks that are JSON but not a list', () => {
+		for (const bodyBlocks of ['{}', 'null', '"text"', '7']) {
+			const next = seedWithParked(
+				{ mailboxId: MBX, prefillBodyBlocks: [{ type: 'seed' }] },
+				source({ fields: fields({ bodyBlocks }), present: ['bodyBlocks'] })
+			);
+			// The seed's blocks stay; the body HTML still carries the text.
+			expect(next).toEqual({ mailboxId: MBX, prefillBodyBlocks: [{ type: 'seed' }] });
+		}
 	});
 
 	it('foldRowless folds rowless snapshots oldest first, so the newest wins', () => {

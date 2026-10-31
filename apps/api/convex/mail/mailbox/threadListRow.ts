@@ -32,10 +32,12 @@ export type ThreadListRow = Pick<
 	/**
 	 * Present while the thread is in the Reply Queue. `draftSlot` / the
 	 * clarification's `draft` are `true` markers, not the drafts: the drafts are
-	 * read per thread (`mail.needsReply.getDraftSlot`) when a card opens.
+	 * read per thread (`mail.mailbox.messages.listThreadMessages`) when it opens.
 	 */
 	needsReply?: { draftSlot?: true; clarification?: { draft?: true } };
 	followUp?: { dueAt?: number };
+	/** The thread is in the Inbox's pinned band (mail/pins.ts). */
+	pinnedAt?: number;
 };
 
 export function toThreadListRow(thread: Doc<'mailThreads'>): ThreadListRow {
@@ -54,6 +56,7 @@ export function toThreadListRow(thread: Doc<'mailThreads'>): ThreadListRow {
 	// present `undefined`.
 	if (thread.latestMessageId) row.latestMessageId = thread.latestMessageId;
 	if (thread.category) row.category = { label: thread.category.label };
+	if (thread.pinnedAt !== undefined) row.pinnedAt = thread.pinnedAt;
 	const flag = thread.needsReply;
 	if (flag) {
 		row.needsReply = {};

@@ -155,8 +155,7 @@ export type StepRunGate =
  * side effect: the run is running, the automation active, the step present and
  * the contact eligible. A closed gate has already written its outcome — the
  * step run skipped or failed, and the run cancelled or moved on — so the
- * caller only reports it. Also used by the v0.5.5 claim shim
- * (`stepExecutorQueries.markStepExecuting`).
+ * caller only reports it.
  */
 export async function gateStepRun(
 	ctx: MutationCtx,
@@ -176,13 +175,17 @@ export async function gateStepRun(
 	if (!automation || automation.status !== 'active') {
 		await failStepAndCancelRun(ctx, stepRun, 'Automation is no longer active', {
 			countRunFailure: false,
+			stepFault: false,
 		});
 		return { isOpen: false, isRunEnded: true, reason: 'Automation inactive' };
 	}
 
 	const step = await ctx.db.get(stepRun.automationStepId);
 	if (!step) {
-		await failStepAndCancelRun(ctx, stepRun, 'Step not found', { countRunFailure: false });
+		await failStepAndCancelRun(ctx, stepRun, 'Step not found', {
+			countRunFailure: false,
+			stepFault: false,
+		});
 		return { isOpen: false, isRunEnded: true, reason: 'Step not found' };
 	}
 
@@ -272,7 +275,7 @@ export const claimStepRun = internalMutation({
 				ctx,
 				stepRun,
 				'Step execution was interrupted and ran out of recovery attempts',
-				{ countRunFailure: true }
+				{ countRunFailure: true, stepFault: true }
 			);
 			return { kind: 'ended', reason: 'Retries exhausted' };
 		}
@@ -286,7 +289,7 @@ export const claimStepRun = internalMutation({
 					ctx,
 					stepRun,
 					`Automation exceeded ${MAX_STEPS_PER_RUN} step executions — cancelled to prevent a loop`,
-					{ countRunFailure: false }
+					{ countRunFailure: false, stepFault: true }
 				);
 				return { kind: 'ended', reason: 'Max steps exceeded' };
 			}
@@ -406,7 +409,10 @@ export const retryOrFailStepRun = internalMutation({
 			return { kind: 'retrying', delayMs };
 		}
 
-		await failStepAndCancelRun(ctx, stepRun, args.errorMessage, { countRunFailure: true });
+		await failStepAndCancelRun(ctx, stepRun, args.errorMessage, {
+			countRunFailure: true,
+			stepFault: true,
+		});
 		return { kind: 'failed' };
 	},
 });

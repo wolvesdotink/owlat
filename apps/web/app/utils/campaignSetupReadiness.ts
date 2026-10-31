@@ -1,6 +1,6 @@
 /**
  * Campaign wizard, setup step — the pure pieces behind "never dead-end the
- * wizard" (#785): what is still missing before Next can work, who to ask for
+ * wizard": what is still missing before Next can work, who to ask for
  * a sender, and the single recipients picker's option values. No Vue, no
  * Convex: unit-tested directly.
  */

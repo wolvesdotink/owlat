@@ -1,5 +1,5 @@
 /**
- * The typed thread reference shared by the thread brief tables (SPEC §1).
+ * The typed thread reference shared by the thread brief tables.
  *
  * `{ kind: 'mail', id }` names a Postbox `mailThreads` row (personal or shared
  * mailbox), `{ kind: 'team', id }` an agent Team Inbox `conversationThreads`

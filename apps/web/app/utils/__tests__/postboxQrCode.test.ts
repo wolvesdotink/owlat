@@ -264,9 +264,9 @@ describe('formatBits', () => {
 	];
 
 	it('matches the published format-information strings for level M', () => {
-		TABLE.forEach((expected, mask) => {
+		for (const [mask, expected] of TABLE.entries()) {
 			expect(formatBits(mask).toString(2).padStart(15, '0')).toBe(expected);
-		});
+		}
 	});
 });
 

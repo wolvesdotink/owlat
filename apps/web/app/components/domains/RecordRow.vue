@@ -219,68 +219,75 @@ const registrationSettled = computed(
 			</div>
 
 			<div class="flex items-center gap-2">
-				<UiButton
+				<UiTooltip
 					v-if="canForceVerify && domain.status !== 'verified'"
-					class="relative gap-1.5 text-sm py-1.5 px-3 border border-warning/40 bg-warning/10 text-warning hover:bg-warning/20"
-					:title="t('components.domains.recordRow.forceVerifyTitle')"
-					:disabled="isForcing"
-					@click="emit('forceVerify')"
+					:text="t('components.domains.recordRow.forceVerifyTitle')"
 				>
-					<Icon
-						v-if="isForcing"
-						name="lucide:loader-2"
-						class="w-4 h-4 animate-spin motion-reduce:animate-none"
-					/>
-					<Icon v-else name="lucide:wand-2" class="w-4 h-4" />
-					{{ t('components.domains.recordRow.forceVerify') }}
-					<span
-						class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-warning/20 uppercase tracking-wide"
+					<UiButton
+						class="relative gap-1.5 text-sm py-1.5 px-3 border border-warning/40 bg-warning/10 text-warning hover:bg-warning/20"
+						:disabled="isForcing"
+						@click="emit('forceVerify')"
 					>
-						{{ t('components.domains.recordRow.devBadge') }}
-					</span>
-				</UiButton>
-				<UiButton
-					variant="secondary"
-					class="relative gap-1.5 text-sm py-1.5 px-3"
-					:title="
+						<Icon
+							v-if="isForcing"
+							name="lucide:loader-2"
+							class="w-4 h-4 animate-spin motion-reduce:animate-none"
+						/>
+						<Icon v-else name="lucide:wand-2" class="w-4 h-4" />
+						{{ t('components.domains.recordRow.forceVerify') }}
+						<span
+							class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-warning/20 uppercase tracking-wide"
+						>
+							{{ t('components.domains.recordRow.devBadge') }}
+						</span>
+					</UiButton>
+				</UiTooltip>
+				<UiTooltip
+					:text="
 						domain.status === 'registering'
 							? t('components.domains.recordRow.waitingForRegistration')
 							: t('components.domains.recordRow.verifyTitle')
 					"
-					:disabled="isVerifying || domain.status === 'registering'"
-					@click="
-						domain.status === 'failed' && domain.lastRegistrationError
-							? emit('retryRegistration')
-							: emit('verify')
-					"
 				>
-					<Icon
-						v-if="isVerifying || domain.status === 'registering'"
-						name="lucide:loader-2"
-						class="w-4 h-4 animate-spin motion-reduce:animate-none"
-					/>
-					<Icon v-else name="lucide:refresh-cw" class="w-4 h-4" />
-					<template v-if="domain.status === 'registering'">{{
-						t('components.domains.recordRow.registering')
-					}}</template>
-					<template v-else-if="domain.status === 'failed' && domain.lastRegistrationError">{{
-						t('common.retry')
-					}}</template>
-					<template v-else>{{
-						isVerifying
-							? t('components.domains.recordRow.verifying')
-							: t('components.domains.recordRow.verify')
-					}}</template>
-				</UiButton>
-				<UiButton
-					variant="ghost"
-					class="relative p-2 text-error hover:bg-error/10"
-					:title="t('components.domains.recordRow.removeDomain')"
-					:aria-label="t('components.domains.recordRow.removeDomain')"
-					@click="emit('delete')"
-				>
-					<Icon name="lucide:trash-2" class="w-4 h-4" />
-				</UiButton>
+					<UiButton
+						variant="secondary"
+						class="relative gap-1.5 text-sm py-1.5 px-3"
+						:disabled="isVerifying || domain.status === 'registering'"
+						@click="
+							domain.status === 'failed' && domain.lastRegistrationError
+								? emit('retryRegistration')
+								: emit('verify')
+						"
+					>
+						<Icon
+							v-if="isVerifying || domain.status === 'registering'"
+							name="lucide:loader-2"
+							class="w-4 h-4 animate-spin motion-reduce:animate-none"
+						/>
+						<Icon v-else name="lucide:refresh-cw" class="w-4 h-4" />
+						<template v-if="domain.status === 'registering'">{{
+							t('components.domains.recordRow.registering')
+						}}</template>
+						<template v-else-if="domain.status === 'failed' && domain.lastRegistrationError">{{
+							t('common.retry')
+						}}</template>
+						<template v-else>{{
+							isVerifying
+								? t('components.domains.recordRow.verifying')
+								: t('components.domains.recordRow.verify')
+						}}</template>
+					</UiButton>
+				</UiTooltip>
+				<UiTooltip :text="t('components.domains.recordRow.removeDomain')">
+					<UiButton
+						variant="ghost"
+						class="relative p-2 text-error hover:bg-error/10"
+						:aria-label="t('components.domains.recordRow.removeDomain')"
+						@click="emit('delete')"
+					>
+						<Icon name="lucide:trash-2" class="w-4 h-4" />
+					</UiButton>
+				</UiTooltip>
 				<!-- Decorative. Its rotation makes it a stacking context painted above
 				     the overlay, so it lets the pointer through to the disclosure. -->
 				<div
@@ -369,7 +376,7 @@ const registrationSettled = computed(
 					/>
 
 					<!-- Yahoo's CFL is enrolled against the DKIM DOMAIN, so its guided flow
-					     belongs here. Never enrolling is supported (D2); the panel owns its
+					     belongs here. Never enrolling is supported; the panel owns its
 					     own divider so nothing renders when it has nothing to show. -->
 					<DomainsYahooCflPanel
 						v-if="registrationSettled"
@@ -433,7 +440,9 @@ const registrationSettled = computed(
 /* Expand transition */
 .expand-enter-active,
 .expand-leave-active {
-	transition: all var(--motion-moderate) var(--ease-spring);
+	transition-property: opacity, max-height;
+	transition-duration: var(--motion-moderate);
+	transition-timing-function: var(--ease-spring);
 	overflow: hidden;
 }
 

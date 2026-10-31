@@ -18,6 +18,7 @@ import {
 } from '~/utils/deliverabilityCenter';
 import { useDeliverabilityChecklistCopy } from '~/composables/useDeliverabilityChecklistCopy';
 import { useLocalized } from '~/composables/useLocalized';
+import { prefersReducedMotion } from '@owlat/ui/composables/useReducedMotion';
 
 const { t } = useI18n();
 
@@ -105,9 +106,8 @@ async function openRegressionCheck(alert: DeliverabilityRegressionAlert) {
 	if (details.tagName === 'DETAILS') {
 		(details as HTMLDetailsElement).open = true;
 	}
-	const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 	details.scrollIntoView({
-		behavior: reducedMotion ? 'auto' : 'smooth',
+		behavior: prefersReducedMotion() ? 'auto' : 'smooth',
 		block: 'center',
 	});
 	(details.querySelector('summary') as HTMLElement | null)?.focus({ preventScroll: true });
@@ -180,38 +180,27 @@ async function copyReport() {
 
 <template>
 	<div>
-		<header class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-			<div class="flex items-start gap-3">
-				<UiIconBox icon="lucide:shield-check" size="lg" variant="brand" rounded="xl" />
-				<div>
-					<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-						{{ t('dashboard.admin.delivery.deliverability.title') }}
-					</h1>
-					<p class="mt-1 max-w-2xl text-sm text-text-secondary">
-						{{ t('dashboard.admin.delivery.deliverability.lede') }}
-					</p>
-				</div>
-			</div>
-			<!-- `shrink-0 whitespace-nowrap`: the German label ("Einrichtungsbericht
-			     kopieren") otherwise wrapped onto two lines beside the lede. -->
-			<UiButton
-				v-if="center"
-				variant="ghost"
-				size="sm"
-				class="w-fit shrink-0 whitespace-nowrap"
-				@click="copyReport"
-			>
-				<Icon
-					:name="isCopied('deliverability-report') ? 'lucide:check' : 'lucide:clipboard-copy'"
-					class="h-4 w-4"
-				/>
-				{{
-					isCopied('deliverability-report')
-						? t('dashboard.admin.delivery.deliverability.reportCopied')
-						: t('dashboard.admin.delivery.deliverability.copyReport')
-				}}
-			</UiButton>
-		</header>
+		<UiPageHeader
+			class="mb-6"
+			:title="t('dashboard.admin.delivery.deliverability.title')"
+			:description="t('dashboard.admin.delivery.deliverability.lede')"
+		>
+			<template v-if="center" #actions>
+				<!-- `whitespace-nowrap`: the German label ("Einrichtungsbericht
+				     kopieren") otherwise wrapped onto two lines beside the lede. -->
+				<UiButton variant="ghost" size="sm" class="whitespace-nowrap" @click="copyReport">
+					<Icon
+						:name="isCopied('deliverability-report') ? 'lucide:check' : 'lucide:clipboard-copy'"
+						class="h-4 w-4"
+					/>
+					{{
+						isCopied('deliverability-report')
+							? t('dashboard.admin.delivery.deliverability.reportCopied')
+							: t('dashboard.admin.delivery.deliverability.copyReport')
+					}}
+				</UiButton>
+			</template>
+		</UiPageHeader>
 
 		<UiQueryBoundary
 			:loading="isLoading"
