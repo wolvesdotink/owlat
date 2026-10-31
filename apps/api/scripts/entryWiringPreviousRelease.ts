@@ -25,6 +25,10 @@ export const PREVIOUS_RELEASE_ENTRIES: Readonly<Record<string, string>> = {
 	'campaigns/sendQueries.ts#storeContentScanResult': 'old campaign send preparations mid-run',
 	'campaigns/archiveQueries.ts#setArchiveSnapshot': 'old campaign send preparations mid-run',
 	'emailTemplates/versions.ts#captureForSend': 'old campaign send preparations mid-run',
+	// The delivery actions below now commit once; remove after release 0.6.17.
+	'delivery/alignmentPreflight.ts#recordAlignmentResult': 'old alignment sweeps mid-run',
+	'delivery/warmingSync.ts#upsertWarmingState': 'old warming syncs mid-run',
+	'delivery/deliverabilityRouting.ts#applySnapshot': 'old warming syncs mid-run',
 	// The archive import runner now commits a pass with mail/archiveImport.ts `commitPass`.
 	'mail/archiveImport.ts#recordProgress': 'old archive import passes mid-run',
 	// The indexing sweep now commits a chunk with mail/migrationIndexingCommit.ts `commitIndexChunk`.
