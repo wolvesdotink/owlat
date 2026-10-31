@@ -196,102 +196,112 @@ const ITEM_CLASS =
 				</div>
 				<div class="my-1 border-t border-border-subtle" />
 				<!-- Snooze, or its swap in the folder snoozing put them in. -->
-				<button
+				<UiTooltip
 					v-if="props.folderRole !== 'snoozed'"
-					type="button"
-					role="menuitem"
-					:class="ITEM_CLASS"
-					:title="t('components.postbox.postboxQuickActionsBar.snoozeTitle')"
-					@click="
-						snoozeOpen = true;
-						close();
-					"
+					:text="t('components.postbox.postboxQuickActionsBar.snoozeTitle')"
 				>
-					<Icon name="lucide:clock" class="w-4 h-4 flex-shrink-0 text-text-tertiary" />
-					{{ t('components.postbox.postboxQuickActionsBar.snooze') }}
-				</button>
-				<button
-					v-else
-					type="button"
-					role="menuitem"
-					:class="ITEM_CLASS"
-					:title="t('components.postbox.postboxQuickActionsBar.unsnoozeTitle')"
-					@click="
-						unsnoozeSelected();
-						close();
-					"
-				>
-					<Icon name="lucide:alarm-clock-off" class="w-4 h-4 flex-shrink-0 text-text-tertiary" />
-					{{ t('components.postbox.postboxQuickActionsBar.unsnooze') }}
-				</button>
+					<button
+						type="button"
+						role="menuitem"
+						:class="ITEM_CLASS"
+						@click="
+							snoozeOpen = true;
+							close();
+						"
+					>
+						<Icon name="lucide:clock" class="w-4 h-4 flex-shrink-0 text-text-tertiary" />
+						{{ t('components.postbox.postboxQuickActionsBar.snooze') }}
+					</button>
+				</UiTooltip>
+				<UiTooltip v-else :text="t('components.postbox.postboxQuickActionsBar.unsnoozeTitle')">
+					<button
+						type="button"
+						role="menuitem"
+						:class="ITEM_CLASS"
+						@click="
+							unsnoozeSelected();
+							close();
+						"
+					>
+						<Icon name="lucide:alarm-clock-off" class="w-4 h-4 flex-shrink-0 text-text-tertiary" />
+						{{ t('components.postbox.postboxQuickActionsBar.unsnooze') }}
+					</button>
+				</UiTooltip>
 				<!-- Spam, or its swap in Spam itself. -->
-				<button
+				<UiTooltip
 					v-if="props.folderRole === 'spam'"
-					type="button"
-					role="menuitem"
-					:class="ITEM_CLASS"
-					:title="t('components.postbox.postboxQuickActionsBar.notSpamTitle')"
-					@click="
-						bulk.notSpamSelected();
-						close();
-					"
+					:text="t('components.postbox.postboxQuickActionsBar.notSpamTitle')"
 				>
-					<Icon name="lucide:shield-check" class="w-4 h-4 flex-shrink-0 text-text-tertiary" />
-					{{ t('components.postbox.postboxQuickActionsBar.notSpam') }}
-				</button>
-				<button
-					v-else
-					type="button"
-					role="menuitem"
-					:class="ITEM_CLASS"
-					:title="t('components.postbox.postboxQuickActionsBar.spamTitle')"
-					@click="
-						bulk.reportSpamSelected();
-						close();
-					"
-				>
-					<Icon name="lucide:shield-alert" class="w-4 h-4 flex-shrink-0 text-text-tertiary" />
-					{{ t('components.postbox.postboxQuickActionsBar.spam') }}
-				</button>
+					<button
+						type="button"
+						role="menuitem"
+						:class="ITEM_CLASS"
+						@click="
+							bulk.notSpamSelected();
+							close();
+						"
+					>
+						<Icon name="lucide:shield-check" class="w-4 h-4 flex-shrink-0 text-text-tertiary" />
+						{{ t('components.postbox.postboxQuickActionsBar.notSpam') }}
+					</button>
+				</UiTooltip>
+				<UiTooltip v-else :text="t('components.postbox.postboxQuickActionsBar.spamTitle')">
+					<button
+						type="button"
+						role="menuitem"
+						:class="ITEM_CLASS"
+						@click="
+							bulk.reportSpamSelected();
+							close();
+						"
+					>
+						<Icon name="lucide:shield-alert" class="w-4 h-4 flex-shrink-0 text-text-tertiary" />
+						{{ t('components.postbox.postboxQuickActionsBar.spam') }}
+					</button>
+				</UiTooltip>
 				<!-- Unsubscribe + archive: only offered when the selection actually
 				     holds One-Click list mail, so it is never a dead item. -->
-				<button
+				<UiTooltip
 					v-if="unsubscribableSenders.length > 0"
-					type="button"
-					role="menuitem"
-					:class="ITEM_CLASS"
-					:disabled="unsubscribeOp.isLoading.value"
-					:title="
+					:text="
 						t(
 							'components.postbox.postboxQuickActionsBar.unsubscribeTitle',
 							{ count: unsubscribableSenders.length },
 							unsubscribableSenders.length
 						)
 					"
-					@click="
-						unsubscribeSelected();
-						close();
-					"
 				>
-					<Icon name="lucide:bell-off" class="w-4 h-4 flex-shrink-0 text-text-tertiary" />
-					{{ t('components.postbox.postboxQuickActionsBar.unsubscribe') }}
-				</button>
-				<!-- Delete forever: Trash only, where "delete" already happened once. -->
-				<template v-if="props.folderRole === 'trash'">
-					<div class="my-1 border-t border-border-subtle" />
 					<button
 						type="button"
 						role="menuitem"
-						:class="[ITEM_CLASS, 'text-error hover:bg-error/10']"
-						:title="t('components.postbox.postboxQuickActionsBar.deleteForeverTitle')"
+						:class="ITEM_CLASS"
+						:disabled="unsubscribeOp.isLoading.value"
 						@click="
-							purgeSelected();
+							unsubscribeSelected();
 							close();
 						"
 					>
-						<Icon name="lucide:trash-2" class="w-4 h-4 flex-shrink-0" />
-						{{ t('components.postbox.postboxQuickActionsBar.deleteForever') }}
+						<Icon name="lucide:bell-off" class="w-4 h-4 flex-shrink-0 text-text-tertiary" />
+						{{ t('components.postbox.postboxQuickActionsBar.unsubscribe') }}
 					</button>
+				</UiTooltip>
+				<!-- Delete forever: Trash only, where "delete" already happened once. -->
+				<template v-if="props.folderRole === 'trash'">
+					<div class="my-1 border-t border-border-subtle" />
+					<UiTooltip :text="t('components.postbox.postboxQuickActionsBar.deleteForeverTitle')">
+						<button
+							type="button"
+							role="menuitem"
+							:class="[ITEM_CLASS, 'text-error hover:bg-error/10']"
+							@click="
+								purgeSelected();
+								close();
+							"
+						>
+							<Icon name="lucide:trash-2" class="w-4 h-4 flex-shrink-0" />
+							{{ t('components.postbox.postboxQuickActionsBar.deleteForever') }}
+						</button>
+					</UiTooltip>
 				</template>
 			</template>
 		</PostboxOverflowMenu>

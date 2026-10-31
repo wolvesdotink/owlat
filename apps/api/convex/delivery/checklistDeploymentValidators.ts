@@ -21,7 +21,6 @@ import { MTA_HEALTH_MAX_AGE_MS } from './mtaHealthFreshness';
 import {
 	checklistObservation,
 	pendingDnsStatus,
-	RELAY_IDENTITY_PROOF_KIND,
 	type ChecklistObservation,
 	type ChecklistVerificationContext,
 } from './checklistValidatorTypes';
@@ -294,35 +293,25 @@ export async function observeDeploymentCheck(
 				return configured ? [fallback.relayProviderType] : [];
 			});
 			const routeReady = readyFallbackKinds.length > 0;
-			// STILL SES-SHAPED, and deliberately left so by the leak sweep: the
-			// identity half reads `context.relayIdentities`, which the verification
-			// context types as rows of the FROZEN `sendingDomainSesIdentities`
-			// sibling. Widening it to the generic `sendingDomainRelayIdentities`
-			// table is the read `providerRoutes.listRelayDomainIdentities` has
-			// already grown: it asks each registered kind to describe a domain
-			// (`describeRelayIdentity`) rather than reading one vendor's table, and
-			// this validator's context can be loaded the same way — see the
-			// sending-domain section of `docs/abstractions.md`.
-			//
-			// SO THE TWO HALVES ARE HELD TOGETHER RATHER THAN LEFT TO DRIFT. Those
-			// rows prove ONE kind's identities ({@link RELAY_IDENTITY_PROOF_KIND}),
-			// and a deployment that switches its fallback to another relay KEEPS
-			// them: nothing deletes the SES siblings on a switch and `verifyDomain`
-			// goes on refreshing them, so a proof read that ignored which kind is
-			// configured would report a relay holding zero identities as fully
-			// proven — a false green exactly where the operator is asking whether
-			// the fallback will work. Until the generic read lands, a relay whose
-			// proofs this deployment cannot see reaches "the route is configured,
-			// the proof is absent", which is both true and the same warn a missing
-			// SES proof gets.
+			// A PROOF COUNTS ONLY FOR THE KIND ITS ROW NAMES. A deployment that
+			// switches its fallback to another relay KEEPS the old relay's rows, so a
+			// proof read that ignored whose rows they are would report a relay
+			// holding zero identities as fully proven — a false green exactly where
+			// the operator is asking whether the fallback will work. A relay with no
+			// rows of its own in the context reaches "the route is configured, the
+			// proof is absent", which is both true and the same warn a missing proof
+			// gets.
 			//
 			// EVERY configured relay, not merely one of them: a deployment can route
 			// its message types to different fallbacks, and a proof that covers one
 			// of them says nothing about the other. `every` fails closed on the
 			// mixed configuration; `some` would report the whole item green on the
 			// strength of the one relay this deployment can still read proofs for.
+			const proofKinds = [
+				...new Set(context.relayIdentities.map((identity) => identity.providerKind)),
+			];
 			const identitiesReady =
-				readyFallbackKinds.every((kind) => kind === RELAY_IDENTITY_PROOF_KIND) &&
+				readyFallbackKinds.every((kind) => proofKinds.some((proofKind) => proofKind === kind)) &&
 				context.relayIdentities.length > 0 &&
 				context.relayIdentities.every(
 					(identity) =>
@@ -346,18 +335,14 @@ export async function observeDeploymentCheck(
 					: routeReady
 						? 'The deliverability fallback relay is enabled, but at least one domain proof is absent or stale.'
 						: 'No verified relay fallback is configured.',
-				// THE EVIDENCE SAYS WHOSE PROOF IT IS. These rows are always the one
-				// kind's frozen siblings, and a deployment that switched its fallback
-				// keeps them — so on a Mandrill route the unqualified list read
+				// THE EVIDENCE SAYS WHOSE PROOF IT IS. A deployment that switched its
+				// fallback keeps the old relay's rows, so an unqualified list would read
 				// "at least one domain proof is absent or stale" beside
-				// `provider-verified=true` for every domain, which is the same false
-				// green the `every(kind === RELAY_IDENTITY_PROOF_KIND)` gate above
-				// exists to prevent, re-appearing in the record an operator opens to
-				// understand the warn. The two leading facts name the proof's kind and
-				// the configured relay's, so a stored observation is self-explaining
-				// even when the rows and the route disagree.
+				// `provider-verified=true` for every domain. The two leading facts name
+				// the proofs' kinds and the configured relay's, so a stored observation
+				// is self-explaining even when the rows and the route disagree.
 				[
-					`proof-kind=${RELAY_IDENTITY_PROOF_KIND}`,
+					`proof-kind=${proofKinds.join(',') || 'none'}`,
 					`configured-relay=${readyFallbackKinds.join(',') || 'none'}`,
 					...context.relayIdentities.flatMap((identity) => [
 						`domain-id=${identity.domainId}`,

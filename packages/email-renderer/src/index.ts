@@ -27,7 +27,6 @@ export {
 export type { BlockRenderer } from './blocks';
 export {
 	registerBlockModule,
-	unregisterBlockModule,
 	finalizeBlockRegistry,
 	isBlockRegistryFrozen,
 	moduleFor,
@@ -80,19 +79,8 @@ export {
 export {
 	getBlockCompatibility,
 	getPropertyCompatibility,
-	getCriticalProperties,
-	getHandledFeatures,
-	getClientIssues,
-	getClientPropertyIssues,
 	getAudienceReach,
 	scoreBlockCompatibility,
-	getBlockLimitationSummary,
-	getSafeBlockConfig,
-	checkPropertyCompatibility,
 	featuresFor,
 	propertiesFor,
-	allBlockTypes,
-	allFeatures,
-	allProperties,
 } from './compatibility';
-export type { BlockTaggedFeature, BlockTaggedProperty, BlockLimitation } from './compatibility';

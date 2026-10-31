@@ -255,16 +255,14 @@ const busy = computed(
 									: t('components.postbox.teamInboxMembersPanel.member')
 							}}</span
 						>
-						<UiButton
+						<UiTooltip
 							v-if="canManage && m.role !== 'owner'"
-							variant="ghost"
-							size="sm"
-							:disabled="busy"
-							:title="t('components.postbox.teamInboxMembersPanel.makeOwnerTitle')"
-							@click="askTransfer(m)"
+							:text="t('components.postbox.teamInboxMembersPanel.makeOwnerTitle')"
 						>
-							{{ t('components.postbox.teamInboxMembersPanel.makeOwner') }}
-						</UiButton>
+							<UiButton variant="ghost" size="sm" :disabled="busy" @click="askTransfer(m)">
+								{{ t('components.postbox.teamInboxMembersPanel.makeOwner') }}
+							</UiButton>
+						</UiTooltip>
 						<UiTooltip
 							v-if="canManage && m.role !== 'owner'"
 							:text="t('components.postbox.teamInboxMembersPanel.removeMember')"

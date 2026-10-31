@@ -78,8 +78,10 @@ scripts/ralph/archive/
 
 .data/
 
-# Email preview output
-previews/
+# Email preview output (packages/email-renderer/src/preview/generate.ts).
+# Anchored so it does not hide the email-builder's tracked previews/ components
+# from tools that read .gitignore (knip drops ignored files from its graph).
+/packages/email-renderer/previews/
 
 # Review reports & internal working notes — kept uncommitted by convention.
 # Root-level only (the leading slash), so documentation under apps/docs is

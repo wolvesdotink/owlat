@@ -203,32 +203,29 @@ const createdOn = computed(() =>
 						<Icon name="lucide:refresh-cw" class="w-4 h-4 mr-1.5" />
 						{{ reconnecting ? t('common.cancel') : t('dashboard.admin.team.inboxes.reconnect') }}
 					</UiButton>
-					<UiButton
-						variant="ghost"
-						size="sm"
-						:title="t('dashboard.admin.team.inboxes.openInboxTitle')"
-						@click="emit('open')"
-					>
-						<Icon name="lucide:arrow-right" class="w-4 h-4 mr-1.5" />
-						{{ t('dashboard.admin.team.inboxes.openInbox') }}
-					</UiButton>
+					<UiTooltip :text="t('dashboard.admin.team.inboxes.openInboxTitle')">
+						<UiButton variant="ghost" size="sm" @click="emit('open')">
+							<Icon name="lucide:arrow-right" class="w-4 h-4 mr-1.5" />
+							{{ t('dashboard.admin.team.inboxes.openInbox') }}
+						</UiButton>
+					</UiTooltip>
 					<!-- Suspended inboxes are refused by `requireMailboxAccess`, so the
 					     panel would open on a card that can only report an error. -->
-					<UiButton
-						v-if="canImport"
-						variant="ghost"
-						size="sm"
-						data-testid="team-inbox-import-toggle"
-						:aria-expanded="importing"
-						:title="t('dashboard.admin.team.inboxes.import.actionTitle')"
-						@click="emit('toggleImport')"
-					>
-						<Icon
-							:name="importing ? 'lucide:chevron-up' : 'lucide:download'"
-							class="w-4 h-4 mr-1.5"
-						/>
-						{{ importing ? t('common.done') : t('dashboard.admin.team.inboxes.import.action') }}
-					</UiButton>
+					<UiTooltip v-if="canImport" :text="t('dashboard.admin.team.inboxes.import.actionTitle')">
+						<UiButton
+							variant="ghost"
+							size="sm"
+							data-testid="team-inbox-import-toggle"
+							:aria-expanded="importing"
+							@click="emit('toggleImport')"
+						>
+							<Icon
+								:name="importing ? 'lucide:chevron-up' : 'lucide:download'"
+								class="w-4 h-4 mr-1.5"
+							/>
+							{{ importing ? t('common.done') : t('dashboard.admin.team.inboxes.import.action') }}
+						</UiButton>
+					</UiTooltip>
 					<UiButton
 						variant="secondary"
 						size="sm"

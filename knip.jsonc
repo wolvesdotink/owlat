@@ -4,8 +4,8 @@
 	// LOW-NOISE signal: every framework entrypoint (Nuxt app dirs, Convex
 	// function files, generated code, CLI bins) is declared as `entry` or
 	// ignored so it is never mis-reported as dead. What remains — genuinely
-	// orphaned exports/files/deps — is frozen into scripts/dead-code-baseline.txt
-	// and ratcheted by scripts/check-dead-code.sh. Be GENEROUS here: a config
+	// orphaned exports/files/deps — fails scripts/check-dead-code.sh, which
+	// tolerates none. Be GENEROUS here: a config
 	// that flags a real entrypoint is worse than one that misses some dead code.
 	"workspaces": {
 		// plugins.config.ts is read by the plugin codegen CLI, not imported, so its
@@ -31,6 +31,12 @@
 				"scripts/kill-tests/world/main.ts",
 			],
 			"includeEntryExports": false,
+			// The root `nuxt` pin is a hoisting anchor, not an import: with the
+			// hoisted linker (bunfig.toml) it makes bun place Nuxt's own dependency
+			// versions (hookable, magic-string, exsolve, unctx, ...) at the top of
+			// node_modules, where the Nuxt layer in packages/ui and the Nuxt modules
+			// resolve them. Dropping it re-hoists older copies other packages ask for.
+			"ignoreDependencies": ["nuxt"],
 			// @owlat/plugin-kit, @owlat/provider-kit and @owlat/sdk-js are tsup
 			// builds whose package.json `exports["."]` points at dist/, which the
 			// global ignore below drops. In a clean CI checkout dist/ does not
@@ -344,7 +350,13 @@
 				"src/**/__tests__/**/*.ts",
 			],
 		},
-		"packages/sdk-js": { "entry": ["src/index.ts", "test/**/*.ts"] },
+		// Published to npm: the barrel is API for code outside this repo, so a
+		// symbol no workspace imports is not dead. Only the test files are entry
+		// next to it, so an unused export in test/helpers.ts is still reported.
+		"packages/sdk-js": {
+			"entry": ["src/index.ts", "test/**/*.test.ts"],
+			"includeEntryExports": false,
+		},
 		"packages/plugin-cli": {
 			"entry": ["src/index.ts", "src/run.ts", "src/**/__tests__/**/*.ts"],
 		},
@@ -364,11 +376,19 @@
 		"packages/plugin-host": {
 			"entry": ["src/index.ts", "src/**/__tests__/**/*.ts"],
 		},
+		// Published to npm: the barrel is the contract third-party plugins build
+		// against, so its exports are not reported. Modules under src/ that the
+		// barrel does not re-export are still checked.
 		"packages/plugin-kit": {
 			"entry": ["src/index.ts", "scripts/*.ts", "src/**/__tests__/**/*.ts"],
+			"includeEntryExports": false,
 		},
-		// Single barrel; its one spec sits next to the module, not in __tests__.
-		"packages/provider-kit": { "entry": ["src/index.ts", "src/**/*.test.ts"] },
+		// Published to npm, same as plugin-kit. Single barrel; its one spec sits
+		// next to the module, not in __tests__.
+		"packages/provider-kit": {
+			"entry": ["src/index.ts", "src/**/*.test.ts"],
+			"includeEntryExports": false,
+		},
 		// packages/ui is a Nuxt layer — every composable/component is reachable
 		// by auto-import convention (path prefix), so the whole tree stays entry.
 		"packages/ui": {
@@ -418,6 +438,8 @@
 	// as entry — a Convex function or an auto-imported composable has no
 	// importer by design, so entry-export reporting there is pure noise
 	// (measured: 60 false positives, e.g. `useAuth` in apps/web, which every
-	// dashboard page calls via Nuxt auto-import).
+	// dashboard page calls via Nuxt auto-import). Also OFF for the packages
+	// published to npm (plugin-kit, provider-kit, sdk-js), whose barrels serve
+	// code outside the repo.
 	"includeEntryExports": true,
 }

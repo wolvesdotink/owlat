@@ -96,13 +96,9 @@ export { bucketFor, hash32, MIX_BUCKET_SPACE } from './hash';
  * time a family cleared, with nothing failing:
  *
  *   * DECLARATIONS in `apps/api/convex` (`const X = 'ses'`) —
- *     `SURVIVING_KIND_LITERALS` in
- *     `scripts/check-kind-literal-custody.ts`, each entry with
- *     its family and its owner, asserted in both directions. This file is no
- *     longer in it: the `definitional` entry it used to hold went when the
- *     constant below became a re-export. `domains/providers/mta/index.ts`'s
- *     `kind` still spells one, inside an adapter folder the rule does not reach.
- *     That map holds declarations ONLY.
+ *     `scripts/check-kind-literal-custody.ts`, which allows none outside the
+ *     adapter folders (`domains/providers/mta/index.ts`'s `kind` spells one
+ *     inside its own folder). It checks declarations ONLY.
  *   * COMPARISONS that are debt — `scripts/provider-identity-allowlist.txt`,
  *     read by `bun run lint:providers` over `apps/`, `packages/` and
  *     `examples/`. Each entry sits under a family header naming what would
@@ -117,13 +113,8 @@ export { bucketFor, hash32, MIX_BUCKET_SPACE } from './hash';
  *     coupling, so it must NOT go in the allowlist — that is what lets the
  *     allowlist reach zero.
  *
- * Read those three, not this list. For orientation only, the surviving families: the RETURN-PATH
- * pair (`domains/returnPathProviders.ts`, `delivery/checklistDomainValidators.ts`), waiting on a
- * capability that has no home on the sending-domain adapter interface yet; the FROZEN-SIBLING
- * READ that is left (`delivery/checklistValidatorTypes.ts` — its twin, the relay panel's query,
- * now walks the relay-identity registry instead); ADAPTER-ADJACENT actions living beside an
- * adapter rather than inside it (`domains/mandrillRelay*.ts`,
- * `webhooks/mandrillRejectSuppression.ts`); and the provider-shaped UI branches in `apps/web`.
+ * Read those three, not this list. For orientation only, what survives is in the setup UI and
+ * CLI (`apps/web`, `apps/setup-cli`) and the shared setup validators; the backend carries none.
  */
 export const OWN_ARM_TRANSPORT_KIND = OWN_SEND_PROVIDER_KIND;
 

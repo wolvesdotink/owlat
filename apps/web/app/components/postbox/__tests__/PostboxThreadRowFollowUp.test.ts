@@ -6,6 +6,7 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+import { tooltipOf } from '~/__tests__/tooltip';
 
 import PostboxThreadRowFollowUp from '../PostboxThreadRowFollowUp.vue';
 
@@ -30,6 +31,14 @@ describe('PostboxThreadRowFollowUp', () => {
 		expect(button.exists()).toBe(true);
 		await button.trigger('click');
 		expect(w.emitted('cancel')).toHaveLength(1);
+	});
+
+	it('explains the cancel in a tooltip, not a native title, and keeps its own name', () => {
+		const w = mountChip({ remindAt: 1, dueAt: 2 }, true);
+		const button = w.get('button');
+		expect(button.attributes('title')).toBeUndefined();
+		expect(button.attributes('aria-label')).toBe('No reply yet — dismiss reminder');
+		expect(tooltipOf(w, button)).toBe('No reply yet — click to dismiss the reminder');
 	});
 
 	it('is a plain indicator otherwise, for both the due and the armed state', () => {

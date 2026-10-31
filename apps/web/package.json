@@ -54,7 +54,6 @@
 		"vue-router": "^5.0.4"
 	},
 	"devDependencies": {
-		"@faker-js/faker": "^10.6.0",
 		"@iconify-json/lucide": "^1.2.123",
 		"@nuxt/fonts": "catalog:vue",
 		"@nuxt/icon": "^2.2.1",
@@ -68,13 +67,11 @@
 		"@vitest/browser-playwright": "catalog:",
 		"@vitest/coverage-v8": "catalog:",
 		"@vue/test-utils": "^2.4.6",
-		"autoprefixer": "^10.4.27",
 		"axe-core": "^4.13.0",
 		"cross-env": "^10.1.0",
 		"fake-indexeddb": "^6.2.5",
 		"fflate": "^0.4.9",
 		"happy-dom": "catalog:",
-		"postcss": "^8.5.26",
 		"tailwindcss": "catalog:vue",
 		"typescript": "catalog:",
 		"vite": "8.3.3",

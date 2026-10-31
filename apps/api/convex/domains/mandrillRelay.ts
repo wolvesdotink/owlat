@@ -38,7 +38,7 @@ export const provision = internalAction({
 	args: { domainId: v.id('domains') },
 	handler: async (ctx, args): Promise<{ provisioned: boolean }> => {
 		const domain = await ctx.runQuery(internal.domains.queries.getDomainForRegistration, args);
-		if (!domain || domain.providerType === 'mandrill') return { provisioned: false };
+		if (!domain || domain.providerType === mandrillProvider.kind) return { provisioned: false };
 		const { identity } = await mandrillProvider.registerDomain(domain.domain);
 		await ctx.runMutation(internal.domains.mandrillRelayMutations.storeIdentity, {
 			domainId: args.domainId,
