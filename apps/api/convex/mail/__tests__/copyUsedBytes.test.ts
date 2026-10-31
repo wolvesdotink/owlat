@@ -103,6 +103,10 @@ describe('mailbox usedBytes across IMAP COPY', () => {
 		).resolves.toEqual({ mailboxes: 1 });
 
 		expect(await usedBytes(t, mailboxId)).toBe(rawSize * 2);
+
+		// Each mailbox's total is published on its own; a re-run recounts the same.
+		await t.action(internal.migrations['0042_recompute_mailbox_used_bytes'].run, {});
+		expect(await usedBytes(t, mailboxId)).toBe(rawSize * 2);
 	});
 });
 
