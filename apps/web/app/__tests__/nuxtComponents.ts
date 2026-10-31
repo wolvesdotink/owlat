@@ -10,11 +10,11 @@
  * up front, which is why those two are registered alongside it.
  *
  * `UiQueryBoundary` is real for the same reason: list and detail pages show a
- * failed read through it (#721), so a suite mounting one sees the categorized
+ * failed read through it, so a suite mounting one sees the categorized
  * error and its Try again, not an empty custom element.
  *
  * `UiUnsavedChangesDialog` is the leave prompt every guarded settings and
- * editor page renders by its auto-registered name (#1441); it stays closed
+ * editor page renders by its auto-registered name; it stays closed
  * until a suite opens it.
  *
  * `AppErrorBoundary` (and the `UiErrorBoundary` it renders) wraps every page

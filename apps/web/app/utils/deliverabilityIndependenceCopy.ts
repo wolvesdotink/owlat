@@ -48,15 +48,15 @@ export type IndependenceSummary = FunctionReturnType<
  * The measurement screen asks the other question — was this cell measured
  * against anything — and passes the other input.
  *
- * SO IT TAKES `isRelayConfigured`, NOT `referenceTransportId` (#513). The id is
+ * SO IT TAKES `isRelayConfigured`, NOT `referenceTransportId`. The id is
  * `configuredRelayKinds().length === 1` failing, so a deployment relaying
- * through MORE THAN ONE kind reads `null` — and keying the screen to it framed
- * such a deployment as standalone, exactly as one with no relay at all. That was
- * the same substitution of a configuration answer for an existence question that
- * survived on the measurement dashboard until #502 made gate 5 decide, and worse
- * here, because `relayRemoval: 'safe'` is a GUARD the apply-transport endpoint
- * skips its confirmation phrase on. The summary now carries both readings off
- * one scan, and the id is left doing the one job it is honest at: naming.
+ * through MORE THAN ONE kind reads `null` — and keying the screen to it would
+ * frame such a deployment as standalone, exactly as one with no relay at all.
+ * That substitutes a configuration answer for an existence question, which the
+ * measurement dashboard avoids by letting gate 5 decide, and it is worse here,
+ * because `relayRemoval: 'safe'` is a GUARD the apply-transport endpoint skips
+ * its confirmation phrase on. The summary carries both readings off one scan,
+ * and the id does the one job it is honest at: naming.
  */
 export function independenceHeadline(isRelayConfigured: boolean): LocalizedText {
 	return measurementHeadline(isRelayConfigured);
@@ -64,7 +64,7 @@ export function independenceHeadline(isRelayConfigured: boolean): LocalizedText 
 
 /**
  * THE RELAY IS NAMED, NOT KEYED. Which sentence to say is
- * `isRelayConfigured`'s decision (#513); `referenceTransportId` only supplies
+ * `isRelayConfigured`'s decision; `referenceTransportId` only supplies
  * the NAME inside the relay sentence, and its `null` there is the OTHER null —
  * more than one kind connected, so no single one to name, which the plural
  * phrasing covers rather than falling back to the standalone sentence.

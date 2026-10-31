@@ -1,5 +1,5 @@
 /**
- * THE TWO SPANS THE MEASUREMENT SCREENS RENDER, PUT INTO WORDS (#510).
+ * THE TWO SPANS THE MEASUREMENT SCREENS RENDER, PUT INTO WORDS.
  *
  * The delivery dashboard query answers over two of them and says so on the wire:
  * counters, rates and the trend over a REPORTED window of whole UTC days, and

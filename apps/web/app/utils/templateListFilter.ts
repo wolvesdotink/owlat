@@ -1,5 +1,5 @@
 /**
- * The templates list's type filter (#787), kept in the URL as `?type=`.
+ * The templates list's type filter, kept in the URL as `?type=`.
  * Pure so the URL parsing is unit-tested directly.
  */
 

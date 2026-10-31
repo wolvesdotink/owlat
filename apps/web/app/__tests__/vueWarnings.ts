@@ -4,8 +4,8 @@
  * A component Vue could not resolve renders as an empty custom element, so a
  * suite asserting on the page around it passes whatever that component would
  * have shown; a required prop left out renders the component's fallback branch.
- * Both used to be a line in stderr that nobody read (481 and 18 per run). Here
- * they fail the test they happened in.
+ * A line in stderr is one nobody reads, so here they fail the test they
+ * happened in.
  *
  * The handler records rather than throws: Vue's `warn` guards against
  * re-entrancy with a flag it only resets after the handler returns, so a throw

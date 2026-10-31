@@ -1,10 +1,11 @@
 /**
  * Pure mapping and row-preparation rules for the CSV contact import.
  *
- * The import used to read the mapping three ways: validation and the preview
- * took the FIRST column mapped to Email, serialization let the LAST nonempty one
- * win. With `email` and `secondary_email` both auto-mapped, the preview showed
- * one address and the import wrote the other. Two rules close that:
+ * Validation, the preview and serialization must read the mapping one way. If
+ * the preview took the FIRST column mapped to Email and serialization let the
+ * LAST nonempty one win, then with `email` and `secondary_email` both
+ * auto-mapped the preview would show one address and the import write the
+ * other. Two rules close that:
  *
  * - A scalar destination (Email, First name, Last name, Language) has exactly
  *   one owning column. Auto-detection hands out each one once, and assigning a

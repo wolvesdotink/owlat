@@ -108,8 +108,8 @@ describe('the admin rail', () => {
 			expect.arrayContaining([
 				'/dashboard/admin',
 				'/dashboard/admin/delivery/transport',
-				// The ramp pages that used to live behind a collapsed disclosure on
-				// one hub, and appeared in no navigation at all.
+				// The ramp pages are in the rail, not only behind a collapsed
+				// disclosure on one hub.
 				'/dashboard/admin/delivery/advanced',
 				'/dashboard/admin/delivery/quarantine',
 				'/dashboard/admin/instance/features',

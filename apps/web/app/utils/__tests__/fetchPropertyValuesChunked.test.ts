@@ -22,8 +22,8 @@ describe('fetchPropertyValuesChunked', () => {
 
 	it('exports more contacts than a single call can serve and merges the full map', async () => {
 		// Simulate the Convex per-transaction index-range-read cap: a single call
-		// that receives more than ~2,048 ids throws, exactly as the real backend
-		// did before this fix. Chunking must keep every call under that limit and
+		// that receives more than ~2,048 ids throws, as the real backend does on an
+		// unchunked read. Chunking must keep every call under that limit and
 		// still return the complete property map for all contacts.
 		const CAP = 2048;
 		const ids = Array.from({ length: 5000 }, (_, i) => idOf(i));

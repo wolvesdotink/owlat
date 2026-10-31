@@ -1,5 +1,5 @@
 /**
- * A LEADING SPACE INSIDE AN INLINE ELEMENT NEVER REACHES THE PAGE (#1340).
+ * A LEADING SPACE INSIDE AN INLINE ELEMENT NEVER REACHES THE PAGE.
  *
  * Vue compiles templates with `whitespace: 'condense'`, which drops a
  * whitespace-only text node when it is an element's first child. So in

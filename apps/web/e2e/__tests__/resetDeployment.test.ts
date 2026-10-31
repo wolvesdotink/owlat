@@ -1,7 +1,7 @@
 // @vitest-environment node
 /**
  * The workflow resets the test deployment when a run ends, so the seeded
- * owner's sessions stop authenticating (#1222). A transient failure is retried
+ * owner's sessions stop authenticating. A transient failure is retried
  * within a bound, a definitive one is not. The call goes through Node's
  * `fetch`, and neither its errors nor its retry lines name the secret or the
  * deployment.

@@ -1,7 +1,7 @@
 // @vitest-environment node
 /**
  * The shape of the E2E workflow and Playwright config that keeps the run's
- * credentials out of the public report and ends the run's sessions (#1222):
+ * credentials out of the public report and ends the run's sessions:
  *
  * - CI records no trace, in any project;
  * - the test deployment is reset when the run ends, whatever happened;

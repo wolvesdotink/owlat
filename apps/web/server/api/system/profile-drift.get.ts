@@ -12,9 +12,9 @@ import { decodeProfileState } from '~~/server/utils/updaterResponses';
  * Durable services-drift probe (plan FU4): does the running stack still match
  * the current feature-flag state?
  *
- * The "Services out of sync — Apply & restart" banner used to be driven purely
- * by drift a tab happened to observe, so a reload (or a second browser) lost it
- * while the services were still drifted. This route answers the same question
+ * Driven only by drift a tab happens to observe, the "Services out of sync —
+ * Apply & restart" banner would vanish on a reload (or in a second browser)
+ * while the services are still drifted. This route answers the same question
  * from durable state: the updater reports the APPLIED profiles (COMPOSE_PROFILES
  * in the host `.env`), Convex reports the CURRENT resolved flags, and the
  * comparison happens here through the same `getActiveProfiles` derivation

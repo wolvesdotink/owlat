@@ -6,7 +6,7 @@ import { parseCsvFile } from '../contactsCsv';
  *
  * The sibling `parseCsvFile.test.ts` mocks papaparse to pin the callback
  * plumbing, which is exactly why it never saw papaparse's delimiter guess fail
- * on single-column files and on short files that end with a newline (#910).
+ * on single-column files and on short files that end with a newline.
  * Nothing is mocked here.
  */
 const csv = (text: string, name = 'test.csv') => new File([text], name, { type: 'text/csv' });

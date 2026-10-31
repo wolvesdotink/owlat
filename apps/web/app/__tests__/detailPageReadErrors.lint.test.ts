@@ -1,5 +1,5 @@
 /**
- * A DETAIL PAGE SHOWS A FAILED READ AS AN ERROR, NOT AS "NOT FOUND" (#721).
+ * A DETAIL PAGE SHOWS A FAILED READ AS AN ERROR, NOT AS "NOT FOUND".
  *
  * Every dashboard page under a dynamic route segment (`[id]`, `[threadId]`, …)
  * renders one record. When the read for it fails, the query composables leave

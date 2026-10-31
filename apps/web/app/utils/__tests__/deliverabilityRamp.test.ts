@@ -188,8 +188,8 @@ describe('naming the reference transport', () => {
 	});
 
 	/**
-	 * TWO RELAYS: a name it cannot give, on a screen that is still about a relay
-	 * (#513). The sentence is chosen by whether a relay EXISTS, so the unnamed
+	 * TWO RELAYS: a name it cannot give, on a screen that is still about a relay.
+	 * The sentence is chosen by whether a relay EXISTS, so the unnamed
 	 * case says "the relays you have connected" rather than falling through to the
 	 * standalone promise that there is nothing to move away from.
 	 */

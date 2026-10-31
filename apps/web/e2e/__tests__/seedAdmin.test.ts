@@ -1,8 +1,8 @@
 // @vitest-environment node
 /**
  * The setup seed goes through Node's `fetch`, which Playwright does not trace,
- * so the instance secret it carries never reaches a trace in the public report
- * (#1203 review). Its errors name the status and body, never the secret.
+ * so the instance secret it carries never reaches a trace in the public report.
+ * Its errors name the status and body, never the secret.
  */
 import { describe, expect, it, vi } from 'vitest';
 import { seedAdmin } from '../seedAdmin';
