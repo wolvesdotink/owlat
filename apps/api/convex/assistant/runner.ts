@@ -358,12 +358,15 @@ export const runForChat = internalAction({
 			lastUserText: lastUser?.text ?? '',
 			feature: 'chat_assistant',
 			root: assistantRoot(args.assistantMessageId),
-			patch: (text, toolCalls) =>
-				ctx.runMutation(internal.chat.messages.patchAssistantChatMessage, {
+			patch: (text, toolCalls) => {
+				// checkpoint: partial text and tool cards the room renders while the
+				// reply streams; the finalize overwrites them with the result.
+				return ctx.runMutation(internal.chat.messages.patchAssistantChatMessage, {
 					messageId: args.assistantMessageId,
 					text,
 					toolCalls,
-				}),
+				});
+			},
 			isStopped: () =>
 				ctx.runQuery(internal.chat.messages.isAssistantReplyStopped, {
 					messageId: args.assistantMessageId,
