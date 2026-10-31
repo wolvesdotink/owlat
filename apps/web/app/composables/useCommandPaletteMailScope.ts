@@ -2,11 +2,9 @@
  * Mail scope for the command palette: the operator grammar, its autocomplete,
  * and live hits from the real mail search.
  *
- * This is what the Postbox rail's search bar used to be. The grammar itself is
- * unchanged — the same `@owlat/shared/mailSearch` parser reaching the same
- * `mail.mailbox.search.search` query, and the same `~/utils/postboxSearchSuggest`
- * ranking for the token under the caret — it just renders as palette rows now
- * instead of a second input with its own dropdown.
+ * The `@owlat/shared/mailSearch` parser reaches the `mail.mailbox.search.search`
+ * query, and `~/utils/postboxSearchSuggest` ranks the token under the caret. It
+ * renders as palette rows, not as a second input with its own dropdown.
  *
  * Every subscription here is gated on `enabled` AND on a resolved mailbox: the
  * palette is mounted on EVERY dashboard page, so a Mail-scope query must cost

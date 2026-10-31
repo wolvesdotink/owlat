@@ -1,5 +1,5 @@
 /**
- * A reopened draft writes nothing until its row has loaded (#896).
+ * A reopened draft writes nothing until its row has loaded.
  *
  * A reopened composer has the draft's id at once, but its fields start empty
  * and fill in when `drafts.get` answers. Autosave writes a COMPLETE snapshot,

@@ -127,8 +127,8 @@ export function useDesktopNotifications(unread: UnreadBadge) {
 	}
 
 	// Route notification clicks / Archive / Mark read / Reply → focus + triage,
-	// and settle the OS permission before the first toast would need it (the app
-	// used to call .show() from Rust without ever asking). The subscription lives
+	// and settle the OS permission before the first toast would need it (showing a
+	// toast does not ask for it). The subscription lives
 	// exactly as long as this owner: leaving the dashboard and coming back must
 	// not leave a second listener behind (one Reply would send twice).
 	let routing: NotificationRouting | null = null;

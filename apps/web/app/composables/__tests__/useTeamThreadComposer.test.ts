@@ -7,7 +7,7 @@ import { useTeamThreadComposer } from '../useTeamThreadComposer';
 const { t, locale } = createTestI18n().global;
 
 /**
- * #812 — the Team inbox thread as a composer target. The send path follows the
+ * The Team inbox thread as a composer target. The send path follows the
  * message's state, a value-shaped refusal reads as "not sent", and a held or
  * busy composer never sends twice.
  */

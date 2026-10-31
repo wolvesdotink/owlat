@@ -1,7 +1,7 @@
 /**
  * The growable-limit lists (chat history, grouped Postbox, inbox sections) keep
  * the frame's first window and the current one live, not one window per size
- * they passed through (#924). The first window stays warm because a return to
+ * they passed through. The first window stays warm because a return to
  * the frame starts there again. Drives the real
  * composables through useConvexQuery and the shared-subscription registry
  * against a fake Convex client that counts wire subscriptions and re-runs.

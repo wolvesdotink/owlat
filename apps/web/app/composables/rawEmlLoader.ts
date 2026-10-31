@@ -2,7 +2,7 @@
  * Fetch a message's raw `.eml` (signed URL) and turn it into a binary string
  * (one char per byte, exactly) so the `@owlat/shared/mailMime` extractor can
  * pull parts out of it. Not `TextDecoder('latin1')`: that is windows-1252 and
- * changes bytes 0x80-0x9F, so an 8-bit or binary part came out wrong (#1279).
+ * changes bytes 0x80-0x9F, so an 8-bit or binary part came out wrong.
  *
  * Parametrized over the URL-minting call, because that is the ONLY thing the
  * two readers differ on: Postbox mints through

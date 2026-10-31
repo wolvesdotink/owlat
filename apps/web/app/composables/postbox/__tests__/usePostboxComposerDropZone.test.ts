@@ -1,6 +1,6 @@
 /**
- * The Postbox composer renders inside the shared frame (`PostboxComposerShell`,
- * #812), so its root element is the frame's. `bindRoot` is the function ref
+ * The Postbox composer renders inside the shared frame (`PostboxComposerShell`),
+ * so its root element is the frame's. `bindRoot` is the function ref
  * that hands that element to the drop zone, the composer keys and the gap
  * clicks: a drop outside it must not attach, and Esc must stay with the
  * composer it was pressed in.

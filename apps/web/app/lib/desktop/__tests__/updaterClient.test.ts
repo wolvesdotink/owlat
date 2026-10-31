@@ -399,8 +399,8 @@ describe('runUpdateCheck', () => {
 	});
 
 	it('asks the instance, not GitHub, inside a defer window with nothing cached', async () => {
-		// The audit's example: a one-week hold and an empty summary used to send
-		// the app to GitHub, which could install a release the hold was for.
+		// A one-week hold and an empty summary must not send the app to GitHub,
+		// which could install a release the hold was for.
 		getActiveWorkspace.mockReturnValue(workspace('https://acme.example'));
 		fetchMock.mockResolvedValue(
 			policyResponse(200, { ...POLICY, deferHours: 168, latestVersion: null })

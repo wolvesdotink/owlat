@@ -145,7 +145,7 @@ export function useKnowledgeGraphView() {
 	}
 
 	const isLoading = computed(() => statsLoading.value || subgraphLoading.value);
-	// A failed read is not an empty graph (#721).
+	// A failed read is not an empty graph.
 	const error = computed(() => subgraphError.value ?? statsError.value);
 	function refetch() {
 		if (subgraphError.value) refetchSubgraph();

@@ -150,7 +150,7 @@ const message: StoredMessage = {
 	subject: 'Hello',
 };
 
-// ── #950: one subscription per owner ────────────────────────────────────────
+// ── one subscription per owner ──────────────────────────────────────────────
 
 describe('notification routing subscription lifetime', () => {
 	it('disposing the owner removes its listener', async () => {
@@ -259,7 +259,7 @@ describe('notification routing subscription lifetime', () => {
 	});
 });
 
-// ── #951: actions run in the workspace that sent the notification ───────────
+// ── actions run in the workspace that sent the notification ─────────────────
 
 describe('notification actions keep their workspace', () => {
 	// Both instances have a message called `m1` (ids are instance-scoped, so they

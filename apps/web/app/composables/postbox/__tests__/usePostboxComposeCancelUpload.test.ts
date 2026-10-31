@@ -5,7 +5,7 @@ import { createTestI18n } from '~/__tests__/i18n';
 import type * as Uploads from '../postboxAttachmentUploads';
 
 /**
- * #1273: cancelling an upload chip while `drafts.addAttachment` runs. The
+ * Cancelling an upload chip while `drafts.addAttachment` runs. The
  * mutation commits after the cancel, so the composer must take the file back
  * off the draft rather than re-adding it, and hold Send until it has.
  */

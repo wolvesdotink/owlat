@@ -1,11 +1,10 @@
 /**
  * The campaign edit page runs the wizard's recipients and sender controls.
  *
- * `useCampaignForm` used to keep its own copy of the audience state and a
- * free-text From address that it checked only for shape, so an address off the
- * curated list got as far as `updateBasics` and was refused there. The sender
- * picker's `validate()` now guards the save, and the picker's own settling of
- * the loaded From must not look like an unsaved edit.
+ * `useCampaignForm` shares the wizard's audience state and sender picker, so an
+ * address off the curated list never reaches `updateBasics` (which refuses it).
+ * The sender picker's `validate()` guards the save, and the picker's own
+ * settling of the loaded From must not look like an unsaved edit.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { nextTick, ref, type Ref } from 'vue';

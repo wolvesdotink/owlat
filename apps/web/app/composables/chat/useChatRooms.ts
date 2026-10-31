@@ -66,7 +66,7 @@ export function useChatRooms() {
 	});
 
 	const isLoading = computed(() => channelsLoading.value || dmsLoading.value);
-	// A failed read is not an empty room list (#721).
+	// A failed read is not an empty room list.
 	const error = computed(() => channelsError.value ?? dmsError.value);
 	function refetch() {
 		if (channelsError.value) refetchChannels();

@@ -8,7 +8,7 @@ import {
 } from '../useTranslationDrafts';
 
 /**
- * Per-cell drafts of the translation table (issue #1001). Driven with real Vue
+ * Per-cell drafts of the translation table. Driven with real Vue
  * refs and a controllable backend port: each write the composable makes is
  * held until the test settles it, so overlapping saves, emissions during a
  * pending write and typing during an acknowledgement happen in a fixed order.
