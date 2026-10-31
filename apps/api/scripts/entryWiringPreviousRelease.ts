@@ -25,6 +25,10 @@ export const PREVIOUS_RELEASE_ENTRIES: Readonly<Record<string, string>> = {
 	'campaigns/sendQueries.ts#storeContentScanResult': 'old campaign send preparations mid-run',
 	'campaigns/archiveQueries.ts#setArchiveSnapshot': 'old campaign send preparations mid-run',
 	'emailTemplates/versions.ts#captureForSend': 'old campaign send preparations mid-run',
+	// The expected-attachment copy now lands in one commit (`bindCopy`).
+	'mail/draftExpectedAttachments.ts#stageCopy': 'old draft attachment fulfils mid-copy',
+	'mail/draftExpectedAttachments.ts#bindExpected': 'old draft attachment fulfils mid-copy',
+	'mail/draftExpectedAttachments.ts#dropCopy': 'old draft attachment fulfils mid-copy',
 	// System & updates now reads maintenance/workerRegistry.ts `getForAdmin`.
 	'mail/imap/serverRegistry.ts#getForAdmin':
 		'the previous IMAP servers card on System & updates, in tabs opened before the deploy',
