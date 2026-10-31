@@ -1,6 +1,6 @@
 /**
- * The walker's commits (`./walker.ts`). A step makes two writes around its
- * model calls, and only two:
+ * The walker's commits (`./walker.ts`). The walker makes two writes around a
+ * step's model calls, and only two:
  *
  *   - {@link beginStep}, before the calls: the budget hold for a paid step,
  *     or the step's `running` row the rest of the step is recorded against;
@@ -8,6 +8,11 @@
  *     lifecycle transition it routed to, or the failure or hold it ran into)
  *     together with the next `runStep`, so the next hop exists exactly when
  *     the step's result does.
+ *
+ * A step module's `execute` still records its own outputs (the draft, the
+ * scan verdict, the agent decision) in mutations of its own, so they can land
+ * without the `commitStep` that follows: the message then stays in its state
+ * with the row `running`, as after a run that dies during its model calls.
  *
  * Resuming a message into its draft commits once too ({@link commitResumeDraft}).
  */
