@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { api } from '@owlat/api';
-import type { Id } from '@owlat/api/dataModel';
-import { mappableFields, type ImportStep, type MappableField } from '~/composables/useCsvImport';
-import { isScalarField } from '~/utils/csvImportMapping';
-import { buildImportErrorsCsv, downloadCsv } from '~/utils/contactsCsv';
+import type { ImportStep } from '~/composables/useCsvImport';
+import { useCsvImportCompletion } from '~/composables/csvImport/useCsvImportCompletion';
+import CsvImportCompleteStep from './csvImport/CompleteStep.vue';
+import CsvImportListMappingStep from './csvImport/ListMappingStep.vue';
+import CsvImportMappingStep from './csvImport/MappingStep.vue';
+import CsvImportPreviewStep from './csvImport/PreviewStep.vue';
+import CsvImportUploadStep from './csvImport/UploadStep.vue';
 
 const props = defineProps<{
 	csvImport: ReturnType<typeof useCsvImport>;
@@ -17,7 +19,6 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
-const { showToast } = useToast();
 
 const stepDescription = computed(() => {
 	switch (props.csvImport.step.value) {
@@ -89,51 +90,12 @@ const cancelDiscard = () => {
 	isConfirmingDiscard.value = false;
 };
 
+// The preview's issue panel and the mapping step's live region keep their
+// state here, so leaving a step and coming back finds them as they were.
 const showValidationDetails = ref(false);
-
-// Local handle on the validation result so the warnings panel reads its fields
-// without a non-null assertion on every line; the panel's v-if narrows this to
-// non-null before any field is touched.
-const validationResult = computed(() => props.csvImport.validation.value);
-
-// ── Mapping step: one column per scalar field ───────────────────────────────
-
-/**
- * An option's label in one column's select. A scalar field another column owns
- * names that column, so picking it reads as the move it is.
- */
-const fieldOptionLabel = (field: { value: MappableField; label: string }, column: number) => {
-	if (!isScalarField(field.value)) return t(field.label);
-	const owner = props.csvImport.scalarOwners.value[field.value];
-	if (owner === undefined || owner === column) return t(field.label);
-	return t('components.contacts.csvImportModal.mapping.fieldTaken', {
-		field: t(`shared.useCsvImport.fieldNames.${field.value}`),
-		column: props.csvImport.csvHeaders.value[owner] ?? '',
-	});
-};
 
 /** Read out when a pick moves a field off another column, which changes that select too. */
 const mappingAnnouncement = ref('');
-
-const onMappingChange = (column: number, event: Event) => {
-	const field = (event.target as HTMLSelectElement).value as MappableField;
-	const displaced = props.csvImport.mapColumn(column, field);
-	const headers = props.csvImport.csvHeaders.value;
-	mappingAnnouncement.value = displaced
-		.map((index) =>
-			t(
-				props.csvImport.columnMapping.value[index] === 'property'
-					? 'components.contacts.csvImportModal.mapping.fieldMovedToProperty'
-					: 'components.contacts.csvImportModal.mapping.fieldMovedToIgnore',
-				{
-					field: t(`shared.useCsvImport.fieldNames.${field}`),
-					from: headers[index]?.trim() || t('components.contacts.csvImportModal.emptyCell'),
-					to: headers[column] ?? '',
-				}
-			)
-		)
-		.join(' ');
-};
 
 const availableLists = computed(() => props.topics ?? []);
 
@@ -144,9 +106,6 @@ const getListName = (listId: string): string => {
 		t('components.contacts.csvImportModal.unknownList')
 	);
 };
-
-// Distinct custom-property keys mapped in this import (for the preview summary).
-const mappedPropertyKeys = computed(() => props.csvImport.getMappedPropertyKeys());
 
 // Summary text for topic assignment in preview step
 const topicAssignmentSummary = computed(() => {
@@ -167,167 +126,15 @@ const topicAssignmentSummary = computed(() => {
 	return null;
 });
 
-// ── Complete step: where the import goes from here ──────────────────────────
-
-/** How many failures the panel shows before deferring to the download. */
-const ERROR_PREVIEW_LIMIT = 5;
-
-const errorRows = computed(() => props.csvImport.results.value?.errors ?? []);
-const previewedErrorRows = computed(() => errorRows.value.slice(0, ERROR_PREVIEW_LIMIT));
-const hiddenErrorCount = computed(() => Math.max(0, errorRows.value.length - ERROR_PREVIEW_LIMIT));
-
-// ── Complete step: a failed batch ───────────────────────────────────────────
-
-const notImportedCount = computed(() => props.csvImport.notImportedRowCount.value);
-const isIncomplete = computed(() => notImportedCount.value > 0);
-/** Rows the backend reported as failed plus the rows it never committed. */
-const failedCount = computed(
-	() => (props.csvImport.results.value?.failed ?? 0) + notImportedCount.value
-);
-
-/** First and last data row of a slice of the not-imported rows, for the summary lines. */
-const rowSpan = (rows: ReadonlyArray<{ row: number }>) => ({
-	count: rows.length,
-	first: rows[0]?.row ?? 0,
-	last: rows[rows.length - 1]?.row ?? 0,
-});
-const failedBatchRows = computed(() =>
-	rowSpan(props.csvImport.notImportedRows.value.filter((r) => r.attempted))
-);
-const unsentRows = computed(() =>
-	rowSpan(props.csvImport.notImportedRows.value.filter((r) => !r.attempted))
-);
-
-/** One line per row that did not make it in, so the download names every address. */
-const notImportedErrorLines = computed(() => {
-	const reason = props.csvImport.failedBatch.value?.reason ?? '';
-	return props.csvImport.notImportedRows.value.map((r) =>
-		r.attempted
-			? t('components.contacts.csvImportModal.complete.notImportedRow', {
-					row: r.row,
-					email: r.email,
-					reason,
-				})
-			: t('components.contacts.csvImportModal.complete.notSentRow', { row: r.row, email: r.email })
-	);
-});
-const downloadableErrorRows = computed(() => [...errorRows.value, ...notImportedErrorLines.value]);
-
-/**
- * The full error list as a file. The on-screen list stays capped — a wall of
- * 200 red lines is not readable — but nothing that only exists in this modal is
- * allowed to die with it.
- */
-const downloadErrorRows = () => {
-	if (downloadableErrorRows.value.length === 0) return;
-	const stem = props.csvImport.selectedFile.value?.name.replace(/\.csv$/i, '').trim();
-	downloadCsv(
-		buildImportErrorsCsv(downloadableErrorRows.value),
-		`${stem || 'contacts-import'}-errors.csv`
-	);
-};
-
-// A topic assigned after the fact, from the panel below — it becomes the
-// "view imported" target the same way a topic chosen before the import does.
-const assignedTopicId = ref<string | null>(null);
-
-/**
- * The one place the rows that just landed are visible AS A SET: the topic they
- * were assigned to. The contacts list has no per-import filter (and no
- * route-driven search), so with no topic in play the honest answer is the whole
- * list — said out loud on screen rather than pretended away.
- */
-const importedTopicId = computed<string | null>(() => {
-	if (assignedTopicId.value) return assignedTopicId.value;
-	if (props.csvImport.listAssignmentMode.value === 'global') {
-		return props.csvImport.selectedTopicId.value;
-	}
-	if (props.csvImport.listAssignmentMode.value === 'column') {
-		const mapped = [
-			...new Set(Object.values(props.csvImport.listNameMapping.value).filter((id) => id !== null)),
-		];
-		// Several mapped topics have no single destination to open.
-		return mapped.length === 1 ? mapped[0]! : null;
-	}
-	return null;
-});
-
-const viewImported = () => {
-	const topicId = importedTopicId.value;
-	props.csvImport.close();
-	void navigateTo(
-		topicId ? `/dashboard/audience/topics/${topicId}` : '/dashboard/audience/contacts'
-	);
-};
-
-// ── Complete step: add the imported contacts to a topic ─────────────────────
-
-const isAddToTopicOpen = ref(false);
-const addToTopicId = ref('');
-
-/**
- * The distinct addresses this import carried, in file order. The results only
- * carry counts, so the rows are re-derived from the parsed file — `close()` is
- * what clears it, and the complete step is still open. Rows a failed batch left
- * behind are left out: `importBatch` would create them, which is the retry's
- * job, not a topic assignment's.
- */
-const importedEmails = computed(() => {
-	const notImported = new Set(props.csvImport.notImportedRows.value.map((r) => r.row));
-	const seen = new Set<string>();
-	const emails: string[] = [];
-	for (const { row, contact } of props.csvImport.preparedRows.value) {
-		if (notImported.has(row)) continue;
-		const email = contact.email;
-		if (!email || seen.has(email.toLowerCase())) continue;
-		seen.add(email.toLowerCase());
-		emails.push(email);
-	}
-	return emails;
-});
-
-/** Same batch size the import itself uses, well under the backend's row cap. */
-const ADD_TO_TOPIC_BATCH_SIZE = 100;
-
-/**
- * Reuses the import's own topic-assignment path (`importBatch` with a topicId,
- * `skip` so no contact field is rewritten): the rows resolve to the contacts
- * that were just created and are subscribed to the topic. The bulk
- * `topics.addContacts` mutation is not usable here — it takes contact ids, and
- * an import returns counts, not ids.
- */
-const { run: runAddToTopic, isLoading: isAddingToTopic } = useBackendOperation(
-	api.contacts.contacts.importBatch,
-	{ label: () => t('components.contacts.csvImportModal.complete.addToTopicOperation') }
-);
-
-const confirmAddToTopic = async () => {
-	const topicId = addToTopicId.value;
-	const emails = importedEmails.value;
-	if (!topicId || emails.length === 0) return;
-
-	let added = 0;
-	for (let i = 0; i < emails.length; i += ADD_TO_TOPIC_BATCH_SIZE) {
-		const outcome = await runAddToTopic({
-			contacts: emails.slice(i, i + ADD_TO_TOPIC_BATCH_SIZE).map((email) => ({ email })),
-			handleDuplicates: 'skip',
-			topicId: topicId as Id<'topics'>,
-		});
-		// A failure has already been surfaced by the operation module.
-		if (!outcome.ok) return;
-		added += outcome.result.addedToList ?? 0;
-	}
-
-	assignedTopicId.value = topicId;
-	isAddToTopicOpen.value = false;
-	showToast(
-		t(
-			'components.contacts.csvImportModal.complete.addedToTopic',
-			{ count: added, name: getListName(topicId) },
-			added
-		)
-	);
-};
+const completion = useCsvImportCompletion(props.csvImport, getListName);
+const {
+	downloadableErrorRows,
+	downloadErrorRows,
+	isAddToTopicOpen,
+	isIncomplete,
+	notImportedCount,
+	viewImported,
+} = completion;
 
 // The composable resets its own state on `open()`; this is the modal's share of
 // it, so an armed discard prompt or a finished import's follow-ups never greet
@@ -337,9 +144,7 @@ watch(
 	(open) => {
 		if (!open) return;
 		isConfirmingDiscard.value = false;
-		isAddToTopicOpen.value = false;
-		addToTopicId.value = '';
-		assignedTopicId.value = null;
+		completion.reset();
 	}
 );
 </script>
@@ -402,550 +207,30 @@ watch(
 		</div>
 
 		<!-- Step 1: Upload -->
-		<div v-else-if="csvImport.step.value === 'upload'">
-			<!-- Function ref: a static dotted-path string ref ("csvImport.fileInputRef")
-							never assigns the composable's ref object, so triggerFileInput() was a
-							no-op and "click to browse" did nothing. Assign the element directly. -->
-			<input
-				:ref="
-					(el) => {
-						csvImport.fileInputRef.value = el as HTMLInputElement | null;
-					}
-				"
-				type="file"
-				accept=".csv"
-				class="hidden"
-				@change="csvImport.handleFileSelect"
-			/>
-			<div
-				:ref="
-					(el) => {
-						csvImport.dropRootRef.value = el as HTMLElement | null;
-					}
-				"
-				:class="[
-					'border-2 border-dashed rounded-xl p-8 text-center transition-colors cursor-pointer',
-					csvImport.isDragging.value
-						? 'border-brand bg-brand/5'
-						: 'border-border-subtle hover:border-border-default',
-				]"
-				@click="csvImport.triggerFileInput()"
-				@dragover="csvImport.handleDragOver"
-				@dragleave="csvImport.handleDragLeave"
-				@drop="csvImport.handleDrop"
-			>
-				<div class="flex flex-col items-center gap-4">
-					<div class="p-4 rounded-full bg-bg-surface">
-						<Icon name="lucide:upload" class="w-8 h-8 text-text-tertiary" />
-					</div>
-					<div>
-						<p class="text-text-primary font-medium">
-							{{ t('components.contacts.csvImportModal.upload.dropzone') }}
-						</p>
-						<p class="text-sm text-text-tertiary mt-1">
-							{{ t('components.contacts.csvImportModal.upload.supports') }}
-						</p>
-					</div>
-				</div>
-			</div>
-			<div class="mt-6 p-4 rounded-lg bg-bg-surface">
-				<h4 class="text-sm font-medium text-text-primary mb-2">
-					{{ t('components.contacts.csvImportModal.upload.tipsTitle') }}
-				</h4>
-				<ul class="text-sm text-text-secondary space-y-1">
-					<li>{{ t('components.contacts.csvImportModal.upload.tips.headers') }}</li>
-					<li>{{ t('components.contacts.csvImportModal.upload.tips.emailColumn') }}</li>
-					<li>{{ t('components.contacts.csvImportModal.upload.tips.optionalColumns') }}</li>
-					<li>{{ t('components.contacts.csvImportModal.upload.tips.customProperty') }}</li>
-				</ul>
-			</div>
-		</div>
+		<CsvImportUploadStep v-else-if="csvImport.step.value === 'upload'" :csv-import="csvImport" />
 
 		<!-- Step 2: Mapping -->
-		<div v-else-if="csvImport.step.value === 'mapping'">
-			<div class="mb-4">
-				<I18nT
-					keypath="components.contacts.csvImportModal.mapping.found"
-					tag="p"
-					class="text-sm text-text-secondary"
-					scope="global"
-				>
-					<template #count>
-						<span class="text-text-primary font-medium">{{ csvImport.totalRowCount.value }}</span>
-					</template>
-					<template #filename>
-						<span class="text-text-primary font-medium">{{
-							csvImport.selectedFile.value?.name
-						}}</span>
-					</template>
-				</I18nT>
-			</div>
-			<div class="space-y-3 mb-6">
-				<div
-					v-for="(header, index) in csvImport.csvHeaders.value"
-					:key="index"
-					class="flex items-center gap-4 p-3 rounded-lg bg-bg-surface"
-				>
-					<div class="flex-1 min-w-0">
-						<p class="text-sm font-medium text-text-primary truncate">{{ header }}</p>
-						<p class="text-xs text-text-tertiary truncate">
-							{{
-								t('components.contacts.csvImportModal.mapping.sample', {
-									value:
-										csvImport.parsedData.value[0]?.[index] ||
-										t('components.contacts.csvImportModal.emptyCell'),
-								})
-							}}
-						</p>
-					</div>
-					<select
-						:value="csvImport.columnMapping.value[index]"
-						class="input w-48 shrink-0"
-						:aria-label="
-							t('components.contacts.csvImportModal.mapping.selectLabel', { column: header })
-						"
-						:disabled="
-							csvImport.listAssignmentMode.value === 'global' &&
-							csvImport.columnMapping.value[index] === 'topic'
-						"
-						@change="onMappingChange(index, $event)"
-					>
-						<option
-							v-for="field in mappableFields"
-							:key="field.value"
-							:value="field.value"
-							:disabled="field.value === 'topic' && csvImport.listAssignmentMode.value === 'global'"
-						>
-							{{ fieldOptionLabel(field, index) }}
-						</option>
-					</select>
-				</div>
-			</div>
-			<p class="sr-only" role="status" aria-live="polite">{{ mappingAnnouncement }}</p>
-
-			<!-- Handle Duplicates -->
-			<div class="p-4 rounded-lg bg-bg-surface">
-				<h4 class="text-sm font-medium text-text-primary mb-3">
-					{{ t('components.contacts.csvImportModal.mapping.handleDuplicates') }}
-				</h4>
-				<div class="flex gap-4">
-					<label class="flex items-center gap-2 cursor-pointer">
-						<input
-							v-model="csvImport.handleDuplicates.value"
-							type="radio"
-							value="skip"
-							class="w-4 h-4 text-brand"
-						/>
-						<span class="text-sm text-text-secondary">{{
-							t('components.contacts.csvImportModal.mapping.skipDuplicates')
-						}}</span>
-					</label>
-					<label class="flex items-center gap-2 cursor-pointer">
-						<input
-							v-model="csvImport.handleDuplicates.value"
-							type="radio"
-							value="update"
-							class="w-4 h-4 text-brand"
-						/>
-						<span class="text-sm text-text-secondary">{{
-							t('components.contacts.csvImportModal.mapping.updateExisting')
-						}}</span>
-					</label>
-				</div>
-			</div>
-
-			<!-- Add to Topic -->
-			<div v-if="availableLists.length > 0" class="mt-4 p-4 rounded-lg bg-bg-surface">
-				<h4 class="text-sm font-medium text-text-primary mb-3">
-					{{ t('components.contacts.csvImportModal.mapping.addToTopic') }}
-				</h4>
-				<select
-					:value="csvImport.selectedTopicId.value ?? ''"
-					class="input w-full"
-					:disabled="csvImport.isTopicMapped.value"
-					@change="csvImport.selectGlobalTopic(($event.target as HTMLSelectElement).value || null)"
-				>
-					<option value="">{{ t('common.none') }}</option>
-					<option v-for="list in availableLists" :key="list._id" :value="list._id">
-						{{ list.name }}
-					</option>
-				</select>
-				<p v-if="csvImport.isTopicMapped.value" class="text-xs text-text-tertiary mt-2">
-					{{ t('components.contacts.csvImportModal.mapping.topicMappedHint') }}
-				</p>
-				<p v-else class="text-xs text-text-tertiary mt-2">
-					{{ t('components.contacts.csvImportModal.mapping.globalTopicHint') }}
-				</p>
-			</div>
-		</div>
+		<CsvImportMappingStep
+			v-else-if="csvImport.step.value === 'mapping'"
+			v-model:announcement="mappingAnnouncement"
+			:csv-import="csvImport"
+			:available-lists="availableLists"
+		/>
 
 		<!-- Step 2.5: List Mapping -->
-		<div v-else-if="csvImport.step.value === 'listMapping'">
-			<div class="mb-4">
-				<I18nT
-					keypath="components.contacts.csvImportModal.listMapping.found"
-					tag="p"
-					class="text-sm text-text-secondary"
-					scope="global"
-					:plural="csvImport.detectedListNames.value.length"
-				>
-					<template #count>
-						<span class="text-text-primary font-medium">{{
-							csvImport.detectedListNames.value.length
-						}}</span>
-					</template>
-				</I18nT>
-			</div>
-			<div class="space-y-3">
-				<div
-					v-for="name in csvImport.detectedListNames.value"
-					:key="name"
-					class="flex items-center gap-4 p-3 rounded-lg bg-bg-surface"
-				>
-					<div class="flex-1 min-w-0">
-						<p class="text-sm font-medium text-text-primary truncate">{{ name }}</p>
-					</div>
-					<select
-						:value="csvImport.listNameMapping.value[name] ?? ''"
-						class="input w-56 shrink-0"
-						@change="
-							csvImport.listNameMapping.value[name] =
-								($event.target as HTMLSelectElement).value || null
-						"
-					>
-						<option value="">
-							{{ t('components.contacts.csvImportModal.listMapping.skip') }}
-						</option>
-						<option v-for="list in availableLists" :key="list._id" :value="list._id">
-							{{ list.name }}
-						</option>
-					</select>
-				</div>
-			</div>
-			<div
-				v-if="csvImport.detectedListNames.value.length === 0"
-				class="p-4 rounded-lg bg-warning-subtle border border-warning/20"
-			>
-				<p class="text-sm text-warning">
-					{{ t('components.contacts.csvImportModal.listMapping.noneFound') }}
-				</p>
-			</div>
-		</div>
+		<CsvImportListMappingStep
+			v-else-if="csvImport.step.value === 'listMapping'"
+			:csv-import="csvImport"
+			:available-lists="availableLists"
+		/>
 
 		<!-- Step 3: Preview -->
-		<div v-else-if="csvImport.step.value === 'preview'">
-			<!-- Validation Summary Cards -->
-			<div v-if="validationResult" class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-				<div class="p-3 rounded-lg bg-success/10 border border-success/20">
-					<p class="text-2xl font-medium tracking-[-0.02em] text-success">
-						{{ validationResult.validCount }}
-					</p>
-					<p class="text-xs text-success/80">
-						{{ t('components.contacts.csvImportModal.preview.validContacts') }}
-					</p>
-				</div>
-				<div
-					class="p-3 rounded-lg"
-					:class="
-						validationResult.invalidEmails.length > 0
-							? 'bg-warning/10 border border-warning/20'
-							: 'bg-bg-surface border border-border-subtle'
-					"
-				>
-					<p
-						class="text-2xl font-medium tracking-[-0.02em]"
-						:class="
-							validationResult.invalidEmails.length > 0 ? 'text-warning' : 'text-text-tertiary'
-						"
-					>
-						{{ validationResult.invalidEmails.length }}
-					</p>
-					<p
-						class="text-xs"
-						:class="
-							validationResult.invalidEmails.length > 0 ? 'text-warning/80' : 'text-text-tertiary'
-						"
-					>
-						{{ t('components.contacts.csvImportModal.preview.invalidEmails') }}
-					</p>
-				</div>
-				<div
-					class="p-3 rounded-lg"
-					:class="
-						validationResult.duplicateEmails.length > 0
-							? 'bg-warning/10 border border-warning/20'
-							: 'bg-bg-surface border border-border-subtle'
-					"
-				>
-					<p
-						class="text-2xl font-medium tracking-[-0.02em]"
-						:class="
-							validationResult.duplicateEmails.length > 0 ? 'text-warning' : 'text-text-tertiary'
-						"
-					>
-						{{ validationResult.duplicateEmails.length }}
-					</p>
-					<p
-						class="text-xs"
-						:class="
-							validationResult.duplicateEmails.length > 0 ? 'text-warning/80' : 'text-text-tertiary'
-						"
-					>
-						{{ t('components.contacts.csvImportModal.preview.duplicates') }}
-					</p>
-				</div>
-				<div
-					class="p-3 rounded-lg"
-					:class="
-						validationResult.missingEmails.length > 0
-							? 'bg-error-subtle border border-error/20'
-							: 'bg-bg-surface border border-border-subtle'
-					"
-				>
-					<p
-						class="text-2xl font-medium tracking-[-0.02em]"
-						:class="validationResult.missingEmails.length > 0 ? 'text-error' : 'text-text-tertiary'"
-					>
-						{{ validationResult.missingEmails.length }}
-					</p>
-					<p
-						class="text-xs"
-						:class="
-							validationResult.missingEmails.length > 0 ? 'text-error/80' : 'text-text-tertiary'
-						"
-					>
-						{{ t('components.contacts.csvImportModal.preview.missingEmails') }}
-					</p>
-				</div>
-			</div>
-
-			<!-- No valid contacts error -->
-			<div
-				v-if="!csvImport.canImport.value"
-				class="mb-4 p-3 rounded-lg bg-error-subtle border border-error/20 flex items-start gap-3"
-			>
-				<Icon name="lucide:alert-circle" class="w-5 h-5 text-error shrink-0 mt-0.5" />
-				<p class="text-sm text-error">
-					{{ t('components.contacts.csvImportModal.preview.noValidContacts') }}
-				</p>
-			</div>
-
-			<!-- Preview Table -->
-			<div class="mb-4">
-				<p class="text-sm text-text-secondary mb-2">
-					{{
-						t('components.contacts.csvImportModal.preview.rowsPreview', {
-							shown: Math.min(5, csvImport.totalRowCount.value),
-							total: csvImport.totalRowCount.value,
-						})
-					}}
-				</p>
-			</div>
-			<div class="overflow-x-auto rounded-lg border border-border-subtle">
-				<table class="w-full text-sm">
-					<thead>
-						<tr class="border-b border-border-subtle bg-bg-surface">
-							<th class="text-left px-4 py-2 font-medium text-text-secondary w-8">
-								<Icon name="lucide:shield-check" class="w-4 h-4" />
-							</th>
-							<th class="text-left px-4 py-2 font-medium text-text-secondary">
-								{{ t('common.email') }}
-								<span
-									v-if="csvImport.emailSourceColumn.value"
-									class="block text-xs font-normal text-text-tertiary"
-								>
-									{{
-										t('components.contacts.csvImportModal.preview.emailSource', {
-											column: csvImport.emailSourceColumn.value,
-										})
-									}}
-								</span>
-							</th>
-							<th class="text-left px-4 py-2 font-medium text-text-secondary">
-								{{ t('components.contacts.csvImportModal.preview.firstName') }}
-							</th>
-							<th class="text-left px-4 py-2 font-medium text-text-secondary">
-								{{ t('components.contacts.csvImportModal.preview.lastName') }}
-							</th>
-						</tr>
-					</thead>
-					<tbody>
-						<tr
-							v-for="prepared in csvImport.previewRows.value"
-							:key="prepared.row"
-							class="border-b border-border-subtle last:border-b-0"
-						>
-							<td class="px-4 py-2">
-								<Icon
-									v-if="prepared.status === 'valid'"
-									name="lucide:check-circle"
-									class="w-4 h-4 text-success"
-								/>
-								<Icon
-									v-else-if="prepared.status === 'missing'"
-									name="lucide:x-circle"
-									class="w-4 h-4 text-error"
-								/>
-								<Icon v-else name="lucide:alert-triangle" class="w-4 h-4 text-warning" />
-							</td>
-							<td class="px-4 py-2 text-text-primary">
-								{{ prepared.contact.email || '—' }}
-							</td>
-							<td class="px-4 py-2 text-text-secondary">
-								{{ prepared.contact.firstName || '—' }}
-							</td>
-							<td class="px-4 py-2 text-text-secondary">
-								{{ prepared.contact.lastName || '—' }}
-							</td>
-						</tr>
-					</tbody>
-				</table>
-			</div>
-
-			<!-- Expandable Error Details -->
-			<div v-if="csvImport.hasValidationWarnings.value" class="mt-4">
-				<button
-					class="flex items-center gap-2 text-sm font-medium text-text-secondary hover:text-text-primary transition-colors"
-					@click="showValidationDetails = !showValidationDetails"
-				>
-					<Icon
-						name="lucide:chevron-right"
-						class="w-4 h-4 transition-transform"
-						:class="{ 'rotate-90': showValidationDetails }"
-					/>
-					{{ t('components.contacts.csvImportModal.preview.viewIssues') }}
-				</button>
-				<div v-if="showValidationDetails && validationResult" class="mt-2 space-y-3">
-					<div
-						v-if="validationResult.invalidEmails.length > 0"
-						class="p-3 rounded-lg bg-warning/5 border border-warning/20"
-					>
-						<h5 class="text-sm font-medium text-warning mb-1">
-							{{ t('components.contacts.csvImportModal.preview.invalidEmailsTitle') }}
-						</h5>
-						<ul class="text-xs text-text-secondary space-y-0.5">
-							<I18nT
-								v-for="entry in validationResult.invalidEmails.slice(0, 10)"
-								:key="entry.row"
-								keypath="components.contacts.csvImportModal.preview.rowEntry"
-								tag="li"
-								scope="global"
-							>
-								<template #row>{{ entry.row }}</template>
-								<template #value>
-									<span class="text-text-primary">{{ entry.email }}</span>
-								</template>
-							</I18nT>
-							<li v-if="validationResult.invalidEmails.length > 10" class="text-text-tertiary">
-								{{
-									t('components.contacts.csvImportModal.preview.andMore', {
-										count: validationResult.invalidEmails.length - 10,
-									})
-								}}
-							</li>
-						</ul>
-					</div>
-					<div
-						v-if="validationResult.duplicateEmails.length > 0"
-						class="p-3 rounded-lg bg-warning/5 border border-warning/20"
-					>
-						<h5 class="text-sm font-medium text-warning mb-1">
-							{{ t('components.contacts.csvImportModal.preview.duplicateEmailsTitle') }}
-						</h5>
-						<ul class="text-xs text-text-secondary space-y-0.5">
-							<I18nT
-								v-for="entry in validationResult.duplicateEmails.slice(0, 10)"
-								:key="entry.row"
-								keypath="components.contacts.csvImportModal.preview.rowEntry"
-								tag="li"
-								scope="global"
-							>
-								<template #row>{{ entry.row }}</template>
-								<template #value>
-									<span class="text-text-primary">{{ entry.email }}</span>
-								</template>
-							</I18nT>
-							<li v-if="validationResult.duplicateEmails.length > 10" class="text-text-tertiary">
-								{{
-									t('components.contacts.csvImportModal.preview.andMore', {
-										count: validationResult.duplicateEmails.length - 10,
-									})
-								}}
-							</li>
-						</ul>
-					</div>
-					<div
-						v-if="validationResult.missingEmails.length > 0"
-						class="p-3 rounded-lg bg-error-subtle border border-error/20"
-					>
-						<h5 class="text-sm font-medium text-error mb-1">
-							{{ t('components.contacts.csvImportModal.preview.missingEmailsTitle') }}
-						</h5>
-						<ul class="text-xs text-text-secondary space-y-0.5">
-							<I18nT
-								v-for="rowNum in validationResult.missingEmails.slice(0, 10)"
-								:key="rowNum"
-								keypath="components.contacts.csvImportModal.preview.rowEntry"
-								tag="li"
-								scope="global"
-							>
-								<template #row>{{ rowNum }}</template>
-								<template #value>
-									<span class="text-text-tertiary">{{
-										t('components.contacts.csvImportModal.emptyCell')
-									}}</span>
-								</template>
-							</I18nT>
-							<li v-if="validationResult.missingEmails.length > 10" class="text-text-tertiary">
-								{{
-									t('components.contacts.csvImportModal.preview.andMore', {
-										count: validationResult.missingEmails.length - 10,
-									})
-								}}
-							</li>
-						</ul>
-					</div>
-				</div>
-			</div>
-
-			<!-- Import Summary -->
-			<div class="mt-4 p-4 rounded-lg bg-bg-surface">
-				<h4 class="text-sm font-medium text-text-primary mb-2">
-					{{ t('components.contacts.csvImportModal.preview.summaryTitle') }}
-				</h4>
-				<ul class="text-sm text-text-secondary space-y-1">
-					<li>
-						{{
-							t('components.contacts.csvImportModal.preview.summaryCount', {
-								valid: csvImport.validContactCount.value,
-								total: csvImport.totalRowCount.value,
-							})
-						}}
-					</li>
-					<li>
-						{{
-							csvImport.handleDuplicates.value === 'skip'
-								? t('components.contacts.csvImportModal.preview.summaryDuplicatesSkipped')
-								: t('components.contacts.csvImportModal.preview.summaryDuplicatesUpdated')
-						}}
-					</li>
-					<li v-if="topicAssignmentSummary">
-						<Icon name="lucide:list" class="w-3.5 h-3.5 inline-block mr-1 text-brand" />
-						{{ topicAssignmentSummary }}
-					</li>
-					<li v-if="mappedPropertyKeys.length > 0">
-						<Icon name="lucide:tag" class="w-3.5 h-3.5 inline-block mr-1 text-brand" />
-						{{
-							t(
-								'components.contacts.csvImportModal.preview.summaryProperties',
-								{ count: mappedPropertyKeys.length, keys: mappedPropertyKeys.join(', ') },
-								mappedPropertyKeys.length
-							)
-						}}
-					</li>
-				</ul>
-			</div>
-		</div>
+		<CsvImportPreviewStep
+			v-else-if="csvImport.step.value === 'preview'"
+			v-model:show-details="showValidationDetails"
+			:csv-import="csvImport"
+			:topic-assignment-summary="topicAssignmentSummary"
+		/>
 
 		<!-- Step 4: Importing -->
 		<div v-else-if="csvImport.step.value === 'importing'" class="py-8">
@@ -978,159 +263,12 @@ watch(
 		</div>
 
 		<!-- Step 5: Complete -->
-		<div v-else-if="csvImport.step.value === 'complete'" class="py-4">
-			<div class="flex flex-col items-center gap-4 mb-6">
-				<div v-if="isIncomplete" class="p-3 rounded-full bg-warning/10">
-					<Icon name="lucide:alert-triangle" class="w-8 h-8 text-warning" />
-				</div>
-				<div v-else class="p-3 rounded-full bg-success/10">
-					<Icon name="lucide:check" class="w-8 h-8 text-success" />
-				</div>
-				<p class="text-lg font-medium text-text-primary">
-					{{
-						isIncomplete
-							? t('components.contacts.csvImportModal.complete.incompleteTitle')
-							: t('components.contacts.csvImportModal.complete.title')
-					}}
-				</p>
-				<p v-if="isIncomplete" class="text-sm text-text-secondary text-center">
-					{{
-						t(
-							'components.contacts.csvImportModal.complete.notImportedSummary',
-							{
-								processed: csvImport.totalRowCount.value - notImportedCount,
-								total: csvImport.totalRowCount.value,
-								count: notImportedCount,
-							},
-							notImportedCount
-						)
-					}}
-				</p>
-			</div>
-			<div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
-				<UiStatCard
-					:value="csvImport.results.value?.imported || 0"
-					:label="t('components.contacts.csvImportModal.complete.imported')"
-					variant="success"
-				/>
-				<UiStatCard
-					:value="csvImport.results.value?.updated || 0"
-					:label="t('components.contacts.csvImportModal.complete.updated')"
-					variant="default"
-				/>
-				<UiStatCard
-					:value="csvImport.results.value?.skipped || 0"
-					:label="t('components.contacts.csvImportModal.complete.skipped')"
-					variant="secondary"
-				/>
-				<UiStatCard
-					:value="failedCount"
-					:label="t('components.contacts.csvImportModal.complete.failed')"
-					variant="error"
-				/>
-			</div>
-			<!-- A batch the backend did not commit: which rows, why, and that a retry
-				 sends only those. -->
-			<div
-				v-if="isIncomplete"
-				class="mb-4 p-4 rounded-lg bg-error-subtle border border-error/20"
-				role="alert"
-			>
-				<h4 v-if="failedBatchRows.count > 0" class="text-sm font-medium text-error">
-					{{
-						t(
-							'components.contacts.csvImportModal.complete.batchFailed',
-							{ ...failedBatchRows, reason: csvImport.failedBatch.value?.reason ?? '' },
-							failedBatchRows.count
-						)
-					}}
-				</h4>
-				<p v-if="unsentRows.count > 0" class="mt-1 text-sm text-error/80">
-					{{
-						t('components.contacts.csvImportModal.complete.notSent', unsentRows, unsentRows.count)
-					}}
-				</p>
-				<p class="mt-2 text-sm text-text-secondary">
-					{{ t('components.contacts.csvImportModal.complete.retryHint') }}
-				</p>
-			</div>
-			<div
-				v-if="csvImport.results.value?.addedToList && csvImport.results.value.addedToList > 0"
-				class="mb-4 p-3 rounded-lg bg-brand/5 border border-brand/20 flex items-center gap-3"
-			>
-				<Icon name="lucide:list" class="w-5 h-5 text-brand shrink-0" />
-				<p class="text-sm text-text-secondary">
-					{{
-						t(
-							'components.contacts.csvImportModal.complete.addedToTopics',
-							{ count: csvImport.results.value.addedToList },
-							csvImport.results.value.addedToList
-						)
-					}}
-				</p>
-			</div>
-			<!-- Add the rows that just landed to a topic, without leaving the modal. -->
-			<div v-if="isAddToTopicOpen" class="mb-4 p-4 rounded-lg bg-bg-surface">
-				<h4 class="text-sm font-medium text-text-primary mb-3">
-					{{ t('components.contacts.csvImportModal.complete.addToTopicTitle') }}
-				</h4>
-				<select v-model="addToTopicId" class="input w-full">
-					<option value="">
-						{{ t('components.contacts.csvImportModal.complete.chooseTopic') }}
-					</option>
-					<option v-for="list in availableLists" :key="list._id" :value="list._id">
-						{{ list.name }}
-					</option>
-				</select>
-				<div class="mt-3 flex justify-end gap-3">
-					<UiButton
-						variant="secondary"
-						:disabled="isAddingToTopic"
-						@click="isAddToTopicOpen = false"
-					>
-						{{ t('common.cancel') }}
-					</UiButton>
-					<UiButton
-						:disabled="!addToTopicId"
-						:loading="isAddingToTopic"
-						@click="confirmAddToTopic()"
-					>
-						{{ t('common.add') }}
-					</UiButton>
-				</div>
-			</div>
-
-			<div
-				v-if="errorRows.length > 0"
-				class="p-4 rounded-lg bg-error-subtle border border-error/20"
-			>
-				<h4 class="text-sm font-medium text-error mb-2">
-					{{
-						t('components.contacts.csvImportModal.complete.errorsTitle', {
-							count: errorRows.length,
-						})
-					}}
-				</h4>
-				<ul class="text-sm text-error/80 space-y-1">
-					<li v-for="(error, index) in previewedErrorRows" :key="index">
-						{{ error }}
-					</li>
-					<li v-if="hiddenErrorCount > 0" class="text-text-tertiary">
-						{{
-							t('components.contacts.csvImportModal.preview.andMore', {
-								count: hiddenErrorCount,
-							})
-						}}
-					</li>
-				</ul>
-			</div>
-
-			<!-- No topic was in play, so there is nothing to filter the list by —
-				 say that rather than opening an unchanged-looking page. -->
-			<p v-if="!importedTopicId" class="mt-4 text-sm text-text-tertiary">
-				{{ t('components.contacts.csvImportModal.complete.viewAllHint') }}
-			</p>
-		</div>
+		<CsvImportCompleteStep
+			v-else-if="csvImport.step.value === 'complete'"
+			:csv-import="csvImport"
+			:completion="completion"
+			:available-lists="availableLists"
+		/>
 
 		<!-- Footer -->
 		<template #footer>
