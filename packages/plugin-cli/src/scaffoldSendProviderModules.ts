@@ -14,8 +14,7 @@
  * they are `fetch`-shaped rather than stubs that throw.
  */
 
-import type { SendProviderNames } from './scaffoldSendProvider';
-import { SEND_PROVIDER_ENV_CONSTANTS } from './scaffoldSendProvider';
+import { SEND_PROVIDER_ENV_CONSTANTS, type SendProviderNames } from './scaffoldSendProviderNames';
 
 export function transportSource(names: SendProviderNames): string {
 	const c = SEND_PROVIDER_ENV_CONSTANTS;
