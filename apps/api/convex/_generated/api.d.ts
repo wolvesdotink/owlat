@@ -431,6 +431,7 @@ import type * as channels_adapters_webhook from '../channels/adapters/webhook.js
 import type * as channels_adapters_whatsapp from '../channels/adapters/whatsapp.js';
 import type * as channels_credentials from '../channels/credentials.js';
 import type * as channels_outbound from '../channels/outbound.js';
+import type * as channels_outboundCommit from '../channels/outboundCommit.js';
 import type * as chat__helpers from '../chat/_helpers.js';
 import type * as chat_attachments from '../chat/attachments.js';
 import type * as chat_dms from '../chat/dms.js';
@@ -1637,6 +1638,8 @@ import type * as providers_feedbackStatus from '../providers/feedbackStatus.js';
 import type * as providerRoutes from '../providerRoutes.js';
 import type * as push_config from '../push/config.js';
 import type * as push_copy from '../push/copy.js';
+import type * as push_delivery from '../push/delivery.js';
+import type * as push_deviceWrites from '../push/deviceWrites.js';
 import type * as push_dispatch from '../push/dispatch.js';
 import type * as push_events from '../push/events.js';
 import type * as push_marketing from '../push/marketing.js';
@@ -2266,6 +2269,7 @@ declare const fullApi: ApiFromModules<{
 	'channels/adapters/whatsapp': typeof channels_adapters_whatsapp;
 	'channels/credentials': typeof channels_credentials;
 	'channels/outbound': typeof channels_outbound;
+	'channels/outboundCommit': typeof channels_outboundCommit;
 }> & ApiFromModules<{
 	'chat/attachmentAccess': typeof chat_attachmentAccess;
 	'chat/_helpers': typeof chat__helpers;
@@ -3705,6 +3709,8 @@ declare const fullApi: ApiFromModules<{
 }> & ApiFromModules<{
 	'push/config': typeof push_config;
 	'push/copy': typeof push_copy;
+	'push/delivery': typeof push_delivery;
+	'push/deviceWrites': typeof push_deviceWrites;
 	'push/dispatch': typeof push_dispatch;
 	'push/events': typeof push_events;
 	'push/marketing': typeof push_marketing;

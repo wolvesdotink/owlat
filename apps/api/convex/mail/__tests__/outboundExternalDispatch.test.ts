@@ -39,17 +39,15 @@ async function dispatchAnswering(answer: unknown) {
 		rawStorageId: 'storage1' as Id<'_storage'>,
 		rfc822MessageId: '<m1@owlat.example>',
 	});
-	const byIdx = new Map(
-		runMutation.mock.calls.map((call) => {
-			const args = (call as unknown[])[1] as {
-				recipientIdx: number;
-				input: Record<string, unknown>;
-			};
-			return [args.recipientIdx, args.input] as const;
-		})
-	);
+	const transitions = runMutation.mock.calls.flatMap((call) => {
+		const args = (call as unknown[])[1] as {
+			transitions: { recipientIdx: number; input: Record<string, unknown> }[];
+		};
+		return args.transitions;
+	});
+	const byIdx = new Map(transitions.map((t) => [t.recipientIdx, t.input] as const));
 	const logs = logged.mock.calls.map((call) => call.map(String).join(' '));
-	return { byIdx, logs, transitions: runMutation.mock.calls.length };
+	return { byIdx, logs, commits: runMutation.mock.calls.length, transitions: transitions.length };
 }
 
 afterEach(() => {
@@ -59,13 +57,15 @@ afterEach(() => {
 
 describe('dispatchViaExternalWorker answer reading', () => {
 	it('keeps a readable bounce when another entry does not decode', async () => {
-		const { byIdx, logs, transitions } = await dispatchAnswering({
+		const { byIdx, logs, commits, transitions } = await dispatchAnswering({
 			recipients: [
 				{ address: 'a@example.com', status: 'bounced', error: '550 No such user' },
 				{ address: 'b@example.com', status: 42 },
 			],
 		});
 
+		// Every recipient's outcome of the one `/send` lands in one commit.
+		expect(commits).toBe(1);
 		expect(transitions).toBe(2);
 		expect(byIdx.get(0)).toMatchObject({ to: 'bounced', bounceMessage: '550 No such user' });
 		expect(byIdx.get(1)).toMatchObject({ to: 'sent' });

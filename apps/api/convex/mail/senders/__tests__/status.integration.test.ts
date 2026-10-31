@@ -406,4 +406,26 @@ describe('the Subscriptions panel batch (one unsubscribe path)', () => {
 		);
 		expect(operations.map((operation) => operation.kind)).toEqual(['unsubscribe']);
 	});
+	it('archives a team inbox sender only once its POST was confirmed', async () => {
+		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
+		const { mailboxId } = await seedPersonalMailbox(t, { scope: 'shared' });
+		const id = (await deliverHosted(t, { unsubscribe: ONE_CLICK }))!;
+		vi.mocked(fetchGuarded)
+			.mockReset()
+			.mockResolvedValueOnce(new Response(null, { status: 500 }))
+			.mockResolvedValueOnce(new Response(null, { status: 200 }));
+		const batch = { mailboxId, senderEmails: [SENDER], messageIds: [id] };
+
+		const refused = await t.action(api.mail.subscriptions.unsubscribeAndArchive, batch);
+		expect(refused.results).toEqual([
+			{ senderEmail: SENDER, status: 'failed', archived: 0, error: 'http_500' },
+		]);
+		expect(await roleOf(t, id)).toBe('inbox');
+
+		const agreed = await t.action(api.mail.subscriptions.unsubscribeAndArchive, batch);
+		expect(agreed.results).toEqual([{ senderEmail: SENDER, status: 'unsubscribed', archived: 1 }]);
+		expect(await roleOf(t, id)).toBe('archive');
+		expect(await profileOf(t, mailboxId)).toBeNull();
+	});
 });

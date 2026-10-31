@@ -54,6 +54,8 @@ export async function scopeAndChargeBudget(
 	// `||`, not `??`: `extractEmail` returns `''` for a From header with nothing
 	// address-shaped in it, and an empty bucket key is not a key.
 	const senderKey = senderContactIds?.[0] ?? (senderEmail || 'unknown');
+	// checkpoint: admission before the parts are stored and indexed; the charge
+	// stays spent if a later part fails, which bounds what one sender can spend
 	const { ok } = await ctx.runMutation(
 		internal.knowledge.attachmentIngestBudget.consumeAttachmentIngestBudget,
 		{
@@ -104,6 +106,8 @@ export async function ingestStoredPart(
 ): Promise<IndexedPart> {
 	// `ingest` re-runs the same file-type policy as `selectIngestible` and
 	// deletes the blob if it disagrees.
+	// checkpoint: one part's file, over a blob already stored; a later part's
+	// failure leaves it indexed and the message's marker reports the failure
 	const fileId = await ctx.runMutation(internal.semanticFiles.ingest, {
 		storageId: part.storageId,
 		filename: part.filename,

@@ -79,6 +79,16 @@ export const PREVIOUS_RELEASE_ENTRIES: Readonly<Record<string, string>> = {
 	// System & updates now reads maintenance/workerRegistry.ts `getForAdmin`.
 	'mail/imap/serverRegistry.ts#getForAdmin':
 		'the previous IMAP servers card on System & updates, in tabs opened before the deploy',
+	// push/send.deliver now plans in push/delivery.ts and holds quiet devices
+	// in its commit after the pushes. Remove after release N+1.
+	'push/dispatch.ts#prepareDelivery': 'old push deliveries mid-run',
+	// `filterCompile.compile` now starts through startCompile, which schedules
+	// the compile. Remove after release N+1.
+	'mail/filterCompileStore.ts#startDraft': 'old rule compiles mid-run',
+	// The channel dispatch and the delivery poll now commit through
+	// channels/outboundCommit.ts. Remove after release N+1.
+	'unifiedMessages.ts#recordOutbound': 'old channel dispatches mid-run',
+	'unifiedMessages.ts#updateDeliveryStatus': 'old channel delivery polls mid-run',
 	// `/seed/admin` now writes through one commit (auth/seedAdminCommit.ts); the
 	// latch claim keeps an old and a new seed from both running.
 	'workspaces/settings.ts#createInternal': 'old /seed/admin requests mid-run',

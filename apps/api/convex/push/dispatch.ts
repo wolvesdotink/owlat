@@ -40,7 +40,8 @@ import {
 	type QuietHours,
 } from '@owlat/shared/notificationRules';
 import type { Doc, Id } from '../_generated/dataModel';
-import type { MutationCtx } from '../_generated/server';
+import type { MutationCtx, QueryCtx } from '../_generated/server';
+import { applyPushOutcomes, deferForQuietHours, pushOutcomeValidator } from './deviceWrites';
 import { components, internal } from '../_generated/api';
 import { isClarificationLive } from '../inbox/clarificationHold';
 import { internalMutation } from '../lib/writeFence';
@@ -110,7 +111,7 @@ interface Preferences {
 	locale: string | undefined;
 }
 
-async function loadPreferences(ctx: MutationCtx, userId: string): Promise<Preferences> {
+export async function loadPreferences(ctx: QueryCtx, userId: string): Promise<Preferences> {
 	const row = await ctx.db
 		.query('mailUserSettings')
 		.withIndex('by_user', (q) => q.eq('userId', userId))
@@ -126,7 +127,7 @@ async function loadPreferences(ctx: MutationCtx, userId: string): Promise<Prefer
 }
 
 /** The person's role in this instance's organization now; null once they have left it. */
-async function loadCurrentRole(ctx: MutationCtx, userId: string): Promise<OrganizationRole | null> {
+async function loadCurrentRole(ctx: QueryCtx, userId: string): Promise<OrganizationRole | null> {
 	const organizationId = await getSingletonOrganizationId(ctx);
 	const member = (await ctx.runQuery(components.betterAuth.adapter.findOne, {
 		model: 'member',
@@ -138,7 +139,7 @@ async function loadCurrentRole(ctx: MutationCtx, userId: string): Promise<Organi
 	return (member?.role ?? null) as OrganizationRole | null;
 }
 
-async function hasMailFeature(ctx: MutationCtx): Promise<boolean> {
+async function hasMailFeature(ctx: QueryCtx): Promise<boolean> {
 	return (await isFeatureEnabled(ctx, 'postbox')) || (await isFeatureEnabled(ctx, 'mail.external'));
 }
 
@@ -146,7 +147,7 @@ async function hasMailFeature(ctx: MutationCtx): Promise<boolean> {
 const RULE_NOTIFY_SILENT_ROLES: ReadonlySet<string> = new Set(['spam', 'trash', 'sent', 'drafts']);
 
 async function resolveMail(
-	ctx: MutationCtx,
+	ctx: QueryCtx,
 	userId: string,
 	messageId: Id<'mailMessages'>,
 	prefs: Preferences,
@@ -188,7 +189,7 @@ async function resolveMail(
 }
 
 async function resolveAssignment(
-	ctx: MutationCtx,
+	ctx: QueryCtx,
 	userId: string,
 	noticeId: Id<'inboxAssignmentNotices'>,
 	prefs: Preferences,
@@ -226,7 +227,7 @@ async function resolveAssignment(
 }
 
 async function resolveChat(
-	ctx: MutationCtx,
+	ctx: QueryCtx,
 	userId: string,
 	messageId: Id<'chatMessages'>,
 	prefs: Preferences
@@ -280,7 +281,7 @@ async function resolveChat(
 }
 
 async function resolveEvent(
-	ctx: MutationCtx,
+	ctx: QueryCtx,
 	userId: string,
 	event: PushEvent,
 	prefs: Preferences,
@@ -329,96 +330,113 @@ function toDelivery(
 	};
 }
 
-/**
- * Count one held-back notification on a device and make sure its summary is
- * scheduled for the moment the window ends there. Marketing notices are
- * counted apart: the summary applies "Notify me about" to held mail only.
- */
-async function deferForQuietHours(
-	ctx: MutationCtx,
-	subscription: Doc<'pushSubscriptions'>,
-	quietHours: QuietHours,
-	now: number,
-	isMarketing = false
-): Promise<void> {
-	const patch: Partial<Doc<'pushSubscriptions'>> = isMarketing
-		? { quietDeferredMarketingCount: (subscription.quietDeferredMarketingCount ?? 0) + 1 }
-		: { quietDeferredCount: (subscription.quietDeferredCount ?? 0) + 1 };
-	if (subscription.quietSummaryAt === undefined) {
-		const minutes = minutesUntilQuietEnd(quietHours, localClockIn(subscription.timeZone, now));
-		const at = now + (minutes ?? 1) * 60_000;
-		patch.quietSummaryAt = at;
-		await ctx.scheduler.runAt(at, internal.push.send.deliverQuietSummary, {
-			subscriptionId: subscription._id,
-		});
-	}
-	await ctx.db.patch(subscription._id, patch);
+/** A device quiet hours hold this event back on: counted toward its summary. */
+export interface HeldPush {
+	subscriptionId: Id<'pushSubscriptions'>;
+	isMarketing: boolean;
+}
+
+/** What one event means for one person's devices: push now, or hold. */
+export interface DeliveryPlan {
+	deliveries: PushDelivery[];
+	held: HeldPush[];
 }
 
 /**
- * Resolve one event for one person into the pushes to make now, deferring what
- * quiet hours hold back. Empty when push is off, the person has no devices, or
- * nothing about the event should interrupt them.
+ * Resolve one event for one person into the pushes to make now and the
+ * devices quiet hours hold it back on. Empty when push is off, the person has
+ * no devices, or nothing about the event should interrupt them. Reads only.
+ */
+export async function planEvent(
+	ctx: QueryCtx,
+	userId: string,
+	event: PushEvent
+): Promise<DeliveryPlan> {
+	const plan: DeliveryPlan = { deliveries: [], held: [] };
+	if (!isWebPushConfigured()) return plan;
+	const subscriptions = await ctx.db
+		.query('pushSubscriptions')
+		.withIndex('by_user', (q) => q.eq('userId', userId))
+		.take(MAX_DEVICES_PER_USER);
+	const targets =
+		event.kind === 'test'
+			? subscriptions.filter((subscription) => subscription._id === event.subscriptionId)
+			: subscriptions;
+	if (targets.length === 0) return plan;
+
+	// Every surface behind these events is for current members only.
+	const role = await loadCurrentRole(ctx, userId);
+	if (!role) return plan;
+
+	const prefs = await loadPreferences(ctx, userId);
+	const resolved = await resolveEvent(ctx, userId, event, prefs, role);
+	if (!resolved) return plan;
+
+	const now = Date.now();
+	const push = (subscription: Doc<'pushSubscriptions'>) =>
+		plan.deliveries.push(toDelivery(subscription, resolved.payload, resolved.ttlSeconds));
+	for (const subscription of targets) {
+		const { rule } = resolved;
+		if (rule.kind === 'always') {
+			push(subscription);
+			continue;
+		}
+		if (rule.kind === 'unless-nothing') {
+			if (prefs.notifyAbout !== 'nothing') push(subscription);
+			continue;
+		}
+		if (rule.kind === 'rule-notify' || rule.kind === 'quiet-hours') {
+			const isQuiet = isQuietAt(prefs.quietHours, localClockIn(subscription.timeZone, now));
+			if (rule.kind === 'rule-notify' && rule.muted) continue;
+			if (isQuiet) {
+				plan.held.push({
+					subscriptionId: subscription._id,
+					isMarketing: rule.kind === 'quiet-hours',
+				});
+			} else push(subscription);
+			continue;
+		}
+		const decision = decideNotification({
+			category: rule.category,
+			setting: prefs.notifyAbout,
+			muted: rule.muted,
+			alerted: rule.alerted,
+			quiet: isQuietAt(prefs.quietHours, localClockIn(subscription.timeZone, now)),
+		});
+		if (decision.fire) push(subscription);
+		else if (decision.suppressed === 'quiet-hours') {
+			plan.held.push({ subscriptionId: subscription._id, isMarketing: false });
+		}
+	}
+	return plan;
+}
+
+/** Count each held device toward its quiet summary, with the person's quiet hours now. */
+export async function holdForQuietHours(
+	ctx: MutationCtx,
+	userId: string,
+	held: HeldPush[]
+): Promise<void> {
+	if (held.length === 0) return;
+	const { quietHours } = await loadPreferences(ctx, userId);
+	const now = Date.now();
+	for (const { subscriptionId, isMarketing } of held) {
+		const subscription = await ctx.db.get(subscriptionId);
+		if (subscription) await deferForQuietHours(ctx, subscription, quietHours, now, isMarketing);
+	}
+}
+
+/**
+ * The previous release's plan-and-hold, which its `push/send.deliver` ran
+ * before pushing: this release plans in `push/delivery.ts planDelivery` and
+ * holds in the commit after the pushes. Remove after release N+1.
  */
 export const prepareDelivery = internalMutation({
 	args: { userId: v.string(), event: pushEventValidator },
 	handler: async (ctx, { userId, event }): Promise<PushDelivery[]> => {
-		if (!isWebPushConfigured()) return [];
-		const subscriptions = await ctx.db
-			.query('pushSubscriptions')
-			.withIndex('by_user', (q) => q.eq('userId', userId))
-			.take(MAX_DEVICES_PER_USER);
-		const targets =
-			event.kind === 'test'
-				? subscriptions.filter((subscription) => subscription._id === event.subscriptionId)
-				: subscriptions;
-		if (targets.length === 0) return [];
-
-		// Every surface behind these events is for current members only.
-		const role = await loadCurrentRole(ctx, userId);
-		if (!role) return [];
-
-		const prefs = await loadPreferences(ctx, userId);
-		const resolved = await resolveEvent(ctx, userId, event, prefs, role);
-		if (!resolved) return [];
-
-		const now = Date.now();
-		const deliveries: PushDelivery[] = [];
-		for (const subscription of targets) {
-			const { rule } = resolved;
-			if (rule.kind === 'always') {
-				deliveries.push(toDelivery(subscription, resolved.payload, resolved.ttlSeconds));
-				continue;
-			}
-			if (rule.kind === 'unless-nothing') {
-				if (prefs.notifyAbout !== 'nothing') {
-					deliveries.push(toDelivery(subscription, resolved.payload, resolved.ttlSeconds));
-				}
-				continue;
-			}
-			if (rule.kind === 'rule-notify' || rule.kind === 'quiet-hours') {
-				const isQuiet = isQuietAt(prefs.quietHours, localClockIn(subscription.timeZone, now));
-				if (rule.kind === 'rule-notify' && rule.muted) continue;
-				if (isQuiet) {
-					const isMarketing = rule.kind === 'quiet-hours';
-					await deferForQuietHours(ctx, subscription, prefs.quietHours, now, isMarketing);
-				} else deliveries.push(toDelivery(subscription, resolved.payload, resolved.ttlSeconds));
-				continue;
-			}
-			const decision = decideNotification({
-				category: rule.category,
-				setting: prefs.notifyAbout,
-				muted: rule.muted,
-				alerted: rule.alerted,
-				quiet: isQuietAt(prefs.quietHours, localClockIn(subscription.timeZone, now)),
-			});
-			if (decision.fire) {
-				deliveries.push(toDelivery(subscription, resolved.payload, resolved.ttlSeconds));
-			} else if (decision.suppressed === 'quiet-hours') {
-				await deferForQuietHours(ctx, subscription, prefs.quietHours, now);
-			}
-		}
-		return deliveries;
+		const plan = await planEvent(ctx, userId, event);
+		await holdForQuietHours(ctx, userId, plan.held);
+		return plan.deliveries;
 	},
 });
 
@@ -468,32 +486,8 @@ export const takeQuietSummary = internalMutation({
 	},
 });
 
-/**
- * Write back what the push services said: stamp `lastSuccessAt` on accepted
- * devices and delete the ones that answered 404/410 — the browser dropped that
- * subscription, and it will never accept a message again.
- */
+/** Write back what the push services said (`applyPushOutcomes`). */
 export const recordOutcomes = internalMutation({
-	args: {
-		outcomes: v.array(
-			v.object({
-				subscriptionId: v.id('pushSubscriptions'),
-				outcome: v.union(
-					v.literal('delivered'),
-					v.literal('gone'),
-					v.literal('rejected'),
-					v.literal('failed')
-				),
-			})
-		),
-	},
-	handler: async (ctx, { outcomes }) => {
-		const now = Date.now();
-		for (const { subscriptionId, outcome } of outcomes) {
-			const subscription = await ctx.db.get(subscriptionId);
-			if (!subscription) continue;
-			if (outcome === 'gone') await ctx.db.delete(subscriptionId);
-			else if (outcome === 'delivered') await ctx.db.patch(subscriptionId, { lastSuccessAt: now });
-		}
-	},
+	args: { outcomes: v.array(pushOutcomeValidator) },
+	handler: async (ctx, { outcomes }) => await applyPushOutcomes(ctx, outcomes),
 });

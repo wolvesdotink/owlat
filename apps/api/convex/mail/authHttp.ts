@@ -105,6 +105,8 @@ export const handleVerifyCredential = httpAction(async (ctx, request) => {
 	// share the MTA's one bucket: a burst of checks for other clients would 429 a
 	// legitimate login, and the MTA counts that as the client's auth failure. The
 	// per-client bucket still bounds how many checks one client can cause.
+	// checkpoint: admission before the password check; the token stays spent
+	// whatever the check answers, which is what bounds guessing.
 	const { ok: rateOk, retryAfter } = await ctx.runMutation(
 		internal.lib.publicRateLimit.checkPublicRateLimit,
 		{ limitType: 'webhookIngestion', key: `mta-verify-credential:${ipRateLimitKey(clientIp)}` }
