@@ -1,10 +1,10 @@
 /**
- * #1272: a reopened draft's own attachments, when the person attaches a file
+ * A reopened draft's own attachments, when the person attaches a file
  * before `drafts.get` has answered.
  *
  * The merge of the first answer keeps a non-empty attachment list as it is, so
- * a file added while the row loaded used to be the only chip: the row's own
- * files stayed hidden, yet the send (built from the row) still carried them.
+ * a file added while the row loaded must not stay the only chip: the row's own
+ * files would be hidden, yet the send (built from the row) still carries them.
  * The chips follow the row once it is merged (usePostboxComposeExpected), so
  * the row's files join the one added meanwhile, and an upload that lands after
  * the row already showed it is not added twice (`onCommitted`).

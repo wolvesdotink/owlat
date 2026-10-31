@@ -70,8 +70,8 @@ export interface ClarificationProvenance {
 /**
  * What the card's one trust line says: null when no question says where it
  * came from, else the sender domain they all share (null when they name none
- * or do not agree). Read from `origin` alone: the English sentence questions
- * carried before it is gone from the schema (#1224).
+ * or do not agree). Read from `origin` alone: an English `attribution` sentence
+ * a stored question may still carry is never parsed for a domain.
  */
 export function clarificationTrust(
 	questions: readonly ClarificationProvenance[]

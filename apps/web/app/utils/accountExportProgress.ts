@@ -1,10 +1,10 @@
 /**
  * The account export's pre-run manifest and its progress bar (idea 67).
  *
- * "Export my data" used to be a button and a spinner. For a mailbox with years
- * of mail that spinner runs for minutes with nothing to distinguish it from a
- * hang, and nothing anywhere said what the file was going to contain. This
- * module holds both halves of the fix, pure:
+ * A button and a spinner are not enough for "Export my data": for a mailbox
+ * with years of mail the spinner runs for minutes with nothing to distinguish
+ * it from a hang, and nothing says what the file is going to contain. This
+ * module holds both halves, pure:
  *
  *  - {@link buildAccountExportManifest} turns the backend's plan into the list
  *    the card shows BEFORE the run: every resource by name, with a row count

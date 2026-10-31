@@ -4,10 +4,9 @@
  * (`apps/api/convex/auditActions/catalog.ts` → `AUDIT_ACTION_LITERALS`),
  * imported across the `@owlat/api` package boundary.
  *
- * Previously the audit page kept a hand-maintained copy of the literal list, so
- * a new backend action silently never appeared in the filter dropdown (it had
- * already drifted — `sending_domain.dkim_rotated` was missing). Deriving the
- * list here means a new backend action shows up in the filter automatically, and
+ * A hand-maintained copy of the literal list drifts: a new backend action
+ * silently never appears in the filter dropdown. Deriving the list here means a
+ * new backend action shows up in the filter automatically, and
  * the parity test (`useAuditLogPresentation.test.ts`) fails the build if any
  * literal is left ungrouped.
  *

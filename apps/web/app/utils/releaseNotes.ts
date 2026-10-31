@@ -105,7 +105,7 @@ function splitBoldCode(inlines: Inline[]): Inline[] {
 	);
 }
 
-/** `(#1241, #1248)` → links to the pull requests. */
+/** Each `#<number>` in the text → a link to that pull request. */
 function linkPullRequests(inlines: Inline[]): Inline[] {
 	return inlines.flatMap((part): Inline[] => {
 		if (part.type !== 'text') return [part];

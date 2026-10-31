@@ -129,23 +129,21 @@ export const MAX_BACKGROUND_DEFERRALS = 24;
 
 export { rethrowAdmissionRefusal } from '../lib/llm/admissionPort';
 
-/**
- * A background action that can be scheduled again with its own arguments plus
- * `deferrals`. Typed loosely on purpose: the action names itself, and a
- * precise type would make its type depend on itself.
- */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any -- see above
-export type DeferrableAction = FunctionReference<'action', 'internal', any>;
-
 /** The arguments a deferrable background run takes. */
-interface DeferrableArgs {
+type DeferrableArgs = {
 	readonly deferrals?: number;
 	readonly root?: {
 		readonly rootRequestId: string;
 		readonly parentCallId?: string;
 		readonly deadlineAt?: number;
 	};
-}
+};
+
+/**
+ * A background action that can be scheduled again with its own arguments plus
+ * `deferrals`.
+ */
+export type DeferrableAction = FunctionReference<'action', 'internal', DeferrableArgs>;
 
 /**
  * Run background AI work; when spend admission refuses it (the gate or a call

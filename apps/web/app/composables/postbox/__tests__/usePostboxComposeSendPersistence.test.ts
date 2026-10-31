@@ -1,6 +1,5 @@
 /**
- * Send stands on an acknowledged save of the CURRENT snapshot
- * (#895).
+ * Send stands on an acknowledged save of the CURRENT snapshot.
  *
  * `drafts.send` takes only a draft id and reads the stored row, so a save that
  * failed before it means the message goes out as it was stored, not as it is

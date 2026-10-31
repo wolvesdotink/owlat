@@ -117,7 +117,7 @@ describe('usePostboxInlineImages', () => {
 		await Promise.resolve();
 		await Promise.resolve();
 
-		// An external write puts back the stored form, which has no src (#1285).
+		// An external write puts back the stored form, which has no src.
 		el.innerHTML = '<p><img data-inline-cid="cid-shot.png"></p>';
 		api.fillSources();
 		expect(el.querySelector('img')?.getAttribute('src')).toBe('blob:shot.png');

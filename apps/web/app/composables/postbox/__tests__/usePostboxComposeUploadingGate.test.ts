@@ -149,7 +149,7 @@ describe('usePostboxCompose — send blocked while uploading', () => {
 	});
 });
 
-// Issue #1131 review: a Reply Queue draft the AI left gaps in has no ask
+// A Reply Queue draft the AI left gaps in has no ask
 // session, and after a reload the composer's in-memory AI draft is gone. The
 // row's `isGapGuarded` is what keeps its gaps holding Send.
 describe('usePostboxCompose — a reopened draft the AI left gaps in', () => {

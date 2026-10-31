@@ -10,7 +10,7 @@
  *     target (`mailMessages.unsubscribe`, parsed once at ingest) with volume,
  *     unread count, and a last-read signal.
  *   - `unsubscribeAndArchive` runs the selected senders through the ONE
- *     unsubscribe path (`api.mail.senders.unsubscribeActions.unsubscribe`:
+ *     unsubscribe path (`mail/senders/unsubscribeActions.ts`:
  *     local suppression for personal mail, then the guarded one-click POST
  *     with its result recorded) one at a time, spaced out. A team inbox only
  *     archives what a successful sender still has in the Inbox. It returns a per-sender outcome so a partial failure reads as
@@ -437,23 +437,21 @@ export const unsubscribeAndArchive = authedAction({
 
 			// The one unsubscribe path: personal mail is suppressed locally first
 			// (recent Inbox mail archived, undoable) and the guarded POST's result
-			// is recorded on the sender (mail/senders/unsubscribeActions.ts).
-			const outcome: UnsubscribeOutcome = await ctx.runAction(
-				api.mail.senders.unsubscribeActions.unsubscribe,
-				{ target: { messageId: sender.actionMessageId } }
-			);
-			let archived = outcome.scope === 'personal' ? outcome.archived : 0;
+			// is recorded on the sender; a team inbox, which keeps no sender
+			// standing, archives once the sender agreed. Each sender commits in
+			// its own run (mail/senders/unsubscribeActions.ts), right after its
+			// own POST, so a later sender's failure leaves it in place.
+			const { outcome, sharedArchived }: { outcome: UnsubscribeOutcome; sharedArchived: number } =
+				await ctx.runAction(internal.mail.senders.unsubscribeActions.unsubscribeBatchSender, {
+					messageId: sender.actionMessageId,
+					mailboxId: args.mailboxId,
+					senderEmail,
+				});
+			const archived = outcome.scope === 'personal' ? outcome.archived : sharedArchived;
 			if (outcome.result !== 'confirmed') {
 				const error = outcome.error ?? 'not_one_click';
 				results.push({ senderEmail, status: 'failed', archived, error });
 				continue;
-			}
-			// A team inbox keeps no sender standing: archive once the sender agreed.
-			if (outcome.scope === 'shared') {
-				({ archived } = await ctx.runMutation(internal.mail.subscriptions.archiveSenderInInbox, {
-					mailboxId: args.mailboxId,
-					senderEmail,
-				}));
 			}
 			results.push({ senderEmail, status: 'unsubscribed', archived });
 		}

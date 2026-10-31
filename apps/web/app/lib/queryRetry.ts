@@ -1,6 +1,6 @@
 /**
  * Automatic recovery for query subscriptions that fail for a reason that is
- * likely to pass on its own (#818).
+ * likely to pass on its own.
  *
  * A Convex query that throws stays failed until the server pushes a new result,
  * and on a quiet install nothing ever does. The typical case is a cold,

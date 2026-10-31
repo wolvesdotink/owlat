@@ -1,4 +1,3 @@
-/* eslint-disable no-console -- a CLI command reports to the terminal */
 /**
  * `owlat-setup push-env` — push the Convex function-runtime keys from `.env`
  * into the running deployment. The second half of `owlat apply`.

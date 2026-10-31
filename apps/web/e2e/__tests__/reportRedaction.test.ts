@@ -1,7 +1,7 @@
 // @vitest-environment node
 /**
  * What the suite itself writes into the public report (the setup's console and
- * network log, error messages) names neither the deployment nor a JWT (#1222).
+ * network log, error messages) names neither the deployment nor a JWT.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {

@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 # Copy a pure module hands to its renderer has one shape and one resolver:
 # `LocalizedText` and `resolveLocalized` in app/utils/localizedText.ts, bound to
-# a component by `useLocalized()`. The union used to be restated in some thirty
-# files and the resolver pasted into sixty, and two of the copies had already
-# drifted apart on what an already-worded string does.
+# a component by `useLocalized()`. A restated union or a pasted resolver drifts
+# apart from these on what an already-worded string does.
 #
 # The generator prints one `path:<spelling>` line per occurrence under app/ and
 # server/, outside app/utils/localizedText.ts and tests:

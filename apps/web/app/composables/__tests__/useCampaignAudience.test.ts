@@ -1,9 +1,8 @@
 /**
- * `useCampaignAudience` is the one copy of a campaign's recipients state. The
- * setup wizard and the campaign edit page each used to write out the kind + id
- * refs, the derived Audience and the list subscriptions, and only the wizard
- * showed a failed topics or segments read (#818): on the edit page it looked
- * like a workspace with no topics.
+ * `useCampaignAudience` is the one copy of a campaign's recipients state, the
+ * kind + id refs, the derived Audience and the list subscriptions, shared by
+ * the setup wizard and the campaign edit page. Both must show a failed topics
+ * or segments read as a failure, never as a workspace with no topics.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { effectScope, nextTick, ref, type Ref } from 'vue';

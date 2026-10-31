@@ -33,8 +33,8 @@ export function useChatRoom(roomId: Ref<Id<'chatRooms'> | undefined>) {
 	);
 
 	// Growable window over the live message subscription: starts at 100, grows by
-	// 100 up to the backend cap so "Load earlier messages" can reach older history
-	// (previously hard-capped at 100 with no way to load more). Resets per room.
+	// 100 up to the backend cap so "Load earlier messages" can reach older history.
+	// Resets per room.
 	const {
 		limit: messageLimit,
 		loadMore: loadMoreMessages,

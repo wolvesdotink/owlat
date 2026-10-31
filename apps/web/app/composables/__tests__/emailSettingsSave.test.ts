@@ -11,7 +11,7 @@ import { EMAIL_RENDERER_VERSION } from '@owlat/email-renderer/version';
 /**
  * The template Settings save. Besides routing to `update` / `setDefaultLanguage`,
  * each write carries the delivery HTML rendered from the state it leaves and
- * the revision it was built on (issue #1077). Rendered with the real email
+ * the revision it was built on. Rendered with the real email
  * renderer, so the assertions read what a recipient would get.
  */
 

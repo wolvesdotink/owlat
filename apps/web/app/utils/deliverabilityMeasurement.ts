@@ -16,9 +16,9 @@
  * TWO SPANS, AND EVERY SENTENCE SAYS WHICH ONE IT IS OVER. The server counts
  * over a WINDOW of seven days and reaches every gate verdict over the ramp
  * controller's own, shorter DECIDING span, so the two readers agree on the
- * verdict (#510). A gate sentence here reading "this window" beside a table
- * covering a different one would be the same lie the server just stopped
- * telling, so the sentences say whose window they mean and
+ * verdict. A gate sentence here reading "this window" beside a table
+ * covering a different one would be the same lie the server is built not to
+ * tell, so the sentences say whose window they mean and
  * `deliverabilityWindows.ts` puts each span into words for the headings.
  *
  * THE GATE COPY LIVES NEXT DOOR. Gate names, verdict tones and the sentence

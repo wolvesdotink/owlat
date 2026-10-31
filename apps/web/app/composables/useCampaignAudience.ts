@@ -18,7 +18,7 @@ export type CampaignAudienceSelection =
  * The picker v-models the three refs (kind + either id). Everything else reads
  * the one derived `audience` value, which is null until a complete selection
  * exists. The topics and segments subscriptions come with their errors, so a
- * failed read shows as a failure with a retry, never as "no topics" (#818).
+ * failed read shows as a failure with a retry, never as "no topics".
  */
 export function useCampaignAudience() {
 	const audienceType = ref<CampaignAudienceType>('topic');

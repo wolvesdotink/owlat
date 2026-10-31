@@ -450,6 +450,21 @@ export const transition = internalMutation({
 	},
 });
 
+/** `transition` for every recipient one external SMTP answer covers, in one commit. */
+export const transitionRecipients = internalMutation({
+	args: {
+		mailMessageId: v.id('mailMessages'),
+		transitions: v.array(v.object({ recipientIdx: v.number(), input: transitionInputValidator })),
+	},
+	handler: async (ctx, args): Promise<TransitionOutcome[]> => {
+		const outcomes: TransitionOutcome[] = [];
+		for (const { recipientIdx, input } of args.transitions) {
+			outcomes.push(await dispatch(ctx, args.mailMessageId, recipientIdx, input));
+		}
+		return outcomes;
+	},
+});
+
 /**
  * Same as `transition`, but the caller has the raw `pb-<id>-<idx>` MTA
  * messageId rather than the parsed (id, idx) pair. Parses internally.

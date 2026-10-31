@@ -1,6 +1,6 @@
 /**
  * "Download .eml": the file the user saves is the message's bytes exactly as
- * they were stored, headers and 8-bit parts included (#1279). The raw loader
+ * they were stored, headers and 8-bit parts included. The raw loader
  * reads the blob into a binary string and the download turns it back into
  * bytes; neither step may change a byte, 0x80-0x9F included.
  */

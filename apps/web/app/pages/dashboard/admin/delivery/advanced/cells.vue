@@ -116,14 +116,11 @@ function select(cellKey: string): void {
 
 <template>
 	<div>
-		<header class="mb-6">
-			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-				{{ t('dashboard.admin.delivery.advanced.cells.title') }}
-			</h1>
-			<p class="mt-1 max-w-2xl text-sm text-text-secondary">
-				{{ t('dashboard.admin.delivery.advanced.cells.lede') }}
-			</p>
-		</header>
+		<UiPageHeader
+			class="mb-6"
+			:title="t('dashboard.admin.delivery.advanced.cells.title')"
+			:description="t('dashboard.admin.delivery.advanced.cells.lede')"
+		/>
 
 		<!-- With two reference relays there is no single second arm, so
 		     every share below holds. The reason belongs on the screen where the

@@ -2,13 +2,10 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import Redis from 'ioredis-mock';
 import type RealRedis from 'ioredis';
 import { gunzipSync } from 'zlib';
-import {
-	recordTlsResult,
-	generateReport,
-	generateAndSendReports,
-	buildStsPolicyString,
-} from '../tlsRpt.js';
-import type { TlsRptQueue, TlsResultType } from '../tlsRpt.js';
+import { recordTlsResult, buildStsPolicyString } from '../tlsRpt.js';
+import type { TlsResultType } from '../tlsRpt.js';
+import { generateReport, generateAndSendReports } from '../tlsRptReport.js';
+import type { TlsRptQueue } from '../tlsRptReport.js';
 import type { EmailJob } from '../../types.js';
 import type { SmtpTlsCause } from '@owlat/smtp-client';
 import { classifyTlsFailure, stsAttributedResultType } from '../tlsFailureClassification.js';

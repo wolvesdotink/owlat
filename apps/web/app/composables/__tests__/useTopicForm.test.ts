@@ -1,7 +1,6 @@
 /**
- * `useTopicForm` holds the topic list's create, edit and delete flows, which
- * used to be inline on the page as two form modals and a hand-rolled delete
- * state. One form now serves create and edit, as `useSegmentForm` does.
+ * `useTopicForm` holds the topic list's create, edit and delete flows. One
+ * form serves create and edit, as `useSegmentForm` does.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Id } from '@owlat/api/dataModel';

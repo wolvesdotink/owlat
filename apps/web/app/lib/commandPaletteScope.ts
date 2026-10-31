@@ -1,12 +1,11 @@
 /**
  * The command palette's SCOPE — which corpus ⌘K searches, decided by the route.
  *
- * The app used to ship four places to type a query (the palette, the Postbox
- * rail bar, the search page, the Quick Query modal), none of which could read
- * the others' syntax. There is now one overlay, and the thing that used to be
- * "which box did you click" is this scope: on `/dashboard/postbox/**` it opens
- * on Mail with the full operator grammar, on knowledge/files it opens on Ask,
- * and everywhere else on Everything. Tab cycles, so nothing is out of reach.
+ * There is one overlay to type a query into, not one box per corpus that cannot
+ * read the others' syntax, so "which box did you click" is this scope: on
+ * `/dashboard/postbox/**` it opens on Mail with the full operator grammar, on
+ * knowledge/files it opens on Ask, and everywhere else on Everything. Tab
+ * cycles, so nothing is out of reach.
  *
  * The route→scope table is the part worth pinning: a new route group that lands
  * in the wrong scope is a silently worse search, not a crash, so it gets a unit

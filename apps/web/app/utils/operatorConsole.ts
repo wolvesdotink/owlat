@@ -116,7 +116,7 @@ export type OperatorTab = 'overview' | 'review' | 'organizations' | 'admins';
  * other workspaces to police, and Delivery health already shows its sending
  * numbers, so it drops the Workspaces tab and the overview's delivery stats
  * and keeps what it still needs: content review, the admin roster and the
- * abuse signals (#800). An unknown count (still loading) keeps everything, so
+ * abuse signals. An unknown count (still loading) keeps everything, so
  * a multi-workspace console never flashes a trimmed view.
  */
 export function operatorConsoleLayout(

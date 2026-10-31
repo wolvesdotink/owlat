@@ -345,8 +345,8 @@ export async function dispatch(
 		// effect). If the address has been removed from the allowed set
 		// since the draft was queued — or the send-as grant (a teammate's
 		// personal identity used in a shared inbox) no longer holds — the kind
-		// is rejected. The caller (the dispatch action) must instead call
-		// transition({to:'draft', reason:'from_revoked'}). The reducer never
+		// is rejected. The dispatch hop's commit (`commitSent`) then reverts
+		// with {to:'draft', reason:'from_revoked'}. The reducer never
 		// silently downgrades, and the send-as allow-set extension is
 		// re-validated here independently of the setIdentity-time check.
 		const sanctioned = await isSanctionedSendAsForUser(ctx, {

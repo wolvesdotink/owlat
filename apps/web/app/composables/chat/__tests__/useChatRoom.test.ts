@@ -2,9 +2,9 @@
  * `useChatRoom` against a fake subscription transport that behaves like the
  * backend: `markRead` moves the member's `lastReadAt` forward, and `getRoom`
  * re-emits the room with the new `myLastReadAt` — the feedback path that used
- * to acknowledge itself on every tick (#944).
+ * to acknowledge itself on every tick.
  *
- * The send path (#945) must hand the operation's `{ ok }` back to the
+ * The send path must hand the operation's `{ ok }` back to the
  * composer, so a refused send can keep the draft.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';

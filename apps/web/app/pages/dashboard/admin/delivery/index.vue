@@ -238,35 +238,31 @@ const sendingDetail = computed(() => {
 			 disclosure alongside it, which made the settings that gate how fast this
 			 deployment may send reachable from exactly one collapsed control; they
 			 live in the admin layout's rail now, under Advanced, on every page. -->
-		<div class="mb-6">
-			<div class="flex items-center gap-3">
-				<UiIconBox icon="lucide:shield-check" size="lg" variant="brand" rounded="xl" />
-				<div>
-					<div class="flex items-center gap-2.5">
-						<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-							{{ t('dashboard.admin.delivery.index.title') }}
-						</h1>
-						<span
-							v-if="verdict"
-							class="px-2.5 py-1 rounded-full text-xs font-medium shrink-0"
-							:class="verdictChipClass"
-						>
-							{{ localized(verdict.label) }}
-						</span>
-						<UiSkeleton v-else class="h-6 w-24 rounded-full" />
-					</div>
-					<!-- When the verdict isn't Healthy, surface the reason as a visible
-						 line (not just a mouse-only tooltip) so keyboard/touch users see it. -->
-					<p v-if="level !== 'ok' && reason" class="mt-1 text-sm text-text-secondary">
-						{{ reason }}
-					</p>
-					<p v-if="warmup" class="mt-1 text-sm text-text-secondary">{{ warmup }}</p>
-					<p v-else-if="!level || level === 'ok'" class="mt-1 text-sm text-text-secondary">
+		<UiPageHeader class="mb-6" :title="t('dashboard.admin.delivery.index.title')">
+			<!-- When the verdict isn't Healthy, surface the reason as a visible
+				 line (not just a mouse-only tooltip) so keyboard/touch users see it. -->
+			<template #description>
+				<div class="space-y-1">
+					<p v-if="level !== 'ok' && reason">{{ reason }}</p>
+					<p v-if="warmup">{{ warmup }}</p>
+					<p v-else-if="!level || level === 'ok'">
 						{{ t('dashboard.admin.delivery.index.lede') }}
 					</p>
 				</div>
-			</div>
-		</div>
+			</template>
+			<!-- The verdict chip is the header's status strip; the title prop is plain
+				 text, so the chip cannot sit inside the h1. -->
+			<template #meta>
+				<span
+					v-if="verdict"
+					class="inline-block px-2.5 py-1 rounded-full text-xs font-medium"
+					:class="verdictChipClass"
+				>
+					{{ localized(verdict.label) }}
+				</span>
+				<UiSkeleton v-else class="h-6 w-24 rounded-full" />
+			</template>
+		</UiPageHeader>
 
 		<!-- The one readiness panel leads the hub: it derives a single truth for
 			 "can this instance send?" from the real transport + domain + email-auth

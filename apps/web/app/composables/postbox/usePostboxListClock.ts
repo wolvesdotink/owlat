@@ -1,10 +1,10 @@
 /**
  * One clock per Postbox list, shared by every row under it.
  *
- * Row timestamps ("5m", "3h") used to read `Date.now()` once, at render, and
- * never again: a row that said "just now" at nine still said it at noon unless
- * something else happened to re-render it. A clock per row would fix that at
- * the price of one interval per visible row. Instead the list starts a single
+ * Row timestamps ("5m", "3h") cannot read `Date.now()` once, at render: a row
+ * that said "just now" at nine would still say it at noon unless something else
+ * happened to re-render it. A clock per row would cost one interval per
+ * visible row. Instead the list starts a single
  * minute clock and provides it; each row injects it, so the whole list ticks
  * once a minute off one timer.
  *

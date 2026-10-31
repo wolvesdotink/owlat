@@ -56,7 +56,7 @@ export default defineConfig({
 			// So the global `on-first-retry` would never record a trace here, and a
 			// setup failure skips every spec that depends on it. Locally, keep one
 			// whenever it fails: network, console and DOM are what tell a slow
-			// deployment from a Convex client that never re-authenticated (#1203).
+			// deployment from a Convex client that never re-authenticated.
 			// In CI the redacted console and network log stand in for it (see
 			// the comment on `CI` above).
 			use: { trace: CI ? 'off' : 'retain-on-failure' },

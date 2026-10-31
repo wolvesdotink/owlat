@@ -238,7 +238,7 @@ describe('apply-transport — disconnecting a relay cells still lean on', () => 
 	});
 
 	/**
-	 * ONE RELAY IN `EMAIL_PROVIDER`, ONE IN `providerRoutes` (#513) — the shape
+	 * ONE RELAY IN `EMAIL_PROVIDER`, ONE IN `providerRoutes` — the shape
 	 * that actually loses the confirmation.
 	 *
 	 * Both count toward `configuredRelayKinds()`, so `referenceTransportId` is

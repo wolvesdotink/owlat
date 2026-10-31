@@ -1,5 +1,5 @@
 /**
- * #1285: the composer asks for a draft's inline image URLs once Convex auth is
+ * The composer asks for a draft's inline image URLs once Convex auth is
  * confirmed and it has a draft row whose body holds inline images, hands the
  * editor a Content-ID → URL map, and renews the expiring `/sealed-blob` URLs
  * before they run out: timed from the lifetime the server reports, never from

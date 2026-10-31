@@ -11,8 +11,7 @@ test.describe('Settings — Team Members', () => {
 	});
 
 	test('navigate to team settings', async ({ page }) => {
-		// The Settings split (#788, #800) renamed the page to "Team"; its roster
-		// is the "Members" section.
+		// The page is titled "Team"; its roster is the "Members" section.
 		await expect(page.getByRole('heading', { level: 1, name: 'Team', exact: true })).toBeVisible({
 			timeout: 15_000,
 		});

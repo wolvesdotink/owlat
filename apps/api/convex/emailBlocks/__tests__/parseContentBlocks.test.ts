@@ -10,7 +10,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { renderPublishableEmail } from '../../lib/publishableEmailRender';
-import { parseContentBlocks } from '../module';
+import { parseContentBlocks } from '../consumers';
 
 const button = { type: 'button', content: { text: 'Read more', url: 'https://example.com' } };
 const text = (html: string, id?: string) => ({

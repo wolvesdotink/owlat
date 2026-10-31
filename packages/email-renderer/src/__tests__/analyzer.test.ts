@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { analyzeEmail, getEmailHealthScore } from '../analyzer';
+import { analyzeEmail } from '../analyzer';
+import { getEmailHealthScore } from '../emailHealthScore';
 import type { EditorBlock, ImageBlockContent } from '@owlat/shared';
 
 describe('analyzeEmail', () => {

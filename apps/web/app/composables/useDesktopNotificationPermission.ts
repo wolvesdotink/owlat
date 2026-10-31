@@ -4,9 +4,9 @@ import type { DesktopNotificationPermission } from '@owlat/desktop/src/notificat
 /**
  * OS notification permission for the desktop app.
  *
- * The app used to call `.show()` straight from Rust without ever asking, so on
- * macOS and Windows the very first toast could silently vanish. This owns the
- * missing half: a permission we CHECK before sending, REQUEST once at startup,
+ * Calling `.show()` from Rust without ever asking lets the very first toast
+ * vanish silently on macOS and Windows. This owns the permission half: a
+ * permission we CHECK before sending, REQUEST once at startup,
  * can re-request from the settings panel, and can prove with a test
  * notification.
  *

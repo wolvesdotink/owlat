@@ -1,5 +1,5 @@
 /**
- * Where the composer shows a draft's inline body images from (#1285).
+ * Where the composer shows a draft's inline body images from.
  *
  * A pasted image is saved as `<img data-inline-cid="X">` with no `src`, its
  * bytes as the inline part `X` on the draft row. The preview the paste showed

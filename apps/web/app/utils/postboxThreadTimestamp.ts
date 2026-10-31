@@ -6,9 +6,9 @@
  * `formatRelativeTime` ("5 minutes ago") in utils/formatters.ts: a row's meta
  * column has room for the number and its unit and nothing else.
  *
- * Pure on purpose. It used to read `Date.now()` and hard-code `en-US`, so a row
- * said "5m" forever (nothing re-rendered it as time passed) and a German reader
- * got "just now" and "Sep 3". The caller now hands in the list's clock, the
+ * Pure on purpose. Reading `Date.now()` and hard-coding `en-US` here would make
+ * a row say "5m" forever (nothing re-renders it as time passes) and give a
+ * German reader "just now" and "Sep 3". The caller hands in the list's clock, the
  * active locale and the translated "just now"; `usePostboxThreadTimestamp`
  * (composables/postbox/usePostboxListClock.ts) is the one caller.
  *

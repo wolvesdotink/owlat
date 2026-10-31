@@ -1,6 +1,6 @@
 /**
- * Read on arrival: the rows behind a plain-language rule. The
- * compile action (`filterCompile.ts`) writes a `mailRuleDrafts` row that goes
+ * Read on arrival: the rows behind a plain-language rule. A compile
+ * (`filterCompile.ts`) writes a `mailRuleDrafts` row that goes
  * `compiling` → `ready` (with a preview) or `failed`; the rules section
  * subscribes to the mailbox's recent drafts. Confirming a ready draft saves
  * it as a filter with `origin` and `sourceText`, through the same validator
@@ -10,10 +10,11 @@
  * every other arrival row.
  */
 
-import { v } from 'convex/values';
+import { v, type ObjectType } from 'convex/values';
 import type { Doc, Id } from '../_generated/dataModel';
 import { internalQuery, type MutationCtx, type QueryCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
+import { internal } from '../_generated/api';
 import { postboxMutation, postboxQuery } from './_helpers';
 import { isPersonalMailbox, requireMailboxAccess } from './permissions';
 import { throwForbidden, throwInvalidInput, throwInvalidState } from '../_utils/errors';
@@ -36,43 +37,67 @@ export interface CompileTargets {
 
 const MAX_TARGETS = 200;
 
+const startDraftArgs = {
+	mailboxId: v.id('mailboxes'),
+	sourceText: v.string(),
+	origin: v.union(v.literal('fix'), v.literal('plain_language')),
+	fromMessageId: v.optional(v.id('mailMessages')),
+};
+
 /**
  * Start a compile: owner-grade access to a personal mailbox, the text sealed
- * into a `compiling` draft. Returns the draft and what the rule may name.
+ * into a `compiling` draft, and `filterCompile.compileDraft` scheduled in the
+ * same transaction, so the draft and the run that settles it exist together.
+ */
+export const startCompile = internalMutation({
+	args: startDraftArgs,
+	handler: async (ctx, args): Promise<{ draftId: Id<'mailRuleDrafts'> }> => {
+		const draftId = await insertCompilingDraft(ctx, args);
+		await ctx.scheduler.runAfter(0, internal.mail.filterCompile.compileDraft, { draftId });
+		return { draftId };
+	},
+});
+
+/**
+ * The previous release's start, which compiled inline afterwards: it
+ * schedules nothing, so its own action stays the only run that settles the
+ * draft. Remove after release N+1.
  */
 export const startDraft = internalMutation({
-	args: {
-		mailboxId: v.id('mailboxes'),
-		sourceText: v.string(),
-		origin: v.union(v.literal('fix'), v.literal('plain_language')),
-		fromMessageId: v.optional(v.id('mailMessages')),
-	},
+	args: startDraftArgs,
 	handler: async (ctx, args): Promise<{ draftId: Id<'mailRuleDrafts'> } & CompileTargets> => {
-		const owned = await requireMailboxAccess(ctx, args.mailboxId, 'owner');
-		if (!owned.ok) throwForbidden('Mailbox not accessible');
-		if (!isPersonalMailbox(owned.mailbox)) {
-			throwInvalidState('Plain-language rules are for personal mailboxes');
-		}
-		const text = args.sourceText.trim();
-		if (!text) throwInvalidInput('Rule text is required');
-		if (text.length > MAX_RULE_TEXT_CHARS) throwInvalidInput('Rule text is too long');
-		if (args.fromMessageId) {
-			const message = await ctx.db.get(args.fromMessageId);
-			if (!message || message.mailboxId !== args.mailboxId) throwForbidden('Message not found');
-		}
-		const now = Date.now();
-		const draftId = await ctx.db.insert('mailRuleDrafts', {
-			mailboxId: args.mailboxId,
-			sourceText: await sealBodyAtWrite(text),
-			status: 'compiling',
-			origin: args.origin,
-			...(args.fromMessageId ? { fromMessageId: args.fromMessageId } : {}),
-			createdAt: now,
-			expiresAt: now + ARRIVAL_RETENTION_MS.ruleDraft,
-		});
+		const draftId = await insertCompilingDraft(ctx, args);
 		return { draftId, ...(await compileTargets(ctx, args.mailboxId)) };
 	},
 });
+
+async function insertCompilingDraft(
+	ctx: MutationCtx,
+	args: ObjectType<typeof startDraftArgs>
+): Promise<Id<'mailRuleDrafts'>> {
+	const owned = await requireMailboxAccess(ctx, args.mailboxId, 'owner');
+	if (!owned.ok) throwForbidden('Mailbox not accessible');
+	if (!isPersonalMailbox(owned.mailbox)) {
+		throwInvalidState('Plain-language rules are for personal mailboxes');
+	}
+	const text = args.sourceText.trim();
+	if (!text) throwInvalidInput('Rule text is required');
+	if (text.length > MAX_RULE_TEXT_CHARS) throwInvalidInput('Rule text is too long');
+	if (args.fromMessageId) {
+		const message = await ctx.db.get(args.fromMessageId);
+		if (!message || message.mailboxId !== args.mailboxId) throwForbidden('Message not found');
+	}
+	const now = Date.now();
+	return await ctx.db.insert('mailRuleDrafts', {
+		mailboxId: args.mailboxId,
+		sourceText: await sealBodyAtWrite(text),
+		status: 'compiling',
+		origin: args.origin,
+		...(args.fromMessageId ? { fromMessageId: args.fromMessageId } : {}),
+		createdAt: now,
+		expiresAt: now + ARRIVAL_RETENTION_MS.ruleDraft,
+	});
+}
 
 /** The mailbox's own folders and labels a compile may name. */
 async function compileTargets(
@@ -94,9 +119,9 @@ async function compileTargets(
 }
 
 /**
- * What `filterCompile.compileDraft` needs for a draft another mutation wrote
- * (a Fix reason): its text, what it may name, and whose background bucket
- * pays. Null unless it is still `compiling` in a personal mailbox.
+ * What `filterCompile.compileDraft` needs for a `compiling` draft (a typed
+ * rule or a Fix reason): its text, what it may name, and whose background
+ * bucket pays. Null unless it is still `compiling` in a personal mailbox.
  */
 export const draftForCompile = internalQuery({
 	args: { draftId: v.id('mailRuleDrafts') },

@@ -1,7 +1,7 @@
 // @vitest-environment node
 /**
  * The credentials a run mints, and the deployment URLs, must never reach the
- * public E2E report (#1222). The scan before upload refuses JWT-shaped values
+ * public E2E report. The scan before upload refuses JWT-shaped values
  * and trace archives, and searches for the URLs' hosts and the session cookies
  * the setup project saved in its storage state.
  */

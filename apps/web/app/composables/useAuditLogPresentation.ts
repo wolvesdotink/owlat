@@ -2,10 +2,9 @@
  * Single source of truth for how audit-log rows are PRESENTED (labels, icons,
  * colours) and for the translated row formatters the list renders.
  *
- * The four presentation switches (resource icon / resource label / action label
- * / action icon / action colour) used to live inline in `audit.vue` and were
- * edited in lockstep. They now live here so the page holds only fetch wiring +
- * template.
+ * The presentation switches (resource icon / resource label / action label
+ * / action icon / action colour) change in lockstep, so they live here and the
+ * page holds only fetch wiring + template.
  *
  * The two filter catalogs — the resource dropdown and the grouped action
  * dropdown derived from the backend SSOT — live in `auditLogFilterCatalog.ts`,

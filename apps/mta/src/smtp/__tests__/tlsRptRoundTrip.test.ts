@@ -12,7 +12,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import Redis from 'ioredis-mock';
 import type RealRedis from 'ioredis';
 import { gzipSync } from 'zlib';
-import { recordTlsResult, generateReport, buildStsPolicyString } from '../tlsRpt.js';
+import { recordTlsResult, buildStsPolicyString } from '../tlsRpt.js';
+import { generateReport } from '../tlsRptReport.js';
 import { decodeTlsReport, parseTlsReport, digestTlsReport } from '@owlat/shared';
 
 vi.mock('prom-client', () => {

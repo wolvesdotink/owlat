@@ -61,7 +61,7 @@ vi.mock('../../monitoring/logger.js', () => ({
 
 import { sendToMx } from '../sender.js';
 import { pool } from '../connectionPool.js';
-import { generateReport } from '../tlsRpt.js';
+import { generateReport } from '../tlsRptReport.js';
 import {
 	type ServerProbe,
 	startServer,

@@ -6,7 +6,7 @@
  * The autosave tags a write with it while the body's written part is still
  * exactly that text, so the server records the change as the AI's and not a
  * person's: a draft no person touched may be cleaned up once the conversation
- * is answered (#1346, apps/api/convex/mail/draftProvenance.ts). The moment a
+ * is answered (apps/api/convex/mail/draftProvenance.ts). The moment a
  * person changes the written part the tag stops, and the server marks the
  * draft as theirs.
  */

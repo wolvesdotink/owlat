@@ -2,8 +2,8 @@
  * The dashboard layout owns the notification-action subscription through
  * `useDesktopNotifications`. These specs mount the real composable the way the
  * layout does and pin two contracts: the subscription lives exactly as long as
- * its owner (#950), and every actionable notification names the workspace it
- * was sent from (#951).
+ * its owner, and every actionable notification names the workspace it
+ * was sent from.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { defineComponent, h, nextTick, ref } from 'vue';

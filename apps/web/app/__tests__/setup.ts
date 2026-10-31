@@ -29,6 +29,7 @@ import {
 	getCurrentScope,
 	onScopeDispose,
 	useId,
+	useSlots,
 	provide,
 	inject,
 } from 'vue';
@@ -69,6 +70,8 @@ vi.stubGlobal('getCurrentScope', getCurrentScope);
 vi.stubGlobal('onScopeDispose', onScopeDispose);
 // Nuxt auto-imports `useId` too; components that label a control by id need it.
 vi.stubGlobal('useId', useId);
+// UiPageHeader (registered for every suite) reads its slots through the auto-import.
+vi.stubGlobal('useSlots', useSlots);
 // The UI layer's dropdown menu hands its items their close through provide/inject.
 vi.stubGlobal('provide', provide);
 vi.stubGlobal('inject', inject);

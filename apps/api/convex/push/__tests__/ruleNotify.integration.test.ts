@@ -11,6 +11,7 @@ import { internal } from '../../_generated/api';
 import type { Id } from '../../_generated/dataModel';
 import { enableFeatures } from '../../__tests__/factories';
 import {
+	planAndHold,
 	VAPID_ENV,
 	pushHarness,
 	quietWindowAroundNow,
@@ -60,10 +61,7 @@ async function setup(t: T, options: Partial<Parameters<typeof seedMessage>[1]> =
 }
 
 async function prepareRuleNotify(t: T, messageId: Id<'mailMessages'>) {
-	const deliveries = await t.mutation(internal.push.dispatch.prepareDelivery, {
-		userId: USER,
-		event: { kind: 'mail', messageId, isRuleNotify: true },
-	});
+	const deliveries = await planAndHold(t, USER, { kind: 'mail', messageId, isRuleNotify: true });
 	return deliveries.map((delivery) => ({ ...delivery, payload: JSON.parse(delivery.payload) }));
 }
 
@@ -92,10 +90,7 @@ describe('push.dispatch rule notify', () => {
 		const { messageId } = await setup(t, { category: 'newsletter' });
 		await setSettings(t, { notifyAbout: 'nothing' });
 		expect(await prepareRuleNotify(t, messageId)).toHaveLength(1);
-		const plain = await t.mutation(internal.push.dispatch.prepareDelivery, {
-			userId: USER,
-			event: { kind: 'mail', messageId },
-		});
+		const plain = await planAndHold(t, USER, { kind: 'mail', messageId });
 		expect(plain).toEqual([]);
 	});
 

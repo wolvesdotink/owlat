@@ -9,7 +9,7 @@ import { describeRequest, redactForReport, testDeployments } from './reportRedac
  * The browser console and network activity of the setup run, attached to the
  * report afterwards. CI records no trace (playwright.config.ts), so these are
  * what is left to tell a slow deployment from a client that never
- * authenticated (#1203). Every line is redacted as it is written: the report is
+ * authenticated. Every line is redacted as it is written: the report is
  * public, and the deployment URLs and the Convex JWT must not reach it.
  */
 const consoleLines: string[] = [];

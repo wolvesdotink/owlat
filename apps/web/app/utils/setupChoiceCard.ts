@@ -1,5 +1,5 @@
 /**
- * The one look for a selectable card in the setup wizard (#770, #772).
+ * The one look for a selectable card in the setup wizard.
  *
  * The wizard used to mark its selected card with the +10% grey surface tint,
  * which reads as disabled rather than chosen. Selected cards now use the same

@@ -117,9 +117,9 @@ describe('bundlePostboxFeed', () => {
 	});
 
 	it('bundles a page-3 run whose threads are outside the newest 50', () => {
-		// Regression: the category used to be joined client-side from a
-		// `listThreads` subscription capped at the newest 50 threads, so a row
-		// further down the feed lost its label and stopped folding. Three pages of
+		// The category rides on the row. Joined client-side from a `listThreads`
+		// subscription capped at the newest 50 threads, a row further down the
+		// feed would lose its label and stop folding. Three pages of
 		// fifty rows, each on its own thread; the run sits on the third page.
 		const rows: Row[] = Array.from({ length: 148 }, (_, i) =>
 			row(`p${i}`, 'person', { threadId: `t-${i}` })

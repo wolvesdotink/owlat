@@ -12,8 +12,7 @@
  *     vanished attachment is far worse than a bounce at send time;
  *   - a failed call (offline, no draft) is likewise a no-op on both;
  *   - a reopened draft whose body has not loaded refuses the swap outright:
- *     the link block would land in an empty body and replace the saved one
- *     (#896).
+ *     the link block would land in an empty body and replace the saved one.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ref } from 'vue';

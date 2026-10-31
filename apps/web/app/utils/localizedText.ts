@@ -5,9 +5,8 @@
  * Registries, vocabularies and rule modules are module-scope code with no
  * locale, so they cannot call `t()`. They carry a catalog key instead, bare or
  * with the values it interpolates, and whoever renders them resolves it. That
- * union used to be restated in some thirty files under as many names, and the
- * resolver pasted into sixty; two of the copies had already drifted apart on
- * what an already-worded string does.
+ * union and its resolver live here once: a copy restated under another name
+ * drifts apart from this one on what an already-worded string does.
  *
  * Domain modules may keep a name of their own (`export type BriefText =
  * LocalizedText`), but not a copy of the shape; `scripts/check-localized-text.sh`

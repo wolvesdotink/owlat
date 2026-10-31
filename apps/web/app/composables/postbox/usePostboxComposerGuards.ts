@@ -6,8 +6,8 @@
  *
  *   1. ALIGNMENT (plan idea 3) — the From-picker already knows this identity's
  *      domain is unverified or its transport misaligned, i.e. that the message
- *      is going to be rejected. Until now nothing on the send path read that
- *      verdict, so the user learned it from a bounce. Warns, never hard-blocks:
+ *      is going to be rejected. The send path reads that verdict so the user
+ *      does not learn it from a bounce. Warns, never hard-blocks:
  *      a self-hoster mid-setup must still be able to send.
  *   2. ATTACHMENT (idea 15) — the reworked forgot-attachment hint, now through
  *      the shared themed dialog instead of a native `window.confirm`.
