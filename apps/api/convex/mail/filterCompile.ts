@@ -221,6 +221,7 @@ export const compile = authedAction({
 		fromMessageId: v.optional(v.id('mailMessages')),
 	},
 	handler: async (ctx, args): Promise<{ draftId: Id<'mailRuleDrafts'> }> => {
+		anchorActionDeadline(ctx);
 		return await ctx.runMutation(internal.mail.filterCompileStore.startCompile, {
 			mailboxId: args.mailboxId,
 			sourceText: args.sourceText,
