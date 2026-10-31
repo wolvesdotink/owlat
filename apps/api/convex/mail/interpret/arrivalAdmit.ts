@@ -16,7 +16,7 @@
  *     write runs it sooner, `categoryDefer.wakeCategoryDepthWaits`); one the
  *     text-blind table settles without a model call (a count, a suppressed
  *     sender) goes on uncharged. Its text may still make it a read (an
- *     exact-wording candidate is never counted for a digest choice, #1384):
+ *     exact-wording candidate is never counted for a digest choice):
  *     the run's depth decision then takes the token itself
  *     (`arrivalDecide.chargeOwnerRead`).
  *   - Everything else takes one token of the owner's `arrivalReadPerOwner`

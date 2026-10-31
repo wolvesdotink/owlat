@@ -1,8 +1,8 @@
 /**
- * A rate-limited category refinement is tried again (#1380 knock-on). It used
- * to keep the `other` baseline for good, which let a stranger's newsletter
- * through the interpretation bulk rule. Now a rate-limited gate schedules the
- * same refinement again, backed off, at most `MAX_RATE_LIMIT_RETRIES` times;
+ * A rate-limited category refinement is tried again. Keeping the `other`
+ * baseline for good would let a stranger's newsletter through the
+ * interpretation bulk rule, so a rate-limited gate schedules the same
+ * refinement again, backed off, at most `MAX_RATE_LIMIT_RETRIES` times;
  * a budget refusal still defers the run instead.
  *
  * Runs the real action with no session (a scheduled function) and the model

@@ -105,7 +105,7 @@ export const loadForDraft = internalQuery({
 			// Who the questions a held draft asks are attributed to.
 			senderAddress: trigger.fromAddress,
 			mailboxId: thread.mailboxId,
-			// Whose background AI bucket the draft is charged to (#1380).
+			// Whose background AI bucket the draft is charged to.
 			ownerUserId: mailbox.userId,
 			ownerAddress,
 			// Stale guard the persister re-checks: a newer inbound moves this.
@@ -135,7 +135,7 @@ export const persistDraftSlot = internalMutation({
 		draftSubject: v.optional(v.string()),
 		confidence: v.number(),
 		quality: v.optional(draftQualityValidator),
-		// Deprecated (#1200), accepted and ignored: an action started before the
+		// Deprecated, accepted and ignored: an action started before the
 		// deploy that stopped generating variants may still pass them. Remove
 		// in the release after.
 		options: v.optional(v.array(v.string())),

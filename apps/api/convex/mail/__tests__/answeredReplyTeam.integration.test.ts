@@ -1,5 +1,5 @@
 /**
- * #1346 for the Team Inbox: once the agent reply to a newer message of a
+ * A reply completes the messages it answers, for the Team Inbox: once the agent reply to a newer message of a
  * thread is sent, the older messages the agent was still drafting or asking
  * about are answered too. Their AI draft and questions go (archived,
  * `answered_in_thread`, kept in a stash) and a late generation cannot write

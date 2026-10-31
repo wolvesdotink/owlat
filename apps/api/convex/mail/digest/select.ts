@@ -43,7 +43,7 @@ export interface DigestSelection {
 
 /**
  * The digest kind of a thread: Cold outreach when its newest inbound message
- * carries a cold-pitch verdict (#1381, `arrival/coldPitch.ts`), else from its
+ * carries a cold-pitch verdict (`arrival/coldPitch.ts`), else from its
  * category. Pure.
  */
 export function digestKindOf(category: string | undefined, isColdPitch = false): DigestKind {

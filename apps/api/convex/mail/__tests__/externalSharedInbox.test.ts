@@ -1,7 +1,7 @@
 /**
- * Connecting an external IMAP account AS A SHARED TEAM INBOX (issue #234).
+ * Connecting an external IMAP account AS A SHARED TEAM INBOX.
  *
- * Covers the backend path added on top of PR #232: `_connectSharedInternal`
+ * Covers the backend path: `_connectSharedInternal`
  * provisions a `kind='external', scope='shared'` mailbox with the connecting
  * admin as owner + the initial roster, records its `externalMailAccounts` row,
  * and reuses the membership model so teammates read

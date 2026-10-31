@@ -1,6 +1,6 @@
 /**
  * Files a Postbox draft was opened to carry, owed by the draft until each one
- * is attached (#1257): the generated `.ics` an RSVP answers with, and the
+ * is attached: the generated `.ics` an RSVP answers with, and the
  * attachments of a forwarded (or resent) message.
  *
  * WHY ON THE ROW. The composer used to hand these over in memory and upload

@@ -1,5 +1,5 @@
 /**
- * External account connected AS A SHARED TEAM INBOX (issue #234) — the
+ * External account connected AS A SHARED TEAM INBOX — the
  * external-transport twin of `mailboxMembers.createShared`.
  *
  * Split out of `accounts.ts` (kept under the ~500 LOC cap): the personal
@@ -22,7 +22,7 @@
  *     `personalAccount.ts`). `userId` records the connecting admin (credential
  *     custodian + audit); the org owns it.
  *
- * Credential rotation / repair + hard purge for a shared inbox (issue #234):
+ * Credential rotation / repair + hard purge for a shared inbox:
  *   - The personal `updateCredentials` / `purge` in `accounts.ts` resolve
  *     the caller's LIVE PERSONAL account and so can never reach a team inbox. A
  *     shared inbox therefore needs its own ADMIN-gated twins, keyed by mailbox id:
@@ -40,7 +40,7 @@
  *   Internal: _connectSharedInternal, _updateCredentialsSharedInternal (both
  *             called by accountsActions after encryption).
  *
- * HISTORICAL IMPORT (was deferred with issue #234, now shipped): a freshly
+ * HISTORICAL IMPORT: a freshly
  * connected shared inbox still starts EMPTY — the forward-sync worker seeds its
  * cursor at `uidNext-1`, so it only receives mail that arrives from the connect
  * onward. Pulling the existing history in is an explicit, owner/admin-triggered

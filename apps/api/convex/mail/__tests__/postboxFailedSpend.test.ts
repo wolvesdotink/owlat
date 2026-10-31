@@ -1,6 +1,6 @@
 /**
  * Postbox AI callers that fail soft record what a failed structured call was
- * billed for (#1260). `runLlmObject` throws an `LlmPartialUsageError` when every
+ * billed for. `runLlmObject` throws an `LlmPartialUsageError` when every
  * attempt's completion failed the schema; the meter records it once, under the
  * feature its success path uses, and the caller still degrades the way it did
  * before.

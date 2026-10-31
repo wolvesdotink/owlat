@@ -1,6 +1,6 @@
 /**
  * The Reply Queue starter draft (`draftClarificationReply`) through the REAL
- * shared draft service when the model types its tool call as text (#1254): a
+ * shared draft service when the model types its tool call as text: a
  * leading markup prefix is cut before the card stores the draft; markup inside
  * the reply gets one retry without tools, and when that is markup too nothing
  * is stored. Only the model dispatch and the recall tool are mocked.

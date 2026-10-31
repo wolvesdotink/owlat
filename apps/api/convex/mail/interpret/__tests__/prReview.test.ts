@@ -1,5 +1,5 @@
 /**
- * PR #1331 owner review. PR-1: a verified claim from a NEWER message changes a
+ * Terms a newer message states. PR-1: a verified claim from a NEWER message changes a
  * term the item states differently (deadline, amount), per field by its
  * source stamp; a confirmed item holds it instead. PR-2: held field changes
  * merge by their sources' message times, newest wins.

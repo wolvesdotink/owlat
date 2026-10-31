@@ -127,7 +127,7 @@ export type RowThreadState = {
 	/**
 	 * Where the Priority view groups the row: the arrival
 	 * projection's placement, which already applies the thread's override
-	 * (except an older one an exact-wording candidate overrules, #1384), else
+	 * (except an older one an exact-wording candidate overrules), else
 	 * the override itself. Absent with neither; the view then falls back to
 	 * its category grouping. Read off the thread doc this page already loaded.
 	 */

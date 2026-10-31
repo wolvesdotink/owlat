@@ -1,5 +1,5 @@
 /**
- * The stale fence (#1320, `staleFence.ts`): a re-verified signature verdict
+ * The stale fence (`staleFence.ts`): a re-verified signature verdict
  * that narrows what an interpreted message may be read for (a clearsigned
  * scope: the signed block only) fences off its whole thread's interpretation,
  * in the same write, whatever the `ai` flag or the spend hold say.

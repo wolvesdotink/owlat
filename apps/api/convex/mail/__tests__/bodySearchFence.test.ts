@@ -2,11 +2,11 @@
  * Deep body search: the fences around its background writes.
  *
  * Two separate promises, tested separately:
- *   - the index walk's progress is tied to the run that loaded it (#943): a
+ *   - the index walk's progress is tied to the run that loaded it: a
  *     batch from a cancelled, restarted, duplicated or replayed run changes
  *     nothing, an accepted commit carries its own continuation, and a walk that
  *     stops is reported and can be run again;
- *   - the opt-out holds for background work too (#958): nothing writes an
+ *   - the opt-out holds for background work too: nothing writes an
  *     excerpt while the switch is off, and the sweep that follows an opt-out
  *     is fenced, restartable, and ends with no excerpt left anywhere.
  *

@@ -1,14 +1,14 @@
 /**
  * Personal-mailbox attachment capture, taken OFF the MTA webhook.
  *
- * The capture used to be awaited inside `mail.delivery.ingestFromWebhook`
- * after the row insert: a contact lookup, a budget charge, then one blob store
+ * The full capture is a contact lookup, a budget charge, then one blob store
  * and one `semanticFiles.ingest` per part, in series. The MTA gives the
- * notifier 10 s; a message with a handful of attachments could spend that on
- * indexing work the sender does not wait for, and a timeout makes the MTA
- * re-POST the whole message.
+ * notifier 10 s; awaited inside `mail.delivery.ingestFromWebhook` after the row
+ * insert, a message with a handful of attachments could spend that on indexing
+ * work the sender does not wait for, and a timeout makes the MTA re-POST the
+ * whole message.
  *
- * So the webhook now does only the pure half ({@link planCapture}: select,
+ * So the webhook does only the pure half ({@link planCapture}: select,
  * verify) and stages the eligible parts' bytes as blobs, in parallel. It
  * schedules {@link indexStagedAttachments} with the STORAGE IDS — never the
  * bytes, which would ride through the scheduler's argument size limit — and

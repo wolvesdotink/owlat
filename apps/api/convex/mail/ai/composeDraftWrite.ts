@@ -26,7 +26,7 @@
  * finished text goes into the buffer at once.
  *
  * Tool-call markup the model types into its reply instead of calling the tool
- * (#1254) never reaches the editor: the buffer only ever holds the part of the
+ * never reaches the editor: the buffer only ever holds the part of the
  * text that cannot be markup (lib/llm/toolMarkup.ts), and text the model wrote
  * before a real tool call is dropped (`finalStepOnly`). A leading markup prefix
  * is cut from the final draft; a draft that is unusable otherwise is written
@@ -197,7 +197,7 @@ export async function writeAnswerDraft(ctx: ActionCtx, input: AnswerDraftInput):
 	});
 	try {
 		// The service writes every provider request of both streams (with the
-		// recall tool, and the markup retry) to the ledger on every exit (#1256).
+		// recall tool, and the markup retry) to the ledger on every exit.
 		const draft = await runSharedDraft(ctx, {
 			surface: 'personal',
 			resolveModel: () => resolveLanguageModel(ctx, 'mail.compose'),

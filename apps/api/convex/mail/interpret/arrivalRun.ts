@@ -65,7 +65,7 @@ const COUNTED_SCREEN_ATTEMPTS = 3;
 /**
  * Admission counted a display-only source over the owner limit before
  * anything of it was read: still screen its own text for exact wording, so a
- * candidate is never placed in the digest or updates (#1384). No model call;
+ * candidate is never placed in the digest or updates. No model call;
  * a fenced thread or a scope that fails screens nothing. The screen is
  * written only against the body and deletion epoch it was taken from
  * (`noteCountedArrivalScreen`); a body that changed in between is screened

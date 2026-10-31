@@ -221,7 +221,7 @@ export const fetchChangedEnvelopes = internalQuery({
  * needs only the UIDs — so this pages, and each execution reads at most
  * `limit` rows. Resume from `nextUid` until it is `null`.
  *
- * Since #927 the IMAP server only calls this for a folder whose membership is
+ * The IMAP server only calls this for a folder whose membership is
  * not ready ({@link folderMembershipPage} answers `null` or `isReady: false`):
  * before migration 0054 reaches it, and during a `rebuild`. Both can happen on
  * any release, so this stays part of the IMAP contract rather than being an

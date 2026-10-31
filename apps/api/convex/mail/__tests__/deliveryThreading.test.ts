@@ -1,5 +1,5 @@
 /**
- * Delivery threading (issue #817): which `mailThreads` row a delivered message
+ * Delivery threading: which `mailThreads` row a delivered message
  * joins.
  *
  * `insertDeliveredMessage` is the one threading step for every inbound path

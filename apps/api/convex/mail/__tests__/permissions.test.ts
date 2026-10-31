@@ -1,10 +1,10 @@
 /**
  * Mailbox gate (helper) — outcome coverage.
  *
- * Replaces the eleven copies of `requireMailboxAccess` that used to live in
- * each `mail/*.ts` file. The four `reason` branches plus the three
- * owner/admin/same-user paths into `{ ok: true, ... }` are all asserted
- * here so per-file tests no longer need to repeat them.
+ * Every `mail/*.ts` module shares this one `requireMailboxAccess`. The four
+ * `reason` branches plus the three owner/admin/same-user paths into
+ * `{ ok: true, ... }` are all asserted here so per-file tests need not repeat
+ * them.
  */
 
 import { convexTest } from 'convex-test';

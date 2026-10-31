@@ -1,5 +1,5 @@
 /**
- * Read on arrival (#1381): the cheap evidence about a delivered message's
+ * Read on arrival: the cheap evidence about a delivered message's
  * sender that decides both whether R2 asks the cold-pitch question and
  * whether a committed verdict still stands. One test serves both
  * ({@link isColdPitchCandidate}): a verdict stands exactly while the message

@@ -4,10 +4,10 @@
  * Hosted MX delivery (`mail/delivery.ts::deliverToMailbox`) and external IMAP
  * sync (`mail/external/delivery.ts::ingestExternalMessage`) both land inbound
  * mail through `insertDeliveredMessage` and then have to tell the rest of the
- * mailbox about it. That tail used to be written out at each site and drifted:
- * synced replies never cleared "remind me if no reply" or "snooze until they
- * reply", and MX delivery never settled the Reply Queue on an owner reply. It
- * lives here once.
+ * mailbox about it. That tail lives here once, so the two paths cannot drift:
+ * a synced reply must clear "remind me if no reply" and "snooze until they
+ * reply" as MX delivery does, and MX delivery must settle the Reply Queue on an
+ * owner reply as sync does.
  *
  * Not called by IMAP APPEND (`mail/imap/append.ts`), which is a client filing a
  * copy rather than mail arriving, or by archive import, which is history.
@@ -117,7 +117,7 @@ export async function runPostInsertInboundEffects(
 		});
 	}
 	// R2 also answers this message's pending rule questions and
-	// the cold-pitch question (#1381): per message, also when the heuristic
+	// the cold-pitch question: per message, also when the heuristic
 	// settled the category without the model (a heuristic label does not keep
 	// a pitch out of Needs you).
 	const isColdPitchAsked =
