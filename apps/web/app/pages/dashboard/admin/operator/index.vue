@@ -307,20 +307,11 @@ const anyMutationLoading = computed(
 
 <template>
 	<div>
-		<!-- Header -->
-		<div class="mb-6">
-			<div class="flex items-center gap-3">
-				<UiIconBox icon="lucide:shield-alert" size="lg" variant="brand" rounded="xl" />
-				<div>
-					<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-						{{ t('dashboard.admin.operator.index.title') }}
-					</h1>
-					<p class="mt-1 text-text-secondary">
-						{{ t('dashboard.admin.operator.index.intro') }}
-					</p>
-				</div>
-			</div>
-		</div>
+		<UiPageHeader
+			class="mb-6"
+			:title="t('dashboard.admin.operator.index.title')"
+			:description="t('dashboard.admin.operator.index.intro')"
+		/>
 
 		<UiTabs v-model="activeTab" :tabs="tabs" :panel-id="tabPanelId" class="mb-6" />
 

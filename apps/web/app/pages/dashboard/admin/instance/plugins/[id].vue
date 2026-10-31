@@ -181,25 +181,22 @@ function confirmOrphanClear() {
 			</UiCard>
 
 			<template v-else>
-				<!-- Header -->
-				<div class="mb-6">
-					<div class="flex items-center gap-2 flex-wrap">
-						<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-							{{ entry.pluginId }}
-						</h1>
+				<UiPageHeader
+					class="mb-6"
+					:title="entry.pluginId"
+					:description="
+						t('dashboard.admin.instance.plugins.detail.packageVersion', {
+							packageName: entry.packageName,
+							version: entry.version,
+						})
+					"
+				>
+					<template #meta>
 						<UiBadge :variant="entry.enabled ? 'success' : 'neutral'" dot>
 							{{ entry.enabled ? t('common.enabled') : t('common.disabled') }}
 						</UiBadge>
-					</div>
-					<p class="mt-1 text-text-secondary">
-						{{
-							t('dashboard.admin.instance.plugins.detail.packageVersion', {
-								packageName: entry.packageName,
-								version: entry.version,
-							})
-						}}
-					</p>
-				</div>
+					</template>
+				</UiPageHeader>
 
 				<!-- Disabled notice -->
 				<div

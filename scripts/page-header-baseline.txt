@@ -8,17 +8,6 @@
 # gate too.
 apps/web/app/components/postbox/PostboxThreadHeader.vue
 apps/web/app/layouts/preferences.vue
-apps/web/app/pages/dashboard/admin/index.vue
-apps/web/app/pages/dashboard/admin/instance/plugins/[id].vue
-apps/web/app/pages/dashboard/admin/instance/plugins/index.vue
-apps/web/app/pages/dashboard/admin/operator/index.vue
-apps/web/app/pages/dashboard/admin/system/index.vue
-apps/web/app/pages/dashboard/admin/team/api/docs.vue
-apps/web/app/pages/dashboard/admin/team/audit.vue
-apps/web/app/pages/dashboard/admin/team/senders.vue
-apps/web/app/pages/dashboard/campaigns/[id]/edit.vue
-apps/web/app/pages/dashboard/campaigns/[id]/report.vue
-apps/web/app/pages/dashboard/campaigns/[id]/sends/[sendId].vue
 apps/web/app/pages/dashboard/files/[id].vue
 apps/web/app/pages/dashboard/inbox/[threadId].vue
 apps/web/app/pages/dashboard/inboxes.vue
@@ -26,5 +15,4 @@ apps/web/app/pages/dashboard/index.vue
 apps/web/app/pages/dashboard/knowledge/[id].vue
 apps/web/app/pages/dashboard/postbox/migrate.vue
 apps/web/app/pages/dashboard/preferences/members/[mailboxId].vue
-apps/web/app/pages/dashboard/send/transactional/[id]/sends/[sendId].vue
 apps/web/app/pages/welcome.vue
