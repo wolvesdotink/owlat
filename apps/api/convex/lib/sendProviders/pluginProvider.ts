@@ -163,11 +163,11 @@ export function createHostedSendProvider(
 			? {}
 			: {
 					buildSystemMailExtras(input: SystemMailExtrasInput): unknown {
-						return module.buildSystemMailExtras?.({
-							...(input.idempotencyKey === undefined
+						return module.buildSystemMailExtras?.(
+							(input.idempotencyKey === undefined
 								? {}
-								: { idempotencyKey: input.idempotencyKey }),
-						} satisfies PluginSendSystemMailContext);
+								: { idempotencyKey: input.idempotencyKey }) satisfies PluginSendSystemMailContext
+						);
 					},
 				}),
 	});

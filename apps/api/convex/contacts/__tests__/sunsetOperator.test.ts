@@ -184,8 +184,8 @@ describe('setSunsetPolicy — insert, upsert and the partial-save defect', () =>
 
 		const rows = await readPolicyRows(t);
 		expect(rows).toHaveLength(2);
-		expect(rows.filter((row) => row.topicId === undefined)[0]?.reengageAfterDays).toBe(200);
-		expect(rows.filter((row) => row.topicId === topicId)[0]?.reengageAfterDays).toBe(300);
+		expect(rows.find((row) => row.topicId === undefined)?.reengageAfterDays).toBe(200);
+		expect(rows.find((row) => row.topicId === topicId)?.reengageAfterDays).toBe(300);
 	});
 
 	/**
