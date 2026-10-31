@@ -108,6 +108,7 @@ export const scan = internalAction({
 		};
 		let table = isResumable ? args.table : 'knowledgeEntries';
 		let cursor = isResumable ? args.cursor : null;
+		let isMeasured = false;
 		for (let pages = 0; pages < PAGES_PER_RUN; pages++) {
 			const page = await ctx.runQuery(internal.aiRouting.embeddingCoverage.coveragePage, {
 				table,
@@ -125,6 +126,10 @@ export const scan = internalAction({
 				cursor = null;
 				continue;
 			}
+			isMeasured = true;
+			break;
+		}
+		if (isMeasured) {
 			await ctx.runMutation(internal.aiRouting.embeddingCoverage.saveCoverage, {
 				...totals,
 				searchableSpaceId: args.spaceId,

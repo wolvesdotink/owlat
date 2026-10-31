@@ -11,7 +11,6 @@ convex/agentHealth.ts:rollupMetrics #3
 convex/aiRouting/batchPoller.ts:poll #2
 convex/aiRouting/batchPoller.ts:poll #3
 convex/aiRouting/batchPoller.ts:poll #4
-convex/aiRouting/embeddingCoverage.ts:scan #2
 convex/assistant/runner.ts:run #2
 convex/assistant/runner.ts:runForChat #2
 convex/auth/accountExport.ts:exportUserDataPage #2
