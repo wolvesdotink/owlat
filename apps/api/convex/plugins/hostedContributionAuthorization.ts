@@ -1,5 +1,5 @@
 import { parsePluginId, type PluginCapability, type PluginId } from '@owlat/plugin-kit';
-import type { MutationCtx } from '../_generated/server';
+import type { MutationCtx, QueryCtx } from '../_generated/server';
 import { getSingletonOrganizationId } from '../lib/sessionOrganization';
 import type {
 	HostedPluginAuditMetadata,
@@ -62,6 +62,24 @@ function matchingScope(
 	const definition = spec.definitionFor(kind);
 	if (!definition || definition.pluginId !== pluginId) return null;
 	return Object.freeze({ organizationId, userId: SYSTEM_PLUGIN_ACTOR_ID, pluginId });
+}
+
+/**
+ * The decision {@link authorizeHostedContribution} makes, as a read: no denial
+ * audit. For an action that asks before its external call and records a denial
+ * in the commit it makes instead, through `authorizeHostedContribution` again.
+ */
+export async function isHostedContributionAuthorized(
+	ctx: QueryCtx | MutationCtx,
+	spec: HostedContributionAuthorizationSpec,
+	pluginId: string,
+	kind: string
+): Promise<boolean> {
+	const organizationId = await getSingletonOrganizationId(ctx).catch(() => null);
+	if (!organizationId) return false;
+	const scope = matchingScope(spec, organizationId, pluginId, kind);
+	if (!scope) return false;
+	return (await authorizeSystemBundledPlugin(ctx, scope.pluginId, spec.capability)) !== null;
 }
 
 /** Rechecks ownership, registration, flag, grant, env, and singleton scope. */
