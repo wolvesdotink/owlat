@@ -12,15 +12,6 @@ apps/api/convex/transactional/lifecycle.ts
 apps/api/convex/unifiedMessages.ts
 apps/docs/app/components/content/ArchAgentPipeline.vue
 apps/docs/app/components/content/ArchCommunicationHub.vue
-apps/docs/app/components/content/ArchDataModel.vue
-apps/docs/app/components/content/ArchEmail.vue
-apps/docs/app/components/content/ArchKnowledgeGraph.vue
-apps/docs/app/components/content/ArchRoadmap.vue
-apps/docs/app/components/content/ArchSecurityModel.vue
-apps/docs/app/components/content/ArchSystem.vue
-apps/docs/app/components/content/ArchVerificationQueue.vue
-apps/docs/app/components/content/EmailArchitecture.vue
-apps/docs/app/components/content/ScopeMap.vue
 apps/docs/app/components/content/SmtpSession.vue
 apps/docs/app/pages/index.vue
 apps/mail-sync/src/connection.ts

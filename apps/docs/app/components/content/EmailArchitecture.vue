@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
-import { DELIVERY_PIPELINE_FEATURES, docsSendProviders } from '../../utils/sendProviderDiagrams';
+import { docsSendProviders } from '../../utils/sendProviderDiagrams';
+import EmailArchitectureConnector from '../diagrams/EmailArchitectureConnector.vue';
+import EmailArchitectureFeatures from '../diagrams/EmailArchitectureFeatures.vue';
+import EmailArchitecturePipelineFeatures from '../diagrams/EmailArchitecturePipelineFeatures.vue';
+import { blockTypes, ownDetail, renderFeatures } from '../../utils/diagrams/emailArchitecture';
 
 const visible = ref(false);
 onMounted(() => {
@@ -9,54 +13,7 @@ onMounted(() => {
 	});
 });
 
-const builderFeatures = [
-	{
-		name: 'Slash Commands',
-		detail: '/text, /image, /button ...',
-		icon: 'M7 20l4-16m2 16l4-16M6 9h14M4 15h14',
-	},
-	{
-		name: 'Format Bar',
-		detail: 'Floating text styling',
-		icon: 'M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z',
-	},
-	{
-		name: 'Media Library',
-		detail: 'Image integration',
-		icon: 'M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z',
-	},
-	{
-		name: 'Focus Mode',
-		detail: 'Cmd+Shift+F',
-		icon: 'M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4',
-	},
-	{
-		name: 'Auto-save',
-		detail: 'Every 30 seconds',
-		icon: 'M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15',
-	},
-];
-
-const blockTypes = [
-	'Text',
-	'Image',
-	'Button',
-	'Divider',
-	'Spacer',
-	'Columns',
-	'Social',
-	'Container',
-];
-
-const renderFeatures = [
-	'Responsive layouts',
-	'Cross-client compatible',
-	'Dark mode ready',
-	'A11y audits',
-];
-
 const providers = docsSendProviders();
-const ownDetail = 'Direct SMTP · Intelligence pipeline · IP warming';
 </script>
 
 <template>
@@ -85,33 +42,7 @@ const ownDetail = 'Direct SMTP · Intelligence pipeline · IP warming';
 
 			<!-- Inline Editor features -->
 			<div class="ea-sublabel">Inline Editor</div>
-			<div class="ea-features">
-				<div
-					v-for="(feat, i) in builderFeatures"
-					:key="feat.name"
-					class="ea-feature"
-					:style="{ '--i': i }"
-				>
-					<div class="ea-feature-icon">
-						<svg
-							width="14"
-							height="14"
-							viewBox="0 0 24 24"
-							fill="none"
-							stroke="currentColor"
-							stroke-width="1.5"
-							stroke-linecap="round"
-							stroke-linejoin="round"
-						>
-							<path :d="feat.icon" />
-						</svg>
-					</div>
-					<div class="ea-feature-text">
-						<span class="ea-feature-name">{{ feat.name }}</span>
-						<span class="ea-feature-detail">{{ feat.detail }}</span>
-					</div>
-				</div>
-			</div>
+			<EmailArchitectureFeatures />
 
 			<!-- Block system -->
 			<div class="ea-sublabel" style="margin-top: 14px">Block System</div>
@@ -128,13 +59,7 @@ const ownDetail = 'Direct SMTP · Intelligence pipeline · IP warming';
 		</div>
 
 		<!-- Connector: Builder → Rendering -->
-		<div class="ea-connector" :style="{ '--s': 1 }">
-			<div class="ea-connector-line" />
-			<div class="ea-connector-badge">
-				<span>JSON</span>
-			</div>
-			<div class="ea-connector-line" />
-		</div>
+		<EmailArchitectureConnector :s="1" label="JSON" />
 
 		<!-- Email Rendering -->
 		<div class="ea-section ea-section--rendering" :style="{ '--s': 2 }">
@@ -184,13 +109,7 @@ const ownDetail = 'Direct SMTP · Intelligence pipeline · IP warming';
 		</div>
 
 		<!-- Connector: Rendering → Providers -->
-		<div class="ea-connector" :style="{ '--s': 3 }">
-			<div class="ea-connector-line" />
-			<div class="ea-connector-badge">
-				<span>HTML</span>
-			</div>
-			<div class="ea-connector-line" />
-		</div>
+		<EmailArchitectureConnector :s="3" label="HTML" />
 
 		<!-- Email Providers -->
 		<div class="ea-section ea-section--providers" :style="{ '--s': 4 }">
@@ -265,30 +184,7 @@ const ownDetail = 'Direct SMTP · Intelligence pipeline · IP warming';
 				</div>
 			</div>
 
-			<div class="ea-pf">
-				<div class="ea-pf-tags">
-					<div
-						v-for="(feat, i) in DELIVERY_PIPELINE_FEATURES"
-						:key="feat.label"
-						class="ea-pf-tag"
-						:style="{ '--i': i + providers.alternatives.length + 9 }"
-					>
-						<svg
-							width="14"
-							height="14"
-							viewBox="0 0 24 24"
-							fill="none"
-							stroke="currentColor"
-							stroke-width="1.5"
-							stroke-linecap="round"
-							stroke-linejoin="round"
-						>
-							<path :d="feat.icon" />
-						</svg>
-						<span>{{ feat.label }}</span>
-					</div>
-				</div>
-			</div>
+			<EmailArchitecturePipelineFeatures :stagger-offset="providers.alternatives.length + 9" />
 		</div>
 	</div>
 </template>
@@ -370,89 +266,6 @@ const ownDetail = 'Direct SMTP · Intelligence pipeline · IP warming';
 	letter-spacing: 0.05em;
 	color: var(--color-text-tertiary);
 	margin-bottom: 8px;
-}
-
-/* Builder features */
-.ea-features {
-	display: grid;
-	grid-template-columns: repeat(3, 1fr);
-	gap: 8px;
-}
-
-@media (max-width: 680px) {
-	.ea-features {
-		grid-template-columns: repeat(2, 1fr);
-	}
-}
-
-@media (max-width: 480px) {
-	.ea-features {
-		grid-template-columns: 1fr;
-	}
-}
-
-.ea-feature {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-	padding: 8px 10px;
-	border-radius: 8px;
-	background: var(--color-bg-surface);
-	border: 1px solid transparent;
-	transition:
-		border-color var(--motion-moderate),
-		background var(--motion-moderate),
-		transform var(--motion-moderate) var(--ease-spring);
-	opacity: 0;
-	transform: translateY(8px);
-}
-
-.is-visible .ea-feature {
-	opacity: 1;
-	transform: translateY(0);
-	transition-delay: calc(0.1s + var(--i) * 0.06s);
-}
-
-.ea-feature:hover {
-	border-color: var(--color-border-default);
-	background: var(--color-bg-surface-hover);
-	transform: translateY(-1px);
-	transition-delay: 0s;
-}
-
-.ea-feature-icon {
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	width: 26px;
-	height: 26px;
-	border-radius: 6px;
-	background: var(--color-bg-elevated);
-	color: var(--color-brand-muted);
-	flex-shrink: 0;
-}
-
-.ea-feature-text {
-	display: flex;
-	flex-direction: column;
-	gap: 1px;
-	min-width: 0;
-}
-
-.ea-feature-name {
-	font-weight: var(--font-weight-semibold);
-	font-size: 0.75rem;
-	color: var(--color-text-primary);
-	white-space: nowrap;
-}
-
-.ea-feature-detail {
-	font-size: 0.625rem;
-	color: var(--color-text-tertiary);
-	font-family: var(--font-mono);
-	white-space: nowrap;
-	overflow: hidden;
-	text-overflow: ellipsis;
 }
 
 /* Block types */
@@ -545,59 +358,6 @@ const ownDetail = 'Direct SMTP · Intelligence pipeline · IP warming';
 	border: 1px solid var(--color-border-subtle);
 	font-size: 0.6875rem;
 	color: var(--color-text-tertiary);
-}
-
-/* Connectors */
-.ea-connector {
-	display: flex;
-	flex-direction: column;
-	align-items: center;
-	gap: 0;
-	padding: 2px 0;
-	opacity: 0;
-	transition: opacity var(--motion-slow) var(--ease-spring);
-	transition-delay: calc(var(--s) * 0.12s + 0.1s);
-}
-
-.is-visible .ea-connector {
-	opacity: 1;
-}
-
-.ea-connector-line {
-	width: 2px;
-	height: 10px;
-	background: var(--color-border-strong);
-	border-radius: 1px;
-}
-
-.ea-connector-badge {
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	padding: 2px 10px;
-	border-radius: 9999px;
-	background: var(--color-bg-surface);
-	border: 1px solid var(--color-border-default);
-	animation: ea-badge-pulse 3s ease-in-out infinite;
-}
-
-.ea-connector-badge span {
-	font-size: 0.625rem;
-	font-family: var(--font-mono);
-	font-weight: var(--font-weight-semibold);
-	color: var(--color-text-tertiary);
-	text-transform: uppercase;
-	letter-spacing: 0.05em;
-}
-
-@keyframes ea-badge-pulse {
-	0%,
-	100% {
-		box-shadow: 0 0 0 0 rgba(196, 120, 90, 0);
-	}
-	50% {
-		box-shadow: 0 0 8px 2px rgba(196, 120, 90, 0.1);
-	}
 }
 
 /* Default provider card */
@@ -718,51 +478,5 @@ const ownDetail = 'Direct SMTP · Intelligence pipeline · IP warming';
 	font-size: 0.6875rem;
 	color: var(--color-text-tertiary);
 	font-family: var(--font-mono);
-}
-
-/* Provider features */
-.ea-pf {
-	padding: 12px 14px;
-	border-radius: 8px;
-	background: var(--color-bg-soft);
-	border: 1px solid var(--color-border-subtle);
-}
-
-.ea-pf-tags {
-	display: flex;
-	gap: 8px;
-	flex-wrap: wrap;
-}
-
-.ea-pf-tag {
-	display: flex;
-	align-items: center;
-	gap: 6px;
-	padding: 5px 10px;
-	border-radius: 6px;
-	background: var(--color-bg-surface);
-	border: 1px solid var(--color-border-subtle);
-	font-size: 0.75rem;
-	color: var(--color-text-secondary);
-	transition:
-		border-color var(--motion-moderate),
-		transform var(--motion-moderate) var(--ease-spring);
-	opacity: 0;
-}
-
-.is-visible .ea-pf-tag {
-	opacity: 1;
-	transition-delay: calc(0.2s + var(--i) * 0.06s);
-}
-
-.ea-pf-tag svg {
-	color: var(--color-info);
-	flex-shrink: 0;
-}
-
-.ea-pf-tag:hover {
-	border-color: var(--color-border-default);
-	transform: translateY(-1px);
-	transition-delay: 0s;
 }
 </style>

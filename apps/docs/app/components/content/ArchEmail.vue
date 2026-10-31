@@ -1,6 +1,11 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
-import { DELIVERY_PIPELINE_FEATURES, docsSendProviders } from '../../utils/sendProviderDiagrams';
+import { docsSendProviders } from '../../utils/sendProviderDiagrams';
+import ArchEmailBuilderItems from '../diagrams/ArchEmailBuilderItems.vue';
+import ArchEmailConnector from '../diagrams/ArchEmailConnector.vue';
+import ArchEmailPipelineFeatures from '../diagrams/ArchEmailPipelineFeatures.vue';
+import ArchEmailSesManager from '../diagrams/ArchEmailSesManager.vue';
+import { ownDetail } from '../../utils/diagrams/archEmail';
 
 const visible = ref(false);
 onMounted(() => {
@@ -9,26 +14,7 @@ onMounted(() => {
 	});
 });
 
-const builderItems = [
-	{
-		name: 'Inline Editor',
-		icon: 'M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z',
-	},
-	{
-		name: 'Blocks (JSON)',
-		icon: 'M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zm10 0a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2z',
-	},
-	{ name: 'Saved Blocks', icon: 'M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z' },
-];
-
 const providers = docsSendProviders();
-const ownDetail = 'Direct SMTP · Intelligence pipeline · IP warming';
-
-const sesFeatures = [
-	'Domain registration (VerifyDomainIdentity/DKIM)',
-	'MAIL FROM configuration',
-	'Verification status polling',
-];
 </script>
 
 <template>
@@ -54,49 +40,11 @@ const sesFeatures = [
 				</div>
 				<span class="email-section-label">Email Builder</span>
 			</div>
-			<div class="email-items">
-				<div
-					v-for="(item, i) in builderItems"
-					:key="item.name"
-					class="email-item"
-					:style="{ '--i': i }"
-				>
-					<svg
-						width="16"
-						height="16"
-						viewBox="0 0 24 24"
-						fill="none"
-						stroke="currentColor"
-						stroke-width="1.5"
-						stroke-linecap="round"
-						stroke-linejoin="round"
-					>
-						<path :d="item.icon" />
-					</svg>
-					<span>{{ item.name }}</span>
-				</div>
-			</div>
+			<ArchEmailBuilderItems />
 		</div>
 
 		<!-- Connector: Builder → Rendering -->
-		<div class="email-connector" :style="{ '--s': 1 }">
-			<div class="email-connector-line" />
-			<div class="email-connector-badge">
-				<svg
-					width="14"
-					height="14"
-					viewBox="0 0 24 24"
-					fill="none"
-					stroke="currentColor"
-					stroke-width="2"
-					stroke-linecap="round"
-					stroke-linejoin="round"
-				>
-					<path d="M19 14l-7 7m0 0l-7-7m7 7V3" />
-				</svg>
-			</div>
-			<div class="email-connector-line" />
-		</div>
+		<ArchEmailConnector :s="1" />
 
 		<!-- Email Rendering -->
 		<div class="email-section email-section--rendering" :style="{ '--s': 2 }">
@@ -147,24 +95,7 @@ const sesFeatures = [
 		</div>
 
 		<!-- Connector: Rendering → Providers -->
-		<div class="email-connector" :style="{ '--s': 3 }">
-			<div class="email-connector-line" />
-			<div class="email-connector-badge">
-				<svg
-					width="14"
-					height="14"
-					viewBox="0 0 24 24"
-					fill="none"
-					stroke="currentColor"
-					stroke-width="2"
-					stroke-linecap="round"
-					stroke-linejoin="round"
-				>
-					<path d="M19 14l-7 7m0 0l-7-7m7 7V3" />
-				</svg>
-			</div>
-			<div class="email-connector-line" />
-		</div>
+		<ArchEmailConnector :s="3" />
 
 		<!-- Email Providers -->
 		<div class="email-section email-section--providers" :style="{ '--s': 4 }">
@@ -240,56 +171,10 @@ const sesFeatures = [
 			</div>
 
 			<!-- SES Identity Manager -->
-			<div class="email-ses" :style="{ '--i': providers.alternatives.length + 8 }">
-				<div class="email-ses-header">
-					<svg
-						width="14"
-						height="14"
-						viewBox="0 0 24 24"
-						fill="none"
-						stroke="currentColor"
-						stroke-width="1.5"
-						stroke-linecap="round"
-						stroke-linejoin="round"
-					>
-						<path
-							d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
-						/>
-					</svg>
-					<span>SES Identity Manager</span>
-					<code>sesIdentity.ts</code>
-				</div>
-				<ul class="email-ses-features">
-					<li v-for="feat in sesFeatures" :key="feat">{{ feat }}</li>
-				</ul>
-			</div>
+			<ArchEmailSesManager :stagger="providers.alternatives.length + 8" />
 
 			<!-- Pipeline features -->
-			<div class="email-pipeline-features">
-				<code class="email-fn-name">resolveRoute() → getProviderByType()</code>
-				<div class="email-pipeline-tags">
-					<div
-						v-for="(feat, i) in DELIVERY_PIPELINE_FEATURES"
-						:key="feat.label"
-						class="email-pipeline-tag"
-						:style="{ '--i': i + providers.alternatives.length + 8 }"
-					>
-						<svg
-							width="14"
-							height="14"
-							viewBox="0 0 24 24"
-							fill="none"
-							stroke="currentColor"
-							stroke-width="1.5"
-							stroke-linecap="round"
-							stroke-linejoin="round"
-						>
-							<path :d="feat.icon" />
-						</svg>
-						<span>{{ feat.label }}</span>
-					</div>
-				</div>
-			</div>
+			<ArchEmailPipelineFeatures :stagger-offset="providers.alternatives.length + 8" />
 		</div>
 	</div>
 </template>
@@ -364,56 +249,6 @@ const sesFeatures = [
 	color: var(--color-text-primary);
 }
 
-/* ── Builder items ── */
-.email-items {
-	display: grid;
-	grid-template-columns: repeat(3, 1fr);
-	gap: 8px;
-}
-
-@media (max-width: 580px) {
-	.email-items {
-		grid-template-columns: 1fr;
-	}
-}
-
-.email-item {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-	padding: 8px 12px;
-	border-radius: 8px;
-	background: var(--color-bg-surface);
-	font-size: 0.8125rem;
-	font-weight: var(--font-weight-medium);
-	color: var(--color-text-primary);
-	border: 1px solid transparent;
-	transition:
-		border-color var(--motion-moderate),
-		background var(--motion-moderate),
-		transform var(--motion-moderate) var(--ease-spring);
-	opacity: 0;
-	transform: translateY(8px);
-}
-
-.email-item svg {
-	color: var(--color-brand-muted);
-	flex-shrink: 0;
-}
-
-.is-visible .email-item {
-	opacity: 1;
-	transform: translateY(0);
-	transition-delay: calc(0.1s + var(--i) * 0.07s);
-}
-
-.email-item:hover {
-	border-color: var(--color-border-default);
-	background: var(--color-bg-surface-hover);
-	transform: translateY(-1px);
-	transition-delay: 0s;
-}
-
 /* ── Rendering pipeline ── */
 .email-pipeline {
 	display: flex;
@@ -472,52 +307,6 @@ const sesFeatures = [
 	border: 1px solid var(--color-border-subtle);
 	font-size: 0.6875rem;
 	color: var(--color-text-tertiary);
-}
-
-/* ── Connectors ── */
-.email-connector {
-	display: flex;
-	flex-direction: column;
-	align-items: center;
-	gap: 0;
-	padding: 2px 0;
-	opacity: 0;
-	transition: opacity var(--motion-slow) var(--ease-spring);
-	transition-delay: calc(var(--s) * 0.12s + 0.1s);
-}
-
-.is-visible .email-connector {
-	opacity: 1;
-}
-
-.email-connector-line {
-	width: 2px;
-	height: 10px;
-	background: var(--color-border-strong);
-	border-radius: 1px;
-}
-
-.email-connector-badge {
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	width: 24px;
-	height: 24px;
-	border-radius: 50%;
-	background: var(--color-bg-surface);
-	border: 1px solid var(--color-border-default);
-	color: var(--color-text-tertiary);
-	animation: connector-pulse 3s ease-in-out infinite;
-}
-
-@keyframes connector-pulse {
-	0%,
-	100% {
-		box-shadow: 0 0 0 0 rgba(196, 120, 90, 0);
-	}
-	50% {
-		box-shadow: 0 0 8px 2px rgba(196, 120, 90, 0.1);
-	}
 }
 
 /* ── Default provider card ── */
@@ -653,134 +442,6 @@ const sesFeatures = [
 .email-provider-detail {
 	font-size: 0.6875rem;
 	color: var(--color-text-tertiary);
-}
-
-/* ── SES Identity Manager ── */
-.email-ses {
-	padding: 12px 14px;
-	border-radius: 8px;
-	background: var(--color-bg-surface);
-	border: 1px dashed var(--color-border-default);
-	margin-bottom: 12px;
-	opacity: 0;
-	transform: translateY(8px);
-	transition:
-		opacity var(--motion-slow) var(--ease-spring),
-		transform var(--motion-slow) var(--ease-spring),
-		border-color var(--motion-moderate);
-}
-
-.is-visible .email-ses {
-	opacity: 1;
-	transform: translateY(0);
-	transition-delay: calc(0.15s + var(--i) * 0.07s);
-}
-
-.email-ses:hover {
-	border-color: color-mix(in oklab, var(--color-warning) 40%, var(--color-border-default));
-}
-
-.email-ses-header {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-	font-weight: var(--font-weight-semibold);
-	font-size: 0.8125rem;
-	color: var(--color-text-primary);
-	margin-bottom: 8px;
-}
-
-.email-ses-header svg {
-	color: var(--color-warning);
-}
-
-.email-ses-header code {
-	font-size: 0.6875rem;
-	color: var(--color-text-tertiary);
-	font-family: var(--font-mono);
-	padding: 2px 6px;
-	background: var(--color-bg-elevated);
-	border-radius: 4px;
-	border: 1px solid var(--color-border-subtle);
-	margin-left: auto;
-}
-
-.email-ses-features {
-	list-style: none;
-	padding: 0;
-	margin: 0;
-	display: flex;
-	flex-direction: column;
-	gap: 4px;
-}
-
-.email-ses-features li {
-	font-size: 0.75rem;
-	color: var(--color-text-secondary);
-	padding-left: 16px;
-	position: relative;
-}
-
-.email-ses-features li::before {
-	content: '›';
-	position: absolute;
-	left: 4px;
-	color: var(--color-warning);
-	font-weight: var(--font-weight-semibold);
-}
-
-/* ── Pipeline features ── */
-.email-pipeline-features {
-	padding: 12px 14px;
-	border-radius: 8px;
-	background: var(--color-bg-soft);
-	border: 1px solid var(--color-border-subtle);
-}
-
-.email-fn-name {
-	font-size: 0.75rem;
-	font-family: var(--font-mono);
-	color: var(--color-accent);
-	margin-bottom: 10px;
-	display: block;
-}
-
-.email-pipeline-tags {
-	display: flex;
-	gap: 8px;
-	flex-wrap: wrap;
-}
-
-.email-pipeline-tag {
-	display: flex;
-	align-items: center;
-	gap: 6px;
-	padding: 5px 10px;
-	border-radius: 6px;
-	background: var(--color-bg-surface);
-	border: 1px solid var(--color-border-subtle);
-	font-size: 0.75rem;
-	color: var(--color-text-secondary);
-	transition:
-		border-color var(--motion-moderate),
-		transform var(--motion-moderate) var(--ease-spring);
-	opacity: 0;
-}
-
-.is-visible .email-pipeline-tag {
-	opacity: 1;
-	transition-delay: calc(0.2s + var(--i) * 0.06s);
-}
-
-.email-pipeline-tag svg {
-	color: var(--color-info);
-	flex-shrink: 0;
-}
-
-.email-pipeline-tag:hover {
-	border-color: var(--color-border-default);
-	transform: translateY(-1px);
-	transition-delay: 0s;
 }
 
 .is-visible .email-pipeline-arrow:nth-child(4) {
