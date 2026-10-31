@@ -1,11 +1,15 @@
 import { type ObjectType, v } from 'convex/values';
-import { internalAction } from '../_generated/server';
+import { internalAction, type MutationCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
 import { getMtaConfig, mtaFetch } from '../mail/mtaClient';
 import { normalizeIpReputationPayload } from '@owlat/mta-protocol/ipReputation';
 import { normalizeDeliverabilityRoutingSnapshot } from '@owlat/shared/deliverabilityRouting';
-import { DELIVERABILITY_SIGNAL_MAX_AGE_MS } from './deliverabilityRouting';
+import {
+	applyRoutingSnapshot,
+	DELIVERABILITY_SIGNAL_MAX_AGE_MS,
+	routingSnapshotFields,
+} from './deliverabilityRouting';
 import { warmingStateFields } from '../schema/delivery';
 import { logError, logWarn } from '../lib/runtimeLog';
 import type { AssertTrue, Exact } from '../lib/typeAssert';
@@ -97,31 +101,18 @@ export const syncWarmingState = internalAction({
 				return;
 			}
 
-			await ctx.runMutation(internal.delivery.warmingSync.upsertWarmingState, {
-				...normalized,
-				syncedAt: Date.now(),
-				...(organizationId ? { organizationId } : {}),
-			});
-
 			const now = Date.now();
 			const routing =
 				typeof payload === 'object' && payload !== null && 'routing' in payload
 					? normalizeDeliverabilityRoutingSnapshot(payload.routing, now)
 					: null;
+			const isRoutingFresh =
+				routing !== null &&
+				routing.generatedAt <= now + 2 * 60 * 1000 &&
+				now - routing.generatedAt <= DELIVERABILITY_SIGNAL_MAX_AGE_MS;
 			if (
 				organizationId &&
-				routing &&
-				routing.generatedAt <= now + 2 * 60 * 1000 &&
-				now - routing.generatedAt <= DELIVERABILITY_SIGNAL_MAX_AGE_MS
-			) {
-				await ctx.runMutation(internal.delivery.deliverabilityRouting.applySnapshot, {
-					organizationId,
-					generatedAt: routing.generatedAt,
-					signals: routing.signals,
-					appliedAt: now,
-				});
-			} else if (
-				organizationId &&
+				!isRoutingFresh &&
 				typeof payload === 'object' &&
 				payload !== null &&
 				'routing' in payload
@@ -132,6 +123,21 @@ export const syncWarmingState = internalAction({
 					now,
 				});
 			}
+
+			await ctx.runMutation(internal.delivery.warmingSync.commitWarmingSync, {
+				...normalized,
+				syncedAt: now,
+				...(organizationId ? { organizationId } : {}),
+				...(organizationId && isRoutingFresh
+					? {
+							routing: {
+								generatedAt: routing.generatedAt,
+								signals: routing.signals,
+								appliedAt: now,
+							},
+						}
+					: {}),
+			});
 
 			// Check if approaching capacity limit (for admin alerts)
 			if (normalized.phase === 'graduated' && normalized.totalDailyCap > 0) {
@@ -152,25 +158,64 @@ export const syncWarmingState = internalAction({
 	},
 });
 
+const upsertWarmingStateArgs = { ...warmingStateFields, organizationId: v.optional(v.string()) };
+
 /**
  * Upsert the warming state singleton row. `organizationId` is not stored: it
  * scopes the IPv6 alert clean-up when the new snapshot shows IPv6 off.
  */
+async function writeWarmingState(
+	ctx: MutationCtx,
+	{ organizationId, ...snapshot }: ObjectType<typeof upsertWarmingStateArgs>
+): Promise<void> {
+	const existing = await ctx.db.query('warmingState').first();
+
+	if (existing) {
+		// An MTA that predates `pools` omits it; clear the stored lists instead
+		// of leaving ones that no longer describe the running pools.
+		await ctx.db.patch(existing._id, { ...snapshot, pools: snapshot.pools });
+	} else {
+		await ctx.db.insert('warmingState', snapshot);
+	}
+
+	if (organizationId && ipv6SendingAddresses(snapshot).length === 0) {
+		await resolveIpv6RegressionAlerts(ctx, organizationId, snapshot.syncedAt);
+	}
+}
+
+/**
+ * The warming sync's one commit: the warming snapshot and, when the MTA's
+ * routing snapshot was fresh, that snapshot onto the route states.
+ */
+export const commitWarmingSync = internalMutation({
+	args: {
+		...upsertWarmingStateArgs,
+		routing: v.optional(
+			v.object({
+				generatedAt: routingSnapshotFields.generatedAt,
+				signals: routingSnapshotFields.signals,
+				appliedAt: routingSnapshotFields.appliedAt,
+			})
+		),
+	},
+	handler: async (ctx, { routing, ...snapshot }) => {
+		await writeWarmingState(ctx, snapshot);
+		if (routing && snapshot.organizationId) {
+			await applyRoutingSnapshot(ctx, { organizationId: snapshot.organizationId, ...routing });
+		}
+	},
+});
+
+/**
+ * The warming snapshot on its own. Nothing in this release calls it: an action
+ * of the previous release still mid-sync during the deploy does, so it leaves
+ * a snapshot newer than its own in place. Remove after release 0.6.17.
+ */
 export const upsertWarmingState = internalMutation({
-	args: { ...warmingStateFields, organizationId: v.optional(v.string()) },
-	handler: async (ctx, { organizationId, ...snapshot }) => {
-		const existing = await ctx.db.query('warmingState').first();
-
-		if (existing) {
-			// An MTA that predates `pools` omits it; clear the stored lists instead
-			// of leaving ones that no longer describe the running pools.
-			await ctx.db.patch(existing._id, { ...snapshot, pools: snapshot.pools });
-		} else {
-			await ctx.db.insert('warmingState', snapshot);
-		}
-
-		if (organizationId && ipv6SendingAddresses(snapshot).length === 0) {
-			await resolveIpv6RegressionAlerts(ctx, organizationId, snapshot.syncedAt);
-		}
+	args: upsertWarmingStateArgs,
+	handler: async (ctx, args) => {
+		const existing = await ctx.db.query('warmingState').first(); // bounded: singleton row
+		if (existing && existing.syncedAt > args.syncedAt) return;
+		await writeWarmingState(ctx, args);
 	},
 });

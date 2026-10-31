@@ -137,4 +137,20 @@ describe('syncWarmingState writes', () => {
 		expect(await warmingRows(t)).toEqual([]);
 		expect(await routeState(t, organizationId, 'gmail')).toBeNull();
 	});
+
+	it('keeps the snapshot a sync wrote over an older one the previous release writes after it', async () => {
+		const { t } = await harness();
+		fetchMock.mockImplementation(async () => Response.json(reputation()));
+		await t.action(internal.delivery.warmingSync.syncWarmingState, {});
+		const [synced] = await warmingRows(t);
+		const { _id, _creationTime, ...snapshot } = synced!;
+
+		await t.mutation(internal.delivery.warmingSync.upsertWarmingState, {
+			...snapshot,
+			ipCount: 7,
+			syncedAt: NOW - 60_000,
+		});
+
+		expect(await warmingRows(t)).toEqual([synced]);
+	});
 });

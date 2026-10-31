@@ -1,4 +1,4 @@
-import { v } from 'convex/values';
+import { v, type ObjectType } from 'convex/values';
 import { OWN_ARM_TRANSPORT_KIND } from '../lib/sendProviders/strategies/adaptive_mix';
 import { extractDomainOrNull } from '@owlat/shared';
 import {
@@ -6,6 +6,7 @@ import {
 	isActionableDeliverabilitySignalSource,
 } from '@owlat/shared/deliverabilityRouting';
 import { internalMutation } from '../lib/writeFence';
+import type { MutationCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { getSingletonOrganizationId } from '../lib/sessionOrganization';
 import { loadStreamlessRouteState } from '../lib/deliverabilityRouteState';
@@ -37,104 +38,120 @@ const DOMAIN_CLASSIFICATION_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 const DOMAIN_CLASSIFICATION_REFRESH_MS = 60 * 60 * 1000;
 const PROVIDERS = ['all', ...DESTINATION_PROVIDER_KEYS] as const;
 
+export const routingSnapshotFields = {
+	organizationId: v.string(),
+	generatedAt: v.number(),
+	signals: v.array(deliverabilitySignalValidator),
+	appliedAt: v.number(),
+};
+
 /**
- * Apply one complete MTA snapshot. Convex serializes this mutation, making the
- * per-provider hysteresis transition OCC-safe and idempotent by snapshot time.
+ * Apply one complete MTA snapshot. Convex serializes the mutation that calls
+ * this, making the per-provider hysteresis transition OCC-safe and idempotent
+ * by snapshot time: a snapshot no newer than a provider's stored one is skipped.
+ */
+export async function applyRoutingSnapshot(
+	ctx: MutationCtx,
+	args: ObjectType<typeof routingSnapshotFields>
+): Promise<void> {
+	for (const provider of PROVIDERS) {
+		// The MTA snapshot owns the LEGACY stream-less row: it reports
+		// infrastructure health for a provider slice, which is not per-stream.
+		const existing = await loadStreamlessRouteState(ctx, args.organizationId, provider);
+		if (existing && existing.snapshotGeneratedAt >= args.generatedAt) continue;
+
+		const signals = args.signals
+			.filter((signal) => signal.provider === provider)
+			.map(({ source, severity, observedAt }) => ({ source, severity, observedAt }));
+		// ONE RULE: only the four INFRASTRUCTURE sources flip the shipped
+		// boolean. Advisory sources ("we could not complete the lookup", "part
+		// of the pool is ejected") and outcome-derived sources (bounce,
+		// complaint, engagement, placement) are persisted here so the ramp
+		// controller and the dashboard can read them, and they move the
+		// controller's share — but neither ever triggers relay fallback.
+		const degraded = signals.some((signal) =>
+			isActionableDeliverabilitySignalSource(signal.source)
+		);
+		let persistedSignals = signals;
+		let isFallbackActive = existing?.isFallbackActive ?? false;
+		let fallbackActiveSince = existing?.fallbackActiveSince;
+		let healthySince = existing?.healthySince;
+		if (degraded) {
+			isFallbackActive = true;
+			fallbackActiveSince ??= args.appliedAt;
+			healthySince = undefined;
+		} else if (isFallbackActive) {
+			// Preserve the triggering reasons while hysteresis deliberately keeps
+			// fallback active. Route resolution uses these reasons as its decision
+			// input, so clearing them before failback would bypass the cooldown.
+			// Advisory readings are refreshed rather than preserved: they carry no
+			// routing weight and must reflect the latest snapshot.
+			persistedSignals = [
+				...(existing?.signals ?? []).filter((signal) =>
+					isActionableDeliverabilitySignalSource(signal.source)
+				),
+				...signals.filter((signal) => !isActionableDeliverabilitySignalSource(signal.source)),
+			];
+			healthySince ??= args.appliedAt;
+			const healthyLongEnough = args.appliedAt - healthySince >= DELIVERABILITY_MIN_HEALTHY_MS;
+			const cooldownComplete =
+				fallbackActiveSince !== undefined &&
+				args.appliedAt - fallbackActiveSince >= DELIVERABILITY_FALLBACK_COOLDOWN_MS;
+			if (healthyLongEnough && cooldownComplete) {
+				isFallbackActive = false;
+				persistedSignals = signals;
+				fallbackActiveSince = undefined;
+				healthySince = undefined;
+			}
+		} else {
+			healthySince = undefined;
+			fallbackActiveSince = undefined;
+		}
+
+		const fields = {
+			organizationId: args.organizationId,
+			destinationProvider: provider,
+			isFallbackActive,
+			signals: persistedSignals,
+			fallbackActiveSince,
+			healthySince,
+			snapshotGeneratedAt: args.generatedAt,
+			expiresAt: args.appliedAt + STATE_RETENTION_MS,
+			updatedAt: args.appliedAt,
+		};
+		if (existing) await ctx.db.patch(existing._id, fields);
+		else await ctx.db.insert('deliverabilityRouteStates', fields);
+
+		// The MTA's breaker for this provider just opened (a bounce or
+		// complaint spike): mail there is held back, or rerouted through the
+		// relay when one is set up and verified. Only the edge notifies;
+		// while hysteresis keeps the signal, every later snapshot is the
+		// same hold. A row last written longer ago than a signal stays
+		// fresh says nothing about now, so it counts as closed.
+		const wasOpen =
+			existing !== null &&
+			args.appliedAt - existing.updatedAt <= DELIVERABILITY_SIGNAL_MAX_AGE_MS &&
+			hasBreakerSignal(existing.signals);
+		if (provider !== 'all' && hasBreakerSignal(persistedSignals) && !wasOpen) {
+			await scheduleMarketingNotice(ctx, {
+				kind: 'delivery_hold',
+				provider,
+				openedAt: args.appliedAt,
+			});
+		}
+	}
+}
+
+/**
+ * One routing snapshot on its own. Nothing in this release calls it (the
+ * warming sync applies the snapshot in its own commit); an action of the
+ * previous release still mid-sync during the deploy does, and a snapshot no
+ * newer than the stored one changes nothing. Remove after release 0.6.17.
  */
 export const applySnapshot = internalMutation({
-	args: {
-		organizationId: v.string(),
-		generatedAt: v.number(),
-		signals: v.array(deliverabilitySignalValidator),
-		appliedAt: v.number(),
-	},
+	args: routingSnapshotFields,
 	handler: async (ctx, args) => {
-		for (const provider of PROVIDERS) {
-			// The MTA snapshot owns the LEGACY stream-less row: it reports
-			// infrastructure health for a provider slice, which is not per-stream.
-			const existing = await loadStreamlessRouteState(ctx, args.organizationId, provider);
-			if (existing && existing.snapshotGeneratedAt >= args.generatedAt) continue;
-
-			const signals = args.signals
-				.filter((signal) => signal.provider === provider)
-				.map(({ source, severity, observedAt }) => ({ source, severity, observedAt }));
-			// ONE RULE: only the four INFRASTRUCTURE sources flip the shipped
-			// boolean. Advisory sources ("we could not complete the lookup", "part
-			// of the pool is ejected") and outcome-derived sources (bounce,
-			// complaint, engagement, placement) are persisted here so the ramp
-			// controller and the dashboard can read them, and they move the
-			// controller's share — but neither ever triggers relay fallback.
-			const degraded = signals.some((signal) =>
-				isActionableDeliverabilitySignalSource(signal.source)
-			);
-			let persistedSignals = signals;
-			let isFallbackActive = existing?.isFallbackActive ?? false;
-			let fallbackActiveSince = existing?.fallbackActiveSince;
-			let healthySince = existing?.healthySince;
-			if (degraded) {
-				isFallbackActive = true;
-				fallbackActiveSince ??= args.appliedAt;
-				healthySince = undefined;
-			} else if (isFallbackActive) {
-				// Preserve the triggering reasons while hysteresis deliberately keeps
-				// fallback active. Route resolution uses these reasons as its decision
-				// input, so clearing them before failback would bypass the cooldown.
-				// Advisory readings are refreshed rather than preserved: they carry no
-				// routing weight and must reflect the latest snapshot.
-				persistedSignals = [
-					...(existing?.signals ?? []).filter((signal) =>
-						isActionableDeliverabilitySignalSource(signal.source)
-					),
-					...signals.filter((signal) => !isActionableDeliverabilitySignalSource(signal.source)),
-				];
-				healthySince ??= args.appliedAt;
-				const healthyLongEnough = args.appliedAt - healthySince >= DELIVERABILITY_MIN_HEALTHY_MS;
-				const cooldownComplete =
-					fallbackActiveSince !== undefined &&
-					args.appliedAt - fallbackActiveSince >= DELIVERABILITY_FALLBACK_COOLDOWN_MS;
-				if (healthyLongEnough && cooldownComplete) {
-					isFallbackActive = false;
-					persistedSignals = signals;
-					fallbackActiveSince = undefined;
-					healthySince = undefined;
-				}
-			} else {
-				healthySince = undefined;
-				fallbackActiveSince = undefined;
-			}
-
-			const fields = {
-				organizationId: args.organizationId,
-				destinationProvider: provider,
-				isFallbackActive,
-				signals: persistedSignals,
-				fallbackActiveSince,
-				healthySince,
-				snapshotGeneratedAt: args.generatedAt,
-				expiresAt: args.appliedAt + STATE_RETENTION_MS,
-				updatedAt: args.appliedAt,
-			};
-			if (existing) await ctx.db.patch(existing._id, fields);
-			else await ctx.db.insert('deliverabilityRouteStates', fields);
-
-			// The MTA's breaker for this provider just opened (a bounce or
-			// complaint spike): mail there is held back, or rerouted through the
-			// relay when one is set up and verified. Only the edge notifies;
-			// while hysteresis keeps the signal, every later snapshot is the
-			// same hold. A row last written longer ago than a signal stays
-			// fresh says nothing about now, so it counts as closed.
-			const wasOpen =
-				existing !== null &&
-				args.appliedAt - existing.updatedAt <= DELIVERABILITY_SIGNAL_MAX_AGE_MS &&
-				hasBreakerSignal(existing.signals);
-			if (provider !== 'all' && hasBreakerSignal(persistedSignals) && !wasOpen) {
-				await scheduleMarketingNotice(ctx, {
-					kind: 'delivery_hold',
-					provider,
-					openedAt: args.appliedAt,
-				});
-			}
-		}
+		await applyRoutingSnapshot(ctx, args);
 	},
 });
 

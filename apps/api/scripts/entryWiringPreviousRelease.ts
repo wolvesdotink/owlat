@@ -27,6 +27,8 @@ export const PREVIOUS_RELEASE_ENTRIES: Readonly<Record<string, string>> = {
 	'emailTemplates/versions.ts#captureForSend': 'old campaign send preparations mid-run',
 	// The delivery actions below now commit once; remove after release 0.6.17.
 	'delivery/alignmentPreflight.ts#recordAlignmentResult': 'old alignment sweeps mid-run',
+	'delivery/warmingSync.ts#upsertWarmingState': 'old warming syncs mid-run',
+	'delivery/deliverabilityRouting.ts#applySnapshot': 'old warming syncs mid-run',
 	// System & updates now reads maintenance/workerRegistry.ts `getForAdmin`.
 	'mail/imap/serverRegistry.ts#getForAdmin':
 		'the previous IMAP servers card on System & updates, in tabs opened before the deploy',
