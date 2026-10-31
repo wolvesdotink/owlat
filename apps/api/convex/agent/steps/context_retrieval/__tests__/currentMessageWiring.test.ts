@@ -95,7 +95,6 @@ function makeCtx(
 			semanticFileProcessing: [],
 		},
 		mutations: {
-			recordContextTier: null,
 			captureInbound: () => {
 				captures.push(messageId);
 				return opts.canRun ?? true;

@@ -5,9 +5,9 @@ import type { EditorBlock } from '../../types';
 
 /**
  * The canvas asks three questions per Block on every render (is it linked,
- * is it first / last in its group). They used to be answered by scanning the
- * root array, O(N²) per render and rerun on every selection change (#922).
- * These tests pin the shared index: same answers as the old scans, one visit
+ * is it first / last in its group). Answering them by scanning the root array
+ * costs O(N²) per render and reruns on every selection change, so one shared
+ * index answers them. These tests pin it: the same answers as a scan, one visit
  * per Block to build, none to answer, and rebuilt on every change that can
  * alter the answers (reorder, detach in place, undo/redo, restored content).
  */

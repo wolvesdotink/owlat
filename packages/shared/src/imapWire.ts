@@ -46,7 +46,7 @@
  *   wire 0 used are gone too: `appendMessage`'s `snippet`,
  *   `fetchRawStorageId` and `getRawStorageUrl`.
  * - 3: `appendMessage` takes the message's raw `headerBlock` (optional), so a
- *   client's filed auto-reply is not taken for an answer (#1346). A wire-2
+ *   client's filed auto-reply is not taken for an answer. A wire-2
  *   server, which sends none, is still served.
  */
 export const IMAP_WIRE_VERSION = 3;

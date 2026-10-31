@@ -12,7 +12,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { makeStepCtx } from '../../__tests__/stepCtx';
+import { makeStepCtx, writesOf } from '../../__tests__/stepCtx';
 
 const mocks = vi.hoisted(() => ({
 	runLlmText: vi.fn(),
@@ -57,21 +57,16 @@ const highConfidenceInput: DraftInput = {
 };
 
 function makeCtx() {
-	const recorded: Array<Record<string, unknown>> = [];
 	const ctx = makeStepCtx<Parameters<typeof draftStep.execute>[0]>({
 		queries: {
 			getAgentConfig: null,
 			getMessage: { subject: 'Order status' }, // no `to` → skip voice
 		},
 		mutations: {
-			recordDraftOutput: (args) => {
-				recorded.push(args as Record<string, unknown>);
-				return undefined;
-			},
 			llmUsage: undefined, // spend accounting
 		},
 	});
-	return { ctx, recorded };
+	return { ctx };
 }
 
 beforeEach(() => {
@@ -112,9 +107,10 @@ describe('draftStep.execute — one draft, no variants', () => {
 			tokenUsage: undefined,
 			modelUsed: 'mock-model',
 		});
-		const { ctx, recorded } = makeCtx();
+		const { ctx } = makeCtx();
 
-		const { output } = await draftStep.execute(ctx, input);
+		const { output, writes } = await draftStep.execute(ctx, input);
+		const recorded = writesOf(writes, 'draft_output');
 
 		// The draft, then its self-check. Nothing else.
 		expect(mocks.runLlmText).toHaveBeenCalledTimes(1);

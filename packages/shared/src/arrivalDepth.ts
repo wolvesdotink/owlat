@@ -27,7 +27,7 @@
  * read past the budget, and the overrides come before the category. An
  * exact-wording candidate (changed bank details, a legal notice, an invoice
  * with payment details) is never counted for its category, a digest rule or
- * the sender's digest status (#1384): only the budget and the person's own
+ * the sender's digest status: only the budget and the person's own
  * message-scope digest Fix still count it, and only a Fix made after the
  * candidate arrived (the caller drops an older one: `doesThreadOverrideHold`).
  *
@@ -101,7 +101,7 @@ export function chooseArrivalDepth(i: ChooseArrivalDepthInput): ArrivalDepthChoi
 	if (i.budget === 'refused') return choice('count', [{ key: ARRIVAL_DEPTH_REASONS.budget }], true);
 	// 7–10. Overrides before the category. A message-scope digest Fix is the
 	// person's own choice for this conversation; a digest rule or the sender's
-	// digest status never counts an exact-wording candidate (#1384).
+	// digest status never counts an exact-wording candidate.
 	if (i.placementOverride === 'digest') {
 		return choice(
 			'count',

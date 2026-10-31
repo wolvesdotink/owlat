@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Page-header ratchet (#865). packages/ui's UiPageHeader is the one page
+# Page-header ratchet. packages/ui's UiPageHeader is the one page
 # header: the h1 at the app's title scale, a lead capped at the 540px measure,
 # and an #actions row that wraps at 375px. Before it existed every page
 # hand-rolled the same block — an `<h1 class="text-2xl font-medium

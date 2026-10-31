@@ -35,7 +35,7 @@ jobs:
       matrix:
         include:
           # Universal macOS binary (Apple Silicon + Intel).
-          - platform: macos-14
+          - platform: macos-15
             args: '--target universal-apple-darwin'
             rust_targets: 'aarch64-apple-darwin,x86_64-apple-darwin'
           - platform: ubuntu-22.04
@@ -80,10 +80,13 @@ jobs:
           toolchain: ${{ steps.rust.outputs.channel }}
           targets: ${{ matrix.rust_targets }}
 
+      # rust-cache keys only on OS family and CPU arch, so the runner label is
+      # part of the key: a new runner image must not restore crates built
+      # against the previous image's SDK. Must match desktop-cache.yml.
       - uses: swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           workspaces: apps/desktop/src-tauri
-          shared-key: desktop-release
+          shared-key: desktop-release-${{ matrix.platform }}
           save-if: false
 
       # Make the release TAG the single source of truth for the shipped version.

@@ -101,7 +101,7 @@ describe('content scan helpers run in linear time on adversarial input', () => {
 	const FIVE_MB = 5 * 1024 * 1024;
 	const repeatTo = (unit: string, size = FIVE_MB) => unit.repeat(Math.ceil(size / unit.length));
 
-	// The link scan is checked by counting the characters it reads (#1315), not
+	// The link scan is checked by counting the characters it reads, not
 	// by timing it on a CI runner of unknown speed. It reads each character
 	// once, plus at most one search to the end for each quote character a value
 	// never closes, and the text of each anchor once more to drop its tags: at

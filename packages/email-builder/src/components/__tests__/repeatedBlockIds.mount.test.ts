@@ -1,9 +1,9 @@
 // @vitest-environment happy-dom
 //
-// Two Blocks with one id (#1430). The canvas keys Blocks by id and keeps a
+// Two Blocks with one id. The canvas keys Blocks by id and keeps a
 // ref map keyed by id, so a document repeating an id (pasted, imported, an API
-// write, a hand-edited template) sent it into "Maximum recursive updates
-// exceeded". The builder now repairs ids where Blocks enter it: the prop, and
+// write, a hand-edited template) would send it into "Maximum recursive updates
+// exceeded". The builder repairs ids where Blocks enter it: the prop, and
 // the explicit `loadState` door. The first occurrence keeps its id.
 import { describe, it, expect, afterEach, beforeEach, vi, type MockInstance } from 'vitest';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';

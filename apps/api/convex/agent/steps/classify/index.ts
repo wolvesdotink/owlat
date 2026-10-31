@@ -33,7 +33,7 @@ import { meterAgentCall } from '../../shared/agentSpend';
 import { SYSTEM_GUARD } from '../../../mail/ai/promptGuards';
 import { ALLOWED_KINDS, BULK_KINDS, safeEnum, safeLanguage } from '../draft/sanitize';
 import { CLASSIFY_INTENTS } from './intents';
-import { scheduleTeamMessageBundle } from '../../../decision/schedule';
+import { teamMessageBundle } from '../../../decision/schedule';
 
 /**
  * Below this classifier confidence a "no response needed" verdict is not
@@ -238,9 +238,10 @@ export const classifyStep: AgentStepModule<'classify', ClassifyInput, ClassifyOu
 		}
 
 		// Phase 2: the category and disposition bundle runs BESIDE this
-		// classifier, scheduled and compared with what it decided; nothing it
-		// answers reaches `route`. Off by default: nothing is scheduled.
-		await scheduleTeamMessageBundle(ctx, input.inboundMessageId, {
+		// classifier, scheduled with the step's commit and compared with what it
+		// decided; nothing it answers reaches `route`. Off by default: nothing is
+		// scheduled.
+		const bundle = await teamMessageBundle(ctx, {
 			baseline: {
 				category: output.category,
 				disposition:
@@ -251,7 +252,12 @@ export const classifyStep: AgentStepModule<'classify', ClassifyInput, ClassifyOu
 			...(output.language ? { language: output.language } : {}),
 		});
 
-		return { output, tokenUsage, modelUsed };
+		return {
+			output,
+			tokenUsage,
+			modelUsed,
+			writes: bundle ? [{ kind: 'decision_bundle', bundle }] : [],
+		};
 	},
 
 	route(output, input, runCtx) {

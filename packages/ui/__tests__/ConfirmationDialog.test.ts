@@ -1,11 +1,11 @@
 /**
  * THE CONFIRM BUTTON IS A BUTTON, NOT A HAND-COPIED RECIPE.
  *
- * It used to be a raw `<button>` carrying an inlined, and wrong, copy of `.btn`
- * — `rounded-lg px-4` against the design system's `rounded-full px-5`, so the
- * confirm button was visibly a different shape from the Cancel button beside it
- * — plus a per-variant fill: terracotta for `default` and solid gold for
- * `warning`, both of which DESIGN-LANGUAGE.md forbids (§1 "brand terracotta is
+ * A raw `<button>` carrying an inlined copy of `.btn` drifts from it
+ * (`rounded-lg px-4` against the design system's `rounded-full px-5` makes the
+ * confirm button visibly a different shape from the Cancel button beside it)
+ * and invites a per-variant fill such as terracotta for `default` or solid gold
+ * for `warning`, both of which DESIGN-LANGUAGE.md forbids (§1 "brand terracotta is
  * explicitly not a button fill"; §4 semantic colours are text and hairline
  * tints, not fills).
  *

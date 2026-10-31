@@ -278,8 +278,8 @@ const applyThemeDefaults = (block: EditorBlock, ctx: RenderContext): EditorBlock
 /**
  * `blocks` with an id on every Block and accordion section, at any depth. The
  * block modules key attributes, CSS selectors, link tracking and accordion
- * toggles by id, and a caller's stored data is not trusted to carry one
- * (#1432). The fill is the readers' deterministic one, so a Block the server
+ * toggles by id, and a caller's stored data is not trusted to carry one.
+ * The fill is the readers' deterministic one, so a Block the server
  * or editor already gave an id keeps it.
  */
 export const withBlockIds = (blocks: EditorBlock[]): EditorBlock[] => normalizeBlockTreeIds(blocks);

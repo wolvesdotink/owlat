@@ -2,7 +2,7 @@
  * The member-jargon gate's own gate.
  *
  * The script names its member-visible surfaces and its exemptions as literal
- * paths, and both halves used to fail OPEN when one of those paths moved: a
+ * paths, and both halves would fail OPEN when one of those paths moved: a
  * missing root walks to an empty file list (the `readdir` rejection is caught),
  * and a missing allowlist entry excuses nothing while still reading like
  * sanctioned debt. Either way the gate prints nothing, so a rename is

@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { makeStepCtx } from '../../__tests__/stepCtx';
+import { makeStepCtx, writesOf } from '../../__tests__/stepCtx';
 
 const mocks = vi.hoisted(() => ({
 	runLlmText: vi.fn(),
@@ -57,8 +57,6 @@ const answered = {
 };
 
 function makeCtx(message: Record<string, unknown> = {}) {
-	const stored: Array<Record<string, unknown>> = [];
-	const decisions: Array<Record<string, unknown>> = [];
 	const ctx = makeStepCtx<Parameters<typeof draftStep.execute>[0]>({
 		queries: {
 			getAgentConfig: null,
@@ -70,18 +68,10 @@ function makeCtx(message: Record<string, unknown> = {}) {
 			},
 		},
 		mutations: {
-			recordDraftOutput: (args) => {
-				stored.push(args as Record<string, unknown>);
-				return undefined;
-			},
-			recordAgentDecision: (args) => {
-				decisions.push(args as Record<string, unknown>);
-				return undefined;
-			},
 			llmUsage: undefined,
 		},
 	});
-	return { ctx, stored, decisions };
+	return { ctx };
 }
 
 function drafts(text: string) {
@@ -110,9 +100,10 @@ beforeEach(() => {
 describe('draftStep — gaps nobody agreed to', () => {
 	it('stores no draft and asks one question per gap, keeping the earlier answers', async () => {
 		drafts('Order #4821 arrives on [[delivery date]].');
-		const { ctx, stored } = makeCtx();
+		const { ctx } = makeCtx();
 
-		const { output } = await draftStep.execute(ctx, input);
+		const { output, writes } = await draftStep.execute(ctx, input);
+		const stored = writesOf(writes, 'draft_output');
 
 		expect(stored).toHaveLength(0);
 		const route = draftStep.route(output, input, runCtx);
@@ -135,9 +126,11 @@ describe('draftStep — gaps nobody agreed to', () => {
 
 	it('leaves a gap only a password could fill to a person, with no AI draft', async () => {
 		drafts('Log in with [[the customer password]] to see it.');
-		const { ctx, stored, decisions } = makeCtx();
+		const { ctx } = makeCtx();
 
-		const { output } = await draftStep.execute(ctx, input);
+		const { output, writes } = await draftStep.execute(ctx, input);
+		const stored = writesOf(writes, 'draft_output');
+		const decisions = writesOf(writes, 'agent_decision');
 
 		expect(stored).toHaveLength(0);
 		expect(decisions).toEqual([expect.objectContaining({ reason: DRAFT_HELD_REASON })]);
@@ -150,9 +143,10 @@ describe('draftStep — gaps nobody agreed to', () => {
 
 	it('stores a draft without gaps and hands it to the route step', async () => {
 		drafts('Order #4821 arrives on Friday.');
-		const { ctx, stored } = makeCtx();
+		const { ctx } = makeCtx();
 
-		const { output } = await draftStep.execute(ctx, input);
+		const { output, writes } = await draftStep.execute(ctx, input);
+		const stored = writesOf(writes, 'draft_output');
 
 		expect(stored).toHaveLength(1);
 		expect(draftStep.route(output, input, runCtx)).toMatchObject({
@@ -165,14 +159,15 @@ describe('draftStep — gaps nobody agreed to', () => {
 describe('draftStep — the owner agreed to gaps', () => {
 	it('stores the draft with its gaps and every fixed placeholder', async () => {
 		drafts('Order #4821 arrives on [[delivery date]].');
-		const { ctx, stored } = makeCtx();
+		const { ctx } = makeCtx();
 		const consented = {
 			...input,
 			isGapsAccepted: true,
 			gapPlaceholders: ['[[Gift wrapping]]'],
 		};
 
-		const { output } = await draftStep.execute(ctx, consented);
+		const { output, writes } = await draftStep.execute(ctx, consented);
+		const stored = writesOf(writes, 'draft_output');
 
 		expect(stored).toHaveLength(1);
 		expect(stored[0]!['draftResponse']).toBe(
@@ -192,7 +187,7 @@ describe('draftStep — the stored clarification, on every path in', () => {
 	// the owner's answers, consent or placeholders in the input.
 	it('keeps the answers, the consent and the open placeholder on a retry', async () => {
 		drafts('Order #4821 is on its way.');
-		const { ctx, stored } = makeCtx({
+		const { ctx } = makeCtx({
 			pendingClarification: {
 				questions: [
 					answered,
@@ -204,7 +199,8 @@ describe('draftStep — the stored clarification, on every path in', () => {
 			},
 		});
 
-		const { output } = await draftStep.execute(ctx, input);
+		const { output, writes } = await draftStep.execute(ctx, input);
+		const stored = writesOf(writes, 'draft_output');
 
 		expect(prompt()).toContain('#4821');
 		expect(stored).toHaveLength(1);
@@ -232,7 +228,7 @@ describe('draftStep — the stored clarification, on every path in', () => {
 			],
 		};
 		drafts('Here is the signed contract.');
-		const { ctx, stored } = makeCtx({
+		const { ctx } = makeCtx({
 			attachmentSuggestions: pick,
 			pendingClarification: {
 				questions: [
@@ -254,7 +250,8 @@ describe('draftStep — the stored clarification, on every path in', () => {
 			},
 		});
 
-		await draftStep.execute(ctx, input);
+		const { writes } = await draftStep.execute(ctx, input);
+		const stored = writesOf(writes, 'draft_output');
 
 		expect(prompt()).toContain('The file \\"contract-signed.pdf\\" is attached to this reply');
 		expect(stored[0]!['attachmentSuggestions']).toEqual(pick);
@@ -262,7 +259,7 @@ describe('draftStep — the stored clarification, on every path in', () => {
 
 	it('suggests no file when the owner said it is not ready', async () => {
 		drafts('The document will follow once it is ready.');
-		const { ctx, stored } = makeCtx({
+		const { ctx } = makeCtx({
 			pendingClarification: {
 				questions: [
 					{
@@ -279,7 +276,8 @@ describe('draftStep — the stored clarification, on every path in', () => {
 			},
 		});
 
-		await draftStep.execute(ctx, input);
+		const { writes } = await draftStep.execute(ctx, input);
+		const stored = writesOf(writes, 'draft_output');
 
 		expect(prompt()).toContain("It isn't ready yet");
 		// No search either: the step context has no action route for it.
@@ -292,11 +290,12 @@ describe('draftStep — the stored clarification, on every path in', () => {
 	it('asks again, without calling the model, while a legacy question is open', async () => {
 		drafts('Order #4821 is on its way.');
 		const open = { id: 'clarify_1', slotType: 'date_time', text: 'When does it ship?' };
-		const { ctx, stored } = makeCtx({
+		const { ctx } = makeCtx({
 			pendingClarification: { questions: [answered, open], askedAt: 1, answeredAt: 2 },
 		});
 
-		const { output } = await draftStep.execute(ctx, input);
+		const { output, writes } = await draftStep.execute(ctx, input);
+		const stored = writesOf(writes, 'draft_output');
 
 		expect(mocks.runLlmText).not.toHaveBeenCalled();
 		expect(stored).toHaveLength(0);
@@ -308,7 +307,7 @@ describe('draftStep — the stored clarification, on every path in', () => {
 
 	it('drafts with the open placeholder when asking is turned off', async () => {
 		drafts('Order #4821 is on its way.');
-		const { ctx, stored } = makeCtx({
+		const { ctx } = makeCtx({
 			pendingClarification: {
 				questions: [
 					answered,
@@ -319,7 +318,8 @@ describe('draftStep — the stored clarification, on every path in', () => {
 			},
 		});
 
-		await draftStep.execute(ctx, { ...input, isGapsAccepted: true });
+		const { writes } = await draftStep.execute(ctx, { ...input, isGapsAccepted: true });
+		const stored = writesOf(writes, 'draft_output');
 
 		expect(stored[0]!['draftResponse']).toBe('Order #4821 is on its way.\n\n[[When does it ship]]');
 	});

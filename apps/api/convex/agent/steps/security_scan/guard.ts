@@ -256,6 +256,7 @@ export async function runGuardBeforeAutonomy(
 	const flagged = isGuardFlagged(scan.verdict) ? scan.verdict : undefined;
 	// The stored standing after the merge decides, not this run's own verdict:
 	// an overlapping late guard may have rejected the message already.
+	// checkpoint: the read message's own guard verdict, merged into the standing the caller acts on; it holds whatever the caller does next.
 	const persisted = await ctx.runMutation(internal.inbox.stepOutputs.recordLateGuard, {
 		inboundMessageId: message._id,
 		generation: message.securityFlags.scanTimestamp,

@@ -4,12 +4,11 @@
  * docker-socket-proxy serves the Docker API unauthenticated, and the grants the
  * updater needs (CONTAINERS + POST) are enough to start a container with a host
  * bind mount. It must sit on the internal docker-proxy network with the updater
- * as its only neighbour. The VPS template had it on `default` with every other
- * service while the gate only looked at the root file (#1329), so each case
- * breaks one template in a copy and runs the real gate against it.
+ * as its only neighbour in every template, not only the root file, so each
+ * case breaks one template in a copy and runs the real gate against it.
  *
  * The network is one route to the engine; the socket is the other, covered in
- * check-compose-socket-access.test.ts (#1368).
+ * check-compose-socket-access.test.ts.
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import {

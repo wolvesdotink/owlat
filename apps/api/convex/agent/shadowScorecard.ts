@@ -22,10 +22,10 @@
  * send. Shadow mode NEVER auto-sends — that is its entire safety guarantee.
  */
 
-import { v } from 'convex/values';
+import { v, type ObjectType } from 'convex/values';
 import { internalQuery, type MutationCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
-import type { Doc } from '../_generated/dataModel';
+import type { Doc, Id } from '../_generated/dataModel';
 import { adminQuery } from '../lib/authedFunctions';
 import { assertFeatureEnabled } from '../lib/featureFlags';
 import { extractEmail } from '../lib/emailAddress';
@@ -72,63 +72,73 @@ export const getShadowMode = internalQuery({
  *
  * Upserts on the message so a walker re-run replaces the prior observation
  * rather than duplicating it. Reads the sender + draft snapshot from the message
- * itself so the `route` step needs only pass the decision. Best-effort: reasons
+ * itself so the `route` step needs only pass the decision. The route step's
+ * commit applies it (`agent/stepWrites.ts`). Best-effort: reasons
  * to bail (missing message) return silently — shadow logging never blocks the
  * pipeline.
  */
-export const recordShadowDecision = internalMutation({
-	args: {
-		inboundMessageId: v.id('inboundMessages'),
-		category: v.string(),
-		wouldHaveSent: v.boolean(),
-		reason: v.string(),
-		confidence: v.number(),
-		draftQualityScore: v.optional(v.number()),
-	},
-	returns: v.null(),
-	handler: async (ctx, args) => {
-		const message = await ctx.db.get(args.inboundMessageId);
-		if (!message) return null;
+export const shadowDecisionFields = {
+	category: v.string(),
+	wouldHaveSent: v.boolean(),
+	reason: v.string(),
+	confidence: v.number(),
+	draftQualityScore: v.optional(v.number()),
+};
 
-		const sender = extractEmail(message.from ?? '') || 'unknown';
-		const shadowDraft = message.draftResponse ?? '';
-		const now = Date.now();
+export async function applyShadowDecision(
+	ctx: MutationCtx,
+	inboundMessageId: Id<'inboundMessages'>,
+	args: ObjectType<typeof shadowDecisionFields>
+): Promise<void> {
+	const message = await ctx.db.get(inboundMessageId);
+	if (!message) return;
 
-		const existing = await ctx.db
-			.query('agentShadowDecisions')
-			.withIndex('by_message', (q) => q.eq('inboundMessageId', args.inboundMessageId))
-			.first();
+	const sender = extractEmail(message.from ?? '') || 'unknown';
+	const shadowDraft = message.draftResponse ?? '';
+	const now = Date.now();
 
-		if (existing) {
-			// Only refresh an as-yet unreconciled observation; never rewrite one
-			// the human has already been scored against.
-			if (!existing.isResolved) {
-				await ctx.db.patch(existing._id, {
-					category: args.category,
-					sender,
-					isWouldHaveSent: args.wouldHaveSent,
-					reason: args.reason,
-					confidence: args.confidence,
-					draftQualityScore: args.draftQualityScore,
-					shadowDraft,
-					createdAt: now,
-				});
-			}
-			return null;
+	const existing = await ctx.db
+		.query('agentShadowDecisions')
+		.withIndex('by_message', (q) => q.eq('inboundMessageId', inboundMessageId))
+		.first();
+
+	if (existing) {
+		// Only refresh an as-yet unreconciled observation; never rewrite one
+		// the human has already been scored against.
+		if (!existing.isResolved) {
+			await ctx.db.patch(existing._id, {
+				category: args.category,
+				sender,
+				isWouldHaveSent: args.wouldHaveSent,
+				reason: args.reason,
+				confidence: args.confidence,
+				draftQualityScore: args.draftQualityScore,
+				shadowDraft,
+				createdAt: now,
+			});
 		}
+		return;
+	}
 
-		await ctx.db.insert('agentShadowDecisions', {
-			inboundMessageId: args.inboundMessageId,
-			category: args.category,
-			sender,
-			isWouldHaveSent: args.wouldHaveSent,
-			reason: args.reason,
-			confidence: args.confidence,
-			draftQualityScore: args.draftQualityScore,
-			shadowDraft,
-			isResolved: false,
-			createdAt: now,
-		});
+	await ctx.db.insert('agentShadowDecisions', {
+		inboundMessageId,
+		category: args.category,
+		sender,
+		isWouldHaveSent: args.wouldHaveSent,
+		reason: args.reason,
+		confidence: args.confidence,
+		draftQualityScore: args.draftQualityScore,
+		shadowDraft,
+		isResolved: false,
+		createdAt: now,
+	});
+}
+
+export const recordShadowDecision = internalMutation({
+	args: { inboundMessageId: v.id('inboundMessages'), ...shadowDecisionFields },
+	returns: v.null(),
+	handler: async (ctx, { inboundMessageId, ...args }) => {
+		await applyShadowDecision(ctx, inboundMessageId, args);
 		return null;
 	},
 });

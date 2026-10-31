@@ -154,7 +154,7 @@ export interface NormalizeBlockTreeIdsOptions {
 	/**
 	 * Also give a repeated id a fresh one, keeping the first occurrence in
 	 * document order. The editor needs this: its canvas keys Blocks by id, and
-	 * two Blocks with one id send it into a recursive update loop (#1430).
+	 * two Blocks with one id send it into a recursive update loop.
 	 * Readers that only render leave repeated ids alone (the default), so a
 	 * read never detaches a copy from the translation overlay it shares.
 	 */

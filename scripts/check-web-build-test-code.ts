@@ -2,11 +2,11 @@
  * Keeps test tooling out of the built web app.
  *
  * Test helpers live in `__tests__/` folders next to the code they test, and
- * Nuxt and Nitro scan those trees as app code unless told not to. Until #1172
- * a helper under `pages/` was a reachable route whose chunk bundled vitest and
- * `@vue/test-utils`, and a helper under `server/utils/` made Nitro trace vitest
- * and its dependency tree into `.output/server/node_modules`. Nothing failed:
- * the build passed and the image shipped both.
+ * Nuxt and Nitro scan those trees as app code unless told not to: a helper
+ * under `pages/` becomes a reachable route whose chunk bundles vitest and
+ * `@vue/test-utils`, and a helper under `server/utils/` makes Nitro trace vitest
+ * and its dependency tree into `.output/server/node_modules`. Nothing fails:
+ * the build passes and the image ships both.
  *
  * This reads a finished `nuxt build` and fails when
  * - `server/package.json` (the dependencies Nitro traced into the server

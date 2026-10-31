@@ -3,7 +3,7 @@
 // Linked (saved-block) groups on the canvas: one draggable list item per
 // group at its first Block's position, a header naming the group on its first
 // Block, one drag handle per group, and top/bottom borders on the first/last
-// Block. The canvas answers these from one linked-block index (#922), shared
+// Block. The canvas answers these from one linked-block index, shared
 // by EmailBuilder when provided and built from its own props otherwise.
 import { describe, it, expect, afterEach } from 'vitest';
 import { computed, ref } from 'vue';
