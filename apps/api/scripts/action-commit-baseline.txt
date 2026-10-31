@@ -205,7 +205,6 @@ convex/unifiedMessages.ts:runChannelHealthChecks #4
 convex/visualizationAgentActions.ts:generate #2
 convex/webhooks/delivery.ts:deliverWebhookInternal #2
 convex/webhooks/githubHttp.ts:handleGithubWebhook #2
-convex/webhooks/payloads.ts:cleanupOldPayloads #2
 convex/webhooks/pluginFeedbackHttp.ts:pluginFeedbackWebhook #2
 convex/webhooks/pluginFeedbackHttp.ts:pluginFeedbackWebhook #3
 convex/webhooks/pluginFeedbackHttp.ts:pluginFeedbackWebhook #4
