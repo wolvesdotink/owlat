@@ -168,16 +168,34 @@ describe('useAccountSessions', () => {
 describe('useTwoFactorEnrolment', () => {
 	it('returns the enrolment payload from a successful enable', async () => {
 		enable.mockResolvedValue({
-			data: { totpURI: 'otpauth://totp/Owlat:ada?secret=ABCD', backupCodes: ['one', 'two'] },
+			data: {
+				method: 'totp',
+				totpURI: 'otpauth://totp/Owlat:ada?secret=ABCD',
+				backupCodes: ['one', 'two'],
+			},
 			error: null,
 		});
 
 		const result = await useTwoFactorEnrolment().begin('correct horse');
 
-		expect(enable).toHaveBeenCalledWith({ password: 'correct horse' });
+		expect(enable).toHaveBeenCalledWith({ password: 'correct horse', method: 'totp' });
 		expect(result).toEqual({
 			ok: true,
 			data: { totpURI: 'otpauth://totp/Owlat:ada?secret=ABCD', backupCodes: ['one', 'two'] },
+		});
+	});
+
+	/**
+	 * BetterAuth 1.7 can also enable emailed OTP, whose response carries no QR
+	 * payload. The page has nothing to show for it, so it must fail rather than
+	 * render an empty enrolment.
+	 */
+	it('fails an enable that answered with a non-TOTP method', async () => {
+		enable.mockResolvedValue({ data: { method: 'otp' }, error: null });
+
+		expect(await useTwoFactorEnrolment().begin('correct horse')).toEqual({
+			ok: false,
+			code: 'failed',
 		});
 	});
 
