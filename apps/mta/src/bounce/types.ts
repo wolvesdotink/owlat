@@ -134,21 +134,6 @@ export interface PhaseDeps {
 }
 
 /**
- * Attachment metadata for the `inbound.received` Convex payload.
- *
- * Metadata only, and deliberately so: the bytes are not copied into Redis or
- * into the webhook. The BYTES ride the same payload's `rawBytesBase64` (the
- * whole raw message), not this array — see `phases/attachmentMeta.ts`.
- */
-export interface InboundAttachmentMeta {
-	readonly filename: string | undefined;
-	readonly contentType: string;
-	readonly size: number;
-	/** MIME walk position, the address `extractAttachmentAt` resolves a part by. */
-	readonly partIndex: string;
-}
-
-/**
  * Per-attachment payload the reducer consumes when building the notify_convex
  * event for inbound-accept.
  */

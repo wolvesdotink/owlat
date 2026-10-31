@@ -15,7 +15,6 @@ export {
 	// Regex patterns
 	emailRegex,
 	domainRegex,
-	slugRegex,
 	// Validation functions
 	isValidEmail,
 	isValidDomain,

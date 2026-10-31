@@ -29,7 +29,6 @@ export {
 	PROGRESS_SENTINEL,
 	SetupStep,
 	parseProgressLine,
-	type SetupStepId,
 	type StepStatus,
 	type ProgressEvent,
 	type ProgressStepEvent,

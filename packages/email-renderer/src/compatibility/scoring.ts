@@ -3,9 +3,6 @@
  * from registered Block modules. Moved from `@owlat/shared` so it can read
  * directly from the renderer's module registry; the shared package keeps the
  * extension registry but no longer owns per-block data.
- *
- * Cross-block queries that return enriched shapes carry their owning `blockType`
- * explicitly — `PropertyCompatibility` itself does not store one.
  */
 
 import type {
@@ -16,20 +13,7 @@ import type {
 	BlockCompatibilityScore,
 } from '@owlat/shared';
 import { emailClientRegistry, emailClients, fullSupport, lookupClientSupport } from '@owlat/shared';
-import { featuresFor, propertiesFor, allFeatures, allProperties } from './walker';
-
-/**
- * One tuple, with the block tag re-attached, returned by cross-block queries.
- */
-export interface BlockTaggedFeature {
-	blockType: BlockType;
-	feature: FeatureCompatibility;
-}
-
-export interface BlockTaggedProperty {
-	blockType: BlockType;
-	property: PropertyCompatibility;
-}
+import { featuresFor, propertiesFor } from './walker';
 
 /**
  * Effective Feature compatibility for a block type. Baseline from the Block
@@ -46,30 +30,6 @@ export const getPropertyCompatibility = (
 	const all = propertiesFor(blockType);
 	return property ? all.filter((p) => p.property === property) : all;
 };
-
-/** Properties with `critical` severity for a block type. */
-export const getCriticalProperties = (blockType: BlockType): readonly PropertyCompatibility[] =>
-	propertiesFor(blockType).filter((p) => p.severity === 'critical');
-
-/** All features (across blocks) with an Owlat workaround. */
-export const getHandledFeatures = (): readonly BlockTaggedFeature[] =>
-	allFeatures()
-		.filter(([, f]) => f.owlatHandled)
-		.map(([blockType, feature]) => ({ blockType, feature }));
-
-/** All features (across blocks) that aren't `full` in a given client. */
-export const getClientIssues = (client: keyof ClientSupport): readonly BlockTaggedFeature[] =>
-	allFeatures()
-		.filter(([, f]) => f.support[client] !== 'full')
-		.map(([blockType, feature]) => ({ blockType, feature }));
-
-/** All property entries (across blocks) that aren't `full` in a given client. */
-export const getClientPropertyIssues = (
-	client: keyof ClientSupport,
-): readonly BlockTaggedProperty[] =>
-	allProperties()
-		.filter(([, p]) => p.support[client] !== 'full')
-		.map(([blockType, property]) => ({ blockType, property }));
 
 /**
  * Approximate audience reach for a feature's support shape. Custom weights win
