@@ -85,7 +85,6 @@ export {
 } from './insights';
 export {
 	createDeliverabilityTipCron,
-	refreshSeedScoresCron,
 	TIP_LOG_MAX_LENGTH,
 	type DeliverabilityTipCronConfig,
 } from './cron';

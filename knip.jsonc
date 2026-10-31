@@ -389,11 +389,6 @@
 			"entry": ["src/index.ts", "src/**/*.test.ts"],
 			"includeEntryExports": false,
 		},
-		// Reference plugins. A manifest contribution names its module by an
-		// `exports` subpath (`module: { exportPath: './cron' }`), and the plugin
-		// codegen imports that subpath from generated code, so knip never sees the
-		// import. The entries come from each package.json `exports`.
-		"examples/plugins/*": { "includeEntryExports": false },
 		// packages/ui is a Nuxt layer — every composable/component is reachable
 		// by auto-import convention (path prefix), so the whole tree stays entry.
 		"packages/ui": {
@@ -445,7 +440,6 @@
 	// (measured: 60 false positives, e.g. `useAuth` in apps/web, which every
 	// dashboard page calls via Nuxt auto-import). Also OFF for the packages
 	// published to npm (plugin-kit, provider-kit, sdk-js), whose barrels serve
-	// code outside the repo, and for the example plugins, whose subpath
-	// exports the plugin codegen imports.
+	// code outside the repo.
 	"includeEntryExports": true,
 }
