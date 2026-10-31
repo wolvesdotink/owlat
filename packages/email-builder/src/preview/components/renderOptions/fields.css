@@ -1,0 +1,83 @@
+/*
+ * Field controls every render options section uses. RenderOptionsPanel,
+ * AdvancedOptions and VariableOptions each include this file as their own
+ * scoped style, so the rules stay scoped to them.
+ */
+.ep-settings-field {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.ep-settings-label {
+	font-size: 11px;
+	font-weight: 500;
+	color: var(--ep-text-secondary);
+}
+
+.ep-settings-input {
+	padding: 6px 8px;
+	background: var(--ep-bg-surface);
+	border: 1px solid var(--ep-border-subtle);
+	border-radius: 6px;
+	color: var(--ep-text-primary);
+	font-size: 12px;
+	font-family: inherit;
+	outline: none;
+	transition: border-color var(--motion-fast, 80ms)
+		var(--ease-spring, cubic-bezier(0.25, 1, 0.5, 1));
+}
+
+.ep-settings-input:focus {
+	border-color: var(--ep-brand);
+}
+
+.ep-settings-input-number {
+	width: 80px;
+}
+
+/* List items (font URLs, variables) */
+.ep-settings-list-remove {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 24px;
+	height: 24px;
+	background: transparent;
+	border: none;
+	border-radius: 4px;
+	color: var(--ep-text-tertiary);
+	cursor: pointer;
+	flex-shrink: 0;
+}
+
+.ep-settings-list-remove:hover {
+	background: var(--ep-error-subtle);
+	color: var(--ep-error);
+}
+
+.ep-settings-list-remove-icon {
+	width: 12px;
+	height: 12px;
+}
+
+.ep-settings-list-add {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	padding: 4px 0;
+	background: transparent;
+	border: none;
+	color: var(--ep-brand);
+	font-size: 11px;
+	cursor: pointer;
+}
+
+.ep-settings-list-add:hover {
+	color: var(--ep-brand-hover);
+}
+
+.ep-settings-list-add-icon {
+	width: 12px;
+	height: 12px;
+}

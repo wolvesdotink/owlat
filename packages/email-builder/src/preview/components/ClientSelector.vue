@@ -1,13 +1,15 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
-import { Monitor, Smartphone, Tablet, Globe, Shield, ChevronDown, Check, X } from '@lucide/vue';
-import type { EmailClient, EmailClientGroup, DevicePreset } from '../types';
-import { emailClientGroups, devicePresets, popularClients } from '../data/clients';
+import { ref } from 'vue';
+import { Globe, ChevronDown } from '@lucide/vue';
+import type { EmailClient, DevicePreset } from '../types';
 import { useBuilderI18n } from '../../i18n/useBuilderI18n';
+import ClientDropdown from './clientSelector/ClientDropdown.vue';
+import DeviceDropdown from './clientSelector/DeviceDropdown.vue';
+import { getIcon } from './clientSelector/clientIcon';
 
 const { t, label } = useBuilderI18n();
 
-const props = defineProps<{
+defineProps<{
 	selectedClient: EmailClient | null;
 	selectedDevice: DevicePreset;
 }>();
@@ -19,40 +21,6 @@ const emit = defineEmits<{
 
 const showClientDropdown = ref(false);
 const showDeviceDropdown = ref(false);
-
-const popularClientsList = computed(() => {
-	const clients: EmailClient[] = [];
-	for (const id of popularClients) {
-		for (const group of emailClientGroups) {
-			const client = group.clients.find((c) => c.id === id);
-			if (client) {
-				clients.push(client);
-				break;
-			}
-		}
-	}
-	return clients;
-});
-
-const devicesByType = computed(() => ({
-	desktop: devicePresets.filter((d) => d.type === 'desktop'),
-	tablet: devicePresets.filter((d) => d.type === 'tablet'),
-	mobile: devicePresets.filter((d) => d.type === 'mobile'),
-}));
-
-function getIcon(iconName: string) {
-	const icons: Record<string, unknown> = {
-		monitor: Monitor,
-		smartphone: Smartphone,
-		tablet: Tablet,
-		globe: Globe,
-		shield: Shield,
-		mail: Globe,
-		'mail-open': Globe,
-		apple: Monitor,
-	};
-	return icons[iconName] || Globe;
-}
 
 function selectClient(client: EmailClient | null) {
 	emit('update:selectedClient', client);
@@ -94,61 +62,11 @@ function closeDropdowns() {
 
 			<!-- Client Dropdown -->
 			<Transition name="ep-dropdown">
-				<div v-if="showClientDropdown" class="ep-dropdown ep-dropdown-clients">
-					<div class="ep-dropdown-header">
-						<span>{{ t('builder.preview.clients.title') }}</span>
-						<button v-if="selectedClient" class="ep-clear-button" @click="selectClient(null)">
-							<X class="ep-clear-icon" />
-							{{ t('builder.preview.clients.clear') }}
-						</button>
-					</div>
-
-					<!-- Popular Clients -->
-					<div class="ep-dropdown-section">
-						<div class="ep-dropdown-section-title">{{ t('builder.preview.clients.popular') }}</div>
-						<div class="ep-client-grid">
-							<button
-								v-for="client in popularClientsList"
-								:key="client.id"
-								class="ep-client-chip"
-								:class="{ 'ep-client-selected': selectedClient?.id === client.id }"
-								@click="selectClient(client)"
-							>
-								<component :is="getIcon(client.icon)" class="ep-client-chip-icon" />
-								<span>{{ client.name.split(' ')[0] }}</span>
-							</button>
-						</div>
-					</div>
-
-					<!-- All Clients -->
-					<div class="ep-dropdown-section">
-						<div class="ep-dropdown-section-title">
-							{{ t('builder.preview.clients.all') }}
-						</div>
-						<div v-for="group in emailClientGroups" :key="group.family" class="ep-client-group">
-							<div class="ep-client-group-name">
-								<component :is="getIcon(group.icon)" class="ep-client-group-icon" />
-								{{ group.name }}
-							</div>
-							<div class="ep-client-list">
-								<button
-									v-for="client in group.clients"
-									:key="client.id"
-									class="ep-client-item"
-									:class="{ 'ep-client-selected': selectedClient?.id === client.id }"
-									@click="selectClient(client)"
-								>
-									<component :is="getIcon(client.icon)" class="ep-client-item-icon" />
-									<span class="ep-client-item-name">{{ client.name }}</span>
-									<span v-if="client.marketShare" class="ep-client-item-share">
-										{{ client.marketShare }}%
-									</span>
-									<Check v-if="selectedClient?.id === client.id" class="ep-client-check" />
-								</button>
-							</div>
-						</div>
-					</div>
-				</div>
+				<ClientDropdown
+					v-if="showClientDropdown"
+					:selected-client="selectedClient"
+					@select="selectClient"
+				/>
 			</Transition>
 		</div>
 
@@ -169,72 +87,11 @@ function closeDropdowns() {
 
 			<!-- Device Dropdown -->
 			<Transition name="ep-dropdown">
-				<div v-if="showDeviceDropdown" class="ep-dropdown ep-dropdown-devices">
-					<div class="ep-dropdown-header">{{ t('builder.preview.devices.title') }}</div>
-
-					<!-- Desktop -->
-					<div class="ep-dropdown-section">
-						<div class="ep-dropdown-section-title">
-							<Monitor class="ep-section-icon" />
-							{{ t('builder.preview.devices.desktop') }}
-						</div>
-						<div class="ep-device-list">
-							<button
-								v-for="device in devicesByType.desktop"
-								:key="device.id"
-								class="ep-device-item"
-								:class="{ 'ep-device-selected': selectedDevice.id === device.id }"
-								@click="selectDevice(device)"
-							>
-								<span class="ep-device-name">{{ label(device.name) }}</span>
-								<span class="ep-device-size">{{ device.width }} × {{ device.height }}</span>
-								<Check v-if="selectedDevice.id === device.id" class="ep-device-check" />
-							</button>
-						</div>
-					</div>
-
-					<!-- Tablet -->
-					<div class="ep-dropdown-section">
-						<div class="ep-dropdown-section-title">
-							<Tablet class="ep-section-icon" />
-							{{ t('builder.preview.devices.tablet') }}
-						</div>
-						<div class="ep-device-list">
-							<button
-								v-for="device in devicesByType.tablet"
-								:key="device.id"
-								class="ep-device-item"
-								:class="{ 'ep-device-selected': selectedDevice.id === device.id }"
-								@click="selectDevice(device)"
-							>
-								<span class="ep-device-name">{{ label(device.name) }}</span>
-								<span class="ep-device-size">{{ device.width }} × {{ device.height }}</span>
-								<Check v-if="selectedDevice.id === device.id" class="ep-device-check" />
-							</button>
-						</div>
-					</div>
-
-					<!-- Mobile -->
-					<div class="ep-dropdown-section">
-						<div class="ep-dropdown-section-title">
-							<Smartphone class="ep-section-icon" />
-							{{ t('builder.preview.devices.mobile') }}
-						</div>
-						<div class="ep-device-list">
-							<button
-								v-for="device in devicesByType.mobile"
-								:key="device.id"
-								class="ep-device-item"
-								:class="{ 'ep-device-selected': selectedDevice.id === device.id }"
-								@click="selectDevice(device)"
-							>
-								<span class="ep-device-name">{{ label(device.name) }}</span>
-								<span class="ep-device-size">{{ device.width }} × {{ device.height }}</span>
-								<Check v-if="selectedDevice.id === device.id" class="ep-device-check" />
-							</button>
-						</div>
-					</div>
-				</div>
+				<DeviceDropdown
+					v-if="showDeviceDropdown"
+					:selected-device="selectedDevice"
+					@select="selectDevice"
+				/>
 			</Transition>
 		</div>
 
@@ -310,214 +167,6 @@ function closeDropdowns() {
 	transform: rotate(180deg);
 }
 
-/* Dropdown */
-.ep-dropdown {
-	position: absolute;
-	top: calc(100% + 8px);
-	left: 0;
-	min-width: 280px;
-	max-height: 400px;
-	overflow-y: auto;
-	background: var(--ep-bg-elevated);
-	border: 1px solid var(--ep-border-default);
-	border-radius: 12px;
-	box-shadow: var(--ep-shadow-lg);
-	z-index: 100;
-}
-
-.ep-dropdown-clients {
-	min-width: 320px;
-}
-
-.ep-dropdown-header {
-	display: flex;
-	justify-content: space-between;
-	align-items: center;
-	padding: 12px 16px;
-	border-bottom: 1px solid var(--ep-border-subtle);
-	font-size: 12px;
-	font-weight: 600;
-	color: var(--ep-text-secondary);
-	text-transform: uppercase;
-	letter-spacing: 0.05em;
-}
-
-.ep-clear-button {
-	display: flex;
-	align-items: center;
-	gap: 4px;
-	padding: 4px 8px;
-	background: transparent;
-	border: none;
-	border-radius: 4px;
-	color: var(--ep-text-tertiary);
-	font-size: 11px;
-	font-weight: 500;
-	cursor: pointer;
-	text-transform: none;
-	letter-spacing: normal;
-}
-
-.ep-clear-button:hover {
-	background: var(--ep-bg-surface);
-	color: var(--ep-text-secondary);
-}
-
-.ep-clear-icon {
-	width: 12px;
-	height: 12px;
-}
-
-.ep-dropdown-section {
-	padding: 12px;
-	border-bottom: 1px solid var(--ep-border-subtle);
-}
-
-.ep-dropdown-section:last-child {
-	border-bottom: none;
-}
-
-.ep-dropdown-section-title {
-	display: flex;
-	align-items: center;
-	gap: 6px;
-	margin-bottom: 8px;
-	font-size: 11px;
-	font-weight: 600;
-	color: var(--ep-text-tertiary);
-	text-transform: uppercase;
-	letter-spacing: 0.05em;
-}
-
-.ep-section-icon {
-	width: 14px;
-	height: 14px;
-}
-
-/* Client Grid (Popular) */
-.ep-client-grid {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 6px;
-}
-
-.ep-client-chip {
-	display: flex;
-	align-items: center;
-	gap: 6px;
-	padding: 6px 10px;
-	background: var(--ep-bg-surface);
-	border: 1px solid var(--ep-border-subtle);
-	border-radius: 6px;
-	color: var(--ep-text-secondary);
-	font-size: 12px;
-	cursor: pointer;
-	transition-property: color, background-color, border-color;
-	transition-duration: var(--motion-fast, 80ms);
-	transition-timing-function: var(--ease-spring, cubic-bezier(0.25, 1, 0.5, 1));
-}
-
-.ep-client-chip:hover {
-	background: var(--ep-bg-surface-hover);
-	color: var(--ep-text-primary);
-}
-
-.ep-client-chip.ep-client-selected {
-	background: var(--ep-brand-subtle);
-	border-color: var(--ep-brand-dim);
-	color: var(--ep-brand);
-}
-
-.ep-client-chip-icon {
-	width: 14px;
-	height: 14px;
-}
-
-/* Client Group */
-.ep-client-group {
-	margin-bottom: 12px;
-}
-
-.ep-client-group:last-child {
-	margin-bottom: 0;
-}
-
-.ep-client-group-name {
-	display: flex;
-	align-items: center;
-	gap: 6px;
-	margin-bottom: 6px;
-	padding: 4px 0;
-	font-size: 12px;
-	font-weight: 600;
-	color: var(--ep-text-secondary);
-}
-
-.ep-client-group-icon {
-	width: 14px;
-	height: 14px;
-	color: var(--ep-text-tertiary);
-}
-
-/* Client List */
-.ep-client-list,
-.ep-device-list {
-	display: flex;
-	flex-direction: column;
-	gap: 2px;
-}
-
-.ep-client-item,
-.ep-device-item {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-	padding: 8px 10px;
-	background: transparent;
-	border: none;
-	border-radius: 6px;
-	color: var(--ep-text-primary);
-	font-size: 13px;
-	text-align: left;
-	cursor: pointer;
-	transition: background var(--motion-fast, 80ms) var(--ease-spring, cubic-bezier(0.25, 1, 0.5, 1));
-}
-
-.ep-client-item:hover,
-.ep-device-item:hover {
-	background: var(--ep-bg-surface);
-}
-
-.ep-client-item.ep-client-selected,
-.ep-device-item.ep-device-selected {
-	background: var(--ep-brand-subtle);
-}
-
-.ep-client-item-icon {
-	width: 16px;
-	height: 16px;
-	color: var(--ep-text-tertiary);
-}
-
-.ep-client-item-name,
-.ep-device-name {
-	flex: 1;
-}
-
-.ep-client-item-share,
-.ep-device-size {
-	font-size: 11px;
-	color: var(--ep-text-tertiary);
-	font-variant-numeric: tabular-nums;
-}
-
-.ep-client-check,
-.ep-device-check {
-	width: 16px;
-	height: 16px;
-	color: var(--ep-brand);
-}
-
 /* Backdrop */
 .ep-dropdown-backdrop {
 	position: fixed;
@@ -525,7 +174,7 @@ function closeDropdowns() {
 	z-index: 99;
 }
 
-/* Transitions */
+/* Transitions: applied to the dropdown components' root elements */
 .ep-dropdown-enter-active,
 .ep-dropdown-leave-active {
 	transition-property: opacity, transform;
