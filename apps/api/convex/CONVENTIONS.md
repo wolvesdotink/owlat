@@ -711,10 +711,9 @@ writes; a core may pre-check them, never replace them.
 
 `scripts/check-handler-size.sh` (in `bun run lint`) measures every registered
 handler from the syntax tree (`scripts/lib/handlerSize.ts`: the handler
-function's own lines, comments included) and lists each one longer than the
-cap in `scripts/handler-size-census.ts` in `scripts/handler-size-baseline.txt`
-with its length. A handler that grows past its line, or a new one past the
-cap, fails; one that shrinks fails until its line is lowered or deleted.
+function's own lines, comments included). There is no baseline: a handler
+longer than the cap in `scripts/handler-size-census.ts` fails, and the cap is
+never raised to admit one.
 
 ## Convex best practices
 

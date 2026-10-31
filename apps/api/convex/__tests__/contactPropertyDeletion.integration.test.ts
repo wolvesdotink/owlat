@@ -289,6 +289,54 @@ describe('contacts.properties.remove', () => {
 		expect(await jobFor(t, propertyId)).toBeNull();
 	});
 
+	it('keeps the ticks a drive committed, records the one that failed and stops there', async () => {
+		// Each transaction may write 60 documents: a full batch fails, and the
+		// widening one-row cap crosses 63 values before a batch of 64 fails again.
+		const t = convexTest({ schema, modules, transactionLimits: { documentsWritten: 60 } });
+		const propertyId = await seedProperty(t, 'narrow');
+		for (let seeded = 0; seeded < 200; seeded += 25) {
+			await t.run(async (ctx) => {
+				for (let i = seeded; i < seeded + 25; i++) {
+					const contactId = await ctx.db.insert(
+						'contacts',
+						createTestContact({ email: `n${i}@example.com` })
+					);
+					await ctx.db.insert('contactPropertyValues', {
+						contactId,
+						propertyId,
+						value: `v${i}`,
+						createdAt: Date.now(),
+						updatedAt: Date.now(),
+					});
+				}
+			});
+		}
+		const jobId = await seedOrphanedJob(t, propertyId);
+		const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+		await t.action(internal.contacts.propertyDeletion.drive, { jobId });
+		// The failed tick rolled back; the failure is on the job, a value at a time.
+		expect(await valueCount(t, propertyId)).toBe(200);
+		expect(await jobFor(t, propertyId)).toMatchObject({
+			status: 'retrying',
+			attempts: 1,
+			rowCap: 1,
+			transactions: 0,
+		});
+		expect((await jobFor(t, propertyId))?.lastError).toBeTruthy();
+
+		await t.action(internal.contacts.propertyDeletion.drive, { jobId });
+		errorSpy.mockRestore();
+		expect(await valueCount(t, propertyId)).toBe(137);
+		expect(await jobFor(t, propertyId)).toMatchObject({
+			status: 'retrying',
+			attempts: 1,
+			rowCap: 1,
+			transactions: 6,
+			valuesDeleted: 63,
+		});
+	});
+
 	/** The state a crashed chain leaves behind: marked, job running, nothing queued. */
 	async function seedOrphanedJob(t: Harness, propertyId: Id<'contactProperties'>) {
 		return await t.run(async (ctx) => {

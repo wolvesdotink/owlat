@@ -38,7 +38,7 @@ import { internal } from '../_generated/api';
 import { logWarn } from '../lib/runtimeLog';
 // Type-only: a `'use node'` module must not pull a query/mutation module into
 // its bundle, and a type import is erased at build time.
-import type { AlignmentTarget } from './alignmentPreflight';
+import type { AlignmentSweepResult, AlignmentTarget } from './alignmentPreflight';
 
 /** Per-lookup deadline, and how many times the resolver retries within it. */
 const ALIGNMENT_DNS_TIMEOUT_MS = 5_000;
@@ -159,17 +159,18 @@ export async function gatherAlignmentDns(
  * while a resolved domain is simply not due and costs one indexed read.
  *
  * Bounded per run and CONTINUED rather than truncated: each run walks at most
- * `ALIGNMENT_SWEEP_MAX_PAGES` pages and, if more verified domains remain, hands
- * the cursor to a scheduled continuation (the `checklistSweep` idiom). One
- * target's failure never abandons the rest.
+ * `ALIGNMENT_SWEEP_MAX_PAGES` pages and, if more verified domains remain, its
+ * one commit schedules a continuation from the cursor (the `checklistSweep`
+ * idiom). One target's failure never abandons the rest. A run that dies before
+ * its commit writes nothing; its domains are still due on the next run.
  */
 export const runAlignmentPreflightSweep = internalAction({
 	args: { cursor: v.optional(v.union(v.string(), v.null())) },
 	handler: async (ctx, args): Promise<{ checked: number; done: boolean }> => {
 		const now = Date.now();
 		let cursor = args.cursor ?? null;
-		let checked = 0;
 		let done = false;
+		const results: AlignmentSweepResult[] = [];
 		for (let page = 0; page < ALIGNMENT_SWEEP_MAX_PAGES; page += 1) {
 			const slice = await ctx.runQuery(
 				internal.delivery.alignmentPreflight.listDueAlignmentTargets,
@@ -184,7 +185,7 @@ export const runAlignmentPreflightSweep = internalAction({
 						dns: dnsFacts,
 						checkedAt: now,
 					});
-					await ctx.runMutation(internal.delivery.alignmentPreflight.recordAlignmentResult, {
+					results.push({
 						domain: target.domain,
 						verdict: result.verdict,
 						checks: result.checks,
@@ -195,10 +196,9 @@ export const runAlignmentPreflightSweep = internalAction({
 						checkedAt: result.checkedAt,
 						nextCheckDueAt: result.nextCheckDueAt,
 					});
-					checked += 1;
 				} catch (error) {
-					// One unreachable nameserver or one write conflict must not abandon
-					// every remaining due domain until the next run.
+					// One unreachable nameserver must not abandon every remaining due
+					// domain until the next run.
 					logWarn(
 						`[alignment] pre-flight failed for ${target.domain}: ${error instanceof Error ? error.message : String(error)}`
 					);
@@ -210,13 +210,11 @@ export const runAlignmentPreflightSweep = internalAction({
 				break;
 			}
 		}
-		if (!done) {
-			await ctx.scheduler.runAfter(
-				500,
-				internal.delivery.alignmentPreflightGather.runAlignmentPreflightSweep,
-				{ cursor }
-			);
-		}
+		if (results.length === 0 && done) return { checked: 0, done };
+		const { checked } = await ctx.runMutation(
+			internal.delivery.alignmentPreflight.commitAlignmentSweep,
+			{ results, cursor, isDone: done }
+		);
 		return { checked, done };
 	},
 });

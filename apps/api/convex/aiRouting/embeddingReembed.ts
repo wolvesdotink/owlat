@@ -11,8 +11,8 @@
  *     searchable space yet (a hosted deployment's first upgrade): it measures
  *     the configured space (one call, admitted when paid), activates it and
  *     starts the job.
- *   - `runBatch` embeds one page of a job and commits it, then schedules the
- *     next. A paid batch is admitted first.
+ *   - `runBatch` embeds one page of a job and commits it together with the
+ *     next batch, a retry or a pause. A paid batch is admitted first.
  *
  * Every embedding call goes through `embedForIndex`, the one place the ledger
  * lane meters (task `embedding.index`).
@@ -35,7 +35,7 @@ import {
 	resolveEmbedderForSpace,
 } from '../lib/aiRouting/embedderForSpace';
 import { buildIndexEmbedder, readEmbeddingConfigSnapshot } from '../lib/llmProvider';
-import { PAID_EMBEDDING_REFUSAL, REEMBED_PAGE_ATTEMPTS } from './embeddingReembedJobs';
+import { PAID_EMBEDDING_REFUSAL } from './embeddingReembedJobs';
 import { isPaidEmbeddingAdmissionAvailable } from '../lib/aiRouting/embeddingAdmission';
 import { runAdmittedEmbedding, type DispatchCounter } from '../lib/aiRouting/embeddingDispatch';
 import { embeddingTableValidator } from '../lib/validators/embedding';
@@ -55,6 +55,8 @@ export const kickoff = internalAction({
 	handler: async (ctx, args): Promise<void> => {
 		// One model budget for this action, from its start.
 		anchorActionDeadline(ctx);
+		// checkpoint: a best-effort cache refresh. It schedules a coverage count only
+		// when the stored one is stale (or forced), whatever the kickoff does next.
 		await ctx.runMutation(internal.aiRouting.embeddingCoverage.requestScan, {
 			isForced: args.isForced ?? false,
 		});
@@ -77,17 +79,14 @@ export const kickoff = internalAction({
 			});
 			return;
 		}
-		const active = await ctx.runMutation(internal.aiRouting.embeddingSpaces.ensureConfigured, {
-			space,
-		});
-		if (!active) return;
 		const outcome = await ctx.runMutation(
-			internal.aiRouting.embeddingReembedJobs.startLocalReembed,
+			internal.aiRouting.embeddingReembedCommit.activateLocalSpace,
 			{
-				spaceId: active._id,
+				space,
 				isForced: args.isForced ?? false,
 			}
 		);
+		if (outcome === 'inactive') return;
 		logInfo('[embedding.kickoff] local re-embed', { outcome });
 	},
 });
@@ -101,7 +100,7 @@ export const kickoff = internalAction({
  * Payment is decided by the embedder about to be called, never by an earlier
  * configuration read; the job itself derives it from its target space.
  */
-// authz: admin-only; assertAdmin runs first, startReembedJob checks again
+// authz: admin-only; assertAdmin runs first, startReembedCommit checks again
 export const startReembed = authedAction({
 	/**
 	 * `expectedSpaceId`: the searchable space the caller confirmed re-embedding
@@ -134,6 +133,7 @@ export const startReembed = authedAction({
 		if (!target.isLocal && !isPaidEmbeddingAdmissionAvailable()) {
 			throwInvalidState(PAID_EMBEDDING_REFUSAL);
 		}
+		let space: MeasuredSpace | undefined;
 		if (!isActiveConfigured) {
 			const embedder = buildIndexEmbedder(await snapshot.plane(), target);
 			const rootRequestId = `embedding:bootstrap:${crypto.randomUUID()}`;
@@ -157,17 +157,14 @@ export const startReembed = authedAction({
 					)
 			);
 			if (!probe.isAdmitted) throwInvalidState(probe.reason);
-			// Activated only while the configuration still names the confirmed
-			// target (refused in the transaction when it was confirmed).
-			const active = await ctx.runMutation(internal.aiRouting.embeddingSpaces.ensureConfigured, {
-				space: probe.value.space,
-				expectedTargetKey: args.expectedTargetKey,
-			});
-			if (!active) throwInvalidState('The embedding configuration changed. Try again.');
+			space = probe.value.space;
 		}
-		return await ctx.runMutation(internal.aiRouting.embeddingReembedJobs.startReembedJob, {
+		// The commit activates the measured space (while the configuration still
+		// names the confirmed target) and starts the job, or refuses both.
+		return await ctx.runMutation(internal.aiRouting.embeddingReembedCommit.startReembedCommit, {
 			expectedSpaceId: args.expectedSpaceId,
 			expectedTargetKey: args.expectedTargetKey,
+			...(space ? { space } : {}),
 		});
 	},
 });
@@ -204,9 +201,6 @@ export const reembedRow = internalAction({
 		}
 	},
 });
-
-/** Wait before retrying a page whose rows did not all land, per attempt. */
-const RETRY_DELAY_MS = 30_000;
 
 export const runBatch = internalAction({
 	args: {
@@ -296,8 +290,9 @@ export const runBatch = internalAction({
 			}
 		}
 
-		const commit = await ctx.runMutation(internal.aiRouting.embeddingReembedJobs.reembedCommit, {
+		await ctx.runMutation(internal.aiRouting.embeddingReembedCommit.commitBatch, {
 			...job,
+			attempt,
 			phase: page.phase,
 			continueCursor: page.continueCursor,
 			isDone: page.isDone,
@@ -306,22 +301,5 @@ export const runBatch = internalAction({
 			space,
 			results,
 		});
-		if (commit.outcome === 'continue') {
-			await ctx.scheduler.runAfter(0, internal.aiRouting.embeddingReembed.runBatch, job);
-		} else if (commit.outcome === 'retry') {
-			if (attempt >= REEMBED_PAGE_ATTEMPTS) {
-				// Keep the cursor: a resume (the kickoff, or an admin) retries the page.
-				await pause(
-					'provider_unavailable',
-					`${commit.unresolved} item(s) could not be embedded after ${attempt} attempts.`
-				);
-				return;
-			}
-			await ctx.scheduler.runAfter(
-				RETRY_DELAY_MS * attempt,
-				internal.aiRouting.embeddingReembed.runBatch,
-				{ ...job, attempt: attempt + 1 }
-			);
-		}
 	},
 });

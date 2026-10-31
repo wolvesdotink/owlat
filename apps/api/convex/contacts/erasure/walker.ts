@@ -181,19 +181,27 @@ export const tick = internalMutation({
 export const drive = internalAction({
 	args: { jobId: v.id('contactErasureJobs') },
 	handler: async (ctx, { jobId }): Promise<void> => {
+		let failure: string | undefined;
 		for (let i = 0; i < TICKS_PER_DRIVE; i++) {
 			let outcome: TickOutcome;
 			try {
+				// checkpoint: one tick is one bounded transaction that saves its phase and
+				// cursor on the job row, where the next tick resumes; every phase is
+				// idempotent, so a tick a second chain repeats erases nothing twice.
 				outcome = await ctx.runMutation(internal.contacts.erasure.walker.tick, { jobId });
 			} catch (error) {
-				const message = error instanceof Error ? error.message : String(error);
-				await ctx.runMutation(internal.contacts.erasure.walker.recordFailure, {
-					jobId,
-					error: message.slice(0, MAX_ERROR_CHARS),
-				});
-				return;
+				failure = error instanceof Error ? error.message : String(error);
+				break;
 			}
 			if (outcome !== 'more') return;
+		}
+		if (failure !== undefined) {
+			// The tick that threw rolled back; this records it and schedules the retry.
+			await ctx.runMutation(internal.contacts.erasure.walker.recordFailure, {
+				jobId,
+				error: failure.slice(0, MAX_ERROR_CHARS),
+			});
+			return;
 		}
 		await ctx.scheduler.runAfter(0, internal.contacts.erasure.walker.drive, { jobId });
 	},

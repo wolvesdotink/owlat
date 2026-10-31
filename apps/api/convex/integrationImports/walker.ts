@@ -219,6 +219,51 @@ export const getImportProgress = authedQuery({
 
 // ─── Internal action: page-by-page worker ───────────────────────────────────
 
+/** One page from the provider, or why the run must end. */
+type FetchedPage = { ok: true; result: FetchPageResult } | { ok: false; error: string };
+
+/**
+ * Open the sealed credential and fetch one page, retrying on
+ * `RetryableProviderError` up to MAX_RETRIES. Writes nothing: the caller
+ * commits the page, or ends the run with the returned error.
+ */
+async function fetchProviderPage(
+	config: IntegrationProviderConfig,
+	cursor: string
+): Promise<FetchedPage> {
+	const adapter = providerFor(config.provider);
+
+	// Unseal the provider credential in memory for this hop's outbound call
+	// only. The sealed config stays what the commit schedules the next hop
+	// with, so the plaintext key never re-enters scheduled args. A credential
+	// that no longer opens (the instance secret changed) can never succeed on a
+	// retry, so it ends the run with a reason instead of leaving it running
+	// with nothing behind it.
+	let liveConfig: IntegrationProviderConfig;
+	try {
+		liveConfig = await openConfigCredential(config);
+	} catch (err) {
+		return {
+			ok: false,
+			error: `Could not open the stored provider credential: ${err instanceof Error ? err.message : 'Unknown error'}`,
+		};
+	}
+
+	// `RetryableProviderError` → backoff + retry up to MAX_RETRIES. Any other
+	// thrown `Error` → fail the import.
+	for (let attempt = 0; ; attempt++) {
+		try {
+			return { ok: true, result: await adapter.fetchPage({ config: liveConfig, cursor }) };
+		} catch (err) {
+			if (err instanceof RetryableProviderError && attempt < MAX_RETRIES) {
+				await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+				continue;
+			}
+			return { ok: false, error: err instanceof Error ? err.message : 'Unknown error' };
+		}
+	}
+}
+
 /**
  * Process one page of an in-flight **Integration import**:
  *   1. Entry check — skip a cancelled run, or a page another hop already
@@ -247,53 +292,18 @@ export const processIntegrationPage = internalAction({
 		});
 		if (!importRecord || !isCurrentPage(importRecord, identity)) return;
 
-		const failRun = (errorMessage: string) =>
-			ctx.runMutation(internal.integrationImports.walker.completeImport, {
+		const fetched = await fetchProviderPage(args.config, args.cursor);
+		if (!fetched.ok) {
+			await ctx.runMutation(internal.integrationImports.walker.completeImport, {
 				importId: args.importId,
 				status: 'failed',
-				errorMessage,
+				errorMessage: fetched.error,
 				...identity,
 			});
-
-		const adapter = providerFor(args.config.provider);
-
-		// Unseal the provider credential in memory for this hop's outbound call
-		// only. `args.config` stays sealed and is what the commit schedules the
-		// next hop with, so the plaintext key never re-enters scheduled args. A
-		// credential that no longer opens (the instance secret changed) can never
-		// succeed on a retry, so it ends the run with a reason instead of leaving
-		// it running with nothing behind it.
-		let liveConfig: IntegrationProviderConfig;
-		try {
-			liveConfig = await openConfigCredential(args.config);
-		} catch (err) {
-			await failRun(
-				`Could not open the stored provider credential: ${err instanceof Error ? err.message : 'Unknown error'}`
-			);
 			return;
 		}
 
-		// Retry loop. `RetryableProviderError` → backoff + retry up to
-		// MAX_RETRIES. Any other thrown `Error` → fail the import.
-		let result: FetchPageResult | null = null;
-		for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-			try {
-				result = await adapter.fetchPage({
-					config: liveConfig,
-					cursor: args.cursor,
-				});
-				break;
-			} catch (err) {
-				if (err instanceof RetryableProviderError && attempt < MAX_RETRIES) {
-					await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
-					continue;
-				}
-				await failRun(err instanceof Error ? err.message : 'Unknown error');
-				return;
-			}
-		}
-		if (!result) return;
-
+		const { result } = fetched;
 		await ctx.runMutation(internal.integrationImports.pageCommit.commitIntegrationPage, {
 			importId: args.importId,
 			...identity,

@@ -118,3 +118,16 @@ convex/mail/deliveryPipeline/mailboxDecision.ts
 # Contact import decisions; the mutation (contacts/import.ts importBatch) is
 # the shell.
 convex/contacts/importDecision.ts
+
+# Semantic file processing decisions; the action
+# (semanticFileProcessing.ts processFile) is the shell.
+convex/files/processFileDecision.ts
+
+# First-admin seed decisions; the HTTP action (seedAdminHttp.ts seedAdmin) and
+# its commit (auth/seedAdminCommit.ts) are the shells.
+convex/auth/seedAdminDecision.ts
+
+# Account export page and staging decisions; the action (auth/accountExport.ts
+# exportUserDataPage) and the staging commit (auth/accountExportArtifacts.ts
+# stageArtifact) are the shells.
+convex/auth/accountExportDecision.ts
