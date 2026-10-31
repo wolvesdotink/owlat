@@ -179,7 +179,6 @@ convex/migrations/0048_backfill_counters.ts:run #6
 convex/migrations/0048_backfill_counters.ts:run #7
 convex/migrations/0048_backfill_counters.ts:run #8
 convex/migrations/0048_backfill_counters.ts:run #9
-convex/migrations/0049_move_message_bodies.ts:run #2
 convex/migrations/0052_reerase_legacy_account_deletions.ts:run #2
 convex/plugins/cronRuntime.ts:runPluginCron #2
 convex/plugins/cronRuntime.ts:runPluginCron #3
