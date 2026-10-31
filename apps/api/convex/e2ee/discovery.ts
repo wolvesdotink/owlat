@@ -20,8 +20,8 @@
  * address (`keyCertifiesAddress`) before it is trusted. Results (24h positive /
  * 1h negative TTL) land in `recipientKeys` via `e2ee/recipientKeys.ts`, whose
  * commit runs the fingerprint through the pure TOFU state machine
- * (`e2ee/pinning.ts`) against the row at commit time; a cron refreshes expiring
- * rows.
+ * (`e2ee/pinning.ts`) against the row at commit time; a cron schedules a
+ * refresh of each expiring row.
  */
 
 import { v } from 'convex/values';
@@ -289,8 +289,9 @@ export const discoverRecipientKey = internalAction({
 
 /**
  * INTERNAL (cron): refresh recipient-key rows whose cache has expired. Bounded
- * fan-out per tick; each address re-discovers idempotently. A no-op when Sealed
- * Mail is off.
+ * fan-out per tick: each address re-discovers in a `discoverRecipientKey` run of
+ * its own, which commits once, so one address's failure leaves the others' work
+ * in place. A no-op when Sealed Mail is off.
  */
 export const refreshExpiringRecipientKeys = internalAction({
 	args: {},
@@ -303,7 +304,10 @@ export const refreshExpiringRecipientKeys = internalAction({
 			limit: 50,
 		});
 		for (const address of addresses) {
-			await runRecipientKeyDiscovery(ctx, { address, force: true });
+			await ctx.scheduler.runAfter(0, internal.e2ee.discovery.discoverRecipientKey, {
+				address,
+				force: true,
+			});
 		}
 		return { refreshed: addresses.length };
 	},
