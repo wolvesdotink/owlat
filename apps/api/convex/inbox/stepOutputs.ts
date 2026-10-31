@@ -148,7 +148,7 @@ export const draftOutputFields = {
 	// classifier confidenceScore. Optional: absent when the self-check
 	// LLM call failed (the route step then treats quality as unknown/LOW).
 	draftQuality: v.optional(draftQualityValidator),
-	// Deprecated (#1200), accepted and ignored: the draft step no longer
+	// Deprecated, accepted and ignored: the draft step no longer
 	// generates variants, but an action started before that deploy may still
 	// pass them. Remove in the release after.
 	draftOptions: v.optional(v.array(v.string())),
@@ -194,7 +194,7 @@ export async function applyDraftOutput(
 		isDraftGapsAccepted: hasGaps ? true : undefined,
 		confidenceScore: args.confidenceScore,
 		...(args.draftQuality ? { draftQuality: args.draftQuality } : {}),
-		// No screen offers variants any more (#1200): a new draft drops the ones
+		// No screen offers variants any more: a new draft drops the ones
 		// an earlier run left, which no longer match the draft.
 		draftOptions: undefined,
 		...(args.attachmentSuggestions ? { attachmentSuggestions: args.attachmentSuggestions } : {}),
@@ -202,7 +202,7 @@ export async function applyDraftOutput(
 		isCheapFirstDraft: args.isCheapFirstDraft === true ? true : undefined,
 		// Edits a person saved over an earlier draft are not edits of this
 		// one: the next save seeds this draft as revision 0. (A Retry never
-		// re-drafts over a person's reply, #1220.)
+		// re-drafts over a person's reply.)
 		...NO_SAVED_EDITS,
 	});
 }
