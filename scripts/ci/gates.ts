@@ -241,7 +241,6 @@ export const ROOT_GATES: readonly RootGate[] = [
 		paths: [
 			'{apps,packages,examples}/**/*.{ts,tsx,vue}',
 			'scripts/check-provider-identity.sh',
-			'scripts/provider-identity-allowlist.txt',
 			'scripts/provider-identity-collisions.txt',
 		],
 	},

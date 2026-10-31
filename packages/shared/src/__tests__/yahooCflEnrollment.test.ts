@@ -11,18 +11,29 @@ import {
 	applyYahooCflEvent,
 	deriveYahooCflState,
 	emptyYahooCflEnrollment,
-	YAHOO_CFL_ENROLLMENT_STATES,
-	YAHOO_CFL_ENROLLMENT_URL,
-	YAHOO_CFL_LAPSE_SILENCE_MS,
-	YAHOO_CFL_REPORT_COALESCE_MS,
 	YAHOO_CFL_STORED_STATES,
-	YAHOO_CFL_SUBMISSION_PATIENCE_MS,
 	yahooCflAvailableActions,
 	yahooCflGuidedSteps,
-	yahooCflPreconditionMet,
 	type YahooCflDkimPrecondition,
 	type YahooCflEnrollmentRecord,
+	type YahooCflEnrollmentState,
 } from '../yahooCfl';
+
+// The enrollment policy, pinned as literals: Yahoo's form URL, 90 days of
+// complaint silence before an enrollment reads as lapsed, 14 days of patience
+// for an unconfirmed submission, and a one-hour report coalescing window.
+const YAHOO_CFL_ENROLLMENT_URL = 'https://senders.yahooinc.com/complaint-feedback-loop/';
+const YAHOO_CFL_LAPSE_SILENCE_MS = 90 * 24 * 60 * 60 * 1000;
+const YAHOO_CFL_SUBMISSION_PATIENCE_MS = 14 * 24 * 60 * 60 * 1000;
+const YAHOO_CFL_REPORT_COALESCE_MS = 60 * 60 * 1000;
+
+/** Every presented enrollment state; `satisfies` keeps the list exhaustive. */
+const YAHOO_CFL_ENROLLMENT_STATES = Object.keys({
+	not_started: true,
+	awaiting_yahoo: true,
+	enrolled: true,
+	lapsed: true,
+} satisfies Record<YahooCflEnrollmentState, true>) as YahooCflEnrollmentState[];
 
 const READY: YahooCflDkimPrecondition = {
 	domain: 'mail.example.com',
@@ -34,6 +45,10 @@ const NO_SELECTOR: YahooCflDkimPrecondition = { domain: 'mail.example.com', isVe
 
 const T0 = Date.UTC(2026, 6, 1);
 const DAY = 24 * 60 * 60 * 1000;
+
+/** The precondition as the UI reads it: a fresh domain's submit is not DKIM-blocked. */
+const yahooCflPreconditionMet = (precondition: YahooCflDkimPrecondition) =>
+	!yahooCflAvailableActions(emptyYahooCflEnrollment(), precondition, T0).submitBlockedByDkim;
 
 describe('states', () => {
 	it('starts every domain at not_started with no timestamps', () => {

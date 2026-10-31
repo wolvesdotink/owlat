@@ -246,10 +246,10 @@ describe('copies of stored HTML', () => {
 		const templateId = await seedTemplate(t, RENDERED_V1);
 		const emailId = await seedTransactional(t, { htmlContent: '<p>Hi</p>' });
 
-		const fromTemplate = await t.mutation(api.shareLinks.createShareLink, {
+		const fromTemplate = await t.mutation(api.shareLinks.links.createShareLink, {
 			emailTemplateId: templateId,
 		});
-		const fromUnstamped = await t.mutation(api.shareLinks.createShareLink, {
+		const fromUnstamped = await t.mutation(api.shareLinks.links.createShareLink, {
 			transactionalEmailId: emailId,
 		});
 

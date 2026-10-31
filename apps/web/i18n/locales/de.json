@@ -14021,7 +14021,6 @@
 			"campaignIpsLabel": "Kampagnen-IPs",
 			"ehloHostnameHelp": "Setze den PTR jeder IP exakt auf ihren EHLO-Hostnamen und verweise diesen Hostnamen zurück auf die IP.",
 			"ehloHostnameLabel": "Standard-EHLO-/PTR-Hostname",
-			"emailitKeyLabel": "Emailit-API-Schlüssel",
 			"errors": {
 				"missingToken": "Gib das von `owlat setup` ausgegebene Einrichtungs-Token ein, um den Anbieter zu prüfen, und versuche es erneut.",
 				"validationFailed": "Der Anbieter konnte nicht geprüft werden. Versuche es erneut."
@@ -14035,8 +14034,6 @@
 			"fromIdentityOptional": "(optional)",
 			"fromNameLabel": "Absendername",
 			"intro": "Wähle, wie Owlat E-Mails versendet. Du kannst das später in den Einstellungen ändern.",
-			"mandrillHint": "Mailchimp Transactional → Settings → API keys. Für Bounce- und Beschwerde-Rückmeldungen wird zusätzlich ein Webhook benötigt — unter Zustellung → Anbieter findest du nach der Einrichtung die URL und die zu aktivierenden Ereignisse.",
-			"mandrillKeyLabel": "Mailchimp-Transactional-API-Schlüssel",
 			"mtaIdentityHeading": "Identität der ausgehenden IPs",
 			"mtaIdentityIntro": "Das MTA-Profil ist aktiviert. Gib vor dem Start die öffentlichen Quell-IPs und den Hostnamen an, auf den deren PTR-Einträge verweisen.",
 			"next": "Weiter: Administratorkonto",
@@ -14074,21 +14071,12 @@
 					"label": "SMTP-Relay"
 				}
 			},
-			"resendKeyLabel": "Resend-API-Schlüssel",
 			"reverseDnsBody": "Jede Versand-IP oben braucht einen PTR-Eintrag auf ihren EHLO-Hostnamen. Er wird dort gesetzt, wo du die IP mietest — in der Konsole deines Hosters —, nicht in deiner DNS-Zone. Das Setup prüft das vor dem Abschluss, und bis es passt, verlässt keine E-Mail den Server.",
 			"reverseDnsHeading": "Reverse DNS (PTR) — vor dem Abschluss einrichten",
-			"sesAccessKeyLabel": "Access-Key-ID",
-			"sesRegionLabel": "Region",
-			"sesSecretKeyLabel": "Secret Access Key",
 			"setupTokenHelp": "Wird vom Befehl „owlat setup“ ausgegeben, wenn dieser den Einrichtungsmodus aktiviert hat. Erforderlich, um den Anbieter zu prüfen und zu starten.",
 			"setupTokenLabel": "Einrichtungs-Token",
 			"smtpHostHelp": "Das Relay übernimmt die Zustellung, daher wird die Authentifizierung (SPF/DKIM) auf Seiten des Relays eingerichtet, nicht bei Owlat.",
-			"smtpHostLabel": "Server-Host",
-			"smtpPortLabel": "Port",
 			"smtpPresetHint": "Füllt Server, Port und Verschlüsselung vor. Wähle „Custom“ für jeden anderen SMTP-Server.",
-			"smtpPresetLabel": "Anbieter-Vorlage",
-			"smtpSecureLabel": "Implizites TLS (Port 465). Für STARTTLS auf 587 deaktiviert lassen.",
-			"smtpUsernameLabel": "Benutzername",
 			"title": "Wie soll Owlat {accent} versenden?",
 			"titleAccent": "E-Mails",
 			"transactionalIpsHelp": "Kommagetrennte öffentliche IPv4-Adressen.",

@@ -52,7 +52,8 @@ import {
 	transportCredentialEnv,
 } from '../setupWizardCredentials';
 import { buildProviderEnv, type EmailStepDraft } from '../useSetupWizard';
-import { RELAY_PROVIDER_OPTIONS, useRelayCredentialDraft } from '../useRelayCredentialDraft';
+import { RELAY_PROVIDER_OPTIONS } from '../useRelayCredentialDraft';
+import { validateEmailStep } from '../setupWizardValidation';
 import { mount } from '@vue/test-utils';
 import TransportCredentialFields from '../../components/delivery/TransportCredentialFields.vue';
 import { wizardStubs } from '~/__tests__/transportWizardHarness';
@@ -61,14 +62,11 @@ import { transportDnsGuidance } from '../../utils/transportDnsGuidance';
 /** The real catalog's `t`, for the keys the pure modules answer with. */
 const { t } = createTestI18n().global;
 
-function draft(): EmailStepDraft {
+function draft(credentials: Record<string, string> = {}): EmailStepDraft {
 	return {
 		provider: PLUGIN_KIND,
 		requiresProvider: true,
-		resendKey: '',
-		mandrillKey: '',
-		ses: { region: '', accessKeyId: '', secretAccessKey: '' },
-		smtp: { preset: 'custom', host: '', port: '', secure: false, username: '', password: '' },
+		credentials,
 		fromEmail: '',
 		fromName: '',
 	};
@@ -128,10 +126,12 @@ describe('a bundled plugin transport reaches the credential UI', () => {
 			requiredCredentialError(PLUGIN_KIND, { [PLUGIN_TOKEN_ENV]: 'tok-live' })
 		).toBeUndefined();
 
-		const relay = useRelayCredentialDraft(PLUGIN_KIND);
-		expect(relay.requiredCredentialError.value).toEqual(missing);
-		relay.credentialValues[PLUGIN_TOKEN_ENV] = 'tok-live';
-		expect(relay.requiredCredentialError.value).toBeUndefined();
+		// The step's own rules ask the same descriptor gate: a kind with no
+		// incomplete-credentials sentence of its own is told which field is blank.
+		expect(validateEmailStep(draft()).credentials).toEqual(missing);
+		expect(
+			validateEmailStep(draft({ [PLUGIN_TOKEN_ENV]: 'tok-live' })).credentials
+		).toBeUndefined();
 	});
 
 	it('writes only the declared variable and carries it into the generic apply patch', () => {
@@ -139,7 +139,7 @@ describe('a bundled plugin transport reaches the credential UI', () => {
 		expect(transportCredentialEnv(PLUGIN_KIND, values)).toEqual({
 			[PLUGIN_TOKEN_ENV]: 'tok-live',
 		});
-		expect(buildProviderEnv({}, draft(), values)).toEqual({
+		expect(buildProviderEnv({}, draft(values))).toEqual({
 			EMAIL_PROVIDER: PLUGIN_KIND,
 			[PLUGIN_TOKEN_ENV]: 'tok-live',
 		});

@@ -14,7 +14,7 @@
  * so both readers supply `input.smtpBlocks` and this halt can fire in a real
  * deployment.
  *
- * THIS SUITE STILL RUNS AGAINST THE SHARED SAMPLES rather than against a live
+ * THIS SUITE STILL RUNS AGAINST PINNED CATEGORIES rather than against a live
  * counter, because what it guards is the agreement between the two halves of the
  * vocabulary and not the liveness of the wire between them — a drift in the
  * category names would be discovered only by the halt silently never firing
@@ -23,18 +23,14 @@
  * (`delivery/__tests__/smtpBlockWiring.test.ts`), and that both readers supply
  * the field at all is `scripts/check-gate-input-wiring.ts`'.
  *
- * THE FIXTURES ARE SHARED WITH THE CLASSIFIER (`SMTP_BLOCK_MESSAGE_SAMPLES` in
- * `@owlat/shared/smtpBlockCategories`). The MTA's own suite runs the same strings
- * through `classifySmtpResponse` and asserts the same categories, so the two
- * halves cannot drift apart: a regex change there fails there, and a vocabulary
- * change here fails here.
+ * THE CATEGORIES ARE THE ONES THE CLASSIFIER ASSIGNS to real response shapes.
+ * The MTA's own suite (`apps/mta/src/intelligence/__tests__/smtpBlockCategories.test.ts`)
+ * runs those strings through `classifySmtpResponse` and pins the same
+ * categories, so the two halves cannot drift apart: a regex change there fails
+ * there, and a vocabulary change here fails here.
  */
 
-import {
-	SMTP_BLOCK_CATEGORIES,
-	SMTP_BLOCK_MESSAGE_SAMPLES,
-	isSmtpBlockCategory,
-} from '@owlat/shared/smtpBlockCategories';
+import { SMTP_BLOCK_CATEGORIES, type SmtpFailureCategory } from '@owlat/shared/smtpBlockCategories';
 import { describe, expect, it } from 'vitest';
 import { RAMP_GATE_SAMPLE_FLOORS, RAMP_GATE_THRESHOLDS } from '../gateConfig';
 import {
@@ -46,15 +42,29 @@ import { NOW, arm, blocks, input, standaloneInput } from './gateFixtures';
 
 const HOUR_MS = 60 * 60 * 1000;
 
-const BLOCK_SAMPLES = SMTP_BLOCK_MESSAGE_SAMPLES.filter((sample) => sample.isBlock);
-const PRESSURE_SAMPLES = SMTP_BLOCK_MESSAGE_SAMPLES.filter((sample) => !sample.isBlock);
+/** Categories the classifier assigns to real refusals (5.7.1 spam, 5.7.23 SPF, 5.7.25 PTR, 4.7.23). */
+const BLOCK_SAMPLES: readonly { readonly category: SmtpFailureCategory }[] = [
+	{ category: 'content_rejected' },
+	{ category: 'policy_rejected' },
+	{ category: 'gmail_ip_identity' },
+];
+/** Categories the classifier assigns to real throttles and one over-quota mailbox. */
+const PRESSURE_SAMPLES: readonly { readonly category: SmtpFailureCategory }[] = [
+	{ category: 'gmail_rate_limited' },
+	{ category: 'yahoo_ts03' },
+	{ category: 'microsoft_resource_throttle' },
+	{ category: 'greylisted' },
+	{ category: 'mailbox_full' },
+];
 
 describe('the block vocabulary', () => {
 	it('separates refusal from rate pressure', () => {
-		expect(BLOCK_SAMPLES.length).toBeGreaterThan(0);
-		expect(PRESSURE_SAMPLES.length).toBeGreaterThan(0);
-		for (const sample of BLOCK_SAMPLES) expect(isSmtpBlockCategory(sample.category)).toBe(true);
-		for (const sample of PRESSURE_SAMPLES) expect(isSmtpBlockCategory(sample.category)).toBe(false);
+		expect([...SMTP_BLOCK_CATEGORIES].sort()).toEqual(
+			BLOCK_SAMPLES.map((sample) => sample.category).sort()
+		);
+		for (const sample of PRESSURE_SAMPLES) {
+			expect(SMTP_BLOCK_CATEGORIES.has(sample.category)).toBe(false);
+		}
 	});
 
 	it('never treats throttling as a block — throttling is already the deferral rate', () => {
@@ -65,7 +75,7 @@ describe('the block vocabulary', () => {
 });
 
 describe.each(BLOCK_SAMPLES)('a block message ($category) halts the cell', (sample) => {
-	it(`halts on: ${sample.response.slice(0, 48)}…`, () => {
+	it(`halts on ${sample.category}`, () => {
 		const evaluation = evaluateStandaloneDeferralGate(
 			standaloneInput({
 				smtpBlocks: blocks(5, 200, { category: sample.category }),
@@ -78,7 +88,7 @@ describe.each(BLOCK_SAMPLES)('a block message ($category) halts the cell', (samp
 });
 
 describe.each(PRESSURE_SAMPLES)('rate pressure ($category) does not halt', (sample) => {
-	it(`stays on the deferral rate for: ${sample.response.slice(0, 48)}…`, () => {
+	it(`stays on the deferral rate for ${sample.category}`, () => {
 		const evaluation = evaluateStandaloneDeferralGate(
 			standaloneInput({
 				smtpBlocks: blocks(200, 200, { category: sample.category }),

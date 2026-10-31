@@ -14,13 +14,13 @@ import {
 	type RouteStateCellRows,
 } from '../../lib/deliverabilityRouteState';
 import {
-	DELIVERABILITY_STREAM_KEYS,
 	isRouteStateFallbackActive,
 	resolveOwnShare,
 	type DeliverabilitySignalSeverity,
 	type DeliverabilitySignalSource,
 	type DeliverabilityStream,
 } from '@owlat/shared/deliverabilityRouting';
+import { GOVERNED_MESSAGE_TYPES } from '@owlat/shared/routingDispatch';
 
 import { modules } from '../../__tests__/testModules';
 
@@ -92,7 +92,7 @@ describe('per-stream route-state lookup', () => {
 	it('serves every stream from the legacy row when no per-stream row exists', async () => {
 		const t = convexTest(schema, modules);
 		await insertRow(t, { destinationProvider: 'gmail', isFallbackActive: true });
-		for (const stream of DELIVERABILITY_STREAM_KEYS) {
+		for (const stream of GOVERNED_MESSAGE_TYPES) {
 			const rows = await t.run((ctx) =>
 				loadRouteStateCell(ctx, 'org-a', { stream, destinationProvider: 'gmail' })
 			);

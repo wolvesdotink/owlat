@@ -10,10 +10,8 @@ import { describe, it, expect } from 'vitest';
 import {
 	asDnsName,
 	isDnsLabel,
-	splitZone,
 	trySplitZone,
 	zoneRelativeHost,
-	InvalidDomainError,
 	type DnsName,
 	type ZoneSplit,
 } from '../dnsZone';
@@ -25,53 +23,71 @@ const zone = (registrable: string, subLabels: string[] = []): ZoneSplit => ({
 	sub: subLabels.join('.'),
 });
 
-describe('splitZone', () => {
+/**
+ * What `fn` threw, reduced to the fields a caller can rely on: the error's name
+ * and the offending input it carries. `null` when nothing was thrown.
+ */
+function failureOf(fn: () => unknown): { name: string; input: unknown } | null {
+	try {
+		fn();
+		return null;
+	} catch (err) {
+		const error = err as Error & { input?: unknown };
+		return { name: error.name, input: error.input };
+	}
+}
+
+/** The throwing split runs on `zoneRelativeHost`'s `domain` before anything else. */
+const splitFailure = (domain: string) =>
+	failureOf(() => zoneRelativeHost('host.example.com', domain));
+
+describe('zone split', () => {
 	it('splits an apex domain into an empty sub', () => {
-		expect(splitZone('example.com')).toEqual(zone('example.com'));
+		expect(trySplitZone('example.com')).toEqual(zone('example.com'));
 	});
 
 	it('splits a single sending subdomain', () => {
-		expect(splitZone('mail.example.com')).toEqual(zone('example.com', ['mail']));
+		expect(trySplitZone('mail.example.com')).toEqual(zone('example.com', ['mail']));
 	});
 
 	it('splits a deep subdomain, preserving FQDN label order', () => {
-		expect(splitZone('s171._domainkey.mail.example.com')).toEqual(
+		expect(trySplitZone('s171._domainkey.mail.example.com')).toEqual(
 			zone('example.com', ['s171', '_domainkey', 'mail'])
 		);
 	});
 
 	it('treats a multi-label public suffix (co.uk) as part of the zone', () => {
-		expect(splitZone('example.co.uk')).toEqual(zone('example.co.uk'));
-		expect(splitZone('mail.example.co.uk')).toEqual(zone('example.co.uk', ['mail']));
-		expect(splitZone('a.b.example.co.uk')).toEqual(zone('example.co.uk', ['a', 'b']));
+		expect(trySplitZone('example.co.uk')).toEqual(zone('example.co.uk'));
+		expect(trySplitZone('mail.example.co.uk')).toEqual(zone('example.co.uk', ['mail']));
+		expect(trySplitZone('a.b.example.co.uk')).toEqual(zone('example.co.uk', ['a', 'b']));
 	});
 
 	it('handles other multi-label suffixes (gov.au, pvt.k12.ma.us)', () => {
-		expect(splitZone('mail.dept.gov.au').registrable).toBe('dept.gov.au');
+		expect(trySplitZone('mail.dept.gov.au')?.registrable).toBe('dept.gov.au');
 		// A deep US school-district suffix — the kind a "last two labels" rule ruins.
-		expect(splitZone('host.school.pvt.k12.ma.us').registrable).toBe('school.pvt.k12.ma.us');
+		expect(trySplitZone('host.school.pvt.k12.ma.us')?.registrable).toBe('school.pvt.k12.ma.us');
 	});
 
 	it('splits at the ICANN suffix, not a PSL private entry', () => {
 		// blogspot.com is a PSL *private* suffix; the registrable zone the user
 		// controls is still blogspot.com under the ICANN `.com`.
-		expect(splitZone('foo.blogspot.com').registrable).toBe('blogspot.com');
+		expect(trySplitZone('foo.blogspot.com')?.registrable).toBe('blogspot.com');
 	});
 
 	it('normalizes case and a trailing (absolute) dot', () => {
-		expect(splitZone('MAIL.Example.COM.')).toEqual(zone('example.com', ['mail']));
+		expect(trySplitZone('MAIL.Example.COM.')).toEqual(zone('example.com', ['mail']));
 	});
 
 	it('IDNA-encodes Unicode input to punycode', () => {
 		// münchen.de
-		expect(splitZone('münchen.de')).toEqual(zone('xn--mnchen-3ya.de'));
-		expect(splitZone('mail.münchen.de')).toEqual(zone('xn--mnchen-3ya.de', ['mail']));
+		expect(trySplitZone('münchen.de')).toEqual(zone('xn--mnchen-3ya.de'));
+		expect(trySplitZone('mail.münchen.de')).toEqual(zone('xn--mnchen-3ya.de', ['mail']));
 	});
 
 	it('accepts an already-punycode domain unchanged', () => {
 		// example.рф (Russian IDN ccTLD, itself a punycode public suffix).
-		expect(splitZone('example.xn--p1ai').registrable).toBe('example.xn--p1ai');
-		expect(splitZone('xn--mnchen-3ya.de').registrable).toBe('xn--mnchen-3ya.de');
+		expect(trySplitZone('example.xn--p1ai')?.registrable).toBe('example.xn--p1ai');
+		expect(trySplitZone('xn--mnchen-3ya.de')?.registrable).toBe('xn--mnchen-3ya.de');
 	});
 
 	it('throws InvalidDomainError on inputs with no registrable domain', () => {
@@ -90,7 +106,11 @@ describe('splitZone', () => {
 			'a..b.com', // empty label
 			'-bad.example.com', // leading-hyphen label
 		]) {
-			expect(() => splitZone(bad), `expected "${bad}" to throw`).toThrow(InvalidDomainError);
+			expect(trySplitZone(bad), `expected "${bad}" to have no split`).toBeNull();
+			expect(splitFailure(bad), `expected "${bad}" to throw`).toEqual({
+				name: 'InvalidDomainError',
+				input: bad,
+			});
 		}
 	});
 
@@ -98,23 +118,17 @@ describe('splitZone', () => {
 		// 4 × 63-octet labels + dots = 255 octets > 253, but each label is legal.
 		const overLong = ['a'.repeat(63), 'b'.repeat(63), 'c'.repeat(63), 'd'.repeat(63)].join('.');
 		expect(overLong.length).toBeGreaterThan(253);
-		expect(() => splitZone(`${overLong}.com`)).toThrow(InvalidDomainError);
+		expect(splitFailure(`${overLong}.com`)?.name).toBe('InvalidDomainError');
 		// A name right at the cap with a real registrable suffix still splits.
 		const atCap = `${'a'.repeat(59)}.${'b'.repeat(63)}.${'c'.repeat(63)}.example.com`;
 		expect(atCap.length).toBeLessThanOrEqual(253);
-		expect(splitZone(atCap).registrable).toBe('example.com');
+		expect(trySplitZone(atCap)?.registrable).toBe('example.com');
 	});
 
 	it('exposes the offending input on the thrown error', () => {
-		// expect.assertions is what makes the catch block load-bearing: without it
-		// a splitZone that stopped throwing would run zero assertions and pass.
-		expect.assertions(2);
-		try {
-			splitZone('co.uk');
-		} catch (err) {
-			expect(err).toBeInstanceOf(InvalidDomainError);
-			expect((err as InvalidDomainError).input).toBe('co.uk');
-		}
+		// failureOf returns null when nothing throws, so a split that stopped
+		// throwing fails this equality instead of passing silently.
+		expect(splitFailure('co.uk')).toEqual({ name: 'InvalidDomainError', input: 'co.uk' });
 	});
 });
 
@@ -176,17 +190,27 @@ describe('zoneRelativeHost', () => {
 	});
 
 	it('throws InvalidDomainError when the sending domain has no zone', () => {
-		expect(() => zoneRelativeHost('_dmarc.localhost', 'localhost')).toThrow(InvalidDomainError);
+		expect(failureOf(() => zoneRelativeHost('_dmarc.localhost', 'localhost'))).toEqual({
+			name: 'InvalidDomainError',
+			input: 'localhost',
+		});
 	});
 
 	it('throws InvalidDomainError when the record host is not a valid DNS name', () => {
-		expect(() => zoneRelativeHost('not a host', 'example.com')).toThrow(InvalidDomainError);
+		expect(failureOf(() => zoneRelativeHost('not a host', 'example.com'))).toEqual({
+			name: 'InvalidDomainError',
+			input: 'not a host',
+		});
 	});
 
 	it('throws InvalidDomainError when the record host is an IP literal', () => {
 		// An IP is not a DNS name and must not be blessed into a relative/absolute host.
-		expect(() => zoneRelativeHost('1.2.3.4', 'example.com')).toThrow(InvalidDomainError);
-		expect(() => zoneRelativeHost('2130706433', 'example.com')).toThrow(InvalidDomainError);
+		for (const literal of ['1.2.3.4', '2130706433']) {
+			expect(failureOf(() => zoneRelativeHost(literal, 'example.com'))).toEqual({
+				name: 'InvalidDomainError',
+				input: literal,
+			});
+		}
 	});
 });
 

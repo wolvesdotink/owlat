@@ -126,7 +126,7 @@ renaming the whole module, so the generated paths its callers already use
 
 - `resetHttp.ts` and `seedDemo/index.ts` + `indexHttp.ts` are that split; a file
   that is ONLY routes is simply named `*Http.ts` (`mail/webhookHttp.ts`,
-  `seedAdminHttp.ts`).
+  `auth/seedAdminHttp.ts`).
 
 ---
 
@@ -369,7 +369,7 @@ their `featureGated` compositions) which scans one of these tables
   the `export const`, when the read genuinely returns no secret (projects to a
   token-free shape, returns only counts/ids, etc.). An admin role gate alone is
   not a reason. The one read that returns a secret on purpose,
-  `shareLinks.listShareLinks`, hands a link manager the token it shares, and is
+  `shareLinks.links.listShareLinks`, hands a link manager the token it shares, and is
   also the reviewed exception in `lib/__tests__/publicReturnRedaction.test.ts`.
 
 ## Process-log PII
@@ -1167,10 +1167,25 @@ interrupt a migration.
 
 ### Boolean naming
 
-All boolean fields use the `is*` prefix: `isVerified`, `isEnabled`, `isActive`,
-`isDefault`, `isPrimary`. Domain enums that happen to spell `'verified'` as a
-literal value (e.g. `domains.status='verified'`) are status strings, not
-booleans, and are exempt.
+All boolean fields use the `is*` or `has*` prefix: `isVerified`, `isEnabled`,
+`isActive`, `isDefault`, `isPrimary`, `hasAttachments`, `hasOpened`. Domain
+enums that happen to spell `'verified'` as a literal value (e.g.
+`domains.status='verified'`) are status strings, not booleans, and are exempt.
+
+`scripts/check-boolean-naming.sh` enforces this on `convex/schema/` with two
+lists:
+
+- `scripts/boolean-naming-wire-fields.txt` holds fields whose name mirrors an
+  external wire vocabulary: the IMAP flags `apps/imap` serves
+  (`mailMessages.flagSeen`, ...), `mailFolders.subscribed`, and the MTA's
+  warming report (`warmingIpFields.active`). Renaming one is a protocol
+  change, so they are not debt. Each group carries its reason; a new line
+  needs the same kind of reason.
+- `scripts/boolean-naming-baseline.txt` is debt: production fields whose
+  rename is an expand → migrate → contract (above). Never add a line. Where a
+  field's name is also external (`showUnsubscribe` in co-editing,
+  `doubleOptIn` / `requireDoubleOptIn` in the public forms API), the rename
+  keeps the external name at that boundary.
 
 ### Soft-delete contract
 

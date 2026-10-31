@@ -6,7 +6,7 @@ import { deliverabilityDiagnosticReport } from './deliverabilityDiagnostics';
 export const DELIVERABILITY_CHECKLIST_STATUSES = ['pass', 'warn', 'fail', 'pending-dns'] as const;
 export type DeliverabilityChecklistStatus = (typeof DELIVERABILITY_CHECKLIST_STATUSES)[number];
 
-export const DELIVERABILITY_SEVERITIES = ['blocking', 'reputation', 'recommended'] as const;
+const DELIVERABILITY_SEVERITIES = ['blocking', 'reputation', 'recommended'] as const;
 export type DeliverabilitySeverity = (typeof DELIVERABILITY_SEVERITIES)[number];
 
 export const DEPLOYMENT_CHECK_IDS = [

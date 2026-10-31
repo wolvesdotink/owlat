@@ -117,7 +117,7 @@ export function sanitizeTrustedForwarders(entries: readonly string[]): string[] 
  * a bare `acme.com`) and never treat a bare single-label entry as a wildcard.
  * Empty inputs never match — an unknown sealer can't be asserted trusted.
  */
-export function isTrustedForwarder(
+function isTrustedForwarder(
 	sealerDomain: string | undefined,
 	trustedForwarders: readonly string[]
 ): boolean {

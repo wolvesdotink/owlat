@@ -13,14 +13,19 @@ import {
 	parseTlsaRecord,
 	formatTlsaRecord,
 	tlsaRecordsEqual,
-	isUsableForSmtp,
 	hasUsableTlsa,
 	computeAssociation,
 	matchCertificateToTlsa,
-	DANE_SELECTOR,
-	DANE_MATCHING,
 	type TlsaRecord,
 } from '../dane';
+
+// TLSA selector and matching-type codes as the wire carries them (RFC 6698
+// §2.1.2/§2.1.3); literals, so a renumbering in the module fails these vectors.
+const FULL_CERT = 0;
+const SPKI = 1;
+const EXACT = 0;
+const SHA256 = 1;
+const SHA512 = 2;
 
 // A throwaway self-signed certificate (CN=mx.test) used only as a byte source
 // for the association vectors below.
@@ -90,16 +95,16 @@ describe('tlsaRecordsEqual', () => {
 	});
 });
 
-describe('isUsableForSmtp / hasUsableTlsa (RFC 7672 §2.1)', () => {
+describe('hasUsableTlsa (RFC 7672 §2.1)', () => {
 	it('accepts only DANE-TA(2)/DANE-EE(3) with a known selector + matching type', () => {
-		expect(isUsableForSmtp({ usage: 3, selector: 1, matchingType: 1, data: 'ab' })).toBe(true);
-		expect(isUsableForSmtp({ usage: 2, selector: 0, matchingType: 2, data: 'ab' })).toBe(true);
+		expect(hasUsableTlsa([{ usage: 3, selector: 1, matchingType: 1, data: 'ab' }])).toBe(true);
+		expect(hasUsableTlsa([{ usage: 2, selector: 0, matchingType: 2, data: 'ab' }])).toBe(true);
 	});
 	it('rejects PKIX usages (0/1) and unknown selector/matching type', () => {
-		expect(isUsableForSmtp({ usage: 0, selector: 1, matchingType: 1, data: 'ab' })).toBe(false);
-		expect(isUsableForSmtp({ usage: 1, selector: 1, matchingType: 1, data: 'ab' })).toBe(false);
-		expect(isUsableForSmtp({ usage: 3, selector: 2, matchingType: 1, data: 'ab' })).toBe(false);
-		expect(isUsableForSmtp({ usage: 3, selector: 1, matchingType: 9, data: 'ab' })).toBe(false);
+		expect(hasUsableTlsa([{ usage: 0, selector: 1, matchingType: 1, data: 'ab' }])).toBe(false);
+		expect(hasUsableTlsa([{ usage: 1, selector: 1, matchingType: 1, data: 'ab' }])).toBe(false);
+		expect(hasUsableTlsa([{ usage: 3, selector: 2, matchingType: 1, data: 'ab' }])).toBe(false);
+		expect(hasUsableTlsa([{ usage: 3, selector: 1, matchingType: 9, data: 'ab' }])).toBe(false);
 	});
 	it('hasUsableTlsa is true when any record is SMTP-usable', () => {
 		expect(
@@ -114,28 +119,20 @@ describe('isUsableForSmtp / hasUsableTlsa (RFC 7672 §2.1)', () => {
 
 describe('computeAssociation — selector × matching-type grid (RFC 6698 §2.1)', () => {
 	it('selector 0 (full cert) × SHA-256 / SHA-512', () => {
-		expect(computeAssociation(CERT_DER, DANE_SELECTOR.FULL_CERT, DANE_MATCHING.SHA256)).toBe(
-			VEC.fullSha256
-		);
-		expect(computeAssociation(CERT_DER, DANE_SELECTOR.FULL_CERT, DANE_MATCHING.SHA512)).toBe(
-			VEC.fullSha512
-		);
+		expect(computeAssociation(CERT_DER, FULL_CERT, SHA256)).toBe(VEC.fullSha256);
+		expect(computeAssociation(CERT_DER, FULL_CERT, SHA512)).toBe(VEC.fullSha512);
 	});
 	it('selector 1 (SPKI) × SHA-256 / SHA-512', () => {
-		expect(computeAssociation(CERT_DER, DANE_SELECTOR.SPKI, DANE_MATCHING.SHA256)).toBe(
-			VEC.spkiSha256
-		);
-		expect(computeAssociation(CERT_DER, DANE_SELECTOR.SPKI, DANE_MATCHING.SHA512)).toBe(
-			VEC.spkiSha512
-		);
+		expect(computeAssociation(CERT_DER, SPKI, SHA256)).toBe(VEC.spkiSha256);
+		expect(computeAssociation(CERT_DER, SPKI, SHA512)).toBe(VEC.spkiSha512);
 	});
 	it('matching type 0 (exact) returns the full selected DER as hex', () => {
-		const exact = computeAssociation(CERT_DER, DANE_SELECTOR.FULL_CERT, DANE_MATCHING.EXACT);
+		const exact = computeAssociation(CERT_DER, FULL_CERT, EXACT);
 		expect(exact).toBe(CERT_DER.toString('hex'));
 	});
 	it('returns null for an unknown selector or matching type', () => {
-		expect(computeAssociation(CERT_DER, 9, DANE_MATCHING.SHA256)).toBeNull();
-		expect(computeAssociation(CERT_DER, DANE_SELECTOR.SPKI, 9)).toBeNull();
+		expect(computeAssociation(CERT_DER, 9, SHA256)).toBeNull();
+		expect(computeAssociation(CERT_DER, SPKI, 9)).toBeNull();
 	});
 });
 

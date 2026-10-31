@@ -7,12 +7,12 @@ import { summarizeSeedPlacementWindow } from '../seedPlacement';
 import { loadSeedAccounts } from '../seedAccounts';
 import type { Id } from '../../_generated/dataModel';
 import { modules } from '../../__tests__/testModules';
-import {
-	planSeedHygiene,
-	shouldRemindSeedRotation,
-	SEED_CLICK_PROBABILITY,
-	SEED_ROTATION_INTERVAL_MS,
-} from '@owlat/shared/seedPlacement';
+import { planSeedHygiene, shouldRemindSeedRotation } from '@owlat/shared/seedPlacement';
+
+// The hygiene policy, pinned as literals: one probe in five is clicked, and a
+// seed is due for rotation after ninety days.
+const SEED_CLICK_PROBABILITY = 0.2;
+const SEED_ROTATION_INTERVAL_MS = 90 * 24 * 60 * 60 * 1000;
 
 /**
  * The rotation nudge has to be readable through a query the PRODUCT exposes,
@@ -127,8 +127,15 @@ describe('planSeedHygiene — the occasional click', () => {
 	});
 
 	it('keeps the click rate a minority of probes', () => {
-		expect(SEED_CLICK_PROBABILITY).toBeGreaterThan(0);
-		expect(SEED_CLICK_PROBABILITY).toBeLessThan(0.5);
+		// A roll at the halfway mark never clicks, so at most half the probes do.
+		expect(
+			planSeedHygiene({
+				placement: 'inbox',
+				alreadyMarkedRead: false,
+				alreadyClicked: false,
+				clickRoll: 0.5,
+			}).click
+		).toBe(false);
 	});
 });
 

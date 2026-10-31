@@ -1,10 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { classifyResult, reduce, type DispatchOutcome } from '../outcome.js';
 import { classifySmtpResponse } from '../../intelligence/smtpClassifier.js';
+import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
 import {
-	isSmtpBlockCategory,
 	isSmtpFailureCategory,
-	SMTP_BLOCK_MESSAGE_SAMPLES,
+	SMTP_BLOCK_CATEGORIES,
+	type SmtpFailureCategory,
 } from '@owlat/shared/smtpBlockCategories';
 import type { AttemptCtx } from '../types.js';
 import type { EmailJob, EmailJobResult } from '../../types.js';
@@ -51,14 +52,55 @@ function makeCtx(overrides: Partial<AttemptCtx> = {}): AttemptCtx {
 	};
 }
 
-/** A real `550 5.7.1 ... blocked` reply, from the shared pinning fixture. */
-const BLOCKED_550 = (() => {
-	const sample = SMTP_BLOCK_MESSAGE_SAMPLES.find(
-		(s) => s.smtpCode === 550 && s.enhancedCode === '5.7.1' && /blocked/.test(s.response)
-	);
-	if (!sample) throw new Error('fixture lost its 550 5.7.1 block sample');
-	return sample;
-})();
+/** Is `category` a refusal (a ramp hard stop) rather than rate pressure? */
+const isBlockCategory = (category: string) =>
+	(SMTP_BLOCK_CATEGORIES as ReadonlySet<string>).has(category);
+
+interface PermanentRefusalSample {
+	readonly smtpCode: number;
+	readonly response: string;
+	readonly enhancedCode: string;
+	readonly provider: DestinationProviderKey;
+	readonly category: SmtpFailureCategory;
+}
+
+/** A real `550 5.7.1 ... blocked` reply. */
+const BLOCKED_550: PermanentRefusalSample = {
+	smtpCode: 550,
+	response:
+		'550-5.7.1 [203.0.113.10] Our system has detected that this message is likely unsolicited mail. To reduce the amount of spam sent to Gmail, this message has been blocked.',
+	enhancedCode: '5.7.1',
+	provider: 'gmail',
+	category: 'content_rejected',
+};
+
+/** Real 5xx refusals receivers return, each with the category the ramp halts on. */
+const PERMANENT_REFUSALS: readonly PermanentRefusalSample[] = [
+	BLOCKED_550,
+	{
+		smtpCode: 550,
+		response:
+			'550 5.7.1 Service unavailable, Client host [203.0.113.10] blocked using Spamhaus; To request removal from this list see https://www.spamhaus.org/query/ip/203.0.113.10',
+		enhancedCode: '5.7.1',
+		provider: 'microsoft',
+		category: 'content_rejected',
+	},
+	{
+		smtpCode: 550,
+		response: '550 5.7.23 Sender address rejected: SPF fail for sender domain example.com',
+		enhancedCode: '5.7.23',
+		provider: 'microsoft',
+		category: 'policy_rejected',
+	},
+	{
+		smtpCode: 550,
+		response:
+			'550 5.7.25 [203.0.113.10] The IP address sending this message does not have a PTR record setup, or the corresponding forward DNS entry does not point to the sending IP.',
+		enhancedCode: '5.7.25',
+		provider: 'microsoft',
+		category: 'policy_rejected',
+	},
+];
 
 function hardBounceResult(sample: {
 	smtpCode: number;
@@ -120,14 +162,14 @@ describe('classifyResult', () => {
 		const out = classifyResult(hardBounceResult(BLOCKED_550), BLOCKED_550.provider);
 		if (out.kind !== 'hard_bounce') throw new Error('expected a hard bounce');
 		expect(out.classification.category).toBe('content_rejected');
-		expect(isSmtpBlockCategory(out.classification.category)).toBe(true);
+		expect(isBlockCategory(out.classification.category)).toBe(true);
 	});
 
-	it.each(SMTP_BLOCK_MESSAGE_SAMPLES.filter((sample) => sample.smtpCode >= 500))(
-		'classifies the $smtpCode $enhancedCode $provider fixture as $category on the hard-bounce path',
+	it.each(PERMANENT_REFUSALS)(
+		'classifies the $smtpCode $enhancedCode $provider sample as $category on the hard-bounce path',
 		(sample) => {
-			// The shared fixture says the ramp halts on these categories; the hard
-			// bounce is the path a 5xx reply actually takes through dispatch.
+			// The ramp halts on these categories; the hard bounce is the path a 5xx
+			// reply actually takes through dispatch.
 			const out = classifyResult(hardBounceResult(sample), sample.provider);
 			if (out.kind !== 'hard_bounce') throw new Error('expected a hard bounce');
 			expect(out.classification.category).toBe(sample.category);
@@ -300,7 +342,7 @@ describe('reduce(hard_bounce)', () => {
 		);
 		if (classified?.kind !== 'notify_convex') throw new Error('expected a classified response');
 		expect(classified.event.smtpCategory).toBe('content_rejected');
-		expect(isSmtpBlockCategory(classified.event.smtpCategory ?? '')).toBe(true);
+		expect(isBlockCategory(classified.event.smtpCategory ?? '')).toBe(true);
 	});
 
 	it('suppress_recipient targets the recipient with hard_bounce reason', () => {
@@ -529,7 +571,7 @@ describe('reduce(deferred) — non-retryable classification', () => {
 		// The SHARED vocabulary, checked against the shared guards rather than
 		// against a literal this file spells for itself.
 		expect(isSmtpFailureCategory(classified.event.smtpCategory ?? '')).toBe(true);
-		expect(isSmtpBlockCategory(classified.event.smtpCategory ?? '')).toBe(true);
+		expect(isBlockCategory(classified.event.smtpCategory ?? '')).toBe(true);
 	});
 
 	it('still re-defers a retryable greylist deferral (regression guard)', () => {

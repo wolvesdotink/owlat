@@ -40,17 +40,7 @@ function emailDraft(over: Record<string, unknown> = {}) {
 	return {
 		provider: 'mandrill' as const,
 		requiresProvider: true,
-		resendKey: '',
-		mandrillKey: KEY,
-		ses: { region: '', accessKeyId: '', secretAccessKey: '' },
-		smtp: {
-			preset: 'custom' as const,
-			host: '',
-			port: '',
-			secure: false,
-			username: '',
-			password: '',
-		},
+		credentials: { MANDRILL_API_KEY: KEY } as Record<string, string>,
 		fromEmail: '',
 		fromName: '',
 		...over,
@@ -126,14 +116,16 @@ describe('Mandrill in the shared transport draft rules', () => {
 	it('clears the Mandrill key when the transport moves elsewhere', () => {
 		const env = buildProviderEnv(
 			{ MANDRILL_API_KEY: KEY },
-			emailDraft({ provider: 'resend', resendKey: 're_x', mandrillKey: '' })
+			emailDraft({ provider: 'resend', credentials: { RESEND_API_KEY: 're_x' } })
 		);
 		expect(env['MANDRILL_API_KEY']).toBeUndefined();
 		expect(env['RESEND_API_KEY']).toBe('re_x');
 	});
 
 	it('requires the key before the step is valid', () => {
-		expect(validateEmailStep(emailDraft({ mandrillKey: '   ' })).mandrillKey).toBeTruthy();
-		expect(validateEmailStep(emailDraft()).mandrillKey).toBeUndefined();
+		expect(
+			validateEmailStep(emailDraft({ credentials: { MANDRILL_API_KEY: '   ' } })).credentials
+		).toMatchObject({ key: 'shared.setupWizardValidation.email.mandrillKeyRequired' });
+		expect(validateEmailStep(emailDraft()).credentials).toBeUndefined();
 	});
 });

@@ -4630,7 +4630,7 @@ Four entry points:
   deletion module-family is the only writer of the wipe; this entry is
   the public shell (auth + job + synchronous response).
 - `createInternal(ctx, args)` — internal mutation; no auth (called by
-  `seedAdminHttp.ts`). Idempotent: skips if a row already exists.
+  `auth/seedAdminHttp.ts`). Idempotent: skips if a row already exists.
 
 Replaces the duplicate `get`/`update`/`create` pair across
 `convex/instanceSettings.ts` and `convex/organizationSettings.ts`. Both
@@ -5424,7 +5424,7 @@ Replaces the open-coded shells at:
 - `topics/doiHttp.ts:97-158` (confirm POST — token in `?token=`)
 - `forms/apiHttp.ts:125-241` (form submit POST — keeps multipart
   body parser)
-- `shareLinkHttp.ts:11-85` (share GET)
+- `shareLinks/viewHttp.ts` (share GET)
 - `campaigns/archiveHttp.ts:11-77` (archive GET)
 
 Closes drift bugs:

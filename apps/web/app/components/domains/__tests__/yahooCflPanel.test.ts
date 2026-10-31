@@ -24,8 +24,6 @@ Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 import {
 	yahooCflAvailableActions,
 	yahooCflGuidedSteps,
-	YAHOO_CFL_ENROLLMENT_URL,
-	YAHOO_CFL_LAPSE_SILENCE_MS,
 	type YahooCflDkimPrecondition,
 	type YahooCflEnrollmentRecord,
 	type YahooCflEnrollmentState,
@@ -38,6 +36,10 @@ const PRECONDITION: YahooCflDkimPrecondition = {
 };
 
 const T0 = Date.UTC(2026, 6, 1);
+
+// Yahoo's enrollment form and the 90-day lapse window, pinned as literals.
+const YAHOO_CFL_ENROLLMENT_URL = 'https://senders.yahooinc.com/complaint-feedback-loop/';
+const YAHOO_CFL_LAPSE_SILENCE_MS = 90 * 24 * 60 * 60 * 1000;
 
 /**
  * The complaint-signal half of the guide, inlined.

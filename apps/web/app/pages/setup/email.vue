@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { SETUP_WIZARD_STEPS, buildProviderEnv } from '~/composables/useSetupWizard';
-import { apiFetch } from '~/lib/csrfFetch';
 import { emailStepIsValid } from '~/composables/setupWizardValidation';
 import { useSetupEmailStepForm } from '~/composables/useSetupEmailStepForm';
+import { OUTBOUND_TLS_MODE_OPTIONS } from '~/composables/setupOutboundTls';
 import { setupChoiceClass } from '~/utils/setupChoiceCard';
+import TransportCredentialFields from '~/components/delivery/TransportCredentialFields.vue';
 
 definePageMeta({ layout: false });
 
@@ -22,29 +23,21 @@ const displaySteps = computed(() =>
 	SETUP_WIZARD_STEPS.map((step) => ({ ...step, label: t(step.label) }))
 );
 
-// Field state, the SMTP relay presets, the transport choice cards and the
-// validated draft they add up to — see `useSetupEmailStepForm`.
+// Field state, the catalog-declared credentials, the transport choice cards and
+// the validated draft they add up to — see `useSetupEmailStepForm`.
 const {
 	provider,
 	mtaProfileEnabled,
 	transactionalIps,
 	campaignIps,
 	ehloHostname,
-	resendKey,
-	emailitKey,
-	mandrillKey,
-	sesRegion,
-	sesAccess,
-	sesSecret,
+	credentialValues,
+	preset,
+	presetOptions,
+	canValidateLive,
+	validateLive,
 	fromEmail,
 	fromName,
-	smtpPreset,
-	smtpHost,
-	smtpPort,
-	smtpSecure,
-	smtpUsername,
-	smtpPassword,
-	smtpPresetOptions,
 	providerOptions,
 	draft,
 	errors,
@@ -61,72 +54,44 @@ function errorText(value: string | undefined): string | undefined {
 	return value ? t(value) : undefined;
 }
 
-// A live provider check (Resend / SMTP) calls a privileged setup endpoint, which
-// requires the one-time setup token echoed in the X-Setup-Token header.
-const needsLiveCheck = computed(() => ['resend', 'emailit', 'smtp'].includes(provider.value));
+// The selected kind's credential error. Both halves are message keys (the rules
+// are pure), and the sentence may name the field it is about.
+const credentialError = computed(() => {
+	const message = showErrors.value ? errors.value.credentials : undefined;
+	return message === undefined ? undefined : t(message.key, { field: t(message.field) });
+});
+
+function outboundTlsHint(mode: string): string {
+	return OUTBOUND_TLS_MODE_OPTIONS.find((option) => option.value === mode)?.hint ?? '';
+}
 
 async function next() {
 	submitted.value = true;
 	generalError.value = '';
 	if (!emailStepIsValid(draft.value)) return;
 
-	// The live provider check authenticates with the one-time setup token; block
-	// early with a clear message rather than firing an inevitable 401.
+	// A kind whose catalog entry declares a `setupProbe` is checked live before it
+	// is committed, through a privileged setup endpoint that authenticates with the
+	// one-time setup token; block early with a clear message rather than firing an
+	// inevitable 401.
 	const token = setupToken.value.trim();
-	if (needsLiveCheck.value && token === '') {
+	if (canValidateLive.value && token === '') {
 		generalError.value = t('setup.email.errors.missingToken');
 		return;
 	}
-	const setupHeaders = { 'X-Setup-Token': token };
 
 	submitting.value = true;
 	try {
-		// Validate a Resend key against the live API before committing it, so the
-		// operator finds out here rather than at first send.
-		if (provider.value === 'resend') {
-			const res = await apiFetch<{ ok: boolean; message: string }>('/api/setup/validate-provider', {
-				method: 'POST',
-				headers: setupHeaders,
-				body: { provider: 'resend', apiKey: resendKey.value },
-			});
-			if (!res.ok) {
-				generalError.value = res.message;
-				return;
-			}
-		}
-		if (provider.value === 'emailit') {
-			const res = await apiFetch<{ ok: boolean; message: string }>('/api/setup/validate-provider', {
-				method: 'POST',
-				headers: setupHeaders,
-				body: { provider: 'emailit', apiKey: emailitKey.value },
-			});
-			if (!res.ok) {
-				generalError.value = res.message;
-				return;
-			}
-		}
-		// Prove the SMTP relay is reachable and the credentials authenticate with a
-		// real handshake, so a wrong host/port/password is caught here, not at send.
-		if (provider.value === 'smtp') {
-			const trimmedPort = smtpPort.value.trim();
-			const res = await apiFetch<{ ok: boolean; message: string }>('/api/setup/validate-provider', {
-				method: 'POST',
-				headers: setupHeaders,
-				body: {
-					provider: 'smtp',
-					smtp: {
-						host: smtpHost.value.trim(),
-						port: trimmedPort ? Number.parseInt(trimmedPort, 10) : 587,
-						secure: smtpSecure.value,
-						username: smtpUsername.value,
-						password: smtpPassword.value,
-					},
-				},
-			});
-			if (!res.ok) {
-				generalError.value = res.message;
-				return;
-			}
+		// Prove the credentials with the provider itself before committing them
+		// (an authenticated API call, or a real SMTP handshake), so the operator
+		// finds out here rather than at first send.
+		const res = await validateLive({
+			url: '/api/setup/validate-provider',
+			headers: { 'X-Setup-Token': token },
+		});
+		if (res !== null && !res.ok) {
+			generalError.value = res.message;
+			return;
 		}
 		env.value = buildProviderEnv(env.value, draft.value);
 		router.push('/setup/admin');
@@ -221,112 +186,28 @@ async function next() {
 						{{ errorText(errors.provider) }}
 					</p>
 
-					<div v-if="provider === 'resend'" class="mt-5">
-						<UiInput
-							v-model="resendKey"
-							type="password"
-							:label="t('setup.email.resendKeyLabel')"
-							placeholder="re_..."
-							autocomplete="off"
-							:error="showErrors ? errorText(errors.resendKey) : undefined"
-						/>
-					</div>
-
-					<div v-if="provider === 'emailit'" class="mt-5">
-						<UiInput
-							v-model="emailitKey"
-							type="password"
-							:label="t('setup.email.emailitKeyLabel')"
-							placeholder="em_..."
-							autocomplete="off"
-							:error="showErrors ? errorText(errors.emailitKey) : undefined"
-						/>
-					</div>
-
-					<div v-if="provider === 'mandrill'" class="mt-5 space-y-3">
-						<UiInput
-							v-model="mandrillKey"
-							type="password"
-							:label="t('setup.email.mandrillKeyLabel')"
-							placeholder="md-..."
-							autocomplete="off"
-							:error="showErrors ? errorText(errors.mandrillKey) : undefined"
-						/>
-						<p class="text-xs text-text-tertiary">
-							{{ t('setup.email.mandrillHint') }}
-						</p>
-					</div>
-
-					<div v-if="provider === 'ses'" class="mt-5 space-y-4">
-						<UiInput
-							v-model="sesRegion"
-							:label="t('setup.email.sesRegionLabel')"
-							placeholder="us-east-1"
-						/>
-						<UiInput
-							v-model="sesAccess"
-							:label="t('setup.email.sesAccessKeyLabel')"
-							autocomplete="off"
-						/>
-						<UiInput
-							v-model="sesSecret"
-							type="password"
-							:label="t('setup.email.sesSecretKeyLabel')"
-							autocomplete="off"
-						/>
-						<p v-if="showErrors && errors.ses" class="text-sm text-error">
-							{{ errorText(errors.ses) }}
-						</p>
-					</div>
-
-					<div v-if="provider === 'smtp'" class="mt-5 space-y-4">
-						<UiSelect
-							v-model="smtpPreset"
-							:label="t('setup.email.smtpPresetLabel')"
-							:options="smtpPresetOptions"
-						/>
-						<p class="-mt-2 text-sm text-text-tertiary">
-							{{ t('setup.email.smtpPresetHint') }}
-						</p>
-						<UiInput
-							v-model="smtpHost"
-							:label="t('setup.email.smtpHostLabel')"
-							placeholder="smtp.mailgun.org"
-							autocomplete="off"
-							:disabled="smtpPreset !== 'custom'"
-							:help-text="t('setup.email.smtpHostHelp')"
-						/>
-						<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-							<UiInput
-								v-model="smtpPort"
-								:label="t('setup.email.smtpPortLabel')"
-								placeholder="587"
-								autocomplete="off"
-							/>
-							<div
-								class="flex items-center justify-between gap-3 rounded-xl bg-surface-1 shadow-surface-1 border border-transparent p-3"
-							>
-								<label for="setup-smtp-secure" class="text-sm text-text-secondary cursor-pointer">
-									{{ t('setup.email.smtpSecureLabel') }}
-								</label>
-								<UiSwitch id="setup-smtp-secure" v-model="smtpSecure" />
-							</div>
-						</div>
-						<UiInput
-							v-model="smtpUsername"
-							:label="t('setup.email.smtpUsernameLabel')"
-							autocomplete="off"
-						/>
-						<UiInput
-							v-model="smtpPassword"
-							type="password"
-							:label="t('auth.fields.password')"
-							autocomplete="off"
-						/>
-						<p v-if="showErrors && errors.smtp" class="text-sm text-error">
-							{{ errorText(errors.smtp) }}
-						</p>
-					</div>
+					<!-- The selected kind's catalog credential fields; no per-provider markup.
+					     The two notes this step adds are about the relay endpoint FIELD,
+					     through the renderer's per-field slot, so they appear wherever a
+					     kind declares that field and nowhere else. -->
+					<TransportCredentialFields
+						v-if="provider !== 'none'"
+						class="mt-5"
+						:kind="provider"
+						:values="credentialValues"
+						:preset="preset"
+						:preset-options="presetOptions"
+						:error="credentialError"
+						@update:preset="preset = $event"
+					>
+						<template #relay>
+							<p class="text-sm text-text-tertiary">{{ t('setup.email.smtpPresetHint') }}</p>
+							<p class="text-sm text-text-tertiary">{{ t('setup.email.smtpHostHelp') }}</p>
+						</template>
+						<template #outboundTlsMode="{ value }">
+							<p class="text-sm text-text-secondary">{{ t(outboundTlsHint(value)) }}</p>
+						</template>
+					</TransportCredentialFields>
 
 					<div
 						v-if="mtaProfileEnabled"
@@ -380,7 +261,7 @@ async function next() {
 						</p>
 					</div>
 
-					<div v-if="provider === 'resend' || provider === 'smtp'" class="mt-5">
+					<div v-if="canValidateLive" class="mt-5">
 						<UiInput
 							v-model="setupToken"
 							type="password"

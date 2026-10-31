@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { normalizeReturnPathHost, isValidReturnPathHost } from '../returnPathHost';
+import { normalizeReturnPathHost } from '../returnPathHost';
 
 describe('normalizeReturnPathHost', () => {
 	it('accepts a normal dotted FQDN and lower-cases it', () => {
@@ -51,13 +51,5 @@ describe('normalizeReturnPathHost', () => {
 		['null', null],
 	])('rejects %s', (_label, value) => {
 		expect(normalizeReturnPathHost(value)).toBeNull();
-	});
-});
-
-describe('isValidReturnPathHost', () => {
-	it('mirrors normalizeReturnPathHost', () => {
-		expect(isValidReturnPathHost('bounce.example.com')).toBe(true);
-		expect(isValidReturnPathHost('localhost')).toBe(false);
-		expect(isValidReturnPathHost('_bounce.example.com')).toBe(false);
 	});
 });

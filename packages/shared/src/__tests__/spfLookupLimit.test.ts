@@ -8,13 +8,26 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { countSpfDnsLookups, evaluateSpfCoexistence, mechanismLookupCost } from '../spfCoexistence';
+import { evaluateSpfCoexistence } from '../spfCoexistence';
 
 const OWN = 'ip4:203.0.113.10';
 const RELAY = 'include:amazonses.com';
 
 function published(...mechanisms: string[]): string {
 	return `v=spf1 ${mechanisms.join(' ')} ~all`;
+}
+
+/**
+ * The lookup count the verdict reports for a published record holding exactly
+ * `mechanisms` (nothing required, so nothing is merged in).
+ */
+function lookupCount(...mechanisms: string[]): number {
+	const result = evaluateSpfCoexistence({
+		publishedTxtRecords: [published(...mechanisms)],
+		requiredMechanisms: [],
+	});
+	if (!('lookupCount' in result)) throw new Error(`expected a lookup count, got ${result.kind}`);
+	return result.lookupCount;
 }
 
 const NINE_LOOKUPS = [
@@ -32,24 +45,24 @@ const NINE_LOOKUPS = [
 
 describe('lookup accounting', () => {
 	it('counts exactly the terms RFC 7208 §4.6.4 charges for', () => {
-		expect(mechanismLookupCost('ip4:203.0.113.10')).toBe(0);
-		expect(mechanismLookupCost('ip6:2001:db8::1')).toBe(0);
-		expect(mechanismLookupCost('~all')).toBe(0);
-		expect(mechanismLookupCost('mx')).toBe(1);
-		expect(mechanismLookupCost('a:mail.acme.com')).toBe(1);
-		expect(mechanismLookupCost('exists:%{i}.acme.com')).toBe(1);
-		expect(mechanismLookupCost('ptr')).toBe(1);
-		expect(mechanismLookupCost('redirect=_spf.acme.com')).toBe(1);
-		expect(mechanismLookupCost('include:amazonses.com')).toBe(1);
+		expect(lookupCount('ip4:203.0.113.10')).toBe(0);
+		expect(lookupCount('ip6:2001:db8::1')).toBe(0);
+		expect(lookupCount('~all')).toBe(0);
+		expect(lookupCount('mx')).toBe(1);
+		expect(lookupCount('a:mail.acme.com')).toBe(1);
+		expect(lookupCount('exists:%{i}.acme.com')).toBe(1);
+		expect(lookupCount('ptr')).toBe(1);
+		expect(lookupCount('redirect=_spf.acme.com')).toBe(1);
+		expect(lookupCount('include:amazonses.com')).toBe(1);
 	});
 
 	it('ignores the qualifier when costing a mechanism', () => {
-		expect(mechanismLookupCost('+include:amazonses.com')).toBe(1);
-		expect(mechanismLookupCost('-ip4:203.0.113.10')).toBe(0);
+		expect(lookupCount('+include:amazonses.com')).toBe(1);
+		expect(lookupCount('-ip4:203.0.113.10')).toBe(0);
 	});
 
 	it('sums a whole record', () => {
-		expect(countSpfDnsLookups(published(...NINE_LOOKUPS))).toBe(9);
+		expect(lookupCount(...NINE_LOOKUPS)).toBe(9);
 	});
 });
 

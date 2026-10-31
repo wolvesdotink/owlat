@@ -15,10 +15,8 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import {
-	DELIVERABILITY_SNAPSHOT_MAX_FUTURE_SKEW_MS,
-	DELIVERABILITY_STREAM_KEYS,
-} from '@owlat/shared/deliverabilityRouting';
+import { DELIVERABILITY_SNAPSHOT_MAX_FUTURE_SKEW_MS } from '@owlat/shared/deliverabilityRouting';
+import { GOVERNED_MESSAGE_TYPES } from '@owlat/shared/routingDispatch';
 import {
 	percentagePoints,
 	ppToFraction,
@@ -106,7 +104,7 @@ describe('every shipped ceiling spec names its own arm when it breaches', () => 
 	});
 });
 
-const STREAM_CONFIGS = DELIVERABILITY_STREAM_KEYS.map((stream) => RAMP_STREAM_CONFIGS[stream]);
+const STREAM_CONFIGS = GOVERNED_MESSAGE_TYPES.map((stream) => RAMP_STREAM_CONFIGS[stream]);
 
 describe('the conversion', () => {
 	it('turns percentage points into a fraction', () => {

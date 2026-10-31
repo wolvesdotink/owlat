@@ -6,7 +6,7 @@ import { hostname } from 'os';
 import { isOutboundTlsMode, OUTBOUND_TLS_MODES, type OutboundTlsMode } from '@owlat/shared';
 import { parseGenericPtrSuffixes, parseUnverifiedFcrdnsOverride } from '@owlat/shared/fcrdns';
 import { isKnownPlaceholderSecret } from '@owlat/shared/setupSecrets';
-import { normalizeVerpKey } from '@owlat/shared/verp';
+import { VERP_KEY_MIN_BYTES, normalizeVerpKey } from '@owlat/shared/verp';
 import { resolveDmarcReportAddress } from '@owlat/shared/dmarcReportAddress';
 import {
 	readIntEnv,
@@ -344,8 +344,8 @@ export function loadConfig(): MtaConfig {
 	if (isKnownPlaceholderSecret(bounceVerpKey)) {
 		throw new Error('BOUNCE_VERP_KEY must be a generated secret, not a placeholder');
 	}
-	if (Buffer.byteLength(bounceVerpKey, 'utf8') < 32) {
-		throw new Error('BOUNCE_VERP_KEY must be at least 32 bytes');
+	if (Buffer.byteLength(bounceVerpKey, 'utf8') < VERP_KEY_MIN_BYTES) {
+		throw new Error(`BOUNCE_VERP_KEY must be at least ${VERP_KEY_MIN_BYTES} bytes`);
 	}
 
 	// EHLO hostname must be a real FQDN that can match a PTR record.

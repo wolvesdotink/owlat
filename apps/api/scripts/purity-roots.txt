@@ -125,7 +125,7 @@ convex/contacts/importDecision.ts
 # (semanticFileProcessing.ts processFile) is the shell.
 convex/files/processFileDecision.ts
 
-# First-admin seed decisions; the HTTP action (seedAdminHttp.ts seedAdmin) and
+# First-admin seed decisions; the HTTP action (auth/seedAdminHttp.ts seedAdmin) and
 # its commit (auth/seedAdminCommit.ts) are the shells.
 convex/auth/seedAdminDecision.ts
 

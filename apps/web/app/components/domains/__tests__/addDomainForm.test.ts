@@ -9,7 +9,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
-import { splitZone } from '@owlat/shared';
+import { trySplitZone } from '@owlat/shared';
 
 import AddDomainForm from '../AddDomainForm.vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
@@ -191,9 +191,9 @@ describe('AddDomainForm — paste-a-full-domain round-trip (shared PSL)', () => 
 		expect((subInput(w).element as HTMLInputElement).value).toBe('a.b');
 		expect(preview(w).text()).toContain('you@a.b.example.co.uk');
 		// Anchor to the shared module — the same split the component relies on.
-		const split = splitZone('a.b.example.co.uk');
-		expect(split.registrable).toBe('example.co.uk');
-		expect(split.sub).toBe('a.b');
+		const split = trySplitZone('a.b.example.co.uk');
+		expect(split?.registrable).toBe('example.co.uk');
+		expect(split?.sub).toBe('a.b');
 	});
 });
 

@@ -26,11 +26,7 @@
  */
 import { computed, ref } from 'vue';
 import type { EmailStepDraft } from '~/composables/useSetupWizard';
-import {
-	credentialErrorFor,
-	emailStepIsValid,
-	validateEmailStep,
-} from '~/composables/setupWizardValidation';
+import { emailStepIsValid, validateEmailStep } from '~/composables/setupWizardValidation';
 import {
 	RELAY_PROVIDER_OPTIONS,
 	applyTransportEnv,
@@ -50,22 +46,15 @@ const emit = defineEmits<{ settled: [{ ok: boolean }]; applied: [] }>();
 const { t } = useI18n();
 
 const relay = useRelayCredentialDraft('resend');
-const {
-	provider,
-	credentialValues,
-	preset,
-	presetOptions,
-	enteredSecrets,
-	canValidateLive,
-	requiredCredentialError,
-} = relay;
+const { provider, credentialValues, preset, presetOptions, enteredSecrets, canValidateLive } =
+	relay;
 
 const providerOptions = RELAY_PROVIDER_OPTIONS;
 
 const draft = computed<EmailStepDraft>(() => ({
 	provider: provider.value,
 	requiresProvider: true,
-	...relay.credentialFields.value,
+	credentials: { ...credentialValues },
 	fromEmail: '',
 	fromName: '',
 }));
@@ -75,20 +64,16 @@ const errors = computed(() => validateEmailStep(draft.value));
 const showErrors = computed(() => submitted.value);
 
 /**
- * The ONE credential error the selected kind can raise — from
- * `credentialErrorFor`, the same helper the in-app transport editor calls, so
- * neither screen can be left announcing a key the other has learned about.
+ * The ONE credential error the selected kind can raise — from `validateEmailStep`,
+ * the same rules the in-app transport editor reads, so neither screen can be left
+ * announcing a sentence the other has not learned about.
  *
- * Both sources are message KEYS (the rules module and the descriptor gate are
- * pure), so this is where they become words; the missing-credential sentence
- * also interpolates the field's own label key.
+ * Both halves are message KEYS (the rules module is pure), so this is where they
+ * become words; the sentence may interpolate the field's own label key.
  */
 const credentialFieldError = computed(() => {
-	if (!showErrors.value) return undefined;
-	const ruleError = credentialErrorFor(errors.value);
-	if (ruleError !== undefined) return t(ruleError);
-	const missing = requiredCredentialError.value;
-	return missing === undefined ? undefined : t(missing.key, { field: t(missing.field) });
+	const message = showErrors.value ? errors.value.credentials : undefined;
+	return message === undefined ? undefined : t(message.key, { field: t(message.field) });
 });
 const credentialError = ref('');
 const restartNotice = ref('');
@@ -114,7 +99,7 @@ async function applyCredentials() {
 	credentialError.value = '';
 	restartNotice.value = '';
 	validationResult.value = null;
-	if (!emailStepIsValid(draft.value) || requiredCredentialError.value !== undefined) return;
+	if (!emailStepIsValid(draft.value)) return;
 	applying.value = true;
 	try {
 		// The SHIPPED pre-apply handshake first (Resend and SMTP have one), so a bad
@@ -128,7 +113,7 @@ async function applyCredentials() {
 				return;
 			}
 		}
-		const res = await applyTransportEnv(draft.value, undefined, { ...credentialValues });
+		const res = await applyTransportEnv(draft.value);
 		if (!res.ok) {
 			fail(res.message);
 			return;

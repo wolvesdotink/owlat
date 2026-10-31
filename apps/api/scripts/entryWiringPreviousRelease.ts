@@ -121,4 +121,13 @@ export const PREVIOUS_RELEASE_ENTRIES: Readonly<Record<string, string>> = {
 	'desktop/updates.ts#cacheRelease': 'old desktop release refreshes mid-run',
 	'desktop/updates.ts#recordCheck': 'old desktop release refreshes mid-run',
 	'desktop/updates.ts#pruneReleases': 'old desktop release refreshes mid-run',
+	// Share links moved to shareLinks/links.ts and shareLinks/queries.ts; remove
+	// after release 0.6.17.
+	'shareLinks.ts#createShareLink':
+		'the previous share links popover, in tabs opened before the deploy',
+	'shareLinks.ts#revokeShareLink':
+		'the previous share links popover, in tabs opened before the deploy',
+	'shareLinks.ts#listShareLinks':
+		'the previous share links popover, in tabs opened before the deploy',
+	'shareLinkQueries.ts#getShareLinkByToken': 'old /share/{token} requests mid-run',
 };

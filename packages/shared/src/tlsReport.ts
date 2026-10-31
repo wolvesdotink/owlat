@@ -91,7 +91,7 @@ const TLS_RPT_MAX_DATE_LENGTH = 64;
  * `Error` only for genuinely corrupt gzip — callers should pass the result to a
  * try/catch or use {@link decodeTlsReport} which folds this in.
  */
-export async function gunzipTlsReport(bytes: Uint8Array): Promise<string> {
+async function gunzipTlsReport(bytes: Uint8Array): Promise<string> {
 	if (bytes.byteLength > TLS_RPT_MAX_COMPRESSED_BYTES) {
 		throw new Error('tls-rpt: compressed payload too large');
 	}

@@ -39,7 +39,7 @@ export const VERP_WINDOW_MS = 24 * 60 * 60 * 1000;
  * 6 prior days + today ≈ 7-day acceptance, covering the RFC 5321 §4.5.4.1
  * retry horizon plus clock skew / late forwards.
  */
-export const VERP_WINDOW_TOLERANCE = 6;
+const VERP_WINDOW_TOLERANCE = 6;
 
 /** Local-part prefix every VERP address carries. */
 const VERP_LOCAL_PART_PREFIX = 'bounce';
