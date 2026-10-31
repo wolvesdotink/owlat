@@ -221,7 +221,7 @@ export default defineEventHandler(async (event): Promise<ApplyResult> => {
 		// The allowlist gates which KEYS may be written, but an allowlisted value
 		// (e.g. DEFAULT_FROM_NAME) carrying a newline would inject arbitrary extra
 		// `.env` lines through the line-oriented writer. Reject control chars here.
-		if (/[\r\n\0]/.test(value)) {
+		if (value.includes('\r') || value.includes('\n') || value.includes('\0')) {
 			throw createError({
 				statusCode: 400,
 				message: `Env value for ${key} must not contain control characters (newline, carriage return, or NUL).`,

@@ -353,7 +353,7 @@ export function useCampaignForm(
 
 	// The language codes the template picker offers. A code outside the catalog
 	// keeps its uppercased self, exactly as before.
-	const LANGUAGE_CODES = [
+	const LANGUAGE_CODES: ReadonlySet<string> = new Set([
 		'en',
 		'de',
 		'fr',
@@ -374,12 +374,10 @@ export function useCampaignForm(
 		'no',
 		'fi',
 		'cs',
-	];
+	]);
 
 	const getLanguageLabel = (code: string): string =>
-		LANGUAGE_CODES.includes(code)
-			? t(`shared.useCampaignForm.languages.${code}`)
-			: code.toUpperCase();
+		LANGUAGE_CODES.has(code) ? t(`shared.useCampaignForm.languages.${code}`) : code.toUpperCase();
 
 	return {
 		// Data

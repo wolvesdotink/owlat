@@ -240,7 +240,7 @@ const matchTerm = computed(() => (pendingArgument.value ? searchQuery.value : se
 const flatItems = computed(() => (open.value ? flattenGroups(groups.value) : []));
 const flatIndexById = computed(() => {
 	const map = new Map<string, number>();
-	flatItems.value.forEach((item, index) => map.set(item.id, index));
+	for (const [index, item] of flatItems.value.entries()) map.set(item.id, index);
 	return map;
 });
 const hasAnyResults = computed(() => flatItems.value.length > 0);

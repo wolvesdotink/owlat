@@ -8,14 +8,14 @@ export function getImageDimensions(file: File): Promise<{ width: number; height:
 	return new Promise((resolve) => {
 		const url = URL.createObjectURL(file);
 		const img = new Image();
-		img.onload = () => {
+		img.addEventListener('load', () => {
 			resolve({ width: img.naturalWidth, height: img.naturalHeight });
 			URL.revokeObjectURL(url);
-		};
-		img.onerror = () => {
+		});
+		img.addEventListener('error', () => {
 			resolve(null);
 			URL.revokeObjectURL(url);
-		};
+		});
 		img.src = url;
 	});
 }

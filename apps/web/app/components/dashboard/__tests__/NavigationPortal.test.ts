@@ -28,7 +28,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-	wrappers.forEach((wrapper) => wrapper.unmount());
+	for (const wrapper of wrappers) wrapper.unmount();
 	wrappers.length = 0;
 	for (const node of fixture.splice(0)) node.remove();
 });

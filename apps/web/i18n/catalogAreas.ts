@@ -43,7 +43,7 @@ export const BOOT_NAMESPACES = [
 
 /** Files that run on every route, in the app and in each layer. */
 const ALWAYS_ON_DIRS = ['layouts', 'plugins', 'middleware'];
-const ALWAYS_ON_FILES = ['app.vue', 'error.vue'];
+const ALWAYS_ON_FILES: ReadonlySet<string> = new Set(['app.vue', 'error.vue']);
 
 /**
  * The area a page file (relative to `pages/`) belongs to, or `null` for a page
@@ -141,10 +141,7 @@ export function planCatalogAreas(input: PlanInput): CatalogPlan {
 	for (const root of [input.appDir, ...input.layerDirs]) {
 		for (const file of files) {
 			const rel = relative(root, file).replaceAll('\\', '/');
-			if (
-				ALWAYS_ON_FILES.includes(rel) ||
-				ALWAYS_ON_DIRS.some((dir) => inDir(file, join(root, dir)))
-			) {
+			if (ALWAYS_ON_FILES.has(rel) || ALWAYS_ON_DIRS.some((dir) => inDir(file, join(root, dir)))) {
 				alwaysOn.push(file);
 			}
 		}

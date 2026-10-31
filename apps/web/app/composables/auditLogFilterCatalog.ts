@@ -132,10 +132,10 @@ export function buildActionTypeGroups(): ActionTypeGroup[] {
 	}));
 	// Index each prefix to its group for O(1) assignment.
 	const prefixToGroup = new Map<string, ActionTypeGroup>();
-	ACTION_GROUP_SPECS.forEach((spec, i) => {
+	for (const [i, spec] of ACTION_GROUP_SPECS.entries()) {
 		const group = groups[i]!;
 		for (const prefix of spec.prefixes) prefixToGroup.set(prefix, group);
-	});
+	}
 
 	for (const action of AUDIT_ACTION_LITERALS) {
 		const group = prefixToGroup.get(actionPrefix(action));

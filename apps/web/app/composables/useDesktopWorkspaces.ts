@@ -171,12 +171,12 @@ export async function loadWorkspaces(options?: {
 	// Backfill identity accents for workspaces persisted before this field
 	// existed, round-robin by position so each still gets a distinct color.
 	let backfilled = false;
-	workspaces.value.forEach((w, i) => {
+	for (const [i, w] of workspaces.value.entries()) {
 		if (!w.accentColor) {
 			w.accentColor = pickAccentColor(i);
 			backfilled = true;
 		}
-	});
+	}
 	if (backfilled) await persistStore();
 
 	if (options?.seedLocalDev) await seedLocalDevWorkspace();
@@ -439,7 +439,9 @@ export function useDesktopWorkspaces() {
 		try {
 			return await run();
 		} catch (e) {
-			if (e instanceof WorkspaceConnectionError) throw new Error(t(e.messageKey, e.params));
+			if (e instanceof WorkspaceConnectionError) {
+				throw new Error(t(e.messageKey, e.params), { cause: e });
+			}
 			throw e;
 		}
 	}

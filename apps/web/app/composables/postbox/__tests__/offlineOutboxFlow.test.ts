@@ -376,7 +376,13 @@ describe('offline send', () => {
 		goOffline();
 		fakeOutbox.failEnqueue = true;
 
-		await expect(composer.send()).rejects.toThrow('Send failed');
+		const failure = await composer.send().then(
+			() => null,
+			(err: unknown) => err as Error
+		);
+		expect(failure?.message).toBe('Send failed');
+		// The store's diagnostic error stays attached for whoever logs the failure.
+		expect(failure?.cause).toBeInstanceOf(FakeOfflineWriteError);
 		expect(toasts).toContain(i18n.global.t('shared.postbox.offlineOutbox.outOfStorage'));
 		expect(fakeOutbox.list('mbx-1')).toHaveLength(0);
 		// Nothing was kept anywhere, so there is nothing to undo.

@@ -102,7 +102,7 @@ function mountFooter() {
 afterEach(() => {
 	wrapper?.unmount();
 	wrapper = null;
-	document.querySelectorAll('.follow-up-dialog').forEach((el) => el.remove());
+	for (const el of document.querySelectorAll('.follow-up-dialog')) el.remove();
 });
 
 const clickOn = (el: Element) => el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
