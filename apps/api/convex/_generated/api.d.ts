@@ -821,6 +821,7 @@ import type * as e2ee_signedMimeStructure from '../e2ee/signedMimeStructure.js';
 import type * as e2ee_verifyInboundSignature from '../e2ee/verifyInboundSignature.js';
 import type * as e2ee_wkd from '../e2ee/wkd.js';
 import type * as emailBlocks_blocks from '../emailBlocks/blocks.js';
+import type * as emailBlocks_consumers from '../emailBlocks/consumers.js';
 import type * as emailBlocks_module from '../emailBlocks/module.js';
 import type * as emailBlocks_rendering from '../emailBlocks/rendering.js';
 import type * as emailBlocks_renderingPool from '../emailBlocks/renderingPool.js';
@@ -2661,6 +2662,7 @@ declare const fullApi: ApiFromModules<{
 	'e2ee/wkd': typeof e2ee_wkd;
 }> & ApiFromModules<{
 	'emailBlocks/blocks': typeof emailBlocks_blocks;
+	'emailBlocks/consumers': typeof emailBlocks_consumers;
 	'emailBlocks/module': typeof emailBlocks_module;
 	'emailBlocks/rendering': typeof emailBlocks_rendering;
 	'emailBlocks/renderingPool': typeof emailBlocks_renderingPool;
