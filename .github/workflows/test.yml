@@ -458,19 +458,24 @@ jobs:
           bun scripts/check-bundle-budget.ts "$RUNNER_TEMP/web-output"
           bun scripts/check-web-build-test-code.ts "$RUNNER_TEMP/web-output"
 
-      # Report-only (plan item OW-076): what each page and each lazily loaded
-      # feature adds on top of the entry closure, read from the same copy. There
-      # is no budget yet, so a change in these numbers never fails the job.
+      # What each page and each lazily loaded feature adds on top of the entry
+      # closure, read from the same copy and checked against
+      # scripts/bundle-closure-budgets.txt. Blocking: a closure over its
+      # budget, without a budget line, or a line for a closure that is gone
+      # fails the job.
       - name: Report web route and deferred-feature closures
-        # These report steps also run when the budget check failed, which is
-        # when the delta matters most.
+        # This and the steps below also run when the entry budget check
+        # failed, which is when the numbers matter most.
         if: matrix.name == 'web' && !cancelled() && steps.web-output.outcome == 'success'
-        continue-on-error: true
         run: bun scripts/report-bundle-closures.ts "$RUNNER_TEMP/web-output"
 
-      # Report-only: the same report as JSON, kept as an artifact named by the
-      # commit, so a later pull request can compare against its exact base
-      # commit. The toolchain id names the image recipe the build ran in.
+      # The same report as JSON, kept as an artifact named by the commit, so a
+      # later pull request can compare against its exact base commit. The
+      # toolchain id names the image recipe the build ran in.
+      # This step, Keep and Compare stay continue-on-error: they only feed and
+      # read the kept artifacts, so they depend on the artifact service and on
+      # the base commit's report still existing (30-day retention), which no
+      # change in a pull request can fix. The budgets are the blocking checks.
       - name: Record the web bundle report
         if: matrix.name == 'web' && !cancelled() && steps.web-output.outcome == 'success'
         continue-on-error: true
@@ -483,6 +488,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/web-bundle"
           bun scripts/report-bundle-closures.ts "$RUNNER_TEMP/web-output" --json > "$RUNNER_TEMP/web-bundle/report.json"
 
+      # Non-blocking: an artifact upload can fail for reasons outside the change.
       - name: Keep the web bundle report
         if: matrix.name == 'web' && !cancelled() && steps.web-output.outcome == 'success'
         continue-on-error: true
@@ -497,7 +503,7 @@ jobs:
       # Delta and headroom against the base commit (a pull request's base, or
       # the previous tip for a push), in the job summary. Only the base
       # commit's own kept report is compared; without one the summary says so
-      # and gives no delta. The entry budget above stays the blocking check.
+      # and gives no delta. Non-blocking for the artifact reasons above.
       - name: Compare the web entry bundle with the base commit
         if: matrix.name == 'web' && !cancelled() && steps.web-output.outcome == 'success'
         continue-on-error: true
