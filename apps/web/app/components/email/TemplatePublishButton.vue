@@ -56,25 +56,26 @@ function onToggle() {
 </script>
 
 <template>
-	<UiButton
-		variant="secondary"
-		size="sm"
-		:loading="loading"
-		:aria-disabled="holdPublish ? 'true' : undefined"
-		:aria-describedby="holdPublish ? holdReasonId : undefined"
-		:class="holdPublish ? heldClass : undefined"
-		:title="holdReason ?? undefined"
-		@click="onToggle"
-	>
-		<template #iconLeft>
-			<Icon :name="isPublished ? 'lucide:undo-2' : 'lucide:send'" class="w-4 h-4" />
-		</template>
-		{{
-			isPublished
-				? t('dashboard.send.emails.detail.edit.unpublish')
-				: t('dashboard.send.emails.detail.edit.publish')
-		}}
-	</UiButton>
+	<UiTooltip :text="holdReason ?? undefined">
+		<UiButton
+			variant="secondary"
+			size="sm"
+			:loading="loading"
+			:aria-disabled="holdPublish ? 'true' : undefined"
+			:aria-describedby="holdPublish ? holdReasonId : undefined"
+			:class="holdPublish ? heldClass : undefined"
+			@click="onToggle"
+		>
+			<template #iconLeft>
+				<Icon :name="isPublished ? 'lucide:undo-2' : 'lucide:send'" class="w-4 h-4" />
+			</template>
+			{{
+				isPublished
+					? t('dashboard.send.emails.detail.edit.unpublish')
+					: t('dashboard.send.emails.detail.edit.publish')
+			}}
+		</UiButton>
+	</UiTooltip>
 	<!-- The held reason, for the control's accessible description. -->
 	<span v-if="holdReason" :id="holdReasonId" class="sr-only">{{ holdReason }}</span>
 </template>

@@ -294,7 +294,6 @@
 				"estimateMinutes": "etwa {n} Min.",
 				"estimateSeconds": "etwa {n} Sek.",
 				"exit": "Beenden",
-				"exitTitle": "Beenden (Esc)",
 				"newCount": "+{count} neu",
 				"newCountTitle": "{count} seit deinem Start hinzugekommen",
 				"next": "Weiter",
@@ -313,7 +312,7 @@
 				},
 				"progress": "{position} von {total}",
 				"undo": "Rückgängig",
-				"undoTitle": "Letzte Aktion rückgängig machen ({keys})"
+				"undoTitle": "Letzte Aktion rückgängig machen"
 			},
 			"clarificationQuestions": {
 				"questionCounter": "Frage {index} von {total}"
@@ -7548,7 +7547,7 @@
 					"peekQuestions": "Fragen zur Antwort beantworten…"
 				},
 				"viewLabel": "Wie viel der Unterhaltung angezeigt wird",
-				"viewShortcut": "Mit T umschalten",
+				"viewShortcut": "Ansicht umschalten",
 				"view": {
 					"summary": "Überblick",
 					"full": "E-Mail-Verlauf"
@@ -7591,7 +7590,7 @@
 				"label": "Was soll in der Antwort stehen?",
 				"placeholder": "Was soll in der Antwort stehen? Optional, z. B. „schick es, entschuldige die Verspätung“",
 				"draft": "Mit KI entwerfen",
-				"shortcut": "Mit Cmd+J oder Strg+J hierher springen",
+				"shortcut": "Von überall hierher springen",
 				"checking": "Es wird geprüft, was die Antwort braucht …",
 				"drafting": "Der Entwurf wird geschrieben …",
 				"failed": "Der Entwurf konnte nicht geschrieben werden. Versuche es noch einmal.",

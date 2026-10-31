@@ -294,7 +294,6 @@
 				"estimateMinutes": "about {n} min",
 				"estimateSeconds": "about {n} sec",
 				"exit": "Exit",
-				"exitTitle": "Exit (Esc)",
 				"newCount": "+{count} new",
 				"newCountTitle": "{count} arrived since you started",
 				"next": "Next",
@@ -313,7 +312,7 @@
 				},
 				"progress": "{position} of {total}",
 				"undo": "Undo",
-				"undoTitle": "Undo last ({keys})"
+				"undoTitle": "Undo last"
 			},
 			"clarificationQuestions": {
 				"questionCounter": "Question {index} of {total}"
@@ -7548,7 +7547,7 @@
 					"peekQuestions": "Answer the questions for this reply…"
 				},
 				"viewLabel": "How much of the conversation to show",
-				"viewShortcut": "Switch with T",
+				"viewShortcut": "Switch the view",
 				"view": {
 					"summary": "Overview",
 					"full": "Conversation"
@@ -7591,7 +7590,7 @@
 				"label": "What should the reply say?",
 				"placeholder": "What should the reply say? Optional, e.g. “send it, say sorry it's late”",
 				"draft": "Draft with AI",
-				"shortcut": "Cmd+J or Ctrl+J jumps here",
+				"shortcut": "Jump here from anywhere",
 				"checking": "Checking what the reply needs…",
 				"drafting": "Writing the draft…",
 				"failed": "The draft could not be written. Try again.",

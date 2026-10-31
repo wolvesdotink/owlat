@@ -17,6 +17,7 @@ import UiButton from '@owlat/ui/components/ui/Button.vue';
 
 import TransactionalEditorToolbarActions from '../TransactionalEditorToolbarActions.vue';
 import { createTestI18n, expectFullyLocalized, i18nStubs } from '~/__tests__/i18n';
+import { tooltipOf } from '~/__tests__/tooltip';
 
 let wrapper: VueWrapper | undefined;
 
@@ -72,9 +73,14 @@ describe('TransactionalEditorToolbarActions — publish while dirty', () => {
 
 		expect(el.disabled).toBe(false);
 		expect(button.attributes('aria-disabled')).toBe('true');
+		// Focus opens the tooltip with the same reason; it is not read twice.
 		el.focus();
 		expect(document.activeElement).toBe(el);
+		expect(document.querySelector('[role="tooltip"]')?.textContent).toBe(
+			'Save your changes before publishing'
+		);
 		expect(describedBy(el)).toBe('Save your changes before publishing');
+		expect(button.attributes('title')).toBeUndefined();
 
 		await button.trigger('click');
 		await button.trigger('keydown', { key: 'Enter' });
@@ -101,7 +107,8 @@ describe('TransactionalEditorToolbarActions — publish while dirty', () => {
 		expect(button.attributes('disabled')).toBeUndefined();
 		expect(button.attributes('aria-disabled')).toBeUndefined();
 		expect(button.attributes('aria-describedby')).toBeUndefined();
-		expect(button.attributes('title')).toBe('Return this email to draft (stops new sends)');
+		expect(tooltipOf(w, button)).toBe('Return this email to draft (stops new sends)');
+		expect(button.attributes('title')).toBeUndefined();
 		await button.trigger('click');
 		expect(w.emitted('toggle-publish')).toHaveLength(1);
 	});
@@ -114,7 +121,8 @@ describe('TransactionalEditorToolbarActions — publish while dirty', () => {
 		expect(button.attributes('aria-disabled')).toBeUndefined();
 		expect(button.attributes('aria-describedby')).toBeUndefined();
 		expect(w.find('.sr-only[id]').exists()).toBe(false);
-		expect(button.attributes('title')).toBe('Publish this email to make it sendable via the API');
+		expect(tooltipOf(w, button)).toBe('Publish this email to make it sendable via the API');
+		expect(button.attributes('title')).toBeUndefined();
 		await button.trigger('click');
 		expect(w.emitted('toggle-publish')).toHaveLength(1);
 	});
@@ -140,6 +148,9 @@ describe('TransactionalEditorToolbarActions — awaiting review', () => {
 		expect(button.attributes('aria-disabled')).toBe('true');
 		el.focus();
 		expect(document.activeElement).toBe(el);
+		expect(tooltipOf(w, button)).toBe(
+			'Flagged by the content scanner — an admin must approve this email before it can be sent.'
+		);
 		expect(describedBy(el)).toBe(
 			'Flagged by the content scanner — an admin must approve this email before it can be sent.'
 		);

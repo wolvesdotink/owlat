@@ -18,6 +18,7 @@ import AnswerConversation from '../AnswerConversation.vue';
 import PostboxReaderMessage from '~/components/postbox/PostboxReaderMessage.vue';
 import { usePostboxReaderContext } from '~/composables/postbox/usePostboxReaderContext';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+import { tooltipOf } from '~/__tests__/tooltip';
 
 vi.mock('@owlat/api', () => ({
 	api: {
@@ -157,6 +158,20 @@ describe('AnswerConversation', () => {
 		expect(expandedIds(w)).toEqual(['m1', 'm2', 'm3', 'm4', 'm5']);
 		await w.setProps({ view: 'summary' });
 		expect(expandedIds(w)).toEqual(['m3', 'm5']);
+	});
+
+	it("names the view key in each view button's tooltip, not a native title", () => {
+		const w = mountColumn();
+		for (const option of ['summary', 'full']) {
+			const button = w.get(`[data-testid="answer-view-${option}"]`);
+			expect(button.attributes('title')).toBeUndefined();
+			expect(tooltipOf(w, button)).toBe('Switch the view');
+			const shortcut = w
+				.findAllComponents({ name: 'UiTooltip' })
+				.find((tooltip) => tooltip.element === button.element)
+				?.props('shortcut');
+			expect(shortcut).toBe('T');
+		}
 	});
 
 	it('still opens a single row on click', async () => {

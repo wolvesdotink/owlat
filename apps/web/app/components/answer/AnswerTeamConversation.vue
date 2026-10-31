@@ -8,6 +8,7 @@ import type { TeamStreamEntry } from '../../../../api/convex/mail/interpret/brie
 import type { ReplyEntry } from '~/utils/teamStream';
 import TeamThreadStream from '~/components/team/TeamThreadStream.vue';
 import { prefersReducedMotion } from '@owlat/ui/composables/useReducedMotion';
+import { useShortcutLabels } from '~/composables/useShortcutLabels';
 
 type ThreadData = NonNullable<FunctionReturnType<typeof api.inbox.queries.getThread>>;
 type ThreadMessage = ThreadData['messages'][number];
@@ -156,6 +157,9 @@ function hasStoredBody(message: ThreadMessage): boolean {
 }
 
 const showViewToggle = computed(() => props.messages.length > 1);
+// The toggle's tooltip is about its key, so it shows only while that key fires.
+const { labelFor } = useShortcutLabels();
+const viewKey = computed(() => labelFor('answer.toggleView'));
 </script>
 
 <template>
@@ -169,23 +173,27 @@ const showViewToggle = computed(() => props.messages.length > 1);
 				:aria-label="t('components.answer.mode.viewLabel')"
 				class="inline-flex rounded-md border border-border-subtle bg-bg-elevated p-0.5 text-xs"
 			>
-				<button
+				<UiTooltip
 					v-for="option in ['summary', 'full'] as const"
 					:key="option"
-					type="button"
-					class="rounded px-2.5 py-1"
-					:class="
-						view === option
-							? 'bg-(--surface-2-selected) text-text-primary'
-							: 'text-text-tertiary hover:text-text-primary'
-					"
-					:aria-pressed="view === option"
-					:title="t('components.answer.mode.viewShortcut')"
-					:data-testid="`answer-view-${option}`"
-					@click="view = option"
+					:text="viewKey ? t('components.answer.mode.viewShortcut') : undefined"
+					:shortcut="viewKey ?? undefined"
 				>
-					{{ t(`components.team.answer.view.${option === 'summary' ? 'recent' : 'full'}`) }}
-				</button>
+					<button
+						type="button"
+						class="rounded px-2.5 py-1"
+						:class="
+							view === option
+								? 'bg-(--surface-2-selected) text-text-primary'
+								: 'text-text-tertiary hover:text-text-primary'
+						"
+						:aria-pressed="view === option"
+						:data-testid="`answer-view-${option}`"
+						@click="view = option"
+					>
+						{{ t(`components.team.answer.view.${option === 'summary' ? 'recent' : 'full'}`) }}
+					</button>
+				</UiTooltip>
 			</div>
 		</div>
 
