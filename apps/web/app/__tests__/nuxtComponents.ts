@@ -37,6 +37,10 @@
  * `UiDropdownMenu` and `UiDropdownMenuItem` are real too: the composer
  * footer's Send renders them for a reply, and every suite mounting the footer
  * would otherwise need its own stub. A suite that stubs them still wins.
+ *
+ * `UiPageHeader` renders the page's `h1` and lead on most dashboard pages, so it
+ * is real: a suite reading the title, the lead or a header action finds them
+ * where the browser does.
  */
 import { config } from '@vue/test-utils';
 import { defineComponent, h } from 'vue';
@@ -49,6 +53,7 @@ import UiEmptyState from '@owlat/ui/components/ui/EmptyState.vue';
 import UiErrorAlert from '@owlat/ui/components/ui/ErrorAlert.vue';
 import UiErrorBoundary from '@owlat/ui/components/ui/ErrorBoundary.vue';
 import UiListbox from '@owlat/ui/components/ui/Listbox.vue';
+import UiPageHeader from '@owlat/ui/components/ui/PageHeader.vue';
 import UiPopover from '@owlat/ui/components/ui/Popover.vue';
 import UiSpinner from '@owlat/ui/components/ui/Spinner.vue';
 import UiSuggestionPopover from '@owlat/ui/components/ui/SuggestionPopover.vue';
@@ -91,6 +96,7 @@ export function registerNuxtComponents(): void {
 		UiErrorAlert,
 		UiErrorBoundary,
 		AppErrorBoundary,
+		UiPageHeader,
 		UiSpinner,
 		UiUnsavedChangesDialog,
 		UiShortcut,

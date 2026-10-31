@@ -5,7 +5,8 @@
  *
  * Each job asks dispatch which devices to push and what to say, encrypts one
  * message per device (lib/webPush.ts), posts it to that device's push service
- * and writes back what the service answered. A device's endpoint is a URL the
+ * and writes back what the service answered, in one commit with the devices
+ * quiet hours held the event back on (`push/delivery.ts`). A device's endpoint is a URL the
  * browser handed out, which means a URL a signed-in user could have made up, so
  * every request goes through the SSRF guard (https only, public addresses only,
  * no redirects) with a short timeout.
@@ -17,14 +18,17 @@
  */
 
 import { v } from 'convex/values';
-import { internalAction, type ActionCtx } from '../_generated/server';
+import { internalAction } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { fetchGuarded } from '../lib/ssrfGuard';
 import { logWarn } from '../lib/runtimeLog';
 import { pushEventValidator } from '../lib/validators/push';
 import { buildPushRequest, classifyPushResponse, type PushOutcome } from '../lib/webPush';
+import type { Id } from '../_generated/dataModel';
 import { readVapidKeys } from './config';
-import type { PushDelivery } from './dispatch';
+import type { DeliveryPlan, PushDelivery } from './dispatch';
+
+type PushOutcomeRow = { subscriptionId: Id<'pushSubscriptions'>; outcome: PushOutcome };
 
 /** A push service answers in well under a second; never hold the action on a slow one. */
 const PUSH_TIMEOUT_MS = 10_000;
@@ -74,26 +78,28 @@ async function pushOne(delivery: PushDelivery): Promise<PushOutcome> {
 	}
 }
 
-async function pushAll(ctx: ActionCtx, deliveries: PushDelivery[]): Promise<void> {
-	if (deliveries.length === 0) return;
-	const outcomes = await Promise.all(
+/** Push every delivery side by side; each answer is classified, none throws. */
+async function pushAll(deliveries: PushDelivery[]): Promise<PushOutcomeRow[]> {
+	return await Promise.all(
 		deliveries.map(async (delivery) => ({
 			subscriptionId: delivery.subscriptionId,
 			outcome: await pushOne(delivery),
 		}))
 	);
-	await ctx.runMutation(internal.push.dispatch.recordOutcomes, { outcomes });
 }
 
 /** Push one event to every device of one person that should hear about it. */
 export const deliver = internalAction({
 	args: { userId: v.string(), event: pushEventValidator },
 	handler: async (ctx, args) => {
-		const deliveries: PushDelivery[] = await ctx.runMutation(
-			internal.push.dispatch.prepareDelivery,
-			args
-		);
-		await pushAll(ctx, deliveries);
+		const plan: DeliveryPlan = await ctx.runQuery(internal.push.delivery.planDelivery, args);
+		const outcomes = await pushAll(plan.deliveries);
+		if (outcomes.length === 0 && plan.held.length === 0) return;
+		await ctx.runMutation(internal.push.delivery.recordDelivery, {
+			userId: args.userId,
+			held: plan.held,
+			outcomes,
+		});
 	},
 });
 
@@ -101,10 +107,14 @@ export const deliver = internalAction({
 export const deliverQuietSummary = internalAction({
 	args: { subscriptionId: v.id('pushSubscriptions') },
 	handler: async (ctx, args) => {
+		// checkpoint: the held count is cleared before the push, so a retried job
+		// cannot send the summary twice; a push that fails is missed, like any other.
 		const delivery: PushDelivery | null = await ctx.runMutation(
 			internal.push.dispatch.takeQuietSummary,
 			args
 		);
-		if (delivery) await pushAll(ctx, [delivery]);
+		if (!delivery) return;
+		const outcomes = await pushAll([delivery]);
+		await ctx.runMutation(internal.push.dispatch.recordOutcomes, { outcomes });
 	},
 });

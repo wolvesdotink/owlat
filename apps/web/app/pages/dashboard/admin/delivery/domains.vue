@@ -289,35 +289,26 @@ const { autoRecheckActive } = useDomainAutoRecheck({
 
 <template>
 	<div>
-		<!-- Header -->
-		<div class="mb-6">
-			<!-- Stacked below `sm`: at 390px a side-by-side header leaves the title
-			     and the lede a ~180px column to wrap in. -->
-			<div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-				<div>
-					<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-						{{ t('dashboard.admin.delivery.domains.title') }}
-					</h1>
-					<p class="mt-1 text-text-secondary">
-						{{ t('dashboard.admin.delivery.domains.lede') }}
-					</p>
-				</div>
-				<!-- `shrink-0 whitespace-nowrap`: in a `justify-between` header the lede
-				     squeezed this pill until its label wrapped to two lines and the
-				     full radius turned it into an oval. While the list is empty the
-				     empty state carries the primary "Add your first domain", so this
-				     one steps down to a hairline rather than putting two black pills
-				     on one screen. -->
+		<UiPageHeader
+			class="mb-6"
+			:title="t('dashboard.admin.delivery.domains.title')"
+			:description="t('dashboard.admin.delivery.domains.lede')"
+		>
+			<template #actions>
+				<!-- `whitespace-nowrap`: a wrapped label turns the fully rounded pill
+				     into an oval. While the list is empty the empty state carries the
+				     primary "Add your first domain", so this one steps down to a
+				     hairline rather than putting two black pills on one screen. -->
 				<UiButton
 					:variant="hasNoDomains ? 'secondary' : 'primary'"
-					class="gap-2 shrink-0 self-start whitespace-nowrap sm:self-auto"
+					class="gap-2 whitespace-nowrap"
 					@click="addModal.open()"
 				>
 					<Icon name="lucide:plus" class="w-4 h-4" />
 					{{ t('dashboard.admin.delivery.domains.addDomain') }}
 				</UiButton>
-			</div>
-		</div>
+			</template>
+		</UiPageHeader>
 
 		<!-- First-load skeleton (shaped like the domain list) -->
 		<div v-if="isLoading && !domainsData" class="card overflow-hidden">

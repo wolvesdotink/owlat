@@ -93,51 +93,50 @@ function onKeydown(event: KeyboardEvent) {
 			@keydown="onKeydown"
 			@scroll.passive="measure"
 		>
-			<button
-				v-for="tab in tabs"
-				:id="`workbench-tab-${tab.scope}`"
-				:key="tab.scope"
-				type="button"
-				role="tab"
-				:aria-selected="tab.scope === selected"
-				:aria-controls="tab.scope === selected ? panelId : undefined"
-				:tabindex="tab.scope === selected ? 0 : -1"
-				:title="tab.address ?? undefined"
-				:data-workbench-tab="tab.scope"
-				class="relative flex shrink-0 items-center gap-1.5 rounded-t-lg px-2 pb-2.5 sm:gap-2 sm:px-3 pt-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
-				:class="
-					tab.scope === selected
-						? 'text-text-primary'
-						: 'text-text-secondary hover:bg-(--surface-2-hover) hover:text-text-primary'
-				"
-				@click="emit('select', tab.scope)"
-			>
-				<Icon v-if="tab.isTeam" name="lucide:bot" class="size-3.5 text-text-tertiary" />
-				<span
-					v-else
-					class="size-2 shrink-0 rounded-[2px]"
-					:class="swatch(tab.slot)"
-					aria-hidden="true"
-				/>
-				<span class="max-w-40 truncate">{{ tab.name }}</span>
-				<span
-					v-if="tab.answer > 0"
-					class="rounded-full bg-text-primary px-1.5 text-2xs font-semibold leading-4 text-text-inverse tabular-nums"
-					:aria-label="t('components.today.tabs.answer', { count: tab.answer }, tab.answer)"
-					>{{ tab.answer > 99 ? '99+' : tab.answer }}</span
+			<UiTooltip v-for="tab in tabs" :key="tab.scope" :text="tab.address ?? undefined">
+				<button
+					:id="`workbench-tab-${tab.scope}`"
+					type="button"
+					role="tab"
+					:aria-selected="tab.scope === selected"
+					:aria-controls="tab.scope === selected ? panelId : undefined"
+					:tabindex="tab.scope === selected ? 0 : -1"
+					:data-workbench-tab="tab.scope"
+					class="relative flex shrink-0 items-center gap-1.5 rounded-t-lg px-2 pb-2.5 sm:gap-2 sm:px-3 pt-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40"
+					:class="
+						tab.scope === selected
+							? 'text-text-primary'
+							: 'text-text-secondary hover:bg-(--surface-2-hover) hover:text-text-primary'
+					"
+					@click="emit('select', tab.scope)"
 				>
-				<span
-					v-else-if="tab.unread > 0"
-					class="text-2xs font-normal tabular-nums text-text-tertiary"
-					:aria-label="t('components.today.tabs.unread', { count: tab.unread }, tab.unread)"
-					>{{ tab.unread > 99 ? '99+' : tab.unread }}</span
-				>
-				<span
-					v-if="tab.scope === selected"
-					class="absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-brand"
-					aria-hidden="true"
-				/>
-			</button>
+					<Icon v-if="tab.isTeam" name="lucide:bot" class="size-3.5 text-text-tertiary" />
+					<span
+						v-else
+						class="size-2 shrink-0 rounded-[2px]"
+						:class="swatch(tab.slot)"
+						aria-hidden="true"
+					/>
+					<span class="max-w-40 truncate">{{ tab.name }}</span>
+					<span
+						v-if="tab.answer > 0"
+						class="rounded-full bg-text-primary px-1.5 text-2xs font-semibold leading-4 text-text-inverse tabular-nums"
+						:aria-label="t('components.today.tabs.answer', { count: tab.answer }, tab.answer)"
+						>{{ tab.answer > 99 ? '99+' : tab.answer }}</span
+					>
+					<span
+						v-else-if="tab.unread > 0"
+						class="text-2xs font-normal tabular-nums text-text-tertiary"
+						:aria-label="t('components.today.tabs.unread', { count: tab.unread }, tab.unread)"
+						>{{ tab.unread > 99 ? '99+' : tab.unread }}</span
+					>
+					<span
+						v-if="tab.scope === selected"
+						class="absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-brand"
+						aria-hidden="true"
+					/>
+				</button>
+			</UiTooltip>
 		</div>
 		<div class="flex shrink-0 items-center justify-end pb-1.5 empty:hidden">
 			<slot name="end" />

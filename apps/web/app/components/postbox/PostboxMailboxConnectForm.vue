@@ -229,7 +229,16 @@ const canTest = computed(
 	() => !!form.imapHost.trim() && !!form.smtpHost.trim() && !!form.password.trim()
 );
 
+// Without a password, Test stays focusable and hoverable (aria-disabled, not
+// disabled) so its tooltip can say what is missing: `.btn:disabled` drops
+// pointer events and a disabled button leaves the tab order. The fill fades
+// through colour alpha so the focus ring stays at full strength.
+const testNeedsPassword = computed(() => !form.password.trim());
+const TEST_HELD_CLASS =
+	'cursor-not-allowed active:scale-100 text-text-secondary/50 hover:text-text-secondary/50 hover:bg-transparent';
+
 async function handleTest() {
+	if (!canTest.value || busy.value) return;
 	testResult.value = null;
 	const res = await testOp.run(buildCredentialArgs(form));
 	if (res.ok) testResult.value = res.result;
@@ -423,20 +432,25 @@ function testStatus(result?: { ok: boolean; error?: string }): string {
 			<UiButton type="submit" variant="primary" :loading="busy" :disabled="!canSubmit || busy">
 				{{ submitLabel }}
 			</UiButton>
-			<UiButton
-				type="button"
-				variant="ghost"
-				:loading="testOp.isLoading.value"
-				:disabled="!canTest || busy"
-				:title="
-					!form.password.trim()
+			<UiTooltip
+				:text="
+					testNeedsPassword
 						? t('components.postbox.postboxMailboxConnectForm.testNeedsPassword')
 						: undefined
 				"
-				@click="handleTest"
 			>
-				{{ t('components.postbox.postboxMailboxConnectForm.testConnection') }}
-			</UiButton>
+				<UiButton
+					type="button"
+					variant="ghost"
+					:loading="testOp.isLoading.value"
+					:disabled="busy || (!canTest && !testNeedsPassword)"
+					:aria-disabled="testNeedsPassword ? 'true' : undefined"
+					:class="testNeedsPassword ? TEST_HELD_CLASS : undefined"
+					@click="handleTest"
+				>
+					{{ t('components.postbox.postboxMailboxConnectForm.testConnection') }}
+				</UiButton>
+			</UiTooltip>
 			<UiButton
 				v-if="!hideCancel"
 				type="button"

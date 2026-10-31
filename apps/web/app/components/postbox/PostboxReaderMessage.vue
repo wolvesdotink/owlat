@@ -249,33 +249,36 @@ const renderToggleLabel = computed(() =>
 					data-testid="reader-message-sender-row"
 				>
 					<!-- Plan idea 45: the sender line opens what the mailbox knows of them. -->
-					<button
-						type="button"
-						class="min-w-0 break-words text-left hover:underline"
-						:title="
+					<UiTooltip
+						:text="
 							reader.reduced
 								? t('components.postbox.postboxReaderMessage.showDetails')
 								: t('components.postbox.postboxSenderProfile.open')
 						"
-						:aria-expanded="reader.reduced ? metaOpen : undefined"
-						@click="onSenderClick"
 					>
-						<span class="font-medium text-text-primary">
-							{{ msg.fromName || msg.fromAddress }}
-						</span>
-						<span v-if="msg.fromName" class="text-text-tertiary text-sm">
-							&lt;{{ msg.fromAddress }}&gt;
-						</span>
-						<!-- Reduced, the name is a disclosure; say so without a hover. -->
-						<Icon
-							v-if="reader.reduced"
-							name="lucide:chevron-down"
-							class="ml-0.5 inline size-3.5 align-middle text-text-tertiary transition-transform motion-reduce:transition-none"
-							:class="{ 'rotate-180': metaOpen }"
-							aria-hidden="true"
-							data-testid="reader-message-details-cue"
-						/>
-					</button>
+						<button
+							type="button"
+							class="min-w-0 break-words text-left hover:underline"
+							:aria-expanded="reader.reduced ? metaOpen : undefined"
+							@click="onSenderClick"
+						>
+							<span class="font-medium text-text-primary">
+								{{ msg.fromName || msg.fromAddress }}
+							</span>
+							<span v-if="msg.fromName" class="text-text-tertiary text-sm">
+								&lt;{{ msg.fromAddress }}&gt;
+							</span>
+							<!-- Reduced, the name is a disclosure; say so without a hover. -->
+							<Icon
+								v-if="reader.reduced"
+								name="lucide:chevron-down"
+								class="ml-0.5 inline size-3.5 align-middle text-text-tertiary transition-transform motion-reduce:transition-none"
+								:class="{ 'rotate-180': metaOpen }"
+								aria-hidden="true"
+								data-testid="reader-message-details-cue"
+							/>
+						</button>
+					</UiTooltip>
 					<div
 						class="ml-auto flex max-w-full flex-shrink-0 items-center gap-2"
 						data-testid="reader-message-indicators"
@@ -301,14 +304,15 @@ const renderToggleLabel = computed(() =>
 								:hide-when-ok="reader.reduced"
 								@seal-refetch="emit('seal-refetch')"
 						/></Teleport>
-						<button
-							type="button"
-							class="text-xs text-text-tertiary tabular-nums whitespace-nowrap hover:text-text-primary"
-							:title="formatDateTime(msg.receivedAt)"
-							@click="emit('toggle-expanded')"
-						>
-							{{ relativeTime }}
-						</button>
+						<UiTooltip :text="formatDateTime(msg.receivedAt)">
+							<button
+								type="button"
+								class="text-xs text-text-tertiary tabular-nums whitespace-nowrap hover:text-text-primary"
+								@click="emit('toggle-expanded')"
+							>
+								{{ relativeTime }}
+							</button>
+						</UiTooltip>
 					</div>
 				</div>
 				<p v-if="showMeta" class="text-text-secondary text-xs mt-0.5">
@@ -350,7 +354,6 @@ const renderToggleLabel = computed(() =>
 							v-if="reader.appIsDark"
 							type="button"
 							class="mt-3 inline-flex items-center gap-1.5 text-text-tertiary hover:text-text-primary"
-							:title="renderToggleLabel"
 							:aria-label="renderToggleLabel"
 							:aria-pressed="forcedLight"
 							@click="emit('toggle-forced-light')"

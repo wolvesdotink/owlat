@@ -1,12 +1,12 @@
 /**
- * no-console is an error everywhere except in maintenance scripts, whose console
- * output is what the program produces. oxlint matches an override's `files`
- * against a path whose form depends on the directory it runs from, so an
- * override can look right and match nothing from one of them. These fixtures
- * lay out a miniature repository with the real no-console rule and its
- * overrides from oxlintrc.json, then run the locked oxlint the way the root
- * gates do (from the root) and the way a workspace `lint` script does (from the
- * workspace with `--config ../../oxlintrc.json`).
+ * no-console is an error everywhere except in maintenance scripts and CLI
+ * programs, whose console output is what the program produces. oxlint matches
+ * an override's `files` against a path whose form depends on the directory it
+ * runs from, so an override can look right and match nothing from one of
+ * them. These fixtures lay out a miniature repository with the real no-console
+ * rule and its overrides from oxlintrc.json, then run the locked oxlint the way
+ * the root gates do (from the root) and the way a workspace `lint` script does
+ * (from the workspace with `--config ../../oxlintrc.json`).
  */
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -54,6 +54,23 @@ const FIXTURES: Record<string, string> = {
 	'packages/shared/scripts/update.ts': LOG,
 	'packages/shared/src/lib.ts': LOG,
 	'packages/shared/src/scripts.ts': LOG,
+	'apps/setup-cli/src/index.ts': LOG,
+	'apps/setup-cli/src/commands/env.ts': LOG,
+	'apps/setup-cli/src/lib/run.ts': LOG,
+	'packages/email-renderer/src/preview/generate.ts': LOG,
+	'packages/email-renderer/src/preview/fixtures.ts': LOG,
+};
+
+/** CLI programs outside a scripts directory, by workspace: output allowed, then not. */
+const CLI_PROGRAMS: Record<string, { output: string[]; source: string[] }> = {
+	'apps/setup-cli': {
+		output: ['src/index.ts', 'src/commands/env.ts'],
+		source: ['src/lib/run.ts'],
+	},
+	'packages/email-renderer': {
+		output: ['src/preview/generate.ts'],
+		source: ['src/preview/fixtures.ts'],
+	},
 };
 
 let root = '';
@@ -121,7 +138,36 @@ describe('no-console from the repository root', () => {
 	it('still fails console methods a script does not use for output', () => {
 		expect(findings(diagnostics, 'scripts/debugging.ts')).toEqual([NO_CONSOLE_ERROR]);
 	});
+
+	it('allows console.log in CLI programs and fails it in their library code', () => {
+		for (const [workspace, { output, source }] of Object.entries(CLI_PROGRAMS)) {
+			for (const path of output) expect(findings(diagnostics, `${workspace}/${path}`)).toEqual([]);
+			for (const path of source) {
+				expect(findings(diagnostics, `${workspace}/${path}`)).toEqual([NO_CONSOLE_ERROR]);
+			}
+		}
+	});
 });
+
+describe.each(Object.entries(CLI_PROGRAMS))(
+	'no-console from the %s CLI workspace',
+	(workspace, { output, source }) => {
+		let diagnostics: LintDiagnostic[] = [];
+		beforeAll(() => {
+			diagnostics = lint(workspace, '../../oxlintrc.json', ['src']);
+		});
+
+		it('allows console.log in the CLI entry points', () => {
+			for (const path of output) expect(findings(diagnostics, `${workspace}/${path}`)).toEqual([]);
+		});
+
+		it('fails console.log in the code the CLI imports', () => {
+			for (const path of source) {
+				expect(findings(diagnostics, `${workspace}/${path}`)).toEqual([NO_CONSOLE_ERROR]);
+			}
+		});
+	}
+);
 
 describe.each(['apps/desktop', 'packages/shared'])(
 	'no-console from the %s workspace',

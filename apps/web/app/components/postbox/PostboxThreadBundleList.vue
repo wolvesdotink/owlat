@@ -185,22 +185,25 @@ function focusIndexOf(messageId: string): number {
 						<!-- Unsubscribe only where a batch can actually perform it: a
 						     sender with a plain web page needs a human on that page, and
 						     offering it here would be a promise this row cannot keep. -->
-						<button
+						<UiTooltip
 							v-if="bundleOneClickSenders(entry.messages).length > 0"
-							type="button"
-							class="flex-shrink-0 rounded px-2 py-1 text-xs text-text-tertiary hover:text-text-primary hover:bg-bg-elevated outline-none focus-visible:ring-1 focus-visible:ring-brand/50 disabled:opacity-50"
-							:disabled="busy"
-							:title="t('components.postbox.postboxThreadBundleList.unsubscribeHint')"
-							@click="
-								emit(
-									'unsubscribe-bundle',
-									bundleOneClickSenders(entry.messages),
-									bundleMessageIds(entry.messages)
-								)
-							"
+							:text="t('components.postbox.postboxThreadBundleList.unsubscribeHint')"
 						>
-							{{ t('components.postbox.postboxThreadBundleList.unsubscribe') }}
-						</button>
+							<button
+								type="button"
+								class="flex-shrink-0 rounded px-2 py-1 text-xs text-text-tertiary hover:text-text-primary hover:bg-bg-elevated outline-none focus-visible:ring-1 focus-visible:ring-brand/50 disabled:opacity-50"
+								:disabled="busy"
+								@click="
+									emit(
+										'unsubscribe-bundle',
+										bundleOneClickSenders(entry.messages),
+										bundleMessageIds(entry.messages)
+									)
+								"
+							>
+								{{ t('components.postbox.postboxThreadBundleList.unsubscribe') }}
+							</button>
+						</UiTooltip>
 						<button
 							type="button"
 							class="flex-shrink-0 rounded px-2 py-1 text-xs text-text-tertiary hover:text-text-primary hover:bg-bg-elevated outline-none focus-visible:ring-1 focus-visible:ring-brand/50 disabled:opacity-50"

@@ -144,27 +144,33 @@ const MAX_DOTS = 9;
 							</button>
 						</UiTooltip>
 					</div>
-					<button
+					<UiTooltip
 						v-if="canUndo"
-						type="button"
-						class="inline-flex items-center gap-1 text-xs text-text-tertiary hover:text-text-primary transition-colors duration-(--motion-fast)"
-						:title="
-							t('components.agentTasks.agentTaskFlow.undoTitle', { keys: chordLabel('mod+z') })
-						"
-						@click="emit('undo')"
+						:text="t('components.agentTasks.agentTaskFlow.undoTitle')"
+						:shortcut="chordLabel('mod+z')"
 					>
-						<Icon name="lucide:undo-2" class="w-3.5 h-3.5" />
-						{{ t('components.agentTasks.agentTaskFlow.undo') }}
-					</button>
-					<button
-						type="button"
-						class="inline-flex items-center gap-1 text-xs text-text-tertiary hover:text-text-primary transition-colors duration-(--motion-fast)"
-						:title="t('components.agentTasks.agentTaskFlow.exitTitle')"
-						@click="emit('exit')"
+						<button
+							type="button"
+							class="inline-flex items-center gap-1 text-xs text-text-tertiary hover:text-text-primary transition-colors duration-(--motion-fast)"
+							@click="emit('undo')"
+						>
+							<Icon name="lucide:undo-2" class="w-3.5 h-3.5" />
+							{{ t('components.agentTasks.agentTaskFlow.undo') }}
+						</button>
+					</UiTooltip>
+					<UiTooltip
+						:text="t('components.agentTasks.agentTaskFlow.exit')"
+						:shortcut="chordLabel('Escape')"
 					>
-						<Icon name="lucide:x" class="w-3.5 h-3.5" />
-						{{ t('components.agentTasks.agentTaskFlow.exit') }}
-					</button>
+						<button
+							type="button"
+							class="inline-flex items-center gap-1 text-xs text-text-tertiary hover:text-text-primary transition-colors duration-(--motion-fast)"
+							@click="emit('exit')"
+						>
+							<Icon name="lucide:x" class="w-3.5 h-3.5" />
+							{{ t('components.agentTasks.agentTaskFlow.exit') }}
+						</button>
+					</UiTooltip>
 				</div>
 			</div>
 

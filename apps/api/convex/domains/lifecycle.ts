@@ -47,8 +47,8 @@
  *
  * The status machine never branches on `providerType`; provider variation lives
  * behind the **Sending domain provider adapter (module)** seam
- * (`providers/index.ts`). The return-path family is the exception; its kind
- * branches are confined to `returnPathProviders.ts`.
+ * (`providers/index.ts`), the custom return path included
+ * (`returnPathProviders.ts`).
  *
  * There is no `requestVerification` entry point. The
  * FE calls the DNS verifier (`dnsVerification.verifyDomain`) directly for
@@ -87,7 +87,7 @@ import {
 	type SendingDomainTransitionOutcome,
 } from './lifecycleReducer';
 import { applyEffects } from './lifecycleEffects';
-import { returnPathHostFits, returnPathProviderKind } from './returnPathProviders';
+import { returnPathProviderFor } from './returnPathProviders';
 
 /**
  * Synthetic `userId` tag for user-driven public-mutation transitions. The
@@ -243,16 +243,16 @@ export const create = internalMutation({
 			: 'mta';
 
 		// Validate the optional return-path host up front, mirroring
-		// `setReturnPathHost` exactly (shared strict validator; MTA/SES only; SES
-		// requires a subdomain of the sending domain) so a bad host fails create
+		// `setReturnPathHost` exactly (shared strict validator, then the provider's
+		// own return-path support and host constraint) so a bad host fails create
 		// cleanly rather than after the row + registration are scheduled.
 		let returnPathHost: string | undefined;
 		if (args.returnPathHost !== undefined) {
 			const host = normalizeReturnPathHost(args.returnPathHost);
 			if (host === null) return { ok: false, reason: 'invalid_return_path_host' };
-			const returnPathKind = returnPathProviderKind(providerKind);
-			if (returnPathKind === null) return { ok: false, reason: 'return_path_unsupported' };
-			if (!returnPathHostFits(returnPathKind, normalized, host)) {
+			const returnPath = returnPathProviderFor(providerKind);
+			if (returnPath === null) return { ok: false, reason: 'return_path_unsupported' };
+			if (!returnPath.fitsHost(normalized, host)) {
 				return { ok: false, reason: 'return_path_not_subdomain' };
 			}
 			returnPathHost = host;
@@ -304,17 +304,26 @@ export const create = internalMutation({
 	},
 });
 
+/** Land `input` on the domain in the caller's transaction (`transition`'s body). */
+export async function transitionDomain(
+	ctx: MutationCtx,
+	domainId: Id<'domains'>,
+	input: SendingDomainTransitionInput,
+	userId: string
+): Promise<SendingDomainTransitionOutcome> {
+	const domain = await ctx.db.get(domainId);
+	if (!domain) return { ok: false, reason: 'domain_not_found' };
+	return await dispatch(ctx, domain, input, userId);
+}
+
 export const transition = internalMutation({
 	args: {
 		domainId: v.id('domains'),
 		input: transitionInputValidator,
 		userId: v.string(),
 	},
-	handler: async (ctx, args): Promise<SendingDomainTransitionOutcome> => {
-		const domain = await ctx.db.get(args.domainId);
-		if (!domain) return { ok: false, reason: 'domain_not_found' };
-		return await dispatch(ctx, domain, args.input, args.userId);
-	},
+	handler: (ctx, args): Promise<SendingDomainTransitionOutcome> =>
+		transitionDomain(ctx, args.domainId, args.input, args.userId),
 });
 
 /**

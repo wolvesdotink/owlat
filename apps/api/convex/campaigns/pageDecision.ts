@@ -342,24 +342,24 @@ export function bucketContent(
 }
 
 /**
- * What the hop writes once its page is enqueued, in this order:
+ * What the page commit (`walkerCommit.ts:commitCampaignPage`) writes once it
+ * has inserted the page's send rows, in this order, in the same transaction:
  *
  *   1. the daily send count, bumped per page so it stays accurate even if a
  *      later hop is delayed (only when the page enqueued anyone);
- *   2. the checkpoint advance — cursor and counters, `done` on the last page.
- *      Committed AFTER the enqueue, so a crash before it re-runs the SAME page
- *      and `createBatch`'s idempotency guard makes that re-run write nothing;
+ *   2. the checkpoint advance — cursor and counters, `done` on the last page;
  *   3. the day's plan checkpoint, after the advance so the two never disagree
  *      about a page, on every hop (the day-of-N line must exist from the first
  *      moment) and without `resumeAt`, so a previous park is cleared;
  *   4. the next hop, unless this was the last page.
  *
- * `pageEnqueued` is what the enqueue actually created, never the candidates.
+ * `pageEnqueued` is what the insert actually created, never the candidates,
+ * which is why this is a second stage the commit calls after its inserts.
  */
 export function decidePageEnd(input: {
 	readonly page: { readonly nextCursor: string | null; readonly pageCandidates: number };
 	readonly pageEnqueued: number;
-	readonly slice: SendPlanSlice;
+	readonly slice: Pick<SendPlanSlice, 'enqueuedToday'>;
 	readonly planCheckpoint: SendPlanCheckpoint;
 }): {
 	readonly dailySendCount: number | undefined;

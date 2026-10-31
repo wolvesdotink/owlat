@@ -431,6 +431,27 @@ describe('postboxOutboundLifecycle.transition — recorded + aggregate', () => {
 		const row = await getRow(t, id);
 		expect(row.aggregate).toBe('sent');
 	});
+
+	it('transitionRecipients moves every recipient of one answer in one commit', async () => {
+		const t = convexTest(schema, modules);
+		const id = await seedMessage(t, [
+			{ address: 'a@x.com', state: 'queued' },
+			{ address: 'b@x.com', state: 'queued' },
+		]);
+
+		const outcomes = await t.mutation(internal.mail.postboxOutboundLifecycle.transitionRecipients, {
+			mailMessageId: id,
+			transitions: [
+				{ recipientIdx: 0, input: { to: 'sent', at: Date.now() } },
+				{ recipientIdx: 1, input: { to: 'bounced', at: Date.now() } },
+			],
+		});
+
+		expect(outcomes.map((o) => o.ok)).toEqual([true, true]);
+		const row = await getRow(t, id);
+		expect(row.aggregate).toBe('partial');
+		expect(row.recipients.map((r) => r.state)).toEqual(['sent', 'bounced']);
+	});
 });
 
 // ============================================================

@@ -33,8 +33,7 @@ export default defineNitroPlugin(() => {
 		if (shuttingDown) return;
 		shuttingDown = true;
 
-		// oxlint-disable-next-line no-console -- a structured shutdown event for the container log
-		console.log(
+		console.info(
 			JSON.stringify({
 				event: 'web_shutdown_signal',
 				signal,

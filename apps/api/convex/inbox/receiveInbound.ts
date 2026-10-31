@@ -195,6 +195,8 @@ export async function receiveInboundMail(
 		// see webhooks/inboundSignatureMirror.ts. Best-effort, never blocks.
 		...(await clearsignedSignatureMirror(ctx, input.textBody, input.from)),
 	};
+	// checkpoint: the stored row is the delivery; attachment capture after it is
+	// best-effort and must not cost the message, and a redelivery finds the row
 	return await receiveStoringLargeBodies(ctx, receiveArgs, (args) =>
 		ctx.runMutation(internal.inbox.messages.receiveMessage, args)
 	);

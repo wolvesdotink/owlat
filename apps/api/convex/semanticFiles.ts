@@ -730,8 +730,8 @@ async function getNextVersion(
  * insert, an in-place `contactIds` edit, and teardown (`contactIds = undefined`
  * deletes all rows). The array stays on the file for inline reads; the junction
  * is the index-able copy `listByContact` queries. Mirrors
- * `knowledge/graph.ts:insertEntryContacts` with reconciliation, since files have
- * an in-place editor (`update`).
+ * `knowledge/entryContacts.ts:insertEntryContacts` with reconciliation, since
+ * files have an in-place editor (`update`).
  */
 export async function syncFileContacts(
 	ctx: MutationCtx,

@@ -202,6 +202,9 @@ export const poll = internalAction({
 		summary.observations = observations.length;
 		for (let offset = 0; offset < observations.length; offset += SNDS_INGEST_BATCH_SIZE) {
 			const batch = observations.slice(offset, offset + SNDS_INGEST_BATCH_SIZE);
+			// checkpoint: one page of the bounded ingest; ingestDays upserts by (IP, day)
+			// and never replaces a newer fetch, so the next poll, which re-reads every
+			// feed, rewrites whatever a failure here left out.
 			const result = await ctx.runMutation(internal.delivery.snds.ingestDays, {
 				observations: batch,
 				fetchedAt,

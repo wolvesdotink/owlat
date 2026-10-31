@@ -41,6 +41,3 @@ export function createDeliverabilityTipCron(
 		},
 	};
 }
-
-/** The bundled cron module the manifest points at. */
-export const refreshSeedScoresCron: PluginCronModule = createDeliverabilityTipCron();

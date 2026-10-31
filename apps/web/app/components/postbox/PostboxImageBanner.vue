@@ -81,15 +81,18 @@ const BANNER_CLASS =
 			>
 				{{ t('components.postbox.postboxMessageBody.showOnce') }}
 			</button>
-			<button
+			<UiTooltip
 				v-if="canTrustSender"
-				type="button"
-				class="text-brand font-medium hover:underline"
-				:title="t('components.postbox.postboxMessageBody.alwaysForSenderTitle')"
-				@click="emit('trustSender')"
+				:text="t('components.postbox.postboxMessageBody.alwaysForSenderTitle')"
 			>
-				{{ t('components.postbox.postboxMessageBody.alwaysForSender', { host: senderLabel }) }}
-			</button>
+				<button
+					type="button"
+					class="text-brand font-medium hover:underline"
+					@click="emit('trustSender')"
+				>
+					{{ t('components.postbox.postboxMessageBody.alwaysForSender', { host: senderLabel }) }}
+				</button>
+			</UiTooltip>
 		</span>
 	</div>
 

@@ -10,7 +10,7 @@
  */
 
 import type { Id } from '../_generated/dataModel';
-import type { MutationCtx } from '../_generated/server';
+import type { QueryCtx } from '../_generated/server';
 import type { OrganizationRole } from '../lib/sessionOrganization';
 import { noticeDeliverability } from '../marketing/notifications';
 import type { PushPayload } from './copy';
@@ -29,7 +29,7 @@ function remainingTtlSeconds(liveUntil: number, now: number): number {
 }
 
 export async function resolveMarketingPush(
-	ctx: MutationCtx,
+	ctx: QueryCtx,
 	userId: string,
 	noticeId: Id<'marketingNotices'>,
 	prefs: { locale: string | undefined; isPrivate: boolean },

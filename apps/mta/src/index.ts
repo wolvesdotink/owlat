@@ -38,7 +38,7 @@ import { startLeaderElection, isLeader, stopLeaderElection } from './lib/leaderE
 import { fetchPostmasterData } from './monitoring/postmaster.js';
 import { checkRotationStatus, activatePendingKey } from './smtp/dkimRotation.js';
 import type { DkimRotationNotifier } from './smtp/dkimRotation.js';
-import { generateAndSendReports as sendTlsReports } from './smtp/tlsRpt.js';
+import { generateAndSendReports as sendTlsReports } from './smtp/tlsRptReport.js';
 import { notifyConvex } from './webhooks/convexNotifier.js';
 import { sweepWebhookDlq } from './webhooks/dlqSweeper.js';
 import { logger } from './monitoring/logger.js';

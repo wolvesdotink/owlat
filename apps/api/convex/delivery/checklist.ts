@@ -34,7 +34,8 @@ import type { Doc, Id } from '../_generated/dataModel';
 import { deploymentSetupValuesForItem, domainSetupValuesForItem } from './checklistRecords';
 import { checklistTraits, DEPLOYMENT_CHECK_IDS, DOMAIN_CHECK_IDS } from './checklistTraits';
 import { ipv6SendingAddresses, isIpv6CheckId, partitionIpv6Items } from './checklistIpv6';
-import { OWN_SENDING_DOMAIN_PROVIDER_KIND } from '../domains/providers';
+import { OWN_SENDING_DOMAIN_PROVIDER_KIND, SENDING_DOMAIN_PROVIDERS } from '../domains/providers';
+import type { ChecklistRelayIdentity } from './checklistValidatorTypes';
 import { readyFallbackRelayKinds } from '../lib/sendProviders/fallbackRelays';
 import { readInstanceCounter } from '../lib/instanceCounters';
 
@@ -90,7 +91,10 @@ async function loadVerificationStatesForTarget(
 	return completeRowsOrThrow(rows, itemLimit, `verification states for ${targetKey}`);
 }
 
-async function loadRelayIdentities(ctx: QueryCtx): Promise<Doc<'sendingDomainSesIdentities'>[]> {
+// The frozen sibling table belongs to the SES module, so its rows prove that
+// module's kind and no other's.
+async function loadRelayIdentities(ctx: QueryCtx): Promise<ChecklistRelayIdentity[]> {
+	const providerKind = SENDING_DOMAIN_PROVIDERS.ses.kind;
 	const domains = await loadCenterDomains(ctx);
 	const identities = await Promise.all(
 		domains.map(async (candidate) => {
@@ -101,9 +105,7 @@ async function loadRelayIdentities(ctx: QueryCtx): Promise<Doc<'sendingDomainSes
 			return completeRowsOrThrow(rows, 1, `SES relay identities for ${candidate.domain}`)[0];
 		})
 	);
-	return identities.filter(
-		(identity): identity is Doc<'sendingDomainSesIdentities'> => identity !== undefined
-	);
+	return identities.flatMap((identity) => (identity ? [{ ...identity, providerKind }] : []));
 }
 
 export function loopbackDomains(

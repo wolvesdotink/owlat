@@ -169,14 +169,19 @@ describe('mail.briefEmail.listDue', () => {
 });
 
 describe('mail.briefEmail.deliverBriefEmail', () => {
-	async function deliver(t: TestConvex<typeof schema>, mailboxId: Id<'mailboxes'>) {
+	async function deliver(
+		t: TestConvex<typeof schema>,
+		mailboxId: Id<'mailboxes'>,
+		over: { listedAt?: number; messageId?: string } = {}
+	) {
 		const rawStorageId = await t.run(async (ctx) => ctx.storage.store(new Blob(['raw'])));
 		return t.mutation(internal.mail.briefEmail.deliverBriefEmail, {
 			userId: 'user-A',
+			...(over.listedAt !== undefined ? { listedAt: over.listedAt } : {}),
 			mailboxId,
 			rawStorageId,
 			rawSize: 3,
-			messageId: 'brief-1@owlat.test',
+			messageId: over.messageId ?? 'brief-1@owlat.test',
 			subject: 'Your daily brief — 1 thing needs you',
 			bodyText: 'What needs you today',
 			bodyHtml: '<p>What needs you today</p>',
@@ -213,6 +218,25 @@ describe('mail.briefEmail.deliverBriefEmail', () => {
 		expect(isBriefDue(settings?.dailyBriefEmail, settings?.lastDailyBriefEmailAt, Date.now())).toBe(
 			false
 		);
+	});
+
+	it('files nothing for a pass that listed the brief before another pass delivered it', async () => {
+		const t = convexTest(schema, modules);
+		const { mailboxId } = await seedBriefAndPreference(t);
+		const listedAt = Date.now();
+		expect(await deliver(t, mailboxId, { listedAt })).toEqual({ delivered: true });
+
+		// An overlapping pass listed the same brief at the same time and renders it late.
+		expect(await deliver(t, mailboxId, { listedAt, messageId: 'brief-2@owlat.test' })).toEqual({
+			delivered: false,
+		});
+		const second = await t.run(async (ctx) =>
+			ctx.db
+				.query('mailMessages')
+				.withIndex('by_rfc822_message_id', (q) => q.eq('rfc822MessageId', 'brief-2@owlat.test'))
+				.first()
+		);
+		expect(second).toBeNull();
 	});
 
 	it('marks its thread so the brief never re-enters the next brief', async () => {

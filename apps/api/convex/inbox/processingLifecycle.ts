@@ -33,6 +33,7 @@
  */
 
 import { v } from 'convex/values';
+import type { MutationCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
@@ -95,6 +96,9 @@ export const transition = internalMutation({
 	handler: (ctx, args): Promise<TransitionOutcome> =>
 		applyTransition(ctx, args.inboundMessageId, args.input),
 });
+
+/** {@link transition} inside another module's commit, in its transaction. */
+export const applyProcessingTransition = applyTransition;
 
 // ─── Agent-action mutations (used inside a single processingStatus) ─────────
 //

@@ -140,9 +140,9 @@ export const dispatchDraft = internalAction({
 		// cascade, draft row delete, attachment-blob cleanup, address-book
 		// recording, and audit-log. The reducer re-checks the from-address
 		// binding inside the transition; on revocation it returns
-		// `from_revoked` and we drop back to `'draft'` ourselves.
+		// `from_revoked`, and the same commit has already put the draft back.
 		const sentOutcome: DraftTransitionOutcome = await ctx.runMutation(
-			internal.mail.draftLifecycle.transition,
+			internal.mail.draftLifecycle.commitSent,
 			{
 				draftId: args.draftId,
 				expectedUndoToken: args.undoToken,
@@ -167,13 +167,6 @@ export const dispatchDraft = internalAction({
 		if (afterSent.kind === 'stop') {
 			writeLog(afterSent.log);
 			if (afterSent.isRawDeleted) await ctx.storage.delete(rawStorageId).catch(() => {});
-			if (afterSent.revert) {
-				await ctx.runMutation(internal.mail.draftLifecycle.transition, {
-					draftId: args.draftId,
-					expectedUndoToken: args.undoToken,
-					input: { to: 'draft', at: Date.now(), reason: afterSent.revert },
-				});
-			}
 			return;
 		}
 

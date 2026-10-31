@@ -33,8 +33,6 @@ export const SetupStep = {
 	SeedDemo: 'seed-demo',
 } as const;
 
-export type SetupStepId = (typeof SetupStep)[keyof typeof SetupStep];
-
 export type StepStatus = 'running' | 'ok' | 'failed' | 'skipped';
 
 export interface ProgressStepEvent {

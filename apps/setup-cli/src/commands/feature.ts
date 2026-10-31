@@ -1,4 +1,3 @@
-/* eslint-disable no-console -- a CLI command reports to the terminal */
 /**
  * `owlat-setup feature <key> <on|off>` — toggle a single feature flag and
  * regenerate docker-compose.override.yml. Useful for scripted / CI flows.

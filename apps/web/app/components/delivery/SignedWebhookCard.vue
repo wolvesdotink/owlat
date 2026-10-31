@@ -143,23 +143,22 @@ const lastEventLabel = computed(() =>
 					<p class="text-xs font-medium text-text-primary">
 						{{ t('components.delivery.signedWebhookCard.webhookUrl') }}
 					</p>
-					<UiButton
-						variant="ghost"
-						size="sm"
-						:title="
+					<UiTooltip
+						:text="
 							isCopied('signed-webhook-url')
 								? t('common.copied')
 								: t('components.delivery.signedWebhookCard.copyWebhookUrl')
 						"
-						@click="copy(webhookUrl, 'signed-webhook-url')"
 					>
-						<Icon
-							:name="isCopied('signed-webhook-url') ? 'lucide:check' : 'lucide:copy'"
-							class="w-3.5 h-3.5"
-							:class="isCopied('signed-webhook-url') ? 'text-success' : ''"
-						/>
-						{{ isCopied('signed-webhook-url') ? t('common.copied') : t('common.copy') }}
-					</UiButton>
+						<UiButton variant="ghost" size="sm" @click="copy(webhookUrl, 'signed-webhook-url')">
+							<Icon
+								:name="isCopied('signed-webhook-url') ? 'lucide:check' : 'lucide:copy'"
+								class="w-3.5 h-3.5"
+								:class="isCopied('signed-webhook-url') ? 'text-success' : ''"
+							/>
+							{{ isCopied('signed-webhook-url') ? t('common.copied') : t('common.copy') }}
+						</UiButton>
+					</UiTooltip>
 				</div>
 				<pre
 					class="select-all overflow-x-auto rounded-lg bg-bg-surface px-3 py-2 font-mono text-xs text-text-primary"

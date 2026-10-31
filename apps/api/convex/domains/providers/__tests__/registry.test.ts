@@ -22,6 +22,7 @@ import {
 	type SendingDomainProviderModule,
 } from '../index';
 import { toRelayIdentityProvider } from '../relaySurface';
+import { returnPathProviderFor } from '../../returnPathProviders';
 import { OWN_ARM_TRANSPORT_KIND } from '../../../lib/sendProviders/strategies';
 import {
 	SEND_PROVIDER_CATALOG,
@@ -96,6 +97,24 @@ describe('SENDING_DOMAIN_PROVIDERS', () => {
 		// Inherited object properties are not registrations.
 		expect(isSendingDomainProviderKind('toString')).toBe(false);
 		expect(isSendingDomainProviderKind('constructor')).toBe(false);
+	});
+});
+
+describe('custom return-path support', () => {
+	it('is declared by the MTA and SES modules and by no other kind', () => {
+		const declaring = Object.values(SENDING_DOMAIN_PROVIDERS)
+			.filter((provider) => provider.returnPath !== undefined)
+			.map((provider) => provider.kind)
+			.sort();
+		expect(declaring).toEqual(['mta', 'ses']);
+	});
+
+	it('is what returnPathProviderFor hands back, and nothing for an unknown or missing kind', () => {
+		expect(returnPathProviderFor('mta')).toBe(providerFor('mta').returnPath);
+		expect(returnPathProviderFor('ses')).toBe(providerFor('ses').returnPath);
+		expect(returnPathProviderFor('mandrill')).toBeNull();
+		expect(returnPathProviderFor(undefined)).toBeNull();
+		expect(returnPathProviderFor('constructor')).toBeNull();
 	});
 });
 

@@ -330,18 +330,17 @@ function moveRecipient(payload: { email: string; from: RecipientField }, to: Rec
 			<template v-if="!convertedToReplyAll">
 				<Icon name="lucide:reply" class="w-3 h-3" />
 				<span>{{ t('components.postbox.postboxComposerEnvelope.replyingSenderOnly') }}</span>
-				<button
-					type="button"
-					class="text-brand hover:underline"
-					:title="
+				<UiTooltip
+					:text="
 						t('components.postbox.postboxComposerEnvelope.alsoInclude', {
 							names: replyAllExtraNames,
 						})
 					"
-					@click="switchToReplyAll"
 				>
-					{{ t('components.postbox.postboxComposerEnvelope.switchToAll') }}
-				</button>
+					<button type="button" class="text-brand hover:underline" @click="switchToReplyAll">
+						{{ t('components.postbox.postboxComposerEnvelope.switchToAll') }}
+					</button>
+				</UiTooltip>
 			</template>
 			<template v-else>
 				<Icon name="lucide:reply-all" class="w-3 h-3" />

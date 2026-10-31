@@ -169,13 +169,20 @@ type DigestRef = Extract<PreparedDigest, { kind: 'ready' }>;
 /** Renders of one brief before it goes without a digest whose lines keep changing. */
 const MAX_DIGEST_RENDERS = 2;
 
+/** One delivery pass: when it listed the due briefs, and the site links point at. */
+interface Pass {
+	listedAt: number;
+	baseUrl: string;
+}
+
 /** Render one brief (with its digest lines, when given), store it and deliver it. */
 async function renderAndDeliver(
 	ctx: ActionCtx,
 	entry: DueBrief,
-	baseUrl: string,
+	pass: Pass,
 	digest: { ref: DigestRef; email: DigestEmail } | null
 ): Promise<{ delivered: boolean; isDigestStale?: boolean }> {
+	const { baseUrl } = pass;
 	// In the recipient's own language, from `userProfiles.locale` — absent means
 	// English, exactly what every account had before the picker existed.
 	const copy = dailyBriefEmailCopy(systemEmailLocale(entry.locale));
@@ -209,8 +216,13 @@ async function renderAndDeliver(
 	};
 	const { raw, size } = buildRfc822(draft, [], rfc822MessageId, undefined, undefined);
 	const rawStorageId = await ctx.storage.store(new Blob([new Uint8Array(raw)]));
+	// checkpoint: one person's brief of this pass's walk, filed with its
+	// delivery stamp (or its wait ended) in one commit, so the next pass resumes
+	// from the people this one did not finish; a stale digest commits nothing.
 	const result = await ctx.runMutation(internal.mail.briefEmail.deliverBriefEmail, {
 		userId: entry.userId,
+		listedAt: pass.listedAt,
+		...(entry.deferredSince !== undefined ? { endDeferralAt: entry.deferredSince } : {}),
 		mailboxId: entry.mailboxId,
 		rawStorageId,
 		rawSize: size,
@@ -240,7 +252,7 @@ async function renderAndDeliver(
  * `DIGEST_WAIT_MS`; then it goes without the digest. A digest whose lines
  * changed between render and delivery (a purge, a fence) is rendered again.
  */
-async function deliverOne(ctx: ActionCtx, entry: DueBrief, baseUrl: string): Promise<boolean> {
+async function deliverOne(ctx: ActionCtx, entry: DueBrief, pass: Pass): Promise<boolean> {
 	const now = Date.now();
 	const prepared: PreparedDigest = entry.digestPeriodKey
 		? await prepareDigest(ctx, {
@@ -250,6 +262,8 @@ async function deliverOne(ctx: ActionCtx, entry: DueBrief, baseUrl: string): Pro
 			})
 		: { kind: 'none' };
 	if (prepared.kind === 'busy' && now - (entry.deferredSince ?? now) < DIGEST_WAIT_MS) {
+		// checkpoint: one person's step of this pass's walk; the deferral keeps
+		// them listed, so the next pass resumes from it.
 		await ctx.runMutation(internal.mail.briefEmail.deferBriefEmail, {
 			userId: entry.userId,
 			now,
@@ -257,25 +271,31 @@ async function deliverOne(ctx: ActionCtx, entry: DueBrief, baseUrl: string): Pro
 		});
 		return false;
 	}
-	const isDelivered = await renderLoop(ctx, entry, baseUrl, prepared);
-	// Not deferred again and not delivered (delivery clears it itself): the
-	// digest is no longer busy and there was nothing to send, so the wait ends.
-	if (!isDelivered && entry.deferredSince !== undefined) {
+	const rendered = await renderLoop(ctx, entry, pass, prepared);
+	// Nothing was left to send, so no delivery ended the wait: it ends here,
+	// rather than on a later pass.
+	if (rendered === 'nothing' && entry.deferredSince !== undefined) {
+		// checkpoint: one person's step of this pass's walk; it takes them off
+		// the next pass's list.
 		await ctx.runMutation(internal.mail.briefEmail.endBriefDeferral, {
 			userId: entry.userId,
 			deferredAt: entry.deferredSince,
 		});
 	}
-	return isDelivered;
+	return rendered === 'delivered';
 }
 
-/** Render and deliver, re-rendering when the digest's lines changed meanwhile. */
+/**
+ * Render and deliver, re-rendering when the digest's lines changed meanwhile.
+ * `settled`: a delivery that could not land, which ended the wait itself;
+ * `nothing`: no delivery was made, or only stale ones that kept the wait.
+ */
 async function renderLoop(
 	ctx: ActionCtx,
 	entry: DueBrief,
-	baseUrl: string,
+	pass: Pass,
 	prepared: PreparedDigest
-): Promise<boolean> {
+): Promise<'delivered' | 'settled' | 'nothing'> {
 	const ref = prepared.kind === 'ready' ? prepared : null;
 	for (let render = 0; render <= MAX_DIGEST_RENDERS; render += 1) {
 		// The last render goes without the digest: its threads stay pending.
@@ -287,36 +307,41 @@ async function renderLoop(
 					})
 				: null;
 		const digest = ref && email && email.groups.length > 0 ? { ref, email } : null;
-		if (entry.items.length === 0 && !entry.senders && !digest) return false;
-		const result = await renderAndDeliver(ctx, entry, baseUrl, digest);
-		if (result.delivered) return true;
-		if (!result.isDigestStale) return false;
+		if (entry.items.length === 0 && !entry.senders && !digest) return 'nothing';
+		const result = await renderAndDeliver(ctx, entry, pass, digest);
+		if (result.delivered) return 'delivered';
+		if (!result.isDigestStale) return 'settled';
 	}
-	return false;
+	return 'nothing';
 }
 
 /**
  * Deliver every brief that is due in this tick.
  *
  * Per-user failures are logged and skipped, never thrown: one unrenderable brief
- * must not stop everyone else's from arriving, and the delivery stamp is written
- * inside the same mutation as the message, so a skipped user is simply retried
- * on the next tick.
+ * must not stop everyone else's from arriving. Each person's brief is one step
+ * of the walk with its own commit (the delivery stamp is written inside the
+ * same mutation as the message), so a skipped user is simply retried on the
+ * next tick.
  */
 export const deliverDueBriefs = internalAction({
 	args: {},
 	handler: async (ctx): Promise<{ delivered: number }> => {
 		// The digest lines are one model call per due mailbox (§6.5).
 		anchorActionDeadline(ctx);
-		await ctx.runMutation(internal.mail.briefEmail.sweepBriefDeferrals, { now: Date.now() });
+		const listedAt = Date.now();
+		await ctx.runMutation(internal.mail.briefEmail.sweepBriefDeferrals, { now: listedAt });
 		const due = await ctx.runQuery(internal.mail.briefEmail.listDue, {});
 		if (due.length === 0) return { delivered: 0 };
 
-		const baseUrl = (getOptional('SITE_URL') ?? '').replace(/\/+$/, '');
+		const pass: Pass = {
+			listedAt,
+			baseUrl: (getOptional('SITE_URL') ?? '').replace(/\/+$/, ''),
+		};
 		let delivered = 0;
 		for (const entry of due) {
 			try {
-				if (await deliverOne(ctx, entry, baseUrl)) delivered += 1;
+				if (await deliverOne(ctx, entry, pass)) delivered += 1;
 			} catch (err) {
 				logError('[Daily Brief] email delivery failed', err);
 			}

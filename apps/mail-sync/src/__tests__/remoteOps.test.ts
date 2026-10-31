@@ -247,7 +247,7 @@ function folderMap(byRole: Partial<Record<FolderRole, string>>, allMail: string[
 	} satisfies RemoteFolderMap;
 }
 
-/** A replayer wired to the fake's refusal log, as connection.ts wires it to ImapFlow's. */
+/** A replayer wired to the fake's refusal log, as remoteSync.ts wires it to ImapFlow's. */
 function replayerFor(imap: FakeImap, folders: RemoteFolderMap, hooks: ReplayHooks = {}) {
 	return new RemoteOpReplayer(imap, folders, { takeRefusal: () => imap.refusals.take(), ...hooks });
 }
@@ -865,7 +865,7 @@ describe('RemoteOpReplayer — a refused SELECT or STATUS is not a missing folde
 	});
 });
 
-/** Drain one op through the replay, as connection.ts does, and return what was settled. */
+/** Drain one op through the replay, as remoteSync.ts does, and return what was settled. */
 async function drainOne(
 	imap: FakeImap,
 	operation: RemoteOp,
@@ -1387,7 +1387,7 @@ describe('RemoteOpReplayer — a rename whose report did not reach the backend',
 	});
 
 	/**
-	 * The backend as connection.ts calls it: queued renames are listed 50 to a
+	 * The backend as remoteSync.ts calls it: queued renames are listed 50 to a
 	 * page in source-name order, a recorded rename rewrites the ops naming the
 	 * old folder or one below it, and a backed-off rename is not due.
 	 * `pageFails` makes the listing fail from that page on.

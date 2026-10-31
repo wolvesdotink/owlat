@@ -15,7 +15,7 @@
 #
 # Sibling of scripts/check-cross-package-imports.sh: one grep-shaped invariant,
 # plus two small checked-in lists that are strict in BOTH directions, exactly
-# like the file-size and dead-code baselines — an unlisted violation fails, and
+# like the file-size baseline — an unlisted violation fails, and
 # a listed site that no longer violates fails too, so a list can only shrink.
 #
 #   scripts/provider-identity-allowlist.txt — DEBT. Sites that predate the rule,
@@ -78,7 +78,7 @@
 #
 # The narrower sibling is `apps/api/scripts/
 # check-kind-literal-custody.ts`: over apps/api/convex ONLY, it catches a kind
-# DECLARATION (`const RELAY_IDENTITY_PROOF_KIND = 'ses'` — the same fact with one
+# DECLARATION (`const RELAY_KIND = 'ses'` — the same fact with one
 # hop). Declarations are not a repo-wide rule (a catalog entry, an adapter, an
 # event payload and a fixture all legitimately write their own name), which is
 # why that half stays scoped to the backend. COMPARISONS ARE THIS SCRIPT'S RULE

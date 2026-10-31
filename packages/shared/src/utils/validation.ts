@@ -39,12 +39,6 @@ export const emailRegex =
  */
 export const domainRegex = /^(?!-)[A-Za-z0-9-]+([-.][A-Za-z0-9]+)*\.[A-Za-z]{2,}$/;
 
-/**
- * Slug validation regex
- * Matches URL-safe slugs (lowercase letters, numbers, hyphens)
- */
-export const slugRegex = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-
 // ============================================================================
 // Validation Functions
 // ============================================================================
