@@ -3,6 +3,8 @@ import { createServer, type Server } from 'node:http';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type * as PortProbe from '../portProbe.js';
+import type * as Security from '../security.js';
 
 /**
  * POST /port-checks — the probe behind the admin card that tells an operator
@@ -22,11 +24,11 @@ const { probeTcpMock, probeDnsMock, rateLimitedMock } = vi.hoisted(() => ({
 	rateLimitedMock: vi.fn((_endpoint: string) => false),
 }));
 vi.mock('../portProbe.js', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../portProbe.js')>();
+	const actual = await importOriginal<typeof PortProbe>();
 	return { ...actual, probeTcp: probeTcpMock, probeDns: probeDnsMock };
 });
 vi.mock('../security.js', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../security.js')>();
+	const actual = await importOriginal<typeof Security>();
 	return { ...actual, isRateLimited: rateLimitedMock };
 });
 

@@ -12,7 +12,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { generateKeyPairSync } from 'crypto';
+import { generateKeyPairSync, type KeyObject } from 'crypto';
 import { verifyDkim } from '../verify.js';
 import { mintSignature } from './helpers/mint.js';
 
@@ -30,7 +30,7 @@ const HEADERS = [
 const BODY = 'Body signed by a factorable RSA key.\r\n';
 
 /** SPKI DER (base64) of a public key — the DKIM `p=` payload. */
-function spkiBase64(publicKey: import('crypto').KeyObject): string {
+function spkiBase64(publicKey: KeyObject): string {
 	return publicKey.export({ type: 'spki', format: 'der' }).toString('base64');
 }
 

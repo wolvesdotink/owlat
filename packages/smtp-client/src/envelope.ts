@@ -17,7 +17,7 @@
  */
 
 import { serializeMailFrom, serializeRcptTo, serializeData, hasCapability } from './commands';
-import { SmtpConnection } from './connection';
+import type { SmtpConnection } from './connection';
 import { SmtpError, type SmtpErrorInit, type SmtpPhase } from './errors';
 import { dotStuffMessage } from './dotStuff';
 import { isPositiveCompletion, isPositiveIntermediate, type SmtpReply } from './reply';

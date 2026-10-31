@@ -4,6 +4,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { installShutdown } from '@owlat/shared/nodeShutdown';
+import type * as Security from '../security.js';
 
 const { commandMock, rateLimitedMock } = vi.hoisted(() => ({
 	commandMock: vi.fn(),
@@ -14,7 +15,7 @@ vi.mock('node:child_process', async () => {
 	return { spawn: spawnFrom(commandMock) };
 });
 vi.mock('../security.js', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../security.js')>();
+	const actual = await importOriginal<typeof Security>();
 	return { ...actual, isRateLimited: rateLimitedMock };
 });
 

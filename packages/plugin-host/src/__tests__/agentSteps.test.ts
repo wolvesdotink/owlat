@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parsePluginId, type PluginAgentLifecycleEdge } from '@owlat/plugin-kit';
 import {
-	AgentStepCompositionError,
+	type AgentStepCompositionError,
 	CORE_AGENT_STEP_DEFINITIONS,
 	composeAgentStepDefinitions,
 } from '../agentSteps';

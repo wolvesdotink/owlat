@@ -13,6 +13,7 @@ import {
 import type * as NodeFs from 'node:fs';
 import type * as OwnerOnlyFile from '@owlat/shared/ownerOnlyFile';
 import type * as Http from '../http.js';
+import type * as Security from '../security.js';
 import type * as RolloutState from '../rolloutState.js';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -33,7 +34,7 @@ vi.mock('node:fs', async (importOriginal) => {
 	return { ...actual, statfsSync: () => ({ bavail: freeBytesMock(), bsize: 1 }) };
 });
 vi.mock('../security.js', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../security.js')>();
+	const actual = await importOriginal<typeof Security>();
 	return { ...actual, isRateLimited: rateLimitedMock };
 });
 // The real exec, behind a spy so a case can read the bound a step ran under.

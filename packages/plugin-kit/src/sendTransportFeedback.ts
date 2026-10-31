@@ -11,6 +11,8 @@
  * it hangs off.
  */
 
+import type { ProviderFeedbackEvent } from '@owlat/provider-kit';
+
 /**
  * The feedback vocabulary a plugin transport may report, as the four facts the
  * measurement plane and the Send lifecycle actually consume.
@@ -46,7 +48,7 @@ export type PluginWebhookFeedbackKind = (typeof PLUGIN_WEBHOOK_FEEDBACK_KINDS)[n
  * Every field is re-validated by the host before it is trusted: plugin output is
  * untrusted input, exactly as a send attempt's result is.
  */
-export type PluginWebhookFeedbackEvent = import('@owlat/provider-kit').ProviderFeedbackEvent;
+export type PluginWebhookFeedbackEvent = ProviderFeedbackEvent;
 
 /**
  * Largest request body the feedback route reads, in BYTES of UTF-8 (not string
