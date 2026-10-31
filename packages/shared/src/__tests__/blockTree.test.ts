@@ -328,6 +328,18 @@ describe('normalizeBlockTreeIds', () => {
 		expect(result[1]).toBe(clean[1]);
 	});
 
+	it('repairs a proxied tree into a plain copy that keeps non-Block entries', () => {
+		const roots = new Proxy([text(), undefined, raw('container', { items: [text()] }, 'box')], {});
+		expect(() => structuredClone(roots)).toThrow();
+		const result = normalizeBlockTreeIds(roots as unknown[]);
+		expect(result[1]).toBeNull();
+		expect(idsOf([result[0], result[2]])).toEqual(['block-1', 'box', 'block-2']);
+		expect(result[0]).not.toBe(roots[0]);
+		expect(repeatedBlockIdRenewals(new Proxy([text('a'), text('a')], {}))).toEqual([
+			{ from: 'a', to: 'block-1' },
+		]);
+	});
+
 	it('leaves entries that are not Blocks where they are', () => {
 		const roots: unknown[] = [null, 'text', { id: 'no-type' }, text()];
 		const result = normalizeBlockTreeIds(roots);

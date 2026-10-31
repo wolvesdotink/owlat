@@ -49,6 +49,34 @@ export interface RenderDraftBodiesOptions {
 }
 
 /**
+ * The Blocks a draft's `bodyBlocks` holds. Throws when it is not JSON or not a
+ * list of Blocks, so the caller reports it and falls back to `bodyHtml`.
+ *
+ * Each entry needs a string `type` and an object `content`: the renderer
+ * dispatches on the one and every block module reads its fields off the other.
+ * The type is not checked against the registry (a plugin Block is rendered by
+ * its own module, and a type nothing renders comes out empty), the id may be
+ * missing (the renderer fills it), and what a block module reads inside
+ * `content` stays that module's to check.
+ */
+function parseDraftBlocks(json: string): EditorBlock[] {
+	const parsed: unknown = JSON.parse(json);
+	if (!Array.isArray(parsed)) throw new TypeError('bodyBlocks is not a list of Blocks');
+	if (!parsed.every(isRenderableBlock)) {
+		throw new TypeError('bodyBlocks holds an entry that is not a Block');
+	}
+	return parsed;
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+	return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isRenderableBlock(value: unknown): value is EditorBlock {
+	return isObject(value) && typeof value['type'] === 'string' && isObject(value['content']);
+}
+
+/**
  * Resolve the final HTML + plain-text (+ optional AMP) bodies for a draft.
  *
  *   - composerMode='full': bodyBlocks holds the block document built by the
@@ -74,7 +102,7 @@ export function renderDraftBodies(
 
 	if (wantsFull && draft.bodyBlocks) {
 		try {
-			const blocks = JSON.parse(draft.bodyBlocks) as EditorBlock[];
+			const blocks = parseDraftBlocks(draft.bodyBlocks);
 			if (blocks.length > 0) {
 				const html = renderEmailHtml(blocks, renderOptions);
 				const text = resolvePlainText(blocks, draft.bodyText);

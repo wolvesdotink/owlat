@@ -42,21 +42,47 @@ function detectPlatform(): DesktopPlatform | null {
 	return null;
 }
 
+/**
+ * The download URL of `platform`'s friendliest installer in a GitHub release
+ * answer, or null when the release lists none. Assets of the wrong shape are
+ * skipped, and only an https URL is taken: the visitor is sent there directly.
+ */
+export function desktopAssetUrl(release: unknown, platform: DesktopPlatform): string | null {
+	const listed = isObject(release) ? release['assets'] : undefined;
+	const assets = (Array.isArray(listed) ? listed : []).filter(isReleaseAsset);
+	for (const pattern of ASSET_PATTERNS[platform]) {
+		const match = assets.find((asset) => pattern.test(asset.name));
+		if (match) return match.browser_download_url;
+	}
+	return null; // latest release carries no desktop asset for this platform
+}
+
+interface ReleaseAsset {
+	name: string;
+	browser_download_url: string;
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+	return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isReleaseAsset(value: unknown): value is ReleaseAsset {
+	return (
+		isObject(value) &&
+		typeof value['name'] === 'string' &&
+		typeof value['browser_download_url'] === 'string' &&
+		value['browser_download_url'].startsWith('https://')
+	);
+}
+
 async function resolveAssetUrl(platform: DesktopPlatform): Promise<string | null> {
 	try {
 		const res = await fetch(LATEST_RELEASE_API, {
 			headers: { Accept: 'application/vnd.github+json' },
 		});
 		if (!res.ok) return null;
-		const release = (await res.json()) as {
-			assets?: { name: string; browser_download_url: string }[];
-		};
-		const assets = release.assets ?? [];
-		for (const pattern of ASSET_PATTERNS[platform]) {
-			const match = assets.find((asset) => pattern.test(asset.name));
-			if (match) return match.browser_download_url;
-		}
-		return null; // latest release carries no desktop asset for this platform
+		const release: unknown = await res.json();
+		return desktopAssetUrl(release, platform);
 	} catch {
 		return null;
 	}

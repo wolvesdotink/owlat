@@ -19,29 +19,60 @@ import {
 	applyToggle,
 	applyPackToggle,
 	FEATURE_FLAGS,
+	hasFeatureFlagDefinition,
+	isPluginFeatureFlagKey,
 	type FeatureFlagState,
 	type FeatureFlagKey,
 	type FeaturePackKey,
 } from '@owlat/shared/featureFlags';
 import { writeOwnerOnlyFile } from '@owlat/shared/ownerOnlyFile';
+import { isRecord } from '@owlat/shared/utils/guards';
 import { writeComposeOverride } from './override';
 
 const STATE_FILE = '.owlat-flags.json';
 const OVERRIDE_FILE = 'docker-compose.override.yml';
 const ENV_FILE = '.env';
 
-/** Load the current flag state from `<owlatDir>/.owlat-flags.json`. */
+/**
+ * Load the current flag state from `<owlatDir>/.owlat-flags.json`. A missing,
+ * unreadable or malformed file reads as no stored flags, so every flag takes
+ * its default.
+ */
 export async function loadFlagState(owlatDir: string): Promise<FeatureFlagState> {
 	const statePath = join(owlatDir, STATE_FILE);
 	try {
 		const file = Bun.file(statePath);
 		if (await file.exists()) {
-			return JSON.parse(await file.text()) as FeatureFlagState;
+			return parseFlagState(await file.text()) ?? {};
 		}
 	} catch {
 		// File missing or unreadable — fall through to defaults.
 	}
 	return {};
+}
+
+/**
+ * The flag state a `.owlat-flags.json` text holds, or `undefined` when it is
+ * not JSON, not an object, or holds a flag whose value is not a boolean. The
+ * web setup wizard and the updater write this file too. Keys that are neither
+ * a core flag nor plugin-shaped are dropped: no resolution reads them, and the
+ * next toggle would drop them anyway.
+ */
+export function parseFlagState(text: string): FeatureFlagState | undefined {
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(text);
+	} catch {
+		return undefined;
+	}
+	if (!isRecord(parsed)) return undefined;
+	const state: FeatureFlagState = {};
+	for (const [key, value] of Object.entries(parsed)) {
+		if (!hasFeatureFlagDefinition(FEATURE_FLAGS, key) && !isPluginFeatureFlagKey(key)) continue;
+		if (typeof value !== 'boolean') return undefined;
+		state[key as FeatureFlagKey] = value;
+	}
+	return state;
 }
 
 /**

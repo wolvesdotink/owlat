@@ -50,6 +50,7 @@ import {
 } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
+import { isRecord } from '@owlat/shared/utils/guards';
 import { exec, OWLAT_DIR, parseMounts, type DockerMount } from './http.js';
 import { composeArgv, hostInstallDir, inspectSelf, oneLine } from './rollout.js';
 import { UPDATE_INSTALL_LABEL } from './deployRun.js';
@@ -325,20 +326,20 @@ export async function inspectContainers(
 	const containers: InspectedContainer[] = [];
 	for (const line of inspected.stdout.split('\n')) {
 		if (!line.trim()) continue;
-		let entry: { Id?: unknown; Running?: unknown; Service?: unknown; Mounts?: unknown };
+		let entry: unknown;
 		try {
-			entry = JSON.parse(line) as typeof entry;
+			entry = JSON.parse(line);
 		} catch {
 			return { error: 'docker inspect answered something that is not JSON' };
 		}
-		const mounts = parseMounts(entry.Mounts);
-		if (typeof entry.Id !== 'string' || !mounts) {
+		const mounts = isRecord(entry) ? parseMounts(entry['Mounts']) : null;
+		if (!isRecord(entry) || !mounts || typeof entry['Id'] !== 'string') {
 			return { error: 'docker inspect answered a container without an id or mounts' };
 		}
 		containers.push({
-			id: entry.Id,
-			running: entry.Running === true,
-			service: typeof entry.Service === 'string' ? entry.Service : '',
+			id: entry['Id'],
+			running: entry['Running'] === true,
+			service: typeof entry['Service'] === 'string' ? entry['Service'] : '',
 			mounts,
 		});
 	}

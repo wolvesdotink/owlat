@@ -407,9 +407,9 @@ describe.each(['.', 'apps/web'])('oxlint run from %s with the root config', (cwd
 		expect(errorCodes(byFile.get('backoff.ts'))).toEqual(['owlat(no-inline-backoff)']);
 	});
 
-	it('warns about a cast of parsed JSON for the ratchet', () => {
-		expect(errorCodes(byFile.get('uncheckedJson.ts'))).toEqual([]);
-		expect(warningCodes(byFile.get('uncheckedJson.ts'))).toEqual(['owlat(no-unchecked-json-cast)']);
+	it('reports a cast of parsed JSON as an error', () => {
+		expect(errorCodes(byFile.get('uncheckedJson.ts'))).toEqual(['owlat(no-unchecked-json-cast)']);
+		expect(warningCodes(byFile.get('uncheckedJson.ts'))).toEqual([]);
 	});
 
 	it('reports a suppression that does not say why', () => {
