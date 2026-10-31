@@ -36,13 +36,13 @@ const DANE_USAGE = {
 } as const;
 
 /** DANE selector (RFC 6698 §2.1.2): full certificate vs SubjectPublicKeyInfo. */
-export const DANE_SELECTOR = {
+const DANE_SELECTOR = {
 	FULL_CERT: 0,
 	SPKI: 1,
 } as const;
 
 /** DANE matching type (RFC 6698 §2.1.3): exact / SHA-256 / SHA-512. */
-export const DANE_MATCHING = {
+const DANE_MATCHING = {
 	EXACT: 0,
 	SHA256: 1,
 	SHA512: 2,
@@ -109,7 +109,7 @@ export function tlsaRecordsEqual(a: TlsaRecord, b: TlsaRecord): boolean {
  * Whether a TLSA record is usable for SMTP DANE (RFC 7672 §2.1): usage DANE-TA(2)
  * or DANE-EE(3), a known selector (0/1) and a known matching type (0/1/2).
  */
-export function isUsableForSmtp(record: TlsaRecord): boolean {
+function isUsableForSmtp(record: TlsaRecord): boolean {
 	const usableUsage = record.usage === DANE_USAGE.DANE_TA || record.usage === DANE_USAGE.DANE_EE;
 	const knownSelector =
 		record.selector === DANE_SELECTOR.FULL_CERT || record.selector === DANE_SELECTOR.SPKI;

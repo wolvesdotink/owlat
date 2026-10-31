@@ -34,7 +34,7 @@ export interface DelistingContext {
 	metrics?: DelistingMetrics;
 }
 
-export interface DelistingTarget {
+interface DelistingTarget {
 	zoneId: IpAuditZoneId;
 	sublist?: SpamhausSublist;
 }
@@ -276,7 +276,7 @@ function templateFor(target: DelistingTarget): { key: string; template: ZoneTemp
 }
 
 /** Build the removal URL, likely cause, and pre-filled request for one listing. */
-export function delistingGuidanceFor(
+function delistingGuidanceFor(
 	target: DelistingTarget,
 	context: DelistingContext
 ): DelistingGuidance {

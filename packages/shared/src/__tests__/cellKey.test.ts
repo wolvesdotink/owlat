@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
 	allDeliverabilityCells,
 	deliverabilityCellKey,
-	DELIVERABILITY_STREAM_KEYS,
 	DESTINATION_PROVIDER_KEYS,
 	parseDeliverabilityCellKey,
 } from '../deliverabilityRouting';
@@ -11,9 +10,7 @@ import { GOVERNED_MESSAGE_TYPES, isGovernedMessageType } from '../routingDispatc
 describe('deliverability cell key', () => {
 	it('round-trips every (stream x destinationProvider) combination', () => {
 		const cells = allDeliverabilityCells();
-		expect(cells).toHaveLength(
-			DELIVERABILITY_STREAM_KEYS.length * DESTINATION_PROVIDER_KEYS.length
-		);
+		expect(cells).toHaveLength(GOVERNED_MESSAGE_TYPES.length * DESTINATION_PROVIDER_KEYS.length);
 		const seen = new Set<string>();
 		for (const cell of cells) {
 			const key = deliverabilityCellKey(cell);
@@ -54,7 +51,7 @@ describe('deliverability cell key', () => {
 	});
 
 	it('recognises exactly the shipped stream keys', () => {
-		for (const stream of DELIVERABILITY_STREAM_KEYS) {
+		for (const stream of GOVERNED_MESSAGE_TYPES) {
 			expect(isGovernedMessageType(stream)).toBe(true);
 		}
 		for (const notAStream of ['all', 'marketing', 'txn', '', 'Campaign']) {
@@ -65,11 +62,8 @@ describe('deliverability cell key', () => {
 	it('keeps the stream axis aliased to the shipped governed message types', () => {
 		// Aliasing rather than re-declaring is the point: a fifth governed message
 		// type widens the cell axis with it instead of silently missing rows.
-		expect(DELIVERABILITY_STREAM_KEYS).toBe(GOVERNED_MESSAGE_TYPES);
-		expect([...DELIVERABILITY_STREAM_KEYS].sort()).toEqual([
-			'automation',
-			'campaign',
-			'transactional',
-		]);
+		const streams = [...new Set(allDeliverabilityCells().map((cell) => cell.stream))];
+		expect(streams).toEqual([...GOVERNED_MESSAGE_TYPES]);
+		expect(streams.sort()).toEqual(['automation', 'campaign', 'transactional']);
 	});
 });

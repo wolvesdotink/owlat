@@ -13,7 +13,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import { ref } from 'vue';
-import { splitZone } from '@owlat/shared';
+import { trySplitZone } from '@owlat/shared';
 
 import AddDomainForm from '../AddDomainForm.vue';
 import TrackingDomainsSection from '../TrackingDomainsSection.vue';
@@ -158,9 +158,9 @@ describe('X2 — tracking-URL preview (composed via A1)', () => {
 		expect((subInput(w).element as HTMLInputElement).value).toBe('links');
 		expect(preview(w).text()).toContain('links.example.co.uk');
 		// Anchored to the same shared split the component relies on.
-		const split = splitZone('links.example.co.uk');
-		expect(split.registrable).toBe('example.co.uk');
-		expect(split.sub).toBe('links');
+		const split = trySplitZone('links.example.co.uk');
+		expect(split?.registrable).toBe('example.co.uk');
+		expect(split?.sub).toBe('links');
 	});
 });
 

@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { evaluateIpAudit, type IpAuditZoneObservation } from '../ipAudit';
+import { evaluateIpAudit, type IpAuditFinding, type IpAuditZoneObservation } from '../ipAudit';
 import {
-	delistingGuidanceFor,
 	delistingGuidanceForFindings,
 	type DelistingContext,
+	type DelistingGuidance,
 } from '../ipAuditDelisting';
 
 const CONTEXT: DelistingContext = {
@@ -11,6 +11,20 @@ const CONTEXT: DelistingContext = {
 	ehlo: 'mail.example.com',
 	contactEmail: 'postmaster@example.com',
 };
+
+/** The guidance for a single listing, read through the per-finding entry point. */
+function delistingGuidanceFor(
+	target: Pick<IpAuditFinding, 'zoneId' | 'sublist'>,
+	context: DelistingContext
+): DelistingGuidance {
+	const [entry, ...rest] = delistingGuidanceForFindings(
+		[{ id: 'zone_listed', severity: 'blocking', message: '', nextAction: '', ...target }],
+		context
+	);
+	expect(rest).toEqual([]);
+	if (!entry) throw new Error('expected guidance for a listed zone');
+	return entry;
+}
 
 describe('zone-specific removal guidance', () => {
 	it('gives PBL, CSS, SBL and XBL different URLs and different advice', () => {

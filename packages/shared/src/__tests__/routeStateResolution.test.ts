@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-	DELIVERABILITY_STREAM_KEYS,
 	DESTINATION_PROVIDER_KEYS,
+	allDeliverabilityCells,
 	clampOwnShare,
 	deliverabilityCellKey,
 	isFallbackActiveForShare,
@@ -102,7 +102,7 @@ describe('own-share resolution', () => {
 
 describe('ramp cell keys', () => {
 	it('round-trips every stream x destination provider cell', () => {
-		for (const stream of DELIVERABILITY_STREAM_KEYS) {
+		for (const stream of GOVERNED_MESSAGE_TYPES) {
 			for (const provider of DESTINATION_PROVIDER_KEYS) {
 				const key = deliverabilityCellKey({ stream, destinationProvider: provider });
 				expect(key).toBe(`${stream}:${provider}`);
@@ -124,15 +124,13 @@ describe('ramp cell keys', () => {
 	});
 
 	it('is the shipped governed message type, not a parallel taxonomy', () => {
-		// Same array identity, not merely the same members: a fifth governed
-		// message type widens the stream axis with it, so a per-stream lookup can
-		// never silently miss and fall through to the legacy row.
-		expect(DELIVERABILITY_STREAM_KEYS).toBe(GOVERNED_MESSAGE_TYPES);
-		expect([...DELIVERABILITY_STREAM_KEYS].sort()).toEqual(
-			['automation', 'campaign', 'transactional'].sort()
-		);
-		for (const stream of DELIVERABILITY_STREAM_KEYS)
-			expect(isGovernedMessageType(stream)).toBe(true);
+		// The cell grid's stream axis follows the governed message types: a fifth
+		// governed message type widens the stream axis with it, so a per-stream
+		// lookup can never silently miss and fall through to the legacy row.
+		const streams = [...new Set(allDeliverabilityCells().map((cell) => cell.stream))];
+		expect(streams).toEqual([...GOVERNED_MESSAGE_TYPES]);
+		expect(streams.sort()).toEqual(['automation', 'campaign', 'transactional'].sort());
+		for (const stream of GOVERNED_MESSAGE_TYPES) expect(isGovernedMessageType(stream)).toBe(true);
 		expect(isGovernedMessageType('marketing')).toBe(false);
 		expect(isGovernedMessageType(undefined)).toBe(false);
 		expect(isGovernedMessageType(1)).toBe(false);

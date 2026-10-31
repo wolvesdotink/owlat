@@ -1,27 +1,27 @@
 import { describe, expect, it } from 'vitest';
 import {
-	DELIVERABILITY_SIGNAL_SOURCES,
-	DELIVERABILITY_SNAPSHOT_MAX_AGE_MS,
 	DELIVERABILITY_SNAPSHOT_MAX_FUTURE_SKEW_MS,
-	OUTCOME_DELIVERABILITY_SIGNAL_SOURCES,
-	isDeliverabilitySignalSource,
 	normalizeDeliverabilityRoutingSnapshot,
+	type DeliverabilitySignalSource,
 } from '../deliverabilityRouting';
 
 const NOW = 1_800_000_000_000;
+
+// The outcome-derived sources and the parser's ten-minute freshness window,
+// pinned as literals.
+const OUTCOME_DELIVERABILITY_SIGNAL_SOURCES = [
+	'bounce_rate',
+	'complaint_rate',
+	'engagement_ratio',
+	'seed_placement',
+] as const satisfies readonly DeliverabilitySignalSource[];
+const DELIVERABILITY_SNAPSHOT_MAX_AGE_MS = 10 * 60 * 1000;
 
 function snapshot(signals: unknown[], generatedAt = NOW) {
 	return { generatedAt, signals };
 }
 
 describe('outcome-derived signal sources in the strict snapshot parser', () => {
-	it('recognizes each new source as part of the union', () => {
-		for (const source of OUTCOME_DELIVERABILITY_SIGNAL_SOURCES) {
-			expect(isDeliverabilitySignalSource(source)).toBe(true);
-			expect(DELIVERABILITY_SIGNAL_SOURCES).toContain(source);
-		}
-	});
-
 	it('accepts every new source with the shipped shape', () => {
 		for (const source of OUTCOME_DELIVERABILITY_SIGNAL_SOURCES) {
 			const parsed = normalizeDeliverabilityRoutingSnapshot(
@@ -97,7 +97,6 @@ describe('outcome-derived signal sources in the strict snapshot parser', () => {
 
 	it('still rejects sources outside the widened union', () => {
 		for (const source of ['spam_rate', 'placement', 'bounce', 'BOUNCE_RATE', '']) {
-			expect(isDeliverabilitySignalSource(source)).toBe(false);
 			expect(
 				normalizeDeliverabilityRoutingSnapshot(
 					snapshot([{ provider: 'all', source, severity: 'critical', observedAt: NOW }]),

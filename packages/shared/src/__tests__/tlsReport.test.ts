@@ -11,7 +11,6 @@ import { describe, it, expect } from 'vitest';
 import {
 	parseTlsReport,
 	decodeTlsReport,
-	gunzipTlsReport,
 	digestTlsReport,
 	explainTlsFailureType,
 	TLS_RPT_MAX_COMPRESSED_BYTES,
@@ -109,10 +108,9 @@ describe('gunzip + decode', () => {
 		expect(result.ok).toBe(false);
 	});
 
-	it('gunzipTlsReport throws on oversized input (folded to failure by decode)', async () => {
-		await expect(
-			gunzipTlsReport(new Uint8Array(TLS_RPT_MAX_COMPRESSED_BYTES + 1))
-		).rejects.toThrow();
+	it('names the size cap as the reason for an oversized payload', async () => {
+		const result = await decodeTlsReport(new Uint8Array(TLS_RPT_MAX_COMPRESSED_BYTES + 1));
+		expect(result).toEqual({ ok: false, error: 'tls-rpt: compressed payload too large' });
 	});
 });
 

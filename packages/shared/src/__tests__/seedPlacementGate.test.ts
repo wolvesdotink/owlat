@@ -5,7 +5,6 @@ import {
 	SEED_REACHED_THRESHOLD,
 	SEED_REFERENCE_TOLERANCE,
 	summarizeSeedPlacement,
-	summarizeSeedProvider,
 	summarizeSeedProviderCounts,
 	type SeedArmPlacementCounts,
 	type SeedObservation,
@@ -19,6 +18,17 @@ function observations(
 	arm: SeedTransportArm = 'own'
 ): SeedObservation[] {
 	return placements.map((placement) => ({ provider, arm, placement }));
+}
+
+/** The one provider's roll-up from a single-provider observation set. */
+function summarizeSeedProvider(
+	provider: SeedObservation['provider'],
+	observed: readonly SeedObservation[]
+) {
+	const [rollup, ...rest] = summarizeSeedPlacement(observed);
+	expect(rest).toEqual([]);
+	if (rollup?.provider !== provider) throw new Error(`expected a ${provider} roll-up`);
+	return rollup;
 }
 
 function counts(placements: readonly SeedPlacement[]): SeedArmPlacementCounts {

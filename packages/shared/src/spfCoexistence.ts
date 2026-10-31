@@ -16,7 +16,7 @@
 import { isSpfRecord, mergeSpfRecords, parseSpfMechanisms, spfMechanismAuthorizes } from './spf';
 
 /** RFC 7208 §4.6.4 — at most 10 DNS-lookup terms per evaluation. */
-export const SPF_MAX_DNS_LOOKUPS = 10;
+const SPF_MAX_DNS_LOOKUPS = 10;
 
 /** Mechanisms that each cost one DNS lookup (RFC 7208 §4.6.4). */
 const LOOKUP_MECHANISMS = ['include', 'a', 'mx', 'ptr', 'exists'] as const;
@@ -103,7 +103,7 @@ function includeTarget(token: string): string | null {
  * Its nested lookups are unknowable from a pure function, and inventing a larger
  * number would block a record that actually evaluates.
  */
-export function mechanismLookupCost(token: string): number {
+function mechanismLookupCost(token: string): number {
 	const normalized = normalizeMechanism(token);
 	if (normalized.startsWith('redirect=')) return 1;
 	if (includeTarget(token) !== null) return 1;
@@ -112,7 +112,7 @@ export function mechanismLookupCost(token: string): number {
 }
 
 /** Total DNS-lookup term count of a `v=spf1` record. */
-export function countSpfDnsLookups(record: string): number {
+function countSpfDnsLookups(record: string): number {
 	return parseSpfMechanisms(record).reduce((total, token) => total + mechanismLookupCost(token), 0);
 }
 

@@ -14,7 +14,7 @@
 import type { AlignmentVerdict } from './deliverabilityAlignment';
 
 /** Beyond this, a recorded verdict is no longer evidence of anything. */
-export const ALIGNMENT_STALE_AFTER_MS = 48 * 60 * 60 * 1000;
+const ALIGNMENT_STALE_AFTER_MS = 48 * 60 * 60 * 1000;
 
 /**
  * Clock skew tolerated in the FORWARD direction, mirroring
@@ -23,7 +23,7 @@ export const ALIGNMENT_STALE_AFTER_MS = 48 * 60 * 60 * 1000;
  * clock, and treating it as authoritative would pin an `aligned` verdict for as
  * long as the skew lasts.
  */
-export const ALIGNMENT_MAX_FUTURE_SKEW_MS = 2 * 60 * 1000;
+const ALIGNMENT_MAX_FUTURE_SKEW_MS = 2 * 60 * 1000;
 
 export type AlignmentGateReason =
 	| 'single_arm'

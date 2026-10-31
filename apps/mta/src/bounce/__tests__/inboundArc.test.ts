@@ -26,11 +26,19 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { verifyArcChain, type ArcDnsResolver } from '../inboundArc.js';
-import {
-	DEFAULT_TRUSTED_ARC_FORWARDERS,
-	isTrustedForwarder,
-	shouldArcOverrideDmarc,
-} from '@owlat/shared/arcTrust';
+import { DEFAULT_TRUSTED_ARC_FORWARDERS, shouldArcOverrideDmarc } from '@owlat/shared/arcTrust';
+
+/**
+ * The trust gate alone, observed through the public rescue predicate: with the
+ * chain validated and the original attested, the verdict is exactly whether
+ * `sealer` is covered by `forwarders`.
+ */
+function trustsSealer(sealer: string | undefined, forwarders: readonly string[]): boolean {
+	return shouldArcOverrideDmarc(
+		{ arcCv: 'pass', arcSealerDomain: sealer, arcAttestsOriginalPass: true },
+		forwarders
+	);
+}
 
 const fixturesDir = join(
 	dirname(fileURLToPath(import.meta.url)),
@@ -119,7 +127,7 @@ describe('shouldArcOverrideDmarc — the DMARC-rescue gate', () => {
 
 	it('does NOT rescue an untrusted sealer even with a valid attesting chain', async () => {
 		const verdict = await verifyArcChain(fixture('untrusted-sealer'), { resolver });
-		expect(isTrustedForwarder(verdict.sealerDomain, DEFAULT_TRUSTED_ARC_FORWARDERS)).toBe(false);
+		expect(trustsSealer(verdict.sealerDomain, DEFAULT_TRUSTED_ARC_FORWARDERS)).toBe(false);
 		expect(
 			shouldArcOverrideDmarc(
 				{
@@ -164,7 +172,7 @@ describe('shouldArcOverrideDmarc — the DMARC-rescue gate', () => {
 		const verdict = await verifyArcChain(fixture('dmarc-fail-spf-pass'), { resolver });
 		// Trust gate passes (sealer is on the default list) — the attestation is
 		// what blocks the rescue, proving fail-closed on a false attestation.
-		expect(isTrustedForwarder(verdict.sealerDomain, DEFAULT_TRUSTED_ARC_FORWARDERS)).toBe(true);
+		expect(trustsSealer(verdict.sealerDomain, DEFAULT_TRUSTED_ARC_FORWARDERS)).toBe(true);
 		expect(
 			shouldArcOverrideDmarc(
 				{
@@ -178,19 +186,17 @@ describe('shouldArcOverrideDmarc — the DMARC-rescue gate', () => {
 	});
 
 	it('matches a trusted forwarder on a subdomain of a listed entry', () => {
-		expect(isTrustedForwarder('mail-a.google.com', DEFAULT_TRUSTED_ARC_FORWARDERS)).toBe(true);
-		expect(isTrustedForwarder('google.com.evil.example', DEFAULT_TRUSTED_ARC_FORWARDERS)).toBe(
-			false
-		);
+		expect(trustsSealer('mail-a.google.com', DEFAULT_TRUSTED_ARC_FORWARDERS)).toBe(true);
+		expect(trustsSealer('google.com.evil.example', DEFAULT_TRUSTED_ARC_FORWARDERS)).toBe(false);
 	});
 
 	it('NEVER treats a single-label allow-list entry as a TLD wildcard', () => {
 		// A typo'd or malicious bare `com` must not trust every `.com` sealer.
-		expect(isTrustedForwarder('spammer.com', ['com'])).toBe(false);
-		expect(isTrustedForwarder('mail.spammer.com', ['com'])).toBe(false);
+		expect(trustsSealer('spammer.com', ['com'])).toBe(false);
+		expect(trustsSealer('mail.spammer.com', ['com'])).toBe(false);
 		// An exact single-label match is harmless (no real sealer is a bare TLD).
-		expect(isTrustedForwarder('com', ['com'])).toBe(true);
+		expect(trustsSealer('com', ['com'])).toBe(true);
 		// A dot-bearing entry still matches its own subdomains.
-		expect(isTrustedForwarder('mail.acme.com', ['acme.com'])).toBe(true);
+		expect(trustsSealer('mail.acme.com', ['acme.com'])).toBe(true);
 	});
 });

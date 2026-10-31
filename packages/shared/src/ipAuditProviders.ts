@@ -10,7 +10,7 @@
  * Every note is capped so it renders as an inline hint, never a wall of text.
  */
 
-export const IP_AUDIT_VPS_PROVIDERS = [
+const IP_AUDIT_VPS_PROVIDERS = [
 	'hetzner',
 	'digitalocean',
 	'ovh',
@@ -35,10 +35,7 @@ export interface VpsPort25Note {
 	note: string;
 }
 
-/** Hard cap so the installer hint stays a hint. */
-export const PROVIDER_NOTE_MAX_CHARS = 240;
-
-export const VPS_PORT25_NOTES: Record<IpAuditVpsProvider, VpsPort25Note> = {
+const VPS_PORT25_NOTES: Record<IpAuditVpsProvider, VpsPort25Note> = {
 	hetzner: {
 		provider: 'hetzner',
 		providerLabel: 'Hetzner Cloud',
@@ -104,7 +101,7 @@ export const VPS_PORT25_NOTES: Record<IpAuditVpsProvider, VpsPort25Note> = {
 	},
 };
 
-export function isIpAuditVpsProvider(value: string): value is IpAuditVpsProvider {
+function isIpAuditVpsProvider(value: string): value is IpAuditVpsProvider {
 	return IP_AUDIT_VPS_PROVIDERS.includes(value as IpAuditVpsProvider);
 }
 

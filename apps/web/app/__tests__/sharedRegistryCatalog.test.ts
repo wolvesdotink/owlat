@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createI18n } from 'vue-i18n';
-import { DELIVERABILITY_CHECKLIST, DELIVERABILITY_SEVERITIES } from '@owlat/shared';
+import { DELIVERABILITY_CHECKLIST, type DeliverabilitySeverity } from '@owlat/shared';
 import { FEATURE_FLAGS, FEATURE_PACKS } from '@owlat/shared/featureFlags';
 import { OPERATING_MODES, OPERATING_MODE_KEYS } from '@owlat/shared/operatingModes';
 import { computeSnoozePresets } from '@owlat/shared/snoozePresets';
@@ -151,7 +151,8 @@ describe('sharedPkg.snoozePresets — every preset key resolves', () => {
  * The group headings are not in `packages/shared`: the Center read model mints
  * one per severity. They are pinned here as literals for the same reason the
  * registry sentences are compared word for word — a heading reworded on the
- * server and not in the catalog reads as English on a German page.
+ * server and not in the catalog reads as English on a German page. The
+ * `satisfies` clause makes a new severity without a heading a type error.
  */
 const GROUP_HEADINGS = {
 	blocking: { label: 'Blocking delivery', description: 'These checks can stop or reject mail.' },
@@ -168,7 +169,11 @@ const GROUP_HEADINGS = {
 		label: 'IPv6 sending',
 		description: 'Checks for the IPv6 address the server sends from.',
 	},
-} as const;
+} as const satisfies Record<
+	DeliverabilitySeverity | 'ipv6',
+	{ readonly label: string; readonly description: string }
+>;
+const GROUP_KEYS = Object.keys(GROUP_HEADINGS) as Array<keyof typeof GROUP_HEADINGS>;
 
 describe('sharedPkg.deliverabilityChecklist — the catalog mirrors the checklist taxonomy', () => {
 	it.each(DELIVERABILITY_CHECKLIST)('$id matches its English catalog entry', (definition) => {
@@ -185,18 +190,13 @@ describe('sharedPkg.deliverabilityChecklist — the catalog mirrors the checklis
 		}
 	});
 
-	it.each([...DELIVERABILITY_SEVERITIES, 'ipv6' as const])(
-		'the %s group heading is mirrored and translated',
-		(key) => {
-			expect(rendered('en', checklistGroupLabelKey(key))).toBe(GROUP_HEADINGS[key].label);
-			expect(rendered('en', checklistGroupDescriptionKey(key))).toBe(
-				GROUP_HEADINGS[key].description
-			);
-			for (const groupKey of [checklistGroupLabelKey(key), checklistGroupDescriptionKey(key)]) {
-				expect(rendered('de', groupKey)).not.toBe(groupKey);
-			}
+	it.each(GROUP_KEYS)('the %s group heading is mirrored and translated', (key) => {
+		expect(rendered('en', checklistGroupLabelKey(key))).toBe(GROUP_HEADINGS[key].label);
+		expect(rendered('en', checklistGroupDescriptionKey(key))).toBe(GROUP_HEADINGS[key].description);
+		for (const groupKey of [checklistGroupLabelKey(key), checklistGroupDescriptionKey(key)]) {
+			expect(rendered('de', groupKey)).not.toBe(groupKey);
 		}
-	);
+	});
 });
 
 /**

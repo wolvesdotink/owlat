@@ -32,7 +32,6 @@ import schema from '../../schema';
 import { api } from '../../_generated/api';
 import { insertExternalAccountRow } from '../../mail/external/accountShared';
 import { modules } from '../../__tests__/testModules';
-import { SEED_ROTATION_INTERVAL_MS } from '@owlat/shared/seedPlacement';
 import {
 	getBetterAuthSession,
 	requireOrgPermission,
@@ -43,6 +42,8 @@ import {
 const ORG = 'org_observability';
 const OTHER_ORG = 'org_intruder';
 const NOW = new Date('2026-07-15T12:00:00.000Z').getTime();
+/** The seed rotation interval (ninety days), pinned as a literal. */
+const SEED_ROTATION_INTERVAL_MS = 90 * 24 * 60 * 60 * 1000;
 
 const session = vi.hoisted(() => ({
 	/** Is there a session at all? */

@@ -46,11 +46,11 @@ import {
 } from './seedPlacement';
 
 /** The two — and only two — placement sources. */
-export const PLACEMENT_SOURCE_KINDS = ['self_hosted_seeds', 'commercial_api'] as const;
+const PLACEMENT_SOURCE_KINDS = ['self_hosted_seeds', 'commercial_api'] as const;
 export type PlacementSourceKind = (typeof PLACEMENT_SOURCE_KINDS)[number];
 
 /** The default and expected source. Named so callers assert against the constant. */
-export const DEFAULT_PLACEMENT_SOURCE_KIND: PlacementSourceKind = 'self_hosted_seeds';
+const DEFAULT_PLACEMENT_SOURCE_KIND: PlacementSourceKind = 'self_hosted_seeds';
 
 /**
  * One provider's reading from a commercial panel, for one arm.
@@ -112,10 +112,10 @@ export interface PlacementAdapter {
  * per provider is not measuring anything gate 5 reads differently (status,
  * never a percentage), so clamping costs no fidelity.
  */
-export const MAX_PANEL_MAILBOXES_PER_REPORT = 200;
+const MAX_PANEL_MAILBOXES_PER_REPORT = 200;
 
 /** Same reasoning one level up: the report list is third-party input too. */
-export const MAX_PANEL_REPORTS = 50;
+const MAX_PANEL_REPORTS = 50;
 
 /**
  * Clamp a mailbox count from an untrusted source to a non-negative integer no
@@ -143,7 +143,7 @@ function observationsOf(observation: SeedObservation, times: number): SeedObserv
  * boundary, because this is the single place a third-party number becomes an
  * allocation.
  */
-export function commercialReportsToObservations(
+function commercialReportsToObservations(
 	reports: readonly CommercialPlacementReport[]
 ): SeedObservation[] {
 	const observations: SeedObservation[] = [];
@@ -164,7 +164,7 @@ export function commercialReportsToObservations(
 }
 
 /** THE DEFAULT: self-hosted seed mailboxes. */
-export const selfHostedSeedPlacementAdapter: PlacementAdapter = {
+const selfHostedSeedPlacementAdapter: PlacementAdapter = {
 	kind: 'self_hosted_seeds',
 	confidence: SEED_GATE_CONFIDENCE,
 	summarize(evidence: PlacementEvidence): SeedProviderRollup[] {
@@ -174,7 +174,7 @@ export const selfHostedSeedPlacementAdapter: PlacementAdapter = {
 };
 
 /** STRICTLY AN UPGRADE: a commercial placement panel. */
-export const commercialPlacementApiAdapter: PlacementAdapter = {
+const commercialPlacementApiAdapter: PlacementAdapter = {
 	kind: 'commercial_api',
 	confidence: SEED_GATE_CONFIDENCE,
 	summarize(evidence: PlacementEvidence): SeedProviderRollup[] {

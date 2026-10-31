@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
 	VERP_KEY_MIN_BYTES,
 	VERP_WINDOW_MS,
-	VERP_WINDOW_TOLERANCE,
 	buildVerpAddress,
 	isUsableVerpKey,
 	normalizeReturnPathDomain,
@@ -18,6 +17,9 @@ import {
  * unsigned compatibility form directly, rather than reaching them transitively
  * through the MTA wrapper.
  */
+
+// Verification accepts the current window plus six prior ones, pinned as a literal.
+const VERP_WINDOW_TOLERANCE = 6;
 
 const KEY = 'k'.repeat(VERP_KEY_MIN_BYTES);
 const DOMAIN = 'bounces.example.com';

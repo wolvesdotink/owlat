@@ -81,8 +81,3 @@ export function normalizeReturnPathHost(input: unknown): string | null {
 
 	return host;
 }
-
-/** Whether a candidate return-path host is a valid, routable DNS FQDN. */
-export function isValidReturnPathHost(input: unknown): boolean {
-	return normalizeReturnPathHost(input) !== null;
-}
