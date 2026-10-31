@@ -194,11 +194,16 @@ export const cancelImport = authedMutation({
 /**
  * Returns the most-recent running import (when one exists) or otherwise
  * the most-recent completed/failed one. Drives the import progress modal
- * in the frontend.
+ * in the frontend. Owner/admin only, like starting and cancelling a run: the
+ * row carries the provider's error messages and the run's cursor.
  */
 export const getImportProgress = authedQuery({
 	args: {},
-	handler: async (ctx) => {
+	handler: async (ctx, _args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'imports:manage'),
+			'Only owners and admins can view imports'
+		);
 		const running = await ctx.db
 			.query('integrationImports')
 			.withIndex('by_status', (q) => q.eq('status', 'running'))

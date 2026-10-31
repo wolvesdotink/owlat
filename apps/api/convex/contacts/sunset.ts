@@ -313,6 +313,8 @@ export const setSunsetPolicy = authedMutation({
  * range: `deletedAt` is not part of the key, and the page size is already
  * bounded by the caller's `numItems`.
  */
+// token-safe: rows are projected to the sunset fields the `returns` validator
+// declares (id, email, names, stage, exemption); the DOI token is not among them.
 export const listSunsetStage = authedQuery({
 	args: {
 		stage: v.union(v.literal('reengagement'), v.literal('suppressed')),

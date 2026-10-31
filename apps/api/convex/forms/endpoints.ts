@@ -40,11 +40,17 @@ function assertHasEmailField(fields: FormField[]): void {
 }
 
 /**
- * List all form endpoints for an organization
+ * List all form endpoints for an organization. Owner/admin only, like the form
+ * mutations: this is the admin forms page's management view (the honeypot
+ * field name included), and no other surface reads it.
  */
 export const listByTeam = formsQuery({
 	args: {},
-	handler: async (ctx) => {
+	handler: async (ctx, _args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'organization:manage'),
+			'Only owners and admins can view forms'
+		);
 		const forms = await ctx.db.query('formEndpoints').collect(); // bounded: small per-org list
 
 		return forms.map((form) => ({
@@ -218,7 +224,13 @@ export const getSubmissions = formsQuery({
 		formEndpointId: v.id('formEndpoints'),
 		limit: v.optional(v.number()),
 	},
-	handler: async (ctx, args) => {
+	handler: async (ctx, args, session) => {
+		// Submissions hold what visitors typed, with their IP and user agent;
+		// reading them is part of managing forms.
+		requirePermission(
+			hasPermission(session.role, 'organization:manage'),
+			'Only owners and admins can view form submissions'
+		);
 		const form = await ctx.db.get(args.formEndpointId);
 		if (!form) return [];
 

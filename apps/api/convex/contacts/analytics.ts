@@ -58,6 +58,7 @@ function growthDays(perDay: ReadonlyMap<string, number>, now: number) {
 
 // Query to get subscriber growth over time (last 30 days, for HTTP API)
 // all-members: a daily count series for the audience panel; no contact rows.
+// token-safe: the fallback scan reads contacts only to bucket createdAt by day.
 export const getSubscriberGrowth = authedQuery({
 	args: {},
 	handler: async (ctx) => {

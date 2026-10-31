@@ -27,6 +27,9 @@ import { MAX_LIBRARY_FILE_BYTES, MAX_LIBRARY_FILE_MB } from '@owlat/shared/attac
  * List media assets for the organization (paginated).
  * Supports full-text search and tag filtering.
  */
+// all-members: the shared media library every role uses in the email editor;
+// chat attachments are dropped (their room owns that read), and writing the
+// library needs media:manage.
 export const list = authedQuery({
 	args: {
 		paginationOpts: paginationOptsValidator,
@@ -77,6 +80,7 @@ export const list = authedQuery({
 // read budget. Totals saturate at the cap (matching contacts.getTimelineStats).
 const MEDIA_SCAN_LIMIT = 20_000;
 
+// all-members: count and size of the shared library, chat attachments left out.
 export const getStats = authedQuery({
 	args: {},
 	handler: async (ctx) => {
@@ -143,6 +147,7 @@ export const countUsage = authedQuery({
 /**
  * Collect all unique tags from the organization's media library.
  */
+// all-members: the tag filter of the shared library, chat attachments left out.
 export const listTags = authedQuery({
 	args: {},
 	handler: async (ctx) => {

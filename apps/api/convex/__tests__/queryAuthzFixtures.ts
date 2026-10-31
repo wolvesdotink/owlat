@@ -6,7 +6,9 @@
  * nothing about who is refused.
  */
 
+import { describe, expect, it } from 'vitest';
 import type { TestConvex } from 'convex-test';
+import type { FunctionReference } from 'convex/server';
 import type schema from '../schema';
 import { components } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
@@ -31,6 +33,9 @@ const MEMBERS = [
 
 export type Caller = typeof OWNER | typeof ADMIN | typeof EDITOR | typeof OUTSIDER | 'anonymous';
 
+/** The gated feature families the matrix rows sit behind. */
+const GATED_FLAGS = ['campaigns', 'automations', 'chat', 'forms', 'transactional'] as const;
+
 export interface Seed {
 	orgId: string;
 	contactId: Id<'contacts'>;
@@ -45,7 +50,7 @@ export interface Seed {
  * org, so the cache is dropped first.
  */
 export async function authzHarness(
-	features: FeatureFlagKey[] = ['campaigns', 'automations', 'chat']
+	features: FeatureFlagKey[] = [...GATED_FLAGS]
 ): Promise<{ t: Harness; seed: Seed }> {
 	_resetSingletonOrgCacheForTests();
 	const t = newBetterAuthHarness();
@@ -105,11 +110,9 @@ export function room(name: string, visibility: 'public' | 'private', now: number
  * a registry default.
  */
 export async function setFeatures(t: Harness, enabled: FeatureFlagKey[]): Promise<void> {
-	const featureFlags: Record<string, boolean> = {
-		campaigns: false,
-		automations: false,
-		chat: false,
-	};
+	const featureFlags: Record<string, boolean> = Object.fromEntries(
+		GATED_FLAGS.map((flag) => [flag, false])
+	);
 	for (const flag of enabled) featureFlags[flag] = true;
 	await t.run(async (ctx) => {
 		const now = Date.now();
@@ -126,4 +129,86 @@ export async function setFeatures(t: Harness, enabled: FeatureFlagKey[]): Promis
 export function as(t: Harness, seed: Seed, caller: Caller) {
 	if (caller === 'anonymous') return t;
 	return t.withIdentity({ subject: caller, activeOrganizationId: seed.orgId });
+}
+
+/**
+ * Who may call a read:
+ *   member  any org role (owner, admin, editor) reads it;
+ *   admin   owner/admin only, an editor is refused `forbidden`;
+ *   self    any org role, but only for the caller's own user id.
+ */
+export type Policy = 'member' | 'admin' | 'self';
+
+export interface MatrixRow<S extends Seed = Seed> {
+	query: FunctionReference<'query', 'public'>;
+	policy: Policy;
+	flag?: FeatureFlagKey;
+	args?: (seed: S, caller: string) => Record<string, unknown>;
+}
+
+const forbidden = { data: { category: 'forbidden' } };
+
+/**
+ * One block per row: anonymous and non-member callers are refused before any
+ * data is read, the roles the policy names are admitted and the others
+ * refused, a self row refuses another member's id, and a row behind a flag
+ * refuses every role while the flag is off.
+ */
+export function describeQueryMatrix<S extends Seed>(
+	rows: Record<string, MatrixRow<S>>,
+	harness: () => Promise<{ t: Harness; seed: S }>
+): void {
+	type Fixture = Awaited<ReturnType<typeof harness>>;
+	const call = (row: MatrixRow<S>, h: Fixture, caller: Caller) => {
+		const args = row.args?.(h.seed, caller === 'anonymous' ? OUTSIDER : caller) ?? {};
+		return as(h.t, h.seed, caller).query(row.query, args as never);
+	};
+
+	describe.each(Object.entries(rows))('%s', (_name, row) => {
+		it('refuses anonymous and non-member callers before reading', async () => {
+			const h = await harness();
+			await expect(call(row, h, 'anonymous')).rejects.toMatchObject({
+				data: { category: 'unauthenticated' },
+			});
+			await expect(call(row, h, OUTSIDER)).rejects.toMatchObject(forbidden);
+		});
+
+		it('admits the roles its policy names', async () => {
+			const h = await harness();
+			// A rejection fails the test; the value itself is each read's own concern.
+			await call(row, h, OWNER);
+			await call(row, h, ADMIN);
+			if (row.policy === 'admin') {
+				await expect(call(row, h, EDITOR)).rejects.toMatchObject(forbidden);
+			} else {
+				await call(row, h, EDITOR);
+			}
+		});
+
+		if (row.policy === 'self') {
+			it("refuses another member's user id", async () => {
+				const h = await harness();
+				const args = row.args!(h.seed, OWNER);
+				await expect(as(h.t, h.seed, EDITOR).query(row.query, args as never)).rejects.toMatchObject(
+					forbidden
+				);
+			});
+		}
+
+		if (row.flag) {
+			const flag = row.flag;
+			it(`refuses every role while ${flag} is off`, async () => {
+				const h = await harness();
+				await setFeatures(
+					h.t,
+					GATED_FLAGS.filter((f) => f !== flag)
+				);
+				for (const caller of [OWNER, ADMIN, EDITOR] as const) {
+					await expect(call(row, h, caller)).rejects.toMatchObject({
+						data: { category: 'forbidden', data: { features: [flag] } },
+					});
+				}
+			});
+		}
+	});
 }

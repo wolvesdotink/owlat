@@ -109,32 +109,40 @@ export const BUDGETS: Readonly<Record<string, ScenarioBudgets>> = {
 	},
 	'postbox-list/50': {
 		'mount: rows': { exact: 50 },
-		'mount: components mounted': { max: 576 },
+		// Six per row for the row's tooltips (the checkbox and four quick
+		// actions, each a renderless UiTooltip) and the quick-action cluster's
+		// own component, plus the list's sweep status.
+		'mount: components mounted': { max: 877 },
 		'mount: elements rendered': { max: 1119 },
 		'mount: component updates during mount': { max: 0 },
 		// Under the windowing threshold every row mounts.
 		'run: rows mounted at the top': { exact: 50 },
 		'run: live update landed': { exact: 1 },
 		'run: rows re-rendered by a one-row update': { max: 1 },
-		'run: component updates for a one-row update': { max: 8 },
-		'run: DOM mutations for a one-row update': { max: 5 },
+		// A read row re-renders its quick actions and the mark-read tooltip
+		// (its text flips), and the checkbox's tooltip with the row link whose
+		// slot holds it.
+		'run: component updates for a one-row update': { max: 11 },
+		'run: DOM mutations for a one-row update': { max: 4 },
 		'run: rows shown while scrolling': { exact: 50 },
 		'run: rows re-rendered while scrolling': { max: 0 },
 		'run: component updates while scrolling': { max: 0 },
 		'run: DOM mutations while scrolling': { max: 0 },
-		...postboxTeardown(2675, 858),
+		// The retained list includes its sweep status's node.
+		...postboxTeardown(2676, 858),
 	},
 	'postbox-list/500': {
 		'mount: rows': { exact: 500 },
-		'mount: components mounted': { max: 260 },
+		// As postbox-list/50: six per mounted row and the sweep status.
+		'mount: components mounted': { max: 393 },
 		'mount: elements rendered': { max: 495 },
 		'mount: component updates during mount': { max: 1 },
 		// Over the threshold only a window mounts: the viewport's rows plus overscan.
 		'run: rows mounted at the top': { max: 22 },
 		'run: live update landed': { exact: 1 },
 		'run: rows re-rendered by a one-row update': { max: 1 },
-		'run: component updates for a one-row update': { max: 8 },
-		'run: DOM mutations for a one-row update': { max: 5 },
+		'run: component updates for a one-row update': { max: 11 },
+		'run: DOM mutations for a one-row update': { max: 4 },
 		'run: scroll height': { exact: 38000 },
 		'run: rows shown while scrolling': { exact: 500 },
 		'run: rows re-rendered while scrolling': { max: 0 },
@@ -144,13 +152,18 @@ export const BUDGETS: Readonly<Record<string, ScenarioBudgets>> = {
 	},
 	'team-inbox/100': {
 		'mount: rows': { exact: 100 },
-		'mount: components mounted': { max: 1395 },
-		'mount: elements rendered': { max: 2955 },
+		// Seven per row: the row's context menu (RowContextMenu, UiContextMenu
+		// and its closed transition) and four quick-action tooltips.
+		'mount: components mounted': { max: 2095 },
+		// Two per row for multi-selection: the checkbox and its spacer in the link.
+		'mount: elements rendered': { max: 3155 },
 		'mount: component updates during mount': { max: 0 },
 		'run: rows mounted': { exact: 100 },
 		'run: live update landed': { exact: 1 },
 		'run: rows re-rendered by a one-row update': { max: 1 },
-		'run: component updates for a one-row update': { max: 4 },
+		// The row's content renders in its context menu's slot, so the menu
+		// re-renders with the row.
+		'run: component updates for a one-row update': { max: 5 },
 		'run: DOM mutations for a one-row update': { max: 3 },
 		// Every row takes the list's clock as a prop, so a tick re-renders all of
 		// them, chip or not; only the five chips whose text moves touch the DOM.

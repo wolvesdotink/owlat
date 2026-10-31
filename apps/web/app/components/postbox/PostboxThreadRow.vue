@@ -426,7 +426,8 @@ function onCapturedClick(event: MouseEvent) {
 					</div>
 				</component>
 				<PostboxThreadRowQuickActions
-					:msg="msg"
+					:flagged="msg.flagFlagged"
+					:seen="msg.flagSeen"
 					:why-here-shown="isWhyHereShown"
 					@why-here="openWhyHere"
 					@action="rowAction"

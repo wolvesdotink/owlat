@@ -160,6 +160,9 @@ export const getTimeline = authedQuery({
 /**
  * Get timeline summary stats for a contact
  */
+// all-members: counts and two timestamps for the contact detail header. No
+// message, subject or body leaves, so the shared-inbox reader rule that
+// getTimeline applies to inbound mail has nothing to hide here.
 export const getTimelineStats = authedQuery({
 	args: { contactId: v.id('contacts') },
 	handler: async (ctx, args) => {

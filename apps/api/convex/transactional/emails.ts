@@ -30,6 +30,8 @@ export type DataVariableType = 'string' | 'number' | 'boolean' | 'date';
 /**
  * List all transactional emails for an organization with optional filtering
  */
+// all-members: the transactional template library every role reads; writing
+// it needs templates:manage.
 export const list = transactionalQuery({
 	args: {
 		status: v.optional(
@@ -78,6 +80,8 @@ export const list = transactionalQuery({
 /**
  * Get a single transactional email by ID
  */
+// all-members: the transactional template library every role reads; writing
+// it needs templates:manage.
 export const get = transactionalQuery({
 	args: { id: v.id('transactionalEmails') },
 	handler: async (ctx, args) => {
@@ -88,6 +92,8 @@ export const get = transactionalQuery({
 /**
  * Count transactional emails by status for an organization
  */
+// all-members: the transactional template library every role reads; writing
+// it needs templates:manage.
 export const countByStatus = transactionalQuery({
 	args: {},
 	handler: async (ctx) => {

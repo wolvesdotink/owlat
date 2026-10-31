@@ -152,7 +152,7 @@ describe('connected-app registration and secret exchange', () => {
 				expect(line).not.toContain(rotated.secret);
 			}
 		} finally {
-			spies.forEach((s) => s.mockRestore());
+			for (const s of spies) s.mockRestore();
 		}
 	});
 

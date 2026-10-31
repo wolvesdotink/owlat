@@ -2,8 +2,13 @@ import { v } from 'convex/values';
 import { transactionalQuery } from './_helpers';
 import { getOrThrow } from '../_utils/errors';
 import { sendStatusValidator } from '../lib/literalValidators';
+import { isLiveContact } from '../lib/contactHelpers';
+import { isSharedInboxReader } from '../inbox/access';
 
 // Get all sends for a transactional email
+// all-members: the send log of a transactional template, which every role
+// reads on the template page. A Team inbox reply carries no template id, so
+// none reaches this list.
 export const listByTransactionalEmail = transactionalQuery({
 	args: {
 		transactionalEmailId: v.id('transactionalEmails'),
@@ -46,7 +51,8 @@ export const listByTransactionalEmail = transactionalQuery({
 			...new Set(paginatedSends.filter((s) => s.contactId).map((s) => s.contactId!)),
 		];
 		const contacts = await Promise.all(contactIds.map((id) => ctx.db.get(id)));
-		const contactMap = new Map(contacts.filter(Boolean).map((c) => [c!._id, c!]));
+		// A soft-deleted contact joins as null, as in contacts.get.
+		const contactMap = new Map(contacts.filter(isLiveContact).map((c) => [c._id, c]));
 
 		const sendsWithContacts = paginatedSends.map((send) => {
 			const contactData = send.contactId ? contactMap.get(send.contactId) : null;
@@ -70,13 +76,18 @@ export const listByTransactionalEmail = transactionalQuery({
 	},
 });
 
-// Get a single send by ID
+// Get a single send by ID. Every role reads template, automation and test
+// sends. An agent_reply or team_reply send is a Team inbox reply (its subject
+// and recipient come from the inbox thread), so it follows the shared-inbox
+// reader rule and reads as absent to everyone else.
 export const get = transactionalQuery({
 	args: { id: v.id('transactionalSends') },
-	handler: async (ctx, args) => {
+	handler: async (ctx, args, session) => {
 		const send = await ctx.db.get(args.id);
 		// Honor the soft-delete contract: an erased (GDPR) send reads as absent.
 		if (!send || send.deletedAt !== undefined) return null;
+		const isInboxReply = send.kind === 'agent_reply' || send.kind === 'team_reply';
+		if (isInboxReply && !isSharedInboxReader(session)) return null;
 
 		// `transactionalEmailId` is optional: automation / agent_reply sends
 		// live in this table without a transactional template reference.
@@ -86,7 +97,8 @@ export const get = transactionalQuery({
 		let contact = null;
 		if (send.contactId) {
 			const contactData = await ctx.db.get(send.contactId);
-			if (contactData) {
+			// A soft-deleted contact joins as null, as in contacts.get.
+			if (isLiveContact(contactData)) {
 				contact = {
 					_id: contactData._id,
 					email: contactData.email,
@@ -116,6 +128,7 @@ export const get = transactionalQuery({
 // insert. The pre-deepening shape did an N+1 `collect()` over
 // `transactionalSends` per template; for a deployment with many templates
 // and high send volume, that was a list-page hot read.
+// all-members: one send count per template for the template list.
 export const getCounts = transactionalQuery({
 	args: {},
 	handler: async (ctx) => {

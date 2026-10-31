@@ -102,6 +102,7 @@ export const getPropertyValuesForContacts = authedQuery({
 const SELECT_ALL_LIMIT = 10000;
 
 // Query to get all contact IDs (for bulk selection, HTTP API)
+// token-safe: returns contact ids and a truncation flag, no row fields.
 export const listAllIdsByOrganization = authedQuery({
 	args: {
 		search: v.optional(v.string()),

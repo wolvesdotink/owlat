@@ -53,12 +53,12 @@ export function clusterBySimilarity<T>(
 	}
 
 	const groups = new Map<number, T[]>();
-	items.forEach((item, i) => {
+	for (const [i, item] of items.entries()) {
 		const root = find(i);
 		const group = groups.get(root);
 		if (group) group.push(item);
 		else groups.set(root, [item]);
-	});
+	}
 	return [...groups.values()];
 }
 

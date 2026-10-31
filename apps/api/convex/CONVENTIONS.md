@@ -356,10 +356,10 @@ such a secret:
 | `webhooks`   | `secret`                                     | the HMAC signing secret             |
 
 `scripts/check-token-redaction.sh` (wired into `bun run lint`) is the read-side
-sibling of `check-permissions.sh`: a **ratchet** that fails CI on any _new_
-query that serializes to the browser (`authedQuery`, `adminQuery`, `publicQuery`
-and their `featureGated` compositions) which scans one of these tables
-(`ctx.db.query('…')`) without stripping the secret. Satisfy it one of three ways:
+sibling of `check-permissions.sh`. It has no baseline and fails CI on any query
+that serializes to the browser (`authedQuery`, `adminQuery`, `publicQuery` and
+their `featureGated` compositions) which scans one of these tables
+(`ctx.db.query('…')`) without stripping the secret. Satisfy it one of two ways:
 
 - **Redaction/projection helper** — `redactContactCapabilityFields` (returns the
   `PublicContact` shape, `contacts/listing.ts`) or `stripWebhookSecret`
@@ -367,11 +367,10 @@ and their `featureGated` compositions) which scans one of these tables
   add its name to the helper regex in the script.
 - **`// token-safe: <reason>` comment** — inside the handler or on the line above
   the `export const`, when the read genuinely returns no secret (projects to a
-  token-free shape, returns only counts/ids, etc.).
-- **`scripts/token-redaction-baseline.txt`** — the frozen set of reads reviewed
-  when the gate landed (count-only / id-only / field-projected / admin-gated
-  reads that leak no token). Do **not** add new entries; delete an entry once its
-  read is redacted or annotated so the ratchet only moves down.
+  token-free shape, returns only counts/ids, etc.). An admin role gate alone is
+  not a reason. The one read that returns a secret on purpose,
+  `shareLinks.listShareLinks`, hands a link manager the token it shares, and is
+  also the reviewed exception in `lib/__tests__/publicReturnRedaction.test.ts`.
 
 ## Process-log PII
 

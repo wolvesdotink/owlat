@@ -35,7 +35,7 @@ describe('twilioValidationString', () => {
 			From: '+15551234567',
 			MessageSid: 'SM123',
 		});
-		expect(canonical).toBe(`${REQUEST_URL}Bodyhello` + `From+15551234567` + `MessageSidSM123`);
+		expect(canonical).toBe(`${REQUEST_URL}BodyhelloFrom+15551234567MessageSidSM123`);
 	});
 
 	it('is sort-stable regardless of insertion order', () => {

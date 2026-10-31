@@ -20,6 +20,8 @@ import { getLive, getLiveOrThrow } from '../lib/softDelete';
 // Query to get email template content for a specific language
 // Returns the content for the requested language, falling back to default language if not available
 // For non-default languages, merges translation text with the main content's styling
+// all-members: the template library every role picks from when it builds a
+// campaign; writing it needs templates:manage.
 export const getForLanguage = authedQuery({
 	args: {
 		templateId: v.id('emailTemplates'),
