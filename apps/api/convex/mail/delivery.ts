@@ -15,6 +15,8 @@
  *   deferredCapture.ts  attachment capture, scheduled off the webhook
  *   scan.ts     the aggregate inbound malware verdict
  *   routing.ts  pure spam / filter / DMARC-ARC decisions
+ *   mailboxDecision.ts  the delivery mutation's decisions as data: folder,
+ *               row, post-delivery hook and answer
  *   insert.ts   dedup + quota checks, threading, UID+modseq, the row insert
  *               and its aggregates
  *   afterInsert.ts  classifier enqueues, follow-up / snooze-until-reply and
@@ -32,7 +34,6 @@
 
 import { v } from 'convex/values';
 import { spamVerdictValidator } from '../lib/convexValidators';
-import { mailUnsubscribeValidator } from '../lib/validators/mailContent';
 import { internalAction } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
@@ -40,8 +41,6 @@ import type { Id } from '../_generated/dataModel';
 import { extractEmail } from '../lib/emailAddress';
 import { logError } from '../lib/runtimeLog';
 import { computeSenderHeuristics } from './senderHeuristics';
-import { inboundEncryptionInfoValidator } from '../e2ee/inboundSeal';
-import { inboundSignatureInfoValidator } from '../e2ee/inboundSignature';
 import { resolveDeliverableMailbox } from './mailbox/addressResolution';
 import { prepareInboundMessage } from './deliveryPipeline/ingest';
 import {
@@ -63,14 +62,16 @@ import { getOrThrow } from '../_utils/errors';
 import { settleSenderDelivery } from './senders/delivery';
 import { withMailboxUsage } from './mailboxUsage';
 import { partBlobIds, recordStoredParts, stageMessageParts } from './messageParts';
-import { mailMessageStoredPartsValidator } from '../schema/mailComposition';
-import { deliveredEnvelopeFields, storedBodyFields } from './deliveryPipeline/ingestFields';
+import { deliveredEnvelopeFields, mailboxDeliveryFields } from './deliveryPipeline/ingestFields';
+import type { DmarcOverride } from './deliveryPipeline/routing';
 import {
-	resolveDmarcRouting,
-	type DmarcOverride,
-	resolveFilterOutcome,
-	resolveSpamVerdict,
-} from './deliveryPipeline/routing';
+	deliveredMessageInput,
+	deliveryAnswer,
+	filterDelivery,
+	postDeliveryHookArgs,
+	routeDelivery,
+	targetFolderRole,
+} from './deliveryPipeline/mailboxDecision';
 import { virusVerdictValidator } from '../lib/literalValidators';
 import {
 	mailboxGateSignals,
@@ -249,56 +250,18 @@ export const captureStagedAttachments = internalMutation({
 	},
 });
 
+/**
+ * Deliver one staged message into the hosted mailbox it is addressed to. The
+ * decisions live in `./deliveryPipeline/mailboxDecision.ts`; this mutation
+ * loads, asks them, and writes, in this order.
+ */
 export const deliverToMailbox = internalMutation({
-	args: {
-		...deliveredEnvelopeFields,
-		...storedBodyFields,
-		antiLoopHeaders: v.optional(v.record(v.string(), v.string())),
-		// Parsed List-Unsubscribe target (extracted at ingest by the caller).
-		unsubscribe: v.optional(mailUnsubscribeValidator),
-		recipientAddress: v.string(),
-		// SMTP envelope sender (RFC 5321 MAIL FROM); `''` for a bounce/DSN null
-		// sender. Passed to the post-delivery hook so vacation auto-replies skip
-		// bounces (RFC 3834 §2) keyed off the envelope, not the `From:` header.
-		returnPath: v.optional(v.string()),
-		spamScore: v.optional(v.number()),
-		spamVerdict: v.optional(spamVerdictValidator),
-		virusVerdict: v.optional(virusVerdictValidator),
-		spfResult: v.optional(v.string()),
-		dkimResult: v.optional(v.string()),
-		dmarcResult: v.optional(v.string()),
-		dmarcPolicy: v.optional(v.string()),
-		// Verified inbound ARC verdict (RFC 8617, Sealed Mail A5). Rescues a DMARC
-		// fail when a TRUSTED forwarder sealed a valid chain attesting the original
-		// passed. All optional (older MTA ⇒ absent ⇒ no rescue).
-		arcCv: v.optional(v.string()),
-		arcSealerDomain: v.optional(v.string()),
-		arcAttestsOriginalPass: v.optional(v.boolean()),
-		// DMARC alignment inputs (envelope MAIL FROM domain + DKIM d= domain),
-		// stored beside the verdicts on `mailMessages`. Both optional.
-		envelopeFromDomain: v.optional(v.string()),
-		dkimSigningDomain: v.optional(v.string()),
-		// Sealed Mail: the inbound unsealing outcome, computed by the
-		// ingest action before this mutation. Present only for a message that
-		// arrived sealed; the body args above already hold the RESTORED plaintext
-		// when it decrypted. Absent ⇒ a plaintext message (unchanged fast path).
-		inboundEncryptionInfo: v.optional(inboundEncryptionInfoValidator),
-		// Inbound signature verdict, computed by the ingest action for a
-		// SIGNED-but-not-encrypted message. Data only — never affects routing.
-		inboundSignatureInfo: v.optional(inboundSignatureInfoValidator),
-		// Plan 3.5: the attachment leaves the ingest action stored one blob each,
-		// recorded against the raw blob once the row is in. Absent from an older
-		// action (and when staging failed): the reader then uses the raw `.eml`.
-		storedParts: v.optional(mailMessageStoredPartsValidator),
-	},
+	args: mailboxDeliveryFields,
 	handler: async (ctx, args): Promise<DeliveryResult> => {
-		const recipient = extractEmail(args.recipientAddress);
-		const fromAddress = extractEmail(args.from);
-
 		// 1. Resolve mailbox by address. Prefer the live hosted mailbox over an
 		// external read-only archive when a move has left both on this address —
 		// otherwise post-cutover inbound mail lands in the archive forever.
-		const mailbox = await resolveDeliverableMailbox(ctx, recipient);
+		const mailbox = await resolveDeliverableMailbox(ctx, extractEmail(args.recipientAddress));
 		if (!mailbox) {
 			return { skipped: true };
 		}
@@ -313,70 +276,38 @@ export const deliverToMailbox = internalMutation({
 			return { skipped: true };
 		}
 
-		// 3b. Content/spam scan for personal mailboxes (fills the gap the MTA's
-		// outbound-only scan leaves; an MTA-supplied verdict always wins).
-		const { spamScore, spamVerdict } = resolveSpamVerdict({
-			subject: args.subject,
-			bodyHtmlInline: args.htmlBodyInline,
-			bodyTextInline: args.textBodyInline,
-			from: args.from,
-			replyTo: args.replyTo,
-			spamScore: args.spamScore,
-			spamVerdict: args.spamVerdict,
-		});
-
-		// 4. Choose target folder (default INBOX; spam verdict → Spam).
-		//    User filters can override the folder, set flags, attach labels,
-		//    or short-circuit delivery entirely (`discard`).
+		// 3b-4. Content/spam scan for personal mailboxes (fills the gap the MTA's
+		// outbound-only scan leaves; an MTA-supplied verdict always wins), then
+		// the user filters: they can override the folder, set flags, attach
+		// labels, or short-circuit delivery entirely (`discard`: the message and
+		// its staged blob are dropped without writing anything).
 		const filters = await ctx.db
 			.query('mailFilters')
 			.withIndex('by_mailbox_and_priority', (q) => q.eq('mailboxId', mailbox._id))
 			.collect(); // bounded: one mailbox's filters
-		const filterOutcome = resolveFilterOutcome(filters, {
-			from: fromAddress,
-			to: args.to.map(extractEmail),
-			cc: args.cc.map(extractEmail),
-			subject: args.subject,
-			bodyText: args.textBodyInline,
-			bodyHtml: args.htmlBodyInline,
-			size: args.rawSize,
-			hasAttachment: args.attachments.length > 0,
-		});
-
-		// `discard` short-circuits — drop the message entirely (and its
-		// staged storage blob) without writing it anywhere.
-		if (filterOutcome.isDiscarded) {
+		const filtered = filterDelivery(args, filters);
+		if (filtered.filter.isDiscarded) {
 			return { skipped: true };
 		}
 
-		// ARC rescue + the DMARC quarantine decision (RFC 8617 / RFC 7489),
-		// settled against the operator's trusted-forwarder allow-list.
+		// ARC rescue + the DMARC quarantine decision, settled against the
+		// operator's trusted-forwarder allow-list.
 		const settings = await ctx.db.query('instanceSettings').first();
-		const { dmarcOverride, arcSealer, isDmarcQuarantine } = resolveDmarcRouting(
-			args,
-			settings?.trustedArcForwarders
-		);
+		const routing = routeDelivery(args, filtered, settings?.trustedArcForwarders);
 
-		const isQuarantined =
-			spamVerdict === 'spam' || args.virusVerdict === 'infected' || isDmarcQuarantine;
 		// 4a. Sender status (§5) after user filters, only for mail headed for the Inbox.
 		const senderStatus = await applySenderStatusAtDelivery(ctx, {
 			mailboxId: mailbox._id,
 			fromAddress: args.from,
 			origin: 'mx',
-			isMovedByFilter: isQuarantined || filterOutcome.isTrashed || !!filterOutcome.folderId,
+			isMovedByFilter: routing.isMovedByFilter,
 		});
-		const initialRole = isQuarantined
-			? 'spam'
-			: filterOutcome.isTrashed
-				? 'trash'
-				: (senderStatus?.filedTo ?? 'inbox');
-		const folder = filterOutcome.folderId
-			? await ctx.db.get(filterOutcome.folderId)
+		const folder = routing.filter.folderId
+			? await ctx.db.get(routing.filter.folderId)
 			: await ctx.db
 					.query('mailFolders')
 					.withIndex('by_mailbox_and_role', (q) =>
-						q.eq('mailboxId', mailbox._id).eq('role', initialRole)
+						q.eq('mailboxId', mailbox._id).eq('role', targetFolderRole(routing, senderStatus))
 					)
 					.first();
 		if (!folder || folder.mailboxId !== mailbox._id) {
@@ -387,64 +318,24 @@ export const deliverToMailbox = internalMutation({
 		// only, for the reader's sender badge; undefined when nothing notable fired.
 		const senderHeuristics = await computeSenderHeuristics(ctx, {
 			mailbox,
-			fromAddress,
+			fromAddress: routing.fromAddress,
 			from: args.from,
 			replyTo: args.replyTo,
 		});
 
 		// 5-11. Threading, UID/modseq, insert, and folder/thread/usedBytes
 		//       aggregates + audit — shared with external IMAP sync.
-		const messageId = await insertDeliveredMessage(ctx, {
-			mailbox,
-			folder,
-			rawStorageId: args.rawStorageId,
-			rawSize: args.rawSize,
-			from: args.from,
-			to: args.to,
-			cc: args.cc,
-			bcc: args.bcc,
-			replyTo: args.replyTo,
-			subject: args.subject,
-			textBodyInline: args.textBodyInline,
-			textBodyStorageId: args.textBodyStorageId,
-			htmlBodyInline: args.htmlBodyInline,
-			htmlBodyStorageId: args.htmlBodyStorageId,
-			snippet: args.snippet,
-			searchBody: args.searchBody,
-			messageId: args.messageId,
-			inReplyTo: args.inReplyTo,
-			references: args.references,
-			receivedAt: args.receivedAt,
-			attachments: args.attachments,
-			flagSeen: filterOutcome.flagSeen || senderStatus?.status === 'auto_archive',
-			flagFlagged: filterOutcome.flagFlagged,
-			labelIds: filterOutcome.labelIds,
-			spamScore,
-			spamVerdict,
-			virusVerdict: args.virusVerdict,
-			spfResult: args.spfResult,
-			dkimResult: args.dkimResult,
-			dmarcResult: args.dmarcResult,
-			dmarcPolicy: args.dmarcPolicy,
-			dmarcOverride,
-			arcSealer,
-			envelopeFromDomain: args.envelopeFromDomain,
-			dkimSigningDomain: args.dkimSigningDomain,
-			senderHeuristics,
-			inboundEncryptionInfo: args.inboundEncryptionInfo,
-			inboundSignatureInfo: args.inboundSignatureInfo,
-			unsubscribe: args.unsubscribe,
-			pinnedSection: filterOutcome.pinnedSection,
-			countUsedBytes: true,
-			inboundOrigin: 'mx',
-		});
+		const messageId = await insertDeliveredMessage(
+			ctx,
+			deliveredMessageInput(args, routing, { mailbox, folder, senderStatus, senderHeuristics })
+		);
 
 		// 11a. Plain-language and AI rules (§6.2), ranked against the manual pass.
 		const arrival = await evaluateArrivalRules(ctx, {
 			message: await getOrThrow(ctx, messageId, 'Message'),
 			mailboxId: mailbox._id,
 			origin: 'mx',
-			manualPass: filterOutcome.manualPass,
+			manualPass: routing.filter.manualPass,
 		});
 		// 11b. Classifier enqueues, follow-up / snooze-until-reply clears and the
 		// owner-reply Reply Queue settle — the tail shared with IMAP sync.
@@ -465,34 +356,12 @@ export const deliverToMailbox = internalMutation({
 		// 12. Post-delivery hooks — forwarding + vacation auto-reply.
 		// Scheduled as an action so HTTP calls to the MTA happen in the
 		// Node runtime; the mutation completes immediately.
-		await ctx.scheduler.runAfter(0, internal.mail.deliveryHooks.runPostDelivery, {
-			mailboxId: mailbox._id,
-			mailboxAddress: mailbox.address,
-			messageId,
-			fromAddress,
-			// SMTP envelope sender (RFC 5321 MAIL FROM; `''` for a bounce): vacation
-			// replies skip bounces off it (RFC 3834 §2) and are addressed to it (§4).
-			returnPath: args.returnPath,
-			// So the vacation auto-reply threads onto this message (RFC 3834 §3.1.5/6).
-			triggeringMessageId: args.messageId,
-			triggeringReferences: args.references,
-			subject: args.subject,
-			bodyText: args.textBodyInline,
-			bodyHtml: args.htmlBodyInline,
-			// Raw headers: the hook re-checks Auto-Submitted / List-Id / Precedence.
-			headers: args.antiLoopHeaders ?? {},
-			// Filter-level "Forward to…" targets, beside account-level forwarding.
-			filterForwardTo: filterOutcome.filterForwardTo,
-		});
+		await ctx.scheduler.runAfter(
+			0,
+			internal.mail.deliveryHooks.runPostDelivery,
+			postDeliveryHookArgs(args, routing, mailbox, messageId)
+		);
 
-		// `dmarcOverride` travels back so the capture step in the ingest action
-		// gates on the SAME settled verdict this mutation routed on, rather than
-		// re-deciding the ARC rescue against a second read of the allow-list.
-		return {
-			messageId,
-			dmarcOverride,
-			...(folder.role ? { folderRole: folder.role } : {}),
-			...(spamVerdict ? { spamVerdict } : {}),
-		};
+		return deliveryAnswer(messageId, routing, folder);
 	},
 });

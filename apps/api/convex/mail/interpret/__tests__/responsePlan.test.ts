@@ -370,6 +370,23 @@ describe('coverage.check', () => {
 		expect(result?.coverage.find((c) => c.itemId === s.call)?.verdict).toBe('skipped');
 		expect(result?.fileClaims).toEqual([expect.objectContaining({ isMatched: false })]);
 	});
+
+	it('stores an unchecked result as pending, bound to the text it read', async () => {
+		const t = harness();
+		const s = await setup(t);
+		runLlmObjectMock.mockRejectedValueOnce(new AdmissionRefusedError('daily_ceiling', 'ceiling'));
+		const result = await t.action(api.mail.interpret.coverage.check, {
+			threadRef: s.ref,
+			draftRef: s.draftRef,
+			draftText: draft,
+		});
+		expect(result).toMatchObject({ isChecked: false, isStored: true });
+		const view = await t.query(api.mail.interpret.responsePlan.get, {
+			threadRef: s.ref,
+			draftRef: s.draftRef,
+		});
+		expect(view).toMatchObject({ verdict: 'pending', draftHash: result?.draftHash });
+	});
 });
 
 describe('a draft’s plan goes with the draft', () => {

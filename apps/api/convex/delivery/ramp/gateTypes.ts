@@ -418,7 +418,7 @@ export interface RampGateEvaluationInput {
 	 * This cell's OWN-arm seed sweep over the placement window, counted from the
 	 * probe ledger by `analytics/seedPlacementSweeps.ts` and supplied by both
 	 * readers of this input (`delivery/rampControllerInputs.ts`,
-	 * `delivery/deliverabilityDashboard.ts`).
+	 * `delivery/deliverabilityDashboardCell.ts`).
 	 *
 	 * Absent or `null` means this cell has no classified probes — no seed
 	 * mailboxes, a cell whose stream the shadow copy does not cover, or a sweep
