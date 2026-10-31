@@ -7,7 +7,8 @@
  * server" wizard, which renders the catalog's credential form and uploads the
  * config over SSH, and setup-cli's `--assume-yes` path, which reads the same
  * variables from the environment. Both call {@link sendingConfigFromCredentials},
- * so neither restates a provider's fields.
+ * so neither restates a provider's fields. setup-cli's config writer goes the
+ * other way with {@link sendingConfigEnv}.
  *
  * NO PER-PROVIDER CODE. The mapping is per FIELD KIND: a `host-port` composite
  * becomes `host` / `port` / `secure`, every other field becomes the property
@@ -141,6 +142,36 @@ function readField(
 	}
 	into[field.key] = value;
 	return undefined;
+}
+
+/**
+ * The inverse of {@link sendingConfigFromCredentials}: the credential env
+ * variables a {@link SendingConfig} writes, keyed by each field's `envVar`.
+ *
+ * `EMAIL_PROVIDER` is not included; the caller names the kind. A property the
+ * config leaves out writes nothing, so an omitted optional (SMTP port and TLS,
+ * the MTA's TLS floor) keeps the backend's default. A `host-port` composite
+ * writes its host, port and implicit-TLS flag to the field's three variables;
+ * a boolean is written as `true` / `false`.
+ */
+export function sendingConfigEnv(config: SendingConfig): Record<string, string> {
+	const entry = SETUP_SENDING_CATALOG_ENTRIES.find((e) => e.kind === config.provider);
+	const props = config as unknown as Readonly<Record<string, unknown>>;
+	const env: Record<string, string> = {};
+	const write = (envVar: string, value: unknown) => {
+		if (value === undefined) return;
+		env[envVar] = typeof value === 'boolean' ? (value ? 'true' : 'false') : String(value);
+	};
+	for (const field of entry?.credentialFields ?? []) {
+		if (field.kind === 'host-port') {
+			write(field.envVar, props['host']);
+			write(field.portEnvVar, props['port']);
+			write(field.secureEnvVar, props['secure']);
+		} else {
+			write(field.envVar, props[field.key]);
+		}
+	}
+	return env;
 }
 
 function parsePort(raw: string): number | undefined {
