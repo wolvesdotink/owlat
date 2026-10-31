@@ -23,7 +23,7 @@ import type { QueryCtx, MutationCtx } from '../../_generated/server';
 import { publicQuery } from '../../lib/authedFunctions';
 import { postboxMutation } from '../_helpers';
 import { internal } from '../../_generated/api';
-import type { Id } from '../../_generated/dataModel';
+import type { Doc, Id } from '../../_generated/dataModel';
 import { isFeatureEnabled } from '../../lib/featureFlags';
 import { requireMailboxAccess } from '../permissions';
 import { throwForbidden } from '../../_utils/errors';
@@ -167,10 +167,16 @@ async function mayRefreshInBackground(ctx: MutationCtx): Promise<boolean> {
 
 /**
  * A refresh that has been `refreshing` this long has lost its job (the action
- * died); "Refresh now" may schedule another. Below it, a press while one runs
- * schedules nothing, so repeated presses cannot queue paid jobs (#1333).
+ * died, or its one commit failed); "Refresh now", the next stale read or an
+ * import may schedule another. Below it, a press while one runs schedules
+ * nothing, so repeated presses cannot queue paid jobs (#1333).
  */
 export const VOICE_REFRESH_LEASE_MS = 15 * 60 * 1000;
+
+/** A refresh is running: `refreshing` and still within its lease. */
+function isRefreshInFlight(row: Doc<'mailVoiceProfiles'>, now: number): boolean {
+	return row.status === 'refreshing' && now - row.updatedAt < VOICE_REFRESH_LEASE_MS;
+}
 
 /**
  * Schedule ONE background voice-profile refresh for a mailbox whose corpus just
@@ -180,15 +186,15 @@ export const VOICE_REFRESH_LEASE_MS = 15 * 60 * 1000;
  *
  * No-op unless personalization is on for that mailbox (`isEnabled`) and the `ai`
  * feature is enabled, so an import never spends an LLM call for an org that
- * turned personalization off. The `status` check is the same in-flight guard the
- * lazy path uses: a profile already `refreshing` gets no second job.
+ * turned personalization off. The in-flight guard is the one the lazy path
+ * uses: a profile `refreshing` within its lease gets no second job.
  */
 export async function scheduleVoiceProfileRefresh(
 	ctx: MutationCtx,
 	mailboxId: Id<'mailboxes'>
 ): Promise<boolean> {
 	const row = await findRow(ctx, mailboxId);
-	if (!row || !row.isEnabled || row.status !== 'idle') return false;
+	if (!row || !row.isEnabled || isRefreshInFlight(row, Date.now())) return false;
 	if (!(await mayRefreshInBackground(ctx))) return false;
 	await ctx.db.patch(row._id, { status: 'refreshing', updatedAt: Date.now() });
 	await ctx.scheduler.runAfter(0, internal.mail.ai.voiceProfileActions.refresh, { mailboxId });
@@ -233,7 +239,7 @@ async function guidanceForMailbox(
 	// Lazy background refresh of the SAMPLED voice profile (gated on `ai`); the
 	// derived/standing/contact layers below are served regardless so learning
 	// surfaces even when the sampler is idle.
-	if (row.status === 'idle' && (await isFeatureEnabled(ctx, 'ai'))) {
+	if (!isRefreshInFlight(row, Date.now()) && (await isFeatureEnabled(ctx, 'ai'))) {
 		const sentCount = await currentSentCount(ctx, mailboxId);
 		if (isVoiceProfileStale(row, sentCount, Date.now()) && (await mayRefreshInBackground(ctx))) {
 			await ctx.db.patch(row._id, { status: 'refreshing', updatedAt: Date.now() });
@@ -446,7 +452,7 @@ export const requestRefresh = postboxMutation({
 		const now = Date.now();
 		const row = await findRow(ctx, args.mailboxId);
 		// One job at a time: a refresh still within its lease is already coming.
-		if (row?.status === 'refreshing' && now - row.updatedAt < VOICE_REFRESH_LEASE_MS) {
+		if (row && isRefreshInFlight(row, now)) {
 			if (!row.isEnabled) await ctx.db.patch(row._id, { isEnabled: true });
 			return null;
 		}

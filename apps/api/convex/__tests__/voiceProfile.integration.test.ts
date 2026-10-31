@@ -18,7 +18,7 @@ import { api, internal } from '../_generated/api';
 import { AI_BUDGET_ERROR_CODE } from '@owlat/shared/aiRouting';
 import type { Id } from '../_generated/dataModel';
 import { enableFeatures } from './factories';
-import { VOICE_STALE_MS } from '../mail/ai/voiceProfile';
+import { VOICE_REFRESH_LEASE_MS, VOICE_STALE_MS } from '../mail/ai/voiceProfile';
 import type * as LlmDispatchModule from '../lib/llm/dispatch';
 import type * as LlmProviderModule from '../lib/llmProvider';
 
@@ -358,6 +358,30 @@ describe('mail.voiceProfile.getGuidanceForMailbox', () => {
 		// Stale profile is still served immediately (never blocks).
 		expect(res.guidance).toContain('Typical greetings: Hi');
 		expect((await statusOf(t, mailboxId))?.status).toBe('refreshing');
+	});
+
+	it('takes over a refresh whose lease ran out, and leaves one within it alone', async () => {
+		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
+		await enableFeatures(t, ['ai']);
+		const mailboxId = await seedProfile(t, Date.now() - VOICE_STALE_MS - 1);
+		const row = (await statusOf(t, mailboxId))!;
+		const markRefreshing = (updatedAt: number) =>
+			t.run(async (ctx) => {
+				await ctx.db.patch(row._id, { status: 'refreshing', updatedAt });
+			});
+
+		await markRefreshing(Date.now() - VOICE_REFRESH_LEASE_MS + 60_000);
+		await t.mutation(internal.mail.ai.voiceProfile.getGuidanceForMailbox, { mailboxId });
+		expect(await refreshJobs(t)).toBe(0);
+
+		// The run that held it died, or its commit failed: the row stayed refreshing.
+		await markRefreshing(Date.now() - VOICE_REFRESH_LEASE_MS - 1);
+		await t.mutation(internal.mail.ai.voiceProfile.getGuidanceForMailbox, { mailboxId });
+		expect(await refreshJobs(t)).toBe(1);
+		expect((await statusOf(t, mailboxId))?.updatedAt).toBeGreaterThan(
+			Date.now() - VOICE_REFRESH_LEASE_MS
+		);
 	});
 
 	it('defers a stale refresh while spend admission says no: no job is scheduled (#1333)', async () => {
