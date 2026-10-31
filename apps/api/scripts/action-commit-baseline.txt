@@ -155,7 +155,6 @@ convex/mail/migrationIndexing.ts:runIndexChunk #7
 convex/mail/outbound.ts:dispatchDraft #2
 convex/mail/senders/unsubscribeActions.ts:unsubscribe #2
 convex/mail/subscriptions.ts:unsubscribeAndArchive #2
-convex/migrations/0037_backfill_mail_categories.ts:run #2
 convex/migrations/0038_rebuild_file_search_text.ts:run #2
 convex/migrations/0041_forget_disconnected_credentials.ts:run #2
 convex/migrations/0042_recompute_mailbox_used_bytes.ts:run #2
