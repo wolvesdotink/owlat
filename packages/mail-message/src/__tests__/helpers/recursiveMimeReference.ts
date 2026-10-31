@@ -6,8 +6,7 @@
  * direct, so the single-pass parser is checked against it.
  */
 
-import { getRawParam, parseHeaders } from '../../parse/headers';
-import type { ContentType } from '../../parse/contentType';
+import { getRawParam, parseHeaders, type ContentType } from '../../parse/headers';
 import type { MimeNode } from '../../parse/body';
 
 const MAX_DEPTH = 100;
