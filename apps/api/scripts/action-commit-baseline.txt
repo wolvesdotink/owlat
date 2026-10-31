@@ -186,9 +186,6 @@ convex/plugins/cronRuntime.ts:runPluginCron #2
 convex/plugins/cronRuntime.ts:runPluginCron #3
 convex/push/send.ts:deliver #2
 convex/push/send.ts:deliverQuietSummary #2
-convex/sampleData/manageHttp.ts:sampleDataRemoveHttp #2
-convex/sampleData/manageHttp.ts:sampleDataRemoveHttp #3
-convex/sampleData/manageHttp.ts:sampleDataRemoveHttp #4
 convex/seedAdminHttp.ts:seedAdmin #2
 convex/seedAdminHttp.ts:seedAdmin #3
 convex/seedAdminHttp.ts:seedAdmin #4
