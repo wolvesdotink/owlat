@@ -30,7 +30,7 @@ export const PREVIOUS_RELEASE_ENTRIES: Readonly<Record<string, string>> = {
 	// The indexing sweep now commits a chunk with mail/migrationIndexingCommit.ts `commitIndexChunk`.
 	'mail/migrationIndexing.ts#patchIndexProgress': 'old mailbox indexing chunks mid-run',
 	'mail/migrationIndexing.ts#finalizeMigration': 'old mailbox indexing chunks mid-run',
-	// The message backfill now commits a chunk with knowledge/messageBackfill.ts `commitChunk`.
+	// The message backfill now commits a chunk with knowledge/messageBackfillChunk.ts `commitChunk`.
 	'knowledge/messageBackfill.ts#patchProgress': 'old message backfill chunks mid-run',
 	'knowledge/messageBackfill.ts#finalizeJob': 'old message backfill chunks mid-run',
 	// The re-embed actions now commit through aiRouting/embeddingReembedCommit.ts.

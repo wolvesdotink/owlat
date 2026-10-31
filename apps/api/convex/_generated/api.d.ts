@@ -940,6 +940,7 @@ import type * as knowledge_graphAnalyticsRecompute from '../knowledge/graphAnaly
 import type * as knowledge_graphTraversal from '../knowledge/graphTraversal.js';
 import type * as knowledge_maintenance from '../knowledge/maintenance.js';
 import type * as knowledge_messageBackfill from '../knowledge/messageBackfill.js';
+import type * as knowledge_messageBackfillChunk from '../knowledge/messageBackfillChunk.js';
 import type * as knowledge_relationDecay from '../knowledge/relationDecay.js';
 import type * as knowledge_retrieval from '../knowledge/retrieval.js';
 import type * as knowledge_sharing from '../knowledge/sharing.js';
@@ -2854,6 +2855,7 @@ declare const fullApi: ApiFromModules<{
 	'knowledge/graphTraversal': typeof knowledge_graphTraversal;
 	'knowledge/maintenance': typeof knowledge_maintenance;
 	'knowledge/messageBackfill': typeof knowledge_messageBackfill;
+	'knowledge/messageBackfillChunk': typeof knowledge_messageBackfillChunk;
 	'knowledge/relationDecay': typeof knowledge_relationDecay;
 	'knowledge/retrieval': typeof knowledge_retrieval;
 	'knowledge/sharing': typeof knowledge_sharing;

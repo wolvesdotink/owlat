@@ -631,7 +631,7 @@ describe('knowledgeBackfill.cancel', () => {
 
 		for (const outcome of ['more', 'done'] as const) {
 			expect(
-				await t.mutation(internal.knowledge.messageBackfill.commitChunk, {
+				await t.mutation(internal.knowledge.messageBackfillChunk.commitChunk, {
 					jobId,
 					outcome,
 					deltaScanned: 3,
