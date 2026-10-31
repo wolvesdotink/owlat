@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import schema from '../schema';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
+import type * as ChannelCredentialsModule from '../channels/credentials';
+import type * as ChannelAdaptersModule from '../channels/adapters';
 import {
 	createTestChannelConfig,
 	createTestContact,
@@ -24,12 +26,12 @@ const provider = vi.hoisted(() => ({
 }));
 
 vi.mock('../channels/credentials', async (importOriginal) => ({
-	...(await importOriginal<typeof import('../channels/credentials')>()),
+	...(await importOriginal<typeof ChannelCredentialsModule>()),
 	decryptChannelCreds: () => ({ endpointUrl: 'https://hooks.owlat.example/out' }),
 }));
 
 vi.mock('../channels/adapters', async (importOriginal) => {
-	const actual = await importOriginal<typeof import('../channels/adapters')>();
+	const actual = await importOriginal<typeof ChannelAdaptersModule>();
 	class StubWebhookAdapter extends actual.WebhookAdapter {
 		override async send(...args: Parameters<InstanceType<typeof actual.WebhookAdapter>['send']>) {
 			return provider.send(...args);
