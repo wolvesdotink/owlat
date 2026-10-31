@@ -61,6 +61,10 @@ convex/delivery/sendCompletionDecision.ts
 # (delivery/deliverabilityDashboard.ts) is the shell.
 convex/delivery/deliverabilityDashboardCell.ts
 
+# The admin delivery test send's steps and answer; the action
+# (delivery/statusActions.ts) is the shell.
+convex/delivery/deliveryTestDecision.ts
+
 # Inbound processing lifecycle.
 convex/inbox/processingLifecycle
 # Effect runner and dispatcher.
