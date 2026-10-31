@@ -84,7 +84,7 @@ export const endRecord = (zip: Buffer) => zip.length - 22;
 export const centralDirectory = (zip: Buffer) => zip.readUInt32LE(endRecord(zip) + 16);
 
 /**
- * The #1203 round-4 review archive: one central record, `clean.txt`, whose
+ * An archive that hides a member: one central record, `clean.txt`, whose
  * declared compressed span also covers a second, unlisted local member holding
  * `secret`. DEFLATE stops at the end of `clean.txt`'s stream and ignores the
  * rest, and every count and offset still adds up; `zip -FF` recovers the hidden

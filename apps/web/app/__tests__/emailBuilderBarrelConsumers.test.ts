@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 /**
- * WHO MAY LOAD THE EMAIL BUILDER (#1441).
+ * WHO MAY LOAD THE EMAIL BUILDER.
  *
  * The `@owlat/email-builder` barrel evaluates the whole editor: its components,
  * the block registries and the renderer. A page that imports one value from it,

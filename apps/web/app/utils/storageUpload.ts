@@ -31,9 +31,8 @@ export function uploadedStorageId(body: unknown): Id<'_storage'> | null {
 
 /**
  * Shared core of every Convex storage upload: mint an upload URL, POST the file,
- * and parse the returned storageId. Previously this generate-URL → POST →
- * parse-storageId sequence was hand-written in ~6 places with subtly different
- * error handling.
+ * and parse the returned storageId. Every upload goes through here so the
+ * generate-URL → POST → parse-storageId sequence has one error handling.
  *
  * Returns a discriminated result so each caller keeps its own UX for the three
  * failure modes (toast / throw / silent skip). `generateUploadUrl` is a

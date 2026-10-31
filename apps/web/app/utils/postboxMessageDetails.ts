@@ -1,7 +1,7 @@
 /**
  * The "message details" rows behind the reader's sender badge (UX plan idea 52).
  *
- * The badge says "Verified sender" and, until now, nothing let a reader check
+ * The badge says "Verified sender", and a reader must be able to check
  * that. This turns the persisted header facts into the rows a disclosure panel
  * renders: the addresses the message carries, each authentication verdict WITH
  * the exact domain it authenticated, and the forwarder whose ARC seal was

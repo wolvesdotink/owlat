@@ -1,9 +1,9 @@
 /**
  * The bounded LIFO stack behind the Postbox's "Undo" (Cmd/Ctrl+Z).
  *
- * Triage used to keep exactly ONE undoable action: archiving three messages in
- * a row left only the third reversible, and the second Cmd+Z did nothing. This
- * is the same registry generalised to a stack — newest first, capped at
+ * With exactly ONE undoable action, archiving three messages in a row would
+ * leave only the third reversible, and the second Cmd+Z would do nothing. So
+ * the undo registry is a stack — newest first, capped at
  * {@link POSTBOX_UNDO_STACK_LIMIT} entries, each with its own deadline, so a
  * burst of triage can be walked back in the order it happened.
  *

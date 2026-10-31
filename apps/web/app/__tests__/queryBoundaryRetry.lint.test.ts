@@ -1,5 +1,5 @@
 /**
- * TRY AGAIN RE-READS THE QUERY THAT FAILED, IT DOES NOT RELOAD THE APP (#1098).
+ * TRY AGAIN RE-READS THE QUERY THAT FAILED, IT DOES NOT RELOAD THE APP.
  *
  * `UiQueryBoundary` renders Try again on its error state. With `@retry` wired,
  * the click refetches the failed read; without it, the boundary falls back to

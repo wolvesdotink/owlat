@@ -69,8 +69,8 @@ describe('clarificationTrust', () => {
 	});
 
 	it('reads `origin` alone and ignores a legacy sentence (#1224)', () => {
-		// Before #1224 a question without `origin` fell back to the domain in
-		// its English `attribution` sentence. The schema no longer has the field.
+		// A stored question may still carry an English `attribution` sentence that
+		// names a domain; without `origin` the trust line must not read it.
 		const legacy: ClarificationProvenance & { attribution: string } = {
 			attribution:
 				'Generated from an email from acme.com — Owlat will never ask for your password.',

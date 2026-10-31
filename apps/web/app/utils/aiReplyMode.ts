@@ -2,8 +2,7 @@
  * The AI replies page's one top control — Draft only / Send automatically when
  * confident / Off — mapped onto the settings that actually decide it.
  *
- * Three stored settings gate an unattended reply, and they used to live on
- * separate pages:
+ * Three stored settings gate an unattended reply:
  *   - the `ai.agent` feature flag: does the AI draft at all (Off when false);
  *   - `agentConfig.isShadowMode` (unset = on): while on, the route step logs a
  *     would-have-sent observation and routes EVERY reply to review, whatever

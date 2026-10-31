@@ -2,9 +2,9 @@
  * The search chips' query editing: removing one operator from the raw box,
  * clearing every operator, and the chip labels.
  *
- * Removal used to run a regex over the raw text, which stopped at the first
- * space and left the tail of a quoted value (`subject:"quarterly report"` → a
- * stray `report"`) behind in the box. These pin that quoting survives an edit.
+ * Removal follows the query grammar: a regex over the raw text would stop at
+ * the first space and leave the tail of a quoted value
+ * (`subject:"quarterly report"` → a stray `report"`) behind in the box. These pin that quoting survives an edit.
  * The grammar itself is tested in packages/shared (`mailSearch.test.ts`).
  */
 import { describe, it, expect } from 'vitest';
