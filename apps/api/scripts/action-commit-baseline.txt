@@ -47,9 +47,6 @@ convex/contacts/erasure/walker.ts:drive #4
 convex/contacts/propertyDeletion.ts:drive #2
 convex/contacts/propertyDeletion.ts:drive #3
 convex/contacts/propertyDeletion.ts:drive #4
-convex/delivery/alignmentPreflightGather.ts:runAlignmentPreflightSweep #2
-convex/delivery/alignmentPreflightGather.ts:runAlignmentPreflightSweep #3
-convex/delivery/alignmentPreflightGather.ts:runAlignmentPreflightSweep #4
 convex/delivery/checklistAlerts.ts:deliverRegressionEmail #2
 convex/delivery/checklistLoopback.ts:start #2
 convex/delivery/checklistLoopback.ts:start #3

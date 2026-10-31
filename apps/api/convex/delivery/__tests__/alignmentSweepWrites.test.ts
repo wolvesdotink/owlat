@@ -152,4 +152,31 @@ describe('runAlignmentPreflightSweep writes', () => {
 		});
 		expect(await alignmentRows(t)).toHaveLength(perRun + 1);
 	});
+
+	it('writes no verdict for a domain that stopped being verified during its lookups', async () => {
+		const t = await harness();
+		await seedDomains(t, 1);
+		await t.run(async (ctx) => {
+			const domain = await ctx.db.query('domains').first();
+			await ctx.db.patch(domain!._id, { status: 'failed' });
+		});
+
+		const committed = await t.mutation(internal.delivery.alignmentPreflight.commitAlignmentSweep, {
+			results: [
+				{
+					domain: 'd00.example.com',
+					verdict: 'blocked',
+					checks: [],
+					isMeasurementDegraded: false,
+					checkedAt: NOW,
+					nextCheckDueAt: NOW + 60_000,
+				},
+			],
+			cursor: null,
+			isDone: true,
+		});
+
+		expect(committed).toEqual({ checked: 0 });
+		expect(await alignmentRows(t)).toEqual([]);
+	});
 });
