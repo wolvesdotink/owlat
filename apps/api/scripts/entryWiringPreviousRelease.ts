@@ -28,6 +28,9 @@ export const PREVIOUS_RELEASE_ENTRIES: Readonly<Record<string, string>> = {
 	// System & updates now reads maintenance/workerRegistry.ts `getForAdmin`.
 	'mail/imap/serverRegistry.ts#getForAdmin':
 		'the previous IMAP servers card on System & updates, in tabs opened before the deploy',
+	// `filterCompile.compile` now starts through startCompile, which schedules
+	// the compile. Remove after release N+1.
+	'mail/filterCompileStore.ts#startDraft': 'old rule compiles mid-run',
 	// The channel dispatch and the delivery poll now commit through
 	// channels/outboundCommit.ts. Remove after release N+1.
 	'unifiedMessages.ts#recordOutbound': 'old channel dispatches mid-run',

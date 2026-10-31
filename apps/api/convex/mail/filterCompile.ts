@@ -8,11 +8,12 @@
  * plus, when the rule needs judgement, ONE yes/no question that R2 answers
  * per message at arrival. No message ever reaches this model call.
  *
- * Asynchronous: the action writes a `mailRuleDrafts` row first (`compiling`)
- * and lands it `ready` with a preview or `failed`; the rules section
+ * Asynchronous: `compile` writes a `mailRuleDrafts` row (`compiling`) and
+ * schedules `compileDraft` in one transaction; `compileDraft` runs the model
+ * and lands the row `ready` with a preview or `failed`. The rules section
  * subscribes to the row, and the person confirms the preview before anything
- * is saved (`filterCompileStore.confirm`). Fix (§4.2) uses the same action
- * with `origin: 'fix'`.
+ * is saved (`filterCompileStore.confirm`). Fix (§4.2) writes its own
+ * `compiling` row with `origin: 'fix'` and runs the same `compileDraft`.
  *
  * The model may name only the mailbox's own folders and labels (an offered
  * allowlist, matched by name), never a regex, and only the restrict-only
@@ -153,8 +154,8 @@ export function previewFromCompiled(
 
 /**
  * Run the model over a `compiling` draft and land it `ready` or `failed`.
- * The AI gate charges the session's user, or `ownerUserId`'s background
- * bucket when there is no session (a Fix reason compiled after the Fix).
+ * The AI gate charges `ownerUserId`'s background bucket: the run is scheduled,
+ * so there is no session (the person who typed the rule owns the mailbox).
  */
 async function runCompile(
 	ctx: ActionCtx,
@@ -162,15 +163,16 @@ async function runCompile(
 		draftId: Id<'mailRuleDrafts'>;
 		sourceText: string;
 		targets: CompileTargets;
-		ownerUserId?: string;
+		ownerUserId: string;
 	}
 ): Promise<void> {
 	let preview: Preview | null = null;
 	try {
-		await ctx.runMutation(
-			internal.mail.ai.gate.assertAiAllowed,
-			args.ownerUserId ? { ownerUserId: args.ownerUserId } : {}
-		);
+		// checkpoint: admission before the model call; the rate-limit token it
+		// consumes stays spent when the compile fails later, so retries stay bounded.
+		await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {
+			ownerUserId: args.ownerUserId,
+		});
 		const model = await resolveLanguageModel(ctx, 'mail.rule_compile');
 		const { object } = await meterLlmCall(
 			ctx,
@@ -205,12 +207,12 @@ async function runCompile(
 /**
  * Compile a plain-language (or Fix) rule into a `mailRuleDrafts` row the UI
  * subscribes to (`filterCompileStore.recentDrafts`): it shows `compiling`
- * while the model runs, then `ready` or `failed`. Returns the draft's id.
- * Owner-grade on a personal mailbox, AI-gated (flag, budget, the person's
- * rate limit).
+ * while the scheduled `compileDraft` runs the model, then `ready` or
+ * `failed`. Returns the draft's id. Owner-grade on a personal mailbox,
+ * AI-gated (flag, budget, the mailbox owner's background rate limit).
  */
-// authz: owner access to a personal mailbox is checked by internal.mail.filterCompileStore.startDraft
-// (requireMailboxAccess at owner level); the model call is gated by assertAiAllowed.
+// authz: owner access to a personal mailbox is checked by internal.mail.filterCompileStore.startCompile
+// (requireMailboxAccess at owner level); the model call is gated by assertAiAllowed in compileDraft.
 export const compile = authedAction({
 	args: {
 		mailboxId: v.id('mailboxes'),
@@ -219,24 +221,18 @@ export const compile = authedAction({
 		fromMessageId: v.optional(v.id('mailMessages')),
 	},
 	handler: async (ctx, args): Promise<{ draftId: Id<'mailRuleDrafts'> }> => {
-		anchorActionDeadline(ctx);
-		const started = await ctx.runMutation(internal.mail.filterCompileStore.startDraft, {
+		return await ctx.runMutation(internal.mail.filterCompileStore.startCompile, {
 			mailboxId: args.mailboxId,
 			sourceText: args.sourceText,
 			origin: args.origin ?? 'plain_language',
 			...(args.fromMessageId ? { fromMessageId: args.fromMessageId } : {}),
 		});
-		await runCompile(ctx, {
-			draftId: started.draftId,
-			sourceText: args.sourceText,
-			targets: started,
-		});
-		return { draftId: started.draftId };
 	},
 });
 
 /**
- * Compile a draft another mutation already wrote (`compiling`): the reason a
+ * Compile a draft a mutation already wrote (`compiling`): a typed rule
+ * (`filterCompileStore.startCompile`, scheduled by `compile`) or the reason a
  * person gave in Fix (`mail/arrival/fix.ts`, through the `compileFixRuleDraft`
  * hook). That mutation checked the person's access; the model call is charged
  * to the mailbox owner's background bucket. A draft that is gone, settled, or
