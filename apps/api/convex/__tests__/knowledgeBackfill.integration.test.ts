@@ -611,6 +611,47 @@ describe('knowledgeBackfill.cancel', () => {
 		});
 	});
 
+	it('a chunk committed after a cancel keeps the job cancelled and schedules nothing', async () => {
+		const t = convexTest(schema, modules);
+		let jobId!: Id<'knowledgeBackfillJobs'>;
+		await t.run(async (ctx) => {
+			jobId = await ctx.db.insert('knowledgeBackfillJobs', {
+				status: 'cancelled',
+				triggeredBy: 'test',
+				totalCount: 3,
+				scannedCount: 0,
+				extractedCount: 0,
+				skippedCount: 0,
+				errorCount: 0,
+				startedAt: Date.now(),
+				updatedAt: Date.now(),
+				finishedAt: Date.now(),
+			});
+		});
+
+		for (const outcome of ['more', 'done'] as const) {
+			expect(
+				await t.mutation(internal.knowledge.messageBackfill.commitChunk, {
+					jobId,
+					outcome,
+					deltaScanned: 3,
+					deltaExtracted: 0,
+					deltaSkipped: 3,
+					deltaError: 0,
+					cursorReceivedAt: 1000,
+					chunkSize: 30,
+					nextChunkDelayMs: 0,
+				})
+			).toBe('stopped');
+		}
+
+		await t.run(async (ctx) => {
+			const job = await ctx.db.get(jobId);
+			expect(job).toMatchObject({ status: 'cancelled', scannedCount: 0 });
+			expect(await ctx.db.system.query('_scheduled_functions').collect()).toHaveLength(0);
+		});
+	});
+
 	it('throws when not authenticated', async () => {
 		// `cancel` is `adminMutation`; override the default owner stub to mirror
 		// the pre-handler rejection an unauthenticated caller would hit.
