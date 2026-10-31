@@ -3,8 +3,8 @@
  *
  * Each core flag's default, its dependencies and whether it is hosted-only are
  * declared here, together with the two functions that turn stored overrides
- * into effective state. `featureFlags.ts` builds the full registry from these
- * rules plus each flag's copy, env vars, docker profiles and cascades; both
+ * into effective state. `featureFlagDefinitions.ts` builds the full registry
+ * from these rules plus each flag's copy, env vars, docker profiles and cascades; both
  * tables are typed over every `CoreFeatureFlagKey`, so neither can hold a flag
  * the other lacks.
  *

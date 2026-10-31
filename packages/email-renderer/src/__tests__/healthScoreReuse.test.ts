@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { EditorBlock } from '@owlat/shared';
-import { analyzeEmail, getEmailHealthScore } from '../analyzer';
+import { analyzeEmail } from '../analyzer';
+import { getEmailHealthScore } from '../emailHealthScore';
 import { validateBlocks } from '../validator';
 import { scoreBlockCompatibility } from '../compatibility';
 import { renderEmailHtml } from '../renderer';
