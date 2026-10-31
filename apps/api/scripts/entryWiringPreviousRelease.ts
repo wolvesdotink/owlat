@@ -111,4 +111,9 @@ export const PREVIOUS_RELEASE_ENTRIES: Readonly<Record<string, string>> = {
 	// remove after release 0.6.17.
 	'agentHealth.ts#recordMetrics': 'old agent metrics rollups mid-run',
 	'agentHealth.ts#updateCircuitBreaker': 'old agent metrics rollups mid-run',
+	// The weekly threshold cron now commits once (autonomyFeedback.ts
+	// `commitThresholdAdjustments`); remove after release 0.6.17.
+	'autonomyFeedback.ts#updateThreshold': 'old threshold adjustments mid-run',
+	'autonomySuggestions.ts#recordGraduationSuggestion': 'old threshold adjustments mid-run',
+	'autonomySuggestions.ts#clearGraduationSuggestion': 'old threshold adjustments mid-run',
 };

@@ -620,6 +620,36 @@ describe('autonomyFeedback.adjustThresholds', () => {
 		});
 	});
 
+	it('skips a rule whose threshold moved after the cron read it', async () => {
+		const t = convexTest(schema, modules);
+		const ruleId = await t.run(async (ctx) =>
+			ctx.db.insert(
+				'autonomyRules',
+				createTestAutonomyRule({ category: 'support', autoApproveThreshold: 0.75 })
+			)
+		);
+
+		// Decided from 0.8, but an accepted suggestion lowered it to 0.75 since.
+		const outcome = await t.mutation(internal.autonomyFeedback.commitThresholdAdjustments, {
+			adjustments: [
+				{ kind: 'tighten', ruleId, readThreshold: 0.8, newThreshold: 0.9 },
+				{
+					kind: 'suggest',
+					ruleId,
+					readThreshold: 0.8,
+					suggestedThreshold: 0.75,
+					evidence: { approved: 20, sampleSize: 20, rejectionRate: 0 },
+				},
+			],
+		});
+
+		expect(outcome).toEqual({ skipped: 2 });
+		await t.run(async (ctx) => {
+			expect((await ctx.db.get(ruleId))!.autoApproveThreshold).toBe(0.75);
+			expect(await ctx.db.query('autonomySuggestions').collect()).toHaveLength(0);
+		});
+	});
+
 	it('clears a stale suggestion when the same category later tightens', async () => {
 		const t = convexTest(schema, modules);
 		await t.run(async (ctx) => {
