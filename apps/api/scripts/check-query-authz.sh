@@ -20,16 +20,9 @@
 #     line directly above the `export const`:
 #       // authz: <why this needs no role check / where the gate actually lives>
 #       // all-members: <why every org member may legitimately read this>
-#   * is listed in scripts/query-authz-baseline.txt — the frozen pre-existing
-#     debt (file:name pairs). Unlike the mutation gate this is a RATCHET, not a
-#     baseline-0 hard gate: 160 queries predate the rule and annotating them
-#     wholesale would rubber-stamp real authorization questions. New queries
-#     must decide; baseline queries should lose their entry as they're reviewed.
 #
-# The comparison lives in scripts/ratchet.sh and is strict in both directions:
-# an unlisted violation fails (new query without a decision), and a stale
-# baseline entry fails (the query was fixed/removed — delete its line so the
-# debt count only goes down).
+# There is no baseline. The comparison runs through `scripts/ratchet.sh
+# --zero`, so any read this script reports fails CI.
 #
 # `publicQuery` / `publicAction` are covered too, and are the reason this gate
 # was nearly blind: they are the dominant shape for authenticated reads in
@@ -80,9 +73,8 @@
 # scripts/lib/convex-builders.sh. That takes in every `featureGated(Any)`
 # composition of `authedQuery` (`chatQuery`, `assistantQuery`, `postboxQuery`,
 # and the next one): a FEATURE flag is NOT an authorization decision, so they
-# stay SUBJECT to this ratchet exactly like a bare `authedQuery`. The
-# pre-existing chat reads keep their baseline entries until each is
-# individually reviewed. `adminQuery` has a role floor and is not scanned.
+# stay SUBJECT to this gate exactly like a bare `authedQuery`. `adminQuery`
+# has a role floor and is not scanned.
 #
 # A second, file-level rule covers the Team Inbox tables. `inboundMessages` and
 # `conversationThreads` hold shared-inbox mail, and who may read it is decided
@@ -97,8 +89,8 @@
 # `internal.<this module>` outside an internal function (see
 # touches_inbox_from_public). A
 # module-level helper always counts, since a public function may call it. Such
-# a file is reported as `<file>:#inbox-tables`, and rides the same ratchet and
-# baseline. This is a presence check, like the gate tokens above: a reviewer
+# a file is reported as `<file>:#inbox-tables` and fails like a read without a
+# decision. This is a presence check, like the gate tokens above: a reviewer
 # still confirms the gate is actually used on the path that reads the rows.
 
 set -uo pipefail
@@ -198,10 +190,9 @@ if [ "${1:-}" = "--generate" ]; then
 fi
 
 exec "$repo_root/scripts/ratchet.sh" \
-	--baseline scripts/query-authz-baseline.txt \
-	--seed "bash apps/api/scripts/check-query-authz.sh --write-baseline" \
-	--ok "no new authedQuery without an authorization decision, no Team Inbox read outside the reader gate" \
-	--new-header "FAIL: {n} new authedQuery definition(s) with no authorization decision." \
+	--zero \
+	--ok "every read makes an authorization decision, no Team Inbox read outside the reader gate" \
+	--new-header "FAIL: {n} read(s) with no authorization decision." \
 	--new-advice "authedQuery only requires an authenticated org member (any role). A read
 must also decide WHO may see the data:
   - call requireOrgPermission / requireAdminContext / requireMailboxAccess / etc., or
@@ -209,8 +200,6 @@ must also decide WHO may see the data:
     '// all-members: <reason>' (intentionally member-visible) comment.
 A '<file>:#inbox-tables' entry reads inboundMessages / conversationThreads
 outside inbox/ and agent/: gate those reads on isSharedInboxReader from
-inbox/access.ts (and the 'inbox' feature flag) instead of an inline role check.
-Do NOT add new entries to {baseline} — it is frozen debt." \
-	--stale-header "FAIL: {n} stale entr(y/ies) in {baseline} (query fixed or removed):" \
+inbox/access.ts (and the 'inbox' feature flag) instead of an inline role check." \
 	"$@" \
 	-- bash "$self" --generate

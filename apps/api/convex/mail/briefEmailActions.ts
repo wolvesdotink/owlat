@@ -81,7 +81,7 @@ function briefEmailBlocks(input: {
 		});
 	}
 
-	input.items.slice(0, MAX_EMAIL_ITEMS).forEach((item, index) => {
+	for (const [index, item] of input.items.slice(0, MAX_EMAIL_ITEMS).entries()) {
 		const title = escapeHtml(item.title);
 		// A relative path cannot be clicked from a mail client, so the link is
 		// absolutized here — and an item with no target renders as plain text
@@ -99,7 +99,7 @@ function briefEmailBlocks(input: {
 				textColor: '#1a1a1a',
 			},
 		});
-	});
+	}
 
 	const bundledTotal =
 		input.bundledCounts.newsletter + input.bundledCounts.notification + input.bundledCounts.receipt;

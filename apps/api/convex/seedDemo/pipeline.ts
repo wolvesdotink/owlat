@@ -125,7 +125,7 @@ export const SEEDED_TABLES: TableNames[] = [
  * `devShortcuts/forceVerifyDomain` (which never tags a row the operator
  * created). Anything untagged is the operator's own data and is never touched.
  */
-const REMOVABLE_SEED_TAGS: readonly string[] = ['demo', 'dev-forced'];
+const REMOVABLE_SEED_TAGS: ReadonlySet<string> = new Set(['demo', 'dev-forced']);
 
 export interface SeedSummary {
 	inserted: Record<string, number>;
@@ -135,7 +135,7 @@ export interface SeedSummary {
 
 export function isRemovableSeedRow(row: unknown): boolean {
 	const tag = (row as { seedTag?: string }).seedTag;
-	return tag !== undefined && REMOVABLE_SEED_TAGS.includes(tag);
+	return tag !== undefined && REMOVABLE_SEED_TAGS.has(tag);
 }
 
 /**

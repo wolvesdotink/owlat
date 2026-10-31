@@ -19,7 +19,7 @@ const modules = import.meta.glob<Component>(
 		'../../app/components/ui/Avatar.vue',
 		'../../app/components/postbox/{PostboxThreadList,PostboxThreadRow,PostboxThreadRowBody,PostboxThreadRowFollowUp,PostboxRowCore,PostboxSwipeTrack,PostboxThreadListSkeleton,PostboxEmptyState,PostboxSnoozeDialog,PostboxLabelPickerDialog,PostboxMovePickerDialog,PostboxPresetTimeDialog}.vue',
 		'../../app/components/inbox/{InboxThreadRow,AssignPopover,StatusChip}.vue',
-		'../../../../packages/ui/components/ui/{Button,ContextMenu,Modal,Skeleton,PresenceRing,DropdownMenu,DropdownMenuItem,DropdownDivider}.vue',
+		'../../../../packages/ui/components/ui/{Button,ContextMenu,Modal,Skeleton,PresenceRing,DropdownMenu,DropdownMenuItem,DropdownDivider,Tooltip}.vue',
 	],
 	{ eager: true, import: 'default' }
 );

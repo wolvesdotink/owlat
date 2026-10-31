@@ -193,7 +193,7 @@ export async function receiveInboundMail(
 		...persisted,
 		// AI-inbox mirror of the clearsigned-body signature verdict —
 		// see webhooks/inboundSignatureMirror.ts. Best-effort, never blocks.
-		...((await clearsignedSignatureMirror(ctx, input.textBody, input.from)) ?? {}),
+		...(await clearsignedSignatureMirror(ctx, input.textBody, input.from)),
 	};
 	return await receiveStoringLargeBodies(ctx, receiveArgs, (args) =>
 		ctx.runMutation(internal.inbox.messages.receiveMessage, args)
