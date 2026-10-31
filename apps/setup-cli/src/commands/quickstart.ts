@@ -49,7 +49,8 @@ import {
 	composeImageSource,
 	dockerComposeUp,
 	dockerReachable,
-	prepareComposeProfiles,
+	defaultSendingPools,
+	persistComposeProfiles,
 	resolveComposeVersionPin,
 	resolveSourceRevision,
 	verifyMonorepo,
@@ -201,14 +202,12 @@ export async function runQuickstart(opts: RunOptions): Promise<number> {
 		}
 	}
 
-	// Step 4: docker compose up, with the profiles persisted and the sending
-	// pools readied first (prepareComposeProfiles).
-	const composeProfilesUnion = await prepareComposeProfiles(
-		envPath,
-		composeProfiles,
-		reporter,
-		!opts.assumeYes && !config && !reporter.isJson
-	);
+	// Step 4: docker compose up, with the profiles persisted and, for the
+	// built-in MTA, the sending pools readied first.
+	const composeProfilesUnion = await persistComposeProfiles(envPath, composeProfiles);
+	if (composeProfilesUnion.includes('mta')) {
+		await defaultSendingPools(envPath, reporter, !opts.assumeYes && !config && !reporter.isJson);
+	}
 
 	const knownAdminEmail = shouldBootstrap
 		? (config?.admin.email ?? flags.email ?? (opts.assumeYes ? 'dev@example.com' : undefined))

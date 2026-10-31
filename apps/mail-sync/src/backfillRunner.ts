@@ -238,9 +238,9 @@ export class BackfillRunner {
 	 * Fetch one descending backfill range, paying the provider's bandwidth ONLY
 	 * for messages the mailbox does not already have.
 	 *
-	 * This used to be a single `UID FETCH <range> (BODY.PEEK[])`, which pulled
-	 * every message in the range at full size and let Convex decide, after the
-	 * upload, that it was a `duplicate`. That is fine on an unmetered server and
+	 * A single `UID FETCH <range> (BODY.PEEK[])` would pull every message in
+	 * the range at full size and let Convex decide, after the upload, that it
+	 * was a `duplicate`. That is fine on an unmetered server and
 	 * fatal on a metered one: a Gmail Sent folder of 21 GiB sits behind a daily
 	 * IMAP bandwidth cap, so an import that restarts near the top spends the
 	 * whole day's budget re-downloading the 12 GiB it already has, is cut off
@@ -257,8 +257,8 @@ export class BackfillRunner {
 	 *
 	 * A message without a Message-ID header cannot be recognised, so it is
 	 * downloaded — the ingest path's own dedup stays the backstop. If the
-	 * lookup itself fails the batch degrades to downloading everything, which is
-	 * exactly the old behaviour: a slow import beats a stalled one.
+	 * lookup itself fails the batch degrades to downloading everything, as the
+	 * single fetch would: a slow import beats a stalled one.
 	 */
 	private async fetchBackfillBatch(
 		remoteName: string,
@@ -374,8 +374,8 @@ export class BackfillRunner {
 		const landedOrWarn = (outcome: IngestOutcome, remoteName: string, uid: number): boolean => {
 			const landed = isMessageLanded(outcome);
 			if (!landed && 'skipped' in outcome) {
-				// Stored nothing and did not throw — the shape that used to be
-				// indistinguishable from a successful import.
+				// Stored nothing and did not throw — without this warning the
+				// shape is indistinguishable from a successful import.
 				logger.warn(
 					{ accountId, remoteName, uid, reason: outcome.skipped },
 					'backfill ingest stored nothing'

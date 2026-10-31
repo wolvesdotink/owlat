@@ -40,15 +40,10 @@ export function resolveComposeVersionPin(opts: {
 	return undefined;
 }
 
-/**
- * The compose profiles the stack comes up with, persisted to `.env`, and the
- * sending pools' source address defaulted when the built-in MTA is among them.
- */
-export async function prepareComposeProfiles(
+/** The compose profiles the stack comes up with, persisted to `.env`. */
+export async function persistComposeProfiles(
 	envPath: string,
-	composeProfiles: string[],
-	reporter: Reporter,
-	interactive: boolean
+	composeProfiles: string[]
 ): Promise<string[]> {
 	// MERGE the TLS profile into whatever COMPOSE_PROFILES the .env already
 	// declares (the default self-host ships `mta`) rather than replacing it.
@@ -70,38 +65,46 @@ export async function prepareComposeProfiles(
 			mergeEnv(envForProfiles, { COMPOSE_PROFILES: composeProfilesUnion.join(',') })
 		);
 	}
+	return composeProfilesUnion;
+}
 
+/**
+ * Default the built-in MTA's sending pools to this box and ask for the
+ * reverse DNS record before the stack comes up.
+ */
+export async function defaultSendingPools(
+	envPath: string,
+	reporter: Reporter,
+	interactive: boolean
+): Promise<void> {
 	// Direct delivery needs a real source address. docker-compose.yml defaults
 	// IP_POOLS_* to 127.0.0.1, whose PTR can never match EHLO_HOSTNAME, so the
-	// MTA's identity gate (verifyMtaIdentity) would always fail. Default both pools to the
-	// box's primary IPv4 unless the operator already chose one.
-	if (composeProfilesUnion.includes('mta')) {
-		const envForPools = await readEnv(envPath);
-		const detected = detectPrimaryIpv4();
-		if (applyOutboundIpDefaults(envForPools, detected)) {
-			await writeEnv(envPath, envForPools);
-			reporter.log(`Sending pools default to this server's address ${detected}`);
-		} else if (!detected && !envForPools['IP_POOLS_TRANSACTIONAL']) {
-			reporter.log(
-				'Could not detect a routable IPv4 for the sending pools; set IP_POOLS_TRANSACTIONAL and IP_POOLS_CAMPAIGN in .env',
-				'stderr'
-			);
-		}
-		// Reverse DNS is the one record the installer cannot create on the
-		// operator's behalf, and the MTA identity gate (verifyMtaIdentity) refuses to let
-		// the stack finish without it. Ask for it HERE — before anything comes up —
-		// so a missing PTR is a five-minute detour through the provider console
-		// instead of an install that dies on `FCrDNS blocked for <ip>` having never
-		// mentioned the record existed.
-		await announceReverseDns(plannedOutboundIdentities(envForPools), envForPools, {
-			// A config-file, --assume-yes or machine-driven run has nobody at the
-			// keyboard to go set the record; it gets the same instructions, without
-			// the re-check prompt (which would hang a non-TTY install forever).
-			interactive,
-			emit: (line, stream) => reporter.log(line, stream),
-		});
+	// MTA's identity gate (verifyMtaIdentity) would always fail. Default both
+	// pools to the box's primary IPv4 unless the operator already chose one.
+	const envForPools = await readEnv(envPath);
+	const detected = detectPrimaryIpv4();
+	if (applyOutboundIpDefaults(envForPools, detected)) {
+		await writeEnv(envPath, envForPools);
+		reporter.log(`Sending pools default to this server's address ${detected}`);
+	} else if (!detected && !envForPools['IP_POOLS_TRANSACTIONAL']) {
+		reporter.log(
+			'Could not detect a routable IPv4 for the sending pools; set IP_POOLS_TRANSACTIONAL and IP_POOLS_CAMPAIGN in .env',
+			'stderr'
+		);
 	}
-	return composeProfilesUnion;
+	// Reverse DNS is the one record the installer cannot create on the
+	// operator's behalf, and the MTA identity gate (verifyMtaIdentity) refuses
+	// to let the stack finish without it. Ask for it HERE — before anything comes up —
+	// so a missing PTR is a five-minute detour through the provider console
+	// instead of an install that dies on `FCrDNS blocked for <ip>` having never
+	// mentioned the record existed.
+	await announceReverseDns(plannedOutboundIdentities(envForPools), envForPools, {
+		// A config-file, --assume-yes or machine-driven run has nobody at the
+		// keyboard to go set the record; it gets the same instructions, without
+		// the re-check prompt (which would hang a non-TTY install forever).
+		interactive,
+		emit: (line, stream) => reporter.log(line, stream),
+	});
 }
 
 export async function resolveSourceRevision(
