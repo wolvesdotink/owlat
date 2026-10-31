@@ -1301,7 +1301,8 @@ a private reducer per kind returning `{ patch, effects, applied }`, and
 a `TransitionOutcome` reporting `ok | reason` for duplicate / illegal /
 terminal attempts. Single entry point `transition({ campaignId, input
 })`; no external-key entry — campaigns are identified by their own
-`Id<'campaigns'>`.
+`Id<'campaigns'>`. The pure half (types, validator, graph, reducer)
+lives in `campaigns/lifecycleReducer.ts`.
 
 Effects:
 
@@ -2339,7 +2340,9 @@ removal. Sibling of the **Email template lifecycle (module)** —
 parallel shape, separate `LEGAL_EDGES` (3 states vs 2), distinct effect
 list (adds content-scan effect). Same **Campaign lifecycle (module)**
 skeleton — typed `TransitionInput`, `LEGAL_EDGES`, reducer, effects,
-`TransitionOutcome`. Four entry points:
+`TransitionOutcome`. The pure half (types, validator, graph, reducer
+with its inline content scan) lives in
+`transactional/lifecycleReducer.ts`. Four entry points:
 
 - `create({ name, slug, subject?, content?, dataVariablesSchema?,
 defaultLanguage? })` — validates slug format and uniqueness, inserts
