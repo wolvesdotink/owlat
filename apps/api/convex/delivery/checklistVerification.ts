@@ -10,6 +10,7 @@ import { observeDeploymentCheck } from './checklistDeploymentValidators';
 import { observeDomainCheck } from './checklistDomainValidators';
 import { checklistTraits } from './checklistTraits';
 import type {
+	ChecklistObservation,
 	ChecklistVerificationContext,
 	ChecklistVerificationRequest,
 } from './checklistValidatorTypes';
@@ -30,12 +31,24 @@ export function isFinalDnsPropagationAttempt(
 	);
 }
 
+/** What a run that could not observe records; its warning retries on the DNS chain. */
+const UNCONFIRMED_OBSERVATION: ChecklistObservation = {
+	validator: 'checklist.orchestrator',
+	status: 'warn',
+	observedValues: [],
+	diagnostic:
+		'The live check is temporarily unconfirmed, so its status is warning while Owlat retries.',
+};
+
 async function executeVerification(
 	ctx: ActionCtx,
 	request: ChecklistVerificationRequest
 ): Promise<VerificationResult> {
 	const attemptId = crypto.randomUUID();
 	const leaseToken = crypto.randomUUID();
+	// checkpoint: a lease that keeps a concurrent verifier off this item during the
+	// live checks; recordEvidence accepts only this lease token, and the lease lapses
+	// after LEASE_MS, so a run that dies here leaves the item claimable again.
 	const claim = await ctx.runMutation(internal.delivery.checklistEvidence.claimVerification, {
 		organizationId: request.organizationId,
 		itemId: request.itemId,
@@ -55,6 +68,7 @@ async function executeVerification(
 		};
 	}
 
+	let observation: ChecklistObservation;
 	try {
 		const traits = checklistTraits(request.itemId);
 		if (request.source !== 'sweep') {
@@ -90,42 +104,35 @@ async function executeVerification(
 			traits.scope === 'domain'
 				? await observeDomainCheck(ctx, request.itemId, context, isFinalDnsRetry)
 				: await observeDeploymentCheck(request.itemId, context, isFinalDnsRetry);
-		const recorded = await ctx.runMutation(internal.delivery.checklistEvidence.recordEvidence, {
-			organizationId: request.organizationId,
-			itemId: request.itemId,
-			...(request.domainId ? { domainId: request.domainId } : {}),
-			attemptId,
-			generation: claim.generation,
-			leaseToken,
+		observation = {
 			validator: result.validator,
 			status: result.status,
 			observedValues: result.observedValues,
 			diagnostic: result.diagnostic,
-			observedAt: Date.now(),
-		});
-		return {
-			accepted: recorded.recorded,
-			status: result.status,
-			...(recorded.recorded && recorded.nextCheckAt ? { nextCheckAt: recorded.nextCheckAt } : {}),
 		};
 	} catch {
-		const diagnostic =
-			'The live check is temporarily unconfirmed, so its status is warning while Owlat retries.';
-		const recorded = await ctx.runMutation(internal.delivery.checklistEvidence.recordEvidence, {
-			organizationId: request.organizationId,
-			itemId: request.itemId,
-			...(request.domainId ? { domainId: request.domainId } : {}),
-			attemptId,
-			generation: claim.generation,
-			leaseToken,
-			validator: 'checklist.orchestrator',
-			status: 'warn',
-			observedValues: [],
-			diagnostic,
-			observedAt: Date.now(),
-		});
-		return { accepted: recorded.recorded, status: 'warn' };
+		observation = UNCONFIRMED_OBSERVATION;
 	}
+
+	// The one commit: recordEvidence re-checks the lease, writes the evidence and
+	// its alerts, and schedules the next DNS retry.
+	const recorded = await ctx.runMutation(internal.delivery.checklistEvidence.recordEvidence, {
+		organizationId: request.organizationId,
+		itemId: request.itemId,
+		...(request.domainId ? { domainId: request.domainId } : {}),
+		attemptId,
+		generation: claim.generation,
+		leaseToken,
+		...observation,
+		observedAt: Date.now(),
+	});
+	return {
+		accepted: recorded.recorded,
+		status: observation.status,
+		...(observation !== UNCONFIRMED_OBSERVATION && recorded.recorded && recorded.nextCheckAt
+			? { nextCheckAt: recorded.nextCheckAt }
+			: {}),
+	};
 }
 
 // authz: owner/admin gate is enforced by the inherited-identity
