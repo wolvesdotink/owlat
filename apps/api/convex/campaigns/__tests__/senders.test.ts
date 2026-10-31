@@ -1,5 +1,6 @@
 import { convexTest } from 'convex-test';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import type * as SessionOrganizationModule from '../../lib/sessionOrganization';
 import schema from '../../schema';
 import { api, internal } from '../../_generated/api';
 import { isCampaignSenderAllowed, seedDefaultSenderIfNeeded } from '../senders';
@@ -34,7 +35,7 @@ import {
 const roleMock = vi.hoisted(() => ({ role: 'owner' as 'owner' | 'admin' | 'editor' }));
 
 vi.mock('../../lib/sessionOrganization', async () => {
-	const actual = await vi.importActual<typeof import('../../lib/sessionOrganization')>(
+	const actual = await vi.importActual<typeof SessionOrganizationModule>(
 		'../../lib/sessionOrganization'
 	);
 	const { realPermissionGate } = await import('../../__tests__/helpers/permissionGateMock');
