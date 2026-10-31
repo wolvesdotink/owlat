@@ -1167,10 +1167,25 @@ interrupt a migration.
 
 ### Boolean naming
 
-All boolean fields use the `is*` prefix: `isVerified`, `isEnabled`, `isActive`,
-`isDefault`, `isPrimary`. Domain enums that happen to spell `'verified'` as a
-literal value (e.g. `domains.status='verified'`) are status strings, not
-booleans, and are exempt.
+All boolean fields use the `is*` or `has*` prefix: `isVerified`, `isEnabled`,
+`isActive`, `isDefault`, `isPrimary`, `hasAttachments`, `hasOpened`. Domain
+enums that happen to spell `'verified'` as a literal value (e.g.
+`domains.status='verified'`) are status strings, not booleans, and are exempt.
+
+`scripts/check-boolean-naming.sh` enforces this on `convex/schema/` with two
+lists:
+
+- `scripts/boolean-naming-wire-fields.txt` holds fields whose name mirrors an
+  external wire vocabulary: the IMAP flags `apps/imap` serves
+  (`mailMessages.flagSeen`, ...), `mailFolders.subscribed`, and the MTA's
+  warming report (`warmingIpFields.active`). Renaming one is a protocol
+  change, so they are not debt. Each group carries its reason; a new line
+  needs the same kind of reason.
+- `scripts/boolean-naming-baseline.txt` is debt: production fields whose
+  rename is an expand → migrate → contract (above). Never add a line. Where a
+  field's name is also external (`showUnsubscribe` in co-editing,
+  `doubleOptIn` / `requireDoubleOptIn` in the public forms API), the rename
+  keeps the external name at that boundary.
 
 ### Soft-delete contract
 
