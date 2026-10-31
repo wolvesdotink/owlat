@@ -4,7 +4,8 @@
  * the builder derivation they share).
  *
  * `apiTree()` builds a throwaway `apps/api` tree holding the REAL gate scripts,
- * the REAL `scripts/lib/` they source, and the two inputs the builder
+ * the REAL `scripts/lib/` they source, the repository's `scripts/ratchet.sh`
+ * they hand their comparison to, and the two inputs the builder
  * derivation reads from source: the real `convex/lib/authedFunctions.ts` and
  * one module carrying every `featureGated(Any)` composition line found in the
  * real `convex/` tree. A case then seeds the `convex/` files it needs, so the
@@ -79,6 +80,8 @@ export async function apiTree(files: Record<string, string>, roots: string[]): P
 	for (const name of await readdir(join(scripts, 'lib'))) {
 		await copyFile(join(scripts, 'lib', name), join(api, 'scripts/lib', name));
 	}
+	await mkdir(join(root, 'scripts'), { recursive: true });
+	await copyFile(join(REPOSITORY_ROOT, 'scripts/ratchet.sh'), join(root, 'scripts/ratchet.sh'));
 
 	const seeded: Record<string, string> = {
 		[AUTHED_FUNCTIONS]: await readFile(join(API_ROOT, AUTHED_FUNCTIONS), 'utf8'),

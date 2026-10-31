@@ -11,8 +11,8 @@
 # ~20 legacy fields predate the rule and sit on production tables, where a
 # rename is a dual-write migration we are deliberately not paying now. They
 # are frozen in scripts/boolean-naming-baseline.txt so the gate stops the
-# debt from GROWING without forcing a rename. Like check-query-authz.sh this
-# is a RATCHET on scripts/ratchet.sh, strict in both directions:
+# debt from GROWING without forcing a rename. This is a RATCHET on
+# scripts/ratchet.sh, strict in both directions:
 #
 #   * an unlisted violation fails  — a new mis-named boolean field, and
 #   * a stale baseline entry fails — the field was renamed/removed, so its

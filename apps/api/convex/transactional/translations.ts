@@ -20,6 +20,8 @@ import {
  * Get transactional email content for a specific language
  * Returns the content for the requested language, falling back to default language if not available
  */
+// all-members: the transactional template library every role reads; writing
+// it needs templates:manage.
 export const getForLanguage = transactionalQuery({
 	args: {
 		id: v.id('transactionalEmails'),

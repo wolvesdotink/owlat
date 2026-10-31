@@ -12,34 +12,12 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import type { FunctionReference } from 'convex/server';
-import type { FeatureFlagKey } from '@owlat/shared/featureFlags';
 import { api } from '../_generated/api';
-import {
-	ADMIN,
-	EDITOR,
-	OUTSIDER,
-	OWNER,
-	as,
-	authzHarness,
-	setFeatures,
-	type Caller,
-	type Seed,
-} from './queryAuthzFixtures';
-
-type Policy = 'member' | 'admin' | 'self';
-type AnyQuery = FunctionReference<'query', 'public'>;
-
-interface Row {
-	query: AnyQuery;
-	policy: Policy;
-	flag?: FeatureFlagKey;
-	args?: (seed: Seed, caller: string) => Record<string, unknown>;
-}
+import { authzHarness, describeQueryMatrix, type MatrixRow } from './queryAuthzFixtures';
 
 const page = { paginationOpts: { numItems: 10, cursor: null } };
 
-const ROWS: Record<string, Row> = {
+const ROWS: Record<string, MatrixRow> = {
 	'analytics.adaptiveDashboard.getLayout': {
 		query: api.analytics.adaptiveDashboard.getLayout,
 		policy: 'member',
@@ -238,61 +216,10 @@ const ROWS: Record<string, Row> = {
 	},
 };
 
-function call(row: Row, t: Awaited<ReturnType<typeof authzHarness>>, caller: Caller) {
-	const args = row.args?.(t.seed, caller === 'anonymous' ? OUTSIDER : caller) ?? {};
-	return as(t.t, t.seed, caller).query(row.query, args as never);
-}
-
-const forbidden = { data: { category: 'forbidden' } };
-
 describe('query authorization matrix', () => {
 	it('covers every reviewed definition', () => {
 		expect(Object.keys(ROWS)).toHaveLength(42);
 	});
 
-	describe.each(Object.entries(ROWS))('%s', (_name, row) => {
-		it('refuses anonymous and non-member callers before reading', async () => {
-			const h = await authzHarness();
-			await expect(call(row, h, 'anonymous')).rejects.toMatchObject({
-				data: { category: 'unauthenticated' },
-			});
-			await expect(call(row, h, OUTSIDER)).rejects.toMatchObject(forbidden);
-		});
-
-		it('admits the roles its policy names', async () => {
-			const h = await authzHarness();
-			// A rejection fails the test; the value itself is each read's own concern.
-			await call(row, h, OWNER);
-			await call(row, h, ADMIN);
-			if (row.policy === 'admin') {
-				await expect(call(row, h, EDITOR)).rejects.toMatchObject(forbidden);
-			} else {
-				await call(row, h, EDITOR);
-			}
-		});
-
-		if (row.policy === 'self') {
-			it("refuses another member's user id", async () => {
-				const h = await authzHarness();
-				const args = row.args!(h.seed, OWNER);
-				await expect(as(h.t, h.seed, EDITOR).query(row.query, args as never)).rejects.toMatchObject(
-					forbidden
-				);
-			});
-		}
-
-		if (row.flag) {
-			const flag = row.flag;
-			it(`refuses every role while ${flag} is off`, async () => {
-				const h = await authzHarness();
-				const others = (['campaigns', 'automations', 'chat'] as const).filter((f) => f !== flag);
-				await setFeatures(h.t, others);
-				for (const caller of [OWNER, ADMIN, EDITOR] as const) {
-					await expect(call(row, h, caller)).rejects.toMatchObject({
-						data: { category: 'forbidden', data: { features: [flag] } },
-					});
-				}
-			});
-		}
-	});
+	describeQueryMatrix(ROWS, () => authzHarness());
 });

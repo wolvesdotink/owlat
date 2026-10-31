@@ -43,6 +43,8 @@ function getBlockCount(contentJson: string): number {
 
 // ─── Read queries (unchanged) ───────────────────────────────────────────────
 
+// all-members: the saved-block library every role inserts into emails;
+// writing it needs templates:manage.
 export const get = authedQuery({
 	args: { blockId: v.id('emailBlocks') },
 	handler: async (ctx, args) => {
@@ -55,6 +57,7 @@ export const get = authedQuery({
 	},
 });
 
+// all-members: the block count on the send overview.
 export const getStatsByTeam = authedQuery({
 	args: {},
 	handler: async (ctx) => {
@@ -66,6 +69,8 @@ export const getStatsByTeam = authedQuery({
 	},
 });
 
+// all-members: the saved-block library every role inserts into emails;
+// writing it needs templates:manage.
 export const list = authedQuery({
 	args: {
 		search: v.optional(v.string()),

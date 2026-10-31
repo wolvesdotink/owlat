@@ -41,6 +41,9 @@ export const generateUploadUrl = authedMutation({
  * media library expose their own ownership-gated URL accessor (mail's
  * `getMessageRawUrl`, etc.) and must NOT be routed through here.
  */
+// authz: the blob's owning media asset is the boundary. Only a shared-library
+// asset resolves, which mediaAssets.list already shows every member; a chat
+// attachment or a blob with no media row reads as not found.
 export const getUrl = authedQuery({
 	args: { storageId: v.id('_storage') },
 	handler: async (ctx, args) => {

@@ -113,6 +113,10 @@ export const revokeShareLink = authedMutation({
  * (`revokeShareLink`) already require. The only reader (ShareLinksPopover) is an
  * admin surface whose create/revoke actions already demand this permission.
  */
+// token-safe: the token is the payload, not a leak. A share link exists to be
+// handed out, the popover's copy action rebuilds the /share URL from it, and
+// only a shareLinks:manage holder (who can mint and revoke links) receives it.
+// publicReturnRedaction.test.ts lists this as its one reviewed exception.
 export const listShareLinks = authedQuery({
 	args: {
 		emailTemplateId: v.optional(v.id('emailTemplates')),

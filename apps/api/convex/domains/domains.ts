@@ -57,6 +57,9 @@ function serializeDomainRow(domain: DomainRow): DomainRow & {
 // ─── Read queries ──────────────────────────────────────────────────────────
 
 // Query: List all domains
+// all-members: the send-test modal reads it for every role. The DNS records
+// are the values published in public DNS; changing a domain needs
+// organization:manage.
 export const listByOrganization = authedQuery({
 	args: {},
 	handler: async (ctx) => {
@@ -94,6 +97,8 @@ export const getInboundMailConfig = authedQuery({
 });
 
 // Query: Get verified domains (for email sending)
+// all-members: the campaign sender picker and the add-account flow pick from
+// it for every role; it returns only names and verification times.
 export const listVerified = authedQuery({
 	args: {},
 	handler: async (ctx) => {
@@ -393,6 +398,8 @@ export function memoizedEmailDomainVerification(
 	};
 }
 
+// all-members: answers whether a from-address's domain is verified, for the
+// campaign sender picker and review step every role reaches.
 export const getEmailDomainVerificationStatus = authedQuery({
 	args: {
 		email: v.string(),
