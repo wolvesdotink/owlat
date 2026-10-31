@@ -78,7 +78,7 @@ a bare Linux VPS without touching a terminal. The app SSHes in and drives the
   in `scripts/owlat`), so a desktop that is killed mid-install does not leave it
   behind. A failed removal is shown next to the install error, with the command
   that removes it by hand.
-- **One source of orchestration truth**: the desktop does *not* re-implement the
+- **One source of orchestration truth**: the desktop does _not_ re-implement the
   ~13-step install. It runs preflight / fetch over SSH, uploads an
   `owlat-setup.json`, then runs the normal installer with
   `OWLAT_PROGRESS=json` (`apps/setup-cli`). That CLI emits one
@@ -115,7 +115,7 @@ every service `docker-compose.yml` can build (the table in
 `scripts/__tests__/desktop-local-push-images.test.ts`), checks that each image
 arrived, and runs quickstart with `--no-build` so the server never builds.
 
-**Remote reachability.** For the desktop to connect to the box *after* the
+**Remote reachability.** For the desktop to connect to the box _after_ the
 install, give it a **public domain** in the wizard. That sets
 `SITE_URL` / `NUXT_PUBLIC_*` to `owlat.` / `convex.` / `convex-site.<domain>`
 (the `Caddyfile.example` convention). The operator must point those DNS A-records
@@ -192,6 +192,48 @@ Requires:
    - Add the **private** key + password as CI secrets `TAURI_SIGNING_PRIVATE_KEY` /
      `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. Never commit the private key.
 
+## Launch smoke test and updater end to end (Linux)
+
+`scripts/desktop-smoke.ts` packages the real app and runs it. The `package` job
+in `.github/workflows/desktop-ci.yml` runs all of it on PRs; locally it needs
+the Tauri Linux build dependencies, `xvfb` and `dbus-run-session`:
+
+```sh
+./node_modules/.bin/turbo run build --filter='@owlat/web^...'
+bun scripts/desktop-smoke.ts build --out ~/.cache/owlat-desktop-smoke
+xvfb-run -a dbus-run-session -- bun scripts/desktop-smoke.ts launch --fixtures ~/.cache/owlat-desktop-smoke
+xvfb-run -a dbus-run-session -- bun scripts/desktop-smoke.ts update --fixtures ~/.cache/owlat-desktop-smoke
+```
+
+- `build` makes the web server (`nuxt build`), the desktop SPA, a throwaway
+  minisign key pair and two debug AppImages: N (the Cargo.toml version) and
+  N+1 (the next patch, set through tauri's `--config`, so no file changes).
+  Both carry the `e2e-fixture` feature and the throwaway public key.
+- `launch` starts N on a fresh profile and requires the welcome page to mount,
+  with no uncaught renderer error, failed asset load, caught Vue component
+  error, panic or crash.
+- `update` serves N+1 through the built web server's own
+  `/api/desktop/update/...` route, with a fake Convex upstream behind it and the
+  bundle served from a loopback copy of the GitHub release-asset path. N must
+  find, verify and install N+1 and relaunch into it; a 204 leaves N running;
+  a tampered bundle and a valid signature over other bytes must be refused
+  with N still installed.
+- `liveness <AppImage>` needs no instrumentation: the app must still be running
+  after 20 s with nothing fatal printed. The Linux release build runs it on the
+  AppImage it just built (`_desktop-build.yml`), before the draft release can be
+  published.
+
+The `e2e-fixture` feature (`src-tauri/src/e2e.rs`) does two things. Its
+instrumentation is inert unless `OWLAT_E2E_REPORT=1` is set: it reports boot,
+mount, renderer errors (Vue component errors the web app's error handler
+catches included) and update steps on stdout, and drives the update through the
+same `updater_*` commands the webview calls. Its transport allowance applies
+whenever the feature is compiled in, with or without that variable: the updater
+trusts `http://127.0.0.1` for the endpoint and the bundle (the path and
+signature rules stay). `main.rs` refuses to compile the feature into an
+optimized build, so a release binary cannot carry either. No signing secret is
+involved: the fixture builds sign with the key `build` generates.
+
 ## Release (CI)
 
 Push a `desktop-v*` tag to trigger `.github/workflows/desktop-release.yml`
@@ -206,12 +248,12 @@ workflow verifies `codesign`, the stapled notarization ticket, and a `spctl`
 Gatekeeper assessment on the built `.app` before the Release is published, so
 a broken signing setup fails in CI instead of on a user's machine.
 
-| Secret | Purpose |
-| --- | --- |
-| `TAURI_SIGNING_PRIVATE_KEY` / `…_PASSWORD` | Sign updater bundles |
-| `APPLE_CERTIFICATE` / `…_PASSWORD` / `APPLE_SIGNING_IDENTITY` | macOS code-sign |
-| `APPLE_ID` / `APPLE_PASSWORD` / `APPLE_TEAM_ID` | macOS notarization |
-| `WINDOWS_CERTIFICATE` / `…_PASSWORD` | Windows Authenticode |
+| Secret                                                        | Purpose              |
+| ------------------------------------------------------------- | -------------------- |
+| `TAURI_SIGNING_PRIVATE_KEY` / `…_PASSWORD`                    | Sign updater bundles |
+| `APPLE_CERTIFICATE` / `…_PASSWORD` / `APPLE_SIGNING_IDENTITY` | macOS code-sign      |
+| `APPLE_ID` / `APPLE_PASSWORD` / `APPLE_TEAM_ID`               | macOS notarization   |
+| `WINDOWS_CERTIFICATE` / `…_PASSWORD`                          | Windows Authenticode |
 
 ### macOS signing + notarization setup (one-time)
 
@@ -259,8 +301,7 @@ updates, or defer a fresh release for a while).
 It falls back to the endpoint in `tauri.conf.json`
 (`plugins.updater.endpoints`, GitHub's `latest.json`) when there is no
 workspace yet, when the workspace URL is not https (`tauri dev` over
-`http://localhost:3000`), or when the instance predates the route and answers
-404. An instance that is merely unreachable means "skip this check", not "go
+`http://localhost:3000`), or when the instance predates the route and answers 404. An instance that is merely unreachable means "skip this check", not "go
 around it".
 
 Because the endpoint has to be chosen at runtime and the JS `check()` cannot
