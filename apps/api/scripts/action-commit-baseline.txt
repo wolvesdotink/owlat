@@ -144,7 +144,6 @@ convex/mail/migrationIndexing.ts:runIndexChunk #4
 convex/mail/migrationIndexing.ts:runIndexChunk #5
 convex/mail/migrationIndexing.ts:runIndexChunk #6
 convex/mail/migrationIndexing.ts:runIndexChunk #7
-convex/mail/subscriptions.ts:unsubscribeAndArchive #2
 convex/plugins/cronRuntime.ts:runPluginCron #2
 convex/plugins/cronRuntime.ts:runPluginCron #3
 convex/push/send.ts:deliver #2
