@@ -13,7 +13,6 @@ export:apps/mta/src/types.ts:DomainHealthStatus
 export:apps/mta/src/types.ts:SmtpResponseRecord
 export:apps/mta/src/webhookEventTypes.ts:GooglePostmasterComplianceEvent
 export:apps/mta/src/webhookEventTypes.ts:GooglePostmasterDomainAuthorizationEvent
-export:apps/mta/src/webhookEventTypes.ts:MtaWebhookEventType
 export:examples/plugins/deliverability-lab/src/cron.ts:refreshSeedScoresCron
 export:packages/email-builder/src/utils/gradient.ts:gradientCss
 export:packages/email-renderer/src/blocks/_registry.ts:unregisterBlockModule
