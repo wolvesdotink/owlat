@@ -15,6 +15,7 @@ import { v } from 'convex/values';
 import type { MutationCtx } from '../_generated/server';
 import type { Id } from '../_generated/dataModel';
 import { internalMutation } from '../lib/writeFence';
+import { logError } from '../lib/runtimeLog';
 import { normalizeReturnPathHost } from '@owlat/shared/returnPathHost';
 import { patchDomainRecords } from './lifecycle';
 import type { DnsRecords, VerificationResults } from './lifecycleReducer';
@@ -229,10 +230,17 @@ export async function reconcileReturnPathAfterRegistrationIn(
 	// safe): nothing concrete to reflect, leave the registered records in place.
 	if (currentHost === undefined) return;
 
-	// Built before anything is written: the registration commit that runs this
-	// catches a throw here (a provider misconfiguration) and keeps its own writes,
-	// so this must not leave half of its own behind.
-	const mailFromRecords = buildReturnPathMailFrom(providerType, domain.domain, currentHost);
+	// A build that throws (a provider misconfiguration) must not fail the
+	// registration that runs this in its transaction, so it is logged and the
+	// registered records stand. Only the build is caught: it runs before any
+	// write, and a throw after the writes below must roll the commit back.
+	let mailFromRecords: ReturnType<typeof buildReturnPathMailFrom>;
+	try {
+		mailFromRecords = buildReturnPathMailFrom(providerType, domain.domain, currentHost);
+	} catch (error) {
+		logError(`[domains] Return-path repair after registering ${args.domainId} failed:`, error);
+		return;
+	}
 	const dnsRecords = domain.dnsRecords as DnsRecords;
 	const nextDnsRecords: DnsRecords = { ...dnsRecords };
 	if (mailFromRecords) {

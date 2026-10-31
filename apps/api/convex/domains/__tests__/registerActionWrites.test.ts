@@ -1,7 +1,8 @@
 /**
  * What `registerAction.run` leaves on the domain row, for each way a
  * registration can end: the provider refused, the outcome itself could not be
- * written, or the post-registration return-path repair threw.
+ * written, the post-registration return-path repair threw, or the result
+ * arrived after the domain had moved on.
  */
 
 import { convexTest } from 'convex-test';
@@ -14,7 +15,7 @@ import type * as ReturnPathProvidersModule from '../returnPathProviders';
 
 const { registerDomainMock, reconcileFault } = vi.hoisted(() => ({
 	registerDomainMock: vi.fn(),
-	reconcileFault: { isActive: false },
+	reconcileFault: { isActive: false, reflectionThrows: false },
 }));
 
 vi.mock('../../lib/emailProviders/mtaIdentity', async (importActual) => {
@@ -25,8 +26,9 @@ vi.mock('../../lib/emailProviders/mtaIdentity', async (importActual) => {
 	};
 });
 
-// Only the record builder the post-registration repair calls is wrapped, so a
-// test can make that repair throw the way a misconfigured provider does.
+// Only the record builder and the reflection scheduler the post-registration
+// repair calls are wrapped, so a test can make that repair throw before it
+// writes (a misconfigured provider) or after (a scheduling failure).
 vi.mock('../returnPathProviders', async (importActual) => {
 	const actual = await importActual<typeof ReturnPathProvidersModule>();
 	return {
@@ -34,6 +36,12 @@ vi.mock('../returnPathProviders', async (importActual) => {
 		buildReturnPathMailFrom: (...args: Parameters<typeof actual.buildReturnPathMailFrom>) => {
 			if (reconcileFault.isActive) throw new Error('AWS_SES_REGION is not set');
 			return actual.buildReturnPathMailFrom(...args);
+		},
+		scheduleReturnPathReflection: (
+			...args: Parameters<typeof actual.scheduleReturnPathReflection>
+		) => {
+			if (reconcileFault.reflectionThrows) throw new Error('scheduler unavailable');
+			return actual.scheduleReturnPathReflection(...args);
 		},
 	};
 });
@@ -54,6 +62,7 @@ beforeEach(() => {
 	registerDomainMock.mockReset();
 	registerDomainMock.mockResolvedValue({ selector: 's1', dnsRecord: 'v=DKIM1; k=rsa; p=KEY' });
 	reconcileFault.isActive = false;
+	reconcileFault.reflectionThrows = false;
 	vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
 	vi.stubEnv('EMAIL_PROVIDER', 'mta');
 	vi.stubEnv('MTA_API_URL', 'http://mta.test');
@@ -174,5 +183,47 @@ describe('registerAction.run writes one outcome per registration', () => {
 		expect(domain?.returnPathHost).toBe('bounce.new.example.com');
 		expect((domain!.dnsRecords as { dkim?: unknown[] }).dkim).toHaveLength(1);
 		expect(await auditActions(t)).not.toContain('sending_domain.registration_failed');
+	});
+
+	it('rolls the whole registration back when the repair throws after its patch', async () => {
+		const t = convexTest(schema, modules);
+		const domainId = await seedRegistering(t, 'bounce.old.example.com');
+		registerDomainMock.mockImplementation(async () => {
+			await t.mutation(internal.domains.lifecycleReturnPath.setReturnPathHost, {
+				domainId,
+				returnPathHost: 'bounce.new.example.com',
+				userId: 'user',
+			});
+			reconcileFault.reflectionThrows = true;
+			return { selector: 's1', dnsRecord: 'v=DKIM1; k=rsa; p=KEY' };
+		});
+		vi.spyOn(console, 'error').mockImplementation(() => {});
+
+		await register(t, domainId);
+
+		// Neither the outcome nor the repaired records survive without the
+		// reflection; the separate failure commit leaves the domain retryable.
+		const domain = await readDomain(t, domainId);
+		expect(domain?.status).toBe('failed');
+		expect((domain!.dnsRecords as { dkim?: unknown[] }).dkim).toBeUndefined();
+		expect(await auditActions(t)).not.toContain('sending_domain.registered');
+	});
+
+	it('refuses a late result for a domain that is no longer registering', async () => {
+		const t = convexTest(schema, modules);
+		const domainId = await seedRegistering(t);
+		await t.run(async (ctx) => ctx.db.patch(domainId, { status: 'verified' }));
+
+		const outcome = await t.mutation(internal.domains.providers.registerCommit.commitRegistration, {
+			domainId,
+			input: { to: 'failed', at: Date.now(), error: 'late provider error' },
+			userId: 'system:provider_register',
+		});
+
+		expect(outcome).toMatchObject({ ok: false, reason: 'illegal_edge', from: 'verified' });
+		const domain = await readDomain(t, domainId);
+		expect(domain?.status).toBe('verified');
+		expect(domain?.lastRegistrationError).toBeUndefined();
+		expect(await auditActions(t)).toEqual([]);
 	});
 });

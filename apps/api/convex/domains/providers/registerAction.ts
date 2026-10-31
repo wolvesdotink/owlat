@@ -163,14 +163,18 @@ export const run = internalAction({
 			// written (it failed the transition's validation, say). A mutation that
 			// throws writes nothing, so the domain is still `registering` and
 			// nothing else will move it; record the failure instead, in a
-			// transition of its own, so an operator can retry.
+			// commit of its own, so an operator can retry.
 			const message = error instanceof Error ? error.message : `Unknown ${tag} error`;
 			logError(`[${tag}] Failed to record registration of ${domain.domain}:`, message);
-			await ctx.scheduler.runAfter(0, internal.domains.lifecycle.transition, {
-				domainId: args.domainId,
-				input: { to: 'failed', at, error: message },
-				userId: LIFECYCLE_USER_PROVIDER_REGISTER,
-			});
+			await ctx.scheduler.runAfter(
+				0,
+				internal.domains.providers.registerCommit.commitRegistration,
+				{
+					domainId: args.domainId,
+					input: { to: 'failed', at, error: message },
+					userId: LIFECYCLE_USER_PROVIDER_REGISTER,
+				}
+			);
 			return;
 		}
 		if (describeRegistered !== undefined) {

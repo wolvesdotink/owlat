@@ -6,21 +6,25 @@
 
 import { v } from 'convex/values';
 import { internalMutation } from '../../lib/writeFence';
-import { logError } from '../../lib/runtimeLog';
 import { transitionDomain } from '../lifecycle';
-import { transitionInputValidator, type SendingDomainTransitionOutcome } from '../lifecycleReducer';
+import {
+	transitionInputValidator,
+	type SendingDomainStatus,
+	type SendingDomainTransitionOutcome,
+} from '../lifecycleReducer';
 import { reconcileReturnPathAfterRegistrationIn } from '../lifecycleReturnPath';
 
 /**
  * Land `registering → pending` (with the provider's records and identity) or
- * `registering → failed`. The lifecycle re-checks the edge against the row as
- * it is now, so a domain that moved on while the provider was asked refuses it.
+ * `registering → failed`. Only a domain still `registering` takes the result:
+ * the general graph also allows `verified → pending` and `verified → failed`,
+ * so without this check a late result would downgrade a domain that moved on
+ * and replace its records.
  *
  * A registered domain also gets its return-path repair here, in the same
- * transaction, so a return-path edit cannot commit between the two. A repair
- * that throws (a provider misconfiguration) is logged and leaves the
- * registration standing: it builds its records before it writes anything, and
- * a registered domain must not be failed by its repair.
+ * transaction, so a return-path edit cannot commit between the two. The repair
+ * swallows only its own record-building failure (a provider misconfiguration),
+ * which happens before it writes; any later throw rolls the whole commit back.
  */
 export const commitRegistration = internalMutation({
 	args: {
@@ -31,17 +35,23 @@ export const commitRegistration = internalMutation({
 		userId: v.string(),
 	},
 	handler: async (ctx, args): Promise<SendingDomainTransitionOutcome> => {
-		const outcome = await transitionDomain(ctx, args.domainId, args.input, args.userId);
-		if (args.input.to !== 'pending') return outcome;
-		try {
-			await reconcileReturnPathAfterRegistrationIn(ctx, {
-				domainId: args.domainId,
-				registeredReturnPathHost: args.registeredReturnPathHost,
-				userId: args.userId,
-			});
-		} catch (error) {
-			logError(`[domains] Return-path repair after registering ${args.domainId} failed:`, error);
+		const domain = await ctx.db.get(args.domainId);
+		if (!domain) return { ok: false, reason: 'domain_not_found' };
+		if (domain.status !== 'registering') {
+			return {
+				ok: false,
+				reason: 'illegal_edge',
+				from: domain.status as SendingDomainStatus,
+				to: args.input.to,
+			};
 		}
+		const outcome = await transitionDomain(ctx, args.domainId, args.input, args.userId);
+		if (!outcome.ok || args.input.to !== 'pending') return outcome;
+		await reconcileReturnPathAfterRegistrationIn(ctx, {
+			domainId: args.domainId,
+			registeredReturnPathHost: args.registeredReturnPathHost,
+			userId: args.userId,
+		});
 		return outcome;
 	},
 });
