@@ -30,8 +30,8 @@ export type OperationErrorCategory =
 	| 'network';
 
 /**
- * The canonical failure shape every seam serializes. Specifics that used to be
- * bespoke codes ride in `data` — `{ field }`, `{ limit, used }`,
+ * The canonical failure shape every seam serializes. Specifics that would
+ * otherwise be bespoke codes ride in `data` — `{ field }`, `{ limit, used }`,
  * `{ retryAfter }`, a content-scan result — never as a new category.
  */
 export interface OperationError {

@@ -7,7 +7,7 @@ import { scoreBlockCompatibility } from '../compatibility';
 import { renderEmailHtml } from '../renderer';
 
 /**
- * getEmailHealthScore cost bounds (issue #923): one compatibility score per
+ * getEmailHealthScore cost bounds: one compatibility score per
  * Block, and no repeated validation/analysis when the caller already did both.
  */
 vi.mock('../validator', async (importOriginal) => {

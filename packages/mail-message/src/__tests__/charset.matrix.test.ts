@@ -90,7 +90,7 @@ describe('normalizeCharset', () => {
 });
 
 /**
- * The declared-charset mode (#1299): a part read under the charset it declares,
+ * The declared-charset mode: a part read under the charset it declares,
  * where a BOM is only ever read by the declared decoder and never switches the
  * encoding away from it.
  */
@@ -122,7 +122,7 @@ describe('decodeDeclaredCharset', () => {
 		expect(decodeDeclaredCharset(b(0xfe, 0xff, 0x00, 0x41), 'utf-16be')).toBe('A');
 	});
 
-	// Expected outputs written out by hand, not taken from a decoder (#1299 r2).
+	// Expected outputs written out by hand, not taken from a decoder.
 	it('a generic utf-16 part with no BOM is big-endian (RFC 2781 §4.3)', () => {
 		expect(decodeDeclaredCharset(b(0x00, 0x41, 0x00, 0xfc), 'utf-16')).toBe('Aü');
 		expect(decodeDeclaredCharset(b(0x00, 0x41), 'UTF-16')).toBe('A');

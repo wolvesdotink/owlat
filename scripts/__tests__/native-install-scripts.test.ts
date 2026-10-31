@@ -1,5 +1,5 @@
 /**
- * `bun install` must not run a native build for better-sqlite3 (#1450).
+ * `bun install` must not run a native build for better-sqlite3.
  *
  * better-sqlite3 13 ships N-API prebuilds for every platform CI and the docs
  * image use, and sets `"gypfile": false`. bun ignores that flag: once the

@@ -12,7 +12,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { makeStepCtx } from '../../__tests__/stepCtx';
+import { makeStepCtx, writeOf } from '../../__tests__/stepCtx';
 import type { Id } from '../../../../_generated/dataModel';
 import { contextRetrievalStep } from '../index';
 
@@ -30,7 +30,6 @@ type OpenCommitment = {
 };
 
 function makeCtx(openCommitments: OpenCommitment[]) {
-	const recorded: { value: Record<string, unknown> | null } = { value: null };
 	// The inbound is about something ELSE entirely — it never mentions the
 	// commitment, so only the contact-scoped pull can surface it.
 	const message = {
@@ -56,21 +55,15 @@ function makeCtx(openCommitments: OpenCommitment[]) {
 		},
 		// Semantic knowledge + file legs find nothing tied to this inbound.
 		actions: { knowledge: [], semanticFileProcessing: [] },
-		mutations: {
-			recordContextTier: (args) => {
-				recorded.value = args as Record<string, unknown>;
-				return null;
-			},
-		},
 	});
 
-	return { ctx, recorded };
+	return { ctx };
 }
 
 describe('contextRetrievalStep.execute — open commitments', () => {
 	it('injects an open commitment for the contact even when the new email never mentions it', async () => {
 		const dueAt = Date.UTC(2026, 6, 10);
-		const { ctx, recorded } = makeCtx([
+		const { ctx } = makeCtx([
 			{
 				_id: 'commit_1',
 				entryType: 'action_item',
@@ -80,7 +73,8 @@ describe('contextRetrievalStep.execute — open commitments', () => {
 			},
 		]);
 
-		const { output } = await contextRetrievalStep.execute(ctx, input);
+		const { output, writes } = await contextRetrievalStep.execute(ctx, input);
+		const recorded = { value: writeOf(writes, 'context_tier') };
 
 		// The commitment is in the briefing despite the inbound being about topics.
 		expect(output.context).toContain('[OPEN COMMITMENTS');

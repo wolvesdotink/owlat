@@ -73,7 +73,7 @@ export function rewriteInlineImageCids(html: string): InlineCidRewriteResult {
 
 /**
  * The same images pointed at a URL the browser can load, for showing a body
- * before it is sent ("Preview as sent", #1301): each `<img data-inline-cid="X">`
+ * before it is sent ("Preview as sent"): each `<img data-inline-cid="X">`
  * gets `src` = `resolve(X)`, without the marker. An image whose URL is not known
  * yet gets no src at all, as in the editor. Ordinary images are left alone.
  */
@@ -91,7 +91,7 @@ export function resolveInlineImageSrcs(
 
 /**
  * The body without its inline images. Their bytes are parts of one draft, so
- * a copy of the body kept anywhere else (a saved reply, #1293) cannot carry them.
+ * a copy of the body kept anywhere else (a saved reply) cannot carry them.
  */
 export function stripInlineImages(html: string): { html: string; removed: number } {
 	let removed = 0;

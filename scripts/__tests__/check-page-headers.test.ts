@@ -1,5 +1,5 @@
 /**
- * The page-header ratchet's own gate (#865).
+ * The page-header ratchet's own gate.
  *
  * The comparison is scripts/ratchet.sh's and has its own suite; what is tested
  * here is the generator: which files count as hand-rolling a page header. It

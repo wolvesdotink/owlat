@@ -21,9 +21,9 @@
  * Restrict-only: nothing here can approve or widen a send.
  */
 
-import { v } from 'convex/values';
-import type { Doc } from '../../_generated/dataModel';
-import type { QueryCtx } from '../../_generated/server';
+import { v, type ObjectType } from 'convex/values';
+import type { Doc, Id } from '../../_generated/dataModel';
+import type { MutationCtx, QueryCtx } from '../../_generated/server';
 import { internalQuery } from '../../_generated/server';
 import { internalMutation } from '../../lib/writeFence';
 import { extractEmail } from '../../lib/emailAddress';
@@ -131,39 +131,49 @@ export async function outgoingCoverageHold(
  * Log a shadow-mode objection on the message's shadow observation. The gate
  * only runs on the auto-approve path, so a row created here records a
  * would-have-sent decision; the route step's own shadow write refreshes it
- * and keeps this field. Best-effort for the caller.
+ * and keeps this field. The route step's commit applies it
+ * (`agent/stepWrites.ts`), best-effort.
  */
+export const itemCoverageShadowFields = {
+	objections: v.array(v.string()),
+	reason: v.string(),
+};
+
+export async function applyItemCoverageShadow(
+	ctx: MutationCtx,
+	inboundMessageId: Id<'inboundMessages'>,
+	shadow: ObjectType<typeof itemCoverageShadowFields>
+): Promise<void> {
+	const message = await ctx.db.get(inboundMessageId);
+	if (!message) return;
+	const now = Date.now();
+	const itemCoverage = { objections: shadow.objections, reason: shadow.reason, at: now };
+	const existing = await ctx.db
+		.query('agentShadowDecisions')
+		.withIndex('by_message', (q) => q.eq('inboundMessageId', inboundMessageId))
+		.first();
+	if (existing) {
+		if (!existing.isResolved) await ctx.db.patch(existing._id, { itemCoverage });
+		return;
+	}
+	await ctx.db.insert('agentShadowDecisions', {
+		inboundMessageId,
+		category: message.classification?.category ?? 'unknown',
+		sender: extractEmail(message.from ?? '') || 'unknown',
+		isWouldHaveSent: true,
+		reason: 'The item_coverage gate observed this auto-send in shadow mode.',
+		confidence: message.classification?.confidence ?? 0,
+		shadowDraft: message.draftResponse ?? '',
+		isResolved: false,
+		itemCoverage,
+		createdAt: now,
+	});
+}
+
 export const recordShadow = internalMutation({
-	args: {
-		inboundMessageId: v.id('inboundMessages'),
-		objections: v.array(v.string()),
-		reason: v.string(),
-	},
-	handler: async (ctx, args): Promise<null> => {
-		const message = await ctx.db.get(args.inboundMessageId);
-		if (!message) return null;
-		const now = Date.now();
-		const itemCoverage = { objections: args.objections, reason: args.reason, at: now };
-		const existing = await ctx.db
-			.query('agentShadowDecisions')
-			.withIndex('by_message', (q) => q.eq('inboundMessageId', args.inboundMessageId))
-			.first();
-		if (existing) {
-			if (!existing.isResolved) await ctx.db.patch(existing._id, { itemCoverage });
-			return null;
-		}
-		await ctx.db.insert('agentShadowDecisions', {
-			inboundMessageId: args.inboundMessageId,
-			category: message.classification?.category ?? 'unknown',
-			sender: extractEmail(message.from ?? '') || 'unknown',
-			isWouldHaveSent: true,
-			reason: 'The item_coverage gate observed this auto-send in shadow mode.',
-			confidence: message.classification?.confidence ?? 0,
-			shadowDraft: message.draftResponse ?? '',
-			isResolved: false,
-			itemCoverage,
-			createdAt: now,
-		});
+	args: { inboundMessageId: v.id('inboundMessages'), ...itemCoverageShadowFields },
+	handler: async (ctx, { inboundMessageId, ...shadow }): Promise<null> => {
+		await applyItemCoverageShadow(ctx, inboundMessageId, shadow);
 		return null;
 	},
 });

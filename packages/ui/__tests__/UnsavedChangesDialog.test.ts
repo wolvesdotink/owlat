@@ -2,7 +2,7 @@
 // The leave dialog every page with unsaved edits shows: its copy follows the
 // app's locale, and while a Save runs, Save shows progress and cannot be
 // clicked again, Discard waits for it, and Cancel stays available. Through the
-// real modal, its explanation is the dialog's accessible description (#1429).
+// real modal, its explanation is the dialog's accessible description.
 import { afterEach, describe, expect, it } from 'vitest';
 import { mount, type VueWrapper } from '@vue/test-utils';
 import { defineComponent, h } from 'vue';

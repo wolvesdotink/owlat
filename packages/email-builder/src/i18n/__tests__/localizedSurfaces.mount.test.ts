@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 //
-// Issue #1444: the designer and the previewer render in the host app's
+// The designer and the previewer render in the host app's
 // language. Each surface is mounted the way apps/web mounts it — under the
 // app's vue-i18n, whose catalog does NOT contain the builder's messages — and
 // read back as a user (visible text) and a screen reader (accessible names)

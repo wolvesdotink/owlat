@@ -1,5 +1,5 @@
 /**
- * The Docker socket half of the compose gate (#1368).
+ * The Docker socket half of the compose gate.
  *
  * Keeping docker-socket-proxy on the internal docker-proxy network (see
  * check-compose-invariants.test.ts) only helps if the proxy is the one way to

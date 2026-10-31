@@ -13,7 +13,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { makeStepCtx } from '../../__tests__/stepCtx';
+import { makeStepCtx, writeOf } from '../../__tests__/stepCtx';
 import type { Id } from '../../../../_generated/dataModel';
 import { contextRetrievalStep, activityContentSnippet } from '../index';
 
@@ -51,7 +51,6 @@ type Legs = {
 };
 
 function makeCtx(legs: Legs) {
-	const recorded: { value: Record<string, unknown> | null } = { value: null };
 	const message = {
 		from: 'sender@example.com',
 		to: 'me@hl.camp',
@@ -74,20 +73,14 @@ function makeCtx(legs: Legs) {
 			hasQueryableVectors: false,
 		},
 		actions: { knowledge: legs.knowledge ?? [], semanticFileProcessing: [] },
-		mutations: {
-			recordContextTier: (args) => {
-				recorded.value = args as Record<string, unknown>;
-				return null;
-			},
-		},
 	});
 
-	return { ctx, recorded };
+	return { ctx };
 }
 
 describe('contextRetrievalStep.execute — emergency-tier grounding', () => {
 	it('keeps the top knowledge facts on the emergency tier (not contact-only)', async () => {
-		const { ctx, recorded } = makeCtx({
+		const { ctx } = makeCtx({
 			knowledge: [
 				{
 					_id: 'k1',
@@ -106,7 +99,8 @@ describe('contextRetrievalStep.execute — emergency-tier grounding', () => {
 			],
 		});
 
-		const { output } = await contextRetrievalStep.execute(ctx, input);
+		const { output, writes } = await contextRetrievalStep.execute(ctx, input);
+		const recorded = { value: writeOf(writes, 'context_tier') };
 
 		expect(output.tier).toBe('emergency');
 		// The top knowledge facts are preserved (compact), not dropped.

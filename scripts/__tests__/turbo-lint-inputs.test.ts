@@ -2,9 +2,9 @@
  * A workspace `lint` task is cached by turbo, locally and in CI's remote cache,
  * and by default turbo hashes only the files inside the package directory. A
  * lint script that reads a file outside its package therefore replays a stale
- * result when only that outside file changes. #1219 removed the last web
- * caller of an api query; `@owlat/api#lint` (check-entry-wiring.ts) would have
- * failed, but its hash had not moved, CI replayed a green run and main broke.
+ * result when only that outside file changes: when a web change removes the
+ * last caller of an api query, `@owlat/api#lint` (check-entry-wiring.ts) should
+ * fail, but its hash has not moved, so CI replays a green run and main breaks.
  *
  * turbo.json gives the affected lint tasks explicit `inputs`, and every lint
  * task a transit dependency for the workspace packages oxlint follows imports

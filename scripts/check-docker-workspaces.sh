@@ -228,7 +228,7 @@ fi
 # failure confusing, because the workspace symlink resolves and only the files
 # behind it are missing.
 #
-# That is how PR #733 broke the updater and setup images. `@owlat/shared`'s
+# That is how the updater and setup images once broke. `@owlat/shared`'s
 # barrel gained a re-export of `./address`, which parses through
 # `@owlat/mail-message` — a real workspace edge — and the two images that copy
 # `packages/shared` without `packages/mail-message` stopped building, while the

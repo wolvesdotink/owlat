@@ -12,7 +12,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { makeStepCtx } from '../../__tests__/stepCtx';
+import { makeStepCtx, writeOf } from '../../__tests__/stepCtx';
 import type { Id } from '../../../../_generated/dataModel';
 import { contextRetrievalStep, type GroundingSource } from '../index';
 
@@ -43,7 +43,6 @@ type Legs = {
 };
 
 function makeCtx(legs: Legs) {
-	const recorded: { value: Record<string, unknown> | null } = { value: null };
 	const message = {
 		from: 'sender@example.com',
 		to: 'me@hl.camp',
@@ -66,20 +65,14 @@ function makeCtx(legs: Legs) {
 			hasQueryableVectors: false,
 		},
 		actions: { knowledge: legs.knowledge ?? [], semanticFileProcessing: [] },
-		mutations: {
-			recordContextTier: (args) => {
-				recorded.value = args as Record<string, unknown>;
-				return null;
-			},
-		},
 	});
 
-	return { ctx, recorded };
+	return { ctx };
 }
 
 describe('contextRetrievalStep.execute — grounding sources', () => {
 	it('records the thread emails + knowledge entries that were fed into the briefing', async () => {
-		const { ctx, recorded } = makeCtx({
+		const { ctx } = makeCtx({
 			contactId,
 			threadId,
 			threadMessages: [
@@ -111,7 +104,8 @@ describe('contextRetrievalStep.execute — grounding sources', () => {
 			],
 		});
 
-		const { output } = await contextRetrievalStep.execute(ctx, input);
+		const { output, writes } = await contextRetrievalStep.execute(ctx, input);
+		const recorded = { value: writeOf(writes, 'context_tier') };
 
 		const expected: GroundingSource[] = [
 			{ type: 'thread', id: 'm_prev', title: 'Order 123' },
@@ -125,9 +119,10 @@ describe('contextRetrievalStep.execute — grounding sources', () => {
 	});
 
 	it('records no sources when nothing was retrieved, and omits the field on persist', async () => {
-		const { ctx, recorded } = makeCtx({ contactId, threadId, threadMessages: [], knowledge: [] });
+		const { ctx } = makeCtx({ contactId, threadId, threadMessages: [], knowledge: [] });
 
-		const { output } = await contextRetrievalStep.execute(ctx, input);
+		const { output, writes } = await contextRetrievalStep.execute(ctx, input);
+		const recorded = { value: writeOf(writes, 'context_tier') };
 
 		expect(output.groundingSources).toEqual([]);
 		// Omitted from the mutation args (patched only when non-empty), so an
@@ -143,7 +138,7 @@ describe('contextRetrievalStep.execute — grounding sources', () => {
 		// knowledge fact is preserved compact, so its source SURVIVES (the review
 		// "Grounded in:" list still reflects exactly what the model saw).
 		const filler = 'x'.repeat(40_000);
-		const { ctx, recorded } = makeCtx({
+		const { ctx } = makeCtx({
 			contactId,
 			threadId,
 			threadMessages: [
@@ -166,7 +161,8 @@ describe('contextRetrievalStep.execute — grounding sources', () => {
 			],
 		});
 
-		const { output } = await contextRetrievalStep.execute(ctx, input);
+		const { output, writes } = await contextRetrievalStep.execute(ctx, input);
+		const recorded = { value: writeOf(writes, 'context_tier') };
 
 		// Emergency tier kicked in; thread source fell away, knowledge survived.
 		expect(output.tier).toBe('emergency');

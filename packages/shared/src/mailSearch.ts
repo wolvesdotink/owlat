@@ -113,8 +113,8 @@ const NEGATABLE_SUBSTRING_OPERATORS: ReadonlySet<string> = new Set([
  * Split on whitespace, except inside double quotes.
  *
  * Quotes bind to the token they touch, so `subject:"a b"` stays ONE token
- * (previously it split into `subject:"a` plus a stray `b"`, which silently
- * searched for a leading-quote fragment and dumped the rest into free text).
+ * (split into `subject:"a` plus a stray `b"`, it would search for a
+ * leading-quote fragment and dump the rest into free text).
  * An unclosed quote runs to the end of the input rather than being dropped, so
  * a half-typed query still searches for what has been typed so far.
  */

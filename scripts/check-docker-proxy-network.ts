@@ -5,10 +5,10 @@
  * docker-socket-proxy serves the Docker API unauthenticated, and the grants the
  * updater needs (CONTAINERS + POST) are enough to start a container with a host
  * bind mount. So the proxy sits on the internal `docker-proxy` network and the
- * updater is its only neighbour (#1329).
+ * updater is its only neighbour.
  *
- * This used to be a line count in check-compose-invariants.sh, which missed
- * every attachment not written as a `      - docker-proxy` block line: flow
+ * A line count would miss every attachment not written as a
+ * `      - docker-proxy` block line: flow
  * sequences and maps, quoted names, trailing comments, and `network_mode:
  * service:updater`, which joins the updater's namespace without naming the
  * network at all. Parsing the YAML sees what Compose sees.

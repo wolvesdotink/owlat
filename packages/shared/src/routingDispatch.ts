@@ -48,7 +48,7 @@ export const ROUTING_LEASE_TOKEN_MAX_LENGTH = 128;
  * `categorizeError`) to answer `deferralOrigin: 'local'`. A typo on either side
  * does not throw — the answer simply falls back into the `governed` bucket this
  * code exists to keep it out of, and a lease-store fault starts spending gate
- * 2's 10%-ceiling/25%-halt budget again (issue #505).
+ * 2's 10%-ceiling/25%-halt budget again.
  */
 export const ROUTING_LEASE_UNREADABLE_CODE = 'ROUTING_LEASE_UNREADABLE';
 

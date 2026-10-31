@@ -1,5 +1,5 @@
 /**
- * THE CARD NAMES WHAT WAS PRESSED, NOT WHAT HAPPENS NEXT (#1442).
+ * THE CARD NAMES WHAT WAS PRESSED, NOT WHAT HAPPENS NEXT.
  *
  * A toast card has two buttons. The inline action ("Undo") emits `action`:
  * whether the toast goes is the stack's call, and an observed action keeps it

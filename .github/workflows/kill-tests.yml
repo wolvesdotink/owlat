@@ -2,7 +2,7 @@ name: Kill tests
 
 # SIGKILL the real MTA and mail-sync images in the middle of their work, start
 # them again, and check what survived in a throwaway self-hosted Convex backend
-# running this commit's functions (scripts/kill-tests/run.ts): every Send is
+# running the checked-out commit's functions (scripts/kill-tests/run.ts): every Send is
 # persisted in a terminal state with one body at the receiver, a Send cut off
 # after its body is persisted as an ambiguous failure and never resent, and a
 # backfill killed mid-batch still stores every message exactly once, with its

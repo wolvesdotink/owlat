@@ -11,7 +11,7 @@
  *    safe-area insets, and a card fills that width with no fixed minimum;
  *  - `sm` and up: back to the bottom-right corner with the 280px minimum;
  *  - the stack sits above any fixed bottom chrome the app reports through
- *    `--ui-bottom-chrome-height` (the mobile tab bar, #1438), and never lower
+ *    `--ui-bottom-chrome-height` (the mobile tab bar), and never lower
  *    than its own inset-aware offset;
  *  - the full-width stack lets taps through the gaps between cards, only the
  *    cards take pointer events;
@@ -58,7 +58,7 @@ describe('Toast stack geometry', () => {
 		expect(cls).toContain('left-[calc(1rem+env(safe-area-inset-left,0px))]');
 		expect(cls).toContain('right-[calc(1rem+env(safe-area-inset-right,0px))]');
 		// Never lower than 1.5rem above the inset, and lifted to 0.5rem above any
-		// bottom chrome the app reports (the mobile tab bar, #1438).
+		// bottom chrome the app reports (the mobile tab bar).
 		expect(cls).toContain(
 			'bottom-[max(calc(var(--ui-bottom-chrome-height,0px)+0.5rem),calc(1.5rem+env(safe-area-inset-bottom,0px)))]'
 		);
