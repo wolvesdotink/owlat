@@ -55,6 +55,10 @@ export const PREVIOUS_RELEASE_ENTRIES: Readonly<Record<string, string>> = {
 		'old plugin relay identity calls mid-run',
 	'plugins/sendTransportDomainIdentityAuthorization.ts#recordOutcome':
 		'old plugin relay identity calls mid-run',
+	// Sending-domain registration now lands its outcome and return-path repair in
+	// domains/providers/registerCommit.ts `commitRegistration`.
+	'domains/lifecycleReturnPath.ts#reconcileReturnPathAfterRegistration':
+		'old sending-domain registrations mid-run',
 	// System & updates now reads maintenance/workerRegistry.ts `getForAdmin`.
 	'mail/imap/serverRegistry.ts#getForAdmin':
 		'the previous IMAP servers card on System & updates, in tabs opened before the deploy',

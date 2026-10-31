@@ -304,17 +304,26 @@ export const create = internalMutation({
 	},
 });
 
+/** Land `input` on the domain in the caller's transaction (`transition`'s body). */
+export async function transitionDomain(
+	ctx: MutationCtx,
+	domainId: Id<'domains'>,
+	input: SendingDomainTransitionInput,
+	userId: string
+): Promise<SendingDomainTransitionOutcome> {
+	const domain = await ctx.db.get(domainId);
+	if (!domain) return { ok: false, reason: 'domain_not_found' };
+	return await dispatch(ctx, domain, input, userId);
+}
+
 export const transition = internalMutation({
 	args: {
 		domainId: v.id('domains'),
 		input: transitionInputValidator,
 		userId: v.string(),
 	},
-	handler: async (ctx, args): Promise<SendingDomainTransitionOutcome> => {
-		const domain = await ctx.db.get(args.domainId);
-		if (!domain) return { ok: false, reason: 'domain_not_found' };
-		return await dispatch(ctx, domain, args.input, args.userId);
-	},
+	handler: (ctx, args): Promise<SendingDomainTransitionOutcome> =>
+		transitionDomain(ctx, args.domainId, args.input, args.userId),
 });
 
 /**
