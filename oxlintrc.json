@@ -45,7 +45,7 @@
 		],
 		"no-unused-vars": "error",
 		"no-console": [
-			"warn",
+			"error",
 			{
 				"allow": ["info", "warn", "error"]
 			}
@@ -319,6 +319,20 @@
 		]
 	},
 	"overrides": [
+		{
+			// A maintenance script's stdout is its output: reports, generated
+			// records another gate parses, the result a developer reads. Product
+			// code keeps the global allowance, which has no console.log.
+			// Run from the root, oxlint matches these against the repository-
+			// relative path; a workspace `lint` (`--config ../../oxlintrc.json`)
+			// matches them against the absolute path, so the workspace patterns
+			// need the leading "**/". Root scripts are linted from the root only.
+			// scripts/__tests__/oxlint-console.test.ts runs both.
+			"files": ["scripts/**", "**/apps/*/scripts/**", "**/packages/*/scripts/**"],
+			"rules": {
+				"no-console": ["error", { "allow": ["log", "info", "warn", "error"] }]
+			}
+		},
 		{
 			"files": ["**/__tests__/**", "**/*.test.ts", "**/*.spec.ts"],
 			"rules": {
