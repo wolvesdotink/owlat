@@ -182,9 +182,9 @@ describe('decideAfterSent', () => {
 		});
 	});
 
-	it('reverts a revoked From, naming the sending mailbox', () => {
+	it('stops on a revoked From (its commit reverted the draft), naming the sending mailbox', () => {
 		const plan = decideAfterSent(DRAFT_ID, draft, { ok: false, reason: 'from_revoked' });
-		expect(plan).toMatchObject({ kind: 'stop', isRawDeleted: true, revert: 'from_revoked' });
+		expect(plan).toMatchObject({ kind: 'stop', isRawDeleted: true });
 		expect(plan.kind === 'stop' && plan.log.message).toContain(
 			'sending mailbox mailbox_personal (thread mailbox mailbox_thread)'
 		);
@@ -205,7 +205,6 @@ describe('decideAfterSent', () => {
 			to: 'sent',
 		});
 		expect(noId).toMatchObject({ kind: 'stop', isRawDeleted: false });
-		expect(noId.kind === 'stop' && noId.revert).toBeFalsy();
 	});
 });
 
