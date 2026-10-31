@@ -9,7 +9,7 @@
  * the token to the owners and admins who manage links, and refuses editors.
  */
 
-import { describe, it, expect } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 import { api } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { utcDayKey } from '../lib/clock';
@@ -20,6 +20,8 @@ const DOI_TOKEN = 'doi-capability-token';
 const KEY_HASH = 'live-key-verifier-hash';
 const REVOKED_KEY_HASH = 'revoked-key-verifier-hash';
 const SHARE_TOKEN = 'share-capability-token';
+// Midday UTC, so seeding, the query and the assertion share one day bucket.
+const NOON = Date.UTC(2026, 5, 15, 12);
 
 /** The serialized value names no capability field and holds no seeded secret. */
 function expectNoCapability(value: unknown): void {
@@ -79,6 +81,10 @@ async function fixture(): Promise<Fixture> {
 }
 
 describe('token-bearing reads return no capability', () => {
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
 	it('auth.accountManagement.exportContactsForOrganization copies CSV columns only', async () => {
 		const { t, seed } = await fixture();
 		const exported = await as(t, seed, ADMIN).query(
@@ -133,19 +139,23 @@ describe('token-bearing reads return no capability', () => {
 	});
 
 	it('contacts.analytics.getSubscriberGrowth returns day counts on the scan path', async () => {
+		vi.useFakeTimers({ toFake: ['Date'] });
+		vi.setSystemTime(NOON);
 		const { t, seed } = await fixture();
 		const growth = await as(t, seed, EDITOR).query(api.contacts.analytics.getSubscriberGrowth, {});
 		expect(growth.truncated).toBe(false);
 		expect(growth.days[growth.days.length - 1]).toMatchObject({
-			date: utcDayKey(Date.now()),
+			date: utcDayKey(NOON),
 			count: 2,
 		});
 		expectNoCapability(growth);
 	});
 
 	it('contacts.analytics.getSubscriberGrowth returns day counts on the counter path', async () => {
+		vi.useFakeTimers({ toFake: ['Date'] });
+		vi.setSystemTime(NOON);
 		const { t, seed } = await fixture();
-		const today = utcDayKey(Date.now());
+		const today = utcDayKey(NOON);
 		await t.run(async (ctx) => {
 			const now = Date.now();
 			await ctx.db.insert('counterScopes', {
