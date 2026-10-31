@@ -136,6 +136,8 @@ async function generateSpans(
 	const offered = await offeredInputs(ctx, args.items);
 	if (offered.length === 0) return new Map();
 	try {
+		// checkpoint: admission before the model call; the rate-limit token it
+		// spends stays spent if the call fails, which bounds retries
 		await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, { ownerUserId: args.ownerUserId });
 		const model = await resolveLanguageModel(ctx, 'mail.digest');
 		const { object } = await meterLlmCall(
@@ -183,6 +185,8 @@ export async function prepareDigest(
 	ctx: ActionCtx,
 	args: { mailboxId: Id<'mailboxes'>; periodKey: string; ownerUserId: string }
 ): Promise<PreparedDigest> {
+	// checkpoint: the lease claimed before the model call; a concurrent tick
+	// reads it as busy, and it lapses on its own if this action dies
 	const claim: DigestClaim = await ctx.runMutation(internal.mail.digest.claim.claimDigest, {
 		mailboxId: args.mailboxId,
 		periodKey: args.periodKey,
@@ -199,6 +203,8 @@ export async function prepareDigest(
 		const quotes = spans.get(index + 1);
 		return quotes ? { ...item, spans: quotes.map((quote) => ({ quote })) } : item;
 	});
+	// checkpoint: the generated digest stands before the brief is sent; a pass
+	// whose send fails sends it later without another model call
 	const isCommitted: boolean = await ctx.runMutation(internal.mail.digest.claim.commitDigest, {
 		digestId: claim.digestId,
 		claimToken: claim.claimToken,
