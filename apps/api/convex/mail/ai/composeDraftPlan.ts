@@ -16,6 +16,8 @@ import { attachmentSetHashOf, draftHashOf } from '@owlat/shared/threadBriefRules
 import { toPromptItems, type PlanPromptItem } from '../interpret/planCheck';
 import { planVerdictOf, type PlanCoverage } from '../interpret/responsePlanRules';
 import type { PlanForDraft } from '../interpret/responsePlanState';
+import type { planCheckFields } from '../interpret/responsePlanDraft';
+import type { ObjectType } from 'convex/values';
 
 /**
  * A team reply's exact draft: the inbound message the drafter's context
@@ -122,45 +124,35 @@ export async function loadThreadPlan(
 }
 
 /**
- * Store the prepared reply's checked plan under the thread's `arrivalDraft`
- * reference, bound to the hash of the text the slot holds (review F16); it
- * moves to the Postbox draft the composer creates from that text
- * (`responsePlan.adoptArrivalPlan`). Fail-soft.
+ * The prepared reply's checked plan, for the slot commit
+ * (`draftOnArrivalStore.persistDraftSlot`) to store under the thread's
+ * `arrivalDraft` reference, bound to the hash of the text the slot holds
+ * (review F16); it moves to the Postbox draft the composer creates from that
+ * text (`responsePlan.adoptArrivalPlan`).
  */
-export async function recordArrivalPlan(
-	ctx: Pick<ActionCtx, 'runMutation'>,
-	threadId: Id<'mailThreads'>,
+export async function arrivalPlanCheck(
 	plan: ThreadPlan,
 	draft: string,
 	checked: PlanCoverage | null
-): Promise<void> {
-	try {
-		const coverage = (checked ?? {
-			coverage: [],
-			fileClaims: [],
-			newPromises: [],
-			isIncomplete: false,
-		}) as PlanCoverage<Id<'threadItems'>>;
-		await ctx.runMutation(internal.mail.interpret.responsePlanDraft.recordCheck, {
-			threadRef: { kind: 'mail', id: threadId },
-			draftRef: { kind: 'arrivalDraft', id: threadId },
-			threadRevision: plan.threadRevision,
-			itemRevisions: plan.itemRevisions,
-			stances: plan.stances,
-			coverage: coverage.coverage,
-			fileClaims: coverage.fileClaims,
-			newPromises: coverage.newPromises,
-			draftHash: await draftHashOf(draft),
-			verdict: checked ? planVerdictOf(plan.stances, coverage) : 'pending',
-			planRevision: plan.planRevision,
-			deletionEpoch: plan.deletionEpoch,
-			attachmentSetHash: await attachmentSetHashOf([]),
-			isCheckIncomplete: coverage.isIncomplete || plan.isOverflow,
-		});
-	} catch (err) {
-		logError(
-			'[draftPlan] storing the prepared reply plan failed:',
-			err instanceof Error ? err.message.split('\n', 1)[0] : 'non-Error thrown'
-		);
-	}
+): Promise<ObjectType<typeof planCheckFields>> {
+	const coverage = (checked ?? {
+		coverage: [],
+		fileClaims: [],
+		newPromises: [],
+		isIncomplete: false,
+	}) as PlanCoverage<Id<'threadItems'>>;
+	return {
+		threadRevision: plan.threadRevision,
+		itemRevisions: plan.itemRevisions,
+		stances: plan.stances,
+		coverage: coverage.coverage,
+		fileClaims: coverage.fileClaims,
+		newPromises: coverage.newPromises,
+		draftHash: await draftHashOf(draft),
+		verdict: checked ? planVerdictOf(plan.stances, coverage) : 'pending',
+		planRevision: plan.planRevision,
+		deletionEpoch: plan.deletionEpoch,
+		attachmentSetHash: await attachmentSetHashOf([]),
+		isCheckIncomplete: coverage.isIncomplete || plan.isOverflow,
+	};
 }

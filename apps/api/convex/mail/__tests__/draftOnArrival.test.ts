@@ -314,12 +314,9 @@ describe('generateDraftOnArrival', () => {
 		await generateDraftOnArrival(h.ctx, { threadId: 'thr1' as never });
 
 		expect(h.persisted).toHaveLength(1);
-		const written = h.runMutation.mock.calls
-			.map((call) => call[1])
-			.find((params) => params && 'draftHash' in params);
-		expect(written).toMatchObject({
-			threadRef: { kind: 'mail', id: 'thr1' },
-			draftRef: { kind: 'arrivalDraft', id: 'thr1' },
+		// One commit: the slot carries the plan bound to its text.
+		expect(h.persisted[0]).toMatchObject({ draft: 'PERSONAL DRAFT BODY' });
+		expect((h.persisted[0] as { plan?: unknown }).plan).toMatchObject({
 			threadRevision: 7,
 			planRevision: 2,
 			deletionEpoch: 1,

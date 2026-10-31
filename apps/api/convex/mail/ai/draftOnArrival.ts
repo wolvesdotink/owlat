@@ -27,7 +27,7 @@ import { resolveLanguageModel } from '../../lib/llmProvider';
 import { buildReplySubject } from '../../lib/emailAddress';
 import { logError } from '../../lib/runtimeLog';
 import { runSharedDraft } from '../../agent/shared/draftService';
-import { loadThreadPlan, recordArrivalPlan } from './composeDraftPlan';
+import { arrivalPlanCheck, loadThreadPlan } from './composeDraftPlan';
 import { checkDraftGaps } from './gapQuestions';
 import { localizeReplyQueueQuestions } from './needsReplyRefine';
 import { formatVoiceSection, loadVoiceGuidance } from './voiceGuidance';
@@ -81,6 +81,8 @@ export async function generateDraftOnArrival(
 	// (and every other failure below) degrades to no slot. Loaded first: the
 	// rate limit is charged to the mailbox owner's background bucket (#1380).
 	try {
+		// checkpoint: admission before the model calls; the rate-limit token it
+		// consumes stays spent when the draft fails later, so reruns stay bounded.
 		await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {
 			ownerUserId: loaded.ownerUserId,
 		});
@@ -146,6 +148,7 @@ export async function generateDraftOnArrival(
 			});
 			return;
 		}
+		// One commit: the slot and the plan bound to its text (review F16).
 		await ctx.runMutation(internal.mail.ai.draftOnArrivalStore.persistDraftSlot, {
 			threadId: args.threadId,
 			triggerMessageId: loaded.triggerMessageId,
@@ -155,9 +158,8 @@ export async function generateDraftOnArrival(
 			// quality shows a deliberately low value so review-first reads right.
 			confidence: result.draftQuality?.score ?? UNKNOWN_QUALITY_CONFIDENCE,
 			...(result.draftQuality ? { quality: result.draftQuality } : {}),
+			...(plan ? { plan: await arrivalPlanCheck(plan, draft, result.planCoverage) } : {}),
 		});
-		// The prepared reply's plan, bound to its text (review F16).
-		if (plan) await recordArrivalPlan(ctx, args.threadId, plan, draft, result.planCoverage);
 	} catch (err) {
 		rethrowAdmissionRefusal(err);
 		// Injection re-scan / LLM error → no slot; the thread still shows for
