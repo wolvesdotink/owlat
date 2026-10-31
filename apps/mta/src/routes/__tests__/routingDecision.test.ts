@@ -161,8 +161,8 @@ describe('routing decision lease binding', () => {
 });
 
 /**
- * The three answers a lease read may give (issue #505). `readRoutingLease` used
- * to collapse all of them into `null`, which made "our Redis lost the record"
+ * The three answers a lease read may give. `readRoutingLease` must not collapse
+ * them into `null`: that would make "our Redis lost the record"
  * indistinguishable from "the decision is stale" one layer up — and only the
  * second of those is evidence about the sending identity.
  */

@@ -1,5 +1,5 @@
 /**
- * #927: another session's EXPUNGE cannot make a sequence-number command target
+ * Another session's EXPUNGE cannot make a sequence-number command target
  * the wrong message, and repeated commands on an unchanged folder do not
  * re-read it.
  *
@@ -9,10 +9,11 @@
  * session B's changes are applied to the backend directly. Each test drives A
  * through the real command walker and checks the exact lines A's client sees.
  *
- * Before this change a sequence number was resolved against the folder as it
- * was at that moment. After B expunged message 2, A's `FETCH 2` answered with
- * message 3 and A's `STORE 2 +FLAGS (\Deleted)` flagged message 3: the client
- * still numbered the folder 1,2,3, because nobody had told it otherwise.
+ * A sequence number must not be resolved against the folder as it is at that
+ * moment. After B expunges message 2, A's client still numbers the folder
+ * 1,2,3, because nobody has told it otherwise, so resolving against the live
+ * folder would answer A's `FETCH 2` with message 3 and make A's
+ * `STORE 2 +FLAGS (\Deleted)` flag message 3.
  */
 
 import { EventEmitter } from 'node:events';

@@ -173,7 +173,7 @@ describe('GET /pending', () => {
 		const { status, body } = await json('GET', '/pending');
 
 		expect(status).toBe(200);
-		// Previously always `[]`, whatever the queue held.
+		// The jobs the queue holds, read through GroupMQ, not an empty list.
 		expect(body.jobs.map((j: { jobId: string }) => j.jobId).sort()).toEqual(['a', 'b']);
 		expect(body.waiting).toBe(2);
 		expect(body.sampled).toBe(2);
@@ -277,7 +277,7 @@ describe('GET /jobs/:jobId', () => {
 
 		const { status, body } = await json('GET', '/jobs/wanted');
 
-		// Previously a 404 for every job that has ever existed.
+		// A job GroupMQ holds is found, not answered with a 404.
 		expect(status).toBe(200);
 		expect(body).toMatchObject({
 			jobId: 'wanted',
@@ -333,9 +333,10 @@ describe('GET /jobs/:jobId', () => {
 	});
 
 	it('reports an overdue delayed job as overdue, not as undelayed', async () => {
-		// GroupMQ zeroes `Job.opts.delay` the moment `delayUntil` passes, so the
-		// one delayed job worth looking at — the one the promoter has not
-		// released — used to read `delayMs: null`, i.e. "no delay set".
+		// GroupMQ zeroes `Job.opts.delay` the moment `delayUntil` passes, so read
+		// off `opts.delay` the one delayed job worth looking at — the one the
+		// promoter has not released — would show `delayMs: null`, i.e. "no delay
+		// set".
 		await enqueue('stuck', {}, { delay: 60_000 });
 		await redis.zadd(DELAYED_KEY, String(Date.now() - 90 * 60_000), 'stuck');
 
@@ -420,7 +421,7 @@ describe('DELETE /jobs/:jobId', () => {
 	});
 
 	it('refuses a job a worker reserves between the state read and the removal', async () => {
-		// The guard used to be a plain read-then-remove, and losing that race did
+		// A plain read-then-remove guard can lose this race, and losing it does
 		// not merely delete an in-flight job: GroupMQ's `remove.lua` never touches
 		// the per-group `:active` list that `reserve.lua` gates on, no completion
 		// script cleans it once the job hash is gone, and `check-stalled.lua` only

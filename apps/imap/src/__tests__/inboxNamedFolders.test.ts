@@ -1,5 +1,5 @@
 /**
- * A folder other than the inbox whose name is `INBOX` in some case (#1302),
+ * A folder other than the inbox whose name is `INBOX` in some case,
  * through the real pump and read and written as ImapFlow does it. RFC 3501
  * §5.1 reads `INBOX` in any case as the inbox, so at the top level such a
  * folder is listed as its name, a `⧵` and its id (`folderTree.ts`), and that

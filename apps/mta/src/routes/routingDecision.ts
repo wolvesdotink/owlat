@@ -166,7 +166,7 @@ async function writeLease(redis: Redis, lease: RoutingLeaseRecord): Promise<void
  * WHY A LEASE READ DID NOT PRODUCE A LEASE — three answers, not one `null`.
  *
  * The caller turns this into a code on the wire, and Convex turns that code into
- * WHOSE FAULT the resulting deferral is (`deferralOrigin`, issue #505). Gate 2
+ * WHOSE FAULT the resulting deferral is (`deferralOrigin`). Gate 2
  * halts a cell at 25% `governed` deferrals, so "the MTA declined this identity"
  * and "our own Redis lost the record" must not arrive as the same answer.
  *

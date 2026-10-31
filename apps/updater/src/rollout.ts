@@ -73,11 +73,10 @@ const STACK_DOWN_REMEDIATION =
  * the compose file is promoted — and it is the only step that can take the
  * instance offline. Compose recreate is "create new → stop old → start new", so a
  * command that dies in the middle leaves old containers stopped and new ones
- * created-but-never-started: every service in the plan is down, and until now
- * the operator got a bare "docker compose up failed" for it and a dark
- * instance. (That is not hypothetical — it is what a pre-0.5.1 updater did to
- * itself on every release, by recreating the socket proxy it speaks Docker
- * through.)
+ * created-but-never-started: every service in the plan is down, and a bare
+ * "docker compose up failed" leaves the operator with a dark instance. (That
+ * is not hypothetical: an updater that recreates the socket proxy it speaks
+ * Docker through does it to itself.)
  *
  * So recovery is FORWARD, and deliberately smaller than the command that just
  * failed: the same services, no `--remove-orphans`, no `--force-recreate`.

@@ -1,6 +1,6 @@
 /**
  * The pump's outbound side: framing a response onto the socket and pacing
- * bulk writers against the socket's queue (issue #926). Split out of
+ * bulk writers against the socket's queue. Split out of
  * `connection.ts`, which owns the socket lifecycle and the inbound side.
  */
 

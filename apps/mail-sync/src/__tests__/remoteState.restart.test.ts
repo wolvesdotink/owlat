@@ -1,5 +1,5 @@
 /**
- * Deletions made on the provider while the worker was stopped (#1071). The
+ * Deletions made on the provider while the worker was stopped. The
  * folder views live in memory, so a new process has seen nothing leave a
  * folder; the sighting each local message carries (folder, UIDVALIDITY, UID)
  * is what still tells "the provider had it and it is gone" from "the provider

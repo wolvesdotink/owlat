@@ -263,7 +263,7 @@ describe('stopRunningChildren', () => {
 
 	it('returns at once when nothing is running', async () => {
 		// Fake timers: had it armed its 5 s grace timer it would never settle
-		// here. That is checked without reading the clock (#1315).
+		// here. That is checked without reading the clock.
 		vi.useFakeTimers();
 		try {
 			let settled = false;

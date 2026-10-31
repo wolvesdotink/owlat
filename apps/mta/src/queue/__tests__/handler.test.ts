@@ -492,7 +492,7 @@ describe('handleEmailJob', () => {
 		expect(queue.add).toHaveBeenCalledOnce();
 		// NO LIFECYCLE CALLBACK: the message is deferred, not terminal, so nothing
 		// may tell Convex its fate. The MEASUREMENT beside it is a different claim —
-		// `smtp.classified` reports what the receiver said (issue #501) — and the
+		// `smtp.classified` reports what the receiver said — and the
 		// replay lands on the SAME outbox slot, so a reconciled attempt reports the
 		// one response once rather than twice.
 		const queued = vi.mocked(queueConvexWebhook).mock.calls;
@@ -941,7 +941,7 @@ describe('handleEmailJob', () => {
 		const job = createJob({ firstEnqueuedAt });
 		// FAIL THE TERMINAL CALLBACK, not merely the first webhook of the attempt.
 		// The expired-message case reduces a deferral first, whose `smtp.classified`
-		// measurement is deliberately fail-soft (issue #501) — rejecting it changes
+		// measurement is deliberately fail-soft — rejecting it changes
 		// nothing and the attempt would never reach the terminalization this case is
 		// about. So the transient failure is aimed at the event under test.
 		let hasFailed = false;
@@ -1357,11 +1357,12 @@ describe('handleEmailJob', () => {
 		}
 	});
 
-	// The defer-handoff receipt used to be keyed by the SUCCESSOR job id, which
-	// is re-derived on every deferral, so each rung of a ladder minted a fresh
-	// key held for the full four-day message lifetime. A personal instance stuck
-	// in a 60s self-throttle loop accumulated 6.37M of them and OOM-killed Redis.
-	// Keyed by the chain instead, a ladder of any length occupies exactly one.
+	// The defer-handoff receipt must not be keyed by the SUCCESSOR job id: that
+	// is re-derived on every deferral, so each rung of a ladder would mint a
+	// fresh key held for the full four-day message lifetime, and an instance
+	// stuck in a 60s self-throttle loop piles up millions of them until Redis
+	// runs out of memory. Keyed by the chain, a ladder of any length occupies
+	// exactly one.
 	it('PR-04 (b): a long self-throttle ladder holds exactly ONE defer-handoff key', async () => {
 		const { checkCap } = await import('../../intelligence/warming.js');
 		vi.mocked(checkCap).mockResolvedValue({ allowed: false, sentToday: 50, dailyCap: 50 });

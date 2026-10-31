@@ -198,12 +198,12 @@ describe('POST /send routing lease revalidation', () => {
 		expect(queue.add).not.toHaveBeenCalled();
 	});
 
-	// ISSUE #505. Every one of these defers the send; what differs is the CODE, and
-	// the code is the only thing that tells Convex whether the deferral is evidence
-	// about this sending identity (gate 2's `governed` budget, 10% ceiling and a
-	// 25% halt) or about our own lease store (`local`, not counted). One over-broad
-	// `ROUTING_DECISION_EXPIRED` used to answer all of them, so a Redis that lost a
-	// lease record could walk a cell towards a halt over a fault no receiver saw.
+	// Every one of these defers the send; what differs is the CODE, and the code
+	// is the only thing that tells Convex whether the deferral is evidence about
+	// this sending identity (gate 2's `governed` budget, 10% ceiling and a 25%
+	// halt) or about our own lease store (`local`, not counted). One over-broad
+	// `ROUTING_DECISION_EXPIRED` for all of them would let a Redis that lost a
+	// lease record walk a cell towards a halt over a fault no receiver saw.
 	describe('separates an unreadable lease from an expired one', () => {
 		it.each([
 			{ label: 'a truncated value', stored: '{"token":"token-1","messageId":"mess' },

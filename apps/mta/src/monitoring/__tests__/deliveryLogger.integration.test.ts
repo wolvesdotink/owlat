@@ -1,5 +1,5 @@
 /**
- * #925 on real Redis: the record script, the XINFO coverage gate, trimming,
+ * The delivery-log indexes on real Redis: the record script, the XINFO coverage gate, trimming,
  * TTL expiry, days written without the indexes, query pagination, and Redis
  * Cluster slotting.
  */

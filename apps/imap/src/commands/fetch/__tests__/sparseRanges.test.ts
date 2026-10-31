@@ -1,5 +1,5 @@
 /**
- * #927: a sparse message set reads the messages it names, not the span
+ * A sparse message set reads the messages it names, not the span
  * between its smallest and largest UID.
  *
  * FETCH used to turn `UID FETCH 1,100000` into one `1..100000` envelope window

@@ -1,6 +1,6 @@
 /**
- * Bulk removals at the provider beyond the per-pass All Mail look-up budget
- * (#1008). A pass checks at most MAX_CONFIRMS_PER_CYCLE vanished messages in
+ * Bulk removals at the provider beyond the per-pass All Mail look-up budget.
+ * A pass checks at most MAX_CONFIRMS_PER_CYCLE vanished messages in
  * All Mail; the views have already dropped the rest, so they must be carried
  * to the next pass rather than forgotten:
  *   - without an All Mail folder there is nothing to look up, and every

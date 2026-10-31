@@ -511,7 +511,7 @@ describe('startImapServer — plaintext dev listener refusals', () => {
 });
 
 /**
- * Issue #1325: a raw TCP peer on 993 that never negotiates TLS must hold a
+ * A raw TCP peer on 993 that never negotiates TLS must hold a
  * slot and be dropped by a deadline, rather than sit outside both caps.
  */
 describe('startImapServer — admission before the TLS handshake', () => {

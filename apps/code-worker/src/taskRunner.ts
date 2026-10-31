@@ -303,7 +303,7 @@ export function setupWorkspace(
 ): TaskWorkspace {
 	const { workDir, homeDir } = taskWorkspacePaths(config.workspaceRoot, taskId);
 
-	// #133 removes the workDir in `finally` + prunes on boot, so reuse is rare;
+	// The workDir is removed in `finally` and pruned on boot, so reuse is rare;
 	// guard it anyway. If an existing workDir's .git is not root-owned (a prior
 	// sandbox run touched it), discard it rather than run root git against a
 	// sandbox-owned tree.

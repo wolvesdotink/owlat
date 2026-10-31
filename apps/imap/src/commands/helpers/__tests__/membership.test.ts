@@ -1,5 +1,5 @@
 /**
- * #927: the folder's UID list is reused only while the backend says the
+ * The folder's UID list is reused only while the backend says the
  * folder's membership version has not moved, and every fallback answers
  * exactly what the old per-command listing did.
  */

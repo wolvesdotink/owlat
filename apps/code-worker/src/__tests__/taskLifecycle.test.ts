@@ -20,8 +20,8 @@ import {
 
 /**
  * Fault and interleaving tests for the code-task run: cancellation is terminal
- * across agent, tests and publication (#934), and publication resumes after an
- * ambiguous failure instead of regenerating or duplicating (#936). Git runs
+ * across agent, tests and publication, and publication resumes after an
+ * ambiguous failure instead of regenerating or duplicating. Git runs
  * for real against a disposable bare remote; the agent, tests, backend and
  * GitHub are doubles (see codeTaskHarness.ts).
  */

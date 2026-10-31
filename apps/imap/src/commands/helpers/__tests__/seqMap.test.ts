@@ -91,7 +91,7 @@ describe('resolveSet (repeated and overlapping parts)', () => {
 	it('stays linear for a set of many parts on a large folder', () => {
 		// 60,000 messages with sparse UIDs 1, 3, 5, ...; the sets below are the
 		// size a single maximum-length command line can carry. The walk is
-		// counted rather than timed (#1315): it visits each message at most
+		// counted rather than timed: it visits each message at most
 		// once, plus one step past the end of each merged range, where an
 		// uncoalesced walk would visit the folder once per part.
 		const large = buildSeqMap(Array.from({ length: 60_000 }, (_, i) => 2 * i + 1));

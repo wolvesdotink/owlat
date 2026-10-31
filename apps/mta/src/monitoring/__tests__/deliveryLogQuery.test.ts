@@ -1,5 +1,5 @@
 /**
- * #925 regressions for `GET /delivery-logs` pagination: following `nextCursor`
+ * `GET /delivery-logs` pagination: following `nextCursor`
  * until it is absent returns every matching entry exactly once, in order,
  * whatever the page size, filters and day boundaries, and no single request
  * reads an unbounded amount of the stream.
