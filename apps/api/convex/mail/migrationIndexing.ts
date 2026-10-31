@@ -167,20 +167,29 @@ export const nextIndexChunk = internalQuery({
  */
 export const resolveSenderContact = internalMutation({
 	args: { email: v.string(), fromName: v.optional(v.string()) },
-	handler: async (ctx, args): Promise<{ contactId: Id<'contacts'> | null }> => {
-		const email = normalizeEmail(args.email);
-		if (!email.includes('@')) return { contactId: null };
-		const { firstName, lastName } = splitDisplayName(args.fromName);
-		const { contactId } = await resolveContact(ctx, {
-			channel: 'email',
-			identifier: email,
-			source: 'import',
-			mode: 'upsert',
-			contactFields: { firstName, lastName },
-		});
-		return { contactId };
-	},
+	handler: async (ctx, args): Promise<{ contactId: Id<'contacts'> | null }> => ({
+		contactId: await resolveSenderContactId(ctx, args.email, args.fromName),
+	}),
 });
+
+/** {@link resolveSenderContact} inside the caller's transaction. */
+export async function resolveSenderContactId(
+	ctx: MutationCtx,
+	address: string,
+	fromName: string | undefined
+): Promise<Id<'contacts'> | null> {
+	const email = normalizeEmail(address);
+	if (!email.includes('@')) return null;
+	const { firstName, lastName } = splitDisplayName(fromName);
+	const { contactId } = await resolveContact(ctx, {
+		channel: 'email',
+		identifier: email,
+		source: 'import',
+		mode: 'upsert',
+		contactFields: { firstName, lastName },
+	});
+	return contactId;
+}
 
 /** Split an RFC 5322 display name into first/last for new contacts. */
 function splitDisplayName(name: string | undefined): {

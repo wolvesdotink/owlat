@@ -80,7 +80,6 @@ convex/emailBlocks/rendering.ts:reRenderEmails #2
 convex/emailBlocks/rendering.ts:reRenderEmails #3
 convex/emailBlocks/rendering.ts:reRenderEmails #4
 convex/inbox/inboundIngest.ts:ingestFromWebhook #2
-convex/knowledge/batchedMail.ts:resumeMailExtraction #2
 convex/mail/ai/composeDraft.ts:answer #10
 convex/mail/ai/composeDraft.ts:answer #11
 convex/mail/ai/composeDraft.ts:answer #2
