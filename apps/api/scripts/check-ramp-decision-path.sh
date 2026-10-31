@@ -22,6 +22,7 @@ decision_path=(
 	convex/delivery/ramp/controllerConfig.ts
 	convex/delivery/ramp/gates.ts
 	convex/delivery/ramp/gateEvaluation.ts
+	convex/delivery/ramp/tickDecision.ts
 	convex/delivery/signals/rampGateSources.ts
 	convex/delivery/rampControllerInputs.ts
 	convex/delivery/rampControllerCron.ts
