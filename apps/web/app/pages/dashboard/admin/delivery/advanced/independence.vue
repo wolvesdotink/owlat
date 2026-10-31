@@ -173,12 +173,11 @@ function confirmRelayRemoval(): void {
 
 <template>
 	<div>
-		<header class="mb-6">
-			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">{{ headline }}</h1>
-			<p class="mt-1 max-w-2xl text-sm text-text-secondary">
-				{{ localized(independenceSubhead({ isRelayConfigured, referenceTransportId })) }}
-			</p>
-		</header>
+		<UiPageHeader
+			class="mb-6"
+			:title="headline"
+			:description="localized(independenceSubhead({ isRelayConfigured, referenceTransportId }))"
+		/>
 
 		<UiQueryBoundary
 			:loading="isLoading"

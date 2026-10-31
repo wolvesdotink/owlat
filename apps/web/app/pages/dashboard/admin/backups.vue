@@ -85,15 +85,10 @@ const recordedAtLabel = computed(() =>
 
 <template>
 	<div class="space-y-6">
-		<!-- Header -->
-		<div>
-			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-				{{ t('dashboard.admin.backups.title') }}
-			</h1>
-			<p class="mt-1 text-text-secondary">
-				{{ t('dashboard.admin.backups.intro') }}
-			</p>
-		</div>
+		<UiPageHeader
+			:title="t('dashboard.admin.backups.title')"
+			:description="t('dashboard.admin.backups.intro')"
+		/>
 
 		<!-- Honesty note: the app records what you've set up; the server is the
 		     source of truth. No dead buttons — everything here is copy-paste + record. -->

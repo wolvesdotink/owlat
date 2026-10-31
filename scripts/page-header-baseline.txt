@@ -8,19 +8,6 @@
 # gate too.
 apps/web/app/components/postbox/PostboxThreadHeader.vue
 apps/web/app/layouts/preferences.vue
-apps/web/app/pages/dashboard/admin/backups.vue
-apps/web/app/pages/dashboard/admin/delivery/advanced/cells.vue
-apps/web/app/pages/dashboard/admin/delivery/advanced/controls.vue
-apps/web/app/pages/dashboard/admin/delivery/advanced/independence.vue
-apps/web/app/pages/dashboard/admin/delivery/advanced/measurement.vue
-apps/web/app/pages/dashboard/admin/delivery/deliverability.vue
-apps/web/app/pages/dashboard/admin/delivery/domains.vue
-apps/web/app/pages/dashboard/admin/delivery/failed.vue
-apps/web/app/pages/dashboard/admin/delivery/index.vue
-apps/web/app/pages/dashboard/admin/delivery/migrate.vue
-apps/web/app/pages/dashboard/admin/delivery/provider-routing.vue
-apps/web/app/pages/dashboard/admin/delivery/quarantine.vue
-apps/web/app/pages/dashboard/admin/delivery/transport.vue
 apps/web/app/pages/dashboard/admin/index.vue
 apps/web/app/pages/dashboard/admin/instance/plugins/[id].vue
 apps/web/app/pages/dashboard/admin/instance/plugins/index.vue

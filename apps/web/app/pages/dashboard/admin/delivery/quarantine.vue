@@ -70,26 +70,11 @@ const confirmBlock = async () => {
 
 <template>
 	<div>
-		<!-- Header -->
-		<div class="flex items-center gap-4 mb-8">
-			<div>
-				<h1
-					class="text-2xl font-medium tracking-[-0.02em] text-text-primary flex items-center gap-3"
-				>
-					<!-- Red only while something waits on the operator; an all-clear page
-					     keeps a neutral icon. -->
-					<Icon
-						name="lucide:shield-alert"
-						class="w-7 h-7"
-						:class="quarantinedMessages?.length ? 'text-error' : 'text-text-tertiary'"
-					/>
-					{{ t('dashboard.inbox.quarantine.title') }}
-				</h1>
-				<p class="text-text-secondary mt-1">
-					{{ t('dashboard.inbox.quarantine.subtitle') }}
-				</p>
-			</div>
-		</div>
+		<UiPageHeader
+			class="mb-8"
+			:title="t('dashboard.inbox.quarantine.title')"
+			:description="t('dashboard.inbox.quarantine.subtitle')"
+		/>
 
 		<!-- Loading / faulted / empty / list — a faulted query must NOT look like
 		     an empty (all-clear) quarantine, which is the boundary's ordering. -->
