@@ -6,12 +6,13 @@
  * running a second controller on the MTA side. One owner of the decision, no
  * split brain.
  *
- * This module is deliberately THIN: load inputs, call the pure `nextShare`,
- * write the result and the audit row. Every rule lives in `controller.ts`; a
- * conditional here that changes an outcome is a defect, because it would be a
- * rule with no fixture. The READ half — resolving the tenant, reading the route
- * rows and building one cell's `RampControllerInput` — lives in the sibling
- * `rampControllerInputs.ts`, so this file is only the decide-and-write half.
+ * This module is deliberately THIN: load inputs, call the pure tick core
+ * (`ramp/tickDecision.ts`: the slice, both dials, and which writes a cell gets),
+ * then apply its plan. Every rule lives under `ramp/`; a conditional here that
+ * changes an outcome is a defect, because it would be a rule with no fixture.
+ * The READ half — resolving the tenant, reading the route rows and building one
+ * cell's `RampControllerInput` — lives in the sibling `rampControllerInputs.ts`,
+ * so this file is only the load-call-write shell.
  *
  * BOUNDED PER TICK. The cell grid is stream x destinationProvider (15 cells).
  * Each tick takes a slice, writes it, and self-schedules for the next slice, so
@@ -42,24 +43,15 @@ import { internalMutation } from '../lib/writeFence';
 import { isSendingAllowed } from '../workspaces/abuseGate';
 import { loadStreamlessRouteState } from '../lib/deliverabilityRouteState';
 import { recordAuditLog } from '../lib/auditLog';
-import { nextShare } from './ramp/controller';
-import { nextPaceMultiplier } from './ramp/paceActuator';
-import { composeActuators } from './ramp/actuatorComposition';
 import { recordMixDecision } from './rampMixDecisions';
 import { loadCellInput, resolveRampOrganizationId } from './rampControllerInputs';
 import { summarizeSeedPlacementSweeps } from '../analytics/seedPlacement';
-import type { SeedPlacementSweepIndex } from '../analytics/seedPlacementSweeps';
 import { loadPaceUtilisation, readPaceState } from './rampPaceInputs';
 import { loadRampDeploymentPresence } from './rampIntegrationPresence';
-import { loadRampCapacityContext, type RampCapacityContext } from './rampCapacityInputs';
-import { rampDecisionChangedState } from './ramp/controllerTypes';
+import { loadRampCapacityContext } from './rampCapacityInputs';
 import { applyDecision, refreshRouteStateLease } from './rampControllerWrites';
-import { paceDecisionChangedState, type PaceUtilisationReading } from './ramp/paceTypes';
-import { applyPaceCellControl, applyRampCellControl } from './ramp/controlOverride';
+import { decideRampCell, planRampSlice } from './ramp/tickDecision';
 import { loadRampPresets } from './rampPresets';
-
-/** Cells evaluated per tick. The grid is 15; three ticks cover it. */
-const RAMP_CELLS_PER_TICK = 5;
 
 /**
  * How much of a thrown message one failed cell may put in the audit row.
@@ -95,6 +87,19 @@ function readFailureMessage(error: unknown): string {
 }
 
 /**
+ * A per-tick read taken at most once, and only when a cell first asks for it.
+ * The value is kept, not the promise: a read that throws fails only the cell
+ * that asked, and the next cell reads again.
+ */
+function lazyRead<T>(load: () => Promise<T>): () => Promise<T> {
+	let read: { readonly value: T } | undefined;
+	return async () => {
+		read ??= { value: await load() };
+		return read.value;
+	};
+}
+
+/**
  * The hourly tick. `cursor` is an index into the stable cell grid, so a tick
  * always resumes where the previous one stopped and never re-reads the whole
  * grid in one transaction.
@@ -104,9 +109,8 @@ export const runRampController = internalMutation({
 	handler: async (ctx, args) => {
 		const now = Date.now();
 		const cells = allDeliverabilityCells();
-		const rawCursor = args.cursor ?? 0;
-		const cursor = Number.isFinite(rawCursor) ? Math.max(0, Math.floor(rawCursor)) : 0;
-		if (cursor >= cells.length) return { evaluated: 0, done: true as const };
+		const slicePlan = planRampSlice(args.cursor, cells.length);
+		if (slicePlan === null) return { evaluated: 0, done: true as const };
 
 		// No organization yet means nothing to ramp — a supported configuration,
 		// not an error. See `resolveRampOrganizationId`.
@@ -139,33 +143,21 @@ export const runRampController = internalMutation({
 		// deployment that has warming state but has not opted any cell into the ramp
 		// — the normal state for a long while — pays nothing for a context no cell
 		// would have consumed. Memoized, so the cells in a slice still share one.
-		let capacityContext: RampCapacityContext | null = null;
-		const capacity = async (): Promise<RampCapacityContext> => {
-			capacityContext ??= await loadRampCapacityContext(ctx, { organizationId, now });
-			return capacityContext;
-		};
+		const capacity = lazyRead(() => loadRampCapacityContext(ctx, { organizationId, now }));
 
 		// THE PACE ACTUATOR'S EVIDENCE, read ONCE per tick and LAZILY, for the same
 		// two reasons the capacity context is: the warming sync reports one
 		// pool-wide utilisation reading that every cell in the slice shares, and a
 		// slice with no ramp-managed cell in it must not pay for a reading no cell
 		// would consume.
-		let utilisationReading: PaceUtilisationReading | null = null;
-		const utilisation = async (): Promise<PaceUtilisationReading> => {
-			utilisationReading ??= await loadPaceUtilisation(ctx, { now });
-			return utilisationReading;
-		};
+		const utilisation = lazyRead(() => loadPaceUtilisation(ctx, { now }));
 
 		// GATE 5'S EVIDENCE, read ONCE per tick and LAZILY, for the same two reasons:
 		// the probe ledger read is org-wide and covers every cell in the slice, and
 		// a slice with no ramp-managed cell must not pay for it. A deployment with
 		// no seed mailboxes reads an empty index, which HOLDS gate 5 — the
 		// supported default, not a fault.
-		let seedSweepIndex: SeedPlacementSweepIndex | null = null;
-		const seeds = async (): Promise<SeedPlacementSweepIndex> => {
-			seedSweepIndex ??= await summarizeSeedPlacementSweeps(ctx.db, organizationId, now);
-			return seedSweepIndex;
-		};
+		const seeds = lazyRead(() => summarizeSeedPlacementSweeps(ctx.db, organizationId, now));
 
 		// WHICH INTEGRATIONS THIS DEPLOYMENT HAS, read ONCE per tick: every entry but
 		// the reference arm is deployment-level, so reading it per cell would repeat
@@ -173,7 +165,7 @@ export const runRampController = internalMutation({
 		// is what turns it into each cell's constants — see `rampControllerInputs.ts`.
 		const presence = await loadRampDeploymentPresence(ctx, { organizationId, now });
 
-		const slice = cells.slice(cursor, cursor + RAMP_CELLS_PER_TICK);
+		const slice = cells.slice(slicePlan.start, slicePlan.end);
 		let evaluated = 0;
 		for (const cell of slice) {
 			try {
@@ -194,85 +186,17 @@ export const runRampController = internalMutation({
 				// about, and inventing one would change shipped routing.
 				if (loaded === null) continue;
 				const { input, perStream, degradation } = loaded;
-				// WHICH DIAL THIS CELL DRIVES, off the substitution table and
-				// not off a `hasRelay` boolean here: `resolveRampDegradation` returns
-				// 'pace' exactly when the reference transport is absent, which is the
-				// same mechanism that chose this cell's evaluator, its K_CLEAN and its
-				// ceiling cap. Standalone is therefore the DEGENERATE CASE the
-				// composition function already documents (`share: null`) rather than a
-				// branch scattered through the controller.
-				const isPaceActuated = degradation.actuator === 'pace';
-				// THE OPERATOR'S HAND, applied AFTER the pure ladder and BEFORE anything is
-				// recorded: a pause suppresses an increase and a pin caps one, and
-				// neither can hold a retreat. Rewriting the decision here — rather than
-				// threading a control flag through the ladder — is what keeps the audit row
-				// honest: it records what the operator's setting actually produced, and the
-				// controller's own rungs stay untouched.
-				//
-				// ONE READING OF THE CONTROLS FOR BOTH DIALS. A pause reaches the pace
-				// ladder too (`applyPaceCellControl` below), because "hold this cell"
-				// cannot mean "hold the share" on a deployment whose only dial is the
-				// warm-up pace — the configuration the standalone twin exists for. The PIN
-				// is share-only by construction and not by omission: it is expressed in
-				// share, and the pace dial is a multiplier on a daily cap.
-				const control = {
-					pausedAt: perStream.operatorPausedAt,
-					pinnedShare: perStream.operatorPinnedShare,
-				};
-				const decision = applyRampCellControl(nextShare(input), control);
-				// THE SECOND ACTUATOR, on the SAME gates, the SAME hard stops and the
-				// SAME kill switch. Standalone it is the only dial that moves —
-				// s === 1 by definition — and with a reference arm it is the slow,
-				// reputation-bearing half of a composed decision.
-				const paceReading = await utilisation();
-				// THE SAME HAND ON THIS DIAL, under the same one-directional rule and the
-				// same override module: a pause suppresses the pace INCREASE and can never
-				// hold the retreat. Applied here rather than after the composition so the
-				// interlock below sees the decision the operator actually produced — a
-				// suppressed increase is not an increase to defer, and stamping the
-				// deferral anchor for one would hold this dial a further window after the
-				// pause is lifted.
-				const paceDecision = applyPaceCellControl(
-					nextPaceMultiplier({
-						config: input.config,
-						pace: readPaceState(perStream),
-						signals: input.signals,
-						evaluation: input.evaluation,
-						utilisation: paceReading,
-						// The table's step factor, RAW — see `PaceControllerInput.stepMultiplier`
-						// for why it cannot travel folded into `config` the way K_CLEAN does.
-						stepMultiplier: degradation.stepMultiplier,
-						isKillSwitchEngaged,
-						now,
-					}),
-					control
-				);
-				// THE COMPOSITION ORDER IS FIXED: share moves FIRST (cheap and
-				// instantly reversible — the relay absorbs the difference), pace moves
-				// SECOND (slow and reputation-bearing), and a cell may NEVER increase both
-				// in one window. The interlock lives in one pure function so that
-				// property is a fixture rather than an inline conditional here — and it
-				// is enforced in TWO places on purpose: this call withholds the step on
-				// the tick the share moved, and the anchor it stamps
-				// (`paceDeferredAt`) keeps the pace ladder holding for the rest of the
-				// share's evaluation window. This cron ticks hourly; the window is a day.
-				// A PACE-ACTUATED CELL HANDS THE COMPOSITION NO SHARE — the `share: null`
-				// degenerate case the composition module documents, now reachable from
-				// production. It is not cosmetic: the interlock defers a pace increase for
-				// a WHOLE share evaluation window whenever the share stepped, so handing it
-				// a live share decision on a deployment that has no reference transport to
-				// shift traffic to would hold the only dial this cell owns for the entire
-				// ramp — the headline deliverable of the standalone twin, starved.
-				//
-				// THE SHARE DECISION IS STILL APPLIED. Composition only ever holds the PACE
-				// dial back, and the share half of the row is still the deployment's safety
-				// interlock: a hard stop zeroes it, a critical blocklist freezes it, and
-				// `isFallbackActive` is derived from it. Declining to write it on a
-				// pace-actuated cell would silently drop shipped hard-stop behaviour on
-				// exactly the configuration the pace actuator exists to serve.
-				const composed = composeActuators({
-					share: isPaceActuated ? null : decision,
-					pace: paceDecision,
+				const plan = decideRampCell({
+					input,
+					degradation,
+					pace: readPaceState(perStream),
+					control: {
+						pausedAt: perStream.operatorPausedAt,
+						pinnedShare: perStream.operatorPinnedShare,
+					},
+					utilisation: await utilisation(),
+					isKillSwitchEngaged,
+					now,
 				});
 				evaluated += 1;
 
@@ -284,88 +208,29 @@ export const runRampController = internalMutation({
 					organizationId,
 					cell,
 					input,
-					decision,
-					pace: {
-						decision: composed.pace,
-						utilisation: paceReading,
-						isDeferred: composed.isPaceDeferred,
-					},
+					decision: plan.decision,
+					pace: plan.recordedPace,
 					at: now,
 				});
-
-				// A PAUSED CONTROLLER WRITES NO SHARE. It still evaluates, still audits —
-				// so an operator can watch what it would have done — and still renews the
-				// row's lease, because "pinned" has to survive longer than the cache TTL.
-				if (isKillSwitchEngaged) {
+				if (plan.write.kind === 'lease') {
 					await refreshRouteStateLease(ctx, perStream, now);
 					continue;
 				}
-
 				await applyDecision(ctx, {
 					perStream,
-					decision,
-					pace: composed.pace,
-					isPaceDeferred: composed.isPaceDeferred,
+					decision: plan.decision,
+					pace: plan.pace,
+					isPaceDeferred: plan.isPaceDeferred,
 					now,
 				});
-				// EVERY AUTOMATIC CHANGE IS AUDITED — which is a wider predicate
-				// than "the share moved". A gate breach on a cell already sitting on
-				// `RAMP_AIMD.shareFloor` returns direction 'hold' (`max(floor, floor x
-				// 0.5)` is the floor), yet `applyDecision` has just rewritten the freeze
-				// expiry, the cooldown rung, the clean streak, the green clock and the
-				// graduation pin. That is a real automatic change and belongs in
-				// `auditLogs`. `rampDecisionChangedState` is that predicate, and it is
-				// SHARED with the admin notice rather than spelled out twice: the log and
-				// the notice must never be able to disagree about whether something
-				// happened. An ordinary hold rewrites nothing but the lease and stays out
-				// of the log — see `rampDecisionAdminNotice` for why it is exact.
-				//
-				// THE PIN TRANSITION IS THE PIECE'S TERMINAL STATE CHANGE and it moves no
-				// share at all: graduation holds the number (the pinned target IS the
-				// current share) and imposes no freeze, while `applyDecision` above has
-				// just written `graduatedAt` onto a row that had none — the cell pins and
-				// the relay drops to `priority_failover` standby. `decision.pinChange`
-				// carries that transition, so the tick a cell graduates — and the tick a
-				// hard stop takes the pin away again — are both in the audit log.
-				// AND THE SAME PREDICATE APPLIES TO THE SECOND DIAL, in the same shape as
-				// `rampDecisionChangedState`: the dial MOVED, or a gate breach advanced
-				// the cooldown ladder. A pace retreat on a cell whose share held is a real
-				// automatic change and an operator cannot explain one no log records —
-				// while a hard stop that is merely STILL TRUE an hour later re-stamps a
-				// freeze without changing anything, and must stay as quiet here as it does
-				// on the share side.
-				//
-				// BOTH PREDICATES ARE NAMED FUNCTIONS BESIDE THE DECISIONS THEY READ.
-				// This file's own header rule is that a conditional here which changes an
-				// outcome is a defect, because it is a rule with no fixture; the pace half
-				// used to be spelled inline, one expression away from silently disagreeing
-				// with the share half about what "something happened" means.
-				if (!rampDecisionChangedState(decision) && !paceDecisionChangedState(composed.pace)) {
-					continue;
-				}
+				if (plan.write.audit === null) continue;
 				await recordAuditLog(ctx, {
 					userId: 'system',
 					organizationId,
 					action: 'deliverability_ramp.decision_applied',
 					resource: 'deliverability_ramp',
 					resourceId: deliverabilityCellKey(cell),
-					details: {
-						cell: deliverabilityCellKey(cell),
-						fromShare: decision.fromShare,
-						toShare: decision.share,
-						direction: decision.direction,
-						reason: decision.reason,
-						verdict: decision.verdict,
-						...(decision.failedGate === undefined ? {} : { failedGate: decision.failedGate }),
-						...(decision.pinChange === undefined ? {} : { pinChange: decision.pinChange }),
-						// The pace dial is part of the same automatic change and is logged
-						// with it: an operator reading the audit trail must be able to see
-						// which of the two dials moved, and why.
-						fromPaceMultiplier: composed.pace.fromMultiplier,
-						toPaceMultiplier: composed.pace.multiplier,
-						paceDirection: composed.pace.direction,
-						paceReason: composed.pace.reason,
-					},
+					details: plan.write.audit,
 				});
 			} catch (error) {
 				// ONE CELL MUST NOT TAKE THE SLICE DOWN WITH IT.
@@ -400,23 +265,16 @@ export const runRampController = internalMutation({
 					action: 'deliverability_ramp.cell_evaluation_failed',
 					resource: 'deliverability_ramp',
 					resourceId: deliverabilityCellKey(cell),
-					details: {
-						cell: deliverabilityCellKey(cell),
-						// BOUNDED, because the text is a thrown message and not a value this
-						// module chose: a cell that fails on every tick must not be able to
-						// grow the audit table by whatever a stack trace happens to carry.
-						error: readFailureMessage(error),
-					},
+					details: { cell: deliverabilityCellKey(cell), error: readFailureMessage(error) },
 				});
 			}
 		}
 
-		const nextCursor = cursor + slice.length;
-		if (nextCursor < cells.length) {
+		if (slicePlan.continueAt !== null) {
 			await ctx.scheduler.runAfter(0, internal.delivery.rampControllerCron.runRampController, {
-				cursor: nextCursor,
+				cursor: slicePlan.continueAt,
 			});
 		}
-		return { evaluated, done: nextCursor >= cells.length };
+		return { evaluated, done: slicePlan.continueAt === null };
 	},
 });
