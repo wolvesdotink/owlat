@@ -257,52 +257,52 @@ const shownCapacityPlan = computed(() => {
 		<!-- Header -->
 		<div class="bg-bg-elevated border-b border-border-subtle">
 			<div class="max-w-4xl mx-auto px-6 py-4">
-				<div class="flex items-center justify-between">
-					<div class="flex items-center gap-4">
-						<button
-							class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-							@click="handleBack"
-							:aria-label="t('common.back')"
+				<div class="flex items-start gap-4">
+					<button
+						class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+						@click="handleBack"
+						:aria-label="t('common.back')"
+					>
+						<Icon name="lucide:arrow-left" class="w-5 h-5" />
+					</button>
+					<UiPageHeader
+						class="flex-1"
+						:title="
+							isScheduled
+								? t('dashboard.campaigns.detail.edit.titleScheduled')
+								: t('dashboard.campaigns.detail.edit.title')
+						"
+						:description="campaignData?.name || t('dashboard.campaigns.detail.edit.loadingName')"
+					>
+						<template
+							v-if="
+								campaignData && (isScheduled || isDraft || campaignData.status === 'pending_review')
+							"
+							#meta
 						>
-							<Icon name="lucide:arrow-left" class="w-5 h-5" />
-						</button>
-						<div>
-							<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-								{{
-									isScheduled
-										? t('dashboard.campaigns.detail.edit.titleScheduled')
-										: t('dashboard.campaigns.detail.edit.title')
-								}}
-							</h1>
-							<p class="text-sm text-text-secondary">
-								{{ campaignData?.name || t('dashboard.campaigns.detail.edit.loadingName') }}
-							</p>
-						</div>
-					</div>
-					<!-- Status Badge -->
-					<div v-if="campaignData">
-						<span
-							v-if="isScheduled"
-							class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium bg-brand/10 text-brand"
-						>
-							<Icon name="lucide:clock" class="w-4 h-4" />
-							{{ t('dashboard.campaigns.detail.edit.badges.scheduled') }}
-						</span>
-						<span
-							v-else-if="isDraft"
-							class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium bg-text-tertiary/10 text-text-tertiary"
-						>
-							<Icon name="lucide:pencil" class="w-4 h-4" />
-							{{ t('dashboard.campaigns.detail.edit.badges.draft') }}
-						</span>
-						<span
-							v-else-if="campaignData.status === 'pending_review'"
-							class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium bg-warning/10 text-warning"
-						>
-							<Icon name="lucide:shield-alert" class="w-4 h-4" />
-							{{ t('dashboard.campaigns.detail.edit.badges.underReview') }}
-						</span>
-					</div>
+							<span
+								v-if="isScheduled"
+								class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium bg-brand/10 text-brand"
+							>
+								<Icon name="lucide:clock" class="w-4 h-4" />
+								{{ t('dashboard.campaigns.detail.edit.badges.scheduled') }}
+							</span>
+							<span
+								v-else-if="isDraft"
+								class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium bg-text-tertiary/10 text-text-tertiary"
+							>
+								<Icon name="lucide:pencil" class="w-4 h-4" />
+								{{ t('dashboard.campaigns.detail.edit.badges.draft') }}
+							</span>
+							<span
+								v-else-if="campaignData.status === 'pending_review'"
+								class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium bg-warning/10 text-warning"
+							>
+								<Icon name="lucide:shield-alert" class="w-4 h-4" />
+								{{ t('dashboard.campaigns.detail.edit.badges.underReview') }}
+							</span>
+						</template>
+					</UiPageHeader>
 				</div>
 			</div>
 		</div>

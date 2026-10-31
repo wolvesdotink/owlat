@@ -2,9 +2,8 @@
  * Header evidence for inbound mail, read once and shared (AI routing plan,
  * gap L2).
  *
- * Several consumers decide "is this machine-generated / bulk mail?", and each
- * used to read the headers its own way. This module is where the headers are
- * read. Each consumer keeps its own predicate, written here next to the others,
+ * Several consumers decide "is this machine-generated / bulk mail?". This
+ * module is the one place the headers are read. Each consumer keeps its own predicate, written here next to the others,
  * so the differences between them are visible in one place instead of being
  * spread across the codebase. No predicate here changed its outcome when it
  * moved; `__tests__/mailEvidence.test.ts` runs the previous implementations

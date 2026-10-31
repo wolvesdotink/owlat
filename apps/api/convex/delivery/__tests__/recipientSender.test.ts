@@ -1,10 +1,10 @@
 /**
- * The sender identity the recipient-facing pages lead with (#798). A person
+ * The sender identity the recipient-facing pages lead with. A person
  * unsubscribing from a newsletter has never heard of Owlat, so the page names
  * the sender, and when the link is broken it offers the sender's address as
  * the other way to opt out. Token-independent, so it answers without a session
  * and without a valid token — and it returns nothing beyond the From identity
- * and the workspace logo (#810).
+ * and the workspace logo.
  */
 import { convexTest } from 'convex-test';
 import { describe, expect, it } from 'vitest';

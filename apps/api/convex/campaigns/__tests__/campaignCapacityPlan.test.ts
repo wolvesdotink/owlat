@@ -188,8 +188,8 @@ describe('planCampaignCapacity — the table', () => {
 	});
 
 	it('a projection that plateaus at ZERO can never cover the audience: sentinel, not a partial plan', () => {
-		// The regression this pins: [100, 0] with 300 recipients used to return
-		// { days: 1, slices: [100] } — a "plan" that silently dropped 200 people.
+		// The regression this pins: [100, 0] with 300 recipients must not return
+		// { days: 1, slices: [100] } — a "plan" that silently drops 200 people.
 		const plan = planCampaignCapacity({
 			audienceSize: 300,
 			remainingCapacityByDay: [100, 0],
@@ -494,9 +494,9 @@ describe('capacityWithinHorizon', () => {
 describe('totalPlannableCapacity — the ONE trailing-rate extension rule', () => {
 	/**
 	 * The gate bounds its audience count by this number, and the schedule builder
-	 * enumerates against the same rule. They used to be two hand-written copies
-	 * of "sum the projection, then extend at the trailing rate", which is exactly
-	 * the shape that drifts. Pinned here as one function, and cross-checked
+	 * enumerates against the same rule. Two hand-written copies of "sum the
+	 * projection, then extend at the trailing rate" are exactly the shape that
+	 * drifts. Pinned here as one function, and cross-checked
 	 * against the builder below.
 	 */
 	it('sums the projection and extends to MAX_PLAN_DAYS at the trailing rate', () => {

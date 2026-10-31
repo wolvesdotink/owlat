@@ -185,6 +185,24 @@ Questions:
       "promptTokens": 15,
       "totalTokens": 30,
     },
+    "writes": [
+      {
+        "kind": "standing_answers_used",
+        "rowIds": [
+          "memory_golden",
+        ],
+      },
+      {
+        "eagerness": undefined,
+        "kind": "clarification_ask",
+        "predictedValue": 1,
+        "questionCount": 1,
+        "slotTypes": [
+          "price_number",
+        ],
+        "source": "agent",
+      },
+    ],
   },
   "writes": [
     {
@@ -202,17 +220,6 @@ Questions:
             "text": "Which contract should we send?",
           },
         ],
-      },
-    },
-    {
-      "ask": {
-        "eagerness": undefined,
-        "predictedValue": 1,
-        "questionCount": 1,
-        "slotTypes": [
-          "price_number",
-        ],
-        "source": "agent",
       },
     },
   ],

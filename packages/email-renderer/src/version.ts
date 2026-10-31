@@ -13,7 +13,6 @@
  *   1  Output before versions were bumped.
  *   2  A single-open accordion's radio inputs are named after its own Block
  *      (`owlat-accordion-<blockId>`) instead of sharing `owlat-accordion`, so
- *      two accordions in one email no longer close each other's sections
- *      (#1085, #1111).
+ *      two accordions in one email no longer close each other's sections.
  */
 export const EMAIL_RENDERER_VERSION = 2;

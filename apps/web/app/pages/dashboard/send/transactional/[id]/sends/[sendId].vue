@@ -21,6 +21,13 @@ const {
 } = useConvexQuery(api.transactional.sends.get, () => ({
 	id: sendId.value,
 }));
+
+const contactName = computed(() => {
+	const value = send.value;
+	if (!value) return '';
+	const first = value.contact?.firstName || value.email?.split('@')[0] || t('common.unknown');
+	return value.contact?.lastName ? `${first} ${value.contact.lastName}` : first;
+});
 </script>
 
 <template>
@@ -67,27 +74,20 @@ const {
 					{{ t('dashboard.send.transactional.detail.sends.detail.backToList') }}
 				</NuxtLink>
 
-				<div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-					<div>
-						<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-							{{ send.contact?.firstName || send.email?.split('@')[0] || t('common.unknown') }}
-							{{ send.contact?.lastName || '' }}
-						</h1>
-						<p class="mt-1 text-text-secondary">{{ send.email }}</p>
-						<div
-							v-if="send.transactionalEmail"
-							class="mt-2 flex items-center gap-2 text-sm text-text-tertiary"
-						>
-							<Icon name="lucide:zap" class="w-4 h-4" />
-							<span>{{ send.transactionalEmail.name }}</span>
-							<span class="font-mono text-xs bg-bg-surface px-1.5 py-0.5 rounded">
-								{{ send.transactionalEmail.slug }}
-							</span>
+				<UiPageHeader :title="contactName" :description="send.email">
+					<template #meta>
+						<div class="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-text-tertiary">
+							<DashboardSendStatusBadge :status="send.status" fallback="sent" />
+							<div v-if="send.transactionalEmail" class="flex items-center gap-2">
+								<Icon name="lucide:zap" class="w-4 h-4" />
+								<span>{{ send.transactionalEmail.name }}</span>
+								<span class="font-mono text-xs bg-bg-surface px-1.5 py-0.5 rounded">
+									{{ send.transactionalEmail.slug }}
+								</span>
+							</div>
 						</div>
-					</div>
-
-					<DashboardSendStatusBadge :status="send.status" fallback="sent" />
-				</div>
+					</template>
+				</UiPageHeader>
 			</div>
 
 			<!-- Timeline -->

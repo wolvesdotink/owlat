@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest';
 import {
 	elementTrackingHints,
 	isTrackingResource,
-	isTrackingPixelTag,
 	remoteResourceHost,
 	stripRemoteImages,
 	type ScanWork,
@@ -61,8 +60,11 @@ describe('isTrackingResource', () => {
 	const NO_HINTS = elementTrackingHints({ width: null, height: null, style: '' });
 
 	it('flags a 1x1 resource and names its host', () => {
-		expect(isTrackingPixelTag(PIXEL_1X1)).toBe(true);
-		expect(remoteResourceHost('https://tracker.example.com/open.gif')).toBe('tracker.example.com');
+		const url = 'https://tracker.example.com/open.gif';
+		expect(
+			isTrackingResource(url, elementTrackingHints({ width: '1', height: '1', style: '' }))
+		).toBe(true);
+		expect(remoteResourceHost(url)).toBe('tracker.example.com');
 	});
 
 	it('flags a zero-size element declared via inline style', () => {
@@ -75,21 +77,37 @@ describe('isTrackingResource', () => {
 	});
 
 	it('flags a display:none element', () => {
-		expect(isTrackingPixelTag(HIDDEN_IMG)).toBe(true);
+		expect(
+			isTrackingResource(
+				'https://tracker.example.net/o.png',
+				elementTrackingHints({ width: null, height: null, style: 'display:none' })
+			)
+		).toBe(true);
 	});
 
 	it('does not flag a regular photo', () => {
-		expect(isTrackingPixelTag(PHOTO)).toBe(false);
+		expect(
+			isTrackingResource(
+				'https://cdn.example.com/photo.jpg',
+				elementTrackingHints({ width: '600', height: '400', style: '' })
+			)
+		).toBe(false);
 	});
 
 	it('flags a known tracker host even at full size', () => {
-		expect(isTrackingPixelTag(KNOWN_HOST)).toBe(true);
+		expect(isTrackingResource('https://click.list-manage.com/track/open.php?u=abc', NO_HINTS)).toBe(
+			true
+		);
 	});
 
 	it('does not flag an unrelated host that merely contains a pattern substring', () => {
 		// evil-list-manage.com is NOT a subdomain of list-manage.com
-		const html = '<img src="https://evil-list-manage.com/logo.png" width="200" height="80">';
-		expect(isTrackingPixelTag(html)).toBe(false);
+		expect(
+			isTrackingResource(
+				'https://evil-list-manage.com/logo.png',
+				elementTrackingHints({ width: '200', height: '80', style: '' })
+			)
+		).toBe(false);
 	});
 
 	it('never flags data:/cid: resources (no network fetch, cannot track)', () => {
@@ -109,20 +127,6 @@ describe('isTrackingResource', () => {
 			expect(remoteResourceHost(url)).toBe(tracker);
 			expect(isTrackingResource(url, NO_HINTS)).toBe(true);
 		}
-	});
-
-	it('decodes character references in a tag string before classifying', () => {
-		expect(isTrackingPixelTag('<img src="https:&#9;//click.list-manage.com/open.gif">')).toBe(true);
-		expect(isTrackingPixelTag('<img src="https&colon;&Tab;//click.list-manage.com/o">')).toBe(true);
-	});
-
-	it('reads a reference named after an Object.prototype member as text', () => {
-		// `&constructor;` is no named reference: it reads as its own text, the
-		// same as the escaped `&amp;constructor;`.
-		const size = 'width="600" height="400"';
-		expect(isTrackingPixelTag(`<img src="https://cdn.example&constructor;/a" ${size}>`)).toBe(
-			isTrackingPixelTag(`<img src="https://cdn.example&amp;constructor;/a" ${size}>`)
-		);
 	});
 
 	it('matches a tracker host written with a trailing root dot', () => {
@@ -152,16 +156,16 @@ describe('isTrackingResource', () => {
 	});
 });
 
-describe('isTrackingPixelTag', () => {
+describe('elementTrackingHints', () => {
 	it('requires both declared dimensions to be pixel-sized when one is large', () => {
 		// A 1px-wide by 400px-tall spacer/border image is not a tracking pixel.
-		expect(
-			isTrackingPixelTag('<img src="https://cdn.example.com/border.gif" width="1" height="400">')
-		).toBe(false);
+		expect(elementTrackingHints({ width: '1', height: '400', style: '' }).looksLikePixel).toBe(
+			false
+		);
 	});
 
 	it('flags a bare 1px width with no other dimension', () => {
-		expect(isTrackingPixelTag('<img src="https://x.example.com/p" width="1">')).toBe(true);
+		expect(elementTrackingHints({ width: '1', height: null, style: '' }).looksLikePixel).toBe(true);
 	});
 });
 
@@ -198,6 +202,17 @@ describe('stripRemoteImages', () => {
 		const out = stripRemoteImages('<img src="https:&#9;//evil.example/beacon.gif"><p>x</p>');
 		expect(out.strippedRemoteImages).toBe(1);
 		expect(out.html).toBe('<p>x</p>');
+	});
+
+	it('decodes character references in src before telling inline from remote', () => {
+		const inline = [
+			'<img src="data&colon;image/gif;base64,R0lGOD">',
+			'<img src="cid&#58;logo@corp">',
+			'<img src="&#x63;id:logo@corp">',
+		].join('');
+		expect(stripRemoteImages(inline)).toEqual({ html: inline, strippedRemoteImages: 0 });
+		const out = stripRemoteImages('<img src="https&colon;&Tab;//click.list-manage.com/o"><p>x</p>');
+		expect(out).toEqual({ html: '<p>x</p>', strippedRemoteImages: 1 });
 	});
 
 	it('strips a protocol-relative remote image', () => {
@@ -268,9 +283,6 @@ describe('stripRemoteImages', () => {
 		}
 		const inline = '<img alt="src=https://cdn.example/a" src="cid:logo@corp">';
 		expect(stripRemoteImages(inline)).toEqual({ html: inline, strippedRemoteImages: 0 });
-		expect(isTrackingPixelTag('<img alt="1>0" src="https://cdn.example/p.gif" width="1">')).toBe(
-			true
-		);
 	});
 
 	it('reads an unterminated quote to the end once and stays linear over it', () => {

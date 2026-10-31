@@ -10,6 +10,7 @@
  */
 
 import { v } from 'convex/values';
+import type { FunctionArgs } from 'convex/server';
 import { escapeHtml } from '@owlat/shared/html';
 import { internalAction, type ActionCtx } from './_generated/server';
 import { internal } from './_generated/api';
@@ -58,6 +59,9 @@ export const generate = internalAction({
 	handler: async (ctx, args) => {
 		// One model budget for this action, from its start.
 		anchorActionDeadline(ctx);
+		// What the visualization ends up showing: the generated page, or the
+		// failure page. Either one is written by the single commit below.
+		let page: GeneratedPage;
 		try {
 			// Step 1: Use live account data only when the caller explicitly opts in
 			// with an allowlisted `dataset` key. Free-form prompts are NOT inferred
@@ -138,31 +142,31 @@ Respond with ONLY the title, no quotes or explanation.`,
 
 			const title = titleResult.text.trim().slice(0, 100);
 
-			// Update the visualization with the generated content. Persist the
-			// chosen dataset key in `dataQuery` so a future refresh re-fetches
-			// the same allowlisted dataset (never a raw query string). Only
-			// store it when live data was actually used.
-			await ctx.runMutation(internal.visualizationAgent.updateGenerated, {
-				id: args.visualizationId,
-				title,
-				html,
-				dataQuery: liveData ? (datasetKey ?? undefined) : undefined,
-			});
+			// Persist the chosen dataset key in `dataQuery` so a future refresh
+			// re-fetches the same allowlisted dataset (never a raw query string).
+			// Only store it when live data was actually used.
+			page = { title, html, dataQuery: liveData ? (datasetKey ?? undefined) : undefined };
 		} catch (error) {
 			// A budget refusal is stored as its stable code and reason, which
 			// the web says in the reader's language; the page carries no sentence.
 			const refusal = admissionRefusalOf(error);
-			await ctx.runMutation(internal.visualizationAgent.updateGenerated, {
-				id: args.visualizationId,
+			page = {
 				title: 'Error',
 				html: refusal
 					? generationFailedHtml()
 					: generationFailedHtml(error instanceof Error ? error.message : 'Unknown error'),
 				...(refusal ? { budgetRefusal: { code: refusal.code, reason: refusal.reason } } : {}),
-			});
+			};
 		}
+		await ctx.runMutation(internal.visualizationAgent.updateGenerated, {
+			id: args.visualizationId,
+			...page,
+		});
 	},
 });
+
+/** The visualization fields one generation writes, whichever way it ended. */
+type GeneratedPage = Omit<FunctionArgs<typeof internal.visualizationAgent.updateGenerated>, 'id'>;
 
 // ============================================================
 // Live-data fetchers (read-only, allowlisted)

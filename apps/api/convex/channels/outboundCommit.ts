@@ -2,13 +2,14 @@
  * The commits of the channel dispatch and the delivery-status poll
  * (`channels/outbound.ts`). That file is `'use node'`, so the mutations its
  * actions end with live here: each action reads, talks to the provider, then
- * writes what it learned in one of these.
+ * writes what it learned in one of these. The channel health cron
+ * (`unifiedMessages.runChannelHealthChecks`) commits here too.
  */
 
 import { v } from 'convex/values';
 import { internalMutation } from '../lib/writeFence';
 import { unifiedMessageChannelValidator } from '../lib/convexValidators';
-import { insertOutboundMessage } from '../unifiedMessages';
+import { channelHealthFields, insertOutboundMessage, writeChannelHealth } from '../unifiedMessages';
 import { applyProcessingTransition } from '../inbox/processingLifecycle';
 
 /**
@@ -76,6 +77,35 @@ export const recordDeliveryStatuses = internalMutation({
 			const row = await ctx.db.get(update.messageId);
 			if (row?.status !== 'sent') continue;
 			await ctx.db.patch(update.messageId, { status: update.status });
+		}
+	},
+});
+
+/**
+ * The health checks one cron run settled without a probe. A channel whose
+ * config was removed, disabled, or had its credentials added or removed since
+ * the run read it is skipped: the result describes a config it no longer has,
+ * and the next run checks it again.
+ */
+export const recordHealthChecks = internalMutation({
+	args: {
+		results: v.array(
+			v.object({
+				channel: unifiedMessageChannelValidator,
+				/** Whether the config the check read held credentials. */
+				hadCredentials: v.boolean(),
+				...channelHealthFields,
+			})
+		),
+	},
+	handler: async (ctx, args): Promise<void> => {
+		for (const { channel, hadCredentials, ...health } of args.results) {
+			const config = await ctx.db
+				.query('channelConfigs')
+				.withIndex('by_channel', (q) => q.eq('channel', channel))
+				.first();
+			if (!config?.isEnabled || Boolean(config.config) !== hadCredentials) continue;
+			await writeChannelHealth(ctx, config._id, health);
 		}
 	},
 });

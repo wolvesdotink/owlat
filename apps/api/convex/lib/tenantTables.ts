@@ -35,7 +35,7 @@ export const TENANT_TABLES = [
 	// so the rest of the wipe does not keep moving buckets on its way out.
 	'counterScopes',
 	'counterBuckets',
-	// IMAP folder membership (#927): derived from mailMessages the same way.
+	// IMAP folder membership: derived from mailMessages the same way.
 	'mailFolderMembership',
 	'mailFolderUidBlocks',
 
@@ -64,7 +64,7 @@ export const TENANT_TABLES = [
 	'apiRequestReceipts', // Idempotency-Key receipts: they name the Sends and contacts below
 	// API attachment uploads no Send claimed yet; the step frees each blob with its row.
 	'transactionalPendingUploads',
-	// Recorded send completions that threw (#1195): a pointer at a Send plus the
+	// Recorded send completions that threw: a pointer at a Send plus the
 	// worker outcome, which can carry the rendered message. Before both send tables.
 	'sendCompletionFailurePayloads',
 	'sendCompletionFailures',
@@ -75,7 +75,7 @@ export const TENANT_TABLES = [
 	'mtaCampaignAlertReceipts',
 	'webhookDeliveryLogs',
 	'webhookPayloads',
-	// Bounces and complaints that matched no Send (#1194), kept for counting and
+	// Bounces and complaints that matched no Send, kept for counting and
 	// replay: message ids, outcomes and replay state, no addresses.
 	'unresolvedFeedback',
 	'webhooks',
@@ -313,7 +313,7 @@ export const TENANT_TABLES = [
 	// Answer mode ask sessions (owner-scoped, reference drafts and team threads).
 	'answerAskSessions',
 
-	// ── AI provider configuration (#1101) ──
+	// ── AI provider configuration ──
 	// The chosen language, embedding and decision providers plus the encrypted
 	// API keys someone entered for this workspace. Wiped with the workspace: keys
 	// that outlived it would keep billing their owner for whoever sets the

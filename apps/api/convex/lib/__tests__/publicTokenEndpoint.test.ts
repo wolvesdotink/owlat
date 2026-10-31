@@ -1,7 +1,7 @@
 /**
  * Unit tests for the **Public token endpoint (module)** shell — every
- * cross-cutting concern that used to live in nine open-coded `httpAction`s
- * now lives in one factory, so this file is the test surface for all of
+ * cross-cutting concern of the public token routes lives in one factory
+ * instead of in each `httpAction`, so this file is the test surface for all of
  * them: path matching, CORS preflight, method gate, rate-limit short-
  * circuit, token decode, body parsing, handler-throw, action-mode and
  * outcome-mode result mapping.

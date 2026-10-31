@@ -187,12 +187,12 @@ describe('getDeliverabilityDashboard — derived rates', () => {
 });
 
 /**
- * TWO SPANS ON ONE SCREEN, AND THE QUERY SAYS WHICH IS WHICH (#510).
+ * TWO SPANS ON ONE SCREEN, AND THE QUERY SAYS WHICH IS WHICH.
  *
  * The counters are a seven-day week, derived on read; the verdicts are the
  * controller's own evaluation window, so the screen cannot report a gate the
  * cron never reached. `seedGateWiring.test.ts` pins the agreement against the
- * cron's own loader on the issue's fixture — what is pinned HERE is the wire:
+ * cron's own loader on a four-day-old spike — what is pinned HERE is the wire:
  * both spans present, both named, and the deciding one taken from the
  * controller's constant rather than spelled again in the query.
  */
@@ -512,9 +512,9 @@ describe('getDeliverabilityDashboard — states are the feature', () => {
 	/**
 	 * SEED COVERAGE IS "DOES THE ORG OWN A SEED MAILBOX", read from the ACCOUNTS.
 	 *
-	 * It used to be read off a whole placement roll-up whose other three fields
-	 * were discarded. The boolean has to keep meaning the same thing after that
-	 * shortcut: an org with a live seed account but no probes yet still HAS the
+	 * Reading the accounts rather than a whole placement roll-up (whose other
+	 * three fields this would discard) must not change what the boolean means:
+	 * an org with a live seed account but no probes yet still HAS the
 	 * instrument, so the improvement drops and the one-armed cap rises to
 	 * `medium` — before a single probe has been classified. A read that needed
 	 * observations to notice a mailbox would tell the operator who just connected

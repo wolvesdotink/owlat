@@ -6,9 +6,10 @@
  * Owns the per-step execution loop for the agent pipeline:
  *   1. Dispatches to an Agent step (module) by `kind`.
  *   2. Opens the step (`walkerCommit.beginStep`: the budget hold, or the
- *      step's row) and calls `module.execute(ctx, input)`.
- *   3. Commits what `module.route(output, input, runCtx)` decided in one
- *      mutation (`walkerCommit.commitStep`):
+ *      step's row) and calls `module.execute(ctx, input)`, which returns
+ *      the step's writes rather than making them.
+ *   3. Commits those writes and what `module.route(output, input, runCtx)`
+ *      decided in one mutation (`walkerCommit.commitStep`):
  *      - `in_state` → complete the row + schedule the next `runStep`.
  *      - `transition` → the lifecycle transition the route assembled;
  *        optionally schedule the next `runStep`.
@@ -33,7 +34,8 @@ import type { Id } from '../_generated/dataModel';
 import { stepModuleFor } from './steps';
 import { agentStepKindValidator, isPluginAgentStepKind } from './steps/catalog';
 import { contextRetrievalStep } from './steps/context_retrieval';
-import type { AgentRunContext, AgentStepKind } from './steps/types';
+import { StepFailure, type AgentRunContext, type AgentStepKind } from './steps/types';
+import type { StepWrite } from './stepWrites';
 import { routedOutcome } from './walkerTransition';
 import type { StepOutcome } from './walkerCommit';
 import { nextStepValidator, scheduleAfterPluginStep } from './walkerSchedule';
@@ -146,12 +148,14 @@ export const resumeDraft = internalAction({
 		// Rebuild the retrieval briefing. FAIL-SOFT: if retrieval throws, draft on
 		// an empty base context rather than wedging the message in `drafting`.
 		let context = '';
+		let writes: readonly StepWrite[] = [];
 		let refusedReason: AdmissionRefusalData['reason'] | undefined;
 		try {
 			const retrieval = await contextRetrievalStep.execute(ctx, {
 				inboundMessageId: args.inboundMessageId,
 			});
 			context = retrieval.output.context;
+			writes = retrieval.writes ?? [];
 		} catch (error) {
 			refusedReason = admissionRefusalOf(error)?.reason;
 		}
@@ -160,6 +164,7 @@ export const resumeDraft = internalAction({
 			inboundMessageId: args.inboundMessageId,
 			context,
 			...(refusedReason ? { refusedReason } : {}),
+			...(writes.length > 0 ? { writes: [...writes] } : {}),
 		});
 	},
 });
@@ -228,23 +233,31 @@ export const runStep = internalAction({
 			kind: args.kind,
 		});
 		if (begun.kind === 'held') return;
-		const { actionId } = begun;
+		const { actionId, ranIn } = begun;
 
 		const startedAt = Date.now();
 		let outcome: StepOutcome;
+		// The step's writes land only with an outcome they belong to: a route
+		// that throws after `execute` drops them along with the step.
+		let writes: readonly StepWrite[] = [];
 		try {
 			const runCtx = await loadRunContext(ctx, args.inboundMessageId);
 			const result = await module.execute(ctx, args.input);
 			const route = module.route(result.output, args.input, runCtx);
 			outcome = routedOutcome(route, result, actionId, Date.now() - startedAt);
+			writes = result.writes ?? [];
 		} catch (error) {
-			outcome = failureOutcome(args.kind, error);
+			const failure = error instanceof StepFailure ? error : undefined;
+			outcome = failureOutcome(args.kind, failure ? failure.failure : error);
+			writes = failure?.writes ?? [];
 		}
 		await ctx.runMutation(internal.agent.walkerCommit.commitStep, {
 			inboundMessageId: args.inboundMessageId,
 			kind: args.kind,
 			actionId,
 			outcome,
+			...(ranIn !== undefined ? { ranIn } : {}),
+			...(writes.length > 0 ? { writes: [...writes] } : {}),
 		});
 	},
 });

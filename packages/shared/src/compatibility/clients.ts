@@ -2,8 +2,8 @@
  * Email client metadata — the only static per-client data left in shared after
  * per-block Feature compatibility and Property compatibility moved into Block
  * modules. The renderer's Compatibility walker consumes this through
- * `@owlat/shared`; the registry below also seeds the email-client extension
- * registry so plugin-registered clients show up alongside the built-ins.
+ * `@owlat/shared`; the loop below also seeds the email-client registry that
+ * scoring reads.
  */
 
 import type { ClientSupport, EmailClientInfo } from './types';
@@ -16,7 +16,11 @@ import { emailClientRegistry } from './registry';
 export const emailClients: Record<keyof ClientSupport, EmailClientInfo> = {
 	gmail: { name: 'Gmail (Web)', renderEngine: 'blink', marketSharePercent: 27.6 },
 	gmailApp: { name: 'Gmail (Mobile App)', renderEngine: 'blink', marketSharePercent: 9.8 },
-	outlookDesktop: { name: 'Outlook Desktop (Classic)', renderEngine: 'word', marketSharePercent: 7.2 },
+	outlookDesktop: {
+		name: 'Outlook Desktop (Classic)',
+		renderEngine: 'word',
+		marketSharePercent: 7.2,
+	},
 	outlook365: { name: 'Outlook 365 (Web)', renderEngine: 'word', marketSharePercent: 3.1 },
 	outlookNew: { name: 'Outlook (New)', renderEngine: 'blink', marketSharePercent: 2.5 },
 	outlookMac: { name: 'Outlook (Mac)', renderEngine: 'webkit', marketSharePercent: 1.8 },
@@ -48,8 +52,7 @@ export const fullSupport: ClientSupport = {
 	protonMail: 'full',
 };
 
-// Seed the extension registry with the built-ins so getAllEmailClients()
-// returns built-ins + plugin-registered clients uniformly.
+// Seed the client registry with the built-ins.
 for (const [key, info] of Object.entries(emailClients)) {
 	emailClientRegistry.register(key, info);
 }

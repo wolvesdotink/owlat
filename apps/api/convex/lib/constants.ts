@@ -78,7 +78,7 @@ export const CURRENT_CONTENT_BLOCK_VERSION = 1;
  * shareLinks.htmlContent). Owned by `@owlat/email-renderer` (src/version.ts
  * keeps the history) so the browser editor and the Node rerender stamp the
  * version of the renderer they ran; see lib/rendererVersion.ts.
- * 2: single-open accordion radio groups scoped to their Block (#1085, #1111).
+ * 2: single-open accordion radio groups scoped to their Block.
  */
 export { EMAIL_RENDERER_VERSION as CURRENT_RENDERER_VERSION } from '@owlat/email-renderer/version';
 

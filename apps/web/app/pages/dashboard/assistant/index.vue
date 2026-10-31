@@ -228,6 +228,7 @@ const cancelRename = () => {
 							/>
 						</div>
 						<template v-else>
+							<!-- native-title: the full title of a conversation truncated to the list's width -->
 							<button
 								type="button"
 								class="flex flex-1 min-w-0 items-center gap-2 pl-3 pr-1 py-2 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"

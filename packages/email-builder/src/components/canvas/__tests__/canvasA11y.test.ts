@@ -2,9 +2,9 @@
 //
 // Accessibility contract for the block canvas.
 //
-// The canvas used to be an unnamed pile of divs: no structure a screen reader
-// could report ("list of 5 blocks, item 2 of 5"), no names on the blocks, and
-// no way to move between them from the keyboard. It is now a list — one list
+// A screen reader must be able to report the canvas's structure ("list of 5
+// blocks, item 2 of 5") and name each block, and the keyboard must move
+// between them, so the canvas is a list — one list
 // item per draggable unit, each block inside it a named `group` with an
 // accessible name of the form "<type label>: <content excerpt>", `aria-current`
 // wired to the editor's existing selection model, a roving tabindex so the
@@ -21,6 +21,7 @@
 // canvas does not also steal it.
 import { describe, it, expect, onTestFinished } from 'vitest';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
+import { nextTick } from 'vue';
 import { Trash2 } from '@lucide/vue';
 import DocumentCanvas from '../DocumentCanvas.vue';
 import IconButton from '../../ui/IconButton.vue';
@@ -273,6 +274,22 @@ describe('icon-only controls carry a name', () => {
 			attrs: { 'aria-label': 'Remove stop 2' },
 		});
 		expect(w.attributes('aria-label')).toBe('Remove stop 2');
+		w.unmount();
+	});
+});
+
+describe('background colour bubble', () => {
+	it('keeps its name and explains itself in a tooltip keyboard focus opens', async () => {
+		const w = mountCanvas({ blocks: blocks(), selectedBlockId: null });
+		const bubble = w.get('button[aria-haspopup="dialog"]');
+
+		expect(bubble.attributes('aria-label')).toBe('Email background color');
+		expect(bubble.attributes('title')).toBeUndefined();
+		(bubble.element as HTMLElement).focus();
+		await nextTick();
+		expect(document.querySelector('[role="tooltip"]')?.textContent?.trim()).toBe(
+			'Email background color'
+		);
 		w.unmount();
 	});
 });

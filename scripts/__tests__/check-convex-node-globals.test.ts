@@ -232,8 +232,8 @@ describe('convex isolate-runtime Node-global gate', () => {
 	});
 
 	it('reports `import { Buffer } from "buffer"` — the auto-import shape', async () => {
-		// Double blind spot: a bare builtin, AND a named import that used to be
-		// read as the module shadowing the global for itself.
+		// Double blind spot: a bare builtin, AND a named import that is easy to
+		// misread as the module shadowing the global for itself.
 		const root = await fixture({
 			[`${CONVEX}/mail/ingest.ts`]: [
 				"import { Buffer } from 'buffer';",

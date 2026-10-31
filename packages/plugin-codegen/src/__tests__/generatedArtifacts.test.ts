@@ -15,13 +15,13 @@ import {
 /**
  * The codegen output set is ONE table.
  *
- * It used to be written three times — the fields of
- * `GeneratedPluginComposition`, one path constant per output, and the same
- * number of `{ path, source }` target entries — so adding a registry took six
- * coordinated edits and forgetting one silently dropped a file from both the
- * writer and the `--check` staleness gate, with nothing red.
+ * Written out three times — the fields of `GeneratedPluginComposition`, one
+ * path constant per output, and the same number of `{ path, source }` target
+ * entries — adding a registry would take six coordinated edits, and forgetting
+ * one would silently drop a file from both the writer and the `--check`
+ * staleness gate, with nothing red.
  *
- * These cases pin the collapse: every artifact key has exactly one path, an
+ * These cases pin the one table: every artifact key has exactly one path, an
  * artifact added to the table is written, path-safety-checked and
  * staleness-checked with no other edit, and `--check` sees every one of them.
  */

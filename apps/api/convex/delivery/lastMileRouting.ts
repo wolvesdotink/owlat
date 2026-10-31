@@ -260,13 +260,13 @@ export async function resolveLastMileRouting(
 		return { kind: 'defer', retryAfterMs: LOCAL_DEFER_MS, origin: 'local' };
 	}
 	// GO FIND A RELAY, unless the route already put us on one. The second half of
-	// this gate used to read `route?.providerType !== 'ses'`, which picked out the
-	// same routes only while SES was the one relay `setRoute` would save. It is no
-	// longer, so an identically-configured Mandrill / bring-your-own-SMTP / plugin
-	// relay fell through to re-resolving a governed relay route it was already on,
-	// with `forceRelayReason` — two relays, one configuration, two code paths, told
-	// apart by name. `isRelayTransportKind` is the sanctioned relay definition
-	// (`delivery/relayConfiguration.ts`), which is the question this actually asks.
+	// this gate asks `isRelayTransportKind`, the sanctioned relay definition
+	// (`delivery/relayConfiguration.ts`), and never `route?.providerType !== 'ses'`:
+	// SES is not the only relay `setRoute` saves, and an identically-configured
+	// Mandrill / bring-your-own-SMTP / plugin relay must not fall through to
+	// re-resolving a governed relay route it is already on, with
+	// `forceRelayReason` — two relays, one configuration, two code paths, told
+	// apart by name.
 	if (baseProviderKind === OWN_ARM_TRANSPORT_KIND && !isRelayTransportKind(route?.providerType)) {
 		const relayReason = decision.reason === 'warmup_overflow' ? 'warmup_overflow' : 'breaker_open';
 		const relay = await ctx.runQuery(internal.lib.sendProviders.route.resolveGovernedRelayRoute, {

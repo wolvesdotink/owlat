@@ -170,15 +170,10 @@ async function onSubmitAdd() {
 
 <template>
 	<div class="space-y-6">
-		<!-- Header -->
-		<div>
-			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-				{{ t('dashboard.admin.team.senders.title') }}
-			</h1>
-			<p class="mt-1 text-text-secondary">
-				{{ t('dashboard.admin.team.senders.intro') }}
-			</p>
-		</div>
+		<UiPageHeader
+			:title="t('dashboard.admin.team.senders.title')"
+			:description="t('dashboard.admin.team.senders.intro')"
+		/>
 
 		<!-- No organization -->
 		<div

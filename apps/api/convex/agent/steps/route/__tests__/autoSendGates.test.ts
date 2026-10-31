@@ -8,6 +8,7 @@ import {
 	runCoreFinalAutoSendGates,
 	runPreAutonomyGates,
 } from '../autoSendGates';
+import type { StepWrite } from '../../../stepWrites';
 
 const inboundMessageId = 'message_test' as Id<'inboundMessages'>;
 const mondayAtThreeUtc = Date.UTC(2026, 6, 6, 3, 0, 0);
@@ -46,7 +47,6 @@ interface GateFixture {
 				readonly isEnforced: boolean;
 		  }
 		| 'throw';
-	readonly shadowWrite?: 'throw';
 }
 
 function context(fixture: GateFixture = {}) {
@@ -56,7 +56,6 @@ function context(fixture: GateFixture = {}) {
 		runMutation: async (reference: unknown, args: Record<string, unknown>) => {
 			const name = getFunctionName(reference as Parameters<typeof getFunctionName>[0]);
 			mutations.push({ name, args });
-			if (fixture.shadowWrite === 'throw') throw new Error('fixture write failed');
 			return null;
 		},
 		runQuery: async (reference: unknown) => {
@@ -95,10 +94,12 @@ function resolve<Value>(value: Value | 'throw'): Value {
 
 async function finalDecision(fixture: GateFixture = {}) {
 	const { action, calls, mutations } = context(fixture);
+	const writes: StepWrite[] = [];
 	return {
-		decision: await runCoreFinalAutoSendGates(action, inboundMessageId),
+		decision: await runCoreFinalAutoSendGates(action, inboundMessageId, writes),
 		calls,
 		mutations,
+		writes,
 	};
 }
 
@@ -309,42 +310,38 @@ describe('ordered core auto-send gate registry', () => {
 			reason: 'Item coverage: an open item the reply should answer is not addressed',
 		} as const;
 
-		it('lets the send through in shadow mode and logs the objection', async () => {
-			const { decision, mutations } = await finalDecision({
+		it('lets the send through in shadow mode and logs the objection with the step', async () => {
+			const { decision, mutations, writes } = await finalDecision({
 				coverage: { ...objection, isEnforced: false },
 			});
 			expect(decision).toEqual({ safe: true });
-			expect(mutations).toHaveLength(1);
-			expect(mutations[0]!.name).toContain('planGate:recordShadow');
-			expect(mutations[0]!.args).toEqual({
-				inboundMessageId,
-				objections: ['not_addressed', 'file_missing'],
-				reason: objection.reason,
-			});
+			// The route step's commit records it; the gate writes nothing itself.
+			expect(mutations).toEqual([]);
+			expect(writes).toEqual([
+				{
+					kind: 'item_coverage_shadow',
+					objections: ['not_addressed', 'file_missing'],
+					reason: objection.reason,
+				},
+			]);
 		});
 
 		it('holds the send when enforced, without a shadow log', async () => {
-			const { decision, mutations } = await finalDecision({
+			const { decision, mutations, writes } = await finalDecision({
 				coverage: { ...objection, isEnforced: true },
 			});
 			expect(decision).toEqual({ safe: false, reason: objection.reason });
 			expect(mutations).toEqual([]);
+			expect(writes).toEqual([]);
 		});
 
 		it('passes without writing anything when nothing objects', async () => {
-			const { decision, mutations } = await finalDecision({
+			const { decision, mutations, writes } = await finalDecision({
 				coverage: { objections: [], reason: null, isEnforced: true },
 			});
 			expect(decision).toEqual({ safe: true });
 			expect(mutations).toEqual([]);
-		});
-
-		it('a failed shadow log never changes the shadow decision', async () => {
-			const { decision } = await finalDecision({
-				coverage: { ...objection, isEnforced: false },
-				shadowWrite: 'throw',
-			});
-			expect(decision).toEqual({ safe: true });
+			expect(writes).toEqual([]);
 		});
 
 		it('fails closed when the coverage state cannot be read', async () => {

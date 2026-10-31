@@ -28,10 +28,9 @@
  * (gateConfig), which makes `aggregateRampGates` set `requiresCorroboration`,
  * which is what `controller.ts` and `paceActuator.ts` turn into an
  * `awaiting_corroboration` hold. That is the path that runs on every tick, and
- * since #504 it is the ONLY path: `analytics.seedPlacement.getGateVerdict`
- * restated the same corroboration rule over the PROVIDER roll-up — pooled across
- * streams, where a ramp evaluation is per cell — with no production caller, and
- * was deleted rather than left as a second route to one rule.
+ * it is the ONLY path: no query restates the corroboration rule over the
+ * PROVIDER roll-up — pooled across streams, where a ramp evaluation is per
+ * cell — because a second route to one rule is free to drift from it.
  *
  * ONE IMPLEMENTATION, NOT TWO. Standalone is the DEGENERATE CASE, exactly as
  * the standalone boolean is a degenerate share: with no reference-arm probes

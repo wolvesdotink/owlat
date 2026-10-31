@@ -63,7 +63,7 @@ const modules = Object.fromEntries(
 
 /**
  * The wizard's count once it is exact: an audience past one page is counted by
- * the job (#916), so request it, run it to the end, then read the readout.
+ * the job, so request it, run it to the end, then read the readout.
  */
 async function exactRecipientCount(t: TestConvex<typeof schema>, audience: StoredAudience) {
 	vi.useFakeTimers();
@@ -196,7 +196,7 @@ describe('selectRecipient — the eligibility predicate', () => {
 		});
 	});
 
-	// G-02 (#459): `engagementScore` rides the recipient projection so the enqueue
+	// G-02: `engagementScore` rides the recipient projection so the enqueue
 	// path can put it on the send envelope without re-reading the contact row. It
 	// has been dropped once by a module split already — pin it at BOTH layers.
 	it('projects engagementScore, and omits it when the scorer has not reached the contact', () => {
@@ -289,7 +289,7 @@ describe('Audience resolution — count and send share one predicate', () => {
 		expect(count.total).toBe(6); // raw membership count
 		expect(count.total - count.eligible).toBe(4); // honest excluded gap
 
-		// G-02 (#459): the resolved recipient carries `engagementScore` through the
+		// G-02: the resolved recipient carries `engagementScore` through the
 		// real Convex entry point, not just through the pure predicate. A module
 		// split that drops the field off `projectRecipient` fails HERE.
 		const alice = resolved.find((r) => r.email === 'alice@match.com');
@@ -665,7 +665,7 @@ describe('resolveRecipientPage — per-page drain equivalence', () => {
 	});
 });
 
-// ── 6. Bounded wizard readout + the resumable exact count (#916) ───────────
+// ── 6. Bounded wizard readout + the resumable exact count ───────────
 
 /** `count` live contacts all matching one `email contains` segment. */
 async function seedWideSegment(t: TestConvex<typeof schema>, count: number, domain: string) {
@@ -874,12 +874,12 @@ describe('countRecipients — bounded readout and exact count job', () => {
 
 // ── 7. Global unsubscribe honored across segment campaigns (PR-09) ─────────
 //
-// Unsubscribe used to be modeled ONLY as a contactTopics delete, but segment
-// audiences select from the contacts table independent of topic membership —
-// so a globally-unsubscribed Contact was still emailed by any matching segment
-// campaign (CAN-SPAM/GDPR violation). The fix writes a persistent
-// `contacts.unsubscribedAt` opt-out that `selectRecipient` consults on BOTH
-// paths. These tests drive the real `unsubscribeAllForContact` entry (not a
+// A contactTopics delete alone cannot model a global unsubscribe: segment
+// audiences select from the contacts table independent of topic membership,
+// so a globally-unsubscribed Contact would still be emailed by any matching
+// segment campaign (CAN-SPAM/GDPR violation). Global unsubscribe writes a
+// persistent `contacts.unsubscribedAt` opt-out that `selectRecipient` consults
+// on BOTH paths. These tests drive the real `unsubscribeAllForContact` entry (not a
 // hand-set field) so they cover the end-to-end signal.
 
 describe('Audience resolution — honors global unsubscribe across segments (PR-09)', () => {

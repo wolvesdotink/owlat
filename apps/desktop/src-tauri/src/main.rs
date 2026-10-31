@@ -8,6 +8,16 @@ compile_error!(
     "the `dev-provisioning` feature is for development builds only; build releases without it"
 );
 
+// The smoke-test and updater end-to-end instrumentation (e2e.rs) also lets the
+// updater trust a loopback http origin. It must never ship, so like
+// `dev-provisioning` it does not compile into an optimized build.
+#[cfg(all(feature = "e2e-fixture", not(debug_assertions)))]
+compile_error!(
+    "the `e2e-fixture` feature is for the debug fixture builds of scripts/desktop-smoke.ts only"
+);
+
+#[cfg(feature = "e2e-fixture")]
+mod e2e;
 mod files;
 #[cfg(test)]
 mod ipc_commands;
@@ -26,7 +36,7 @@ mod zoom;
 use tauri::Manager;
 
 fn main() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         // single-instance MUST be the first plugin: a second launch (e.g. from a
         // deep link) focuses the running window instead of spawning a new process.
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
@@ -172,7 +182,11 @@ fn main() {
             app.on_menu_event(|app, event| menu::handle_menu_event(app, event.id.as_ref()));
 
             Ok(())
-        })
+        });
+    // The instrumentation is inert unless the harness asks for it; see e2e.rs.
+    #[cfg(feature = "e2e-fixture")]
+    let builder = e2e::attach(builder);
+    builder
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app, event| {

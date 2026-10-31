@@ -317,7 +317,7 @@ describe('mtaAdapter.parseEvent', () => {
 	});
 
 	it('attributes by Message-ID and carries the recipient when both are present', () => {
-		// The dispatcher reads the address only when the id matches no send (#1194).
+		// The dispatcher reads the address only when the id matches no send.
 		const event = mtaAdapter.parseEvent(
 			JSON.stringify({
 				event: 'complained',

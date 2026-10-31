@@ -42,7 +42,7 @@
  * `webhookUrlValidationProbe` from `../providerFeedbackHttp.ts`; the empty batch
  * parses to zero events and the pipeline acknowledges it without dispatching.
  *
- * REPLAY (#1228). `reject` (a blocklist mirror) and `unsub` act on an ADDRESS
+ * REPLAY. `reject` (a blocklist mirror) and `unsub` act on an ADDRESS
  * whatever the Send's state, so a replay could undo an operator's unblock or a
  * contact's re-subscribe. For `reject`, `unsub` and `spam`:
  *  - the host refuses a re-add older than an operator's removal
@@ -222,7 +222,7 @@ export const MANDRILL_REJECT_CODE_PREFIX = 'MANDRILL_REJECT';
  *    and nothing else happens. Suppressing on them would let a misconfigured
  *    sending domain, or one rules-engine rule on a subject, sender, tag,
  *    template or API key, permanently blocklist an entire audience one send at
- *    a time (#1249). A `rule` reject writes nothing to the denylist, and the
+ *    a time. A `rule` reject writes nothing to the denylist, and the
  *    event does not say which rule fired or what it matched.
  *
  * WHAT OWLAT DOES about each of these members — which blocklist reason, which
@@ -392,7 +392,7 @@ export function mapMandrillEvent(item: MandrillEventItem): InboundEvent | null {
 		case 'spam': {
 			if (!providerMessageId) return null;
 			// Mandrill events are per recipient, so `msg.email` is the complainer.
-			// It rides along for a complaint whose id matches no send (#1194).
+			// It rides along for a complaint whose id matches no send.
 			// A replayed complaint is a lifecycle duplicate already; inside its
 			// window the key also keeps it from being counted again as unresolved
 			// feedback.
@@ -410,7 +410,7 @@ export function mapMandrillEvent(item: MandrillEventItem): InboundEvent | null {
 			// The one event keyed by ADDRESS rather than by send: Mandrill's
 			// unsubscribe surface reports who left, and the dispatcher joins that
 			// to a Contact and replays the public one-click path. It is ordered
-			// against a later re-subscribe, so an unstamped one is dropped (#1228).
+			// against a later re-subscribe, so an unstamped one is dropped.
 			if (!recipient || !isOrderable(item, Date.now())) return null;
 			const replayKey = mandrillReplayKey(item);
 			return {
@@ -436,7 +436,7 @@ export function mapMandrillEvent(item: MandrillEventItem): InboundEvent | null {
 			// rather than the person (`rule` included), so those suppress nobody.
 			//
 			// The suppression acts on an address whatever the Send's state, so it
-			// rides only on an orderable event (#1228). An unstamped reject still
+			// rides only on an orderable event. An unstamped reject still
 			// fails its Send, which is idempotent on its own.
 			if (!providerMessageId) return null;
 			const errorCode = mandrillRejectCode(item.msg?.reject_reason);

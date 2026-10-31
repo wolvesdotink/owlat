@@ -1,12 +1,12 @@
-import { internal } from './_generated/api';
-import type { ActionCtx } from './_generated/server';
+import { internal } from '../_generated/api';
+import type { ActionCtx } from '../_generated/server';
 import {
 	createAuthenticatedHandler,
 	requireScope,
 	type AuthenticatedContext,
-} from './auth/apiHandlers';
-import { jsonResponse, errorResponse } from './auth/apiResponses';
-import { isValidEmail, normalizeEmail } from './lib/inputGuards';
+} from '../auth/apiHandlers';
+import { jsonResponse, errorResponse } from '../auth/apiResponses';
+import { isValidEmail, normalizeEmail } from '../lib/inputGuards';
 import type { SendEventResponse } from '@owlat/public-contract';
 import { decodeRequest, sendEventRequestSchema } from '@owlat/public-contract/schemas';
 import {
@@ -14,7 +14,7 @@ import {
 	readIdempotencyKey,
 	replayHeaders,
 	resolveIdempotency,
-} from './auth/apiRequestReceipts';
+} from '../auth/apiRequestReceipts';
 
 /**
  * POST /api/v1/events - Send an event to trigger automations

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, useId } from 'vue';
 import { Braces, Plus, TriangleAlert } from '@lucide/vue';
+import UiTooltip from '@owlat/ui/components/ui/Tooltip.vue';
 import type { Variable } from '../../types';
 import VariablePlaceholderTag from '../ui/VariablePlaceholderTag.vue';
 import VariablePickerMenu from './VariablePickerMenu.vue';
@@ -218,19 +219,19 @@ const subjectPlaceholder = computed(() =>
 							@click="canInsertVariables && syncTrigger($event.target as HTMLInputElement)"
 							@blur="closePicker"
 						/>
-						<button
-							v-if="canInsertVariables"
-							type="button"
-							data-testid="subject-insert-variable"
-							class="mr-1 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium text-text-secondary hover:bg-bg-surface-hover hover:text-text-primary transition-colors"
-							:title="t('builder.subject.insertVariableTitle')"
-							:aria-label="t('builder.subject.insertVariable')"
-							@mousedown.prevent
-							@click="handleInsertButton"
-						>
-							<Braces :size="12" />
-							{{ t('builder.subject.variable') }}
-						</button>
+						<UiTooltip v-if="canInsertVariables" :text="t('builder.subject.insertVariableTitle')">
+							<button
+								type="button"
+								data-testid="subject-insert-variable"
+								class="mr-1 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium text-text-secondary hover:bg-bg-surface-hover hover:text-text-primary transition-colors"
+								:aria-label="t('builder.subject.insertVariable')"
+								@mousedown.prevent
+								@click="handleInsertButton"
+							>
+								<Braces :size="12" />
+								{{ t('builder.subject.variable') }}
+							</button>
+						</UiTooltip>
 					</div>
 					<VariablePickerMenu
 						v-if="pickerVisible"
@@ -290,15 +291,16 @@ const subjectPlaceholder = computed(() =>
 					:key="variable.key"
 					:label="variable.key"
 				/>
-				<button
-					type="button"
-					class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-dashed border-border-default text-xs text-text-secondary hover:bg-bg-surface-hover hover:text-text-primary hover:border-border-strong transition-colors"
-					:title="t('builder.subject.newVariableTitle')"
-					@click="emit('add-variable')"
-				>
-					<Plus :size="12" />
-					{{ t('builder.subject.newVariable') }}
-				</button>
+				<UiTooltip :text="t('builder.subject.newVariableTitle')">
+					<button
+						type="button"
+						class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-dashed border-border-default text-xs text-text-secondary hover:bg-bg-surface-hover hover:text-text-primary hover:border-border-strong transition-colors"
+						@click="emit('add-variable')"
+					>
+						<Plus :size="12" />
+						{{ t('builder.subject.newVariable') }}
+					</button>
+				</UiTooltip>
 			</div>
 		</div>
 	</div>

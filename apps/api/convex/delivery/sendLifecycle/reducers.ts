@@ -315,9 +315,9 @@ export function reduceOpened(
 
 	// `openedAt` marks the first reader open whatever the status (as read by
 	// `sendEngagement.ts`). Soft-bounced and complained rows get it but keep their
-	// status, so a re-open is not a first open again (#1189); a legacy `openCount`
+	// status, so a re-open is not a first open again; a legacy `openCount`
 	// without it means the same. Hard-bounced rows never get here, and complained
-	// rows emit no contact activity (#1225, see ./engagementActivity).
+	// rows emit no contact activity (see ./engagementActivity).
 	const isFirstOpen = !send.openedAt && !send.openCount;
 	const patch: Record<string, unknown> = { openCount: (send.openCount ?? 0) + 1 };
 	if (isFirstOpen) {

@@ -3,14 +3,13 @@
  * see them.
  *
  * The variants belong to one agent draft: `draftOptions[0]` is that draft and
- * the rest are alternatives to it. Since #1196 every write that changes the
- * draft clears them, but a row stored before that can still carry variants of
- * a draft it no longer shows. A web build from before #1196 approves
- * `draftOptions[0]` over the shown draft whenever there are two or more, so the
- * read boundary hands out only the shown draft's variants: such a client then
- * approves the text it shows.
+ * the rest are alternatives to it. Every write that changes the draft clears
+ * them, but an older row can still carry variants of a draft it no longer
+ * shows. An older web build approves `draftOptions[0]` over the shown draft
+ * whenever there are two or more, so the read boundary hands out only the
+ * shown draft's variants: such a client then approves the text it shows.
  *
- * Since #1200 nothing writes variants: this serves rows stored before that.
+ * No write path sets variants: this only serves rows that already carry them.
  *
  * Pure (no ctx, no imports).
  */

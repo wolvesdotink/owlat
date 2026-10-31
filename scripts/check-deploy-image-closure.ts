@@ -6,7 +6,7 @@
  * the Convex bundle needs into the deploy stage by hand. That list has rotted
  * before: `@owlat/shared` grew an import of `@owlat/mail-message`, nothing
  * failed until `convex deploy` inside the released image died with
- * "Could not resolve @owlat/mail-message/parse/headers" (issue #551).
+ * "Could not resolve @owlat/mail-message/parse/headers".
  *
  * This gate recomputes the closure from source on every run:
  *

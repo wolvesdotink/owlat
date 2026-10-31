@@ -5,8 +5,7 @@
  * `import.meta.glob` excludes the directory chain it climbed up through: a
  * single glob rooted here omits the `delivery/` directory it passed on the way
  * up. So we merge a second glob rooted at `delivery/` and re-prefix its keys.
- * Previously copy-pasted verbatim into every SNDS suite; extracted here so the
- * next test imports it instead of accreting a fifth copy.
+ * Every SNDS suite imports this one map rather than pasting its own copy.
  */
 
 const rootGlob = import.meta.glob('../../../**/*.*s');

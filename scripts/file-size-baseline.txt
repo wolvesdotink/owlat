@@ -1,12 +1,9 @@
 apps/api/convex/agentHealth.ts
-apps/api/convex/campaigns/lifecycle.ts
-apps/api/convex/campaigns/send.ts
 apps/api/convex/contacts/contacts.ts
 apps/api/convex/contacts/doiLifecycle.ts
 apps/api/convex/semanticFiles.ts
 apps/api/convex/topics/subscription.ts
 apps/api/convex/topics/topics.ts
-apps/api/convex/transactional/lifecycle.ts
 apps/api/convex/unifiedMessages.ts
 apps/web/app/components/campaigns/steps/ReviewStep.vue
 apps/web/app/components/postbox/PostboxThreadReader.vue
@@ -14,13 +11,9 @@ apps/web/app/components/translation/Manager.vue
 apps/web/app/composables/useOrganization.ts
 apps/web/app/data/marketingTemplatePresets.ts
 apps/web/app/layouts/dashboard.vue
-apps/web/app/pages/dashboard/admin/instance/forms.vue
-apps/web/app/pages/dashboard/admin/instance/properties.vue
 apps/web/app/pages/dashboard/admin/operator/index.vue
 apps/web/app/pages/dashboard/admin/team/api/index.vue
 apps/web/app/pages/dashboard/admin/team/index.vue
-apps/web/app/pages/dashboard/audience/contacts/[id].vue
-apps/web/app/pages/dashboard/audience/contacts/index.vue
 apps/web/app/pages/dashboard/automations/[id]/edit.vue
 apps/web/app/pages/dashboard/campaigns/[id]/edit.vue
 apps/web/app/pages/dashboard/campaigns/[id]/report.vue
@@ -30,7 +23,3 @@ apps/web/app/pages/dashboard/knowledge/[id].vue
 apps/web/app/pages/dashboard/postbox/migrate.vue
 apps/web/app/pages/dashboard/preferences/account.vue
 apps/web/app/pages/desktop/setup.vue
-packages/email-builder/src/components/EmailBuilder.vue
-packages/email-builder/src/preview/components/ClientSelector.vue
-packages/email-builder/src/preview/components/EmailPreviewer.vue
-packages/email-builder/src/preview/components/RenderOptionsPanel.vue

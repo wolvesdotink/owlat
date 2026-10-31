@@ -4,7 +4,7 @@ import { mount, type VueWrapper } from '@vue/test-utils';
 import EmailPreviewer from '../EmailPreviewer.vue';
 
 /**
- * The previewer tells its host when AMP is needed (issue #923): only the AMP
+ * The previewer tells its host when AMP is needed: only the AMP
  * view and the export menu read it, so the host renders AMP on request instead
  * of for every preview.
  */

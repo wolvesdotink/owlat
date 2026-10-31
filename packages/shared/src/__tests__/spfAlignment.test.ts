@@ -103,8 +103,8 @@ describe('organizationalDomain — Public Suffix List boundaries', () => {
 	});
 
 	it('closes the co.uk relaxed-alignment bypass: attacker.co.uk is NOT aligned with victim.co.uk', () => {
-		// Previously both mapped to `co.uk` and this returned true — a From-spoofing
-		// authentication bypass. Now the organizational domains differ.
+		// Mapping both to `co.uk` would return true here — a From-spoofing
+		// authentication bypass. The organizational domains differ.
 		expect(isSpfAligned('attacker.co.uk', 'victim.co.uk', 'relaxed')).toBe(false);
 		// A genuine subdomain of the same org still aligns.
 		expect(isSpfAligned('mail.victim.co.uk', 'victim.co.uk', 'relaxed')).toBe(true);

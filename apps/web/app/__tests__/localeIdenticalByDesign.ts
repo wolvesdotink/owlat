@@ -342,8 +342,6 @@ export const INTENTIONALLY_IDENTICAL_KEYS: readonly string[] = [
 	'setup.email.providers.mandrill.label',
 	'setup.email.providers.resend.label',
 	'setup.email.providers.ses.label',
-	'setup.email.sesRegionLabel',
-	'setup.email.smtpPortLabel',
 	'setup.review.adminName',
 	'shared.accountExportResources.domains',
 	'shared.accountExportResources.webhooks',

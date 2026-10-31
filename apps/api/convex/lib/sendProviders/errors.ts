@@ -44,7 +44,7 @@ export enum EmailErrorCode {
 	 * this sending identity, and gate 2 halts a cell at 25% of those; this one
 	 * says our own storage failed with no receiver involved, so
 	 * `delivery/governedDispatch.ts` marks its deferral `local` and the gate does
-	 * not count it (issue #505). The wire code is
+	 * not count it. The wire code is
 	 * `ROUTING_LEASE_UNREADABLE_CODE` in `@owlat/shared`.
 	 */
 	ROUTING_LEASE_UNREADABLE = 'ROUTING_LEASE_UNREADABLE',
@@ -65,7 +65,7 @@ export type EmailSendAttempt =
 			 * The recipient consequence the provider attached to a refusal in its
 			 * own send response (a Mandrill `rejected` result off its reject list),
 			 * minted by the adapter from the same table its webhook uses. The
-			 * governed dispatch records it before it fails the send (#1243).
+			 * governed dispatch records it before it fails the send.
 			 */
 			suppression?: ProviderSuppression;
 	  };

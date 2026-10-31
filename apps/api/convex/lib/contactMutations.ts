@@ -195,7 +195,7 @@ async function mergeDraftStrategySelections(
  * Why `contactId` cannot take part in a merge, or `undefined` when it can. A
  * soft-deleted contact is on its way to erasure and one with an erasure job is
  * being erased: rows moved off it onto a live contact would leave the
- * erasure's reach, and rows moved onto it would be erased with it (#1337).
+ * erasure's reach, and rows moved onto it would be erased with it.
  */
 export async function contactMergeBlocker(
 	ctx: MutationCtx,

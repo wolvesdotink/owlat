@@ -2,7 +2,7 @@
  * `runLlmStream` (lib/llm/dispatch.ts) against the real AI SDK step loop with a
  * scripted model: a document-body caller (`finalStepOnly`) keeps only the text
  * after the last tool call, so narration such as "Let me check availability…"
- * never reaches the draft (#1254); a chat caller keeps the whole transcript.
+ * never reaches the draft; a chat caller keeps the whole transcript.
  */
 
 import { describe, it, expect, vi } from 'vitest';

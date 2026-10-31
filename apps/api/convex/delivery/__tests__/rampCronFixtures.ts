@@ -339,7 +339,7 @@ export async function connectTwoRelays(t: Harness): Promise<void> {
  * TWO RELAY KINDS ACROSS THE TWO SURFACES — campaign through a `providerRoutes`
  * SES entry, and the instance default through `EMAIL_PROVIDER=resend`.
  *
- * THE SHAPE THAT ACTUALLY LOSES THE CONFIRMATION (#513), and the reason it is a
+ * THE SHAPE THAT ACTUALLY LOSES THE CONFIRMATION, and the reason it is a
  * separate fixture from {@link connectTwoRelays}. Both are two-kind
  * configurations that leave `referenceRelayTransportId` with no single arm to
  * name — but this one has a relay in the ENV, so applying `EMAIL_PROVIDER=mta`

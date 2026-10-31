@@ -308,10 +308,10 @@ describe('dispatchGovernedEmail', () => {
 		});
 	});
 
-	// ISSUE #505. Same 409 status, same wait, same bounded re-entry — and the
+	// Same 409 status, same wait, same bounded re-entry — and the
 	// opposite claim: the MTA could not read back a lease record it wrote, so no
 	// receiver refused anything and nothing was decided about this identity.
-	// Marking it `governed` let a lease-store outage spend gate 2's 10% ceiling
+	// Marking it `governed` would let a lease-store outage spend gate 2's 10% ceiling
 	// and walk a cell towards its 25% halt.
 	it('defers an unreadable-lease answer as our own fault, not the identity’s', async () => {
 		runMutation
@@ -667,7 +667,7 @@ describe('dispatchGovernedEmail', () => {
 });
 
 /**
- * A PROVIDER REFUSAL CARRYING A SUPPRESSION (#1243). Mandrill refuses an
+ * A PROVIDER REFUSAL CARRYING A SUPPRESSION. Mandrill refuses an
  * address off its reject list in the send response itself; the refusal is
  * mirrored there, before the send fails, and the Send is left alone.
  */
@@ -833,8 +833,8 @@ describe('a provider refusal that carries a suppression', () => {
 /**
  * THE GOVERNED BOUNDARY ASKS THE CATALOG, NOT THE KIND.
  *
- * Four behaviours used to be spelled `providerKind === 'mta'` in
- * `governedDispatch.ts`: the pre-dispatch identity binding, the message-id
+ * Four behaviours in `governedDispatch.ts` follow the catalog's declared
+ * semantics, never `providerKind === 'mta'`: the pre-dispatch identity binding, the message-id
  * substitution, `isCustodyHandoff`, and the replay-reconciliation arm of an
  * ambiguous acceptance. Each case below drives a send whose DECLARED semantics
  * contradict its kind — custody on a relay, none on the MTA — so the suite fails

@@ -211,20 +211,16 @@ function teamInput(category = 'support'): ClarifyInput {
 	};
 }
 
-function teamCtx(fills: { questionId: string; value: string }[] = []) {
+function teamCtx(fills: { questionId: string; value: string; rowId?: string }[] = []) {
 	const writes: unknown[] = [];
 	const ctx = makeStepCtx<Parameters<typeof clarifyStep.execute>[0]>({
 		queries: {
 			getAskEagernessInternal: { mode: null },
 			getMessage: { contextCoverage: { lowCoverage: true }, contactId: 'contact_golden' },
 			routingContext: { policy: { clarifyNecessity: 'off', policyVersion: 0 } },
-		},
-		mutations: {
-			recordClarificationAsk: (args) => {
-				writes.push({ ask: args });
-				return undefined;
-			},
-			resolveFills: (args) => {
+			// The lookup is a read; the ask log and the answers' use come back in
+			// `result.writes`, for the walker's commit.
+			lookupFills: (args) => {
 				writes.push({ fills: args });
 				return { fills };
 			},
@@ -236,7 +232,9 @@ function teamCtx(fills: { questionId: string; value: string }[] = []) {
 describe('golden: Team clarify step, necessity off', () => {
 	it('asks the divergent slots, with memory fills, as before', async () => {
 		answer({ divergent: [1, 2] });
-		const { ctx, writes } = teamCtx([{ questionId: 'clarify_2', value: 'Contract B' }]);
+		const { ctx, writes } = teamCtx([
+			{ questionId: 'clarify_2', value: 'Contract B', rowId: 'memory_golden' },
+		]);
 		const result = await clarifyStep.execute(ctx, teamInput());
 		await expect({ result, writes, log: logged().calls }).toMatchFileSnapshot(
 			'./__golden__/team-asks.golden'

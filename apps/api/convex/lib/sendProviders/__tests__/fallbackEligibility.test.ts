@@ -128,8 +128,8 @@ describe('DeliverabilityRouteError — kind-agnostic copy', () => {
 	});
 
 	it('names no provider in either refusal', () => {
-		// The `unavailable` message used to read "enable the verified Amazon SES
-		// transport" — true only while the gate above it WAS `!== 'ses'`. Asserted
+		// A provider name in the `unavailable` message ("enable the verified Amazon
+		// SES transport") is true only while the gate above it is `!== 'ses'`. Asserted
 		// against the catalog rather than against a literal, so the day a sixth
 		// kind lands its label cannot be pasted into this copy either.
 		for (const reason of ['unverified', 'unavailable'] as const) {

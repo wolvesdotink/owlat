@@ -14,17 +14,17 @@
  * WHAT THE SCREEN AND THE CONTROLLER AGREE ON, PRECISELY: THE VERDICT. One rule
  * over one span. The rule is shared — which evaluator grades the cell, which
  * constants it grades on and which complaint line applies are read off one
- * `resolveRampDegradation` fold on both sides — and BOTH ARMS now reach that
+ * `resolveRampDegradation` fold on both sides — and BOTH ARMS reach that
  * evaluator summarized over the CONTROLLER'S evaluation window
  * (`RAMP_AIMD.evaluationWindowMs`, the cadence its cron ticks at), anchored on
  * the same clock. A hard-bounce spike four days old is outside that span on both
- * sides, so the screen no longer renders a red gate-1 fail on a cell the ramp is
- * holding for want of data (#510).
+ * sides, so the screen does not render a red gate-1 fail on a cell the ramp is
+ * holding for want of data.
  *
- * THE SEVEN DAYS DID NOT GO AWAY — THEY STOPPED DECIDING. `DASHBOARD_WINDOW_DAYS`
- * is still what the arm table, the trend, the sample counts and the confidence
- * cap are reported over; the harm in #510 was a VERDICT that
- * disagreed, not a column that was wide. So each arm is summarized TWICE out of
+ * THE SEVEN DAYS ARE REPORTED, NOT DECIDING. `DASHBOARD_WINDOW_DAYS`
+ * is what the arm table, the trend, the sample counts and the confidence
+ * cap are reported over; the harm to avoid is a VERDICT that
+ * disagrees, not a column that is wide. So each arm is summarized TWICE out of
  * the one index read it already costs — the deciding span for the evaluator, the
  * reported window for the cards — and BOTH ARE NAMED ON THE WIRE
  * (`windowStart`/`windowEnd` beside `decisionWindowStart`/`decisionWindowEnd`),
@@ -159,7 +159,7 @@ export const getDeliverabilityDashboard = authedQuery({
 	// No arguments AT ALL, on purpose: the REPORTED window is fixed at
 	// `DASHBOARD_WINDOW_DAYS` and the DECIDING span at the controller's cadence.
 	// A caller-chosen window would silently change what every number here is over,
-	// and a caller-chosen deciding span what its verdicts mean (#510).
+	// and a caller-chosen deciding span what its verdicts mean.
 	args: {},
 	handler: async (ctx): Promise<DeliverabilityDashboard> => {
 		const organizationId = await getSingletonOrganizationId(ctx);
@@ -236,7 +236,7 @@ export const getDeliverabilityDashboard = authedQuery({
 			windowStart: spans.window.sinceDay,
 			windowEnd: spans.window.untilDay,
 			// THE SPAN THE VERDICTS WERE REACHED OVER, on the wire beside the reported
-			// one so the screen can name both (#510). Open-ended in the summary, so its
+			// one so the screen can name both. Open-ended in the summary, so its
 			// end is the read's own clock — the `now` every gate was evaluated at.
 			decisionWindowStart: spans.decisionWindow.since,
 			decisionWindowEnd: now,

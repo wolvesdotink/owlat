@@ -3,7 +3,7 @@ import type { EditorBlock } from '@owlat/shared';
 import { renderAmpEmail } from '../amp';
 import { renderBlockFragment, renderEmailHtml } from '../renderer';
 
-// A Block without an id (#1432). Legacy saved Blocks were stored without one;
+// A Block without an id. Legacy saved Blocks were stored without one;
 // the readers give every Block an id, but a direct caller can still pass one
 // in. The renderer fills the id at its entry points, so no block module (data
 // attribute, responsive CSS selector, link tracking, accordion toggle) meets

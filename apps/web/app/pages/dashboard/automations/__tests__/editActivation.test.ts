@@ -12,6 +12,7 @@ import {
 	mountEditPage,
 	stubEditPage,
 } from '~/__tests__/automationEditPageHarness';
+import { focusTooltip, tooltipOf } from '~/__tests__/tooltip';
 
 describe('activation waits for the open step to be saved', () => {
 	beforeEach(() => {
@@ -83,6 +84,45 @@ describe('activation waits for the open step to be saved', () => {
 
 		expect(steps.flushStepSave).toHaveBeenCalled();
 		expect(runs.resume).toHaveBeenCalledTimes(1);
+		wrapper.unmount();
+	});
+});
+
+describe('Activate on a draft that cannot be activated yet', () => {
+	beforeEach(() => {
+		vi.resetModules();
+	});
+
+	it('stays reachable, lists what is missing in its tooltip, and does nothing when pressed', async () => {
+		const { steps, runs, canActivate, showToast } = stubEditPage();
+		canActivate.value = {
+			valid: false,
+			reasons: ['Step 1: choose an email', 'Add a trigger'],
+		};
+		const wrapper = await mountEditPage();
+		const activate = button(wrapper, 'Activate');
+
+		expect(activate.attributes('disabled')).toBeUndefined();
+		expect(activate.attributes('aria-disabled')).toBe('true');
+		expect(activate.attributes('title')).toBeUndefined();
+		expect(tooltipOf(wrapper, activate)).toBe('Step 1: choose an email, Add a trigger');
+		expect(await focusTooltip(activate)).toBe('Step 1: choose an email, Add a trigger');
+
+		await activate.trigger('click');
+		await flushPromises();
+		expect(steps.flushStepSave).not.toHaveBeenCalled();
+		expect(runs.activate).not.toHaveBeenCalled();
+		expect(showToast).not.toHaveBeenCalled();
+		wrapper.unmount();
+	});
+
+	it('says what Activate does once the draft is ready', async () => {
+		stubEditPage();
+		const wrapper = await mountEditPage();
+		const activate = button(wrapper, 'Activate');
+
+		expect(activate.attributes('aria-disabled')).toBeUndefined();
+		expect(tooltipOf(wrapper, activate)).toBe('Activate this automation');
 		wrapper.unmount();
 	});
 });

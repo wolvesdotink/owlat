@@ -426,8 +426,8 @@ describe('the screen reports the verdict the controller reached', () => {
  *
  * WHAT AGREEMENT DOES NOT MEAN HERE. The rule is shared; the SPAN EITHER ARM is
  * summarized over is not (7 days here, 1 there), so the two readers can still
- * reach different verdicts on one cell. That is #510 — it names both arms, and
- * the last case in this describe pins the own one rather than leaving the gap to
+ * reach different verdicts on one cell. That gap covers both arms, and the
+ * last case in this describe pins the own one rather than leaving the gap to
  * be discovered.
  */
 describe('the screen picks the evaluator the controller picked', () => {
@@ -495,24 +495,23 @@ describe('the screen picks the evaluator the controller picked', () => {
 	});
 
 	/**
-	 * THE THIRD SCREEN MADE THE SUBSTITUTION THIS SUITE REMOVED, until #513.
+	 * THE THIRD SCREEN MUST NOT MAKE THE SUBSTITUTION THIS SUITE REMOVED.
 	 *
-	 * `rampIndependence.getIndependenceSummary` keyed on `referenceTransportId`,
-	 * which two relay kinds leave null — so the SAME deployment the case above
-	 * grades against a measured arm was framed here as having no relay at all. The
-	 * share was not a rounding artefact: `readIndependenceSeries` skipped the
-	 * reference arm entirely, so the relay's sends were structurally absent from
-	 * the denominator and the share came out 1 on a deployment relaying half its
-	 * mail.
+	 * Keyed on `referenceTransportId`, which two relay kinds leave null,
+	 * `rampIndependence.getIndependenceSummary` would frame the SAME deployment the
+	 * case above grades against a measured arm as having no relay at all. The
+	 * share would not be a rounding artefact: a series that skips the reference
+	 * arm leaves the relay's sends structurally absent from the denominator, and
+	 * the share comes out 1 on a deployment relaying half its mail.
 	 *
 	 * AND `relayRemoval: 'safe'` IS A GUARD, NOT A SENTENCE.
 	 * `apps/web/server/api/delivery/apply-transport.post.ts` demands no
 	 * confirmation phrase on it, deliberately, because a deployment with no relay
-	 * has nothing to confirm. On this deployment it does — so disconnecting a
-	 * relay mid-ramp skipped the whole RELAY_REMOVAL_CONFIRMATION path on cells
-	 * still leaning on it.
+	 * has nothing to confirm. On this deployment it does — so a wrong `safe` lets
+	 * disconnecting a relay mid-ramp skip the whole RELAY_REMOVAL_CONFIRMATION
+	 * path on cells still leaning on it.
 	 *
-	 * The summary now keys on `isRelayConfigured`, which is the column the
+	 * The summary keys on `isRelayConfigured`, which is the column the
 	 * dashboard beside it publishes off the same scan; these two queries may not
 	 * describe one deployment two ways.
 	 */
@@ -544,7 +543,7 @@ describe('the screen picks the evaluator the controller picked', () => {
 	});
 
 	/**
-	 * THE SHAPE THAT ACTUALLY LOSES THE CONFIRMATION (#513): one relay in
+	 * THE SHAPE THAT ACTUALLY LOSES THE CONFIRMATION: one relay in
 	 * `EMAIL_PROVIDER`, one in `providerRoutes`.
 	 *
 	 * Both count toward `configuredRelayKinds()`, so `referenceTransportId` is
@@ -732,18 +731,18 @@ describe('the screen picks the evaluator the controller picked', () => {
 	});
 
 	/**
-	 * THE DIVERGENCE THAT USED TO BE PINNED HERE, PINNED SHUT (#510).
+	 * A SPIKE THE SCREEN SHOWS AND THE CONTROLLER DOES NOT GRADE.
 	 *
-	 * The fixture is the issue's, unchanged: a standalone cell — no relay
-	 * anywhere, so the evaluator choice is not in play — clean today and spiking
-	 * four days ago. The spike is inside the screen's seven-day window and
-	 * outside the controller's day, and the screen used to render a red gate-1
-	 * fail on a cell the ramp was holding for want of data.
+	 * The fixture: a standalone cell — no relay anywhere, so the evaluator choice
+	 * is not in play — clean today and spiking four days ago. The spike is inside
+	 * the screen's seven-day window and outside the controller's day; graded over
+	 * the week, the screen would render a red gate-1 fail on a cell the ramp is
+	 * holding for want of data.
 	 *
-	 * Now both readers grade both arms over the controller's span, so the VERDICT
+	 * Both readers grade both arms over the controller's span, so the VERDICT
 	 * and the DECIDING GATE are the same object on both sides — while the arm the
 	 * card renders is still the seven-day week, spike included.
-	 * That split is the whole fix, so it is asserted in one test: same verdict,
+	 * That split is the whole contract, so it is asserted in one test: same verdict,
 	 * different reported counters, and the query naming both spans on the wire.
 	 */
 	it('reports the controller’s verdict on a four-day-old spike, over the week it renders (#510)', async () => {

@@ -276,9 +276,9 @@ describe('delivery.nonCampaignIntake.intake — typed rejections', () => {
 		expect(reply.ok).toBe(true);
 	});
 
-	// Contact-level marketing eligibility (issue #809, finding 2). A global
-	// unsubscribe writes no blocklist row and a soft-deleted contact stays
-	// readable, so the blocklist gate alone let both through.
+	// Contact-level marketing eligibility. A global unsubscribe writes no
+	// blocklist row and a soft-deleted contact stays readable, so the blocklist
+	// gate alone would let both through.
 	it.each([
 		['contact_unsubscribed', { unsubscribedAt: 1 }],
 		['contact_deleted', { deletedAt: 1, deletedBy: 'user-1' }],

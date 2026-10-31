@@ -236,7 +236,7 @@ type SendEventOutcome =
  * contact or fan out a second time.
  *
  * Internal-only: the sole entry point is the API-key-authenticated REST route
- * `POST /api/v1/events` (`eventsApi.ts`), which calls this via
+ * `POST /api/v1/events` (`publicApi/events.ts`), which calls this via
  * `internal.automations.triggers.sendEvent`. It is NOT exposed on the public
  * Convex client API — an anonymous caller must not be able to fabricate events
  * or auto-create contacts.

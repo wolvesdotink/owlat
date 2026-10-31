@@ -1,5 +1,5 @@
 /**
- * The database half of `./sendingScope.ts` (#1243): does an event from outside
+ * The database half of `./sendingScope.ts`: does an event from outside
  * this deployment's sending scope match one of our Sends?
  *
  * Matching takes three facts: the provider message id names a Send, that Send

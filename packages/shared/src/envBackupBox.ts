@@ -44,7 +44,7 @@ const ENV_BACKUP_INFO = 'owlat:env-backup:values:v1';
  * and makes sealed values recognizable to an operator reading the file. The
  * `:v1:` marks the envelope layout.
  */
-export const ENV_BACKUP_SEALED_PREFIX = 'envsealed:v1:';
+const ENV_BACKUP_SEALED_PREFIX = 'envsealed:v1:';
 
 /** Whether a stored `.env` value is a sealed token produced by {@link EnvBackupBox.seal}. */
 export function isEnvBackupSealedValue(value: string): boolean {

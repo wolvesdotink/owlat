@@ -5,8 +5,8 @@
  * uniform shell shape.
  */
 
-import { internal } from './_generated/api';
-import { ADMISSION_REFUSED, publicTokenEndpoint } from './lib/publicTokenEndpoint';
+import { internal } from '../_generated/api';
+import { ADMISSION_REFUSED, publicTokenEndpoint } from '../lib/publicTokenEndpoint';
 
 interface ShareLinkData {
 	html: string;
@@ -32,7 +32,7 @@ export const getShareLink = publicTokenEndpoint(
 	},
 	async (ctx, { token, admit }) => {
 		const result = await ctx.runQuery<ShareLinkResult>(
-			internal.shareLinkQueries.getShareLinkByToken,
+			internal.shareLinks.queries.getShareLinkByToken,
 			{ token }
 		);
 

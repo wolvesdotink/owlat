@@ -69,11 +69,9 @@ export const OPTIONAL_RAMP_GATES: ReadonlySet<RampGateId> = new Set<RampGateId>(
  * with an `awaiting_corroboration` hold instead of a decrease. That is the whole
  * of the corroboration behaviour the ramp runs.
  *
- * IT IS ALSO THE ONLY ROUTE. `analytics.seedPlacement.getGateVerdict` used to
- * state the same rule over the provider roll-up with no production caller; two
- * routes to one rule is one more than a single derivation allows, so #504
- * deleted that query and
- * left the flag above as the whole of the corroboration behaviour.
+ * IT IS ALSO THE ONLY ROUTE. Two routes to one rule is one more than a single
+ * derivation allows, so no query restates this rule over the provider roll-up;
+ * the flag above is the whole of the corroboration behaviour.
  */
 export const CORROBORATION_REQUIRED_RAMP_GATES: ReadonlySet<RampGateId> = new Set<RampGateId>([
 	'seed_placement',

@@ -5,7 +5,7 @@
  * no transaction may insert, patch or replace a row in a table the deletion
  * sweeps. Without it the sweep is a race: a contact created after the
  * `contacts` step, a webhook payload stored after `webhookPayloads`, or a cron
- * re-creating `instanceSettings` survives the whole walk (#898).
+ * re-creating `instanceSettings` survives the whole walk.
  *
  * The check lives in ONE place, the database handle every builder hands its
  * handler:

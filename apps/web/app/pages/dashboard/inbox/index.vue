@@ -347,22 +347,25 @@ const showOldestFirst = () => setSort('oldest-waiting');
 				     one; with three orders a toggle would have had to hide one. The
 				     Mentions view and the response-target slices keep their own order
 				     (newest mention, earliest deadline). -->
-				<button
+				<UiTooltip
 					v-if="!mentions && !isInboxSlaFilter(filter)"
-					type="button"
-					class="inline-flex items-center gap-1.5 text-xs text-text-tertiary hover:text-text-primary transition-colors duration-(--motion-fast) outline-none focus-visible:ring-1 focus-visible:ring-brand/50 rounded px-1.5 py-1"
-					:title="
+					:text="
 						t('dashboard.inbox.index.sortSwitchTo', {
 							sort: t(INBOX_SORT_META[nextInboxSort(sort, isSlaEnabled)].label),
 						})
 					"
-					@click="toggleSort"
 				>
-					<Icon :name="INBOX_SORT_META[sort].icon" class="w-3.5 h-3.5" />
-					<span>
-						{{ t('dashboard.inbox.index.sortedBy', { sort: t(INBOX_SORT_META[sort].label) }) }}
-					</span>
-				</button>
+					<button
+						type="button"
+						class="inline-flex items-center gap-1.5 text-xs text-text-tertiary hover:text-text-primary transition-colors duration-(--motion-fast) outline-none focus-visible:ring-1 focus-visible:ring-brand/50 rounded px-1.5 py-1"
+						@click="toggleSort"
+					>
+						<Icon :name="INBOX_SORT_META[sort].icon" class="w-3.5 h-3.5" />
+						<span>
+							{{ t('dashboard.inbox.index.sortedBy', { sort: t(INBOX_SORT_META[sort].label) }) }}
+						</span>
+					</button>
+				</UiTooltip>
 			</div>
 
 			<!-- Waiting over 24h — a highlight within Open, not a tab. -->

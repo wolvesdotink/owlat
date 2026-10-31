@@ -18,7 +18,14 @@
  */
 
 import { meetsMinPasswordLength } from '@owlat/shared/passwordPolicy';
+import { isOwnSendProviderKind } from '@owlat/shared/sendProviderCatalog';
 import { validateMtaIdentityDraft } from '~/utils/setupMtaIdentity';
+import {
+	credentialFieldsFor,
+	requiredCredentialError,
+	type MissingCredentialMessage,
+	type TransportCredentialValues,
+} from './setupWizardCredentials';
 import type { AdminDraft, EmailStepDraft } from './useSetupWizard';
 
 // Mirrors the server's deliberately-lenient check in apply.post.ts so the client
@@ -54,22 +61,68 @@ export function adminIsValid(admin: AdminDraft): boolean {
 
 export interface EmailStepErrors {
 	provider?: string;
-	resendKey?: string;
-	emailitKey?: string;
-	mandrillKey?: string;
-	ses?: string;
-	smtp?: string;
+	/**
+	 * The selected kind's ONE credential error, as a sentence key plus the label
+	 * key of the field it is about — the screen resolves both with
+	 * `t(key, { field: t(field) })`. At most one, because the rules below stop at
+	 * the first field that fails.
+	 */
+	credentials?: MissingCredentialMessage;
 	mtaIdentity?: string;
 	fromEmail?: string;
 }
 
-/** A relay port is optional (defaults to 587), but if given must be a real port. */
-function isValidSmtpPort(port: string): boolean {
+/**
+ * THE SENTENCE A KIND'S INCOMPLETE CREDENTIALS READ AS — wording, keyed by kind,
+ * and optional per kind.
+ *
+ * WHICH fields are required is never decided here: that is each descriptor's
+ * `required` flag, read by `requiredCredentialError`. This table only keeps the
+ * sentence each incumbent's form has always shown, because a credential SET
+ * ("Region, access key ID, and secret access key are all required for SES") is
+ * worded better than its first blank field. A kind with no row — every bundled
+ * plugin transport, and the next core one until someone writes its sentence —
+ * gets the generic "Enter {field}." naming that field, so a missing row is never
+ * a form that refuses without saying why.
+ */
+const INCOMPLETE_CREDENTIALS_COPY: Readonly<Record<string, string>> = {
+	ses: 'shared.setupWizardValidation.email.sesIncomplete',
+	smtp: 'shared.setupWizardValidation.email.smtpIncomplete',
+	resend: 'shared.setupWizardValidation.email.resendKeyRequired',
+	mandrill: 'shared.setupWizardValidation.email.mandrillKeyRequired',
+	emailit: 'shared.setupWizardValidation.email.emailitKeyRequired',
+};
+
+/** An endpoint port is optional (blank ⇒ the descriptor's default), but if given must be real. */
+function isValidPort(port: string): boolean {
 	const trimmed = port.trim();
 	if (trimmed === '') return true;
 	if (!/^\d+$/.test(trimmed)) return false;
 	const n = Number.parseInt(trimmed, 10);
 	return n >= 1 && n <= 65535;
+}
+
+/**
+ * The selected kind's credential error, from its catalog descriptors: the first
+ * required field left blank, then any endpoint whose port is not a port.
+ */
+function credentialRuleError(
+	kind: string,
+	values: TransportCredentialValues
+): MissingCredentialMessage | undefined {
+	const missing = requiredCredentialError(kind, values);
+	if (missing !== undefined) {
+		const sentence = Object.hasOwn(INCOMPLETE_CREDENTIALS_COPY, kind)
+			? INCOMPLETE_CREDENTIALS_COPY[kind]
+			: undefined;
+		return sentence === undefined ? missing : { ...missing, key: sentence };
+	}
+	for (const field of credentialFieldsFor(kind)) {
+		if (field.kind === 'host-port' && !isValidPort(values[field.portEnvVar] ?? '')) {
+			return { key: 'shared.setupWizardValidation.email.smtpPortInvalid', field: field.label };
+		}
+	}
+	return undefined;
 }
 
 export function validateEmailStep(draft: EmailStepDraft): EmailStepErrors {
@@ -78,30 +131,12 @@ export function validateEmailStep(draft: EmailStepDraft): EmailStepErrors {
 	if (draft.provider === 'none' && draft.requiresProvider) {
 		errors.provider = 'shared.setupWizardValidation.email.providerRequired';
 	}
-	if (draft.provider === 'resend' && draft.resendKey.trim() === '') {
-		errors.resendKey = 'shared.setupWizardValidation.email.resendKeyRequired';
-	}
-	if (draft.provider === 'emailit' && (draft.emailitKey ?? '').trim() === '') {
-		errors.emailitKey = 'shared.setupWizardValidation.email.emailitKeyRequired';
-	}
-	if (draft.provider === 'mandrill' && draft.mandrillKey.trim() === '') {
-		errors.mandrillKey = 'shared.setupWizardValidation.email.mandrillKeyRequired';
-	}
-	if (draft.provider === 'ses') {
-		const { region, accessKeyId, secretAccessKey } = draft.ses;
-		if (!region.trim() || !accessKeyId.trim() || !secretAccessKey.trim()) {
-			errors.ses = 'shared.setupWizardValidation.email.sesIncomplete';
-		}
-	}
-	if (draft.provider === 'smtp') {
-		const { host, port, username, password } = draft.smtp;
-		if (!host.trim() || !username.trim() || !password.trim()) {
-			errors.smtp = 'shared.setupWizardValidation.email.smtpIncomplete';
-		} else if (!isValidSmtpPort(port)) {
-			errors.smtp = 'shared.setupWizardValidation.email.smtpPortInvalid';
-		}
-	}
-	if (draft.provider === 'mta' || draft.mtaProfileEnabled) {
+	const credentialError = credentialRuleError(draft.provider, draft.credentials);
+	if (credentialError !== undefined) errors.credentials = credentialError;
+	// The sending IPs and the EHLO identity are the own arm's, asked through the
+	// catalog's `tier: 'own'` declaration; they are also collected when the MTA
+	// runs only as a receiving profile beside a relay.
+	if (isOwnSendProviderKind(draft.provider) || draft.mtaProfileEnabled) {
 		const identityError = validateMtaIdentityDraft(draft.mtaIdentity);
 		if (identityError) errors.mtaIdentity = identityError;
 	}
@@ -115,51 +150,6 @@ export function validateEmailStep(draft: EmailStepDraft): EmailStepErrors {
 
 export function emailStepIsValid(draft: EmailStepDraft): boolean {
 	return Object.keys(validateEmailStep(draft)).length === 0;
-}
-
-/**
- * WHICH ERRORS ARE ABOUT THE CREDENTIALS — the one question both credential
- * surfaces ask, answered here rather than twice in their templates.
- *
- * `satisfies Record<keyof EmailStepErrors, boolean>` for the same reason
- * {@link TRANSPORT_EDITOR_OWNED_ERRORS} does it: the NEXT credential key this
- * step gains has to be classified here or the build fails. The alternative —
- * an `errors.resendKey ?? errors.mandrillKey ?? …` chain in both components
- * — is per-vendor knowledge in a `.vue` file,
- * in TWO copies, and silently non-exhaustive: a new key renders nowhere
- * while Apply refuses, which is a button that does nothing with no sentence
- * saying why.
- *
- * ORDER IS THE DECLARATION ORDER of `EmailStepErrors`, and it does not matter:
- * `validateEmailStep` reports at most ONE credential error, because each rule is
- * gated on the selected provider.
- */
-const CREDENTIAL_ERRORS = {
-	resendKey: true,
-	emailitKey: true,
-	mandrillKey: true,
-	ses: true,
-	smtp: true,
-	// Not credentials: which transport to use, the wizard's own MTA identity
-	// step, and the optional From address.
-	provider: false,
-	mtaIdentity: false,
-	fromEmail: false,
-} as const satisfies Record<keyof EmailStepErrors, boolean>;
-
-/**
- * The ONE credential error the selected kind can raise, whichever field set it
- * belongs to — or `undefined` when the credentials are fine.
- *
- * Lives beside the rules that PRODUCE those keys so the two cannot be edited a
- * package apart from each other; the descriptor renderer then decides where the
- * message is announced, which is a question about the FORM, not about a vendor.
- */
-export function credentialErrorFor(errors: EmailStepErrors): string | undefined {
-	for (const key of Object.keys(CREDENTIAL_ERRORS) as (keyof EmailStepErrors)[]) {
-		if (CREDENTIAL_ERRORS[key] && errors[key] !== undefined) return errors[key];
-	}
-	return undefined;
 }
 
 /**
@@ -181,11 +171,7 @@ export function credentialErrorFor(errors: EmailStepErrors): string | undefined 
  */
 const TRANSPORT_EDITOR_OWNED_ERRORS = {
 	provider: true,
-	resendKey: true,
-	emailitKey: true,
-	mandrillKey: true,
-	ses: true,
-	smtp: true,
+	credentials: true,
 	fromEmail: true,
 	mtaIdentity: false,
 } as const satisfies Record<keyof EmailStepErrors, boolean>;

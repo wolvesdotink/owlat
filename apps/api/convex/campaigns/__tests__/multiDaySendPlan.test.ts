@@ -208,7 +208,7 @@ describe('planTodaysSlice — unmeasured capacity never withholds mail', () => {
 		// A projection that plateaus at zero before the audience is covered yields
 		// the planner's "cannot be planned" sentinel. That is an unknown LENGTH —
 		// it is NOT permission to empty a 20 000-recipient audience into a queue
-		// that expires it, which is what conflating the two used to do.
+		// that expires it, which is what conflating the two would do.
 		const slice = planTodaysSlice({
 			state: NO_PLAN,
 			remaining: exact(20_000),
@@ -325,9 +325,9 @@ describe('planTodaysSlice — a LOWER-BOUND denominator (the truncated count)', 
 
 describe('planTodaysSlice — "more than N days" is a fact, not a length', () => {
 	/**
-	 * The failure this pins: truncation used to be re-derived downstream as
-	 * `planTotalDays >= MAX_PLAN_DAYS`, so a plan that covered its audience on
-	 * the very last enumerable day — a COMPLETE schedule — told the operator
+	 * The failure this pins: truncation re-derived downstream as
+	 * `planTotalDays >= MAX_PLAN_DAYS` makes a plan that covers its audience on
+	 * the very last enumerable day — a COMPLETE schedule — tell the operator
 	 * their send runs "more than 60 days". The schedule knows which it is; the
 	 * length never can.
 	 */

@@ -409,9 +409,18 @@ const toastCannotActivate = () => {
 	);
 };
 
+// A draft that cannot be activated yet keeps Activate held (aria-disabled, not
+// disabled) so keyboard and pointer users can still reach it and its tooltip
+// can list what is missing: `.btn:disabled` drops pointer events and a disabled
+// button leaves the tab order. The fill fades through colour alpha so the
+// focus ring stays at full strength; the click handler keeps it inert.
+const ACTIVATE_HELD_CLASS =
+	'cursor-not-allowed active:scale-100 bg-text-primary/50 hover:bg-text-primary/50';
+
 // Activation always means "what you see": the open step's edits are saved
 // first, and the readiness check runs on the steps as saved.
 const handleShowActivateConfirm = async () => {
+	if (!canActivate.value.valid) return;
 	isActivating.value = true;
 	let saved: boolean;
 	try {
@@ -599,25 +608,31 @@ onUnmounted(() => {
 							<Icon v-else name="lucide:play" class="w-4 h-4" />
 							{{ t('dashboard.automations.detail.edit.resume') }}
 						</UiButton>
-						<UiButton
+						<UiTooltip
 							v-else
-							class="gap-2"
-							:disabled="isActivating || !canActivate.valid"
-							:title="
+							:text="
 								!canActivate.valid
 									? canActivate.reasons.join(', ')
 									: t('dashboard.automations.detail.edit.activateTitle')
 							"
-							@click="handleShowActivateConfirm"
 						>
-							<Icon
-								v-if="isActivating"
-								name="lucide:loader-2"
-								class="w-4 h-4 animate-spin motion-reduce:animate-none"
-							/>
-							<Icon v-else name="lucide:play" class="w-4 h-4" />
-							{{ t('dashboard.automations.detail.edit.activate') }}
-						</UiButton>
+							<UiButton
+								class="gap-2"
+								:disabled="isActivating"
+								:aria-disabled="canActivate.valid ? undefined : 'true'"
+								:class="canActivate.valid ? undefined : ACTIVATE_HELD_CLASS"
+								data-testid="automation-activate"
+								@click="handleShowActivateConfirm"
+							>
+								<Icon
+									v-if="isActivating"
+									name="lucide:loader-2"
+									class="w-4 h-4 animate-spin motion-reduce:animate-none"
+								/>
+								<Icon v-else name="lucide:play" class="w-4 h-4" />
+								{{ t('dashboard.automations.detail.edit.activate') }}
+							</UiButton>
+						</UiTooltip>
 					</div>
 				</div>
 			</div>

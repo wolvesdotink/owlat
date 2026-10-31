@@ -128,5 +128,5 @@ describe('access control — unauthenticated callers are rejected', () => {
 // but that boundary is enforced by the production Convex server — the
 // convex-test harness runs internal functions directly and does not model it,
 // so it cannot be asserted here. Their internal-only status is enforced instead
-// by the type system (callers use `internal.*`, see `eventsApi.ts` /
+// by the type system (callers use `internal.*`, see `publicApi/events.ts` /
 // `contacts/api.ts` / `topics/apiHttp.ts`) and by `scripts/check-public-functions.sh`.

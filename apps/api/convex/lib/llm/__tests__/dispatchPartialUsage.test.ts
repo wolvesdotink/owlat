@@ -1,11 +1,11 @@
 /**
- * The spend of a multi-step dispatch that fails partway (#1256). The tool loop
+ * The spend of a multi-step dispatch that fails partway. The tool loop
  * (`runLlmTextWithTools`) and the stream (`runLlmStream`) run against the real
  * AI SDK step loop with a scripted model: step 1 calls a tool and finishes
  * with usage, step 2 fails. The thrown error must carry step 1's usage, keep
  * the provider's error as its cause and keep its message.
  *
- * The structured call (`runLlmObject`, #1260) runs against the real
+ * The structured call (`runLlmObject`) runs against the real
  * `generateObject`: a completion that fails the schema is billed and retried,
  * so its usage counts toward the result, or toward the error when every
  * attempt fails.

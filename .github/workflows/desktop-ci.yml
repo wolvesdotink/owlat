@@ -2,8 +2,12 @@ name: Desktop CI
 
 # Gates the Tauri desktop app on PRs that touch it: the Rust shell (incl. the
 # SSH provisioning transport) compiles + unit tests pass, and the TS bridge
-# typechecks. Path-filtered so it only runs when desktop code changes — the full
-# signed multi-platform build lives in desktop-release.yml (tag-triggered).
+# typechecks. The `package` job then packages the real app for Linux, launches
+# it under xvfb and updates it from build N to N+1 through the web server's
+# update route (scripts/desktop-smoke.ts). Path-filtered so it only runs when
+# desktop code, the web code the packaged app boots through, or the update route
+# changes — the full signed multi-platform build lives in desktop-release.yml
+# (tag-triggered).
 
 on:
   pull_request:
@@ -11,6 +15,18 @@ on:
     paths:
       - 'apps/desktop/**'
       - '.github/workflows/desktop-ci.yml'
+      - 'scripts/desktop-smoke.ts'
+      - 'scripts/desktop-smoke/**'
+      # What a fresh packaged app boots through before the welcome page mounts,
+      # and the update route the updater run goes through.
+      - 'apps/web/nuxt.config.ts'
+      - 'apps/web/app/plugins/*desktop*'
+      - 'apps/web/app/plugins/error-handler.client.ts'
+      - 'apps/web/app/middleware/desktop-*'
+      - 'apps/web/app/lib/desktop/**'
+      - 'apps/web/app/pages/desktop/**'
+      - 'apps/web/server/api/desktop/**'
+      - 'apps/web/server/utils/publicConvexClient.ts'
       - 'rust-toolchain.toml'
       # Root dependency/catalog changes alter what the desktop build resolves.
       - 'bun.lock'
@@ -24,10 +40,13 @@ jobs:
   rust:
     name: Rust build + tests (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    # Three cargo builds (default, dev-provisioning, e2e-fixture) of the shell
+    # with vendored OpenSSL/libssh2; a cold Windows cache is the slow case.
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-22.04, macos-14, windows-latest]
+        os: [ubuntu-22.04, macos-15, windows-latest]
     steps:
       - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2
         with:
@@ -64,9 +83,12 @@ jobs:
         with:
           toolchain: ${{ steps.rust.outputs.channel }}
 
+      # rust-cache keys only on OS family and CPU arch; the runner label keeps a
+      # new runner image from restoring crates built against the previous one.
       - uses: swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           workspaces: apps/desktop/src-tauri
+          key: ${{ matrix.os }}
 
       # `tauri::generate_context!()` embeds the frontend dist at compile time, so
       # the path must exist. A placeholder is enough for a Rust-only gate: the
@@ -99,3 +121,83 @@ jobs:
       # commands; test that shape too, including the IPC ACL it compiles in.
       - name: Build + test Rust shell (dev-provisioning)
         run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --features dev-provisioning
+
+      # The fixture build (package job) adds the e2e instrumentation and the
+      # loopback allowance to the updater; test that shape too.
+      - name: Build + test Rust shell (e2e-fixture)
+        timeout-minutes: 20
+        run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --features e2e-fixture
+
+  # The packaged app, end to end on Linux. Builds the web server, the desktop SPA
+  # and two signed debug AppImages (N, and N+1 one patch later) with the
+  # `e2e-fixture` feature and an ephemeral updater key, then:
+  # - launch: N on a fresh profile mounts the welcome page with no renderer
+  #   error, crash or fatal output;
+  # - liveness: N without instrumentation stays up, the check the release build
+  #   gets in _desktop-build.yml;
+  # - update: against the built web server's update route (Convex faked behind
+  #   it), N downloads, verifies and installs N+1 and relaunches into it; a 204
+  #   leaves N running; a tampered bundle and a signature over other bytes are
+  #   refused with N still installed.
+  package:
+    name: Linux package smoke + updater e2e
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    steps:
+      - uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      # Tauri's build dependencies, a virtual display for the launches, and
+      # dbus-run-session: the single-instance plugin needs a session bus.
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev \
+            librsvg2-dev patchelf libssl-dev xvfb dbus
+
+      - uses: ./.github/actions/setup-bun
+
+      # The built web server runs on node, as it does in the web image.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '22'
+
+      - name: Read pinned Rust toolchain
+        id: rust
+        run: echo "channel=$(sed -n 's/^channel = "\(.*\)"/\1/p' rust-toolchain.toml)" >> "$GITHUB_OUTPUT"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # pinned toolchain
+        with:
+          toolchain: ${{ steps.rust.outputs.channel }}
+
+      - uses: swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          workspaces: apps/desktop/src-tauri
+
+      # The web bundle imports some workspace libraries as built dist/ entries
+      # (same step as the desktop-spa job in test.yml and the release build).
+      - name: Build workspace libraries for the web bundle
+        run: bunx turbo build --filter='@owlat/web^...'
+
+      - name: Build the web server and the N / N+1 fixture AppImages
+        env:
+          # The heap the web image build gives `nuxt build` (apps/web/Dockerfile).
+          NODE_OPTIONS: --max-old-space-size=4096
+        run: bun scripts/desktop-smoke.ts build --out "$RUNNER_TEMP/desktop-smoke"
+
+      - name: Launch smoke
+        run: xvfb-run -a dbus-run-session -- bun scripts/desktop-smoke.ts launch --fixtures "$RUNNER_TEMP/desktop-smoke"
+
+      - name: Liveness without instrumentation
+        run: |
+          set -euo pipefail
+          appimage="$(jq -r '.appImages[.from]' "$RUNNER_TEMP/desktop-smoke/fixtures.json")"
+          xvfb-run -a dbus-run-session -- bun scripts/desktop-smoke.ts liveness "$appimage" \
+            --scratch "$RUNNER_TEMP/desktop-smoke/runs/liveness"
+
+      - name: Updater end to end
+        run: xvfb-run -a dbus-run-session -- bun scripts/desktop-smoke.ts update --fixtures "$RUNNER_TEMP/desktop-smoke"

@@ -17,9 +17,7 @@ import {
 	isConsequential,
 	isLegalDispositionEdge,
 	isLegalStatusEdge,
-	itemFacetRisk,
 	itemStateKey,
-	LEGAL_STATUS_EDGES,
 	primaryReaction,
 	secondaryReactions,
 	type ForYouSortable,
@@ -154,9 +152,12 @@ describe('compareForYou', () => {
 			'meeting',
 			'information',
 		] as const;
-		const risks = order.map((facet) => itemFacetRisk([facet]));
-		expect([...risks].sort((a, b) => b - a)).toEqual(risks);
-		expect(itemFacetRisk([])).toBe(-1);
+		// The key's second segment is the risk rank, riskiest first; no facet ranks last.
+		const rank = (facets: ForYouSortable['facets']) =>
+			forYouSortKey({ facets, askedAt: 0 }).split('|')[1];
+		expect(order.map((facet) => rank([facet]))).toEqual(['0', '1', '2', '3', '4', '5', '6']);
+		expect(rank([])).toBe('7');
+		expect(rank(['information', 'payment'])).toBe('0');
 	});
 });
 
@@ -216,10 +217,15 @@ describe('isConsequential', () => {
 
 describe('isLegalStatusEdge', () => {
 	it('allows exactly the reducer edges', () => {
-		const allowed = new Set<string>();
-		for (const [from, tos] of Object.entries(LEGAL_STATUS_EDGES)) {
-			for (const to of tos) allowed.add(`${from}->${to}`);
-		}
+		const allowed = new Set([
+			'open->done',
+			'open->declined',
+			'open->superseded',
+			'open->untracked',
+			'done->open',
+			'declined->open',
+			'untracked->open',
+		]);
 		for (const from of ITEM_STATUSES) {
 			for (const to of ITEM_STATUSES) {
 				expect(isLegalStatusEdge(from, to, 'user')).toBe(allowed.has(`${from}->${to}`));

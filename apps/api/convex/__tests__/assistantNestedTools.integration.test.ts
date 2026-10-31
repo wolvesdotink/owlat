@@ -566,6 +566,51 @@ describe('visualization', () => {
 		);
 	}
 
+	it('stores the generated page and title, and clears an earlier refusal', async () => {
+		const { t } = await setup();
+		const id = await seedVisualization(t);
+		await t.run((c) =>
+			c.db.patch(id, { budgetRefusal: { code: AI_BUDGET_ERROR_CODE, reason: 'daily_ceiling' } })
+		);
+		const replies = [
+			'Here you go:\n```html\n<!DOCTYPE html><html><body>chart</body></html>\n```',
+			'  Weekly open rates  ',
+		];
+		llm.model = draftModel(async () => ({
+			content: [{ type: 'text', text: replies.shift() ?? '' }],
+			finishReason: { unified: 'stop', raw: undefined },
+			usage,
+			warnings: [],
+		}));
+
+		await t.action(internal.visualizationAgentActions.generate, {
+			visualizationId: id,
+			prompt: 'Open rates by week',
+		});
+
+		const visualization = await t.run((c) => c.db.get(id));
+		expect(visualization).toMatchObject({
+			title: 'Weekly open rates',
+			html: '<!DOCTYPE html><html><body>chart</body></html>',
+		});
+		expect(visualization?.budgetRefusal).toBeUndefined();
+		expect(visualization?.dataQuery).toBeUndefined();
+	});
+
+	it('drops the result of a visualization deleted while it was generating', async () => {
+		const { t } = await setup();
+		const id = await seedVisualization(t);
+		await t.run((c) => c.db.delete(id));
+
+		// The lost race is not an error: the action finishes without throwing.
+		await t.action(internal.visualizationAgentActions.generate, {
+			visualizationId: id,
+			prompt: 'Open rates by week',
+		});
+
+		expect(await t.run((c) => c.db.get(id))).toBeNull();
+	});
+
 	it('stores a budget refusal as its code and reason, with no English sentence on the page', async () => {
 		const { t } = await setup('0.0001');
 		const id = await seedVisualization(t);

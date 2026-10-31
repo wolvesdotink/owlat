@@ -202,7 +202,7 @@ describe('shadow composition is identical apart from the probe header', () => {
 	});
 });
 
-/** (b) A probe must clear the two pre-dispatch gates that used to throw. */
+/** (b) A probe must clear the pre-dispatch gates that throw on a malformed envelope. */
 describe('dispatch path — the probe clears every pre-dispatch gate', () => {
 	it('passes the marketing one-click assertion the campaign worker applies', () => {
 		const composed = composeForSend(buildComposeInput(shadow));
@@ -486,8 +486,8 @@ describe('enqueueSeedShadowCopies — with seed mailboxes present', () => {
 	});
 
 	it('does not answer "no probe set yet" once a campaign has many probe rows', async () => {
-		// The idempotency lookup used to be a bounded page plus a linear scan; past
-		// the bound it silently started minting a duplicate set on every page.
+		// An idempotency lookup that reads a bounded page plus a linear scan would,
+		// past the bound, silently mint a duplicate set on every page.
 		const t = convexTest(schema, modules);
 		await connectSeeds(t);
 		const campaignId = await makeCampaign(t);

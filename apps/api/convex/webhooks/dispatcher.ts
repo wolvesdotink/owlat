@@ -230,7 +230,7 @@ const DISPATCH: DispatchTable = {
 		// contact join happens inside the mutation — which then replays the exact
 		// public one-click path (membership delete, opt-out stamp, campaign
 		// counter, `topic.unsubscribed` fanout, `unsubscribed` transport outcome).
-		// `eventAt` keeps a late event from undoing a later re-subscribe (#1228).
+		// `eventAt` keeps a late event from undoing a later re-subscribe.
 		return await ctx.runMutation(internal.delivery.unsubscribeQueries.processUnsubscribeByEmail, {
 			email: e.recipient,
 			eventAt: e.at,
@@ -376,7 +376,7 @@ const DISPATCH: DispatchTable = {
 	'internal.smtp_classified': async (ctx, e) => {
 		// MEASUREMENT ONLY. No lifecycle transition, no suppression, no reputation
 		// bump — the receiver's verdict on one response becomes a counter and
-		// nothing else (issue #501). The terminal bounce that a non-retryable
+		// nothing else. The terminal bounce that a non-retryable
 		// refusal ALSO produces arrives as its own `bounced` event and moves the
 		// send status there; keeping the two apart is what lets the retryable half
 		// report the same fact without inventing a bounce for a message still in
@@ -448,13 +448,13 @@ export async function dispatchInboundEvent(
 	inbound: InboundEvent,
 	_options?: { returnResult: true }
 ): Promise<unknown> {
-	// Out-of-scope feedback acts on no address unless it matches a Send of ours (#1243).
+	// Out-of-scope feedback acts on no address unless it matches a Send of ours.
 	const event = await withinSendingScope(ctx, inbound);
 	if (!event) return undefined;
 	const handler = DISPATCH[event.kind] as Handler<InboundEventKind>;
 	const apply = () => handler(ctx, event as InboundEventOf<InboundEventKind>);
 	// An event its adapter keyed for replay (a provider with no event ids and no
-	// signed timestamp, #1228) is applied once per key.
+	// signed timestamp) is applied once per key.
 	if ('replayKey' in event && event.replayKey) {
 		return dispatchOnce(ctx, { replayKey: event.replayKey, eventAt: event.at }, apply);
 	}

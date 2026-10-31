@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
-import { languageSelectOptions } from '~/data/languageOptions';
-import { isValidEmail } from '@owlat/shared';
 import type { ImportResults } from '~/composables/useCsvImport';
-import { contactHasEmail, contactPrimaryIdentity } from '~/utils/contactIdentity';
-import { meterFillStyle } from '@owlat/ui/utils/meterFill';
+import AddContactModal from '~/components/contacts/list/AddContactModal.vue';
+import ContactsBulkActions from '~/components/contacts/list/BulkActions.vue';
+import ContactsBulkProgress from '~/components/contacts/list/BulkProgress.vue';
+import ContactCardList from '~/components/contacts/list/ContactCardList.vue';
+import ContactTable from '~/components/contacts/list/ContactTable.vue';
+import ContactsImportMenu from '~/components/contacts/list/ImportMenu.vue';
 
 const { t } = useI18n();
 
@@ -100,9 +102,6 @@ const { data: contactProperties } = useOrganizationQuery(
 const { results: topics } = useTopicsList();
 
 // Mutations
-const { run: createContact } = useBackendOperation(api.contacts.contacts.create, {
-	label: () => t('dashboard.audience.contacts.index.operations.addContact'),
-});
 const csvImportOperations = useContactCsvImportOperations(() =>
 	(contactProperties.value ?? []).map((p: { key: string }) => p.key)
 );
@@ -160,10 +159,6 @@ const toggleContactSelection = (contactId: Id<'contacts'>) => {
 	bulkSelection.toggleSelection(contactId);
 };
 
-/** First + last for the card list, which has no room for a column each. */
-const contactName = (contact: { firstName?: string | null; lastName?: string | null }) =>
-	[contact.firstName, contact.lastName].filter(Boolean).join(' ');
-
 /** The desktop row's email link, its row click and its menu's "Open" all land here. */
 const contactPath = (contactId: Id<'contacts'>) => `/dashboard/audience/contacts/${contactId}`;
 const openContact = (contactId: Id<'contacts'>) => void router.push(contactPath(contactId));
@@ -177,43 +172,6 @@ const addModal = useFormModal({
 	lastName: '',
 	language: '',
 });
-
-// The language catalog is module scope, so it carries message keys: the
-// `{ value, label }` pairs the picker renders can only be built here, where a
-// translator is in hand. Computed, so the labels follow a locale switch.
-const languageChoices = computed(() => languageSelectOptions((key: string) => t(key)));
-
-const validateAddForm = (): boolean => {
-	addModal.clearErrors();
-	if (!addModal.form.email.trim()) {
-		addModal.errors.email = t('auth.validation.emailRequired');
-		return false;
-	}
-	if (!isValidEmail(addModal.form.email.trim())) {
-		addModal.errors.email = t('auth.validation.emailInvalid');
-		return false;
-	}
-	return true;
-};
-
-const handleAddSubmit = async () => {
-	if (!validateAddForm()) return;
-	addModal.isSubmitting.value = true;
-
-	const result = await createContact({
-		email: addModal.form.email.trim(),
-		firstName: addModal.form.firstName.trim() || undefined,
-		lastName: addModal.form.lastName.trim() || undefined,
-		language: addModal.form.language || undefined,
-		source: 'form',
-	});
-	addModal.isSubmitting.value = false;
-	if (!result.ok) return;
-	showToast(
-		t('dashboard.audience.contacts.index.toasts.created', { email: addModal.form.email.trim() })
-	);
-	addModal.close();
-};
 
 // ============================================
 // CSV Import
@@ -248,23 +206,6 @@ const handleCsvRetry = async () => {
 		alreadyProcessed
 	);
 };
-
-// ============================================
-// Dropdowns and Click Outside Handlers
-// ============================================
-const isImportDropdownOpen = ref(false);
-const importDropdownRef = ref<HTMLElement | null>(null);
-const bulkActionDropdownRef = ref<HTMLElement | null>(null);
-
-useClickOutside(importDropdownRef, () => {
-	isImportDropdownOpen.value = false;
-});
-
-useClickOutside(bulkActionDropdownRef, () => {
-	bulkOps.isBulkActionDropdownOpen.value = false;
-	bulkOps.isAddToListDropdownOpen.value = false;
-	bulkOps.isRemoveFromListDropdownOpen.value = false;
-});
 
 // ============================================
 // Lifecycle
@@ -317,66 +258,10 @@ onUnmounted(() => {
 					{{ t('dashboard.audience.contacts.index.export') }}
 				</UiButton>
 				<!-- Import Dropdown -->
-				<div ref="importDropdownRef" class="relative">
-					<UiButton
-						variant="secondary"
-						class="gap-2"
-						@click.stop="isImportDropdownOpen = !isImportDropdownOpen"
-					>
-						<Icon name="lucide:upload" class="w-4 h-4" />
-						{{ t('dashboard.audience.contacts.index.import') }}
-						<Icon name="lucide:chevron-down" class="w-4 h-4" />
-					</UiButton>
-					<Transition
-						enter-active-class="duration-(--motion-moderate) ease-spring"
-						enter-from-class="opacity-0 translate-y-1"
-						enter-to-class="opacity-100 translate-y-0"
-						leave-active-class="duration-(--motion-moderate-exit) ease-exit"
-						leave-from-class="opacity-100 translate-y-0"
-						leave-to-class="opacity-0 translate-y-1"
-					>
-						<div
-							v-if="isImportDropdownOpen"
-							class="absolute right-0 mt-2 w-56 bg-bg-elevated border border-border-subtle rounded-xl shadow-lg z-20 py-1"
-						>
-							<button
-								class="w-full px-3 py-2 text-left text-sm text-text-primary hover:bg-bg-surface flex items-center gap-3 transition-colors"
-								@click="
-									csvImport.open();
-									isImportDropdownOpen = false;
-								"
-							>
-								<Icon name="lucide:file-spreadsheet" class="w-4 h-4 text-brand" />
-								<div>
-									<p class="font-medium">
-										{{ t('dashboard.audience.contacts.index.importMenu.csvTitle') }}
-									</p>
-									<p class="text-xs text-text-tertiary">
-										{{ t('dashboard.audience.contacts.index.importMenu.csvDescription') }}
-									</p>
-								</div>
-							</button>
-							<div class="h-px bg-border-subtle my-1" />
-							<button
-								class="w-full px-3 py-2 text-left text-sm text-text-primary hover:bg-bg-surface flex items-center gap-3 transition-colors"
-								@click="
-									isIntegrationImportModalOpen = true;
-									isImportDropdownOpen = false;
-								"
-							>
-								<Icon name="lucide:link-2" class="w-4 h-4 text-brand" />
-								<div>
-									<p class="font-medium">
-										{{ t('dashboard.audience.contacts.index.importMenu.integrationsTitle') }}
-									</p>
-									<p class="text-xs text-text-tertiary">
-										{{ t('dashboard.audience.contacts.index.importMenu.integrationsDescription') }}
-									</p>
-								</div>
-							</button>
-						</div>
-					</Transition>
-				</div>
+				<ContactsImportMenu
+					@csv="csvImport.open()"
+					@integrations="isIntegrationImportModalOpen = true"
+				/>
 				<UiButton @click="addModal.open()">
 					<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
 					{{ t('dashboard.audience.contacts.index.addContact') }}
@@ -396,227 +281,21 @@ onUnmounted(() => {
 			</div>
 
 			<!-- Bulk Actions -->
-			<Transition
-				enter-active-class="duration-(--motion-moderate) ease-spring"
-				enter-from-class="opacity-0 scale-95"
-				enter-to-class="opacity-100 scale-100"
-				leave-active-class="duration-(--motion-moderate-exit) ease-exit"
-				leave-from-class="opacity-100 scale-100"
-				leave-to-class="opacity-0 scale-95"
-			>
-				<div
-					v-if="canManageContacts && bulkSelection.hasSelected.value"
-					class="flex items-center gap-2"
-				>
-					<span class="text-sm text-text-secondary">{{
-						bulkSelection.selectedCountText.value
-					}}</span>
-
-					<button
-						v-if="!bulkSelection.isSelectAllMatching.value && totalCount > contacts.length"
-						class="text-sm text-brand hover:underline"
-						:disabled="bulkOps.isLoadingAllMatching.value"
-						@click="bulkOps.selectAllMatchingFilter"
-					>
-						<Icon
-							v-if="bulkOps.isLoadingAllMatching.value"
-							name="lucide:loader-2"
-							class="w-3 h-3 animate-spin motion-reduce:animate-none inline mr-1"
-						/>
-						{{ t('dashboard.audience.contacts.index.selectAllMatching', { count: totalCount }) }}
-					</button>
-
-					<!-- Bulk Action Dropdown -->
-					<div ref="bulkActionDropdownRef" class="relative">
-						<UiButton
-							variant="secondary"
-							:disabled="bulkOps.isBulkOperationInProgress.value"
-							@click.stop="
-								bulkOps.isBulkActionDropdownOpen.value = !bulkOps.isBulkActionDropdownOpen.value
-							"
-						>
-							<template #iconLeft><Icon name="lucide:more-horizontal" class="w-4 h-4" /></template>
-							{{ t('common.actions') }}
-							<template #iconRight><Icon name="lucide:chevron-down" class="w-4 h-4" /></template>
-						</UiButton>
-
-						<Transition
-							enter-active-class="duration-(--motion-moderate) ease-spring"
-							enter-from-class="opacity-0 translate-y-1"
-							enter-to-class="opacity-100 translate-y-0"
-							leave-active-class="duration-(--motion-moderate-exit) ease-exit"
-							leave-from-class="opacity-100 translate-y-0"
-							leave-to-class="opacity-0 translate-y-1"
-						>
-							<div
-								v-if="bulkOps.isBulkActionDropdownOpen.value"
-								class="absolute right-0 mt-2 w-56 bg-bg-elevated border border-border-subtle rounded-xl shadow-lg z-20 py-1"
-							>
-								<!-- Add to Topic submenu -->
-								<div class="relative">
-									<button
-										class="w-full px-3 py-2 text-left text-sm text-text-primary hover:bg-bg-surface flex items-center justify-between transition-colors"
-										@click.stop="
-											bulkOps.isAddToListDropdownOpen.value =
-												!bulkOps.isAddToListDropdownOpen.value;
-											bulkOps.isRemoveFromListDropdownOpen.value = false;
-										"
-									>
-										<span class="flex items-center gap-2">
-											<Icon name="lucide:tag" class="w-4 h-4 text-brand" />
-											{{ t('dashboard.audience.contacts.index.bulk.addToTopic') }}
-										</span>
-										<Icon name="lucide:chevron-right" class="w-4 h-4" />
-									</button>
-
-									<Transition
-										enter-active-class="duration-(--motion-moderate) ease-spring"
-										enter-from-class="opacity-0 -translate-x-1"
-										enter-to-class="opacity-100 translate-x-0"
-										leave-active-class="duration-(--motion-moderate-exit) ease-exit"
-										leave-from-class="opacity-100 translate-x-0"
-										leave-to-class="opacity-0 -translate-x-1"
-									>
-										<div
-											v-if="bulkOps.isAddToListDropdownOpen.value"
-											class="absolute left-full top-0 ml-1 w-48 bg-bg-elevated border border-border-subtle rounded-xl shadow-lg py-1 max-h-64 overflow-y-auto"
-										>
-											<template v-if="topics && topics.length > 0">
-												<button
-													v-for="list in topics"
-													:key="list._id"
-													class="w-full px-3 py-2 text-left text-sm text-text-primary hover:bg-bg-surface flex items-center gap-2 transition-colors"
-													@click="bulkOps.handleBulkAddToList(list._id)"
-												>
-													<span class="truncate">{{ list.name }}</span>
-												</button>
-											</template>
-											<div v-else class="px-3 py-2 text-sm text-text-tertiary">
-												{{ t('dashboard.audience.contacts.index.bulk.noTopics') }}
-											</div>
-										</div>
-									</Transition>
-								</div>
-
-								<!-- Remove from Topic submenu -->
-								<div class="relative">
-									<button
-										class="w-full px-3 py-2 text-left text-sm text-text-primary hover:bg-bg-surface flex items-center justify-between transition-colors"
-										@click.stop="
-											bulkOps.isRemoveFromListDropdownOpen.value =
-												!bulkOps.isRemoveFromListDropdownOpen.value;
-											bulkOps.isAddToListDropdownOpen.value = false;
-										"
-									>
-										<span class="flex items-center gap-2">
-											<Icon name="lucide:list-minus" class="w-4 h-4 text-text-secondary" />
-											{{ t('dashboard.audience.contacts.index.bulk.removeFromTopic') }}
-										</span>
-										<Icon name="lucide:chevron-right" class="w-4 h-4" />
-									</button>
-
-									<Transition
-										enter-active-class="duration-(--motion-moderate) ease-spring"
-										enter-from-class="opacity-0 -translate-x-1"
-										enter-to-class="opacity-100 translate-x-0"
-										leave-active-class="duration-(--motion-moderate-exit) ease-exit"
-										leave-from-class="opacity-100 translate-x-0"
-										leave-to-class="opacity-0 -translate-x-1"
-									>
-										<div
-											v-if="bulkOps.isRemoveFromListDropdownOpen.value"
-											class="absolute left-full top-0 ml-1 w-48 bg-bg-elevated border border-border-subtle rounded-xl shadow-lg py-1 max-h-64 overflow-y-auto"
-										>
-											<template v-if="topics && topics.length > 0">
-												<button
-													v-for="list in topics"
-													:key="list._id"
-													class="w-full px-3 py-2 text-left text-sm text-text-primary hover:bg-bg-surface flex items-center gap-2 transition-colors"
-													@click="bulkOps.handleBulkRemoveFromList(list._id)"
-												>
-													<span class="truncate">{{ list.name }}</span>
-												</button>
-											</template>
-											<div v-else class="px-3 py-2 text-sm text-text-tertiary">
-												{{ t('dashboard.audience.contacts.index.bulk.noTopics') }}
-											</div>
-										</div>
-									</Transition>
-								</div>
-
-								<div class="h-px bg-border-subtle my-1" />
-
-								<button
-									class="w-full px-3 py-2 text-left text-sm text-text-primary hover:bg-bg-surface flex items-center gap-2 transition-colors"
-									@click="bulkOps.handleBulkExport"
-								>
-									<Icon name="lucide:download" class="w-4 h-4 text-text-secondary" />
-									{{ t('dashboard.audience.contacts.index.bulk.exportSelected') }}
-								</button>
-
-								<div class="h-px bg-border-subtle my-1" />
-
-								<button
-									class="w-full px-3 py-2 text-left text-sm text-error hover:bg-error-subtle flex items-center gap-2 transition-colors"
-									@click="bulkOps.openBulkDeleteModal"
-								>
-									<Icon name="lucide:trash-2" class="w-4 h-4" />
-									{{ t('dashboard.audience.contacts.index.bulk.deleteSelected') }}
-								</button>
-							</div>
-						</Transition>
-					</div>
-
-					<button
-						class="p-1.5 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-						@click="bulkSelection.clearSelection()"
-						:aria-label="t('dashboard.audience.contacts.index.clearSelection')"
-					>
-						<Icon name="lucide:x" class="w-4 h-4" />
-					</button>
-				</div>
-			</Transition>
+			<ContactsBulkActions
+				:bulk-selection="bulkSelection"
+				:bulk-ops="bulkOps"
+				:topics="topics"
+				:can-manage="canManageContacts"
+				:total-count="totalCount"
+				:loaded-count="contacts.length"
+			/>
 
 			<!-- Bulk Operation Progress -->
-			<Transition
-				enter-active-class="duration-(--motion-moderate) ease-spring"
-				enter-from-class="opacity-0 scale-95"
-				enter-to-class="opacity-100 scale-100"
-				leave-active-class="duration-(--motion-moderate-exit) ease-exit"
-				leave-from-class="opacity-100 scale-100"
-				leave-to-class="opacity-0 scale-95"
-			>
-				<div
-					v-if="bulkOps.isBulkOperationInProgress.value"
-					class="flex items-center gap-3 px-3 py-2 rounded-lg bg-bg-surface"
-				>
-					<Icon
-						name="lucide:loader-2"
-						class="w-4 h-4 animate-spin motion-reduce:animate-none text-brand"
-					/>
-					<span class="text-sm text-text-secondary">
-						<template v-if="bulkOps.bulkOperationType.value === 'add'">{{
-							t('dashboard.audience.contacts.index.bulk.progress.add')
-						}}</template>
-						<template v-else-if="bulkOps.bulkOperationType.value === 'remove'">{{
-							t('dashboard.audience.contacts.index.bulk.progress.remove')
-						}}</template>
-						<template v-else-if="bulkOps.bulkOperationType.value === 'delete'">{{
-							t('dashboard.audience.contacts.index.bulk.progress.delete')
-						}}</template>
-						<template v-else-if="bulkOps.bulkOperationType.value === 'export'">{{
-							t('dashboard.audience.contacts.index.bulk.progress.export')
-						}}</template>
-					</span>
-					<div class="w-20 h-1.5 bg-bg-elevated rounded-full overflow-hidden">
-						<div
-							class="ui-meter-fill h-full bg-brand transition-transform duration-(--motion-moderate)"
-							:style="meterFillStyle(bulkOps.bulkOperationProgress.value)"
-						/>
-					</div>
-					<span class="text-xs text-text-tertiary">{{ bulkOps.bulkOperationProgress.value }}%</span>
-				</div>
-			</Transition>
+			<ContactsBulkProgress
+				:active="bulkOps.isBulkOperationInProgress.value"
+				:type="bulkOps.bulkOperationType.value"
+				:progress="bulkOps.bulkOperationProgress.value"
+			/>
 		</div>
 
 		<!-- Content -->
@@ -669,155 +348,34 @@ onUnmounted(() => {
 				<div v-else>
 					<!-- Below md the columns can't fit — the same rows become a card
 					     list (one tap opens the contact, the checkbox still selects). -->
-					<template v-if="!tableFits">
-						<!-- The table's select-all sits in a `thead` the card list has no
-						     room for, so bulk selection was desktop-only here. Full-width
-						     row: it doubles as its own 44px touch target. -->
-						<UiCheckbox
-							v-if="canManageContacts"
-							:model-value="isAllPageSelected"
-							:indeterminate="isSomePageSelected"
-							:label="t('dashboard.audience.contacts.index.selectAllLoaded')"
-							class="w-full px-4 py-3 border-b border-border-subtle transition-colors hover:bg-bg-surface"
-							@update:model-value="toggleSelectAll"
-						/>
-						<ul class="divide-y divide-border-subtle">
-							<li
-								v-for="contact in contacts"
-								:key="contact._id"
-								class="flex items-center gap-3 px-4 py-3 density-compact:py-2 transition-colors"
-								:class="bulkSelection.selectedIds.value.has(contact._id) ? 'bg-brand/5' : ''"
-							>
-								<UiCheckbox
-									v-if="canManageContacts"
-									class="contact-select shrink-0"
-									:model-value="bulkSelection.selectedIds.value.has(contact._id)"
-									:aria-label="
-										t('dashboard.audience.contacts.index.selectContact', {
-											email: contactPrimaryIdentity(contact, t),
-										})
-									"
-									@update:model-value="toggleContactSelection(contact._id)"
-								/>
-								<button
-									type="button"
-									class="flex-1 min-w-0 text-left"
-									@click="openContact(contact._id)"
-								>
-									<!-- Email, else name, else "Unnamed contact". The second line is the
-									     name under an email, or says that there is no email. -->
-									<span
-										class="block font-medium truncate"
-										:class="contactHasEmail(contact) ? 'text-text-primary' : 'text-text-secondary'"
-										>{{ contactPrimaryIdentity(contact, t) }}</span
-									>
-									<span
-										v-if="contactHasEmail(contact) && contactName(contact)"
-										class="block text-sm text-text-secondary truncate"
-									>
-										{{ contactName(contact) }}
-									</span>
-									<span
-										v-else-if="!contactHasEmail(contact)"
-										class="block text-sm text-text-tertiary"
-									>
-										{{ t('dashboard.audience.contacts.index.noEmail') }}
-									</span>
-									<span class="block text-xs text-text-tertiary mt-0.5">
-										{{
-											t('dashboard.audience.contacts.index.addedOn', {
-												date: formatDate(contact.createdAt),
-											})
-										}}
-									</span>
-								</button>
-								<Icon name="lucide:chevron-right" class="w-4 h-4 text-text-tertiary shrink-0" />
-							</li>
-						</ul>
-					</template>
+					<ContactCardList
+						v-if="!tableFits"
+						:contacts="contacts"
+						:selected-ids="bulkSelection.selectedIds.value"
+						:can-manage="canManageContacts"
+						:is-all-page-selected="isAllPageSelected"
+						:is-some-page-selected="isSomePageSelected"
+						@toggle-select-all="toggleSelectAll"
+						@toggle-select="toggleContactSelection"
+						@open="openContact"
+					/>
 
-					<div v-else class="overflow-x-auto">
-						<table class="w-full">
-							<thead>
-								<tr class="border-b border-border-subtle">
-									<th v-if="canManageContacts" class="w-12 px-4 py-4 density-compact:py-2">
-										<UiCheckbox
-											:model-value="isAllPageSelected"
-											:indeterminate="isSomePageSelected"
-											:aria-label="t('dashboard.audience.contacts.index.selectAllLoaded')"
-											@update:model-value="toggleSelectAll"
-										/>
-									</th>
-									<th
-										class="text-left px-6 py-4 density-compact:py-2 text-sm font-medium text-text-secondary"
-									>
-										{{ t('common.email') }}
-									</th>
-									<th
-										class="text-left px-6 py-4 density-compact:py-2 text-sm font-medium text-text-secondary"
-									>
-										{{ t('dashboard.audience.contacts.index.table.firstName') }}
-									</th>
-									<th
-										class="text-left px-6 py-4 density-compact:py-2 text-sm font-medium text-text-secondary"
-									>
-										{{ t('dashboard.audience.contacts.index.table.lastName') }}
-									</th>
-									<th
-										class="text-left px-6 py-4 density-compact:py-2 text-sm font-medium text-text-secondary"
-										:aria-sort="sortApplies ? getAriaSort('createdAt') : undefined"
-									>
-										<button
-											type="button"
-											class="flex items-center gap-1 py-4 -my-4 density-compact:py-2 density-compact:-my-2 px-1 -mx-1 rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand/40"
-											:class="
-												sortApplies
-													? 'hover:text-text-primary'
-													: 'text-text-tertiary cursor-not-allowed'
-											"
-											:aria-disabled="sortApplies ? undefined : 'true'"
-											:title="
-												sortApplies
-													? undefined
-													: t('dashboard.audience.contacts.index.table.createdSortSearchHint')
-											"
-											aria-describedby="contacts-created-sort-hint"
-											@click="sortApplies && toggleSort('createdAt')"
-										>
-											{{ t('dashboard.audience.contacts.index.table.created') }}
-											<Icon
-												v-if="sortApplies && getSortIcon('createdAt')"
-												:name="getSortIcon('createdAt')!"
-												class="w-4 h-4"
-											/>
-										</button>
-										<!-- Hidden, so it describes the button without joining the header's name. -->
-										<span id="contacts-created-sort-hint" hidden>
-											{{
-												sortApplies
-													? t('dashboard.audience.contacts.index.table.createdSortHint')
-													: t('dashboard.audience.contacts.index.table.createdSortSearchHint')
-											}}
-										</span>
-									</th>
-								</tr>
-							</thead>
-							<tbody>
-								<!-- One component per row with a boolean `selected`: a checkbox click
-								     re-renders the row it flips, and the menu is built on open. -->
-								<ContactsContactRow
-									v-for="contact in contacts"
-									:key="contact._id"
-									:contact="contact"
-									:to="contactPath(contact._id)"
-									:selected="bulkSelection.selectedIds.value.has(contact._id)"
-									:can-manage="canManageContacts"
-									@open="openContact(contact._id)"
-									@toggle-select="toggleContactSelection(contact._id)"
-								/>
-							</tbody>
-						</table>
-					</div>
+					<ContactTable
+						v-else
+						:contacts="contacts"
+						:selected-ids="bulkSelection.selectedIds.value"
+						:can-manage="canManageContacts"
+						:is-all-page-selected="isAllPageSelected"
+						:is-some-page-selected="isSomePageSelected"
+						:sort-applies="sortApplies"
+						:created-aria-sort="getAriaSort('createdAt')"
+						:created-sort-icon="getSortIcon('createdAt')"
+						:contact-path="contactPath"
+						@toggle-select-all="toggleSelectAll"
+						@toggle-sort="toggleSort('createdAt')"
+						@toggle-select="toggleContactSelection"
+						@open="openContact"
+					/>
 
 					<!-- Load More -->
 					<div
@@ -846,69 +404,7 @@ onUnmounted(() => {
 		</div>
 
 		<!-- Add Contact Modal -->
-		<UiModal
-			v-if="canManageContacts"
-			v-model:open="addModal.isOpen.value"
-			:title="t('dashboard.audience.contacts.index.addContact')"
-		>
-			<form @submit.prevent="handleAddSubmit">
-				<div
-					v-if="addModal.errors.general"
-					class="mb-4 p-3 rounded-lg bg-error-subtle border border-error/20"
-				>
-					<p class="text-sm text-error">{{ addModal.errors.general }}</p>
-				</div>
-				<div class="mb-4">
-					<UiInput
-						v-model="addModal.form.email"
-						type="email"
-						:label="t('common.email')"
-						:required="true"
-						:placeholder="t('dashboard.audience.contacts.index.form.emailPlaceholder')"
-						:error="addModal.errors.email"
-						:disabled="addModal.isSubmitting.value"
-					/>
-				</div>
-				<div class="mb-4">
-					<UiInput
-						v-model="addModal.form.firstName"
-						:label="t('dashboard.audience.contacts.index.table.firstName')"
-						:placeholder="t('dashboard.audience.contacts.index.form.firstNamePlaceholder')"
-						:disabled="addModal.isSubmitting.value"
-					/>
-				</div>
-				<div class="mb-4">
-					<UiInput
-						v-model="addModal.form.lastName"
-						:label="t('dashboard.audience.contacts.index.table.lastName')"
-						:placeholder="t('dashboard.audience.contacts.index.form.lastNamePlaceholder')"
-						:disabled="addModal.isSubmitting.value"
-					/>
-				</div>
-				<div class="mb-6">
-					<UiSelect
-						v-model="addModal.form.language"
-						:options="languageChoices"
-						:label="t('dashboard.audience.contacts.index.form.languageLabel')"
-						:placeholder="t('dashboard.audience.contacts.index.form.languagePlaceholder')"
-						:disabled="addModal.isSubmitting.value"
-					/>
-				</div>
-			</form>
-			<template #footer>
-				<UiButton
-					variant="secondary"
-					:disabled="addModal.isSubmitting.value"
-					@click="addModal.close()"
-					>{{ t('common.cancel') }}</UiButton
-				>
-				<UiButton :loading="addModal.isSubmitting.value" @click="handleAddSubmit">{{
-					addModal.isSubmitting.value
-						? t('dashboard.audience.contacts.index.creating')
-						: t('dashboard.audience.contacts.index.createContact')
-				}}</UiButton>
-			</template>
-		</UiModal>
+		<AddContactModal v-if="canManageContacts" :add-modal="addModal" />
 
 		<!-- CSV Import Modal -->
 		<LazyContactsCsvImportModal
@@ -944,31 +440,3 @@ onUnmounted(() => {
 		/>
 	</div>
 </template>
-
-<style scoped>
-/* The card list's row checkbox paints at its native 16px, but a thumb needs
- * 44px. A transparent 44x44 pseudo-element centred on it grows the hit area
- * (sized, not inset, so the 16px box still gets a full 44px each way) without
- * moving anything in the row; `z-10` keeps the overlap with the row's own tap
- * target on the checkbox. */
-.contact-select {
-	position: relative;
-	z-index: 10;
-}
-
-/* No text sits beside this box, so drop UiCheckbox's text-baseline nudge: the
- * label is then exactly the box and the hit area centres on it. */
-.contact-select :deep(input) {
-	margin-top: 0;
-}
-
-.contact-select::after {
-	content: '';
-	position: absolute;
-	top: 50%;
-	left: 50%;
-	width: 44px;
-	height: 44px;
-	transform: translate(-50%, -50%);
-}
-</style>

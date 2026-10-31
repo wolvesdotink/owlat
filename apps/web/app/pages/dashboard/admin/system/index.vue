@@ -102,15 +102,10 @@ const {
 
 <template>
 	<div class="space-y-6">
-		<!-- Page header -->
-		<div>
-			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-				{{ t('dashboard.admin.system.index.title') }}
-			</h1>
-			<p class="mt-1 text-text-secondary text-md">
-				{{ t('dashboard.admin.system.index.intro') }}
-			</p>
-		</div>
+		<UiPageHeader
+			:title="t('dashboard.admin.system.index.title')"
+			:description="t('dashboard.admin.system.index.intro')"
+		/>
 
 		<!-- Current version -->
 		<SystemVersionCard />

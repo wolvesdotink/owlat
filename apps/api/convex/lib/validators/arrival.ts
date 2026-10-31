@@ -91,7 +91,7 @@ export const threadArrivalValidator = v.object({
 	messageId: v.id('mailMessages'),
 	sourceOrderKey: v.optional(v.string()),
 	decidedAt: v.number(),
-	// The newest inbound message carries a cold-pitch verdict (#1381): its
+	// The newest inbound message carries a cold-pitch verdict: its
 	// digest line goes under Cold outreach.
 	isColdPitch: v.optional(v.boolean()),
 });
@@ -272,7 +272,7 @@ export const digestOverflowByKindValidator = v.object({
 	newsletter: v.number(),
 	updates: v.number(),
 	promotion: v.number(),
-	// Optional: digests written before the group existed (#1381) lack it.
+	// Optional: digests written before the group existed lack it.
 	cold_outreach: v.optional(v.number()),
 });
 

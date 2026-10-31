@@ -1,9 +1,9 @@
 /**
  * THE WORKER → COMPLETION WIRE, as a shape rather than as a convention.
  *
- * The seam used to be four overlapping optional-boolean shapes plus a fifth
- * that existed only at runtime, cast into place at the consumer. Every case
- * below is one the OLD shape type-checked and the wire now refuses — an
+ * The seam is one five-arm union with a `kind` discriminant, not overlapping
+ * optional-boolean shapes cast into place at the consumer. Every case below is
+ * one such a loose shape would type-check and the wire refuses — an
  * acceptance with no message id, a deferral that names no origin, a park
  * carrying an envelope somebody could re-dispatch from — plus the round trip of
  * each arm a producer actually builds.

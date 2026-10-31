@@ -74,13 +74,12 @@ export const TRIVIAL_CLASSIFICATION_CONFIDENCE = 0.8;
 
 /**
  * Intents whose replies are formulaic enough for the fast tier, in the
- * classifier's REAL domain (#1332). The set used to name `praise`,
- * `informational` and `unsubscribe`, which the classifier never emits, so only
- * `acknowledgment` ever matched. Corrected, an acknowledgement or a plain
- * piece of information is the formulaic reply; a question, a request, a
+ * classifier's REAL domain: a name the classifier never emits (`praise`,
+ * `informational`, `unsubscribe`) would never match. An acknowledgement or a
+ * plain piece of information is the formulaic reply; a question, a request, a
  * complaint or an escalation stays on the capable tier.
  *
- * Typed against the domain so it cannot drift again. It routes only REVIEWED
+ * Typed against the domain so it cannot drift. It routes only REVIEWED
  * drafts written cheap-first ({@link classifiedDraftRoute}); the auto-sendable
  * route reads {@link ACTIVE_TRIVIAL_INTENTS}.
  */

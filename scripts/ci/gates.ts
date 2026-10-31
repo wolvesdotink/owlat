@@ -169,7 +169,6 @@ export const ROOT_GATES: readonly RootGate[] = [
 			'knip.jsonc',
 			'scripts/check-dead-code.sh',
 			'scripts/check-shared-production-exports.sh',
-			'scripts/shared-production-export-baseline.txt',
 			RATCHET,
 		],
 	},
@@ -241,7 +240,6 @@ export const ROOT_GATES: readonly RootGate[] = [
 		paths: [
 			'{apps,packages,examples}/**/*.{ts,tsx,vue}',
 			'scripts/check-provider-identity.sh',
-			'scripts/provider-identity-allowlist.txt',
 			'scripts/provider-identity-collisions.txt',
 		],
 	},
@@ -256,7 +254,6 @@ export const ROOT_GATES: readonly RootGate[] = [
 			'packages/email-builder/src/',
 			'scripts/check-native-title.sh',
 			'scripts/native-title-findings.ts',
-			'scripts/native-title-baseline.txt',
 			RATCHET,
 		],
 	},

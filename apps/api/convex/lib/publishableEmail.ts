@@ -286,7 +286,7 @@ export async function buildEditablePatch(
 	if (args.translations !== undefined) {
 		patch.translations = sanitizeTranslationsJson(args.translations);
 	} else if (patch.content !== undefined) {
-		// The editor renewed repeated Block ids (#1430): each renewed copy keeps
+		// The editor renews repeated Block ids on load: each renewed copy keeps
 		// the translation it shared with the original.
 		const carried = carryRenewedBlockOverlays(row.content, patch.content, row.translations);
 		if (carried !== null) patch.translations = carried;

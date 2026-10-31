@@ -1,5 +1,5 @@
 /**
- * What Retry does with a failed Team inbox message (#1220).
+ * What Retry does with a failed Team inbox message.
  *
  * One rule for every caller: the manual Retry (`inbox/mutations.retryFailedMessage`,
  * from the thread page and the failed-messages page), the automatic retry cron

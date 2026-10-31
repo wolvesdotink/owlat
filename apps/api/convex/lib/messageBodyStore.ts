@@ -7,15 +7,15 @@
  * `mailMessageBodies`, and only the readers that actually render or analyse a
  * body load that row.
  *
- * WIDEN → MIGRATE → NARROW. New writes go to `mailMessageBodies` only. Rows
- * written before this change still carry `textBodyInline` / `htmlBodyInline` on
+ * WIDEN → MIGRATE → NARROW. New writes go to `mailMessageBodies` only. Older
+ * rows still carry `textBodyInline` / `htmlBodyInline` on
  * the message itself until `migrations/0049_move_message_bodies` moves them, so
  * every reader here resolves "the body row, else the legacy columns". Dropping
  * the legacy columns from the schema is a follow-up once the migration has run
  * everywhere.
  *
- * Sealing is unchanged: the values stored here are exactly what used to be
- * stored on the row (sealed with `sealBodyAtWrite`), and every plaintext reader
+ * Sealing matches the legacy columns: the values stored here are sealed with
+ * `sealBodyAtWrite`, and every plaintext reader
  * still unseals through the `lib/messageBody.ts` accessors. The large-body blob
  * ids (`*BodyStorageId`) and the `searchBody` excerpt stay on `mailMessages`:
  * the ids are a few bytes and back the sharing-aware reseal/purge indexes, and

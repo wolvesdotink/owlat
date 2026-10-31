@@ -375,8 +375,8 @@ export function classifiedDraftRouteOf(
 	});
 }
 
-// Known embedding models and their native output width. Used to fail fast when
-// a configured model's vectors are WIDER than the fixed EMBEDDING_DIMENSIONS
+// Known embedding models and their native output width, so a configuration
+// fails fast when its model's vectors are WIDER than the fixed EMBEDDING_DIMENSIONS
 // index (narrower ones are zero-padded by toIndexVector). Unknown/custom models
 // aren't listed — an oversized vector is caught at embed time by toIndexVector.
 const KNOWN_EMBEDDING_DIMENSIONS: Record<string, number> = {

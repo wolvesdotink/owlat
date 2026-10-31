@@ -4,7 +4,7 @@ import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import type { CanIEmailData, CanIEmailFeature, EmailClient } from '../../types';
 
 /**
- * Issue #1435: the Compatibility tab tells "no client picked" apart from "picked,
+ * The Compatibility tab tells "no client picked" apart from "picked,
  * still analyzing", a failed analysis and a manual analysis not yet run, and
  * never shows one client's report as another's.
  */

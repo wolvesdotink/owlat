@@ -239,7 +239,7 @@ export type IdempotencyKeyDeduplication = boolean;
  * (RFC 5965 §3.2 — the FBL redacted the Message-ID) or one whose id matches no
  * Send. The address is all we have, and `production` from a source that
  * declares this capability is the one proof that THIS deployment sent the mail,
- * so it is the only thing that blocklists the address (#1194, #1227). An
+ * so it is the only thing that blocklists the address. An
  * untagged source's complaint is counted as `unattributed` instead: a provider
  * account shared by several deployments delivers every tenant's feedback to
  * each of them, so its webhook proves who reported the mail, not who sent it.

@@ -252,12 +252,21 @@ const userOptions = computed(() => [
 // modal whose only control is an empty dropdown.
 const hasPromotableUsers = computed(() => promotableUsers.value.length > 0);
 
+// With nobody to promote, Add admin is held (aria-disabled, not disabled) so
+// keyboard and pointer users can still reach it and its tooltip can say why:
+// `.btn:disabled` drops pointer events and a disabled button leaves the tab
+// order. The fill fades through colour alpha so the focus ring stays at full
+// strength; openAddAdmin keeps the held control inert.
+const ADD_ADMIN_HELD_CLASS =
+	'cursor-not-allowed active:scale-100 bg-surface-3/50 hover:bg-surface-3/50 text-text-primary/50';
+
 const roleOptions = computed(() => [
 	{ value: 'admin', label: t('dashboard.admin.operator.index.roleOptions.admin') },
 	{ value: 'superadmin', label: t('dashboard.admin.operator.index.roleOptions.superadmin') },
 ]);
 
 function openAddAdmin() {
+	if (!hasPromotableUsers.value) return;
 	addAdminUserId.value = '';
 	addAdminRole.value = 'admin';
 	addAdminModalOpen.value = true;
@@ -298,20 +307,11 @@ const anyMutationLoading = computed(
 
 <template>
 	<div>
-		<!-- Header -->
-		<div class="mb-6">
-			<div class="flex items-center gap-3">
-				<UiIconBox icon="lucide:shield-alert" size="lg" variant="brand" rounded="xl" />
-				<div>
-					<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-						{{ t('dashboard.admin.operator.index.title') }}
-					</h1>
-					<p class="mt-1 text-text-secondary">
-						{{ t('dashboard.admin.operator.index.intro') }}
-					</p>
-				</div>
-			</div>
-		</div>
+		<UiPageHeader
+			class="mb-6"
+			:title="t('dashboard.admin.operator.index.title')"
+			:description="t('dashboard.admin.operator.index.intro')"
+		/>
 
 		<UiTabs v-model="activeTab" :tabs="tabs" :panel-id="tabPanelId" class="mb-6" />
 
@@ -658,22 +658,28 @@ const anyMutationLoading = computed(
 						<h3 class="text-sm font-medium text-text-tertiary uppercase tracking-wider">
 							{{ t('dashboard.admin.operator.index.admins.title') }}
 						</h3>
-						<UiButton
-							variant="secondary"
-							size="sm"
-							:disabled="anyMutationLoading || !hasPromotableUsers"
-							:title="
+						<UiTooltip
+							:text="
 								hasPromotableUsers
 									? undefined
 									: t('dashboard.admin.operator.index.admins.allPromoted')
 							"
-							@click="openAddAdmin"
 						>
-							<template #iconLeft>
-								<Icon name="lucide:plus" class="w-4 h-4" />
-							</template>
-							{{ t('dashboard.admin.operator.index.admins.add') }}
-						</UiButton>
+							<UiButton
+								variant="secondary"
+								size="sm"
+								:disabled="anyMutationLoading"
+								:aria-disabled="hasPromotableUsers ? undefined : 'true'"
+								:class="hasPromotableUsers ? undefined : ADD_ADMIN_HELD_CLASS"
+								data-testid="operator-add-admin"
+								@click="openAddAdmin"
+							>
+								<template #iconLeft>
+									<Icon name="lucide:plus" class="w-4 h-4" />
+								</template>
+								{{ t('dashboard.admin.operator.index.admins.add') }}
+							</UiButton>
+						</UiTooltip>
 					</div>
 
 					<!-- Scroll container: email, role, added and the remove action do not

@@ -28,7 +28,7 @@ import {
 import { governedRetryDelayMs } from './sendRetryPlan';
 
 // ============================================================================
-// Send completion failures (module) — #1195.
+// Send completion failures (module).
 //
 // `delivery/sendCompletion.ts:completeSend` catches a completion that throws and
 // calls `recordCompletionFailure` below. From then on this module owns the

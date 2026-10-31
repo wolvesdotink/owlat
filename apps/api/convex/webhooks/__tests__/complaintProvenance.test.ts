@@ -1,6 +1,6 @@
 /**
  * A REDACTED COMPLAINT BLOCKS AN ADDRESS ONLY ON PROOF THIS DEPLOYMENT SENT
- * THE MAIL (#1227).
+ * THE MAIL.
  *
  * RFC 5965 §3.2 lets an FBL redact the original Message-ID (Gmail does), so the
  * only thing a complaint carries is the address. There is no send to
@@ -13,7 +13,7 @@
  * proves the provider sent the report, not which deployment sent the mail, so a
  * provider account or SNS topic shared between deployments let one deployment's
  * complaint silently stop mail to the address in another. The unknown-id branch
- * (#1194) already required attribution; this branch now applies the same rule:
+ * requires attribution too, and this branch applies the same rule:
  *   - the own MTA's `production` tag, written only on a report whose signed
  *     VERP token decoded, still blocklists the address;
  *   - everything else is counted in `unresolvedFeedback` as `unattributed`,

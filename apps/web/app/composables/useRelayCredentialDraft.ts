@@ -1,11 +1,12 @@
 /**
  * The ONE relay-credential draft, shared by the in-app transport editor
- * (`components/delivery/TransportEditor.vue`) and by step 1 of the transport
- * connection wizard (`components/delivery/TransportCredentialsStep.vue`).
+ * (`components/delivery/TransportEditor.vue`), step 1 of the transport
+ * connection wizard (`components/delivery/TransportCredentialsStep.vue`) and the
+ * first-run setup wizard's email step (`composables/useSetupEmailStepForm.ts`).
  *
- * Both surfaces ask for the same relay credentials, validate them with the same
- * shipped validators, offer the same pre-apply live handshake and write the same
- * sealed env patch through the same endpoint. Holding that in one place is not a
+ * Every surface asks for the same relay credentials, validates them with the same
+ * shipped validators, offers the same pre-apply live handshake and builds its env
+ * patch with the same `buildProviderEnv`. Holding that in one place is not a
  * tidiness exercise: two copies had already drifted apart in the operator-facing
  * provider hints, which is the failure mode this prevents.
  *
@@ -32,14 +33,10 @@ import {
 	type SendProviderHostPortField,
 } from '@owlat/shared/sendProviderCatalog';
 import {
-	draftCredentialsFromValues,
 	firstPreset,
 	hostPortFieldFor,
 	seedCredentialValues,
 	secretEnvKeys,
-	requiredCredentialError,
-	type DraftCredentials,
-	type MissingCredentialMessage,
 	type TransportCredentialValues,
 } from '~/composables/setupWizardCredentials';
 import {
@@ -213,9 +210,6 @@ export interface ValidateTransportResponse {
 	message: string;
 }
 
-/** The credential fields of an {@link EmailStepDraft} — everything but identity. */
-export type RelayCredentialFields = DraftCredentials;
-
 /**
  * THE PRE-APPLY HANDSHAKE'S REQUEST SHAPE, per probe.
  *
@@ -288,49 +282,80 @@ export interface RelayCredentialDraft {
 	/** Which well-known endpoint a `host-port` field is prefilled from. */
 	readonly preset: Ref<SmtpPreset>;
 	readonly presetOptions: ComputedRef<{ value: SmtpPreset; label: string }[]>;
-	/** The credential half of the shipped draft shape. */
-	readonly credentialFields: ComputedRef<RelayCredentialFields>;
 	/** Every secret currently held in memory — the redaction list, in one place. */
 	readonly enteredSecrets: ComputedRef<string[]>;
 	/** True only for a kind whose catalog entry declares a pre-apply probe. */
 	readonly canValidateLive: ComputedRef<boolean>;
-	/**
-	 * Missing required descriptor value, for every core or plugin transport — as
-	 * the message key plus the field name it interpolates, because this composable
-	 * is also created outside a component (its own suite does) and has no `t()`.
-	 * The screen that announces it resolves both halves.
-	 */
-	readonly requiredCredentialError: ComputedRef<MissingCredentialMessage | undefined>;
 	clearEnteredSecrets(): void;
-	/** The shipped live handshake, or null when this kind has none. */
-	validateLive(): Promise<ValidateTransportResponse | null>;
+	/**
+	 * The shipped live handshake, or null when this kind has none. Posts to the
+	 * in-app editor's `/api/delivery/validate-transport` unless `target` names
+	 * another endpoint that runs the same probes (the setup wizard's
+	 * `/api/setup/validate-provider`, which also wants its setup-token header).
+	 */
+	validateLive(target?: ProbeTarget): Promise<ValidateTransportResponse | null>;
 }
 
-/** The blank form for every kind at once, so switching provider keeps input. */
-function seedAllCredentialValues(): TransportCredentialValues {
+/** Where a live handshake is posted, for a surface other than the in-app editor. */
+interface ProbeTarget {
+	readonly url: string;
+	readonly headers?: Record<string, string>;
+}
+
+/**
+ * The blank form for every kind at once, so switching provider keeps input —
+ * with any value `seed` already holds for a declared credential variable laid
+ * over it, so a surface that re-opens a step shows what was entered before.
+ */
+function seedAllCredentialValues(
+	seed: Readonly<Record<string, string>>
+): TransportCredentialValues {
 	const values: TransportCredentialValues = {};
 	for (const entry of COMPOSED_SEND_PROVIDER_CATALOG_ENTRIES) {
 		Object.assign(values, seedCredentialValues(entry.kind));
 	}
+	for (const key of Object.keys(values)) {
+		const prior = seed[key];
+		if (prior !== undefined) values[key] = prior;
+	}
 	return values;
 }
 
-/** The preset a `host-port` field starts on: the first the descriptor offers. */
-function seedPreset(): SmtpPreset {
+/**
+ * The preset a `host-port` field starts on: the one whose host a seeded value
+ * already names, the hand-entered endpoint (the preset with no host) for any
+ * other seeded host, and otherwise the first the descriptor offers.
+ */
+function seedPreset(seed: Readonly<Record<string, string>>): SmtpPreset {
 	for (const entry of COMPOSED_SEND_PROVIDER_CATALOG_ENTRIES) {
 		const field = hostPortFieldFor(entry.kind);
-		const preset = field === undefined ? undefined : firstPreset(field);
-		if (preset !== undefined) return preset.key;
+		if (field === undefined) continue;
+		const host = seed[field.envVar] ?? '';
+		const presets = Object.entries(field.presets ?? {});
+		const match =
+			host === ''
+				? undefined
+				: (presets.find(([, config]) => config.host === host) ??
+					presets.find(([, config]) => config.host === ''));
+		const chosen = match?.[0] ?? firstPreset(field)?.key;
+		if (chosen !== undefined) return chosen as SmtpPreset;
 	}
 	return 'custom';
 }
 
+/**
+ * @param seed Values a surface already holds, keyed by env variable (the setup
+ *   wizard's collected env). Only declared credential variables are read from
+ *   it; the in-app editor passes nothing, because a deployment's secrets are
+ *   never sent back to the browser.
+ */
 export function useRelayCredentialDraft(
-	initialProvider: ProviderChoice = 'resend'
+	initialProvider: ProviderChoice = 'resend',
+	seed: Readonly<Record<string, string>> = {}
 ): RelayCredentialDraft {
 	const provider = ref<ProviderChoice>(initialProvider);
-	const credentialValues = reactive<TransportCredentialValues>(seedAllCredentialValues());
-	const preset = ref<SmtpPreset>(seedPreset());
+	const credentialValues = reactive<TransportCredentialValues>(seedAllCredentialValues(seed));
+	const preset = ref<SmtpPreset>(seedPreset(seed));
 
 	const hostPortField = computed(() => hostPortFieldFor(provider.value));
 
@@ -351,10 +376,6 @@ export function useRelayCredentialDraft(
 		credentialValues[field.secureEnvVar] = String(config.secure);
 	});
 
-	const credentialFields = computed<RelayCredentialFields>(() =>
-		draftCredentialsFromValues({ ...credentialValues }, preset.value)
-	);
-
 	// Every `secret` field the catalog declares, across every kind: the draft can
 	// hold a key for a provider the operator moved away from, and the redaction
 	// list has to cover it.
@@ -365,9 +386,6 @@ export function useRelayCredentialDraft(
 	const enteredSecrets = computed(() => secretKeys.map((key) => credentialValues[key] ?? ''));
 
 	const activeProbe = computed(() => composedSendProviderCatalogEntry(provider.value)?.setupProbe);
-	const missingRequiredCredential = computed(() =>
-		requiredCredentialError(provider.value, credentialValues)
-	);
 
 	const canValidateLive = computed(
 		() => probeRequestBuilder(activeProbe.value?.validator) !== undefined
@@ -377,16 +395,20 @@ export function useRelayCredentialDraft(
 		for (const key of secretKeys) credentialValues[key] = '';
 	}
 
-	async function validateLive(): Promise<ValidateTransportResponse | null> {
+	async function validateLive(target?: ProbeTarget): Promise<ValidateTransportResponse | null> {
 		const buildBody = probeRequestBuilder(activeProbe.value?.validator);
 		if (buildBody === undefined) return null;
-		return await apiFetch<ValidateTransportResponse>('/api/delivery/validate-transport', {
-			method: 'POST',
-			body: {
-				provider: provider.value,
-				...buildBody({ ...credentialValues }, hostPortField.value),
-			},
-		});
+		return await apiFetch<ValidateTransportResponse>(
+			target?.url ?? '/api/delivery/validate-transport',
+			{
+				method: 'POST',
+				...(target?.headers === undefined ? {} : { headers: target.headers }),
+				body: {
+					provider: provider.value,
+					...buildBody({ ...credentialValues }, hostPortField.value),
+				},
+			}
+		);
 	}
 
 	return {
@@ -394,10 +416,8 @@ export function useRelayCredentialDraft(
 		credentialValues,
 		preset,
 		presetOptions,
-		credentialFields,
 		enteredSecrets,
 		canValidateLive,
-		requiredCredentialError: missingRequiredCredential,
 		clearEnteredSecrets,
 		validateLive,
 	};
@@ -415,12 +435,11 @@ export function useRelayCredentialDraft(
  */
 export async function applyTransportEnv(
 	draft: EmailStepDraft,
-	relayRemovalConfirmation?: string,
-	credentialValues?: TransportCredentialValues
+	relayRemovalConfirmation?: string
 ): Promise<ApplyTransportResponse> {
 	// An empty base, so only the transport keys are sent; the backend allowlists
 	// and clears the rest.
-	const providerEnv = buildProviderEnv({}, draft, credentialValues);
+	const providerEnv = buildProviderEnv({}, draft);
 	return await apiFetch<ApplyTransportResponse>('/api/delivery/apply-transport', {
 		method: 'POST',
 		body: { providerEnv, relayRemovalConfirmation },

@@ -65,8 +65,7 @@ export type RampIntegrationPresence = Readonly<Record<RampIntegrationId, boolean
  * (`trailing_baseline_engagement`) and which complaint line applies
  * (`unsubscribe_rate_proxy`). A prose sentence could not be asked any of that.
  *
- * NOT RENDERED, AND NOT IN THE AUDIT ROW — this comment said both until issue
- * #515 was read to the end. The audit row records the absent INTEGRATION IDS
+ * NOT RENDERED, AND NOT IN THE AUDIT ROW. The audit row records the absent INTEGRATION IDS
  * (`rampControllerInputs.ts`'s `absentIntegrations`), not the sources; the
  * operator sentence names the capping integration's `label`
  * (`controllerNarrative.ts`); and no screen reads a source name at all. The
@@ -76,11 +75,9 @@ export type RampIntegrationPresence = Readonly<Record<RampIntegrationId, boolean
  * one.
  *
  * A SOURCE HAS TO BE SOMETHING EVERY CELL IT IS CLAIMED FOR ACTUALLY RUNS ON.
- * `smtp_classification` was in this list and named by the Microsoft entry below.
- * Its producer now exists — issue #501 wired the MTA's categories into
- * `analytics/smtpResponseCategories.ts` — but the name still does not belong
- * here, and for a second reason the first one hid: the clause that reads those
- * counts (`evaluateSmtpBlockMessages`) is on the STANDALONE evaluator alone,
+ * `smtp_classification` is not in this list although it has a producer (the
+ * MTA's categories reach `analytics/smtpResponseCategories.ts`): the clause that
+ * reads those counts (`evaluateSmtpBlockMessages`) is on the STANDALONE evaluator alone,
  * while every entry in this table applies to relay-equipped deployments too. A
  * source this table names is folded into the controller's behaviour for every
  * cell the entry covers, so naming it would judge a relay-equipped Microsoft
@@ -149,9 +146,8 @@ export interface RampSubstitutionEntry {
 	 * The confidence sentence. One home for the copy.
 	 *
 	 * NOTHING RENDERS IT TODAY, said here because this is the field a later change
-	 * would ask "how much care does this deserve?" about. Its only consumer was
-	 * `rampCellConfidence`, a projection no screen ever called, since removed
-	 * (issue #515); the delivery dashboard grades a cell through
+	 * would ask "how much care does this deserve?" about. No screen calls a
+	 * projection of it; the delivery dashboard grades a cell through
 	 * `dashboardConfidence` instead and the copy for THAT lives in
 	 * `apps/web/app/utils/deliverabilityMeasurement.ts`. So this sentence is
 	 * currently the table documenting its own substitution, and a screen that
@@ -232,10 +228,9 @@ export const RAMP_DEGRADATION_MATRIX: readonly RampSubstitutionEntry[] = [
 		// no external reputation feed the cell is judged on the outcomes of its own
 		// sends.
 		//
-		// NOT `smtp_classification`, which this entry claimed until issue #501 was
-		// read to the end. Microsoft IS unusually explicit in its 5xx text, the MTA
-		// does classify it, and since #501 those per-category counts DO reach Convex
-		// per (cell, arm). What still disqualifies the name is SCOPE: the clause
+		// NOT `smtp_classification`. Microsoft IS unusually explicit in its 5xx
+		// text, the MTA does classify it, and those per-category counts DO reach
+		// Convex per (cell, arm). What disqualifies the name is SCOPE: the clause
 		// that consumes them (`evaluateSmtpBlockMessages`) runs on the standalone
 		// evaluator only, and this entry covers relay-equipped deployments too,
 		// whose gate 2 is the deferral rate alone. Naming it here would fold into
@@ -252,14 +247,15 @@ export const RAMP_DEGRADATION_MATRIX: readonly RampSubstitutionEntry[] = [
 		//     anywhere. That one is answered elsewhere in the table: the
 		//     `seed_mailboxes` entry below is absent in exactly those deployments
 		//     and says so ("nothing is currently observing where this mail lands").
-		//   - every probe the shadow copy writes is a CAMPAIGN probe
-		//     (`seedPlacementProbes.stream` is `v.literal('campaign')`, issue #500),
-		//     so on a deployment that HAS seed mailboxes the microsoft TRANSACTIONAL
-		//     and AUTOMATION cells still have no placement evidence, gate 5 holds on
-		//     them for ever, and NOTHING ELSE IN THIS TABLE SAYS SO. That claim is
-		//     wrong for those two cells and stating it here is the whole of the
-		//     mitigation available at this layer: the fix is either per-stream
-		//     probes (#500) or a stream-aware scope, and neither belongs in a
+		//   - every probe the shadow copy writes is a CAMPAIGN probe, so the
+		//     microsoft TRANSACTIONAL and AUTOMATION cells get placement evidence
+		//     only from the scheduled probe (`delivery/seedScheduledProbe.ts`),
+		//     which is a no-op without a default sender, a verified sending domain
+		//     or a configured route. On a deployment that HAS seed mailboxes but
+		//     not those, gate 5 holds on the two cells for ever, and NOTHING ELSE
+		//     IN THIS TABLE SAYS SO. That claim is wrong for those two cells there
+		//     and stating it here is the whole of the mitigation available at this
+		//     layer: the fix is a stream-aware scope, which does not belong in a
 		//     comment. It is latent while nothing renders `confidenceNote` — see the
 		//     field's own note — and stops being latent the day something does.
 		substitutes: ['own_bounce_deferral_complaint', 'seed_placement'],
@@ -347,9 +343,9 @@ export const RAMP_DEGRADATION_BY_INTEGRATION: ReadonlyMap<
  * PROVIDER-ONLY, AND A CELL IS (STREAM, PROVIDER). The plan scopes every
  * substitution by destination provider, so this is faithful to the table — but it
  * means an entry's `substitutes` are claimed for all three of a provider's
- * streams, and one of them (`seed_placement`) is only ever supplied for the
- * CAMPAIGN stream, because that is the only stream the shadow copy probes
- * (issue #500). The consequence is written out on the `microsoft_snds` entry
+ * streams, and one of them (`seed_placement`) is supplied for the two
+ * non-campaign streams only by the scheduled probe, because the shadow copy
+ * probes the CAMPAIGN stream alone. The consequence is written out on the `microsoft_snds` entry
  * above rather than left for a reader to derive from this signature.
  */
 export function entryAppliesToProvider(

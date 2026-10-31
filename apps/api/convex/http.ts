@@ -3,10 +3,10 @@ import { beginUpload, finishUpload, abortUpload } from './storage/uploadsHttp';
 import { authComponent, createAuth } from './auth/auth';
 import { withVerifiedClientIp } from './auth/ipAddress';
 import { trackOpen, trackClick } from './delivery/trackingHttp';
-import { seedAdmin } from './seedAdminHttp';
+import { seedAdmin } from './auth/seedAdminHttp';
 import { seedDemoHttp } from './seedDemo/indexHttp';
 import { registerSampleDataRoutes } from './sampleData/manageHttp';
-import { registerPublicApiRoutes } from './apiV1Http';
+import { registerPublicApiRoutes } from './publicApi/v1Http';
 import { registerBookingRoutes } from './booking/publicHttp';
 import { resetHttp } from './devShortcuts/resetHttp';
 import {
@@ -38,7 +38,7 @@ import {
 import { handleGithubWebhook } from './webhooks/githubHttp';
 import { verifyContactDoiToken, confirmContactDoi } from './topics/doiHttp';
 import { getCampaignArchive } from './campaigns/archiveHttp';
-import { getShareLink } from './shareLinkHttp';
+import { getShareLink } from './shareLinks/viewHttp';
 
 const http = httpRouter();
 
@@ -125,7 +125,7 @@ http.route({
 
 // ============ PUBLIC API v1 ROUTES ============
 // The whole /api/v1 surface (health, CORS preflights, contacts, events,
-// transactional, topics) registers from `apiV1Http.ts`, the same way the
+// transactional, topics) registers from `publicApi/v1Http.ts`, the same way the
 // sample-data routes do. It is one versioned contract with one set of URLs, and
 // keeping it here pushed this file past the ~500 LOC ratchet.
 registerPublicApiRoutes(http);

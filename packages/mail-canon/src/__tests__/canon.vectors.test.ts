@@ -141,7 +141,7 @@ describe('byte-identity vs mailauth body canonicalization (differential)', () =>
 		{ name: 'empty body', body: '' },
 		{ name: 'only newlines', body: '\r\n\r\n' },
 		{ name: 'mixed content', body: 'Subject line\r\n\r\nParagraph  with   gaps \r\n\r\n' },
-		// Bare-LF corpus (previously all-CRLF, which hid the simple-body
+		// Bare-LF corpus (an all-CRLF corpus hides the simple-body
 		// trailing-run divergence): mailauth strips the trailing run of ANY
 		// CR/LF bytes and re-terminates CRLF, so 'a\nb\n' -> 'a\nb\r\n' and
 		// 'x\n\n\n' -> 'x\r\n' under simple.
