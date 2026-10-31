@@ -3,9 +3,6 @@
 # are converted to one commit, never add them.
 convex/agentHealth.ts:rollupMetrics #2
 convex/agentHealth.ts:rollupMetrics #3
-convex/aiRouting/batchPoller.ts:poll #2
-convex/aiRouting/batchPoller.ts:poll #3
-convex/aiRouting/batchPoller.ts:poll #4
 convex/assistant/runner.ts:run #2
 convex/assistant/runner.ts:runForChat #2
 convex/auth/accountExport.ts:exportUserDataPage #2

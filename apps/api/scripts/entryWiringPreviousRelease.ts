@@ -50,6 +50,11 @@ export const PREVIOUS_RELEASE_ENTRIES: Readonly<Record<string, string>> = {
 	// `commitStep` and `commitResumeDraft`.
 	'aiRouting/teamBudgetHold.ts#holdIfOverBudget':
 		'old agent walker steps and draft resumes mid-run',
+	// The batch poller now settles an item with aiRouting/batchItems.ts `settleItem`.
+	'aiRouting/batchItems.ts#postponePoll': 'old batch polls mid-run',
+	'aiRouting/batchItems.ts#completeItem': 'old batch polls mid-run',
+	'aiRouting/batchItems.ts#failItem': 'old batch polls mid-run',
+	'aiRouting/batchItems.ts#abandonItem': 'old batch polls mid-run',
 	// System & updates now reads maintenance/workerRegistry.ts `getForAdmin`.
 	'mail/imap/serverRegistry.ts#getForAdmin':
 		'the previous IMAP servers card on System & updates, in tabs opened before the deploy',
