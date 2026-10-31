@@ -1,23 +1,40 @@
 import type { Page, Locator } from '@playwright/test';
+import { expect } from '@playwright/test';
 import { BasePage } from './BasePage';
 
+/**
+ * The email template editor, opened on a DRAFT template.
+ *
+ * A draft saves itself: the header shows its save state ("Saved", "Saving…",
+ * "Saved · now") where a published template has a Save button. Nothing here
+ * clicks Save, so a test cannot pass by finding a button the draft does not
+ * have.
+ */
 export class EmailEditorPage extends BasePage {
-	readonly saveButton: Locator;
-	readonly backButton: Locator;
+	/** The draft's save-state region: the state, then the age of the last save. */
+	readonly saveStatus: Locator;
+	/** Just the state ("Saved", "Saving…"), the live region inside it. */
+	readonly saveState: Locator;
+	/**
+	 * The name field on the canvas. The header carries a second textbox with the
+	 * same label, so this is scoped to the canvas's subject fields.
+	 */
+	readonly nameField: Locator;
 
 	constructor(page: Page) {
 		super(page);
-		// Save button in EditorHeader: has text "Save" or "Saving..."
-		this.saveButton = page.getByRole('button', { name: /save/i });
-		// EditorHeader names its icon-only back control for assistive tech.
-		// "Back to Emails" in the editor; a bare 'Back' matched nothing.
-		this.backButton = page.getByRole('button', { name: /Back to Emails/i });
+		this.saveStatus = page.getByTestId('draft-save-status');
+		this.saveState = this.saveStatus.getByRole('status');
+		this.nameField = page
+			.getByTestId('subject-fields')
+			.getByRole('textbox', { name: 'Template name', exact: true });
 	}
 
 	/**
-	 * Navigate to marketing templates listing, create a new blank template, and end up in the editor.
+	 * Navigate to marketing templates listing, create a new blank template, and
+	 * end up in the editor. Returns the name the template was created with.
 	 */
-	async gotoNewTemplate() {
+	async gotoNewTemplate(): Promise<string> {
 		await this.page.goto('/dashboard/send/marketing');
 		await this.expectOnPage('Marketing Templates');
 
@@ -34,23 +51,35 @@ export class EmailEditorPage extends BasePage {
 		await blankPreset.click();
 
 		// Now on "Customize Your Template" step - fill in name and submit
+		const name = `E2E Test Template ${Date.now()}`;
 		const nameInput = this.page.getByLabel('Template Name');
 		await nameInput.waitFor({ timeout: 5_000 });
-		await nameInput.fill(`E2E Test Template ${Date.now()}`);
+		await nameInput.fill(name);
 
 		// Click "Create & Edit"
 		await this.page.getByRole('button', { name: /Create & Edit/i }).click();
 
 		// Wait for redirect to editor
 		await this.page.waitForURL('**/emails/**/edit', { timeout: 15_000 });
+		return name;
 	}
 
-	async waitForEditorReady() {
-		// `hidden` also resolves when the loading state never rendered.
-		await this.page.getByText('Loading template').waitFor({ state: 'hidden', timeout: 15_000 });
+	/**
+	 * The draft named `name` is on the canvas and its autosave runs. The editor
+	 * mounts only once the template row is in and live co-editing finished
+	 * connecting, so an edit made after this is an edit to the loaded draft.
+	 */
+	async waitForDraftReady(name: string) {
+		await expect(this.saveState).toBeVisible({ timeout: 15_000 });
+		await expect(this.nameField).toHaveValue(name);
 	}
 
-	async save() {
-		await this.saveButton.click();
+	/**
+	 * Wait until a save made on this page landed. Only a save that landed puts
+	 * its age beside the state ("Saved · now"); a draft that was merely loaded
+	 * reads a bare "Saved", so this cannot pass before an edit was written.
+	 */
+	async waitForAutosaveAcknowledged() {
+		await expect(this.saveStatus).toHaveText(/^Saved · /);
 	}
 }
