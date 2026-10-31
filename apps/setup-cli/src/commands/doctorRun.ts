@@ -41,6 +41,7 @@ import {
 	parseComposePs,
 } from '@owlat/shared/containerHealth';
 import { readEnv } from '../lib/env';
+import { parseFlagState } from '../lib/flagState';
 import {
 	DoctorReportBuilder,
 	renderDoctorCheckLine,
