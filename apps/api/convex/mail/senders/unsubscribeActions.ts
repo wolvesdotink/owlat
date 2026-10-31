@@ -45,6 +45,9 @@ export type UnsubscribeOutcome = UnsubscribeStart & {
 export const unsubscribe = authedAction({
 	args: { target: senderTargetValidator },
 	handler: async (ctx, args): Promise<UnsubscribeOutcome> => {
+		// checkpoint: the local suppression is the person's own decision and stands
+		// whatever the one-click POST answers; the result recorded below only
+		// annotates it. It claims nothing: running this again POSTs again.
 		const start: UnsubscribeStart = await ctx.runMutation(
 			internal.mail.senders.status.startUnsubscribe,
 			{ target: args.target }
