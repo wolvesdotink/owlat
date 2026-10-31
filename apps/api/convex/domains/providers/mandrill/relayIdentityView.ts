@@ -25,8 +25,11 @@ import { MANDRILL_RELAY_PROOF_MAX_AGE_MS } from '@owlat/shared';
 import type { Doc } from '../../../_generated/dataModel';
 import type { MutationCtx, QueryCtx } from '../../../_generated/server';
 import { loadRelayIdentityForDomain } from '../relayIdentityProof';
-import { relayIdentityFactsFromRow, type RelayDnsRecordView } from '../relayIdentityView';
-import type { RelayDomainIdentityFacts } from '../relayIdentityView';
+import {
+	relayIdentityFactsFromRow,
+	type RelayDnsRecordView,
+	type RelayDomainIdentityFacts,
+} from '../relayIdentityView';
 import { parseMandrillProviderDetails } from './identity';
 import { buildMandrillDnsRecords, buildMandrillVerifyRecord } from './records';
 

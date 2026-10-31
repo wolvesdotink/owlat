@@ -1,8 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { computed } from 'vue';
 import type { Doc } from '@owlat/api/dataModel';
-import { contactPropertyEditorModule } from '../contact_property';
-import { operatorsForField, operatorNeedsValue } from '../contact_property';
+import {
+	contactPropertyEditorModule,
+	operatorsForField,
+	operatorNeedsValue,
+} from '../contact_property';
 import type { ConditionEditorContext, ConditionLabelKey } from '../types';
 import { createTestI18n } from '~/__tests__/i18n';
 

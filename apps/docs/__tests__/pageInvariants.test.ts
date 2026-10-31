@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { CORE_SEND_PROVIDER_CATALOG_ENTRIES, FEATURE_FLAGS } from '@owlat/shared';
@@ -164,9 +164,10 @@ describe('environment variables', () => {
 
 describe('plugin-chapter TypeScript samples', () => {
 	/**
-	 * Every sample in the plugin chapter is compiled and exercised by
-	 * `packages/plugin-kit/src/__tests__/docsSamples.test.ts`, inside a
-	 * `// #region <name>` marker. That only holds while the page quotes the
+	 * Every sample in the plugin chapter is a module under
+	 * `packages/plugin-kit/src/__tests__/docsSamples/`, inside a
+	 * `// #region <name>` marker, compiled by that package and exercised by
+	 * `docsSamples.test.ts` beside it. That only holds while the page quotes the
 	 * region verbatim — a fence that merely resembles the region, or one written
 	 * by hand, is pseudocode that nothing compiles.
 	 *
@@ -174,13 +175,18 @@ describe('plugin-chapter TypeScript samples', () => {
 	 * chapter, and a ```ts fence in the chapter must be a region. Shape sketches
 	 * that are not compilable TypeScript are tagged ```text instead.
 	 */
-	const samples = read('packages/plugin-kit/src/__tests__/docsSamples.test.ts');
-	const regions = new Map(
-		[...samples.matchAll(/\/\/ #region ([\w-]+)\n([\s\S]*?)\/\/ #endregion \1/g)].map((match) => [
-			match[1]!,
-			match[2]!.trimEnd(),
-		])
-	);
+	const samplesDir = 'packages/plugin-kit/src/__tests__/docsSamples';
+	const regionEntries = readdirSync(resolve(REPO_ROOT, samplesDir))
+		.filter((file) => file.endsWith('.ts'))
+		.sort()
+		.flatMap((file) =>
+			[
+				...read(`${samplesDir}/${file}`).matchAll(
+					/\/\/ #region ([\w-]+)\n([\s\S]*?)\/\/ #endregion \1/g
+				),
+			].map((match) => [match[1]!, match[2]!.trimEnd()] as const)
+		);
+	const regions = new Map(regionEntries);
 	const fences = docPages()
 		.filter((page) => /\/en\/3\.developer\/4\d\./.test(page.path))
 		.flatMap((page) =>
@@ -190,7 +196,11 @@ describe('plugin-chapter TypeScript samples', () => {
 		);
 
 	it('parses regions and fences', () => {
-		expect(regions.size, 'no #region markers in docsSamples.test.ts').toBeGreaterThan(5);
+		expect(regions.size, 'no #region markers under docsSamples/').toBeGreaterThan(5);
+		// A Map would let a second region of the same name silently replace the first.
+		expect(regions.size, 'two sample modules declare the same region name').toBe(
+			regionEntries.length
+		);
 		expect(fences.length, 'no ```ts fences in the plugin chapter').toBeGreaterThan(5);
 	});
 

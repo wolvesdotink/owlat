@@ -1,6 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { verifyFcrdns, runFcrdnsSelfCheck, type FcrdnsDeps } from '../fcrdns.js';
-import { getFcrdnsReadiness, runFcrdnsReadinessCheck } from '../fcrdns.js';
+import {
+	verifyFcrdns,
+	runFcrdnsSelfCheck,
+	getFcrdnsReadiness,
+	runFcrdnsReadinessCheck,
+	type FcrdnsDeps,
+} from '../fcrdns.js';
 import { logger } from '../../monitoring/logger.js';
 import Redis from 'ioredis-mock';
 import { initializePools } from '../ipPool.js';

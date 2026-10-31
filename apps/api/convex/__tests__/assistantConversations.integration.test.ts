@@ -1,6 +1,5 @@
 import { convexTest } from 'convex-test';
-import { describe, it, expect, beforeEach } from 'vitest';
-import { vi } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import schema from '../schema';
 import { api, internal } from '../_generated/api';

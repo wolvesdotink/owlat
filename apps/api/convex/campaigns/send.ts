@@ -50,8 +50,9 @@ import { nanoid } from 'nanoid';
  */
 const CAMPAIGN_ENQUEUE_CHUNK_SIZE = 50;
 const LIFECYCLE_USER_ORCHESTRATOR = 'system:orchestrator';
-import { scanContent, levelForScore } from '@owlat/email-scanner';
 import {
+	scanContent,
+	levelForScore,
 	checkUrlReputation,
 	urlReputationToFlags,
 	type ContentFlag,

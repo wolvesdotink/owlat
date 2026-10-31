@@ -32,13 +32,15 @@ import type { ActionCtx } from '../_generated/server';
 import { internal } from '../_generated/api';
 import { authedAction } from '../lib/authedFunctions';
 import { throwInvalidInput } from '../_utils/errors';
-import { outboundChannelValidator } from '../lib/convexValidators';
+import {
+	outboundChannelValidator,
+	unifiedMessageChannelValidator as channelValidator,
+} from '../lib/convexValidators';
 import { encryptSecret } from '../lib/credentialCrypto';
 import { decryptChannelCreds } from './credentials';
 import type { ChannelCreds } from './credentials';
 import { SmsAdapter, WhatsAppAdapter, WebhookAdapter } from './adapters';
 import type { ChannelAdapter, ChannelHealth, OutboundMessage, SendResult } from './adapters';
-import { unifiedMessageChannelValidator as channelValidator } from '../lib/convexValidators';
 import type { UnifiedMessageChannel, OutboundChannel } from '../lib/convexValidators';
 
 /**

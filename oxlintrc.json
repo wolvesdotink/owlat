@@ -68,7 +68,7 @@
 		"@typescript-eslint/prefer-optional-chain": "error",
 		"no-unsafe-optional-chaining": "error",
 		"@typescript-eslint/consistent-type-imports": "warn",
-		"import/no-duplicates": "warn",
+		"import/no-duplicates": "error",
 		"unicorn/no-array-for-each": "warn",
 		"import/no-cycle": "error",
 		"no-underscore-dangle": "off",

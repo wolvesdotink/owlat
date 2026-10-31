@@ -35,7 +35,7 @@ import {
 } from '../lib/convexDeploy';
 import { isOwnSendProviderKind } from '@owlat/shared/sendProviderCatalog';
 import { createReporter, progressSpinner, SetupStep, type Reporter } from '../lib/progress';
-import { resolveLocalUrls } from '../lib/localHost';
+import { resolveLocalHost, resolveLocalUrls } from '../lib/localHost';
 import { parseSetupConfig, type SetupConfig } from '../lib/setupConfig';
 import { buildCaddyfile } from '../lib/caddyfile';
 import { isValidEmail } from '../lib/validators';
@@ -45,7 +45,6 @@ import { runSeed } from './seed';
 import { installSampleData } from './sampleData';
 import type { CliOptions } from '../lib/cliOptions';
 import { ProvisioningCheckpoint, type CheckpointInputs } from '../lib/provisioningCheckpoint';
-import { resolveLocalHost } from '../lib/localHost';
 import { probeMtaIdentityHealth } from './doctor';
 import { createDoctorRedactor } from '../lib/doctorText';
 import { applyOutboundIpDefaults, detectPrimaryIpv4 } from '../lib/outboundIp';

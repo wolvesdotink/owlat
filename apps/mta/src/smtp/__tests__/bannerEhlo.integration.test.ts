@@ -17,8 +17,7 @@
 import { describe, it, expect, beforeAll, afterEach, vi } from 'vitest';
 import { connect as netConnect } from 'node:net';
 import { connect as tlsConnect } from 'node:tls';
-import type { Socket } from 'node:net';
-import type { AddressInfo } from 'node:net';
+import type { AddressInfo, Socket } from 'node:net';
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';

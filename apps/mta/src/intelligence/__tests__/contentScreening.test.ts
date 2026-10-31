@@ -1,5 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import Redis from 'ioredis-mock';
 import type RealRedis from 'ioredis';
 import {

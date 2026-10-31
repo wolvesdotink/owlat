@@ -13,9 +13,8 @@
  */
 
 import { generateKeyPairSync, createHash, sign as cryptoSign, type KeyObject } from 'crypto';
-import { sealMessage } from 'mailauth/lib/arc/index.js';
+import { arc, sealMessage } from 'mailauth/lib/arc/index.js';
 import { dkimVerify } from 'mailauth/lib/dkim/verify.js';
-import { arc } from 'mailauth/lib/arc/index.js';
 import { canonicalizeHeaderField, stripSignatureValue } from '@owlat/mail-canon';
 import { splitMessage, type HeaderField } from '../../../dkim/message.js';
 

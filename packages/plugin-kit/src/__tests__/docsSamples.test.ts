@@ -1,437 +1,47 @@
 /**
- * Executable source for the contribution samples in the docs-site plugin
- * chapter (`apps/docs/content/en/3.developer/4*.md`).
+ * Assertions for the contribution samples in the docs-site plugin chapter
+ * (`apps/docs/content/en/3.developer/4*.md`).
  *
  * Documentation drifts silently: a sample that is only prose rots the moment a
- * contract changes. Each sample below lives inside a `#region <name>` marker,
- * is compiled by this package's `tsc --noEmit`, and is exercised by the
- * assertions at the bottom of this file against the REAL exported contracts.
+ * contract changes. Each sample lives in its own module under `docsSamples/`,
+ * inside a `#region <name>` marker, is compiled by this package's
+ * `tsc --noEmit`, and is exercised below against the REAL exported contracts.
  * `apps/docs/__tests__/pageInvariants.test.ts` then asserts that every region
- * here appears verbatim as a fenced block in the chapter and that no fence
- * there is anything else, so a doc sample cannot claim an API that this file
- * does not compile and run. The
+ * there appears verbatim as a fenced block in the chapter and that no fence
+ * there is anything else, so a doc sample cannot claim an API that this package
+ * does not compile and run.
+ *
+ * One sample per module, because each fence is a file a plugin author copies
+ * whole: its imports are complete, and two samples never share a scope. The
  * regions are written against the public `@owlat/plugin-kit` specifier — what a
  * plugin author actually writes — which is what this package's vitest alias and
  * tsconfig self-path exist to allow; nothing is rewritten on the way out.
  *
- * Adding a sample: wrap it in a new region and quote it verbatim from a doc
- * page. Nothing else needs updating — the doc check reads the regions.
+ * Adding a sample: put it in a new module under `docsSamples/`, wrap it in a
+ * region and quote it verbatim from a doc page. The doc check reads every
+ * module in that directory.
  */
 
 import { describe, expect, it } from 'vitest';
 import { PluginManifestError } from '../manifest';
 import { PLUGIN_SEND_FAILURE_CODES } from '../sendTransport';
-
-// #region minimal-manifest
-import { definePlugin } from '@owlat/plugin-kit';
-
-export const helloPlugin = definePlugin({
-	id: 'hello-owlat',
-	version: '0.1.0',
-	capabilities: ['plugin-storage:read', 'plugin-storage:write'],
-	// Storage capabilities REQUIRE a flag: access must be revocable at runtime.
-	flag: { default: false },
-});
-// #endregion minimal-manifest
-
-// The manifest below grows the same file, so it imports only the capability
-// constants it adds — exactly what the authoring guide's second sample shows.
-// #region contribution-manifest
 import {
-	PLUGIN_AUTONOMY_GATE_CAPABILITY,
+	definePlugin,
 	PLUGIN_CRON_CAPABILITY,
-	PLUGIN_NAV_ITEM_CAPABILITY,
-	PLUGIN_SETTINGS_PANEL_CAPABILITY,
-	PLUGIN_WORKER_CAPABILITY,
+	type PluginAutonomyGateInput,
+	type PluginAutonomyGateServices,
 } from '@owlat/plugin-kit';
-
-export const preflightPlugin = definePlugin({
-	id: 'preflight',
-	version: '1.0.0',
-	capabilities: [
-		PLUGIN_AUTONOMY_GATE_CAPABILITY,
-		PLUGIN_CRON_CAPABILITY,
-		PLUGIN_NAV_ITEM_CAPABILITY,
-		PLUGIN_SETTINGS_PANEL_CAPABILITY,
-		PLUGIN_WORKER_CAPABILITY,
-		'llm:invoke',
-	],
-	// Contributions REQUIRE an explicit flag: an operator must be able to turn
-	// the plugin off without a redeploy.
-	flag: { default: false, requiredEnvVars: ['PREFLIGHT_API_KEY'] },
-	// `llm:invoke` additionally requires a hard daily budget in USD.
-	llmBudget: { dailyUsd: 1.5 },
-	contributes: {
-		sendGates: [
-			{
-				id: 'preflight',
-				label: 'Pre-send preflight',
-				module: { exportPath: './gate' },
-				timeoutMs: 15_000,
-			},
-		],
-		crons: [
-			{
-				id: 'refresh-rules',
-				label: 'Refresh preflight rules',
-				module: { exportPath: './cron' },
-				schedule: { intervalMinutes: 360 },
-				timeoutMs: 60_000,
-			},
-		],
-		navItems: [
-			{
-				id: 'dashboard',
-				section: 'administration',
-				name: 'Preflight',
-				href: '/dashboard/admin/instance/plugins/preflight',
-				icon: 'lucide:radar',
-			},
-		],
-		settingsPanels: [
-			{
-				id: 'settings',
-				name: 'Preflight',
-				href: '/dashboard/admin/instance/plugins/preflight',
-				icon: 'lucide:radar',
-			},
-		],
-	},
-	settingsSchema: [
-		{
-			kind: 'boolean',
-			key: 'holdOnFail',
-			label: 'Hold sends that fail preflight',
-			default: true,
-		},
-		{
-			kind: 'secret',
-			key: 'vendorApiKey',
-			envVar: 'PLUGIN_VENDOR_API_KEY',
-			label: 'Vendor API key',
-			required: false,
-		},
-	],
-});
-// #endregion contribution-manifest
-
-// #region gate-module
-import type {
-	PluginAutonomyGateInput,
-	PluginAutonomyGateModule,
-	PluginAutonomyGateResult,
-	PluginAutonomyGateServices,
-} from '@owlat/plugin-kit';
-
-/** A gate may object or stand aside. There is deliberately no "approve" result. */
-export const gate: PluginAutonomyGateModule = {
-	async evaluate(
-		input: PluginAutonomyGateInput,
-		services: PluginAutonomyGateServices
-	): Promise<PluginAutonomyGateResult> {
-		if (services.signal.aborted) return { outcome: 'objection', reason: 'preflight cancelled' };
-		if (input.draftBody.includes('http://')) {
-			return { outcome: 'objection', reason: 'draft contains a plaintext HTTP link' };
-		}
-		return { outcome: 'no-objection' };
-	},
-};
-// #endregion gate-module
-
-// #region cron-module
-import type { PluginCronModule, PluginCronServices } from '@owlat/plugin-kit';
-
-export const cron: PluginCronModule = {
-	async run(services: PluginCronServices): Promise<void> {
-		// Cancellation is cooperative: the host aborts `signal` at the declared
-		// timeout and stops waiting either way.
-		if (services.signal.aborted) return;
-		const summary = await services.llm.generate({
-			tier: 'fast',
-			prompt: 'Summarise this week of deliverability tips in one sentence.',
-		});
-		services.logger.info('refreshed preflight rules', { length: summary.text.length });
-	},
-};
-// #endregion cron-module
-
-// #region send-transport-module
-import type {
-	PluginSendAttempt,
-	PluginSendTransportConfig,
-	PluginSendTransportModule,
-	PluginSendTransportParams,
-} from '@owlat/plugin-kit';
-
-interface RelayExtras {
-	readonly endpoint: string;
-}
-
-/** One attempt only. Owlat owns retries, health, routing, and audit. */
-export const transport: PluginSendTransportModule<RelayExtras> = {
-	parseExtras(input: unknown): RelayExtras {
-		if (typeof input !== 'object' || input === null) {
-			throw new TypeError('extras must be an object');
-		}
-		const endpoint = (input as { endpoint?: unknown }).endpoint;
-		if (typeof endpoint !== 'string' || !endpoint.startsWith('https://')) {
-			throw new TypeError('extras.endpoint must be an https URL');
-		}
-		return { endpoint };
-	},
-
-	async send(
-		params: PluginSendTransportParams,
-		extras: RelayExtras,
-		// THIS INSTANCE's credentials, keyed by the name the manifest declared.
-		// Never `process.env`: that reads the deployment-default instance's token
-		// whichever transport id the send was addressed to.
-		config: PluginSendTransportConfig
-	): Promise<PluginSendAttempt> {
-		const response = await fetch(extras.endpoint, {
-			method: 'POST',
-			headers: {
-				'content-type': 'application/json',
-				authorization: `Bearer ${config.env['PLUGIN_ACME_TOKEN'] ?? ''}`,
-			},
-			body: JSON.stringify({ to: params.to, from: params.from, subject: params.subject }),
-		});
-		if (response.status === 429) return { success: false, code: 'rate_limited' };
-		if (!response.ok) return { success: false, code: 'temporary_failure' };
-		return { success: true, id: response.headers.get('x-message-id') ?? '' };
-	},
-};
-// #endregion send-transport-module
-
-// #region send-transport-webhook-module
-import type {
-	PluginSendTransportWebhookModule,
-	PluginWebhookFeedbackEvent,
-} from '@owlat/plugin-kit';
-
-/** Parse ONLY: these bytes are already verified, fresh, and not a replay. */
-export const webhook: PluginSendTransportWebhookModule = {
-	parseEvents(rawBody: string): readonly PluginWebhookFeedbackEvent[] {
-		const batch = JSON.parse(rawBody) as { readonly records?: readonly unknown[] };
-		return (batch.records ?? []).flatMap((record) => {
-			const { type, id, at } = record as { type?: string; id?: string; at?: number };
-			if (type !== 'HardBounce' || typeof id !== 'string' || typeof at !== 'number') return [];
-			return [{ kind: 'bounced', providerMessageId: id, at, bounceType: 'hard' } as const];
-		});
-	},
-};
-// #endregion send-transport-webhook-module
-
-// #region send-transport-domain-identity-module
-import type {
-	PluginDomainIdentityResult,
-	PluginSendTransportDomainIdentityModule,
-} from '@owlat/plugin-kit';
-
-/** Observations ONLY: the host derives the status and owns the freshness bound. */
-export const domainIdentity: PluginSendTransportDomainIdentityModule = {
-	// The credential comes from the resolved configuration, never from
-	// `process.env`: an environment read resolves the deployment-default instance
-	// whichever instance the host meant.
-	registerDomain: (domain, config) => askProvider('POST', domain, config.env['PLUGIN_ACME_TOKEN']),
-	checkDomain: (domain, config) => askProvider('GET', domain, config.env['PLUGIN_ACME_TOKEN']),
-};
-
-async function askProvider(
-	method: 'GET' | 'POST',
-	domain: string,
-	token: string | undefined
-): Promise<PluginDomainIdentityResult> {
-	const response = await fetch(`https://api.example.net/domains/${domain}`, {
-		method,
-		headers: { Authorization: `Bearer ${token ?? ''}` },
-	});
-	// Three distinguishable answers, because the host writes each one differently:
-	// only `ok` refreshes the proof's age, and only `auth_failed` condemns a key.
-	if (response.status === 401 || response.status === 403) {
-		return { outcome: 'auth_failed', error: 'the provider rejected the token' };
-	}
-	if (!response.ok) return { outcome: 'unavailable', error: `HTTP ${response.status}` };
-	const body = (await response.json()) as {
-		readonly owned?: boolean;
-		readonly spf?: boolean;
-		readonly dkim?: boolean;
-		readonly selector?: string;
-	};
-	return {
-		outcome: 'ok',
-		state: {
-			isOwnershipVerified: body.owned === true,
-			spf: { isValid: body.spf === true },
-			dkim: { isValid: body.dkim === true },
-			dkimSelectors: body.selector ? [body.selector] : [],
-			spfMechanisms: ['include:spf.example.net'],
-		},
-	};
-}
-// #endregion send-transport-domain-identity-module
-
-// #region agent-step-module
-import type {
-	PluginAgentStepInput,
-	PluginAgentStepModule,
-	PluginAgentStepResult,
-} from '@owlat/plugin-kit';
-
-export const agentStep: PluginAgentStepModule = {
-	async execute(input: PluginAgentStepInput): Promise<PluginAgentStepResult> {
-		if (input.subject.toLowerCase().startsWith('[auto-reply]')) {
-			// Restrict-only: a step may request a DECLARED caution edge, but never
-			// choose the next step, approve, or send.
-			return { kind: 'caution', to: 'archived', reason: 'vendor auto-reply' };
-		}
-		return { kind: 'continue' };
-	},
-};
-// #endregion agent-step-module
-
-// #region automation-step-module
-import type {
-	PluginAutomationStepInput,
-	PluginAutomationStepModule,
-	PluginAutomationStepResult,
-} from '@owlat/plugin-kit';
-
-interface NotifyConfig {
-	readonly channel: string;
-}
-
-export const automationStep: PluginAutomationStepModule<NotifyConfig> = {
-	parseConfig(raw: unknown): NotifyConfig {
-		const channel = (raw as { channel?: unknown } | null)?.channel;
-		if (typeof channel !== 'string' || channel.length === 0) {
-			throw new TypeError('config.channel is required');
-		}
-		return { channel };
-	},
-
-	async execute(
-		input: PluginAutomationStepInput,
-		config: NotifyConfig
-	): Promise<PluginAutomationStepResult> {
-		if (!input.contactEmail.includes('@')) {
-			return { kind: 'failed', reason: 'contact has no address' };
-		}
-		await Promise.resolve(config.channel);
-		return { kind: 'completed' };
-	},
-};
-// #endregion automation-step-module
-
-// #region import-provider-module
-import type {
-	JsonObject,
-	PluginImportPageResult,
-	PluginImportProviderInput,
-	PluginImportProviderModule,
-} from '@owlat/plugin-kit';
-
-export const importProvider: PluginImportProviderModule = {
-	validateConfig(config: JsonObject) {
-		return typeof config['listId'] === 'string'
-			? ({ ok: true } as const)
-			: ({ ok: false, reason: 'listId is required' } as const);
-	},
-
-	async fetchPage(input: PluginImportProviderInput): Promise<PluginImportPageResult> {
-		// `cursor` is `''` on the first page; return `null` to end the walk.
-		const page = input.cursor === '' ? 1 : Number(input.cursor);
-		return {
-			rows: [{ email: `contact-${page}@example.com`, fields: { source: 'vendor' } }],
-			nextCursor: page >= 2 ? null : String(page + 1),
-		};
-	},
-};
-// #endregion import-provider-module
-
-/*
- * The send-provider authoring guide's centrepiece: ONE manifest declaring all
- * three executable halves of a bundle. It grows the same file, so it imports only
- * the capability constant it adds — `definePlugin` is already in scope from the
- * minimal manifest above, and the guide says so in the sentence above its fence.
- *
- * EVERY NAME HERE IS THE ONE THE SCAFFOLD EMITS for this plugin id
- * (`owlat plugins create acme-relay --template send-provider`): the variable
- * names, the two signature headers and the credential keys. A reader diffing the
- * page against their scaffolded package is the most common way this sample is
- * read, and a sample that named variables no scaffolded bundle has would make
- * that diff noise. `scaffoldedProviderConformance.test.ts` binds the two.
- */
-// #region send-provider-manifest
-import { PLUGIN_SEND_TRANSPORT_CAPABILITY } from '@owlat/plugin-kit';
-
-export const acmeRelayPlugin = definePlugin({
-	id: 'acme-relay',
-	version: '1.0.0',
-	capabilities: [PLUGIN_SEND_TRANSPORT_CAPABILITY],
-	// Deployment-wide: the plugin is off until both are set. The signing secret
-	// belongs HERE and not on the transport — without it the feedback route can
-	// verify nothing and answers every delivery 503.
-	flag: {
-		default: false,
-		requiredEnvVars: ['ACME_RELAY_ENABLED', 'PLUGIN_ACME_RELAY_WEBHOOK_SECRET'],
-	},
-	contributes: {
-		sendTransports: [
-			{
-				id: 'relay',
-				label: 'Acme Relay',
-				module: { exportPath: './convex/transport' },
-				retryDelays: [1_000, 5_000],
-				// THIS TRANSPORT's own configuration: resolved per named instance
-				// (`PLUGIN_ACME_RELAY_API_KEY__EU` for `plugin.acme-relay.relay#eu`) and
-				// handed to `send` keyed by the base name.
-				requiredEnvVars: ['PLUGIN_ACME_RELAY_API_KEY'],
-				optionalEnvVars: ['PLUGIN_ACME_RELAY_REGION'],
-				credentialFields: [
-					{
-						kind: 'secret',
-						key: 'apiKey',
-						label: 'API key',
-						required: true,
-						envVar: 'PLUGIN_ACME_RELAY_API_KEY',
-					},
-					{
-						kind: 'select',
-						key: 'region',
-						label: 'Sending region',
-						options: [
-							{ value: 'eu', label: 'Europe' },
-							{ value: 'us', label: 'United States' },
-						],
-						default: 'eu',
-						envVar: 'PLUGIN_ACME_RELAY_REGION',
-					},
-				],
-				// `no` is the only value this tier may declare.
-				supportsCustomReturnPath: 'no',
-				messageIdSource: 'provider',
-				deduplicatesOnIdempotencyKey: false,
-				// Declaring a webhook IS `hasProviderFeedback: true` for this kind.
-				webhook: {
-					module: { exportPath: './convex/webhook' },
-					signature: {
-						header: 'x-acme-relay-signature',
-						algorithm: 'hmac-sha256',
-						encoding: 'hex',
-						secretEnvVar: 'PLUGIN_ACME_RELAY_WEBHOOK_SECRET',
-						// REQUIRED: without replay provisions a captured request verifies
-						// forever. The host signs `<timestamp>.<rawBody>`.
-						replay: { timestampHeader: 'x-acme-relay-timestamp', toleranceSeconds: 300 },
-					},
-				},
-				// Declaring an identity IS `domainVerification: 'api'` for this kind.
-				domainIdentity: { module: { exportPath: './convex/domainIdentity' } },
-			},
-		],
-	},
-});
-// #endregion send-provider-manifest
+import { helloPlugin } from './docsSamples/minimalManifest';
+import { preflightPlugin } from './docsSamples/contributionManifest';
+import { gate } from './docsSamples/gateModule';
+import { cron } from './docsSamples/cronModule';
+import { transport } from './docsSamples/sendTransportModule';
+import { webhook } from './docsSamples/sendTransportWebhookModule';
+import { domainIdentity } from './docsSamples/sendTransportDomainIdentityModule';
+import { agentStep } from './docsSamples/agentStepModule';
+import { automationStep } from './docsSamples/automationStepModule';
+import { importProvider } from './docsSamples/importProviderModule';
+import { acmeRelayPlugin } from './docsSamples/sendProviderManifest';
 
 describe('docs samples: the manifests validate through the shipped validator', () => {
 	it('accepts the minimal manifest', () => {
