@@ -180,6 +180,26 @@ describe('useOrganization session wiring', () => {
 		expect(listMembers).toHaveBeenCalledWith({ query: { organizationId: 'org-1' } });
 	});
 
+	it("keeps the planner's refusal as the cause of the translated transfer error", async () => {
+		vi.stubGlobal('useAuth', () => ({
+			user: ref({ id: 'u-admin' }),
+			refetch: vi.fn(async () => null),
+		}));
+		const { useOrganization } = await import('../useOrganization');
+		const organization = useOrganization();
+		await organization.fetchMembers({ force: true });
+
+		const failure = await organization.transferOwnership('m-owner').then(
+			() => null,
+			(err: unknown) => err as Error
+		);
+		expect(failure?.message).toBe('shared.useOrganization.errors.notCurrentOwner');
+		expect(failure?.cause).toBeInstanceOf(Error);
+		expect(failure?.cause).toMatchObject({
+			message: 'shared.useOrganization.errors.notCurrentOwner',
+		});
+	});
+
 	it('loads no roster on a switch when no page asked for one', async () => {
 		vi.stubGlobal('useAuth', () => ({
 			user: ref({ id: 'u-owner' }),

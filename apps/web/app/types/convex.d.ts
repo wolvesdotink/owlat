@@ -11,5 +11,3 @@ declare module 'vue' {
 		$convex: ConvexClient | null;
 	}
 }
-
-export {};

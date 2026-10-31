@@ -63,8 +63,8 @@ export type UpdateSource =
 
 const GITHUB: UpdateSource = { kind: 'github', endpoint: null };
 
-const MODES: readonly unknown[] = ['latest', 'pinned', 'paused'];
-const CHANNELS: readonly unknown[] = ['stable', 'prerelease'];
+const MODES: ReadonlySet<unknown> = new Set(['latest', 'pinned', 'paused']);
+const CHANNELS: ReadonlySet<unknown> = new Set(['stable', 'prerelease']);
 
 function isStringOrNull(value: unknown): value is string | null {
 	return value === null || typeof value === 'string';
@@ -84,7 +84,7 @@ export function parsePolicySummary(body: unknown): DesktopUpdatePolicySummary | 
 	const raw = body as Partial<Record<keyof DesktopUpdatePolicySummary, unknown>>;
 	const { mode, channel, deferHours, hasCachedReleases } = raw;
 	const { pinnedVersion, requiredVersion, latestVersion, latestPublishedAt, checkedAt } = raw;
-	if (!MODES.includes(mode) || !CHANNELS.includes(channel)) return null;
+	if (!MODES.has(mode) || !CHANNELS.has(channel)) return null;
 	if (typeof deferHours !== 'number' || !Number.isFinite(deferHours)) return null;
 	if (!isStringOrNull(pinnedVersion) || !isStringOrNull(requiredVersion)) return null;
 	if (!isStringOrNull(latestVersion)) return null;

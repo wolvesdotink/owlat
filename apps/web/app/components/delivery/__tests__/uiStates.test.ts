@@ -164,6 +164,35 @@ describe('calm states', () => {
 	});
 
 	/**
+	 * THE SNAP IS TO THE GREATEST RUNG AT OR BELOW THE STORED NUMBER: an
+	 * in-between ceiling offers every rung up to the one beneath it, and a missing
+	 * or non-finite one falls back to the lowest rung.
+	 */
+	it.each([
+		[0.65, 0.5],
+		[0.8, 0.8],
+		[0.99, 0.8],
+		[1, 1],
+		[0.25, 0.25],
+		[null, 0.25],
+		[Number.NaN, 0.25],
+		[Number.POSITIVE_INFINITY, 0.25],
+	])('offers resets up to rung %s → %s', (phaseCeiling, highest) => {
+		const wrapper = mount(RampCellControls, {
+			props: { cell: cellControl({ phaseCeiling }), hasRelayConfigured: true },
+			global: { plugins: [createTestI18n()] },
+		});
+		for (const rung of [0.25, 0.5, 0.8, 1]) {
+			const disabled = wrapper
+				.find(`[data-testid="ramp-control-phase-${rung}"]`)
+				.attributes('disabled');
+			if (rung <= highest) expect(disabled, `rung ${rung}`).toBeUndefined();
+			else expect(disabled, `rung ${rung}`).toBeDefined();
+		}
+		wrapper.unmount();
+	});
+
+	/**
 	 * A DORMANT RUNG SAID PLAINLY. With no second sender the phase
 	 * ladder bounds nothing — the server records the rung and holds the share — so
 	 * copy calling it the cell's governing ceiling describes a 75% cut this

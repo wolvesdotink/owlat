@@ -29,13 +29,13 @@ export type PostboxTrashAutoPurgeDays = 0 | 7 | 30 | 90;
  */
 export const POSTBOX_TRASH_AUTO_PURGE_DEFAULT: PostboxTrashAutoPurgeDays = 0;
 
-const TRASH_AUTO_PURGE_VALUES: readonly number[] = [0, 7, 30, 90];
+const TRASH_AUTO_PURGE_VALUES: ReadonlySet<number> = new Set([0, 7, 30, 90]);
 
 /** Normalise a stored/unknown value, defaulting to Never. */
 export function resolvePostboxTrashAutoPurgeDays(
 	value: number | undefined | null
 ): PostboxTrashAutoPurgeDays {
-	return value !== undefined && value !== null && TRASH_AUTO_PURGE_VALUES.includes(value)
+	return value !== undefined && value !== null && TRASH_AUTO_PURGE_VALUES.has(value)
 		? (value as PostboxTrashAutoPurgeDays)
 		: POSTBOX_TRASH_AUTO_PURGE_DEFAULT;
 }

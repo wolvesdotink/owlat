@@ -121,7 +121,7 @@ export default defineEventHandler(
 		// (e.g. DEFAULT_FROM_NAME) would be reconstructed on the next read as a
 		// separate, attacker-controlled env line (e.g. an injected INSTANCE_SECRET).
 		for (const [key, value] of Object.entries(body.env ?? {})) {
-			if (/[\r\n\0]/.test(value)) {
+			if (value.includes('\r') || value.includes('\n') || value.includes('\0')) {
 				return {
 					ok: false,
 					message: `Env value for ${key} must not contain control characters (newline, carriage return, or NUL).`,

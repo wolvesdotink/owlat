@@ -28,10 +28,8 @@ export default defineEventHandler(async (event) => {
 
 	// Build the target URL
 	const targetUrl = `${convexSiteUrl.replace(/\/+$/, '')}${path}`;
-	try {
-		// Validate URL early so misconfigurations fail clearly
-		new URL(targetUrl);
-	} catch {
+	// Validate URL early so misconfigurations fail clearly
+	if (!URL.canParse(targetUrl)) {
 		throw createError({
 			statusCode: 500,
 			message: `Invalid NUXT_PUBLIC_CONVEX_SITE_URL or auth path: ${targetUrl}`,
@@ -147,7 +145,7 @@ export default defineEventHandler(async (event) => {
 	}
 
 	// Forward other response headers back to client
-	response.headers.forEach((value, key) => {
+	for (const [key, value] of response.headers) {
 		const lowerKey = key.toLowerCase();
 		// Skip headers that H3 handles automatically or that we handle specially
 		if (
@@ -158,7 +156,7 @@ export default defineEventHandler(async (event) => {
 		) {
 			setHeader(event, key, value);
 		}
-	});
+	}
 
 	// Set status code
 	setResponseStatus(event, response.status);

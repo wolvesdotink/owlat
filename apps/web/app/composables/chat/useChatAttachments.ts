@@ -95,14 +95,14 @@ async function probeImageDimensions(file: File): Promise<{ width?: number; heigh
 	return new Promise((resolve) => {
 		const url = URL.createObjectURL(file);
 		const img = new Image();
-		img.onload = () => {
+		img.addEventListener('load', () => {
 			URL.revokeObjectURL(url);
 			resolve({ width: img.naturalWidth, height: img.naturalHeight });
-		};
-		img.onerror = () => {
+		});
+		img.addEventListener('error', () => {
 			URL.revokeObjectURL(url);
 			resolve({});
-		};
+		});
 		img.src = url;
 	});
 }

@@ -11,7 +11,15 @@
 import type { Id } from '@owlat/api/dataModel';
 
 /** Roles with a translated display name in the catalog. */
-const NAMED_FOLDER_ROLES = ['inbox', 'sent', 'drafts', 'trash', 'spam', 'archive', 'snoozed'];
+const NAMED_FOLDER_ROLES: ReadonlySet<string> = new Set([
+	'inbox',
+	'sent',
+	'drafts',
+	'trash',
+	'spam',
+	'archive',
+	'snoozed',
+]);
 
 /**
  * A folder as a picker lists it: a system folder by its translated name, a
@@ -21,7 +29,7 @@ export function postboxFolderLabel(
 	t: (key: string) => string,
 	folder: { name: string; role?: string | null }
 ): string {
-	return folder.role && NAMED_FOLDER_ROLES.includes(folder.role)
+	return folder.role && NAMED_FOLDER_ROLES.has(folder.role)
 		? t(`components.postbox.postboxLayout.folderRoles.${folder.role}`)
 		: folder.name;
 }
@@ -37,7 +45,7 @@ export function usePostboxFolderName(args: {
 			const custom = args.customFolders.value.find((f) => f._id === args.folderId.value)?.name;
 			return custom ?? t('components.postbox.postboxLayout.folderFallback');
 		}
-		return NAMED_FOLDER_ROLES.includes(args.folderRole.value)
+		return NAMED_FOLDER_ROLES.has(args.folderRole.value)
 			? t(`components.postbox.postboxLayout.folderRoles.${args.folderRole.value}`)
 			: args.folderRole.value;
 	});

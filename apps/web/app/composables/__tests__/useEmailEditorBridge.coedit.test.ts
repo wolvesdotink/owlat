@@ -413,7 +413,7 @@ describe('useEmailEditorBridge with co-editing', () => {
 		bridge.onCollabFocus({ selectedRootId: 'a', inlineEditRootId: 'a' });
 		await settle();
 		const last = () =>
-			mutation.mock.calls.filter(([fn]) => fn === 'presence.heartbeat').at(-1)?.[1] as
+			mutation.mock.calls.findLast(([fn]) => fn === 'presence.heartbeat')?.[1] as
 				| { leaseBlockId: string | null }
 				| undefined;
 		expect(last()?.leaseBlockId).toBe('a');

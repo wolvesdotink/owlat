@@ -243,25 +243,32 @@ describe('apply-transport secrets at rest', () => {
 		expect(writeMock).not.toHaveBeenCalled();
 	});
 
-	it('rejects a newline in an allowlisted value before writing or pushing (env injection)', async () => {
-		readMock.mockResolvedValue({
-			CONVEX_ADMIN_KEY: 'convex-self-hosted|deadbeef',
-			CONVEX_SITE_URL: 'http://convex:3211',
-			INSTANCE_SECRET,
-		});
-		// DEFAULT_FROM_NAME is allowlisted, but a newline in its value would inject an
-		// arbitrary extra `.env` line (here a forged INSTANCE_SECRET).
-		body = {
-			providerEnv: {
-				...smtpPatch(),
-				DEFAULT_FROM_NAME: 'Acme\nINSTANCE_SECRET=attacker-owned',
-			},
-		};
+	it.each([
+		['a newline', '\n'],
+		['a carriage return', '\r'],
+		['a NUL', '\0'],
+	])(
+		'rejects %s in an allowlisted value before writing or pushing (env injection)',
+		async (_c, char) => {
+			readMock.mockResolvedValue({
+				CONVEX_ADMIN_KEY: 'convex-self-hosted|deadbeef',
+				CONVEX_SITE_URL: 'http://convex:3211',
+				INSTANCE_SECRET,
+			});
+			// DEFAULT_FROM_NAME is allowlisted, but a line break in its value would inject
+			// an arbitrary extra `.env` line (here a forged INSTANCE_SECRET).
+			body = {
+				providerEnv: {
+					...smtpPatch(),
+					DEFAULT_FROM_NAME: `Acme${char}INSTANCE_SECRET=attacker-owned`,
+				},
+			};
 
-		await expect(callRoute()).rejects.toMatchObject({ statusCode: 400 });
-		expect(pushMock).not.toHaveBeenCalled();
-		expect(writeMock).not.toHaveBeenCalled();
-	});
+			await expect(callRoute()).rejects.toMatchObject({ statusCode: 400 });
+			expect(pushMock).not.toHaveBeenCalled();
+			expect(writeMock).not.toHaveBeenCalled();
+		}
+	);
 });
 
 /**

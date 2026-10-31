@@ -134,7 +134,7 @@ describe('usePostboxTriageUndo', () => {
 	it('caps the stack at ten entries, evicting the oldest with its toast', async () => {
 		const undoState = usePostboxTriageUndo();
 		const inverses = Array.from({ length: POSTBOX_UNDO_STACK_LIMIT + 1 }, () => vi.fn());
-		inverses.forEach((inverse, i) => undoState.register({ label: `a${i}`, inverse }));
+		for (const [i, inverse] of inverses.entries()) undoState.register({ label: `a${i}`, inverse });
 
 		expect(undoState.depth.value).toBe(POSTBOX_UNDO_STACK_LIMIT);
 		expect(toasts).toHaveLength(POSTBOX_UNDO_STACK_LIMIT);

@@ -147,16 +147,20 @@ describe('POST /api/setup/apply — relay password at rest', () => {
 });
 
 describe('POST /api/setup/apply — env value hygiene', () => {
-	it('refuses a newline in an env value before seeding or writing (env injection)', async () => {
+	it.each([
+		['a newline', '\n'],
+		['a carriage return', '\r'],
+		['a NUL', '\0'],
+	])('refuses %s in an env value before seeding or writing (env injection)', async (_c, char) => {
 		body = {
 			flags: getDefaultFlags({ hosted: false }),
-			// A newline in the operator-supplied From name would inject an arbitrary
+			// A line break in the operator-supplied From name would inject an arbitrary
 			// extra `.env` line (here a forged INSTANCE_SECRET) through the line-oriented
-			// writer.
+			// writer; a NUL truncates the value wherever C strings read it.
 			env: {
 				EMAIL_PROVIDER: 'smtp',
 				SMTP_RELAY_PASSWORD: PLAINTEXT_PASSWORD,
-				DEFAULT_FROM_NAME: 'Acme\nINSTANCE_SECRET=attacker-owned',
+				DEFAULT_FROM_NAME: `Acme${char}INSTANCE_SECRET=attacker-owned`,
 			},
 			admin: { email: 'admin@example.com', name: 'Admin', password: 'longenoughpw!' },
 		};

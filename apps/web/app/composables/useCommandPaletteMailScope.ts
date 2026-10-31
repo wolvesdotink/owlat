@@ -36,7 +36,7 @@ const MAIL_SEARCH_DEBOUNCE_MS = 250;
 const CONTACT_DEBOUNCE_MS = 200;
 
 /** Operators whose operand the address book completes. */
-const ADDRESS_OPERATORS = ['from', 'to', 'cc', 'bcc'];
+const ADDRESS_OPERATORS: ReadonlySet<string> = new Set(['from', 'to', 'cc', 'bcc']);
 
 export interface CommandPaletteMailScopeOptions {
 	/** The mail query, with any palette mode prefix already stripped. */
@@ -80,7 +80,7 @@ export function useCommandPaletteMailScope(options: CommandPaletteMailScopeOptio
 		setImmediate: setContactPrefix,
 	} = useDebouncedSearch(CONTACT_DEBOUNCE_MS);
 	watch(operand, (current) => {
-		contactPrefix.value = current && ADDRESS_OPERATORS.includes(current.op) ? current.value : '';
+		contactPrefix.value = current && ADDRESS_OPERATORS.has(current.op) ? current.value : '';
 	});
 
 	// keepPreviousData: typing one more letter narrows the list in place instead

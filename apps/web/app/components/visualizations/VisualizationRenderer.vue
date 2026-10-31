@@ -39,8 +39,9 @@ onUnmounted(() => {
 
 // Inject a resize observer script into the HTML so the iframe reports its own height
 const enhancedHtml = computed(() => {
-	// Split the closing tag to keep the Vue SFC parser from terminating the outer <script> block early.
-	const closeScriptTag = '</' + 'script>';
+	// Escape the `<` so a literal closing tag never appears in this SFC: the Vue
+	// parser would end the outer <script> block there.
+	const closeScriptTag = '\x3C/script>';
 	const resizeScript = `
 <script>
 (() => {
