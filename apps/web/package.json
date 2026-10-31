@@ -79,7 +79,7 @@
 		"typescript": "catalog:",
 		"vite": "8.3.3",
 		"vitest": "catalog:",
-		"vue-i18n": "^11.4.8",
+		"vue-i18n": "^11.4.16",
 		"vue-tsc": "catalog:"
 	}
 }
