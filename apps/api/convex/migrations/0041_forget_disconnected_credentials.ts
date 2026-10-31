@@ -65,6 +65,8 @@ export const run = internalAction({
 		let cleared = 0;
 		let alreadyClear = 0;
 		for (;;) {
+			// checkpoint: one page of disconnected accounts; a row already cleared
+			// is counted and left alone, so a re-run redoes nothing.
 			const page: { cleared: number; alreadyClear: number; cursor: string; isDone: boolean } =
 				await ctx.runMutation(
 					internal.migrations['0041_forget_disconnected_credentials'].clearPage,

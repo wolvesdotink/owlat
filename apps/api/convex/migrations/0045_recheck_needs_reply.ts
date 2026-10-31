@@ -23,6 +23,8 @@ export const run = internalAction({
 			mailboxId: args.mailboxId,
 		});
 		for (const threadId of threadIds) {
+			// checkpoint: one thread's requeue leaves its flag in place and only marks
+			// it pending, so a re-run finds the same queue and queues the check again.
 			await ctx.runMutation(internal.mail.needsReply.requeue, { threadId });
 		}
 		return { scheduled: threadIds.length };

@@ -87,6 +87,8 @@ async function recomputeMailbox(ctx: ActionCtx, mailboxId: Id<'mailboxes'>): Pro
 			cursor = page.cursor;
 		}
 		if (changed) continue;
+		// checkpoint: one mailbox's total, published only if its usage revision
+		// still matches the scan; a re-run recounts the same total from the rows.
 		const result = await ctx.runMutation(
 			internal.migrations['0042_recompute_mailbox_used_bytes'].setMailboxUsedBytes,
 			{ mailboxId, usedBytes, revision: revision! }
