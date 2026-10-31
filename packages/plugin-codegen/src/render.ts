@@ -62,11 +62,11 @@ export interface GeneratedPluginComposition {
 /**
  * Every file codegen emits, as ONE table: artifact key -> repository path.
  *
- * The output set used to be spelled out three times — the fields of
- * `GeneratedPluginComposition`, one path constant per output, and the same
- * number of `{ path, source }` target entries — so adding one registry meant
- * six coordinated edits across two files and forgetting one silently dropped a
- * file from both the writer and the `--check` staleness gate. Typing this as a
+ * Spelled out three times — the fields of `GeneratedPluginComposition`, one
+ * path constant per output, and the same number of `{ path, source }` target
+ * entries — the output set would take six coordinated edits across two files to
+ * add one registry, and forgetting one would silently drop a file from both the
+ * writer and the `--check` staleness gate. Typing this as a
  * `Record` over the composition's own keys makes the compiler demand a path for
  * every artifact and reject a path for one that no longer exists.
  */

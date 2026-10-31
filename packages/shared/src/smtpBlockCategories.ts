@@ -12,14 +12,14 @@
  * the MTA would keep classifying `content_rejected` while the gate quietly
  * stopped recognising it, and the hard stop would simply never fire again.
  *
- * THE CONTRACT IS AGREED AND THE WIRE BETWEEN ITS TWO HALVES IS BUILT (issue
- * #501). The MTA classifies and puts the category on an `smtp.classified`
- * webhook as a TYPED field; Convex counts it per (cell, arm, UTC day) in
- * `analytics/smtpResponseCategories.ts` and the block clause divides. The
- * category NEVER travels as prose — a consumer re-parsing a sentence would be a
- * second classifier, free to disagree with this one, which is the drift this
- * module exists to prevent. Both halves read the category names and the block
- * set from here, which is what keeps them from drifting apart.
+ * THE WIRE BETWEEN ITS TWO HALVES. The MTA classifies and puts the category on
+ * an `smtp.classified` webhook as a TYPED field; Convex counts it per (cell,
+ * arm, UTC day) in `analytics/smtpResponseCategories.ts` and the block clause
+ * divides. The category NEVER travels as prose — a consumer re-parsing a
+ * sentence would be a second classifier, free to disagree with this one, which
+ * is the drift this module exists to prevent. Both halves read the category
+ * names and the block set from here, which is what keeps them from drifting
+ * apart.
  *
  * PURE DATA. No regexes, no classification, no I/O: the pattern matching stays in
  * the MTA where the SMTP session is. This module only names the categories, says

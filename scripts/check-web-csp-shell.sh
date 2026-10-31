@@ -119,7 +119,7 @@ esac
 # The attachment lightbox, chip thumbnails and upload size probes load blob:
 # URLs the page creates itself; the PDF preview is an <object> Chrome also
 # checks against frame-src. Without blob: in these the browser refuses them and
-# nothing is thrown (#1292).
+# nothing is thrown.
 for directive in img-src object-src frame-src; do
 	sources=$(printf '%s' "$csp" | tr ';' '\n' | grep -E "(^|[[:space:]])${directive} " || true)
 	case "$sources" in

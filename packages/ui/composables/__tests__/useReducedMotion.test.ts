@@ -1,8 +1,9 @@
 /**
- * The shared reduced-motion read, which four hand-rolled `matchMedia` calls
- * used to do four slightly different ways.
+ * The shared reduced-motion read, so no component hand-rolls its own
+ * `matchMedia` call.
  *
- * The case worth a test is the one all four got wrong: `prefers-reduced-motion`
+ * The case worth a test is the one hand-rolled reads get wrong:
+ * `prefers-reduced-motion`
  * is a setting people turn ON mid-session, usually because something on screen
  * is making them ill. A value sampled once at mount keeps animating until the
  * page is reloaded, so the reactive form has to listen — and, because a

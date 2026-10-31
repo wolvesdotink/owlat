@@ -154,9 +154,9 @@ describe('evaluateDmarc (RFC 7489)', () => {
 	});
 
 	it('multi-label public suffix: From ceo@victim.co.uk aligned only to attacker.co.uk -> fail (bypass closed)', async () => {
-		// Previously the org-domain heuristic folded both attacker.co.uk and
-		// victim.co.uk to `co.uk`, so a DKIM/SPF pass for the attacker domain
-		// looked "aligned" with the victim From — a DMARC bypass. It must now fail.
+		// attacker.co.uk and victim.co.uk are different organizational domains under
+		// the public suffix `co.uk`. Folding both to `co.uk` would make a DKIM/SPF pass
+		// for the attacker domain look "aligned" with the victim From — a DMARC bypass.
 		const outcome = await evaluateDmarc({
 			fromDomain: 'victim.co.uk',
 			spf: { result: 'pass', domain: 'attacker.co.uk' },

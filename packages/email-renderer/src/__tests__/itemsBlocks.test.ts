@@ -1,8 +1,8 @@
 /**
  * Container and hero both hold an `items` list and share one plaintext walker
- * and one padded AMP wrapper (blocks/_items.ts). Container's AMP used to read
- * the raw padding fields, so a container without them rendered
- * `padding:undefinedpx`, and it kept empty children that hero dropped.
+ * and one padded AMP wrapper (blocks/_items.ts), so a container without padding
+ * fields renders no `padding:undefinedpx` in AMP and drops empty children the
+ * way hero does.
  */
 import { describe, it, expect } from 'vitest';
 import type { ContainerItem, EditorBlock } from '@owlat/shared';

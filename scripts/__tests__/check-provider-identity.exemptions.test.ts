@@ -164,7 +164,7 @@ describe('provider-identity ratchet, exemptions', () => {
 			],
 		],
 	])('exempts a kind quoted in %s', (_label, lines) => {
-		// House style quotes the literal a seam USED to be spelled with; a stripper
+		// A comment may quote the literal a capability replaced; a stripper
 		// that only understood `//` tails and lines opening with `*` would punish
 		// that prose, and the failure text offers no sanctioned remedy for it.
 		const root = sandbox({

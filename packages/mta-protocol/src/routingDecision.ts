@@ -2,17 +2,15 @@
  * The `POST /send/decision` wire — the last-mile routing conversation between
  * Convex's governed dispatch and the MTA's routing governance.
  *
- * The REQUEST's vocabulary was already one declaration — `GovernedRoutingContext`
- * in `@owlat/shared`, which the MTA's handler validated against — but Convex's
- * producer restated all eleven fields inline, so the two ends were only
- * structurally related. {@link MtaRoutingDecisionRequest} names the body once
- * and BOTH ends are typed against it now.
+ * The REQUEST's vocabulary is `GovernedRoutingContext` in `@owlat/shared`.
+ * {@link MtaRoutingDecisionRequest} names the body once and BOTH ends are typed
+ * against it, so Convex's producer cannot restate the fields inline and drift
+ * from what the MTA's handler validates.
  *
- * This module also owns the ANSWER, which until now was emitted as JSON
- * literals in `apps/mta/src/routes/routingDecision.ts` and re-declared —
- * accept-list, reason union, defer-origin table and all — in
- * `apps/api/convex/lib/sendProviders/mta/index.ts`. Two declarations of one
- * wire, whose own comment admitted the drift risk. This is the one.
+ * This module also owns the ANSWER — accept-list, reason union, defer-origin
+ * table and all. The MTA's route (`apps/mta/src/routes/routingDecision.ts`) and
+ * Convex's reader (`apps/api/convex/lib/sendProviders/mta/index.ts`) both take
+ * it from here: two declarations of one wire drift apart.
  */
 
 import type { GovernedRoutingContext } from '@owlat/shared/routingDispatch';

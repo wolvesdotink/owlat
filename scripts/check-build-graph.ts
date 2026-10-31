@@ -26,11 +26,11 @@
  *     package's build through turbo's dependency graph.
  *
  *  3. Inside the producing package itself, only the sanctioned scripts may drive
- *     the `tsup --clean`. `test:package` used to be `bun run build && bun
- *     scripts/packageSmoke.ts`, and the smoke's `bun pm pack` re-triggered the
- *     build a second time through `prepack` — a shared-artifact wipe fired from
- *     a *test* task, which turbo runs concurrently with every sibling
- *     `test:coverage` that imports @owlat/plugin-kit. `build` (the producer) and
+ *     the `tsup --clean`. A `test:package` of `bun run build && bun
+ *     scripts/packageSmoke.ts`, whose `bun pm pack` re-triggers the build
+ *     through `prepack`, is a shared-artifact wipe fired from a *test* task,
+ *     which turbo runs concurrently with every sibling `test:coverage` that
+ *     imports @owlat/plugin-kit. `build` (the producer) and
  *     the publish-only `prepack`/`postpack` hooks are the only exceptions; note
  *     that packing must pass `--ignore-scripts` so it does not reach `prepack`.
  */

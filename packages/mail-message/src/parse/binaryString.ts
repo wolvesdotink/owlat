@@ -8,7 +8,7 @@
  * Bun and browsers follow, the `latin1`, `iso-8859-1`, `ascii` and `us-ascii`
  * labels all mean windows-1252: bytes 0x80-0x9F decode to characters such as
  * U+20AC and U+2122, whose low byte is not the byte that was read, so a binary
- * or 8-bit part came out changed (#1279). `String.fromCharCode` is exact in
+ * or 8-bit part came out changed. `String.fromCharCode` is exact in
  * every runtime, the Convex isolate included. (`Buffer#toString('latin1')` is
  * exact too, where Node has it.)
  */
@@ -31,7 +31,7 @@ export function bytesToBinaryString(bytes: Uint8Array): string {
 /**
  * The inverse of {@link bytesToBinaryString}. A char above U+00FF has no byte,
  * so the string was not a binary string: that throws a `RangeError` rather than
- * keeping the char's low byte, which is how #1279 lost data without a trace.
+ * keeping the char's low byte, which would lose data without a trace.
  */
 export function binaryStringToBytes(binary: string): Uint8Array<ArrayBuffer> {
 	const bytes = new Uint8Array(binary.length);

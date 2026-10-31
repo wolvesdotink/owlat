@@ -164,7 +164,7 @@ describe('MboxSplitter byte offsets', () => {
 });
 
 describe('8-bit messages through the archive, as bytes', () => {
-	/** An 8-bit UTF-8 body and a binary part: bytes 0x80-0x9F included (#1279, #1280). */
+	/** An 8-bit UTF-8 body and a binary part: bytes 0x80-0x9F included. */
 	const message = (() => {
 		const encoder = new TextEncoder();
 		const head = encoder.encode(

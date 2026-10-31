@@ -7,7 +7,7 @@
  * notices, invoices that carry payment details. A message this flags is read
  * in full instead of gisted or counted (`arrivalDepth.ts` rows 8, 10 and 11),
  * so the existing exact-wording machinery covers it exactly as today, and it
- * is never placed in the digest or updates (`arrivalPlacement.ts`, #1384).
+ * is never placed in the digest or updates (`arrivalPlacement.ts`).
  *
  * Deterministic and conservative: fixed English and German patterns over the
  * subject and the first {@link SCAN_CHARS} characters of the text, and an IBAN
