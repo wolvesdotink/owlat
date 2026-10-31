@@ -168,7 +168,6 @@ export const ROOT_GATES: readonly RootGate[] = [
 			'**/tsconfig*.json',
 			'knip.jsonc',
 			'scripts/check-dead-code.sh',
-			'scripts/dead-code-baseline.txt',
 			'scripts/check-shared-production-exports.sh',
 			'scripts/shared-production-export-baseline.txt',
 			RATCHET,

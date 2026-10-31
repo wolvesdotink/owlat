@@ -156,8 +156,6 @@ export interface EmailJobResult {
 // Moved to `webhookEventTypes.ts` and re-exported here so every existing
 // `from './types.js'` import keeps working unchanged.
 export type {
-	GooglePostmasterComplianceEvent,
-	GooglePostmasterDomainAuthorizationEvent,
 	GooglePostmasterStatsEvent,
 	GooglePostmasterWebhookEvent,
 	MtaWebhookEvent,
@@ -292,15 +290,7 @@ export interface InboundEmailPayload extends Pick<
 
 export type { DestinationProviderProfile } from '@owlat/shared/deliverabilityPolicy';
 
-export type DomainHealthStatus = 'healthy' | 'degraded' | 'blocking';
-
 // ============ SMTP Intelligence Types ============
-
-export interface SmtpResponseRecord {
-	code: number;
-	enhancedCode?: string;
-	timestamp: number;
-}
 
 export type SmtpDomainStatus = 'healthy' | 'degraded' | 'blocking';
 

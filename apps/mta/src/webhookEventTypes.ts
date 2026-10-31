@@ -13,8 +13,6 @@
  */
 
 import type {
-	GooglePostmasterComplianceEvent as ProtocolGooglePostmasterComplianceEvent,
-	GooglePostmasterDomainAuthorizationEvent as ProtocolGooglePostmasterDomainAuthorizationEvent,
 	GooglePostmasterStatsEvent as ProtocolGooglePostmasterStatsEvent,
 	GooglePostmasterWebhookEvent as ProtocolGooglePostmasterWebhookEvent,
 	MtaRoutingReentry,
@@ -39,12 +37,6 @@ export interface MtaProducedPayloads extends MtaWebhookPayloads {
 export type MtaWebhookEvent = MtaWebhookEventDraft<MtaProducedPayloads>;
 
 export type GooglePostmasterStatsEvent = ProtocolGooglePostmasterStatsEvent<MtaProducedPayloads>;
-
-export type GooglePostmasterComplianceEvent =
-	ProtocolGooglePostmasterComplianceEvent<MtaProducedPayloads>;
-
-export type GooglePostmasterDomainAuthorizationEvent =
-	ProtocolGooglePostmasterDomainAuthorizationEvent<MtaProducedPayloads>;
 
 export type GooglePostmasterWebhookEvent =
 	ProtocolGooglePostmasterWebhookEvent<MtaProducedPayloads>;
