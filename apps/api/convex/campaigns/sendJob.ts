@@ -249,12 +249,12 @@ export async function advanceJob(
 /**
  * Checkpoint the MULTI-DAY SEND PLAN's day state.
  *
- * Separate from `advanceSendJob` on purpose: the cursor advance is the walk's
- * CORRECTNESS checkpoint — a crash between the enqueue and that patch re-runs
- * the same page, and `createBatch`'s idempotency makes the re-run free — while
- * this is the day BUDGET, which the exhausted-day path has to write on a hop
- * that advanced no cursor at all. Folding the two together would mean either
- * writing a cursor that did not move or leaving the day's counter behind.
+ * Separate from `advanceJob` on purpose, although the page commit writes both
+ * in one transaction: the cursor advance is the walk's CORRECTNESS checkpoint,
+ * while this is the day BUDGET, which the exhausted-day path has to write on a
+ * hop that advanced no cursor at all. Folding the two together would mean
+ * either writing a cursor that did not move or leaving the day's counter
+ * behind.
  *
  * Unlike `touchSendJob` it does NOT skip a `done` walk: the LAST hop of a plan
  * is the one that finishes it, and refusing to record its day would leave the
