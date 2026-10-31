@@ -16,6 +16,7 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { ref } from 'vue';
 import { installConfirm, type ConfirmDriver } from '~/__tests__/confirm';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+import { tooltipOf } from '~/__tests__/tooltip';
 
 import PostboxSubscriptionsPanel from '../PostboxSubscriptionsPanel.vue';
 
@@ -127,6 +128,12 @@ describe('PostboxSubscriptionsPanel', () => {
 		const w = mountPanel();
 		const boxes = w.findAll('input[type="checkbox"]');
 		expect(boxes[2]!.attributes('disabled')).toBeDefined();
+		// Why it is disabled, in a tooltip; the one-click boxes need none.
+		expect(boxes[2]!.attributes('title')).toBeUndefined();
+		expect(tooltipOf(w, boxes[2]!)).toBe(
+			'This sender has no one-click endpoint, so it has to be finished on their own page.'
+		);
+		expect(tooltipOf(w, boxes[0]!)).toBeUndefined();
 		// Not a bare link: the one unsubscribe path (local suppression, then the page).
 		expect(w.find('a[href="https://manual.example/unsubscribe"]').exists()).toBe(false);
 		await w

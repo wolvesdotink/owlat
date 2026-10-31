@@ -205,19 +205,22 @@ function lastReadLabel(sender: PostboxSubscriptionSender): string {
 					:key="sender.senderEmail"
 					class="px-5 py-3 flex flex-wrap items-center gap-x-3 gap-y-1"
 				>
-					<input
-						:id="`subscription-${sender.senderEmail}`"
-						type="checkbox"
-						class="shrink-0 h-4 w-4"
-						:checked="selected.has(sender.senderEmail)"
-						:disabled="sender.method !== 'one-click'"
-						:title="
+					<UiTooltip
+						:text="
 							sender.method === 'one-click'
 								? undefined
 								: t('components.postbox.postboxSubscriptionsPanel.manualOnly')
 						"
-						@change="toggle(sender.senderEmail)"
-					/>
+					>
+						<input
+							:id="`subscription-${sender.senderEmail}`"
+							type="checkbox"
+							class="shrink-0 h-4 w-4"
+							:checked="selected.has(sender.senderEmail)"
+							:disabled="sender.method !== 'one-click'"
+							@change="toggle(sender.senderEmail)"
+						/>
+					</UiTooltip>
 					<label
 						:for="`subscription-${sender.senderEmail}`"
 						class="min-w-0 flex-1 basis-40 cursor-pointer"

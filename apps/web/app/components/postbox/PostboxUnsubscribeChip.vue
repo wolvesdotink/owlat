@@ -69,20 +69,20 @@ async function onClick() {
 		<Icon name="lucide:check" class="w-3 h-3" />
 		{{ t('components.postbox.postboxUnsubscribeChip.unsubscribed') }}
 	</span>
-	<button
-		v-else
-		type="button"
-		class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs text-text-tertiary border border-border-subtle hover:text-text-primary hover:bg-bg-elevated disabled:opacity-50"
-		:disabled="actions.isBusy.value"
-		:title="t('components.postbox.postboxUnsubscribeChip.chipTitle')"
-		:aria-label="t('components.postbox.postboxUnsubscribeChip.chipTitle')"
-		@click="onClick"
-	>
-		<Icon
-			:name="actions.isBusy.value ? 'lucide:loader-2' : 'lucide:bell-off'"
-			class="w-3 h-3"
-			:class="{ 'animate-spin motion-reduce:animate-none': actions.isBusy.value }"
-		/>
-		{{ t('components.postbox.postboxUnsubscribeChip.unsubscribe') }}
-	</button>
+	<UiTooltip v-else :text="t('components.postbox.postboxUnsubscribeChip.chipTitle')">
+		<button
+			type="button"
+			class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs text-text-tertiary border border-border-subtle hover:text-text-primary hover:bg-bg-elevated disabled:opacity-50"
+			:disabled="actions.isBusy.value"
+			:aria-label="t('components.postbox.postboxUnsubscribeChip.chipTitle')"
+			@click="onClick"
+		>
+			<Icon
+				:name="actions.isBusy.value ? 'lucide:loader-2' : 'lucide:bell-off'"
+				class="w-3 h-3"
+				:class="{ 'animate-spin motion-reduce:animate-none': actions.isBusy.value }"
+			/>
+			{{ t('components.postbox.postboxUnsubscribeChip.unsubscribe') }}
+		</button>
+	</UiTooltip>
 </template>

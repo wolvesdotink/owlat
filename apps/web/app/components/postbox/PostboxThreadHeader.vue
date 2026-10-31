@@ -212,66 +212,69 @@ const ICON_CLASS = 'w-3.5 h-3.5 flex-shrink-0 text-text-tertiary';
 					</button>
 					<div class="my-1 border-t border-border-subtle" role="separator" />
 					<!-- The conversation's state, made checkable. -->
-					<button
-						type="button"
-						role="menuitemcheckbox"
-						:aria-checked="isPinned"
-						:class="ITEM_CLASS"
-						:title="t('components.postbox.postboxThreadHeader.pinHint')"
-						data-testid="thread-menu-pin"
-						@click="
-							emit('toggle-pin');
-							close();
-						"
-					>
-						<Icon
-							name="lucide:check"
-							class="w-3.5 h-3.5 flex-shrink-0 text-brand"
-							:class="{ invisible: !isPinned }"
-							aria-hidden="true"
-						/>
-						{{ t('components.postbox.postboxThreadHeader.pinConversation') }}
-					</button>
-					<button
-						type="button"
-						role="menuitemcheckbox"
-						:aria-checked="isAlerted"
-						:class="ITEM_CLASS"
-						:title="t('components.postbox.postboxThreadHeader.alertedHint')"
-						data-testid="thread-menu-alert"
-						@click="
-							emit('toggle-alert');
-							close();
-						"
-					>
-						<Icon
-							name="lucide:check"
-							class="w-3.5 h-3.5 flex-shrink-0 text-brand"
-							:class="{ invisible: !isAlerted }"
-							aria-hidden="true"
-						/>
-						{{ t('components.postbox.postboxThreadHeader.alertOnReply') }}
-					</button>
-					<button
-						type="button"
-						role="menuitemcheckbox"
-						:aria-checked="isMuted"
-						:class="ITEM_CLASS"
-						:title="t('components.postbox.postboxThreadHeader.unmuteHint')"
-						data-testid="thread-menu-mute"
-						@click="
-							emit('toggle-mute');
-							close();
-						"
-					>
-						<Icon
-							name="lucide:check"
-							class="w-3.5 h-3.5 flex-shrink-0 text-brand"
-							:class="{ invisible: !isMuted }"
-							aria-hidden="true"
-						/>
-						{{ t('components.postbox.postboxThreadHeader.muteConversation') }}
-					</button>
+					<UiTooltip :text="t('components.postbox.postboxThreadHeader.pinHint')">
+						<button
+							type="button"
+							role="menuitemcheckbox"
+							:aria-checked="isPinned"
+							:class="ITEM_CLASS"
+							data-testid="thread-menu-pin"
+							@click="
+								emit('toggle-pin');
+								close();
+							"
+						>
+							<Icon
+								name="lucide:check"
+								class="w-3.5 h-3.5 flex-shrink-0 text-brand"
+								:class="{ invisible: !isPinned }"
+								aria-hidden="true"
+							/>
+							{{ t('components.postbox.postboxThreadHeader.pinConversation') }}
+						</button>
+					</UiTooltip>
+					<UiTooltip :text="t('components.postbox.postboxThreadHeader.alertedHint')">
+						<button
+							type="button"
+							role="menuitemcheckbox"
+							:aria-checked="isAlerted"
+							:class="ITEM_CLASS"
+							data-testid="thread-menu-alert"
+							@click="
+								emit('toggle-alert');
+								close();
+							"
+						>
+							<Icon
+								name="lucide:check"
+								class="w-3.5 h-3.5 flex-shrink-0 text-brand"
+								:class="{ invisible: !isAlerted }"
+								aria-hidden="true"
+							/>
+							{{ t('components.postbox.postboxThreadHeader.alertOnReply') }}
+						</button>
+					</UiTooltip>
+					<UiTooltip :text="t('components.postbox.postboxThreadHeader.unmuteHint')">
+						<button
+							type="button"
+							role="menuitemcheckbox"
+							:aria-checked="isMuted"
+							:class="ITEM_CLASS"
+							data-testid="thread-menu-mute"
+							@click="
+								emit('toggle-mute');
+								close();
+							"
+						>
+							<Icon
+								name="lucide:check"
+								class="w-3.5 h-3.5 flex-shrink-0 text-brand"
+								:class="{ invisible: !isMuted }"
+								aria-hidden="true"
+							/>
+							{{ t('components.postbox.postboxThreadHeader.muteConversation') }}
+						</button>
+					</UiTooltip>
 					<!-- Mark-read is an ACTION, not a state, and only exists under the
 					     manual mark-read policy while the thread still has unread mail. -->
 					<button
