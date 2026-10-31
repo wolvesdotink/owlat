@@ -63,6 +63,15 @@ export const PREVIOUS_RELEASE_ENTRIES: Readonly<Record<string, string>> = {
 	'mail/ai/composeDraftStore.ts#replaceSession': 'old Answer mode starts mid-run',
 	'mail/ai/composeDraftStore.ts#captureSessionAnswers': 'old Answer mode answers mid-run',
 	'mail/ai/composeDraftStore.ts#setDraftFollowUp': 'old Answer mode starts and answers mid-run',
+	// The agent walker now holds for budget inside agent/walkerCommit.ts `beginStep`,
+	// `commitStep` and `commitResumeDraft`.
+	'aiRouting/teamBudgetHold.ts#holdIfOverBudget':
+		'old agent walker steps and draft resumes mid-run',
+	// The batch poller now settles an item with aiRouting/batchItems.ts `settleItem`.
+	'aiRouting/batchItems.ts#postponePoll': 'old batch polls mid-run',
+	'aiRouting/batchItems.ts#completeItem': 'old batch polls mid-run',
+	'aiRouting/batchItems.ts#failItem': 'old batch polls mid-run',
+	'aiRouting/batchItems.ts#abandonItem': 'old batch polls mid-run',
 	// The plugin relay identity call now commits once through
 	// domains/pluginRelayMutations.ts `commitIdentityCall` / `commitDeniedCall`.
 	'domains/pluginRelayMutations.ts#recordCheck': 'old plugin relay identity calls mid-run',

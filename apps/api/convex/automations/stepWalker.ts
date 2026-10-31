@@ -85,6 +85,10 @@ export const executeStep = internalAction({
 	handler: async (ctx, args): Promise<ExecuteStepResult> => {
 		const attempt = args.retryCount ?? 0;
 
+		// checkpoint: the claim, taken before the step's side effect (an email
+		// intake, a plugin call): its lease fences a second firing out, and if this
+		// action dies before the result commits, the lease expires and
+		// `processPendingDelays` re-dispatches the step run as the next attempt.
 		const claim = await ctx.runMutation(internal.automations.stepOrchestration.claimStepRun, {
 			stepRunId: args.stepRunId,
 			attempt,

@@ -33,18 +33,21 @@
  */
 
 import { v } from 'convex/values';
-import type { MutationCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { isOutboundChannel, tokenUsageValidator } from '../lib/convexValidators';
 import {
 	actionTypeValidator,
-	failedActionStatus,
 	transitionInputValidator,
-	type TransitionInput,
 	type TransitionOutcome,
 } from './processingLifecycle/types';
+import {
+	applyTransition,
+	beginStepAction,
+	endStepAction,
+	failStepAction,
+} from './processingLifecycle/stepActions';
 import { dispatch } from './processingLifecycle/effects';
 import { isClarificationLive } from './clarificationHold';
 import { DEFAULT_CLARIFICATION_TIMEOUT_MS, MAX_REMINDER_SENDS } from './clarificationReminders';
@@ -89,20 +92,12 @@ export const transition = internalMutation({
 		inboundMessageId: v.id('inboundMessages'),
 		input: transitionInputValidator,
 	},
-	handler: async (ctx, args): Promise<TransitionOutcome> =>
-		await applyProcessingTransition(ctx, args.inboundMessageId, args.input),
+	handler: (ctx, args): Promise<TransitionOutcome> =>
+		applyTransition(ctx, args.inboundMessageId, args.input),
 });
 
 /** {@link transition} inside another module's commit, in its transaction. */
-export async function applyProcessingTransition(
-	ctx: MutationCtx,
-	inboundMessageId: Id<'inboundMessages'>,
-	input: TransitionInput
-): Promise<TransitionOutcome> {
-	const message = await ctx.db.get(inboundMessageId);
-	if (!message) return { ok: false, reason: 'message_not_found' };
-	return await dispatch(ctx, message, input);
-}
+export const applyProcessingTransition = applyTransition;
 
 // ─── Agent-action mutations (used inside a single processingStatus) ─────────
 //
@@ -120,23 +115,9 @@ export const recordStepBegin = internalMutation({
 		inboundMessageId: v.id('inboundMessages'),
 		actionType: actionTypeValidator,
 	},
-	handler: async (ctx, args): Promise<{ actionId: Id<'agentActions'> }> => {
-		// A scan belongs to the message's current `security_check` run.
-		const run =
-			args.actionType === 'security_scan'
-				? (await ctx.db.get(args.inboundMessageId))?.securityCheckRun
-				: undefined;
-		const actionId = await ctx.db.insert('agentActions', {
-			inboundMessageId: args.inboundMessageId,
-			actionType: args.actionType,
-			status: 'running',
-			retryCount: 0,
-			startedAt: Date.now(),
-			createdAt: Date.now(),
-			...(run !== undefined ? { securityCheckRun: run } : {}),
-		});
-		return { actionId };
-	},
+	handler: async (ctx, args): Promise<{ actionId: Id<'agentActions'> }> => ({
+		actionId: await beginStepAction(ctx, args.inboundMessageId, args.actionType),
+	}),
 });
 
 export const recordStepEnd = internalMutation({
@@ -147,23 +128,7 @@ export const recordStepEnd = internalMutation({
 		modelUsed: v.optional(v.string()),
 		tokenUsage: v.optional(tokenUsageValidator),
 	},
-	handler: async (ctx, args) => {
-		// Defense-in-depth: a vanished action row (deleted by a concurrent
-		// cleanup, or an id from a stale closure after a retry) must not crash
-		// the step — patch on a missing id throws. The sibling writers
-		// (recordStepFail, the `complete_action` effect) already guard; this
-		// one used to assume the row was present.
-		const action = await ctx.db.get(args.actionId);
-		if (!action) return;
-		await ctx.db.patch(args.actionId, {
-			status: 'completed',
-			output: args.output,
-			completedAt: Date.now(),
-			durationMs: args.durationMs,
-			modelUsed: args.modelUsed,
-			tokenUsage: args.tokenUsage,
-		});
-	},
+	handler: (ctx, args) => endStepAction(ctx, args),
 });
 
 export const recordStepFail = internalMutation({
@@ -171,22 +136,7 @@ export const recordStepFail = internalMutation({
 		actionId: v.id('agentActions'),
 		errorMessage: v.string(),
 	},
-	handler: async (ctx, args) => {
-		const action = await ctx.db.get(args.actionId);
-		// `abandoned` is final: retries are exhausted, or the lifecycle closed the
-		// step because a person took the reply over. Don't reopen it as `failed`.
-		if (!action || action.status === 'abandoned') return;
-		const retryCount = action.retryCount + 1;
-		await ctx.db.patch(args.actionId, {
-			// Once retries are exhausted the row becomes terminally `abandoned`
-			// so the retry cron's `by_status='failed'` scan is never starved by a
-			// growing head of lifetime-exhausted failures.
-			status: failedActionStatus(retryCount),
-			errorMessage: args.errorMessage,
-			completedAt: Date.now(),
-			retryCount,
-		});
-	},
+	handler: (ctx, args) => failStepAction(ctx, args.actionId, args.errorMessage),
 });
 
 // The in-state step-output mirror mutations (recordContextTier /

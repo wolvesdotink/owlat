@@ -33,7 +33,13 @@ function sourceFiles(directory: string): string[] {
 	for (const entry of readdirSync(directory, { withFileTypes: true })) {
 		const full = join(directory, entry.name);
 		if (entry.isDirectory()) {
-			if (skippedDirectories.has(entry.name) || entry.name.startsWith('.')) continue;
+			// Dot directories are tooling state, except `.well-known`: Nitro serves
+			// routes from it, so code there is production code.
+			if (
+				skippedDirectories.has(entry.name) ||
+				(entry.name.startsWith('.') && entry.name !== '.well-known')
+			)
+				continue;
 			found.push(...sourceFiles(full));
 			continue;
 		}

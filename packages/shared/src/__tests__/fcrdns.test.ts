@@ -1,24 +1,37 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-	DEFAULT_GENERIC_PTR_SUFFIXES,
-	isGenericPtrHostname,
 	parseGenericPtrSuffixes,
 	parseUnverifiedFcrdnsOverride,
 	reverseDnsGuidance,
 	verifyFcrdnsIdentity,
 } from '../fcrdns';
 
+/**
+ * Whether a forward-confirmed PTR that matches EHLO is flagged as a provider's
+ * generic hostname: the only place the generic-PTR heuristic surfaces.
+ */
+async function isGenericPtr(hostname: string, extraSuffixes: readonly string[] = []) {
+	const result = await verifyFcrdnsIdentity(
+		'198.51.100.7',
+		hostname,
+		{ reverse: vi.fn(async () => [hostname]), resolve4: vi.fn(async () => ['198.51.100.7']) },
+		extraSuffixes
+	);
+	expect(result.checklist.ehloMatches).toBe(true);
+	return result.genericPtr;
+}
+
 describe('generic PTR data and heuristic', () => {
-	it('ships provider-default suffixes as inspectable data', () => {
-		expect(DEFAULT_GENERIC_PTR_SUFFIXES).toContain('your-server.de');
-		expect(DEFAULT_GENERIC_PTR_SUFFIXES).toContain('compute.amazonaws.com');
+	it('ships provider-default suffixes as built-in data', async () => {
+		expect(await isGenericPtr('mail.your-server.de')).toBe(true);
+		expect(await isGenericPtr('host.compute.amazonaws.com')).toBe(true);
 	});
 
-	it('matches suffixes and embedded dotted/dashed IPv4 without arbitrary regex input', () => {
-		expect(isGenericPtrHostname('static.203.0.113.10.clients.your-server.de')).toBe(true);
-		expect(isGenericPtrHostname('ip-203-0-113-10.example.net')).toBe(true);
-		expect(isGenericPtrHostname('mail.customer-vps.test', ['customer-vps.test'])).toBe(true);
-		expect(isGenericPtrHostname('mail.example.com')).toBe(false);
+	it('matches suffixes and embedded dotted/dashed IPv4 without arbitrary regex input', async () => {
+		expect(await isGenericPtr('static.203.0.113.10.clients.your-server.de')).toBe(true);
+		expect(await isGenericPtr('ip-203-0-113-10.example.net')).toBe(true);
+		expect(await isGenericPtr('mail.customer-vps.test', ['customer-vps.test'])).toBe(true);
+		expect(await isGenericPtr('mail.example.com')).toBe(false);
 	});
 
 	it('strictly parses shared readiness options for setup and runtime', () => {

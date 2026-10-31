@@ -1,23 +1,21 @@
+# Boolean schema fields without the is*/has* prefix, frozen by
+# scripts/check-boolean-naming.sh. This IS debt: each sits on a production
+# table, and a rename is an expand → migrate → contract over at least two
+# releases (CONVENTIONS.md → "Expand, migrate, contract"). Never add a line;
+# delete one when its field is renamed.
+#
+# Some names are also external: templates.ts:showUnsubscribe is a co-editing
+# wire literal (lib/validators/coediting.ts), and forms.ts:doubleOptIn /
+# topics.ts:requireDoubleOptIn are documented in the public forms API. A
+# rename of those must keep the external name at that boundary.
 auth.ts:dismissed
 campaigns.ts:archiveEnabled
 campaigns.ts:useRecipientTimezone
 contacts.ts:autoRegistered
-contacts.ts:hasClicked
-contacts.ts:hasOpened
 dashboard.ts:pinned
-delivery.ts:active
 forms.ts:doubleOptIn
-mailMessages.ts:flagAnswered
-mailMessages.ts:flagDeleted
-mailMessages.ts:flagDraft
-mailMessages.ts:flagFlagged
-mailMessages.ts:flagSeen
-mailMessages.ts:hasAttachments
-mailMessages.ts:subscribed
 mailRules.ts:keepLocalCopy
 mailRules.ts:stopProcessing
-mailThreads.ts:hasAttachments
-mailThreads.ts:hasFlagged
 templates.ts:showUnsubscribe
 templates.ts:showUnsubscribe
 topics.ts:pendingDoiConfirmation

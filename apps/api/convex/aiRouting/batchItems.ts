@@ -14,11 +14,11 @@
  *   - EVERY terminal transition writes the request's ONE ledger row, and then
  *     settles its hold when there is one, in the same mutation
  *     ({@link writeItemRow}): the reported usage when the provider ran it
- *     ({@link completeItem}); zero when the request's own record says it was
- *     not billed ({@link failItem}, a submission the provider refused); and the
+ *     ({@link complete}); zero when the request's own record says it was
+ *     not billed ({@link fail}, a submission the provider refused); and the
  *     item's full bound, `requestBoundMicrousd`, when whether it was billed is
  *     unknown (a submission the provider may have taken, a result that never
- *     came, a result line that is missing or malformed: {@link abandonItem}).
+ *     came, a result line that is missing or malformed: {@link abandon}).
  *     The bound is stored on the item, so this holds with no ceiling
  *     configured, when admission held nothing. The transition is the status
  *     check in the same mutation, so a second poll changes nothing, and the
@@ -32,10 +32,10 @@
  * to the real-time path once.
  */
 
-import { v } from 'convex/values';
+import { v, type Infer } from 'convex/values';
 import { internal } from '../_generated/api';
 import { internalQuery, type MutationCtx } from '../_generated/server';
-import type { Doc } from '../_generated/dataModel';
+import type { Doc, Id } from '../_generated/dataModel';
 import { internalMutation } from '../lib/writeFence';
 import { llmRootContextValidator } from '../lib/llmUsageTags';
 import { batchConsumerValidator, batchProviderValidator } from '../lib/validators/aiRouting';
@@ -237,72 +237,116 @@ export const kickPoller = internalMutation({
 	},
 });
 
-/** Not ended yet: ask again later. */
-export const postponePoll = internalMutation({
-	args: { itemId: v.id('llmBatchItems') },
-	handler: async (ctx, args) => {
-		const item = await ctx.db.get(args.itemId);
-		if (!item || item.status !== 'submitted') return;
-		const now = Date.now();
-		await ctx.db.patch(item._id, { nextPollAt: now + BATCH_POLL_INTERVAL_MS, updatedAt: now });
+const completeOutcomeValidator = v.union(
+	v.literal('succeeded'),
+	v.literal('truncated'),
+	v.literal('invalid')
+);
+const failOutcomeValidator = v.union(
+	v.literal('errored'),
+	v.literal('expired'),
+	v.literal('canceled')
+);
+const completionFields = {
+	outcome: completeOutcomeValidator,
+	/** The billed request as the dispatch read it; absent: its usage is unknown. */
+	request: v.optional(meteredRequestValidator),
+	entries: v.optional(v.array(extractedEntryValidator)),
+	summary: v.optional(batchedFileSummaryValidator),
+};
+
+/** What one poll of an item came to (`./batchPoller.ts`). */
+export const settlementValidator = v.union(
+	v.object({ kind: v.literal('postpone') }),
+	v.object({ kind: v.literal('abandon') }),
+	v.object({ kind: v.literal('fail'), outcome: failOutcomeValidator }),
+	v.object({ kind: v.literal('complete'), ...completionFields })
+);
+
+export type Settlement = Infer<typeof settlementValidator>;
+const completionValidator = v.object(completionFields);
+type Completion = Infer<typeof completionValidator>;
+
+/**
+ * Settle one polled item the way its poll decided, in one transaction.
+ * Returns whether this call closed the item: a postponed item stays open, and
+ * an item another poll already closed is left alone.
+ */
+export const settleItem = internalMutation({
+	args: { itemId: v.id('llmBatchItems'), settlement: settlementValidator },
+	returns: v.boolean(),
+	handler: async (ctx, { itemId, settlement }) => {
+		switch (settlement.kind) {
+			case 'postpone':
+				await postpone(ctx, itemId);
+				return false;
+			case 'abandon':
+				return abandon(ctx, itemId);
+			case 'fail':
+				return fail(ctx, itemId, settlement.outcome);
+			case 'complete': {
+				const { kind: _kind, ...completion } = settlement;
+				return complete(ctx, itemId, completion);
+			}
+		}
 	},
 });
+
+/** Not ended yet: ask again later. */
+async function postpone(ctx: MutationCtx, itemId: Id<'llmBatchItems'>): Promise<void> {
+	const item = await ctx.db.get(itemId);
+	if (!item || item.status !== 'submitted') return;
+	const now = Date.now();
+	await ctx.db.patch(item._id, { nextPollAt: now + BATCH_POLL_INTERVAL_MS, updatedAt: now });
+}
 
 /**
  * The provider ran the request: write its ledger row and settle its hold, in
  * this mutation, then hand the result on. `succeeded` carries the parsed
  * output (the extraction's entries, or the summary); `truncated` and
  * `invalid` were billed but give nothing usable, so the source goes back to
- * the real-time path once. Returns whether this call closed the item.
+ * the real-time path once.
  */
-export const completeItem = internalMutation({
-	args: {
-		itemId: v.id('llmBatchItems'),
-		outcome: v.union(v.literal('succeeded'), v.literal('truncated'), v.literal('invalid')),
-		/** The billed request as the dispatch read it; absent: its usage is unknown. */
-		request: v.optional(meteredRequestValidator),
-		entries: v.optional(v.array(extractedEntryValidator)),
-		summary: v.optional(batchedFileSummaryValidator),
-	},
-	returns: v.boolean(),
-	handler: async (ctx, args) => {
-		const item = await ctx.db.get(args.itemId);
-		if (!item || item.status !== 'submitted') return false;
-		await writeItemRow(
-			ctx,
-			item,
-			args.request?.usage ? { kind: 'reported', request: args.request } : { kind: 'unknown' }
-		);
-		await close(ctx, item, 'completed', args.outcome);
-		if (args.outcome !== 'succeeded') {
-			await handBack(ctx, item);
-			return true;
-		}
-		await continueWith(ctx, item, args);
+async function complete(
+	ctx: MutationCtx,
+	itemId: Id<'llmBatchItems'>,
+	completion: Completion
+): Promise<boolean> {
+	const item = await ctx.db.get(itemId);
+	if (!item || item.status !== 'submitted') return false;
+	await writeItemRow(
+		ctx,
+		item,
+		completion.request?.usage
+			? { kind: 'reported', request: completion.request }
+			: { kind: 'unknown' }
+	);
+	await close(ctx, item, 'completed', completion.outcome);
+	if (completion.outcome !== 'succeeded') {
+		await handBack(ctx, item);
 		return true;
-	},
-});
+	}
+	await continueWith(ctx, item, completion);
+	return true;
+}
 
 /**
  * The request's own result record says it was not billed (errored, expired,
  * cancelled): a zero row, the hold settled at zero, and the source goes
  * real-time.
  */
-export const failItem = internalMutation({
-	args: {
-		itemId: v.id('llmBatchItems'),
-		outcome: v.union(v.literal('errored'), v.literal('expired'), v.literal('canceled')),
-	},
-	returns: v.boolean(),
-	handler: async (ctx, args) => {
-		const item = await ctx.db.get(args.itemId);
-		if (!item || item.status !== 'submitted') return false;
-		await writeItemRow(ctx, item, { kind: 'unbilled' });
-		await close(ctx, item, 'failed', args.outcome);
-		await handBack(ctx, item);
-		return true;
-	},
-});
+async function fail(
+	ctx: MutationCtx,
+	itemId: Id<'llmBatchItems'>,
+	outcome: Infer<typeof failOutcomeValidator>
+): Promise<boolean> {
+	const item = await ctx.db.get(itemId);
+	if (!item || item.status !== 'submitted') return false;
+	await writeItemRow(ctx, item, { kind: 'unbilled' });
+	await close(ctx, item, 'failed', outcome);
+	await handBack(ctx, item);
+	return true;
+}
 
 /**
  * Owlat lost track of the item: a submission never confirmed, no result by its
@@ -310,17 +354,40 @@ export const failItem = internalMutation({
  * billed it is unknown, so its row charges the item's full bound, and the
  * source goes back to the real-time path.
  */
+async function abandon(ctx: MutationCtx, itemId: Id<'llmBatchItems'>): Promise<boolean> {
+	const item = await ctx.db.get(itemId);
+	if (!item || !LIVE_STATUSES.has(item.status)) return false;
+	await writeItemRow(ctx, item, { kind: 'unknown' });
+	await close(ctx, item, 'abandoned', 'lost');
+	await handBack(ctx, item);
+	return true;
+}
+
+// The previous release's poller settles through these four, one per outcome.
+// Each closes only an item still open, so one it calls after `settleItem`
+// already settled that item changes nothing. Remove after release N+1.
+
+export const postponePoll = internalMutation({
+	args: { itemId: v.id('llmBatchItems') },
+	handler: (ctx, args) => postpone(ctx, args.itemId),
+});
+
+export const completeItem = internalMutation({
+	args: { itemId: v.id('llmBatchItems'), ...completionFields },
+	returns: v.boolean(),
+	handler: (ctx, { itemId, ...completion }) => complete(ctx, itemId, completion),
+});
+
+export const failItem = internalMutation({
+	args: { itemId: v.id('llmBatchItems'), outcome: failOutcomeValidator },
+	returns: v.boolean(),
+	handler: (ctx, args) => fail(ctx, args.itemId, args.outcome),
+});
+
 export const abandonItem = internalMutation({
 	args: { itemId: v.id('llmBatchItems') },
 	returns: v.boolean(),
-	handler: async (ctx, args) => {
-		const item = await ctx.db.get(args.itemId);
-		if (!item || !LIVE_STATUSES.has(item.status)) return false;
-		await writeItemRow(ctx, item, { kind: 'unknown' });
-		await close(ctx, item, 'abandoned', 'lost');
-		await handBack(ctx, item);
-		return true;
-	},
+	handler: (ctx, args) => abandon(ctx, args.itemId),
 });
 
 async function close(

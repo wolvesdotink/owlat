@@ -101,7 +101,7 @@ export function isValidNonGraduatedWarmingCap(cap: unknown): cap is number {
  * to day 1; valid days use their finite schedule cap, clamped at the final
  * enforceable cap rather than crossing into graduated Infinity.
  */
-export function getNonGraduatedWarmingCapRepairFallback(currentDay: number): number {
+function getNonGraduatedWarmingCapRepairFallback(currentDay: number): number {
 	const normalizedDay = Number.isFinite(currentDay) && currentDay >= 1 ? Math.floor(currentDay) : 1;
 	const scheduledCap = getWarmingCapForDay(normalizedDay);
 	return Number.isFinite(scheduledCap)

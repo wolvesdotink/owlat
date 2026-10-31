@@ -6,9 +6,8 @@
  *  1. FAULT ATTRIBUTION IS HONEST. The red row tells someone whether they broke
  *     something. Telling a user their setup is at fault when a stranger's
  *     mailbox is simply full is the worst failure this module can have, so the
- *     real receiver responses (taken from the shared pinning fixture the MTA and
- *     the ramp gate both pin themselves to) are asserted attribution by
- *     attribution.
+ *     real receiver responses (the same shapes the MTA's classifier suite pins
+ *     to their categories) are asserted attribution by attribution.
  *  2. THE CATALOG IS TOTAL. Every category the shipped classifier can emit has
  *     an entry, so a category that reaches the strip can never render blank.
  *
@@ -17,8 +16,8 @@
  */
 import { describe, it, expect } from 'vitest';
 import {
-	SMTP_BLOCK_MESSAGE_SAMPLES,
 	SMTP_FAILURE_CATEGORIES,
+	type SmtpFailureCategory,
 } from '@owlat/shared/smtpBlockCategories';
 
 import {
@@ -101,11 +100,86 @@ describe('bounceCause — 5.7.1 is split by wording, not by the number', () => {
 	});
 });
 
-describe('fault attribution over the shared receiver-response fixture', () => {
-	// `SMTP_BLOCK_MESSAGE_SAMPLES` is the array the MTA's classifier and the
-	// ramp's hard stop both pin themselves to — real 4xx/5xx shapes, not invented
-	// strings. Running the catalog over the same samples is what keeps the words
-	// a user reads tied to the responses receivers actually send.
+/**
+ * Real 4xx/5xx response shapes receivers send, each with its classified
+ * category and whether that category is a refusal (a ramp hard stop).
+ */
+const SMTP_BLOCK_MESSAGE_SAMPLES: readonly {
+	readonly response: string;
+	readonly enhancedCode?: string;
+	readonly category: SmtpFailureCategory;
+	readonly isBlock: boolean;
+}[] = [
+	{
+		response:
+			'550-5.7.1 [203.0.113.10] Our system has detected that this message is likely unsolicited mail. To reduce the amount of spam sent to Gmail, this message has been blocked.',
+		enhancedCode: '5.7.1',
+		category: 'content_rejected',
+		isBlock: true,
+	},
+	{
+		response:
+			'550 5.7.1 Service unavailable, Client host [203.0.113.10] blocked using Spamhaus; To request removal from this list see https://www.spamhaus.org/query/ip/203.0.113.10',
+		enhancedCode: '5.7.1',
+		category: 'content_rejected',
+		isBlock: true,
+	},
+	{
+		response: '550 5.7.23 Sender address rejected: SPF fail for sender domain example.com',
+		enhancedCode: '5.7.23',
+		category: 'policy_rejected',
+		isBlock: true,
+	},
+	{
+		response:
+			'550 5.7.25 [203.0.113.10] The IP address sending this message does not have a PTR record setup, or the corresponding forward DNS entry does not point to the sending IP.',
+		enhancedCode: '5.7.25',
+		category: 'policy_rejected',
+		isBlock: true,
+	},
+	{
+		response:
+			'421-4.7.23 The IP address sending this message does not have a PTR record setup, or the 421-4.7.23 corresponding forward DNS entry does not point to the sending IP.',
+		enhancedCode: '4.7.23',
+		category: 'gmail_ip_identity',
+		isBlock: true,
+	},
+	// ---- rate pressure, deliberately NOT blocks ----
+	{
+		response:
+			'421-4.7.28 Our system has detected an unusual rate of unsolicited mail originating from your IP address.',
+		enhancedCode: '4.7.28',
+		category: 'gmail_rate_limited',
+		isBlock: false,
+	},
+	{
+		response: '421 4.7.0 [TS03] All messages from 203.0.113.10 will be permanently deferred',
+		category: 'yahoo_ts03',
+		isBlock: false,
+	},
+	{
+		response: '451 4.3.2 The maximum number of concurrent connections has exceeded a limit',
+		enhancedCode: '4.3.2',
+		category: 'microsoft_resource_throttle',
+		isBlock: false,
+	},
+	{
+		response: '451 4.7.1 Greylisting in effect, please try again later',
+		category: 'greylisted',
+		isBlock: false,
+	},
+	{
+		response: '452 4.2.2 The email account that you tried to reach is over quota',
+		enhancedCode: '4.2.2',
+		category: 'mailbox_full',
+		isBlock: false,
+	},
+];
+
+describe('fault attribution over real receiver responses', () => {
+	// Real 4xx/5xx shapes, not invented strings: the MTA's classifier suite pins
+	// the same responses to the same categories. Running the catalog over them is
+	// what keeps the words a user reads tied to the responses receivers send.
 	it.each(SMTP_BLOCK_MESSAGE_SAMPLES.map((s) => [s.category, s] as const))(
 		'attributes the %s sample without blaming the wrong party',
 		(_category, sample) => {

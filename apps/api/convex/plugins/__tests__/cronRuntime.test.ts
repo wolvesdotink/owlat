@@ -268,6 +268,19 @@ describe('hosted plugin cron runtime', () => {
 		).resolves.toBeUndefined();
 	});
 
+	it('records one outcome per tick: a completed run whose record fails is not re-recorded as failed', async () => {
+		const run = vi.fn(async () => undefined);
+		addCron('plugin.seed-lab.refresh', run);
+		const { ctx, calls } = fixture({ authorized: true, auditThrows: true });
+
+		await expect(
+			handler(ctx, { pluginId: 'seed-lab', cronKind: 'plugin.seed-lab.refresh' })
+		).resolves.toBeUndefined();
+
+		expect(run).toHaveBeenCalledTimes(1);
+		expect(outcomeCalls(calls)).toEqual([{ outcome: 'completed' }]);
+	});
+
 	it('clamps a below-floor catalog timeout up and still runs the cron', async () => {
 		const run = vi.fn(async () => undefined);
 		// 500ms is below PLUGIN_CRON_TIMEOUT_MIN_MS; a stale catalog entry must not

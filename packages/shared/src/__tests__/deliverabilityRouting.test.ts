@@ -1,15 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
-	ADVISORY_DELIVERABILITY_SIGNAL_SOURCES,
-	DELIVERABILITY_SIGNAL_SOURCES,
-	INFRASTRUCTURE_DELIVERABILITY_SIGNAL_SOURCES,
-	OUTCOME_DELIVERABILITY_SIGNAL_SOURCES,
 	destinationProviderForDomain,
 	hasCriticalBlocklistSignal,
 	isActionableDeliverabilitySignalSource,
-	isAdvisoryDeliverabilitySignalSource,
-	isOutcomeDeliverabilitySignalSource,
-	isDeliverabilitySignalSource,
 	normalizeDeliverabilityRoutingSnapshot,
 	type DeliverabilitySignal,
 	type DeliverabilitySignalSource,
@@ -127,38 +120,56 @@ describe('deliverability routing DTO', () => {
 	});
 });
 
+/**
+ * Every source with its class. The `satisfies` clause makes a source added to
+ * the union without a class here a type error, so the table stays exhaustive.
+ */
+const SOURCE_CLASS = {
+	ip_quarantined: 'infrastructure',
+	dnsbl_listed: 'infrastructure',
+	breaker_open: 'infrastructure',
+	persistent_defers: 'infrastructure',
+	dnsbl_partial: 'advisory',
+	dnsbl_unknown: 'advisory',
+	bounce_rate: 'outcome',
+	complaint_rate: 'outcome',
+	engagement_ratio: 'outcome',
+	seed_placement: 'outcome',
+} as const satisfies Record<DeliverabilitySignalSource, 'infrastructure' | 'advisory' | 'outcome'>;
+const SOURCES = Object.keys(SOURCE_CLASS) as DeliverabilitySignalSource[];
+
+/** Does the strict snapshot parser accept a signal carrying `source`? */
+function acceptsSource(source: unknown): boolean {
+	return (
+		normalizeDeliverabilityRoutingSnapshot(
+			{
+				generatedAt: 100,
+				signals: [{ provider: 'all', source, severity: 'warning', observedAt: 100 }],
+			},
+			100
+		) !== null
+	);
+}
+
 describe('deliverability signal taxonomy', () => {
 	it('accepts the DNSBL three-state sources and rejects anything outside the union', () => {
-		expect(isDeliverabilitySignalSource('dnsbl_partial')).toBe(true);
-		expect(isDeliverabilitySignalSource('dnsbl_unknown')).toBe(true);
-		expect(isDeliverabilitySignalSource('dnsbl_listed')).toBe(true);
-		expect(isDeliverabilitySignalSource('dnsbl_clean')).toBe(false);
-		expect(isDeliverabilitySignalSource(undefined)).toBe(false);
-		expect(isDeliverabilitySignalSource(42)).toBe(false);
+		expect(acceptsSource('dnsbl_partial')).toBe(true);
+		expect(acceptsSource('dnsbl_unknown')).toBe(true);
+		expect(acceptsSource('dnsbl_listed')).toBe(true);
+		expect(acceptsSource('dnsbl_clean')).toBe(false);
+		expect(acceptsSource(undefined)).toBe(false);
+		expect(acceptsSource(42)).toBe(false);
 	});
 
 	it('splits the union exhaustively into advisory, outcome and actionable', () => {
-		for (const source of DELIVERABILITY_SIGNAL_SOURCES) {
+		for (const source of SOURCES) {
+			expect(acceptsSource(source)).toBe(true);
 			// Advisory and outcome-derived sources are both non-actionable: only
 			// the shipped infrastructure sources drive the relay fallback.
 			expect(isActionableDeliverabilitySignalSource(source)).toBe(
-				!isAdvisoryDeliverabilitySignalSource(source) &&
-					!isOutcomeDeliverabilitySignalSource(source)
-			);
-			expect(isAdvisoryDeliverabilitySignalSource(source)).toBe(
-				!isOutcomeDeliverabilitySignalSource(source) &&
-					!isActionableDeliverabilitySignalSource(source)
+				SOURCE_CLASS[source] === 'infrastructure'
 			);
 		}
-		expect(DELIVERABILITY_SIGNAL_SOURCES.filter(isAdvisoryDeliverabilitySignalSource)).toEqual([
-			...ADVISORY_DELIVERABILITY_SIGNAL_SOURCES,
-		]);
-		expect(DELIVERABILITY_SIGNAL_SOURCES.filter(isOutcomeDeliverabilitySignalSource)).toEqual([
-			...OUTCOME_DELIVERABILITY_SIGNAL_SOURCES,
-		]);
-		expect(DELIVERABILITY_SIGNAL_SOURCES.filter(isActionableDeliverabilitySignalSource)).toEqual([
-			...INFRASTRUCTURE_DELIVERABILITY_SIGNAL_SOURCES,
-		]);
 		// The shipped fallback + hysteresis sources stay actionable.
 		const shipped: DeliverabilitySignalSource[] = [
 			'ip_quarantined',

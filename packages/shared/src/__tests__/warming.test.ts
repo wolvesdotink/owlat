@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
-	getNonGraduatedWarmingCapRepairFallback,
 	isValidNonGraduatedWarmingCap,
 	LAST_FINITE_WARMING_CAP,
 	normalizeNonGraduatedWarmingCap,
 	NON_GRADUATED_WARMING_CAP_RANGE,
 } from '../warming';
+
+/** The cap an invalid persisted value is repaired to on `currentDay`. */
+const getNonGraduatedWarmingCapRepairFallback = (currentDay: number) =>
+	normalizeNonGraduatedWarmingCap(undefined, currentDay);
 
 describe('non-graduated warming-cap contract', () => {
 	const invalidCaps: ReadonlyArray<{ name: string; value: unknown }> = [

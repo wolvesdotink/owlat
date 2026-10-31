@@ -44,7 +44,7 @@ import { initializePools, setIpPoolBlock } from '../../scaling/ipPool.js';
 import { createOwlatHostConfig } from '../../__tests__/helpers/fixtures.js';
 import {
 	hasCriticalBlocklistSignal,
-	isAdvisoryDeliverabilitySignalSource,
+	isActionableDeliverabilitySignalSource,
 	type DeliverabilitySignal,
 } from '@owlat/shared/deliverabilityRouting';
 
@@ -112,7 +112,8 @@ describe('DNSBL routing signal honesty', () => {
 
 		const unknown = signals.find((signal) => signal.source === 'dnsbl_unknown');
 		expect(unknown).toMatchObject({ provider: 'all', severity: 'warning' });
-		expect(isAdvisoryDeliverabilitySignalSource('dnsbl_unknown')).toBe(true);
+		// Advisory: recorded, but never a relay-fallback trigger on its own.
+		expect(isActionableDeliverabilitySignalSource('dnsbl_unknown')).toBe(false);
 		// Unknown is measurement confidence, not a blocklist hard stop.
 		expect(hasCriticalBlocklistSignal(signals)).toBe(false);
 	});

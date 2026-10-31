@@ -244,7 +244,7 @@ export function summarizeSeedProviderCounts(
 	return rollupFromArms(provider, readArmCounts(arms.own), readArmCounts(arms.reference));
 }
 
-export function summarizeSeedProvider(
+function summarizeSeedProvider(
 	provider: DestinationProviderKey,
 	observations: readonly SeedObservation[]
 ): SeedProviderRollup {

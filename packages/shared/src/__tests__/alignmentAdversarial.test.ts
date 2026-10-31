@@ -18,12 +18,13 @@ import {
 	evaluateAlignmentPreflight,
 } from '../deliverabilityAlignment';
 import { normalizeDomain } from '../utils/normalizeDomain';
-import {
-	ALIGNMENT_MAX_FUTURE_SKEW_MS,
-	ALIGNMENT_STALE_AFTER_MS,
-	alignmentGate,
-} from '../deliverabilityAlignmentGate';
+import { alignmentGate } from '../deliverabilityAlignmentGate';
 import { alignedDns, alignedInput, CHECKED_AT, found, ownArm, relayArm } from './alignmentFixtures';
+
+// The gate's freshness window, pinned as literals: a recorded verdict counts for
+// 48 hours and tolerates two minutes of forward clock skew.
+const ALIGNMENT_STALE_AFTER_MS = 48 * 60 * 60 * 1000;
+const ALIGNMENT_MAX_FUTURE_SKEW_MS = 2 * 60 * 1000;
 
 describe('DNS that could not answer is UNKNOWN, never aligned', () => {
 	it.each(['timeout', 'servfail', 'refused', 'error'] as const)(

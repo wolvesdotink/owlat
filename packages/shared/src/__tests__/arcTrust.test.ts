@@ -10,27 +10,38 @@
 
 import { describe, it, expect } from 'vitest';
 import {
-	isTrustedForwarder,
 	isValidForwarderDomain,
 	sanitizeTrustedForwarders,
 	shouldArcOverrideDmarc,
 } from '../arcTrust';
 
-describe('isTrustedForwarder — single-label entries are never wildcards', () => {
+/**
+ * The trust gate alone, observed through the public rescue predicate: with the
+ * chain validated and the original attested, the verdict is exactly whether
+ * `sealer` is covered by `forwarders`.
+ */
+function trustsSealer(sealer: string | undefined, forwarders: readonly string[]): boolean {
+	return shouldArcOverrideDmarc(
+		{ arcCv: 'pass', arcSealerDomain: sealer, arcAttestsOriginalPass: true },
+		forwarders
+	);
+}
+
+describe('trusted-forwarder gate — single-label entries are never wildcards', () => {
 	it('does not trust a sealer under a bare single-label entry', () => {
-		expect(isTrustedForwarder('spammer.com', ['com'])).toBe(false);
-		expect(isTrustedForwarder('mail.spammer.com', ['com'])).toBe(false);
+		expect(trustsSealer('spammer.com', ['com'])).toBe(false);
+		expect(trustsSealer('mail.spammer.com', ['com'])).toBe(false);
 	});
 
 	it('still matches exact and subdomain of a dot-bearing entry', () => {
-		expect(isTrustedForwarder('acme.com', ['acme.com'])).toBe(true);
-		expect(isTrustedForwarder('mail-a.acme.com', ['acme.com'])).toBe(true);
-		expect(isTrustedForwarder('acme.com.evil.example', ['acme.com'])).toBe(false);
+		expect(trustsSealer('acme.com', ['acme.com'])).toBe(true);
+		expect(trustsSealer('mail-a.acme.com', ['acme.com'])).toBe(true);
+		expect(trustsSealer('acme.com.evil.example', ['acme.com'])).toBe(false);
 	});
 
 	it('an empty or absent sealer never matches', () => {
-		expect(isTrustedForwarder(undefined, ['acme.com'])).toBe(false);
-		expect(isTrustedForwarder('', ['acme.com'])).toBe(false);
+		expect(trustsSealer(undefined, ['acme.com'])).toBe(false);
+		expect(trustsSealer('', ['acme.com'])).toBe(false);
 	});
 });
 

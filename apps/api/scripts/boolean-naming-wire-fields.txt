@@ -1,0 +1,24 @@
+# Boolean schema fields whose names mirror an external wire vocabulary, one
+# `file:field` per line (file relative to convex/schema/), each group with its
+# reason. This is NOT debt to pay down: renaming one of these is a protocol
+# change, not a naming fix. scripts/check-boolean-naming.sh drops them before
+# its ratchet and fails on a line that no longer matches a mis-named field. A
+# new line needs the same kind of reason: a name another system reads or
+# writes. A field that merely forgot the is*/has* prefix does not qualify.
+#
+# The IMAP system flags (\Seen, \Flagged, \Answered, \Draft, \Deleted) on
+# mailMessages, which apps/imap serves as-is. flagSeen and flagFlagged also
+# key the read-state indexes and the search indexes' filterFields, so a rename
+# is a backfill of the largest table plus new indexes.
+mailMessages.ts:flagAnswered
+mailMessages.ts:flagDeleted
+mailMessages.ts:flagDraft
+mailMessages.ts:flagFlagged
+mailMessages.ts:flagSeen
+#
+# mailFolders.subscribed: the IMAP SUBSCRIBE / LSUB state apps/imap reads.
+mailMessages.ts:subscribed
+#
+# warmingState.ips[].active: part of warmingIpFields, which are also the args
+# of delivery/warmingSync.upsertWarmingState, the MTA's warming report.
+delivery.ts:active

@@ -3,8 +3,8 @@ import {
 	decodeSpamhausAnswers,
 	evaluateIpAudit,
 	IP_AUDIT_ZONES,
-	neighbourhoodStatus,
 	type IpAuditInput,
+	type IpAuditNeighbourhood,
 	type IpAuditZoneObservation,
 } from '../ipAudit';
 import { DNSBL_LISTS, dnsblZoneHost } from '../dnsbl';
@@ -85,6 +85,10 @@ describe('Spamhaus return-code decoding', () => {
 		expect(decodeSpamhausAnswers(['127.0.0.42', ''])).toEqual([]);
 	});
 });
+
+/** The neighbourhood status the audit report derives from `neighbourhood`. */
+const neighbourhoodStatus = (neighbourhood: IpAuditNeighbourhood) =>
+	evaluateIpAudit(input({ neighbourhood })).neighbourhoodStatus;
 
 describe('neighbourhood status', () => {
 	it('withholds a verdict below the minimum sample', () => {
