@@ -14,17 +14,17 @@
  */
 
 import type { HttpRouter } from 'convex/server';
-import { handleCors, healthCheck } from './auth/apiAuthHttp';
+import { handleCors, healthCheck } from '../auth/apiAuthHttp';
 import {
 	createContact,
 	getContact,
 	updateContact,
 	deleteContact,
 	listContacts,
-} from './contacts/api';
-import { sendEvent } from './eventsApi';
-import { sendTransactional } from './transactional/api';
-import { addContactToTopic, removeContactFromTopic } from './topics/apiHttp';
+} from '../contacts/api';
+import { sendEvent } from './events';
+import { sendTransactional } from '../transactional/api';
+import { addContactToTopic, removeContactFromTopic } from '../topics/apiHttp';
 
 export function registerPublicApiRoutes(http: HttpRouter): void {
 	// API health check (no authentication required)

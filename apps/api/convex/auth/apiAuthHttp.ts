@@ -1,7 +1,7 @@
 /**
  * The two unauthenticated shells of the public API surface: the CORS preflight
  * every browser client sends before a key-authed call, and the health probe.
- * Both are registered by `apiV1Http.ts`; the key-authed routes it wraps
+ * Both are registered by `publicApi/v1Http.ts`; the key-authed routes it wraps
  * validate through `internal.auth.apiAuth.*` in the sibling `auth/apiAuth.ts`.
  */
 import { httpAction } from '../_generated/server';
