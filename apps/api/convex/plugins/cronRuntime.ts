@@ -5,6 +5,7 @@ import {
 	PLUGIN_CRON_TIMEOUT_MAX_MS,
 	PLUGIN_CRON_TIMEOUT_MIN_MS,
 	type PluginCronModule,
+	type PluginId,
 	type PluginCronServices,
 	type PluginLogFields,
 	type PluginLogger,
@@ -76,6 +77,8 @@ async function runPluginCronTick(
 
 	let authorized: boolean;
 	try {
+		// checkpoint: authorization before the plugin's code runs; it writes only
+		// a denial's audit row, and a denied tick returns without running anything.
 		authorized = await ctx.runMutation(internal.plugins.cronAuthorization.authorizeExecution, {
 			pluginId,
 			cronKind,
@@ -86,22 +89,40 @@ async function runPluginCronTick(
 	}
 	if (!authorized) return;
 
+	// The tick's one run record, whatever the handler came to.
+	const failure = await runAuthorizedCron(ctx, pluginId, definition.timeoutMs, registration.module);
+	await ctx
+		.runMutation(internal.plugins.cronAuthorization.recordOutcome, {
+			pluginId,
+			cronKind,
+			...(failure === undefined
+				? { outcome: 'completed' as const }
+				: { outcome: 'failed' as const, reasonCode: failure }),
+		})
+		.catch(() => null);
+}
+
+/**
+ * Run an authorized cron's handler under its timeout. Returns why it failed,
+ * or `undefined` when it completed. Writes nothing: the tick records the
+ * outcome once.
+ */
+async function runAuthorizedCron(
+	ctx: ActionCtx,
+	pluginId: PluginId,
+	catalogTimeoutMs: number,
+	registeredModule: unknown
+): Promise<FailureReason | undefined> {
 	// An out-of-range timeout is clamped in both directions (mirroring the
 	// interval clamp), so a stale catalog can never register a run that is
 	// effectively unbounded OR one starved below the floor. A value that cannot
 	// be interpreted as a bounded timeout at all records cron_invalid rather than
 	// disabling the cron with no trail — like the invalid-module path below.
-	const timeoutMs = boundedTimeout(definition.timeoutMs);
-	if (timeoutMs === null) {
-		await recordFailure(ctx, pluginId, cronKind, 'cron_invalid');
-		return;
-	}
+	const timeoutMs = boundedTimeout(catalogTimeoutMs);
+	if (timeoutMs === null) return 'cron_invalid';
 
-	const module = snapshotCronModule(registration.module);
-	if (!module) {
-		await recordFailure(ctx, pluginId, cronKind, 'cron_invalid');
-		return;
-	}
+	const module = snapshotCronModule(registeredModule);
+	if (!module) return 'cron_invalid';
 
 	const controller = new AbortController();
 	try {
@@ -115,18 +136,9 @@ async function runPluginCronTick(
 		// documents that timed-out plugin work never becomes an unhandled rejection.
 		void work.catch(() => undefined);
 		await withTimeout(work, timeoutMs, controller);
-		await ctx.runMutation(internal.plugins.cronAuthorization.recordOutcome, {
-			pluginId,
-			cronKind,
-			outcome: 'completed',
-		});
+		return undefined;
 	} catch (error) {
-		await recordFailure(
-			ctx,
-			pluginId,
-			cronKind,
-			error instanceof CronTimeoutError ? 'cron_timeout' : 'cron_failed'
-		);
+		return error instanceof CronTimeoutError ? 'cron_timeout' : 'cron_failed';
 	} finally {
 		// A cron gets a single host-owned lease. Completion, timeout, and failure
 		// all revoke every exposed service capability (llm dispatch, abort signal).
@@ -207,22 +219,6 @@ async function withTimeout<T>(
 	} finally {
 		if (timer !== undefined) clearTimeout(timer);
 	}
-}
-
-async function recordFailure(
-	ctx: ActionCtx,
-	pluginId: string,
-	cronKind: string,
-	reasonCode: FailureReason
-): Promise<void> {
-	await ctx
-		.runMutation(internal.plugins.cronAuthorization.recordOutcome, {
-			pluginId,
-			cronKind,
-			outcome: 'failed',
-			reasonCode,
-		})
-		.catch(() => null);
 }
 
 class CronTimeoutError extends Error {}
