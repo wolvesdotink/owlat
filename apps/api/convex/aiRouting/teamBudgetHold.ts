@@ -142,7 +142,11 @@ export async function holdForBudget(
 	return { isHeld: true };
 }
 
-/** The walker's ask before a paid step and after a refused one ({@link holdForBudget}). */
+/**
+ * The previous release's walker asks this before a paid step and after a
+ * refused one; the walker now holds inside its own step commits
+ * (`agent/walkerCommit.ts`). Remove after release N+1.
+ */
 export const holdIfOverBudget = internalMutation({
 	args: {
 		inboundMessageId: v.id('inboundMessages'),

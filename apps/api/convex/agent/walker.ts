@@ -33,15 +33,10 @@ import type { Id } from '../_generated/dataModel';
 import { stepModuleFor } from './steps';
 import { agentStepKindValidator, isPluginAgentStepKind } from './steps/catalog';
 import { contextRetrievalStep } from './steps/context_retrieval';
-import { hasUsableAnswer } from '../inbox/clarificationAnswers';
 import type { AgentRunContext, AgentStepKind } from './steps/types';
 import { routedOutcome } from './walkerTransition';
 import type { StepOutcome } from './walkerCommit';
-import {
-	nextStepValidator,
-	scheduleAfterCoreStep,
-	scheduleAfterPluginStep,
-} from './walkerSchedule';
+import { nextStepValidator, scheduleAfterPluginStep } from './walkerSchedule';
 import { admissionRefusalOf, type AdmissionRefusalData } from '../lib/llm/admissionPort';
 import { isTeamPaidStep } from '../aiRouting/teamBudgetHold';
 import { runHostedPluginStep } from './hostedStepRunner';
@@ -53,25 +48,6 @@ async function loadRunContext(
 ): Promise<AgentRunContext> {
 	const agentConfig = await ctx.runQuery(internal.agent.agentPipeline.getAgentConfig, {});
 	return { inboundMessageId, agentConfig };
-}
-
-/** Hold the message for a person when `kind` is a paid step without headroom. */
-async function isHeldForBudget(
-	ctx: ActionCtx,
-	inboundMessageId: Id<'inboundMessages'>,
-	kind: AgentStepKind,
-	refused?: { refusal: AdmissionRefusalData; actionId?: Id<'agentActions'> }
-): Promise<boolean> {
-	if (!isTeamPaidStep(kind)) return false;
-	// The scan's deterministic checks always run: it is held only on a refusal.
-	if (!refused && kind === 'security_scan') return false;
-	const { isHeld } = await ctx.runMutation(internal.aiRouting.teamBudgetHold.holdIfOverBudget, {
-		inboundMessageId,
-		step: kind,
-		...(refused ? { refusedReason: refused.refusal.reason } : {}),
-		...(refused?.actionId ? { refusedActionId: refused.actionId } : {}),
-	});
-	return isHeld;
 }
 
 /** Fail the message; a retry restarts the pipeline at the scan, which runs the guard. */
@@ -144,8 +120,9 @@ export const start = internalAction({
  * and then hands off to `route` as usual.
  *
  * FAIL-SOFT: a vanished message, a message no longer in `drafting` (a racing
- * transition won), or a context-retrieval failure never wedges anything — it
- * either returns quietly or drafts on an empty base context.
+ * transition won, also while the context was rebuilt: the commit checks again),
+ * or a context-retrieval failure never wedges anything — it either returns
+ * quietly or drafts on an empty base context.
  */
 export const resumeDraft = internalAction({
 	args: { inboundMessageId: v.id('inboundMessages') },
@@ -169,56 +146,20 @@ export const resumeDraft = internalAction({
 		// Rebuild the retrieval briefing. FAIL-SOFT: if retrieval throws, draft on
 		// an empty base context rather than wedging the message in `drafting`.
 		let context = '';
+		let refusedReason: AdmissionRefusalData['reason'] | undefined;
 		try {
 			const retrieval = await contextRetrievalStep.execute(ctx, {
 				inboundMessageId: args.inboundMessageId,
 			});
 			context = retrieval.output.context;
 		} catch (error) {
-			// A refused guard or embedding holds the message, never a blind draft.
-			const refusal = admissionRefusalOf(error);
-			if (refusal && (await isHeldForBudget(ctx, args.inboundMessageId, 'draft', { refusal }))) {
-				return;
-			}
-			context = '';
+			refusedReason = admissionRefusalOf(error)?.reason;
 		}
 
-		const pending = message.pendingClarification;
-		const questions = pending?.questions ?? [];
-		const isGapsAccepted = pending?.isGapsAccepted === true;
-		// The message went through `classify` to reach `awaiting_clarification`, so
-		// its classification is normally present; fall back to a neutral one so the
-		// draft can still run.
-		const classification = message.classification ?? {
-			category: 'other',
-			priority: 'normal',
-			sentiment: 'neutral',
-			intent: 'other',
-			confidence: 0,
-		};
-		if (pending && !isGapsAccepted && !questions.every(hasUsableAnswer)) {
-			await ctx.runMutation(internal.inbox.processingLifecycle.transition, {
-				inboundMessageId: args.inboundMessageId,
-				input: {
-					to: 'awaiting_clarification',
-					at: Date.now(),
-					pendingClarification: { questions, askedAt: Date.now() },
-					classification,
-				},
-			});
-			return;
-		}
-
-		await scheduleAfterCoreStep(ctx, args.inboundMessageId, 'clarify', {
-			kind: 'draft',
-			input: {
-				inboundMessageId: args.inboundMessageId,
-				context,
-				// The owner's answers, files, consent to gaps and its placeholders
-				// are read from the stored clarification by the draft step itself
-				// (agent/steps/draft/gaps.ts), so every path into it gets them.
-				classification,
-			},
+		await ctx.runMutation(internal.agent.walkerCommit.commitResumeDraft, {
+			inboundMessageId: args.inboundMessageId,
+			context,
+			...(refusedReason ? { refusedReason } : {}),
 		});
 	},
 });

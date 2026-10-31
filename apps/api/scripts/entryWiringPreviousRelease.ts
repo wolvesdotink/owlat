@@ -46,6 +46,10 @@ export const PREVIOUS_RELEASE_ENTRIES: Readonly<Record<string, string>> = {
 	'mail/ai/composeDraftStore.ts#replaceSession': 'old Answer mode starts mid-run',
 	'mail/ai/composeDraftStore.ts#captureSessionAnswers': 'old Answer mode answers mid-run',
 	'mail/ai/composeDraftStore.ts#setDraftFollowUp': 'old Answer mode starts and answers mid-run',
+	// The agent walker now holds for budget inside agent/walkerCommit.ts `beginStep`,
+	// `commitStep` and `commitResumeDraft`.
+	'aiRouting/teamBudgetHold.ts#holdIfOverBudget':
+		'old agent walker steps and draft resumes mid-run',
 	// System & updates now reads maintenance/workerRegistry.ts `getForAdmin`.
 	'mail/imap/serverRegistry.ts#getForAdmin':
 		'the previous IMAP servers card on System & updates, in tabs opened before the deploy',

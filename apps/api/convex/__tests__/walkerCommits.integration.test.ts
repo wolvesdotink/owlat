@@ -315,6 +315,22 @@ describe('walker.resumeDraft', () => {
 		expect(await pendingSteps(t)).toEqual([]);
 	});
 
+	it('drafts nothing when the message left drafting while its context was rebuilt', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['ai.agent']);
+		const id = await insertMessage(t, { processingStatus: 'drafting', securityFlags: CLEAN_FLAGS });
+		vi.spyOn(contextRetrievalStep, 'execute').mockImplementation(async () => {
+			// A person archived the message meanwhile.
+			await t.run((ctx) => ctx.db.patch(id, { processingStatus: 'archived' }));
+			return { output: { context: 'briefing' } } as never;
+		});
+
+		await t.action(internal.agent.walker.resumeDraft, { inboundMessageId: id });
+
+		expect((await read(t, id)).processingStatus).toBe('archived');
+		expect(await pendingSteps(t)).toEqual([]);
+	});
+
 	it('does nothing for a message no longer in drafting', async () => {
 		const t = convexTest(schema, modules);
 		const id = await insertMessage(t, { processingStatus: 'archived', securityFlags: CLEAN_FLAGS });

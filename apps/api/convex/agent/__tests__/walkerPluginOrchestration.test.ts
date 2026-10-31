@@ -113,6 +113,7 @@ vi.mock('../steps/context_retrieval', () => ({
 import { resumeDraft, runStep } from '../walker';
 import type { StepOutcome } from '../walkerCommit';
 import { scheduleAfterCoreStep } from '../walkerSchedule';
+import { resumeDraftPlan } from '../walkerTransition';
 
 type WalkerHandler = (ctx: unknown, args: Record<string, unknown>) => Promise<void>;
 const runStepHandler = (runStep as unknown as { _handler: WalkerHandler })._handler;
@@ -161,7 +162,7 @@ function createHarness() {
 	/**
 	 * The mutations the walker calls, by name. The walker's commits
 	 * (`walkerCommit.ts`) run here over the same fixture lifecycle, with the
-	 * real next-hop scheduling.
+	 * real next-hop scheduling and resume plan.
 	 */
 	async function mutate(name: string, args: Record<string, unknown>): Promise<unknown> {
 		if (name.endsWith(':beginStep')) {
@@ -187,6 +188,20 @@ function createHarness() {
 			return mutate(':transition', {
 				input: { to: 'failed', at: 0, failingActionId: args['actionId'] },
 			});
+		}
+		if (name.endsWith(':commitResumeDraft')) {
+			if (message['processingStatus'] !== 'drafting') return 'stale';
+			const plan = resumeDraftPlan(message as never, 0);
+			if (plan.kind === 'ask') return mutate(':transition', { input: plan.input });
+			await scheduleAfterCoreStep(ctx as never, args['inboundMessageId'] as never, 'clarify', {
+				kind: 'draft',
+				input: {
+					inboundMessageId: args['inboundMessageId'],
+					context: args['context'],
+					classification: plan.classification,
+				},
+			});
+			return 'drafting';
 		}
 		if (name.endsWith(':authorizeExecution')) {
 			return !revoked.has(args['stepKind'] as string);

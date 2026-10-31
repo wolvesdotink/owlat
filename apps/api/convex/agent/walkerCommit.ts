@@ -8,7 +8,8 @@
  *     lifecycle transition it routed to, or the failure or hold it ran into)
  *     together with the next `runStep`, so the next hop exists exactly when
  *     the step's result does.
-
+ *
+ * Resuming a message into its draft commits once too ({@link commitResumeDraft}).
  */
 
 import { v, type Infer } from 'convex/values';
@@ -27,6 +28,7 @@ import {
 } from '../inbox/processingLifecycle/stepActions';
 import { agentStepKindValidator } from './steps/catalog';
 import { nextStepValidator, scheduleAfterCoreStep } from './walkerSchedule';
+import { resumeDraftPlan } from './walkerTransition';
 
 const stepEndFields = {
 	output: v.optional(v.string()),
@@ -157,3 +159,46 @@ async function failMessage(
 		failingActionId: actionId,
 	});
 }
+
+/**
+ * Resume a `drafting` message into its draft step, after the walker rebuilt
+ * its retrieval context: hold it when that retrieval was refused for budget,
+ * go back to asking when a question is still open, or schedule the draft.
+ * A message that left `drafting` meanwhile (a racing transition won) is left
+ * alone: drafting it would only end in an illegal edge.
+ */
+export const commitResumeDraft = internalMutation({
+	args: {
+		inboundMessageId: v.id('inboundMessages'),
+		context: v.string(),
+		refusedReason: v.optional(budgetHoldValidator.fields.reason),
+	},
+	returns: v.union(
+		v.literal('stale'),
+		v.literal('held'),
+		v.literal('asked'),
+		v.literal('drafting')
+	),
+	handler: async (ctx, { inboundMessageId, context, refusedReason }) => {
+		const message = await ctx.db.get(inboundMessageId);
+		if (!message || message.processingStatus !== 'drafting') return 'stale';
+		// A refused guard or embedding holds the message, never a blind draft.
+		if (refusedReason !== undefined) {
+			await holdForBudget(ctx, { inboundMessageId, step: 'draft', refusedReason });
+			return 'held';
+		}
+		const plan = resumeDraftPlan(message, Date.now());
+		if (plan.kind === 'ask') {
+			await applyTransition(ctx, inboundMessageId, plan.input);
+			return 'asked';
+		}
+		await scheduleAfterCoreStep(ctx, inboundMessageId, 'clarify', {
+			kind: 'draft',
+			// The owner's answers, files, consent to gaps and its placeholders are
+			// read from the stored clarification by the draft step itself
+			// (agent/steps/draft/gaps.ts), so every path into it gets them.
+			input: { inboundMessageId, context, classification: plan.classification },
+		});
+		return 'drafting';
+	},
+});

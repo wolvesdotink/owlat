@@ -3,9 +3,54 @@
  * of `./walker.ts` to hold it under the size cap.
  */
 
-import type { Id } from '../_generated/dataModel';
+import type { Doc, Id } from '../_generated/dataModel';
+import { hasUsableAnswer } from '../inbox/clarificationAnswers';
+import type { TransitionInput } from '../inbox/processingLifecycle/types';
 import type { AgentRoute, AgentStepResult, RouteTransition } from './steps/types';
 import type { StepOutcome } from './walkerCommit';
+
+/**
+ * What resuming a `drafting` message comes to: the draft, or back to asking
+ * when a question is still open without the owner's consent to gaps (a run
+ * answered before that rule), which is never drafted around.
+ */
+export function resumeDraftPlan(
+	message: Pick<Doc<'inboundMessages'>, 'pendingClarification' | 'classification'>,
+	at: number
+):
+	| {
+			readonly kind: 'ask';
+			readonly input: Extract<TransitionInput, { to: 'awaiting_clarification' }>;
+	  }
+	| {
+			readonly kind: 'draft';
+			readonly classification: NonNullable<Doc<'inboundMessages'>['classification']>;
+	  } {
+	const pending = message.pendingClarification;
+	const questions = pending?.questions ?? [];
+	// The message went through `classify` to reach `awaiting_clarification`, so
+	// its classification is normally present; fall back to a neutral one so the
+	// draft can still run.
+	const classification = message.classification ?? {
+		category: 'other',
+		priority: 'normal',
+		sentiment: 'neutral',
+		intent: 'other',
+		confidence: 0,
+	};
+	if (pending && pending.isGapsAccepted !== true && !questions.every(hasUsableAnswer)) {
+		return {
+			kind: 'ask',
+			input: {
+				to: 'awaiting_clarification',
+				at,
+				pendingClarification: { questions, askedAt: at },
+				classification,
+			},
+		};
+	}
+	return { kind: 'draft', classification };
+}
 
 /** What a step that ran to its route came to, for the walker's step commit. */
 export function routedOutcome(
