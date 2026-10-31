@@ -27,7 +27,7 @@ import { internalAction, internalQuery } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import { internal } from '../_generated/api';
-import { hasPermission, requireOrgPermission, requirePermission } from '../lib/sessionOrganization';
+import { hasPermission, requirePermission } from '../lib/sessionOrganization';
 import { assertFeatureEnabled } from '../lib/featureFlags';
 import { throwInvalidInput, throwInvalidState, getOrThrow } from '../_utils/errors';
 import { providerFor } from './providers';
@@ -107,8 +107,11 @@ export const startIntegrationImport = authedMutation({
 		handleDuplicates: duplicateHandlingValidator,
 		topicId: v.optional(v.id('topics')),
 	},
-	handler: async (ctx, args) => {
-		await requireOrgPermission(ctx, 'imports:manage', 'Only owners and admins can start imports');
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'imports:manage'),
+			'Only owners and admins can start imports'
+		);
 
 		// Per-provider feature flags — the Settings toggles must actually gate
 		// the import, not just exist.
@@ -171,8 +174,11 @@ export const cancelImport = authedMutation({
 	args: {
 		importId: v.id('integrationImports'),
 	},
-	handler: async (ctx, args) => {
-		await requireOrgPermission(ctx, 'imports:manage', 'Only owners and admins can cancel imports');
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'imports:manage'),
+			'Only owners and admins can cancel imports'
+		);
 		const importRecord = await getOrThrow(ctx, args.importId, 'Import');
 
 		if (importRecord.status !== 'running') {

@@ -16,7 +16,6 @@
 
 import { internalMutation } from '../lib/writeFence';
 import { authedQuery } from '../lib/authedFunctions';
-import { getUserIdFromSession } from '../lib/sessionOrganization';
 import { summarize, type ReputationSummary } from './sendingReputation';
 import { utcDayStart } from '../lib/clock';
 import { DAY_MS } from '../lib/constants';
@@ -104,8 +103,6 @@ const TREND_WINDOW_DAYS = 30;
 export const getDeliverySnapshots = authedQuery({
 	args: {},
 	handler: async (ctx): Promise<DeliverySnapshotPoint[]> => {
-		await getUserIdFromSession(ctx);
-
 		const rows = await ctx.db
 			.query('deliverySnapshots')
 			.withIndex('by_period')

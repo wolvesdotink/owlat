@@ -1,7 +1,6 @@
 /** Operator-facing sender-compliance telemetry for the Delivery dashboard. */
 
 import { authedQuery } from '../lib/authedFunctions';
-import { getUserIdFromSession } from '../lib/sessionOrganization';
 import {
 	GMAIL_BULK_SENDER_THRESHOLD,
 	GMAIL_PROXIMITY_WARNING_THRESHOLD,
@@ -20,7 +19,6 @@ import {
 export const getComplianceTelemetry = authedQuery({
 	args: {},
 	handler: async (ctx) => {
-		await getUserIdFromSession(ctx);
 		const now = Date.now();
 		const [spamRate, gmailVolume, unsubscribe] = await Promise.all([
 			summarizeSpamRate(ctx.db, { kind: 'org' }, now),

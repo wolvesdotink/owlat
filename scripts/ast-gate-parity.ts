@@ -10,7 +10,6 @@
  *   apps/api/scripts/check-log-pii.sh      owlat/no-log-pii
  *   apps/api/scripts/check-errors.sh       owlat/convex-error-taxonomy
  *   apps/api/scripts/check-public-functions.sh  owlat/no-raw-convex-builder
- *   apps/api/scripts/check-session-threading.sh owlat/use-threaded-session
  *   apps/api/scripts/check-feature-floors.sh    owlat/feature-floor-in-builder
  *
  * Findings are normalized to a site: `path:line` for the per-line gates and
@@ -41,7 +40,6 @@ export type GateName =
 	| 'log-pii'
 	| 'errors'
 	| 'public-functions'
-	| 'session-threading'
 	| 'feature-floors';
 
 interface Gate {
@@ -96,14 +94,6 @@ export const GATES: readonly Gate[] = [
 		args: [],
 		base: 'apps/api/',
 		perFunction: false,
-	},
-	{
-		name: 'session-threading',
-		rule: 'use-threaded-session',
-		script: 'apps/api/scripts/check-session-threading.sh',
-		args: ['--generate'],
-		base: 'apps/api/',
-		perFunction: true,
 	},
 	{
 		name: 'feature-floors',

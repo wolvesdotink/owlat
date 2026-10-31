@@ -1,7 +1,7 @@
 import { v } from 'convex/values';
 import { getOrThrow, throwInvalidInput } from '../_utils/errors';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
-import { requireOrgPermission } from '../lib/sessionOrganization';
+import { hasPermission, requirePermission } from '../lib/sessionOrganization';
 import { assertFeatureEnabled } from '../lib/featureFlags';
 import { randomToken } from '../lib/randomToken';
 import { recordAuditLog } from '../lib/auditLog';
@@ -76,10 +76,9 @@ export const listByOrganization = authedQuery({
 	args: {
 		includeInactive: v.optional(v.boolean()),
 	},
-	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'organization:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'organization:manage'),
 			'Only owners and admins can manage webhooks'
 		);
 		await assertFeatureEnabled(ctx, 'webhooks');
@@ -119,10 +118,9 @@ export const create = authedMutation({
 		url: v.string(),
 		events: v.array(subscribableWebhookEventValidator),
 	},
-	handler: async (ctx, args) => {
-		const session = await requireOrgPermission(
-			ctx,
-			'organization:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'organization:manage'),
 			'Only owners and admins can manage webhooks'
 		);
 		const { name, url, events } = args;
@@ -190,10 +188,9 @@ export const update = authedMutation({
 		url: v.optional(v.string()),
 		events: v.optional(v.array(subscribableWebhookEventValidator)),
 	},
-	handler: async (ctx, args) => {
-		const session = await requireOrgPermission(
-			ctx,
-			'organization:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'organization:manage'),
 			'Only owners and admins can manage webhooks'
 		);
 		const { webhookId, name, url, events } = args;
@@ -254,10 +251,9 @@ export const regenerateSecret = authedMutation({
 	args: {
 		webhookId: v.id('webhooks'),
 	},
-	handler: async (ctx, args) => {
-		const session = await requireOrgPermission(
-			ctx,
-			'organization:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'organization:manage'),
 			'Only owners and admins can manage webhooks'
 		);
 		const webhook = await getOrThrow(ctx, args.webhookId, 'Webhook');
@@ -289,10 +285,9 @@ export const toggle = authedMutation({
 	args: {
 		webhookId: v.id('webhooks'),
 	},
-	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'organization:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'organization:manage'),
 			'Only owners and admins can manage webhooks'
 		);
 		const webhook = await getOrThrow(ctx, args.webhookId, 'Webhook');
@@ -314,10 +309,9 @@ export const remove = authedMutation({
 	args: {
 		webhookId: v.id('webhooks'),
 	},
-	handler: async (ctx, args) => {
-		const session = await requireOrgPermission(
-			ctx,
-			'organization:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'organization:manage'),
 			'Only owners and admins can manage webhooks'
 		);
 		const webhook = await getOrThrow(ctx, args.webhookId, 'Webhook');
@@ -353,10 +347,9 @@ export const sendTestWebhook = authedMutation({
 	args: {
 		webhookId: v.id('webhooks'),
 	},
-	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'organization:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'organization:manage'),
 			'Only owners and admins can manage webhooks'
 		);
 		const webhook = await getOrThrow(ctx, args.webhookId, 'Webhook');
@@ -393,10 +386,9 @@ export const listDeliveryLogs = authedQuery({
 		webhookId: v.id('webhooks'),
 		limit: v.optional(v.number()),
 	},
-	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'organization:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'organization:manage'),
 			'Only owners and admins can manage webhooks'
 		);
 		const webhook = await ctx.db.get(args.webhookId);
@@ -420,10 +412,9 @@ export const getDeliveryLog = authedQuery({
 	args: {
 		logId: v.id('webhookDeliveryLogs'),
 	},
-	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'organization:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'organization:manage'),
 			'Only owners and admins can manage webhooks'
 		);
 		const log = await ctx.db.get(args.logId);
@@ -440,10 +431,9 @@ export const getDeliveryStats = authedQuery({
 		webhookId: v.id('webhooks'),
 		since: v.optional(v.number()), // Timestamp to filter from
 	},
-	handler: async (ctx, args) => {
-		await requireOrgPermission(
-			ctx,
-			'organization:manage',
+	handler: async (ctx, args, session) => {
+		requirePermission(
+			hasPermission(session.role, 'organization:manage'),
 			'Only owners and admins can manage webhooks'
 		);
 		const webhook = await ctx.db.get(args.webhookId);

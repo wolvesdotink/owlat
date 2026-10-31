@@ -7,16 +7,13 @@ const auth = vi.hoisted(() => ({ role: 'owner' as 'owner' | 'editor' }));
 
 // Gate the settings surface authentically: `getMutationContext` (authedMutation
 // floor) and `requireOrgPermission` (adminQuery floor) reject anonymous callers;
-// `requireAdminContext`/`requireOrgPermission` additionally reject non-admins.
+// `requireOrgPermission` additionally rejects non-admins. The write handlers
+// check the role on the session the floor threads them, with the real
+// permission map.
 vi.mock('../../lib/sessionOrganization', async () => ({
 	...(await vi.importActual('../../lib/sessionOrganization')),
 	getMutationContext: vi.fn(async (ctx: { auth: { getUserIdentity(): Promise<unknown> } }) => {
 		if (!(await ctx.auth.getUserIdentity())) throw new Error('unauthenticated');
-		return { userId: 'owner', role: auth.role, activeOrganizationId: 'tenant-a' };
-	}),
-	requireAdminContext: vi.fn(async (ctx: { auth: { getUserIdentity(): Promise<unknown> } }) => {
-		if (!(await ctx.auth.getUserIdentity())) throw new Error('unauthenticated');
-		if (auth.role === 'editor') throw new Error('forbidden');
 		return { userId: 'owner', role: auth.role, activeOrganizationId: 'tenant-a' };
 	}),
 	requireOrgPermission: vi.fn(async (ctx: { auth: { getUserIdentity(): Promise<unknown> } }) => {
