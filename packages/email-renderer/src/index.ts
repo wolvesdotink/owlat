@@ -10,7 +10,8 @@ export type {
 	TemplateDiff,
 	TemplateDiffSide,
 } from './templateDiff';
-export { analyzeEmail, getEmailHealthScore, suggestOptimizations } from './analyzer';
+export { analyzeEmail, suggestOptimizations } from './analyzer';
+export { getEmailHealthScore } from './emailHealthScore';
 export { renderPlainText, resolvePlainText, hasPlainTextOverride } from './plaintext';
 export { renderDraftBodies } from './draftBodies';
 export type { DraftBodies, DraftBodySource, RenderDraftBodiesOptions } from './draftBodies';

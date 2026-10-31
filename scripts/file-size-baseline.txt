@@ -46,6 +46,3 @@ packages/email-builder/src/components/EmailBuilder.vue
 packages/email-builder/src/preview/components/ClientSelector.vue
 packages/email-builder/src/preview/components/EmailPreviewer.vue
 packages/email-builder/src/preview/components/RenderOptionsPanel.vue
-packages/email-renderer/src/analyzer.ts
-packages/shared/src/featureFlags.ts
-packages/shared/src/types/blocks.ts
