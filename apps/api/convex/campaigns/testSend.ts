@@ -3,7 +3,7 @@
 import { v } from 'convex/values';
 import { authedAction } from '../lib/authedFunctions';
 import type { ActionCtx } from '../_generated/server';
-import { internal, api } from '../_generated/api';
+import { internal } from '../_generated/api';
 import type { FunctionArgs } from 'convex/server';
 import type { TestSendCommit } from './testSendCommit';
 import { composeForSend } from '../delivery/sendComposition';
@@ -22,9 +22,9 @@ import {
 import { isLive } from '../lib/softDelete';
 
 /**
- * The one commit of a test send (`campaigns/testSendCommit.ts`): the sender
- * gate, the rate limit, the member-inbox check and the queued Sends. Throws
- * the gate's refusal; a missing delivery provider is returned, because the two
+ * The one commit of a test send (`campaigns/testSendCommit.ts`): the verified
+ * sending domain, the sender gate, the rate limit, the member-inbox check and
+ * the queued Sends. Throws the gate's refusal; a missing delivery provider is returned, because the two
  * actions report it differently.
  */
 async function queueTestSends(
@@ -32,6 +32,7 @@ async function queueTestSends(
 	args: FunctionArgs<typeof internal.campaigns.testSendCommit.commitTestSends>
 ): Promise<Extract<TestSendCommit, { kind: 'queued' | 'no_provider' }>> {
 	const outcome = await ctx.runMutation(internal.campaigns.testSendCommit.commitTestSends, args);
+	if (outcome.kind === 'domain_not_verified') throwInvalidState(outcome.message);
 	if (outcome.kind === 'sender_not_allowed') {
 		throwForbidden(senderNotAllowedMessage(args.fromEmail));
 	}
@@ -84,18 +85,6 @@ export const sendTestEmail = authedAction({
 
 		if (!campaign.fromEmail) {
 			throwInvalidState('Campaign has no from email');
-		}
-
-		// Validate sending domain is verified
-		const domainStatus = await ctx.runQuery(api.domains.domains.getEmailDomainVerificationStatus, {
-			email: campaign.fromEmail,
-		});
-
-		if (!domainStatus.verified) {
-			throwInvalidState(
-				domainStatus.error ||
-					`Cannot send test email: domain "${domainStatus.domain}" is not verified. Please verify this domain in Settings > Domains.`
-			);
 		}
 
 		// Get email template content for specified language (or default)
@@ -202,18 +191,6 @@ export const sendTestEmailFromTemplate = authedAction({
 			if (!isValidEmail(email)) {
 				throwInvalidInput(`Invalid email address: ${email}`);
 			}
-		}
-
-		// Validate sending domain is verified
-		const domainStatus = await ctx.runQuery(api.domains.domains.getEmailDomainVerificationStatus, {
-			email: args.fromEmail,
-		});
-
-		if (!domainStatus.verified) {
-			throwInvalidState(
-				domainStatus.error ||
-					`Cannot send test email: domain "${domainStatus.domain}" is not verified. Please verify this domain in Settings > Domains.`
-			);
 		}
 
 		// Build from address

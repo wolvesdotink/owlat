@@ -2,10 +2,13 @@
  * Test-send commit (module) — the ONE write of the test-send actions
  * (`campaigns/testSend.ts`).
  *
- * The actions read the campaign or take the editor's content, check the
- * sending domain and compose the preview. Every gate that writes, and the
- * queued Sends, are then one transaction, in this order:
+ * The actions read the campaign or take the editor's content and compose the
+ * preview. Every gate, and the queued Sends, are then one transaction, in
+ * this order:
  *
+ *   0. the sending domain is verified. Checked here rather than in the action
+ *      so a domain that loses verification before the commit queues nothing;
+ *      refused before any write, as no token should be spent on it;
  *   1. the curated-sender gate: a test send uses the same From a real send
  *      would, so it is held to the same list/toggle rule as the campaign
  *      pre-flight. The org default sender is seeded first, so an upgraded
@@ -31,6 +34,7 @@ import type { Id } from '../_generated/dataModel';
 import { internalMutation } from '../lib/writeFence';
 import { requireOrgMember } from '../lib/sessionOrganization';
 import { rateLimiter } from '../lib/rateLimiter';
+import { checkEmailDomainVerification } from '../domains/domains';
 import { selectedSendProviderReady } from '../lib/sendProviders/capability';
 import {
 	NO_TEST_SEND_PROVIDER_MESSAGE,
@@ -43,6 +47,7 @@ import { readMemberInboxes } from './sendQueries';
 /** Outcome of one commit, mapped onto the action's answer by the action. */
 export type TestSendCommit =
 	| { kind: 'queued'; sendIds: Id<'transactionalSends'>[] }
+	| { kind: 'domain_not_verified'; message: string }
 	| { kind: 'sender_not_allowed' }
 	| { kind: 'rate_limited'; retryAfter?: number }
 	| { kind: 'recipient_not_member'; email: string }
@@ -61,6 +66,16 @@ export const commitTestSends = internalMutation({
 	},
 	handler: async (ctx, args): Promise<TestSendCommit> => {
 		const session = await requireOrgMember(ctx);
+
+		const domain = await checkEmailDomainVerification(ctx, args.fromEmail);
+		if (!domain.verified) {
+			return {
+				kind: 'domain_not_verified',
+				message:
+					domain.error ||
+					`Cannot send test email: domain "${domain.domain}" is not verified. Please verify this domain in Settings > Domains.`,
+			};
+		}
 
 		await seedDefaultSenderIfNeeded(ctx);
 		if (!(await isCampaignSenderAllowed(ctx, args.fromEmail))) {

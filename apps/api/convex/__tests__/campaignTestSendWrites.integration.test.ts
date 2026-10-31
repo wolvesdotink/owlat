@@ -8,7 +8,7 @@ import { convexTest, type TestConvex } from 'convex-test';
 import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import schema from '../schema';
-import { api } from '../_generated/api';
+import { api, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import {
 	createTestCampaign,
@@ -258,5 +258,29 @@ describe('sendTestEmailFromTemplate', () => {
 			/Failed to send test emails: ann@example\.com: No email delivery provider.*bob@example\.com: No email delivery provider/
 		);
 		expect((await written(t)).sends).toEqual([]);
+	});
+});
+
+describe('commitTestSends', () => {
+	it('refuses a domain that lost verification after the action read it, writing nothing', async () => {
+		const { t } = await setup();
+		await t.run(async (ctx) => {
+			// The sender gate alone would pass: custom senders are allowed.
+			const settings = await ctx.db.query('instanceSettings').first();
+			await ctx.db.patch(settings!._id, { isCustomCampaignSendersAllowed: true });
+			const domain = await ctx.db.query('domains').first();
+			await ctx.db.patch(domain!._id, { status: 'pending' });
+		});
+
+		const outcome = await t.mutation(internal.campaigns.testSendCommit.commitTestSends, {
+			fromEmail: 'news@example.com',
+			from: 'Example News <news@example.com>',
+			subject: '[TEST] Hello',
+			html: '<p>Hi</p>',
+			recipients: ['ann@example.com'],
+		});
+
+		expect(outcome).toMatchObject({ kind: 'domain_not_verified' });
+		expect(await written(t)).toEqual({ sends: [], senders: [], retention: [] });
 	});
 });
