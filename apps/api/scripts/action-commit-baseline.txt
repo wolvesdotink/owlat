@@ -109,10 +109,6 @@ convex/mail/ai/composeDraft.ts:start #5
 convex/mail/ai/composeDraft.ts:start #6
 convex/mail/ai/composeDraft.ts:start #7
 convex/mail/ai/draftOnArrival.ts:generateForThread #2
-convex/mail/ai/reviseDraft.ts:reviseDraft #2
-convex/mail/ai/reviseDraft.ts:reviseDraft #3
-convex/mail/ai/reviseDraft.ts:reviseDraft #4
-convex/mail/ai/reviseDraft.ts:reviseDraft #5
 convex/mail/archiveImportRun.ts:runChunk #2
 convex/mail/archiveImportRun.ts:runChunk #3
 convex/mail/archiveImportRun.ts:runChunk #4
