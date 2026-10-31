@@ -37,13 +37,13 @@ export const PREVIOUS_RELEASE_ENTRIES: Readonly<Record<string, string>> = {
 	'mail/imap/serverRegistry.ts#getForAdmin':
 		'the previous IMAP servers card on System & updates, in tabs opened before the deploy',
 	// push/send.deliver now plans in push/delivery.ts and holds quiet devices
-	// in its commit after the pushes. Remove after release N+1.
+	// in its commit after the pushes. Remove after release 0.6.17.
 	'push/dispatch.ts#prepareDelivery': 'old push deliveries mid-run',
 	// `filterCompile.compile` now starts through startCompile, which schedules
-	// the compile. Remove after release N+1.
+	// the compile. Remove after release 0.6.17.
 	'mail/filterCompileStore.ts#startDraft': 'old rule compiles mid-run',
 	// The channel dispatch and the delivery poll now commit through
-	// channels/outboundCommit.ts. Remove after release N+1.
+	// channels/outboundCommit.ts. Remove after release 0.6.17.
 	'unifiedMessages.ts#recordOutbound': 'old channel dispatches mid-run',
 	'unifiedMessages.ts#updateDeliveryStatus': 'old channel delivery polls mid-run',
 };
