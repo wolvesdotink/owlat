@@ -118,12 +118,9 @@ of `bun run lint` and will fail CI, including:
 - `lint:env` — all `process.env.*` reads must go through `convex/lib/env.ts`.
 - `lint:patterns` — Convex best-practice ratchets (always declare `args:`,
   index don't filter, bound `.collect()`, no `console.log`).
-- `lint:session-threading` — handlers on the org-scoped builders must use the
-  session their auth floor already resolved instead of re-resolving it
-  (frozen-baseline ratchet, `apps/api/scripts/check-session-threading.sh`).
 - `lint:ast-gate-parity` (root, in `ci:lint`) — the AST rules in
   `packages/oxlint-plugin-owlat` that replace the crypto, env, log-PII, error,
-  raw-builder, session-threading and feature-floor scripts run beside them;
+  raw-builder and feature-floor scripts run beside them;
   this diffs the two finding sets per rule and fails on any difference not
   listed with its reason in `scripts/ast-gate-parity.ts`.
 - `lint:feature-floors` — handlers in a feature-gated family use its

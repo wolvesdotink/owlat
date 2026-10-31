@@ -2,10 +2,9 @@
  * Self-test for the builder derivation the Convex definition gates share
  * (`apps/api/scripts/lib/convex-builders.sh`).
  *
- * Five gates (check-permissions, check-query-authz, check-session-threading,
- * check-token-redaction, check-errors) used to type their builder lists by
- * hand, and the lists drifted: check-errors never saw the 111 postbox
- * functions. They now read one list derived from source, so what has to hold
+ * Four gates (check-permissions, check-query-authz, check-token-redaction,
+ * check-errors) used to type their builder lists by hand, and the lists
+ * drifted: check-errors never saw the 111 postbox functions. They now read one list derived from source, so what has to hold
  * is that the derivation sees every builder:
  *
  *   * against the REAL tree, every value export of lib/authedFunctions.ts
@@ -207,7 +206,6 @@ describe('the gates pick up builders from source', () => {
 
 	it.each([
 		['check-query-authz.sh', ['--generate']],
-		['check-session-threading.sh', ['--generate']],
 		['check-token-redaction.sh', ['--generate', 'convex']],
 	])('%s fails loudly when the builder source is missing', async (gate, args) => {
 		const root = await apiTree({}, roots);

@@ -2,8 +2,8 @@
 #
 # The one list of public Convex function builders, derived from source.
 #
-# Five lint gates (check-permissions, check-query-authz, check-session-threading,
-# check-token-redaction, check-errors) each need "which `export const X =
+# Four lint gates (check-permissions, check-query-authz, check-token-redaction,
+# check-errors) each need "which `export const X =
 # <builder>(` lines are public functions, and what floor does <builder>
 # enforce?". Each used to type its own builder list by hand, and the lists
 # drifted: check-errors missed postboxQuery/postboxMutation (111 definitions
