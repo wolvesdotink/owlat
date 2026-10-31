@@ -238,7 +238,9 @@ import type * as aiRouting_embeddingCoverage from '../aiRouting/embeddingCoverag
 import type * as aiRouting_embeddingRebuild from '../aiRouting/embeddingRebuild.js';
 import type * as aiRouting_embeddingRebuildState from '../aiRouting/embeddingRebuildState.js';
 import type * as aiRouting_embeddingReembed from '../aiRouting/embeddingReembed.js';
+import type * as aiRouting_embeddingReembedCommit from '../aiRouting/embeddingReembedCommit.js';
 import type * as aiRouting_embeddingReembedJobs from '../aiRouting/embeddingReembedJobs.js';
+import type * as aiRouting_embeddingReembedPage from '../aiRouting/embeddingReembedPage.js';
 import type * as aiRouting_embeddingRowReembed from '../aiRouting/embeddingRowReembed.js';
 import type * as aiRouting_embeddingSpaces from '../aiRouting/embeddingSpaces.js';
 import type * as aiRouting_enforcedBudget from '../aiRouting/enforcedBudget.js';
@@ -438,6 +440,7 @@ import type * as chat_rooms from '../chat/rooms.js';
 import type * as codeWorkTasks from '../codeWorkTasks.js';
 import type * as conditions_contact_property_index from '../conditions/contact_property/index.js';
 import type * as conditions_email_activity_index from '../conditions/email_activity/index.js';
+import type * as conditions_evaluation from '../conditions/evaluation.js';
 import type * as conditions_index from '../conditions/index.js';
 import type * as conditions_liveContactScan from '../conditions/liveContactScan.js';
 import type * as conditions_segmentMatch from '../conditions/segmentMatch.js';
@@ -945,6 +948,7 @@ import type * as knowledge_graphAnalyticsRecompute from '../knowledge/graphAnaly
 import type * as knowledge_graphTraversal from '../knowledge/graphTraversal.js';
 import type * as knowledge_maintenance from '../knowledge/maintenance.js';
 import type * as knowledge_messageBackfill from '../knowledge/messageBackfill.js';
+import type * as knowledge_messageBackfillChunk from '../knowledge/messageBackfillChunk.js';
 import type * as knowledge_relationDecay from '../knowledge/relationDecay.js';
 import type * as knowledge_retrieval from '../knowledge/retrieval.js';
 import type * as knowledge_sharing from '../knowledge/sharing.js';
@@ -1169,6 +1173,7 @@ import type * as lib_sendProviders_routeInputs from '../lib/sendProviders/routeI
 import type * as lib_sendProviders_routeMixContext from '../lib/sendProviders/routeMixContext.js';
 import type * as lib_sendProviders_routing from '../lib/sendProviders/routing.js';
 import type * as lib_sendProviders_ses_index from '../lib/sendProviders/ses/index.js';
+import type * as lib_sendProviders_shareSplit from '../lib/sendProviders/shareSplit.js';
 import type * as lib_sendProviders_smtp_config from '../lib/sendProviders/smtp/config.js';
 import type * as lib_sendProviders_smtp_index from '../lib/sendProviders/smtp/index.js';
 import type * as lib_sendProviders_smtp_returnPath from '../lib/sendProviders/smtp/returnPath.js';
@@ -1462,6 +1467,7 @@ import type * as mail_messagePurge from '../mail/messagePurge.js';
 import type * as mail_migration from '../mail/migration.js';
 import type * as mail_migrationBackfill from '../mail/migrationBackfill.js';
 import type * as mail_migrationIndexing from '../mail/migrationIndexing.js';
+import type * as mail_migrationIndexingCommit from '../mail/migrationIndexingCommit.js';
 import type * as mail_migrationShared from '../mail/migrationShared.js';
 import type * as mail_mtaClient from '../mail/mtaClient.js';
 import type * as mail_mute from '../mail/mute.js';
@@ -2164,7 +2170,9 @@ declare const fullApi: ApiFromModules<{
 	'aiRouting/embeddingRebuild': typeof aiRouting_embeddingRebuild;
 	'aiRouting/embeddingRebuildState': typeof aiRouting_embeddingRebuildState;
 	'aiRouting/embeddingReembed': typeof aiRouting_embeddingReembed;
+	'aiRouting/embeddingReembedCommit': typeof aiRouting_embeddingReembedCommit;
 	'aiRouting/embeddingReembedJobs': typeof aiRouting_embeddingReembedJobs;
+	'aiRouting/embeddingReembedPage': typeof aiRouting_embeddingReembedPage;
 	'aiRouting/embeddingRowReembed': typeof aiRouting_embeddingRowReembed;
 	'aiRouting/embeddingSpaces': typeof aiRouting_embeddingSpaces;
 	'aiRouting/policy': typeof aiRouting_policy;
@@ -2363,6 +2371,7 @@ declare const fullApi: ApiFromModules<{
 	codeWorkTasks: typeof codeWorkTasks;
 	'conditions/contact_property/index': typeof conditions_contact_property_index;
 	'conditions/email_activity/index': typeof conditions_email_activity_index;
+	'conditions/evaluation': typeof conditions_evaluation;
 	'conditions/index': typeof conditions_index;
 	'conditions/liveContactScan': typeof conditions_liveContactScan;
 	'conditions/segmentMatch': typeof conditions_segmentMatch;
@@ -2870,6 +2879,7 @@ declare const fullApi: ApiFromModules<{
 	'knowledge/graphTraversal': typeof knowledge_graphTraversal;
 	'knowledge/maintenance': typeof knowledge_maintenance;
 	'knowledge/messageBackfill': typeof knowledge_messageBackfill;
+	'knowledge/messageBackfillChunk': typeof knowledge_messageBackfillChunk;
 	'knowledge/relationDecay': typeof knowledge_relationDecay;
 	'knowledge/retrieval': typeof knowledge_retrieval;
 	'knowledge/sharing': typeof knowledge_sharing;
@@ -3094,6 +3104,7 @@ declare const fullApi: ApiFromModules<{
 	'lib/sendProviders/routeMixContext': typeof lib_sendProviders_routeMixContext;
 	'lib/sendProviders/routing': typeof lib_sendProviders_routing;
 	'lib/sendProviders/ses/index': typeof lib_sendProviders_ses_index;
+	'lib/sendProviders/shareSplit': typeof lib_sendProviders_shareSplit;
 	'lib/sendProviders/smtp/config': typeof lib_sendProviders_smtp_config;
 	'lib/sendProviders/smtp/index': typeof lib_sendProviders_smtp_index;
 	'lib/sendProviders/smtp/returnPath': typeof lib_sendProviders_smtp_returnPath;
@@ -3387,6 +3398,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/migration': typeof mail_migration;
 	'mail/migrationBackfill': typeof mail_migrationBackfill;
 	'mail/migrationIndexing': typeof mail_migrationIndexing;
+	'mail/migrationIndexingCommit': typeof mail_migrationIndexingCommit;
 	'mail/migrationShared': typeof mail_migrationShared;
 	'mail/mtaClient': typeof mail_mtaClient;
 	'mail/mute': typeof mail_mute;

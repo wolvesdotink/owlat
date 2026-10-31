@@ -4,11 +4,8 @@ import type { PluginPackageName } from '@owlat/plugin-host';
 import { PluginCliError } from './errors';
 import { toPosix } from './paths';
 import { minimalFiles } from './scaffoldMinimal';
-import {
-	SEND_PROVIDER_MODULE_EXPORTS,
-	sendProviderFiles,
-	sendProviderNames,
-} from './scaffoldSendProvider';
+import { SEND_PROVIDER_MODULE_EXPORTS, sendProviderFiles } from './scaffoldSendProvider';
+import { sendProviderNames } from './scaffoldSendProviderNames';
 
 /** One scaffolded file, keyed by its POSIX path relative to the plugin directory. */
 export type ScaffoldFiles = ReadonlyMap<string, string>;

@@ -25,6 +25,19 @@ export const PREVIOUS_RELEASE_ENTRIES: Readonly<Record<string, string>> = {
 	'campaigns/sendQueries.ts#storeContentScanResult': 'old campaign send preparations mid-run',
 	'campaigns/archiveQueries.ts#setArchiveSnapshot': 'old campaign send preparations mid-run',
 	'emailTemplates/versions.ts#captureForSend': 'old campaign send preparations mid-run',
+	// The archive import runner now commits a pass with mail/archiveImport.ts `commitPass`.
+	'mail/archiveImport.ts#recordProgress': 'old archive import passes mid-run',
+	// The indexing sweep now commits a chunk with mail/migrationIndexingCommit.ts `commitIndexChunk`.
+	'mail/migrationIndexing.ts#patchIndexProgress': 'old mailbox indexing chunks mid-run',
+	'mail/migrationIndexing.ts#finalizeMigration': 'old mailbox indexing chunks mid-run',
+	// The message backfill now commits a chunk with knowledge/messageBackfillChunk.ts `commitChunk`.
+	'knowledge/messageBackfill.ts#patchProgress': 'old message backfill chunks mid-run',
+	'knowledge/messageBackfill.ts#finalizeJob': 'old message backfill chunks mid-run',
+	// The re-embed actions now commit through aiRouting/embeddingReembedCommit.ts.
+	'aiRouting/embeddingReembedJobs.ts#startLocalReembed': 'old re-embed kickoffs mid-run',
+	'aiRouting/embeddingReembedJobs.ts#reembedCommit': 'old re-embed batches mid-run',
+	'aiRouting/embeddingReembedJobs.ts#startReembedJob': 'old admin re-embed starts mid-run',
+	'aiRouting/embeddingSpaces.ts#ensureConfigured': 'old re-embed kickoffs and admin starts mid-run',
 	// The expected-attachment copy now lands in one commit (`bindCopy`).
 	'mail/draftExpectedAttachments.ts#stageCopy': 'old draft attachment fulfils mid-copy',
 	'mail/draftExpectedAttachments.ts#bindExpected': 'old draft attachment fulfils mid-copy',

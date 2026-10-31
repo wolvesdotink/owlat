@@ -105,6 +105,8 @@ export const cleanupOldPayloads = internalAction({
 		let hasMore = true;
 
 		while (hasMore) {
+			// checkpoint: one batch of payloads past the cutoff per transaction; the next
+			// batch reads what is still there, so a re-run deletes only what is left.
 			const deleted = await ctx.runMutation(internal.webhooks.payloads.deleteOldBatch, {
 				olderThan: ninetyDaysAgo,
 				batchSize: 100,

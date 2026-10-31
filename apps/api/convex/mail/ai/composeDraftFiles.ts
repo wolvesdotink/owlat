@@ -52,7 +52,7 @@ export async function attachExistingFile(
  * here: the commit puts it on the draft (`pendingUploadValidator`), so an
  * answer that fails leaves it unused for the next try, and an upload the
  * session already holds (sent again after a draft that failed) or names twice
- * is attached once. It is also kept in Files for the contact unless the owner
+ * is attached once; the commit refuses a held one the draft no longer has. It is also kept in Files for the contact unless the owner
  * opted out, when the caller may add to Files
  * (lib/answerFileToFiles.ts); that copy is made after the commit.
  */

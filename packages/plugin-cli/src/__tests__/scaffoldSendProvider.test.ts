@@ -33,11 +33,13 @@ import { buildScaffold, parseScaffoldTemplate, SCAFFOLD_TEMPLATES } from '../sca
 import { PluginCliError } from '../errors';
 import {
 	SCAFFOLD_FORMATTED_ID_MAX_LENGTH,
-	SEND_PROVIDER_ENV_CONSTANTS,
 	SEND_PROVIDER_MODULE_EXPORTS,
+} from '../scaffoldSendProvider';
+import {
+	SEND_PROVIDER_ENV_CONSTANTS,
 	sendProviderEnvVars,
 	sendProviderNames,
-} from '../scaffoldSendProvider';
+} from '../scaffoldSendProviderNames';
 
 const root = '/workspace';
 const targetDir = join(root, 'examples', 'plugins', 'acme-relay');

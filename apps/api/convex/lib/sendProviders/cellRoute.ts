@@ -62,11 +62,10 @@ import {
 	relayDomainVerifiedFor,
 	type MessageType,
 } from './routeInputs';
-// The "does this route split by the cell's share" rule only. `routeMixContext`
-// owns the per-MESSAGE mix concern and reads no `providerHealth`, so naming it
-// here does not pull the health hotspot into the enqueue transaction — see the
-// module note above.
-import { isShareSplitRoute } from './routeMixContext';
+// The "does this route split by the cell's share" rule only, from its leaf
+// module: the per-MESSAGE mix concern (`routeMixContext`) reads the recorded
+// assignment back through `delivery/sendAssignments`, which imports this file.
+import { isShareSplitRoute } from './shareSplit';
 
 /** Batch-wide inputs for {@link prepareCellMixResolver}. */
 interface CellRouteContext {

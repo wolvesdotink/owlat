@@ -1,7 +1,7 @@
 import { readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { isOwlatWarning, ratchetedWarnings } from '../check-lint-warnings';
+import { isOwlatWarning } from '../lint-diagnostics';
 import { findingLine, lintTargets } from '../owlat-lint-findings';
 
 const finding = (offset: number, length: number) => ({
@@ -46,12 +46,6 @@ describe('owlat warnings have one owner', () => {
 		expect(isOwlatWarning({ code: 'owlat(no-test-in-loop)', severity: 'error' })).toBe(false);
 		expect(isOwlatWarning({ code: 'import(no-cycle)', severity: 'warning' })).toBe(false);
 		expect(isOwlatWarning({ severity: 'error' })).toBe(false);
-	});
-
-	it('are left out of the lint warning ratchet, which keeps every other warning', () => {
-		const other = { ...finding(0, 1), code: 'import(no-cycle)' };
-		const enforced = { ...finding(0, 1), severity: 'error' };
-		expect(ratchetedWarnings([finding(0, 1), other, enforced])).toEqual([other]);
 	});
 });
 

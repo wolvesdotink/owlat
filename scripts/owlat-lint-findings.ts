@@ -8,7 +8,8 @@
  * debt is configured as a warning instead; its current offenders are seeded
  * into the baseline and this ratchet is the one gate that owns them: a new
  * finding fails, and a fixed one must be deleted from the baseline.
- * scripts/check-lint-warnings.ts leaves owlat warnings to this gate.
+ * scripts/check-lint-warnings.ts fails on every other warning and leaves owlat
+ * warnings to this gate.
  *
  * Line format: `<file>\t<rule>\t<source text of the reported span>`. No line or
  * column, so an unrelated edit above a finding does not churn the baseline;
@@ -18,9 +19,8 @@ import { spawnSync } from 'node:child_process';
 import { readdirSync, readFileSync } from 'node:fs';
 import { relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { isOwlatWarning } from './check-lint-warnings';
 import { JsonShapeError } from './json';
-import { type LintDiagnostic, parseLintReport } from './lint-diagnostics';
+import { isOwlatWarning, type LintDiagnostic, parseLintReport } from './lint-diagnostics';
 
 const SNIPPET_LIMIT = 160;
 
