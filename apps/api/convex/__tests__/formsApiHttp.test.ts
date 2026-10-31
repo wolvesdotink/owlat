@@ -211,7 +211,7 @@ describe('honeypot field detection pattern', () => {
 });
 
 describe('event name validation pattern', () => {
-	// Pattern from eventsApi.ts: /^[a-zA-Z][a-zA-Z0-9_-]{0,99}$/
+	// Pattern from publicApi/events.ts: /^[a-zA-Z][a-zA-Z0-9_-]{0,99}$/
 	const eventNameRegex = /^[a-zA-Z][a-zA-Z0-9_-]{0,99}$/;
 
 	it('should accept valid event names', () => {

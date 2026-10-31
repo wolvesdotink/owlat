@@ -613,7 +613,7 @@ describe('organizations.settings.claimAdminSeedInternal', () => {
 			snapshot: { status: 'unreachable', observedAt: Date.now() },
 		});
 
-		// Same two calls, same arguments, as seedAdminHttp.ts.
+		// Same two calls, same arguments, as auth/seedAdminHttp.ts.
 		await t.mutation(internal.workspaces.settings.createInternal, {
 			timezone: 'UTC',
 			defaultFromName: "Admin's Team",

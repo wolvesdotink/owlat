@@ -291,10 +291,16 @@ const PROBES: Record<string, Probe> = {
 		read: ({ t, templateId }) => t.query(api.emailTemplates.versions.list, { templateId }),
 		shownWhileLive: true,
 	},
+	'shareLinks/links.ts:listShareLinks': {
+		read: ({ t, templateId }) =>
+			t.query(api.shareLinks.links.listShareLinks, { emailTemplateId: templateId }),
+		// No share link was minted, so a live template answers [] too.
+		shownWhileLive: false,
+	},
+	// The previous-release path of the same query (root shim).
 	'shareLinks.ts:listShareLinks': {
 		read: ({ t, templateId }) =>
 			t.query(api.shareLinks.listShareLinks, { emailTemplateId: templateId }),
-		// No share link was minted, so a live template answers [] too.
 		shownWhileLive: false,
 	},
 };

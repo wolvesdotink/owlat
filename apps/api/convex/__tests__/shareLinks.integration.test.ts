@@ -1,5 +1,5 @@
 /**
- * `shareLinks.listShareLinks` — read-side capability gate.
+ * `shareLinks.links.listShareLinks` — read-side capability gate.
  *
  * Each share-link row carries the raw `token`, the bearer capability for the
  * unauthenticated `/share` route. Listing therefore must be held to the same
@@ -24,6 +24,10 @@ vi.mock('../lib/sessionOrganization', async () => {
 		// requirePermission(hasPermission(session.role, …)), so denial is expressed
 		// as a non-admin role here rather than by stubbing requireOrgPermission.
 		requireOrgMember: vi.fn().mockImplementation(async () => ({
+			userId: 'test-user',
+			role: permissionState.allowed ? 'owner' : 'editor',
+		})),
+		getMutationContext: vi.fn().mockImplementation(async () => ({
 			userId: 'test-user',
 			role: permissionState.allowed ? 'owner' : 'editor',
 		})),
@@ -52,7 +56,7 @@ afterEach(() => {
 	permissionState.allowed = true;
 });
 
-describe('shareLinks.listShareLinks — manage gate', () => {
+describe('shareLinks.links.listShareLinks — manage gate', () => {
 	it('returns the template share links for an admin (shareLinks:manage)', async () => {
 		const t = convexTest(schema, modules).withIdentity(identity);
 		const templateId = await t.run(async (ctx) => {
@@ -70,7 +74,9 @@ describe('shareLinks.listShareLinks — manage gate', () => {
 			return id;
 		});
 
-		const links = await t.query(api.shareLinks.listShareLinks, { emailTemplateId: templateId });
+		const links = await t.query(api.shareLinks.links.listShareLinks, {
+			emailTemplateId: templateId,
+		});
 		expect(links).toHaveLength(1);
 	});
 
@@ -93,12 +99,12 @@ describe('shareLinks.listShareLinks — manage gate', () => {
 
 		permissionState.allowed = false;
 		await expect(
-			t.query(api.shareLinks.listShareLinks, { emailTemplateId: templateId })
+			t.query(api.shareLinks.links.listShareLinks, { emailTemplateId: templateId })
 		).rejects.toThrow();
 	});
 });
 
-describe('shareLinkQueries.getShareLinkByToken — feature flags', () => {
+describe('shareLinks.queries.getShareLinkByToken — feature flags', () => {
 	async function seed(t: ReturnType<typeof convexTest>, transactional: boolean) {
 		await t.run(async (ctx) => {
 			const templateId = await ctx.db.insert('emailTemplates', createTestEmailTemplate());
@@ -133,7 +139,7 @@ describe('shareLinkQueries.getShareLinkByToken — feature flags', () => {
 		const on = convexTest(schema, modules);
 		await seed(on, true);
 		expect(
-			await on.query(internal.shareLinkQueries.getShareLinkByToken, {
+			await on.query(internal.shareLinks.queries.getShareLinkByToken, {
 				token: 'share-token-transactional',
 			})
 		).toMatchObject({ subject: 'Subject' });
@@ -141,7 +147,7 @@ describe('shareLinkQueries.getShareLinkByToken — feature flags', () => {
 		const off = convexTest(schema, modules);
 		await seed(off, false);
 		expect(
-			await off.query(internal.shareLinkQueries.getShareLinkByToken, {
+			await off.query(internal.shareLinks.queries.getShareLinkByToken, {
 				token: 'share-token-transactional',
 			})
 		).toBeNull();
@@ -151,9 +157,70 @@ describe('shareLinkQueries.getShareLinkByToken — feature flags', () => {
 		const t = convexTest(schema, modules);
 		await seed(t, false);
 		expect(
-			await t.query(internal.shareLinkQueries.getShareLinkByToken, {
+			await t.query(internal.shareLinks.queries.getShareLinkByToken, {
 				token: 'share-token-template',
 			})
 		).toMatchObject({ subject: 'Subject' });
+	});
+});
+
+// The root `shareLinks.ts` / `shareLinkQueries.ts` shims answer the previous
+// release's callers (open tabs, in-flight /share requests) with the moved code.
+describe('previous-release share link paths', () => {
+	async function seedTemplate(t: ReturnType<typeof convexTest>) {
+		return await t.run((ctx) =>
+			ctx.db.insert('emailTemplates', {
+				...createTestEmailTemplate(),
+				htmlContent: '<p>shared</p>',
+			})
+		);
+	}
+
+	it('create, list, read and revoke through the old paths match the moved functions', async () => {
+		const harness = convexTest(schema, modules);
+		const emailTemplateId = await seedTemplate(harness);
+		const t = harness.withIdentity(identity);
+
+		const created = await t.mutation(api.shareLinks.createShareLink, { emailTemplateId });
+		expect(created.url).toContain(`token=${encodeURIComponent(created.token)}`);
+
+		const oldList = await t.query(api.shareLinks.listShareLinks, { emailTemplateId });
+		const newList = await t.query(api.shareLinks.links.listShareLinks, { emailTemplateId });
+		expect(oldList).toEqual(newList);
+		expect(oldList.map((link) => link._id)).toEqual([created.shareLinkId]);
+
+		const oldRead = await t.query(internal.shareLinkQueries.getShareLinkByToken, {
+			token: created.token,
+		});
+		const newRead = await t.query(internal.shareLinks.queries.getShareLinkByToken, {
+			token: created.token,
+		});
+		expect(oldRead).toEqual(newRead);
+		expect(oldRead).toMatchObject({ html: '<p>shared</p>' });
+
+		await t.mutation(api.shareLinks.revokeShareLink, { shareLinkId: created.shareLinkId });
+		expect(
+			await t.query(internal.shareLinks.queries.getShareLinkByToken, { token: created.token })
+		).toBeNull();
+	});
+
+	it('keep the shareLinks:manage floor on every old public path', async () => {
+		const harness = convexTest(schema, modules);
+		const emailTemplateId = await seedTemplate(harness);
+		const t = harness.withIdentity(identity);
+		const { shareLinkId } = await t.mutation(api.shareLinks.links.createShareLink, {
+			emailTemplateId,
+		});
+
+		permissionState.allowed = false;
+		await expect(t.mutation(api.shareLinks.createShareLink, { emailTemplateId })).rejects.toThrow(
+			'Only owners and admins can create share links'
+		);
+		await expect(t.query(api.shareLinks.listShareLinks, { emailTemplateId })).rejects.toThrow(
+			'Only owners and admins can view share links'
+		);
+		await expect(t.mutation(api.shareLinks.revokeShareLink, { shareLinkId })).rejects.toThrow(
+			'Only owners and admins can revoke share links'
+		);
 	});
 });

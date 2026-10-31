@@ -10,7 +10,6 @@ agentConfigMutations.ts
 agentHealth.ts
 aiProviderConfig.ts
 aiProviderConfigActions.ts
-apiV1Http.ts
 auditLogs.ts
 auth.config.ts
 autonomy.ts
@@ -25,7 +24,6 @@ confirmationEmailQueries.ts
 convex.config.ts
 crons.ts
 env.d.ts
-eventsApi.ts
 globalSearch.ts
 http.ts
 mediaAssets.ts
@@ -33,11 +31,9 @@ providerRoutes.ts
 quickQuery.ts
 quickQueryGate.ts
 schema.ts
-seedAdminHttp.ts
 segments.ts
 semanticFileProcessing.ts
 semanticFiles.ts
-shareLinkHttp.ts
 shareLinkQueries.ts
 shareLinks.ts
 storage.ts
