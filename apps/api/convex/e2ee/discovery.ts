@@ -257,7 +257,7 @@ async function commitDiscovery(
 	if (committed.status === 'committed') {
 		return { outcome: committed.outcome, action: committed.action };
 	}
-	// Another writer committed between the basis check and this commit, so
+	// Another writer committed between the basis check and the commit above, so
 	// nothing was written. A fresh, forced discovery fetches again and commits
 	// against the row that writer left, so a key that differs from its pin
 	// still surfaces as `keyChanged`.
