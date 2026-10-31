@@ -210,9 +210,9 @@ export async function insertOutboundMessage(
 }
 
 /**
- * Update delivery status of an outbound message. Called by the channel
- * delivery-status poller (`channels.outbound.pollDeliveryStatus`) after it
- * reads the provider's current status for a `sent` channel message.
+ * Update delivery status of an outbound message. No caller in this release:
+ * the delivery-status poller (`channels.outbound.pollDeliveryStatus`) commits
+ * its batch through `channels/outboundCommit.ts`. Remove after release N+1.
  */
 export const updateDeliveryStatus = internalMutation({
 	args: {
@@ -225,6 +225,10 @@ export const updateDeliveryStatus = internalMutation({
 		),
 	},
 	handler: async (ctx, args) => {
+		// This release's poll may have moved the row past `sent` already; an old
+		// poll's earlier answer must not move it back.
+		const row = await ctx.db.get(args.messageId);
+		if (row?.status === 'delivered' || row?.status === 'read' || row?.status === 'failed') return;
 		await ctx.db.patch(args.messageId, { status: args.status });
 	},
 });

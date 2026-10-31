@@ -55,3 +55,27 @@ export const recordDispatch = internalMutation({
 		}
 	},
 });
+
+/**
+ * One poll's progressed statuses. A row is moved only while it is still
+ * `sent`, the status the poll listed it under: one a webhook or an
+ * overlapping poll already moved keeps its newer status, and a row erased
+ * meanwhile is skipped.
+ */
+export const recordDeliveryStatuses = internalMutation({
+	args: {
+		updates: v.array(
+			v.object({
+				messageId: v.id('unifiedMessages'),
+				status: v.union(v.literal('delivered'), v.literal('read'), v.literal('failed')),
+			})
+		),
+	},
+	handler: async (ctx, args): Promise<void> => {
+		for (const update of args.updates) {
+			const row = await ctx.db.get(update.messageId);
+			if (row?.status !== 'sent') continue;
+			await ctx.db.patch(update.messageId, { status: update.status });
+		}
+	},
+});

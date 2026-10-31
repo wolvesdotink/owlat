@@ -40,7 +40,6 @@ convex/campaigns/testSend.ts:sendTestEmail #3
 convex/campaigns/testSend.ts:sendTestEmailFromTemplate #2
 convex/campaigns/testSend.ts:sendTestEmailFromTemplate #3
 convex/campaigns/testSend.ts:sendTestEmailFromTemplate #4
-convex/channels/outbound.ts:pollDeliveryStatus #2
 convex/contacts/erasure/walker.ts:drive #2
 convex/contacts/erasure/walker.ts:drive #3
 convex/contacts/erasure/walker.ts:drive #4

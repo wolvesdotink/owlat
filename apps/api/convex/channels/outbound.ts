@@ -326,6 +326,10 @@ export const pollDeliveryStatus = internalAction({
 			return adapterCache.get(channel) ?? null;
 		};
 
+		const updates: Array<{
+			messageId: (typeof pending)[number]['messageId'];
+			status: 'delivered' | 'read' | 'failed';
+		}> = [];
 		for (const row of pending) {
 			try {
 				const adapter = await adapterFor(row.channel);
@@ -334,15 +338,17 @@ export const pollDeliveryStatus = internalAction({
 				// `queued`/`sent` are not a forward transition — only persist a move
 				// to a terminal/progressed state to avoid a no-op write every tick.
 				if (status === 'delivered' || status === 'read' || status === 'failed') {
-					await ctx.runMutation(internal.unifiedMessages.updateDeliveryStatus, {
-						messageId: row.messageId,
-						status,
-					});
+					updates.push({ messageId: row.messageId, status });
 				}
 			} catch {
 				// Fail-safe: a provider/network error means the status is simply
 				// unknown right now; leave the row at `sent` and re-poll next tick.
 			}
+		}
+		// One commit for the whole poll; a row it does not reach stays `sent` and
+		// is polled again next tick.
+		if (updates.length > 0) {
+			await ctx.runMutation(internal.channels.outboundCommit.recordDeliveryStatuses, { updates });
 		}
 		return null;
 	},

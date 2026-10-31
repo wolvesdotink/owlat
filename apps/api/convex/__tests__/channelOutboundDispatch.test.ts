@@ -236,3 +236,34 @@ describe('channels.outbound.pollDeliveryStatus', () => {
 		expect(provider.getDeliveryStatus).not.toHaveBeenCalled();
 	});
 });
+
+describe('channels.outboundCommit.recordDeliveryStatuses', () => {
+	it('moves a row only while it is still `sent`', async () => {
+		const { t, contactId, threadId } = await seed({ isConfigured: false });
+		const [sent, read] = await t.run(async (ctx) => {
+			const row = (status: 'sent' | 'read') =>
+				ctx.db.insert(
+					'unifiedMessages',
+					createTestUnifiedMessage({
+						threadId,
+						contactId,
+						channel: 'generic',
+						direction: 'outbound',
+						status,
+						externalMessageId: `ext-${status}`,
+					})
+				);
+			return [await row('sent'), await row('read')];
+		});
+		await t.mutation(internal.channels.outboundCommit.recordDeliveryStatuses, {
+			updates: [
+				{ messageId: sent, status: 'delivered' },
+				{ messageId: read, status: 'delivered' },
+			],
+		});
+		const status = async (id: Id<'unifiedMessages'>) =>
+			(await t.run(async (ctx) => await ctx.db.get(id)))!.status;
+		expect(await status(sent)).toBe('delivered');
+		expect(await status(read)).toBe('read');
+	});
+});
