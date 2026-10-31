@@ -110,7 +110,7 @@ describe('registerAction.run writes one outcome per registration', () => {
 
 		const domain = await readDomain(t, domainId);
 		expect(domain?.status).toBe('pending');
-		expect((domain?.dnsRecords as { dkim?: unknown[] }).dkim).toHaveLength(1);
+		expect((domain!.dnsRecords as { dkim?: unknown[] }).dkim).toHaveLength(1);
 		const identity = await t.run(async (ctx) =>
 			ctx.db
 				.query('sendingDomainMtaIdentities')
@@ -172,7 +172,7 @@ describe('registerAction.run writes one outcome per registration', () => {
 		const domain = await readDomain(t, domainId);
 		expect(domain?.status).toBe('pending');
 		expect(domain?.returnPathHost).toBe('bounce.new.example.com');
-		expect((domain?.dnsRecords as { dkim?: unknown[] }).dkim).toHaveLength(1);
+		expect((domain!.dnsRecords as { dkim?: unknown[] }).dkim).toHaveLength(1);
 		expect(await auditActions(t)).not.toContain('sending_domain.registration_failed');
 	});
 });
