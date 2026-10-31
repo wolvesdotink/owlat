@@ -61,6 +61,8 @@ export const run = internalAction({
 		let snooze = 0;
 		let triggers = 0;
 		for (;;) {
+			// checkpoint: one page of threads; only copies still missing are
+			// written, so a re-run redoes nothing.
 			const page: PageResult = await ctx.runMutation(
 				internal.migrations['0047_denormalize_thread_rows'].backfillPage,
 				{ cursor }

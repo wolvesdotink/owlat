@@ -9,7 +9,7 @@ export default defineConfig({
 		environment: 'node',
 	},
 	resolve: {
-		// The docs samples (src/__tests__/docsSamples.test.ts) are quoted verbatim
+		// The docs samples (src/__tests__/docsSamples/*.ts) are quoted verbatim
 		// by the docs site, so they must import the PUBLIC specifier a plugin
 		// author writes. Point it at the sources so the samples run without a
 		// prior `dist` build (tsconfig `paths` does the same for typecheck).

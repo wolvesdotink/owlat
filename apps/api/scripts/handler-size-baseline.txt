@@ -5,7 +5,6 @@
 convex/agent/agentPipeline.ts:sendApprovedReply 228
 convex/auth/accountExport.ts:exportUserDataPage 204
 convex/contacts/import.ts:importBatch 196
-convex/delivery/rampControllerCron.ts:runRampController 318
 convex/mail/delivery.ts:deliverToMailbox 204
 convex/seedAdminHttp.ts:seedAdmin 189
 convex/semanticFileProcessing.ts:processFile 243

@@ -17,8 +17,10 @@ import { utcDayKey } from '../lib/clock';
 import { tokenUsageValidator } from '../lib/convexValidators';
 import { MAX_LLM_ATTEMPTS } from '../lib/llm/retryPolicy';
 import { estimateKnownCostMicrousd } from '../lib/llm/pricing';
-import { getBetterAuthSessionWithRole } from '../lib/sessionOrganization';
-import { getSingletonOrganizationId } from '../lib/sessionOrganization';
+import {
+	getBetterAuthSessionWithRole,
+	getSingletonOrganizationId,
+} from '../lib/sessionOrganization';
 import {
 	authorizeSystemBundledPlugin,
 	type AuthorizedPluginScope,

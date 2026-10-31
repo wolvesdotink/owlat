@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
 	binaryStringToBytes,
 	bytesToBinaryString,
+	decodeEncodedWords,
 	decodePartText,
 	extractAttachments,
 	extractBodyTextParts,
@@ -401,7 +402,6 @@ describe('a raw message read from its bytes (#1279)', () => {
 });
 
 // decodeEncodedWords — charset honoring (the old copy always decoded UTF-8)
-import { decodeEncodedWords } from '../mailMime';
 
 describe('decodeEncodedWords', () => {
 	it('decodes UTF-8 B-encoding', () => {

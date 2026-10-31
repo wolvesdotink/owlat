@@ -16,9 +16,8 @@
  */
 
 import { convexTest, type TestConvex } from 'convex-test';
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import rateLimiterTest from '@convex-dev/rate-limiter/test';
-import { vi } from 'vitest';
 import schema from '../schema';
 import { api } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';

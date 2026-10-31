@@ -11,10 +11,9 @@ import { convexTest } from 'convex-test';
 import { describe, it, expect, vi } from 'vitest';
 import schema from '../schema';
 import { internal } from '../_generated/api';
-import type { Id } from '../_generated/dataModel';
+import type { Doc, Id } from '../_generated/dataModel';
 import { assertStateIs, dedupedRecipients } from '../mail/draftLifecycle/reducers';
 import { DEFAULT_UNDO_SEND_DELAY_MS } from '../mail/draftLifecycle/types';
-import type { Doc } from '../_generated/dataModel';
 
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');

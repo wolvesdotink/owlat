@@ -642,6 +642,7 @@ import type * as delivery_ramp_degradation from '../delivery/ramp/degradation.js
 import type * as delivery_ramp_degradationMatrix from '../delivery/ramp/degradationMatrix.js';
 import type * as delivery_ramp_phasePromotion from '../delivery/ramp/phasePromotion.js';
 import type * as delivery_ramp_setupFork from '../delivery/ramp/setupFork.js';
+import type * as delivery_ramp_tickDecision from '../delivery/ramp/tickDecision.js';
 import type * as delivery_rampIntegrationPresence from '../delivery/rampIntegrationPresence.js';
 import type * as delivery_rampPromotionEvidence from '../delivery/rampPromotionEvidence.js';
 import type * as delivery_rampReadCtx from '../delivery/rampReadCtx.js';
@@ -2559,6 +2560,7 @@ declare const fullApi: ApiFromModules<{
 	'delivery/ramp/degradationMatrix': typeof delivery_ramp_degradationMatrix;
 	'delivery/ramp/phasePromotion': typeof delivery_ramp_phasePromotion;
 	'delivery/ramp/setupFork': typeof delivery_ramp_setupFork;
+	'delivery/ramp/tickDecision': typeof delivery_ramp_tickDecision;
 	'delivery/rampIntegrationPresence': typeof delivery_rampIntegrationPresence;
 	'delivery/rampPromotionEvidence': typeof delivery_rampPromotionEvidence;
 	'delivery/rampReadCtx': typeof delivery_rampReadCtx;

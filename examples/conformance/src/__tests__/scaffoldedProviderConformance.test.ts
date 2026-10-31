@@ -464,7 +464,7 @@ describe('none of it required an edit', () => {
 		// same id the guide's `create` command scaffolds. A sample declaring a
 		// different one would show a reader a manifest that is not the one the
 		// command they just ran produced.
-		'packages/plugin-kit/src/__tests__/docsSamples.test.ts',
+		'packages/plugin-kit/src/__tests__/docsSamples/sendProviderManifest.ts',
 	].sort();
 
 	/**
@@ -511,14 +511,15 @@ describe('none of it required an edit', () => {
 	 *
 	 * The page's centrepiece manifest is the one thing a reader diffs against their
 	 * freshly scaffolded package, so every name it declares must be a name this
-	 * bundle actually has. The sample lives in `docsSamples.test.ts` (it is
-	 * compiled and executed there) and the guide quotes it verbatim, which is why
-	 * the assertion reads the compiled source rather than the page.
+	 * bundle actually has. The sample lives in plugin-kit's
+	 * `docsSamples/sendProviderManifest.ts` (compiled there and executed by
+	 * `docsSamples.test.ts`) and the guide quotes it verbatim, which is why the
+	 * assertion reads the compiled source rather than the page.
 	 */
 	it('shows a manifest sample declaring the variables this bundle composes', async () => {
 		const { readRepositoryFile } = await import('../repository');
 		const sample = await readRepositoryFile(
-			'packages/plugin-kit/src/__tests__/docsSamples.test.ts'
+			'packages/plugin-kit/src/__tests__/docsSamples/sendProviderManifest.ts'
 		);
 		const region = sample.slice(
 			sample.indexOf('// #region send-provider-manifest'),

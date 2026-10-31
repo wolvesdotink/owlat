@@ -645,6 +645,11 @@ describe('the one-shot credential backfill (migration 0041)', () => {
 		expect(rows.legacy?.secretCiphertext).toBeUndefined();
 		// A connected account keeps the password it needs to stay connected.
 		expect(rows.live?.secretCiphertext).toBe(CREDS.secretCiphertext);
+
+		// Each page stands on its own: a re-run finds the cleared row and leaves it.
+		expect(
+			await t.action(internal.migrations['0041_forget_disconnected_credentials'].run, {})
+		).toEqual({ cleared: 0, alreadyClear: 1 });
 	});
 });
 

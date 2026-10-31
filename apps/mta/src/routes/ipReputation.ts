@@ -8,8 +8,7 @@
 import { Hono } from 'hono';
 import type Redis from 'ioredis';
 import type { MtaConfig } from '../config.js';
-import { getIpMetrics } from '../monitoring/collector.js';
-import { getIspMetrics } from '../monitoring/collector.js';
+import { getIpMetrics, getIspMetrics } from '../monitoring/collector.js';
 import { getWarmingState } from '../intelligence/warming.js';
 import { getState as getCircuitBreakerState } from '../intelligence/circuitBreaker.js';
 import { getPoolStatus } from '../scaling/ipPool.js';

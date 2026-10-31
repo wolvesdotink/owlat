@@ -5,8 +5,7 @@ import type {
 	ConditionEditorContext,
 	ConditionLabelKey,
 } from '~/composables/conditions';
-import { conditionEditorModuleFor } from '~/composables/conditions';
-import { useConditionEditorContext } from '~/composables/conditions';
+import { conditionEditorModuleFor, useConditionEditorContext } from '~/composables/conditions';
 import type { ConditionStepConfig } from '~/composables/automations/steps';
 import { useLocalized } from '~/composables/useLocalized';
 
