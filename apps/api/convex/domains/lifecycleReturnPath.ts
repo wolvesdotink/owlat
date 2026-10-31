@@ -7,8 +7,9 @@
  * first two share. Writes only through `patchDomainRecords` (see the module map
  * in `lifecycle.ts`).
  *
- * The provider branches (which kinds accept a host, which `mailFrom` bundle it
- * publishes, which action reflects it) live in `returnPathProviders.ts`.
+ * Which kinds accept a host, which `mailFrom` bundle it publishes and which
+ * action reflects it are the provider module's answers, looked up through
+ * `returnPathProviders.ts`.
  */
 
 import { v } from 'convex/values';
@@ -16,12 +17,7 @@ import { internalMutation } from '../lib/writeFence';
 import { normalizeReturnPathHost } from '@owlat/shared/returnPathHost';
 import { patchDomainRecords } from './lifecycle';
 import type { DnsRecords, VerificationResults } from './lifecycleReducer';
-import {
-	buildReturnPathMailFrom,
-	returnPathHostFits,
-	returnPathProviderKind,
-	scheduleReturnPathReflection,
-} from './returnPathProviders';
+import { returnPathProviderFor } from './returnPathProviders';
 
 type SendingDomainReturnPathOutcome =
 	| { ok: true; returnPathHost: string; changed: boolean }
@@ -40,17 +36,10 @@ type SendingDomainReturnPathOutcome =
  * `→ registering` re-registration, which would needlessly reset the DKIM/DMARC
  * records (the provider rebuilds `_dmarc` at `p=none`).
  *
- * The provider must ALSO learn the new host so its bounce envelope uses it:
- *   - MTA: reflected out-of-band via the scheduled `pushReturnPathHost` action —
- *     the register endpoint is idempotent for the DKIM key, so this touches
- *     only the return-path host, never the signing key.
- *   - SES: reflected via `reflectSesMailFrom`, which calls SES's
- *     `SetIdentityMailFromDomain`. SES's custom MAIL FROM must be a *subdomain of
- *     the sending domain*, so an out-of-zone/apex host is rejected
- *     (`host_not_subdomain`); the regenerated records are SES's MX + SPF TXT
- *     shape, not the MTA's pool-IP SPF.
- *
- * Any other provider is `unsupported_provider`. The host is validated by the
+ * The provider must ALSO learn the new host so its bounce envelope uses it, by
+ * the reflection its module schedules. A host the provider cannot use (SES: not
+ * a subdomain of the sending domain) is `host_not_subdomain`; a provider whose
+ * module declares no `returnPath` is `unsupported_provider`. The host is validated by the
  * SHARED strict return-path validator (packages/shared `normalizeReturnPathHost`,
  * the exact validator the MTA applies) — NOT `asDnsName`, which is laxer and
  * would let Convex commit a host (single label, `_service` label) the MTA then
@@ -66,10 +55,9 @@ export const setReturnPathHost = internalMutation({
 		const domain = await ctx.db.get(args.domainId);
 		if (!domain) return { ok: false, reason: 'domain_not_found' };
 
-		// Return-path host is honored by the built-in MTA and by SES; other
-		// providers manage their own bounce path and are not supported.
-		const providerType = returnPathProviderKind(domain.providerType);
-		if (providerType === null) return { ok: false, reason: 'unsupported_provider' };
+		// A provider with no return-path support manages its own bounce path.
+		const returnPath = returnPathProviderFor(domain.providerType);
+		if (returnPath === null) return { ok: false, reason: 'unsupported_provider' };
 
 		// Validate + normalize via the SHARED strict validator (identical to the
 		// MTA's acceptance gate) so Convex never persists a host the MTA rejects.
@@ -80,11 +68,11 @@ export const setReturnPathHost = internalMutation({
 			return { ok: true, returnPathHost: normalized, changed: false };
 		}
 
-		// SES requires its custom MAIL FROM to be a subdomain of the sending domain.
-		// Validate that on EVERY path (including the registering short-circuit
-		// below) so a bad SES host is rejected up front, never stored + then failing
+		// The provider's own host constraint (SES: a subdomain of the sending
+		// domain). Checked on EVERY path, including the registering short-circuit
+		// below, so a bad host is rejected up front, never stored + then failing
 		// registration.
-		if (!returnPathHostFits(providerType, domain.domain, normalized)) {
+		if (!returnPath.fitsHost(domain.domain, normalized)) {
 			return { ok: false, reason: 'host_not_subdomain' };
 		}
 
@@ -131,7 +119,7 @@ export const setReturnPathHost = internalMutation({
 		// Regenerate the provider-specific `mailFrom` record(s) on the new host (the
 		// shared builder keeps this byte-identical to the post-registration reconcile
 		// and registration paths).
-		const mailFromRecords = buildReturnPathMailFrom(providerType, domain.domain, normalized);
+		const mailFromRecords = returnPath.mailFromRecords(domain.domain, normalized);
 
 		const at = Date.now();
 
@@ -184,8 +172,8 @@ export const setReturnPathHost = internalMutation({
 		);
 
 		// Reflect the new host to the provider so its bounce envelope uses it
-		// (scheduled; see `scheduleReturnPathReflection`).
-		await scheduleReturnPathReflection(ctx, providerType, args.domainId, normalized);
+		// (scheduled; see `SendingDomainReturnPath.scheduleReflection`).
+		await returnPath.scheduleReflection(ctx, args.domainId, normalized);
 
 		return { ok: true, returnPathHost: normalized, changed: true };
 	},
@@ -219,8 +207,8 @@ export const reconcileReturnPathAfterRegistration = internalMutation({
 	handler: async (ctx, args): Promise<void> => {
 		const domain = await ctx.db.get(args.domainId);
 		if (!domain) return;
-		const providerType = returnPathProviderKind(domain.providerType);
-		if (providerType === null) return;
+		const returnPath = returnPathProviderFor(domain.providerType);
+		if (returnPath === null) return;
 
 		const currentHost = domain.returnPathHost;
 		// No divergence — registration built records for the host still stored.
@@ -229,7 +217,7 @@ export const reconcileReturnPathAfterRegistration = internalMutation({
 		// safe): nothing concrete to reflect, leave the registered records in place.
 		if (currentHost === undefined) return;
 
-		const mailFromRecords = buildReturnPathMailFrom(providerType, domain.domain, currentHost);
+		const mailFromRecords = returnPath.mailFromRecords(domain.domain, currentHost);
 		const dnsRecords = domain.dnsRecords as DnsRecords;
 		const nextDnsRecords: DnsRecords = { ...dnsRecords };
 		if (mailFromRecords) {
@@ -270,7 +258,7 @@ export const reconcileReturnPathAfterRegistration = internalMutation({
 			}
 		);
 
-		await scheduleReturnPathReflection(ctx, providerType, args.domainId, currentHost);
+		await returnPath.scheduleReflection(ctx, args.domainId, currentHost);
 	},
 });
 

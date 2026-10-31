@@ -757,6 +757,7 @@ import type * as domains_providers_mandrill_relayIdentityView from '../domains/p
 import type * as domains_providers_mandrill_relayVerification from '../domains/providers/mandrill/relayVerification.js';
 import type * as domains_providers_mandrill_validators from '../domains/providers/mandrill/validators.js';
 import type * as domains_providers_mta_index from '../domains/providers/mta/index.js';
+import type * as domains_providers_mta_returnPath from '../domains/providers/mta/returnPath.js';
 import type * as domains_providers_plugin_index from '../domains/providers/plugin/index.js';
 import type * as domains_providers_plugin_persistence from '../domains/providers/plugin/persistence.js';
 import type * as domains_providers_plugin_state from '../domains/providers/plugin/state.js';
@@ -772,6 +773,7 @@ import type * as domains_providers_ses_mailFrom from '../domains/providers/ses/m
 import type * as domains_providers_ses_referenceArm from '../domains/providers/ses/referenceArm.js';
 import type * as domains_providers_ses_relayIdentityView from '../domains/providers/ses/relayIdentityView.js';
 import type * as domains_providers_ses_relayVerification from '../domains/providers/ses/relayVerification.js';
+import type * as domains_providers_ses_returnPath from '../domains/providers/ses/returnPath.js';
 import type * as domains_providers_types from '../domains/providers/types.js';
 import type * as domains_queries from '../domains/queries.js';
 import type * as domains_returnPath from '../domains/returnPath.js';
@@ -2685,6 +2687,7 @@ declare const fullApi: ApiFromModules<{
 	'domains/providers/mandrill/relayVerification': typeof domains_providers_mandrill_relayVerification;
 	'domains/providers/mandrill/validators': typeof domains_providers_mandrill_validators;
 	'domains/providers/mta/index': typeof domains_providers_mta_index;
+	'domains/providers/mta/returnPath': typeof domains_providers_mta_returnPath;
 	'domains/providers/plugin/index': typeof domains_providers_plugin_index;
 	'domains/providers/plugin/persistence': typeof domains_providers_plugin_persistence;
 	'domains/providers/plugin/state': typeof domains_providers_plugin_state;
@@ -2700,6 +2703,7 @@ declare const fullApi: ApiFromModules<{
 	'domains/providers/ses/referenceArm': typeof domains_providers_ses_referenceArm;
 	'domains/providers/ses/relayIdentityView': typeof domains_providers_ses_relayIdentityView;
 	'domains/providers/ses/relayVerification': typeof domains_providers_ses_relayVerification;
+	'domains/providers/ses/returnPath': typeof domains_providers_ses_returnPath;
 	'domains/providers/types': typeof domains_providers_types;
 	'domains/queries': typeof domains_queries;
 	'domains/returnPath': typeof domains_returnPath;

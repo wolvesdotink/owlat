@@ -15,16 +15,9 @@
  *   3. Add one entry to `SENDING_DOMAIN_PROVIDERS` below.
  *
  * The compile-time `satisfies` check on the registry catches missing methods.
- *
- * WHAT THAT ONE FOLDER DOES NOT YET COVER. Both relay-identity provisioning
- * paths now walk this registry, so a registered kind is reached end to end for
- * identities. What the lifecycle still carries of its own is the RETURN-PATH
- * family — `setReturnPathHost` and its post-registration reconcile
- * (`domains/lifecycleReturnPath.ts`) branch on `providerType`, through
- * `domains/returnPathProviders.ts`, to decide which bundle of `mailFrom` records
- * to publish and which reflection action to schedule, so a newly registered kind
- * silently gets neither. That is a separate capability from the identity seams
- * below and it has no home on this interface yet.
+ * A kind that supports a custom return-path host also declares `returnPath`
+ * (`SendingDomainReturnPath` in `./types.ts`); without it the lifecycle refuses
+ * a custom host for that kind.
  */
 
 import {
