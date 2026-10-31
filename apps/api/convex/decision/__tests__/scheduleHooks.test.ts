@@ -1,7 +1,8 @@
 /**
  * The pipeline hooks (`decision/schedule.ts`): nothing is scheduled while a
  * switch is off (the default), each hook schedules exactly its own action when
- * on, and a failure never escapes into the pipeline. The admission seam itself
+ * on (a Team hook through the bundle the step's commit schedules), and a
+ * failure never escapes into the pipeline. The admission seam itself
  * is covered through the real admission in `bundleAdmissionWiring.test.ts`.
  */
 
@@ -12,8 +13,10 @@ import type { ActionCtx } from '../../_generated/server';
 import type { Id } from '../../_generated/dataModel';
 import {
 	schedulePostboxMessageBundle,
-	scheduleTeamMessageBundle,
-	scheduleTeamTriage,
+	scheduleTeamBundle,
+	teamMessageBundle,
+	teamTriageBundle,
+	type TeamBundle,
 } from '../schedule';
 
 const inboundMessageId = 'm1' as Id<'inboundMessages'>;
@@ -21,11 +24,14 @@ const threadId = 't1' as Id<'mailThreads'>;
 
 function fakeCtx(
 	policy: ResolvedRoutingPolicy,
-	opts: { scheduleThrows?: boolean; isAllowed?: boolean } = {}
+	opts: { scheduleThrows?: boolean; isAllowed?: boolean; queryThrows?: boolean } = {}
 ) {
 	const scheduled: { name: string; args: unknown }[] = [];
 	const ctx = {
-		runQuery: vi.fn(async () => ({ policy, isAllowed: opts.isAllowed ?? true })),
+		runQuery: vi.fn(async () => {
+			if (opts.queryThrows) throw new Error('gate unreadable');
+			return { policy, isAllowed: opts.isAllowed ?? true };
+		}),
 		scheduler: {
 			runAfter: vi.fn(async (_delay: number, reference: unknown, args: unknown) => {
 				if (opts.scheduleThrows) throw new Error('scheduler down');
@@ -39,6 +45,18 @@ function fakeCtx(
 	return { ctx: ctx as unknown as ActionCtx, scheduled };
 }
 
+/** The Team hooks, each bundle scheduled as the step's commit would. */
+async function teamHooks(
+	ctx: ActionCtx,
+	policy: ResolvedRoutingPolicy,
+	today: Parameters<typeof teamMessageBundle>[1]
+): Promise<void> {
+	const bundles = [await teamTriageBundle(ctx, policy), await teamMessageBundle(ctx, today)];
+	for (const bundle of bundles.filter((b): b is TeamBundle => b !== null)) {
+		await scheduleTeamBundle(ctx, inboundMessageId, bundle);
+	}
+}
+
 const DEFAULTS = resolveRoutingPolicy(null);
 const ON = resolveRoutingPolicy({
 	policyVersion: 1,
@@ -50,8 +68,7 @@ const ON = resolveRoutingPolicy({
 describe('pipeline hooks', () => {
 	it('schedule nothing with every switch off', async () => {
 		const { ctx, scheduled } = fakeCtx(DEFAULTS);
-		await scheduleTeamTriage(ctx, DEFAULTS, inboundMessageId);
-		await scheduleTeamMessageBundle(ctx, inboundMessageId, { baseline: { category: 'support' } });
+		await teamHooks(ctx, DEFAULTS, { baseline: { category: 'support' } });
 		await schedulePostboxMessageBundle(ctx, {
 			threadId,
 			expectedLatestMessageId: undefined,
@@ -62,8 +79,7 @@ describe('pipeline hooks', () => {
 
 	it('schedule exactly their own action when on', async () => {
 		const { ctx, scheduled } = fakeCtx(ON);
-		await scheduleTeamTriage(ctx, ON, inboundMessageId);
-		await scheduleTeamMessageBundle(ctx, inboundMessageId, {
+		await teamHooks(ctx, ON, {
 			baseline: { category: 'support', disposition: 'reply' },
 			language: 'de',
 		});
@@ -91,8 +107,7 @@ describe('pipeline hooks', () => {
 
 	it('schedule nothing for a mailbox excluded from hosted decisions', async () => {
 		const { ctx, scheduled } = fakeCtx(ON, { isAllowed: false });
-		await scheduleTeamTriage(ctx, ON, inboundMessageId);
-		await scheduleTeamMessageBundle(ctx, inboundMessageId, { baseline: { category: 'support' } });
+		await teamHooks(ctx, ON, { baseline: { category: 'support' } });
 		await schedulePostboxMessageBundle(ctx, {
 			threadId,
 			expectedLatestMessageId: undefined,
@@ -102,11 +117,19 @@ describe('pipeline hooks', () => {
 	});
 
 	it('never let a scheduling failure escape into the pipeline', async () => {
-		const { ctx } = fakeCtx(ON, { scheduleThrows: true });
+		// A Team bundle's scheduling failure is swallowed by the step's commit
+		// (agent/stepWrites.ts, best-effort); an unreadable gate schedules none.
+		const { ctx } = fakeCtx(ON, { queryThrows: true });
 		const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-		await expect(scheduleTeamTriage(ctx, ON, inboundMessageId)).resolves.toBeUndefined();
+		await expect(teamTriageBundle(ctx, ON)).resolves.toBeNull();
+		await expect(teamMessageBundle(ctx, { baseline: {} })).resolves.toBeNull();
+		const failing = fakeCtx(ON, { scheduleThrows: true });
 		await expect(
-			scheduleTeamMessageBundle(ctx, inboundMessageId, { baseline: {} })
+			schedulePostboxMessageBundle(failing.ctx, {
+				threadId,
+				expectedLatestMessageId: undefined,
+				baseline: {},
+			})
 		).resolves.toBeUndefined();
 		warn.mockRestore();
 	});

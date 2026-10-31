@@ -469,18 +469,14 @@ export const contextRetrievalStep: AgentStepModule<
 
 	async execute(ctx, input) {
 		const output = await assembleInboundBriefing(ctx, input.inboundMessageId);
-
-		// Record the contextTier + coverage on the inboundMessage (in-state
-		// side effect — `inbox/stepOutputs.ts` says why `contextTier` has its own
-		// helper rather than rolling into a transition).
-		await ctx.runMutation(internal.inbox.stepOutputs.recordContextTier, {
-			inboundMessageId: input.inboundMessageId,
-			contextTier: output.tier,
-			contextCoverage: output.coverage,
-			...(output.groundingSources.length > 0 ? { groundingSources: output.groundingSources } : {}),
-		});
-
-		return { output };
+		const { tier: contextTier, coverage: contextCoverage, groundingSources } = output;
+		// The contextTier + coverage, recorded on the inboundMessage with the step
+		// (in-state; `inbox/stepOutputs.ts` says why it is not a transition).
+		const tierWrite = { kind: 'context_tier' as const, contextTier, contextCoverage };
+		return {
+			output,
+			writes: [groundingSources.length > 0 ? { ...tierWrite, groundingSources } : tierWrite],
+		};
 	},
 
 	route(output, _input, runCtx) {

@@ -75,6 +75,21 @@ export async function endStepAction(ctx: MutationCtx, end: StepEnd): Promise<voi
 	});
 }
 
+/**
+ * Close a `running` row whose step records no result: its message moved on
+ * while it ran, or a person took the reply over. `abandoned` is final, so the
+ * retry cron never picks it up.
+ */
+export async function abandonStepAction(
+	ctx: MutationCtx,
+	actionId: Id<'agentActions'>,
+	errorMessage: string
+): Promise<void> {
+	const action = await ctx.db.get(actionId);
+	if (!action || action.status !== 'running') return;
+	await ctx.db.patch(actionId, { status: 'abandoned', errorMessage, completedAt: Date.now() });
+}
+
 /** Fail a step's row, or abandon it once its retries are spent. */
 export async function failStepAction(
 	ctx: MutationCtx,

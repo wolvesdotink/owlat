@@ -238,7 +238,6 @@ describe('draftStep.execute — recall wiring', () => {
 			},
 			runMutation: async (ref: unknown) => {
 				const name = getFunctionName(ref as Parameters<typeof getFunctionName>[0]);
-				if (name.includes('recordDraftOutput')) return undefined;
 				if (name.includes('llmUsage')) return undefined;
 				throw new Error(`unexpected runMutation: ${name}`);
 			},

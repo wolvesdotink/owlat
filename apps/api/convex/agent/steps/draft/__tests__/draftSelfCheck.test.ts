@@ -14,7 +14,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { makeStepCtx } from '../../__tests__/stepCtx';
+import { makeStepCtx, writesOf } from '../../__tests__/stepCtx';
 
 const mocks = vi.hoisted(() => ({
 	runLlmText: vi.fn(),
@@ -50,9 +50,8 @@ const draftInput: DraftInput = {
 	},
 };
 
-/** Fake execute ctx capturing the recordDraftOutput mutation args. */
+/** Fake execute ctx; the draft is read from the writes `execute` returns. */
 function makeCtx() {
-	const recorded: Array<Record<string, unknown>> = [];
 	const selections: Array<Record<string, unknown>> = [];
 	const ctx = makeStepCtx<Parameters<typeof draftStep.execute>[0]>({
 		queries: {
@@ -64,14 +63,10 @@ function makeCtx() {
 			},
 		},
 		mutations: {
-			recordDraftOutput: (args) => {
-				recorded.push(args as Record<string, unknown>);
-				return undefined;
-			},
 			llmUsage: undefined, // spend accounting
 		},
 	});
-	return { ctx, recorded, selections };
+	return { ctx, selections };
 }
 
 beforeEach(() => {
@@ -104,9 +99,10 @@ describe('draftStep.execute — draft-quality self-check', () => {
 			tokenUsage: undefined,
 			modelUsed: 'mock-model',
 		});
-		const { ctx, recorded, selections } = makeCtx();
+		const { ctx, selections } = makeCtx();
 
-		const { output } = await draftStep.execute(ctx, draftInput);
+		const { output, writes } = await draftStep.execute(ctx, draftInput);
+		const recorded = writesOf(writes, 'draft_output');
 
 		// Persisted: draftQuality present, confidenceScore = classifier confidence
 		expect(recorded).toHaveLength(1);
@@ -136,9 +132,10 @@ describe('draftStep.execute — draft-quality self-check', () => {
 
 	it('fails soft when the self-check throws: draftQuality is null, draft still persisted', async () => {
 		mocks.runLlmObject.mockRejectedValue(new Error('model unavailable'));
-		const { ctx, recorded } = makeCtx();
+		const { ctx } = makeCtx();
 
-		const { output } = await draftStep.execute(ctx, draftInput);
+		const { output, writes } = await draftStep.execute(ctx, draftInput);
+		const recorded = writesOf(writes, 'draft_output');
 
 		// The draft is still recorded (pipeline never blocked) but WITHOUT a
 		// fabricated quality — the route step will treat it as unknown/LOW.

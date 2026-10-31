@@ -99,6 +99,7 @@ async function evaluate(
 		action: { runQuery, runAction } as unknown as ActionCtx,
 		inboundMessageId,
 		now: () => NOW,
+		writes: [],
 		getMessage: () =>
 			t.run((ctx) => ctx.db.get(inboundMessageId)) as Promise<Doc<'inboundMessages'> | null>,
 	});
@@ -128,6 +129,7 @@ describe('the registered decision verdict gate', () => {
 			action: { runQuery } as unknown as ActionCtx,
 			inboundMessageId,
 			now: () => NOW,
+			writes: [],
 			getMessage: async () => null,
 		});
 		expect(decision).toEqual({ safe: true });

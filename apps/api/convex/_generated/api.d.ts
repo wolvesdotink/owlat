@@ -222,6 +222,7 @@ import type * as agent_steps_security_scan_htmlElements from '../agent/steps/sec
 import type * as agent_steps_security_scan_index from '../agent/steps/security_scan/index.js';
 import type * as agent_steps_security_scan_patterns from '../agent/steps/security_scan/patterns.js';
 import type * as agent_steps_types from '../agent/steps/types.js';
+import type * as agent_stepWrites from '../agent/stepWrites.js';
 import type * as agent_walker from '../agent/walker.js';
 import type * as agent_walkerCommit from '../agent/walkerCommit.js';
 import type * as agent_walkerSchedule from '../agent/walkerSchedule.js';
@@ -2063,6 +2064,7 @@ declare const fullApi: ApiFromModules<{
 	'agent/steps/security_scan/index': typeof agent_steps_security_scan_index;
 	'agent/steps/security_scan/patterns': typeof agent_steps_security_scan_patterns;
 	'agent/steps/types': typeof agent_steps_types;
+	'agent/stepWrites': typeof agent_stepWrites;
 	'agent/walker': typeof agent_walker;
 	'agent/walkerCommit': typeof agent_walkerCommit;
 	'agent/walkerSchedule': typeof agent_walkerSchedule;
