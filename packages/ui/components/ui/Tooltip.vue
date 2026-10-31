@@ -57,6 +57,10 @@ function renders(node: VNode): boolean {
 	return true;
 }
 
+function collapse(value: string): string {
+	return value.replace(/\s+/g, ' ').trim();
+}
+
 /** Keyboard focus, not the focus a click gives a button. */
 function focusVisible(element: Element): boolean {
 	try {
@@ -162,19 +166,29 @@ export default defineComponent({
 
 		/**
 		 * Whether the open tooltip says more than the element's own name (its
-		 * aria-label, else its text). One that only repeats it is not linked:
-		 * "Archive, button, Archive" helps nobody. A `#content` slot or a
-		 * shortcut that renders a key always adds something, so it is read
-		 * from the mounted bubble (a `#shortcut` slot can render nothing).
+		 * aria-label, else its text) and the description it already has. One
+		 * that only repeats either is not linked: "Archive, button, Archive"
+		 * helps nobody, and neither does a reason read twice. A `#content`
+		 * slot or a shortcut that renders a key always adds something, so it
+		 * is read from the mounted bubble (a `#shortcut` slot can render
+		 * nothing).
 		 */
 		function addsInformation(element: Element): boolean {
 			if (slots['content']) return true;
 			const shortcut = bubble.value?.querySelector('.ui-tooltip-shortcut');
 			if (shortcut?.textContent?.trim()) return true;
-			const name = (element.getAttribute('aria-label') ?? element.textContent ?? '')
-				.replace(/\s+/g, ' ')
-				.trim();
-			return !name || name !== props.text?.trim();
+			const text = props.text?.trim();
+			const name = collapse(element.getAttribute('aria-label') ?? element.textContent ?? '');
+			if (name && name === text) return false;
+			return ownDescription(element) !== text;
+		}
+
+		/** The element's accessible description, without this tooltip's own part. */
+		function ownDescription(element: Element): string {
+			const ids = (element.getAttribute('aria-describedby') ?? '')
+				.split(/\s+/)
+				.filter((ref) => ref && ref !== id);
+			return collapse(ids.map((ref) => document.getElementById(ref)?.textContent ?? '').join(' '));
 		}
 
 		/** The tooltip describes the element it is open for, while it is open. */

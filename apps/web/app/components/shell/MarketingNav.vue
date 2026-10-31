@@ -275,29 +275,30 @@ const activeAutomationId = computed(
 				</NuxtLink>
 			</div>
 
-			<NuxtLink
-				v-if="isAdmin && healthLevel"
-				to="/dashboard/admin/delivery"
-				class="mt-3 flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs text-text-secondary hover:bg-(--surface-2-hover)"
-				:title="healthReason ?? undefined"
-			>
-				<Icon
-					:name="healthLevel === 'ok' ? 'lucide:circle-check' : 'lucide:circle-alert'"
-					class="size-4"
-					:class="
+			<!-- The reason in full: the line below truncates it. -->
+			<UiTooltip v-if="isAdmin && healthLevel" :text="healthReason || undefined">
+				<NuxtLink
+					to="/dashboard/admin/delivery"
+					class="mt-3 flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs text-text-secondary hover:bg-(--surface-2-hover)"
+				>
+					<Icon
+						:name="healthLevel === 'ok' ? 'lucide:circle-check' : 'lucide:circle-alert'"
+						class="size-4"
+						:class="
+							healthLevel === 'ok'
+								? 'text-success'
+								: healthLevel === 'warn'
+									? 'text-warning'
+									: 'text-error'
+						"
+					/>
+					<span class="truncate">{{
 						healthLevel === 'ok'
-							? 'text-success'
-							: healthLevel === 'warn'
-								? 'text-warning'
-								: 'text-error'
-					"
-				/>
-				<span class="truncate">{{
-					healthLevel === 'ok'
-						? t('components.shell.marketing.deliveryHealthy')
-						: (healthReason ?? t('components.shell.marketing.deliveryNeedsAttention'))
-				}}</span>
-			</NuxtLink>
+							? t('components.shell.marketing.deliveryHealthy')
+							: (healthReason ?? t('components.shell.marketing.deliveryNeedsAttention'))
+					}}</span>
+				</NuxtLink>
+			</UiTooltip>
 		</template>
 
 		<template v-else>

@@ -98,6 +98,26 @@ describe('UiTooltip', () => {
 		expect(button('other').getAttribute('aria-describedby')).toBe('hint');
 	});
 
+	it('does not repeat a description the control already has', async () => {
+		const hint = document.createElement('span');
+		hint.id = 'held-reason';
+		hint.textContent = 'Save your changes first';
+		document.body.appendChild(hint);
+		mountTooltips([
+			['held', 'Save your changes first', { 'aria-describedby': 'held-reason' }],
+			['other', 'Publish now', { 'aria-describedby': 'held-reason' }],
+		]);
+		button('held').focus();
+		await nextTick();
+		expect(tooltip()?.textContent).toBe('Save your changes first');
+		expect(button('held').getAttribute('aria-describedby')).toBe('held-reason');
+
+		button('other').focus();
+		await nextTick();
+		expect(button('other').getAttribute('aria-describedby')).toBe(`held-reason ${tooltip()!.id}`);
+		hint.remove();
+	});
+
 	it('describes a control whose name it repeats when it also shows a shortcut prop', async () => {
 		mountTooltips([['a', 'Archive', { 'aria-label': 'Archive' }]], { shortcut: 'E' });
 		button('a').focus();

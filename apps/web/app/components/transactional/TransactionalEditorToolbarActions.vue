@@ -124,48 +124,51 @@ function onTogglePublish() {
 	</UiTooltip>
 	<!-- Awaiting review — no author-side action moves this forward, so the
 	     primary action is an unavailable, honest state rather than "Publish". -->
-	<UiButton
-		v-if="isPendingReview"
-		variant="secondary"
-		size="sm"
-		aria-disabled="true"
-		:aria-describedby="unavailableReasonId"
-		:class="pendingReviewClass"
-		:title="unavailableReason ?? undefined"
-	>
-		<template #iconLeft>
-			<Icon name="lucide:clock-3" class="w-4 h-4" />
-		</template>
-		{{ t('dashboard.send.transactional.detail.edit.status.pendingReview') }}
-	</UiButton>
+	<UiTooltip v-if="isPendingReview" :text="unavailableReason ?? undefined">
+		<UiButton
+			variant="secondary"
+			size="sm"
+			aria-disabled="true"
+			:aria-describedby="unavailableReasonId"
+			:class="pendingReviewClass"
+		>
+			<template #iconLeft>
+				<Icon name="lucide:clock-3" class="w-4 h-4" />
+			</template>
+			{{ t('dashboard.send.transactional.detail.edit.status.pendingReview') }}
+		</UiButton>
+	</UiTooltip>
 	<!-- Publish / Unpublish — the only affordance that makes a transactional
 	     email sendable; without it the send API rejects every request. -->
-	<UiButton
+	<UiTooltip
 		v-else
-		:variant="isPublished ? 'secondary' : 'primary'"
-		size="sm"
-		:loading="isPublishing"
-		:aria-disabled="isPublishHeld ? 'true' : undefined"
-		:aria-describedby="isPublishHeld ? unavailableReasonId : undefined"
-		:class="isPublishHeld ? heldPublishClass : undefined"
-		:title="
+		:text="
 			isPublished
 				? t('dashboard.send.transactional.detail.edit.publishHint.unpublish')
 				: hasChanges
 					? t('dashboard.send.transactional.detail.edit.publishHint.saveFirst')
 					: t('dashboard.send.transactional.detail.edit.publishHint.publish')
 		"
-		@click="onTogglePublish"
 	>
-		<template v-if="!isPublishing" #iconLeft>
-			<Icon :name="isPublished ? 'lucide:rotate-ccw' : 'lucide:rocket'" class="w-4 h-4" />
-		</template>
-		{{
-			isPublished
-				? t('dashboard.send.transactional.detail.edit.unpublish')
-				: t('dashboard.send.transactional.detail.edit.publish')
-		}}
-	</UiButton>
+		<UiButton
+			:variant="isPublished ? 'secondary' : 'primary'"
+			size="sm"
+			:loading="isPublishing"
+			:aria-disabled="isPublishHeld ? 'true' : undefined"
+			:aria-describedby="isPublishHeld ? unavailableReasonId : undefined"
+			:class="isPublishHeld ? heldPublishClass : undefined"
+			@click="onTogglePublish"
+		>
+			<template v-if="!isPublishing" #iconLeft>
+				<Icon :name="isPublished ? 'lucide:rotate-ccw' : 'lucide:rocket'" class="w-4 h-4" />
+			</template>
+			{{
+				isPublished
+					? t('dashboard.send.transactional.detail.edit.unpublish')
+					: t('dashboard.send.transactional.detail.edit.publish')
+			}}
+		</UiButton>
+	</UiTooltip>
 	<!-- The unavailable reason, for the control's accessible description. -->
 	<span v-if="unavailableReason" :id="unavailableReasonId" class="sr-only">{{
 		unavailableReason

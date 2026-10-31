@@ -7,6 +7,7 @@ import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { mount } from '@vue/test-utils';
 import ThreadHeaderActions from '../ThreadHeaderActions.vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+import { tooltipOf } from '~/__tests__/tooltip';
 import { applyShortcutPreferences, resetShortcutPreferences } from '~/utils/shortcutScope';
 
 beforeAll(() => {
@@ -54,6 +55,14 @@ function mountActions(props: Record<string, unknown> = {}) {
 afterEach(() => resetShortcutPreferences());
 
 describe('ThreadHeaderActions', () => {
+	it('says where a channel link discusses the thread in a tooltip, not a native title', () => {
+		const w = mountActions({ discussionChannels: [{ _id: 'ch_1', name: 'launch' }] });
+		const link = w.get('a[href="/dashboard/chat/ch_1"]');
+		expect(link.text()).toBe('#launch');
+		expect(link.attributes('title')).toBeUndefined();
+		expect(tooltipOf(w, link)).toBe('Discuss in launch');
+	});
+
 	it("announces the Reply button's key as the person has it bound", () => {
 		const reply = () => mountActions().get('[data-testid="thread-reply"]');
 		expect(reply().attributes('aria-keyshortcuts')).toBe('r');

@@ -18,6 +18,7 @@ import {
 import { transportKindLabel } from '~/utils/transportState';
 import SignedWebhookCard from '../SignedWebhookCard.vue';
 import { createTestI18n, i18nStubs, localizedWith } from '~/__tests__/i18n';
+import { tooltipOf } from '~/__tests__/tooltip';
 
 /** The kind vocabulary is keyed; the page resolves it before handing it over. */
 const { t } = createTestI18n().global;
@@ -74,6 +75,13 @@ function mountForKind(
 }
 
 describe('SignedWebhookCard', () => {
+	it('says what Copy copies in a tooltip, not a native title', () => {
+		const w = mountCard();
+		const copy = w.findAll('button').find((button) => button.text() === 'Copy')!;
+		expect(copy.attributes('title')).toBeUndefined();
+		expect(tooltipOf(w, copy)).toBe('Copy webhook URL');
+	});
+
 	it('renders the exact endpoint the provider signs over', () => {
 		const url = mountCard().find('[data-testid="signed-webhook-url"]');
 		expect(url.text()).toBe('https://acme.convex.site/webhooks/mandrill');

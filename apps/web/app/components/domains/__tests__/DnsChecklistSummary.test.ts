@@ -14,6 +14,7 @@ vi.mock('~/composables/useCopyToClipboard', () => ({
 import DnsChecklistSummary from '../DnsChecklistSummary.vue';
 import { buildSendingChecklist } from '~/utils/dnsRecordChecklist';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+import { tooltipOf } from '~/__tests__/tooltip';
 
 Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 
@@ -54,6 +55,15 @@ const headline = (w: ReturnType<typeof mountSummary>) =>
 beforeEach(() => copy.mockClear());
 
 describe('DnsChecklistSummary', () => {
+	it('says what the copy button copies in a tooltip, not a native title', () => {
+		const w = mountSummary();
+		const copy = w.get('[data-testid="dns-copy-zone"]');
+		expect(copy.attributes('title')).toBeUndefined();
+		expect(tooltipOf(w, copy)).toBe(
+			"Copies the records as zone-file lines — paste them into your DNS host's import, or send them to whoever manages your DNS."
+		);
+	});
+
 	it('counts found records and links each outstanding one by name', () => {
 		const w = mountSummary({ spf: ok, dkim: [ok, missing], dmarc: missing });
 		expect(headline(w)).toBe('2 of 4 records found');
