@@ -72,6 +72,14 @@ export const PREVIOUS_RELEASE_ENTRIES: Readonly<Record<string, string>> = {
 	'aiRouting/batchItems.ts#completeItem': 'old batch polls mid-run',
 	'aiRouting/batchItems.ts#failItem': 'old batch polls mid-run',
 	'aiRouting/batchItems.ts#abandonItem': 'old batch polls mid-run',
+	// A walker step module now returns its outputs and agent/walkerCommit.ts
+	// `commitStep` applies them (agent/stepWrites.ts). Remove after release N+1.
+	'inbox/stepOutputs.ts#recordContextTier': 'old agent walker steps mid-run',
+	'inbox/stepOutputs.ts#recordAgentDecision': 'old agent walker steps mid-run',
+	'inbox/stepOutputs.ts#recordDraftOutput': 'old agent walker steps mid-run',
+	'inbox/stepOutputs.ts#recordSecurityScan': 'old agent walker steps mid-run',
+	'agent/shadowScorecard.ts#recordShadowDecision': 'old agent walker steps mid-run',
+	'mail/interpret/planGate.ts#recordShadow': 'old agent walker steps mid-run',
 	// The plugin relay identity call now commits once through
 	// domains/pluginRelayMutations.ts `commitIdentityCall` / `commitDeniedCall`.
 	'domains/pluginRelayMutations.ts#recordCheck': 'old plugin relay identity calls mid-run',

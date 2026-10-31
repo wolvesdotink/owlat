@@ -2,9 +2,10 @@
  * Agent step (module) — see CONTEXT.md "Agent step (module)".
  *
  * The per-kind compute + routing surface for one stage of the agent
- * pipeline. Two pure functions:
+ * pipeline. Two functions:
  *   - execute(ctx, input) — runs the work (pattern match, DB joins, or
- *     LLM call).
+ *     LLM call) and returns what to record as `writes`, without writing
+ *     it: the walker's step commit applies them with the step's result.
  *   - route(output, runCtx) — decides what happens next (in-state next
  *     step, state transition optionally followed by a next step, or
  *     `done`).
@@ -19,6 +20,7 @@ import type { securityFlagsValidator, tokenUsageValidator } from '../../lib/conv
 import type { classificationValidator } from '../../lib/validators/classification';
 import type { clarificationQuestionValidator } from '../../lib/validators/clarification';
 import type { AgentStepKind } from './catalog';
+import type { StepWrite } from '../stepWrites';
 
 export type { AgentStepKind } from './catalog';
 
@@ -77,7 +79,25 @@ export type AgentStepResult<Out> = {
 	output: Out;
 	modelUsed?: string;
 	tokenUsage?: TokenUsage;
+	/** What the step records, applied by the walker's commit with its result. */
+	writes?: readonly StepWrite[];
 };
+
+/**
+ * Thrown from `execute` when the step fails but something it decided must
+ * land with the failure (the scan's verdict, with its guard-skip marker,
+ * before a spend refusal holds the message). The walker commits `writes`
+ * together with the outcome `failure` comes to.
+ */
+export class StepFailure extends Error {
+	constructor(
+		readonly failure: unknown,
+		readonly writes: readonly StepWrite[]
+	) {
+		super(failure instanceof Error ? failure.message : String(failure));
+		this.name = 'StepFailure';
+	}
+}
 
 /**
  * The walker dispatches the next step by `kind`; the routing function on

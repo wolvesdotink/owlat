@@ -39,7 +39,7 @@ import {
 import { internal } from '../../../_generated/api';
 import type { Id } from '../../../_generated/dataModel';
 import type { ActionCtx } from '../../../_generated/server';
-import type { AgentStepModule } from '../types';
+import { StepFailure, type AgentStepModule } from '../types';
 import type { securityFlagsValidator } from '../../../lib/convexValidators';
 import { getOptional } from '../../../lib/env';
 import { admissionRefusalOf } from '../../../lib/llm/admissionPort';
@@ -51,7 +51,7 @@ import {
 	isMtaVerdictTerminal,
 	scanDisposition,
 } from './disposition';
-import { scheduleTeamTriage } from '../../../decision/schedule';
+import { teamTriageBundle } from '../../../decision/schedule';
 
 // The guard helpers moved to ./guard.ts; re-exported so existing importers keep
 // one import surface.
@@ -73,6 +73,7 @@ function convexUrlReputationCache(ctx: ActionCtx): UrlReputationCache {
 			return row;
 		},
 		async set(urlHash, verdict: CachedVerdict) {
+			// checkpoint: a shared reputation cache, keyed by URL and valid for any message.
 			await ctx.runMutation(internal.campaigns.sendQueries.upsertUrlReputationVerdict, {
 				urlHash,
 				verdict: verdict.verdict,
@@ -296,14 +297,8 @@ export const securityScanStep: AgentStepModule<
 		// Spend admission refused the guard: the deterministic
 		// verdict is stored with the `guardNotRun` marker, so every later
 		// generative consumer runs the guard first, and the refusal goes on to
-		// the walker, which holds the message.
-		if (refusal) {
-			await ctx.runMutation(internal.inbox.stepOutputs.recordSecurityScan, {
-				inboundMessageId: input.inboundMessageId,
-				securityFlags,
-			});
-			throw refusal;
-		}
+		// the walker, which holds the message in the same commit.
+		if (refusal) throw new StepFailure(refusal, [{ kind: 'security_scan', securityFlags }]);
 
 		const output: SecurityScanOutput = {
 			securityFlags,
@@ -322,18 +317,17 @@ export const securityScanStep: AgentStepModule<
 			output.isEarlyRuleArchive = await earlyRuleArchives(ctx, input.inboundMessageId);
 		}
 		// The guard passed and nothing ends the run before retrieval, so
-		// the message-only triage shadow may observe it (only at `shadow`).
+		// the message-only triage shadow may observe it (only at `shadow`);
+		// the step's commit schedules it.
 		if (scanDisposition(output) === 'continue') {
-			await scheduleTeamTriage(ctx, policy, input.inboundMessageId);
+			const triage = await teamTriageBundle(ctx, policy);
+			return { output, writes: triage ? [{ kind: 'decision_bundle', bundle: triage }] : [] };
 		}
 		// The agent-off path ends without a transition, so the scan (and its
-		// guard-skip marker) is stored here. Not fail-soft: the marker is what later
-		// autonomous paths check.
+		// guard-skip marker) is stored with the step. Not fail-soft: the marker is
+		// what later autonomous paths check.
 		if (disposition === 'agent_off') {
-			await ctx.runMutation(internal.inbox.stepOutputs.recordSecurityScan, {
-				inboundMessageId: input.inboundMessageId,
-				securityFlags,
-			});
+			return { output, writes: [{ kind: 'security_scan', securityFlags }] };
 		}
 
 		return { output };
@@ -356,7 +350,7 @@ export const securityScanStep: AgentStepModule<
 					kind: 'transition',
 					transition: { to: 'archived', reason: 'spam', securityFlags: output.securityFlags },
 				};
-			// Clean + agent disabled — the scan is recorded (execute) and the run stops.
+			// Clean + agent disabled — the scan is recorded with the step and the run stops.
 			case 'agent_off':
 				return { kind: 'done' };
 			// L4: an `auto_archive` handling rule matched before classification.

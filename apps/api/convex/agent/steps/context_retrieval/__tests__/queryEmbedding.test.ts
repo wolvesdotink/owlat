@@ -70,7 +70,6 @@ function makeCtx(hasVectors: boolean) {
 			},
 		},
 		mutations: {
-			recordContextTier: null,
 			llmUsage: (args) => {
 				ledger.push(args as Record<string, unknown>);
 				return null;

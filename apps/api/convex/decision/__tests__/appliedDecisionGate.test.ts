@@ -106,6 +106,7 @@ async function evaluate(
 		action: { runQuery: query, runAction } as unknown as ActionCtx,
 		inboundMessageId,
 		now: () => NOW,
+		writes: [],
 		getMessage: () =>
 			t.run((ctx) => ctx.db.get(inboundMessageId)) as Promise<Doc<'inboundMessages'> | null>,
 	});

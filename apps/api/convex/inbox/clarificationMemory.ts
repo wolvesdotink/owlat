@@ -9,7 +9,8 @@
  *     (`inbox/clarification.ts`) and the Reply Queue (`mail/ai/needsReplyClarify.ts`)
  *     — call this after the owner answers, promoting each answer to a standing
  *     fact scoped to the message's contact.
- *   - FILL (`resolveFills`): before asking, both clarification surfaces look up a
+ *   - FILL (`resolveFills`, or `lookupFills` + `markStandingAnswersUsed` for the
+ *     agent step's commit): before asking, both clarification surfaces look up a
  *     matching standing answer and fill the slot silently instead of re-asking.
  *   - MANAGE (`listClarificationMemory` / `revokeClarificationMemory` /
  *     `promoteClarificationMemory`): the settings surface where the owner
@@ -28,14 +29,14 @@
  * question / record nothing). Nothing here blocks ingest or the walker.
  */
 
-import { v } from 'convex/values';
+import { v, type ObjectType } from 'convex/values';
 import { internalMutation } from '../lib/writeFence';
 import { adminQuery, authedMutation } from '../lib/authedFunctions';
 import { hasPermission, requirePermission } from '../lib/sessionOrganization';
 import { findContactByIdentifier } from '../contacts/resolution';
 import { normalizeEmail } from '@owlat/shared';
 import type { Doc, Id } from '../_generated/dataModel';
-import type { MutationCtx } from '../_generated/server';
+import { internalQuery, type MutationCtx, type QueryCtx } from '../_generated/server';
 import { normalizeQuestionKey, matchStandingAnswers } from './clarificationMemoryMatch';
 
 const MAX_ANSWER_CHARS = 2000;
@@ -49,7 +50,7 @@ const MAX_REMEMBERED_QUESTION_CHARS = 500;
  * with no contact must not become an org-general fact without explicit promotion).
  */
 async function resolveScopeContactId(
-	ctx: MutationCtx,
+	ctx: Pick<QueryCtx, 'db'>,
 	contactId: Id<'contacts'> | undefined,
 	fromAddress: string | undefined
 ): Promise<Id<'contacts'> | undefined> {
@@ -67,65 +68,100 @@ const questionArg = v.object({
 	text: v.string(),
 });
 
+const fillArgs = {
+	contactId: v.optional(v.id('contacts')),
+	fromAddress: v.optional(v.string()),
+	questions: v.array(questionArg),
+};
+
+/**
+ * The standing answers that resolve the pending questions. Reads ONLY the
+ * scope's own rows plus org-general rows (never another contact's); a
+ * question with no stored answer has no match (it is still asked).
+ */
+async function matchFills(
+	ctx: Pick<QueryCtx, 'db'>,
+	args: ObjectType<typeof fillArgs>
+): Promise<StandingFillResult[]> {
+	if (args.questions.length === 0) return [];
+	const scope = await resolveScopeContactId(ctx, args.contactId, args.fromAddress);
+
+	// Fetch the candidate rows: the scope's own rows (when a contact resolved)
+	// plus org-general rows, restricted to the slot kinds actually asked about.
+	const slotTypes = new Set(args.questions.map((q) => q.slotType));
+	const rows: Doc<'clarificationMemory'>[] = [];
+	for (const slotType of slotTypes) {
+		if (scope) {
+			const own = await ctx.db
+				.query('clarificationMemory')
+				.withIndex('by_contact_slot', (q) => q.eq('contactId', scope).eq('slotType', slotType))
+				.collect(); // bounded: standing answers for one contact + slot kind (tiny set)
+			for (const row of own) rows.push(row);
+		}
+		const general = await ctx.db
+			.query('clarificationMemory')
+			.withIndex('by_contact_slot', (q) => q.eq('contactId', undefined).eq('slotType', slotType))
+			.collect(); // bounded: org-general answers for one slot kind (tiny set)
+		for (const row of general) rows.push(row);
+	}
+
+	return matchStandingAnswers(rows, args.questions, scope).map((match) => ({
+		questionId: match.questionId,
+		slotType: match.slotType,
+		value: match.row.answerValue,
+		rowId: match.row._id,
+	}));
+}
+
+/** Count a use of each standing answer a fill came from. A row revoked since is skipped. */
+export async function markStandingAnswersUsed(
+	ctx: MutationCtx,
+	rowIds: readonly Id<'clarificationMemory'>[],
+	now: number
+): Promise<void> {
+	for (const rowId of rowIds) {
+		const row = await ctx.db.get(rowId);
+		if (row) await ctx.db.patch(rowId, { useCount: row.useCount + 1, lastUsedAt: now });
+	}
+}
+
 /**
  * Look up standing answers that resolve the pending questions and return the
- * silent fills. Reads ONLY the scope's own rows plus org-general rows (never
- * another contact's), bumps `useCount`/`lastUsedAt` on each row it fills from,
- * and returns `{questionId, slotType, value}` per resolved question. A question
- * with no stored answer is omitted (it is still asked). A mutation (not a query)
- * so it can record the usage; callers invoke it fail-soft.
+ * silent fills, bumping `useCount`/`lastUsedAt` on each row it fills from:
+ * `{questionId, slotType, value}` per resolved question. A mutation (not a
+ * query) so it can record the usage; callers invoke it fail-soft.
  */
 export const resolveFills = internalMutation({
-	args: {
-		contactId: v.optional(v.id('contacts')),
-		fromAddress: v.optional(v.string()),
-		questions: v.array(questionArg),
-	},
+	args: fillArgs,
 	handler: async (ctx, args) => {
-		if (args.questions.length === 0) return { fills: [] as StandingFillResult[] };
-		const scope = await resolveScopeContactId(ctx, args.contactId, args.fromAddress);
-
-		// Fetch the candidate rows: the scope's own rows (when a contact resolved)
-		// plus org-general rows, restricted to the slot kinds actually asked about.
-		const slotTypes = new Set(args.questions.map((q) => q.slotType));
-		const rows: Doc<'clarificationMemory'>[] = [];
-		for (const slotType of slotTypes) {
-			if (scope) {
-				const own = await ctx.db
-					.query('clarificationMemory')
-					.withIndex('by_contact_slot', (q) => q.eq('contactId', scope).eq('slotType', slotType))
-					.collect(); // bounded: standing answers for one contact + slot kind (tiny set)
-				for (const row of own) rows.push(row);
-			}
-			const general = await ctx.db
-				.query('clarificationMemory')
-				.withIndex('by_contact_slot', (q) => q.eq('contactId', undefined).eq('slotType', slotType))
-				.collect(); // bounded: org-general answers for one slot kind (tiny set)
-			for (const row of general) rows.push(row);
-		}
-
-		const matches = matchStandingAnswers(rows, args.questions, scope);
-		const now = Date.now();
-		const fills: StandingFillResult[] = [];
-		for (const match of matches) {
-			await ctx.db.patch(match.row._id, {
-				useCount: match.row.useCount + 1,
-				lastUsedAt: now,
-			});
-			fills.push({
-				questionId: match.questionId,
-				slotType: match.slotType,
-				value: match.row.answerValue,
-			});
-		}
-		return { fills };
+		const matches = await matchFills(ctx, args);
+		await markStandingAnswersUsed(
+			ctx,
+			matches.map((m) => m.rowId),
+			Date.now()
+		);
+		return {
+			fills: matches.map(({ questionId, slotType, value }) => ({ questionId, slotType, value })),
+		};
 	},
+});
+
+/**
+ * The same fills without recording the use: for a caller that records it
+ * with the rest of its result (the agent `clarify` step's commit, through
+ * {@link markStandingAnswersUsed}), so a run that fails counts nothing.
+ */
+export const lookupFills = internalQuery({
+	args: fillArgs,
+	handler: async (ctx, args) => ({ fills: await matchFills(ctx, args) }),
 });
 
 interface StandingFillResult {
 	questionId: string;
 	slotType: string;
 	value: string;
+	/** The standing answer the value came from. */
+	rowId: Id<'clarificationMemory'>;
 }
 
 /** One captured answer: the slot kind, the question the owner answered, and the

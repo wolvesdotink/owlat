@@ -7,11 +7,14 @@
  * Two call sites, both fail-soft (a logging failure must never block ingest,
  * the walker, or a draft):
  *   - the inbound agent `clarify` step logs the ask it surfaced (source 'agent'),
+ *     through its step commit (`applyClarificationAsk`),
  *   - the Reply-Queue draft path logs the measured outcome (source 'reply_queue').
  *
  * Pure observability — nothing here influences routing or auto-send.
  */
 
+import type { ObjectType } from 'convex/values';
+import type { MutationCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import { omit } from '../lib/validators/fields';
 import { clarificationAskLogFields } from '../schema/askEagerness';
@@ -22,9 +25,18 @@ import { clarificationAskLogFields } from '../schema/askEagerness';
  * predicted value at emit time; the Reply-Queue path additionally logs the
  * sampled draft-with vs draft-without divergence once the owner answers.
  */
+const clarificationAskFields = omit(clarificationAskLogFields, ['createdAt']);
+
+export async function applyClarificationAsk(
+	ctx: MutationCtx,
+	args: ObjectType<typeof clarificationAskFields>
+): Promise<void> {
+	await ctx.db.insert('clarificationAskLog', { ...args, createdAt: Date.now() });
+}
+
 export const recordClarificationAsk = internalMutation({
-	args: omit(clarificationAskLogFields, ['createdAt']),
+	args: clarificationAskFields,
 	handler: async (ctx, args) => {
-		await ctx.db.insert('clarificationAskLog', { ...args, createdAt: Date.now() });
+		await applyClarificationAsk(ctx, args);
 	},
 });

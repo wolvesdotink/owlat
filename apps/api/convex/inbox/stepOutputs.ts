@@ -4,23 +4,23 @@
  *
  * Split out of `./processingLifecycle.ts` (the status dispatcher) once that file
  * crossed the ~500 LOC size cap. These writers share one shape: an Agent
- * step (`context_retrieval` / `route` / `draft`) calls them after its execute()
- * completes, still inside its current processingStatus, so the review UI can
- * read the step's output. They are deliberately NOT part of `transition()`'s
- * atomic status write — they mirror read-side fields the router / UI consume and
- * change NO routing on their own. FAIL-SOFT: callers wrap these so a persistence
- * failure degrades to "no metadata shown" and never wedges the walker.
+ * step (`context_retrieval` / `route` / `draft` / `security_scan`) returns them
+ * as writes from its execute(), and the walker's step commit applies them
+ * through the `apply…` helpers (`agent/stepWrites.ts`), still inside the
+ * step's processingStatus, so the review UI can read the step's output. They
+ * are deliberately NOT part of `transition()`'s status logic — they mirror
+ * read-side fields the router / UI consume and change NO routing on their own.
+ * The internal mutations are thin wrappers over the same helpers.
  *
- * The two guard-marker writers at the end (`recordSecurityScan`, `recordLateGuard`) are
- * the exception to "fail-soft": they store the `guardNotRun` marker and its
- * clearing, which later autonomous paths read, so their callers let a failure
- * surface.
+ * The two guard-marker writers (`applySecurityScan`, `recordLateGuard`) store
+ * the `guardNotRun` marker and its clearing, which later autonomous paths
+ * read, so a failure of theirs is never swallowed.
  */
 
-import { v } from 'convex/values';
+import { v, type Infer, type ObjectType } from 'convex/values';
 import { internalMutation } from '../lib/writeFence';
 import { internalQuery } from '../_generated/server';
-import type { Doc } from '../_generated/dataModel';
+import type { Doc, Id } from '../_generated/dataModel';
 import {
 	guardStanding,
 	mergeLateGuard,
@@ -45,31 +45,39 @@ import type { MutationCtx } from '../_generated/server';
 
 /**
  * Record the context-tier metadata onto an inboundMessage without
- * changing its processingStatus. Used by the `context_retrieval`
- * Agent step (module) after its execute completes (still in
- * `classifying` state).
+ * changing its processingStatus. Written with the `context_retrieval`
+ * Agent step (module)'s commit (still in `classifying` state).
  *
  * Also persists the ADVISORY retrieval-coverage / grounding signal
  * (which briefing legs were populated, knowledge-hit count, top score,
  * derived low-coverage). Coverage is optional so callers that only have
  * a tier still work; it changes NO routing today.
  */
+export const contextTierFields = {
+	contextTier: contextTierValidator,
+	contextCoverage: v.optional(contextCoverageValidator),
+	// The prior emails + knowledge entries actually assembled into the
+	// briefing — read-side provenance for the review UI. Optional so callers
+	// that only have a tier still work; changes NO routing.
+	groundingSources: v.optional(v.array(groundingSourceValidator)),
+};
+
+export async function applyContextTier(
+	ctx: MutationCtx,
+	inboundMessageId: Id<'inboundMessages'>,
+	args: ObjectType<typeof contextTierFields>
+): Promise<void> {
+	await ctx.db.patch(inboundMessageId, {
+		contextTier: args.contextTier,
+		...(args.contextCoverage ? { contextCoverage: args.contextCoverage } : {}),
+		...(args.groundingSources ? { groundingSources: args.groundingSources } : {}),
+	});
+}
+
 export const recordContextTier = internalMutation({
-	args: {
-		inboundMessageId: v.id('inboundMessages'),
-		contextTier: contextTierValidator,
-		contextCoverage: v.optional(contextCoverageValidator),
-		// The prior emails + knowledge entries actually assembled into the
-		// briefing — read-side provenance for the review UI. Optional so callers
-		// that only have a tier still work; changes NO routing.
-		groundingSources: v.optional(v.array(groundingSourceValidator)),
-	},
-	handler: async (ctx, args) => {
-		await ctx.db.patch(args.inboundMessageId, {
-			contextTier: args.contextTier,
-			...(args.contextCoverage ? { contextCoverage: args.contextCoverage } : {}),
-			...(args.groundingSources ? { groundingSources: args.groundingSources } : {}),
-		});
+	args: { inboundMessageId: v.id('inboundMessages'), ...contextTierFields },
+	handler: async (ctx, { inboundMessageId, ...args }) => {
+		await applyContextTier(ctx, inboundMessageId, args);
 	},
 });
 
@@ -79,35 +87,44 @@ export const recordContextTier = internalMutation({
  * review UI can explain WHY a message was auto-sent or held ("Sent because… /
  * Held because…"). This is a READ-SIDE MIRROR of the decision the route step
  * already made — the actual auto-send vs human-review transition is still driven
- * by the step's `route()` result, unchanged. FAIL-SOFT: the route step wraps
- * this call so a persistence failure degrades to "no explanation shown" and
- * never wedges the walker.
+ * by the step's `route()` result, unchanged. FAIL-SOFT: the step commit wraps
+ * this write so a failure degrades to "no explanation shown" and never wedges
+ * the walker.
  */
+export const agentDecisionFields = {
+	decision: v.union(v.literal('auto_approve'), v.literal('human_review')),
+	reason: v.string(),
+	confidence: v.number(),
+};
+
+export async function applyAgentDecision(
+	ctx: MutationCtx,
+	inboundMessageId: Id<'inboundMessages'>,
+	args: ObjectType<typeof agentDecisionFields>
+): Promise<void> {
+	// Taken over mid-route: no agent decision was acted on, so none is shown.
+	const message = await ctx.db.get(inboundMessageId);
+	if (!message || message.manualTakeoverAt !== undefined) return;
+	await ctx.db.patch(inboundMessageId, {
+		agentDecision: {
+			decision: args.decision,
+			reason: args.reason,
+			confidence: args.confidence,
+		},
+	});
+}
+
 export const recordAgentDecision = internalMutation({
-	args: {
-		inboundMessageId: v.id('inboundMessages'),
-		decision: v.union(v.literal('auto_approve'), v.literal('human_review')),
-		reason: v.string(),
-		confidence: v.number(),
-	},
-	handler: async (ctx, args) => {
-		// Taken over mid-route: no agent decision was acted on, so none is shown.
-		const message = await ctx.db.get(args.inboundMessageId);
-		if (!message || message.manualTakeoverAt !== undefined) return;
-		await ctx.db.patch(args.inboundMessageId, {
-			agentDecision: {
-				decision: args.decision,
-				reason: args.reason,
-				confidence: args.confidence,
-			},
-		});
+	args: { inboundMessageId: v.id('inboundMessages'), ...agentDecisionFields },
+	handler: async (ctx, { inboundMessageId, ...args }) => {
+		await applyAgentDecision(ctx, inboundMessageId, args);
 	},
 });
 
 /**
  * Record the agent's generated draft onto an inboundMessage without
- * changing its processingStatus. Used by the `draft` Agent step
- * (module) after its execute completes (still in `drafting` state).
+ * changing its processingStatus. Written with the `draft` Agent step
+ * (module)'s commit (still in `drafting` state).
  * The next step (`route`) reads the stored fields to make its routing
  * decision. A draft with `[[...]]` placeholders is stored gap-guarded
  * (`isDraftGapGuarded`), so a reviewer's Approve cannot send them. A new
@@ -123,68 +140,77 @@ export const recordAgentDecision = internalMutation({
  * Owlat never asks could fill the gaps, the reply is left to a person with no
  * AI draft.
  */
+export const draftOutputFields = {
+	draftResponse: v.string(),
+	draftSubject: v.string(),
+	confidenceScore: v.number(),
+	// Draft-quality self-check result — persisted SEPARATELY from the
+	// classifier confidenceScore. Optional: absent when the self-check
+	// LLM call failed (the route step then treats quality as unknown/LOW).
+	draftQuality: v.optional(draftQualityValidator),
+	// Deprecated (#1200), accepted and ignored: the draft step no longer
+	// generates variants, but an action started before that deploy may still
+	// pass them. Remove in the release after.
+	draftOptions: v.optional(v.array(v.string())),
+	// Advisory attachment suggestion (see lib/validators/attachment.ts). Absent unless
+	// the inbound asked for a document and a contact-scoped file matched.
+	attachmentSuggestions: v.optional(attachmentSuggestionsValidator),
+	// The draft was written cheap-first: never auto-sent.
+	isCheapFirstDraft: v.optional(v.boolean()),
+	// Standing consent to gaps (asking is turned off). The owner's own
+	// "Draft with what I have" is read from the stored clarification.
+	isGapsAccepted: v.optional(v.boolean()),
+};
+
+export async function applyDraftOutput(
+	ctx: MutationCtx,
+	inboundMessageId: Id<'inboundMessages'>,
+	args: ObjectType<typeof draftOutputFields>
+): Promise<void> {
+	// A person took the reply over while this draft was being written: their
+	// text is the reply now, so the late agent draft is dropped.
+	const message = await ctx.db.get(inboundMessageId);
+	// Answered first: a message a newer sent reply answered never reaches the
+	// gap hold below, nor the draft write (inbox/answeredThread.ts).
+	if (!message || message.manualTakeoverAt !== undefined || isAnsweredInThread(message)) return;
+	const hasGaps = authoredDraftHasGaps({ text: args.draftResponse });
+	const isGapsAccepted =
+		args.isGapsAccepted === true || message.pendingClarification?.isGapsAccepted === true;
+	// A stored question still open without consent holds the draft too,
+	// whatever its text: a draft that leaves the fact out is no better.
+	const isQuestionOpen = hasUnconsentedOpenQuestion(message.pendingClarification, isGapsAccepted);
+	if ((hasGaps && !isGapsAccepted) || isQuestionOpen) {
+		await holdUnconsentedGapDraft(ctx, message, args.draftResponse);
+		return;
+	}
+	await ctx.db.patch(inboundMessageId, {
+		draftResponse: args.draftResponse,
+		draftSubject: args.draftSubject,
+		// A `[[...]]` placeholder marks a fact the agent did not have. Stored as
+		// the gap guard, so the composer highlights and counts it and
+		// `approveDraft` refuses to send it (DRAFT_HAS_GAPS) until it is filled.
+		isDraftGapGuarded: hasGaps,
+		// Gaps the owner agreed to: shown, highlighted (lib/heldGapDraft.ts).
+		isDraftGapsAccepted: hasGaps ? true : undefined,
+		confidenceScore: args.confidenceScore,
+		...(args.draftQuality ? { draftQuality: args.draftQuality } : {}),
+		// No screen offers variants any more (#1200): a new draft drops the ones
+		// an earlier run left, which no longer match the draft.
+		draftOptions: undefined,
+		...(args.attachmentSuggestions ? { attachmentSuggestions: args.attachmentSuggestions } : {}),
+		// Bound to this draft: set for a cheap-first draft, cleared by any other.
+		isCheapFirstDraft: args.isCheapFirstDraft === true ? true : undefined,
+		// Edits a person saved over an earlier draft are not edits of this
+		// one: the next save seeds this draft as revision 0. (A Retry never
+		// re-drafts over a person's reply, #1220.)
+		...NO_SAVED_EDITS,
+	});
+}
+
 export const recordDraftOutput = internalMutation({
-	args: {
-		inboundMessageId: v.id('inboundMessages'),
-		draftResponse: v.string(),
-		draftSubject: v.string(),
-		confidenceScore: v.number(),
-		// Draft-quality self-check result — persisted SEPARATELY from the
-		// classifier confidenceScore. Optional: absent when the self-check
-		// LLM call failed (the route step then treats quality as unknown/LOW).
-		draftQuality: v.optional(draftQualityValidator),
-		// Deprecated (#1200), accepted and ignored: the draft step no longer
-		// generates variants, but an action started before that deploy may still
-		// pass them. Remove in the release after.
-		draftOptions: v.optional(v.array(v.string())),
-		// Advisory attachment suggestion (see lib/validators/attachment.ts). Absent unless
-		// the inbound asked for a document and a contact-scoped file matched.
-		attachmentSuggestions: v.optional(attachmentSuggestionsValidator),
-		// The draft was written cheap-first: never auto-sent.
-		isCheapFirstDraft: v.optional(v.boolean()),
-		// Standing consent to gaps (asking is turned off). The owner's own
-		// "Draft with what I have" is read from the stored clarification.
-		isGapsAccepted: v.optional(v.boolean()),
-	},
-	handler: async (ctx, args) => {
-		// A person took the reply over while this draft was being written: their
-		// text is the reply now, so the late agent draft is dropped.
-		const message = await ctx.db.get(args.inboundMessageId);
-		// Answered first: a message a newer sent reply answered never reaches the
-		// gap hold below, nor the draft write (inbox/answeredThread.ts).
-		if (!message || message.manualTakeoverAt !== undefined || isAnsweredInThread(message)) return;
-		const hasGaps = authoredDraftHasGaps({ text: args.draftResponse });
-		const isGapsAccepted =
-			args.isGapsAccepted === true || message.pendingClarification?.isGapsAccepted === true;
-		// A stored question still open without consent holds the draft too,
-		// whatever its text: a draft that leaves the fact out is no better.
-		const isQuestionOpen = hasUnconsentedOpenQuestion(message.pendingClarification, isGapsAccepted);
-		if ((hasGaps && !isGapsAccepted) || isQuestionOpen) {
-			await holdUnconsentedGapDraft(ctx, message, args.draftResponse);
-			return;
-		}
-		await ctx.db.patch(args.inboundMessageId, {
-			draftResponse: args.draftResponse,
-			draftSubject: args.draftSubject,
-			// A `[[...]]` placeholder marks a fact the agent did not have. Stored as
-			// the gap guard, so the composer highlights and counts it and
-			// `approveDraft` refuses to send it (DRAFT_HAS_GAPS) until it is filled.
-			isDraftGapGuarded: hasGaps,
-			// Gaps the owner agreed to: shown, highlighted (lib/heldGapDraft.ts).
-			isDraftGapsAccepted: hasGaps ? true : undefined,
-			confidenceScore: args.confidenceScore,
-			...(args.draftQuality ? { draftQuality: args.draftQuality } : {}),
-			// No screen offers variants any more (#1200): a new draft drops the ones
-			// an earlier run left, which no longer match the draft.
-			draftOptions: undefined,
-			...(args.attachmentSuggestions ? { attachmentSuggestions: args.attachmentSuggestions } : {}),
-			// Bound to this draft: set for a cheap-first draft, cleared by any other.
-			isCheapFirstDraft: args.isCheapFirstDraft === true ? true : undefined,
-			// Edits a person saved over an earlier draft are not edits of this
-			// one: the next save seeds this draft as revision 0. (A Retry never
-			// re-drafts over a person's reply, #1220.)
-			...NO_SAVED_EDITS,
-		});
+	args: { inboundMessageId: v.id('inboundMessages'), ...draftOutputFields },
+	handler: async (ctx, { inboundMessageId, ...args }) => {
+		await applyDraftOutput(ctx, inboundMessageId, args);
 	},
 });
 
@@ -234,16 +260,24 @@ async function holdUnconsentedGapDraft(
  * still in `security_check` and nobody has taken it over, so a late write can
  * never overwrite a later scan or a person's reply.
  */
+export async function applySecurityScan(
+	ctx: MutationCtx,
+	inboundMessageId: Id<'inboundMessages'>,
+	securityFlags: Infer<typeof securityFlagsValidator>
+): Promise<void> {
+	const message = await ctx.db.get(inboundMessageId);
+	if (!message || message.processingStatus !== 'security_check') return;
+	if (message.manualTakeoverAt !== undefined) return;
+	await ctx.db.patch(inboundMessageId, { securityFlags });
+}
+
 export const recordSecurityScan = internalMutation({
 	args: {
 		inboundMessageId: v.id('inboundMessages'),
 		securityFlags: securityFlagsValidator,
 	},
 	handler: async (ctx, args) => {
-		const message = await ctx.db.get(args.inboundMessageId);
-		if (!message || message.processingStatus !== 'security_check') return;
-		if (message.manualTakeoverAt !== undefined) return;
-		await ctx.db.patch(args.inboundMessageId, { securityFlags: args.securityFlags });
+		await applySecurityScan(ctx, args.inboundMessageId, args.securityFlags);
 	},
 });
 

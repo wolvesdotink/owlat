@@ -9,7 +9,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { resolveRoutingPolicy, type RoutingPolicyRow } from '@owlat/shared/aiRouting';
-import { makeStepCtx } from '../../__tests__/stepCtx';
+import { makeStepCtx, writesOf } from '../../__tests__/stepCtx';
 import type { Id } from '../../../../_generated/dataModel';
 
 const mocks = vi.hoisted(() => ({
@@ -23,6 +23,7 @@ vi.mock('../../../../lib/llmProvider', () => ({
 }));
 
 import { securityScanStep } from '../index';
+import { StepFailure } from '../../types';
 import { guardStanding } from '../disposition';
 import { AdmissionRefusedError } from '../../../../lib/llm/admissionPort';
 import { missingJudgmentsAt } from '../../../../aiRouting/teamBudgetHold';
@@ -49,7 +50,6 @@ interface Scenario {
 }
 
 function scan(scenario: Scenario) {
-	const recorded: Array<Record<string, unknown>> = [];
 	const ruleCalls: Array<Record<string, unknown>> = [];
 	const ctx = makeStepCtx<Parameters<typeof securityScanStep.execute>[0]>({
 		queries: {
@@ -71,20 +71,16 @@ function scan(scenario: Scenario) {
 				};
 			},
 		},
-		mutations: {
-			recordSecurityScan: (args) => {
-				recorded.push(args as Record<string, unknown>);
-				return null;
-			},
-		},
 	});
-	return { ctx, recorded, ruleCalls };
+	return { ctx, ruleCalls };
 }
 
+/** The scan verdicts the step returned for its commit to store. */
 async function runScan(scenario: Scenario) {
 	const harness = scan(scenario);
-	const { output } = await securityScanStep.execute(harness.ctx, input);
-	return { ...harness, output, route: securityScanStep.route(output, input, runCtx) };
+	const { output, writes } = await securityScanStep.execute(harness.ctx, input);
+	const recorded = writesOf(writes, 'security_scan');
+	return { ...harness, output, recorded, route: securityScanStep.route(output, input, runCtx) };
 }
 
 const benignGuard = () =>
@@ -146,7 +142,6 @@ describe('the guard skip and its record', () => {
 		expect(output.securityFlags.guardNotRun?.reason).toBe('agent_disabled');
 		expect(recorded).toHaveLength(1);
 		expect(recorded[0]).toMatchObject({
-			inboundMessageId: messageId,
 			securityFlags: { guardNotRun: { reason: 'agent_disabled' }, injectionDetected: false },
 		});
 	});
@@ -297,16 +292,22 @@ describe('L4: early handling-rule archive', () => {
 });
 
 describe('Sol r3 F1: a guard refused by spend admission', () => {
-	it('stores the scan with the guardNotRun marker, then lets the refusal reach the walker', async () => {
+	it('fails with the scan and its guardNotRun marker for the commit, and the refusal for the walker', async () => {
 		mocks.runLlmObject.mockRejectedValue(new AdmissionRefusedError('daily_ceiling', 'ceiling'));
 		const harness = scan({ message: CLEAN });
 
-		await expect(securityScanStep.execute(harness.ctx, input)).rejects.toBeInstanceOf(
-			AdmissionRefusedError
+		const failure = await securityScanStep.execute(harness.ctx, input).then(
+			() => null,
+			(error: unknown) => error
 		);
 
-		expect(harness.recorded).toHaveLength(1);
-		const flags = harness.recorded[0]!['securityFlags'] as Parameters<
+		// The walker commits the refusal (the hold) together with the scan.
+		expect(failure).toBeInstanceOf(StepFailure);
+		if (!(failure instanceof StepFailure)) throw new Error('expected a StepFailure');
+		expect(failure.failure).toBeInstanceOf(AdmissionRefusedError);
+		const recorded = writesOf(failure.writes, 'security_scan');
+		expect(recorded).toHaveLength(1);
+		const flags = recorded[0]!['securityFlags'] as Parameters<
 			typeof guardStanding
 		>[0]['securityFlags'];
 		expect(flags).toMatchObject({
