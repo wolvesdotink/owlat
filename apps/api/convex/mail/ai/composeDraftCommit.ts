@@ -16,6 +16,7 @@ import {
 	clarificationFileRefValidator,
 	needsReplyClarificationQuestionValidator,
 } from '../../lib/validators/clarification';
+import { throwInvalidInput } from '../../_utils/errors';
 import { attachUploadToDraft } from '../draftAttachUpload';
 import { replaceOwnSession, requireOwnSession, sessionFields } from './composeDraftStore';
 import { armDraftFollowUp, captureOwnAnswers } from './composeDraftAnswerWrites';
@@ -43,6 +44,38 @@ async function attachUploads(
 	for (const upload of uploads) {
 		await attachUploadToDraft(ctx, session, { draftId: row.target.draftId, ...upload });
 	}
+}
+
+/**
+ * The session's file references, checked against the draft once this commit's
+ * uploads are on it. An upload the session already held (sent again after a
+ * draft that failed) may have been removed from the draft since, its blob
+ * with it: one this answer names is refused, so the owner uploads it again,
+ * and one it no longer names is dropped, so the drafter is never told a
+ * removed file is attached.
+ */
+async function liveAttachedFiles(
+	ctx: MutationCtx,
+	row: Doc<'answerAskSessions'>,
+	args: Pick<Doc<'answerAskSessions'>, 'questions' | 'attachedFiles'> & {
+		answeredIds: readonly string[];
+	}
+): Promise<Doc<'answerAskSessions'>['attachedFiles']> {
+	if (row.target.kind !== 'mailDraft') return args.attachedFiles;
+	const draft = await ctx.db.get(row.target.draftId);
+	const onDraft = new Set<string>(draft?.attachments.map((a) => a.storageId) ?? []);
+	const named = new Set(
+		args.questions.flatMap((q) =>
+			args.answeredIds.includes(q.id) && q.answer?.file ? [q.answer.file.id] : []
+		)
+	);
+	return args.attachedFiles.filter((f) => {
+		if (f.source !== 'upload' || onDraft.has(f.id)) return true;
+		if (named.has(f.id)) {
+			throwInvalidInput(`${f.filename} is no longer on the draft. Upload it again.`);
+		}
+		return false;
+	});
 }
 
 /** Write the follow-up the reply promises: on the session, and armed on the draft. */
@@ -78,7 +111,8 @@ export const commitStart = internalMutation({
 
 /**
  * `answer`'s commit, under the claim it took (`drafting`): the uploads its
- * file answers put on the draft, the answered questions (and round 2, back to
+ * file answers put on the draft (checking it still has the ones the session
+ * already held), the answered questions (and round 2, back to
  * `asking`), the standing answers remembered for the contact, and the
  * follow-up the reply promises. A session no longer `drafting` was taken from
  * under this run: nothing is written and `claimed` comes back.
@@ -104,11 +138,12 @@ export const commitAnswers = internalMutation({
 		const row = await requireOwnSession(ctx, args.sessionId);
 		if (row.status !== 'drafting') return { outcome: 'claimed' };
 		await attachUploads(ctx, await requireOrgMember(ctx), row, args.uploads);
+		const attachedFiles = await liveAttachedFiles(ctx, row, args);
 		await ctx.db.patch(row._id, {
 			status: args.status,
 			round: args.round,
 			questions: args.questions,
-			attachedFiles: args.attachedFiles,
+			attachedFiles,
 			...(args.timeZone ? { timeZone: args.timeZone } : {}),
 			errorMessage: undefined,
 			updatedAt: Date.now(),

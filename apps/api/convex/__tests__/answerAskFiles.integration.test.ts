@@ -431,6 +431,36 @@ describe('upload answers and Files', () => {
 		expect((await draftRow(t, draftId)).attachments.map((a) => a.storageId)).toEqual([upload]);
 	});
 
+	it('a held upload removed from the draft after a failed draft is refused on the retry', async () => {
+		const t = await makeT();
+		const { draftId, sessionId } = await askForUpload(t);
+		const upload = await seedUpload(t, { filename: 'invoice-2026-09.pdf' });
+		const answerWith = (id: Id<'_storage'>) =>
+			t.action(api.mail.ai.composeDraft.answer, {
+				sessionId,
+				answers: [
+					{ questionId: 'file_request', file: { source: 'upload', id, filename: 'invoice.pdf' } },
+				],
+			});
+		llm.planFailure = new Error('plan read failed');
+		await expect(answerWith(upload)).rejects.toThrow('plan read failed');
+		llm.planFailure = null;
+		await t.mutation(api.mail.drafts.removeAttachment, { draftId, storageId: upload });
+
+		await expect(answerWith(upload)).rejects.toThrow('is no longer on the draft');
+		expect(vi.mocked(runLlmStream)).not.toHaveBeenCalled();
+		const target = { kind: 'mailDraft' as const, draftId };
+		expect((await t.query(api.mail.ai.composeDraftStore.getSession, { target }))?.status).toBe(
+			'asking'
+		);
+
+		const replacement = await seedUpload(t, { filename: 'invoice.pdf' });
+		const drafted = await answerWith(replacement);
+		expect(drafted.status).toBe('ready');
+		expect(drafted.attachedFiles.map((f) => f.id)).toEqual([replacement]);
+		expect((await draftRow(t, draftId)).attachments.map((a) => a.storageId)).toEqual([replacement]);
+	});
+
 	it('an upload answer the draft refuses leaves the upload unused and keeps no Files copy', async () => {
 		const t = await makeT();
 		sess.user = { userId: 'user-a', role: 'owner', activeOrganizationId: ORG };
