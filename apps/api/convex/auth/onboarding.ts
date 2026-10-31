@@ -21,6 +21,8 @@ import { isDeliveryConfigured } from '../lib/sendProviders/capability';
  */
 // authz: self — requireSelf refuses any args.userId other than the caller's own;
 // the progress it returns is instance-wide and the same for every member.
+// token-safe: the contact and API-key probes only answer "is there one?"; the
+// result is booleans and counts, never a row.
 export const getWithActualProgress = authedQuery({
 	args: {
 		userId: v.string(),

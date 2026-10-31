@@ -2,6 +2,7 @@
 
 import type Redis from 'ioredis';
 import { GOVERNED_MTA_MAX_MESSAGE_AGE_MS } from '@owlat/shared';
+import { isRecord } from '@owlat/shared/utils/guards';
 import type { MtaConfig } from '../config.js';
 import type { EmailJob, MtaWebhookEvent } from '../types.js';
 import { logger } from '../monitoring/logger.js';
@@ -41,24 +42,43 @@ function handoffKey(jobId: string): string {
 	return `mta:routing-reentry-handoffs:${jobId}`;
 }
 
+const isRoutingReentryReason = (value: unknown): value is RoutingReentryReason =>
+	value === 'routing_lease_stale' ||
+	value === 'circuit_breaker_changed' ||
+	value === 'warming_capacity_changed';
+
+/**
+ * The stored receipt, or `null` when there is none or it is corrupt. Fields
+ * this build does not know stay on it, so the accepted rewrite keeps them.
+ */
 function parseReceipt(raw: string | null): RoutingReentryHandoffReceipt | null {
 	if (!raw) return null;
+	let value: unknown;
 	try {
-		const value = JSON.parse(raw) as Record<string, unknown>;
-		if (
-			(value['state'] === 'reserved' || value['state'] === 'accepted') &&
-			typeof value['messageId'] === 'string' &&
-			typeof value['workAttemptId'] === 'string' &&
-			(value['routingReentryReason'] === 'routing_lease_stale' ||
-				value['routingReentryReason'] === 'circuit_breaker_changed' ||
-				value['routingReentryReason'] === 'warming_capacity_changed') &&
-			typeof value['timestamp'] === 'number' &&
-			typeof value['reservedAt'] === 'number'
-		) {
-			return value as unknown as RoutingReentryHandoffReceipt;
-		}
+		value = JSON.parse(raw);
 	} catch {
 		// A corrupt receipt is never positive evidence of a completed handoff.
+		return null;
+	}
+	if (!isRecord(value)) return null;
+	const { state, messageId, workAttemptId, routingReentryReason, timestamp, reservedAt } = value;
+	if (
+		(state === 'reserved' || state === 'accepted') &&
+		typeof messageId === 'string' &&
+		typeof workAttemptId === 'string' &&
+		isRoutingReentryReason(routingReentryReason) &&
+		typeof timestamp === 'number' &&
+		typeof reservedAt === 'number'
+	) {
+		return {
+			...value,
+			state,
+			messageId,
+			workAttemptId,
+			routingReentryReason,
+			timestamp,
+			reservedAt,
+		};
 	}
 	return null;
 }

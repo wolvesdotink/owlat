@@ -67,6 +67,10 @@ export default defineConfig({
 			// that is precisely the case where its answer matters most.
 			name: 'shell',
 			testMatch: /csp-boot\.spec\.ts/,
+			// Full Chromium in headless mode, not the default headless shell: the
+			// shell has no PDF viewer, so a blob: PDF <object> errors there under
+			// any CSP and the PDF check could never see a load.
+			use: { channel: 'chromium' },
 		},
 		{
 			name: 'chromium',

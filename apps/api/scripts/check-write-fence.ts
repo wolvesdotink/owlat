@@ -41,7 +41,10 @@ const RAW_SERVER_BUILDERS: Readonly<Record<string, readonly string[]>> = {
 	internalMutation: ['lib/writeFence.ts', 'workspaces/deletion/walker.ts'],
 	mutation: ['lib/authedFunctions.ts'],
 };
-const GENERIC_BUILDERS = ['mutationGeneric', 'internalMutationGeneric'];
+const GENERIC_BUILDERS: ReadonlySet<string> = new Set([
+	'mutationGeneric',
+	'internalMutationGeneric',
+]);
 
 /** The imported (left-hand) name of every specifier in an import clause. */
 function importedNames(clause: string): string[] {
@@ -95,7 +98,7 @@ for (const [module, source] of sources) {
 			}
 		}
 		if (specifier === 'convex/server') {
-			for (const name of names.filter((n) => GENERIC_BUILDERS.includes(n))) {
+			for (const name of names.filter((n) => GENERIC_BUILDERS.has(n))) {
 				violations.push(`${module}: \`${name}\` from convex/server`);
 			}
 		}

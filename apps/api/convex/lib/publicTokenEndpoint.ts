@@ -274,9 +274,9 @@ export async function parseBody(request: Request, mode: BodyParser): Promise<unk
 		const text = await bounded.text();
 		const params = new URLSearchParams(text);
 		const data: Record<string, string> = {};
-		params.forEach((value, key) => {
+		for (const [key, value] of params) {
 			data[key] = value;
-		});
+		}
 		return data;
 	}
 	if (contentType.includes('multipart/form-data')) {

@@ -26,6 +26,8 @@ import { loadCoeditSave, markCoeditSaved } from '../emailCoediting/save';
 
 // Query to get a single email template by ID; null once it is in Recently
 // deleted, so an open editor shows it as gone.
+// all-members: the template library every role picks from when it builds a
+// campaign; writing it needs templates:manage.
 export const get = authedQuery({
 	args: { templateId: v.id('emailTemplates') },
 	handler: async (ctx, args) => {
@@ -333,6 +335,8 @@ export const changeType = authedMutation({
 // List email templates (paginated, uniform { page, … } contract). Search is
 // relevance-ordered; otherwise updatedAt-descending with index-native type
 // filtering. The old shell `.collect()`-ed the whole table per call.
+// all-members: the template library every role picks from when it builds a
+// campaign; writing it needs templates:manage.
 export const list = authedQuery({
 	args: {
 		type: v.optional(emailTemplateTypeValidator),

@@ -42,7 +42,7 @@ const REWRITES_LIMIT = 20;
  * U+002F), so every name below a folder sorts from `folder + '.'` up to, but not
  * including, `folder + '0'` (U+0030): one index range.
  */
-const DELIMITERS = ['.', '/'];
+const DELIMITERS: ReadonlySet<string> = new Set(['.', '/']);
 export const BELOW_FROM = '.';
 export const BELOW_TO = '0';
 
@@ -52,7 +52,7 @@ function within(name: string, folder: string): boolean {
 		name === folder ||
 		(name.length > folder.length &&
 			name.startsWith(folder) &&
-			DELIMITERS.includes(name.charAt(folder.length)))
+			DELIMITERS.has(name.charAt(folder.length)))
 	);
 }
 
@@ -65,7 +65,7 @@ function sameBranch(a: string, b: string): boolean {
 export function selfAndAncestors(name: string): string[] {
 	const names: string[] = [];
 	for (let i = 1; i < name.length; i++) {
-		if (DELIMITERS.includes(name.charAt(i))) names.push(name.slice(0, i));
+		if (DELIMITERS.has(name.charAt(i))) names.push(name.slice(0, i));
 	}
 	names.push(name);
 	return names;

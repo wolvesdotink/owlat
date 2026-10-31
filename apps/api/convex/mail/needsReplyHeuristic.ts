@@ -119,14 +119,14 @@ function localPartOf(address: string): string {
 
 /** The local part split into separator-delimited tokens (`a.b+c-d` → 4). */
 function localPartTokens(localPart: string): string[] {
-	return localPart.split(/[.+_\-]/).filter((token) => token.length > 0);
+	return localPart.split(/[.+_-]/).filter((token) => token.length > 0);
 }
 
 /** True when an address names a mailbox no human reads. */
 export function isUnattendedAddress(address: string): boolean {
 	const localPart = localPartOf(address);
 	if (localPart.length === 0) return false;
-	const squashed = localPart.replace(/[.+_\-]/g, '');
+	const squashed = localPart.replace(/[.+_-]/g, '');
 	if (UNATTENDED_PHRASES.some((phrase) => squashed.includes(phrase))) return true;
 	return localPartTokens(localPart).some((token) => UNATTENDED_TOKENS.has(token));
 }

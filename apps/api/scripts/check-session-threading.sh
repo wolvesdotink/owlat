@@ -21,7 +21,7 @@
 #
 # ~300 handlers predate the threading, so this is a RATCHET, not a baseline-0
 # hard gate. scripts/ratchet.sh runs the comparison, strict in BOTH directions,
-# exactly like check-query-authz.sh and scripts/check-file-size.sh:
+# exactly like scripts/check-file-size.sh:
 #   * a re-resolving handler that is NOT in scripts/session-threading-baseline.txt
 #     FAILS (new code copying the old pattern — take the threaded session), and
 #   * a baseline entry that no longer re-resolves (converted, renamed, deleted)

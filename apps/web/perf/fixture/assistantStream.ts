@@ -14,6 +14,7 @@ import { useFollowLatest } from '~/composables/useFollowLatest';
 import { shareStructure } from '~/lib/structuralSharing';
 import type { AssistantStreamScenario } from '../scenarios';
 import { counter, percentile, timing, type Sample } from '../stats';
+import { decodeAssistantRows } from '../wireRows';
 import { assistantStreamWorkload, WRITER_LIMITS, type SyntheticAssistantRow } from '../workload';
 import { component } from './components';
 import { nextFrame, sleepUntil, sum, type Probe } from './probe';
@@ -36,7 +37,7 @@ export function assistantStream(scenario: AssistantStreamScenario) {
 
 	const data = shallowRef<SyntheticAssistantRow[] | undefined>(undefined);
 	const deliver = (payload: string) => {
-		data.value = shareStructure(data.value, JSON.parse(payload) as SyntheticAssistantRow[]);
+		data.value = shareStructure(data.value, decodeAssistantRows(JSON.parse(payload)));
 	};
 	deliver(wire(workload.initial));
 

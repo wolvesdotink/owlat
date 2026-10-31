@@ -11,6 +11,7 @@ import { brandedNewEmailContent } from '../workspaces/brandKit';
 
 // Count of templates by type (API-key shell) — the descriptor's `byType` facet
 // returns per-type counts plus their `total`.
+// all-members: per-type template counts; the library itself is member-readable.
 export const countByTypeByOrganization = authedQuery({
 	args: {},
 	handler: async (ctx) => {

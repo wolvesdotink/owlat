@@ -67,9 +67,9 @@ const choiceAnswer = (value: string, confidence: number, options: string[]): Dec
 });
 
 /** Four threads with known labels (see the corpus files), all moved into held-out here. */
-const PICKED = ['en-001', 'inj-002', 'cc-001', 'team-005'];
+const PICKED: ReadonlySet<string> = new Set(['en-001', 'inj-002', 'cc-001', 'team-005']);
 const small: EvalThread[] = corpus
-	.filter((t) => PICKED.includes(t.id))
+	.filter((t) => PICKED.has(t.id))
 	.map((t) => ({ ...t, split: 'heldout' as const }));
 
 /** A provider that always says: needs work (0.6), person/support, informational, no owner input, acceptable. */

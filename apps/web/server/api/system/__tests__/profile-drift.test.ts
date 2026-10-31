@@ -216,6 +216,26 @@ describe('GET /api/system/profile-drift — updater unreachable', () => {
 		expect(result.error).toContain('401');
 	});
 
+	it.each<[string, unknown]>([
+		['null', null],
+		['an array', [{ profiles: ['clamav'] }]],
+		['a string', 'clamav'],
+	])('maps a profile-state answer that is %s to reachable:false', async (_label, payload) => {
+		callUpdaterMock.mockResolvedValue(updaterResponse(payload));
+
+		const result = await callRoute();
+
+		expect(result).toEqual({
+			reachable: false,
+			drifted: false,
+			missingProfiles: [],
+			staleProfiles: [],
+			services: [],
+			error: 'Updater profile-state answered with an unreadable body',
+		});
+		expect(queryMock).not.toHaveBeenCalled();
+	});
+
 	it('maps a missing INSTANCE_SECRET to reachable:false, never a 503 throw', async () => {
 		getInstanceSecretMock.mockImplementation(() => {
 			throw Object.assign(new Error('Drift probe not configured (INSTANCE_SECRET missing)'), {

@@ -148,6 +148,8 @@ export const tables = {
 		privateKey: v.string(),
 		createdAt: v.number(),
 		expiresAt: v.optional(v.union(v.null(), v.number())),
+		alg: v.optional(v.union(v.null(), v.string())),
+		crv: v.optional(v.union(v.null(), v.string())),
 	}),
 	rateLimit: defineTable({
 		key: v.optional(v.union(v.null(), v.string())),

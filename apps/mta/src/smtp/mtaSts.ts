@@ -14,6 +14,7 @@
 
 import { resolveTxt } from 'dns/promises';
 import type Redis from 'ioredis';
+import { isRecord } from '@owlat/shared/utils/guards';
 import { logger } from '../monitoring/logger.js';
 import { fetchStsPolicyText, isLdhName } from './mtaStsFetch.js';
 import { gatedPolicyFetch } from './mtaStsFetchGate.js';
@@ -199,19 +200,28 @@ function isExpired(policy: StsPolicy, now: number): boolean {
 /** A cached entry, or null when it is missing or not a well-formed policy. */
 function parseCachedPolicy(raw: string | null): StsPolicy | null {
 	if (!raw) return null;
+	let value: unknown;
 	try {
-		const value = JSON.parse(raw) as Partial<StsPolicy>;
-		const wellFormed =
-			STS_MODES.includes(value.mode as StsPolicyMode) &&
-			Array.isArray(value.mx) &&
-			value.mx.every((mx) => typeof mx === 'string') &&
-			Number.isFinite(value.maxAge) &&
-			Number.isFinite(value.cachedAt) &&
-			typeof value.version === 'string';
-		return wellFormed ? (value as StsPolicy) : null;
+		value = JSON.parse(raw);
 	} catch {
 		return null;
 	}
+	if (!isRecord(value)) return null;
+	const { mode, mx, maxAge, version, cachedAt } = value;
+	const policyMode = STS_MODES.find((known) => known === mode);
+	if (
+		policyMode === undefined ||
+		!Array.isArray(mx) ||
+		!mx.every((host): host is string => typeof host === 'string') ||
+		typeof maxAge !== 'number' ||
+		!Number.isFinite(maxAge) ||
+		typeof cachedAt !== 'number' ||
+		!Number.isFinite(cachedAt) ||
+		typeof version !== 'string'
+	) {
+		return null;
+	}
+	return { mode: policyMode, mx, maxAge, version, cachedAt };
 }
 
 /**

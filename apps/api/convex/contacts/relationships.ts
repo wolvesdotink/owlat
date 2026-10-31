@@ -28,6 +28,8 @@ import type { Id } from '../_generated/dataModel';
  * (or already gone) is dropped rather than rendered as an anonymous row, so it
  * reappears only if that contact is restored.
  */
+// all-members: the contact detail page every role reads; related contacts go
+// through redactContactCapabilityFields.
 export const listByContact = authedQuery({
 	args: { contactId: v.id('contacts') },
 	handler: async (ctx, args) => {

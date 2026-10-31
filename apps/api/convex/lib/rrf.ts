@@ -18,12 +18,15 @@ export const RRF_K = 60;
  * Ties keep first-seen order (stable). Items may repeat across input lists; each
  * occurrence adds its reciprocal-rank contribution.
  */
-export function reciprocalRankFusion<T>(rankedLists: readonly (readonly T[])[], k: number = RRF_K): T[] {
+export function reciprocalRankFusion<T>(
+	rankedLists: readonly (readonly T[])[],
+	k: number = RRF_K
+): T[] {
 	const scores = new Map<T, number>();
 	for (const list of rankedLists) {
-		list.forEach((id, rank) => {
+		for (const [rank, id] of list.entries()) {
 			scores.set(id, (scores.get(id) ?? 0) + 1 / (k + rank + 1));
-		});
+		}
 	}
 	return [...scores.keys()].sort((a, b) => scores.get(b)! - scores.get(a)!);
 }

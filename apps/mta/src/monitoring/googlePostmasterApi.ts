@@ -315,17 +315,18 @@ async function fetchAccessToken(
 	if (!response.ok) {
 		throw new GoogleApiError('oauth.token', response.status, await classifyError(response));
 	}
-	const payload = (await response.json()) as { access_token?: unknown; expires_in?: unknown };
-	if (typeof payload.access_token !== 'string' || payload.access_token.length === 0) {
+	const payload: unknown = await response.json();
+	// A body that is not an object carries no token: the same refusal as a
+	// missing one.
+	const { access_token: accessToken, expires_in: expiresIn } = isRecord(payload) ? payload : {};
+	if (typeof accessToken !== 'string' || accessToken.length === 0) {
 		throw new GoogleApiError('oauth.token', response.status, 'auth');
 	}
 	const cacheTtlSeconds =
-		typeof payload.expires_in === 'number' &&
-		Number.isFinite(payload.expires_in) &&
-		payload.expires_in > 0
-			? Math.max(0, Math.floor(payload.expires_in) - 60)
+		typeof expiresIn === 'number' && Number.isFinite(expiresIn) && expiresIn > 0
+			? Math.max(0, Math.floor(expiresIn) - 60)
 			: 0;
-	return { accessToken: payload.access_token, cacheTtlSeconds };
+	return { accessToken, cacheTtlSeconds };
 }
 
 export class GooglePostmasterClient {

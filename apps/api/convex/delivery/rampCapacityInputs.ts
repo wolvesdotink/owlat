@@ -97,10 +97,13 @@ const UNCONSTRAINED_CAPACITY: RampCapacityInput = { kind: 'unconstrained' };
  * this bound may bind or be divided by. See the module doc for why
  * `transactional` is on neither side of the ratio.
  */
-const CAMPAIGN_POOL_STREAMS: readonly DeliverabilityStream[] = ['campaign', 'automation'];
+const CAMPAIGN_POOL_STREAMS: ReadonlySet<DeliverabilityStream> = new Set([
+	'campaign',
+	'automation',
+]);
 
 function isCampaignPoolCell(cell: DeliverabilityCell): boolean {
-	return CAMPAIGN_POOL_STREAMS.includes(cell.stream);
+	return CAMPAIGN_POOL_STREAMS.has(cell.stream);
 }
 
 /**

@@ -124,4 +124,35 @@ describe('proxying', () => {
 		expect(result.reachable).toBe(false);
 		expect(result.error).toContain('ECONNREFUSED');
 	});
+
+	it.each<[string, unknown]>([
+		['null', null],
+		['an array', [{ verdict: 'ok' }]],
+		['a string', 'ok'],
+	])('reports an answer that is %s as unreachable, not as a pass', async (_label, payload) => {
+		callUpdaterMock.mockResolvedValue(updaterResponse(payload));
+
+		const result = await callRoute();
+
+		expect(result).toEqual({
+			reachable: false,
+			error: 'Updater answered with an unreadable report',
+		});
+	});
+
+	it('drops mistyped fields and keeps the ones it does not read', async () => {
+		callUpdaterMock.mockResolvedValue(
+			updaterResponse({
+				verdict: 7,
+				checkedAt: 'now',
+				error: false,
+				checks: [],
+				hint: 'added later',
+			})
+		);
+
+		const result = await callRoute();
+
+		expect(result).toEqual({ reachable: true, checks: [], hint: 'added later' });
+	});
 });

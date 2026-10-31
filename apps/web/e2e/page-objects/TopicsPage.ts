@@ -33,18 +33,24 @@ export class TopicsPage extends BasePage {
 	}
 
 	async editTopic(topicName: string) {
-		const row = this.getTableRow(topicName);
-		await row.locator('button[title="Edit topic"]').click();
+		await this.rowAction(topicName, 'Edit topic').click();
 		await this.waitForModal();
 		return this.modal;
 	}
 
 	async deleteTopic(topicName: string) {
-		const row = this.getTableRow(topicName);
-		await row.locator('button[title="Delete topic"]').click();
+		await this.rowAction(topicName, 'Delete topic').click();
 		await this.waitForModal();
 		await this.clickModalButton('Delete Topic');
 		await this.waitForModalClose();
+	}
+
+	/**
+	 * An icon-only row action, by its accessible name: the buttons are named by
+	 * `aria-label` and show their label in a UiTooltip, with no `title`.
+	 */
+	private rowAction(topicName: string, name: 'Edit topic' | 'Delete topic'): Locator {
+		return this.getTableRow(topicName).getByRole('button', { name, exact: true });
 	}
 
 	async searchTopics(query: string) {

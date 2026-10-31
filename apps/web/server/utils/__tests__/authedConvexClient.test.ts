@@ -85,6 +85,40 @@ describe('authedConvexClient', () => {
 			message: 'No auth token',
 		});
 	});
+
+	it.each<[string, unknown]>([
+		['null', null],
+		['an array', [{ token: 'jwt-1' }]],
+		['a bare string', 'jwt-1'],
+		['a numeric token', { token: 42 }],
+		['an object token', { token: { value: 'jwt-1' } }],
+		['an empty token', { token: '' }],
+	])('answers 401 and never sets auth when the proxy answers %s', async (_label, body) => {
+		const setAuth = vi.spyOn(ConvexHttpClient.prototype, 'setAuth');
+		fetchMock.mockResolvedValue(tokenResponse(200, body));
+
+		await expect(authedConvexClient(requestEvent({ cookie: COOKIE }))).rejects.toMatchObject({
+			statusCode: 401,
+			message: 'No auth token',
+		});
+		expect(setAuth).not.toHaveBeenCalled();
+		setAuth.mockRestore();
+	});
+
+	it('answers 401 when the proxy body is not JSON', async () => {
+		fetchMock.mockResolvedValue({
+			ok: true,
+			status: 200,
+			json: async () => {
+				throw new SyntaxError('Unexpected token < in JSON');
+			},
+		} as unknown as Response);
+
+		await expect(authedConvexClient(requestEvent({ cookie: COOKIE }))).rejects.toMatchObject({
+			statusCode: 401,
+			message: 'No auth token',
+		});
+	});
 });
 
 describe('mapGateError', () => {

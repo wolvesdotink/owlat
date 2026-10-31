@@ -7,6 +7,7 @@
 
 import { randomBytes } from 'crypto';
 import type Redis from 'ioredis';
+import { isRecord } from '@owlat/shared/utils/guards';
 import { fireAndForget } from '../lib/fireAndForget.js';
 import { logger } from '../monitoring/logger.js';
 
@@ -33,6 +34,42 @@ function normalizeAllowedDomains(domains: readonly string[]): string[] {
 			domains.map((domain) => domain.trim().toLowerCase()).filter((domain) => domain.length > 0)
 		),
 	];
+}
+
+const isTimestamp = (value: unknown): value is number =>
+	typeof value === 'number' && Number.isFinite(value);
+
+const isStringArray = (value: unknown): value is string[] =>
+	Array.isArray(value) && value.every((entry) => typeof entry === 'string');
+
+/**
+ * The stored credential blob, or `null` when it is not one. A record that fails
+ * here authenticates nothing and is never rewritten: a present but malformed
+ * `allowedDomains` must not read as "absent", which would turn a scoped key
+ * into an unscoped one. Fields this build does not know are kept on the object,
+ * so the rewrites below preserve them.
+ */
+function decodeCredential(data: string): OrgCredential | null {
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(data);
+	} catch {
+		return null;
+	}
+	if (!isRecord(parsed)) return null;
+	const { organizationId, name, createdAt, lastUsedAt, allowedDomains } = parsed;
+	if (typeof organizationId !== 'string' || organizationId === '') return null;
+	if (typeof name !== 'string' || !isTimestamp(createdAt)) return null;
+	if (lastUsedAt !== undefined && !isTimestamp(lastUsedAt)) return null;
+	if (allowedDomains !== undefined && !isStringArray(allowedDomains)) return null;
+	return {
+		...parsed,
+		organizationId,
+		name,
+		createdAt,
+		...(lastUsedAt === undefined ? {} : { lastUsedAt }),
+		...(allowedDomains === undefined ? {} : { allowedDomains }),
+	};
 }
 
 const CRED_PREFIX = 'mta:cred:';
@@ -72,19 +109,16 @@ export async function lookupCredential(
 	const data = await redis.get(`${CRED_PREFIX}${apiKey}`);
 	if (!data) return null;
 
-	try {
-		const credential = JSON.parse(data) as OrgCredential;
-		// Update lastUsedAt (fire-and-forget)
-		credential.lastUsedAt = Date.now();
-		void fireAndForget(
-			redis.set(`${CRED_PREFIX}${apiKey}`, JSON.stringify(credential)),
-			logger,
-			'credential_last_used'
-		);
-		return credential;
-	} catch {
-		return null;
-	}
+	const credential = decodeCredential(data);
+	if (!credential) return null;
+	// Update lastUsedAt (fire-and-forget)
+	credential.lastUsedAt = Date.now();
+	void fireAndForget(
+		redis.set(`${CRED_PREFIX}${apiKey}`, JSON.stringify(credential)),
+		logger,
+		'credential_last_used'
+	);
+	return credential;
 }
 
 /**
@@ -95,7 +129,7 @@ export async function lookupCredential(
  *
  * Idempotent: re-writing the same normalized set leaves the blob byte-identical.
  * Returns `false` when no credential exists for `apiKey` (so the route can 404),
- * or when the stored blob is unparseable.
+ * or when the stored blob is not a valid credential.
  */
 export async function setAllowedDomains(
 	redis: Redis,
@@ -105,12 +139,8 @@ export async function setAllowedDomains(
 	const data = await redis.get(`${CRED_PREFIX}${apiKey}`);
 	if (!data) return false;
 
-	let credential: OrgCredential;
-	try {
-		credential = JSON.parse(data) as OrgCredential;
-	} catch {
-		return false;
-	}
+	const credential = decodeCredential(data);
+	if (!credential) return false;
 
 	const updated: OrgCredential = {
 		...credential,
@@ -136,13 +166,9 @@ export async function listCredentialsWithKeys(
 
 	for (const key of keys) {
 		const data = await redis.get(`${CRED_PREFIX}${key}`);
-		if (data) {
-			try {
-				results.push({ apiKey: key, credential: JSON.parse(data) as OrgCredential });
-			} catch {
-				// Skip invalid entries
-			}
-		}
+		const credential = data ? decodeCredential(data) : null;
+		// Skip missing and invalid entries
+		if (credential) results.push({ apiKey: key, credential });
 	}
 
 	return results;
@@ -155,14 +181,11 @@ export async function revokeCredential(redis: Redis, apiKey: string): Promise<bo
 	const data = await redis.get(`${CRED_PREFIX}${apiKey}`);
 	if (!data) return false;
 
-	try {
-		const credential = JSON.parse(data) as OrgCredential;
-		await redis.del(`${CRED_PREFIX}${apiKey}`);
-		await redis.srem(`${CRED_INDEX_PREFIX}${credential.organizationId}`, apiKey);
-		return true;
-	} catch {
-		return false;
-	}
+	const credential = decodeCredential(data);
+	if (!credential) return false;
+	await redis.del(`${CRED_PREFIX}${apiKey}`);
+	await redis.srem(`${CRED_INDEX_PREFIX}${credential.organizationId}`, apiKey);
+	return true;
 }
 
 /**
@@ -177,13 +200,9 @@ export async function listCredentials(
 
 	for (const key of keys) {
 		const data = await redis.get(`${CRED_PREFIX}${key}`);
-		if (data) {
-			try {
-				results.push({ apiKey: `${key.slice(0, 10)}...`, credential: JSON.parse(data) });
-			} catch {
-				// Skip invalid entries
-			}
-		}
+		const credential = data ? decodeCredential(data) : null;
+		// Skip missing and invalid entries
+		if (credential) results.push({ apiKey: `${key.slice(0, 10)}...`, credential });
 	}
 
 	return results;
@@ -204,16 +223,11 @@ export async function listAllCredentials(
 
 		for (const key of keys) {
 			const data = await redis.get(key);
-			if (data) {
-				try {
-					const apiKey = key.replace(CRED_PREFIX, '');
-					results.push({
-						apiKeyPrefix: `${apiKey.slice(0, 10)}...`,
-						credential: JSON.parse(data),
-					});
-				} catch {
-					// Skip invalid
-				}
+			const credential = data ? decodeCredential(data) : null;
+			// Skip missing and invalid entries
+			if (credential) {
+				const apiKey = key.replace(CRED_PREFIX, '');
+				results.push({ apiKeyPrefix: `${apiKey.slice(0, 10)}...`, credential });
 			}
 		}
 	} while (cursor !== '0');

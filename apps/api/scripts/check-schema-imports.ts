@@ -33,7 +33,11 @@ import {
 const convexRoot = join(import.meta.dirname, '..', 'convex');
 
 /** Modules the schema's closure must never load (paths without extension). */
-const RUNTIME_MODULES = ['_generated/api', '_generated/server', 'lib/sessionOrganization'];
+const RUNTIME_MODULES: ReadonlySet<string> = new Set([
+	'_generated/api',
+	'_generated/server',
+	'lib/sessionOrganization',
+]);
 
 /**
  * Modules outside `lib/validators/` a validator may load. Each is a leaf
@@ -121,7 +125,7 @@ check(schemaRoots.includes('schema.ts'), 'convex/schema.ts not found: nothing to
 const schemaClosure = closure(schemaRoots);
 expectEmpty(
 	[...schemaClosure]
-		.filter(([module]) => RUNTIME_MODULES.includes(withoutExtension(module)))
+		.filter(([module]) => RUNTIME_MODULES.has(withoutExtension(module)))
 		.map(([, chain]) => chain.join(' -> ')),
 	'the schema loads runtime code at import time. Move the validator it needs into ' +
 		'lib/validators/ (see convex/CONVENTIONS.md, "Validators"):'
