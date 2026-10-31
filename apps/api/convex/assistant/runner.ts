@@ -303,12 +303,15 @@ export const run = internalAction({
 			lastUserText: lastUser?.text ?? '',
 			feature: 'assistant_chat',
 			root: assistantRoot(args.assistantMessageId),
-			patch: (text, toolCalls) =>
-				ctx.runMutation(internal.assistant.conversations.patchAssistantMessage, {
+			patch: (text, toolCalls) => {
+				// checkpoint: partial text and tool cards the open conversation renders
+				// while the turn streams; the finalize overwrites them with the result.
+				return ctx.runMutation(internal.assistant.conversations.patchAssistantMessage, {
 					messageId: args.assistantMessageId,
 					text,
 					toolCalls,
-				}),
+				});
+			},
 			isStopped: () =>
 				ctx.runQuery(internal.assistant.conversations.isTurnStopped, {
 					messageId: args.assistantMessageId,
