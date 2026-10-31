@@ -10,6 +10,7 @@
  *   - `commitDiscoveredKey` (internal) — commit a discovered key as an atomic
  *     trust transition, evaluated against the row at commit time;
  *   - `recordDiscoveryMiss` (internal) — freshness-only update for a miss;
+ *   - `checkDiscoveryBasis` (internal) — the commit's staleness test, as a read;
  *   - `listExpiring` (internal) — the refresh-cron worklist;
  *   - `getRecipientKeyStatus` (authed org-member read) — the recipient's PUBLIC
  *     key / trust state for a UI (never any private material — there is none
@@ -51,6 +52,20 @@ const pinActionValidator = v.union(
 	v.literal('keyChanged'),
 	v.literal('reaccept')
 );
+
+const basisValidator = v.object({
+	revision: v.number(),
+	pinnedFingerprint: v.optional(v.string()),
+});
+
+/** Whether the row still holds the revision and pin a discovery read before its fetch. */
+function isBasisCurrent(
+	pinnedFingerprint: string | undefined,
+	revision: number,
+	basis: { revision: number; pinnedFingerprint?: string }
+): boolean {
+	return revision === basis.revision && samePin(pinnedFingerprint, basis.pinnedFingerprint);
+}
 
 /**
  * The cached discovery row for an address (incl. the pinned + observed public
@@ -112,10 +127,7 @@ export const commitDiscoveredKey = internalMutation({
 	args: {
 		address: v.string(),
 		domain: v.string(),
-		basis: v.object({
-			revision: v.number(),
-			pinnedFingerprint: v.optional(v.string()),
-		}),
+		basis: basisValidator,
 		fingerprint: v.string(),
 		publicKeyArmored: v.string(),
 		source: sourceValidator,
@@ -134,14 +146,29 @@ export const commitDiscoveredKey = internalMutation({
 	handler: async (ctx, args) => {
 		const address = normalizeEmail(args.address);
 		const { row, revision } = await loadRow(ctx, address);
-		if (
-			revision !== args.basis.revision ||
-			!samePin(row?.pinnedFingerprint, args.basis.pinnedFingerprint)
-		) {
+		if (!isBasisCurrent(row?.pinnedFingerprint, revision, args.basis)) {
 			return { status: 'stale' as const, outcome: row?.outcome ?? null };
 		}
 		const { outcome, action } = await writeDiscoveredKey(ctx, address, row, revision, args);
 		return { status: 'committed' as const, outcome, action };
+	},
+});
+
+/**
+ * The test `commitDiscoveredKey` applies to its `basis`, as a read: the
+ * discovery action asks it before committing, so a row that moved during the
+ * fetch sends it back for a fresh read and fetch instead of to a stale commit.
+ * The commit still applies the same test itself, in its own transaction.
+ */
+export const checkDiscoveryBasis = internalQuery({
+	args: { address: v.string(), basis: basisValidator },
+	returns: v.object({ isCurrent: v.boolean(), outcome: v.union(outcomeValidator, v.null()) }),
+	handler: async (ctx, args) => {
+		const { row, revision } = await loadRow(ctx, normalizeEmail(args.address));
+		return {
+			isCurrent: isBasisCurrent(row?.pinnedFingerprint, revision, args.basis),
+			outcome: row?.outcome ?? null,
+		};
 	},
 });
 

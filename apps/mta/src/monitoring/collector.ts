@@ -56,13 +56,6 @@ export const queueDepth = new Gauge({
 	registers: [registry],
 });
 
-export const warmingPhase = new Gauge({
-	name: 'mta_warming_phase',
-	help: 'IP warming phase (0=ramp, 1=plateau, 2=graduated)',
-	labelNames: ['ip'] as const,
-	registers: [registry],
-});
-
 export const unattributedBouncesTotal = new Counter({
 	name: 'mta_unattributed_bounces_total',
 	help: 'Bounces where message ID could not be extracted from DSN',

@@ -32,7 +32,7 @@ RUN cd apps/code-worker && bun run build
 
 # ── Runtime deps stage ───────────────────────────────────────────────
 # Production-only install scoped to this package: yields a minimal
-# node_modules (convex, octokit, execa + transitives) without devDeps.
+# node_modules (convex, octokit, plugin-kit + transitives) without devDeps.
 FROM oven/bun:1.4-alpine AS proddeps
 
 WORKDIR /build

@@ -24,7 +24,6 @@ import {
 	runPipeline as runPipelineGeneric,
 	type ComposedPipeline,
 	type Phase as GenericPhase,
-	type PhaseOutcome as GenericPhaseOutcome,
 	type Pipeline as GenericPipeline,
 	type PipelineResult as GenericPipelineResult,
 } from '../lib/phasePipeline.js';
@@ -42,17 +41,6 @@ export type BounceTerminal =
 	| { kind: 'bounceTo'; attempt: BounceAttempt };
 
 /**
- * Outcome a phase emits per execution.
- *
- * - `continue` carries the ctx for the next phase. Most phases pass it
- *   through unchanged (`Phase<X, X>`); only `resolveRoute` widens the ctx
- *   type (`+ route`) so that `attachmentMeta` can read it.
- * - `dropSilently` / `bounceTo` short-circuit the pipeline (see
- *   `BounceTerminal`).
- */
-export type PhaseOutcome<TOut extends BasePhaseCtx> = GenericPhaseOutcome<TOut, BounceTerminal>;
-
-/**
  * One step in the pipeline. The runner discovers the step's name via this
  * record so logs and telemetry can attribute drops to the phase that
  * emitted them.
@@ -65,7 +53,7 @@ export type Phase<TIn extends BasePhaseCtx, TOut extends BasePhaseCtx> = Generic
 >;
 
 /**
- * The pipeline's collected output. Mirrors `PhaseOutcome` but is what the
+ * The pipeline's collected output. Mirrors a phase's outcome but is what the
  * runner returns — the caller (server.ts) feeds `attempt` into `reduce`
  * to get the typed effect list.
  *
