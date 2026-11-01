@@ -30,11 +30,8 @@ import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { createContact } from '../contacts/creation';
-import {
-	requestConfirmation,
-	requiresFreshConfirmation,
-	type SubscribeOutcome,
-} from '../topics/subscription';
+import { requiresFreshConfirmation, type SubscribeOutcome } from '../topics/subscriptionContract';
+import { requestConfirmation } from '../topics/subscriptionOps';
 import { isValidEmail, normalizeEmail, STRING_LIMITS } from '../lib/inputGuards';
 import { jsonPrimitiveRecord } from '../lib/convexValidators';
 import { getOptional } from '../lib/env';

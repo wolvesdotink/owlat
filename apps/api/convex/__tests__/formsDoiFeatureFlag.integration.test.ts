@@ -12,7 +12,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import schema from '../schema';
 import { api } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
-import { DOI_TOKEN_TTL_MS } from '../contacts/doiLifecycle';
+import { DOI_TOKEN_TTL_MS } from '../contacts/doiLifecycleReducer';
 import { expectScheduledFailure } from './helpers/scheduledFailures';
 
 const modules = import.meta.glob('../**/*.*s');

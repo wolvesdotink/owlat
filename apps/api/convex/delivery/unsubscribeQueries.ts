@@ -8,7 +8,7 @@ import { normalizeEmail } from '../lib/inputGuards';
 import { afterEventSecond } from '../lib/clock';
 import { findLiveContactByEmail } from '../lib/contactHelpers';
 import { isAwaitingDoubleOptIn } from '../lib/marketingEligibility';
-import type { UnsubscribeOutcome } from '../topics/subscription';
+import type { UnsubscribeOutcome } from '../topics/subscriptionContract';
 import { resolveWorkspaceLogo, type WorkspaceLogo } from '../workspaces/branding';
 
 type ProcessUnsubscribeResult =
@@ -89,8 +89,9 @@ export const getContactForUnsubscribe = internalQuery({
  * topic.unsubscribed webhook fanout — all gated on
  * `source: 'public_email_link'`. A global opt-out also withdraws the contact's
  * DOI confirmation token. Whether a later signup must confirm again is decided
- * from the contact row by `requiresFreshConfirmation` (topics/subscription.ts),
- * not from the form submissions, whose `confirmedAt` an unsubscribe keeps.
+ * from the contact row by `requiresFreshConfirmation`
+ * (topics/subscriptionContract.ts), not from the form submissions, whose
+ * `confirmedAt` an unsubscribe keeps.
  */
 export const processUnsubscribe = internalMutation({
 	args: {

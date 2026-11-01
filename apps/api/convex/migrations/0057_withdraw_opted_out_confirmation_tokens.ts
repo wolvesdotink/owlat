@@ -12,8 +12,8 @@
  *   npx convex run migrations/0057_withdraw_opted_out_confirmation_tokens:run
  *
  * WHICH TOKENS: a contact with `unsubscribedAt` set whose token was issued at
- * or before that opt-out (`doiLifecycle.tokenPredatesOptOut`). A token issued
- * after the opt-out belongs to a later signup that waits for a fresh
+ * or before that opt-out (`doiLifecycleReducer.tokenPredatesOptOut`). A token
+ * issued after the opt-out belongs to a later signup that waits for a fresh
  * confirmation, and stays. Until this has run, a token replacement already
  * leaves such a token's form submissions where they are.
  *
@@ -33,7 +33,8 @@ import { v } from 'convex/values';
 import { internalMutation } from '../lib/writeFence';
 import { internal } from '../_generated/api';
 import type { MutationCtx } from '../_generated/server';
-import { tokenPredatesOptOut, withdrawToken } from '../contacts/doiLifecycle';
+import { withdrawToken } from '../contacts/doiLifecycle';
+import { tokenPredatesOptOut } from '../contacts/doiLifecycleReducer';
 import { logInfo } from '../lib/runtimeLog';
 import {
 	beginMigrationRun,

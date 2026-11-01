@@ -16,7 +16,7 @@ import rateLimiterTest from '@convex-dev/rate-limiter/test';
 import schema from '../schema';
 import { api, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
-import { DOI_TOKEN_TTL_MS } from '../contacts/doiLifecycle';
+import { DOI_TOKEN_TTL_MS } from '../contacts/doiLifecycleReducer';
 import { confirmationWitnesses } from '../forms/pendingConfirmations';
 import { STRING_LIMITS } from '../lib/inputGuards';
 import { resolveContact } from '../contacts/resolution';

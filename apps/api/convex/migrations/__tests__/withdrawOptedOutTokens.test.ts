@@ -14,7 +14,7 @@ import { api, internal } from '../../_generated/api';
 import type { Doc, Id } from '../../_generated/dataModel';
 import { modules } from '../../__tests__/testModules';
 import { createTestContact } from '../../__tests__/factories';
-import { DOI_TOKEN_TTL_MS, tokenPredatesOptOut } from '../../contacts/doiLifecycle';
+import { DOI_TOKEN_TTL_MS, tokenPredatesOptOut } from '../../contacts/doiLifecycleReducer';
 
 type Harness = TestConvex<typeof schema>;
 

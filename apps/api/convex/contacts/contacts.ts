@@ -18,10 +18,10 @@ import { eraseContactNow } from './erasure/walker';
 import { sweepContactRetention } from './erasure/retention';
 import { recordAuditLog } from '../lib/auditLog';
 import { trackEvent } from '../lib/posthogHelpers';
-import { validateStringLength, normalizeEmail, STRING_LIMITS } from '../lib/inputGuards';
+import { validateStringLength, STRING_LIMITS } from '../lib/inputGuards';
 import { getOrThrow, throwNotFound, throwInvalidInput } from '../_utils/errors';
-import { duplicateHandlingValidator } from '../lib/literalValidators';
 import { batchGet } from '../_utils/batchLoader';
+import { collapseTopicAssignments, importBatchArgs, legacyImportResult } from './importRequest';
 
 // Query to get a single contact by ID (session-authenticated client callers).
 // all-members: editors view contacts (only writes need contacts:manage); the row
@@ -296,37 +296,7 @@ export const bulkDelete = authedMutation({
  * `convex/contacts/import.ts`.
  */
 export const importBatch = authedMutation({
-	args: {
-		contacts: v.array(
-			v.object({
-				email: v.string(),
-				firstName: v.optional(v.string()),
-				lastName: v.optional(v.string()),
-				language: v.optional(v.string()),
-				properties: v.optional(
-					v.record(v.string(), v.union(v.string(), v.number(), v.boolean(), v.null()))
-				),
-			})
-		),
-		handleDuplicates: duplicateHandlingValidator,
-		topicId: v.optional(v.id('topics')),
-		contactListAssignments: v.optional(
-			v.array(
-				v.object({
-					email: v.string(),
-					topicIds: v.array(v.id('topics')),
-				})
-			)
-		),
-		// Admin-attest: imported contacts arrive already DOI-confirmed at a
-		// source platform. Gated by the same `contacts:manage` permission as
-		// the rest of import on this shell.
-		doiAttest: v.optional(
-			v.object({
-				attestSource: v.string(),
-			})
-		),
-	},
+	args: importBatchArgs,
 	handler: async (ctx, args, session) => {
 		requirePermission(
 			hasPermission(session.role, 'contacts:manage'),
@@ -341,28 +311,7 @@ export const importBatch = authedMutation({
 			}
 		}
 
-		// Collapse the two topic-assignment input shapes into the import
-		// module's `topicAssignments` discriminator.
-		const topicAssignments = (() => {
-			if (args.contactListAssignments && args.contactListAssignments.length > 0) {
-				const map: Record<string, Id<'topics'>[]> = {};
-				for (const a of args.contactListAssignments) {
-					map[normalizeEmail(a.email)] = a.topicIds;
-				}
-				// When both topicId and per-row assignments are present, fold
-				// topicId into every row's list (preserves legacy semantics).
-				if (args.topicId) {
-					for (const email of Object.keys(map)) {
-						map[email] = [args.topicId, ...map[email]!];
-					}
-				}
-				return { kind: 'per_row' as const, map };
-			}
-			if (args.topicId) {
-				return { kind: 'single' as const, topicId: args.topicId };
-			}
-			return undefined;
-		})();
+		const topicAssignments = collapseTopicAssignments(args);
 
 		const importResult: ImportOutcome = await ctx.runMutation(
 			internal.contacts.import.importBatch,
@@ -382,18 +331,7 @@ export const importBatch = authedMutation({
 			}
 		);
 
-		// Preserve the legacy return shape callers expect.
-		return {
-			imported: importResult.imported,
-			updated: importResult.updated,
-			skipped: importResult.skipped,
-			failed: importResult.failed,
-			errors: importResult.errors,
-			addedToList: importResult.addedToTopics,
-			propertiesSet: importResult.propertiesSet,
-			propertiesAutoRegistered: importResult.propertiesAutoRegistered,
-			propertiesSkipped: importResult.propertiesSkipped,
-		};
+		return legacyImportResult(importResult);
 	},
 });
 
