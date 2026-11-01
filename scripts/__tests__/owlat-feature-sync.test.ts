@@ -82,6 +82,13 @@ async function fakeConvex(answers: Record<string, Answer>): Promise<{
 }> {
 	const paths: string[] = [];
 	const server: Server = createServer((req, res) => {
+		// Only the query endpoint is the backend. Anything else that finds the
+		// port (a host process probing listening ports sends `GET /`) gets a 404
+		// and is not recorded; its empty body is not a query to parse.
+		if (req.method !== 'POST' || req.url !== '/api/query') {
+			res.writeHead(404).end();
+			return;
+		}
 		let raw = '';
 		req.on('data', (chunk: Buffer) => (raw += chunk.toString()));
 		req.on('end', () => {

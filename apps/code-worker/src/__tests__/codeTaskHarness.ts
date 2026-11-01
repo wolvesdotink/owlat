@@ -21,10 +21,22 @@ import { runGit } from '../sandbox.js';
 export const TASK_ID = 'task_abc123';
 export const BRANCH = `code-worker/${TASK_ID}`;
 
-/** Git without the developer's global config (signing, hooks, identity). */
+/**
+ * Git without the developer's global config (signing, hooks, identity), and
+ * without background maintenance in any repository a test touches: the
+ * harness's remote and seed as well as the workspace clones `processTask`
+ * makes. Commit, fetch and a received push end with a detached
+ * `git maintenance run --auto`, which can still be repacking inside `.git`
+ * when `dispose()` removes the tree (ENOTEMPTY, or a half-removed directory).
+ * The setting travels as `GIT_CONFIG_*` so every git child inherits it; the
+ * harness passes no `gitAuthEnv`, which would otherwise carry its own count.
+ */
 export function isolateGitEnv(): void {
 	vi.stubEnv('GIT_CONFIG_GLOBAL', '/dev/null');
 	vi.stubEnv('GIT_CONFIG_NOSYSTEM', '1');
+	vi.stubEnv('GIT_CONFIG_COUNT', '1');
+	vi.stubEnv('GIT_CONFIG_KEY_0', 'maintenance.auto');
+	vi.stubEnv('GIT_CONFIG_VALUE_0', 'false');
 	vi.stubEnv('GIT_AUTHOR_NAME', 'Owlat Test');
 	vi.stubEnv('GIT_AUTHOR_EMAIL', 'code-worker@example.com');
 	vi.stubEnv('GIT_COMMITTER_NAME', 'Owlat Test');

@@ -7,9 +7,27 @@ import { setReadinessTiming } from '../readiness.js';
  * milliseconds, and answer the readiness check's request to the web app (the
  * `web` host only exists on the compose network) while letting the test's own
  * requests to the server through.
+ *
+ * The wait runs on a clock that only moves when the check sleeps, so the
+ * number of polls before the bound is fixed. On the wall clock, a container
+ * listing that took longer than the bound (a real `docker` process under
+ * load) ran the bound out between the first look and the settle look, and a
+ * ready stack came back "not yet confirmed".
  */
 export function fastReadiness(): { webStatus: (status: number) => void; restore: () => void } {
-	setReadinessTiming({ timeoutMs: 40, firstPollMs: 1, maxPollMs: 2, settleMs: 1 });
+	let now = 0;
+	setReadinessTiming({
+		timeoutMs: 40,
+		firstPollMs: 1,
+		maxPollMs: 2,
+		settleMs: 1,
+		now: () => now,
+		sleep: (ms) =>
+			new Promise((resolve) => {
+				now += ms;
+				setImmediate(resolve);
+			}),
+	});
 	let status = 200;
 	const realFetch = globalThis.fetch;
 	const spy = vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
