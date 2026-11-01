@@ -12,11 +12,9 @@ import { getLive, getLiveOrThrow } from '../lib/softDelete';
 const FORTY_EIGHT_HOURS_MS = 48 * 60 * 60 * 1000;
 
 /**
- * The bodies below are shared with the root `shareLinks.ts` shims, which keep
- * the previous paths answering for one release. Each builder makes its own
- * `shareLinks:manage` check and declares its own arguments before calling
- * them, so the shims hold the same floor and validator, and the source scans
- * that read a builder's inline arguments see both.
+ * Each builder makes its own `shareLinks:manage` check and declares its own
+ * arguments before calling the bodies below, so the source scans that read a
+ * builder's inline arguments see them.
  */
 type ShareLinkTarget = {
 	emailTemplateId?: Id<'emailTemplates'>;

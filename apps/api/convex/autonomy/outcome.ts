@@ -9,9 +9,6 @@
  *
  * The recorded rows are plain `autonomyFeedback` rows written through the same
  * `internal.autonomy.feedback.recordFeedback` writer the human path uses.
- *
- * Each builder's body is an exported helper so the previous-release shims at
- * `convex/autonomyOutcome.ts` run the same code.
  */
 
 import { v } from 'convex/values';

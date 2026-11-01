@@ -16,6 +16,7 @@ import { describe, it, expect, vi } from 'vitest';
 import schema from '../schema';
 import { api, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
+import { upsertGraduationSuggestion } from '../autonomy/suggestions';
 import {
 	createTestAutonomyRule,
 	createTestInboundMessage,
@@ -316,12 +317,14 @@ describe('graduation nudge — explicit accept only', () => {
 		);
 
 		// The weekly cron records a loosening suggestion — the live rule is untouched.
-		await t.mutation(internal.autonomySuggestions.recordGraduationSuggestion, {
-			category: 'support',
-			currentThreshold: 0.9,
-			suggestedThreshold: 0.7,
-			evidence: { approved: 20, sampleSize: 20, rejectionRate: 0 },
-		});
+		await t.run((ctx) =>
+			upsertGraduationSuggestion(ctx, {
+				category: 'support',
+				currentThreshold: 0.9,
+				suggestedThreshold: 0.7,
+				evidence: { approved: 20, sampleSize: 20, rejectionRate: 0 },
+			})
+		);
 		let rule = await t.run(async (ctx) => ctx.db.get(ruleId));
 		expect(rule!.autoApproveThreshold).toBe(0.9); // unchanged — no silent widening
 

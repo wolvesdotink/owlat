@@ -6,9 +6,6 @@
  * rollup, and runs the weekly threshold-adjustment cron. It shares the
  * `autonomyRules` / `autonomyFeedback` tables and the `lib/autonomyRules`
  * helpers with `policy.ts` (the rule-decision core).
- *
- * Each builder's body is an exported helper so the previous-release shims at
- * `convex/autonomyFeedback.ts` run the same code.
  */
 
 import { v, type Infer, type ObjectType } from 'convex/values';

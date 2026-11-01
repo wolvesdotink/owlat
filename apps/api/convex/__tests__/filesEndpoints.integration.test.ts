@@ -1,10 +1,7 @@
 /**
- * The previous release's Files paths (`semanticFiles:*` and
- * `semanticFileProcessing:*`) keep working against this release: each old path
- * takes the same arguments, declares the same result, keeps its auth floor,
- * and reads, writes and schedules what its moved function in `files/library`,
- * `files/pipeline` or `files/processing` does. Whatever an old path schedules
- * goes to the moved processing action.
+ * The Files library and processing endpoints (`files/library`,
+ * `files/pipeline`, `files/processing`): what each reads, writes and
+ * schedules, and the auth floor each keeps.
  *
  * Timers are fake and never advanced, so a scheduled `processFile` is only
  * inspected, never run.
@@ -16,11 +13,6 @@ import schema from '../schema';
 import { api, internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
 import { __resetAiConfigCacheForTests } from '../lib/llmProvider';
-import * as oldFiles from '../semanticFiles';
-import * as oldProcessing from '../semanticFileProcessing';
-import * as library from '../files/library';
-import * as pipeline from '../files/pipeline';
-import * as processing from '../files/processing';
 import { recordUploadedBlob } from './uploadFixtures.testlib';
 import { activeSpaceId, stampedIn } from './helpers/embeddingSpaces';
 import { createTestContact } from './factories';
@@ -110,7 +102,7 @@ async function insertFile(
 	);
 }
 
-/** A file row without the fields two equal writes cannot share. */
+/** A file row without its ids and blob links. */
 async function row(t: T, fileId: Id<'semanticFiles'>) {
 	const file = await t.run((ctx) => ctx.db.get(fileId));
 	if (!file) return null;
@@ -138,50 +130,8 @@ async function insertContact(t: T): Promise<Id<'contacts'>> {
 	);
 }
 
-describe('previous-release Files paths: shapes', () => {
-	it('keep the builder kind, visibility, arguments and result of the moved functions', () => {
-		const shape = (fn: unknown) => {
-			const registered = fn as {
-				isQuery?: boolean;
-				isMutation?: boolean;
-				isAction?: boolean;
-				isPublic?: boolean;
-				isInternal?: boolean;
-				exportArgs(): string;
-				exportReturns(): string;
-			};
-			return {
-				kind: [registered.isQuery, registered.isMutation, registered.isAction],
-				visibility: [registered.isPublic, registered.isInternal],
-				args: registered.exportArgs(),
-				returns: registered.exportReturns(),
-			};
-		};
-		const pairs: [unknown, unknown][] = [
-			[oldFiles.get, library.get],
-			[oldFiles.create, library.create],
-			[oldFiles.ingest, library.ingest],
-			[oldFiles.update, library.update],
-			[oldFiles.remove, library.remove],
-			[oldFiles.getInternal, pipeline.getInternal],
-			[oldFiles.getByIds, pipeline.getByIds],
-			[oldFiles.ftsRankedFileIds, pipeline.ftsRankedFileIds],
-			[oldFiles.getProcessingContext, pipeline.getProcessingContext],
-			[oldFiles.backfillUnprocessed, pipeline.backfillUnprocessed],
-			[oldFiles.reprocessAfterAiConfigured, pipeline.reprocessAfterAiConfigured],
-			[oldFiles.updateProcessedMetadata, pipeline.updateProcessedMetadata],
-			[oldProcessing.processFile, processing.processFile],
-			[oldProcessing.semanticSearch, processing.semanticSearch],
-		];
-		expect(pairs).toHaveLength(14);
-		for (const [old, moved] of pairs) expect(shape(old)).toEqual(shape(moved));
-		// The create validator keeps every field the previous upload dialog sends.
-		expect(Object.keys(JSON.parse(shape(oldFiles.create).args).value)).toHaveLength(12);
-	});
-});
-
-describe('previous-release library paths', () => {
-	it('semanticFiles:create inserts what files/library:create does and schedules the moved processing', async () => {
+describe('library endpoints', () => {
+	it('create inserts the file, links its contacts and schedules processing', async () => {
 		const { t, user } = setup();
 		const contactId = await insertContact(t);
 		const args = {
@@ -194,22 +144,17 @@ describe('previous-release library paths', () => {
 			sourceType: 'upload' as const,
 		};
 
-		const oldId = await user.mutation(api.semanticFiles.create, {
-			...args,
-			storageId: await uploadedBlob(t),
-		});
-		const newId = await user.mutation(api.files.library.create, {
+		const fileId = await user.mutation(api.files.library.create, {
 			...args,
 			storageId: await uploadedBlob(t),
 		});
 
-		expect(await row(t, oldId)).toEqual(await row(t, newId));
-		expect(await row(t, oldId)).toMatchObject({ uploadedBy: 'user-1', title: 'Budget' });
-		expect(await contactsOf(t, oldId)).toEqual([contactId]);
-		expect(await scheduledNames(t)).toEqual([PROCESS_FILE, PROCESS_FILE]);
+		expect(await row(t, fileId)).toMatchObject({ uploadedBy: 'user-1', title: 'Budget' });
+		expect(await contactsOf(t, fileId)).toEqual([contactId]);
+		expect(await scheduledNames(t)).toEqual([PROCESS_FILE]);
 	});
 
-	it('semanticFiles:get returns what files/library:get returns, thread subject for readers only', async () => {
+	it('get returns the file, with the thread subject for shared-inbox readers only', async () => {
 		const { t, user } = setup();
 		const threadId = await t.run((ctx) =>
 			ctx.db.insert('conversationThreads', {
@@ -225,47 +170,47 @@ describe('previous-release library paths', () => {
 		);
 		const fileId = await insertFile(t, { threadId });
 
-		const asOwner = await user.query(api.semanticFiles.get, { fileId });
-		expect(asOwner).toEqual(await user.query(api.files.library.get, { fileId }));
+		const asOwner = await user.query(api.files.library.get, { fileId });
 		expect(asOwner).toMatchObject({ threadId, threadSubject: 'Renewal terms' });
 		expect(asOwner?.url).toEqual(expect.any(String));
 
 		session.role = 'editor';
-		const asEditor = await user.query(api.semanticFiles.get, { fileId });
-		expect(asEditor).toEqual(await user.query(api.files.library.get, { fileId }));
+		const asEditor = await user.query(api.files.library.get, { fileId });
 		expect(asEditor?._id).toBe(fileId);
 		expect(asEditor?.threadId).toBeUndefined();
 		expect(asEditor?.threadSubject).toBeUndefined();
 	});
 
-	it('semanticFiles:update and remove edit and delete as files/library does', async () => {
+	it('update edits the file and its contacts; remove deletes the row, the links and the blob', async () => {
 		const { t, user } = setup();
 		const contactId = await insertContact(t);
-		const oldId = await insertFile(t);
-		const newId = await insertFile(t);
-		const edit = { title: 'Q3 budget', tags: ['finance', 'q3'], contactIds: [contactId] };
+		const fileId = await insertFile(t);
 
-		await user.mutation(api.semanticFiles.update, { fileId: oldId, ...edit });
-		await user.mutation(api.files.library.update, { fileId: newId, ...edit });
-		expect(await row(t, oldId)).toEqual(await row(t, newId));
-		expect((await row(t, oldId))?.searchableText).toContain('q3');
-		expect(await contactsOf(t, oldId)).toEqual([contactId]);
+		await user.mutation(api.files.library.update, {
+			fileId,
+			title: 'Q3 budget',
+			tags: ['finance', 'q3'],
+			contactIds: [contactId],
+		});
+		expect(await row(t, fileId)).toMatchObject({ title: 'Q3 budget', tags: ['finance', 'q3'] });
+		expect((await row(t, fileId))?.searchableText).toContain('q3');
+		expect(await contactsOf(t, fileId)).toEqual([contactId]);
 
-		const { storageId } = (await t.run((ctx) => ctx.db.get(oldId)))!;
-		await user.mutation(api.semanticFiles.remove, { fileId: oldId });
-		expect(await row(t, oldId)).toBeNull();
-		expect(await contactsOf(t, oldId)).toEqual([]);
+		const { storageId } = (await t.run((ctx) => ctx.db.get(fileId)))!;
+		await user.mutation(api.files.library.remove, { fileId });
+		expect(await row(t, fileId)).toBeNull();
+		expect(await contactsOf(t, fileId)).toEqual([]);
 		expect(await t.run(async (ctx) => await ctx.storage.get(storageId!))).toBeNull();
 	});
 
-	it('keep the owner/admin floor on the old write paths', async () => {
+	it('keep the owner/admin floor on the writes', async () => {
 		const { t, user } = setup();
 		const fileId = await insertFile(t);
 		const storageId = await uploadedBlob(t);
 		session.role = 'editor';
 
 		await expect(
-			user.mutation(api.semanticFiles.create, {
+			user.mutation(api.files.library.create, {
 				storageId,
 				filename: 'x.txt',
 				mimeType: 'text/plain',
@@ -274,9 +219,9 @@ describe('previous-release library paths', () => {
 			})
 		).rejects.toThrow(/Only owners and admins/);
 		await expect(
-			user.mutation(api.semanticFiles.update, { fileId, title: 'Renamed' })
+			user.mutation(api.files.library.update, { fileId, title: 'Renamed' })
 		).rejects.toThrow(/Only owners and admins/);
-		await expect(user.mutation(api.semanticFiles.remove, { fileId })).rejects.toThrow(
+		await expect(user.mutation(api.files.library.remove, { fileId })).rejects.toThrow(
 			/Admin access required/
 		);
 
@@ -285,7 +230,7 @@ describe('previous-release library paths', () => {
 		expect(await scheduledNames(t)).toEqual([]);
 	});
 
-	it('semanticFiles:ingest admits and refuses like files/library:ingest', async () => {
+	it('ingest admits a capture and schedules processing, and refuses an executable', async () => {
 		const { t } = setup();
 		const args = {
 			filename: 'invoice.txt',
@@ -297,20 +242,19 @@ describe('previous-release library paths', () => {
 		};
 		const store = () => t.run((ctx) => ctx.storage.store(new Blob([BODY])));
 
-		const oldId = await t.mutation(internal.semanticFiles.ingest, {
+		const fileId = await t.mutation(internal.files.library.ingest, {
 			...args,
 			storageId: await store(),
 		});
-		const newId = await t.mutation(internal.files.library.ingest, {
-			...args,
-			storageId: await store(),
+		expect(fileId).not.toBeNull();
+		expect(await row(t, fileId!)).toMatchObject({
+			sourceType: 'email_attachment',
+			captureSource: 'team_inbox',
 		});
-		expect(oldId).not.toBeNull();
-		expect(await row(t, oldId!)).toEqual(await row(t, newId!));
-		expect(await scheduledNames(t)).toEqual([PROCESS_FILE, PROCESS_FILE]);
+		expect(await scheduledNames(t)).toEqual([PROCESS_FILE]);
 
 		const executable = await store();
-		const refused = await t.mutation(internal.semanticFiles.ingest, {
+		const refused = await t.mutation(internal.files.library.ingest, {
 			...args,
 			filename: 'payload.exe',
 			mimeType: 'application/x-msdownload',
@@ -318,12 +262,12 @@ describe('previous-release library paths', () => {
 		});
 		expect(refused).toBeNull();
 		expect(await t.run(async (ctx) => await ctx.storage.get(executable))).toBeNull();
-		expect(await scheduledNames(t)).toHaveLength(2);
+		expect(await scheduledNames(t)).toHaveLength(1);
 	});
 });
 
-describe('previous-release pipeline paths', () => {
-	it('read what files/pipeline reads', async () => {
+describe('pipeline endpoints', () => {
+	it('read a file, files by id with the mail-capture scope, full-text ranks and the processing context', async () => {
 		const { t } = setup();
 		const contactId = await insertContact(t);
 		const previous = await insertFile(t, { extractedText: 'Last year: flat spend.' });
@@ -338,39 +282,30 @@ describe('previous-release pipeline paths', () => {
 			searchableText: 'mailbox capture ABC-12345',
 		});
 
-		const internalRead = await t.query(internal.semanticFiles.getInternal, { fileId });
-		expect(internalRead).toEqual(await t.query(internal.files.pipeline.getInternal, { fileId }));
-		expect(internalRead?._id).toBe(fileId);
+		expect((await t.query(internal.files.pipeline.getInternal, { fileId }))?._id).toBe(fileId);
 
 		for (const mailCaptures of [undefined, 'none', 'all'] as const) {
 			const byIds = { ids: [capture, fileId, previous], mailCaptures };
-			const files = await t.query(internal.semanticFiles.getByIds, byIds);
-			expect(files).toEqual(await t.query(internal.files.pipeline.getByIds, byIds));
+			const files = await t.query(internal.files.pipeline.getByIds, byIds);
 			expect(files.map((file) => file._id)).toEqual(
 				mailCaptures === 'all' ? [capture, fileId, previous] : [fileId, previous]
 			);
 		}
 
 		const fts = { queryText: 'ABC-12345', limit: 10 };
-		const ranked = await t.query(internal.semanticFiles.ftsRankedFileIds, fts);
-		expect(ranked).toEqual(await t.query(internal.files.pipeline.ftsRankedFileIds, fts));
+		const ranked = await t.query(internal.files.pipeline.ftsRankedFileIds, fts);
 		expect([...ranked].sort()).toEqual([fileId, capture].sort());
 
 		const context = { contactIds: [contactId], previousVersionId: previous };
-		const processingContext = await t.query(internal.semanticFiles.getProcessingContext, context);
-		expect(processingContext).toEqual(
-			await t.query(internal.files.pipeline.getProcessingContext, context)
-		);
-		expect(processingContext).toMatchObject({
+		expect(await t.query(internal.files.pipeline.getProcessingContext, context)).toMatchObject({
 			contactNames: ['Ada Lovelace'],
 			previousText: 'Last year: flat spend.',
 		});
 	});
 
-	it('semanticFiles:updateProcessedMetadata commits what files/pipeline commits', async () => {
+	it('updateProcessedMetadata commits the processed fields', async () => {
 		const { t } = setup();
-		const oldId = await insertFile(t);
-		const newId = await insertFile(t);
+		const fileId = await insertFile(t);
 		const processed = {
 			title: 'Budget review',
 			summary: 'Hosting spend rose.',
@@ -380,51 +315,44 @@ describe('previous-release pipeline paths', () => {
 			searchableText: `budget-review.txt ${BODY}`,
 		};
 
-		await t.mutation(internal.semanticFiles.updateProcessedMetadata, {
-			fileId: oldId,
-			...processed,
+		await t.mutation(internal.files.pipeline.updateProcessedMetadata, { fileId, ...processed });
+		expect(await row(t, fileId)).toMatchObject({
+			title: 'Budget review',
+			summary: 'Hosting spend rose.',
+			autoTags: ['hosting'],
 		});
-		await t.mutation(internal.files.pipeline.updateProcessedMetadata, {
-			fileId: newId,
-			...processed,
-		});
-		expect(await row(t, oldId)).toEqual(await row(t, newId));
-		expect(await row(t, oldId)).toMatchObject({ summary: 'Hosting spend rose.' });
 	});
 
-	it('the old backfill and reprocessing passes schedule the moved processing', async () => {
+	it('the backfill and reprocessing passes schedule processing once AI is configured', async () => {
 		const { t } = setup();
 		await insertFile(t);
-		expect(await t.mutation(internal.semanticFiles.backfillUnprocessed, {})).toEqual({
+		expect(await t.mutation(internal.files.pipeline.backfillUnprocessed, {})).toEqual({
 			scheduled: 0,
 		});
 
 		vi.stubEnv('LLM_API_KEY', 'sk-test');
-		expect(await t.mutation(internal.semanticFiles.backfillUnprocessed, {})).toEqual(
-			await t.mutation(internal.files.pipeline.backfillUnprocessed, {})
-		);
-		expect(await t.mutation(internal.semanticFiles.reprocessAfterAiConfigured, {})).toEqual({
+		expect(await t.mutation(internal.files.pipeline.backfillUnprocessed, {})).toEqual({
 			scheduled: 1,
 		});
-		expect(await scheduledNames(t)).toEqual([PROCESS_FILE, PROCESS_FILE, PROCESS_FILE]);
+		expect(await t.mutation(internal.files.pipeline.reprocessAfterAiConfigured, {})).toEqual({
+			scheduled: 1,
+		});
+		expect(await scheduledNames(t)).toEqual([PROCESS_FILE, PROCESS_FILE]);
 	});
 });
 
-describe('previous-release processing paths', () => {
-	it('semanticFileProcessing:processFile stores what files/processing:processFile stores', async () => {
+describe('processing actions', () => {
+	it('processFile without AI stores the extracted text and its search text', async () => {
 		const { t } = setup();
-		const oldId = await insertFile(t);
-		const newId = await insertFile(t);
+		const fileId = await insertFile(t);
 
-		await t.action(internal.semanticFileProcessing.processFile, { fileId: oldId });
-		await t.action(internal.files.processing.processFile, { fileId: newId });
+		await t.action(internal.files.processing.processFile, { fileId });
 
-		expect(await row(t, oldId)).toEqual(await row(t, newId));
-		expect(await row(t, oldId)).toMatchObject({ extractedText: BODY, embedding: [] });
-		expect((await row(t, oldId))?.searchableText).toContain('ABC-12345');
+		expect(await row(t, fileId)).toMatchObject({ extractedText: BODY, embedding: [] });
+		expect((await row(t, fileId))?.searchableText).toContain('ABC-12345');
 	});
 
-	it('semanticFileProcessing:semanticSearch returns what files/processing:semanticSearch returns', async () => {
+	it('semanticSearch fuses the vector and full-text legs and keeps contact-scoped files out', async () => {
 		const { t } = setup();
 		const spaceId = await activeSpaceId(t);
 		const vector = (at: number) => Array.from({ length: 1536 }, (_, i) => (i === at ? 1 : 0));
@@ -456,8 +384,7 @@ describe('previous-release processing paths', () => {
 			scopeToContact: 'org-general-only' as const,
 			limit: 10,
 		};
-		const hits = await t.action(internal.semanticFileProcessing.semanticSearch, args);
-		expect(hits).toEqual(await t.action(internal.files.processing.semanticSearch, args));
+		const hits = await t.action(internal.files.processing.semanticSearch, args);
 		expect(hits.map((hit) => hit.filename).sort()).toEqual(['exact.txt', 'near.txt']);
 	});
 });

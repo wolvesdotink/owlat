@@ -1,9 +1,6 @@
 /**
  * Global search over contacts, templates, campaigns and the caller's mail, for
  * the command palette and the assistant's `searchEverything` tool.
- *
- * Each builder's body is an exported helper so the previous-release shims at
- * the old root path (`globalSearch.ts`) run the same code.
  */
 
 import { v } from 'convex/values';

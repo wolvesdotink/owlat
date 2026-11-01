@@ -276,12 +276,8 @@ describe('file page readers — the query each one builds', () => {
 		const sourceType = 'upload' as const;
 
 		for (const args of [{ paginationOpts }, { paginationOpts, sourceType }]) {
-			expect(await calledReaders(() => t.query(api.semanticFiles.list, args))).toEqual(['list']);
 			expect(await calledReaders(() => t.query(api.files.cards.list, args))).toEqual(['list']);
 			const searchArgs = { ...args, query: 'report' };
-			expect(await calledReaders(() => t.query(api.semanticFiles.search, searchArgs))).toEqual([
-				'search',
-			]);
 			expect(await calledReaders(() => t.query(api.files.cards.search, searchArgs))).toEqual([
 				'search',
 			]);
@@ -429,43 +425,19 @@ describe('files.cards.searchBySource — filtered full-text search', () => {
 	});
 });
 
-describe('files.cards — legacy filtered cursors keep their path', () => {
-	it('walks list + sourceType on either legacy endpoint, and their cursors still interchange', async () => {
+describe('files.cards.list — a sourceType filter keeps its index', () => {
+	it('walks list + sourceType to every match of the source, newest first', async () => {
 		const t = convexTest(schema, modules);
 		for (let i = 0; i < 7; i++) {
 			await insertFile(t, i % 2 === 0 ? 'upload' : 'email_attachment', i);
 		}
 		const sourceType = 'upload' as const;
-		const expected = await newestFirst(t, sourceType);
 
-		const legacy = await walk(
-			(paginationOpts) => t.query(api.semanticFiles.list, { paginationOpts, sourceType }),
-			2
-		);
 		const cards = await walk(
 			(paginationOpts) => t.query(api.files.cards.list, { paginationOpts, sourceType }),
 			2
 		);
-		expect(legacy.ids).toEqual(expected);
-		expect(cards.ids).toEqual(expected);
-
-		const first = await t.query(api.semanticFiles.list, {
-			paginationOpts: { cursor: null, numItems: 2 },
-			sourceType,
-		});
-		const fromLegacy = await t.query(api.files.cards.list, {
-			paginationOpts: { cursor: first.continueCursor, numItems: 2 },
-			sourceType,
-		});
-		const cardFirst = await t.query(api.files.cards.list, {
-			paginationOpts: { cursor: null, numItems: 2 },
-			sourceType,
-		});
-		const fromCards = await t.query(api.semanticFiles.list, {
-			paginationOpts: { cursor: cardFirst.continueCursor, numItems: 2 },
-			sourceType,
-		});
-		expect(fromLegacy.page.map((c) => c._id)).toEqual(fromCards.page.map((r) => r._id));
+		expect(cards.ids).toEqual(await newestFirst(t, sourceType));
 	});
 });
 

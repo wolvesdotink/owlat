@@ -6,8 +6,7 @@ import { isFeatureEnabled } from '../lib/featureFlags';
  * Get share link data by token.
  * Returns null if not found or revoked (or, for a transactional email, while
  * the transactional feature is off), { expired: true } if expired,
- * or full share link data if valid. Shared with the root `shareLinkQueries.ts`
- * shim.
+ * or full share link data if valid.
  */
 export async function readShareLinkByToken(ctx: QueryCtx, token: string) {
 	const shareLink = await ctx.db

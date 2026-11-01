@@ -23,9 +23,6 @@
  * that names no decision kind leaves its nine columns exactly as they were, and
  * `testConnection` / `listModels` take a `plane` argument that defaults to
  * `language`, so every existing caller behaves as it did.
- *
- * Each builder's body is an exported helper so the previous-release shims at
- * the old root path (`aiProviderConfigActions.ts`) run the same code.
  */
 
 import { v, type Infer, type ObjectType } from 'convex/values';
@@ -108,7 +105,7 @@ function storedLanguageKey(row: Doc<'aiProviderConfig'>): string | undefined {
 	});
 }
 
-/** `saveConfig`'s arguments, shared with its previous-release path. */
+/** `saveConfig`'s arguments. */
 export const saveConfigArgs = {
 	languageProviderKind: languageProviderKindValidator,
 	languageBaseUrl: v.optional(v.string()),
@@ -385,7 +382,7 @@ export async function listProviderModels(
 	}
 }
 
-/** `_decryptSecretEnvelope`'s arguments, shared with its previous-release path. */
+/** `_decryptSecretEnvelope`'s arguments. */
 export const envelopeArgs = {
 	ciphertext: v.string(),
 	iv: v.string(),

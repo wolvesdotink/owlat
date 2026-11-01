@@ -10,6 +10,7 @@ import {
 	createTestUnifiedMessage,
 } from './factories';
 import type { Id } from '../_generated/dataModel';
+import { insertOutboundMessage } from '../channels/messages';
 import { readInstanceCounter } from '../lib/instanceCounters';
 
 /**
@@ -310,14 +311,14 @@ describe('channels.outboundTargets.resolveOutboundThread', () => {
 });
 
 /**
- * `recordOutbound` is the timeline writer reached from
- * `channels.outbound.dispatchOutbound`'s `record('sent')` for the
+ * `insertOutboundMessage` is the timeline writer the dispatch commit
+ * (`channels/outboundCommit.recordDispatch`) runs for the
  * SMS/WhatsApp/generic channels. Stamping `lastSuccessfulSend` on the channel's
  * `channelConfigs` row there is part of what gives the dashboard channel card its
  * "Last Successful Send" signal. (Email stamps via `mirrorEmailSendWrite` and
  * chat via `sendChatMessage` — see unifiedMessages.integration.test.ts.)
  */
-describe('unifiedMessages.recordOutbound', () => {
+describe('channels/messages insertOutboundMessage', () => {
 	it('stamps lastSuccessfulSend on the channel config when status is sent', async () => {
 		const t = convexTest(schema, modules);
 		let contactId!: Id<'contacts'>;
@@ -334,14 +335,16 @@ describe('unifiedMessages.recordOutbound', () => {
 		});
 
 		const before = Date.now();
-		await t.mutation(internal.unifiedMessages.recordOutbound, {
-			threadId,
-			channel: 'sms',
-			contactId,
-			content: JSON.stringify({ text: 'hi' }),
-			externalMessageId: 'ext-1',
-			status: 'sent',
-		});
+		await t.run((ctx) =>
+			insertOutboundMessage(ctx, {
+				threadId,
+				channel: 'sms',
+				contactId,
+				content: JSON.stringify({ text: 'hi' }),
+				externalMessageId: 'ext-1',
+				status: 'sent',
+			})
+		);
 
 		const config = await t.run((ctx) => ctx.db.get(configId));
 		expect(config!.lastSuccessfulSend).toBeGreaterThanOrEqual(before);
@@ -362,13 +365,15 @@ describe('unifiedMessages.recordOutbound', () => {
 			threadId = await ctx.db.insert('conversationThreads', threadData({ contactId }));
 		});
 
-		await t.mutation(internal.unifiedMessages.recordOutbound, {
-			threadId,
-			channel: 'sms',
-			contactId,
-			content: JSON.stringify({ error: 'boom' }),
-			status: 'failed',
-		});
+		await t.run((ctx) =>
+			insertOutboundMessage(ctx, {
+				threadId,
+				channel: 'sms',
+				contactId,
+				content: JSON.stringify({ error: 'boom' }),
+				status: 'failed',
+			})
+		);
 
 		const config = await t.run((ctx) => ctx.db.get(configId));
 		expect(config!.lastSuccessfulSend).toBeUndefined();

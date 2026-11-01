@@ -6,9 +6,6 @@
  * fails toward the human — but when the evidence says a category could safely
  * loosen, it never touches the live threshold. Instead it records a graduation
  * suggestion here, which an owner/admin must explicitly accept.
- *
- * Each builder's body is an exported helper so the previous-release shims at
- * `convex/autonomySuggestions.ts` run the same code.
  */
 
 import { v, type Infer } from 'convex/values';

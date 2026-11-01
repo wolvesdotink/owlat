@@ -1,9 +1,6 @@
 /**
  * The shared media library: its reads, uploads, metadata edits and deletes.
  * The byte scan each upload schedules is in `mediaAssetScan.ts`.
- *
- * Each builder's body is an exported helper, so the previous release's paths
- * (`mediaAssets.ts` at the convex root) run the same code.
  */
 import { validateStringLength, STRING_LIMITS } from '../lib/inputGuards';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
@@ -30,7 +27,7 @@ import {
 } from '@owlat/email-scanner';
 import { MAX_LIBRARY_FILE_BYTES, MAX_LIBRARY_FILE_MB } from '@owlat/shared/attachments';
 
-/** `list`'s arguments, shared with its previous-release path. */
+/** `list`'s arguments. */
 export const listArgs = {
 	paginationOpts: paginationOptsValidator,
 	search: v.optional(v.string()),
@@ -109,7 +106,7 @@ export const getStats = authedQuery({
 	handler: async (ctx) => await mediaLibraryStats(ctx),
 });
 
-/** `countUsage`'s arguments, shared with its previous-release path. */
+/** `countUsage`'s arguments. */
 export const countUsageArgs = { assetId: v.id('mediaAssets') };
 
 /**
@@ -184,7 +181,7 @@ export const listTags = authedQuery({
 	handler: async (ctx) => await listMediaTags(ctx),
 });
 
-/** `create`'s arguments, shared with its previous-release path. */
+/** `create`'s arguments. */
 export const createArgs = {
 	storageId: v.id('_storage'),
 	filename: v.string(),
@@ -282,7 +279,7 @@ export const create = authedMutation({
 	handler: async (ctx, args, session) => await createMediaAsset(ctx, args, session),
 });
 
-/** `update`'s arguments, shared with its previous-release path. */
+/** `update`'s arguments. */
 export const updateArgs = {
 	assetId: v.id('mediaAssets'),
 	alt: v.optional(v.string()),
@@ -326,7 +323,7 @@ export const update = authedMutation({
 	handler: async (ctx, args, session) => await updateMediaAsset(ctx, args, session),
 });
 
-/** `bulkDelete`'s arguments, shared with its previous-release path. */
+/** `bulkDelete`'s arguments. */
 export const bulkDeleteArgs = { assetIds: v.array(v.id('mediaAssets')) };
 
 /** Bulk delete media assets. Requires media:manage before it reads or writes. */

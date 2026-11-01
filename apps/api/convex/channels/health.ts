@@ -1,9 +1,6 @@
 /**
  * Channel health: the cron that checks every enabled channel, and the commit
  * of a single channel's probe (`outbound.ts` `probeChannelHealth`).
- *
- * Each builder's body is an exported helper, so the previous release's paths
- * (`unifiedMessages.ts` at the convex root) run the same code.
  */
 
 import { v, type ObjectType } from 'convex/values';

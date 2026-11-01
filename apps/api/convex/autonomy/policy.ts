@@ -5,9 +5,6 @@
  * auto-approve vs. when human review is required, and the daily cap they
  * charge. The feedback loop that tunes them lives in `feedback.ts`, graduation
  * suggestions in `suggestions.ts` and post-send outcomes in `outcome.ts`.
- *
- * Each builder's body is an exported helper so the previous-release shims at
- * `convex/autonomy.ts` run the same code.
  */
 
 import { v } from 'convex/values';

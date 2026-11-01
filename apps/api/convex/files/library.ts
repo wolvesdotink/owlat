@@ -7,9 +7,6 @@
  * summaries, and vector embeddings for semantic search
  * (`files/processing.ts`). The pipeline's own reads and writes are in
  * `files/pipeline.ts`.
- *
- * Each builder's body is an exported helper, so the previous release's paths
- * (`semanticFiles.ts`) run the same code.
  */
 
 import { v, type ObjectType } from 'convex/values';
@@ -89,7 +86,7 @@ export async function readLibraryFile(
 // Mutations
 // ============================================================
 
-/** `create`'s arguments, shared with its previous-release path. */
+/** `create`'s arguments. */
 export const createFileArgs = {
 	storageId: v.id('_storage'),
 	filename: v.string(),
@@ -163,7 +160,7 @@ export async function createLibraryFile(
 	return fileId;
 }
 
-/** `ingest`'s arguments, shared with its previous-release path. */
+/** `ingest`'s arguments. */
 export const ingestFileArgs = {
 	storageId: v.id('_storage'),
 	filename: v.string(),
@@ -297,7 +294,7 @@ export async function insertSemanticFile(
 	return fileId;
 }
 
-/** `update`'s arguments, shared with its previous-release path. */
+/** `update`'s arguments. */
 export const updateFileArgs = {
 	fileId: v.id('semanticFiles'),
 	title: v.optional(v.string()),

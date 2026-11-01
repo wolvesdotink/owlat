@@ -6169,7 +6169,7 @@ matching code comment at the cited file.
   blurs. The asymmetry is **not** a missing index: the `search_files` FTS index
   already exists on `semanticFiles` (`schema/knowledge.ts`), `searchableText` is
   populated from the extracted body, and it is already queried by
-  `semanticFiles.search` (`semanticFiles.ts`). The narrower asymmetry is that
+  `files.cards.search` (`files/cards.ts`). The narrower asymmetry is that
   the agent retrieval action (`files/processing.semanticSearch`) does not
   add an FTS leg over that existing index and fuse it via RRF. Fusing the
   existing FTS leg is a **tracked follow-up**, not a permanent decision — and it

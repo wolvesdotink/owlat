@@ -1,8 +1,5 @@
 /**
  * Upload URLs and media-library download URLs for `_storage` blobs.
- *
- * Each builder's body is an exported helper, so the previous release's paths
- * (`storage.ts`) run the same code.
  */
 
 import { v } from 'convex/values';

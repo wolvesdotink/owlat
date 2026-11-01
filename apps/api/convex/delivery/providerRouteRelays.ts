@@ -2,9 +2,6 @@
  * The relay identities a provider route's deliverability fallback depends on:
  * the read the relay domain status panel renders, and the catch-up drain
  * `providerRoutes.ts`'s `setRoute` schedules when a fallback is switched on.
- *
- * Each builder's body is an exported helper, so the previous release's paths
- * (`providerRoutes.ts` at the convex root) run the same code.
  */
 import { v, type ObjectType } from 'convex/values';
 import { paginationOptsValidator } from 'convex/server';

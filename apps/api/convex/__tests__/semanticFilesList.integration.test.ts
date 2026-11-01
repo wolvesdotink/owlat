@@ -22,7 +22,7 @@ async function insertFile(
 	t: ReturnType<typeof convexTest>,
 	sourceType: Source,
 	createdAt: number,
-	searchableText: string,
+	searchableText: string
 ): Promise<Id<'semanticFiles'>> {
 	const storageId = await t.run((ctx) => ctx.storage.store(new Blob([searchableText])));
 	return t.run((ctx) =>
@@ -37,13 +37,13 @@ async function insertFile(
 			searchableText,
 			createdAt,
 			updatedAt: createdAt,
-		}),
+		})
 	);
 }
 
 const PAGE = { cursor: null, numItems: 2 };
 
-describe('semanticFiles.list — pagination', () => {
+describe('files.cards.list — pagination', () => {
 	it('paginates past the first page instead of hard-capping the result', async () => {
 		const t = convexTest(schema, modules);
 		// Five files — more than one page of 2.
@@ -51,21 +51,21 @@ describe('semanticFiles.list — pagination', () => {
 			await insertFile(t, 'upload', 1000 + i, `file ${i}`);
 		}
 
-		const first = await t.query(api.semanticFiles.list, { paginationOpts: PAGE });
+		const first = await t.query(api.files.cards.list, { paginationOpts: PAGE });
 		expect(first.page).toHaveLength(2);
 		expect(first.isDone).toBe(false);
 		// Newest first.
-		expect(first.page[0]!.searchableText).toBe('file 4');
+		expect(first.page[0]!.filename).toBe('file 4.txt');
 		// Storage URL is hydrated for each row.
 		expect(first.page[0]).toHaveProperty('url');
 
-		const second = await t.query(api.semanticFiles.list, {
+		const second = await t.query(api.files.cards.list, {
 			paginationOpts: { cursor: first.continueCursor, numItems: 2 },
 		});
 		expect(second.page).toHaveLength(2);
 		expect(second.isDone).toBe(false);
 
-		const third = await t.query(api.semanticFiles.list, {
+		const third = await t.query(api.files.cards.list, {
 			paginationOpts: { cursor: second.continueCursor, numItems: 2 },
 		});
 		expect(third.page).toHaveLength(1);
@@ -85,27 +85,27 @@ describe('semanticFiles.list — pagination', () => {
 		const collected: string[] = [];
 		let cursor: string | null = null;
 		for (let guard = 0; guard < 10; guard++) {
-			const res: { page: Array<{ searchableText?: string }>; isDone: boolean; continueCursor: string } =
-				await t.query(api.semanticFiles.list, {
+			const res: { page: Array<{ filename: string }>; isDone: boolean; continueCursor: string } =
+				await t.query(api.files.cards.list, {
 					paginationOpts: { cursor, numItems: 2 },
 					sourceType: 'email_attachment',
 				});
-			for (const f of res.page) if (f.searchableText) collected.push(f.searchableText);
+			for (const f of res.page) collected.push(f.filename);
 			if (res.isDone) break;
 			cursor = res.continueCursor;
 		}
 
-		expect(collected).toEqual(['old attachment']);
+		expect(collected).toEqual(['old attachment.txt']);
 	});
 });
 
-describe('semanticFiles.search — pagination + sourceType', () => {
+describe('files.cards.search — pagination + sourceType', () => {
 	it('full-text searches with a backend sourceType filter', async () => {
 		const t = convexTest(schema, modules);
 		await insertFile(t, 'upload', 1, 'quarterly report upload');
 		await insertFile(t, 'email_attachment', 2, 'quarterly report attachment');
 
-		const res = await t.query(api.semanticFiles.search, {
+		const res = await t.query(api.files.cards.search, {
 			paginationOpts: { cursor: null, numItems: 10 },
 			query: 'quarterly report',
 			sourceType: 'email_attachment',

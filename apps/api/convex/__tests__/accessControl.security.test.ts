@@ -68,7 +68,7 @@ describe('access control — unauthenticated callers are rejected', () => {
 		['webhooks.endpoints.listByOrganization', api.webhooks.endpoints.listByOrganization, {}],
 		['domains.domains.listByOrganization', api.domains.domains.listByOrganization, {}],
 		['forms.endpoints.listByTeam', api.forms.endpoints.listByTeam, {}],
-		['semanticFiles.list', api.semanticFiles.list, PAGE],
+		['files.cards.list', api.files.cards.list, PAGE],
 		['autonomy.policy.listRules', api.autonomy.policy.listRules, {}],
 		['contacts.contacts.list', api.contacts.contacts.list, PAGE],
 		[

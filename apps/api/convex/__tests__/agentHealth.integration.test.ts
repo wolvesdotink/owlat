@@ -1,7 +1,9 @@
-import { convexTest } from 'convex-test';
+import { convexTest, type TestConvex } from 'convex-test';
 import { describe, it, expect, vi } from 'vitest';
 import schema from '../schema';
 import { api, internal } from '../_generated/api';
+import { writeCircuitBreaker } from '../agent/healthRollup';
+import type { Doc } from '../_generated/dataModel';
 import {
 	createTestAgentMetric,
 	createTestAgentAction,
@@ -135,14 +137,18 @@ describe('agent/health.getMetricHistory', () => {
 	});
 });
 
-// ============ recordMetrics (internal) ============
+// ============ commitRollup (internal): the metric rows ============
 
-describe('agentHealth.recordMetrics', () => {
+/** A rollup signal set that leaves every breaker closed. */
+const QUIET_SIGNALS = { llm_failure: 0, confidence_degradation: 0, rejection_spike: 0 };
+
+describe('agent/healthRollup.commitRollup metrics', () => {
 	it('should insert every data point of a window', async () => {
 		const t = convexTest(schema, modules);
 		const now = Date.now();
 
-		await t.mutation(internal.agentHealth.recordMetrics, {
+		await t.mutation(internal.agent.healthRollup.commitRollup, {
+			signals: QUIET_SIGNALS,
 			metrics: [
 				{
 					metricType: 'processing_latency',
@@ -180,7 +186,9 @@ describe('agentHealth.recordMetrics', () => {
 			windowEnd: number;
 		}[];
 
-		await expect(t.mutation(internal.agentHealth.recordMetrics, { metrics })).rejects.toThrow();
+		await expect(
+			t.mutation(internal.agent.healthRollup.commitRollup, { metrics, signals: QUIET_SIGNALS })
+		).rejects.toThrow();
 
 		// The whole window is one transaction: a partial write here would leave
 		// the dashboard reading a queue depth with no error rate beside it.
@@ -190,17 +198,29 @@ describe('agentHealth.recordMetrics', () => {
 	});
 });
 
-// ============ updateCircuitBreaker (internal) ============
+// ============ writeCircuitBreaker ============
 
-describe('agentHealth.updateCircuitBreaker', () => {
+/** Move a breaker the way the rollup commit does. */
+async function moveBreaker(
+	t: TestConvex<typeof schema>,
+	breakerType: Doc<'agentCircuitBreakers'>['breakerType'],
+	state: Doc<'agentCircuitBreakers'>['state'],
+	currentValue: number
+) {
+	await t.run(async (ctx) => {
+		const existing = await ctx.db
+			.query('agentCircuitBreakers')
+			.withIndex('by_breaker_type', (q) => q.eq('breakerType', breakerType))
+			.first();
+		await writeCircuitBreaker(ctx, existing, breakerType, state, currentValue);
+	});
+}
+
+describe('agent/healthRollup.writeCircuitBreaker', () => {
 	it('should create a new circuit breaker when none exists', async () => {
 		const t = convexTest(schema, modules);
 
-		await t.mutation(internal.agentHealth.updateCircuitBreaker, {
-			breakerType: 'llm_failure',
-			state: 'closed',
-			currentValue: 0.05,
-		});
+		await moveBreaker(t, 'llm_failure', 'closed', 0.05);
 
 		await t.run(async (ctx) => {
 			const breakers = await ctx.db.query('agentCircuitBreakers').collect();
@@ -225,11 +245,7 @@ describe('agentHealth.updateCircuitBreaker', () => {
 			});
 		});
 
-		await t.mutation(internal.agentHealth.updateCircuitBreaker, {
-			breakerType: 'llm_failure',
-			state: 'open',
-			currentValue: 0.35,
-		});
+		await moveBreaker(t, 'llm_failure', 'open', 0.35);
 
 		await t.run(async (ctx) => {
 			const breaker = await ctx.db
@@ -255,11 +271,7 @@ describe('agentHealth.updateCircuitBreaker', () => {
 			});
 		});
 
-		await t.mutation(internal.agentHealth.updateCircuitBreaker, {
-			breakerType: 'rejection_spike',
-			state: 'closed',
-			currentValue: 0.1,
-		});
+		await moveBreaker(t, 'rejection_spike', 'closed', 0.1);
 
 		await t.run(async (ctx) => {
 			const breaker = await ctx.db

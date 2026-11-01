@@ -18,7 +18,7 @@ import { createTestContact, flushScheduled } from '../../__tests__/factories';
 import { pushHarness } from '../../push/__tests__/pushFixtures';
 import { appendDraftRevision } from '../../inbox/draftRevisions';
 import { isReplyOwed } from '../../inbox/sla/threadClock';
-import { recordInboundMirror } from '../../channels/messages';
+import { insertOutboundMessage, recordInboundMirror } from '../../channels/messages';
 import * as clarificationAnswers from '../../inbox/clarificationAnswers';
 
 // The team draft-gap fence's predicate (inbox/stepOutputs.ts), wrapped so a test
@@ -768,13 +768,15 @@ describe('the response clock of a reopened message', () => {
 
 			vi.mocked(Date.now).mockReturnValue(BOUNCE_AT + 10_000);
 			if (channel === 'sms') {
-				await t.mutation(internal.unifiedMessages.recordOutbound, {
-					threadId: th.threadId,
-					contactId: th.contactId,
-					channel: 'sms',
-					content: 'Your answer',
-					status: 'sent',
-				});
+				await t.run((ctx) =>
+					insertOutboundMessage(ctx, {
+						threadId: th.threadId,
+						contactId: th.contactId,
+						channel: 'sms',
+						content: 'Your answer',
+						status: 'sent',
+					})
+				);
 			} else {
 				const followUpId = await t.run(async (ctx) =>
 					ctx.db.insert('inboxFollowUps', {
@@ -827,13 +829,15 @@ describe('the response clock of a reopened message', () => {
 		const { older, sendId } = await answeredThenBounced(t, th);
 		await bounce(t, sendId);
 		vi.mocked(Date.now).mockReturnValue(BOUNCE_AT + 10_000);
-		await t.mutation(internal.unifiedMessages.recordOutbound, {
-			threadId: th.threadId,
-			contactId: th.contactId,
-			channel: 'sms',
-			content: 'Your answer',
-			status: 'sent',
-		});
+		await t.run((ctx) =>
+			insertOutboundMessage(ctx, {
+				threadId: th.threadId,
+				contactId: th.contactId,
+				channel: 'sms',
+				content: 'Your answer',
+				status: 'sent',
+			})
+		);
 		// As if a path had missed clearing it: only the reply record can tell.
 		await t.run(async (ctx) => ctx.db.patch(older, { answerBouncedAt: BOUNCE_AT }));
 		for (let i = 0; i < 50; i++) {

@@ -2,9 +2,6 @@
  * The check a media library upload gets once its bytes are stored: the
  * client-supplied filename, MIME type and size are only hints, so a scan reads
  * the real blob and quarantines or corrects the asset.
- *
- * Each builder's body is an exported helper, so the previous release's paths
- * (`mediaAssets.ts` at the convex root) run the same code.
  */
 import { internalAction, type ActionCtx, type MutationCtx } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
@@ -23,7 +20,7 @@ import { detectFileType, isDangerousFileType } from '@owlat/email-scanner';
  */
 const FILE_SIZE_MISMATCH_QUARANTINE_FACTOR = 1.5;
 
-/** `scanAssetBytes`'s arguments, shared with its previous-release path. */
+/** `scanAssetBytes`'s arguments. */
 export const scanAssetBytesArgs = {
 	assetId: v.id('mediaAssets'),
 	storageId: v.id('_storage'),
@@ -86,7 +83,7 @@ export const scanAssetBytes = internalAction({
 	handler: async (ctx, args) => await scanStoredAssetBytes(ctx, args),
 });
 
-/** `reconcileAssetSize`'s arguments, shared with its previous-release path. */
+/** `reconcileAssetSize`'s arguments. */
 export const reconcileAssetSizeArgs = {
 	assetId: v.id('mediaAssets'),
 	storageId: v.id('_storage'),
@@ -134,7 +131,7 @@ export const reconcileAssetSize = internalMutation({
 	handler: async (ctx, args) => await reconcileStoredAssetSize(ctx, args),
 });
 
-/** `quarantineAsset`'s arguments, shared with its previous-release path. */
+/** `quarantineAsset`'s arguments. */
 export const quarantineAssetArgs = {
 	assetId: v.id('mediaAssets'),
 	storageId: v.id('_storage'),

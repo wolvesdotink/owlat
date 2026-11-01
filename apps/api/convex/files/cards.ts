@@ -2,11 +2,9 @@
  * Files as cards: the compact list and search the Files page and the Answer
  * mode file picker read.
  *
- * Same index, cursor, `sourceType` filter and read gate as
- * `semanticFiles.list` / `search` (lib/semanticFileCards.ts), but each row is
- * a `SemanticFileCard` instead of the whole document with its embedding
- * vectors and extracted text. The legacy queries stay as they are for N-1
- * clients and API callers.
+ * Each row is a `SemanticFileCard` instead of the whole document with its
+ * embedding vectors and extracted text; the page readers and the read gate
+ * live in lib/semanticFileCards.ts.
  *
  * `listBySource` / `searchBySource` narrow to one source through their own
  * index before paginating, so a filtered page is a page of matches. They are
@@ -68,6 +66,11 @@ export const search = authedQuery({
 		return toSemanticFileCardPage(ctx, readable);
 	},
 });
+
+// There is no semantic (vector) search query here: a query cannot call
+// `ctx.vectorSearch`, so such a query could only return recency-ordered files
+// while looking like semantic search. Semantic file search is the
+// internalAction `files/processing.semanticSearch`.
 
 /** One source's files as cards (paginated, newest first), narrowed by index. */
 // authz: readableFilesPage drops every file semanticFileReadGate refuses the caller.

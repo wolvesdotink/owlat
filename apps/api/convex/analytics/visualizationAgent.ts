@@ -9,9 +9,6 @@
  * The generation action itself lives in `./visualizationAgentActions.ts`
  * (`'use node'`, for the shared LLM dispatch); this module keeps the
  * isolate-side queries, mutations and live-data fetchers.
- *
- * Each builder's body is an exported helper so the previous-release shims at
- * the old root path (`visualizationAgent.ts`) run the same code.
  */
 
 import { v, type ObjectType } from 'convex/values';
@@ -116,7 +113,7 @@ export async function listPinnedVisualizations(ctx: QueryCtx) {
 // Mutations
 // ============================================================
 
-/** `createFromPrompt`'s arguments, shared with its previous-release path. */
+/** `createFromPrompt`'s arguments. */
 export const createFromPromptArgs = {
 	prompt: v.string(),
 	pinned: v.optional(v.boolean()),
@@ -238,7 +235,7 @@ export async function removeVisualization(ctx: MutationCtx, args: { id: Id<'visu
 	await ctx.db.delete(args.id);
 }
 
-/** `updateGenerated`'s arguments, shared with its previous-release path. */
+/** `updateGenerated`'s arguments. */
 export const updateGeneratedArgs = {
 	id: v.id('visualizations'),
 	title: v.string(),

@@ -15,9 +15,6 @@
  * with the run recorder but the table.
  *
  * Gating: platform-admin only, like everything in the pair.
- *
- * Each builder's body is an exported helper, so the previous release's paths
- * (`systemUpdatesReleaseCheck.ts`) run the same code.
  */
 import { v, type ObjectType } from 'convex/values';
 import { validatorDecoder } from '@owlat/worker-protocol/decodeJson';
@@ -96,7 +93,7 @@ const GITHUB_RELEASES_URL = `https://api.github.com/repos/${GITHUB_REPO_SLUG}/re
 
 // ── Internal mutations / queries (release-check cache) ───────────────────────
 
-/** `cacheLatestRelease`'s arguments, shared with its previous-release path. */
+/** `cacheLatestRelease`'s arguments. */
 export const cacheLatestReleaseArgs = {
 	latestVersion: v.string(),
 	releaseNotes: v.string(),
@@ -139,7 +136,7 @@ export async function upsertLatestRelease(
 	});
 }
 
-/** `cacheCheckFailure`'s arguments, shared with its previous-release path. */
+/** `cacheCheckFailure`'s arguments. */
 export const cacheCheckFailureArgs = { error: v.string() };
 
 export const cacheCheckFailure = internalMutation({
@@ -198,10 +195,10 @@ type CheckForUpdatesResult = {
 	error: string | null;
 };
 
-/** `checkForUpdates`'s arguments, shared with its previous-release path. */
+/** `checkForUpdates`'s arguments. */
 export const checkForUpdatesArgs = { force: v.optional(v.boolean()) };
 
-/** `checkForUpdates`'s result, shared with its previous-release path. */
+/** `checkForUpdates`'s result. */
 export const checkForUpdatesReturns = v.object({
 	latestVersion: v.union(v.string(), v.null()),
 	currentVersion: v.string(),

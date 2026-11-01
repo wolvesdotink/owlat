@@ -1,8 +1,5 @@
 /**
  * The double opt-in mail a pending signup is sent to confirm its address.
- *
- * The builder's body is an exported helper, so the previous release's path
- * (`confirmationEmail.ts` at the convex root) runs the same code.
  */
 import { v, type ObjectType } from 'convex/values';
 import { internalAction, type ActionCtx } from '../_generated/server';
@@ -11,7 +8,7 @@ import { getOptional } from '../lib/env';
 import { formatFromAddress } from '../lib/emailProviders/domainVerification';
 import { generateConfirmationEmailHtml } from '../lib/systemEmails';
 
-/** `sendConfirmationEmail`'s arguments, shared with its previous-release path. */
+/** `sendConfirmationEmail`'s arguments. */
 export const sendConfirmationEmailArgs = {
 	email: v.string(),
 	firstName: v.optional(v.string()),

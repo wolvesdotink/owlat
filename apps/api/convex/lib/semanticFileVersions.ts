@@ -3,17 +3,13 @@
  * first.
  *
  * A new version points at the one it replaces, so the history of a file is a
- * linked list read one `ctx.db.get` at a time. Two readers walk it:
+ * linked list read one `ctx.db.get` at a time. `files.history.list` walks at
+ * most `budget` rows per call and hands back where it stopped, so a long chain
+ * is read a page at a time.
  *
- *   - `semanticFiles.getVersionHistory` (legacy) walks to the end of the chain
- *     with no budget, as it always has: a cap there would cut an older
- *     client's list short with no way to say so;
- *   - `files.history.list` walks at most `budget` rows per call and hands back
- *     where it stopped, so a long chain is read a page at a time.
- *
- * Both stop at a row they already visited. `create` only links a new row to an
- * existing one, so the app cannot make a loop, but a loop in stored data would
- * otherwise spin until the query hit the read limit and failed.
+ * The walk stops at a row it already visited. `create` only links a new row
+ * to an existing one, so the app cannot make a loop, but a loop in stored data
+ * would otherwise spin until the query hit the read limit and failed.
  *
  * Every visited row is read whole (a get cannot project), then offered to
  * `canRead`; a row the caller may not read is left out but still walked
@@ -41,7 +37,7 @@ export async function walkVersionChain(
 	ctx: Pick<QueryCtx, 'db'>,
 	startId: Id<'semanticFiles'>,
 	canRead: (file: Doc<'semanticFiles'>) => Promise<boolean>,
-	budget: number = Number.POSITIVE_INFINITY
+	budget: number
 ): Promise<VersionChainStep> {
 	const visited = new Set<Id<'semanticFiles'>>();
 	const readable: Doc<'semanticFiles'>[] = [];

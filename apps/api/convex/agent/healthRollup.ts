@@ -3,9 +3,6 @@
  * recent pipeline activity into `agentMetrics` data points and moves the
  * circuit breakers, following the circuit breaker pattern from the MTA.
  * `agent/health.ts` serves what this writes to the dashboard and the route step.
- *
- * Each builder's body is an exported helper so the previous-release shims at
- * the old root path (`agentHealth.ts`) run the same code.
  */
 
 import { v, type Infer } from 'convex/values';

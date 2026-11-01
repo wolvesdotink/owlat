@@ -19,9 +19,6 @@
  *
  * Gating: all UI-facing functions are platform-admin only
  * (`platformAdminQuery` / `platformAdminMutation`).
- *
- * Each builder's body is an exported helper, so the previous release's paths
- * (`backups.ts`) run the same code.
  */
 import { v, type Infer } from 'convex/values';
 import type { MutationCtx, QueryCtx } from '../_generated/server';

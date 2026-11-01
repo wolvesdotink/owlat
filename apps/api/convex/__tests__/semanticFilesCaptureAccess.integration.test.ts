@@ -3,12 +3,12 @@
  *
  * Every org member can read Files, but an attachment captured out of a
  * personal Postbox mailbox or the owner/admin-only Team Inbox is
- * mail, not a shared upload. Before the fix any editor could enumerate those
- * captures — with a download URL — through `semanticFiles.list` / `search` /
- * `get` / `getVersionHistory` / `listByContact`, without access to the mailbox
- * they came from. The compact `files.cards.list` / `search` /
- * `listByContact` are held to the same rows, and so are the by-source
- * `listBySource` / `searchBySource` over a full walk. These tests drive every one of those reads as:
+ * mail, not a shared upload. An editor without access to the mailbox a capture
+ * came from must not enumerate it — with a download URL — through
+ * `files.cards.list` / `search` / `listByContact`, `files.library.get` or
+ * `files.history.list`, nor through the by-source `listBySource` /
+ * `searchBySource` over a full walk. These tests drive every one of those
+ * reads as:
  *
  *   - the mailbox's own user and a shared-mailbox member (allowed),
  *   - an owner (allowed: owners and admins may open every mailbox),
@@ -155,42 +155,24 @@ async function walkNames(
 async function readAll(t: Harness, seeded: Seeded) {
 	const page = { cursor: null, numItems: 50 };
 	const names = (rows: Array<{ filename: string }>) => rows.map((r) => r.filename).sort();
-	const list = await t.query(api.semanticFiles.list, { paginationOpts: page });
-	const attachments = await t.query(api.semanticFiles.list, {
+	const list = await t.query(api.files.cards.list, { paginationOpts: page });
+	const attachments = await t.query(api.files.cards.list, {
 		paginationOpts: page,
 		sourceType: 'email_attachment',
 	});
-	const search = await t.query(api.semanticFiles.search, {
+	const search = await t.query(api.files.cards.search, {
 		paginationOpts: page,
 		query: 'confidential',
 	});
-	const byContact = await t.query(api.semanticFiles.listByContact, {
+	const byContact = await t.query(api.files.cards.listByContact, {
 		contactId: seeded.contactId,
 	});
-	// The compact card endpoints run the same gate on every row: for every
-	// session below they must hand back exactly the rows the legacy reads do.
-	const cardList = await t.query(api.files.cards.list, { paginationOpts: page });
-	const cardAttachments = await t.query(api.files.cards.list, {
-		paginationOpts: page,
-		sourceType: 'email_attachment',
-	});
-	const cardSearch = await t.query(api.files.cards.search, {
-		paginationOpts: page,
-		query: 'confidential',
-	});
-	const cardByContact = await t.query(api.files.cards.listByContact, {
-		contactId: seeded.contactId,
-	});
-	expect(names(cardList.page)).toEqual(names(list.page));
-	expect(names(cardByContact)).toEqual(names(byContact));
-	expect(names(cardAttachments.page)).toEqual(names(attachments.page));
-	expect(names(cardSearch.page)).toEqual(names(search.page));
 	// The by-source endpoints narrow through their own index first, then run
 	// the same gate: a full walk in small pages, per source, must reach exactly
-	// what the legacy filtered reads return.
+	// what the post-pagination filter over one large page returns.
 	for (const sourceType of ['upload', 'email_attachment', 'agent_generated'] as const) {
-		const legacyList = await t.query(api.semanticFiles.list, { paginationOpts: page, sourceType });
-		const legacySearch = await t.query(api.semanticFiles.search, {
+		const filteredList = await t.query(api.files.cards.list, { paginationOpts: page, sourceType });
+		const filteredSearch = await t.query(api.files.cards.search, {
 			paginationOpts: page,
 			query: 'confidential',
 			sourceType,
@@ -205,8 +187,8 @@ async function readAll(t: Harness, seeded: Seeded) {
 				sourceType,
 			})
 		);
-		expect(bySource).toEqual(names(legacyList.page));
-		expect(searchBySource).toEqual(names(legacySearch.page));
+		expect(bySource).toEqual(names(filteredList.page));
+		expect(searchBySource).toEqual(names(filteredSearch.page));
 	}
 	const get: Record<string, boolean> = {};
 	const history: Record<string, number> = {};
@@ -214,7 +196,9 @@ async function readAll(t: Harness, seeded: Seeded) {
 		if (key === 'contactId' || key === 'mailboxId') continue;
 		const id = fileId as Id<'semanticFiles'>;
 		get[key] = (await t.query(api.files.library.get, { fileId: id })) !== null;
-		history[key] = (await t.query(api.semanticFiles.getVersionHistory, { fileId: id })).length;
+		history[key] = (
+			await t.query(api.files.history.list, { fileId: id, cursor: null })
+		).page.length;
 	}
 	return {
 		list: names(list.page),
@@ -231,7 +215,7 @@ beforeEach(() => {
 	sessionMock.role = 'editor';
 });
 
-describe('semanticFiles reads — captured mail keeps its mailbox permission', () => {
+describe('Files reads — captured mail keeps its mailbox permission', () => {
 	it('hides another mailbox’s and the Team Inbox’s captures from an unrelated editor', async () => {
 		const t = convexTest(schema, modules);
 		const seeded = await seed(t);

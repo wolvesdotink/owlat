@@ -2,9 +2,6 @@
  * Channel configuration: the settings and dashboard read, the admin save, and
  * the internal reads and the credential write the `'use node'` actions in
  * `outbound.ts` and `credentials.ts` call.
- *
- * Each builder's body is an exported helper, so the previous release's paths
- * (`unifiedMessages.ts` at the convex root) run the same code.
  */
 
 import { v, type ObjectType } from 'convex/values';

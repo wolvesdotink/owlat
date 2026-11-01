@@ -2,10 +2,8 @@
  * The processing pipeline's reads and writes on `semanticFiles`: what
  * `files/processing.ts` reads before it processes a file and commits after,
  * the reads its semantic search hydrates hits through, and the two passes
- * that schedule processing again for files left without an embedding.
- *
- * All internal. Each builder's body is an exported helper, so the previous
- * release's paths (`semanticFiles.ts`) run the same code.
+ * that schedule processing again for files left without an embedding. All
+ * internal.
  */
 
 import { v, type ObjectType } from 'convex/values';
@@ -43,7 +41,7 @@ export async function readFileInternal(ctx: QueryCtx, fileId: Id<'semanticFiles'
 	return hydrateFile(ctx, file);
 }
 
-/** `getByIds`'s arguments, shared with its previous-release path. */
+/** `getByIds`'s arguments. */
 export const getByIdsArgs = {
 	ids: v.array(v.id('semanticFiles')),
 	mailCaptures: v.optional(mailCaptureScopeValidator),
@@ -75,7 +73,7 @@ export async function readFilesByIds(ctx: QueryCtx, args: ObjectType<typeof getB
 	return await hydrateFiles(ctx, files);
 }
 
-/** `ftsRankedFileIds`'s arguments, shared with its previous-release path. */
+/** `ftsRankedFileIds`'s arguments. */
 export const ftsRankedFileIdsArgs = {
 	queryText: v.string(),
 	limit: v.number(),
@@ -108,7 +106,7 @@ export async function rankFileIdsByText(
 	return rows.map((r) => r._id);
 }
 
-/** `getProcessingContext`'s arguments, shared with its previous-release path. */
+/** `getProcessingContext`'s arguments. */
 export const processingContextArgs = {
 	threadId: v.optional(v.id('conversationThreads')),
 	contactIds: v.optional(v.array(v.id('contacts'))),
@@ -251,7 +249,7 @@ export async function reprocessFilesAfterAiConfigured(
 	return { scheduled };
 }
 
-/** `updateProcessedMetadata`'s arguments, shared with its previous-release path. */
+/** `updateProcessedMetadata`'s arguments. */
 export const processedMetadataArgs = {
 	fileId: v.id('semanticFiles'),
 	title: v.optional(v.string()),

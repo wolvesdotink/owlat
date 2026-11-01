@@ -2,9 +2,6 @@
  * Agent health reads: the monitoring dashboard's metrics, history, cost and
  * accuracy views, and the circuit-breaker states the route step checks before
  * it lets a reply send itself. `agent/healthRollup.ts` writes what these read.
- *
- * Each builder's body is an exported helper so the previous-release shims at
- * the old root path (`agentHealth.ts`) run the same code.
  */
 
 import { v, type Infer } from 'convex/values';

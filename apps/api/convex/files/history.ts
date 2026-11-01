@@ -1,11 +1,10 @@
 /**
  * A file's version history, a page at a time.
  *
- * `semanticFiles.getVersionHistory` walks the whole `previousVersionId` chain
- * in one call and returns every version whole, embedding vectors and
- * extracted text included. `list` walks at most `VERSION_HISTORY_PAGE_BUDGET`
- * rows per call, applies the same `semanticFileReadGate` to each, and returns
- * the readable ones as `FileVersionRow`s: the fields a history row shows.
+ * `list` walks at most `VERSION_HISTORY_PAGE_BUDGET` rows of the
+ * `previousVersionId` chain per call, applies `semanticFileReadGate` to each,
+ * and returns the readable ones as `FileVersionRow`s: the fields a history row
+ * shows, not the whole version with its embedding vectors and extracted text.
  *
  * The budget counts rows walked, not rows returned: a version the caller may
  * not read costs a step and is left out, so a page can come back short, or

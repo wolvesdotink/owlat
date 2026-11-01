@@ -3,9 +3,6 @@
 /**
  * AI translation of a batch of template fields, for the email and
  * transactional template translation editors and the Postbox reader.
- *
- * The builder's body is an exported helper so the previous-release shim at the
- * old root path (`translate.ts`) runs the same code.
  */
 
 import { v, type ObjectType } from 'convex/values';
@@ -52,7 +49,7 @@ const translationSchema = z.object({
 	),
 });
 
-/** `translateBatch`'s arguments, shared with its previous-release path. */
+/** `translateBatch`'s arguments. */
 export const translateBatchArgs = {
 	items: v.array(
 		v.object({

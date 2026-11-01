@@ -29,9 +29,6 @@
  * `platformAdminMutation`, the same platform-admin gate the route applies, and
  * `initiatedBy` is stamped from the authenticated admin instead of being
  * accepted as an argument.
- *
- * Each builder's body is an exported helper, so the previous release's paths
- * (`systemUpdates.ts`) run the same code.
  */
 import { v, type ObjectType } from 'convex/values';
 import type { MutationCtx, QueryCtx } from '../_generated/server';
@@ -49,7 +46,7 @@ function supersededNote(versionTo: string | undefined): string {
 	return `Superseded by the update to ${versionTo}`;
 }
 
-/** `recordUpdateStart`'s arguments, shared with its previous-release path. */
+/** `recordUpdateStart`'s arguments. */
 export const updateStartArgs = {
 	versionFrom: v.string(),
 	versionTo: v.string(),
@@ -149,7 +146,7 @@ export async function openUpdateRun(
 	return runId;
 }
 
-/** `recordUpdateFinish`'s arguments, shared with its previous-release path. */
+/** `recordUpdateFinish`'s arguments. */
 export const updateFinishArgs = {
 	runId: v.id('systemUpdates'),
 	status: successOrFailedValidator,
@@ -214,7 +211,7 @@ export async function closeUpdateRun(ctx: MutationCtx, args: ObjectType<typeof u
 	);
 }
 
-/** `withdrawUpdateStart`'s arguments, shared with its previous-release path. */
+/** `withdrawUpdateStart`'s arguments. */
 export const withdrawUpdateArgs = {
 	runId: v.id('systemUpdates'),
 };
@@ -383,7 +380,7 @@ export async function readRolloutActivity(ctx: QueryCtx) {
 	return { activeAt: newest.lastActivityAt ?? newest.startedAt ?? null };
 }
 
-/** `listUpdateHistory`'s arguments, shared with its previous-release path. */
+/** `listUpdateHistory`'s arguments. */
 export const updateHistoryArgs = { limit: v.optional(v.number()) };
 
 export const listUpdateHistory = platformAdminQuery({

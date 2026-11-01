@@ -297,12 +297,6 @@ const PROBES: Record<string, Probe> = {
 		// No share link was minted, so a live template answers [] too.
 		shownWhileLive: false,
 	},
-	// The previous-release path of the same query (root shim).
-	'shareLinks.ts:listShareLinks': {
-		read: ({ t, templateId }) =>
-			t.query(api.shareLinks.listShareLinks, { emailTemplateId: templateId }),
-		shownWhileLive: false,
-	},
 };
 
 async function deleteAll({ t, campaignId, automationId, templateId }: World): Promise<void> {

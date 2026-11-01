@@ -1,8 +1,7 @@
 /**
- * The previous release's agent config and health paths
- * (`agentConfigMutations:*`, `agentHealth:*`) keep working against this
- * release: each old path takes the same arguments, returns what its moved
- * function returns, writes what it writes, and keeps its auth floor.
+ * The agent config and health endpoints (`agent/configMutations`,
+ * `agent/health`, `agent/healthRollup`): what each reads and writes, and the
+ * auth floor each keeps.
  */
 
 import { convexTest } from 'convex-test';
@@ -11,11 +10,6 @@ import schema from '../schema';
 import { api, internal } from '../_generated/api';
 import type { OrganizationRole } from '../lib/sessionOrganization';
 import type * as SessionOrganizationModule from '../lib/sessionOrganization';
-import * as oldConfigPaths from '../agentConfigMutations';
-import * as oldHealthPaths from '../agentHealth';
-import * as configMutations from '../agent/configMutations';
-import * as health from '../agent/health';
-import * as healthRollup from '../agent/healthRollup';
 import {
 	createTestAgentAction,
 	createTestAgentMetric,
@@ -143,7 +137,7 @@ async function seedPipeline(t: T) {
 	});
 }
 
-/** Metric rows and breakers without ids or timestamps, for comparing two rollups. */
+/** Metric rows and breakers without ids or timestamps. */
 async function rollupResult(t: T) {
 	return await t.run(async (ctx) => {
 		const metrics = await ctx.db.query('agentMetrics').collect();
@@ -168,43 +162,19 @@ afterEach(() => {
 	vi.useRealTimers();
 });
 
-describe('previous-release agent config paths', () => {
-	it('take the same arguments and declare the same result as the moved functions', () => {
-		const shape = (fn: unknown) => {
-			const registered = fn as { exportArgs(): string; exportReturns(): string };
-			return { args: registered.exportArgs(), returns: registered.exportReturns() };
-		};
-		const pairs: [unknown, unknown][] = [
-			[oldConfigPaths.getConfig, configMutations.getConfig],
-			[oldConfigPaths.updateConfig, configMutations.updateConfig],
-			[oldConfigPaths.setReplyMode, configMutations.setReplyMode],
-			[oldHealthPaths.getDashboardMetrics, health.getDashboardMetrics],
-			[oldHealthPaths.getMetricHistory, health.getMetricHistory],
-			[oldHealthPaths.getCostByStep, health.getCostByStep],
-			[oldHealthPaths.getAccuracyTrend, health.getAccuracyTrend],
-			[oldHealthPaths.getCircuitBreakersInternal, health.getCircuitBreakersInternal],
-			[oldHealthPaths.rollupMetrics, healthRollup.rollupMetrics],
-			[oldHealthPaths.getRecentActions, healthRollup.getRecentActions],
-			[oldHealthPaths.getPendingCount, healthRollup.getPendingCount],
-		];
-		for (const [old, moved] of pairs) expect(shape(old)).toEqual(shape(moved));
-		expect(Object.keys(JSON.parse(shape(oldConfigPaths.updateConfig).args).value)).toHaveLength(13);
-	});
-
-	it('reads and writes through agentConfigMutations:* match agent/configMutations', async () => {
+describe('agent config endpoints', () => {
+	it('reads and writes the config, normalising working hours and logging each write', async () => {
 		const t = convexTest(schema, modules);
 		const user = t.withIdentity(identity);
 
-		expect(await user.query(api.agentConfigMutations.getConfig, {})).toBeNull();
+		expect(await user.query(api.agent.configMutations.getConfig, {})).toBeNull();
 
-		const configId = await user.mutation(api.agentConfigMutations.updateConfig, {
+		const configId = await user.mutation(api.agent.configMutations.updateConfig, {
 			confidenceThreshold: 0.7,
 			workingHoursStart: 2000,
 			workingHoursDays: [5, 1, 1, 9],
 		});
-		const oldConfig = await user.query(api.agentConfigMutations.getConfig, {});
-		expect(oldConfig).toEqual(await user.query(api.agent.configMutations.getConfig, {}));
-		expect(oldConfig).toMatchObject({
+		expect(await user.query(api.agent.configMutations.getConfig, {})).toMatchObject({
 			_id: configId,
 			confidenceThreshold: 0.7,
 			workingHoursStart: 1439,
@@ -212,16 +182,18 @@ describe('previous-release agent config paths', () => {
 		});
 
 		expect(
-			await user.mutation(api.agentConfigMutations.updateConfig, { toneDescription: 'calm' })
+			await user.mutation(api.agent.configMutations.updateConfig, { toneDescription: 'calm' })
 		).toBe(configId);
-		expect(await user.mutation(api.agentConfigMutations.setReplyMode, { mode: 'auto' })).toBeNull();
+		expect(
+			await user.mutation(api.agent.configMutations.setReplyMode, { mode: 'auto' })
+		).toBeNull();
 		expect(await user.query(api.agent.configMutations.getConfig, {})).toMatchObject({
 			toneDescription: 'calm',
 			isAutoReplyEnabled: true,
 			isShadowMode: false,
 		});
 
-		await user.mutation(api.agentConfigMutations.setReplyMode, { mode: 'draft' });
+		await user.mutation(api.agent.configMutations.setReplyMode, { mode: 'draft' });
 		expect(await user.query(api.agent.configMutations.getConfig, {})).toMatchObject({
 			isAutoReplyEnabled: false,
 			isShadowMode: true,
@@ -235,88 +207,73 @@ describe('previous-release agent config paths', () => {
 		]);
 
 		isMember = false;
-		expect(await user.query(api.agentConfigMutations.getConfig, {})).toBeNull();
+		expect(await user.query(api.agent.configMutations.getConfig, {})).toBeNull();
 	});
 
-	it('keep the owner/admin floor on the old write paths', async () => {
+	it('keep the owner/admin floor on the writes', async () => {
 		const t = convexTest(schema, modules);
 		const user = t.withIdentity(identity);
 		mockRole = 'editor';
 		const denied = "You don't have permission to perform this action";
 		await expect(
-			user.mutation(api.agentConfigMutations.updateConfig, { confidenceThreshold: 0.1 })
+			user.mutation(api.agent.configMutations.updateConfig, { confidenceThreshold: 0.1 })
 		).rejects.toThrow(denied);
 		await expect(
-			user.mutation(api.agentConfigMutations.setReplyMode, { mode: 'auto' })
+			user.mutation(api.agent.configMutations.setReplyMode, { mode: 'auto' })
 		).rejects.toThrow(denied);
 		expect(await t.run((ctx) => ctx.db.query('agentConfig').collect())).toEqual([]);
 	});
 });
 
-describe('previous-release agent health paths', () => {
-	it('reads through agentHealth:* match agent/health and agent/healthRollup', async () => {
+describe('agent health endpoints', () => {
+	it('read the pipeline window the health dashboard and the rollup see', async () => {
 		const t = convexTest(schema, modules);
 		const user = t.withIdentity(identity);
 		await seedPipeline(t);
 
-		const dashboard = await user.query(api.agentHealth.getDashboardMetrics, {});
-		expect(dashboard).toEqual(await user.query(api.agent.health.getDashboardMetrics, {}));
+		const dashboard = await user.query(api.agent.health.getDashboardMetrics, {});
 		expect(dashboard).toMatchObject({ queueDepth: 1, processingCount: 1, autoApproveRatio: 0.6 });
 
 		const historyArgs = { metricType: 'processing_latency' as const, hoursBack: 2 };
-		const history = await user.query(api.agentHealth.getMetricHistory, historyArgs);
-		expect(history).toEqual(await user.query(api.agent.health.getMetricHistory, historyArgs));
+		const history = await user.query(api.agent.health.getMetricHistory, historyArgs);
 		expect(history.map((m) => m.value)).toEqual([900]);
 
-		const cost = await user.query(api.agentHealth.getCostByStep, { hoursBack: 2 });
-		expect(cost).toEqual(await user.query(api.agent.health.getCostByStep, { hoursBack: 2 }));
+		const cost = await user.query(api.agent.health.getCostByStep, { hoursBack: 2 });
 		expect(cost).toMatchObject({ totalTokens: 620, hoursBack: 2 });
 
-		const trend = await user.query(api.agentHealth.getAccuracyTrend, {});
-		expect(trend).toEqual(await user.query(api.agent.health.getAccuracyTrend, {}));
+		const trend = await user.query(api.agent.health.getAccuracyTrend, {});
 		expect(trend.series).toMatchObject([{ autoApproveRatio: 0.6, rejectionRate: 0.1 }]);
 
-		const breakers = await t.query(internal.agentHealth.getCircuitBreakersInternal, {});
-		expect(breakers).toEqual(await t.query(internal.agent.health.getCircuitBreakersInternal, {}));
+		const breakers = await t.query(internal.agent.health.getCircuitBreakersInternal, {});
 		expect(breakers.map((b) => [b.breakerType, b.state])).toEqual([['llm_failure', 'open']]);
 
-		const recent = await t.query(internal.agentHealth.getRecentActions, { since: 0 });
-		expect(recent).toEqual(
-			await t.query(internal.agent.healthRollup.getRecentActions, { since: 0 })
-		);
+		const recent = await t.query(internal.agent.healthRollup.getRecentActions, { since: 0 });
 		expect(recent.map((a) => a.actionType).sort()).toEqual(['classify', 'draft']);
 
-		const pending = await t.query(internal.agentHealth.getPendingCount, {});
-		expect(pending).toBe(await t.query(internal.agent.healthRollup.getPendingCount, {}));
-		expect(pending).toBe(1);
+		expect(await t.query(internal.agent.healthRollup.getPendingCount, {})).toBe(1);
 	});
 
-	it('a rollup through agentHealth:rollupMetrics writes what agent/healthRollup writes', async () => {
-		const viaOld = convexTest(schema, modules);
-		await seedPipeline(viaOld);
-		expect(await viaOld.action(internal.agentHealth.rollupMetrics, {})).toBeNull();
+	it('a rollup writes the window metrics and trips the breakers they cross', async () => {
+		const t = convexTest(schema, modules);
+		await seedPipeline(t);
+		expect(await t.action(internal.agent.healthRollup.rollupMetrics, {})).toBeNull();
 
-		const viaNew = convexTest(schema, modules);
-		await seedPipeline(viaNew);
-		await viaNew.action(internal.agent.healthRollup.rollupMetrics, {});
-
-		const written = await rollupResult(viaOld);
-		expect(written).toEqual(await rollupResult(viaNew));
+		const written = await rollupResult(t);
 		// One of two actions failed, and the only classification is unsure.
 		expect(written.metrics).toContainEqual(['error_rate', 0.5]);
 		expect(written.breakers).toContainEqual(['confidence_degradation', 'open', 1]);
 	});
 
-	it('keep the owner/admin floor on every old public read', async () => {
+	it('keep the owner/admin floor on every public read', async () => {
 		const t = convexTest(schema, modules);
 		const user = t.withIdentity(identity);
 		mockRole = 'editor';
 		const denied = "You don't have permission to perform this action";
-		await expect(user.query(api.agentHealth.getDashboardMetrics, {})).rejects.toThrow(denied);
+		await expect(user.query(api.agent.health.getDashboardMetrics, {})).rejects.toThrow(denied);
 		await expect(
-			user.query(api.agentHealth.getMetricHistory, { metricType: 'queue_depth' })
+			user.query(api.agent.health.getMetricHistory, { metricType: 'queue_depth' })
 		).rejects.toThrow(denied);
-		await expect(user.query(api.agentHealth.getCostByStep, {})).rejects.toThrow(denied);
-		await expect(user.query(api.agentHealth.getAccuracyTrend, {})).rejects.toThrow(denied);
+		await expect(user.query(api.agent.health.getCostByStep, {})).rejects.toThrow(denied);
+		await expect(user.query(api.agent.health.getAccuracyTrend, {})).rejects.toThrow(denied);
 	});
 });

@@ -1,9 +1,6 @@
 /**
  * Saved segments: the CRUD the segment pages use, the computed membership view
  * and its CSV export, and the segment-builder audience estimate.
- *
- * Each builder's body is an exported helper, so the previous release's paths
- * (`segments.ts`) run the same code.
  */
 import { v, type Infer, type ObjectType } from 'convex/values';
 import { paginationOptsValidator } from 'convex/server';
@@ -42,7 +39,7 @@ export type { Condition as FilterCondition } from '../conditions/types';
 
 export type { SegmentFilters } from '../conditions';
 
-/** The arguments of `get` and `getInternal`, shared with their previous-release paths. */
+/** The arguments of `get` and `getInternal`. */
 export const segmentIdArgs = { id: v.id('segments') };
 
 // Get a single segment by ID
@@ -69,7 +66,7 @@ export async function readSegment(ctx: QueryCtx, id: Id<'segments'>) {
  */
 const MEMBER_PAGE_SCAN = 200;
 
-/** `listMembers`' arguments, shared with its previous-release path. */
+/** `listMembers`' arguments. */
 export const listMembersArgs = {
 	id: v.id('segments'),
 	paginationOpts: paginationOptsValidator,
@@ -128,7 +125,7 @@ const EXPORT_PAGE_SCAN = 500;
 const EXPORT_MAX_SCAN = 100_000;
 const EXPORT_MAX_MEMBERS = 10_000;
 
-/** `listMembersPage`'s arguments, shared with its previous-release path. */
+/** `listMembersPage`'s arguments. */
 export const listMembersPageArgs = {
 	filters: segmentFiltersValidator,
 	cursor: v.union(v.string(), v.null()),
@@ -229,7 +226,7 @@ export const getInternal = internalQuery({
 	handler: async (ctx, args) => await readSegment(ctx, args.id),
 });
 
-/** `update`'s arguments, shared with its previous-release path. */
+/** `update`'s arguments. */
 export const updateSegmentArgs = {
 	id: v.id('segments'),
 	name: v.optional(v.string()),
@@ -316,7 +313,7 @@ export async function removeSegment(
 	});
 }
 
-/** `list`'s arguments, shared with its previous-release path. */
+/** `list`'s arguments. */
 export const listSegmentsArgs = { paginationOpts: paginationOptsValidator };
 
 /**
@@ -334,7 +331,7 @@ export async function listSegments(ctx: QueryCtx, args: ObjectType<typeof listSe
 	return await listResources(ctx.db, segmentListing, { paginationOpts: args.paginationOpts });
 }
 
-/** `create`'s arguments, shared with its previous-release path. */
+/** `create`'s arguments. */
 export const createSegmentArgs = {
 	name: v.string(),
 	description: v.optional(v.string()),
@@ -408,7 +405,7 @@ const COUNT_PAGE_SIZE = 500;
  */
 const COUNT_MAX_SCAN = 100_000;
 
-/** `countMatchingContactsPage`'s arguments, shared with its previous-release path. */
+/** `countMatchingContactsPage`'s arguments. */
 export const countMatchingContactsPageArgs = {
 	filters: segmentFiltersValidator,
 	cursor: v.union(v.string(), v.null()),
@@ -433,7 +430,7 @@ export async function readCountPage(
 	return await countMatchingContactsPageImpl(ctx, args.filters, args.cursor, COUNT_PAGE_SIZE);
 }
 
-/** `countMatchingContacts`' arguments, shared with its previous-release path. */
+/** `countMatchingContacts`' arguments. */
 export const countMatchingContactsArgs = { filters: segmentFiltersValidator };
 
 /**

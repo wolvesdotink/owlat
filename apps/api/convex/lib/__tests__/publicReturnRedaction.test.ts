@@ -37,10 +37,7 @@ import type { PublicContact } from '../../contacts/listing';
 type ReviewedExceptions =
 	// Held to `shareLinks:manage`; the share popover builds the copyable URL
 	// from the token, so here the token is the payload rather than a leak.
-	| 'shareLinks.links.listShareLinks'
-	// The previous-release path of the same function (root `shareLinks.ts`
-	// shim); its entry goes when the shim does.
-	| 'shareLinks.listShareLinks';
+	'shareLinks.links.listShareLinks';
 
 /**
  * Per table, the fields that are a bearer capability (the same four tables the
