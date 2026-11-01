@@ -1,0 +1,214 @@
+'use node';
+
+import { v } from 'convex/values';
+import { internal } from '../_generated/api';
+import { internalAction, type ActionCtx } from '../_generated/server';
+import { getOptional } from '../lib/env';
+import {
+	EmailErrorCode,
+	buildSystemMailExtrasFor,
+	isSendProviderKind,
+	type SendProviderKind,
+} from '../lib/sendProviders';
+import { sendProviderDispatch } from '../lib/sendProviders/dispatch';
+import { defaultSendTransportId } from '../lib/sendProviders/transports';
+import { recordSendResponseRefusal } from '../webhooks/providerSuppression';
+import {
+	systemMailRetryDisposition,
+	type SystemMailAttemptOutcome,
+	type SystemMailFailureCode,
+} from '../lib/systemMailOutcome';
+
+/**
+ * Single transport for every system / auth / DOI email (password reset,
+ * invitation, account-deletion, double opt-in, email-change).
+ *
+ * Routes through the configured delivery provider so a Resend/SES deployment does
+ * NOT need the built-in MTA running just to send auth mail — the prerequisite
+ * that lets the MTA become an opt-in service (see the `mta` docker profile).
+ * EVERY kind takes one path through the shared `sendProviderDispatch`, and this
+ * module names none of them: the per-send knobs come from `buildSystemMailExtras`
+ * on the provider module (folding this file's `provider === 'mta'` arm and
+ * `provider === 'resend'` ternary into the same contract the governed boundary
+ * uses). The MTA's adapter still supplies ipPool 'transactional' plus the system
+ * intake scope and still defaults dkimDomain to the from-domain and mints a
+ * random messageId, so the /send/system body is byte-for-byte what it was and the
+ * default self-host is unchanged.
+ *
+ * Fail-closed: if no provider is configured the action throws — a deployment
+ * that uses email-based auth must configure a transport. RFC 3834 §5: these are
+ * machine-generated, so every path carries `Auto-Submitted: auto-generated` to
+ * suppress auto-responders and break mail loops.
+ *
+ * Runs as a `'use node'` action — matching the other send actions
+ * (`delivery/worker.ts`, `campaigns/testSend.ts`) so the SES adapter's AWS SDK
+ * runs in the Node runtime it's designed for. Callers (default-runtime actions
+ * and the BetterAuth hooks, all of which have an ActionCtx) reach it via
+ * `ctx.runAction(internal.maintenance.systemMail.sendSystemEmail, …)`.
+ *
+ * The builders' bodies are exported, so the previous release's paths
+ * (`systemMail.ts`) run the same code.
+ */
+export const systemMailArgs = {
+	to: v.string(),
+	from: v.string(),
+	subject: v.string(),
+	html: v.string(),
+	idempotencyKey: v.optional(v.string()),
+	replyTo: v.optional(v.string()),
+	// Small files a system message carries (a booking's `.ics` invite).
+	attachments: v.optional(
+		v.array(
+			v.object({
+				filename: v.string(),
+				contentType: v.string(),
+				contentBase64: v.string(),
+			})
+		)
+	),
+};
+
+type SystemMailArgs = {
+	to: string;
+	from: string;
+	subject: string;
+	html: string;
+	idempotencyKey?: string;
+	replyTo?: string;
+	attachments?: { filename: string; contentType: string; contentBase64: string }[];
+};
+
+function failedAttempt(
+	provider: SendProviderKind | null,
+	args: SystemMailArgs,
+	errorCode: SystemMailFailureCode,
+	errorMessage: string
+): SystemMailAttemptOutcome {
+	return {
+		status: 'failed',
+		provider,
+		errorCode,
+		errorMessage,
+		retryDisposition: systemMailRetryDisposition(
+			provider ?? undefined,
+			args.idempotencyKey,
+			errorCode
+		),
+	};
+}
+
+export async function attemptSystemEmail(
+	ctx: ActionCtx,
+	args: SystemMailArgs
+): Promise<SystemMailAttemptOutcome> {
+	const configuredProvider = getOptional('EMAIL_PROVIDER');
+	const provider = isSendProviderKind(configuredProvider) ? configuredProvider : null;
+	let providerReady: boolean;
+	try {
+		providerReady = await ctx.runQuery(
+			internal.lib.sendProviders.capability.environmentSendProviderReady,
+			{}
+		);
+	} catch (error) {
+		return failedAttempt(
+			provider,
+			args,
+			EmailErrorCode.SERVER_ERROR,
+			error instanceof Error ? error.message : 'System mail readiness check failed'
+		);
+	}
+	if (!provider || !providerReady) {
+		return failedAttempt(
+			provider,
+			args,
+			'CONFIGURATION',
+			'No system email transport configured: set EMAIL_PROVIDER to a registered transport and configure its requirements. System/auth emails (password reset, invitations, double opt-in) require a transport.'
+		);
+	}
+
+	try {
+		// ONE dispatch for every kind — built-in (mta / ses / resend / smtp /
+		// mandrill) or plugin-contributed — carrying the RFC 3834 anti-loop header
+		// and whatever per-send knobs the PROVIDER asks for.
+		//
+		// Keep provider names out of this call, as the governed boundary does: a
+		// per-kind arm here (an inline MTA payload, a Resend dedup header) would be
+		// a send path every new kind has to edit to be allowed any knob at all. The
+		// facts go in, the module decides what to make of them.
+		const dispatched = await sendProviderDispatch(
+			ctx,
+			defaultSendTransportId(provider),
+			{
+				to: args.to,
+				from: args.from,
+				subject: args.subject,
+				html: args.html,
+				...(args.replyTo ? { replyTo: args.replyTo } : {}),
+				headers: { 'Auto-Submitted': 'auto-generated' },
+				...(args.attachments?.length
+					? {
+							attachments: args.attachments.map((attachment) => ({
+								filename: attachment.filename,
+								contentType: attachment.contentType,
+								content: new Uint8Array(Buffer.from(attachment.contentBase64, 'base64')),
+							})),
+						}
+					: {}),
+			},
+			buildSystemMailExtrasFor(provider, { idempotencyKey: args.idempotencyKey })
+		);
+		if (!dispatched.result.success) {
+			// Auth, double opt-in and test mail refused off the provider's reject
+			// list: the same fact a campaign refusal is, mirrored the same way
+			// before the failure is reported. Never throws.
+			await recordSendResponseRefusal(ctx, {
+				result: dispatched.result,
+				providerType: dispatched.providerType,
+				recipient: args.to,
+			});
+			return failedAttempt(
+				provider,
+				args,
+				dispatched.result.errorCode,
+				dispatched.result.errorMessage
+			);
+		}
+		return {
+			status: 'accepted',
+			provider: dispatched.providerType,
+			providerMessageId: dispatched.result.id,
+			latencyMs: dispatched.latencyMs,
+			attempts: dispatched.attempts,
+		};
+	} catch (error) {
+		return failedAttempt(
+			provider,
+			args,
+			EmailErrorCode.AMBIGUOUS_TIMEOUT,
+			error instanceof Error ? error.message : 'System mail action failed without a receipt'
+		);
+	}
+}
+
+export const trySendSystemEmail = internalAction({
+	args: systemMailArgs,
+	handler: attemptSystemEmail,
+});
+
+export const sendSystemEmail = internalAction({
+	args: systemMailArgs,
+	handler: sendSystemEmailOrThrow,
+});
+
+/** The body of `sendSystemEmail`: `attemptSystemEmail`, throwing on a failed attempt. */
+export async function sendSystemEmailOrThrow(ctx: ActionCtx, args: SystemMailArgs) {
+	const outcome = await attemptSystemEmail(ctx, args);
+	if (outcome.status === 'failed') {
+		throw new Error(
+			outcome.provider
+				? `System email send failed via ${outcome.provider} (${outcome.errorCode}): ${outcome.errorMessage}`
+				: outcome.errorMessage
+		);
+	}
+	return outcome;
+}

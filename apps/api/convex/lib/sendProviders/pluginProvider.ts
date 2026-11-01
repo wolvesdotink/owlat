@@ -154,7 +154,7 @@ export function createHostedSendProvider(
 		 * idempotency key, while `systemMailRetryDisposition` keeps reading the
 		 * catalog's `deduplicatesOnIdempotencyKey` — so a swallowed throw would have
 		 * an ambiguous password reset reported `safe_to_retry` with no key ever sent,
-		 * and the "retry" is a second mail to a real person. `systemMail.ts` builds
+		 * and the "retry" is a second mail to a real person. `maintenance/systemMail.ts` builds
 		 * its extras inside the try that wraps the attempt, so a throw becomes a
 		 * failed attempt BEFORE any mail goes out. That is the fail-closed answer,
 		 * and it is the one the registry's pair guard promises.

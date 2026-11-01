@@ -1,7 +1,7 @@
 /**
  * The SYSTEM/AUTH mail extras seam — the vocabulary half.
  *
- * `systemMail.ts` is the single transport for password resets, invitations, double opt-in and
+ * `maintenance/systemMail.ts` is the single transport for password resets, invitations, double opt-in and
  * email-change mail. It used to decide the per-send knobs itself: an `if (provider === 'mta')` arm
  * building the MTA's system-intake payload inline, and a `provider === 'resend' && key` ternary for
  * the dedup header — the same `providerKind === 'mta' ? … : 'resend' ? …` shape the governed

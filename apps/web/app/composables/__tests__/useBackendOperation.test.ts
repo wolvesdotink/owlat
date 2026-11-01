@@ -605,7 +605,7 @@ describe('useBackendOperation', () => {
 			mutation.mockReturnValue(pending.promise);
 			const outcomes: string[] = [];
 			const stop = onSlowEpisodeEnd((outcome) => outcomes.push(outcome));
-			const mint = 'storage:generateUploadUrl' as unknown as Parameters<
+			const mint = 'storage/files:generateUploadUrl' as unknown as Parameters<
 				typeof useBackendOperation
 			>[0];
 			const { run } = build(mint, { label: 'get upload URL' });

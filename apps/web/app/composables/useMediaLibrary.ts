@@ -81,7 +81,7 @@ export function useMediaLibrary() {
 	};
 
 	// Mutations
-	const { run: generateUploadUrl } = useBackendOperation(api.storage.generateUploadUrl, {
+	const { run: generateUploadUrl } = useBackendOperation(api.storage.files.generateUploadUrl, {
 		label: () => t('shared.useMediaLibrary.operations.getUploadUrl'),
 	});
 	const { run: createMediaAsset } = useBackendOperation(api.mediaAssets.create, {

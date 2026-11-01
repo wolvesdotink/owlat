@@ -180,11 +180,11 @@ describe('POST /api/system/update — audit trail', () => {
 		// by server/__tests__/convexFunctionVisibility.test.ts.
 		expect(convexCalls()).toEqual([
 			{
-				name: 'systemUpdates:recordUpdateStart',
+				name: 'maintenance/updates:recordUpdateStart',
 				args: { versionFrom: '0.4.16', versionTo: '0.4.17' },
 			},
 			{
-				name: 'systemUpdates:recordUpdateFinish',
+				name: 'maintenance/updates:recordUpdateFinish',
 				args: {
 					runId: 'run-id-1',
 					status: 'success',
@@ -221,7 +221,7 @@ describe('POST /api/system/update — audit trail', () => {
 			message: 'Compose template validation failed',
 		});
 		expect(convexCalls()[1]).toMatchObject({
-			name: 'systemUpdates:recordUpdateFinish',
+			name: 'maintenance/updates:recordUpdateFinish',
 			args: { runId: 'run-id-1', status: 'failed' },
 		});
 	});
@@ -239,7 +239,7 @@ describe('POST /api/system/update — updater reports of the wrong shape', () =>
 
 		expect(result).toMatchObject({ success: true, runId: 'run-id-1', steps: undefined });
 		expect(convexCalls()[1]).toEqual({
-			name: 'systemUpdates:recordUpdateFinish',
+			name: 'maintenance/updates:recordUpdateFinish',
 			args: { runId: 'run-id-1', status: 'success', steps: undefined, error: undefined },
 		});
 	});
@@ -272,7 +272,7 @@ describe('POST /api/system/update — updater reports of the wrong shape', () =>
 			data: { details: 'kept for the UI' },
 		});
 		expect(convexCalls()[1]).toEqual({
-			name: 'systemUpdates:recordUpdateFinish',
+			name: 'maintenance/updates:recordUpdateFinish',
 			args: { runId: 'run-id-1', status: 'failed', steps: undefined, error: undefined },
 		});
 	});
@@ -295,7 +295,7 @@ describe('POST /api/system/update — rollouts that are not plain successes', ()
 		expect(result.warning).toContain('still starting: clamav');
 		// The release is live: the audit row must not invite a retry as a failure.
 		expect(convexCalls()[1]).toMatchObject({
-			name: 'systemUpdates:recordUpdateFinish',
+			name: 'maintenance/updates:recordUpdateFinish',
 			args: { status: 'success', error: STARTED.error },
 		});
 	});
@@ -311,8 +311,8 @@ describe('POST /api/system/update — rollouts that are not plain successes', ()
 			await expect(callRoute()).rejects.toMatchObject({ statusCode: status, message: error });
 			// The update never started: no `failed` row in the history.
 			expect(convexCalls().map((call) => call.name)).toEqual([
-				'systemUpdates:recordUpdateStart',
-				'systemUpdates:withdrawUpdateStart',
+				'maintenance/updates:recordUpdateStart',
+				'maintenance/updates:withdrawUpdateStart',
 			]);
 			expect(convexCalls()[1]?.args).toEqual({ runId: 'run-id-1' });
 		}
@@ -345,7 +345,7 @@ describe('POST /api/system/update — the audit row cannot block the update', ()
 		expect(callUpdaterMock).toHaveBeenCalledTimes(1);
 		expect(result).toMatchObject({ success: true, runId: null });
 		// No run was opened, so there is nothing to close.
-		expect(convexCalls().map((c) => c.name)).toEqual(['systemUpdates:recordUpdateStart']);
+		expect(convexCalls().map((c) => c.name)).toEqual(['maintenance/updates:recordUpdateStart']);
 		expect(consoleError).toHaveBeenCalled();
 		consoleError.mockRestore();
 	});

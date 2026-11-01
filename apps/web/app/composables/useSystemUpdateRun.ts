@@ -75,9 +75,9 @@ export function useSystemUpdateRun(latestVersion: () => string | undefined) {
 	async function closeOpenRun(status: 'success' | 'failed', error?: string) {
 		if (!convex) return;
 		try {
-			const open = await convex.query(api.systemUpdates.getUnfinishedUpdate, {});
+			const open = await convex.query(api.maintenance.updates.getUnfinishedUpdate, {});
 			if (!open) return;
-			await convex.mutation(api.systemUpdates.recordUpdateFinish, {
+			await convex.mutation(api.maintenance.updates.recordUpdateFinish, {
 				runId: open.runId,
 				status,
 				...(error ? { error } : {}),
@@ -93,7 +93,7 @@ export function useSystemUpdateRun(latestVersion: () => string | undefined) {
 	/*
 	 * While this tab follows a rollout, it tells the backend so every member's
 	 * shell can name the coming restart "update in progress" (see
-	 * `systemUpdates.recordUpdateActivity`). The open run row alone cannot say
+	 * `maintenance/updates.recordUpdateActivity`). The open run row alone cannot say
 	 * that: it outlives its rollout. Best-effort and single-flight, so the beats
 	 * the client queues while the backend restarts do not pile up.
 	 */
@@ -103,7 +103,7 @@ export function useSystemUpdateRun(latestVersion: () => string | undefined) {
 		if (!convex || beatInFlight) return;
 		beatInFlight = true;
 		try {
-			await convex.mutation(api.systemUpdates.recordUpdateActivity, {});
+			await convex.mutation(api.maintenance.updates.recordUpdateActivity, {});
 		} catch {
 			// Evidence for a status line, not part of the update: a missed beat
 			// only means a drop may read "reconnecting" instead.

@@ -30,7 +30,7 @@ export type SystemMailAttemptOutcome =
  * request may or may not have been accepted, so repeating it is safe only where
  * the transport DEDUPLICATES on the idempotency key we handed it. That used to
  * be spelled `provider === 'mta' || provider === 'resend'` — a list, and the
- * third copy of a fact `systemMail.ts` also encoded twice (an MTA arm carrying
+ * third copy of a fact `maintenance/systemMail.ts` also encoded twice (an MTA arm carrying
  * the key as `messageId`, a Resend ternary carrying it as a header). The catalog
  * declares it once now, and the same declaration is what the adapters'
  * `buildSystemMailExtras` honours, so the promise and the wiring cannot drift.

@@ -11,7 +11,7 @@ vi.mock('@owlat/email-builder', () => ({
 }));
 vi.mock('@owlat/api', () => ({
 	api: {
-		storage: { generateUploadUrl: 'storage.generateUploadUrl' },
+		storage: { files: { generateUploadUrl: 'storage.files.generateUploadUrl' } },
 		mediaAssets: { create: 'mediaAssets.create' },
 		emailBlocks: { blocks: { create: 'emailBlocks.blocks.create' } },
 		emailCoediting: {

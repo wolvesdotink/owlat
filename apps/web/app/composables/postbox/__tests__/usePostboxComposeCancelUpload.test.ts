@@ -14,7 +14,7 @@ const i18n = createTestI18n();
 
 vi.mock('@owlat/api', () => ({
 	api: {
-		storage: { generateUploadUrl: 'storage.generateUploadUrl' },
+		storage: { files: { generateUploadUrl: 'storage.files.generateUploadUrl' } },
 		mail: {
 			drafts: {
 				get: 'drafts.get',
@@ -51,7 +51,7 @@ beforeEach(() => {
 		return { ok: true, result: { ok: true } };
 	});
 	const ops: Record<string, (args: never) => Promise<unknown>> = {
-		'storage.generateUploadUrl': () =>
+		'storage.files.generateUploadUrl': () =>
 			urlHangs
 				? new Promise(() => {})
 				: Promise.resolve({ ok: true, result: 'https://upload.example' }),

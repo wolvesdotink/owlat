@@ -6,7 +6,7 @@ export type DesktopPlatform = 'macos' | 'windows' | 'linux';
 export const RELEASES_PAGE = 'https://github.com/wolvesdotink/owlat/releases';
 
 /* Same endpoint the platform itself polls for update checks
- * (apps/api/convex/systemUpdates.ts). Unauthenticated + CORS-enabled. */
+ * (apps/api/convex/maintenance/releaseCheck.ts). Unauthenticated + CORS-enabled. */
 const LATEST_RELEASE_API = 'https://api.github.com/repos/wolvesdotink/owlat/releases/latest';
 
 /* Installer patterns per platform — mirrors the release build matrix in

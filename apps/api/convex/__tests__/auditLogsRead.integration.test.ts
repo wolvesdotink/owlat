@@ -3,12 +3,12 @@ import { describe, it, expect, vi } from 'vitest';
 import schema from '../schema';
 import { api } from '../_generated/api';
 import { requireOrgPermission } from '../lib/sessionOrganization';
-import { auditLogListQuery } from '../auditLogs';
+import { auditLogListQuery } from '../auditActions/logs';
 import { recordingDb, type IndexSeek } from './indexRecorder.testlib';
 
 /**
  * Read-path coverage for the audit-log operator surface
- * (auditLogs.list / get / getStats / getActiveUsers). The write path (the
+ * (auditActions/logs.list / get / getStats / getActiveUsers). The write path (the
  * recordAuditLog chokepoint) is exercised across ~22 integration suites, but
  * these four permission-gated queries — ordering, filtering, cursor pagination,
  * the userProfile join, and the organization:manage gate — had no direct test.
@@ -67,12 +67,12 @@ async function seed(t: ReturnType<typeof convexTest>) {
 	});
 }
 
-describe('auditLogs.list', () => {
+describe('auditActions/logs.list', () => {
 	it('returns rows newest-first and joins the actor profile', async () => {
 		const t = convexTest(schema, modules);
 		await seed(t);
 
-		const res = await t.query(api.auditLogs.list, {});
+		const res = await t.query(api.auditActions.logs.list, {});
 		expect(res.logs).toHaveLength(3);
 		expect(res.logs[0]!.action).toBe('settings.updated'); // newest
 		expect(res.logs[2]!.action).toBe('campaign.created'); // oldest
@@ -87,16 +87,20 @@ describe('auditLogs.list', () => {
 		const t = convexTest(schema, modules);
 		await seed(t);
 
-		expect((await t.query(api.auditLogs.list, { action: 'campaign.sent' })).logs).toHaveLength(1);
-		expect((await t.query(api.auditLogs.list, { resource: 'settings' })).logs).toHaveLength(1);
-		expect((await t.query(api.auditLogs.list, { userId: 'admin-1' })).logs).toHaveLength(2);
+		expect(
+			(await t.query(api.auditActions.logs.list, { action: 'campaign.sent' })).logs
+		).toHaveLength(1);
+		expect((await t.query(api.auditActions.logs.list, { resource: 'settings' })).logs).toHaveLength(
+			1
+		);
+		expect((await t.query(api.auditActions.logs.list, { userId: 'admin-1' })).logs).toHaveLength(2);
 	});
 
 	it('filters by date range', async () => {
 		const t = convexTest(schema, modules);
 		await seed(t);
 
-		const res = await t.query(api.auditLogs.list, {
+		const res = await t.query(api.auditActions.logs.list, {
 			startDate: BASE + 1500,
 			endDate: BASE + 2500,
 		});
@@ -108,12 +112,15 @@ describe('auditLogs.list', () => {
 		const t = convexTest(schema, modules);
 		await seed(t);
 
-		const first = await t.query(api.auditLogs.list, { limit: 2 });
+		const first = await t.query(api.auditActions.logs.list, { limit: 2 });
 		expect(first.logs).toHaveLength(2);
 		expect(first.hasMore).toBe(true);
 		expect(first.nextCursor).toBeTruthy();
 
-		const second = await t.query(api.auditLogs.list, { limit: 2, cursor: first.nextCursor! });
+		const second = await t.query(api.auditActions.logs.list, {
+			limit: 2,
+			cursor: first.nextCursor!,
+		});
 		expect(second.logs).toHaveLength(1);
 		expect(second.hasMore).toBe(false);
 		expect(second.nextCursor).toBeNull();
@@ -148,31 +155,31 @@ describe('auditLogs.list', () => {
 				});
 			}
 		});
-		const result = await t.query(api.auditLogs.list, { pluginId: 'alpha', limit: 10_000 });
+		const result = await t.query(api.auditActions.logs.list, { pluginId: 'alpha', limit: 10_000 });
 		expect(result.logs).toHaveLength(100);
 		expect(
 			result.logs.every((row) => row.organizationId === 'tenant-a' && row.pluginId === 'alpha')
 		).toBe(true);
-		await expect(t.query(api.auditLogs.list, { pluginId: '../secret' })).rejects.toThrow();
+		await expect(t.query(api.auditActions.logs.list, { pluginId: '../secret' })).rejects.toThrow();
 	});
 
 	it('combines a userId or action filter with the date window and the other filters', async () => {
 		const t = convexTest(schema, modules);
 		await seed(t);
 
-		const byUserInWindow = await t.query(api.auditLogs.list, {
+		const byUserInWindow = await t.query(api.auditActions.logs.list, {
 			userId: 'admin-1',
 			startDate: BASE + 1500,
 		});
 		expect(byUserInWindow.logs.map((l) => l.action)).toEqual(['campaign.sent']);
 
-		const byActionInWindow = await t.query(api.auditLogs.list, {
+		const byActionInWindow = await t.query(api.auditActions.logs.list, {
 			action: 'campaign.created',
 			endDate: BASE + 500,
 		});
 		expect(byActionInWindow.logs).toEqual([]);
 
-		const byBoth = await t.query(api.auditLogs.list, {
+		const byBoth = await t.query(api.auditActions.logs.list, {
 			userId: 'admin-1',
 			action: 'campaign.created',
 			resource: 'campaign',
@@ -189,7 +196,7 @@ describe('auditLogs.list', () => {
 				createdAt: BASE + 2100,
 			});
 		});
-		const tenantScoped = await t.query(api.auditLogs.list, { userId: 'admin-1' });
+		const tenantScoped = await t.query(api.auditActions.logs.list, { userId: 'admin-1' });
 		expect(tenantScoped.logs.map((l) => l.createdAt)).toEqual([BASE + 2000, BASE + 1000]);
 	});
 
@@ -197,16 +204,16 @@ describe('auditLogs.list', () => {
 		const t = convexTest(schema, modules);
 		await seed(t);
 		vi.mocked(requireOrgPermission).mockRejectedValueOnce(new Error('forbidden'));
-		await expect(t.query(api.auditLogs.list, {})).rejects.toThrow('forbidden');
+		await expect(t.query(api.auditActions.logs.list, {})).rejects.toThrow('forbidden');
 	});
 });
 
-describe('auditLogs.getStats', () => {
+describe('auditActions/logs.getStats', () => {
 	it('totals counts by action and resource within the range', async () => {
 		const t = convexTest(schema, modules);
 		await seed(t);
 
-		const stats = await t.query(api.auditLogs.getStats, {
+		const stats = await t.query(api.auditActions.logs.getStats, {
 			startDate: BASE,
 			endDate: BASE + 10_000,
 		});
@@ -231,7 +238,7 @@ describe('auditLogs.getStats', () => {
 			}
 		});
 
-		const stats = await t.query(api.auditLogs.getStats, {
+		const stats = await t.query(api.auditActions.logs.getStats, {
 			startDate: BASE - 1,
 			endDate: BASE + 1,
 		});
@@ -239,7 +246,7 @@ describe('auditLogs.getStats', () => {
 	});
 });
 
-describe('auditLogs.getActiveUsers', () => {
+describe('auditActions/logs.getActiveUsers', () => {
 	it('returns distinct actors that have a profile, paired with authUserId', async () => {
 		const t = convexTest(schema, modules);
 		// Seed recent rows so they fall inside the 90-day window.
@@ -272,7 +279,7 @@ describe('auditLogs.getActiveUsers', () => {
 			});
 		});
 
-		const users = await t.query(api.auditLogs.getActiveUsers, {});
+		const users = await t.query(api.auditActions.logs.getActiveUsers, {});
 		expect(users).toHaveLength(1);
 		expect(users[0]!.authUserId).toBe('admin-1');
 		expect(users[0]!.email).toBe('admin@example.com');

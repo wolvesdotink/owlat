@@ -194,7 +194,7 @@ resolve_ref() {
 		# Match only bare STABLE `vX.Y.Z` tags: the trailing `"` is anchored so a
 		# prerelease tag like `v0.3.0-rc.1` is NOT matched. This preserves the old
 		# `/releases/latest` behaviour (which excludes prereleases/drafts) and keeps
-		# the installer in agreement with the updater (systemUpdates.ts, also
+		# the installer in agreement with the updater (maintenance/releaseCheck.ts, also
 		# stable-only). The leading `v` distinguishes these unified releases from the
 		# `server-v*` / `desktop-v*` prefixed lines.
 		# grep finding nothing is an answer, not an error: `|| true` keeps

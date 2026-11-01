@@ -146,7 +146,7 @@ export function useBackendStatusNotices() {
 	// identity): keep the last evidence rather than forget it mid-drop. `null`
 	// is a caller who may not see rollouts, whose next visible answer must be a
 	// baseline rather than news.
-	const { data: rollout } = useConvexQuery(api.systemUpdates.getRolloutActivity, {});
+	const { data: rollout } = useConvexQuery(api.maintenance.updates.getRolloutActivity, {});
 	watch(
 		rollout,
 		(value) => {

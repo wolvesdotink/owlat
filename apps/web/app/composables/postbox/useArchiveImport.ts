@@ -37,7 +37,7 @@ export function useArchiveImport() {
 		return id ? { mailboxId: id } : 'skip';
 	});
 
-	const { run: generateUploadUrl } = useBackendOperation(api.storage.generateUploadUrl, {
+	const { run: generateUploadUrl } = useBackendOperation(api.storage.files.generateUploadUrl, {
 		label: () => t('shared.postbox.useArchiveImport.uploadOperation'),
 	});
 	const startOp = useBackendOperation(api.mail.archiveImport.start, {

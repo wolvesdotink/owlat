@@ -28,9 +28,9 @@ import {
  *   1. Verify caller is a platform admin (via session cookie → Convex), and
  *      that no stepping-stone migration has to complete first (412).
  *   2. Download the pinned docker-compose-<version>.yml from GitHub Releases.
- *   3. Record an "updateRun" doc via api.systemUpdates.recordUpdateStart.
+ *   3. Record an "updateRun" doc via api.maintenance.updates.recordUpdateStart.
  *   4. POST to http://updater:3200/update with the downloaded compose template.
- *   5. Record result via api.systemUpdates.recordUpdateFinish.
+ *   5. Record result via api.maintenance.updates.recordUpdateFinish.
  *   6. Return the updater's response to the client.
  *
  * A rollout the updater reports as `started` (applied, containers started,
@@ -124,7 +124,7 @@ export default defineEventHandler(async (event) => {
 	//    it — which is exactly what happened while this call was unroutable.
 	let runId: Id<'systemUpdates'> | null = null;
 	try {
-		runId = await client.mutation(api.systemUpdates.recordUpdateStart, {
+		runId = await client.mutation(api.maintenance.updates.recordUpdateStart, {
 			versionFrom: currentVersion,
 			versionTo: targetVersion,
 		});
@@ -165,9 +165,9 @@ export default defineEventHandler(async (event) => {
 	if (runId) {
 		try {
 			if (refused) {
-				await client.mutation(api.systemUpdates.withdrawUpdateStart, { runId });
+				await client.mutation(api.maintenance.updates.withdrawUpdateStart, { runId });
 			} else {
-				await client.mutation(api.systemUpdates.recordUpdateFinish, {
+				await client.mutation(api.maintenance.updates.recordUpdateFinish, {
 					runId,
 					status: updaterOk || started ? 'success' : 'failed',
 					steps: updaterResult.steps,

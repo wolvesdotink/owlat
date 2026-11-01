@@ -106,7 +106,8 @@ export type RegressionEmailDependencies = {
 
 const regressionEmailDependencies: RegressionEmailDependencies = {
 	loadRecipients: loadDeliverabilityAlertAdminRecipients,
-	sendEmail: (ctx, payload) => ctx.runAction(internal.systemMail.trySendSystemEmail, payload),
+	sendEmail: (ctx, payload) =>
+		ctx.runAction(internal.maintenance.systemMail.trySendSystemEmail, payload),
 	boundaryFailureRetryDisposition: (payload) =>
 		systemMailRetryDisposition(
 			getOptional('EMAIL_PROVIDER'),

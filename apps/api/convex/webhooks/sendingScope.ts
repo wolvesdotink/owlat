@@ -22,7 +22,7 @@
  *    reject list is refused in the send response, which carries the same
  *    suppression and is recorded there before the send fails (every
  *    `sendProviderDispatch` caller: `delivery/governedDispatch.ts` and
- *    `systemMail.ts`, see `recordSendResponseRefusal`), so an unmatched `reject` is either
+ *    `maintenance/systemMail.ts`, see `recordSendResponseRefusal`), so an unmatched `reject` is either
  *    already applied or not ours. A bounce or complaint goes down the ordinary
  *    unknown-message path (`./unresolvedBounce.ts`), which already acts on no
  *    address, and is stored with a keyed hash of the recipient so a replay,

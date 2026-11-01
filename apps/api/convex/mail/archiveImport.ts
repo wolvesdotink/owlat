@@ -4,7 +4,7 @@
  * `migration.ts` next door imports a mailbox we can log into. This imports one
  * the user only has a FILE of: a Gmail Takeout `.mbox`, a `.eml` saved out of a
  * dead client, an archive from a provider that shut down. The wizard uploads
- * the bytes to Convex storage (`api.storage.generateUploadUrl`), calls
+ * the bytes to Convex storage (`api.storage.files.generateUploadUrl`), calls
  * {@link start}, and then watches {@link getStatus} — the same three-call shape
  * the IMAP migration already has.
  *

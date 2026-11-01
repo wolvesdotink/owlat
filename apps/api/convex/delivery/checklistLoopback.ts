@@ -76,7 +76,7 @@ export const start = authedAction({
 		if (!created.created) return { status: created.status };
 		let providerMessageId: string | null;
 		try {
-			const accepted = (await ctx.runAction(internal.systemMail.sendSystemEmail, {
+			const accepted = (await ctx.runAction(internal.maintenance.systemMail.sendSystemEmail, {
 				to: recipient,
 				from: `Owlat deliverability probe <deliverability-probe@${startContext.domain}>`,
 				subject: 'Owlat end-to-end deliverability probe',

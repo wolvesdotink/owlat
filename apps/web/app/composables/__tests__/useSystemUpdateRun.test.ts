@@ -217,7 +217,7 @@ describe('useSystemUpdateRun', () => {
 			Parameters<typeof getFunctionName>[0],
 			Record<string, unknown>,
 		];
-		expect(getFunctionName(ref)).toBe('systemUpdates:recordUpdateFinish');
+		expect(getFunctionName(ref)).toBe('maintenance/updates:recordUpdateFinish');
 		expect(args).toEqual({
 			runId: 'run-1',
 			status: 'success',
@@ -230,7 +230,7 @@ describe('useSystemUpdateRun', () => {
 			mutationMock.mock.calls.filter(
 				([ref]) =>
 					getFunctionName(ref as Parameters<typeof getFunctionName>[0]) ===
-					'systemUpdates:recordUpdateActivity'
+					'maintenance/updates:recordUpdateActivity'
 			).length;
 
 		/** Confirm an update whose request stays out, as a real rollout's does. */

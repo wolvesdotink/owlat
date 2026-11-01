@@ -18,7 +18,7 @@ const i18n = createTestI18n();
 
 vi.mock('@owlat/api', () => ({
 	api: {
-		storage: { generateUploadUrl: 'storage.generateUploadUrl' },
+		storage: { files: { generateUploadUrl: 'storage.files.generateUploadUrl' } },
 		mail: {
 			drafts: {
 				addAttachment: 'drafts.addAttachment',

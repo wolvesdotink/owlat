@@ -9,7 +9,7 @@
  * `METHOD:CANCEL` for a cancellation. The guest's mail carries the cancel and
  * reschedule links when the event minted a manage token.
  *
- * Both go through the system mail transport (`systemMail.ts`), whatever the
+ * Both go through the system mail transport (`maintenance/systemMail.ts`), whatever the
  * host's mailbox setup: it works for a member with no mailbox, with an external
  * mailbox, or with Postbox turned off, and it is the path every other
  * machine-generated mail takes. The guest's mail is From "<host> via Owlat"
@@ -33,7 +33,7 @@ import { escapeHtml } from '@owlat/shared/html';
 import { buildEventICalendar } from '@owlat/shared/ical';
 import { APP_LOCALE_BCP47 } from '@owlat/shared/appLocales';
 import { redactEmailAddress } from '@owlat/shared/logRedaction';
-import { attemptSystemEmail } from '../systemMail';
+import { attemptSystemEmail } from '../maintenance/systemMail';
 import { getOptional } from '../lib/env';
 import { sanitizeEmailHeaderValue } from '../lib/inputGuards';
 import { logWarn } from '../lib/runtimeLog';

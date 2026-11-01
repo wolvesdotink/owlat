@@ -80,7 +80,7 @@ done < <(find convex -name "*.ts" -not -path "*/_generated/*" -not -path "*/__te
 #   2. webhooks/endpoints.ts               deleteWebhook → all `webhookDeliveryLogs` by_webhook
 #   3. conditions/topic_membership         segment eval preloads all members by_topic
 #   4. conditions/contact_property         segment eval preloads all values by_property
-#   5. systemUpdates.ts                    recordUpdateStart → running `updateRun` rows
+#   5. maintenance/updates.ts              recordUpdateStart → running `updateRun` rows
 #   6. mail/interpret/sendFailure.ts       dependentDispositions → items by_disposition_source
 # The fan-out ones key on a secondary id (topic/property/webhook), so they are
 # genuinely unbounded, unlike the per-CONTACT cascade collects, which a single

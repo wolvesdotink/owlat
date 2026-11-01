@@ -21,7 +21,7 @@ export interface AnswerUpload {
 export function useAnswerFileUpload() {
 	const { t } = useI18n();
 	const { showToast } = useToast();
-	const generateUploadUrl = useBackendOperation(api.storage.generateUploadUrl, {
+	const generateUploadUrl = useBackendOperation(api.storage.files.generateUploadUrl, {
 		label: () => t('shared.postbox.usePostboxComposeAttachments.prepareUploadOperation'),
 		announce: false,
 	});

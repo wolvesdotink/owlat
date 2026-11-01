@@ -12,7 +12,7 @@ const {
 	data: history,
 	error: historyError,
 	refetch: refetchHistory,
-} = useConvexQuery(api.systemUpdates.listUpdateHistory, () => ({
+} = useConvexQuery(api.maintenance.updates.listUpdateHistory, () => ({
 	limit: 20,
 }));
 

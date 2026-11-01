@@ -334,7 +334,7 @@ describe('the extras builders, at parity with a core adapter', () => {
 		// `systemMailRetryDisposition` keeps reading the catalog's
 		// `deduplicatesOnIdempotencyKey` — so swallowing this would report an
 		// ambiguous password reset `safe_to_retry` with no key ever sent, and the
-		// "retry" is a second mail to a real person. `systemMail.ts` calls this
+		// "retry" is a second mail to a real person. `maintenance/systemMail.ts` calls this
 		// inside the try that wraps the attempt, so a throw is a failed attempt
 		// before any mail goes out.
 		const provider = createHostedSendProvider(KIND, [], {

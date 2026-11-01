@@ -20,7 +20,7 @@ import { AUDIT_ACTION_LITERALS } from '@owlat/api/auditActions';
  * Dropdown option for the resource filter. The `value` is a UI-level resource
  * key (e.g. `'domain'`), which is intentionally distinct from the backend
  * `AUDIT_RESOURCE_LITERALS` (`'sending_domain'`) — the page passes this value
- * straight to `api.auditLogs.list`'s `resource` filter, so changing it would
+ * straight to `api.auditActions.logs.list`'s `resource` filter, so changing it would
  * change behaviour. Kept as-is.
  */
 export interface ResourceFilterOption {

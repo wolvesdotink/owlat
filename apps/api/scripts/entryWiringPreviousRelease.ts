@@ -252,4 +252,41 @@ export const PREVIOUS_RELEASE_ENTRIES: Readonly<Record<string, string>> = {
 		'file processing runs the previous release scheduled (uploads, captures, backfills, budget deferrals, batch continuations)',
 	'semanticFileProcessing.ts#semanticSearch':
 		'old agent context retrievals, attachment suggestions, assistant runs and Quick Query asks mid-run',
+	// System mail, updates, backups, audit log reads and storage URLs moved to
+	// maintenance/systemMail.ts, maintenance/updates.ts, maintenance/releaseCheck.ts,
+	// maintenance/backups.ts, auditActions/logs.ts and storage/files.ts; remove
+	// after release 0.6.17.
+	'systemMail.ts#sendSystemEmail':
+		'old auth and invitation hooks, double opt-in, account-deletion, checklist loopback and delivery status sends mid-run',
+	'systemMail.ts#trySendSystemEmail': 'old deliverability checklist alerts mid-run',
+	'systemUpdates.ts#recordUpdateStart':
+		'the previous /api/system/update route, until its container is replaced',
+	'systemUpdates.ts#recordUpdateFinish':
+		'the previous /api/system/update route and System page, in tabs opened before the deploy',
+	'systemUpdates.ts#withdrawUpdateStart':
+		'the previous /api/system/update route, until its container is replaced',
+	'systemUpdates.ts#getLatestRelease': 'the previous System page, in tabs opened before the deploy',
+	'systemUpdates.ts#getUnfinishedUpdate':
+		'the previous System page, in tabs opened before the deploy',
+	'systemUpdates.ts#recordUpdateActivity':
+		'the previous System page following a rollout, in tabs opened before the deploy',
+	'systemUpdates.ts#getRolloutActivity': 'the previous app shell, in tabs opened before the deploy',
+	'systemUpdates.ts#listUpdateHistory':
+		'the previous update history card, in tabs opened before the deploy',
+	'systemUpdatesReleaseCheck.ts#checkForUpdates':
+		'the previous System page, in tabs opened before the deploy',
+	'systemUpdatesReleaseCheck.ts#getLatestCheckInternal': 'old update checks mid-run',
+	'systemUpdatesReleaseCheck.ts#cacheLatestRelease': 'old update checks mid-run',
+	'systemUpdatesReleaseCheck.ts#cacheCheckFailure': 'old update checks mid-run',
+	'backups.ts#getBackupState':
+		'the previous Backups page and Getting Started card, in tabs opened before the deploy',
+	'backups.ts#setScheduleEnabled': 'the previous Backups page, in tabs opened before the deploy',
+	'backups.ts#logManualRun': 'the previous Backups page, in tabs opened before the deploy',
+	'auditLogs.ts#list': 'the previous audit page, in tabs opened before the deploy',
+	'auditLogs.ts#getStats': 'the previous audit page, in tabs opened before the deploy',
+	'auditLogs.ts#getActiveUsers': 'the previous audit page, in tabs opened before the deploy',
+	'storage.ts#generateUploadUrl':
+		'the previous upload surfaces (editor images, media library, attachments, Files, mail compose, archive import, workspace logo), in tabs opened before the deploy',
+	'storage.ts#getUrl':
+		'the previous editor image upload, media picker and attachment panel, in tabs opened before the deploy',
 };

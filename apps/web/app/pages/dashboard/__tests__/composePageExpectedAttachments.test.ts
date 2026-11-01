@@ -30,7 +30,7 @@ import { locateForwardedParts } from '@owlat/shared/mailMime';
 
 vi.mock('@owlat/api', () => ({
 	api: {
-		storage: { generateUploadUrl: 'storage.generateUploadUrl' },
+		storage: { files: { generateUploadUrl: 'storage.files.generateUploadUrl' } },
 		mail: {
 			drafts: {
 				get: 'drafts.get',

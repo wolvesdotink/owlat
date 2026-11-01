@@ -145,7 +145,7 @@ function extrasModuleFor(
 }
 
 /**
- * The same question for the SYSTEM/AUTH mail path (`systemMail.ts`).
+ * The same question for the SYSTEM/AUTH mail path (`maintenance/systemMail.ts`).
  *
  * Split from {@link buildDispatchExtrasFor} because the INPUTS are genuinely
  * different — the system intake has no durable Send row and therefore none of

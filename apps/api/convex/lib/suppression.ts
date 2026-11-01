@@ -21,7 +21,7 @@
  * module by construction.
  *
  * AND SEVERAL SEND PATHS DO NOT GATE AT ALL, which is worth knowing before
- * trusting this list to be exhaustive: system mail (`systemMail.ts` — auth mail,
+ * trusting this list to be exhaustive: system mail (`maintenance/systemMail.ts` — auth mail,
  * double-opt-in confirmations, operator test sends), Postbox personal outbound
  * (`mail/outbound/dispatch.ts`, `mail/deliveryHooks.ts`), member-only test
  * previews (`delivery/enqueueTestSend.ts`, which says so) and the scheduled seed

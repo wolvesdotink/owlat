@@ -86,7 +86,7 @@ watch(debouncedSearch, () => {
 });
 
 // Upload
-const { run: generateUploadUrl } = useBackendOperation(api.storage.generateUploadUrl, {
+const { run: generateUploadUrl } = useBackendOperation(api.storage.files.generateUploadUrl, {
 	label: () => t('components.mediaPickerModal.getUploadUrlOperation'),
 });
 const { run: createMediaAsset } = useBackendOperation(api.mediaAssets.create, {
@@ -137,7 +137,7 @@ const handleUploadAndSelect = async (files: File[]) => {
 					return created.ok ? created.result : undefined;
 				},
 				getUrl: (registeredStorageId) =>
-					requireConvex().query(api.storage.getUrl, { storageId: registeredStorageId }),
+					requireConvex().query(api.storage.files.getUrl, { storageId: registeredStorageId }),
 			},
 			{
 				storageId,

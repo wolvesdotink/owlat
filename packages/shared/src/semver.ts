@@ -2,7 +2,7 @@
  * One semver comparison for the whole repo.
  *
  * Three surfaces need to answer "is this release newer than what is running?":
- * the server's own update check (`apps/api/convex/systemUpdates.ts`), the
+ * the server's own update check (`apps/api/convex/maintenance/releaseCheck.ts`), the
  * desktop update resolver (`apps/api/convex/desktop/updateResolver.ts`) and the
  * admin system page. They each used to carry their own copy, and the copies
  * disagreed — the admin page's ignored pre-release suffixes entirely, so

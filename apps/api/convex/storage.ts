@@ -1,62 +1,27 @@
-import { authedMutation, authedQuery } from './lib/authedFunctions';
-import { rateLimiter } from './lib/rateLimiter';
-import { throwRateLimited, throwNotFound } from './_utils/errors';
-import { v } from 'convex/values';
-import { isChatAttachment } from './chat/attachmentAccess';
-import { mintUploadUrl } from './storage/uploads';
-
 /**
- * Generate an upload URL for file storage.
- * This URL can be used to upload files directly from the client.
+ * Previous-release paths of `storage/files.ts`. An editor, media picker,
+ * attachment panel or upload dialog in a tab opened before the deploy calls
+ * `storage:generateUploadUrl` and `storage:getUrl` by path. Each keeps its old
+ * path, builder, auth floor, arguments and result shape, and runs the same
+ * body as its replacement. Remove after release 0.6.17.
  */
+
+import { v } from 'convex/values';
+import { authedMutation, authedQuery } from './lib/authedFunctions';
+import { generateRateLimitedUploadUrl, readMediaAssetUrl } from './storage/files';
+
+/** Remove after release 0.6.17; this release calls `storage/files:generateUploadUrl`. */
 // all-members: an upload URL is inert until a gated mutation (media:manage,
 // chat attachment) references the stored blob.
 export const generateUploadUrl = authedMutation({
 	args: {},
-	handler: async (ctx, _args, session) => {
-		// Require authentication before generating upload URLs
-		const userId = session.userId;
-		// The blob is content-inert but not cost-inert: an unbounded mint loop
-		// fills `_storage` with orphaned bytes the instance pays for. Cap per
-		// user; interactive multi-file uploads stay well under the bucket.
-		const res = await rateLimiter.limit(ctx, 'storageUpload', { key: userId });
-		if (!res.ok) {
-			throwRateLimited('Too many uploads — try again in a moment.', res.retryAfter);
-		}
-		return await mintUploadUrl(ctx, session);
-	},
+	handler: async (ctx, _args, session) => await generateRateLimitedUploadUrl(ctx, session),
 });
 
-/**
- * Get a signed download URL for a stored file by its storage ID.
- *
- * Authentication alone is NOT sufficient: a `_storage` id is opaque and shared
- * across resources (mail body/raw blobs, attachments, semantic files all live
- * in the same `_storage` namespace), so handing any authenticated member a URL
- * for any storage id is a cross-resource IDOR — it structurally bypasses the
- * per-resource ownership gates (e.g. mail's `loadReadableMessage`). This query
- * therefore resolves ONLY blobs that are backed by a `mediaAssets` row, the
- * media-library / editor surface its three callers actually use. It mirrors the
- * sibling `deleteFile` ownership lookup. Resources that store blobs outside the
- * media library expose their own ownership-gated URL accessor (mail's
- * `getMessageRawUrl`, etc.) and must NOT be routed through here.
- */
-// authz: the blob's owning media asset is the boundary. Only a shared-library
-// asset resolves, which mediaAssets.list already shows every member; a chat
-// attachment or a blob with no media row reads as not found.
+/** Remove after release 0.6.17; this release calls `storage/files:getUrl`. */
+// authz: readMediaAssetUrl resolves only a shared-library media asset's blob,
+// which mediaAssets.list already shows every member; anything else is not found.
 export const getUrl = authedQuery({
 	args: { storageId: v.id('_storage') },
-	handler: async (ctx, args) => {
-		// Only a blob owned by a media asset is resolvable through this endpoint.
-		const owningAsset = await ctx.db
-			.query('mediaAssets')
-			.withIndex('by_storage_id', (q) => q.eq('storageId', args.storageId))
-			.first();
-
-		if (!owningAsset || isChatAttachment(owningAsset)) {
-			throwNotFound('File');
-		}
-
-		return await ctx.storage.getUrl(args.storageId);
-	},
+	handler: async (ctx, args) => await readMediaAssetUrl(ctx, args.storageId),
 });

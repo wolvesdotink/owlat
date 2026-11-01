@@ -1,6 +1,6 @@
 /**
  * Integration tests for the update-run recording surface
- * (apps/api/convex/systemUpdates.ts).
+ * (apps/api/convex/maintenance/updates.ts).
  *
  * These two mutations are what `POST /api/system/update` (apps/web) calls
  * around its dispatch to the updater sidecar, and both were unreachable: they
@@ -98,11 +98,11 @@ beforeEach(() => {
 	setCaller('admin-user');
 });
 
-describe('systemUpdates.recordUpdateStart', () => {
+describe('maintenance/updates.recordUpdateStart', () => {
 	it('rejects a caller with no platformAdmins row (even an org owner)', async () => {
 		const t = convexTest(schema, modules);
 		await expect(
-			t.mutation(api.systemUpdates.recordUpdateStart, {
+			t.mutation(api.maintenance.updates.recordUpdateStart, {
 				versionFrom: '0.4.16',
 				versionTo: '0.4.17',
 			})
@@ -116,7 +116,7 @@ describe('systemUpdates.recordUpdateStart', () => {
 		const t = convexTest(schema, modules);
 		await seedAdmin(t);
 
-		const runId = await t.mutation(api.systemUpdates.recordUpdateStart, {
+		const runId = await t.mutation(api.maintenance.updates.recordUpdateStart, {
 			versionFrom: '0.4.16',
 			versionTo: '0.4.17',
 		});
@@ -135,9 +135,9 @@ describe('systemUpdates.recordUpdateStart', () => {
 	});
 });
 
-describe('systemUpdates.recordUpdateFinish', () => {
+describe('maintenance/updates.recordUpdateFinish', () => {
 	async function openRun(t: ReturnType<typeof convexTest>): Promise<Id<'systemUpdates'>> {
-		return await t.mutation(api.systemUpdates.recordUpdateStart, {
+		return await t.mutation(api.maintenance.updates.recordUpdateStart, {
 			versionFrom: '0.4.16',
 			versionTo: '0.4.17',
 		});
@@ -151,7 +151,7 @@ describe('systemUpdates.recordUpdateFinish', () => {
 		// Regression: `updateStepResultValidator` had no `ok` field, and Convex
 		// object validators reject unknown ones — so this call used to fail
 		// argument validation and no update run was ever closed out.
-		await t.mutation(api.systemUpdates.recordUpdateFinish, {
+		await t.mutation(api.maintenance.updates.recordUpdateFinish, {
 			runId,
 			status: 'success',
 			steps: SIDECAR_STEPS,
@@ -168,14 +168,14 @@ describe('systemUpdates.recordUpdateFinish', () => {
 		await seedAdmin(t);
 		const runId = await openRun(t);
 
-		await t.mutation(api.systemUpdates.recordUpdateFinish, {
+		await t.mutation(api.maintenance.updates.recordUpdateFinish, {
 			runId,
 			status: 'failed',
 			error: 'Docker pull failed — update aborted, nothing changed',
 			steps: [{ step: 'pull', ok: false, stdout: '', stderr: 'manifest unknown' }],
 		});
 
-		const history = await t.query(api.systemUpdates.listUpdateHistory, {});
+		const history = await t.query(api.maintenance.updates.listUpdateHistory, {});
 		expect(history).toHaveLength(1);
 		expect(history[0]).toMatchObject({
 			status: 'failed',
@@ -190,7 +190,7 @@ describe('systemUpdates.recordUpdateFinish', () => {
 
 		setCaller('not-a-platform-admin');
 		await expect(
-			t.mutation(api.systemUpdates.recordUpdateFinish, { runId, status: 'success' })
+			t.mutation(api.maintenance.updates.recordUpdateFinish, { runId, status: 'success' })
 		).rejects.toThrow(/Platform admin access required/);
 
 		const run = await t.run(async (ctx) => ctx.db.get(runId));
@@ -209,7 +209,7 @@ describe('systemUpdates.recordUpdateFinish', () => {
 		);
 
 		await expect(
-			t.mutation(api.systemUpdates.recordUpdateFinish, { runId: checkId, status: 'success' })
+			t.mutation(api.maintenance.updates.recordUpdateFinish, { runId: checkId, status: 'success' })
 		).rejects.toThrow();
 
 		const check = await t.run(async (ctx) => ctx.db.get(checkId));
@@ -228,10 +228,10 @@ describe('systemUpdates.recordUpdateFinish', () => {
  * outlives the restart and its health poller is the only party that learns how
  * the run ended; this is the lookup that hands it the row to close.
  */
-describe('systemUpdates.getUnfinishedUpdate', () => {
+describe('maintenance/updates.getUnfinishedUpdate', () => {
 	it('rejects a caller with no platformAdmins row', async () => {
 		const t = convexTest(schema, modules);
-		await expect(t.query(api.systemUpdates.getUnfinishedUpdate, {})).rejects.toThrow(
+		await expect(t.query(api.maintenance.updates.getUnfinishedUpdate, {})).rejects.toThrow(
 			/Platform admin access required/
 		);
 	});
@@ -239,12 +239,12 @@ describe('systemUpdates.getUnfinishedUpdate', () => {
 	it('returns the run the restart orphaned', async () => {
 		const t = convexTest(schema, modules);
 		await seedAdmin(t);
-		const runId = await t.mutation(api.systemUpdates.recordUpdateStart, {
+		const runId = await t.mutation(api.maintenance.updates.recordUpdateStart, {
 			versionFrom: '0.5.2',
 			versionTo: '0.5.3',
 		});
 
-		expect(await t.query(api.systemUpdates.getUnfinishedUpdate, {})).toEqual({
+		expect(await t.query(api.maintenance.updates.getUnfinishedUpdate, {})).toEqual({
 			runId,
 			versionTo: '0.5.3',
 		});
@@ -253,31 +253,34 @@ describe('systemUpdates.getUnfinishedUpdate', () => {
 	it('returns nothing once the run is closed, so closing it twice is a no-op', async () => {
 		const t = convexTest(schema, modules);
 		await seedAdmin(t);
-		const runId = await t.mutation(api.systemUpdates.recordUpdateStart, {
+		const runId = await t.mutation(api.maintenance.updates.recordUpdateStart, {
 			versionFrom: '0.5.2',
 			versionTo: '0.5.3',
 		});
-		await t.mutation(api.systemUpdates.recordUpdateFinish, { runId, status: 'success' });
+		await t.mutation(api.maintenance.updates.recordUpdateFinish, { runId, status: 'success' });
 
-		expect(await t.query(api.systemUpdates.getUnfinishedUpdate, {})).toBeNull();
+		expect(await t.query(api.maintenance.updates.getUnfinishedUpdate, {})).toBeNull();
 	});
 
 	it('ignores an older run left open by a browser that was closed mid-update', async () => {
 		const t = convexTest(schema, modules);
 		await seedAdmin(t);
-		const abandoned = await t.mutation(api.systemUpdates.recordUpdateStart, {
+		const abandoned = await t.mutation(api.maintenance.updates.recordUpdateStart, {
 			versionFrom: '0.5.0',
 			versionTo: '0.5.2',
 		});
-		const newest = await t.mutation(api.systemUpdates.recordUpdateStart, {
+		const newest = await t.mutation(api.maintenance.updates.recordUpdateStart, {
 			versionFrom: '0.5.2',
 			versionTo: '0.5.3',
 		});
-		await t.mutation(api.systemUpdates.recordUpdateFinish, { runId: newest, status: 'success' });
+		await t.mutation(api.maintenance.updates.recordUpdateFinish, {
+			runId: newest,
+			status: 'success',
+		});
 
 		// The newest run is closed, so there is nothing this poller can speak
 		// for — the abandoned one ended in a way nobody here witnessed.
-		expect(await t.query(api.systemUpdates.getUnfinishedUpdate, {})).toBeNull();
+		expect(await t.query(api.maintenance.updates.getUnfinishedUpdate, {})).toBeNull();
 		const stale = await t.run(async (ctx) => ctx.db.get(abandoned));
 		expect(stale?.status).toBe('superseded');
 	});
@@ -293,7 +296,7 @@ describe('systemUpdates.getUnfinishedUpdate', () => {
 			})
 		);
 
-		expect(await t.query(api.systemUpdates.getUnfinishedUpdate, {})).toBeNull();
+		expect(await t.query(api.maintenance.updates.getUnfinishedUpdate, {})).toBeNull();
 	});
 });
 
@@ -303,17 +306,17 @@ describe('systemUpdates.getUnfinishedUpdate', () => {
  * gate is org membership and the answer carries nothing but one timestamp: the
  * last heartbeat, or the start before the first one.
  */
-describe('systemUpdates.getRolloutActivity', () => {
+describe('maintenance/updates.getRolloutActivity', () => {
 	it('answers null, not an error, to a caller who is not an active member', async () => {
 		const t = convexTest(schema, modules);
 		await seedAdmin(t);
-		await t.mutation(api.systemUpdates.recordUpdateStart, {
+		await t.mutation(api.maintenance.updates.recordUpdateStart, {
 			versionFrom: '0.5.2',
 			versionTo: '0.5.3',
 		});
 		vi.mocked(isActiveOrgMember).mockResolvedValueOnce(false);
 
-		expect(await t.query(api.systemUpdates.getRolloutActivity, {})).toBeNull();
+		expect(await t.query(api.maintenance.updates.getRolloutActivity, {})).toBeNull();
 	});
 
 	it('tells a caller who may not see rollouts apart from a member with no open run', async () => {
@@ -321,8 +324,8 @@ describe('systemUpdates.getRolloutActivity', () => {
 		await seedAdmin(t);
 
 		vi.mocked(isActiveOrgMember).mockResolvedValueOnce(false);
-		const hidden = await t.query(api.systemUpdates.getRolloutActivity, {});
-		const member = await t.query(api.systemUpdates.getRolloutActivity, {});
+		const hidden = await t.query(api.maintenance.updates.getRolloutActivity, {});
+		const member = await t.query(api.maintenance.updates.getRolloutActivity, {});
 
 		expect(hidden).toBeNull();
 		expect(member).toEqual({ activeAt: null });
@@ -331,7 +334,7 @@ describe('systemUpdates.getRolloutActivity', () => {
 	it('gives an ordinary member only the running update’s start time before any heartbeat', async () => {
 		const t = convexTest(schema, modules);
 		await seedAdmin(t);
-		await t.mutation(api.systemUpdates.recordUpdateStart, {
+		await t.mutation(api.maintenance.updates.recordUpdateStart, {
 			versionFrom: '0.5.2',
 			versionTo: '0.5.3',
 		});
@@ -344,7 +347,7 @@ describe('systemUpdates.getRolloutActivity', () => {
 		// No platformAdmins row for this caller: the query must not need one.
 		setCaller('member-user');
 
-		expect(await t.query(api.systemUpdates.getRolloutActivity, {})).toEqual({
+		expect(await t.query(api.maintenance.updates.getRolloutActivity, {})).toEqual({
 			activeAt: run?.startedAt,
 		});
 	});
@@ -352,13 +355,15 @@ describe('systemUpdates.getRolloutActivity', () => {
 	it('answers no open run once the newest run has a verdict', async () => {
 		const t = convexTest(schema, modules);
 		await seedAdmin(t);
-		const runId = await t.mutation(api.systemUpdates.recordUpdateStart, {
+		const runId = await t.mutation(api.maintenance.updates.recordUpdateStart, {
 			versionFrom: '0.5.2',
 			versionTo: '0.5.3',
 		});
-		await t.mutation(api.systemUpdates.recordUpdateFinish, { runId, status: 'success' });
+		await t.mutation(api.maintenance.updates.recordUpdateFinish, { runId, status: 'success' });
 
-		expect(await t.query(api.systemUpdates.getRolloutActivity, {})).toEqual({ activeAt: null });
+		expect(await t.query(api.maintenance.updates.getRolloutActivity, {})).toEqual({
+			activeAt: null,
+		});
 	});
 
 	it('answers no open run with no update history and ignores the release-check singleton', async () => {
@@ -371,7 +376,9 @@ describe('systemUpdates.getRolloutActivity', () => {
 			})
 		);
 
-		expect(await t.query(api.systemUpdates.getRolloutActivity, {})).toEqual({ activeAt: null });
+		expect(await t.query(api.maintenance.updates.getRolloutActivity, {})).toEqual({
+			activeAt: null,
+		});
 	});
 });
 
@@ -380,13 +387,13 @@ describe('systemUpdates.getRolloutActivity', () => {
  * members' "update in progress" honest: an open run row alone may be an orphan
  * whose rollout ended long ago, a heartbeat that keeps moving is not.
  */
-describe('systemUpdates.recordUpdateActivity', () => {
+describe('maintenance/updates.recordUpdateActivity', () => {
 	afterEach(() => {
 		vi.useRealTimers();
 	});
 
 	async function openRun(t: ReturnType<typeof convexTest>) {
-		return await t.mutation(api.systemUpdates.recordUpdateStart, {
+		return await t.mutation(api.maintenance.updates.recordUpdateStart, {
 			versionFrom: '0.5.2',
 			versionTo: '0.5.3',
 		});
@@ -398,12 +405,12 @@ describe('systemUpdates.recordUpdateActivity', () => {
 		const t = convexTest(schema, modules);
 		await seedAdmin(t);
 		const runId = await openRun(t);
-		const started = await t.query(api.systemUpdates.getRolloutActivity, {});
+		const started = await t.query(api.maintenance.updates.getRolloutActivity, {});
 
 		vi.setSystemTime(new Date('2026-10-22T09:00:30Z'));
-		await t.mutation(api.systemUpdates.recordUpdateActivity, {});
+		await t.mutation(api.maintenance.updates.recordUpdateActivity, {});
 
-		const after = await t.query(api.systemUpdates.getRolloutActivity, {});
+		const after = await t.query(api.maintenance.updates.getRolloutActivity, {});
 		expect(after).toEqual({ activeAt: Date.parse('2026-10-22T09:00:30Z') });
 		expect(after).not.toEqual(started);
 		const row = await t.run(async (ctx) => ctx.db.get(runId));
@@ -415,21 +422,23 @@ describe('systemUpdates.recordUpdateActivity', () => {
 		const t = convexTest(schema, modules);
 		await seedAdmin(t);
 		const runId = await openRun(t);
-		await t.mutation(api.systemUpdates.recordUpdateFinish, { runId, status: 'success' });
+		await t.mutation(api.maintenance.updates.recordUpdateFinish, { runId, status: 'success' });
 
-		await t.mutation(api.systemUpdates.recordUpdateActivity, {});
+		await t.mutation(api.maintenance.updates.recordUpdateActivity, {});
 
 		const row = await t.run(async (ctx) => ctx.db.get(runId));
 		expect(row?.lastActivityAt).toBeUndefined();
 		expect(row?.status).toBe('success');
-		expect(await t.query(api.systemUpdates.getRolloutActivity, {})).toEqual({ activeAt: null });
+		expect(await t.query(api.maintenance.updates.getRolloutActivity, {})).toEqual({
+			activeAt: null,
+		});
 	});
 
 	it('does nothing without update history', async () => {
 		const t = convexTest(schema, modules);
 		await seedAdmin(t);
 
-		await expect(t.mutation(api.systemUpdates.recordUpdateActivity, {})).resolves.toBeNull();
+		await expect(t.mutation(api.maintenance.updates.recordUpdateActivity, {})).resolves.toBeNull();
 	});
 
 	it('refuses a caller who is not a platform admin', async () => {
@@ -438,7 +447,7 @@ describe('systemUpdates.recordUpdateActivity', () => {
 		const runId = await openRun(t);
 		setCaller('member-user');
 
-		await expect(t.mutation(api.systemUpdates.recordUpdateActivity, {})).rejects.toThrow();
+		await expect(t.mutation(api.maintenance.updates.recordUpdateActivity, {})).rejects.toThrow();
 		const row = await t.run(async (ctx) => ctx.db.get(runId));
 		expect(row?.lastActivityAt).toBeUndefined();
 	});
@@ -459,11 +468,11 @@ describe('one update run at a time', () => {
 		const t = convexTest(schema, modules);
 		await seedAdmin(t);
 
-		const orphaned = await t.mutation(api.systemUpdates.recordUpdateStart, {
+		const orphaned = await t.mutation(api.maintenance.updates.recordUpdateStart, {
 			versionFrom: '0.5.2',
 			versionTo: '0.5.3',
 		});
-		const current = await t.mutation(api.systemUpdates.recordUpdateStart, {
+		const current = await t.mutation(api.maintenance.updates.recordUpdateStart, {
 			versionFrom: '0.5.3',
 			versionTo: '0.5.4',
 		});
@@ -491,13 +500,13 @@ describe('one update run at a time', () => {
 			['0.5.3', '0.5.4'],
 			['0.5.4', '0.5.5'],
 		]) {
-			await t.mutation(api.systemUpdates.recordUpdateStart, {
+			await t.mutation(api.maintenance.updates.recordUpdateStart, {
 				versionFrom: versionFrom!,
 				versionTo: versionTo!,
 			});
 		}
 
-		const history = await t.query(api.systemUpdates.listUpdateHistory, {});
+		const history = await t.query(api.maintenance.updates.listUpdateHistory, {});
 		expect(history.filter((row) => row.status === 'running')).toHaveLength(1);
 		// Newest first, so the survivor is the update actually under way.
 		expect(history[0]).toMatchObject({ versionTo: '0.5.5', status: 'running' });
@@ -508,16 +517,16 @@ describe('one update run at a time', () => {
 		const t = convexTest(schema, modules);
 		await seedAdmin(t);
 
-		const succeeded = await t.mutation(api.systemUpdates.recordUpdateStart, {
+		const succeeded = await t.mutation(api.maintenance.updates.recordUpdateStart, {
 			versionFrom: '0.5.2',
 			versionTo: '0.5.3',
 		});
-		await t.mutation(api.systemUpdates.recordUpdateFinish, {
+		await t.mutation(api.maintenance.updates.recordUpdateFinish, {
 			runId: succeeded,
 			status: 'success',
 		});
 
-		await t.mutation(api.systemUpdates.recordUpdateStart, {
+		await t.mutation(api.maintenance.updates.recordUpdateStart, {
 			versionFrom: '0.5.3',
 			versionTo: '0.5.4',
 		});
@@ -538,7 +547,7 @@ describe('one update run at a time', () => {
 			})
 		);
 
-		await t.mutation(api.systemUpdates.recordUpdateStart, {
+		await t.mutation(api.maintenance.updates.recordUpdateStart, {
 			versionFrom: '0.5.3',
 			versionTo: '0.5.4',
 		});
@@ -552,18 +561,18 @@ describe('one update run at a time', () => {
 		const t = convexTest(schema, modules);
 		await seedAdmin(t);
 
-		const orphaned = await t.mutation(api.systemUpdates.recordUpdateStart, {
+		const orphaned = await t.mutation(api.maintenance.updates.recordUpdateStart, {
 			versionFrom: '0.5.2',
 			versionTo: '0.5.3',
 		});
-		await t.mutation(api.systemUpdates.recordUpdateStart, {
+		await t.mutation(api.maintenance.updates.recordUpdateStart, {
 			versionFrom: '0.5.3',
 			versionTo: '0.5.4',
 		});
 
 		// The 0.5.3 rollout's route survived after all and closes its own row —
 		// a verdict about a rollout this instance has already moved past.
-		await t.mutation(api.systemUpdates.recordUpdateFinish, {
+		await t.mutation(api.maintenance.updates.recordUpdateFinish, {
 			runId: orphaned,
 			status: 'success',
 			steps: SIDECAR_STEPS,
@@ -580,7 +589,7 @@ describe('one update run at a time', () => {
  * rate limit: 429) changed nothing. It was recorded as a failed update, and
  * opening its row had retired the rollout that was really running.
  */
-describe('systemUpdates.withdrawUpdateStart', () => {
+describe('maintenance/updates.withdrawUpdateStart', () => {
 	beforeEach(() => {
 		vi.useFakeTimers();
 	});
@@ -590,7 +599,7 @@ describe('systemUpdates.withdrawUpdateStart', () => {
 
 	async function start(t: ReturnType<typeof convexTest>, versionFrom: string, versionTo: string) {
 		vi.advanceTimersByTime(60_000);
-		return await t.mutation(api.systemUpdates.recordUpdateStart, { versionFrom, versionTo });
+		return await t.mutation(api.maintenance.updates.recordUpdateStart, { versionFrom, versionTo });
 	}
 
 	it('removes the refused run and puts back the rollout it retired', async () => {
@@ -599,14 +608,17 @@ describe('systemUpdates.withdrawUpdateStart', () => {
 		const live = await start(t, '0.5.3', '0.5.4');
 		const refused = await start(t, '0.5.3', '0.5.4');
 
-		await t.mutation(api.systemUpdates.withdrawUpdateStart, { runId: refused });
+		await t.mutation(api.maintenance.updates.withdrawUpdateStart, { runId: refused });
 
-		const history = await t.query(api.systemUpdates.listUpdateHistory, {});
+		const history = await t.query(api.maintenance.updates.listUpdateHistory, {});
 		expect(history.map((row) => [row._id, row.status, row.error])).toEqual([
 			[live, 'running', undefined],
 		]);
 		// The live rollout's own verdict still lands.
-		await t.mutation(api.systemUpdates.recordUpdateFinish, { runId: live, status: 'success' });
+		await t.mutation(api.maintenance.updates.recordUpdateFinish, {
+			runId: live,
+			status: 'success',
+		});
 		expect((await t.run(async (ctx) => ctx.db.get(live)))?.status).toBe('success');
 	});
 
@@ -615,12 +627,15 @@ describe('systemUpdates.withdrawUpdateStart', () => {
 		await seedAdmin(t);
 		const orphaned = await start(t, '0.5.2', '0.5.4');
 		const failed = await start(t, '0.5.2', '0.5.4');
-		await t.mutation(api.systemUpdates.recordUpdateFinish, { runId: failed, status: 'failed' });
+		await t.mutation(api.maintenance.updates.recordUpdateFinish, {
+			runId: failed,
+			status: 'failed',
+		});
 		const refused = await start(t, '0.5.2', '0.5.4');
 
-		await t.mutation(api.systemUpdates.withdrawUpdateStart, { runId: refused });
+		await t.mutation(api.maintenance.updates.withdrawUpdateStart, { runId: refused });
 
-		const history = await t.query(api.systemUpdates.listUpdateHistory, {});
+		const history = await t.query(api.maintenance.updates.listUpdateHistory, {});
 		expect(history.map((row) => [row._id, row.status])).toEqual([
 			[failed, 'failed'],
 			[orphaned, 'superseded'],
@@ -631,9 +646,9 @@ describe('systemUpdates.withdrawUpdateStart', () => {
 		const t = convexTest(schema, modules);
 		await seedAdmin(t);
 		const run = await start(t, '0.5.3', '0.5.4');
-		await t.mutation(api.systemUpdates.recordUpdateFinish, { runId: run, status: 'success' });
+		await t.mutation(api.maintenance.updates.recordUpdateFinish, { runId: run, status: 'success' });
 
-		await t.mutation(api.systemUpdates.withdrawUpdateStart, { runId: run });
+		await t.mutation(api.maintenance.updates.withdrawUpdateStart, { runId: run });
 
 		expect((await t.run(async (ctx) => ctx.db.get(run)))?.status).toBe('success');
 	});
@@ -644,9 +659,9 @@ describe('systemUpdates.withdrawUpdateStart', () => {
 		const run = await start(t, '0.5.3', '0.5.4');
 		setCaller('org-owner-not-admin');
 
-		await expect(t.mutation(api.systemUpdates.withdrawUpdateStart, { runId: run })).rejects.toThrow(
-			/Platform admin access required/
-		);
+		await expect(
+			t.mutation(api.maintenance.updates.withdrawUpdateStart, { runId: run })
+		).rejects.toThrow(/Platform admin access required/);
 		expect((await t.run(async (ctx) => ctx.db.get(run)))?.status).toBe('running');
 	});
 });

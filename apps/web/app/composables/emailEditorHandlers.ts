@@ -35,7 +35,7 @@ export interface UploadImageDeps extends MediaAssetReferenceDeps {
 /**
  * Build the `uploadImage` handler the EmailBuilder injects:
  * `generateUploadUrl` → POST the file → measure dimensions → `mediaAssets.create`
- * → `storage.getUrl`. Every uploaded image is auto-registered to the media
+ * → `storage/files.getUrl`. Every uploaded image is auto-registered to the media
  * library (the easy-to-miss side effect). The whole pipeline is one save, so it
  * holds any slow-save episode open until the image is registered.
  */
@@ -66,7 +66,7 @@ async function uploadImage(deps: UploadImageDeps, file: File): Promise<ImageUplo
 		throw new Error('Image upload did not return a storage ID');
 	}
 
-	// Auto-save to media library FIRST: `storage.getUrl` only resolves blobs
+	// Auto-save to media library FIRST: `storage/files.getUrl` only resolves blobs
 	// backed by a `mediaAssets` row (cross-resource IDOR guard), so the asset
 	// must exist before we can mint its URL.
 	const dimensions = await deps.getImageDimensions(file);
@@ -118,7 +118,7 @@ export function createSavedBlockSaveHandler(
  */
 export function provideEmailEditorHandlers() {
 	const { t } = useI18n();
-	const { run: generateUploadUrl } = useBackendOperation(api.storage.generateUploadUrl, {
+	const { run: generateUploadUrl } = useBackendOperation(api.storage.files.generateUploadUrl, {
 		label: () => t('shared.useEmailEditorBridge.getUploadUrlOperation'),
 	});
 	const { run: createMediaAsset } = useBackendOperation(api.mediaAssets.create, {
@@ -143,7 +143,7 @@ export function provideEmailEditorHandlers() {
 				const minted = await generateUploadUrl({});
 				return minted.ok ? minted.result : null;
 			},
-			getUrl: (storageId) => requireConvex().query(api.storage.getUrl, { storageId }),
+			getUrl: (storageId) => requireConvex().query(api.storage.files.getUrl, { storageId }),
 			createMediaAsset: async (asset) => {
 				const created = await createMediaAsset(asset);
 				return created.ok ? created.result : undefined;

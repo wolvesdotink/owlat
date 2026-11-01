@@ -238,7 +238,7 @@ export const refreshReleases = internalAction({
 /**
  * Permission probe for `checkNow`. An action has no `ctx.db`, so it inherits its
  * caller's identity through this query to make the `settings:manage` decision —
- * the same shape `systemUpdates.checkForUpdates` uses for its platform-admin
+ * the same shape `maintenance/releaseCheck.checkForUpdates` uses for its platform-admin
  * check, against the gate self-hosters can actually reach.
  */
 export const assertPolicyManager = internalQuery({

@@ -52,7 +52,7 @@ afterEach(() => {
 	vi.unstubAllGlobals();
 });
 
-describe('systemUpdatesReleaseCheck.checkForUpdates', () => {
+describe('maintenance/releaseCheck.checkForUpdates', () => {
 	it('offers a release published without notes', async () => {
 		const t = await platformAdmin();
 		stubRelease({
@@ -63,7 +63,7 @@ describe('systemUpdatesReleaseCheck.checkForUpdates', () => {
 			prerelease: false,
 		});
 
-		const result = await t.action(api.systemUpdatesReleaseCheck.checkForUpdates, { force: true });
+		const result = await t.action(api.maintenance.releaseCheck.checkForUpdates, { force: true });
 
 		expect(result).toMatchObject({
 			latestVersion: '1.2.0',
@@ -81,7 +81,7 @@ describe('systemUpdatesReleaseCheck.checkForUpdates', () => {
 		const t = await platformAdmin();
 		stubRelease(release);
 
-		const result = await t.action(api.systemUpdatesReleaseCheck.checkForUpdates, { force: true });
+		const result = await t.action(api.maintenance.releaseCheck.checkForUpdates, { force: true });
 
 		expect(result.latestVersion).toBeNull();
 		expect(result.updateAvailable).toBe(false);
@@ -124,8 +124,8 @@ describe('systemUpdatesReleaseCheck.checkForUpdates', () => {
 				prerelease: false,
 			});
 
-			await t.action(api.systemUpdatesReleaseCheck.checkForUpdates, { force: true });
-			await t.action(api.systemUpdatesReleaseCheck.checkForUpdates, { force: true });
+			await t.action(api.maintenance.releaseCheck.checkForUpdates, { force: true });
+			await t.action(api.maintenance.releaseCheck.checkForUpdates, { force: true });
 
 			const rows = await latestCheck(t);
 			expect(rows).toHaveLength(1);
@@ -142,7 +142,7 @@ describe('systemUpdatesReleaseCheck.checkForUpdates', () => {
 			await seedCache(t, 1);
 			stubStatus(429);
 
-			const result = await t.action(api.systemUpdatesReleaseCheck.checkForUpdates, {
+			const result = await t.action(api.maintenance.releaseCheck.checkForUpdates, {
 				force: true,
 			});
 
@@ -160,7 +160,7 @@ describe('systemUpdatesReleaseCheck.checkForUpdates', () => {
 			const t = await platformAdmin();
 			stubStatus(500);
 
-			const result = await t.action(api.systemUpdatesReleaseCheck.checkForUpdates, {
+			const result = await t.action(api.maintenance.releaseCheck.checkForUpdates, {
 				force: true,
 			});
 
@@ -174,7 +174,7 @@ describe('systemUpdatesReleaseCheck.checkForUpdates', () => {
 			await seedCache(t, 1);
 			stubRelease({ tag_name: 'v1.3.0-rc.1', body: 'rc', prerelease: true });
 
-			const result = await t.action(api.systemUpdatesReleaseCheck.checkForUpdates, {
+			const result = await t.action(api.maintenance.releaseCheck.checkForUpdates, {
 				force: true,
 			});
 
@@ -193,7 +193,7 @@ describe('systemUpdatesReleaseCheck.checkForUpdates', () => {
 			const fetchSpy = vi.fn();
 			vi.stubGlobal('fetch', fetchSpy);
 
-			const result = await t.action(api.systemUpdatesReleaseCheck.checkForUpdates, {});
+			const result = await t.action(api.maintenance.releaseCheck.checkForUpdates, {});
 
 			expect(result.latestVersion).toBe('1.1.0');
 			expect(fetchSpy).not.toHaveBeenCalled();

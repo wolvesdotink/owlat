@@ -130,7 +130,7 @@ export async function hasSeedAccounts(
  * seed most in need of rotating — never produced one.
  *
  * So, in order: the artifact goes through `recordAuditLog` into `auditLogs`,
- * which `auditLogs.list` surfaces org-scoped to admins — a query the product
+ * which `auditActions/logs.list` surfaces org-scoped to admins — a query the product
  * really exposes. Due-ness runs off `seedRotationAcknowledgedAt`, which ONLY an
  * operator writes (`mail/external/accountsSeed.acknowledgeSeedRotation`);
  * `seedRotationRemindedAt` survives purely as this function's de-duplication

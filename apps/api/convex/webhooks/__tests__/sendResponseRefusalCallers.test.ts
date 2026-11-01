@@ -229,7 +229,7 @@ describe('send-response refusal callers', () => {
 	it('finds the known callers', () => {
 		expect(callers.map((caller) => caller.path).sort()).toEqual([
 			join('delivery', 'governedDispatch.ts'),
-			'systemMail.ts',
+			join('maintenance', 'systemMail.ts'),
 		]);
 	});
 

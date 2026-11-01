@@ -35,7 +35,7 @@ const emit = defineEmits<{
 
 const { t } = useI18n();
 
-const { run: generateUploadUrl } = useBackendOperation(api.storage.generateUploadUrl, {
+const { run: generateUploadUrl } = useBackendOperation(api.storage.files.generateUploadUrl, {
 	label: () => t('components.attachmentPanel.getUploadUrlOperation'),
 });
 const { run: createMediaAsset } = useBackendOperation(api.mediaAssets.create, {
@@ -141,7 +141,7 @@ async function handleFileUpload(fileArray: File[]) {
 			}
 			const storageId = upload.storageId;
 
-			// Register in media library FIRST: `storage.getUrl` only resolves blobs
+			// Register in media library FIRST: `storage/files.getUrl` only resolves blobs
 			// backed by a `mediaAssets` row (cross-resource IDOR guard), so the
 			// asset must exist before we can mint its URL.
 			const contentType = file.type || 'application/octet-stream';
@@ -152,7 +152,7 @@ async function handleFileUpload(fileArray: File[]) {
 						return created.ok ? created.result : undefined;
 					},
 					getUrl: (registeredStorageId) =>
-						requireConvex().query(api.storage.getUrl, { storageId: registeredStorageId }),
+						requireConvex().query(api.storage.files.getUrl, { storageId: registeredStorageId }),
 				},
 				{
 					storageId,

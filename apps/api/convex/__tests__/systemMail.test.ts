@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ActionCtx } from '../_generated/server';
-import { attemptSystemEmail } from '../systemMail';
+import { attemptSystemEmail } from '../maintenance/systemMail';
 import { EmailErrorCode } from '../lib/sendProviders';
 
 afterEach(() => {

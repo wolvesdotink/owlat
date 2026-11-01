@@ -7,7 +7,7 @@
  *                                (admin/permission gate + polymorphic-target xor invariant)
  *   - shareLinks/viewHttp.ts     GET /share/{token} (public token endpoint)
  *   - shareLinks/queries.ts      getShareLinkByToken (internal: revoked/expired/live)
- *   - systemUpdates.ts           checkForUpdates (bespoke platform-admin gate)
+ *   - maintenance/releaseCheck.ts checkForUpdates (bespoke platform-admin gate)
  *
  * Auth model under test (single-org deployment):
  *   - The authedQuery/authedMutation floor (`requireOrgMember` / `getMutationContext`)
@@ -692,16 +692,16 @@ describe('GET /share/{token}', () => {
 });
 
 // ============================================================
-// systemUpdates.checkForUpdates — platform-admin gate
+// maintenance/releaseCheck.checkForUpdates — platform-admin gate
 // ============================================================
 
-describe('systemUpdates.checkForUpdates — platform-admin gate', () => {
+describe('maintenance/releaseCheck.checkForUpdates — platform-admin gate', () => {
 	it('rejects a caller with no platformAdmins row', async () => {
 		const t = newHarness();
 		sessionMock.subject = 'not-an-admin';
 		// No platformAdmins seeded → isPlatformAdminByUserId returns false.
 
-		await expect(t.action(api.systemUpdatesReleaseCheck.checkForUpdates, {})).rejects.toThrow();
+		await expect(t.action(api.maintenance.releaseCheck.checkForUpdates, {})).rejects.toThrow();
 	});
 
 	it('rejects an org member whose subject is not in platformAdmins (admin tier is higher)', async () => {
@@ -710,7 +710,7 @@ describe('systemUpdates.checkForUpdates — platform-admin gate', () => {
 		await seedPlatformAdmin(t, 'some-other-admin');
 		sessionMock.subject = 'auth-user-1';
 
-		await expect(t.action(api.systemUpdatesReleaseCheck.checkForUpdates, {})).rejects.toThrow();
+		await expect(t.action(api.maintenance.releaseCheck.checkForUpdates, {})).rejects.toThrow();
 	});
 
 	it('passes the gate for a platform admin and returns the cached (fresh) result without a network call', async () => {
@@ -731,7 +731,7 @@ describe('systemUpdates.checkForUpdates — platform-admin gate', () => {
 			});
 		});
 
-		const res = await t.action(api.systemUpdatesReleaseCheck.checkForUpdates, {});
+		const res = await t.action(api.maintenance.releaseCheck.checkForUpdates, {});
 		expect(res.latestVersion).toBe('1.3.0');
 		expect(res.currentVersion).toBe('1.2.0');
 		expect(res.updateAvailable).toBe(true); // 1.3.0 > 1.2.0
@@ -755,7 +755,7 @@ describe('systemUpdates.checkForUpdates — platform-admin gate', () => {
 			});
 		});
 
-		const res = await t.action(api.systemUpdatesReleaseCheck.checkForUpdates, {});
+		const res = await t.action(api.maintenance.releaseCheck.checkForUpdates, {});
 		expect(res.updateAvailable).toBe(false);
 	});
 });

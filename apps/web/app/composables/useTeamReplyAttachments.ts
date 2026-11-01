@@ -58,7 +58,7 @@ export function useTeamReplyAttachments(
 	);
 	const suggestion = computed<TeamAttachSuggestion | null>(() => suggestionData.value ?? null);
 
-	const generateUploadUrl = useBackendOperation(api.storage.generateUploadUrl, {
+	const generateUploadUrl = useBackendOperation(api.storage.files.generateUploadUrl, {
 		label: () => t('shared.postbox.usePostboxComposeAttachments.prepareUploadOperation'),
 	});
 	const addOp = useBackendOperation(api.inbox.replyAttachments.add, {
