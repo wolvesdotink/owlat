@@ -1,11 +1,10 @@
 /**
  * Contact-activity type catalog — single source of truth.
  *
- * The `schema/contacts.ts` `contactActivities.activityType` union and the
- * `contacts/activities.ts` `create` mutation args both derive from the list
- * below, so adding an activity type is a one-place change and the two cannot
- * drift: a literal the mutation args lacked could not be inserted through the
- * public mutation.
+ * The `schema/contacts.ts` `contactActivities.activityType` validator derives
+ * from the list below, and `contactActivities/writer.ts` fails to compile
+ * unless its per-literal module map covers exactly these literals, so adding
+ * an activity type starts here and the writer cannot drift from the schema.
  */
 
 import { literalUnion } from '../lib/literalUnion';
