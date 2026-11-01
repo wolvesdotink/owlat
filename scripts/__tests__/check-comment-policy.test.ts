@@ -1,14 +1,14 @@
 /**
- * lint:comment-policy reads the comments of the lines a change adds and
- * rejects issue numbers, narration of earlier code, and tags into documents
- * the repository does not hold. The cases cover each rule and the text it must
- * leave alone, the comment extraction per file kind (strings, regular
- * expressions, JSX text, template interpolations and attributes, shell
- * here-documents and YAML scalars are not comments; a command substitution
- * inside a string is code again), the diff parsing, and the gate
- * end to end in a scratch repository: legacy comments, deletions and renames
- * pass, committed, staged, unstaged and untracked additions are read, and a
- * base that cannot be resolved skips locally and fails in CI.
+ * lint:comment-policy reads every comment in the tree and rejects issue
+ * numbers, narration of earlier code, and tags into documents the repository
+ * does not hold. The cases cover each rule and the text it must leave alone,
+ * the comment extraction per file kind (strings, regular expressions, JSX
+ * text, template interpolations and attributes, shell here-documents and YAML
+ * scalars are not comments; a command substitution inside a string is code
+ * again), and the gate end to end in a scratch repository: a violation in a
+ * file no change touches fails, the working tree is read as it is on disk
+ * (staged, unstaged and untracked content), and ignored, deleted, generated
+ * and exempt files are skipped.
  */
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -16,12 +16,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import ts from 'typescript';
 import { afterEach, describe, expect, it } from 'vitest';
-import {
-	checkCommentPolicy,
-	findingsInFile,
-	parseChangedLines,
-	unquotePath,
-} from '../check-comment-policy';
+import { checkCommentPolicy, findingsInFile } from '../check-comment-policy';
 import {
 	type TextPiece,
 	isCheckedPath,
@@ -389,72 +384,19 @@ describe('isCheckedPath', () => {
 	});
 });
 
-describe('parseChangedLines', () => {
-	it('collects the new-side lines of every hunk and skips hunk bodies by count', () => {
-		const diff = [
-			'diff --git a/a.ts b/a.ts',
-			'--- a/a.ts',
-			'+++ b/a.ts',
-			'@@ -1,2 +1,3 @@',
-			'-old one',
-			'-old two',
-			'+new one',
-			'++++ b/evil.ts',
-			'+new three',
-			'@@ -9 +10,0 @@',
-			'-deleted only',
-			'@@ -20,0 +21 @@',
-			'+added',
-			'\\ No newline at end of file',
-			'diff --git a/gone.ts b/gone.ts',
-			'--- a/gone.ts',
-			'+++ /dev/null',
-			'@@ -1 +0,0 @@',
-			'-bye',
-			'diff --git a/x\\ty.ts b/x\\ty.ts',
-			'--- /dev/null',
-			'+++ "b/caf\\303\\251\\ty.ts"',
-			'@@ -0,0 +1,2 @@',
-			'+one',
-			'+two',
-			'diff --git a/space name.ts b/space name.ts',
-			'--- /dev/null',
-			'+++ b/space name.ts\t',
-			'@@ -0,0 +1 @@',
-			'+three',
-			'diff --git "a/caf\\303\\251 x.ts" "b/caf\\303\\251 x.ts"',
-			'--- /dev/null',
-			'+++ "b/caf\\303\\251 x.ts"\t',
-			'@@ -0,0 +1 @@',
-			'+four',
-		].join('\n');
-		const changed = parseChangedLines(diff);
-		expect([...changed.keys()]).toEqual(['a.ts', 'café\ty.ts', 'space name.ts', 'café x.ts']);
-		expect([...changed.get('a.ts')!]).toEqual([1, 2, 3, 21]);
-		expect([...changed.get('café\ty.ts')!]).toEqual([1, 2]);
-		expect([...changed.get('space name.ts')!]).toEqual([1]);
-	});
-
-	it('unquotes C-style paths and leaves plain ones alone', () => {
-		expect(unquotePath('"a\\"b\\\\c"')).toBe('a"b\\c');
-		expect(unquotePath('plain/path.ts')).toBe('plain/path.ts');
-	});
-});
-
 describe('findingsInFile', () => {
-	it('reads only the given lines, or every line', () => {
+	it('reads every line of a checked file kind', () => {
 		const text = '// see #1234\n// until now\n';
-		expect(findingsInFile('a.ts', text, new Set([2]))!.map((finding) => finding.line)).toEqual([2]);
-		expect(findingsInFile('a.ts', text, 'all')!.map((finding) => finding.line)).toEqual([1, 2]);
-		expect(findingsInFile('a.md', text, 'all')).toBeUndefined();
+		expect(findingsInFile('a.ts', text)!.map((finding) => finding.line)).toEqual([1, 2]);
+		expect(findingsInFile('a.md', text)).toBeUndefined();
 	});
 
 	it('links each comment line to the one above, across every file kind', () => {
 		const wrapped = '// restore the\n// previously focused element\n';
 		const opened = '// The ring is drawn.\n// previously it was not\n';
-		expect(findingsInFile('a.ts', wrapped, 'all')).toEqual([]);
-		expect(findingsInFile('a.ts', opened, 'all')!.map((finding) => finding.line)).toEqual([2]);
-		expect(findingsInFile('a.sh', '# restore the\n# previously focused one\n', 'all')).toEqual([]);
+		expect(findingsInFile('a.ts', wrapped)).toEqual([]);
+		expect(findingsInFile('a.ts', opened)!.map((finding) => finding.line)).toEqual([2]);
+		expect(findingsInFile('a.sh', '# restore the\n# previously focused one\n')).toEqual([]);
 		expect(piecesOfFile('a.yml', '# one\n# two\n')![1]!.previous).toBe('# one');
 	});
 });
@@ -473,15 +415,14 @@ function write(root: string, path: string, contents: string): void {
 	writeFileSync(join(root, path), contents);
 }
 
-/** A scratch repository whose base commit holds legacy comments the gate must not read. */
-function repository(): { root: string; base: string } {
+/** A scratch repository whose one commit holds a clean file. */
+function repository(): string {
 	const root = mkdtempSync(join(tmpdir(), 'owlat-comment-policy-'));
 	sandboxes.push(root);
 	git(root, ['init', '--quiet', '--initial-branch', 'main']);
 	git(root, ['config', 'user.email', 'test@example.com']);
 	git(root, ['config', 'user.name', 'Comment Policy Test']);
 	git(root, [...NO_AUTO_MAINTENANCE]);
-	write(root, 'src/legacy.ts', '// Fixed in #1234 (D13), see SPEC §4.\nexport const a = 1;\n');
 	write(
 		root,
 		'src/clean.ts',
@@ -489,138 +430,85 @@ function repository(): { root: string; base: string } {
 	);
 	git(root, ['add', '.']);
 	git(root, ['commit', '--quiet', '-m', 'base']);
-	return { root, base: git(root, ['rev-parse', 'HEAD']) };
+	return root;
 }
 
-const check = (root: string, env: NodeJS.ProcessEnv) => checkCommentPolicy(root, env);
-const against = (root: string, base: string) => check(root, { COMMENT_POLICY_BASE: base });
-const found = (result: ReturnType<typeof check>) =>
+const found = (result: ReturnType<typeof checkCommentPolicy>) =>
 	result.findings.map((finding) => `${finding.path}:${finding.line}:${finding.rule}`);
 
 describe('checkCommentPolicy', () => {
-	it('passes legacy comments on lines the change does not touch', () => {
-		const { root, base } = repository();
-		write(root, 'src/legacy.ts', '// Fixed in #1234 (D13), see SPEC §4.\nexport const a = 2;\n');
-		git(root, ['commit', '--quiet', '-am', 'change the code line']);
-		expect(against(root, base)).toMatchObject({ status: 0, findings: [] });
-	});
-
-	it('rejects a committed comment line that cites an issue', () => {
-		const { root, base } = repository();
-		write(
-			root,
-			'src/clean.ts',
-			'// The cap keeps a page under the read limit (#1500).\nexport const b = 2;\n'
-		);
-		git(root, ['commit', '--quiet', '-am', 'cite an issue']);
-		const result = against(root, base);
-		expect(result.status).toBe(1);
-		expect(found(result)).toEqual(['src/clean.ts:1:issue-reference']);
-		expect(result.messages.join('\n')).toContain('src/clean.ts:1: issue-reference: "#1500"');
-	});
-
-	it('reads staged, unstaged and untracked additions', () => {
-		const { root, base } = repository();
-		write(root, 'src/clean.ts', '// Previously the cap was lower.\nexport const b = 2;\n');
-		git(root, ['add', 'src/clean.ts']);
-		write(
-			root,
-			'src/legacy.ts',
-			'// Fixed in #1234 (D13), see SPEC §4.\n// D8 applies.\nexport const a = 1;\n'
-		);
-		write(root, 'src/new.sh', '#!/usr/bin/env bash\n# until now this ran twice\n');
-		expect(found(against(root, base)).sort()).toEqual([
-			'src/clean.ts:1:narration',
-			'src/legacy.ts:2:decision-tag',
-			'src/new.sh:2:narration',
-		]);
-	});
-
-	it('passes deletions, renames and the quarantine form', () => {
-		const { root, base } = repository();
-		write(root, 'src/clean.ts', 'export const b = 2;\n');
-		git(root, ['mv', 'src/legacy.ts', 'src/moved.ts']);
+	it('passes a clean tree and the quarantine form', () => {
+		const root = repository();
 		write(
 			root,
 			'src/skip.test.ts',
 			"// quarantine: #1234 the fixture server is flaky\nit.skip('x', () => {});\n"
 		);
 		git(root, ['add', '.']);
-		git(root, ['commit', '--quiet', '-m', 'delete, rename, quarantine']);
-		expect(against(root, base)).toMatchObject({ status: 0, findings: [] });
+		git(root, ['commit', '--quiet', '-m', 'quarantine']);
+		const result = checkCommentPolicy(root);
+		expect(result).toMatchObject({ status: 0, findings: [] });
+		expect(result.messages.at(-1)).toBe('check-comment-policy: 2 file(s), ok.');
 	});
 
-	it('reads committed and staged files whose names hold spaces', () => {
-		const { root, base } = repository();
-		write(root, 'src/space name.ts', '// until now\nexport const c = 3;\n');
+	it('rejects a violation in a committed file that no change touches', () => {
+		const root = repository();
+		write(root, 'src/legacy.ts', '// Fixed in #1234, see SPEC §4.\nexport const a = 1;\n');
 		git(root, ['add', '.']);
-		git(root, ['commit', '--quiet', '-m', 'committed space']);
-		write(root, 'src/staged name.vue', '<template>\n\t<!-- D13 -->\n</template>\n');
-		git(root, ['add', '.']);
-		const result = against(root, base);
-		expect(found(result).sort()).toEqual([
-			'src/space name.ts:1:narration',
-			'src/staged name.vue:2:decision-tag',
+		git(root, ['commit', '--quiet', '-m', 'legacy']);
+		// The working tree and the index match HEAD, and there is no remote or base.
+		expect(git(root, ['status', '--porcelain'])).toBe('');
+		const result = checkCommentPolicy(root);
+		expect(result.status).toBe(1);
+		expect(found(result)).toEqual([
+			'src/legacy.ts:1:issue-reference',
+			'src/legacy.ts:1:dangling-document',
+		]);
+		expect(result.messages.join('\n')).toContain('src/legacy.ts:1: issue-reference: "#1234"');
+		expect(result.messages.at(-1)).toContain('2 finding(s) in 2 file(s)');
+	});
+
+	it('reads staged, unstaged and untracked content as it is on disk', () => {
+		const root = repository();
+		write(root, 'src/staged.ts', '// Previously the cap was lower.\nexport const c = 3;\n');
+		git(root, ['add', 'src/staged.ts']);
+		write(root, 'src/clean.ts', '// The cap holds.\n// D8 applies.\nexport const b = 2;\n');
+		write(root, 'src/new.sh', '#!/usr/bin/env bash\n# until now this ran twice\n');
+		expect(found(checkCommentPolicy(root)).sort()).toEqual([
+			'src/clean.ts:2:decision-tag',
+			'src/new.sh:2:narration',
+			'src/staged.ts:1:narration',
 		]);
 	});
 
-	it('rejects a document tag in a new test title', () => {
-		const { root, base } = repository();
+	it('skips ignored, deleted, generated and exempt files', () => {
+		const root = repository();
+		write(root, 'src/doomed.ts', '// see #1234\n');
+		write(root, 'src/_generated/api.ts', '// see #1234\n');
+		write(root, 'scripts/comment-policy.ts', '// rejects #1234\n');
+		write(root, '.gitignore', 'dist/\n');
+		git(root, ['add', '.']);
+		git(root, ['commit', '--quiet', '-m', 'skipped files']);
+		rmSync(join(root, 'src/doomed.ts'));
+		write(root, 'dist/out.js', '// see #1234\n');
+		expect(checkCommentPolicy(root)).toMatchObject({ status: 0, findings: [] });
+	});
+
+	it('reads files whose names hold spaces and non-ASCII characters', () => {
+		const root = repository();
+		write(root, 'src/space name.ts', '// until now\nexport const c = 3;\n');
+		write(root, 'src/café.vue', '<template>\n\t<!-- D13 -->\n</template>\n');
+		git(root, ['add', '.']);
+		git(root, ['commit', '--quiet', '-m', 'odd names']);
+		expect(found(checkCommentPolicy(root)).sort()).toEqual([
+			'src/café.vue:2:decision-tag',
+			'src/space name.ts:1:narration',
+		]);
+	});
+
+	it('rejects a document tag in a test title', () => {
+		const root = repository();
 		write(root, 'src/a.test.ts', "it('holds the send (SPEC §4.2)', () => {});\n");
-		expect(found(against(root, base))).toEqual(['src/a.test.ts:1:dangling-document']);
-	});
-
-	it("diffs a pull request against its target branch's merge base", () => {
-		const { root } = repository();
-		const remote = mkdtempSync(join(tmpdir(), 'owlat-comment-policy-remote-'));
-		sandboxes.push(remote);
-		git(remote, ['init', '--quiet', '--bare']);
-		git(remote, [...NO_AUTO_MAINTENANCE]);
-		git(root, ['remote', 'add', 'origin', remote]);
-		git(root, ['push', '--quiet', 'origin', 'main']);
-		git(root, ['checkout', '--quiet', '-b', 'feature']);
-		write(root, 'src/clean.ts', '// until now\nexport const b = 2;\n');
-		git(root, ['commit', '--quiet', '-am', 'narrate']);
-		const result = check(root, { GITHUB_BASE_REF: 'main' });
-		expect(found(result)).toEqual(['src/clean.ts:1:narration']);
-		expect(result.messages.at(-1)).toContain('origin/main');
-	});
-
-	it('keeps the base of a pull request when its target branch moves', () => {
-		const { root, base } = repository();
-		const remote = mkdtempSync(join(tmpdir(), 'owlat-comment-policy-remote-'));
-		sandboxes.push(remote);
-		git(remote, ['init', '--quiet', '--bare']);
-		git(remote, [...NO_AUTO_MAINTENANCE]);
-		git(root, ['remote', 'add', 'origin', remote]);
-		git(root, ['push', '--quiet', 'origin', 'main']);
-		git(root, ['checkout', '--quiet', '-b', 'feature']);
-		write(root, 'src/clean.ts', '// until now\nexport const b = 2;\n');
-		git(root, ['commit', '--quiet', '-am', 'narrate']);
-		// The target moves after the checkout; the local origin/main stays put.
-		git(root, ['push', '--quiet', 'origin', 'HEAD:refs/heads/main']);
-		git(root, ['update-ref', 'refs/remotes/origin/main', base]);
-
-		for (const env of [{}, { PR_BASE_SHA: base }]) {
-			const result = check(root, { CI: 'true', GITHUB_BASE_REF: 'main', ...env });
-			expect(found(result)).toEqual(['src/clean.ts:1:narration']);
-		}
-		expect(git(root, ['rev-parse', 'origin/main'])).toBe(base);
-
-		git(root, ['update-ref', '-d', 'refs/remotes/origin/main']);
-		const pinned = check(root, { CI: 'true', GITHUB_BASE_REF: 'main', PR_BASE_SHA: base });
-		expect(found(pinned)).toEqual(['src/clean.ts:1:narration']);
-		expect(pinned.messages.at(-1)).toContain(`origin/main at ${base}`);
-	});
-
-	it('skips an unresolvable base locally and fails on it in CI', () => {
-		const { root } = repository();
-		expect(check(root, {})).toMatchObject({ status: 0 });
-		expect(check(root, { COMMENT_POLICY_BASE: 'no-such-ref' }).messages[0]).toContain(
-			'skipping outside CI'
-		);
-		expect(check(root, { COMMENT_POLICY_BASE: 'no-such-ref', CI: 'true' })).toMatchObject({
-			status: 1,
-		});
+		expect(found(checkCommentPolicy(root))).toEqual(['src/a.test.ts:1:dangling-document']);
 	});
 });

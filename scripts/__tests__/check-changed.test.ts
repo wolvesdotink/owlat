@@ -323,9 +323,10 @@ describe('buildPlan', () => {
 			command: ['bun', 'run', 'lint:format'],
 			env: { OXFMT_BASE: 'abc123', GITHUB_BASE_REF: undefined },
 		});
-		expect(step(p, 'lint:comment-policy')).toMatchObject({
+		// The comment policy scans the whole tree, so it takes no base.
+		expect(step(p, 'lint:comment-policy')).toEqual({
+			name: 'lint:comment-policy',
 			command: ['bun', 'run', 'lint:comment-policy'],
-			env: { COMMENT_POLICY_BASE: 'abc123', GITHUB_BASE_REF: undefined },
 		});
 		expect(step(p, 'oxlint')?.command).toEqual([
 			'node_modules/.bin/oxlint',

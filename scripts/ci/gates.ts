@@ -216,7 +216,7 @@ export const ROOT_GATES: readonly RootGate[] = [
 		baseEnv: 'OXFMT_BASE',
 	},
 	{
-		// Reads the comments of the lines a change adds, in code, shell and YAML.
+		// Reads every comment in the tree, in code, shell and YAML.
 		name: 'comment-policy',
 		paths: [
 			CODE_ANYWHERE,
@@ -224,7 +224,6 @@ export const ROOT_GATES: readonly RootGate[] = [
 			'scripts/check-comment-policy.ts',
 			'scripts/comment-policy.ts',
 		],
-		baseEnv: 'COMMENT_POLICY_BASE',
 	},
 	{
 		name: 'imports',

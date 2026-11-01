@@ -141,7 +141,6 @@ describe('root gate manifest', () => {
 		}
 		expect(ROOT_GATES.filter((entry) => entry.baseEnv).map((entry) => entry.name)).toEqual([
 			'format',
-			'comment-policy',
 			'stored-block-corpus',
 		]);
 	});
