@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * "Add a sender" inline in the campaign wizard (#785), for admins only.
+ * "Add a sender" inline in the campaign wizard, for admins only.
  *
  * A workspace with no campaign senders used to dead-end the wizard with "ask
  * your admin" — even for the admin. This is the same add path as

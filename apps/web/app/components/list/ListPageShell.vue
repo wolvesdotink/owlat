@@ -54,7 +54,7 @@ const props = withDefaults(
 		loading: boolean;
 		/**
 		 * The list query's `error`. Required: a list that drops it renders a failed
-		 * read as an empty list (#721).
+		 * read as an empty list.
 		 */
 		error: Error | null;
 		errorTitle: string;

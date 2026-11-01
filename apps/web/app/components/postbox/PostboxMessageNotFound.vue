@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * The open message is not there for this viewer (#1100): `getMessage`
+ * The open message is not there for this viewer: `getMessage`
  * answered `null` because the message was deleted, moved by another mail app,
  * purged from Trash, or its mailbox is no longer shared with them. Shown in
  * place of the reader (Postbox) and of the conversation (Answer mode), which

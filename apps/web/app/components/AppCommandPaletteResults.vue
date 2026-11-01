@@ -111,8 +111,8 @@ function hintFor(item: PaletteItem): string | null {
 			</button>
 		</div>
 
-		<!-- Ask scope: one synthesized answer with its citations, where the Quick
-		     Query modal used to be. -->
+		<!-- Ask scope: one synthesized answer with its citations, inside the
+		     palette rather than in a modal of its own. -->
 		<template v-if="prompt === 'ask'">
 			<div v-if="askLoading" class="px-4 py-8 text-center text-text-tertiary">
 				<UiSpinner class="mx-auto" size="sm" tone="brand" />

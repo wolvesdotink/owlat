@@ -2,11 +2,10 @@
 /**
  * The connected mailbox, and the two ways out of it.
  *
- * Disconnecting used to be reachable from exactly one screen state: the import
- * wizard, connected, before an import had ever been started. Everyone past that
- * point — which is everyone, an import finishes — had no way to end the
- * connection at all. So this card owns the whole lifecycle in one place and
- * both surfaces render it: Settings (where someone looks for it) and the wizard
+ * Disconnecting must be reachable in every state, not only in the import
+ * wizard before an import has started: an import finishes, and everyone past
+ * that point still needs a way to end the connection. So this card owns the
+ * whole lifecycle in one place and both surfaces render it: Settings (where someone looks for it) and the wizard
  * (where they happen to be).
  *
  * Three states, because the account has three:

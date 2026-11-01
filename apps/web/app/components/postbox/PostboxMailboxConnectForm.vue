@@ -45,7 +45,7 @@ const props = defineProps<{
 	 * `mode="connect"` this provisions the inbox via `connectShared` (the admin
 	 * becomes owner; `memberUserIds` seed the roster, `displayName` names it); in
 	 * `mode="update"` it rotates the team inbox's credentials via
-	 * `updateCredentialsShared` (needs `mailboxId`). See issue #234.
+	 * `updateCredentialsShared` (needs `mailboxId`).
 	 */
 	shared?: boolean;
 	/** Team-inbox display name (shared connect only). */

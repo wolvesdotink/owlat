@@ -31,11 +31,10 @@ const { data: messagesData } = useConvexQuery(api.channels.messages.getThreadTim
 
 const timeline = computed(() => messagesData.value ?? []);
 
-// Per-message reply. Non-email channels used to be outbound-only through the AI
-// agent or the contact page's composer, so an agent reading an SMS in the Team
-// Inbox had to leave the thread to answer it. Replying here goes through the
-// SAME shared send path (`useChannelOutbound`), pinned to this thread and to the
-// channel the message arrived on. Email is excluded: it is answered by the draft
+// Per-message reply, so an agent reading an SMS in the Team Inbox can answer it
+// without leaving the thread for the AI agent or the contact page's composer.
+// Replying here goes through the SAME shared send path (`useChannelOutbound`),
+// pinned to this thread and to the channel the message arrived on. Email is excluded: it is answered by the draft
 // composer above, which carries the MTA send pipeline, identities and threading.
 const { isSending, canSendOn, send } = useChannelOutbound();
 

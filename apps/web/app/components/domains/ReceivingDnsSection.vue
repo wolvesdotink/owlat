@@ -18,10 +18,9 @@
  * plus the MX record to add, and skip the live reverse-DNS preflight (there is
  * nothing to accept mail yet, so the port/PTR verdict would be misleading).
  *
- * Reverse DNS (PTR) used to be static "set reverse DNS" advice; it is now a live
- * FCrDNS preflight (`checkReceivingReverseDns`) run once against this
- * deployment's own mail host, surfaced as a green (confirmed) / amber (missing
- * or mismatched) line. The action is admin-gated and fail-soft — a DNS hiccup
+ * Reverse DNS (PTR) is checked, not just advised: a live FCrDNS preflight
+ * (`checkReceivingReverseDns`) runs once against this deployment's own mail
+ * host and shows a green (confirmed) / amber (missing or mismatched) line. The action is admin-gated and fail-soft — a DNS hiccup
  * resolves to "not confirmed" and never breaks the panel. Port-25 egress
  * reachability isn't testable from the backend, so that stays advisory text.
  */

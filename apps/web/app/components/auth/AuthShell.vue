@@ -14,7 +14,7 @@ defineProps<{
 }>();
 
 // The workspace's own logo takes the Owlat mark's place when an admin has
-// uploaded one (#810): these pages are the workspace's door, not Owlat's.
+// uploaded one: these pages are the workspace's door, not Owlat's.
 const { logo } = useRecipientSender();
 </script>
 

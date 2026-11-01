@@ -7,7 +7,7 @@ import WorkspaceLogo from '~/components/workspace/WorkspaceLogo.vue';
  * what the page is for underneath. Without a name (not configured, or not
  * loaded yet) the purpose becomes the heading — never "Owlat", which the
  * recipient has never heard of and which reads like a phishing tell on an
- * unsubscribe page. Without a logo there is simply no logo (#810).
+ * unsubscribe page. Without a logo there is simply no logo.
  */
 defineProps<{ name: string | null; purpose: string; logo?: RecipientLogo | null }>();
 </script>

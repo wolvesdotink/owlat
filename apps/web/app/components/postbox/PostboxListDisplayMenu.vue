@@ -2,11 +2,10 @@
 /**
  * The list header's one "Display" menu.
  *
- * Four persisted preferences used to be four pieces of permanent chrome (or no
- * chrome at all): a five-segment view-mode control that could not fit the list
- * pane and shipped its own horizontal scroller, a sort toggle, and density and
- * reading-pane pickers that only existed on the preferences page. They already
- * live together in state — this is the surface that finally says so.
+ * Four persisted preferences (view mode, sort, density and reading pane) sit
+ * behind one menu rather than as permanent chrome: a five-segment view-mode
+ * control cannot fit the list pane without its own horizontal scroller. They
+ * live together in state, and this is the surface that says so.
  *
  * Pure presentation over semantic emits: every pick routes back to the layout's
  * existing setters, so the menu owns no preference itself. Each group is a

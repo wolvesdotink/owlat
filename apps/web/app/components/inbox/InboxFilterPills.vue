@@ -2,8 +2,8 @@
 /**
  * Team Inbox filters: the four status tabs (Open / Waiting / Snoozed /
  * Resolved), each with a live count, and — separately — the assignment filter
- * (Anyone / Me / Unassigned). They used to be one row of seven pills that mixed
- * the two ideas and had a tab that was a subset of another. The active tab
+ * (Anyone / Me / Unassigned). The two stay apart: one row of pills would mix
+ * the two ideas and hold a tab that is a subset of another. The active tab
  * takes the terracotta brand-soft treatment (weight + accent, never a large
  * fill). Counts read at most `cap` rows server-side, so a slice at the ceiling
  * shows "99+". While response targets are on, two more pills follow the tabs:

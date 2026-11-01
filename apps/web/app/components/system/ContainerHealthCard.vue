@@ -5,10 +5,10 @@
  */
 const { t } = useI18n();
 
-// Three outcomes, three states — the card used to have one. A failed fetch reset
-// the ref to null, which re-rendered "Loading container status…" forever, and a
-// response without a `containers` array fell through to a raw `<pre>` dump that
-// printed nothing at all (an empty card with a heading and no explanation).
+// Three outcomes, three states: a null ref alone cannot tell a failed fetch
+// from one still loading (it would show "Loading container status…" forever),
+// and a response without a `containers` array must say so rather than leave an
+// empty card with a heading and no explanation.
 type ContainerHealthStatus = 'loading' | 'ready' | 'failed';
 const containerHealth = ref<{
 	containers?: Array<{ service: string; state: string; imageTag?: string }>;

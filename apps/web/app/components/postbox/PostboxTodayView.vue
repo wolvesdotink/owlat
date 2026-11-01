@@ -11,7 +11,7 @@
  *   - "NEEDS YOU": the Reply Queue's rows (they open the Answer queue,
  *     filtered to this mailbox) and the threads placed `needs_me`
  *   - "EVERYTHING ELSE": the `today` placement (the Categories view's word;
- *     "Today" names the home page, #776)
+ *     "Today" names the home page)
  *   - "UPDATES · NO REPLY NEEDED": three rows, then a fold
  *   - "N newsletters and promotions · in your digest": the `digest` placement
  *     as a count, linking to All mail filtered to it
@@ -353,7 +353,7 @@ function onModeSelect(mode: PostboxInboxMode) {
 						@select="openMessageId = $event"
 					/>
 				</div>
-				<!-- A failed read is not inbox zero (#721). -->
+				<!-- A failed read is not inbox zero. -->
 				<UiQueryBoundary v-else-if="error" :error="error" @retry="refetch" />
 				<PostboxThreadListSkeleton v-else-if="isLoading" class="mt-2" />
 				<!-- Inbox zero: one quiet line; the Brief + past mail stay put. -->

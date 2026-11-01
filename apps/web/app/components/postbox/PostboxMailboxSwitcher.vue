@@ -5,11 +5,10 @@ import type { Id } from '@owlat/api/dataModel';
  * The mailbox identity chip: which mailbox you are reading, and the menu that
  * switches it.
  *
- * This used to be a stacked section at the top of the rail — two headings and a
- * full-width row per mailbox, each with its own unread badge — costing the rail
- * its first ~120px before the first folder. It is now a chip beside Compose;
- * the per-mailbox unread badges moved into the menu, where you are already
- * looking when you choose. Sections, labels and badges still come from
+ * A chip beside Compose, not a stacked section at the top of the rail: two
+ * headings and a full-width row per mailbox would cost the rail its first
+ * ~120px before the first folder. The per-mailbox unread badges sit in the
+ * menu, where you are already looking when you choose. Sections, labels and badges still come from
  * `mail.mailbox.queries.accessible` (one accessible + active truth), so a team
  * inbox's badge is identical for every member.
  *

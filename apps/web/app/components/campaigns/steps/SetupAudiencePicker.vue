@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * ONE recipients control (#785): "Send to [everyone subscribed to Newsletter ▾]".
+ * ONE recipients control: "Send to [everyone subscribed to Newsletter ▾]".
  * Topics and segments sit in the same select, grouped and each with its count,
  * instead of two radio cards a user had to understand before picking. The
  * parent still receives the three models it always had (kind + either id), so
@@ -39,7 +39,7 @@ const props = defineProps<{
 	error: string | null;
 	/**
 	 * The topics or segments list failed to load. Without it a failed read
-	 * looks like a workspace with no topics or segments (#818).
+	 * looks like a workspace with no topics or segments.
 	 */
 	loadFailed?: boolean;
 	/** Read-only (a scheduled campaign on the edit page). */
@@ -137,7 +137,7 @@ const formattedEligibleRecipients = computed(() => {
 });
 
 /**
- * Where the exact count stands (#916). A big audience is first shown as the
+ * Where the exact count stands. A big audience is first shown as the
  * one page the readout reads inline ("at least"), then as the background
  * count's running total, then as its exact result with the time it was taken.
  * Absent on a server one release behind.

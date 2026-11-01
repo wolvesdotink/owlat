@@ -348,7 +348,7 @@ const renderToggleLabel = computed(() =>
 					/>
 					<!-- The badge's claims, made checkable: the real headers behind them,
 				     the original .eml (UX plan idea 52) — and, in the slot, the three
-				     message-scoped details that used to be permanent chrome. -->
+				     message-scoped details that do not earn permanent chrome. -->
 					<PostboxMessageDetails v-if="showMeta" :message-id="msg._id">
 						<button
 							v-if="reader.appIsDark"

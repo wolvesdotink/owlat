@@ -4,11 +4,9 @@ import type { Id } from '@owlat/api/dataModel';
 /**
  * "Manage folders & labels" — the one CRUD surface behind the Postbox rail.
  *
- * This used to be the label manager alone, while folder CRUD lived as hover
- * glyphs on the rail's folder rows and label CRUD as two more buttons in the
- * rail's Labels header. Setup-time verbs do not earn permanent chrome in a
- * navigation column, so both sets moved here and the rail became pure
- * navigation. Reached from the rail's "More" group and from a right-click on
+ * Folder and label CRUD both live here, not as hover glyphs on the rail's rows
+ * or buttons in its Labels header: setup-time verbs do not earn permanent
+ * chrome in a navigation column, so the rail stays pure navigation. Reached from the rail's "More" group and from a right-click on
  * any folder or label row.
  *
  * The dialog's open state lives in `usePostboxManageDialog` rather than in a

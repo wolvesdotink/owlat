@@ -2,9 +2,9 @@
 /**
  * The Postbox reader pane when there is no message to render. Three cases, in
  * this order:
- *   - the open message's read failed: the categorized error with Try again (#721);
+ *   - the open message's read failed: the categorized error with Try again;
  *   - the open message is gone for this viewer (`getMessage` answered `null`):
- *     "no longer available" with the way back to the folder (#1100);
+ *     "no longer available" with the way back to the folder;
  *   - nothing is open: "Select a message".
  */
 const props = defineProps<{

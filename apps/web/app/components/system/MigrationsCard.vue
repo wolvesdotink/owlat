@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * Data migrations (Settings → System & updates, #1345): every migration this
+ * Data migrations (Settings → System & updates): every migration this
  * release can run, with its state and progress from the migration ledger, and
  * the action that runs the pending ones (`migrations/admin:runPending`).
  *

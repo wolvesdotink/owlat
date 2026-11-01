@@ -2,8 +2,8 @@
 /**
  * A list merged from one read per inbox, where some of the reads failed: the
  * rows that loaded stay on screen and this names the sources missing from
- * them, with Try again (#1099). A list with no rows at all shows the full
- * error state instead (#721).
+ * them, with Try again. A list with no rows at all shows the full
+ * error state instead.
  */
 const props = defineProps<{
 	/** The failed sources, already localized ("Sales", "Team inbox"). */

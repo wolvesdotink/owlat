@@ -134,7 +134,7 @@ async function applySuggestions() {
 					class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary"
 				/>
 			</div>
-			<!-- A failed read is not "no senders" (#721). -->
+			<!-- A failed read is not "no senders". -->
 			<UiQueryBoundary v-else-if="error" :error="error" @retry="retry" />
 			<div v-else-if="rows.length === 0" class="p-8 text-center">
 				<p class="text-text-secondary">{{ t(`postbox.senders.empty.${tab}`) }}</p>

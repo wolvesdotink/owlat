@@ -169,7 +169,7 @@ const closeMention = () => {
 };
 
 const handleKeydown = (event: KeyboardEvent) => {
-	// An IME's confirming Enter finishes the word, it does not send (#1052).
+	// An IME's confirming Enter finishes the word, it does not send.
 	if (isImeComposing(event)) return;
 	// The open teammate list takes ↑ ↓ Enter Tab: Enter picks, never sends.
 	if (mentionPicker.value?.handleKeydown(event)) return;
@@ -318,7 +318,7 @@ const handleSend = async () => {
 			     fill pinned to the bottom of a full-height pane is the most saturated
 			     thing on the screen, and the design language reserves the accent for
 			     small marks. UiButton also brings the disabled state (`opacity-50`),
-			     which used to be a third hand-written recipe here. The geometry
+			     so this button needs no recipe of its own. The geometry
 			     classes keep the 40x40 square affordance against `.btn`'s pill. -->
 			<UiButton
 				variant="primary"

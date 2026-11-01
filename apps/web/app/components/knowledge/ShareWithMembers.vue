@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * "Share with members" for a knowledge entry members cannot see (#1372).
+ * "Share with members" for a knowledge entry members cannot see.
  *
  * Migration 0069 made every older entry owner/admin-only, because a past merge
  * may have folded private text, tags or contact links into it. This opens a

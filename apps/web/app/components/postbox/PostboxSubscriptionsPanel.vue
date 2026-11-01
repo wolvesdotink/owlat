@@ -164,7 +164,7 @@ function lastReadLabel(sender: PostboxSubscriptionSender): string {
 				class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary"
 			/>
 		</div>
-		<!-- A failed read is not "no subscriptions" (#721). -->
+		<!-- A failed read is not "no subscriptions". -->
 		<UiQueryBoundary v-else-if="error" :error="error" @retry="refetch" />
 		<div v-else-if="senders.length === 0" class="p-8 text-center">
 			<p class="text-text-secondary">

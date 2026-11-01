@@ -42,7 +42,7 @@ const railCollapsed = computed(() => !props.forceExpanded && savedCollapsed.valu
 
 // Answer queue row: the one queue, filtered to this mailbox, with a count that
 // says which mailbox it covers — the sidebar's Answer queue counts every inbox,
-// so a bare number here read as a second queue that disagreed with it (#767).
+// so a bare number here would read as a second queue that disagrees with it.
 // The count subscription is shared/deduped with the inbox strip in PostboxLayout.
 const { count: replyQueueCount } = usePostboxReplyQueueCount(mailboxIdRef);
 const { sections: mailboxSections } = usePostboxMailbox();
@@ -54,10 +54,10 @@ const mailboxName = computed(
 );
 const answerQueueHref = computed(() => answerQueueHrefFor(props.mailboxId));
 
-// Folder and label CRUD used to live on these rows as hover-revealed pencils
-// and trashcans plus two header buttons. They are setup-time verbs, so they all
-// moved into one "Manage folders & labels" dialog; the rail keeps only ENTRY
-// points to it (the More group, and a right-click on any row).
+// Folder and label CRUD are setup-time verbs, so they live in one "Manage
+// folders & labels" dialog, not as hover-revealed pencils and trashcans on
+// these rows; the rail keeps only ENTRY points to it (the More group, and a
+// right-click on any row).
 const { openManager, pendingFolderDelete, requestFolderDelete, clearFolderDelete } =
 	usePostboxManageDialog();
 const folderActions = usePostboxFolderActions(mailboxIdRef);

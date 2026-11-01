@@ -54,7 +54,7 @@ const { chips, showChips, activeChipLabel } = useAnswerQueueChips(session);
 
 // The failed sources the active chip shows; the inbox list always counts, since
 // every inbox hangs off it. With nothing to show, the first one stands in for
-// "all clear" (#721); next to rows, a notice names them all (#1099).
+// "all clear"; next to rows, a notice names them all.
 const FAILURE_LABELS: Record<string, string> = {
 	inboxes: 'components.inbox.readFailureNotice.inboxList',
 	team: 'components.shell.teamInbox',
@@ -125,7 +125,7 @@ const failedNames = computed(() =>
 			<UiSkeleton class="h-40 w-full rounded-2xl" />
 		</div>
 
-		<!-- Nothing to show because a read failed is not "all clear" (#721). -->
+		<!-- Nothing to show because a read failed is not "all clear". -->
 		<UiQueryBoundary
 			v-else-if="loadError && !flow.active.value && source.length === 0"
 			:error="loadError"

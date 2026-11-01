@@ -165,9 +165,9 @@ const emit = defineEmits<{
 				@select="emit('switch-inbox-mode', $event)"
 			/>
 		</div>
-		<!-- Everything that used to be permanent chrome: four persisted
-		     preferences behind one menu, so the pane never has to scroll a
-		     control sideways to reach its own labels. The view-mode group is
+		<!-- Four persisted preferences behind one menu rather than permanent
+		     chrome, so the pane never has to scroll a control sideways to reach
+		     its own labels. The view-mode group is
 		     withheld outside the inbox, where every folder renders flat and the
 		     choice would be a control that does nothing. -->
 		<PostboxListDisplayMenu

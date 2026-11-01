@@ -1,9 +1,9 @@
 <script setup lang="ts">
 /**
  * The inbox's Priority | All mail switch — one control, mounted on the Inbox
- * title of BOTH landing surfaces. The modes are still stored as 'today' and
- * 'browse'; only the words changed, so "Today" names the home page and nothing
- * else (#776).
+ * title of BOTH landing surfaces. The modes are stored as 'today' and
+ * 'browse', but the labels say Priority and All mail, so "Today" names the
+ * home page and nothing else.
  *
  * It replaces two one-way buttons that could never tell you where you were: a
  * "Today" jump in the browse list header and a "Browse" button that only

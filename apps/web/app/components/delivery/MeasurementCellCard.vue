@@ -25,7 +25,7 @@
  * TWO SPANS ON ONE CARD, both named. The table and the trend are the REPORTED
  * window — seven days, the span the page heading gives dates for — and the checks
  * are the ramp controller's own, which is what makes the verdict here the verdict
- * the cron reached (#510). The gate list carries that label, so the numbers under
+ * the cron reached. The gate list carries that label, so the numbers under
  * a check are never read as the numbers in the table above it.
  */
 import {
@@ -44,7 +44,7 @@ import { useLocalized } from '~/composables/useLocalized';
 const props = defineProps<{
 	cell: DeliverabilityDashboardCell;
 	referenceTransportId: string | null;
-	/** The span this cell's CHECKS were decided over, in words (#510). */
+	/** The span this cell's CHECKS were decided over, in words. */
 	decisionWindowLabel: string;
 }>();
 
@@ -108,9 +108,9 @@ const trendPoints = computed(() => {
  * The arm is what the gates were GIVEN, and they are given a reference arm only
  * where the relay carried this cell in the controller's own span (~24h). The
  * trend answers over the days it plots, so a relay that went quiet three days
- * ago keeps its bars and loses its column — correct on both counts, and
- * unexplained until now. This says it in one line rather than leaving the
- * operator to file a ticket about a column that vanished.
+ * ago keeps its bars and loses its column — correct on both counts, but
+ * puzzling without a word of explanation. This says it in one line rather than
+ * leaving the operator to file a ticket about a column that vanished.
  */
 const hasQuietRelayHistory = computed(
 	() => isStandalone.value && props.cell.trend.some((point) => point.reference !== null)

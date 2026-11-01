@@ -27,7 +27,7 @@ import {
  * This is the only mail row the queue shows as a card. Every other row opens
  * in Answer mode (`opensInAnswerMode`), where a prepared draft is in the
  * editor and a clarification's questions are in the ask card, so the card
- * carries neither (#1188).
+ * carries neither.
  *
  * Replying never finishes the card by itself: Answer mode finishes the item
  * when the reply is sent.
