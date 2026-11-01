@@ -171,6 +171,7 @@ describe('Better Auth 1.7 over the Convex adapter', () => {
 			headers: cookieHeaders(first.headers),
 			body: { password: PASSWORD, method: 'totp' },
 		});
+		if (enabled.method !== 'totp') throw new Error('Expected a TOTP enrolment');
 		const [twoFactor] = await rows(t, 'twoFactor');
 		const [user] = await rows(t, 'user');
 		await t.mutation(components.betterAuth.adapter.updateOne, {
@@ -196,7 +197,7 @@ describe('Better Auth 1.7 over the Convex adapter', () => {
 		const challengeHeaders = cookieHeaders(challenge.headers);
 		// Only Date is frozen, so the verifier's window is the one computed here.
 		vi.useFakeTimers({ toFake: ['Date'], now: Date.now() });
-		const accepted = await acceptedTotpCodes(enabled.totpURI!);
+		const accepted = await acceptedTotpCodes(enabled.totpURI);
 		const wrongCodes = ['000000', '111111', '222222', '333333', '444444']
 			.filter((code) => !accepted.has(code))
 			.slice(0, 2);
