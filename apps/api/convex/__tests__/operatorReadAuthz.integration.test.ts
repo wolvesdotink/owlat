@@ -140,16 +140,16 @@ describe('operator read authz — autonomy.policy.listRules', () => {
 	});
 });
 
-// ============ agentHealth.getCostByStep (LLM-spend consistency) ============
+// ============ agent/health.getCostByStep (LLM-spend consistency) ============
 
-describe('operator read authz — agentHealth.getCostByStep', () => {
+describe('operator read authz — agent/health.getCostByStep', () => {
 	it('rejects a non-admin member (editor) with forbidden', async () => {
 		const t = convexTest(schema, modules);
 		await enableFeatures(t, ['mail.external']);
 		mockRole = 'editor';
 		const category = await t
 			.withIdentity(identity)
-			.query(api.agentHealth.getCostByStep, {})
+			.query(api.agent.health.getCostByStep, {})
 			.then(() => undefined)
 			.catch((e: { data?: { category?: string } }) => e?.data?.category);
 		expect(category).toBe('forbidden');
@@ -175,7 +175,7 @@ describe('operator read authz — agentHealth.getCostByStep', () => {
 			);
 		});
 		mockRole = 'admin';
-		const result = await t.withIdentity(identity).query(api.agentHealth.getCostByStep, {});
+		const result = await t.withIdentity(identity).query(api.agent.health.getCostByStep, {});
 		expect(result.steps.length).toBeGreaterThan(0);
 		expect(result.totalTokens).toBe(150);
 	});

@@ -46,7 +46,7 @@ const {
 	data: config,
 	error: configError,
 	refetch: refetchConfig,
-} = useConvexQuery(api.agentConfigMutations.getConfig, () => ({}));
+} = useConvexQuery(api.agent.configMutations.getConfig, () => ({}));
 
 const settings = computed<AiReplySettings>(() => ({
 	agentEnabled: agentEnabled.value,
@@ -60,7 +60,7 @@ const mode = computed(() => deriveAiReplyMode(settings.value));
 const { run: setFeatureFlag } = useBackendOperation(api.workspaces.featureFlags.setFeatureFlag, {
 	label: () => t('dashboard.admin.instance.aiReplies.operations.setMode'),
 });
-const { run: setReplyMode } = useBackendOperation(api.agentConfigMutations.setReplyMode, {
+const { run: setReplyMode } = useBackendOperation(api.agent.configMutations.setReplyMode, {
 	label: () => t('dashboard.admin.instance.aiReplies.operations.setMode'),
 });
 
@@ -92,7 +92,7 @@ async function selectMode(target: AiReplyMode) {
 
 // ─── Tuning form: threshold, limit, tone, signature, follow-up wait ─────────
 
-const { run: updateConfig } = useBackendOperation(api.agentConfigMutations.updateConfig, {
+const { run: updateConfig } = useBackendOperation(api.agent.configMutations.updateConfig, {
 	label: () => t('dashboard.admin.instance.aiReplies.operations.save'),
 });
 
@@ -143,7 +143,7 @@ const confidencePercent = computed(() => Math.round(form.confidenceThreshold * 1
 
 // ─── Working hours ──────────────────────────────────────────────────────────
 
-const { run: runUpdateWorkingHours } = useBackendOperation(api.agentConfigMutations.updateConfig, {
+const { run: runUpdateWorkingHours } = useBackendOperation(api.agent.configMutations.updateConfig, {
 	label: () => t('dashboard.admin.instance.aiReplies.operations.saveWorkingHours'),
 });
 const workingHoursBusy = ref(false);

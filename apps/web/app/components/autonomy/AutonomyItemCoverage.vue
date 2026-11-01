@@ -15,7 +15,7 @@ const props = defineProps<{ enforced: boolean }>();
 
 const { t } = useI18n();
 const { showToast } = useToast();
-const { run, isLoading } = useBackendOperation(api.agentConfigMutations.updateConfig, {
+const { run, isLoading } = useBackendOperation(api.agent.configMutations.updateConfig, {
 	label: () => t('components.autonomy.autonomyItemCoverage.operation'),
 });
 

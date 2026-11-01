@@ -232,13 +232,13 @@ async function seedPendingAutoSend(t: ReturnType<typeof convexTest>) {
 	});
 }
 
-describe('agentConfigMutations.setReplyMode', () => {
+describe('agent/configMutations.setReplyMode', () => {
 	it('"auto" turns the global tier on AND leaves shadow mode, so replies can really send', async () => {
 		const t = convexTest(schema, modules);
 		await enableFeatures(t, ['ai.agent']);
 
 		// No config row yet: the mode creates one.
-		await t.mutation(api.agentConfigMutations.setReplyMode, { mode: 'auto' });
+		await t.mutation(api.agent.configMutations.setReplyMode, { mode: 'auto' });
 
 		const cfg = await t.run(async (ctx) => (await ctx.db.query('agentConfig').take(1))[0]);
 		expect(cfg!.isAutoReplyEnabled).toBe(true);
@@ -265,7 +265,7 @@ describe('agentConfigMutations.setReplyMode', () => {
 
 		vi.useFakeTimers();
 		try {
-			await t.mutation(api.agentConfigMutations.setReplyMode, { mode: 'draft' });
+			await t.mutation(api.agent.configMutations.setReplyMode, { mode: 'draft' });
 			await t.finishAllScheduledFunctions(() => vi.advanceTimersByTime(1));
 		} finally {
 			vi.useRealTimers();
@@ -291,7 +291,7 @@ describe('agentConfigMutations.setReplyMode', () => {
 
 	it('records who changed the mode in the audit log', async () => {
 		const t = convexTest(schema, modules);
-		await t.mutation(api.agentConfigMutations.setReplyMode, { mode: 'auto' });
+		await t.mutation(api.agent.configMutations.setReplyMode, { mode: 'auto' });
 		const logs = await t.run(async (ctx) => ctx.db.query('auditLogs').collect());
 		const entry = logs.find((l) => l.action === 'agent.config_updated');
 		expect(entry).toBeDefined();

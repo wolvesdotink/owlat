@@ -5,7 +5,7 @@
  * (`analytics/spendBudget.ts`), so every billed call the agent pipeline makes
  * writes its rows there, at the call site, under an `agent_<step>` feature. The
  * walker still stores a step's usage on its `agentActions` row, but that is the
- * per-step reporting view (`agentHealth.getCostByStep`), not a second money
+ * per-step reporting view (`agent/health.getCostByStep`), not a second money
  * store: nothing sums it against the ceiling.
  *
  * Recording where the call is made, rather than from the walker, keeps each

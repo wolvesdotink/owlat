@@ -27,9 +27,9 @@ const writes: Array<{ fn: string; args: unknown }> = [];
 const queryArgs = new Map<string, unknown>();
 const showToast = vi.fn();
 
-const GET_CONFIG = getFunctionName(api.agentConfigMutations.getConfig);
+const GET_CONFIG = getFunctionName(api.agent.configMutations.getConfig);
 const SET_FLAG = getFunctionName(api.workspaces.featureFlags.setFeatureFlag);
-const SET_MODE = getFunctionName(api.agentConfigMutations.setReplyMode);
+const SET_MODE = getFunctionName(api.agent.configMutations.setReplyMode);
 
 beforeEach(() => {
 	flags.value = { ai: true, inbox: true, 'ai.agent': true, 'ai.autonomy': false };

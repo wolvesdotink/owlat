@@ -74,16 +74,18 @@ const testIdentity = {
 
 // ============ getConfig ============
 
-describe('agentConfigMutations.getConfig', () => {
+describe('agent/configMutations.getConfig', () => {
 	it('should return null when not authenticated', async () => {
 		const t = convexTest(schema, modules);
-		const result = await t.query(api.agentConfigMutations.getConfig, {});
+		const result = await t.query(api.agent.configMutations.getConfig, {});
 		expect(result).toBeNull();
 	});
 
 	it('should return null when no config exists', async () => {
 		const t = convexTest(schema, modules);
-		const result = await t.withIdentity(testIdentity).query(api.agentConfigMutations.getConfig, {});
+		const result = await t
+			.withIdentity(testIdentity)
+			.query(api.agent.configMutations.getConfig, {});
 		expect(result).toBeNull();
 	});
 
@@ -94,7 +96,9 @@ describe('agentConfigMutations.getConfig', () => {
 			await ctx.db.insert('agentConfig', configData({ confidenceThreshold: 0.75 }));
 		});
 
-		const result = await t.withIdentity(testIdentity).query(api.agentConfigMutations.getConfig, {});
+		const result = await t
+			.withIdentity(testIdentity)
+			.query(api.agent.configMutations.getConfig, {});
 
 		expect(result).toBeDefined();
 		expect(result!.confidenceThreshold).toBe(0.75);
@@ -105,7 +109,7 @@ describe('agentConfigMutations.getConfig', () => {
 // Note: the master agent on/off used to live on `agentConfig.isEnabled`; it is
 // now the `ai.agent` feature flag. updateConfig only manages tuning fields.
 
-describe('agentConfigMutations.updateConfig', () => {
+describe('agent/configMutations.updateConfig', () => {
 	it('should throw when not authenticated', async () => {
 		// adminMutation rejects pre-handler when the mocked role check throws.
 		// We re-stub `requireAdminContext` for this case to mirror real
@@ -117,7 +121,7 @@ describe('agentConfigMutations.updateConfig', () => {
 		try {
 			const t = convexTest(schema, modules);
 			await expect(
-				t.mutation(api.agentConfigMutations.updateConfig, { confidenceThreshold: 0.7 })
+				t.mutation(api.agent.configMutations.updateConfig, { confidenceThreshold: 0.7 })
 			).rejects.toThrow('Not authenticated');
 		} finally {
 			stub.mockResolvedValue({ userId: 'test-user', role: 'owner', activeOrganizationId: 'org-1' });
@@ -129,7 +133,7 @@ describe('agentConfigMutations.updateConfig', () => {
 
 		const configId = await t
 			.withIdentity(testIdentity)
-			.mutation(api.agentConfigMutations.updateConfig, { confidenceThreshold: 0.7 });
+			.mutation(api.agent.configMutations.updateConfig, { confidenceThreshold: 0.7 });
 
 		expect(configId).toBeDefined();
 
@@ -156,7 +160,7 @@ describe('agentConfigMutations.updateConfig', () => {
 
 		const returnedId = await t
 			.withIdentity(testIdentity)
-			.mutation(api.agentConfigMutations.updateConfig, {
+			.mutation(api.agent.configMutations.updateConfig, {
 				confidenceThreshold: 0.7,
 				toneDescription: 'Casual and friendly',
 			});
@@ -175,7 +179,7 @@ describe('agentConfigMutations.updateConfig', () => {
 
 		await t
 			.withIdentity(testIdentity)
-			.mutation(api.agentConfigMutations.updateConfig, { confidenceThreshold: 0.7 });
+			.mutation(api.agent.configMutations.updateConfig, { confidenceThreshold: 0.7 });
 
 		await t.run(async (ctx) => {
 			const logs = await ctx.db
@@ -201,7 +205,7 @@ describe('agentConfigMutations.updateConfig', () => {
 
 		await t
 			.withIdentity(testIdentity)
-			.mutation(api.agentConfigMutations.updateConfig, { confidenceThreshold: 0.6 });
+			.mutation(api.agent.configMutations.updateConfig, { confidenceThreshold: 0.6 });
 
 		await t.run(async (ctx) => {
 			const logs = await ctx.db

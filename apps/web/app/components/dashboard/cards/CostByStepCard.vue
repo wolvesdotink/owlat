@@ -5,7 +5,7 @@ import { meterFillStyle } from '@owlat/ui/utils/meterFill';
 
 const { t, locale } = useI18n();
 
-const { data: cost, isLoading } = useOrganizationQuery(api.agentHealth.getCostByStep);
+const { data: cost, isLoading } = useOrganizationQuery(api.agent.health.getCostByStep);
 
 interface CostStep {
 	step: string;

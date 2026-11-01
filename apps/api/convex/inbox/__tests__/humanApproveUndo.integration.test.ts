@@ -622,7 +622,7 @@ describe('agentConfig.humanApproveUndoDelayMs via updateConfig', () => {
 		const t = convexTest(schema, modules);
 		await setAgentConfig(t);
 
-		await t.mutation(api.agentConfigMutations.updateConfig, {
+		await t.mutation(api.agent.configMutations.updateConfig, {
 			humanApproveUndoDelayMs: 500_000,
 		});
 
@@ -635,7 +635,7 @@ describe('agentConfig.humanApproveUndoDelayMs via updateConfig', () => {
 	it('accepts 0 (immediate sends) on create', async () => {
 		const t = convexTest(schema, modules);
 
-		await t.mutation(api.agentConfigMutations.updateConfig, {
+		await t.mutation(api.agent.configMutations.updateConfig, {
 			humanApproveUndoDelayMs: 0,
 		});
 

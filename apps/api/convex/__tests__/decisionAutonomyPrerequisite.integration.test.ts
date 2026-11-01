@@ -55,7 +55,7 @@ afterEach(() => {
 describe('item coverage as the prerequisite of decision-driven autonomy', () => {
 	it('moves freely while no decision verdict feeds auto-send (today)', async () => {
 		const { t, read } = await withCoverage(true);
-		await t.mutation(api.agentConfigMutations.updateConfig, { isItemCoverageEnforced: false });
+		await t.mutation(api.agent.configMutations.updateConfig, { isItemCoverageEnforced: false });
 		expect(await read()).toBe(false);
 	});
 
@@ -63,12 +63,12 @@ describe('item coverage as the prerequisite of decision-driven autonomy', () => 
 		feeding.tasks.push('mail.draft_quality');
 		const { t, read } = await withCoverage(true);
 		await expect(
-			t.mutation(api.agentConfigMutations.updateConfig, { isItemCoverageEnforced: false })
+			t.mutation(api.agent.configMutations.updateConfig, { isItemCoverageEnforced: false })
 		).rejects.toThrow(/item coverage is enforced/);
 		expect(await read()).toBe(true);
 		// Other settings, and switching it on, still save.
-		await t.mutation(api.agentConfigMutations.updateConfig, { confidenceThreshold: 0.9 });
-		await t.mutation(api.agentConfigMutations.updateConfig, { isItemCoverageEnforced: true });
+		await t.mutation(api.agent.configMutations.updateConfig, { confidenceThreshold: 0.9 });
+		await t.mutation(api.agent.configMutations.updateConfig, { isItemCoverageEnforced: true });
 		expect(await read()).toBe(true);
 	});
 });

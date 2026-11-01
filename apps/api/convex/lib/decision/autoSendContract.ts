@@ -12,7 +12,7 @@
  *      is the plan's prerequisite for any decision-driven autonomous input,
  *      so without it the verdict is refused here, the `decision_verdict` gate
  *      holds every send ({@link decisionAutonomyProblem}), and the setting
- *      cannot be switched off while a task feeds (`agentConfigMutations.ts`).
+ *      cannot be switched off while a task feeds (`agent/configMutations.ts`).
  *   3. It passes the decisions lane's block-only rule (`verdictBlockReason`):
  *      a complete, unexpired, uninvalidated advisory answer under the current
  *      policy, from the decision plane configured now (compatible

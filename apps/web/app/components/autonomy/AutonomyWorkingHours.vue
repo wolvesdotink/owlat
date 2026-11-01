@@ -5,7 +5,7 @@
  * Lets an owner confine AUTONOMOUS auto-sends to business hours in a chosen
  * timezone; out-of-hours replies are held for morning human review (enforced
  * server-side in the route step). Emits `save` with the window; the parent page
- * persists it via agentConfigMutations.updateConfig. Prop-driven + presentational.
+ * persists it via agent/configMutations.updateConfig. Prop-driven + presentational.
  */
 import { WORKING_HOURS_DEFAULTS } from '~/utils/autonomyDefaults';
 import SettingsResetToDefault from '~/components/settings/ResetToDefault.vue';

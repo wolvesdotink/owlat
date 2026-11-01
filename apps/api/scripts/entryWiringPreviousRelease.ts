@@ -115,7 +115,7 @@ export const PREVIOUS_RELEASE_ENTRIES: Readonly<Record<string, string>> = {
 	// An export row now stages through one commit (`stageArtifact`).
 	'auth/accountExportArtifacts.ts#acquireArtifactLease': 'old account export pages mid-run',
 	'auth/accountExportArtifacts.ts#registerArtifact': 'old account export pages mid-run',
-	// The agent metrics rollup now commits once (agentHealth.ts `commitRollup`);
+	// The agent metrics rollup now commits once (agent/healthRollup.ts `commitRollup`);
 	// remove after release 0.6.17.
 	'agentHealth.ts#recordMetrics': 'old agent metrics rollups mid-run',
 	'agentHealth.ts#updateCircuitBreaker': 'old agent metrics rollups mid-run',
@@ -166,4 +166,24 @@ export const PREVIOUS_RELEASE_ENTRIES: Readonly<Record<string, string>> = {
 	'autonomyOutcome.ts#getReplyOutcomeContext': 'old reply outcome classifications mid-run',
 	'autonomyOutcome.ts#recordOutcomeFeedback':
 		'old reply outcome classifications mid-run, and outcome records the previous release queued',
+	// The agent config and health modules moved to agent/configMutations.ts,
+	// agent/health.ts and agent/healthRollup.ts; remove after release 0.6.17.
+	'agentConfigMutations.ts#getConfig':
+		'the previous AI replies page, in tabs opened before the deploy',
+	'agentConfigMutations.ts#updateConfig':
+		'the previous AI replies page, in tabs opened before the deploy',
+	'agentConfigMutations.ts#setReplyMode':
+		'the previous AI replies page, in tabs opened before the deploy',
+	'agentHealth.ts#getDashboardMetrics':
+		'the previous agent health page, in tabs opened before the deploy',
+	'agentHealth.ts#getMetricHistory':
+		'the previous agent health page, in tabs opened before the deploy',
+	'agentHealth.ts#getCostByStep':
+		'the previous cost-by-step card, in tabs opened before the deploy',
+	'agentHealth.ts#getAccuracyTrend':
+		'the previous accuracy trend card, in tabs opened before the deploy',
+	'agentHealth.ts#getCircuitBreakersInternal': 'old agent route steps mid-run',
+	'agentHealth.ts#rollupMetrics': 'a metrics rollup the previous cron queued',
+	'agentHealth.ts#getRecentActions': 'old agent metrics rollups mid-run',
+	'agentHealth.ts#getPendingCount': 'old agent metrics rollups mid-run',
 };

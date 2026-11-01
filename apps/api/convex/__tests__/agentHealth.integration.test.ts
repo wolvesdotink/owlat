@@ -58,10 +58,10 @@ const modules = Object.fromEntries(
 
 // ============ getDashboardMetrics ============
 
-describe('agentHealth.getDashboardMetrics', () => {
+describe('agent/health.getDashboardMetrics', () => {
 	it('should return dashboard metrics structure with defaults', async () => {
 		const t = convexTest(schema, modules);
-		const metrics = await t.query(api.agentHealth.getDashboardMetrics);
+		const metrics = await t.query(api.agent.health.getDashboardMetrics);
 
 		expect(metrics).toHaveProperty('queueDepth');
 		expect(metrics).toHaveProperty('processingCount');
@@ -86,7 +86,7 @@ describe('agentHealth.getDashboardMetrics', () => {
 			});
 		});
 
-		const metrics = await t.query(api.agentHealth.getDashboardMetrics);
+		const metrics = await t.query(api.agent.health.getDashboardMetrics);
 		expect(metrics.circuitBreakers).toHaveLength(1);
 		expect(metrics.circuitBreakers[0]!.type).toBe('llm_failure');
 		expect(metrics.circuitBreakers[0]!.state).toBe('open');
@@ -95,10 +95,10 @@ describe('agentHealth.getDashboardMetrics', () => {
 
 // ============ getMetricHistory ============
 
-describe('agentHealth.getMetricHistory', () => {
+describe('agent/health.getMetricHistory', () => {
 	it('should return empty array when no metrics exist', async () => {
 		const t = convexTest(schema, modules);
-		const history = await t.query(api.agentHealth.getMetricHistory, { metricType: 'queue_depth' });
+		const history = await t.query(api.agent.health.getMetricHistory, { metricType: 'queue_depth' });
 		expect(history).toEqual([]);
 	});
 
@@ -129,7 +129,7 @@ describe('agentHealth.getMetricHistory', () => {
 			);
 		});
 
-		const history = await t.query(api.agentHealth.getMetricHistory, { metricType: 'queue_depth' });
+		const history = await t.query(api.agent.health.getMetricHistory, { metricType: 'queue_depth' });
 		expect(history).toHaveLength(1);
 		expect(history[0]!.value).toBe(10);
 	});
@@ -274,10 +274,10 @@ describe('agentHealth.updateCircuitBreaker', () => {
 
 // ============ getCostByStep ============
 
-describe('agentHealth.getCostByStep', () => {
+describe('agent/health.getCostByStep', () => {
 	it('returns empty steps and zero total when no actions exist', async () => {
 		const t = convexTest(schema, modules);
-		const result = await t.query(api.agentHealth.getCostByStep, {});
+		const result = await t.query(api.agent.health.getCostByStep, {});
 		expect(result.steps).toEqual([]);
 		expect(result.totalTokens).toBe(0);
 		expect(result.hoursBack).toBe(24);
@@ -330,7 +330,7 @@ describe('agentHealth.getCostByStep', () => {
 			);
 		});
 
-		const result = await t.query(api.agentHealth.getCostByStep, {});
+		const result = await t.query(api.agent.health.getCostByStep, {});
 
 		// Only steps that incurred tokens appear.
 		expect(result.steps.map((s) => s.step)).toEqual(['draft', 'classify']);
@@ -383,7 +383,7 @@ describe('agentHealth.getCostByStep', () => {
 			);
 		});
 
-		const result = await t.query(api.agentHealth.getCostByStep, {});
+		const result = await t.query(api.agent.health.getCostByStep, {});
 		expect(result.steps.map((s) => s.step)).toEqual(['draft', 'route', 'classify']);
 	});
 
@@ -404,7 +404,7 @@ describe('agentHealth.getCostByStep', () => {
 			);
 		});
 
-		const result = await t.query(api.agentHealth.getCostByStep, {});
+		const result = await t.query(api.agent.health.getCostByStep, {});
 		expect(result.totalCostUsd).toBeGreaterThan(0);
 		expect(result.steps[0]!.costUsd).toBeGreaterThan(0);
 		// Cost is bounded sanely for 2k tokens at any reasonable price (<$1).
@@ -414,10 +414,10 @@ describe('agentHealth.getCostByStep', () => {
 
 // ============ getAccuracyTrend ============
 
-describe('agentHealth.getAccuracyTrend', () => {
+describe('agent/health.getAccuracyTrend', () => {
 	it('returns an empty series when no metrics exist', async () => {
 		const t = convexTest(schema, modules);
-		const result = await t.query(api.agentHealth.getAccuracyTrend, {});
+		const result = await t.query(api.agent.health.getAccuracyTrend, {});
 		expect(result.series).toEqual([]);
 		expect(result.hoursBack).toBe(24);
 	});
@@ -482,7 +482,7 @@ describe('agentHealth.getAccuracyTrend', () => {
 			);
 		});
 
-		const result = await t.query(api.agentHealth.getAccuracyTrend, {});
+		const result = await t.query(api.agent.health.getAccuracyTrend, {});
 
 		expect(result.series).toHaveLength(2);
 		// Ascending by windowStart.
@@ -516,7 +516,7 @@ describe('agentHealth.getAccuracyTrend', () => {
 			);
 		});
 
-		const result = await t.query(api.agentHealth.getAccuracyTrend, {});
+		const result = await t.query(api.agent.health.getAccuracyTrend, {});
 		expect(result.series).toHaveLength(1);
 		expect(result.series[0]).toMatchObject({
 			windowStart: w,
@@ -553,7 +553,7 @@ describe('agentHealth.getAccuracyTrend', () => {
 			);
 		});
 
-		const result = await t.query(api.agentHealth.getAccuracyTrend, { hoursBack: 24 });
+		const result = await t.query(api.agent.health.getAccuracyTrend, { hoursBack: 24 });
 		expect(result.series).toHaveLength(1);
 		expect(result.series[0]!.autoApproveRatio).toBe(0.4);
 	});
@@ -561,7 +561,7 @@ describe('agentHealth.getAccuracyTrend', () => {
 
 // ============ rollupMetrics (internal action) ============
 
-describe('agentHealth.rollupMetrics', () => {
+describe('agent/healthRollup.rollupMetrics', () => {
 	it('records classification_accuracy as the mean confidence of classify actions', async () => {
 		const t = convexTest(schema, modules);
 
@@ -591,9 +591,9 @@ describe('agentHealth.rollupMetrics', () => {
 			);
 		});
 
-		await t.action(internal.agentHealth.rollupMetrics);
+		await t.action(internal.agent.healthRollup.rollupMetrics);
 
-		const history = await t.query(api.agentHealth.getMetricHistory, {
+		const history = await t.query(api.agent.health.getMetricHistory, {
 			metricType: 'classification_accuracy',
 		});
 		expect(history).toHaveLength(1);
@@ -603,7 +603,7 @@ describe('agentHealth.rollupMetrics', () => {
 	it('writes the whole window in one transaction', async () => {
 		const t = convexTest(schema, modules);
 
-		await t.action(internal.agentHealth.rollupMetrics);
+		await t.action(internal.agent.healthRollup.rollupMetrics);
 
 		const metrics = await t.run(async (ctx) => await ctx.db.query('agentMetrics').collect());
 		// Every metric type this window produced (processing_latency needs a
@@ -643,7 +643,7 @@ describe('agentHealth.rollupMetrics', () => {
 			);
 		});
 
-		await t.action(internal.agentHealth.rollupMetrics);
+		await t.action(internal.agent.healthRollup.rollupMetrics);
 
 		const { breakers, errorRate } = await t.run(async (ctx) => ({
 			breakers: await ctx.db.query('agentCircuitBreakers').collect(),
@@ -680,15 +680,15 @@ describe('agentHealth.rollupMetrics', () => {
 		const breaker = () =>
 			t.run(async (ctx) => (await ctx.db.query('agentCircuitBreakers').collect())[0]);
 
-		await t.action(internal.agentHealth.rollupMetrics);
+		await t.action(internal.agent.healthRollup.rollupMetrics);
 		expect(await breaker()).toMatchObject({ state: 'half_open', currentValue: 0, trippedAt });
 
-		await t.action(internal.agentHealth.rollupMetrics);
+		await t.action(internal.agent.healthRollup.rollupMetrics);
 		const closed = await breaker();
 		expect(closed).toMatchObject({ state: 'closed', currentValue: 0, trippedAt });
 		expect(typeof closed?.recoveredAt).toBe('number');
 
-		await t.action(internal.agentHealth.rollupMetrics);
+		await t.action(internal.agent.healthRollup.rollupMetrics);
 		// A closed breaker under its threshold is left as it is.
 		expect(await breaker()).toEqual(closed);
 	});
@@ -696,9 +696,9 @@ describe('agentHealth.rollupMetrics', () => {
 	it('records classification_accuracy as 0 when there are no scored classify actions', async () => {
 		const t = convexTest(schema, modules);
 
-		await t.action(internal.agentHealth.rollupMetrics);
+		await t.action(internal.agent.healthRollup.rollupMetrics);
 
-		const history = await t.query(api.agentHealth.getMetricHistory, {
+		const history = await t.query(api.agent.health.getMetricHistory, {
 			metricType: 'classification_accuracy',
 		});
 		expect(history).toHaveLength(1);

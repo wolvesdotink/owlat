@@ -7,7 +7,7 @@
  * an `agent_*` feature) records here, so spend can be reported per feature.
  * This ledger is the one store the enforced spend ceiling reads
  * (`analytics/spendBudget.ts`). The inbound-agent step view in
- * `agentHealth.getCostByStep` reads the usage the walker also keeps on
+ * `agent/health.getCostByStep` reads the usage the walker also keeps on
  * `agentActions`; that is a per-step reporting view of calls already counted
  * here, not a second money store (#1259).
  *

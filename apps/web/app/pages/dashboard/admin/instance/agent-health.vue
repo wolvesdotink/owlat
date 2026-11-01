@@ -18,7 +18,7 @@ const {
 	isLoading: metricsLoading,
 	error: metricsError,
 	refetch: refetchMetrics,
-} = useConvexQuery(api.agentHealth.getDashboardMetrics, () => ({}));
+} = useConvexQuery(api.agent.health.getDashboardMetrics, () => ({}));
 
 // Metric history for charts. Each chart shows its own read's error: an empty
 // chart would read as a quiet day.
@@ -26,7 +26,7 @@ const {
 	data: latencyHistory,
 	error: latencyError,
 	refetch: refetchLatency,
-} = useConvexQuery(api.agentHealth.getMetricHistory, () => ({
+} = useConvexQuery(api.agent.health.getMetricHistory, () => ({
 	metricType: 'processing_latency' as const,
 	hoursBack: 24,
 }));
@@ -35,7 +35,7 @@ const {
 	data: errorHistory,
 	error: errorHistoryError,
 	refetch: refetchErrorHistory,
-} = useConvexQuery(api.agentHealth.getMetricHistory, () => ({
+} = useConvexQuery(api.agent.health.getMetricHistory, () => ({
 	metricType: 'error_rate' as const,
 	hoursBack: 24,
 }));
@@ -44,7 +44,7 @@ const {
 	data: queueHistory,
 	error: queueError,
 	refetch: refetchQueue,
-} = useConvexQuery(api.agentHealth.getMetricHistory, () => ({
+} = useConvexQuery(api.agent.health.getMetricHistory, () => ({
 	metricType: 'queue_depth' as const,
 	hoursBack: 24,
 }));
