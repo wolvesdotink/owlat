@@ -8,8 +8,8 @@
  * trusted to return the category rule — it might hand back a sender rule. These
  * helpers make the two lookups explicit and are the single source of truth for
  * "which rule governs this (category, sender)", shared by the route-step
- * decision (`autonomy.checkPermissionInternal`), the atomic daily-cap charge
- * (`autonomy.incrementDailyCount`), and the suggestion/threshold flows.
+ * decision (`autonomy.policy.checkPermissionInternal`), the atomic daily-cap charge
+ * (`autonomy.policy.incrementDailyCount`), and the suggestion/threshold flows.
  */
 
 import type { DatabaseReader } from '../_generated/server';

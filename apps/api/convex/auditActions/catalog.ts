@@ -330,7 +330,7 @@ export const AUDIT_ACTION_LITERALS = [
 	// Autonomy trust controls. Kill switch rows come from the retired one-click
 	// stop (now the AI replies page's "Draft only", logged as
 	// agent.config_updated) and stay readable; demotion-acknowledged clears a
-	// per-sender auto-demotion incident alert (autonomyOutcome.ts).
+	// per-sender auto-demotion incident alert (autonomy/outcome.ts).
 	action('agent.kill_switch'),
 	action('agent.demotion_acknowledged'),
 	// Knowledge graph — the one-shot edge backfill kicked off by the first

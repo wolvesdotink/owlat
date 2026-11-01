@@ -1,13 +1,17 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import ClickHeatmap from '~/components/dashboard/ClickHeatmap.vue';
-import CampaignSendPlanLine from '~/components/campaigns/CampaignSendPlanLine.vue';
 import CampaignAbComparison from '~/components/dashboard/CampaignAbComparison.vue';
 import CampaignAutomatedEngagementNote from '~/components/campaigns/CampaignAutomatedEngagementNote.vue';
 import CampaignFunnel from '~/components/campaigns/CampaignFunnel.vue';
 import CampaignReportHeadline from '~/components/campaigns/CampaignReportHeadline.vue';
 import CampaignReportComparison from '~/components/campaigns/CampaignReportComparison.vue';
 import CampaignSendTimeReport from '~/components/campaigns/CampaignSendTimeReport.vue';
+import CampaignReportArchiveLink from '~/components/campaigns/report/ReportArchiveLink.vue';
+import CampaignReportClickedList from '~/components/campaigns/report/ReportClickedList.vue';
+import CampaignReportHeader from '~/components/campaigns/report/ReportHeader.vue';
+import CampaignReportOpenedList from '~/components/campaigns/report/ReportOpenedList.vue';
+import CampaignReportOpensTimeline from '~/components/campaigns/report/ReportOpensTimeline.vue';
 import { selectPreviousComparable } from '~/utils/campaignReport';
 import { formatNumber } from '~/utils/formatters';
 import { useRecordPaletteObjectOpen } from '~/composables/useCommandPaletteObjectRecents';
@@ -185,64 +189,6 @@ const isSendPending = computed(
 	() => reportStatus.value === 'scheduled' || reportStatus.value === 'sending'
 );
 
-const statusBadge = computed(() => {
-	const prefix = 'dashboard.campaigns.detail.report.status';
-	switch (reportStatus.value) {
-		case 'sent':
-			return {
-				label: t('dashboard.campaigns.detail.report.sentBadge'),
-				icon: 'lucide:check-circle-2',
-				tone: 'bg-success/10 text-success',
-				spin: false,
-			};
-		case 'sending':
-			return {
-				label: t(`${prefix}.sending`),
-				icon: 'lucide:loader-2',
-				tone: 'bg-info/10 text-info',
-				spin: true,
-			};
-		case 'scheduled':
-			return {
-				label: t(`${prefix}.scheduled`),
-				icon: 'lucide:clock',
-				tone: 'bg-info/10 text-info',
-				spin: false,
-			};
-		case 'cancelled':
-			return {
-				label: t(`${prefix}.cancelled`),
-				icon: 'lucide:x-circle',
-				tone: 'bg-error/10 text-error',
-				spin: false,
-			};
-		default:
-			return {
-				label: t(`${prefix}.draft`),
-				icon: 'lucide:file-text',
-				tone: 'bg-bg-elevated text-text-secondary',
-				spin: false,
-			};
-	}
-});
-
-/** The one timing line under the title — whichever instant this state has. */
-const timingLine = computed(() => {
-	const prefix = 'dashboard.campaigns.detail.report';
-	switch (reportStatus.value) {
-		case 'sent':
-			return t(`${prefix}.sentAt`, { date: formatDateTime(campaign.value?.sentAt) });
-		case 'sending':
-			return t(`${prefix}.startedAt`, { date: formatDateTime(campaign.value?.sentAt) });
-		case 'scheduled':
-			return t(`${prefix}.scheduledFor`, { date: formatDateTime(campaign.value?.scheduledAt) });
-		case 'cancelled':
-			return t(`${prefix}.cancelledLine`);
-		default:
-			return t(`${prefix}.notSentYet`);
-	}
-});
-
 // Archive link
 const config = useRuntimeConfig();
 const archiveUrl = computed(() => {
@@ -250,14 +196,6 @@ const archiveUrl = computed(() => {
 	const siteUrl = config.public.siteUrl || window.location.origin;
 	return `${siteUrl}/archive?token=${campaign.value.archiveToken}`;
 });
-
-const { copy: copyToClipboard, copiedKey: archiveCopiedKey } = useCopyToClipboard();
-const ARCHIVE_LINK_COPY_KEY = 'archive-link';
-const archiveCopied = computed(() => archiveCopiedKey.value === ARCHIVE_LINK_COPY_KEY);
-const copyArchiveLink = async () => {
-	if (!archiveUrl.value) return;
-	await copyToClipboard(archiveUrl.value, ARCHIVE_LINK_COPY_KEY);
-};
 
 // Everything dispatched to the provider (the delivery-rate denominator).
 const sentCount = computed(() => {
@@ -285,21 +223,6 @@ const currentSnapshot = computed(() => ({
 	clicked: stats.value?.uniqueClicks ?? 0,
 	bounced: stats.value?.bounced ?? 0,
 }));
-
-// Opens timeline → first-48h curve for UiTrendChart. Labels are hours since
-// the first recorded open; the peak is direct-labeled by the chart.
-const timelineData = computed<{ label: string; value: number }[]>(() => {
-	const raw = opensTimeline.value;
-	if (!raw || raw.length === 0) return [];
-	const start = raw[0]!.timestamp;
-	const cutoff = start + 48 * 60 * 60 * 1000;
-	return raw
-		.filter((d) => d.timestamp <= cutoff)
-		.map((d) => ({
-			label: `${Math.round((d.timestamp - start) / (60 * 60 * 1000))}h`,
-			value: d.count,
-		}));
-});
 
 // Pagination handlers
 const loadMoreOpened = () => {
@@ -350,77 +273,15 @@ const loadPrevClicked = () => {
 
 			<!-- Report Content -->
 			<div v-else>
-				<!-- Header -->
-				<div class="mb-8">
-					<NuxtLink
-						to="/dashboard/campaigns"
-						class="inline-flex items-center gap-2 text-text-secondary hover:text-text-primary text-sm mb-4 transition-colors duration-(--motion-fast)"
-					>
-						<Icon name="lucide:arrow-left" class="w-4 h-4" />
-						{{ t('dashboard.campaigns.detail.report.backToCampaigns') }}
-					</NuxtLink>
-					<UiPageHeader :title="campaign.name">
-						<template #meta>
-							<div class="text-text-secondary text-sm flex flex-wrap items-center gap-x-2 gap-y-1">
-								<span
-									:class="[
-										'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium',
-										statusBadge.tone,
-									]"
-								>
-									<Icon
-										:name="statusBadge.icon"
-										:class="[
-											'w-3 h-3',
-											statusBadge.spin ? 'animate-spin motion-reduce:animate-none' : '',
-										]"
-									/>
-									{{ statusBadge.label }}
-								</span>
-								<span class="inline-flex items-center gap-1.5">
-									<Icon name="lucide:clock" class="w-4 h-4" />
-									{{ timingLine }}
-								</span>
-								<!-- A recipient count before the first message is dispatched is
-								     just a zero pretending to be information. -->
-								<template v-if="hasSendStarted">
-									<span class="text-text-tertiary">·</span>
-									<span class="tabular-nums">
-										{{
-											t('dashboard.campaigns.detail.report.recipients', {
-												count: formatNumber(sentCount),
-											})
-										}}
-									</span>
-								</template>
-							</div>
-							<!--
-								THE MULTI-DAY SEND PLAN, present from the moment the send starts. Renders nothing for an ordinary same-day send.
-							-->
-							<CampaignSendPlanLine :progress="sendPlan" class="mt-1" />
-						</template>
-						<template #actions>
-							<UiButton
-								variant="secondary"
-								class="gap-2"
-								:disabled="isDuplicating"
-								@click="handleDuplicate"
-							>
-								<Icon
-									v-if="isDuplicating"
-									name="lucide:loader-2"
-									class="w-4 h-4 animate-spin motion-reduce:animate-none"
-								/>
-								<Icon v-else name="lucide:copy" class="w-4 h-4" />
-								{{
-									isDuplicating
-										? t('dashboard.campaigns.detail.report.duplicating')
-										: t('common.duplicate')
-								}}
-							</UiButton>
-						</template>
-					</UiPageHeader>
-				</div>
+				<CampaignReportHeader
+					:campaign="campaign"
+					:report-status="reportStatus"
+					:has-send-started="hasSendStarted"
+					:sent-count="sentCount"
+					:send-plan="sendPlan"
+					:is-duplicating="isDuplicating"
+					@duplicate="handleDuplicate"
+				/>
 
 				<!-- The story first: one sentence, then the funnel it comes from. -->
 				<div v-if="(hasSendStarted || isSendPending) && stats" class="card p-4 sm:p-6 mb-8">
@@ -463,31 +324,7 @@ const loadPrevClicked = () => {
 				</div>
 
 				<!-- Archive Link -->
-				<div v-if="archiveUrl" class="card p-4 mb-8">
-					<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-						<div class="flex items-center gap-3 min-w-0">
-							<UiIconBox icon="lucide:globe" size="sm" rounded="lg" />
-							<div class="min-w-0">
-								<p class="text-sm font-medium text-text-primary">
-									{{ t('dashboard.campaigns.detail.report.archive.title') }}
-								</p>
-								<p class="text-xs text-text-tertiary truncate sm:max-w-md">{{ archiveUrl }}</p>
-							</div>
-						</div>
-						<UiButton
-							variant="secondary"
-							class="text-sm gap-1.5 self-start sm:self-auto shrink-0"
-							@click="copyArchiveLink"
-						>
-							<Icon :name="archiveCopied ? 'lucide:check' : 'lucide:copy'" class="w-3.5 h-3.5" />
-							{{
-								archiveCopied
-									? t('common.copied')
-									: t('dashboard.campaigns.detail.report.archive.copyLink')
-							}}
-						</UiButton>
-					</div>
-				</div>
+				<CampaignReportArchiveLink v-if="archiveUrl" :archive-url="archiveUrl" />
 
 				<!-- A/B Test fold-in -->
 				<div v-if="campaign.isABTest && abTestStats" class="mb-8">
@@ -506,38 +343,7 @@ const loadPrevClicked = () => {
 				/>
 
 				<!-- Opens Timeline -->
-				<div class="card p-4 sm:p-6 mb-8">
-					<div class="flex items-baseline justify-between mb-6">
-						<h3 class="text-base font-medium text-text-primary">
-							{{ t('dashboard.campaigns.detail.report.timeline.title') }}
-						</h3>
-						<span class="text-xs text-text-tertiary">{{
-							t('dashboard.campaigns.detail.report.timeline.window')
-						}}</span>
-					</div>
-
-					<!-- Empty state -->
-					<div
-						v-if="timelineData.length === 0"
-						class="flex flex-col items-center justify-center py-12 text-center"
-					>
-						<Icon name="lucide:eye" class="w-10 h-10 text-text-tertiary mb-3" />
-						<p class="text-text-secondary">
-							{{ t('dashboard.campaigns.detail.report.timeline.emptyTitle') }}
-						</p>
-						<p class="text-sm text-text-tertiary mt-1">
-							{{ t('dashboard.campaigns.detail.report.timeline.emptyDescription') }}
-						</p>
-					</div>
-
-					<UiTrendChart
-						v-else
-						:data="timelineData"
-						label-peak
-						:format-value="(v: number) => formatNumber(v)"
-						:aria-label="t('dashboard.campaigns.detail.report.timeline.chartLabel')"
-					/>
-				</div>
+				<CampaignReportOpensTimeline :opens-timeline="opensTimeline" />
 
 				<!-- Click Heatmap -->
 				<div v-if="campaign?.emailTemplate?.htmlContent" class="card p-4 sm:p-6 mb-8">
@@ -599,238 +405,28 @@ const loadPrevClicked = () => {
 					</div>
 
 					<!-- Opened Contacts Tab -->
-					<div v-if="selectedTab === 'opened'">
-						<div v-if="openedLoading && !openedContacts" class="p-8 flex justify-center">
-							<Icon
-								name="lucide:loader-2"
-								class="w-6 h-6 text-brand animate-spin motion-reduce:animate-none"
-							/>
-						</div>
-
-						<div
-							v-else-if="!openedContacts || openedContacts.sends.length === 0"
-							class="py-12 text-center"
-						>
-							<Icon name="lucide:eye" class="w-10 h-10 text-text-tertiary mx-auto mb-3" />
-							<p class="text-text-secondary">
-								{{ t('dashboard.campaigns.detail.report.openedEmpty') }}
-							</p>
-						</div>
-
-						<div v-else>
-							<div class="divide-y divide-border-subtle">
-								<div
-									v-for="send in openedContacts.sends"
-									:key="send._id"
-									class="px-4 sm:px-6 py-4 flex items-center justify-between hover:bg-bg-surface transition-colors duration-(--motion-fast)"
-								>
-									<div class="flex items-center gap-3 min-w-0">
-										<UiIconBox icon="lucide:users" size="sm" rounded="full" />
-										<div class="min-w-0">
-											<div class="text-text-primary font-medium truncate">
-												{{
-													send.contact?.firstName ||
-													send.contact?.email?.split('@')[0] ||
-													t('common.unknown')
-												}}
-												{{ send.contact?.lastName || '' }}
-											</div>
-											<div class="text-sm text-text-tertiary truncate">
-												{{ send.contact?.email || t('dashboard.campaigns.detail.report.noEmail') }}
-											</div>
-										</div>
-									</div>
-									<div class="flex items-center gap-4 shrink-0">
-										<div class="text-right">
-											<div class="text-sm text-text-secondary">
-												{{ formatCompactRelativeTime(send.openedAt, { emptyLabel: '—' }) }}
-											</div>
-											<div
-												v-if="send.openCount > 1"
-												class="text-xs text-text-tertiary tabular-nums"
-											>
-												{{
-													t('dashboard.campaigns.detail.report.opensCount', {
-														count: send.openCount,
-													})
-												}}
-											</div>
-										</div>
-										<UiTooltip :text="t('dashboard.campaigns.detail.report.viewSendDetails')">
-											<NuxtLink
-												:to="`/dashboard/campaigns/${campaignId}/sends/${send._id}`"
-												class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors duration-(--motion-fast)"
-												:aria-label="t('dashboard.campaigns.detail.report.viewSendDetails')"
-											>
-												<Icon name="lucide:chevron-right" class="w-4 h-4" />
-											</NuxtLink>
-										</UiTooltip>
-									</div>
-								</div>
-							</div>
-
-							<div
-								v-if="openedContacts.total > pageSize"
-								class="px-4 sm:px-6 py-4 border-t border-border-subtle flex items-center justify-between gap-3"
-							>
-								<UiButton
-									variant="secondary"
-									class="text-sm"
-									:disabled="openedOffset === 0"
-									@click="loadPrevOpened"
-								>
-									{{ t('dashboard.campaigns.detail.report.pagination.previous') }}
-								</UiButton>
-								<span class="text-sm text-text-tertiary tabular-nums">
-									{{
-										t('dashboard.campaigns.detail.report.pagination.range', {
-											from: openedOffset + 1,
-											to: Math.min(openedOffset + pageSize, openedContacts.total),
-											total: openedContacts.total,
-										})
-									}}
-								</span>
-								<UiButton
-									variant="secondary"
-									class="text-sm"
-									:disabled="!openedContacts.hasMore"
-									@click="loadMoreOpened"
-								>
-									{{ t('dashboard.campaigns.detail.report.pagination.next') }}
-								</UiButton>
-							</div>
-						</div>
-					</div>
+					<CampaignReportOpenedList
+						v-if="selectedTab === 'opened'"
+						:campaign-id="campaignId"
+						:contacts="openedContacts"
+						:loading="openedLoading"
+						:offset="openedOffset"
+						:page-size="pageSize"
+						@previous="loadPrevOpened"
+						@next="loadMoreOpened"
+					/>
 
 					<!-- Clicked Contacts Tab -->
-					<div v-if="selectedTab === 'clicked'">
-						<div v-if="clickedLoading && !clickedContacts" class="p-8 flex justify-center">
-							<Icon
-								name="lucide:loader-2"
-								class="w-6 h-6 text-brand animate-spin motion-reduce:animate-none"
-							/>
-						</div>
-
-						<div
-							v-else-if="!clickedContacts || clickedContacts.sends.length === 0"
-							class="py-12 text-center"
-						>
-							<Icon
-								name="lucide:mouse-pointer-click"
-								class="w-10 h-10 text-text-tertiary mx-auto mb-3"
-							/>
-							<p class="text-text-secondary">
-								{{ t('dashboard.campaigns.detail.report.clickedEmpty') }}
-							</p>
-						</div>
-
-						<div v-else>
-							<div class="divide-y divide-border-subtle">
-								<div
-									v-for="send in clickedContacts.sends"
-									:key="send._id"
-									class="px-4 sm:px-6 py-4 hover:bg-bg-surface transition-colors duration-(--motion-fast)"
-								>
-									<div class="flex items-center justify-between">
-										<div class="flex items-center gap-3 min-w-0">
-											<UiIconBox icon="lucide:users" size="sm" variant="warning" rounded="full" />
-											<div class="min-w-0">
-												<div class="text-text-primary font-medium truncate">
-													{{
-														send.contact?.firstName ||
-														send.contact?.email?.split('@')[0] ||
-														t('common.unknown')
-													}}
-													{{ send.contact?.lastName || '' }}
-												</div>
-												<div class="text-sm text-text-tertiary truncate">
-													{{
-														send.contact?.email || t('dashboard.campaigns.detail.report.noEmail')
-													}}
-												</div>
-											</div>
-										</div>
-										<div class="flex items-center gap-4 shrink-0">
-											<div class="text-right">
-												<div class="text-sm text-text-secondary">
-													{{ formatCompactRelativeTime(send.clickedAt, { emptyLabel: '—' }) }}
-												</div>
-												<div
-													v-if="send.clickedLinks.length > 0"
-													class="text-xs text-text-tertiary tabular-nums"
-												>
-													{{
-														t(
-															'dashboard.campaigns.detail.report.linksCount',
-															{ count: send.clickedLinks.length },
-															send.clickedLinks.length
-														)
-													}}
-												</div>
-											</div>
-											<UiTooltip :text="t('dashboard.campaigns.detail.report.viewSendDetails')">
-												<NuxtLink
-													:to="`/dashboard/campaigns/${campaignId}/sends/${send._id}`"
-													class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors duration-(--motion-fast)"
-													:aria-label="t('dashboard.campaigns.detail.report.viewSendDetails')"
-												>
-													<Icon name="lucide:chevron-right" class="w-4 h-4" />
-												</NuxtLink>
-											</UiTooltip>
-										</div>
-									</div>
-									<div v-if="send.clickedLinks.length > 0" class="ml-13 mt-2 space-y-1">
-										<div
-											v-for="(link, linkIndex) in send.clickedLinks.slice(0, 3)"
-											:key="linkIndex"
-											class="flex items-center gap-2 text-xs text-text-tertiary"
-										>
-											<Icon name="lucide:external-link" class="w-3 h-3" />
-											<span class="truncate max-w-xs">{{ link.url }}</span>
-										</div>
-										<div v-if="send.clickedLinks.length > 3" class="text-xs text-text-tertiary">
-											{{
-												t('dashboard.campaigns.detail.report.moreLinks', {
-													count: send.clickedLinks.length - 3,
-												})
-											}}
-										</div>
-									</div>
-								</div>
-							</div>
-
-							<div
-								v-if="clickedContacts.total > pageSize"
-								class="px-4 sm:px-6 py-4 border-t border-border-subtle flex items-center justify-between gap-3"
-							>
-								<UiButton
-									variant="secondary"
-									class="text-sm"
-									:disabled="clickedOffset === 0"
-									@click="loadPrevClicked"
-								>
-									{{ t('dashboard.campaigns.detail.report.pagination.previous') }}
-								</UiButton>
-								<span class="text-sm text-text-tertiary tabular-nums">
-									{{
-										t('dashboard.campaigns.detail.report.pagination.range', {
-											from: clickedOffset + 1,
-											to: Math.min(clickedOffset + pageSize, clickedContacts.total),
-											total: clickedContacts.total,
-										})
-									}}
-								</span>
-								<UiButton
-									variant="secondary"
-									class="text-sm"
-									:disabled="!clickedContacts.hasMore"
-									@click="loadMoreClicked"
-								>
-									{{ t('dashboard.campaigns.detail.report.pagination.next') }}
-								</UiButton>
-							</div>
-						</div>
-					</div>
+					<CampaignReportClickedList
+						v-if="selectedTab === 'clicked'"
+						:campaign-id="campaignId"
+						:contacts="clickedContacts"
+						:loading="clickedLoading"
+						:offset="clickedOffset"
+						:page-size="pageSize"
+						@previous="loadPrevClicked"
+						@next="loadMoreClicked"
+					/>
 				</div>
 			</div>
 		</UiQueryBoundary>

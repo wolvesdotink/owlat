@@ -69,7 +69,7 @@ describe('access control — unauthenticated callers are rejected', () => {
 		['domains.domains.listByOrganization', api.domains.domains.listByOrganization, {}],
 		['forms.endpoints.listByTeam', api.forms.endpoints.listByTeam, {}],
 		['semanticFiles.list', api.semanticFiles.list, PAGE],
-		['autonomy.listRules', api.autonomy.listRules, {}],
+		['autonomy.policy.listRules', api.autonomy.policy.listRules, {}],
 		['contacts.contacts.list', api.contacts.contacts.list, PAGE],
 		[
 			'contacts.organization.listAllIdsByOrganization',
@@ -105,8 +105,8 @@ describe('access control — unauthenticated callers are rejected', () => {
 		['forms.endpoints.create', api.forms.endpoints.create, { name: 'Signup' }],
 		['topics.topics.create', api.topics.topics.create, { name: 'News' }],
 		[
-			'autonomy.upsertRule',
-			api.autonomy.upsertRule,
+			'autonomy.policy.upsertRule',
+			api.autonomy.policy.upsertRule,
 			{
 				category: 'reply',
 				autoApproveThreshold: 0.9,

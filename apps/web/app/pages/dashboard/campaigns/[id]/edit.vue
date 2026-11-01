@@ -1,12 +1,16 @@
 <script setup lang="ts">
-import { api } from '@owlat/api';
-import { isValidEmail } from '@owlat/shared';
 import { openAfterSave, openWithoutSaving } from '~/lib/openAfterSave';
 import type { SenderPickerHandle } from '~/utils/campaignSenderPicker';
-import { formatNumber } from '~/utils/formatters';
-import { exactEligibleCount, isLowerBoundCount } from '~/composables/useRecipientCount';
 import { useRecordPaletteObjectOpen } from '~/composables/useCommandPaletteObjectRecents';
-import { meterFillStyle } from '@owlat/ui/utils/meterFill';
+import { useCampaignSendCapacity } from '~/composables/campaigns/useCampaignSendCapacity';
+import CampaignContentCard from '~/components/campaigns/edit/ContentCard.vue';
+import CampaignDetailsCard from '~/components/campaigns/edit/DetailsCard.vue';
+import CampaignEditActions from '~/components/campaigns/edit/EditActions.vue';
+import CampaignEditHeader from '~/components/campaigns/edit/EditHeader.vue';
+import CampaignEditNotices from '~/components/campaigns/edit/EditNotices.vue';
+import CampaignPendingReview from '~/components/campaigns/edit/PendingReview.vue';
+import CampaignScheduleCard from '~/components/campaigns/edit/ScheduleCard.vue';
+import CampaignWarmupCard from '~/components/campaigns/edit/WarmupCard.vue';
 
 const { t, locale } = useI18n();
 
@@ -167,145 +171,32 @@ const handleConfirmSend = async () => {
 	showSendConfirm.value = false;
 };
 
-// IP Warmup state
-const { data: warmingOverview } = useOrganizationQuery(
-	api.analytics.reputationQueries.getSendingOverview
-);
-
-// The eligible count only when it is exact (#916): a big audience's readout is
-// a lower bound until its background count completes, and the send estimate
-// and readiness note must not plan against an understated size. The label
-// keeps the "N+" reading for copy that just names the number.
-const exactAudienceSize = computed(() => exactEligibleCount(audienceCount.value));
-const audienceCountLabel = computed(
-	() =>
-		`${formatNumber(audienceCount.value?.eligible ?? 0)}${isLowerBoundCount(audienceCount.value) ? '+' : ''}`
-);
-
-// Warming-aware "this campaign will take ~N days" estimate. The projection
-// algorithm lives once on the backend (getCampaignSendEstimate); we just feed
-// it the exact eligible recipient count and reshape estimatedDays → days for
-// the template. Skips until an exact count is known (factory returns undefined).
-const { data: sendEstimateRaw } = useOrganizationQuery(
-	api.analytics.reputationQueries.getCampaignSendEstimate,
-	() => {
-		const count = exactAudienceSize.value;
-		if (count === null) return undefined;
-		return { recipientCount: count };
-	}
-);
-
-const sendEstimate = computed(() => {
-	if (!sendEstimateRaw.value) return null;
-	return {
-		days: sendEstimateRaw.value.estimatedDays,
-		isFullyWarmed: sendEstimateRaw.value.isFullyWarmed,
-		message: sendEstimateRaw.value.message,
-	};
-});
-
-// The BINDING capacity plan, previewed BEFORE the operator presses send.
-//
-// Same assessment pre-flight makes, so the operator sees "Sending over N days" as
-// a first-class choice rather than discovering it as a refusal (a multi-day send
-// is a normal, visible state for a warming deployment, never a surprise). Skips
-// until there is an audience and a valid From address; `fromEmail` is what
-// decides whether warm-up overflow to a verified relay absorbs the tail, so
-// previewing without it would answer a different question than the gate.
-const { data: capacityPreviewRaw } = useOrganizationQuery(
-	api.campaigns.capacityPreflight.getCampaignCapacityPlan,
-	() => {
-		const selected = audience.value;
-		const from = fromEmail.value.trim();
-		if (!selected || !isValidEmail(from)) return undefined;
-		// Anchor on the chosen start when there is one: a campaign scheduled for
-		// next week is judged against the capacity it will have then.
-		const startsAt = scheduledStartAt.value;
-		return { audience: selected, fromEmail: from, ...(startsAt !== null ? { startsAt } : {}) };
-	}
-);
-
-// TODAY'S HEADROOM, beside the send buttons. The capacity plan above answers
-// "how long will this take"; this answers the question the operator asks first —
-// how much can go out right now, and when does that grow. Same paced projection
-// as the gate, so the two lines cannot disagree. `fromEmail` is passed whenever
-// it is valid (it decides whether warm-up overflow absorbs the tail); without
-// one the backend answers conservatively rather than skipping, so the line is
-// still there while the address is being typed.
-const { data: sendingReadiness } = useOrganizationQuery(
-	api.campaigns.sendingReadiness.getSendingReadiness,
-	() => {
-		const from = fromEmail.value.trim();
-		return isValidEmail(from) ? { fromEmail: from } : {};
-	}
-);
-
-/**
- * The schedule to render: the one pre-flight actually refused with, else the
- * preview. The refusal wins — it is the authoritative answer for the send the
- * operator just attempted.
- */
-const shownCapacityPlan = computed(() => {
-	if (capacitySchedule.value) return capacitySchedule.value;
-	const preview = capacityPreviewRaw.value;
-	return preview && !preview.fits ? preview.schedule : null;
+// Warm-up state, the exact audience size, the send estimate, the capacity plan
+// and today's headroom.
+const {
+	warmingOverview,
+	exactAudienceSize,
+	audienceCountLabel,
+	sendEstimate,
+	sendingReadiness,
+	shownCapacityPlan,
+} = useCampaignSendCapacity({
+	audience,
+	audienceCount,
+	fromEmail,
+	scheduledStartAt,
+	capacitySchedule,
 });
 </script>
 
 <template>
 	<div class="min-h-full bg-bg-base">
-		<!-- Header -->
-		<div class="bg-bg-elevated border-b border-border-subtle">
-			<div class="max-w-4xl mx-auto px-6 py-4">
-				<div class="flex items-start gap-4">
-					<button
-						class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-						@click="handleBack"
-						:aria-label="t('common.back')"
-					>
-						<Icon name="lucide:arrow-left" class="w-5 h-5" />
-					</button>
-					<UiPageHeader
-						class="flex-1"
-						:title="
-							isScheduled
-								? t('dashboard.campaigns.detail.edit.titleScheduled')
-								: t('dashboard.campaigns.detail.edit.title')
-						"
-						:description="campaignData?.name || t('dashboard.campaigns.detail.edit.loadingName')"
-					>
-						<template
-							v-if="
-								campaignData && (isScheduled || isDraft || campaignData.status === 'pending_review')
-							"
-							#meta
-						>
-							<span
-								v-if="isScheduled"
-								class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium bg-brand/10 text-brand"
-							>
-								<Icon name="lucide:clock" class="w-4 h-4" />
-								{{ t('dashboard.campaigns.detail.edit.badges.scheduled') }}
-							</span>
-							<span
-								v-else-if="isDraft"
-								class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium bg-text-tertiary/10 text-text-tertiary"
-							>
-								<Icon name="lucide:pencil" class="w-4 h-4" />
-								{{ t('dashboard.campaigns.detail.edit.badges.draft') }}
-							</span>
-							<span
-								v-else-if="campaignData.status === 'pending_review'"
-								class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium bg-warning/10 text-warning"
-							>
-								<Icon name="lucide:shield-alert" class="w-4 h-4" />
-								{{ t('dashboard.campaigns.detail.edit.badges.underReview') }}
-							</span>
-						</template>
-					</UiPageHeader>
-				</div>
-			</div>
-		</div>
+		<CampaignEditHeader
+			:campaign="campaignData"
+			:is-scheduled="isScheduled"
+			:is-draft="isDraft"
+			@back="handleBack"
+		/>
 
 		<UiQueryBoundary
 			:loading="campaignLoading"
@@ -343,175 +234,44 @@ const shownCapacityPlan = computed(() => {
 			/>
 
 			<!-- Pending Review State -->
-			<div v-else-if="campaignData.status === 'pending_review'" class="max-w-4xl mx-auto px-6 py-8">
-				<div
-					class="p-4 bg-warning/10 border border-warning/20 rounded-lg flex items-start gap-3 mb-6"
-				>
-					<Icon name="lucide:shield-alert" class="w-5 h-5 text-warning shrink-0 mt-0.5" />
-					<div>
-						<p class="text-sm font-medium text-text-primary">
-							{{ t('dashboard.campaigns.detail.edit.underReview.title') }}
-						</p>
-						<p class="text-sm text-text-secondary mt-1">
-							{{ t('dashboard.campaigns.detail.edit.underReview.description') }}
-						</p>
-					</div>
-				</div>
-				<div
-					v-if="campaignData.contentBlockReason"
-					class="p-4 bg-error/10 border border-error/20 rounded-lg flex items-start gap-3 mb-6"
-				>
-					<Icon name="lucide:alert-triangle" class="w-5 h-5 text-error shrink-0 mt-0.5" />
-					<div>
-						<p class="text-sm font-medium text-text-primary">
-							{{ t('dashboard.campaigns.detail.edit.underReview.issuesTitle') }}
-						</p>
-						<p class="text-sm text-text-secondary mt-1">
-							{{ campaignData.contentBlockReason }}
-						</p>
-					</div>
-				</div>
-				<UiButton variant="secondary" @click="handleBack">
-					{{ t('dashboard.campaigns.detail.edit.backToCampaigns') }}
-				</UiButton>
-			</div>
+			<CampaignPendingReview
+				v-else-if="campaignData.status === 'pending_review'"
+				:content-block-reason="campaignData.contentBlockReason"
+				@back="handleBack"
+			/>
 
 			<!-- Edit Form -->
 			<div v-else class="max-w-4xl mx-auto px-6 py-8">
 				<div class="space-y-6">
-					<!-- Content Block Reason Alert (shown when campaign was blocked and reverted to draft) -->
-					<div
-						v-if="campaignData.contentBlockReason"
-						class="p-4 bg-error/10 border border-error/20 rounded-lg flex items-start gap-3"
+					<CampaignEditNotices
+						:content-block-reason="campaignData.contentBlockReason"
+						:save-error="saveError"
+						:is-scheduled="isScheduled"
+						:scheduled-at="campaignData.scheduledAt"
+						:scheduled-at-display="scheduledAtDisplay"
+						:is-saving="isSaving"
+						@unschedule="handleUnschedule"
+						@cancel="handleCancel"
+					/>
+
+					<CampaignDetailsCard
+						v-model:campaign-name="campaignName"
+						v-model:reply-to="replyTo"
+						:name-error="errors.campaignName"
+						:disabled="isScheduled"
 					>
-						<Icon name="lucide:shield-alert" class="w-5 h-5 text-error shrink-0 mt-0.5" />
-						<div>
-							<p class="text-sm font-medium text-text-primary">
-								{{ t('dashboard.campaigns.detail.edit.contentBlocked.title') }}
-							</p>
-							<p class="text-sm text-text-secondary mt-1">
-								{{ t('dashboard.campaigns.detail.edit.contentBlocked.description') }}
-							</p>
-							<p class="text-xs text-text-tertiary mt-1">
-								{{ campaignData.contentBlockReason }}
-							</p>
-						</div>
-					</div>
-					<!-- Error Alert -->
-					<div
-						v-if="saveError"
-						class="p-4 bg-error/10 border border-error/20 rounded-lg flex items-start gap-3"
-					>
-						<Icon name="lucide:alert-circle" class="w-5 h-5 text-error shrink-0 mt-0.5" />
-						<div>
-							<p class="text-sm font-medium text-error">{{ t('common.error') }}</p>
-							<p class="text-sm text-error/80">{{ saveError }}</p>
-						</div>
-					</div>
-
-					<!-- Scheduled Campaign Notice -->
-					<div
-						v-if="isScheduled && campaignData.scheduledAt"
-						class="p-4 bg-brand/10 border border-brand/20 rounded-lg"
-					>
-						<div class="flex items-start gap-3">
-							<Icon name="lucide:clock" class="w-5 h-5 text-brand shrink-0 mt-0.5" />
-							<div class="flex-1">
-								<p class="text-sm font-medium text-brand">
-									{{ t('dashboard.campaigns.detail.edit.scheduledNotice.title') }}
-								</p>
-								<I18nT
-									keypath="dashboard.campaigns.detail.edit.scheduledNotice.description"
-									tag="p"
-									class="text-sm text-brand/80 mt-1"
-									scope="global"
-								>
-									<template #date>
-										<span class="font-medium">{{ scheduledAtDisplay }}</span>
-									</template>
-								</I18nT>
-								<div class="flex gap-2 mt-3">
-									<button
-										class="text-sm text-brand hover:text-brand/80 font-medium"
-										:disabled="isSaving"
-										@click="handleUnschedule"
-									>
-										{{ t('dashboard.campaigns.detail.edit.scheduledNotice.unschedule') }}
-									</button>
-									<span class="text-brand/40">|</span>
-									<button
-										class="text-sm text-error hover:text-error/80 font-medium"
-										:disabled="isSaving"
-										@click="handleCancel"
-									>
-										{{ t('dashboard.campaigns.detail.edit.scheduledNotice.cancelCampaign') }}
-									</button>
-								</div>
-							</div>
-						</div>
-					</div>
-
-					<!-- Campaign Details Card -->
-					<div class="card p-6">
-						<h2 class="text-lg font-semibold text-text-primary mb-6">
-							{{ t('dashboard.campaigns.detail.edit.details.title') }}
-						</h2>
-
-						<div class="space-y-6">
-							<!-- Campaign Name -->
-							<div>
-								<label for="campaignName" class="label flex items-center gap-2">
-									<Icon name="lucide:file-text" class="w-4 h-4 text-text-tertiary" />
-									{{ t('dashboard.campaigns.detail.edit.details.campaignName') }}
-									<span class="text-error">*</span>
-								</label>
-								<input
-									id="campaignName"
-									v-model="campaignName"
-									type="text"
-									:placeholder="
-										t('dashboard.campaigns.detail.edit.details.campaignNamePlaceholder')
-									"
-									:class="['input mt-1.5', errors.campaignName ? 'input-error' : '']"
-									:disabled="isScheduled"
-								/>
-								<p v-if="errors.campaignName" class="mt-1.5 text-sm text-error">
-									{{ errors.campaignName }}
-								</p>
-							</div>
-
-							<!-- From: the wizard's curated sender picker (the server refuses
-							     any address off that list) -->
-							<CampaignsStepsSetupSenderPicker
-								ref="senderPickerRef"
-								v-model:from-name="fromName"
-								v-model:from-email="fromEmail"
-								:campaign-id="campaignId"
-								:campaign-details="campaignData"
-								:disabled="isScheduled"
-								@preselected="onSenderPreselected"
-							/>
-
-							<!-- Reply-to -->
-							<div>
-								<label for="replyTo" class="label flex items-center gap-2">
-									<Icon name="lucide:reply" class="w-4 h-4 text-text-tertiary" />
-									{{ t('dashboard.campaigns.detail.edit.details.replyTo') }}
-									<span class="text-text-tertiary">{{
-										t('dashboard.campaigns.detail.edit.details.optionalSuffix')
-									}}</span>
-								</label>
-								<input
-									id="replyTo"
-									v-model="replyTo"
-									type="email"
-									:placeholder="t('dashboard.campaigns.detail.edit.details.replyToPlaceholder')"
-									class="input mt-1.5"
-									:disabled="isScheduled"
-								/>
-							</div>
-						</div>
-					</div>
+						<!-- From: the wizard's curated sender picker (the server refuses
+						     any address off that list) -->
+						<CampaignsStepsSetupSenderPicker
+							ref="senderPickerRef"
+							v-model:from-name="fromName"
+							v-model:from-email="fromEmail"
+							:campaign-id="campaignId"
+							:campaign-details="campaignData"
+							:disabled="isScheduled"
+							@preselected="onSenderPreselected"
+						/>
+					</CampaignDetailsCard>
 
 					<!-- Recipients: the wizard's one control, with its count and warnings -->
 					<CampaignsStepsSetupAudiencePicker
@@ -527,94 +287,14 @@ const shownCapacityPlan = computed(() => {
 						@retry="retryAudienceLists"
 					/>
 
-					<!-- Email Content Card -->
-					<div class="card p-6">
-						<h2 class="text-lg font-semibold text-text-primary mb-6">
-							{{ t('dashboard.campaigns.detail.edit.content.title') }}
-						</h2>
-
-						<div class="space-y-6">
-							<!-- Selected Template -->
-							<div>
-								<label class="label">
-									{{ t('dashboard.campaigns.detail.edit.content.template') }}
-									<span class="text-error">*</span>
-								</label>
-								<div
-									v-if="selectedTemplate"
-									class="mt-2 p-4 bg-bg-surface shadow-surface-1 rounded-lg"
-								>
-									<div class="flex flex-wrap items-center justify-between gap-3">
-										<div class="flex min-w-0 flex-1 basis-56 items-center gap-3">
-											<div
-												class="w-10 h-10 shrink-0 rounded-lg bg-brand/20 flex items-center justify-center text-brand"
-											>
-												<Icon name="lucide:mail" class="w-5 h-5" />
-											</div>
-											<div class="min-w-0">
-												<p class="font-medium text-text-primary truncate">
-													{{ selectedTemplate.name }}
-												</p>
-												<p class="text-sm text-text-secondary truncate">
-													{{
-														selectedTemplate.subject ||
-														t('dashboard.campaigns.detail.edit.content.noSubject')
-													}}
-												</p>
-											</div>
-										</div>
-										<NuxtLink
-											:to="`/dashboard/send/emails/${selectedTemplate._id}/edit`"
-											class="text-brand hover:text-brand-hover flex shrink-0 items-center gap-1 text-sm whitespace-nowrap"
-											target="_blank"
-											@click="
-												onEditEmailClick(
-													$event,
-													`/dashboard/send/emails/${selectedTemplate._id}/edit`
-												)
-											"
-										>
-											<Icon name="lucide:eye" class="w-4 h-4" />
-											{{ t('dashboard.campaigns.detail.edit.content.editEmail') }}
-										</NuxtLink>
-									</div>
-								</div>
-								<div
-									v-else
-									class="mt-2 p-4 bg-bg-surface shadow-surface-1 rounded-lg text-text-tertiary"
-								>
-									{{ t('dashboard.campaigns.detail.edit.content.noTemplate') }}
-								</div>
-								<p v-if="errors.content" class="mt-1.5 text-sm text-error">
-									{{ errors.content }}
-								</p>
-
-								<p class="mt-3 text-sm text-text-tertiary">
-									{{ t('dashboard.campaigns.detail.edit.content.linkedEmailNote') }}
-								</p>
-							</div>
-
-							<!-- Subject Line -->
-							<div>
-								<label for="subject" class="label flex items-center gap-2">
-									<Icon name="lucide:mail" class="w-4 h-4 text-text-tertiary" />
-									{{ t('dashboard.campaigns.detail.edit.content.subject') }}
-									<span class="text-error">*</span>
-								</label>
-								<input
-									id="subject"
-									v-model="campaignSubject"
-									type="text"
-									:placeholder="t('dashboard.campaigns.detail.edit.content.subjectPlaceholder')"
-									:class="['input mt-1.5', errors.subject ? 'input-error' : '']"
-									:disabled="isScheduled"
-								/>
-								<p v-if="errors.subject" class="mt-1.5 text-sm text-error">
-									{{ errors.subject }}
-								</p>
-							</div>
-						</div>
-					</div>
+					<CampaignContentCard
+						v-model:subject="campaignSubject"
+						:template="selectedTemplate"
+						:content-error="errors.content"
+						:subject-error="errors.subject"
+						:disabled="isScheduled"
+						@edit-email-click="onEditEmailClick"
+					/>
 
 					<!-- A/B Testing Card -->
 					<CampaignsABTestConfig
@@ -652,97 +332,17 @@ const shownCapacityPlan = computed(() => {
 						</div>
 					</div>
 
-					<!-- Schedule Card -->
-					<div class="card p-6">
-						<h2 class="text-lg font-semibold text-text-primary mb-6">
-							{{
-								isScheduled
-									? t('dashboard.campaigns.detail.edit.schedule.retitle')
-									: t('dashboard.campaigns.detail.edit.schedule.title')
-							}}
-						</h2>
-
-						<div class="grid grid-cols-2 gap-4">
-							<div>
-								<label for="scheduleDate" class="label flex items-center gap-2">
-									<Icon name="lucide:calendar" class="w-4 h-4 text-text-tertiary" />
-									{{ t('dashboard.campaigns.detail.edit.schedule.date') }}
-								</label>
-								<input
-									id="scheduleDate"
-									v-model="scheduledDate"
-									type="date"
-									:min="getMinScheduleDate()"
-									class="input mt-1.5"
-								/>
-							</div>
-							<div>
-								<label for="scheduleTime" class="label flex items-center gap-2">
-									<Icon name="lucide:clock" class="w-4 h-4 text-text-tertiary" />
-									{{ t('dashboard.campaigns.detail.edit.schedule.time') }}
-								</label>
-								<input id="scheduleTime" v-model="scheduledTime" type="time" class="input mt-1.5" />
-							</div>
-						</div>
-
-						<!-- Delivery time (also honored on reschedule) -->
-						<CampaignsSendTimingOptions
-							v-model="sendTiming"
-							class="mt-4"
-							:time="scheduledTime"
-							:campaign-id="campaignId"
-							:start-at="scheduledStartAt"
-							:is-ab-test="abTest.abTestEnabled.value"
-						/>
-
-						<div
-							v-if="scheduledDate && scheduledTime"
-							class="mt-4 p-3 bg-bg-surface shadow-surface-1 rounded-lg"
-						>
-							<template v-if="sendTiming.mode === 'optimized'">
-								<p class="text-sm text-text-secondary">
-									{{ t('dashboard.campaigns.detail.edit.schedule.willStartAt') }}
-								</p>
-								<p class="font-medium text-text-primary mt-1">
-									{{ formatDate(scheduledDate, scheduledTime) }}
-								</p>
-								<p class="text-xs text-text-tertiary mt-2">
-									{{
-										t('dashboard.campaigns.detail.edit.schedule.optimizedWithin', {
-											hours: sendTiming.windowHours,
-										})
-									}}
-								</p>
-							</template>
-							<template v-else-if="sendTiming.mode === 'local'">
-								<p class="text-sm text-text-secondary">
-									{{ t('dashboard.campaigns.detail.edit.schedule.willBeSentAt') }}
-								</p>
-								<p class="font-medium text-text-primary mt-1">
-									{{
-										t('dashboard.campaigns.detail.edit.schedule.inRecipientTimezone', {
-											time: scheduledTime,
-										})
-									}}
-								</p>
-								<p class="text-xs text-text-tertiary mt-2">
-									{{
-										t('dashboard.campaigns.detail.edit.schedule.timezoneExamples', {
-											time: scheduledTime,
-										})
-									}}
-								</p>
-							</template>
-							<template v-else>
-								<p class="text-sm text-text-secondary">
-									{{ t('dashboard.campaigns.detail.edit.schedule.willBeSent') }}
-								</p>
-								<p class="font-medium text-text-primary mt-1">
-									{{ formatDate(scheduledDate, scheduledTime) }}
-								</p>
-							</template>
-						</div>
-					</div>
+					<CampaignScheduleCard
+						v-model:scheduled-date="scheduledDate"
+						v-model:scheduled-time="scheduledTime"
+						v-model:send-timing="sendTiming"
+						:is-scheduled="isScheduled"
+						:campaign-id="campaignId"
+						:start-at="scheduledStartAt"
+						:is-ab-test="abTest.abTestEnabled.value"
+						:min-date="getMinScheduleDate()"
+						:format-date="formatDate"
+					/>
 
 					<!-- Test Email Card -->
 					<div class="card p-6">
@@ -767,127 +367,15 @@ const shownCapacityPlan = computed(() => {
 					</div>
 
 					<!-- IP Warmup Status -->
-					<div v-if="warmingOverview?.warming" class="card p-6">
-						<div class="flex items-center gap-3 mb-4">
-							<UiIconBox icon="lucide:flame" size="lg" variant="brand" rounded="xl" />
-							<div>
-								<h2 class="text-lg font-semibold text-text-primary">
-									{{ t('dashboard.campaigns.detail.edit.warmup.title') }}
-								</h2>
-								<p class="text-sm text-text-secondary">
-									{{ t('dashboard.campaigns.detail.edit.warmup.subtitle') }}
-								</p>
-							</div>
-						</div>
-
-						<!-- Graduated State -->
-						<div
-							v-if="warmingOverview.warming.phase === 'graduated'"
-							class="flex items-center gap-3 p-4 bg-success/10 border border-success/20 rounded-lg"
-						>
-							<Icon name="lucide:check-circle" class="w-5 h-5 text-success shrink-0" />
-							<div>
-								<p class="text-sm font-medium text-success">
-									{{ t('dashboard.campaigns.detail.edit.warmup.graduatedTitle') }}
-								</p>
-								<p class="text-sm text-text-secondary">
-									{{ t('dashboard.campaigns.detail.edit.warmup.graduatedDescription') }}
-								</p>
-							</div>
-						</div>
-
-						<!-- Warming State -->
-						<div v-else class="space-y-4">
-							<!-- Progress -->
-							<div>
-								<div class="flex items-center justify-between mb-2">
-									<p class="text-sm text-text-secondary">
-										{{ t('dashboard.campaigns.detail.edit.warmup.progress') }}
-									</p>
-									<p class="text-sm font-medium text-text-primary">
-										{{
-											t('dashboard.campaigns.detail.edit.warmup.dayOf', {
-												day: warmingOverview.warming.ips?.[0]?.currentDay ?? 1,
-											})
-										}}
-									</p>
-								</div>
-								<div class="w-full h-2.5 bg-bg-surface rounded-full overflow-hidden">
-									<div
-										class="ui-meter-fill h-full bg-brand rounded-full transition-transform duration-(--motion-slow)"
-										:style="
-											meterFillStyle(
-												Math.round(((warmingOverview.warming.ips?.[0]?.currentDay ?? 1) / 30) * 100)
-											)
-										"
-									/>
-								</div>
-							</div>
-
-							<!-- Today's Capacity -->
-							<div class="flex items-center justify-between p-3 bg-bg-surface rounded-lg">
-								<p class="text-sm text-text-secondary">
-									{{ t('dashboard.campaigns.detail.edit.warmup.remainingCapacity') }}
-								</p>
-								<p class="text-sm font-medium text-text-primary">
-									{{
-										t('dashboard.campaigns.detail.edit.warmup.remainingOfCap', {
-											remaining: formatNumber(
-												Math.max(
-													0,
-													warmingOverview.warming.totalDailyCap -
-														warmingOverview.warming.totalSentToday
-												)
-											),
-											cap: formatNumber(warmingOverview.warming.totalDailyCap),
-										})
-									}}
-								</p>
-							</div>
-
-							<!-- The multi-day schedule: previewed BEFORE the send, and re-rendered
-							     from the refusal itself when pre-flight hands one back. Capacity is a
-							     schedule, not a failure. -->
-							<CampaignsCapacitySchedulePanel
-								v-if="shownCapacityPlan"
-								:plan="shownCapacityPlan"
-								:dismissible="Boolean(capacitySchedule)"
-								@dismiss="dismissCapacitySchedule"
-							/>
-
-							<!-- Send Estimate -->
-							<div
-								v-if="
-									!shownCapacityPlan &&
-									sendEstimate &&
-									exactAudienceSize !== null &&
-									sendEstimate.days > 1
-								"
-								class="flex items-start gap-3 p-3 bg-warning/10 border border-warning/20 rounded-lg"
-							>
-								<Icon name="lucide:clock" class="w-5 h-5 text-warning shrink-0 mt-0.5" />
-								<div>
-									<p class="text-sm font-medium text-text-primary">
-										{{
-											t(
-												'dashboard.campaigns.detail.edit.warmup.estimatedDays',
-												{ days: sendEstimate.days },
-												sendEstimate.days
-											)
-										}}
-									</p>
-									<p class="text-sm text-text-secondary mt-0.5">
-										{{
-											t('dashboard.campaigns.detail.edit.warmup.estimateDetail', {
-												count: formatNumber(exactAudienceSize ?? 0),
-												message: sendEstimate.message,
-											})
-										}}
-									</p>
-								</div>
-							</div>
-						</div>
-					</div>
+					<CampaignWarmupCard
+						v-if="warmingOverview?.warming"
+						:warming="warmingOverview.warming"
+						:capacity-plan="shownCapacityPlan"
+						:capacity-dismissible="Boolean(capacitySchedule)"
+						:send-estimate="sendEstimate"
+						:audience-size="exactAudienceSize"
+						@dismiss-capacity="dismissCapacitySchedule"
+					/>
 
 					<!-- Sending readiness, immediately above the send/schedule buttons: the
 					     ramp cap belongs where the decision is made, not in a pre-flight
@@ -898,62 +386,16 @@ const shownCapacityPlan = computed(() => {
 						:audience-size="exactAudienceSize"
 					/>
 
-					<!-- Actions. On a phone the three send actions take their own line
-					     (wrapping, right-aligned) instead of squeezing every label onto
-					     two lines and pushing Send now past the edge. -->
-					<div class="flex flex-wrap items-center justify-between gap-3 pt-4">
-						<UiButton variant="secondary" type="button" @click="handleBack">
-							{{ t('common.cancel') }}
-						</UiButton>
-						<div class="flex flex-wrap items-center justify-end gap-3 ml-auto">
-							<!-- Save button for draft campaigns -->
-							<UiButton
-								variant="secondary"
-								v-if="isDraft"
-								class="gap-2"
-								:disabled="isSaving"
-								@click="handleSave"
-							>
-								<Icon
-									v-if="isSaving"
-									name="lucide:loader-2"
-									class="w-4 h-4 animate-spin motion-reduce:animate-none"
-								/>
-								{{ t('dashboard.campaigns.detail.edit.actions.saveDraft') }}
-							</UiButton>
-
-							<!-- Schedule button -->
-							<UiButton
-								variant="secondary"
-								class="gap-2"
-								:disabled="isSaving || !scheduledDate || !scheduledTime"
-								@click="handleSchedule"
-							>
-								<Icon
-									v-if="isSaving"
-									name="lucide:loader-2"
-									class="w-4 h-4 animate-spin motion-reduce:animate-none"
-								/>
-								<Icon v-else name="lucide:clock" class="w-4 h-4" />
-								{{
-									isScheduled
-										? t('dashboard.campaigns.detail.edit.actions.reschedule')
-										: t('dashboard.campaigns.detail.edit.actions.schedule')
-								}}
-							</UiButton>
-
-							<!-- Send Now button -->
-							<UiButton class="gap-2" :disabled="isSaving" @click="showSendConfirm = true">
-								<Icon
-									v-if="isSaving"
-									name="lucide:loader-2"
-									class="w-4 h-4 animate-spin motion-reduce:animate-none"
-								/>
-								<Icon v-else name="lucide:send" class="w-4 h-4" />
-								{{ t('dashboard.campaigns.detail.edit.actions.sendNow') }}
-							</UiButton>
-						</div>
-					</div>
+					<CampaignEditActions
+						:is-draft="isDraft"
+						:is-scheduled="isScheduled"
+						:is-saving="isSaving"
+						:can-schedule="Boolean(scheduledDate && scheduledTime)"
+						@back="handleBack"
+						@save="handleSave"
+						@schedule="handleSchedule"
+						@send-now="showSendConfirm = true"
+					/>
 				</div>
 			</div>
 		</UiQueryBoundary>

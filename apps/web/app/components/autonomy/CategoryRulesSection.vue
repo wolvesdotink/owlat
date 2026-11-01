@@ -22,26 +22,26 @@ const {
 	data: rules,
 	isLoading: rulesLoading,
 	error: rulesError,
-} = useConvexQuery(api.autonomy.listRules, () => ({}));
+} = useConvexQuery(api.autonomy.policy.listRules, () => ({}));
 const { data: scorecard } = useConvexQuery(
 	api.agent.shadowScorecard.getShadowScorecard,
 	() => ({})
 );
 const { data: suggestions } = useConvexQuery(
-	api.autonomySuggestions.listGraduationSuggestions,
+	api.autonomy.suggestions.listGraduationSuggestions,
 	() => ({})
 );
-const { data: demotions } = useConvexQuery(api.autonomyOutcome.listAutoDemotions, () => ({}));
+const { data: demotions } = useConvexQuery(api.autonomy.outcome.listAutoDemotions, () => ({}));
 
-const { run: runSetSenderAutonomy } = useBackendOperation(api.autonomy.setSenderAutonomy, {
+const { run: runSetSenderAutonomy } = useBackendOperation(api.autonomy.policy.setSenderAutonomy, {
 	label: () => t('dashboard.admin.instance.aiReplies.operations.enableSender'),
 });
 const { run: runAcceptSuggestion } = useBackendOperation(
-	api.autonomySuggestions.acceptGraduationSuggestion,
+	api.autonomy.suggestions.acceptGraduationSuggestion,
 	{ label: () => t('dashboard.admin.instance.aiReplies.operations.applySuggestion') }
 );
 const { run: runAcknowledgeDemotion } = useBackendOperation(
-	api.autonomyOutcome.acknowledgeAutoDemotion,
+	api.autonomy.outcome.acknowledgeAutoDemotion,
 	{ label: () => t('dashboard.admin.instance.aiReplies.operations.dismissDemotion') }
 );
 

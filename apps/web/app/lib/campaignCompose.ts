@@ -7,6 +7,7 @@
  * where "back" is. The Review step's send choice is the one thing that lives
  * only on screen; it rides along in the return URL.
  */
+import type { Id } from '@owlat/api/dataModel';
 import { safeRedirect } from '~/utils/safeRedirect';
 
 /** The Review step's "Schedule for later" choice, carried through the editor. */
@@ -16,6 +17,52 @@ export interface ReviewSchedule {
 	recipientTimezone: boolean;
 	/** "Optimized per contact" settings, when that delivery time was chosen. */
 	optimization?: { windowHours: number; holdoutPercent: number };
+}
+
+/** An email the Review step names (the attached one, or Variant B's). */
+export interface ReviewEmailTemplate {
+	readonly _id: Id<'emailTemplates'>;
+	readonly name: string;
+	readonly subject: string;
+}
+
+/** Everything the Review step summarizes and sends. */
+export interface ReviewCampaignData {
+	campaignId: Id<'campaigns'>;
+	campaignName: string;
+	fromName: string;
+	fromEmail: string;
+	replyTo: string;
+	audienceDisplayText: string;
+	audienceCount: number;
+	/**
+	 * `audienceCount` is a lower bound (the wizard's readout stopped at one page
+	 * or is still on a first background count): shown as "N+", always
+	 * confirmed, and kept out of the capacity note, which needs the real size.
+	 */
+	audienceCountAtLeast?: boolean;
+	campaignSubject: string;
+	selectedTemplate: ReviewEmailTemplate | null;
+	/**
+	 * The attached email's rendered HTML: `null` when it has no body yet (which
+	 * blocks the send), `undefined` while that is not known.
+	 */
+	emailBodyHtml?: string | null;
+	/** The attached email's stored Blocks (JSON), for the pre-send checks' "Show me". */
+	emailContent?: string;
+	/** Topic campaigns get the unsubscribe footer; segment campaigns do not. */
+	audienceKind?: 'topic' | 'segment';
+	// A/B Test data
+	abTestEnabled: boolean;
+	abTestType: 'subject' | 'content';
+	abVariantBSubject: string;
+	abVariantBTemplateId: Id<'emailTemplates'> | null;
+	abSplitPercentage: number;
+	abWinnerCriteria: 'open_rate' | 'click_rate' | 'manual';
+	abTestDuration: number;
+	templates: readonly ReviewEmailTemplate[];
+	/** The template list failed to load, so Variant B's template name is missing. */
+	templatesLoadFailed?: boolean;
 }
 
 /** What `templateHasBody` reads off an email template row. */

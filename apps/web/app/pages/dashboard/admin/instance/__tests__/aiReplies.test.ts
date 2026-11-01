@@ -192,8 +192,8 @@ describe('AI replies page', () => {
 		expect(flagRow.text()).toContain('Change in Features');
 		expect(wrapper.find('[data-testid="ai-replies-rules-off"]').exists()).toBe(true);
 		// The rules section is not mounted, so its queries never subscribe.
-		expect(queryArgs.has(getFunctionName(api.autonomy.listRules))).toBe(false);
-		expect(queryArgs.has(getFunctionName(api.autonomyOutcome.listAutoDemotions))).toBe(false);
+		expect(queryArgs.has(getFunctionName(api.autonomy.policy.listRules))).toBe(false);
+		expect(queryArgs.has(getFunctionName(api.autonomy.outcome.listAutoDemotions))).toBe(false);
 	});
 
 	it('keeps an unsaved tone edit when a mode change re-emits the config', async () => {

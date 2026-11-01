@@ -13,7 +13,7 @@ import { draftDiffersFromAgentOriginal } from './draftRevisions';
 
 /**
  * Feed a human verification-queue decision back into the graduated-autonomy
- * loop. The weekly `autonomy.adjustThresholds` cron consumes these rows to
+ * loop. The weekly `autonomy.feedback.adjustThresholds` cron consumes these rows to
  * tighten / loosen per-category auto-approve thresholds, and the agent-health
  * rollup uses them for the `rejection_spike` circuit breaker. Best-effort:
  * a message with no classification yet still records under `other` so the
@@ -26,7 +26,7 @@ export async function recordAutonomyFeedback(
 	action: 'approved' | 'rejected' | 'edited',
 	userFeedback?: string
 ): Promise<void> {
-	await ctx.runMutation(internal.autonomyFeedback.recordFeedback, {
+	await ctx.runMutation(internal.autonomy.feedback.recordFeedback, {
 		category: message.classification?.category ?? 'other',
 		action,
 		agentConfidence: message.confidenceScore ?? message.classification?.confidence ?? 0,
@@ -99,7 +99,7 @@ export async function recordApprovalSignals(
 
 	if (message.pendingClarification?.answeredAt && !message.isDraftEdited) {
 		try {
-			await ctx.runMutation(internal.autonomyOutcome.recordOutcomeFeedback, {
+			await ctx.runMutation(internal.autonomy.outcome.recordOutcomeFeedback, {
 				inboundMessageId: message._id,
 				signal: 'clarification_unedited_send',
 			});
