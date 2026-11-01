@@ -1,6 +1,6 @@
 {
 	"name": "@owlat/public-contract",
-	"version": "0.6.16",
+	"version": "0.6.17",
 	"private": true,
 	"description": "The public REST API contract: request and response schemas, the operation table and the generated OpenAPI document. The API server validates with it, the JavaScript SDK takes its types from it and the Java SDK's tests check against the OpenAPI document.",
 	"homepage": "https://owlat.app",

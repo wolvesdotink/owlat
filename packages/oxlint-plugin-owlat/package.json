@@ -1,6 +1,6 @@
 {
 	"name": "@owlat/oxlint-plugin-owlat",
-	"version": "0.6.16",
+	"version": "0.6.17",
 	"private": true,
 	"description": "Owlat's own oxlint rules, loaded through `jsPlugins` in the root oxlintrc.json. Each rule encodes a repository invariant that needs the AST (or the comment list) rather than a text grep.",
 	"homepage": "https://owlat.app",

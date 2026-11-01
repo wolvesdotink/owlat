@@ -155,7 +155,7 @@ export function createApp(
 	app.get('/', (c) =>
 		c.json({
 			service: 'owlat-mta',
-			version: '0.6.16', // x-release-version (kept in sync by scripts/release.ts)
+			version: '0.6.17', // x-release-version (kept in sync by scripts/release.ts)
 			docs: 'POST /send, GET /livez, GET /health, GET /metrics, /credentials, /org-limits, /suppression, /dkim, /outbound-tls, /pool-rules, /identity, /inbound/routes, /delivery-logs, /queue, /dlq, /isp-profiles, /ip-reputation, /scan',
 		})
 	);
