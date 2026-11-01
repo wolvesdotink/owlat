@@ -487,86 +487,90 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 
 		<!-- Thread Content -->
 		<template v-else>
-			<!-- The subject, once. Messages below don't repeat it. -->
-			<UiPageHeader class="mb-6">
-				<!-- A subject can be one unbroken token (a URL, an order number). -->
-				<template #title>
-					<span class="break-words">{{
-						thread.subject || t('dashboard.inbox.detail.noSubject')
-					}}</span>
-				</template>
-				<template #meta>
-					<p
-						class="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-text-tertiary"
-						data-testid="thread-meta"
-					>
-						<span v-if="contact" class="text-text-secondary">{{ contact.email }}</span>
-						<span v-if="contact" aria-hidden="true">·</span>
-						<span>
-							{{
-								t(
-									'dashboard.inbox.detail.messageCount',
-									{ count: thread.messageCount ?? 0 },
-									thread.messageCount ?? 0
-								)
-							}}
-						</span>
-						<template v-if="priority !== 'normal'">
-							<span aria-hidden="true">·</span>
-							<span
-								class="inline-flex items-center gap-1"
-								:class="priority === 'urgent' ? 'font-medium text-error' : ''"
-								data-testid="thread-priority"
-							>
-								<Icon name="lucide:flag" class="w-3.5 h-3.5" aria-hidden="true" />
-								{{ t(TEAM_THREAD_PRIORITY_CHIP_KEYS[priority]) }}
+			<!-- The actions stay a sibling of the header rather than its #actions:
+			     their row does not wrap and is wider than the header's actions cap
+			     next to an expanded sidebar, so it would run into the subject. Here
+			     the subject keeps at least 24rem and the actions drop below it. -->
+			<div class="mb-6 flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
+				<!-- The subject, once. Messages below don't repeat it. -->
+				<UiPageHeader class="min-w-0 flex-[1_1_24rem]">
+					<!-- A subject can be one unbroken token (a URL, an order number). -->
+					<template #title>
+						<span class="break-words">{{
+							thread.subject || t('dashboard.inbox.detail.noSubject')
+						}}</span>
+					</template>
+					<template #meta>
+						<p
+							class="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-text-tertiary"
+							data-testid="thread-meta"
+						>
+							<span v-if="contact" class="text-text-secondary">{{ contact.email }}</span>
+							<span v-if="contact" aria-hidden="true">·</span>
+							<span>
+								{{
+									t(
+										'dashboard.inbox.detail.messageCount',
+										{ count: thread.messageCount ?? 0 },
+										thread.messageCount ?? 0
+									)
+								}}
 							</span>
-						</template>
-						<template v-if="isSnoozed && thread.snoozedUntil">
-							<span aria-hidden="true">·</span>
-							<span class="inline-flex items-center gap-1">
-								<Icon name="lucide:alarm-clock" class="w-3.5 h-3.5" aria-hidden="true" />
-								<time
-									:datetime="new Date(thread.snoozedUntil).toISOString()"
-									:title="absoluteTime(thread.snoozedUntil)"
+							<template v-if="priority !== 'normal'">
+								<span aria-hidden="true">·</span>
+								<span
+									class="inline-flex items-center gap-1"
+									:class="priority === 'urgent' ? 'font-medium text-error' : ''"
+									data-testid="thread-priority"
 								>
-									{{
-										t('dashboard.inbox.detail.snoozedUntil', {
-											time: formatRelativeTime(thread.snoozedUntil),
-										})
-									}}
-								</time>
-							</span>
-						</template>
-					</p>
-					<!-- Who else is here — pulsing viewer ring + "is replying" banner -->
-					<InboxThreadPresence :people="presencePeople" class="mt-3" />
-				</template>
+									<Icon name="lucide:flag" class="w-3.5 h-3.5" aria-hidden="true" />
+									{{ t(TEAM_THREAD_PRIORITY_CHIP_KEYS[priority]) }}
+								</span>
+							</template>
+							<template v-if="isSnoozed && thread.snoozedUntil">
+								<span aria-hidden="true">·</span>
+								<span class="inline-flex items-center gap-1">
+									<Icon name="lucide:alarm-clock" class="w-3.5 h-3.5" aria-hidden="true" />
+									<time
+										:datetime="new Date(thread.snoozedUntil).toISOString()"
+										:title="absoluteTime(thread.snoozedUntil)"
+									>
+										{{
+											t('dashboard.inbox.detail.snoozedUntil', {
+												time: formatRelativeTime(thread.snoozedUntil),
+											})
+										}}
+									</time>
+								</span>
+							</template>
+						</p>
+						<!-- Who else is here — pulsing viewer ring + "is replying" banner -->
+						<InboxThreadPresence :people="presencePeople" class="mt-3" />
+					</template>
+				</UiPageHeader>
 
-				<template #actions>
-					<InboxThreadHeaderActions
-						:is-admin="isAdmin"
-						:chat-enabled="chatEnabled"
-						:discussion-channels="discussionChannels"
-						:members="assignMembers"
-						:current-user-id="user?.id ?? null"
-						:assigned-to="thread.assignedTo ?? null"
-						:assigned-member-name="assignedMemberName"
-						:is-snoozed="isSnoozed"
-						:current-status="currentStatus"
-						:auto-close="autoCloseSwitch"
-						@reply="openReply()"
-						@assign="onAssign"
-						@new-channel="showNewChannel = true"
-						@snooze="showSnoozeDialog = true"
-						@unsnooze="onUnsnooze"
-						@status="handleStatusChange"
-						@auto-close="onAutoClose"
-						@copy-link="copyThreadLink"
-						@share-in-chat="showShareInChat = true"
-					/>
-				</template>
-			</UiPageHeader>
+				<InboxThreadHeaderActions
+					:is-admin="isAdmin"
+					:chat-enabled="chatEnabled"
+					:discussion-channels="discussionChannels"
+					:members="assignMembers"
+					:current-user-id="user?.id ?? null"
+					:assigned-to="thread.assignedTo ?? null"
+					:assigned-member-name="assignedMemberName"
+					:is-snoozed="isSnoozed"
+					:current-status="currentStatus"
+					:auto-close="autoCloseSwitch"
+					@reply="openReply()"
+					@assign="onAssign"
+					@new-channel="showNewChannel = true"
+					@snooze="showSnoozeDialog = true"
+					@unsnooze="onUnsnooze"
+					@status="handleStatusChange"
+					@auto-close="onAutoClose"
+					@copy-link="copyThreadLink"
+					@share-in-chat="showShareInChat = true"
+				/>
+			</div>
 
 			<InboxAutoClosedNotice
 				v-if="isAutoClosed(thread) && thread.autoClosedAt"
