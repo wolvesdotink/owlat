@@ -131,11 +131,9 @@ export async function attemptSystemEmail(
 		// mandrill) or plugin-contributed — carrying the RFC 3834 anti-loop header
 		// and whatever per-send knobs the PROVIDER asks for.
 		//
-		// There used to be two arms here: an `if (provider === 'mta')` copy of this
-		// whole call whose only difference was an inline MTA payload, and a
-		// `provider === 'resend' && key` ternary for the dedup header. Same shape
-		// the governed boundary one file over does not carry — and the same cost, a
-		// send path every new kind had to edit to be allowed any knob at all. The
+		// Keep provider names out of this call, as the governed boundary does: a
+		// per-kind arm here (an inline MTA payload, a Resend dedup header) would be
+		// a send path every new kind has to edit to be allowed any knob at all. The
 		// facts go in, the module decides what to make of them.
 		const dispatched = await sendProviderDispatch(
 			ctx,
@@ -162,7 +160,7 @@ export async function attemptSystemEmail(
 		if (!dispatched.result.success) {
 			// Auth, double opt-in and test mail refused off the provider's reject
 			// list: the same fact a campaign refusal is, mirrored the same way
-			// before the failure is reported (#1243). Never throws.
+			// before the failure is reported. Never throws.
 			await recordSendResponseRefusal(ctx, {
 				result: dispatched.result,
 				providerType: dispatched.providerType,
