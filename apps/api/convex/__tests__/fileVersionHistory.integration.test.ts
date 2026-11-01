@@ -1,12 +1,10 @@
 /**
- * A file's version history, legacy and paged (plan item OW-075).
+ * A file's version history, paged (`files.history.list`).
  *
- *   - `semanticFiles.getVersionHistory` keeps its shape and still walks a whole
- *     acyclic chain, however long; a chain that loops back stops at the first
- *     revisited row instead of spinning until the query fails.
- *   - `files.history.list` walks at most VERSION_HISTORY_PAGE_BUDGET rows per
- *     call, returns compact rows, and says truthfully whether more remain and
- *     where they start. Every walked row goes through semanticFileReadGate: an
+ * It walks at most VERSION_HISTORY_PAGE_BUDGET rows per call, returns compact
+ * rows, and says truthfully whether more remain and where they start. A chain
+ * that loops back stops at the first revisited row instead of spinning until
+ * the query fails. Every walked row goes through semanticFileReadGate: an
  *     unreadable version is left out but walked through (and counts against the
  *     budget), so a permitted older version behind it is still reached. The
  *     cursor is an opaque token bound to the caller, the organization and the
@@ -105,11 +103,6 @@ async function link(t: Harness, from: FileId, to: FileId) {
 	});
 }
 
-async function legacyIds(t: Harness, fileId: FileId) {
-	const rows = await t.query(api.semanticFiles.getVersionHistory, { fileId });
-	return rows.map((row) => row._id);
-}
-
 /** Every page of the new endpoint, following `continueCursor` to the end. */
 async function allPages(t: Harness, fileId: FileId) {
 	const pages: HistoryPage[] = [];
@@ -146,45 +139,6 @@ afterEach(() => {
 	vi.unstubAllEnvs();
 });
 
-describe('semanticFiles.getVersionHistory (legacy)', () => {
-	it('returns every version of an acyclic chain whole, newest first, with no cap', async () => {
-		const t = convexTest(schema, modules);
-		const ids = await seedChain(t, VERSION_HISTORY_PAGE_BUDGET * 2 + 5);
-
-		const rows = await t.query(api.semanticFiles.getVersionHistory, { fileId: ids[0]! });
-		expect(rows.map((row) => row._id)).toEqual(ids);
-		// The legacy shape: the whole document plus its storage URL.
-		expect(rows[0]).toMatchObject({
-			filename: `report-v${ids.length}.txt`,
-			previousVersionId: ids[1],
-			embedding: expect.any(Array),
-			extractedText: expect.any(String),
-			url: expect.any(String),
-		});
-	});
-
-	it('stops at the first revisited version when the stored chain loops', async () => {
-		const t = convexTest(schema, modules);
-		const ids = await seedChain(t, 3);
-		await link(t, ids[2]!, ids[0]!);
-		expect(await legacyIds(t, ids[0]!)).toEqual(ids);
-		expect(await legacyIds(t, ids[1]!)).toEqual([ids[1], ids[2], ids[0]]);
-
-		const [single] = await seedChain(t, 1);
-		await link(t, single!, single!);
-		expect(await legacyIds(t, single!)).toEqual([single]);
-	});
-
-	it('still skips an unreadable version and reaches the readable ones behind it', async () => {
-		const t = convexTest(schema, modules);
-		const ids = await seedChain(t, 4, (i) =>
-			i === 1 || i === 2 ? { captureSource: 'team_inbox' } : {}
-		);
-		sessionMock.role = 'editor';
-		expect(await legacyIds(t, ids[0]!)).toEqual([ids[0], ids[3]]);
-	});
-});
-
 describe('files.history.list', () => {
 	it('pages a long chain under the budget with truthful continuation', async () => {
 		const t = convexTest(schema, modules);
@@ -203,10 +157,8 @@ describe('files.history.list', () => {
 			expect(page.continueCursor).toEqual(expect.any(String));
 			for (const id of ids) expect(page.continueCursor).not.toContain(id);
 		}
-		// Together the pages are exactly the legacy history.
-		expect(pages.flatMap((page) => page.page.map((row) => row._id))).toEqual(
-			await legacyIds(t, ids[0]!)
-		);
+		// Together the pages are the whole chain, newest first.
+		expect(pages.flatMap((page) => page.page.map((row) => row._id))).toEqual(ids);
 	});
 
 	it('mints the same cursor every time the same page is read', async () => {
@@ -366,8 +318,6 @@ describe('files.history.list', () => {
 		expect(result.page.map((row) => row._id)).toEqual(ids.slice(0, VERSION_HISTORY_PAGE_BUDGET));
 		expect(result.isDone).toBe(true);
 		expect(result.continueCursor).toBeNull();
-		// The legacy walk ends at the same place.
-		expect(await legacyIds(t, ids[0]!)).toEqual(ids.slice(0, VERSION_HISTORY_PAGE_BUDGET));
 	});
 
 	it('says more versions exist but offers no cursor without INSTANCE_SECRET', async () => {
@@ -381,7 +331,7 @@ describe('files.history.list', () => {
 		expect(result.continueCursor).toBeNull();
 	});
 
-	it('ends at a deleted version, as the legacy walk does', async () => {
+	it('ends at a deleted version', async () => {
 		const t = convexTest(schema, modules);
 		const ids = await seedChain(t, 3);
 		await t.run(async (ctx) => {
@@ -392,7 +342,6 @@ describe('files.history.list', () => {
 		expect(result.page.map((row) => row._id)).toEqual([ids[0]]);
 		expect(result.isDone).toBe(true);
 		expect(result.continueCursor).toBeNull();
-		expect(await legacyIds(t, ids[0]!)).toEqual([ids[0]]);
 
 		const gone = await t.query(api.files.history.list, { fileId: ids[1]! });
 		expect(gone).toEqual({ page: [], isDone: true, continueCursor: null });
@@ -407,5 +356,17 @@ describe('files.history.list', () => {
 		expect(result.page.map((row) => row._id)).toEqual(ids);
 		expect(result.isDone).toBe(true);
 		expect(result.continueCursor).toBeNull();
+
+		const fromMiddle = await t.query(api.files.history.list, { fileId: ids[1]! });
+		expect(fromMiddle.page.map((row) => row._id)).toEqual([ids[1], ids[2], ids[0]]);
+		expect(fromMiddle.isDone).toBe(true);
+
+		const [single] = await seedChain(t, 1);
+		await link(t, single!, single!);
+		expect(await t.query(api.files.history.list, { fileId: single! })).toMatchObject({
+			page: [expect.objectContaining({ _id: single })],
+			isDone: true,
+			continueCursor: null,
+		});
 	});
 });

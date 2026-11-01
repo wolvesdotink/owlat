@@ -5,8 +5,7 @@
  *
  * Node runtime: both actions run the shared LLM dispatch
  * (`lib/llm/dispatch`, itself `'use node'`), and this module defines nothing
- * but actions. The other exports are their argument objects and bodies, which
- * the previous release's paths (`semanticFileProcessing.ts`) share, and
+ * but actions. The other exports are their argument objects and bodies, and
  * `extractText`, a pure helper the tests call.
  *
  * AI-powered processing pipeline for uploaded files:
@@ -59,7 +58,7 @@ import {
 	type FileSummary,
 } from './processFileDecision';
 
-/** `processFile`'s arguments, shared with its previous-release path. */
+/** `processFile`'s arguments. */
 export const processFileArgs = {
 	fileId: v.id('semanticFiles'),
 	/** Runs this file already deferred at the spend ceiling. */
@@ -260,7 +259,7 @@ export async function processSemanticFile(
 	await owed.schedule();
 }
 
-/** `semanticSearch`'s arguments, shared with its previous-release path. */
+/** `semanticSearch`'s arguments. */
 export const semanticSearchArgs = {
 	queryText: v.optional(v.string()),
 	embedding: v.optional(v.array(v.float64())),

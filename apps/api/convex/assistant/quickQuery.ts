@@ -22,9 +22,6 @@ import { validateStringLength, STRING_LIMITS } from '../lib/inputGuards';
  * (reusing `assistant/prompt.ts`) before it reaches the model, fenced inside
  * `<sources>` tags, and the prompt forbids following instructions found there or
  * inventing claims not attributable to a source.
- *
- * The builder's body is an exported helper so the previous-release shim at the
- * old root path (`quickQuery.ts`) runs the same code.
  */
 
 import { v } from 'convex/values';

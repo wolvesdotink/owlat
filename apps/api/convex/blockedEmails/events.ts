@@ -1,9 +1,6 @@
 /**
  * The one writer for provider-sourced suppressions, and the block source type
  * it shares with the operator's manual block in `blocklist.ts`.
- *
- * Each builder's body is an exported helper, so the previous release's path
- * (`blockedEmails.ts`) runs the same code.
  */
 import { v, type ObjectType } from 'convex/values';
 import type { Id } from '../_generated/dataModel';
@@ -28,7 +25,7 @@ export function deriveBlockSourceType(source: {
 			: undefined;
 }
 
-/** `addFromEvent`'s arguments, shared with its previous-release path. */
+/** `addFromEvent`'s arguments. */
 export const addFromEventArgs = {
 	email: v.string(),
 	reason: manualOrEventBlockReasonValidator,

@@ -4,19 +4,12 @@
  *
  * A `semanticFiles` row carries its whole extraction: a 1,536-number
  * `embedding`, the staged-rebuild `secondaryEmbedding`, `extractedText` and
- * `searchableText`. The legacy `semanticFiles.list` / `search` return every
- * row whole, so one page of 24 cards ships all of that to the browser for a
- * name, a size and a few tags. `files.cards.list` / `search` read the
- * same index, keep the same cursor and drop rows through the same read gate,
- * then project each survivor onto `SemanticFileCard`: named fields only, so a
- * column added to the table later stays out of the card until someone puts it
- * here.
- *
- * The page readers and `readableFilesPage` below are shared by both query
- * modules, so the legacy and the compact endpoint cannot drift apart on
- * which rows a caller sees or where a cursor points. `readableContactFiles`
- * does the same for the two contact lists (`semanticFiles.listByContact` and
- * `files.cards.listByContact`).
+ * `searchableText`, none of which a list row needs. `files.cards.list` /
+ * `search` page through the readers below, drop rows through
+ * `readableFilesPage`, then project each survivor onto `SemanticFileCard`:
+ * named fields only, so a column added to the table later stays out of the
+ * card until someone puts it here. `readableContactFiles` selects the contact
+ * list (`files.cards.listByContact`) the same way.
  *
  * Each reader owns one index, and each endpoint calls exactly one reader. A
  * pagination cursor belongs to the index that issued it, so an endpoint never

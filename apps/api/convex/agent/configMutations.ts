@@ -5,9 +5,6 @@
  * signature, rate limits). The agent's master on/off lives on the `ai.agent`
  * feature flag — see `organizations.featureFlags.setFeatureFlag` for the toggle
  * and its one-shot knowledge-backfill side effect.
- *
- * Each builder's body is an exported helper so the previous-release shims at
- * the old root path (`agentConfigMutations.ts`) run the same code.
  */
 
 import { v, type ObjectType } from 'convex/values';

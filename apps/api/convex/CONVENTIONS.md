@@ -48,14 +48,19 @@ lost all auth providers: sessions kept working, but every
 `ctx.auth.getUserIdentity()` returned null and all authed queries threw
 "Not authenticated".
 
-**The root is frozen.** No new module goes at the convex root: put it in a
-domain folder or `lib/`. `scripts/check-convex-root.sh` (part of `bun run lint`)
-compares `convex/*.ts` with `scripts/convex-root-baseline.txt` and fails on a
-new root file. When you move a legacy root module out, delete its baseline line,
-or the check fails it as stale. A move changes the module's function paths
-(`api.foo.bar` becomes `api.domain.foo.bar`), so a module whose public functions
-clients call by path, or whose functions are scheduled, needs a one-release
-shim at the old path.
+**The root is frozen.** The convex root holds exactly seven files: the five
+magic files above, `env.d.ts`, and `codeWorkTasks.ts`. Every other module goes
+in a domain folder or `lib/`. `scripts/check-convex-root.sh` (part of
+`bun run lint`) carries that set and fails on any other `convex/*.ts` file and
+on a listed file that is missing; it has no baseline to add to.
+`codeWorkTasks.ts` stays because the code-worker calls its functions by string
+path (`codeWorkTasks:claim`, ...) and `apps/convex-fn-proxy` admits exactly
+those paths, so moving it needs a worker wire-version bump, a proxy allowlist
+carrying both paths for a release, and shims, with no behaviour gained (see
+"Worker wire versions"). Moving any module changes its function paths
+(`api.foo.bar` becomes `api.domain.foo.bar`), so a module whose public
+functions clients call by path, or whose functions are scheduled, needs a
+one-release shim at the old path.
 
 ### One file per `<domain>/<feature>.ts`
 

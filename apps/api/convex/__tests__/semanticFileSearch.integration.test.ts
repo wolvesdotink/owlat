@@ -45,11 +45,11 @@ async function uploadFile(
 }
 
 async function searchIds(t: Harness, query: string): Promise<Id<'semanticFiles'>[]> {
-	const result = await t.query(api.semanticFiles.search, { paginationOpts: PAGE, query });
+	const result = await t.query(api.files.cards.search, { paginationOpts: PAGE, query });
 	return result.page.map((f) => f._id);
 }
 
-describe('semanticFiles.search — what the index covers', () => {
+describe('files.cards.search — what the index covers', () => {
 	it('finds a file by a tag typed at upload, not just its filename', async () => {
 		const t = convexTest(schema, modules);
 		const fileId = await uploadFile(t, {
@@ -132,7 +132,7 @@ describe('semanticFiles.search — what the index covers', () => {
 			})
 		);
 
-		const uploads = await t.query(api.semanticFiles.search, {
+		const uploads = await t.query(api.files.cards.search, {
 			paginationOpts: PAGE,
 			query: 'ledger',
 			sourceType: 'upload',

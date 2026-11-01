@@ -5,9 +5,6 @@
  * Channel configuration is in `config.ts`, the health checks in `health.ts`,
  * and the outbound dispatch's thread and recipient resolution in
  * `outboundTargets.ts`.
- *
- * Each builder's body is an exported helper, so the previous release's paths
- * (`unifiedMessages.ts` at the convex root) run the same code.
  */
 
 import { v, type ObjectType } from 'convex/values';

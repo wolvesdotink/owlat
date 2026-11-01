@@ -9,6 +9,7 @@ import { describe, expect, it, vi } from 'vitest';
 import schema from '../schema';
 import { api, internal } from '../_generated/api';
 import type { Doc, Id } from '../_generated/dataModel';
+import { insertOutboundMessage } from '../channels/messages';
 import { expectScheduledFailure } from './helpers/scheduledFailures';
 
 const ADMIN = vi.hoisted(() => ({
@@ -178,12 +179,14 @@ describe('replies outside the processing lifecycle', () => {
 			responseDueAt: Date.now() + HOUR,
 			responseDueKind: 'first',
 		});
-		await t.mutation(internal.unifiedMessages.recordOutbound, {
-			threadId,
-			channel: 'sms',
-			content: JSON.stringify({ text: 'On it' }),
-			status: 'sent',
-		});
+		await t.run((ctx) =>
+			insertOutboundMessage(ctx, {
+				threadId,
+				channel: 'sms',
+				content: JSON.stringify({ text: 'On it' }),
+				status: 'sent',
+			})
+		);
 		const thread = await getThread(t, threadId);
 		expect(thread!.responseDueAt).toBeUndefined();
 		expect(thread!).toMatchObject({ slaMetCount: 1 });
@@ -191,12 +194,14 @@ describe('replies outside the processing lifecycle', () => {
 
 		// A failed send is no reply.
 		const failed = await insertThread(t, { channel: 'sms', responseDueAt: Date.now() + HOUR });
-		await t.mutation(internal.unifiedMessages.recordOutbound, {
-			threadId: failed,
-			channel: 'sms',
-			content: JSON.stringify({ text: 'On it' }),
-			status: 'failed',
-		});
+		await t.run((ctx) =>
+			insertOutboundMessage(ctx, {
+				threadId: failed,
+				channel: 'sms',
+				content: JSON.stringify({ text: 'On it' }),
+				status: 'failed',
+			})
+		);
 		expect((await getThread(t, failed))!.responseDueAt).toBeDefined();
 	});
 

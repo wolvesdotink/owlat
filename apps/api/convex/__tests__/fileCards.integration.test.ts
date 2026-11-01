@@ -2,18 +2,11 @@
  * The compact Files card endpoints (`files.cards.list` / `search`).
  *
  * A card names its fields: none of the embedding vectors, extracted text,
- * search text or provenance columns of the row. The legacy
- * `semanticFiles.list` / `search` keep returning the whole row, and both read
- * the same index with the same cursor, so a page token from one is valid in
- * the other. Which rows a caller sees is pinned per session in
- * semanticFilesCaptureAccess.integration.test.ts.
- *
- * The last test records the encoded size of one 24-card page through both
- * endpoints. It reports the numbers and asserts no byte target.
+ * search text or provenance columns of the row. Which rows a caller sees is
+ * pinned per session in semanticFilesCaptureAccess.integration.test.ts.
  */
 
 import { convexTest } from 'convex-test';
-import { convexToJson, type Value } from 'convex/values';
 import { describe, it, expect, vi } from 'vitest';
 import schema from '../schema';
 import { api } from '../_generated/api';
@@ -119,11 +112,6 @@ async function insertProcessedFile(
 	);
 }
 
-/** Bytes of the JSON the Convex client receives for a query result. */
-function encodedBytes(value: unknown): number {
-	return Buffer.byteLength(JSON.stringify(convexToJson(value as Value)), 'utf8');
-}
-
 describe('files.cards — the card shape', () => {
 	it('returns only the named card fields, never vectors or extracted text', async () => {
 		const t = convexTest(schema, modules);
@@ -191,38 +179,17 @@ describe('files.cards — the card shape', () => {
 			url: null,
 		});
 	});
-
-	it('keeps the legacy list returning the whole row', async () => {
-		const t = convexTest(schema, modules);
-		await insertProcessedFile(t, 1);
-
-		const legacy = await t.query(api.semanticFiles.list, {
-			paginationOpts: { cursor: null, numItems: 10 },
-		});
-		const row = legacy.page[0]!;
-		expect(row.embedding).toHaveLength(1536);
-		expect(row.extractedText).toHaveLength(12_000);
-		expect(row.searchableText).toBeTruthy();
-		expect(row.storageId).toBeTruthy();
-		expect(typeof row.url).toBe('string');
-	});
 });
 
 describe('files.cards — cursors', () => {
-	it('walks the same rows in the same order as the legacy list, on either cursor', async () => {
+	it('walks every row newest first across pages', async () => {
 		const t = convexTest(schema, modules);
 		for (let i = 0; i < 5; i++) await insertProcessedFile(t, i);
 		const opts = (cursor: string | null) => ({ paginationOpts: { cursor, numItems: 2 } });
 
-		const legacyFirst = await t.query(api.semanticFiles.list, opts(null));
-		const cardFirst = await t.query(api.files.cards.list, opts(null));
-		expect(cardFirst.page.map((c) => c._id)).toEqual(legacyFirst.page.map((r) => r._id));
-		expect(cardFirst.isDone).toBe(false);
-
-		// A legacy page token continues the card list, and the reverse.
-		const cardSecond = await t.query(api.files.cards.list, opts(legacyFirst.continueCursor));
-		const legacySecond = await t.query(api.semanticFiles.list, opts(cardFirst.continueCursor));
-		expect(cardSecond.page.map((c) => c._id)).toEqual(legacySecond.page.map((r) => r._id));
+		const first = await t.query(api.files.cards.list, opts(null));
+		expect(first.page).toHaveLength(2);
+		expect(first.isDone).toBe(false);
 
 		const ids: string[] = [];
 		let cursor: string | null = null;
@@ -239,7 +206,7 @@ describe('files.cards — cursors', () => {
 		expect(ids).toEqual(newestFirst.map((f) => f._id));
 	});
 
-	it('applies the sourceType filter across pages, as the legacy list does', async () => {
+	it('applies the sourceType filter across pages', async () => {
 		const t = convexTest(schema, modules);
 		await insertProcessedFile(t, 0, { sourceType: 'agent_generated' });
 		for (let i = 1; i < 5; i++) await insertProcessedFile(t, i);
@@ -257,28 +224,5 @@ describe('files.cards — cursors', () => {
 			cursor = res.continueCursor;
 		}
 		expect(filenames).toEqual(['q1-report-0.pdf']);
-	});
-});
-
-describe('files.cards — payload', () => {
-	it('records the encoded size of a 24-card page, legacy against compact', async () => {
-		const t = convexTest(schema, modules);
-		for (let i = 0; i < 24; i++) await insertProcessedFile(t, i);
-		const opts = { paginationOpts: { cursor: null, numItems: 24 } };
-
-		const legacy = await t.query(api.semanticFiles.list, opts);
-		const compact = await t.query(api.files.cards.list, opts);
-		expect(compact.page.map((c) => c._id)).toEqual(legacy.page.map((r) => r._id));
-
-		const legacyBytes = encodedBytes(legacy);
-		const compactBytes = encodedBytes(compact);
-		const legacyFields = Object.keys(legacy.page[0]!).length;
-		const compactFields = Object.keys(compact.page[0]!).length;
-		// Report only: the plan asks for measured numbers, not a byte target.
-		process.stdout.write(
-			`[files.cards payload] 24-card page: legacy ${legacyBytes} B (${legacyFields} fields/row), ` +
-				`compact ${compactBytes} B (${compactFields} fields/row)\n`
-		);
-		expect(compactBytes).toBeGreaterThan(0);
 	});
 });

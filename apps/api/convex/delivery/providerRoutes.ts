@@ -27,9 +27,6 @@ import { internal } from '../_generated/api';
  * re-listed here — to use for each message type (campaign,
  * transactional, automation). The relay identities a route's deliverability
  * fallback depends on, and their catch-up drain, are in `providerRouteRelays.ts`.
- *
- * Each builder's body is an exported helper, so the previous release's paths
- * (`providerRoutes.ts` at the convex root) run the same code.
  */
 
 type MessageType = Doc<'providerRoutes'>['messageType'];

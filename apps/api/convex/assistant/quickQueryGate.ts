@@ -5,9 +5,6 @@
  * it cannot touch `ctx.db` and cannot run the query-time gate helpers directly.
  * This companion internal query runs BOTH gates, the flag first, and the action
  * calls it via `ctx.runQuery` before any retrieval happens.
- *
- * The builder's body is an exported helper so the previous-release shim at the
- * old root path (`quickQueryGate.ts`) runs the same code.
  */
 
 import { internalQuery, type QueryCtx } from '../_generated/server';

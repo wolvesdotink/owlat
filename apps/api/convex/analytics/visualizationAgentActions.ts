@@ -7,9 +7,6 @@
  * live-data fetchers) because generation runs the shared LLM dispatch
  * (`lib/llm/dispatch`, itself `'use node'`), and a module carrying queries and
  * mutations cannot move to the Node runtime with it.
- *
- * The builder's body is an exported helper so the previous-release shim at the
- * old root path (`visualizationAgentActions.ts`) runs the same code.
  */
 
 import { v } from 'convex/values';

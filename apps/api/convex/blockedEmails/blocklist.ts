@@ -1,9 +1,6 @@
 /**
  * The suppression list: the operator's reads and manual blocks. Provider-sourced
  * suppressions are written by `events.ts`.
- *
- * Each builder's body is an exported helper, so the previous release's paths
- * (`blockedEmails.ts`) run the same code.
  */
 import { v, type ObjectType } from 'convex/values';
 import type { Id } from '../_generated/dataModel';
@@ -32,7 +29,7 @@ import {
 import { deriveBlockSourceType } from './events';
 import { BLOCKLIST_VIEW_LIMIT, countBlockedByReason, findBlockedByEmail } from './lookup';
 
-/** `listByTeam`'s arguments, shared with its previous-release path. */
+/** `listByTeam`'s arguments. */
 export const listByTeamArgs = {
 	// Every stored reason is filterable, the sunset engine's `unengaged`
 	// included: an operator has to be able to separate "we stopped mailing
@@ -122,7 +119,7 @@ export async function listProviderEvidence(ctx: QueryCtx, session: MutationSessi
 	});
 }
 
-/** `getByEmail`'s arguments, shared with its previous-release path. */
+/** `getByEmail`'s arguments. */
 export const getByEmailArgs = { email: v.string() };
 
 // Get blocked email record by email (returns the record or null)
@@ -132,7 +129,7 @@ export const getByEmail = authedQuery({
 	handler: async (ctx, args) => await findBlockedByEmail(ctx, args.email),
 });
 
-/** `add`'s arguments, shared with its previous-release path. */
+/** `add`'s arguments. */
 export const addBlockedEmailArgs = {
 	email: v.string(),
 	reason: manualOrEventBlockReasonValidator,
@@ -206,7 +203,7 @@ export async function addBlockedEmail(
 	return blockedEmailId;
 }
 
-/** `remove`'s arguments, shared with its previous-release path. */
+/** `remove`'s arguments. */
 export const removeBlockedEmailArgs = { blockedEmailId: v.id('blockedEmails') };
 
 // Remove an email from the blocklist
@@ -277,7 +274,7 @@ export async function removeBlockedEmail(
 // insert + mirror + audit fan-out inside Convex's per-transaction write budget.
 export const MAX_BULK_BLOCK_ADD = 1000;
 
-/** `bulkAdd`'s arguments, shared with its previous-release path. */
+/** `bulkAdd`'s arguments. */
 export const bulkAddArgs = {
 	emails: v.array(
 		v.object({

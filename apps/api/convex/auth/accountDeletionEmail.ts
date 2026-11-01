@@ -1,9 +1,6 @@
 /**
  * The mail that confirms a scheduled account deletion and carries its
  * cancellation link.
- *
- * The builder's body is an exported helper, so the previous release's path
- * (`accountDeletionEmail.ts` at the convex root) runs the same code.
  */
 import { v, type ObjectType } from 'convex/values';
 import { internalAction, type ActionCtx } from '../_generated/server';
@@ -13,7 +10,7 @@ import { generateDeletionEmailHtml } from '../lib/systemEmails';
 import { deletionEmailCopy, systemEmailBcp47, systemEmailLocale } from '../lib/systemEmailCopy';
 import { appLocaleValidator } from '../lib/convexValidators';
 
-/** `sendAccountDeletionEmail`'s arguments, shared with its previous-release path. */
+/** `sendAccountDeletionEmail`'s arguments. */
 export const sendAccountDeletionEmailArgs = {
 	email: v.string(),
 	scheduledForDeletion: v.number(),

@@ -28,9 +28,6 @@
  * existed; a save that does not name a decision kind therefore CARRIES THOSE
  * COLUMNS FORWARD rather than patching them to `undefined`, which would clear
  * them.
- *
- * Each builder's body is an exported helper so the previous-release shims at
- * the old root path (`aiProviderConfig.ts`) run the same code.
  */
 
 import { v, type ObjectType } from 'convex/values';
@@ -122,7 +119,7 @@ export async function readProviderConfig(ctx: QueryCtx) {
 
 // ── Internal write / raw-read path ─────────────────────────────────────────
 
-/** `_persistConfig`'s arguments, shared with its previous-release path. */
+/** `_persistConfig`'s arguments. */
 export const persistConfigArgs = {
 	languageProviderKind: languageProviderKindValidator,
 	languageBaseUrl: v.optional(v.string()),

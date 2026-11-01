@@ -2,9 +2,6 @@
  * Where a manual outbound channel message goes: the contact's address on the
  * channel and the conversation thread it lands in. The dispatch in
  * `outbound.ts` is `'use node'` and cannot touch the db, so it calls these.
- *
- * Each builder's body is an exported helper, so the previous release's paths
- * (`unifiedMessages.ts` at the convex root) run the same code.
  */
 
 import { v, type ObjectType } from 'convex/values';

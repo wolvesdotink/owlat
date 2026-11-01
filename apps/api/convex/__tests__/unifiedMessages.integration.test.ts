@@ -15,7 +15,11 @@ import {
 	UNIFIED_MESSAGE_STORAGE_VERSION_PLAINTEXT,
 	UNIFIED_MESSAGE_STORAGE_VERSION_SEALED,
 } from '../lib/messageBody';
-import { mirrorEmailSendWrite, recordInboundMirror } from '../channels/messages';
+import {
+	insertOutboundMessage,
+	mirrorEmailSendWrite,
+	recordInboundMirror,
+} from '../channels/messages';
 
 function expectedContentStorageVersion(content: string): number {
 	return isSealedAtRest(content)
@@ -341,9 +345,9 @@ describe('channels.messages.recordInboundMirror', () => {
 	});
 });
 
-// ============ recordOutbound (internal) ============
+// ============ insertOutboundMessage ============
 
-describe('unifiedMessages.recordOutbound', () => {
+describe('channels/messages insertOutboundMessage', () => {
 	it('should record an outbound message with default queued status', async () => {
 		const t = convexTest(schema, modules);
 		let threadId!: Id<'conversationThreads'>;
@@ -352,11 +356,13 @@ describe('unifiedMessages.recordOutbound', () => {
 			threadId = await ctx.db.insert('conversationThreads', threadData());
 		});
 
-		const msgId = await t.mutation(internal.unifiedMessages.recordOutbound, {
-			threadId,
-			channel: 'sms',
-			content: JSON.stringify({ text: 'Reply from agent' }),
-		});
+		const msgId = await t.run((ctx) =>
+			insertOutboundMessage(ctx, {
+				threadId,
+				channel: 'sms',
+				content: JSON.stringify({ text: 'Reply from agent' }),
+			})
+		);
 
 		await t.run(async (ctx) => {
 			const msg = await ctx.db.get(msgId);
@@ -376,12 +382,14 @@ describe('unifiedMessages.recordOutbound', () => {
 			threadId = await ctx.db.insert('conversationThreads', threadData());
 		});
 
-		const msgId = await t.mutation(internal.unifiedMessages.recordOutbound, {
-			threadId,
-			channel: 'whatsapp',
-			content: JSON.stringify({ text: 'Sent reply' }),
-			status: 'sent',
-		});
+		const msgId = await t.run((ctx) =>
+			insertOutboundMessage(ctx, {
+				threadId,
+				channel: 'whatsapp',
+				content: JSON.stringify({ text: 'Sent reply' }),
+				status: 'sent',
+			})
+		);
 
 		await t.run(async (ctx) => {
 			const msg = await ctx.db.get(msgId);
@@ -523,37 +531,6 @@ describe('unifiedMessages lastSuccessfulSend stamping', () => {
 
 		const config = await t.run((ctx) => ctx.db.get(configId));
 		expect(config!.lastSuccessfulSend).toBeGreaterThanOrEqual(before);
-	});
-});
-
-// ============ updateDeliveryStatus (internal) ============
-
-describe('unifiedMessages.updateDeliveryStatus', () => {
-	it('should update the status of a message', async () => {
-		const t = convexTest(schema, modules);
-		let msgId!: Id<'unifiedMessages'>;
-
-		await t.run(async (ctx) => {
-			const threadId = await ctx.db.insert('conversationThreads', threadData());
-			msgId = await ctx.db.insert(
-				'unifiedMessages',
-				createTestUnifiedMessage({
-					threadId,
-					direction: 'outbound',
-					status: 'queued',
-				})
-			);
-		});
-
-		await t.mutation(internal.unifiedMessages.updateDeliveryStatus, {
-			messageId: msgId,
-			status: 'delivered',
-		});
-
-		await t.run(async (ctx) => {
-			const msg = await ctx.db.get(msgId);
-			expect(msg!.status).toBe('delivered');
-		});
 	});
 });
 

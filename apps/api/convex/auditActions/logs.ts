@@ -1,9 +1,6 @@
 /**
  * Audit log reads for the admin audit page: the filtered, paginated list, the
  * per-action and per-resource counts, and the users who acted.
- *
- * Each builder's body is an exported helper, so the previous release's paths
- * (`auditLogs.ts`) run the same code.
  */
 import { v, type ObjectType } from 'convex/values';
 import { adminQuery } from '../lib/authedFunctions';
@@ -20,7 +17,7 @@ export type AuditResource = Doc<'auditLogs'>['resource'];
 const AUDIT_ANALYTICS_WINDOW_MS = 90 * 24 * 60 * 60 * 1000;
 const AUDIT_ANALYTICS_MAX_ROWS = 5_000;
 
-/** `list`'s arguments, shared with its previous-release path. */
+/** `list`'s arguments. */
 export const listAuditLogsArgs = {
 	action: v.optional(v.string()),
 	resource: v.optional(v.string()),
@@ -82,7 +79,7 @@ export async function listAuditLogs(ctx: QueryCtx, args: ObjectType<typeof listA
 	};
 }
 
-/** `getStats`'s arguments, shared with its previous-release path. */
+/** `getStats`'s arguments. */
 export const auditStatsArgs = {
 	startDate: v.optional(v.number()),
 	endDate: v.optional(v.number()),

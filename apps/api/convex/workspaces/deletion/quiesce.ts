@@ -71,9 +71,6 @@ export const SURVIVING_SCHEDULED_FUNCTIONS: readonly string[] = [
 	'auth/memberErasure:eraseMemberData',
 	'auth/erasure/',
 	'auth/accountDeletionEmail:sendAccountDeletionEmail',
-	// The previous release's path, for a deletion mail it queued; remove after
-	// release 0.6.17.
-	'accountDeletionEmail:sendAccountDeletionEmail',
 	'e2ee/',
 	'mail/mailboxActions:pushInboundTlsPolicy',
 ];

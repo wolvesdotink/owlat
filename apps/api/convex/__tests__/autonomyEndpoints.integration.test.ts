@@ -1,8 +1,7 @@
 /**
- * The previous release's autonomy paths (`autonomy:*`, `autonomyFeedback:*`,
- * `autonomySuggestions:*`, `autonomyOutcome:*`) keep working against this
- * release: each old path returns what its moved function returns, writes what
- * it writes, and keeps its auth floor with the message it used before.
+ * The autonomy endpoints (`autonomy/policy`, `autonomy/feedback`,
+ * `autonomy/suggestions`, `autonomy/outcome`): what each returns and writes,
+ * and the auth floor each keeps with its refusal message.
  */
 
 import { convexTest } from 'convex-test';
@@ -121,56 +120,53 @@ beforeEach(() => {
 	mockRole = 'owner';
 });
 
-describe('previous-release autonomy paths', () => {
-	it('rule reads and writes through autonomy:* match autonomy/policy', async () => {
+describe('autonomy endpoints', () => {
+	it('rule reads and writes, the decision, the daily cap and its reset', async () => {
 		const t = await harness();
 		const user = t.withIdentity(identity);
 
-		const ruleId = await user.mutation(api.autonomy.upsertRule, {
+		const ruleId = await user.mutation(api.autonomy.policy.upsertRule, {
 			category: 'support',
 			autoApproveThreshold: 0.8,
 			maxDailyAutoActions: 2,
 			isEnabled: true,
 		});
-		const senderRuleId = await user.mutation(api.autonomy.setSenderAutonomy, {
+		const senderRuleId = await user.mutation(api.autonomy.policy.setSenderAutonomy, {
 			category: 'support',
 			sender: 'Pat <pat@example.com>',
 			isEnabled: false,
 		});
 
-		const oldList = await user.query(api.autonomy.listRules, {});
-		expect(oldList).toEqual(await user.query(api.autonomy.policy.listRules, {}));
-		expect(oldList.map((rule) => rule._id).sort()).toEqual([ruleId, senderRuleId].sort());
-		expect(await t.query(internal.autonomy.listRulesInternal, {})).toEqual(oldList);
+		const list = await user.query(api.autonomy.policy.listRules, {});
+		expect(list.map((rule) => rule._id).sort()).toEqual([ruleId, senderRuleId].sort());
+		expect(await t.query(internal.autonomy.policy.listRulesInternal, {})).toEqual(list);
 
 		const decisionArgs = { category: 'support', confidence: 0.9 };
-		const oldDecision = await t.query(internal.autonomy.checkPermissionInternal, decisionArgs);
-		expect(oldDecision).toEqual(
+		expect(
 			await t.query(internal.autonomy.policy.checkPermissionInternal, decisionArgs)
-		);
-		expect(oldDecision).toMatchObject({ mode: 'enabled', allowed: true });
+		).toMatchObject({ mode: 'enabled', allowed: true });
 
 		expect(
-			await t.mutation(internal.autonomy.incrementDailyCount, { category: 'support' })
+			await t.mutation(internal.autonomy.policy.incrementDailyCount, { category: 'support' })
 		).toEqual({ allowed: true });
 		expect(
 			await t.mutation(internal.autonomy.policy.incrementDailyCount, { category: 'support' })
 		).toEqual({ allowed: true });
 		expect(
-			await t.mutation(internal.autonomy.incrementDailyCount, { category: 'support' })
+			await t.mutation(internal.autonomy.policy.incrementDailyCount, { category: 'support' })
 		).toEqual({ allowed: false, reason: 'Daily auto-action limit (2) reached for support' });
 
-		await t.mutation(internal.autonomy.resetDailyCounts, {});
+		await t.mutation(internal.autonomy.policy.resetDailyCounts, {});
 		const reset = await t.run((ctx) => ctx.db.get(ruleId));
 		expect(reset?.currentDailyCount).toBe(0);
 
-		await user.mutation(api.autonomy.deleteRule, { ruleId: senderRuleId });
+		await user.mutation(api.autonomy.policy.deleteRule, { ruleId: senderRuleId });
 		expect((await user.query(api.autonomy.policy.listRules, {})).map((r) => r._id)).toEqual([
 			ruleId,
 		]);
 	});
 
-	it('feedback through autonomyFeedback:* matches autonomy/feedback', async () => {
+	it('feedback reads count what was recorded, and five rejections tighten the threshold', async () => {
 		const t = await harness();
 		const user = t.withIdentity(identity);
 		await t.run((ctx) =>
@@ -178,41 +174,35 @@ describe('previous-release autonomy paths', () => {
 		);
 
 		for (let i = 0; i < 5; i++) {
-			await t.mutation(internal.autonomyFeedback.recordFeedback, {
+			await t.mutation(internal.autonomy.feedback.recordFeedback, {
 				category: 'support',
 				action: 'rejected',
 				agentConfidence: 0.9,
 			});
 		}
 
-		const oldStats = await user.query(api.autonomyFeedback.getFeedbackStats, {});
-		expect(oldStats).toEqual(await user.query(api.autonomy.feedback.getFeedbackStats, {}));
-		expect(oldStats).toEqual({ support: { approved: 0, rejected: 5, edited: 0 } });
+		expect(await user.query(api.autonomy.feedback.getFeedbackStats, {})).toEqual({
+			support: { approved: 0, rejected: 5, edited: 0 },
+		});
 
-		const countArgs = { since: 0 };
-		const oldCounts = await t.query(internal.autonomyFeedback.getFeedbackCountsInternal, countArgs);
-		expect(oldCounts).toEqual(
-			await t.query(internal.autonomy.feedback.getFeedbackCountsInternal, countArgs)
-		);
-		expect(oldCounts).toEqual({ approved: 0, rejected: 5, edited: 0, total: 5 });
+		expect(
+			await t.query(internal.autonomy.feedback.getFeedbackCountsInternal, { since: 0 })
+		).toEqual({ approved: 0, rejected: 5, edited: 0, total: 5 });
 
-		const recentArgs = { category: 'support', limit: 3 };
-		const oldRecent = await t.query(
-			internal.autonomyFeedback.getRecentFeedbackInternal,
-			recentArgs
-		);
-		expect(oldRecent).toEqual(
-			await t.query(internal.autonomy.feedback.getRecentFeedbackInternal, recentArgs)
-		);
-		expect(oldRecent).toHaveLength(3);
+		expect(
+			await t.query(internal.autonomy.feedback.getRecentFeedbackInternal, {
+				category: 'support',
+				limit: 3,
+			})
+		).toHaveLength(3);
 
 		// Five rejections out of five tighten the threshold by 0.1.
-		await t.action(internal.autonomyFeedback.adjustThresholds, {});
+		await t.action(internal.autonomy.feedback.adjustThresholds, {});
 		const [rule] = await t.run((ctx) => ctx.db.query('autonomyRules').collect());
 		expect(rule?.autoApproveThreshold).toBeCloseTo(0.6);
 	});
 
-	it('suggestions through autonomySuggestions:* match autonomy/suggestions', async () => {
+	it('accepting a graduation suggestion moves the threshold and clears the suggestion', async () => {
 		const t = await harness();
 		const user = t.withIdentity(identity);
 		const ruleId = await t.run((ctx) =>
@@ -228,30 +218,24 @@ describe('previous-release autonomy paths', () => {
 			})
 		);
 
-		const oldList = await user.query(api.autonomySuggestions.listGraduationSuggestions, {});
-		expect(oldList).toEqual(
-			await user.query(api.autonomy.suggestions.listGraduationSuggestions, {})
-		);
-		expect(oldList.map((s) => s._id)).toEqual([suggestionId]);
+		const suggestions = await user.query(api.autonomy.suggestions.listGraduationSuggestions, {});
+		expect(suggestions.map((s) => s._id)).toEqual([suggestionId]);
 
-		await user.mutation(api.autonomySuggestions.acceptGraduationSuggestion, { suggestionId });
+		await user.mutation(api.autonomy.suggestions.acceptGraduationSuggestion, { suggestionId });
 		expect((await t.run((ctx) => ctx.db.get(ruleId)))?.autoApproveThreshold).toBe(0.8);
 		expect(await user.query(api.autonomy.suggestions.listGraduationSuggestions, {})).toEqual([]);
 	});
 
-	it('outcomes through autonomyOutcome:* match autonomy/outcome', async () => {
+	it('an outcome on an auto-sent reply records feedback and a demotion an owner acknowledges', async () => {
 		const t = await harness();
 		const user = t.withIdentity(identity);
 		const { originalId, replyId } = await seedAutoSentThread(t, 'Pat <pat@example.com>');
 
-		const replyArgs = { replyMessageId: replyId };
-		const oldContext = await t.query(internal.autonomyOutcome.getReplyOutcomeContext, replyArgs);
-		expect(oldContext).toEqual(
-			await t.query(internal.autonomy.outcome.getReplyOutcomeContext, replyArgs)
-		);
-		expect(oldContext).toMatchObject({ wasAutoSent: true, originalMessageId: originalId });
+		expect(
+			await t.query(internal.autonomy.outcome.getReplyOutcomeContext, { replyMessageId: replyId })
+		).toMatchObject({ wasAutoSent: true, originalMessageId: originalId });
 
-		await t.mutation(internal.autonomyOutcome.recordOutcomeFeedback, {
+		await t.mutation(internal.autonomy.outcome.recordOutcomeFeedback, {
 			inboundMessageId: originalId,
 			signal: 'bounce',
 		});
@@ -260,12 +244,11 @@ describe('previous-release autonomy paths', () => {
 			['rejected', 'outcome', 'bounce'],
 		]);
 
-		const oldIncidents = await user.query(api.autonomyOutcome.listAutoDemotions, {});
-		expect(oldIncidents).toEqual(await user.query(api.autonomy.outcome.listAutoDemotions, {}));
-		expect(oldIncidents).toMatchObject([{ category: 'support', sender: 'pat@example.com' }]);
+		const incidents = await user.query(api.autonomy.outcome.listAutoDemotions, {});
+		expect(incidents).toMatchObject([{ category: 'support', sender: 'pat@example.com' }]);
 
-		await user.mutation(api.autonomyOutcome.acknowledgeAutoDemotion, {
-			ruleId: oldIncidents[0]!._id as Id<'autonomyRules'>,
+		await user.mutation(api.autonomy.outcome.acknowledgeAutoDemotion, {
+			ruleId: incidents[0]!._id as Id<'autonomyRules'>,
 		});
 		expect(await user.query(api.autonomy.outcome.listAutoDemotions, {})).toEqual([]);
 		const audit = await t.run((ctx) => ctx.db.query('auditLogs').collect());
@@ -274,7 +257,7 @@ describe('previous-release autonomy paths', () => {
 		]);
 	});
 
-	it('keep the owner/admin floor on every old public path', async () => {
+	it('keep the owner/admin floor on every public endpoint', async () => {
 		const t = await harness();
 		const user = t.withIdentity(identity);
 		const ruleId = await t.run((ctx) => ctx.db.insert('autonomyRules', createTestAutonomyRule()));
@@ -291,7 +274,7 @@ describe('previous-release autonomy paths', () => {
 		mockRole = 'editor';
 		const rules = 'Only owners and admins can change autonomy rules';
 		await expect(
-			user.mutation(api.autonomy.upsertRule, {
+			user.mutation(api.autonomy.policy.upsertRule, {
 				category: 'support',
 				autoApproveThreshold: 0.5,
 				maxDailyAutoActions: 10,
@@ -299,29 +282,29 @@ describe('previous-release autonomy paths', () => {
 			})
 		).rejects.toThrow(rules);
 		await expect(
-			user.mutation(api.autonomy.setSenderAutonomy, {
+			user.mutation(api.autonomy.policy.setSenderAutonomy, {
 				category: 'support',
 				sender: 'pat@example.com',
 				isEnabled: true,
 			})
 		).rejects.toThrow(rules);
-		await expect(user.mutation(api.autonomy.deleteRule, { ruleId })).rejects.toThrow(
+		await expect(user.mutation(api.autonomy.policy.deleteRule, { ruleId })).rejects.toThrow(
 			'Only owners and admins can delete autonomy rules'
 		);
 		await expect(
-			user.mutation(api.autonomySuggestions.acceptGraduationSuggestion, { suggestionId })
+			user.mutation(api.autonomy.suggestions.acceptGraduationSuggestion, { suggestionId })
 		).rejects.toThrow('Only owners and admins can widen autonomy');
 		await expect(
-			user.mutation(api.autonomyOutcome.acknowledgeAutoDemotion, { ruleId })
+			user.mutation(api.autonomy.outcome.acknowledgeAutoDemotion, { ruleId })
 		).rejects.toThrow('Only owners and admins can manage autonomy');
 
 		const denied = "You don't have permission to perform this action";
-		await expect(user.query(api.autonomy.listRules, {})).rejects.toThrow(denied);
-		await expect(user.query(api.autonomyFeedback.getFeedbackStats, {})).rejects.toThrow(denied);
-		await expect(user.query(api.autonomySuggestions.listGraduationSuggestions, {})).rejects.toThrow(
-			denied
-		);
-		await expect(user.query(api.autonomyOutcome.listAutoDemotions, {})).rejects.toThrow(denied);
+		await expect(user.query(api.autonomy.policy.listRules, {})).rejects.toThrow(denied);
+		await expect(user.query(api.autonomy.feedback.getFeedbackStats, {})).rejects.toThrow(denied);
+		await expect(
+			user.query(api.autonomy.suggestions.listGraduationSuggestions, {})
+		).rejects.toThrow(denied);
+		await expect(user.query(api.autonomy.outcome.listAutoDemotions, {})).rejects.toThrow(denied);
 
 		const unchanged = await t.run((ctx) => ctx.db.get(ruleId));
 		expect(unchanged?.autoApproveThreshold).toBe(0.85);

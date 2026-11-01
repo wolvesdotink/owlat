@@ -4,10 +4,9 @@
  * The contact Files tab and the Team Answer attach menu show a name, a size, a
  * date, the source and a couple of tags, so they must not receive every linked
  * row whole (embedding vectors, extracted and search text) or a storage URL for
- * every readable file before sorting and dropping the ones past `limit`. Both
- * `files.cards.listByContact` and `semanticFiles.listByContact` select through
- * `readableContactFiles`: newest first, read-gated, capped, and only then
- * projected. The legacy endpoint keeps its whole-row shape for older clients.
+ * every readable file before sorting and dropping the ones past `limit`.
+ * `files.cards.listByContact` selects through `readableContactFiles`: newest
+ * first, read-gated, capped, and only then projected.
  */
 
 import { convexTest } from 'convex-test';
@@ -173,12 +172,6 @@ describe('files.cards.listByContact — the card', () => {
 		expect(typeof cards[0]!.url).toBe('string');
 		const encoded = JSON.stringify(convexToJson(cards as unknown as Value));
 		expect(encoded).not.toContain('invoice delivery contract');
-
-		// The legacy endpoint keeps the whole row for older clients.
-		const legacy = await t.query(api.semanticFiles.listByContact, { contactId });
-		expect(legacy[0]!.embedding).toHaveLength(1536);
-		expect(legacy[0]!.extractedText).toBeTruthy();
-		expect(typeof legacy[0]!.url).toBe('string');
 	});
 
 	it('gives a released file no URL', async () => {
@@ -210,7 +203,7 @@ describe('files.cards.listByContact — the card', () => {
 });
 
 describe('files.cards.listByContact — selection', () => {
-	it('returns the newest 20 by default and honours 20 and 50, like the legacy list', async () => {
+	it('returns the newest 20 by default and honours 20 and 50', async () => {
 		const t = convexTest(schema, modules);
 		const contactId = await newContact(t);
 		for (const createdAt of shuffled(25)) await linkedFile(t, contactId, createdAt);
@@ -225,12 +218,6 @@ describe('files.cards.listByContact — selection', () => {
 		expect(twenty.map((c) => c.createdAt)).toEqual(newest(20));
 		const fifty = await t.query(api.files.cards.listByContact, { contactId, limit: 50 });
 		expect(fifty.map((c) => c.createdAt)).toEqual(newest(25));
-
-		for (const limit of [undefined, 20, 50]) {
-			const legacy = await t.query(api.semanticFiles.listByContact, { contactId, limit });
-			const cards = await t.query(api.files.cards.listByContact, { contactId, limit });
-			expect(legacy.map((r) => r._id)).toEqual(cards.map((c) => c._id));
-		}
 	});
 
 	it('fills the limit with older readable files when newer captures are hidden', async () => {
@@ -249,8 +236,6 @@ describe('files.cards.listByContact — selection', () => {
 		sessionMock.role = 'editor';
 		const asEditor = await t.query(api.files.cards.listByContact, { contactId, limit: 2 });
 		expect(asEditor.map((c) => c.createdAt)).toEqual([3, 2]);
-		const legacy = await t.query(api.semanticFiles.listByContact, { contactId, limit: 2 });
-		expect(legacy.map((r) => r.createdAt)).toEqual([3, 2]);
 
 		sessionMock.userId = 'boss';
 		sessionMock.role = 'owner';

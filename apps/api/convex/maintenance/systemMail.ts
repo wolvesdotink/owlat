@@ -45,9 +45,6 @@ import {
  * runs in the Node runtime it's designed for. Callers (default-runtime actions
  * and the BetterAuth hooks, all of which have an ActionCtx) reach it via
  * `ctx.runAction(internal.maintenance.systemMail.sendSystemEmail, …)`.
- *
- * The builders' bodies are exported, so the previous release's paths
- * (`systemMail.ts`) run the same code.
  */
 export const systemMailArgs = {
 	to: v.string(),

@@ -1,6 +1,7 @@
 /**
- * Convex-root handlers take the caller from the session their builder floor
- * resolved (the handler's third argument) instead of resolving it again.
+ * The handlers of `codeWorkTasks` and of the domain modules beside it take the
+ * caller from the session their builder floor resolved (the handler's third
+ * argument) instead of resolving it again.
  *
  * Each case runs once as an owner, asserting by call count that the floor was
  * the only session resolution and, where the handler records who acted, that
@@ -65,7 +66,7 @@ async function storedBlob(t: T): Promise<Id<'_storage'>> {
 
 async function semanticFile(t: T): Promise<Id<'semanticFiles'>> {
 	const storageId = await storedBlob(t);
-	return await t.mutation(api.semanticFiles.create, { storageId, ...blob, sourceType: 'upload' });
+	return await t.mutation(api.files.library.create, { storageId, ...blob, sourceType: 'upload' });
 }
 
 const insert =
@@ -80,20 +81,20 @@ const blob = { filename: 'notes.txt', mimeType: 'text/plain', fileSize: 4 };
 
 const cases: Case<unknown>[] = [
 	defineCase({
-		name: 'agentConfigMutations.updateConfig',
+		name: 'agent.configMutations.updateConfig',
 		floor: 'requireAdminContext',
 		denied: ADMIN,
-		call: (t) => t.mutation(api.agentConfigMutations.updateConfig, { toneDescription: 'calm' }),
+		call: (t) => t.mutation(api.agent.configMutations.updateConfig, { toneDescription: 'calm' }),
 		check: async (t) => {
 			expect(await auditActors(t, 'agent.config_updated')).toEqual(['admin-user']);
 		},
 	}),
 	defineCase({
-		name: 'autonomy.upsertRule',
+		name: 'autonomy.policy.upsertRule',
 		floor: 'getMutationContext',
 		denied: AUTONOMY,
 		call: (t) =>
-			t.mutation(api.autonomy.upsertRule, {
+			t.mutation(api.autonomy.policy.upsertRule, {
 				category: 'support',
 				autoApproveThreshold: 0.9,
 				maxDailyAutoActions: 10,
@@ -101,36 +102,37 @@ const cases: Case<unknown>[] = [
 			}),
 	}),
 	defineCase({
-		name: 'autonomy.setSenderAutonomy',
+		name: 'autonomy.policy.setSenderAutonomy',
 		floor: 'getMutationContext',
 		denied: AUTONOMY,
 		call: (t) =>
-			t.mutation(api.autonomy.setSenderAutonomy, {
+			t.mutation(api.autonomy.policy.setSenderAutonomy, {
 				category: 'support',
 				sender: 'vip@example.com',
 				isEnabled: true,
 			}),
 	}),
 	defineCase({
-		name: 'autonomy.deleteRule',
+		name: 'autonomy.policy.deleteRule',
 		floor: 'getMutationContext',
 		denied: 'Only owners and admins can delete autonomy rules',
 		seed: insert('autonomyRules', createTestAutonomyRule()),
-		call: (t, ruleId: Id<'autonomyRules'>) => t.mutation(api.autonomy.deleteRule, { ruleId }),
+		call: (t, ruleId: Id<'autonomyRules'>) =>
+			t.mutation(api.autonomy.policy.deleteRule, { ruleId }),
 	}),
 	defineCase({
-		name: 'autonomyOutcome.acknowledgeAutoDemotion',
+		name: 'autonomy.outcome.acknowledgeAutoDemotion',
 		floor: 'getMutationContext',
 		denied: 'Only owners and admins can manage autonomy',
 		seed: insert('autonomyRules', createTestAutonomyRule({ autoDemotedAt: 1 })),
 		call: (t, ruleId: Id<'autonomyRules'>) =>
-			t.mutation(api.autonomyOutcome.acknowledgeAutoDemotion, { ruleId }),
+			t.mutation(api.autonomy.outcome.acknowledgeAutoDemotion, { ruleId }),
 		check: async (t) => {
 			expect(await auditActors(t, 'agent.demotion_acknowledged')).toEqual(['admin-user']);
 		},
 	}),
 	defineCase({
-		name: 'autonomySuggestions.acceptGraduationSuggestion',
+		name: 'autonomy.suggestions.acceptGraduationSuggestion',
 		floor: 'getMutationContext',
 		denied: 'Only owners and admins can widen autonomy',
 		seed: async (t) => {
@@ -146,7 +148,7 @@ const cases: Case<unknown>[] = [
 			);
 		},
 		call: (t, suggestionId: Id<'autonomySuggestions'>) =>
-			t.mutation(api.autonomySuggestions.acceptGraduationSuggestion, { suggestionId }),
+			t.mutation(api.autonomy.suggestions.acceptGraduationSuggestion, { suggestionId }),
 	}),
 	defineCase({
 		name: 'blockedEmails.blocklist.add',
@@ -289,39 +291,39 @@ const cases: Case<unknown>[] = [
 		call: (t, id: Id<'segments'>) => t.mutation(api.segments.segments.remove, { id }),
 	}),
 	defineCase({
-		name: 'semanticFiles.create',
+		name: 'files.library.create',
 		floor: 'getMutationContext',
 		denied: ADMIN,
 		seed: storedBlob,
 		call: (t, storageId: Id<'_storage'>) =>
-			t.mutation(api.semanticFiles.create, { storageId, ...blob, sourceType: 'upload' }),
+			t.mutation(api.files.library.create, { storageId, ...blob, sourceType: 'upload' }),
 		check: async (t, _seeded, fileId) => {
 			const file = await t.run((ctx) => ctx.db.get(fileId as Id<'semanticFiles'>));
 			expect(file?.uploadedBy).toBe('admin-user');
 		},
 	}),
 	defineCase({
-		name: 'semanticFiles.update',
+		name: 'files.library.update',
 		floor: 'getMutationContext',
 		denied: ADMIN,
 		seed: semanticFile,
 		call: (t, fileId: Id<'semanticFiles'>) =>
-			t.mutation(api.semanticFiles.update, { fileId, title: 'Renamed' }),
+			t.mutation(api.files.library.update, { fileId, title: 'Renamed' }),
 	}),
 	defineCase({
-		name: 'semanticFiles.remove',
+		name: 'files.library.remove',
 		floor: 'requireAdminContext',
 		denied: ADMIN,
 		seed: semanticFile,
-		call: (t, fileId: Id<'semanticFiles'>) => t.mutation(api.semanticFiles.remove, { fileId }),
+		call: (t, fileId: Id<'semanticFiles'>) => t.mutation(api.files.library.remove, { fileId }),
 	}),
 	defineCase({
-		name: 'shareLinks.createShareLink',
+		name: 'shareLinks.links.createShareLink',
 		floor: 'getMutationContext',
 		denied: 'Only owners and admins can create share links',
 		seed: (t) => t.run((ctx) => ctx.db.insert('emailTemplates', createTestEmailTemplate())),
 		call: (t, emailTemplateId: Id<'emailTemplates'>) =>
-			t.mutation(api.shareLinks.createShareLink, { emailTemplateId }),
+			t.mutation(api.shareLinks.links.createShareLink, { emailTemplateId }),
 		check: async (t, _seeded, result) => {
 			const { shareLinkId } = result as { shareLinkId: Id<'shareLinks'> };
 			const link = await t.run((ctx) => ctx.db.get(shareLinkId));
@@ -329,20 +331,20 @@ const cases: Case<unknown>[] = [
 		},
 	}),
 	defineCase({
-		name: 'shareLinks.revokeShareLink',
+		name: 'shareLinks.links.revokeShareLink',
 		floor: 'getMutationContext',
 		denied: 'Only owners and admins can revoke share links',
 		seed: async (t) => {
 			const emailTemplateId = await t.run((ctx) =>
 				ctx.db.insert('emailTemplates', createTestEmailTemplate())
 			);
-			const { shareLinkId } = await t.mutation(api.shareLinks.createShareLink, {
+			const { shareLinkId } = await t.mutation(api.shareLinks.links.createShareLink, {
 				emailTemplateId,
 			});
 			return shareLinkId;
 		},
 		call: (t, shareLinkId: Id<'shareLinks'>) =>
-			t.mutation(api.shareLinks.revokeShareLink, { shareLinkId }),
+			t.mutation(api.shareLinks.links.revokeShareLink, { shareLinkId }),
 	}),
 	defineCase({
 		name: 'channels.config.updateChannelConfig',
@@ -352,10 +354,11 @@ const cases: Case<unknown>[] = [
 			t.mutation(api.channels.config.updateChannelConfig, { channel: 'sms', isEnabled: true }),
 	}),
 	defineCase({
-		name: 'visualizationAgent.createFromPrompt',
+		name: 'analytics.visualizationAgent.createFromPrompt',
 		floor: 'requireAdminContext',
 		denied: ADMIN,
-		call: (t) => t.mutation(api.visualizationAgent.createFromPrompt, { prompt: 'Sends per day' }),
+		call: (t) =>
+			t.mutation(api.analytics.visualizationAgent.createFromPrompt, { prompt: 'Sends per day' }),
 		check: async (t, _seeded, id) => {
 			const viz = await t.run((ctx) => ctx.db.get(id as Id<'visualizations'>));
 			expect(viz?.createdBy).toBe('admin-user');
@@ -363,7 +366,7 @@ const cases: Case<unknown>[] = [
 	}),
 	...(['regenerate', 'togglePin', 'remove'] as const).map((name) =>
 		defineCase({
-			name: `visualizationAgent.${name}`,
+			name: `analytics.visualizationAgent.${name}`,
 			floor: 'requireAdminContext',
 			denied: ADMIN,
 			seed: (t) =>
@@ -378,7 +381,8 @@ const cases: Case<unknown>[] = [
 						updatedAt: 1,
 					})
 				),
-			call: (t, id: Id<'visualizations'>) => t.mutation(api.visualizationAgent[name], { id }),
+			call: (t, id: Id<'visualizations'>) =>
+				t.mutation(api.analytics.visualizationAgent[name], { id }),
 		})
 	),
 ];
@@ -400,7 +404,7 @@ afterEach(() => {
 	vi.useRealTimers();
 });
 
-describe('convex-root handlers use the session their floor resolved', () => {
+describe('handlers use the session their floor resolved', () => {
 	it.each(cases.map((c) => [c.name, c] as const))(
 		'%s resolves the session once, on its floor',
 		async (_name, c) => {

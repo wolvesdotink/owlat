@@ -1,9 +1,8 @@
 /**
- * The previous release's LLM-backed action paths (`translate:translateBatch`,
- * `quickQuery:ask`, `visualizationAgentActions:generate`) run this release's
- * code: each returns or writes what its moved function does for the same
- * input, and keeps its gates. The model calls are mocked; the gates, the
- * retrieval seams and the commits are real.
+ * The LLM-backed actions (`emailTemplates/translate:translateBatch`,
+ * `assistant/quickQuery:ask`, `analytics/visualizationAgentActions:generate`):
+ * what each returns or writes, and the gates each keeps. The model calls are
+ * mocked; the gates, the retrieval seams and the commits are real.
  */
 
 import { convexTest } from 'convex-test';
@@ -96,7 +95,7 @@ beforeEach(() => {
 	llm.runLlmObject.mockReset();
 });
 
-describe('previous-release translate path', () => {
+describe('translateBatch', () => {
 	const args = {
 		items: [
 			{ id: 'subject', text: 'Hello', isHtml: false },
@@ -106,7 +105,7 @@ describe('previous-release translate path', () => {
 		targetLanguage: 'German',
 	};
 
-	it('translate:translateBatch returns what emailTemplates/translate returns', async () => {
+	it('returns the translations by item id, whatever order the model answers in', async () => {
 		const t = setup();
 		await enableFeatures(t, ['ai']);
 		llm.runLlmObject.mockResolvedValue({
@@ -120,20 +119,21 @@ describe('previous-release translate path', () => {
 			modelUsed: 'test-model',
 		});
 
-		const viaOld = await t.action(api.translate.translateBatch, args);
-		expect(viaOld).toEqual(await t.action(api.emailTemplates.translate.translateBatch, args));
-		expect(viaOld.translations).toEqual([
+		const result = await t.action(api.emailTemplates.translate.translateBatch, args);
+		expect(result.translations).toEqual([
 			{ id: 'body', translatedText: '<p>Danke</p>' },
 			{ id: 'subject', translatedText: 'Hallo' },
 		]);
 	});
 
-	it('keeps the input caps and the AI gate on the old path', async () => {
+	it('keeps the input caps and the AI gate', async () => {
 		const t = setup();
-		await expect(t.action(api.translate.translateBatch, args)).rejects.toThrow(/disabled/i);
+		await expect(t.action(api.emailTemplates.translate.translateBatch, args)).rejects.toThrow(
+			/disabled/i
+		);
 		await enableFeatures(t, ['ai']);
 		await expect(
-			t.action(api.translate.translateBatch, {
+			t.action(api.emailTemplates.translate.translateBatch, {
 				...args,
 				items: Array.from({ length: 51 }, (_, i) => ({ id: `${i}`, text: 'x', isHtml: false })),
 			})
@@ -142,39 +142,39 @@ describe('previous-release translate path', () => {
 	});
 });
 
-describe('previous-release Quick Query path', () => {
-	it('quickQuery:ask answers as assistant/quickQuery does', async () => {
+describe('Quick Query ask', () => {
+	it('answers without a model call when nothing is retrieved, and asks for a question when blank', async () => {
 		const t = setup();
 		await enableFeatures(t, ['ai.knowledge']);
-		// Nothing to retrieve: both paths answer without a model call.
-		const viaOld = await t.action(api.quickQuery.ask, { question: 'What is our refund policy?' });
-		expect(viaOld).toEqual(
-			await t.action(api.assistant.quickQuery.ask, { question: 'What is our refund policy?' })
-		);
-		expect(viaOld).toMatchObject({ sources: [], isTruncated: false });
-		expect(viaOld.answer).toMatch(/couldn't find/);
-		expect(await t.action(api.quickQuery.ask, { question: '   ' })).toEqual({
+		// Nothing to retrieve: the answer comes without a model call.
+		const answer = await t.action(api.assistant.quickQuery.ask, {
+			question: 'What is our refund policy?',
+		});
+		expect(answer).toMatchObject({ sources: [], isTruncated: false });
+		expect(answer.answer).toMatch(/couldn't find/);
+		expect(llm.runLlmText).not.toHaveBeenCalled();
+		expect(await t.action(api.assistant.quickQuery.ask, { question: '   ' })).toEqual({
 			answer: 'Please enter a question.',
 			sources: [],
 			isTruncated: false,
 		});
 	});
 
-	it('keeps the knowledge gates on the old path', async () => {
+	it('keeps the knowledge gates', async () => {
 		const t = setup();
-		await expect(t.action(api.quickQuery.ask, { question: 'budget' })).rejects.toThrow(
+		await expect(t.action(api.assistant.quickQuery.ask, { question: 'budget' })).rejects.toThrow(
 			/disabled|forbidden/i
 		);
 		await enableFeatures(t, ['ai.knowledge']);
 		session.member = false;
-		await expect(t.action(api.quickQuery.ask, { question: 'budget' })).rejects.toThrow(
+		await expect(t.action(api.assistant.quickQuery.ask, { question: 'budget' })).rejects.toThrow(
 			/access|forbidden/i
 		);
 		expect(llm.runLlmText).not.toHaveBeenCalled();
 	});
 });
 
-describe('previous-release visualization generation path', () => {
+describe('visualization generation', () => {
 	async function seedVisualization(t: T): Promise<Id<'visualizations'>> {
 		return await t.run((ctx) =>
 			ctx.db.insert('visualizations', {
@@ -196,34 +196,23 @@ describe('previous-release visualization generation path', () => {
 			.mockResolvedValueOnce(text('  Weekly open rates  '));
 	}
 
-	it('a job queued as visualizationAgentActions:generate writes what the moved action writes', async () => {
+	it('a generation stores the generated page and its trimmed title', async () => {
 		const t = setup();
-		const viaOld = await seedVisualization(t);
-		const viaNew = await seedVisualization(t);
+		const id = await seedVisualization(t);
 
-		answerOnce();
-		await t.action(internal.visualizationAgentActions.generate, {
-			visualizationId: viaOld,
-			prompt: 'Open rates by week',
-		});
 		answerOnce();
 		await t.action(internal.analytics.visualizationAgentActions.generate, {
-			visualizationId: viaNew,
+			visualizationId: id,
 			prompt: 'Open rates by week',
 		});
 
-		const [oldRow, newRow] = await t.run(async (ctx) => [
-			await ctx.db.get(viaOld),
-			await ctx.db.get(viaNew),
-		]);
-		const page = (row: typeof oldRow) => ({
+		const row = await t.run(async (ctx) => await ctx.db.get(id));
+		expect({
 			title: row?.title,
 			html: row?.html,
 			dataQuery: row?.dataQuery,
 			budgetRefusal: row?.budgetRefusal,
-		});
-		expect(page(oldRow)).toEqual(page(newRow));
-		expect(page(oldRow)).toEqual({
+		}).toEqual({
 			title: 'Weekly open rates',
 			html: '<!DOCTYPE html><html><body>chart</body></html>',
 			dataQuery: undefined,
@@ -231,12 +220,12 @@ describe('previous-release visualization generation path', () => {
 		});
 	});
 
-	it('stores the failure page through the old path when the model fails', async () => {
+	it('stores the failure page when the model fails', async () => {
 		const t = setup();
 		const id = await seedVisualization(t);
 		llm.runLlmText.mockRejectedValueOnce(new Error('model unavailable'));
 
-		await t.action(internal.visualizationAgentActions.generate, {
+		await t.action(internal.analytics.visualizationAgentActions.generate, {
 			visualizationId: id,
 			prompt: 'Open rates by week',
 		});
