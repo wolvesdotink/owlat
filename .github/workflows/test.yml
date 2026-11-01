@@ -361,9 +361,9 @@ jobs:
           STORED_BLOCK_CORPUS_PUSH_BEFORE: ${{ github.event.before }}
           STORED_BLOCK_CORPUS_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           # The gates that diff a pull request against its target branch
-          # (format, stored-block-corpus) compare with this commit, not
-          # origin/<base>, so a push to the target branch while the job runs
-          # cannot change their base. Empty on other events.
+          # (format, stored-block-corpus) use the base commit the event names,
+          # not origin/<base>, so a push to the target branch while the job
+          # runs cannot change their base. Empty on other events.
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
 
   typecheck:
