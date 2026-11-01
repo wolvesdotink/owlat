@@ -1,16 +1,16 @@
 /**
  * Disconnecting a connected mailbox — what the member is actually promised.
  *
- * Three promises, one test apiece, each against the way it breaks:
- *   1. "Disconnect" forgets the password. The row kept its sealed envelope
- *      forever; only a full purge removed it.
- *   2. Disconnecting stops an import. A migration left `importing` reported a
- *      running import at a percentage that could never move, and resumed the
- *      moment the same account came back.
- *   3. "Your imported mail is kept" survives a reconnect. The connect dup-check
- *      only sees ACTIVE mailboxes, so reconnecting minted a second mailbox on
- *      the same address and left every retained message in a row no screen
- *      could reach.
+ * Three promises, one test apiece:
+ *   1. "Disconnect" forgets the password: the row's sealed credential envelope
+ *      is cleared, not left for a full purge to remove.
+ *   2. Disconnecting stops an import: an `importing` migration is cancelled,
+ *      so it neither reports progress that can never move nor resumes when
+ *      the same account comes back.
+ *   3. "Your imported mail is kept" survives a reconnect: the connect
+ *      dup-check only sees ACTIVE mailboxes, so reconnecting the same address
+ *      must re-open the retained mailbox, keeping its messages reachable,
+ *      instead of creating a second one.
  *
  * Plus the purge: it has to take the credentials INTO the mailbox (app
  * passwords) and the access rows with it, or "delete everything" is a claim
