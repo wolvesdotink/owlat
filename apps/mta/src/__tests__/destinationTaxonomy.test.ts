@@ -387,11 +387,11 @@ describe('consumer: queue/smtpOutcomeSnapshot.ts — the replay guard fails clos
 	/**
 	 * The journal replays this payload verbatim after the SMTP transaction, so
 	 * the guard is the only thing standing between a corrupt `providerKey` and
-	 * the outcome journal. It used to be `[...].includes(String(providerKey))`,
-	 * which COERCED — an object whose `toString()` said `'gmail'` was accepted.
-	 * Delegating to the taxonomy's own guard tightened that, and these cases pin
-	 * the tightening so a later edit back to a truthiness or `typeof` check is a
-	 * red test rather than a silent hole.
+	 * the outcome journal. It must not COERCE: a
+	 * `[...].includes(String(providerKey))` check accepts an object whose
+	 * `toString()` says `'gmail'`. The guard delegates to the taxonomy's own, and
+	 * these cases pin that so a later edit to a coercing, truthiness or `typeof`
+	 * check is a red test rather than a silent hole.
 	 */
 	function snapshotWithProviderKey(providerKey: unknown): unknown {
 		return {

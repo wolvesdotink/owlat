@@ -5,15 +5,14 @@ import { fileURLToPath } from 'node:url';
 /**
  * THE NAMES THE REPOSITORY DECLARES, and the doc prose that cites them.
  *
- * `apps/docs/content` used to be pinned page by page: sixteen suites, ~5,400
- * lines, each one re-implementing "read this markdown, regex this paragraph,
- * assert the sentence still says what the code says" for one page. They cost
- * more than they caught — a page reworded for clarity broke a suite that named
- * a heading, while a constant renamed under a page nobody had written a suite
- * for drifted for months (`LEGAL_EDGES` and `ISP_PROFILES` were both cited by
- * the developer docs long after the code stopped declaring them).
+ * Pinning `apps/docs/content` page by page, a suite per page re-implementing
+ * "read this markdown, regex this paragraph, assert the sentence still says
+ * what the code says", costs more than it catches: a page reworded for clarity
+ * breaks a suite that named a heading, while a constant renamed under a page
+ * nobody wrote a suite for drifts unnoticed (the developer docs went on citing
+ * `LEGAL_EDGES` and `ISP_PROFILES` long after the code stopped declaring them).
  *
- * The replacement is one question asked of every page at once: a name written
+ * So this asks one question of every page at once: a name written
  * in backticks is a claim that the repository declares that name, so collect
  * what the repository declares and check the claims. Which pages exist and how
  * they are worded stops mattering; only the names do.

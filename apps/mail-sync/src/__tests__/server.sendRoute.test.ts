@@ -1,11 +1,11 @@
 /**
  * POST /send answers on SMTP's verdict, not on the Sent-folder APPEND (plan E5).
  *
- * The APPEND is a second login to a different server. It used to run inside the
- * request, so every send through an external account waited for IMAP connect,
- * LIST, APPEND and LOGOUT before the caller heard back. It now runs after the
+ * The APPEND is a second login to a different server. Run inside the request,
+ * it would make every send through an external account wait for IMAP connect,
+ * LIST, APPEND and LOGOUT before the caller heard back. So it runs after the
  * answer, stays best-effort (a failure is logged, never surfaced), and a
- * shutdown waits for it the way it used to wait for the open request.
+ * shutdown waits for it the way it waits for an open request.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';

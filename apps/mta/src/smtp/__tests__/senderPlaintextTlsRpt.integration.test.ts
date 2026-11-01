@@ -1,10 +1,10 @@
 /**
  * Regression-lock for audit item PR-24 (Outbound TLS — RFC 8460 TLS-RPT).
  *
- * The MX sender used to call `recordTlsResult(..., 'success')` UNCONDITIONALLY
- * after the send resolved. A plaintext delivery — the recipient MX did not
- * advertise STARTTLS and no policy required TLS (opportunistic, `requireTLS:false`)
- * — resolves with no error, so it was being logged as a TLS 'success', overstating
+ * The MX sender must not call `recordTlsResult(..., 'success')` just because
+ * the send resolved. A plaintext delivery — the recipient MX did not advertise
+ * STARTTLS and no policy required TLS (opportunistic, `requireTLS:false`) —
+ * resolves with no error, so recording it as a TLS 'success' would overstate
  * our encryption coverage to the recipient domain owner.
  *
  * The sender now reads `conn.secured` directly off the live @owlat/smtp-client

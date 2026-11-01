@@ -6,10 +6,10 @@ import type { ReadinessProbe, ReadinessTiming } from '../readiness.js';
  * The readiness wait against the healthcheck cadence services declare, and
  * against failures that were there before the rollout.
  *
- * The 180 s bound used to be fixed. ClamAV declares `interval: 60s,
+ * The wait cannot stop at a fixed 180 s. ClamAV declares `interval: 60s,
  * start_period: 600s`, so Docker re-evaluates its health once a minute and a
  * clamd that finished loading at ~125 s is reported healthy at the 180 s
- * probe: a healthy rollout came back as `started`.
+ * probe: a fixed bound would report that healthy rollout as `started`.
  */
 
 const { execMock } = vi.hoisted(() => ({ execMock: vi.fn() }));

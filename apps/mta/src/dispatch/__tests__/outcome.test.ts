@@ -152,7 +152,7 @@ describe('classifyResult', () => {
 		if (out.kind === 'hard_bounce') {
 			expect(out.smtpCode).toBe(550);
 			expect(out.error).toBe('User unknown');
-			// The classifier's 5xx fallback, reachable from dispatch since issue #866.
+			// The classifier's 5xx fallback must be reachable from dispatch.
 			expect(out.classification).toEqual(classifySmtpResponse(550, 'User unknown', '5.1.1'));
 			expect(out.classification.category).toBe('unknown');
 		}

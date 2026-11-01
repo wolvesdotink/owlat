@@ -1,9 +1,9 @@
 /**
- * FETCH output is paced by the socket and stops when the connection goes
- * (issue #926). Before, a client that stopped reading made the server download
- * and queue the whole requested mailbox (the socket's `writableLength` grew to
- * the full payload), and a client that disconnected mid-FETCH left the server
- * minting URLs, writing \Seen and downloading every remaining body.
+ * FETCH output is paced by the socket and stops when the connection goes.
+ * Unpaced, a client that stops reading makes the server download and queue the
+ * whole requested mailbox (the socket's `writableLength` grows to the full
+ * payload), and a client that disconnects mid-FETCH leaves the server minting
+ * URLs, writing \Seen and downloading every remaining body.
  *
  * The first block drives `fetchModule` directly with a controllable
  * `waitForDrain` and `cancel()`; the last one runs the real `ImapConnection`

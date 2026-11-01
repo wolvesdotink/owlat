@@ -1,5 +1,5 @@
 /**
- * Issue #1325 against real sockets: an IMAPS peer is admitted at TCP accept,
+ * Against real sockets: an IMAPS peer is admitted at TCP accept,
  * so a raw connection that never starts TLS holds a slot until the handshake
  * deadline drops it, and a real TLS client still gets a working session that
  * outlives that deadline.

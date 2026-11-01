@@ -185,8 +185,8 @@ async function handleConfigureIp(req: IncomingMessage, res: ServerResponse) {
 
 	// Step 4: recreate the MTA so it boots with the new pool. It reads
 	// IP_POOLS_CAMPAIGN once at start from its compose-interpolated env, and
-	// `docker compose restart` keeps a container's old env — the pool change
-	// was silently dropped (#839). `up -d` recreates it because its resolved
+	// `docker compose restart` keeps a container's old env, so a restart would
+	// silently drop the pool change. `up -d` recreates it because its resolved
 	// config changed. Judged by `.ok`, never by stderr, like the other applies.
 	const apply = await exec('docker', [...(await composeArgv()), 'up', '-d', 'mta'], OWLAT_DIR);
 	steps.push({ step: 'apply-mta', ...apply });
@@ -379,7 +379,7 @@ export function buildRequestListener(options: { metrics?: MetricsSource } = {}) 
 			//
 			// A rollout that handed the updater's own replacement to a helper
 			// releases it only once its answer is written: the helper stops this
-			// process, and until now it did so on a timer, answer or no answer.
+			// process, and stopping it on a timer could cut off the answer.
 			await critical(() =>
 				exclusively(rollout.kind, res, async () => {
 					// Checked before any of the handler's work, and whatever `.env`

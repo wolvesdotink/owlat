@@ -18,7 +18,7 @@ const DOMAIN = 'example.com';
 const FAILED_KEY = `mta:sts-fetch-failures:${DOMAIN}`;
 const BUDGET_KEY = `mta:sts-fetch-budget:${DOMAIN}`;
 
-// Issue #1326: the recipient domain's owner controls both the DNS id and the
+// The recipient domain's owner controls both the DNS id and the
 // policy host, so the fetch path must stay bounded however the ids move.
 describe('gatedPolicyFetch', () => {
 	let redis: RealRedis;

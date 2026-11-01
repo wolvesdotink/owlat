@@ -67,7 +67,7 @@ const TERMINAL_OUTCOMES: TerminalOutcome[] = ['delivered', 'deferred', 'bounced'
 
 /**
  * Keys one delivered campaign message leaves in Redis. Three of them are the
- * delivery-log indexes (#925): the day's status counts, the organization's
+ * delivery-log indexes: the day's status counts, the organization's
  * status counts and the day's messageId -> stream-ID hash. They are per day
  * (and per organization), share the stream's expiry, and the message hash
  * grows by one field per message logged that day, like the stream beside it.

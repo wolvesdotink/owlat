@@ -208,10 +208,11 @@ describe('strikes', () => {
 });
 
 /**
- * #760: a mailbox larger than the provider's daily bandwidth budget. The
- * throttled ladder spans a few hours and the budget is a rolling day, so
- * such an import used to exhaust the ladder every day and end `failed` — a red
- * card and a manual "Try again" per day of mail. It is a schedule now.
+ * A mailbox larger than the provider's daily bandwidth budget. The throttled
+ * ladder spans a few hours and the budget is a rolling day, so such an import
+ * exhausts the ladder every day. Ending `failed` there would mean a red card
+ * and a manual "Try again" per day of mail, so it pauses and resumes on a
+ * schedule instead.
  */
 describe('a throttled import that spends the ladder', () => {
 	const overQuota = () => noConnectionError('Account exceeded command or bandwidth limits.');

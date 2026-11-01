@@ -220,8 +220,9 @@ describe('TLS material from the shared cert volume', () => {
 		expect(loadConfig().tls).toEqual({ cert: 'INLINE-CERT', key: 'INLINE-KEY' });
 	});
 
-	// These used to be skipped silently, so a typo in IMAP_TLS_CERT_FILE booted
-	// on the volume's default pair (or with no TLS at all) instead of failing.
+	// A missing file must not be skipped silently: a typo in IMAP_TLS_CERT_FILE
+	// would boot on the volume's default pair (or with no TLS at all) instead of
+	// failing.
 	it('fails the boot when an explicitly configured file is missing', () => {
 		process.env['IMAP_TLS_CERT_FILE'] = join(certDir, 'typo.crt');
 		process.env['IMAP_TLS_KEY_FILE'] = join(certDir, 'default.key');

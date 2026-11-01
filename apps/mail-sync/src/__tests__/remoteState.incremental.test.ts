@@ -1,5 +1,5 @@
 /**
- * The cost of a reconcile follows what changed, not the account's size (#928),
+ * The cost of a reconcile follows what changed, not the account's size,
  * without giving up what the full UID census guaranteed:
  *   - one flag change on a stable account takes no census anywhere and asks
  *     the provider for a bounded number of UIDs, whatever the folder sizes;

@@ -24,8 +24,7 @@ import type { AttemptCtx } from './types.js';
  * throttling, a full mailbox) — so reporting only the branches that already talk
  * to Convex would deliver a numerator with no denominator, read as a 100% block
  * rate, and halt a healthy cell on its first refusal. That is why the category
- * travels on its own event rather than as a field on the bounce beside it
- * (issue #501).
+ * travels on its own event rather than as a field on the bounce beside it.
  *
  * IT CARRIES NO CELL AND NO ARM, deliberately. This service knows the
  * destination provider and nothing about the stream or which arm carried the

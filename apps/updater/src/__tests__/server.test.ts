@@ -457,9 +457,9 @@ describe('POST /update', () => {
 	});
 
 	/**
-	 * Recreating the updater stops this process. The helper used to do it ten
-	 * seconds after it started, answered or not; it now waits for the release
-	 * the listener writes once the rollout's answer is out.
+	 * Recreating the updater stops this process, so the helper must not do it on
+	 * a timer, answered or not: it waits for the release the listener writes
+	 * once the rollout's answer is out.
 	 */
 	it('lets the helper replace the updater only once the answer is written', async () => {
 		const release = join(OWLAT_DIR, '.owlat-updater-release');
@@ -1476,8 +1476,8 @@ describe('POST /configure-ip', () => {
 			['addr', 'add', '2.2.2.2/32', 'dev', 'eth0'],
 			expect.objectContaining({ cwd: '/' }),
 		]);
-		// `restart` keeps the container's old env, so the MTA never saw the new
-		// pool (#839). `up -d` recreates it because its resolved config changed.
+		// `restart` keeps the container's old env, so the MTA would never see the
+		// new pool. `up -d` recreates it because its resolved config changed.
 		expect(composeCommands()).toContain(`${COMPOSE} up -d mta`);
 		expect(commandLines().some((c) => c.includes(' restart'))).toBe(false);
 	});

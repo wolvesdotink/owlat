@@ -14,7 +14,7 @@ import {
 } from './codeTaskHarness.js';
 
 /**
- * #935: whether the agent changed anything is decided on what `git add -A`
+ * Whether the agent changed anything is decided on what `git add -A`
  * stages, so new files, already-staged edits, deletions and renames all reach
  * commit, tests and publication, while an untouched tree or ignored output
  * alone stays a terminal no-op. Each case runs `processTask` against a real

@@ -1,14 +1,14 @@
 /**
  * THE QUEUE PREFIX MUST NOT DEPEND ON WHICH MODULE THE GRAPH IS ENTERED AT.
  *
- * `QUEUE_KEY_NAMESPACE` used to be derived from a constant that lived in
+ * `QUEUE_KEY_NAMESPACE` must not be derived from a constant in
  * `queue/setup.ts`, which imports `routes/health.ts`, which imports
  * `queue/delayedOrphans.ts` — a cycle. Entering that cycle at `setup.js` (which
- * is what the MTA's own boot does not currently do, purely by luck of import
- * order) left `QUEUE_NAMESPACE` in its temporal dead zone: real ESM throws, and
- * Vite's transform silently hands back `undefined`, so the probe watched
- * `groupmq:undefined:delayed` — a key nothing writes — and reported a perfect
- * bill of health over a delay set holding six million stranded members.
+ * the MTA's own boot does not do, purely by luck of import order) leaves
+ * `QUEUE_NAMESPACE` in its temporal dead zone: real ESM throws, and Vite's
+ * transform silently hands back `undefined`, so the probe watches
+ * `groupmq:undefined:delayed` — a key nothing writes — and reports a perfect
+ * bill of health over a delay set holding millions of stranded members.
  *
  * That is the exact class of confident-empty answer the queue inspector was
  * rewritten to eliminate, so it is pinned here: the prefix is asserted after

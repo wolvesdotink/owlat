@@ -47,8 +47,9 @@ export function warmingStateKey(ip: string): string {
  *
  * Named here, beside the key builder, because the TTL is the ONLY thing that
  * bounds this key space: it is keyed by day, so an unexpired one is a key per
- * IP per day forever. It used to be an inline `172800` repeated across the
- * writers, and the two non-idempotent outcome paths simply forgot it.
+ * IP per day forever. Every writer takes it from here: an inline `172800`
+ * repeated across the writers is easy to leave out of one path, and a hash
+ * written without it never expires.
  */
 export const WARMING_DAILY_STATS_TTL_SECONDS = 48 * 60 * 60;
 

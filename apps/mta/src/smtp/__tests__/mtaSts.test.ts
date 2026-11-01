@@ -484,7 +484,7 @@ describe('mtaSts', () => {
 		});
 	});
 
-	// Issue #1326 review: the fetch gate (mtaStsFetchGate.ts) limits fetches,
+	// The fetch gate (mtaStsFetchGate.ts) limits fetches,
 	// but neither its limits nor a storage error may change which policy applies.
 	describe('getStsTlsOptions — fetch gate and storage errors', () => {
 		const ENFORCE_OPTS = {
@@ -717,7 +717,7 @@ describe('mtaSts', () => {
 		});
 	});
 
-	// RFC 8461 §5.1/§6.2 + issue #1326: each kind of refused refresh keeps the
+	// RFC 8461 §5.1/§6.2: each kind of refused refresh keeps the
 	// cached enforce policy. These run the real HTTPS GET against a loopback
 	// policy server, so the failure is the one production would see.
 	describe('cached enforce policy survives a refused refresh', () => {

@@ -6,7 +6,7 @@ import { join } from 'node:path';
 /**
  * How long `stopRunningChildren` takes, on a scripted child and fake timers, so
  * the bounds are read off the clock the code runs on rather than a busy CI
- * runner's (#1315). `exec.test.ts` pins the same calls against real process
+ * runner's. `exec.test.ts` pins the same calls against real process
  * groups, where only what gets stopped is asserted.
  *
  * The child has no pid, so `exec` signals it through `kill`, and its "group"

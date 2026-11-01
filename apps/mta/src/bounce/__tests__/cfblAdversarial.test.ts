@@ -251,7 +251,7 @@ describe('P2-7 (d) — hostile CFBL reports', () => {
 			if (attempt.kind !== 'fbl') throw new Error('expected an fbl attempt');
 			await completeComplaint(redis, attempt.dedupReservation!);
 
-			// Day 10: past the seven-day retention this store used to keep, still
+			// Day 10: past a seven-day retention for the dedup record, still
 			// well inside the 14-day token acceptance horizon. Only `Date` is faked —
 			// the timers ioredis-mock and the phase pipeline rely on stay real.
 			vi.useFakeTimers({ toFake: ['Date'] });

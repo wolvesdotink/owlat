@@ -3,7 +3,7 @@
  *
  * Wraps the native `secret_*` / `session_secret_*` Tauri commands (implemented
  * in Rust over the `keyring` crate → macOS Keychain / Windows Credential
- * Manager / Linux Secret Service). Used to store BetterAuth session blobs for
+ * Manager / Linux Secret Service). Holds the BetterAuth session blobs for
  * each workspace.
  *
  * A session entry has one writer per open window, so it carries a revision

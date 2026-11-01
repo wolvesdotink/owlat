@@ -1,6 +1,6 @@
 /**
  * The SELECTed folder's current UIDs, ascending, reused across commands and
- * connections while the folder's membership has not changed (#927).
+ * connections while the folder's membership has not changed.
  *
  * Every message-set command used to list the whole folder through
  * `listFolderUidsPage`: in a 100k-message folder, 101 queries and 100k full

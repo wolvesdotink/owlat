@@ -5,15 +5,14 @@
  *
  * WHY THIS FILE IS WRITTEN AGAINST THE QUEUE OBJECT AND NOT AGAINST REDIS
  *
- * Until now every handler here read raw Redis keys it had invented: a
- * `:pending` LIST, an `:active` SET, `LLEN` on the `:completed`/`:failed`
- * ZSETs, `GET` on the `:job:<id>` hash — under a `owlat-mta:` prefix that
- * GroupMQ never writes to, because it namespaces its own keys `groupmq:<name>`.
- * None of those structures exists. So `/stats` answered all zeros, `/pending`
- * answered an empty list, `/jobs/:id` answered 404, and the delete paths
- * answered "nothing removed" — on a queue that at one point held 6,037,170
- * delayed entries. The endpoints were not wrong about the numbers; they were
- * reading a queue that does not exist, and reporting its emptiness confidently.
+ * Raw Redis keys a handler invents for itself do not exist: a `:pending` LIST,
+ * an `:active` SET, `LLEN` on the `:completed`/`:failed` ZSETs, `GET` on the
+ * `:job:<id>` hash — under a `owlat-mta:` prefix that GroupMQ never writes to,
+ * because it namespaces its own keys `groupmq:<name>`. Handlers reading them
+ * answer all zeros for `/stats`, an empty list for `/pending`, 404 for
+ * `/jobs/:id` and "nothing removed" for the delete paths, even on a queue
+ * holding millions of delayed entries. They are not wrong about the numbers;
+ * they read a queue that does not exist, and report its emptiness confidently.
  *
  * A route layer that restates the queue's internal schema can drift from it
  * silently, and did, for the entire life of the file. So the schema is no

@@ -1,5 +1,5 @@
 /**
- * #925 regressions: delivery-log statistics and message histories must
+ * Delivery-log statistics and message histories must
  * terminate, count every retained entry exactly once, and — once a day is
  * indexed — cost a constant number of Redis commands however large the day's
  * stream is, including a day the record script trimmed to its MAXLEN.

@@ -32,7 +32,7 @@ vi.mock('node:zlib', async (importOriginal) => {
 
 const POLICY = 'version: STSv1\nmode: enforce\nmx: mx1.owlat.test\nmax_age: 604800\n';
 
-// Issue #1326: the policy host is attacker-controlled. RFC 8461 §3.3 pins the
+// The policy host is attacker-controlled. RFC 8461 §3.3 pins the
 // request to one HTTPS URL; these tests run the real request code against a
 // loopback HTTPS server with certificate checks on.
 describe('fetchStsPolicyText', () => {
