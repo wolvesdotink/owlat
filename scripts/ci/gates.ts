@@ -209,7 +209,6 @@ export const ROOT_GATES: readonly RootGate[] = [
 		paths: [
 			'{apps,packages}/**/*.{ts,vue}',
 			'scripts/check-file-size.sh',
-			'scripts/file-size-baseline.txt',
 			RATCHET,
 		],
 	},
