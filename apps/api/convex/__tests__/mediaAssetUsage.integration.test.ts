@@ -6,7 +6,7 @@ import { createTestEmailTemplate, createTestTransactionalEmail } from './factori
 import type { Id } from '../_generated/dataModel';
 
 /**
- * mediaAssets.countUsage — the per-asset "used in N emails" figure the library
+ * workspaces/mediaAssets.countUsage — the per-asset "used in N emails" figure the library
  * detail panel shows. A library image carries the asset's `_storage` id in the
  * editor `content` JSON (the media picker sets ImageBlockContent.storageId), so
  * the count is an exact substring match on that opaque id.
@@ -68,7 +68,7 @@ async function insertBlock(t: ReturnType<typeof convexTest>, content: string): P
 	});
 }
 
-describe('mediaAssets.countUsage', () => {
+describe('workspaces.mediaAssets.countUsage', () => {
 	it('counts templates, transactional emails and saved blocks that reference the asset', async () => {
 		const t = convexTest(schema, modules);
 		const { assetId, storageId } = await seedAsset(t);
@@ -86,7 +86,7 @@ describe('mediaAssets.countUsage', () => {
 		await insertBlock(t, contentReferencing(storageId));
 		await insertBlock(t, JSON.stringify({ blocks: [] }));
 
-		const { count } = await t.query(api.mediaAssets.countUsage, { assetId });
+		const { count } = await t.query(api.workspaces.mediaAssets.countUsage, { assetId });
 		expect(count).toBe(4);
 	});
 
@@ -96,7 +96,7 @@ describe('mediaAssets.countUsage', () => {
 
 		await insertBlock(t, contentReferencing(storageId));
 
-		const { count } = await t.query(api.mediaAssets.countUsage, { assetId });
+		const { count } = await t.query(api.workspaces.mediaAssets.countUsage, { assetId });
 		expect(count).toBe(1);
 	});
 
@@ -112,7 +112,7 @@ describe('mediaAssets.countUsage', () => {
 			await ctx.db.insert('emailTemplates', createTestEmailTemplate({ content: contentReferencing(String(otherStorageId)) }));
 		});
 
-		const { count } = await t.query(api.mediaAssets.countUsage, { assetId });
+		const { count } = await t.query(api.workspaces.mediaAssets.countUsage, { assetId });
 		expect(count).toBe(0);
 	});
 
@@ -133,7 +133,7 @@ describe('mediaAssets.countUsage', () => {
 			return id;
 		});
 
-		const { count } = await t.query(api.mediaAssets.countUsage, { assetId: fakeId });
+		const { count } = await t.query(api.workspaces.mediaAssets.countUsage, { assetId: fakeId });
 		expect(count).toBe(0);
 	});
 });

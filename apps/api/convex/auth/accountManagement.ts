@@ -178,7 +178,7 @@ export const requestAccountDeletion = authedMutation({
 		// in-app banner is the primary cancel path, so this is best-effort
 		// (scheduled, not awaited inline).
 		const siteUrl = getOptional('SITE_URL') || 'http://localhost:3000';
-		await ctx.scheduler.runAfter(0, internal.accountDeletionEmail.sendAccountDeletionEmail, {
+		await ctx.scheduler.runAfter(0, internal.auth.accountDeletionEmail.sendAccountDeletionEmail, {
 			email: userProfile.email,
 			scheduledForDeletion: now + thirtyDaysInMs,
 			cancellationToken,

@@ -25,7 +25,7 @@ import {
  * budget for parts a later gate was always going to reject: one predicate means
  * the decision can be made BEFORE the cost is incurred, by a caller that is not
  * the one storing the file. The upload mutations (`files.library.create`,
- * `mediaAssets.create`) keep the conjunction spelled out, because each reason
+ * `workspaces.mediaAssets.create`) keep the conjunction spelled out, because each reason
  * raises its own message at the user — this one answers yes or no.
  *
  * Distinct from {@link validateFile}, which inspects BYTES (magic numbers, the

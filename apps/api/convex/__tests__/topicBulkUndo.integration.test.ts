@@ -20,7 +20,7 @@ import {
 import { expectScheduledFailure } from './helpers/scheduledFailures';
 
 beforeEach(() => {
-	expectScheduledFailure('confirmationEmail:sendConfirmationEmail');
+	expectScheduledFailure('contacts/confirmationEmail:sendConfirmationEmail');
 });
 
 vi.mock('../lib/sessionOrganization', async () => {

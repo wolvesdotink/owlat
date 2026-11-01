@@ -281,7 +281,7 @@ export const registerFetchedImage = internalMutation({
 			storageId: args.storageId,
 			resourceKey: `mediaAssets:${mediaAssetId}`,
 		});
-		await ctx.scheduler.runAfter(0, internal.mediaAssets.scanAssetBytes, {
+		await ctx.scheduler.runAfter(0, internal.workspaces.mediaAssetScan.scanAssetBytes, {
 			assetId: mediaAssetId,
 			storageId: args.storageId,
 		});

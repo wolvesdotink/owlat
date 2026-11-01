@@ -48,7 +48,7 @@ describe('authoritative upload size admission', () => {
 			const bind = (storageId: Id<'_storage'>, fileSize = 1) => {
 				const args = { storageId, filename: 'file.txt', mimeType: 'text/plain', fileSize };
 				if (kind === 'chat') return t.mutation(api.chat.attachments.registerAttachment, args);
-				if (kind === 'media') return t.mutation(api.mediaAssets.create, args);
+				if (kind === 'media') return t.mutation(api.workspaces.mediaAssets.create, args);
 				return t.mutation(api.files.library.create, { ...args, sourceType: 'upload' });
 			};
 			await expect(bind(await upload(t, kind === 'chat' ? 17 : 33))).rejects.toThrow(/limit/);

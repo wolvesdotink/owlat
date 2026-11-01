@@ -34,7 +34,7 @@ export interface UploadImageDeps extends MediaAssetReferenceDeps {
 
 /**
  * Build the `uploadImage` handler the EmailBuilder injects:
- * `generateUploadUrl` → POST the file → measure dimensions → `mediaAssets.create`
+ * `generateUploadUrl` → POST the file → measure dimensions → `workspaces/mediaAssets.create`
  * → `storage/files.getUrl`. Every uploaded image is auto-registered to the media
  * library (the easy-to-miss side effect). The whole pipeline is one save, so it
  * holds any slow-save episode open until the image is registered.
@@ -121,7 +121,7 @@ export function provideEmailEditorHandlers() {
 	const { run: generateUploadUrl } = useBackendOperation(api.storage.files.generateUploadUrl, {
 		label: () => t('shared.useEmailEditorBridge.getUploadUrlOperation'),
 	});
-	const { run: createMediaAsset } = useBackendOperation(api.mediaAssets.create, {
+	const { run: createMediaAsset } = useBackendOperation(api.workspaces.mediaAssets.create, {
 		label: () => t('shared.useEmailEditorBridge.saveMediaAssetOperation'),
 	});
 	const { run: createEmailBlock } = useBackendOperation(api.emailBlocks.blocks.create, {

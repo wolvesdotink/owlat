@@ -307,6 +307,7 @@ import type * as auditActions_logs from '../auditActions/logs.js';
 import type * as auditLogs from '../auditLogs.js';
 import type * as auth_accessRequest from '../auth/accessRequest.js';
 import type * as auth_accountDeletion from '../auth/accountDeletion.js';
+import type * as auth_accountDeletionEmail from '../auth/accountDeletionEmail.js';
 import type * as auth_accountExport from '../auth/accountExport.js';
 import type * as auth_accountExportArtifacts from '../auth/accountExportArtifacts.js';
 import type * as auth_accountExportBookingQueries from '../auth/accountExportBookingQueries.js';
@@ -505,6 +506,8 @@ import type * as contactActivities_writer from '../contactActivities/writer.js';
 import type * as contacts_activities from '../contacts/activities.js';
 import type * as contacts_analytics from '../contacts/analytics.js';
 import type * as contacts_api from '../contacts/api.js';
+import type * as contacts_confirmationEmail from '../contacts/confirmationEmail.js';
+import type * as contacts_confirmationEmailQueries from '../contacts/confirmationEmailQueries.js';
 import type * as contacts_contactEdit from '../contacts/contactEdit.js';
 import type * as contacts_contacts from '../contacts/contacts.js';
 import type * as contacts_countReconcile from '../contacts/countReconcile.js';
@@ -1914,6 +1917,8 @@ import type * as workspaces_deletion_steps_teamReplies from '../workspaces/delet
 import type * as workspaces_deletion_steps_transactionalSends from '../workspaces/deletion/steps/transactionalSends.js';
 import type * as workspaces_deletion_walker from '../workspaces/deletion/walker.js';
 import type * as workspaces_featureFlags from '../workspaces/featureFlags.js';
+import type * as workspaces_mediaAssets from '../workspaces/mediaAssets.js';
+import type * as workspaces_mediaAssetScan from '../workspaces/mediaAssetScan.js';
 import type * as workspaces_settings from '../workspaces/settings.js';
 import type * as auth_erasure_arrivalRelations from '../auth/erasure/arrivalRelations.js';
 import type * as lib_validators_arrival from '../lib/validators/arrival.js';
@@ -2176,6 +2181,7 @@ declare const fullApi: ApiFromModules<{
 }> & ApiFromModules<{
 	'auth/accessRequest': typeof auth_accessRequest;
 	'auth/accountDeletion': typeof auth_accountDeletion;
+	'auth/accountDeletionEmail': typeof auth_accountDeletionEmail;
 	'auth/accountExport': typeof auth_accountExport;
 	'auth/accountExportArtifacts': typeof auth_accountExportArtifacts;
 	'auth/accountExportBookingQueries': typeof auth_accountExportBookingQueries;
@@ -2383,6 +2389,8 @@ declare const fullApi: ApiFromModules<{
 	'contacts/activities': typeof contacts_activities;
 	'contacts/analytics': typeof contacts_analytics;
 	'contacts/api': typeof contacts_api;
+	'contacts/confirmationEmail': typeof contacts_confirmationEmail;
+	'contacts/confirmationEmailQueries': typeof contacts_confirmationEmailQueries;
 	'contacts/contactEdit': typeof contacts_contactEdit;
 	'contacts/contacts': typeof contacts_contacts;
 	'contacts/countReconcile': typeof contacts_countReconcile;
@@ -4029,6 +4037,8 @@ declare const fullApi: ApiFromModules<{
 	'workspaces/deletion/steps/transactionalSends': typeof workspaces_deletion_steps_transactionalSends;
 	'workspaces/deletion/walker': typeof workspaces_deletion_walker;
 	'workspaces/featureFlags': typeof workspaces_featureFlags;
+	'workspaces/mediaAssets': typeof workspaces_mediaAssets;
+	'workspaces/mediaAssetScan': typeof workspaces_mediaAssetScan;
 	'workspaces/settings': typeof workspaces_settings;
 }>;
 

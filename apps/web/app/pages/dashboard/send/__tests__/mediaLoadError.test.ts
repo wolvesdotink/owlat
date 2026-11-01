@@ -86,7 +86,7 @@ describe('media library read state', () => {
 	});
 
 	it('shows a failed read with Try again instead of the empty state (#721)', async () => {
-		assetsError = new Error('[CONVEX Q(mediaAssets:list)] [Request ID: 1] Server Error');
+		assetsError = new Error('[CONVEX Q(workspaces/mediaAssets:list)] [Request ID: 1] Server Error');
 		const wrapper = render();
 
 		expect(wrapper.find('[data-stub="empty"]').exists()).toBe(false);

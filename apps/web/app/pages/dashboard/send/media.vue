@@ -92,7 +92,7 @@ const openDetail = (asset: (typeof assets.value)[0]) => {
 
 // How many templates / transactional emails reference the open asset. Reactive
 // one-shot query, skipped until a detail asset is selected.
-const { data: usage } = useConvexQuery(api.mediaAssets.countUsage, () =>
+const { data: usage } = useConvexQuery(api.workspaces.mediaAssets.countUsage, () =>
 	detailAsset.value ? { assetId: detailAsset.value._id } : 'skip'
 );
 const usageCount = computed(() => usage.value?.count ?? null);

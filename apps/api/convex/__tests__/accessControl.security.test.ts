@@ -77,7 +77,7 @@ describe('access control — unauthenticated callers are rejected', () => {
 			{},
 		],
 		['segments.segments.list', api.segments.segments.list, PAGE],
-		['mediaAssets.list', api.mediaAssets.list, PAGE],
+		['workspaces.mediaAssets.list', api.workspaces.mediaAssets.list, PAGE],
 		['campaigns.campaigns.list', api.campaigns.campaigns.list, PAGE],
 		['emailTemplates.emails.list', api.emailTemplates.emails.list, PAGE],
 		['transactional.emails.list', api.transactional.emails.list, {}],

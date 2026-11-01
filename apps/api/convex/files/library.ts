@@ -133,7 +133,7 @@ export async function createLibraryFile(
 	);
 
 	// Security: validate file type before storing the record, matching the
-	// media library (mediaAssets.create). The knowledge base accepts
+	// media library (workspaces/mediaAssets.create). The knowledge base accepts
 	// documents, so the scanner default policy applies as-is.
 	const doubleExt = detectDoubleExtension(args.filename);
 	if (doubleExt.detected && doubleExt.executableExtension) {

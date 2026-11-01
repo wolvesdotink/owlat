@@ -64,7 +64,7 @@ export const MAX_AI_INGEST_ATTACHMENT_BYTES = 4 * 1024 * 1024;
 /**
  * Max size of a single file uploaded into the file library / media library, in
  * bytes — the ceiling shared by the upload modal copy, the client-side upload
- * guard, and the server-side `files.library.create` / `mediaAssets.create`
+ * guard, and the server-side `files.library.create` / `workspaces.mediaAssets.create`
  * checks, so the advertised limit can never diverge from what is enforced.
  */
 export const MAX_LIBRARY_FILE_BYTES = 50 * 1024 * 1024;

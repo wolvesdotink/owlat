@@ -38,7 +38,7 @@ const handleDeleteAccount = async () => {
 	if (!result.ok) return;
 
 	// The backend requestAccountDeletion mutation schedules the confirmation
-	// email (internal.accountDeletionEmail.sendAccountDeletionEmail) before it
+	// email (internal.auth.accountDeletionEmail.sendAccountDeletionEmail) before it
 	// returns, so the copy below can promise it.
 	showNotification(t('dashboard.preferences.account.deletionRequested'));
 	open.value = false;
