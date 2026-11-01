@@ -74,7 +74,7 @@ export const BACKFILL_READ_BUDGET_DOCS = 5_000;
  * to `MAX_ACTIVITIES_PER_RECOMPUTE` activity rows each. 9 x 501 = 4,509 reads
  * worst case, comfortably inside the budget above. This lands on the same order
  * as the repo's other crons with a per-item sub-scan (`checklistSweepState.ts`
- * uses 5, `segments.ts` uses 10) — deliberately small, because the cost of a
+ * uses 5, `segments/countRefresh.ts` uses 10) — deliberately small, because the cost of a
  * batch is set by the heaviest contact in it, not the average one.
  */
 export const BACKFILL_BATCH_SIZE = Math.max(

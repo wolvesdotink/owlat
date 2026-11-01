@@ -289,4 +289,34 @@ export const PREVIOUS_RELEASE_ENTRIES: Readonly<Record<string, string>> = {
 		'the previous upload surfaces (editor images, media library, attachments, Files, mail compose, archive import, workspace logo), in tabs opened before the deploy',
 	'storage.ts#getUrl':
 		'the previous editor image upload, media picker and attachment panel, in tabs opened before the deploy',
+	// Segments and the blocklist moved to segments/segments.ts,
+	// blockedEmails/blocklist.ts and blockedEmails/events.ts; remove after
+	// release 0.6.17.
+	'segments.ts#get': 'the previous segment detail page, in tabs opened before the deploy',
+	'segments.ts#list':
+		'the previous segment list and campaign audience picker, in tabs opened before the deploy',
+	'segments.ts#listMembers': 'the previous segment detail page, in tabs opened before the deploy',
+	'segments.ts#listMembersForExport':
+		'the previous segment detail page export, in tabs opened before the deploy',
+	'segments.ts#create': 'the previous segment builder, in tabs opened before the deploy',
+	'segments.ts#update': 'the previous segment builder, in tabs opened before the deploy',
+	'segments.ts#remove': 'the previous segment builder, in tabs opened before the deploy',
+	'segments.ts#countMatchingContacts':
+		'the previous segment builder audience estimate, in tabs opened before the deploy',
+	'segments.ts#getInternal': 'old segment member exports mid-run',
+	'segments.ts#listMembersPage': 'old segment member exports mid-run',
+	'segments.ts#countMatchingContactsPage': 'old segment builder audience estimates mid-run',
+	'blockedEmails.ts#listByTeam': 'the previous Suppressions page, in tabs opened before the deploy',
+	'blockedEmails.ts#listProviderProvenance':
+		'the previous Suppressions page, in tabs opened before the deploy',
+	'blockedEmails.ts#getByEmail': 'the previous contact page, in tabs opened before the deploy',
+	'blockedEmails.ts#add': 'the previous Suppressions page, in tabs opened before the deploy',
+	'blockedEmails.ts#remove':
+		'the previous Suppressions and contact pages, in tabs opened before the deploy',
+	'blockedEmails.ts#bulkAdd':
+		'the previous Suppressions page import, in tabs opened before the deploy',
+	'blockedEmails.ts#getCountsByReason':
+		'the previous Suppressions page and delivery overview, in tabs opened before the deploy',
+	'blockedEmails.ts#addFromEvent':
+		'old complaint and provider suppression webhook runs and suppression imports mid-run',
 };

@@ -14,7 +14,7 @@
  * `providers/mailchimp/index.ts` maps member status), and the actual writes are
  * delegated, unconditionally, to the two mutations that already own them:
  *
- *  - `blockedEmails.addFromEvent` — THE suppression writer. Per-address
+ *  - `blockedEmails/events.addFromEvent` — THE suppression writer. Per-address
  *    idempotent, mirrors to the MTA's Redis backstop, and emits the
  *    `blocklist.provider_suppressed` provenance entry that makes the address
  *    read as "carried over from Mandrill" on the suppression screen. A second
@@ -143,7 +143,7 @@ export const applySuppressionBatch = internalMutation({
 			} else if (entry.reason === 'complained') counts.complained++;
 			else counts.manual++;
 
-			await ctx.runMutation(internal.blockedEmails.addFromEvent, {
+			await ctx.runMutation(internal.blockedEmails.events.addFromEvent, {
 				email,
 				reason: entry.reason,
 				...(entry.reason === 'bounced'

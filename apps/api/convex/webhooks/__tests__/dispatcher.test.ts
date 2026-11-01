@@ -354,7 +354,7 @@ describe('dispatchInboundEvent — Send-lifecycle email events', () => {
 		expect(transition.to).not.toBe('bounced');
 	});
 
-	it('email.failed never suppresses the recipient (no blockedEmails.addFromEvent)', async () => {
+	it('email.failed never suppresses the recipient (no blockedEmails.events.addFromEvent)', async () => {
 		const { ctx, runMutationCalls } = makeCtx();
 		const event: InboundEvent = {
 			kind: 'email.failed',
@@ -370,9 +370,9 @@ describe('dispatchInboundEvent — Send-lifecycle email events', () => {
 		// blocklist mutation a bounce/complaint would trigger.
 		expect(runMutationCalls).toHaveLength(1);
 		expect(runMutationCalls[0]?.ref).toBe(SEND_LIFECYCLE);
-		expect(runMutationCalls.some((c) => c.ref === ref(internal.blockedEmails.addFromEvent))).toBe(
-			false
-		);
+		expect(
+			runMutationCalls.some((c) => c.ref === ref(internal.blockedEmails.events.addFromEvent))
+		).toBe(false);
 	});
 
 	it('routes email.complained to sendLifecycle with a "complained" transition', async () => {
@@ -397,7 +397,7 @@ describe('dispatchInboundEvent — Send-lifecycle email events', () => {
 	// still carries the recipient (RFC 5965 §3.2). An attributed one is
 	// suppressed by email directly, never routed through the send lifecycle (no
 	// send to transition).
-	it('routes an attributed recipient-only email.complained to blockedEmails.addFromEvent', async () => {
+	it('routes an attributed recipient-only email.complained to blockedEmails.events.addFromEvent', async () => {
 		const { ctx, runMutationCalls } = makeCtx();
 		const event: InboundEvent = {
 			kind: 'email.complained',
@@ -410,7 +410,7 @@ describe('dispatchInboundEvent — Send-lifecycle email events', () => {
 		await dispatchInboundEvent(ctx, event);
 
 		expect(runMutationCalls).toHaveLength(1);
-		expect(runMutationCalls[0]?.ref).toBe(ref(internal.blockedEmails.addFromEvent));
+		expect(runMutationCalls[0]?.ref).toBe(ref(internal.blockedEmails.events.addFromEvent));
 		expect(runMutationCalls[0]?.ref).not.toBe(SEND_LIFECYCLE);
 		expect(runMutationCalls[0]?.args).toEqual({
 			email: 'victim@example.com',
@@ -1249,7 +1249,7 @@ describe('dispatchInboundEvent — complaint whose Message-ID matches no send', 
 
 		expect(calls.map((c) => c.ref)).toEqual([
 			ref(internal.delivery.sendLifecycle.transitionMtaByProviderMessageId),
-			ref(internal.blockedEmails.addFromEvent),
+			ref(internal.blockedEmails.events.addFromEvent),
 			ref(internal.webhooks.unresolvedFeedback.record),
 		]);
 		expect(calls[1]?.args).toEqual({ email: 'complainer@example.com', reason: 'complained' });
@@ -1293,7 +1293,9 @@ describe('dispatchInboundEvent — complaint whose Message-ID matches no send', 
 			deliveryDomain: 'member_test',
 			at: 4000,
 		});
-		expect(preview.map((c) => c.ref)).not.toContain(ref(internal.blockedEmails.addFromEvent));
+		expect(preview.map((c) => c.ref)).not.toContain(
+			ref(internal.blockedEmails.events.addFromEvent)
+		);
 		expect(preview[preview.length - 1]).toEqual({
 			ref: ref(internal.webhooks.unresolvedFeedback.record),
 			args: expect.objectContaining({ suppression: 'unattributed', deliveryDomain: 'member_test' }),
@@ -1425,7 +1427,7 @@ describe('dispatchInboundEvent — unknown event kinds', () => {
  */
 describe('dispatchInboundEvent — Yahoo CFL report observation', () => {
 	const OBSERVE = ref(internal.domains.yahooCfl.observeReport);
-	const SUPPRESS = ref(internal.blockedEmails.addFromEvent);
+	const SUPPRESS = ref(internal.blockedEmails.events.addFromEvent);
 	const TRANSITION = ref(internal.delivery.sendLifecycle.transitionByProviderMessageId);
 
 	// The file-level beforeEach re-spies console.warn but does not reset its

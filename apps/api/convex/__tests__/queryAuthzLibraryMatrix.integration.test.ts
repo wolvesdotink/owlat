@@ -221,8 +221,8 @@ const ROWS: Record<string, MatrixRow<LibrarySeed>> = {
 	'mediaAssets.getStats': member(api.mediaAssets.getStats),
 	'mediaAssets.list': member(api.mediaAssets.list, () => page),
 	'mediaAssets.listTags': member(api.mediaAssets.listTags),
-	'segments.get': member(api.segments.get, (s) => ({ id: s.segmentId })),
-	'segments.list': member(api.segments.list, () => page),
+	'segments.segments.get': member(api.segments.segments.get, (s) => ({ id: s.segmentId })),
+	'segments.segments.list': member(api.segments.segments.list, () => page),
 	'storage.files.getUrl': member(api.storage.files.getUrl, (s) => ({ storageId: s.storageId })),
 	'topics.topics.get': member(api.topics.topics.get, (s) => ({ topicId: s.topicId })),
 	'topics.topics.getContactInTopicDetails': member(

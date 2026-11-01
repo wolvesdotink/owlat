@@ -46,7 +46,7 @@
  * whatever the Send's state, so a replay could undo an operator's unblock or a
  * contact's re-subscribe. For `reject`, `unsub` and `spam`:
  *  - the host refuses a re-add older than an operator's removal
- *    (`blockedEmails.addFromEvent`) and an unsubscribe older than a re-subscribe
+ *    (`blockedEmails/events.addFromEvent`) and an unsubscribe older than a re-subscribe
  *    (`processUnsubscribeByEmail`), at any event age. That is the protection;
  *  - an event younger than `INBOUND_REPLAY_WINDOW_MS` (7 days) carries a
  *    `replayKey` (`msg._id`, event name, `ts`; no address) that the dispatcher

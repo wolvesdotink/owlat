@@ -6,7 +6,7 @@
  * tally cannot be computed inside one transaction once that population grows
  * past the Convex per-execution read limit. Each execution scans one budgeted
  * slice, carries the running tally in its own arguments, and reschedules itself
- * until the walk is done — the same shape `segments.countMatchingContacts` uses
+ * until the walk is done — the same shape `segments/segments.countMatchingContacts` uses
  * for the builder preview, minus the action (a cron entry point is a mutation).
  */
 

@@ -15,13 +15,13 @@ export function useSegmentForm() {
 
 	// ─── Mutations ─────────────────────────────────────────────────────
 
-	const { run: createSegment } = useBackendOperation(api.segments.create, {
+	const { run: createSegment } = useBackendOperation(api.segments.segments.create, {
 		label: () => t('shared.useSegmentForm.createSegment'),
 	});
-	const { run: updateSegment } = useBackendOperation(api.segments.update, {
+	const { run: updateSegment } = useBackendOperation(api.segments.segments.update, {
 		label: () => t('shared.useSegmentForm.updateSegment'),
 	});
-	const { run: deleteSegment } = useBackendOperation(api.segments.remove, {
+	const { run: deleteSegment } = useBackendOperation(api.segments.segments.remove, {
 		label: () => t('shared.useSegmentForm.deleteSegment'),
 	});
 
@@ -70,7 +70,7 @@ export function useSegmentForm() {
 
 	const matchingCount = ref<number | null>(null);
 	const { run: estimateAudience, isLoading: countLoading } = useBackendOperation(
-		api.segments.countMatchingContacts,
+		api.segments.segments.countMatchingContacts,
 		{ label: () => t('shared.useSegmentForm.estimateAudience'), type: 'action' }
 	);
 	let countTimer: ReturnType<typeof setTimeout> | null = null;

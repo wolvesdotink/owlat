@@ -47,7 +47,9 @@ export function useCampaignAudience() {
 		results: segments,
 		error: segmentsError,
 		refetch: refetchSegments,
-	} = useOrganizationPaginatedQuery(api.segments.list, undefined, { initialNumItems: 100 });
+	} = useOrganizationPaginatedQuery(api.segments.segments.list, undefined, {
+		initialNumItems: 100,
+	});
 
 	const audienceLoadFailed = computed(() => !!topicsError.value || !!segmentsError.value);
 	function retryAudienceLists() {

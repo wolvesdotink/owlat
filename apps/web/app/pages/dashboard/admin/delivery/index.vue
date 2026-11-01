@@ -72,7 +72,9 @@ const {
 } = useOrganizationQuery(api.analytics.reputationSnapshots.getDeliverySnapshots);
 
 // Suppression roll-up (bounced/complained/manual/unengaged) for the summary line.
-const { data: suppressionCounts } = useOrganizationQuery(api.blockedEmails.getCountsByReason);
+const { data: suppressionCounts } = useOrganizationQuery(
+	api.blockedEmails.blocklist.getCountsByReason
+);
 
 // Bounces and complaints whose message id matched no send (#1194), last 30 days.
 const { data: unresolvedFeedback } = useOrganizationQuery(

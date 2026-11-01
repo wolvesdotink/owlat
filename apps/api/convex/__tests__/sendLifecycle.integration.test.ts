@@ -1032,11 +1032,11 @@ describe('sendLifecycle.transition — complained', () => {
 	// recoverable Message-ID — e.g. Gmail FBL redaction), the complaint still
 	// has to land the recipient on the blocklist. The MTA → webhook path emits
 	// a recipient-only complained event that the dispatcher routes straight to
-	// blockedEmails.addFromEvent. This integration test asserts the row lands.
+	// blockedEmails.events.addFromEvent. This integration test asserts the row lands.
 	it('recipient-only complaint inserts a blockedEmails row with reason "complained"', async () => {
 		const t = convexTest(schema, modules);
 
-		await t.mutation(internal.blockedEmails.addFromEvent, {
+		await t.mutation(internal.blockedEmails.events.addFromEvent, {
 			email: 'Victim@Example.com',
 			reason: 'complained',
 		});
@@ -1059,11 +1059,11 @@ describe('sendLifecycle.transition — complained', () => {
 	it('recipient-only complaint is idempotent (no duplicate blocklist row)', async () => {
 		const t = convexTest(schema, modules);
 
-		const first = await t.mutation(internal.blockedEmails.addFromEvent, {
+		const first = await t.mutation(internal.blockedEmails.events.addFromEvent, {
 			email: 'dup@example.com',
 			reason: 'complained',
 		});
-		const second = await t.mutation(internal.blockedEmails.addFromEvent, {
+		const second = await t.mutation(internal.blockedEmails.events.addFromEvent, {
 			email: 'dup@example.com',
 			reason: 'complained',
 		});

@@ -10,7 +10,7 @@ definePageMeta({ layout: 'dashboard', middleware: 'auth' });
 // ─── Organization & Data ───────────────────────────────────────────────
 const { hasActiveOrganization, isLoading: organizationLoading } = useOrganizationContext();
 // Creating, editing and deleting a segment all require `segments:manage`
-// (owner/admin) on the backend — `apps/api/convex/segments.ts`. The list itself
+// (owner/admin) on the backend — `apps/api/convex/segments/segments.ts`. The list itself
 // is readable by every member, so only the write actions come off for an
 // editor, with a line saying why rather than a silent absence.
 const { can, showGateFor } = usePermissions();
@@ -24,7 +24,7 @@ const {
 	error: segmentsError,
 	refetch: refetchSegments,
 } = useLoadAllPages(
-	useOrganizationPaginatedQuery(api.segments.list, undefined, { initialNumItems: 100 }),
+	useOrganizationPaginatedQuery(api.segments.segments.list, undefined, { initialNumItems: 100 }),
 	100
 );
 const { results: topics } = useTopicsList();

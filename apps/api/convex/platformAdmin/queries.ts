@@ -75,7 +75,7 @@ export const getOrganizationDetail = platformAdminQuery({
 		const scanResults = await ctx.db.query('contentScanResults').order('desc').take(20);
 
 		// Blocked-email counts, capped per reason: the same helper the operator
-		// counter (`blockedEmails.getCountsByReason`) reads.
+		// counter (`blockedEmails/blocklist.getCountsByReason`) reads.
 		const blockedCounts = await countBlockedByReason(ctx);
 
 		// Get recent campaigns

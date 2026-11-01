@@ -41,12 +41,12 @@ const identity = {
 };
 
 const provenance = (t: ReturnType<typeof convexTest>) =>
-	t.withIdentity(identity).query(api.blockedEmails.listProviderProvenance, {});
+	t.withIdentity(identity).query(api.blockedEmails.blocklist.listProviderProvenance, {});
 
-describe('blockedEmails.listProviderProvenance', () => {
+describe('blockedEmails.blocklist.listProviderProvenance', () => {
 	it('keys each entry to the blocklist row it explains', async () => {
 		const t = convexTest(schema, modules);
-		const blockedId = await t.mutation(internal.blockedEmails.addFromEvent, {
+		const blockedId = await t.mutation(internal.blockedEmails.events.addFromEvent, {
 			email: 'rejected@example.com',
 			reason: 'manual',
 			provenance: {
@@ -69,7 +69,7 @@ describe('blockedEmails.listProviderProvenance', () => {
 
 	it('says nothing about a suppression a person actually made', async () => {
 		const t = convexTest(schema, modules);
-		await t.mutation(internal.blockedEmails.addFromEvent, {
+		await t.mutation(internal.blockedEmails.events.addFromEvent, {
 			email: 'typed-in@example.com',
 			reason: 'manual',
 		});
@@ -79,7 +79,7 @@ describe('blockedEmails.listProviderProvenance', () => {
 
 	it('carries a carry-over import apart from ongoing webhook feedback', async () => {
 		const t = convexTest(schema, modules);
-		await t.mutation(internal.blockedEmails.addFromEvent, {
+		await t.mutation(internal.blockedEmails.events.addFromEvent, {
 			email: 'imported@example.com',
 			reason: 'complained',
 			provenance: { provider: 'mandrill', source: 'import' },
@@ -101,8 +101,8 @@ describe('blockedEmails.listProviderProvenance', () => {
 			bounceType: 'hard' as const,
 			provenance: { provider: 'mandrill', source: 'webhook' as const, evidence: 'X' },
 		};
-		await t.mutation(internal.blockedEmails.addFromEvent, args);
-		await t.mutation(internal.blockedEmails.addFromEvent, args);
+		await t.mutation(internal.blockedEmails.events.addFromEvent, args);
+		await t.mutation(internal.blockedEmails.events.addFromEvent, args);
 
 		expect(await provenance(t)).toHaveLength(1);
 	});

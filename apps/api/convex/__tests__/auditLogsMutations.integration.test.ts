@@ -1,9 +1,9 @@
 /**
  * Audit-trail coverage for primary-table mutations that previously emitted no
  * audit log while their catalog literals sat dead (DX audit item `audit-logs`):
- *   - segments.create               → `segment.created`
+ *   - segments.segments.create            → `segment.created`
  *   - webhooks.endpoints.regenerateSecret → `webhook.secret_rotated`
- *   - blockedEmails.add             → `blocklist.added`
+ *   - blockedEmails.blocklist.add         → `blocklist.added`
  *
  * Each case asserts that exactly one audit row is written with the correct
  * action literal + resource + acting userId. These three are representative of
@@ -25,40 +25,29 @@ vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
 	return {
 		...actual,
-		requireOrgMember: vi
-			.fn()
-			.mockResolvedValue({ userId: 'audit-user', role: 'owner' }),
+		requireOrgMember: vi.fn().mockResolvedValue({ userId: 'audit-user', role: 'owner' }),
 		isActiveOrgMember: vi.fn().mockResolvedValue(true),
 		getUserIdFromSession: vi.fn().mockResolvedValue('audit-user'),
-		getMutationContext: vi
-			.fn()
-			.mockResolvedValue({ userId: 'audit-user', role: 'owner' }),
-		requireOrgPermission: vi
-			.fn()
-			.mockResolvedValue({ userId: 'audit-user', role: 'owner' }),
+		getMutationContext: vi.fn().mockResolvedValue({ userId: 'audit-user', role: 'owner' }),
+		requireOrgPermission: vi.fn().mockResolvedValue({ userId: 'audit-user', role: 'owner' }),
 	};
 });
 
 const allModules = import.meta.glob('../**/*.*s');
 const modules = Object.fromEntries(
-	Object.entries(allModules).filter(([path]) => !path.includes('sesActions')),
+	Object.entries(allModules).filter(([path]) => !path.includes('sesActions'))
 );
 
-const auditRowsFor = async (
-	t: TestConvex<typeof schema>,
-	resourceId: string,
-) =>
+const auditRowsFor = async (t: TestConvex<typeof schema>, resourceId: string) =>
 	t.run(async (ctx) =>
-		(await ctx.db.query('auditLogs').collect()).filter(
-			(l) => l.resourceId === resourceId,
-		),
+		(await ctx.db.query('auditLogs').collect()).filter((l) => l.resourceId === resourceId)
 	);
 
 describe('audit logs — primary-table mutations', () => {
-	it('segments.create emits segment.created', async () => {
+	it('segments.segments.create emits segment.created', async () => {
 		const t = convexTest(schema, modules);
 
-		const segmentId = await t.mutation(api.segments.create, {
+		const segmentId = await t.mutation(api.segments.segments.create, {
 			name: 'Active subscribers',
 			filters: { logic: 'AND', conditions: [] },
 		});
@@ -80,10 +69,9 @@ describe('audit logs — primary-table mutations', () => {
 			events: ['email.sent'],
 		});
 
-		const { secret: rotatedSecret } = await t.mutation(
-			api.webhooks.endpoints.regenerateSecret,
-			{ webhookId: created.webhookId },
-		);
+		const { secret: rotatedSecret } = await t.mutation(api.webhooks.endpoints.regenerateSecret, {
+			webhookId: created.webhookId,
+		});
 
 		// The new secret differs from the original (rotation actually happened).
 		expect(rotatedSecret).not.toBe(created.secret);
@@ -96,10 +84,10 @@ describe('audit logs — primary-table mutations', () => {
 		expect(rotation[0]!.details).toMatchObject({ name: 'Ops hook' });
 	});
 
-	it('blockedEmails.add emits blocklist.added', async () => {
+	it('blockedEmails.blocklist.add emits blocklist.added', async () => {
 		const t = convexTest(schema, modules);
 
-		const blockedEmailId = await t.mutation(api.blockedEmails.add, {
+		const blockedEmailId = await t.mutation(api.blockedEmails.blocklist.add, {
 			email: 'Spammer@Example.com',
 			reason: 'manual',
 		});

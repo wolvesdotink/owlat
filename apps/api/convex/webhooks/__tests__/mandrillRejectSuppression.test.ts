@@ -17,7 +17,7 @@
  *
  * Two halves, because the seam has two: the DISPOSITION (which reject reason
  * means what, proven through the real adapter mapping and the real dispatch
- * table) and the WRITER (`blockedEmails.addFromEvent`'s dedupe, mirror and
+ * table) and the WRITER (`blockedEmails.events.addFromEvent`'s dedupe, mirror and
  * audit behaviour, proven against a real database).
  *
  * THE DISPOSITION HALF IS ALSO A PARITY SUITE. The policy splits across the
@@ -62,7 +62,7 @@ function rejectEvent(rejectReason: string | undefined, email: string | null = RE
 
 /** Every call the dispatcher made to the blocklist writer. */
 const suppressions = (calls: readonly RunMutationCall[]) =>
-	calls.filter((call) => call.name === fnName(internal.blockedEmails.addFromEvent));
+	calls.filter((call) => call.name === fnName(internal.blockedEmails.events.addFromEvent));
 
 const unsubscribes = (calls: readonly RunMutationCall[]) =>
 	calls.filter(
@@ -209,7 +209,7 @@ describe('which reject reasons are recipient truths', () => {
 		// Inside the replay claim the reject is applied under.
 		expect(calls.map((call) => call.name)).toEqual([
 			fnName(internal.webhooks.inboundEventClaims.claim),
-			fnName(internal.blockedEmails.addFromEvent),
+			fnName(internal.blockedEmails.events.addFromEvent),
 			fnName(internal.delivery.sendLifecycle.transitionByProviderMessageId),
 			fnName(internal.webhooks.inboundEventClaims.complete),
 		]);
@@ -225,7 +225,7 @@ describe('the shared suppression writer', () => {
 		t: ReturnType<typeof convexTest>,
 		args: Record<string, unknown> = {}
 	): Promise<void> => {
-		await t.mutation(internal.blockedEmails.addFromEvent, {
+		await t.mutation(internal.blockedEmails.events.addFromEvent, {
 			email: RECIPIENT,
 			reason: 'bounced',
 			bounceType: 'hard',
@@ -323,7 +323,7 @@ describe('the shared suppression writer', () => {
 	// before this piece — a row and a mirror, and nothing in the audit trail.
 	it('leaves a caller that names no provenance exactly as it was', async () => {
 		const t = convexTest(schema, modules);
-		await t.mutation(internal.blockedEmails.addFromEvent, {
+		await t.mutation(internal.blockedEmails.events.addFromEvent, {
 			email: RECIPIENT,
 			reason: 'complained',
 		});

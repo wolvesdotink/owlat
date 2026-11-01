@@ -198,7 +198,7 @@ describe('platformAdmin.getOrganizationDetail', () => {
 		});
 
 		const detail = await t.query(api.platformAdmin.queries.getOrganizationDetail, {});
-		const operatorCounts = await t.query(api.blockedEmails.getCountsByReason, {});
+		const operatorCounts = await t.query(api.blockedEmails.blocklist.getCountsByReason, {});
 		expect(detail?.blockedCounts).toEqual({
 			total: 4,
 			bounced: 1,

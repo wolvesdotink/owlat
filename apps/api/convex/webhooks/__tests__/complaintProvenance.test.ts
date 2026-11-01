@@ -43,7 +43,7 @@ import type { InboundEvent } from '../types';
 import type { ActionCtx } from '../../_generated/server';
 
 const ref = (r: unknown): string => `${r as string}`;
-const BLOCKLIST = ref(internal.blockedEmails.addFromEvent);
+const BLOCKLIST = ref(internal.blockedEmails.events.addFromEvent);
 const RECORD = ref(internal.webhooks.unresolvedFeedback.record);
 const ADDRESS = 'victim@example.com';
 

@@ -106,7 +106,7 @@ export interface ProviderSuppression {
  * batches by hand and documents no limit on their age, so there is no age past
  * which a genuine delivery is impossible. It is applied without a key, and what
  * protects an operator's decision from it is the event-time guards
- * (`blockedEmails.addFromEvent`, `processUnsubscribeByEmail`), which hold at any
+ * (`blockedEmails/events.addFromEvent`, `processUnsubscribeByEmail`), which hold at any
  * age. Seven days covers Mandrill's automatic retries (about eight hours) many
  * times over and a week of manual recovery, at the cost of a week of keys.
  */

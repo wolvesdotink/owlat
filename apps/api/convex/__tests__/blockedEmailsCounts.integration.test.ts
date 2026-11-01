@@ -70,12 +70,14 @@ describe('countBlockedByReason', () => {
 		expect(counts.total).toBe(BLOCKLIST_VIEW_LIMIT + 1);
 	});
 
-	it('is what blockedEmails.getCountsByReason returns', async () => {
+	it('is what blockedEmails.blocklist.getCountsByReason returns', async () => {
 		const t = convexTest(schema, modules);
 		await seed(t, 'complained', 2);
 		await seed(t, 'unengaged', 1);
 
-		const viaQuery = await t.withIdentity(identity).query(api.blockedEmails.getCountsByReason, {});
+		const viaQuery = await t
+			.withIdentity(identity)
+			.query(api.blockedEmails.blocklist.getCountsByReason, {});
 		const direct = await t.run(async (ctx) => await countBlockedByReason(ctx));
 		expect(viaQuery).toEqual(direct);
 	});

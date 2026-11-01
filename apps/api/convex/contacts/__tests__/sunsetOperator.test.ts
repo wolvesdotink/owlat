@@ -2,7 +2,7 @@
  * THE OPERATOR SURFACE of the sunset policy (deliverability plan P4-4).
  *
  * `setSunsetPolicy` is the only control anybody has over an engine that
- * permanently stops mail to a contact, and `blockedEmails.remove` is the only
+ * permanently stops mail to a contact, and `blockedEmails.blocklist.remove` is the only
  * un-suppression control the UI actually offers — so both are covered here as
  * carefully as the decision core is.
  *
@@ -359,7 +359,7 @@ describe('listSunsetStage — the re-engagement track is addressable', () => {
 	});
 });
 
-describe('blockedEmails.remove — un-suppressing a sunset row does not undo itself', () => {
+describe('blockedEmails.blocklist.remove — un-suppressing a sunset row does not undo itself', () => {
 	async function seedSuppressed(t: Harness) {
 		return await t.run(async (ctx) => {
 			const contactId = await ctx.db.insert(
@@ -384,7 +384,7 @@ describe('blockedEmails.remove — un-suppressing a sunset row does not undo its
 		const t = harness();
 		const { contactId, blockedEmailId } = await seedSuppressed(t);
 
-		await t.withIdentity(identity).mutation(api.blockedEmails.remove, { blockedEmailId });
+		await t.withIdentity(identity).mutation(api.blockedEmails.blocklist.remove, { blockedEmailId });
 
 		await t.run(async (ctx) => {
 			expect(await ctx.db.get(blockedEmailId)).toBeNull();
@@ -415,7 +415,7 @@ describe('blockedEmails.remove — un-suppressing a sunset row does not undo its
 			return { contactId: id, blockedEmailId: blocked };
 		});
 
-		await t.withIdentity(identity).mutation(api.blockedEmails.remove, { blockedEmailId });
+		await t.withIdentity(identity).mutation(api.blockedEmails.blocklist.remove, { blockedEmailId });
 
 		await t.run(async (ctx) => {
 			expect(await ctx.db.get(blockedEmailId)).toBeNull();
@@ -439,7 +439,7 @@ describe('blockedEmails.remove — un-suppressing a sunset row does not undo its
 				})
 		);
 
-		await t.withIdentity(identity).mutation(api.blockedEmails.remove, { blockedEmailId });
+		await t.withIdentity(identity).mutation(api.blockedEmails.blocklist.remove, { blockedEmailId });
 		await t.run(async (ctx) => {
 			expect(await ctx.db.get(blockedEmailId)).toBeNull();
 		});
@@ -477,7 +477,7 @@ describe('blockedEmails.remove — un-suppressing a sunset row does not undo its
 			return { liveId: live, deletedId: deleted, blockedEmailId: blocked };
 		});
 
-		await t.withIdentity(identity).mutation(api.blockedEmails.remove, { blockedEmailId });
+		await t.withIdentity(identity).mutation(api.blockedEmails.blocklist.remove, { blockedEmailId });
 
 		await t.run(async (ctx) => {
 			expect(await ctx.db.get(blockedEmailId)).toBeNull();
@@ -495,7 +495,7 @@ describe('blockedEmails.remove — un-suppressing a sunset row does not undo its
 	});
 });
 
-describe('blockedEmails.getCountsByReason — the unengaged class is counted', () => {
+describe('blockedEmails.blocklist.getCountsByReason — the unengaged class is counted', () => {
 	it('includes sunset suppressions in the breakdown and the total', async () => {
 		const t = harness();
 		await t.run(async (ctx) => {
@@ -516,7 +516,9 @@ describe('blockedEmails.getCountsByReason — the unengaged class is counted', (
 			});
 		});
 
-		const counts = await t.withIdentity(identity).query(api.blockedEmails.getCountsByReason, {});
+		const counts = await t
+			.withIdentity(identity)
+			.query(api.blockedEmails.blocklist.getCountsByReason, {});
 		expect(counts).toMatchObject({ total: 3, bounced: 1, complained: 0, manual: 0, unengaged: 2 });
 	});
 
@@ -537,7 +539,7 @@ describe('blockedEmails.getCountsByReason — the unengaged class is counted', (
 
 		const rows = await t
 			.withIdentity(identity)
-			.query(api.blockedEmails.listByTeam, { reason: 'unengaged' });
+			.query(api.blockedEmails.blocklist.listByTeam, { reason: 'unengaged' });
 		expect(rows.map((row) => row.email)).toEqual(['b@example.com']);
 	});
 });

@@ -144,7 +144,7 @@ async function applyProviderSuppressionFact(
 		});
 		return;
 	}
-	await ctx.runMutation(internal.blockedEmails.addFromEvent, {
+	await ctx.runMutation(internal.blockedEmails.events.addFromEvent, {
 		email: recipient,
 		reason: effect.reason,
 		eventAt: at,
