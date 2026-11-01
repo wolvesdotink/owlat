@@ -1,5 +1,5 @@
 import { convexTest } from 'convex-test';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import schema from '../schema';
 import type { ActionCtx } from '../_generated/server';
 import type { Id } from '../_generated/dataModel';
@@ -18,11 +18,44 @@ const modules = import.meta.glob('../**/*.*s');
 const NOW = Date.UTC(2026, 6, 21, 12);
 const PRIMARY_DOMAIN = 'sender.example';
 
+// A complaint or bounce mirrors the address to the MTA from a scheduled
+// action. Answer that call here: a real request would resolve the `mta` host
+// on whatever network the run has, and the job would wait on it.
+beforeEach(() => {
+	vi.stubGlobal(
+		'fetch',
+		vi.fn(async () => Response.json({ ok: true }))
+	);
+});
+
 afterEach(() => {
 	vi.useRealTimers();
+	vi.unstubAllGlobals();
 });
 
 type TestHarness = ReturnType<typeof convexTest>;
+
+/**
+ * Run the scheduled work the events queued, and the work that queues, to the
+ * end. The fake clock starts each job, and awaiting convex-test's in-flight
+ * jobs then waits for its work however long that takes.
+ * `finishAllScheduledFunctions` instead gives a running job a fixed number of
+ * event-loop turns (about two seconds here), which a job that loads its module
+ * cold on a loaded runner can outlast.
+ */
+async function runScheduledWork(t: TestHarness): Promise<void> {
+	for (let round = 0; round < 10; round++) {
+		vi.runAllTimers();
+		await t.finishInProgressScheduledFunctions();
+		const open = await t.run(async (ctx) =>
+			(await ctx.db.system.query('_scheduled_functions').collect()).filter(
+				(job) => job.state.kind === 'pending' || job.state.kind === 'inProgress'
+			)
+		);
+		if (open.length === 0) return;
+	}
+	throw new Error('Scheduled work was still queued after 10 rounds');
+}
 
 function dispatch(t: TestHarness, event: InboundEvent): Promise<void> {
 	// The dispatcher is an action-layer function. Keep this integration test on
@@ -73,7 +106,7 @@ async function expectExactlyOneDelivery(
 	sendId: Id<'emailSends'>,
 	expectedStatus: 'opened' | 'clicked' | 'complained' | 'bounced' | 'failed'
 ): Promise<void> {
-	await t.finishAllScheduledFunctions(vi.runAllTimers);
+	await runScheduledWork(t);
 	const [send, reputation, gmailVolume] = await Promise.all([
 		t.run((ctx) => ctx.db.get(sendId)),
 		t.run((ctx) => summarize(ctx.db, { kind: 'org' })),
@@ -202,7 +235,7 @@ describe('MTA remote-acceptance reputation lifecycle', () => {
 			bounceType: 'hard',
 		});
 		await dispatch(t, accepted(providerMessageId, NOW + 1));
-		await t.finishAllScheduledFunctions(vi.runAllTimers);
+		await runScheduledWork(t);
 
 		const [send, reputation, gmailVolume] = await Promise.all([
 			t.run((ctx) => ctx.db.get(sendId)),
@@ -293,7 +326,7 @@ describe('MTA remote-acceptance reputation lifecycle', () => {
 			errorCode: 'MTA_FAILED',
 		});
 		await dispatch(t, accepted(providerMessageId, NOW + 1));
-		await t.finishAllScheduledFunctions(vi.runAllTimers);
+		await runScheduledWork(t);
 
 		const [send, reputation, gmailVolume] = await Promise.all([
 			t.run((ctx) => ctx.db.get(sendId)),
