@@ -30,15 +30,17 @@ const modules = import.meta.glob('../**/*.*s');
  *  exactly as the builder persists a library image block. */
 function contentReferencing(storageId: string): string {
 	return JSON.stringify({
-		blocks: [
-			{ type: 'image', content: { src: `https://cdn/${storageId}`, storageId } },
-		],
+		blocks: [{ type: 'image', content: { src: `https://cdn/${storageId}`, storageId } }],
 	});
 }
 
-async function seedAsset(t: ReturnType<typeof convexTest>): Promise<{ assetId: Id<'mediaAssets'>; storageId: string }> {
+async function seedAsset(
+	t: ReturnType<typeof convexTest>
+): Promise<{ assetId: Id<'mediaAssets'>; storageId: string }> {
 	return await t.run(async (ctx) => {
-		const storageId = await ctx.storage.store(new Blob([new Uint8Array([1, 2, 3])], { type: 'image/png' }));
+		const storageId = await ctx.storage.store(
+			new Blob([new Uint8Array([1, 2, 3])], { type: 'image/png' })
+		);
 		const assetId = await ctx.db.insert('mediaAssets', {
 			storageId,
 			filename: 'logo.png',
@@ -75,12 +77,27 @@ describe('workspaces.mediaAssets.countUsage', () => {
 
 		await t.run(async (ctx) => {
 			// 2 templates reference it, 1 does not.
-			await ctx.db.insert('emailTemplates', createTestEmailTemplate({ content: contentReferencing(storageId) }));
-			await ctx.db.insert('emailTemplates', createTestEmailTemplate({ content: contentReferencing(storageId) }));
-			await ctx.db.insert('emailTemplates', createTestEmailTemplate({ content: JSON.stringify({ blocks: [] }) }));
+			await ctx.db.insert(
+				'emailTemplates',
+				createTestEmailTemplate({ content: contentReferencing(storageId) })
+			);
+			await ctx.db.insert(
+				'emailTemplates',
+				createTestEmailTemplate({ content: contentReferencing(storageId) })
+			);
+			await ctx.db.insert(
+				'emailTemplates',
+				createTestEmailTemplate({ content: JSON.stringify({ blocks: [] }) })
+			);
 			// 1 transactional email references it.
-			await ctx.db.insert('transactionalEmails', createTestTransactionalEmail({ content: contentReferencing(storageId) }));
-			await ctx.db.insert('transactionalEmails', createTestTransactionalEmail({ content: JSON.stringify({ blocks: [] }) }));
+			await ctx.db.insert(
+				'transactionalEmails',
+				createTestTransactionalEmail({ content: contentReferencing(storageId) })
+			);
+			await ctx.db.insert(
+				'transactionalEmails',
+				createTestTransactionalEmail({ content: JSON.stringify({ blocks: [] }) })
+			);
 		});
 		// 1 saved block references it, 1 does not.
 		await insertBlock(t, contentReferencing(storageId));
@@ -105,11 +122,17 @@ describe('workspaces.mediaAssets.countUsage', () => {
 		const { assetId } = await seedAsset(t);
 
 		await t.run(async (ctx) => {
-			await ctx.db.insert('emailTemplates', createTestEmailTemplate({ content: JSON.stringify({ blocks: [] }) }));
+			await ctx.db.insert(
+				'emailTemplates',
+				createTestEmailTemplate({ content: JSON.stringify({ blocks: [] }) })
+			);
 			// A DIFFERENT asset's id must not be mistaken for ours (real _storage
 			// ids are fixed-length, so one is never a substring of another).
 			const otherStorageId = await ctx.storage.store(new Blob([new Uint8Array([7, 7, 7])]));
-			await ctx.db.insert('emailTemplates', createTestEmailTemplate({ content: contentReferencing(String(otherStorageId)) }));
+			await ctx.db.insert(
+				'emailTemplates',
+				createTestEmailTemplate({ content: contentReferencing(String(otherStorageId)) })
+			);
 		});
 
 		const { count } = await t.query(api.workspaces.mediaAssets.countUsage, { assetId });

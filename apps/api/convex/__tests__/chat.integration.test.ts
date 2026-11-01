@@ -892,8 +892,12 @@ describe('chat attachment privacy across the media library', () => {
 	it('rejects relabeling, deleting, and re-registering private attachments even by an admin', async () => {
 		const { t, storageId, assetId } = await privateAttachment();
 		setUser('user-bob', 'owner');
-		await expect(t.mutation(api.workspaces.mediaAssets.update, { assetId, tags: [] })).rejects.toThrow();
-		await expect(t.mutation(api.workspaces.mediaAssets.bulkDelete, { assetIds: [assetId] })).rejects.toThrow();
+		await expect(
+			t.mutation(api.workspaces.mediaAssets.update, { assetId, tags: [] })
+		).rejects.toThrow();
+		await expect(
+			t.mutation(api.workspaces.mediaAssets.bulkDelete, { assetIds: [assetId] })
+		).rejects.toThrow();
 		await expect(
 			t.mutation(api.workspaces.mediaAssets.create, {
 				storageId,
