@@ -48,7 +48,7 @@ export function isPipelineInput(input: TransitionInput): boolean {
 /**
  * Edges only a person may take, refused for anyone else: leaving a takeover-only
  * state for `draft_ready` needs `manualTakeover`, and `failed → approved` (a
- * Retry sending a person's approved reply again, #1220) needs a human approval
+ * Retry sending a person's approved reply again) needs a human approval
  * that completes no agent step. The router's auto-approve arriving late on a
  * failed message must never send from there.
  */

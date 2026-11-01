@@ -1,6 +1,5 @@
 /**
- * Automation marketing honours contact-level unsubscribe and deletion (issue
- * #809, finding 2).
+ * Automation marketing honours contact-level unsubscribe and deletion.
  *
  * Before: the step walker only checked that the contact row EXISTED, and the
  * non-campaign intake gated on abuse / provider / blocklist. A global

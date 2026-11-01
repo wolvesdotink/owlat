@@ -32,7 +32,7 @@ export function draftReadyDraftPatch(
 	if (input.draftResponse !== undefined) {
 		patch['draftResponse'] = input.draftResponse;
 		// The `[[...]]` gap guard describes the text a reviewer can send. Variants
-		// a legacy row still carries are dropped: no screen offers them (#1200).
+		// a legacy row still carries are dropped: no screen offers them.
 		patch['draftOptions'] = undefined;
 		patch['isDraftGapGuarded'] = authoredDraftHasGaps({ text: input.draftResponse });
 		// Consent to gaps belonged to the draft it was given for.

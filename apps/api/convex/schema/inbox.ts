@@ -206,7 +206,7 @@ export const inboxTables = {
 		draftSubject: v.optional(v.string()),
 		// Legacy: alternative drafts (concise / hedged / detailed) the `draft`
 		// step used to generate for review. `draftOptions[0]` was the primary
-		// draft (== `draftResponse`). Nothing writes them since #1200, as no
+		// draft (== `draftResponse`). Nothing writes them, as no
 		// screen offers a choice; a new draft, a saved edit and a reopen clear
 		// what older rows still carry. Kept optional so those rows validate;
 		// drop in a contract step.
@@ -280,8 +280,8 @@ export const inboxTables = {
 		// pendingClarificationValidator.
 		pendingClarification: v.optional(pendingClarificationValidator),
 		// Set when a draft was produced from an ABANDONED clarification (the owner
-		// never answered within the window and the fallback cron, before #1343,
-		// resumed a best-guess). It is a hard, fail-closed block on autonomous sending — the
+		// never answered within the window and an earlier release's fallback
+		// cron resumed a best-guess). It is a hard, fail-closed block on autonomous sending — the
 		// route step's final safety gate refuses to auto-send while this is set, so
 		// a best-guess reply always goes to human review. Never cleared by the
 		// pipeline; a human reviews and sends (or discards) the draft.
@@ -329,7 +329,7 @@ export const inboxTables = {
 		isDraftGapGuarded: v.optional(v.boolean()),
 		// The agent's draft was stored with gaps the owner agreed to ("Draft with
 		// what I have", or asking turned off). Without it an agent draft with
-		// gaps is never shown (lib/heldGapDraft.ts, #1343).
+		// gaps is never shown (lib/heldGapDraft.ts).
 		isDraftGapsAccepted: v.optional(v.boolean()),
 		// Error tracking
 		errorMessage: v.optional(v.string()),
@@ -338,7 +338,7 @@ export const inboxTables = {
 		// (`@owlat/shared/inboxRetry`); cleared when the message leaves `failed`.
 		// Absent on rows that failed before the field existed.
 		failedStage: v.optional(v.union(v.literal('send'), v.literal('pipeline'))),
-		// Answered by a newer message's sent reply (#1346, ./inboxAnswered.ts).
+		// Answered by a newer message's sent reply (./inboxAnswered.ts).
 		...inboundAnsweredFields,
 		// Timestamps
 		receivedAt: v.number(),
@@ -350,7 +350,7 @@ export const inboxTables = {
 		// the thread's status on every settle and reopen (inbox/clarificationHold.ts).
 		.index('by_thread_and_processing_status', ['threadId', 'processingStatus'])
 		.index('by_processing_status', ['processingStatus'])
-		// The Answer queue's held questions on open conversations (#1343).
+		// The Answer queue's held questions on open conversations.
 		.index('by_processing_status_and_thread_settled', ['processingStatus', 'isThreadSettled'])
 		// The reminder's walk: held messages, least recently reminded first.
 		.index('by_processing_status_and_last_reminder', ['processingStatus', 'lastReminderAt'])

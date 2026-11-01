@@ -314,8 +314,8 @@ export const templateTables = {
 		contactId: v.optional(v.id('contacts')), // Optional link to contact if they exist
 		// Resolved recipient language for this send. Populated at intake by
 		// the Transactional send intake (module) from the request → contact →
-		// template-default fallback chain. Surfaces in analytics queries;
-		// previously the resolved language lived on the API response only.
+		// template-default fallback chain. Stored on the row so
+		// analytics queries see it, not only the API response.
 		language: v.optional(v.string()),
 		// Data variables that were used for this send
 		dataVariables: v.optional(jsonPrimitiveRecord),

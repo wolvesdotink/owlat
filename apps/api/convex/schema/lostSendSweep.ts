@@ -2,7 +2,7 @@ import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
 
 /**
- * The lost-send sweep's pass leases (#1208, `delivery/stuckSendSweep.ts`).
+ * The lost-send sweep's pass leases (`delivery/stuckSendSweep.ts`).
  *
  * One row per pass kind: a send table and a mode (`emailSends:deadline`,
  * `transactionalSends:unanchored`, ...). A pass holds its row while its page

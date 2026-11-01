@@ -1,5 +1,5 @@
 /**
- * A team message held on the agent's questions (#1343): when it still needs
+ * A team message held on the agent's questions: when it still needs
  * someone, and who that someone is.
  *
  * Nothing drafts around an unanswered question any more, so a message can sit

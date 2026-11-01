@@ -237,7 +237,7 @@ function sumUsage(
  * retry keeps what the first call produced. A gap that survives the retry is
  * logged as a count only (the questions come from mail). Reports the summed
  * usage of the calls it made so the caller can fold it into its own accounting,
- * including what a failed call was billed for (#1260).
+ * including what a failed call was billed for.
  */
 export async function localizeQuestions<Q extends LocalizableQuestion>(
 	model: LanguageModel,

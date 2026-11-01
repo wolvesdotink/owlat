@@ -160,7 +160,7 @@ export const contactTables = {
 		// soft-deleted row keeps its email until erasure, so `by_email` can hold
 		// deleted rows that sort before the live one (an email edit keeps the
 		// row's creation time). With `deletedAt` in the key the lookup is one
-		// point read however many deleted rows share the address (#1242).
+		// point read however many deleted rows share the address.
 		.index('by_email_and_deleted_at', ['email', 'deletedAt'])
 		.index('by_created_at', ['createdAt'])
 		.index('by_doi_confirmation_token', ['doiConfirmationToken'])
@@ -211,7 +211,7 @@ export const contactTables = {
 		// rows from the contact-properties UI.
 		autoRegistered: v.optional(v.boolean()),
 		autoRegisteredSource: v.optional(v.string()),
-		// Set when a delete was requested (#918). From then on the property is
+		// Set when a delete was requested. From then on the property is
 		// hidden from pickers and closed to value writes while its
 		// `contactPropertyDeletionJobs` row removes the value column in bounded
 		// transactions; the row itself goes with the last values.
@@ -231,7 +231,7 @@ export const contactTables = {
 		.index('by_property', ['propertyId'])
 		.index('by_contact_and_property', ['contactId', 'propertyId']),
 
-	// One per contact property being deleted (#918): the durable state of the
+	// One per contact property being deleted: the durable state of the
 	// bounded cleanup chain in `contacts/propertyDeletion.ts`. Deleted together
 	// with the property once its last value is gone.
 	contactPropertyDeletionJobs: defineTable({

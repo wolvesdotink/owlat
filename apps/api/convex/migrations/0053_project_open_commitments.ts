@@ -1,6 +1,6 @@
 /**
  * Project open-commitment facets onto existing knowledge junction rows
- * (issue #919, migration 0053).
+ * (migration 0053).
  *
  * New and edited knowledge entries already write `isOpenCommitment` and its
  * sort keys onto their `knowledgeEntryContacts` rows

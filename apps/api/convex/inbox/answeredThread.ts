@@ -1,5 +1,5 @@
 /**
- * A Team Inbox reply settles the thread's older messages (#1346).
+ * A Team Inbox reply settles the thread's older messages.
  *
  * An agent reply answers the inbound message it was drafted for, and the
  * Send lifecycle closes that message (`approved → sent`). Older messages of

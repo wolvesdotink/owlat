@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { reduce } from '../reducers';
 import type { Doc, Id } from '../../../_generated/dataModel';
 
-// The `→ draft_ready` reducer's draft fields (#1201): an agent draft that
+// The `→ draft_ready` reducer's draft fields: an agent draft that
 // replaces a different text, and a reopen that drops the draft, both leave the
 // saved-edit history of the old draft behind.
 

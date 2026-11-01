@@ -1,5 +1,5 @@
 /**
- * Contact property deletion (#918): removes a custom property and its whole
+ * Contact property deletion: removes a custom property and its whole
  * value column as a chain of bounded transactions, driven by a persisted
  * `contactPropertyDeletionJobs` row.
  *

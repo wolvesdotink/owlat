@@ -5,9 +5,9 @@
  *
  * A relay identity coexists on a domain whose PRIMARY provider is our own
  * infrastructure; a domain already hosted at some provider owns its identity
- * through the ordinary lifecycle. The gate used to be spelled
- * `providerType !== 'ses'` — the relay's name standing in for the rule, which
- * had to be re-read every time a second relay kind landed.
+ * through the ordinary lifecycle. The gate is not spelled
+ * `providerType !== 'ses'`: the relay's name standing in for the rule would
+ * have to be re-read every time a second relay kind lands.
  *
  * THE CASE THIS SUITE EXISTS FOR is `providerType: undefined`. `domains` types
  * it `v.optional(v.string())`, so a row written before the field existed carries

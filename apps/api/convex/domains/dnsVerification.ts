@@ -400,8 +400,8 @@ export const verifyDomain = authedAction({
 					// Mirror the provider verdict into the persisted
 					// `verificationResults` bundle. WHICH field carries it — and whether
 					// this provider has a verdict worth recording at all — is the
-					// adapter's own business; this used to be `providerType === 'ses'`
-					// followed by the SES field name spelled here.
+					// adapter's own business, so no `providerType === 'ses'` check or SES
+					// field name is spelled here.
 					Object.assign(results, adapter.verificationStatusFields?.(providerCheck));
 				} catch (error) {
 					logError('[DNS Verification] Failed to run provider check:', error);

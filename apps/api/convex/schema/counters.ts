@@ -2,7 +2,7 @@ import { defineTable } from 'convex/server';
 import { v } from 'convex/values';
 
 /**
- * Maintained counts (plan 3.1): numbers the UI shows that used to be computed
+ * Maintained counts: numbers the UI shows that would otherwise be computed
  * by scanning whole documents on every read (label and section unread badges,
  * the Workbench "new mail" figure, the campaign/template/automation facet
  * counts, the 30-day subscriber growth series).

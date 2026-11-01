@@ -4,7 +4,7 @@ import { transportArmValidator } from '../lib/literalValidators';
 
 /**
  * WHAT RECEIVERS SAID, PER CELL AND PER ARM — the transport-telemetry surface
- * the ramp's gate-2 block clause reads (issue #501).
+ * the ramp's gate-2 block clause reads.
  *
  * The MTA classifies every 4xx/5xx it gets into
  * `@owlat/shared/smtpBlockCategories`' vocabulary, and until this table existed

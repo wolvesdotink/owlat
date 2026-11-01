@@ -114,12 +114,11 @@ function visibleCards<T extends { type: string }>(
  * Evaluates all rules and returns the ordered list of cards to display.
  *
  * `userId` and `role` both come from the session `authedQuery`'s floor already
- * resolved and threads in. This used to be THREE resolutions per call — the
- * floor, then `getUserIdFromSession`, then `getBetterAuthSessionWithRole` — on
- * the query every dashboard page subscribes to. The role is also no longer
- * "best-effort": the floor rejects a caller without one, so the layout is
- * always filtered against a real role rather than falling through to the
- * null-role path that could never be reached behind it.
+ * resolved and threads in, so the query every dashboard page subscribes to
+ * resolves the session once, with no `getUserIdFromSession` or
+ * `getBetterAuthSessionWithRole` on top. The role is not "best-effort": the
+ * floor rejects a caller without one, so the layout is always filtered against
+ * a real role.
  */
 // authz: self — reads only the session user's own layout row (by_user on
 // session.userId), and its cards are filtered to the caller's role.

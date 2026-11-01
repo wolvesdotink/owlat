@@ -1,14 +1,14 @@
 /**
  * A new agent draft starts without the edits a person saved over an earlier
- * one (#1201). Left in place, the old `draftRevisions` / `draftSavedAt` /
+ * one. Left in place, the old `draftRevisions` / `draftSavedAt` /
  * `isDraftEdited` made the untouched draft look edited: saved-first in the
  * queue, diffed against the old draft, an `'edited'` autonomy signal on an
  * unchanged approve, and no `clarification_unedited_send`. Reopening a rejected
  * message drops its draft and, with it, the edits saved over that draft.
  *
- * The path #1201 found, Retry after a failed send of the edit, no longer
- * re-drafts at all: it sends the approved text again (#1220,
- * retryKeepsApprovedText.test.ts). The re-draft below is driven directly.
+ * Retry after a failed send of the edit does not re-draft at all: it sends the
+ * approved text again (retryKeepsApprovedText.test.ts). The re-draft below is
+ * driven directly.
  */
 
 import { convexTest } from 'convex-test';

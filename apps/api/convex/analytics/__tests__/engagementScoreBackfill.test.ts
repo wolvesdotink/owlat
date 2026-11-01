@@ -125,8 +125,8 @@ describe('backfillEngagementScores — boundedness', () => {
 		const ids = await seedContacts(t, BACKFILL_BATCH_SIZE, 300);
 
 		// Every contact in the batch carries the most activities a recompute will
-		// ever read. This is the shape that used to throw (and roll back, and
-		// re-present the identical stalest head next tick, forever).
+		// ever read. A batch over its read budget throws (and rolls back, and
+		// re-presents the identical stalest head next tick, forever).
 		const now = Date.now();
 		await t.run(async (ctx) => {
 			for (const id of ids) {

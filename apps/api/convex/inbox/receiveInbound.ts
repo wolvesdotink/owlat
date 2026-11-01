@@ -48,8 +48,8 @@ export interface InboundReceiveExtras {
  * ARGUMENT SHAPE.
  *
  * Spread into the `args:` of both writers — `inbox.messages.receiveMessage` and
- * `e2ee.open.decryptAndReceive` — because the two used to spell the same twenty
- * fields each, and this PR alone added three columns to both by hand. Each
+ * `e2ee.open.decryptAndReceive` — so the wire fields are declared once, and a
+ * new column cannot reach one writer and miss the other. Each
  * writer still declares what is genuinely its own: the sealed-mail flags on the
  * mutation, the ciphertext and recipient address on the action.
  */

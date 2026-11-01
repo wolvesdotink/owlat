@@ -309,8 +309,8 @@ export const reorderSteps = automationsMutation({
 			// Validating up front — before any patch — stops a caller renumbering
 			// (and thereby corrupting the run-order of) steps belonging to an
 			// automation they don't own by slipping foreign step ids into the order
-			// array; the ownership filter used to be applied only when building the
-			// remap while the patch loop below wrote every supplied id unconditionally.
+			// array. The patch loop below writes every supplied id unconditionally, so
+			// the ownership check runs here, not only when building the remap.
 			if (!step || step.automationId !== args.automationId) {
 				throwInvalidInput('Every step in the order must belong to this automation');
 			}

@@ -171,8 +171,8 @@ export interface SendingDomainProviderModule<K extends SendingDomainProviderKind
 	 * provider failure — the `register_with_provider` effect handler catches
 	 * and translates to a `→ failed` lifecycle transition.
 	 *
-	 * `options.returnPathHost` is the domain's per-domain VERP return-path host
-	 * (#408). When set, the MTA adapter reflects it to the MTA and builds the
+	 * `options.returnPathHost` is the domain's per-domain VERP return-path host.
+	 * When set, the MTA adapter reflects it to the MTA and builds the
 	 * `mailFrom` SPF record on that host; when absent it falls back to the
 	 * deployment-global `MTA_RETURN_PATH_DOMAIN` env (historic behavior). SES has
 	 * no return-path concept and ignores it.
@@ -328,11 +328,11 @@ export interface SendingDomainProviderModule<K extends SendingDomainProviderKind
 	 * `provision_relay_identity_if_enabled` effect, which walks the same registry
 	 * with the same relay kinds — so the two paths together cover every domain
 	 * exactly once, and a NEW `domainVerification: 'api'` kind is on both the
-	 * moment it registers. The forward path used to be a hand-written if-chain
-	 * naming `ses` and `mandrill`, which gave a newly registered kind the backfill
-	 * and NOT the forward path: its domains verified, silently received no relay
-	 * identity, and its fallback then refused to relay them, with the only symptom
-	 * a runtime refusal on a real send.
+	 * moment it registers. A hand-written if-chain on the forward path naming
+	 * `ses` and `mandrill` would give a newly registered kind the backfill and NOT
+	 * the forward path: its domains would verify, silently receive no relay
+	 * identity, and its fallback would then refuse to relay them, with the only
+	 * symptom a runtime refusal on a real send.
 	 *
 	 * Implementations SCHEDULE the provider call rather than making it: this
 	 * runs inside the drain's transaction, and a provider outage must not roll

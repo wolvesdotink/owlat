@@ -172,8 +172,8 @@ describe('absence is never load-bearing', () => {
  *
  * It stops there, deliberately. What the controller may DO about a collapse is
  * the ramp's (`delivery/ramp/seedGate.ts` plus `CORROBORATION_REQUIRED_RAMP_GATES`,
- * covered by the ramp gate suites); this module reports and does not decide, and
- * the query that decided here was #504's parallel route.
+ * covered by the ramp gate suites); this module reports and does not decide, so
+ * the ramp's gate stays the only answer to that question.
  */
 describe('the shipped summary reports a provider-wide collapse', () => {
 	const SEEDS = 4;

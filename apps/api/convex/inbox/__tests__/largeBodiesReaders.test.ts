@@ -2,10 +2,10 @@
  * A Team Inbox message larger than a Convex document is stored — and every
  * reader gets its body back.
  *
- * Before #900 a 1.5 MiB HTML newsletter was accepted by SMTP, reached
- * `receiveMessage`, and failed its insert on the 1 MiB document limit, so the
- * MTA retried it into the dead-letter queue. Now the part that does not fit is
- * a sealed blob, and these cases walk each reader class over it:
+ * A 1.5 MiB HTML newsletter is accepted by SMTP and reaches `receiveMessage`.
+ * Stored as one document it would fail its insert on the 1 MiB document limit,
+ * and the MTA would retry it into the dead-letter queue. The part that does not
+ * fit is a sealed blob, and these cases walk each reader class over it:
  *   · the agent pipeline and knowledge ingestion (actions): the whole body;
  *   · the thread view and the review lists (queries): plaintext inline parts
  *     and the excerpt, never an `atrest:` envelope, with the full text one

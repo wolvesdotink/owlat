@@ -2,11 +2,11 @@
  * Automation run deletion lifecycle — the one way to remove an `automationRuns`
  * row together with everything that hangs off it.
  *
- * Deleting a run row directly (what contact erasure used to do) broke two
- * things. The run's `automationStepRuns` were left behind pointing at nothing,
- * and a still-running run never reached a terminal state, so the automation's
+ * Deleting a run row directly breaks two things. The run's
+ * `automationStepRuns` are left behind pointing at nothing, and a
+ * still-running run never reaches a terminal state, so the automation's
  * derived active total (entered − completed − cancelled, see statShards.ts)
- * counted it as active forever. This module:
+ * counts it as active forever. This module:
  *
  *   1. terminates a running run through the walker's own cancellation
  *      (`stepRunTransitions.cancelRun`), so the cancelled counter moves exactly once;

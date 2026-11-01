@@ -5,7 +5,7 @@ import { v } from 'convex/values';
  * so the contact-scoped open-commitments recall
  * (knowledge/graph.ts:getOpenCommitmentsByContact) reads candidates from the
  * `by_contact_open_commitment` index in due order instead of loading every
- * knowledge entry linked to the contact (issue #919).
+ * knowledge entry linked to the contact.
  *
  * Written from the parent entry by knowledge/commitmentFacets.ts whenever a
  * junction row is inserted or re-parented and whenever the entry's type,

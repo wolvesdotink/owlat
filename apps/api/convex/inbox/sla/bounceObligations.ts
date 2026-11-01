@@ -1,5 +1,5 @@
 /**
- * Bounce obligations (#1346): Team Inbox work a bounced reply reopened, which
+ * Bounce obligations: Team Inbox work a bounced reply reopened, which
  * owes the customer an answer however old it is (`inboundMessages.answerBouncedAt`,
  * set by inbox/answeredThread.ts, read by ./threadClock.ts).
  *

@@ -84,14 +84,14 @@ export const mailArrivalTables = {
 		rulePlacement: v.optional(placementValidator),
 		// The §2.4 exact-wording detector over the message's own scoped text, as
 		// the interpretation run last screened it: true keeps it out of the
-		// digest and updates (#1384). Absent = not screened yet.
+		// digest and updates. Absent = not screened yet.
 		isExactWordingCandidate: v.optional(v.boolean()),
 		// One persisted resolution of the exclusive actions across both passes (§6.2).
 		exclusiveWinners: v.optional(exclusiveWinnersValidator),
 		// ABA guard for undoing a `recordRulePlacement` change (§4.4).
 		lastOperationId: v.optional(v.id('mailArrivalOperations')),
-		// When R2 judged this message a cold sales pitch (#1381,
-		// mail/arrival/coldPitch.ts). Absent: no verdict, a negative one, or one
+		// When R2 judged this message a cold sales pitch
+		// (mail/arrival/coldPitch.ts). Absent: no verdict, a negative one, or one
 		// relationship evidence (a reply, a contact row, an override) cleared.
 		coldPitchAt: v.optional(v.number()),
 		// The sender's digest (like `mailSenderProfiles.senderDigest`), set and
@@ -111,7 +111,7 @@ export const mailArrivalTables = {
 		.index('by_thread_source_order', ['threadId', 'sourceOrderKey'])
 		// Mailbox erasure.
 		.index('by_mailbox', ['mailboxId'])
-		// #1381: a sender's standing cold-pitch verdicts (unset on every other record).
+		// A sender's standing cold-pitch verdicts (unset on every other record).
 		.index('by_mailbox_cold_pitch_sender', ['mailboxId', 'coldPitchSenderDigest'])
 		.index('by_expires', ['expiresAt']),
 

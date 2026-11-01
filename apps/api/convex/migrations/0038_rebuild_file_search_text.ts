@@ -1,12 +1,12 @@
 /**
  * Rebuild `semanticFiles.searchableText` for existing rows (migration 0038).
  *
- * File search reads only `searchableText`, and until now that field was built
+ * File search reads only `searchableText`. On a legacy row that field was built
  * from the filename and upload-time title alone on insert, and never rebuilt
- * when the title or tags were edited. Files uploaded before this change are
- * therefore missing their tags (and, for rows the processing pipeline reached
- * before the LLM was configured, their summary/auto-tags/extracted text) from
- * the index, so searching for a tag finds nothing.
+ * when the title or tags were edited, so the row is missing its tags (and, for
+ * rows the processing pipeline reached before the LLM was configured, their
+ * summary/auto-tags/extracted text) from the index, and searching for a tag
+ * finds nothing.
  *
  * An operator runs `convex run migrations/0038_rebuild_file_search_text:run`
  * once. The walk is page-at-a-time and idempotent — `buildFileSearchableText`

@@ -1,6 +1,6 @@
 /**
  * Restrict the knowledge a historical merge may have written private text
- * into (migration 0069, #1322).
+ * into (migration 0069).
  *
  *   npx convex run migrations/0069_restrict_captured_file_knowledge:run
  *
@@ -40,7 +40,7 @@
  * Team Inbox agent still reads them: its retrieval includes what is kept from
  * members (`includeInboxDerived: true`). Entries written after the walk started
  * follow the write-time rules. An owner or admin who wants members to see one
- * again shares it after reviewing it (knowledge/sharing.ts, #1372), unless its
+ * again shares it after reviewing it (knowledge/sharing.ts), unless its
  * source keeps it from members. A `restart` restricts shared entries again.
  *
  * ONE SWEEP, BOUNDED: `knowledgeEntries` in creation order up to the time the

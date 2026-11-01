@@ -1,5 +1,5 @@
 /**
- * Data migrations from Settings → System & updates (#1345).
+ * Data migrations from Settings → System & updates.
  *
  * The page lists every migration in the manifest (`migrations/manifest.ts`)
  * with its state, read from the migration ledger (`migrationRuns`,

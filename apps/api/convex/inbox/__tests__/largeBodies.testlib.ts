@@ -4,7 +4,7 @@
  *
  * The bodies are sized the way real mail is: a 1.5 MiB HTML newsletter with a
  * short text part — within the inbound listener's 10 MiB raw limit and well
- * over the 1 MiB document limit that used to fail its insert — and each ends
+ * over the 1 MiB document limit a one-document insert cannot hold — and each ends
  * in a canary so a test can tell the whole body from its opening.
  */
 

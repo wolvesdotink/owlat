@@ -1,6 +1,6 @@
 /**
  * Email lookups on `contacts` resolve the LIVE contact, never a soft-deleted
- * one (#1242).
+ * one.
  *
  * Soft-deleting a contact keeps its email on the row for the retention window,
  * and the address can be used again on day 1, so a deleted original and the

@@ -130,7 +130,7 @@ export const recordAgentDecision = internalMutation({
  * (`isDraftGapGuarded`), so a reviewer's Approve cannot send them. A new
  * draft starts without the saved edits of the one it replaces.
  *
- * WRITE-SIDE FENCE (#1343): a draft with gaps is stored only with the owner's
+ * WRITE-SIDE FENCE: a draft with gaps is stored only with the owner's
  * consent ("Draft with what I have" on the stored clarification, or the
  * caller's `isGapsAccepted`, which the draft step passes when asking is off).
  * Without it the draft is not stored, whoever wrote it: a draft action that

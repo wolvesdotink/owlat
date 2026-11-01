@@ -350,7 +350,7 @@ export const releaseFromQuarantine = adminMutation({
 });
 
 /**
- * Retry a failed message, by where it failed (#1220, `./retryFailed.ts`): a
+ * Retry a failed message, by where it failed (`./retryFailed.ts`): a
  * failed send of a reply a person approved is sent again, a person's reply
  * goes back to review, and only a message nobody touched re-runs the agent
  * pipeline. The operator-facing counterpart to the retry cron

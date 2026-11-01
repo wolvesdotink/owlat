@@ -30,11 +30,9 @@
  * `analytics/seedPlacementSweeps.ts` reduces from these same rows, and the
  * corroboration rule rides from there through `CORROBORATION_REQUIRED_RAMP_GATES`
  * (gateConfig) into the controller's `awaiting_corroboration` hold. That is the
- * path the controller runs on every tick, and now the only one: this module used
- * to export a `getGateVerdict` query restating the same rule over the PROVIDER
- * roll-up — pooled across streams, where the ramp is per cell — with no
- * production caller. It was deleted rather than kept as a second answer to one
- * question (issue #504).
+ * path the controller runs on every tick, and the only one: this module exports
+ * no query restating the same rule over the PROVIDER roll-up (pooled across
+ * streams, where the ramp is per cell), so one question keeps one answer.
  *
  * The seed ACCOUNTS themselves — the projection and the rotation nudge — are the
  * domain sibling `analytics/seedAccounts.ts`, and the two ledger sweeps are

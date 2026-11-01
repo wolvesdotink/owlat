@@ -157,12 +157,12 @@ export const emailStepModule: StepModule<'email', EmailStepConfig> = {
 		// blocklist-on-hard-bounce effect now all fire for automation emails,
 		// which the old direct-dispatch path silently skipped.
 		//
-		// NO route resolution here any more. This step used to run
-		// `resolveSendRoute` first and pass `providerType`/`ipPool` down, which
-		// resolved the same message twice — once from an action that could not see
-		// the row it was about — for a value the worker treats as a fallback. The
-		// intake resolves it in the same transaction as the insert instead. This
-		// step needs no route of its own: nothing above the intake reads one.
+		// NO route resolution here. Running `resolveSendRoute` in this step and
+		// passing `providerType`/`ipPool` down would resolve the same message
+		// twice — once from an action that cannot see the row it is about — for a
+		// value the worker treats as a fallback. The intake resolves it in the same
+		// transaction as the insert, and nothing above the intake reads a route, so
+		// this step needs none of its own.
 		//
 		// Automation email steps are MARKETING mail (drip series, broadcasts), so
 		// they must carry a `List-Unsubscribe` header to satisfy Gmail/Yahoo's

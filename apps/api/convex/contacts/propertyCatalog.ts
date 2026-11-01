@@ -2,7 +2,7 @@
  * The contact-property catalog the **Contact import (module)** resolves row
  * keys against, and its integration-driven auto-registration.
  *
- * A property being deleted (#918) is not in `byKey`: its key is listed in
+ * A property being deleted is not in `byKey`: its key is listed in
  * `pendingDeletion` instead, so an import neither writes values into the
  * column its cleanup job is draining nor registers a second property under the
  * same key while the first still exists.

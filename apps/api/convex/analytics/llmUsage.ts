@@ -9,7 +9,7 @@
  * (`analytics/spendBudget.ts`). The inbound-agent step view in
  * `agent/health.getCostByStep` reads the usage the walker also keeps on
  * `agentActions`; that is a per-step reporting view of calls already counted
- * here, not a second money store (#1259).
+ * here, not a second money store.
  *
  * ONE ROW PER PROVIDER REQUEST. A retried call, a tool loop and a
  * stream write one row per request they made, each with its `attempt` number

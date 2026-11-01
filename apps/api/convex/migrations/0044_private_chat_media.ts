@@ -7,7 +7,7 @@
  * Idempotent and paginated. Chat references are authoritative even if an old
  * library edit removed the reserved tag. Conservatively includes shared assets
  * posted in chat: review those assets and upload a separate shared copy if needed.
- * Previously disclosed storage URLs cannot be recalled by this classification.
+ * Storage URLs already disclosed cannot be recalled by this classification.
  */
 import { v } from 'convex/values';
 import { internalAction, internalQuery } from '../_generated/server';

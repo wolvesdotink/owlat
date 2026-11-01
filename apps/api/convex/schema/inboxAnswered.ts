@@ -1,6 +1,6 @@
 /**
  * `inboundMessages` fields for a message a newer message's sent reply
- * answered (#1346, inbox/answeredThread.ts) and for the response obligation a
+ * answered (inbox/answeredThread.ts) and for the response obligation a
  * bounce of that reply reopens (inbox/sla/threadClock.ts). Spread into the
  * table in ./inbox.ts, which is at its size cap.
  */
