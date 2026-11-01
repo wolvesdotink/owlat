@@ -175,7 +175,7 @@ const contactInitials = computed(() => {
 
 <template>
 	<div class="p-6 lg:p-8">
-		<!-- A failed read is not a missing contact (#721). -->
+		<!-- A failed read is not a missing contact. -->
 		<UiQueryBoundary v-if="detailsError" :error="detailsError" @retry="refetchDetails" />
 
 		<!-- Loading State -->

@@ -53,8 +53,8 @@ const { members: orgMembers, fetchMembers, isLoadingMembers } = useOrganization(
 const selectedMemberIds = ref<string[]>([]);
 const isTeam = computed(() => mode.value === 'team');
 
-// A team inbox can be hosted on a verified domain (the #232 path) OR backed by
-// an external IMAP account connected in one motion (#234). The external option
+// A team inbox can be hosted on a verified domain OR backed by
+// an external IMAP account connected in one motion. The external option
 // only appears when the instance has external mailboxes enabled.
 const teamTransport = ref<'hosted' | 'external'>('hosted');
 const canConnectExternal = computed(() => isEnabled('mail.external'));
@@ -160,8 +160,8 @@ function handleExternalConnected(result?: { mailboxId: string }) {
 				</button>
 			</div>
 
-			<!-- Team transport: hosted on a verified domain (the #232 path) or an
-			     external IMAP account connected as a shared inbox in one motion (#234). -->
+			<!-- Team transport: hosted on a verified domain or an
+			     external IMAP account connected as a shared inbox in one motion. -->
 			<div
 				v-if="isTeam && canConnectExternal"
 				class="flex gap-1 p-1 mb-5 rounded-md bg-bg-surface w-fit"

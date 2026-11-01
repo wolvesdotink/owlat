@@ -262,7 +262,7 @@ function startReply() {
 }
 
 /**
- * The message is gone (#1100). Inside a queue session the way on is the next
+ * The message is gone. Inside a queue session the way on is the next
  * item: this one is skipped when it is the queue's current item, otherwise the
  * queue goes back to its current item. Elsewhere it is the page Answer mode
  * was opened from.
@@ -387,13 +387,13 @@ useAnswerModeKeys({
 						/>
 					</template>
 				</AnswerConversation>
-				<!-- A failed read is not a message still loading (#721). -->
+				<!-- A failed read is not a message still loading. -->
 				<UiQueryBoundary
 					v-else-if="messageError"
 					:error="messageError"
 					@retry="messageRead.refetch"
 				/>
-				<!-- Nor is a message that is gone: no endless skeleton for it (#1100). -->
+				<!-- Nor is a message that is gone: no endless skeleton for it. -->
 				<PostboxMessageNotFound v-else-if="messageNotFound">
 					<template #action>
 						<UiButton

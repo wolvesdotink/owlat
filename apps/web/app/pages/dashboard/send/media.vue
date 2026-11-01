@@ -240,7 +240,7 @@ const copyUrl = async (url: string) => {
 			</div>
 		</Transition>
 
-		<!-- A failed read is not an empty library (#721). -->
+		<!-- A failed read is not an empty library. -->
 		<UiQueryBoundary
 			v-if="assetsError"
 			:error="assetsError"

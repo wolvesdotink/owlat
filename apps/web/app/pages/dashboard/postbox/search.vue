@@ -274,7 +274,7 @@ async function confirmSave() {
 							<template #label><code>label:work</code></template>
 							<template #isUnread><code>is:unread</code></template>
 						</I18nT>
-						<!-- A failed search is not "no results" (#721). -->
+						<!-- A failed search is not "no results". -->
 						<UiQueryBoundary v-else-if="searchError" :error="searchError" @retry="refetchSearch" />
 						<PostboxThreadListSkeleton v-else-if="isLoading && results.length === 0" :rows="6" />
 						<!-- Recent pages filtered to zero with older mail still ahead: one

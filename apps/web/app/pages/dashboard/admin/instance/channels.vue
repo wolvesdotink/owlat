@@ -141,7 +141,7 @@ const handleChannelError = (message: string) => {
 			<DashboardListSkeleton variant="card" leading :rows="3" />
 		</div>
 
-		<!-- A failed read is not an empty channel list (#721). -->
+		<!-- A failed read is not an empty channel list. -->
 		<UiQueryBoundary v-else-if="channelsError" :error="channelsError" @retry="refetchChannels" />
 
 		<template v-else>

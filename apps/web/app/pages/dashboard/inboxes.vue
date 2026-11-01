@@ -152,7 +152,7 @@ const isLoading = computed(() => {
 // Every source whose read failed, keyed like the inbox chips ('inboxes' is the
 // inbox list the per-inbox reads hang off). Only the ones the current chip
 // shows count. With rows on screen a notice names them; with none, the failure
-// stands in for the empty state: a failed read is not an empty inbox (#721).
+// stands in for the empty state: a failed read is not an empty inbox.
 const failures = computed(() => {
 	const out: { id: string; name: string; error: Error }[] = [];
 	if (inboxesError.value)

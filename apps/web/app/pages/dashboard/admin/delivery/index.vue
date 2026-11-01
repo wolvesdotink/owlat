@@ -76,7 +76,7 @@ const { data: suppressionCounts } = useOrganizationQuery(
 	api.blockedEmails.blocklist.getCountsByReason
 );
 
-// Bounces and complaints whose message id matched no send (#1194), last 30 days.
+// Bounces and complaints whose message id matched no send, last 30 days.
 const { data: unresolvedFeedback } = useOrganizationQuery(
 	api.webhooks.unresolvedFeedback.getSummary
 );

@@ -379,7 +379,7 @@ const { autoRecheckActive } = useDomainAutoRecheck({
 				</div>
 			</div>
 
-			<!-- A failed read is not an empty list (#721). -->
+			<!-- A failed read is not an empty list. -->
 			<UiQueryBoundary v-if="domainsError" :error="domainsError" @retry="refetchDomains" />
 
 			<!-- Empty State -->

@@ -315,7 +315,7 @@ const { chatEnabled, discussionChannels, showNewChannel, onChannelCreated } =
 			{{ t('dashboard.inbox.detail.backToInbox') }}
 		</NuxtLink>
 
-		<!-- A failed read is not a missing thread (#721). -->
+		<!-- A failed read is not a missing thread. -->
 		<UiQueryBoundary v-if="threadError" :error="threadError" @retry="refetchThread" />
 
 		<!-- Loading: the page's own shape, headed by the list row when we have it. -->

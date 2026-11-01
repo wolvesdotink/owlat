@@ -13,7 +13,7 @@ definePageMeta({
 const route = useRoute();
 const router = useRouter();
 
-// The workspace's logo above the card (#810): someone opening an invitation
+// The workspace's logo above the card: someone opening an invitation
 // knows the company that invited them, not the product it runs on.
 const { logo } = useRecipientSender();
 

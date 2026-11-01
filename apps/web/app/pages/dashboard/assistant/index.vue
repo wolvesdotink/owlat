@@ -41,8 +41,8 @@ const composerRef = ref<{
 	focus: () => void;
 } | null>(null);
 
-// Below md the conversation rail is an off-canvas drawer (see UiRailDrawer). It
-// used to be `hidden md:flex`, which on a phone removed the conversation list
+// Below md the conversation rail is an off-canvas drawer (see UiRailDrawer), not
+// `hidden md:flex`: hiding it would remove the conversation list on a phone
 // and — since it lives in the rail's header — the only "New chat" button.
 const railOpen = ref(false);
 
@@ -62,7 +62,7 @@ watch(railOpen, (open, wasOpen) => {
 	if (wasOpen && !open) nextTick(() => composerRef.value?.focus());
 });
 
-// Follow the stream only while the reader is at the end (#1050): scrolling up
+// Follow the stream only while the reader is at the end: scrolling up
 // to reread something is respected, and new content below raises the "Jump to
 // latest" pill instead of pulling the view down.
 const scrollRef = ref<HTMLElement | null>(null);
@@ -196,7 +196,7 @@ const cancelRename = () => {
 					<p v-else-if="conversations.length === 0" class="px-3 py-2 text-sm text-text-tertiary">
 						{{ t('dashboard.assistant.index.noConversations') }}
 					</p>
-					<!-- Selection and the row's actions are siblings, not nested (#1051):
+					<!-- Selection and the row's actions are siblings, not nested:
 					     the row is a real button the keyboard can reach, and Rename /
 					     Delete sit behind one More actions button beside it. -->
 					<div
@@ -332,7 +332,7 @@ const cancelRename = () => {
 
 			<div class="relative flex-1 min-h-0 flex flex-col">
 				<div ref="scrollRef" class="flex-1 overflow-y-auto px-4 py-4" @scroll.passive="onScroll">
-					<!-- A conversation that failed to load is not a new one (#721). -->
+					<!-- A conversation that failed to load is not a new one. -->
 					<UiQueryBoundary
 						v-if="activeId && messagesError"
 						:error="messagesError"

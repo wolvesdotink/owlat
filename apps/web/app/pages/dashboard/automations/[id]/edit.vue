@@ -307,7 +307,7 @@ onUnmounted(() => {
 		<!-- Progress Indicator -->
 		<EditorProgress :inert="isInspectorOverlay || undefined" />
 
-		<!-- A failed read is not a missing automation (#721). -->
+		<!-- A failed read is not a missing automation. -->
 		<div v-if="automationError" class="flex-1 flex items-center justify-center">
 			<UiQueryBoundary :error="automationError" @retry="refetchAutomation" />
 		</div>

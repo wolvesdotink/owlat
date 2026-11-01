@@ -322,7 +322,7 @@ useAnswerModeKeys({
 						<TeamPinnedItems v-if="isAdmin" :team="team" />
 					</template>
 				</AnswerTeamConversation>
-				<!-- A failed read is not a missing thread (#721). -->
+				<!-- A failed read is not a missing thread. -->
 				<UiQueryBoundary
 					v-else-if="threadError"
 					:error="threadError"

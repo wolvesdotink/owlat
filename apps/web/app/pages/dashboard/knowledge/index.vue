@@ -125,7 +125,7 @@ const handleCancelled = () => {
 		<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
 			<!-- Main Content -->
 			<div class="lg:col-span-2 space-y-3">
-				<!-- A failed read is not an empty knowledge base (#721). -->
+				<!-- A failed read is not an empty knowledge base. -->
 				<UiQueryBoundary
 					v-if="entriesError"
 					:error="entriesError"

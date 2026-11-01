@@ -59,7 +59,7 @@ const {
 } = useOrganizationQuery(api.delivery.rampIndependence.getIndependenceSummary);
 
 /**
- * THE NAME OF THE RELAY, and separately WHETHER THERE IS ONE (#513).
+ * THE NAME OF THE RELAY, and separately WHETHER THERE IS ONE.
  *
  * `referenceTransportId` is null on two different deployments — no relay, and
  * more than one kind of relay — so every branch on this screen that decides

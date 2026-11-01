@@ -190,7 +190,7 @@ function initial(c: { displayName?: string; email: string }) {
 					class="w-6 h-6 animate-spin motion-reduce:animate-none text-text-tertiary"
 				/>
 			</div>
-			<!-- A failed read is not an empty address book (#721). -->
+			<!-- A failed read is not an empty address book. -->
 			<UiQueryBoundary v-else-if="listError" :error="listError" @retry="refetchList" />
 			<div v-else-if="filtered.length === 0" class="text-center py-12">
 				<Icon name="lucide:users" class="w-10 h-10 mx-auto text-text-tertiary" />
@@ -330,6 +330,5 @@ function initial(c: { displayName?: string; email: string }) {
 				</div>
 			</form>
 		</UiModal>
-
 	</div>
 </template>

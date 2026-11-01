@@ -239,11 +239,10 @@ async function handleResolve(threadId: Id<'conversationThreads'>) {
 						</p>
 					</NuxtLink>
 
-					<!-- Hover-reveal action rail: Open and Resolve. There used to be a
-					     third button here, an "assign" one that only navigated to the
-					     thread — the same destination Open already has, under a verb it
-					     did not do. Assigning happens in the thread header and on the
-					     list row's own hover rail.
+					<!-- Hover-reveal action rail: Open and Resolve. No "assign" button:
+					     here it could only navigate to the thread — the same destination
+					     Open already has, under a verb it would not do. Assigning happens
+					     in the thread header and on the list row's own hover rail.
 					     Opacity-only overlay, pointer-events gated, also revealed on
 					     keyboard focus-within. No DOM/layout shift. -->
 					<div

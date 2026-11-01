@@ -398,7 +398,7 @@ const timezones = computed(() => instanceTimezoneSelectOptions(t));
 					</form>
 				</UiCard>
 
-				<!-- The workspace logo on the public pages (#810). Its own card
+				<!-- The workspace logo on the public pages. Its own card
 				     because picking a file applies it, outside the Save button. -->
 				<SettingsWorkspaceLogoCard />
 			</div>
@@ -444,8 +444,8 @@ const timezones = computed(() => instanceTimezoneSelectOptions(t));
 			@save="unsavedDialog.confirmSave"
 		/>
 
-		<!-- ── Moved here from the Team page (#795) ───────────────────────────
-		     Workspace-wide switches that are not about who is on the team. Both
+		<!-- ── Workspace-wide switches ─────────────────────────────────────
+		     Settings that are not about who is on the team. Both
 		     save on their own, outside this page's Save button. -->
 
 		<!-- Import on first login: offer new users a mail import. Everyone who

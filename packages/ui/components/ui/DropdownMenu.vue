@@ -40,7 +40,7 @@ function triggerControl(): HTMLElement | null {
 	return triggerRef.value?.querySelector<HTMLElement>('button, [tabindex]') ?? null;
 }
 
-// The menu's state is announced on that control. The wrapper used to be a
+// The menu's state is announced on that control. The wrapper must not be a
 // role="button" of its own around it: one control nested in another, which
 // screen readers announce twice and axe reports as `nested-interactive`.
 watch(

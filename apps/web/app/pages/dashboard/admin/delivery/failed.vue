@@ -22,7 +22,7 @@ const {
 } = useConvexQuery(api.inbox.queries.getFailed, () => ({ limit: 50 }));
 
 // Retry: sends a person's approved reply again, returns a person's reply to
-// review, or has the agent draft again (`inboxRetryCopy`, #1220).
+// review, or has the agent draft again (`inboxRetryCopy`).
 const { run: retryFailedMessage } = useBackendOperation(api.inbox.mutations.retryFailedMessage, {
 	label: () => t('dashboard.inbox.failed.retryOperation'),
 });
