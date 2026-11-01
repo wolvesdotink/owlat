@@ -32,6 +32,9 @@ echo "unexpected docker call: $*" >&2
 exit 3
 `;
 
+/** What the updater serves the CLI. */
+const ROUTES = new Set(['GET /snapshot', 'POST /rollback']);
+
 interface Seen {
 	method: string;
 	path: string;
@@ -49,6 +52,14 @@ let stubDir = '';
 
 beforeAll(async () => {
 	server = createServer((req: IncomingMessage, res) => {
+		// Only the updater's two routes are recorded. Anything else that finds
+		// the port (a host process probing listening ports sends `GET /`) gets
+		// a 404 and stays out of `seen`; a CLI calling a wrong route still
+		// fails, by the route it never called.
+		if (!ROUTES.has(`${req.method} ${req.url}`)) {
+			res.writeHead(404).end();
+			return;
+		}
 		let body = '';
 		req.on('data', (chunk) => (body += chunk));
 		req.on('end', () => {
