@@ -1,12 +1,12 @@
 /**
  * The Assistant page's conversation list, question field and feed wiring.
  *
- * #1051: each conversation is a real selection button (current one marked with
+ * Each conversation is a real selection button (current one marked with
  * `aria-current`), Rename and Delete sit behind a More actions button beside
  * it rather than inside it, the question field has a name that outlives its
  * placeholder, and closing the phone drawer puts focus in the question field.
  *
- * #1050: the page feeds streamed content to useFollowLatest, so a reader who
+ * The page feeds streamed content to useFollowLatest, so a reader who
  * scrolled up sees the Jump to latest pill instead of being pulled down.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';

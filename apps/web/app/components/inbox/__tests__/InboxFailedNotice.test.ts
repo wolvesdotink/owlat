@@ -1,5 +1,5 @@
 /**
- * The failed-message notice says what Retry will do (#1220): a failed send of
+ * The failed-message notice says what Retry will do: a failed send of
  * a reply a person approved is sent again and shows the text that goes out, a
  * person's reply goes back to review, and only an untouched message has the
  * agent draft again. Same rule as the server (`@owlat/shared/inboxRetry`).

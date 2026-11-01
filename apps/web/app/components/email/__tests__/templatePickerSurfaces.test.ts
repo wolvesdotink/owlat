@@ -1,5 +1,5 @@
 /**
- * Both template pickers, mounted with the shared picker inside (#1047).
+ * Both template pickers, mounted with the shared picker inside.
  *
  * The organization holds 150 templates, more than one page. On each surface a
  * template past the first page must be found by search and selectable, and a

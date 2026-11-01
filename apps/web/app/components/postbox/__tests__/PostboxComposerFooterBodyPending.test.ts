@@ -1,6 +1,6 @@
 /**
  * While a reopened draft's body has not loaded, the footer's body controls are
- * disabled, not just ignored (#896). The mode decides which body goes out and a
+ * disabled, not just ignored. The mode decides which body goes out and a
  * picked signature would become the whole body, so both wait for the saved
  * body; an enabled control that silently did nothing would also leave the
  * signature `<select>` showing a choice that was never applied.

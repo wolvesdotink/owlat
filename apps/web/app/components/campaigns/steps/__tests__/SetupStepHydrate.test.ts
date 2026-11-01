@@ -1,7 +1,7 @@
 /**
  * Setup mounts fresh against a campaign that already exists whenever the
  * wizard's <KeepAlive> cache is gone: a refresh, or the return from the email
- * editor (#1048). The form then fills itself from the persisted campaign, and a
+ * editor. The form then fills itself from the persisted campaign, and a
  * campaign read that lands after the user started typing never overwrites what
  * they typed.
  */

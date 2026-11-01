@@ -1,7 +1,7 @@
 /**
  * The team inbox roster's failed read gets the shared error state with a Try
- * again that re-reads the roster (#1099). It used to be a line of text with no
- * way to recover short of leaving the page.
+ * again that re-reads the roster, not a line of text with no way to recover
+ * short of leaving the page.
  */
 import { describe, expect, it, vi } from 'vitest';
 import { mount } from '@vue/test-utils';

@@ -1,8 +1,8 @@
 /**
  * The Topics and Segments lists and the member table on a topic's and a
- * segment's detail page announce their sort (#1433). The chevron used to be
- * the only cue; a screen reader could not tell which column was sorted or in
- * which direction.
+ * segment's detail page announce their sort. With the chevron as the only
+ * cue, a screen reader could not tell which column was sorted or in which
+ * direction.
  *
  * Each page is mounted with the REAL sort state (`useDataTable`, through
  * `useMemberTable` on the detail pages) and the real table components, over

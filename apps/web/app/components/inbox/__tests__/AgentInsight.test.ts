@@ -10,7 +10,7 @@ beforeAll(() => {
 });
 
 /**
- * #779 — the agent's working (confidence, the processing trace) sits behind
+ * The agent's working (confidence, the processing trace) sits behind
  * one "Why did the agent do this?" disclosure instead of a block on every
  * message. Closed by default; the host page renders it for admins only.
  */

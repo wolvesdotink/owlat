@@ -2,12 +2,12 @@
  * `MemberTable` is the contact table both audience detail pages render
  * (segments and topics). Mounted with the real UI layer so the assertions are
  * about what a user gets:
- *   - every row's email is a link, so the table has a keyboard route (the
- *     rows used to be mouse-only `<tr @click>`), and a click elsewhere on a
+ *   - every row's email is a link, so the table has a keyboard route (a
+ *     `<tr @click>` alone is mouse-only), and a click elsewhere on a
  *     row still opens the contact, but a click on a row action does not;
  *   - the header sorts only declared columns and shows the active chevron;
  *   - below `md` exactly one of the table and the card list is mounted;
- *   - the empty, no-results and paging states, and a failed read (#721).
+ *   - the empty, no-results and paging states, and a failed read.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount } from '@vue/test-utils';

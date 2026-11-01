@@ -5,7 +5,7 @@
  * the body keeps at least 6rem, and the footer (Send) stays outside it, pinned.
  * Squeezing either the strips or the body would hide what the notice promises
  * ("everything you wrote is still here"). The region is the shared frame's
- * (`PostboxComposerShell`, #812), which the mailbox composer and the Team inbox
+ * (`PostboxComposerShell`), which the mailbox composer and the Team inbox
  * reply both render in. Checked on the template AST; mounting the full
  * composer for a few classes would test the harness.
  */

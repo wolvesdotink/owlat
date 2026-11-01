@@ -91,7 +91,7 @@ export function independenceSummary(
 		referenceTransportId: 'ses',
 		// The same two facts the controls fixture above carries, and the same
 		// reason: the screen's variant is decided by whether a relay EXISTS, so a
-		// standalone override has to unset this and not merely the id (#513).
+		// standalone override has to unset this and not merely the id.
 		isRelayConfigured: true,
 		ownShare: 0.42,
 		series: risingSeries(),

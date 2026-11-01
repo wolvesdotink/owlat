@@ -1,8 +1,8 @@
 /**
  * The Answer queue page's body: an empty queue is good news ("Nothing needs an
- * answer"), but a queue that is empty because a source failed to load is not
- * (#721). It shows the error and a Try again that re-reads the failed sources.
- * A queue with rows and a failed source names what is missing (#1099).
+ * answer"), but a queue that is empty because a source failed to load is not.
+ * It shows the error and a Try again that re-reads the failed sources.
+ * A queue with rows and a failed source names what is missing.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
@@ -133,8 +133,8 @@ describe('AnswerQueueFlow read states', () => {
 });
 
 /**
- * The header's time estimate is a catalog key the page translates: it used to
- * be an English literal, so a German header read "noch about 6 min" (#1187).
+ * The header's time estimate is a catalog key the page translates: an English
+ * literal there would make a German header read "noch about 6 min".
  * Mounts the real AgentTaskFlow so the assertion is on the header a person reads.
  */
 function renderFlow(locale: 'en' | 'de') {
@@ -182,9 +182,8 @@ describe('AnswerQueueFlow time estimate', () => {
 });
 
 /**
- * The done screen's session summary is built from catalog keys too: the
- * outcomes used to be English words, so German read "3 cleared in dieser
- * Sitzung." Found while fixing #1187.
+ * The done screen's session summary is built from catalog keys too: English
+ * outcome words would make German read "3 cleared in dieser Sitzung."
  */
 describe('AnswerQueueFlow done screen', () => {
 	function renderDone(locale: 'en' | 'de') {
@@ -224,7 +223,7 @@ describe('AnswerQueueFlow done screen', () => {
 	});
 
 	// UiIconBox is a block-level box, so the text-center around it does not move
-	// it: without mx-auto the check sat at the column's left edge (#1187).
+	// it: without mx-auto the check sat at the column's left edge.
 	it('centres the check icon above the title', () => {
 		const icon = renderDone('en').findComponent({ name: 'UiIconBox' });
 		expect(icon.attributes('icon')).toBe('lucide:check-circle-2');

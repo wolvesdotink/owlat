@@ -387,7 +387,7 @@ describe('CsvImportModal — where the import goes next', () => {
 });
 
 /**
- * #897: a batch the backend did not commit. The completion step must not read
+ * A batch the backend did not commit. The completion step must not read
  * as a clean import, must name the rows and the reason, and must offer a retry
  * of exactly those rows.
  */
@@ -510,7 +510,7 @@ describe('CsvImportModal — a failed batch', () => {
 	});
 });
 
-/** #1042: one column per identity field, and a preview that names its source. */
+/** One column per identity field, and a preview that names its source. */
 describe('CsvImportModal — identity mapping', () => {
 	const headers = ['email', 'secondary_email'];
 	const rows = [

@@ -1,5 +1,5 @@
 /**
- * Answer mode for a message that is gone (#1100): deleted, moved by another
+ * Answer mode for a message that is gone: deleted, moved by another
  * client, purged from Trash, or in a mailbox no longer shared. `getMessage`
  * answers `null`, which is not a failed read, so the page used to fall through
  * to the loading skeleton and stay there. It now says the message is no longer

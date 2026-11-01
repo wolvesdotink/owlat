@@ -1,5 +1,5 @@
 /**
- * One team-inbox message's text in the thread view (#900):
+ * One team-inbox message's text in the thread view:
  *   - a message whose text fit on its row renders it and calls nothing;
  *   - a message whose text part is held in storage shows the excerpt AND says
  *     it is the beginning, then swaps in the full text the action returns;

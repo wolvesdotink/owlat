@@ -1,10 +1,10 @@
 /**
- * Translation manager save path, mounted (issues #1000, #1001). A cell save
- * used to write the overlay, then reload and render, then write the whole
- * `htmlTranslations` blob through the editor `update` mutation, and cleared the
- * unsaved badge even when that second write failed. It is now ONE translation
- * write carrying the overlay, the language's HTML and the revision it was built
- * on, for both surfaces; a failed write keeps the typed text in its cell.
+ * Translation manager save path, mounted. A cell save is ONE translation write
+ * carrying the overlay, the language's HTML and the revision it was built on,
+ * for both surfaces, not an overlay write followed by a second write of the
+ * whole `htmlTranslations` blob through the editor `update` mutation, which
+ * could fail after the unsaved badge was cleared. A failed write keeps the
+ * typed text in its cell.
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { nextTick, ref, type Ref } from 'vue';

@@ -1,5 +1,5 @@
 /**
- * A failed knowledge-base read is not an empty knowledge base (#721): the page
+ * A failed knowledge-base read is not an empty knowledge base: the page
  * shows the error with a working Try again, never "No entries yet".
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';

@@ -21,8 +21,7 @@
  *
  * The component takes the ROW, so this suite is also where the row-to-state
  * mapping is pinned: which column means gone, which means swept, which means
- * unread. It used to be spelled at the call site inside a 1000-line page, where
- * nothing checked it.
+ * unread. Spelled at the call site inside a page, nothing would check it.
  *
  * Mounts the real shared row component underneath, so the assertions are about
  * the markup the browser paints. <Icon> is a global auto-import, stubbed here.

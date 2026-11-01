@@ -4,7 +4,7 @@
  * suppression plus the guarded request with a recorded result), driven here
  * through the real `usePostboxSenderActions` over a stubbed backend.
  *
- * The non-one-click paths (issue #864, finding 10): the mailto target goes
+ * The non-one-click paths: the mailto target goes
  * through the shared RFC 6068 parser, so a List-Unsubscribe `mailto:?to=…`
  * (recipient in a `to` field, empty path) opens a prefilled composer. A mailto
  * with no To recipient falls back to the https page.

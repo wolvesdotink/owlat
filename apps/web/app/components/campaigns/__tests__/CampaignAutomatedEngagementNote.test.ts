@@ -1,6 +1,6 @@
 /**
- * The lines under the open and click counts that say what they leave out
- * (#764, #831): the automated opens and clicks counted apart, or a caveat for
+ * The lines under the open and click counts that say what they leave out:
+ * the automated opens and clicks counted apart, or a caveat for
  * counts from before the split existed.
  */
 import { describe, expect, it } from 'vitest';

@@ -1,5 +1,5 @@
 /**
- * #770 — the mode step asks what the team wants to do, recommends "Both", and
+ * The mode step asks what the team wants to do, recommends "Both", and
  * keeps the eight operator presets behind an "Advanced" disclosure.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';

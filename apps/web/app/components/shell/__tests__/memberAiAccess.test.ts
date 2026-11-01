@@ -1,8 +1,8 @@
 /**
  * Knowledge and the Assistant are for every member while their features are
  * on. Onboarding promises both to everyone and the routes are member-level,
- * but the only ways in used to be admin-only: the Assistant in the user menu
- * and Knowledge inside the Settings sidebar. These pin the member's view.
+ * so the ways in are too: the Assistant in the user menu and Knowledge in the
+ * Conversations sidebar. These pin the member's view.
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { mount } from '@vue/test-utils';

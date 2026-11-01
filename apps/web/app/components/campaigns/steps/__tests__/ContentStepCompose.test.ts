@@ -1,5 +1,5 @@
 /**
- * "Create and design email" (#1048): a new template has no body, so the step
+ * "Create and design email": a new template has no body, so the step
  * creates and attaches it and then hands it to the editor (`compose`) instead
  * of advancing to a Review that could only report an empty email. Picking an
  * existing template still just advances (`submit`).

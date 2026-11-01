@@ -23,7 +23,7 @@ afterEach(() => {
 });
 
 /**
- * #807 — what the team sent shows in the thread: the reply that answered a
+ * What the team sent shows in the thread: the reply that answered a
  * message, and follow-ups written after it, with an Undo while one waits out
  * its window.
  */

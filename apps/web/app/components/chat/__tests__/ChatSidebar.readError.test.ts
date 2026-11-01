@@ -1,6 +1,6 @@
 /**
  * The chat rail is the room list: a failed read of it is not "No channels
- * yet" (#721). With nothing to list and a read error, the rail shows the error
+ * yet". With nothing to list and a read error, the rail shows the error
  * and a Try again that asks the page to re-read.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';

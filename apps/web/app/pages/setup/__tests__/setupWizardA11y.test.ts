@@ -61,9 +61,8 @@ const pages = [
 	{ name: 'review', component: SetupReviewPage, loaded: 'Review & launch', indicator: true },
 ] as const;
 
-// The access-request screen used to be audited here as a "team invites step".
-// It is not a step and no longer lives under /setup — it is audited on its own
-// route in `app/pages/__tests__/accessRequestA11y.test.ts`.
+// The access-request screen is not a step and does not live under /setup — it
+// is audited on its own route in `app/pages/__tests__/accessRequestA11y.test.ts`.
 
 /** A step label that reached the screen as its message key instead of its word. */
 const RAW_STEP_KEY = /shared\.useSetupWizard\./;

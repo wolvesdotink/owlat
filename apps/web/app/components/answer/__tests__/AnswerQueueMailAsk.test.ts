@@ -231,7 +231,7 @@ describe('AnswerQueueMailAsk', () => {
 		expect(w.find('[data-testid="answer-queue-ask"]').exists()).toBe(false);
 	});
 
-	// Issue #1131's invoices: no draft is written while they are missing either.
+	// Files the message asks for: no draft is written while they are missing either.
 	it('asks for files before any draft, and sends the files the person gave', async () => {
 		clarification.value = {
 			isNeeded: true,

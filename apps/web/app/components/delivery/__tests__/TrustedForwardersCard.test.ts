@@ -2,7 +2,7 @@
  * The Trusted forwarders card keeps a draft of the list against the live
  * instance settings row. That row re-emits on any write to any of its fields
  * (the TLS and MTA-STS cards on the same page save on change), so the draft
- * may follow the server only while it holds nothing unsaved (#1128).
+ * may follow the server only while it holds nothing unsaved.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { config, flushPromises, mount } from '@vue/test-utils';

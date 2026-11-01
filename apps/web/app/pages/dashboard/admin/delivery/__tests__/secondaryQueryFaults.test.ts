@@ -408,7 +408,7 @@ describe('the delivery hub page', () => {
 		wrapper.unmount();
 	});
 
-	// #1194: bounces and complaints whose message id matched no send are counted
+	// Bounces and complaints whose message id matched no send are counted
 	// on the hub, so an operator does not have to read logs to learn of them.
 	it('counts the bounces and complaints that matched no send', () => {
 		stubHubQueries([

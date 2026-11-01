@@ -1,5 +1,5 @@
 /**
- * The inspector takes space only while a step is open (#1046). With nothing
+ * The inspector takes space only while a step is open. With nothing
  * selected the canvas has the full width; below `lg` the open inspector is a
  * sheet, and what it covers leaves the tab order until it closes.
  */

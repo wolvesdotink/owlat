@@ -8,10 +8,10 @@
  *     fetches nothing;
  *   - `unknown` (older mail, parts not cut yet) and a failed action both fall
  *     back to the raw `.eml`, as before, reading the part under the charset it
- *     declares (#1299).
+ *     declares.
  *
  * An RSVP opens the composer with the generated `reply.ics` in the compose
- * request itself (plain text that survives a reload), not in memory (#1257).
+ * request itself (plain text that survives a reload), not in memory.
  */
 import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';

@@ -1,5 +1,5 @@
 /**
- * The contact page's labels (#804).
+ * The contact page's labels.
  *
  * - The double opt-in badge read "Confirmed confirmation": it is now one plain
  *   phrase per state, "Subscription confirmed".
@@ -7,7 +7,7 @@
  *   and a date read `2026-11-09`.
  * - "Activity" and "Timeline" were two tabs for what sounds like one thing; the
  *   activity log now sits under the messages in a single Timeline tab.
- * - A contact that failed to load is not a deleted one (#721).
+ * - A contact that failed to load is not a deleted one.
  * - Export data and Resend confirmation explain themselves in tooltips that
  *   keyboard focus opens too, not in native titles.
  */

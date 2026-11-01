@@ -130,7 +130,7 @@ const useHead = vi.fn();
 
 /**
  * The title the page handed `useHead`. It is a GETTER — the extraction rule for
- * anything captured once at setup — and it used to be a computed, so the
+ * anything captured once at setup — but a computed also works, so the
  * assertion unwraps either shape rather than reading a bare string.
  */
 function headTitle(): string {
@@ -220,10 +220,10 @@ describe('independence screen', () => {
 	});
 
 	/**
-	 * TWO RELAY KINDS: no single arm to NAME, and every figure still about a relay
-	 * (#513). The screen used to key its whole variant on `referenceTransportId`,
-	 * so this deployment read as "Warm-up autopilot" with a capacity headline —
-	 * over a summary whose own share and removal warning were about a relay.
+	 * TWO RELAY KINDS: no single arm to NAME, and every figure still about a
+	 * relay. Keying the whole variant on `referenceTransportId` would make this
+	 * deployment read as "Warm-up autopilot" with a capacity headline — over a
+	 * summary whose own share and removal warning are about a relay.
 	 */
 	it('stays the independence screen when two relays leave no single one to name', () => {
 		data.value = independenceSummary({ referenceTransportId: null, isRelayConfigured: true });

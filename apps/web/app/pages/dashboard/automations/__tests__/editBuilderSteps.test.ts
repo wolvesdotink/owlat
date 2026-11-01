@@ -1,10 +1,10 @@
 /**
  * The automation builder has to show the steps it is building.
  *
- * `vue-draggable-plus` renders only its default slot. The builder used the old
- * `vuedraggable` `#item` slot, which the component silently ignores, so an
- * automation with eight steps opened as trigger, then "End of automation", and
- * nothing in between (#802). These cases mount the real page with the real
+ * `vue-draggable-plus` renders only its default slot and silently ignores the
+ * `vuedraggable` `#item` slot, so a builder on that slot opens an automation
+ * with eight steps as trigger, then "End of automation", and nothing in
+ * between. These cases mount the real page with the real
  * `VueDraggable` so a slot mismatch shows up as missing cards.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';

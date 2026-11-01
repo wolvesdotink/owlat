@@ -82,9 +82,9 @@ describe('PostboxTodayReaderOverlay', () => {
 	});
 
 	it('swaps the thread in the same tick, with no leave to wait for', async () => {
-		// Plan 1.16: the swap used to be an out-in <Transition>, so the next
-		// thread only mounted after the previous one had faded out (~280ms per
-		// j/k). The reader is now keyed with an enter-only CSS fade.
+		// An out-in <Transition> would mount the next thread only after the
+		// previous one had faded out (~280ms per j/k), so the reader is keyed
+		// with an enter-only CSS fade.
 		const w = mountOverlay('m2');
 		await w.setProps({ message: msg('m3') as never });
 		const readers = w.findAll('.reader-stub');

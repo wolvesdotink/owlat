@@ -1,5 +1,5 @@
 /**
- * The data migrations card on System & updates (#1345): each manifest
+ * The data migrations card on System & updates: each manifest
  * migration with its state and progress, the run action, and a run that only
  * starts background work, never reported as done.
  */

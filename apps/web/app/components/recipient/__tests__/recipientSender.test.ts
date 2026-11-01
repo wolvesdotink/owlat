@@ -1,5 +1,5 @@
 /**
- * Recipient pages name the sender, not Owlat (#798). Someone unsubscribing
+ * Recipient pages name the sender, not Owlat. Someone unsubscribing
  * from Northwind Studio's newsletter has never heard of Owlat; a page headed
  * "Owlat" looks like phishing. And when the link is broken, the page still
  * offers a way out: the sender's address.

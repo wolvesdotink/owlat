@@ -1,6 +1,6 @@
 /**
  * A clearsigned text body shows its signed block alone, and the signature
- * verdict stands only beside that block (issue #1311):
+ * verdict stands only beside that block:
  *   - a text body over the 64 KiB inline threshold is loaded from storage and
  *     classified, so text after the block never renders;
  *   - an HTML alternative never renders under a text-part verdict;

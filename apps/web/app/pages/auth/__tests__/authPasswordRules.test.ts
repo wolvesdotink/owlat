@@ -1,5 +1,5 @@
 /**
- * #768 / #769 — the auth screens share one password rule and one door.
+ * The auth screens share one password rule and one door.
  *
  *  - Sign-in never judges a password's length: that is the server's call, and an
  *    account created under an older minimum must still reach it.

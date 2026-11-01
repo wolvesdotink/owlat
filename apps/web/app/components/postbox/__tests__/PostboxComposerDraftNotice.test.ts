@@ -1,5 +1,5 @@
 /**
- * The composer's draft notice (#895, #896): one sentence per state, a retry
+ * The composer's draft notice: one sentence per state, a retry
  * only where retrying can help, and one row in the narrow popup. The sentence
  * wraps inside its own column; it must not claim a whole row of its own and
  * push the icon and the action onto separate lines.

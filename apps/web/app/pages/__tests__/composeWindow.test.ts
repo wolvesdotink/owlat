@@ -1,7 +1,7 @@
 /**
- * The desktop compose window (pages/compose.vue) after a send (issue #864,
- * finding 6). It used to close on `@sent`, so a mailto: message had no undo
- * window and no send sound. The composer now arms the undo window itself;
+ * The desktop compose window (pages/compose.vue) after a send. Closing on
+ * `@sent` would leave a mailto: message with no undo window and no send
+ * sound. The composer arms the undo window itself;
  * this page hides the composer, keeps the window open with the toast, closes
  * it once the window runs out, and takes back the draft an Undo recovers.
  */

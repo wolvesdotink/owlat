@@ -5,7 +5,7 @@ import SavedReplySaveDialog from '../SavedReplySaveDialog.vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 /**
- * "Save as reply" from a composer whose body holds a pasted image (#1293). The
+ * "Save as reply" from a composer whose body holds a pasted image. The
  * image's bytes are a part of the draft, so a saved reply cannot keep it: the
  * dialog says the image is left out, and what it saves has no trace of it
  * rather than an empty `<img>` that later drafts would send.

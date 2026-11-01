@@ -1,9 +1,9 @@
 /**
- * #1285: an image pasted into a draft's body, once the draft is reopened.
+ * An image pasted into a draft's body, once the draft is reopened.
  *
- * The body used to be saved with the paste's `blob:` preview as the image's
- * src. That URL dies with the tab, so a reload or another device showed a
- * broken image. Now the editor saves the image as `<img data-inline-cid="X">`
+ * The paste's `blob:` preview cannot be the saved image's src: that URL dies
+ * with the tab, so a reload or another device would show a broken image. The
+ * editor saves the image as `<img data-inline-cid="X">`
  * with no src, and fills one in from `inlineImageSources` (an expiring URL
  * for the row part) after every write of the body, including bodies an older client
  * saved with the dead `blob:` URL. The composer renews those URLs before they
@@ -36,7 +36,7 @@ const { default: PostboxBasicEditor } = await import('../PostboxBasicEditor.vue'
 const CID = 'chart@owlat.inline';
 const ROW_URL = 'https://deploy.convex.site/sealed-blob?id=chart&ct=image%2Fpng&exp=1&sig=x';
 const DEAD_BLOB = 'blob:https://app.owlat.example/0b6f4d1e-7a1c-4a52-9a0e-3f1d2c5b8e77';
-/** What the editor saves since #1285. */
+/** What the editor saves: the part's cid and no src. */
 const STORED = `<p>Chart:</p><p><img data-inline-cid="${CID}" style="max-width:100%;height:auto"></p>`;
 /** What it saved before: the session's preview as the src. */
 const STORED_BEFORE_1285 = `<p>Chart:</p><p><img src="${DEAD_BLOB}" data-inline-cid="${CID}"></p>`;

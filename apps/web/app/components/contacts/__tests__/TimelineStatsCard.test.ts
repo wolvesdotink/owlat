@@ -1,7 +1,7 @@
 /**
  * The contact's Communication card. `contacts.timeline.getStats` returns each
- * channel's count as `{ inbound, outbound }`, and the card once printed that
- * object as if it were a number: `{ "inbound": 2, "outbound": 2 }` (#804).
+ * channel's count as `{ inbound, outbound }`, and the card must not print that
+ * object as if it were a number: `{ "inbound": 2, "outbound": 2 }`.
  */
 import { describe, it, expect, vi } from 'vitest';
 import { mount } from '@vue/test-utils';

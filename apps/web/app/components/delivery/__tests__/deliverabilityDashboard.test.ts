@@ -109,7 +109,7 @@ describe('measurement cell card — insufficient data is not a failure', () => {
 	});
 
 	/**
-	 * THE SPAN THE NUMBERS ARE OVER IS ON THE CARD (#510).
+	 * THE SPAN THE NUMBERS ARE OVER IS ON THE CARD.
 	 *
 	 * "124 of 400 sends" is the evaluator's count over the ramp controller's
 	 * window, and it sits directly under a table covering seven days. The card

@@ -1,5 +1,5 @@
 /**
- * One word for a live automation (#786). The Marketing sidebar marks each
+ * One word for a live automation. The Marketing sidebar marks each
  * listed automation with the shared "running" status pill, while the list,
  * detail and filter tabs call the same state "Active". The pill now reads the
  * same word in every language the app ships.

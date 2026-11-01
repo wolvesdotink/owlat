@@ -1,6 +1,6 @@
 /**
- * Audience is one section with tabs (#787): the old overview's stat tiles
- * became the tab counts, and topics/segments stay admin-only as in the sidebar.
+ * Audience is one section with tabs: the counts sit on the tabs, not in stat
+ * tiles, and topics/segments stay admin-only as in the sidebar.
  */
 import { beforeEach, describe, expect, it } from 'vitest';
 import { mount } from '@vue/test-utils';
@@ -66,7 +66,7 @@ describe('AudienceTabs', () => {
 	});
 
 	it('shows no contact count while the count is pending (null), and shows a real zero', () => {
-		// #917: with no cached count the API answers null instead of scanning.
+		// With no cached count the API answers null instead of scanning.
 		totalContacts = null;
 		expect(render().find('a[data-tab="contacts"]').text().trim()).toBe('Contacts');
 		totalContacts = 0;

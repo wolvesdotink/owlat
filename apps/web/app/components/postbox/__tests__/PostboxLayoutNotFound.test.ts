@@ -1,5 +1,5 @@
 /**
- * The Postbox reader pane for a message that is gone (#1100). A link (a
+ * The Postbox reader pane for a message that is gone. A link (a
  * notification, a bookmark, the Answer queue) can name a message that was
  * deleted, moved by another client, purged from Trash, or whose mailbox is no
  * longer shared. Neither the list nor its thread has it, and `getMessage`

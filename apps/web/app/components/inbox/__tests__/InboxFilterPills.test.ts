@@ -8,9 +8,9 @@ beforeAll(() => {
 });
 
 /**
- * #780 — four status tabs (Open / Waiting / Snoozed / Resolved) and a separate
- * assignment filter (Anyone / Me / Unassigned), instead of seven pills mixing
- * the two with a tab that was a subset of another.
+ * Four status tabs (Open / Waiting / Snoozed / Resolved) and a separate
+ * assignment filter (Anyone / Me / Unassigned), not one row of pills mixing
+ * the two, where one tab would be a subset of another.
  */
 const counts = { open: 4, waiting: 2, snoozed: 1, resolved: 120, waitingOver24h: 1, cap: 100 };
 

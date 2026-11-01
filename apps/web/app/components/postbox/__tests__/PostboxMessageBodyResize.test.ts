@@ -7,7 +7,7 @@
  * popup flags let its target=_blank links open). Under the old empty `sandbox=""` the frame ran in an opaque
  * origin, `contentDocument` was null, and `resizeIframe()` short-circuited on
  * every load — so every HTML email was stuck at 200px with an inner scrollbar
- * and the #89 pre-size cache never recorded a height. These tests pin the
+ * and the pre-size cache never recorded a height. These tests pin the
  * sandbox value and prove a tall body drives the iframe height.
  */
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
@@ -131,7 +131,7 @@ describe('PostboxMessageBody iframe sizing', () => {
 
 		expect(iframe.style.height).toBe('840px');
 		// The measured height is remembered so re-opening pre-sizes instead of
-		// flashing the min-height (the #89 pre-size cache path).
+		// flashing the min-height (the pre-size cache path).
 		const key = postboxRenderKey(message._id, {
 			scheme: 'light',
 			showImages: false,

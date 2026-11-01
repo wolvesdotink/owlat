@@ -1,5 +1,5 @@
 /**
- * A workspace with no campaign senders must not dead-end the wizard (#785).
+ * A workspace with no campaign senders must not dead-end the wizard.
  *
  * The admin (who is the person the old copy told everyone to ask) gets the
  * add-a-sender form in place, and a sender added there is selected straight

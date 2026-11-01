@@ -1,15 +1,15 @@
 /**
  * THE TRANSPORT PAGE'S THREE PENDING STATES (UX plan item 55 / admin-delivery-06).
  *
- * This page used to have two honest states and one dead end. First load was a
- * bare centred `lucide:loader-2` in a `py-16` box — the whole page blanked and
- * then reflowed when the query landed — while its sibling delivery lists stood
- * in for their rows with a content-shaped skeleton. And the content branch was
- * a `v-else-if="status"` with NO `v-else`, so a `getStatus` that resolved to
- * nothing painted the header and then a blank page: not "no provider
+ * The page has two honest states to keep and one dead end to avoid. A bare
+ * centred `lucide:loader-2` on first load blanks the whole page and reflows it
+ * when the query lands, while its sibling delivery lists stand in for their
+ * rows with a content-shaped skeleton. And a content branch that is a
+ * `v-else-if="status"` with NO `v-else` lets a `getStatus` that resolved to
+ * nothing paint the header and then a blank page: not "no provider
  * configured", not an error, just nothing.
  *
- * All three now run through the shared `UiQueryBoundary`, which is what makes
+ * All three run through the shared `UiQueryBoundary`, which is what makes
  * them exhaustive by construction. What is worth pinning is that each branch
  * says the true thing:
  *   - in flight → a placeholder shaped like the cards that are coming;

@@ -1,5 +1,5 @@
 /**
- * Try again re-reads the failed query instead of reloading the app (#1098).
+ * Try again re-reads the failed query instead of reloading the app.
  *
  * These pages bound their read's `:error` to `UiQueryBoundary` but left
  * `@retry` unwired, so Try again fell back to `window.location.reload()`.

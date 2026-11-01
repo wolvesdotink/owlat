@@ -4,9 +4,8 @@
  * The screen a signed-in member lands on when they belong to no organization —
  * a dead end until they ask for access, so its one form has to be operable.
  *
- * It used to be `/setup/team` and was audited as a step of the first-run wizard
- * (`app/pages/setup/__tests__/setupWizardA11y.test.ts`). It is not a setup step
- * and it no longer lives there, so its audit moved with it.
+ * It is not a step of the first-run wizard, so it is audited here on its own
+ * route rather than in `app/pages/setup/__tests__/setupWizardA11y.test.ts`.
  */
 import { beforeEach, describe, expect, it } from 'vitest';
 import { auditA11y, installNuxtStubs } from '~/__tests__/a11y';
