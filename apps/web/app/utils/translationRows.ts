@@ -17,6 +17,15 @@ export interface TranslationBlockRow {
 	label: string;
 }
 
+/** One row of the translation table: the subject, the preview text or a Block field. */
+export interface TranslatableRow {
+	id: string;
+	fieldType: 'subject' | 'previewText' | 'html' | 'buttonText' | 'alt';
+	sourceText: string;
+	label: string;
+	blockId?: string;
+}
+
 type Translate = (key: string, params: Record<string, unknown>) => string;
 
 const text = (value: unknown): string => (typeof value === 'string' ? value : '');
