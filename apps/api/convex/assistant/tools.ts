@@ -114,7 +114,7 @@ function buildSearchFiles(
 			limit: z.number().int().min(1).max(8).optional().describe('Max results (default 5).'),
 		}),
 		execute: async ({ query, limit }) => {
-			const files = await ctx.runAction(internal.semanticFileProcessing.semanticSearch, {
+			const files = await ctx.runAction(internal.files.processing.semanticSearch, {
 				queryText: query,
 				limit: clampInt(limit, 1, 8, 5),
 				scopeToContact: 'org-wide',

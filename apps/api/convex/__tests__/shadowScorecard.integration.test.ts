@@ -12,10 +12,7 @@ import { describe, it, expect, vi } from 'vitest';
 import schema from '../schema';
 import { api, internal } from '../_generated/api';
 import { createTestInboundMessage, enableFeatures } from './factories';
-import {
-	GRADUATION_MIN_SAMPLE,
-	MATCH_SIMILARITY_THRESHOLD,
-} from '../agent/shadowScorecard';
+import { GRADUATION_MIN_SAMPLE, MATCH_SIMILARITY_THRESHOLD } from '../agent/shadowScorecard';
 
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
@@ -26,9 +23,11 @@ vi.mock('../lib/sessionOrganization', async () => {
 		getUserIdFromSession: vi.fn().mockResolvedValue('test-user'),
 		getMutationContext: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
 		requireOrgPermission: vi.fn().mockResolvedValue({ userId: 'test-user', role: 'owner' }),
-		requireAuthenticatedIdentity: vi
-			.fn()
-			.mockResolvedValue({ subject: 'test-user', issuer: 'test', tokenIdentifier: 'test|test-user' }),
+		requireAuthenticatedIdentity: vi.fn().mockResolvedValue({
+			subject: 'test-user',
+			issuer: 'test',
+			tokenIdentifier: 'test|test-user',
+		}),
 	};
 });
 
@@ -46,17 +45,17 @@ const modules = Object.fromEntries(
 			!path.includes('agent/steps/classify') &&
 			!path.includes('agent/steps/draft') &&
 			!path.includes('knowledgeExtraction') &&
-			!path.includes('semanticFileProcessing') &&
+			!path.includes('files/processing') &&
 			!path.includes('visualizationAgent') &&
-			!path.includes('llmProvider'),
-	),
+			!path.includes('llmProvider')
+	)
 );
 
 const DRAFT = 'Thanks for reaching out — happy to help with your order.';
 
 async function seedShadowedMessage(
 	t: ReturnType<typeof convexTest>,
-	opts: { from: string; category: string; wouldHaveSent: boolean; draft?: string },
+	opts: { from: string; category: string; wouldHaveSent: boolean; draft?: string }
 ) {
 	const inboundMessageId = await t.run(async (ctx) =>
 		ctx.db.insert(
@@ -68,8 +67,8 @@ async function seedShadowedMessage(
 				contactId: undefined,
 				from: opts.from,
 				draftResponse: opts.draft ?? DRAFT,
-			}),
-		),
+			})
+		)
 	);
 	await t.mutation(internal.agent.shadowScorecard.recordShadowDecision, {
 		inboundMessageId,
@@ -98,7 +97,7 @@ describe('shadowScorecard — getShadowMode', () => {
 				isShadowMode: false,
 				createdAt: Date.now(),
 				updatedAt: Date.now(),
-			}),
+			})
 		);
 		const res = await t.query(internal.agent.shadowScorecard.getShadowMode, {});
 		expect(res.enabled).toBe(false);
@@ -123,7 +122,7 @@ describe('shadowScorecard — record + reconcile', () => {
 			ctx.db
 				.query('agentShadowDecisions')
 				.withIndex('by_message', (q) => q.eq('inboundMessageId', id))
-				.first(),
+				.first()
 		);
 		expect(observation?.isResolved).toBe(true);
 		expect(observation?.isMatched).toBe(true);
@@ -151,7 +150,7 @@ describe('shadowScorecard — record + reconcile', () => {
 		await t.run(async (ctx) =>
 			ctx.db.patch(id, {
 				draftResponse: 'We cannot process this; please contact billing directly for a refund.',
-			}),
+			})
 		);
 		await t.mutation(internal.agent.shadowScorecard.reconcileShadowDecision, {
 			inboundMessageId: id,
@@ -162,7 +161,7 @@ describe('shadowScorecard — record + reconcile', () => {
 			ctx.db
 				.query('agentShadowDecisions')
 				.withIndex('by_message', (q) => q.eq('inboundMessageId', id))
-				.first(),
+				.first()
 		);
 		expect(observation?.isMatched).toBe(false);
 

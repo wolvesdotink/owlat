@@ -1130,7 +1130,7 @@ describe('inboundIngest — what the row says about files nobody read', () => {
 		configureMta();
 		stubScanner({ clean: true });
 
-		// `.docx` passes the allowlist and reaches `semanticFiles.ingest`, but the
+		// `.docx` passes the allowlist and reaches `files/library.ingest`, but the
 		// extractor answers it with `[Word document: contract.docx]` — so the
 		// summary, the embedding and `[RELEVANT FILES]` all work from a filename.
 		// `indexed` would tell the reader the assistant has the contract.

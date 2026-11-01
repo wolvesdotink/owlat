@@ -28,7 +28,7 @@ const {
 	isLoading,
 	error: fileError,
 	refetch: refetchFile,
-} = useConvexQuery(api.semanticFiles.get, () => ({
+} = useConvexQuery(api.files.library.get, () => ({
 	fileId: fileId.value,
 }));
 
@@ -37,10 +37,10 @@ const {
 const versionHistory = useFileVersionHistory(() => fileId.value);
 
 // Mutations
-const { run: updateFile } = useBackendOperation(api.semanticFiles.update, {
+const { run: updateFile } = useBackendOperation(api.files.library.update, {
 	label: () => t('dashboard.files.detail.updateOperation'),
 });
-const { run: removeFile } = useBackendOperation(api.semanticFiles.remove, {
+const { run: removeFile } = useBackendOperation(api.files.library.remove, {
 	label: () => t('dashboard.files.detail.deleteOperation'),
 });
 

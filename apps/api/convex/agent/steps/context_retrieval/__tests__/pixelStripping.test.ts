@@ -34,7 +34,7 @@ function makeCtx(message: Record<string, unknown>) {
 			// knowledge/vectorCorpus: no table holds a vector, so no query embedding.
 			hasQueryableVectors: false,
 		},
-		actions: { knowledge: [], semanticFileProcessing: [] },
+		actions: { knowledge: [], 'files/processing': [] },
 	});
 }
 

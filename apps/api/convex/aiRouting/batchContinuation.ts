@@ -85,7 +85,7 @@ async function rerun(
 			});
 			return;
 		case 'file_summary':
-			await ctx.scheduler.runAfter(0, internal.semanticFileProcessing.processFile, {
+			await ctx.scheduler.runAfter(0, internal.files.processing.processFile, {
 				fileId: source.id,
 				...(summary ? { batchedSummary: summary } : {}),
 			});

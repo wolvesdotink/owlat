@@ -5,10 +5,10 @@
  * so anything a user should be able to find a file by has to be folded in
  * here. One builder owns that composition for all three write paths:
  *
- *   - insert (`semanticFiles.insertSemanticFile`): filename, title, tags,
- *   - processing (`semanticFileProcessing.processFile`): + summary, auto-tags
+ *   - insert (`files/library.insertSemanticFile`): filename, title, tags,
+ *   - processing (`files/processing.processFile`): + summary, auto-tags
  *     and the head of the extracted body,
- *   - metadata edits (`semanticFiles.update`): rebuilt from the stored row, so
+ *   - metadata edits (`files/library.update`): rebuilt from the stored row, so
  *     a renamed or re-tagged file doesn't keep a stale index entry.
  *
  * Kept as a pure function (no ctx) so both the mutation and the action runtime

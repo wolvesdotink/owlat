@@ -213,7 +213,7 @@ async function readAll(t: Harness, seeded: Seeded) {
 	for (const [key, fileId] of Object.entries(seeded)) {
 		if (key === 'contactId' || key === 'mailboxId') continue;
 		const id = fileId as Id<'semanticFiles'>;
-		get[key] = (await t.query(api.semanticFiles.get, { fileId: id })) !== null;
+		get[key] = (await t.query(api.files.library.get, { fileId: id })) !== null;
 		history[key] = (await t.query(api.semanticFiles.getVersionHistory, { fileId: id })).length;
 	}
 	return {
@@ -318,7 +318,7 @@ describe('semanticFiles reads — captured mail keeps its mailbox permission', (
 	});
 });
 
-describe('semanticFiles.getByIds — what a session-less search may hydrate', () => {
+describe('files/pipeline.getByIds — what a session-less search may hydrate', () => {
 	async function retrieve(
 		t: Harness,
 		seeded: Seeded,
@@ -331,7 +331,7 @@ describe('semanticFiles.getByIds — what a session-less search may hydrate', ()
 			seeded.legacyPostbox,
 			seeded.unmarked,
 		];
-		const rows = await t.query(internal.semanticFiles.getByIds, {
+		const rows = await t.query(internal.files.pipeline.getByIds, {
 			ids,
 			...(mailCaptures ? { mailCaptures } : {}),
 		});

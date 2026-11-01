@@ -393,7 +393,7 @@ describe('staged rebuild', () => {
 		});
 		await flush(t);
 		// Processing finishes now, with a vector in the active (nomic) space only.
-		await t.mutation(internal.semanticFiles.updateProcessedMetadata, {
+		await t.mutation(internal.files.pipeline.updateProcessedMetadata, {
 			fileId,
 			title: 'Plan',
 			extractedText: 'The quarterly plan, in full.',
@@ -436,7 +436,7 @@ describe('staged rebuild', () => {
 		expect((await t.run((ctx) => ctx.db.get(fileId)))?.secondaryEmbedding).toBeDefined();
 		// Reprocessed with new content: the active column gets the new vector, and
 		// the staged column's vector of the old content is cleared.
-		await t.mutation(internal.semanticFiles.updateProcessedMetadata, {
+		await t.mutation(internal.files.pipeline.updateProcessedMetadata, {
 			fileId,
 			extractedText: 'Version two, rewritten.',
 			embedding: vectorFor('nomic-embed-text', 'v2', 1536),

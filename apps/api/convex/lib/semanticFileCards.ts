@@ -40,6 +40,27 @@ type SourceType = Infer<typeof semanticFileSourceTypeValidator>;
 /** Minimal storage accessor: both query and mutation ctx satisfy it. */
 export type StorageReader = { storage: { getUrl: (id: Id<'_storage'>) => Promise<string | null> } };
 
+/**
+ * Attach a resolved storage URL to a file row. Every reader returns files with a
+ * `url`, so this one helper owns the `ctx.storage.getUrl(file.storageId)` hop.
+ */
+export async function hydrateFile(
+	ctx: StorageReader,
+	file: Doc<'semanticFiles'>
+): Promise<Doc<'semanticFiles'> & { url: string | null }> {
+	// A file whose bytes the retention sweep released has no URL. Readers
+	// already type `url` as nullable, so this is a state, not an error.
+	return { ...file, url: file.storageId ? await ctx.storage.getUrl(file.storageId) : null };
+}
+
+/** Hydrate a list of file rows with storage URLs, preserving order. */
+export function hydrateFiles(
+	ctx: StorageReader,
+	files: Doc<'semanticFiles'>[]
+): Promise<Array<Doc<'semanticFiles'> & { url: string | null }>> {
+	return Promise.all(files.map((file) => hydrateFile(ctx, file)));
+}
+
 /** One page of files, newest first (`by_created_at`). */
 export function listFilesPage(
 	ctx: QueryCtx,
@@ -223,7 +244,7 @@ export async function readableContactFiles(
 /**
  * A contact's file as a card, plus the conversation it came from so the Team
  * Answer attach menu can list this conversation's files first. `threadId`
- * follows the shared-inbox reader rule (`semanticFiles.get`): any other member
+ * follows the shared-inbox reader rule (`files/library.get`): any other member
  * gets the card without it.
  */
 export const contactFileCardValidator = v.object({

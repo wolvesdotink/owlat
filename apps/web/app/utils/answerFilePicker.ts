@@ -10,7 +10,7 @@
  *     files in one sheet.
  *   - Named image types, not `image/*`. iPhone photos are HEIC, which the
  *     upload policy (`DEFAULT_FILE_POLICY` in @owlat/email-scanner, the one
- *     `semanticFiles.create` and the ask's file answer enforce) does not take.
+ *     `files.library.create` and the ask's file answer enforce) does not take.
  *     When `accept` names JPEG but not HEIC, iOS converts the photo to JPEG as
  *     it hands it over; `image/*` would let the HEIC through to be refused.
  *

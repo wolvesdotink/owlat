@@ -151,7 +151,7 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
 	// sender sending a hundred of them at a route any sender can reach.
 	//
 	// The cost is not one model call. Per captured attachment it is one
-	// summarize completion (semanticFileProcessing.ts) plus one embedding, and
+	// summarize completion (files/processing.ts) plus one embedding, and
 	// when the extracted text is real rather than a `[Word document: …]`
 	// placeholder, one further extract completion plus ONE EMBEDDING PER
 	// EXTRACTED KNOWLEDGE ENTRY — a fan-out with no cap of its own

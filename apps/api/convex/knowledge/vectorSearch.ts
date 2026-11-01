@@ -1,7 +1,7 @@
 /**
  * The vector half of retrieval: the shared query embedding and the
  * space-filtered vector search behind both semantic searches
- * (`knowledge/retrieval.ts`, `semanticFileProcessing.ts`).
+ * (`knowledge/retrieval.ts`, `files/processing.ts`).
  *
  * A vector is compared only with vectors of its own space. The query embedding
  * learns its space (`measuredEmbeddingSpace`), and the vector leg filters each
@@ -27,7 +27,7 @@ import { rethrowAdmissionRefusal } from '../lib/llm/admissionPort';
  * The retrieval query embedding, made once and only when it can find something
  * (the empty-corpus skip).
  *
- * Knowledge search (below) and file search (`semanticFileProcessing.ts`) each
+ * Knowledge search (below) and file search (`files/processing.ts`) each
  * embedded the same query text, and Team retrieval called both, so one inbound
  * paid for two identical embeddings. And either embedded even when its table
  * held no vector at all, where the vector leg cannot return a row. Both now go

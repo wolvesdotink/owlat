@@ -3,7 +3,7 @@ import { describe, it, expect } from 'vitest';
 import schema from '../schema';
 import type { MutationCtx } from '../_generated/server';
 import type { Id } from '../_generated/dataModel';
-import { syncFileContacts } from '../semanticFiles';
+import { syncFileContacts } from '../files/library';
 
 const modules = import.meta.glob('../**/*.*s');
 
@@ -20,7 +20,7 @@ async function newContact(ctx: MutationCtx, email: string): Promise<Id<'contacts
 async function newFile(
 	ctx: MutationCtx,
 	storageId: Id<'_storage'>,
-	createdAt: number,
+	createdAt: number
 ): Promise<Id<'semanticFiles'>> {
 	return ctx.db.insert('semanticFiles', {
 		storageId,
@@ -36,7 +36,10 @@ async function newFile(
 	});
 }
 
-async function fileIdsForContact(ctx: MutationCtx, contactId: Id<'contacts'>): Promise<Id<'semanticFiles'>[]> {
+async function fileIdsForContact(
+	ctx: MutationCtx,
+	contactId: Id<'contacts'>
+): Promise<Id<'semanticFiles'>[]> {
 	const links = await ctx.db
 		.query('semanticFileContacts')
 		.withIndex('by_contact', (q) => q.eq('contactId', contactId))
@@ -55,14 +58,14 @@ describe('semanticFileContacts junction', () => {
 
 			// Add — a repeated contactId yields one row.
 			await syncFileContacts(ctx, file, [c1, c2, c1]);
-			expect((await fileIdsForContact(ctx, c1))).toEqual([file]);
-			expect((await fileIdsForContact(ctx, c2))).toEqual([file]);
+			expect(await fileIdsForContact(ctx, c1)).toEqual([file]);
+			expect(await fileIdsForContact(ctx, c2)).toEqual([file]);
 			expect((await ctx.db.query('semanticFileContacts').collect()).length).toBe(2);
 
 			// Edit — drop c2.
 			await syncFileContacts(ctx, file, [c1]);
-			expect((await fileIdsForContact(ctx, c1))).toEqual([file]);
-			expect((await fileIdsForContact(ctx, c2))).toEqual([]);
+			expect(await fileIdsForContact(ctx, c1)).toEqual([file]);
+			expect(await fileIdsForContact(ctx, c2)).toEqual([]);
 
 			// Teardown.
 			await syncFileContacts(ctx, file, undefined);

@@ -265,7 +265,7 @@ export async function persistProviderConfig(
 		// The instance's first provider: files processed without one carry no AI
 		// metadata, and nothing else would ever run them again.
 		if (!isEnvAiProviderConfigured()) {
-			await ctx.scheduler.runAfter(0, internal.semanticFiles.reprocessAfterAiConfigured, {});
+			await ctx.scheduler.runAfter(0, internal.files.pipeline.reprocessAfterAiConfigured, {});
 		}
 	}
 

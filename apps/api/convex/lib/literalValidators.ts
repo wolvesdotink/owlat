@@ -151,7 +151,7 @@ export type VirusVerdict = Infer<typeof virusVerdictValidator>;
  * marker". Every OTHER outcome is spelled, because the silent ones are the
  * defect: a file that still lists and still downloads, next to nothing that
  * says the assistant never opened it, reads exactly like one that was indexed.
- *   · `indexed` — every captured part reached `semanticFiles.ingest` AND the
+ *   · `indexed` — every captured part reached `files/library.ingest` AND the
  *     extractor pulled real text out of it;
  *   · `indexed_placeholder` — a part was ingested, but its type yields only its
  *     own filename (Word, Excel, images), so the assistant knows the file

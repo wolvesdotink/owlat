@@ -1,5 +1,5 @@
 /**
- * The decisions of `semanticFileProcessing.processFile`: where a file's title,
+ * The decisions of `files/processing.processFile`: where a file's title,
  * summary and auto-tags come from, what the processed row stores, and whether
  * the file feeds the knowledge graph. Pure: the action extracts the text,
  * calls the models and writes; these functions take what it read and return

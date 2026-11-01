@@ -31,7 +31,7 @@ const modules = Object.fromEntries(
 		([path]) =>
 			!path.includes('sesActions') &&
 			!path.includes('visualizationAgent') &&
-			!path.includes('semanticFileProcessing')
+			!path.includes('files/processing')
 	)
 );
 

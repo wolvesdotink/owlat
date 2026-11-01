@@ -13,7 +13,7 @@ const modules = Object.fromEntries(
 			!p.includes('sesActions') &&
 			!p.includes('agent') &&
 			!p.includes('knowledgeExtraction') &&
-			!p.includes('semanticFileProcessing') &&
+			!p.includes('files/processing') &&
 			!p.includes('visualizationAgent') &&
 			!p.includes('llmProvider')
 	)

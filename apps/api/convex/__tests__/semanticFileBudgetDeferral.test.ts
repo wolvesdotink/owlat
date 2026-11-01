@@ -86,7 +86,7 @@ describe('processFile under dispatch-time admission refusals', () => {
 		mocks.summarizeFile.mockRejectedValue(refused());
 		mocks.runEmbedding.mockRejectedValue(new Error('embedder down'));
 
-		await t.action(internal.semanticFileProcessing.processFile, { fileId });
+		await t.action(internal.files.processing.processFile, { fileId });
 
 		expect(await scheduledRuns(t)).toEqual([
 			{ fileId, deferrals: 1, stages: ['summary', 'embedding'] },
@@ -104,12 +104,12 @@ describe('processFile under dispatch-time admission refusals', () => {
 		});
 		mocks.runEmbedding.mockRejectedValue(refused());
 
-		await t.action(internal.semanticFileProcessing.processFile, { fileId });
+		await t.action(internal.files.processing.processFile, { fileId });
 		expect(await scheduledRuns(t)).toEqual([{ fileId, deferrals: 1, stages: ['embedding'] }]);
 		expect((await t.run((ctx) => ctx.db.get(fileId)))?.summary).toBe('Spend rose.');
 
 		// The owed run asks no model for the summary again.
-		await t.action(internal.semanticFileProcessing.processFile, {
+		await t.action(internal.files.processing.processFile, {
 			fileId,
 			deferrals: 1,
 			stages: ['embedding'],
@@ -125,7 +125,7 @@ describe('processFile under dispatch-time admission refusals', () => {
 		mocks.summarizeFile.mockRejectedValue(refused());
 		mocks.runEmbedding.mockRejectedValue(refused());
 
-		await t.action(internal.semanticFileProcessing.processFile, {
+		await t.action(internal.files.processing.processFile, {
 			fileId,
 			deferrals: MAX_FILE_DEFERRALS,
 		});
@@ -139,7 +139,7 @@ describe('processFile under dispatch-time admission refusals', () => {
 		mocks.summarizeFile.mockRejectedValue(new Error('provider down'));
 		mocks.runEmbedding.mockRejectedValue(new Error('embedder down'));
 
-		await t.action(internal.semanticFileProcessing.processFile, { fileId });
+		await t.action(internal.files.processing.processFile, { fileId });
 		expect(await scheduledRuns(t)).toEqual([]);
 		vi.useRealTimers();
 	});
@@ -151,7 +151,7 @@ describe('processFile with the provider batch path (L14)', () => {
 		const fileId = await insertTextFile(t);
 		mocks.sendSummaryThroughBatch.mockResolvedValue(true);
 
-		await t.action(internal.semanticFileProcessing.processFile, { fileId });
+		await t.action(internal.files.processing.processFile, { fileId });
 
 		expect(mocks.sendSummaryThroughBatch).toHaveBeenCalledTimes(1);
 		expect(mocks.summarizeFile).not.toHaveBeenCalled();
@@ -169,7 +169,7 @@ describe('processFile with the provider batch path (L14)', () => {
 		const fileId = await insertTextFile(t);
 		mocks.runEmbedding.mockResolvedValue({ embedding: [0.1, 0.2], usage: { tokens: 3 } });
 
-		await t.action(internal.semanticFileProcessing.processFile, {
+		await t.action(internal.files.processing.processFile, {
 			fileId,
 			batchedSummary: { title: 'Budget', summary: 'Spend rose.', tags: ['budget'] },
 		});
@@ -190,7 +190,7 @@ describe('processFile with the provider batch path (L14)', () => {
 		const batchedSummary = { title: 'Budget', summary: 'Spend rose.', tags: ['budget'] };
 
 		// The spend state is not reconciled: background work has no headroom.
-		await t.action(internal.semanticFileProcessing.processFile, { fileId, batchedSummary });
+		await t.action(internal.files.processing.processFile, { fileId, batchedSummary });
 
 		expect(await scheduledRuns(t)).toEqual([{ fileId, deferrals: 1, batchedSummary }]);
 		vi.unstubAllEnvs();

@@ -92,7 +92,7 @@ function makeCtx(
 				return opts.runResult ?? { status: 'complete', createdItemIds: [] };
 			},
 			knowledge: [],
-			semanticFileProcessing: [],
+			'files/processing': [],
 		},
 		mutations: {
 			captureInbound: () => {

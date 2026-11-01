@@ -1,211 +1,64 @@
-import { validateStringLength, STRING_LIMITS } from './lib/inputGuards';
 /**
- * Semantic Files
+ * Semantic Files: the previous release's paths.
  *
- * File storage with embedding-based retrieval and auto-tagging.
- * Files uploaded or received as attachments are indexed with
- * text extraction, AI-generated summaries, and vector embeddings
- * for semantic search.
+ * The Files library lives in `files/library.ts` and the processing pipeline's
+ * reads and writes in `files/pipeline.ts`. The shims below keep their old
+ * paths for one release: a Files page, file detail page or upload dialog in a
+ * tab opened before the deploy calls `semanticFiles:*` by path; a previous
+ * release's processing run or file search still in progress reads and commits
+ * through the internal functions by their old paths; and a backfill or AI
+ * reprocessing pass that release scheduled runs by its old path. Each shim
+ * keeps its old path, builder, auth floor, arguments and result shape, and
+ * runs the same body as its replacement. Remove after release 0.6.17.
+ *
+ * `list`, `search`, `getVersionHistory` and `listByContact` are the
+ * whole-row reads older clients and API callers use; the web reads compact
+ * cards and history pages from `files/cards.ts` and `files/history.ts`.
  */
 
 import { v } from 'convex/values';
-import { consumeUpload, deleteOwnedUpload, storedFileSize } from './storage/uploads';
 import { paginationOptsValidator, type PaginationResult } from 'convex/server';
-import { internalQuery, type MutationCtx, type QueryCtx } from './_generated/server';
+import { internalQuery, type QueryCtx } from './_generated/server';
 import { internalMutation } from './lib/writeFence';
-import { internal } from './_generated/api';
 import { authedQuery, authedMutation, adminMutation } from './lib/authedFunctions';
-import { hasPermission, requirePermission } from './lib/sessionOrganization';
-import { isSharedInboxReader } from './inbox/access';
-import {
-	mailCaptureScopeValidator,
-	semanticFileReadGate,
-	semanticFileRetrievalGate,
-} from './lib/semanticFileAccess';
-import { throwInvalidInput } from './_utils/errors';
-import {
-	isExtensionAllowed,
-	isMimeTypeAllowed,
-	isExecutableExtension,
-	isFileTypeAccepted,
-	detectDoubleExtension,
-	DEFAULT_FILE_POLICY,
-} from '@owlat/email-scanner';
-import { MAX_LIBRARY_FILE_BYTES, MAX_LIBRARY_FILE_MB } from '@owlat/shared/attachments';
-import { buildFileSearchableText } from './lib/fileSearchText';
-import { isAiProviderConfigured } from './lib/aiNotConfigured';
-import { patchCorpusRow, vectorFieldsForCommit } from './lib/aiRouting/embeddingActivation';
-import { measuredEmbeddingSpaceValidator } from './lib/validators/embedding';
-import { logInfo } from './lib/runtimeLog';
+import { semanticFileReadGate } from './lib/semanticFileAccess';
 import type { Id, Doc } from './_generated/dataModel';
-import {
-	captureSourceValidator,
-	semanticFileSourceTypeValidator,
-	type CaptureSource,
-} from './lib/literalValidators';
-import { batchGet } from './_utils/batchLoader';
-import { dropExtractionProgress } from './knowledge/extractionProgress';
+import { semanticFileSourceTypeValidator } from './lib/literalValidators';
 import { walkVersionChain } from './lib/semanticFileVersions';
 import {
+	hydrateFiles,
 	listFilesPage,
 	readableContactFiles,
 	readableFilesPage,
 	searchFilesPage,
-	type StorageReader,
 } from './lib/semanticFileCards';
+import {
+	createFileArgs,
+	createLibraryFile,
+	ingestFile,
+	ingestFileArgs,
+	readLibraryFile,
+	removeLibraryFile,
+	updateFileArgs,
+	updateLibraryFile,
+} from './files/library';
+import {
+	backfillUnprocessedFiles,
+	commitProcessedMetadata,
+	ftsRankedFileIdsArgs,
+	getByIdsArgs,
+	processedMetadataArgs,
+	processingContextArgs,
+	rankFileIdsByText,
+	readFileInternal,
+	readFilesByIds,
+	readProcessingContext,
+	reprocessFilesAfterAiConfigured,
+} from './files/pipeline';
 
 // ============================================================
-// Queries
+// Whole-row reads for older clients and API callers
 // ============================================================
-
-/**
- * Attach a resolved storage URL to a file row. Every reader returns files with a
- * `url`, so this one helper owns the `ctx.storage.getUrl(file.storageId)` hop.
- */
-async function hydrateFile(
-	ctx: StorageReader,
-	file: Doc<'semanticFiles'>
-): Promise<Doc<'semanticFiles'> & { url: string | null }> {
-	// A file whose bytes the retention sweep released has no URL. Readers
-	// already type `url` as nullable, so this is a state, not an error.
-	return { ...file, url: file.storageId ? await ctx.storage.getUrl(file.storageId) : null };
-}
-
-/** Hydrate a list of file rows with storage URLs, preserving order. */
-function hydrateFiles(
-	ctx: StorageReader,
-	files: Doc<'semanticFiles'>[]
-): Promise<Array<Doc<'semanticFiles'> & { url: string | null }>> {
-	return Promise.all(files.map((file) => hydrateFile(ctx, file)));
-}
-
-/**
- * Get a file by ID. A file captured from inbound mail is only returned to
- * someone who may read the mailbox it arrived in (lib/semanticFileAccess.ts).
- *
- * The conversation link follows the shared-inbox reader rule
- * (inbox/access.ts): handing any other member the linked thread's id — let
- * alone its SUBJECT, which is customer text from a mailbox they cannot open —
- * would leak the inbox through the file library. A reader gets the subject
- * inline: one point-read to label the link and prefill the picker, instead of
- * pulling the whole thread through `inbox.queries.getThread`.
- */
-export const get = authedQuery({
-	args: { fileId: v.id('semanticFiles') },
-	handler: async (ctx, args, session) => {
-		const file = await ctx.db.get(args.fileId);
-		const canReadSemanticFile = semanticFileReadGate(ctx, session);
-		if (!file || !(await canReadSemanticFile(file))) return null;
-		const hydrated = await hydrateFile(ctx, file);
-		if (!isSharedInboxReader(session)) {
-			return { ...hydrated, threadId: undefined, threadSubject: undefined };
-		}
-		const thread = file.threadId ? await ctx.db.get(file.threadId) : null;
-		return { ...hydrated, threadSubject: thread?.subject };
-	},
-});
-
-/**
- * Internal variant for the server-side processing pipeline
- * (`semanticFileProcessing.processFile`), which runs as a scheduled
- * internalAction with no user session and so cannot call the session-gated
- * `get` above.
- */
-export const getInternal = internalQuery({
-	args: { fileId: v.id('semanticFiles') },
-	handler: async (ctx, args) => {
-		const file = await ctx.db.get(args.fileId);
-		if (!file) return null;
-		return hydrateFile(ctx, file);
-	},
-});
-
-/**
- * Fetch files by a list of ids, preserving input order, with storage URLs
- * resolved. Used to hydrate the hits from a vector search (`ctx.vectorSearch`
- * yields `{ _id, _score }`; this resolves them to documents). Internal — the
- * semantic-search action calls it. Files captured from inbound mail are kept
- * only within `mailCaptures` (lib/semanticFileAccess.ts); absent means none.
- */
-export const getByIds = internalQuery({
-	args: {
-		ids: v.array(v.id('semanticFiles')),
-		mailCaptures: v.optional(mailCaptureScopeValidator),
-	},
-	handler: async (ctx, args) => {
-		// The ids are independent, so read them in one batch and hydrate the
-		// survivors together, still in input order.
-		const byId = await batchGet(ctx, args.ids);
-		const canRetrieve = semanticFileRetrievalGate(ctx, args.mailCaptures ?? 'none');
-		const files: Doc<'semanticFiles'>[] = [];
-		for (const id of args.ids) {
-			const file = byId.get(id);
-			if (file && (await canRetrieve(file))) files.push(file);
-		}
-		return await hydrateFiles(ctx, files);
-	},
-});
-
-/**
- * Full-text leg of hybrid file retrieval: the file ids matching `queryText` over
- * the `search_files` index, in relevance order. `ctx.vectorSearch` lives on the
- * action context and `withSearchIndex` on the query context, so the semantic-
- * search action (`semanticFileProcessing.semanticSearch`) calls this to get the
- * FTS ranking it fuses (via RRF) with its vector ranking. Mirrors
- * `knowledge/graph.ts:ftsRankedIds`. `search_files` declares no `filterFields`,
- * so — unlike the knowledge index — there is no `entryType`-style narrowing here.
- * Internal: scope/feature gating is the caller's job.
- */
-export const ftsRankedFileIds = internalQuery({
-	args: {
-		queryText: v.string(),
-		limit: v.number(),
-	},
-	handler: async (ctx, args): Promise<Id<'semanticFiles'>[]> => {
-		const rows = await ctx.db
-			.query('semanticFiles')
-			.withSearchIndex('search_files', (q) => q.search('searchableText', args.queryText))
-			.take(args.limit);
-		return rows.map((r) => r._id);
-	},
-});
-
-/**
- * Resolve the conversation/contact context a file was shared in, so the
- * processing pipeline can inherit auto-tags ("q3-financials", "acme-corp")
- * and compute a diff vs the prior version. Internal — called by processFile.
- */
-export const getProcessingContext = internalQuery({
-	args: {
-		threadId: v.optional(v.id('conversationThreads')),
-		contactIds: v.optional(v.array(v.id('contacts'))),
-		previousVersionId: v.optional(v.id('semanticFiles')),
-	},
-	handler: async (ctx, args) => {
-		let threadSubject: string | undefined;
-		if (args.threadId) {
-			const thread = await ctx.db.get(args.threadId);
-			threadSubject = thread?.subject ?? undefined;
-		}
-
-		const contactNames: string[] = [];
-		const contacts = await batchGet(ctx, args.contactIds ?? []);
-		for (const contactId of args.contactIds ?? []) {
-			const contact = contacts.get(contactId);
-			if (!contact) continue;
-			const name = [contact.firstName, contact.lastName].filter(Boolean).join(' ') || contact.email;
-			if (name) contactNames.push(name);
-		}
-
-		let previousText: string | undefined;
-		if (args.previousVersionId) {
-			const prev = await ctx.db.get(args.previousVersionId);
-			previousText = prev?.extractedText ?? undefined;
-		}
-
-		return { threadSubject, contactNames, previousText };
-	},
-});
 
 /**
  * Hydrate a gated page whole: the legacy list/search result, every column plus
@@ -252,7 +105,7 @@ export const search = authedQuery({
 });
 
 // Note: true semantic (vector) search for files lives on the action ctx, not
-// the query ctx — it's the internalAction `semanticFileProcessing.semanticSearch`,
+// the query ctx — it's the internalAction `files/processing.semanticSearch`,
 // called by the agent (agent/steps/context_retrieval) and the assistant tools.
 // There is intentionally no `semanticSearch` query here: a query can't run
 // `ctx.vectorSearch`, so any such query would only return recency-ordered files
@@ -295,456 +148,84 @@ export const listByContact = authedQuery({
 });
 
 // ============================================================
-// Mutations
+// Previous-release paths of files/library.ts
 // ============================================================
 
-/**
- * Upload a new file (user-facing)
- */
+/** Remove after release 0.6.17; this release calls `files/library:get`. */
+// authz: readLibraryFile applies semanticFileReadGate and the shared-inbox reader rule.
+export const get = authedQuery({
+	args: { fileId: v.id('semanticFiles') },
+	handler: async (ctx, args, session) => await readLibraryFile(ctx, args.fileId, session),
+});
+
+/** Remove after release 0.6.17; this release calls `files/library:create`. */
+// authz: createLibraryFile requires organization:manage (requirePermission).
 export const create = authedMutation({
-	args: {
-		storageId: v.id('_storage'),
-		filename: v.string(),
-		mimeType: v.string(),
-		fileSize: v.number(),
-		title: v.optional(v.string()),
-		tags: v.optional(v.array(v.string())),
-		sourceType: semanticFileSourceTypeValidator,
-		sourceMessageId: v.optional(v.string()),
-		uploadContext: v.optional(v.string()),
-		contactIds: v.optional(v.array(v.id('contacts'))),
-		threadId: v.optional(v.id('conversationThreads')),
-		previousVersionId: v.optional(v.id('semanticFiles')),
-	},
-	handler: async (ctx, args, session) => {
-		validateStringLength(args.filename, STRING_LIMITS.FILENAME, 'filename');
-		validateStringLength(args.mimeType, STRING_LIMITS.MIME_TYPE, 'mimeType');
-		if (args.title !== undefined) validateStringLength(args.title, STRING_LIMITS.NAME, 'title');
-		for (const tag of args.tags ?? []) validateStringLength(tag, STRING_LIMITS.TAG, 'Tag');
-		if (args.uploadContext !== undefined)
-			validateStringLength(args.uploadContext, STRING_LIMITS.DESCRIPTION, 'uploadContext');
-
-		requirePermission(
-			hasPermission(session.role, 'organization:manage'),
-			'Only owners and admins can perform this action'
-		);
-
-		// Security: validate file type before storing the record, matching the
-		// media library (mediaAssets.create). The knowledge base accepts
-		// documents, so the scanner default policy applies as-is.
-		const doubleExt = detectDoubleExtension(args.filename);
-		if (doubleExt.detected && doubleExt.executableExtension) {
-			throwInvalidInput(`File rejected: ${doubleExt.description}`);
-		}
-		if (isExecutableExtension(args.filename)) {
-			throwInvalidInput(`Executable files are not allowed: ${args.filename}`);
-		}
-		if (!isExtensionAllowed(args.filename, DEFAULT_FILE_POLICY)) {
-			throwInvalidInput(`File type not allowed: ${args.filename}`);
-		}
-		if (!isMimeTypeAllowed(args.mimeType, DEFAULT_FILE_POLICY)) {
-			throwInvalidInput(`MIME type not allowed: ${args.mimeType}`);
-		}
-		// Enforce the advertised per-file size ceiling. The client guards on this
-		// too, but a forged request must not get past the server.
-		const fileSize = await storedFileSize(ctx, args.storageId);
-		if (fileSize <= 0) throwInvalidInput('File size must be positive');
-		if (fileSize > MAX_LIBRARY_FILE_BYTES) {
-			throwInvalidInput(`File exceeds the ${MAX_LIBRARY_FILE_MB} MB upload limit`);
-		}
-
-		const fileId = await insertSemanticFile(ctx, { ...args, fileSize, uploadedBy: session.userId });
-		await consumeUpload(ctx, args.storageId, session, `semanticFiles:${fileId}`);
-		// Kick off async processing: text extraction, summary, auto-tags, embedding.
-		await ctx.scheduler.runAfter(0, internal.semanticFileProcessing.processFile, { fileId });
-		return fileId;
-	},
+	args: createFileArgs,
+	handler: async (ctx, args, session) => await createLibraryFile(ctx, args, session),
 });
 
-/**
- * Server-side ingestion entry point for non-upload sources.
- *
- * The user-facing `create` mutation is the only `upload`-source writer; this is
- * its counterpart for the automatic paths — inbound email attachments
- * (`email_attachment`) and agent artifacts (`agent_generated`). It runs the
- * same file-type policy as `create`, inserts the row via the shared
- * `insertSemanticFile`, and schedules `processFile` (text extraction → summary
- * → auto-tags → embedding → knowledge graph), so an ingested file is indexed
- * exactly like an uploaded one. Internal-only: callers are the delivery
- * pipeline + future agent producers, never a client.
- */
+/** Remove after release 0.6.17; this release calls `files/library:ingest`. */
 export const ingest = internalMutation({
-	args: {
-		storageId: v.id('_storage'),
-		filename: v.string(),
-		mimeType: v.string(),
-		fileSize: v.number(),
-		sourceType: v.union(v.literal('email_attachment'), v.literal('agent_generated')),
-		// Which inbound route captured this attachment. Only the team-inbox
-		// captures are in range of the inbound retention sweep — see the schema
-		// comment on `captureSource`.
-		captureSource: v.optional(captureSourceValidator),
-		// The mailbox a Postbox capture arrived in, which decides who may read
-		// it (lib/semanticFileAccess.ts). Resolved by the capture step from the
-		// delivered message, never taken from a client.
-		sourceMailboxId: v.optional(v.id('mailboxes')),
-		sourceMessageId: v.optional(v.string()),
-		uploadContext: v.optional(v.string()),
-		tags: v.optional(v.array(v.string())),
-		contactIds: v.optional(v.array(v.id('contacts'))),
-		threadId: v.optional(v.id('conversationThreads')),
-	},
-	handler: async (ctx, args): Promise<Id<'semanticFiles'> | null> => {
-		// Same allowlist the user-upload `create` mutation enforces — never store
-		// an executable/disallowed type just because it arrived over the wire.
-		// `isFileTypeAccepted` is the one spelling of that conjunction, so a
-		// caller can ask the same question BEFORE it spends anything staging the
-		// blob (`captureAttachments` does).
-		if (!isFileTypeAccepted(args.filename, args.mimeType, DEFAULT_FILE_POLICY)) {
-			// Drop the staged blob so a rejected attachment doesn't leak storage.
-			await ctx.storage.delete(args.storageId);
-			return null;
-		}
-
-		const fileId = await insertSemanticFile(ctx, args);
-		await ctx.scheduler.runAfter(0, internal.semanticFileProcessing.processFile, { fileId });
-		return fileId;
-	},
+	args: ingestFileArgs,
+	handler: async (ctx, args): Promise<Id<'semanticFiles'> | null> => await ingestFile(ctx, args),
 });
 
-/**
- * Shared insert used by `create` (user upload) and the internal
- * attachment/agent ingestion paths. Inserts the row with provenance and a
- * provisional searchableText; the processing pipeline fills the rest.
- *
- * A supplied `threadId` is checked for existence here rather than in each
- * caller: `update` has always validated the conversation link, so a file
- * created with a dangling one was an inconsistency only the write path could
- * produce. Validating in the one shared insert covers the user upload and both
- * server-side ingestion sources at once.
- *
- * Exported for Answer mode (mail/ai/composeDraftContext.ts), which keeps an
- * uploaded file answer in Files through this same insert.
- */
-export async function insertSemanticFile(
-	ctx: MutationCtx,
-	args: {
-		storageId: Id<'_storage'>;
-		filename: string;
-		mimeType: string;
-		fileSize: number;
-		title?: string;
-		tags?: string[];
-		sourceType: 'upload' | 'email_attachment' | 'agent_generated';
-		captureSource?: CaptureSource;
-		sourceMailboxId?: Id<'mailboxes'>;
-		sourceMessageId?: string;
-		uploadContext?: string;
-		uploadedBy?: string;
-		contactIds?: Id<'contacts'>[];
-		threadId?: Id<'conversationThreads'>;
-		previousVersionId?: Id<'semanticFiles'>;
-	}
-): Promise<Id<'semanticFiles'>> {
-	if (args.threadId && !(await ctx.db.get(args.threadId))) {
-		throwInvalidInput('Conversation not found');
-	}
-
-	const now = Date.now();
-	const version = args.previousVersionId ? await getNextVersion(ctx, args.previousVersionId) : 1;
-
-	const fileId = await ctx.db.insert('semanticFiles', {
-		storageId: args.storageId,
-		filename: args.filename,
-		mimeType: args.mimeType,
-		fileSize: args.fileSize,
-		title: args.title,
-		tags: args.tags,
-		sourceType: args.sourceType,
-		captureSource: args.captureSource,
-		sourceMailboxId: args.sourceMailboxId,
-		sourceMessageId: args.sourceMessageId,
-		uploadContext: args.uploadContext,
-		uploadedBy: args.uploadedBy,
-		contactIds: args.contactIds,
-		threadId: args.threadId,
-		version,
-		previousVersionId: args.previousVersionId,
-		embedding: [], // Populated by processFile
-		// Provisional index payload: filename + title + the tags typed at upload.
-		// `processFile` rebuilds it with the summary/auto-tags/extracted text.
-		searchableText: buildFileSearchableText({
-			filename: args.filename,
-			title: args.title,
-			tags: args.tags,
-		}),
-		createdAt: now,
-		updatedAt: now,
-	});
-
-	// Mirror contactIds into the index-able semanticFileContacts junction.
-	await syncFileContacts(ctx, fileId, args.contactIds);
-	return fileId;
-}
-
-/** Processing never produced an embedding for this file, in either vector column. */
-function lacksEmbedding(file: Doc<'semanticFiles'>): boolean {
-	return (
-		file.embeddingGeneratedAt === undefined &&
-		(file.embedding?.length ?? 0) === 0 &&
-		(file.secondaryEmbedding?.length ?? 0) === 0
-	);
-}
-
-/**
- * Safety-net backfill: re-schedule processing for recently-created files that
- * never got an embedding (e.g. the original scheduler call was lost to a
- * deploy gap). Bounded to a recent window so permanently text-less files
- * (whose embedding legitimately stays empty) aren't reprocessed forever.
- *
- * Without an AI provider no run can produce an embedding, so this would
- * re-extract every new file on each tick for the whole window. It schedules
- * nothing then; saving a provider later reprocesses those files once
- * (`reprocessAfterAiConfigured`).
- */
-export const backfillUnprocessed = internalMutation({
-	args: { limit: v.optional(v.number()) },
-	handler: async (ctx, args) => {
-		if (!(await isAiProviderConfigured(ctx.db))) return { scheduled: 0 };
-		const cutoff = Date.now() - 2 * 60 * 60 * 1000; // last 2 hours
-		const files = await ctx.db
-			.query('semanticFiles')
-			.withIndex('by_created_at')
-			.order('desc')
-			.take(args.limit ?? 100);
-
-		let scheduled = 0;
-		for (const file of files) {
-			if (file.createdAt < cutoff) break; // ordered desc — older files follow
-			if (lacksEmbedding(file)) {
-				await ctx.scheduler.runAfter(0, internal.semanticFileProcessing.processFile, {
-					fileId: file._id,
-				});
-				scheduled++;
-			}
-		}
-		return { scheduled };
-	},
-});
-
-/** Newest files `reprocessAfterAiConfigured` reads, and at most how many it reprocesses. */
-const AI_CONFIGURED_SCAN = 500;
-const AI_CONFIGURED_REPROCESS_LIMIT = 200;
-/** Spacing between those runs, so saving a provider does not fire them all at once. */
-const AI_CONFIGURED_REPROCESS_SPACING_MS = 2_000;
-
-/**
- * One pass, scheduled when the instance's first AI provider is saved: files
- * processed while no provider existed got their text but no summary,
- * embedding or knowledge entries, and nothing else would ever run them again.
- * Bounded to the newest files, each at most once, spaced out; a file whose
- * bytes the retention sweep released has nothing left to process.
- */
-export const reprocessAfterAiConfigured = internalMutation({
-	args: {},
-	handler: async (ctx) => {
-		const files = await ctx.db
-			.query('semanticFiles')
-			.withIndex('by_created_at')
-			.order('desc')
-			.take(AI_CONFIGURED_SCAN);
-
-		let scheduled = 0;
-		for (const file of files) {
-			if (scheduled >= AI_CONFIGURED_REPROCESS_LIMIT) break;
-			if (!file.storageId || !lacksEmbedding(file)) continue;
-			await ctx.scheduler.runAfter(
-				scheduled * AI_CONFIGURED_REPROCESS_SPACING_MS,
-				internal.semanticFileProcessing.processFile,
-				{ fileId: file._id }
-			);
-			scheduled++;
-		}
-		return { scheduled };
-	},
-});
-
-/**
- * Update file metadata after AI processing
- */
-export const updateProcessedMetadata = internalMutation({
-	args: {
-		fileId: v.id('semanticFiles'),
-		title: v.optional(v.string()),
-		summary: v.optional(v.string()),
-		extractedText: v.optional(v.string()),
-		autoTags: v.optional(v.array(v.string())),
-		embedding: v.array(v.float64()),
-		embeddingModel: v.optional(v.string()),
-		embeddingGeneratedAt: v.optional(v.number()),
-		searchableText: v.optional(v.string()),
-		changeSummary: v.optional(v.string()),
-		// The space the job measured for `embedding`; the vector is stamped with it,
-		// or dropped when the configuration moved on, and the file stays unembedded
-		// for the next processing pass (vectorFieldsForCommit). Optional for
-		// previous-release jobs, whose vector is dropped; required after release N+1.
-		embeddingSpace: v.optional(measuredEmbeddingSpaceValidator),
-	},
-	handler: async (
-		ctx,
-		{
-			fileId,
-			embeddingSpace,
-			embedding,
-			embeddingModel: _model,
-			embeddingGeneratedAt: _at,
-			...updates
-		}
-	) => {
-		const file = await ctx.db.get(fileId);
-		if (!file) return;
-		const { isStale, fields, written } = await vectorFieldsForCommit(
-			ctx,
-			{ embedding, space: embeddingSpace },
-			{}
-		);
-		if (isStale)
-			logInfo('[semanticFiles] stale embedding space, stored without vector', { fileId });
-		// Through the one corpus writer: processing changes the input
-		// and the file's eligibility, so a staged rebuild learns of it.
-		await patchCorpusRow(
-			ctx,
-			'semanticFiles',
-			file,
-			{ ...updates, ...fields, updatedAt: Date.now() },
-			{ written }
-		);
-	},
-});
-
-/**
- * Update user-editable metadata.
- *
- * `threadId` is tri-state: omitted leaves the conversation link alone, an id
- * sets it, and `null` clears it (the detail page's Unlink action).
- */
+/** Remove after release 0.6.17; this release calls `files/library:update`. */
+// authz: updateLibraryFile requires organization:manage (requirePermission).
 export const update = authedMutation({
-	args: {
-		fileId: v.id('semanticFiles'),
-		title: v.optional(v.string()),
-		tags: v.optional(v.array(v.string())),
-		contactIds: v.optional(v.array(v.id('contacts'))),
-		threadId: v.optional(v.union(v.id('conversationThreads'), v.null())),
-	},
-	handler: async (ctx, args, session) => {
-		if (args.title !== undefined) validateStringLength(args.title, STRING_LIMITS.NAME, 'title');
-		for (const tag of args.tags ?? []) validateStringLength(tag, STRING_LIMITS.TAG, 'Tag');
-
-		requirePermission(
-			hasPermission(session.role, 'organization:manage'),
-			'Only owners and admins can perform this action'
-		);
-		const { fileId, ...updates } = args;
-		const file = await ctx.db.get(fileId);
-		if (!file) throwInvalidInput('File not found');
-
-		const cleanUpdates: Partial<Doc<'semanticFiles'>> = { updatedAt: Date.now() };
-		if (updates.title !== undefined) cleanUpdates.title = updates.title;
-		if (updates.tags !== undefined) cleanUpdates.tags = updates.tags;
-		if (updates.contactIds !== undefined) cleanUpdates.contactIds = updates.contactIds;
-		if (updates.threadId !== undefined) {
-			if (updates.threadId !== null && !(await ctx.db.get(updates.threadId))) {
-				throwInvalidInput('Conversation not found');
-			}
-			// `undefined` in a patch removes the field, which is what a clear means.
-			cleanUpdates.threadId = updates.threadId ?? undefined;
-		}
-
-		// A title or tag edit changes what this file should be findable by, so
-		// rebuild the index payload instead of leaving the insert-time (or
-		// pipeline-time) one behind.
-		if (updates.title !== undefined || updates.tags !== undefined) {
-			cleanUpdates.searchableText = buildFileSearchableText({
-				filename: file.filename,
-				title: updates.title ?? file.title,
-				summary: file.summary,
-				tags: updates.tags ?? file.tags,
-				autoTags: file.autoTags,
-				extractedText: file.extractedText,
-			});
-		}
-
-		// Through the one corpus writer: the title is part of the
-		// embedding input, so a new one leaves no vector of the old one.
-		await patchCorpusRow(ctx, 'semanticFiles', file, cleanUpdates);
-
-		// Keep the junction in sync when the contactIds array is edited in place.
-		if (updates.contactIds !== undefined) {
-			await syncFileContacts(ctx, fileId, updates.contactIds);
-		}
-	},
+	args: updateFileArgs,
+	handler: async (ctx, args, session) => await updateLibraryFile(ctx, args, session),
 });
 
-/**
- * Delete a file
- */
+/** Remove after release 0.6.17; this release calls `files/library:remove`. */
 export const remove = adminMutation({
 	args: { fileId: v.id('semanticFiles') },
-	handler: async (ctx, args) => {
-		const file = await ctx.db.get(args.fileId);
-		if (!file) return;
-
-		// Tear down the junction rows before the parent file.
-		await syncFileContacts(ctx, args.fileId, undefined);
-		// Delete the stored file, if the retention sweep has not already released it.
-		if (file.storageId) {
-			if (file.uploadedBy !== undefined) {
-				// User-created rows require proven ownership, including legacy rows
-				// that may have linked another resource's storage id before receipts.
-				await deleteOwnedUpload(ctx, file.storageId, `semanticFiles:${file._id}`);
-			} else {
-				// Internal ingestion owns its staged blob; it has no browser receipt.
-				await ctx.storage.delete(file.storageId);
-			}
-		}
-		await ctx.db.delete(args.fileId);
-		await dropExtractionProgress(ctx, 'file', args.fileId);
-	},
+	handler: async (ctx, args) => await removeLibraryFile(ctx, args.fileId),
 });
 
 // ============================================================
-// Helpers
+// Previous-release paths of files/pipeline.ts
 // ============================================================
 
-async function getNextVersion(
-	ctx: MutationCtx,
-	previousVersionId: Id<'semanticFiles'>
-): Promise<number> {
-	const prev = await ctx.db.get(previousVersionId);
-	return prev ? prev.version + 1 : 1;
-}
+/** Remove after release 0.6.17; this release calls `files/pipeline:getInternal`. */
+export const getInternal = internalQuery({
+	args: { fileId: v.id('semanticFiles') },
+	handler: async (ctx, args) => await readFileInternal(ctx, args.fileId),
+});
 
-/**
- * Reconcile the `semanticFileContacts` junction rows that mirror a file's
- * `contactIds` array. Delete-then-reinsert, so it is correct for the brand-new
- * insert, an in-place `contactIds` edit, and teardown (`contactIds = undefined`
- * deletes all rows). The array stays on the file for inline reads; the junction
- * is the index-able copy `listByContact` queries. Mirrors
- * `knowledge/entryContacts.ts:insertEntryContacts` with reconciliation, since
- * files have an in-place editor (`update`).
- */
-export async function syncFileContacts(
-	ctx: MutationCtx,
-	fileId: Id<'semanticFiles'>,
-	contactIds: Id<'contacts'>[] | undefined
-): Promise<void> {
-	const existing = await ctx.db
-		.query('semanticFileContacts')
-		.withIndex('by_file', (q) => q.eq('fileId', fileId))
-		.collect(); // bounded: junction rows for one file (contacts per file)
-	for (const row of existing) await ctx.db.delete(row._id);
-	// De-dup so a contactId repeated in the array yields one row.
-	for (const contactId of new Set(contactIds ?? [])) {
-		await ctx.db.insert('semanticFileContacts', { fileId, contactId });
-	}
-}
+/** Remove after release 0.6.17; this release calls `files/pipeline:getByIds`. */
+export const getByIds = internalQuery({
+	args: getByIdsArgs,
+	handler: async (ctx, args) => await readFilesByIds(ctx, args),
+});
+
+/** Remove after release 0.6.17; this release calls `files/pipeline:ftsRankedFileIds`. */
+export const ftsRankedFileIds = internalQuery({
+	args: ftsRankedFileIdsArgs,
+	handler: async (ctx, args): Promise<Id<'semanticFiles'>[]> => await rankFileIdsByText(ctx, args),
+});
+
+/** Remove after release 0.6.17; this release calls `files/pipeline:getProcessingContext`. */
+export const getProcessingContext = internalQuery({
+	args: processingContextArgs,
+	handler: async (ctx, args) => await readProcessingContext(ctx, args),
+});
+
+/** Remove after release 0.6.17; this release schedules `files/pipeline:backfillUnprocessed`. */
+export const backfillUnprocessed = internalMutation({
+	args: { limit: v.optional(v.number()) },
+	handler: async (ctx, args) => await backfillUnprocessedFiles(ctx, args.limit),
+});
+
+/** Remove after release 0.6.17; this release schedules `files/pipeline:reprocessAfterAiConfigured`. */
+export const reprocessAfterAiConfigured = internalMutation({
+	args: {},
+	handler: async (ctx) => await reprocessFilesAfterAiConfigured(ctx),
+});
+
+/** Remove after release 0.6.17; this release calls `files/pipeline:updateProcessedMetadata`. */
+export const updateProcessedMetadata = internalMutation({
+	args: processedMetadataArgs,
+	handler: async (ctx, args) => await commitProcessedMetadata(ctx, args),
+});

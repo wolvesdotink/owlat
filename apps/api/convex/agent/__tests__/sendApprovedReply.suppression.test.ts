@@ -77,7 +77,7 @@ const modules = Object.fromEntries(
 			!path.includes('agentDrafter') &&
 			!path.includes('agentRouter') &&
 			!path.includes('knowledgeExtraction') &&
-			!path.includes('semanticFileProcessing') &&
+			!path.includes('files/processing') &&
 			!path.includes('visualizationAgent') &&
 			!path.includes('llmProvider')
 	)

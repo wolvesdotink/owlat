@@ -29,7 +29,7 @@ const modules = Object.fromEntries(
 			!path.includes('agent/steps/') &&
 			!path.includes('agent/outcomeFeedback') &&
 			!path.includes('knowledgeExtraction') &&
-			!path.includes('semanticFileProcessing') &&
+			!path.includes('files/processing') &&
 			!path.includes('visualizationAgent') &&
 			!path.includes('llmProvider')
 	)

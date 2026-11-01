@@ -2,7 +2,7 @@
  * The file library's own "the bytes are gone" state.
  *
  * The inbound retention sweep releases a team-inbox capture's BYTES and keeps
- * the row, so `semanticFiles.get` answers `url: null` — and the detail page's
+ * the row, so `files.library.get` answers `url: null` — and the detail page's
  * download link is `v-if="file.url"`, which means the control simply vanishes
  * while the name, the size and the summary all stay. That is the same
  * "affordance shows nothing at all" shape the thread view was fixed for, one

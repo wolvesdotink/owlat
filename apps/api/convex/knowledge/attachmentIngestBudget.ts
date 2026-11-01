@@ -2,7 +2,7 @@
  * The AI-spend budget for attachment ingestion.
  *
  * `captureAttachments` runs on a route any sender can reach, and every part it
- * hands to `semanticFiles.ingest` schedules `processFile` — one summarize
+ * hands to `files/library.ingest` schedules `processFile` — one summarize
  * completion, one embedding, and for anything with real extracted text a
  * further extract completion plus one embedding per knowledge entry. The
  * existing `agentPipelinePerSender`/`agentPipelineGlobal` pair gates the

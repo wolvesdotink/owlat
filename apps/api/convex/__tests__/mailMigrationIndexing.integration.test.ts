@@ -57,7 +57,7 @@ const modules = Object.fromEntries(
 			!path.includes('agent/steps/draft') &&
 			// The extractor, not its progress marker, which the indexer reads.
 			(!path.includes('knowledge/extraction') || path.includes('knowledge/extractionProgress')) &&
-			!path.includes('semanticFileProcessing') &&
+			!path.includes('files/processing') &&
 			!path.includes('visualizationAgent') &&
 			!path.includes('llmProvider')
 	)

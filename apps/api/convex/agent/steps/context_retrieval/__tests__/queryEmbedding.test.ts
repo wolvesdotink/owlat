@@ -60,7 +60,7 @@ function makeCtx(hasVectors: boolean) {
 			searchTarget: { spaceId: SPACE_ID, slot: 'primary' },
 		},
 		actions: {
-			semanticFileProcessing: (args) => {
+			'files/processing': (args) => {
 				searches.push({ name: 'files', args: args as Record<string, unknown> });
 				return [];
 			},

@@ -2,7 +2,7 @@
  * WHICH FORMAT A FILE'S TEXT COMES OUT OF — the one table, for both sides of
  * the extraction seam.
  *
- * `semanticFileProcessing.extractText` answers a Word document with
+ * `files/processing.extractText` answers a Word document with
  * `[Word document: contract.docx]`, a spreadsheet with `[Spreadsheet: q3.xlsx]`
  * and an image with `[Image: scan.png]`. Those files are still ingested —
  * summarised, tagged, embedded — but everything downstream is working from a

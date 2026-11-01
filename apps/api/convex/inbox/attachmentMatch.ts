@@ -13,7 +13,7 @@
  *      an attachment is genuinely in play.
  *   2. `pickAttachmentSuggestion` — given the contact-scoped `semanticFiles`
  *      matches (already RRF-rank-ordered, best first — see
- *      `semanticFileProcessing.semanticSearch`), decide between a single
+ *      `files/processing.semanticSearch`), decide between a single
  *      confident one-tap suggestion and a genuinely AMBIGUOUS choice that should
  *      be handed to the clarify loop instead of guessed at.
  *

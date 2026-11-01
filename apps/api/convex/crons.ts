@@ -232,7 +232,7 @@ crons.interval(
 crons.interval(
 	'backfill unprocessed files',
 	{ minutes: 15 },
-	internal.semanticFiles.backfillUnprocessed,
+	internal.files.pipeline.backfillUnprocessed,
 	{}
 );
 

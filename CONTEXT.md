@@ -4003,7 +4003,7 @@ dispatch + token-usage extraction surface. Two entry points:
 
 Callers: the **Agent walker** (for the two LLM-based **Agent step
 (module)** kinds — `classify` and `draft`), `emailTemplates/translate.ts`,
-`knowledge/extraction.ts`, `semanticFileProcessing.ts`, and
+`knowledge/extraction.ts`, `files/processing.ts`, and
 `analytics/visualizationAgent.ts`. Each caller records every billed call as one
 row of the `llmUsageEvents` ledger (`analytics/llmUsage.ts`), the one
 store the spend ceiling reads; agent steps do it under `agent_*`
@@ -6162,7 +6162,7 @@ matching code comment at the cited file.
   (superadmin-only ops also check `role === 'superadmin'`).
 
 - **File `semanticSearch` is vector-only; knowledge retrieval is hybrid
-  (vector + FTS + RRF).** `semanticFileProcessing.ts` vs
+  (vector + FTS + RRF).** `files/processing.ts` vs
   `knowledge/retrieval.ts` — both share the identical contact-scoping gate, but
   knowledge fuses a full-text leg with Reciprocal Rank Fusion so a draft can
   ground on exact tokens (order number, SKU, surname) that pure vector recall
@@ -6170,7 +6170,7 @@ matching code comment at the cited file.
   already exists on `semanticFiles` (`schema/knowledge.ts`), `searchableText` is
   populated from the extracted body, and it is already queried by
   `semanticFiles.search` (`semanticFiles.ts`). The narrower asymmetry is that
-  the agent retrieval action (`semanticFileProcessing.semanticSearch`) does not
+  the agent retrieval action (`files/processing.semanticSearch`) does not
   add an FTS leg over that existing index and fuse it via RRF. Fusing the
   existing FTS leg is a **tracked follow-up**, not a permanent decision — and it
   should reuse `lib/rrf.ts` (`reciprocalRankFusion`), not a parallel fusion.

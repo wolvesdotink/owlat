@@ -54,7 +54,7 @@ const modules = Object.fromEntries(
 		([path]) =>
 			!path.includes('sesActions') &&
 			!path.includes('knowledgeExtraction') &&
-			!path.includes('semanticFileProcessing') &&
+			!path.includes('files/processing') &&
 			!path.includes('visualizationAgent') &&
 			!path.includes('llmProvider')
 	)

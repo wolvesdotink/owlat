@@ -53,7 +53,7 @@ import {
  * no per-part marker on the row to say which.
  */
 export type AttachmentCaptureOutcome = {
-	/** How many parts reached `semanticFiles.ingest` (and therefore a model). */
+	/** How many parts reached `files/library.ingest` (and therefore a model). */
 	indexed: number;
 	/**
 	 * Why a part that arrived was not indexed:
@@ -350,7 +350,7 @@ export function selectIngestible(
  * here at all; every other ceiling is {@link selectIngestible}.
  *
  * Then the whole batch is charged against the per-sender and global AI-ingest
- * budget. Tripping it skips `semanticFiles.ingest` — nothing reaches a model —
+ * budget. Tripping it skips `files/library.ingest` — nothing reaches a model —
  * while the bytes, the row and the metadata all survive, and the outcome comes
  * back so the caller can record it.
  */

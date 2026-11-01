@@ -7,7 +7,7 @@
  *
  * Lifted from agent/steps/shared/llm.ts to a
  * shared location so non-agent callers (translate, knowledge/extraction,
- * semanticFileProcessing, visualizationAgent) can use the same surface.
+ * files/processing, visualizationAgent) can use the same surface.
  *
  * METERING. Every helper takes an optional {@link LlmCallMeter} and
  * records each PROVIDER REQUEST into it: every retry attempt, every tool round,

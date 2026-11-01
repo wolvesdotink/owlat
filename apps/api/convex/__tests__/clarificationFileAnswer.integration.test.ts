@@ -34,7 +34,7 @@ import { seedFolder, seedMailbox } from '../mail/__tests__/helpers.testlib';
 // map leaves out; their jobs fail when they fire. Not what these tests are about.
 beforeEach(() => {
 	expectScheduledFailure('agent/walker:resumeDraft');
-	expectScheduledFailure('semanticFileProcessing:processFile');
+	expectScheduledFailure('files/processing:processFile');
 });
 
 const OWNER = 'test-user-123';
@@ -61,7 +61,7 @@ const modules = Object.fromEntries(
 			!path.includes('agent/walker') &&
 			!path.includes('agent/steps') &&
 			!path.includes('knowledgeExtraction') &&
-			!path.includes('semanticFileProcessing') &&
+			!path.includes('files/processing') &&
 			!path.includes('visualizationAgent') &&
 			!path.includes('llmProvider')
 	)

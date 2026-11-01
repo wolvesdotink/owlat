@@ -25,8 +25,8 @@ const ALLOWED_PATCHES: Record<string, string> = {
 /** Corpus inserts that need no note, each with why. */
 const ALLOWED_INSERTS: Record<string, string> = {
 	// An uploaded file is not eligible until processing writes its text, which
-	// goes through patchCorpusRow (semanticFiles.updateProcessedMetadata).
-	'semanticFiles.ts': 'unprocessed file',
+	// goes through patchCorpusRow (files/pipeline.updateProcessedMetadata).
+	'files/library.ts': 'unprocessed file',
 };
 
 function sources(dir: string): string[] {
@@ -52,7 +52,7 @@ describe('corpus field writers', () => {
 
 	it('finds the corpus modules (the scan is not empty)', () => {
 		const names = corpusFiles.map(({ file }) => file);
-		expect(names).toEqual(expect.arrayContaining(['knowledge/graph.ts', 'semanticFiles.ts']));
+		expect(names).toEqual(expect.arrayContaining(['knowledge/graph.ts', 'files/library.ts']));
 	});
 
 	it('writes no embedding-relevant field with a direct patch', () => {

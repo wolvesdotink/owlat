@@ -94,9 +94,9 @@ vi.mock('../lib/llm/dispatch', async () => {
 });
 
 // Glob that INCLUDES visualizationAgent + assistant + the retrieval modules the
-// assistant action calls (knowledge/retrieval, semanticFileProcessing). We keep
+// assistant action calls (knowledge/retrieval, files/processing). We keep
 // the heavy agent-pipeline modules excluded — they aren't on the path under
-// test and convex-test cannot bundle them here. semanticFileProcessing and
+// test and convex-test cannot bundle them here. files/processing and
 // visualizationAgent are deliberately re-included (they're dropped by the
 // default template glob) because they are the surfaces under test / on-path.
 const allModules = import.meta.glob('../**/*.*s');

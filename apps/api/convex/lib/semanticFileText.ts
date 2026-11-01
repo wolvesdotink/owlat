@@ -1,5 +1,5 @@
 /**
- * Pure text helpers of semantic file processing (`semanticFileProcessing.ts`),
+ * Pure text helpers of semantic file processing (`files/processing.ts`),
  * split out to keep that action module under the size cap: tag scrubbing and
  * normalization, and the prompt truncation. Pure.
  */

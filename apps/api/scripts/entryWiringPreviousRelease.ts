@@ -231,4 +231,25 @@ export const PREVIOUS_RELEASE_ENTRIES: Readonly<Record<string, string>> = {
 		'visualization generations the previous release scheduled',
 	'globalSearch.ts#search': 'the previous command palette, in tabs opened before the deploy',
 	'globalSearch.ts#searchInternal': 'old assistant runs mid-run',
+	// The Files library and its processing pipeline moved to files/library.ts,
+	// files/pipeline.ts and files/processing.ts; remove after release 0.6.17.
+	'semanticFiles.ts#get': 'the previous file detail page, in tabs opened before the deploy',
+	'semanticFiles.ts#create': 'the previous Files upload dialog, in tabs opened before the deploy',
+	'semanticFiles.ts#update':
+		'the previous Files page and file detail page, in tabs opened before the deploy',
+	'semanticFiles.ts#remove':
+		'the previous Files page and file detail page, in tabs opened before the deploy',
+	'semanticFiles.ts#ingest': 'old inbound attachment captures mid-run',
+	'semanticFiles.ts#getInternal': 'old file processing runs and knowledge extractions mid-run',
+	'semanticFiles.ts#getProcessingContext': 'old file processing runs mid-run',
+	'semanticFiles.ts#updateProcessedMetadata': 'old file processing runs mid-run',
+	'semanticFiles.ts#getByIds': 'old file searches mid-run',
+	'semanticFiles.ts#ftsRankedFileIds': 'old file searches mid-run',
+	'semanticFiles.ts#backfillUnprocessed': 'a file backfill the previous cron queued',
+	'semanticFiles.ts#reprocessAfterAiConfigured':
+		'a file reprocessing pass the previous release scheduled when an AI provider was saved',
+	'semanticFileProcessing.ts#processFile':
+		'file processing runs the previous release scheduled (uploads, captures, backfills, budget deferrals, batch continuations)',
+	'semanticFileProcessing.ts#semanticSearch':
+		'old agent context retrievals, attachment suggestions, assistant runs and Quick Query asks mid-run',
 };

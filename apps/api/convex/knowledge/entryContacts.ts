@@ -35,7 +35,7 @@ export async function insertEntryContacts(
  * `contactIds` may already have rows. Delete-then-reinsert, so it is correct for
  * an in-place `contactIds` edit (`updateEntry`) and teardown
  * (`contactIds = undefined` deletes all rows, used by `deleteEntry`). Mirrors
- * `semanticFiles.ts:syncFileContacts`.
+ * `files/library.ts:syncFileContacts`.
  */
 export async function syncEntryContacts(
 	ctx: MutationCtx,

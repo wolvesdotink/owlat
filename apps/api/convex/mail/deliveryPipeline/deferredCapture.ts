@@ -2,7 +2,7 @@
  * Personal-mailbox attachment capture, taken OFF the MTA webhook.
  *
  * The full capture is a contact lookup, a budget charge, then one blob store
- * and one `semanticFiles.ingest` per part, in series. The MTA gives the
+ * and one `files/library.ingest` per part, in series. The MTA gives the
  * notifier 10 s; awaited inside `mail.delivery.ingestFromWebhook` after the row
  * insert, a message with a handful of attachments could spend that on indexing
  * work the sender does not wait for, and a timeout makes the MTA re-POST the

@@ -47,14 +47,14 @@ export function isMailCapture(
 /**
  * Which mail captures a session-less search may return — the retrieval
  * counterpart of the read check below, for the actions that have no session
- * to ask (`semanticFileProcessing.semanticSearch`). Absent means 'none', so a
+ * to ask (`files/processing.semanticSearch`). Absent means 'none', so a
  * caller that does not name a scope cannot widen anything:
  *   - 'none'       → no mail captures (a member's assistant, a Postbox draft,
  *                    whose own mailbox's attachments come from that mailbox);
  *   - 'team_inbox' → Team Inbox captures only (the Team Inbox agent);
  *   - 'all'        → what a shared-inbox reader may open: every capture whose
  *                    mailbox, if recorded, is active, in this organization,
- *                    with personal mail on (as `semanticFiles.get` decides).
+ *                    with personal mail on (as `files/library.get` decides).
  */
 export const mailCaptureScopeValidator = v.union(
 	v.literal('none'),

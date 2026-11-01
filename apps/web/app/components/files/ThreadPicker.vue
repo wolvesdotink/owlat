@@ -4,7 +4,7 @@ import { api } from '@owlat/api';
 // Single-select conversation picker: search the shared inbox by subject or
 // participant and pick the thread a file belongs to (file detail page). The
 // model is the full row so the caller can render the chosen subject without a
-// second lookup; it maps to `threadId` for `semanticFiles.update`.
+// second lookup; it maps to `threadId` for `files.library.update`.
 const selected = defineModel<PickerThread | null>({ default: null });
 
 const { t } = useI18n();

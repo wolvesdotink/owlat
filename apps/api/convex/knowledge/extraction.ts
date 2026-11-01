@@ -215,7 +215,7 @@ const extractFromFileArgs = {
  * Extract knowledge from a processed semantic file (files → knowledge graph).
  *
  * Mirrors `extractFromMessage` but reads the file's extracted text/summary.
- * Scheduled by `semanticFileProcessing.processFile` once a file has real
+ * Scheduled by `files/processing.processFile` once a file has real
  * extracted text. Entries are stored with `sourceType: 'file'`.
  */
 export const extractFromFile = internalAction({
@@ -226,7 +226,7 @@ export const extractFromFile = internalAction({
 			// One model budget for this action, from its start.
 			anchorActionDeadline(ctx);
 			if (!(await isKnowledgeOn(ctx, '[knowledge.extractFile]'))) return;
-			const file = await ctx.runQuery(internal.semanticFiles.getInternal, { fileId: args.fileId });
+			const file = await ctx.runQuery(internal.files.pipeline.getInternal, { fileId: args.fileId });
 			if (!file) return;
 
 			const textContent = (file.extractedText ?? '').slice(0, 8000);

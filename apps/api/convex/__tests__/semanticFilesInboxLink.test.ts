@@ -7,7 +7,7 @@ import type { Id } from '../_generated/dataModel';
 
 /**
  * The file library is readable by every org member; the shared inbox is not
- * (`organization:manage`). So the conversation link `semanticFiles.get` carries
+ * (`organization:manage`). So the conversation link `files/library.get` carries
  * — the thread id and, worse, its SUBJECT, which is customer text from a
  * mailbox a non-admin cannot open — must not ride along on a file read.
  */
@@ -59,7 +59,7 @@ async function linkedFile(t: Harness): Promise<{
 	);
 	const storageId = await t.run((ctx) => ctx.storage.store(new Blob(['body'])));
 	await t.run((ctx) => recordUploadedBlob(ctx, storageId, 'admin-user'));
-	const fileId = await t.mutation(api.semanticFiles.create, {
+	const fileId = await t.mutation(api.files.library.create, {
 		storageId,
 		filename: 'receipt.txt',
 		mimeType: 'text/plain',
@@ -71,13 +71,13 @@ async function linkedFile(t: Harness): Promise<{
 	return { fileId, threadId };
 }
 
-describe('semanticFiles.get — inbox link exposure', () => {
+describe('files/library.get — inbox link exposure', () => {
 	it('gives a non-admin member the file but neither the thread nor its subject', async () => {
 		role.current = 'editor';
 		const t = convexTest(schema, modules);
 		const { fileId } = await linkedFile(t);
 
-		const file = await t.query(api.semanticFiles.get, { fileId });
+		const file = await t.query(api.files.library.get, { fileId });
 		expect(file?.filename).toBe('receipt.txt');
 		expect(file?.threadId).toBeUndefined();
 		expect(file?.threadSubject).toBeUndefined();
@@ -90,7 +90,7 @@ describe('semanticFiles.get — inbox link exposure', () => {
 		const t = convexTest(schema, modules);
 		const { fileId, threadId } = await linkedFile(t);
 
-		const file = await t.query(api.semanticFiles.get, { fileId });
+		const file = await t.query(api.files.library.get, { fileId });
 		expect(file?.threadId).toBe(threadId);
 		expect(file?.threadSubject).toBe('Refund for order 4417');
 	});

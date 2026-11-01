@@ -19,7 +19,7 @@
  *     past it comes back marked rather than silently truncated.
  *
  * The last two drive `captureAttachments` with a ctx whose `storage.store` and
- * `semanticFiles.ingest` are counted rather than executed: convex-test
+ * `files/library.ingest` are counted rather than executed: convex-test
  * mis-tracks transaction state across an action's sub-operations, so a second
  * `ctx.storage.store` inside one action throws "Write outside of transaction"
  * (still the case in 0.0.55). The AI-ingest budget charge and the contact
@@ -95,7 +95,7 @@ function buildEml(messageId: string, leaves: Array<{ name: string; body: string 
 
 /**
  * Drive `captureAttachments` with a counting ctx. The contact lookup and the
- * AI-ingest budget are real; only the blob store and the `semanticFiles.ingest`
+ * AI-ingest budget are real; only the blob store and the `files/library.ingest`
  * call are recorded.
  */
 async function capture(
@@ -128,7 +128,7 @@ async function capture(
 			runMutation: (async (ref: unknown, args: unknown) => {
 				if (
 					getFunctionName(ref as FunctionReference<'mutation'>) ===
-					getFunctionName(internal.semanticFiles.ingest)
+					getFunctionName(internal.files.library.ingest)
 				) {
 					ingested.push(args as IngestArgs);
 					return null;

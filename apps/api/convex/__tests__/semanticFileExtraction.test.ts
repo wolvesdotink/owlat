@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { extractText } from '../semanticFileProcessing';
+import { extractText } from '../files/processing';
 import { truncateForLLM, scrubTags } from '../lib/semanticFileText';
 import {
 	classifyExtraction,

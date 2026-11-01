@@ -68,7 +68,7 @@ describe('processFile without an AI provider', () => {
 		const t = newHarness();
 		const fileId = await insertTextFile(t, BODY);
 
-		await t.action(internal.semanticFileProcessing.processFile, { fileId });
+		await t.action(internal.files.processing.processFile, { fileId });
 
 		const file = await t.run((ctx) => ctx.db.get(fileId));
 		expect(file).toMatchObject({
@@ -93,7 +93,7 @@ describe('processFile without an AI provider', () => {
 		// Short enough to skip the summary call, long enough to be embedded.
 		const fileId = await insertTextFile(t, 'Budget notes for Q3');
 
-		await expect(t.action(internal.semanticFileProcessing.processFile, { fileId })).rejects.toThrow(
+		await expect(t.action(internal.files.processing.processFile, { fileId })).rejects.toThrow(
 			/3072-dimensional/
 		);
 	});

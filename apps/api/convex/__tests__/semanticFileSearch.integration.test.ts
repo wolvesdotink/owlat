@@ -33,7 +33,7 @@ async function uploadFile(
 ): Promise<Id<'semanticFiles'>> {
 	const storageId = await t.run((ctx) => ctx.storage.store(new Blob(['body'])));
 	await t.run((ctx) => recordUploadedBlob(ctx, storageId, 'test-user'));
-	return t.mutation(api.semanticFiles.create, {
+	return t.mutation(api.files.library.create, {
 		storageId,
 		filename: args.filename,
 		mimeType: 'text/plain',
@@ -71,7 +71,7 @@ describe('semanticFiles.search — what the index covers', () => {
 		// Stand in for a processed row: the pipeline writes these fields plus the
 		// rebuilt searchableText, which is what the index actually reads.
 		const fileId = await uploadFile(t, { filename: 'notes.txt' });
-		await t.mutation(internal.semanticFiles.updateProcessedMetadata, {
+		await t.mutation(internal.files.pipeline.updateProcessedMetadata, {
 			fileId,
 			summary: 'Quarterly revenue review for the northern region.',
 			extractedText: 'Revenue grew by 12% thanks to the Zephyr launch.',
@@ -91,7 +91,7 @@ describe('semanticFiles.search — what the index covers', () => {
 		const fileId = await uploadFile(t, { filename: 'doc.txt', tags: ['draft'] });
 		expect(await searchIds(t, 'draft')).toEqual([fileId]);
 
-		await t.mutation(api.semanticFiles.update, { fileId, tags: ['approved'] });
+		await t.mutation(api.files.library.update, { fileId, tags: ['approved'] });
 
 		expect(await searchIds(t, 'approved')).toEqual([fileId]);
 		expect(await searchIds(t, 'draft')).toEqual([]);
@@ -100,14 +100,14 @@ describe('semanticFiles.search — what the index covers', () => {
 	it('reindexes on a title edit without dropping the summary from the index', async () => {
 		const t = convexTest(schema, modules);
 		const fileId = await uploadFile(t, { filename: 'doc.txt' });
-		await t.mutation(internal.semanticFiles.updateProcessedMetadata, {
+		await t.mutation(internal.files.pipeline.updateProcessedMetadata, {
 			fileId,
 			summary: 'Onboarding checklist for new hires.',
 			embedding: [],
 			searchableText: 'doc.txt Onboarding checklist for new hires.',
 		});
 
-		await t.mutation(api.semanticFiles.update, { fileId, title: 'Handbook' });
+		await t.mutation(api.files.library.update, { fileId, title: 'Handbook' });
 
 		expect(await searchIds(t, 'handbook')).toEqual([fileId]);
 		expect(await searchIds(t, 'onboarding')).toEqual([fileId]);
@@ -141,7 +141,7 @@ describe('semanticFiles.search — what the index covers', () => {
 	});
 });
 
-describe('semanticFiles.update — conversation linking', () => {
+describe('files/library.update — conversation linking', () => {
 	async function insertThread(t: Harness, subject: string): Promise<Id<'conversationThreads'>> {
 		return t.run((ctx) =>
 			ctx.db.insert('conversationThreads', {
@@ -162,9 +162,9 @@ describe('semanticFiles.update — conversation linking', () => {
 		const fileId = await uploadFile(t, { filename: 'quote.txt' });
 		const threadId = await insertThread(t, 'Renewal quote');
 
-		await t.mutation(api.semanticFiles.update, { fileId, threadId });
+		await t.mutation(api.files.library.update, { fileId, threadId });
 
-		const file = await t.query(api.semanticFiles.get, { fileId });
+		const file = await t.query(api.files.library.get, { fileId });
 		expect(file?.threadId).toBe(threadId);
 		expect(file?.threadSubject).toBe('Renewal quote');
 	});
@@ -173,14 +173,14 @@ describe('semanticFiles.update — conversation linking', () => {
 		const t = convexTest(schema, modules);
 		const fileId = await uploadFile(t, { filename: 'quote.txt' });
 		const threadId = await insertThread(t, 'Renewal quote');
-		await t.mutation(api.semanticFiles.update, { fileId, threadId });
+		await t.mutation(api.files.library.update, { fileId, threadId });
 
 		// An unrelated edit must not disturb the link.
-		await t.mutation(api.semanticFiles.update, { fileId, title: 'Quote' });
-		expect((await t.query(api.semanticFiles.get, { fileId }))?.threadId).toBe(threadId);
+		await t.mutation(api.files.library.update, { fileId, title: 'Quote' });
+		expect((await t.query(api.files.library.get, { fileId }))?.threadId).toBe(threadId);
 
-		await t.mutation(api.semanticFiles.update, { fileId, threadId: null });
-		const cleared = await t.query(api.semanticFiles.get, { fileId });
+		await t.mutation(api.files.library.update, { fileId, threadId: null });
+		const cleared = await t.query(api.files.library.get, { fileId });
 		expect(cleared?.threadId).toBeUndefined();
 		expect(cleared?.threadSubject).toBeUndefined();
 	});
@@ -191,7 +191,7 @@ describe('semanticFiles.update — conversation linking', () => {
 		const threadId = await insertThread(t, 'Deleted thread');
 		await t.run((ctx) => ctx.db.delete(threadId));
 
-		await expect(t.mutation(api.semanticFiles.update, { fileId, threadId })).rejects.toThrow(
+		await expect(t.mutation(api.files.library.update, { fileId, threadId })).rejects.toThrow(
 			/Conversation not found/
 		);
 	});
@@ -205,7 +205,7 @@ describe('semanticFiles.update — conversation linking', () => {
 		const storageId = await t.run((ctx) => ctx.storage.store(new Blob(['body'])));
 
 		await expect(
-			t.mutation(api.semanticFiles.create, {
+			t.mutation(api.files.library.create, {
 				storageId,
 				filename: 'quote.txt',
 				mimeType: 'text/plain',
@@ -225,7 +225,7 @@ describe('semanticFiles.update — conversation linking', () => {
 		const storageId = await t.run((ctx) => ctx.storage.store(new Blob(['body'])));
 
 		await expect(
-			t.mutation(internal.semanticFiles.ingest, {
+			t.mutation(internal.files.library.ingest, {
 				storageId,
 				filename: 'attachment.txt',
 				mimeType: 'text/plain',
