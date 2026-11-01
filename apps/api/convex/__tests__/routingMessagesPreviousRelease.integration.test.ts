@@ -466,7 +466,7 @@ describe('previous-release unified message paths', () => {
 		};
 		const sent = await withoutChatId(old);
 		expect(sent).toEqual(await withoutChatId(moved));
-		expect(sent.unifiedMessages.at(-1)).toMatchObject({
+		expect(sent.unifiedMessages[sent.unifiedMessages.length - 1]).toMatchObject({
 			channel: 'chat',
 			direction: 'outbound',
 			status: 'delivered',
@@ -627,7 +627,7 @@ describe('previous-release outbound dispatch and health paths', () => {
 		expect(newFresh).toBe(oldFresh);
 		const opened = await written(old);
 		expect(opened).toEqual(await written(moved));
-		expect(opened.conversationThreads.at(-1)).toMatchObject({
+		expect(opened.conversationThreads[opened.conversationThreads.length - 1]).toMatchObject({
 			_id: oldFresh,
 			subject: 'Conversation with Ada Lovelace',
 			status: 'open',
