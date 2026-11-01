@@ -6,7 +6,7 @@
  */
 
 import { convexTest } from 'convex-test';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import schema from '../schema';
 import { api, internal } from '../_generated/api';
 import type { OrganizationRole } from '../lib/sessionOrganization';
@@ -119,13 +119,14 @@ async function seedPipeline(t: T) {
 				tokenUsage: { promptTokens: 200, completionTokens: 300, totalTokens: 500 },
 			})
 		);
+		// One rollup window for every metric, inside the dashboard's five-minute
+		// window: the accuracy trend joins its two series on the exact start.
+		const windowStart = Date.now() - 60_000;
 		for (const [metricType, value] of [
 			['auto_approve_ratio', 0.6],
 			['rejection_rate', 0.1],
 			['processing_latency', 900],
 		] as const) {
-			// Inside the dashboard's five-minute window.
-			const windowStart = Date.now() - 60_000;
 			await ctx.db.insert(
 				'agentMetrics',
 				createTestAgentMetric({ metricType, value, windowStart })
@@ -154,9 +155,17 @@ async function rollupResult(t: T) {
 	});
 }
 
+const NOW = Date.UTC(2026, 9, 21, 8, 0);
+
 beforeEach(() => {
+	// The seeds and the health reads both take their windows from the clock, so
+	// a millisecond tick between two of them would split or drop a window.
+	vi.useFakeTimers({ toFake: ['Date'], now: NOW });
 	mockRole = 'owner';
 	isMember = true;
+});
+afterEach(() => {
+	vi.useRealTimers();
 });
 
 describe('previous-release agent config paths', () => {
