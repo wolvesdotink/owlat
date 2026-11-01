@@ -1,5 +1,5 @@
 /**
- * Knowledge extraction call avoidance (#1335; AI routing plan L7, M4, M6):
+ * Knowledge extraction call avoidance:
  *
  *   - `ai.knowledge` off: Team Inbox, file and Postbox extraction make no model,
  *     guard or embedding call at all, wherever they were scheduled from;

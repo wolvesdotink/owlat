@@ -189,7 +189,7 @@ async function stageUpload(t: ReturnType<typeof convexTest>, userId = OWNER) {
 
 /**
  * Answer as "Draft with what I have": most cases here answer the file question
- * alone, and without that choice an open question is refused (#1343).
+ * alone, and without that choice an open question is refused.
  */
 function answer(
 	t: ReturnType<typeof convexTest>,

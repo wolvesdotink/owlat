@@ -1,6 +1,6 @@
 /**
  * Knowledge learned from a captured mail attachment keeps the attachment's
- * restriction (#1322): extracted through the real `extractFromFile`, it is
+ * restriction: extracted through the real `extractFromFile`, it is
  * not returned to an unrelated editor by the public knowledge reads nor by the
  * assistant's knowledge retrieval, while knowledge from an uploaded file stays
  * member-visible. The write resolves who may see an entry from the SOURCE

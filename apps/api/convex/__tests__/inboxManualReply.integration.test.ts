@@ -236,7 +236,7 @@ describe('manualReply.takeOverReply', () => {
 		).rejects.toThrow(/security check/);
 	});
 
-	// #807: taking over mid-draft wins. The agent's in-flight step must not
+	// Taking over mid-draft wins. The agent's in-flight step must not
 	// overwrite, auto-send over, or fail the person's reply.
 	describe('taking over while the agent is drafting', () => {
 		async function seedDrafting(t: ReturnType<typeof convexTest>) {
@@ -349,7 +349,7 @@ describe('manualReply.takeOverReply', () => {
 		});
 	});
 
-	// #1338: a clean scan with the agent off ends the run in `security_check`,
+	// A clean scan with the agent off ends the run in `security_check`,
 	// and turning the agent on later does not restart it. The message must stay
 	// answerable rather than wait on an agent that never comes.
 	it('answers a message scanned while the agent was off after the agent is turned on', async () => {

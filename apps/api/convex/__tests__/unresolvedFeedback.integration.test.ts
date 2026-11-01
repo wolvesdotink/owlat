@@ -1,7 +1,7 @@
 /**
- * Bounces and complaints whose message id matches no send are kept (#1194).
+ * Bounces and complaints whose message id matches no send are kept.
  *
- * They used to be logged and dropped. These tests pin what happens to them now:
+ * Logging and dropping them would lose the event. These tests pin what happens:
  * one stored row per event, a replay that applies the ordinary transition once
  * the id resolves and then never again, automatic replays that stop, a purge
  * at the retention horizon, an operator count, and rows that hold no address.
@@ -201,7 +201,7 @@ describe('replaying unresolved feedback', () => {
 		await dispatch(t, orphanBounce('ses-late'));
 		const [row] = await rows(t);
 
-		// The id was lost (#1184); a repair writes it back afterwards.
+		// The Send never recorded its provider id; a repair writes it back afterwards.
 		const { campaignId, sendId } = await seedSentSend(t, 'ses-late');
 
 		const first = await t.mutation(internal.webhooks.unresolvedFeedback.replay, {
@@ -406,7 +406,7 @@ describe('counting, retention and privacy', () => {
 		expect((await rows(t)).map((r) => r.providerMessageId)).toEqual(['ses-young']);
 	});
 
-	// #1194 round 3: the table keeps no personal data. A diagnostic routinely
+	// The table keeps no personal data. A diagnostic routinely
 	// quotes the recipient; only its status code survives.
 	it('stores no field that contains the recipient address, not even from a diagnostic quoting it', async () => {
 		const t = newHarness();
@@ -451,7 +451,7 @@ describe('counting, retention and privacy', () => {
 	});
 });
 
-// #1227: a complaint with no message id (RFC 5965 redaction) blocks an address
+// A complaint with no message id (RFC 5965 redaction) blocks an address
 // on the same proof as one whose id matches no send.
 describe('complaints that arrive without a message id', () => {
 	const redacted = (

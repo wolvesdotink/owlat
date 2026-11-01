@@ -564,8 +564,8 @@ describe('inboundQueries.getThread', () => {
 
 	it('opens E8b-sealed bodies instead of handing back the at-rest envelope', async () => {
 		// `receiveMessage` seals the inline bodies at write on any instance with
-		// INSTANCE_SECRET set, and this query used to return the rows verbatim —
-		// so the thread view rendered `atrest:1:…` where the message should be.
+		// INSTANCE_SECRET set. Returned verbatim, the rows make the thread view
+		// render `atrest:1:…` where the message should be.
 		// Sealed at write here through the real writer, so the test fails if the
 		// unseal is removed AND if the seal ever stops happening.
 		vi.stubEnv('INSTANCE_SECRET', 'unit-test-instance-secret-value');

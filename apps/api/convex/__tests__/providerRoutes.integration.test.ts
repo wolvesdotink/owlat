@@ -439,12 +439,12 @@ describe('deliverability relay domain lifecycle', () => {
 	});
 
 	it('backfills nothing for a relay kind with no identity API (P0.2)', async () => {
-		// The gate that used to keep this honest was `relayProviderType !== 'ses'`
-		// in `setRoute`. Once fallback became a CAPABILITY question, a `resend` or
-		// `smtp` route saves — and the drain, still naming SES inline, would have
-		// registered SES identities for every MTA domain of a deployment that may
-		// hold no AWS credentials at all, then told the operator to publish
-		// `amazonses.com` DNS for a provider they never chose.
+		// Fallback is a CAPABILITY question, so `setRoute` saves a `resend` or
+		// `smtp` route rather than refusing every `relayProviderType !== 'ses'`.
+		// A drain naming SES inline would then register SES identities for every
+		// MTA domain of a deployment that may hold no AWS credentials at all, and
+		// tell the operator to publish `amazonses.com` DNS for a provider they
+		// never chose.
 		const t = convexTest(schema, modules).withIdentity(identity);
 		await t.run(async (ctx) => {
 			await ctx.db.insert('domains', {

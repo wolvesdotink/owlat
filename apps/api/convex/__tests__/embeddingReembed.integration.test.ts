@@ -1,5 +1,5 @@
 /**
- * The re-embed job (#1334): a local embedder brings
+ * The re-embed job: a local embedder brings
  * unknown, inactive and unembedded rows back into the active space on its own;
  * the job is bounded and resumes from its cursor; a switch ends it; a hosted
  * (paid) re-embed is refused while spend admission is absent.

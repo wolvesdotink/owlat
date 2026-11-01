@@ -21,10 +21,10 @@ import {
 } from './memberErasureFixtures';
 
 /**
- * Issue #941: account deletion erases the BetterAuth login identity, not only
- * the Owlat profile. Before, a completed deletion left the `user` row (name,
- * email), the password hash, live sessions, passkeys and the TOTP secret in
- * the component, and the address stayed registered.
+ * Account deletion erases the BetterAuth login identity, not only the Owlat
+ * profile. A deletion that stopped at the profile would leave the `user` row
+ * (name, email), the password hash, live sessions, passkeys and the TOTP secret
+ * in the component, and the address would stay registered.
  */
 
 beforeEach(() => {

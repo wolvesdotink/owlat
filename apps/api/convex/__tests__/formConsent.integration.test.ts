@@ -593,7 +593,7 @@ describe('form signups after a global opt-out', () => {
 	);
 });
 
-// ─── A finished signup's history survives an unsubscribe (#1062) ───────────
+// ─── A finished signup's history survives an unsubscribe ───────────────────
 
 describe('a confirmed signup after the contact unsubscribes', () => {
 	it.each([

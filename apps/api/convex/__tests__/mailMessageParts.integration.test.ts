@@ -10,7 +10,7 @@
  *   - the invite card gets the iCalendar text without the raw message, and a
  *     message with no stored parts says `unknown` so the client falls back;
  *   - an invite in a legacy charset is stored transcoded to UTF-8, so the
- *     `charset=utf-8` it is stored under is true (#1299);
+ *     `charset=utf-8` it is stored under is true;
  *   - the parts live exactly as long as the raw blob: an IMAP COPY sibling
  *     keeps them, the last purge frees them, and a duplicate delivery drops
  *     the parts it staged along with its raw blob;

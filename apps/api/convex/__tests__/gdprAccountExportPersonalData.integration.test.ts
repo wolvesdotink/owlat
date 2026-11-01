@@ -470,11 +470,10 @@ describe('accountManagement.exportUserData — personal data (right-to-access mi
 		expect(res.personalData.deliverabilityAlertRecipientStates).toHaveLength(101);
 	});
 
-	// REGRESSION (#821). A deliverability seed and a team inbox both name the
-	// admin who connected them as `userId`, but both are org infrastructure. The
-	// export used to list the seed mailbox as personal and then fail on its
-	// messages page (the per-mailbox reads refuse a seed), and the manifest
-	// counted account rows the export never wrote.
+	// A deliverability seed and a team inbox both name the admin who connected
+	// them as `userId`, but both are org infrastructure. Listed as personal, the
+	// seed mailbox fails the export on its messages page (the per-mailbox reads
+	// refuse a seed), and the manifest counts account rows the export never wrote.
 	it('leaves seed and team-inbox rows out, and the manifest counts match the export', async () => {
 		const t = newHarness();
 		await seedProfile(t, 'auth-user-1', 'me@owlat.example');

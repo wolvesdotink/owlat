@@ -8,7 +8,7 @@ import { clientNetwork, failureShardKey, MAX_TOKEN_LENGTH } from '../lib/publicT
 import { DOI_TOKEN_TTL_MS } from '../contacts/doiLifecycleReducer';
 
 /**
- * Rate limits on the public capability-token routes (issue #1323), through the
+ * Rate limits on the public capability-token routes, through the
  * real routes and the persistent limiter. The policy (lib/publicTokenPolicy.ts):
  *
  *   - a token gets a bucket of its own only after it is verified, keyed on the

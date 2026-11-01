@@ -6,7 +6,7 @@ import { api } from '../_generated/api';
 /**
  * apiKeys.create is least-privilege by construction: it requires an explicit,
  * non-empty, valid scope list and stores exactly those scopes — no silent
- * all-scopes default. (See finding #12 in the data-isolation review.)
+ * all-scopes default, so a key never holds more access than its creator chose.
  */
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');

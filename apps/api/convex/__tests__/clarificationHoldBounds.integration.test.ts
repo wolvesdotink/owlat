@@ -1,8 +1,8 @@
 /**
- * Sol's round-8 probes for the held-question bookkeeping (#1343), under
- * production transaction limits: the worker's worst-case reads (patch reads
- * included), the settlement sync's bytes, the cleanup's ask generation, and
- * fair turns for every question when the run's sends are capped.
+ * The held-question bookkeeping under production transaction limits: the
+ * worker's worst-case reads (patch reads included), the settlement sync's
+ * bytes, the cleanup's ask generation, and fair turns for every question when
+ * the run's sends are capped.
  */
 import { convexTest, type TestConvex } from 'convex-test';
 import { getConvexSize } from 'convex/values';

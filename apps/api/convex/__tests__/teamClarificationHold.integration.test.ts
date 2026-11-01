@@ -1,6 +1,6 @@
 /**
  * A team message held on the agent's questions, and an agent draft with gaps
- * nobody agreed to (#1343):
+ * nobody agreed to:
  *
  *   - the write-side fence: `recordDraftOutput` stores a draft with gaps only
  *     with the owner's consent; otherwise its gaps become questions, or a

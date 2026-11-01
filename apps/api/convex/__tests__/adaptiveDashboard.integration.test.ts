@@ -55,9 +55,9 @@ vi.mock('../lib/sessionOrganization', async () => {
 			if (!mockRole) throw new Error('You do not have access to this organization');
 			return { userId: mockUserId, role: mockRole, activeOrganizationId: 'org-1' };
 		}),
-		// The two helpers the handlers USED to call on top of their floor. Mocked so
-		// they are counted, and expected never to run: the pins below are what keeps
-		// a second session resolution from creeping back in.
+		// Two helpers that resolve the session a second time on top of the floor.
+		// Mocked so they are counted, and expected never to run: the pins below keep
+		// a handler from adding a second session resolution.
 		getUserIdFromSession: vi.fn(async () => {
 			if (!mockUserId) throw new Error('Not authenticated');
 			return mockUserId;

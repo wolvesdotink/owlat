@@ -1,5 +1,5 @@
 /**
- * Contact-count reconcile (#917): a recount split across bounded transactions.
+ * Contact-count reconcile: a recount split across bounded transactions.
  *
  * Covers the issue's acceptance list: a fixed read budget per step whatever the
  * contact book's size, exact convergence while creates, soft deletes and hard

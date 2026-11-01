@@ -697,7 +697,7 @@ describe('codeWorkTasks.reclaimStale', () => {
 	});
 });
 
-// ============ cancellation + attempt fencing (#934) ============
+// ============ cancellation + attempt fencing ============
 
 /** Insert a queued task and claim it, returning the id and the claimed attempt. */
 async function seedClaimed(
@@ -863,7 +863,7 @@ describe('codeWorkTasks cancellation is terminal for the worker', () => {
 	});
 });
 
-// ============ publication checkpoint + resumable acknowledgement (#936) ============
+// ============ publication checkpoint + resumable acknowledgement ============
 
 describe('codeWorkTasks publication checkpoint', () => {
 	it('records the branch, commit and test output before the push', async () => {

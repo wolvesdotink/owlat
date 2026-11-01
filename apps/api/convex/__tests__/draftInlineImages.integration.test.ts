@@ -1,5 +1,5 @@
 /**
- * #1285: where the composer shows a reopened draft's inline body images from.
+ * Where the composer shows a reopened draft's inline body images from.
  *
  * The draft body saves a pasted image as `<img data-inline-cid="X">` with no
  * usable src, so `mail.draftInlineImages.urls` hands the editor a URL per

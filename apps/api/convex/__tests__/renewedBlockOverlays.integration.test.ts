@@ -1,5 +1,5 @@
 /**
- * The editor renews a repeated Block id when it loads a document (#1430). A
+ * The editor renews a repeated Block id when it loads a document. A
  * save of that document must keep the translation each copy showed: the
  * server carries the overlay of the repeated id to the id the editor gave the
  * copy, in every language, as migration 0055 does for stored rows.

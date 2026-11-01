@@ -13,7 +13,7 @@ import type { Id } from '../_generated/dataModel';
 import type { MutationCtx } from '../_generated/server';
 import { rollupCampaignStatsRow } from '../campaigns/statShards';
 
-// #1225: a reader open or click on a soft-bounced or complained send is
+// A reader open or click on a soft-bounced or complained send is
 // recorded as engagement without moving the status. A hard-bounced send still
 // refuses it. None of it resets the soft-bounce counter or lifts a suppression.
 

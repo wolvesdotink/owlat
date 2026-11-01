@@ -87,8 +87,8 @@ describe('generateDeletionEmailHtml', () => {
 	it('renders German end to end for a German account', () => {
 		const html = generateDeletionEmailHtml('ada@example.com', SCHEDULED, CANCEL_URL, 'de');
 		expect(html).toContain('Kontolöschung geplant');
-		// Including the CTA and the copy-the-link fallback, which used to be
-		// English constants inside the shared button helper.
+		// Including the CTA and the copy-the-link fallback that the shared button
+		// helper renders: they come from the locale, not English constants.
 		expect(html).toContain('Kontolöschung abbrechen');
 		expect(html).toContain('Oder kopiere diesen Link in deinen Browser:');
 		expect(html).not.toContain('Cancel Account Deletion');

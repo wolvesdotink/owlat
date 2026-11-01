@@ -1,7 +1,7 @@
 /**
  * Disconnecting a connected mailbox — what the member is actually promised.
  *
- * Three promises, one test apiece, because each of them used to be false:
+ * Three promises, one test apiece, each against the way it breaks:
  *   1. "Disconnect" forgets the password. The row kept its sealed envelope
  *      forever; only a full purge removed it.
  *   2. Disconnecting stops an import. A migration left `importing` reported a

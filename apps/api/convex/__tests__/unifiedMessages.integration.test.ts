@@ -861,11 +861,10 @@ describe('channels.health.runChannelHealthChecks', () => {
 	});
 
 	it('does NOT report a configured-but-undecryptable channel as healthy (runs the real probe)', async () => {
-		// Regression: previously any sms/whatsapp/generic channel with a config
-		// blob present was written `healthy` off mere presence. The cron now runs
-		// the adapter's healthCheck() probe via channels.outbound.probeChannelHealth,
-		// so creds that cannot even be decrypted (here: a non-envelope blob) surface
-		// as `down` instead of green.
+		// A config blob being present does not make an sms/whatsapp/generic channel
+		// `healthy`. The cron runs the adapter's healthCheck() probe via
+		// channels.outbound.probeChannelHealth, so creds that cannot even be
+		// decrypted (here: a non-envelope blob) surface as `down` instead of green.
 		process.env['INSTANCE_SECRET'] = 'test-instance-secret';
 		const t = convexTest(schema, modules);
 

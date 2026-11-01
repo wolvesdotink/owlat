@@ -325,7 +325,7 @@ describe('start', () => {
 			answerKind: 'file',
 			options: [NOT_READY_OPTION],
 		});
-		// No legacy English sentence on new questions (#1186).
+		// No legacy English sentence on new questions.
 		expect(file).not.toHaveProperty('attribution');
 		// The stored session carries the structured provenance the web words.
 		expect(file!.origin).toEqual({ kind: 'email', senderDomain: 'example.org' });

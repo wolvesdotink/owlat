@@ -1,5 +1,5 @@
 /**
- * A merge must not reach into a contact that is being erased (#1337). Moving
+ * A merge must not reach into a contact that is being erased. Moving
  * the rows of a contact under erasure onto a live one takes them out of the
  * erasure's reach: the walk then "finishes" with personal data left behind on
  * the survivor. Both merge paths refuse instead, before anything moves.

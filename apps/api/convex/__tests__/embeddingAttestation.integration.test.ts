@@ -1,5 +1,5 @@
 /**
- * Legacy embedding cohorts (#1334).
+ * Legacy embedding cohorts.
  *
  * A cohort is established only by records or an operator attestation, both
  * recorded as such. An attested space never shares the active space's column,

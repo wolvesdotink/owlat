@@ -5,7 +5,7 @@ import type { Id } from '../../_generated/dataModel';
 import { createTestCampaign, createTestContact, createTestEmailSend } from '../factories';
 
 /**
- * Shared fixtures for the send-completion-failure suites (#1195). Each suite
+ * Shared fixtures for the send-completion-failure suites. Each suite
  * mocks the lifecycle's effect runner itself (`vi.mock` is per file).
  */
 

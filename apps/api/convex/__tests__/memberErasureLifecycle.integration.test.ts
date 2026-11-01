@@ -19,11 +19,11 @@ import {
 } from './memberErasureFixtures';
 
 /**
- * Issue #940: account deletion as a persisted, resumable member erasure.
+ * Account deletion as a persisted, resumable member erasure.
  *
- * The profile used to go first and the rest of the erasure lived only in a
- * scheduled function's arguments; the next daily run took the missing profile
- * as proof of completion. Here the subject and progress live on a job row
+ * If the profile went first and the rest of the erasure lived only in a
+ * scheduled function's arguments, the next daily run would take the missing
+ * profile as proof of completion. So the subject and progress live on a job row
  * created in the same transaction, a dead chain is restarted instead of
  * declared done, and `completed` follows an end-state check.
  */

@@ -1,6 +1,6 @@
 /**
  * Recorded send completions stay small, so every path stays inside Convex's
- * transaction read limit (#1195).
+ * transaction read limit.
  *
  * A deferral's worker outcome carries the rendered message, up to the 1 MiB
  * document limit. The record keeps a compact form instead: the envelope is

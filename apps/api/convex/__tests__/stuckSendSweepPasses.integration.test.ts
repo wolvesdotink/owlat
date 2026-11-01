@@ -1,5 +1,5 @@
 /**
- * The lost-send sweep runs one pass per table and mode at a time (#1208).
+ * The lost-send sweep runs one pass per table and mode at a time.
  *
  * A pass holds a lease row while its page chain runs. The hourly cron must not
  * start a second pass over a range the first is still scheduling, a pass whose
