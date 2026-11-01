@@ -3,7 +3,7 @@
  * `transactionalEmails`. Both run their publish, duplicate, delete and update
  * rules through `lib/publishableEmail.ts`; the same scenarios run against each
  * table through a small driver so a fix on one side cannot silently miss the
- * other again (issue #862 finding 2).
+ * other.
  */
 
 import { convexTest, type TestConvex } from 'convex-test';

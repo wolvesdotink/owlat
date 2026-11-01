@@ -1,10 +1,10 @@
 /**
- * A send completion that throws keeps its outcome (#1195).
+ * A send completion that throws keeps its outcome.
  *
  * The workpool keeps nothing of an `onComplete` that throws, and the worker's
  * result is the only copy of a direct provider's message id. These tests make
- * the Send lifecycle throw inside the completion, the way #1184 did in
- * production, and pin what survives: the provider id on the queued Send, a
+ * the Send lifecycle throw inside the completion, the way a failing activity
+ * write does, and pin what survives: the provider id on the queued Send, a
  * `sendCompletionFailures` row holding the outcome, a replay that moves the Send
  * exactly once, a provider event that arrives early and is applied after it,
  * and records that go with an erased contact and age out.
@@ -34,8 +34,8 @@ import { PURGE_BATCH_SIZE } from '../delivery/sendCompletionFailureAdmin';
 import { permanentlyDeleteContactWithRelations } from '../lib/contactMutations';
 import type * as EffectsModule from '../delivery/sendLifecycle/effects';
 
-// The fault: every lifecycle effect run throws while armed, as the activity
-// write's validator error did for every `sent` transition in #1184.
+// The fault: every lifecycle effect run throws while armed, as an activity
+// write's validator error does for every `sent` transition.
 const fault = vi.hoisted(() => ({ isArmed: false }));
 vi.mock('../delivery/sendLifecycle/effects', async (importOriginal) => {
 	const original = await importOriginal<typeof EffectsModule>();

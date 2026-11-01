@@ -1,5 +1,5 @@
 /**
- * Provider feedback parked on a recorded send completion (#1195).
+ * Provider feedback parked on a recorded send completion.
  *
  * While a Send's completion cannot replay, the Send stays `queued` and the
  * lifecycle refuses terminal feedback against it. These tests pin that such an

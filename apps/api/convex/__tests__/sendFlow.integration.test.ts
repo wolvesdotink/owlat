@@ -693,8 +693,8 @@ describe('full campaign send lifecycle', () => {
 		});
 
 		// Step 7: lifecycle.transition({ to: 'sent' }) — terminal transition.
-		// This used to be emailsQueries.markCampaignSent; under the
-		// Campaign lifecycle module, the orchestrator calls the lifecycle.
+		// The orchestrator marks the campaign sent through the Campaign
+		// lifecycle module.
 		await t.mutation(internal.campaigns.lifecycle.transition, {
 			campaignId: data.campaignId,
 			input: { to: 'sent', at: Date.now() },

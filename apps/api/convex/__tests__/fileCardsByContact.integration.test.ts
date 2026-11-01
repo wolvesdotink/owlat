@@ -1,11 +1,11 @@
 /**
- * A contact's files as compact cards (`files.cards.listByContact`, #1439).
+ * A contact's files as compact cards (`files.cards.listByContact`).
  *
  * The contact Files tab and the Team Answer attach menu show a name, a size, a
- * date, the source and a couple of tags. `semanticFiles.listByContact` handed
- * them every linked row whole (embedding vectors, extracted and search text)
- * and resolved a storage URL for every readable file before it sorted and
- * dropped the ones past `limit`. Both endpoints now select through
+ * date, the source and a couple of tags, so they must not receive every linked
+ * row whole (embedding vectors, extracted and search text) or a storage URL for
+ * every readable file before sorting and dropping the ones past `limit`. Both
+ * `files.cards.listByContact` and `semanticFiles.listByContact` select through
  * `readableContactFiles`: newest first, read-gated, capped, and only then
  * projected. The legacy endpoint keeps its whole-row shape for older clients.
  */

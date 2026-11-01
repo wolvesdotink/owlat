@@ -150,12 +150,10 @@ function minimalPdfBytes(): Uint8Array {
 /**
  * The ONE classification both sides of the extraction seam dispatch on.
  *
- * `lib/fileExtraction` used to be a second, hand-kept copy of the extractor's
- * branch list, and this block's job was to pin the two against each other so a
- * format added to one and not the other failed. The copy is gone — the
- * `'use node'` extractor imports the V8-safe table — so what is worth testing
- * is the table itself: the format each (type, name) pair lands on, and the fact
- * that the real extractor's output follows it.
+ * The `'use node'` extractor imports the V8-safe table in `lib/fileExtraction`
+ * instead of keeping a hand-kept copy of its branch list, so what is worth
+ * testing is the table itself: the format each (type, name) pair lands on, and
+ * the fact that the real extractor's output follows it.
  */
 describe('classifyExtraction — the one table both callers dispatch on', () => {
 	const CASES: Array<{

@@ -1,10 +1,10 @@
 /**
  * The worker's last gate before dispatching a MARKETING envelope checks the
- * contact as well as the blocklist (issue #809, finding 2).
+ * contact as well as the blocklist.
  *
- * Before: the pre-dispatch re-check ran for campaign envelopes only and read the
- * blocklist only. An automation Send enqueued before the contact unsubscribed
- * from everything (no blocklist row) or was soft-deleted still went out.
+ * A re-check that ran for campaign envelopes only and read the blocklist only
+ * would let an automation Send go out that was enqueued before the contact
+ * unsubscribed from everything (no blocklist row) or was soft-deleted.
  *
  * Covers the after-enqueue half: the automation Send is already queued when
  * the contact changes. The worker returns `suppressed` with the contact reason

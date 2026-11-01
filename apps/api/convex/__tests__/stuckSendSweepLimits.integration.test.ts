@@ -1,5 +1,5 @@
 /**
- * The lost-send sweep under real transaction read limits (#1208).
+ * The lost-send sweep under real transaction read limits.
  *
  * A Send row can be as large as a Convex document: a transactional Send
  * carries its data variables, a campaign Send its personalized subject. These

@@ -1,6 +1,6 @@
 /**
  * Sharing a knowledge entry that migration 0069 restricted with members again
- * (#1372, knowledge/sharing.ts). Owners and admins only, after a review of the
+ * (knowledge/sharing.ts). Owners and admins only, after a review of the
  * complete content, tags and contact links, recorded in the audit log, and
  * never for an entry whose source still keeps it from members: Team Inbox
  * knowledge, a mail capture, a source that is gone or unknown, also once the

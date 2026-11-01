@@ -17,13 +17,13 @@ import {
 } from './memberErasureFixtures';
 
 /**
- * Issue #942: a completed member erasure leaves no personal data behind —
+ * A completed member erasure leaves no personal data behind —
  * private assistant transcripts and uploaded mail archives included — while
  * other members' data and the organization's shared and seed mailboxes stay.
  * Answer mode's private rows (ask sessions, a personal thread's catch-up cards
  * and answer uploads) go too; a team inbox's stay.
- * Also the volume half of #940: a mailbox larger than one transaction may read
- * drains over bounded transactions under enforced limits.
+ * Also the erasure's volume bound: a mailbox larger than one transaction may
+ * read drains over bounded transactions under enforced limits.
  */
 
 beforeEach(() => {

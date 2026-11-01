@@ -2,7 +2,7 @@
  * mail.ai.gate.assertAiAllowed — the spend-gate run before every Postbox LLM
  * call. Enforces the `ai` feature flag and the rate limit: a session user's
  * interactive bucket, or, for session-less (scheduled) work, the named
- * owner's `postboxAiBackground` bucket (#1380).
+ * owner's `postboxAiBackground` bucket.
  */
 import { convexTest } from 'convex-test';
 import { beforeEach, describe, it, expect, vi } from 'vitest';

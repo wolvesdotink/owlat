@@ -1,5 +1,5 @@
 /**
- * The abandoned-question reminder under production transaction limits (#1343).
+ * The abandoned-question reminder under production transaction limits.
  *
  * Every reminder schedules a push per person with a device, and a transaction
  * may schedule at most 1,000 functions. A page of 100 overdue questions read

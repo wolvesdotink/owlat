@@ -12,9 +12,9 @@ import * as onboarding from '../auth/onboarding';
  *  1. **Instance-scoped dismissal.** Owlat is single-org-per-deployment and
  *     onboarding *progress* is derived live from instance data, so dismissal
  *     must be instance-wide too: dismissing as one admin has to hide the
- *     surface for every other admin/browser. Previously the banner stored the
- *     dismissal in per-user localStorage, which disagreed with the shared
- *     progress. The server now ORs the dismissal across all records.
+ *     surface for every other admin/browser. A per-user localStorage dismissal
+ *     would disagree with the shared progress, so the server ORs the dismissal
+ *     across all records.
  *
  *  2. **Dead code is gone.** `get`, `initialize`, and `markStepComplete` (and
  *     the inert per-step boolean columns they wrote) were never read and have

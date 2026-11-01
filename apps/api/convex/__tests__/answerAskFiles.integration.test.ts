@@ -792,10 +792,9 @@ describe('sending a draft with gaps', () => {
 		expect(sent.undoToken).toEqual(expect.any(String));
 	});
 
-	// Issue #1131 review: a Reply Queue draft waiting for files has no ask
-	// session. The AI text it went in with is what keeps it from sending, and
-	// that is on the row, so a reload (the client's in-memory AI draft gone)
-	// changes nothing.
+	// A Reply Queue draft waiting for files has no ask session. The AI text it
+	// went in with is what keeps it from sending, and that is on the row, so a
+	// reload (the client's in-memory AI draft gone) changes nothing.
 	it('refuses a saved Reply Queue draft whose AI text left a gap, without an ask session', async () => {
 		const t = await makeT();
 		const { draftId } = await replyDraft(t);

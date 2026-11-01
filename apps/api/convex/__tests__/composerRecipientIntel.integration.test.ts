@@ -205,7 +205,7 @@ describe('mail.contacts.correspondentDomains', () => {
 
 describe('mail.contacts.recipientTimeZones', () => {
 	// A soft-deleted contact keeps its email, and `by_email` returns it before
-	// the live contact that replaced it (#1242).
+	// the live contact that replaced it.
 	it("reads the live contact's time zone when a deleted contact shares the address", async () => {
 		const t = convexTest(schema, modules);
 		await enableFeatures(t, ['mail.external']);

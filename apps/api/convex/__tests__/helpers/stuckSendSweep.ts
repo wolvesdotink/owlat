@@ -7,7 +7,7 @@ import { createTestCampaign, createTestContact, createTestEmailSend } from '../f
 import { betterAuthModules } from '../testModules';
 import type { T } from './sendCompletionFailures';
 
-/** Shared fixtures for the lost-send sweep suites (#1208). */
+/** Shared fixtures for the lost-send sweep suites. */
 
 export const HOUR = 60 * 60 * 1000;
 export const T0 = Date.UTC(2026, 5, 1, 12, 0, 0);

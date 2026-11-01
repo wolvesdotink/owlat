@@ -457,12 +457,12 @@ describe('summarize — derive on read', () => {
 });
 
 // ────────────────────────────────────────────────────────────────────
-// recordEvent — stays OFF the wide-read / enforce path (FIX 3a-1)
+// recordEvent — stays OFF the wide-read / enforce path
 //
-// The auto-enforce decision used to run inline on every recordEvent, summarizing
-// the whole org window per send-event. It now lives on the hourly
-// `evaluateAutoEnforce` cron step. recordEvent must therefore NOT schedule the
-// enforce mutation, no matter how bad the org window already is.
+// The auto-enforce decision summarizes the whole org window, too wide a read
+// for every send-event, so it lives on the hourly `evaluateAutoEnforce` cron
+// step. recordEvent must therefore NOT schedule the enforce mutation, no matter
+// how bad the org window already is.
 // ────────────────────────────────────────────────────────────────────
 
 async function pendingEnforceJobs(t: Tester): Promise<Array<{ riskLevel?: string }>> {

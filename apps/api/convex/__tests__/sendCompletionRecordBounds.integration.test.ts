@@ -1,7 +1,6 @@
 /**
  * The whole completion record is bounded, operator closure keeps parked
- * provider feedback, and the erasure walker charges what it really reads
- * (#1195).
+ * provider feedback, and the erasure walker charges what it really reads.
  *
  * Runs with convex-test's real transaction limits. Every listing and deletion
  * path is sized on a record of at most `RECORD_MAX_BYTES`, so no string the

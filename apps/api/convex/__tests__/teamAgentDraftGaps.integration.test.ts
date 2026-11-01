@@ -1,5 +1,5 @@
 /**
- * The team inbox agent's `[[...]]` placeholders (#1185). The draft step stores
+ * The team inbox agent's `[[...]]` placeholders. The draft step stores
  * the gap guard with its draft (`stepOutputs.recordDraftOutput` →
  * `inboundMessages.isDraftGapGuarded`), so a reviewer's Approve is refused
  * (DRAFT_HAS_GAPS) until each gap is filled or deleted, even though the thread
@@ -84,7 +84,7 @@ async function seedMessage(
 /**
  * The draft step's write, then the route step's hold for review. With the
  * owner's consent to gaps: without it a draft with gaps is not stored at all
- * (#1343, `teamClarificationHold.integration.test.ts`).
+ * (see `teamClarificationHold.integration.test.ts`).
  */
 async function agentDrafts(t: Harness, messageId: Id<'inboundMessages'>, draftResponse: string) {
 	await t.mutation(internal.inbox.stepOutputs.recordDraftOutput, {
@@ -175,9 +175,9 @@ describe('an agent draft with [[...]] gaps in the team inbox', () => {
 		expect(await guardOf(t, messageId)).toBe(false);
 	});
 
-	// #1200: no screen offers variants, so the guard describes the draft a
-	// reviewer can send. A draft action started before that deploy may still
-	// pass variants; they are neither stored nor counted.
+	// No screen offers variants, so the guard describes the draft a reviewer
+	// can send. A draft action started on an older build may still pass
+	// variants; they are neither stored nor counted.
 	it('reads only the draft, not the variants an older draft action passes', async () => {
 		const t = convexTest(schema, modules);
 		const messageId = await seedMessage(t);
@@ -223,10 +223,10 @@ describe('an agent draft with [[...]] gaps in the team inbox', () => {
 	});
 });
 
-// #1196: `draftOptions` are the variants of one agent draft. Left behind when the
-// draft changed, they described a text nobody saw, and the Answer queue card
-// approved `draftOptions[0]` over a reviewer's saved edit. Nothing writes them
-// since #1200; these rows are the ones stored before.
+// `draftOptions` are the variants of one agent draft. Left behind when the
+// draft changes, they describe a text nobody saw, and the Answer queue card
+// would approve `draftOptions[0]` over a reviewer's saved edit. Nothing writes
+// them; these rows stand for the ones an older draft step stored.
 describe("an agent draft's variants", () => {
 	const variant = 'Hi Jonas, the refund is on its way.';
 	const edited = 'Hi Jonas, I have sent the refund of 42 EUR today. Best, Ada';
@@ -235,7 +235,7 @@ describe("an agent draft's variants", () => {
 	const optionsOf = async (t: Harness, id: Id<'inboundMessages'>) =>
 		(await t.run((ctx) => ctx.db.get(id)))?.draftOptions;
 
-	/** A draft stored with its variants, as the draft step wrote it before #1200. */
+	/** A draft stored with its variants, as an older draft step wrote it. */
 	const seedWithVariants = (t: Harness, draftResponse: string, draftOptions: string[]) =>
 		seedMessage(t, {
 			status: 'draft_ready',
@@ -297,9 +297,9 @@ describe("an agent draft's variants", () => {
 		expect((await approve(t, messageId)).success).toBe(true);
 	});
 
-	// The route step hands the same draft to `→ draft_ready`. Before #1200 the
-	// variants stayed and a gapped one held the guard; now no screen offers
-	// them, so they go and the guard reads the draft alone.
+	// The route step hands the same draft to `→ draft_ready`. No screen offers
+	// variants, so they go there and a gapped one cannot hold the guard: it reads
+	// the draft alone.
 	it("go at the route step's hand-off, and the guard reads the draft alone", async () => {
 		const t = convexTest(schema, modules);
 		const messageId = await seedWithVariants(t, filled, [filled, gapped]);
@@ -346,10 +346,10 @@ describe("an agent draft's variants", () => {
 	});
 });
 
-// Rolling deploy (#1196): a tab still on the previous web build approves
+// Rolling deploy: a tab still on the previous web build approves
 // `draftOptions[0]` over the shown draft whenever there are two or more, by
-// `editDraft` then `approveDraft`. A row stored before the fix can hold a clean
-// draft, stale gapped variants and a `false` guard.
+// `editDraft` then `approveDraft`. A row stored by an older build can hold a
+// clean draft, stale gapped variants and a `false` guard.
 describe('a row stored before the variants were cleared', () => {
 	const staleGapped = `${gapped}\n`;
 	const variant = 'Hi Jonas, the refund is on its way.';

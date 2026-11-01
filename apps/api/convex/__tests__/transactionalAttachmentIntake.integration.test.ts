@@ -396,7 +396,7 @@ describe('transactional pending uploads — release, claim and expiry', () => {
 		await expect(
 			t.mutation(internal.transactional.dispatch.dispatch, {
 				...dispatchArgs(slug, [storageId]),
-				// @ts-expect-error -- the argument was removed (issue #1076)
+				// @ts-expect-error -- `uploadsPending` is not a dispatch argument
 				uploadsPending: true,
 			})
 		).rejects.toThrow(/uploadsPending/);

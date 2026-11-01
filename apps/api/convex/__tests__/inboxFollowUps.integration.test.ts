@@ -61,7 +61,7 @@ afterEach(() => {
 });
 
 /**
- * #807 — a person writes again on a Team inbox thread whose latest message was
+ * A person writes again on a Team inbox thread whose latest message was
  * already answered. The answered message stays `sent`; the follow-up gets its
  * own row, undo window and `team_reply` Send.
  */

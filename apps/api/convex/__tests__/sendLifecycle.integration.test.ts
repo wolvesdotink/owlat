@@ -398,7 +398,7 @@ describe('sendLifecycle.transition — opened/clicked', () => {
 	// An open or click on a hard-bounced row never reaches the reducer, so it
 	// records nothing and the row keeps its status. Soft-bounced and complained
 	// rows record it as engagement instead: see
-	// engagementAfterFeedback.integration.test.ts (#1225).
+	// engagementAfterFeedback.integration.test.ts.
 	it.each([
 		{ label: 'hard-bounced', row: { status: 'bounced', bounceType: 'hard' }, reason: 'terminal' },
 	] as const)(

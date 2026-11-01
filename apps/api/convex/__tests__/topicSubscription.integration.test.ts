@@ -672,7 +672,7 @@ describe('subscription.unsubscribe — public_email_link source', () => {
 		if (outcome.ok) expect(outcome.action).toBe('unsubscribed');
 
 		// The submission keeps the time it was confirmed: an unsubscribe is not
-		// what makes a returning contact confirm again (#1062).
+		// what makes a returning contact confirm again.
 		const submission = await t.run(async (ctx) => ctx.db.get(submissionId));
 		expect(submission?.confirmedAt).toBe(confirmedAt);
 
@@ -827,7 +827,7 @@ describe('subscription.unsubscribeAllForContact', () => {
 		expect((await getTopic(t, topicB))?.cachedMemberCount).toBe(0);
 		expect((await getTopic(t, topicC))?.cachedMemberCount).toBe(0);
 
-		// Form submission confirmations kept (#1062).
+		// Form submission confirmations kept.
 		expect((await t.run(async (ctx) => ctx.db.get(sub1)))?.confirmedAt).toBeTypeOf('number');
 		expect((await t.run(async (ctx) => ctx.db.get(sub2)))?.confirmedAt).toBeTypeOf('number');
 

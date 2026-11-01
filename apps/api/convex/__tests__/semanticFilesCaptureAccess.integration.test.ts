@@ -1,5 +1,5 @@
 /**
- * Files captured from inbound mail keep their mailbox's permission (#1322).
+ * Files captured from inbound mail keep their mailbox's permission.
  *
  * Every org member can read Files, but an attachment captured out of a
  * personal Postbox mailbox or the owner/admin-only Team Inbox is

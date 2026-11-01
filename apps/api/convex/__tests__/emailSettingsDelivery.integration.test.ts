@@ -1,6 +1,6 @@
 /**
  * The template Settings page's writes and what a campaign delivers right after
- * them (issue #1077). The page changes language data through
+ * them. The page changes language data through
  * `emailTemplates.emails.update` and `emailTemplates.i18n.setDefaultLanguage`;
  * both must leave the stored delivery HTML, subject and text/plain body in the
  * same language as the row, in the same write, because the send path

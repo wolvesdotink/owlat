@@ -450,7 +450,7 @@ describe('knowledgeGraph.deleteEntry', () => {
 		});
 
 		// One direction exceeds the 500-row page so the drain loop must paginate.
-		// Previously the entry was deleted unconditionally, permanently leaking the
+		// Deleting the entry before the drain finishes would permanently leak the
 		// rows past the cap (nothing else ever revisits a deleted entry's relations).
 		const OVER_PAGE = 501;
 		await t.run(async (ctx) => {

@@ -7,13 +7,13 @@ import { internal } from '../_generated/api';
  * `sendSystemEmail` is the single transport for every system / auth / DOI mail
  * (password reset, invitation, account-deletion, double opt-in, email-change).
  *
- * The MTA branch used to call a dedicated `sendViaInstanceMta` client. It now
- * routes through the shared `sendProviderDispatch` like the resend/ses branches,
- * passing ipPool 'transactional'. These tests lock the /send/system body
- * (ipPool 'transactional', dkimDomain defaulted to the from-domain, a random
- * messageId, and the RFC 3834 `Auto-Submitted: auto-generated` header) so the
- * default self-host is provably unchanged, and confirm the provider-health
- * recording path (previously skipped by the dedicated client) now runs.
+ * The MTA branch routes through the shared `sendProviderDispatch` like the
+ * resend/ses branches, passing ipPool 'transactional', with no dedicated MTA
+ * client. These tests lock the /send/system body (ipPool 'transactional',
+ * dkimDomain defaulted to the from-domain, a random messageId, and the RFC 3834
+ * `Auto-Submitted: auto-generated` header) so the default self-host keeps its
+ * wire format, and confirm the MTA branch runs the provider-health recording
+ * path.
  */
 
 const modules = import.meta.glob('../**/*.*s');

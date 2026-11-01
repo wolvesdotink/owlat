@@ -3,8 +3,8 @@
  * (`emailTemplates/i18n.ts`) and `transactionalEmails`
  * (`transactional/translations.ts`). Both are shells around the `*Patch`
  * helpers in `lib/emailTranslations.ts`; the same scenarios run against each
- * table through a small driver so a translation fix cannot reach only one side
- * (issue #862 finding 6). Transactional emails carry no previewText, so their
+ * table through a small driver so a translation fix cannot reach only one
+ * side. Transactional emails carry no previewText, so their
  * cases assert it is never written. Only templates expose `setDefaultLanguage`,
  * so the swap cases run for the drivers that carry one.
  */

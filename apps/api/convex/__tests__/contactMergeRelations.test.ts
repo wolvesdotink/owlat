@@ -29,7 +29,7 @@ import {
  * `contactErasureRelations.test.ts`. Both merge paths hard-delete the source
  * contact afterwards, so a `v.id('contacts')` field the merge does not move is
  * left pointing at a deleted contact, out of reach of the survivor's erasure
- * (clarificationMemory and answerAskSessions were, #1337). A new field fails
+ * (clarificationMemory and answerAskSessions are such fields). A new field fails
  * here until it is repointed, given a routine, or excluded with a reason.
  *
  * A contact id kept in a plain string is invisible to the `v.id` walk, so the

@@ -106,8 +106,8 @@ describe('agent/configMutations.getConfig', () => {
 });
 
 // ============ updateConfig ============
-// Note: the master agent on/off used to live on `agentConfig.isEnabled`; it is
-// now the `ai.agent` feature flag. updateConfig only manages tuning fields.
+// The master agent on/off is the `ai.agent` feature flag, not a field on
+// `agentConfig`. updateConfig only manages tuning fields.
 
 describe('agent/configMutations.updateConfig', () => {
 	it('should throw when not authenticated', async () => {

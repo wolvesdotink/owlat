@@ -351,7 +351,7 @@ describe('every delete/unlink relation has a phase behind it', () => {
 
 /**
  * A merge moves the source's rows onto the survivor and hard-deletes the
- * source (#1337), so a later erasure of the survivor is the only one that can
+ * source, so a later erasure of the survivor is the only one that can
  * reach them. Seed the source with a row for every contact relation the merge
  * moves, run a real merge, and check that nothing is left on the deleted
  * source and that erasing the survivor clears the rows both ways it runs.

@@ -1,6 +1,6 @@
 /**
  * Integration tests for carrying pending form submissions over to a
- * replacement confirmation token (#1054).
+ * replacement confirmation token.
  *
  * A contact's DOI token is replaced on two paths: the admin resend
  * (`doiLifecycle.refreshPendingToken`) and a new signup after the token lapsed

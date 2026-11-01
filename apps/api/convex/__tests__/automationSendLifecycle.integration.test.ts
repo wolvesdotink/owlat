@@ -1,5 +1,5 @@
 /**
- * Automation sends with a contact through the Send lifecycle (issue #1184).
+ * Automation sends with a contact through the Send lifecycle.
  *
  * An automation email step stores both `contactId` and `automationId` on its
  * `transactionalSends` row, and every contact activity the lifecycle writes for

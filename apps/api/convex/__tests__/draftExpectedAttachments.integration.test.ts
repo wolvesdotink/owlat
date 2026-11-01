@@ -1,6 +1,6 @@
 /**
  * A draft owes the files it was opened to carry until they are attached
- * (#1257, mail/draftExpectedAttachments.ts). The row is the only record, so
+ * (mail/draftExpectedAttachments.ts). The row is the only record, so
  * every tab reads the same debt:
  *
  *  - `drafts.create` writes the owed list with the row; `drafts.get` shows it

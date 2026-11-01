@@ -1,11 +1,11 @@
 /**
- * Inbound attachment malware scanning end-to-end (PR-39).
+ * Inbound attachment malware scanning end-to-end.
  *
- * ClamAV runs only in the MTA container; before this fix inbound Postbox mail
- * ingested into the mailbox WITHOUT a scan, so `virusVerdict` was always
- * undefined and the `infected → Spam` routing in `deliverToMailbox` could never
- * fire. `ingestFromWebhook` now POSTs each attachment leaf to the MTA
- * `/scan/attachment` endpoint and records the aggregate verdict before delivery.
+ * ClamAV runs only in the MTA container, so `ingestFromWebhook` POSTs each
+ * attachment leaf to the MTA `/scan/attachment` endpoint and records the
+ * aggregate verdict before delivery. Without that scan, inbound Postbox mail
+ * lands with `virusVerdict` undefined and the `infected → Spam` routing in
+ * `deliverToMailbox` never fires.
  *
  * This pins the whole inbound path:
  *   - an EICAR-carrying .eml is actually scanned, lands `virusVerdict ===

@@ -14,10 +14,10 @@ vi.mock('../lib/sessionOrganization', async () => {
 });
 
 /**
- * Deleting a contact property (#918). The old `remove` read and deleted the
- * whole value column in one transaction, so a property set on 100,000 contacts
- * needed 200,002 document reads and 100,001 writes at once, far past the
- * platform limits. Values now go in bounded batches from a durable job; these
+ * Deleting a contact property. Reading and deleting the whole value column in
+ * one transaction would need 200,002 document reads and 100,001 writes at once
+ * for a property set on 100,000 contacts, far past the platform limits. Values
+ * go in bounded batches from a durable job; these
  * tests run the chain under per-transaction limits sized to that batch, so a
  * batch that grew with the column would fail here.
  */

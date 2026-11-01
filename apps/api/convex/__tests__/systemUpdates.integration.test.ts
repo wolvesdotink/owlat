@@ -148,9 +148,9 @@ describe('maintenance/updates.recordUpdateFinish', () => {
 		await seedAdmin(t);
 		const runId = await openRun(t);
 
-		// Regression: `updateStepResultValidator` had no `ok` field, and Convex
-		// object validators reject unknown ones — so this call used to fail
-		// argument validation and no update run was ever closed out.
+		// `updateStepResultValidator` must carry the `ok` field: Convex object
+		// validators reject unknown fields, so without it this call fails
+		// argument validation and no update run is ever closed out.
 		await t.mutation(api.maintenance.updates.recordUpdateFinish, {
 			runId,
 			status: 'success',

@@ -14,7 +14,7 @@
  *     skip a message it flags;
  *   - what the scan or a late guard already rejected (quarantine, malware, a
  *     malicious URL, a flagged injection) never reaches those consumers, with
- *     or without the marker (#1339).
+ *     or without the marker.
  *
  * The LLM dispatch seam and the model factory are mocked; the walker, the
  * lifecycle, the scan and the extraction action are real.
@@ -217,7 +217,7 @@ describe('re-processing requires the guard', () => {
 
 	it('knowledge extraction runs the guard first, records it, then extracts', async () => {
 		const t = convexTest(schema, modules);
-		// #1335: extraction runs only with the knowledge graph on.
+		// Extraction runs only with the knowledge graph on.
 		await enableFeatures(t, ['ai.knowledge']);
 		const id = await insertMessage(t, {
 			processingStatus: 'security_check',
@@ -241,7 +241,7 @@ describe('re-processing requires the guard', () => {
 	it('knowledge extraction stops when the late guard flags the message', async () => {
 		guardFlags = true;
 		const t = convexTest(schema, modules);
-		// #1335: extraction runs only with the knowledge graph on.
+		// Extraction runs only with the knowledge graph on.
 		await enableFeatures(t, ['ai.knowledge']);
 		const id = await insertMessage(t, {
 			processingStatus: 'archived',
@@ -263,7 +263,7 @@ describe('re-processing requires the guard', () => {
 
 	it('knowledge extraction leaves a message whose guard ran alone', async () => {
 		const t = convexTest(schema, modules);
-		// #1335: extraction runs only with the knowledge graph on.
+		// Extraction runs only with the knowledge graph on.
 		await enableFeatures(t, ['ai.knowledge']);
 		const { guardNotRun: _skip, ...ranFlags } = AGENT_OFF_FLAGS;
 		const id = await insertMessage(t, { processingStatus: 'draft_ready', securityFlags: ranFlags });
@@ -302,7 +302,7 @@ const QUARANTINE_FLAGS = {
 };
 const { guardNotRun: _ran, ...CLEAN_FLAGS } = AGENT_OFF_FLAGS;
 
-/** What the scan or a late guard already rejected (#1339), one of each kind. */
+/** What the scan or a late guard already rejected, one of each kind. */
 const REJECTED: Array<[string, Partial<Doc<'inboundMessages'>>]> = [
 	['an injection quarantine', { processingStatus: 'quarantined', securityFlags: QUARANTINE_FLAGS }],
 	['malware', { processingStatus: 'quarantined', virusVerdict: 'infected' }],
@@ -350,7 +350,7 @@ describe('thread interpretation requires the guard', () => {
 	it('repeated extraction after a flagged late guard makes no further model call', async () => {
 		guardFlags = true;
 		const t = convexTest(schema, modules);
-		// #1335: extraction runs only with the knowledge graph on.
+		// Extraction runs only with the knowledge graph on.
 		await enableFeatures(t, ['ai.knowledge']);
 		const id = await insertMessage(t, {
 			processingStatus: 'security_check',
@@ -394,7 +394,7 @@ describe('#1339: what the scan rejected never reaches extraction or interpretati
 	it('the first-enable backfill extracts the clean message and none of the rejected ones', async () => {
 		vi.useRealTimers();
 		const t = convexTest(schema, modules);
-		// #1335: the backfill's extractions run only with the knowledge graph on.
+		// The backfill's extractions run only with the knowledge graph on.
 		await enableFeatures(t, ['ai.agent', 'ai.knowledge']);
 		await insertMessage(t, { processingStatus: 'draft_ready', securityFlags: CLEAN_FLAGS });
 		for (const [, fields] of REJECTED) {
@@ -656,7 +656,7 @@ describe('overlapping late guards merge monotonically', () => {
 
 	it('a consumer acts on the persisted standing, not on its own benign verdict', async () => {
 		const t = convexTest(schema, modules);
-		// #1335: extraction runs only with the knowledge graph on.
+		// Extraction runs only with the knowledge graph on.
 		await enableFeatures(t, ['ai.knowledge']);
 		const id = await insertMessage(t, {
 			processingStatus: 'security_check',

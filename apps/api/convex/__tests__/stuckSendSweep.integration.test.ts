@@ -1,5 +1,5 @@
 /**
- * The lost-send sweep and the first-attempt record it reads (#1208).
+ * The lost-send sweep and the first-attempt record it reads.
  *
  * A Send no completion ever reached stays `queued` with no provider id, and its
  * campaign stays `sending`. The sweep may fail it only once nothing can still
@@ -42,7 +42,8 @@ vi.mock('../delivery/workpool', () => ({
 	transactionalEmailPool: { enqueueAction },
 }));
 
-// A lifecycle effect run that throws for one chosen Send, the #1184 fault.
+// A lifecycle effect run that throws for one chosen Send, as a failing activity
+// write does.
 const fault = vi.hoisted(() => ({ campaignId: null as string | null }));
 vi.mock('../delivery/sendLifecycle/effects', async (importOriginal) => {
 	const original = await importOriginal<typeof EffectsModule>();
@@ -176,7 +177,7 @@ describe('the cron sweep', () => {
 	});
 
 	it('counts from the first attempt, not from queueing (send-time optimization)', async () => {
-		// The #1207 review case: queued on day 0, first attempted on day 2,
+		// A send-time-optimized Send: queued on day 0, first attempted on day 2,
 		// still legitimately deferred on day 5.
 		const t = convexTest(schema, modules);
 		const { sendId } = await queuedCampaignSend(t);

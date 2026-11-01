@@ -1,5 +1,5 @@
 /**
- * The workspace deletion lifecycle (#898): one durable job per generation, a
+ * The workspace deletion lifecycle: one durable job per generation, a
  * write fence that holds while it runs, a quiet scheduler, a checkpoint the
  * recovery driver resumes from, and completion only once every registered
  * table is verified empty.

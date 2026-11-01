@@ -1,6 +1,6 @@
 /**
  * Reader opens and clicks become contact activities, through the send
- * lifecycle and the single activity writer (#1157):
+ * lifecycle and the single activity writer:
  *
  *   - a reader open writes one `email_opened` row, sets `hasOpened`, folds the
  *     engagement score, and the segment `email_activity` condition matches;

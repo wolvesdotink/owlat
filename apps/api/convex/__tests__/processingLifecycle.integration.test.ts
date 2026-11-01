@@ -810,7 +810,7 @@ describe('processingLifecycle.retryFailedActions', () => {
 	});
 
 	// A legacy `failed` row past its retries is not retried, and it is retired
-	// to `abandoned` so it cannot head the scan (#1220).
+	// to `abandoned` so it cannot head the scan.
 	it('retires actions at max retries (>= 3) without retrying them', async () => {
 		const t = convexTest(schema, modules);
 		const messageId = await createMessage(t, { processingStatus: 'failed' });

@@ -6,10 +6,9 @@ import {
 	mergeAttachments,
 } from '../transactional/dispatch';
 
-// The schema arg used to be a JSON string. The new signature takes the
-// parsed object directly (Convex now validates the schema field as a typed
-// Record). These cases used to pass `{...}`; they now pass
-// the object literal directly.
+// `validateDataVariables` takes the parsed schema object (Convex validates the
+// schema field as a typed Record), so these cases pass object literals, not
+// JSON strings.
 
 describe('validateDataVariables', () => {
 	describe('no schema defined', () => {

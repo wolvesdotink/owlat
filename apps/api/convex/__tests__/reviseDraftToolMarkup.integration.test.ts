@@ -11,7 +11,7 @@ import type * as Dispatch from '../lib/llm/dispatch';
 
 /**
  * Whole-draft Revise (mail/ai/reviseDraft.reviseDraft) and tool-call markup a
- * model typed into a draft (#1254): a draft saved before the fix loses a
+ * model typed into a draft: a stored draft that already holds markup loses a
  * leading markup prefix before the model sees it and is refused when markup
  * sits elsewhere; a revision is shown and stored without a markup prefix, and
  * settles `error` when markup sits inside it. The model is mocked; convex-test

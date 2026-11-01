@@ -672,9 +672,9 @@ describe('GET /share/{token}', () => {
 		});
 
 		const res = await t.fetch('/share/expired-http-token', { method: 'GET' });
-		// An expired link is gone → 404 (the taxonomy-supported status). Previously
-		// the handler emitted an unsupported 410 that fell through to 400; fixed.
-		// The `expired` reason still rides in the error envelope's data.
+		// An expired link is gone → 404 (the taxonomy-supported status). A 410 is
+		// not in the taxonomy and would fall through to 400. The `expired` reason
+		// rides in the error envelope's data.
 		expect(res.status).toBe(404);
 		const body = (await res.json()) as { error: { category: string; data?: { reason?: string } } };
 		expect(body.error.category).toBe('not_found');

@@ -6,8 +6,8 @@ import { describe, expect, it } from 'vitest';
 import { SENTINEL_MESSAGE, SENTINEL_SWITCH } from './helpers/unhandledErrorSentinel';
 
 /**
- * The suite used to run with `dangerouslyIgnoreUnhandledErrors`, so a floating
- * promise that rejected after its test passed never failed anything. This runs
+ * The suite runs without `dangerouslyIgnoreUnhandledErrors`: with it, a floating
+ * promise that rejected after its test passed would fail nothing. This runs
  * the sentinel in a child vitest with the real config and checks that an
  * unhandled rejection unrelated to any assertion still fails the run.
  */

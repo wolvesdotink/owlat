@@ -805,7 +805,7 @@ describe('Organization deletion walker — dispatch loop', () => {
 				createdAt: Date.now(),
 			});
 			await ctx.db.insert('emailTemplates', createTestEmailTemplate());
-			// The AI provider choice with an encrypted key envelope (#1101).
+			// The AI provider choice with an encrypted key envelope.
 			await ctx.db.insert('aiProviderConfig', {
 				languageProviderKind: 'anthropic',
 				modelFast: 'fast-model',

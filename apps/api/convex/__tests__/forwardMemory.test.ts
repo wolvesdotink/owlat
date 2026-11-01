@@ -1,5 +1,5 @@
 /**
- * Memory of the server's forward read (#1257). `fulfil` reads a forwarded
+ * Memory of the server's forward read. `fulfil` reads a forwarded
  * message by streaming and unsealing it into one array
  * (`readSealedBlobBytesStreaming`), locates its parts over those bytes with
  * header budgets (`locateMimeTree`), and decodes only the parts it forwards,

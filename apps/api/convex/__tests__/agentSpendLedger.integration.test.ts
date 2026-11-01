@@ -1,12 +1,12 @@
 /**
- * The Team Inbox agent's spend reaches the ledger the spend ceiling reads
- * (#1259). The real walker runs one inbound message from `start` through every
+ * The Team Inbox agent's spend reaches the ledger the spend ceiling reads.
+ * The real walker runs one inbound message from `start` through every
  * step up to `route`: guard → classify → clarify → draft → self-check. (The
  * context step's interpretation is metered by `mail/interpret/run.ts`; this
  * message has no Team Inbox thread, so it is not interpreted here.) Each billed call must leave exactly one `llmUsageEvents`
  * row, the budget status must count them, and with a daily ceiling set the
- * agent's own spend alone must withhold autonomous auto-send. Before the fix only
- * the self-check reached the ledger, so the same run stayed under the ceiling.
+ * agent's own spend alone must withhold autonomous auto-send. If only the
+ * self-check reached the ledger, the same run would stay under the ceiling.
  *
  * The LLM dispatch seam and the model factory are mocked; everything else (the
  * walker, the lifecycle, the ledger mutation, the budget query) is real.
