@@ -1,61 +1,17 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
-import type { Id } from '@owlat/api/dataModel';
 import { isValidEmail } from '@owlat/shared';
 import { needsSendConfirmation, SEND_UNDO_WINDOW_MS } from '~/lib/campaignSend';
-import type { ReviewSchedule } from '~/lib/campaignCompose';
+import type { ReviewCampaignData, ReviewSchedule } from '~/lib/campaignCompose';
 import { readStoredBlocks } from '~/lib/presendChecks/blockLocator';
-import { parseScheduledStart } from '~/lib/campaignSchedule';
 import { sendTimingFromCampaign, sendTimingScheduleArgs, type SendTiming } from '~/lib/sendTiming';
+import ReviewSendOptions from '~/components/campaigns/steps/review/ReviewSendOptions.vue';
+import ReviewSummary from '~/components/campaigns/steps/review/ReviewSummary.vue';
 
 type SendOption = 'now' | 'later';
 
-interface EmailTemplate {
-	readonly _id: Id<'emailTemplates'>;
-	readonly name: string;
-	readonly subject: string;
-}
-
-interface CampaignData {
-	campaignId: Id<'campaigns'>;
-	campaignName: string;
-	fromName: string;
-	fromEmail: string;
-	replyTo: string;
-	audienceDisplayText: string;
-	audienceCount: number;
-	/**
-	 * `audienceCount` is a lower bound (the wizard's readout stopped at one page
-	 * or is still on a first background count, #916): shown as "N+", always
-	 * confirmed, and kept out of the capacity note, which needs the real size.
-	 */
-	audienceCountAtLeast?: boolean;
-	campaignSubject: string;
-	selectedTemplate: EmailTemplate | null;
-	/**
-	 * The attached email's rendered HTML: `null` when it has no body yet (which
-	 * blocks the send), `undefined` while that is not known.
-	 */
-	emailBodyHtml?: string | null;
-	/** The attached email's stored Blocks (JSON), for the pre-send checks' "Show me". */
-	emailContent?: string;
-	/** Topic campaigns get the unsubscribe footer; segment campaigns do not. */
-	audienceKind?: 'topic' | 'segment';
-	// A/B Test data
-	abTestEnabled: boolean;
-	abTestType: 'subject' | 'content';
-	abVariantBSubject: string;
-	abVariantBTemplateId: Id<'emailTemplates'> | null;
-	abSplitPercentage: number;
-	abWinnerCriteria: 'open_rate' | 'click_rate' | 'manual';
-	abTestDuration: number;
-	templates: readonly EmailTemplate[];
-	/** The template list failed to load, so Variant B's template name is missing. */
-	templatesLoadFailed?: boolean;
-}
-
 interface Props {
-	data: CampaignData;
+	data: ReviewCampaignData;
 	/** A "Schedule for later" choice made before a trip to the email editor. */
 	initialSchedule?: ReviewSchedule | null;
 }
@@ -89,11 +45,6 @@ const timing = ref<SendTiming>(
 		useRecipientTimezone: props.initialSchedule?.recipientTimezone,
 		sendTimeOptimization: props.initialSchedule?.optimization,
 	})
-);
-
-/** The chosen start for the send-time preview, or null while unset or past. */
-const scheduledStartAt = computed(() =>
-	parseScheduledStart(scheduledDate.value, scheduledTime.value, Date.now())
 );
 
 const handleEditEmail = (blockId?: string) => {
@@ -247,28 +198,6 @@ const warningsReviewed = computed(
 		presendSummary.value.warnings === 0 || reviewedWarnings.value === presendSummary.value.signature
 );
 
-// Get min date for scheduling
-const getMinScheduleDateTime = () => {
-	const now = new Date();
-	now.setMinutes(now.getMinutes() + 5);
-	return now.toISOString().slice(0, 16);
-};
-
-// Format date for display
-const formatScheduleDate = (dateStr: string, timeStr: string): string => {
-	if (!dateStr || !timeStr) return '';
-	const date = new Date(`${dateStr}T${timeStr}`);
-	return date.toLocaleString(locale.value, {
-		weekday: 'long',
-		year: 'numeric',
-		month: 'long',
-		day: 'numeric',
-		hour: 'numeric',
-		minute: '2-digit',
-		hour12: true,
-	});
-};
-
 // Validation
 const validate = (): boolean => {
 	if (sendOption.value === 'later') {
@@ -368,29 +297,6 @@ const handleConfirmSend = async () => {
 	isSendConfirmOpen.value = false;
 	await submitSend();
 };
-
-/** How the winner is picked, and — for an automatic pick — by when. */
-const winnerByLine = computed(() => {
-	const prefix = 'components.campaigns.steps.reviewStep';
-	const criteria =
-		props.data.abWinnerCriteria === 'open_rate'
-			? t(`${prefix}.winnerCriteria.openRate`)
-			: props.data.abWinnerCriteria === 'click_rate'
-				? t(`${prefix}.winnerCriteria.clickRate`)
-				: t(`${prefix}.winnerCriteria.manual`);
-	return props.data.abWinnerCriteria === 'manual'
-		? t(`${prefix}.winnerBy`, { criteria })
-		: t(`${prefix}.winnerByAfterHours`, { criteria, hours: props.data.abTestDuration });
-});
-
-// Get variant B template name
-const variantBTemplateName = computed(() => {
-	if (!props.data.abVariantBTemplateId) return null;
-	return (
-		props.data.templates.find((template) => template._id === props.data.abVariantBTemplateId)
-			?.name ?? null
-	);
-});
 </script>
 
 <template>
@@ -416,212 +322,13 @@ const variantBTemplateName = computed(() => {
 			/>
 
 			<!-- Campaign Details Summary -->
-			<div class="space-y-4">
-				<!-- Campaign Name -->
-				<div class="flex items-start justify-between p-4 bg-bg-surface shadow-surface-1 rounded-lg">
-					<div class="flex items-start gap-3">
-						<UiIconBox icon="lucide:file-text" size="sm" rounded="lg" />
-						<div>
-							<p class="text-sm text-text-secondary">
-								{{ t('components.campaigns.steps.reviewStep.campaignName') }}
-							</p>
-							<p class="font-medium text-text-primary mt-0.5">{{ data.campaignName }}</p>
-						</div>
-					</div>
-					<button
-						class="p-2 text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-						@click="emit('editStep', 'setup')"
-						:aria-label="t('common.edit')"
-					>
-						<Icon name="lucide:pencil" class="w-4 h-4" />
-					</button>
-				</div>
-
-				<!-- From Info -->
-				<div class="flex items-start justify-between p-4 bg-bg-surface shadow-surface-1 rounded-lg">
-					<div class="flex items-start gap-3">
-						<UiIconBox icon="lucide:user" size="sm" rounded="lg" />
-						<div>
-							<p class="text-sm text-text-secondary">
-								{{ t('components.campaigns.steps.reviewStep.from') }}
-							</p>
-							<p class="font-medium text-text-primary mt-0.5">{{ data.fromName }}</p>
-							<p class="text-sm text-text-secondary">{{ data.fromEmail }}</p>
-							<p v-if="data.replyTo" class="text-sm text-text-tertiary">
-								{{ t('components.campaigns.steps.reviewStep.replyTo', { email: data.replyTo }) }}
-							</p>
-						</div>
-					</div>
-					<button
-						class="p-2 text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-						@click="emit('editStep', 'setup')"
-						:aria-label="t('common.edit')"
-					>
-						<Icon name="lucide:pencil" class="w-4 h-4" />
-					</button>
-				</div>
-
-				<!-- Audience -->
-				<div class="flex items-start justify-between p-4 bg-bg-surface shadow-surface-1 rounded-lg">
-					<div class="flex items-start gap-3">
-						<UiIconBox icon="lucide:users" size="sm" variant="success" rounded="lg" />
-						<div>
-							<p class="text-sm text-text-secondary">
-								{{ t('components.campaigns.steps.reviewStep.audience') }}
-							</p>
-							<p class="font-medium text-text-primary mt-0.5">{{ data.audienceDisplayText }}</p>
-							<I18nT
-								keypath="components.campaigns.steps.reviewStep.estimatedRecipients"
-								tag="p"
-								class="text-sm text-text-secondary mt-1"
-								scope="global"
-							>
-								<template #count>
-									<span class="font-medium text-brand">{{ audienceCountLabel }}</span>
-								</template>
-							</I18nT>
-						</div>
-					</div>
-					<button
-						class="p-2 text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-						@click="emit('editStep', 'setup')"
-						:aria-label="t('common.edit')"
-					>
-						<Icon name="lucide:pencil" class="w-4 h-4" />
-					</button>
-				</div>
-
-				<!-- Email Content -->
-				<div class="p-4 bg-bg-surface shadow-surface-1 rounded-lg">
-					<div class="flex items-start justify-between gap-3">
-						<div class="flex flex-1 min-w-0 items-start gap-3">
-							<UiIconBox icon="lucide:mail" size="sm" variant="warning" rounded="lg" />
-							<div class="flex-1 min-w-0">
-								<p class="text-sm text-text-secondary">
-									{{ t('components.campaigns.steps.reviewStep.emailContent') }}
-								</p>
-								<p class="font-medium text-text-primary mt-0.5">{{ data.campaignSubject }}</p>
-								<div v-if="data.selectedTemplate" class="mt-2 flex items-center gap-2">
-									<span class="text-sm text-text-secondary">{{
-										t('components.campaigns.steps.reviewStep.template')
-									}}</span>
-									<span class="text-sm text-text-primary">{{ data.selectedTemplate.name }}</span>
-								</div>
-							</div>
-						</div>
-						<button
-							class="p-2 text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-							@click="emit('editStep', 'content')"
-							:aria-label="t('common.edit')"
-						>
-							<Icon name="lucide:pencil" class="w-4 h-4" />
-						</button>
-					</div>
-					<!-- Under the header, not inside it, so a phone gets the card's full width. -->
-					<div v-if="data.selectedTemplate" class="mt-3 sm:pl-11">
-						<CampaignsEmailBodyPreview
-							v-if="data.emailBodyHtml"
-							:html="data.emailBodyHtml"
-							:title="t('components.campaigns.steps.reviewStep.previewFrameTitle')"
-						/>
-						<p
-							v-else-if="data.emailBodyHtml === null"
-							class="flex items-center gap-2 text-sm text-warning"
-							data-testid="review-empty-body"
-						>
-							<Icon name="lucide:alert-circle" class="h-4 w-4 shrink-0" />
-							{{ t('components.campaigns.steps.reviewStep.emptyBody') }}
-						</p>
-						<CampaignsChangedSinceLastSend :template-id="data.selectedTemplate._id" class="mt-3" />
-						<UiButton
-							variant="secondary"
-							size="sm"
-							class="mt-3"
-							data-testid="review-edit-email"
-							@click="handleEditEmail()"
-						>
-							<template #iconLeft><Icon name="lucide:pen-line" class="w-4 h-4" /></template>
-							{{ t('components.campaigns.steps.reviewStep.editEmail') }}
-						</UiButton>
-					</div>
-				</div>
-
-				<!-- A/B Test Summary -->
-				<div
-					v-if="data.abTestEnabled"
-					class="flex items-start justify-between p-4 bg-bg-surface border border-border-default rounded-lg"
-				>
-					<div class="flex items-start gap-3">
-						<UiIconBox icon="lucide:split" size="sm" rounded="lg" />
-						<div class="flex-1 min-w-0">
-							<p class="text-sm text-text-secondary">
-								{{ t('components.campaigns.steps.reviewStep.abTesting') }}
-							</p>
-							<p class="font-medium text-text-primary mt-0.5">
-								{{
-									data.abTestType === 'subject'
-										? t('components.campaigns.steps.reviewStep.testingSubjects')
-										: t('components.campaigns.steps.reviewStep.testingTemplates')
-								}}
-							</p>
-							<div class="mt-2 space-y-1">
-								<div class="flex items-center gap-2 text-sm">
-									<div
-										class="w-5 h-5 rounded-full bg-brand/20 text-brand flex items-center justify-center text-xs font-bold"
-									>
-										A
-									</div>
-									<span class="text-text-secondary">{{
-										data.abTestType === 'subject'
-											? data.campaignSubject
-											: data.selectedTemplate?.name
-									}}</span>
-								</div>
-								<div class="flex items-center gap-2 text-sm">
-									<div
-										class="w-5 h-5 rounded-full bg-brand/20 text-brand flex items-center justify-center text-xs font-bold"
-									>
-										B
-									</div>
-									<span class="text-text-secondary">{{
-										data.abTestType === 'subject' ? data.abVariantBSubject : variantBTemplateName
-									}}</span>
-								</div>
-								<CampaignsChangedSinceLastSend
-									v-if="data.abTestType === 'content' && data.abVariantBTemplateId"
-									:template-id="data.abVariantBTemplateId"
-									class="pl-7"
-								/>
-								<p class="text-sm text-text-tertiary mt-2">
-									{{
-										t('components.campaigns.steps.reviewStep.splitSummary', {
-											split: data.abSplitPercentage,
-											remaining: Math.max(0, 100 - 2 * data.abSplitPercentage),
-										})
-									}}
-								</p>
-								<p class="text-sm text-text-tertiary">{{ winnerByLine }}</p>
-								<UiErrorAlert
-									v-if="data.abTestType === 'content' && data.templatesLoadFailed"
-									class="mt-3"
-									:message="t('components.campaigns.steps.reviewStep.templatesLoadFailed')"
-									:action-label="t('common.tryAgain')"
-									action-icon="lucide:refresh-cw"
-									data-testid="review-templates-load-failed"
-									@action="emit('retryTemplates')"
-								/>
-							</div>
-						</div>
-					</div>
-					<button
-						class="p-2 text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-						@click="emit('editStep', 'setup')"
-						:aria-label="t('common.edit')"
-					>
-						<Icon name="lucide:pencil" class="w-4 h-4" />
-					</button>
-				</div>
-			</div>
+			<ReviewSummary
+				:data="data"
+				:audience-count-label="audienceCountLabel"
+				@edit-step="emit('editStep', $event)"
+				@edit-email="handleEditEmail()"
+				@retry-templates="emit('retryTemplates')"
+			/>
 		</div>
 
 		<CampaignsPresendChecksPanel
@@ -658,174 +365,17 @@ const variantBTemplateName = computed(() => {
 		</div>
 
 		<!-- Send Options Card -->
-		<div class="card p-6">
-			<h3 class="text-lg font-semibold text-text-primary mb-4">
-				{{ t('components.campaigns.steps.reviewStep.whenToSend') }}
-			</h3>
-
-			<div
-				v-if="sendBlockedReason"
-				class="mb-4 flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-warning"
-			>
-				<Icon name="lucide:alert-circle" class="mt-0.5 h-4 w-4 shrink-0" />
-				<p>{{ sendBlockedReason }}</p>
-			</div>
-
-			<!-- What can actually go out today, before either option is chosen. -->
-			<CampaignsSendReadinessNote
-				:readiness="sendingReadiness"
-				:audience-size="decisionAudienceCount"
-				class="mb-4"
-			/>
-
-			<div class="space-y-4">
-				<!-- Send Now Option -->
-				<label
-					:class="[
-						'flex items-start gap-4 p-4 border rounded-lg cursor-pointer transition-colors',
-						sendOption === 'now'
-							? 'border-text-primary bg-bg-surface'
-							: 'border-border-subtle hover:border-border-default',
-					]"
-				>
-					<input
-						v-model="sendOption"
-						type="radio"
-						name="sendOption"
-						value="now"
-						class="mt-1 w-4 h-4 text-text-primary focus:ring-brand border-border-subtle bg-bg-surface"
-					/>
-					<div class="flex-1">
-						<div class="flex items-center gap-2">
-							<Icon name="lucide:send" class="w-5 h-5 text-text-tertiary" />
-							<span class="font-medium text-text-primary">{{
-								t('components.campaigns.steps.reviewStep.sendNow')
-							}}</span>
-						</div>
-						<p class="text-sm text-text-secondary mt-1">
-							{{ t('components.campaigns.steps.reviewStep.sendNowDescription') }}
-						</p>
-					</div>
-				</label>
-
-				<!-- Schedule for Later Option -->
-				<label
-					:class="[
-						'flex items-start gap-4 p-4 border rounded-lg cursor-pointer transition-colors',
-						sendOption === 'later'
-							? 'border-text-primary bg-bg-surface'
-							: 'border-border-subtle hover:border-border-default',
-					]"
-				>
-					<input
-						v-model="sendOption"
-						type="radio"
-						name="sendOption"
-						value="later"
-						class="mt-1 w-4 h-4 text-text-primary focus:ring-brand border-border-subtle bg-bg-surface"
-					/>
-					<div class="flex-1">
-						<div class="flex items-center gap-2">
-							<Icon name="lucide:clock" class="w-5 h-5 text-text-tertiary" />
-							<span class="font-medium text-text-primary">{{
-								t('components.campaigns.steps.reviewStep.scheduleLater')
-							}}</span>
-						</div>
-						<p class="text-sm text-text-secondary mt-1">
-							{{ t('components.campaigns.steps.reviewStep.scheduleLaterDescription') }}
-						</p>
-
-						<!-- Date/Time Picker -->
-						<div v-if="sendOption === 'later'" class="mt-4 space-y-4" @click.stop>
-							<div class="grid grid-cols-2 gap-4">
-								<div>
-									<label for="scheduleDate" class="label flex items-center gap-2">
-										<Icon name="lucide:calendar" class="w-4 h-4 text-text-tertiary" />
-										{{ t('components.campaigns.steps.reviewStep.dateLabel') }}
-									</label>
-									<input
-										id="scheduleDate"
-										v-model="scheduledDate"
-										type="date"
-										:min="getMinScheduleDateTime().slice(0, 10)"
-										class="input mt-1.5"
-									/>
-								</div>
-								<div>
-									<label for="scheduleTime" class="label flex items-center gap-2">
-										<Icon name="lucide:clock" class="w-4 h-4 text-text-tertiary" />
-										{{ t('components.campaigns.steps.reviewStep.timeLabel') }}
-									</label>
-									<input
-										id="scheduleTime"
-										v-model="scheduledTime"
-										type="time"
-										class="input mt-1.5"
-									/>
-								</div>
-							</div>
-
-							<CampaignsSendTimingOptions
-								v-model="timing"
-								:time="scheduledTime"
-								:campaign-id="data.campaignId"
-								:start-at="scheduledStartAt"
-								:is-ab-test="data.abTestEnabled"
-							/>
-
-							<!-- Scheduled Time Preview -->
-							<div
-								v-if="scheduledDate && scheduledTime"
-								class="p-3 bg-bg-elevated shadow-surface-1 rounded-lg"
-							>
-								<template v-if="timing.mode === 'optimized'">
-									<p class="text-sm text-text-secondary">
-										{{ t('components.campaigns.steps.reviewStep.previewHeadingOptimized') }}
-									</p>
-									<p class="font-medium text-text-primary mt-1">
-										{{ formatScheduleDate(scheduledDate, scheduledTime) }}
-									</p>
-									<p class="text-xs text-text-tertiary mt-2">
-										{{
-											t('components.campaigns.steps.reviewStep.previewOptimized', {
-												hours: timing.windowHours,
-											})
-										}}
-									</p>
-								</template>
-								<template v-else-if="timing.mode === 'local'">
-									<p class="text-sm text-text-secondary">
-										{{ t('components.campaigns.steps.reviewStep.previewHeadingAt') }}
-									</p>
-									<p class="font-medium text-text-primary mt-1">
-										{{
-											t('components.campaigns.steps.reviewStep.previewPerTimezone', {
-												time: scheduledTime,
-											})
-										}}
-									</p>
-									<p class="text-xs text-text-tertiary mt-2">
-										{{
-											t('components.campaigns.steps.reviewStep.previewExample', {
-												time: scheduledTime,
-											})
-										}}
-									</p>
-								</template>
-								<template v-else>
-									<p class="text-sm text-text-secondary">
-										{{ t('components.campaigns.steps.reviewStep.previewHeading') }}
-									</p>
-									<p class="font-medium text-text-primary mt-1">
-										{{ formatScheduleDate(scheduledDate, scheduledTime) }}
-									</p>
-								</template>
-							</div>
-						</div>
-					</div>
-				</label>
-			</div>
-		</div>
+		<ReviewSendOptions
+			v-model:send-option="sendOption"
+			v-model:scheduled-date="scheduledDate"
+			v-model:scheduled-time="scheduledTime"
+			v-model:timing="timing"
+			:campaign-id="data.campaignId"
+			:is-ab-test="data.abTestEnabled"
+			:send-blocked-reason="sendBlockedReason"
+			:readiness="sendingReadiness"
+			:audience-size="decisionAudienceCount"
+		/>
 
 		<!-- Actions -->
 		<div class="flex items-center justify-between pt-2">
