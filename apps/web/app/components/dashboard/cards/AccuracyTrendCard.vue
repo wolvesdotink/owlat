@@ -3,7 +3,7 @@ import { api } from '@owlat/api';
 
 const { t } = useI18n();
 
-const { data: trend, isLoading } = useOrganizationQuery(api.agentHealth.getAccuracyTrend);
+const { data: trend, isLoading } = useOrganizationQuery(api.agent.health.getAccuracyTrend);
 
 interface TrendPoint {
 	windowStart: number;

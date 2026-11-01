@@ -143,7 +143,7 @@ const FORMS: FormCase[] = [
 		load: () => import('../admin/instance/ai-replies.vue'),
 		edits: [['#ai-replies-tone', 'Warm and brief']],
 		recover: () =>
-			answer(api.agentConfigMutations.getConfig, {
+			answer(api.agent.configMutations.getConfig, {
 				confidenceThreshold: 0.9,
 				maxDailyAutoReplies: 5,
 				toneDescription: 'Formal',

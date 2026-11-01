@@ -11,7 +11,7 @@ import { omit, optionalFields, pick } from '../validators/fields';
 import { voiceProfileValidator } from '../validators/mailAi';
 import { buildVoiceGuidance, type VoiceProfile } from '../../mail/ai/voiceProfileText';
 import schema from '../../schema';
-import { updateConfig } from '../../agentConfigMutations';
+import { updateConfig } from '../../agent/configMutations';
 import { upsert as upsertVacationResponder } from '../../mail/vacation';
 
 const fields = {

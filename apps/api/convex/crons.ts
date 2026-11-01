@@ -301,7 +301,7 @@ crons.interval(
 // Computes queue depth, latency, error rates, evaluates circuit breakers.
 // Writes the whole window in one transaction; ageing those rows out is the
 // retention registration in maintenance/cronRegistration.ts.
-crons.interval('agent metrics rollup', { minutes: 5 }, internal.agentHealth.rollupMetrics);
+crons.interval('agent metrics rollup', { minutes: 5 }, internal.agent.healthRollup.rollupMetrics);
 
 // Reset autonomy daily action counts every 24 hours
 crons.interval(

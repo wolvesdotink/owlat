@@ -41,7 +41,7 @@ const unsafe = (reason: string): AutoSendGateDecision => Object.freeze({ safe: f
 const circuitBreakersGate: CoreAutoSendGate = Object.freeze({
 	id: 'circuit_breakers',
 	async evaluate({ action }: AutoSendGateContext) {
-		const breakers = await action.runQuery(internal.agentHealth.getCircuitBreakersInternal, {});
+		const breakers = await action.runQuery(internal.agent.health.getCircuitBreakersInternal, {});
 		const openBreaker = breakers.find(
 			(breaker: { readonly state: string; readonly breakerType: string }) =>
 				breaker.state === 'open'

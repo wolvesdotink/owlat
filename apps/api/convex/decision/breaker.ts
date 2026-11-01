@@ -11,7 +11,7 @@
  * threat; this breaker is the same argument applied one layer earlier, so the
  * ceiling never has to absorb the amplification in the first place.
  *
- * The vocabulary is the `llm_failure` breaker's in `agentHealth.ts` — `closed`,
+ * The vocabulary is the `llm_failure` breaker's in `agent/healthRollup.ts` — `closed`,
  * `open`, `half_open`, a current value against a threshold, and hysteresis
  * between tripping and recovering — because a second breaker with a second
  * vocabulary is how an operator ends up reading two words for one state.

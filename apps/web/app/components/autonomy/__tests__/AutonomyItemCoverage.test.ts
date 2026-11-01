@@ -9,7 +9,7 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { createTestI18n, expectFullyLocalized, i18nStubs } from '~/__tests__/i18n';
 
 vi.mock('@owlat/api', () => ({
-	api: { agentConfigMutations: { updateConfig: 'agentConfigMutations.updateConfig' } },
+	api: { agent: { configMutations: { updateConfig: 'agent/configMutations.updateConfig' } } },
 }));
 
 const run = vi.fn(async (_args: unknown) => ({ ok: true }));

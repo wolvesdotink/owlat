@@ -1,6 +1,6 @@
 /**
  * The values a first `agentConfig` row starts with when a setting creates it
- * (`agentConfigMutations.ts setReplyMode`, `decision/exclusion.ts`). A leaf
+ * (`agent/configMutations.ts setReplyMode`, `decision/exclusion.ts`). A leaf
  * module, so both can import it without a dependency cycle.
  */
 export const AGENT_CONFIG_INSERT_DEFAULTS = {

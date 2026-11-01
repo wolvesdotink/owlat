@@ -1,4 +1,3 @@
-apps/api/convex/agentHealth.ts
 apps/api/convex/contacts/contacts.ts
 apps/api/convex/contacts/doiLifecycle.ts
 apps/api/convex/semanticFiles.ts

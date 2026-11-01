@@ -172,7 +172,7 @@ export class DecisionRateLimitRefusal extends Error {
 
 /**
  * The breaker guarding the fallback hop, modelled on the `llm_failure` breaker
- * beside `agentHealth.ts`. Open means "the decision plane has been failing, so
+ * beside `agent/healthRollup.ts`. Open means "the decision plane has been failing, so
  * the hop is off": a vendor outage must not silently re-route every inbound
  * message onto a model that costs 24 to 50 times more. Only the PRIMARY plane's
  * outcomes are reported; the hop's failures are the language plane's signal.
