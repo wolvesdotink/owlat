@@ -33,6 +33,24 @@ describe('PageHeader', () => {
 		expect(h1.classes()).not.toContain('font-semibold');
 	});
 
+	it('renders the #title slot inside the same h1 instead of the title prop', () => {
+		const w = mount(PageHeader, {
+			slots: { title: 'Welcome, <span class="lp-title-accent">Ada</span>' },
+		});
+		const headings = w.findAll('h1');
+		expect(headings).toHaveLength(1);
+		expect(headings[0]!.text()).toBe('Welcome, Ada');
+		expect(headings[0]!.get('.lp-title-accent').text()).toBe('Ada');
+		expect(headings[0]!.classes()).toEqual(
+			expect.arrayContaining(['text-2xl', 'font-medium', 'tracking-[-0.02em]'])
+		);
+	});
+
+	it('lets the #title slot win over a title prop', () => {
+		const h1 = mountHeader({}, { title: '<span>Slotted</span>' }).get('h1');
+		expect(h1.text()).toBe('Slotted');
+	});
+
 	it('renders the eyebrow on the shared landing utility, above the title', () => {
 		const w = mountHeader({ eyebrow: 'Audience' });
 		const eyebrow = w.get('.lp-eyebrow');

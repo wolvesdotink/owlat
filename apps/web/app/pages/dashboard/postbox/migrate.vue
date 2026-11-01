@@ -256,17 +256,10 @@ const steps = computed(() =>
 	<div class="p-6 lg:p-8 max-w-2xl mx-auto">
 		<PreferencesBackLink />
 
-		<header class="flex items-center gap-3">
-			<UiIconBox icon="lucide:mail" size="lg" variant="brand" rounded="2xl" />
-			<div>
-				<h1 class="text-2xl font-medium tracking-[-0.02em]">
-					{{ t('dashboard.postbox.migrate.heading') }}
-				</h1>
-				<p class="text-text-secondary text-sm mt-0.5">
-					{{ t('dashboard.postbox.migrate.subheading') }}
-				</p>
-			</div>
-		</header>
+		<UiPageHeader
+			:title="t('dashboard.postbox.migrate.heading')"
+			:description="t('dashboard.postbox.migrate.subheading')"
+		/>
 
 		<!-- Wait for the feature-flag subscription before deciding what to show,
 		     so the lock card never flashes at users who have the feature on. -->

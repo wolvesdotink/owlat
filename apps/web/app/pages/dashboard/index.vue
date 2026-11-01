@@ -291,19 +291,21 @@ useWorkbenchKeyboard({
 		<!-- One reading column up to 2xl; from there the page grows to the shared
 		     page cap and the panel below splits into two columns. -->
 		<header v-if="!isZen">
-			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-				<I18nT
-					v-if="firstName"
-					:keypath="`dashboard.today.greeting.${greetingKey}Named`"
-					tag="span"
-					scope="global"
-				>
-					<template #name
-						><span class="lp-title-accent">{{ firstName }}</span></template
+			<UiPageHeader>
+				<template #title>
+					<I18nT
+						v-if="firstName"
+						:keypath="`dashboard.today.greeting.${greetingKey}Named`"
+						tag="span"
+						scope="global"
 					>
-				</I18nT>
-				<template v-else>{{ t(`dashboard.today.greeting.${greetingKey}`) }}</template>
-			</h1>
+						<template #name
+							><span class="lp-title-accent">{{ firstName }}</span></template
+						>
+					</I18nT>
+					<template v-else>{{ t(`dashboard.today.greeting.${greetingKey}`) }}</template>
+				</template>
+			</UiPageHeader>
 		</header>
 
 		<!-- Only when something is actually broken, and only for admins. -->

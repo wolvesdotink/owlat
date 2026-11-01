@@ -18,6 +18,9 @@
  *    marketing sections use, so a long subtitle wraps like prose instead of
  *    stretching into a single thin line.
  *
+ * `#title` replaces the title text when it needs markup (a name set in the
+ * accent face, a count that must not wrap away from the last word); it renders
+ * inside the same `h1`, so the heading level and scale stay the component's.
  * `#description` replaces the lead when it needs markup (an `<I18nT>` with code
  * spans or a link); it gets the same 540px measure as the plain prop.
  * `#meta` carries the counts/dates strip detail pages hang under the lead;
@@ -29,8 +32,8 @@
 interface Props {
 	/** Uppercase micro-label above the title (the section this page sits in). */
 	eyebrow?: string;
-	/** The page title. Rendered as the page's `h1`. */
-	title: string;
+	/** The page title. Rendered as the page's `h1`. Optional only when `#title` is given. */
+	title?: string;
 	/** One-sentence lead under the title, capped at the 540px measure. */
 	description?: string;
 }
@@ -44,7 +47,9 @@ const slots = useSlots();
 	<div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
 		<div class="min-w-0">
 			<span v-if="eyebrow" class="lp-eyebrow mb-1.5">{{ eyebrow }}</span>
-			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">{{ title }}</h1>
+			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
+				<slot name="title">{{ title }}</slot>
+			</h1>
 			<div
 				v-if="slots['description']"
 				class="mt-1 max-w-[540px] text-sm leading-relaxed text-text-secondary"
