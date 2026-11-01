@@ -10,7 +10,7 @@
  * inspected, never run.
  */
 
-import { convexTest } from 'convex-test';
+import { convexTest, type TestConvex } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import schema from '../schema';
 import { api, internal } from '../_generated/api';
@@ -49,7 +49,8 @@ const LLM_ENV_KEYS = ['LLM_PROVIDER', 'LLM_API_KEY', 'OPENROUTER_API_KEY', 'OPEN
 const PROCESS_FILE = 'files/processing:processFile';
 const BODY = 'Quarterly budget review: hosting spend rose eleven percent, order ABC-12345.';
 
-type T = ReturnType<typeof convexTest>;
+type T = TestConvex<typeof schema>;
+type User = ReturnType<T['withIdentity']>;
 
 beforeEach(() => {
 	session.role = 'owner';
@@ -64,7 +65,7 @@ afterEach(() => {
 	__resetAiConfigCacheForTests();
 });
 
-function setup(): { t: T; user: T } {
+function setup(): { t: T; user: User } {
 	const t = convexTest(schema, modules);
 	return {
 		t,
