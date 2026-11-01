@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import ApiKeysCreatedKeyModal from '~/components/apiKeys/CreatedKeyModal.vue';
+import ApiKeysCreateKeyModal from '~/components/apiKeys/CreateKeyModal.vue';
+import ApiKeysTable from '~/components/apiKeys/KeysTable.vue';
+import ApiKeysRateLimitInfo from '~/components/apiKeys/RateLimitInfo.vue';
 
 const { t } = useI18n();
 
@@ -71,43 +75,7 @@ async function saveRename() {
 // Toast notifications (global)
 const { showToast: showNotification } = useToast();
 
-// Create API key modal
-//
-// Scopes are least-privilege by construction: the operator must pick at least
-// one, and the key carries exactly those (the backend rejects an empty list).
-// Mirrors the canonical vocabulary in apps/api/convex/auth/apiScopes.ts; the
-// backend validates against it, so a drift here can only under-offer, never
-// grant an unknown scope.
-const AVAILABLE_SCOPES = computed<
-	ReadonlyArray<{ value: string; label: string; description: string }>
->(() => [
-	{
-		value: 'contacts:read',
-		label: t('dashboard.admin.team.api.index.scopes.contactsRead.label'),
-		description: t('dashboard.admin.team.api.index.scopes.contactsRead.description'),
-	},
-	{
-		value: 'contacts:write',
-		label: t('dashboard.admin.team.api.index.scopes.contactsWrite.label'),
-		description: t('dashboard.admin.team.api.index.scopes.contactsWrite.description'),
-	},
-	{
-		value: 'events:write',
-		label: t('dashboard.admin.team.api.index.scopes.eventsWrite.label'),
-		description: t('dashboard.admin.team.api.index.scopes.eventsWrite.description'),
-	},
-	{
-		value: 'transactional:send',
-		label: t('dashboard.admin.team.api.index.scopes.transactionalSend.label'),
-		description: t('dashboard.admin.team.api.index.scopes.transactionalSend.description'),
-	},
-	{
-		value: 'topics:write',
-		label: t('dashboard.admin.team.api.index.scopes.topicsWrite.label'),
-		description: t('dashboard.admin.team.api.index.scopes.topicsWrite.description'),
-	},
-]);
-
+// Create API key modal (the scope list lives in the modal)
 const isCreateModalOpen = ref(false);
 const createForm = reactive({
 	name: '',
@@ -342,168 +310,19 @@ const activeKeysCount = computed(() => {
 			</div>
 
 			<!-- API Keys Table -->
-			<div v-else class="card p-0 overflow-hidden">
-				<div class="px-6 py-4 border-b border-border-subtle">
-					<h2 class="text-sm font-medium text-text-primary">
-						{{ t('dashboard.admin.team.api.index.activeKeyCount', activeKeysCount) }}
-					</h2>
-				</div>
-				<div class="overflow-x-auto">
-					<table class="w-full">
-						<thead>
-							<tr class="border-b border-border-subtle">
-								<th
-									class="text-left px-4 py-3 first:pl-6 text-sm font-medium text-text-secondary whitespace-nowrap"
-								>
-									{{ t('common.name') }}
-								</th>
-								<th
-									class="text-left px-4 py-3 first:pl-6 text-sm font-medium text-text-secondary whitespace-nowrap"
-								>
-									{{ t('dashboard.admin.team.api.index.table.key') }}
-								</th>
-								<th
-									class="text-left px-4 py-3 first:pl-6 text-sm font-medium text-text-secondary whitespace-nowrap"
-								>
-									{{ t('common.status') }}
-								</th>
-								<th
-									class="text-left px-4 py-3 first:pl-6 text-sm font-medium text-text-secondary whitespace-nowrap"
-								>
-									{{ t('dashboard.admin.team.api.index.table.lastUsed') }}
-								</th>
-								<th
-									class="text-left px-4 py-3 first:pl-6 text-sm font-medium text-text-secondary whitespace-nowrap"
-								>
-									{{ t('dashboard.admin.team.api.index.table.created') }}
-								</th>
-								<th
-									class="text-right px-4 py-3 pr-6 text-sm font-medium text-text-secondary whitespace-nowrap"
-								>
-									{{ t('common.actions') }}
-								</th>
-							</tr>
-						</thead>
-						<tbody>
-							<tr
-								v-for="key in apiKeys"
-								:key="key._id"
-								:class="[
-									'border-b border-border-subtle last:border-b-0',
-									key.isActive ? 'hover:bg-bg-surface' : 'opacity-60 bg-bg-surface/50',
-								]"
-							>
-								<td class="min-w-32 py-4 pl-6 pr-4">
-									<div v-if="renamingId === key._id" class="flex items-center gap-1">
-										<input
-											v-model="renameDraft"
-											class="input input-sm"
-											:aria-label="t('dashboard.admin.team.api.index.form.nameAriaLabel')"
-											@keyup.enter="saveRename"
-											@keyup.esc="renamingId = null"
-										/>
-										<UiTooltip :text="t('common.save')">
-											<button
-												class="p-1 text-success hover:bg-success/10 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-												:aria-label="t('common.save')"
-												@click="saveRename"
-											>
-												<Icon name="lucide:check" class="w-4 h-4" />
-											</button>
-										</UiTooltip>
-										<UiTooltip :text="t('common.cancel')">
-											<button
-												class="p-1 text-text-tertiary hover:bg-bg-surface-hover rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-												:aria-label="t('common.cancel')"
-												@click="renamingId = null"
-											>
-												<Icon name="lucide:x" class="w-4 h-4" />
-											</button>
-										</UiTooltip>
-									</div>
-									<span v-else class="text-text-primary font-medium">{{ key.name }}</span>
-								</td>
-								<td class="px-4 py-4 whitespace-nowrap">
-									<code
-										class="px-2 py-1 rounded bg-bg-surface text-text-secondary text-sm font-mono"
-									>
-										{{ key.keyPrefix }}...
-									</code>
-								</td>
-								<td class="px-4 py-4 whitespace-nowrap">
-									<span
-										v-if="key.isActive"
-										class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium bg-success/10 text-success"
-									>
-										<Icon name="lucide:check" class="w-3 h-3" />
-										{{ t('common.active') }}
-									</span>
-									<span
-										v-else
-										class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium bg-error/10 text-error"
-									>
-										<Icon name="lucide:x" class="w-3 h-3" />
-										{{ t('dashboard.admin.team.api.index.status.revoked') }}
-									</span>
-								</td>
-								<td class="px-4 py-4 whitespace-nowrap">
-									<span
-										v-if="key.lastUsedAt"
-										class="text-text-secondary text-sm flex items-center gap-1.5"
-										:title="formatDateTime(key.lastUsedAt)"
-									>
-										<Icon name="lucide:clock" class="w-3.5 h-3.5 text-text-tertiary" />
-										{{ formatCompactRelativeTime(key.lastUsedAt) }}
-									</span>
-									<span v-else class="text-text-tertiary text-sm">{{
-										t('dashboard.admin.team.api.index.neverUsed')
-									}}</span>
-								</td>
-								<td class="px-4 py-4 whitespace-nowrap">
-									<span class="text-text-tertiary text-sm">{{ formatDate(key.createdAt) }}</span>
-								</td>
-								<td class="py-4 pl-4 pr-6">
-									<div class="flex items-center justify-end gap-1">
-										<UiTooltip
-											v-if="canManage && renamingId !== key._id"
-											:text="t('dashboard.admin.team.api.index.actions.rename')"
-										>
-											<button
-												class="p-2 rounded-lg text-text-tertiary hover:text-brand hover:bg-brand/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-												:aria-label="t('dashboard.admin.team.api.index.actions.rename')"
-												@click="startRename(key._id, key.name)"
-											>
-												<Icon name="lucide:pencil" class="w-4 h-4" />
-											</button>
-										</UiTooltip>
-										<UiTooltip
-											v-if="key.isActive"
-											:text="t('dashboard.admin.team.api.index.actions.revoke')"
-										>
-											<button
-												class="p-2 rounded-lg text-text-tertiary hover:text-warning hover:bg-warning/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-												:aria-label="t('dashboard.admin.team.api.index.actions.revoke')"
-												@click="openRevokeModal(key._id, key.name)"
-											>
-												<Icon name="lucide:eye-off" class="w-4 h-4" />
-											</button>
-										</UiTooltip>
-										<UiTooltip :text="t('dashboard.admin.team.api.index.actions.delete')">
-											<button
-												class="p-2 rounded-lg text-text-tertiary hover:text-error hover:bg-error/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-												:aria-label="t('dashboard.admin.team.api.index.actions.delete')"
-												@click="openDeleteModal(key._id, key.name)"
-											>
-												<Icon name="lucide:trash-2" class="w-4 h-4" />
-											</button>
-										</UiTooltip>
-									</div>
-								</td>
-							</tr>
-						</tbody>
-					</table>
-				</div>
-			</div>
+			<ApiKeysTable
+				v-else
+				v-model:rename-draft="renameDraft"
+				:api-keys="apiKeys ?? []"
+				:active-keys-count="activeKeysCount"
+				:can-manage="canManage"
+				:renaming-id="renamingId"
+				@start-rename="startRename"
+				@save-rename="saveRename"
+				@cancel-rename="renamingId = null"
+				@revoke="openRevokeModal"
+				@delete="openDeleteModal"
+			/>
 		</div>
 
 		<!-- API Documentation Link -->
@@ -532,281 +351,26 @@ const activeKeysCount = computed(() => {
 		</div>
 
 		<!-- Rate Limiting Info -->
-		<div class="card p-0 mb-6 overflow-hidden">
-			<div class="px-6 py-4 border-b border-border-subtle bg-bg-surface/50">
-				<div class="flex items-center gap-3">
-					<Icon name="lucide:gauge" class="w-5 h-5 text-brand" />
-					<h2 class="text-sm font-semibold text-text-primary">
-						{{ t('dashboard.admin.team.api.index.rateLimit.title') }}
-					</h2>
-				</div>
-			</div>
-			<div class="p-6">
-				<div class="grid gap-6 sm:grid-cols-2">
-					<!-- Rate Limit -->
-					<div class="flex items-start gap-4">
-						<UiIconBox icon="lucide:gauge" size="sm" variant="brand" rounded="lg" />
-						<div>
-							<p class="text-sm font-medium text-text-primary">
-								{{ t('dashboard.admin.team.api.index.rateLimit.rate') }}
-							</p>
-							<p class="text-sm text-text-secondary mt-0.5">
-								{{ t('dashboard.admin.team.api.index.rateLimit.rateDescription') }}
-							</p>
-						</div>
-					</div>
-
-					<!-- Response Headers -->
-					<div class="flex items-start gap-4">
-						<UiIconBox icon="lucide:info" size="sm" variant="brand" rounded="lg" />
-						<div>
-							<p class="text-sm font-medium text-text-primary">
-								{{ t('dashboard.admin.team.api.index.rateLimit.headersTitle') }}
-							</p>
-							<p class="text-sm text-text-secondary mt-0.5">
-								{{ t('dashboard.admin.team.api.index.rateLimit.headersDescription') }}
-							</p>
-						</div>
-					</div>
-				</div>
-
-				<!-- Headers Table -->
-				<div class="mt-6 rounded-lg border border-border-subtle overflow-x-auto">
-					<table class="w-full text-sm">
-						<thead>
-							<tr class="bg-bg-surface">
-								<th class="text-left px-4 py-2 text-text-secondary font-medium">
-									{{ t('dashboard.admin.team.api.index.rateLimit.headerColumn') }}
-								</th>
-								<th class="text-left px-4 py-2 text-text-secondary font-medium">
-									{{ t('common.description') }}
-								</th>
-							</tr>
-						</thead>
-						<tbody>
-							<tr class="border-t border-border-subtle">
-								<td class="px-4 py-2 whitespace-nowrap">
-									<code
-										class="text-xs font-mono text-brand bg-brand-subtle/50 px-1.5 py-0.5 rounded"
-										>X-RateLimit-Limit</code
-									>
-								</td>
-								<td class="px-4 py-2 text-text-secondary">
-									{{ t('dashboard.admin.team.api.index.rateLimit.limitHeader') }}
-								</td>
-							</tr>
-							<tr class="border-t border-border-subtle">
-								<td class="px-4 py-2 whitespace-nowrap">
-									<code
-										class="text-xs font-mono text-brand bg-brand-subtle/50 px-1.5 py-0.5 rounded"
-										>X-RateLimit-Remaining</code
-									>
-								</td>
-								<td class="px-4 py-2 text-text-secondary">
-									{{ t('dashboard.admin.team.api.index.rateLimit.remainingHeader') }}
-								</td>
-							</tr>
-							<tr class="border-t border-border-subtle">
-								<td class="px-4 py-2 whitespace-nowrap">
-									<code
-										class="text-xs font-mono text-brand bg-brand-subtle/50 px-1.5 py-0.5 rounded"
-										>X-RateLimit-Reset</code
-									>
-								</td>
-								<td class="px-4 py-2 text-text-secondary">
-									{{ t('dashboard.admin.team.api.index.rateLimit.resetHeader') }}
-								</td>
-							</tr>
-							<tr class="border-t border-border-subtle">
-								<td class="px-4 py-2 whitespace-nowrap">
-									<code class="text-xs font-mono text-warning bg-warning/10 px-1.5 py-0.5 rounded"
-										>Retry-After</code
-									>
-								</td>
-								<td class="px-4 py-2 text-text-secondary">
-									{{ t('dashboard.admin.team.api.index.rateLimit.retryAfterHeader') }}
-								</td>
-							</tr>
-						</tbody>
-					</table>
-				</div>
-
-				<!-- Usage Example -->
-				<div class="mt-4 p-4 rounded-lg bg-bg-deep border border-border-subtle">
-					<p class="text-xs text-text-tertiary mb-2">
-						{{ t('dashboard.admin.team.api.index.rateLimit.exampleHeaders') }}
-					</p>
-					<code class="text-xs font-mono text-text-secondary block leading-relaxed">
-						X-RateLimit-Limit: 10<br />
-						X-RateLimit-Remaining: 7<br />
-						X-RateLimit-Reset: 1737158400
-					</code>
-				</div>
-			</div>
-		</div>
+		<ApiKeysRateLimitInfo />
 
 		<!-- Create API Key Modal -->
-		<UiModal
+		<ApiKeysCreateKeyModal
 			:open="isCreateModalOpen"
-			:title="t('dashboard.admin.team.api.index.createKey')"
-			size="md"
-			:closable="!isCreating"
-			:persistent="isCreating"
-			@update:open="
-				(v) => {
-					if (!v) closeCreateModal();
-				}
-			"
-		>
-			<!-- Form -->
-			<form @submit.prevent="handleCreate">
-				<!-- Error -->
-				<div
-					v-if="createFormError"
-					class="mb-4 p-3 rounded-lg bg-error-subtle border border-error/20 flex items-start gap-3"
-				>
-					<Icon name="lucide:alert-circle" class="w-5 h-5 text-error shrink-0 mt-0.5" />
-					<p class="text-sm text-error">{{ createFormError }}</p>
-				</div>
-
-				<!-- Name Field -->
-				<div class="mb-6">
-					<label for="key-name" class="label">
-						{{ t('common.name') }} <span class="text-error">*</span>
-					</label>
-					<input
-						id="key-name"
-						v-model="createForm.name"
-						type="text"
-						:placeholder="t('dashboard.admin.team.api.index.form.namePlaceholder')"
-						class="input"
-						:disabled="isCreating"
-					/>
-					<p class="mt-1 text-xs text-text-tertiary">
-						{{ t('dashboard.admin.team.api.index.form.nameHelp') }}
-					</p>
-				</div>
-
-				<!-- Scopes Field -->
-				<div>
-					<span class="label"
-						>{{ t('dashboard.admin.team.api.index.form.scopesLabel') }}
-						<span class="text-error">*</span></span
-					>
-					<p class="mb-2 text-xs text-text-tertiary">
-						{{ t('dashboard.admin.team.api.index.form.scopesHelp') }}
-					</p>
-					<div class="space-y-2">
-						<label
-							v-for="scope in AVAILABLE_SCOPES"
-							:key="scope.value"
-							class="flex items-start gap-3 p-3 rounded-lg shadow-surface-1 cursor-pointer hover:bg-bg-surface-hover"
-							:class="{ 'opacity-60 cursor-not-allowed': isCreating }"
-						>
-							<input
-								v-model="createForm.scopes"
-								type="checkbox"
-								:value="scope.value"
-								:disabled="isCreating"
-								class="mt-0.5 shrink-0"
-							/>
-							<span>
-								<span class="block text-sm font-medium text-text-primary">{{ scope.label }}</span>
-								<span class="block text-xs text-text-tertiary">{{ scope.description }}</span>
-							</span>
-						</label>
-					</div>
-				</div>
-			</form>
-
-			<template #footer>
-				<UiButton
-					variant="secondary"
-					type="button"
-					:disabled="isCreating"
-					@click="closeCreateModal"
-				>
-					{{ t('common.cancel') }}
-				</UiButton>
-				<UiButton type="button" class="gap-2" :disabled="isCreating" @click="handleCreate">
-					<Icon
-						v-if="isCreating"
-						name="lucide:loader-2"
-						class="w-4 h-4 animate-spin motion-reduce:animate-none"
-					/>
-					{{
-						isCreating
-							? t('dashboard.admin.team.api.index.form.creating')
-							: t('dashboard.admin.team.api.index.form.submit')
-					}}
-				</UiButton>
-			</template>
-		</UiModal>
+			:is-creating="isCreating"
+			:error="createFormError"
+			:form="createForm"
+			@close="closeCreateModal"
+			@submit="handleCreate"
+		/>
 
 		<!-- Created Key Display Modal -->
-		<UiModal
+		<ApiKeysCreatedKeyModal
 			:open="showCreatedKey && !!createdKey"
-			size="lg"
-			:closable="false"
-			persistent
-			@update:open="
-				(v) => {
-					if (!v) closeCreatedKeyModal();
-				}
-			"
-		>
-			<template v-if="createdKey">
-				<!-- Header -->
-				<div class="flex items-center gap-3 mb-6">
-					<UiIconBox icon="lucide:key" size="sm" variant="success" rounded="lg" />
-					<h2 class="text-lg font-semibold text-text-primary">
-						{{ t('dashboard.admin.team.api.index.created.title') }}
-					</h2>
-				</div>
-
-				<!-- Content -->
-				<div class="mb-4 p-4 rounded-lg bg-warning/10 border border-warning/20">
-					<div class="flex items-start gap-3">
-						<Icon name="lucide:alert-circle" class="w-5 h-5 text-warning shrink-0 mt-0.5" />
-						<div>
-							<p class="text-sm font-medium text-warning">
-								{{ t('dashboard.admin.team.api.index.created.copyNow') }}
-							</p>
-							<p class="text-sm text-warning/80 mt-1">
-								{{ t('dashboard.admin.team.api.index.created.copyNowBody') }}
-							</p>
-						</div>
-					</div>
-				</div>
-
-				<div class="mb-4">
-					<label class="label">{{ t('common.name') }}</label>
-					<p class="text-text-primary font-medium">{{ createdKey.name }}</p>
-				</div>
-
-				<div>
-					<label class="label">{{ t('dashboard.admin.team.api.index.created.apiKeyLabel') }}</label>
-					<div class="flex items-center gap-2">
-						<code
-							class="flex-1 px-4 py-3 rounded-lg bg-bg-deep text-text-primary text-sm font-mono break-all border border-border-subtle"
-						>
-							{{ createdKey.apiKey }}
-						</code>
-						<UiButton variant="secondary" class="shrink-0 gap-2" @click="copyApiKey">
-							<Icon v-if="copiedKey" name="lucide:check" class="w-4 h-4 text-success" />
-							<Icon v-else name="lucide:copy" class="w-4 h-4" />
-							{{
-								copiedKey ? t('dashboard.admin.team.api.index.created.copied') : t('common.copy')
-							}}
-						</UiButton>
-					</div>
-				</div>
-			</template>
-
-			<template #footer>
-				<UiButton @click="closeCreatedKeyModal">{{ t('common.done') }}</UiButton>
-			</template>
-		</UiModal>
+			:created-key="createdKey"
+			:copied="copiedKey"
+			@close="closeCreatedKeyModal"
+			@copy="copyApiKey"
+		/>
 
 		<!-- Revoke Key Modal -->
 		<UiConfirmationDialog
