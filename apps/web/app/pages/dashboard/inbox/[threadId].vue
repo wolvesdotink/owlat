@@ -487,16 +487,17 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 
 		<!-- Thread Content -->
 		<template v-else>
-			<!-- Header. Wraps: next to four action buttons the subject was squeezed
-			     into a narrow column on a tablet; below 24rem it gets its own line. -->
-			<div class="mb-6 flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
-				<div class="min-w-0 flex-[1_1_24rem]">
-					<!-- The subject, once. Messages below don't repeat it. -->
-					<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary break-words">
-						{{ thread.subject || t('dashboard.inbox.detail.noSubject') }}
-					</h1>
+			<!-- The subject, once. Messages below don't repeat it. -->
+			<UiPageHeader class="mb-6">
+				<!-- A subject can be one unbroken token (a URL, an order number). -->
+				<template #title>
+					<span class="break-words">{{
+						thread.subject || t('dashboard.inbox.detail.noSubject')
+					}}</span>
+				</template>
+				<template #meta>
 					<p
-						class="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-text-tertiary"
+						class="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-text-tertiary"
 						data-testid="thread-meta"
 					>
 						<span v-if="contact" class="text-text-secondary">{{ contact.email }}</span>
@@ -540,30 +541,32 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 					</p>
 					<!-- Who else is here — pulsing viewer ring + "is replying" banner -->
 					<InboxThreadPresence :people="presencePeople" class="mt-3" />
-				</div>
+				</template>
 
-				<InboxThreadHeaderActions
-					:is-admin="isAdmin"
-					:chat-enabled="chatEnabled"
-					:discussion-channels="discussionChannels"
-					:members="assignMembers"
-					:current-user-id="user?.id ?? null"
-					:assigned-to="thread.assignedTo ?? null"
-					:assigned-member-name="assignedMemberName"
-					:is-snoozed="isSnoozed"
-					:current-status="currentStatus"
-					:auto-close="autoCloseSwitch"
-					@reply="openReply()"
-					@assign="onAssign"
-					@new-channel="showNewChannel = true"
-					@snooze="showSnoozeDialog = true"
-					@unsnooze="onUnsnooze"
-					@status="handleStatusChange"
-					@auto-close="onAutoClose"
-					@copy-link="copyThreadLink"
-					@share-in-chat="showShareInChat = true"
-				/>
-			</div>
+				<template #actions>
+					<InboxThreadHeaderActions
+						:is-admin="isAdmin"
+						:chat-enabled="chatEnabled"
+						:discussion-channels="discussionChannels"
+						:members="assignMembers"
+						:current-user-id="user?.id ?? null"
+						:assigned-to="thread.assignedTo ?? null"
+						:assigned-member-name="assignedMemberName"
+						:is-snoozed="isSnoozed"
+						:current-status="currentStatus"
+						:auto-close="autoCloseSwitch"
+						@reply="openReply()"
+						@assign="onAssign"
+						@new-channel="showNewChannel = true"
+						@snooze="showSnoozeDialog = true"
+						@unsnooze="onUnsnooze"
+						@status="handleStatusChange"
+						@auto-close="onAutoClose"
+						@copy-link="copyThreadLink"
+						@share-in-chat="showShareInChat = true"
+					/>
+				</template>
+			</UiPageHeader>
 
 			<InboxAutoClosedNotice
 				v-if="isAutoClosed(thread) && thread.autoClosedAt"

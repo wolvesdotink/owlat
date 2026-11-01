@@ -194,20 +194,16 @@ const SHOW_OPTIONS = [
 
 <template>
 	<div class="mx-auto w-full max-w-5xl px-6 pb-16 pt-8 lg:px-10">
-		<header class="flex flex-wrap items-baseline gap-3">
-			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-				{{ t('dashboard.inboxes.title') }}
-			</h1>
-			<p class="text-sm text-text-secondary">
-				{{
-					t(
-						'dashboard.inboxes.subtitle',
-						{ count: inboxes.length + (teamOn ? 1 : 0) },
-						inboxes.length + (teamOn ? 1 : 0)
-					)
-				}}
-			</p>
-		</header>
+		<UiPageHeader
+			:title="t('dashboard.inboxes.title')"
+			:description="
+				t(
+					'dashboard.inboxes.subtitle',
+					{ count: inboxes.length + (teamOn ? 1 : 0) },
+					inboxes.length + (teamOn ? 1 : 0)
+				)
+			"
+		/>
 
 		<div
 			class="mt-5 flex flex-wrap items-center gap-1.5"

@@ -129,19 +129,24 @@ onBeforeUnmount(abortStamp);
 				<!-- Shared header -->
 				<div class="text-center">
 					<UiIconBox icon="lucide:party-popper" variant="brand" size="lg" class="mx-auto mb-6" />
-					<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-						<I18nT
-							:keypath="firstName ? 'welcome.headingWithName' : 'welcome.heading'"
-							scope="global"
-							tag="span"
-						>
-							<template #instance
-								><span class="lp-title-accent">{{ instanceName }}</span></template
-							>
-							<template #name>{{ firstName }}</template>
-						</I18nT>
-					</h1>
-					<p class="mt-2 text-text-secondary">{{ t('welcome.subheading') }}</p>
+					<!-- The header sizes to its content, so centring the box centres the
+					     title and the capped lead together; text-center does the lines. -->
+					<div class="flex justify-center">
+						<UiPageHeader :description="t('welcome.subheading')">
+							<template #title>
+								<I18nT
+									:keypath="firstName ? 'welcome.headingWithName' : 'welcome.heading'"
+									scope="global"
+									tag="span"
+								>
+									<template #instance
+										><span class="lp-title-accent">{{ instanceName }}</span></template
+									>
+									<template #name>{{ firstName }}</template>
+								</I18nT>
+							</template>
+						</UiPageHeader>
+					</div>
 				</div>
 
 				<!-- MIGRATION MODE: two equal choices -->

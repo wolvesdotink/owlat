@@ -257,16 +257,17 @@ const sourceLabel = computed(() => {
 		<!-- File detail -->
 		<template v-else>
 			<!-- Header -->
-			<div class="flex items-start justify-between gap-4 mb-8">
-				<div class="flex items-start gap-4 min-w-0">
-					<div
-						class="flex-shrink-0 w-14 h-14 rounded-xl bg-bg-surface shadow-surface-1 flex items-center justify-center"
-					>
-						<Icon :name="mimeIcon" class="w-7 h-7 text-text-tertiary" />
-					</div>
-					<div class="min-w-0">
-						<!-- Title -->
-						<div v-if="isEditingTitle" class="flex items-center gap-2">
+			<div class="flex items-start gap-4 mb-8">
+				<div
+					class="flex-shrink-0 w-14 h-14 rounded-xl bg-bg-surface shadow-surface-1 flex items-center justify-center"
+				>
+					<Icon :name="mimeIcon" class="w-7 h-7 text-text-tertiary" />
+				</div>
+				<UiPageHeader class="min-w-0 flex-1" :description="file.filename">
+					<!-- The title edits in place: the editor takes the title's spot in
+					     the h1, so the filename, the notes and the actions stay put. -->
+					<template #title>
+						<span v-if="isEditingTitle" class="inline-flex items-center gap-2">
 							<input
 								v-model="editTitleInput"
 								type="text"
@@ -289,10 +290,10 @@ const sourceLabel = computed(() => {
 							>
 								<Icon name="lucide:x" class="w-4 h-4" />
 							</button>
-						</div>
-						<h1
+						</span>
+						<span
 							v-else
-							class="text-2xl font-medium tracking-[-0.02em] text-text-primary group"
+							class="block group"
 							:class="{ 'cursor-pointer': isAdmin }"
 							@click="isAdmin && startEditTitle()"
 						>
@@ -302,44 +303,40 @@ const sourceLabel = computed(() => {
 								name="lucide:pencil"
 								class="w-3.5 h-3.5 text-text-tertiary inline-block opacity-0 group-hover:opacity-100 transition-opacity ml-1"
 							/>
-						</h1>
-						<p class="text-sm text-text-secondary mt-0.5">{{ file.filename }}</p>
-						<!--
-							The retention sweep releases the BYTES of a team-inbox capture and
-							keeps the row, so `url` is null and the download control above simply
-							vanishes — the same "the affordance shows nothing at all" shape the
-							thread view now explains one screen over. Say it here too.
-						-->
-						<p
-							v-if="file.bytesReleasedAt"
-							class="text-sm text-text-tertiary mt-1"
-							data-testid="file-bytes-released"
-						>
+						</span>
+					</template>
+					<!--
+						The retention sweep releases the BYTES of a team-inbox capture and
+						keeps the row, so `url` is null and the download control above simply
+						vanishes — the same "the affordance shows nothing at all" shape the
+						thread view now explains one screen over. Say it here too.
+					-->
+					<template v-if="file.bytesReleasedAt" #meta>
+						<p class="text-sm text-text-tertiary" data-testid="file-bytes-released">
 							{{ t('dashboard.files.detail.bytesReleased') }}
 						</p>
-					</div>
-				</div>
-
-				<div class="flex items-center gap-2 flex-shrink-0">
-					<UiButton
-						variant="secondary"
-						v-if="file.url"
-						:href="file.url"
-						target="_blank"
-						rel="noopener noreferrer"
-					>
-						<Icon name="lucide:download" class="w-4 h-4 mr-2" />
-						{{ t('common.download') }}
-					</UiButton>
-					<UiButton variant="secondary" v-if="isAdmin" @click="showVersionUpload = true">
-						<Icon name="lucide:upload" class="w-4 h-4 mr-2" />
-						{{ t('dashboard.files.detail.newVersion') }}
-					</UiButton>
-					<UiButton v-if="isAdmin" variant="danger-outline" @click="showDeleteConfirm = true">
-						<Icon name="lucide:trash-2" class="w-4 h-4 mr-2" />
-						{{ t('common.delete') }}
-					</UiButton>
-				</div>
+					</template>
+					<template v-if="file.url || isAdmin" #actions>
+						<UiButton
+							variant="secondary"
+							v-if="file.url"
+							:href="file.url"
+							target="_blank"
+							rel="noopener noreferrer"
+						>
+							<Icon name="lucide:download" class="w-4 h-4 mr-2" />
+							{{ t('common.download') }}
+						</UiButton>
+						<UiButton variant="secondary" v-if="isAdmin" @click="showVersionUpload = true">
+							<Icon name="lucide:upload" class="w-4 h-4 mr-2" />
+							{{ t('dashboard.files.detail.newVersion') }}
+						</UiButton>
+						<UiButton v-if="isAdmin" variant="danger-outline" @click="showDeleteConfirm = true">
+							<Icon name="lucide:trash-2" class="w-4 h-4 mr-2" />
+							{{ t('common.delete') }}
+						</UiButton>
+					</template>
+				</UiPageHeader>
 			</div>
 
 			<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">

@@ -26,20 +26,15 @@ const notFound = computed(() => !mailboxLoading.value && mailbox.value === null)
 
 <template>
 	<div>
-		<h1 class="text-2xl font-medium tracking-[-0.02em]">
-			{{ t('dashboard.preferences.members.detail.title') }}
-		</h1>
-		<I18nT
-			v-if="mailbox"
-			keypath="dashboard.preferences.members.detail.intro"
-			tag="p"
-			class="text-text-secondary mt-1"
-			scope="global"
-		>
-			<template #address
-				><code>{{ mailbox.address }}</code></template
-			>
-		</I18nT>
+		<UiPageHeader :title="t('dashboard.preferences.members.detail.title')">
+			<template v-if="mailbox" #description>
+				<I18nT keypath="dashboard.preferences.members.detail.intro" tag="p" scope="global">
+					<template #address
+						><code>{{ mailbox.address }}</code></template
+					>
+				</I18nT>
+			</template>
+		</UiPageHeader>
 
 		<!-- Bad id, a personal mailbox, or an inbox this person can't reach. -->
 		<div v-if="notFound" class="card mt-6 p-8 text-center">
