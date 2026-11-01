@@ -152,7 +152,9 @@ async function blockRows(t: Harness, email: string) {
 async function removeByOperator(t: Harness, email: string, removedAgoMs = 0) {
 	const [row] = await blockRows(t, email);
 	if (!row) throw new Error(`${email} is not blocked`);
-	await t.withIdentity(operator).mutation(api.blockedEmails.remove, { blockedEmailId: row._id });
+	await t
+		.withIdentity(operator)
+		.mutation(api.blockedEmails.blocklist.remove, { blockedEmailId: row._id });
 	if (removedAgoMs === 0) return;
 	await t.run(async (ctx: { db: DatabaseWriter }) => {
 		const entry = await ctx.db
@@ -165,7 +167,7 @@ async function removeByOperator(t: Harness, email: string, removedAgoMs = 0) {
 }
 
 async function blockNow(t: Harness, email: string) {
-	await t.mutation(internal.blockedEmails.addFromEvent, { email, reason: 'bounced' });
+	await t.mutation(internal.blockedEmails.events.addFromEvent, { email, reason: 'bounced' });
 }
 
 const reject = (id: string, email: string, ageMs?: number) =>
@@ -269,7 +271,7 @@ describe('a reject never undoes an operator removal it predates', () => {
 				createdAt: Date.now() - 60 * MINUTE,
 			});
 		});
-		await t.withIdentity(operator).mutation(api.blockedEmails.remove, { blockedEmailId });
+		await t.withIdentity(operator).mutation(api.blockedEmails.blocklist.remove, { blockedEmailId });
 		expect(await blockRows(t, email)).toHaveLength(0);
 
 		await seedSend(t, 'm-sunset', email);
@@ -361,7 +363,7 @@ describe('a tie inside the event second goes to the event', () => {
 			clock?.mockReturnValue(removedAt);
 			await removeByOperator(t, email);
 			clock?.mockReturnValue(T0 + 10_000);
-			await t.mutation(internal.blockedEmails.addFromEvent, {
+			await t.mutation(internal.blockedEmails.events.addFromEvent, {
 				email,
 				reason: 'bounced',
 				eventAt: T0,

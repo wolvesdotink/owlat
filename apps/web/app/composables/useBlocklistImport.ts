@@ -12,7 +12,7 @@ export interface BlocklistImportResults {
 
 /**
  * Parsed, deduped view of the addresses found in an uploaded blocklist file.
- * `valid` is the normalized set that will be sent to `blockedEmails.bulkAdd`;
+ * `valid` is the normalized set that will be sent to `blockedEmails/blocklist.bulkAdd`;
  * the other buckets are surfaced in the preview so the operator knows what
  * was dropped before they commit.
  */
@@ -32,7 +32,7 @@ const MAX_IMPORT_ROWS = 1000;
  * is no column mapping or duplicate-handling policy). Accepts a `.csv` or
  * `.txt` file where the email is the first column / one address per line,
  * validates + dedupes client-side, then hands the normalized set to the
- * already-built `blockedEmails.bulkAdd` mutation.
+ * already-built `blockedEmails/blocklist.bulkAdd` mutation.
  */
 export function useBlocklistImport() {
 	const { t } = useI18n();
@@ -177,7 +177,7 @@ export function useBlocklistImport() {
 		error.value = '';
 	};
 
-	// Run the import via the supplied `blockedEmails.bulkAdd` runner. Every
+	// Run the import via the supplied `blockedEmails/blocklist.bulkAdd` runner. Every
 	// imported address is a manual block (the operator is asserting "never send
 	// here"); the backend de-dupes against rows already present.
 	const startImport = async (

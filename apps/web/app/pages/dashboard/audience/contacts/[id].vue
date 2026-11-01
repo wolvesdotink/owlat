@@ -180,11 +180,11 @@ const { showToast } = useToast();
 // The address is on the suppression list (blockedEmails) when getByEmail returns
 // a record. Removal is permission-gated in the UI (contacts:manage) and
 // re-checked on the backend.
-const { data: suppression } = useConvexQuery(api.blockedEmails.getByEmail, () =>
+const { data: suppression } = useConvexQuery(api.blockedEmails.blocklist.getByEmail, () =>
 	contact.value?.email ? { email: contact.value.email } : 'skip'
 );
 const { run: removeSuppression, isLoading: isRemovingSuppression } = useBackendOperation(
-	api.blockedEmails.remove,
+	api.blockedEmails.blocklist.remove,
 	{ label: () => t('dashboard.audience.contacts.detail.operations.removeSuppression') }
 );
 async function handleRemoveSuppression() {

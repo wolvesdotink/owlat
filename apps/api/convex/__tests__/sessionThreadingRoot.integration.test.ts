@@ -149,37 +149,40 @@ const cases: Case<unknown>[] = [
 			t.mutation(api.autonomySuggestions.acceptGraduationSuggestion, { suggestionId }),
 	}),
 	defineCase({
-		name: 'blockedEmails.add',
+		name: 'blockedEmails.blocklist.add',
 		floor: 'getMutationContext',
 		denied: BLOCKLIST,
 		call: (t) =>
-			t.mutation(api.blockedEmails.add, { email: 'blocked@example.com', reason: 'manual' }),
+			t.mutation(api.blockedEmails.blocklist.add, {
+				email: 'blocked@example.com',
+				reason: 'manual',
+			}),
 		check: async (t) => {
 			expect(await auditActors(t, 'blocklist.added')).toEqual(['admin-user']);
 		},
 	}),
 	defineCase({
-		name: 'blockedEmails.bulkAdd',
+		name: 'blockedEmails.blocklist.bulkAdd',
 		floor: 'getMutationContext',
 		denied: BLOCKLIST,
 		call: (t) =>
-			t.mutation(api.blockedEmails.bulkAdd, {
+			t.mutation(api.blockedEmails.blocklist.bulkAdd, {
 				emails: [{ email: 'bulk@example.com', reason: 'manual' }],
 			}),
 	}),
 	defineCase({
-		name: 'blockedEmails.remove',
+		name: 'blockedEmails.blocklist.remove',
 		floor: 'getMutationContext',
 		denied: BLOCKLIST,
 		seed: insert('blockedEmails', createTestBlockedEmail({ reason: 'manual' })),
 		call: (t, blockedEmailId: Id<'blockedEmails'>) =>
-			t.mutation(api.blockedEmails.remove, { blockedEmailId }),
+			t.mutation(api.blockedEmails.blocklist.remove, { blockedEmailId }),
 	}),
 	defineCase({
-		name: 'blockedEmails.listProviderProvenance',
+		name: 'blockedEmails.blocklist.listProviderProvenance',
 		floor: 'requireOrgMember',
 		denied: DEFAULT_DENIAL,
-		call: (t) => t.query(api.blockedEmails.listProviderProvenance, {}),
+		call: (t) => t.query(api.blockedEmails.blocklist.listProviderProvenance, {}),
 	}),
 	defineCase({
 		name: 'codeWorkTasks.cancel',
@@ -258,11 +261,11 @@ const cases: Case<unknown>[] = [
 		call: (t) => t.mutation(api.providerRoutes.removeRoute, { messageType: 'campaign' }),
 	}),
 	defineCase({
-		name: 'segments.create',
+		name: 'segments.segments.create',
 		floor: 'getMutationContext',
 		denied: 'Only owners and admins can create segments',
 		call: (t) =>
-			t.mutation(api.segments.create, {
+			t.mutation(api.segments.segments.create, {
 				name: 'Readers',
 				filters: createTestSegment().filters,
 			}),
@@ -271,18 +274,19 @@ const cases: Case<unknown>[] = [
 		},
 	}),
 	defineCase({
-		name: 'segments.update',
+		name: 'segments.segments.update',
 		floor: 'getMutationContext',
 		denied: 'Only owners and admins can update segments',
 		seed: insert('segments', createTestSegment()),
-		call: (t, id: Id<'segments'>) => t.mutation(api.segments.update, { id, name: 'Renamed' }),
+		call: (t, id: Id<'segments'>) =>
+			t.mutation(api.segments.segments.update, { id, name: 'Renamed' }),
 	}),
 	defineCase({
-		name: 'segments.remove',
+		name: 'segments.segments.remove',
 		floor: 'getMutationContext',
 		denied: 'Only owners and admins can delete segments',
 		seed: insert('segments', createTestSegment()),
-		call: (t, id: Id<'segments'>) => t.mutation(api.segments.remove, { id }),
+		call: (t, id: Id<'segments'>) => t.mutation(api.segments.segments.remove, { id }),
 	}),
 	defineCase({
 		name: 'semanticFiles.create',

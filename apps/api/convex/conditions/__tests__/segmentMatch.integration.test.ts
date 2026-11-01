@@ -497,7 +497,7 @@ describe('listMatchingContactsPage (cursor-checkpointed membership walk)', () =>
 		});
 
 		// Walk in pages of 4 (forces > 1 page), each page its OWN execution — the
-		// reactive `segments.listMembers` query serves one page per call, and
+		// reactive `segments.segments.listMembers` query serves one page per call, and
 		// Convex allows a single `.paginate()` per execution.
 		let cursor: string | null = null;
 		const emails: string[] = [];

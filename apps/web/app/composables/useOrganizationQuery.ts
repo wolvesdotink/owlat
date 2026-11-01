@@ -32,7 +32,7 @@ function useOrganizationArgs<Args>(extraArgs: ExtraArgs<Args> | undefined): () =
  * Usage:
  * ```ts
  * const { data } = useOrganizationQuery(api.domains.domains.listByOrganization)
- * const { data } = useOrganizationQuery(api.blockedEmails.listByTeam, { reason: 'bounce' })
+ * const { data } = useOrganizationQuery(api.blockedEmails.blocklist.listByTeam, { reason: 'bounce' })
  * const { data } = useOrganizationQuery(api.auth.apiKeys.listByTeam, () => ({ includeRevoked: true }))
  * ```
  */
@@ -50,7 +50,7 @@ export function useOrganizationQuery<Query extends FunctionReference<'query'>>(
  * while an `extraArgs` factory returns `undefined`.
  *
  * ```ts
- * const { results } = useOrganizationPaginatedQuery(api.segments.list, undefined, { initialNumItems: 100 })
+ * const { results } = useOrganizationPaginatedQuery(api.segments.segments.list, undefined, { initialNumItems: 100 })
  * const { results } = useOrganizationPaginatedQuery(api.campaigns.list, () => ({ status: filter.value }), { initialNumItems: 20 })
  * ```
  */

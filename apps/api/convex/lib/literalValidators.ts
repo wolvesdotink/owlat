@@ -73,7 +73,7 @@ export type BlockReason = (typeof BLOCK_REASONS)[number];
 export const blockedEmailReasonValidator = literalUnion(BLOCK_REASONS);
 
 /**
- * The NARROWER set a caller may write through `blockedEmails.add`, `bulkAdd`
+ * The NARROWER set a caller may write through `blockedEmails/blocklist.add`, `bulkAdd`
  * and `addFromEvent`: an operator or a bounce/complaint event. No `unengaged`,
  * which only the sunset engine writes.
  */

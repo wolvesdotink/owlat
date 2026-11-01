@@ -23,7 +23,7 @@ import type { Id } from '../_generated/dataModel';
 import { toMtaSuppressionReason } from '../delivery/suppressionMirror';
 
 // Pass the org-member floor + the contacts:manage gate so the public
-// blockedEmails.add mutation reaches its insert. (Same approach as
+// blockedEmails.blocklist.add mutation reaches its insert. (Same approach as
 // trackingDomains.integration.test.)
 vi.mock('../lib/sessionOrganization', async () => {
 	const actual = await vi.importActual('../lib/sessionOrganization');
@@ -187,10 +187,10 @@ describe('blockedEmails → MTA /suppression mirror', () => {
 		expect(calls[0]!.reason).toBe('complaint');
 	});
 
-	it('a manual blockedEmails.add mirrors the address to the MTA as manual', async () => {
+	it('a manual blockedEmails.blocklist.add mirrors the address to the MTA as manual', async () => {
 		const t = convexTest(schema, modules);
 
-		await t.mutation(api.blockedEmails.add, {
+		await t.mutation(api.blockedEmails.blocklist.add, {
 			email: 'Manual@Example.com',
 			reason: 'manual',
 		});
@@ -206,14 +206,14 @@ describe('blockedEmails → MTA /suppression mirror', () => {
 
 	it('removing a mirrored block schedules the matching MTA DELETE', async () => {
 		const t = convexTest(schema, modules);
-		const blockedEmailId = await t.mutation(api.blockedEmails.add, {
+		const blockedEmailId = await t.mutation(api.blockedEmails.blocklist.add, {
 			email: 'Remove.Me@Example.com',
 			reason: 'manual',
 		});
 		await t.finishAllScheduledFunctions(vi.runAllTimers);
 		vi.mocked(global.fetch).mockClear();
 
-		await t.mutation(api.blockedEmails.remove, { blockedEmailId });
+		await t.mutation(api.blockedEmails.blocklist.remove, { blockedEmailId });
 		await t.finishAllScheduledFunctions(vi.runAllTimers);
 
 		expect(global.fetch).toHaveBeenCalledWith(
@@ -232,7 +232,7 @@ describe('blockedEmails → MTA /suppression mirror', () => {
 			})
 		);
 
-		await t.mutation(api.blockedEmails.remove, { blockedEmailId });
+		await t.mutation(api.blockedEmails.blocklist.remove, { blockedEmailId });
 		await t.finishAllScheduledFunctions(vi.runAllTimers);
 
 		expect(global.fetch).not.toHaveBeenCalled();
@@ -369,7 +369,7 @@ describe('blockedEmails → MTA /suppression mirror', () => {
 	it('a provider-webhook bounce (addFromEvent) mirrors the address to the MTA', async () => {
 		const t = convexTest(schema, modules);
 
-		await t.mutation(internal.blockedEmails.addFromEvent, {
+		await t.mutation(internal.blockedEmails.events.addFromEvent, {
 			email: 'webhook-bounce@example.com',
 			reason: 'bounced',
 		});
@@ -395,7 +395,7 @@ describe('blockedEmails → MTA /suppression mirror', () => {
 
 		// addFromEvent short-circuits on the existing row — no new insert, so no
 		// mirror should be scheduled.
-		await t.mutation(internal.blockedEmails.addFromEvent, {
+		await t.mutation(internal.blockedEmails.events.addFromEvent, {
 			email: 'already@example.com',
 			reason: 'bounced',
 		});
@@ -415,7 +415,7 @@ describe('blockedEmails → MTA /suppression mirror', () => {
 
 		// No MTA env → getMtaConfig() returns null; the action logs and returns.
 		await expect(
-			t.mutation(internal.blockedEmails.addFromEvent, {
+			t.mutation(internal.blockedEmails.events.addFromEvent, {
 				email: 'no-mta@example.com',
 				reason: 'complained',
 			})

@@ -150,7 +150,7 @@ export async function loadSuppressionSet(
  * Add one address to the SHIPPED suppression list, then mirror it to the MTA's
  * Redis backstop — the two halves every existing suppression site already does
  * together (`delivery/sendLifecycle/effects.ts`'s `blocklist_insert`,
- * `blockedEmails.add`). Callers that suppress programmatically go through here
+ * `blockedEmails/blocklist.add`). Callers that suppress programmatically go through here
  * instead of hand-rolling the pair, so a new suppression source cannot forget
  * the mirror and cannot invent a parallel suppression concept.
  *

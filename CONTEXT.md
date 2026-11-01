@@ -5338,7 +5338,7 @@ The module does _not_ own: the per-**Condition** primitive (`evaluateOne`
 / `preloadConditionsLookup` stay in the conditions registry), the
 eligibility predicate (email-present, suppression, DOI — that is the
 **Audience resolution (module)**'s `selectRecipient`), the `segments` CRUD
-or `cachedCount` refresh scheduling (stay in `segments.ts`), or the
+or `cachedCount` refresh scheduling (stay in `segments/`), or the
 `frozenFilters` snapshot write (the Campaign send orchestrator).
 _Avoid_: Segment evaluation (module) ("Segment
 evaluation" was parked as a name because the **Audience** also covers **Topic

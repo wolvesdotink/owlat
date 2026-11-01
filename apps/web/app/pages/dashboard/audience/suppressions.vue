@@ -24,27 +24,27 @@ const {
 	isLoading: blockedEmailsLoading,
 	error: blockedEmailsError,
 	refetch: refetchBlockedEmails,
-} = useOrganizationQuery(api.blockedEmails.listByTeam, () => ({
+} = useOrganizationQuery(api.blockedEmails.blocklist.listByTeam, () => ({
 	reason: reasonFilter.value === 'all' ? undefined : reasonFilter.value,
 }));
 
 // Get counts by reason
-const { data: countsData } = useOrganizationQuery(api.blockedEmails.getCountsByReason);
+const { data: countsData } = useOrganizationQuery(api.blockedEmails.blocklist.getCountsByReason);
 
 const isLoading = computed(() => organizationLoading.value || blockedEmailsLoading.value);
 
 // Mutations
-const { run: addBlockedEmail } = useBackendOperation(api.blockedEmails.add, {
+const { run: addBlockedEmail } = useBackendOperation(api.blockedEmails.blocklist.add, {
 	label: () => t('dashboard.audience.suppressions.operations.add'),
 });
-const { run: removeBlockedEmail } = useBackendOperation(api.blockedEmails.remove, {
+const { run: removeBlockedEmail } = useBackendOperation(api.blockedEmails.blocklist.remove, {
 	label: () => t('dashboard.audience.suppressions.operations.remove'),
 });
-const { run: bulkAddBlockedEmails } = useBackendOperation(api.blockedEmails.bulkAdd, {
+const { run: bulkAddBlockedEmails } = useBackendOperation(api.blockedEmails.blocklist.bulkAdd, {
 	label: () => t('dashboard.audience.suppressions.operations.import'),
 });
 
-// Bulk import from a CSV / text file → blockedEmails.bulkAdd
+// Bulk import from a CSV / text file → blockedEmails/blocklist.bulkAdd
 const blocklistImport = useBlocklistImport();
 
 const handleImportBlocklist = async () => {

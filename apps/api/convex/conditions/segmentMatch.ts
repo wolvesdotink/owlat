@@ -300,7 +300,7 @@ export interface SegmentMemberPage {
  * population. The membership counterpart to {@link countMatchingContactsPage}:
  * same per-page lookup (per-contact point reads, never a whole-column collect)
  * and same soft-delete-excluding `by_deleted_at` scan, but it returns the
- * matched Contact Docs rather than just a tally. The reactive `segments.listMembers`
+ * matched Contact Docs rather than just a tally. The reactive `segments/segments.listMembers`
  * query drives it page-by-page through the standard `paginationOpts` contract,
  * so the segment-detail view can scroll the materialized membership without any
  * single transaction collecting the whole Contacts table. A page may contain

@@ -16,8 +16,8 @@ import { useLocalized } from '~/composables/useLocalized';
  * here?" lookup that only the notes column needs — lives with the markup.
  */
 
-/** One blocklist row, exactly as `blockedEmails.listByTeam` returns it. */
-type SuppressionRow = FunctionReturnType<typeof api.blockedEmails.listByTeam>[number];
+/** One blocklist row, exactly as `blockedEmails/blocklist.listByTeam` returns it. */
+type SuppressionRow = FunctionReturnType<typeof api.blockedEmails.blocklist.listByTeam>[number];
 
 defineProps<{ rows: SuppressionRow[] }>();
 
@@ -30,7 +30,9 @@ const localized = useLocalized();
 // blacklist hit mirrored in with nobody behind it; the audit entry is
 // what tells them apart. Admin-gated, so it simply stays empty for a member and
 // the column falls back to saying nothing.
-const { data: provenanceData } = useOrganizationQuery(api.blockedEmails.listProviderProvenance);
+const { data: provenanceData } = useOrganizationQuery(
+	api.blockedEmails.blocklist.listProviderProvenance
+);
 const provenanceById = computed(() => indexSuppressionProvenance(provenanceData.value));
 // `suppressionProvenanceLine` picks the message and its parameters (the provider
 // name is part of the key, the evidence code a param) but never resolves them —

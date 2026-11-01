@@ -121,7 +121,7 @@ async function suppressAttributedComplainer(
 ): Promise<UnresolvedFeedbackSuppression> {
 	if (!e.recipient) return 'no_recipient';
 	if (!isAttributedToThisDeployment(e)) return 'unattributed';
-	await ctx.runMutation(internal.blockedEmails.addFromEvent, {
+	await ctx.runMutation(internal.blockedEmails.events.addFromEvent, {
 		email: e.recipient,
 		reason: 'complained',
 	});

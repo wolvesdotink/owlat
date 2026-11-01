@@ -1,5 +1,5 @@
 /**
- * `segments.listMembersForExport` — the server-side member-export action that
+ * `segments.segments.listMembersForExport` — the server-side member-export action that
  * backs the segment-detail "Export CSV" button.
  *
  * Segment membership is computed at read time (a predicate over the live-Contact
@@ -66,7 +66,7 @@ async function insertContact(ctx: MutationCtx, overrides: Record<string, unknown
 	});
 }
 
-describe('segments.listMembersForExport', () => {
+describe('segments.segments.listMembersForExport', () => {
 	it('returns every matching live contact across page boundaries, excluding soft-deleted', async () => {
 		const t = convexTest(schema, modules);
 		const segmentId = await t.run(async (ctx) => {
@@ -84,7 +84,7 @@ describe('segments.listMembersForExport', () => {
 			});
 		});
 
-		const { members, truncated } = await t.action(api.segments.listMembersForExport, {
+		const { members, truncated } = await t.action(api.segments.segments.listMembersForExport, {
 			id: segmentId,
 		});
 
@@ -108,7 +108,7 @@ describe('segments.listMembersForExport', () => {
 			});
 		});
 
-		const { members, truncated } = await t.action(api.segments.listMembersForExport, {
+		const { members, truncated } = await t.action(api.segments.segments.listMembersForExport, {
 			id: segmentId,
 		});
 		expect(truncated).toBe(false);
@@ -134,7 +134,9 @@ describe('segments.listMembersForExport', () => {
 			});
 		});
 
-		const { members } = await t.action(api.segments.listMembersForExport, { id: segmentId });
+		const { members } = await t.action(api.segments.segments.listMembersForExport, {
+			id: segmentId,
+		});
 		expect(members).toHaveLength(1);
 		// The bearer capability for /confirm/doi must never ride an export.
 		for (const member of members) {
@@ -156,7 +158,7 @@ describe('segments.listMembersForExport', () => {
 			return id;
 		});
 
-		const { members, truncated } = await t.action(api.segments.listMembersForExport, {
+		const { members, truncated } = await t.action(api.segments.segments.listMembersForExport, {
 			id: segmentId,
 		});
 		expect(members).toEqual([]);
@@ -176,7 +178,7 @@ describe('segments.listMembersForExport', () => {
 				})
 			);
 			await expect(
-				t.action(api.segments.listMembersForExport, { id: segmentId })
+				t.action(api.segments.segments.listMembersForExport, { id: segmentId })
 			).rejects.toThrow();
 		} finally {
 			sessionMock.member = true;

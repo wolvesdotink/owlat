@@ -393,6 +393,8 @@ import type * as autonomy_policy from '../autonomy/policy.js';
 import type * as autonomy_suggestions from '../autonomy/suggestions.js';
 import type * as backups from '../backups.js';
 import type * as blockedEmails_lookup from '../blockedEmails/lookup.js';
+import type * as blockedEmails_blocklist from '../blockedEmails/blocklist.js';
+import type * as blockedEmails_events from '../blockedEmails/events.js';
 import type * as blockedEmails from '../blockedEmails.js';
 import type * as booking__helpers from '../booking/_helpers.js';
 import type * as booking_emailCopy from '../booking/emailCopy.js';
@@ -1783,6 +1785,7 @@ import type * as segments from '../segments.js';
 import type * as segments_countRefresh from '../segments/countRefresh.js';
 import type * as search_global from '../search/global.js';
 import type * as segments_listing from '../segments/listing.js';
+import type * as segments_segments from '../segments/segments.js';
 import type * as semanticFileProcessing from '../semanticFileProcessing.js';
 import type * as semanticFiles from '../semanticFiles.js';
 import type * as shareLinkQueries from '../shareLinkQueries.js';
@@ -2261,6 +2264,8 @@ declare const fullApi: ApiFromModules<{
 	'autonomy/suggestions': typeof autonomy_suggestions;
 }> & ApiFromModules<{
 	'blockedEmails/lookup': typeof blockedEmails_lookup;
+	'blockedEmails/blocklist': typeof blockedEmails_blocklist;
+	'blockedEmails/events': typeof blockedEmails_events;
 }> & ApiFromModules<{
 	'booking/_helpers': typeof booking__helpers;
 	'booking/emailCopy': typeof booking_emailCopy;
@@ -3896,6 +3901,7 @@ declare const fullApi: ApiFromModules<{
 }> & ApiFromModules<{
 	'segments/countRefresh': typeof segments_countRefresh;
 	'segments/listing': typeof segments_listing;
+	'segments/segments': typeof segments_segments;
 }> & ApiFromModules<{
 	'shareLinks/links': typeof shareLinks_links;
 	'shareLinks/queries': typeof shareLinks_queries;

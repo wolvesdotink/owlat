@@ -672,7 +672,7 @@ describe('dispatchGovernedEmail', () => {
  * mirrored there, before the send fails, and the Send is left alone.
  */
 describe('a provider refusal that carries a suppression', () => {
-	const ADD_BLOCK = getFunctionName(internal.blockedEmails.addFromEvent);
+	const ADD_BLOCK = getFunctionName(internal.blockedEmails.events.addFromEvent);
 	const UNSUBSCRIBE = getFunctionName(
 		internal.delivery.unsubscribeQueries.processUnsubscribeByEmail
 	);

@@ -294,7 +294,7 @@ describe('the delivery hub page', () => {
 		stubQueries([
 			[api.analytics.reputationQueries.getSendingOverview, { data: sendingOverview }],
 			[api.analytics.reputationSnapshots.getDeliverySnapshots, { data: [] }],
-			[api.blockedEmails.getCountsByReason, { data: null }],
+			[api.blockedEmails.blocklist.getCountsByReason, { data: null }],
 			...overrides,
 		]);
 	}

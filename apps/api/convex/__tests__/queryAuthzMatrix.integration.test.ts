@@ -92,16 +92,19 @@ const ROWS: Record<string, MatrixRow> = {
 		flag: 'automations',
 		args: () => page,
 	},
-	'blockedEmails.getByEmail': {
-		query: api.blockedEmails.getByEmail,
+	'blockedEmails.blocklist.getByEmail': {
+		query: api.blockedEmails.blocklist.getByEmail,
 		policy: 'member',
 		args: () => ({ email: 'reader@example.com' }),
 	},
-	'blockedEmails.getCountsByReason': {
-		query: api.blockedEmails.getCountsByReason,
+	'blockedEmails.blocklist.getCountsByReason': {
+		query: api.blockedEmails.blocklist.getCountsByReason,
 		policy: 'member',
 	},
-	'blockedEmails.listByTeam': { query: api.blockedEmails.listByTeam, policy: 'member' },
+	'blockedEmails.blocklist.listByTeam': {
+		query: api.blockedEmails.blocklist.listByTeam,
+		policy: 'member',
+	},
 	'campaigns.abTest.getABTestStats': {
 		query: api.campaigns.abTest.getABTestStats,
 		policy: 'member',

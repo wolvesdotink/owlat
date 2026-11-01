@@ -27,16 +27,20 @@ const {
 	isLoading: segmentLoading,
 	error: segmentError,
 	refetch: refetchSegment,
-} = useConvexQuery(api.segments.get, () => ({
+} = useConvexQuery(api.segments.segments.get, () => ({
 	id: segmentId.value,
 }));
 
 // Fetch the contacts that currently match this segment (paginated). Segment
 // membership is computed at read time, so each page scans a slice of the
 // live-Contact population and returns just the matching subset.
-const membersPage = usePaginatedQuery(api.segments.listMembers, () => ({ id: segmentId.value }), {
-	initialNumItems: 200,
-});
+const membersPage = usePaginatedQuery(
+	api.segments.segments.listMembers,
+	() => ({ id: segmentId.value }),
+	{
+		initialNumItems: 200,
+	}
+);
 const membersLoading = membersPage.isLoading;
 const membersError = membersPage.error;
 
@@ -92,7 +96,7 @@ const contactPath = (contact: { _id: Id<'contacts'> }) =>
 
 // ─── Export ───────────────────────────────────────────────────────────────
 // Export every contact the segment currently matches to CSV. The whole member
-// set is resolved server-side in one call (segments.listMembersForExport walks
+// set is resolved server-side in one call (segments/segments.listMembersForExport walks
 // all member pages on the backend) rather than draining the reactive
 // `usePaginatedQuery` subscription client-side — a drain loop could exit early
 // on a transient `LoadingMore` status and silently export a truncated window.
@@ -105,7 +109,7 @@ const handleExport = async () => {
 	isExporting.value = true;
 	try {
 		const { members: exportMembers, truncated } = await convex.action(
-			api.segments.listMembersForExport,
+			api.segments.segments.listMembersForExport,
 			{ id: segmentId.value }
 		);
 

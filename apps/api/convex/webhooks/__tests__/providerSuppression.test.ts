@@ -36,7 +36,7 @@ const PLUGIN_KIND = 'plugin.acme.mail';
 const RECIPIENT = 'blocked@example.com';
 
 const blocks = (calls: readonly RunMutationCall[]) =>
-	calls.filter((call) => call.name === fnName(internal.blockedEmails.addFromEvent));
+	calls.filter((call) => call.name === fnName(internal.blockedEmails.events.addFromEvent));
 
 const unsubscribes = (calls: readonly RunMutationCall[]) =>
 	calls.filter(
@@ -168,7 +168,7 @@ describe('a provider nothing was written for expresses its whole policy as data'
 		});
 
 		expect(calls.map((call) => call.name)).toEqual([
-			fnName(internal.blockedEmails.addFromEvent),
+			fnName(internal.blockedEmails.events.addFromEvent),
 			fnName(internal.delivery.sendLifecycle.transitionByProviderMessageId),
 		]);
 		expect(calls[0]!.args).toMatchObject({

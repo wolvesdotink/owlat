@@ -45,7 +45,7 @@ export type BlockedCountsByReason = { total: number } & Record<BlockReason, numb
 // limit. Counts saturate at the cap.
 //
 // The one counter: the operator suppression screen
-// (`blockedEmails.getCountsByReason`) and the platform-admin org detail
+// (`blockedEmails/blocklist.getCountsByReason`) and the platform-admin org detail
 // (`platformAdmin/queries.ts`) both read it, so they agree at scale and a new
 // reason reaches both totals.
 export async function countBlockedByReason(
@@ -70,7 +70,7 @@ export async function countBlockedByReason(
 const REMOVAL_SCAN_LIMIT = 500;
 
 // The two audit actions that record an operator taking an address OFF the
-// blocklist: `blockedEmails.remove` for an ordinary row, and the sunset restore
+// blocklist: `blockedEmails/blocklist.remove` for an ordinary row, and the sunset restore
 // (reached from that same Remove button for an `unengaged` row, or from the
 // contact page), which deletes the row and writes only its own entry.
 const REMOVAL_ACTIONS = ['blocklist.removed', 'contact.sunset_restored'] as const;
