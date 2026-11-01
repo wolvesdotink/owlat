@@ -187,7 +187,7 @@ export const autonomyTables = {
 		// (category, sender) slice, that slice is auto-DEMOTED to draft-only:
 		// `isEnabled` is forced false and these fields record the incident so the
 		// autonomy UI can surface it as a first-class alert. `demotionAcknowledgedAt`
-		// is set when the operator dismisses the alert. See autonomyOutcome.ts.
+		// is set when the operator dismisses the alert. See autonomy/outcome.ts.
 		autoDemotedAt: v.optional(v.number()),
 		autoDemotedReason: v.optional(v.string()),
 		autoDemotedSignal: v.optional(v.string()),

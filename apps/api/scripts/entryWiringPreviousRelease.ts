@@ -119,7 +119,7 @@ export const PREVIOUS_RELEASE_ENTRIES: Readonly<Record<string, string>> = {
 	// remove after release 0.6.17.
 	'agentHealth.ts#recordMetrics': 'old agent metrics rollups mid-run',
 	'agentHealth.ts#updateCircuitBreaker': 'old agent metrics rollups mid-run',
-	// The weekly threshold cron now commits once (autonomyFeedback.ts
+	// The weekly threshold cron now commits once (autonomy/feedback.ts
 	// `commitThresholdAdjustments`); remove after release 0.6.17.
 	'autonomyFeedback.ts#updateThreshold': 'old threshold adjustments mid-run',
 	'autonomySuggestions.ts#recordGraduationSuggestion': 'old threshold adjustments mid-run',
@@ -138,4 +138,32 @@ export const PREVIOUS_RELEASE_ENTRIES: Readonly<Record<string, string>> = {
 	'shareLinks.ts#listShareLinks':
 		'the previous share links popover, in tabs opened before the deploy',
 	'shareLinkQueries.ts#getShareLinkByToken': 'old /share/{token} requests mid-run',
+	// The autonomy modules moved to autonomy/policy.ts, autonomy/feedback.ts,
+	// autonomy/suggestions.ts and autonomy/outcome.ts; remove after release 0.6.17.
+	'autonomy.ts#listRules': 'the previous autonomy settings page, in tabs opened before the deploy',
+	'autonomy.ts#upsertRule': 'the previous autonomy settings page, in tabs opened before the deploy',
+	'autonomy.ts#setSenderAutonomy':
+		'the previous autonomy settings page, in tabs opened before the deploy',
+	'autonomy.ts#deleteRule': 'the previous autonomy settings page, in tabs opened before the deploy',
+	'autonomy.ts#checkPermissionInternal': 'old agent route steps mid-run',
+	'autonomy.ts#incrementDailyCount': 'old agent route steps mid-run',
+	'autonomy.ts#listRulesInternal': 'old threshold adjustments mid-run',
+	'autonomy.ts#resetDailyCounts': 'a daily-count reset the previous cron queued',
+	'autonomyFeedback.ts#getFeedbackStats':
+		'the previous AI replies page, in tabs opened before the deploy',
+	'autonomyFeedback.ts#getRecentFeedbackInternal': 'old threshold adjustments mid-run',
+	'autonomyFeedback.ts#getFeedbackCountsInternal': 'old agent metrics rollups mid-run',
+	'autonomyFeedback.ts#recordFeedback': 'old reviewer decisions and outcome records by path',
+	'autonomyFeedback.ts#adjustThresholds': 'a threshold adjustment the previous cron queued',
+	'autonomySuggestions.ts#listGraduationSuggestions':
+		'the previous autonomy settings page, in tabs opened before the deploy',
+	'autonomySuggestions.ts#acceptGraduationSuggestion':
+		'the previous autonomy settings page, in tabs opened before the deploy',
+	'autonomyOutcome.ts#listAutoDemotions':
+		'the previous autonomy settings page, in tabs opened before the deploy',
+	'autonomyOutcome.ts#acknowledgeAutoDemotion':
+		'the previous autonomy settings page, in tabs opened before the deploy',
+	'autonomyOutcome.ts#getReplyOutcomeContext': 'old reply outcome classifications mid-run',
+	'autonomyOutcome.ts#recordOutcomeFeedback':
+		'old reply outcome classifications mid-run, and outcome records the previous release queued',
 };

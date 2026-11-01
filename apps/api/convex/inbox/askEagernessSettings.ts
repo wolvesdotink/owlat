@@ -3,7 +3,7 @@
  *
  * The dial itself (positions, pure policy, instrumentation helpers) lives in
  * `inbox/askEagerness.ts`. This file is only the stored-setting read/write,
- * kept ALONGSIDE Graduated Autonomy (`autonomy.ts`) conceptually — the two read
+ * kept ALONGSIDE Graduated Autonomy (`autonomy/policy.ts`) conceptually — the two read
  * as one coherent trust control — but split into its own module so neither file
  * crosses the file-size ratchet.
  *

@@ -103,13 +103,13 @@ async function seedAutoSent(
 // (4) Auto-demotion on a confirmed bad outcome
 // ============================================================
 
-describe('autonomyOutcome — auto-demotion on a bad outcome', () => {
+describe('autonomy.outcome — auto-demotion on a bad outcome', () => {
 	it('demotes the sender/category to draft-only after a bad auto-send outcome', async () => {
 		const t = convexTest(schema, modules);
 		await enableFeatures(t, ['ai.autonomy']);
 		const originalId = await seedAutoSent(t, { category: 'support', from: 'angry@example.com' });
 
-		await t.mutation(internal.autonomyOutcome.recordOutcomeFeedback, {
+		await t.mutation(internal.autonomy.outcome.recordOutcomeFeedback, {
 			inboundMessageId: originalId,
 			signal: 'complaint',
 		});
@@ -125,7 +125,7 @@ describe('autonomyOutcome — auto-demotion on a bad outcome', () => {
 		expect(rule!.autoDemotedSignal).toBe('complaint');
 
 		// And it surfaces as a first-class incident for the UI.
-		const incidents = await t.query(api.autonomyOutcome.listAutoDemotions);
+		const incidents = await t.query(api.autonomy.outcome.listAutoDemotions);
 		expect(incidents).toHaveLength(1);
 		expect(incidents[0]).toMatchObject({ sender: 'angry@example.com', category: 'support' });
 	});
@@ -145,7 +145,7 @@ describe('autonomyOutcome — auto-demotion on a bad outcome', () => {
 		});
 		const originalId = await seedAutoSent(t, { category: 'support', from: 'angry@example.com' });
 
-		await t.mutation(internal.autonomyOutcome.recordOutcomeFeedback, {
+		await t.mutation(internal.autonomy.outcome.recordOutcomeFeedback, {
 			inboundMessageId: originalId,
 			signal: 'reply_negative',
 		});
@@ -168,12 +168,12 @@ describe('autonomyOutcome — auto-demotion on a bad outcome', () => {
 		await enableFeatures(t, ['ai.autonomy']);
 		const originalId = await seedAutoSent(t, { category: 'sales', from: 'happy@example.com' });
 
-		await t.mutation(internal.autonomyOutcome.recordOutcomeFeedback, {
+		await t.mutation(internal.autonomy.outcome.recordOutcomeFeedback, {
 			inboundMessageId: originalId,
 			signal: 'clarification_unedited_send',
 		});
 
-		const incidents = await t.query(api.autonomyOutcome.listAutoDemotions);
+		const incidents = await t.query(api.autonomy.outcome.listAutoDemotions);
 		expect(incidents).toHaveLength(0);
 	});
 
@@ -181,19 +181,19 @@ describe('autonomyOutcome — auto-demotion on a bad outcome', () => {
 		const t = convexTest(schema, modules);
 		await enableFeatures(t, ['ai.autonomy']);
 		const originalId = await seedAutoSent(t, { category: 'support', from: 'angry@example.com' });
-		await t.mutation(internal.autonomyOutcome.recordOutcomeFeedback, {
+		await t.mutation(internal.autonomy.outcome.recordOutcomeFeedback, {
 			inboundMessageId: originalId,
 			signal: 'bounce',
 		});
 
-		const incidents = await t.query(api.autonomyOutcome.listAutoDemotions);
+		const incidents = await t.query(api.autonomy.outcome.listAutoDemotions);
 		expect(incidents).toHaveLength(1);
-		await t.mutation(api.autonomyOutcome.acknowledgeAutoDemotion, {
+		await t.mutation(api.autonomy.outcome.acknowledgeAutoDemotion, {
 			ruleId: incidents[0]!._id as Id<'autonomyRules'>,
 		});
 
 		// Alert gone …
-		expect(await t.query(api.autonomyOutcome.listAutoDemotions)).toHaveLength(0);
+		expect(await t.query(api.autonomy.outcome.listAutoDemotions)).toHaveLength(0);
 		// … but the rule is still disabled (draft-only).
 		const rule = await t.run(async (ctx) => ctx.db.get(incidents[0]!._id as Id<'autonomyRules'>));
 		expect(rule!.isEnabled).toBe(false);
@@ -326,14 +326,14 @@ describe('graduation nudge — explicit accept only', () => {
 		expect(rule!.autoApproveThreshold).toBe(0.9); // unchanged — no silent widening
 
 		// Explicit accept applies the looser threshold and clears the suggestion.
-		const suggestion = await t.query(api.autonomySuggestions.listGraduationSuggestions);
+		const suggestion = await t.query(api.autonomy.suggestions.listGraduationSuggestions);
 		expect(suggestion).toHaveLength(1);
-		await t.mutation(api.autonomySuggestions.acceptGraduationSuggestion, {
+		await t.mutation(api.autonomy.suggestions.acceptGraduationSuggestion, {
 			suggestionId: suggestion[0]!._id as Id<'autonomySuggestions'>,
 		});
 
 		rule = await t.run(async (ctx) => ctx.db.get(ruleId));
 		expect(rule!.autoApproveThreshold).toBe(0.7);
-		expect(await t.query(api.autonomySuggestions.listGraduationSuggestions)).toHaveLength(0);
+		expect(await t.query(api.autonomy.suggestions.listGraduationSuggestions)).toHaveLength(0);
 	});
 });

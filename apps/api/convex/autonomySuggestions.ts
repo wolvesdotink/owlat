@@ -1,82 +1,31 @@
 /**
- * Graduation Suggestions (explicit-acceptance loosening)
- *
- * Autonomy only ever WIDENS by the user's deliberate action. The weekly cron
- * (`autonomy.adjustThresholds`) may tighten a threshold automatically — that
- * fails toward the human — but when the evidence says a category could safely
- * loosen, it never touches the live threshold. Instead it records a graduation
- * suggestion here, which an owner/admin must explicitly accept.
- *
- * Split out of `autonomy.ts` to keep that file under the ~500 LOC ratchet
- * (CONVENTIONS.md).
+ * Previous-release paths of `autonomy/suggestions.ts`. The autonomy settings
+ * page in a tab opened before the deploy still lists and accepts graduation
+ * suggestions through `autonomySuggestions:*` by path. Each function keeps its
+ * old path, builder, auth floor, arguments and result shape, and runs the same
+ * body as its replacement. Remove after release 0.6.17.
  */
-
-import { v, type Infer } from 'convex/values';
-import type { MutationCtx } from './_generated/server';
+import { v } from 'convex/values';
 import { internalMutation } from './lib/writeFence';
 import { adminQuery, authedMutation } from './lib/authedFunctions';
 import { hasPermission, requirePermission } from './lib/sessionOrganization';
 import { assertFeatureEnabled } from './lib/featureFlags';
-import { getCategoryRule } from './lib/autonomyRules';
+import {
+	applyGraduationSuggestion,
+	clearCategorySuggestion,
+	graduationSuggestionValidator,
+	readGraduationSuggestions,
+	upsertGraduationSuggestion,
+} from './autonomy/suggestions';
 
-/**
- * Admin-gated read of pending graduation suggestions for the autonomy settings
- * UI. Each row is a category where the agent has earned a looser threshold but
- * may only get it once an owner/admin accepts. Newest first.
- */
+/** Remove after release 0.6.17; this release calls `autonomy/suggestions:listGraduationSuggestions`. */
 export const listGraduationSuggestions = adminQuery({
 	args: {},
 	handler: async (ctx) => {
 		await assertFeatureEnabled(ctx, 'ai.autonomy');
-		return await ctx.db.query('autonomySuggestions').order('desc').collect(); // bounded: at most one row per agent category
+		return await readGraduationSuggestions(ctx);
 	},
 });
-
-export const graduationSuggestionValidator = v.object({
-	category: v.string(),
-	currentThreshold: v.number(),
-	suggestedThreshold: v.number(),
-	evidence: v.object({
-		approved: v.number(),
-		sampleSize: v.number(),
-		rejectionRate: v.number(),
-	}),
-});
-
-/**
- * Record (or refresh) a pending graduation suggestion for a category. Upserts on
- * category so repeated weekly runs don't pile up duplicates — the latest
- * evidence replaces the previous suggestion. The weekly cron's commit is the
- * sole writer. Recording a suggestion NEVER changes the live threshold.
- */
-export async function upsertGraduationSuggestion(
-	ctx: MutationCtx,
-	suggestion: Infer<typeof graduationSuggestionValidator>
-): Promise<void> {
-	const existing = await ctx.db
-		.query('autonomySuggestions')
-		.withIndex('by_category', (q) => q.eq('category', suggestion.category))
-		.first();
-	const row = { ...suggestion, createdAt: Date.now() };
-	if (existing) {
-		await ctx.db.patch(existing._id, row);
-		return;
-	}
-	await ctx.db.insert('autonomySuggestions', row);
-}
-
-/**
- * Clear any pending graduation suggestion for a category. Used when the cron
- * tightens a category: a stale loosening suggestion must not survive a
- * rejection spike.
- */
-export async function clearCategorySuggestion(ctx: MutationCtx, category: string): Promise<void> {
-	const existing = await ctx.db
-		.query('autonomySuggestions')
-		.withIndex('by_category', (q) => q.eq('category', category))
-		.first();
-	if (existing) await ctx.db.delete(existing._id);
-}
 
 /**
  * A previous release's threshold cron records a suggestion here. Nothing in
@@ -104,12 +53,7 @@ export const clearGraduationSuggestion = internalMutation({
 	},
 });
 
-/**
- * Explicitly accept a graduation suggestion: apply its suggested (looser)
- * threshold to the category's rule and clear the suggestion. This is the ONLY
- * path that lowers an auto-approve threshold — autonomy never widens without a
- * user's deliberate action. Owner/admin only.
- */
+/** Remove after release 0.6.17; this release calls `autonomy/suggestions:acceptGraduationSuggestion`. */
 export const acceptGraduationSuggestion = authedMutation({
 	args: { suggestionId: v.id('autonomySuggestions') },
 	handler: async (ctx, args, session) => {
@@ -118,22 +62,6 @@ export const acceptGraduationSuggestion = authedMutation({
 			'Only owners and admins can widen autonomy'
 		);
 		await assertFeatureEnabled(ctx, 'ai.autonomy');
-
-		const suggestion = await ctx.db.get(args.suggestionId);
-		if (!suggestion) return; // already accepted/cleared — idempotent no-op
-
-		// The CATEGORY rule (sender absent) — a graduation suggestion loosens the
-		// category threshold, never a per-sender rule.
-		const rule = await getCategoryRule(ctx.db, suggestion.category);
-
-		if (rule) {
-			await ctx.db.patch(rule._id, {
-				autoApproveThreshold: suggestion.suggestedThreshold,
-				updatedAt: Date.now(),
-			});
-		}
-
-		// Clear the suggestion whether or not a rule still exists.
-		await ctx.db.delete(args.suggestionId);
+		await applyGraduationSuggestion(ctx, args.suggestionId);
 	},
 });

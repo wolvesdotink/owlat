@@ -303,7 +303,7 @@ async function dispatch(
 		if ((input.to === 'bounced' || input.to === 'complained') && ref.kind === 'transactional') {
 			const tSend = send as TransactionalSendDoc;
 			if (tSend.kind === 'agent_reply' && tSend.inboundMessageId) {
-				await ctx.scheduler.runAfter(0, internal.autonomyOutcome.recordOutcomeFeedback, {
+				await ctx.scheduler.runAfter(0, internal.autonomy.outcome.recordOutcomeFeedback, {
 					inboundMessageId: tSend.inboundMessageId,
 					signal: input.to === 'bounced' ? 'bounce' : 'complaint',
 				});

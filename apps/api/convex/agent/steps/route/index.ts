@@ -21,7 +21,7 @@
  *   1. Any open circuit breaker → human review (a degraded pipeline never
  *      auto-sends, regardless of config).
  *      2. Graduated autonomy (`ai.autonomy` flag on): the `autonomyRules` govern
- *      via `autonomy.checkPermissionInternal`, which reads the PER-SENDER rule
+ *      via `autonomy.policy.checkPermissionInternal`, which reads the PER-SENDER rule
  *      before the per-category one and applies a first-N-observed warm-up (a new
  *      sender, or one short of its matched-shadow-observation count, is held for
  *      review). A category/sender with no rule is never auto-approved.
@@ -194,7 +194,7 @@ export const routeStep: AgentStepModule<'route', RouteInput, RouteOutput> = {
 			}
 
 			// Tier 2 — graduated autonomy (per-category rules), when enabled.
-			const autonomy = await ctx.runQuery(internal.autonomy.checkPermissionInternal, {
+			const autonomy = await ctx.runQuery(internal.autonomy.policy.checkPermissionInternal, {
 				category: input.category,
 				confidence: gateScore,
 				// Pass the message so the per-sender rule + first-N-observed warm-up
@@ -227,7 +227,7 @@ export const routeStep: AgentStepModule<'route', RouteInput, RouteOutput> = {
 					// concurrent route steps can't both auto-approve past the cap.
 					// Route on its result.
 					// checkpoint: the daily-cap reservation the decision routes on; a run that dies after it spends one slot and sends nothing.
-					const charge = await ctx.runMutation(internal.autonomy.incrementDailyCount, {
+					const charge = await ctx.runMutation(internal.autonomy.policy.incrementDailyCount, {
 						category: input.category,
 						// Charge the SAME effective rule the decision used (per-sender
 						// when one governs this sender, else the category rule).

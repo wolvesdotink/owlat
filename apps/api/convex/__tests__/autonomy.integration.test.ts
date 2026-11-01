@@ -68,11 +68,11 @@ const modules = Object.fromEntries(
 
 // ============ listRules ============
 
-describe('autonomy.listRules', () => {
+describe('autonomy.policy.listRules', () => {
 	it('should return empty array when no rules exist', async () => {
 		const t = convexTest(schema, modules);
 		await enableFeatures(t, ['ai.autonomy']);
-		const rules = await t.query(api.autonomy.listRules);
+		const rules = await t.query(api.autonomy.policy.listRules);
 		expect(rules).toEqual([]);
 	});
 
@@ -86,14 +86,14 @@ describe('autonomy.listRules', () => {
 			await ctx.db.insert('autonomyRules', createTestAutonomyRule({ category: 'billing' }));
 		});
 
-		const rules = await t.query(api.autonomy.listRules);
+		const rules = await t.query(api.autonomy.policy.listRules);
 		expect(rules).toHaveLength(3);
 	});
 });
 
 // ============ checkPermissionInternal (route-step decision + flag gate) ============
 
-describe('autonomy.checkPermissionInternal', () => {
+describe('autonomy.policy.checkPermissionInternal', () => {
 	it('returns mode=disabled when the ai.autonomy flag is off (route falls back to global config)', async () => {
 		const t = convexTest(schema, modules);
 		// Flag NOT enabled → autonomy off, even with a matching rule present.
@@ -109,7 +109,7 @@ describe('autonomy.checkPermissionInternal', () => {
 			);
 		});
 
-		const result = await t.query(internal.autonomy.checkPermissionInternal, {
+		const result = await t.query(internal.autonomy.policy.checkPermissionInternal, {
 			category: 'support',
 			confidence: 0.95,
 		});
@@ -120,7 +120,7 @@ describe('autonomy.checkPermissionInternal', () => {
 		const t = convexTest(schema, modules);
 		await enableFeatures(t, ['ai.autonomy']);
 
-		const result = await t.query(internal.autonomy.checkPermissionInternal, {
+		const result = await t.query(internal.autonomy.policy.checkPermissionInternal, {
 			category: 'sales',
 			confidence: 0.99,
 		});
@@ -145,7 +145,7 @@ describe('autonomy.checkPermissionInternal', () => {
 			);
 		});
 
-		const result = await t.query(internal.autonomy.checkPermissionInternal, {
+		const result = await t.query(internal.autonomy.policy.checkPermissionInternal, {
 			category: 'support',
 			confidence: 0.9,
 		});
@@ -169,7 +169,7 @@ describe('autonomy.checkPermissionInternal', () => {
 			);
 		});
 
-		const result = await t.query(internal.autonomy.checkPermissionInternal, {
+		const result = await t.query(internal.autonomy.policy.checkPermissionInternal, {
 			category: 'support',
 			confidence: 0.6,
 		});
@@ -202,7 +202,7 @@ describe('autonomy.checkPermissionInternal', () => {
 			});
 		});
 
-		const result = await t.query(internal.autonomy.checkPermissionInternal, {
+		const result = await t.query(internal.autonomy.policy.checkPermissionInternal, {
 			category: 'support',
 			confidence: 0.99,
 		});
@@ -215,7 +215,7 @@ describe('autonomy.checkPermissionInternal', () => {
 
 // ============ getFeedbackCountsInternal (rejection-spike breaker input) ============
 
-describe('autonomyFeedback.getFeedbackCountsInternal', () => {
+describe('autonomy.feedback.getFeedbackCountsInternal', () => {
 	it('splits counts by action since the window start', async () => {
 		const t = convexTest(schema, modules);
 		const now = Date.now();
@@ -235,7 +235,7 @@ describe('autonomyFeedback.getFeedbackCountsInternal', () => {
 			await mk('rejected', now - 48 * 60 * 60 * 1000);
 		});
 
-		const counts = await t.query(internal.autonomyFeedback.getFeedbackCountsInternal, {
+		const counts = await t.query(internal.autonomy.feedback.getFeedbackCountsInternal, {
 			since: now - 24 * 60 * 60 * 1000,
 		});
 		expect(counts.approved).toBe(1);
@@ -247,11 +247,11 @@ describe('autonomyFeedback.getFeedbackCountsInternal', () => {
 
 // ============ upsertRule ============
 
-describe('autonomy.upsertRule', () => {
+describe('autonomy.policy.upsertRule', () => {
 	it('should create a new rule when none exists', async () => {
 		const t = convexTest(schema, modules);
 
-		const ruleId = await t.mutation(api.autonomy.upsertRule, {
+		const ruleId = await t.mutation(api.autonomy.policy.upsertRule, {
 			category: 'support',
 			autoApproveThreshold: 0.85,
 			maxDailyAutoActions: 50,
@@ -274,14 +274,14 @@ describe('autonomy.upsertRule', () => {
 	it('should update an existing rule for the same category', async () => {
 		const t = convexTest(schema, modules);
 
-		const ruleId = await t.mutation(api.autonomy.upsertRule, {
+		const ruleId = await t.mutation(api.autonomy.policy.upsertRule, {
 			category: 'sales',
 			autoApproveThreshold: 0.7,
 			maxDailyAutoActions: 30,
 			isEnabled: true,
 		});
 
-		const updatedId = await t.mutation(api.autonomy.upsertRule, {
+		const updatedId = await t.mutation(api.autonomy.policy.upsertRule, {
 			category: 'sales',
 			autoApproveThreshold: 0.9,
 			maxDailyAutoActions: 60,
@@ -301,7 +301,7 @@ describe('autonomy.upsertRule', () => {
 
 // ============ deleteRule ============
 
-describe('autonomy.deleteRule', () => {
+describe('autonomy.policy.deleteRule', () => {
 	it('should delete an existing rule', async () => {
 		const t = convexTest(schema, modules);
 		let ruleId!: Id<'autonomyRules'>;
@@ -313,7 +313,7 @@ describe('autonomy.deleteRule', () => {
 			);
 		});
 
-		await t.mutation(api.autonomy.deleteRule, { ruleId });
+		await t.mutation(api.autonomy.policy.deleteRule, { ruleId });
 
 		await t.run(async (ctx) => {
 			const rule = await ctx.db.get(ruleId);
@@ -324,7 +324,7 @@ describe('autonomy.deleteRule', () => {
 
 // ============ recordFeedback (internal) ============
 
-describe('autonomyFeedback.recordFeedback', () => {
+describe('autonomy.feedback.recordFeedback', () => {
 	it('should record feedback with a linked rule', async () => {
 		const t = convexTest(schema, modules);
 
@@ -332,7 +332,7 @@ describe('autonomyFeedback.recordFeedback', () => {
 			await ctx.db.insert('autonomyRules', createTestAutonomyRule({ category: 'support' }));
 		});
 
-		await t.mutation(internal.autonomyFeedback.recordFeedback, {
+		await t.mutation(internal.autonomy.feedback.recordFeedback, {
 			category: 'support',
 			action: 'approved',
 			agentConfidence: 0.92,
@@ -353,7 +353,7 @@ describe('autonomyFeedback.recordFeedback', () => {
 	it('should record feedback even without a matching rule', async () => {
 		const t = convexTest(schema, modules);
 
-		await t.mutation(internal.autonomyFeedback.recordFeedback, {
+		await t.mutation(internal.autonomy.feedback.recordFeedback, {
 			category: 'unknown',
 			action: 'rejected',
 			agentConfidence: 0.3,
@@ -369,7 +369,7 @@ describe('autonomyFeedback.recordFeedback', () => {
 
 // ============ incrementDailyCount (internal) ============
 
-describe('autonomy.incrementDailyCount', () => {
+describe('autonomy.policy.incrementDailyCount', () => {
 	it('should increment the daily count on a rule', async () => {
 		const t = convexTest(schema, modules);
 
@@ -384,7 +384,7 @@ describe('autonomy.incrementDailyCount', () => {
 			);
 		});
 
-		await t.mutation(internal.autonomy.incrementDailyCount, { category: 'support' });
+		await t.mutation(internal.autonomy.policy.incrementDailyCount, { category: 'support' });
 
 		await t.run(async (ctx) => {
 			const rule = await ctx.db
@@ -398,7 +398,7 @@ describe('autonomy.incrementDailyCount', () => {
 	it('should do nothing if the category does not exist', async () => {
 		const t = convexTest(schema, modules);
 		// Should not throw, and reports not-allowed (no rule = never auto-approved).
-		const result = await t.mutation(internal.autonomy.incrementDailyCount, {
+		const result = await t.mutation(internal.autonomy.policy.incrementDailyCount, {
 			category: 'nonexistent',
 		});
 		expect(result.allowed).toBe(false);
@@ -418,7 +418,9 @@ describe('autonomy.incrementDailyCount', () => {
 			);
 		});
 
-		const result = await t.mutation(internal.autonomy.incrementDailyCount, { category: 'support' });
+		const result = await t.mutation(internal.autonomy.policy.incrementDailyCount, {
+			category: 'support',
+		});
 		expect(result.allowed).toBe(true);
 
 		await t.run(async (ctx) => {
@@ -444,7 +446,9 @@ describe('autonomy.incrementDailyCount', () => {
 			);
 		});
 
-		const result = await t.mutation(internal.autonomy.incrementDailyCount, { category: 'support' });
+		const result = await t.mutation(internal.autonomy.policy.incrementDailyCount, {
+			category: 'support',
+		});
 		expect(result.allowed).toBe(false);
 		expect(result.reason).toContain('Daily auto-action limit');
 
@@ -472,7 +476,9 @@ describe('autonomy.incrementDailyCount', () => {
 			);
 		});
 
-		const result = await t.mutation(internal.autonomy.incrementDailyCount, { category: 'support' });
+		const result = await t.mutation(internal.autonomy.policy.incrementDailyCount, {
+			category: 'support',
+		});
 		expect(result.allowed).toBe(true); // window reset → count starts fresh
 
 		await t.run(async (ctx) => {
@@ -487,7 +493,7 @@ describe('autonomy.incrementDailyCount', () => {
 
 // ============ adjustThresholds: asymmetric loosening ============
 
-describe('autonomyFeedback.adjustThresholds', () => {
+describe('autonomy.feedback.adjustThresholds', () => {
 	async function seedFeedback(
 		t: ReturnType<typeof convexTest>,
 		category: string,
@@ -526,7 +532,7 @@ describe('autonomyFeedback.adjustThresholds', () => {
 			{ action: 'approved', count: 2 },
 		]);
 
-		await t.action(internal.autonomyFeedback.adjustThresholds);
+		await t.action(internal.autonomy.feedback.adjustThresholds);
 
 		await t.run(async (ctx) => {
 			const rule = await ctx.db
@@ -554,7 +560,7 @@ describe('autonomyFeedback.adjustThresholds', () => {
 		// 20 rows, 0 rejected => 0% rejection, n >= 20.
 		await seedFeedback(t, 'support', [{ action: 'approved', count: 20 }]);
 
-		await t.action(internal.autonomyFeedback.adjustThresholds);
+		await t.action(internal.autonomy.feedback.adjustThresholds);
 
 		await t.run(async (ctx) => {
 			const rule = await ctx.db
@@ -606,7 +612,7 @@ describe('autonomyFeedback.adjustThresholds', () => {
 		await seedFeedback(t, 'billing', [{ action: 'approved', count: 20 }]);
 		await seedFeedback(t, 'sales', [{ action: 'rejected', count: 6 }]);
 
-		await t.action(internal.autonomyFeedback.adjustThresholds);
+		await t.action(internal.autonomy.feedback.adjustThresholds);
 
 		await t.run(async (ctx) => {
 			const threshold = async (id: Id<'autonomyRules'>) =>
@@ -630,7 +636,7 @@ describe('autonomyFeedback.adjustThresholds', () => {
 		);
 
 		// Decided from 0.8, but an accepted suggestion lowered it to 0.75 since.
-		const outcome = await t.mutation(internal.autonomyFeedback.commitThresholdAdjustments, {
+		const outcome = await t.mutation(internal.autonomy.feedback.commitThresholdAdjustments, {
 			adjustments: [
 				{ kind: 'tighten', ruleId, readThreshold: 0.8, newThreshold: 0.9 },
 				{
@@ -674,7 +680,7 @@ describe('autonomyFeedback.adjustThresholds', () => {
 			{ action: 'approved', count: 2 },
 		]);
 
-		await t.action(internal.autonomyFeedback.adjustThresholds);
+		await t.action(internal.autonomy.feedback.adjustThresholds);
 
 		await t.run(async (ctx) => {
 			const suggestions = await ctx.db.query('autonomySuggestions').collect();
@@ -685,7 +691,7 @@ describe('autonomyFeedback.adjustThresholds', () => {
 
 // ============ acceptGraduationSuggestion ============
 
-describe('autonomy.acceptGraduationSuggestion', () => {
+describe('autonomy.suggestions.acceptGraduationSuggestion', () => {
 	it('applies the suggested threshold and clears the suggestion', async () => {
 		const t = convexTest(schema, modules);
 		await enableFeatures(t, ['ai.autonomy']);
@@ -708,7 +714,7 @@ describe('autonomy.acceptGraduationSuggestion', () => {
 			});
 		});
 
-		await t.mutation(api.autonomySuggestions.acceptGraduationSuggestion, { suggestionId });
+		await t.mutation(api.autonomy.suggestions.acceptGraduationSuggestion, { suggestionId });
 
 		await t.run(async (ctx) => {
 			const rule = await ctx.db
@@ -746,7 +752,7 @@ describe('autonomy.acceptGraduationSuggestion', () => {
 		vi.mocked(getMutationContext).mockResolvedValueOnce(EDITOR_SESSION);
 
 		await expect(
-			t.mutation(api.autonomySuggestions.acceptGraduationSuggestion, { suggestionId })
+			t.mutation(api.autonomy.suggestions.acceptGraduationSuggestion, { suggestionId })
 		).rejects.toThrow('Only owners and admins can widen autonomy');
 
 		await t.run(async (ctx) => {
@@ -764,7 +770,7 @@ describe('autonomy.acceptGraduationSuggestion', () => {
 
 // ============ listGraduationSuggestions ============
 
-describe('autonomy.listGraduationSuggestions', () => {
+describe('autonomy.suggestions.listGraduationSuggestions', () => {
 	it('returns pending suggestions for the settings UI', async () => {
 		const t = convexTest(schema, modules);
 		await enableFeatures(t, ['ai.autonomy']);
@@ -778,7 +784,7 @@ describe('autonomy.listGraduationSuggestions', () => {
 			});
 		});
 
-		const suggestions = await t.query(api.autonomySuggestions.listGraduationSuggestions);
+		const suggestions = await t.query(api.autonomy.suggestions.listGraduationSuggestions);
 		expect(suggestions).toHaveLength(1);
 		expect(suggestions[0]!.category).toBe('support');
 	});
@@ -786,7 +792,7 @@ describe('autonomy.listGraduationSuggestions', () => {
 
 // ============ resetDailyCounts (internal) ============
 
-describe('autonomy.resetDailyCounts', () => {
+describe('autonomy.policy.resetDailyCounts', () => {
 	it('should reset daily counts on all rules', async () => {
 		const t = convexTest(schema, modules);
 
@@ -801,7 +807,7 @@ describe('autonomy.resetDailyCounts', () => {
 			);
 		});
 
-		await t.mutation(internal.autonomy.resetDailyCounts);
+		await t.mutation(internal.autonomy.policy.resetDailyCounts);
 
 		await t.run(async (ctx) => {
 			const rules = await ctx.db.query('autonomyRules').collect();
@@ -869,7 +875,7 @@ describe('autonomy per-sender rules + warm-up', () => {
 		});
 		const messageId = await seedMessage(t, 'Newbie <newbie@example.com>');
 
-		const result = await t.query(internal.autonomy.checkPermissionInternal, {
+		const result = await t.query(internal.autonomy.policy.checkPermissionInternal, {
 			category: 'support',
 			confidence: 0.99,
 			inboundMessageId: messageId,
@@ -898,7 +904,7 @@ describe('autonomy per-sender rules + warm-up', () => {
 		// Only 2 matched observations — below the default warm-up of 3.
 		await seedScorecard(t, 'support', 'warming@example.com', 2);
 
-		const result = await t.query(internal.autonomy.checkPermissionInternal, {
+		const result = await t.query(internal.autonomy.policy.checkPermissionInternal, {
 			category: 'support',
 			confidence: 0.99,
 			inboundMessageId: messageId,
@@ -927,7 +933,7 @@ describe('autonomy per-sender rules + warm-up', () => {
 		const messageId = await seedMessage(t, 'Trusted <trusted@example.com>');
 		await seedScorecard(t, 'support', 'trusted@example.com', 3);
 
-		const result = await t.query(internal.autonomy.checkPermissionInternal, {
+		const result = await t.query(internal.autonomy.policy.checkPermissionInternal, {
 			category: 'support',
 			confidence: 0.99,
 			inboundMessageId: messageId,
@@ -967,7 +973,7 @@ describe('autonomy per-sender rules + warm-up', () => {
 		const messageId = await seedMessage(t, 'VIP <vip@corp.com>');
 		await seedScorecard(t, 'support', 'vip@corp.com', 3);
 
-		const result = await t.query(internal.autonomy.checkPermissionInternal, {
+		const result = await t.query(internal.autonomy.policy.checkPermissionInternal, {
 			category: 'support',
 			confidence: 0.6,
 			inboundMessageId: messageId,
@@ -1006,7 +1012,7 @@ describe('autonomy per-sender rules + warm-up', () => {
 		// Warmed up — proves the block comes from the sender opt-out, not warm-up.
 		await seedScorecard(t, 'support', 'blocked@corp.com', 10);
 
-		const result = await t.query(internal.autonomy.checkPermissionInternal, {
+		const result = await t.query(internal.autonomy.policy.checkPermissionInternal, {
 			category: 'support',
 			confidence: 0.99,
 			inboundMessageId: messageId,
@@ -1023,7 +1029,7 @@ describe('autonomy per-sender rules + warm-up', () => {
 		const messageId = await seedMessage(t, 'Someone <someone@example.com>');
 		await seedScorecard(t, 'support', 'someone@example.com', 50);
 
-		const result = await t.query(internal.autonomy.checkPermissionInternal, {
+		const result = await t.query(internal.autonomy.policy.checkPermissionInternal, {
 			category: 'support',
 			confidence: 0.99,
 			inboundMessageId: messageId,
@@ -1061,7 +1067,7 @@ describe('autonomy per-sender rules + warm-up', () => {
 		});
 		const messageId = await seedMessage(t, 'VIP <vip@corp.com>');
 
-		const result = await t.mutation(internal.autonomy.incrementDailyCount, {
+		const result = await t.mutation(internal.autonomy.policy.incrementDailyCount, {
 			category: 'support',
 			inboundMessageId: messageId,
 		});
@@ -1091,7 +1097,7 @@ describe('autonomy per-sender rules + warm-up', () => {
 		});
 		const messageId = await seedMessage(t, 'VIP <vip@corp.com>');
 
-		const result = await t.mutation(internal.autonomy.incrementDailyCount, {
+		const result = await t.mutation(internal.autonomy.policy.incrementDailyCount, {
 			category: 'support',
 			inboundMessageId: messageId,
 		});
@@ -1112,7 +1118,7 @@ describe('autonomy per-sender rules + warm-up', () => {
 
 // ============ setSenderAutonomy (per-contact toggle) ============
 
-describe('autonomy.setSenderAutonomy', () => {
+describe('autonomy.policy.setSenderAutonomy', () => {
 	it('creates a per-sender rule, inheriting threshold/cap from the category rule', async () => {
 		const t = convexTest(schema, modules);
 		await t.run(async (ctx) => {
@@ -1127,7 +1133,7 @@ describe('autonomy.setSenderAutonomy', () => {
 			);
 		});
 
-		const ruleId = await t.mutation(api.autonomy.setSenderAutonomy, {
+		const ruleId = await t.mutation(api.autonomy.policy.setSenderAutonomy, {
 			category: 'support',
 			sender: 'VIP <vip@corp.com>',
 			isEnabled: true,
@@ -1146,7 +1152,7 @@ describe('autonomy.setSenderAutonomy', () => {
 	it('updates (toggles off) an existing per-sender rule instead of duplicating', async () => {
 		const t = convexTest(schema, modules);
 
-		const firstId = await t.mutation(api.autonomy.setSenderAutonomy, {
+		const firstId = await t.mutation(api.autonomy.policy.setSenderAutonomy, {
 			category: 'support',
 			sender: 'vip@corp.com',
 			isEnabled: true,
@@ -1154,7 +1160,7 @@ describe('autonomy.setSenderAutonomy', () => {
 			maxDailyAutoActions: 5,
 		});
 
-		const secondId = await t.mutation(api.autonomy.setSenderAutonomy, {
+		const secondId = await t.mutation(api.autonomy.policy.setSenderAutonomy, {
 			category: 'support',
 			sender: 'vip@corp.com',
 			isEnabled: false,
@@ -1177,7 +1183,7 @@ describe('autonomy.setSenderAutonomy', () => {
 		const t = convexTest(schema, modules);
 		vi.mocked(getMutationContext).mockResolvedValueOnce(EDITOR_SESSION);
 		await expect(
-			t.mutation(api.autonomy.setSenderAutonomy, {
+			t.mutation(api.autonomy.policy.setSenderAutonomy, {
 				category: 'support',
 				sender: 'vip@corp.com',
 				isEnabled: true,

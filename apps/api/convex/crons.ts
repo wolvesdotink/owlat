@@ -304,14 +304,18 @@ crons.interval(
 crons.interval('agent metrics rollup', { minutes: 5 }, internal.agentHealth.rollupMetrics);
 
 // Reset autonomy daily action counts every 24 hours
-crons.interval('reset autonomy daily counts', { hours: 24 }, internal.autonomy.resetDailyCounts);
+crons.interval(
+	'reset autonomy daily counts',
+	{ hours: 24 },
+	internal.autonomy.policy.resetDailyCounts
+);
 
 // Weekly autonomy threshold adjustment
 // Tightens thresholds on high rejection, loosens on low rejection
 crons.interval(
 	'adjust autonomy thresholds',
 	{ hours: 168 },
-	internal.autonomyFeedback.adjustThresholds
+	internal.autonomy.feedback.adjustThresholds
 );
 
 // Report instance analytics to control plane every 15 minutes

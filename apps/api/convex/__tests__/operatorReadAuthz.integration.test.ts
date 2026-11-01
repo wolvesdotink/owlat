@@ -111,9 +111,9 @@ beforeEach(() => {
 	mockRole = 'owner';
 });
 
-// ============ autonomy.listRules ============
+// ============ autonomy.policy.listRules ============
 
-describe('operator read authz — autonomy.listRules', () => {
+describe('operator read authz — autonomy.policy.listRules', () => {
 	it('rejects a non-admin member (editor) with forbidden', async () => {
 		const t = convexTest(schema, modules);
 		await enableFeatures(t, ['mail.external']);
@@ -121,7 +121,7 @@ describe('operator read authz — autonomy.listRules', () => {
 		mockRole = 'editor';
 		const category = await t
 			.withIdentity(identity)
-			.query(api.autonomy.listRules, {})
+			.query(api.autonomy.policy.listRules, {})
 			.then(() => undefined)
 			.catch((e: { data?: { category?: string } }) => e?.data?.category);
 		expect(category).toBe('forbidden');
@@ -135,7 +135,7 @@ describe('operator read authz — autonomy.listRules', () => {
 			await ctx.db.insert('autonomyRules', createTestAutonomyRule({ category: 'support' }));
 		});
 		mockRole = 'admin';
-		const rules = await t.withIdentity(identity).query(api.autonomy.listRules, {});
+		const rules = await t.withIdentity(identity).query(api.autonomy.policy.listRules, {});
 		expect(rules).toHaveLength(1);
 	});
 });
