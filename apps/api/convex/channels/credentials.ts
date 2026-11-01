@@ -122,7 +122,7 @@ export const getInboundSecret = internalAction({
 	},
 	returns: v.union(v.string(), v.null()),
 	handler: async (ctx, args) => {
-		const config = await ctx.runQuery(internal.unifiedMessages.getChannelConfigInternal, {
+		const config = await ctx.runQuery(internal.channels.config.getChannelConfigInternal, {
 			channel: args.channel,
 		});
 		if (!config?.config) return null;

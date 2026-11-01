@@ -26,7 +26,7 @@ const stubs = {
 	},
 };
 
-const SET_ROUTE = getFunctionName(api.providerRoutes.setRoute);
+const SET_ROUTE = getFunctionName(api.delivery.providerRoutes.setRoute);
 const SET_PRESET = getFunctionName(api.delivery.rampControls.setStreamPreset);
 
 let writes: { name: string; args: Record<string, unknown> }[];

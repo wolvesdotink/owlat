@@ -35,7 +35,7 @@ const emit = defineEmits<{
 	error: [message: string];
 }>();
 
-const { run: updateChannelConfig } = useBackendOperation(api.unifiedMessages.updateChannelConfig, {
+const { run: updateChannelConfig } = useBackendOperation(api.channels.config.updateChannelConfig, {
 	label: () => t('components.channels.channelConfigCard.operations.toggleChannel'),
 });
 

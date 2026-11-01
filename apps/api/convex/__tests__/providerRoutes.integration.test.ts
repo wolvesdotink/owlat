@@ -147,7 +147,7 @@ describe('providerRoutes mutation contracts', () => {
 	it('setRoute returns a truthy id the UI can use as a success signal', async () => {
 		const t = convexTest(schema, modules).withIdentity(identity);
 
-		const id = await t.mutation(api.providerRoutes.setRoute, singleMtaRoute);
+		const id = await t.mutation(api.delivery.providerRoutes.setRoute, singleMtaRoute);
 
 		expect(id).toBeTruthy();
 	});
@@ -160,23 +160,23 @@ describe('providerRoutes mutation contracts', () => {
 		// silently downgrade the route to a pickable strategy.
 		const t = convexTest(schema, modules).withIdentity(identity);
 
-		await t.mutation(api.providerRoutes.setRoute, {
+		await t.mutation(api.delivery.providerRoutes.setRoute, {
 			...singleMtaRoute,
 			strategy: 'adaptive_mix' as const,
 		});
 
-		const [saved] = await t.query(api.providerRoutes.listRoutes, {});
+		const [saved] = await t.query(api.delivery.providerRoutes.listRoutes, {});
 		expect(saved?.strategy).toBe('adaptive_mix');
 
 		// The unrelated edit: toggle a provider, echoing back the strategy the
 		// page read, exactly as the settings form serializes it.
-		await t.mutation(api.providerRoutes.setRoute, {
+		await t.mutation(api.delivery.providerRoutes.setRoute, {
 			messageType: 'campaign' as const,
 			strategy: 'adaptive_mix' as const,
 			providers: [{ providerType: 'mta', isEnabled: false }],
 		});
 
-		const [edited] = await t.query(api.providerRoutes.listRoutes, {});
+		const [edited] = await t.query(api.delivery.providerRoutes.listRoutes, {});
 		expect(edited?.strategy).toBe('adaptive_mix');
 		expect(edited?.providers.map((provider) => provider.isEnabled)).toEqual([false]);
 	});
@@ -185,7 +185,7 @@ describe('providerRoutes mutation contracts', () => {
 		const t = convexTest(schema, modules).withIdentity(identity);
 
 		await expect(
-			t.mutation(api.providerRoutes.setRoute, {
+			t.mutation(api.delivery.providerRoutes.setRoute, {
 				...singleMtaRoute,
 				providers: [
 					{ providerType: 'mta', isEnabled: true },
@@ -210,7 +210,7 @@ describe('providerRoutes mutation contracts', () => {
 		vi.stubEnv('MANDRILL_API_KEY', 'md-test-key');
 		const t = convexTest(schema, modules).withIdentity(identity);
 
-		const routeId = await t.mutation(api.providerRoutes.setRoute, {
+		const routeId = await t.mutation(api.delivery.providerRoutes.setRoute, {
 			...singleMtaRoute,
 			strategy: 'adaptive_mix' as const,
 			providers: [
@@ -225,7 +225,7 @@ describe('providerRoutes mutation contracts', () => {
 		});
 
 		expect(routeId).toBeTruthy();
-		const [saved] = await t.query(api.providerRoutes.listRoutes, {});
+		const [saved] = await t.query(api.delivery.providerRoutes.listRoutes, {});
 		expect(saved?.deliverabilityFallback).toEqual({
 			isEnabled: true,
 			relayProviderType: 'mandrill',
@@ -240,7 +240,7 @@ describe('providerRoutes mutation contracts', () => {
 		const t = convexTest(schema, modules).withIdentity(identity);
 
 		await expect(
-			t.mutation(api.providerRoutes.setRoute, {
+			t.mutation(api.delivery.providerRoutes.setRoute, {
 				...singleMtaRoute,
 				providers: [
 					{ providerType: 'mta', isEnabled: true },
@@ -254,7 +254,7 @@ describe('providerRoutes mutation contracts', () => {
 			})
 		).rejects.toThrow('Deliverability fallback relay must be a configured non-MTA transport');
 
-		expect(await t.query(api.providerRoutes.listRoutes, {})).toHaveLength(0);
+		expect(await t.query(api.delivery.providerRoutes.listRoutes, {})).toHaveLength(0);
 	});
 
 	it('refuses the owned MTA as its own fallback relay, and an unknown kind', async () => {
@@ -265,7 +265,7 @@ describe('providerRoutes mutation contracts', () => {
 		// It is configured (MTA_API_URL/KEY are stubbed above), so only the
 		// non-MTA half of the predicate can be rejecting it.
 		await expect(
-			t.mutation(api.providerRoutes.setRoute, {
+			t.mutation(api.delivery.providerRoutes.setRoute, {
 				...singleMtaRoute,
 				deliverabilityFallback: {
 					isEnabled: true,
@@ -276,7 +276,7 @@ describe('providerRoutes mutation contracts', () => {
 		).rejects.toThrow('Deliverability fallback relay must be a configured non-MTA transport');
 
 		await expect(
-			t.mutation(api.providerRoutes.setRoute, {
+			t.mutation(api.delivery.providerRoutes.setRoute, {
 				...singleMtaRoute,
 				deliverabilityFallback: {
 					isEnabled: true,
@@ -286,7 +286,7 @@ describe('providerRoutes mutation contracts', () => {
 			})
 		).rejects.toThrow('Deliverability fallback relay must be a configured non-MTA transport');
 
-		expect(await t.query(api.providerRoutes.listRoutes, {})).toHaveLength(0);
+		expect(await t.query(api.delivery.providerRoutes.listRoutes, {})).toHaveLength(0);
 	});
 
 	it('requires the arm the fallback moves traffic away from to be enabled', async () => {
@@ -305,7 +305,7 @@ describe('providerRoutes mutation contracts', () => {
 		};
 
 		await expect(
-			t.mutation(api.providerRoutes.setRoute, {
+			t.mutation(api.delivery.providerRoutes.setRoute, {
 				...singleMtaRoute,
 				providers: [
 					{ providerType: 'mta', isEnabled: false },
@@ -314,11 +314,11 @@ describe('providerRoutes mutation contracts', () => {
 				deliverabilityFallback: fallbackToMandrill,
 			})
 		).rejects.toThrow('Deliverability fallback requires an enabled owned-MTA route');
-		expect(await t.query(api.providerRoutes.listRoutes, {})).toHaveLength(0);
+		expect(await t.query(api.delivery.providerRoutes.listRoutes, {})).toHaveLength(0);
 
 		// …and the same route saves the moment that arm is enabled.
 		await expect(
-			t.mutation(api.providerRoutes.setRoute, {
+			t.mutation(api.delivery.providerRoutes.setRoute, {
 				...singleMtaRoute,
 				providers: [
 					{ providerType: 'mta', isEnabled: true },
@@ -331,9 +331,9 @@ describe('providerRoutes mutation contracts', () => {
 
 	it('removeRoute returns a truthy value after deleting an existing route', async () => {
 		const t = convexTest(schema, modules).withIdentity(identity);
-		await t.mutation(api.providerRoutes.setRoute, singleMtaRoute);
+		await t.mutation(api.delivery.providerRoutes.setRoute, singleMtaRoute);
 
-		const result = await t.mutation(api.providerRoutes.removeRoute, {
+		const result = await t.mutation(api.delivery.providerRoutes.removeRoute, {
 			messageType: 'campaign',
 		});
 
@@ -343,14 +343,14 @@ describe('providerRoutes mutation contracts', () => {
 		expect(result).not.toBeUndefined();
 		expect(result).toEqual({ success: true });
 
-		const remaining = await t.query(api.providerRoutes.listRoutes, {});
+		const remaining = await t.query(api.delivery.providerRoutes.listRoutes, {});
 		expect(remaining).toHaveLength(0);
 	});
 
 	it('removeRoute returns a truthy value even when there is no route to remove', async () => {
 		const t = convexTest(schema, modules).withIdentity(identity);
 
-		const result = await t.mutation(api.providerRoutes.removeRoute, {
+		const result = await t.mutation(api.delivery.providerRoutes.removeRoute, {
 			messageType: 'transactional',
 		});
 
@@ -359,11 +359,11 @@ describe('providerRoutes mutation contracts', () => {
 	});
 });
 
-describe('providerRoutes.listIpPools', () => {
+describe('delivery.providerRoutes.listIpPools', () => {
 	it('returns the canonical MTA IP-pool names the routing UI autocompletes', async () => {
 		const t = convexTest(schema, modules).withIdentity(identity);
 
-		const pools = await t.query(api.providerRoutes.listIpPools, {});
+		const pools = await t.query(api.delivery.providerRoutes.listIpPools, {});
 
 		// These names come from MTA_IP_POOL_NAMES (the SSOT for MtaExtras.ipPool).
 		// The settings UI warns on anything outside this set.
@@ -371,7 +371,7 @@ describe('providerRoutes.listIpPools', () => {
 	});
 });
 
-describe('providerRoutes.listRoutes — admin gate', () => {
+describe('delivery.providerRoutes.listRoutes — admin gate', () => {
 	it('returns configured routes for an admin (organization:manage)', async () => {
 		const t = convexTest(schema, modules).withIdentity(identity);
 		await t.run((ctx) =>
@@ -385,7 +385,7 @@ describe('providerRoutes.listRoutes — admin gate', () => {
 			})
 		);
 
-		const routes = await t.query(api.providerRoutes.listRoutes, {});
+		const routes = await t.query(api.delivery.providerRoutes.listRoutes, {});
 		expect(routes).toHaveLength(1);
 		expect(routes[0]!.ipPool).toBe('campaign');
 	});
@@ -404,7 +404,7 @@ describe('providerRoutes.listRoutes — admin gate', () => {
 		);
 
 		permissionState.allowed = false;
-		await expect(t.query(api.providerRoutes.listRoutes, {})).rejects.toThrow();
+		await expect(t.query(api.delivery.providerRoutes.listRoutes, {})).rejects.toThrow();
 	});
 });
 
@@ -427,7 +427,7 @@ describe('deliverability relay domain lifecycle', () => {
 		// `relayProviderType` is the drain's subject, not decoration: the batch
 		// backfills the identity of the kind the ROUTE named. SES is what this
 		// case has always exercised, and its outcome is unchanged.
-		await t.mutation(internal.providerRoutes.provisionDeliverabilityRelayBatch, {
+		await t.mutation(internal.delivery.providerRouteRelays.provisionDeliverabilityRelayBatch, {
 			relayProviderType: 'ses',
 			paginationOpts: { cursor: null, numItems: 32 },
 		});
@@ -458,7 +458,7 @@ describe('deliverability relay domain lifecycle', () => {
 		});
 
 		for (const relayProviderType of ['resend', 'smtp', 'mta', 'plugin.retired.postmark', '']) {
-			await t.mutation(internal.providerRoutes.provisionDeliverabilityRelayBatch, {
+			await t.mutation(internal.delivery.providerRouteRelays.provisionDeliverabilityRelayBatch, {
 				relayProviderType,
 				paginationOpts: { cursor: null, numItems: 32 },
 			});
@@ -509,7 +509,7 @@ describe('deliverability relay domain lifecycle', () => {
 		});
 
 		await expect(
-			t.mutation(api.providerRoutes.setRoute, {
+			t.mutation(api.delivery.providerRoutes.setRoute, {
 				...singleMtaRoute,
 				providers: [
 					{ providerType: 'mta', isEnabled: true },
@@ -556,7 +556,7 @@ describe('deliverability relay domain lifecycle', () => {
 		});
 
 		// No route configured yet: nothing to resolve, and nothing written.
-		await t.mutation(internal.providerRoutes.provisionDeliverabilityRelayBatch, {
+		await t.mutation(internal.delivery.providerRouteRelays.provisionDeliverabilityRelayBatch, {
 			paginationOpts: { cursor: null, numItems: 32 },
 		});
 		await t.finishAllScheduledFunctions(vi.runAllTimers);
@@ -582,7 +582,7 @@ describe('deliverability relay domain lifecycle', () => {
 			});
 		});
 
-		await t.mutation(internal.providerRoutes.provisionDeliverabilityRelayBatch, {
+		await t.mutation(internal.delivery.providerRouteRelays.provisionDeliverabilityRelayBatch, {
 			paginationOpts: { cursor: null, numItems: 32 },
 		});
 		await t.finishAllScheduledFunctions(vi.runAllTimers);
@@ -603,7 +603,7 @@ describe('deliverability relay domain lifecycle', () => {
 		// `domainVerification: 'api'` and registers a sending-domain provider, so
 		// the SAME drain backfills ITS identity — into the generic
 		// `sendingDomainRelayIdentities` row, with no SES identity written at
-		// all. Nothing in `providerRoutes.ts` names either kind.
+		// all. Nothing in `delivery/providerRouteRelays.ts` names either kind.
 		const t = convexTest(schema, modules).withIdentity(identity);
 		await t.run(async (ctx) => {
 			await ctx.db.insert('domains', {
@@ -616,7 +616,7 @@ describe('deliverability relay domain lifecycle', () => {
 			});
 		});
 
-		await t.mutation(internal.providerRoutes.provisionDeliverabilityRelayBatch, {
+		await t.mutation(internal.delivery.providerRouteRelays.provisionDeliverabilityRelayBatch, {
 			relayProviderType: 'mandrill',
 			paginationOpts: { cursor: null, numItems: 32 },
 		});
@@ -672,7 +672,7 @@ describe('deliverability relay domain lifecycle', () => {
 				});
 			});
 
-			await t.mutation(api.providerRoutes.setRoute, {
+			await t.mutation(api.delivery.providerRoutes.setRoute, {
 				...singleMtaRoute,
 				providers: [
 					{ providerType: 'mta', isEnabled: true },
@@ -732,7 +732,7 @@ describe('deliverability relay domain lifecycle', () => {
 		});
 
 		for (const relayProviderType of ['ses', 'mandrill']) {
-			await t.mutation(internal.providerRoutes.provisionDeliverabilityRelayBatch, {
+			await t.mutation(internal.delivery.providerRouteRelays.provisionDeliverabilityRelayBatch, {
 				relayProviderType,
 				paginationOpts: { cursor: null, numItems: 32 },
 			});
@@ -780,7 +780,7 @@ describe('deliverability relay domain lifecycle', () => {
 			});
 		});
 
-		await t.mutation(internal.providerRoutes.provisionDeliverabilityRelayBatch, {
+		await t.mutation(internal.delivery.providerRouteRelays.provisionDeliverabilityRelayBatch, {
 			relayProviderType: 'mandrill',
 			paginationOpts: { cursor: null, numItems: 32 },
 		});
@@ -819,7 +819,7 @@ describe('deliverability relay domain lifecycle', () => {
 			});
 		});
 
-		const result = await t.query(api.providerRoutes.listRelayDomainIdentities, {
+		const result = await t.query(api.delivery.providerRouteRelays.listRelayDomainIdentities, {
 			paginationOpts: { cursor: null, numItems: 100 },
 		});
 		expect(result.isDone).toBe(true);
@@ -871,7 +871,7 @@ describe('deliverability relay domain lifecycle', () => {
 			});
 		});
 
-		const result = await t.query(api.providerRoutes.listRelayDomainIdentities, {
+		const result = await t.query(api.delivery.providerRouteRelays.listRelayDomainIdentities, {
 			paginationOpts: { cursor: null, numItems: 100 },
 		});
 		expect(result.page).toMatchObject([
@@ -933,11 +933,11 @@ describe('deliverability relay domain lifecycle', () => {
 			}
 		});
 
-		const first = await t.query(api.providerRoutes.listRelayDomainIdentities, {
+		const first = await t.query(api.delivery.providerRouteRelays.listRelayDomainIdentities, {
 			paginationOpts: { cursor: null, numItems: 512 },
 		});
 		expect(first.isDone).toBe(false);
-		const second = await t.query(api.providerRoutes.listRelayDomainIdentities, {
+		const second = await t.query(api.delivery.providerRouteRelays.listRelayDomainIdentities, {
 			paginationOpts: { cursor: first.continueCursor, numItems: 512 },
 		});
 		const domains = [...first.page, ...second.page];
@@ -970,7 +970,7 @@ describe('deliverability relay domain lifecycle', () => {
 				updatedAt: Date.now(),
 			});
 		});
-		const result = await t.query(api.providerRoutes.listRelayDomainIdentities, {
+		const result = await t.query(api.delivery.providerRouteRelays.listRelayDomainIdentities, {
 			paginationOpts: { cursor: null, numItems: 10 },
 		});
 		expect(result.page).toEqual([]);
@@ -998,7 +998,7 @@ describe('deliverability relay domain lifecycle', () => {
 				updatedAt: Date.now(),
 			});
 		});
-		const result = await t.query(api.providerRoutes.listRelayDomainIdentities, {
+		const result = await t.query(api.delivery.providerRouteRelays.listRelayDomainIdentities, {
 			paginationOpts: { cursor: null, numItems: 10 },
 		});
 		// AGEING MOVED TO THE SURFACE, and the bound moved with it. The query used
@@ -1021,7 +1021,7 @@ describe('deliverability relay domain lifecycle', () => {
 		permissionState.allowed = false;
 
 		await expect(
-			t.query(api.providerRoutes.listRelayDomainIdentities, {
+			t.query(api.delivery.providerRouteRelays.listRelayDomainIdentities, {
 				paginationOpts: { cursor: null, numItems: 100 },
 			})
 		).rejects.toThrow("You don't have permission to perform this action");

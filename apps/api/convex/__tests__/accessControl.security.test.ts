@@ -63,7 +63,7 @@ describe('access control — unauthenticated callers are rejected', () => {
 			api.auth.accountManagement.exportContactsForOrganization,
 			{},
 		],
-		['providerRoutes.listRoutes', api.providerRoutes.listRoutes, {}],
+		['delivery.providerRoutes.listRoutes', api.delivery.providerRoutes.listRoutes, {}],
 		['blockedEmails.blocklist.listByTeam', api.blockedEmails.blocklist.listByTeam, {}],
 		['webhooks.endpoints.listByOrganization', api.webhooks.endpoints.listByOrganization, {}],
 		['domains.domains.listByOrganization', api.domains.domains.listByOrganization, {}],
@@ -94,8 +94,8 @@ describe('access control — unauthenticated callers are rejected', () => {
 		['auth.apiKeys.create', api.auth.apiKeys.create, { name: 'k' }],
 		['contacts.contacts.create', api.contacts.contacts.create, { email: 'a@example.com' }],
 		[
-			'providerRoutes.setRoute',
-			api.providerRoutes.setRoute,
+			'delivery.providerRoutes.setRoute',
+			api.delivery.providerRoutes.setRoute,
 			{
 				messageType: 'campaign',
 				strategy: 'single',

@@ -292,7 +292,7 @@ describe('channels.credentials.decryptChannelCreds', () => {
 	});
 });
 
-describe('unifiedMessages.getChannelConfigs', () => {
+describe('channels.config.getChannelConfigs', () => {
 	it('gives an admin the presence map but never the encrypted envelope', async () => {
 		const t = convexTest(schema, modules);
 		await t.run((ctx) =>
@@ -300,7 +300,7 @@ describe('unifiedMessages.getChannelConfigs', () => {
 		);
 		await saveConfig(t, 'sms', { accountSid: 'AC123', authToken: 'twilio-auth-token' });
 
-		const rows = await t.query(api.unifiedMessages.getChannelConfigs, {});
+		const rows = await t.query(api.channels.config.getChannelConfigs, {});
 		expect(rows).toHaveLength(1);
 		expect(rows[0]!.config).toBeUndefined();
 		expect([...(rows[0]!.configuredFields ?? [])].sort()).toEqual(['accountSid', 'authToken']);
@@ -315,7 +315,7 @@ describe('unifiedMessages.getChannelConfigs', () => {
 		await saveConfig(t, 'sms', { accountSid: 'AC123', authToken: 'twilio-auth-token' });
 
 		sessionRole = 'member';
-		const rows = await t.query(api.unifiedMessages.getChannelConfigs, {});
+		const rows = await t.query(api.channels.config.getChannelConfigs, {});
 		expect(rows[0]!._id).toBe(configId);
 		expect(rows[0]!.config).toBeUndefined();
 		expect(rows[0]!.configuredFields).toBeUndefined();

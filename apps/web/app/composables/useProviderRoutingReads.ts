@@ -19,13 +19,13 @@ export function useProviderRoutingReads() {
 		isLoading: routesLoading,
 		error: routesError,
 		refetch: refetchRoutes,
-	} = useOrganizationQuery(api.providerRoutes.listRoutes);
+	} = useOrganizationQuery(api.delivery.providerRoutes.listRoutes);
 	const {
 		data: catalog,
 		isLoading: catalogLoading,
 		error: catalogError,
 		refetch: refetchCatalog,
-	} = useOrganizationQuery(api.providerRoutes.listTransportCatalog);
+	} = useOrganizationQuery(api.delivery.providerRoutes.listTransportCatalog);
 
 	const error = computed(() => routesError.value ?? catalogError.value ?? null);
 	const ready = computed(

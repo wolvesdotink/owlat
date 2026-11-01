@@ -323,7 +323,7 @@ describe('channel adapters — outbound-only surface', () => {
 // Bucket 3b — A health probe reports only what its consumer can persist
 //
 // `probeChannelHealth` (channels/outbound.ts) forwards the result straight to
-// `unifiedMessages.updateChannelHealth`, whose arguments are exactly
+// `channels.health.updateChannelHealth`, whose arguments are exactly
 // `healthStatus` + `lastError`. The shape used to declare `lastSuccessfulSend`,
 // `rateLimitRemaining` and `latencyMs` too — the first two never set by any
 // adapter, the third measured on every 5-minute probe and then discarded. All

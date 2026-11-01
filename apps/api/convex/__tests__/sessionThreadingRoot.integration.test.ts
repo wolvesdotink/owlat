@@ -235,30 +235,30 @@ const cases: Case<unknown>[] = [
 		},
 	}),
 	defineCase({
-		name: 'providerRoutes.listRelayDomainIdentities',
+		name: 'delivery.providerRouteRelays.listRelayDomainIdentities',
 		floor: 'requireOrgMember',
 		denied: DEFAULT_DENIAL,
 		call: (t) =>
-			t.query(api.providerRoutes.listRelayDomainIdentities, {
+			t.query(api.delivery.providerRouteRelays.listRelayDomainIdentities, {
 				paginationOpts: { cursor: null, numItems: 10 },
 			}),
 	}),
 	defineCase({
-		name: 'providerRoutes.setRoute',
+		name: 'delivery.providerRoutes.setRoute',
 		floor: 'getMutationContext',
 		denied: ROUTING,
 		call: (t) =>
-			t.mutation(api.providerRoutes.setRoute, {
+			t.mutation(api.delivery.providerRoutes.setRoute, {
 				messageType: 'campaign',
 				strategy: 'single',
 				providers: [{ providerType: 'mta', isEnabled: true }],
 			}),
 	}),
 	defineCase({
-		name: 'providerRoutes.removeRoute',
+		name: 'delivery.providerRoutes.removeRoute',
 		floor: 'getMutationContext',
 		denied: ROUTING,
-		call: (t) => t.mutation(api.providerRoutes.removeRoute, { messageType: 'campaign' }),
+		call: (t) => t.mutation(api.delivery.providerRoutes.removeRoute, { messageType: 'campaign' }),
 	}),
 	defineCase({
 		name: 'segments.segments.create',
@@ -345,11 +345,11 @@ const cases: Case<unknown>[] = [
 			t.mutation(api.shareLinks.revokeShareLink, { shareLinkId }),
 	}),
 	defineCase({
-		name: 'unifiedMessages.updateChannelConfig',
+		name: 'channels.config.updateChannelConfig',
 		floor: 'getMutationContext',
 		denied: 'Only owners and admins can configure channels',
 		call: (t) =>
-			t.mutation(api.unifiedMessages.updateChannelConfig, { channel: 'sms', isEnabled: true }),
+			t.mutation(api.channels.config.updateChannelConfig, { channel: 'sms', isEnabled: true }),
 	}),
 	defineCase({
 		name: 'visualizationAgent.createFromPrompt',

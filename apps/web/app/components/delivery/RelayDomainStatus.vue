@@ -15,7 +15,7 @@
  * all: its operators were told provisioning was queued, forever, about a run
  * that had already finished.
  *
- * NOW EVERY STRING IS DOWNSTREAM OF A ROW. `providerRoutes.listRelayDomainIdentities`
+ * NOW EVERY STRING IS DOWNSTREAM OF A ROW. `delivery.providerRouteRelays.listRelayDomainIdentities`
  * walks the relay-identity registry and returns one row per (domain, relay
  * kind), each carrying its own `kindLabel` from the catalog, its records, its
  * verdicts and the freshness bound routing applies to it. So the copy is
@@ -55,9 +55,13 @@ const {
 	results: relayDomains,
 	status: relayDomainStatus,
 	loadMore: loadMoreRelayDomains,
-} = useOrganizationPaginatedQuery(api.providerRoutes.listRelayDomainIdentities, undefined, {
-	initialNumItems: 100,
-});
+} = useOrganizationPaginatedQuery(
+	api.delivery.providerRouteRelays.listRelayDomainIdentities,
+	undefined,
+	{
+		initialNumItems: 100,
+	}
+);
 const canLoadMoreRelayDomains = computed(() => relayDomainStatus.value === 'CanLoadMore');
 
 const { t } = useI18n();
@@ -145,7 +149,7 @@ async function handleVerifyRelayDomain(domainId: Id<'domains'>) {
  * change to what a record carries fails here instead of rendering blanks.
  */
 type RelayDomainRecord = FunctionReturnType<
-	typeof api.providerRoutes.listRelayDomainIdentities
+	typeof api.delivery.providerRouteRelays.listRelayDomainIdentities
 >['page'][number]['records'][number];
 
 function publishedRecords(records: readonly RelayDomainRecord[]): RelayDomainRecord[] {

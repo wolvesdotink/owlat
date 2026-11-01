@@ -29,7 +29,7 @@ const isSaving = ref(false);
 // Bound as the inline target so config-validation failures show on the form.
 const formError = ref<string | null>('');
 
-const { run: updateChannelConfig } = useBackendOperation(api.unifiedMessages.updateChannelConfig, {
+const { run: updateChannelConfig } = useBackendOperation(api.channels.config.updateChannelConfig, {
 	label: () => t('components.channels.channelConfigForm.operations.saveConfiguration'),
 	inlineTarget: formError,
 });
@@ -308,7 +308,11 @@ async function handleSave() {
 				{{ t('common.cancel') }}
 			</UiButton>
 			<UiButton class="gap-2" :disabled="isSaving" @click="handleSave">
-				<Icon v-if="isSaving" name="lucide:loader-2" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
+				<Icon
+					v-if="isSaving"
+					name="lucide:loader-2"
+					class="w-4 h-4 animate-spin motion-reduce:animate-none"
+				/>
 				{{ isSaving ? t('common.saving') : t('components.channels.channelConfigForm.save') }}
 			</UiButton>
 		</div>

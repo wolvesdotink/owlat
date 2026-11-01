@@ -13,7 +13,7 @@
  *
  * Two callers, both provisioning relay identities on our own MTA's domains:
  * the forward path (`domains/lifecycleEffects.ts`, on a domain reaching `verified`)
- * and the catch-up drain (`providerRoutes.provisionDeliverabilityRelayBatch`,
+ * and the catch-up drain (`delivery.providerRouteRelays.provisionDeliverabilityRelayBatch`,
  * when an operator switches the fallback on). They used to each open the same
  * `providerRoutes` scan inline; two readings of one configuration is how the
  * two halves of "every domain gets an identity exactly once" start disagreeing

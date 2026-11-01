@@ -15,7 +15,7 @@ import {
 	UNIFIED_MESSAGE_STORAGE_VERSION_PLAINTEXT,
 	UNIFIED_MESSAGE_STORAGE_VERSION_SEALED,
 } from '../lib/messageBody';
-import { mirrorEmailSendWrite, recordInboundMirror } from '../unifiedMessages';
+import { mirrorEmailSendWrite, recordInboundMirror } from '../channels/messages';
 
 function expectedContentStorageVersion(content: string): number {
 	return isSealedAtRest(content)
@@ -84,7 +84,7 @@ const modules = Object.fromEntries(
 
 // ============ getThreadTimeline ============
 
-describe('unifiedMessages.getThreadTimeline', () => {
+describe('channels.messages.getThreadTimeline', () => {
 	it('should return messages for a thread in ascending order', async () => {
 		const t = convexTest(schema, modules);
 		let threadId!: Id<'conversationThreads'>;
@@ -118,7 +118,7 @@ describe('unifiedMessages.getThreadTimeline', () => {
 			);
 		});
 
-		const messages = await t.query(api.unifiedMessages.getThreadTimeline, { threadId });
+		const messages = await t.query(api.channels.messages.getThreadTimeline, { threadId });
 		expect(messages).toHaveLength(3);
 		expect(messages[0]!.content.text).toBe('First message');
 		expect(messages[2]!.content.text).toBe('Third message');
@@ -132,14 +132,14 @@ describe('unifiedMessages.getThreadTimeline', () => {
 			threadId = await ctx.db.insert('conversationThreads', threadData());
 		});
 
-		const messages = await t.query(api.unifiedMessages.getThreadTimeline, { threadId });
+		const messages = await t.query(api.channels.messages.getThreadTimeline, { threadId });
 		expect(messages).toEqual([]);
 	});
 });
 
 // ============ getContactTimeline ============
 
-describe('unifiedMessages.getContactTimeline', () => {
+describe('channels.messages.getContactTimeline', () => {
 	it('should return messages for a contact in descending order', async () => {
 		const t = convexTest(schema, modules);
 		let contactId!: Id<'contacts'>;
@@ -169,7 +169,7 @@ describe('unifiedMessages.getContactTimeline', () => {
 			);
 		});
 
-		const messages = await t.query(api.unifiedMessages.getContactTimeline, { contactId });
+		const messages = await t.query(api.channels.messages.getContactTimeline, { contactId });
 		expect(messages).toHaveLength(2);
 		// desc order: newer first
 		expect(messages[0]!.content.text).toBe('Newer');
@@ -225,7 +225,7 @@ describe('unifiedMessages.getContactTimeline', () => {
 			);
 		});
 
-		const messages = await t.query(api.unifiedMessages.getContactTimeline, { contactId });
+		const messages = await t.query(api.channels.messages.getContactTimeline, { contactId });
 		// All three channels/directions are interleaved, newest first.
 		expect(messages.map((m) => `${m.channel}:${m.direction}`)).toEqual([
 			'email:outbound',
@@ -237,7 +237,7 @@ describe('unifiedMessages.getContactTimeline', () => {
 
 // ============ listRecent ============
 
-describe('unifiedMessages.listRecent', () => {
+describe('channels.messages.listRecent', () => {
 	it('should return recent messages across all channels', async () => {
 		const t = convexTest(schema, modules);
 
@@ -262,7 +262,7 @@ describe('unifiedMessages.listRecent', () => {
 			);
 		});
 
-		const messages = await t.query(api.unifiedMessages.listRecent, {});
+		const messages = await t.query(api.channels.messages.listRecent, {});
 		expect(messages).toHaveLength(2);
 	});
 
@@ -286,7 +286,7 @@ describe('unifiedMessages.listRecent', () => {
 			);
 		});
 
-		const emails = await t.query(api.unifiedMessages.listRecent, { channel: 'email' });
+		const emails = await t.query(api.channels.messages.listRecent, { channel: 'email' });
 		expect(emails).toHaveLength(2);
 		for (const msg of emails) {
 			expect(msg.channel).toBe('email');
@@ -296,20 +296,20 @@ describe('unifiedMessages.listRecent', () => {
 	it('requires a shared-inbox reader', async () => {
 		const { requireOrgMember } = await import('../lib/sessionOrganization');
 		const t = convexTest(schema, modules);
-		await expect(t.query(api.unifiedMessages.listRecent, {})).resolves.toEqual([]);
+		await expect(t.query(api.channels.messages.listRecent, {})).resolves.toEqual([]);
 
 		vi.mocked(requireOrgMember).mockResolvedValueOnce({
 			userId: 'test-user',
 			role: 'editor',
 			activeOrganizationId: 'test-org',
 		});
-		await expect(t.query(api.unifiedMessages.listRecent, {})).rejects.toThrow(/Team Inbox/);
+		await expect(t.query(api.channels.messages.listRecent, {})).rejects.toThrow(/Team Inbox/);
 	});
 });
 
 // ============ recordInboundMirror ============
 
-describe('unifiedMessages.recordInboundMirror', () => {
+describe('channels.messages.recordInboundMirror', () => {
 	it('should record an inbound message', async () => {
 		const t = convexTest(schema, modules);
 		let threadId!: Id<'conversationThreads'>;
@@ -516,7 +516,7 @@ describe('unifiedMessages lastSuccessfulSend stamping', () => {
 		});
 
 		const before = Date.now();
-		await t.mutation(api.unifiedMessages.sendChatMessage, {
+		await t.mutation(api.channels.messages.sendChatMessage, {
 			threadId,
 			text: 'Hello from the team!',
 		});
@@ -559,7 +559,7 @@ describe('unifiedMessages.updateDeliveryStatus', () => {
 
 // ============ listPendingDeliveryStatus (internal) ============
 
-describe('unifiedMessages.listPendingDeliveryStatus', () => {
+describe('channels.messages.listPendingDeliveryStatus', () => {
 	it('returns only outbound sent channel messages with an externalMessageId, within the window', async () => {
 		const t = convexTest(schema, modules);
 		const now = Date.now();
@@ -667,7 +667,7 @@ describe('unifiedMessages.listPendingDeliveryStatus', () => {
 			);
 		});
 
-		const pending = await t.query(internal.unifiedMessages.listPendingDeliveryStatus, {
+		const pending = await t.query(internal.channels.messages.listPendingDeliveryStatus, {
 			sinceMs: 10_000,
 			limit: 100,
 		});
@@ -700,7 +700,7 @@ describe('unifiedMessages.listPendingDeliveryStatus', () => {
 			}
 		});
 
-		const pending = await t.query(internal.unifiedMessages.listPendingDeliveryStatus, {
+		const pending = await t.query(internal.channels.messages.listPendingDeliveryStatus, {
 			sinceMs: 60_000,
 			limit: 2,
 		});
@@ -710,7 +710,7 @@ describe('unifiedMessages.listPendingDeliveryStatus', () => {
 
 // ============ sendChatMessage (user mutation) ============
 
-describe('unifiedMessages.sendChatMessage', () => {
+describe('channels.messages.sendChatMessage', () => {
 	it('should create a chat message with delivered status', async () => {
 		const t = convexTest(schema, modules);
 		let threadId!: Id<'conversationThreads'>;
@@ -719,7 +719,7 @@ describe('unifiedMessages.sendChatMessage', () => {
 			threadId = await ctx.db.insert('conversationThreads', threadData());
 		});
 
-		const msgId = await t.mutation(api.unifiedMessages.sendChatMessage, {
+		const msgId = await t.mutation(api.channels.messages.sendChatMessage, {
 			threadId,
 			text: 'Hello from the team!',
 		});
@@ -739,11 +739,11 @@ describe('unifiedMessages.sendChatMessage', () => {
 
 // ============ updateChannelConfig (user mutation) ============
 
-describe('unifiedMessages.updateChannelConfig', () => {
+describe('channels.config.updateChannelConfig', () => {
 	it('should create a new channel config when none exists', async () => {
 		const t = convexTest(schema, modules);
 
-		const configId = await t.mutation(api.unifiedMessages.updateChannelConfig, {
+		const configId = await t.mutation(api.channels.config.updateChannelConfig, {
 			channel: 'sms',
 			isEnabled: true,
 			displayName: 'SMS Channel',
@@ -774,7 +774,7 @@ describe('unifiedMessages.updateChannelConfig', () => {
 			);
 		});
 
-		await t.mutation(api.unifiedMessages.updateChannelConfig, {
+		await t.mutation(api.channels.config.updateChannelConfig, {
 			channel: 'email',
 			isEnabled: false,
 			displayName: 'Email (Disabled)',
@@ -790,7 +790,7 @@ describe('unifiedMessages.updateChannelConfig', () => {
 
 // ============ updateChannelHealth (internal) ============
 
-describe('unifiedMessages.updateChannelHealth', () => {
+describe('channels.health.updateChannelHealth', () => {
 	it('should update health status on an existing channel config', async () => {
 		const t = convexTest(schema, modules);
 
@@ -804,7 +804,7 @@ describe('unifiedMessages.updateChannelHealth', () => {
 			);
 		});
 
-		await t.mutation(internal.unifiedMessages.updateChannelHealth, {
+		await t.mutation(internal.channels.health.updateChannelHealth, {
 			channel: 'sms',
 			healthStatus: 'degraded',
 			lastError: 'Twilio rate limit',
@@ -824,7 +824,7 @@ describe('unifiedMessages.updateChannelHealth', () => {
 	it('should do nothing if channel config does not exist', async () => {
 		const t = convexTest(schema, modules);
 		// Should not throw
-		await t.mutation(internal.unifiedMessages.updateChannelHealth, {
+		await t.mutation(internal.channels.health.updateChannelHealth, {
 			channel: 'generic',
 			healthStatus: 'down',
 		});
@@ -833,7 +833,7 @@ describe('unifiedMessages.updateChannelHealth', () => {
 
 // ============ runChannelHealthChecks (cron) ============
 
-describe('unifiedMessages.runChannelHealthChecks', () => {
+describe('channels.health.runChannelHealthChecks', () => {
 	it('marks an enabled-but-unconfigured non-email channel as down', async () => {
 		const t = convexTest(schema, modules);
 
@@ -848,7 +848,7 @@ describe('unifiedMessages.runChannelHealthChecks', () => {
 			);
 		});
 
-		await t.action(internal.unifiedMessages.runChannelHealthChecks);
+		await t.action(internal.channels.health.runChannelHealthChecks);
 
 		await t.run(async (ctx) => {
 			const config = await ctx.db
@@ -880,7 +880,7 @@ describe('unifiedMessages.runChannelHealthChecks', () => {
 			);
 		});
 
-		await t.action(internal.unifiedMessages.runChannelHealthChecks);
+		await t.action(internal.channels.health.runChannelHealthChecks);
 
 		await t.run(async (ctx) => {
 			const config = await ctx.db
@@ -904,7 +904,7 @@ describe('unifiedMessages.runChannelHealthChecks', () => {
 			);
 		});
 
-		await t.action(internal.unifiedMessages.runChannelHealthChecks);
+		await t.action(internal.channels.health.runChannelHealthChecks);
 
 		const rows = await t.run(async (ctx) => await ctx.db.query('channelConfigs').collect());
 		const byChannel = Object.fromEntries(rows.map((row) => [row.channel, row]));
@@ -969,7 +969,7 @@ describe('unifiedMessages.runChannelHealthChecks', () => {
 			);
 		});
 
-		await t.action(internal.unifiedMessages.runChannelHealthChecks);
+		await t.action(internal.channels.health.runChannelHealthChecks);
 
 		await t.run(async (ctx) => {
 			const config = await ctx.db

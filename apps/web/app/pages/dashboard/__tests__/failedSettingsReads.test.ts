@@ -188,13 +188,13 @@ const FORMS: FormCase[] = [
 		// The catalog answers: only the stored routes are unknown, which is what
 		// used to seed a fresh single-provider route over the stored one.
 		answered: () =>
-			answer(api.providerRoutes.listTransportCatalog, [
+			answer(api.delivery.providerRoutes.listTransportCatalog, [
 				{ kind: 'mta', label: 'Owlat MTA', isAvailable: true },
 				{ kind: 'ses', label: 'Amazon SES', isAvailable: true },
 			]),
 		edits: [['#route-ip-pool', 'warm-pool-b']],
 		recover: () =>
-			answer(api.providerRoutes.listRoutes, [
+			answer(api.delivery.providerRoutes.listRoutes, [
 				{
 					_id: 'r1',
 					messageType: 'transactional',

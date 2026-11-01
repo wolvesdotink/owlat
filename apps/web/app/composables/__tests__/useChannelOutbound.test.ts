@@ -22,7 +22,7 @@ import { queryResult } from '~/__tests__/queryStubs';
 const { t } = createTestI18n().global;
 
 const SEND_CHANNEL = getFunctionName(api.channels.outbound.sendChannelMessage);
-const SEND_CHAT = getFunctionName(api.unifiedMessages.sendChatMessage);
+const SEND_CHAT = getFunctionName(api.channels.messages.sendChatMessage);
 
 let role: 'owner' | 'admin' | 'editor' | null;
 let channelConfigs: Array<{ channel: string; isEnabled: boolean }> | undefined;

@@ -43,7 +43,7 @@ describe('SENDING_DOMAIN_PROVIDERS', () => {
 	it('names our own infrastructure with the same string the send arms do', () => {
 		// There is ONE sanctioned identity check — own infrastructure vs. everything else
 		// — and this pins that the two type domains spell it identically.
-		// `providerRoutes.setRoute` demands an enabled arm of
+		// `delivery.providerRoutes.setRoute` demands an enabled arm of
 		// `OWN_ARM_TRANSPORT_KIND` while the relay-identity drain three functions
 		// above it filters domains on `OWN_SENDING_DOMAIN_PROVIDER_KIND`; if those
 		// ever named different transports the route would still save and the drain
@@ -195,7 +195,7 @@ describe('completeness against the send-provider catalog', () => {
 		},
 		{
 			method: 'ensureRelayIdentity',
-			// The write half (P0.2). The drain in `providerRoutes.ts` no longer names
+			// The write half (P0.2). The drain in `delivery/providerRouteRelays.ts` no longer names
 			// a kind: it asks whichever provider the route configured. A kind that
 			// promises a proof but never provisions the identity that proof is read
 			// from reports every pre-existing domain unverified — and its fallback

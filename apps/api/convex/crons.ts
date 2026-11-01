@@ -282,7 +282,7 @@ registerTeamInboxCrons(crons);
 crons.interval(
 	'channel health checks',
 	{ minutes: 5 },
-	internal.unifiedMessages.runChannelHealthChecks
+	internal.channels.health.runChannelHealthChecks
 );
 
 // Poll provider delivery status for outbound channel messages still at `sent`

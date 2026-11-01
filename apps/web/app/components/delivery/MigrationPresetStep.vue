@@ -51,7 +51,7 @@ const { t } = useI18n();
  */
 const message = useLocalized();
 
-const { run: setRoute } = useBackendOperation(api.providerRoutes.setRoute, {
+const { run: setRoute } = useBackendOperation(api.delivery.providerRoutes.setRoute, {
 	label: () => t('components.delivery.migrationPresetStep.applyRouteOperation'),
 });
 const { run: setStreamPreset } = useBackendOperation(api.delivery.rampControls.setStreamPreset, {

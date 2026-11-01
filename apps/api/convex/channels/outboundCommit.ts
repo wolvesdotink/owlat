@@ -3,13 +3,14 @@
  * (`channels/outbound.ts`). That file is `'use node'`, so the mutations its
  * actions end with live here: each action reads, talks to the provider, then
  * writes what it learned in one of these. The channel health cron
- * (`unifiedMessages.runChannelHealthChecks`) commits here too.
+ * (`health.ts` `runChannelHealthChecks`) commits here too.
  */
 
 import { v } from 'convex/values';
 import { internalMutation } from '../lib/writeFence';
 import { unifiedMessageChannelValidator } from '../lib/convexValidators';
-import { channelHealthFields, insertOutboundMessage, writeChannelHealth } from '../unifiedMessages';
+import { insertOutboundMessage } from './messages';
+import { channelHealthFields, writeChannelHealth } from './health';
 import { applyProcessingTransition } from '../inbox/processingLifecycle';
 
 /**

@@ -54,9 +54,9 @@ beforeEach(() => {
 });
 
 describe('useChannelInbox', () => {
-	it('subscribes to unifiedMessages.listRecent', () => {
+	it('subscribes to channels.messages.listRecent', () => {
 		useChannelInbox();
-		expect(lastQueryName).toBe(getFunctionName(api.unifiedMessages.listRecent));
+		expect(lastQueryName).toBe(getFunctionName(api.channels.messages.listRecent));
 	});
 
 	it('requests all channels (no channel arg) by default, with the given limit', () => {

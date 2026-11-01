@@ -3253,7 +3253,7 @@ ProviderHealthStatus[]) → ResolvedRoute | null` — pure function. The
   strategy (e.g. `least_loaded`) is one folder + one registry entry.
 
 The module does _not_ own: the `providerRoutes` CRUD (stays in
-`providerRoutes.ts`), the `providerHealth` rows themselves (**Send
+`delivery/providerRoutes.ts`), the `providerHealth` rows themselves (**Send
 provider health (module)**), or the `routeConfig === null` / "no
 enabled candidates" fallbacks (`resolveRoute` owns those before any
 strategy is called).

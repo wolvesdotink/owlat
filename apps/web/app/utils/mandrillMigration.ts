@@ -220,7 +220,7 @@ function migrationRouteProviders(
 	];
 }
 
-/** The three `providerRoutes.setRoute` payloads the preset applies, in order. */
+/** The three `delivery.providerRoutes.setRoute` payloads the preset applies, in order. */
 export function migrationRoutePayloads(
 	catalog: readonly MigrationTransportEntry[] | null | undefined
 ): readonly MigrationRoutePayload[] {

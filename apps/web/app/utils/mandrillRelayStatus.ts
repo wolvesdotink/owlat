@@ -5,7 +5,7 @@
  * WHAT LEFT THIS FILE, and why what is left belongs here. The DISPLAY half — the
  * tone, the label and the sentence a panel renders — was Mandrill-worded because
  * the read behind it was: one query per vendor, one panel per vendor. Both are
- * gone. `providerRoutes.listRelayDomainIdentities` answers for every kind the
+ * gone. `delivery.providerRouteRelays.listRelayDomainIdentities` answers for every kind the
  * domain-provider registry proves, and `~/utils/relayDomainDisplay` words the
  * result from the row's own catalog label, including the surprising judgement
  * this file used to own (a `verified` row whose evidence has aged past its

@@ -184,7 +184,7 @@ describe('resolveRoute — Mandrill under every strategy', () => {
 			deliverabilityReason: 'breaker_open',
 		});
 		// Unconfigured, the same route fails closed rather than routing to a relay
-		// whose credentials are absent — one predicate with `providerRoutes.setRoute`.
+		// whose credentials are absent — one predicate with `delivery.providerRoutes.setRoute`.
 		expect(() =>
 			resolveRoute(config, undefined, (kind) => kind === 'mta', {
 				activeReasons: ['breaker_open'],

@@ -8,7 +8,7 @@
 # credential envelopes) and forgets its gate silently exposes that data to
 # every member. check-permissions.sh deliberately covers only state-changing
 # functions, so query-side authorization had NO ci gate — this script closes
-# that gap (the `unifiedMessages.listRecent` escalation slipped through it).
+# that gap (the `channels.messages.listRecent` escalation slipped through it).
 #
 # A site passes when it does ONE of:
 #

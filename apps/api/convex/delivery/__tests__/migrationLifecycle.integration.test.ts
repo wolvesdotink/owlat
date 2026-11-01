@@ -263,7 +263,7 @@ describe('the guided flow’s preset, through the real mutations', () => {
 		await verifyRelayDomain(t);
 
 		for (const messageType of MIGRATION_MESSAGE_TYPES) {
-			await t.mutation(api.providerRoutes.setRoute, {
+			await t.mutation(api.delivery.providerRoutes.setRoute, {
 				messageType,
 				strategy: 'adaptive_mix',
 				providers: [
@@ -318,7 +318,7 @@ describe('the guided flow’s preset, through the real mutations', () => {
 		}
 
 		await expect(
-			t.mutation(api.providerRoutes.setRoute, {
+			t.mutation(api.delivery.providerRoutes.setRoute, {
 				messageType: 'campaign',
 				strategy: 'adaptive_mix',
 				providers: [

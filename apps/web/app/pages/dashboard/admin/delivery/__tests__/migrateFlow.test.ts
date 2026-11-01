@@ -93,8 +93,8 @@ async function mountPage(over: Partial<PageState> = {}) {
 	vi.stubGlobal('useHead', vi.fn());
 	vi.stubGlobal('definePageMeta', vi.fn());
 	const answers = new Map<string, unknown>([
-		[getFunctionName(api.providerRoutes.listTransportCatalog), state.catalog],
-		[getFunctionName(api.providerRoutes.listRoutes), state.routes],
+		[getFunctionName(api.delivery.providerRoutes.listTransportCatalog), state.catalog],
+		[getFunctionName(api.delivery.providerRoutes.listRoutes), state.routes],
 		[getFunctionName(api.domains.mandrillRelayQueries.listIdentities), state.identities],
 	]);
 	vi.stubGlobal('useOrganizationQuery', (query: FunctionReference<'query'>) => ({

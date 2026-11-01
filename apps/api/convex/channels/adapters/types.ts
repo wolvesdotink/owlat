@@ -53,12 +53,12 @@ export type DeliveryStatus = 'queued' | 'sent' | 'delivered' | 'read' | 'failed'
  * consumer persists.
  *
  * `channels/outbound.ts:probeChannelHealth` forwards `status` and `lastError`
- * to `unifiedMessages.updateChannelHealth`, which has no other argument. The
+ * to `channels.health.updateChannelHealth`, which has no other argument. The
  * shape used to carry `lastSuccessfulSend`, `rateLimitRemaining` and
  * `latencyMs` as well: no adapter ever set the first two, and the third was
  * measured on every 5-minute probe and then dropped on the floor, because
  * `channelConfigs` has nowhere to put it. (`channelConfigs.lastSuccessfulSend`
- * is a real column, but it is stamped by `unifiedMessages.recordOutbound` off
+ * is a real column, but it is stamped by `channels/messages.ts` `insertOutboundMessage` off
  * an actual send — never by a probe.) None of the three is on the type;
  * persisting probe latency is a schema + mutation change, so it needs its own
  * piece rather than a member nothing reads.

@@ -66,20 +66,20 @@ describe('Team Inbox reads outside inbox/ follow the reader gate', () => {
 		const t = convexTest(schema, modules);
 		const { contactId, threadId } = await seedThread(t);
 
-		await expect(t.query(api.unifiedMessages.getThreadTimeline, { threadId })).rejects.toThrow(
+		await expect(t.query(api.channels.messages.getThreadTimeline, { threadId })).rejects.toThrow(
 			/Team Inbox/
 		);
-		await expect(t.query(api.unifiedMessages.getContactTimeline, { contactId })).rejects.toThrow(
+		await expect(t.query(api.channels.messages.getContactTimeline, { contactId })).rejects.toThrow(
 			/Team Inbox/
 		);
-		await expect(t.query(api.unifiedMessages.listRecent, {})).rejects.toThrow(/Team Inbox/);
+		await expect(t.query(api.channels.messages.listRecent, {})).rejects.toThrow(/Team Inbox/);
 		await expect(
-			t.mutation(api.unifiedMessages.sendChatMessage, { threadId, text: 'hi' })
+			t.mutation(api.channels.messages.sendChatMessage, { threadId, text: 'hi' })
 		).rejects.toThrow(/Team Inbox/);
 
 		sess.role = 'admin';
-		await t.mutation(api.unifiedMessages.sendChatMessage, { threadId, text: 'hi' });
-		const timeline = await t.query(api.unifiedMessages.getThreadTimeline, { threadId });
+		await t.mutation(api.channels.messages.sendChatMessage, { threadId, text: 'hi' });
+		const timeline = await t.query(api.channels.messages.getThreadTimeline, { threadId });
 		expect(timeline).toHaveLength(1);
 	});
 

@@ -17,7 +17,7 @@ import {
 /**
  * Global cross-channel inbox — recent messages across every channel.
  *
- * Subscribes to `api.unifiedMessages.listRecent`, the org-wide stream of the
+ * Subscribes to `api.channels.messages.listRecent`, the org-wide stream of the
  * newest messages across email / sms / whatsapp / chat / generic (already
  * returned newest-first by the backend, with an optional server-side channel
  * filter so a single-channel view doesn't pull rows it then discards). This is
@@ -39,7 +39,7 @@ export function useChannelInbox(limit = 50) {
 		isLoading,
 		error,
 		refetch,
-	} = useConvexQuery(api.unifiedMessages.listRecent, () => ({
+	} = useConvexQuery(api.channels.messages.listRecent, () => ({
 		...(channelFilter.value ? { channel: channelFilter.value } : {}),
 		limit,
 	}));
@@ -51,7 +51,7 @@ export function useChannelInbox(limit = 50) {
 	// for enabled channels that actually have a config row — built-in email/chat
 	// and unconfigured kinds get no dot. Absent `healthStatus` on an enabled row
 	// reads as healthy (monitoring hasn't run yet).
-	const { data: channelConfigs } = useOrganizationQuery(api.unifiedMessages.getChannelConfigs);
+	const { data: channelConfigs } = useOrganizationQuery(api.channels.config.getChannelConfigs);
 
 	const channelHealthMap = computed(() => {
 		const map = new Map<string, ChannelHealthStatus | undefined>();

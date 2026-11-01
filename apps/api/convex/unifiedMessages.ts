@@ -1,161 +1,85 @@
 /**
- * Unified Messages
- *
- * Central module for sending, receiving, and querying messages
- * across all channels (email, SMS, WhatsApp, webhook, chat).
- * Provides a unified timeline view per thread and per contact.
+ * Previous-release paths of `channels/messages.ts`, `channels/config.ts`,
+ * `channels/outboundTargets.ts` and `channels/health.ts`. The Team Inbox thread
+ * timeline, the contact timeline tab, the channel composer, the delivery
+ * activity page, the dashboard channel card and the channels settings page in a
+ * tab opened before the deploy call `unifiedMessages:*` by path; the previous
+ * release's channel dispatches, credential saves, delivery polls and health
+ * probes still running call its internal functions by path; and a health check
+ * the previous cron queued runs as `unifiedMessages:runChannelHealthChecks`.
+ * Each keeps its old path, builder, auth floor, arguments and result shape, and
+ * runs the same body as its replacement. Remove after release 0.6.17.
  */
-
-import { v, type ObjectType } from 'convex/values';
-import type { FunctionArgs } from 'convex/server';
-import { internalQuery, internalAction } from './_generated/server';
+import { v } from 'convex/values';
+import { internalAction, internalQuery } from './_generated/server';
 import { internalMutation } from './lib/writeFence';
-import type { MutationCtx } from './_generated/server';
-import { authedQuery, authedMutation } from './lib/authedFunctions';
-import { hasPermission, requirePermission } from './lib/sessionOrganization';
-import { isSharedInboxReader } from './inbox/access';
-import { transition as threadTransition } from './inbox/threads/module';
-import { internal } from './_generated/api';
-import type { Doc, Id } from './_generated/dataModel';
-import { unifiedMessageChannelValidator, outboundChannelValidator } from './lib/convexValidators';
-import { applyOpenThreadDelta } from './lib/inboxStats';
-import { openUnifiedMessageContent, sealUnifiedMessageContentAtWrite } from './lib/messageBody';
-import { healthStatusValidator } from './lib/literalValidators';
+import { authedMutation, authedQuery } from './lib/authedFunctions';
+import {
+	contactTimeline,
+	getContactTimelineArgs,
+	getThreadTimelineArgs,
+	insertChatMessage,
+	insertOutboundMessage,
+	listPendingDeliveryStatusArgs,
+	listRecentArgs,
+	outboundMessageArgs,
+	pendingDeliveryStatus,
+	pendingDeliveryValidator,
+	recentMessages,
+	sendChatMessageArgs,
+	threadTimeline,
+} from './channels/messages';
+import {
+	channelConfigByChannel,
+	channelConfigsForCaller,
+	getChannelConfigInternalArgs,
+	saveChannelConfig,
+	setChannelConfigSecretArgs,
+	updateChannelConfigArgs,
+	writeChannelConfigSecret,
+} from './channels/config';
+import {
+	contactChannelIdentifier,
+	getContactChannelIdentifierArgs,
+	resolveOutboundThreadArgs,
+	resolveThreadForOutbound,
+} from './channels/outboundTargets';
+import {
+	checkEnabledChannels,
+	enabledChannelConfigs,
+	recordChannelHealth,
+	updateChannelHealthArgs,
+} from './channels/health';
 
-// ============================================================
-// Queries
-// ============================================================
-
-/**
- * Open one `unifiedMessages` row for a timeline query: unseal the sealed-at-rest
- * `content` (E8b) and parse the metadata JSON. Shared by the three timeline
- * queries so the identical mapper lives in exactly one place.
- */
-async function openTimelineRow(msg: Doc<'unifiedMessages'>) {
-	return {
-		...msg,
-		content: await openUnifiedMessageContent(msg.content),
-		metadata: msg.metadata ? parseMetadata(msg.metadata) : undefined,
-	};
-}
-
-/** Refusal for a timeline read by a caller outside the Team Inbox. */
-const NOT_A_READER = 'Only owners and admins can read Team Inbox conversations';
-
-/**
- * Get messages for a conversation thread (unified timeline). Team Inbox
- * content: shared-inbox readers only (inbox/access.ts).
- */
+/** Remove after release 0.6.17; this release calls `channels/messages:getThreadTimeline`. */
+// authz: threadTimeline requires a shared-inbox reader before it reads.
 export const getThreadTimeline = authedQuery({
-	args: {
-		threadId: v.id('conversationThreads'),
-		limit: v.optional(v.number()),
-	},
-	handler: async (ctx, args, session) => {
-		requirePermission(isSharedInboxReader(session), NOT_A_READER);
-		const messages = await ctx.db
-			.query('unifiedMessages')
-			.withIndex('by_thread', (q) => q.eq('threadId', args.threadId))
-			.order('asc')
-			.take(args.limit ?? 100);
-
-		return await Promise.all(messages.map(openTimelineRow));
-	},
+	args: getThreadTimelineArgs,
+	handler: async (ctx, args, session) => await threadTimeline(ctx, args, session),
 });
 
-/**
- * Get messages for a contact across all channels. Team Inbox content:
- * shared-inbox readers only (inbox/access.ts).
- */
+/** Remove after release 0.6.17; this release calls `channels/messages:getContactTimeline`. */
+// authz: contactTimeline requires a shared-inbox reader before it reads.
 export const getContactTimeline = authedQuery({
-	args: {
-		contactId: v.id('contacts'),
-		limit: v.optional(v.number()),
-	},
-	handler: async (ctx, args, session) => {
-		requirePermission(isSharedInboxReader(session), NOT_A_READER);
-		const messages = await ctx.db
-			.query('unifiedMessages')
-			.withIndex('by_contact', (q) => q.eq('contactId', args.contactId))
-			.order('desc')
-			.take(args.limit ?? 50);
-
-		return await Promise.all(messages.map(openTimelineRow));
-	},
+	args: getContactTimelineArgs,
+	handler: async (ctx, args, session) => await contactTimeline(ctx, args, session),
 });
 
-/**
- * Get recent messages across all channels. Team Inbox content: shared-inbox
- * readers only (inbox/access.ts).
- */
+/** Remove after release 0.6.17; this release calls `channels/messages:listRecent`. */
+// authz: recentMessages requires a shared-inbox reader before it reads.
 export const listRecent = authedQuery({
-	args: {
-		channel: v.optional(unifiedMessageChannelValidator),
-		limit: v.optional(v.number()),
-	},
-	handler: async (ctx, args, session) => {
-		requirePermission(isSharedInboxReader(session), NOT_A_READER);
-		let q;
-		if (args.channel) {
-			q = ctx.db
-				.query('unifiedMessages')
-				.withIndex('by_channel', (q2) => q2.eq('channel', args.channel!));
-		} else {
-			q = ctx.db.query('unifiedMessages').withIndex('by_created_at');
-		}
-
-		const messages = await q.order('desc').take(args.limit ?? 50);
-
-		return await Promise.all(messages.map(openTimelineRow));
-	},
+	args: listRecentArgs,
+	handler: async (ctx, args, session) => await recentMessages(ctx, args, session),
 });
 
-/**
- * Get channel configuration and health status.
- *
- * `configuredFields` is what makes a partial credential re-save safe to offer:
- * the encrypted envelope can never be read back into the settings form (it is
- * openable only in a `'use node'` action), so the form uses the field NAMES to
- * mark the inputs it must not ask for again and leaves them blank, and
- * `channels.outbound.encryptAndPersistConfig` merges the save over what is
- * stored. Admin-only, like every other credential-shaped field.
- */
+/** Remove after release 0.6.17; this release calls `channels/config:getChannelConfigs`. */
+// all-members: health/display fields feed the dashboard channel card;
+// channelConfigsForCaller never returns the credential envelope and gives the
+// configuredFields presence map to admins only.
 export const getChannelConfigs = authedQuery({
 	args: {},
-	handler: async (ctx, _args, session) => {
-		// all-members: health/display fields feed the dashboard channel card.
-		// The encrypted credential envelope NEVER leaves the backend — no client
-		// surface can open it, so none of them is given it. The presence map of
-		// what is inside it (configuredFields) is admin-only: members get the row
-		// without it, the settings page (admin) gets it for the edit form.
-		const rows = await ctx.db.query('channelConfigs').collect(); // bounded: ≤5 channel-config rows (schema literal union)
-		// The floor already resolved this caller's role — the dashboard live-
-		// subscribes here, so re-reading the session would double every tick.
-		const isAdmin = hasPermission(session.role, 'organization:manage');
-		return rows.map((row) => ({
-			...row,
-			config: undefined,
-			...(isAdmin ? {} : { configuredFields: undefined }),
-		}));
-	},
+	handler: async (ctx, _args, session) => await channelConfigsForCaller(ctx, session),
 });
-
-// ============================================================
-// Mutations
-// ============================================================
-
-const recordOutboundArgs = {
-	threadId: v.id('conversationThreads'),
-	channel: unifiedMessageChannelValidator,
-	contactId: v.optional(v.id('contacts')),
-	memberId: v.optional(v.string()),
-	content: v.string(),
-	externalMessageId: v.optional(v.string()),
-	status: v.optional(
-		v.union(v.literal('queued'), v.literal('sent'), v.literal('delivered'), v.literal('failed'))
-	),
-	metadata: v.optional(v.string()),
-};
 
 /**
  * Record an outbound message from any channel. No caller in this release: the
@@ -163,52 +87,9 @@ const recordOutboundArgs = {
  * {@link insertOutboundMessage}. Remove after release N+1.
  */
 export const recordOutbound = internalMutation({
-	args: recordOutboundArgs,
+	args: outboundMessageArgs,
 	handler: async (ctx, args) => await insertOutboundMessage(ctx, args),
 });
-
-/**
- * Insert an outbound timeline row, stamp the channel's last successful send
- * and close the thread's response clock when it reached the customer.
- */
-export async function insertOutboundMessage(
-	ctx: MutationCtx,
-	args: ObjectType<typeof recordOutboundArgs>
-): Promise<Id<'unifiedMessages'>> {
-	const now = Date.now();
-	const id = await ctx.db.insert('unifiedMessages', {
-		threadId: args.threadId,
-		channel: args.channel,
-		direction: 'outbound',
-		contactId: args.contactId,
-		memberId: args.memberId,
-		...(await sealUnifiedMessageContentAtWrite(args.content)),
-		externalMessageId: args.externalMessageId,
-		status: args.status ?? 'queued',
-		metadata: args.metadata,
-		createdAt: now,
-	});
-
-	// Stamp the channel's last successful send so the dashboard channel card
-	// has a live signal (the field is otherwise never written). A `sent`
-	// status is the provider's synchronous acceptance, the same point the
-	// timeline row is recorded, for the SMS/WhatsApp/generic manual and
-	// agent-reply paths that flow through channels/outbound.dispatchOutbound.
-	if (args.status === 'sent') {
-		await stampChannelLastSuccessfulSend(ctx, args.channel, now);
-	}
-	// A message that reached the customer is a reply: it closes the thread's
-	// response clock (inbox/sla/clock.ts). A person's channel reply has no
-	// inbound message to complete, so this is the only place it is seen.
-	if (args.status === 'sent' || args.status === 'delivered') {
-		await threadTransition(ctx, {
-			threadId: args.threadId,
-			input: { kind: 'reply_sent', at: now },
-		});
-	}
-
-	return id;
-}
 
 /**
  * Update delivery status of an outbound message. No caller in this release:
@@ -234,624 +115,67 @@ export const updateDeliveryStatus = internalMutation({
 	},
 });
 
-/** A `sent` channel message awaiting a delivered/read/failed transition. */
-const pendingDeliveryValidator = v.object({
-	messageId: v.id('unifiedMessages'),
-	channel: outboundChannelValidator,
-	externalMessageId: v.string(),
-});
-
-/**
- * Find outbound channel messages still stuck at `sent` that the delivery-status
- * poller should re-check against the provider. Scopes to the SMS/WhatsApp/generic
- * channels (email delivery state is owned by the MTA send pipeline; chat is
- * terminal on insert) and to rows with a provider `externalMessageId` to poll on.
- *
- * Bounded two ways: a recent `createdAt` window (providers stop reporting on old
- * messages, so polling them forever is wasted work) and a hard `take` cap. Backs
- * `channels.outbound.pollDeliveryStatus`.
- */
+/** Remove after release 0.6.17; this release calls `channels/messages:listPendingDeliveryStatus`. */
 export const listPendingDeliveryStatus = internalQuery({
-	args: {
-		sinceMs: v.number(),
-		limit: v.number(),
-	},
+	args: listPendingDeliveryStatusArgs,
 	returns: v.array(pendingDeliveryValidator),
-	handler: async (ctx, args) => {
-		const cutoff = Date.now() - args.sinceMs;
-		const rows = await ctx.db
-			.query('unifiedMessages')
-			.withIndex('by_direction_status_and_created_at', (q) =>
-				q.eq('direction', 'outbound').eq('status', 'sent').gte('createdAt', cutoff)
-			)
-			.order('desc')
-			.take(args.limit);
-
-		const out: Array<{
-			messageId: Id<'unifiedMessages'>;
-			channel: 'sms' | 'whatsapp' | 'generic';
-			externalMessageId: string;
-		}> = [];
-		for (const row of rows) {
-			if (
-				(row.channel === 'sms' || row.channel === 'whatsapp' || row.channel === 'generic') &&
-				row.externalMessageId
-			) {
-				out.push({
-					messageId: row._id,
-					channel: row.channel,
-					externalMessageId: row.externalMessageId,
-				});
-			}
-		}
-		return out;
-	},
+	handler: async (ctx, args) => await pendingDeliveryStatus(ctx, args),
 });
 
-/**
- * Send a chat message (user-facing, authenticated)
- */
+/** Remove after release 0.6.17; this release calls `channels/messages:sendChatMessage`. */
+// authz: insertChatMessage requires a shared-inbox reader before it writes.
 export const sendChatMessage = authedMutation({
-	args: {
-		threadId: v.id('conversationThreads'),
-		text: v.string(),
-		contactId: v.optional(v.id('contacts')),
-	},
-	handler: async (ctx, args, session) => {
-		// Conversation threads are the shared customer inbox — sending an outbound
-		// chat message on a thread is a support action, so the caller must be a
-		// shared-inbox reader (inbox/access.ts).
-		requirePermission(isSharedInboxReader(session), NOT_A_READER);
-		const content = JSON.stringify({ text: args.text });
-
-		const now = Date.now();
-		const id = await ctx.db.insert('unifiedMessages', {
-			threadId: args.threadId,
-			channel: 'chat',
-			direction: 'outbound',
-			contactId: args.contactId,
-			...(await sealUnifiedMessageContentAtWrite(content)),
-			externalMessageId: `chat_${now}_${Math.random().toString(36).slice(2, 9)}`,
-			status: 'delivered',
-			createdAt: now,
-		});
-
-		// Chat is terminal on insert ('delivered'), so this row IS the
-		// successful send — stamp the channel card's live signal here too.
-		await stampChannelLastSuccessfulSend(ctx, 'chat', now);
-		// A chat reply closes the thread's response clock (inbox/sla/clock.ts).
-		await threadTransition(ctx, {
-			threadId: args.threadId,
-			input: { kind: 'reply_sent', at: now },
-		});
-
-		return id;
-	},
+	args: sendChatMessageArgs,
+	handler: async (ctx, args, session) => await insertChatMessage(ctx, args, session),
 });
 
-/**
- * Update channel configuration.
- *
- * The non-secret fields (`isEnabled`, `displayName`) are written inline.
- * The credential `config` blob is NEVER written here in plaintext — this is a
- * v8 mutation and `encryptSecret` is Node-only. When a `config` is supplied we
- * schedule the Node action `channels.outbound.encryptAndPersistConfig`, which
- * wraps it in an AES-256-GCM envelope and patches the row. The
- * `channelConfigs.config` column therefore only ever holds an encrypted
- * envelope on disk (encrypt-on-write, A3). Atomic single-org policy: no dual
- * plaintext read path — `channels.outbound.dispatchOutbound` always decrypts.
- */
+/** Remove after release 0.6.17; this release calls `channels/config:updateChannelConfig`. */
+// authz: saveChannelConfig requires organization:manage before it writes.
 export const updateChannelConfig = authedMutation({
-	args: {
-		channel: unifiedMessageChannelValidator,
-		isEnabled: v.optional(v.boolean()),
-		displayName: v.optional(v.string()),
-		config: v.optional(v.string()),
-	},
-	handler: async (ctx, args, session) => {
-		requirePermission(
-			hasPermission(session.role, 'organization:manage'),
-			'Only owners and admins can configure channels'
-		);
-		const existing = await ctx.db
-			.query('channelConfigs')
-			.withIndex('by_channel', (q) => q.eq('channel', args.channel))
-			.first();
-
-		const now = Date.now();
-		let configId: Id<'channelConfigs'>;
-		if (existing) {
-			await ctx.db.patch(existing._id, {
-				...(args.isEnabled !== undefined ? { isEnabled: args.isEnabled } : {}),
-				...(args.displayName !== undefined ? { displayName: args.displayName } : {}),
-				updatedAt: now,
-			});
-			configId = existing._id;
-		} else {
-			configId = await ctx.db.insert('channelConfigs', {
-				channel: args.channel,
-				isEnabled: args.isEnabled ?? false,
-				displayName: args.displayName,
-				// config left unset until the encrypt action persists the envelope.
-				createdAt: now,
-				updatedAt: now,
-			});
-		}
-
-		// Encrypt-on-write: hand the plaintext to the Node action, which encrypts
-		// and patches `config`. The plaintext never lands in the row.
-		if (args.config !== undefined) {
-			await ctx.scheduler.runAfter(0, internal.channels.outbound.encryptAndPersistConfig, {
-				channel: args.channel,
-				plaintextConfig: args.config,
-			});
-		}
-
-		return configId;
-	},
+	args: updateChannelConfigArgs,
+	handler: async (ctx, args, session) => await saveChannelConfig(ctx, args, session),
 });
 
-/**
- * Patch the encrypted credential envelope onto a channel config row. Sole
- * writer of the `config` and `configuredFields` columns. Called only by
- * `channels.outbound.encryptAndPersistConfig` after it merged the save over the
- * stored credentials and encrypted the result — `config` is always a serialized
- * AES-256-GCM envelope, never plaintext, and `configuredFields` names the fields
- * inside it (names only) so the v8 settings query can report which credentials
- * are stored without being able to open the envelope.
- */
+/** Remove after release 0.6.17; this release calls `channels/config:setChannelConfigSecret`. */
 export const setChannelConfigSecret = internalMutation({
-	args: {
-		channel: unifiedMessageChannelValidator,
-		config: v.string(),
-		configuredFields: v.array(v.string()),
-	},
-	handler: async (ctx, args) => {
-		const existing = await ctx.db
-			.query('channelConfigs')
-			.withIndex('by_channel', (q) => q.eq('channel', args.channel))
-			.first();
-		// updateChannelConfig creates the row in the same mutation before
-		// scheduling the encrypt action, so a missing row here means it was
-		// deleted in the interim — surface that loudly rather than silently
-		// dropping the credential (which would leave the channel un-sendable
-		// with no signal).
-		if (!existing) {
-			throw new Error(
-				`setChannelConfigSecret: no channelConfigs row for channel '${args.channel}' — encrypted credential was not persisted`
-			);
-		}
-		await ctx.db.patch(existing._id, {
-			config: args.config,
-			configuredFields: args.configuredFields,
-			updatedAt: Date.now(),
-		});
-	},
+	args: setChannelConfigSecretArgs,
+	handler: async (ctx, args) => await writeChannelConfigSecret(ctx, args),
 });
 
-/**
- * Internal read of a single channel config (including the encrypted `config`
- * envelope) for the Node dispatch action. Not exposed publicly — decryption
- * happens in `channels.outbound.dispatchOutbound`.
- */
+/** Remove after release 0.6.17; this release calls `channels/config:getChannelConfigInternal`. */
 export const getChannelConfigInternal = internalQuery({
-	args: {
-		channel: unifiedMessageChannelValidator,
-	},
-	handler: async (ctx, args) => {
-		return await ctx.db
-			.query('channelConfigs')
-			.withIndex('by_channel', (q) => q.eq('channel', args.channel))
-			.first();
-	},
+	args: getChannelConfigInternalArgs,
+	handler: async (ctx, args) => await channelConfigByChannel(ctx, args),
 });
 
-/**
- * Resolve the destination address/handle for a contact on a given channel,
- * for outbound dispatch (the SMS/WhatsApp `To`). Reads `contactIdentities`,
- * preferring the primary identity. `sms` maps onto the `phone` identity
- * channel. Returns null when the contact has no identity for the channel.
- */
+/** Remove after release 0.6.17; this release calls `channels/outboundTargets:getContactChannelIdentifier`. */
 export const getContactChannelIdentifier = internalQuery({
-	args: {
-		contactId: v.id('contacts'),
-		channel: outboundChannelValidator,
-	},
-	handler: async (ctx, args): Promise<string | null> => {
-		// `sms` outbound is keyed off the contact's phone identity.
-		const accepted = args.channel === 'sms' ? ['sms', 'phone'] : [args.channel];
-		const identities = await ctx.db
-			.query('contactIdentities')
-			.withIndex('by_contact', (q) => q.eq('contactId', args.contactId))
-			.collect(); // bounded: a contact has a handful of channel identities
-		const matches = identities.filter((id) => accepted.includes(id.channel));
-		if (matches.length === 0) return null;
-		const primary = matches.find((m) => m.isPrimary);
-		return (primary ?? matches[0]!).identifier;
-	},
+	args: getContactChannelIdentifierArgs,
+	handler: async (ctx, args): Promise<string | null> => await contactChannelIdentifier(ctx, args),
 });
 
-/**
- * Resolve (or create) the conversation thread to use for a user-initiated
- * outbound channel message, and validate the send is possible. Backs the public
- * `channels.outbound.sendChannelMessage` action — which, being a `'use node'`
- * action, cannot touch the db itself. Unlike the fail-safe agent-reply path
- * (which silently records a `failed` row), the manual path throws on a
- * misconfiguration so the admin gets immediate feedback in the compose UI.
- *
- * Continues the contact's most recent thread for the channel when one exists
- * (so a manual reply lands in the same conversation), otherwise opens a fresh
- * thread. Returns the thread id; the caller schedules `dispatchOutbound`.
- *
- * `threadId` PINS the conversation instead of inferring it. The Team Inbox
- * replies per message, from inside a thread the agent is already reading, and
- * "the contact's most recent thread on this channel" is not reliably that one —
- * an older thread reopened for triage would silently answer on the newer one.
- * The contact composer sends no thread and keeps the inferring behaviour.
- */
+/** Remove after release 0.6.17; this release calls `channels/outboundTargets:resolveOutboundThread`. */
 export const resolveOutboundThread = internalMutation({
-	args: {
-		contactId: v.id('contacts'),
-		channel: outboundChannelValidator,
-		threadId: v.optional(v.id('conversationThreads')),
-	},
+	args: resolveOutboundThreadArgs,
 	returns: v.id('conversationThreads'),
-	handler: async (ctx, args): Promise<Id<'conversationThreads'>> => {
-		// The channel must be configured AND enabled — a disabled/unconfigured
-		// channel would only ever record a `failed` row in dispatchOutbound, so
-		// reject up front with a clear message for the compose UI.
-		const config = await ctx.db
-			.query('channelConfigs')
-			.withIndex('by_channel', (q) => q.eq('channel', args.channel))
-			.first();
-		if (!config || !config.isEnabled) {
-			throw new Error(
-				`The ${args.channel} channel is not enabled. Configure and enable it in Settings → Channels first.`
-			);
-		}
-
-		// Treat a soft-deleted (GDPR-erased / unsubscribe-deleted) contact as
-		// not-found so an admin acting on a stale id can't dispatch a channel
-		// message to someone who exercised their right to erasure. Mirrors the
-		// schema-mandated `deletedAt === undefined` filter every other lookup
-		// (e.g. contacts/timeline.ts, contacts get()) honors.
-		const contact = await ctx.db.get(args.contactId);
-		if (!contact || contact.deletedAt !== undefined) throw new Error('Contact not found');
-
-		// sms/whatsapp need a destination identity; generic posts to a fixed
-		// endpoint and needs none. Block the send early when the address is absent.
-		if (args.channel === 'sms' || args.channel === 'whatsapp') {
-			const accepted = args.channel === 'sms' ? ['sms', 'phone'] : ['whatsapp'];
-			const identities = await ctx.db
-				.query('contactIdentities')
-				.withIndex('by_contact', (q) => q.eq('contactId', args.contactId))
-				.collect(); // bounded: a contact has a handful of channel identities
-			if (!identities.some((id) => accepted.includes(id.channel))) {
-				throw new Error(`This contact has no ${args.channel} address on file.`);
-			}
-		}
-
-		// A pinned thread must belong to this contact — the id reaches us from a
-		// client, so an unrelated thread would otherwise become a place to write
-		// an outbound message about someone else.
-		if (args.threadId) {
-			const thread = await ctx.db.get(args.threadId);
-			if (!thread || thread.contactId !== args.contactId) {
-				throw new Error('That conversation does not belong to this contact.');
-			}
-			return thread._id;
-		}
-
-		// Continue the most recent thread for this contact+channel if one exists.
-		const recent = await ctx.db
-			.query('unifiedMessages')
-			.withIndex('by_contact', (q) => q.eq('contactId', args.contactId))
-			.order('desc')
-			.take(50); // bounded scan of the contact's latest messages
-		const sameChannel = recent.find((m) => m.channel === args.channel);
-		if (sameChannel) return sameChannel.threadId;
-
-		// No prior thread for this channel — open a fresh one. The display
-		// identifier mirrors the inbound convention (raw handle for sms/whatsapp,
-		// email/label for generic).
-		const name = [contact.firstName, contact.lastName].filter(Boolean).join(' ').trim();
-		const identifier = contact.email ?? name ?? args.contactId;
-		const now = Date.now();
-		const threadId = await ctx.db.insert('conversationThreads', {
-			subject: name ? `Conversation with ${name}` : `${args.channel} conversation`,
-			normalizedSubject: '',
-			contactId: args.contactId,
-			contactIdentifier: identifier,
-			status: 'open',
-			messageCount: 0,
-			lastMessageAt: now,
-			firstMessageAt: now,
-			createdAt: now,
-		});
-		// A fresh thread is born 'open'; account the open-count entry here so the
-		// denormalized counter stays consistent with the inbound create-as-open
-		// paths (inbox/threads/module.ts). Continuing an existing thread above
-		// returns early and never reaches this branch, so it isn't double-counted.
-		await applyOpenThreadDelta(ctx, 1);
-		return threadId;
-	},
+	handler: async (ctx, args) => await resolveThreadForOutbound(ctx, args),
 });
 
-/** A channel's health as a check found it. */
-export const channelHealthFields = {
-	healthStatus: healthStatusValidator,
-	lastError: v.optional(v.string()),
-};
-
-/**
- * Stamp a health check's result on a channel's config row. An absent
- * `lastError` keeps the last one recorded.
- */
-export async function writeChannelHealth(
-	ctx: MutationCtx,
-	configId: Id<'channelConfigs'>,
-	health: ObjectType<typeof channelHealthFields>
-): Promise<void> {
-	const now = Date.now();
-	await ctx.db.patch(configId, {
-		healthStatus: health.healthStatus,
-		lastHealthCheckAt: now,
-		...(health.lastError !== undefined ? { lastError: health.lastError } : {}),
-		updatedAt: now,
-	});
-}
-
-/** The commit of `channels/outbound.probeChannelHealth`. */
+/** Remove after release 0.6.17; this release calls `channels/health:updateChannelHealth`. */
 export const updateChannelHealth = internalMutation({
-	args: { channel: unifiedMessageChannelValidator, ...channelHealthFields },
-	handler: async (ctx, { channel, ...health }) => {
-		const config = await ctx.db
-			.query('channelConfigs')
-			.withIndex('by_channel', (q) => q.eq('channel', channel))
-			.first();
-
-		if (!config) return;
-		await writeChannelHealth(ctx, config._id, health);
-	},
+	args: updateChannelHealthArgs,
+	handler: async (ctx, args) => await recordChannelHealth(ctx, args),
 });
 
-// ============================================================
-// Channel Health Check Action (called by cron)
-// ============================================================
-
-/**
- * Run health checks on all enabled channels. A configured SMS/WhatsApp/webhook
- * channel is probed by `channels/outbound.probeChannelHealth`, which records
- * its own result; every other result lands in one commit at the end.
- */
+/** Remove after release 0.6.17; the channel health cron now registers `channels/health:runChannelHealthChecks`. */
 export const runChannelHealthChecks = internalAction({
 	args: {},
 	returns: v.null(),
-	handler: async (ctx) => {
-		const configs = await ctx.runQuery(internal.unifiedMessages.getEnabledChannels);
-		const results: ChannelHealthResult[] = [];
-
-		for (const config of configs) {
-			const checked = { channel: config.channel, hadCredentials: Boolean(config.config) };
-			// Email/chat have no outbound provider adapter here (email health
-			// is tracked by the existing providerHealth system; chat is native),
-			// so config-presence is the only available signal.
-			if (config.channel === 'email' || config.channel === 'chat') {
-				results.push({ ...checked, healthStatus: 'healthy' });
-				continue;
-			}
-
-			// For SMS/WhatsApp/Webhook: fast-path the unconfigured case, then
-			// run the adapter's REAL healthCheck() probe (Twilio/Meta/webhook)
-			// for configured channels. The probe needs node:crypto to decrypt
-			// the stored creds, so it lives in a `'use node'` action — a channel
-			// with revoked/invalid credentials surfaces degraded/down instead of
-			// reporting healthy off mere config-blob presence.
-			if (!config.config) {
-				results.push({
-					...checked,
-					healthStatus: 'down',
-					lastError: 'No credentials configured',
-				});
-				continue;
-			}
-
-			try {
-				await ctx.runAction(internal.channels.outbound.probeChannelHealth, {
-					channel: config.channel,
-				});
-			} catch (error) {
-				results.push({
-					...checked,
-					healthStatus: 'down',
-					lastError: error instanceof Error ? error.message : String(error),
-				});
-			}
-		}
-
-		if (results.length > 0) {
-			await ctx.runMutation(internal.channels.outboundCommit.recordHealthChecks, { results });
-		}
-		return null;
-	},
+	handler: async (ctx) => await checkEnabledChannels(ctx),
 });
 
-type ChannelHealthResult = FunctionArgs<
-	typeof internal.channels.outboundCommit.recordHealthChecks
->['results'][number];
-
-/**
- * Internal query to get enabled channel configs
- */
+/** Remove after release 0.6.17; this release calls `channels/health:getEnabledChannels`. */
 export const getEnabledChannels = internalQuery({
 	args: {},
-	handler: async (ctx) => {
-		// `channelConfigs` is intrinsically tiny — one row per channel
-		// kind (email/sms/whatsapp/generic/chat), capped by the union
-		// literal in the schema. Indexing would add maintenance cost for
-		// no read win at this scale.
-		const all = await ctx.db.query('channelConfigs').collect(); // bounded: ≤5 rows by schema literal union
-		return all.filter((c) => c.isEnabled);
-	},
+	handler: async (ctx) => await enabledChannelConfigs(ctx),
 });
-
-// ============================================================
-// Helpers
-// ============================================================
-
-/**
- * Stamp `lastSuccessfulSend` (and `updatedAt`) onto a channel's `channelConfigs`
- * row. The sole writer of that field — it has no other source, so the dashboard
- * channel card's "Last Successful Send" stat renders "Never" until this runs.
- *
- * Called from every successful-send writer, not just `recordOutbound`: the
- * SMS/WhatsApp/generic path (recordOutbound, `sent`), the email path
- * (mirrorEmailSendWrite, `sent`/`delivered`, which is how the highest-volume
- * default channel records outbound — it never goes through recordOutbound), and
- * chat (sendChatMessage, terminal `delivered`). A no-op when the channel has no
- * config row (nothing to stamp).
- */
-async function stampChannelLastSuccessfulSend(
-	ctx: MutationCtx,
-	channel: Doc<'channelConfigs'>['channel'],
-	now: number
-): Promise<void> {
-	const config = await ctx.db
-		.query('channelConfigs')
-		.withIndex('by_channel', (q) => q.eq('channel', channel))
-		.first();
-	if (!config) return;
-	await ctx.db.patch(config._id, { lastSuccessfulSend: now, updatedAt: now });
-}
-
-/**
- * Find an already-mirrored `email` row by its provider message id, scoped to a
- * direction. The idempotency seam for the two email mirror helpers
- * (`recordInboundMirror` inbound, `mirrorEmailSendWrite` outbound): re-delivery of an
- * inbound or a retried `onComplete` of an outbound must not append a duplicate
- * timeline row. Returns null when no `externalMessageId` is known — without a
- * stable key there is nothing to dedupe on, so the caller inserts.
- */
-async function findMirroredEmail(
-	ctx: MutationCtx,
-	args: {
-		externalMessageId: string | undefined;
-		channel: Doc<'unifiedMessages'>['channel'];
-		direction: Doc<'unifiedMessages'>['direction'];
-	}
-): Promise<Doc<'unifiedMessages'> | null> {
-	if (!args.externalMessageId) return null;
-	const id = args.externalMessageId;
-	const matches = await ctx.db
-		.query('unifiedMessages')
-		.withIndex('by_external_message_id', (q) => q.eq('externalMessageId', id))
-		.take(10); // bounded: a provider message id maps to one mirror row per (channel, direction)
-	return matches.find((m) => m.channel === args.channel && m.direction === args.direction) ?? null;
-}
-
-/**
- * Mirror an inbound message into `unifiedMessages` (idempotent). Called in the
- * same transaction as `inbox/messages.ts:receiveMessage`, so the
- * dedupe-then-insert logic lives in this plain helper. Returns the existing
- * row's id on a re-delivery.
- */
-export async function recordInboundMirror(
-	ctx: MutationCtx,
-	args: {
-		threadId: Id<'conversationThreads'>;
-		channel: Doc<'unifiedMessages'>['channel'];
-		contactId?: Id<'contacts'>;
-		content: string;
-		externalMessageId?: string;
-		metadata?: string;
-	}
-): Promise<Id<'unifiedMessages'>> {
-	// Idempotent on the provider message id: a re-delivered inbound (the
-	// MTA/provider re-POSTs the same Message-ID) must not produce a second
-	// timeline row. Match on (externalMessageId, channel, inbound) so an inbound
-	// and its outbound reply — which never share an id — can't collide.
-	const existing = await findMirroredEmail(ctx, {
-		externalMessageId: args.externalMessageId,
-		channel: args.channel,
-		direction: 'inbound',
-	});
-	if (existing) return existing._id;
-
-	return await ctx.db.insert('unifiedMessages', {
-		threadId: args.threadId,
-		channel: args.channel,
-		direction: 'inbound',
-		contactId: args.contactId,
-		...(await sealUnifiedMessageContentAtWrite(args.content)),
-		externalMessageId: args.externalMessageId,
-		status: 'received',
-		metadata: args.metadata,
-		createdAt: Date.now(),
-	});
-}
-
-/**
- * Mirror a confirmed outbound email into `unifiedMessages` (idempotent). Called
- * in the same transaction as the Send lifecycle's `agent_reply` success branch.
- * Returns the existing row's id when completion fires more than once for the
- * same Send.
- */
-export async function mirrorEmailSendWrite(
-	ctx: MutationCtx,
-	args: {
-		threadId: Id<'conversationThreads'>;
-		contactId: Id<'contacts'>;
-		subject?: string;
-		textBody?: string;
-		htmlBody?: string;
-		externalMessageId?: string;
-		status?: Doc<'unifiedMessages'>['status'];
-	}
-): Promise<Id<'unifiedMessages'>> {
-	const existing = await findMirroredEmail(ctx, {
-		externalMessageId: args.externalMessageId,
-		channel: 'email',
-		direction: 'outbound',
-	});
-	if (existing) return existing._id;
-
-	const content = JSON.stringify({
-		text: args.textBody,
-		html: args.htmlBody,
-		subject: args.subject,
-	});
-
-	const now = Date.now();
-	const status = args.status ?? 'sent';
-	const id = await ctx.db.insert('unifiedMessages', {
-		threadId: args.threadId,
-		channel: 'email',
-		direction: 'outbound',
-		contactId: args.contactId,
-		...(await sealUnifiedMessageContentAtWrite(content)),
-		externalMessageId: args.externalMessageId,
-		status,
-		createdAt: now,
-	});
-
-	// Email is the primary, default channel on the dashboard card, but its
-	// outbound rows flow through here (not recordOutbound), so stamp the live
-	// 'Last Successful Send' signal on a confirmed send. Only on this insert
-	// branch — past the idempotent dedupe early-return above — so a re-fired
-	// workpool onComplete can't back-date the stamp.
-	if (status === 'sent' || status === 'delivered') {
-		await stampChannelLastSuccessfulSend(ctx, 'email', now);
-	}
-
-	return id;
-}
-
-function parseMetadata(str: string): Record<string, unknown> {
-	try {
-		const parsed: unknown = JSON.parse(str);
-		if (parsed && typeof parsed === 'object') return parsed as Record<string, unknown>;
-		return {};
-	} catch {
-		return {};
-	}
-}
