@@ -2,7 +2,7 @@
  * Ask scope for the command palette: the knowledge + files question, answered
  * with citations inside the overlay.
  *
- * The `quickQuery.ask` action with `QueryResult` rendering, inside the palette
+ * The `assistant/quickQuery.ask` action with `QueryResult` rendering, inside the palette
  * rather than a second modal. ⌘⇧K is an alias that opens the overlay already on
  * this scope, and `?` reaches it from anywhere.
  *
@@ -26,7 +26,7 @@ export interface QuickQueryAnswer {
 
 export function useCommandPaletteAsk() {
 	const { t } = useI18n();
-	const { run, isLoading } = useBackendOperation(api.quickQuery.ask, {
+	const { run, isLoading } = useBackendOperation(api.assistant.quickQuery.ask, {
 		label: () => t('components.query.quickQueryPanel.askOperation'),
 		type: 'action',
 	});

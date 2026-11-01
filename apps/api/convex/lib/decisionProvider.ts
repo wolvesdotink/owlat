@@ -16,7 +16,7 @@
  *   • STORED per-org config (the `aiProviderConfig` row's `decision*` columns)
  *     WINS when the operator has chosen a decision provider. The key is
  *     decrypted ONLY inside the sibling `'use node'` action
- *     `aiProviderConfigActions._decryptSecretEnvelope` — the plaintext never
+ *     `aiRouting/providerConfigActions._decryptSecretEnvelope` — the plaintext never
  *     crosses to a query result or the client.
  *   • ENV `DECISION_*` / `TYPESAFE_API_KEY` is the deployment fallback for a
  *     self-hoster who configures through the environment and never opens the
@@ -187,7 +187,7 @@ interface DecisionKeyEnvelope {
 /**
  * The decision-key envelope of a row, or `undefined` when any of the four
  * columns is absent (no key stored). The five columns are written and cleared in
- * lockstep by `aiProviderConfig._persistConfig`; the fifth — `decisionKeyPreview`
+ * lockstep by `aiRouting/providerConfig._persistConfig`; the fifth — `decisionKeyPreview`
  * — is for the UI and plays no part in decryption, so it is not read here.
  */
 function decisionKeyEnvelope(row: Doc<'aiProviderConfig'>): DecisionKeyEnvelope | undefined {
@@ -209,7 +209,7 @@ function decisionKeyEnvelope(row: Doc<'aiProviderConfig'>): DecisionKeyEnvelope 
 
 /** Decrypt one envelope via the Node crypto action (the resolver never holds the key long). */
 function decryptEnvelope(ctx: ActionCtx, envelope: DecisionKeyEnvelope): Promise<string> {
-	return ctx.runAction(internal.aiProviderConfigActions._decryptSecretEnvelope, envelope);
+	return ctx.runAction(internal.aiRouting.providerConfigActions._decryptSecretEnvelope, envelope);
 }
 
 /**
@@ -357,7 +357,7 @@ function signatureOf(row: Doc<'aiProviderConfig'> | null): string {
  * no migration, no banner, no preselected vendor.
  */
 export async function resolveDecisionConfig(ctx: ActionCtx): Promise<ResolvedDecisionPlane> {
-	const row = await ctx.runQuery(internal.aiProviderConfig._getConfigRow, {});
+	const row = await ctx.runQuery(internal.aiRouting.providerConfig._getConfigRow, {});
 	const signature = signatureOf(row);
 	const cached = planeCache;
 	if (cached && cached.signature === signature) return cached.plane;

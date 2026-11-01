@@ -7,7 +7,7 @@
  *
  *   • STORED per-org config (`aiProviderConfig` row) WINS when present. The
  *     language key is decrypted ONLY for hosted providers, and ONLY inside the
- *     sibling `'use node'` action `aiProviderConfigActions._decryptSecretEnvelope`
+ *     sibling `'use node'` action `aiRouting/providerConfigActions._decryptSecretEnvelope`
  *     (the plaintext key never crosses to a query result or the client).
  *   • ENV `LLM_*` is the deployment fallback when no row exists — self-hosters
  *     who set `LLM_*` keep working with zero UI.

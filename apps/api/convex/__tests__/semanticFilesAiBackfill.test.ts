@@ -71,7 +71,7 @@ async function processJobs(t: T): Promise<{ fileId: string; delayMs: number }[]>
 }
 
 const saveProvider = (t: T) =>
-	t.mutation(internal.aiProviderConfig._persistConfig, {
+	t.mutation(internal.aiRouting.providerConfig._persistConfig, {
 		languageProviderKind: 'openai',
 		modelFast: 'fast',
 		modelCapable: 'capable',

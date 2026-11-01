@@ -27,13 +27,13 @@ const emit = defineEmits<{
 
 const { t, locale } = useI18n();
 
-const { run: togglePin } = useBackendOperation(api.visualizationAgent.togglePin, {
+const { run: togglePin } = useBackendOperation(api.analytics.visualizationAgent.togglePin, {
 	label: () => t('components.visualizations.visualizationCard.togglePinOperation'),
 });
-const { run: remove } = useBackendOperation(api.visualizationAgent.remove, {
+const { run: remove } = useBackendOperation(api.analytics.visualizationAgent.remove, {
 	label: () => t('components.visualizations.visualizationCard.removeOperation'),
 });
-const { run: regenerate } = useBackendOperation(api.visualizationAgent.regenerate, {
+const { run: regenerate } = useBackendOperation(api.analytics.visualizationAgent.regenerate, {
 	label: () => t('components.visualizations.visualizationCard.refreshOperation'),
 });
 

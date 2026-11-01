@@ -4002,9 +4002,9 @@ dispatch + token-usage extraction surface. Two entry points:
 { object, tokenUsage, modelUsed }` — wraps `generateObject`.
 
 Callers: the **Agent walker** (for the two LLM-based **Agent step
-(module)** kinds — `classify` and `draft`), `translate.ts`,
+(module)** kinds — `classify` and `draft`), `emailTemplates/translate.ts`,
 `knowledge/extraction.ts`, `semanticFileProcessing.ts`, and
-`visualizationAgent.ts`. Each caller records every billed call as one
+`analytics/visualizationAgent.ts`. Each caller records every billed call as one
 row of the `llmUsageEvents` ledger (`analytics/llmUsage.ts`), the one
 store the spend ceiling reads; agent steps do it under `agent_*`
 features. The walker also writes a step's `tokenUsage` and `modelUsed`

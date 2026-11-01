@@ -99,7 +99,7 @@ export async function loadConfigEntry(
 	const now = Date.now();
 	const live = cached !== null && cached.expiresAt > now;
 	if (live && !options.isFresh && now - cached.checkedAt < AI_CONFIG_RECHECK_MS) return cached;
-	const row = await ctx.runQuery(internal.aiProviderConfig._getConfigRow, {});
+	const row = await ctx.runQuery(internal.aiRouting.providerConfig._getConfigRow, {});
 	const fingerprint = rowFingerprint(row);
 	const isSameRow = live && cached.fingerprint === fingerprint && row !== null;
 	const entry: ConfigCacheEntry = {
@@ -193,7 +193,7 @@ export async function planeKey(
 
 /** Decrypt one envelope via the Node crypto action (the v8 resolver can't). */
 function decryptEnvelope(ctx: ActionCtx, envelope: KeyEnvelope): Promise<string> {
-	return ctx.runAction(internal.aiProviderConfigActions._decryptSecretEnvelope, envelope);
+	return ctx.runAction(internal.aiRouting.providerConfigActions._decryptSecretEnvelope, envelope);
 }
 
 /**

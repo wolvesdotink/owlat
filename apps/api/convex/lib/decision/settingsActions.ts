@@ -3,7 +3,7 @@
 /**
  * The DECISION plane's half of the AI-provider settings actions.
  *
- * A sibling of `aiProviderConfigActions.ts` rather than more of it. Not for size
+ * A sibling of `aiRouting/providerConfigActions.ts` rather than more of it. Not for size
  * — that file has room — but because this half has a shape of its own: it is the
  * only settings surface that asks a provider a real question instead of
  * inspecting a credential, so it reaches the resolver, the gate, the breaker and
@@ -53,7 +53,7 @@ import {
 /**
  * The decision plane's stored key, or `undefined` when any of its four envelope
  * columns is absent. The five decision columns are written and cleared in
- * lockstep by `aiProviderConfig._persistConfig`; the fifth — the masked preview —
+ * lockstep by `aiRouting/providerConfig._persistConfig`; the fifth — the masked preview —
  * is for the UI and plays no part in decryption.
  */
 function storedDecisionKey(row: Doc<'aiProviderConfig'>): string | undefined {

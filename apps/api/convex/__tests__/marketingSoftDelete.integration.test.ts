@@ -285,7 +285,7 @@ describe('campaigns', () => {
 
 		const candidates = await t.query(api.campaigns.organization.listAttentionCandidates, {});
 		expect(candidates.map((c) => c._id)).not.toContain(campaignId);
-		const search = await t.query(api.globalSearch.search, { query: 'archived' });
+		const search = await t.query(api.search.global.search, { query: 'archived' });
 		expect(search.campaigns).toEqual([]);
 		await t.run(async (ctx) => ctx.db.patch(campaignId, { status: 'sent' }));
 		expect(

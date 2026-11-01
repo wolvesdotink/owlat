@@ -181,16 +181,16 @@ describe('operator read authz — agent/health.getCostByStep', () => {
 	});
 });
 
-// ============ visualizationAgent.list ============
+// ============ analytics/visualizationAgent.list ============
 
-describe('operator read authz — visualizationAgent.list', () => {
+describe('operator read authz — analytics/visualizationAgent.list', () => {
 	it('rejects a non-admin member (editor) with forbidden', async () => {
 		const t = convexTest(schema, modules);
 		await enableFeatures(t, ['mail.external']);
 		mockRole = 'editor';
 		const category = await t
 			.withIdentity(identity)
-			.query(api.visualizationAgent.list, {})
+			.query(api.analytics.visualizationAgent.list, {})
 			.then(() => undefined)
 			.catch((e: { data?: { category?: string } }) => e?.data?.category);
 		expect(category).toBe('forbidden');
@@ -214,7 +214,7 @@ describe('operator read authz — visualizationAgent.list', () => {
 			});
 		});
 		mockRole = 'admin';
-		const list = await t.withIdentity(identity).query(api.visualizationAgent.list, {});
+		const list = await t.withIdentity(identity).query(api.analytics.visualizationAgent.list, {});
 		expect(list).toHaveLength(1);
 	});
 });

@@ -34,7 +34,7 @@ import { isImeComposing } from '~/utils/imeComposition';
  * It is SCOPED BY ROUTE (`~/lib/commandPaletteScope`). On Postbox it opens on
  * Mail — the full operator grammar, its autocomplete, live hits from the real
  * mail search, and Enter handing off to `/dashboard/postbox/search`. On
- * knowledge/files it opens on Ask, which answers from `quickQuery.ask` with its
+ * knowledge/files it opens on Ask, which answers from `assistant/quickQuery.ask` with its
  * citations right here. Everywhere else it opens on Everything, the cross-object
  * index. Tab cycles, so nothing is ever out of reach. This replaced four separate
  * boxes — this palette, the Postbox rail bar, the search page's bar and the Quick
@@ -122,7 +122,7 @@ const {
 	isRefetching: isGlobalSearchRefetching,
 	reset: resetGlobalSearch,
 } = useOrganizationQuery(
-	api.globalSearch.search,
+	api.search.global.search,
 	() =>
 		// undefined → the wrapper skips the subscription (no empty / <2-char query).
 		prompt.value === 'palette' && debouncedTerm.value.trim().length >= SEARCH_MIN_QUERY

@@ -39,12 +39,12 @@ import { isStoredKeyStranded, storedKeyApplies } from '~/utils/aiProviderKeyReus
  *
  * THE INVARIANT: an install that never opted in must save exactly what it saved
  * before. {@link decisionSaveArgs} returns an EMPTY object in that case, and
- * `aiProviderConfigActions.saveConfig` reads an absent `decisionProviderKind` as
+ * `aiRouting/providerConfigActions.saveConfig` reads an absent `decisionProviderKind` as
  * "leave the plane alone" — not as a clear. So the language card can be edited
  * and saved all day without touching, enabling or erasing anything here.
  */
 
-/** The decision fields of `aiProviderConfig.getConfig`, structurally. */
+/** The decision fields of `aiRouting/providerConfig.getConfig`, structurally. */
 export interface StoredDecisionConfig {
 	configured?: boolean;
 	decisionProviderKind?: DecisionProviderKind;
@@ -67,7 +67,7 @@ export interface DecisionSaveArgs {
 export interface UseAiDecisionPlaneOptions {
 	/** Reader for the stored config — an accessor, so the ref stays the parent's. */
 	config: () => StoredDecisionConfig | null | undefined;
-	/** `aiProviderConfigActions.testConnection`, bound by the parent. */
+	/** `aiRouting/providerConfigActions.testConnection`, bound by the parent. */
 	runTest: (args: {
 		plane: 'decision';
 	}) => Promise<BackendOperationResult<{ ok: boolean; error?: string }>>;

@@ -8,7 +8,7 @@
  * kind or the normalized base URL of a plane changes, the stored key is not
  * carried over and the save needs a newly entered key.
  *
- * Pure and v8-safe: the settings mutation (`aiProviderConfig.ts`) calls it with
+ * Pure and v8-safe: the settings mutation (`aiRouting/providerConfig.ts`) calls it with
  * already-encrypted envelopes; nothing here decrypts.
  */
 

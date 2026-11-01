@@ -1,5 +1,5 @@
 /**
- * quickQuery.ask — cross-source, LLM-synthesized ask-anything.
+ * assistant/quickQuery.ask — cross-source, LLM-synthesized ask-anything.
  *
  * `ask` is now an authedAction that fans out over BOTH retrieval seams — the
  * knowledge graph (`knowledge/retrieval.semanticSearch`) and the semantic file
@@ -179,12 +179,12 @@ beforeEach(() => {
 	});
 });
 
-describe('quickQuery.ask — access gates', () => {
+describe('assistant/quickQuery.ask — access gates', () => {
 	it('throws when ai.knowledge is disabled, even for a member', async () => {
 		const t = convexTest(schema, modules);
 		rateLimiterTest.register(t);
 		// No instanceSettings row → ai.knowledge resolves to its default (off).
-		await expect(t.action(api.quickQuery.ask, { question: 'budget' })).rejects.toThrow(
+		await expect(t.action(api.assistant.quickQuery.ask, { question: 'budget' })).rejects.toThrow(
 			/disabled|forbidden/i
 		);
 	});
@@ -194,13 +194,13 @@ describe('quickQuery.ask — access gates', () => {
 		rateLimiterTest.register(t);
 		await enableFeatures(t, ['ai.knowledge']);
 		sessionMock.member = false;
-		await expect(t.action(api.quickQuery.ask, { question: 'budget' })).rejects.toThrow(
+		await expect(t.action(api.assistant.quickQuery.ask, { question: 'budget' })).rejects.toThrow(
 			/access|forbidden/i
 		);
 	});
 });
 
-describe('quickQuery.ask — cross-source synthesis + citations', () => {
+describe('assistant/quickQuery.ask — cross-source synthesis + citations', () => {
 	it('spans knowledge entries AND files, returning citations for both', async () => {
 		const t = convexTest(schema, modules);
 		rateLimiterTest.register(t);
@@ -227,7 +227,9 @@ describe('quickQuery.ask — cross-source synthesis + citations', () => {
 			embedAt: 5,
 		});
 
-		const res = await t.action(api.quickQuery.ask, { question: 'budget and rollout plan' });
+		const res = await t.action(api.assistant.quickQuery.ask, {
+			question: 'budget and rollout plan',
+		});
 
 		// The synthesized answer flows through from the (mocked) model.
 		expect(res.answer).toContain('forty thousand euro');
@@ -283,7 +285,7 @@ describe('quickQuery.ask — cross-source synthesis + citations', () => {
 			modelUsed: 'mock-model',
 			isTruncated: true,
 		});
-		const res = await t.action(api.quickQuery.ask, { question: 'budget' });
+		const res = await t.action(api.assistant.quickQuery.ask, { question: 'budget' });
 		expect(res.isTruncated).toBe(true);
 		expect(res.answer).toBe('The Q3 budget is forty');
 	});
@@ -293,7 +295,7 @@ describe('quickQuery.ask — cross-source synthesis + citations', () => {
 		rateLimiterTest.register(t);
 		await enableFeatures(t, ['ai.knowledge']);
 		// No knowledge entries and no files seeded → both legs return empty.
-		const res = await t.action(api.quickQuery.ask, { question: 'anything' });
+		const res = await t.action(api.assistant.quickQuery.ask, { question: 'anything' });
 		expect(res.sources).toHaveLength(0);
 		expect(res.answer).toMatch(/couldn't find/i);
 		expect(runLlmTextMock).not.toHaveBeenCalled();
@@ -303,14 +305,14 @@ describe('quickQuery.ask — cross-source synthesis + citations', () => {
 		const t = convexTest(schema, modules);
 		rateLimiterTest.register(t);
 		await enableFeatures(t, ['ai.knowledge']);
-		const res = await t.action(api.quickQuery.ask, { question: '   ' });
+		const res = await t.action(api.assistant.quickQuery.ask, { question: '   ' });
 		expect(res.sources).toHaveLength(0);
 		expect(res.answer).toMatch(/enter a question/i);
 		expect(runLlmTextMock).not.toHaveBeenCalled();
 	});
 });
 
-describe('quickQuery.ask — untrusted content is scrubbed before the model', () => {
+describe('assistant/quickQuery.ask — untrusted content is scrubbed before the model', () => {
 	it('withholds retrieved content that trips the prompt-injection detector', async () => {
 		const t = convexTest(schema, modules);
 		rateLimiterTest.register(t);
@@ -330,7 +332,7 @@ describe('quickQuery.ask — untrusted content is scrubbed before the model', ()
 			);
 		});
 
-		await t.action(api.quickQuery.ask, { question: 'secret' });
+		await t.action(api.assistant.quickQuery.ask, { question: 'secret' });
 
 		const call = runLlmTextMock.mock.calls[0]![0] as {
 			messages: Array<{ role: string; content: string }>;
@@ -343,13 +345,13 @@ describe('quickQuery.ask — untrusted content is scrubbed before the model', ()
 	});
 });
 
-describe('quickQuery.ask — AI spend gate + input cap', () => {
+describe('assistant/quickQuery.ask — AI spend gate + input cap', () => {
 	it('rejects an over-long question before spending any embed/synthesis call', async () => {
 		const t = convexTest(schema, modules);
 		rateLimiterTest.register(t);
 		await enableFeatures(t, ['ai.knowledge']);
 		const question = 'a'.repeat(2001);
-		await expect(t.action(api.quickQuery.ask, { question })).rejects.toThrow(/too long/i);
+		await expect(t.action(api.assistant.quickQuery.ask, { question })).rejects.toThrow(/too long/i);
 		expect(runLlmTextMock).not.toHaveBeenCalled();
 	});
 
@@ -362,7 +364,7 @@ describe('quickQuery.ask — AI spend gate + input cap', () => {
 		let limited = false;
 		for (let i = 0; i < 60; i++) {
 			try {
-				await t.action(api.quickQuery.ask, { question: `q${i}` });
+				await t.action(api.assistant.quickQuery.ask, { question: `q${i}` });
 			} catch (err) {
 				expect(String(err)).toMatch(/busy|rate|try again/i);
 				limited = true;

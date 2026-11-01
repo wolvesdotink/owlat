@@ -231,7 +231,7 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
 		capacity: 30,
 	},
 
-	// User-triggered batch translation (`translate.translateBatch`). Each call
+	// User-triggered batch translation (`emailTemplates/translate.translateBatch`). Each call
 	// spends a fast-tier LLM call over a batch of items, so cap per-user to stop a
 	// tight loop from draining the LLM budget while leaving normal editor use
 	// roomy.
@@ -242,7 +242,7 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
 		capacity: 30,
 	},
 
-	// User-triggered cross-source Quick Query (`quickQuery.ask`). Each ask spends
+	// User-triggered cross-source Quick Query (`assistant/quickQuery.ask`). Each ask spends
 	// an embedding call plus a capable-tier synthesis call, so cap per-user to
 	// stop a tight loop from draining the LLM budget while leaving normal
 	// interactive use roomy.

@@ -131,23 +131,23 @@ beforeEach(() => {
 	adapterMocks.validateCredentials.mockReset();
 });
 
-describe('aiProviderConfig.saveConfig + getConfig', () => {
+describe('aiRouting/providerConfigActions.saveConfig + providerConfig.getConfig', () => {
 	it('returns { configured: false } when no config exists', async () => {
 		const t = setup();
-		const result = await t.query(api.aiProviderConfig.getConfig, {});
+		const result = await t.query(api.aiRouting.providerConfig.getConfig, {});
 		expect(result.configured).toBe(false);
 	});
 
 	it('round-trips a hosted config readable back WITHOUT the secret', async () => {
 		const t = setup();
-		await t.action(api.aiProviderConfigActions.saveConfig, {
+		await t.action(api.aiRouting.providerConfigActions.saveConfig, {
 			languageProviderKind: 'anthropic',
 			modelFast: 'claude-haiku-4-5',
 			modelCapable: 'claude-opus-4-8',
 			apiKey: 'sk-ant-secret-key-1234',
 		});
 
-		const result = await t.query(api.aiProviderConfig.getConfig, {});
+		const result = await t.query(api.aiRouting.providerConfig.getConfig, {});
 		expect(result.configured).toBe(true);
 		if (!result.configured) throw new Error('unreachable');
 		expect(result.languageProviderKind).toBe('anthropic');
@@ -167,7 +167,7 @@ describe('aiProviderConfig.saveConfig + getConfig', () => {
 
 	it('persists the encrypted envelope but the query never returns ciphertext', async () => {
 		const t = setup();
-		await t.action(api.aiProviderConfigActions.saveConfig, {
+		await t.action(api.aiRouting.providerConfigActions.saveConfig, {
 			languageProviderKind: 'openai',
 			apiKey: 'sk-openai-abcd-key',
 		});
@@ -182,7 +182,7 @@ describe('aiProviderConfig.saveConfig + getConfig', () => {
 		expect(row?.modelFast).toBe('fast-default');
 
 		// …and the public query exposes none of it.
-		const result = await t.query(api.aiProviderConfig.getConfig, {});
+		const result = await t.query(api.aiRouting.providerConfig.getConfig, {});
 		if (!result.configured) throw new Error('unreachable');
 		const serialized = JSON.stringify(result);
 		expect(serialized).not.toContain(row?.secretCiphertext ?? '__nope__');
@@ -191,12 +191,12 @@ describe('aiProviderConfig.saveConfig + getConfig', () => {
 
 	it('saves a local provider with NO key', async () => {
 		const t = setup();
-		await t.action(api.aiProviderConfigActions.saveConfig, {
+		await t.action(api.aiRouting.providerConfigActions.saveConfig, {
 			languageProviderKind: 'openaiCompatible',
 			languageBaseUrl: 'http://localhost:11434/v1',
 		});
 
-		const result = await t.query(api.aiProviderConfig.getConfig, {});
+		const result = await t.query(api.aiRouting.providerConfig.getConfig, {});
 		if (!result.configured) throw new Error('unreachable');
 		expect(result.languageProviderKind).toBe('openaiCompatible');
 		expect(result.isLanguageKeySet).toBe(false);
@@ -207,7 +207,7 @@ describe('aiProviderConfig.saveConfig + getConfig', () => {
 	it('rejects a hosted provider whose base URL is http (SSRF/key-exfil gate)', async () => {
 		const t = setup();
 		await expect(
-			t.action(api.aiProviderConfigActions.saveConfig, {
+			t.action(api.aiRouting.providerConfigActions.saveConfig, {
 				languageProviderKind: 'openai',
 				languageBaseUrl: 'http://api.internal.example/v1',
 				apiKey: 'sk-openai-secret-1234',
@@ -220,7 +220,7 @@ describe('aiProviderConfig.saveConfig + getConfig', () => {
 	it('rejects a hosted provider whose base URL is a private/internal address', async () => {
 		const t = setup();
 		await expect(
-			t.action(api.aiProviderConfigActions.saveConfig, {
+			t.action(api.aiRouting.providerConfigActions.saveConfig, {
 				languageProviderKind: 'openai',
 				languageBaseUrl: 'https://169.254.169.254/v1',
 				apiKey: 'sk-openai-secret-1234',
@@ -232,12 +232,12 @@ describe('aiProviderConfig.saveConfig + getConfig', () => {
 
 	it('accepts a hosted provider with a public https base URL', async () => {
 		const t = setup();
-		await t.action(api.aiProviderConfigActions.saveConfig, {
+		await t.action(api.aiRouting.providerConfigActions.saveConfig, {
 			languageProviderKind: 'openai',
 			languageBaseUrl: 'https://proxy.example.com/v1',
 			apiKey: 'sk-openai-secret-1234',
 		});
-		const result = await t.query(api.aiProviderConfig.getConfig, {});
+		const result = await t.query(api.aiRouting.providerConfig.getConfig, {});
 		if (!result.configured) throw new Error('unreachable');
 		expect(result.languageBaseUrl).toBe('https://proxy.example.com/v1');
 	});
@@ -245,7 +245,7 @@ describe('aiProviderConfig.saveConfig + getConfig', () => {
 	it('rejects a hosted provider saved with no key at all', async () => {
 		const t = setup();
 		await expect(
-			t.action(api.aiProviderConfigActions.saveConfig, {
+			t.action(api.aiRouting.providerConfigActions.saveConfig, {
 				languageProviderKind: 'anthropic',
 			})
 		).rejects.toThrow(/API key/i);
@@ -255,7 +255,7 @@ describe('aiProviderConfig.saveConfig + getConfig', () => {
 		const t = setup();
 		sessionMocks.session = { userId: 'editor-user', role: 'editor' };
 		await expect(
-			t.action(api.aiProviderConfigActions.saveConfig, {
+			t.action(api.aiRouting.providerConfigActions.saveConfig, {
 				languageProviderKind: 'anthropic',
 				apiKey: 'sk-ant-secret-key-1234',
 			})
@@ -268,7 +268,7 @@ describe('aiProviderConfig.saveConfig + getConfig', () => {
 
 	it('writes an audit-log row on save', async () => {
 		const t = setup();
-		await t.action(api.aiProviderConfigActions.saveConfig, {
+		await t.action(api.aiRouting.providerConfigActions.saveConfig, {
 			languageProviderKind: 'anthropic',
 			apiKey: 'sk-ant-secret-key-1234',
 		});
@@ -288,18 +288,18 @@ describe('aiProviderConfig.saveConfig + getConfig', () => {
 
 	it('bumps embeddingModelVersion when the embedding model changes', async () => {
 		const t = setup();
-		await t.action(api.aiProviderConfigActions.saveConfig, {
+		await t.action(api.aiRouting.providerConfigActions.saveConfig, {
 			languageProviderKind: 'anthropic',
 			apiKey: 'sk-ant-secret-key-1234',
 			embeddingModel: 'model-a',
 		});
-		await t.action(api.aiProviderConfigActions.saveConfig, {
+		await t.action(api.aiRouting.providerConfigActions.saveConfig, {
 			languageProviderKind: 'anthropic',
 			// key omitted — the stored key is preserved
 			embeddingModel: 'model-b',
 		});
 
-		const result = await t.query(api.aiProviderConfig.getConfig, {});
+		const result = await t.query(api.aiRouting.providerConfig.getConfig, {});
 		if (!result.configured) throw new Error('unreachable');
 		expect(result.embeddingModel).toBe('model-b');
 		expect(result.embeddingModelVersion).toBe(2);
@@ -313,8 +313,11 @@ describe('aiProviderConfig.saveConfig + getConfig', () => {
 		try {
 			vi.setSystemTime(Date.UTC(2026, 9, 12, 9, 0));
 			const save = { languageProviderKind: 'anthropic' as const, apiKey: 'sk-ant-secret-key-1234' };
-			await t.action(api.aiProviderConfigActions.saveConfig, save);
-			await t.action(api.aiProviderConfigActions.saveConfig, { ...save, modelFast: 'other' });
+			await t.action(api.aiRouting.providerConfigActions.saveConfig, save);
+			await t.action(api.aiRouting.providerConfigActions.saveConfig, {
+				...save,
+				modelFast: 'other',
+			});
 		} finally {
 			vi.useRealTimers();
 		}
@@ -324,13 +327,13 @@ describe('aiProviderConfig.saveConfig + getConfig', () => {
 
 	it('materializes the Google default when saving without an explicit embedding ID', async () => {
 		const t = setup();
-		await t.action(api.aiProviderConfigActions.saveConfig, {
+		await t.action(api.aiRouting.providerConfigActions.saveConfig, {
 			languageProviderKind: 'anthropic',
 			apiKey: 'sk-ant-secret-key-1234',
 			embeddingProviderKind: 'google',
 			embeddingApiKey: 'google-test-embedding-key',
 		});
-		const result = await t.query(api.aiProviderConfig.getConfig, {});
+		const result = await t.query(api.aiRouting.providerConfig.getConfig, {});
 		if (!result.configured) throw new Error('unreachable');
 		expect(result.embeddingModel).toBe('gemini-embedding-2');
 		expect(result.embeddingModelVersion).toBe(1);
@@ -338,19 +341,19 @@ describe('aiProviderConfig.saveConfig + getConfig', () => {
 
 	it('bumps embeddingModelVersion when the embedding provider kind changes (re-index flag)', async () => {
 		const t = setup();
-		await t.action(api.aiProviderConfigActions.saveConfig, {
+		await t.action(api.aiRouting.providerConfigActions.saveConfig, {
 			languageProviderKind: 'anthropic',
 			apiKey: 'sk-ant-secret-key-1234',
 			// default embedding kind: local
 		});
-		await t.action(api.aiProviderConfigActions.saveConfig, {
+		await t.action(api.aiRouting.providerConfigActions.saveConfig, {
 			languageProviderKind: 'anthropic',
 			embeddingProviderKind: 'openai',
 			embeddingModel: 'text-embedding-3-small',
 			embeddingApiKey: 'sk-embed-secret-key-9999',
 		});
 
-		const result = await t.query(api.aiProviderConfig.getConfig, {});
+		const result = await t.query(api.aiRouting.providerConfig.getConfig, {});
 		if (!result.configured) throw new Error('unreachable');
 		expect(result.embeddingProviderKind).toBe('openai');
 		// Switching planes bumps the guard so a re-index can be prompted.
@@ -359,7 +362,7 @@ describe('aiProviderConfig.saveConfig + getConfig', () => {
 
 	it('round-trips a HOSTED embedder key without ever returning ciphertext', async () => {
 		const t = setup();
-		await t.action(api.aiProviderConfigActions.saveConfig, {
+		await t.action(api.aiRouting.providerConfigActions.saveConfig, {
 			languageProviderKind: 'anthropic',
 			apiKey: 'sk-ant-secret-key-1234',
 			embeddingProviderKind: 'openai',
@@ -373,7 +376,7 @@ describe('aiProviderConfig.saveConfig + getConfig', () => {
 		expect(row?.embeddingSecretCiphertext).not.toContain('sk-embed');
 
 		// …but the public query exposes only a masked preview + boolean.
-		const result = await t.query(api.aiProviderConfig.getConfig, {});
+		const result = await t.query(api.aiRouting.providerConfig.getConfig, {});
 		if (!result.configured) throw new Error('unreachable');
 		expect(result.isEmbeddingKeySet).toBe(true);
 		expect(result.embeddingKeyPreview).toBe('sk-…9999');
@@ -383,10 +386,10 @@ describe('aiProviderConfig.saveConfig + getConfig', () => {
 	});
 });
 
-describe('aiProviderConfig.removeConfig', () => {
+describe('aiRouting/providerConfig.removeConfig', () => {
 	/** Both planes hosted, so the row holds two encrypted keys. */
 	async function saveHostedConfig(t: ReturnType<typeof setup>) {
-		await t.action(api.aiProviderConfigActions.saveConfig, {
+		await t.action(api.aiRouting.providerConfigActions.saveConfig, {
 			languageProviderKind: 'anthropic',
 			apiKey: 'sk-ant-secret-key-1234',
 			embeddingProviderKind: 'openai',
@@ -408,7 +411,9 @@ describe('aiProviderConfig.removeConfig', () => {
 		await saveHostedConfig(t);
 		sessionMocks.session = { userId: 'editor-user', role: 'editor' };
 
-		await expect(t.mutation(api.aiProviderConfig.removeConfig, {})).rejects.toThrow(/forbidden/i);
+		await expect(t.mutation(api.aiRouting.providerConfig.removeConfig, {})).rejects.toThrow(
+			/forbidden/i
+		);
 
 		const row = await t.run((ctx) => ctx.db.query('aiProviderConfig').first());
 		expect(row?.secretCiphertext).toBeTruthy();
@@ -421,10 +426,12 @@ describe('aiProviderConfig.removeConfig', () => {
 		const row = await t.run((ctx) => ctx.db.query('aiProviderConfig').first());
 		if (!row) throw new Error('unreachable');
 
-		const result = await t.mutation(api.aiProviderConfig.removeConfig, {});
+		const result = await t.mutation(api.aiRouting.providerConfig.removeConfig, {});
 		expect(result).toEqual({ removed: true });
 
-		expect(await t.query(api.aiProviderConfig.getConfig, {})).toEqual({ configured: false });
+		expect(await t.query(api.aiRouting.providerConfig.getConfig, {})).toEqual({
+			configured: false,
+		});
 		expect(await t.run((ctx) => hasStoredAiProviderConfig(ctx.db))).toBe(false);
 
 		const logs = await removalLogs(t);
@@ -455,11 +462,15 @@ describe('aiProviderConfig.removeConfig', () => {
 	it('does nothing, without error, when no config is stored', async () => {
 		const t = setup();
 
-		expect(await t.mutation(api.aiProviderConfig.removeConfig, {})).toEqual({ removed: false });
+		expect(await t.mutation(api.aiRouting.providerConfig.removeConfig, {})).toEqual({
+			removed: false,
+		});
 		// A second removal after a real one is the same no-op.
 		await saveHostedConfig(t);
-		await t.mutation(api.aiProviderConfig.removeConfig, {});
-		expect(await t.mutation(api.aiProviderConfig.removeConfig, {})).toEqual({ removed: false });
+		await t.mutation(api.aiRouting.providerConfig.removeConfig, {});
+		expect(await t.mutation(api.aiRouting.providerConfig.removeConfig, {})).toEqual({
+			removed: false,
+		});
 
 		expect(await removalLogs(t)).toHaveLength(1);
 	});
@@ -491,9 +502,12 @@ describe('stored key reuse', () => {
 
 		it('keeps the stored key for the same provider and an equivalent base URL', async () => {
 			const t = setup();
-			await t.action(api.aiProviderConfigActions.saveConfig, { ...proxied, apiKey: 'sk-openai-1' });
+			await t.action(api.aiRouting.providerConfigActions.saveConfig, {
+				...proxied,
+				apiKey: 'sk-openai-1',
+			});
 			const before = await storedRow(t);
-			await t.action(api.aiProviderConfigActions.saveConfig, {
+			await t.action(api.aiRouting.providerConfigActions.saveConfig, {
 				...proxied,
 				languageBaseUrl: 'https://PROXY.example.com:443/v1/',
 				modelFast: 'gpt-6-luna',
@@ -503,15 +517,20 @@ describe('stored key reuse', () => {
 
 		it('requires a new key when the provider kind changes', async () => {
 			const t = setup();
-			await t.action(api.aiProviderConfigActions.saveConfig, { ...proxied, apiKey: 'sk-openai-1' });
+			await t.action(api.aiRouting.providerConfigActions.saveConfig, {
+				...proxied,
+				apiKey: 'sk-openai-1',
+			});
 			const before = await storedRow(t);
 			await expectNewKeyRequired(
-				t.action(api.aiProviderConfigActions.saveConfig, { languageProviderKind: 'anthropic' }),
+				t.action(api.aiRouting.providerConfigActions.saveConfig, {
+					languageProviderKind: 'anthropic',
+				}),
 				'language'
 			);
 			expect(await storedRow(t)).toEqual(before);
 			// With the new provider's key, the save goes through.
-			await t.action(api.aiProviderConfigActions.saveConfig, {
+			await t.action(api.aiRouting.providerConfigActions.saveConfig, {
 				languageProviderKind: 'anthropic',
 				apiKey: 'sk-ant-secret-key-1234',
 			});
@@ -520,16 +539,21 @@ describe('stored key reuse', () => {
 
 		it('requires a new key when the base URL changes or is removed', async () => {
 			const t = setup();
-			await t.action(api.aiProviderConfigActions.saveConfig, { ...proxied, apiKey: 'sk-openai-1' });
+			await t.action(api.aiRouting.providerConfigActions.saveConfig, {
+				...proxied,
+				apiKey: 'sk-openai-1',
+			});
 			await expectNewKeyRequired(
-				t.action(api.aiProviderConfigActions.saveConfig, {
+				t.action(api.aiRouting.providerConfigActions.saveConfig, {
 					...proxied,
 					languageBaseUrl: 'https://other.example.com/v1',
 				}),
 				'language'
 			);
 			await expectNewKeyRequired(
-				t.action(api.aiProviderConfigActions.saveConfig, { languageProviderKind: 'openai' }),
+				t.action(api.aiRouting.providerConfigActions.saveConfig, {
+					languageProviderKind: 'openai',
+				}),
 				'language'
 			);
 		});
@@ -545,12 +569,12 @@ describe('stored key reuse', () => {
 
 		it('keeps the stored key while the embedder kind is unchanged', async () => {
 			const t = setup();
-			await t.action(api.aiProviderConfigActions.saveConfig, {
+			await t.action(api.aiRouting.providerConfigActions.saveConfig, {
 				...hostedOpenAi,
 				embeddingApiKey: 'sk-embed-secret-key-9999',
 			});
 			const before = await storedRow(t);
-			await t.action(api.aiProviderConfigActions.saveConfig, hostedOpenAi);
+			await t.action(api.aiRouting.providerConfigActions.saveConfig, hostedOpenAi);
 			expect((await storedRow(t))?.embeddingSecretCiphertext).toBe(
 				before?.embeddingSecretCiphertext
 			);
@@ -558,12 +582,12 @@ describe('stored key reuse', () => {
 
 		it('requires a new key when the embedder kind changes', async () => {
 			const t = setup();
-			await t.action(api.aiProviderConfigActions.saveConfig, {
+			await t.action(api.aiRouting.providerConfigActions.saveConfig, {
 				...hostedOpenAi,
 				embeddingApiKey: 'sk-embed-secret-key-9999',
 			});
 			await expectNewKeyRequired(
-				t.action(api.aiProviderConfigActions.saveConfig, {
+				t.action(api.aiRouting.providerConfigActions.saveConfig, {
 					...hostedOpenAi,
 					embeddingProviderKind: 'google',
 					embeddingModel: undefined,
@@ -583,12 +607,12 @@ describe('stored key reuse', () => {
 
 		it('keeps the stored key for the same provider and base URL', async () => {
 			const t = setup();
-			await t.action(api.aiProviderConfigActions.saveConfig, {
+			await t.action(api.aiRouting.providerConfigActions.saveConfig, {
 				...typesafe,
 				decisionApiKey: 'ts-decision-key-5678',
 			});
 			const before = await storedRow(t);
-			await t.action(api.aiProviderConfigActions.saveConfig, {
+			await t.action(api.aiRouting.providerConfigActions.saveConfig, {
 				...typesafe,
 				decisionBaseUrl: 'https://decide.example.com/',
 			});
@@ -597,12 +621,12 @@ describe('stored key reuse', () => {
 
 		it('requires a new key when the base URL changes', async () => {
 			const t = setup();
-			await t.action(api.aiProviderConfigActions.saveConfig, {
+			await t.action(api.aiRouting.providerConfigActions.saveConfig, {
 				...typesafe,
 				decisionApiKey: 'ts-decision-key-5678',
 			});
 			await expectNewKeyRequired(
-				t.action(api.aiProviderConfigActions.saveConfig, {
+				t.action(api.aiRouting.providerConfigActions.saveConfig, {
 					...typesafe,
 					decisionBaseUrl: 'https://elsewhere.example.com',
 				}),
@@ -612,21 +636,21 @@ describe('stored key reuse', () => {
 
 		it('never carries the key across a kind change', async () => {
 			const t = setup();
-			await t.action(api.aiProviderConfigActions.saveConfig, {
+			await t.action(api.aiRouting.providerConfigActions.saveConfig, {
 				...typesafe,
 				decisionApiKey: 'ts-decision-key-5678',
 			});
 			// To a keyless kind: all five columns clear.
-			await t.action(api.aiProviderConfigActions.saveConfig, {
+			await t.action(api.aiRouting.providerConfigActions.saveConfig, {
 				...typesafe,
 				decisionProviderKind: 'llm',
 				decisionBaseUrl: undefined,
 			});
 			expect((await storedRow(t))?.decisionSecretCiphertext).toBeUndefined();
 			// And back: the old key is gone, so a new one is required.
-			await expect(t.action(api.aiProviderConfigActions.saveConfig, typesafe)).rejects.toThrow(
-				/requires an API key/
-			);
+			await expect(
+				t.action(api.aiRouting.providerConfigActions.saveConfig, typesafe)
+			).rejects.toThrow(/requires an API key/);
 		});
 	});
 });
@@ -664,7 +688,7 @@ describe('embedding space (post-provenance)', () => {
 
 	/** A Google row written before the default moved: no model, so `text-embedding-004`. */
 	async function seedLegacyGoogleRow(t: ReturnType<typeof setup>) {
-		await t.action(api.aiProviderConfigActions.saveConfig, {
+		await t.action(api.aiRouting.providerConfigActions.saveConfig, {
 			...anthropic,
 			embeddingProviderKind: 'google',
 			embeddingApiKey: 'google-test-embedding-key',
@@ -681,12 +705,12 @@ describe('embedding space (post-provenance)', () => {
 		await addKnowledgeEntry(t, [0.1, 0.2]);
 
 		// A language-only save, as the CLI or an API client sends it.
-		await t.action(api.aiProviderConfigActions.saveConfig, {
+		await t.action(api.aiRouting.providerConfigActions.saveConfig, {
 			languageProviderKind: 'anthropic',
 			modelFast: 'claude-haiku-5-5',
 		});
 		// The same kind without a model.
-		await t.action(api.aiProviderConfigActions.saveConfig, {
+		await t.action(api.aiRouting.providerConfigActions.saveConfig, {
 			languageProviderKind: 'anthropic',
 			embeddingProviderKind: 'google',
 		});
@@ -696,7 +720,7 @@ describe('embedding space (post-provenance)', () => {
 		expect(row?.embeddingModel).toBeUndefined();
 		expect(row?.embeddingModelVersion).toBe(1);
 		expect(row?.embeddingSecretCiphertext).toBeTruthy();
-		const config = await t.query(api.aiProviderConfig.getConfig, {});
+		const config = await t.query(api.aiRouting.providerConfig.getConfig, {});
 		if (!config.configured) throw new Error('unreachable');
 		expect(config.resolvedEmbeddingModel).toBe('text-embedding-004');
 	});
@@ -706,7 +730,7 @@ describe('embedding space (post-provenance)', () => {
 		await seedLegacyGoogleRow(t);
 		await addKnowledgeEntry(t, [0.1, 0.2]);
 
-		await t.action(api.aiProviderConfigActions.saveConfig, {
+		await t.action(api.aiRouting.providerConfigActions.saveConfig, {
 			...anthropic,
 			embeddingProviderKind: 'google',
 			embeddingModel: 'text-embedding-004',
@@ -722,7 +746,7 @@ describe('embedding space (post-provenance)', () => {
 		await seedLegacyGoogleRow(t);
 		await addKnowledgeEntry(t, [0.1, 0.2]);
 
-		await t.action(api.aiProviderConfigActions.saveConfig, {
+		await t.action(api.aiRouting.providerConfigActions.saveConfig, {
 			...anthropic,
 			embeddingProviderKind: 'local',
 			embeddingModel: 'mxbai-embed-large',
@@ -739,26 +763,28 @@ describe('embedding space (post-provenance)', () => {
 		vi.stubEnv('LLM_API_KEY', 'sk-env-key');
 		await addKnowledgeEntry(t, [0.1, 0.2]);
 
-		await t.action(api.aiProviderConfigActions.saveConfig, anthropic);
+		await t.action(api.aiRouting.providerConfigActions.saveConfig, anthropic);
 		expect((await storedRow(t))?.embeddingProviderKind).toBe('local');
 	});
 
 	it('removes the config while the corpus holds vectors', async () => {
 		const t = setup();
-		await t.action(api.aiProviderConfigActions.saveConfig, anthropic);
+		await t.action(api.aiRouting.providerConfigActions.saveConfig, anthropic);
 		await addKnowledgeEntry(t, [0.1, 0.2]);
 
 		// The spaces are recorded in `embeddingSpaces`; the row is no longer their only record.
-		expect(await t.mutation(api.aiProviderConfig.removeConfig, {})).toEqual({ removed: true });
+		expect(await t.mutation(api.aiRouting.providerConfig.removeConfig, {})).toEqual({
+			removed: true,
+		});
 		expect(await storedRow(t)).toBeNull();
 	});
 
 	it('resolves an omitted embedding selection against the row the mutation writes', async () => {
 		const t = setup();
-		await t.action(api.aiProviderConfigActions.saveConfig, anthropic);
+		await t.action(api.aiRouting.providerConfigActions.saveConfig, anthropic);
 		// A language-only save reads the row (local) in its action. Before its
 		// persist mutation runs, a concurrent save switches the embedder.
-		await t.action(api.aiProviderConfigActions.saveConfig, {
+		await t.action(api.aiRouting.providerConfigActions.saveConfig, {
 			...anthropic,
 			embeddingProviderKind: 'openai',
 			embeddingModel: 'text-embedding-3-small',
@@ -767,7 +793,7 @@ describe('embedding space (post-provenance)', () => {
 		await addKnowledgeEntry(t, [0.1, 0.2]);
 		// The language-only persist then lands with its embedding fields omitted,
 		// exactly as saveConfig forwards them.
-		await t.mutation(internal.aiProviderConfig._persistConfig, {
+		await t.mutation(internal.aiRouting.providerConfig._persistConfig, {
 			languageProviderKind: 'anthropic',
 			modelFast: 'claude-haiku-5-5',
 			modelCapable: 'claude-sonnet-5-5',
@@ -792,7 +818,7 @@ describe('vector commits from a stale embedding target', () => {
 
 	it('drops the vector a job embedded before the target switched, and keeps the row', async () => {
 		const t = setup();
-		await t.action(api.aiProviderConfigActions.saveConfig, anthropic);
+		await t.action(api.aiRouting.providerConfigActions.saveConfig, anthropic);
 		const now = Date.now();
 		const fileId = await t.run((ctx) =>
 			ctx.db.insert('semanticFiles', {
@@ -808,7 +834,7 @@ describe('vector commits from a stale embedding target', () => {
 		);
 		// Two jobs embed with the local nomic default, then the admin switches to mxbai.
 		const nomic = measuredLocalSpace(3);
-		await t.action(api.aiProviderConfigActions.saveConfig, {
+		await t.action(api.aiRouting.providerConfigActions.saveConfig, {
 			...anthropic,
 			embeddingProviderKind: 'local',
 			embeddingModel: 'mxbai-embed-large',
@@ -916,7 +942,7 @@ describe('previous-release callers (upgrade window)', () => {
 
 	it('accepts a legacy settings persist that still sends isEmbeddingLocal', async () => {
 		const t = setup();
-		await t.mutation(internal.aiProviderConfig._persistConfig, {
+		await t.mutation(internal.aiRouting.providerConfig._persistConfig, {
 			languageProviderKind: 'openaiCompatible',
 			languageBaseUrl: 'http://localhost:11434/v1',
 			modelFast: 'qwen3.6:27b',
@@ -951,7 +977,7 @@ describe('new embedding key binding', () => {
 
 	it('refuses a new embedding key without the kind it belongs to', async () => {
 		const t = setup();
-		await t.action(api.aiProviderConfigActions.saveConfig, {
+		await t.action(api.aiRouting.providerConfigActions.saveConfig, {
 			...anthropic,
 			embeddingProviderKind: 'openai',
 			embeddingModel: 'text-embedding-3-small',
@@ -960,7 +986,7 @@ describe('new embedding key binding', () => {
 		const before = await t.run((ctx) => ctx.db.query('aiProviderConfig').first());
 
 		await expect(
-			t.action(api.aiProviderConfigActions.saveConfig, {
+			t.action(api.aiRouting.providerConfigActions.saveConfig, {
 				...anthropic,
 				embeddingApiKey: 'google-new-key-1234',
 			})
@@ -971,7 +997,7 @@ describe('new embedding key binding', () => {
 	it('binds the key to the named kind even if the row switched before the mutation', async () => {
 		const t = setup();
 		// The admin validated a Google key; a concurrent save switched the row to OpenAI.
-		await t.action(api.aiProviderConfigActions.saveConfig, {
+		await t.action(api.aiRouting.providerConfigActions.saveConfig, {
 			...anthropic,
 			embeddingProviderKind: 'openai',
 			embeddingModel: 'text-embedding-3-small',
@@ -986,11 +1012,11 @@ describe('new embedding key binding', () => {
 		};
 
 		// Without a kind the mutation refuses rather than attaching the key to OpenAI.
-		await expect(t.mutation(internal.aiProviderConfig._persistConfig, persist)).rejects.toThrow(
-			/embedding provider this API key belongs to/
-		);
+		await expect(
+			t.mutation(internal.aiRouting.providerConfig._persistConfig, persist)
+		).rejects.toThrow(/embedding provider this API key belongs to/);
 
-		await t.mutation(internal.aiProviderConfig._persistConfig, {
+		await t.mutation(internal.aiRouting.providerConfig._persistConfig, {
 			...persist,
 			embeddingProviderKind: 'google',
 		});
@@ -1000,24 +1026,24 @@ describe('new embedding key binding', () => {
 	});
 });
 
-describe('aiProviderConfig.testConnection', () => {
+describe('aiRouting/providerConfigActions.testConnection', () => {
 	it('returns { ok: false } when nothing is configured', async () => {
 		const t = setup();
-		const res = await t.action(api.aiProviderConfigActions.testConnection, {});
+		const res = await t.action(api.aiRouting.providerConfigActions.testConnection, {});
 		expect(res.ok).toBe(false);
 		expect(res.error).toMatch(/configured/i);
 	});
 
 	it('returns ok when the hosted adapter validates the decrypted key', async () => {
 		const t = setup();
-		await t.action(api.aiProviderConfigActions.saveConfig, {
+		await t.action(api.aiRouting.providerConfigActions.saveConfig, {
 			languageProviderKind: 'anthropic',
 			apiKey: 'sk-ant-secret-key-1234',
 		});
 		adapterMocks.validateCredentials.mockReset(); // ignore the save-time validation
 		adapterMocks.validateCredentials.mockImplementation(() => undefined);
 
-		const res = await t.action(api.aiProviderConfigActions.testConnection, {});
+		const res = await t.action(api.aiRouting.providerConfigActions.testConnection, {});
 		expect(res.ok).toBe(true);
 		// The adapter received the DECRYPTED key (crypto round-trip), never a blank.
 		expect(adapterMocks.validateCredentials).toHaveBeenLastCalledWith(
@@ -1027,7 +1053,7 @@ describe('aiProviderConfig.testConnection', () => {
 
 	it('returns { ok: false, error } when the hosted adapter rejects the key', async () => {
 		const t = setup();
-		await t.action(api.aiProviderConfigActions.saveConfig, {
+		await t.action(api.aiRouting.providerConfigActions.saveConfig, {
 			languageProviderKind: 'anthropic',
 			apiKey: 'sk-ant-secret-key-1234',
 		});
@@ -1036,21 +1062,21 @@ describe('aiProviderConfig.testConnection', () => {
 			throw new Error('Anthropic rejected the key.');
 		});
 
-		const res = await t.action(api.aiProviderConfigActions.testConnection, {});
+		const res = await t.action(api.aiRouting.providerConfigActions.testConnection, {});
 		expect(res.ok).toBe(false);
 		expect(res.error).toMatch(/rejected the key/i);
 	});
 
 	it('probes the base URL for a local provider (reachable ⇒ ok)', async () => {
 		const t = setup();
-		await t.action(api.aiProviderConfigActions.saveConfig, {
+		await t.action(api.aiRouting.providerConfigActions.saveConfig, {
 			languageProviderKind: 'openaiCompatible',
 			languageBaseUrl: 'http://localhost:11434/v1',
 		});
 		const fetchMock = vi.fn().mockResolvedValue({ ok: true });
 		vi.stubGlobal('fetch', fetchMock);
 		try {
-			const res = await t.action(api.aiProviderConfigActions.testConnection, {});
+			const res = await t.action(api.aiRouting.providerConfigActions.testConnection, {});
 			expect(res.ok).toBe(true);
 			expect(fetchMock).toHaveBeenCalledWith(
 				'http://localhost:11434/v1',

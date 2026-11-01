@@ -521,7 +521,7 @@ describe('llmProvider', () => {
 			const { resolveAiConfig } = await import('../llmProvider');
 			const { ctx, runQuery } = makeCtx(twoKeyRow());
 			expect((await resolveAiConfig(ctx)).source).toBe('stored');
-			// aiProviderConfig.removeConfig deleted the row in another isolate.
+			// aiRouting/providerConfig.removeConfig deleted the row in another isolate.
 			runQuery.mockResolvedValue(null);
 			vi.setSystemTime(new Date('2026-09-29T10:00:31Z'));
 			const cfg = await resolveAiConfig(ctx);

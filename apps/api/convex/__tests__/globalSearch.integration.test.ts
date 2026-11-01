@@ -11,7 +11,7 @@ import {
 import { seedFolder, seedMailbox, seedMessage } from '../mail/__tests__/helpers.testlib';
 
 /**
- * globalSearch.search — the dashboard Cmd-K palette. It fans a query across the
+ * search/global.search — the dashboard Cmd-K palette. It fans a query across the
  * contacts / emailTemplates / transactionalEmails / campaigns / mailMessages
  * search indexes and shapes each hit into a typed, deep-linkable result. Only
  * the soft-delete/PII branch was covered before; this exercises the email +
@@ -43,7 +43,7 @@ vi.mock('../lib/sessionOrganization', async () => {
 const modules = import.meta.glob('../**/*.*s');
 const TOKEN = 'zzglobaltoken';
 
-describe('globalSearch.search', () => {
+describe('search/global.search', () => {
 	it('matches across all categories and shapes deep-linkable results', async () => {
 		const t = convexTest(schema, modules);
 
@@ -87,7 +87,7 @@ describe('globalSearch.search', () => {
 			return { contactId, templateId, txId, campaignId };
 		});
 
-		const res = await t.query(api.globalSearch.search, { query: TOKEN });
+		const res = await t.query(api.search.global.search, { query: TOKEN });
 
 		// Contact
 		expect(res.contacts).toHaveLength(1);
@@ -140,7 +140,7 @@ describe('globalSearch.search', () => {
 			);
 		});
 
-		const res = await t.query(api.globalSearch.search, { query: TOKEN });
+		const res = await t.query(api.search.global.search, { query: TOKEN });
 		expect(res.contacts[0]!.title).toBe('noname@example.com');
 	});
 
@@ -158,7 +158,7 @@ describe('globalSearch.search', () => {
 			);
 		});
 
-		const res = await t.query(api.globalSearch.search, { query: TOKEN });
+		const res = await t.query(api.search.global.search, { query: TOKEN });
 		expect(res.campaigns[0]!.subtitle).toBe('draft');
 	});
 
@@ -168,7 +168,7 @@ describe('globalSearch.search', () => {
 			await ctx.db.insert('campaigns', createTestCampaign({ searchableText: TOKEN }));
 		});
 
-		const res = await t.query(api.globalSearch.search, { query: 'z' });
+		const res = await t.query(api.search.global.search, { query: 'z' });
 		expect(res).toEqual({ contacts: [], emails: [], campaigns: [], mail: [] });
 	});
 
@@ -190,7 +190,7 @@ describe('globalSearch.search', () => {
 			receivedAt: 2_000,
 		});
 
-		const res = await t.query(api.globalSearch.search, { query: TOKEN });
+		const res = await t.query(api.search.global.search, { query: TOKEN });
 
 		expect(res.mail.map((m) => m.id)).toEqual([newer, older]);
 		expect(res.mail[1]).toMatchObject({
@@ -215,7 +215,7 @@ describe('globalSearch.search', () => {
 		await seedMessage(t, mine, { subject: `${TOKEN} deleted`, snippet: TOKEN, role: 'trash' });
 		await seedMessage(t, theirs, { subject: `${TOKEN} private`, snippet: TOKEN });
 
-		const res = await t.query(api.globalSearch.search, { query: TOKEN });
+		const res = await t.query(api.search.global.search, { query: TOKEN });
 
 		expect(res.mail).toEqual([]);
 	});
@@ -231,7 +231,7 @@ describe('globalSearch.search', () => {
 			}
 		});
 
-		const res = await t.query(api.globalSearch.search, { query: TOKEN, limit: 2 });
+		const res = await t.query(api.search.global.search, { query: TOKEN, limit: 2 });
 		expect(res.campaigns).toHaveLength(2);
 	});
 });

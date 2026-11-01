@@ -1,0 +1,164 @@
+'use node';
+
+/**
+ * AI translation of a batch of template fields, for the email and
+ * transactional template translation editors and the Postbox reader.
+ *
+ * The builder's body is an exported helper so the previous-release shim at the
+ * old root path (`translate.ts`) runs the same code.
+ */
+
+import { v, type ObjectType } from 'convex/values';
+import type { ActionCtx } from '../_generated/server';
+import { z } from 'zod';
+import { authedAction } from '../lib/authedFunctions';
+import { internal } from '../_generated/api';
+import { logInfo } from '../lib/runtimeLog';
+import { runLlmObject } from '../lib/llm/dispatch';
+import { meterLlmCall } from '../analytics/meteredSpend';
+import { newRootRequest } from '../lib/llm/requestMeter';
+import { resolveLanguageModel } from '../lib/llmProvider';
+import { requireAuthenticatedIdentity } from '../lib/sessionOrganization';
+import { throwInvalidInput } from '../_utils/errors';
+import { anchorActionDeadline } from '../lib/llm/actionDeadline';
+
+// Input caps so a single call can't be looped into an unbounded LLM spend: the
+// batch size and the combined character volume fed to the model are both
+// bounded before any dispatch happens.
+const MAX_TRANSLATE_ITEMS = 50;
+const MAX_TRANSLATE_TOTAL_CHARS = 100_000;
+
+interface TranslationItem {
+	id: string;
+	text: string;
+	isHtml: boolean;
+}
+
+export interface TranslatedItem {
+	id: string;
+	translatedText: string;
+}
+
+// Schema-constrained translation result. `index` ties each translation back to
+// the input item's position (and thus its id). runLlmObject (generateObject)
+// enforces this shape, so a malformed model response surfaces as a thrown error
+// rather than being silently sliced/parsed into `[]`.
+const translationSchema = z.object({
+	translations: z.array(
+		z.object({
+			index: z.number().int().describe('Zero-based index of the input item this translates'),
+			translatedText: z.string().describe('The translated text content'),
+		})
+	),
+});
+
+/** `translateBatch`'s arguments, shared with its previous-release path. */
+export const translateBatchArgs = {
+	items: v.array(
+		v.object({
+			id: v.string(),
+			text: v.string(),
+			isHtml: v.boolean(),
+		})
+	),
+	sourceLanguage: v.string(),
+	targetLanguage: v.string(),
+};
+
+/**
+ * Translate a batch of items from one language to another using AI
+ */
+// all-members: content translation utility available to any authenticated member.
+export const translateBatch = authedAction({
+	args: translateBatchArgs,
+	handler: async (ctx, args): Promise<{ translations: TranslatedItem[] }> => {
+		// One model budget for this action, from its start.
+		anchorActionDeadline(ctx);
+		return await translateItems(ctx, args);
+	},
+});
+
+export async function translateItems(
+	ctx: ActionCtx,
+	args: ObjectType<typeof translateBatchArgs>
+): Promise<{ translations: TranslatedItem[] }> {
+	// Require authentication to prevent unauthorized API quota consumption
+	await requireAuthenticatedIdentity(ctx);
+
+	const { items, sourceLanguage, targetLanguage } = args;
+
+	// Clamp the input BEFORE gating/dispatch so an oversized batch is rejected
+	// cheaply rather than spent against the budget.
+	if (items.length > MAX_TRANSLATE_ITEMS) {
+		throwInvalidInput(`Too many items to translate at once (max ${MAX_TRANSLATE_ITEMS}).`);
+	}
+	const totalChars = items.reduce((sum, item) => sum + item.text.length, 0);
+	if (totalChars > MAX_TRANSLATE_TOTAL_CHARS) {
+		throwInvalidInput(
+			`Too much text to translate at once (max ${MAX_TRANSLATE_TOTAL_CHARS} characters).`
+		);
+	}
+
+	// Gate: `ai` feature flag + per-org spend budget + per-user rate limit,
+	// charged to the translation bucket so a tight loop can't drain the LLM
+	// budget. Runs as a mutation since an action can't touch ctx.db.
+	await ctx.runMutation(internal.mail.ai.gate.assertAiAllowed, {
+		rateLimitBucket: 'translateBatchPerUser',
+	});
+
+	// Build the translation prompt
+	const prompt = buildTranslationPrompt(items, sourceLanguage, targetLanguage);
+
+	// Call the AI model with a schema-constrained object response. generateObject
+	// validates the shape, so a malformed response
+	// throws through runLlmObject's normal path instead of silently yielding
+	// zero translations the way the old fence-stripping parser did.
+	const model = await resolveLanguageModel(ctx, 'mail.translate');
+	const { object, tokenUsage, modelUsed } = await meterLlmCall(
+		ctx,
+		{ feature: 'translate', root: newRootRequest('translate') },
+		(meter) =>
+			runLlmObject({
+				meter,
+				model,
+				schema: translationSchema,
+				prompt,
+				temperature: 0.3,
+			})
+	);
+	logInfo('[translate] llm call', { tokenUsage, modelUsed });
+
+	// Map each translation back to its original item id via the index.
+	const translations: TranslatedItem[] = object.translations.map((t) => ({
+		id: items[t.index]?.id ?? String(t.index),
+		translatedText: t.translatedText,
+	}));
+
+	return { translations };
+}
+
+function buildTranslationPrompt(
+	items: TranslationItem[],
+	sourceLanguage: string,
+	targetLanguage: string
+): string {
+	const itemsJson = items.map((item, index) => ({
+		index,
+		id: item.id,
+		text: item.text,
+		isHtml: item.isHtml,
+	}));
+
+	return `You are a professional translator. Translate the following items from ${sourceLanguage} to ${targetLanguage}.
+
+INPUT (JSON array):
+${JSON.stringify(itemsJson, null, 2)}
+
+Return one entry per input item under "translations", each with the item's "index" and its "translatedText".
+
+Important:
+- Preserve HTML tags exactly as they are (do not translate tag names or attributes)
+- Preserve template variables like {{variableName}} exactly as they are
+- Maintain the same formatting and line breaks
+- Only translate the actual text content`;
+}

@@ -12,7 +12,7 @@
 import { isSameKeyTarget } from '@owlat/shared/aiModelCatalog';
 import type { OperationError } from '@owlat/shared/operationError';
 
-/** A plane's stored key, as `aiProviderConfig.getConfig` describes it. */
+/** A plane's stored key, as `aiRouting/providerConfig.getConfig` describes it. */
 export interface StoredKeyFacts {
 	isKeySet: boolean;
 	kind: string | undefined;
