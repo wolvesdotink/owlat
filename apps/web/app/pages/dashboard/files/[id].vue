@@ -32,17 +32,9 @@ const {
 	fileId: fileId.value,
 }));
 
-// Version history, a page at a time
-const {
-	versions,
-	hasOlder: hasOlderVersions,
-	olderUnavailable: olderVersionsUnavailable,
-	isLoadingOlder: isLoadingOlderVersions,
-	loadOlderFailed: loadOlderVersionsFailed,
-	historyRestarted: versionHistoryRestarted,
-	isIncomplete: versionHistoryIncomplete,
-	loadOlder: loadOlderVersions,
-} = useFileVersionHistory(() => fileId.value);
+// Version history, a page at a time. Read here so it loads alongside the file;
+// FilesDetailVersionsSection shows it.
+const versionHistory = useFileVersionHistory(() => fileId.value);
 
 // Mutations
 const { run: updateFile } = useBackendOperation(api.semanticFiles.update, {
@@ -52,22 +44,9 @@ const { run: removeFile } = useBackendOperation(api.semanticFiles.remove, {
 	label: () => t('dashboard.files.detail.deleteOperation'),
 });
 
-// Edit state
-const isEditingTags = ref(false);
-const editTagsInput = ref('');
+// Title edit state; the tags, contacts and conversation cards keep their own.
 const isEditingTitle = ref(false);
 const editTitleInput = ref('');
-const isEditingContacts = ref(false);
-const editContacts = ref<PickerContact[]>([]);
-const isEditingThread = ref(false);
-const editThread = ref<PickerThread | null>(null);
-
-// Hydrate the file's linked contact ids into full rows so the editable picker
-// can render labels/chips (the file row carries only ids).
-const linkedContactIds = computed(() => file.value?.contactIds ?? []);
-const { data: linkedContacts } = useConvexQuery(api.contacts.contacts.getByIds, () => ({
-	contactIds: linkedContactIds.value,
-}));
 
 // Delete state
 const showDeleteConfirm = ref(false);
@@ -88,28 +67,6 @@ const handleVersionUploaded = (newFileId: Id<'semanticFiles'>) => {
 // Collapsible sections
 const showSummary = ref(true);
 const showExtractedText = ref(false);
-const showVersions = ref(true);
-
-const startEditTags = () => {
-	editTagsInput.value = (file.value?.tags || []).join(', ');
-	isEditingTags.value = true;
-};
-
-const saveTags = async () => {
-	if (!file.value) return;
-	const tags = editTagsInput.value
-		.split(',')
-		.map((tag: string) => tag.trim())
-		.filter(Boolean);
-	const result = await updateFile({ fileId: fileId.value, tags });
-	if (!result.ok) return;
-	isEditingTags.value = false;
-	showToast(t('dashboard.files.detail.toasts.tagsUpdated'));
-};
-
-const cancelEditTags = () => {
-	isEditingTags.value = false;
-};
 
 const startEditTitle = () => {
 	editTitleInput.value = file.value?.title || '';
@@ -129,53 +86,6 @@ const saveTitle = async () => {
 
 const cancelEditTitle = () => {
 	isEditingTitle.value = false;
-};
-
-const startEditContacts = () => {
-	editContacts.value = [...(linkedContacts.value ?? [])];
-	isEditingContacts.value = true;
-};
-
-const saveContacts = async () => {
-	if (!file.value) return;
-	const contactIds = editContacts.value.map((c) => c._id);
-	const result = await updateFile({ fileId: fileId.value, contactIds });
-	if (!result.ok) return;
-	isEditingContacts.value = false;
-	showToast(t('dashboard.files.detail.toasts.contactsUpdated'));
-};
-
-const cancelEditContacts = () => {
-	isEditingContacts.value = false;
-};
-
-// The linked conversation, as the picker's row shape. `get` returns the
-// thread's subject alongside the file, so no extra thread fetch is needed.
-const linkedThread = computed<PickerThread | null>(() =>
-	file.value?.threadId
-		? { _id: file.value.threadId, subject: file.value.threadSubject ?? '' }
-		: null
-);
-
-const startEditThread = () => {
-	editThread.value = linkedThread.value;
-	isEditingThread.value = true;
-};
-
-const saveThread = async () => {
-	if (!file.value) return;
-	// `null` clears the link; the mutation treats an omitted arg as "unchanged".
-	const result = await updateFile({
-		fileId: fileId.value,
-		threadId: editThread.value?._id ?? null,
-	});
-	if (!result.ok) return;
-	isEditingThread.value = false;
-	showToast(t('dashboard.files.detail.toasts.threadUpdated'));
-};
-
-const cancelEditThread = () => {
-	isEditingThread.value = false;
 };
 
 const handleDelete = async () => {
@@ -203,20 +113,6 @@ const mimeIcon = computed(() => {
 	if (mime.includes('word') || mime.includes('document')) return 'lucide:file-text';
 	if (mime.startsWith('text/')) return 'lucide:file-type';
 	return 'lucide:file';
-});
-
-const sourceLabel = computed(() => {
-	if (!file.value) return '';
-	switch (file.value.sourceType) {
-		case 'upload':
-			return t('dashboard.files.detail.source.upload');
-		case 'email_attachment':
-			return t('dashboard.files.detail.source.emailAttachment');
-		case 'agent_generated':
-			return t('dashboard.files.detail.source.aiGenerated');
-		default:
-			return file.value.sourceType;
-	}
 });
 </script>
 
@@ -396,273 +292,41 @@ const sourceLabel = computed(() => {
 					</div>
 
 					<!-- Version history -->
-					<div class="bg-bg-elevated shadow-surface-1 rounded-(--radius-card)">
-						<button
-							class="w-full flex items-center justify-between px-5 py-4"
-							@click="showVersions = !showVersions"
-						>
-							<div class="flex items-center gap-2">
-								<Icon name="lucide:history" class="w-4 h-4 text-text-tertiary" />
-								<span class="text-sm font-medium text-text-primary">{{
-									t('dashboard.files.detail.versionHistory')
-								}}</span>
-								<span v-if="versions" class="text-xs text-text-tertiary"
-									>({{ versions.length }}{{ versionHistoryIncomplete ? '+' : '' }})</span
-								>
-							</div>
-							<Icon
-								name="lucide:chevron-down"
-								class="w-4 h-4 text-text-tertiary transition-transform"
-								:class="{ '-rotate-180': showVersions }"
-							/>
-						</button>
-						<div v-if="showVersions" class="px-5 pb-4">
-							<FilesVersionHistory
-								:versions="versions || []"
-								:current-version-id="file._id"
-								:has-older="hasOlderVersions"
-								:older-unavailable="olderVersionsUnavailable"
-								:loading-older="isLoadingOlderVersions"
-								:load-older-failed="loadOlderVersionsFailed"
-								:history-restarted="versionHistoryRestarted"
-								@load-older="loadOlderVersions"
-							/>
-						</div>
-					</div>
+					<FilesDetailVersionsSection :history="versionHistory" :current-version-id="file._id" />
 				</div>
 
 				<!-- Sidebar metadata -->
 				<div class="space-y-6">
 					<!-- File info -->
-					<div class="bg-bg-elevated shadow-surface-1 rounded-(--radius-card) p-5 space-y-4">
-						<h3 class="text-sm font-semibold text-text-primary">
-							{{ t('dashboard.files.detail.details') }}
-						</h3>
-
-						<div class="space-y-3">
-							<div>
-								<p class="text-xs text-text-tertiary mb-0.5">
-									{{ t('dashboard.files.detail.mimeType') }}
-								</p>
-								<p class="text-sm text-text-secondary">{{ file.mimeType }}</p>
-							</div>
-							<div>
-								<p class="text-xs text-text-tertiary mb-0.5">
-									{{ t('dashboard.files.detail.fileSize') }}
-								</p>
-								<p class="text-sm text-text-secondary">
-									{{ formatCompactFileSize(file.fileSize) }}
-								</p>
-							</div>
-							<div>
-								<p class="text-xs text-text-tertiary mb-0.5">
-									{{ t('dashboard.files.detail.created') }}
-								</p>
-								<p class="text-sm text-text-secondary">{{ formatDateTime(file.createdAt) }}</p>
-							</div>
-							<div>
-								<p class="text-xs text-text-tertiary mb-0.5">
-									{{ t('dashboard.files.detail.sourceLabel') }}
-								</p>
-								<span
-									class="inline-flex items-center gap-1.5 px-2 py-1 text-xs font-medium rounded-full"
-									:class="{
-										'bg-bg-surface text-text-secondary': file.sourceType === 'upload',
-										'bg-info-subtle text-info': file.sourceType === 'email_attachment',
-										'bg-brand-subtle text-brand': file.sourceType === 'agent_generated',
-									}"
-								>
-									<Icon
-										:name="
-											file.sourceType === 'upload'
-												? 'lucide:upload'
-												: file.sourceType === 'email_attachment'
-													? 'lucide:mail'
-													: 'lucide:sparkles'
-										"
-										class="w-3.5 h-3.5"
-									/>
-									{{ sourceLabel }}
-								</span>
-							</div>
-						</div>
-					</div>
+					<FilesDetailInfoCard
+						:mime-type="file.mimeType"
+						:file-size="file.fileSize"
+						:created-at="file.createdAt"
+						:source-type="file.sourceType"
+					/>
 
 					<!-- Tags -->
-					<div class="bg-bg-elevated shadow-surface-1 rounded-(--radius-card) p-5">
-						<div class="flex items-center justify-between mb-3">
-							<h3 class="text-sm font-semibold text-text-primary">
-								{{ t('dashboard.files.detail.tags') }}
-							</h3>
-							<button
-								v-if="!isEditingTags && isAdmin"
-								class="p-1 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-								@click="startEditTags"
-								:aria-label="t('common.edit')"
-							>
-								<Icon name="lucide:pencil" class="w-3.5 h-3.5" />
-							</button>
-						</div>
-
-						<div v-if="isEditingTags" class="space-y-3">
-							<input
-								v-model="editTagsInput"
-								type="text"
-								class="input input-sm"
-								:placeholder="t('dashboard.files.detail.tagsPlaceholder')"
-								@keyup.enter="saveTags"
-							/>
-							<div class="flex items-center gap-2">
-								<button class="text-xs text-brand font-medium hover:underline" @click="saveTags">
-									{{ t('common.save') }}
-								</button>
-								<button
-									class="text-xs text-text-tertiary hover:text-text-primary"
-									@click="cancelEditTags"
-								>
-									{{ t('common.cancel') }}
-								</button>
-							</div>
-						</div>
-
-						<div v-else>
-							<div v-if="file.tags && file.tags.length > 0" class="flex flex-wrap gap-1.5">
-								<span
-									v-for="tag in file.tags"
-									:key="tag"
-									class="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full bg-bg-surface text-text-secondary"
-								>
-									{{ tag }}
-								</span>
-							</div>
-							<p v-else class="text-sm text-text-tertiary">
-								{{ t('dashboard.files.detail.noTags') }}
-							</p>
-
-							<!-- Auto tags -->
-							<div v-if="file.autoTags && file.autoTags.length > 0" class="mt-3">
-								<p class="text-xs text-text-tertiary mb-1.5">
-									{{ t('dashboard.files.detail.autoDetected') }}
-								</p>
-								<div class="flex flex-wrap gap-1.5">
-									<span
-										v-for="tag in file.autoTags"
-										:key="tag"
-										class="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full bg-brand-subtle/50 text-brand"
-									>
-										<Icon name="lucide:sparkles" class="w-3 h-3" />
-										{{ tag }}
-									</span>
-								</div>
-							</div>
-						</div>
-					</div>
+					<FilesDetailTagsCard
+						:file-id="fileId"
+						:tags="file.tags"
+						:auto-tags="file.autoTags"
+						:is-admin="isAdmin"
+					/>
 
 					<!-- Linked contacts -->
-					<div class="bg-bg-elevated shadow-surface-1 rounded-(--radius-card) p-5">
-						<div class="flex items-center justify-between mb-3">
-							<h3 class="text-sm font-semibold text-text-primary">
-								{{ t('dashboard.files.detail.linkedContacts') }}
-							</h3>
-							<button
-								v-if="!isEditingContacts && isAdmin"
-								class="p-1 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-								:aria-label="t('dashboard.files.detail.editLinkedContacts')"
-								@click="startEditContacts"
-							>
-								<Icon name="lucide:pencil" class="w-3.5 h-3.5" />
-							</button>
-						</div>
-
-						<!-- Edit: multi-select contact picker -->
-						<div v-if="isEditingContacts" class="space-y-3">
-							<FilesContactPicker v-model="editContacts" />
-							<div class="flex items-center gap-2">
-								<button
-									class="text-xs text-brand font-medium hover:underline"
-									@click="saveContacts"
-								>
-									{{ t('common.save') }}
-								</button>
-								<button
-									class="text-xs text-text-tertiary hover:text-text-primary"
-									@click="cancelEditContacts"
-								>
-									{{ t('common.cancel') }}
-								</button>
-							</div>
-						</div>
-
-						<!-- Read: linked contacts as links -->
-						<div v-else>
-							<div v-if="linkedContacts && linkedContacts.length > 0" class="space-y-2">
-								<NuxtLink
-									v-for="contact in linkedContacts"
-									:key="contact._id"
-									:to="`/dashboard/audience/contacts/${contact._id}`"
-									class="flex items-center gap-2 p-2 -mx-2 rounded-lg hover:bg-bg-surface transition-colors"
-								>
-									<Icon name="lucide:user" class="w-4 h-4 text-text-tertiary" />
-									<span class="text-sm text-brand hover:underline truncate">{{
-										contactPickerLabel(contact)
-									}}</span>
-								</NuxtLink>
-							</div>
-							<p v-else class="text-sm text-text-tertiary">
-								{{ t('dashboard.files.detail.noLinkedContacts') }}
-							</p>
-						</div>
-					</div>
+					<FilesDetailContactsCard
+						:file-id="fileId"
+						:contact-ids="file.contactIds"
+						:is-admin="isAdmin"
+					/>
 
 					<!-- Linked conversation -->
-					<div class="bg-bg-elevated border border-border-subtle rounded-lg p-5">
-						<div class="flex items-center justify-between mb-3">
-							<h3 class="text-sm font-semibold text-text-primary">
-								{{ t('dashboard.files.detail.linkedConversation') }}
-							</h3>
-							<button
-								v-if="!isEditingThread && isAdmin"
-								class="p-1 rounded text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
-								:aria-label="t('dashboard.files.detail.editLinkedConversation')"
-								@click="startEditThread"
-							>
-								<Icon name="lucide:pencil" class="w-3.5 h-3.5" />
-							</button>
-						</div>
-
-						<!-- Edit: single-select thread picker -->
-						<div v-if="isEditingThread" class="space-y-3">
-							<FilesThreadPicker v-model="editThread" />
-							<div class="flex items-center gap-2">
-								<button class="text-xs text-brand font-medium hover:underline" @click="saveThread">
-									{{ t('common.save') }}
-								</button>
-								<button
-									class="text-xs text-text-tertiary hover:text-text-primary"
-									@click="cancelEditThread"
-								>
-									{{ t('common.cancel') }}
-								</button>
-							</div>
-						</div>
-
-						<!-- Read: the linked thread as a link into the team inbox -->
-						<div v-else>
-							<NuxtLink
-								v-if="linkedThread"
-								:to="`/dashboard/inbox/${linkedThread._id}`"
-								class="flex items-center gap-2 p-2 -mx-2 rounded-lg hover:bg-bg-surface transition-colors"
-							>
-								<Icon name="lucide:message-square" class="w-4 h-4 text-text-tertiary" />
-								<span class="text-sm text-brand hover:underline truncate">
-									{{ threadPickerLabel(linkedThread) }}
-								</span>
-							</NuxtLink>
-							<p v-else class="text-sm text-text-tertiary">
-								{{ t('dashboard.files.detail.noLinkedConversation') }}
-							</p>
-						</div>
-					</div>
+					<FilesDetailThreadCard
+						:file-id="fileId"
+						:thread-id="file.threadId"
+						:thread-subject="file.threadSubject"
+						:is-admin="isAdmin"
+					/>
 				</div>
 			</div>
 		</template>

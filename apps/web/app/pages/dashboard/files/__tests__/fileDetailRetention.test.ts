@@ -59,8 +59,8 @@ async function mountPage(file: FileRow) {
 	vi.stubGlobal('usePermissions', () => ({ isAdmin: ref(true) }));
 	vi.stubGlobal('useBackendOperation', () => ({ run: vi.fn(), isLoading: ref(false) }));
 	vi.stubGlobal('useConvexQuery', (_query: unknown, args: unknown) => {
-		// The page asks for the file, its versions and its linked contacts with
-		// the same composable; only the first answers a row.
+		// The page asks for the file and its versions with the same composable;
+		// only the first answers a row.
 		const request = typeof args === 'function' ? (args as () => unknown)() : args;
 		if (request && typeof request === 'object' && 'fileId' in request) {
 			return queryResult(file);
@@ -93,11 +93,13 @@ async function mountPage(file: FileRow) {
 				UiConfirmDialog: true,
 				UiSelect: true,
 				UiInput: true,
-				FilesVersionHistory: true,
 				FilesVersionUploadModal: true,
-				FilesContactPicker: true,
-				FilesThreadPicker: true,
 				FilesFileUploadModal: true,
+				FilesDetailVersionsSection: true,
+				FilesDetailInfoCard: true,
+				FilesDetailTagsCard: true,
+				FilesDetailContactsCard: true,
+				FilesDetailThreadCard: true,
 			},
 		},
 	});

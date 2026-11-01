@@ -1,10 +1,9 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
-import type { Id } from '@owlat/api/dataModel';
-import { RELATION_TYPES, relationLabel, type RelationType } from '~/utils/knowledgeEntryTypes';
 import { offersShareWithMembers } from '~/utils/knowledgeSharing';
+import { useKnowledgeDetailLabels } from '~/composables/useKnowledgeDetailLabels';
 
-const { t, te, locale } = useI18n();
+const { t, locale } = useI18n();
 
 useHead({ title: () => t('dashboard.knowledge.detail.pageTitle') });
 
@@ -20,16 +19,11 @@ const entryId = useRouteId<'knowledgeEntries'>();
 const {
 	typeVariant,
 	typeIcon,
-	typeLabel,
 	sourceIcon,
-	sourceLabel,
 	confidenceColor,
-	confidenceBgColor,
 	formatConfidence,
 	confidenceVariant,
 	deleteEntry,
-	addRelation,
-	removeRelation,
 } = useKnowledgeGraph();
 
 // Fetch entry with relations
@@ -50,9 +44,6 @@ const { isAdmin } = usePermissions();
 const canChangeEntry = computed(() => entry.value?.isAuthoritative !== true || isAdmin.value);
 const outgoingRelations = computed(() => entryData.value?.outgoing ?? []);
 const incomingRelations = computed(() => entryData.value?.incoming ?? []);
-const hasRelations = computed(
-	() => outgoingRelations.value.length > 0 || incomingRelations.value.length > 0
-);
 
 // Build entry map for relation display by fetching related entries
 // For now we show IDs; in production you'd batch-fetch related entry titles
@@ -67,21 +58,8 @@ const entryMap = computed(() => {
 	return map;
 });
 
-// Entry-type / source / relation labels are translated here; the shared
-// presentation map (`~/utils/knowledgeEntryTypes`) stays a plain constant, so an
-// unknown value still falls back to its raw label instead of a key path.
-const entryTypeName = (type: string): string => {
-	const key = `dashboard.knowledge.detail.entryTypes.${type}`;
-	return te(key) ? t(key) : typeLabel(type);
-};
-const sourceTypeName = (source: string): string => {
-	const key = `dashboard.knowledge.detail.sourceTypes.${source}`;
-	return te(key) ? t(key) : sourceLabel(source);
-};
-const relationTypeName = (type: string): string => {
-	const key = `dashboard.knowledge.detail.relationTypes.${type}`;
-	return te(key) ? t(key) : relationLabel(type);
-};
+// Entry-type / source / relation labels, translated with a raw-label fallback.
+const { entryTypeName, sourceTypeName } = useKnowledgeDetailLabels();
 
 const dateTimeFormat = computed(
 	() =>
@@ -121,26 +99,6 @@ const formattedExpiresAt = computed(() => {
 const showEditForm = ref(false);
 const showDeleteConfirm = ref(false);
 const isDeleting = ref(false);
-const commitmentStatus = ref<'open' | 'fulfilled' | 'cancelled'>('open');
-const setCommitmentStatus = useBackendOperation(api.knowledge.graph.setCommitmentStatus, {
-	label: () => t('dashboard.knowledge.detail.commitmentStatusOperation'),
-});
-
-watch(
-	entry,
-	(value) => {
-		commitmentStatus.value = value?.commitmentStatus ?? 'open';
-	},
-	{ immediate: true }
-);
-
-async function saveCommitmentStatus() {
-	const result = await setCommitmentStatus.run({
-		entryId: entryId.value,
-		commitmentStatus: commitmentStatus.value,
-	});
-	if (result.ok) showToast(t('dashboard.knowledge.detail.commitmentStatusToast'));
-}
 
 // Seed the edit form from the loaded entry.
 const editInitialValues = computed(() => {
@@ -171,64 +129,6 @@ const handleDelete = async () => {
 	} finally {
 		isDeleting.value = false;
 	}
-};
-
-// ── Relation authoring ──
-// The user-facing write path for the knowledge graph's typed edges. Before this,
-// `knowledgeRelations` was read-but-never-written outside the pipeline/tests, so
-// the "navigable graph" the index page advertises was always disconnected nodes.
-const showRelationForm = ref(false);
-const relationType = ref<RelationType>('relates_to');
-const relationSearch = ref('');
-const selectedTarget = ref<{ id: Id<'knowledgeEntries'>; title: string } | null>(null);
-const isSavingRelation = ref(false);
-
-// Search the graph for the target entry to relate to. Skipped until the user
-// types — the FTS `search` query already powers the index page's search box.
-const { data: relationSearchResults } = useConvexQuery(api.knowledge.graph.search, () => {
-	const q = relationSearch.value.trim();
-	if (!q) return 'skip';
-	return { searchQuery: q, limit: 8 };
-});
-
-// Exclude the current entry (no self-edge) from the picker results.
-const relationCandidates = computed(() =>
-	(relationSearchResults.value ?? []).filter((e) => e._id !== entryId.value)
-);
-
-const resetRelationForm = () => {
-	showRelationForm.value = false;
-	relationType.value = 'relates_to';
-	relationSearch.value = '';
-	selectedTarget.value = null;
-};
-
-const selectTarget = (candidate: { _id: Id<'knowledgeEntries'>; title: string }) => {
-	selectedTarget.value = { id: candidate._id, title: candidate.title };
-	relationSearch.value = '';
-};
-
-const handleAddRelation = async () => {
-	if (!selectedTarget.value || isSavingRelation.value) return;
-	isSavingRelation.value = true;
-	try {
-		const result = await addRelation({
-			fromEntryId: entryId.value,
-			toEntryId: selectedTarget.value.id,
-			relationType: relationType.value,
-		});
-		if (!result.ok) return;
-		showToast(t('dashboard.knowledge.detail.relationAddedToast'));
-		resetRelationForm();
-	} finally {
-		isSavingRelation.value = false;
-	}
-};
-
-const handleRemoveRelation = async (relationId: string) => {
-	const result = await removeRelation({ relationId: relationId as Id<'knowledgeRelations'> });
-	if (!result.ok) return;
-	showToast(t('dashboard.knowledge.detail.relationRemovedToast'));
 };
 </script>
 
@@ -354,167 +254,20 @@ const handleRemoveRelation = async (relationId: string) => {
 					</div>
 
 					<!-- Relations -->
-					<div class="rounded-(--radius-card) bg-surface-2 shadow-surface-1 p-5">
-						<div class="flex items-center justify-between mb-4">
-							<h3 class="text-sm font-semibold text-text-primary">
-								{{ t('dashboard.knowledge.detail.relations') }}
-							</h3>
-							<UiButton
-								variant="secondary"
-								size="sm"
-								v-if="!showRelationForm"
-								type="button"
-								class="gap-1.5"
-								@click="showRelationForm = true"
-							>
-								<Icon name="lucide:plus" class="w-3.5 h-3.5" />
-								{{ t('dashboard.knowledge.detail.addRelation') }}
-							</UiButton>
-						</div>
-
-						<!-- Add-relation form -->
-						<div
-							v-if="showRelationForm"
-							class="rounded-lg bg-bg-surface shadow-surface-1 p-4 mb-4 space-y-3"
-						>
-							<div>
-								<label
-									for="relation-type"
-									class="block text-xs font-medium text-text-secondary mb-1.5"
-								>
-									{{ t('dashboard.knowledge.detail.thisEntry') }}
-								</label>
-								<select id="relation-type" v-model="relationType" class="input w-full">
-									<option v-for="rt in RELATION_TYPES" :key="rt" :value="rt">
-										{{ relationTypeName(rt) }}
-									</option>
-								</select>
-							</div>
-
-							<div>
-								<label
-									for="relation-target"
-									class="block text-xs font-medium text-text-secondary mb-1.5"
-								>
-									{{ t('dashboard.knowledge.detail.relatedEntry') }}
-								</label>
-								<div
-									v-if="selectedTarget"
-									class="flex items-center justify-between gap-2 py-2 px-3 rounded-lg bg-bg-elevated shadow-surface-1"
-								>
-									<span class="text-sm text-text-primary truncate">{{ selectedTarget.title }}</span>
-									<button
-										type="button"
-										class="rounded text-text-tertiary hover:text-text-primary transition-colors flex-shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-										:aria-label="t('dashboard.knowledge.detail.clearSelection')"
-										@click="selectedTarget = null"
-									>
-										<Icon name="lucide:x" class="w-3.5 h-3.5" />
-									</button>
-								</div>
-								<template v-else>
-									<input
-										id="relation-target"
-										v-model="relationSearch"
-										type="text"
-										:placeholder="t('dashboard.knowledge.detail.relationSearchPlaceholder')"
-										class="input w-full"
-										autocomplete="off"
-									/>
-									<div
-										v-if="relationSearch.trim() && relationCandidates.length > 0"
-										class="mt-2 rounded-lg bg-bg-elevated shadow-surface-1 overflow-hidden divide-y divide-border-subtle"
-									>
-										<button
-											v-for="candidate in relationCandidates"
-											:key="candidate._id"
-											type="button"
-											class="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-bg-surface transition-colors"
-											@click="selectTarget(candidate)"
-										>
-											<Icon
-												:name="typeIcon(candidate.entryType)"
-												class="w-3.5 h-3.5 text-text-tertiary flex-shrink-0"
-											/>
-											<span class="text-sm text-text-primary truncate">{{ candidate.title }}</span>
-											<span
-												class="text-2xs uppercase tracking-wide text-text-tertiary ml-auto flex-shrink-0"
-											>
-												{{ entryTypeName(candidate.entryType) }}
-											</span>
-										</button>
-									</div>
-									<p v-else-if="relationSearch.trim()" class="text-xs text-text-tertiary mt-2">
-										{{ t('dashboard.knowledge.detail.noMatchingEntries') }}
-									</p>
-								</template>
-							</div>
-
-							<div class="flex items-center justify-end gap-2 pt-1">
-								<UiButton variant="secondary" size="sm" type="button" @click="resetRelationForm">
-									{{ t('common.cancel') }}
-								</UiButton>
-								<UiButton
-									size="sm"
-									type="button"
-									:disabled="!selectedTarget || isSavingRelation"
-									@click="handleAddRelation"
-								>
-									{{
-										isSavingRelation
-											? t('dashboard.knowledge.detail.addingRelation')
-											: t('dashboard.knowledge.detail.addRelation')
-									}}
-								</UiButton>
-							</div>
-						</div>
-
-						<KnowledgeRelationsList
-							v-if="hasRelations"
-							:outgoing-relations="outgoingRelations"
-							:incoming-relations="incomingRelations"
-							:entry-map="entryMap"
-							@remove="handleRemoveRelation"
-						/>
-						<p v-else-if="!showRelationForm" class="text-sm text-text-tertiary">
-							{{ t('dashboard.knowledge.detail.noRelations') }}
-						</p>
-					</div>
+					<KnowledgeRelationsCard
+						:entry-id="entryId"
+						:outgoing-relations="outgoingRelations"
+						:incoming-relations="incomingRelations"
+						:entry-map="entryMap"
+					/>
 				</div>
 
 				<!-- Sidebar Metadata -->
 				<div class="space-y-4">
-					<div
+					<KnowledgeCommitmentStatusCard
 						v-if="entry.entryType === 'decision' || entry.entryType === 'action_item'"
-						class="rounded-(--radius-card) bg-surface-2 shadow-surface-1 p-5"
-					>
-						<h3 class="mb-3 text-sm font-semibold text-text-primary">
-							{{ t('dashboard.knowledge.detail.commitmentStatus') }}
-						</h3>
-						<UiSelect
-							v-model="commitmentStatus"
-							:aria-label="t('dashboard.knowledge.detail.commitmentStatus')"
-							:options="[
-								{ value: 'open', label: t('dashboard.knowledge.detail.commitmentStatuses.open') },
-								{
-									value: 'fulfilled',
-									label: t('dashboard.knowledge.detail.commitmentStatuses.fulfilled'),
-								},
-								{
-									value: 'cancelled',
-									label: t('dashboard.knowledge.detail.commitmentStatuses.cancelled'),
-								},
-							]"
-						/>
-						<UiButton
-							class="mt-3"
-							size="sm"
-							:loading="setCommitmentStatus.isLoading.value"
-							@click="saveCommitmentStatus"
-						>
-							{{ t('dashboard.knowledge.detail.saveStatus') }}
-						</UiButton>
-					</div>
+						:entry="entry"
+					/>
 
 					<!-- Confidence -->
 					<div class="rounded-(--radius-card) bg-surface-2 shadow-surface-1 p-5">
@@ -593,26 +346,10 @@ const handleRemoveRelation = async (relationId: string) => {
 					</div>
 
 					<!-- Linked Contacts -->
-					<div
+					<KnowledgeLinkedContactsCard
 						v-if="entry.contactIds && entry.contactIds.length > 0"
-						class="rounded-(--radius-card) bg-surface-2 shadow-surface-1 p-5"
-					>
-						<h3 class="text-sm font-semibold text-text-primary mb-3">
-							{{ t('dashboard.knowledge.detail.linkedContacts') }}
-						</h3>
-						<div class="space-y-2">
-							<NuxtLink
-								v-for="contactId in entry.contactIds"
-								:key="contactId"
-								:to="`/dashboard/audience/contacts/${contactId}`"
-								class="flex items-center gap-2 py-1.5 text-sm text-text-primary hover:text-brand transition-colors"
-							>
-								<Icon name="lucide:user" class="w-3.5 h-3.5 text-text-tertiary" />
-								<span class="truncate">{{ contactId }}</span>
-								<Icon name="lucide:external-link" class="w-3 h-3 text-text-tertiary ml-auto" />
-							</NuxtLink>
-						</div>
-					</div>
+						:contact-ids="entry.contactIds"
+					/>
 				</div>
 			</div>
 		</template>

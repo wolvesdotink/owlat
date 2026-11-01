@@ -18,6 +18,7 @@ import { useClickOutside } from '~/composables/useClickOutside';
 
 import PostboxThreadReader, { type PostboxReaderMessage } from '../PostboxThreadReader.vue';
 import PostboxReaderMessageCard from '../PostboxReaderMessage.vue';
+import PostboxThreadReaderOverlays from '../PostboxThreadReaderOverlays.vue';
 
 const THREAD = 'mail/mailbox/messages:listThreadMessages';
 const BODY = 'mail/mailbox/messages:getMessageInlineBody';
@@ -168,6 +169,8 @@ function mountReader() {
 			components: {
 				...Object.fromEntries(CHROME.map((name) => [name, marker(name)])),
 				PostboxReaderMessage: PostboxReaderMessageCard,
+				// Real, so the pickers and dialogs it hosts resolve to the markers above.
+				PostboxThreadReaderOverlays,
 				PostboxLazyBody: passThrough,
 				PostboxMessageBody: bodyProbe,
 			},

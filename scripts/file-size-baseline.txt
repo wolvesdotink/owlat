@@ -4,13 +4,8 @@ apps/api/convex/semanticFiles.ts
 apps/api/convex/topics/subscription.ts
 apps/api/convex/topics/topics.ts
 apps/api/convex/unifiedMessages.ts
-apps/web/app/components/postbox/PostboxThreadReader.vue
 apps/web/app/components/translation/Manager.vue
 apps/web/app/composables/useOrganization.ts
 apps/web/app/data/marketingTemplatePresets.ts
 apps/web/app/layouts/dashboard.vue
-apps/web/app/pages/dashboard/files/[id].vue
-apps/web/app/pages/dashboard/inbox/[threadId].vue
-apps/web/app/pages/dashboard/knowledge/[id].vue
-apps/web/app/pages/dashboard/postbox/migrate.vue
 apps/web/app/pages/desktop/setup.vue

@@ -20,6 +20,11 @@ const reply = readFileSync(
 	resolve(here, '../../../../components/team/TeamStreamReply.vue'),
 	'utf8'
 );
+// The subject line and its meta (count, priority, snooze) are the page's header.
+const header = readFileSync(
+	resolve(here, '../../../../components/inbox/ThreadPageHeader.vue'),
+	'utf8'
+);
 
 describe('Team Inbox thread page rendering', () => {
 	it('hands follow-up countdowns their send time, not a page-computed seconds count', () => {
@@ -52,8 +57,9 @@ describe('Team Inbox thread page rendering', () => {
 	});
 
 	it('shows a priority that is not normal beside the message count', () => {
-		expect(template).toMatch(/<template v-if="priority !== 'normal'">/);
-		expect(template).toContain('data-testid="thread-priority"');
+		expect(template).toMatch(/<InboxThreadPageHeader[^>]*:priority="priority"/);
+		expect(header).toMatch(/<template v-if="priority !== 'normal'">/);
+		expect(header).toContain('data-testid="thread-priority"');
 		expect(page).toContain('teamThreadPriorityOf(thread.value)');
 	});
 
