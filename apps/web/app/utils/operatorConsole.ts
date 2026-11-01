@@ -111,6 +111,16 @@ export function auditActionLabel(action: string | undefined): string {
 
 export type OperatorTab = 'overview' | 'review' | 'organizations' | 'admins';
 
+/** One campaign or transactional email held in the content review queue. */
+export type OperatorReviewItem = {
+	type: 'campaign' | 'transactional';
+	id: string;
+	name?: string;
+	subject?: string | null;
+	scan: { score: number; level: string } | null;
+	updatedAt?: number;
+};
+
 /**
  * What the console shows. A self-hosted instance with one workspace has no
  * other workspaces to police, and Delivery health already shows its sending
