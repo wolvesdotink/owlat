@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const { t } = useI18n();
 
@@ -101,10 +102,7 @@ async function confirmRemove() {
 				<h2 class="font-semibold">{{ t('dashboard.preferences.aliases.activeAliases') }}</h2>
 			</header>
 			<div v-if="isLoading" class="p-8 flex justify-center">
-				<Icon
-					name="lucide:loader-2"
-					class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary"
-				/>
+				<SpinnerIcon class="w-5 h-5 text-text-tertiary" />
 			</div>
 			<!-- A failed read is not an empty list. -->
 			<UiQueryBoundary v-else-if="listError" :error="listError" @retry="refetchList" />

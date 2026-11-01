@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useUiI18n } from '../../composables/useUiI18n';
+import { CheckIcon } from '@coolicons/vue';
 
 type StepStatus = 'completed' | 'current' | 'upcoming';
 
@@ -80,11 +81,7 @@ function handleStepClick(stepId: Step['id']): void {
 									: 'bg-bg-surface text-text-tertiary border border-border-subtle',
 						]"
 					>
-						<Icon
-							v-if="getStepStatus(step.id) === 'completed'"
-							name="lucide:check"
-							class="w-4 h-4"
-						/>
+						<CheckIcon v-if="getStepStatus(step.id) === 'completed'" class="w-4 h-4" />
 						<span v-else>{{ step.number }}</span>
 					</div>
 					<!-- Step Label. Below `sm` five labelled steps are wider than a phone,

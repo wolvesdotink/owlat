@@ -43,7 +43,6 @@ beforeEach(() => {
 
 const globalOptions = {
 	stubs: {
-		Icon: true,
 		UiSpinner: true,
 		UiCard: { template: '<div><slot /></div>' },
 		UiEmptyState: true,

@@ -2,6 +2,7 @@
 import type { api } from '@owlat/api';
 import type { FunctionReturnType } from 'convex/server';
 import { formatRelativeTime } from '~/utils/formatters';
+import { PlusIcon } from '@coolicons/vue';
 
 defineProps<{
 	admins: FunctionReturnType<typeof api.platformAdmin.queries.listPlatformAdmins> | undefined;
@@ -46,7 +47,7 @@ const ADD_ADMIN_HELD_CLASS =
 						@click="emit('add')"
 					>
 						<template #iconLeft>
-							<Icon name="lucide:plus" class="w-4 h-4" />
+							<PlusIcon class="w-4 h-4" />
 						</template>
 						{{ t('dashboard.admin.operator.index.admins.add') }}
 					</UiButton>

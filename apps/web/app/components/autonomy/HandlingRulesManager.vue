@@ -12,6 +12,8 @@
  */
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import { SparklesIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const { t } = useI18n();
 
@@ -115,8 +117,8 @@ function matcherSummary(matcher: {
 			/>
 			<UiButton type="submit" variant="outline" size="sm" :disabled="busy || !instruction.trim()">
 				<template #iconLeft>
-					<Icon
-						:name="busy ? 'lucide:loader-2' : 'lucide:sparkles'"
+					<component
+						:is="busy ? SpinnerIcon : SparklesIcon"
 						class="w-4 h-4"
 						:class="{ 'animate-spin motion-reduce:animate-none': busy }"
 					/>

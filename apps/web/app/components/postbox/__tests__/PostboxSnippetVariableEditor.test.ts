@@ -22,7 +22,7 @@ beforeAll(() => {
 function mountEditor(bodyHtml: string) {
 	return mount(PostboxSnippetVariableEditor, {
 		props: { bodyHtml, modelValue: [] },
-		global: { plugins: [createTestI18n()], stubs: { Icon: true } },
+		global: { plugins: [createTestI18n()] },
 	});
 }
 

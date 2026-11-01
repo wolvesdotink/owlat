@@ -44,7 +44,7 @@ const peek = { open: vi.fn(), openThread: vi.fn() };
 const global = {
 	plugins: [createTestI18n()],
 	provide: { [TODAY_PEEK as symbol]: peek },
-	stubs: { Icon: true, NuxtLink: true, TodaySourceLink: true },
+	stubs: { NuxtLink: true, TodaySourceLink: true },
 	mocks: { formatCompactRelativeTime: () => '1h' },
 };
 

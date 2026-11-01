@@ -18,6 +18,8 @@ import {
 } from '~/composables/postbox/usePostboxFilters';
 import { moveSibling } from '~/utils/postboxReorder';
 import { isPlainLanguageRule } from '~/composables/postbox/usePostboxRules';
+import { ChevronDownIcon, ChevronUpIcon, PlusIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const { t } = useI18n();
 
@@ -233,7 +235,7 @@ async function confirmRemove() {
 				{{ t('dashboard.preferences.filters.intro') }}
 			</p>
 			<UiButton v-if="mailboxId && !editor" type="button" class="shrink-0" @click="startCreate">
-				<Icon name="lucide:plus" class="w-4 h-4 mr-1.5" />
+				<PlusIcon class="w-4 h-4 mr-1.5" />
 				{{ t('dashboard.preferences.filters.newFilter') }}
 			</UiButton>
 		</header>
@@ -265,10 +267,7 @@ async function confirmRemove() {
 				<h2 class="font-semibold">{{ t('dashboard.preferences.filters.activeFilters') }}</h2>
 			</header>
 			<div v-if="isLoading" class="p-8 flex justify-center">
-				<Icon
-					name="lucide:loader-2"
-					class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary"
-				/>
+				<SpinnerIcon class="w-5 h-5 text-text-tertiary" />
 			</div>
 			<!-- A failed read is not an empty list. -->
 			<UiQueryBoundary v-else-if="listError" :error="listError" @retry="refetchList" />
@@ -296,7 +295,7 @@ async function confirmRemove() {
 							:aria-label="t('dashboard.preferences.filters.moveUp', { name: f.name })"
 							@click="moveFilter(f._id, -1)"
 						>
-							<Icon name="lucide:chevron-up" class="w-3.5 h-3.5" />
+							<ChevronUpIcon class="w-3.5 h-3.5" />
 						</button>
 						<button
 							type="button"
@@ -304,7 +303,7 @@ async function confirmRemove() {
 							:aria-label="t('dashboard.preferences.filters.moveDown', { name: f.name })"
 							@click="moveFilter(f._id, 1)"
 						>
-							<Icon name="lucide:chevron-down" class="w-3.5 h-3.5" />
+							<ChevronDownIcon class="w-3.5 h-3.5" />
 						</button>
 					</span>
 					<div class="flex-1 min-w-0">

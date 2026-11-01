@@ -24,7 +24,7 @@ Object.assign(globalThis, i18nStubs);
  */
 type RecipientCount = FunctionReturnType<typeof api.campaigns.audienceResolution.countRecipients>;
 
-const stubs = { Icon: { template: '<i />' }, UiErrorAlert: true };
+const stubs = { UiErrorAlert: true };
 
 /** The inline page reached the end: nothing is counting in the background. */
 const LIVE = { status: 'not_needed' } as const;

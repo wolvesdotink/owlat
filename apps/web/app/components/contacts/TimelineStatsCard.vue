@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
+import { ChartBarVerticalIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	contactId: Id<'contacts'>;
@@ -23,7 +24,7 @@ function channelName(channel: string): string {
 <template>
 	<div class="card">
 		<div class="flex items-center gap-3 mb-4">
-			<UiIconBox icon="lucide:bar-chart-3" size="sm" variant="surface" />
+			<UiIconBox :icon="ChartBarVerticalIcon" size="sm" variant="surface" />
 			<h2 class="text-lg font-medium text-text-primary">
 				{{ t('components.contacts.timelineStatsCard.title') }}
 			</h2>
@@ -62,8 +63,8 @@ function channelName(channel: string): string {
 					class="flex items-center justify-between py-1.5"
 				>
 					<div class="flex items-center gap-2">
-						<Icon
-							:name="channelIcon(String(channel))"
+						<component
+							:is="channelIcon(String(channel))"
 							class="w-4 h-4"
 							:class="channelColor(String(channel))"
 						/>

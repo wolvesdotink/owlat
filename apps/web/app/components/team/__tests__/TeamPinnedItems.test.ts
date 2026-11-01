@@ -39,7 +39,6 @@ function mountPinned(team: ReturnType<typeof teamOf>, props: Record<string, unkn
 		global: {
 			plugins: [createTestI18n()],
 			components: { UiAvatar: Plain, UiButton: Plain, PostboxOverflowMenu: Plain },
-			stubs: { Icon: true },
 		},
 	});
 }
@@ -122,7 +121,6 @@ describe('TeamPinnedItems, outgoing citations', () => {
 					InboxAutoSendCountdown: Plain,
 					InboxNoteComposer: Plain,
 				},
-				stubs: { Icon: true },
 			},
 		});
 		const row = w.get('[data-testid="team-stream-reply"]');

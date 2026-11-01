@@ -13,6 +13,8 @@
  * Weight-based, no large fills: the ring is a 1.5px success indicator, the banner
  * is muted. Human language only — "… is replying to this thread right now."
  */
+import { PencilIcon } from '@coolicons/vue';
+
 export interface PresencePerson {
 	userId: string;
 	mode: 'viewing' | 'replying';
@@ -105,7 +107,7 @@ function presenceTitle(person: PresencePerson): string {
 			v-if="repliers.length > 0"
 			class="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm text-text-secondary presence-banner"
 		>
-			<Icon name="lucide:pencil-line" class="w-3.5 h-3.5 text-warning shrink-0" />
+			<PencilIcon class="w-3.5 h-3.5 text-warning shrink-0" />
 			<I18nT :keypath="replyingBannerKey" tag="span" scope="global">
 				<template #names>
 					<span class="font-medium text-text-primary">{{ replyingLabel }}</span>

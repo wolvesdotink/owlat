@@ -22,7 +22,7 @@ import { createTestI18n } from '~/__tests__/i18n';
 const global = {
 	components: { UiModal, UiButton },
 	plugins: [createTestI18n()],
-	stubs: { Icon: true, teleport: true },
+	stubs: { teleport: true },
 };
 
 afterEach(() => {
@@ -218,7 +218,7 @@ describe('UiModal initial focus', () => {
 			}),
 			// The real Teleport: the stub re-creates its children on every render,
 			// so the ref would never settle.
-			{ attachTo: document.body, global: { ...global, stubs: { Icon: true } } }
+			{ attachTo: document.body, global: { ...global, stubs: {} } }
 		);
 		isOpen.value = true;
 		await flushPromises();

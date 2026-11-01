@@ -125,7 +125,7 @@ export const escalationGuardPlugin = definePlugin({
 				section: 'inbox',
 				name: 'Escalations',
 				href: '/dashboard/admin/instance/plugins/escalation-guard',
-				icon: 'lucide:siren',
+				icon: 'coolicons:siren',
 			},
 		],
 		settingsPanels: [
@@ -133,7 +133,7 @@ export const escalationGuardPlugin = definePlugin({
 				id: 'settings',
 				name: 'Escalation Guard',
 				href: '/dashboard/admin/instance/plugins/escalation-guard',
-				icon: 'lucide:siren',
+				icon: 'coolicons:siren',
 			},
 		],
 	},

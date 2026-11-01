@@ -1,5 +1,6 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import { ChatCircleIcon, LinkIcon, LinkedinIcon, MailIcon, PhoneIcon, XIcon } from '@coolicons/vue';
 
 export function useContactIdentities(contactId: Ref<Id<'contacts'>>) {
 	const { t } = useI18n();
@@ -74,28 +75,28 @@ export function useContactIdentities(contactId: Ref<Id<'contacts'>>) {
 	// Channel helpers. `label` is a message key — the identities tab renders it
 	// through `t()`, so an unmapped channel can fall back to its raw value.
 	const channelOptions = [
-		{ value: 'email', label: 'shared.useContactIdentities.channels.email', icon: 'lucide:mail' },
-		{ value: 'phone', label: 'shared.useContactIdentities.channels.phone', icon: 'lucide:phone' },
+		{ value: 'email', label: 'shared.useContactIdentities.channels.email', icon: MailIcon },
+		{ value: 'phone', label: 'shared.useContactIdentities.channels.phone', icon: PhoneIcon },
 		{
 			value: 'whatsapp',
 			label: 'shared.useContactIdentities.channels.whatsapp',
-			icon: 'lucide:message-circle',
+			icon: ChatCircleIcon,
 		},
 		{
 			value: 'twitter',
 			label: 'shared.useContactIdentities.channels.twitter',
-			icon: 'lucide:twitter',
+			icon: XIcon,
 		},
 		{
 			value: 'linkedin',
 			label: 'shared.useContactIdentities.channels.linkedin',
-			icon: 'lucide:linkedin',
+			icon: LinkedinIcon,
 		},
-		{ value: 'other', label: 'shared.useContactIdentities.channels.other', icon: 'lucide:link' },
+		{ value: 'other', label: 'shared.useContactIdentities.channels.other', icon: LinkIcon },
 	];
 
 	const getChannelIcon = (channel: string) => {
-		return channelOptions.find((c) => c.value === channel)?.icon ?? 'lucide:link';
+		return channelOptions.find((c) => c.value === channel)?.icon ?? LinkIcon;
 	};
 
 	const getChannelLabel = (channel: string) => {

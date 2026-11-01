@@ -13,6 +13,8 @@
  * backend to render, and no credential value ever reaches this component — the
  * last-event line is a timestamp, never an event body.
  */
+import { BroadcastIcon, CheckIcon, CircleCheckIcon, ClockIcon, CopyIcon } from '@coolicons/vue';
+
 const props = defineProps<{
 	/**
 	 * Absolute HTTPS endpoint the topic delivers to, or `''` when the site URL is
@@ -40,7 +42,7 @@ const lastEventLabel = computed(() => {
 	<UiCard padding="none" overflow="hidden">
 		<template #header>
 			<div class="flex items-center gap-3">
-				<UiIconBox icon="lucide:radio" size="sm" variant="surface" rounded="lg" />
+				<UiIconBox :icon="BroadcastIcon" size="sm" variant="surface" rounded="lg" />
 				<div>
 					<h2 class="text-lg font-semibold text-text-primary">
 						{{ t('dashboard.admin.delivery.transport.sns.title') }}
@@ -71,8 +73,8 @@ const lastEventLabel = computed(() => {
 						"
 					>
 						<UiButton variant="ghost" size="sm" @click="copy(webhookUrl, 'ses-url')">
-							<Icon
-								:name="isCopied('ses-url') ? 'lucide:check' : 'lucide:copy'"
+							<component
+								:is="isCopied('ses-url') ? CheckIcon : CopyIcon"
 								class="w-3.5 h-3.5"
 								:class="isCopied('ses-url') ? 'text-success' : ''"
 							/>
@@ -117,13 +119,13 @@ const lastEventLabel = computed(() => {
 			<!-- Live "last event received" line -->
 			<div class="flex items-center gap-2 text-xs">
 				<template v-if="lastEventLabel">
-					<Icon name="lucide:check-circle-2" class="w-3.5 h-3.5 text-success" />
+					<CircleCheckIcon class="w-3.5 h-3.5 text-success" />
 					<span class="text-success">{{
 						t('dashboard.admin.delivery.transport.sns.lastEvent', { at: lastEventLabel })
 					}}</span>
 				</template>
 				<template v-else>
-					<Icon name="lucide:clock" class="w-3.5 h-3.5 text-text-tertiary" />
+					<ClockIcon class="w-3.5 h-3.5 text-text-tertiary" />
 					<span class="text-text-tertiary">
 						{{ t('dashboard.admin.delivery.transport.sns.noEvents') }}
 					</span>

@@ -6,6 +6,19 @@ import {
 	type AdminAttentionKey,
 } from '~/lib/adminSettingsRegistry';
 import { useWorkspaceSettingsNav } from '~/composables/useWorkspaceSettingsNav';
+import {
+	ActivityIcon,
+	ArrowRightIcon,
+	GaugeIcon,
+	ServerIcon,
+	ShieldCheckIcon,
+	ShieldIcon,
+	SparklesIcon,
+	ToggleRightIcon,
+	TruckIcon,
+	UsersIcon,
+	type IconComponent,
+} from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -29,13 +42,13 @@ const deliveryTone = computed(() =>
 // reads, each opening on its lead page. The System group already carries the
 // platform-admin pages for whoever holds that role.
 const { areas: registryAreas, badges } = useWorkspaceSettingsNav(ref(true));
-const GROUP_ICONS: Record<AdminAreaKey, string> = {
-	overview: 'lucide:gauge',
-	team: 'lucide:users-round',
-	delivery: 'lucide:truck',
-	ai: 'lucide:sparkles',
-	features: 'lucide:toggle-right',
-	system: 'lucide:server-cog',
+const GROUP_ICONS: Record<AdminAreaKey, IconComponent> = {
+	overview: GaugeIcon,
+	team: UsersIcon,
+	delivery: TruckIcon,
+	ai: SparklesIcon,
+	features: ToggleRightIcon,
+	system: ServerIcon,
 };
 const groups = computed(() =>
 	registryAreas.value
@@ -111,7 +124,7 @@ async function onClaimPlatformAdmin() {
 		>
 			<div class="flex items-start justify-between gap-4">
 				<div class="flex items-start gap-4">
-					<UiIconBox icon="lucide:activity" size="md" variant="surface" rounded="lg" />
+					<UiIconBox :icon="ActivityIcon" size="md" variant="surface" rounded="lg" />
 					<div>
 						<p class="text-sm text-text-tertiary">
 							{{ t('dashboard.admin.index.deliveryVerdict') }}
@@ -123,7 +136,7 @@ async function onClaimPlatformAdmin() {
 						<p v-if="reason" class="mt-1 text-sm text-text-secondary">{{ reason }}</p>
 					</div>
 				</div>
-				<Icon name="lucide:arrow-right" class="w-5 h-5 text-text-tertiary mt-2" />
+				<ArrowRightIcon class="w-5 h-5 text-text-tertiary mt-2" />
 			</div>
 		</NuxtLink>
 
@@ -139,7 +152,7 @@ async function onClaimPlatformAdmin() {
 					{{ t(item.message, { count: item.count }, item.count) }}
 				</span>
 			</span>
-			<Icon name="lucide:arrow-right" class="w-5 h-5 text-text-tertiary" />
+			<ArrowRightIcon class="w-5 h-5 text-text-tertiary" />
 		</NuxtLink>
 
 		<div class="grid gap-4 sm:grid-cols-2">
@@ -163,7 +176,7 @@ async function onClaimPlatformAdmin() {
 			</h2>
 			<div class="card flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
 				<div class="flex items-start gap-3">
-					<UiIconBox icon="lucide:shield-check" size="md" variant="brand" rounded="lg" />
+					<UiIconBox :icon="ShieldCheckIcon" size="md" variant="brand" rounded="lg" />
 					<div>
 						<h3 class="font-semibold text-text-primary">
 							{{ t('dashboard.admin.index.claimPlatform.title') }}
@@ -189,7 +202,7 @@ async function onClaimPlatformAdmin() {
 			v-else-if="isPlatformAdmin === false"
 			class="mt-10 flex items-start gap-3 rounded-lg border border-border-subtle bg-bg-surface p-4"
 		>
-			<Icon name="lucide:shield" class="w-5 h-5 shrink-0 mt-0.5 text-text-tertiary" />
+			<ShieldIcon class="w-5 h-5 shrink-0 mt-0.5 text-text-tertiary" />
 			<p class="text-sm text-text-secondary">
 				{{ t('dashboard.admin.index.platformAdminOnly') }}
 				<a

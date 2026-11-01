@@ -47,7 +47,7 @@ function mountToolbar(props: {
 		global: {
 			plugins: [createTestI18n()],
 			components: { UiButton },
-			stubs: { ShareLinksPopover: true, Icon: true },
+			stubs: { ShareLinksPopover: true },
 		},
 	});
 	return wrapper;

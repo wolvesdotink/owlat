@@ -34,7 +34,6 @@ const mountOpts = {
 	global: {
 		plugins: [createTestI18n()],
 		stubs: {
-			Icon: true,
 			UiAvatar: true,
 			// Render the default slot so the menu items are in the DOM.
 			UiDropdownMenu: { template: '<div><slot /></div>' },

@@ -1,4 +1,4 @@
-import { RectangleHorizontal } from '@lucide/vue';
+import { Ratio169Icon } from '@coolicons/vue';
 import type { EditorModule } from '../_module';
 import { heroSchema } from '../../schema/definitions/hero';
 import { itemsChildrenView, containerChildTypes } from '../_itemsChildren';
@@ -6,7 +6,7 @@ import { itemsChildrenView, containerChildTypes } from '../_itemsChildren';
 export const heroEditor: EditorModule<'hero'> = {
 	type: 'hero',
 	label: 'Hero',
-	icon: RectangleHorizontal,
+	icon: Ratio169Icon,
 	schema: heroSchema,
 	slashCommand: {
 		name: 'Hero',

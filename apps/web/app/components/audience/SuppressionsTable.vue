@@ -7,6 +7,7 @@ import {
 	suppressionProvenanceLine,
 } from '~/utils/suppressionProvenance';
 import { useLocalized } from '~/composables/useLocalized';
+import { TrashIcon } from '@coolicons/vue';
 
 /**
  * The suppression list itself: one row per blocked address, with the reason
@@ -89,8 +90,8 @@ const presentation = (reason: BlockReason) => suppressionReasonPresentation(reas
 				<td class="px-4 sm:px-6 py-4">
 					<div class="flex items-center gap-3">
 						<div class="p-2 rounded-lg bg-bg-surface flex items-center justify-center shrink-0">
-							<Icon
-								:name="presentation(blockedEmail.reason).icon"
+							<component
+								:is="presentation(blockedEmail.reason).icon"
 								class="w-4 h-4 text-text-secondary"
 							/>
 						</div>
@@ -151,7 +152,7 @@ const presentation = (reason: BlockReason) => suppressionReasonPresentation(reas
 							:aria-label="t('dashboard.audience.suppressions.removeSuppression')"
 							@click="emit('remove', blockedEmail)"
 						>
-							<Icon name="lucide:trash-2" class="w-4 h-4" />
+							<TrashIcon class="w-4 h-4" />
 						</UiButton>
 					</UiTooltip>
 				</td>

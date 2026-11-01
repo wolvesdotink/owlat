@@ -31,7 +31,7 @@ function mountRail() {
 				id === 'mode' ? 'completed' : id === 'features' ? 'current' : 'upcoming',
 			isConnectorHighlighted: (index: number) => index === 0,
 		},
-		global: { stubs: { Icon: true } },
+		global: {},
 	});
 }
 

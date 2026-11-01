@@ -22,6 +22,8 @@
 import { api } from '@owlat/api';
 import { prefersReducedMotion } from '@owlat/ui/composables/useReducedMotion';
 import { GENERIC_IMAP_PROVIDER, MAIL_PROVIDERS, type MailProvider } from '~/utils/mailAutodiscover';
+import { TriangleWarningIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const props = withDefaults(
 	defineProps<{
@@ -189,17 +191,14 @@ const showCard = computed(
 		</header>
 
 		<div v-if="isLoading" class="p-8 flex justify-center" aria-busy="true">
-			<Icon
-				name="lucide:loader-2"
-				class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary"
-			/>
+			<SpinnerIcon class="w-5 h-5 text-text-tertiary" />
 			<span class="sr-only">{{ t('components.postbox.postboxConnectedAccountCard.loading') }}</span>
 		</div>
 
 		<!-- The subscription faulted. Saying nothing here would render as "no
 		     mailbox is connected", which is a different and wrong answer. -->
 		<div v-else-if="accountError" class="px-5 py-6 flex items-start gap-3" role="alert">
-			<Icon name="lucide:alert-triangle" class="w-5 h-5 text-warning shrink-0 mt-0.5" />
+			<TriangleWarningIcon class="w-5 h-5 text-warning shrink-0 mt-0.5" />
 			<p class="text-sm text-text-secondary">
 				{{ t('components.postbox.postboxConnectedAccountCard.loadError') }}
 			</p>
@@ -211,10 +210,7 @@ const showCard = computed(
 			class="px-5 py-6 flex items-start gap-3"
 			data-testid="connected-account-deleting"
 		>
-			<Icon
-				name="lucide:loader-2"
-				class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary shrink-0 mt-0.5"
-			/>
+			<SpinnerIcon class="w-5 h-5 text-text-tertiary shrink-0 mt-0.5" />
 			<p class="text-sm text-text-secondary">
 				{{ t('components.postbox.postboxConnectedAccountCard.deletingBody') }}
 			</p>

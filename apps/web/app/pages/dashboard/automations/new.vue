@@ -7,6 +7,8 @@ import {
 	type TriggerConfigByKind,
 	type TriggerKind,
 } from '~/composables/automations/triggers';
+import { ArrowLeftIcon, ArrowRightIcon, CheckIcon, FileTextIcon, ZapIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const { t } = useI18n();
 
@@ -245,7 +247,7 @@ const getIconColorClass = (color: string) => {
 						@click="handleCancel"
 						:aria-label="t('common.back')"
 					>
-						<Icon name="lucide:arrow-left" class="w-5 h-5" />
+						<ArrowLeftIcon class="w-5 h-5" />
 					</button>
 					<div>
 						<h1 class="text-lg font-semibold text-text-primary">
@@ -308,7 +310,7 @@ const getIconColorClass = (color: string) => {
 						<!-- Automation Name -->
 						<div>
 							<label for="automationName" class="label flex items-center gap-2">
-								<Icon name="lucide:file-text" class="w-4 h-4 text-text-tertiary" />
+								<FileTextIcon class="w-4 h-4 text-text-tertiary" />
 								{{ t('dashboard.automations.new.form.nameLabel') }}
 								<span class="text-error">*</span>
 							</label>
@@ -330,7 +332,7 @@ const getIconColorClass = (color: string) => {
 						<!-- Automation Description (optional) -->
 						<div>
 							<label for="automationDescription" class="label flex items-center gap-2">
-								<Icon name="lucide:file-text" class="w-4 h-4 text-text-tertiary" />
+								<FileTextIcon class="w-4 h-4 text-text-tertiary" />
 								{{ t('common.description') }}
 								<span class="text-text-tertiary">{{
 									t('dashboard.automations.new.form.optionalHint')
@@ -348,7 +350,7 @@ const getIconColorClass = (color: string) => {
 						<!-- Trigger Selection -->
 						<div>
 							<label class="label flex items-center gap-2 mb-3">
-								<Icon name="lucide:zap" class="w-4 h-4 text-text-tertiary" />
+								<ZapIcon class="w-4 h-4 text-text-tertiary" />
 								{{ t('dashboard.automations.new.form.triggerTypeLabel') }}
 								<span class="text-error">*</span>
 							</label>
@@ -372,15 +374,14 @@ const getIconColorClass = (color: string) => {
 											getIconColorClass(trigger.color),
 										]"
 									>
-										<Icon :name="trigger.icon" class="w-5 h-5" />
+										<component :is="trigger.icon" class="w-5 h-5" />
 									</div>
 									<!-- Content -->
 									<div class="flex-1 min-w-0">
 										<div class="flex items-center gap-2">
 											<span class="font-medium text-text-primary">{{ t(trigger.label) }}</span>
-											<Icon
+											<CheckIcon
 												v-if="selectedTriggerType === trigger.id"
-												name="lucide:check"
 												class="w-4 h-4 text-brand"
 											/>
 										</div>
@@ -421,7 +422,7 @@ const getIconColorClass = (color: string) => {
 							class="p-4 bg-brand/5 border border-brand/20 rounded-lg"
 						>
 							<div class="flex items-start gap-3">
-								<Icon name="lucide:check" class="w-5 h-5 text-brand mt-0.5" />
+								<CheckIcon class="w-5 h-5 text-brand mt-0.5" />
 								<div>
 									<p class="text-sm font-medium text-text-primary">
 										{{ t('dashboard.automations.new.contactCreatedInfo.title') }}
@@ -449,13 +450,13 @@ const getIconColorClass = (color: string) => {
 								(currentTriggerRequiresConfig && !isTriggerConfigComplete)
 							"
 						>
-							<Icon v-if="isSaving" name="lucide:loader-2" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
+							<SpinnerIcon v-if="isSaving" class="w-4 h-4" />
 							{{
 								isSaving
 									? t('dashboard.automations.new.creating')
 									: t('dashboard.automations.new.continue')
 							}}
-							<Icon v-if="!isSaving" name="lucide:arrow-right" class="w-4 h-4" />
+							<ArrowRightIcon v-if="!isSaving" class="w-4 h-4" />
 						</UiButton>
 					</div>
 				</form>

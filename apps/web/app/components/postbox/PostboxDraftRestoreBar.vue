@@ -18,6 +18,8 @@
  */
 import type { ComposeMirror } from '~/composables/postbox/usePostboxComposeMirror';
 import type { MirrorFields } from '~/utils/postboxDraftMirror';
+import { HistoryIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const props = defineProps<{
 	mirror: ComposeMirror;
@@ -64,7 +66,7 @@ function onConfirm() {
 		data-testid="draft-restore-bar"
 		:aria-busy="mirror.busy"
 	>
-		<Icon name="lucide:history" class="w-4 h-4 text-warning flex-shrink-0" />
+		<HistoryIcon class="w-4 h-4 text-warning flex-shrink-0" />
 		<span class="text-text-secondary">
 			{{
 				t('components.postbox.postboxDraftRestoreBar.message', {
@@ -74,11 +76,7 @@ function onConfirm() {
 		</span>
 		<div class="ml-auto flex items-center gap-1.5">
 			<UiButton size="sm" type="button" :disabled="disabled" @click="run()">
-				<Icon
-					v-if="mirror.busy"
-					name="lucide:loader-2"
-					class="w-3.5 h-3.5 mr-1 animate-spin motion-reduce:animate-none"
-				/>
+				<SpinnerIcon v-if="mirror.busy" class="w-3.5 h-3.5 mr-1" />
 				{{ t('components.postbox.postboxDraftRestoreBar.restore') }}
 			</UiButton>
 			<UiButton size="sm" variant="ghost" type="button" :disabled="disabled" @click="mirror.keep()">

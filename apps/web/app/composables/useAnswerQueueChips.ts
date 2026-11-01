@@ -6,13 +6,14 @@
  */
 import type { AnswerItem } from '~/composables/useAnswerQueue';
 import type { AnswerQueueSession } from '~/composables/useAnswerQueueSession';
+import { ChatCircleIcon, RobotIcon, type IconComponent } from '@coolicons/vue';
 
 export interface AnswerQueueChip {
 	id: string;
 	label: string;
 	count: number;
 	slot?: number | null;
-	icon?: string;
+	icon?: IconComponent;
 }
 
 export function useAnswerQueueChips(session: Pick<AnswerQueueSession, 'queue' | 'filter'> | null) {
@@ -36,7 +37,7 @@ export function useAnswerQueueChips(session: Pick<AnswerQueueSession, 'queue' | 
 				id: 'team',
 				label: t('components.shell.teamInbox'),
 				count: team,
-				icon: 'lucide:bot',
+				icon: RobotIcon,
 			});
 		const chat = count((i) => i.source === 'mention');
 		if (chat > 0)
@@ -44,7 +45,7 @@ export function useAnswerQueueChips(session: Pick<AnswerQueueSession, 'queue' | 
 				id: 'chat',
 				label: t('components.shell.chat.title'),
 				count: chat,
-				icon: 'lucide:message-circle',
+				icon: ChatCircleIcon,
 			});
 		// A link can land on a filter with nothing in it (`?in=team` once the team
 		// queue is clear). Keep that chip visible so the page says what it is
@@ -57,14 +58,14 @@ export function useAnswerQueueChips(session: Pick<AnswerQueueSession, 'queue' | 
 					id: 'team',
 					label: t('components.shell.teamInbox'),
 					count: 0,
-					icon: 'lucide:bot',
+					icon: RobotIcon,
 				});
 			} else if (active === 'chat') {
 				list.push({
 					id: 'chat',
 					label: t('components.shell.chat.title'),
 					count: 0,
-					icon: 'lucide:message-circle',
+					icon: ChatCircleIcon,
 				});
 			} else if (inbox) {
 				list.push({ id: inbox.mailboxId, label: inbox.name, count: 0, slot: inbox.slot });

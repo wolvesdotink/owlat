@@ -100,7 +100,6 @@ function mountBar() {
 		global: {
 			plugins: [createTestI18n()],
 			stubs: {
-				Icon: true,
 				PostboxSnoozeDialog: snoozeStub,
 				PostboxOverflowMenu: {
 					props: ['triggerText'],

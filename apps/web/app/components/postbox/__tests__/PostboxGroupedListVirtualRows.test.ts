@@ -24,6 +24,7 @@ import PostboxSectionedThreadList from '../PostboxSectionedThreadList.vue';
 import PostboxConversationRow from '../PostboxConversationRow.vue';
 import PostboxThreadListSkeleton from '../PostboxThreadListSkeleton.vue';
 import PostboxEmptyState from '../PostboxEmptyState.vue';
+import { UserIcon } from '@coolicons/vue';
 
 // Both renderers virtualize above 100 rows; these bracket that threshold.
 const SMALL = 5;
@@ -64,7 +65,6 @@ const globalOptions = {
 		PostboxConversationRow,
 	},
 	stubs: {
-		Icon: { props: ['name'], template: '<span />' },
 		NuxtLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
 		UiModal: { template: '<span />' },
 		UiSkeleton: { template: '<span />' },
@@ -89,7 +89,7 @@ function mountCategoryList(count: number) {
 				{
 					key: 'person' as const,
 					label: 'shared.mailCategory.person',
-					icon: 'lucide:user',
+					icon: UserIcon,
 					threads: Array.from({ length: count }, (_, i) => makeThread(i)),
 				},
 			],

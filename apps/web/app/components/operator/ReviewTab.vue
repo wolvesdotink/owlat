@@ -7,6 +7,7 @@ import {
 	scanLevelVariant,
 	type OperatorReviewItem,
 } from '~/utils/operatorConsole';
+import { CircleCheckIcon } from '@coolicons/vue';
 
 defineProps<{
 	reviewQueue:
@@ -35,7 +36,7 @@ const { t } = useI18n();
 
 			<UiEmptyState
 				v-if="!reviewQueue?.pending?.length"
-				icon="lucide:check-circle-2"
+				:icon="CircleCheckIcon"
 				:title="t('dashboard.admin.operator.index.review.emptyTitle')"
 				:description="t('dashboard.admin.operator.index.review.emptyDescription')"
 			/>

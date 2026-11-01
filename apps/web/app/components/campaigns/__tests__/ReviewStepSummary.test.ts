@@ -120,7 +120,6 @@ function mountStep(overrides: Partial<Record<string, unknown>> = {}) {
 				CampaignsChangedSinceLastSend: true,
 				CampaignsPresendChecksPanel: true,
 				CampaignsSendTimingOptions: timingStub,
-				Icon: true,
 				I18nT: passthroughStub,
 			},
 		},

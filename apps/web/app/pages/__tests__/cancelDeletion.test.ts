@@ -22,7 +22,7 @@ function open(query: Record<string, string>) {
 	return mount(CancelDeletionPage, {
 		global: {
 			plugins: [createTestI18n()],
-			stubs: { UiSpinner: true, UiButton: true, Icon: true },
+			stubs: { UiSpinner: true, UiButton: true },
 		},
 	});
 }

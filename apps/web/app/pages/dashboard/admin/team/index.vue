@@ -8,6 +8,12 @@ import type {
 import SettingsTeamMembersCard from '~/components/settings/team/MembersCard.vue';
 import SettingsTeamPendingInvitesCard from '~/components/settings/team/PendingInvitesCard.vue';
 import SettingsTeamRolesCard from '~/components/settings/team/RolesCard.vue';
+import {
+	CircleWarningIcon,
+	ReloadIcon,
+	TriangleWarningIcon,
+	UserPlusCornerIcon,
+} from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -265,7 +271,7 @@ const handleTransferOwnership = async () => {
 			<template v-if="canManageMembers" #actions>
 				<UiButton class="whitespace-nowrap" @click="inviteModal?.open()">
 					<template #iconLeft>
-						<Icon name="lucide:user-plus" class="w-4 h-4" />
+						<UserPlusCornerIcon class="w-4 h-4" />
 					</template>
 					{{ t('dashboard.admin.team.inviteMember') }}
 				</UiButton>
@@ -283,14 +289,14 @@ const handleTransferOwnership = async () => {
 		<!-- Error State — the members fetch failed and we have nothing to show -->
 		<UiCard v-else-if="membersError && members.length === 0" padding="none" overflow="hidden">
 			<UiEmptyState
-				icon="lucide:alert-circle"
+				:icon="CircleWarningIcon"
 				:title="t('dashboard.admin.team.loadError.title')"
 				:description="membersError"
 			>
 				<template #action>
 					<UiButton :loading="isLoadingMembers" @click="fetchMembers({ force: true })">
 						<template #iconLeft>
-							<Icon v-if="!isLoadingMembers" name="lucide:refresh-cw" class="w-4 h-4" />
+							<ReloadIcon v-if="!isLoadingMembers" class="w-4 h-4" />
 						</template>
 						{{ t('dashboard.admin.team.loadError.tryAgain') }}
 					</UiButton>
@@ -308,7 +314,7 @@ const handleTransferOwnership = async () => {
 				role="alert"
 			>
 				<p class="flex items-center gap-2 text-sm text-text-secondary">
-					<Icon name="lucide:alert-triangle" class="w-4 h-4 shrink-0 text-warning" />
+					<TriangleWarningIcon class="w-4 h-4 shrink-0 text-warning" />
 					<span>{{ t('dashboard.admin.team.staleList', { error: membersError }) }}</span>
 				</p>
 				<UiButton

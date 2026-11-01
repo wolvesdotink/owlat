@@ -5,6 +5,16 @@ import type { MailProvider } from '~/utils/mailAutodiscover';
 import { canLearnFromImport } from '~/composables/postbox/useMailMigration';
 import { MAIL_PROVIDERS, providerForImapHost } from '~/utils/mailAutodiscover';
 import type { Id } from '@owlat/api/dataModel';
+import {
+	CircleCheckIcon,
+	CircleSlashIcon,
+	DownloadIcon,
+	KeyIcon,
+	LockIcon,
+	SparklesIcon,
+	TriangleWarningIcon,
+} from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const { t } = useI18n();
 
@@ -212,17 +222,14 @@ const steps = computed(() =>
 		<!-- Wait for the feature-flag subscription before deciding what to show,
 		     so the lock card never flashes at users who have the feature on. -->
 		<div v-if="flagsLoading" class="mt-8 flex justify-center py-10" aria-live="polite">
-			<Icon
-				name="lucide:loader-2"
-				class="w-6 h-6 animate-spin motion-reduce:animate-none text-text-tertiary"
-			/>
+			<SpinnerIcon class="w-6 h-6 text-text-tertiary" />
 			<span class="sr-only">{{ t('common.loading') }}</span>
 		</div>
 
 		<!-- ─────────────── Feature off: explain, don't vanish ─────────────── -->
 		<UiCard v-else-if="!externalEnabled" padding="lg" class="mt-8">
 			<div class="flex items-start gap-3">
-				<UiIconBox icon="lucide:lock" size="md" variant="surface" rounded="xl" />
+				<UiIconBox :icon="LockIcon" size="md" variant="surface" rounded="xl" />
 				<div>
 					<h2 class="font-semibold">{{ t('dashboard.postbox.migrate.featureOffTitle') }}</h2>
 					<p class="text-sm text-text-secondary mt-0.5">
@@ -297,7 +304,7 @@ const steps = computed(() =>
 			<section v-else-if="step === 'ready'" class="space-y-5">
 				<UiCard padding="lg">
 					<div class="flex items-start gap-3">
-						<UiIconBox icon="lucide:check-circle-2" size="md" variant="success" rounded="xl" />
+						<UiIconBox :icon="CircleCheckIcon" size="md" variant="success" rounded="xl" />
 						<div>
 							<p class="font-semibold">
 								{{
@@ -313,11 +320,11 @@ const steps = computed(() =>
 					</div>
 					<ul class="mt-4 space-y-2 text-sm text-text-secondary">
 						<li class="flex items-center gap-2">
-							<Icon name="lucide:download" class="w-4 h-4 text-brand" />
+							<DownloadIcon class="w-4 h-4 text-brand" />
 							{{ t('dashboard.postbox.migrate.readyBulletImport') }}
 						</li>
 						<li class="flex items-center gap-2">
-							<Icon name="lucide:sparkles" class="w-4 h-4 text-brand" />
+							<SparklesIcon class="w-4 h-4 text-brand" />
 							{{
 								isAiIndexing
 									? t('dashboard.postbox.migrate.readyBulletAiOn')
@@ -337,7 +344,7 @@ const steps = computed(() =>
 			<section v-else-if="step === 'reconnect'" class="space-y-5">
 				<UiCard padding="lg" variant="error">
 					<div class="flex items-start gap-3">
-						<UiIconBox icon="lucide:key-round" size="md" variant="error" rounded="xl" />
+						<UiIconBox :icon="KeyIcon" size="md" variant="error" rounded="xl" />
 						<div>
 							<h2 class="font-semibold">
 								{{
@@ -392,7 +399,7 @@ const steps = computed(() =>
 			<section v-else-if="step === 'failed'" class="space-y-5">
 				<UiCard padding="lg" variant="error">
 					<div class="flex items-start gap-3">
-						<UiIconBox icon="lucide:alert-triangle" size="md" variant="error" rounded="xl" />
+						<UiIconBox :icon="TriangleWarningIcon" size="md" variant="error" rounded="xl" />
 						<div>
 							<h2 class="font-semibold">{{ t('dashboard.postbox.migrate.failedTitle') }}</h2>
 							<p class="text-sm text-text-secondary mt-0.5">
@@ -415,7 +422,7 @@ const steps = computed(() =>
 			<section v-else-if="step === 'cancelled'" class="space-y-5">
 				<UiCard padding="lg">
 					<div class="flex items-start gap-3">
-						<UiIconBox icon="lucide:circle-slash" size="md" variant="surface" rounded="xl" />
+						<UiIconBox :icon="CircleSlashIcon" size="md" variant="surface" rounded="xl" />
 						<div>
 							<h2 class="font-semibold">{{ t('dashboard.postbox.migrate.cancelledTitle') }}</h2>
 							<p class="text-sm text-text-secondary mt-0.5">

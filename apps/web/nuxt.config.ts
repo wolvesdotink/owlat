@@ -3,7 +3,6 @@ import tailwindcss from '@tailwindcss/vite';
 import type { PluginOption } from 'vite';
 import { I18N_MODULES, I18N_OPTIONS } from './i18n/catalogModule';
 import { FONT_OPTIONS, NUXT_LINK_DEFAULTS, publicAssetCompression } from './scripts/deliveryTuning';
-import { ICON_SCAN_EXCLUDE, uiLayerIconNames } from './scripts/uiLayerIcons';
 
 // Local default endpoints, single-sourced so the CSP connect-src and the
 // runtimeConfig fallbacks (and the PostHog plugin) can't drift.
@@ -70,7 +69,7 @@ export default defineNuxtConfig({
 		imports: { dirsScanOptions: { fileFilter: (file) => !/[\\/]__tests__[\\/]/.test(file) } },
 	},
 
-	modules: ['nuxt-security', '@nuxtjs/color-mode', '@nuxt/fonts', '@nuxt/icon', ...I18N_MODULES],
+	modules: ['nuxt-security', '@nuxtjs/color-mode', '@nuxt/fonts', ...I18N_MODULES],
 
 	// Locales, URL strategy and detection: i18n/catalogModule.ts.
 	i18n: I18N_OPTIONS,
@@ -96,8 +95,8 @@ export default defineNuxtConfig({
 				// Dropped from script-src to remove the in-page XSS escalation
 				// path. Bundled Nuxt scripts load via `<script src>` and are
 				// covered by 'self' — no script is ever fetched from a third
-				// party (icons are bundled via @nuxt/icon's clientBundle, fonts
-				// ride font-src). Keeping 'https:' here would let an injected
+				// party (icons are compiled into the bundle, fonts ride
+				// font-src). Keeping 'https:' here would let an injected
 				// <script src="https://attacker…"> through and void the policy.
 				// The SPA shell DOES emit inline scripts, and one of them is
 				// load-bearing: Nitro renders `window.__NUXT__.config` per request
@@ -163,7 +162,6 @@ export default defineNuxtConfig({
 						]
 					: [
 							"'self'",
-							'https://api.iconify.design',
 							process.env['NUXT_PUBLIC_CONVEX_URL'] || process.env['CONVEX_URL'],
 							// Convex uses WebSocket — add explicit ws(s):// so browsers that don't
 							// auto-match http→ws per CSP3 still allow the connection.
@@ -306,43 +304,6 @@ export default defineNuxtConfig({
 		// those paths are the real pages of the new IA and a rule would shadow them
 		// (a `/dashboard/admin/delivery` rule 307'd every hard load of the Delivery
 		// hub to a sub-page).
-	},
-
-	icon: {
-		serverBundle: 'local',
-		// Render icons as inline <svg> instead of @nuxt/icon's default CSS mode,
-		// which paints an icon by inserting a <style> element at runtime whose
-		// rule masks a data: URL. Inside the Tauri webview that chain has two
-		// extra links that can break it — this app's CSP is layered under Tauri's
-		// own, and the webview is WebKit, whose mask handling differs from the
-		// Chromium one every dev session runs against — and when either breaks,
-		// the icon is an empty box with nothing in the console. Inline SVG needs
-		// nothing beyond the icon data already in the bundle below.
-		mode: 'svg',
-		// The desktop build (`generate:desktop`) is served statically inside the
-		// Tauri webview — there is no Nitro server, so the default
-		// /api/_nuxt_icon endpoint never exists, and an icon that is not in the
-		// client bundle falls back to fetching api.iconify.design, which a
-		// desktop user (or a firewalled one) cannot reach. Everything referenced
-		// anywhere in the app therefore has to be bundled.
-		clientBundle: {
-			// The packages/ui layer, which the scan below cannot reach — see
-			// scripts/uiLayerIcons.ts for why it needs its own reader.
-			icons: uiLayerIconNames(),
-			scan: {
-				// `ts` is added to @nuxt/icon's defaults because plenty of this app's
-				// icon names live in plain modules (nav tables, status → icon maps,
-				// composables) rather than in the component that renders them. They
-				// were silently missing from the bundle: an icon the scan does not see
-				// is not a build error, the module just leaves it to the runtime — and
-				// on the desktop the runtime has nowhere to fetch it from.
-				// `scripts/check-icon-names.sh` fails the lint if a referenced icon is
-				// unresolvable or sits in a file outside these globs.
-				globInclude: ['**/*.{vue,jsx,tsx,ts,md,mdc,mdx,yml,yaml}'],
-				globExclude: ICON_SCAN_EXCLUDE, // the defaults plus test files
-			},
-			sizeLimitKb: 512,
-		},
 	},
 
 	app: {

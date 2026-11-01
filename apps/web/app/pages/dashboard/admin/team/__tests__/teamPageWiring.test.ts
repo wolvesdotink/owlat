@@ -10,6 +10,7 @@ import { installNuxtStubs, mountDashboardPage, queryResult } from '~/__tests__/a
 import { i18nStubs } from '~/__tests__/i18n';
 import type { OrganizationInvitation, OrganizationMember } from '~/composables/useOrganization';
 import TeamPage from '../index.vue';
+import { MailIcon } from '@coolicons/vue';
 
 const NOW = Date.parse('2026-08-21T09:12:00Z');
 const DAY = 86_400_000;
@@ -91,7 +92,7 @@ beforeEach(() => {
 				filteredMembers,
 				isMailboxStatusPending: ref(false),
 				mailboxMetaFor: () => ({
-					icon: 'lucide:mail',
+					icon: MailIcon,
 					toneClass: '',
 					label: 'Hosted',
 					description: 'Hosted',

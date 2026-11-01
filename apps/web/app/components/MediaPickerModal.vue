@@ -7,6 +7,7 @@ import {
 	registerUploadedMediaReference,
 	type StoredMediaReference,
 } from '~/utils/mediaAssetReference';
+import { CloudUploadIcon, FileIcon, FileTextIcon, FilmIcon, MusicNoteIcon } from '@coolicons/vue';
 
 const props = withDefaults(
 	defineProps<{
@@ -175,10 +176,10 @@ const handleFileInput = (event: Event) => {
 };
 
 const getFileIcon = (mimeType: string) => {
-	if (mimeType === 'application/pdf') return 'lucide:file-text';
-	if (mimeType.startsWith('video/')) return 'lucide:film';
-	if (mimeType.startsWith('audio/')) return 'lucide:music';
-	return 'lucide:file';
+	if (mimeType === 'application/pdf') return FileTextIcon;
+	if (mimeType.startsWith('video/')) return FilmIcon;
+	if (mimeType.startsWith('audio/')) return MusicNoteIcon;
+	return FileIcon;
 };
 </script>
 
@@ -253,7 +254,11 @@ const getFileIcon = (mimeType: string) => {
 						v-else
 						class="w-full h-full flex flex-col items-center justify-center gap-2 bg-bg-surface p-3"
 					>
-						<Icon :name="getFileIcon(asset.mimeType || '')" class="w-8 h-8 text-text-tertiary" />
+						<component
+							:is="getFileIcon(asset.mimeType || '')"
+							class="w-8 h-8 text-text-tertiary"
+							:stroke-width="1.5"
+						/>
 						<span class="text-[10px] text-text-secondary text-center truncate max-w-full px-1">{{
 							asset.filename
 						}}</span>
@@ -288,7 +293,7 @@ const getFileIcon = (mimeType: string) => {
 				@dragleave="handleDragLeave"
 				@drop="handleDrop"
 			>
-				<Icon name="lucide:upload-cloud" class="w-10 h-10 text-text-tertiary" />
+				<CloudUploadIcon class="w-10 h-10 text-text-tertiary" :stroke-width="1.5" />
 				<p class="text-sm text-text-secondary">
 					{{
 						allowAllFiles

@@ -3,6 +3,15 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { useAddCampaignSender } from '~/composables/useAddCampaignSender';
 import SettingsResetToDefault from '~/components/settings/ResetToDefault.vue';
+import {
+	CircleCheckIcon,
+	MailIcon,
+	MentionIcon,
+	PlusIcon,
+	StarIcon,
+	TrashIcon,
+	TriangleWarningIcon,
+} from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -180,7 +189,7 @@ async function onSubmitAdd() {
 			v-if="!hasActiveOrganization"
 			class="card flex flex-col items-center justify-center py-16 text-center px-6"
 		>
-			<UiIconBox icon="lucide:mail" size="xl" variant="surface" rounded="full" class="mb-4" />
+			<UiIconBox :icon="MailIcon" size="xl" variant="surface" rounded="full" class="mb-4" />
 			<p class="text-text-secondary font-medium">
 				{{ t('dashboard.admin.team.senders.noWorkspace.title') }}
 			</p>
@@ -212,7 +221,7 @@ async function onSubmitAdd() {
 						</div>
 						<UiButton size="sm" @click="openAdd">
 							<template #iconLeft>
-								<Icon name="lucide:plus" class="w-4 h-4" />
+								<PlusIcon class="w-4 h-4" />
 							</template>
 							{{ t('dashboard.admin.team.senders.addSender') }}
 						</UiButton>
@@ -224,13 +233,7 @@ async function onSubmitAdd() {
 					v-if="(senders?.length ?? 0) === 0"
 					class="flex flex-col items-center justify-center py-14 text-center px-6"
 				>
-					<UiIconBox
-						icon="lucide:at-sign"
-						size="lg"
-						variant="surface"
-						rounded="full"
-						class="mb-3"
-					/>
+					<UiIconBox :icon="MentionIcon" size="lg" variant="surface" rounded="full" class="mb-3" />
 					<p class="text-text-secondary font-medium">
 						{{ t('dashboard.admin.team.senders.empty.title') }}
 					</p>
@@ -259,7 +262,7 @@ async function onSubmitAdd() {
 									class="inline-flex items-center gap-1 text-xs text-brand"
 									:title="t('dashboard.admin.team.senders.defaultTitle')"
 								>
-									<Icon name="lucide:star" class="w-3.5 h-3.5 fill-current" />
+									<StarIcon class="w-3.5 h-3.5 fill-current" />
 									{{ t('common.default') }}
 								</span>
 							</div>
@@ -289,7 +292,7 @@ async function onSubmitAdd() {
 							:aria-label="t('dashboard.admin.team.senders.removeSender', { email: sender.email })"
 							@click="requestRemove(sender)"
 						>
-							<Icon name="lucide:trash-2" class="w-4 h-4" />
+							<TrashIcon class="w-4 h-4" />
 						</button>
 					</li>
 				</ul>
@@ -367,7 +370,7 @@ async function onSubmitAdd() {
 						v-if="verification.tone === 'warning'"
 						class="mt-1.5 text-xs text-warning flex items-start gap-1.5"
 					>
-						<Icon name="lucide:alert-triangle" class="w-3.5 h-3.5 shrink-0 mt-px" />
+						<TriangleWarningIcon class="w-3.5 h-3.5 shrink-0 mt-px" />
 						<span>
 							{{ verificationMessage }}
 							<NuxtLink
@@ -383,7 +386,7 @@ async function onSubmitAdd() {
 						v-else-if="verification.tone === 'success'"
 						class="mt-1.5 text-xs text-success flex items-center gap-1.5"
 					>
-						<Icon name="lucide:check-circle" class="w-3.5 h-3.5 shrink-0" />
+						<CircleCheckIcon class="w-3.5 h-3.5 shrink-0" />
 						{{ verificationMessage }}
 					</p>
 					<p v-else class="mt-1.5 text-xs text-text-tertiary">

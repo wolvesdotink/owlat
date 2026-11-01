@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import { KeyIcon, LockIcon, MailboxIcon, PlusIcon, UsersIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -155,7 +156,7 @@ async function confirmPurge() {
 					:loading="publishKeysOp.isLoading.value"
 					@click="publishMissingKeys"
 				>
-					<Icon name="lucide:key-round" class="w-4 h-4 mr-1.5" />
+					<KeyIcon class="w-4 h-4 mr-1.5" />
 					{{ t('dashboard.admin.team.inboxes.publishKeys') }}
 				</UiButton>
 				<UiButton
@@ -164,11 +165,11 @@ async function confirmPurge() {
 					data-testid="team-inbox-convert-open"
 					@click="isConvertOpen = true"
 				>
-					<Icon name="lucide:users" class="w-4 h-4 mr-1.5" />
+					<UsersIcon class="w-4 h-4 mr-1.5" />
 					{{ t('dashboard.admin.team.inboxes.convert.action') }}
 				</UiButton>
 				<UiButton to="/dashboard/preferences/add-account?mode=team">
-					<Icon name="lucide:plus" class="w-4 h-4 mr-1.5" />
+					<PlusIcon class="w-4 h-4 mr-1.5" />
 					{{ t('dashboard.admin.team.inboxes.newInbox') }}
 				</UiButton>
 			</template>
@@ -179,7 +180,7 @@ async function confirmPurge() {
 			v-if="showAdminGate"
 			class="card flex flex-col items-center justify-center py-16 text-center px-6"
 		>
-			<UiIconBox icon="lucide:lock" size="xl" variant="surface" rounded="full" class="mb-4" />
+			<UiIconBox :icon="LockIcon" size="xl" variant="surface" rounded="full" class="mb-4" />
 			<p class="text-text-secondary font-medium">
 				{{ t('dashboard.admin.team.inboxes.adminGate.title') }}
 			</p>
@@ -193,7 +194,7 @@ async function confirmPurge() {
 			v-else-if="!hasActiveOrganization"
 			class="card flex flex-col items-center justify-center py-16 text-center px-6"
 		>
-			<UiIconBox icon="lucide:mails" size="xl" variant="surface" rounded="full" class="mb-4" />
+			<UiIconBox :icon="MailboxIcon" size="xl" variant="surface" rounded="full" class="mb-4" />
 			<p class="text-text-secondary font-medium">
 				{{ t('dashboard.admin.team.inboxes.noWorkspace.title') }}
 			</p>
@@ -213,7 +214,7 @@ async function confirmPurge() {
 		<!-- Empty state -->
 		<div v-else-if="(inboxes?.length ?? 0) === 0" class="card py-16 px-6 text-center">
 			<UiIconBox
-				icon="lucide:mails"
+				:icon="MailboxIcon"
 				size="xl"
 				variant="surface"
 				rounded="full"
@@ -231,7 +232,7 @@ async function confirmPurge() {
 				<template #supportAddress><code>support@</code></template>
 			</I18nT>
 			<UiButton to="/dashboard/preferences/add-account?mode=team" class="mt-6">
-				<Icon name="lucide:plus" class="w-4 h-4 mr-1.5" />
+				<PlusIcon class="w-4 h-4 mr-1.5" />
 				{{ t('dashboard.admin.team.inboxes.empty.action') }}
 			</UiButton>
 		</div>

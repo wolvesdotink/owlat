@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { GitBranchIcon } from '@coolicons/vue';
+
 interface RouteProvider {
 	providerType: string;
 	weight?: number;
@@ -30,7 +32,7 @@ const { t } = useI18n();
 		<span
 			class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border bg-brand/20 text-brand border-brand/30"
 		>
-			<Icon name="lucide:git-branch" class="w-3 h-3" />
+			<GitBranchIcon class="w-3 h-3" />
 			{{ strategyLabel(route.strategy) }}
 		</span>
 		<div class="flex flex-wrap items-center gap-2">

@@ -40,6 +40,7 @@ import UiCard from '@owlat/ui/components/ui/Card.vue';
 import UiSwitch from '@owlat/ui/components/ui/Switch.vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { formatDate } from '~/utils/formatters';
+import { CodeIcon, ListUnorderedIcon } from '@coolicons/vue';
 
 Object.assign(globalThis, {
 	useI18n: i18nStubs.useI18n,
@@ -50,7 +51,6 @@ Object.assign(globalThis, {
 });
 
 const rowStubs = {
-	Icon: { template: '<i />' },
 	UiIconBox: { template: '<i />' },
 	UiBadge: { template: '<span><slot /></span>' },
 };
@@ -110,7 +110,7 @@ const template = {
 
 const apiCodeAction = {
 	key: 'api-code',
-	icon: 'lucide:code',
+	icon: CodeIcon,
 	label: 'View API code',
 	overlay: true,
 	inline: true,
@@ -224,7 +224,7 @@ describe.each(['table', 'cards'] as const)('audience list %s', (layout) => {
 			props: {
 				items: [topic],
 				layout,
-				icon: 'lucide:list',
+				icon: ListUnorderedIcon,
 				itemTo: (item: { _id: string }) => `/dashboard/audience/topics/${item._id}`,
 				countOf: (item: { contactCount: number }) => item.contactCount,
 				countField: 'contactCount',

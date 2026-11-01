@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { CsvImportCompletion } from '~/composables/csvImport/useCsvImportCompletion';
+import { CheckIcon, ListUnorderedIcon, TriangleWarningIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	csvImport: ReturnType<typeof useCsvImport>;
@@ -31,10 +32,10 @@ const {
 	<div class="py-4">
 		<div class="flex flex-col items-center gap-4 mb-6">
 			<div v-if="isIncomplete" class="p-3 rounded-full bg-warning/10">
-				<Icon name="lucide:alert-triangle" class="w-8 h-8 text-warning" />
+				<TriangleWarningIcon class="w-8 h-8 text-warning" :stroke-width="1.5" />
 			</div>
 			<div v-else class="p-3 rounded-full bg-success/10">
-				<Icon name="lucide:check" class="w-8 h-8 text-success" />
+				<CheckIcon class="w-8 h-8 text-success" :stroke-width="1.5" />
 			</div>
 			<p class="text-lg font-medium text-text-primary">
 				{{
@@ -106,7 +107,7 @@ const {
 			v-if="csvImport.results.value?.addedToList && csvImport.results.value.addedToList > 0"
 			class="mb-4 p-3 rounded-lg bg-brand/5 border border-brand/20 flex items-center gap-3"
 		>
-			<Icon name="lucide:list" class="w-5 h-5 text-brand shrink-0" />
+			<ListUnorderedIcon class="w-5 h-5 text-brand shrink-0" />
 			<p class="text-sm text-text-secondary">
 				{{
 					t(

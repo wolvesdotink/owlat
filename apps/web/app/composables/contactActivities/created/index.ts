@@ -1,9 +1,10 @@
 import type { ContactActivityEditorModule } from '../types';
+import { UserPlusCornerIcon } from '@coolicons/vue';
 
 export const createdEditorModule: ContactActivityEditorModule<'created'> = {
 	literal: 'created',
 	displayConfig: {
-		icon: 'lucide:user-plus',
+		icon: UserPlusCornerIcon,
 		label: 'shared.contactActivities.created.label',
 		color: 'text-brand',
 	},

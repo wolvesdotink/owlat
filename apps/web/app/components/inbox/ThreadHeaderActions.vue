@@ -16,6 +16,22 @@
  */
 import type { AssignPopoverMember } from '~/components/inbox/AssignPopover.vue';
 import { useShortcutLabels } from '~/composables/useShortcutLabels';
+import {
+	AlarmIcon,
+	AlarmOffIcon,
+	ChatCircleIcon,
+	ChatCirclePlusIcon,
+	CheckIcon,
+	ChevronDownIcon,
+	LinkIcon,
+	MoreHorizontalIcon,
+	ReplyIcon,
+	ShareIcon,
+	TimerIcon,
+	UserMinusCornerIcon,
+	UserPlusCornerIcon,
+	type IconComponent,
+} from '@coolicons/vue';
 
 const THREAD_STATUSES = ['open', 'waiting', 'resolved'] as const;
 type ThreadStatus = (typeof THREAD_STATUSES)[number];
@@ -66,7 +82,7 @@ function toggleAssignToMe() {
 
 interface SimpleAction {
 	key: string;
-	icon: string;
+	icon: IconComponent;
 	label: string;
 	title?: string;
 	/** A chat channel: a brand-tinted link on wide screens, not a button. */
@@ -80,7 +96,7 @@ const simpleActions = computed<SimpleAction[]>(() => {
 		for (const channel of props.discussionChannels) {
 			actions.push({
 				key: `channel:${channel._id}`,
-				icon: 'lucide:message-circle',
+				icon: ChatCircleIcon,
 				label: `#${channel.name}`,
 				title: t('dashboard.inbox.detail.discussInChannelTitle', { channel: channel.name }),
 				to: `/dashboard/chat/${channel._id}`,
@@ -90,7 +106,7 @@ const simpleActions = computed<SimpleAction[]>(() => {
 		if (props.discussionChannels.length === 0) {
 			actions.push({
 				key: 'new-channel',
-				icon: 'lucide:message-circle-plus',
+				icon: ChatCirclePlusIcon,
 				label: t('dashboard.inbox.detail.discussInChannel'),
 				run: () => emit('newChannel'),
 			});
@@ -98,14 +114,14 @@ const simpleActions = computed<SimpleAction[]>(() => {
 	}
 	actions.push({
 		key: 'copy-link',
-		icon: 'lucide:link',
+		icon: LinkIcon,
 		label: t('shared.conversationLink.copyLink'),
 		run: () => emit('copyLink'),
 	});
 	if (props.chatEnabled) {
 		actions.push({
 			key: 'share-in-chat',
-			icon: 'lucide:message-square-share',
+			icon: ShareIcon,
 			label: t('shared.conversationLink.shareInChat'),
 			run: () => emit('shareInChat'),
 		});
@@ -114,7 +130,7 @@ const simpleActions = computed<SimpleAction[]>(() => {
 		const isOn = props.autoClose === 'on';
 		actions.push({
 			key: 'auto-close',
-			icon: isOn ? 'lucide:timer-off' : 'lucide:timer',
+			icon: isOn ? AlarmOffIcon : TimerIcon,
 			label: t(
 				isOn
 					? 'dashboard.inbox.detail.autoClose.turnOff'
@@ -135,13 +151,13 @@ const snoozeAction = computed<SimpleAction>(() =>
 	props.isSnoozed
 		? {
 				key: 'unsnooze',
-				icon: 'lucide:alarm-clock-off',
+				icon: AlarmOffIcon,
 				label: t('dashboard.inbox.detail.unsnooze'),
 				run: () => emit('unsnooze'),
 			}
 		: {
 				key: 'snooze',
-				icon: 'lucide:alarm-clock',
+				icon: AlarmIcon,
 				label: t('dashboard.inbox.detail.snooze'),
 				run: () => emit('snooze'),
 			}
@@ -158,7 +174,7 @@ const snoozeAction = computed<SimpleAction>(() =>
 			:aria-keyshortcuts="ariaFor('inbox.reply')"
 			@click="emit('reply')"
 		>
-			<Icon name="lucide:reply" class="w-4 h-4" />
+			<ReplyIcon class="w-4 h-4" />
 			{{ t('dashboard.inbox.detail.reply') }}
 		</UiButton>
 
@@ -168,7 +184,7 @@ const snoozeAction = computed<SimpleAction>(() =>
 					:to="action.to!"
 					class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-brand-subtle text-text-primary hover:bg-brand-subtle/70 transition-colors"
 				>
-					<Icon :name="action.icon" class="w-3.5 h-3.5 text-brand" />
+					<component :is="action.icon" class="w-3.5 h-3.5 text-brand" />
 					{{ action.label }}
 				</NuxtLink>
 			</UiTooltip>
@@ -200,7 +216,7 @@ const snoozeAction = computed<SimpleAction>(() =>
 							deterministic-color
 							size="sm"
 						/>
-						<Icon v-else name="lucide:user-plus" class="w-4 h-4" />
+						<UserPlusCornerIcon v-else class="w-4 h-4" />
 						<span class="max-w-[10rem] truncate">
 							{{ assignedMemberName ?? t('dashboard.inbox.detail.assign') }}
 						</span>
@@ -208,7 +224,7 @@ const snoozeAction = computed<SimpleAction>(() =>
 				</template>
 			</InboxAssignPopover>
 			<UiButton variant="secondary" size="sm" class="gap-1.5" @click="snoozeAction.run">
-				<Icon :name="snoozeAction.icon" class="w-4 h-4" />
+				<component :is="snoozeAction.icon" class="w-4 h-4" />
 				{{ snoozeAction.label }}
 			</UiButton>
 			<!-- The ONE status control. The agent's processing state is a hint on
@@ -229,7 +245,7 @@ const snoozeAction = computed<SimpleAction>(() =>
 					>
 						{{ t(`dashboard.inbox.detail.statuses.${currentStatus}`) }}
 						<template #iconRight>
-							<Icon name="lucide:chevron-down" class="w-4 h-4 text-text-tertiary" />
+							<ChevronDownIcon class="w-4 h-4 text-text-tertiary" />
 						</template>
 					</UiButton>
 				</template>
@@ -241,11 +257,7 @@ const snoozeAction = computed<SimpleAction>(() =>
 					@click="emit('status', s)"
 				>
 					<span class="flex-1 truncate">{{ t(`dashboard.inbox.detail.statuses.${s}`) }}</span>
-					<Icon
-						v-if="s === currentStatus"
-						name="lucide:check"
-						class="w-4 h-4 text-brand shrink-0"
-					/>
+					<CheckIcon v-if="s === currentStatus" class="w-4 h-4 text-brand shrink-0" />
 				</UiDropdownMenuItem>
 			</UiDropdownMenu>
 			<UiDropdownMenu v-model:open="wideMenuOpen" position="right">
@@ -258,11 +270,11 @@ const snoozeAction = computed<SimpleAction>(() =>
 						data-testid="thread-more-wide"
 						:aria-label="t('dashboard.inbox.detail.moreActions')"
 					>
-						<Icon name="lucide:ellipsis" class="w-4 h-4" />
+						<MoreHorizontalIcon class="w-4 h-4" />
 					</UiButton>
 				</template>
 				<UiDropdownMenuItem v-for="action in overflowActions" :key="action.key" @click="action.run">
-					<Icon :name="action.icon" class="w-4 h-4 shrink-0" />
+					<component :is="action.icon" class="w-4 h-4 shrink-0" />
 					<span class="flex-1 truncate">{{ action.label }}</span>
 				</UiDropdownMenuItem>
 			</UiDropdownMenu>
@@ -278,16 +290,16 @@ const snoozeAction = computed<SimpleAction>(() =>
 					data-testid="thread-more"
 					:aria-label="t('dashboard.inbox.detail.moreActions')"
 				>
-					<Icon name="lucide:ellipsis" class="w-4 h-4" />
+					<MoreHorizontalIcon class="w-4 h-4" />
 				</UiButton>
 			</template>
 			<UiDropdownMenuItem v-for="action in simpleActions" :key="action.key" @click="action.run">
-				<Icon :name="action.icon" class="w-4 h-4 shrink-0" />
+				<component :is="action.icon" class="w-4 h-4 shrink-0" />
 				<span class="flex-1 truncate">{{ action.label }}</span>
 			</UiDropdownMenuItem>
 			<UiDropdownMenuItem v-if="isAdmin" @click="toggleAssignToMe">
-				<Icon
-					:name="assignedToMe ? 'lucide:user-minus' : 'lucide:user-plus'"
+				<component
+					:is="assignedToMe ? UserMinusCornerIcon : UserPlusCornerIcon"
 					class="w-4 h-4 shrink-0"
 				/>
 				<span class="flex-1 truncate">
@@ -299,7 +311,7 @@ const snoozeAction = computed<SimpleAction>(() =>
 				</span>
 			</UiDropdownMenuItem>
 			<UiDropdownMenuItem @click="snoozeAction.run">
-				<Icon :name="snoozeAction.icon" class="w-4 h-4 shrink-0" />
+				<component :is="snoozeAction.icon" class="w-4 h-4 shrink-0" />
 				<span class="flex-1 truncate">{{ snoozeAction.label }}</span>
 			</UiDropdownMenuItem>
 			<UiDropdownMenuItem
@@ -310,7 +322,7 @@ const snoozeAction = computed<SimpleAction>(() =>
 				@click="emit('status', s)"
 			>
 				<span class="flex-1 truncate">{{ t(`dashboard.inbox.detail.markAs.${s}`) }}</span>
-				<Icon v-if="s === currentStatus" name="lucide:check" class="w-4 h-4 text-brand shrink-0" />
+				<CheckIcon v-if="s === currentStatus" class="w-4 h-4 text-brand shrink-0" />
 			</UiDropdownMenuItem>
 		</UiDropdownMenu>
 	</div>

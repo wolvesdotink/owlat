@@ -13,6 +13,7 @@
  */
 import type { AutomationListItem } from './ListTable.vue';
 import { automationRowVerbs, type AutomationRowVerbId } from '~/utils/automationRowVerbs';
+import { MoreVerticalIcon, PencilIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	automation: AutomationListItem;
@@ -104,7 +105,7 @@ const switchHitArea = computed(() =>
 				:aria-label="t('common.edit')"
 				@click="emit('edit', automation)"
 			>
-				<Icon name="lucide:pencil" class="w-4 h-4" />
+				<PencilIcon class="w-4 h-4" />
 			</button>
 		</UiTooltip>
 		<UiDropdownMenu v-if="verbs.length > 0" v-model:open="menuOpen">
@@ -115,7 +116,7 @@ const switchHitArea = computed(() =>
 						:class="[iconButton, neutralButton]"
 						:aria-label="t('dashboard.automations.index.actions.more')"
 					>
-						<Icon name="lucide:more-vertical" class="w-4 h-4" />
+						<MoreVerticalIcon class="w-4 h-4" />
 					</button>
 				</UiTooltip>
 			</template>

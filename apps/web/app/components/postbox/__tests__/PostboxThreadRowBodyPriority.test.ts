@@ -51,7 +51,6 @@ function mountRow(
 			stubs: {
 				PostboxRowCore: { template: '<div data-testid="row-core"><slot /></div>' },
 				PostboxThreadRowFollowUp: true,
-				Icon: true,
 			},
 		},
 	});

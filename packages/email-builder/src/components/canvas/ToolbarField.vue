@@ -2,7 +2,7 @@
 import UiTooltip from '@owlat/ui/components/ui/Tooltip.vue';
 import { computed } from 'vue';
 import type { PropertyField } from '../../schema/types';
-import { AlignLeft, AlignCenter, AlignRight, AlignJustify, Maximize2 } from '@lucide/vue';
+import { ExpandIcon, TextAlignCenterIcon, TextAlignJustifyIcon, TextAlignLeftIcon, TextAlignRightIcon } from '@coolicons/vue';
 import { useBuilderI18n } from '../../i18n/useBuilderI18n';
 
 const { t, label } = useBuilderI18n();
@@ -16,12 +16,12 @@ const emit = defineEmits<{
 	(e: 'update', key: string, value: unknown): void;
 }>();
 
-const alignIcons: Record<string, typeof AlignLeft> = {
-	left: AlignLeft,
-	center: AlignCenter,
-	right: AlignRight,
-	justify: AlignJustify,
-	full: Maximize2,
+const alignIcons: Record<string, typeof TextAlignLeftIcon> = {
+	left: TextAlignLeftIcon,
+	center: TextAlignCenterIcon,
+	right: TextAlignRightIcon,
+	justify: TextAlignJustifyIcon,
+	full: ExpandIcon,
 };
 
 const alignOptions = computed(() => props.field.alignOptions ?? ['left', 'center', 'right']);

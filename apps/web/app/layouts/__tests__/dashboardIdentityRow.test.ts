@@ -101,7 +101,6 @@ function mountLayout(pending = false): VueWrapper {
 				LazyKeyboardShortcutsHelp: true,
 				QueryQuickQueryPanel: true,
 				AppLiveRegion: true,
-				Icon: true,
 				UiBadge: true,
 				UiThemeToggle: true,
 				UiDropdownMenu: true,

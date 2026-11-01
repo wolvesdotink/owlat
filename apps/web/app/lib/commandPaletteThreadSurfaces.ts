@@ -23,6 +23,31 @@ import {
 	type PaletteMode,
 	filterItems,
 } from './commandPalette';
+import {
+	AlarmIcon,
+	AlarmOffIcon,
+	ArchiveIcon,
+	BellIcon,
+	BellOffIcon,
+	CircleCheckIcon,
+	ClockIcon,
+	FileCodeIcon,
+	FlagIcon,
+	FolderDownloadIcon,
+	ForwardIcon,
+	LinkIcon,
+	MailIcon,
+	NoteIcon,
+	PinIcon,
+	PinOffIcon,
+	ReplyIcon,
+	RotateLeftIcon,
+	SearchIcon,
+	ShareIcon,
+	TagIcon,
+	TranslateIcon,
+	UserPlusCornerIcon,
+} from '@coolicons/vue';
 
 type Translate = (key: string, params?: Record<string, unknown>) => string;
 
@@ -140,7 +165,7 @@ function linkItems(
 		{
 			id: `${idPrefix}-copy-link`,
 			label: deps.t(`${L}.copyLink`),
-			icon: 'lucide:link',
+			icon: LinkIcon,
 			run: deps.onCopyLink,
 		},
 	];
@@ -148,7 +173,7 @@ function linkItems(
 		items.push({
 			id: `${idPrefix}-share-in-chat`,
 			label: deps.t(`${L}.shareInChat`),
-			icon: 'lucide:message-square-share',
+			icon: ShareIcon,
 			run: deps.onShareInChat,
 		});
 	}
@@ -175,7 +200,7 @@ export function buildThreadSurfaceGroups(
 			id: 'postbox:thread-reply',
 			label: t(`${P}.reply`),
 			...about,
-			icon: 'lucide:reply',
+			icon: ReplyIcon,
 			shortcutId: 'postbox.reply',
 			run: deps.onReply,
 		},
@@ -183,46 +208,46 @@ export function buildThreadSurfaceGroups(
 			id: 'postbox:thread-archive',
 			label: t(`${P}.archive`),
 			...about,
-			icon: 'lucide:archive',
+			icon: ArchiveIcon,
 			shortcutId: 'postbox.archive',
 			run: deps.onArchive,
 		},
 		withArgument(
-			{ id: 'postbox:thread-snooze', label: t(`${P}.snooze`), icon: 'lucide:clock' },
+			{ id: 'postbox:thread-snooze', label: t(`${P}.snooze`), icon: ClockIcon },
 			`${P}.snoozePrompt`,
 			deps.snoozeOptions()
 		),
 		{
 			id: 'postbox:forward',
 			label: t(`${P}.forward`),
-			icon: 'lucide:forward',
+			icon: ForwardIcon,
 			shortcutId: 'postbox.forward',
 			run: deps.onForward,
 		},
 		{
 			id: 'postbox:thread-mark-unread',
 			label: t(`${P}.markUnread`),
-			icon: 'lucide:mail',
+			icon: MailIcon,
 			shortcutId: 'postbox.markUnread',
 			run: deps.onMarkUnread,
 		},
 		{
 			id: 'postbox:thread-mute',
 			label: t(deps.isMuted() ? `${P}.unmute` : `${P}.mute`),
-			icon: deps.isMuted() ? 'lucide:bell' : 'lucide:bell-off',
+			icon: deps.isMuted() ? BellIcon : BellOffIcon,
 			shortcutId: 'postbox.mute',
 			run: deps.onToggleMute,
 		},
 		{
 			id: 'postbox:thread-alert',
 			label: t(deps.isAlerted() ? `${P}.stopNotifyOnReply` : `${P}.notifyOnReply`),
-			icon: 'lucide:bell',
+			icon: BellIcon,
 			run: deps.onToggleAlert,
 		},
 		{
 			id: 'postbox:thread-pin',
 			label: t(deps.isPinned() ? `${P}.unpin` : `${P}.pin`),
-			icon: deps.isPinned() ? 'lucide:pin-off' : 'lucide:pin',
+			icon: deps.isPinned() ? PinOffIcon : PinIcon,
 			run: deps.onTogglePin,
 		},
 	];
@@ -230,7 +255,7 @@ export function buildThreadSurfaceGroups(
 	if (labels.length > 0) {
 		items.push(
 			withArgument(
-				{ id: 'postbox:label-as', label: t(`${P}.label`), icon: 'lucide:tag' },
+				{ id: 'postbox:label-as', label: t(`${P}.label`), icon: TagIcon },
 				`${P}.labelPrompt`,
 				labels
 			)
@@ -240,7 +265,7 @@ export function buildThreadSurfaceGroups(
 	if (folders.length > 0) {
 		items.push(
 			withArgument(
-				{ id: 'postbox:move', label: t(`${P}.move`), icon: 'lucide:folder-input' },
+				{ id: 'postbox:move', label: t(`${P}.move`), icon: FolderDownloadIcon },
 				`${P}.movePrompt`,
 				folders
 			)
@@ -250,7 +275,7 @@ export function buildThreadSurfaceGroups(
 	if (followUp === 'armable') {
 		items.push(
 			withArgument(
-				{ id: 'postbox:thread-follow-up', label: t(`${P}.followUp`), icon: 'lucide:alarm-clock' },
+				{ id: 'postbox:thread-follow-up', label: t(`${P}.followUp`), icon: AlarmIcon },
 				`${P}.followUpPrompt`,
 				deps.followUpOptions()
 			)
@@ -259,7 +284,7 @@ export function buildThreadSurfaceGroups(
 		items.push({
 			id: 'postbox:thread-follow-up',
 			label: t(`${P}.cancelFollowUp`),
-			icon: 'lucide:alarm-clock-off',
+			icon: AlarmOffIcon,
 			run: deps.onCancelFollowUp,
 		});
 	}
@@ -268,7 +293,7 @@ export function buildThreadSurfaceGroups(
 			id: 'postbox:thread-find',
 			label: t(`${P}.find`),
 			...about,
-			icon: 'lucide:search',
+			icon: SearchIcon,
 			shortcutId: 'global.findInConversation',
 			run: deps.onFind,
 		});
@@ -277,7 +302,7 @@ export function buildThreadSurfaceGroups(
 		items.push({
 			id: 'postbox:thread-translate',
 			label: t(`${P}.translate`),
-			icon: 'lucide:languages',
+			icon: TranslateIcon,
 			run: deps.onTranslate,
 		});
 	}
@@ -285,7 +310,7 @@ export function buildThreadSurfaceGroups(
 		{
 			id: 'postbox:thread-original',
 			label: t(`${P}.showOriginal`),
-			icon: 'lucide:file-code',
+			icon: FileCodeIcon,
 			run: deps.onShowOriginal,
 		},
 		...linkItems('postbox:thread', deps)
@@ -345,11 +370,11 @@ export function buildTeamThreadSurfaceGroups(
 			id: 'inbox:thread-reply',
 			label: t(`${T}.reply`),
 			...(subject ? { subtitle: subject } : {}),
-			icon: 'lucide:reply',
+			icon: ReplyIcon,
 			run: deps.onReply,
 		},
 		withArgument(
-			{ id: 'inbox:thread-assign', label: t(`${T}.assign`), icon: 'lucide:user-plus' },
+			{ id: 'inbox:thread-assign', label: t(`${T}.assign`), icon: UserPlusCornerIcon },
 			`${T}.assignPrompt`,
 			deps.assignOptions()
 		),
@@ -358,7 +383,7 @@ export function buildTeamThreadSurfaceGroups(
 		items.push({
 			id: 'inbox:thread-claim',
 			label: t(`${T}.claim`),
-			icon: 'lucide:user-plus',
+			icon: UserPlusCornerIcon,
 			run: deps.onClaim,
 		});
 	}
@@ -367,35 +392,35 @@ export function buildTeamThreadSurfaceGroups(
 			? {
 					id: 'inbox:thread-status',
 					label: t(`${T}.reopen`),
-					icon: 'lucide:rotate-ccw',
+					icon: RotateLeftIcon,
 					run: deps.onReopen,
 				}
 			: {
 					id: 'inbox:thread-status',
 					label: t(`${T}.close`),
-					icon: 'lucide:circle-check',
+					icon: CircleCheckIcon,
 					run: deps.onClose,
 				},
 		deps.isSnoozed()
 			? {
 					id: 'inbox:thread-snooze',
 					label: t(`${T}.unsnooze`),
-					icon: 'lucide:alarm-clock-off',
+					icon: AlarmOffIcon,
 					run: deps.onUnsnooze,
 				}
 			: withArgument(
-					{ id: 'inbox:thread-snooze', label: t(`${T}.snooze`), icon: 'lucide:clock' },
+					{ id: 'inbox:thread-snooze', label: t(`${T}.snooze`), icon: ClockIcon },
 					`${T}.snoozePrompt`,
 					deps.snoozeOptions()
 				),
 		{
 			id: 'inbox:thread-note',
 			label: t(`${T}.addNote`),
-			icon: 'lucide:sticky-note',
+			icon: NoteIcon,
 			run: deps.onAddNote,
 		},
 		withArgument(
-			{ id: 'inbox:thread-priority', label: t(`${T}.priority`), icon: 'lucide:flag' },
+			{ id: 'inbox:thread-priority', label: t(`${T}.priority`), icon: FlagIcon },
 			`${T}.priorityPrompt`,
 			deps.priorityOptions()
 		),

@@ -8,6 +8,7 @@
  * its own document listener. One copy now, closed the one way.
  */
 import type { ListSortOption } from '~/composables/useListPage';
+import { ArrowDownUpIcon, CheckIcon, ChevronDownIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	options: readonly ListSortOption[];
@@ -50,11 +51,11 @@ useClickOutsideSelector('[data-sort-dropdown]', () => {
 			@click="isOpen = !isOpen"
 		>
 			<template #iconLeft>
-				<Icon name="lucide:arrow-up-down" class="w-4 h-4" />
+				<ArrowDownUpIcon class="w-4 h-4" />
 			</template>
 			<span v-if="current" class="hidden sm:inline">{{ t(current.label) }}</span>
 			<template #iconRight>
-				<Icon name="lucide:chevron-down" class="w-4 h-4" />
+				<ChevronDownIcon class="w-4 h-4" />
 			</template>
 		</UiButton>
 		<Transition
@@ -87,7 +88,7 @@ useClickOutsideSelector('[data-sort-dropdown]', () => {
 					@click="select(option.value)"
 				>
 					{{ t(option.label) }}
-					<Icon v-if="modelValue === option.value" name="lucide:check" class="w-4 h-4" />
+					<CheckIcon v-if="modelValue === option.value" class="w-4 h-4" />
 				</button>
 			</div>
 		</Transition>

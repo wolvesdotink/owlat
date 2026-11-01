@@ -3,6 +3,7 @@ import { isValidEmail } from '@owlat/shared';
 import type { Id } from '@owlat/api/dataModel';
 import { api } from '@owlat/api';
 import { languageOptions, formatLanguageLabel } from '~/data/languageOptions';
+import { CircleCheckIcon, PaperPlaneIcon, TranslateIcon } from '@coolicons/vue';
 
 interface Props {
 	open: boolean;
@@ -112,7 +113,7 @@ const submitForm = () => {
 			<div
 				class="w-16 h-16 rounded-full bg-success/10 flex items-center justify-center mx-auto mb-4"
 			>
-				<Icon name="lucide:check-circle" class="w-8 h-8 text-success" />
+				<CircleCheckIcon class="w-8 h-8 text-success" :stroke-width="1.5" />
 			</div>
 			<p class="text-lg font-medium text-text-primary">
 				{{ t('components.campaigns.testEmailModal.queuedHeading') }}
@@ -168,7 +169,7 @@ const submitForm = () => {
 				<!-- Language selector (only when the template has translations) -->
 				<div v-if="(languages?.length ?? 0) > 1" class="mt-4">
 					<label for="testEmailLanguage" class="label flex items-center gap-1.5">
-						<Icon name="lucide:languages" class="w-4 h-4 text-text-tertiary" />
+						<TranslateIcon class="w-4 h-4 text-text-tertiary" />
 						{{ t('components.campaigns.testEmailModal.languageLabel') }}
 					</label>
 					<select
@@ -202,9 +203,7 @@ const submitForm = () => {
 						t('common.cancel')
 					}}</UiButton>
 					<UiButton :loading="isSending" :disabled="isSending" @click="submitForm">
-						<template v-if="!isSending" #iconLeft
-							><Icon name="lucide:send-horizonal" class="w-4 h-4"
-						/></template>
+						<template v-if="!isSending" #iconLeft><PaperPlaneIcon class="w-4 h-4" /></template>
 						{{
 							isSending
 								? t('components.campaigns.testEmailModal.queueing')

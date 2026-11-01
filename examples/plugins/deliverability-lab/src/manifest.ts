@@ -100,7 +100,7 @@ export const deliverabilityLabPlugin = definePlugin({
 				section: 'administration',
 				name: 'Deliverability',
 				href: '/dashboard/admin/instance/plugins/deliverability-lab',
-				icon: 'lucide:radar',
+				icon: 'coolicons:radar',
 			},
 		],
 		settingsPanels: [
@@ -108,7 +108,7 @@ export const deliverabilityLabPlugin = definePlugin({
 				id: 'settings',
 				name: 'Deliverability Lab',
 				href: '/dashboard/admin/instance/plugins/deliverability-lab',
-				icon: 'lucide:radar',
+				icon: 'coolicons:radar',
 			},
 		],
 	},

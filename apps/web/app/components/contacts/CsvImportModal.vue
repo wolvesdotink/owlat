@@ -6,6 +6,16 @@ import CsvImportListMappingStep from './csvImport/ListMappingStep.vue';
 import CsvImportMappingStep from './csvImport/MappingStep.vue';
 import CsvImportPreviewStep from './csvImport/PreviewStep.vue';
 import CsvImportUploadStep from './csvImport/UploadStep.vue';
+import {
+	ArrowRightIcon,
+	CircleWarningIcon,
+	DownloadIcon,
+	RotateRightIcon,
+	TableIcon,
+	TagIcon,
+	TriangleWarningIcon,
+	UploadIcon,
+} from '@coolicons/vue';
 
 const props = defineProps<{
 	csvImport: ReturnType<typeof useCsvImport>;
@@ -163,7 +173,7 @@ watch(
 	>
 		<!-- Header -->
 		<div class="flex items-center gap-3 mb-6">
-			<UiIconBox icon="lucide:file-spreadsheet" size="sm" variant="surface" rounded="lg" />
+			<UiIconBox :icon="TableIcon" size="sm" variant="surface" rounded="lg" />
 			<div>
 				<h2 class="text-lg font-semibold text-text-primary">
 					{{ t('components.contacts.csvImportModal.title') }}
@@ -178,7 +188,7 @@ watch(
 			class="mb-4 p-3 rounded-lg bg-error-subtle border border-error/20 flex items-start gap-3"
 			role="alert"
 		>
-			<Icon name="lucide:alert-circle" class="w-5 h-5 text-error shrink-0 mt-0.5" />
+			<CircleWarningIcon class="w-5 h-5 text-error shrink-0 mt-0.5" />
 			<p class="text-sm text-error">{{ csvImport.error.value }}</p>
 		</div>
 
@@ -187,7 +197,7 @@ watch(
 		<div v-if="isConfirmingDiscard" class="py-4">
 			<div class="flex flex-col items-center gap-4 text-center">
 				<div class="p-3 rounded-full bg-warning/10">
-					<Icon name="lucide:alert-triangle" class="w-8 h-8 text-warning" />
+					<TriangleWarningIcon class="w-8 h-8 text-warning" :stroke-width="1.5" />
 				</div>
 				<p class="text-lg font-medium text-text-primary">
 					{{ t('components.contacts.csvImportModal.discard.title') }}
@@ -288,7 +298,7 @@ watch(
 						class="whitespace-nowrap"
 						@click="downloadErrorRows()"
 					>
-						<template #iconLeft><Icon name="lucide:download" class="w-4 h-4" /></template>
+						<template #iconLeft><DownloadIcon class="w-4 h-4" /></template>
 						{{ t('components.contacts.csvImportModal.complete.downloadErrors') }}
 					</UiButton>
 				</div>
@@ -327,7 +337,7 @@ watch(
 					t('common.back')
 				}}</UiButton>
 				<UiButton :disabled="!csvImport.canImport.value" @click="emit('import')">
-					<template #iconLeft><Icon name="lucide:upload" class="w-4 h-4" /></template>
+					<template #iconLeft><UploadIcon class="w-4 h-4" /></template>
 					{{
 						t('components.contacts.csvImportModal.footer.import', {
 							count: csvImport.validContactCount.value,
@@ -346,7 +356,7 @@ watch(
 						class="whitespace-nowrap"
 						@click="downloadErrorRows()"
 					>
-						<template #iconLeft><Icon name="lucide:download" class="w-4 h-4" /></template>
+						<template #iconLeft><DownloadIcon class="w-4 h-4" /></template>
 						{{ t('components.contacts.csvImportModal.complete.downloadErrors') }}
 					</UiButton>
 					<UiButton
@@ -355,7 +365,7 @@ watch(
 						class="whitespace-nowrap"
 						@click="isAddToTopicOpen = !isAddToTopicOpen"
 					>
-						<template #iconLeft><Icon name="lucide:tag" class="w-4 h-4" /></template>
+						<template #iconLeft><TagIcon class="w-4 h-4" /></template>
 						{{ t('components.contacts.csvImportModal.complete.addToTopic') }}
 					</UiButton>
 				</div>
@@ -366,10 +376,10 @@ watch(
 						@click="viewImported()"
 					>
 						{{ t('components.contacts.csvImportModal.complete.viewImported') }}
-						<template #iconRight><Icon name="lucide:arrow-right" class="w-4 h-4" /></template>
+						<template #iconRight><ArrowRightIcon class="w-4 h-4" /></template>
 					</UiButton>
 					<UiButton v-if="isIncomplete" class="whitespace-nowrap" @click="emit('retry')">
-						<template #iconLeft><Icon name="lucide:rotate-cw" class="w-4 h-4" /></template>
+						<template #iconLeft><RotateRightIcon class="w-4 h-4" /></template>
 						{{
 							t(
 								'components.contacts.csvImportModal.complete.retry',

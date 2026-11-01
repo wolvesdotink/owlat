@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
 import { contactHasEmail, contactPrimaryIdentity } from '~/utils/contactIdentity';
+import { ChevronRightIcon } from '@coolicons/vue';
 
 type Contact = {
 	_id: Id<'contacts'>;
@@ -88,7 +89,7 @@ const contactName = (contact: { firstName?: string | null; lastName?: string | n
 					}}
 				</span>
 			</button>
-			<Icon name="lucide:chevron-right" class="w-4 h-4 text-text-tertiary shrink-0" />
+			<ChevronRightIcon class="w-4 h-4 text-text-tertiary shrink-0" />
 		</li>
 	</ul>
 </template>

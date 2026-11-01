@@ -27,6 +27,8 @@ import {
 	type CoachCategory,
 	type CoachSuggestion,
 } from '~/composables/postbox/usePostboxCoach';
+import { CircleCheckIcon, GraduationCapIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const { t } = useI18n();
 
@@ -97,12 +99,8 @@ const CATEGORY_DOT: Record<string, string> = {
 				data-testid="postbox-coach-run"
 				@click="onCoachClick"
 			>
-				<Icon
-					v-if="coach.isLoading()"
-					name="lucide:loader-2"
-					class="w-3.5 h-3.5 animate-spin motion-reduce:animate-none"
-				/>
-				<Icon v-else name="lucide:graduation-cap" class="w-3.5 h-3.5" />
+				<SpinnerIcon v-if="coach.isLoading()" class="w-3.5 h-3.5" />
+				<GraduationCapIcon v-else class="w-3.5 h-3.5" />
 				<span>{{ t('components.postbox.postboxCoachPanel.run') }}</span>
 			</UiButton>
 			<span class="text-xs text-text-tertiary">{{
@@ -116,7 +114,7 @@ const CATEGORY_DOT: Record<string, string> = {
 			class="mt-2 flex items-center gap-1.5 text-xs text-success"
 			data-testid="postbox-coach-clean"
 		>
-			<Icon name="lucide:check-circle-2" class="w-3.5 h-3.5" />
+			<CircleCheckIcon class="w-3.5 h-3.5" />
 			{{ t('components.postbox.postboxCoachPanel.clean') }}
 		</p>
 

@@ -13,6 +13,7 @@
 import type { FrameSelectionAnchor } from '~/composables/postbox/usePostboxFrameSelection';
 import { useShortcutLabels } from '~/composables/useShortcutLabels';
 import { resolvePostboxShortcut } from '~/utils/postboxShortcuts';
+import { QuoteLeftIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	anchor: FrameSelectionAnchor;
@@ -77,7 +78,7 @@ defineExpose({
 		@click="emit('quote')"
 		@keydown="onKeydown"
 	>
-		<Icon name="lucide:quote" class="size-3.5 text-text-tertiary" aria-hidden="true" />
+		<QuoteLeftIcon class="size-3.5 text-text-tertiary" aria-hidden="true" />
 		{{ t('components.postbox.postboxQuoteReplyPill.action') }}
 		<kbd
 			v-if="shortcut"

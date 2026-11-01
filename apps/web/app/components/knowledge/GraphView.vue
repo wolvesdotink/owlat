@@ -9,6 +9,7 @@
  * <KnowledgeRelationsList> exactly like the entry detail page.
  */
 import { ENTRY_TYPES, TYPE_CONFIG, type EntryType } from '~/utils/knowledgeEntryTypes';
+import { ChartBarVerticalIcon, CloseIcon, ExternalLinkIcon, LocateIcon } from '@coolicons/vue';
 
 const { t, te } = useI18n();
 
@@ -59,7 +60,7 @@ const typeFilters = computed(() => [
 		<div
 			class="w-14 h-14 rounded-full bg-bg-surface shadow-surface-1 flex items-center justify-center mb-4"
 		>
-			<Icon name="lucide:bar-chart-3" class="w-7 h-7 text-text-tertiary" />
+			<ChartBarVerticalIcon class="w-7 h-7 text-text-tertiary" :stroke-width="1.5" />
 		</div>
 		<h3 class="text-base font-medium text-text-primary">
 			{{ t('components.knowledge.graphView.analyticsOffTitle') }}
@@ -198,7 +199,7 @@ const typeFilters = computed(() => [
 									'bg-error/10 text-error': typeVariant(selectedEntry.entryType) === 'error',
 								}"
 							>
-								<Icon :name="typeIcon(selectedEntry.entryType)" class="w-4 h-4" />
+								<component :is="typeIcon(selectedEntry.entryType)" class="w-4 h-4" />
 							</div>
 							<div class="min-w-0">
 								<p class="text-sm font-semibold text-text-primary truncate">
@@ -215,7 +216,7 @@ const typeFilters = computed(() => [
 							:aria-label="t('components.knowledge.graphView.closePanel')"
 							@click="clearSelection"
 						>
-							<Icon name="lucide:x" class="w-4 h-4" />
+							<CloseIcon class="w-4 h-4" />
 						</button>
 					</div>
 
@@ -229,7 +230,7 @@ const typeFilters = computed(() => [
 							class="gap-1.5 flex-1"
 							@click="focusNode(selectedEntry._id)"
 						>
-							<Icon name="lucide:crosshair" class="w-3.5 h-3.5" />
+							<LocateIcon class="w-3.5 h-3.5" />
 							{{ t('components.knowledge.graphView.centerHere') }}
 						</UiButton>
 						<UiButton
@@ -238,7 +239,7 @@ const typeFilters = computed(() => [
 							:to="`/dashboard/knowledge/${selectedEntry._id}`"
 							class="gap-1.5 flex-1"
 						>
-							<Icon name="lucide:external-link" class="w-3.5 h-3.5" />
+							<ExternalLinkIcon class="w-3.5 h-3.5" />
 							{{ t('common.open') }}
 						</UiButton>
 					</div>

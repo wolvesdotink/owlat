@@ -524,7 +524,6 @@ describe('control refusals', () => {
 		plugins: [createTestI18n()],
 		stubs: {
 			UiIconBox: true,
-			Icon: true,
 			UiSpinner: true,
 			UiEmptyState: true,
 			UiCard: passthroughCard,
@@ -790,7 +789,6 @@ describe('control refusals', () => {
 				plugins: [createTestI18n()],
 				stubs: {
 					UiIconBox: true,
-					Icon: true,
 					UiSpinner: true,
 					UiEmptyState: true,
 					UiCard: passthroughCard,

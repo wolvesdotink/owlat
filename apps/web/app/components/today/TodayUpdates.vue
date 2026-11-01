@@ -3,6 +3,7 @@ import type { ImportantReason, TodayLine, TodayModel } from '~/utils/todayDigest
 import { useShortcutLabels } from '~/composables/useShortcutLabels';
 import { useTodayLineMenu } from '~/composables/useTodayLineMenu';
 import RowContextMenu from '~/components/RowContextMenu.vue';
+import { TriangleWarningIcon, UserPlusCornerIcon, type IconComponent } from '@coolicons/vue';
 
 /**
  * "Updates": everything in this inbox that needs no reply, as a short digest.
@@ -23,19 +24,20 @@ const emit = defineEmits<{ done: [line: TodayLine]; replyAnyway: [line: TodayLin
 const { t } = useI18n();
 
 /** A small label says why a line is important when "a person wrote" is not the reason. */
-const REASON_LABEL: Partial<Record<ImportantReason, { key: string; icon: string; tone: string }>> =
-	{
-		alert: {
-			key: 'components.today.reason.alert',
-			icon: 'lucide:triangle-alert',
-			tone: 'bg-warning-subtle text-warning',
-		},
-		new_sender: {
-			key: 'components.today.reason.newSender',
-			icon: 'lucide:user-plus',
-			tone: 'bg-bg-surface text-text-secondary',
-		},
-	};
+const REASON_LABEL: Partial<
+	Record<ImportantReason, { key: string; icon: IconComponent; tone: string }>
+> = {
+	alert: {
+		key: 'components.today.reason.alert',
+		icon: TriangleWarningIcon,
+		tone: 'bg-warning-subtle text-warning',
+	},
+	new_sender: {
+		key: 'components.today.reason.newSender',
+		icon: UserPlusCornerIcon,
+		tone: 'bg-bg-surface text-text-secondary',
+	},
+};
 
 const { keyHints } = useShortcutLabels();
 const keyLegend = computed(() =>
@@ -120,7 +122,7 @@ const isEmpty = computed(() => props.model.worth.length === 0 && props.model.als
 										v-if="line.reason && REASON_LABEL[line.reason]"
 										class="mr-1.5 inline-flex translate-y-[-1px] items-center gap-1 rounded-full px-1.5 py-px align-middle text-2xs font-medium"
 										:class="REASON_LABEL[line.reason]!.tone"
-										><Icon :name="REASON_LABEL[line.reason]!.icon" class="size-3" />{{
+										><component :is="REASON_LABEL[line.reason]!.icon" class="size-3" />{{
 											t(REASON_LABEL[line.reason]!.key)
 										}}</span
 									>

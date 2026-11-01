@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import UiTooltip from '@owlat/ui/components/ui/Tooltip.vue';
 import { ref, computed } from 'vue';
-import { ImageUp, ImageIcon } from '@lucide/vue';
+import { ImageIcon } from '@coolicons/vue';
 import { useEmailBuilderHandlers } from '../../../composables/useEmailBuilderHandlers';
 import type { ImageUploadResult } from '../../../types';
 import { useBuilderI18n } from '../../../i18n/useBuilderI18n';
@@ -91,7 +91,7 @@ async function handleFileSelect(event: Event) {
 					:aria-label="t('builder.panel.image.browse')"
 					@click="handleBrowse"
 				>
-					<ImageUp :size="14" />
+					<ImageIcon :size="14" />
 				</button>
 			</UiTooltip>
 			<UiTooltip v-else :text="uploadLabel">
@@ -102,7 +102,7 @@ async function handleFileSelect(event: Event) {
 					:disabled="isUploading"
 					@click="openFilePicker"
 				>
-					<ImageUp :size="14" />
+					<ImageIcon :size="14" />
 				</button>
 			</UiTooltip>
 			<input

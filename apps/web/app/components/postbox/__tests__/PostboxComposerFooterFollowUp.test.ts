@@ -57,7 +57,6 @@ const followUpDialogStub = defineComponent({
 	},
 });
 
-const iconStub = { props: ['name'], template: '<span />' };
 const modeControlsStub = { template: '<div class="mode-controls" />' };
 
 let wrapper: VueWrapper | null = null;
@@ -91,7 +90,6 @@ function mountFooter() {
 				PostboxComposerFollowUp,
 				PostboxFollowUpDialog: followUpDialogStub,
 				PostboxComposerModeControls: modeControlsStub,
-				Icon: iconStub,
 			},
 			stubs: { PostboxComposerPreflightChip: true, PostboxPreviewAsSent: true },
 		},

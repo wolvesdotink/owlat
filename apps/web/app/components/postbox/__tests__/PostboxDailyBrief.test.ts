@@ -50,7 +50,6 @@ beforeEach(() => {
 	briefRead.value = null;
 });
 
-const iconStub = { props: ['name'], template: '<span class="icon" :data-name="name" />' };
 const nuxtLinkStub = { props: ['to'], template: '<a :href="to"><slot /></a>' };
 
 function mountBrief() {
@@ -58,7 +57,7 @@ function mountBrief() {
 		props: { mailboxId: 'mbx-1' as never },
 		global: {
 			plugins: [createTestI18n()],
-			components: { Icon: iconStub, NuxtLink: nuxtLinkStub },
+			components: { NuxtLink: nuxtLinkStub },
 			stubs: { transition: true },
 		},
 	});

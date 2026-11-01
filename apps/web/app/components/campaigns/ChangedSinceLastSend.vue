@@ -3,6 +3,7 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { parseSnapshotBlocks } from '@owlat/email-builder';
 import type { CompareSide } from '~/components/email/TemplateCompareModal.vue';
+import { CircleCheckIcon, GitCompareIcon, HistoryIcon } from '@coolicons/vue';
 
 /**
  * The Review step's "changed since the last send" line for one email template.
@@ -82,7 +83,7 @@ async function compare() {
 <template>
 	<div v-if="latest !== undefined" data-testid="changed-since-last-send">
 		<p v-if="latest === null" class="flex items-center gap-2 text-sm text-text-tertiary">
-			<Icon name="lucide:history" class="h-4 w-4 shrink-0" />
+			<HistoryIcon class="h-4 w-4 shrink-0" />
 			{{ t(`${KEY}.noSend`) }}
 		</p>
 		<p
@@ -90,12 +91,12 @@ async function compare() {
 			class="flex items-center gap-2 text-sm text-text-secondary"
 			:title="sentAt"
 		>
-			<Icon name="lucide:check-circle-2" class="h-4 w-4 shrink-0 text-success" />
+			<CircleCheckIcon class="h-4 w-4 shrink-0 text-success" />
 			{{ t(`${KEY}.unchanged`, { time: formatRelativeTime(latest.version.sentAt) }) }}
 		</p>
 		<div v-else class="flex flex-wrap items-center gap-x-3 gap-y-2">
 			<p class="flex items-center gap-2 text-sm text-text-secondary" :title="sentAt">
-				<Icon name="lucide:git-compare" class="h-4 w-4 shrink-0 text-warning" />
+				<GitCompareIcon class="h-4 w-4 shrink-0 text-warning" />
 				{{ t(`${KEY}.changed`, { time: formatRelativeTime(latest.version.sentAt) }) }}
 			</p>
 			<UiButton variant="outline" size="sm" data-testid="compare-last-send" @click="compare">

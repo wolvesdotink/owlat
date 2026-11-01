@@ -6,6 +6,7 @@
  * reader gets it in their own language. Renders nothing for anything else.
  */
 import { BUDGET_REASON_KEYS, budgetRefusalReason } from '~/utils/aiBudget';
+import { WalletIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	refusal: unknown;
@@ -35,7 +36,7 @@ const reason = computed(() => budgetRefusalReason(props.refusal));
 		:data-reason="reason"
 	>
 		<p class="flex items-center gap-1.5 text-sm font-medium text-text-primary">
-			<Icon name="lucide:wallet" class="h-4 w-4 shrink-0 text-warning" aria-hidden="true" />
+			<WalletIcon class="h-4 w-4 shrink-0 text-warning" aria-hidden="true" />
 			{{ t('shared.aiBudget.title') }}
 		</p>
 		<p class="mt-1 text-sm text-text-secondary">{{ t(BUDGET_REASON_KEYS[reason]) }}</p>

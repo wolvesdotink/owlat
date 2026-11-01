@@ -40,6 +40,13 @@ import type {
 	AlignmentCheckResult,
 	AlignmentPreflightResult,
 } from '@owlat/shared/deliverabilityAlignment';
+import {
+	CircleCheckIcon,
+	CircleCloseIcon,
+	CircleHelpIcon,
+	CircleInfoIcon,
+	type IconComponent,
+} from '@coolicons/vue';
 
 const TRANSPORT_WIZARD_STEP_IDS = ['credentials', 'test_send', 'alignment', 'return_path'] as const;
 
@@ -210,7 +217,7 @@ export interface WizardFinding {
  * tell a pass from a failure.
  */
 export interface FindingPresentation {
-	readonly icon: string;
+	readonly icon: IconComponent;
 	readonly class: string;
 	/** i18n key. */
 	readonly srLabel: string;
@@ -219,22 +226,22 @@ export interface FindingPresentation {
 export const FINDING_PRESENTATION: Readonly<Record<WizardFinding['status'], FindingPresentation>> =
 	{
 		pass: {
-			icon: 'lucide:check-circle-2',
+			icon: CircleCheckIcon,
 			class: 'text-success',
 			srLabel: 'shared.transportWizard.findingStatus.pass',
 		},
 		fail: {
-			icon: 'lucide:x-circle',
+			icon: CircleCloseIcon,
 			class: 'text-error',
 			srLabel: 'shared.transportWizard.findingStatus.fail',
 		},
 		unknown: {
-			icon: 'lucide:help-circle',
+			icon: CircleHelpIcon,
 			class: 'text-text-tertiary',
 			srLabel: 'shared.transportWizard.findingStatus.unknown',
 		},
 		info: {
-			icon: 'lucide:info',
+			icon: CircleInfoIcon,
 			class: 'text-text-secondary',
 			srLabel: 'shared.transportWizard.findingStatus.info',
 		},

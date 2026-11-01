@@ -51,7 +51,6 @@ function mountComposer(props: Record<string, unknown> = {}) {
 		global: {
 			plugins: [createTestI18n()],
 			components: { UiButton: Button, ChatMentionPicker: defineComponent(() => () => h('div')) },
-			stubs: { Icon: true },
 		},
 	});
 	return { w, submitNote };

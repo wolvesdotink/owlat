@@ -1,4 +1,13 @@
 <script setup lang="ts">
+import {
+	ChevronRightIcon,
+	CreditCardIcon,
+	MailIcon,
+	SettingsIcon,
+	ShieldCloseIcon,
+	ToggleRightIcon,
+} from '@coolicons/vue';
+
 const emit = defineEmits<{
 	select: [id: 'mailchimp' | 'stripe' | 'mandrill'];
 	/** The empty state links away to the feature settings; the modal closes behind it. */
@@ -22,7 +31,7 @@ const allIntegrations = [
 		// component translates `name`/`description` where it renders them.
 		name: 'components.contacts.integrationImportModal.providers.mailchimp.name',
 		description: 'components.contacts.integrationImportModal.providers.mailchimp.description',
-		icon: 'lucide:mail',
+		icon: MailIcon,
 		color: 'text-[#FFE01B]',
 		bgColor: 'bg-[#FFE01B]/10',
 	},
@@ -30,7 +39,7 @@ const allIntegrations = [
 		id: 'stripe' as const,
 		name: 'components.contacts.integrationImportModal.providers.stripe.name',
 		description: 'components.contacts.integrationImportModal.providers.stripe.description',
-		icon: 'lucide:credit-card',
+		icon: CreditCardIcon,
 		color: 'text-[#635BFF]',
 		bgColor: 'bg-[#635BFF]/10',
 	},
@@ -38,7 +47,7 @@ const allIntegrations = [
 		id: 'mandrill' as const,
 		name: 'components.contacts.integrationImportModal.providers.mandrill.name',
 		description: 'components.contacts.integrationImportModal.providers.mandrill.description',
-		icon: 'lucide:shield-ban',
+		icon: ShieldCloseIcon,
 		color: 'text-[#F0483E]',
 		bgColor: 'bg-[#F0483E]/10',
 	},
@@ -61,7 +70,7 @@ const integrations = computed(() =>
 			class="p-6 rounded-xl border border-border-subtle bg-bg-surface text-center"
 		>
 			<div class="inline-flex p-3 rounded-full bg-bg-elevated mb-3">
-				<Icon name="lucide:toggle-right" class="w-6 h-6 text-text-tertiary" />
+				<ToggleRightIcon class="w-6 h-6 text-text-tertiary" />
 			</div>
 			<p class="font-medium text-text-primary">
 				{{ t('components.contacts.integrationImportModal.select.emptyTitle') }}
@@ -74,7 +83,7 @@ const integrations = computed(() =>
 				class="mt-4 inline-flex items-center gap-2 text-sm font-medium text-brand hover:underline"
 				@click="emit('close')"
 			>
-				<Icon name="lucide:settings" class="w-4 h-4" />
+				<SettingsIcon class="w-4 h-4" />
 				{{ t('components.contacts.integrationImportModal.select.enableLink', { chevron }) }}
 			</NuxtLink>
 		</div>
@@ -86,13 +95,13 @@ const integrations = computed(() =>
 				@click="emit('select', integration.id)"
 			>
 				<div :class="['p-3 rounded-lg', integration.bgColor]">
-					<Icon :name="integration.icon" :class="['w-6 h-6', integration.color]" />
+					<component :is="integration.icon" :class="['w-6 h-6', integration.color]" size="1em" />
 				</div>
 				<div class="flex-1">
 					<p class="font-medium text-text-primary">{{ t(integration.name) }}</p>
 					<p class="text-sm text-text-tertiary">{{ t(integration.description) }}</p>
 				</div>
-				<Icon name="lucide:chevron-right" class="w-5 h-5 text-text-tertiary" />
+				<ChevronRightIcon class="w-5 h-5 text-text-tertiary" />
 			</button>
 		</div>
 		<div v-if="integrations.length > 0" class="mt-6 p-4 rounded-lg bg-bg-surface">

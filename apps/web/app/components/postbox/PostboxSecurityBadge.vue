@@ -10,6 +10,8 @@ import {
 	type SignatureBadgeResult,
 } from '~/utils/signatureBadge';
 import { SEAL_TONE_CLASSES } from '~/utils/sealTone';
+import { CheckIcon, CopyIcon, DownloadIcon, LockIcon, PenToolIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 /**
  * Honest PGP/S-MIME disclosure for the reader.
@@ -115,14 +117,14 @@ const meta = computed(() => {
 	switch (props.klass) {
 		case 'pgp-encrypted':
 			return {
-				icon: 'lucide:lock',
+				icon: LockIcon,
 				label: t('components.postbox.postboxSecurityBadge.encrypted'),
 				encrypted: true,
 				technology: 'OpenPGP',
 			};
 		case 'smime-encrypted':
 			return {
-				icon: 'lucide:lock',
+				icon: LockIcon,
 				label: t('components.postbox.postboxSecurityBadge.encrypted'),
 				encrypted: true,
 				technology: 'S/MIME',
@@ -130,14 +132,14 @@ const meta = computed(() => {
 		case 'pgp-signed':
 		case 'pgp-clearsigned':
 			return {
-				icon: 'lucide:pen-tool',
+				icon: PenToolIcon,
 				label: t('components.postbox.postboxSecurityBadge.signed'),
 				encrypted: false,
 				technology: 'OpenPGP',
 			};
 		case 'smime-signed':
 			return {
-				icon: 'lucide:pen-tool',
+				icon: PenToolIcon,
 				label: t('components.postbox.postboxSecurityBadge.signed'),
 				encrypted: false,
 				technology: 'S/MIME',
@@ -243,7 +245,7 @@ function saveBlob(data: string | Uint8Array, filename: string) {
 				class="inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs border"
 				:class="sealedTone.chip"
 			>
-				<Icon :name="sealedBadge.icon" class="w-3.5 h-3.5" :class="sealedTone.icon" />
+				<component :is="sealedBadge.icon" class="w-3.5 h-3.5" :class="sealedTone.icon" />
 				<!-- `deriveSealedBadge` hands back message KEYS (registry convention). -->
 				<span data-testid="sealed-badge-summary">{{ t(sealedBadge.summary) }}</span>
 			</div>
@@ -260,7 +262,7 @@ function saveBlob(data: string | Uint8Array, filename: string) {
 				:class="signatureTone.chip"
 				:title="signatureTooltip"
 			>
-				<Icon :name="signatureBadge.icon" class="w-3.5 h-3.5" :class="signatureTone.icon" />
+				<component :is="signatureBadge.icon" class="w-3.5 h-3.5" :class="signatureTone.icon" />
 				<span data-testid="signature-badge-summary">{{ t(signatureBadge.summary) }}</span>
 				<span
 					v-if="signatureBadge.fingerprintShort"
@@ -277,8 +279,8 @@ function saveBlob(data: string | Uint8Array, filename: string) {
 			class="inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs border border-border-subtle text-text-secondary"
 			:title="tooltip"
 		>
-			<Icon
-				:name="meta.icon"
+			<component
+				:is="meta.icon"
 				class="w-3.5 h-3.5"
 				:class="meta.encrypted ? 'text-brand' : 'text-text-tertiary'"
 			/>
@@ -317,10 +319,7 @@ function saveBlob(data: string | Uint8Array, filename: string) {
 				data-testid="copy-ciphertext"
 				@click="copyCiphertext"
 			>
-				<Icon
-					:name="copied ? 'lucide:check' : 'lucide:copy'"
-					class="w-3.5 h-3.5 text-text-tertiary"
-				/>
+				<component :is="copied ? CheckIcon : CopyIcon" class="w-3.5 h-3.5 text-text-tertiary" />
 				{{
 					copied ? t('common.copied') : t('components.postbox.postboxSecurityBadge.copyCiphertext')
 				}}
@@ -332,8 +331,8 @@ function saveBlob(data: string | Uint8Array, filename: string) {
 				:disabled="downloadingEml"
 				@click="downloadRawEml"
 			>
-				<Icon
-					:name="downloadingEml ? 'lucide:loader-2' : 'lucide:download'"
+				<component
+					:is="downloadingEml ? SpinnerIcon : DownloadIcon"
 					class="w-3.5 h-3.5 text-text-tertiary"
 					:class="{ 'animate-spin motion-reduce:animate-none': downloadingEml }"
 				/>

@@ -9,6 +9,14 @@ import BookingMeetingTypeDialog, {
 	type EditableMeetingType,
 } from '~/components/booking/BookingMeetingTypeDialog.vue';
 import { BOOKING_LIMITS } from '@owlat/shared/booking';
+import {
+	CalendarPlusIcon,
+	CheckIcon,
+	LinkIcon,
+	PencilIcon,
+	PlusIcon,
+	TrashIcon,
+} from '@coolicons/vue';
 
 defineProps<{
 	meetingTypes: (EditableMeetingType & { url: string | null })[];
@@ -54,14 +62,14 @@ async function confirmDelete() {
 				:disabled="meetingTypes.length >= BOOKING_LIMITS.meetingTypesMax"
 				@click="openNew"
 			>
-				<Icon name="lucide:plus" class="mr-1 h-4 w-4" />
+				<PlusIcon class="mr-1 h-4 w-4" />
 				{{ t('components.booking.meetingTypes.add') }}
 			</UiButton>
 		</div>
 
 		<UiEmptyState
 			v-if="meetingTypes.length === 0"
-			icon="lucide:calendar-plus"
+			:icon="CalendarPlusIcon"
 			:heading-level="3"
 			:title="t('components.booking.meetingTypes.emptyTitle')"
 			:description="t('components.booking.meetingTypes.emptyBody')"
@@ -93,7 +101,7 @@ async function confirmDelete() {
 						:aria-label="t('components.booking.meetingTypes.copyLink', { title: type.title })"
 						@click="copy(type.url, type._id)"
 					>
-						<Icon :name="isCopied(type._id) ? 'lucide:check' : 'lucide:link'" class="h-4 w-4" />
+						<component :is="isCopied(type._id) ? CheckIcon : LinkIcon" class="h-4 w-4" />
 					</UiButton>
 					<UiButton
 						variant="ghost"
@@ -101,7 +109,7 @@ async function confirmDelete() {
 						:aria-label="t('components.booking.meetingTypes.edit', { title: type.title })"
 						@click="openEdit(type)"
 					>
-						<Icon name="lucide:pencil" class="h-4 w-4" />
+						<PencilIcon class="h-4 w-4" />
 					</UiButton>
 					<UiButton
 						variant="ghost"
@@ -109,7 +117,7 @@ async function confirmDelete() {
 						:aria-label="t('components.booking.meetingTypes.delete', { title: type.title })"
 						@click="deleting = type"
 					>
-						<Icon name="lucide:trash-2" class="h-4 w-4" />
+						<TrashIcon class="h-4 w-4" />
 					</UiButton>
 				</div>
 			</li>

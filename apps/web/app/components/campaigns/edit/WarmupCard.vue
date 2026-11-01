@@ -4,6 +4,7 @@
 import type { CampaignCapacitySchedulePlan } from '~/lib/campaignCapacityRefusal';
 import { formatNumber } from '~/utils/formatters';
 import { meterFillStyle } from '@owlat/ui/utils/meterFill';
+import { CircleCheckIcon, ClockIcon, FlameIcon } from '@coolicons/vue';
 
 defineProps<{
 	warming: {
@@ -28,7 +29,7 @@ const { t } = useI18n();
 <template>
 	<div class="card p-6">
 		<div class="flex items-center gap-3 mb-4">
-			<UiIconBox icon="lucide:flame" size="lg" variant="brand" rounded="xl" />
+			<UiIconBox :icon="FlameIcon" size="lg" variant="brand" rounded="xl" />
 			<div>
 				<h2 class="text-lg font-semibold text-text-primary">
 					{{ t('dashboard.campaigns.detail.edit.warmup.title') }}
@@ -44,7 +45,7 @@ const { t } = useI18n();
 			v-if="warming.phase === 'graduated'"
 			class="flex items-center gap-3 p-4 bg-success/10 border border-success/20 rounded-lg"
 		>
-			<Icon name="lucide:check-circle" class="w-5 h-5 text-success shrink-0" />
+			<CircleCheckIcon class="w-5 h-5 text-success shrink-0" />
 			<div>
 				<p class="text-sm font-medium text-success">
 					{{ t('dashboard.campaigns.detail.edit.warmup.graduatedTitle') }}
@@ -109,7 +110,7 @@ const { t } = useI18n();
 				v-if="!capacityPlan && sendEstimate && audienceSize !== null && sendEstimate.days > 1"
 				class="flex items-start gap-3 p-3 bg-warning/10 border border-warning/20 rounded-lg"
 			>
-				<Icon name="lucide:clock" class="w-5 h-5 text-warning shrink-0 mt-0.5" />
+				<ClockIcon class="w-5 h-5 text-warning shrink-0 mt-0.5" />
 				<div>
 					<p class="text-sm font-medium text-text-primary">
 						{{

@@ -20,6 +20,7 @@
  * conditional card is the coupling this extraction exists to remove.
  */
 import { api } from '@owlat/api';
+import { CheckIcon, ClockIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -47,7 +48,7 @@ const handleConfirmClock = async () => {
 	<!-- Calm, actionable, and only rendered while the stall lasts. -->
 	<div v-if="isSweepStalled" class="card p-6 bg-warning/5 border-warning/20">
 		<div class="flex gap-4">
-			<UiIconBox icon="lucide:clock" size="sm" variant="warning" rounded="lg" />
+			<UiIconBox :icon="ClockIcon" size="sm" variant="warning" rounded="lg" />
 			<div class="flex-1">
 				<h3 class="font-medium text-text-primary mb-1">
 					{{ t('components.contacts.sunsetClockBanner.title') }}
@@ -63,7 +64,7 @@ const handleConfirmClock = async () => {
 					:disabled="isConfirming"
 					@click="handleConfirmClock"
 				>
-					<Icon name="lucide:check" class="w-4 h-4" />
+					<CheckIcon class="w-4 h-4" />
 					{{
 						isConfirming
 							? t('components.contacts.sunsetClockBanner.confirming')

@@ -2,6 +2,8 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { GENERIC_IMAP_PROVIDER } from '~/utils/mailAutodiscover';
+import { CheckIcon, MailIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const { t } = useI18n();
 
@@ -260,7 +262,7 @@ function handleExternalConnected(result?: { mailboxId: string }) {
 			>
 				<template #loading>
 					<div class="flex items-center gap-2 text-text-secondary text-sm py-4">
-						<Icon name="lucide:loader-2" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
+						<SpinnerIcon class="w-4 h-4" />
 						{{ t('dashboard.preferences.addAccount.checkingDomains') }}
 					</div>
 				</template>
@@ -281,14 +283,14 @@ function handleExternalConnected(result?: { mailboxId: string }) {
 								data-testid="add-account-connect-team-external"
 								@click="teamTransport = 'external'"
 							>
-								<Icon name="lucide:mail-plus" class="w-4 h-4 mr-1.5" />
+								<MailIcon class="w-4 h-4 mr-1.5" />
 								{{ t('dashboard.preferences.addAccount.transportExternal') }}
 							</UiButton>
 						</template>
 						<template v-else>
 							<p class="mb-2">{{ t('dashboard.preferences.addAccount.noDomainHint') }}</p>
 							<UiButton variant="secondary" size="sm" to="/dashboard/postbox/migrate">
-								<Icon name="lucide:mail-plus" class="w-4 h-4 mr-1.5" />
+								<MailIcon class="w-4 h-4 mr-1.5" />
 								{{ t('dashboard.preferences.addAccount.connectExternalMailbox') }}
 							</UiButton>
 						</template>
@@ -365,11 +367,7 @@ function handleExternalConnected(result?: { mailboxId: string }) {
 						:disabled="!selectedAddress || provisioning"
 						@click="handleSubmit"
 					>
-						<Icon
-							v-if="provisioning"
-							name="lucide:loader-2"
-							class="w-4 h-4 mr-1.5 animate-spin motion-reduce:animate-none"
-						/>
+						<SpinnerIcon v-if="provisioning" class="w-4 h-4 mr-1.5" />
 						{{
 							provisioning
 								? t('dashboard.preferences.addAccount.creating')
@@ -387,7 +385,7 @@ function handleExternalConnected(result?: { mailboxId: string }) {
 			<div
 				class="w-12 h-12 mx-auto rounded-full bg-success-subtle flex items-center justify-center"
 			>
-				<Icon name="lucide:check" class="w-6 h-6 text-success" />
+				<CheckIcon class="w-6 h-6 text-success" />
 			</div>
 			<h2 class="font-semibold mt-4">
 				{{

@@ -29,6 +29,7 @@
  * "Load everything" stays reachable for a trusted sender too.
  */
 import type { PostboxImageBannerState } from '~/utils/postboxImageAllowlist';
+import { ShieldCheckIcon, ShieldIcon, ShieldWarningIcon } from '@coolicons/vue';
 
 defineProps<{
 	kind: PostboxImageBannerState['kind'];
@@ -98,7 +99,7 @@ const BANNER_CLASS =
 
 	<div v-else-if="kind === 'suspicious'" :class="BANNER_CLASS">
 		<span class="text-text-secondary inline-flex items-center gap-1.5">
-			<Icon name="lucide:shield-alert" class="w-3.5 h-3.5 flex-shrink-0" />
+			<ShieldWarningIcon class="w-3.5 h-3.5 flex-shrink-0" />
 			{{ t('components.postbox.postboxMessageBody.imagesBlockedSuspicious') }}
 		</span>
 		<button
@@ -112,7 +113,7 @@ const BANNER_CLASS =
 
 	<div v-else-if="kind === 'auto-allowed'" :class="BANNER_CLASS">
 		<span class="text-text-secondary inline-flex items-center gap-1.5">
-			<Icon name="lucide:shield-check" class="w-3.5 h-3.5 flex-shrink-0" />
+			<ShieldCheckIcon class="w-3.5 h-3.5 flex-shrink-0" />
 			{{ t('components.postbox.postboxMessageBody.imagesAutoLoaded', { host: senderLabel }) }}
 		</span>
 		<span class="flex items-center gap-3 flex-shrink-0">
@@ -139,7 +140,7 @@ const BANNER_CLASS =
 
 	<div v-else-if="kind === 'unchecked'" :class="BANNER_CLASS">
 		<span class="text-text-secondary inline-flex items-center gap-1.5">
-			<Icon name="lucide:shield-alert" class="w-3.5 h-3.5 flex-shrink-0" />
+			<ShieldWarningIcon class="w-3.5 h-3.5 flex-shrink-0" />
 			{{ t('components.postbox.postboxMessageBody.imagesUnchecked') }}
 		</span>
 		<button
@@ -153,7 +154,7 @@ const BANNER_CLASS =
 
 	<div v-else-if="kind === 'trackers-blocked'" :class="BANNER_CLASS">
 		<span class="text-text-secondary inline-flex items-center gap-1.5">
-			<Icon name="lucide:shield" class="w-3.5 h-3.5 flex-shrink-0" />
+			<ShieldIcon class="w-3.5 h-3.5 flex-shrink-0" />
 			{{
 				t(
 					'components.postbox.postboxMessageBody.trackersKeptBlocked',

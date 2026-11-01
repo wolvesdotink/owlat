@@ -8,6 +8,7 @@ import {
 	type ConditionVariant,
 	type ConditionOfKind,
 } from '~/composables/conditions';
+import { GitBranchIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	modelValue: Condition;
@@ -69,7 +70,7 @@ const onUpdate = (next: ConditionOfKind<ConditionKind>) => {
 		<div class="space-y-6">
 			<div>
 				<label class="label flex items-center gap-2 mb-2">
-					<Icon name="lucide:git-branch" class="w-4 h-4 text-warning" />
+					<GitBranchIcon class="w-4 h-4 text-warning" />
 					{{ t('components.conditions.conditionEditor.conditionType') }}
 				</label>
 				<select :value="modelValue.kind" class="input" @change="updateKind">

@@ -46,6 +46,14 @@ import type {
 	SelectOption,
 	TestConnectionState,
 } from '~/utils/aiProviders';
+import {
+	CheckIcon,
+	CircleCheckIcon,
+	CloseIcon,
+	OctagonWarningIcon,
+	PlugIcon,
+	TriangleWarningIcon,
+} from '@coolicons/vue';
 
 const props = defineProps<{
 	/** Provider options, labels still as message keys — translated below. */
@@ -134,7 +142,7 @@ watch(baseUrl, (value) => {
 			role="alert"
 			data-testid="ai-decision-env-problem"
 		>
-			<Icon name="lucide:alert-octagon" class="w-5 h-5 text-error shrink-0 mt-0.5" />
+			<OctagonWarningIcon class="w-5 h-5 text-error shrink-0 mt-0.5" />
 			<div class="min-w-0">
 				<p class="text-text-primary font-medium">
 					{{ t('dashboard.admin.instance.aiProvider.decision.envProblem.title') }}
@@ -169,7 +177,7 @@ watch(baseUrl, (value) => {
 			v-if="!enabled"
 			class="mt-4 flex items-start gap-3 rounded-lg bg-success-subtle/50 border border-border-subtle p-4"
 		>
-			<Icon name="lucide:check-circle-2" class="w-5 h-5 text-success shrink-0 mt-0.5" />
+			<CircleCheckIcon class="w-5 h-5 text-success shrink-0 mt-0.5" />
 			<div class="text-sm">
 				<p class="text-text-primary font-medium">
 					{{ t('dashboard.admin.instance.aiProvider.decision.offTitle') }}
@@ -309,7 +317,7 @@ watch(baseUrl, (value) => {
 						class="rounded-lg border border-border-subtle bg-warning-subtle/50 p-4 text-sm"
 					>
 						<div class="flex items-start gap-3">
-							<Icon name="lucide:alert-triangle" class="w-5 h-5 text-warning shrink-0 mt-0.5" />
+							<TriangleWarningIcon class="w-5 h-5 text-warning shrink-0 mt-0.5" />
 							<div class="space-y-1">
 								<p class="text-text-primary font-medium">
 									{{ t('dashboard.admin.instance.aiProvider.decision.degraded.title') }}
@@ -433,7 +441,7 @@ watch(baseUrl, (value) => {
 							@click="emit('test')"
 						>
 							<template #iconLeft>
-								<Icon v-if="!isTesting" name="lucide:plug-zap" class="w-4 h-4" />
+								<PlugIcon v-if="!isTesting" class="w-4 h-4" />
 							</template>
 							{{
 								t(
@@ -445,14 +453,14 @@ watch(baseUrl, (value) => {
 							v-if="testState.status === 'ok' && canReachPlane"
 							class="text-sm text-success flex items-center gap-1.5"
 						>
-							<Icon name="lucide:check" class="w-4 h-4" />
+							<CheckIcon class="w-4 h-4" />
 							{{ copy('testOk') }}
 						</p>
 						<p
 							v-else-if="testState.status === 'error'"
 							class="text-sm text-error flex items-center gap-1.5"
 						>
-							<Icon name="lucide:x" class="w-4 h-4" />
+							<CloseIcon class="w-4 h-4" />
 							{{ testState.message }}
 						</p>
 						<p v-else-if="!canTest" class="text-xs text-text-tertiary">

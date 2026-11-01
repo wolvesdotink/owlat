@@ -19,6 +19,7 @@ import {
 } from '../commandPaletteThreadSurfaces';
 import { POSTBOX_COMMAND_PROVIDER_PRIORITY } from '~/composables/postbox/usePostboxCommandSurface';
 import { createTestI18n } from '~/__tests__/i18n';
+import { ForwardIcon } from '@coolicons/vue';
 
 const { t } = createTestI18n().global;
 const translate = (key: string) => t(key);
@@ -223,7 +224,7 @@ describe('buildThreadSurfaceGroups (Postbox reader)', () => {
 							heading: 'Mailbox',
 							order: 0,
 							items: [
-								{ id: 'postbox:forward', label: 'Forward', icon: 'lucide:forward', run: broadcast },
+								{ id: 'postbox:forward', label: 'Forward', icon: ForwardIcon, run: broadcast },
 							],
 						},
 					],

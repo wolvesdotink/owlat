@@ -50,7 +50,6 @@ function mountModal() {
 				UiModal: modalStub,
 				UiModalFooter: modalFooterStub,
 				UiButton: buttonStub,
-				Icon: true,
 			},
 		},
 	});

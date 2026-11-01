@@ -18,6 +18,7 @@
 import { api } from '@owlat/api';
 import { referenceRelayNotice } from '~/utils/referenceRelay';
 import { useLocalized } from '~/composables/useLocalized';
+import { TriangleWarningIcon } from '@coolicons/vue';
 
 const { data: alignmentArms } = useOrganizationQuery(
 	api.delivery.alignmentPreflight.getAlignmentArms
@@ -41,7 +42,7 @@ const localized = useLocalized();
 		data-testid="reference-relay-notice"
 	>
 		<div class="flex gap-3">
-			<Icon name="lucide:alert-triangle" class="w-5 h-5 text-warning shrink-0 mt-0.5" />
+			<TriangleWarningIcon class="w-5 h-5 text-warning shrink-0 mt-0.5" />
 			<div class="min-w-0 space-y-1.5">
 				<h3 class="font-medium text-text-primary">{{ localized(notice.title) }}</h3>
 				<!-- The backend's own sentence, verbatim: it names the relays. -->

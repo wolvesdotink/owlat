@@ -12,6 +12,8 @@
 import { useAnswerAiFocus } from '~/composables/useAnswerMode';
 import { useShortcutLabels } from '~/composables/useShortcutLabels';
 import type { AskPhase } from '~/composables/useAnswerAskSession';
+import { SparklesIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const props = withDefaults(
 	defineProps<{
@@ -69,7 +71,7 @@ const inputId = useId();
 		data-testid="answer-ai-bar"
 	>
 		<form class="flex items-center gap-2" @submit.prevent="submit">
-			<Icon name="lucide:sparkles" class="size-4 shrink-0 text-brand" aria-hidden="true" />
+			<SparklesIcon class="size-4 shrink-0 text-brand" aria-hidden="true" />
 			<label :for="inputId" class="sr-only">{{ t('components.answer.aiBar.label') }}</label>
 			<input
 				:id="inputId"
@@ -94,12 +96,7 @@ const inputId = useId();
 					:disabled="busy || isHeld"
 					data-testid="answer-ai-draft"
 				>
-					<Icon
-						v-if="busy"
-						name="lucide:loader-2"
-						class="mr-1 size-3.5 animate-spin motion-reduce:animate-none"
-						aria-hidden="true"
-					/>
+					<SpinnerIcon v-if="busy" class="mr-1 size-3.5" aria-hidden="true" />
 					{{ t('components.answer.aiBar.draft') }}
 				</UiButton>
 			</UiTooltip>

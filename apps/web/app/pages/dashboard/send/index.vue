@@ -16,6 +16,7 @@ import {
 	parseTemplateTypeFilter,
 	type TemplateTypeFilter,
 } from '~/utils/templateListFilter';
+import { FileTextIcon, GridIcon, MailIcon, PlusIcon } from '@coolicons/vue';
 
 const { t, locale } = useI18n();
 
@@ -129,7 +130,7 @@ function handleCreated(templateId: Id<'emailTemplates'>) {
 		>
 			<template #actions>
 				<UiButton variant="secondary" to="/dashboard/send/blocks">
-					<template #iconLeft><Icon name="lucide:layout-grid" class="w-4 h-4" /></template>
+					<template #iconLeft><GridIcon class="w-4 h-4" /></template>
 					{{
 						blockCount === null
 							? t('dashboard.send.index.savedBlocks')
@@ -139,7 +140,7 @@ function handleCreated(templateId: Id<'emailTemplates'>) {
 					}}
 				</UiButton>
 				<UiButton v-if="canManage" data-testid="new-template" @click="isLibraryOpen = true">
-					<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
+					<template #iconLeft><PlusIcon class="w-4 h-4" /></template>
 					{{ t('dashboard.send.index.newTemplate') }}
 				</UiButton>
 				<p v-else-if="showManageGate" class="text-xs text-text-tertiary">
@@ -181,7 +182,7 @@ function handleCreated(templateId: Id<'emailTemplates'>) {
 
 				<UiEmptyState
 					v-if="templates.length === 0"
-					icon="lucide:file-text"
+					:icon="FileTextIcon"
 					:title="
 						typeFilter === 'all'
 							? t('dashboard.send.index.empty.title')
@@ -196,7 +197,7 @@ function handleCreated(templateId: Id<'emailTemplates'>) {
 							:to="editPath(template._id)"
 							class="flex items-center gap-4 px-4 py-3 hover:bg-bg-surface transition-colors"
 						>
-							<UiIconBox icon="lucide:mail" size="sm" variant="surface" rounded="lg" />
+							<UiIconBox :icon="MailIcon" size="sm" variant="surface" rounded="lg" />
 							<div class="flex-1 min-w-0">
 								<p class="text-sm text-text-primary truncate font-medium">{{ template.name }}</p>
 								<p v-if="template.subject" class="text-xs text-text-tertiary truncate">

@@ -1,11 +1,12 @@
 import { defineAsyncComponent } from 'vue';
 import type { TriggerEditorModule } from '../types';
+import { BroadcastIcon } from '@coolicons/vue';
 
 export const eventReceivedTriggerEditorModule: TriggerEditorModule<'event_received'> = {
 	kind: 'event_received',
 	label: 'shared.automations.triggers.eventReceived.label',
 	description: 'shared.automations.triggers.eventReceived.description',
-	icon: 'lucide:radio',
+	icon: BroadcastIcon,
 	color: 'warning',
 	requiresConfig: true,
 	createDefault: () => ({ eventName: '' }),

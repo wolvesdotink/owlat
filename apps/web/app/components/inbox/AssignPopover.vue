@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useShortcutLabels } from '~/composables/useShortcutLabels';
+import { CheckIcon, UserCloseCornerIcon } from '@coolicons/vue';
 
 /**
  * Avatar-based assignee picker for a Team Inbox thread — the shared control the
@@ -101,9 +102,8 @@ function choose(assignedTo: string | undefined) {
 			>
 				{{ assignKey }}
 			</kbd>
-			<Icon
+			<CheckIcon
 				v-if="assignedTo && assignedTo === me.userId"
-				name="lucide:check"
 				class="w-4 h-4 text-brand shrink-0"
 			/>
 		</UiDropdownMenuItem>
@@ -120,17 +120,13 @@ function choose(assignedTo: string | undefined) {
 				size="sm"
 			/>
 			<span class="flex-1 truncate">{{ memberLabel(m) }}</span>
-			<Icon
-				v-if="assignedTo === m.userId"
-				name="lucide:check"
-				class="w-4 h-4 text-brand shrink-0"
-			/>
+			<CheckIcon v-if="assignedTo === m.userId" class="w-4 h-4 text-brand shrink-0" />
 		</UiDropdownMenuItem>
 
 		<!-- Unassign — only offered when the thread is currently assigned. -->
 		<template v-if="assignedTo">
 			<UiDropdownDivider />
-			<UiDropdownMenuItem icon="lucide:user-x" @click="choose(undefined)">
+			<UiDropdownMenuItem :icon="UserCloseCornerIcon" @click="choose(undefined)">
 				{{ t('components.inbox.assignPopover.unassign') }}
 			</UiDropdownMenuItem>
 		</template>

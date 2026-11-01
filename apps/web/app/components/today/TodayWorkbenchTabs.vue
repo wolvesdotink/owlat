@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { INBOX_SLOT_SWATCH } from '~/utils/inboxIdentity';
 import type { WorkbenchScope, WorkbenchTab } from '~/utils/workbench';
+import { RobotIcon } from '@coolicons/vue';
 
 /**
  * The Workbench's tab row: one tab per inbox (and the team inbox). A tab
@@ -110,7 +111,7 @@ function onKeydown(event: KeyboardEvent) {
 					"
 					@click="emit('select', tab.scope)"
 				>
-					<Icon v-if="tab.isTeam" name="lucide:bot" class="size-3.5 text-text-tertiary" />
+					<RobotIcon v-if="tab.isTeam" class="size-3.5 text-text-tertiary" />
 					<span
 						v-else
 						class="size-2 shrink-0 rounded-[2px]"

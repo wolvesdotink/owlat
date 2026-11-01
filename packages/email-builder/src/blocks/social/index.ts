@@ -1,11 +1,11 @@
-import { Share2 } from '@lucide/vue';
+import { ShareIcon } from '@coolicons/vue';
 import type { EditorModule } from '../_module';
 import { socialSchema } from '../../schema/definitions/social';
 
 export const socialEditor: EditorModule<'social'> = {
 	type: 'social',
 	label: 'Social',
-	icon: Share2,
+	icon: ShareIcon,
 	schema: socialSchema,
 	slashCommand: {
 		name: 'Social Icons',

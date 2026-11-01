@@ -1,11 +1,12 @@
 /** The recurring digest preset: a top story, a link list and a sign-off. */
 import type { TemplatePreset } from './types';
+import { NotebookIcon } from '@coolicons/vue';
 
 export const newsletterPreset: TemplatePreset = {
 	id: 'newsletter',
 	name: 'shared.data.marketingTemplatePresets.newsletter.name',
 	description: 'shared.data.marketingTemplatePresets.newsletter.description',
-	icon: 'lucide:newspaper',
+	icon: NotebookIcon,
 	subject: 'Your Weekly Update',
 	content: [
 		{

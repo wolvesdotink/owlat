@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import { useUrlCredential } from '~/composables/useUrlCredential';
+import { ArrowRightIcon, CheckIcon, CircleCloseIcon, CircleWarningIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -61,7 +62,7 @@ onMounted(async () => {
 			<div v-else-if="status === 'success'" class="card p-8 text-center">
 				<div class="flex justify-center mb-4">
 					<div class="p-4 rounded-full bg-success/10">
-						<Icon name="lucide:check" class="w-8 h-8 text-success" />
+						<CheckIcon class="w-8 h-8 text-success" :stroke-width="1.5" />
 					</div>
 				</div>
 				<h1 class="text-xl font-semibold text-text-primary mb-2">
@@ -72,7 +73,7 @@ onMounted(async () => {
 				</p>
 				<UiButton to="/dashboard" class="gap-2 inline-flex">
 					{{ t('cancelDeletion.goToDashboard') }}
-					<Icon name="lucide:arrow-right" class="w-4 h-4" />
+					<ArrowRightIcon class="w-4 h-4" />
 				</UiButton>
 			</div>
 
@@ -80,7 +81,7 @@ onMounted(async () => {
 			<div v-else-if="status === 'error'" class="card p-8 text-center">
 				<div class="flex justify-center mb-4">
 					<div class="p-4 rounded-full bg-error/10">
-						<Icon name="lucide:alert-circle" class="w-8 h-8 text-error" />
+						<CircleWarningIcon class="w-8 h-8 text-error" :stroke-width="1.5" />
 					</div>
 				</div>
 				<h1 class="text-xl font-semibold text-text-primary mb-2">
@@ -102,7 +103,7 @@ onMounted(async () => {
 			<div v-else-if="status === 'no-token'" class="card p-8 text-center">
 				<div class="flex justify-center mb-4">
 					<div class="p-4 rounded-full bg-warning/10">
-						<Icon name="lucide:x-circle" class="w-8 h-8 text-warning" />
+						<CircleCloseIcon class="w-8 h-8 text-warning" :stroke-width="1.5" />
 					</div>
 				</div>
 				<h1 class="text-xl font-semibold text-text-primary mb-2">

@@ -3,6 +3,8 @@
 // status badge, and Save draft / Pause / Resume / Activate for the status the
 // automation is in.
 import type { StepSaveStatus } from '~/composables/useAutomationStepConfig';
+import { ArrowLeftIcon, PauseIcon, PlayIcon, SaveIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 defineProps<{
 	automation: { name: string; status: string } | null | undefined;
@@ -44,7 +46,7 @@ const ACTIVATE_HELD_CLASS =
 						@click="emit('back')"
 						:aria-label="t('common.back')"
 					>
-						<Icon name="lucide:arrow-left" class="w-5 h-5" />
+						<ArrowLeftIcon class="w-5 h-5" />
 					</button>
 					<div v-if="automation" class="min-w-0">
 						<h1 class="text-lg font-semibold text-text-primary">{{ automation.name }}</h1>
@@ -105,12 +107,8 @@ const ACTIVATE_HELD_CLASS =
 						:disabled="isSavingDraft"
 						@click="emit('saveDraft')"
 					>
-						<Icon
-							v-if="isSavingDraft"
-							name="lucide:loader-2"
-							class="w-4 h-4 animate-spin motion-reduce:animate-none"
-						/>
-						<Icon v-else name="lucide:save" class="w-4 h-4" />
+						<SpinnerIcon v-if="isSavingDraft" class="w-4 h-4" />
+						<SaveIcon v-else class="w-4 h-4" />
 						{{ t('dashboard.automations.detail.edit.saveDraft') }}
 					</UiButton>
 
@@ -122,12 +120,8 @@ const ACTIVATE_HELD_CLASS =
 						:disabled="isActivating"
 						@click="emit('toggleStatus')"
 					>
-						<Icon
-							v-if="isActivating"
-							name="lucide:loader-2"
-							class="w-4 h-4 animate-spin motion-reduce:animate-none"
-						/>
-						<Icon v-else name="lucide:pause" class="w-4 h-4" />
+						<SpinnerIcon v-if="isActivating" class="w-4 h-4" />
+						<PauseIcon v-else class="w-4 h-4" />
 						{{ t('dashboard.automations.detail.edit.pause') }}
 					</UiButton>
 					<UiButton
@@ -136,12 +130,8 @@ const ACTIVATE_HELD_CLASS =
 						:disabled="isActivating"
 						@click="emit('toggleStatus')"
 					>
-						<Icon
-							v-if="isActivating"
-							name="lucide:loader-2"
-							class="w-4 h-4 animate-spin motion-reduce:animate-none"
-						/>
-						<Icon v-else name="lucide:play" class="w-4 h-4" />
+						<SpinnerIcon v-if="isActivating" class="w-4 h-4" />
+						<PlayIcon v-else class="w-4 h-4" />
 						{{ t('dashboard.automations.detail.edit.resume') }}
 					</UiButton>
 					<UiTooltip
@@ -160,12 +150,8 @@ const ACTIVATE_HELD_CLASS =
 							data-testid="automation-activate"
 							@click="emit('activate')"
 						>
-							<Icon
-								v-if="isActivating"
-								name="lucide:loader-2"
-								class="w-4 h-4 animate-spin motion-reduce:animate-none"
-							/>
-							<Icon v-else name="lucide:play" class="w-4 h-4" />
+							<SpinnerIcon v-if="isActivating" class="w-4 h-4" />
+							<PlayIcon v-else class="w-4 h-4" />
 							{{ t('dashboard.automations.detail.edit.activate') }}
 						</UiButton>
 					</UiTooltip>

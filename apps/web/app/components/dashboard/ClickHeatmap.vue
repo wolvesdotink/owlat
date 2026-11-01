@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { CircleInfoIcon, CursorClickIcon, ExternalLinkIcon } from '@coolicons/vue';
+
 interface LinkStat {
 	url: string;
 	clicks: number;
@@ -118,7 +120,7 @@ const previewSrcdoc = computed(() => {
 		<!-- Heatmap Legend -->
 		<div class="flex items-center gap-4 text-sm text-text-secondary">
 			<div class="flex items-center gap-2">
-				<Icon name="lucide:mouse-pointer-click" class="w-4 h-4" />
+				<CursorClickIcon class="w-4 h-4" />
 				<span>{{ t('components.dashboard.clickHeatmap.legendTitle') }}</span>
 			</div>
 			<div class="flex items-center gap-2">
@@ -155,7 +157,7 @@ const previewSrcdoc = computed(() => {
 		<div v-if="processedContent.links.length > 0" class="card overflow-hidden">
 			<div class="px-4 sm:px-6 py-4 border-b border-border-subtle">
 				<div class="flex items-center gap-3">
-					<UiIconBox icon="lucide:mouse-pointer-click" size="sm" variant="warning" rounded="lg" />
+					<UiIconBox :icon="CursorClickIcon" size="sm" variant="warning" rounded="lg" />
 					<div>
 						<h3 class="text-lg font-medium text-text-primary">
 							{{ t('components.dashboard.clickHeatmap.detailsTitle') }}
@@ -176,7 +178,7 @@ const previewSrcdoc = computed(() => {
 					<div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4">
 						<div class="min-w-0 flex-1">
 							<div class="flex items-center gap-2 mb-1">
-								<Icon name="lucide:external-link" class="w-4 h-4 text-text-tertiary shrink-0" />
+								<ExternalLinkIcon class="w-4 h-4 text-text-tertiary shrink-0" />
 								<span class="text-sm font-medium text-text-primary truncate">
 									{{ link.text.length > 50 ? link.text.substring(0, 50) + '...' : link.text }}
 								</span>
@@ -233,7 +235,7 @@ const previewSrcdoc = computed(() => {
 
 				<!-- Empty state for no links -->
 				<div v-if="processedContent.links.length === 0" class="px-6 py-12 text-center">
-					<Icon name="lucide:info" class="w-10 h-10 text-text-tertiary mx-auto mb-3" />
+					<CircleInfoIcon class="w-10 h-10 text-text-tertiary mx-auto mb-3" :stroke-width="1.5" />
 					<p class="text-text-secondary">{{ t('components.dashboard.clickHeatmap.noLinks') }}</p>
 				</div>
 			</div>
@@ -241,7 +243,7 @@ const previewSrcdoc = computed(() => {
 
 		<!-- No Clicks State -->
 		<div v-else-if="linkStats.length === 0" class="card p-8 text-center">
-			<Icon name="lucide:mouse-pointer-click" class="w-12 h-12 text-text-tertiary mx-auto mb-3" />
+			<CursorClickIcon class="w-12 h-12 text-text-tertiary mx-auto mb-3" :stroke-width="1.5" />
 			<p class="text-text-secondary font-medium">
 				{{ t('components.dashboard.clickHeatmap.noClicks') }}
 			</p>

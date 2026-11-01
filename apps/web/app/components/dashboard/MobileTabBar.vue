@@ -1,5 +1,14 @@
 <script setup lang="ts">
 import { mobileMoreDestinations } from '~/lib/mobileMoreDestinations';
+import {
+	DashboardIcon,
+	InboxIcon,
+	MenuIcon,
+	PlusIcon,
+	ReplyAllIcon,
+	type IconComponent,
+} from '@coolicons/vue';
+import { navIcon } from '~/lib/navIcons';
 
 /**
  * The phone's bottom bar: Workbench, Answer, create, Inbox, More.
@@ -48,7 +57,7 @@ const isMoreOpen = ref(false);
 interface TabItem {
 	id: string;
 	href: string;
-	icon: string;
+	icon: IconComponent;
 	label: string;
 	/** Things waiting (the Answer queue's size); shown as a count on the icon. */
 	badge?: number;
@@ -72,7 +81,7 @@ const inboxTab = computed<TabItem | null>(() => {
 	return {
 		id: 'inbox',
 		href,
-		icon: 'lucide:inbox',
+		icon: InboxIcon,
 		label: t('components.dashboard.mobileTabBar.inbox'),
 	};
 });
@@ -82,13 +91,13 @@ const leadingTabs = computed<TabItem[]>(() => [
 	{
 		id: 'today',
 		href: '/dashboard',
-		icon: 'lucide:layout-dashboard',
+		icon: DashboardIcon,
 		label: t('components.dashboard.mobileTabBar.today'),
 	},
 	{
 		id: 'answer',
 		href: '/dashboard/answer',
-		icon: 'lucide:reply-all',
+		icon: ReplyAllIcon,
 		label: t('components.dashboard.mobileTabBar.answer'),
 		badge: answerCount.value,
 	},
@@ -208,7 +217,7 @@ function run(action: (typeof actions.value)[number]): void {
 							:aria-current="isActive(tab.href) ? 'page' : undefined"
 						>
 							<span class="relative">
-								<Icon :name="tab.icon" class="w-5 h-5" />
+								<component :is="navIcon(tab.icon, isActive(tab.href))" class="w-5 h-5" />
 								<span
 									v-if="tab.badge"
 									class="absolute -right-2.5 -top-1.5 min-w-4 rounded-full bg-brand px-1 text-center text-[10px] font-semibold leading-4 text-text-inverse"
@@ -228,7 +237,7 @@ function run(action: (typeof actions.value)[number]): void {
 							data-testid="mobile-tab-bar-create"
 							@click="isSheetOpen = true"
 						>
-							<Icon name="lucide:plus" class="w-5 h-5" />
+							<PlusIcon class="w-5 h-5" />
 						</UiButton>
 					</li>
 
@@ -239,7 +248,7 @@ function run(action: (typeof actions.value)[number]): void {
 							:class="isActive(tab.href) ? 'text-text-primary font-medium' : 'text-text-tertiary'"
 							:aria-current="isActive(tab.href) ? 'page' : undefined"
 						>
-							<Icon :name="tab.icon" class="w-5 h-5" />
+							<component :is="navIcon(tab.icon, isActive(tab.href))" class="w-5 h-5" />
 							{{ tab.label }}
 						</NuxtLink>
 					</li>
@@ -254,7 +263,7 @@ function run(action: (typeof actions.value)[number]): void {
 							data-testid="mobile-tab-bar-more"
 							@click="isMoreOpen = true"
 						>
-							<Icon name="lucide:menu" class="w-5 h-5" />
+							<MenuIcon class="w-5 h-5" />
 							{{ t('components.dashboard.mobileTabBar.more') }}
 						</button>
 					</li>
@@ -277,7 +286,7 @@ function run(action: (typeof actions.value)[number]): void {
 					class="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-left text-text-primary transition-colors duration-(--motion-fast) hover:bg-bg-surface-hover"
 					@click="run(action)"
 				>
-					<Icon :name="action.icon" class="w-5 h-5 text-text-tertiary" />
+					<component :is="action.icon" class="w-5 h-5 text-text-tertiary" />
 					{{ action.label }}
 				</button>
 			</li>
@@ -299,7 +308,7 @@ function run(action: (typeof actions.value)[number]): void {
 					:aria-current="isActive(destination.href) ? 'page' : undefined"
 					@click="isMoreOpen = false"
 				>
-					<Icon :name="destination.icon" class="w-5 h-5 text-text-tertiary" />
+					<component :is="destination.icon" class="w-5 h-5 text-text-tertiary" />
 					{{ t(destination.name) }}
 				</NuxtLink>
 			</li>

@@ -1,9 +1,10 @@
 import type { ContactActivityEditorModule } from '../types';
+import { CircleCheckIcon } from '@coolicons/vue';
 
 export const topicConfirmedEditorModule: ContactActivityEditorModule<'topic_confirmed'> = {
 	literal: 'topic_confirmed',
 	displayConfig: {
-		icon: 'lucide:check-circle',
+		icon: CircleCheckIcon,
 		label: 'shared.contactActivities.topicConfirmed.label',
 		color: 'text-success',
 	},

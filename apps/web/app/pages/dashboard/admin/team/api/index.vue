@@ -5,6 +5,14 @@ import ApiKeysCreatedKeyModal from '~/components/apiKeys/CreatedKeyModal.vue';
 import ApiKeysCreateKeyModal from '~/components/apiKeys/CreateKeyModal.vue';
 import ApiKeysTable from '~/components/apiKeys/KeysTable.vue';
 import ApiKeysRateLimitInfo from '~/components/apiKeys/RateLimitInfo.vue';
+import {
+	BookIcon,
+	ExternalLinkIcon,
+	KeyIcon,
+	LockIcon,
+	PlusIcon,
+	ShieldIcon,
+} from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -231,7 +239,7 @@ const activeKeysCount = computed(() => {
 		>
 			<template v-if="canManage" #actions>
 				<UiButton class="gap-2" @click="openCreateModal">
-					<Icon name="lucide:plus" class="w-4 h-4" />
+					<PlusIcon class="w-4 h-4" />
 					{{ t('dashboard.admin.team.api.index.createKey') }}
 				</UiButton>
 			</template>
@@ -240,7 +248,7 @@ const activeKeysCount = computed(() => {
 		<!-- Info Box -->
 		<div class="card p-4 mb-6 bg-brand-subtle/50 border-brand/20">
 			<div class="flex items-start gap-3">
-				<Icon name="lucide:shield" class="w-5 h-5 text-brand shrink-0 mt-0.5" />
+				<ShieldIcon class="w-5 h-5 text-brand shrink-0 mt-0.5" />
 				<div>
 					<p class="text-sm text-text-primary font-medium">
 						{{ t('dashboard.admin.team.api.index.secureNotice.title') }}
@@ -260,7 +268,7 @@ const activeKeysCount = computed(() => {
 				v-if="showAdminGate"
 				class="card flex flex-col items-center justify-center py-16 text-center px-6"
 			>
-				<UiIconBox icon="lucide:lock" size="xl" variant="surface" rounded="full" class="mb-4" />
+				<UiIconBox :icon="LockIcon" size="xl" variant="surface" rounded="full" class="mb-4" />
 				<p class="text-text-secondary font-medium">
 					{{ t('dashboard.admin.team.api.index.adminGate.title') }}
 				</p>
@@ -279,7 +287,7 @@ const activeKeysCount = computed(() => {
 				v-else-if="!hasActiveOrganization"
 				class="card flex flex-col items-center justify-center py-16 text-center px-6"
 			>
-				<UiIconBox icon="lucide:key" size="xl" variant="surface" rounded="full" class="mb-4" />
+				<UiIconBox :icon="KeyIcon" size="xl" variant="surface" rounded="full" class="mb-4" />
 				<p class="text-text-secondary font-medium">
 					{{ t('dashboard.admin.team.api.index.noWorkspace.title') }}
 				</p>
@@ -296,7 +304,7 @@ const activeKeysCount = computed(() => {
 				v-else-if="!isLoading && (!apiKeys || apiKeys.length === 0)"
 				class="card flex flex-col items-center justify-center py-16 text-center px-6"
 			>
-				<UiIconBox icon="lucide:key" size="xl" variant="surface" rounded="full" class="mb-4" />
+				<UiIconBox :icon="KeyIcon" size="xl" variant="surface" rounded="full" class="mb-4" />
 				<p class="text-text-secondary font-medium">
 					{{ t('dashboard.admin.team.api.index.empty.title') }}
 				</p>
@@ -304,7 +312,7 @@ const activeKeysCount = computed(() => {
 					{{ t('dashboard.admin.team.api.index.empty.description') }}
 				</p>
 				<UiButton class="gap-2 mt-6" @click="openCreateModal">
-					<Icon name="lucide:plus" class="w-4 h-4" />
+					<PlusIcon class="w-4 h-4" />
 					{{ t('dashboard.admin.team.api.index.createKey') }}
 				</UiButton>
 			</div>
@@ -330,7 +338,7 @@ const activeKeysCount = computed(() => {
 			class="card p-4 mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
 		>
 			<div class="flex min-w-0 items-center gap-3">
-				<UiIconBox icon="lucide:book" size="sm" variant="surface" rounded="lg" />
+				<UiIconBox :icon="BookIcon" size="sm" variant="surface" rounded="lg" />
 				<div>
 					<p class="text-sm text-text-primary font-medium">
 						{{ t('dashboard.admin.team.api.index.docs.title') }}
@@ -346,7 +354,7 @@ const activeKeysCount = computed(() => {
 				class="shrink-0 gap-2 self-start whitespace-nowrap sm:self-auto"
 			>
 				{{ t('dashboard.admin.team.api.index.docs.view') }}
-				<Icon name="lucide:external-link" class="w-4 h-4" />
+				<ExternalLinkIcon class="w-4 h-4" />
 			</UiButton>
 		</div>
 

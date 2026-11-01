@@ -19,6 +19,8 @@ import {
 	type TlsReportSummary,
 } from '~/utils/tlsReportView';
 import { healthChipClass, healthDotClass, healthTextClass } from '~/utils/healthTone';
+import { CircleWarningIcon, InboxIcon, ShieldCheckIcon, ShieldOffIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const props = defineProps<{
 	summary: TlsReportSummary | null | undefined;
@@ -38,7 +40,7 @@ const failureRows = computed(() => toFailureRows(props.summary?.failureTypeCount
 		<div class="p-6">
 			<!-- Headline -->
 			<div class="flex items-start gap-3">
-				<UiIconBox icon="lucide:shield-check" size="md" variant="brand" rounded="lg" />
+				<UiIconBox :icon="ShieldCheckIcon" size="md" variant="brand" rounded="lg" />
 				<div class="min-w-0">
 					<p class="text-xs font-medium uppercase tracking-wide text-text-tertiary">
 						{{ t('components.delivery.tlsReportCard.eyebrow') }}
@@ -58,7 +60,7 @@ const failureRows = computed(() => toFailureRows(props.summary?.failureTypeCount
 				class="mt-5 flex items-center gap-3 text-text-tertiary"
 				data-testid="tls-report-loading"
 			>
-				<Icon name="lucide:loader-2" class="w-5 h-5 animate-spin motion-reduce:animate-none" />
+				<SpinnerIcon class="w-5 h-5" />
 				<span class="text-sm">{{ t('components.delivery.tlsReportCard.loading') }}</span>
 			</div>
 
@@ -68,7 +70,7 @@ const failureRows = computed(() => toFailureRows(props.summary?.failureTypeCount
 				class="mt-5 flex items-start gap-2 text-sm text-text-secondary"
 				data-testid="tls-report-error"
 			>
-				<Icon name="lucide:alert-circle" class="w-4 h-4 text-warning mt-0.5 shrink-0" />
+				<CircleWarningIcon class="w-4 h-4 text-warning mt-0.5 shrink-0" />
 				<span>{{ t('components.delivery.tlsReportCard.error') }}</span>
 			</div>
 
@@ -78,7 +80,7 @@ const failureRows = computed(() => toFailureRows(props.summary?.failureTypeCount
 				class="mt-5 flex items-start gap-2 text-sm text-text-secondary rounded-lg bg-bg-surface px-3 py-3"
 				data-testid="tls-report-empty"
 			>
-				<Icon name="lucide:inbox" class="w-4 h-4 text-text-tertiary mt-0.5 shrink-0" />
+				<InboxIcon class="w-4 h-4 text-text-tertiary mt-0.5 shrink-0" />
 				<span>{{ t('components.delivery.tlsReportCard.empty') }}</span>
 			</div>
 
@@ -147,7 +149,7 @@ const failureRows = computed(() => toFailureRows(props.summary?.failureTypeCount
 							data-testid="tls-report-failure"
 						>
 							<span class="flex items-center gap-2 text-text-secondary">
-								<Icon name="lucide:shield-off" class="w-4 h-4 text-warning shrink-0" />
+								<ShieldOffIcon class="w-4 h-4 text-warning shrink-0" />
 								{{ row.label }}
 							</span>
 							<span class="text-text-tertiary shrink-0">{{ row.count }}</span>

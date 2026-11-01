@@ -12,6 +12,9 @@
  * Renders nothing for an unscheduled draft; extracted from PostboxComposer.vue
  * to keep that surface focused (and under the file-size cap).
  */
+import { ClockIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
+
 const props = defineProps<{
 	/** The draft's lifecycle state is 'scheduled' — otherwise nothing renders. */
 	isScheduled: boolean;
@@ -45,7 +48,7 @@ const scheduledLabel = computed(() =>
 		class="flex items-center justify-between gap-3 px-3 py-2 border-b border-border-subtle bg-bg-surface text-sm"
 	>
 		<span class="inline-flex items-center gap-1.5 text-text-secondary">
-			<Icon name="lucide:clock" class="w-4 h-4 text-brand" />
+			<ClockIcon class="w-4 h-4 text-brand" />
 			{{ t('components.postbox.postboxComposer.scheduledFor', { datetime: scheduledLabel }) }}
 		</span>
 		<UiButton
@@ -55,7 +58,7 @@ const scheduledLabel = computed(() =>
 			:disabled="unscheduling"
 			@click="handleUnschedule"
 		>
-			<Icon v-if="unscheduling" name="lucide:loader-2" class="w-3.5 h-3.5 mr-1 animate-spin motion-reduce:animate-none" />
+			<SpinnerIcon v-if="unscheduling" class="w-3.5 h-3.5 mr-1" />
 			{{ t('components.postbox.postboxComposer.unschedule') }}
 		</UiButton>
 	</div>

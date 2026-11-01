@@ -12,7 +12,7 @@ import { mount } from '@vue/test-utils';
 
 import TaskActions from '../TaskActions.vue';
 
-const stubs = { Icon: { template: '<i />' } };
+const stubs = {};
 
 function mountActions(props: Record<string, unknown> = {}) {
 	return mount(TaskActions, {

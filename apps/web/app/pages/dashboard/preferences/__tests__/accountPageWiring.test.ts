@@ -113,7 +113,6 @@ function mountPage() {
 			// Template auto-imports; the test build does not rewrite templates.
 			mocks: { formatDate },
 			stubs: {
-				Icon: true,
 				UiIconBox: true,
 				UiButton: { template: '<button v-bind="$attrs"><slot /></button>', inheritAttrs: false },
 				UiInput: FieldStub,

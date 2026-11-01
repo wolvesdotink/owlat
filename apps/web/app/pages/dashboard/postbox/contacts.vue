@@ -11,6 +11,8 @@ import type { Id } from '@owlat/api/dataModel';
 import { useDebouncedSearch } from '~/composables/useDebouncedSearch';
 import { usePostboxHostedVirtualList } from '~/composables/postbox/usePostboxHostedVirtualList';
 import { POSTBOX_VIRTUAL_THRESHOLD } from '~/utils/postboxDensity';
+import { PencilIcon, SearchIcon, TrashIcon, UserPlusCornerIcon, UsersIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const { t } = useI18n();
 
@@ -160,16 +162,13 @@ function initial(c: { displayName?: string; email: string }) {
 				<p class="text-sm text-text-secondary">{{ t('dashboard.postbox.contacts.subtitle') }}</p>
 			</div>
 			<UiButton type="button" @click="openNew">
-				<template #iconLeft><Icon name="lucide:user-plus" class="w-4 h-4" /></template>
+				<template #iconLeft><UserPlusCornerIcon class="w-4 h-4" /></template>
 				{{ t('dashboard.postbox.contacts.addContact') }}
 			</UiButton>
 		</header>
 
 		<div class="relative mb-4">
-			<Icon
-				name="lucide:search"
-				class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-text-tertiary"
-			/>
+			<SearchIcon class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-text-tertiary" />
 			<input
 				v-model="search"
 				type="text"
@@ -185,15 +184,12 @@ function initial(c: { displayName?: string; email: string }) {
 			@retry="refetchMailboxes"
 		>
 			<div v-if="isLoading" class="flex justify-center py-12">
-				<Icon
-					name="lucide:loader-2"
-					class="w-6 h-6 animate-spin motion-reduce:animate-none text-text-tertiary"
-				/>
+				<SpinnerIcon class="w-6 h-6 text-text-tertiary" />
 			</div>
 			<!-- A failed read is not an empty address book. -->
 			<UiQueryBoundary v-else-if="listError" :error="listError" @retry="refetchList" />
 			<div v-else-if="filtered.length === 0" class="text-center py-12">
-				<Icon name="lucide:users" class="w-10 h-10 mx-auto text-text-tertiary" />
+				<UsersIcon class="w-10 h-10 mx-auto text-text-tertiary" :stroke-width="1.5" />
 				<p class="text-sm text-text-secondary mt-3">
 					{{
 						debouncedQuery
@@ -240,7 +236,7 @@ function initial(c: { displayName?: string; email: string }) {
 								:aria-label="t('dashboard.postbox.contacts.composeAria')"
 								@click="composeTo(c.email)"
 							>
-								<Icon name="lucide:pencil" class="w-4 h-4" />
+								<PencilIcon class="w-4 h-4" />
 							</UiButton>
 						</UiTooltip>
 						<UiTooltip :text="t('common.edit')">
@@ -251,7 +247,7 @@ function initial(c: { displayName?: string; email: string }) {
 								:aria-label="t('dashboard.postbox.contacts.editAria')"
 								@click="openEdit(c)"
 							>
-								<Icon name="lucide:edit-2" class="w-4 h-4" />
+								<PencilIcon class="w-4 h-4" />
 							</UiButton>
 						</UiTooltip>
 						<UiTooltip :text="t('common.remove')">
@@ -262,7 +258,7 @@ function initial(c: { displayName?: string; email: string }) {
 								:aria-label="t('dashboard.postbox.contacts.removeAria')"
 								@click="removeContact(c)"
 							>
-								<Icon name="lucide:trash" class="w-4 h-4" />
+								<TrashIcon class="w-4 h-4" />
 							</UiButton>
 						</UiTooltip>
 					</div>

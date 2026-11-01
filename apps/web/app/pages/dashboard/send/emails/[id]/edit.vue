@@ -11,6 +11,7 @@ import { plainClone } from '@owlat/email-builder/plain-clone';
 import { campaignReturnTarget } from '~/lib/campaignCompose';
 import type { PresendSource } from '~/composables/usePresendChecks';
 import { useRecordPaletteObjectOpen } from '~/composables/useCommandPaletteObjectRecents';
+import { ArrowLeftIcon, ListChecklistIcon, TranslateIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -263,7 +264,7 @@ const { isPublished, isChangingPublication, togglePublication } = useTemplatePub
 				{{ t('dashboard.send.emails.detail.edit.campaignReturnHint') }}
 			</p>
 			<UiButton variant="secondary" size="sm" class="shrink-0" @click="handleBack">
-				<template #iconLeft><Icon name="lucide:arrow-left" class="w-4 h-4" /></template>
+				<template #iconLeft><ArrowLeftIcon class="w-4 h-4" /></template>
 				{{ backLabel }}
 			</UiButton>
 		</div>
@@ -375,7 +376,7 @@ const { isPublished, isChangingPublication, togglePublication } = useTemplatePub
 									@click="checkEmail"
 								>
 									<template #iconLeft>
-										<Icon name="lucide:list-checks" class="w-4 h-4" />
+										<ListChecklistIcon class="w-4 h-4" />
 									</template>
 									<!-- Icon-only below 2xl, where the toolbar is short of room. -->
 									<span class="max-2xl:sr-only">{{
@@ -386,7 +387,7 @@ const { isPublished, isChangingPublication, togglePublication } = useTemplatePub
 							<UiTooltip :text="t('dashboard.send.emails.detail.edit.manageTranslations')">
 								<UiButton variant="outline" size="sm" @click="handleTranslations">
 									<template #iconLeft>
-										<Icon name="lucide:languages" class="w-4 h-4" />
+										<TranslateIcon class="w-4 h-4" />
 									</template>
 									<!-- Icon-only below 2xl, where the toolbar is short of room. -->
 									<span class="max-2xl:sr-only">{{

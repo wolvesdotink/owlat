@@ -1,6 +1,18 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
 import { useShortcutLabels } from '~/composables/useShortcutLabels';
+import {
+	ArchiveIcon,
+	ChatHelpIcon,
+	CheckIcon,
+	CircleHelpIcon,
+	ClockIcon,
+	FileTextIcon,
+	ListUnorderedIcon,
+	MailOpenIcon,
+	ReplyIcon,
+	UndoIcon,
+} from '@coolicons/vue';
 
 /**
  * The calm reader's header line (read on arrival §3): the subject,
@@ -119,7 +131,7 @@ const ICON_CLASS = 'w-3.5 h-3.5 flex-shrink-0 text-text-tertiary';
 					data-testid="thread-header-reply"
 					@click="emit('reply')"
 				>
-					<Icon name="lucide:reply" class="w-4 h-4 sm:hidden" aria-hidden="true" />
+					<ReplyIcon class="w-4 h-4 sm:hidden" aria-hidden="true" />
 					<span class="max-sm:sr-only">{{ t('postbox.reader.header.reply') }}</span>
 				</UiButton>
 			</UiTooltip>
@@ -134,7 +146,7 @@ const ICON_CLASS = 'w-3.5 h-3.5 flex-shrink-0 text-text-tertiary';
 					data-testid="thread-header-archive"
 					@click="emit('archive')"
 				>
-					<Icon name="lucide:archive" class="w-4 h-4 sm:hidden" aria-hidden="true" />
+					<ArchiveIcon class="w-4 h-4 sm:hidden" aria-hidden="true" />
 					<span class="max-sm:sr-only">{{ t('postbox.reader.header.archive') }}</span>
 				</UiButton>
 			</UiTooltip>
@@ -156,7 +168,7 @@ const ICON_CLASS = 'w-3.5 h-3.5 flex-shrink-0 text-text-tertiary';
 							close();
 						"
 					>
-						<Icon name="lucide:circle-help" :class="ICON_CLASS" aria-hidden="true" />
+						<CircleHelpIcon :class="ICON_CLASS" aria-hidden="true" size="1em" />
 						{{ t('postbox.reader.header.whyHere') }}
 					</button>
 					<button
@@ -169,7 +181,7 @@ const ICON_CLASS = 'w-3.5 h-3.5 flex-shrink-0 text-text-tertiary';
 							close();
 						"
 					>
-						<Icon name="lucide:list" :class="ICON_CLASS" aria-hidden="true" />
+						<ListUnorderedIcon :class="ICON_CLASS" aria-hidden="true" size="1em" />
 						{{ t('postbox.reader.header.details') }}
 					</button>
 					<button
@@ -183,7 +195,7 @@ const ICON_CLASS = 'w-3.5 h-3.5 flex-shrink-0 text-text-tertiary';
 							close();
 						"
 					>
-						<Icon name="lucide:file-text" :class="ICON_CLASS" aria-hidden="true" />
+						<FileTextIcon :class="ICON_CLASS" aria-hidden="true" size="1em" />
 						{{ t('postbox.reader.header.fullBrief') }}
 					</button>
 					<button
@@ -196,7 +208,7 @@ const ICON_CLASS = 'w-3.5 h-3.5 flex-shrink-0 text-text-tertiary';
 							close();
 						"
 					>
-						<Icon name="lucide:clock" :class="ICON_CLASS" aria-hidden="true" />
+						<ClockIcon :class="ICON_CLASS" aria-hidden="true" size="1em" />
 						{{ t('postbox.reader.header.snooze') }}
 					</button>
 					<button
@@ -210,7 +222,7 @@ const ICON_CLASS = 'w-3.5 h-3.5 flex-shrink-0 text-text-tertiary';
 							close();
 						"
 					>
-						<Icon name="lucide:message-circle-question" :class="ICON_CLASS" aria-hidden="true" />
+						<ChatHelpIcon :class="ICON_CLASS" aria-hidden="true" size="1em" />
 						{{ t('postbox.reader.header.ask') }}
 					</button>
 					<div class="my-1 border-t border-border-subtle" role="separator" />
@@ -227,8 +239,7 @@ const ICON_CLASS = 'w-3.5 h-3.5 flex-shrink-0 text-text-tertiary';
 								close();
 							"
 						>
-							<Icon
-								name="lucide:check"
+							<CheckIcon
 								class="w-3.5 h-3.5 flex-shrink-0 text-brand"
 								:class="{ invisible: !isPinned }"
 								aria-hidden="true"
@@ -248,8 +259,7 @@ const ICON_CLASS = 'w-3.5 h-3.5 flex-shrink-0 text-text-tertiary';
 								close();
 							"
 						>
-							<Icon
-								name="lucide:check"
+							<CheckIcon
 								class="w-3.5 h-3.5 flex-shrink-0 text-brand"
 								:class="{ invisible: !isAlerted }"
 								aria-hidden="true"
@@ -269,8 +279,7 @@ const ICON_CLASS = 'w-3.5 h-3.5 flex-shrink-0 text-text-tertiary';
 								close();
 							"
 						>
-							<Icon
-								name="lucide:check"
+							<CheckIcon
 								class="w-3.5 h-3.5 flex-shrink-0 text-brand"
 								:class="{ invisible: !isMuted }"
 								aria-hidden="true"
@@ -292,7 +301,7 @@ const ICON_CLASS = 'w-3.5 h-3.5 flex-shrink-0 text-text-tertiary';
 							close();
 						"
 					>
-						<Icon name="lucide:mail-open" :class="ICON_CLASS" aria-hidden="true" />
+						<MailOpenIcon :class="ICON_CLASS" aria-hidden="true" size="1em" />
 						{{ t('components.postbox.postboxThreadHeader.markRead') }}
 					</button>
 					<!-- The one-shot "you asked for this back" cue: a state with no verb,
@@ -304,7 +313,7 @@ const ICON_CLASS = 'w-3.5 h-3.5 flex-shrink-0 text-text-tertiary';
 						:class="ITEM_CLASS"
 						data-testid="thread-menu-back-from-snooze"
 					>
-						<Icon name="lucide:undo-2" :class="ICON_CLASS" aria-hidden="true" />
+						<UndoIcon :class="ICON_CLASS" aria-hidden="true" size="1em" />
 						{{ t('components.postbox.postboxThreadHeader.backFromSnooze') }}
 					</p>
 				</template>

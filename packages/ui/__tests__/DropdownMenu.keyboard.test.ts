@@ -6,8 +6,6 @@ import DropdownMenuItem from '../components/ui/DropdownMenuItem.vue';
 import Modal from '../components/ui/Modal.vue';
 import { createUiI18n } from './i18n';
 
-const IconStub = { name: 'Icon', setup: () => () => h('i') };
-
 function press(target: Element | null, key: string, init: KeyboardEventInit = {}) {
 	const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...init });
 	target!.dispatchEvent(event);
@@ -62,7 +60,7 @@ function mountMenu(
 	});
 	wrapper = mount(Host, {
 		attachTo: document.body,
-		global: { plugins: [createUiI18n('en')], components: { Icon: IconStub } },
+		global: { plugins: [createUiI18n('en')] },
 	});
 	return open;
 }

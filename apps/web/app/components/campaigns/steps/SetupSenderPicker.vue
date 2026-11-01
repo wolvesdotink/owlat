@@ -11,6 +11,7 @@ import {
 	senderSelectionProblem,
 } from '~/utils/campaignSenderPicker';
 import { adminDisplayNames } from '~/utils/campaignSetupReadiness';
+import { CircleCheckIcon, CircleWarningIcon, MailIcon, ReloadIcon, UserIcon } from '@coolicons/vue';
 
 const { t, locale } = useI18n();
 
@@ -248,7 +249,7 @@ defineExpose({ validate, isReady });
 <template>
 	<div>
 		<label for="senderPicker" class="label flex items-center gap-2">
-			<Icon name="lucide:user" class="w-4 h-4 text-text-tertiary" />
+			<UserIcon class="w-4 h-4 text-text-tertiary" />
 			{{ t('components.campaigns.steps.setupSenderPicker.sendFrom') }}
 			<span class="text-error">*</span>
 		</label>
@@ -264,7 +265,7 @@ defineExpose({ validate, isReady });
 			class="mt-1.5"
 			:message="t('components.campaigns.steps.setupSenderPicker.loadFailed')"
 			:action-label="t('common.tryAgain')"
-			action-icon="lucide:refresh-cw"
+			:action-icon="ReloadIcon"
 			data-testid="sender-picker-load-failed"
 			@action="refetchSenderPicker"
 		/>
@@ -326,7 +327,7 @@ defineExpose({ validate, isReady });
 			<div v-if="isCustomSelected" class="mt-4 space-y-4">
 				<div>
 					<label for="fromName" class="label flex items-center gap-2">
-						<Icon name="lucide:user" class="w-4 h-4 text-text-tertiary" />
+						<UserIcon class="w-4 h-4 text-text-tertiary" />
 						{{ t('components.campaigns.steps.setupSenderPicker.fromNameLabel') }}
 						<span class="text-error">*</span>
 					</label>
@@ -345,7 +346,7 @@ defineExpose({ validate, isReady });
 
 				<div>
 					<label for="fromEmail" class="label flex items-center gap-2">
-						<Icon name="lucide:mail" class="w-4 h-4 text-text-tertiary" />
+						<MailIcon class="w-4 h-4 text-text-tertiary" />
 						{{ t('components.campaigns.steps.setupSenderPicker.fromEmailLabel') }}
 						<span class="text-error">*</span>
 					</label>
@@ -361,14 +362,14 @@ defineExpose({ validate, isReady });
 						v-if="domainVerificationWarning"
 						class="mt-1.5 text-sm text-warning flex items-center gap-1.5"
 					>
-						<Icon name="lucide:alert-circle" class="w-4 h-4 shrink-0" />
+						<CircleWarningIcon class="w-4 h-4 shrink-0" />
 						{{ domainVerificationWarning }}
 					</p>
 					<p
 						v-else-if="domainVerificationStatus?.verified"
 						class="mt-1.5 text-sm text-success flex items-center gap-1.5"
 					>
-						<Icon name="lucide:check-circle" class="w-4 h-4 shrink-0" />
+						<CircleCheckIcon class="w-4 h-4 shrink-0" />
 						{{
 							t('components.campaigns.steps.setupSenderPicker.domainVerified', {
 								domain: domainVerificationStatus.domain,

@@ -63,10 +63,9 @@ beforeAll(() => {
 	}));
 });
 
-const iconStub = { props: ['name'], template: '<span />' };
 const globalMount = {
 	plugins: [createTestI18n()],
-	components: { PostboxImageBanner, PostboxReaderSkeleton, UiSkeleton, Icon: iconStub },
+	components: { PostboxImageBanner, PostboxReaderSkeleton, UiSkeleton },
 	stubs: { NuxtLink: { props: ['to'], template: '<a><slot /></a>' } },
 };
 

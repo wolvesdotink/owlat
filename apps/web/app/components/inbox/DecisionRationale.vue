@@ -14,6 +14,8 @@
  * <InboxDecisionRationale> (path-prefixed).
  */
 
+import { BrainIcon, LinkIcon, MailIcon, PaperPlaneIcon, PauseIcon } from '@coolicons/vue';
+
 interface GroundingSource {
 	type: 'thread' | 'knowledge';
 	id: string;
@@ -50,9 +52,10 @@ const headline = computed(() =>
 	<div v-if="hasAnything" class="mt-3 space-y-2 text-xs">
 		<!-- Rationale line -->
 		<div v-if="decision" class="flex items-start gap-1.5">
-			<Icon
-				:name="isAutoSend ? 'lucide:send' : 'lucide:pause'"
+			<component
+				:is="isAutoSend ? PaperPlaneIcon : PauseIcon"
 				:class="['w-3.5 h-3.5 mt-px shrink-0', isAutoSend ? 'text-success' : 'text-warning']"
+				size="1em"
 			/>
 			<p class="text-text-secondary">
 				<span class="font-medium text-text-primary">{{ headline }}</span>
@@ -62,7 +65,7 @@ const headline = computed(() =>
 
 		<!-- Grounded-in provenance list -->
 		<div v-if="hasSources" class="flex items-start gap-1.5">
-			<Icon name="lucide:link" class="w-3.5 h-3.5 mt-px shrink-0 text-text-tertiary" />
+			<LinkIcon class="w-3.5 h-3.5 mt-px shrink-0 text-text-tertiary" />
 			<div class="min-w-0">
 				<span class="font-medium text-text-primary">
 					{{ t('components.inbox.decisionRationale.groundedIn') }}
@@ -73,8 +76,8 @@ const headline = computed(() =>
 						:key="`${src.type}:${src.id}`"
 						class="flex items-center gap-1.5 text-text-secondary"
 					>
-						<Icon
-							:name="src.type === 'knowledge' ? 'lucide:brain' : 'lucide:mail'"
+						<component
+							:is="src.type === 'knowledge' ? BrainIcon : MailIcon"
 							class="w-3 h-3 shrink-0 text-text-tertiary"
 						/>
 						<span class="truncate">{{ src.title }}</span>

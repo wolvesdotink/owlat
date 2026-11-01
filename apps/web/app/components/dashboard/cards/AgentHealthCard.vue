@@ -1,5 +1,17 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
+import {
+	ActivityIcon,
+	CircleCheckIcon,
+	CircleCloseIcon,
+	CircleHelpIcon,
+	CirclePauseIcon,
+	CircleWarningIcon,
+	LayersIcon,
+	RobotIcon,
+	ShieldWarningIcon,
+	TriangleWarningIcon,
+} from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -23,31 +35,31 @@ const statusConfig = computed(() => {
 			return {
 				label: t('components.dashboard.cards.agentHealth.status.healthy'),
 				variant: 'success' as const,
-				icon: 'lucide:check-circle-2',
+				icon: CircleCheckIcon,
 			};
 		case 'warning':
 			return {
 				label: t('components.dashboard.cards.agentHealth.status.warning'),
 				variant: 'warning' as const,
-				icon: 'lucide:alert-triangle',
+				icon: TriangleWarningIcon,
 			};
 		case 'degraded':
 			return {
 				label: t('components.dashboard.cards.agentHealth.status.degraded'),
 				variant: 'error' as const,
-				icon: 'lucide:alert-circle',
+				icon: CircleWarningIcon,
 			};
 		case 'idle':
 			return {
 				label: t('components.dashboard.cards.agentHealth.status.idle'),
 				variant: 'neutral' as const,
-				icon: 'lucide:pause-circle',
+				icon: CirclePauseIcon,
 			};
 		default:
 			return {
 				label: t('common.unknown'),
 				variant: 'neutral' as const,
-				icon: 'lucide:help-circle',
+				icon: CircleHelpIcon,
 			};
 	}
 });
@@ -62,22 +74,22 @@ const metrics = computed(() => {
 		{
 			label: t('components.dashboard.cards.agentHealth.metrics.queue'),
 			value: processing,
-			icon: 'lucide:layers',
+			icon: LayersIcon,
 		},
 		{
 			label: t('components.dashboard.cards.agentHealth.metrics.failed'),
 			value: failed,
-			icon: 'lucide:x-circle',
+			icon: CircleCloseIcon,
 		},
 		{
 			label: t('components.dashboard.cards.agentHealth.metrics.quarantined'),
 			value: quarantined,
-			icon: 'lucide:shield-alert',
+			icon: ShieldWarningIcon,
 		},
 		{
 			label: t('components.dashboard.cards.agentHealth.metrics.total'),
 			value: total,
-			icon: 'lucide:activity',
+			icon: ActivityIcon,
 		},
 	];
 });
@@ -88,7 +100,7 @@ const metrics = computed(() => {
 		<div class="p-5">
 			<div class="flex items-center justify-between mb-4">
 				<div class="flex items-center gap-2.5">
-					<UiIconBox icon="lucide:bot" size="sm" variant="surface" />
+					<UiIconBox :icon="RobotIcon" size="sm" variant="surface" />
 					<h3 class="text-sm font-semibold text-text-primary">
 						{{ t('components.dashboard.cards.agentHealth.title') }}
 					</h3>
@@ -107,7 +119,7 @@ const metrics = computed(() => {
 					class="rounded-lg bg-bg-surface px-3 py-2"
 				>
 					<div class="flex items-center gap-1.5 mb-0.5">
-						<Icon :name="metric.icon" class="w-3 h-3 text-text-tertiary" />
+						<component :is="metric.icon" class="w-3 h-3 text-text-tertiary" />
 						<p class="text-xs text-text-tertiary">{{ metric.label }}</p>
 					</div>
 					<p class="text-lg font-semibold tabular-nums text-text-primary">{{ metric.value }}</p>

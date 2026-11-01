@@ -38,6 +38,7 @@ import PostboxComposerFooter from '~/components/postbox/PostboxComposerFooter.vu
 import PostboxComposerShell from '~/components/postbox/PostboxComposerShell.vue';
 import PostboxSnippetPicker from '~/components/postbox/PostboxSnippetPicker.vue';
 import PostboxSnippetVariableDialog from '~/components/postbox/PostboxSnippetVariableDialog.vue';
+import ThreadComposerBlocked from './ThreadComposerBlocked.vue';
 import ThreadComposerMenu from './ThreadComposerMenu.vue';
 import { composerPreflight, type TeamThreadComposerTarget } from '~/utils/composerTarget';
 import { useTeamComposerAnswerApi } from '~/composables/useTeamComposerAnswerApi';
@@ -48,12 +49,8 @@ import {
 } from '~/composables/useTeamComposerSavedReplies';
 import { useChordKeys } from '~/composables/useChordKeys';
 import { isImeComposing } from '~/utils/imeComposition';
-import {
-	REPLY_BLOCKER_KEYS,
-	REPLY_NOTICE_KEYS,
-	type ReplyBlocker,
-	type ReplyNotice,
-} from '~/utils/teamThreadReply';
+import { REPLY_NOTICE_KEYS, type ReplyBlocker, type ReplyNotice } from '~/utils/teamThreadReply';
+import { ChevronDownIcon, CircleInfoIcon, PencilIcon, SparklesIcon } from '@coolicons/vue';
 
 const props = withDefaults(
 	defineProps<{
@@ -300,19 +297,9 @@ defineExpose({ focus, reset, fill, insert, snapshot, answer });
 		data-testid="thread-composer"
 		:aria-label="t('dashboard.inbox.detail.composer.label')"
 	>
-		<!-- Blocked: say why, never offer a box that would fail on submit. -->
-		<div v-if="blocker" class="flex items-start gap-3 p-4" data-testid="thread-composer-blocked">
-			<Icon name="lucide:reply" class="mt-0.5 size-4 shrink-0 text-text-tertiary" />
-			<div class="min-w-0">
-				<p class="text-sm text-text-secondary">
-					{{ t('dashboard.inbox.detail.composer.replyTo', { name: senderLabel }) }}
-				</p>
-				<p class="mt-1 text-xs text-text-tertiary">{{ t(REPLY_BLOCKER_KEYS[blocker]) }}</p>
-				<div v-if="$slots['blocked-action']" class="mt-2">
-					<slot name="blocked-action" />
-				</div>
-			</div>
-		</div>
+		<ThreadComposerBlocked v-if="blocker" :blocker="blocker" :sender-label="senderLabel">
+			<template v-if="$slots['blocked-action']" #action><slot name="blocked-action" /></template>
+		</ThreadComposerBlocked>
 
 		<PostboxComposerShell v-else :target="target" class="min-h-0 flex-1">
 			<!-- The envelope, folded to one line like the Postbox composer's; the
@@ -335,8 +322,7 @@ defineExpose({ focus, reset, fill, insert, snapshot, answer });
 								<span class="text-text-secondary">{{ subject }}</span>
 							</template>
 						</span>
-						<Icon
-							name="lucide:chevron-down"
+						<ChevronDownIcon
 							class="size-3 shrink-0 text-text-tertiary"
 							:class="{ 'rotate-180': subjectOpen }"
 							aria-hidden="true"
@@ -347,7 +333,7 @@ defineExpose({ focus, reset, fill, insert, snapshot, answer });
 						class="inline-flex shrink-0 items-center gap-1 rounded-full bg-brand-subtle px-2 py-0.5 text-2xs font-medium text-brand"
 						data-testid="thread-composer-draft-hint"
 					>
-						<Icon name="lucide:sparkles" class="size-3" aria-hidden="true" />
+						<SparklesIcon class="size-3" aria-hidden="true" />
 						{{
 							edited
 								? t('dashboard.inbox.detail.composer.editedDraft')
@@ -376,7 +362,7 @@ defineExpose({ focus, reset, fill, insert, snapshot, answer });
 					class="flex items-start gap-1.5 text-xs text-text-secondary"
 					data-testid="thread-composer-notice"
 				>
-					<Icon name="lucide:info" class="mt-px size-3.5 shrink-0" aria-hidden="true" />
+					<CircleInfoIcon class="mt-px size-3.5 shrink-0" aria-hidden="true" />
 					{{ t(REPLY_NOTICE_KEYS[notice]) }}
 				</p>
 
@@ -439,7 +425,7 @@ defineExpose({ focus, reset, fill, insert, snapshot, answer });
 					:can-send="canSend"
 					:sending="busy"
 					:send-label="sendLabel"
-					:send-icon="held ? 'lucide:pencil-line' : undefined"
+					:send-icon="held ? PencilIcon : undefined"
 					:menu-label="t('components.answer.team.more')"
 					:preflight="preflight"
 					:last-saved-label="gaps.note.value ?? ''"
@@ -477,11 +463,7 @@ defineExpose({ focus, reset, fill, insert, snapshot, answer });
 							data-testid="thread-composer-held"
 							role="status"
 						>
-							<Icon
-								name="lucide:pencil-line"
-								class="size-3 shrink-0 text-warning"
-								aria-hidden="true"
-							/>
+							<PencilIcon class="size-3 shrink-0 text-warning" aria-hidden="true" />
 							<span>{{ heldReason }}</span>
 						</p>
 						<p

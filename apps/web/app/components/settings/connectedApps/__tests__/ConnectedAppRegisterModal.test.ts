@@ -47,7 +47,7 @@ function mountModal(props: Record<string, unknown> = {}, attach = false) {
 		...(attach ? { attachTo: document.body } : {}),
 		global: {
 			plugins: [createTestI18n()],
-			stubs: { UiModal: modalStub, UiButton: buttonStub, UiEmptyState: emptyStub, Icon: true },
+			stubs: { UiModal: modalStub, UiButton: buttonStub, UiEmptyState: emptyStub },
 		},
 	});
 }

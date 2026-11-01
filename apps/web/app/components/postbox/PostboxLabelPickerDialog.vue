@@ -6,6 +6,7 @@
  */
 
 import type { Id } from '@owlat/api/dataModel';
+import { CheckIcon } from '@coolicons/vue';
 
 defineProps<{
 	open: boolean;
@@ -42,9 +43,8 @@ const { t } = useI18n();
 						:style="{ backgroundColor: label.color || '#6b7280' }"
 					/>
 					<span class="flex-1">{{ label.name }}</span>
-					<Icon
+					<CheckIcon
 						v-if="selectedIds?.includes(label._id)"
-						name="lucide:check"
 						class="size-4 text-brand"
 						aria-hidden="true"
 					/>

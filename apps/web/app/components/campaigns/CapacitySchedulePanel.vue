@@ -23,6 +23,7 @@ import {
 	type CampaignCapacitySchedulePlan,
 } from '~/lib/campaignCapacityRefusal';
 import { useLocalized } from '~/composables/useLocalized';
+import { CalendarEventIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	plan: CampaignCapacitySchedulePlan;
@@ -94,7 +95,7 @@ const hiddenSliceCount = computed(() => Math.max(0, props.plan.slices.length - 5
 		class="flex items-start gap-3 p-4 bg-accent/5 border border-accent/20 rounded-lg"
 		data-testid="capacity-schedule-panel"
 	>
-		<Icon name="lucide:calendar-clock" class="w-5 h-5 text-accent shrink-0 mt-0.5" />
+		<CalendarEventIcon class="w-5 h-5 text-accent shrink-0 mt-0.5" />
 		<div class="min-w-0 flex-1">
 			<p class="text-sm font-medium text-text-primary">{{ headline }}</p>
 			<p class="text-sm text-text-secondary mt-1">

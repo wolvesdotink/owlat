@@ -26,17 +26,6 @@ export function createUiI18n(locale: UiLocale = 'en') {
 }
 
 /**
- * `Icon` is a global component supplied by @nuxt/icon in the consuming apps.
- * Rendered as an empty element here: these suites assert on copy, and an
- * unresolved component would only add console noise.
- */
-const IconStub = {
-	name: 'Icon',
-	props: { name: { type: String, default: '' } },
-	setup: () => () => h('i'),
-};
-
-/**
  * What an APP's component test looks like: a vue-i18n instance built from that
  * app's own catalog, with no `ui.*` messages in it. The layer has to stay
  * readable there (see useUiI18n).
@@ -90,7 +79,6 @@ export function mountUi(
 	const app = createApp(component, props);
 	const plugin = i18n === undefined ? createUiI18n(locale) : i18n;
 	if (plugin) app.use(plugin);
-	app.component('Icon', IconStub);
 	app.mount(el);
 	const mounted: MountedUi = {
 		el,

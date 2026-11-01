@@ -9,6 +9,7 @@
 import type { api } from '@owlat/api';
 import type { FunctionReturnType } from 'convex/server';
 import { formatRelativeTime } from '~/utils/formatters';
+import { ChatHelpIcon, ReplyIcon } from '@coolicons/vue';
 
 type ThreadData = NonNullable<FunctionReturnType<typeof api.inbox.queries.getThread>>;
 type ThreadMessage = ThreadData['messages'][number];
@@ -100,7 +101,7 @@ const absoluteTime = computed(() =>
 				{{ t('dashboard.inbox.detail.waitingDraft.notice') }}
 			</p>
 			<UiButton variant="secondary" size="sm" @click="emit('answer')">
-				<Icon name="lucide:reply" class="w-3.5 h-3.5" />
+				<ReplyIcon class="w-3.5 h-3.5" />
 				{{ t('dashboard.inbox.detail.waitingDraft.answer') }}
 			</UiButton>
 			<UiButton variant="ghost" size="sm" @click="emit('reject')">
@@ -142,7 +143,7 @@ const absoluteTime = computed(() =>
 				{{ t('dashboard.inbox.detail.agentNeedsInput') }}
 			</p>
 			<UiButton size="sm" @click="emit('answer')">
-				<Icon name="lucide:message-circle-question" class="w-3.5 h-3.5" />
+				<ChatHelpIcon class="w-3.5 h-3.5" />
 				{{ t('dashboard.inbox.detail.answerInReply') }}
 			</UiButton>
 		</div>

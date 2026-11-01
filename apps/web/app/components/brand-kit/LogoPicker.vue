@@ -4,6 +4,7 @@
  * stays in the library; the kit only points at it.
  */
 import type { BrandLogoAsset } from '@owlat/shared/brandKitBlocks';
+import { ImageIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	label: string;
@@ -40,7 +41,7 @@ function handleSelect(asset: {
 			:class="props.isDark ? 'bg-[#18181b]' : 'bg-white'"
 		>
 			<img v-if="logo" :src="logo.url" :alt="label" class="max-w-full max-h-full object-contain" />
-			<Icon v-else name="lucide:image" class="w-5 h-5 text-text-tertiary" />
+			<ImageIcon v-else class="w-5 h-5 text-text-tertiary" />
 		</div>
 		<div class="min-w-0 flex-1">
 			<p class="text-sm font-medium text-text-primary">{{ label }}</p>

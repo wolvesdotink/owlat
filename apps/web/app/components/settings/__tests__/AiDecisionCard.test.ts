@@ -56,7 +56,6 @@ function mountCard(
 				UiInput: true,
 				UiCheckbox: true,
 				UiSwitch: true,
-				Icon: true,
 				SettingsAiKeyField: true,
 				SettingsAiModelPicker: {
 					props: ['hint'],

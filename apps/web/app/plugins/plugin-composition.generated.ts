@@ -5,6 +5,10 @@ import type { BundledPlugin } from '@owlat/plugin-host';
 // No bundled plugins: the composition is empty, so the runtime composer is not imported.
 export const bundledPluginComposition: readonly BundledPlugin[] = Object.freeze([]);
 
+import type { IconComponent } from '@coolicons/vue';
+
+export const bundledPluginIcons: Readonly<Record<string, IconComponent>> = Object.freeze({});
+
 export default defineNuxtPlugin({
 	name: 'owlat:bundled-plugin-composition',
 	setup() {

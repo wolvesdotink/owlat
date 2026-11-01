@@ -11,13 +11,15 @@
  */
 import type { ComposerSendActions, PostboxAfterReply } from '~/utils/postboxAfterReply';
 import { POSTBOX_AFTER_REPLY_OPTIONS, POSTBOX_SEND_AND_LABELS } from '~/utils/postboxAfterReply';
+import { ArchiveIcon, ChevronDownIcon, PaperPlaneIcon, type IconComponent } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const props = defineProps<{
 	disabled: boolean;
 	sending: boolean;
 	title?: string;
 	label?: string;
-	icon?: string;
+	icon?: IconComponent;
 	actions?: ComposerSendActions;
 }>();
 
@@ -26,9 +28,9 @@ const emit = defineEmits<{ (e: 'send', action?: PostboxAfterReply): void }>();
 const { t } = useI18n();
 const menuOpen = ref(false);
 
-const ACTION_ICON: Record<PostboxAfterReply, string> = {
-	keep: 'lucide:send',
-	done: 'lucide:archive',
+const ACTION_ICON: Record<PostboxAfterReply, IconComponent> = {
+	keep: PaperPlaneIcon,
+	done: ArchiveIcon,
 };
 const actionList = POSTBOX_AFTER_REPLY_OPTIONS.map((option) => option.value);
 </script>
@@ -44,12 +46,8 @@ const actionList = POSTBOX_AFTER_REPLY_OPTIONS.map((option) => option.value);
 				data-testid="composer-send"
 				@click="emit('send')"
 			>
-				<Icon
-					v-if="sending"
-					name="lucide:loader-2"
-					class="w-4 h-4 mr-1.5 animate-spin motion-reduce:animate-none"
-				/>
-				<Icon v-else :name="icon ?? 'lucide:send'" class="w-4 h-4 mr-1.5" />
+				<SpinnerIcon v-if="sending" class="w-4 h-4 mr-1.5" />
+				<component v-else :is="icon ?? PaperPlaneIcon" class="w-4 h-4 mr-1.5" />
 				{{
 					label ??
 					(sending ? t('components.postbox.postboxComposerFooter.sending') : t('common.send'))
@@ -66,8 +64,7 @@ const actionList = POSTBOX_AFTER_REPLY_OPTIONS.map((option) => option.value);
 						:aria-label="t('components.postbox.postboxComposerFooter.sendOptions')"
 						data-testid="composer-send-options"
 					>
-						<Icon
-							name="lucide:chevron-down"
+						<ChevronDownIcon
 							class="w-4 h-4 transition-transform duration-(--motion-fast)"
 							:class="{ 'rotate-180': menuOpen }"
 						/>

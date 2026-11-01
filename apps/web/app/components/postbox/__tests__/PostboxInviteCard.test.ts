@@ -73,7 +73,7 @@ async function mountCard() {
 		props: { messageId: 'msg-1', mailboxId: 'mbx-1', ownEmail: 'alice@example.com' },
 		global: {
 			plugins: [createTestI18n()],
-			stubs: { Icon: true, UiButton: { template: '<button><slot /></button>' } },
+			stubs: { UiButton: { template: '<button><slot /></button>' } },
 		},
 	});
 	await flushPromises();

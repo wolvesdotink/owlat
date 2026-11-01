@@ -73,7 +73,6 @@ function mountLayout() {
 				AnswerReviewApproveUndoToast: true,
 				LazyKeyboardShortcutsHelp: true,
 				AppLiveRegion: true,
-				Icon: true,
 				UiBadge: true,
 				UiSkeleton: true,
 				UiThemeToggle: true,

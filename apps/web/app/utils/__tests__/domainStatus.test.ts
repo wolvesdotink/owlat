@@ -5,6 +5,8 @@ import {
 	normalizeDnsRecord,
 	hasDnsRecords,
 } from '../domainStatus';
+import { CircleCheckIcon, CircleCloseIcon, ClockIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 describe('getStatusBadgeClass', () => {
 	it('maps known statuses to their tone classes', () => {
@@ -21,13 +23,13 @@ describe('getStatusBadgeClass', () => {
 
 describe('getStatusIcon', () => {
 	it('maps known statuses to their icons', () => {
-		expect(getStatusIcon('verified')).toBe('lucide:check-circle-2');
-		expect(getStatusIcon('failed')).toBe('lucide:x-circle');
-		expect(getStatusIcon('registering')).toBe('lucide:loader-2');
+		expect(getStatusIcon('verified')).toBe(CircleCheckIcon);
+		expect(getStatusIcon('failed')).toBe(CircleCloseIcon);
+		expect(getStatusIcon('registering')).toBe(SpinnerIcon);
 	});
 
 	it('falls back to the pending clock icon for unknown statuses', () => {
-		expect(getStatusIcon('unknown')).toBe('lucide:clock');
+		expect(getStatusIcon('unknown')).toBe(ClockIcon);
 	});
 });
 

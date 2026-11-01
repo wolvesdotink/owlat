@@ -10,6 +10,8 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { INBOX_COLOR_SLOTS, INBOX_SLOT_SWATCH } from '~/utils/inboxIdentity';
+import { PencilIcon, TrashIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const { t } = useI18n();
 const { mailboxes: ownMailboxes, isLoading: ownLoading } = usePostboxMailbox();
@@ -96,10 +98,7 @@ async function handleDelete() {
 				<h2 class="font-semibold">{{ t('dashboard.preferences.index.mailboxes') }}</h2>
 			</header>
 			<div v-if="isLoading" class="p-8 flex justify-center">
-				<Icon
-					name="lucide:loader-2"
-					class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary"
-				/>
+				<SpinnerIcon class="w-5 h-5 text-text-tertiary" />
 			</div>
 			<div v-else-if="mailboxes.length === 0" class="p-8 text-center text-text-secondary">
 				{{ t('dashboard.preferences.index.noMailboxes') }}
@@ -153,7 +152,7 @@ async function handleDelete() {
 								:aria-label="t('dashboard.preferences.index.renameMailbox')"
 								@click="openRename(mb)"
 							>
-								<Icon name="lucide:pencil" class="w-4 h-4" />
+								<PencilIcon class="w-4 h-4" />
 							</button>
 						</UiTooltip>
 						<UiTooltip v-if="isAdmin" :text="t('dashboard.preferences.index.deleteMailbox')">
@@ -163,7 +162,7 @@ async function handleDelete() {
 								:aria-label="t('dashboard.preferences.index.deleteMailbox')"
 								@click="deleteTarget = mb"
 							>
-								<Icon name="lucide:trash-2" class="w-4 h-4" />
+								<TrashIcon class="w-4 h-4" />
 							</button>
 						</UiTooltip>
 					</div>

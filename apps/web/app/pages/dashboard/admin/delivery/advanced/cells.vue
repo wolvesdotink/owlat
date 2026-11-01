@@ -23,6 +23,7 @@ import { isRampInactive } from '~/utils/deliveryAdvancedEmpty';
 // a mount that resolved it to nothing would hide the one thing it says.
 import DeliveryAdvancedEmptyState from '~/components/delivery/AdvancedEmptyState.vue';
 import { useLocalized } from '~/composables/useLocalized';
+import { GridAltIcon, Slider1Icon } from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -147,7 +148,7 @@ function select(cellKey: string): void {
 
 			<DeliveryAdvancedEmptyState
 				v-if="isEmpty"
-				icon="lucide:grid-3x3"
+				:icon="GridAltIcon"
 				:title="t('dashboard.admin.delivery.advanced.cells.empty.title')"
 				:description="t('dashboard.admin.delivery.advanced.cells.empty.description')"
 			/>
@@ -235,7 +236,7 @@ function select(cellKey: string): void {
 						class="mt-4 inline-flex items-center gap-2 text-sm text-text-secondary transition-colors duration-(--motion-fast) hover:text-brand"
 						data-testid="ramp-cells-controls-link"
 					>
-						<Icon name="lucide:sliders-horizontal" class="h-4 w-4" />
+						<Slider1Icon class="h-4 w-4" />
 						{{ t('dashboard.admin.delivery.advanced.cells.controlsLink') }}
 					</NuxtLink>
 				</UiCard>

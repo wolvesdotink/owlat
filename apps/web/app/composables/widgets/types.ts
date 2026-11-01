@@ -1,6 +1,7 @@
 import type { AsyncComponentLoader } from 'vue';
 import type { PluginId } from '@owlat/plugin-kit';
 import type { FeatureFlagKey } from '@owlat/shared/featureFlags';
+import type { IconComponent } from '@coolicons/vue';
 
 /**
  * Panel / widget contribution registry.
@@ -34,7 +35,7 @@ export interface WidgetModule {
 	 */
 	readonly label?: string;
 	readonly description?: string;
-	readonly icon?: string;
+	readonly icon?: IconComponent;
 	/**
 	 * Optional feature flag gating the widget. When set and disabled, the widget
 	 * resolves as `disabled` (feature-off) rather than rendering.

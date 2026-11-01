@@ -54,7 +54,7 @@ const global = {
 			template: '<span class="pill" :data-status="status" />',
 		},
 	},
-	stubs: { Icon: true, InboxChip: true },
+	stubs: { InboxChip: true },
 	// A template-level auto-import.
 	mocks: { formatCompactRelativeTime: () => 'now' },
 };

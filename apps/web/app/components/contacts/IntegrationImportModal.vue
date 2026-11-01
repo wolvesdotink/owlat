@@ -6,6 +6,7 @@ import IntegrationImportCompleteStep from './integrationImport/CompleteStep.vue'
 import IntegrationImportConfigureStep from './integrationImport/ConfigureStep.vue';
 import IntegrationImportImportingStep from './integrationImport/ImportingStep.vue';
 import IntegrationImportSelectStep from './integrationImport/SelectStep.vue';
+import { CircleWarningIcon, LinkHorizontalIcon, UploadIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	topics?: Array<{ _id: string; name: string }>;
@@ -240,7 +241,7 @@ const isSuppressionOnly = computed(() => importProgress.value?.provider === 'man
 	>
 		<!-- Header -->
 		<div class="flex items-center gap-3 mb-6">
-			<UiIconBox icon="lucide:link-2" size="sm" variant="surface" rounded="lg" />
+			<UiIconBox :icon="LinkHorizontalIcon" size="sm" variant="surface" rounded="lg" />
 			<div>
 				<h2 class="text-lg font-semibold text-text-primary">
 					{{ t('components.contacts.integrationImportModal.title') }}
@@ -271,7 +272,7 @@ const isSuppressionOnly = computed(() => importProgress.value?.provider === 'man
 			v-if="error"
 			class="mb-4 p-3 rounded-lg bg-error-subtle border border-error/20 flex items-start gap-3"
 		>
-			<Icon name="lucide:alert-circle" class="w-5 h-5 text-error shrink-0 mt-0.5" />
+			<CircleWarningIcon class="w-5 h-5 text-error shrink-0 mt-0.5" />
 			<p class="text-sm text-error">{{ error }}</p>
 		</div>
 
@@ -315,7 +316,7 @@ const isSuppressionOnly = computed(() => importProgress.value?.provider === 'man
 			<template v-else-if="step === 'configure'">
 				<UiButton variant="secondary" @click="goBackToSelect">{{ t('common.back') }}</UiButton>
 				<UiButton @click="startImport">
-					<template #iconLeft><Icon name="lucide:upload" class="w-4 h-4" /></template>
+					<template #iconLeft><UploadIcon class="w-4 h-4" /></template>
 					{{ t('components.contacts.integrationImportModal.footer.startImport') }}
 				</UiButton>
 			</template>

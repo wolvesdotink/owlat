@@ -22,6 +22,7 @@ import {
 } from 'd3-force';
 import type { GraphNodeModel, GraphEdgeModel } from '~/utils/knowledgeGraphLayout';
 import { entryTypeIcon } from '~/utils/knowledgeEntryTypes';
+import { ShareIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	nodes: GraphNodeModel[];
@@ -171,7 +172,7 @@ onBeforeUnmount(() => {
 			class="flex flex-col items-center justify-center py-20 text-center"
 		>
 			<div class="w-12 h-12 rounded-full bg-bg-surface flex items-center justify-center mb-3">
-				<Icon name="lucide:share-2" class="w-6 h-6 text-text-tertiary" />
+				<ShareIcon class="w-6 h-6 text-text-tertiary" />
 			</div>
 			<p class="text-sm text-text-secondary">
 				{{ t('components.knowledge.graphCanvas.emptyTitle') }}
@@ -251,12 +252,13 @@ onBeforeUnmount(() => {
 						class="pointer-events-none"
 					>
 						<div class="w-full h-full flex items-center justify-center text-brand">
-							<Icon
-								:name="entryTypeIcon(node.entryType)"
+							<component
+								:is="entryTypeIcon(node.entryType)"
 								:style="{
 									width: `${Math.max(10, node.radius)}px`,
 									height: `${Math.max(10, node.radius)}px`,
 								}"
+								size="1em"
 							/>
 						</div>
 					</foreignObject>

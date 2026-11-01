@@ -32,6 +32,7 @@ import {
 	priorityRowLine,
 } from '~/utils/postboxPriorityGroups';
 import { useBriefLinesShown } from '~/composables/postbox/usePostboxBriefLines';
+import { BellOffIcon, ClockIcon, PaperclipIcon, PinIcon, StarIcon, UndoIcon } from '@coolicons/vue';
 
 const { t, locale } = useI18n();
 // Ticks with the list's shared minute clock (usePostboxListClock).
@@ -153,9 +154,9 @@ function onCancelFollowUp(event: MouseEvent) {
 			:data-source="priorityLine.source"
 			data-testid="priority-row-line"
 		>
-			<Icon
+			<component
 				v-if="trustMarker"
-				:name="trustMarker.icon"
+				:is="trustMarker.icon"
 				class="w-3.5 h-3.5 flex-shrink-0 text-error"
 				:aria-label="trustMarkerLabel"
 				data-testid="row-trust-marker"
@@ -190,30 +191,27 @@ function onCancelFollowUp(event: MouseEvent) {
 				:title="trustMarkerLabel"
 				:aria-label="trustMarkerLabel"
 			>
-				<Icon :name="trustMarker.icon" class="w-3 h-3" />
+				<component :is="trustMarker.icon" class="w-3 h-3" />
 				<span class="pbx-row-trust-label">{{ t(trustMarker.label) }}</span>
 			</span>
-			<Icon v-if="msg.flagFlagged" name="lucide:star" class="w-3.5 h-3.5 text-warning" />
+			<StarIcon v-if="msg.flagFlagged" class="w-3.5 h-3.5 text-warning" />
 			<!-- In the Inbox's pinned band; the star is a separate flag. -->
-			<Icon
+			<PinIcon
 				v-if="msg.pinnedAt"
-				name="lucide:pin"
 				class="w-3.5 h-3.5 text-brand"
 				:title="t('components.postbox.postboxThreadRow.pinnedChip')"
 				:aria-label="t('components.postbox.postboxThreadRow.pinnedChip')"
 				data-testid="row-pinned-chip"
 			/>
-			<Icon
+			<ClockIcon
 				v-if="msg.snoozedUntil"
-				name="lucide:clock"
 				class="w-3.5 h-3.5 text-brand"
 				:title="snoozedTitle(msg.snoozedUntil)"
 			/>
 			<!-- Muted conversation: the reason this thread is quiet, said
 			     out loud rather than left as a mystery. -->
-			<Icon
+			<BellOffIcon
 				v-if="msg.mutedAt"
-				name="lucide:bell-off"
 				class="w-3.5 h-3.5 text-text-tertiary"
 				:title="t('components.postbox.postboxThreadRow.mutedChip')"
 				:aria-label="t('components.postbox.postboxThreadRow.mutedChip')"
@@ -223,14 +221,10 @@ function onCancelFollowUp(event: MouseEvent) {
 				v-if="msg.snoozeReturnedAt && !msg.snoozedUntil"
 				class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium border border-border-subtle text-text-tertiary whitespace-nowrap"
 			>
-				<Icon name="lucide:undo-2" class="w-3 h-3" />
+				<UndoIcon class="w-3 h-3" />
 				{{ t('components.postbox.postboxThreadRow.backFromSnooze') }}
 			</span>
-			<Icon
-				v-if="msg.hasAttachments"
-				name="lucide:paperclip"
-				class="w-3.5 h-3.5 text-text-tertiary"
-			/>
+			<PaperclipIcon v-if="msg.hasAttachments" class="w-3.5 h-3.5 text-text-tertiary" />
 			<PostboxThreadRowFollowUp
 				v-if="msg.followUp?.watched"
 				:follow-up="msg.followUp"

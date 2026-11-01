@@ -1,11 +1,12 @@
 /** The one-off news presets: a single announcement and a product update. */
 import type { TemplatePreset } from './types';
+import { MegaphoneIcon, PackageIcon } from '@coolicons/vue';
 
 export const announcementPreset: TemplatePreset = {
 	id: 'announcement',
 	name: 'shared.data.marketingTemplatePresets.announcement.name',
 	description: 'shared.data.marketingTemplatePresets.announcement.description',
-	icon: 'lucide:megaphone',
+	icon: MegaphoneIcon,
 	subject: 'Big News: {{announcement_title}}',
 	content: [
 		{
@@ -108,7 +109,7 @@ export const productUpdatePreset: TemplatePreset = {
 	id: 'product-update',
 	name: 'shared.data.marketingTemplatePresets.productUpdate.name',
 	description: 'shared.data.marketingTemplatePresets.productUpdate.description',
-	icon: 'lucide:package',
+	icon: PackageIcon,
 	subject: 'New in {{product_name}}: {{feature_name}}',
 	content: [
 		{

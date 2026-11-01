@@ -2,6 +2,7 @@ import { ref, computed, watch, type ComputedRef } from 'vue';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { ACTIVITY_EDITOR_MODULES, type ContactActivityType } from './contactActivities';
+import { ClockIcon } from '@coolicons/vue';
 
 // Type for activity items
 export interface ActivityItem {
@@ -13,7 +14,7 @@ export interface ActivityItem {
 }
 
 const FALLBACK_DISPLAY = {
-	icon: 'lucide:clock',
+	icon: ClockIcon,
 	label: '',
 	color: 'text-text-secondary',
 };

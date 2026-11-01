@@ -13,6 +13,7 @@ import {
 	automationRowVerbs,
 	type AutomationRowVerbId,
 } from '~/utils/automationRowVerbs';
+import { PlusIcon, ZapIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -247,12 +248,12 @@ const rowMenu = (automation: AutomationListItem): ContextMenuItem[] => {
 		:active-search="list.debouncedSearch.trim()"
 		:search-placeholder="t('common.filterPlaceholder')"
 		:empty-no-org="{
-			icon: 'lucide:zap',
+			icon: ZapIcon,
 			title: t('dashboard.automations.index.noTeam.title'),
 			description: t('dashboard.automations.index.noTeam.description'),
 		}"
 		:empty="{
-			icon: 'lucide:zap',
+			icon: ZapIcon,
 			title: t('dashboard.automations.index.empty.title'),
 			description: t('dashboard.automations.index.empty.description'),
 		}"
@@ -267,7 +268,7 @@ const rowMenu = (automation: AutomationListItem): ContextMenuItem[] => {
 	>
 		<template #actions>
 			<UiButton v-if="canManage" size="sm" @click="handleNewAutomation">
-				<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
+				<template #iconLeft><PlusIcon class="w-4 h-4" /></template>
 				{{ t('dashboard.automations.index.newAutomation') }}
 			</UiButton>
 			<p v-else-if="showManageGate" class="text-xs text-text-tertiary">
@@ -296,7 +297,7 @@ const rowMenu = (automation: AutomationListItem): ContextMenuItem[] => {
 
 		<template v-if="canManage" #empty-action>
 			<UiButton @click="handleNewAutomation">
-				<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
+				<template #iconLeft><PlusIcon class="w-4 h-4" /></template>
 				{{ t('dashboard.automations.index.empty.action') }}
 			</UiButton>
 		</template>

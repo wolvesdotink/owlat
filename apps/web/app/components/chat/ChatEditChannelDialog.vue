@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import { CheckIcon, HashIcon, LockIcon } from '@coolicons/vue';
 
 interface Props {
 	roomId: Id<'chatRooms'>;
@@ -102,7 +103,7 @@ const handleSubmit = async () => {
 						@click="visibility = 'public'"
 					>
 						<template #iconLeft>
-							<Icon name="lucide:hash" class="w-4 h-4" />
+							<HashIcon class="w-4 h-4" />
 						</template>
 						{{ t('components.chat.chatEditChannelDialog.public') }}
 					</UiButton>
@@ -114,7 +115,7 @@ const handleSubmit = async () => {
 						@click="visibility = 'private'"
 					>
 						<template #iconLeft>
-							<Icon name="lucide:lock" class="w-4 h-4" />
+							<LockIcon class="w-4 h-4" />
 						</template>
 						{{ t('components.chat.chatEditChannelDialog.private') }}
 					</UiButton>
@@ -128,7 +129,7 @@ const handleSubmit = async () => {
 			<UiButton variant="secondary" @click="emit('close')">{{ t('common.cancel') }}</UiButton>
 			<UiButton class="gap-2" :disabled="!name.trim() || isSaving" @click="handleSubmit">
 				<UiSpinner v-if="isSaving" size="xs" tone="inverse" />
-				<Icon v-else name="lucide:check" class="w-4 h-4" />
+				<CheckIcon v-else class="w-4 h-4" />
 				{{ t('common.save') }}
 			</UiButton>
 		</div>

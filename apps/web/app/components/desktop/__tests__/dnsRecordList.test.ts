@@ -47,14 +47,12 @@ beforeEach(() => {
 	copiedKey.value = null;
 });
 
-const iconStub = { props: ['name'], template: '<i class="icon" :data-name="name" />' };
-
 type Rec = { name: string; type: string; value: string; placeholder?: boolean; note?: string };
 
 function mountList(records: Rec[]) {
 	return mount(DnsRecordList, {
 		props: { records },
-		global: { plugins: [createTestI18n()], components: { Icon: iconStub } },
+		global: { plugins: [createTestI18n()] },
 	});
 }
 

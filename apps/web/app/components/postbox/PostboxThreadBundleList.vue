@@ -27,6 +27,7 @@ import { usePostboxPinRowDrag } from '~/composables/postbox/usePostboxMessageDra
 import { vReplyDrop } from '~/composables/useReplyFileDrop';
 import { replyDropForMessage } from '~/utils/replyFileDrop';
 import { folderAnswerOrigin, useListAnswerOrigin } from '~/composables/useAnswerMode';
+import { ChevronDownIcon, ChevronRightIcon, CircleCheckIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	entries: Array<PostboxFeedEntry<PostboxThreadRowMessage>>;
@@ -110,7 +111,7 @@ function focusIndexOf(messageId: string): number {
 		<PostboxThreadListSkeleton v-if="loading && entries.length === 0" />
 		<PostboxEmptyState
 			v-else-if="entries.length === 0"
-			icon="lucide:check-circle-2"
+			:icon="CircleCheckIcon"
 			:title="t('components.postbox.postboxThreadBundleList.allClear')"
 		/>
 		<ul
@@ -152,12 +153,12 @@ function focusIndexOf(messageId: string): number {
 							:aria-expanded="expanded[entry.id] === true"
 							@click="emit('toggle', entry.id)"
 						>
-							<Icon
-								:name="expanded[entry.id] ? 'lucide:chevron-down' : 'lucide:chevron-right'"
+							<component
+								:is="expanded[entry.id] ? ChevronDownIcon : ChevronRightIcon"
 								class="w-4 h-4 flex-shrink-0 text-text-tertiary"
 							/>
-							<Icon
-								:name="MAIL_CATEGORY_META[entry.category].icon"
+							<component
+								:is="MAIL_CATEGORY_META[entry.category].icon"
 								class="w-4 h-4 flex-shrink-0 text-text-tertiary"
 							/>
 							<span class="truncate text-sm font-medium text-text-primary">

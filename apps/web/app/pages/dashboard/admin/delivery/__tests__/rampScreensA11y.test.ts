@@ -79,7 +79,6 @@ const passthroughCard = { template: '<div><slot /></div>' };
 const globalOptions = {
 	stubs: {
 		UiIconBox: true,
-		Icon: true,
 		UiSpinner: true,
 		UiEmptyState: true,
 		UiCard: passthroughCard,

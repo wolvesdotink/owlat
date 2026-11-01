@@ -69,14 +69,12 @@ beforeEach(() => {
 	};
 });
 
-const iconStub = { props: ['name'], template: '<span />' };
-
 function mountCard() {
 	// The two reads are handed out in setup order, so the counter has to start
 	// fresh for every mount, not merely for every test.
 	readCount = 0;
 	return mount(PostboxSendingHealthCard, {
-		global: { plugins: [createTestI18n()], stubs: { Icon: iconStub } },
+		global: { plugins: [createTestI18n()] },
 	});
 }
 

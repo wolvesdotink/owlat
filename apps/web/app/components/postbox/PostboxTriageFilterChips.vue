@@ -24,6 +24,7 @@ import {
 	postboxTriageSearchPath,
 } from '~/composables/postbox/usePostboxTriageFilters';
 import { parsePlacementQuery } from '~/composables/postbox/usePostboxPlacementFilter';
+import { CloseIcon, SearchIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	filter: PostboxTriageFilter;
@@ -114,7 +115,7 @@ const searchToken = computed(() =>
 			@click="clearPlacement"
 		>
 			{{ t(`postbox.priority.filter.${placement}`) }}
-			<Icon name="lucide:x" class="w-3 h-3" aria-hidden="true" />
+			<CloseIcon class="w-3 h-3" aria-hidden="true" />
 		</button>
 		<UiTooltip v-for="chip in visibleChips" :key="chip.value" :text="countHint">
 			<button
@@ -154,7 +155,7 @@ const searchToken = computed(() =>
 					t('components.postbox.postboxTriageFilterChips.openInSearchTitle', { token: searchToken })
 				"
 			>
-				<Icon name="lucide:search" class="w-3 h-3" aria-hidden="true" />
+				<SearchIcon class="w-3 h-3" aria-hidden="true" />
 				{{ searchToken }}
 			</NuxtLink>
 		</UiTooltip>

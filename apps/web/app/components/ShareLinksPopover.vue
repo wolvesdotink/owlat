@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import { CheckIcon, CloseIcon, CopyIcon, PlusIcon, ShareIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const props = defineProps<{
 	emailTemplateId?: Id<'emailTemplates'>;
@@ -114,7 +116,7 @@ onUnmounted(() => document.removeEventListener('keydown', handleEscape));
 			<UiTooltip :text="t('components.shareLinksPopover.triggerTitle')">
 				<UiButton variant="outline" size="sm" @click.stop="isOpen = !isOpen">
 					<template #iconLeft>
-						<Icon name="lucide:share-2" class="w-4 h-4" />
+						<ShareIcon class="w-4 h-4" />
 					</template>
 					<!-- Icon-only below 2xl, where the builder toolbar is short of room;
 					     the label stays the accessible name. -->
@@ -166,12 +168,8 @@ onUnmounted(() => document.removeEventListener('keydown', handleEscape));
 								@click="handleCreate"
 							>
 								<template #iconLeft>
-									<Icon
-										v-if="isCreating"
-										name="lucide:loader-2"
-										class="w-4 h-4 animate-spin motion-reduce:animate-none"
-									/>
-									<Icon v-else name="lucide:plus" class="w-4 h-4" />
+									<SpinnerIcon v-if="isCreating" class="w-4 h-4" />
+									<PlusIcon v-else class="w-4 h-4" />
 								</template>
 								{{
 									isCreating
@@ -232,8 +230,8 @@ onUnmounted(() => document.removeEventListener('keydown', handleEscape));
 											:aria-label="t('components.shareLinksPopover.copyLink')"
 											@click="handleCopy(link.token)"
 										>
-											<Icon
-												:name="copiedId === link.token ? 'lucide:check' : 'lucide:copy'"
+											<component
+												:is="copiedId === link.token ? CheckIcon : CopyIcon"
 												class="w-3.5 h-3.5"
 											/>
 										</button>
@@ -247,7 +245,7 @@ onUnmounted(() => document.removeEventListener('keydown', handleEscape));
 											:aria-label="t('components.shareLinksPopover.revokeLink')"
 											@click="handleRevoke(link._id)"
 										>
-											<Icon name="lucide:x" class="w-3.5 h-3.5" />
+											<CloseIcon class="w-3.5 h-3.5" />
 										</button>
 									</UiTooltip>
 								</div>

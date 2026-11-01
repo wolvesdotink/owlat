@@ -45,8 +45,6 @@ beforeEach(() => {
 	suggestRun.mockResolvedValue({ ok: false });
 });
 
-const iconStub = { props: ['name'], template: '<span />' };
-
 function mountChip(
 	props: { messageId: string; proposedTimes: string[] } = {
 		messageId: 'msg-1',
@@ -57,7 +55,6 @@ function mountChip(
 		props,
 		global: {
 			plugins: [createTestI18n()],
-			stubs: { Icon: iconStub },
 		},
 	});
 }

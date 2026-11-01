@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
+import { ArchiveIcon, HashIcon, LinkIcon, LockIcon, LogOutIcon, MoreHorizontalIcon, PencilIcon, RotateLeftIcon, UserIcon, UsersIcon } from '@coolicons/vue';
 
 interface Room {
 	_id: Id<'chatRooms'>;
@@ -49,13 +50,13 @@ const { t } = useI18n();
 
 <template>
 	<div class="flex items-center gap-3 px-4 py-3 border-b border-border-subtle bg-bg-elevated">
-		<Icon
-			:name="
+		<component
+			:is="
 				room.kind === 'dm'
-					? 'lucide:user'
+					? UserIcon
 					: room.visibility === 'private'
-						? 'lucide:lock'
-						: 'lucide:hash'
+						? LockIcon
+						: HashIcon
 			"
 			class="w-5 h-5 text-text-secondary"
 		/>
@@ -86,7 +87,7 @@ const { t } = useI18n();
 			class="text-xs text-text-tertiary hover:text-text-primary px-2 py-1 rounded hover:bg-bg-surface transition-colors flex items-center gap-1.5"
 			@click="emit('showMembers')"
 		>
-			<Icon name="lucide:users" class="w-3.5 h-3.5" />
+			<UsersIcon class="w-3.5 h-3.5" />
 			<span>{{ memberCount }}</span>
 		</button>
 
@@ -95,7 +96,7 @@ const { t } = useI18n();
 				class="w-8 h-8 rounded-lg flex items-center justify-center text-text-secondary hover:text-text-primary hover:bg-bg-surface transition-colors"
 				@click="showMenu = !showMenu"
 			 :aria-label="t('components.chat.chatRoomHeader.moreActions')">
-				<Icon name="lucide:more-horizontal" class="w-4 h-4" />
+				<MoreHorizontalIcon class="w-4 h-4" />
 			</button>
 
 			<div
@@ -108,7 +109,7 @@ const { t } = useI18n();
 					class="w-full text-left px-3 py-1.5 text-sm text-text-primary hover:bg-bg-surface flex items-center gap-2"
 					@click="emit('linkEmail')"
 				>
-					<Icon name="lucide:link" class="w-3.5 h-3.5" />
+					<LinkIcon class="w-3.5 h-3.5" />
 					{{
 						room.linkedInboxThreadId
 							? t('components.chat.chatRoomHeader.changeLinkedEmail')
@@ -120,7 +121,7 @@ const { t } = useI18n();
 					class="w-full text-left px-3 py-1.5 text-sm text-text-primary hover:bg-bg-surface flex items-center gap-2"
 					@click="emit('editChannel')"
 				>
-					<Icon name="lucide:pencil" class="w-3.5 h-3.5" />
+					<PencilIcon class="w-3.5 h-3.5" />
 					{{ t('components.chat.chatRoomHeader.editChannel') }}
 				</button>
 				<button
@@ -128,7 +129,7 @@ const { t } = useI18n();
 					class="w-full text-left px-3 py-1.5 text-sm text-text-primary hover:bg-bg-surface flex items-center gap-2"
 					@click="emit('archive')"
 				>
-					<Icon name="lucide:archive" class="w-3.5 h-3.5" />
+					<ArchiveIcon class="w-3.5 h-3.5" />
 					{{ t('components.chat.chatRoomHeader.archiveChannel') }}
 				</button>
 				<button
@@ -136,7 +137,7 @@ const { t } = useI18n();
 					class="w-full text-left px-3 py-1.5 text-sm text-text-primary hover:bg-bg-surface flex items-center gap-2"
 					@click="emit('unarchive')"
 				>
-					<Icon name="lucide:archive-restore" class="w-3.5 h-3.5" />
+					<RotateLeftIcon class="w-3.5 h-3.5" />
 					{{ t('components.chat.chatRoomHeader.unarchiveChannel') }}
 				</button>
 				<button
@@ -144,7 +145,7 @@ const { t } = useI18n();
 					class="w-full text-left px-3 py-1.5 text-sm text-text-primary hover:bg-bg-surface flex items-center gap-2"
 					@click="emit('leave')"
 				>
-					<Icon name="lucide:log-out" class="w-3.5 h-3.5" />
+					<LogOutIcon class="w-3.5 h-3.5" />
 					{{ t('components.chat.chatRoomHeader.leaveChannel') }}
 				</button>
 			</div>

@@ -14,6 +14,7 @@
 import { useEscapeLayer } from '@owlat/ui/composables/useEscapeLayer';
 import type { PostboxThreadFind } from '~/composables/postbox/usePostboxThreadFind';
 import { POSTBOX_FIND_MAX_QUERY } from '~/utils/postboxFindSeed';
+import { ChevronDownIcon, ChevronUpIcon, CloseIcon, SearchIcon } from '@coolicons/vue';
 
 const props = defineProps<{ find: PostboxThreadFind }>();
 
@@ -97,11 +98,7 @@ const isNoMatch = computed(
 		@focusout="onFocusOut"
 	>
 		<div class="flex items-center gap-2">
-			<Icon
-				name="lucide:search"
-				class="size-4 flex-shrink-0 text-text-tertiary"
-				aria-hidden="true"
-			/>
+			<SearchIcon class="size-4 flex-shrink-0 text-text-tertiary" aria-hidden="true" />
 			<input
 				ref="inputEl"
 				v-model="query"
@@ -132,7 +129,7 @@ const isNoMatch = computed(
 					data-testid="thread-find-previous"
 					@click="find.previous()"
 				>
-					<Icon name="lucide:chevron-up" class="size-4" aria-hidden="true" />
+					<ChevronUpIcon class="size-4" aria-hidden="true" />
 				</button>
 			</UiTooltip>
 			<UiTooltip :text="t('components.postbox.threadFind.next')">
@@ -144,7 +141,7 @@ const isNoMatch = computed(
 					data-testid="thread-find-next"
 					@click="find.next()"
 				>
-					<Icon name="lucide:chevron-down" class="size-4" aria-hidden="true" />
+					<ChevronDownIcon class="size-4" aria-hidden="true" />
 				</button>
 			</UiTooltip>
 			<UiTooltip :text="t('components.postbox.threadFind.close')">
@@ -155,7 +152,7 @@ const isNoMatch = computed(
 					data-testid="thread-find-close"
 					@click="find.close()"
 				>
-					<Icon name="lucide:x" class="size-4" aria-hidden="true" />
+					<CloseIcon class="size-4" aria-hidden="true" />
 				</button>
 			</UiTooltip>
 		</div>

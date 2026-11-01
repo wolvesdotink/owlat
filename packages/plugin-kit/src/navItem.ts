@@ -31,7 +31,7 @@ export interface PluginNavItemDefinition {
 	 * own build provides.
 	 */
 	readonly href: string;
-	/** Icon token, for example `lucide:sparkles`. */
+	/** A coolicons icon token, `coolicons:<name>` with a name from coolicons.cool, for example `coolicons:sparkles`. */
 	readonly icon: string;
 	/** Ordering hint among this plugin's items in the same section (default: declaration order). */
 	readonly order?: number;

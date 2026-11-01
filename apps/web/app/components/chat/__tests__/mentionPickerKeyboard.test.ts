@@ -53,7 +53,6 @@ beforeEach(() => {
 const global = {
 	plugins: [createTestI18n()],
 	components: { ChatMentionPicker, UiAvatar },
-	stubs: { Icon: true },
 };
 
 /** The teammate list's options (it renders at the end of the body). */

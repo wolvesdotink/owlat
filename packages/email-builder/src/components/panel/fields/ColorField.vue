@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import UiTooltip from '@owlat/ui/components/ui/Tooltip.vue';
 import { ref, inject, type Ref } from 'vue';
-import { Pipette } from '@lucide/vue';
+import { EyedropperIcon } from '@coolicons/vue';
 import ColorSwatch from '../../ui/ColorSwatch.vue';
 import { BRAND_SWATCHES_KEY } from '../../../composables/useBrandKit';
 import { useBuilderI18n } from '../../../i18n/useBuilderI18n';
@@ -103,7 +103,7 @@ function selectSwatch(color: string) {
 					"
 					@click="openColorPicker"
 				>
-					<Pipette :size="13" />
+					<EyedropperIcon :size="13" />
 				</button>
 			</UiTooltip>
 			<input

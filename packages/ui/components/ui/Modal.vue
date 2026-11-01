@@ -2,6 +2,7 @@
 import { computed, ref, useId } from 'vue';
 import { useModalFocus } from '../../composables/useModalFocus';
 import { useUiI18n } from '../../composables/useUiI18n';
+import { CloseIcon } from '@coolicons/vue';
 
 type ModalSize = 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '3xl' | '4xl' | 'full';
 
@@ -211,7 +212,7 @@ useModalFocus(
 							:aria-label="t('ui.modal.close')"
 							@click="close"
 						>
-							<Icon name="lucide:x" class="w-5 h-5 text-text-tertiary" />
+							<CloseIcon class="w-5 h-5 text-text-tertiary" />
 						</button>
 					</div>
 

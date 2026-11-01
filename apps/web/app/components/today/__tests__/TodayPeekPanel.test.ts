@@ -87,7 +87,7 @@ function mountPanel(sources: TodaySource[]) {
 		global: {
 			plugins: [createTestI18n()],
 			mocks: { formatCompactRelativeTime: () => 'now' },
-			stubs: { Icon: true, InboxChip: true, UiSkeleton: true, Transition: false },
+			stubs: { InboxChip: true, UiSkeleton: true, Transition: false },
 		},
 	});
 }
@@ -187,7 +187,7 @@ describe('TodayPeekPanel keys', () => {
 			global: {
 				plugins: [createTestI18n()],
 				mocks: { formatCompactRelativeTime: () => 'now' },
-				stubs: { Icon: true, InboxChip: true, UiSkeleton: true, Transition: false },
+				stubs: { InboxChip: true, UiSkeleton: true, Transition: false },
 			},
 		});
 		return { wrapper, step, close };

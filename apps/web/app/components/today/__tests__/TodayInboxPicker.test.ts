@@ -33,7 +33,6 @@ function mountPicker(hidden: string[]) {
 				UiDropdownMenu: { template: '<div><slot name="trigger" /><slot /></div>' },
 				UiDropdownDivider: true,
 				UiButton: { template: '<button><slot /></button>' },
-				Icon: true,
 				InboxChip: { props: ['name'], template: '<span>{{ name }}</span>' },
 			},
 		},

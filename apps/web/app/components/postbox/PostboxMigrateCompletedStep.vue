@@ -2,6 +2,13 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { formatNumber } from '~/utils/formatters';
+import {
+	BrainIcon,
+	CheckIcon,
+	PackageCheckCornerIcon,
+	SparkleIcon,
+	TriangleWarningIcon,
+} from '@coolicons/vue';
 
 /**
  * The mail import wizard's last step: what came across, what was left behind,
@@ -92,7 +99,7 @@ async function saveDetectedSignature() {
 		<UiCard padding="lg">
 			<div class="text-center py-2">
 				<UiIconBox
-					:icon="skippedCount > 0 ? 'lucide:package-check' : 'lucide:party-popper'"
+					:icon="skippedCount > 0 ? PackageCheckCornerIcon : SparkleIcon"
 					size="xl"
 					:variant="skippedCount > 0 ? 'warning' : 'success'"
 					rounded="2xl"
@@ -133,7 +140,7 @@ async function saveDetectedSignature() {
 					class="mt-6 rounded-xl border border-warning/20 bg-warning/5 p-4 text-left flex items-start gap-3"
 				>
 					<UiIconBox
-						icon="lucide:alert-triangle"
+						:icon="TriangleWarningIcon"
 						size="sm"
 						variant="warning"
 						rounded="lg"
@@ -158,7 +165,7 @@ async function saveDetectedSignature() {
 					data-testid="migrate-learn"
 					class="mt-6 rounded-xl border border-border-subtle p-4 text-left flex items-start gap-3"
 				>
-					<UiIconBox icon="lucide:brain" size="sm" variant="surface" rounded="lg" class="mt-0.5" />
+					<UiIconBox :icon="BrainIcon" size="sm" variant="surface" rounded="lg" class="mt-0.5" />
 					<div class="flex-1">
 						<p class="text-sm font-medium">{{ t('dashboard.postbox.migrate.learnTitle') }}</p>
 						<p class="text-xs text-text-secondary mt-0.5">
@@ -224,7 +231,7 @@ async function saveDetectedSignature() {
 					v-else-if="signatureSaved"
 					class="text-xs text-success mt-6 inline-flex items-center gap-1"
 				>
-					<Icon name="lucide:check" class="w-3.5 h-3.5" />
+					<CheckIcon class="w-3.5 h-3.5" />
 					{{ t('dashboard.postbox.migrate.signatureSaved') }}
 				</p>
 				<I18nT

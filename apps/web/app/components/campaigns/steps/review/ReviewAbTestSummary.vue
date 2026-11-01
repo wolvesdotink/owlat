@@ -2,6 +2,7 @@
 // The Review step's A/B test summary: what is tested, both variants, the
 // split and how the winner is picked.
 import type { ReviewCampaignData } from '~/lib/campaignCompose';
+import { PencilIcon, ReloadIcon, SplitIcon } from '@coolicons/vue';
 
 const props = defineProps<{ data: ReviewCampaignData }>();
 
@@ -38,7 +39,7 @@ const variantBTemplateName = computed(() => {
 		class="flex items-start justify-between p-4 bg-bg-surface border border-border-default rounded-lg"
 	>
 		<div class="flex items-start gap-3">
-			<UiIconBox icon="lucide:split" size="sm" rounded="lg" />
+			<UiIconBox :icon="SplitIcon" size="sm" rounded="lg" />
 			<div class="flex-1 min-w-0">
 				<p class="text-sm text-text-secondary">
 					{{ t('components.campaigns.steps.reviewStep.abTesting') }}
@@ -90,7 +91,7 @@ const variantBTemplateName = computed(() => {
 						class="mt-3"
 						:message="t('components.campaigns.steps.reviewStep.templatesLoadFailed')"
 						:action-label="t('common.tryAgain')"
-						action-icon="lucide:refresh-cw"
+						:action-icon="ReloadIcon"
 						data-testid="review-templates-load-failed"
 						@action="emit('retryTemplates')"
 					/>
@@ -102,7 +103,7 @@ const variantBTemplateName = computed(() => {
 			@click="emit('editStep', 'setup')"
 			:aria-label="t('common.edit')"
 		>
-			<Icon name="lucide:pencil" class="w-4 h-4" />
+			<PencilIcon class="w-4 h-4" />
 		</button>
 	</div>
 </template>

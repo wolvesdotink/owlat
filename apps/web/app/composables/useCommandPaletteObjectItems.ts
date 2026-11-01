@@ -11,6 +11,7 @@
 import type { Id } from '@owlat/api/dataModel';
 import type { PaletteItem } from '~/lib/commandPalette';
 import type { SearchResult } from '~/lib/commandPaletteCore';
+import { MailIcon, MegaphoneIcon, SearchIcon, UserIcon, type IconComponent } from '@coolicons/vue';
 
 export interface CommandPaletteObjectItemsOptions {
 	/** Record a term in the active scope's recents before navigating away. */
@@ -30,10 +31,10 @@ export function useCommandPaletteObjectItems(options: CommandPaletteObjectItemsO
 	// is mounted on every dashboard page and must not open Postbox subscriptions.
 	const { setActiveMailboxId } = usePostboxActiveMailbox();
 
-	function iconForType(type: string): string {
-		if (type === 'contact') return 'lucide:user';
-		if (type === 'campaign') return 'lucide:megaphone';
-		return 'lucide:mail';
+	function iconForType(type: string): IconComponent {
+		if (type === 'contact') return UserIcon;
+		if (type === 'campaign') return MegaphoneIcon;
+		return MailIcon;
 	}
 
 	function buildResultItems(results: SearchResult[]): PaletteItem[] {
@@ -56,7 +57,7 @@ export function useCommandPaletteObjectItems(options: CommandPaletteObjectItemsO
 			objectId: result.id,
 			label: result.title.trim() || t('components.appCommandPalette.noSubject'),
 			subtitle: result.subtitle,
-			icon: 'lucide:mail',
+			icon: MailIcon,
 			run: () => {
 				options.onRemember(options.term());
 				if (result.mailboxId) setActiveMailboxId(result.mailboxId as Id<'mailboxes'>);
@@ -80,7 +81,7 @@ export function useCommandPaletteObjectItems(options: CommandPaletteObjectItemsO
 		return {
 			id: 'mail:search-for',
 			label: t('components.appCommandPalette.searchMailFor', { query: term }),
-			icon: 'lucide:search',
+			icon: SearchIcon,
 			hint: '↵',
 			run: () => goToMailSearch(term),
 		};

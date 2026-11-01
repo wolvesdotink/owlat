@@ -36,7 +36,7 @@ function render() {
 	mounted?.unmount();
 	mounted = mount(ReplyDropHint, {
 		attachTo: document.body,
-		global: { plugins: [createTestI18n()], stubs: { Icon: true } },
+		global: { plugins: [createTestI18n()] },
 	});
 	return document.body.querySelector<HTMLElement>('[data-testid="reply-drop-hint"]');
 }

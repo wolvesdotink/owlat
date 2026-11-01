@@ -3,6 +3,7 @@ import { api } from '@owlat/api';
 import { DEFAULT_TRUSTED_ARC_FORWARDERS, isValidForwarderDomain } from '@owlat/shared/arcTrust';
 import { normalizeDomain } from '@owlat/shared';
 import { useSettingsForm } from '~/composables/useSettingsForm';
+import { CloseIcon, ForwardIcon } from '@coolicons/vue';
 
 /**
  * Trusted forwarders editor (Delivery → provider config), Sealed Mail A5.
@@ -109,7 +110,7 @@ async function save() {
 	<UiCard padding="none" overflow="hidden">
 		<template #header>
 			<div class="flex items-center gap-3">
-				<UiIconBox icon="lucide:forward" size="sm" variant="surface" rounded="lg" />
+				<UiIconBox :icon="ForwardIcon" size="sm" variant="surface" rounded="lg" />
 				<div>
 					<h2 class="text-lg font-semibold text-text-primary">
 						{{ t('components.delivery.trustedForwardersCard.title') }}
@@ -155,7 +156,7 @@ async function save() {
 							:aria-label="t('components.delivery.trustedForwardersCard.removeDomain', { domain })"
 							@click="removeDomain(domain)"
 						>
-							<Icon name="lucide:x" class="w-3.5 h-3.5" />
+							<CloseIcon class="w-3.5 h-3.5" />
 						</button>
 					</li>
 				</ul>

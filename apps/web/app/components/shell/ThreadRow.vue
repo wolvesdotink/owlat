@@ -5,6 +5,7 @@ import DraftMarker from '~/components/shell/DraftMarker.vue';
 import type { ContextMenuItem } from '@owlat/ui/components/ui/ContextMenu.vue';
 import RowContextMenu from '~/components/RowContextMenu.vue';
 import { useRowLinkMenu } from '~/composables/useRowLinkMenu';
+import type { IconComponent } from '@coolicons/vue';
 
 /**
  * One conversation in the sidebar: title, age, and at most one status pill.
@@ -25,7 +26,7 @@ const props = defineProps<{
 	isActive?: boolean;
 	/** Indent under a group header (inbox rows) or sit flush (chat rows). */
 	indented?: boolean;
-	icon?: string;
+	icon?: IconComponent;
 	/** The viewer keeps unsent text here, on this device (the pencil). */
 	hasDraft?: boolean;
 	/** The group's own verbs for this row, built when the menu opens. */
@@ -62,7 +63,7 @@ const jumpNumber = computed(() =>
 				]"
 			>
 				<span class="flex min-w-0 items-center gap-1.5">
-					<Icon v-if="icon" :name="icon" class="size-3.5 shrink-0 text-text-tertiary" />
+					<component v-if="icon" :is="icon" class="size-3.5 shrink-0 text-text-tertiary" />
 					<span
 						class="truncate text-xs"
 						:class="isUnread || isActive ? 'font-medium text-text-primary' : ''"

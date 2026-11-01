@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
 import type { ChatRecallTarget } from '~/utils/composerRecall';
+import { ArrowLeftIcon, EyeIcon, LockIcon, UserPlusCornerIcon } from '@coolicons/vue';
 
 // The rail, its drawer and the new-channel / new-DM / browse / mentions
 // dialogs live in the parent route (pages/dashboard/chat.vue); this page is
@@ -103,7 +104,7 @@ const handleLeave = async () => {
 				:aria-expanded="railOpen"
 				@click="openRail"
 			>
-				<Icon name="lucide:arrow-left" class="w-4 h-4" />
+				<ArrowLeftIcon class="w-4 h-4" />
 				<span class="text-sm">{{ t('dashboard.chat.detail.backToConversations') }}</span>
 			</button>
 		</div>
@@ -121,7 +122,7 @@ const handleLeave = async () => {
 			v-else-if="!room"
 			class="flex-1 flex flex-col items-center justify-center text-center px-6"
 		>
-			<Icon name="lucide:lock" class="w-8 h-8 text-text-tertiary mb-3" />
+			<LockIcon class="w-8 h-8 text-text-tertiary mb-3" :stroke-width="1.5" />
 			<h3 class="text-lg font-medium text-text-primary">
 				{{ t('dashboard.chat.detail.unavailableTitle') }}
 			</h3>
@@ -129,7 +130,7 @@ const handleLeave = async () => {
 				{{ t('dashboard.chat.detail.unavailableDescription') }}
 			</p>
 			<UiButton variant="secondary" class="mt-4 gap-2" @click="router.push('/dashboard/chat')">
-				<Icon name="lucide:arrow-left" class="w-4 h-4" />
+				<ArrowLeftIcon class="w-4 h-4" />
 				{{ t('dashboard.chat.detail.backToChat') }}
 			</UiButton>
 		</div>
@@ -155,12 +156,12 @@ const handleLeave = async () => {
 				v-if="room.kind === 'channel' && room.visibility === 'public' && !room.isMember"
 				class="px-4 py-3 bg-bg-elevated border-b border-border-subtle flex items-center gap-3"
 			>
-				<Icon name="lucide:eye" class="w-4 h-4 text-text-tertiary" />
+				<EyeIcon class="w-4 h-4 text-text-tertiary" />
 				<p class="text-sm text-text-secondary flex-1">
 					{{ t('dashboard.chat.detail.previewNotice') }}
 				</p>
 				<UiButton size="sm" class="gap-2" @click="joinChannel">
-					<Icon name="lucide:user-plus" class="w-4 h-4" />
+					<UserPlusCornerIcon class="w-4 h-4" />
 					{{ t('dashboard.chat.detail.join') }}
 				</UiButton>
 			</div>

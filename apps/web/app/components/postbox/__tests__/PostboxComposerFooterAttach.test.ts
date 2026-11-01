@@ -96,7 +96,6 @@ function mountFooter(onAddFiles: (files: File[]) => unknown) {
 		global: {
 			plugins: [i18n],
 			stubs: {
-				Icon: true,
 				PostboxOverflowMenu: true,
 				PostboxComposerPreflightChip: true,
 				PostboxPreviewAsSent: true,

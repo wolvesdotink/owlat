@@ -24,8 +24,6 @@ import { POSTBOX_SWIPE_COMMIT_PX, type RowSwipeAction } from '~/utils/postboxSwi
 
 vi.stubGlobal('useI18n', i18nStubs.useI18n);
 
-const Icon = defineComponent({ name: 'Icon', props: ['name'], template: '<i />' });
-
 const Harness = defineComponent({
 	props: {
 		items: { type: Array as PropType<ContextMenuItem[]>, required: true },
@@ -96,7 +94,7 @@ function mountRow(props: Record<string, unknown> = {}) {
 	const wrapper = mount(Harness, {
 		props: { items: ITEMS, onFollow: follow, ...props },
 		attachTo: document.body,
-		global: { plugins: [createTestI18n()], components: { Icon } },
+		global: { plugins: [createTestI18n()] },
 	});
 	// Vue drops an event stamped no later than its listener was attached; with
 	// the clock frozen, a click right after mounting would be exactly that.

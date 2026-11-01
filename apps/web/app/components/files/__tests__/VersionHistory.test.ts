@@ -35,7 +35,7 @@ function mountList(props: Record<string, unknown>) {
 		global: {
 			plugins: [createTestI18n()],
 			mocks: { formatCompactFileSize, formatDateTime },
-			stubs: { UiButton, Icon: true },
+			stubs: { UiButton },
 		},
 	});
 }

@@ -15,6 +15,7 @@ import PostboxThreadRow, { type PostboxThreadRowMessage } from '../PostboxThread
 import PostboxRowCore from '../PostboxRowCore.vue';
 import PostboxThreadRowBody from '../PostboxThreadRowBody.vue';
 import PostboxSwipeTrack from '../PostboxSwipeTrack.vue';
+import { CheckIcon } from '@coolicons/vue';
 
 beforeAll(() => {
 	vi.stubGlobal('useI18n', i18nStubs.useI18n);
@@ -50,7 +51,6 @@ function mountRow(props: { selected?: boolean; sweepMark?: PostboxSweepMark | nu
 				PostboxRowCore,
 				PostboxThreadRowBody,
 				PostboxSwipeTrack,
-				Icon: { props: ['name'], template: '<span :data-icon="name" />' },
 				NuxtLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
 				UiContextMenu: {
 					props: ['items'],
@@ -138,7 +138,7 @@ describe('PostboxThreadRow sweep handles', () => {
 describe('PostboxThreadRow sweep preview', () => {
 	it('shows the box ticked while a selecting sweep covers the row', () => {
 		const w = mountRow({ sweepMark: 'select' });
-		expect(w.find('.pbx-row-checkbox [data-icon="lucide:check"]').exists()).toBe(true);
+		expect(w.find('.pbx-row-checkbox').findComponent(CheckIcon).exists()).toBe(true);
 		expect(w.find('.pbx-row-link').classes()).toContain('bg-brand/5');
 		// Nothing is selected yet: the accessible state does not run ahead.
 		expect(w.find('.pbx-row-checkbox').attributes('aria-label')).toBe('Select');
@@ -146,7 +146,7 @@ describe('PostboxThreadRow sweep preview', () => {
 
 	it('shows the box cleared while a deselecting sweep covers a selected row', () => {
 		const w = mountRow({ selected: true, sweepMark: 'deselect' });
-		expect(w.find('.pbx-row-checkbox [data-icon="lucide:check"]').exists()).toBe(false);
+		expect(w.find('.pbx-row-checkbox').findComponent(CheckIcon).exists()).toBe(false);
 		expect(w.find('.pbx-row-link').classes()).not.toContain('bg-brand/5');
 	});
 

@@ -2,7 +2,7 @@
 import { computed } from 'vue';
 import type { EditorBlock, EmailTheme, AccordionBlockContent } from '../../../types';
 import { blockBoxStyle } from '../../../utils/blocks';
-import { ChevronDown } from '@lucide/vue';
+import { ChevronDownIcon } from '@coolicons/vue';
 import { useBuilderI18n } from '../../../i18n/useBuilderI18n';
 
 const { t } = useBuilderI18n();
@@ -42,7 +42,7 @@ const wrapperStyles = computed(() => ({
 					}"
 				>
 					<span>{{ section.title || t('builder.canvas.preview.untitledSection') }}</span>
-					<ChevronDown :size="16" :style="{ color: content.iconColor || '#666666' }" />
+					<ChevronDownIcon :size="16" :style="{ color: content.iconColor || '#666666' }" />
 				</div>
 				<div
 					v-if="idx === (content.initialExpanded ?? 0)"

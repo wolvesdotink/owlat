@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { DeliverabilityChecklistItem } from '~/utils/deliverabilityCenter';
+import { ExternalLinkIcon } from '@coolicons/vue';
 
 defineProps<{
 	instructions: NonNullable<DeliverabilityChecklistItem['instructions']>;
@@ -49,7 +50,7 @@ const { t } = useI18n();
 					provider: instructions.providerLabel,
 				})
 			}}
-			<Icon name="lucide:external-link" class="h-3.5 w-3.5" />
+			<ExternalLinkIcon class="h-3.5 w-3.5" />
 		</a>
 	</div>
 </template>

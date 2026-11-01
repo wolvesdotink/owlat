@@ -7,6 +7,7 @@ import { formatNumber, formatCompactRelativeTime } from '~/utils/formatters';
 import { healthChipClass, healthDotClass } from '~/utils/healthTone';
 import { outboundIpPresentation } from '~/utils/outboundIpStatus';
 import { useLocalized } from '~/composables/useLocalized';
+import { ArrowRightIcon, ExternalLinkIcon } from '@coolicons/vue';
 
 type Overview = NonNullable<
 	FunctionReturnType<typeof api.analytics.reputationQueries.getSendingOverview>
@@ -180,7 +181,7 @@ const DOCS_BASE = 'https://docs.owlat.app';
 						data-testid="sending-details-blocklist-lookups"
 					>
 						{{ t('components.delivery.sendingDetails.openBlocklistLookups') }}
-						<Icon name="lucide:arrow-right" class="w-3.5 h-3.5" />
+						<ArrowRightIcon class="w-3.5 h-3.5" />
 					</NuxtLink>
 					<div v-if="ip.dnsblDefinitions.length > 0" class="mt-2 flex flex-wrap gap-2">
 						<a
@@ -192,7 +193,7 @@ const DOCS_BASE = 'https://docs.owlat.app';
 							class="inline-flex items-center gap-1 font-medium underline underline-offset-2"
 						>
 							{{ t('components.delivery.sendingDetails.recoverySteps', { blocklist: list.name }) }}
-							<Icon name="lucide:external-link" class="w-3 h-3" />
+							<ExternalLinkIcon class="w-3 h-3" />
 						</a>
 					</div>
 				</div>

@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
 import { useSuggestReplies } from '~/composables/postbox/useSuggestReplies';
+import { CalendarEventIcon, CloseIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 /**
  * Quiet advisory chip shown under the header of a plain-prose scheduling
@@ -57,8 +59,8 @@ async function draft() {
 				@click="draft"
 			>
 				<template #iconLeft>
-					<Icon
-						:name="suggestBusy ? 'lucide:loader-2' : 'lucide:calendar-clock'"
+					<component
+						:is="suggestBusy ? SpinnerIcon : CalendarEventIcon"
 						class="w-3.5 h-3.5"
 						:class="{ 'animate-spin motion-reduce:animate-none': suggestBusy }"
 					/>
@@ -72,7 +74,7 @@ async function draft() {
 					:aria-label="t('components.postbox.postboxSchedulingChip.dismissLabel')"
 					@click="emit('dismiss')"
 				>
-					<Icon name="lucide:x" class="w-3.5 h-3.5" />
+					<CloseIcon class="w-3.5 h-3.5" />
 				</button>
 			</UiTooltip>
 		</div>

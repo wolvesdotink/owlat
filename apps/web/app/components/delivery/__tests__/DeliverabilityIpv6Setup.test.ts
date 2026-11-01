@@ -68,7 +68,6 @@ function mountSetup(ptrStatus = 'pass') {
 		global: {
 			plugins: [createTestI18n()],
 			stubs: {
-				Icon: { template: '<i />' },
 				UiButton: {
 					props: ['disabled', 'type'],
 					template: '<button :type="type ?? \'button\'" :disabled="disabled"><slot /></button>',

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Download, Copy, Check } from '@lucide/vue';
+import { CheckIcon, CopyIcon, DownloadIcon } from '@coolicons/vue';
 import { useBuilderI18n } from '../../../i18n/useBuilderI18n';
 
 const { t } = useBuilderI18n();
@@ -22,18 +22,18 @@ const emit = defineEmits<{
 <template>
 	<div class="ep-export-menu">
 		<button class="ep-export-item" @click="emit('copy', html, 'html')">
-			<Copy class="ep-export-item-icon" />
+			<CopyIcon class="ep-export-item-icon" />
 			<span>{{ t('builder.preview.export.copyHtml') }}</span>
-			<Check v-if="copiedFormat === 'html'" class="ep-export-check" />
+			<CheckIcon v-if="copiedFormat === 'html'" class="ep-export-check" />
 		</button>
 		<button v-if="plainText" class="ep-export-item" @click="emit('copy', plainText, 'text')">
-			<Copy class="ep-export-item-icon" />
+			<CopyIcon class="ep-export-item-icon" />
 			<span>{{ t('builder.preview.export.copyText') }}</span>
-			<Check v-if="copiedFormat === 'text'" class="ep-export-check" />
+			<CheckIcon v-if="copiedFormat === 'text'" class="ep-export-check" />
 		</button>
 		<div class="ep-export-divider"></div>
 		<button class="ep-export-item" @click="emit('download', html, 'email.html', 'text/html')">
-			<Download class="ep-export-item-icon" />
+			<DownloadIcon class="ep-export-item-icon" />
 			<span>{{ t('builder.preview.export.download', { file: '.html' }) }}</span>
 		</button>
 		<button
@@ -41,7 +41,7 @@ const emit = defineEmits<{
 			class="ep-export-item"
 			@click="emit('download', plainText, 'email.txt', 'text/plain')"
 		>
-			<Download class="ep-export-item-icon" />
+			<DownloadIcon class="ep-export-item-icon" />
 			<span>{{ t('builder.preview.export.download', { file: '.txt' }) }}</span>
 		</button>
 		<button
@@ -49,7 +49,7 @@ const emit = defineEmits<{
 			class="ep-export-item"
 			@click="emit('download', ampHtml, 'email.amp.html', 'text/html')"
 		>
-			<Download class="ep-export-item-icon" />
+			<DownloadIcon class="ep-export-item-icon" />
 			<span>{{ t('builder.preview.export.download', { file: '.amp.html' }) }}</span>
 		</button>
 	</div>

@@ -3,6 +3,7 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { formatDate } from '~/utils/formatters';
 import { budgetRefusalReason } from '~/utils/aiBudget';
+import { ActivityIcon, PinIcon, PinOffIcon, ReloadIcon, TrashIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	id: Id<'visualizations'>;
@@ -89,7 +90,7 @@ const handleRemove = async () => {
 						class="inline-flex items-center gap-1 text-xs text-brand bg-brand-subtle rounded px-1.5 py-0.5"
 						:title="t('components.visualizations.visualizationCard.liveDataTooltip')"
 					>
-						<Icon name="lucide:activity" class="w-3 h-3" />
+						<ActivityIcon class="w-3 h-3" />
 						{{ t('components.visualizations.visualizationCard.liveDataBadge') }}
 					</span>
 				</div>
@@ -105,8 +106,7 @@ const handleRemove = async () => {
 						:disabled="isRefreshing"
 						@click="handleRefresh"
 					>
-						<Icon
-							name="lucide:refresh-cw"
+						<ReloadIcon
 							class="w-4 h-4"
 							:class="{ 'animate-spin motion-reduce:animate-none': isRefreshing }"
 						/>
@@ -134,7 +134,7 @@ const handleRemove = async () => {
 						:disabled="isTogglingPin"
 						@click="handleTogglePin"
 					>
-						<Icon :name="pinned ? 'lucide:pin-off' : 'lucide:pin'" class="w-4 h-4" />
+						<component :is="pinned ? PinOffIcon : PinIcon" class="w-4 h-4" />
 					</button>
 				</UiTooltip>
 				<UiTooltip :text="t('components.visualizations.visualizationCard.removeTooltip')">
@@ -143,7 +143,7 @@ const handleRemove = async () => {
 						:aria-label="t('components.visualizations.visualizationCard.removeTooltip')"
 						@click="showConfirmRemove = true"
 					>
-						<Icon name="lucide:trash-2" class="w-4 h-4" />
+						<TrashIcon class="w-4 h-4" />
 					</button>
 				</UiTooltip>
 			</div>

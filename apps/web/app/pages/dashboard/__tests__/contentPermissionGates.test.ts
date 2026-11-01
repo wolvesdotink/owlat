@@ -28,6 +28,7 @@ import UiSwitch from '@owlat/ui/components/ui/Switch.vue';
 import UiTooltip from '@owlat/ui/components/ui/Tooltip.vue';
 import RowContextMenu from '~/components/RowContextMenu.vue';
 import UiContextMenu from '@owlat/ui/components/ui/ContextMenu.vue';
+import { PlayIcon, UserIcon } from '@coolicons/vue';
 
 Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 
@@ -356,11 +357,11 @@ describe('automations list', () => {
 	beforeEach(() => {
 		vi.stubGlobal('useAutomation', () => ({}));
 		vi.stubGlobal('useAutomationBadges', () => ({
-			getStatusBadge: () => ({ color: '', icon: 'lucide:play', label: 'common.active' }),
+			getStatusBadge: () => ({ color: '', icon: PlayIcon, label: 'common.active' }),
 			getTriggerDisplay: () => ({
 				color: '',
 				bgColor: '',
-				icon: 'lucide:user',
+				icon: UserIcon,
 				label: 'common.name',
 			}),
 		}));

@@ -13,6 +13,7 @@
 import { htmlToPlainText } from '@owlat/shared/html';
 import { stripInlineImages } from '@owlat/shared/inlineImages';
 import { useCreateSavedReply, type SavedReplyScope } from '~/composables/useSavedReplies';
+import { ImageOffIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	/** The text to save, as the composer's HTML (no quote, no signature). */
@@ -102,7 +103,7 @@ async function save() {
 					class="mt-2 flex items-start gap-1.5 text-xs text-text-secondary"
 					data-testid="saved-reply-images-left-out"
 				>
-					<Icon name="lucide:image-off" class="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+					<ImageOffIcon class="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
 					{{ t('shared.savedReplies.saveDialog.imagesLeftOut', kept.removed) }}
 				</p>
 			</div>

@@ -13,6 +13,14 @@ import type { DraftAutosave } from '~/composables/useDraftAutosave';
 import { SaveRefusedError } from '~/composables/useEditorSaveOperation';
 import { operationCopy, operationToastCopy, resolveOperationCopy } from '~/lib/operationError';
 import { formatCompactRelativeTime } from '~/utils/formatters';
+import {
+	CheckIcon,
+	CircleDotIcon,
+	CircleWarningIcon,
+	CloudOffIcon,
+	PencilIcon,
+} from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const props = defineProps<{ autosave: DraftAutosave }>();
 
@@ -61,17 +69,17 @@ const errorDetail = computed(() => {
 const icon = computed(() => {
 	switch (status.value) {
 		case 'saving':
-			return 'lucide:loader-2';
+			return SpinnerIcon;
 		case 'offline':
-			return 'lucide:cloud-off';
+			return CloudOffIcon;
 		case 'error':
-			return 'lucide:alert-circle';
+			return CircleWarningIcon;
 		case 'editing':
-			return 'lucide:pencil';
+			return PencilIcon;
 		case 'unsaved':
-			return 'lucide:circle-dot';
+			return CircleDotIcon;
 		default:
-			return 'lucide:check';
+			return CheckIcon;
 	}
 });
 </script>
@@ -83,8 +91,8 @@ const icon = computed(() => {
 			:class="status === 'error' ? 'text-error' : 'text-text-secondary'"
 			:title="errorDetail || undefined"
 		>
-			<Icon
-				:name="icon"
+			<component
+				:is="icon"
 				class="w-3.5 h-3.5 shrink-0"
 				:class="{ 'animate-spin motion-reduce:animate-none': status === 'saving' }"
 				aria-hidden="true"

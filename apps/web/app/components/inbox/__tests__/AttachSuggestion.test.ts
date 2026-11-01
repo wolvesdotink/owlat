@@ -4,8 +4,6 @@
  *     `attach` with that candidate on tap (the one-tap attach in the review gate)
  *   - an ambiguous match renders a pick-one button per candidate and emits the
  *     chosen one (the agent never guesses which file — the human confirms)
- *
- * <Icon> is a global auto-import, stubbed here.
  */
 import { beforeAll, describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
@@ -20,7 +18,7 @@ beforeAll(() => {
 });
 
 const mountOpts = {
-	global: { plugins: [createTestI18n()], stubs: { Icon: true } },
+	global: { plugins: [createTestI18n()] },
 };
 
 function candidate(id: string, over: Record<string, unknown> = {}) {

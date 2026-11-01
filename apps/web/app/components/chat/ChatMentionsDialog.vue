@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
+import { ChatIcon, HashIcon, MailIcon, MentionIcon } from '@coolicons/vue';
 
 /**
  * Mentions inbox: the unread-@-mention feed. Surfaces
@@ -57,7 +58,7 @@ const handleOpen = async (mention: {
 				<div
 					class="w-12 h-12 rounded-full bg-bg-surface border border-border-subtle flex items-center justify-center mb-3"
 				>
-					<Icon name="lucide:at-sign" class="w-5 h-5 text-text-tertiary" />
+					<MentionIcon class="w-5 h-5 text-text-tertiary" />
 				</div>
 				<p class="text-sm font-medium text-text-primary">
 					{{ t('components.chat.chatMentionsDialog.emptyTitle') }}
@@ -73,14 +74,8 @@ const handleOpen = async (mention: {
 					class="w-full flex items-start gap-3 px-3 py-2.5 rounded-lg text-left hover:bg-bg-surface transition-colors"
 					@click="handleOpen(mention)"
 				>
-					<Icon
-						:name="
-							mention.mailThread
-								? 'lucide:mail'
-								: mention.roomKind === 'dm'
-									? 'lucide:message-square'
-									: 'lucide:hash'
-						"
+					<component
+						:is="mention.mailThread ? MailIcon : mention.roomKind === 'dm' ? ChatIcon : HashIcon"
 						class="w-4 h-4 text-text-tertiary flex-shrink-0 mt-0.5"
 					/>
 					<div class="flex-1 min-w-0">

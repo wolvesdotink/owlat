@@ -38,7 +38,6 @@ beforeEach(() => {
 	openManager.mockClear();
 });
 
-const iconStub = { props: ['name'], template: '<span class="icon" :data-name="name" />' };
 const railLinkStub = {
 	props: ['to', 'icon', 'label', 'collapsed', 'count', 'active', 'countLabel', 'muted'],
 	template: '<a class="rail-link" :href="to" :data-active="active">{{ label }}</a>',
@@ -66,7 +65,6 @@ function mountGroup(props: Record<string, unknown> = {}) {
 		global: {
 			plugins: [createTestI18n()],
 			components: {
-				Icon: iconStub,
 				PostboxRailLink: railLinkStub,
 				PostboxFolderList: folderListStub,
 			},

@@ -23,14 +23,11 @@ beforeAll(() => {
 	vi.stubGlobal('useI18n', i18nStubs.useI18n);
 });
 
-const iconStub = { props: ['name'], template: '<span />' };
-
 function mountStrip(delivery: OutboundDelivery) {
 	return mount(PostboxDeliveryStrip, {
 		props: { delivery },
 		global: {
 			plugins: [createTestI18n()],
-			stubs: { Icon: iconStub },
 		},
 	});
 }

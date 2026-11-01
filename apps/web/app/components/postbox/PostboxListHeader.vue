@@ -20,6 +20,7 @@ import type { PostboxInboxMode } from '~/utils/postboxInboxMode';
 import type { PostboxReadingPane } from '~/utils/postboxReadingPane';
 import type { PostboxSortOrder } from '~/utils/postboxSortOrder';
 import { headerSelectionState } from '~/utils/postboxRangeSelect';
+import { CheckIcon, MinusIcon, PanelLeftIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -124,9 +125,9 @@ const emit = defineEmits<{
 					"
 					@click="toggleSelectPage()"
 				>
-					<Icon
+					<component
 						v-if="selectionState !== 'none'"
-						:name="selectionState === 'all' ? 'lucide:check' : 'lucide:minus'"
+						:is="selectionState === 'all' ? CheckIcon : MinusIcon"
 						class="w-3 h-3"
 					/>
 				</button>
@@ -140,7 +141,7 @@ const emit = defineEmits<{
 				:aria-label="t('components.postbox.postboxLayout.openFolders')"
 				@click="emit('open-rail')"
 			>
-				<Icon name="lucide:panel-left" class="w-4 h-4" />
+				<PanelLeftIcon class="w-4 h-4" />
 			</button>
 			<h2
 				class="text-sm font-semibold capitalize text-text-primary flex items-center gap-2 min-w-0"

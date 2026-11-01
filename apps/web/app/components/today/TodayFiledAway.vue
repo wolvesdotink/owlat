@@ -3,6 +3,7 @@ import { FILED_CATEGORIES } from '@owlat/shared/threadStatus';
 import { MAIL_CATEGORY_META } from '~/utils/mailCategory';
 import type { TodayModel } from '~/utils/todayDigest';
 import { filedHref, type WorkbenchScope } from '~/utils/workbench';
+import { ArrowUpRightIcon } from '@coolicons/vue';
 
 /**
  * "Filed away": the mail a Workbench deliberately does not list —
@@ -62,12 +63,11 @@ const tiles = computed(() =>
 					:data-filed-kind="tile.key"
 				>
 					<span class="flex items-center justify-between gap-2">
-						<Icon
-							:name="tile.icon"
+						<component
+							:is="tile.icon"
 							class="size-4 text-text-tertiary group-hover:text-text-secondary"
 						/>
-						<Icon
-							name="lucide:arrow-up-right"
+						<ArrowUpRightIcon
 							class="size-3.5 text-text-tertiary opacity-0 transition-opacity group-hover:opacity-100"
 						/>
 					</span>

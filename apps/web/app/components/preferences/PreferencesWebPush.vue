@@ -13,6 +13,7 @@ import { formatCompactRelativeTime, formatDate } from '~/utils/formatters';
 import { webPushStatusKey } from '~/utils/webPush';
 import { POSTBOX_PREFERENCE_DEFAULTS } from '~/utils/postboxPreferenceDefaults';
 import SettingsResetToDefault from '~/components/settings/ResetToDefault.vue';
+import { MobileIcon, MonitorIcon, RotateRightIcon, SquareArrowUpIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -102,7 +103,7 @@ async function onRemove(id: Id<'pushSubscriptions'>) {
 			<UiErrorAlert
 				:message="t(`${KEY}.loadFailed`)"
 				:action-label="t('common.retry')"
-				action-icon="lucide:rotate-cw"
+				:action-icon="RotateRightIcon"
 				@action="refetch()"
 			/>
 		</div>
@@ -148,7 +149,7 @@ async function onRemove(id: Id<'pushSubscriptions'>) {
 				class="px-5 py-3 border-t border-border-subtle bg-bg-surface flex gap-3"
 				data-testid="web-push-ios-hint"
 			>
-				<Icon name="lucide:square-arrow-up" class="w-4 h-4 mt-0.5 shrink-0 text-text-secondary" />
+				<SquareArrowUpIcon class="w-4 h-4 mt-0.5 shrink-0 text-text-secondary" />
 				<p class="text-xs text-text-secondary">{{ t(`${KEY}.iosHint`) }}</p>
 			</div>
 
@@ -191,8 +192,8 @@ async function onRemove(id: Id<'pushSubscriptions'>) {
 				</p>
 				<ul v-else class="mt-2 divide-y divide-border-subtle" data-testid="web-push-devices">
 					<li v-for="device in devices" :key="device.id" class="py-2.5 flex items-center gap-3">
-						<Icon
-							:name="isPhone(device.label) ? 'lucide:smartphone' : 'lucide:monitor'"
+						<component
+							:is="isPhone(device.label) ? MobileIcon : MonitorIcon"
 							class="w-4 h-4 shrink-0 text-text-secondary"
 						/>
 						<div class="min-w-0 flex-1">

@@ -8,6 +8,15 @@
 import type { api } from '@owlat/api';
 import type { FunctionReturnType } from 'convex/server';
 import { formatDate } from '~/utils/formatters';
+import {
+	ChartBarVerticalIcon,
+	ComponentIcon,
+	CopyIcon,
+	FileEditIcon,
+	MoreVerticalIcon,
+	SettingsIcon,
+	TrashIcon,
+} from '@coolicons/vue';
 
 type BlockRow = FunctionReturnType<typeof api.emailBlocks.blocks.list>[number];
 
@@ -41,7 +50,7 @@ const overlayButton =
 		@click="emit('open', block)"
 	>
 		<div class="aspect-[4/3] bg-bg-surface flex items-center justify-center relative">
-			<Icon name="lucide:blocks" class="w-12 h-12 text-text-tertiary/30" />
+			<ComponentIcon class="w-12 h-12 text-text-tertiary/30" :stroke-width="1.5" />
 			<div
 				class="absolute inset-0 bg-bg-deep/80 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2"
 			>
@@ -51,7 +60,7 @@ const overlayButton =
 						:aria-label="t('dashboard.send.blocks.index.editContent')"
 						@click.stop="emit('open', block)"
 					>
-						<Icon name="lucide:file-edit" class="w-4 h-4" />
+						<FileEditIcon class="w-4 h-4" />
 					</button>
 				</UiTooltip>
 				<template v-if="canManage">
@@ -61,7 +70,7 @@ const overlayButton =
 							:aria-label="t('dashboard.send.blocks.index.quickSettings')"
 							@click.stop="emit('settings', block)"
 						>
-							<Icon name="lucide:settings" class="w-4 h-4" />
+							<SettingsIcon class="w-4 h-4" />
 						</button>
 					</UiTooltip>
 					<UiTooltip :text="t('common.duplicate')">
@@ -70,7 +79,7 @@ const overlayButton =
 							:aria-label="t('common.duplicate')"
 							@click.stop="emit('duplicate', block)"
 						>
-							<Icon name="lucide:copy" class="w-4 h-4" />
+							<CopyIcon class="w-4 h-4" />
 						</button>
 					</UiTooltip>
 					<UiTooltip :text="t('common.delete')">
@@ -79,7 +88,7 @@ const overlayButton =
 							:aria-label="t('common.delete')"
 							@click.stop="emit('delete', block)"
 						>
-							<Icon name="lucide:trash-2" class="w-4 h-4" />
+							<TrashIcon class="w-4 h-4" />
 						</button>
 					</UiTooltip>
 				</template>
@@ -97,21 +106,21 @@ const overlayButton =
 				<UiDropdownMenu v-model:open="menuOpen" @click.stop>
 					<template #trigger>
 						<UiButton variant="ghost" size="sm">
-							<Icon name="lucide:more-vertical" class="w-4 h-4" />
+							<MoreVerticalIcon class="w-4 h-4" />
 						</UiButton>
 					</template>
-					<UiDropdownMenuItem icon="lucide:file-edit" @click="emit('open', block)">
+					<UiDropdownMenuItem :icon="FileEditIcon" @click="emit('open', block)">
 						{{ t('dashboard.send.blocks.index.editContent') }}
 					</UiDropdownMenuItem>
 					<template v-if="canManage">
-						<UiDropdownMenuItem icon="lucide:settings" @click="emit('settings', block)">
+						<UiDropdownMenuItem :icon="SettingsIcon" @click="emit('settings', block)">
 							{{ t('common.settings') }}
 						</UiDropdownMenuItem>
-						<UiDropdownMenuItem icon="lucide:copy" @click="emit('duplicate', block)">
+						<UiDropdownMenuItem :icon="CopyIcon" @click="emit('duplicate', block)">
 							{{ t('common.duplicate') }}
 						</UiDropdownMenuItem>
 						<UiDropdownDivider />
-						<UiDropdownMenuItem icon="lucide:trash-2" danger @click="emit('delete', block)">
+						<UiDropdownMenuItem :icon="TrashIcon" danger @click="emit('delete', block)">
 							{{ t('common.delete') }}
 						</UiDropdownMenuItem>
 					</template>
@@ -128,7 +137,7 @@ const overlayButton =
 				<span
 					class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-bg-surface text-text-tertiary"
 				>
-					<Icon name="lucide:bar-chart" class="w-3 h-3" />
+					<ChartBarVerticalIcon class="w-3 h-3" />
 					{{ t('dashboard.send.blocks.index.usesBadge', { count: block.usageCount }) }}
 				</span>
 			</div>

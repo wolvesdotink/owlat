@@ -12,6 +12,7 @@ import { formatDateTime } from '~/utils/formatters';
 import type { WorkerService } from '@owlat/shared/workerWire';
 import { workerServiceKey } from '~/utils/workerServices';
 import { useNow } from '~/composables/useNow';
+import { CircleCloseIcon, TriangleWarningIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -118,11 +119,7 @@ const VERDICT_CLASS: Record<Verdict, { pill: string; dot: string }> = {
 						v-if="entry.isLegacyInWindow"
 						class="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/5 p-3 text-caption text-text-primary"
 					>
-						<Icon
-							name="lucide:alert-triangle"
-							class="w-4 h-4 text-warning shrink-0 mt-0.5"
-							aria-hidden="true"
-						/>
+						<TriangleWarningIcon class="w-4 h-4 text-warning shrink-0 mt-0.5" aria-hidden="true" />
 						{{
 							t('components.system.workerVersionsCard.legacyImapWarning', {
 								date: formatDateTime(entry.legacySeenAt),
@@ -133,22 +130,14 @@ const VERDICT_CLASS: Record<Verdict, { pill: string; dot: string }> = {
 						v-if="hasUnsupported(entry)"
 						class="flex items-start gap-2 rounded-lg border border-error/40 bg-error/5 p-3 text-caption text-text-primary"
 					>
-						<Icon
-							name="lucide:x-circle"
-							class="w-4 h-4 text-error shrink-0 mt-0.5"
-							aria-hidden="true"
-						/>
+						<CircleCloseIcon class="w-4 h-4 text-error shrink-0 mt-0.5" aria-hidden="true" />
 						{{ t('components.system.workerVersionsCard.unsupportedWarning') }}
 					</p>
 					<p
 						v-if="hasAhead(entry)"
 						class="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/5 p-3 text-caption text-text-primary"
 					>
-						<Icon
-							name="lucide:alert-triangle"
-							class="w-4 h-4 text-warning shrink-0 mt-0.5"
-							aria-hidden="true"
-						/>
+						<TriangleWarningIcon class="w-4 h-4 text-warning shrink-0 mt-0.5" aria-hidden="true" />
 						{{ t('components.system.workerVersionsCard.aheadWarning') }}
 					</p>
 					<p v-if="hasSkew(entry)" class="text-caption text-text-secondary" data-test="skew">

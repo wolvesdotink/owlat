@@ -17,8 +17,16 @@
  * blank where a key should be.
  */
 
+import {
+	CircleCheckIcon,
+	FolderOpenIcon,
+	InboxIcon,
+	TagIcon,
+	type IconComponent,
+} from '@coolicons/vue';
+
 export interface PostboxListEmptyState {
-	readonly icon: string;
+	readonly icon: IconComponent;
 	readonly titleKey: string;
 	readonly hintKey?: string;
 	/**
@@ -63,7 +71,7 @@ export function postboxListEmptyState(args: {
 }): PostboxListEmptyState {
 	if (args.filterActive) {
 		return {
-			icon: 'lucide:check-circle-2',
+			icon: CircleCheckIcon,
 			titleKey: `${KEY}.emptyFilteredTitle`,
 			// The chips filter the LOADED pages, so "nothing matches" can mean "not
 			// on these pages yet". Say so while a further page exists — the Load
@@ -75,7 +83,7 @@ export function postboxListEmptyState(args: {
 	}
 	if (args.emptyContext === 'label') {
 		return {
-			icon: 'lucide:tag',
+			icon: TagIcon,
 			titleKey: `${KEY}.emptyLabelTitle`,
 			...pickHint(
 				[
@@ -89,7 +97,7 @@ export function postboxListEmptyState(args: {
 	}
 	if (args.folderRole === 'inbox') {
 		return {
-			icon: 'lucide:check-circle-2',
+			icon: CircleCheckIcon,
 			titleKey: `${KEY}.emptyInboxTitle`,
 			// Teach the two moves a new member reaches for first: compose and the
 			// command palette. Quiet enough to stay welcome once the inbox fills.
@@ -113,11 +121,11 @@ export function postboxListEmptyState(args: {
 	}
 	if (args.folderRole === '') {
 		return {
-			icon: 'lucide:folder-open',
+			icon: FolderOpenIcon,
 			titleKey: `${KEY}.emptyFolderTitle`,
 			hintKey: `${KEY}.emptyFolderHint`,
 			showFilterAction: true,
 		};
 	}
-	return { icon: 'lucide:inbox', titleKey: `${KEY}.emptyDefaultTitle`, showFilterAction: false };
+	return { icon: InboxIcon, titleKey: `${KEY}.emptyDefaultTitle`, showFilterAction: false };
 }

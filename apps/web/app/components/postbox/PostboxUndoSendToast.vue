@@ -4,6 +4,7 @@ import type { Id } from '@owlat/api/dataModel';
 import UiUndoCountdownToast from '~/components/ui/UndoCountdownToast.vue';
 import { useAnswerModeNav } from '~/composables/useAnswerMode';
 import type { ComposeSpec } from '~/composables/postbox/usePostboxComposeNav';
+import { PaperPlaneIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	/**
@@ -104,7 +105,7 @@ function onExpire() {
 	<UiUndoCountdownToast
 		:visible="state.visible"
 		:send-at="state.sendAt"
-		icon="lucide:send"
+		:icon="PaperPlaneIcon"
 		:message="message"
 		:undo-label="t('components.postbox.postboxUndoSendToast.undo')"
 		:on-undo="onUndo"

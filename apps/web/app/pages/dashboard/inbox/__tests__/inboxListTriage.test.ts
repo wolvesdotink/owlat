@@ -221,7 +221,6 @@ async function mountPage(opts: { admin?: boolean } = {}) {
 				UiQueryBoundary,
 			},
 			stubs: {
-				Icon: true,
 				UiAvatar: true,
 				UiPresenceRing: { template: '<span><slot /></span>' },
 				UiPageHeader: true,

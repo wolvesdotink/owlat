@@ -63,7 +63,6 @@ function mountList() {
 		global: {
 			plugins: [createTestI18n()],
 			stubs: {
-				Icon: { props: ['name'], template: '<span />' },
 				NuxtLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
 				PostboxThreadRowBody: { template: '<span />' },
 				PostboxThreadListSkeleton: true,

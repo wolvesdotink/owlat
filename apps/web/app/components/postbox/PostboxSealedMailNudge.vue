@@ -24,6 +24,7 @@
  * queue) and the slot has to agree with the strip about who is visible.
  */
 import { usePostboxSealedNudge } from '~/composables/postbox/usePostboxBanners';
+import { CloseIcon, LockIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 const { visible: isVisible, dismiss: dismissSealedMailNudge } = usePostboxSealedNudge();
@@ -45,7 +46,7 @@ async function openSettings() {
 		role="status"
 		data-testid="sealed-mail-nudge"
 	>
-		<Icon name="lucide:lock" class="w-3.5 h-3.5 flex-shrink-0 mt-0.5 text-success" />
+		<LockIcon class="w-3.5 h-3.5 flex-shrink-0 mt-0.5 text-success" />
 		<p class="min-w-0 flex-1">
 			{{ t('components.postbox.postboxSealedMailNudge.body') }}
 			<button
@@ -64,7 +65,7 @@ async function openSettings() {
 			data-testid="sealed-mail-nudge-dismiss"
 			@click="dismiss"
 		>
-			<Icon name="lucide:x" class="w-3.5 h-3.5" />
+			<CloseIcon class="w-3.5 h-3.5" />
 		</button>
 	</div>
 </template>

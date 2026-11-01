@@ -5,17 +5,17 @@ import type { Component } from 'vue';
 import type { BlockType, BrandBlockKind } from '../../types';
 import BlockPickerPopover from './BlockPickerPopover.vue';
 import {
-	Type,
-	Image as ImageIcon,
-	MousePointerClick,
-	Minus,
-	Columns,
-	Share2,
-	Square,
-	MoreHorizontal,
-	Stamp,
-	PanelBottom,
-} from '@lucide/vue';
+	ColumnsIcon,
+	CursorClickIcon,
+	ImageIcon,
+	MinusIcon,
+	MoreHorizontalIcon,
+	PanelBottomIcon,
+	ShareIcon,
+	SquareIcon,
+	StampIcon,
+	TextIcon,
+} from '@coolicons/vue';
 import { useBuilderI18n } from '../../i18n/useBuilderI18n';
 
 const { t, label } = useBuilderI18n();
@@ -35,8 +35,8 @@ const emit = defineEmits<{
 }>();
 
 const BRAND_BUTTONS: Record<BrandBlockKind, { icon: Component; label: string }> = {
-	logo: { icon: Stamp, label: 'Brand logo' },
-	footer: { icon: PanelBottom, label: 'Brand footer' },
+	logo: { icon: StampIcon, label: 'Brand logo' },
+	footer: { icon: PanelBottomIcon, label: 'Brand footer' },
 };
 
 const sidebarRef = ref<HTMLElement | null>(null);
@@ -47,13 +47,13 @@ const posLeft = ref(0);
 const isVisible = ref(false);
 
 const allQuickBlocks: { type: BlockType; icon: Component; label: string }[] = [
-	{ type: 'text', icon: Type, label: 'Text' },
+	{ type: 'text', icon: TextIcon, label: 'Text' },
 	{ type: 'image', icon: ImageIcon, label: 'Image' },
-	{ type: 'button', icon: MousePointerClick, label: 'Button' },
-	{ type: 'divider', icon: Minus, label: 'Divider' },
-	{ type: 'columns', icon: Columns, label: 'Columns' },
-	{ type: 'social', icon: Share2, label: 'Social' },
-	{ type: 'container', icon: Square, label: 'Container' },
+	{ type: 'button', icon: CursorClickIcon, label: 'Button' },
+	{ type: 'divider', icon: MinusIcon, label: 'Divider' },
+	{ type: 'columns', icon: ColumnsIcon, label: 'Columns' },
+	{ type: 'social', icon: ShareIcon, label: 'Social' },
+	{ type: 'container', icon: SquareIcon, label: 'Container' },
 ];
 
 // Honour the host config allowlist; undefined/empty means "all".
@@ -211,7 +211,7 @@ function handlePickerSelect(type: BlockType) {
 					type="button"
 					@click="showPicker = !showPicker"
 				>
-					<MoreHorizontal :size="16" />
+					<MoreHorizontalIcon :size="16" />
 				</button>
 			</UiTooltip>
 		</div>

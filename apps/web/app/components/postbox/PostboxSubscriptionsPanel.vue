@@ -25,6 +25,7 @@ import {
 	type PostboxSubscriptionOutcome,
 	type PostboxSubscriptionSender,
 } from '~/utils/postboxSubscriptions';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const props = defineProps<{ mailboxId: Id<'mailboxes'> }>();
 
@@ -159,10 +160,7 @@ function lastReadLabel(sender: PostboxSubscriptionSender): string {
 		</header>
 
 		<div v-if="isLoading" class="p-8 flex justify-center">
-			<Icon
-				name="lucide:loader-2"
-				class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary"
-			/>
+			<SpinnerIcon class="w-5 h-5 text-text-tertiary" />
 		</div>
 		<!-- A failed read is not "no subscriptions". -->
 		<UiQueryBoundary v-else-if="error" :error="error" @retry="refetch" />

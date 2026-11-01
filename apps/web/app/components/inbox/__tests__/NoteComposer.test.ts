@@ -35,7 +35,7 @@ function mountComposer(submit = vi.fn(async () => true), extra: Record<string, u
 		attachTo: document.body,
 		global: {
 			plugins: [createTestI18n()],
-			stubs: { Icon: true, ChatMentionPicker: PickerStub },
+			stubs: { ChatMentionPicker: PickerStub },
 		},
 	});
 	return { wrapper, submit, candidatesFor };

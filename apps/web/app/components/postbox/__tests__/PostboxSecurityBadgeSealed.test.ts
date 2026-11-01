@@ -21,8 +21,6 @@ beforeAll(() => {
 	vi.stubGlobal('useI18n', i18nStubs.useI18n);
 });
 
-const iconStub = { props: ['name'], template: '<span />' };
-
 function mountBadge(opts: {
 	klass?: string;
 	sealed?: InboundEncryptionInfo;
@@ -36,7 +34,6 @@ function mountBadge(opts: {
 		},
 		global: {
 			plugins: [createTestI18n()],
-			stubs: { Icon: iconStub },
 		},
 	});
 }

@@ -15,6 +15,21 @@ import { api } from '@owlat/api';
 import { providerForImapHost } from '~/utils/mailAutodiscover';
 import { formatNumber } from '~/utils/formatters';
 import { useImportPause } from '~/composables/postbox/useMailMigration';
+import {
+	ArrowRightIcon,
+	ChevronUpIcon,
+	CloudDownloadIcon,
+	DownloadIcon,
+	KeyIcon,
+	MailIcon,
+	MailboxIcon,
+	ReloadIcon,
+	ShieldOffIcon,
+	TrashIcon,
+	TriangleWarningIcon,
+	UsersIcon,
+} from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 type SharedInbox = FunctionReturnType<typeof api.mail.mailboxMembers.listShared>[number];
 
@@ -158,7 +173,7 @@ const createdOn = computed(() =>
 			     squeezing the name/address block to nothing. -->
 			<div class="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
 				<div class="flex items-center gap-3 min-w-0 flex-1 basis-64">
-					<UiIconBox icon="lucide:mails" size="md" variant="surface" rounded="lg" />
+					<UiIconBox :icon="MailboxIcon" size="md" variant="surface" rounded="lg" />
 					<div class="min-w-0">
 						<!-- State badges sit with the name they describe, not at the head
 						     of the action group, where "External" read as a button label
@@ -200,12 +215,12 @@ const createdOn = computed(() =>
 						:aria-expanded="reconnecting"
 						@click="emit('toggleReconnect')"
 					>
-						<Icon name="lucide:refresh-cw" class="w-4 h-4 mr-1.5" />
+						<ReloadIcon class="w-4 h-4 mr-1.5" />
 						{{ reconnecting ? t('common.cancel') : t('dashboard.admin.team.inboxes.reconnect') }}
 					</UiButton>
 					<UiTooltip :text="t('dashboard.admin.team.inboxes.openInboxTitle')">
 						<UiButton variant="ghost" size="sm" @click="emit('open')">
-							<Icon name="lucide:arrow-right" class="w-4 h-4 mr-1.5" />
+							<ArrowRightIcon class="w-4 h-4 mr-1.5" />
 							{{ t('dashboard.admin.team.inboxes.openInbox') }}
 						</UiButton>
 					</UiTooltip>
@@ -219,10 +234,7 @@ const createdOn = computed(() =>
 							:aria-expanded="importing"
 							@click="emit('toggleImport')"
 						>
-							<Icon
-								:name="importing ? 'lucide:chevron-up' : 'lucide:download'"
-								class="w-4 h-4 mr-1.5"
-							/>
+							<component :is="importing ? ChevronUpIcon : DownloadIcon" class="w-4 h-4 mr-1.5" />
 							{{ importing ? t('common.done') : t('dashboard.admin.team.inboxes.import.action') }}
 						</UiButton>
 					</UiTooltip>
@@ -232,7 +244,7 @@ const createdOn = computed(() =>
 						:aria-expanded="expanded"
 						@click="emit('toggleExpanded')"
 					>
-						<Icon :name="expanded ? 'lucide:chevron-up' : 'lucide:users'" class="w-4 h-4 mr-1.5" />
+						<component :is="expanded ? ChevronUpIcon : UsersIcon" class="w-4 h-4 mr-1.5" />
 						{{ expanded ? t('common.done') : t('dashboard.admin.team.inboxes.manageMembers') }}
 					</UiButton>
 					<UiTooltip
@@ -245,7 +257,7 @@ const createdOn = computed(() =>
 							:aria-label="t('dashboard.admin.team.inboxes.rotateKeyTitle')"
 							@click="emit('rotateKey')"
 						>
-							<Icon name="lucide:key-round" class="w-4 h-4" />
+							<KeyIcon class="w-4 h-4" />
 						</UiButton>
 					</UiTooltip>
 					<UiTooltip
@@ -259,7 +271,7 @@ const createdOn = computed(() =>
 							:aria-label="t('dashboard.admin.team.inboxes.revokeKeyTitle')"
 							@click="emit('revokeKey')"
 						>
-							<Icon name="lucide:shield-off" class="w-4 h-4" />
+							<ShieldOffIcon class="w-4 h-4" />
 						</UiButton>
 					</UiTooltip>
 					<UiTooltip
@@ -273,7 +285,7 @@ const createdOn = computed(() =>
 							:aria-label="t('dashboard.admin.team.inboxes.deleteInboxTitle')"
 							@click="emit('purge')"
 						>
-							<Icon name="lucide:trash-2" class="w-4 h-4" />
+							<TrashIcon class="w-4 h-4" />
 						</UiButton>
 					</UiTooltip>
 				</div>
@@ -318,7 +330,7 @@ const createdOn = computed(() =>
 				v-if="inbox.pendingInvites.length > 0"
 				class="mt-3 text-xs text-text-tertiary flex items-center gap-1.5"
 			>
-				<Icon name="lucide:mail-plus" class="w-3.5 h-3.5" />
+				<MailIcon class="w-3.5 h-3.5" />
 				{{
 					t(
 						'dashboard.admin.team.inboxes.pendingInvites',
@@ -338,7 +350,7 @@ const createdOn = computed(() =>
 				data-testid="team-inbox-import-summary"
 				class="mt-3 text-xs text-text-tertiary flex items-center gap-1.5"
 			>
-				<Icon name="lucide:download-cloud" class="w-3.5 h-3.5 shrink-0" />
+				<CloudDownloadIcon class="w-3.5 h-3.5 shrink-0" />
 				{{ importSummary }}
 			</p>
 
@@ -352,7 +364,7 @@ const createdOn = computed(() =>
 			<!-- Connection is broken but the inbox is suspended, so the in-place
 			     reconnect (which needs an active mailbox) isn't available yet. -->
 			<p v-if="reconnectBlocked" class="mt-3 text-xs text-text-tertiary flex items-start gap-1.5">
-				<Icon name="lucide:triangle-alert" class="w-3.5 h-3.5 mt-0.5 shrink-0" />
+				<TriangleWarningIcon class="w-3.5 h-3.5 mt-0.5 shrink-0" />
 				<span>{{ t('dashboard.admin.team.inboxes.reconnectBlocked') }}</span>
 			</p>
 		</div>
@@ -385,10 +397,7 @@ const createdOn = computed(() =>
 			     getSharedExternalAccount subscription; show a pending state until it
 			     resolves so the panel isn't briefly empty and formless. -->
 			<div v-if="reconnectLoading && !reconnectAccountForForm" class="p-4 flex justify-center">
-				<Icon
-					name="lucide:loader-2"
-					class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary"
-				/>
+				<SpinnerIcon class="w-5 h-5 text-text-tertiary" />
 			</div>
 			<PostboxMailboxConnectForm
 				v-else-if="reconnectAccountForForm"

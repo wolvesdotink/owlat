@@ -14,7 +14,6 @@ const GET = getFunctionName(api.delivery.dnsblAccess.get);
 const SET = getFunctionName(api.delivery.dnsblAccess.setSpamhausKey);
 
 const stubs = {
-	Icon: { template: '<i />' },
 	UiIconBox: { template: '<span />' },
 	UiCard: { template: '<div><slot name="header" /><slot /></div>' },
 	UiInput: {

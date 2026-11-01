@@ -1,5 +1,13 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
+import {
+	CheckIcon,
+	CircleCheckIcon,
+	CloseIcon,
+	PlugIcon,
+	ReloadIcon,
+	TriangleWarningIcon,
+} from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -274,7 +282,7 @@ watch(
 								@click="handleLoadModels"
 							>
 								<template #iconLeft>
-									<Icon v-if="!isLoadingModels" name="lucide:list-restart" class="w-4 h-4" />
+									<ReloadIcon v-if="!isLoadingModels" class="w-4 h-4" />
 								</template>
 								{{ t('dashboard.admin.instance.aiProvider.language.loadModels') }}
 							</UiButton>
@@ -305,7 +313,7 @@ watch(
 						v-if="form.embeddingProviderKind === 'local'"
 						class="flex items-start gap-3 rounded-lg bg-success-subtle/50 border border-border-subtle p-4"
 					>
-						<Icon name="lucide:check-circle-2" class="w-5 h-5 text-success shrink-0 mt-0.5" />
+						<CircleCheckIcon class="w-5 h-5 text-success shrink-0 mt-0.5" />
 						<div class="text-sm">
 							<p class="text-text-primary font-medium">
 								{{ t('dashboard.admin.instance.aiProvider.embeddings.localTitle') }}
@@ -364,7 +372,7 @@ watch(
 						v-if="embeddingChanged"
 						class="mt-4 flex items-start gap-3 rounded-lg bg-warning-subtle/50 border border-border-subtle p-4 text-sm"
 					>
-						<Icon name="lucide:alert-triangle" class="w-5 h-5 text-warning shrink-0 mt-0.5" />
+						<TriangleWarningIcon class="w-5 h-5 text-warning shrink-0 mt-0.5" />
 						<div>
 							<p class="text-text-primary font-medium">
 								{{ t('dashboard.admin.instance.aiProvider.embeddings.reindexTitle') }}
@@ -420,7 +428,7 @@ watch(
 							@click="handleTest"
 						>
 							<template #iconLeft>
-								<Icon v-if="!isTesting" name="lucide:plug-zap" class="w-4 h-4" />
+								<PlugIcon v-if="!isTesting" class="w-4 h-4" />
 							</template>
 							{{ t('dashboard.admin.instance.aiProvider.testConnection') }}
 						</UiButton>
@@ -429,14 +437,14 @@ watch(
 							v-if="testState.status === 'ok'"
 							class="text-sm text-success flex items-center gap-1.5"
 						>
-							<Icon name="lucide:check" class="w-4 h-4" />
+							<CheckIcon class="w-4 h-4" />
 							{{ t('dashboard.admin.instance.aiProvider.connectionWorks') }}
 						</p>
 						<p
 							v-else-if="testState.status === 'error'"
 							class="text-sm text-error flex items-center gap-1.5"
 						>
-							<Icon name="lucide:x" class="w-4 h-4" />
+							<CloseIcon class="w-4 h-4" />
 							{{ testState.message }}
 						</p>
 						<p v-else-if="isDirty || !config?.configured" class="text-xs text-text-tertiary">
@@ -450,7 +458,7 @@ watch(
 						:disabled="isSaving || Boolean(liveLanguageError)"
 					>
 						<template #iconLeft>
-							<Icon v-if="!isSaving" name="lucide:check" class="w-4 h-4" />
+							<CheckIcon v-if="!isSaving" class="w-4 h-4" />
 						</template>
 						{{ isSaving ? t('common.saving') : t('dashboard.admin.instance.aiProvider.save') }}
 					</UiButton>

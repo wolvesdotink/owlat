@@ -2,6 +2,7 @@
 import type { ContextMenuItem } from '@owlat/ui/components/ui/ContextMenu.vue';
 import type { DecoratedRow } from '~/utils/campaignCommandRow';
 import { useLocalized } from '~/composables/useLocalized';
+import { ArrowRightIcon, CopyIcon, MoreVerticalIcon, SplitIcon, TrashIcon } from '@coolicons/vue';
 
 const props = defineProps<{ row: DecoratedRow }>();
 
@@ -29,11 +30,11 @@ const message = useLocalized();
 // mirroring the dropdown).
 const contextItems = computed<ContextMenuItem[]>(() => {
 	const items: ContextMenuItem[] = [
-		{ id: 'open', label: t('common.open'), icon: 'lucide:arrow-right', run: () => emit('open') },
+		{ id: 'open', label: t('common.open'), icon: ArrowRightIcon, run: () => emit('open') },
 		{
 			id: 'duplicate',
 			label: t('common.duplicate'),
-			icon: 'lucide:copy',
+			icon: CopyIcon,
 			run: () => emit('duplicate'),
 		},
 	];
@@ -41,7 +42,7 @@ const contextItems = computed<ContextMenuItem[]>(() => {
 		items.push({
 			id: 'delete',
 			label: t('common.delete'),
-			icon: 'lucide:trash-2',
+			icon: TrashIcon,
 			danger: true,
 			separatorBefore: true,
 			run: () => emit('delete'),
@@ -120,7 +121,7 @@ const hasMetrics = computed(() => props.row.openRate != null || props.row.clickR
 							class="inline-flex items-center gap-1 ml-1.5 sm:ml-0 px-1.5 py-0.5 rounded text-xs font-medium text-text-secondary bg-bg-elevated shrink-0 align-middle"
 							:title="t('components.campaigns.commandRow.abTest')"
 						>
-							<Icon name="lucide:split" class="w-3 h-3" />
+							<SplitIcon class="w-3 h-3" />
 							{{ t('components.campaigns.commandRow.abBadge') }}
 						</span>
 					</div>
@@ -141,14 +142,15 @@ const hasMetrics = computed(() => props.row.openRate != null || props.row.clickR
 								row.statusBadge.color,
 							]"
 						>
-							<Icon
-								:name="row.statusBadge.icon"
+							<component
+								:is="row.statusBadge.icon"
 								:class="[
 									'w-3 h-3',
 									row.campaign.status === 'sending'
 										? 'animate-spin motion-reduce:animate-none'
 										: '',
 								]"
+								size="1em"
 							/>
 							{{ message(row.statusBadge.label) }}
 						</span>
@@ -213,7 +215,7 @@ const hasMetrics = computed(() => props.row.openRate != null || props.row.clickR
 							:aria-label="t('components.campaigns.commandRow.viewCampaign')"
 							@click="emit('open')"
 						>
-							<Icon name="lucide:arrow-right" class="w-4 h-4" />
+							<ArrowRightIcon class="w-4 h-4" />
 						</button>
 					</UiTooltip>
 
@@ -225,16 +227,16 @@ const hasMetrics = computed(() => props.row.openRate != null || props.row.clickR
 								class="ui-hover-reveal pointer-coarse:opacity-100! pointer-coarse:pointer-events-auto! p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors duration-(--motion-fast) ease-spring focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand"
 								:aria-label="t('components.campaigns.commandRow.moreActions')"
 							>
-								<Icon name="lucide:more-vertical" class="w-4 h-4" />
+								<MoreVerticalIcon class="w-4 h-4" />
 							</button>
 						</template>
-						<UiDropdownMenuItem icon="lucide:copy" @click="emit('duplicate')">
+						<UiDropdownMenuItem :icon="CopyIcon" @click="emit('duplicate')">
 							{{ t('common.duplicate') }}
 						</UiDropdownMenuItem>
 						<UiDropdownDivider v-if="row.campaign.status !== 'sending'" />
 						<UiDropdownMenuItem
 							v-if="row.campaign.status !== 'sending'"
-							icon="lucide:trash-2"
+							:icon="TrashIcon"
 							danger
 							@click="emit('delete')"
 						>

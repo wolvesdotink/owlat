@@ -12,6 +12,7 @@ import {
 	policyToForm,
 	type SlaPolicyShape,
 } from '~/utils/inboxSlaPolicyForm';
+import { CloseIcon, SaveIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	policy: SlaPolicyShape;
@@ -232,7 +233,7 @@ function save() {
 								:aria-label="t('components.inbox.inboxSlaPolicyForm.removeHoliday', { day })"
 								@click="removeHoliday(day)"
 							>
-								<Icon name="lucide:x" class="w-3 h-3" />
+								<CloseIcon class="w-3 h-3" />
 							</button>
 						</li>
 					</ul>
@@ -243,7 +244,7 @@ function save() {
 		<div class="flex items-center justify-end gap-3">
 			<p v-if="problem" class="text-sm text-error" role="alert">{{ problem }}</p>
 			<UiButton class="gap-2" :disabled="busy || !!problem" @click="save">
-				<Icon name="lucide:save" class="w-4 h-4" />
+				<SaveIcon class="w-4 h-4" />
 				{{ t('components.inbox.inboxSlaPolicyForm.save') }}
 			</UiButton>
 		</div>

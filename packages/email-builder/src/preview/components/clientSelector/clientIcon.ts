@@ -1,16 +1,16 @@
-import { Monitor, Smartphone, Tablet, Globe, Shield } from '@lucide/vue';
+import { GlobeIcon, MobileIcon, MonitorIcon, ShieldIcon, TabletIcon } from '@coolicons/vue';
 
 /** The icon component for a client, client family or device icon name. */
 export function getIcon(iconName: string) {
 	const icons: Record<string, unknown> = {
-		monitor: Monitor,
-		smartphone: Smartphone,
-		tablet: Tablet,
-		globe: Globe,
-		shield: Shield,
-		mail: Globe,
-		'mail-open': Globe,
-		apple: Monitor,
+		monitor: MonitorIcon,
+		smartphone: MobileIcon,
+		tablet: TabletIcon,
+		globe: GlobeIcon,
+		shield: ShieldIcon,
+		mail: GlobeIcon,
+		'mail-open': GlobeIcon,
+		apple: MonitorIcon,
 	};
-	return icons[iconName] || Globe;
+	return icons[iconName] || GlobeIcon;
 }

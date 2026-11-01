@@ -54,7 +54,6 @@ beforeEach(() => {
 const mountGlobal = {
 	plugins: [createTestI18n()],
 	components: {
-		Icon: { props: ['name'], template: '<span />' },
 		UiAvatar: { template: '<span />' },
 		UiButton: { template: '<button type="button"><slot /></button>' },
 		NuxtLink: { props: ['to'], template: '<a><slot /></a>' },

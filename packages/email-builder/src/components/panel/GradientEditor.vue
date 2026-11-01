@@ -3,15 +3,15 @@ import UiTooltip from '@owlat/ui/components/ui/Tooltip.vue';
 import { computed, ref } from 'vue';
 import type { GradientBackground } from '../../types';
 import {
-	Plus,
-	X,
-	Trash2,
-	ArrowRight,
-	ArrowLeft,
-	ArrowDown,
-	ArrowUp,
-	ArrowDownRight,
-} from '@lucide/vue';
+	ArrowDownIcon,
+	ArrowDownRightIcon,
+	ArrowLeftIcon,
+	ArrowRightIcon,
+	ArrowUpIcon,
+	CloseIcon,
+	PlusIcon,
+	TrashIcon,
+} from '@coolicons/vue';
 import ButtonGroup from '../ui/ButtonGroup.vue';
 import IconButton from '../ui/IconButton.vue';
 import ActionButton from '../ui/ActionButton.vue';
@@ -30,11 +30,11 @@ const emit = defineEmits<{
 const isEnabled = computed(() => !!props.modelValue);
 
 const directionOptions = computed(() => [
-	{ label: t('builder.panel.gradient.right'), value: 'to right', icon: ArrowRight },
-	{ label: t('builder.panel.gradient.left'), value: 'to left', icon: ArrowLeft },
-	{ label: t('builder.panel.gradient.down'), value: 'to bottom', icon: ArrowDown },
-	{ label: t('builder.panel.gradient.up'), value: 'to top', icon: ArrowUp },
-	{ label: '135°', value: '135deg', icon: ArrowDownRight },
+	{ label: t('builder.panel.gradient.right'), value: 'to right', icon: ArrowRightIcon },
+	{ label: t('builder.panel.gradient.left'), value: 'to left', icon: ArrowLeftIcon },
+	{ label: t('builder.panel.gradient.down'), value: 'to bottom', icon: ArrowDownIcon },
+	{ label: t('builder.panel.gradient.up'), value: 'to top', icon: ArrowUpIcon },
+	{ label: '135°', value: '135deg', icon: ArrowDownRightIcon },
 ]);
 
 const sortedStops = computed(() => {
@@ -229,7 +229,7 @@ function openColorPicker(index: number) {
 					<!-- Remove button -->
 					<IconButton
 						v-if="(modelValue?.stops.length ?? 0) > 2"
-						:icon="Trash2"
+						:icon="TrashIcon"
 						:title="t('builder.panel.gradient.removeStop')"
 						:aria-label="t('builder.panel.gradient.removeStopIndex', { index: index + 1 })"
 						size="sm"
@@ -242,13 +242,13 @@ function openColorPicker(index: number) {
 			<!-- Footer actions -->
 			<div class="flex gap-1.5">
 				<ActionButton
-					:icon="Plus"
+					:icon="PlusIcon"
 					:label="t('builder.panel.gradient.addStop')"
 					variant="subtle"
 					@click="addStop"
 				/>
 				<ActionButton
-					:icon="X"
+					:icon="CloseIcon"
 					:label="t('builder.panel.gradient.clear')"
 					variant="subtle"
 					@click="clear"

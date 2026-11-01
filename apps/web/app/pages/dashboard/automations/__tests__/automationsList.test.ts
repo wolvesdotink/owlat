@@ -212,7 +212,6 @@ async function mountList() {
 				UiDropdownMenuItem: UiDropdownMenuItemStub,
 				UiDropdownDivider: Blank,
 				DashboardListSkeleton: Blank,
-				Icon: Blank,
 			},
 		},
 	});

@@ -58,7 +58,6 @@ function render(): VueWrapper {
 			plugins: [createTestI18n()],
 			components: { UiQueryBoundary: QueryBoundary },
 			stubs: {
-				Icon: true,
 				UiInput: true,
 				UiSelect: true,
 				UiCheckbox: true,

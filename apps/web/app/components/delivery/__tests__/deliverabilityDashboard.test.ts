@@ -26,7 +26,6 @@ beforeAll(() => {
 
 const stubs = {
 	UiCard: { template: '<div><slot /></div>' },
-	Icon: { template: '<i />' },
 };
 
 function mountCard(cell: DeliverabilityDashboardCell, referenceTransportId: string | null = 'ses') {

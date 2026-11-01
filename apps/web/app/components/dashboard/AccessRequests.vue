@@ -14,6 +14,7 @@
  */
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import { UserPlusCornerIcon } from '@coolicons/vue';
 
 const { data: requests, isLoading } = useConvexQuery(
 	api.auth.accessRequest.listPending,
@@ -45,7 +46,7 @@ async function resolve(requestId: Id<'accessRequests'>) {
 <template>
 	<div v-if="!isLoading && openRequests.length" class="card mb-8">
 		<div class="flex items-center gap-3 mb-4">
-			<UiIconBox icon="lucide:user-plus" variant="surface" />
+			<UiIconBox :icon="UserPlusCornerIcon" variant="surface" />
 			<div>
 				<h2 class="text-lg font-semibold text-text-primary">
 					{{ t('components.dashboard.accessRequests.title') }}

@@ -4,6 +4,7 @@ import type { TodaySource } from '~/utils/todayDigest';
 import { TODAY_PEEK, threadHref } from '~/utils/todayPeek';
 import { useRowLinkMenu } from '~/composables/useRowLinkMenu';
 import { useShortcutLabels } from '~/composables/useShortcutLabels';
+import { ArrowRightIcon, CheckIcon, EyeIcon, ReplyIcon } from '@coolicons/vue';
 
 /**
  * The context menu of a Workbench line ("What changed", "Updates"): the verbs
@@ -34,14 +35,14 @@ export function useTodayLineMenu() {
 				{
 					id: 'open',
 					label: t('components.today.line.open'),
-					icon: 'lucide:eye',
+					icon: EyeIcon,
 					shortcut: key('workbench.open'),
 					run: () => peek.open(sources),
 				},
 				{
 					id: 'open-thread',
 					label: t('components.today.line.openThread'),
-					icon: 'lucide:arrow-right',
+					icon: ArrowRightIcon,
 					run: () => peek.openThread(first),
 				}
 			);
@@ -51,7 +52,7 @@ export function useTodayLineMenu() {
 			items.push({
 				id: 'reply-anyway',
 				label: t('components.today.line.replyAnyway'),
-				icon: 'lucide:reply',
+				icon: ReplyIcon,
 				shortcut: key('workbench.reply'),
 				separatorBefore: items.length > 0,
 				run: reply,
@@ -60,7 +61,7 @@ export function useTodayLineMenu() {
 		items.push({
 			id: 'done',
 			label: t('components.today.line.done'),
-			icon: 'lucide:check',
+			icon: CheckIcon,
 			shortcut: key('workbench.done'),
 			separatorBefore: items.length > 0 && !verbs.replyAnyway,
 			run: verbs.done,

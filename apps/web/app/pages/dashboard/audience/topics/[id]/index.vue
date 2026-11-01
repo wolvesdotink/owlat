@@ -1,6 +1,14 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import {
+	ArrowLeftIcon,
+	CalendarIcon,
+	ListUnorderedIcon,
+	ShieldIcon,
+	TrashIcon,
+	UsersIcon,
+} from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -163,7 +171,13 @@ const { showToast } = useToast();
 			v-else-if="!isLoading && !topic"
 			class="flex flex-col items-center justify-center py-16 text-center px-6"
 		>
-			<UiIconBox icon="lucide:list" size="xl" variant="surface" rounded="full" class="mb-4" />
+			<UiIconBox
+				:icon="ListUnorderedIcon"
+				size="xl"
+				variant="surface"
+				rounded="full"
+				class="mb-4"
+			/>
 			<p class="text-text-secondary font-medium">
 				{{ t('dashboard.audience.topics.detail.index.notFound.title') }}
 			</p>
@@ -184,16 +198,16 @@ const { showToast } = useToast();
 					class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors mt-1"
 					:aria-label="t('dashboard.audience.topics.detail.index.notFound.action')"
 				>
-					<Icon name="lucide:arrow-left" class="w-5 h-5" />
+					<ArrowLeftIcon class="w-5 h-5" />
 				</NuxtLink>
 				<div class="p-2 rounded-lg bg-brand/10 flex items-center justify-center">
-					<Icon name="lucide:list" class="w-5 h-5 text-brand" />
+					<ListUnorderedIcon class="w-5 h-5 text-brand" />
 				</div>
 				<UiPageHeader class="flex-1" :title="topic.name" :description="topic.description">
 					<template #meta>
 						<div class="flex items-center flex-wrap gap-4 text-sm text-text-tertiary">
 							<div class="flex items-center gap-1.5">
-								<Icon name="lucide:users" class="w-4 h-4" />
+								<UsersIcon class="w-4 h-4" />
 								<span>{{
 									t(
 										'dashboard.audience.topics.detail.index.contactCount',
@@ -203,7 +217,7 @@ const { showToast } = useToast();
 								}}</span>
 							</div>
 							<div class="flex items-center gap-1.5">
-								<Icon name="lucide:calendar" class="w-4 h-4" />
+								<CalendarIcon class="w-4 h-4" />
 								<span>{{
 									t('dashboard.audience.topics.detail.index.createdOn', {
 										date: formatDate(topic.createdAt),
@@ -214,7 +228,7 @@ const { showToast } = useToast();
 								v-if="topic.requireDoubleOptIn"
 								class="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-brand/10 text-brand"
 							>
-								<Icon name="lucide:shield" class="w-3.5 h-3.5" />
+								<ShieldIcon class="w-3.5 h-3.5" />
 								<span>{{ t('dashboard.audience.topics.detail.index.doiRequired') }}</span>
 							</div>
 						</div>
@@ -232,7 +246,7 @@ const { showToast } = useToast();
 				:loading="contactsLoading"
 				:error="contactsError"
 				:empty="{
-					icon: 'lucide:users',
+					icon: UsersIcon,
 					title: t('dashboard.audience.topics.detail.index.empty.title'),
 					description: t('dashboard.audience.topics.detail.index.empty.body'),
 				}"
@@ -264,7 +278,7 @@ const { showToast } = useToast();
 							:aria-label="t('dashboard.audience.topics.detail.index.removeFromTopic')"
 							@click="openRemoveModal(row)"
 						>
-							<Icon name="lucide:trash-2" class="w-4 h-4" />
+							<TrashIcon class="w-4 h-4" />
 						</button>
 					</UiTooltip>
 				</template>

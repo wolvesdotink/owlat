@@ -45,7 +45,7 @@ async function openMenu(userAgent: string) {
 		global: {
 			plugins: [createTestI18n()],
 			components: { NuxtLink: NuxtLinkStub },
-			stubs: { Icon: true, UiSkeleton: true, UiThemeToggle: true },
+			stubs: { UiSkeleton: true, UiThemeToggle: true },
 		},
 		attachTo: document.body,
 	});

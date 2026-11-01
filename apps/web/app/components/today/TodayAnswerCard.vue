@@ -15,6 +15,7 @@ import {
 	type AnswerCounts,
 	type SummaryPart,
 } from '~/utils/todayAnswerSummary';
+import { ArrowRightIcon, CircleCheckIcon } from '@coolicons/vue';
 
 /**
  * A Workbench tab's first band: how many things in this inbox wait on the
@@ -207,7 +208,7 @@ const effortLine = computed(() => say(answerEffortParts(props.counts, props.item
 			</div>
 			<UiButton :to="queueHref" class="shrink-0 justify-center">
 				{{ t('components.today.answer.cta') }}
-				<Icon name="lucide:arrow-right" class="size-4" />
+				<ArrowRightIcon class="size-4" />
 			</UiButton>
 		</div>
 
@@ -215,7 +216,7 @@ const effortLine = computed(() => say(answerEffortParts(props.counts, props.item
 			v-else
 			class="flex items-center gap-3 rounded-2xl border border-border-subtle bg-bg-elevated px-5 py-4"
 		>
-			<Icon name="lucide:check-circle-2" class="size-5 text-success" />
+			<CircleCheckIcon class="size-5 text-success" />
 			<div>
 				<h2 id="today-answer" class="text-sm font-medium text-text-primary">
 					{{

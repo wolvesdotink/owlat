@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
+import { PlusIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const { t } = useI18n();
 
@@ -102,7 +104,7 @@ async function makeDefault(id: Id<'mailSignatures'>) {
 				{{ t('dashboard.preferences.signatures.intro') }}
 			</p>
 			<UiButton v-if="mailboxId && !editor" type="button" class="shrink-0" @click="startCreate">
-				<Icon name="lucide:plus" class="w-4 h-4 mr-1.5" />
+				<PlusIcon class="w-4 h-4 mr-1.5" />
 				{{ t('dashboard.preferences.signatures.newSignature') }}
 			</UiButton>
 		</header>
@@ -137,10 +139,7 @@ async function makeDefault(id: Id<'mailSignatures'>) {
 				<h2 class="font-semibold">{{ t('dashboard.preferences.signatures.yourSignatures') }}</h2>
 			</header>
 			<div v-if="isLoading" class="p-8 flex justify-center">
-				<Icon
-					name="lucide:loader-2"
-					class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary"
-				/>
+				<SpinnerIcon class="w-5 h-5 text-text-tertiary" />
 			</div>
 			<!-- A failed read is not an empty list. -->
 			<UiQueryBoundary v-else-if="listError" :error="listError" @retry="refetchList" />

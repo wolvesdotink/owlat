@@ -18,7 +18,7 @@ beforeAll(() => {
 function mountChip(findings: PreflightFinding[]) {
 	return mount(PostboxComposerPreflightChip, {
 		props: { findings },
-		global: { plugins: [createTestI18n()], stubs: { Icon: true } },
+		global: { plugins: [createTestI18n()] },
 	});
 }
 

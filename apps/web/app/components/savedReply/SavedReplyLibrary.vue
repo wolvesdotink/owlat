@@ -17,6 +17,8 @@ import { formatRelativeTime } from '~/utils/formatters';
 import { rankSnippets } from '~/utils/postboxSnippets';
 import type { SnippetVariable } from '~/utils/postboxSnippetVariables';
 import SavedReplyEditor from './SavedReplyEditor.vue';
+import { PlusIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const props = defineProps<{
 	scope: SavedReplyScope;
@@ -104,7 +106,7 @@ async function confirmRemove() {
 	<div class="space-y-6">
 		<div v-if="canManage && !editing" class="flex justify-end">
 			<UiButton type="button" data-testid="saved-reply-new" @click="editing = 'new'">
-				<Icon name="lucide:plus" class="w-4 h-4 mr-1.5" />
+				<PlusIcon class="w-4 h-4 mr-1.5" />
 				{{ t('shared.savedReplies.library.new') }}
 			</UiButton>
 		</div>
@@ -121,10 +123,7 @@ async function confirmRemove() {
 
 		<section class="card !p-0">
 			<div v-if="isLoading" class="p-8 flex justify-center">
-				<Icon
-					name="lucide:loader-2"
-					class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary"
-				/>
+				<SpinnerIcon class="w-5 h-5 text-text-tertiary" />
 			</div>
 			<!-- A failed read is not an empty list. -->
 			<UiQueryBoundary v-else-if="error" :error="error" @retry="refetch" />

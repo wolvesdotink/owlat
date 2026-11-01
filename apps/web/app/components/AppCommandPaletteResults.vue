@@ -5,6 +5,7 @@ import type { PalettePrompt } from '~/composables/useCommandPaletteScope';
 import { highlightSegments } from '~/lib/commandPalette';
 import { SEARCH_MIN_QUERY } from '~/lib/commandPaletteCore';
 import { useShortcutLabels } from '~/composables/useShortcutLabels';
+import { ChevronRightIcon, SearchIcon, SparklesIcon } from '@coolicons/vue';
 
 /**
  * The command palette's result region: the grouped rows, and the three things
@@ -82,7 +83,7 @@ function hintFor(item: PaletteItem): string | null {
 				@click="$emit('run', item)"
 				@mousemove="$emit('hover', indexById.get(item.id) ?? activeIndex)"
 			>
-				<Icon :name="item.icon" class="w-4 h-4 flex-shrink-0 text-text-tertiary" />
+				<component :is="item.icon" class="w-4 h-4 flex-shrink-0 text-text-tertiary" />
 				<span class="flex-1 min-w-0">
 					<span class="block text-sm truncate">
 						<!-- The fuzzy scorer matched these characters; bolding them is what
@@ -98,11 +99,7 @@ function hintFor(item: PaletteItem): string | null {
 						item.subtitle
 					}}</span>
 				</span>
-				<Icon
-					v-if="item.argument"
-					name="lucide:chevron-right"
-					class="w-4 h-4 flex-shrink-0 text-text-tertiary"
-				/>
+				<ChevronRightIcon v-if="item.argument" class="w-4 h-4 flex-shrink-0 text-text-tertiary" />
 				<kbd
 					v-else-if="hintFor(item)"
 					class="text-2xs text-text-tertiary border border-border-subtle rounded px-1"
@@ -126,7 +123,7 @@ function hintFor(item: PaletteItem): string | null {
 				/>
 			</div>
 			<div v-else class="px-4 py-8 text-center text-text-tertiary">
-				<Icon name="lucide:sparkles" class="w-8 h-8 mx-auto mb-2 opacity-50" />
+				<SparklesIcon class="w-8 h-8 mx-auto mb-2 opacity-50" :stroke-width="1.5" />
 				<p class="text-sm">{{ t('components.query.quickQueryPanel.emptyTitle') }}</p>
 				<p class="text-xs mt-1">{{ t('components.query.quickQueryPanel.emptyHint') }}</p>
 			</div>
@@ -138,7 +135,7 @@ function hintFor(item: PaletteItem): string | null {
 		</div>
 
 		<div v-else-if="!hasRows" class="px-4 py-8 text-center text-text-tertiary">
-			<Icon name="lucide:search" class="w-8 h-8 mx-auto mb-2 opacity-50" />
+			<SearchIcon class="w-8 h-8 mx-auto mb-2 opacity-50" :stroke-width="1.5" />
 			<p class="text-sm">
 				{{
 					matchTerm.trim().length >= SEARCH_MIN_QUERY

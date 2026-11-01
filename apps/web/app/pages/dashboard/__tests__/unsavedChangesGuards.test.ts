@@ -145,7 +145,6 @@ const passthrough = { template: '<div><slot /></div>' };
 
 const globalOptions = {
 	stubs: {
-		Icon: true,
 		UiIconBox: true,
 		UiEmptyState: true,
 		UiConfirmationDialog: true,

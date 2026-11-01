@@ -20,6 +20,7 @@ import { mount, type VueWrapper } from '@vue/test-utils';
 import RecordRow from '../RecordRow.vue';
 import { auditA11y } from '~/__tests__/a11y';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
+import { ChevronDownIcon } from '@coolicons/vue';
 
 Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 
@@ -74,7 +75,7 @@ function mountRow(overrides: Record<string, unknown> = {}) {
 		attachTo: document.body,
 		global: {
 			plugins: [createTestI18n()],
-			stubs: { Icon: { template: '<i />' }, UiIconBox: { template: '<i />' }, ...panelStubs },
+			stubs: { UiIconBox: { template: '<i />' }, ...panelStubs },
 			mocks: { capitalize },
 		},
 	});
@@ -200,7 +201,7 @@ describe('domain row chevron', () => {
 		'lets the pointer through to the disclosure (expanded: %s)',
 		(isExpanded) => {
 			const wrapper = mountRow({ isExpanded });
-			const chevron = wrapper.get('svg').element.parentElement!;
+			const chevron = wrapper.getComponent(ChevronDownIcon).element.parentElement!;
 			expect(chevron.getAttribute('aria-hidden')).toBe('true');
 			expect(chevron.classList.contains('pointer-events-none')).toBe(true);
 			wrapper.unmount();

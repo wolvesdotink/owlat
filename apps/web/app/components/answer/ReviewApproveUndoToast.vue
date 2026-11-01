@@ -7,6 +7,7 @@
  * rewind). Auto-dismisses when the window elapses — the send is on its way.
  */
 import UiUndoCountdownToast from '~/components/ui/UndoCountdownToast.vue';
+import { CheckIcon } from '@coolicons/vue';
 
 const { state, dismiss, runUndo } = useReviewApproveUndo();
 
@@ -30,7 +31,7 @@ function undoLabel(seconds: number): string {
 	<UiUndoCountdownToast
 		:visible="state.visible"
 		:send-at="state.sendAt"
-		icon="lucide:check"
+		:icon="CheckIcon"
 		:message="message"
 		:undo-label="undoLabel"
 		:on-undo="runUndo"

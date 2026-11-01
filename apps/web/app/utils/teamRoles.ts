@@ -18,12 +18,22 @@
 import type { FunctionReturnType } from 'convex/server';
 import type { api } from '@owlat/api';
 import type { OrganizationRole } from '~/composables/useOrganization';
+import {
+	CrownIcon,
+	InboxIcon,
+	LinkIcon,
+	MinusIcon,
+	PaperPlaneIcon,
+	ShieldIcon,
+	UserIcon,
+	type IconComponent,
+} from '@coolicons/vue';
 
 export interface RoleDefinition {
 	role: OrganizationRole;
 	/** Catalog key for the role name. */
 	label: string;
-	icon: string;
+	icon: IconComponent;
 	/** One-line summary shown as the primary description. A catalog key. */
 	summary: string;
 	/** Second line — the concrete boundary of the role. A catalog key. */
@@ -50,7 +60,7 @@ export const ROLE_DEFINITIONS: readonly RoleDefinition[] = [
 	{
 		role: 'owner',
 		label: 'shared.teamRoles.owner.label',
-		icon: 'lucide:crown',
+		icon: CrownIcon,
 		summary: 'shared.teamRoles.owner.summary',
 		detail: 'shared.teamRoles.owner.detail',
 		badgeToneClass: BRAND_BADGE,
@@ -58,7 +68,7 @@ export const ROLE_DEFINITIONS: readonly RoleDefinition[] = [
 	{
 		role: 'admin',
 		label: 'shared.teamRoles.admin.label',
-		icon: 'lucide:shield',
+		icon: ShieldIcon,
 		summary: 'shared.teamRoles.admin.summary',
 		detail: 'shared.teamRoles.admin.detail',
 		badgeToneClass: BRAND_BADGE,
@@ -66,7 +76,7 @@ export const ROLE_DEFINITIONS: readonly RoleDefinition[] = [
 	{
 		role: 'editor',
 		label: 'shared.teamRoles.editor.label',
-		icon: 'lucide:user',
+		icon: UserIcon,
 		summary: 'shared.teamRoles.editor.summary',
 		detail: 'shared.teamRoles.editor.detail',
 		badgeToneClass: NEUTRAL_BADGE,
@@ -93,7 +103,7 @@ export type MemberMailboxStatus = FunctionReturnType<
 export interface MailboxStatusMeta {
 	/** Catalog key for the Mailbox column label (no enum strings in the UI). */
 	label: string;
-	icon: string;
+	icon: IconComponent;
 	/** Design-token text tone class for the status. */
 	toneClass: string;
 	/** Catalog key for the longer explanation on the cell's title/aria. */
@@ -111,7 +121,7 @@ export function mailboxStatusMeta(
 	if (status === 'hosted') {
 		return {
 			label: 'shared.teamRoles.mailbox.hosted.label',
-			icon: 'lucide:inbox',
+			icon: InboxIcon,
 			toneClass: 'text-text-primary',
 			description: 'shared.teamRoles.mailbox.hosted.description',
 		};
@@ -119,7 +129,7 @@ export function mailboxStatusMeta(
 	if (status === 'external') {
 		return {
 			label: 'shared.teamRoles.mailbox.external.label',
-			icon: 'lucide:link',
+			icon: LinkIcon,
 			toneClass: 'text-text-secondary',
 			description: 'shared.teamRoles.mailbox.external.description',
 		};
@@ -127,14 +137,14 @@ export function mailboxStatusMeta(
 	if (status === 'external-instance') {
 		return {
 			label: 'shared.teamRoles.mailbox.externalInstance.label',
-			icon: 'lucide:send',
+			icon: PaperPlaneIcon,
 			toneClass: 'text-text-secondary',
 			description: 'shared.teamRoles.mailbox.externalInstance.description',
 		};
 	}
 	return {
 		label: 'shared.teamRoles.mailbox.none.label',
-		icon: 'lucide:minus',
+		icon: MinusIcon,
 		toneClass: 'text-text-tertiary',
 		description: 'shared.teamRoles.mailbox.none.description',
 	};

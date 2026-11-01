@@ -1,5 +1,19 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import {
+	ArrowDownLeftIcon,
+	ArrowUpRightIcon,
+	ChatCircleIcon,
+	ChatIcon,
+	CheckAllIcon,
+	CircleWarningIcon,
+	ClockIcon,
+	MailIcon,
+	MobileIcon,
+	TriangleWarningIcon,
+	WebhookIcon,
+	type IconComponent,
+} from '@coolicons/vue';
 
 /**
  * Cross-channel unified contact timeline (B4).
@@ -24,20 +38,20 @@ export const UNIFIED_TIMELINE_CHANNELS: UnifiedTimelineChannel[] = [
 
 const CHANNEL_CONFIG: Record<
 	UnifiedTimelineChannel,
-	{ icon: string; label: string; color: string }
+	{ icon: IconComponent; label: string; color: string }
 > = {
-	email: { icon: 'lucide:mail', label: 'Email', color: 'text-chart-cat-4' },
-	sms: { icon: 'lucide:smartphone', label: 'SMS', color: 'text-chart-cat-3' },
-	whatsapp: { icon: 'lucide:message-circle', label: 'WhatsApp', color: 'text-success' },
-	chat: { icon: 'lucide:message-square', label: 'Chat', color: 'text-chart-cat-1' },
-	generic: { icon: 'lucide:webhook', label: 'Generic', color: 'text-chart-cat-2' },
+	email: { icon: MailIcon, label: 'Email', color: 'text-chart-cat-4' },
+	sms: { icon: MobileIcon, label: 'SMS', color: 'text-chart-cat-3' },
+	whatsapp: { icon: ChatCircleIcon, label: 'WhatsApp', color: 'text-success' },
+	chat: { icon: ChatIcon, label: 'Chat', color: 'text-chart-cat-1' },
+	generic: { icon: WebhookIcon, label: 'Generic', color: 'text-chart-cat-2' },
 };
 
 // Shared cross-channel display helpers — reused by every unified-message view
 // (per-contact timeline, per-thread timeline, and the global channel inbox) so
 // channel icons/labels/colors and direction/time formatting stay identical.
-export const channelIcon = (channel: string): string =>
-	CHANNEL_CONFIG[channel as UnifiedTimelineChannel]?.icon ?? 'lucide:message-square';
+export const channelIcon = (channel: string): IconComponent =>
+	CHANNEL_CONFIG[channel as UnifiedTimelineChannel]?.icon ?? ChatIcon;
 
 export const channelLabel = (channel: string): string =>
 	CHANNEL_CONFIG[channel as UnifiedTimelineChannel]?.label ?? channel;
@@ -45,8 +59,8 @@ export const channelLabel = (channel: string): string =>
 export const channelColor = (channel: string): string =>
 	CHANNEL_CONFIG[channel as UnifiedTimelineChannel]?.color ?? 'text-text-tertiary';
 
-export const directionIcon = (direction: string): string =>
-	direction === 'inbound' ? 'lucide:arrow-down-left' : 'lucide:arrow-up-right';
+export const directionIcon = (direction: string): IconComponent =>
+	direction === 'inbound' ? ArrowDownLeftIcon : ArrowUpRightIcon;
 
 export const directionLabel = (direction: string): string =>
 	direction === 'inbound' ? 'Received' : 'Sent';
@@ -75,7 +89,7 @@ export const truncateTimelineText = (text: string, max = 120): string => {
 };
 
 export interface DeliveryStatusMeta {
-	icon: string;
+	icon: IconComponent;
 	/** Design-token text color for the mark. */
 	class: string;
 	/** Human label for the icon's `title`/aria (no enum strings in the UI). */
@@ -94,17 +108,17 @@ export const deliveryStatusMeta = (
 ): DeliveryStatusMeta | null => {
 	switch (status) {
 		case 'read':
-			return { icon: 'lucide:check-check', class: 'text-success', label: 'Read' };
+			return { icon: CheckAllIcon, class: 'text-success', label: 'Read' };
 		case 'delivered':
-			return { icon: 'lucide:check-check', class: 'text-success', label: 'Delivered' };
+			return { icon: CheckAllIcon, class: 'text-success', label: 'Delivered' };
 		case 'queued':
 		case 'sending':
 		case 'processing':
-			return { icon: 'lucide:clock', class: 'text-text-tertiary', label: 'Sending' };
+			return { icon: ClockIcon, class: 'text-text-tertiary', label: 'Sending' };
 		case 'failed':
-			return { icon: 'lucide:alert-circle', class: 'text-error', label: 'Failed' };
+			return { icon: CircleWarningIcon, class: 'text-error', label: 'Failed' };
 		case 'bounced':
-			return { icon: 'lucide:alert-triangle', class: 'text-error', label: 'Bounced' };
+			return { icon: TriangleWarningIcon, class: 'text-error', label: 'Bounced' };
 		default:
 			return null;
 	}

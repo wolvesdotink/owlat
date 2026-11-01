@@ -26,6 +26,7 @@ import type { Id } from '@owlat/api/dataModel';
 import { queryResult } from '~/__tests__/queryStubs';
 import type { GoogleConnectIntent } from '~/composables/postbox/useGoogleOAuthConnect';
 import type { DestinationProviderKey } from '@owlat/shared/deliverabilityRouting';
+import { ServerIcon } from '@coolicons/vue';
 
 // `api` is a bottomless Proxy — every path is the same value, so the operation
 // each call site targets can't be told apart by identity. We discriminate on the
@@ -89,7 +90,7 @@ beforeEach(() => {
 const provider: MailProvider = {
 	id: 'imap',
 	name: 'shared.mailAutodiscover.provider.imap.name',
-	icon: 'lucide:server',
+	icon: ServerIcon,
 	hint: 'shared.mailAutodiscover.provider.imap.hint',
 	preset: {
 		imapHost: 'imap.test.com',
@@ -146,8 +147,6 @@ const UiButtonStub = {
 	template: '<button :type="type || \'submit\'"><slot /></button>',
 };
 const UiErrorAlertStub = { props: ['message'], template: '<div class="err">{{ message }}</div>' };
-const iconStub = { props: ['name'], template: '<span />' };
-
 type FormProps = {
 	provider?: MailProvider;
 	seedProvider?: DestinationProviderKey;
@@ -173,7 +172,6 @@ function mountForm(props: FormProps) {
 				UiInput: UiInputStub,
 				UiButton: UiButtonStub,
 				UiErrorAlert: UiErrorAlertStub,
-				Icon: iconStub,
 				PostboxAppPasswordCallout: true,
 				UiDisclosure: { template: '<div><slot name="label" /><slot /></div>' },
 			},

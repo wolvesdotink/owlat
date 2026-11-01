@@ -11,6 +11,13 @@ import { api } from '@owlat/api';
 import { REPUTATION_THRESHOLDS } from '@owlat/shared/reputation';
 import type { MarketingDelivery } from '~/utils/marketingOverviewTypes';
 import { formatNumber, formatPercentage, formatUtcDayKey } from '~/utils/formatters';
+import {
+	CircleCheckIcon,
+	CircleDashedIcon,
+	OctagonWarningIcon,
+	TriangleWarningIcon,
+	type IconComponent,
+} from '@coolicons/vue';
 
 const props = defineProps<{ delivery: MarketingDelivery }>();
 
@@ -94,11 +101,11 @@ const rows = computed<StatusRow[]>(() => {
 	return out;
 });
 
-const toneIcon: Record<RowTone, string> = {
-	ok: 'lucide:check-circle-2',
-	warn: 'lucide:alert-triangle',
-	error: 'lucide:alert-octagon',
-	neutral: 'lucide:circle-dashed',
+const toneIcon: Record<RowTone, IconComponent> = {
+	ok: CircleCheckIcon,
+	warn: TriangleWarningIcon,
+	error: OctagonWarningIcon,
+	neutral: CircleDashedIcon,
 };
 const toneClass: Record<RowTone, string> = {
 	ok: 'text-success',
@@ -138,9 +145,10 @@ const toneClass: Record<RowTone, string> = {
 
 		<ul class="flex flex-col gap-2.5">
 			<li v-for="row in rows" :key="row.key" class="flex items-start gap-2 text-sm">
-				<Icon
-					:name="toneIcon[row.tone]"
+				<component
+					:is="toneIcon[row.tone]"
 					:class="['w-4 h-4 mt-0.5 shrink-0', toneClass[row.tone]]"
+					size="1em"
 				/>
 				<div class="min-w-0">
 					<p class="text-text-primary tabular-nums">{{ row.label }}</p>

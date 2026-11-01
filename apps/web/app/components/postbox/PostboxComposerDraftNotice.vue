@@ -20,6 +20,8 @@
  */
 import { useDelayedLoading } from '@owlat/ui/composables/useDelayedLoading';
 import type { ComposeDraftNotice } from '~/composables/postbox/usePostboxComposeSend';
+import { TriangleWarningIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const props = defineProps<{ notice: ComposeDraftNotice | null }>();
 const emit = defineEmits<{ (e: 'retry'): void }>();
@@ -59,8 +61,8 @@ watch(isError, async (error) => {
 		:role="isError ? 'alert' : 'status'"
 		data-testid="composer-draft-notice"
 	>
-		<Icon
-			:name="isError ? 'lucide:alert-triangle' : 'lucide:loader-2'"
+		<component
+			:is="isError ? TriangleWarningIcon : SpinnerIcon"
 			class="w-4 h-4 flex-shrink-0"
 			:class="
 				isError ? 'text-error' : 'text-text-secondary animate-spin motion-reduce:animate-none'

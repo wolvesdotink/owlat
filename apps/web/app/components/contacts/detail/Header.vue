@@ -1,13 +1,24 @@
 <script setup lang="ts">
 // The contact page's header: who it is, the double-opt-in status, and the
 // edit / resend / export / delete actions. The page owns every action.
+import {
+	DownloadIcon,
+	MailIcon,
+	PencilIcon,
+	SaveIcon,
+	TrashIcon,
+	UserIcon,
+	type IconComponent,
+} from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
+
 defineProps<{
 	title: string;
 	email?: string;
 	doiStatus?: string;
 	doiLabel: string;
 	doiColor: string;
-	doiIcon: string | null;
+	doiIcon: IconComponent | null;
 	isEditing: boolean;
 	isSaving: boolean;
 	canManage: boolean;
@@ -29,12 +40,12 @@ const { t } = useI18n();
 
 <template>
 	<div class="flex items-start gap-4 mb-8">
-		<UiIconBox icon="lucide:user" size="xl" variant="surface" rounded="full" />
+		<UiIconBox :icon="UserIcon" size="xl" variant="surface" rounded="full" />
 		<UiPageHeader class="flex-1" :title="title" :description="email">
 			<!-- Double-opt-in confirmation status -->
 			<template v-if="doiLabel" #meta>
 				<div class="inline-flex items-center gap-1.5 text-sm" :class="doiColor">
-					<Icon v-if="doiIcon" :name="doiIcon" class="w-4 h-4" />
+					<component v-if="doiIcon" :is="doiIcon" class="w-4 h-4" />
 					<span>{{ doiLabel }}</span>
 				</div>
 			</template>
@@ -46,7 +57,7 @@ const { t } = useI18n();
 					</UiButton>
 					<UiButton class="gap-2" :disabled="isSaving" @click="emit('save')">
 						<UiSpinner v-if="isSaving" size="xs" tone="inverse" />
-						<Icon v-else name="lucide:save" class="w-4 h-4" />
+						<SaveIcon v-else class="w-4 h-4" />
 						{{ t('dashboard.audience.contacts.detail.saveChanges') }}
 					</UiButton>
 				</template>
@@ -61,12 +72,8 @@ const { t } = useI18n();
 							:disabled="isResendingDoi"
 							@click="emit('resend-doi')"
 						>
-							<Icon
-								v-if="isResendingDoi"
-								name="lucide:loader-2"
-								class="w-4 h-4 animate-spin motion-reduce:animate-none"
-							/>
-							<Icon v-else name="lucide:mail-check" class="w-4 h-4" />
+							<SpinnerIcon v-if="isResendingDoi" class="w-4 h-4" />
+							<MailIcon v-else class="w-4 h-4" />
 							{{
 								isResendingDoi
 									? t('dashboard.audience.contacts.detail.sending')
@@ -75,7 +82,7 @@ const { t } = useI18n();
 						</UiButton>
 					</UiTooltip>
 					<UiButton variant="secondary" class="gap-2" @click="emit('edit')">
-						<Icon name="lucide:pencil" class="w-4 h-4" />
+						<PencilIcon class="w-4 h-4" />
 						{{ t('common.edit') }}
 					</UiButton>
 					<UiTooltip :text="t('dashboard.audience.contacts.detail.exportDataTitle')">
@@ -85,7 +92,7 @@ const { t } = useI18n();
 							:disabled="exporting"
 							@click="emit('export')"
 						>
-							<Icon name="lucide:download" class="w-4 h-4" />
+							<DownloadIcon class="w-4 h-4" />
 							{{
 								exporting
 									? t('dashboard.audience.contacts.detail.exporting')
@@ -99,7 +106,7 @@ const { t } = useI18n();
 						@click="emit('delete')"
 						:aria-label="t('common.delete')"
 					>
-						<Icon name="lucide:trash-2" class="w-4 h-4" />
+						<TrashIcon class="w-4 h-4" />
 					</UiButton>
 				</template>
 			</template>

@@ -11,6 +11,8 @@
  */
 import type { Id } from '@owlat/api/dataModel';
 import { getWebhookEventLabel, type WebhookEvent } from '~/composables/useWebhookForm';
+import { ChevronDownIcon, FileTextIcon, GlobeIcon, PaperPlaneIcon, PauseIcon, PlayIcon, ReloadIcon, SettingsIcon, TrashIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 interface WebhookRowEndpoint {
 	_id: Id<'webhooks'>;
@@ -65,9 +67,8 @@ const eventLabel = (event: string): string => t(getWebhookEventLabel(event));
 				<div
 					:class="['p-2 rounded-lg shrink-0', webhook.isActive ? 'bg-success/10' : 'bg-bg-surface']"
 				>
-					<Icon
-						name="lucide:globe"
-						:class="['w-5 h-5', webhook.isActive ? 'text-success' : 'text-text-tertiary']"
+					<GlobeIcon
+						:class="['w-5 h-5', webhook.isActive ? 'text-success' : 'text-text-tertiary']" size="1em"
 					/>
 				</div>
 				<div class="min-w-0">
@@ -92,12 +93,11 @@ const eventLabel = (event: string): string => t(getWebhookEventLabel(event));
 				</div>
 			</div>
 			<div class="flex items-center gap-2">
-				<Icon
-					name="lucide:chevron-down"
+				<ChevronDownIcon
 					:class="[
 						'w-5 h-5 text-text-tertiary transition-transform',
 						expanded ? 'rotate-180' : '',
-					]"
+					]" size="1em"
 				/>
 			</div>
 		</div>
@@ -150,13 +150,12 @@ const eventLabel = (event: string): string => t(getWebhookEventLabel(event));
 							:disabled="toggling"
 							@click.stop="emit('toggleActive')"
 						>
-							<Icon
+							<SpinnerIcon
 								v-if="toggling"
-								name="lucide:loader-2"
-								class="w-4 h-4 animate-spin motion-reduce:animate-none"
+								class="w-4 h-4"
 							/>
-							<Icon v-else-if="!webhook.isActive" name="lucide:play" class="w-4 h-4" />
-							<Icon v-else name="lucide:pause" class="w-4 h-4" />
+							<PlayIcon v-else-if="!webhook.isActive" class="w-4 h-4" />
+							<PauseIcon v-else class="w-4 h-4" />
 							{{
 								webhook.isActive
 									? t('dashboard.admin.delivery.webhooks.disable')
@@ -164,7 +163,7 @@ const eventLabel = (event: string): string => t(getWebhookEventLabel(event));
 							}}
 						</UiButton>
 						<UiButton variant="secondary" class="gap-2" @click.stop="emit('edit')">
-							<Icon name="lucide:settings" class="w-4 h-4" />
+							<SettingsIcon class="w-4 h-4" />
 							{{ t('common.edit') }}
 						</UiButton>
 						<UiButton
@@ -173,20 +172,19 @@ const eventLabel = (event: string): string => t(getWebhookEventLabel(event));
 							:disabled="!webhook.isActive || sendingTest"
 							@click.stop="emit('sendTest')"
 						>
-							<Icon
+							<SpinnerIcon
 								v-if="sendingTest"
-								name="lucide:loader-2"
-								class="w-4 h-4 animate-spin motion-reduce:animate-none"
+								class="w-4 h-4"
 							/>
-							<Icon v-else name="lucide:send" class="w-4 h-4" />
+							<PaperPlaneIcon v-else class="w-4 h-4" />
 							{{ t('dashboard.admin.delivery.webhooks.sendTest') }}
 						</UiButton>
 						<UiButton variant="secondary" class="gap-2" @click.stop="emit('viewLogs')">
-							<Icon name="lucide:scroll-text" class="w-4 h-4" />
+							<FileTextIcon class="w-4 h-4" />
 							{{ t('dashboard.admin.delivery.webhooks.deliveryLogs') }}
 						</UiButton>
 						<UiButton variant="secondary" class="gap-2" @click.stop="emit('regenerate')">
-							<Icon name="lucide:refresh-cw" class="w-4 h-4" />
+							<ReloadIcon class="w-4 h-4" />
 							{{ t('dashboard.admin.delivery.webhooks.regenerateSecret') }}
 						</UiButton>
 					</div>
@@ -195,7 +193,7 @@ const eventLabel = (event: string): string => t(getWebhookEventLabel(event));
 						class="text-error hover:bg-error/10 gap-2"
 						@click.stop="emit('remove')"
 					>
-						<Icon name="lucide:trash-2" class="w-4 h-4" />
+						<TrashIcon class="w-4 h-4" />
 						{{ t('common.delete') }}
 					</UiButton>
 				</div>

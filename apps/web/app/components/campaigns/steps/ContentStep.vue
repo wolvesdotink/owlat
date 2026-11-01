@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Doc, Id } from '@owlat/api/dataModel';
+import { ArrowLeftIcon, ArrowRightIcon, MailIcon } from '@coolicons/vue';
 
 type EmailSelectionType = 'existing' | 'new';
 
@@ -285,7 +286,7 @@ defineExpose({
 						{{ t('components.campaigns.steps.contentStep.selectedTemplate') }}
 					</p>
 					<div class="mt-1 flex items-center gap-2">
-						<Icon name="lucide:mail" class="w-4 h-4 text-text-tertiary" />
+						<MailIcon class="w-4 h-4 text-text-tertiary" />
 						<p class="font-medium text-text-primary truncate">{{ selectedTemplate.name }}</p>
 					</div>
 					<p class="text-sm text-text-secondary truncate mt-1">
@@ -299,7 +300,7 @@ defineExpose({
 
 				<div>
 					<label for="campaignSubject" class="label flex items-center gap-2">
-						<Icon name="lucide:mail" class="w-4 h-4 text-text-tertiary" />
+						<MailIcon class="w-4 h-4 text-text-tertiary" />
 						{{ t('components.campaigns.steps.contentStep.subjectLabel') }}
 						<span class="text-error">*</span>
 					</label>
@@ -318,7 +319,7 @@ defineExpose({
 
 			<div class="flex items-center justify-between mt-8 pt-6 border-t border-border-subtle">
 				<UiButton variant="secondary" @click="emit('back')">
-					<template #iconLeft><Icon name="lucide:arrow-left" class="w-4 h-4" /></template>
+					<template #iconLeft><ArrowLeftIcon class="w-4 h-4" /></template>
 					{{ t('common.back') }}
 				</UiButton>
 				<UiButton type="submit" :loading="isLoading" :disabled="isLoading">
@@ -329,9 +330,7 @@ defineExpose({
 								? t('components.campaigns.steps.contentStep.openEditor')
 								: t('common.next')
 					}}
-					<template v-if="!isLoading" #iconRight
-						><Icon name="lucide:arrow-right" class="w-4 h-4"
-					/></template>
+					<template v-if="!isLoading" #iconRight><ArrowRightIcon class="w-4 h-4" /></template>
 				</UiButton>
 			</div>
 		</form>

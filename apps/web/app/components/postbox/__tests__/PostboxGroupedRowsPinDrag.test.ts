@@ -151,7 +151,6 @@ function mountColumn(renderer: Component, props: Record<string, unknown>, provid
 				PostboxEmptyState,
 			},
 			stubs: {
-				Icon: true,
 				NuxtLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
 				PostboxThreadRowBody: { template: '<span />' },
 				UiModal: { template: '<span />' },

@@ -12,6 +12,7 @@ import { api } from '@owlat/api';
 import { PROVIDER_SPAM_RATE_POLICY } from '@owlat/shared/reputation';
 import { formatDate, formatNumber, formatPercentage } from '~/utils/formatters';
 import { healthChipClass, healthDotClass, type HealthTone } from '~/utils/healthTone';
+import { ArrowRightIcon, GlobeIcon, PlusIcon } from '@coolicons/vue';
 
 // Derive the row type straight from the query's return so the two shapes can't
 // drift — this is exactly what `getDeliveryDomainTable` yields per domain.
@@ -56,7 +57,7 @@ function riskTone(riskLevel: DomainRow['riskLevel']): HealthTone {
 	<UiCard>
 		<div class="space-y-4">
 			<div class="flex items-center gap-3">
-				<UiIconBox icon="lucide:globe" size="lg" variant="brand" rounded="xl" />
+				<UiIconBox :icon="GlobeIcon" size="lg" variant="brand" rounded="xl" />
 				<div>
 					<h2 class="text-lg font-semibold text-text-primary">
 						{{ t('components.delivery.domainTable.title') }}
@@ -83,7 +84,7 @@ function riskTone(riskLevel: DomainRow['riskLevel']): HealthTone {
 
 			<UiEmptyState
 				v-if="rows.length === 0"
-				icon="lucide:globe"
+				:icon="GlobeIcon"
 				:title="t('components.delivery.domainTable.emptyTitle')"
 				:description="t('components.delivery.domainTable.emptyDescription')"
 			>
@@ -91,7 +92,7 @@ function riskTone(riskLevel: DomainRow['riskLevel']): HealthTone {
 					<NuxtLink :to="DOMAIN_SETUP_ROUTE">
 						<UiButton variant="secondary">
 							<template #iconLeft>
-								<Icon name="lucide:plus" class="w-4 h-4" />
+								<PlusIcon class="w-4 h-4" />
 							</template>
 							{{ t('components.delivery.domainTable.addDomain') }}
 						</UiButton>
@@ -144,7 +145,7 @@ function riskTone(riskLevel: DomainRow['riskLevel']): HealthTone {
 									class="inline-flex items-center gap-0.5 text-brand font-medium hover:underline focus-visible:underline focus-visible:outline-none rounded-sm transition-colors duration-(--motion-fast)"
 								>
 									{{ t('components.delivery.domainTable.fix') }}
-									<Icon name="lucide:arrow-right" class="w-3 h-3" />
+									<ArrowRightIcon class="w-3 h-3" />
 								</NuxtLink>
 							</template>
 						</div>

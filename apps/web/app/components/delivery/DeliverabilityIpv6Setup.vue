@@ -22,6 +22,13 @@ import {
 } from '~/utils/ipv6Setup';
 import { useDeliverabilityChecklistCopy } from '~/composables/useDeliverabilityChecklistCopy';
 import DeliveryEnvSetupSteps from './EnvSetupSteps.vue';
+import {
+	CircleCheckIcon,
+	CircleCloseIcon,
+	CircleMinusIcon,
+	CircleWarningIcon,
+	GlobeIcon,
+} from '@coolicons/vue';
 
 const props = defineProps<{
 	groups: DeliverabilityChecklistGroup[];
@@ -67,7 +74,7 @@ watch(address, () => {
 <template>
 	<section aria-labelledby="ipv6-heading" data-testid="ipv6-sending">
 		<div class="mb-2 flex items-start gap-3 px-1">
-			<Icon name="lucide:globe" class="mt-0.5 h-5 w-5 shrink-0 text-text-tertiary" />
+			<GlobeIcon class="mt-0.5 h-5 w-5 shrink-0 text-text-tertiary" />
 			<div>
 				<h2 id="ipv6-heading" class="font-semibold text-text-primary">
 					{{ t('components.delivery.deliverabilityIpv6Setup.title') }}
@@ -80,10 +87,7 @@ watch(address, () => {
 
 		<div class="overflow-hidden rounded-xl border border-border-subtle bg-bg-elevated">
 			<div class="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:px-5">
-				<Icon
-					name="lucide:circle-minus"
-					class="hidden h-5 w-5 shrink-0 text-text-tertiary sm:block"
-				/>
+				<CircleMinusIcon class="hidden h-5 w-5 shrink-0 text-text-tertiary sm:block" />
 				<div class="min-w-0 flex-1">
 					<p class="font-medium text-text-primary">
 						{{ t('components.delivery.deliverabilityIpv6Setup.offTitle') }}
@@ -119,7 +123,7 @@ watch(address, () => {
 					role="note"
 					data-testid="ipv6-ipv4-blockers"
 				>
-					<Icon name="lucide:circle-alert" class="mt-0.5 h-4 w-4 shrink-0 text-warning" />
+					<CircleWarningIcon class="mt-0.5 h-4 w-4 shrink-0 text-warning" />
 					<p>
 						{{
 							t('components.delivery.deliverabilityIpv6Setup.ipv4Blocked', {
@@ -200,8 +204,8 @@ watch(address, () => {
 							</p>
 							<ul v-if="report" class="space-y-2" aria-live="polite" data-testid="ipv6-checks">
 								<li v-for="item in report.checks" :key="item.id" class="flex items-start gap-2">
-									<Icon
-										:name="item.status === 'pass' ? 'lucide:check-circle-2' : 'lucide:x-circle'"
+									<component
+										:is="item.status === 'pass' ? CircleCheckIcon : CircleCloseIcon"
 										class="mt-0.5 h-4 w-4 shrink-0"
 										:class="item.status === 'pass' ? 'text-success' : 'text-error'"
 									/>

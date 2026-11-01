@@ -20,6 +20,14 @@
  */
 
 import type { LocalizedText } from '~/utils/localizedText';
+import {
+	GlobeIcon,
+	MobileIcon,
+	MonitorIcon,
+	TabletIcon,
+	WindowIcon,
+	type IconComponent,
+} from '@coolicons/vue';
 
 /** A session row as BetterAuth's `/list-sessions` returns it (JSON: dates are strings). */
 export type AuthSessionRecord = {
@@ -40,8 +48,8 @@ export type SessionDeviceKind = 'desktop-app' | 'phone' | 'tablet' | 'computer' 
 
 export type SessionDevice = {
 	kind: SessionDeviceKind;
-	/** Lucide icon name, so the page never maps kind → icon a second time. */
-	icon: string;
+	/** The icon, so the page never maps kind → icon a second time. */
+	icon: IconComponent;
 	browser: LocalizedText;
 	platform: LocalizedText;
 };
@@ -111,17 +119,17 @@ const PLATFORMS: ReadonlyArray<{
 
 const UNKNOWN_DEVICE: SessionDevice = {
 	kind: 'unknown',
-	icon: 'lucide:globe',
+	icon: GlobeIcon,
 	browser: { key: `${KEY}.browsers.unknown` },
 	platform: { key: `${KEY}.platforms.unknown` },
 };
 
-const ICONS: Record<SessionDeviceKind, string> = {
-	'desktop-app': 'lucide:app-window',
-	phone: 'lucide:smartphone',
-	tablet: 'lucide:tablet',
-	computer: 'lucide:monitor',
-	unknown: 'lucide:globe',
+const ICONS: Record<SessionDeviceKind, IconComponent> = {
+	'desktop-app': WindowIcon,
+	phone: MobileIcon,
+	tablet: TabletIcon,
+	computer: MonitorIcon,
+	unknown: GlobeIcon,
 };
 
 /**

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Loader2 } from '@lucide/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 import EmailPreviewer from '../preview/components/EmailPreviewer.vue';
 import type {
 	PreviewEmailAnalysis,
@@ -51,7 +51,7 @@ const emit = defineEmits<{
 			v-if="props.isGenerating"
 			class="flex items-center justify-center gap-2 flex-1 text-text-secondary text-sm"
 		>
-			<Loader2 class="w-[18px] h-[18px] animate-spin motion-reduce:animate-none" />
+			<SpinnerIcon class="w-[18px] h-[18px]" />
 			<span>{{ t('builder.preview.generating') }}</span>
 		</div>
 

@@ -41,6 +41,7 @@
 import { useLocalized } from '~/composables/useLocalized';
 import { deriveComposerLock, type SealState } from '~/utils/sealComposer';
 import { SEAL_TONE_CLASSES } from '~/utils/sealTone';
+import { ChevronDownIcon, CloseIcon } from '@coolicons/vue';
 
 const props = withDefaults(
 	defineProps<{
@@ -117,10 +118,9 @@ const detailsId = useId();
 			data-testid="seal-lock-toggle"
 			@click="opened = !opened"
 		>
-			<Icon :name="lock.icon" class="w-3.5 h-3.5" :class="toneClasses.icon" />
+			<component :is="lock.icon" class="w-3.5 h-3.5" :class="toneClasses.icon" />
 			<span data-testid="seal-lock-summary">{{ localize(lock.summary) }}</span>
-			<Icon
-				name="lucide:chevron-down"
+			<ChevronDownIcon
 				class="w-3 h-3 transition-transform motion-reduce:transition-none"
 				:class="{ 'rotate-180': opened }"
 				aria-hidden="true"
@@ -131,8 +131,8 @@ const detailsId = useId();
 			class="inline-flex items-center gap-1.5 px-2 py-1 rounded text-xs border"
 			:class="toneClasses.chip"
 		>
-			<Icon
-				:name="lock.icon"
+			<component
+				:is="lock.icon"
 				class="w-3.5 h-3.5"
 				:class="[
 					toneClasses.icon,
@@ -166,7 +166,7 @@ const detailsId = useId();
 					@click="emit('remove-recipient', address)"
 				>
 					{{ address }}
-					<Icon name="lucide:x" class="w-3 h-3" />
+					<CloseIcon class="w-3 h-3" />
 				</button>
 			</div>
 			<div v-if="lock.allowSendUnsealed" class="mt-1.5 flex flex-wrap items-center gap-2">

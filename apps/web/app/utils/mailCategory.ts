@@ -12,18 +12,28 @@
  * its own message and still takes the icon from here.
  */
 import type { Doc } from '@owlat/api/dataModel';
+import {
+	BellIcon,
+	InboxIcon,
+	MegaphoneIcon,
+	NotebookIcon,
+	ReceiptIcon,
+	ShieldOffIcon,
+	UserIcon,
+	type IconComponent,
+} from '@coolicons/vue';
 
 export type MailCategory = NonNullable<Doc<'mailThreads'>['category']>['label'];
 
 export const MAIL_CATEGORY_META: Readonly<
-	Record<MailCategory, { icon: string; labelKey: string }>
+	Record<MailCategory, { icon: IconComponent; labelKey: string }>
 > = {
-	person: { icon: 'lucide:user', labelKey: 'shared.mailCategory.person' },
-	newsletter: { icon: 'lucide:newspaper', labelKey: 'shared.mailCategory.newsletter' },
-	notification: { icon: 'lucide:bell', labelKey: 'shared.mailCategory.notification' },
-	receipt: { icon: 'lucide:receipt', labelKey: 'shared.mailCategory.receipt' },
-	// Megaphone, not tag: `lucide:tag` is the Recategorize button's icon.
-	promotion: { icon: 'lucide:megaphone', labelKey: 'shared.mailCategory.promotion' },
-	spam: { icon: 'lucide:shield-off', labelKey: 'shared.mailCategory.spam' },
-	other: { icon: 'lucide:inbox', labelKey: 'shared.mailCategory.other' },
+	person: { icon: UserIcon, labelKey: 'shared.mailCategory.person' },
+	newsletter: { icon: NotebookIcon, labelKey: 'shared.mailCategory.newsletter' },
+	notification: { icon: BellIcon, labelKey: 'shared.mailCategory.notification' },
+	receipt: { icon: ReceiptIcon, labelKey: 'shared.mailCategory.receipt' },
+	// Megaphone, not tag: the tag is the Recategorize button's icon.
+	promotion: { icon: MegaphoneIcon, labelKey: 'shared.mailCategory.promotion' },
+	spam: { icon: ShieldOffIcon, labelKey: 'shared.mailCategory.spam' },
+	other: { icon: InboxIcon, labelKey: 'shared.mailCategory.other' },
 };

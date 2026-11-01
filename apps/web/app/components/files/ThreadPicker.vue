@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
+import { ChatIcon, CloseIcon } from '@coolicons/vue';
 
 // Single-select conversation picker: search the shared inbox by subject or
 // participant and pick the thread a file belongs to (file detail page). The
@@ -38,7 +39,7 @@ const pick = (thread: PickerThread) => {
 			<span
 				class="inline-flex items-center gap-1 pl-2 pr-1 py-0.5 text-xs font-medium rounded-full bg-bg-surface text-text-secondary"
 			>
-				<Icon name="lucide:message-square" class="w-3 h-3 text-text-tertiary" />
+				<ChatIcon class="w-3 h-3 text-text-tertiary" />
 				<span class="truncate max-w-[12rem]">{{ threadPickerLabel(selected) }}</span>
 				<button
 					type="button"
@@ -48,7 +49,7 @@ const pick = (thread: PickerThread) => {
 					"
 					@click="selected = null"
 				>
-					<Icon name="lucide:x" class="w-3 h-3" />
+					<CloseIcon class="w-3 h-3" />
 				</button>
 			</span>
 		</div>

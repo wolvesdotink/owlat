@@ -257,7 +257,6 @@ async function mountPage() {
 				UiSkeleton: inert('UiSkeleton'),
 				UiModal: passThrough('UiModal'),
 			},
-			stubs: { Icon: true },
 		},
 	});
 	await flushPromises();

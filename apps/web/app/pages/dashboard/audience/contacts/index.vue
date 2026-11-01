@@ -8,6 +8,7 @@ import ContactsBulkProgress from '~/components/contacts/list/BulkProgress.vue';
 import ContactCardList from '~/components/contacts/list/ContactCardList.vue';
 import ContactTable from '~/components/contacts/list/ContactTable.vue';
 import ContactsImportMenu from '~/components/contacts/list/ImportMenu.vue';
+import { ChevronDownIcon, DownloadIcon, PlusIcon, SearchIcon, UsersIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -254,7 +255,7 @@ onUnmounted(() => {
 		>
 			<template v-if="canManageContacts" #actions>
 				<UiButton variant="secondary" @click="isExportModalOpen = true">
-					<template #iconLeft><Icon name="lucide:download" class="w-4 h-4" /></template>
+					<template #iconLeft><DownloadIcon class="w-4 h-4" /></template>
 					{{ t('dashboard.audience.contacts.index.export') }}
 				</UiButton>
 				<!-- Import Dropdown -->
@@ -263,7 +264,7 @@ onUnmounted(() => {
 					@integrations="isIntegrationImportModalOpen = true"
 				/>
 				<UiButton @click="addModal.open()">
-					<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
+					<template #iconLeft><PlusIcon class="w-4 h-4" /></template>
 					{{ t('dashboard.audience.contacts.index.addContact') }}
 				</UiButton>
 			</template>
@@ -276,7 +277,7 @@ onUnmounted(() => {
 					v-model="searchQuery"
 					:placeholder="t('dashboard.audience.contacts.index.searchPlaceholder')"
 				>
-					<template #iconLeft><Icon name="lucide:search" /></template>
+					<template #iconLeft><SearchIcon size="1em" /></template>
 				</UiInput>
 			</div>
 
@@ -313,14 +314,14 @@ onUnmounted(() => {
 				<!-- Empty States -->
 				<UiEmptyState
 					v-else-if="!hasActiveOrganization"
-					icon="lucide:users"
+					:icon="UsersIcon"
 					:title="t('dashboard.audience.contacts.index.noTeam.title')"
 					:description="t('dashboard.audience.contacts.index.noTeam.description')"
 				/>
 
 				<UiEmptyState
 					v-else-if="!isLoading && contacts.length === 0 && !debouncedSearch"
-					icon="lucide:users"
+					:icon="UsersIcon"
 					:title="t('dashboard.audience.contacts.index.empty.title')"
 					:description="
 						canManageContacts
@@ -331,7 +332,7 @@ onUnmounted(() => {
 
 				<UiEmptyState
 					v-else-if="!isLoading && contacts.length === 0 && debouncedSearch"
-					icon="lucide:search"
+					:icon="SearchIcon"
 					:title="t('dashboard.audience.contacts.index.noResults.title')"
 					:description="
 						t('dashboard.audience.contacts.index.noResults.description', { query: debouncedSearch })
@@ -390,7 +391,7 @@ onUnmounted(() => {
 							@click="handleLoadMore"
 						>
 							<template v-if="!isLoadingMore" #iconLeft
-								><Icon name="lucide:chevron-down" class="w-4 h-4"
+								><ChevronDownIcon class="w-4 h-4"
 							/></template>
 							{{
 								isLoadingMore

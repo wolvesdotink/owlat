@@ -9,6 +9,7 @@
  * there.
  */
 import type { WorkspaceConfig } from '~/lib/desktop/workspaceTypes';
+import { PlusIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 const { workspaces, activeId, switchTo, removeWorkspace } = useDesktopWorkspaces();
@@ -48,7 +49,7 @@ function addWorkspace(): void {
 			</p>
 			<UiButton variant="primary" size="sm" @click="addWorkspace">
 				<template #iconLeft>
-					<Icon name="lucide:plus" class="w-4 h-4" />
+					<PlusIcon class="w-4 h-4" />
 				</template>
 				{{ t('components.settings.connectedWorkspaces.add') }}
 			</UiButton>
@@ -89,7 +90,7 @@ function addWorkspace(): void {
 			<div class="p-4">
 				<UiButton variant="primary" size="sm" @click="addWorkspace">
 					<template #iconLeft>
-						<Icon name="lucide:plus" class="w-4 h-4" />
+						<PlusIcon class="w-4 h-4" />
 					</template>
 					{{ t('components.settings.connectedWorkspaces.add') }}
 				</UiButton>

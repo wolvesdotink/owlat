@@ -27,9 +27,11 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..',
 /**
  * The roots that paint app chrome. `packages/ui` is in scope because its
  * components render inside these same pages from the same token block — a
- * spinner is no less unreadable for living in a layer.
+ * spinner is no less unreadable for living in a layer. `packages/ui/icons`
+ * holds the shared spinner glyph, a render function rather than a template.
  */
 const ROOTS = ['apps/web/app', 'packages/ui/components', 'packages/email-builder/src'];
+const RENDER_FUNCTION_ROOTS = ['packages/ui/icons'];
 
 /** The two infinite animations. Anything finite is a transition, not a loop. */
 const LOOPING_ANIMATION = /animate-(?:spin|pulse)/;
@@ -38,7 +40,7 @@ const OPT_OUT = 'motion-reduce:animate-none';
 
 const SKIP_DIRS = new Set(['node_modules', '__tests__', 'dist', '.nuxt', '.output']);
 
-function vueFilesUnder(root: string): string[] {
+function filesUnder(root: string, extension: string): string[] {
 	const absolute = join(repoRoot, root);
 	const found: string[] = [];
 	const walk = (dir: string): void => {
@@ -46,12 +48,20 @@ function vueFilesUnder(root: string): string[] {
 			if (SKIP_DIRS.has(entry)) continue;
 			const path = join(dir, entry);
 			if (statSync(path).isDirectory()) walk(path);
-			else if (entry.endsWith('.vue')) found.push(path);
+			else if (entry.endsWith(extension)) found.push(path);
 		}
 	};
 	walk(absolute);
 	return found;
 }
+
+const vueFilesUnder = (root: string): string[] => filesUnder(root, '.vue');
+
+/** Every file the rule reads: the templates, and the render functions that paint a loop. */
+const scannedFiles = (): string[] => [
+	...ROOTS.flatMap(vueFilesUnder),
+	...RENDER_FUNCTION_ROOTS.flatMap((root) => filesUnder(root, '.ts')),
+];
 
 interface Offence {
 	readonly file: string;
@@ -69,18 +79,16 @@ interface Offence {
  */
 function findOffences(): Offence[] {
 	const offences: Offence[] = [];
-	for (const root of ROOTS) {
-		for (const file of vueFilesUnder(root)) {
-			const lines = readFileSync(file, 'utf8').split('\n');
-			for (const [index, text] of lines.entries()) {
-				if (!LOOPING_ANIMATION.test(text)) continue;
-				if (text.includes(OPT_OUT)) continue;
-				offences.push({
-					file: relative(repoRoot, file),
-					line: index + 1,
-					text: text.trim(),
-				});
-			}
+	for (const file of scannedFiles()) {
+		const lines = readFileSync(file, 'utf8').split('\n');
+		for (const [index, text] of lines.entries()) {
+			if (!LOOPING_ANIMATION.test(text)) continue;
+			if (text.includes(OPT_OUT)) continue;
+			offences.push({
+				file: relative(repoRoot, file),
+				line: index + 1,
+				text: text.trim(),
+			});
 		}
 	}
 	return offences;
@@ -101,12 +109,15 @@ describe('looping animations honour prefers-reduced-motion', () => {
 		for (const root of ROOTS) {
 			expect(vueFilesUnder(root).length, `${root} has no .vue files`).toBeGreaterThan(0);
 		}
-		const guarded = ROOTS.flatMap(vueFilesUnder).filter((file) =>
-			readFileSync(file, 'utf8').includes(OPT_OUT)
-		);
-		// The sweep that introduced this rule touched ~135 files; a scan that
+		const guarded = scannedFiles().filter((file) => readFileSync(file, 'utf8').includes(OPT_OUT));
+		// Most spinners render through the shared SpinnerIcon, which carries the
+		// opt-out once; about fifty files still start a loop of their own (a
+		// refresh glyph that turns while busy, a pulsing skeleton). A scan that
 		// finds a handful is reading the wrong tree.
-		expect(guarded.length).toBeGreaterThan(100);
+		expect(guarded.length).toBeGreaterThan(40);
+		expect(guarded.map((file) => relative(repoRoot, file))).toContain(
+			'packages/ui/icons/SpinnerIcon.ts'
+		);
 	});
 });
 

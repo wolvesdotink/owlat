@@ -11,6 +11,7 @@
  * where its "Show once" lives; this slot then stays empty.
  */
 import type { ReaderNoticeKind } from '~/utils/postboxReaderNotice';
+import { ShieldWarningIcon } from '@coolicons/vue';
 
 defineProps<{
 	kind: ReaderNoticeKind | null;
@@ -35,7 +36,7 @@ const { t } = useI18n();
 			class="px-3 py-2 rounded-md bg-warning/10 text-warning text-xs flex items-center gap-2"
 			data-testid="reader-notice-danger"
 		>
-			<Icon name="lucide:shield-alert" class="w-4 h-4 flex-shrink-0" aria-hidden="true" />
+			<ShieldWarningIcon class="w-4 h-4 flex-shrink-0" aria-hidden="true" />
 			<span>{{
 				danger === 'spam'
 					? t('components.postbox.postboxThreadReader.markedAsSpam')

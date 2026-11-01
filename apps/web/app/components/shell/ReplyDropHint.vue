@@ -11,6 +11,7 @@
  * is a pointer one; the composer's own attach button is the accessible path.
  */
 import { useReplyDropHost } from '~/composables/useReplyFileDrop';
+import { ReplyIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 const { hover } = useReplyDropHost();
@@ -55,7 +56,7 @@ const box = computed(() => {
 			<span
 				class="flex max-w-full items-center gap-1.5 truncate rounded-full border border-border-subtle bg-bg-elevated px-3 py-1 text-xs font-medium text-text-primary shadow-(--shadow-1)"
 			>
-				<Icon name="lucide:reply" class="size-3.5 shrink-0 text-brand" />
+				<ReplyIcon class="size-3.5 shrink-0 text-brand" />
 				<span class="truncate">{{ label }}</span>
 			</span>
 		</div>

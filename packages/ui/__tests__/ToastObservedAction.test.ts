@@ -59,7 +59,7 @@ describe('Toast card with an observed action', () => {
 		const action = button(pending, 'Undoing…');
 		expect(action).toBeDefined();
 		expect(action!.classList.contains('pointer-events-none')).toBe(true);
-		expect(pending!.querySelector('i')?.classList.contains('animate-spin')).toBe(true);
+		expect(pending!.querySelector('svg')?.classList.contains('animate-spin')).toBe(true);
 
 		action!.click();
 		await nextTick();

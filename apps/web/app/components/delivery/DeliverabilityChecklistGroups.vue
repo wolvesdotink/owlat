@@ -13,6 +13,14 @@ import {
 } from '~/utils/deliverabilityCenter';
 import { useDeliverabilityChecklistCopy } from '~/composables/useDeliverabilityChecklistCopy';
 import { useLocalized } from '~/composables/useLocalized';
+import {
+	ChevronDownIcon,
+	GlobeIcon,
+	ReloadIcon,
+	ShieldWarningIcon,
+	SparklesIcon,
+	TrendingUpIcon,
+} from '@coolicons/vue';
 
 defineProps<{
 	groups: DeliverabilityChecklistGroup[];
@@ -43,10 +51,10 @@ const { itemTitle, itemImpact, groupLabel, groupDescription } = useDeliverabilit
 const { copy, isCopied } = useCopyToClipboard();
 
 const groupIcon = {
-	blocking: 'lucide:shield-alert',
-	reputation: 'lucide:trending-up',
-	recommended: 'lucide:sparkles',
-	ipv6: 'lucide:globe',
+	blocking: ShieldWarningIcon,
+	reputation: TrendingUpIcon,
+	recommended: SparklesIcon,
+	ipv6: GlobeIcon,
 } as const;
 </script>
 
@@ -59,7 +67,7 @@ const groupIcon = {
 			:data-testid="`checklist-group-${group.key}`"
 		>
 			<div class="mb-2 flex items-start gap-3 px-1">
-				<Icon :name="groupIcon[group.key]" class="mt-0.5 h-5 w-5 shrink-0 text-text-tertiary" />
+				<component :is="groupIcon[group.key]" class="mt-0.5 h-5 w-5 shrink-0 text-text-tertiary" />
 				<div>
 					<h2 :id="`${group.key}-heading`" class="font-semibold text-text-primary">
 						{{ groupLabel(group) }}
@@ -78,8 +86,8 @@ const groupIcon = {
 					<summary
 						class="flex cursor-pointer list-none items-center gap-3 px-4 py-4 hover:bg-bg-surface focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-brand sm:px-5"
 					>
-						<Icon
-							:name="DELIVERABILITY_STATUS_PRESENTATION[item.status].icon"
+						<component
+							:is="DELIVERABILITY_STATUS_PRESENTATION[item.status].icon"
 							class="h-5 w-5 shrink-0"
 							:class="[
 								DELIVERABILITY_STATUS_PRESENTATION[item.status].className.split(' ').at(-1),
@@ -106,8 +114,7 @@ const groupIcon = {
 						>
 							{{ t(DELIVERABILITY_STATUS_PRESENTATION[item.status].label) }}
 						</span>
-						<Icon
-							name="lucide:chevron-down"
+						<ChevronDownIcon
 							class="h-4 w-4 shrink-0 text-text-tertiary transition-transform group-open:rotate-180"
 						/>
 					</summary>
@@ -155,9 +162,8 @@ const groupIcon = {
 								@click="emit('verify', item)"
 							>
 								<template #iconLeft>
-									<Icon
+									<ReloadIcon
 										v-if="verifyingItemKey !== itemKey(item.scope, item.id)"
-										name="lucide:refresh-cw"
 										class="h-3.5 w-3.5"
 									/>
 								</template>

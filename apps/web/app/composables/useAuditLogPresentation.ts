@@ -21,6 +21,42 @@ import type { Id } from '@owlat/api/dataModel';
 import { isPluginId } from '@owlat/plugin-kit';
 import { capitalize } from '../utils/formatters';
 import { buildActionTypeGroups, RESOURCE_FILTER_OPTIONS } from './auditLogFilterCatalog';
+import {
+	CalendarIcon,
+	CheckIcon,
+	CircleCloseIcon,
+	CircleSlashIcon,
+	ClipboardListIcon,
+	CloseIcon,
+	ComponentIcon,
+	DatabaseIcon,
+	FileTextIcon,
+	GlobeIcon,
+	InboxIcon,
+	KeyIcon,
+	LayersIcon,
+	MailIcon,
+	PaperPlaneIcon,
+	PauseIcon,
+	PencilIcon,
+	PlayIcon,
+	PlugIcon,
+	PlusIcon,
+	ReloadIcon,
+	RouteIcon,
+	SettingsIcon,
+	SparklesIcon,
+	TargetIcon,
+	TrashIcon,
+	TrendingUpIcon,
+	UndoIcon,
+	UserIcon,
+	UsersIcon,
+	WavyCheckIcon,
+	WebhookIcon,
+	ZapIcon,
+	type IconComponent,
+} from '@coolicons/vue';
 
 /**
  * A single audit-log row as returned by `api.auditActions.logs.list`. Lives here (the
@@ -51,26 +87,26 @@ export interface AuditLogEntry {
 // Presentation switches — resource + action → icon / label / colour.
 // ---------------------------------------------------------------------------
 
-const RESOURCE_ICONS: Record<string, string> = {
-	campaign: 'lucide:send',
-	contact: 'lucide:users',
-	topic: 'lucide:mail',
-	email_template: 'lucide:file-text',
-	automation: 'lucide:zap',
-	settings: 'lucide:settings',
-	team_member: 'lucide:user',
-	api_key: 'lucide:key',
-	webhook: 'lucide:webhook',
-	domain: 'lucide:globe',
-	blocklist: 'lucide:ban',
-	segment: 'lucide:target',
-	seed_mailbox: 'lucide:inbox',
-	ai_provider_config: 'lucide:sparkles',
-	ai_routing_policy: 'lucide:route',
-	embedding_space: 'lucide:database',
-	plugin: 'lucide:blocks',
-	connected_app: 'lucide:plug',
-	deliverability_ramp: 'lucide:trending-up',
+const RESOURCE_ICONS: Record<string, IconComponent> = {
+	campaign: PaperPlaneIcon,
+	contact: UsersIcon,
+	topic: MailIcon,
+	email_template: FileTextIcon,
+	automation: ZapIcon,
+	settings: SettingsIcon,
+	team_member: UserIcon,
+	api_key: KeyIcon,
+	webhook: WebhookIcon,
+	domain: GlobeIcon,
+	blocklist: CircleSlashIcon,
+	segment: TargetIcon,
+	seed_mailbox: InboxIcon,
+	ai_provider_config: SparklesIcon,
+	ai_routing_policy: RouteIcon,
+	embedding_space: DatabaseIcon,
+	plugin: ComponentIcon,
+	connected_app: PlugIcon,
+	deliverability_ramp: TrendingUpIcon,
 };
 
 const RESOURCES = 'shared.useAuditLogPresentation.resources';
@@ -127,32 +163,32 @@ const ACTION_VERB_LABELS: Record<string, string> = {
 	rebuild_cancelled: `${ACTIONS}.rebuildCancelled`,
 };
 
-const ACTION_VERB_ICONS: Record<string, string> = {
-	created: 'lucide:plus',
-	added: 'lucide:plus',
-	updated: 'lucide:edit',
-	role_changed: 'lucide:edit',
-	deleted: 'lucide:trash-2',
-	removed: 'lucide:trash-2',
-	revoked: 'lucide:trash-2',
-	sent: 'lucide:send',
-	scheduled: 'lucide:calendar',
-	cancelled: 'lucide:x',
-	imported: 'lucide:refresh-cw',
-	published: 'lucide:check',
-	verified: 'lucide:check',
-	completed: 'lucide:check',
-	failed: 'lucide:circle-x',
-	denied: 'lucide:ban',
-	activated: 'lucide:play',
-	paused: 'lucide:pause',
-	invited: 'lucide:mail',
-	attested: 'lucide:badge-check',
-	started: 'lucide:play',
-	resumed: 'lucide:play',
-	staged: 'lucide:layers',
-	rolled_back: 'lucide:undo-2',
-	rebuild_cancelled: 'lucide:x',
+const ACTION_VERB_ICONS: Record<string, IconComponent> = {
+	created: PlusIcon,
+	added: PlusIcon,
+	updated: PencilIcon,
+	role_changed: PencilIcon,
+	deleted: TrashIcon,
+	removed: TrashIcon,
+	revoked: TrashIcon,
+	sent: PaperPlaneIcon,
+	scheduled: CalendarIcon,
+	cancelled: CloseIcon,
+	imported: ReloadIcon,
+	published: CheckIcon,
+	verified: CheckIcon,
+	completed: CheckIcon,
+	failed: CircleCloseIcon,
+	denied: CircleSlashIcon,
+	activated: PlayIcon,
+	paused: PauseIcon,
+	invited: MailIcon,
+	attested: WavyCheckIcon,
+	started: PlayIcon,
+	resumed: PlayIcon,
+	staged: LayersIcon,
+	rolled_back: UndoIcon,
+	rebuild_cancelled: CloseIcon,
 };
 
 const ACTION_VERB_COLORS: Record<string, string> = {
@@ -216,8 +252,8 @@ const actionVerb = (action: string): string => {
 	return parts[1] ?? action;
 };
 
-export function getResourceIcon(resource: string): string {
-	return RESOURCE_ICONS[resource] ?? 'lucide:clipboard-list';
+export function getResourceIcon(resource: string): IconComponent {
+	return RESOURCE_ICONS[resource] ?? ClipboardListIcon;
 }
 
 /**
@@ -238,8 +274,8 @@ export function getActionLabel(action: string): string {
 	return ACTION_VERB_LABELS[verb] ?? capitalize(verb.replace(/_/g, ' '));
 }
 
-export function getActionIcon(action: string): string {
-	return ACTION_VERB_ICONS[actionVerb(action)] ?? 'lucide:clipboard-list';
+export function getActionIcon(action: string): IconComponent {
+	return ACTION_VERB_ICONS[actionVerb(action)] ?? ClipboardListIcon;
 }
 
 export function getActionColorClass(action: string): string {

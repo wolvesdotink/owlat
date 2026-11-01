@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useZenMode } from '~/composables/useZenMode';
 import { useShortcutLabels } from '~/composables/useShortcutLabels';
+import { ExpandIcon, MenuIcon, PanelLeftIcon, SearchIcon } from '@coolicons/vue';
 
 defineProps<{ isDesktop: boolean; navigationOpen?: boolean; navigationHidden?: boolean }>();
 const emit = defineEmits<{ openNavigation: []; openSearch: [] }>();
@@ -21,7 +22,7 @@ const { ariaFor } = useShortcutLabels();
 			:aria-label="t('components.dashboard.dashboardShellHeader.openNavigation')"
 			@click="emit('openNavigation')"
 		>
-			<Icon name="lucide:panel-left" class="size-4" />
+			<PanelLeftIcon class="size-4" />
 		</button>
 		<div class="flex-1 min-w-0 mr-4">
 			<Breadcrumbs hide-shallow />
@@ -40,7 +41,7 @@ const { ariaFor } = useShortcutLabels();
 					:aria-keyshortcuts="ariaFor('global.zen')"
 					@click="enterZen"
 				>
-					<Icon name="lucide:maximize-2" class="size-4" />
+					<ExpandIcon class="size-4" />
 				</button>
 			</UiTooltip>
 		</div>
@@ -56,7 +57,7 @@ const { ariaFor } = useShortcutLabels();
 					:aria-label="t('components.dashboard.dashboardShellHeader.openNavigation')"
 					@click="emit('openNavigation')"
 				>
-					<Icon name="lucide:menu" class="w-6 h-6" />
+					<MenuIcon class="w-6 h-6" />
 				</button>
 
 				<NuxtLink to="/dashboard" class="ml-3 flex items-center gap-2">
@@ -73,14 +74,14 @@ const { ariaFor } = useShortcutLabels();
 					:aria-label="t('common.search')"
 					@click="emit('openSearch')"
 				>
-					<Icon name="lucide:search" class="w-5 h-5" />
+					<SearchIcon class="w-5 h-5" />
 				</button>
 				<button
 					class="p-2 rounded-xl text-text-secondary transition-colors duration-(--motion-fast) hover:bg-bg-surface-hover hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 					:aria-label="t('components.shell.zen.enter')"
 					@click="enterZen"
 				>
-					<Icon name="lucide:maximize-2" class="w-5 h-5" />
+					<ExpandIcon class="w-5 h-5" />
 				</button>
 			</div>
 		</div>

@@ -3,6 +3,16 @@ import type { OrganizationMember, OrganizationRole } from '~/composables/useOrga
 import { useLocalized } from '~/composables/useLocalized';
 import { formatDate } from '~/utils/formatters';
 import { roleDefinition, type MailboxStatusMeta } from '~/utils/teamRoles';
+import {
+	CrownIcon,
+	MailIcon,
+	MoreHorizontalIcon,
+	PaperPlaneIcon,
+	SearchIcon,
+	TrashIcon,
+	UsersIcon,
+} from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 /**
  * The roster card: search, the members table with each row's role and
@@ -50,7 +60,7 @@ const dropdownOpenStates = reactive<Record<string, boolean>>({});
 		<template #header>
 			<div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
 				<div class="flex items-center gap-3">
-					<UiIconBox icon="lucide:users" size="sm" variant="surface" rounded="lg" />
+					<UiIconBox :icon="UsersIcon" size="sm" variant="surface" rounded="lg" />
 					<div>
 						<h2 class="text-lg font-semibold text-text-primary">
 							{{ t('dashboard.admin.team.members.title') }}
@@ -73,7 +83,7 @@ const dropdownOpenStates = reactive<Record<string, boolean>>({});
 						:placeholder="t('dashboard.admin.team.members.searchPlaceholder')"
 					>
 						<template #iconLeft>
-							<Icon name="lucide:search" class="w-4 h-4 text-text-tertiary" />
+							<SearchIcon class="w-4 h-4 text-text-tertiary" />
 						</template>
 					</UiInput>
 				</div>
@@ -83,7 +93,7 @@ const dropdownOpenStates = reactive<Record<string, boolean>>({});
 		<!-- Empty: no members match the search -->
 		<UiEmptyState
 			v-if="filteredMembers.length === 0 && memberSearch.trim()"
-			icon="lucide:search-x"
+			:icon="SearchIcon"
 			:title="t('dashboard.admin.team.members.noMatchesTitle')"
 			:description="
 				t('dashboard.admin.team.members.noMatchesDescription', {
@@ -101,7 +111,7 @@ const dropdownOpenStates = reactive<Record<string, boolean>>({});
 		<!-- Empty: nobody on the roster yet (no search term) -->
 		<UiEmptyState
 			v-else-if="filteredMembers.length === 0"
-			icon="lucide:users"
+			:icon="UsersIcon"
 			:title="t('dashboard.admin.team.members.emptyTitle')"
 			:description="t('dashboard.admin.team.members.emptyDescription')"
 		>
@@ -178,7 +188,7 @@ const dropdownOpenStates = reactive<Record<string, boolean>>({});
 								class="inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs font-medium"
 								:class="roleDefinition(member.role).badgeToneClass"
 							>
-								<Icon :name="roleDefinition(member.role).icon" class="w-3 h-3" />
+								<component :is="roleDefinition(member.role).icon" class="w-3 h-3" />
 								{{ localized(roleDefinition(member.role).label) }}
 							</span>
 						</td>
@@ -190,10 +200,7 @@ const dropdownOpenStates = reactive<Record<string, boolean>>({});
 								class="inline-flex items-center gap-1.5 text-sm text-text-tertiary"
 								:title="t('dashboard.admin.team.members.mailboxChecking')"
 							>
-								<Icon
-									name="lucide:loader-circle"
-									class="w-3.5 h-3.5 animate-spin motion-reduce:animate-none"
-								/>
+								<SpinnerIcon class="w-3.5 h-3.5" />
 								<span class="sr-only">{{ t('dashboard.admin.team.members.mailboxLoading') }}</span>
 								<span aria-hidden="true">—</span>
 							</span>
@@ -203,7 +210,7 @@ const dropdownOpenStates = reactive<Record<string, boolean>>({});
 								:class="mailboxMetaFor(member.userId).toneClass"
 								:title="localized(mailboxMetaFor(member.userId).description)"
 							>
-								<Icon :name="mailboxMetaFor(member.userId).icon" class="w-3.5 h-3.5" />
+								<component :is="mailboxMetaFor(member.userId).icon" class="w-3.5 h-3.5" />
 								{{ localized(mailboxMetaFor(member.userId).label) }}
 							</span>
 						</td>
@@ -232,20 +239,20 @@ const dropdownOpenStates = reactive<Record<string, boolean>>({});
 											})
 										"
 									>
-										<Icon name="lucide:more-horizontal" class="w-4 h-4" />
+										<MoreHorizontalIcon class="w-4 h-4" />
 									</UiButton>
 								</template>
 								<!-- Email-verification recovery (owner + admin): unblock a
 								     member the verification gate stranded. -->
 								<UiDropdownMenuItem
-									icon="lucide:mail-check"
+									:icon="MailIcon"
 									:disabled="verifyingMemberId === member.id"
 									@click="emit('markVerified', member)"
 								>
 									{{ t('dashboard.admin.team.members.markEmailVerified') }}
 								</UiDropdownMenuItem>
 								<UiDropdownMenuItem
-									icon="lucide:send"
+									:icon="PaperPlaneIcon"
 									:disabled="resendingVerifyId === member.id"
 									@click="emit('resendVerification', member)"
 								>
@@ -254,18 +261,18 @@ const dropdownOpenStates = reactive<Record<string, boolean>>({});
 								<!-- Owner-only: succession + removing any member. -->
 								<template v-if="isOwner">
 									<UiDropdownDivider />
-									<UiDropdownMenuItem icon="lucide:crown" @click="emit('transfer', member)">
+									<UiDropdownMenuItem :icon="CrownIcon" @click="emit('transfer', member)">
 										{{ t('dashboard.admin.team.members.transferOwnership') }}
 									</UiDropdownMenuItem>
 									<UiDropdownDivider />
-									<UiDropdownMenuItem icon="lucide:trash-2" danger @click="emit('remove', member)">
+									<UiDropdownMenuItem :icon="TrashIcon" danger @click="emit('remove', member)">
 										{{ t('dashboard.admin.team.members.removeFromTeam') }}
 									</UiDropdownMenuItem>
 								</template>
 								<!-- Admins (non-owners) may remove editors. -->
 								<template v-else-if="member.role === 'editor'">
 									<UiDropdownDivider />
-									<UiDropdownMenuItem icon="lucide:trash-2" danger @click="emit('remove', member)">
+									<UiDropdownMenuItem :icon="TrashIcon" danger @click="emit('remove', member)">
 										{{ t('dashboard.admin.team.members.removeFromTeam') }}
 									</UiDropdownMenuItem>
 								</template>

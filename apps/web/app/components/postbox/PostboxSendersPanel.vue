@@ -22,6 +22,7 @@ import {
 	type PostboxSenderStatus,
 	type SenderTab,
 } from '~/utils/postboxSenders';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const props = defineProps<{ mailboxId: Id<'mailboxes'> }>();
 
@@ -129,10 +130,7 @@ async function applySuggestions() {
 
 		<div v-bind="tabPanelAttrs(tabPanelId, tabs, tab)">
 			<div v-if="isLoading" class="p-8 flex justify-center">
-				<Icon
-					name="lucide:loader-2"
-					class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary"
-				/>
+				<SpinnerIcon class="w-5 h-5 text-text-tertiary" />
 			</div>
 			<!-- A failed read is not "no senders". -->
 			<UiQueryBoundary v-else-if="error" :error="error" @retry="retry" />

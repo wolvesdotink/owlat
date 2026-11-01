@@ -5,6 +5,8 @@
  * the native window chrome and the titlebar, and the workspace (org) switcher
  * is the titlebar chip, so the sidebar carries navigation only.
  */
+import { CloseIcon } from '@coolicons/vue';
+
 defineProps<{ collapsed: boolean }>();
 const emit = defineEmits<{ close: [] }>();
 
@@ -32,7 +34,7 @@ const { t } = useI18n();
 			@click="emit('close')"
 			:aria-label="t('common.close')"
 		>
-			<Icon name="lucide:x" class="w-5 h-5" />
+			<CloseIcon class="w-5 h-5" />
 		</button>
 	</div>
 </template>

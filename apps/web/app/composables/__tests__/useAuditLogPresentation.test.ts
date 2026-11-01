@@ -12,6 +12,7 @@ import {
 	type AuditLogEntry,
 } from '../useAuditLogPresentation';
 import { createTestI18n } from '~/__tests__/i18n';
+import { ClipboardListIcon, PaperPlaneIcon, PlusIcon } from '@coolicons/vue';
 
 /**
  * The switches hand back message KEYS (module scope cannot call `useI18n`), so
@@ -58,7 +59,7 @@ describe('useAuditLogPresentation action catalog parity', () => {
 	it('every grouped action resolves to a non-empty label / icon / colour', () => {
 		for (const action of grouped) {
 			expect(t(getActionLabel(action)), `label for ${action}`).toBeTruthy();
-			expect(getActionIcon(action), `icon for ${action}`).toMatch(/^lucide:/);
+			expect(getActionIcon(action), `icon for ${action}`).toBeTypeOf('function');
 			expect(getActionColorClass(action), `colour for ${action}`).toBeTruthy();
 		}
 	});
@@ -89,15 +90,15 @@ describe('useAuditLogPresentation presentation helpers', () => {
 	});
 
 	it('falls back to a default icon/colour for unknown verbs', () => {
-		expect(getActionIcon('campaign.created')).toBe('lucide:plus');
-		expect(getActionIcon('campaign.some_new_verb')).toBe('lucide:clipboard-list');
+		expect(getActionIcon('campaign.created')).toBe(PlusIcon);
+		expect(getActionIcon('campaign.some_new_verb')).toBe(ClipboardListIcon);
 		expect(getActionColorClass('campaign.created')).toContain('text-success');
 		expect(getActionColorClass('campaign.some_new_verb')).toBe('text-text-secondary bg-bg-surface');
 	});
 
 	it('maps resources to icons and labels, falling back to the raw key', () => {
-		expect(getResourceIcon('campaign')).toBe('lucide:send');
-		expect(getResourceIcon('unknown_resource')).toBe('lucide:clipboard-list');
+		expect(getResourceIcon('campaign')).toBe(PaperPlaneIcon);
+		expect(getResourceIcon('unknown_resource')).toBe(ClipboardListIcon);
 		expect(t(getResourceLabel('api_key'))).toBe('API key');
 		expect(t(getResourceLabel('unknown_resource'))).toBe('unknown_resource');
 	});

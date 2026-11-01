@@ -25,6 +25,17 @@ import {
 	optimisticSetLabelOnMessages,
 	optimisticSnoozeMany,
 } from '~/lib/mailOptimistic/mailUpdaters';
+import {
+	AlarmOffIcon,
+	BellOffIcon,
+	ChevronDownIcon,
+	ChevronUpIcon,
+	ClockIcon,
+	ShieldCheckIcon,
+	ShieldWarningIcon,
+	TagIcon,
+	TrashIcon,
+} from '@coolicons/vue';
 
 const props = defineProps<{
 	mailboxId: Id<'mailboxes'>;
@@ -164,10 +175,10 @@ const ITEM_CLASS =
 					:class="ITEM_CLASS"
 					@click="labelsOpen = !labelsOpen"
 				>
-					<Icon name="lucide:tag" class="w-4 h-4 flex-shrink-0 text-text-tertiary" />
+					<TagIcon class="w-4 h-4 flex-shrink-0 text-text-tertiary" />
 					{{ t('components.postbox.postboxQuickActionsBar.label') }}
-					<Icon
-						:name="labelsOpen ? 'lucide:chevron-up' : 'lucide:chevron-down'"
+					<component
+						:is="labelsOpen ? ChevronUpIcon : ChevronDownIcon"
 						class="w-3.5 h-3.5 ml-auto text-text-tertiary"
 						aria-hidden="true"
 					/>
@@ -209,7 +220,7 @@ const ITEM_CLASS =
 							close();
 						"
 					>
-						<Icon name="lucide:clock" class="w-4 h-4 flex-shrink-0 text-text-tertiary" />
+						<ClockIcon class="w-4 h-4 flex-shrink-0 text-text-tertiary" />
 						{{ t('components.postbox.postboxQuickActionsBar.snooze') }}
 					</button>
 				</UiTooltip>
@@ -223,7 +234,7 @@ const ITEM_CLASS =
 							close();
 						"
 					>
-						<Icon name="lucide:alarm-clock-off" class="w-4 h-4 flex-shrink-0 text-text-tertiary" />
+						<AlarmOffIcon class="w-4 h-4 flex-shrink-0 text-text-tertiary" />
 						{{ t('components.postbox.postboxQuickActionsBar.unsnooze') }}
 					</button>
 				</UiTooltip>
@@ -241,7 +252,7 @@ const ITEM_CLASS =
 							close();
 						"
 					>
-						<Icon name="lucide:shield-check" class="w-4 h-4 flex-shrink-0 text-text-tertiary" />
+						<ShieldCheckIcon class="w-4 h-4 flex-shrink-0 text-text-tertiary" />
 						{{ t('components.postbox.postboxQuickActionsBar.notSpam') }}
 					</button>
 				</UiTooltip>
@@ -255,7 +266,7 @@ const ITEM_CLASS =
 							close();
 						"
 					>
-						<Icon name="lucide:shield-alert" class="w-4 h-4 flex-shrink-0 text-text-tertiary" />
+						<ShieldWarningIcon class="w-4 h-4 flex-shrink-0 text-text-tertiary" />
 						{{ t('components.postbox.postboxQuickActionsBar.spam') }}
 					</button>
 				</UiTooltip>
@@ -281,7 +292,7 @@ const ITEM_CLASS =
 							close();
 						"
 					>
-						<Icon name="lucide:bell-off" class="w-4 h-4 flex-shrink-0 text-text-tertiary" />
+						<BellOffIcon class="w-4 h-4 flex-shrink-0 text-text-tertiary" />
 						{{ t('components.postbox.postboxQuickActionsBar.unsubscribe') }}
 					</button>
 				</UiTooltip>
@@ -298,7 +309,7 @@ const ITEM_CLASS =
 								close();
 							"
 						>
-							<Icon name="lucide:trash-2" class="w-4 h-4 flex-shrink-0" />
+							<TrashIcon class="w-4 h-4 flex-shrink-0" />
 							{{ t('components.postbox.postboxQuickActionsBar.deleteForever') }}
 						</button>
 					</UiTooltip>

@@ -23,9 +23,10 @@ import {
 	resolvePaletteGroups,
 	routePrefixMatcher,
 } from '../commandPaletteRegistry';
+import { CircleSmallIcon } from '@coolicons/vue';
 
 function item(id: string, label = id): PaletteItem {
-	return { id, label, icon: 'lucide:dot', run: () => {} };
+	return { id, label, icon: CircleSmallIcon, run: () => {} };
 }
 
 function group(key: string, order: number, items: PaletteItem[]): PaletteGroup {

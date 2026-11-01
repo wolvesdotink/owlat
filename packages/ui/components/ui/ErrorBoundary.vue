@@ -44,6 +44,7 @@ import {
 	type VNode,
 } from 'vue';
 import { useUiI18n } from '../../composables/useUiI18n';
+import { CircleWarningIcon } from '@coolicons/vue';
 
 // `fallbackMessage` has no default: prop defaults are evaluated outside the
 // setup context, where `useUiI18n()` cannot run. It is resolved below instead.
@@ -207,7 +208,7 @@ function retryFromButton() {
 	<SlotRoot v-else-if="slots.fallback" :nodes="fallbackContent(failure.error)" />
 	<div v-else role="alert" class="p-6 border border-error/20 bg-error/5 rounded-lg text-center">
 		<div class="flex flex-col items-center gap-3">
-			<Icon name="lucide:alert-circle" class="w-8 h-8 text-error" />
+			<CircleWarningIcon class="w-8 h-8 text-error" :stroke-width="1.5" />
 			<p class="text-sm text-text-secondary">{{ message }}</p>
 			<p v-if="fallbackDetail" class="text-xs text-text-tertiary">{{ fallbackDetail }}</p>
 			<button

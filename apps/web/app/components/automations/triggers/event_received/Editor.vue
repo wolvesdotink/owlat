@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { EventReceivedTriggerConfig } from '~/composables/automations/triggers';
+import { BroadcastIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -21,7 +22,7 @@ const updateEventName = (event: Event) => {
 <template>
 	<div>
 		<label for="eventName" class="label flex items-center gap-2">
-			<Icon name="lucide:radio" class="w-4 h-4 text-warning" />
+			<BroadcastIcon class="w-4 h-4 text-warning" />
 			{{ t('components.automations.triggers.eventReceived.editor.eventNameLabel') }}
 			<span class="text-error">*</span>
 		</label>

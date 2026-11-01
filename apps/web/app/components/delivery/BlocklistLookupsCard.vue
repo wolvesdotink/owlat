@@ -23,6 +23,7 @@ import {
 	keyRejectionMessage,
 	type DnsblAccessView,
 } from '~/utils/blocklistLookups';
+import { ExternalLinkIcon, ShieldCheckIcon } from '@coolicons/vue';
 
 const SPAMHAUS_DQS_SIGNUP_URL =
 	'https://www.spamhaus.com/free-trial/sign-up-for-a-free-data-query-service-account/';
@@ -121,7 +122,7 @@ async function submit(value: string | null) {
 		<template #header>
 			<div class="flex items-start justify-between gap-4">
 				<div class="flex items-center gap-3">
-					<UiIconBox icon="lucide:shield-check" size="sm" variant="surface" rounded="lg" />
+					<UiIconBox :icon="ShieldCheckIcon" size="sm" variant="surface" rounded="lg" />
 					<div>
 						<h2 class="text-lg font-semibold text-text-primary">
 							{{ t('components.delivery.blocklistLookups.title') }}
@@ -211,7 +212,7 @@ async function submit(value: string | null) {
 							class="inline-flex items-center gap-1 font-medium text-brand underline underline-offset-2"
 						>
 							{{ t('components.delivery.blocklistLookups.key.getKey') }}
-							<Icon name="lucide:external-link" class="w-3 h-3" />
+							<ExternalLinkIcon class="w-3 h-3" />
 						</a>
 						·
 						{{ t('components.delivery.blocklistLookups.key.freeNote') }}

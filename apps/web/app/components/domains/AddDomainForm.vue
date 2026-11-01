@@ -35,6 +35,14 @@ import {
 	type AddDomainFormProps,
 	type AddDomainSubmitPayload,
 } from '~/composables/useAddDomainForm';
+import {
+	ChevronRightIcon,
+	CircleInfoIcon,
+	PlusIcon,
+	ShieldWarningIcon,
+	TriangleWarningIcon,
+} from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const props = withDefaults(defineProps<AddDomainFormProps>(), {
 	loading: false,
@@ -291,7 +299,7 @@ const {
 				data-testid="stream-subdomain-note"
 			>
 				<p class="flex items-start gap-2 text-xs text-text-secondary">
-					<Icon name="lucide:info" class="mt-0.5 h-3.5 w-3.5 shrink-0 text-text-tertiary" />
+					<CircleInfoIcon class="mt-0.5 h-3.5 w-3.5 shrink-0 text-text-tertiary" />
 					<I18nT keypath="components.domains.addDomainForm.streamNote" tag="span" scope="global">
 						<template #transactionalName>
 							<strong class="text-text-primary">mail.</strong>
@@ -313,7 +321,7 @@ const {
 				data-testid="apex-note"
 			>
 				<p class="flex items-start gap-2 text-xs text-text-secondary">
-					<Icon name="lucide:info" class="mt-0.5 h-3.5 w-3.5 shrink-0 text-text-tertiary" />
+					<CircleInfoIcon class="mt-0.5 h-3.5 w-3.5 shrink-0 text-text-tertiary" />
 					<I18nT keypath="components.domains.addDomainForm.apexNote" tag="span" scope="global">
 						<template #zone>
 							<strong class="text-text-primary">{{ registrableZone }}</strong>
@@ -345,8 +353,7 @@ const {
 					:disabled="loading"
 					@click="advancedOpen = !advancedOpen"
 				>
-					<Icon
-						name="lucide:chevron-right"
+					<ChevronRightIcon
 						class="h-3.5 w-3.5 transition-transform"
 						:class="advancedOpen ? 'rotate-90' : ''"
 					/>
@@ -428,7 +435,7 @@ const {
 				class="rounded-lg border border-error/20 bg-error/5 p-3 flex items-start gap-2.5"
 				data-testid="freemail-warning"
 			>
-				<Icon name="lucide:shield-alert" class="w-4 h-4 text-error shrink-0 mt-0.5" />
+				<ShieldWarningIcon class="w-4 h-4 text-error shrink-0 mt-0.5" />
 				<I18nT
 					keypath="components.domains.addDomainForm.freemailWarning"
 					tag="p"
@@ -455,7 +462,7 @@ const {
 				class="rounded-lg border border-warning/20 bg-warning/5 p-3 flex items-start gap-2.5"
 				data-testid="ns-warning"
 			>
-				<Icon name="lucide:alert-triangle" class="w-4 h-4 text-warning shrink-0 mt-0.5" />
+				<TriangleWarningIcon class="w-4 h-4 text-warning shrink-0 mt-0.5" />
 				<I18nT
 					keypath="components.domains.addDomainForm.nsWarning"
 					tag="p"
@@ -474,12 +481,8 @@ const {
 				{{ t('common.cancel') }}
 			</UiButton>
 			<UiButton type="submit" class="gap-2" :disabled="loading || isFreemail">
-				<Icon
-					v-if="loading"
-					name="lucide:loader-2"
-					class="w-4 h-4 animate-spin motion-reduce:animate-none"
-				/>
-				<Icon v-else name="lucide:plus" class="w-4 h-4" />
+				<SpinnerIcon v-if="loading" class="w-4 h-4" />
+				<PlusIcon v-else class="w-4 h-4" />
 				{{ loading ? t('components.domains.addDomainForm.adding') : submitLabelText }}
 			</UiButton>
 		</div>

@@ -60,6 +60,7 @@ import {
 	resolvePostboxImageBanner,
 	type PostboxImageBannerState,
 } from '~/utils/postboxImageAllowlist';
+import { ChevronDownIcon, ChevronUpIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	message: {
@@ -464,7 +465,7 @@ usePostboxFrameAutosize({
 			class="mt-2 inline-flex items-center gap-1 px-2 py-1 rounded text-xs text-text-secondary hover:text-text-primary hover:bg-bg-surface"
 			@click="toggleQuoted"
 		>
-			<Icon :name="quotedShown ? 'lucide:chevron-up' : 'lucide:chevron-down'" class="w-3.5 h-3.5" />
+			<component :is="quotedShown ? ChevronUpIcon : ChevronDownIcon" class="w-3.5 h-3.5" />
 			{{
 				quotedShown
 					? t('components.postbox.postboxMessageBody.hideQuoted')

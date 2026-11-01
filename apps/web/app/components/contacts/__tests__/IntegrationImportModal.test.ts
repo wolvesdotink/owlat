@@ -78,7 +78,6 @@ async function mountModal(topics: Array<{ _id: string; name: string }> = []) {
 			stubs: {
 				UiModal: UiModalStub,
 				NuxtLink: NuxtLinkStub,
-				Icon: true,
 				I18nT: true,
 				UiIconBox: true,
 				UiProgressBar: true,

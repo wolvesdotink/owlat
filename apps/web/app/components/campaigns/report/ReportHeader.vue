@@ -7,6 +7,15 @@ import type { FunctionReturnType } from 'convex/server';
 import type { api } from '@owlat/api';
 import CampaignSendPlanLine from '~/components/campaigns/CampaignSendPlanLine.vue';
 import { formatNumber } from '~/utils/formatters';
+import {
+	ArrowLeftIcon,
+	CircleCheckIcon,
+	CircleCloseIcon,
+	ClockIcon,
+	CopyIcon,
+	FileTextIcon,
+} from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const props = defineProps<{
 	campaign: { name: string; sentAt?: number; scheduledAt?: number };
@@ -30,35 +39,35 @@ const statusBadge = computed(() => {
 		case 'sent':
 			return {
 				label: t('dashboard.campaigns.detail.report.sentBadge'),
-				icon: 'lucide:check-circle-2',
+				icon: CircleCheckIcon,
 				tone: 'bg-success/10 text-success',
 				spin: false,
 			};
 		case 'sending':
 			return {
 				label: t(`${prefix}.sending`),
-				icon: 'lucide:loader-2',
+				icon: SpinnerIcon,
 				tone: 'bg-info/10 text-info',
 				spin: true,
 			};
 		case 'scheduled':
 			return {
 				label: t(`${prefix}.scheduled`),
-				icon: 'lucide:clock',
+				icon: ClockIcon,
 				tone: 'bg-info/10 text-info',
 				spin: false,
 			};
 		case 'cancelled':
 			return {
 				label: t(`${prefix}.cancelled`),
-				icon: 'lucide:x-circle',
+				icon: CircleCloseIcon,
 				tone: 'bg-error/10 text-error',
 				spin: false,
 			};
 		default:
 			return {
 				label: t(`${prefix}.draft`),
-				icon: 'lucide:file-text',
+				icon: FileTextIcon,
 				tone: 'bg-bg-elevated text-text-secondary',
 				spin: false,
 			};
@@ -89,7 +98,7 @@ const timingLine = computed(() => {
 			to="/dashboard/campaigns"
 			class="inline-flex items-center gap-2 text-text-secondary hover:text-text-primary text-sm mb-4 transition-colors duration-(--motion-fast)"
 		>
-			<Icon name="lucide:arrow-left" class="w-4 h-4" />
+			<ArrowLeftIcon class="w-4 h-4" />
 			{{ t('dashboard.campaigns.detail.report.backToCampaigns') }}
 		</NuxtLink>
 		<UiPageHeader :title="campaign.name">
@@ -101,17 +110,18 @@ const timingLine = computed(() => {
 							statusBadge.tone,
 						]"
 					>
-						<Icon
-							:name="statusBadge.icon"
+						<component
+							:is="statusBadge.icon"
 							:class="[
 								'w-3 h-3',
 								statusBadge.spin ? 'animate-spin motion-reduce:animate-none' : '',
 							]"
+							size="1em"
 						/>
 						{{ statusBadge.label }}
 					</span>
 					<span class="inline-flex items-center gap-1.5">
-						<Icon name="lucide:clock" class="w-4 h-4" />
+						<ClockIcon class="w-4 h-4" />
 						{{ timingLine }}
 					</span>
 					<!-- A recipient count before the first message is dispatched is
@@ -139,12 +149,8 @@ const timingLine = computed(() => {
 					:disabled="isDuplicating"
 					@click="emit('duplicate')"
 				>
-					<Icon
-						v-if="isDuplicating"
-						name="lucide:loader-2"
-						class="w-4 h-4 animate-spin motion-reduce:animate-none"
-					/>
-					<Icon v-else name="lucide:copy" class="w-4 h-4" />
+					<SpinnerIcon v-if="isDuplicating" class="w-4 h-4" />
+					<CopyIcon v-else class="w-4 h-4" />
 					{{
 						isDuplicating
 							? t('dashboard.campaigns.detail.report.duplicating')

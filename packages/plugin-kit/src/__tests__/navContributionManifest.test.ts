@@ -27,7 +27,7 @@ function navBase(overrides: Record<string, unknown> = {}): Record<string, unknow
 					section: 'audience',
 					name: 'Pipeline',
 					href: '/dashboard/audience/pipeline',
-					icon: 'lucide:kanban',
+					icon: 'coolicons:kanban',
 				},
 			],
 		},
@@ -47,7 +47,7 @@ function settingsBase(overrides: Record<string, unknown> = {}): Record<string, u
 					id: 'sync',
 					name: 'Sync settings',
 					href: '/dashboard/admin/deals',
-					icon: 'lucide:refresh-ccw',
+					icon: 'coolicons:reload',
 				},
 			],
 		},
@@ -64,7 +64,7 @@ function withNavItem(patch: Record<string, unknown>): Record<string, unknown> {
 					section: 'audience',
 					name: 'Pipeline',
 					href: '/dashboard/audience/pipeline',
-					icon: 'lucide:kanban',
+					icon: 'coolicons:kanban',
 					...patch,
 				},
 			],
@@ -99,7 +99,7 @@ describe('plugin nav item contributions', () => {
 		const manifest = navBase({
 			contributes: {
 				navItems: [
-					{ id: 'pipeline', name: 'Pipeline', href: '/dashboard/x', icon: 'lucide:kanban' },
+					{ id: 'pipeline', name: 'Pipeline', href: '/dashboard/x', icon: 'coolicons:kanban' },
 				],
 			},
 		});
@@ -137,6 +137,12 @@ describe('plugin nav item contributions', () => {
 	it('rejects a malformed icon token', () => {
 		expect(
 			issuesFor(withNavItem({ icon: 'not an icon' })).some((i) => i.path.endsWith('.icon'))
+		).toBe(true);
+	});
+
+	it('rejects an icon token from a set the web app does not compile in', () => {
+		expect(
+			issuesFor(withNavItem({ icon: 'lucide:kanban' })).some((i) => i.path.endsWith('.icon'))
 		).toBe(true);
 	});
 
@@ -187,8 +193,8 @@ describe('plugin nav item contributions', () => {
 		const manifest = navBase({
 			contributes: {
 				navItems: [
-					{ id: 'x', section: 'audience', name: 'A', href: '/dashboard/a', icon: 'lucide:a' },
-					{ id: 'x', section: 'audience', name: 'B', href: '/dashboard/b', icon: 'lucide:b' },
+					{ id: 'x', section: 'audience', name: 'A', href: '/dashboard/a', icon: 'coolicons:a' },
+					{ id: 'x', section: 'audience', name: 'B', href: '/dashboard/b', icon: 'coolicons:b' },
 				],
 			},
 		});
@@ -225,7 +231,7 @@ describe('plugin settings panel contributions', () => {
 						section: 'settings',
 						name: 'Sync',
 						href: '/dashboard/admin/deals',
-						icon: 'lucide:refresh-ccw',
+						icon: 'coolicons:reload',
 					},
 				],
 			},
@@ -237,7 +243,7 @@ describe('plugin settings panel contributions', () => {
 		const manifest = settingsBase({
 			contributes: {
 				settingsPanels: [
-					{ id: 'sync', name: 'Sync', href: 'https://evil.example', icon: 'lucide:x' },
+					{ id: 'sync', name: 'Sync', href: 'https://evil.example', icon: 'coolicons:close' },
 				],
 			},
 		});

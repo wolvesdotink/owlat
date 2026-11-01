@@ -2,6 +2,14 @@
 import { api } from '@owlat/api';
 import { offersShareWithMembers } from '~/utils/knowledgeSharing';
 import { useKnowledgeDetailLabels } from '~/composables/useKnowledgeDetailLabels';
+import {
+	ArrowLeftIcon,
+	ChatIcon,
+	CloseIcon,
+	FileSearchIcon,
+	PencilIcon,
+	TrashIcon,
+} from '@coolicons/vue';
 
 const { t, locale } = useI18n();
 
@@ -139,7 +147,7 @@ const handleDelete = async () => {
 			to="/dashboard/knowledge"
 			class="inline-flex items-center gap-1.5 text-sm text-text-secondary hover:text-text-primary transition-colors"
 		>
-			<Icon name="lucide:arrow-left" class="w-4 h-4" />
+			<ArrowLeftIcon class="w-4 h-4" />
 			{{ t('dashboard.knowledge.detail.backToGraph') }}
 		</NuxtLink>
 
@@ -154,7 +162,7 @@ const handleDelete = async () => {
 			<div
 				class="w-14 h-14 rounded-full bg-bg-surface shadow-surface-1 flex items-center justify-center mb-4"
 			>
-				<Icon name="lucide:file-question" class="w-7 h-7 text-text-tertiary" />
+				<FileSearchIcon class="w-7 h-7 text-text-tertiary" :stroke-width="1.5" />
 			</div>
 			<h3 class="text-base font-medium text-text-primary">
 				{{ t('dashboard.knowledge.detail.notFoundTitle') }}
@@ -181,7 +189,7 @@ const handleDelete = async () => {
 						'bg-error/10 text-error': typeVariant(entry.entryType) === 'error',
 					}"
 				>
-					<Icon :name="typeIcon(entry.entryType)" class="w-6 h-6" />
+					<component :is="typeIcon(entry.entryType)" class="w-6 h-6" />
 				</div>
 				<UiPageHeader class="min-w-0 flex-1" :title="entry.title">
 					<template #meta>
@@ -210,11 +218,11 @@ const handleDelete = async () => {
 							:entry-id="entry._id"
 						/>
 						<UiButton variant="secondary" class="gap-2" @click="showEditForm = true">
-							<Icon name="lucide:pencil" class="w-4 h-4" />
+							<PencilIcon class="w-4 h-4" />
 							{{ t('common.edit') }}
 						</UiButton>
 						<UiButton variant="danger-outline" class="gap-2" @click="showDeleteConfirm = true">
-							<Icon name="lucide:trash-2" class="w-4 h-4" />
+							<TrashIcon class="w-4 h-4" />
 							{{ t('common.delete') }}
 						</UiButton>
 					</template>
@@ -298,7 +306,7 @@ const handleDelete = async () => {
 						</h3>
 						<div class="flex items-center gap-2">
 							<div class="w-8 h-8 rounded-lg bg-bg-surface flex items-center justify-center">
-								<Icon :name="sourceIcon(entry.sourceType)" class="w-4 h-4 text-text-secondary" />
+								<component :is="sourceIcon(entry.sourceType)" class="w-4 h-4 text-text-secondary" />
 							</div>
 							<div>
 								<p class="text-sm font-medium text-text-primary">
@@ -314,7 +322,7 @@ const handleDelete = async () => {
 							:to="`/dashboard/inbox?thread=${entry.threadId}`"
 							class="mt-3 inline-flex items-center gap-1.5 text-xs text-brand hover:text-brand/80 transition-colors"
 						>
-							<Icon name="lucide:message-square" class="w-3.5 h-3.5" />
+							<ChatIcon class="w-3.5 h-3.5" />
 							{{ t('dashboard.knowledge.detail.viewSourceThread') }}
 						</NuxtLink>
 					</div>
@@ -383,7 +391,7 @@ const handleDelete = async () => {
 								@click="showEditForm = false"
 								:aria-label="t('common.close')"
 							>
-								<Icon name="lucide:x" class="w-4 h-4" />
+								<CloseIcon class="w-4 h-4" />
 							</button>
 						</div>
 						<div class="px-5 py-4">

@@ -1,5 +1,7 @@
 <script setup lang="ts">
 // What the API's rate limiting does and the headers it answers with.
+import { CircleInfoIcon, GaugeIcon } from '@coolicons/vue';
+
 const { t } = useI18n();
 </script>
 
@@ -7,7 +9,7 @@ const { t } = useI18n();
 	<div class="card p-0 mb-6 overflow-hidden">
 		<div class="px-6 py-4 border-b border-border-subtle bg-bg-surface/50">
 			<div class="flex items-center gap-3">
-				<Icon name="lucide:gauge" class="w-5 h-5 text-brand" />
+				<GaugeIcon class="w-5 h-5 text-brand" />
 				<h2 class="text-sm font-semibold text-text-primary">
 					{{ t('dashboard.admin.team.api.index.rateLimit.title') }}
 				</h2>
@@ -17,7 +19,7 @@ const { t } = useI18n();
 			<div class="grid gap-6 sm:grid-cols-2">
 				<!-- Rate Limit -->
 				<div class="flex items-start gap-4">
-					<UiIconBox icon="lucide:gauge" size="sm" variant="brand" rounded="lg" />
+					<UiIconBox :icon="GaugeIcon" size="sm" variant="brand" rounded="lg" />
 					<div>
 						<p class="text-sm font-medium text-text-primary">
 							{{ t('dashboard.admin.team.api.index.rateLimit.rate') }}
@@ -30,7 +32,7 @@ const { t } = useI18n();
 
 				<!-- Response Headers -->
 				<div class="flex items-start gap-4">
-					<UiIconBox icon="lucide:info" size="sm" variant="brand" rounded="lg" />
+					<UiIconBox :icon="CircleInfoIcon" size="sm" variant="brand" rounded="lg" />
 					<div>
 						<p class="text-sm font-medium text-text-primary">
 							{{ t('dashboard.admin.team.api.index.rateLimit.headersTitle') }}

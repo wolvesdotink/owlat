@@ -2,6 +2,16 @@
 import type { Id } from '@owlat/api/dataModel';
 import { useComposerDrafts } from '~/composables/useComposerDrafts';
 import DraftMarker from '~/components/shell/DraftMarker.vue';
+import {
+	ArchiveIcon,
+	ChevronDownIcon,
+	ChevronRightIcon,
+	HashIcon,
+	LockIcon,
+	MentionIcon,
+	PlusIcon,
+	SearchIcon,
+} from '@coolicons/vue';
 
 interface RoomItem {
 	_id: Id<'chatRooms'>;
@@ -72,7 +82,7 @@ const matchesQuery = (name: string) => {
 				>
 					<!-- The name, with the badge's count after it: "Mentions 3". -->
 					<span class="sr-only">{{ t('components.chat.chatSidebar.mentions') }}</span>
-					<Icon name="lucide:at-sign" class="w-4 h-4" />
+					<MentionIcon class="w-4 h-4" />
 					<span
 						v-if="mentionCount > 0"
 						class="absolute -top-0.5 -right-0.5 min-w-3.5 h-3.5 px-0.5 rounded-full bg-error text-text-inverse text-2xs font-semibold flex items-center justify-center"
@@ -86,10 +96,7 @@ const matchesQuery = (name: string) => {
 		<!-- Search -->
 		<div class="px-3 py-2">
 			<div class="relative">
-				<Icon
-					name="lucide:search"
-					class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-tertiary"
-				/>
+				<SearchIcon class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-tertiary" />
 				<input
 					v-model="searchQuery"
 					type="text"
@@ -134,7 +141,7 @@ const matchesQuery = (name: string) => {
 									:aria-label="t('components.chat.chatSidebar.browseChannels')"
 									@click="emit('browseChannels')"
 								>
-									<Icon name="lucide:hash" class="w-3.5 h-3.5" />
+									<HashIcon class="w-3.5 h-3.5" />
 								</button>
 							</UiTooltip>
 							<UiTooltip :text="t('components.chat.chatSidebar.newChannel')">
@@ -143,7 +150,7 @@ const matchesQuery = (name: string) => {
 									:aria-label="t('components.chat.chatSidebar.newChannel')"
 									@click="emit('newChannel')"
 								>
-									<Icon name="lucide:plus" class="w-3.5 h-3.5" />
+									<PlusIcon class="w-3.5 h-3.5" />
 								</button>
 							</UiTooltip>
 						</div>
@@ -163,8 +170,8 @@ const matchesQuery = (name: string) => {
 						"
 						@click="emit('select', channel._id)"
 					>
-						<Icon
-							:name="channel.visibility === 'private' ? 'lucide:lock' : 'lucide:hash'"
+						<component
+							:is="channel.visibility === 'private' ? LockIcon : HashIcon"
 							class="w-4 h-4 flex-shrink-0"
 						/>
 						<span class="flex-1 truncate text-sm">
@@ -192,8 +199,8 @@ const matchesQuery = (name: string) => {
 						class="w-full flex items-center gap-1.5 px-1 py-1 text-2xs uppercase tracking-wider font-semibold text-text-tertiary hover:text-text-secondary transition-colors"
 						@click="showArchived = !showArchived"
 					>
-						<Icon
-							:name="showArchived ? 'lucide:chevron-down' : 'lucide:chevron-right'"
+						<component
+							:is="showArchived ? ChevronDownIcon : ChevronRightIcon"
 							class="w-3.5 h-3.5"
 						/>
 						<span>{{ t('components.chat.chatSidebar.archived') }}</span>
@@ -217,7 +224,7 @@ const matchesQuery = (name: string) => {
 							"
 							@click="emit('select', channel._id)"
 						>
-							<Icon name="lucide:archive" class="w-4 h-4 flex-shrink-0" />
+							<ArchiveIcon class="w-4 h-4 flex-shrink-0" />
 							<span class="flex-1 truncate text-sm">
 								{{ channel.displayName }}
 							</span>
@@ -237,7 +244,7 @@ const matchesQuery = (name: string) => {
 								:aria-label="t('components.chat.chatSidebar.newDm')"
 								@click="emit('newDm')"
 							>
-								<Icon name="lucide:plus" class="w-3.5 h-3.5" />
+								<PlusIcon class="w-3.5 h-3.5" />
 							</button>
 						</UiTooltip>
 					</div>

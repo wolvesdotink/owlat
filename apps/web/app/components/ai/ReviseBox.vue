@@ -10,6 +10,7 @@
 import { ref, nextTick } from 'vue';
 import type { Id } from '@owlat/api/dataModel';
 import { useDraftReviseConvex } from '~/composables/postbox/useDraftReviseConvex';
+import { MagicWandIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	currentDraft: string;
@@ -76,7 +77,7 @@ async function discard() {
 			:aria-expanded="open"
 			@click="toggle"
 		>
-			<Icon name="lucide:wand-2" class="w-3 h-3" />
+			<MagicWandIcon class="w-3 h-3" />
 			{{ t('components.ai.reviseBox.toggle') }}
 		</UiButton>
 

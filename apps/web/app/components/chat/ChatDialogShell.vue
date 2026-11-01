@@ -5,6 +5,8 @@
  * carried byte-identical copies of this markup before. Body goes in the
  * default slot; Escape and overlay-click both close.
  */
+import { CloseIcon } from '@coolicons/vue';
+
 const { t } = useI18n();
 
 defineProps<{
@@ -43,7 +45,7 @@ useModalFocus(panelRef, () => true, () => emit('close'));
 						class="w-8 h-8 rounded-lg flex items-center justify-center text-text-secondary hover:text-text-primary hover:bg-bg-surface transition-colors"
 						@click="emit('close')"
 					 :aria-label="t('common.close')">
-						<Icon name="lucide:x" class="w-4 h-4" />
+						<CloseIcon class="w-4 h-4" />
 					</button>
 				</div>
 

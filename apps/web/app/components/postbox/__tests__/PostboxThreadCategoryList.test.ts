@@ -18,6 +18,7 @@ import PostboxSectionedThreadList from '../PostboxSectionedThreadList.vue';
 import PostboxConversationRow from '../PostboxConversationRow.vue';
 import PostboxThreadListSkeleton from '../PostboxThreadListSkeleton.vue';
 import PostboxEmptyState from '../PostboxEmptyState.vue';
+import { NotebookIcon, UserIcon } from '@coolicons/vue';
 
 beforeAll(() => {
 	vi.stubGlobal('useI18n', i18nStubs.useI18n);
@@ -54,7 +55,6 @@ const globalOptions = {
 		PostboxEmptyState,
 	},
 	stubs: {
-		Icon: { props: ['name'], template: '<span />' },
 		NuxtLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
 		UiModal: { template: '<span />' },
 		UiSkeleton: { template: '<span />' },
@@ -70,13 +70,13 @@ function mountCategories() {
 				{
 					key: 'person' as const,
 					label: 'shared.mailCategory.person',
-					icon: 'lucide:user',
+					icon: UserIcon,
 					threads: THREADS,
 				},
 				{
 					key: 'newsletter' as const,
 					label: 'shared.mailCategory.newsletter',
-					icon: 'lucide:newspaper',
+					icon: NotebookIcon,
 					threads: [thread('t4', 0)],
 				},
 			],

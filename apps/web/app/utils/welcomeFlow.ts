@@ -19,6 +19,18 @@
  */
 
 /** Instance onboarding mode, derived from `instanceSettings.isMigrationMode`. */
+import {
+	BellIcon,
+	DownloadIcon,
+	MailboxIcon,
+	PaperPlaneIcon,
+	ReloadIcon,
+	SignatureIcon,
+	SparklesIcon,
+	UserIcon,
+	type IconComponent,
+} from '@coolicons/vue';
+
 export type OnboardingMode = 'fresh' | 'migration';
 
 /**
@@ -98,7 +110,7 @@ export interface ChecklistStepMeta {
 	href: string;
 	/** i18n key. */
 	cta: string;
-	icon: string;
+	icon: IconComponent;
 	/** Only meaningful when the instance is bringing mail over from elsewhere. */
 	migrationOnly: boolean;
 }
@@ -123,7 +135,7 @@ export const CHECKLIST_STEPS: readonly ChecklistStepMeta[] = [
 		// rather than redirecting, so this is never a dead end.
 		href: '/dashboard/postbox/migrate',
 		cta: 'shared.welcomeFlow.steps.mailboxReady.cta',
-		icon: 'lucide:mailbox',
+		icon: MailboxIcon,
 		migrationOnly: false,
 	},
 	{
@@ -132,7 +144,7 @@ export const CHECKLIST_STEPS: readonly ChecklistStepMeta[] = [
 		description: 'shared.welcomeFlow.steps.aiConnected.description',
 		href: '/dashboard/admin/instance/ai-provider',
 		cta: 'shared.welcomeFlow.steps.aiConnected.cta',
-		icon: 'lucide:sparkles',
+		icon: SparklesIcon,
 		migrationOnly: false,
 	},
 	{
@@ -141,7 +153,7 @@ export const CHECKLIST_STEPS: readonly ChecklistStepMeta[] = [
 		description: 'shared.welcomeFlow.steps.importDone.description',
 		href: '/dashboard/postbox/migrate',
 		cta: 'shared.welcomeFlow.steps.importDone.cta',
-		icon: 'lucide:import',
+		icon: DownloadIcon,
 		migrationOnly: true,
 	},
 	{
@@ -150,7 +162,7 @@ export const CHECKLIST_STEPS: readonly ChecklistStepMeta[] = [
 		description: 'shared.welcomeFlow.steps.knowledgeIndexed.description',
 		href: '/dashboard/postbox/migrate',
 		cta: 'common.continue',
-		icon: 'lucide:sparkles',
+		icon: SparklesIcon,
 		migrationOnly: true,
 	},
 	{
@@ -159,7 +171,7 @@ export const CHECKLIST_STEPS: readonly ChecklistStepMeta[] = [
 		description: 'shared.welcomeFlow.steps.sendingSwitched.description',
 		href: '/dashboard/preferences/external-account#postbox-sending-heading',
 		cta: 'shared.welcomeFlow.steps.sendingSwitched.cta',
-		icon: 'lucide:refresh-cw',
+		icon: ReloadIcon,
 		migrationOnly: true,
 	},
 	{
@@ -168,7 +180,7 @@ export const CHECKLIST_STEPS: readonly ChecklistStepMeta[] = [
 		description: 'shared.welcomeFlow.steps.firstSendDone.description',
 		href: '/dashboard/postbox',
 		cta: 'shared.welcomeFlow.steps.firstSendDone.cta',
-		icon: 'lucide:send',
+		icon: PaperPlaneIcon,
 		migrationOnly: false,
 	},
 ] as const;
@@ -181,7 +193,7 @@ export const MEMBER_STEPS: readonly ChecklistStepMeta[] = [
 		description: 'shared.welcomeFlow.steps.profileName.description',
 		href: '/welcome',
 		cta: 'shared.welcomeFlow.steps.profileName.cta',
-		icon: 'lucide:user-round',
+		icon: UserIcon,
 		migrationOnly: false,
 	},
 	{
@@ -190,7 +202,7 @@ export const MEMBER_STEPS: readonly ChecklistStepMeta[] = [
 		description: 'shared.welcomeFlow.steps.signature.description',
 		href: '/welcome',
 		cta: 'shared.welcomeFlow.steps.signature.cta',
-		icon: 'lucide:signature',
+		icon: SignatureIcon,
 		migrationOnly: false,
 	},
 	{
@@ -199,7 +211,7 @@ export const MEMBER_STEPS: readonly ChecklistStepMeta[] = [
 		description: 'shared.welcomeFlow.steps.notifications.description',
 		href: '/welcome',
 		cta: 'shared.welcomeFlow.steps.notifications.cta',
-		icon: 'lucide:bell',
+		icon: BellIcon,
 		migrationOnly: false,
 	},
 ] as const;

@@ -1,6 +1,17 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
 import { usePostboxMessageDropTargets } from '~/composables/postbox/usePostboxMessageDrag';
+import {
+	ArchiveIcon,
+	FileEditIcon,
+	FolderIcon,
+	InboxIcon,
+	PaperPlaneIcon,
+	ShieldWarningIcon,
+	TrashIcon,
+	type IconComponent,
+} from '@coolicons/vue';
+import { navIcon } from '~/lib/navIcons';
 
 type PostboxFolderRow = {
 	_id: string;
@@ -26,13 +37,13 @@ const { t } = useI18n();
 // Every row is also a drop target for dragged messages (Sent and Drafts refuse).
 const drop = usePostboxMessageDropTargets(computed(() => props.mailboxId));
 
-const ICON_BY_ROLE: Record<string, string> = {
-	inbox: 'lucide:inbox',
-	sent: 'lucide:send',
-	drafts: 'lucide:file-edit',
-	trash: 'lucide:trash',
-	spam: 'lucide:shield-alert',
-	archive: 'lucide:archive',
+const ICON_BY_ROLE: Record<string, IconComponent> = {
+	inbox: InboxIcon,
+	sent: PaperPlaneIcon,
+	drafts: FileEditIcon,
+	trash: TrashIcon,
+	spam: ShieldWarningIcon,
+	archive: ArchiveIcon,
 };
 
 // System folders arrive with a role, not a translated name; a custom/unknown
@@ -82,7 +93,10 @@ function folderAriaLabel(folder: PostboxFolderRow): string {
 				:aria-label="collapsed ? folderAriaLabel(folder) : undefined"
 				v-on="drop.folder(folder)"
 			>
-				<Icon :name="ICON_BY_ROLE[folder.role ?? ''] ?? 'lucide:folder'" class="w-4 h-4" />
+				<component
+					:is="navIcon(ICON_BY_ROLE[folder.role ?? ''] ?? FolderIcon, activeFolder === folder.role)"
+					class="w-4 h-4"
+				/>
 				<template v-if="!collapsed">
 					<span class="flex-1 capitalize">{{ folderLabel(folder) }}</span>
 					<span v-if="folder.unseenCount > 0" class="text-xs font-medium text-text-secondary">{{

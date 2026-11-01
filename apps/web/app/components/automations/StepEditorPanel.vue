@@ -18,6 +18,7 @@ import type { Id, Doc } from '@owlat/api/dataModel';
 import { stepEditorModuleFor } from '~/composables/automations/steps';
 import type { StepConfigByKind, StepKind } from '~/composables/automations/steps';
 import type { StepCurrentConfig, StepSaveStatus } from '~/composables/useAutomationStepConfig';
+import { ArrowLeftIcon, CloseIcon, TrashIcon, TriangleWarningIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	selectedStep: (Doc<'automationSteps'> & { emailTemplate?: Doc<'emailTemplates'> | null }) | null;
@@ -121,7 +122,7 @@ onMounted(() => {
 					:aria-label="t('common.back')"
 					@click="emit('close')"
 				>
-					<Icon name="lucide:arrow-left" class="w-5 h-5" />
+					<ArrowLeftIcon class="w-5 h-5" />
 				</button>
 				<div class="flex-1 min-w-0">
 					<p class="text-xs font-medium text-text-tertiary uppercase tracking-wide">
@@ -138,7 +139,7 @@ onMounted(() => {
 					:aria-label="t('common.close')"
 					@click="emit('close')"
 				>
-					<Icon name="lucide:x" class="w-5 h-5" />
+					<CloseIcon class="w-5 h-5" />
 				</button>
 			</header>
 
@@ -152,7 +153,7 @@ onMounted(() => {
 					data-testid="step-conflict"
 				>
 					<p class="flex items-start gap-2 text-sm text-text-primary">
-						<Icon name="lucide:alert-triangle" class="w-4 h-4 text-warning shrink-0 mt-0.5" />
+						<TriangleWarningIcon class="w-4 h-4 text-warning shrink-0 mt-0.5" />
 						{{ t('components.automations.stepEditorPanel.conflict.body') }}
 					</p>
 					<div class="flex flex-wrap gap-2 mt-3 pl-6">
@@ -183,7 +184,7 @@ onMounted(() => {
 						class="gap-2 text-error hover:bg-error/10"
 						@click="emit('delete', selectedStep._id)"
 					>
-						<Icon name="lucide:trash-2" class="w-4 h-4" />
+						<TrashIcon class="w-4 h-4" />
 						{{ t('components.automations.stepEditorPanel.delete') }}
 					</UiButton>
 				</div>

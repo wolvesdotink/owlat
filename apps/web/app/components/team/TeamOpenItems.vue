@@ -21,6 +21,7 @@ import { nextCursorOf } from '~/utils/threadBriefPages';
 import { canUndoItem } from '~/utils/threadBriefItems';
 import BriefIncomplete from '~/components/brief/BriefIncomplete.vue';
 import TeamOpenItem, { type TeamItemAction, type TeamMember } from './TeamOpenItem.vue';
+import { ChevronDownIcon } from '@coolicons/vue';
 
 const props = withDefaults(
 	defineProps<{
@@ -104,8 +105,7 @@ const isShown = computed(() => {
 				data-testid="team-open-items-count"
 				>{{ t('components.team.items.openCount', { count: openCount }, openCount) }}</span
 			>
-			<Icon
-				name="lucide:chevron-down"
+			<ChevronDownIcon
 				class="ml-auto size-4 text-text-tertiary transition-transform sm:hidden"
 				:class="{ 'rotate-180': open }"
 				aria-hidden="true"

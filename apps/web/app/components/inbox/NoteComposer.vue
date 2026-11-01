@@ -24,6 +24,7 @@ import {
 import type { SuggestionListHandle } from '@owlat/ui/utils/listboxField';
 import { isImeComposing } from '~/utils/imeComposition';
 import { useComposerDraft } from '~/composables/useComposerDrafts';
+import { LockIcon, NoteIcon } from '@coolicons/vue';
 
 const props = withDefaults(
 	defineProps<{
@@ -167,7 +168,7 @@ defineExpose({
 		data-testid="note-composer"
 	>
 		<p class="mb-2 flex items-center gap-1.5 text-xs text-text-secondary">
-			<Icon name="lucide:lock" class="size-3.5 shrink-0" aria-hidden="true" />
+			<LockIcon class="size-3.5 shrink-0" aria-hidden="true" />
 			{{ t('components.inbox.notes.privacyHint') }}
 		</p>
 		<ChatMentionPicker
@@ -219,7 +220,7 @@ defineExpose({
 					data-testid="note-composer-save"
 					@click="save"
 				>
-					<Icon v-if="!editing" name="lucide:sticky-note" class="size-3.5" />
+					<NoteIcon v-if="!editing" class="size-3.5" />
 					{{ editing ? t('components.inbox.notes.save') : t('components.inbox.notes.add') }}
 				</UiButton>
 			</span>

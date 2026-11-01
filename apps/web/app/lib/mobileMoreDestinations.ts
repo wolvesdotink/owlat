@@ -13,6 +13,7 @@
  * hrefs of its own slots.
  */
 import type { NavigationSection } from './dashboardNavigation';
+import type { IconComponent } from '@coolicons/vue';
 
 export interface MoreDestination {
 	/** The section key, stable for `v-for`. */
@@ -20,7 +21,7 @@ export interface MoreDestination {
 	/** i18n key (a plugin's own label passes through `t()` unchanged). */
 	name: string;
 	href: string;
-	icon: string;
+	icon: IconComponent;
 }
 
 /** Tab hrefs that already stand for the mailbox as a whole. */

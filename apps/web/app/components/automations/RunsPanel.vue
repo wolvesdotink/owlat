@@ -10,6 +10,16 @@
 import { api } from '@owlat/api';
 import type { Doc, Id } from '@owlat/api/dataModel';
 import { formatCompactRelativeTime } from '~/utils/formatters';
+import {
+	ChevronRightIcon,
+	CircleCheckIcon,
+	CircleCloseIcon,
+	CirclePauseIcon,
+	CircleWarningIcon,
+	UsersIcon,
+	type IconComponent,
+} from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const props = defineProps<{ automationId: Id<'automations'> }>();
 
@@ -81,21 +91,21 @@ const filterNote = computed(() => {
 	}
 });
 
-type RunBadge = { color: string; icon: string; label: string; animated: boolean };
+type RunBadge = { color: string; icon: IconComponent; label: string; animated: boolean };
 
 const getRunStatusBadge = (run: Pick<Doc<'automationRuns'>, 'status' | 'endReason'>): RunBadge => {
 	switch (run.status) {
 		case 'running':
 			return {
 				color: 'bg-brand/10 text-brand',
-				icon: 'lucide:loader-2',
+				icon: SpinnerIcon,
 				label: t('dashboard.automations.detail.index.runs.inProgress'),
 				animated: true,
 			};
 		case 'completed':
 			return {
 				color: 'bg-success/10 text-success',
-				icon: 'lucide:check-circle-2',
+				icon: CircleCheckIcon,
 				label: t('dashboard.automations.detail.index.runs.completed'),
 				animated: false,
 			};
@@ -103,7 +113,7 @@ const getRunStatusBadge = (run: Pick<Doc<'automationRuns'>, 'status' | 'endReaso
 			if (run.endReason === 'step_failed') {
 				return {
 					color: 'bg-error/10 text-error',
-					icon: 'lucide:alert-circle',
+					icon: CircleWarningIcon,
 					label: t('dashboard.automations.detail.index.runs.failed'),
 					animated: false,
 				};
@@ -111,14 +121,14 @@ const getRunStatusBadge = (run: Pick<Doc<'automationRuns'>, 'status' | 'endReaso
 			if (run.endReason === 'stalled') {
 				return {
 					color: 'bg-warning/10 text-warning',
-					icon: 'lucide:circle-pause',
+					icon: CirclePauseIcon,
 					label: t('dashboard.automations.detail.index.runs.stalled'),
 					animated: false,
 				};
 			}
 			return {
 				color: 'bg-error/10 text-error',
-				icon: 'lucide:x-circle',
+				icon: CircleCloseIcon,
 				label: t('dashboard.automations.detail.index.runs.cancelled'),
 				animated: false,
 			};
@@ -158,17 +168,14 @@ const loadPrevRuns = () => {
 
 		<!-- Loading -->
 		<div v-if="runsLoading && !runs" class="p-8 flex justify-center">
-			<Icon
-				name="lucide:loader-2"
-				class="w-6 h-6 text-brand animate-spin motion-reduce:animate-none"
-			/>
+			<SpinnerIcon class="w-6 h-6 text-brand" />
 		</div>
 
 		<UiQueryBoundary v-else-if="runsError" :error="runsError" @retry="refetchRuns" />
 
 		<!-- Empty state -->
 		<div v-else-if="!runs || runs.runs.length === 0" class="py-12 text-center">
-			<Icon name="lucide:users" class="w-10 h-10 text-text-tertiary mx-auto mb-3" />
+			<UsersIcon class="w-10 h-10 text-text-tertiary mx-auto mb-3" :stroke-width="1.5" />
 			<template v-if="selectedFilter === 'all'">
 				<p class="text-text-secondary">
 					{{ t('dashboard.automations.detail.index.runs.emptyTitle') }}
@@ -191,7 +198,7 @@ const loadPrevRuns = () => {
 					class="px-6 py-4 flex items-center justify-between hover:bg-bg-surface transition-colors"
 				>
 					<div class="flex items-center gap-3 min-w-0">
-						<UiIconBox icon="lucide:users" size="lg" rounded="full" />
+						<UiIconBox :icon="UsersIcon" size="lg" rounded="full" />
 						<div class="min-w-0">
 							<div class="text-text-primary font-medium truncate">
 								{{
@@ -212,14 +219,15 @@ const loadPrevRuns = () => {
 									getRunStatusBadge(run).color,
 								]"
 							>
-								<Icon
-									:name="getRunStatusBadge(run).icon"
+								<component
+									:is="getRunStatusBadge(run).icon"
 									:class="[
 										'w-3 h-3',
 										getRunStatusBadge(run).animated
 											? 'animate-spin motion-reduce:animate-none'
 											: '',
 									]"
+									size="1em"
 								/>
 								{{ getRunStatusBadge(run).label }}
 							</span>
@@ -241,7 +249,7 @@ const loadPrevRuns = () => {
 								class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors"
 								:aria-label="t('dashboard.automations.detail.index.runs.viewContact')"
 							>
-								<Icon name="lucide:chevron-right" class="w-4 h-4" />
+								<ChevronRightIcon class="w-4 h-4" />
 							</NuxtLink>
 						</UiTooltip>
 					</div>

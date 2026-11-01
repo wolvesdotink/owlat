@@ -22,7 +22,7 @@ function legend(): string[] {
 		props: { model: EMPTY },
 		global: {
 			plugins: [createTestI18n()],
-			stubs: { Icon: true, NuxtLink: true, TodaySourceLink: true },
+			stubs: { NuxtLink: true, TodaySourceLink: true },
 		},
 	});
 	const keys = wrapper.findAll('h3 kbd').map((kbd) => kbd.text());

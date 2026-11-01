@@ -27,6 +27,7 @@ import { type PaletteGroup, type PaletteItem, filterItems } from './commandPalet
 import { MAX_OBJECT_RECENTS } from './commandPaletteObjectRecents';
 import { type CommandPaletteProvider, routePrefixMatcher } from './commandPaletteRegistry';
 import { filterByKeywords } from './settingsRegistry';
+import { ClockIcon } from '@coolicons/vue';
 
 /**
  * A palette row for one SETTINGS CONTROL rather than a destination. It carries
@@ -167,7 +168,7 @@ export function buildCorePaletteProviders(deps: CorePaletteProviderDeps): Comman
 						items: recent.map((term) => ({
 							id: `recent:${term}`,
 							label: term,
-							icon: 'lucide:clock',
+							icon: ClockIcon,
 							keepOpen: true,
 							run: () => deps.onRecentTerm(term),
 						})),

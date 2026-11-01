@@ -5,6 +5,7 @@ import {
 	INBOUND_RAW_RETENTION_DAY_CHOICES,
 	type InboundRawRetentionDays,
 } from '@owlat/shared/inboundRetention';
+import { ArchiveIcon } from '@coolicons/vue';
 
 /**
  * How long the shared inbox keeps the FILES belonging to a received message —
@@ -75,7 +76,7 @@ async function onSelect(next: InboundRawRetentionDays | null) {
 	<UiCard>
 		<template #header>
 			<div class="flex items-center gap-3 pb-4">
-				<UiIconBox icon="lucide:archive" size="sm" variant="surface" rounded="lg" />
+				<UiIconBox :icon="ArchiveIcon" size="sm" variant="surface" rounded="lg" />
 				<div class="min-w-0">
 					<h2 class="text-lg font-medium text-text-primary">
 						{{ t('components.settings.inboundRetentionCard.title') }}

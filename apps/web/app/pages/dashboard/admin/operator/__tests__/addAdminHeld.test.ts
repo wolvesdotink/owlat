@@ -56,7 +56,6 @@ async function mountAdminsTab() {
 			// Template auto-imports; the test build does not rewrite templates.
 			mocks: { abuseStatusVariant, riskLevelVariant, scanLevelVariant, formatRelativeTime },
 			stubs: {
-				Icon: true,
 				UiBadge: { template: '<span><slot /></span>' },
 				UiIconBox: true,
 				UiEmptyState: true,

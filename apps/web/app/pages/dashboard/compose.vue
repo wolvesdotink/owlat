@@ -35,6 +35,7 @@ import { answerBackLabelKey, singleQueryValue } from '~/utils/answerMode';
 import { isDialogOpen } from '~/utils/dialogOpen';
 import { isEditableTarget } from '~/utils/postboxShortcuts';
 import { isImeComposing } from '~/utils/imeComposition';
+import { ArrowLeftIcon } from '@coolicons/vue';
 
 definePageMeta({
 	layout: 'dashboard',
@@ -251,7 +252,7 @@ const frameStyle = computed(() => ({
 				data-testid="compose-back"
 				@click="leave"
 			>
-				<Icon name="lucide:arrow-left" class="size-4" />
+				<ArrowLeftIcon class="size-4" />
 				<span class="max-md:hidden">{{ backLabel }}</span>
 				<kbd class="font-mono text-2xs text-text-tertiary max-md:hidden pointer-coarse:hidden">
 					Esc

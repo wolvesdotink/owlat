@@ -6,6 +6,8 @@ import { useAcknowledgedDraft } from '~/composables/useAcknowledgedDraft';
 import { useComposerDraft } from '~/composables/useComposerDrafts';
 import { isImeComposing } from '~/utils/imeComposition';
 import { composerRecallDirection, type ChatRecallTarget } from '~/utils/composerRecall';
+import { CloseIcon, PaperPlaneIcon, PaperclipIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const props = defineProps<{
 	/**
@@ -274,7 +276,7 @@ const handleSend = async () => {
 				:key="attachment.id"
 				class="flex items-center gap-2 px-2 py-1 bg-bg-surface border border-border-subtle rounded text-xs"
 			>
-				<Icon name="lucide:paperclip" class="w-3 h-3 text-text-tertiary" />
+				<PaperclipIcon class="w-3 h-3 text-text-tertiary" />
 				<span class="text-text-secondary truncate max-w-[180px]">{{ attachment.filename }}</span>
 				<button
 					class="text-text-tertiary hover:text-error"
@@ -283,7 +285,7 @@ const handleSend = async () => {
 						t('components.chat.chatInput.removeAttachment', { filename: attachment.filename })
 					"
 				>
-					<Icon name="lucide:x" class="w-3 h-3" />
+					<CloseIcon class="w-3 h-3" />
 				</button>
 			</div>
 		</div>
@@ -296,7 +298,7 @@ const handleSend = async () => {
 					:aria-label="t('components.chat.chatInput.attachFile')"
 					@click="fileInputRef?.click()"
 				>
-					<Icon v-if="!isUploading" name="lucide:paperclip" class="w-4 h-4" />
+					<PaperclipIcon v-if="!isUploading" class="w-4 h-4" />
 					<UiSpinner v-else size="xs" />
 				</button>
 			</UiTooltip>
@@ -329,12 +331,8 @@ const handleSend = async () => {
 				data-testid="chat-send"
 				@click="handleSend"
 			>
-				<Icon
-					v-if="isSending"
-					name="lucide:loader-2"
-					class="w-4 h-4 animate-spin motion-reduce:animate-none"
-				/>
-				<Icon v-else name="lucide:send" class="w-4 h-4" />
+				<SpinnerIcon v-if="isSending" class="w-4 h-4" />
+				<PaperPlaneIcon v-else class="w-4 h-4" />
 			</UiButton>
 		</div>
 

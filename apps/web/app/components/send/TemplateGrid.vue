@@ -6,6 +6,7 @@
  */
 import type { TemplateListItem, TemplateRowAction } from '~/composables/useTemplateList';
 import { formatDate } from '~/utils/formatters';
+import { CopyIcon, PaperPlaneIcon, PencilIcon, TrashIcon } from '@coolicons/vue';
 
 const props = withDefaults(
 	defineProps<{
@@ -54,7 +55,7 @@ const overlayButton =
 				class="aspect-[4/3] bg-bg-surface flex flex-col items-center justify-center relative px-4"
 			>
 				<slot name="thumbnail" :item="item">
-					<Icon name="lucide:send" class="w-12 h-12 text-text-tertiary/30" />
+					<PaperPlaneIcon class="w-12 h-12 text-text-tertiary/30" :stroke-width="1.5" />
 				</slot>
 				<div
 					class="absolute inset-0 bg-bg-deep/80 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2"
@@ -66,7 +67,7 @@ const overlayButton =
 							:aria-label="action.label"
 							@click.stop="action.run(item)"
 						>
-							<Icon :name="action.icon" class="w-4 h-4" />
+							<component :is="action.icon" class="w-4 h-4" />
 						</button>
 					</UiTooltip>
 					<button
@@ -75,7 +76,7 @@ const overlayButton =
 						:aria-label="t('common.edit')"
 						@click.stop="emit('edit', item)"
 					>
-						<Icon name="lucide:pencil" class="w-4 h-4" />
+						<PencilIcon class="w-4 h-4" />
 					</button>
 					<template v-if="canManage">
 						<button
@@ -84,7 +85,7 @@ const overlayButton =
 							:aria-label="t('common.duplicate')"
 							@click.stop="emit('duplicate', item)"
 						>
-							<Icon name="lucide:copy" class="w-4 h-4" />
+							<CopyIcon class="w-4 h-4" />
 						</button>
 						<button
 							type="button"
@@ -92,7 +93,7 @@ const overlayButton =
 							:aria-label="t('common.delete')"
 							@click.stop="emit('delete', item)"
 						>
-							<Icon name="lucide:trash-2" class="w-4 h-4" />
+							<TrashIcon class="w-4 h-4" />
 						</button>
 					</template>
 				</div>

@@ -50,14 +50,12 @@ beforeEach(() => {
 	isOffline.value = false;
 });
 
-const iconStub = { props: ['name'], template: '<span />' };
-
 function mountBody() {
 	return mount(PostboxMessageBody, {
 		props: { message: { _id: 'msg-1', htmlBodyStorageId: 'blob-1' } },
 		global: {
 			plugins: [createTestI18n()],
-			components: { PostboxReaderSkeleton, UiSkeleton, Icon: iconStub },
+			components: { PostboxReaderSkeleton, UiSkeleton },
 			stubs: { PostboxImageBanner: true },
 		},
 	});

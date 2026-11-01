@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import { formatNumber, formatPercentage } from '~/utils/formatters';
+import { GaugeIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -47,7 +48,7 @@ const SPAM_RATE_LABEL = {
 	<UiCard>
 		<div class="space-y-5">
 			<div class="flex items-center gap-3">
-				<UiIconBox icon="lucide:gauge" size="lg" variant="brand" rounded="xl" />
+				<UiIconBox :icon="GaugeIcon" size="lg" variant="brand" rounded="xl" />
 				<div>
 					<h2 class="text-lg font-semibold text-text-primary">
 						{{ t('components.delivery.complianceTelemetryCard.title') }}

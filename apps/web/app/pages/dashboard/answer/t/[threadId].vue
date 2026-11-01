@@ -41,6 +41,7 @@ import { answerBackLabelKey, singleQueryValue } from '~/utils/answerMode';
 import { sendHoldReason } from '~/utils/replyCollision';
 import { isChannelMessage } from '~/utils/teamThreadReply';
 import { useReplyDropDelivery } from '~/composables/useReplyFileDrop';
+import { ChatConversationIcon, RobotIcon, SparklesIcon } from '@coolicons/vue';
 
 definePageMeta({
 	layout: 'dashboard',
@@ -263,7 +264,7 @@ useAnswerModeKeys({
 			<template #identity>
 				<span class="flex min-w-0 items-center gap-3" data-testid="answer-identity">
 					<span class="flex min-w-0 items-center gap-1.5 text-xs text-text-secondary">
-						<Icon name="lucide:bot" class="size-3.5 shrink-0 text-text-tertiary" />
+						<RobotIcon class="size-3.5 shrink-0 text-text-tertiary" />
 						<span class="truncate">
 							{{
 								t('components.answer.band.answeringAs', { name: t('components.shell.teamInbox') })
@@ -285,7 +286,7 @@ useAnswerModeKeys({
 							class="flex w-full items-center gap-2 px-3 py-1.5 text-sm hover:bg-bg-surface"
 							@click="close()"
 						>
-							<Icon name="lucide:messages-square" class="size-4 text-text-tertiary" />
+							<ChatConversationIcon class="size-4 text-text-tertiary" />
 							{{ t('components.agentTasks.reviewFocusFlow.openThread') }}
 						</NuxtLink>
 					</template>
@@ -451,7 +452,7 @@ useAnswerModeKeys({
 							:loading="reply.isRequestingReply.value"
 							@click="reply.requestReply"
 						>
-							<Icon name="lucide:sparkles" class="size-3.5" />
+							<SparklesIcon class="size-3.5" />
 							{{ t('dashboard.inbox.detail.requestReply') }}
 						</UiButton>
 					</template>

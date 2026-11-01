@@ -28,8 +28,8 @@ const presentation = computed(() => FINDING_PRESENTATION[props.finding.status]);
 
 <template>
 	<div class="flex items-start gap-3 rounded-lg border border-border-subtle p-3">
-		<Icon
-			:name="presentation.icon"
+		<component
+			:is="presentation.icon"
 			class="w-4 h-4 mt-0.5 shrink-0"
 			:class="presentation.class"
 			aria-hidden="true"

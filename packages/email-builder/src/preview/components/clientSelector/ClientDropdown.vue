@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { Check, X } from '@lucide/vue';
+import { CheckIcon, CloseIcon } from '@coolicons/vue';
 import type { EmailClient } from '../../types';
 import { emailClientGroups, popularClients } from '../../data/clients';
 import { useBuilderI18n } from '../../../i18n/useBuilderI18n';
@@ -40,7 +40,7 @@ function selectClient(client: EmailClient | null) {
 		<div class="ep-dropdown-header">
 			<span>{{ t('builder.preview.clients.title') }}</span>
 			<button v-if="selectedClient" class="ep-clear-button" @click="selectClient(null)">
-				<X class="ep-clear-icon" />
+				<CloseIcon class="ep-clear-icon" />
 				{{ t('builder.preview.clients.clear') }}
 			</button>
 		</div>
@@ -85,7 +85,7 @@ function selectClient(client: EmailClient | null) {
 						<span v-if="client.marketShare" class="ep-client-item-share">
 							{{ client.marketShare }}%
 						</span>
-						<Check v-if="selectedClient?.id === client.id" class="ep-client-check" />
+						<CheckIcon v-if="selectedClient?.id === client.id" class="ep-client-check" />
 					</button>
 				</div>
 			</div>

@@ -6,6 +6,8 @@
  * Now it only shows what the docs site cannot: THIS instance's base URL and
  * ready-to-paste snippets against it.
  */
+import { BookOpenIcon, CheckIcon, CopyIcon, ExternalLinkIcon } from '@coolicons/vue';
+
 const { t } = useI18n();
 
 useHead({ title: () => t('dashboard.admin.team.api.docs.pageTitle') });
@@ -95,7 +97,7 @@ const endpoints = computed(() => [
 					size="sm"
 					@click="copy(apiBaseUrl, 'base-url')"
 				>
-					<Icon :name="copiedKey === 'base-url' ? 'lucide:check' : 'lucide:copy'" class="w-4 h-4" />
+					<component :is="copiedKey === 'base-url' ? CheckIcon : CopyIcon" class="w-4 h-4" />
 				</UiButton>
 			</div>
 		</UiCard>
@@ -106,7 +108,7 @@ const endpoints = computed(() => [
 					{{ t('dashboard.admin.team.api.docs.createContact') }}
 				</h2>
 				<UiButton variant="ghost" size="sm" @click="copy(curlExample, 'curl')">
-					<Icon :name="copiedKey === 'curl' ? 'lucide:check' : 'lucide:copy'" class="w-4 h-4" />
+					<component :is="copiedKey === 'curl' ? CheckIcon : CopyIcon" class="w-4 h-4" />
 				</UiButton>
 			</div>
 			<pre
@@ -151,9 +153,9 @@ const endpoints = computed(() => [
 			rel="noopener noreferrer"
 			class="gap-2"
 		>
-			<Icon name="lucide:book-open" class="w-4 h-4" />
+			<BookOpenIcon class="w-4 h-4" />
 			{{ t('dashboard.admin.team.api.docs.fullReference') }}
-			<Icon name="lucide:external-link" class="w-3.5 h-3.5" />
+			<ExternalLinkIcon class="w-3.5 h-3.5" />
 		</UiButton>
 	</div>
 </template>

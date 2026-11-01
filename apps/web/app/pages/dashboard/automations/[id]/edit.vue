@@ -18,6 +18,7 @@ import EditorProgress from '~/components/automations/editor/EditorProgress.vue';
 import EmptySteps from '~/components/automations/editor/EmptySteps.vue';
 import StepCard from '~/components/automations/editor/StepCard.vue';
 import TriggerNode from '~/components/automations/editor/TriggerNode.vue';
+import { CheckIcon, CircleWarningIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -320,7 +321,7 @@ onUnmounted(() => {
 		<!-- Not Found -->
 		<div v-else-if="!automation" class="flex-1 flex items-center justify-center">
 			<div class="text-center">
-				<Icon name="lucide:alert-circle" class="w-12 h-12 text-text-tertiary mx-auto mb-4" />
+				<CircleWarningIcon class="w-12 h-12 text-text-tertiary mx-auto mb-4" :stroke-width="1.5" />
 				<h2 class="text-xl font-semibold text-text-primary mb-2">
 					{{ t('dashboard.automations.detail.edit.notFound.title') }}
 				</h2>
@@ -413,7 +414,7 @@ onUnmounted(() => {
 					<div v-if="mutableSteps.length > 0" class="mt-4">
 						<div class="card p-4 bg-bg-surface border-dashed">
 							<div class="flex items-center justify-center gap-2 text-text-tertiary">
-								<Icon name="lucide:check" class="w-5 h-5" />
+								<CheckIcon class="w-5 h-5" />
 								<span class="font-medium">{{
 									t('dashboard.automations.detail.edit.endOfAutomation')
 								}}</span>

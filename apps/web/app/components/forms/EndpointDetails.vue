@@ -1,5 +1,13 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
+import {
+	CheckIcon,
+	CircleCheckIcon,
+	CopyIcon,
+	ExternalLinkIcon,
+	InboxIcon,
+	TriangleWarningIcon,
+} from '@coolicons/vue';
 
 // The expanded body of one form endpoint card on the forms admin page:
 // submission statistics, recent submissions, the endpoint URL and the embed
@@ -28,7 +36,7 @@ const { t } = useI18n();
 				<div class="grid grid-cols-2 md:grid-cols-4 gap-4">
 					<div class="bg-bg-elevated rounded-xl p-4 border border-border-subtle">
 						<div class="flex items-center gap-2 mb-1">
-							<Icon name="lucide:inbox" class="w-4 h-4 text-text-tertiary" />
+							<InboxIcon class="w-4 h-4 text-text-tertiary" />
 							<span class="text-xs text-text-tertiary">{{
 								t('dashboard.admin.instance.forms.stats.total')
 							}}</span>
@@ -39,7 +47,7 @@ const { t } = useI18n();
 					</div>
 					<div class="bg-bg-elevated rounded-xl p-4 border border-border-subtle">
 						<div class="flex items-center gap-2 mb-1">
-							<Icon name="lucide:check-circle-2" class="w-4 h-4 text-success" />
+							<CircleCheckIcon class="w-4 h-4 text-success" />
 							<span class="text-xs text-text-tertiary">{{
 								t('dashboard.admin.instance.forms.stats.successful')
 							}}</span>
@@ -50,7 +58,7 @@ const { t } = useI18n();
 					</div>
 					<div class="bg-bg-elevated rounded-xl p-4 border border-border-subtle">
 						<div class="flex items-center gap-2 mb-1">
-							<Icon name="lucide:alert-triangle" class="w-4 h-4 text-warning" />
+							<TriangleWarningIcon class="w-4 h-4 text-warning" />
 							<span class="text-xs text-text-tertiary">{{
 								t('dashboard.admin.instance.forms.stats.other')
 							}}</span>
@@ -86,12 +94,8 @@ const { t } = useI18n();
 							:aria-label="t('dashboard.admin.instance.forms.copyUrl')"
 							@click="emit('copy', formUrl, `url-${form._id}`)"
 						>
-							<Icon
-								v-if="copiedCode === `url-${form._id}`"
-								name="lucide:check"
-								class="w-4 h-4 text-success"
-							/>
-							<Icon v-else name="lucide:copy" class="w-4 h-4" />
+							<CheckIcon v-if="copiedCode === `url-${form._id}`" class="w-4 h-4 text-success" />
+							<CopyIcon v-else class="w-4 h-4" />
 						</UiButton>
 					</UiTooltip>
 				</div>
@@ -108,12 +112,8 @@ const { t } = useI18n();
 						class="gap-1.5 text-sm py-1.5 px-3"
 						@click="emit('copy', embedCode, `embed-${form._id}`)"
 					>
-						<Icon
-							v-if="copiedCode === `embed-${form._id}`"
-							name="lucide:check"
-							class="w-4 h-4 text-success"
-						/>
-						<Icon v-else name="lucide:copy" class="w-4 h-4" />
+						<CheckIcon v-if="copiedCode === `embed-${form._id}`" class="w-4 h-4 text-success" />
+						<CopyIcon v-else class="w-4 h-4" />
 						{{
 							copiedCode === `embed-${form._id}`
 								? t('dashboard.admin.instance.forms.copied')
@@ -143,7 +143,7 @@ const { t } = useI18n();
 						class="inline-flex items-center gap-1 text-brand hover:underline ml-1"
 					>
 						{{ t('common.learnMore') }}
-						<Icon name="lucide:external-link" class="w-3 h-3" />
+						<ExternalLinkIcon class="w-3 h-3" />
 					</a>
 				</p>
 			</div>

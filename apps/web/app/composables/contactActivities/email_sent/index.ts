@@ -1,9 +1,10 @@
 import type { ContactActivityEditorModule } from '../types';
+import { PaperPlaneIcon } from '@coolicons/vue';
 
 export const emailSentEditorModule: ContactActivityEditorModule<'email_sent'> = {
 	literal: 'email_sent',
 	displayConfig: {
-		icon: 'lucide:send',
+		icon: PaperPlaneIcon,
 		label: 'shared.contactActivities.emailSent.label',
 		color: 'text-brand',
 	},

@@ -6,6 +6,7 @@
  * only: the page owns the write.
  */
 import { formatRelativeTime } from '~/utils/formatters';
+import { AlarmOffIcon, RotateLeftIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	autoClosedAt: number;
@@ -45,11 +46,7 @@ const absolute = computed(() =>
 		data-testid="thread-auto-closed-notice"
 	>
 		<p class="flex min-w-0 items-center gap-2 text-sm text-text-secondary">
-			<Icon
-				name="lucide:timer-off"
-				class="h-4 w-4 shrink-0 text-text-tertiary"
-				aria-hidden="true"
-			/>
+			<AlarmOffIcon class="h-4 w-4 shrink-0 text-text-tertiary" aria-hidden="true" />
 			<span :title="absolute">{{ message }}</span>
 		</p>
 		<UiButton
@@ -61,7 +58,7 @@ const absolute = computed(() =>
 			data-testid="thread-auto-closed-reopen"
 			@click="emit('reopen')"
 		>
-			<Icon name="lucide:rotate-ccw" class="h-4 w-4" />
+			<RotateLeftIcon class="h-4 w-4" />
 			{{ t('dashboard.inbox.detail.autoClose.reopen') }}
 		</UiButton>
 	</div>

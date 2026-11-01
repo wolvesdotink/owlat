@@ -9,6 +9,7 @@
  * by default) and clears the query; the list stays open for the next one.
  */
 import { useId } from 'vue';
+import { CloseIcon } from '@coolicons/vue';
 
 export interface ChatMemberCandidate {
 	memberId: string;
@@ -120,7 +121,7 @@ const removeMember = (memberId: string) => {
 					@click="removeMember(member.memberId)"
 					:aria-label="t('components.chat.chatMemberPicker.removeMember', { name: member.label })"
 				>
-					<Icon name="lucide:x" class="w-3 h-3" />
+					<CloseIcon class="w-3 h-3" />
 				</button>
 			</span>
 		</div>

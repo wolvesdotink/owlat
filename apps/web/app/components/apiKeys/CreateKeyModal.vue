@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { CircleWarningIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
+
 defineProps<{
 	open: boolean;
 	isCreating: boolean;
@@ -68,7 +71,7 @@ const AVAILABLE_SCOPES = computed<
 				v-if="error"
 				class="mb-4 p-3 rounded-lg bg-error-subtle border border-error/20 flex items-start gap-3"
 			>
-				<Icon name="lucide:alert-circle" class="w-5 h-5 text-error shrink-0 mt-0.5" />
+				<CircleWarningIcon class="w-5 h-5 text-error shrink-0 mt-0.5" />
 				<p class="text-sm text-error">{{ error }}</p>
 			</div>
 
@@ -127,11 +130,7 @@ const AVAILABLE_SCOPES = computed<
 				{{ t('common.cancel') }}
 			</UiButton>
 			<UiButton type="button" class="gap-2" :disabled="isCreating" @click="emit('submit')">
-				<Icon
-					v-if="isCreating"
-					name="lucide:loader-2"
-					class="w-4 h-4 animate-spin motion-reduce:animate-none"
-				/>
+				<SpinnerIcon v-if="isCreating" class="w-4 h-4" />
 				{{
 					isCreating
 						? t('dashboard.admin.team.api.index.form.creating')

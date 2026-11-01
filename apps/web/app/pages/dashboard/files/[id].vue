@@ -2,6 +2,24 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { useFileVersionHistory } from '~/composables/useFileVersionHistory';
+import {
+	ArrowLeftIcon,
+	CheckIcon,
+	ChevronDownIcon,
+	CloseIcon,
+	DownloadIcon,
+	FileCloseIcon,
+	FileIcon,
+	FileTextIcon,
+	FilmIcon,
+	ImageIcon,
+	MusicNoteIcon,
+	PencilIcon,
+	SparklesIcon,
+	TableIcon,
+	TrashIcon,
+	UploadIcon,
+} from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -103,16 +121,16 @@ const handleDelete = async () => {
 // Helpers
 
 const mimeIcon = computed(() => {
-	if (!file.value) return 'lucide:file';
+	if (!file.value) return FileIcon;
 	const mime = file.value.mimeType;
-	if (mime === 'application/pdf') return 'lucide:file-text';
-	if (mime.startsWith('image/')) return 'lucide:image';
-	if (mime.startsWith('video/')) return 'lucide:film';
-	if (mime.startsWith('audio/')) return 'lucide:music';
-	if (mime.includes('spreadsheet') || mime.includes('csv')) return 'lucide:table';
-	if (mime.includes('word') || mime.includes('document')) return 'lucide:file-text';
-	if (mime.startsWith('text/')) return 'lucide:file-type';
-	return 'lucide:file';
+	if (mime === 'application/pdf') return FileTextIcon;
+	if (mime.startsWith('image/')) return ImageIcon;
+	if (mime.startsWith('video/')) return FilmIcon;
+	if (mime.startsWith('audio/')) return MusicNoteIcon;
+	if (mime.includes('spreadsheet') || mime.includes('csv')) return TableIcon;
+	if (mime.includes('word') || mime.includes('document')) return FileTextIcon;
+	if (mime.startsWith('text/')) return FileTextIcon;
+	return FileIcon;
 });
 </script>
 
@@ -123,7 +141,7 @@ const mimeIcon = computed(() => {
 			to="/dashboard/files"
 			class="inline-flex items-center gap-1.5 text-sm text-text-secondary hover:text-text-primary transition-colors mb-6"
 		>
-			<Icon name="lucide:arrow-left" class="w-4 h-4" />
+			<ArrowLeftIcon class="w-4 h-4" />
 			{{ t('dashboard.files.detail.backToFiles') }}
 		</NuxtLink>
 
@@ -141,7 +159,7 @@ const mimeIcon = computed(() => {
 
 		<!-- Not found -->
 		<div v-else-if="!file" class="flex flex-col items-center justify-center py-16 text-center">
-			<UiIconBox icon="lucide:file-x" size="xl" variant="surface" rounded="full" class="mb-4" />
+			<UiIconBox :icon="FileCloseIcon" size="xl" variant="surface" rounded="full" class="mb-4" />
 			<p class="text-text-secondary font-medium">
 				{{ t('dashboard.files.detail.notFound') }}
 			</p>
@@ -157,7 +175,7 @@ const mimeIcon = computed(() => {
 				<div
 					class="flex-shrink-0 w-14 h-14 rounded-xl bg-bg-surface shadow-surface-1 flex items-center justify-center"
 				>
-					<Icon :name="mimeIcon" class="w-7 h-7 text-text-tertiary" />
+					<component :is="mimeIcon" class="w-7 h-7 text-text-tertiary" :stroke-width="1.5" />
 				</div>
 				<UiPageHeader class="min-w-0 flex-1" :description="file.filename">
 					<!-- The title edits in place: the editor takes the title's spot in
@@ -177,14 +195,14 @@ const mimeIcon = computed(() => {
 								@click="saveTitle"
 								:aria-label="t('dashboard.files.detail.saveTitle')"
 							>
-								<Icon name="lucide:check" class="w-4 h-4" />
+								<CheckIcon class="w-4 h-4" />
 							</button>
 							<button
 								class="p-1 rounded text-text-tertiary hover:bg-bg-surface-hover transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 								@click="cancelEditTitle"
 								:aria-label="t('dashboard.files.detail.cancelEditingTitle')"
 							>
-								<Icon name="lucide:x" class="w-4 h-4" />
+								<CloseIcon class="w-4 h-4" />
 							</button>
 						</span>
 						<span
@@ -194,9 +212,8 @@ const mimeIcon = computed(() => {
 							@click="isAdmin && startEditTitle()"
 						>
 							{{ file.title || file.filename }}
-							<Icon
+							<PencilIcon
 								v-if="isAdmin"
-								name="lucide:pencil"
 								class="w-3.5 h-3.5 text-text-tertiary inline-block opacity-0 group-hover:opacity-100 transition-opacity ml-1"
 							/>
 						</span>
@@ -220,15 +237,15 @@ const mimeIcon = computed(() => {
 							target="_blank"
 							rel="noopener noreferrer"
 						>
-							<Icon name="lucide:download" class="w-4 h-4 mr-2" />
+							<DownloadIcon class="w-4 h-4 mr-2" />
 							{{ t('common.download') }}
 						</UiButton>
 						<UiButton variant="secondary" v-if="isAdmin" @click="showVersionUpload = true">
-							<Icon name="lucide:upload" class="w-4 h-4 mr-2" />
+							<UploadIcon class="w-4 h-4 mr-2" />
 							{{ t('dashboard.files.detail.newVersion') }}
 						</UiButton>
 						<UiButton v-if="isAdmin" variant="danger-outline" @click="showDeleteConfirm = true">
-							<Icon name="lucide:trash-2" class="w-4 h-4 mr-2" />
+							<TrashIcon class="w-4 h-4 mr-2" />
 							{{ t('common.delete') }}
 						</UiButton>
 					</template>
@@ -245,13 +262,12 @@ const mimeIcon = computed(() => {
 							@click="showSummary = !showSummary"
 						>
 							<div class="flex items-center gap-2">
-								<Icon name="lucide:sparkles" class="w-4 h-4 text-brand" />
+								<SparklesIcon class="w-4 h-4 text-brand" />
 								<span class="text-sm font-medium text-text-primary">{{
 									t('dashboard.files.detail.aiSummary')
 								}}</span>
 							</div>
-							<Icon
-								name="lucide:chevron-down"
+							<ChevronDownIcon
 								class="w-4 h-4 text-text-tertiary transition-transform"
 								:class="{ '-rotate-180': showSummary }"
 							/>
@@ -273,13 +289,12 @@ const mimeIcon = computed(() => {
 							@click="showExtractedText = !showExtractedText"
 						>
 							<div class="flex items-center gap-2">
-								<Icon name="lucide:file-text" class="w-4 h-4 text-text-tertiary" />
+								<FileTextIcon class="w-4 h-4 text-text-tertiary" />
 								<span class="text-sm font-medium text-text-primary">{{
 									t('dashboard.files.detail.extractedText')
 								}}</span>
 							</div>
-							<Icon
-								name="lucide:chevron-down"
+							<ChevronDownIcon
 								class="w-4 h-4 text-text-tertiary transition-transform"
 								:class="{ '-rotate-180': showExtractedText }"
 							/>

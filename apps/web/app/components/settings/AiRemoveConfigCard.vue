@@ -6,6 +6,8 @@
  * is stored, and passes `remove`, which resolves `true` once the row is gone;
  * on a refused call the dialog stays open and the operation toast says why.
  */
+import { TrashIcon } from '@coolicons/vue';
+
 const props = defineProps<{
 	remove: () => Promise<boolean>;
 	isRemoving: boolean;
@@ -40,7 +42,7 @@ async function confirmRemove() {
 				@click="showDialog = true"
 			>
 				<template #iconLeft>
-					<Icon name="lucide:trash-2" class="w-4 h-4" />
+					<TrashIcon class="w-4 h-4" />
 				</template>
 				{{ t('dashboard.admin.instance.aiProvider.remove.button') }}
 			</UiButton>

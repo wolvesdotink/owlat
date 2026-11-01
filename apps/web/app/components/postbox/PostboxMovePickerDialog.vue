@@ -7,6 +7,7 @@
  */
 
 import type { Id } from '@owlat/api/dataModel';
+import { FolderIcon } from '@coolicons/vue';
 
 defineProps<{
 	open: boolean;
@@ -35,7 +36,7 @@ const { t } = useI18n();
 					class="w-full flex items-center gap-2 px-3 py-2 rounded hover:bg-bg-surface text-left text-sm capitalize"
 					@click="emit('pick', folder._id)"
 				>
-					<Icon name="lucide:folder" class="w-4 h-4 text-text-tertiary flex-shrink-0" />
+					<FolderIcon class="w-4 h-4 text-text-tertiary flex-shrink-0" />
 					{{ folder.role ?? folder.name }}
 				</button>
 			</li>

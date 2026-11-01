@@ -87,7 +87,7 @@ export interface PropertyField {
 export interface PropertyGroup {
 	/** Section heading */
 	label: string;
-	/** Lucide icon name (optional) */
+	/** A key of the icon map in `groupIcons.ts`, such as `Move` (optional) */
 	icon?: string;
 	/** Default collapsed state */
 	collapsed?: boolean;

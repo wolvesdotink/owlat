@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { GripVertical } from '@lucide/vue';
+import { DragVerticalIcon } from '@coolicons/vue';
 
 defineProps<{
 	visible: boolean;
@@ -19,6 +19,6 @@ defineProps<{
 			visible ? 'opacity-100' : 'opacity-0 group-hover/block:opacity-100',
 		]"
 	>
-		<GripVertical :size="14" />
+		<DragVerticalIcon :size="14" />
 	</div>
 </template>

@@ -16,6 +16,15 @@ import { credentialEnvVarFor } from '~/composables/setupWizardCredentials';
 import TransportCredentialFields from './TransportCredentialFields.vue';
 import TransportFromIdentityFields from './TransportFromIdentityFields.vue';
 import { useLocalized } from '~/composables/useLocalized';
+import {
+	CheckIcon,
+	CircleInfoIcon,
+	CircleWarningIcon,
+	PencilIcon,
+	PlugIcon,
+	ShieldIcon,
+	Slider1Icon,
+} from '@coolicons/vue';
 
 /**
  * In-app transport editor. Reuses the setup wizard's provider picker, SMTP
@@ -275,7 +284,7 @@ function cancel() {
 		<template #header>
 			<div class="flex items-center justify-between gap-3">
 				<div class="flex items-center gap-3">
-					<UiIconBox icon="lucide:pencil" size="sm" variant="surface" rounded="lg" />
+					<UiIconBox :icon="PencilIcon" size="sm" variant="surface" rounded="lg" />
 					<div>
 						<h2 class="text-lg font-semibold text-text-primary">
 							{{ t('components.delivery.transportEditor.title') }}
@@ -286,7 +295,7 @@ function cancel() {
 					</div>
 				</div>
 				<UiButton v-if="!isEditing" variant="secondary" size="sm" @click="isEditing = true">
-					<template #iconLeft><Icon name="lucide:settings-2" class="w-4 h-4" /></template>
+					<template #iconLeft><Slider1Icon class="w-4 h-4" /></template>
 					{{ t('components.delivery.transportEditor.changeProvider') }}
 				</UiButton>
 			</div>
@@ -329,7 +338,7 @@ function cancel() {
 			</fieldset>
 
 			<p class="text-xs text-text-tertiary flex items-center gap-1.5">
-				<Icon name="lucide:shield" class="w-3.5 h-3.5" />
+				<ShieldIcon class="w-3.5 h-3.5" />
 				{{ t('components.delivery.transportEditor.credentialsNeverShown') }}
 			</p>
 
@@ -351,7 +360,7 @@ function cancel() {
 						v-if="value === 'require-verified'"
 						class="text-xs text-warning flex items-start gap-1.5"
 					>
-						<Icon name="lucide:alert-circle" class="w-3.5 h-3.5 mt-0.5 shrink-0" />
+						<CircleWarningIcon class="w-3.5 h-3.5 mt-0.5 shrink-0" />
 						<span>{{ t('components.delivery.transportEditor.requireVerifiedWarning') }}</span>
 					</p>
 				</template>
@@ -380,7 +389,7 @@ function cancel() {
 			     This line already only renders for the selected kind, so it names
 			     that one rather than listing the vendors that lack a probe. -->
 			<p v-if="!canTest" class="text-xs text-text-tertiary flex items-center gap-1.5">
-				<Icon name="lucide:info" class="w-3.5 h-3.5" />
+				<CircleInfoIcon class="w-3.5 h-3.5" />
 				{{ t('components.delivery.transportEditor.noPreApplyCheck') }}
 			</p>
 
@@ -408,7 +417,7 @@ function cancel() {
 					@click="handleTest"
 				>
 					<template v-if="!testing" #iconLeft>
-						<Icon name="lucide:plug-zap" class="w-4 h-4" />
+						<PlugIcon class="w-4 h-4" />
 					</template>
 					{{
 						testing
@@ -418,7 +427,7 @@ function cancel() {
 				</UiButton>
 				<UiButton :loading="applying" :disabled="applying || testing" @click="handleApply">
 					<template v-if="!applying" #iconLeft>
-						<Icon name="lucide:check" class="w-4 h-4" />
+						<CheckIcon class="w-4 h-4" />
 					</template>
 					{{
 						applying

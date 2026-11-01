@@ -5,6 +5,7 @@
  * everything here, so callers keep importing from it.
  */
 import type { AdminGate } from './adminSettingsGates';
+import type { IconComponent } from '@coolicons/vue';
 
 export type { AdminEnvironment, AdminGate } from './adminSettingsGates';
 
@@ -39,7 +40,7 @@ export interface AdminEntry {
 	 * consumer resolves it at its own render boundary.
 	 */
 	readonly titleKey: string;
-	readonly icon: string;
+	readonly icon: IconComponent;
 	readonly area: AdminAreaKey;
 	readonly gate?: AdminGate;
 	/**

@@ -14,6 +14,8 @@
  * `middleware/desktop-workspace.global.ts` so this page gets to make that
  * decision rather than being bounced before it renders.
  */
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
+
 definePageMeta({
 	layout: false,
 });
@@ -27,6 +29,6 @@ await navigateTo(active.value ? '/dashboard/preferences/device' : '/desktop/welc
 
 <template>
 	<div class="flex min-h-screen items-center justify-center bg-bg-deep">
-		<Icon name="lucide:loader-2" class="size-5 animate-spin motion-reduce:animate-none text-text-tertiary" />
+		<SpinnerIcon class="size-5 text-text-tertiary" />
 	</div>
 </template>

@@ -7,6 +7,14 @@ import { formatDateTime } from '~/utils/formatters';
 import { useReviewListKeys } from '~/composables/useReviewListKeys';
 import { useUpdatesDismissSweep } from '~/composables/useUpdatesDismissSweep';
 import PostboxSweepStatus from '~/components/postbox/PostboxSweepStatus.vue';
+import {
+	ArrowLeftIcon,
+	CheckIcon,
+	CircleSlashIcon,
+	ExternalLinkIcon,
+	ReplyIcon,
+} from '@coolicons/vue';
+import { UPDATE_VIEWS, type UpdateView } from '~/lib/inboxUpdateViews';
 
 /**
  * Updates — the team-inbox dashboard of mail that needs no reply.
@@ -39,19 +47,11 @@ definePageMeta({
 	requiresFeature: 'inbox',
 });
 
-type UpdateView = 'updates' | 'promotions' | 'notifications' | 'spam';
-const VIEWS: ReadonlyArray<{ key: UpdateView; icon: string }> = [
-	{ key: 'updates', icon: 'lucide:newspaper' },
-	{ key: 'promotions', icon: 'lucide:megaphone' },
-	{ key: 'notifications', icon: 'lucide:bell' },
-	{ key: 'spam', icon: 'lucide:shield-off' },
-];
-
 const route = useRoute();
 const router = useRouter();
 const view = computed<UpdateView>(() => {
 	const raw = route.query['view'];
-	return VIEWS.some((v) => v.key === raw) ? (raw as UpdateView) : 'updates';
+	return UPDATE_VIEWS.some((v) => v.key === raw) ? (raw as UpdateView) : 'updates';
 });
 function setView(next: UpdateView) {
 	void router.replace({ query: { ...route.query, view: next === 'updates' ? undefined : next } });
@@ -241,7 +241,7 @@ function kindLabel(kind: string | undefined): string | undefined {
 				class="mt-7.5 inline-flex items-center gap-2 text-text-secondary transition-colors duration-(--motion-fast) hover:text-text-primary"
 				:aria-label="t('dashboard.inbox.detail.backToInbox')"
 			>
-				<Icon name="lucide:arrow-left" class="h-4 w-4" />
+				<ArrowLeftIcon class="h-4 w-4" />
 			</NuxtLink>
 			<UiPageHeader
 				class="min-w-0 flex-1 max-md:gap-0"
@@ -280,7 +280,7 @@ function kindLabel(kind: string | undefined): string | undefined {
 			class="mb-6 flex flex-wrap gap-1 border-b border-border-subtle"
 		>
 			<button
-				v-for="tab in VIEWS"
+				v-for="tab in UPDATE_VIEWS"
 				:key="tab.key"
 				type="button"
 				role="tab"
@@ -294,7 +294,7 @@ function kindLabel(kind: string | undefined): string | undefined {
 				"
 				@click="setView(tab.key)"
 			>
-				<Icon :name="tab.icon" class="h-4 w-4" />
+				<component :is="tab.icon" class="h-4 w-4" />
 				{{ t(`dashboard.inbox.updates.tabs.${tab.key}`) }}
 				<span
 					v-if="counts && counts[tab.key] > 0"
@@ -401,8 +401,8 @@ function kindLabel(kind: string | undefined): string | undefined {
 												</template>
 												<template v-if="row.item.message.classification?.category">
 													<span class="mx-1 opacity-50">·</span>
-													<Icon
-														:name="categoryIcon(row.item.message.classification.category)"
+													<component
+														:is="categoryIcon(row.item.message.classification.category)"
 														class="inline-block h-3 w-3 align-[-2px]"
 													/>
 													{{ categoryLabel(row.item.message.classification.category) }}
@@ -420,7 +420,7 @@ function kindLabel(kind: string | undefined): string | undefined {
 												:disabled="actionInProgress === row._id"
 												@click.stop="openThread(row)"
 											>
-												<Icon name="lucide:external-link" class="h-3 w-3" />
+												<ExternalLinkIcon class="h-3 w-3" />
 												{{ t('dashboard.inbox.updates.open') }}
 											</UiButton>
 											<UiButton
@@ -431,7 +431,7 @@ function kindLabel(kind: string | undefined): string | undefined {
 												:disabled="actionInProgress === row._id"
 												@click.stop="pendingBlock = row"
 											>
-												<Icon name="lucide:ban" class="h-3 w-3" />
+												<CircleSlashIcon class="h-3 w-3" />
 												{{ t('dashboard.inbox.updates.blockSender') }}
 											</UiButton>
 											<template v-else>
@@ -442,7 +442,7 @@ function kindLabel(kind: string | undefined): string | undefined {
 													:disabled="actionInProgress === row._id"
 													@click.stop="onRequestReply(row)"
 												>
-													<Icon name="lucide:reply" class="h-3 w-3" />
+													<ReplyIcon class="h-3 w-3" />
 													{{ t('dashboard.inbox.updates.requestReply') }}
 												</UiButton>
 												<UiTooltip :text="t('dashboard.inbox.updates.dismissSweepHint')">
@@ -454,7 +454,7 @@ function kindLabel(kind: string | undefined): string | undefined {
 														@pointerdown="dismissSweep.start(row._id, $event)"
 														@click.stop="onDismiss(row)"
 													>
-														<Icon name="lucide:check" class="h-3 w-3" />
+														<CheckIcon class="h-3 w-3" />
 														{{ t('dashboard.inbox.updates.dismiss') }}
 													</UiButton>
 												</UiTooltip>

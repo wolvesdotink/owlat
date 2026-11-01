@@ -3,6 +3,7 @@ import { computed } from 'vue';
 import { dashboardWidgetRegistry } from '~/composables/widgets/dashboardWidgets';
 import { resolveWidget } from '~/composables/widgets/registry';
 import { dashboardCardSpan } from '~/utils/dashboardGrid';
+import { CircleWarningIcon } from '@coolicons/vue';
 
 interface DashboardCardProps {
 	card: {
@@ -41,7 +42,7 @@ const sizeClasses = computed(() => dashboardCardSpan(props.card.size));
 		<WidgetHost v-if="resolution.status === 'ok'" class="h-full" :module="resolution.module" />
 		<UiCard v-else class="h-full">
 			<div class="flex items-center gap-2 text-text-tertiary">
-				<Icon name="lucide:alert-circle" class="w-4 h-4" />
+				<CircleWarningIcon class="w-4 h-4" />
 				<span class="text-sm">{{
 					t('components.dashboard.dashboardCardRenderer.unknownCardType', { type: card.type })
 				}}</span>

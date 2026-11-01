@@ -7,14 +7,15 @@ import { describe, expect, it, vi } from 'vitest';
 import { nextTick, ref } from 'vue';
 import type { PaletteItem } from '~/lib/commandPalette';
 import { useCommandPaletteArgument } from '../useCommandPaletteArgument';
+import { CircleSmallIcon } from '@coolicons/vue';
 
 function submenu(id: string): PaletteItem {
 	return {
 		id,
 		label: id,
-		icon: 'lucide:dot',
+		icon: CircleSmallIcon,
 		run: vi.fn(),
-		argument: { promptKey: 'p', headingKey: 'h', icon: 'lucide:dot', options: [] },
+		argument: { promptKey: 'p', headingKey: 'h', icon: CircleSmallIcon, options: [] },
 	};
 }
 
@@ -80,7 +81,9 @@ describe('useCommandPaletteArgument', () => {
 
 	it('is not a submenu without an argument, and reset drops every level', () => {
 		const { argument } = setup();
-		expect(argument.enter({ id: 'x', label: 'x', icon: 'lucide:dot', run: vi.fn() })).toBe(false);
+		expect(argument.enter({ id: 'x', label: 'x', icon: CircleSmallIcon, run: vi.fn() })).toBe(
+			false
+		);
 		argument.enter(submenu('one'));
 		argument.reset();
 		expect(argument.pending.value).toBeNull();

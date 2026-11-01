@@ -19,6 +19,8 @@ import type {
 	MailFilterCondition,
 	FilterAction,
 } from '~/composables/postbox/usePostboxFilters';
+import { CloseIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 interface FilterDraft {
 	name: string;
@@ -259,7 +261,7 @@ function removeAction(idx: number) {
 						:aria-label="t('components.postbox.postboxFilterRuleBuilder.removeCondition')"
 						@click="removeCondition(Number(idx))"
 					>
-						<Icon name="lucide:x" class="w-4 h-4" />
+						<CloseIcon class="w-4 h-4" />
 					</button>
 				</div>
 				<p v-if="local.conditions.length === 0" class="text-xs text-text-tertiary">
@@ -354,7 +356,7 @@ function removeAction(idx: number) {
 						:aria-label="t('components.postbox.postboxFilterRuleBuilder.removeAction')"
 						@click="removeAction(Number(idx))"
 					>
-						<Icon name="lucide:x" class="w-4 h-4" />
+						<CloseIcon class="w-4 h-4" />
 					</button>
 				</div>
 				<p v-if="local.actions.length === 0" class="text-xs text-text-tertiary">
@@ -385,10 +387,7 @@ function removeAction(idx: number) {
 			</button>
 			<div v-if="previewOpen" class="mt-2">
 				<div v-if="previewLoading" class="flex items-center gap-2 text-xs text-text-tertiary">
-					<Icon
-						name="lucide:loader-2"
-						class="w-3.5 h-3.5 animate-spin motion-reduce:animate-none"
-					/>
+					<SpinnerIcon class="w-3.5 h-3.5" />
 					{{ t('components.postbox.postboxFilterRuleBuilder.previewRunning') }}
 				</div>
 				<template v-else-if="preview">

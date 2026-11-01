@@ -22,7 +22,7 @@
 import { describe, it, expect, onTestFinished } from 'vitest';
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils';
 import { nextTick } from 'vue';
-import { Trash2 } from '@lucide/vue';
+import { TrashIcon } from '@coolicons/vue';
 import DocumentCanvas from '../DocumentCanvas.vue';
 import IconButton from '../../ui/IconButton.vue';
 import { defaultTheme } from '../../../defaults';
@@ -256,11 +256,11 @@ describe('icon-only controls carry a name', () => {
 	// goes through <IconButton>. Naming it there is what stops the "button,
 	// button, button" readout the toolbars used to produce.
 	it('falls back to the tooltip and lets callers override it', () => {
-		const tooltipOnly = mount(IconButton, { props: { icon: Trash2, title: 'Remove' } });
+		const tooltipOnly = mount(IconButton, { props: { icon: TrashIcon, title: 'Remove' } });
 		expect(tooltipOnly.attributes('aria-label')).toBe('Remove');
 
 		const overridden = mount(IconButton, {
-			props: { icon: Trash2, title: 'Remove', ariaLabel: 'Remove item 3' },
+			props: { icon: TrashIcon, title: 'Remove', ariaLabel: 'Remove item 3' },
 		});
 		expect(overridden.attributes('aria-label')).toBe('Remove item 3');
 
@@ -270,7 +270,7 @@ describe('icon-only controls carry a name', () => {
 
 	it('accepts the override written as a plain aria-label attribute', () => {
 		const w = mount(IconButton, {
-			props: { icon: Trash2, title: 'Remove' },
+			props: { icon: TrashIcon, title: 'Remove' },
 			attrs: { 'aria-label': 'Remove stop 2' },
 		});
 		expect(w.attributes('aria-label')).toBe('Remove stop 2');

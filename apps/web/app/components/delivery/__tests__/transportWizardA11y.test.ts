@@ -145,7 +145,7 @@ describe('transport wizard — accessibility', () => {
 		expect(hidden.exists()).toBe(true);
 		expect(hidden.text()).toBe(spoken);
 		// The glyph is decoration, and a screen reader must not read it as content.
-		expect(row.find('i').attributes('aria-hidden')).toBe('true');
+		expect(row.find('svg').attributes('aria-hidden')).toBe('true');
 		row.unmount();
 	});
 

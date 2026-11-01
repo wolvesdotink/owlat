@@ -69,7 +69,6 @@ describe('SendingDetails', () => {
 			},
 			global: {
 				stubs: {
-					Icon: { template: '<i />' },
 					UiCard: { template: '<div><slot /></div>' },
 				},
 			},
@@ -113,7 +112,6 @@ describe('SendingDetails', () => {
 			},
 			global: {
 				stubs: {
-					Icon: { template: '<i />' },
 					UiCard: { template: '<div><slot /></div>' },
 					NuxtLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
 				},

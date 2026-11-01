@@ -50,7 +50,6 @@ function mountCard() {
 		global: {
 			plugins: [createTestI18n()],
 			stubs: {
-				Icon: { template: '<span />' },
 				UiButton: {
 					template:
 						'<button data-testid="port-checks-run" @click="$emit(\'click\')"><slot /></button>',

@@ -16,6 +16,7 @@ import { describe, it, expect } from 'vitest';
 import { defineComponent, h, type App, type Plugin, type VNodeChild } from 'vue';
 import EmptyState from '../components/ui/EmptyState.vue';
 import { createUiI18n, mountUi } from './i18n';
+import { GlobeIcon } from '@coolicons/vue';
 
 /** `UiButton` is an app-level global; the layer test only needs a marker. */
 const ButtonStub = defineComponent({
@@ -86,7 +87,7 @@ describe('UiEmptyState — the landing ladder', () => {
 		const eyebrow = el.querySelector('.lp-eyebrow');
 		expect(eyebrow?.textContent?.trim()).toBe('All clear');
 		expect(eyebrow?.getAttribute('data-tone')).toBe('clear');
-		expect(eyebrow?.querySelector('i')).not.toBeNull();
+		expect(eyebrow?.querySelector('svg')).not.toBeNull();
 
 		unmount();
 	});
@@ -124,10 +125,10 @@ describe('UiEmptyState — the landing ladder', () => {
 		const { el, unmount } = mountEmptyState({
 			title: 'No domains',
 			eyebrow: 'Domains',
-			icon: 'lucide:globe',
+			icon: GlobeIcon,
 		});
 
-		const glyph = el.querySelector('.lp-eyebrow i');
+		const glyph = el.querySelector('.lp-eyebrow svg');
 		expect(glyph).not.toBeNull();
 		// The disc was a `UiIconBox` with a `size="xl"` (56px) surface fill.
 		expect(el.innerHTML).not.toContain('IconBox');
@@ -136,9 +137,9 @@ describe('UiEmptyState — the landing ladder', () => {
 		unmount();
 
 		// Without an eyebrow the glyph stands alone, still unfilled.
-		const bare = mountEmptyState({ title: 'No domains', icon: 'lucide:globe' });
+		const bare = mountEmptyState({ title: 'No domains', icon: GlobeIcon });
 		expect(bare.el.querySelector('.lp-eyebrow')).toBeNull();
-		expect(bare.el.querySelector('i')).not.toBeNull();
+		expect(bare.el.querySelector('svg')).not.toBeNull();
 		bare.unmount();
 	});
 

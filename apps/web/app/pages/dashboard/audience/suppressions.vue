@@ -3,6 +3,15 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { isValidEmail, normalizeEmail } from '@owlat/shared';
 import { type BlockReason, suppressionReasonPresentation } from '~/utils/suppressionReasons';
+import {
+	CircleSlashIcon,
+	FileUploadIcon,
+	FilterIcon,
+	ListFilterIcon,
+	PlusIcon,
+	SearchIcon,
+	TriangleWarningIcon,
+} from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -190,11 +199,11 @@ const reasonTiles = computed<{ key: BlockReason; label: string; count: number }[
 			>
 				<template #actions>
 					<UiButton variant="secondary" class="gap-2" @click="blocklistImport.open()">
-						<Icon name="lucide:file-up" class="w-4 h-4" />
+						<FileUploadIcon class="w-4 h-4" />
 						{{ t('dashboard.audience.suppressions.import') }}
 					</UiButton>
 					<UiButton class="gap-2" @click="addModal.open()">
-						<Icon name="lucide:plus" class="w-4 h-4" />
+						<PlusIcon class="w-4 h-4" />
 						{{ t('dashboard.audience.suppressions.addSuppression') }}
 					</UiButton>
 				</template>
@@ -211,7 +220,7 @@ const reasonTiles = computed<{ key: BlockReason; label: string; count: number }[
 			<!-- No Organization State -->
 			<div v-if="!hasActiveOrganization" class="card p-0 overflow-hidden">
 				<UiEmptyState
-					icon="lucide:ban"
+					:icon="CircleSlashIcon"
 					:title="t('dashboard.audience.suppressions.noWorkspace.title')"
 					:description="t('dashboard.audience.suppressions.noWorkspace.description')"
 				/>
@@ -226,7 +235,7 @@ const reasonTiles = computed<{ key: BlockReason; label: string; count: number }[
 				<!-- Info Card -->
 				<div class="card p-6 bg-warning/5 border-warning/20">
 					<div class="flex gap-4">
-						<UiIconBox icon="lucide:alert-triangle" size="sm" variant="warning" rounded="lg" />
+						<UiIconBox :icon="TriangleWarningIcon" size="sm" variant="warning" rounded="lg" />
 						<div>
 							<h3 class="font-medium text-text-primary mb-1">
 								{{ t('dashboard.audience.suppressions.info.title') }}
@@ -252,8 +261,8 @@ const reasonTiles = computed<{ key: BlockReason; label: string; count: number }[
 					</div>
 					<div v-for="tile in reasonTiles" :key="tile.key" class="card p-4">
 						<div class="flex items-center gap-2">
-							<Icon
-								:name="presentation(tile.key).icon"
+							<component
+								:is="presentation(tile.key).icon"
 								class="w-4 h-4"
 								:class="presentation(tile.key).tone"
 							/>
@@ -269,8 +278,7 @@ const reasonTiles = computed<{ key: BlockReason; label: string; count: number }[
 				<div class="flex flex-col sm:flex-row gap-4">
 					<!-- Filter (not search — see the composable comment above) -->
 					<div class="relative flex-1">
-						<Icon
-							name="lucide:list-filter"
+						<ListFilterIcon
 							class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-tertiary"
 						/>
 						<input
@@ -283,7 +291,7 @@ const reasonTiles = computed<{ key: BlockReason; label: string; count: number }[
 
 					<!-- Filter by reason -->
 					<div class="flex items-center gap-2">
-						<Icon name="lucide:filter" class="w-4 h-4 text-text-tertiary" />
+						<FilterIcon class="w-4 h-4 text-text-tertiary" />
 						<select v-model="reasonFilter" class="input w-40">
 							<option value="all">{{ t('dashboard.audience.suppressions.filters.all') }}</option>
 							<option value="bounced">
@@ -308,13 +316,13 @@ const reasonTiles = computed<{ key: BlockReason; label: string; count: number }[
 					class="card p-0 overflow-hidden"
 				>
 					<UiEmptyState
-						icon="lucide:ban"
+						:icon="CircleSlashIcon"
 						:title="t('dashboard.audience.suppressions.empty.title')"
 						:description="t('dashboard.audience.suppressions.empty.description')"
 					>
 						<template #action>
 							<UiButton @click="addModal.open()">
-								<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
+								<template #iconLeft><PlusIcon class="w-4 h-4" /></template>
 								{{ t('dashboard.audience.suppressions.addSuppression') }}
 							</UiButton>
 						</template>
@@ -327,7 +335,7 @@ const reasonTiles = computed<{ key: BlockReason; label: string; count: number }[
 					class="card p-0 overflow-hidden"
 				>
 					<UiEmptyState
-						icon="lucide:search"
+						:icon="SearchIcon"
 						:title="t('dashboard.audience.suppressions.noResults.title')"
 						:description="
 							t('dashboard.audience.suppressions.noResults.description', { query: debouncedSearch })
@@ -393,7 +401,7 @@ const reasonTiles = computed<{ key: BlockReason; label: string; count: number }[
 				</UiButton>
 				<UiButton :loading="addModal.isSubmitting.value" @click="handleAddBlockedEmail">
 					<template #iconLeft>
-						<Icon v-if="!addModal.isSubmitting.value" name="lucide:plus" class="w-4 h-4" />
+						<PlusIcon v-if="!addModal.isSubmitting.value" class="w-4 h-4" />
 					</template>
 					{{
 						addModal.isSubmitting.value

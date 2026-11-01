@@ -30,7 +30,6 @@ function mountDialog(bodyHtml: string) {
 		global: {
 			plugins: [createTestI18n()],
 			stubs: {
-				Icon: true,
 				UiModal: { template: '<div><slot /></div>' },
 				UiButton: {
 					props: ['disabled'],

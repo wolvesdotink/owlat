@@ -50,7 +50,6 @@ import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 
 const baseStubs = {
-	Icon: { template: '<i />' },
 	UiIconBox: { template: '<i />' },
 	NuxtLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
 	UiButton: { template: '<button v-bind="$attrs"><slot /></button>' },

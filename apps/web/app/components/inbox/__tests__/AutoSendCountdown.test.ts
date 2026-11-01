@@ -33,7 +33,6 @@ function mountCountdown(props: { sendAt: number; busy?: boolean }) {
 		global: {
 			plugins: [createTestI18n()],
 			stubs: {
-				Icon: true,
 				UiButton: {
 					props: ['loading'],
 					emits: ['click'],
@@ -87,7 +86,7 @@ describe('InboxAutoSendCountdown label', () => {
 	it('reads the line from labelKey when the parent names one', () => {
 		wrapper = mount(AutoSendCountdown, {
 			props: { sendAt: Date.now() + 5_000, labelKey: 'dashboard.inbox.detail.outbound.sendsIn' },
-			global: { plugins: [createTestI18n()], stubs: { Icon: true, UiButton: true } },
+			global: { plugins: [createTestI18n()], stubs: { UiButton: true } },
 		});
 		expect(banner().text()).toContain('Sending in 5s');
 		expect(banner().text()).not.toContain('automatically');

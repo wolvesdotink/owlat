@@ -7,6 +7,15 @@ import { adminControlTargets } from '~/lib/adminSettingsControls';
 import { useAdminEnvironment } from '~/composables/useAdminEnvironment';
 import { useZenMode } from '~/composables/useZenMode';
 import { useGettingStartedControls } from '~/composables/useGettingStartedControls';
+import {
+	CloudDownloadIcon,
+	ExpandIcon,
+	InboxIcon,
+	ListChecklistIcon,
+	MegaphoneIcon,
+	ShrinkIcon,
+	SparklesIcon,
+} from '@coolicons/vue';
 
 /**
  * Static item providers for the app-wide command palette (AppCommandPalette):
@@ -99,7 +108,7 @@ export function useCommandPaletteProviders() {
 				id: 'verb:ask-knowledge',
 				label: t('shared.useCommandPaletteProviders.askKnowledge'),
 				subtitle: t('shared.useCommandPaletteProviders.askKnowledgeSubtitle'),
-				icon: 'lucide:sparkles',
+				icon: SparklesIcon,
 				run: () => window.dispatchEvent(new Event('owlat:open-knowledge-query')),
 			});
 		}
@@ -107,7 +116,7 @@ export function useCommandPaletteProviders() {
 			id: 'verb:zen',
 			label: isZen.value ? t('components.shell.zen.exit') : t('components.shell.zen.enter'),
 			subtitle: t('components.shell.zen.paletteSubtitle'),
-			icon: isZen.value ? 'lucide:minimize-2' : 'lucide:maximize-2',
+			icon: isZen.value ? ShrinkIcon : ExpandIcon,
 			run: toggleZen,
 		});
 		// The way back to Getting started after it was dismissed or finished.
@@ -115,14 +124,14 @@ export function useCommandPaletteProviders() {
 			id: 'verb:show-setup-checklist',
 			label: t('components.dashboard.gettingStarted.show'),
 			subtitle: t('components.dashboard.gettingStarted.title'),
-			icon: 'lucide:list-checks',
+			icon: ListChecklistIcon,
 			run: () => void showChecklist(),
 		});
 		if (isDesktop.value) {
 			verbs.push({
 				id: 'verb:check-updates',
 				label: t('shared.useCommandPaletteProviders.checkUpdates'),
-				icon: 'lucide:download-cloud',
+				icon: CloudDownloadIcon,
 				run: () => window.dispatchEvent(new Event('owlat:check-updates')),
 			});
 		}
@@ -140,7 +149,7 @@ export function useCommandPaletteProviders() {
 						? t('shared.useCommandPaletteProviders.switchToInbox')
 						: t('shared.useCommandPaletteProviders.switchToMarketing'),
 				subtitle: t('shared.useCommandPaletteProviders.sidebarContext'),
-				icon: other === 'inbox' ? 'lucide:inbox' : 'lucide:megaphone',
+				icon: other === 'inbox' ? InboxIcon : MegaphoneIcon,
 				run: () => void switchContext(other),
 			},
 		];

@@ -2,6 +2,12 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { formatDateTime } from '~/utils/formatters';
+import {
+	CircleCheckIcon,
+	CircleSlashIcon,
+	ShieldCheckIcon,
+	ShieldWarningIcon,
+} from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -90,7 +96,7 @@ const confirmBlock = async () => {
 			<template #empty>
 				<UiEmptyState
 					tone="clear"
-					icon="lucide:shield-check"
+					:icon="ShieldCheckIcon"
 					:title="t('dashboard.inbox.quarantine.emptyTitle')"
 					:description="t('dashboard.inbox.quarantine.emptyBody')"
 				/>
@@ -104,7 +110,7 @@ const confirmBlock = async () => {
 							<div
 								class="flex-shrink-0 w-10 h-10 rounded-full bg-error-subtle flex items-center justify-center"
 							>
-								<Icon name="lucide:shield-alert" class="w-5 h-5 text-error" />
+								<ShieldWarningIcon class="w-5 h-5 text-error" />
 							</div>
 							<div>
 								<p class="text-text-primary font-medium text-sm">{{ message.from }}</p>
@@ -141,7 +147,7 @@ const confirmBlock = async () => {
 							:disabled="actionInProgress === message._id"
 							@click="onRelease(message._id)"
 						>
-							<Icon name="lucide:check-circle" class="w-3 h-3" />
+							<CircleCheckIcon class="w-3 h-3" />
 							{{ t('dashboard.inbox.quarantine.release') }}
 						</UiButton>
 						<UiButton
@@ -151,7 +157,7 @@ const confirmBlock = async () => {
 							:disabled="actionInProgress === message._id"
 							@click="pendingBlock = { _id: message._id, from: message.from }"
 						>
-							<Icon name="lucide:ban" class="w-3 h-3" />
+							<CircleSlashIcon class="w-3 h-3" />
 							{{ t('dashboard.inbox.quarantine.blockSender') }}
 						</UiButton>
 					</div>

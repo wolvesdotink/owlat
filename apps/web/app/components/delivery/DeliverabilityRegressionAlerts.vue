@@ -7,6 +7,7 @@ import type {
 } from '~/utils/deliverabilityCenter';
 import { findDeliverabilityItem } from '~/utils/deliverabilityCenter';
 import { useDeliverabilityChecklistCopy } from '~/composables/useDeliverabilityChecklistCopy';
+import { DownloadIcon, SirenIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	alerts: DeliverabilityRegressionAlert[];
@@ -48,7 +49,7 @@ function isBusy(alert: DeliverabilityRegressionAlert, kind: DeliverabilityAlertO
 		aria-live="polite"
 	>
 		<header class="flex items-start gap-3 border-b border-error/20 px-5 py-4 sm:px-6">
-			<UiIconBox icon="lucide:siren" size="sm" variant="error" rounded="lg" />
+			<UiIconBox :icon="SirenIcon" size="sm" variant="error" rounded="lg" />
 			<div>
 				<h2 id="deliverability-alerts-heading" class="font-semibold text-text-primary">
 					{{ t('components.delivery.deliverabilityRegressionAlerts.heading', rows.length) }}
@@ -95,7 +96,7 @@ function isBusy(alert: DeliverabilityRegressionAlert, kind: DeliverabilityAlertO
 				<div class="flex flex-wrap items-center gap-2">
 					<UiButton size="sm" variant="secondary" @click="emit('view', alert)">
 						<template #iconLeft>
-							<Icon name="lucide:arrow-down-to-line" class="h-3.5 w-3.5" />
+							<DownloadIcon class="h-3.5 w-3.5" />
 						</template>
 						{{ t('components.delivery.deliverabilityRegressionAlerts.openCheck') }}
 					</UiButton>

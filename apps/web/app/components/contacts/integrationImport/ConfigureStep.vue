@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { HandleDuplicates } from '~/composables/useCsvImport';
+import { CircleWarningIcon, EyeIcon, EyeOffIcon } from '@coolicons/vue';
 
 defineProps<{
 	selectedIntegration: 'mailchimp' | 'stripe' | 'mandrill' | null;
@@ -45,8 +46,8 @@ const chevron = '>';
 						class="absolute right-3 top-1/2 -translate-y-1/2 text-text-tertiary hover:text-text-primary"
 						@click="credentials.mailchimp.showApiKey = !credentials.mailchimp.showApiKey"
 					>
-						<Icon v-if="!credentials.mailchimp.showApiKey" name="lucide:eye" class="w-4 h-4" />
-						<Icon v-else name="lucide:eye-off" class="w-4 h-4" />
+						<EyeIcon v-if="!credentials.mailchimp.showApiKey" class="w-4 h-4" />
+						<EyeOffIcon v-else class="w-4 h-4" />
 					</button>
 				</div>
 				<p class="text-xs text-text-tertiary mt-1">
@@ -132,8 +133,8 @@ const chevron = '>';
 						class="absolute right-3 top-1/2 -translate-y-1/2 text-text-tertiary hover:text-text-primary"
 						@click="credentials.stripe.showApiKey = !credentials.stripe.showApiKey"
 					>
-						<Icon v-if="!credentials.stripe.showApiKey" name="lucide:eye" class="w-4 h-4" />
-						<Icon v-else name="lucide:eye-off" class="w-4 h-4" />
+						<EyeIcon v-if="!credentials.stripe.showApiKey" class="w-4 h-4" />
+						<EyeOffIcon v-else class="w-4 h-4" />
 					</button>
 				</div>
 				<p class="text-xs text-text-tertiary mt-1">
@@ -146,7 +147,7 @@ const chevron = '>';
 			</div>
 			<div class="p-4 rounded-lg bg-warning-subtle border border-warning/20">
 				<div class="flex items-start gap-3">
-					<Icon name="lucide:alert-circle" class="w-5 h-5 text-warning shrink-0 mt-0.5" />
+					<CircleWarningIcon class="w-5 h-5 text-warning shrink-0 mt-0.5" />
 					<div>
 						<p class="text-sm text-warning font-medium">
 							{{ t('components.contacts.integrationImportModal.configure.restrictedKeyTitle') }}

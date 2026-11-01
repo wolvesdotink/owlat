@@ -10,6 +10,7 @@ import { useKeyboardShortcuts } from '~/composables/useKeyboardShortcuts';
 import { useShortcutLabels } from '~/composables/useShortcutLabels';
 import { useShortcutScope } from '~/composables/useShortcutScope';
 import type { AnswerCardControls } from '~/utils/answerCard';
+import { ChatCircleIcon } from '@coolicons/vue';
 
 type MentionEntry = FunctionReturnType<typeof api.chat.mentions.listMyUnreadMentions>[number];
 
@@ -68,13 +69,13 @@ const hints = computed(() =>
 	<TaskCardShell>
 		<TaskContext
 			:who="`#${mention.roomName}`"
-			icon="lucide:message-circle"
+			:icon="ChatCircleIcon"
 			:meta="formatCompactRelativeTime(mention.createdAt)"
 		/>
 		<TaskAsk class="mt-3 mb-4" :ask="mention.messagePreview" />
 		<TaskActions
 			:primary-label="t('components.answer.mention.reply')"
-			primary-icon="lucide:message-circle"
+			:primary-icon="ChatCircleIcon"
 			:skip-label="t('components.answer.mention.markRead')"
 			:hints="hints"
 			@primary="reply"

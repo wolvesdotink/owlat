@@ -17,6 +17,7 @@ import {
 	buildCorePaletteProviders,
 } from '../commandPaletteCore';
 import { createTestI18n } from '~/__tests__/i18n';
+import { CircleSmallIcon } from '@coolicons/vue';
 
 /**
  * Group headings are catalog keys — the factory is module scope and never calls
@@ -26,7 +27,7 @@ import { createTestI18n } from '~/__tests__/i18n';
 const { t } = createTestI18n().global;
 
 function paletteItem(id: string): PaletteItem {
-	return { id, label: id, icon: 'lucide:dot', run: () => {} };
+	return { id, label: id, icon: CircleSmallIcon, run: () => {} };
 }
 
 function searchHit(id: string): SearchResult {

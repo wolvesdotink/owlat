@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import type { useActivityTimeline } from '~/composables/useActivityTimeline';
+import { ClockIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 // The activity log under the Timeline tab's messages (admins only). The page
 // owns the timeline, so its subscription gate and the pages already loaded
@@ -49,7 +51,7 @@ const { t } = useI18n();
 			v-else-if="accumulatedActivities.length === 0"
 			class="flex flex-col items-center justify-center py-8 text-center"
 		>
-			<UiIconBox icon="lucide:clock" size="lg" variant="surface" rounded="full" class="mb-3" />
+			<UiIconBox :icon="ClockIcon" size="lg" variant="surface" rounded="full" class="mb-3" />
 			<p class="text-text-secondary text-sm">
 				{{ t('dashboard.audience.contacts.detail.activity.emptyTitle') }}
 			</p>
@@ -74,7 +76,7 @@ const { t } = useI18n();
 						class="flex-shrink-0 w-10 h-10 rounded-full bg-bg-surface flex items-center justify-center"
 						:class="getActivityColor(activity.activityType)"
 					>
-						<Icon :name="getActivityIcon(activity.activityType)" class="w-5 h-5" />
+						<component :is="getActivityIcon(activity.activityType)" class="w-5 h-5" />
 					</div>
 
 					<!-- Content -->
@@ -103,11 +105,7 @@ const { t } = useI18n();
 					:disabled="isLoadingMoreActivities"
 					@click="loadMoreActivities"
 				>
-					<Icon
-						v-if="isLoadingMoreActivities"
-						name="lucide:loader-2"
-						class="w-4 h-4 animate-spin motion-reduce:animate-none mr-2"
-					/>
+					<SpinnerIcon v-if="isLoadingMoreActivities" class="w-4 h-4 mr-2" />
 					{{
 						isLoadingMoreActivities
 							? t('common.loading')

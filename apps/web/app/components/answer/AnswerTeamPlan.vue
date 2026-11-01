@@ -18,6 +18,7 @@ import { RESPONSE_PLAN } from '~/utils/responsePlan';
 import type { ResponsePlan } from '~/composables/useResponsePlan';
 import BriefItems from '~/components/brief/BriefItems.vue';
 import AnswerPlanBanner from './AnswerPlanBanner.vue';
+import { ChevronDownIcon, ChevronUpIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	/** The reply's plan; its `items` are the thread's open items it plans for. */
@@ -82,8 +83,8 @@ function toggle(item: BriefItemView) {
 					})
 				}}
 			</span>
-			<Icon
-				:name="open ? 'lucide:chevron-up' : 'lucide:chevron-down'"
+			<component
+				:is="open ? ChevronUpIcon : ChevronDownIcon"
 				class="ml-auto size-3.5 text-text-tertiary"
 				aria-hidden="true"
 			/>

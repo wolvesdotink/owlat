@@ -12,6 +12,13 @@
  */
 import { briefBanners, type BriefGapInput } from '~/utils/threadBriefBanners';
 import { useLocalized } from '~/composables/useLocalized';
+import {
+	CircleInfoIcon,
+	FileTextIcon,
+	ShieldWarningIcon,
+	TriangleWarningIcon,
+	type IconComponent,
+} from '@coolicons/vue';
 
 const props = defineProps<{
 	/** null: no brief at all. */
@@ -32,11 +39,11 @@ const TONE: Record<string, string> = {
 	err: 'bg-error-subtle text-error',
 	neutral: 'bg-bg-surface text-text-secondary',
 };
-const ICON: Record<string, string> = {
-	warn: 'lucide:triangle-alert',
-	info: 'lucide:info',
-	err: 'lucide:shield-alert',
-	neutral: 'lucide:file-text',
+const ICON: Record<string, IconComponent> = {
+	warn: TriangleWarningIcon,
+	info: CircleInfoIcon,
+	err: ShieldWarningIcon,
+	neutral: FileTextIcon,
 };
 </script>
 
@@ -51,7 +58,7 @@ const ICON: Record<string, string> = {
 			data-testid="brief-incomplete"
 			:data-kind="banner.key"
 		>
-			<Icon :name="ICON[banner.tone]!" class="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
+			<component :is="ICON[banner.tone]!" class="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
 			<p class="min-w-0 flex-1">
 				<b v-if="banner.lead" class="font-medium">{{ t(banner.lead) }}</b>
 				{{ localized(banner.text) }}

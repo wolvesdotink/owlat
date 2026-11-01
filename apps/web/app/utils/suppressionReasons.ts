@@ -18,6 +18,13 @@
  */
 
 import type { Doc } from '@owlat/api/dataModel';
+import {
+	ChatIcon,
+	MailIcon,
+	MoonIcon,
+	UserCloseCornerIcon,
+	type IconComponent,
+} from '@coolicons/vue';
 
 /**
  * The `blockedEmails.reason` union, DERIVED from the schema rather than
@@ -34,7 +41,7 @@ export type SuppressionReasonPresentation = {
 	badge: string;
 	/** Icon tint used outside the badge (stat tiles, row icon). */
 	tone: string;
-	icon: string;
+	icon: IconComponent;
 	/** Plain-language label — explains WHY, no jargon. A catalog key. */
 	label: string;
 	/**
@@ -59,7 +66,7 @@ const SUPPRESSION_REASON_PRESENTATION = {
 		headline: 'shared.suppressionReasons.headline.noMail',
 		badge: 'bg-error/20 text-error border-error/30',
 		tone: 'text-error',
-		icon: 'lucide:mail',
+		icon: MailIcon,
 		label: 'shared.suppressionReasons.bounced.label',
 		phrase: (dateLabel: string) => ({
 			key: 'shared.suppressionReasons.bounced.phrase',
@@ -70,7 +77,7 @@ const SUPPRESSION_REASON_PRESENTATION = {
 		headline: 'shared.suppressionReasons.headline.noMail',
 		badge: 'bg-warning/20 text-warning border-warning/30',
 		tone: 'text-warning',
-		icon: 'lucide:message-square-warning',
+		icon: ChatIcon,
 		label: 'shared.suppressionReasons.complained.label',
 		phrase: (dateLabel: string) => ({
 			key: 'shared.suppressionReasons.complained.phrase',
@@ -81,7 +88,7 @@ const SUPPRESSION_REASON_PRESENTATION = {
 		headline: 'shared.suppressionReasons.headline.noCampaigns',
 		badge: 'bg-bg-elevated text-text-secondary border-border-default',
 		tone: 'text-text-secondary',
-		icon: 'lucide:moon',
+		icon: MoonIcon,
 		label: 'shared.suppressionReasons.unengaged.label',
 		phrase: (dateLabel: string) => ({
 			key: 'shared.suppressionReasons.unengaged.phrase',
@@ -92,7 +99,7 @@ const SUPPRESSION_REASON_PRESENTATION = {
 		headline: 'shared.suppressionReasons.headline.noMail',
 		badge: 'bg-brand/20 text-brand border-brand/30',
 		tone: 'text-brand',
-		icon: 'lucide:user-x',
+		icon: UserCloseCornerIcon,
 		label: 'shared.suppressionReasons.manual.label',
 		phrase: (dateLabel: string) => ({
 			key: 'shared.suppressionReasons.manual.phrase',

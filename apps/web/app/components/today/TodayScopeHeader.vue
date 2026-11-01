@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { INBOX_SLOT_SWATCH } from '~/utils/inboxIdentity';
+import { CheckAllIcon, InboxIcon, MoreHorizontalIcon, PencilIcon, RobotIcon } from '@coolicons/vue';
 
 /**
  * The top of one Workbench tab, two quiet lines: which inbox this is (its name
@@ -85,7 +86,7 @@ const kindLabel = computed(() =>
 <template>
 	<section aria-labelledby="workbench-scope-name">
 		<div class="flex flex-wrap items-center gap-x-2 gap-y-1">
-			<Icon v-if="kind === 'team'" name="lucide:bot" class="size-4 text-text-tertiary" />
+			<RobotIcon v-if="kind === 'team'" class="size-4 text-text-tertiary" />
 			<span v-else class="size-2.5 shrink-0 rounded-[3px]" :class="swatch" aria-hidden="true" />
 			<h2 id="workbench-scope-name" class="text-base font-medium text-text-primary">
 				<UiTooltip :text="t('components.today.scope.openInbox')">
@@ -102,7 +103,7 @@ const kindLabel = computed(() =>
 			>
 			<div class="ml-auto flex items-center gap-1">
 				<UiButton v-if="canMarkSeen" variant="ghost" size="sm" @click="emit('markSeen')">
-					<template #iconLeft><Icon name="lucide:check-check" class="size-4" /></template>
+					<template #iconLeft><CheckAllIcon class="size-4" /></template>
 					{{ t('dashboard.today.markAllSeen') }}
 				</UiButton>
 				<UiDropdownMenu v-model:open="menuOpen" position="right">
@@ -113,15 +114,15 @@ const kindLabel = computed(() =>
 							class="w-8 px-0"
 							:aria-label="t('components.today.scope.more', { inbox: name })"
 						>
-							<Icon name="lucide:ellipsis" class="size-4" />
+							<MoreHorizontalIcon class="size-4" />
 						</UiButton>
 					</template>
-					<UiDropdownMenuItem icon="lucide:inbox" @click="navigateTo(inboxHref)">
+					<UiDropdownMenuItem :icon="InboxIcon" @click="navigateTo(inboxHref)">
 						{{ t('components.today.scope.openInbox') }}
 					</UiDropdownMenuItem>
 					<UiDropdownMenuItem
 						v-if="composeHref"
-						icon="lucide:pen-line"
+						:icon="PencilIcon"
 						@click="navigateTo(composeHref)"
 					>
 						{{ t('components.today.scope.write') }}

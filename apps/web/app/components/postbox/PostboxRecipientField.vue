@@ -15,6 +15,7 @@ import {
 import { SEAL_TONE_CLASSES } from '~/utils/sealTone';
 import { useLocalized } from '~/composables/useLocalized';
 import { isImeComposing } from '~/utils/imeComposition';
+import { CircleHelpIcon, CloseIcon } from '@coolicons/vue';
 
 interface ContactSuggestion {
 	email: string;
@@ -318,8 +319,8 @@ function onBlur() {
 				<!-- Plan idea 11: this recipient's own sealing key. Absent unless the
 				     composer decided the chips may speak about sealing at all. -->
 				<template v-if="sealGlyphs.get(addr)">
-					<Icon
-						:name="sealGlyphs.get(addr)!.icon"
+					<component
+						:is="sealGlyphs.get(addr)!.icon"
 						class="w-3 h-3 flex-shrink-0"
 						:class="SEAL_TONE_CLASSES[sealGlyphs.get(addr)!.tone].icon"
 						:data-testid="`postbox-chip-seal-${sealGlyphs.get(addr)!.kind}`"
@@ -347,7 +348,7 @@ function onBlur() {
 						t('components.postbox.postboxRecipientField.removeRecipient', { address: addr })
 					"
 				>
-					<Icon name="lucide:x" class="w-3 h-3" />
+					<CloseIcon class="w-3 h-3" />
 				</button>
 			</span>
 			<input
@@ -371,7 +372,7 @@ function onBlur() {
 				class="basis-full flex flex-wrap items-center gap-1.5 pt-1 text-xs text-text-tertiary"
 				data-testid="postbox-domain-suggestion"
 			>
-				<Icon name="lucide:help-circle" class="w-3.5 h-3.5 shrink-0 text-warning" />
+				<CircleHelpIcon class="w-3.5 h-3.5 shrink-0 text-warning" />
 				<span>
 					{{
 						t('components.postbox.postboxRecipientField.didYouMean', {

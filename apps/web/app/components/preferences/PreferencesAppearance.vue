@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { THEME_DEFAULT, type ThemeOption } from '~/composables/useAppTheme';
 import SettingsResetToDefault from '~/components/settings/ResetToDefault.vue';
+import { MonitorIcon, MoonIcon, SunIcon, WindowIcon, type IconComponent } from '@coolicons/vue';
 
 const { t } = useI18n();
 const { isDesktop } = useDesktopContext();
@@ -9,26 +10,26 @@ const themeOptions = computed<
 	Array<{
 		value: ThemeOption;
 		label: string;
-		icon: string;
+		icon: IconComponent;
 		description: string;
 	}>
 >(() => [
 	{
 		value: 'light',
 		label: t('components.preferences.preferencesAppearance.light.label'),
-		icon: 'lucide:sun',
+		icon: SunIcon,
 		description: t('components.preferences.preferencesAppearance.light.description'),
 	},
 	{
 		value: 'dark',
 		label: t('components.preferences.preferencesAppearance.dark.label'),
-		icon: 'lucide:moon',
+		icon: MoonIcon,
 		description: t('components.preferences.preferencesAppearance.dark.description'),
 	},
 	{
 		value: 'system',
 		label: t('components.preferences.preferencesAppearance.system.label'),
-		icon: 'lucide:monitor',
+		icon: MonitorIcon,
 		description: t('components.preferences.preferencesAppearance.system.description'),
 	},
 ]);
@@ -76,7 +77,7 @@ const themeOptions = computed<
 				]"
 				@click="setTheme(option.value)"
 			>
-				<Icon :name="option.icon" class="w-5 h-5 text-brand" />
+				<component :is="option.icon" class="w-5 h-5 text-brand" />
 				<span class="mt-2 block text-sm font-medium text-text-primary">{{ option.label }}</span>
 				<span class="block text-xs text-text-tertiary">{{ option.description }}</span>
 			</button>
@@ -86,7 +87,7 @@ const themeOptions = computed<
 			to="/dashboard/preferences/device"
 			class="mt-4 inline-flex items-center gap-1.5 text-sm text-brand hover:underline"
 		>
-			<Icon name="lucide:app-window" class="w-4 h-4" />
+			<WindowIcon class="w-4 h-4" />
 			{{ t('components.preferences.preferencesAppearance.deviceSettings') }}
 		</NuxtLink>
 	</section>

@@ -74,7 +74,6 @@ function mountPage() {
 		global: {
 			plugins: [createTestI18n()],
 			stubs: {
-				Icon: true,
 				ChatRoomHeader: true,
 				ChatLinkedEmailPanel: true,
 				ChatMemberList: true,

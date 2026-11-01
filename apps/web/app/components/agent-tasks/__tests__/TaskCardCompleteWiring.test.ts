@@ -19,7 +19,7 @@ import { createTaskCardRegistry } from '~/utils/taskCardRegistry';
 import type { TaskFlowKind, TaskFlowOrderKey } from '~/utils/taskFlow';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
-const stubs = { Icon: { template: '<i />' }, UiIconBox: { template: '<i />' } };
+const stubs = { UiIconBox: { template: '<i />' } };
 
 // The fallback/loading cards the renderer can degrade to call `useI18n`, a Nuxt
 // auto-import (bare global).

@@ -13,7 +13,7 @@
  * is treated as untrusted and escaped before it reaches the HTML.
  */
 
-import { Info } from '@lucide/vue';
+import { CircleInfoIcon } from '@coolicons/vue';
 import { escapeHtml, type BlockRenderer } from '@owlat/email-renderer';
 import { parsePluginId, type PluginId } from '@owlat/plugin-kit';
 import type { BlockDefinition } from '../registry/blockRegistry';
@@ -64,7 +64,7 @@ const calloutEditor: BlockDefinition = {
 	slashCommand: {
 		name: 'Callout',
 		description: 'Highlighted admonition box',
-		icon: Info,
+		icon: CircleInfoIcon,
 		category: 'components',
 		aliases: ['note', 'admonition', 'info'],
 	},

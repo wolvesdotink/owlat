@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { AuditLogEntry } from '../../composables/useAuditLogPresentation';
+import { ChevronDownIcon } from '@coolicons/vue';
 
 /**
  * The audit-log row list + "Load More" control. Extracted from
@@ -77,7 +78,7 @@ const presentedLogs = computed(() =>
 								getActionColorClass(entry.log.action),
 							]"
 						>
-							<Icon :name="getActionIcon(entry.log.action)" class="w-3 h-3" />
+							<component :is="getActionIcon(entry.log.action)" class="w-3 h-3" />
 							{{ t(getActionLabel(entry.log.action)) }}
 						</span>
 
@@ -85,7 +86,7 @@ const presentedLogs = computed(() =>
 						<span
 							class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-bg-surface text-text-secondary"
 						>
-							<Icon :name="getResourceIcon(entry.log.resource)" class="w-3 h-3" />
+							<component :is="getResourceIcon(entry.log.resource)" class="w-3 h-3" />
 							{{ t(getResourceLabel(entry.log.resource)) }}
 						</span>
 					</div>
@@ -124,7 +125,10 @@ const presentedLogs = computed(() =>
 				<!-- Resource Icon -->
 				<div class="flex-shrink-0">
 					<div class="p-2 rounded-lg bg-bg-surface flex items-center justify-center">
-						<Icon :name="getResourceIcon(entry.log.resource)" class="w-4 h-4 text-text-secondary" />
+						<component
+							:is="getResourceIcon(entry.log.resource)"
+							class="w-4 h-4 text-text-secondary"
+						/>
 					</div>
 				</div>
 			</div>
@@ -133,7 +137,7 @@ const presentedLogs = computed(() =>
 		<!-- Load More -->
 		<div v-if="hasMore" class="flex justify-center pt-4">
 			<UiButton variant="secondary" class="gap-2" @click="$emit('loadMore')">
-				<Icon name="lucide:chevron-down" class="w-4 h-4" />
+				<ChevronDownIcon class="w-4 h-4" />
 				{{ t('components.dashboard.auditLogList.loadMore') }}
 			</UiButton>
 		</div>

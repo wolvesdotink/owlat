@@ -15,7 +15,7 @@
 		"preview": "nuxt preview",
 		"postinstall": "nuxt prepare",
 		"typecheck": "cross-env NODE_OPTIONS=--max-old-space-size=8192 nuxt typecheck && tsc -p e2e/tsconfig.json && tsc -p perf/tsconfig.json",
-		"lint": "oxlint --config ../../oxlintrc.json app server e2e scripts perf && bash scripts/check-dead-tokens.sh && bash scripts/check-icon-names.sh && bash scripts/check-localized-text.sh",
+		"lint": "oxlint --config ../../oxlintrc.json app server e2e scripts perf && bash scripts/check-dead-tokens.sh && bash scripts/check-localized-text.sh",
 		"lint:localized-text": "bash scripts/check-localized-text.sh",
 		"lint:fix": "oxlint --config ../../oxlintrc.json app server e2e scripts perf --fix",
 		"test": "vitest run",
@@ -30,6 +30,7 @@
 	},
 	"dependencies": {
 		"@convex-dev/better-auth": "catalog:convex",
+		"@coolicons/vue": "^5.1.0",
 		"@nuxtjs/color-mode": "catalog:vue",
 		"@nuxtjs/i18n": "^10.6.0",
 		"@owlat/api": "workspace:*",
@@ -54,9 +55,7 @@
 		"vue-router": "^5.0.4"
 	},
 	"devDependencies": {
-		"@iconify-json/lucide": "^1.2.123",
 		"@nuxt/fonts": "catalog:vue",
-		"@nuxt/icon": "^2.2.1",
 		"@owlat/ui": "workspace:*",
 		"@playwright/test": "^1.58.2",
 		"@types/d3-force": "^3.0.10",

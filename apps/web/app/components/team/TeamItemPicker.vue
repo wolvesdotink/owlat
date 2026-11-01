@@ -6,6 +6,7 @@
  * option is named by the textarea's `aria-activedescendant`.
  */
 import type { BriefItemView } from '../../../../api/convex/mail/interpret/briefShape';
+import { HashIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	items: readonly BriefItemView[];
@@ -55,7 +56,7 @@ defineExpose({ contains: (node: Node | null) => !!node && !!root.value?.contains
 			@mouseenter="emit('hover', index)"
 			@click="emit('pick', item)"
 		>
-			<Icon name="lucide:hash" class="size-3.5 shrink-0 text-text-tertiary" aria-hidden="true" />
+			<HashIcon class="size-3.5 shrink-0 text-text-tertiary" aria-hidden="true" />
 			<span class="truncate text-text-primary">{{ item.text }}</span>
 		</li>
 	</ul>

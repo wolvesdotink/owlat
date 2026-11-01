@@ -73,7 +73,6 @@ const stubs = {
 		props: ['label'],
 		template: '<div role="menu"><slot :close="() => {}" /></div>',
 	},
-	Icon: { props: ['name'], template: '<span />' },
 	PostboxSnoozeDialog: true,
 };
 

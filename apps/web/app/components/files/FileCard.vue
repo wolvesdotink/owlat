@@ -1,5 +1,18 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
+import {
+	ArchiveIcon,
+	FileIcon,
+	FileTextIcon,
+	FilmIcon,
+	ImageIcon,
+	MailIcon,
+	MusicNoteIcon,
+	PresentationIcon,
+	SparklesIcon,
+	TableIcon,
+	UploadIcon,
+} from '@coolicons/vue';
 
 const props = defineProps<{
 	id: Id<'semanticFiles'>;
@@ -16,18 +29,18 @@ const props = defineProps<{
 const { t } = useI18n();
 const mimeIcon = computed(() => {
 	const mime = props.mimeType;
-	if (mime === 'application/pdf') return 'lucide:file-text';
-	if (mime.startsWith('image/')) return 'lucide:image';
-	if (mime.startsWith('video/')) return 'lucide:film';
-	if (mime.startsWith('audio/')) return 'lucide:music';
+	if (mime === 'application/pdf') return FileTextIcon;
+	if (mime.startsWith('image/')) return ImageIcon;
+	if (mime.startsWith('video/')) return FilmIcon;
+	if (mime.startsWith('audio/')) return MusicNoteIcon;
 	if (mime.includes('spreadsheet') || mime.includes('csv') || mime.includes('excel'))
-		return 'lucide:table';
-	if (mime.includes('presentation') || mime.includes('powerpoint')) return 'lucide:presentation';
-	if (mime.includes('word') || mime.includes('document')) return 'lucide:file-text';
+		return TableIcon;
+	if (mime.includes('presentation') || mime.includes('powerpoint')) return PresentationIcon;
+	if (mime.includes('word') || mime.includes('document')) return FileTextIcon;
 	if (mime.includes('zip') || mime.includes('tar') || mime.includes('compressed'))
-		return 'lucide:file-archive';
-	if (mime.startsWith('text/')) return 'lucide:file-type';
-	return 'lucide:file';
+		return ArchiveIcon;
+	if (mime.startsWith('text/')) return FileTextIcon;
+	return FileIcon;
 });
 
 const sourceLabel = computed(() => {
@@ -71,9 +84,10 @@ const displayTags = computed(() => {
 	>
 		<!-- Icon area -->
 		<div class="flex items-center justify-center py-8 bg-bg-surface">
-			<Icon
-				:name="mimeIcon"
+			<component
+				:is="mimeIcon"
 				class="w-10 h-10 text-text-tertiary group-hover:text-text-secondary transition-colors"
+				:stroke-width="1.5"
 			/>
 		</div>
 
@@ -110,13 +124,13 @@ const displayTags = computed(() => {
 						'bg-brand-subtle text-brand': sourceType === 'agent_generated',
 					}"
 				>
-					<Icon
-						:name="
+					<component
+						:is="
 							sourceType === 'upload'
-								? 'lucide:upload'
+								? UploadIcon
 								: sourceType === 'email_attachment'
-									? 'lucide:mail'
-									: 'lucide:sparkles'
+									? MailIcon
+									: SparklesIcon
 						"
 						class="w-3 h-3"
 					/>

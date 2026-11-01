@@ -2,6 +2,7 @@ import type { Component } from 'vue';
 import type { Doc } from '@owlat/api/dataModel';
 import type { Condition } from '~/composables/conditions';
 import type { LocalizedText } from '~/utils/localizedText';
+import type { IconComponent } from '@coolicons/vue';
 
 export type StepKind = 'email' | 'delay' | 'condition';
 
@@ -58,7 +59,7 @@ export interface StepEditorModule<K extends StepKind> {
 	/** A message key — see {@link StepMessage}. */
 	readonly description: string;
 	readonly color: string;
-	readonly icon: string;
+	readonly icon: IconComponent;
 	createDefault(): StepConfigOfKind<K>;
 	parseConfig(raw: unknown): StepConfigOfKind<K>;
 	validateForActivation(

@@ -35,6 +35,15 @@ import {
 	isAdminEntryReachable,
 	type AdminEnvironment,
 } from './adminSettingsRegistry';
+import {
+	ArrowTurnDownRightIcon,
+	DashboardIcon,
+	MegaphoneIcon,
+	SettingsIcon,
+	ShieldCheckIcon,
+	UsersIcon,
+	type IconComponent,
+} from '@coolicons/vue';
 
 /** One labelled destination the palette can offer, as message keys. */
 export interface RoutePaletteTarget {
@@ -47,8 +56,8 @@ export interface RoutePaletteTarget {
 	 * the label. Absent on a section root, where the label is the whole trail.
 	 */
 	contextKey?: string;
-	/** Lucide icon, chosen from the section the route belongs to. */
-	icon: string;
+	/** The icon, chosen from the section the route belongs to. */
+	icon: IconComponent;
 }
 
 const adminOnly = minRole('admin');
@@ -71,16 +80,16 @@ const SUBTREE_GATES: ReadonlyArray<readonly [string, (env: NavigationEnvironment
 ];
 
 /** Section key → icon, so a palette row is not a wall of identical glyphs. */
-const SECTION_ICONS: Readonly<Record<string, string>> = {
-	'shared.breadcrumbRoutes.sections.dashboard': 'lucide:layout-dashboard',
-	'shared.breadcrumbRoutes.sections.marketing': 'lucide:megaphone',
-	'shared.breadcrumbRoutes.sections.audience': 'lucide:users',
-	'shared.breadcrumbRoutes.sections.workspace': 'lucide:shield-check',
-	'shared.breadcrumbRoutes.sections.preferences': 'lucide:settings',
+const SECTION_ICONS: Readonly<Record<string, IconComponent>> = {
+	'shared.breadcrumbRoutes.sections.dashboard': DashboardIcon,
+	'shared.breadcrumbRoutes.sections.marketing': MegaphoneIcon,
+	'shared.breadcrumbRoutes.sections.audience': UsersIcon,
+	'shared.breadcrumbRoutes.sections.workspace': ShieldCheckIcon,
+	'shared.breadcrumbRoutes.sections.preferences': SettingsIcon,
 };
 
 /** Anything whose section is not in the table above. */
-const FALLBACK_ICON = 'lucide:corner-down-right';
+const FALLBACK_ICON = ArrowTurnDownRightIcon;
 
 /**
  * The gate for `href`: the longest matching subtree prefix, or open. Matching is

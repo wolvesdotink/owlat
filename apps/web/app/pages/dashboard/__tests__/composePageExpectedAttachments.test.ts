@@ -394,7 +394,7 @@ function mountPage() {
 		global: {
 			plugins: [createTestI18n()],
 			components: { PostboxComposer: Composer },
-			stubs: { UiSkeleton: true, Icon: true, UiButton: true },
+			stubs: { UiSkeleton: true, UiButton: true },
 		},
 	});
 }

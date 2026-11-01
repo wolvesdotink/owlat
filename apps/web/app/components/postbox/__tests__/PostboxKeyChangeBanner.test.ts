@@ -51,8 +51,6 @@ beforeEach(() => {
 	});
 });
 
-const iconStub = { props: ['name'], template: '<span />' };
-
 function mountBanner(over: Record<string, unknown> = {}) {
 	return mount(PostboxKeyChangeBanner, {
 		props: {
@@ -61,7 +59,7 @@ function mountBanner(over: Record<string, unknown> = {}) {
 			newFingerprint: 'NEWFP5566778899',
 			...over,
 		},
-		global: { plugins: [createTestI18n()], stubs: { Icon: iconStub } },
+		global: { plugins: [createTestI18n()] },
 	});
 }
 

@@ -3,6 +3,14 @@ import { computed, getCurrentInstance, nextTick, ref, watch, watchPostEffect } f
 import type { Toast, ToastType } from '../../composables/useToast';
 import { useUiI18n } from '../../composables/useUiI18n';
 import { useToastReadingTimeHolds } from '../../composables/useToastReadingTime';
+import {
+	CheckIcon,
+	CircleInfoIcon,
+	CircleWarningIcon,
+	TriangleWarningIcon,
+	type IconComponent,
+} from '@coolicons/vue';
+import { SpinnerIcon } from '../../icons/SpinnerIcon';
 
 /**
  * A single toast card. Extracted from {@link Toast.vue} so the same markup can
@@ -24,7 +32,7 @@ const emit = defineEmits<{
 interface ToastStyle {
 	container: string;
 	iconWrap: string;
-	icon: string;
+	icon: IconComponent;
 	iconColor: string;
 	text: string;
 	actionHover: string;
@@ -41,7 +49,7 @@ const STYLES: Record<ToastType, ToastStyle> = {
 	success: {
 		container: 'bg-success-subtle border-success/20',
 		iconWrap: 'bg-success/20',
-		icon: 'lucide:check',
+		icon: CheckIcon,
 		iconColor: 'text-success',
 		text: 'text-success',
 		actionHover: 'text-success hover:bg-success/20',
@@ -50,7 +58,7 @@ const STYLES: Record<ToastType, ToastStyle> = {
 	error: {
 		container: 'bg-error-subtle border-error/20',
 		iconWrap: 'bg-error/20',
-		icon: 'lucide:alert-circle',
+		icon: CircleWarningIcon,
 		iconColor: 'text-error',
 		text: 'text-error',
 		actionHover: 'text-error hover:bg-error/20',
@@ -59,7 +67,7 @@ const STYLES: Record<ToastType, ToastStyle> = {
 	warning: {
 		container: 'bg-warning-subtle border-warning/20',
 		iconWrap: 'bg-warning/20',
-		icon: 'lucide:alert-triangle',
+		icon: TriangleWarningIcon,
 		iconColor: 'text-warning',
 		text: 'text-warning',
 		actionHover: 'text-warning hover:bg-warning/20',
@@ -68,7 +76,7 @@ const STYLES: Record<ToastType, ToastStyle> = {
 	info: {
 		container: 'bg-info-subtle border-info/20',
 		iconWrap: 'bg-info/20',
-		icon: 'lucide:info',
+		icon: CircleInfoIcon,
 		iconColor: 'text-info',
 		text: 'text-info',
 		actionHover: 'text-info hover:bg-info/20',
@@ -92,7 +100,7 @@ const style = computed<ToastStyle>(() => {
 	if (!props.toast.pending) return base;
 	return {
 		...base,
-		icon: 'lucide:loader-2',
+		icon: SpinnerIcon,
 		iconColor: `${base.iconColor} animate-spin motion-reduce:animate-none`,
 		actionHover: `${base.text} opacity-70 cursor-progress pointer-events-none`,
 	};
@@ -157,7 +165,7 @@ watch(
 				style.iconWrap,
 			]"
 		>
-			<Icon :name="style.icon" size="16" :class="style.iconColor" />
+			<component :is="style.icon" size="16" :class="style.iconColor" />
 		</div>
 
 		<!--

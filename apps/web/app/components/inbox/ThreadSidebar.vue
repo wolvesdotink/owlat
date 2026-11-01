@@ -2,6 +2,7 @@
 import type { Id } from '@owlat/api/dataModel';
 import { formatRelativeTime } from '~/utils/formatters';
 import type { ThreadAutoCloseFact } from '~/utils/inboxAutoClose';
+import { UserIcon } from '@coolicons/vue';
 
 /**
  * The Team Inbox thread page's side column: the brief from elsewhere, the
@@ -45,7 +46,7 @@ function absoluteTime(timestamp: number): string {
 			</h2>
 			<div class="space-y-3">
 				<div class="flex items-center gap-3">
-					<UiIconBox icon="lucide:user" size="sm" variant="surface" rounded="full" />
+					<UiIconBox :icon="UserIcon" size="sm" variant="surface" rounded="full" />
 					<div>
 						<p class="text-text-primary text-sm font-medium">
 							{{
@@ -92,7 +93,7 @@ function absoluteTime(timestamp: number): string {
 							deterministic-color
 							size="sm"
 						/>
-						<Icon v-else name="lucide:user-round" class="w-4 h-4 text-text-tertiary" />
+						<UserIcon v-else class="w-4 h-4 text-text-tertiary" />
 						<span class="truncate">
 							{{ assignedMemberName ?? t('dashboard.inbox.detail.unassigned') }}
 						</span>

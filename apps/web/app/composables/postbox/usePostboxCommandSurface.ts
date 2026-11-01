@@ -2,6 +2,23 @@ import type { Ref } from 'vue';
 import type { Id } from '@owlat/api/dataModel';
 import { type PaletteGroup, type PaletteItem, filterItems } from '~/lib/commandPalette';
 import { routePrefixMatcher } from '~/lib/commandPaletteRegistry';
+import {
+	ArchiveIcon,
+	ArrowLeftRightIcon,
+	CircleSlashIcon,
+	ClockIcon,
+	CloudDownloadIcon,
+	FolderDownloadIcon,
+	ForwardIcon,
+	MailIcon,
+	PencilIcon,
+	PrinterIcon,
+	ReplyAllIcon,
+	SearchIcon,
+	ShieldWarningIcon,
+	TagIcon,
+	UsersIcon,
+} from '@coolicons/vue';
 
 /** Stable registry id (and dedup key) of the Postbox surface provider. */
 export const POSTBOX_COMMAND_PROVIDER_ID = 'surface:postbox';
@@ -74,46 +91,46 @@ export function usePostboxCommandSurface(mailboxId: Ref<Id<'mailboxes'>>) {
 						id: 'postbox:compose',
 						label: t('shared.postbox.usePostboxCommandSurface.items.compose'),
 						shortcutId: 'global.compose',
-						icon: 'lucide:pencil',
+						icon: PencilIcon,
 						run: () => void composeNav.open({ mailboxId: mailboxId.value }),
 					},
 					{
 						id: 'postbox:reply-all',
 						label: t('shared.postbox.usePostboxCommandSurface.items.replyAll'),
 						shortcutId: 'postbox.replyAll',
-						icon: 'lucide:reply-all',
+						icon: ReplyAllIcon,
 						run: () => dispatchReaderAction('replyAll'),
 					},
 					{
 						id: 'postbox:forward',
 						label: t('shared.postbox.usePostboxCommandSurface.items.forward'),
 						shortcutId: 'postbox.forward',
-						icon: 'lucide:forward',
+						icon: ForwardIcon,
 						run: () => dispatchReaderAction('forward'),
 					},
 					{
 						id: 'postbox:report-spam',
 						label: t('shared.postbox.usePostboxCommandSurface.items.reportSpam'),
-						icon: 'lucide:shield-alert',
+						icon: ShieldWarningIcon,
 						run: () => dispatchReaderAction('reportSpam'),
 					},
 					{
 						id: 'postbox:block-sender',
 						label: t('shared.postbox.usePostboxCommandSurface.items.blockSender'),
-						icon: 'lucide:ban',
+						icon: CircleSlashIcon,
 						run: () => dispatchReaderAction('blockSender'),
 					},
 					{
 						id: 'postbox:move',
 						label: t('shared.postbox.usePostboxCommandSurface.items.move'),
 						shortcutId: 'postbox.move',
-						icon: 'lucide:folder-input',
+						icon: FolderDownloadIcon,
 						run: () => dispatchReaderAction('move'),
 					},
 					{
 						id: 'postbox:print',
 						label: t('shared.postbox.usePostboxCommandSurface.items.print'),
-						icon: 'lucide:printer',
+						icon: PrinterIcon,
 						run: () => dispatchReaderAction('print'),
 					},
 					{
@@ -121,12 +138,12 @@ export function usePostboxCommandSurface(mailboxId: Ref<Id<'mailboxes'>>) {
 						// label drowning every other command in the palette.
 						id: 'postbox:label-as',
 						label: t('shared.postbox.usePostboxCommandSurface.items.labelAs'),
-						icon: 'lucide:tag',
+						icon: TagIcon,
 						run: () => {},
 						argument: {
 							promptKey: 'shared.postbox.usePostboxCommandSurface.argument.labelPrompt',
 							headingKey: 'shared.postbox.usePostboxCommandSurface.groups.labels',
-							icon: 'lucide:tag',
+							icon: TagIcon,
 							options: labels.value.map((label) => ({
 								id: `label-${label._id}`,
 								label: label.name,
@@ -145,26 +162,26 @@ export function usePostboxCommandSurface(mailboxId: Ref<Id<'mailboxes'>>) {
 					{
 						id: 'postbox:archive',
 						label: t('shared.postbox.usePostboxCommandSurface.items.archive'),
-						icon: 'lucide:archive',
+						icon: ArchiveIcon,
 						run: () => void navigateTo('/dashboard/postbox/archive'),
 					},
 					{
 						id: 'postbox:snoozed',
 						label: t('shared.postbox.usePostboxCommandSurface.items.snoozed'),
-						icon: 'lucide:clock',
+						icon: ClockIcon,
 						run: () => void navigateTo('/dashboard/postbox/snoozed'),
 					},
 					{
 						id: 'postbox:search',
 						label: t('shared.postbox.usePostboxCommandSurface.items.search'),
 						shortcutId: 'postbox.search',
-						icon: 'lucide:search',
+						icon: SearchIcon,
 						run: () => void navigateTo('/dashboard/postbox/search'),
 					},
 					{
 						id: 'postbox:contacts',
 						label: t('shared.postbox.usePostboxCommandSurface.items.contacts'),
-						icon: 'lucide:users',
+						icon: UsersIcon,
 						run: () => void navigateTo('/dashboard/postbox/contacts'),
 					},
 				],
@@ -180,12 +197,12 @@ export function usePostboxCommandSurface(mailboxId: Ref<Id<'mailboxes'>>) {
 		const switchGroups = [
 			{
 				items: personal.length > 1 || team.length > 0 ? personal : [],
-				icon: 'lucide:mail',
+				icon: MailIcon,
 				labelKey: 'shared.postbox.usePostboxCommandSurface.items.switchToMailbox',
 			},
 			{
 				items: team,
-				icon: 'lucide:users',
+				icon: UsersIcon,
 				labelKey: 'shared.postbox.usePostboxCommandSurface.items.switchToTeamInbox',
 			},
 		];
@@ -201,12 +218,12 @@ export function usePostboxCommandSurface(mailboxId: Ref<Id<'mailboxes'>>) {
 			const submenu: PaletteItem = {
 				id: 'postbox:switch-mailbox',
 				label: t('shared.postbox.usePostboxCommandSurface.items.switchMailbox'),
-				icon: 'lucide:arrow-right-left',
+				icon: ArrowLeftRightIcon,
 				run: () => {},
 				argument: {
 					promptKey: 'shared.postbox.usePostboxCommandSurface.argument.switchPrompt',
 					headingKey: 'shared.postbox.usePostboxCommandSurface.groups.switchMailbox',
-					icon: 'lucide:mail',
+					icon: MailIcon,
 					options: switchGroups.flatMap((group) =>
 						group.items.map((mb) => ({
 							id: `switch-${mb.mailboxId}`,
@@ -239,7 +256,7 @@ export function usePostboxCommandSurface(mailboxId: Ref<Id<'mailboxes'>>) {
 				items: labels.value.map((label) => ({
 					id: `postbox:label-${label._id}`,
 					label: label.name,
-					icon: 'lucide:tag',
+					icon: TagIcon,
 					run: () => void navigateTo(`/dashboard/postbox/label/${label._id}`),
 				})),
 			});
@@ -249,7 +266,7 @@ export function usePostboxCommandSurface(mailboxId: Ref<Id<'mailboxes'>>) {
 			groups[0]?.items.push({
 				id: 'postbox:check-updates',
 				label: t('shared.postbox.usePostboxCommandSurface.items.checkUpdates'),
-				icon: 'lucide:download-cloud',
+				icon: CloudDownloadIcon,
 				run: () => window.dispatchEvent(new Event('owlat:check-updates')),
 			});
 		}

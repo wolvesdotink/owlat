@@ -7,6 +7,7 @@ import { useDomainAutoRecheck } from '~/composables/useDomainAutoRecheck';
 import { useSoleDomainDeepLink } from '~/composables/useSoleDomainDeepLink';
 import { prefersReducedMotion } from '@owlat/ui/composables/useReducedMotion';
 import type { DmarcPolicy } from '~/utils/domainStatus';
+import { GlobeIcon, MailIcon, PlusIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -304,7 +305,7 @@ const { autoRecheckActive } = useDomainAutoRecheck({
 					class="gap-2 whitespace-nowrap"
 					@click="addModal.open()"
 				>
-					<Icon name="lucide:plus" class="w-4 h-4" />
+					<PlusIcon class="w-4 h-4" />
 					{{ t('dashboard.admin.delivery.domains.addDomain') }}
 				</UiButton>
 			</template>
@@ -319,7 +320,7 @@ const { autoRecheckActive } = useDomainAutoRecheck({
 		     names the surface rather than claiming there is nothing here. -->
 		<UiEmptyState
 			v-else-if="!hasActiveOrganization"
-			icon="lucide:globe"
+			:icon="GlobeIcon"
 			:eyebrow="t('dashboard.admin.delivery.domains.title')"
 			:title="t('dashboard.admin.delivery.domains.noTeam.title')"
 			:description="t('dashboard.admin.delivery.domains.noTeam.description')"
@@ -330,7 +331,7 @@ const { autoRecheckActive } = useDomainAutoRecheck({
 			<!-- Info Card -->
 			<div class="card p-6 bg-brand/5 border-brand/20">
 				<div class="flex gap-4">
-					<UiIconBox icon="lucide:globe" size="sm" variant="brand" rounded="lg" />
+					<UiIconBox :icon="GlobeIcon" size="sm" variant="brand" rounded="lg" />
 					<div>
 						<h3 class="font-medium text-text-primary mb-1">
 							{{ t('dashboard.admin.delivery.domains.whyCustom.title') }}
@@ -364,7 +365,7 @@ const { autoRecheckActive } = useDomainAutoRecheck({
 				v-if="isEnabled('mail.external') && domainsData && !hasVerifiedDomain"
 				class="card p-6 bg-bg-surface flex items-start gap-4"
 			>
-				<UiIconBox icon="lucide:mail-plus" size="sm" variant="surface" rounded="lg" />
+				<UiIconBox :icon="MailIcon" size="sm" variant="surface" rounded="lg" />
 				<div class="flex-1">
 					<h3 class="font-medium text-text-primary mb-1">
 						{{ t('dashboard.admin.delivery.domains.noDomain.title') }}
@@ -373,7 +374,7 @@ const { autoRecheckActive } = useDomainAutoRecheck({
 						{{ t('dashboard.admin.delivery.domains.noDomain.body') }}
 					</p>
 					<UiButton variant="secondary" size="sm" to="/dashboard/postbox/migrate" class="gap-2">
-						<Icon name="lucide:mail-plus" class="w-4 h-4" />
+						<MailIcon class="w-4 h-4" />
 						{{ t('dashboard.admin.delivery.domains.noDomain.action') }}
 					</UiButton>
 				</div>
@@ -386,13 +387,13 @@ const { autoRecheckActive } = useDomainAutoRecheck({
 			<UiEmptyState
 				v-else-if="domainsData && domainsData.length === 0"
 				id="sending-domain-list"
-				icon="lucide:globe"
+				:icon="GlobeIcon"
 				:title="t('dashboard.admin.delivery.domains.empty.title')"
 				:description="t('dashboard.admin.delivery.domains.empty.description')"
 			>
 				<template #action>
 					<UiButton class="gap-2" @click="addModal.open()">
-						<Icon name="lucide:plus" class="w-4 h-4" />
+						<PlusIcon class="w-4 h-4" />
 						{{ t('dashboard.admin.delivery.domains.empty.action') }}
 					</UiButton>
 				</template>

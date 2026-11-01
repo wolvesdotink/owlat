@@ -3,6 +3,7 @@ import type { Id } from '@owlat/api/dataModel';
 import { useChannelOutbound } from '~/composables/useChannelOutbound';
 import type { SendableChannel } from '~/composables/useChannelOutbound';
 import { useComposerDraft } from '~/composables/useComposerDrafts';
+import { ChatIcon, PaperPlaneIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	contactId: Id<'contacts'>;
@@ -138,7 +139,7 @@ async function send() {
 				]"
 				@click="channelFilter = channelFilter === ch ? null : ch"
 			>
-				<Icon :name="channelIcon(ch)" class="w-3 h-3" />
+				<component :is="channelIcon(ch)" class="w-3 h-3" />
 				{{ channelName(ch) }}
 			</button>
 		</div>
@@ -149,7 +150,7 @@ async function send() {
 			class="mb-4 p-3 rounded-lg border border-border-subtle bg-bg-surface"
 		>
 			<div class="flex items-center gap-2 mb-2">
-				<Icon name="lucide:send" class="w-4 h-4 text-text-tertiary" />
+				<PaperPlaneIcon class="w-4 h-4 text-text-tertiary" />
 				<p class="text-sm font-medium text-text-primary">
 					{{ t('components.contacts.unifiedTimelineTab.sendTitle') }}
 				</p>
@@ -174,7 +175,7 @@ async function send() {
 			<div class="flex justify-end mt-2">
 				<UiButton size="sm" :disabled="!canSend" :loading="isSending" @click="send">
 					<template #iconLeft>
-						<Icon name="lucide:send" class="w-4 h-4" />
+						<PaperPlaneIcon class="w-4 h-4" />
 					</template>
 					{{ t('common.send') }}
 				</UiButton>
@@ -196,13 +197,7 @@ async function send() {
 			v-else-if="filteredTimeline.length === 0"
 			class="flex flex-col items-center justify-center py-8 text-center"
 		>
-			<UiIconBox
-				icon="lucide:message-square"
-				size="lg"
-				variant="surface"
-				rounded="full"
-				class="mb-3"
-			/>
+			<UiIconBox :icon="ChatIcon" size="lg" variant="surface" rounded="full" class="mb-3" />
 			<p class="text-text-secondary text-sm">
 				{{
 					channelFilter
@@ -232,8 +227,8 @@ async function send() {
 					<div
 						class="flex-shrink-0 w-10 h-10 rounded-full bg-bg-surface flex items-center justify-center"
 					>
-						<Icon
-							:name="channelIcon(item.channel)"
+						<component
+							:is="channelIcon(item.channel)"
 							class="w-5 h-5"
 							:class="channelColor(item.channel)"
 						/>
@@ -251,7 +246,7 @@ async function send() {
 										: 'bg-success-subtle text-success',
 								]"
 							>
-								<Icon :name="directionIcon(item.direction)" class="w-3 h-3" />
+								<component :is="directionIcon(item.direction)" class="w-3 h-3" />
 								{{ directionName(item.direction) }}
 							</span>
 

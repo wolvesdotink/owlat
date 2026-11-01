@@ -1,11 +1,12 @@
 /** The onboarding preset: greet a new subscriber and point them at what to do first. */
 import type { TemplatePreset } from './types';
+import { SparklesIcon } from '@coolicons/vue';
 
 export const welcomePreset: TemplatePreset = {
 	id: 'welcome',
 	name: 'shared.data.marketingTemplatePresets.welcome.name',
 	description: 'shared.data.marketingTemplatePresets.welcome.description',
-	icon: 'lucide:sparkles',
+	icon: SparklesIcon,
 	subject: 'Welcome to {{company}}!',
 	content: [
 		{
