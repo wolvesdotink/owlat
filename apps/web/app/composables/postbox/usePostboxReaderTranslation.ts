@@ -42,7 +42,7 @@ export function translationSource(body: { html: string | null; text: string | nu
  * the conversation. The source message is never
  * touched: the translation is a separate, dismissible reading of it.
  *
- * It spends through `translate.translateBatch`, which checks the `ai` flag, the
+ * It spends through `emailTemplates/translate.translateBatch`, which checks the `ai` flag, the
  * organization's AI budget and a per-user rate limit before any model runs; a
  * budget refusal reads as which budget, not as a failed translation.
  */
@@ -90,7 +90,7 @@ export function usePostboxReaderTranslation(message: () => TranslatableMessage |
 				state.value = { status: 'error', messageKey: 'postbox.reader.translation.empty' };
 				return;
 			}
-			const result = await requireConvex().action(api.translate.translateBatch, {
+			const result = await requireConvex().action(api.emailTemplates.translate.translateBatch, {
 				items: [{ id: msg._id, text: source.text, isHtml: false }],
 				sourceLanguage: 'the language it is written in',
 				// The prompt is English, so it names the language in English.

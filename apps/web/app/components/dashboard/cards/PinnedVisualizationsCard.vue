@@ -4,7 +4,9 @@ import { budgetRefusalReason } from '~/utils/aiBudget';
 
 const { t } = useI18n();
 
-const { data: visualizations, isLoading } = useOrganizationQuery(api.visualizationAgent.listPinned);
+const { data: visualizations, isLoading } = useOrganizationQuery(
+	api.analytics.visualizationAgent.listPinned
+);
 
 interface Visualization {
 	_id: string;

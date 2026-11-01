@@ -4,7 +4,7 @@
  * These tests lock in the gates that run BEFORE any LLM / embedding / network
  * call on the AI-facing entry points:
  *
- *   - visualizationAgent.ts `createFromPrompt` (authedMutation): requireAdminContext
+ *   - analytics/visualizationAgent.ts `createFromPrompt` (authedMutation): requireAdminContext
  *     rejects a non-admin; the prompt-length bound (STRING_LIMITS.DESCRIPTION
  *     = 5000) rejects an over-cap prompt BEFORE the scheduled LLM action; a valid
  *     admin + short prompt inserts the placeholder row and schedules generation
@@ -155,14 +155,16 @@ describe('visualizationAgent — ai.visualizations feature floor', () => {
 				updatedAt: now,
 			});
 		});
-		await expect(t.query(api.visualizationAgent.list, {})).rejects.toThrow(/ai\.visualizations/);
+		await expect(t.query(api.analytics.visualizationAgent.list, {})).rejects.toThrow(
+			/ai\.visualizations/
+		);
 	});
 
 	it('refuses generation from a prompt when the flag is off, before any LLM call', async () => {
 		const t = convexTest(schema, modules);
 
 		await expect(
-			t.mutation(api.visualizationAgent.createFromPrompt, { prompt: 'chart our growth' })
+			t.mutation(api.analytics.visualizationAgent.createFromPrompt, { prompt: 'chart our growth' })
 		).rejects.toThrow(/ai\.visualizations/);
 
 		await t.run(async (ctx) => {
@@ -189,23 +191,23 @@ describe('visualizationAgent — ai.visualizations feature floor', () => {
 
 		// The row exists in both cases; only the flag decides whether the read can
 		// see it, so the pair distinguishes the gate from an empty instance.
-		const list = await t.query(api.visualizationAgent.list, {});
+		const list = await t.query(api.analytics.visualizationAgent.list, {});
 		expect(list).toHaveLength(1);
 	});
 });
 
 // ============================================================
-// visualizationAgent.createFromPrompt — admin + prompt-length gates
+// analytics/visualizationAgent.createFromPrompt — admin + prompt-length gates
 // ============================================================
 
-describe('visualizationAgent.createFromPrompt — admin gate', () => {
+describe('analytics/visualizationAgent.createFromPrompt — admin gate', () => {
 	it('rejects a non-admin (editor) caller', async () => {
 		const t = convexTest(schema, modules);
 		await enableFeatures(t, ['ai.visualizations']);
 		setSession({ role: 'editor', member: true });
 
 		await expect(
-			t.mutation(api.visualizationAgent.createFromPrompt, { prompt: 'chart our growth' })
+			t.mutation(api.analytics.visualizationAgent.createFromPrompt, { prompt: 'chart our growth' })
 		).rejects.toThrow();
 
 		// Nothing was inserted.
@@ -220,7 +222,7 @@ describe('visualizationAgent.createFromPrompt — admin gate', () => {
 		await enableFeatures(t, ['ai.visualizations']);
 		setSession({ role: 'admin', member: true });
 
-		const id = await t.mutation(api.visualizationAgent.createFromPrompt, {
+		const id = await t.mutation(api.analytics.visualizationAgent.createFromPrompt, {
 			prompt: 'show contact growth',
 		});
 		expect(id).toBeDefined();
@@ -242,7 +244,7 @@ describe('visualizationAgent.createFromPrompt — admin gate', () => {
 	});
 });
 
-describe('visualizationAgent.createFromPrompt — prompt-length bound', () => {
+describe('analytics/visualizationAgent.createFromPrompt — prompt-length bound', () => {
 	it('rejects a prompt over STRING_LIMITS.DESCRIPTION (5000) before scheduling', async () => {
 		const t = convexTest(schema, modules);
 		await enableFeatures(t, ['ai.visualizations']);
@@ -250,7 +252,7 @@ describe('visualizationAgent.createFromPrompt — prompt-length bound', () => {
 
 		const overCap = 'a'.repeat(5001);
 		await expect(
-			t.mutation(api.visualizationAgent.createFromPrompt, { prompt: overCap })
+			t.mutation(api.analytics.visualizationAgent.createFromPrompt, { prompt: overCap })
 		).rejects.toThrow(/at most 5000 characters/);
 
 		// The bound runs before the placeholder insert, so nothing persisted.
@@ -267,7 +269,9 @@ describe('visualizationAgent.createFromPrompt — prompt-length bound', () => {
 		setSession({ role: 'owner', member: true });
 
 		const atCap = 'a'.repeat(5000);
-		const id = await t.mutation(api.visualizationAgent.createFromPrompt, { prompt: atCap });
+		const id = await t.mutation(api.analytics.visualizationAgent.createFromPrompt, {
+			prompt: atCap,
+		});
 		expect(id).toBeDefined();
 		await t.run(async (ctx) => {
 			const viz = await ctx.db.get(id);
@@ -282,7 +286,7 @@ describe('visualizationAgent.createFromPrompt — prompt-length bound', () => {
 // Live-data allowlist — only the fixed dataset keys are accepted
 // ============================================================
 
-describe('visualizationAgent.createFromPrompt — live-data allowlist', () => {
+describe('analytics/visualizationAgent.createFromPrompt — live-data allowlist', () => {
 	it('accepts each allowlisted dataset key', async () => {
 		const t = convexTest(schema, modules);
 		await enableFeatures(t, ['ai.visualizations']);
@@ -294,7 +298,7 @@ describe('visualizationAgent.createFromPrompt — live-data allowlist', () => {
 			'contact_growth',
 			'campaign_performance',
 		] as const) {
-			const id = await t.mutation(api.visualizationAgent.createFromPrompt, {
+			const id = await t.mutation(api.analytics.visualizationAgent.createFromPrompt, {
 				prompt: `chart ${dataset}`,
 				dataset,
 			});
@@ -311,7 +315,7 @@ describe('visualizationAgent.createFromPrompt — live-data allowlist', () => {
 		// validation before the handler runs — there is no path to inject a raw
 		// query string or an off-allowlist table.
 		await expect(
-			t.mutation(api.visualizationAgent.createFromPrompt, {
+			t.mutation(api.analytics.visualizationAgent.createFromPrompt, {
 				prompt: 'dump everything',
 				// @ts-expect-error — deliberately passing an off-allowlist key.
 				dataset: 'all_contacts_pii',
@@ -330,7 +334,7 @@ describe('visualizationAgent.createFromPrompt — live-data allowlist', () => {
 		await enableFeatures(t, ['ai.visualizations']);
 		setSession({ role: 'admin', member: true });
 
-		const id = await t.mutation(api.visualizationAgent.createFromPrompt, {
+		const id = await t.mutation(api.analytics.visualizationAgent.createFromPrompt, {
 			prompt: 'just make something pretty',
 		});
 		await t.run(async (ctx) => {
@@ -342,10 +346,10 @@ describe('visualizationAgent.createFromPrompt — live-data allowlist', () => {
 });
 
 // ============================================================
-// visualizationAgent.regenerate — refresh the persisted live dataset
+// analytics/visualizationAgent.regenerate — refresh the persisted live dataset
 // ============================================================
 
-describe('visualizationAgent.regenerate — live-data refresh', () => {
+describe('analytics/visualizationAgent.regenerate — live-data refresh', () => {
 	// Insert a visualization row directly so we control its dataQuery.
 	const insertViz = async (
 		t: TestConvex<typeof schema>,
@@ -371,7 +375,7 @@ describe('visualizationAgent.regenerate — live-data refresh', () => {
 		const id = await insertViz(t, 'email_delivery_30d');
 
 		setSession({ role: 'editor', member: true });
-		await expect(t.mutation(api.visualizationAgent.regenerate, { id })).rejects.toThrow();
+		await expect(t.mutation(api.analytics.visualizationAgent.regenerate, { id })).rejects.toThrow();
 	});
 
 	it('re-schedules generation with the persisted allowlisted dataset', async () => {
@@ -380,7 +384,7 @@ describe('visualizationAgent.regenerate — live-data refresh', () => {
 		setSession({ role: 'admin', member: true });
 		const id = await insertViz(t, 'email_delivery_30d');
 
-		await t.mutation(api.visualizationAgent.regenerate, { id });
+		await t.mutation(api.analytics.visualizationAgent.regenerate, { id });
 
 		// The row is flipped to the refreshing placeholder; regenerate only
 		// schedules the generate action (no LLM call runs here).
@@ -399,7 +403,7 @@ describe('visualizationAgent.regenerate — live-data refresh', () => {
 		setSession({ role: 'admin', member: true });
 		const id = await insertViz(t, undefined);
 
-		await expect(t.mutation(api.visualizationAgent.regenerate, { id })).rejects.toThrow(
+		await expect(t.mutation(api.analytics.visualizationAgent.regenerate, { id })).rejects.toThrow(
 			/illustrative sample data/
 		);
 

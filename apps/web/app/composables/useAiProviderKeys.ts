@@ -22,7 +22,7 @@ import {
 	type StoredKeyFacts,
 } from '~/utils/aiProviderKeyReuse';
 
-/** The key fields of `aiProviderConfig.getConfig`, structurally. */
+/** The key fields of `aiRouting/providerConfig.getConfig`, structurally. */
 export interface StoredProviderKeys {
 	languageProviderKind?: LanguageProviderKind;
 	languageBaseUrl?: string;

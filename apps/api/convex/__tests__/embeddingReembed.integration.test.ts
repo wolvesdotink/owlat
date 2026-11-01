@@ -360,7 +360,7 @@ describe('local re-embed', () => {
 			isForced: true,
 		});
 		const row = await t.run((ctx) => ctx.db.query('aiProviderConfig').first());
-		await t.mutation(internal.aiProviderConfig._persistConfig, {
+		await t.mutation(internal.aiRouting.providerConfig._persistConfig, {
 			languageProviderKind: row!.languageProviderKind,
 			languageBaseUrl: row!.languageBaseUrl,
 			modelFast: row!.modelFast,

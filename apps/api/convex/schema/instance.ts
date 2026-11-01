@@ -467,7 +467,7 @@ export const instanceTables = {
 		isDecisionFallbackEnabled: v.optional(v.boolean()),
 		// Decision-provider API key envelope (absent for the language-backed
 		// adapter, which borrows the language plane's key). Written and cleared in
-		// lockstep with the preview below by `aiProviderConfig._persistConfig`.
+		// lockstep with the preview below by `aiRouting/providerConfig._persistConfig`.
 		decisionSecretCiphertext: v.optional(v.string()),
 		decisionSecretIv: v.optional(v.string()),
 		decisionSecretAuthTag: v.optional(v.string()),

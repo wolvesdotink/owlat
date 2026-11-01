@@ -10,7 +10,7 @@
  * Source under test:
  *   - contacts/organization.ts  (listForExportByOrganization,
  *     listAllIdsByOrganization, getPropertyValuesForContacts)
- *   - globalSearch.ts           (search → contacts branch)
+ *   - search/global.ts           (search → contacts branch)
  *   - contacts/timeline.ts      (getTimeline, getTimelineStats)
  *   - contacts/contacts.ts      (getByEmailForTeam)
  *   - transactional/sends.ts    (get, listAll, getByEmail,
@@ -205,14 +205,14 @@ describe('contacts/organization.getPropertyValuesForContacts', () => {
 });
 
 // ==================================================================
-// globalSearch.ts (contacts branch)
+// search/global.ts (contacts branch)
 // ==================================================================
 
-describe('globalSearch.search', () => {
+describe('search/global.search', () => {
 	it('omits the soft-deleted contact from the contacts results', async () => {
 		const { t, liveId, deletedId } = await seedFixture();
 
-		const result = await t.query(api.globalSearch.search, {
+		const result = await t.query(api.search.global.search, {
 			query: 'zzsharedtoken',
 		});
 

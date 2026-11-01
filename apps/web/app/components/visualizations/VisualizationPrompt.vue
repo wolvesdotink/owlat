@@ -5,7 +5,7 @@ const emit = defineEmits<{
 	created: [];
 }>();
 
-// Live-data datasets — mirror the allowlist in visualizationAgent.ts
+// Live-data datasets — mirror the allowlist in analytics/visualizationAgent.ts
 // (DATASET_KEYS). Selecting one opts the chart into REAL account numbers; the
 // default ('') keeps the illustrative sample-data path. `label` is a message
 // key; the template renders it through `t()`.
@@ -32,9 +32,12 @@ type DatasetValue = (typeof DATASET_OPTIONS)[number]['value'];
 
 const { t } = useI18n();
 
-const { run: createFromPrompt } = useBackendOperation(api.visualizationAgent.createFromPrompt, {
-	label: () => t('components.visualizations.visualizationPrompt.createOperation'),
-});
+const { run: createFromPrompt } = useBackendOperation(
+	api.analytics.visualizationAgent.createFromPrompt,
+	{
+		label: () => t('components.visualizations.visualizationPrompt.createOperation'),
+	}
+);
 
 const prompt = ref('');
 const pinToBoard = ref(false);

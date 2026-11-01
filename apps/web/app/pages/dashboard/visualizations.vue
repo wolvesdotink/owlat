@@ -14,7 +14,7 @@ const {
 	data: visualizations,
 	isLoading,
 	error,
-} = useConvexQuery(api.visualizationAgent.list, () => ({ limit: 50 }));
+} = useConvexQuery(api.analytics.visualizationAgent.list, () => ({ limit: 50 }));
 </script>
 
 <template>

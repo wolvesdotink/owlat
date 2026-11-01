@@ -235,6 +235,8 @@ import type * as agentHealth from '../agentHealth.js';
 import type * as aiProviderConfig from '../aiProviderConfig.js';
 import type * as aiProviderConfigActions from '../aiProviderConfigActions.js';
 import type * as aiRouting_admission from '../aiRouting/admission.js';
+import type * as aiRouting_providerConfigActions from '../aiRouting/providerConfigActions.js';
+import type * as aiRouting_providerConfig from '../aiRouting/providerConfig.js';
 import type * as aiRouting_admissionState from '../aiRouting/admissionState.js';
 import type * as aiRouting_batchContinuation from '../aiRouting/batchContinuation.js';
 import type * as aiRouting_batchItems from '../aiRouting/batchItems.js';
@@ -256,6 +258,8 @@ import type * as aiRouting_shadowQuota from '../aiRouting/shadowQuota.js';
 import type * as aiRouting_spendAggregate from '../aiRouting/spendAggregate.js';
 import type * as aiRouting_teamBudgetHold from '../aiRouting/teamBudgetHold.js';
 import type * as analytics_adaptiveDashboard from '../analytics/adaptiveDashboard.js';
+import type * as analytics_visualizationAgentActions from '../analytics/visualizationAgentActions.js';
+import type * as analytics_visualizationAgent from '../analytics/visualizationAgent.js';
 import type * as analytics_admissionPorts from '../analytics/admissionPorts.js';
 import type * as analytics_backgroundDeferral from '../analytics/backgroundDeferral.js';
 import type * as analytics_cellArmBuckets from '../analytics/cellArmBuckets.js';
@@ -290,6 +294,8 @@ import type * as analytics_spendBudget from '../analytics/spendBudget.js';
 import type * as analytics_transportOutcomeSummary from '../analytics/transportOutcomeSummary.js';
 import type * as analytics_transportOutcomes from '../analytics/transportOutcomes.js';
 import type * as assistant_conversations from '../assistant/conversations.js';
+import type * as assistant_quickQueryGate from '../assistant/quickQueryGate.js';
+import type * as assistant_quickQuery from '../assistant/quickQuery.js';
 import type * as assistant_insights from '../assistant/insights.js';
 import type * as assistant_prompt from '../assistant/prompt.js';
 import type * as assistant_runner from '../assistant/runner.js';
@@ -847,6 +853,7 @@ import type * as emailTemplates_i18n from '../emailTemplates/i18n.js';
 import type * as emailTemplates_lifecycle from '../emailTemplates/lifecycle.js';
 import type * as emailTemplates_listing from '../emailTemplates/listing.js';
 import type * as emailTemplates_deletion from '../emailTemplates/deletion.js';
+import type * as emailTemplates_translate from '../emailTemplates/translate.js';
 import type * as emailTemplates_organization from '../emailTemplates/organization.js';
 import type * as emailTemplates_presendChecks from '../emailTemplates/presendChecks.js';
 import type * as emailTemplates_presendChecksActions from '../emailTemplates/presendChecksActions.js';
@@ -1765,6 +1772,7 @@ import type * as seedDemo_messages from '../seedDemo/messages.js';
 import type * as seedDemo_pipeline from '../seedDemo/pipeline.js';
 import type * as segments from '../segments.js';
 import type * as segments_countRefresh from '../segments/countRefresh.js';
+import type * as search_global from '../search/global.js';
 import type * as segments_listing from '../segments/listing.js';
 import type * as semanticFileProcessing from '../semanticFileProcessing.js';
 import type * as semanticFiles from '../semanticFiles.js';
@@ -2081,6 +2089,8 @@ declare const fullApi: ApiFromModules<{
 	'agent/walkerTransition': typeof agent_walkerTransition;
 }> & ApiFromModules<{
 	'aiRouting/admission': typeof aiRouting_admission;
+	'aiRouting/providerConfigActions': typeof aiRouting_providerConfigActions;
+	'aiRouting/providerConfig': typeof aiRouting_providerConfig;
 	'aiRouting/admissionState': typeof aiRouting_admissionState;
 	'aiRouting/batchContinuation': typeof aiRouting_batchContinuation;
 	'aiRouting/batchItems': typeof aiRouting_batchItems;
@@ -2104,6 +2114,8 @@ declare const fullApi: ApiFromModules<{
 }> & ApiFromModules<{
 	'analytics/meteredSpend': typeof analytics_meteredSpend;
 	'analytics/adaptiveDashboard': typeof analytics_adaptiveDashboard;
+	'analytics/visualizationAgentActions': typeof analytics_visualizationAgentActions;
+	'analytics/visualizationAgent': typeof analytics_visualizationAgent;
 	'analytics/admissionPorts': typeof analytics_admissionPorts;
 	'analytics/backgroundDeferral': typeof analytics_backgroundDeferral;
 	'analytics/cellArmBuckets': typeof analytics_cellArmBuckets;
@@ -2139,6 +2151,8 @@ declare const fullApi: ApiFromModules<{
 	'analytics/transportOutcomes': typeof analytics_transportOutcomes;
 }> & ApiFromModules<{
 	'assistant/conversations': typeof assistant_conversations;
+	'assistant/quickQueryGate': typeof assistant_quickQueryGate;
+	'assistant/quickQuery': typeof assistant_quickQuery;
 	'assistant/insights': typeof assistant_insights;
 	'assistant/prompt': typeof assistant_prompt;
 	'assistant/runner': typeof assistant_runner;
@@ -2722,6 +2736,7 @@ declare const fullApi: ApiFromModules<{
 	'emailTemplates/lifecycle': typeof emailTemplates_lifecycle;
 	'emailTemplates/listing': typeof emailTemplates_listing;
 	'emailTemplates/deletion': typeof emailTemplates_deletion;
+	'emailTemplates/translate': typeof emailTemplates_translate;
 	'emailTemplates/organization': typeof emailTemplates_organization;
 	'emailTemplates/presendChecks': typeof emailTemplates_presendChecks;
 	'emailTemplates/presendChecksActions': typeof emailTemplates_presendChecksActions;
@@ -3840,6 +3855,8 @@ declare const fullApi: ApiFromModules<{
 	'schema/workerServers': typeof schema_workerServers;
 	'schema/mailArrival': typeof schema_mailArrival;
 	'schema/mailArrivalRules': typeof schema_mailArrivalRules;
+}> & ApiFromModules<{
+	'search/global': typeof search_global;
 }> & ApiFromModules<{
 	'seedDemo/index': typeof seedDemo_index;
 	'seedDemo/indexHttp': typeof seedDemo_indexHttp;

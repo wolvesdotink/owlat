@@ -186,4 +186,49 @@ export const PREVIOUS_RELEASE_ENTRIES: Readonly<Record<string, string>> = {
 	'agentHealth.ts#rollupMetrics': 'a metrics rollup the previous cron queued',
 	'agentHealth.ts#getRecentActions': 'old agent metrics rollups mid-run',
 	'agentHealth.ts#getPendingCount': 'old agent metrics rollups mid-run',
+	// The AI provider config, translate, Quick Query, visualization and global
+	// search modules moved to aiRouting/providerConfig.ts,
+	// aiRouting/providerConfigActions.ts, emailTemplates/translate.ts,
+	// assistant/quickQuery.ts, assistant/quickQueryGate.ts,
+	// analytics/visualizationAgent.ts, analytics/visualizationAgentActions.ts and
+	// search/global.ts; remove after release 0.6.17.
+	'aiProviderConfig.ts#getConfig':
+		'the previous AI provider settings page, in tabs opened before the deploy',
+	'aiProviderConfig.ts#removeConfig':
+		'the previous AI provider settings page, in tabs opened before the deploy',
+	'aiProviderConfig.ts#_persistConfig': 'old AI provider saves mid-run',
+	'aiProviderConfig.ts#_getConfigRow':
+		'old AI provider connection tests, model listings and model resolutions mid-run',
+	'aiProviderConfigActions.ts#saveConfig':
+		'the previous AI provider settings page, in tabs opened before the deploy',
+	'aiProviderConfigActions.ts#testConnection':
+		'the previous AI provider settings page, in tabs opened before the deploy',
+	'aiProviderConfigActions.ts#listModels':
+		'the previous AI provider settings page, in tabs opened before the deploy',
+	'aiProviderConfigActions.ts#_decryptSecretEnvelope': 'old model resolutions mid-run',
+	'translate.ts#translateBatch':
+		'the previous template translation editors and Postbox reader, in tabs opened before the deploy',
+	'quickQuery.ts#ask': 'the previous command palette Ask mode, in tabs opened before the deploy',
+	'quickQueryGate.ts#assertKnowledgeReadAccess': 'old Quick Query asks mid-run',
+	'visualizationAgent.ts#list':
+		'the previous visualizations page, in tabs opened before the deploy',
+	'visualizationAgent.ts#listPinned':
+		'the previous pinned visualizations card, in tabs opened before the deploy',
+	'visualizationAgent.ts#createFromPrompt':
+		'the previous visualizations page, in tabs opened before the deploy',
+	'visualizationAgent.ts#regenerate':
+		'the previous visualizations page, in tabs opened before the deploy',
+	'visualizationAgent.ts#togglePin':
+		'the previous visualizations page, in tabs opened before the deploy',
+	'visualizationAgent.ts#remove':
+		'the previous visualizations page, in tabs opened before the deploy',
+	'visualizationAgent.ts#updateGenerated': 'old visualization generations mid-run',
+	'visualizationAgent.ts#dataEmailDelivery30d': 'old visualization generations mid-run',
+	'visualizationAgent.ts#dataAgentHealth': 'old visualization generations mid-run',
+	'visualizationAgent.ts#dataContactGrowth': 'old visualization generations mid-run',
+	'visualizationAgent.ts#dataCampaignPerformance': 'old visualization generations mid-run',
+	'visualizationAgentActions.ts#generate':
+		'visualization generations the previous release scheduled',
+	'globalSearch.ts#search': 'the previous command palette, in tabs opened before the deploy',
+	'globalSearch.ts#searchInternal': 'old assistant runs mid-run',
 };

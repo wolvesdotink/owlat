@@ -1,6 +1,6 @@
 /**
  * The quick-query answer says when it stopped at its length limit
- * (`quickQuery.ask` `isTruncated`), and says nothing otherwise.
+ * (`assistant/quickQuery.ask` `isTruncated`), and says nothing otherwise.
  */
 import { beforeAll, describe, expect, it } from 'vitest';
 import { mount } from '@vue/test-utils';

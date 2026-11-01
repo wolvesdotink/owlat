@@ -583,7 +583,7 @@ describe('visualization', () => {
 			warnings: [],
 		}));
 
-		await t.action(internal.visualizationAgentActions.generate, {
+		await t.action(internal.analytics.visualizationAgentActions.generate, {
 			visualizationId: id,
 			prompt: 'Open rates by week',
 		});
@@ -603,7 +603,7 @@ describe('visualization', () => {
 		await t.run((c) => c.db.delete(id));
 
 		// The lost race is not an error: the action finishes without throwing.
-		await t.action(internal.visualizationAgentActions.generate, {
+		await t.action(internal.analytics.visualizationAgentActions.generate, {
 			visualizationId: id,
 			prompt: 'Open rates by week',
 		});
@@ -615,7 +615,7 @@ describe('visualization', () => {
 		const { t } = await setup('0.0001');
 		const id = await seedVisualization(t);
 
-		await t.action(internal.visualizationAgentActions.generate, {
+		await t.action(internal.analytics.visualizationAgentActions.generate, {
 			visualizationId: id,
 			prompt: 'Open rates by week',
 		});
@@ -636,7 +636,7 @@ describe('visualization', () => {
 			throw Object.assign(new Error('model unavailable'), { name: 'ProviderError' });
 		});
 
-		await t.action(internal.visualizationAgentActions.generate, {
+		await t.action(internal.analytics.visualizationAgentActions.generate, {
 			visualizationId: id,
 			prompt: 'Open rates by week',
 		});

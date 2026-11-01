@@ -1,5 +1,5 @@
 /**
- * translate.translateBatch — batch content translation.
+ * emailTemplates/translate.translateBatch — batch content translation.
  *
  * These tests cover the abuse guards added around the LLM call: the input caps
  * (batch size + total character volume) that reject an oversized request BEFORE
@@ -44,12 +44,12 @@ function items(count: number, text = 'hello') {
 	return Array.from({ length: count }, (_, i) => ({ id: `i${i}`, text, isHtml: false }));
 }
 
-describe('translate.translateBatch — input caps', () => {
+describe('emailTemplates/translate.translateBatch — input caps', () => {
 	it('rejects a batch of more than 50 items before any dispatch', async () => {
 		const t = convexTest(schema, modules);
 		await enableFeatures(t, ['ai']);
 		await expect(
-			t.action(api.translate.translateBatch, {
+			t.action(api.emailTemplates.translate.translateBatch, {
 				items: items(51),
 				sourceLanguage: 'en',
 				targetLanguage: 'de',
@@ -63,7 +63,7 @@ describe('translate.translateBatch — input caps', () => {
 		// 3 items × ~40k chars = 120k > the 100k cap, but only 3 items (under the
 		// item cap), so this exercises the total-character clamp specifically.
 		await expect(
-			t.action(api.translate.translateBatch, {
+			t.action(api.emailTemplates.translate.translateBatch, {
 				items: items(3, 'x'.repeat(40_000)),
 				sourceLanguage: 'en',
 				targetLanguage: 'de',
@@ -72,12 +72,12 @@ describe('translate.translateBatch — input caps', () => {
 	});
 });
 
-describe('translate.translateBatch — AI gate', () => {
+describe('emailTemplates/translate.translateBatch — AI gate', () => {
 	it('is blocked when the ai feature flag is off (gate runs before the LLM)', async () => {
 		const t = convexTest(schema, modules);
 		// No instanceSettings row → the `ai` flag resolves to its default (off).
 		await expect(
-			t.action(api.translate.translateBatch, {
+			t.action(api.emailTemplates.translate.translateBatch, {
 				items: items(1),
 				sourceLanguage: 'en',
 				targetLanguage: 'de',

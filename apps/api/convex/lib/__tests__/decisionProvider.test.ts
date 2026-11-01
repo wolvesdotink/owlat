@@ -504,7 +504,7 @@ describe('aiProviderConfig — the five decision columns move in lockstep', () =
 
 	it('writes all five columns together, then clears all five together', async () => {
 		const t = newHarness();
-		await t.mutation(internal.aiProviderConfig._persistConfig, {
+		await t.mutation(internal.aiRouting.providerConfig._persistConfig, {
 			...BASE,
 			decisionProviderKind: 'typesafe',
 			decisionModel: 'jev-1.13.0',
@@ -522,7 +522,7 @@ describe('aiProviderConfig — the five decision columns move in lockstep', () =
 		expect(written?.decisionSecretCiphertext).not.toContain(DECISION_KEY);
 
 		// Switching to the keyless adapter drops the stored key — all five columns.
-		await t.mutation(internal.aiProviderConfig._persistConfig, {
+		await t.mutation(internal.aiRouting.providerConfig._persistConfig, {
 			...BASE,
 			decisionProviderKind: 'llm',
 			isDecisionKeyless: true,
@@ -538,7 +538,7 @@ describe('aiProviderConfig — the five decision columns move in lockstep', () =
 
 	it('never carries credentials across a provider change', async () => {
 		const t = newHarness();
-		await t.mutation(internal.aiProviderConfig._persistConfig, {
+		await t.mutation(internal.aiRouting.providerConfig._persistConfig, {
 			...BASE,
 			decisionProviderKind: 'typesafe',
 			decisionEnvelope: decisionEnvelope(),
@@ -546,7 +546,7 @@ describe('aiProviderConfig — the five decision columns move in lockstep', () =
 		// Simulate another keyed adapter using the existing validator's second
 		// kind. The persistence layer must bind secrets to identity, not keylessness.
 		await expect(
-			t.mutation(internal.aiProviderConfig._persistConfig, {
+			t.mutation(internal.aiRouting.providerConfig._persistConfig, {
 				...BASE,
 				decisionProviderKind: 'llm',
 				isDecisionKeyless: false,
@@ -556,7 +556,7 @@ describe('aiProviderConfig — the five decision columns move in lockstep', () =
 
 	it('keeps an unchanged key from disk rather than asking for it again', async () => {
 		const t = newHarness();
-		await t.mutation(internal.aiProviderConfig._persistConfig, {
+		await t.mutation(internal.aiRouting.providerConfig._persistConfig, {
 			...BASE,
 			decisionProviderKind: 'typesafe',
 			isDecisionKeyless: false,
@@ -564,7 +564,7 @@ describe('aiProviderConfig — the five decision columns move in lockstep', () =
 		});
 		const first = await t.run(async (ctx) => await ctx.db.query('aiProviderConfig').first());
 
-		await t.mutation(internal.aiProviderConfig._persistConfig, {
+		await t.mutation(internal.aiRouting.providerConfig._persistConfig, {
 			...BASE,
 			decisionProviderKind: 'typesafe',
 			decisionModel: 'jev-1.13.0',
@@ -578,7 +578,7 @@ describe('aiProviderConfig — the five decision columns move in lockstep', () =
 
 	it('leaves the plane untouched when a save names no decision kind', async () => {
 		const t = newHarness();
-		await t.mutation(internal.aiProviderConfig._persistConfig, {
+		await t.mutation(internal.aiRouting.providerConfig._persistConfig, {
 			...BASE,
 			decisionProviderKind: 'typesafe',
 			isDecisionFallbackEnabled: true,
@@ -587,7 +587,7 @@ describe('aiProviderConfig — the five decision columns move in lockstep', () =
 		});
 
 		// A save from a settings card that only edits the language plane.
-		await t.mutation(internal.aiProviderConfig._persistConfig, BASE);
+		await t.mutation(internal.aiRouting.providerConfig._persistConfig, BASE);
 
 		const row = await t.run(async (ctx) => await ctx.db.query('aiProviderConfig').first());
 		expect(row?.decisionProviderKind).toBe('typesafe');
@@ -599,7 +599,7 @@ describe('aiProviderConfig — the five decision columns move in lockstep', () =
 	it('refuses a key-bearing provider with no key anywhere', async () => {
 		const t = newHarness();
 		await expect(
-			t.mutation(internal.aiProviderConfig._persistConfig, {
+			t.mutation(internal.aiRouting.providerConfig._persistConfig, {
 				...BASE,
 				decisionProviderKind: 'typesafe',
 				isDecisionKeyless: false,
@@ -609,7 +609,7 @@ describe('aiProviderConfig — the five decision columns move in lockstep', () =
 
 	it('accepts a key-bearing provider whose key the deployment supplies', async () => {
 		const t = newHarness();
-		await t.mutation(internal.aiProviderConfig._persistConfig, {
+		await t.mutation(internal.aiRouting.providerConfig._persistConfig, {
 			...BASE,
 			decisionProviderKind: 'typesafe',
 			isDecisionKeyless: false,
@@ -624,7 +624,7 @@ describe('aiProviderConfig — the five decision columns move in lockstep', () =
 	it('refuses a decision base URL that would send the key somewhere internal', async () => {
 		const t = newHarness();
 		await expect(
-			t.mutation(internal.aiProviderConfig._persistConfig, {
+			t.mutation(internal.aiRouting.providerConfig._persistConfig, {
 				...BASE,
 				decisionProviderKind: 'typesafe',
 				decisionBaseUrl: 'http://169.254.169.254',
@@ -636,7 +636,7 @@ describe('aiProviderConfig — the five decision columns move in lockstep', () =
 
 	it('lets the keyless local engine sit on an internal http origin', async () => {
 		const t = newHarness();
-		await t.mutation(internal.aiProviderConfig._persistConfig, {
+		await t.mutation(internal.aiRouting.providerConfig._persistConfig, {
 			...BASE,
 			decisionProviderKind: 'local',
 			decisionBaseUrl: 'http://decision-local:8080',
@@ -652,7 +652,7 @@ describe('aiProviderConfig — the five decision columns move in lockstep', () =
 	it('does not relax the origin rule for a save that would still store a key', async () => {
 		const t = newHarness();
 		await expect(
-			t.mutation(internal.aiProviderConfig._persistConfig, {
+			t.mutation(internal.aiRouting.providerConfig._persistConfig, {
 				...BASE,
 				decisionProviderKind: 'typesafe',
 				decisionBaseUrl: 'http://decision-local:8080',
@@ -664,10 +664,10 @@ describe('aiProviderConfig — the five decision columns move in lockstep', () =
 	});
 });
 
-describe('aiProviderConfig.getConfig — the projection carries no secret', () => {
+describe('aiRouting/providerConfig.getConfig — the projection carries no secret', () => {
 	it('returns the selection, the mask and a boolean, and nothing else', async () => {
 		const t = newHarness();
-		await t.mutation(internal.aiProviderConfig._persistConfig, {
+		await t.mutation(internal.aiRouting.providerConfig._persistConfig, {
 			languageProviderKind: 'openai',
 			modelFast: 'fast',
 			modelCapable: 'capable',
@@ -682,7 +682,7 @@ describe('aiProviderConfig.getConfig — the projection carries no secret', () =
 		});
 
 		const row = await t.run(async (ctx) => await ctx.db.query('aiProviderConfig').first());
-		const config = await t.query(api.aiProviderConfig.getConfig, {});
+		const config = await t.query(api.aiRouting.providerConfig.getConfig, {});
 		const projected = JSON.stringify(config);
 
 		expect(config).toMatchObject({
@@ -703,7 +703,7 @@ describe('aiProviderConfig.getConfig — the projection carries no secret', () =
 
 	it('says nothing about a plane the install never configured', async () => {
 		const t = newHarness();
-		await t.mutation(internal.aiProviderConfig._persistConfig, {
+		await t.mutation(internal.aiRouting.providerConfig._persistConfig, {
 			languageProviderKind: 'openai',
 			modelFast: 'fast',
 			modelCapable: 'capable',
@@ -711,7 +711,7 @@ describe('aiProviderConfig.getConfig — the projection carries no secret', () =
 			languageEnvelope: { ...encryptSecret('sk-language-key'), keyPreview: 'sk-…-key' },
 			embeddingProviderKind: 'local',
 		});
-		const config = await t.query(api.aiProviderConfig.getConfig, {});
+		const config = await t.query(api.aiRouting.providerConfig.getConfig, {});
 		expect(config).toMatchObject({ configured: true, isDecisionKeySet: false });
 		expect((config as { decisionProviderKind?: string }).decisionProviderKind).toBeUndefined();
 	});

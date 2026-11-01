@@ -351,7 +351,7 @@ const autoTranslateColumn = async (targetLanguage: string) => {
 		}
 
 		// Call AI translation action via Convex
-		const result = await requireConvex().action(api.translate.translateBatch, {
+		const result = await requireConvex().action(api.emailTemplates.translate.translateBatch, {
 			items: itemsToTranslate,
 			sourceLanguage: languageLabel(defaultLanguage.value),
 			targetLanguage: languageLabel(targetLanguage),

@@ -1,5 +1,5 @@
 /**
- * The palette rows built from the cross-object search index (`globalSearch`):
+ * The palette rows built from the cross-object search index (`search/global`):
  * contacts, campaigns, templates, mail snippets, and the "search all mail for…"
  * escape hatch under them.
  *

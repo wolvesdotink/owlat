@@ -150,7 +150,7 @@ function buildSearchEverything(ctx: ActionCtx): Tool {
 				.describe('Max results per category (default 5).'),
 		}),
 		execute: async ({ query, limit }) => {
-			const r = await ctx.runQuery(internal.globalSearch.searchInternal, {
+			const r = await ctx.runQuery(internal.search.global.searchInternal, {
 				query,
 				limit: clampInt(limit, 1, 15, 5),
 			});

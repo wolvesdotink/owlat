@@ -105,7 +105,7 @@ async function setup(featureFlags?: Record<string, boolean>) {
 		});
 	}
 	const authed = t.withIdentity(identity);
-	await authed.action(api.aiProviderConfigActions.saveConfig, {
+	await authed.action(api.aiRouting.providerConfigActions.saveConfig, {
 		languageProviderKind: 'anthropic',
 		apiKey: 'sk-ant-language-key-1234',
 		decisionProviderKind: 'typesafe',
@@ -128,7 +128,9 @@ describe("testConnection({ plane: 'decision' })", () => {
 		const body = JSON.parse(probeBody());
 		body.answers.reachable.noul = 2;
 		guard.fetchGuarded.mockResolvedValue(jsonResponse(JSON.stringify(body)));
-		const res = await t.action(api.aiProviderConfigActions.testConnection, { plane: 'decision' });
+		const res = await t.action(api.aiRouting.providerConfigActions.testConnection, {
+			plane: 'decision',
+		});
 		expect(res.ok).toBe(false);
 		const rows = await t.run(async (ctx) => await ctx.db.query('llmUsageEvents').collect());
 		expect(rows).toHaveLength(1);
@@ -141,7 +143,7 @@ describe("testConnection({ plane: 'decision' })", () => {
 	it('sends nothing at all while the kill switch is off', async () => {
 		const t = await setup({ ai: true, 'ai.decisionPlane': false });
 
-		const res = await t.action(api.aiProviderConfigActions.testConnection, {
+		const res = await t.action(api.aiRouting.providerConfigActions.testConnection, {
 			plane: 'decision',
 		});
 
@@ -156,7 +158,7 @@ describe("testConnection({ plane: 'decision' })", () => {
 		const t = await setup({ ai: true, 'ai.decisionPlane': true });
 		guard.fetchGuarded.mockResolvedValue(jsonResponse(probeBody()));
 
-		const res = await t.action(api.aiProviderConfigActions.testConnection, {
+		const res = await t.action(api.aiRouting.providerConfigActions.testConnection, {
 			plane: 'decision',
 		});
 
@@ -183,7 +185,7 @@ describe("testConnection({ plane: 'decision' })", () => {
 			new Response(`{"error":"invalid key ${DECISION_KEY}"}`, { status: 401 })
 		);
 
-		const res = await t.action(api.aiProviderConfigActions.testConnection, {
+		const res = await t.action(api.aiRouting.providerConfigActions.testConnection, {
 			plane: 'decision',
 		});
 
@@ -198,7 +200,7 @@ describe("testConnection({ plane: 'decision' })", () => {
 		const t = await setup({ ai: true, 'ai.decisionPlane': true });
 		guard.fetchGuarded.mockResolvedValue(jsonResponse(probeBody('jev-1.14.0')));
 
-		const res = await t.action(api.aiProviderConfigActions.testConnection, {
+		const res = await t.action(api.aiRouting.providerConfigActions.testConnection, {
 			plane: 'decision',
 		});
 
@@ -222,7 +224,7 @@ describe('decision model discovery', () => {
 					return ['test-model'];
 				});
 			try {
-				const result = await t.action(api.aiProviderConfigActions.listModels, {
+				const result = await t.action(api.aiRouting.providerConfigActions.listModels, {
 					plane: 'decision',
 				});
 				expect(guard.fetchGuarded).toHaveBeenCalledTimes(enabled ? 1 : 0);
@@ -247,7 +249,7 @@ describe('the local engine', () => {
 			});
 		});
 		const authed = t.withIdentity(identity);
-		await authed.action(api.aiProviderConfigActions.saveConfig, {
+		await authed.action(api.aiRouting.providerConfigActions.saveConfig, {
 			languageProviderKind: 'anthropic',
 			apiKey: 'sk-ant-language-key-1234',
 			decisionProviderKind: 'local',
@@ -263,7 +265,7 @@ describe('the local engine', () => {
 		);
 		vi.stubGlobal('fetch', fetchMock);
 		try {
-			const res = await t.action(api.aiProviderConfigActions.testConnection, {
+			const res = await t.action(api.aiRouting.providerConfigActions.testConnection, {
 				plane: 'decision',
 			});
 			expect(res).toEqual({ ok: true });
@@ -286,7 +288,9 @@ describe('the local engine', () => {
 		);
 		vi.stubGlobal('fetch', fetchMock);
 		try {
-			const result = await t.action(api.aiProviderConfigActions.listModels, { plane: 'decision' });
+			const result = await t.action(api.aiRouting.providerConfigActions.listModels, {
+				plane: 'decision',
+			});
 			expect(result.error).toBeUndefined();
 			expect(result.models[0]).toBe(DEFAULT_LOCAL_DECISION_MODEL);
 			expect(guard.fetchGuarded).not.toHaveBeenCalled();

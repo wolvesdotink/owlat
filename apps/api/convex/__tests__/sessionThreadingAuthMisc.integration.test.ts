@@ -258,7 +258,7 @@ const cases: Case<unknown>[] = [
 		},
 	}),
 	defineCase({
-		name: 'globalSearch.search',
+		name: 'search/global.search',
 		floor: 'requireOrgMember',
 		seed: async (t) => {
 			const mine = await seedMailbox(t, { userId: 'admin-user', address: 'a@owlat.test' });
@@ -269,7 +269,7 @@ const cases: Case<unknown>[] = [
 			await seedMessage(t, theirs, { subject: 'zzthreaded theirs', snippet: 'zzthreaded' });
 			return own;
 		},
-		call: (t) => t.query(api.globalSearch.search, { query: 'zzthreaded' }),
+		call: (t) => t.query(api.search.global.search, { query: 'zzthreaded' }),
 		check: async (_t, own, result) => {
 			// Mail is scoped to the floor session's user, never another user's box.
 			const { mail } = result as { mail: Array<{ id: string }> };

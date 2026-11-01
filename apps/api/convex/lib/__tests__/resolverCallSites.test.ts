@@ -60,10 +60,10 @@ const site = (
 };
 
 const INVENTORY: readonly CallSite[] = [
-	site('quickQuery.ts', "ctx, 'assistant.quick_query'", 'draft'),
-	site('visualizationAgentActions.ts', "ctx, 'analytics.visualize'", 'draft'),
-	site('visualizationAgentActions.ts', "ctx, 'analytics.visualize_title'", 'summarize'),
-	site('translate.ts', "ctx, 'mail.translate'", 'summarize'),
+	site('assistant/quickQuery.ts', "ctx, 'assistant.quick_query'", 'draft'),
+	site('analytics/visualizationAgentActions.ts', "ctx, 'analytics.visualize'", 'draft'),
+	site('analytics/visualizationAgentActions.ts', "ctx, 'analytics.visualize_title'", 'summarize'),
+	site('emailTemplates/translate.ts', "ctx, 'mail.translate'", 'summarize'),
 	site(
 		'assistant/runner.ts',
 		"ctx, 'assistant.answer', opts.lastUserText",

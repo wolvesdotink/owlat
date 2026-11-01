@@ -40,10 +40,10 @@ export function useAiProviderForm() {
 		isLoading,
 		error,
 		refetch,
-	} = useOrganizationQuery(api.aiProviderConfig.getConfig);
+	} = useOrganizationQuery(api.aiRouting.providerConfig.getConfig);
 
 	const { run: runSave, isLoading: isSaving } = useBackendOperation(
-		api.aiProviderConfigActions.saveConfig,
+		api.aiRouting.providerConfigActions.saveConfig,
 		{
 			label: () => t('shared.useAiProviderForm.saveOperation'),
 			type: 'action',
@@ -52,15 +52,15 @@ export function useAiProviderForm() {
 		}
 	);
 	const { run: runTest, isLoading: isTesting } = useBackendOperation(
-		api.aiProviderConfigActions.testConnection,
+		api.aiRouting.providerConfigActions.testConnection,
 		{ label: () => t('shared.useAiProviderForm.testOperation'), type: 'action' }
 	);
 	const { run: runListModels, isLoading: isLoadingModels } = useBackendOperation(
-		api.aiProviderConfigActions.listModels,
+		api.aiRouting.providerConfigActions.listModels,
 		{ label: () => t('shared.useAiProviderForm.listModelsOperation'), type: 'action' }
 	);
 	const { run: runRemove, isLoading: isRemoving } = useBackendOperation(
-		api.aiProviderConfig.removeConfig,
+		api.aiRouting.providerConfig.removeConfig,
 		{ label: () => t('shared.useAiProviderForm.removeOperation') }
 	);
 
