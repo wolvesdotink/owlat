@@ -43,6 +43,13 @@ beforeAll(async () => {
 	server = createServer(async (req, res) => {
 		const body = await readSmallBody(req);
 		if (req.url === '/warm-up') return void res.end();
+		// Only the calls under test reach the fake updater. Anything else that
+		// finds the port (a host process probing listening ports sends `GET /`)
+		// gets a 404 and is neither recorded nor taken for the awaited request.
+		if (req.method !== 'POST' || req.url !== '/update') {
+			res.writeHead(404).end();
+			return;
+		}
 		received.push({
 			url: req.url,
 			method: req.method,

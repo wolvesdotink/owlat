@@ -265,6 +265,13 @@ describe('reset-deployment CLI', () => {
 	async function runAgainst(replies: Array<{ status: number; body: string }>) {
 		const requests: string[] = [];
 		const server = createServer((request, response) => {
+			// Only the CLI's call counts. Anything else that finds the port (a
+			// host process probing listening ports sends `GET /`) gets a 404
+			// and takes no reply.
+			if (request.method !== 'POST' || request.url !== '/dev/reset') {
+				response.writeHead(404).end();
+				return;
+			}
 			requests.push(String(request.headers['x-instance-secret']));
 			const reply = replies[Math.min(requests.length, replies.length) - 1]!;
 			response.writeHead(reply.status, { 'Content-Type': 'application/json' }).end(reply.body);
