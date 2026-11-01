@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * The frame every composer renders in, whatever it writes to (#812): the
+ * The frame every composer renders in, whatever it writes to: the
  * mailbox composer (`PostboxComposer`) and the Team inbox reply
  * (`InboxThreadComposer`). Top to bottom: an optional header, the
  * envelope, one scroll region holding everything between the envelope and the

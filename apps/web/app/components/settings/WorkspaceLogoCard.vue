@@ -10,7 +10,7 @@ import { holdPendingWork } from '~/lib/pendingOperations';
 import { uploadFileToStorage } from '~/utils/storageUpload';
 
 /**
- * The workspace logo (Workspace → General, #810): the picture the sign-in,
+ * The workspace logo (Workspace → General): the picture the sign-in,
  * invitation, unsubscribe and preferences pages show instead of the Owlat
  * mark.
  *

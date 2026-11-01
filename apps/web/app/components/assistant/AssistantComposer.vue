@@ -132,7 +132,7 @@ const focus = () => textareaRef.value?.focus();
 defineExpose({ sendText, focus });
 
 const handleKeydown = (event: KeyboardEvent) => {
-	// An IME's confirming Enter finishes the word, it does not send (#1052).
+	// An IME's confirming Enter finishes the word, it does not send.
 	if (isImeComposing(event)) return;
 	const direction = composerRecallDirection(event);
 	if (direction && textareaRef.value && stepHistory(direction, textareaRef.value)) {
@@ -187,7 +187,7 @@ const handleKeydown = (event: KeyboardEvent) => {
 				     fill pinned to the bottom of a full-height pane is the most saturated
 				     thing on the screen, and this one competed with the assistant's own
 				     accents (the sparkles glyph, the user bubble). UiButton also brings
-				     the disabled state, which used to be a third recipe written by hand. -->
+				     the disabled state, so this button needs no recipe of its own. -->
 				<UiTooltip v-else :text="t('common.send')">
 					<UiButton
 						variant="primary"

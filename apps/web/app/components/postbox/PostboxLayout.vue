@@ -367,7 +367,7 @@ const stepIds = computed(() => threadListRef.value?.visibleIds ?? advanceIds.val
 										class="h-full"
 									>
 										<AppErrorBoundary surface="list">
-											<!-- A failed read is not an empty folder (#721); cached rows win. -->
+											<!-- A failed read is not an empty folder; cached rows win. -->
 											<UiQueryBoundary v-if="listError" :error="listError" @retry="retryList" />
 											<PostboxThreadCategoryList
 												v-else-if="categoriesEnabled"

@@ -9,7 +9,7 @@ import { api } from '@owlat/api';
  * been typed. On success the backend deletion walker is scheduled and the owner
  * is signed out, because the workspace they are signed in to is being emptied.
  * Accounts and memberships live in BetterAuth and survive the sweep, so the copy
- * promises only the workspace data (#906).
+ * promises only the workspace data.
  */
 const { t } = useI18n();
 const { canDeleteOrganization } = usePermissions();

@@ -18,7 +18,8 @@
  * from just `mailboxId` + `loading`. No caller can wire a wrong dead-end.
  *
  * A failed mailbox read (`error`, with no mailbox to fall back on) is none of
- * those: it shows the categorized error with Try again (`retry`), #721.
+ * those: it shows the categorized error with Try again (`retry`), because a
+ * failed read is not a missing mailbox.
  */
 import { api } from '@owlat/api';
 import { deriveMailboxGuardState } from '~/utils/freshStart';

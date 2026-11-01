@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * A failed Team inbox message on the thread page: why it failed, and a Retry
- * that says what it will do (#1220). A failed send of a reply a person approved
+ * that says what it will do. A failed send of a reply a person approved
  * is sent again and shows the text that will go out; a person's reply goes
  * back to review; only a message nobody touched has the agent draft again.
  */

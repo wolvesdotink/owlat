@@ -9,9 +9,9 @@
  *
  * AND WITH THE SPAN THOSE NUMBERS ARE OVER, which is NOT the window the cards
  * around this list report. Every verdict here is reached over the ramp
- * controller's own evaluation window, so the screen and the controller agree
- * (#510) — and the only way that agreement is not a new confusion is if the list
- * says which window it means. The label is a prop rather than a constant: the
+ * controller's own evaluation window, so the screen and the controller agree,
+ * and the only way that agreement is not a new confusion is if the list says
+ * which window it means. The label is a prop rather than a constant: the
  * server sends the span, and a hard-coded "24 hours" would outlive a change to
  * the controller's cadence.
  *
@@ -35,8 +35,7 @@ const props = defineProps<{
 	/**
 	 * The span every verdict below was decided over, in words
 	 * (`decisionWindowLabel`). REQUIRED, not defaulted: a screen that forgot it
-	 * would put gate numbers from one span under a heading about another, which is
-	 * the thing #510 fixed on the server.
+	 * would put gate numbers from one span under a heading about another.
 	 */
 	decisionWindowLabel: string;
 }>();

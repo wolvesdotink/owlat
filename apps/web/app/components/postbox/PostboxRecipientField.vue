@@ -235,7 +235,7 @@ function editLastChip() {
 function onKeydown(event: KeyboardEvent) {
 	// While an IME composes (a CJK name, say) its keys are its own: Enter
 	// confirms a candidate rather than committing a half-typed chip, and the
-	// input's model has not caught up yet, so Backspace must not pop one (#1052).
+	// input's model has not caught up yet, so Backspace must not pop one.
 	if (isImeComposing(event)) return;
 	if (event.key === 'Enter' || event.key === ',' || event.key === ';') {
 		event.preventDefault();

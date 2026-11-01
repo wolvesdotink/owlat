@@ -88,7 +88,7 @@ const selectedSenderAuth = computed(() => {
 
 // No curated senders AND no custom escape hatch: nothing is selectable, so show
 // an empty state instead of a picker. Admins get the add-a-sender form right
-// here (#785); everyone else is told WHO can add one, by name.
+// here; everyone else is told WHO can add one, by name.
 const showSenderEmptyState = computed(() => senders.value.length === 0 && !isCustomAllowed.value);
 
 // The workspace's owners and admins, for the member-facing empty state. The

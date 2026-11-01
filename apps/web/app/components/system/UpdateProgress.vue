@@ -43,8 +43,8 @@ const emit = defineEmits<{
 // Canonical step list in the updater's EXECUTION order (apps/updater/src/update.ts
 // handleUpdate): pull first, then the Convex deploy against the still-running old
 // stack, then the compose template is promoted, and only then are containers
-// recreated. The list used to be written in the order a reader might expect
-// rather than the order that runs, which put the running marker on the wrong row.
+// recreated. The list must follow the order that runs, not the order a reader
+// might expect, or the running marker lands on the wrong row.
 // The sidecar's own bookkeeping steps — the Docker API preflight, the staged
 // template, the version pin, its self-replacement — are not shown; they are
 // instant and say nothing a reader of this list needs. They still count as a
@@ -71,12 +71,12 @@ type StepStatus = 'pending' | 'running' | 'success' | 'failed';
  * Read one step's outcome out of the updater's report.
  *
  * `ok` is the sidecar's own verdict — whether that step's docker command exited
- * zero — and it is the only trustworthy signal. This used to read non-empty
- * `stderr` as failure, but docker writes pull/recreate PROGRESS to stderr on
- * SUCCESS, so a perfectly healthy update painted "Pull new container images"
- * and "Recreate containers" red and offered ` web Pulled` as the error.
+ * zero — and it is the only trustworthy signal. Non-empty `stderr` is not a
+ * failure: docker writes pull/recreate PROGRESS to stderr on SUCCESS, so
+ * reading it that way paints a healthy "Pull new container images" and
+ * "Recreate containers" red and offers ` web Pulled` as the error.
  *
- * The old reading stays as the fallback for the steps that carry no `ok` (the
+ * The stderr reading stays as the fallback for the steps that carry no `ok` (the
  * sidecar's own compose-file writes) and for runs recorded before `ok` was
  * kept: there, output on stderr really is the only evidence there is.
  */

@@ -42,9 +42,9 @@ const { t } = useI18n();
 
 /**
  * "Share as link instead" appears exactly when the meter turns amber (idea 10).
- * The meter's warning line has always talked about links; until now there was
- * nothing to press. Below the threshold the button would make every ordinary
- * attachment a decision, so it stays hidden.
+ * The meter's warning line talks about links, so it needs something to press.
+ * Below the threshold the button would make every ordinary attachment a
+ * decision, so it stays hidden.
  */
 const offerShare = computed(() => shouldOfferShareLink(props.meter));
 

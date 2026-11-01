@@ -241,7 +241,7 @@ function downloadLightbox(att: { filename: string; partIndex?: string }) {
 				class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary"
 			/>
 		</div>
-		<!-- A failed read is not "no files" (#721). -->
+		<!-- A failed read is not "no files". -->
 		<UiQueryBoundary v-else-if="filesError" :error="filesError" @retry="refetchFiles" />
 		<p v-else-if="files.length === 0" class="card p-8 text-center text-text-secondary">
 			{{

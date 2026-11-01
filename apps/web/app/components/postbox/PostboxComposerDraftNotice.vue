@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * Why the composer is not saving or sending right now (#895, #896).
+ * Why the composer is not saving or sending right now.
  *
  *  - `loading`: a reopened draft's row has not arrived. Send waits for it,
  *    because until then the composer holds empty stand-ins for the saved

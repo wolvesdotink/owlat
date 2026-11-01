@@ -5,12 +5,12 @@
  *
  * Three things an operator cannot guess and must not have to: the exact endpoint
  * URL, WHICH events to enable, and where the signing key comes from. All three
- * are now VENDOR DATA rather than vendor prose: the URL, the provider's name and
+ * are VENDOR DATA rather than vendor prose: the URL, the provider's name and
  * the signing-key VARIABLE NAME arrive as props derived from the active kind's
- * catalog entry. This card used to be Mandrill's alone and hardcoded Mandrill's
- * title, Mandrill's events and `MANDRILL_WEBHOOK_KEY`; the moment a second kind
- * declared the same panel, its operator was told to set the wrong variable and
- * watched a "missing" chip that could never clear.
+ * catalog entry. Nothing here may hardcode one vendor's title, events or key
+ * variable (`MANDRILL_WEBHOOK_KEY`): any other kind that declares the panel
+ * would tell its operator to set the wrong variable and show a "missing" chip
+ * that could never clear.
  *
  * Genuinely vendor-specific detail — Mandrill's event list, and its "the key is
  * shown once" caveat — lives in {@link PROVIDER_COPY}, keyed by kind and

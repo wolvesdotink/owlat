@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * Audience section tabs (#787): Contacts, Topics, Segments, Suppressions.
+ * Audience section tabs: Contacts, Topics, Segments, Suppressions.
  *
  * Audience opens on the contact list; the old overview's stat tiles live on
  * here as the tab counts. These are links between real routes (each tab keeps

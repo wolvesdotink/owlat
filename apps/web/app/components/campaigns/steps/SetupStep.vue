@@ -250,7 +250,7 @@ const handleSubmit = async () => {
 };
 
 // What still stands between the user and Next — listed beside the disabled
-// button (#785) so a greyed-out Next is never a riddle.
+// button so a greyed-out Next is never a riddle.
 const missing = computed(() =>
 	missingSetupItems({
 		hasName: form.campaignName.trim().length > 0,

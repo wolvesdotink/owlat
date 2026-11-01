@@ -6,7 +6,7 @@
  * Variables (`{{contact.firstName}}`) and gaps (`[[order number]]`) in the
  * text are kept as written and resolve on every later insert.
  *
- * A pasted image is left out, and the dialog says so (#1293): its bytes are a
+ * A pasted image is left out, and the dialog says so: its bytes are a
  * part of this draft, which a saved reply has nowhere to keep, so it would be
  * inserted as an empty image.
  */

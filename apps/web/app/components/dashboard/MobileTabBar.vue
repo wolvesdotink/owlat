@@ -18,7 +18,7 @@ import { mobileMoreDestinations } from '~/lib/mobileMoreDestinations';
  *
  * "More" opens its own sheet with the destinations the bar does not hold
  * (Team inbox, Chat, Marketing, Settings, …), not the full navigation drawer the
- * header's menu button already opens (#778).
+ * header's menu button already opens.
  *
  * The slot you are on is marked by weight and primary text, the way the desktop
  * rail marks its active row — a permanently terracotta tab would spend the one
@@ -158,7 +158,7 @@ const isVisible = computed(
  * Tell the toast stack how much of the screen's bottom edge the bar takes.
  * Both are teleported to `body`, so the bar marks the root element while it is
  * on screen and the style block below turns that mark into
- * `--ui-bottom-chrome-height`, which UiToast reads to sit above the bar (#1438).
+ * `--ui-bottom-chrome-height`, which UiToast reads to sit above the bar.
  * The breakpoint lives in that CSS, not here, so resizing past `lg` drops the
  * offset together with the bar; unmounting clears it.
  */
@@ -325,7 +325,7 @@ function run(action: (typeof actions.value)[number]): void {
 	/*
 	 * While the bar is on screen: its full height from the bottom edge (the 4rem
 	 * row, its 1px top border and the safe-area padding), for overlays that must
-	 * stay clear of it. The toast stack is the consumer (#1438).
+	 * stay clear of it. The toast stack is the consumer.
 	 */
 	html[data-mobile-tab-bar] {
 		--ui-bottom-chrome-height: calc(4rem + 1px + env(safe-area-inset-bottom, 0px));

@@ -3,9 +3,9 @@
  * The one transport card that leads the Delivery hub.
  *
  * Sending has three first-class shapes (Owlat’s own mail server, Amazon SES, or
- * a generic SMTP relay), and until now an operator had to dig through the setup
- * sub-pages to learn which one is live and whether it’s healthy. This card makes
- * that the headline: current transport, ready/not-ready state, recent health,
+ * a generic SMTP relay), and an operator should not have to dig through the
+ * setup sub-pages to learn which one is live and whether it’s healthy. This card
+ * makes that the headline: current transport, ready/not-ready state, recent health,
  * and a single "Change transport" action. Provider-routing is demoted to an
  * "Advanced routing" link at the foot — the escape hatch, not the front door.
  *

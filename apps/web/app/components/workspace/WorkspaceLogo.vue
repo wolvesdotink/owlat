@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * The workspace logo an admin uploaded in Workspace → General (#810), as the
+ * The workspace logo an admin uploaded in Workspace → General, as the
  * public pages show it: sign-in, invitations, unsubscribe and preferences.
  *
  * Dark mode is the hard part. Most logos are drawn for white paper, and a

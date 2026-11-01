@@ -332,7 +332,7 @@ function onEnter() {
 }
 
 function onInputKeydown(event: KeyboardEvent) {
-	// Mid-composition, Enter and the arrows belong to the IME (#1052).
+	// Mid-composition, Enter and the arrows belong to the IME.
 	if (isImeComposing(event)) return;
 	if (event.key === 'Escape') {
 		event.preventDefault();

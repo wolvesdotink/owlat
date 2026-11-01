@@ -7,8 +7,8 @@ const { t, locale } = useI18n();
 const formatUsd = (value: number) =>
 	new Intl.NumberFormat(locale.value, { style: 'currency', currency: 'USD' }).format(value);
 
-// Deployment-wide LLM spend, broken down by feature (last 7 days). The data was
-// recorded by every priced LLM call but had no UI surface until now.
+// Deployment-wide LLM spend, broken down by feature (last 7 days), as recorded
+// by every priced LLM call.
 const { data: llmSpend } = useOrganizationQuery(api.analytics.llmUsage.getSpendByFeature, () => ({
 	hoursBack: 168,
 }));
