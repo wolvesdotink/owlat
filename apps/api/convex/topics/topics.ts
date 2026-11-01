@@ -1,10 +1,9 @@
 import { v } from 'convex/values';
-import { internalQuery, type MutationCtx, type QueryCtx } from '../_generated/server';
+import { internalQuery } from '../_generated/server';
 import { internalMutation } from '../lib/writeFence';
 import { authedQuery, authedMutation } from '../lib/authedFunctions';
 import { paginationOptsValidator } from 'convex/server';
 import { internal } from '../_generated/api';
-import type { Doc, Id } from '../_generated/dataModel';
 import { nanoid } from 'nanoid';
 import { hasPermission, requirePermission } from '../lib/sessionOrganization';
 import { countIndexRange } from '../lib/pagination';
@@ -13,29 +12,25 @@ import { listResources } from '../lib/listing';
 import { topicListing } from './listing';
 import { redactContactCapabilityFields } from '../contacts/listing';
 import { validateStringLength, STRING_LIMITS } from '../lib/inputGuards';
-import { getOrThrow, throwNotFound } from '../_utils/errors';
+import { getOrThrow } from '../_utils/errors';
 import { trackEvent } from '../lib/posthogHelpers';
 import { batchGet } from '../_utils/batchLoader';
 import { getLiveContact } from '../lib/contactHelpers';
 import {
-	DOI_TOKEN_TTL_MS,
 	findContactByConfirmationToken,
 	isFormTokenDisabled,
 	type TransitionOutcome as DoiTransitionOutcome,
 	type RefreshOutcome as DoiRefreshOutcome,
 } from '../contacts/doiLifecycle';
-import type { SubscribeOutcome } from './subscription';
-
-// Load a single topic by ID, enriched with the descriptor's `contactCount` so
-// list and get can no longer drift. Shared by the session-gated `get` and the
-// API-key `getInternal` variant.
-async function getTopicImpl(ctx: QueryCtx, topicId: Id<'topics'>) {
-	const topic = await ctx.db.get(topicId);
-	if (!topic) return null;
-
-	const enriched = topicListing.enrich ? await topicListing.enrich(ctx.db, topic) : {};
-	return { ...topic, ...enriched } as Doc<'topics'> & { contactCount: number };
-}
+import { DOI_TOKEN_TTL_MS } from '../contacts/doiLifecycleReducer';
+import { getTopicImpl, getTopicsForContactImpl, loadContactInTopicDetails } from './topicReads';
+import {
+	addContactArgs,
+	addContactImpl,
+	removeContactArgs,
+	removeContactImpl,
+	type AddContactResult,
+} from './membershipShells';
 
 // Query to get a single topic by ID.
 // all-members: topics are campaign audiences and subscription lists every role
@@ -94,31 +89,6 @@ export const getContacts = authedQuery({
 		};
 	},
 });
-
-// Query to get topics for a specific contact
-async function getTopicsForContactImpl(ctx: QueryCtx, contactId: Id<'contacts'>) {
-	const memberships = await ctx.db
-		.query('contactTopics')
-		.withIndex('by_contact', (q) => q.eq('contactId', contactId))
-		.collect(); // bounded: one contact's topic memberships
-
-	// Batch-load all topics at once
-	const topicIds = memberships.map((membership) => membership.topicId);
-	const topicsMap = await batchGet(ctx, topicIds);
-
-	const topics = memberships.map((membership) => {
-		const topic = topicsMap.get(membership.topicId);
-		return topic
-			? {
-					...topic,
-					addedAt: membership.addedAt,
-				}
-			: null;
-	});
-
-	// Filter out null values (topics that may have been deleted)
-	return topics.filter((l): l is NonNullable<typeof l> => l !== null);
-}
 
 // all-members: the topics panel on the contact detail page every role reads.
 // A soft-deleted contact keeps its memberships until the retention sweep, so
@@ -217,57 +187,6 @@ export const remove = authedMutation({
 // Thin auth-bearing shell — the Topic subscription (module) owns every
 // write to `contactTopics`, the DOI gate, the trigger fanout, and the
 // `cachedMemberCount` patch.
-type AddContactResult = {
-	membershipId: Id<'contactTopics'>;
-	doiStatus: 'not_required' | 'pending' | 'confirmed';
-};
-
-const addContactArgs = {
-	topicId: v.id('topics'),
-	contactId: v.id('contacts'),
-	// Optional: skip DOI for this specific addition (admin-authoritative).
-	skipDoi: v.optional(v.boolean()),
-	// Optional: site URL for confirmation email.
-	siteUrl: v.optional(v.string()),
-};
-
-async function addContactImpl(
-	ctx: MutationCtx,
-	args: { topicId: Id<'topics'>; contactId: Id<'contacts'>; skipDoi?: boolean; siteUrl?: string }
-): Promise<AddContactResult> {
-	const outcome: SubscribeOutcome = await ctx.runMutation(internal.topics.subscription.subscribe, {
-		topicId: args.topicId,
-		contactId: args.contactId,
-		source: 'public_api',
-		...(args.skipDoi === true ? { skipDoi: true } : {}),
-		...(args.siteUrl ? { siteUrl: args.siteUrl } : {}),
-	});
-
-	if (!outcome.ok) {
-		// `throwNotFound` is typed `never` — single tail call gives TS
-		// the narrowing it needs to keep `outcome.ok === true` below.
-		throwNotFound(outcome.reason === 'topic_not_found' ? 'Topic' : 'Contact');
-	}
-
-	// Preserve the legacy `{ membershipId, doiStatus }` return shape.
-	// The form-confirmation path branches on `doiStatus === 'pending'` to
-	// decide whether to record the submission as `pending_confirmation`,
-	// so the `pending_doi` outcome MUST surface as 'pending' here.
-	let doiStatus: 'not_required' | 'pending' | 'confirmed';
-	if (outcome.action === 'pending_doi') {
-		doiStatus = 'pending';
-	} else {
-		// 'subscribed' or 'already_member' — read the contact's current
-		// doiStatus. Matches the pre-deepening behavior (returned the
-		// contact's actual status when already a member; returned
-		// 'not_required' or 'confirmed' depending on contact state when
-		// subscribing without DOI request).
-		const contact = await ctx.db.get(args.contactId);
-		doiStatus = contact?.doiStatus ?? 'not_required';
-	}
-
-	return { membershipId: outcome.membershipId, doiStatus };
-}
 
 // Public (session-auth) variant. The confirmation-link host is resolved
 // server-side from SITE_URL, never accepted from the client — a client host
@@ -301,22 +220,6 @@ export const addContactInternal = internalMutation({
 
 // Mutation to remove a contact from a topic.
 // Thin shell delegating to the Topic subscription (module).
-const removeContactArgs = {
-	topicId: v.id('topics'),
-	contactId: v.id('contacts'),
-};
-
-async function removeContactImpl(
-	ctx: MutationCtx,
-	args: { topicId: Id<'topics'>; contactId: Id<'contacts'> }
-): Promise<void> {
-	await ctx.runMutation(internal.topics.subscription.unsubscribe, {
-		topicId: args.topicId,
-		contactId: args.contactId,
-		source: 'admin',
-	});
-}
-
 export const removeContact = authedMutation({
 	args: removeContactArgs,
 	handler: async (ctx, args, session) => {
@@ -424,120 +327,7 @@ export const getContactInTopicDetails = authedQuery({
 		topicId: v.id('topics'),
 		contactId: v.id('contacts'),
 	},
-	handler: async (ctx, args) => {
-		// Fetch the topic
-		const topic = await ctx.db.get(args.topicId);
-		if (!topic) {
-			return null;
-		}
-
-		// A soft-deleted contact keeps its email, names and membership until the
-		// retention sweep; it reads as missing here as it does in contacts.get.
-		const contact = await getLiveContact(ctx, args.contactId);
-		if (!contact) {
-			return null;
-		}
-
-		// Fetch the membership
-		const membership = await ctx.db
-			.query('contactTopics')
-			.withIndex('by_contact_and_topic', (q) =>
-				q.eq('contactId', args.contactId).eq('topicId', args.topicId)
-			)
-			.first();
-
-		if (!membership) {
-			return null;
-		}
-
-		// Fetch campaigns that target this specific topic. The audience is a
-		// discriminated value whose topic id lives inside the union,
-		// so filter in JS after a bounded scan. The scan rides the live-only
-		// index, newest first, so campaigns in Recently deleted never show up
-		// and never take up the scan limit.
-		const scanned = await ctx.db
-			.query('campaigns')
-			.withIndex('by_deleted_at_and_updated_at', (q) => q.eq('deletedAt', undefined))
-			.order('desc')
-			.take(1000); // bounded: topic-detail lookup
-		const campaigns = scanned.filter(
-			(c) => c.audience?.kind === 'topic' && c.audience.topicId === args.topicId
-		);
-
-		// Limit to most recent campaigns for email history lookup
-		const topicCampaigns = campaigns.sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 50);
-
-		// Get email sends for this contact from these campaigns
-		const emailHistory = await Promise.all(
-			topicCampaigns.map(async (campaign) => {
-				const emailSend = await ctx.db
-					.query('emailSends')
-					.withIndex('by_campaign_and_contact', (q) =>
-						q.eq('campaignId', campaign._id).eq('contactId', args.contactId)
-					)
-					.first();
-
-				if (!emailSend) return null;
-
-				return {
-					campaignId: campaign._id,
-					campaignName: campaign.name,
-					subject: campaign.subject || '',
-					status: emailSend.status,
-					sentAt: emailSend.sentAt,
-					openedAt: emailSend.openedAt,
-					clickedAt: emailSend.clickedAt,
-					openCount: emailSend.openCount || 0,
-					clickedLinks: emailSend.clickedLinks || [],
-				};
-			})
-		);
-
-		// Filter out null entries and sort by sentAt descending
-		const validEmailHistory = emailHistory
-			.filter((e): e is NonNullable<typeof e> => e !== null)
-			.sort((a, b) => (b.sentAt || 0) - (a.sentAt || 0));
-
-		// Calculate aggregate stats
-		const totalSent = validEmailHistory.length;
-		const totalOpened = validEmailHistory.filter((e) => e.openedAt).length;
-		const totalClicked = validEmailHistory.filter((e) => e.clickedAt).length;
-
-		// Find last engagement date (most recent open or click)
-		const engagementDates = validEmailHistory
-			.flatMap((e) => [e.openedAt, e.clickedAt].filter((d): d is number => d !== undefined))
-			.sort((a, b) => b - a);
-		const lastEngagement = engagementDates[0] || null;
-
-		return {
-			topic: {
-				_id: topic._id,
-				name: topic.name,
-				description: topic.description,
-				requireDoubleOptIn: topic.requireDoubleOptIn,
-				createdAt: topic.createdAt,
-			},
-			contact: {
-				_id: contact._id,
-				email: contact.email,
-				firstName: contact.firstName,
-				lastName: contact.lastName,
-				createdAt: contact.createdAt,
-			},
-			membership: {
-				addedAt: membership.addedAt,
-			},
-			emailHistory: validEmailHistory,
-			emailStats: {
-				totalSent,
-				totalOpened,
-				totalClicked,
-				openRate: totalSent > 0 ? Math.round((totalOpened / totalSent) * 100) : 0,
-				clickRate: totalSent > 0 ? Math.round((totalClicked / totalSent) * 100) : 0,
-				lastEngagement,
-			},
-		};
-	},
+	handler: async (ctx, args) => loadContactInTopicDetails(ctx, args),
 });
 
 // Mutation to resend DOI confirmation email for a pending contact.

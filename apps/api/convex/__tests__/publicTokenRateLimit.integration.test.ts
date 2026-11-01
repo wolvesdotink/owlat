@@ -5,7 +5,7 @@ import schema from '../schema';
 import { api } from '../_generated/api';
 import { rateLimiter } from '../lib/rateLimiter';
 import { clientNetwork, failureShardKey, MAX_TOKEN_LENGTH } from '../lib/publicTokenPolicy';
-import { DOI_TOKEN_TTL_MS } from '../contacts/doiLifecycle';
+import { DOI_TOKEN_TTL_MS } from '../contacts/doiLifecycleReducer';
 
 /**
  * Rate limits on the public capability-token routes (issue #1323), through the

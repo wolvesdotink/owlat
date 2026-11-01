@@ -7,7 +7,7 @@ import {
 	removedMembershipValidator,
 	type AddedMembership,
 	type RemovedMembership,
-} from './subscription';
+} from './subscriptionContract';
 
 const BULK_EDIT_DENIED = 'Only owners and admins can bulk-edit topic membership';
 

@@ -12,7 +12,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import schema from '../schema';
 import { api, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
-import { DOI_TOKEN_TTL_MS } from '../contacts/doiLifecycle';
+import { DOI_TOKEN_TTL_MS } from '../contacts/doiLifecycleReducer';
 import { expectScheduledFailure } from './helpers/scheduledFailures';
 
 // No MTA runs under test, so the confirmation email's send fails when its
