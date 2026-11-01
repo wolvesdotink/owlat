@@ -6,7 +6,7 @@
  * stamp must not be cached: the cache would then claim something the server
  * does not know, and the member would never be offered the welcome again.
  *
- * A failed stamp is retried with backoff (#1203). Once the retries are spent the
+ * A failed stamp is retried with backoff. Once the retries are spent the
  * page says so quietly and offers to try again; nothing is blocked. Leaving the
  * page or a change of member ends the run, so nothing more is sent for it.
  */

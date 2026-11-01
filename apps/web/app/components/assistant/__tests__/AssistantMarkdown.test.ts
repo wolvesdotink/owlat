@@ -2,7 +2,7 @@
  * A streaming answer arrives as the whole text so far, once per flush. Blocks
  * that settled earlier must keep their parsed inlines between flushes so their
  * `AssistantInline` children skip the update; only the block the new text
- * extends re-renders (#1445).
+ * extends re-renders.
  */
 import { describe, expect, it, vi } from 'vitest';
 import { nextTick } from 'vue';

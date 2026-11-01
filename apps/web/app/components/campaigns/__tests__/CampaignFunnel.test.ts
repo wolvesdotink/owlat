@@ -1,6 +1,6 @@
 /**
  * The report funnel: steps in order, each with its count, its rate against a
- * named base ("of delivered", never "of previous" — #784), and the exact
+ * named base ("of delivered", never "of previous"), and the exact
  * numbers in its hover title.
  */
 import { describe, expect, it } from 'vitest';

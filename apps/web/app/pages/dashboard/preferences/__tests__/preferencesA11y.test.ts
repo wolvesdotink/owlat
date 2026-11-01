@@ -240,8 +240,7 @@ function suspended(page: Component): Component {
  * `members/[mailboxId]` is a heading over a roster, and the roster is empty
  * until the mailbox read lands. Everything else has copy before its data does,
  * so a near-empty body means the page threw at setup and the audit covered
- * nothing. (`external-account` used to be here too, back when it was a redirect
- * to the import wizard with a spinner for a body.)
+ * nothing.
  */
 const INTENTIONALLY_THIN = new Set(['members/[mailboxId]']);
 

@@ -1,6 +1,6 @@
 /**
  * ShareWithMembers — an owner or admin shares a knowledge entry that migration
- * 0069 restricted with members again (#1372).
+ * 0069 restricted with members again.
  *
  * What it must not get wrong:
  *  - the review. The admin is checking for private text a past merge folded

@@ -31,7 +31,7 @@ function dashboard(overrides: Partial<DeliverabilityDashboard> = {}): Deliverabi
 		windowEnd: WINDOW_END,
 		// The deciding span is the controller's, and it is a fixture value here for
 		// the same reason the window is: the page renders both, and only the page
-		// knows they are different spans (#510).
+		// knows they are different spans.
 		decisionWindowStart: WINDOW_END - 24 * 60 * 60 * 1000,
 		decisionWindowEnd: WINDOW_END,
 		referenceTransportId: 'ses',
@@ -99,7 +99,7 @@ describe('measurement page — headings and landmarks', () => {
 	});
 
 	/**
-	 * TWO SPANS, TWO LABELS (#510). The cards count over the reported window and
+	 * TWO SPANS, TWO LABELS. The cards count over the reported window and
 	 * their checks were decided over the controller's own, so a heading that named
 	 * only the first would put a week's dates over verdicts reached in a day.
 	 */

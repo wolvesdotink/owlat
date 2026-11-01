@@ -1,5 +1,5 @@
 /**
- * The step inspector's placements (#1046): a column at `lg`, a sheet below.
+ * The step inspector's placements: a column at `lg`, a sheet below.
  * As a sheet it follows UiRailDrawer: Escape and the scrim close it (through
  * the page's `close`, which waits for the step's save), the phone's tab bar
  * steps aside, and focus moves into it when it opens.

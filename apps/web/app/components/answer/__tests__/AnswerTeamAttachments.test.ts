@@ -1,7 +1,7 @@
 /**
  * The files on a Team inbox reply in Answer mode:
  *  - the agent's matched file (`AttachSuggestion`, computed and stored for
- *    every such message and, until now, never shown) is mounted, and picking
+ *    every such message) is mounted, and picking
  *    it attaches that Files row;
  *  - a copy still running shows as "Copying…", a failed one says why;
  *  - Attach uploads a file or picks one of the contact's files, this
@@ -172,7 +172,7 @@ describe('AnswerTeamAttachments', () => {
 			{ _id: 'sf_3', filename: 'here.pdf', fileSize: 1, threadId: 'ct_1' },
 		];
 		const wrapper = mountFiles({ attachments: [ready] });
-		// Compact cards (#1439), not the whole-row `semanticFiles.listByContact`.
+		// Compact cards, not the whole-row `semanticFiles.listByContact`.
 		expect(queryPaths).toEqual(['files.cards.listByContact']);
 		// Nothing is read until the menu opens.
 		expect((queryArgs[0] as () => unknown)()).toBe('skip');

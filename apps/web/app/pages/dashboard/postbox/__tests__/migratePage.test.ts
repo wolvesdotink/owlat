@@ -5,10 +5,10 @@
  * `submitted` event never fires — the wizard restarts the import itself when it
  * comes back with `googleConnected=1`. Two timings have to work: the account
  * subscription already resolved at mount (client-side nav / warm cache) and
- * resolving a tick later (cold load). The first of those used to throw
- * `ReferenceError: Cannot access 'stop' before initialization`, because the
- * `immediate: true` watcher called its own not-yet-assigned stop handle — so
- * the import never started on exactly the fast path.
+ * resolving a tick later (cold load). On the first of those an `immediate:
+ * true` watcher that calls its own not-yet-assigned stop handle throws
+ * `ReferenceError: Cannot access 'stop' before initialization`, so the import
+ * would never start on exactly the fast path.
  */
 import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vitest';
 import { type VueWrapper } from '@vue/test-utils';

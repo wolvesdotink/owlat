@@ -1,5 +1,5 @@
 /**
- * Leaving the open step never drops its edits silently (#1044).
+ * Leaving the open step never drops its edits silently.
  *
  * Close, Add step, picking another step and a reorder all wait for the open
  * step's save and then go ahead. Only a failed save (or a same-step change

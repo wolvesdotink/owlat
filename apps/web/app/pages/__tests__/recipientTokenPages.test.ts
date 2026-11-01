@@ -1,5 +1,5 @@
 /**
- * The recipient pages' failure and "already done" states (#865).
+ * The recipient pages' failure and "already done" states.
  *
  * Every page reads the endpoint's machine-readable reason and shows its own
  * localized copy. The backend's English `message` never reaches the recipient,

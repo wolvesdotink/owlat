@@ -274,7 +274,7 @@ describe('calm states', () => {
 	/**
 	 * CONFIGURATION IS NOT MEASUREMENT, AND THE DIAL COPY ASKS THE MEASUREMENT.
 	 *
-	 * This is the case that used to be wrong. A relay CONFIGURED but carrying
+	 * This is the case that is easy to get wrong. A relay CONFIGURED but carrying
 	 * nothing this window leaves the controller ramping by pace, so copy cut on the
 	 * route table told the operator a pin bounds the climbing dial while the dial
 	 * actually climbing was the warm-up pace no pin can bound — and the server's

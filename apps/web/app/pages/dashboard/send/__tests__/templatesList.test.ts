@@ -1,5 +1,5 @@
 /**
- * The templates page is one list with a type filter (#787): no stat tiles, no
+ * The templates page is one list with a type filter: no stat tiles, no
  * Quick Actions row (with Media and Files), and exactly one create button.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';

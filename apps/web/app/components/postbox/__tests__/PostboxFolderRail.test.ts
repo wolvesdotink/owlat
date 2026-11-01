@@ -2,10 +2,10 @@
  * The mailbox folder rail after the UX review of 2026-09-23.
  *
  * Two things are pinned here. The rail carries no Compose button of its own:
- * the top bar (and the phone tab bar) hold the one create action (#776). And
+ * the top bar (and the phone tab bar) hold the one create action. And
  * its Answer queue row is the one Answer queue filtered to this mailbox, with a
  * count that names the mailbox, so it no longer reads as a second queue whose
- * number disagrees with the sidebar's (#767).
+ * number disagrees with the sidebar's.
  */
 import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
 import { mount } from '@vue/test-utils';

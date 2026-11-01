@@ -5,8 +5,8 @@
  *
  * COPY: the screen is fully extracted, so it is mounted against the REAL `en`
  * catalog and asserted on the sentences a member reads — including the
- * notification-scope option labels, which used to be English constants in
- * `~/utils/postboxNotify` and are now catalog messages.
+ * notification-scope option labels, which are catalog messages, not English
+ * constants in `~/utils/postboxNotify`.
  *
  * THE "SENDING IS READY NOW" LATCH: `sawBlocked` is deliberately permanent —
  * once a member has been told sending isn't set up, a transport landing while

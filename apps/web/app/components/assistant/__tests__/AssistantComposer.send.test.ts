@@ -1,5 +1,5 @@
 /**
- * The Assistant composer keeps the question until the send is accepted (#1049).
+ * The Assistant composer keeps the question until the send is accepted.
  *
  * Same contract as ChatInput: `send` is awaited, the text stays on screen until
  * it resolves `ok`, a pending send blocks a second one, and whatever is typed

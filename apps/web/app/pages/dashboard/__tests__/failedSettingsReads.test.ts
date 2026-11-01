@@ -1,5 +1,5 @@
 /**
- * A failed settings read is not the defaults (#1097). Each form below saves
+ * A failed settings read is not the defaults. Each form below saves
  * its whole draft or record, so a form that rendered from its defaults after a
  * failed read would write them over the stored settings the moment the
  * operator changed one field and saved.

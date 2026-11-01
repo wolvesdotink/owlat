@@ -1,5 +1,5 @@
 /**
- * What the Delete workspace confirmation promises (#906).
+ * What the Delete workspace confirmation promises.
  *
  * The deletion job (apps/api/convex/workspaces/deletion/) sweeps the tenant
  * tables only. The organization, its members and their accounts live in the
@@ -9,7 +9,7 @@
  *   - nothing in a deleting sentence names team members
  *   - the copy says members keep their accounts and memberships
  * The sweep also removes the workspace settings and the stored API keys,
- * the AI provider's included (#1101), so the deleting sentence names them.
+ * the AI provider's included, so the deleting sentence names them.
  */
 import { describe, expect, it } from 'vitest';
 import { mount } from '@vue/test-utils';

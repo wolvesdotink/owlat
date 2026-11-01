@@ -1,6 +1,6 @@
 /**
- * The connected-mailbox card — the screen that finally lets someone end a
- * connection, rather than the wizard branch where the buttons used to live.
+ * The connected-mailbox card — the screen that lets someone end a
+ * connection, rather than a branch of the wizard.
  *
  * What is pinned here is what a member is owed at each of the three states:
  * a live connection they can change the password on, disconnect, or delete; a

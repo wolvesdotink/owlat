@@ -388,7 +388,7 @@ describe('PostboxComposer frame="answer"', () => {
 		w.unmount();
 	});
 
-	// Issue #1131 review: a reopened Reply Queue draft has no ask session and no
+	// A reopened Reply Queue draft has no ask session and no
 	// in-memory AI draft; the saved row's `isGapGuarded` keeps Send held.
 	it('holds Send on a reopened draft the AI left gaps in, without an ask session', async () => {
 		compose.isGapGuarded.value = true;

@@ -1,5 +1,5 @@
 /**
- * Each mail setting lives where an admin looks for it (#796):
+ * Each mail setting lives where an admin looks for it:
  *   - the Sealed mail page is about sealing only (policy, recovery kits,
  *     re-sealing) and is called "Sealed mail" in its title;
  *   - "Search inside message bodies" is on General, in the `#mail-search`

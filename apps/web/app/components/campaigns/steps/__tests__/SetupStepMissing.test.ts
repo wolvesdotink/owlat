@@ -1,5 +1,5 @@
 /**
- * A disabled Next says what is missing (#785): "Still needed: a campaign name,
+ * A disabled Next says what is missing: "Still needed: a campaign name,
  * a sender and recipients", shrinking as each part is filled in, and gone once
  * Next can work.
  */

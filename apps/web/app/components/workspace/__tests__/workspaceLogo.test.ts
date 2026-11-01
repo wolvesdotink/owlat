@@ -1,5 +1,5 @@
 /**
- * The workspace logo (#810): uploaded in Workspace → General, shown in place
+ * The workspace logo: uploaded in Workspace → General, shown in place
  * of the Owlat mark on the pages people reach without an account.
  *
  * Pinned here:

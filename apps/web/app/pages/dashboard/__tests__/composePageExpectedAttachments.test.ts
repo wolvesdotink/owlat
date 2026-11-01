@@ -1,5 +1,5 @@
 /**
- * #1257: a file the open asked for (an RSVP's generated `reply.ics`, a
+ * A file the open asked for (an RSVP's generated `reply.ics`, a
  * forward's attachments) that is not on the draft yet when the page reloads,
  * or when the draft is open in a second tab.
  *

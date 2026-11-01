@@ -8,8 +8,8 @@
  *     digest placement is a count that opens All mail filtered to it
  *   - auto-filed roll-up line summarises categorized Today mail, read off
  *     each row's own `category` (no second thread subscription)
- *   - inbox-zero shows the quiet "All clear" line; a failed inbox read does not
- *     (#721), it shows the error with Try again
+ *   - inbox-zero shows the quiet "All clear" line; a failed inbox read does
+ *     not, it shows the error with Try again
  *   - Browse button emits `browse`; "Show past mails (n)" expands inline.
  *
  * The component leans on Nuxt auto-imports; each composable is stubbed as a
@@ -220,12 +220,12 @@ describe('PostboxTodayView', () => {
 		expect(text.indexOf('Inbox')).toBeLessThan(text.indexOf('Needs you'));
 		expect(text.indexOf('Needs you')).toBeLessThan(text.indexOf('Everything else'));
 		expect(text.indexOf('Everything else')).toBeLessThan(text.indexOf('Show past mails (1)'));
-		// "Today" names the home page only (#776).
+		// "Today" names the home page only.
 		expect(text).not.toMatch(/\bToday\b/);
 		expect(w.find('#postbox-for-you').exists()).toBe(true);
 		expect(w.find('#postbox-today').exists()).toBe(true);
 		// One line: who, what they want, a state; it routes to the Answer queue,
-		// filtered to this mailbox (#767).
+		// filtered to this mailbox.
 		const queueRow = w.find('[data-testid="priority-queue"] li');
 		expect(queueRow.text()).toContain('Boss');
 		expect(queueRow.text()).toContain('Need the deck');

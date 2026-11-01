@@ -1,7 +1,7 @@
 /**
- * Translation table cell, keyboard and focus (issue #1007). Every editable cell
- * used to be a click-only div: Tab skipped it and the editor could only be
- * opened with a mouse. The cell is mounted into the live document and driven
+ * Translation table cell, keyboard and focus. Every editable cell is reachable
+ * with Tab and opens its editor from the keyboard, not only with a mouse.
+ * The cell is mounted into the live document and driven
  * with real key events, for empty and filled cells and for plain-text and HTML
  * rows.
  */
@@ -245,9 +245,9 @@ describe('TranslationCell', () => {
 });
 
 /**
- * Issue #1080: the "source" badge and the "HTML" hover badge were absolutely
- * positioned in the cell's top-right corner with no room kept for them, so any
- * line long enough ran under the badge. happy-dom does no layout, so this pins
+ * The "source" badge and the "HTML" hover badge must not be absolutely
+ * positioned in the cell's top-right corner with no room kept for them, or any
+ * line long enough runs under the badge. happy-dom does no layout, so this pins
  * the structure that rules the overlap out: the badge is a non-shrinking item
  * in the same flex row as the text, and the text takes only the space left.
  */

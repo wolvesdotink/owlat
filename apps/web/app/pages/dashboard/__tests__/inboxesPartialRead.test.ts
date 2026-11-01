@@ -1,8 +1,8 @@
 /**
  * All inboxes merges one thread read per inbox. When one of them fails and
  * the others loaded, the loaded rows stay and a notice names the inbox that is
- * missing, with a Try again that re-reads it (#1099). Before, the failed
- * inbox's threads disappeared without a word.
+ * missing, with a Try again that re-reads it, so the failed inbox's threads
+ * do not disappear without a word.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ref } from 'vue';

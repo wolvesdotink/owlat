@@ -1,6 +1,6 @@
 /**
  * A failed read on a top-level list or detail page is not an empty list and
- * not a missing record (#721). Each page below is mounted with every query it
+ * not a missing record. Each page below is mounted with every query it
  * makes failing: it must render the query boundary's error state, its Try
  * again must re-read, and its own empty / not-found copy must not appear.
  *

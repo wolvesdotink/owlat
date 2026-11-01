@@ -1,9 +1,9 @@
 /**
  * The Answer queue's team card, which only ever shows a team item with no
- * thread: one with a thread opens in Answer mode instead (#1226). So every
+ * thread: one with a thread opens in Answer mode instead. So every
  * entry here has `thread: null`.
  *
- * Approve sends the draft the card shows (#1196).
+ * Approve sends the draft the card shows.
  *
  * The agent may have offered variants (`draftOptions`) for its draft. The card
  * used to approve `draftOptions[0]` whenever there were two or more, writing it
@@ -217,7 +217,7 @@ describe('AnswerTeamCard with a draftless escalation', () => {
 });
 
 /**
- * A message held on the agent's questions (#1343): no draft is written around
+ * A message held on the agent's questions: no draft is written around
  * them, so the card asks them, as Answer mode does, and answering resumes the
  * draft. Nothing on it approves or sends.
  */
@@ -294,7 +294,7 @@ describe("AnswerTeamCard with the agent's questions", () => {
 });
 
 /**
- * An agent draft with `[[...]]` gaps on the card (#1197). The server refuses
+ * An agent draft with `[[...]]` gaps on the card. The server refuses
  * to approve a gap-guarded draft (DRAFT_HAS_GAPS), so the card marks the gaps,
  * holds Approve with the reason, and offers the way to fill them. Mounted with
  * the real action row, so held means disabled with the reason shown.

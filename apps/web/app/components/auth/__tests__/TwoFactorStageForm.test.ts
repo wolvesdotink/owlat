@@ -1,7 +1,7 @@
 /**
  * The one second-factor form behind both password sign-ins (web and desktop
- * connect). The desktop copy used to be a weaker duplicate: no autofocus, no
- * spinner, a submit that only disabled. These pin what both surfaces now get.
+ * connect). Both surfaces get autofocus, a spinner and a submit that does more
+ * than disable; these pin that neither falls back to a weaker copy.
  */
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { mount, type VueWrapper } from '@vue/test-utils';

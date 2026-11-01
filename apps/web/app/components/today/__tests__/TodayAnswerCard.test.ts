@@ -1,5 +1,5 @@
 /**
- * Today's answer card (#774): the line under the big number splits it by
+ * Today's answer card: the line under the big number splits it by
  * source and ADDS UP to it; drafts ready and the time estimate sit on their
  * own line; every count is a digit. Mounted against the real `en` catalog so
  * the assertions are on the sentences a member reads.

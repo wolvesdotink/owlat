@@ -88,9 +88,9 @@ function mountHeader(
 }
 
 /**
- * Four persisted preferences used to be four separate controls (one of which
- * needed its own horizontal scroller to reach its labels). The header now
- * renders exactly one entrance to all of them, and hands it the state.
+ * Four persisted preferences share one control: four separate ones would need
+ * a horizontal scroller to reach their labels. The header renders exactly one
+ * entrance to all of them, and hands it the state.
  */
 describe('PostboxListHeader display menu', () => {
 	it('renders one menu and hands it the current preferences', () => {

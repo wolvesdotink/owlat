@@ -1,6 +1,6 @@
 /**
  * The account menu's key hints are spelled for the machine: a Windows or
- * Linux user used to be told ⌘J and ⌘⇧F, keys their keyboard does not have.
+ * Linux user is not told ⌘J and ⌘⇧F, keys their keyboard does not have.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount } from '@vue/test-utils';

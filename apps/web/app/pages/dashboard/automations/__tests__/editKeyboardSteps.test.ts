@@ -1,5 +1,5 @@
 /**
- * Opening and reordering steps without a pointer (#1045).
+ * Opening and reordering steps without a pointer.
  *
  * Each step's title is a real button (with `aria-current="step"` while it is
  * open), and its drag handle is a button that lifts, moves and drops the step

@@ -1,11 +1,11 @@
 /**
  * Selecting one contact re-renders one table row (plan 3.7).
  *
- * The table used to be an inline `v-for` that read the selection set per row
- * and built a fresh right-click menu array for every row on every render, so
- * one checkbox click redrew the whole loaded page (hundreds of rows after a few
- * "Load more"s). Rows are now `ContactsContactRow` with a boolean `selected`
- * prop and a menu getter, so only the row whose value flips re-renders.
+ * An inline `v-for` that read the selection set per row and built a fresh
+ * right-click menu array for every row on every render would redraw the whole
+ * loaded page (hundreds of rows after a few "Load more"s) on one checkbox
+ * click. Rows are `ContactsContactRow` with a boolean `selected` prop and a
+ * menu getter, so only the row whose value flips re-renders.
  *
  * Row renders are counted through `formatDate`, which each row calls once per
  * render for its "Created" cell and which nothing else in the table calls.

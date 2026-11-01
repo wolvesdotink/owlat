@@ -1,5 +1,5 @@
 /**
- * A failed read is not the default value (#1097). The controls and dashboards
+ * A failed read is not the default value. The controls and dashboards
  * below write only the one value the operator picks, so a failed read
  * overwrites nothing, but showing the default in its place states something
  * untrue: "Automatic" sealing, TLS required, a healthy agent with no queue,

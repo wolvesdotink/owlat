@@ -52,7 +52,7 @@ describe('PostboxSealedMailNudge', () => {
 			'Mail to other Owlat users is now encrypted. Nothing changes for you.'
 		);
 		expect(wrapper.text()).toContain('Back up your key');
-		// Operator words stay on the settings page (#776).
+		// Operator words stay on the settings page.
 		expect(wrapper.text()).not.toMatch(/sealed|recovery kit/i);
 	});
 

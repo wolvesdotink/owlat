@@ -70,7 +70,7 @@ describe.each(Object.entries(guardedPages))('%s guards its form', (_name, source
 	it('routes through the one shared composable and the one shared dialog', () => {
 		expect(source).toContain('useUnsavedChanges({');
 		// The ui layer's dialog, auto-registered: importing it from the email
-		// builder barrel shipped the whole editor with the page (#1441).
+		// builder barrel shipped the whole editor with the page.
 		expect(source).not.toContain("from '@owlat/email-builder'");
 		expect(source).toContain('<UiUnsavedChangesDialog');
 	});
@@ -177,7 +177,7 @@ function stubPage(): void {
 		isLoading: ref(false),
 	}));
 	// Every read answered, with nothing stored: the route editor only opens
-	// once the routes and the transport catalog have been read (#1097).
+	// once the routes and the transport catalog have been read.
 	vi.stubGlobal('useOrganizationQuery', () => ({
 		data: ref([]),
 		isLoading: ref(false),

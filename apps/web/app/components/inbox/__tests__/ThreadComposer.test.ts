@@ -294,7 +294,7 @@ describe('InboxThreadComposer in Answer mode', () => {
 		);
 	});
 
-	// #807 — the agent still drafting, or the message already answered, no longer
+	// The agent still drafting, or the message already answered, does not
 	// block the editor: it opens, and says where the text goes.
 	it('says a reply sent mid-draft replaces the agent draft', async () => {
 		const wrapper = mountComposer({ notice: 'takesOverDraft' });
@@ -375,7 +375,7 @@ describe('InboxThreadComposer in Answer mode', () => {
 		);
 	});
 
-	// #812 — the team reply is a composer target, so the Postbox composer's
+	// The team reply is a composer target, so the Postbox composer's
 	// advisory pre-send checks run on it too.
 	it('flags a placeholder the agent left in its draft, and clears once fixed', async () => {
 		const wrapper = mountComposer({
@@ -399,7 +399,7 @@ describe('InboxThreadComposer in Answer mode', () => {
 	});
 });
 
-// #812 — the team reply renders inside the Postbox composer's frame and
+// The team reply renders inside the Postbox composer's frame and
 // footer; the footer reads the team target's capabilities and leaves out what
 // a team reply cannot carry.
 describe('InboxThreadComposer in the shared Postbox composer shell', () => {

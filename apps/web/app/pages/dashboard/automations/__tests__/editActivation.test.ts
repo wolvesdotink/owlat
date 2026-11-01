@@ -1,5 +1,5 @@
 /**
- * Activation, Resume and Save draft act on what the inspector shows (#1043).
+ * Activation, Resume and Save draft act on what the inspector shows.
  *
  * Step edits save themselves, so each of these first waits for the open
  * step's save (`flushStepSave`). When that fails, nothing is activated or

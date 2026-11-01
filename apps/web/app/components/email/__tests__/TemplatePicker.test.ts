@@ -1,5 +1,5 @@
 /**
- * The shared template picker (#1047).
+ * The shared template picker.
  *
  * Both template pickers used to load the first 100 templates and stop: the
  * campaign search filtered that slice, the automation step was a native select

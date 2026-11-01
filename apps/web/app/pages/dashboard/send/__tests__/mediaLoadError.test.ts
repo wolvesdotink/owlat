@@ -1,5 +1,5 @@
 /**
- * A failed media read is not an empty library (#721): the page shows the
+ * A failed media read is not an empty library: the page shows the
  * error with a working Try again, never "No media yet".
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';

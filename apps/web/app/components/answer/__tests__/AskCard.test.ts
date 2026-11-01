@@ -174,7 +174,7 @@ describe('AskCard', () => {
 		expect(bare.find('[data-testid="ask-trust"]').exists()).toBe(false);
 		bare.unmount();
 		// The line comes from `origin` alone; a legacy English sentence is no
-		// longer read (#1224).
+		// longer read.
 		const legacy = mountCard({
 			questions: questions.map((q) => ({
 				...q,

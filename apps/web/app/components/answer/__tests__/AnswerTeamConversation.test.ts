@@ -1,6 +1,6 @@
 /**
  * Answer mode's Team inbox conversation column, for a message whose body is
- * too large for its row (#912): the query hands back only its excerpt and the
+ * too large for its row: the query hands back only its excerpt and the
  * storage ids, so the column must not say "no text content". It mounts the
  * thread page's body component, which shows the excerpt and fetches the rest;
  * a message with its body on the row still renders through the sandboxed HTML

@@ -1,5 +1,5 @@
 /**
- * The chat composer keeps its draft until the send is acknowledged (#945).
+ * The chat composer keeps its draft until the send is acknowledged.
  *
  * `send` is an awaited callback: the text and the attachment selection stay on
  * screen until it resolves `ok`. A refused send keeps both for a retry, a

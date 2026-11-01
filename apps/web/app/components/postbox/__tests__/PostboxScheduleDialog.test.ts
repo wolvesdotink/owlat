@@ -133,9 +133,9 @@ describe('PostboxScheduleDialog — one known recipient timezone', () => {
 });
 
 /**
- * The custom-time field (#1053). A past or unreadable time used to leave
- * Schedule enabled and make its click return without a word; the line under the
- * input now says what Schedule will do, or why it will not, and the emitted
+ * The custom-time field. A past or unreadable time must not leave Schedule
+ * enabled with a click that returns without a word; the line under the
+ * input says what Schedule will do, or why it will not, and the emitted
  * instant is the one that line names.
  */
 describe('PostboxScheduleDialog — custom time', () => {

@@ -1,5 +1,5 @@
 /**
- * The contact Files tab reads compact cards (`files.cards.listByContact`, #1439),
+ * The contact Files tab reads compact cards (`files.cards.listByContact`),
  * not `semanticFiles.listByContact`, which returns every row whole: embedding
  * vectors, extracted text and search text for a list that shows a name, a
  * size, a date, the source and two tags.

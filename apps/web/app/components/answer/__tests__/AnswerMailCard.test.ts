@@ -2,7 +2,7 @@
  * AnswerMailCard is the follow-up reminder card: the only Postbox row the
  * Answer queue shows as a card. Every other row opens in Answer mode, so the
  * card's clarification and draft-review branches could never render and are
- * gone (#1188).
+ * gone.
  *
  * Its one verb is Done; Reply writes a nudge in Answer mode and finishes
  * nothing, since only a send there completes the item. The queue bug

@@ -1,7 +1,7 @@
 /**
- * /dashboard/audience keeps working after the overview went away (#787): it
- * forwards to the contact list and carries the query, so the old
- * `?action=add` links still open the add-contact form.
+ * /dashboard/audience has no page of its own: it forwards to the contact list
+ * and carries the query, so `?action=add` links still open the add-contact
+ * form.
  */
 import { describe, expect, it, vi } from 'vitest';
 import { mount } from '@vue/test-utils';

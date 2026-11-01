@@ -178,7 +178,7 @@ describe('TeamInboxImportCard', () => {
 	});
 
 	it("waits out the provider's daily limit as a pause, not a failure", () => {
-		// #760: an import that spent its provider's daily budget stays importing
+		// An import that spent its provider's daily budget stays importing
 		// with a resume time. It must read as a wait the worker ends by itself —
 		// no error, no retry button — with the bar and count still there.
 		const resumesAt = Date.now() + 6 * 60 * 60_000;
@@ -247,8 +247,8 @@ describe('TeamInboxImportCard', () => {
 	});
 
 	it('says so when a finished import left messages behind', () => {
-		// A partial loss used to be as silent as a total one: the card reported
-		// what landed and nothing about what did not.
+		// A partial loss must not be silent: the card reports what did not land,
+		// not only what did.
 		status.value = migrationRow({
 			status: 'completed',
 			messagesImported: 3100,

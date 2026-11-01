@@ -357,9 +357,9 @@ describe('MigrationModeCard — same banner logic', () => {
 });
 
 /**
- * FU4 — the banner used to live only in this tab's memory, so a reload dropped
- * it while the services were still drifted. On mount the surfaces now ask the
- * server-side probe what the host actually has applied.
+ * The banner cannot live only in this tab's memory, or a reload drops it while
+ * the services are still drifted. On mount the surfaces ask the server-side
+ * probe what the host actually has applied.
  */
 describe('Durable drift — server-side probe on mount', () => {
 	it('rehydrates the banner after a reload with no in-session drift', async () => {

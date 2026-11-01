@@ -2,8 +2,8 @@
  * The bundled feed's focus ring: the keyboard walks every visible message (a
  * plain row, or a row inside an expanded bundle) as one flat list, and exactly
  * the focused one reads as selected. The lookup behind it is an id → index map
- * built once per list change, where it used to be a findIndex per row per
- * render; this pins that the map gives the same answer.
+ * built once per list change, not a findIndex per row per render; this pins
+ * that the map gives the same answer.
  */
 import { describe, it, expect, vi, beforeAll } from 'vitest';
 import { mount } from '@vue/test-utils';

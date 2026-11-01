@@ -1,6 +1,6 @@
 /**
  * "Preview as sent" shows a pasted image from the URL the editor has for the
- * draft's part (#1301). The body keeps such an image as `<img data-inline-cid>`
+ * draft's part. The body keeps such an image as `<img data-inline-cid>`
  * with no src, and the renderer drops the marker, so without the composer's
  * URLs the preview frame had only a broken image to show.
  */

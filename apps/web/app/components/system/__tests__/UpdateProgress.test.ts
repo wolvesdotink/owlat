@@ -4,14 +4,14 @@
  * Two failures live here, and they are both about a card an operator stares at
  * for minutes while their instance is being replaced.
  *
- * The first is the verdict it paints. It used to read a step's outcome off its
- * `stderr`: non-empty meant failure. Docker writes pull and recreate PROGRESS to
- * stderr on SUCCESS, so a healthy update painted "Pull new container images" and
- * "Recreate containers" red and offered ` web Pulled` as the error message — the
- * operator watched a working update tell them it had failed twice. The updater
- * sidecar reports a real per-step verdict (`ok`, i.e. the docker command exited
- * zero) and that is what the list reads now, falling back to the old reading
- * only for the steps that carry no verdict.
+ * The first is the verdict it paints. A step's outcome cannot be read off its
+ * `stderr` (non-empty meaning failure): Docker writes pull and recreate PROGRESS
+ * to stderr on SUCCESS, so a healthy update would paint "Pull new container
+ * images" and "Recreate containers" red and offer ` web Pulled` as the error
+ * message — a working update telling the operator it had failed twice. The
+ * updater sidecar reports a real per-step verdict (`ok`, i.e. the docker command
+ * exited zero) and that is what the list reads, falling back to the stderr
+ * reading only for the steps that carry no verdict.
  *
  * The second is everything the card does BEFORE that report exists — which is
  * the whole update, because the sidecar answers in one piece at the very end.

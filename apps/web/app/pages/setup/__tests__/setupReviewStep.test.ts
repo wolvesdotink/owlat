@@ -1,5 +1,5 @@
 /**
- * #773 — the review step names features by label under their pack, says in
+ * The review step names features by label under their pack, says in
  * one sentence what happens to secrets, and names every launch blocker next to
  * the Launch button, each linked to its step; missing values also show inline.
  */

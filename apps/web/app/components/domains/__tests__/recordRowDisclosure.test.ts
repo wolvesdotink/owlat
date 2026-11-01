@@ -1,10 +1,10 @@
 /**
  * The domain row's header: one disclosure button beside its operation buttons.
  *
- * The header used to be a `role="button"` div with Force verify, Verify and
- * Remove nested inside it, which axe reports as `nested-interactive` and which
- * relied on `.self` / `.stop` modifiers to keep an action's keypress or click
- * from also folding the row. The header is now plain layout: one native
+ * A `role="button"` header with Force verify, Verify and Remove nested inside
+ * it is what axe reports as `nested-interactive`, and it would need `.self` /
+ * `.stop` modifiers to keep an action's keypress or click from also folding
+ * the row. So the header is plain layout: one native
  * `<button>` carrying `aria-expanded`/`aria-controls` lies over the whole row,
  * and the actions are its siblings, so no event from an action can ever reach
  * the toggle. The identity text sits above that overlay so it stays selectable;
