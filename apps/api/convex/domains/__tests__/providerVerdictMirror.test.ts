@@ -3,12 +3,11 @@
  *
  * `verifyDomain` runs the DNS lookups, then asks the domain's provider for its
  * own verdict (`runProviderCheck`), then mirrors that verdict into
- * `verificationResults`, so the verdict is persisted beside the DNS rows. The
- * mirror used to be guarded by `domain.providerType === 'ses'` with the SES
- * field name and the 'Success'/'Pending' spelling written out in the verifier —
- * so "does this provider have a verdict worth recording?" was a question about a
- * NAME, and a kind that shipped one had to edit the verifier to be allowed to
- * answer.
+ * `verificationResults`, so the verdict is persisted beside the DNS rows. A
+ * mirror guarded by `domain.providerType === 'ses'`, with the SES field name
+ * and the 'Success'/'Pending' spelling written out in the verifier, makes "does
+ * this provider have a verdict worth recording?" a question about a NAME, and a
+ * kind that ships one would have to edit the verifier to be allowed to answer.
  *
  * It is now `verificationStatusFields` on the adapter contract. The differential
  * case below drives a MOCK KIND whose adapter returns a projection the old

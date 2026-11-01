@@ -1,6 +1,6 @@
 /**
  * Automation step execution is bound to the persisted step run, and every
- * committed boundary of an attempt survives a crash (issue #809, finding 6).
+ * committed boundary of an attempt survives a crash.
  *
  * Before: the walker picked the step from the run's MUTABLE `currentStepIndex`,
  * retries skipped the claim, and one retry block wrapped the side effect, the

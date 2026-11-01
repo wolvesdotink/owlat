@@ -4,13 +4,13 @@
  * A domain reaching `verified` whose PRIMARY provider is our own MTA also gets a
  * coexisting identity at whatever relay the deliverability fallback names, so
  * that the relay can be handed that From domain the moment the breaker opens.
- * The effect that does it used to be a hand-written pair of ifs —
+ * The effect that does it cannot be a hand-written pair of ifs —
  * `relayKinds.has('ses')` / `relayKinds.has('mandrill')` — which is a list, not
- * a capability: a newly registered `domainVerification: 'api'` kind got the
- * catch-up drain (`delivery.providerRouteRelays.provisionDeliverabilityRelayBatch`, already a
- * registry walk since P0.2) and NOT this half, so its domains verified, silently
- * received no relay identity, and its fallback then refused to relay them — with
- * the only symptom a runtime refusal on a real send.
+ * a capability: a newly registered `domainVerification: 'api'` kind would get the
+ * catch-up drain (`delivery.providerRouteRelays.provisionDeliverabilityRelayBatch`, a
+ * registry walk) and NOT this half, so its domains would verify, silently
+ * receive no relay identity, and its fallback would then refuse to relay them —
+ * with the only symptom a runtime refusal on a real send.
  *
  * The gate is therefore differential in the one direction that matters: the
  * MOCK-KIND cases below register a relay kind neither literal ever named, and
@@ -187,8 +187,8 @@ describe('provision_relay_identity_if_enabled asks the registry, not a list of k
 	it('does nothing for a configured relay whose adapter has no identity to register', async () => {
 		// Absence is a real answer, not a gap: a `domainVerification: 'none'` relay
 		// has no identity API at all. The walk must skip it rather than provisioning
-		// some other kind's identity — the failure this mirrors is the SES drain
-		// that used to run for every deployment regardless of the relay it chose.
+		// some other kind's identity — the failure this guards against is an SES
+		// drain running for every deployment regardless of the relay it chose.
 		const t = convexTest(schema, modules);
 		await seedRoute(t, MOCK_IDENTITYLESS_KIND);
 		const domainId = await seedPendingDomain(t, 'mta');

@@ -18,8 +18,8 @@
  *     mutation ctx and the writer/reader cannot disagree about the number.
  *   - `evaluateAutoEnforce` is the auto-enforce DECISION, off the hot path: it
  *     runs on the reputation cron, summarizes the org window once per tick, and
- *     escalates when risk is `high`/`critical`. Moving it here removes the wide
- *     per-event `.collect()` `recordEvent` used to do.
+ *     escalates when risk is `high`/`critical`. Running it here keeps the wide
+ *     `.collect()` of the org window out of the per-event `recordEvent`.
  *   - `recalculateAll` is the cleanup cron: it ages out >60-day buckets across
  *     both scopes. Risk no longer needs periodic recalculation — it is derived.
  *   - `autoEnforceReputation` is the unchanged enforce executor (delegates to
@@ -347,11 +347,10 @@ async function bumpBucket(
  * This is the SEND-EVENT HOT PATH (scheduled per recipient by the Send
  * lifecycle's `reputation_update` effect), so it does the minimum: two point
  * read-modify-writes against sharded rows and nothing else. The risk
- * derivation + auto-enforce decision used to run inline here, `.collect()`-ing
- * the whole org window on every event — that wide read is now off the hot path,
- * moved to the hourly `evaluateAutoEnforce` step on the reputation cron (the
- * Abuse status module dedupes transitions idempotently, so deferring the
- * check from per-event to hourly preserves the enforce behavior — the
+ * derivation + auto-enforce decision `.collect()`s the whole org window, so it
+ * stays off the hot path, in the hourly `evaluateAutoEnforce` step on the
+ * reputation cron (the Abuse status module dedupes transitions idempotently,
+ * so checking hourly instead of per event keeps the enforce behavior — the
  * deliverability gate still trips, just on the cron cadence).
  */
 export const recordEvent = internalMutation({
@@ -375,11 +374,10 @@ export const recordEvent = internalMutation({
  * `.collect()` of the org window per cron tick rather than per send-event —
  * the move that removes the read-amplification from `recordEvent`.
  *
- * The enforce decision lives only here (the per-event trigger that used to live
- * inline in `recordEvent` is gone). It still fires while the org window is
- * `high`/`critical`; the Abuse status module dedupes the transition
- * idempotently, so this remains a behavior-preserving refactor, not a new
- * enforce policy.
+ * The enforce decision lives only here; `recordEvent` has no per-event
+ * trigger. It fires while the org window is `high`/`critical`; the Abuse
+ * status module dedupes the transition idempotently, so the hourly check
+ * enforces the same policy a per-event one would.
  */
 export const evaluateAutoEnforce = internalMutation({
 	args: {},

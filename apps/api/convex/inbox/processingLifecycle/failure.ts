@@ -5,7 +5,7 @@
  *
  * `failedStage` tells a failed send of an approved reply apart from a failed
  * agent step, so Retry can send the approved text again instead of letting the
- * agent draft over it (#1220, `@owlat/shared/inboxRetry`).
+ * agent draft over it (`@owlat/shared/inboxRetry`).
  */
 
 import type { Doc } from '../../_generated/dataModel';

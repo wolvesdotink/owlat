@@ -158,7 +158,7 @@ export const recordStepFail = internalMutation({
 // `retryCount >= MAX_RETRY_ATTEMPTS` guard below is now belt-and-suspenders.
 //
 // The cron only re-runs the agent for a message nobody touched (the `redraft`
-// plan of `@owlat/shared/inboxRetry`, #1220). A failed message holding a
+// plan of `@owlat/shared/inboxRetry`). A failed message holding a
 // person's reply, saved, approved or taken over, waits for a person's Retry:
 // re-running the pipeline would clear the takeover and draft over the reply.
 // Every row the cron will not retry closes as `abandoned`, so no leftover,

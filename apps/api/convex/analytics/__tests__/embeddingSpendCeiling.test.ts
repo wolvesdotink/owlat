@@ -1,5 +1,5 @@
 /**
- * A hosted embedding counts toward the enforced spend ceiling (#1268), driven
+ * A hosted embedding counts toward the enforced spend ceiling, driven
  * through the production embedding seams rather than a hand-written ledger
  * row: `embedRetrievalQuery` (knowledge recall, file search and Team
  * retrieval) and `embedForIndex` (space rebuild and re-embed). The SDK's

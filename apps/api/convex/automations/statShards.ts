@@ -1,10 +1,11 @@
 /**
  * Automation run-stat sharding (module).
  *
- * fireTrigger used to read-modify-write the single `automations` row on EVERY
- * contact entry (statsEntered + statsActive), and completeRun/cancelRun
- * RMW'd it again — so a bulk-import burst into a `contact_created` automation
- * (matches: () => true) serialized thousands of concurrent RMWs on one row.
+ * The stats cannot live on the single `automations` row: fireTrigger counts
+ * EVERY contact entry (statsEntered + statsActive) and completeRun/cancelRun
+ * count again, so read-modify-writing that row would serialize a bulk-import
+ * burst into a `contact_created` automation (matches: () => true) into
+ * thousands of concurrent RMWs on one row.
  *
  * Each entry/completion/cancellation now bumps a RANDOM shard of
  * `automationStatShards` (inc-only counters — entered / completed / cancelled);

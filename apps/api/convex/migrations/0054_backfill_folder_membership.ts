@@ -1,5 +1,5 @@
 /**
- * Backfill the IMAP folder membership (#927, migration 0054).
+ * Backfill the IMAP folder membership (migration 0054).
  *
  * Starts the membership walk for every folder that existed before folder
  * membership was maintained. Each folder walks in the background as its own
@@ -18,7 +18,7 @@
  * an operator step, and a pass whose chain died is picked up again. Until then
  * the IMAP server lists every unready folder in full documents on each
  * command; leaving that to a hand-run step left it in place indefinitely
- * wherever nobody ran it (#927). Running `run` by hand still works and only
+ * wherever nobody ran it. Running `run` by hand still works and only
  * starts it sooner.
  *
  * DURABLE AND RESUMABLE: progress and completion live in the migration ledger

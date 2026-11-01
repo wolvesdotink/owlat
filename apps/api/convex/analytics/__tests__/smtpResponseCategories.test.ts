@@ -1,6 +1,6 @@
 /**
- * smtpResponseCategories — the transport-telemetry surface that closes issue
- * #501.
+ * smtpResponseCategories — the transport-telemetry surface the ramp's gate-2
+ * block clause reads.
  *
  * WHAT IS ACTUALLY AT RISK HERE, and therefore what this suite is about:
  *

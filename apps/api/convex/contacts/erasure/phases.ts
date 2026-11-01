@@ -178,7 +178,7 @@ function scrubSends<T extends SendTable>(table: T, scrub: () => Partial<Doc<T>>)
 }
 
 /**
- * Recorded send completions and their payloads (#1195): each record goes after
+ * Recorded send completions and their payloads: each record goes after
  * its payload. The walker drains them through its budget like any other child.
  * The inline driver has no budget, so it deletes one bounded batch and leaves
  * the rest to a scheduled continuation that finds them by `contactId`; no new
@@ -295,8 +295,8 @@ const PHASE_RUNNERS: Record<ContactErasurePhase, PhaseRunner> = {
 		// order details). Erasure must drop them too, not just the address.
 		dataVariables: undefined,
 	})),
-	// A recorded completion can hold the recipient, their name and the message
-	// (#1195). The sends are soft-deleted by now, and a completion for a
+	// A recorded completion can hold the recipient, their name and the message.
+	// The sends are soft-deleted by now, and a completion for a
 	// soft-deleted Send records nothing, so none comes back behind the walk.
 	sendCompletionFailures: eraseSendCompletionFailures,
 	conversationThreads: eraseConversationThreads,

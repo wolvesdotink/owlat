@@ -3,18 +3,18 @@
  *
  *   npx convex run migrations/0066_backfill_clarification_origin:run
  *
- * Clarification questions used to store their provenance as one English
+ * A legacy clarification question stores its provenance as one English
  * sentence (`attribution`: "Generated from an email from acme.com — Owlat will
- * never ask for your password."). Since #1177 every question also carries the
- * structured `origin` the web words in the reader's language, and since #1186
- * nothing writes `attribution` any more. This walk converts what is left: each
+ * never ask for your password."). Every current question carries the
+ * structured `origin` the web words in the reader's language, and nothing
+ * writes `attribution`. This walk converts what is left: each
  * question that still has `attribution` gets the `origin` its sentence implies
  * ({@link legacyAttributionOrigin}, which reads the domain the way the web's
  * old fallback did), and loses the sentence. A question that already has
  * `origin` keeps it and only loses the sentence.
  *
  * REQUIRED BEFORE 0.6.11. Introduced in 0.6.10 as a stepping stone; 0.6.11
- * (#1224) removed `attribution` from the schema, so its deploy is rejected
+ * removed `attribution` from the schema, so its deploy is rejected
  * while any stored question still has the field. Run it on 0.6.10, then once
  * more with `'{"restart":true}'` after every action started before the 0.6.10
  * deploy has finished (one of those can store a question with `attribution`

@@ -1,9 +1,9 @@
 /**
- * A person's save while the agent can still draft over it takes the reply over
- * (#1221). The thread composer stays open during `drafting`, and Save wrote the
- * reply without the takeover Send does first. The agent's late draft then
- * replaced the saved text and, as a new draft, cleared its revisions. The same
- * held for `awaiting_clarification`, whose questions time out back into
+ * A person's save while the agent can still draft over it takes the reply over.
+ * The thread composer stays open during `drafting`. A Save that wrote the
+ * reply without the takeover Send does first would let the agent's late draft
+ * replace the saved text and, as a new draft, clear its revisions. The same
+ * holds for `awaiting_clarification`, whose questions time out back into
  * drafting. A save in `draft_ready` stays a plain save.
  */
 

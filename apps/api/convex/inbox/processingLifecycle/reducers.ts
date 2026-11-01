@@ -96,7 +96,7 @@ export const PROCESSING_LIFECYCLE = defineLifecycle<ProcessingStatus>(
 		// `received` is the agent's retry; `draft_ready` is a person writing the
 		// reply the agent failed to (inbox/manualReply.ts), or a Retry returning
 		// a person's reply to review; `approved` is a Retry sending a person's
-		// approved reply again (#1220). Only a person takes `approved` from here
+		// approved reply again. Only a person takes `approved` from here
 		// (`refusedAsNotAPerson`).
 		failed: ['received', 'draft_ready', 'approved'],
 	},

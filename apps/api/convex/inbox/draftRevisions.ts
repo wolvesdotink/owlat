@@ -65,8 +65,7 @@ export function draftDiffersFromAgentOriginal(message: Doc<'inboundMessages'>): 
  *
  * A save while the agent can still write its draft over this one (`drafting`,
  * `awaiting_clarification`, `failed`) takes the reply over first, so the late
- * agent draft cannot replace the saved text or clear its revisions (#1221,
- * #1220).
+ * agent draft cannot replace the saved text or clear its revisions.
  */
 export async function appendDraftRevision(
 	ctx: MutationCtx,

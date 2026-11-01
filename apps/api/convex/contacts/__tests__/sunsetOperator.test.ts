@@ -449,8 +449,8 @@ describe('blockedEmails.blocklist.remove — un-suppressing a sunset row does no
 		const t = harness();
 		const { liveId, deletedId, blockedEmailId } = await t.run(async (ctx) => {
 			// Inserted FIRST so it sorts ahead of the live row on the non-unique
-			// `by_email` index — the shape that used to send `remove` down the
-			// plain-delete path and strand the live contact on `suppressed`.
+			// `by_email` index. A lookup that took the first row would send `remove`
+			// down the plain-delete path and strand the live contact on `suppressed`.
 			const deleted = await ctx.db.insert(
 				'contacts',
 				createTestContact({

@@ -1,6 +1,5 @@
 /**
- * Renew repeated Block and accordion-section ids in saved emails (issue
- * #1083, migration 0055).
+ * Renew repeated Block and accordion-section ids in saved emails (migration 0055).
  *
  * Emails saved before duplication renewed descendant ids can hold two copies
  * of a composite Block that share ids: accordion headers in the sent email

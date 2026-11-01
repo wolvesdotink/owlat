@@ -1,5 +1,5 @@
 /**
- * The abandoned-question reminder's sends (#1343).
+ * The abandoned-question reminder's sends.
  *
  * `processingLifecycle.reconcileAbandonedClarifications` keeps the Answer
  * queue's index right and starts ONE chain of this worker per run, by

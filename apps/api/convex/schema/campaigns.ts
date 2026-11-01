@@ -128,7 +128,7 @@ const campaignSendJobs = defineTable({
 
 /**
  * Audience count job — the resumable EXACT count behind the campaign wizard's
- * recipient readout (#916). The subscribed `countRecipients` query reads one
+ * recipient readout. The subscribed `countRecipients` query reads one
  * budgeted page inline; when that page does not reach the end of the audience,
  * the wizard asks `campaigns.audienceCountJob.request` for an exact count and
  * this row carries it across as many bounded steps as the audience needs (one

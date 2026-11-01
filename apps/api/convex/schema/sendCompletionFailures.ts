@@ -53,7 +53,7 @@ export const sendCompletionFailureStatusValidator = v.union(
 );
 
 /**
- * Durable record of a send completion that threw (#1195).
+ * Durable record of a send completion that threw.
  *
  * The workpool keeps no trace of an `onComplete` mutation that fails: it logs
  * and deletes the work row, and the worker's result (the only place a direct

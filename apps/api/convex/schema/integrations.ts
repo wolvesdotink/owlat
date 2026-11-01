@@ -35,7 +35,7 @@ export const integrationTables = {
 		// run. Written only by the walker's per-page accumulation; the terminal
 		// hop reports it once as `blocklist.provider_import_summary`.
 		suppressionCounts: v.optional(suppressionCountsValidator),
-		// Page identity and recovery (#996/#999). A page
+		// Page identity and recovery. A page
 		// commits only while `status` is 'running' and its `cursor` and page
 		// number still equal these, in the same transaction as its writes.
 		// `pagesCommitted` counts commits under that rule; absent on a run a

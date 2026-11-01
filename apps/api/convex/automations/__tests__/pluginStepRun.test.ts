@@ -1,6 +1,5 @@
 /**
- * A plugin automation step runs through the whole run-creation path (issue
- * #809, finding 9).
+ * A plugin automation step runs through the whole run-creation path.
  *
  * `automationSteps.stepType` and `automationStepRuns.stepType` are stored under
  * the plugin-extensible `stepKindValidator`, and the walker dispatches plugin

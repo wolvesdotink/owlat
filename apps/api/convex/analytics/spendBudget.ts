@@ -12,9 +12,9 @@
  * draft and its self-check, outcome sentiment; `agent/shared/agentSpend.ts`)
  * and every `embed()` (`lib/llm/embed.ts`, under an `embedding_*` feature). A
  * local embedder's rows price at zero (`isLocalEngine`); a hosted one's count
- * toward the ceiling like any other call (#1268). The per-step
+ * toward the ceiling like any other call. The per-step
  * `agentActions.tokenUsage` the walker stores is a reporting view and is never
- * summed here (#1259).
+ * summed here.
  *
  * ENFORCEMENT is not here. Admission and the enforced
  * status read the complete period aggregate (`aiRouting/admissionState.ts`,

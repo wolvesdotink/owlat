@@ -7,11 +7,12 @@ import { inboxStatsValidator, mtaHealthSnapshotValidator } from './instance';
  *
  * Convex re-runs a query when any document it read changes. Every feature-flag
  * gate (`lib/featureFlags.ts`, reached from `postboxQuery`, `requireMailboxAccess`
- * and most authed functions) used to read `instanceSettings`, and the same row
- * took a write on every contact insert, inbound message, transactional send and
- * MTA health poll. Each of those writes re-ran every gated query in every open
- * tab. The flags now live on their own singleton and each counter family on its
- * own row, so a gate read never shares a document with a frequent writer, and
+ * and most authed functions) reads the flags, and the counters take a write on
+ * every contact insert, inbound message, transactional send and MTA health
+ * poll. On one shared row each of those writes would re-run every gated query
+ * in every open tab. The flags live on their own singleton and each counter
+ * family on its own row, so a gate read never shares a document with a
+ * frequent writer, and
  * one counter's writes never re-run another counter's readers.
  *
  * Widen, migrate, narrow: the old columns stay on `instanceSettings` (marked

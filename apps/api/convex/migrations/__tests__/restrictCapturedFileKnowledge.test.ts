@@ -1,5 +1,5 @@
 /**
- * Migration 0069 (#1322): one sweep over the knowledge that existed when it
+ * Migration 0069: one sweep over the knowledge that existed when it
  * started. A historical dedup merge may have folded captured or Team Inbox
  * text, tags or contact links into an entry of any source type, Team Inbox
  * entries included, and nothing on an entry proves it did not, so every entry

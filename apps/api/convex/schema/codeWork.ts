@@ -42,7 +42,7 @@ export const codeWorkTables = {
 		cancelledAt: v.optional(v.number()),
 		// Publication checkpoint: the commit an attempt was about to push to
 		// `branch`, written before the push. A retry that finds the remote branch
-		// at this commit resumes publication (PR lookup/creation, acknowledgement)
+		// at the recorded commit resumes publication (PR lookup/creation, acknowledgement)
 		// instead of regenerating; a remote branch at any other commit is left
 		// alone and reported.
 		publishCommitSha: v.optional(v.string()),

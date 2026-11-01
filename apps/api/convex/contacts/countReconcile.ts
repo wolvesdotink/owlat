@@ -1,11 +1,11 @@
 /**
  * Contact-count reconcile: recount the live contacts in bounded transactions
- * and correct the cached `contactCount` (issue #917).
+ * and correct the cached `contactCount`.
  *
- * The count used to be one mutation that streamed every live contact. Streaming
+ * The count cannot be one mutation that streams every live contact. Streaming
  * keeps memory flat but does not reset a transaction's read budget, so a large
- * contact book failed the daily reconcile outright, and every dashboard read on
- * an instance without a cached count did the same scan.
+ * contact book would fail the daily reconcile outright, and every dashboard read
+ * on an instance without a cached count would do the same scan.
  *
  * ── HOW A RUN COUNTS WITHOUT LOSING A CONCURRENT WRITE ──────────────────────
  * A run is a GENERATION: one `counterScopes` row of kind `contactLiveTotal`

@@ -159,8 +159,8 @@ export const MAX_ASSIGNEE_PRESENCE_PAIRS = 200;
  * pulsing ring on a team-inbox row's assignee avatar. Returns the thread ids
  * whose (thread, assignee) presence row is inside the active window.
  *
- * This used to be read inside `inbox/queries.ts` `listThreads`, so every
- * presence write re-ran every admin's thread list, including the one the
+ * Kept out of `inbox/queries.ts` `listThreads`: read there, every presence
+ * write would re-run every admin's thread list, including the one the
  * shell sidebar keeps mounted. Only the Team Inbox list page shows the ring,
  * so it asks here with its visible assigned rows and nothing else subscribes.
  * Each pair is one point-read on `by_user_thread`, so a heartbeat only

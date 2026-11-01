@@ -69,7 +69,7 @@ export function registerContactHygieneCrons(crons: Crons): void {
 		{}
 	);
 
-	// Contact property deletion (#918): restart cleanup chains that went quiet
+	// Contact property deletion: restart cleanup chains that went quiet
 	// and re-arm failed ones. A deletion normally finishes on its own chain;
 	// this only recovers a crashed action or a lost schedule.
 	crons.interval(

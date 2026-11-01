@@ -143,7 +143,7 @@ export const webhookTables = {
 	// The signature contract's timestamp tolerance is what makes this table small:
 	// a captured request stops verifying once it falls outside the tolerance, so a
 	// claim only has to outlive that window (`expiresAt`). The exception is a
-	// Svix receipt (#1367), which names the message rather than the attempt and
+	// Svix receipt, which names the message rather than the attempt and
 	// is kept for the sender's retry window (about two days, `receiptExpiresAt`);
 	// even those are bounded by delivery volume. The claim mutation ages
 	// expired rows out in bounded batches on its own hot path; because that only
@@ -161,7 +161,7 @@ export const webhookTables = {
 		// parameterized-HMAC arm hashes the verified signature, never storing it,
 		// since it is a live MAC under a shared secret. The Svix arm (`v3:message`)
 		// hashes the message id and a hash of the body instead, so a re-spelled
-		// signature header, a rotated key (#1328) or a re-signed retry (#1367)
+		// signature header, a rotated key or a re-signed retry
 		// keeps one name. That digest covers no secret and can be predicted, which
 		// is harmless: it is only claimed after its delivery verified. Rows written
 		// under an earlier Svix version no longer match; that matters for at most
@@ -173,7 +173,7 @@ export const webhookTables = {
 		// window, or for a claim with `receiptExpiresAt` an in-flight lease and,
 		// once completed, the receipt's end.
 		expiresAt: v.number(),
-		// Only on a claim whose digest outlives the request (Svix, #1367): how long
+		// Only on a claim whose digest outlives the request (Svix): how long
 		// the receipt must answer for the message once the batch is applied.
 		// `complete` moves `expiresAt` to it.
 		receiptExpiresAt: v.optional(v.number()),
@@ -193,7 +193,7 @@ export const webhookTables = {
 		.index('by_expires_at', ['expiresAt']),
 
 	// Replay claims for single provider EVENTS whose provider gives them no id
-	// and signs no timestamp (Mandrill, #1228). One row per applied
+	// and signs no timestamp (Mandrill). One row per applied
 	// address-keyed or complaint event, keyed by the adapter's `replayKey`
 	// (`mandrill:<event>:<msg._id>:<ts ms>`): no address, no payload. Same claim
 	// protocol as `pluginWebhookDeliveries` above (in flight, then completed, and
@@ -263,7 +263,7 @@ export const webhookTables = {
 		.index('by_event_id', ['eventId'])
 		.index('by_expires_at', ['expiresAt']),
 
-	// Bounces and complaints whose provider message id matched no Send (#1194).
+	// Bounces and complaints whose provider message id matched no Send.
 	// The dispatcher used to log these and drop them; a row here lets an
 	// operator count them and replay them once the id resolves (a late
 	// completion, a repair that writes the id back). `webhooks/unresolvedFeedback.ts`
@@ -271,7 +271,7 @@ export const webhookTables = {
 	// short backoff and deleted 90 days after it was first seen.
 	//
 	// A complaint with NO message id (RFC 5965 redaction) that carried no proof
-	// this deployment sent the mail is kept here too (#1227), with no
+	// this deployment sent the mail is kept here too, with no
 	// `providerMessageId`. There is nothing to replay it by, so it is stored
 	// already closed (`resolution: 'no_message_id'`) and only counted.
 	//
@@ -284,7 +284,7 @@ export const webhookTables = {
 	// memory. So the contact erasure has nothing to find here.
 	unresolvedFeedback: defineTable({
 		kind: v.union(v.literal('bounce'), v.literal('complaint')),
-		// Absent only on a complaint that arrived without one (#1227).
+		// Absent only on a complaint that arrived without one.
 		providerMessageId: v.optional(v.string()),
 		// The adapter's `providerType`; `mta` replays through the MTA resolver.
 		providerType: v.optional(v.string()),
@@ -306,7 +306,7 @@ export const webhookTables = {
 		status: v.union(v.literal('open'), v.literal('resolved')),
 		// `replayed`: the Send lifecycle applied the event. `refused`: the id
 		// resolves now, but the lifecycle refused the edge (a terminal Send), or
-		// the Send is not the match an out-of-scope row waits for (#1243).
+		// the Send is not the match an out-of-scope row waits for.
 		// `no_message_id`: the event carried no id, so no replay can match it.
 		resolution: v.optional(
 			v.union(v.literal('replayed'), v.literal('refused'), v.literal('no_message_id'))
@@ -317,7 +317,7 @@ export const webhookTables = {
 		// Absent once the automatic replays are spent or the row resolved.
 		nextReplayAt: v.optional(v.number()),
 		// Present when the event came from outside this deployment's sending
-		// scope (#1243): a replay applies it only to a Send through the same
+		// scope: a replay applies it only to a Send through the same
 		// provider kind whose recipient hashes to `recipientHash`, an HMAC of the
 		// normalized address keyed by the message id. Avoids a plaintext address,
 		// but a guessed one can be confirmed against it. Compared, never read back.

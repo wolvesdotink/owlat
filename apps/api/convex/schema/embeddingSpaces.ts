@@ -14,7 +14,7 @@ import {
 } from '../lib/validators/embedding';
 
 /**
- * Embedding provenance (#1334).
+ * Embedding provenance.
  *
  * `knowledgeEntries` and `semanticFiles` stamp each vector with the space it
  * lives in (`embeddingSpaceId`) and where that came from (`embeddingProvenance`).

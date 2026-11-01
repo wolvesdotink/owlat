@@ -153,7 +153,7 @@ async function collectContactData(ctx: QueryCtx, contactId: Id<'contacts'>) {
 				html: await storedSize(ctx, row.htmlBodyStorageId),
 			};
 			// An agent draft with gaps nobody agreed to leaves no read boundary,
-			// the export's included (lib/heldGapDraft.ts, #1343).
+			// the export's included (lib/heldGapDraft.ts).
 			return {
 				...withHeldGapDraft(row),
 				textBody: body.text,

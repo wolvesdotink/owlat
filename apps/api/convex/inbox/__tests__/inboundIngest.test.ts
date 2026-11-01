@@ -946,10 +946,10 @@ describe('inboundIngest — what the row says about files nobody read', () => {
 		const t = setupTest();
 		configureMta();
 		// The craft is one header word: `Content-Disposition: inline` on an
-		// `invoice.pdf.exe`. The leaf used to be dropped before the scan, so the
-		// message stored no verdict at all and the thread view rendered a normal
-		// row with a live download beside it — the same file with `attachment`
-		// would have been scanned and quarantined.
+		// `invoice.pdf.exe`. An inline leaf must reach the scan too: dropped before
+		// it, the message stores no verdict at all and the thread view renders a
+		// normal row with a live download beside it, while the same file with
+		// `attachment` is scanned and quarantined.
 		const scanner = stubScannerPerFile({
 			'invoice.pdf.exe': { clean: false },
 		});
@@ -1170,7 +1170,7 @@ describe('inboundIngest — what the row says about files nobody read', () => {
 
 		// There is no safe scope for a document from a sender nobody can verify:
 		// under the claimed contact it joins that customer's retrieval, and
-		// ORG-GENERAL — which is what this used to do — joins EVERY contact's.
+		// ORG-GENERAL joins EVERY contact's.
 		await t.action(internal.inbox.inboundIngest.ingestFromWebhook, {
 			mail: {
 				from: 'CEO <ceo@customer.example>',

@@ -3,7 +3,7 @@
  * `attribution` sentence) get the `origin` the sentence implies and lose the
  * sentence, on Reply Queue threads and Answer mode sessions alike.
  *
- * Since #1224 the schema has no `attribution`, so the current schema cannot
+ * The schema has no `attribution` field, so the current schema cannot
  * hold such a row and a deployment that still has one rejects the deploy. The
  * conversion is exercised against the same tables with schema validation off,
  * which stands in for the data a 0.6.10 deployment holds before 0066 has run.
@@ -268,7 +268,7 @@ describe('0066_backfill_clarification_origin', () => {
 	});
 
 	it('converts a question stored behind the cursor on a restart', async () => {
-		// #1224 step 1: an action that started before the 0.6.10 deploy can store
+		// The restart pass: an action that started before the 0.6.10 deploy can store
 		// a question with `attribution` after the walk has passed its thread.
 		const t = convexTest(legacySchema, modules);
 		const mailboxId = await seedMailbox(t);

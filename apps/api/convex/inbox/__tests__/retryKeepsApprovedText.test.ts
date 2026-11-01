@@ -1,11 +1,11 @@
 /**
- * Retry keeps a person's reply (#1220). A reviewer edited and approved a
- * draft, the send failed, and Retry re-ran the whole agent pipeline: the new
- * agent draft replaced the approved text, cleared its revisions, and with
- * auto-reply on could go out unreviewed. The retry cron did the same to a
- * person's save on a message that failed in a pipeline step. Now a failed send
- * of approved text is sent again, a person's reply goes back to review, and
- * only a message nobody touched re-runs the agent, on both paths.
+ * Retry keeps a person's reply. A reviewer edited and approved a draft and the
+ * send failed: re-running the whole agent pipeline would let the new agent
+ * draft replace the approved text, clear its revisions, and with auto-reply on
+ * go out unreviewed. The retry cron would do the same to a person's save on a
+ * message that failed in a pipeline step. So a failed send of approved text is
+ * sent again, a person's reply goes back to review, and only a message nobody
+ * touched re-runs the agent, on both paths.
  */
 
 import { convexTest } from 'convex-test';

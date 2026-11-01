@@ -283,7 +283,7 @@ export const knowledgeTables = {
 	knowledgeEntryContacts: defineTable({
 		entryId: v.id('knowledgeEntries'),
 		contactId: v.id('contacts'),
-		...knowledgeEntryCommitmentFacets, // open-commitment index keys (#919)
+		...knowledgeEntryCommitmentFacets, // open-commitment index keys
 	})
 		.index('by_contact', ['contactId'])
 		.index('by_entry', ['entryId'])

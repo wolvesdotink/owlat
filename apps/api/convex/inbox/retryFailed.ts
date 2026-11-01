@@ -1,11 +1,11 @@
 /**
- * Retry of a failed Team inbox message (#1220).
+ * Retry of a failed Team inbox message.
  *
- * Retry used to send every failed message back through the agent pipeline. A
- * reply a person had approved whose send then failed came back as a new agent
- * draft: the approved text and its saved revisions were gone, and with
+ * Retry does not send every failed message back through the agent pipeline. A
+ * reply a person approved whose send then failed would come back as a new
+ * agent draft: the approved text and its saved revisions gone, and with
  * auto-reply on the new draft could go out with nobody reading it. Where the
- * message failed now decides what Retry does (`@owlat/shared/inboxRetry`, the
+ * message failed decides what Retry does (`@owlat/shared/inboxRetry`, the
  * same rule the retry cron and the Retry button's copy use):
  *
  * - `sendAgain`: the approved text is sent again as the person's approval, with

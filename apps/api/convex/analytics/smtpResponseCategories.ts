@@ -1,5 +1,5 @@
 /**
- * SMTP response categories — per-cell, per-arm rolling counters (issue #501).
+ * SMTP response categories — per-cell, per-arm rolling counters.
  *
  * THE MISSING HALF OF A CONTRACT THAT ALREADY EXISTED. `@owlat/shared/
  * smtpBlockCategories` has always named the vocabulary; the MTA has always

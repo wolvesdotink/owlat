@@ -10,8 +10,8 @@
  *
  * - `failed`: the agent tried and failed.
  * - `security_check` after a finished scan: with the agent off the pipeline
- *   stops after a clean scan. Turning the agent on later does not restart it
- *   (#1338), so the message stays a person's to answer.
+ *   stops after a clean scan. Turning the agent on later does not restart it,
+ *   so the message stays a person's to answer.
  * - `received` with no pipeline run: automated/self-send mail and mail over the
  *   agent cost cap are stored without starting the walker
  *   (inbox/messages.ts), so they would otherwise sit there for good.
@@ -263,7 +263,7 @@ async function moveToManualReply(
  * reply without anyone acting: `drafting`, where the draft step is in flight,
  * `awaiting_clarification`, which goes back to drafting as soon as anyone
  * answers its questions, and `failed`, which the retry
- * cron sends back through the pipeline after a step failure (#1220). The new
+ * cron sends back through the pipeline after a step failure. The new
  * agent draft would replace the saved text and, as a new draft, clear its
  * revisions.
  */
