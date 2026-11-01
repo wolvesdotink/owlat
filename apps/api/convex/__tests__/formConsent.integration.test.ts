@@ -16,7 +16,7 @@ import schema from '../schema';
 import { api, internal } from '../_generated/api';
 import type { Id } from '../_generated/dataModel';
 import { classifyAction } from '../forms/submission';
-import { DOI_TOKEN_TTL_MS } from '../contacts/doiLifecycle';
+import { DOI_TOKEN_TTL_MS } from '../contacts/doiLifecycleReducer';
 import { resolveContact } from '../contacts/resolution';
 import { expectScheduledFailure } from './helpers/scheduledFailures';
 import { createTestAutomation, createTestAutomationStep } from './factories';
