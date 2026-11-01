@@ -17,7 +17,8 @@ import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { useWizard } from '~/composables/useWizard';
 import DesktopDnsRecordList from '~/components/desktop/DnsRecordList.vue';
 import DesktopHostnameOverrides from '~/components/desktop/HostnameOverrides.vue';
-import type { ConnectInfo, ProvisionStage } from '~/lib/desktop/provisioning';
+import type { ConnectInfo } from '~/lib/desktop/provisioning';
+import type { ProvisionStage } from '~/composables/useServerProvisioning';
 
 const { computeSpfSuggestion } = vi.hoisted(() => ({ computeSpfSuggestion: vi.fn() }));
 vi.mock('~/utils/spfCoexistence', () => ({ computeSpfSuggestion }));
