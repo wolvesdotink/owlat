@@ -24,7 +24,7 @@ import type { RelayDomainIdentityFacts } from './relayIdentityView';
  * call), which is why they share one implementation. They do not agree on
  * what "ensure" means when a sibling row already exists:
  *
- *  - the CATCH-UP DRAIN (`providerRoutes.provisionDeliverabilityRelayBatch`)
+ *  - the CATCH-UP DRAIN (`delivery.providerRouteRelays.provisionDeliverabilityRelayBatch`)
  *    walks every verified domain on every page and must be cheap and
  *    convergent: a domain that already has a row is done, and re-registering it
  *    would re-issue a provider call per domain per drain. `reprovision: false`.

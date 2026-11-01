@@ -25,7 +25,7 @@ import type { MutationCtx } from '../../_generated/server';
 import type { Id } from '../../_generated/dataModel';
 import { internal } from '../../_generated/api';
 import { transition as threadTransition } from '../../inbox/threads/module';
-import { mirrorEmailSendWrite } from '../../unifiedMessages';
+import { mirrorEmailSendWrite } from '../../channels/messages';
 import { onTeamSendFinalized } from '../../mail/interpret/sendActivity';
 import { restoreAnsweredTeamThread, settleAnsweredTeamThread } from '../../inbox/answeredThread';
 import type { EmailSendDoc, SendRef, TransactionalSendDoc, TransitionInput } from './types';

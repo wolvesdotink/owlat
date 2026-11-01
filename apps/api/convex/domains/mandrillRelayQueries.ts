@@ -51,7 +51,7 @@ const MANDRILL_IDENTITY_VIEW_LIMIT = 200;
  * to publish for each.
  *
  * Admin-gated (`organization:manage`), matching
- * `providerRoutes.listRelayDomainIdentities`: which third party a domain is
+ * `delivery.providerRouteRelays.listRelayDomainIdentities`: which third party a domain is
  * registered with, and why it has not verified, is operational configuration,
  * not a member-level read.
  */

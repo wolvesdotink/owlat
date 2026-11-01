@@ -18,7 +18,7 @@ import { createTestContact, flushScheduled } from '../../__tests__/factories';
 import { pushHarness } from '../../push/__tests__/pushFixtures';
 import { appendDraftRevision } from '../../inbox/draftRevisions';
 import { isReplyOwed } from '../../inbox/sla/threadClock';
-import { recordInboundMirror } from '../../unifiedMessages';
+import { recordInboundMirror } from '../../channels/messages';
 import * as clarificationAnswers from '../../inbox/clarificationAnswers';
 
 // The team draft-gap fence's predicate (inbox/stepOutputs.ts), wrapped so a test

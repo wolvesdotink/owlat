@@ -26,7 +26,7 @@
  * all, and `plugin.mock-esp.relay` is `reference` by the same rule `'ses'` and
  * `'mandrill'` are. THAT IS THE FINDING, and the first describe block below
  * states it. The composed catalog and the plugin roster are mocked because ONE
- * door does read them: `providerRoutes.setRoute` validates the kind through
+ * door does read them: `delivery.providerRoutes.setRoute` validates the kind through
  * `isSendProviderKind` and its readiness through `isSendProviderReady`, which
  * resolves the entry's `pluginId` and re-checks the operator's capability grant.
  * That door is the last describe block, and without these two mocks it refuses
@@ -382,7 +382,7 @@ describe('an operator can route to a composed plugin kind, and only when it is g
 		configurePlugin();
 
 		expect(
-			await t.withIdentity(IDENTITY).mutation(api.providerRoutes.setRoute, pluginRoute())
+			await t.withIdentity(IDENTITY).mutation(api.delivery.providerRoutes.setRoute, pluginRoute())
 		).toBeTruthy();
 		// And the row the whole ramp half reads is the one the mutation wrote.
 		expect(await t.run(async (ctx) => await configuredRelayKinds(ctx))).toEqual([KIND]);
@@ -400,7 +400,7 @@ describe('an operator can route to a composed plugin kind, and only when it is g
 		configurePlugin();
 
 		await expect(
-			t.withIdentity(IDENTITY).mutation(api.providerRoutes.setRoute, pluginRoute())
+			t.withIdentity(IDENTITY).mutation(api.delivery.providerRoutes.setRoute, pluginRoute())
 		).rejects.toThrow();
 		expect(await t.run(async (ctx) => await configuredRelayKinds(ctx))).toEqual([]);
 	});
@@ -416,7 +416,7 @@ describe('an operator can route to a composed plugin kind, and only when it is g
 		configurePlugin();
 
 		await expect(
-			t.withIdentity(IDENTITY).mutation(api.providerRoutes.setRoute, pluginRoute())
+			t.withIdentity(IDENTITY).mutation(api.delivery.providerRoutes.setRoute, pluginRoute())
 		).rejects.toThrow();
 		expect(await t.run(async (ctx) => await configuredRelayKinds(ctx))).toEqual([]);
 	});
@@ -429,7 +429,7 @@ describe('an operator can route to a composed plugin kind, and only when it is g
 		await grantPlugin(t, { isFlagEnabled: true, isGranted: true });
 
 		await expect(
-			t.withIdentity(IDENTITY).mutation(api.providerRoutes.setRoute, pluginRoute())
+			t.withIdentity(IDENTITY).mutation(api.delivery.providerRoutes.setRoute, pluginRoute())
 		).rejects.toThrow();
 	});
 });

@@ -28,7 +28,7 @@ function threadData(overrides: Record<string, unknown> = {}) {
 
 const modules = import.meta.glob('../**/*.*s');
 
-describe('unifiedMessages.resolveOutboundThread', () => {
+describe('channels.outboundTargets.resolveOutboundThread', () => {
 	it('throws when the channel is not enabled', async () => {
 		const t = convexTest(schema, modules);
 		const contactId = await t.run((ctx) => ctx.db.insert('contacts', createTestContact()));
@@ -37,7 +37,7 @@ describe('unifiedMessages.resolveOutboundThread', () => {
 		);
 
 		await expect(
-			t.mutation(internal.unifiedMessages.resolveOutboundThread, {
+			t.mutation(internal.channels.outboundTargets.resolveOutboundThread, {
 				contactId,
 				channel: 'sms',
 			})
@@ -66,7 +66,7 @@ describe('unifiedMessages.resolveOutboundThread', () => {
 		);
 
 		await expect(
-			t.mutation(internal.unifiedMessages.resolveOutboundThread, {
+			t.mutation(internal.channels.outboundTargets.resolveOutboundThread, {
 				contactId,
 				channel: 'sms',
 			})
@@ -83,7 +83,7 @@ describe('unifiedMessages.resolveOutboundThread', () => {
 		);
 
 		await expect(
-			t.mutation(internal.unifiedMessages.resolveOutboundThread, {
+			t.mutation(internal.channels.outboundTargets.resolveOutboundThread, {
 				contactId,
 				channel: 'sms',
 			})
@@ -120,7 +120,7 @@ describe('unifiedMessages.resolveOutboundThread', () => {
 			);
 		});
 
-		const threadId = await t.mutation(internal.unifiedMessages.resolveOutboundThread, {
+		const threadId = await t.mutation(internal.channels.outboundTargets.resolveOutboundThread, {
 			contactId,
 			channel: 'sms',
 		});
@@ -168,7 +168,7 @@ describe('unifiedMessages.resolveOutboundThread', () => {
 			);
 		});
 
-		const threadId = await t.mutation(internal.unifiedMessages.resolveOutboundThread, {
+		const threadId = await t.mutation(internal.channels.outboundTargets.resolveOutboundThread, {
 			contactId,
 			channel: 'sms',
 			threadId: olderThreadId,
@@ -203,7 +203,7 @@ describe('unifiedMessages.resolveOutboundThread', () => {
 		});
 
 		await expect(
-			t.mutation(internal.unifiedMessages.resolveOutboundThread, {
+			t.mutation(internal.channels.outboundTargets.resolveOutboundThread, {
 				contactId,
 				channel: 'sms',
 				threadId: foreignThreadId,
@@ -226,7 +226,7 @@ describe('unifiedMessages.resolveOutboundThread', () => {
 			);
 		});
 
-		const threadId = await t.mutation(internal.unifiedMessages.resolveOutboundThread, {
+		const threadId = await t.mutation(internal.channels.outboundTargets.resolveOutboundThread, {
 			contactId,
 			channel: 'generic',
 		});
@@ -251,7 +251,7 @@ describe('unifiedMessages.resolveOutboundThread', () => {
 			await ctx.db.insert('instanceSettings', { createdAt: Date.now(), openThreads: 0 });
 		});
 
-		await t.mutation(internal.unifiedMessages.resolveOutboundThread, {
+		await t.mutation(internal.channels.outboundTargets.resolveOutboundThread, {
 			contactId,
 			channel: 'generic',
 		});
@@ -297,7 +297,7 @@ describe('unifiedMessages.resolveOutboundThread', () => {
 			await ctx.db.insert('instanceSettings', { createdAt: Date.now(), openThreads: 1 });
 		});
 
-		await t.mutation(internal.unifiedMessages.resolveOutboundThread, {
+		await t.mutation(internal.channels.outboundTargets.resolveOutboundThread, {
 			contactId,
 			channel: 'sms',
 		});

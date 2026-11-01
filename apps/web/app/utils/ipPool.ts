@@ -2,7 +2,7 @@
  * Pure helper for the provider-routing IP-pool override (provider-routing.vue).
  *
  * The field stays free-text (a future MTA build could expose more pools), but
- * the known set comes from the backend `providerRoutes.listIpPools` query so we
+ * the known set comes from the backend `delivery.providerRoutes.listIpPools` query so we
  * can autocomplete it and warn when an operator types a pool the MTA does not
  * route through — an unknown pool name is silently ignored by the MTA, so the
  * warning is the only signal the operator gets.

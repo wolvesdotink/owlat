@@ -4,7 +4,7 @@ import type { Id } from '@owlat/api/dataModel';
 /**
  * Cross-channel unified contact timeline (B4).
  *
- * Subscribes to `api.unifiedMessages.getContactTimeline` — the pure
+ * Subscribes to `api.channels.messages.getContactTimeline` — the pure
  * multi-channel message stream (email / sms / whatsapp / chat / generic),
  * already returned newest-first by the backend. Provides per-channel and
  * per-direction display helpers plus a channel filter. The activity-event
@@ -115,7 +115,7 @@ export function useUnifiedContactTimeline(contactId: Ref<Id<'contacts'>>) {
 		data: messages,
 		isLoading,
 		error,
-	} = useConvexQuery(api.unifiedMessages.getContactTimeline, () => ({
+	} = useConvexQuery(api.channels.messages.getContactTimeline, () => ({
 		contactId: contactId.value,
 		limit: 50,
 	}));
@@ -132,7 +132,7 @@ export function useUnifiedContactTimeline(contactId: Ref<Id<'contacts'>>) {
 
 	// The conversation thread an outbound native-chat reply would post on:
 	// the contact's most recent thread (the timeline is newest-first). Native
-	// chat (`unifiedMessages.sendChatMessage`) is keyed to a thread, so chat
+	// chat (`channels.messages.sendChatMessage`) is keyed to a thread, so chat
 	// compose is only offered once the contact has at least one thread.
 	const latestThreadId = computed<Id<'conversationThreads'> | null>(
 		() => timeline.value[0]?.threadId ?? null

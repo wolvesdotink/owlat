@@ -86,7 +86,7 @@ export async function applyEffects(
 				// THE FORWARD HALF OF A PAIR, and the pair shares ONE implementation:
 				// `enabledFallbackRelayKinds` → `relayIdentityBackfills` →
 				// `ensureRelayIdentities` is the whole rule, and the catch-up drain
-				// (`providerRoutes.provisionDeliverabilityRelayBatch`) walks the same
+				// (`delivery.providerRouteRelays.provisionDeliverabilityRelayBatch`) walks the same
 				// three. Neither the "which relay" reading, nor the registry filter,
 				// nor the own-MTA-primary gate is restated here — two spellings of
 				// "every domain gets an identity exactly once" is how one half starts

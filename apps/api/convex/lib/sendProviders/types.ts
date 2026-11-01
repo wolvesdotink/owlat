@@ -63,7 +63,7 @@ export function selectSendProviderKind(
 
 /**
  * Canonical IP-pool names the built-in MTA routes through. Single source of
- * truth for `MtaExtras.ipPool` (below) and the `providerRoutes.listIpPools`
+ * truth for `MtaExtras.ipPool` (below) and the `delivery.providerRoutes.listIpPools`
  * query that populates the provider-routing IP-pool autocomplete + the
  * unknown-name warning in the settings UI.
  */

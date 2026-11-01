@@ -12,7 +12,7 @@
  * Two responsibilities, both fed off the singleton-per-channel
  * `channelConfigs` row:
  *   1. `encryptAndPersistConfig` — the encrypt-on-write half of A3. The public
- *      `unifiedMessages.updateChannelConfig` mutation (v8) cannot encrypt
+ *      `channels.config.updateChannelConfig` mutation (v8) cannot encrypt
  *      itself, so it schedules this action with the plaintext config; we merge
  *      it over the stored credentials, wrap the result in an AES-256-GCM
  *      envelope (lib/credentialCrypto) and patch the row. The
@@ -45,7 +45,7 @@ import type { UnifiedMessageChannel, OutboundChannel } from '../lib/convexValida
 
 /**
  * Encrypt a channel's plaintext credential fields and persist the envelope on
- * the channelConfigs row. Scheduled by `unifiedMessages.updateChannelConfig` so
+ * the channelConfigs row. Scheduled by `channels.config.updateChannelConfig` so
  * the plaintext is never written to disk. Fails safe: on any error the row keeps
  * its previous (encrypted) config rather than storing plaintext.
  *
@@ -68,7 +68,7 @@ export const encryptAndPersistConfig = internalAction({
 	handler: async (ctx, args) => {
 		try {
 			const supplied = parseSuppliedCreds(args.plaintextConfig);
-			const existing = await ctx.runQuery(internal.unifiedMessages.getChannelConfigInternal, {
+			const existing = await ctx.runQuery(internal.channels.config.getChannelConfigInternal, {
 				channel: args.channel,
 			});
 			// An undecryptable stored envelope (rotated INSTANCE_SECRET, tampered
@@ -80,7 +80,7 @@ export const encryptAndPersistConfig = internalAction({
 
 			const merged: ChannelCreds = { ...stored, ...supplied };
 			const envelope = encryptSecret(JSON.stringify(merged));
-			await ctx.runMutation(internal.unifiedMessages.setChannelConfigSecret, {
+			await ctx.runMutation(internal.channels.config.setChannelConfigSecret, {
 				channel: args.channel,
 				config: JSON.stringify(envelope),
 				configuredFields: nonEmptyFieldNames(merged),
@@ -195,10 +195,13 @@ export const dispatchOutbound = internalAction({
 		// fixed endpoint and needs no recipient lookup.
 		let recipient: string | null = null;
 		if (args.channel === 'sms' || args.channel === 'whatsapp') {
-			recipient = await ctx.runQuery(internal.unifiedMessages.getContactChannelIdentifier, {
-				contactId: args.contactId,
-				channel: args.channel,
-			});
+			recipient = await ctx.runQuery(
+				internal.channels.outboundTargets.getContactChannelIdentifier,
+				{
+					contactId: args.contactId,
+					channel: args.channel,
+				}
+			);
 			if (!recipient) {
 				await record('failed', undefined, `Contact has no ${args.channel} address`);
 				return null;
@@ -247,7 +250,7 @@ export const dispatchOutbound = internalAction({
  * contact address) so the admin sees the error in the compose UI rather than a
  * silent `failed` row. The provider call itself still runs through fail-safe
  * `dispatchOutbound`. Shared-inbox readers only: a manual outbound on the Team
- * Inbox is a support action, matching `unifiedMessages.sendChatMessage`.
+ * Inbox is a support action, matching `channels.messages.sendChatMessage`.
  */
 // authz: shared-inbox reader gate enforced via internal.inbox.access
 // .assertSharedInboxReader inside the handler — actions can't read the session
@@ -272,11 +275,14 @@ export const sendChannelMessage = authedAction({
 		if (!text) throwInvalidInput('Message cannot be empty');
 
 		// Validate the send + resolve the thread (throws on a misconfiguration).
-		const threadId = await ctx.runMutation(internal.unifiedMessages.resolveOutboundThread, {
-			contactId: args.contactId,
-			channel: args.channel,
-			...(args.threadId ? { threadId: args.threadId } : {}),
-		});
+		const threadId = await ctx.runMutation(
+			internal.channels.outboundTargets.resolveOutboundThread,
+			{
+				contactId: args.contactId,
+				channel: args.channel,
+				...(args.threadId ? { threadId: args.threadId } : {}),
+			}
+		);
 
 		// Hand off to the shared fail-safe dispatch (records the outbound timeline
 		// row off the real SendResult). No inboundMessageId: this is not an
@@ -310,7 +316,7 @@ export const pollDeliveryStatus = internalAction({
 		const WINDOW_MS = 24 * 60 * 60 * 1000; // poll messages sent in the last 24h
 		const LIMIT = 100;
 
-		const pending = await ctx.runQuery(internal.unifiedMessages.listPendingDeliveryStatus, {
+		const pending = await ctx.runQuery(internal.channels.messages.listPendingDeliveryStatus, {
 			sinceMs: WINDOW_MS,
 			limit: LIMIT,
 		});
@@ -360,7 +366,7 @@ export const pollDeliveryStatus = internalAction({
  * adapter via the shared `loadAdapter` seam).
  *
  * Scheduled per-channel by the `channel health checks` cron
- * (`unifiedMessages.runChannelHealthChecks`), which cannot probe itself: the
+ * (`channels.health.runChannelHealthChecks`), which cannot probe itself: the
  * adapter probe needs `node:crypto` to decrypt the stored creds, so it must run
  * in a `'use node'` action rather than the v8 cron orchestrator. Calls the
  * adapter's `healthCheck()` (SmsAdapter pings Twilio, WhatsAppAdapter pings the
@@ -391,7 +397,7 @@ export const probeChannelHealth = internalAction({
 			};
 		}
 
-		await ctx.runMutation(internal.unifiedMessages.updateChannelHealth, {
+		await ctx.runMutation(internal.channels.health.updateChannelHealth, {
 			channel: args.channel,
 			healthStatus: health.status,
 			...(health.lastError !== undefined ? { lastError: health.lastError } : {}),
@@ -410,7 +416,7 @@ async function loadAdapter(
 	ctx: ActionCtx,
 	channel: UnifiedMessageChannel
 ): Promise<{ adapter: ChannelAdapter; error?: undefined } | { adapter: null; error: string }> {
-	const config = await ctx.runQuery(internal.unifiedMessages.getChannelConfigInternal, {
+	const config = await ctx.runQuery(internal.channels.config.getChannelConfigInternal, {
 		channel,
 	});
 	if (!config || !config.isEnabled || !config.config) {

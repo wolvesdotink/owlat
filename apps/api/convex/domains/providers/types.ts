@@ -320,7 +320,7 @@ export interface SendingDomainProviderModule<K extends SendingDomainProviderKind
 	 * The write half of what {@link relayDomainVerified} later reads, and the
 	 * catch-up path for the domains that already existed when an operator
 	 * switched the deliverability fallback on —
-	 * `providerRoutes.provisionDeliverabilityRelayBatch` walks them and asks
+	 * `delivery.providerRouteRelays.provisionDeliverabilityRelayBatch` walks them and asks
 	 * this of the kind the route named.
 	 *
 	 * BOTH HALVES ASK THIS METHOD. Domains verified after

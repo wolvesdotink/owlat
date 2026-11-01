@@ -55,8 +55,8 @@ export const messagingTables = {
 		// Idempotency key for mirrored email rows: an inbound email's SMTP
 		// Message-ID and an outbound agent reply's provider message id are unique
 		// per (channel, direction), so re-delivery / onComplete retries can guard
-		// against duplicate mirror rows. See unifiedMessages.recordInbound /
-		// mirrorEmailSend.
+		// against duplicate mirror rows. See channels/messages.ts
+		// recordInboundMirror / mirrorEmailSendWrite.
 		.index('by_external_message_id', ['externalMessageId']),
 
 	// Channel Configs - per-channel configuration and credentials
@@ -70,7 +70,7 @@ export const messagingTables = {
 		// the stored envelope currently holds a non-empty value for — never a
 		// value. The envelope is AES-256-GCM and only openable in a `'use node'`
 		// action, so a v8 query (and therefore the settings form) cannot derive
-		// this itself. Sole writer: `unifiedMessages.setChannelConfigSecret`,
+		// this itself. Sole writer: `channels.config.setChannelConfigSecret`,
 		// alongside the envelope it describes.
 		configuredFields: v.optional(v.array(v.string())),
 		// Health monitoring

@@ -1,7 +1,7 @@
 /**
  * A relay's sending-domain identity, as a sentence — for WHICHEVER relay.
  *
- * Pure derivation over `providerRoutes.listRelayDomainIdentities`, kept out of
+ * Pure derivation over `delivery.providerRouteRelays.listRelayDomainIdentities`, kept out of
  * the component so the judgements can be pinned without a DOM. It replaces
  * `mandrillRelayStatus`'s display half, which said all of this in Mandrill's
  * name; the provider's name is now a value the row carries, from the catalog.
@@ -30,7 +30,7 @@ import type { LocalizedText } from '~/utils/localizedText';
 
 /** One row of the query's page, as the backend actually types it. */
 type RelayDomainQueryRow = FunctionReturnType<
-	typeof api.providerRoutes.listRelayDomainIdentities
+	typeof api.delivery.providerRouteRelays.listRelayDomainIdentities
 >['page'][number];
 
 /**

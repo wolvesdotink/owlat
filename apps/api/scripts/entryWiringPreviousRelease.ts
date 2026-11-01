@@ -342,4 +342,43 @@ export const PREVIOUS_RELEASE_ENTRIES: Readonly<Record<string, string>> = {
 		'DOI confirmation mails the previous release queued',
 	'confirmationEmailQueries.ts#getTeamInfo':
 		'old DOI confirmation mails and delivery tests mid-run',
+	// Provider routing and the unified message timeline moved to
+	// delivery/providerRoutes.ts, delivery/providerRouteRelays.ts,
+	// channels/messages.ts, channels/config.ts, channels/outboundTargets.ts and
+	// channels/health.ts; remove after release 0.6.17.
+	'providerRoutes.ts#listRoutes':
+		'the previous provider routing and delivery migration pages, in tabs opened before the deploy',
+	'providerRoutes.ts#listIpPools':
+		'the previous provider routing page, in tabs opened before the deploy',
+	'providerRoutes.ts#listTransportCatalog':
+		'the previous provider routing and delivery migration pages, in tabs opened before the deploy',
+	'providerRoutes.ts#listRelayDomainIdentities':
+		'the previous relay domain status panel (provider routing, domains and migration pages), in tabs opened before the deploy',
+	'providerRoutes.ts#provisionDeliverabilityRelayBatch':
+		'relay identity drain pages the previous release queued',
+	'providerRoutes.ts#setRoute':
+		'the previous provider routing page and migration preset step, in tabs opened before the deploy',
+	'providerRoutes.ts#removeRoute':
+		'the previous provider routing page, in tabs opened before the deploy',
+	'unifiedMessages.ts#getThreadTimeline':
+		'the previous Team Inbox thread channel timeline, in tabs opened before the deploy',
+	'unifiedMessages.ts#getContactTimeline':
+		'the previous contact timeline tab, in tabs opened before the deploy',
+	'unifiedMessages.ts#listRecent':
+		'the previous delivery activity page, in tabs opened before the deploy',
+	'unifiedMessages.ts#getChannelConfigs':
+		'the previous channels settings page, delivery activity page, channel composer and dashboard channel card, in tabs opened before the deploy',
+	'unifiedMessages.ts#sendChatMessage':
+		'the previous channel composer on Team Inbox threads and the contact timeline, in tabs opened before the deploy',
+	'unifiedMessages.ts#updateChannelConfig':
+		'the previous channels settings page, in tabs opened before the deploy',
+	'unifiedMessages.ts#setChannelConfigSecret': 'old channel credential saves mid-run',
+	'unifiedMessages.ts#getChannelConfigInternal':
+		'old channel dispatches, credential saves, health probes and inbound secret reads mid-run',
+	'unifiedMessages.ts#listPendingDeliveryStatus': 'old channel delivery polls mid-run',
+	'unifiedMessages.ts#getContactChannelIdentifier': 'old channel dispatches mid-run',
+	'unifiedMessages.ts#resolveOutboundThread': 'old manual channel sends mid-run',
+	'unifiedMessages.ts#updateChannelHealth': 'old channel health probes mid-run',
+	'unifiedMessages.ts#runChannelHealthChecks': 'a channel health check the previous cron queued',
+	'unifiedMessages.ts#getEnabledChannels': 'old channel health checks mid-run',
 };

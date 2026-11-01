@@ -18,7 +18,7 @@ definePageMeta({
 // Global cross-channel activity feed: the newest messages across every channel
 // (email / sms / whatsapp / chat / generic), newest-first, with a server-side
 // channel filter. This is the global counterpart to the per-contact unified
-// timeline — it consumes `unifiedMessages.listRecent`. Rows link into their
+// timeline — it consumes `channels.messages.listRecent`. Rows link into their
 // conversation thread and carry hover-reveal actions (open / assign / resolve);
 // the channel filter pills carry a per-channel health dot.
 const {

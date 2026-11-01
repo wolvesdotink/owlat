@@ -208,7 +208,10 @@ describe('replies outside the processing lifecycle', () => {
 			responseDueAt: Date.now() - 1,
 			responseDueKind: 'first',
 		});
-		await t.mutation(api.unifiedMessages.sendChatMessage, { threadId, text: 'Sorry for the wait' });
+		await t.mutation(api.channels.messages.sendChatMessage, {
+			threadId,
+			text: 'Sorry for the wait',
+		});
 		const thread = await getThread(t, threadId);
 		expect(thread!.responseDueAt).toBeUndefined();
 		expect(thread!).toMatchObject({ slaMissedCount: 1 });

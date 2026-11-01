@@ -23,7 +23,7 @@ import { findOrCreateForEmail } from './threads/module';
 import { releaseClockIfNothingOwed } from './sla/threadClock';
 import { applyInboxStatsDelta } from '../lib/inboxStats';
 import { isFeatureEnabled } from '../lib/featureFlags';
-import { recordInboundMirror } from '../unifiedMessages';
+import { recordInboundMirror } from '../channels/messages';
 import { logError, logInfo, logWarn } from '../lib/runtimeLog';
 import { redactEmailAddress, redactSubject } from '@owlat/shared/logRedaction';
 import { rateLimiter } from '../lib/rateLimiter';

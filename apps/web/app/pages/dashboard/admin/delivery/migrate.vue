@@ -61,7 +61,7 @@ definePageMeta({
 // with no in-page permission read and no "owners and admins only" card that
 // nobody could reach.
 const { data: catalog, refetch: refetchCatalog } = useOrganizationQuery(
-	api.providerRoutes.listTransportCatalog
+	api.delivery.providerRoutes.listTransportCatalog
 );
 
 /**
@@ -70,7 +70,7 @@ const { data: catalog, refetch: refetchCatalog } = useOrganizationQuery(
  * commands, then re-reads the catalog until the server reports it connected.
  */
 const CONNECT_VARIABLES = ['MANDRILL_API_KEY'] as const;
-const { data: routes } = useOrganizationQuery(api.providerRoutes.listRoutes);
+const { data: routes } = useOrganizationQuery(api.delivery.providerRoutes.listRoutes);
 const { data: identities } = useOrganizationQuery(api.domains.mandrillRelayQueries.listIdentities);
 
 /** Set by the carry-over step when its two runs both finish. */

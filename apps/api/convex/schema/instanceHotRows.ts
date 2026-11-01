@@ -48,7 +48,7 @@ export const instanceHotRowTables = {
 	//                   `inbox/processingLifecycle` on transitions), and
 	//                   openThreads, conversation threads in 'open'
 	//                   (`applyOpenThreadDelta`, called by the Conversation thread
-	//                   module and `unifiedMessages.resolveOutboundThread`).
+	//                   module and `channels.outboundTargets.resolveOutboundThread`).
 	//                   `inbox/queries.getInboundStats` reads both instead of
 	//                   collecting the tables per subscriber.
 	//   - sends:        transactionalSendCount, dailySendCount, dailySendCountResetAt

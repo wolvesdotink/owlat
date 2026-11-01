@@ -123,7 +123,7 @@ export function eligibleFallbackRelays(
  * The refusal this fallback configuration would earn, or null when it would
  * save.
  *
- * The sentences are the BACKEND'S, verbatim (`providerRoutes.setRoute`), for the
+ * The sentences are the BACKEND'S, verbatim (`delivery.providerRoutes.setRoute`), for the
  * reason the backend keeps one predicate for two callers: a client-side guard
  * that phrases the same refusal differently teaches the operator a rule that
  * does not exist. Checked in the same order the mutation checks them, so the

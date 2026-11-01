@@ -112,7 +112,7 @@ export async function applyInboxStatsDelta(
  * status (create-as-open or non-open → open), `-1` when it leaves
  * ('open' → non-open). Clamped at 0. Called by every create-as-open /
  * status-transition path (the Conversation thread module plus the manual
- * outbound-channel thread opener in `unifiedMessages.resolveOutboundThread`);
+ * outbound-channel thread opener in `channels.outboundTargets.resolveOutboundThread`);
  * `getInboundStats` reads the result instead of collecting the whole
  * open-thread set per subscriber.
  */

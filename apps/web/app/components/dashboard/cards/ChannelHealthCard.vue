@@ -3,7 +3,7 @@ import { api } from '@owlat/api';
 
 const { t } = useI18n();
 
-const { data: channels, isLoading } = useOrganizationQuery(api.unifiedMessages.getChannelConfigs);
+const { data: channels, isLoading } = useOrganizationQuery(api.channels.config.getChannelConfigs);
 
 interface ChannelConfigRow {
 	_id: string;

@@ -25,7 +25,7 @@ import type { LocalizedText } from '~/utils/localizedText';
  * form's credential-field and info-message tables) stops compiling until the
  * new kind is handled — instead of silently rendering a channel with no fields.
  */
-export type ChannelKind = FunctionArgs<typeof api.unifiedMessages.updateChannelConfig>['channel'];
+export type ChannelKind = FunctionArgs<typeof api.channels.config.updateChannelConfig>['channel'];
 
 export interface AddableChannel {
 	kind: ChannelKind;

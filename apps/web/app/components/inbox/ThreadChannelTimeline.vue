@@ -23,8 +23,8 @@ const { t } = useI18n();
 // Per-thread cross-channel timeline. The inbound-message column above shows the
 // email-processing pipeline (drafts, classification); this surfaces the unified
 // `unifiedMessages` stream for the thread — every channel (email/sms/whatsapp/
-// chat/generic), in chronological order — via `unifiedMessages.getThreadTimeline`.
-const { data: messagesData } = useConvexQuery(api.unifiedMessages.getThreadTimeline, () => ({
+// chat/generic), in chronological order — via `channels.messages.getThreadTimeline`.
+const { data: messagesData } = useConvexQuery(api.channels.messages.getThreadTimeline, () => ({
 	threadId: props.threadId,
 	limit: 100,
 }));

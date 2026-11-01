@@ -132,7 +132,7 @@ async function seedOwnedDomain(t: TestConvex): Promise<void> {
 }
 
 async function listRows(t: TestConvex) {
-	const result = await t.query(api.providerRoutes.listRelayDomainIdentities, {
+	const result = await t.query(api.delivery.providerRouteRelays.listRelayDomainIdentities, {
 		paginationOpts: { cursor: null, numItems: 50 },
 	});
 	return result.page;

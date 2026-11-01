@@ -255,7 +255,7 @@ export function relayIdentityProviderFor(
  * rather than asked about one kind.
  *
  * The one caller is the relay-domain-identity READ
- * (`providerRoutes.listRelayDomainIdentities`), and enumerating is the whole
+ * (`delivery.providerRouteRelays.listRelayDomainIdentities`), and enumerating is the whole
  * point of it: the surface that reports "which of my domains are ready at my
  * relay?" has to answer for whichever kinds this deployment composed, not for a
  * list of vendors written into a query. Before it did, the answer was

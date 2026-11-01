@@ -7,7 +7,7 @@
  * The effect that does it used to be a hand-written pair of ifs —
  * `relayKinds.has('ses')` / `relayKinds.has('mandrill')` — which is a list, not
  * a capability: a newly registered `domainVerification: 'api'` kind got the
- * catch-up drain (`providerRoutes.provisionDeliverabilityRelayBatch`, already a
+ * catch-up drain (`delivery.providerRouteRelays.provisionDeliverabilityRelayBatch`, already a
  * registry walk since P0.2) and NOT this half, so its domains verified, silently
  * received no relay identity, and its fallback then refused to relay them — with
  * the only symptom a runtime refusal on a real send.
@@ -384,7 +384,7 @@ describe('the two kinds the if-chain named keep their shipped behaviour', () => 
 			});
 		});
 
-		await t.mutation(internal.providerRoutes.provisionDeliverabilityRelayBatch, {
+		await t.mutation(internal.delivery.providerRouteRelays.provisionDeliverabilityRelayBatch, {
 			paginationOpts: { cursor: null, numItems: 10 },
 		});
 

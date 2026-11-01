@@ -24,7 +24,7 @@
  * ENABLED `providerRoutes` rows as well as `EMAIL_PROVIDER` — so unchecking the
  * last enabled relay route on the provider-routing screen removes the arm
  * exactly as switching `EMAIL_PROVIDER` to `mta` does, through
- * `providerRoutes.setRoute`, which asks for nothing. That surface is open: it is
+ * `delivery.providerRoutes.setRoute`, which asks for nothing. That surface is open: it is
  * a routing editor rather than a transport change, and gating it belongs with a
  * consequence read of its own rather than with a phrase bolted onto a checkbox.
  *

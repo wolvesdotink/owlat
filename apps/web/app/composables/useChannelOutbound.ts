@@ -15,7 +15,7 @@ import type { Id } from '@owlat/api/dataModel';
  * `sms`/`whatsapp`/`generic` go through `channels.outbound.sendChannelMessage`,
  * which resolves the thread and schedules the same fail-safe provider dispatch
  * the AI agent's replies use. Native `chat` has no provider or credentials and
- * writes straight into Convex via `unifiedMessages.sendChatMessage`, so it needs
+ * writes straight into Convex via `channels.messages.sendChatMessage`, so it needs
  * a thread but no channel config. Both are admin-only; the backend re-checks.
  */
 
@@ -42,7 +42,7 @@ export function useChannelOutbound() {
 	const isAdmin = computed(() => role.value === 'owner' || role.value === 'admin');
 
 	const { data: channelConfigs } = useConvexQuery(
-		api.unifiedMessages.getChannelConfigs,
+		api.channels.config.getChannelConfigs,
 		() => ({})
 	);
 
@@ -59,7 +59,7 @@ export function useChannelOutbound() {
 		{ label: () => t('shared.useChannelOutbound.sendChannelMessageOperation'), type: 'action' }
 	);
 	const { run: sendChatMessage, isLoading: isSendingChat } = useBackendOperation(
-		api.unifiedMessages.sendChatMessage,
+		api.channels.messages.sendChatMessage,
 		{ label: () => t('shared.useChannelOutbound.sendChatMessageOperation'), type: 'mutation' }
 	);
 

@@ -253,7 +253,7 @@ insert where it is; folding it in is unclaimed by any piece.
 contracts, carried through `relaySurface.ts` into the relay-identity registry) is
 how a kind says what it can tell an operator about one sending domain, in the one
 shape every kind answers in: `RelayDomainIdentityFacts` —
-`providers/relayIdentityView.ts`. `providerRoutes.listRelayDomainIdentities`
+`providers/relayIdentityView.ts`. `delivery.providerRouteRelays.listRelayDomainIdentities`
 walks `relayIdentityProviders()` and returns one row per (domain, relay kind),
 labelled from the catalog, and a kind that implements no describe seam is still
 answered for by the generic read of its shared row. So registering a kind is what
@@ -477,8 +477,8 @@ persist. It previously also declared `lastSuccessfulSend` and
 `rateLimitRemaining`, which no adapter ever set, and `latencyMs`, which the
 Twilio and Meta probes measured on every five-minute run and then dropped —
 `channelConfigs` has no column for it. (`channelConfigs.lastSuccessfulSend` is
-real, but `unifiedMessages.recordOutbound` stamps it off an actual send, never
-a probe.) Persisting probe latency is a schema change; a member nothing reads
+real, but `channels/messages.ts` `insertOutboundMessage` stamps it off an actual
+send, never a probe.) Persisting probe latency is a schema change; a member nothing reads
 is not a substitute for one.
 
 **Nothing here verifies or parses an inbound webhook, and the contract has no

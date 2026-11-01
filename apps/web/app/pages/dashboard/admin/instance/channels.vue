@@ -28,7 +28,7 @@ const {
 	isLoading,
 	error: channelsError,
 	refetch: refetchChannels,
-} = useOrganizationQuery(api.unifiedMessages.getChannelConfigs);
+} = useOrganizationQuery(api.channels.config.getChannelConfigs);
 
 // Adding a channel requires `organization:manage` (owner/admin). The backend
 // re-checks via `requireOrgPermission`; the client-side gate is here so editors
@@ -51,7 +51,7 @@ const addMenuOpen = ref(false);
 const isLgViewport = useMediaQuery('(min-width: 1024px)');
 const addingChannel = ref(false);
 
-const { run: addChannelConfig } = useBackendOperation(api.unifiedMessages.updateChannelConfig, {
+const { run: addChannelConfig } = useBackendOperation(api.channels.config.updateChannelConfig, {
 	label: () => t('dashboard.admin.instance.channels.addChannel'),
 });
 

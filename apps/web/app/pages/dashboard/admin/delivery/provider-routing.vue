@@ -42,7 +42,7 @@ const { hasActiveOrganization, isLoading: organizationLoading } = useOrganizatio
 
 // ── Static option sets (mirror the backend literal unions) ──────────
 // messageType: schema/delivery.ts providerRoutes; strategy: strategyValidator
-// in providerRoutes.ts; providerType: SEND_PROVIDERS registry in
+// in delivery/providerRoutes.ts; providerType: SEND_PROVIDERS registry in
 // lib/sendProviders/index.ts.
 interface ProviderEntry {
 	providerType: string;
@@ -78,7 +78,7 @@ const setupVariablesFor = (providerType: string): readonly string[] =>
 // The IP-pool names the built-in MTA routes through — used to autocomplete the
 // per-route override and warn on an unknown pool name (silently ignored by the
 // MTA otherwise).
-const { data: ipPools } = useOrganizationQuery(api.providerRoutes.listIpPools);
+const { data: ipPools } = useOrganizationQuery(api.delivery.providerRoutes.listIpPools);
 
 const isLoading = computed(() => organizationLoading.value || routesLoading.value);
 
@@ -90,10 +90,10 @@ const providerAvailable = (providerType: string): boolean =>
 	isTransportAvailable(transportOptions.value, providerType);
 
 // ── Mutations ───────────────────────────────────────────────────────
-const { run: setRoute } = useBackendOperation(api.providerRoutes.setRoute, {
+const { run: setRoute } = useBackendOperation(api.delivery.providerRoutes.setRoute, {
 	label: () => t('dashboard.admin.delivery.providerRouting.operations.save'),
 });
-const { run: removeRoute } = useBackendOperation(api.providerRoutes.removeRoute, {
+const { run: removeRoute } = useBackendOperation(api.delivery.providerRoutes.removeRoute, {
 	label: () => t('dashboard.admin.delivery.providerRouting.operations.reset'),
 });
 const { showToast: showNotification } = useToast();
