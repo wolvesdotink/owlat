@@ -52,7 +52,7 @@ const { hasActiveOrganization } = useOrganizationContext();
 // ── Unsaved-changes guard ───────────────────────────────────────────
 // Both form builders live in modals, so their drafts — a name, a topic, a
 // redirect and a whole field list — exist only while the modal is up. A
-// command-palette jump, a browser Back or a tab close used to throw all of it
+// command-palette jump, a browser Back or a tab close must not throw all of it
 // away without a word. Dirtiness is the draft measured against the snapshot
 // taken when the modal opened, so opening a form just to read it never prompts.
 const addSnapshot = ref('');
@@ -159,7 +159,7 @@ watch([isAddDirty, isEditDirty], ([add, edit]) => setHasChanges(add || edit), { 
 				</div>
 			</div>
 
-			<!-- A failed read is not an empty list (#721). -->
+			<!-- A failed read is not an empty list. -->
 			<UiQueryBoundary v-if="formsError" :error="formsError" @retry="refetchForms" />
 
 			<!-- Empty State -->

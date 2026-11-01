@@ -1,12 +1,11 @@
 <script setup lang="ts">
 /**
- * Templates: one list of every email template with a type filter (#787).
+ * Templates: one list of every email template with a type filter.
  *
- * This used to be an overview of stat tiles, a "Quick Actions" row (which
- * also linked Media and Files) and two "recent" cards, each with its own
- * create button. Now there is one list, one filter and one "New template".
- * Saved blocks keep their own page, linked from the header; images are
- * picked from inside the email editor.
+ * One list, one filter and one "New template" button: no stat tiles, quick
+ * actions or "recent" cards with create buttons of their own. Saved blocks
+ * keep their own page, linked from the header; images are picked from inside
+ * the email editor.
  */
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';

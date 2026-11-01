@@ -228,7 +228,7 @@ async function handleGuardSave() {
 				:description="t('dashboard.admin.delivery.webhooks.noWorkspace.description')"
 			/>
 
-			<!-- A failed read is not an empty list (#721). -->
+			<!-- A failed read is not an empty list. -->
 			<UiQueryBoundary v-else-if="webhooksError" :error="webhooksError" @retry="refetchWebhooks" />
 
 			<!-- Empty State (no webhooks) -->

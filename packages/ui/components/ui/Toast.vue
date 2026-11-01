@@ -22,7 +22,7 @@ const politeToasts = computed(() => toasts.value.filter((t) => t.type !== 'error
 			Bottom: 1.5rem above the safe-area inset, or 0.5rem above whatever fixed
 			chrome the app reports in `--ui-bottom-chrome-height` (the web app's
 			mobile tab bar sets it while it is on screen), whichever is higher, so a
-			toast never covers the bar's buttons (#1438).
+			toast never covers the bar's buttons.
 		-->
 		<div
 			class="pointer-events-none fixed bottom-[max(calc(var(--ui-bottom-chrome-height,0px)+0.5rem),calc(1.5rem+env(safe-area-inset-bottom,0px)))] left-[calc(1rem+env(safe-area-inset-left,0px))] right-[calc(1rem+env(safe-area-inset-right,0px))] z-(--z-toast) flex flex-col gap-3 sm:left-auto sm:right-[calc(1.5rem+env(safe-area-inset-right,0px))]"

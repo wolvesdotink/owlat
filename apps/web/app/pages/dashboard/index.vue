@@ -339,7 +339,7 @@ useWorkbenchKeyboard({
 			:error="inboxRead.error.value"
 			@retry="inboxRead.refetch"
 		/>
-		<!-- No inbox to work from yet (a failed read is not that, #721). -->
+		<!-- No inbox to work from yet (a failed read is not that). -->
 		<div
 			v-else-if="scope === null"
 			class="mt-8 flex flex-col items-start gap-3 rounded-2xl border border-dashed border-border-subtle px-6 py-8"

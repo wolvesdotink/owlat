@@ -241,10 +241,10 @@ useMarketingNotices();
 // step was blocked while the instance had no outbound transport.
 useSendReadyNotice();
 
-// Quick Query used to be a second modal with its own Cmd/Ctrl+Shift+K handler
-// and its own open event. Both now live in `AppCommandPalette`, which opens
-// pre-switched to its Ask scope behind the same `ai.knowledge` gate — one
-// overlay, one shortcut owner, and knowledge answers next to object results.
+// Quick Query has no modal, shortcut handler or open event of its own: it is
+// `AppCommandPalette` opened pre-switched to its Ask scope behind the same
+// `ai.knowledge` gate — one overlay, one shortcut owner, and knowledge answers
+// next to object results.
 </script>
 
 <template>

@@ -127,7 +127,7 @@ const mimeIcon = computed(() => {
 			{{ t('dashboard.files.detail.backToFiles') }}
 		</NuxtLink>
 
-		<!-- A failed read is not a missing file (#721). -->
+		<!-- A failed read is not a missing file. -->
 		<UiQueryBoundary v-if="fileError" :error="fileError" @retry="refetchFile" />
 
 		<!-- Loading -->

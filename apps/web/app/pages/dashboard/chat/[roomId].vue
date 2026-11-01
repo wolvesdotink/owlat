@@ -108,7 +108,7 @@ const handleLeave = async () => {
 			</button>
 		</div>
 
-		<!-- A failed read is not a room you cannot reach (#721). -->
+		<!-- A failed read is not a room you cannot reach. -->
 		<div v-if="roomError" class="flex-1 flex items-center justify-center">
 			<UiQueryBoundary :error="roomError" @retry="refetchRoom" />
 		</div>

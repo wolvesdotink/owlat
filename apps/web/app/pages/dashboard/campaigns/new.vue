@@ -204,7 +204,7 @@ const hasWizardProgress = computed(
 
 watch(hasWizardProgress, (value) => setHasChanges(value), { immediate: true });
 
-// The email editor round trip (#1048). Everything the wizard shows is already
+// The email editor round trip. Everything the wizard shows is already
 // persisted except Review's schedule choice, which rides in the return link, so
 // the leave guard has nothing to protect on the way out. It re-arms if the
 // navigation does not happen.

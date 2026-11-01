@@ -143,7 +143,7 @@ const handleDelete = async () => {
 			{{ t('dashboard.knowledge.detail.backToGraph') }}
 		</NuxtLink>
 
-		<!-- A failed read is not a deleted entry (#721). -->
+		<!-- A failed read is not a deleted entry. -->
 		<UiQueryBoundary v-if="entryError" :error="entryError" @retry="refetchEntry" />
 
 		<!-- Loading -->

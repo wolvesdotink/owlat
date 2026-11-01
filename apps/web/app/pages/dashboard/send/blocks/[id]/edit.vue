@@ -147,7 +147,7 @@ const handleSettings = () => {
 				: 'h-[calc(100dvh-var(--titlebar-h,0px)-64px)]'
 		"
 	>
-		<!-- A failed read is not a missing block (#721). -->
+		<!-- A failed read is not a missing block. -->
 		<div v-if="blockError" class="h-full flex items-center justify-center bg-bg-deep">
 			<UiQueryBoundary :error="blockError" @retry="refetchBlock" />
 		</div>

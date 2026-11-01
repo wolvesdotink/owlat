@@ -82,7 +82,7 @@ const selectedEvidence = computed<DeliverabilityDashboardCell | null>(
 /**
  * The span those gate verdicts were decided over — the ramp controller's own,
  * which is exactly why this panel can stand beside the decision history without
- * the two disagreeing (#510). Named on screen rather than assumed: this page
+ * the two disagreeing. Named on screen rather than assumed: this page
  * shows no counters of its own, so a reader has nothing else to infer it from.
  */
 const evidenceWindowLabel = computed(() => {

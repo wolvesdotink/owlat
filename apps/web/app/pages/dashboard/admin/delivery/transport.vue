@@ -158,10 +158,9 @@ const inboundHeadingId = useId();
 
 		<!--
 			One state machine for the whole page: loading → error → "no status
-			yet" → content. The three branches used to be hand-rolled `v-if`s
-			whose loading arm was a bare centred spinner and whose content arm
-			had no `v-else` at all, so a `getStatus` that resolved to nothing
-			rendered this header and then a blank page.
+			yet" → content. Hand-rolled `v-if`s are easy to leave without a
+			`v-else` arm, and a `getStatus` that resolves to nothing must show
+			the empty state, not this header above a blank page.
 		-->
 		<UiQueryBoundary
 			:loading="isLoading && !status"

@@ -218,7 +218,7 @@ const indicatorStyle = computed(() => {
 	top: 4px;
 	height: calc(100% - 8px);
 	/* Monochrome selection: one step up the ladder plus a ring, the same recipe
-	   as `.btn-secondary`. It used to be a solid `--color-brand` fill, i.e. a
+	   as `.btn-secondary`. Not a solid `--color-brand` fill, i.e. a
 	   terracotta nav pill — the smell DESIGN-LANGUAGE.md §5 names first. */
 	background: var(--surface-3);
 	border-radius: 9999px;

@@ -142,7 +142,7 @@ const handleExport = async () => {
 
 <template>
 	<div class="mx-auto w-full max-w-page p-6 lg:p-8">
-		<!-- A failed read is not a missing segment (#721). -->
+		<!-- A failed read is not a missing segment. -->
 		<UiQueryBoundary v-if="segmentError" :error="segmentError" @retry="refetchSegment" />
 
 		<!-- Loading State -->

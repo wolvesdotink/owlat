@@ -145,7 +145,7 @@ const { showToast } = useToast();
 
 <template>
 	<div class="mx-auto w-full max-w-page p-6 lg:p-8">
-		<!-- A failed read is not a missing topic (#721). -->
+		<!-- A failed read is not a missing topic. -->
 		<UiQueryBoundary v-if="topicError" :error="topicError" @retry="refetchTopic" />
 
 		<!-- Loading State -->

@@ -167,7 +167,7 @@ const handleEdit = () => {
 
 <template>
 	<div class="mx-auto w-full max-w-page p-6 lg:p-8">
-		<!-- A failed read is not a missing automation (#721). -->
+		<!-- A failed read is not a missing automation. -->
 		<UiQueryBoundary v-if="automationError" :error="automationError" @retry="refetchAutomation" />
 
 		<!-- Loading State -->

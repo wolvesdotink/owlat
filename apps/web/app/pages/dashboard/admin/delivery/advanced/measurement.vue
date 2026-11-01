@@ -29,7 +29,7 @@
  *
  * AND THE PAGE NAMES BOTH SPANS. What the cards COUNT is the reported window;
  * what their checks DECIDED on is the ramp controller's own window, which is what
- * makes the verdicts here the ones the cron reached (#510). Both labels are in
+ * makes the verdicts here the ones the cron reached. Both labels are in
  * the heading, and the deciding one travels down to every card.
  */
 import { api } from '@owlat/api';
@@ -145,7 +145,7 @@ const cells = computed<DeliverabilityDashboardCell[]>(() => {
 });
 
 /**
- * THE TWO SPANS, NAMED SEPARATELY (#510). The counters, the trend and the arm
+ * THE TWO SPANS, NAMED SEPARATELY. The counters, the trend and the arm
  * columns are over the REPORTED window; every check on every card was decided
  * over the ramp controller's own, shorter one. One heading over both would put a
  * week's dates above numbers reached over a day — the disagreement the server

@@ -3,11 +3,11 @@
  * Desktop app updates — the instance-wide policy for what connected Owlat
  * desktop apps are offered when they ask this instance which version to install.
  *
- * The app used to read one hard-coded GitHub URL, so an operator could neither
- * hold a bad build back nor reach the desktop-only release line. The server now
- * decides, and this is where that decision is made: serve the newest release,
- * pin the fleet to one, or serve nothing at all, on the stable or the
- * pre-release channel, optionally after a defer window.
+ * The server decides which version the app is offered, so an operator can hold
+ * a bad build back and reach the desktop-only release line; a hard-coded URL in
+ * the app could do neither. This is where that decision is made: serve the
+ * newest release, pin the fleet to one, or serve nothing at all, on the stable
+ * or the pre-release channel, optionally after a defer window.
  *
  * What the server can do is bounded by design and the page says so: bundles
  * still come from GitHub and are still verified against the key baked into the

@@ -288,7 +288,7 @@ const activeKeysCount = computed(() => {
 				</p>
 			</div>
 
-			<!-- A failed read is not an empty list (#721). -->
+			<!-- A failed read is not an empty list. -->
 			<UiQueryBoundary v-else-if="keysError" :error="keysError" @retry="refetchKeys" />
 
 			<!-- Empty State (no API keys) -->

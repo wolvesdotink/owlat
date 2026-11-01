@@ -11,13 +11,12 @@
  * in a visible tab (`useVisibleAnimation`).
  *
  * The fill is `bg-bg-surface`, NOT `bg-bg-elevated`. `--color-bg-elevated` is
- * `--surface-2`, which is the exact background `UiCard` paints, so a skeleton
- * inside a card used to be invisible — which is why ~29 blocks across the app
- * hand-rolled a pulsing `bg-bg-surface` div instead of using this component.
- * `--color-bg-surface` is deliberately kept a visible step against base
- * (`--surface-1`), elevated (`--surface-2`) and white parents in both themes
- * (see the note in `assets/css/light.css`), so the placeholder reads on the
- * page background AND inside a card.
+ * `--surface-2`, which is the exact background `UiCard` paints, so an elevated
+ * skeleton inside a card would be invisible and invite hand-rolled pulsing
+ * divs in its place. `--color-bg-surface` is deliberately kept a visible step
+ * against base (`--surface-1`), elevated (`--surface-2`) and white parents in
+ * both themes (see the note in `assets/css/light.css`), so the placeholder
+ * reads on the page background AND inside a card.
  */
 import { ref } from 'vue';
 import { useVisibleAnimation } from '../../composables/useVisibleAnimation';

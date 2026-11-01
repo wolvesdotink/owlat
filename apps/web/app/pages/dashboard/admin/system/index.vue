@@ -66,7 +66,7 @@ const releaseUrl = computed(() =>
 		: null
 );
 
-// Stepping stones (#1345): migrations a later release's contract needs
+// Stepping stones: migrations a later release's contract needs
 // completed. The update route refuses while any is open; the button says why.
 const { data: updateBlockers } = useConvexQuery(api.migrations.admin.updateBlockers, () =>
 	updateAvailable.value && latestRelease.value?.latestVersion

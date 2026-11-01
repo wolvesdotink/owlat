@@ -45,7 +45,7 @@ const admins = adminsQuery.data;
 const allUsers = usersQuery.data;
 
 // The reads behind each tab. A failed one shows the error and Try again in
-// place of the tab, never its "nothing here" state (#721).
+// place of the tab, never its "nothing here" state.
 const tabReads = computed(
 	() =>
 		({
