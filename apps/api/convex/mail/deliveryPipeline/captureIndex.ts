@@ -1,7 +1,7 @@
 /**
  * Inbound delivery pipeline — the I/O half of attachment capture: resolve the
  * sender's contact scope, charge the AI-ingest budget, and hand a stored part
- * to `semanticFiles.ingest`.
+ * to `files/library.ingest`.
  *
  * Split out of `capture.ts` so the same steps run from an action (the team
  * inbox, capturing inline) and from a mutation (the personal mailbox, whose
@@ -90,7 +90,7 @@ export type StoredPart = {
 export type IndexedPart = { indexed: boolean; namesOnly: boolean };
 
 /**
- * Hand one stored part to `semanticFiles.ingest`. `sourceMailboxId` is the
+ * Hand one stored part to `files/library.ingest`. `sourceMailboxId` is the
  * mailbox a Postbox capture arrived in, which keeps the file readable only by
  * that mailbox's readers (lib/semanticFileAccess.ts).
  */
@@ -108,7 +108,7 @@ export async function ingestStoredPart(
 	// deletes the blob if it disagrees.
 	// checkpoint: one part's file, over a blob already stored; a later part's
 	// failure leaves it indexed and the message's marker reports the failure
-	const fileId = await ctx.runMutation(internal.semanticFiles.ingest, {
+	const fileId = await ctx.runMutation(internal.files.library.ingest, {
 		storageId: part.storageId,
 		filename: part.filename,
 		mimeType: part.contentType,

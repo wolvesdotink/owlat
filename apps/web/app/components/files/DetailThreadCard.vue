@@ -13,7 +13,7 @@ const props = defineProps<{
 const { t } = useI18n();
 const { showToast } = useToast();
 
-const { run: updateFile } = useBackendOperation(api.semanticFiles.update, {
+const { run: updateFile } = useBackendOperation(api.files.library.update, {
 	label: () => t('dashboard.files.detail.updateOperation'),
 });
 

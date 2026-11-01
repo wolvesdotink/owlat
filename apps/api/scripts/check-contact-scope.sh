@@ -14,7 +14,7 @@
 #
 # All semantic retrieval MUST go through:
 #   - convex/knowledge/retrieval.ts          (knowledge graph)
-#   - convex/semanticFileProcessing.ts       (semantic files)
+#   - convex/files/processing.ts             (semantic files)
 # both of which take `scopeToContact` and filter via isContactScopeVisible. Their
 # vector legs call `searchSpaceVectors` in convex/knowledge/vectorSearch.ts, the
 # one place that filters each vector index to the query vector's embedding
@@ -39,7 +39,7 @@ filter() {
 		| grep -v "/__tests__/" \
 		| grep -v "convex/knowledge/retrieval.ts" \
 		| grep -v "convex/knowledge/vectorSearch.ts" \
-		| grep -v "convex/semanticFileProcessing.ts"
+		| grep -v "convex/files/processing.ts"
 }
 
 violations=$(grep -rnE "$PATTERN" convex --include="*.ts" 2>/dev/null | filter || true)
@@ -53,7 +53,7 @@ if [ "$count" -gt 0 ]; then
 	echo ""
 	echo "Vector search over knowledgeEntries / semanticFiles must go through the"
 	echo "scope-enforcing functions (convex/knowledge/retrieval.ts,"
-	echo "convex/semanticFileProcessing.ts) so contact isolation (lib/contactScope.ts)"
+	echo "convex/files/processing.ts) so contact isolation (lib/contactScope.ts)"
 	echo "is applied. Pass a contactId / 'org-general-only' to scope, or the explicit"
 	echo "'org-wide' sentinel for the trusted-member read path."
 	exit 1

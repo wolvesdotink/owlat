@@ -1,6 +1,5 @@
 apps/api/convex/contacts/contacts.ts
 apps/api/convex/contacts/doiLifecycle.ts
-apps/api/convex/semanticFiles.ts
 apps/api/convex/topics/subscription.ts
 apps/api/convex/topics/topics.ts
 apps/api/convex/unifiedMessages.ts

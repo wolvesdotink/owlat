@@ -1,5 +1,5 @@
 /**
- * What `semanticFileProcessing.processFile` writes onto a semantic file, and
+ * What `files/processing.processFile` writes onto a semantic file, and
  * when it feeds the knowledge graph: the empty-file stub, the full model path
  * with conversation tags and a version diff, the injection guard, the
  * no-provider and failed-model fallbacks, an owed-embedding rerun and a
@@ -122,7 +122,7 @@ describe('processFile writes', () => {
 		const t = newHarness();
 		const fileId = await insertFile(t, '');
 
-		await t.action(internal.semanticFileProcessing.processFile, { fileId });
+		await t.action(internal.files.processing.processFile, { fileId });
 
 		expect(await processed(t, fileId)).toEqual({
 			title: undefined,
@@ -176,7 +176,7 @@ describe('processFile writes', () => {
 			version: 2,
 		});
 
-		await t.action(internal.semanticFileProcessing.processFile, { fileId });
+		await t.action(internal.files.processing.processFile, { fileId });
 
 		const autoTags = ['budget', 'hosting', 'q3-financials', 'acme-corp'];
 		expect(await processed(t, fileId)).toEqual({
@@ -208,7 +208,7 @@ describe('processFile writes', () => {
 			previousVersionId: previousId,
 		});
 
-		await t.action(internal.semanticFileProcessing.processFile, { fileId });
+		await t.action(internal.files.processing.processFile, { fileId });
 
 		expect(await processed(t, fileId)).toMatchObject({
 			title: 'Uploaded title',
@@ -220,7 +220,7 @@ describe('processFile writes', () => {
 		const t = newHarness();
 		const fileId = await insertFile(t, INJECTED_BODY);
 
-		await t.action(internal.semanticFileProcessing.processFile, { fileId });
+		await t.action(internal.files.processing.processFile, { fileId });
 
 		expect(mocks.summarizeFile).not.toHaveBeenCalled();
 		expect(mocks.sendSummaryThroughBatch).not.toHaveBeenCalled();
@@ -249,7 +249,7 @@ describe('processFile writes', () => {
 		mocks.aiProviderConfigured.mockResolvedValue(false);
 		const fileId = await insertFile(t, BODY);
 
-		await t.action(internal.semanticFileProcessing.processFile, { fileId });
+		await t.action(internal.files.processing.processFile, { fileId });
 
 		expect(await processed(t, fileId)).toMatchObject({
 			title: 'budget-review.txt',
@@ -267,7 +267,7 @@ describe('processFile writes', () => {
 		mocks.summarizeFile.mockRejectedValue(new Error('provider down'));
 		const fileId = await insertFile(t, BODY);
 
-		await t.action(internal.semanticFileProcessing.processFile, { fileId });
+		await t.action(internal.files.processing.processFile, { fileId });
 
 		expect(await processed(t, fileId)).toMatchObject({
 			title: 'budget-review.txt',
@@ -286,7 +286,7 @@ describe('processFile writes', () => {
 			autoTags: ['stored'],
 		});
 
-		await t.action(internal.semanticFileProcessing.processFile, {
+		await t.action(internal.files.processing.processFile, {
 			fileId,
 			deferrals: 1,
 			stages: ['embedding'],
@@ -307,7 +307,7 @@ describe('processFile writes', () => {
 		mocks.sendSummaryThroughBatch.mockResolvedValue(true);
 		const fileId = await insertFile(t, BODY);
 
-		await t.action(internal.semanticFileProcessing.processFile, { fileId });
+		await t.action(internal.files.processing.processFile, { fileId });
 
 		expect(await processed(t, fileId)).toMatchObject({
 			title: undefined,
@@ -324,7 +324,7 @@ describe('processFile writes', () => {
 		const longBody = `${BODY} `.repeat(400);
 		const fileId = await insertFile(t, longBody);
 
-		await t.action(internal.semanticFileProcessing.processFile, { fileId });
+		await t.action(internal.files.processing.processFile, { fileId });
 
 		expect((await processed(t, fileId)).extractedText).toBe(longBody.slice(0, 50_000));
 	});

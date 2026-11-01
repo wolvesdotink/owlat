@@ -3,7 +3,7 @@
  *
  * `ask` is now an authedAction that fans out over BOTH retrieval seams — the
  * knowledge graph (`knowledge/retrieval.semanticSearch`) and the semantic file
- * store (`semanticFileProcessing.semanticSearch`) — and synthesizes a grounded,
+ * store (`files/processing.semanticSearch`) — and synthesizes a grounded,
  * cited answer with `lib/llm/dispatch.runLlmText`. These tests verify the
  * PLUMBING (gates, cross-source fan-out, citation shape, injection scrubbing),
  * not answer quality: the LLM and the embedder are mocked.

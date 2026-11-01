@@ -108,7 +108,7 @@ const modules = Object.fromEntries(
 			!path.includes('agent/steps/classify') &&
 			!path.includes('agent/steps/draft') &&
 			!path.includes('knowledgeExtraction') &&
-			!path.includes('semanticFileProcessing') &&
+			!path.includes('files/processing') &&
 			!path.includes('visualizationAgent') &&
 			!path.includes('llmProvider')
 	)
@@ -841,7 +841,7 @@ describe('vector commits from a stale embedding target', () => {
 		});
 
 		// The late nomic vectors commit.
-		await t.mutation(internal.semanticFiles.updateProcessedMetadata, {
+		await t.mutation(internal.files.pipeline.updateProcessedMetadata, {
 			fileId,
 			summary: 'An invoice',
 			embedding: vector,
@@ -872,7 +872,7 @@ describe('vector commits from a stale embedding target', () => {
 		expect(await t.run((ctx) => ctx.db.query('embeddingSpaces').collect())).toEqual([]);
 
 		// A job in the configured target commits, stamped with the space it activates.
-		await t.mutation(internal.semanticFiles.updateProcessedMetadata, {
+		await t.mutation(internal.files.pipeline.updateProcessedMetadata, {
 			fileId,
 			embedding: vector,
 			embeddingSpace: { ...measuredLocalSpace(3), model: 'mxbai-embed-large' },
@@ -911,7 +911,7 @@ describe('previous-release callers (upgrade window)', () => {
 			})
 		);
 		// The previous release's processFile sends no measured space.
-		await t.mutation(internal.semanticFiles.updateProcessedMetadata, {
+		await t.mutation(internal.files.pipeline.updateProcessedMetadata, {
 			fileId,
 			summary: 'An invoice',
 			autoTags: ['finance'],

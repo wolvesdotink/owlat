@@ -74,13 +74,13 @@ export function useSemanticFiles() {
 	const { run: generateUploadUrl } = useBackendOperation(api.storage.generateUploadUrl, {
 		label: () => t('shared.useSemanticFiles.getUploadUrl'),
 	});
-	const { run: createFile } = useBackendOperation(api.semanticFiles.create, {
+	const { run: createFile } = useBackendOperation(api.files.library.create, {
 		label: () => t('shared.useSemanticFiles.uploadFile'),
 	});
-	const { run: updateFile } = useBackendOperation(api.semanticFiles.update, {
+	const { run: updateFile } = useBackendOperation(api.files.library.update, {
 		label: () => t('shared.useSemanticFiles.updateFile'),
 	});
-	const { run: removeFileMutation } = useBackendOperation(api.semanticFiles.remove, {
+	const { run: removeFileMutation } = useBackendOperation(api.files.library.remove, {
 		label: () => t('shared.useSemanticFiles.deleteFile'),
 	});
 

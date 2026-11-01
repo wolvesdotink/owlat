@@ -34,7 +34,7 @@ const modules = Object.fromEntries(
 			!path.includes('agentSecurity') &&
 			!path.includes('agentContext') &&
 			!path.includes('visualizationAgent') &&
-			!path.includes('semanticFileProcessing') &&
+			!path.includes('files/processing') &&
 			!path.includes('llmProvider')
 	)
 );

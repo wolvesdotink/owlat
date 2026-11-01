@@ -2,7 +2,7 @@
  * Shared attachment-suggestion orchestration for the inbound agent pipeline.
  *
  * Wraps the pure matcher (`./attachmentMatch.ts`) around the contact-scoped file
- * search (`semanticFileProcessing.semanticSearch`) so BOTH the `draft` step (which
+ * search (`files/processing.semanticSearch`) so BOTH the `draft` step (which
  * surfaces the single confident suggestion on the review draft) and the `clarify`
  * step (which asks when the choice is ambiguous) run identical, fail-soft logic.
  *
@@ -66,7 +66,7 @@ export async function computeAttachmentSuggestions(
 		const scopeToContact: Id<'contacts'> | 'org-general-only' =
 			args.contactId ?? 'org-general-only';
 
-		const files = await ctx.runAction(internal.semanticFileProcessing.semanticSearch, {
+		const files = await ctx.runAction(internal.files.processing.semanticSearch, {
 			queryText,
 			scopeToContact,
 			// The Team Inbox agent: its own captures, never a Postbox mailbox's.
@@ -149,7 +149,7 @@ export async function searchFilesForRequest(
 	if (queryText.length === 0) return [];
 	const found: FoundFile[] = [];
 	try {
-		const files = await ctx.runAction(internal.semanticFileProcessing.semanticSearch, {
+		const files = await ctx.runAction(internal.files.processing.semanticSearch, {
 			queryText,
 			scopeToContact: args.contactId ?? 'org-general-only',
 			// No mail captures from Files: they keep their mailbox's permission,

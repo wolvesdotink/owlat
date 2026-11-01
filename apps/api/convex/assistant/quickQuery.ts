@@ -7,7 +7,7 @@ import { validateStringLength, STRING_LIMITS } from '../lib/inputGuards';
  *
  * `ask` answers a free-text question by fanning out over BOTH retrieval seams —
  * the knowledge graph (`knowledge/retrieval.ts` hybrid vector + FTS) AND the
- * semantic file store (`semanticFileProcessing.ts`, `vector_files`) — and then
+ * semantic file store (`files/processing.ts`, `vector_files`) — and then
  * asks the LLM to synthesize a grounded answer that CITES the retrieved sources
  * by number. The returned `sources` span both kinds (knowledge entries and
  * files). It is org-wide (the trusted-member Q&A scope).
@@ -171,7 +171,7 @@ export async function answerQuestion(
 			limit: PER_SOURCE_LIMIT,
 			root,
 		}),
-		ctx.runAction(internal.semanticFileProcessing.semanticSearch, {
+		ctx.runAction(internal.files.processing.semanticSearch, {
 			queryText: question,
 			embedding,
 			embeddingSpaceId,

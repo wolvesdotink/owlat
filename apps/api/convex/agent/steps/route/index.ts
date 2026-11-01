@@ -120,7 +120,7 @@ export function resolveAutoApproveScore(
  * boundary. `detectInjection` only matches injection PHRASINGS; it does NOT
  * detect another contact's data bleeding into the reply. Cross-contact isolation
  * is enforced UPSTREAM by contact-scoped retrieval (lib/contactScope.ts +
- * knowledge/retrieval.ts + semanticFileProcessing.ts), so the assembled context
+ * knowledge/retrieval.ts + files/processing.ts), so the assembled context
  * can't contain another contact's data in the first place. Do not weaken that
  * scoping on the assumption this gate will catch a leak — it won't.
  */

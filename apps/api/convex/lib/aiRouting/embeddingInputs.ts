@@ -1,6 +1,6 @@
 /**
  * The text each corpus row is embedded from. One definition shared
- * by the writers (`knowledge/extraction.ts`, `semanticFileProcessing.ts`), the
+ * by the writers (`knowledge/extraction.ts`, `files/processing.ts`), the
  * re-embed job, the staged rebuild and the sample check, so a re-embedded
  * vector is made from the same input the original writer used.
  */

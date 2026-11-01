@@ -64,7 +64,7 @@ function makeCtx(legs: Legs) {
 			// knowledge/vectorCorpus: no table holds a vector, so no query embedding.
 			hasQueryableVectors: false,
 		},
-		actions: { knowledge: legs.knowledge ?? [], semanticFileProcessing: [] },
+		actions: { knowledge: legs.knowledge ?? [], 'files/processing': [] },
 	});
 
 	return { ctx };

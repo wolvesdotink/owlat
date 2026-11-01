@@ -11,7 +11,7 @@ vi.mock('@owlat/shared/attachments', async () => ({
 }));
 
 /**
- * `semanticFiles.create` advertises a fixed per-file upload ceiling
+ * `files/library.create` advertises a fixed per-file upload ceiling
  * (`MAX_LIBRARY_FILE_BYTES`, surfaced in the upload modal copy). The client
  * guards on it too, but a forged request must not get past the server, so admission uses immutable system metadata rather than the claimed size.
  */
@@ -35,7 +35,7 @@ const modules = Object.fromEntries(
 	Object.entries(allModules).filter(
 		([path]) =>
 			!path.includes('sesActions') &&
-			!path.includes('semanticFileProcessing') &&
+			!path.includes('files/processing') &&
 			!path.includes('visualizationAgent') &&
 			!path.includes('llmProvider')
 	)
@@ -43,11 +43,11 @@ const modules = Object.fromEntries(
 
 // File processing is excluded above (it needs the LLM stack); deleting a file
 // still schedules it, and it fails to resolve when it runs.
-beforeEach(() => expectScheduledFailure('semanticFileProcessing:processFile'));
+beforeEach(() => expectScheduledFailure('files/processing:processFile'));
 
 const testUser = { subject: 'admin-user', issuer: 'test', tokenIdentifier: 'test|admin-user' };
 
-describe('semanticFiles.create — size ceiling', () => {
+describe('files/library.create — size ceiling', () => {
 	it('rejects a file larger than the upload limit and inserts no row', async () => {
 		const t = convexTest(schema, modules).withIdentity(testUser);
 		const storageId = await t.run((ctx) =>
@@ -55,7 +55,7 @@ describe('semanticFiles.create — size ceiling', () => {
 		);
 
 		await expect(
-			t.mutation(api.semanticFiles.create, {
+			t.mutation(api.files.library.create, {
 				storageId,
 				filename: 'huge.pdf',
 				mimeType: 'application/pdf',
@@ -75,7 +75,7 @@ describe('semanticFiles.create — size ceiling', () => {
 		);
 		await t.run((ctx) => recordUploadedBlob(ctx, storageId, 'admin-user'));
 
-		const fileId = await t.mutation(api.semanticFiles.create, {
+		const fileId = await t.mutation(api.files.library.create, {
 			storageId,
 			filename: 'contract.pdf',
 			mimeType: 'application/pdf',
@@ -85,7 +85,7 @@ describe('semanticFiles.create — size ceiling', () => {
 
 		const row = await t.run((ctx) => ctx.db.get(fileId));
 		expect(row?.fileSize).toBe(MAX_LIBRARY_FILE_BYTES);
-		await t.mutation(api.semanticFiles.remove, { fileId });
+		await t.mutation(api.files.library.remove, { fileId });
 		expect(await t.run(async (ctx) => (await ctx.storage.get(storageId)) !== null)).toBe(false);
 	});
 
@@ -93,7 +93,7 @@ describe('semanticFiles.create — size ceiling', () => {
 		const t = convexTest(schema, modules).withIdentity(testUser);
 		const storageId = await t.run((ctx) => ctx.storage.store(new Blob(['new upload'])));
 		await t.run((ctx) => recordUploadedBlob(ctx, storageId, 'admin-user'));
-		const fileId = await t.mutation(api.semanticFiles.create, {
+		const fileId = await t.mutation(api.files.library.create, {
 			storageId,
 			filename: 'file.txt',
 			mimeType: 'text/plain',
@@ -103,7 +103,7 @@ describe('semanticFiles.create — size ceiling', () => {
 		const foreignId = await t.run((ctx) => ctx.storage.store(new Blob(['private original'])));
 		// Model a row persisted before upload ownership was enforced.
 		await t.run((ctx) => ctx.db.patch(fileId, { storageId: foreignId }));
-		await t.mutation(api.semanticFiles.remove, { fileId });
+		await t.mutation(api.files.library.remove, { fileId });
 		expect(await t.run(async (ctx) => (await ctx.storage.get(foreignId)) !== null)).toBe(true);
 	});
 });

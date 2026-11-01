@@ -239,7 +239,7 @@ describe('semanticSearch — empty-corpus skip', () => {
 		const t = convexTest(schema, modules);
 		for (let i = 0; i < 9; i++) await insertFile(t, `notes-${i}.txt`, []);
 
-		await t.action(internal.semanticFileProcessing.semanticSearch, {
+		await t.action(internal.files.processing.semanticSearch, {
 			queryText: 'notes',
 			scopeToContact: 'org-wide',
 			mailCaptures: 'all',

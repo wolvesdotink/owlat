@@ -29,7 +29,7 @@ vi.mock('../lib/sessionOrganization', async () => {
 });
 
 const LLM_ENV_KEYS = ['LLM_PROVIDER', 'LLM_API_KEY', 'OPENROUTER_API_KEY', 'OPENAI_API_KEY'];
-const PROCESS_FILE = 'semanticFileProcessing:processFile';
+const PROCESS_FILE = 'files/processing:processFile';
 
 type T = ReturnType<typeof newHarness>;
 
@@ -96,7 +96,7 @@ describe('backfillUnprocessed', () => {
 		const t = newHarness();
 		await insertFile(t);
 
-		expect(await t.mutation(internal.semanticFiles.backfillUnprocessed, {})).toEqual({
+		expect(await t.mutation(internal.files.pipeline.backfillUnprocessed, {})).toEqual({
 			scheduled: 0,
 		});
 		expect(await processJobs(t)).toEqual([]);
@@ -108,7 +108,7 @@ describe('backfillUnprocessed', () => {
 		const fileId = await insertFile(t);
 		await insertFile(t, { embedded: true });
 
-		expect(await t.mutation(internal.semanticFiles.backfillUnprocessed, {})).toEqual({
+		expect(await t.mutation(internal.files.pipeline.backfillUnprocessed, {})).toEqual({
 			scheduled: 1,
 		});
 		expect(await processJobs(t)).toEqual([{ fileId, delayMs: 0 }]);
@@ -119,7 +119,7 @@ describe('backfillUnprocessed', () => {
 		await saveProvider(t);
 		await insertFile(t);
 
-		expect(await t.mutation(internal.semanticFiles.backfillUnprocessed, {})).toEqual({
+		expect(await t.mutation(internal.files.pipeline.backfillUnprocessed, {})).toEqual({
 			scheduled: 1,
 		});
 	});
@@ -136,11 +136,11 @@ describe('saving the first AI provider', () => {
 
 		await saveProvider(t);
 		const pass = (await t.run((ctx) => ctx.db.system.query('_scheduled_functions').collect()))
-			.filter((job) => job.name === 'semanticFiles:reprocessAfterAiConfigured')
+			.filter((job) => job.name === 'files/pipeline:reprocessAfterAiConfigured')
 			.map((job) => job.scheduledTime - Date.now());
 		expect(pass).toEqual([0]);
 
-		expect(await t.mutation(internal.semanticFiles.reprocessAfterAiConfigured, {})).toEqual({
+		expect(await t.mutation(internal.files.pipeline.reprocessAfterAiConfigured, {})).toEqual({
 			scheduled: 2,
 		});
 		expect(await processJobs(t)).toEqual([
@@ -156,7 +156,7 @@ describe('saving the first AI provider', () => {
 
 		const passes = (
 			await t.run((ctx) => ctx.db.system.query('_scheduled_functions').collect())
-		).filter((job) => job.name === 'semanticFiles:reprocessAfterAiConfigured');
+		).filter((job) => job.name === 'files/pipeline:reprocessAfterAiConfigured');
 		expect(passes).toHaveLength(1);
 	});
 
@@ -167,7 +167,7 @@ describe('saving the first AI provider', () => {
 
 		const passes = (
 			await t.run((ctx) => ctx.db.system.query('_scheduled_functions').collect())
-		).filter((job) => job.name === 'semanticFiles:reprocessAfterAiConfigured');
+		).filter((job) => job.name === 'files/pipeline:reprocessAfterAiConfigured');
 		expect(passes).toEqual([]);
 	});
 });

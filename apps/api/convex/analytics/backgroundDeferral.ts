@@ -52,7 +52,7 @@ export async function deferFileForBudget(
 	if (await backgroundHasHeadroom(ctx)) return false;
 	const done = deferrals ?? 0;
 	if (done < MAX_FILE_DEFERRALS) {
-		await ctx.scheduler.runAfter(FILE_DEFER_MS, internal.semanticFileProcessing.processFile, {
+		await ctx.scheduler.runAfter(FILE_DEFER_MS, internal.files.processing.processFile, {
 			fileId,
 			deferrals: done + 1,
 			...(stages ? { stages: [...stages] } : {}),
@@ -98,7 +98,7 @@ export function owedFileStages(
 		async schedule() {
 			const done = deferrals ?? 0;
 			if (owed.size === 0 || done >= MAX_FILE_DEFERRALS) return;
-			await ctx.scheduler.runAfter(FILE_DEFER_MS, internal.semanticFileProcessing.processFile, {
+			await ctx.scheduler.runAfter(FILE_DEFER_MS, internal.files.processing.processFile, {
 				fileId,
 				deferrals: done + 1,
 				stages: FILE_STAGES.filter((stage) => owed.has(stage)),

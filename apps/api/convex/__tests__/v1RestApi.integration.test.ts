@@ -53,7 +53,7 @@ const modules = Object.fromEntries(
 			!p.includes('agent/steps/classify') &&
 			!p.includes('agent/steps/draft') &&
 			!p.includes('knowledgeExtraction') &&
-			!p.includes('semanticFileProcessing') &&
+			!p.includes('files/processing') &&
 			!p.includes('visualizationAgent') &&
 			!p.includes('llmProvider')
 	)

@@ -6,7 +6,7 @@ import type { Id } from '../_generated/dataModel';
 import { activeSpaceId, stampedIn } from './helpers/embeddingSpaces';
 
 /**
- * semanticFileProcessing.ts semanticSearch — now hybrid (vector + FTS via RRF),
+ * files/processing.ts semanticSearch — now hybrid (vector + FTS via RRF),
  * mirroring knowledge/retrieval.ts. Uses convex-test's in-memory vectorSearch
  * (cosine) and search-index support. Embeddings are 1536-dim one-hot unit
  * vectors, so cosine(unit(i), unit(j)) is 1 when i===j and 0 otherwise — letting
@@ -70,7 +70,7 @@ async function insertContact(t: ReturnType<typeof convexTest>): Promise<Id<'cont
 	);
 }
 
-describe('semanticFileProcessing.semanticSearch — hybrid (vector + FTS) recall', () => {
+describe('files/processing.semanticSearch — hybrid (vector + FTS) recall', () => {
 	it('surfaces an exact-token file the vector leg misses, via the FTS leg', async () => {
 		const t = convexTest(schema, modules);
 		// Flood the vector neighborhood of the query (embedAt 7) with decoys so a
@@ -90,7 +90,7 @@ describe('semanticFileProcessing.semanticSearch — hybrid (vector + FTS) recall
 			searchableText: 'tracking for order ABC-12345 shipped tuesday',
 		});
 
-		const results = await t.action(internal.semanticFileProcessing.semanticSearch, {
+		const results = await t.action(internal.files.processing.semanticSearch, {
 			embeddingSpaceId: await activeSpaceId(t),
 			queryText: 'ABC-12345',
 			embedding: unit(7),
@@ -111,7 +111,7 @@ describe('semanticFileProcessing.semanticSearch — hybrid (vector + FTS) recall
 			searchableText: 'totally different words',
 		});
 
-		const results = await t.action(internal.semanticFileProcessing.semanticSearch, {
+		const results = await t.action(internal.files.processing.semanticSearch, {
 			embeddingSpaceId: await activeSpaceId(t),
 			queryText: 'zzzznomatch',
 			embedding: unit(3),
@@ -124,7 +124,7 @@ describe('semanticFileProcessing.semanticSearch — hybrid (vector + FTS) recall
 	});
 });
 
-describe('semanticFileProcessing.semanticSearch — contact-scope post-filter', () => {
+describe('files/processing.semanticSearch — contact-scope post-filter', () => {
 	it('excludes a contact-B-only file under scope:contactA even when it is an FTS/vector hit', async () => {
 		const t = convexTest(schema, modules);
 		const contactA = await insertContact(t);
@@ -145,7 +145,7 @@ describe('semanticFileProcessing.semanticSearch — contact-scope post-filter', 
 			contactIds: [contactB],
 		});
 
-		const results = await t.action(internal.semanticFileProcessing.semanticSearch, {
+		const results = await t.action(internal.files.processing.semanticSearch, {
 			embeddingSpaceId: await activeSpaceId(t),
 			queryText: 'SKU-777',
 			embedding: unit(4),
@@ -160,7 +160,7 @@ describe('semanticFileProcessing.semanticSearch — contact-scope post-filter', 
 	});
 });
 
-describe('semanticFileProcessing.semanticSearch — mail-capture scope (#1322)', () => {
+describe('files/processing.semanticSearch — mail-capture scope (#1322)', () => {
 	it('returns files captured from inbound mail only within the scope the caller names', async () => {
 		const t = convexTest(schema, modules);
 		const text = 'quarterly figures INV-9001';
@@ -180,7 +180,7 @@ describe('semanticFileProcessing.semanticSearch — mail-capture scope (#1322)',
 
 		const search = async (mailCaptures: 'none' | 'team_inbox' | 'all') =>
 			(
-				await t.action(internal.semanticFileProcessing.semanticSearch, {
+				await t.action(internal.files.processing.semanticSearch, {
 					embeddingSpaceId: await activeSpaceId(t),
 					queryText: 'INV-9001',
 					embedding: unit(5),

@@ -46,13 +46,13 @@ const modules = Object.fromEntries(
 			!path.includes('agentClassifier') &&
 			!path.includes('agentDrafter') &&
 			!path.includes('agentRouter') &&
-		!path.includes('agent/walker') &&
-		!path.includes('agent/steps/index') &&
-		!path.includes('agent/steps/shared') &&
-		!path.includes('agent/steps/classify') &&
-		!path.includes('agent/steps/draft') &&
+			!path.includes('agent/walker') &&
+			!path.includes('agent/steps/index') &&
+			!path.includes('agent/steps/shared') &&
+			!path.includes('agent/steps/classify') &&
+			!path.includes('agent/steps/draft') &&
 			!path.includes('knowledgeExtraction') &&
-			!path.includes('semanticFileProcessing') &&
+			!path.includes('files/processing') &&
 			!path.includes('visualizationAgent') &&
 			!path.includes('llmProvider')
 	)
@@ -183,9 +183,15 @@ describe('agentPipeline.getThreadMessages', () => {
 		let threadId!: Id<'conversationThreads'>;
 		await t.run(async (ctx) => {
 			const contactId = await ctx.db.insert('contacts', createTestContact());
-			threadId = await ctx.db.insert('conversationThreads', threadData({ contactId, messageCount: 3 }));
+			threadId = await ctx.db.insert(
+				'conversationThreads',
+				threadData({ contactId, messageCount: 3 })
+			);
 			for (let i = 0; i < 3; i++) {
-				await ctx.db.insert('inboundMessages', msgData({ threadId, contactId, subject: `Message ${i}` }));
+				await ctx.db.insert(
+					'inboundMessages',
+					msgData({ threadId, contactId, subject: `Message ${i}` })
+				);
 			}
 		});
 
@@ -204,9 +210,15 @@ describe('agentPipeline.getThreadMessages', () => {
 		let excludeId!: Id<'inboundMessages'>;
 		await t.run(async (ctx) => {
 			const contactId = await ctx.db.insert('contacts', createTestContact());
-			threadId = await ctx.db.insert('conversationThreads', threadData({ contactId, messageCount: 3 }));
+			threadId = await ctx.db.insert(
+				'conversationThreads',
+				threadData({ contactId, messageCount: 3 })
+			);
 			for (let i = 0; i < 3; i++) {
-				const id = await ctx.db.insert('inboundMessages', msgData({ threadId, contactId, subject: `Msg ${i}` }));
+				const id = await ctx.db.insert(
+					'inboundMessages',
+					msgData({ threadId, contactId, subject: `Msg ${i}` })
+				);
 				if (i === 1) excludeId = id;
 			}
 		});
@@ -227,7 +239,10 @@ describe('agentPipeline.getThreadMessages', () => {
 		let threadId!: Id<'conversationThreads'>;
 		await t.run(async (ctx) => {
 			const contactId = await ctx.db.insert('contacts', createTestContact());
-			threadId = await ctx.db.insert('conversationThreads', threadData({ contactId, messageCount: 5 }));
+			threadId = await ctx.db.insert(
+				'conversationThreads',
+				threadData({ contactId, messageCount: 5 })
+			);
 			for (let i = 0; i < 5; i++) {
 				await ctx.db.insert('inboundMessages', msgData({ threadId, contactId }));
 			}
@@ -286,4 +301,3 @@ describe('agentPipeline.getAgentConfig', () => {
 		expect(result!.confidenceThreshold).toBe(0.9);
 	});
 });
-

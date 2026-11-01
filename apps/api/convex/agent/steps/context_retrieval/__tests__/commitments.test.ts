@@ -54,7 +54,7 @@ function makeCtx(openCommitments: OpenCommitment[]) {
 			hasQueryableVectors: false,
 		},
 		// Semantic knowledge + file legs find nothing tied to this inbound.
-		actions: { knowledge: [], semanticFileProcessing: [] },
+		actions: { knowledge: [], 'files/processing': [] },
 	});
 
 	return { ctx };

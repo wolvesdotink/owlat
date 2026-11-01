@@ -191,7 +191,7 @@ describe('the vector leg searches one space', () => {
 				})
 			);
 		}
-		const hits = await t.action(internal.semanticFileProcessing.semanticSearch, {
+		const hits = await t.action(internal.files.processing.semanticSearch, {
 			embedding: unit(5),
 			embeddingSpaceId: active,
 			scopeToContact: 'org-wide',

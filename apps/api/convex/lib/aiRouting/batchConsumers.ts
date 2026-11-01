@@ -1,7 +1,7 @@
 /**
  * The non-interactive calls the provider batch path carries,
  * and its clock. Pure and runtime-neutral: the consumers (`knowledge/
- * extraction.ts`, `semanticFileProcessing.ts`), the item mutations
+ * extraction.ts`, `files/processing.ts`), the item mutations
  * (`aiRouting/batchItems.ts`) and the poller (`aiRouting/batchPoller.ts`)
  * share it.
  */

@@ -68,7 +68,7 @@ const modules = Object.fromEntries(
 				!path.includes('agent/steps/draft') &&
 				!path.includes('agent/steps/clarify') &&
 				!path.includes('knowledgeExtraction') &&
-				!path.includes('semanticFileProcessing') &&
+				!path.includes('files/processing') &&
 				!path.includes('visualizationAgent') &&
 				!path.includes('llmProvider')
 		)
@@ -715,7 +715,7 @@ describe('mail.needsReplyClarify.answerClarification — Answer mode', () => {
 
 		it("an admin's upload is kept in Files and comes back as the Files row", async () => {
 			// The new Files row's processing pass runs in a module this suite leaves out.
-			expectScheduledFailure('semanticFileProcessing:processFile');
+			expectScheduledFailure('files/processing:processFile');
 			const t = convexTest(schema, modules);
 			await enableFeatures(t, ['mail.external']);
 			sessionMocks.role = 'owner';

@@ -871,7 +871,10 @@ import type * as emailCoediting_target from '../emailCoediting/target.js';
 import type * as files_cards from '../files/cards.js';
 import type * as files_history from '../files/history.js';
 import type * as files_historyCursor from '../files/historyCursor.js';
+import type * as files_library from '../files/library.js';
+import type * as files_pipeline from '../files/pipeline.js';
 import type * as files_processFileDecision from '../files/processFileDecision.js';
+import type * as files_processing from '../files/processing.js';
 import type * as forms__helpers from '../forms/_helpers.js';
 import type * as forms_apiHttp from '../forms/apiHttp.js';
 import type * as forms_endpoints from '../forms/endpoints.js';
@@ -2748,7 +2751,10 @@ declare const fullApi: ApiFromModules<{
 	'files/cards': typeof files_cards;
 	'files/history': typeof files_history;
 	'files/historyCursor': typeof files_historyCursor;
+	'files/library': typeof files_library;
+	'files/pipeline': typeof files_pipeline;
 	'files/processFileDecision': typeof files_processFileDecision;
+	'files/processing': typeof files_processing;
 }> & ApiFromModules<{
 	'forms/_helpers': typeof forms__helpers;
 	'forms/apiHttp': typeof forms_apiHttp;

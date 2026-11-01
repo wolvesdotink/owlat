@@ -357,7 +357,7 @@ export async function assembleInboundBriefing(
 		const files =
 			query.kind === 'failed'
 				? []
-				: await ctx.runAction(internal.semanticFileProcessing.semanticSearch, {
+				: await ctx.runAction(internal.files.processing.semanticSearch, {
 						queryText,
 						...embedding,
 						limit: CONTEXT_BUDGET.fileLimit,

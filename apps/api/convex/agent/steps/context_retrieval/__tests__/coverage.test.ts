@@ -74,8 +74,8 @@ function makeCtx(legs: Legs) {
 		actions: {
 			// knowledge/retrieval.semanticSearch
 			knowledge: legs.knowledge ?? [],
-			// semanticFileProcessing.semanticSearch
-			semanticFileProcessing: legs.files ?? [],
+			// files/processing.semanticSearch
+			'files/processing': legs.files ?? [],
 		},
 	});
 

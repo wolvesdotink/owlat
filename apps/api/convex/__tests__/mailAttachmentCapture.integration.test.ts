@@ -5,7 +5,7 @@
  * row but never persisted as `semanticFiles`, so the "Email attachments" source
  * filter on /dashboard/files always showed nothing. `mail.delivery.ingestFromWebhook`
  * now pulls attachment leaves out of the raw .eml, stages them, and schedules
- * `captureStagedAttachments` to ingest each via `semanticFiles.ingest`. This
+ * `captureStagedAttachments` to ingest each via `files/library.ingest`. This
  * drives that action end-to-end.
  */
 
@@ -446,7 +446,7 @@ describe('mail.delivery.ingestFromWebhook — attachment capture', () => {
 	// which takes its ctx as a parameter, so the many-leaf message is driven
 	// through it with a counting ctx rather than through the action. The AI-ingest
 	// budget charge still runs for real against the live limiter component — only
-	// the `semanticFiles.ingest` call is counted instead of executed.
+	// the `files/library.ingest` call is counted instead of executed.
 	it('caps captured attachments per message to bound LLM cost amplification', async () => {
 		const boundary = 'manyb0undary';
 		const leafCount = ATTACHMENT_COMPOSE_LIMITS.maxCount + 5;

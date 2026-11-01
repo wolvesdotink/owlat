@@ -53,7 +53,7 @@ const modules = Object.fromEntries(
 	Object.entries(allModules).filter(
 		([p]) =>
 			!p.includes('sesActions') &&
-			!p.includes('semanticFileProcessing') &&
+			!p.includes('files/processing') &&
 			!p.includes('visualizationAgent') &&
 			!p.includes('llmProvider')
 	)

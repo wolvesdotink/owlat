@@ -2,7 +2,7 @@
 
 /**
  * The model-facing parts of semantic file processing, split out of
- * `semanticFileProcessing.ts` to hold it under the size cap: whether an AI
+ * `files/processing.ts` to hold it under the size cap: whether an AI
  * provider is set up at all, and the summary/title/tags call. Node runtime:
  * the call runs the shared LLM dispatch.
  */

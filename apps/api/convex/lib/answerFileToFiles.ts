@@ -4,7 +4,7 @@
  * ask card (mail/ai/composeDraftContext.ts) and the two background
  * clarification answers (inbox/clarificationFileAnswer.ts).
  *
- * - Adding to Files is an admin action on the Files page (`semanticFiles.create`
+ * - Adding to Files is an admin action on the Files page (`files/library.create`
  *   is an `adminMutation`), so it is here too: a member's upload still goes on
  *   the reply, it just is not kept.
  * - A copy is only kept for a known contact. The row is linked to that contact,
@@ -25,7 +25,7 @@ import { MAX_LIBRARY_FILE_BYTES, MAX_LIBRARY_FILE_MB } from '@owlat/shared/attac
 import { throwForbidden, throwInvalidInput } from '../_utils/errors';
 import { STRING_LIMITS, validateStringLength } from './inputGuards';
 import { hasPermission, type MutationSessionContext } from './sessionOrganization';
-import { insertSemanticFile } from '../semanticFiles';
+import { insertSemanticFile } from '../files/library';
 import { consumeUpload, storedFileSize } from '../storage/uploads';
 
 /** Whether the caller may keep an uploaded answer in Files (the Files page's rule). */
@@ -114,7 +114,7 @@ export async function saveAnswerFileToFiles(
 			resourceKey,
 		});
 	}
-	await ctx.scheduler.runAfter(0, internal.semanticFileProcessing.processFile, { fileId });
+	await ctx.scheduler.runAfter(0, internal.files.processing.processFile, { fileId });
 	const row = await ctx.db.get(fileId);
 	if (!row) throwInvalidInput('Uploaded file not found');
 	return row;

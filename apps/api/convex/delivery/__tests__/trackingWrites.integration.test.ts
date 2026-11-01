@@ -18,7 +18,7 @@ import { modules as allModules } from './helpers/convexModules';
 const modules = Object.fromEntries(
 	Object.entries(allModules).filter(
 		([path]) =>
-			!/sesActions|agentSecurity|agentContext|agentClassifier|agentDrafter|agentRouter|agent\/walker|agent\/steps\/(index|shared|classify|draft)|knowledgeExtraction|semanticFileProcessing|visualizationAgent|llmProvider/.test(
+			!/sesActions|agentSecurity|agentContext|agentClassifier|agentDrafter|agentRouter|agent\/walker|agent\/steps\/(index|shared|classify|draft)|knowledgeExtraction|files\/processing|visualizationAgent|llmProvider/.test(
 				path
 			)
 	)

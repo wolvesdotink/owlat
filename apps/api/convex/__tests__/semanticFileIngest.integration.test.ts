@@ -6,18 +6,18 @@ import { internal } from '../_generated/api';
 const modules = import.meta.glob('../**/*.*s');
 
 /**
- * `semanticFiles.ingest` is the server-side entry point for the automatic
+ * `files/library.ingest` is the server-side entry point for the automatic
  * (non-upload) source types — inbound email attachments and agent artifacts.
  * Before it existed, `insertSemanticFile` had no exported caller other than the
  * user-upload `create` mutation, so the `email_attachment` / `agent_generated`
  * source filters on /dashboard/files could never match a row.
  */
-describe('semanticFiles.ingest', () => {
+describe('files/library.ingest', () => {
 	it('inserts an email_attachment row that the source filter can match', async () => {
 		const t = convexTest(schema, modules);
 		const storageId = await t.run((ctx) => ctx.storage.store(new Blob(['contract text'])));
 
-		const fileId = await t.mutation(internal.semanticFiles.ingest, {
+		const fileId = await t.mutation(internal.files.library.ingest, {
 			storageId,
 			filename: 'contract.pdf',
 			mimeType: 'application/pdf',
@@ -37,7 +37,7 @@ describe('semanticFiles.ingest', () => {
 		const t = convexTest(schema, modules);
 		const storageId = await t.run((ctx) => ctx.storage.store(new Blob(['report'])));
 
-		const fileId = await t.mutation(internal.semanticFiles.ingest, {
+		const fileId = await t.mutation(internal.files.library.ingest, {
 			storageId,
 			filename: 'summary.txt',
 			mimeType: 'text/plain',
@@ -54,7 +54,7 @@ describe('semanticFiles.ingest', () => {
 		const t = convexTest(schema, modules);
 		const storageId = await t.run((ctx) => ctx.storage.store(new Blob(['MZ'])));
 
-		const fileId = await t.mutation(internal.semanticFiles.ingest, {
+		const fileId = await t.mutation(internal.files.library.ingest, {
 			storageId,
 			filename: 'payload.exe',
 			mimeType: 'application/octet-stream',

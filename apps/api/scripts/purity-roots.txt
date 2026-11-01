@@ -122,7 +122,7 @@ convex/mail/deliveryPipeline/mailboxDecision.ts
 convex/contacts/importDecision.ts
 
 # Semantic file processing decisions; the action
-# (semanticFileProcessing.ts processFile) is the shell.
+# (files/processing.ts processFile) is the shell.
 convex/files/processFileDecision.ts
 
 # First-admin seed decisions; the HTTP action (auth/seedAdminHttp.ts seedAdmin) and
