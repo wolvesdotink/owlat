@@ -1,13 +1,8 @@
-import { api } from '@owlat/api';
 import { effectScope, type EffectScope } from 'vue';
 import type { OrganizationRole } from '@owlat/shared/organizationPermissions';
 import {
 	listMembers as listOrgMembers,
 	listInvitations as listOrgInvitations,
-	inviteMember as inviteOrgMember,
-	removeMember as removeOrgMember,
-	updateMemberRole as updateOrgMemberRole,
-	cancelInvitation as cancelOrgInvitation,
 	updateOrganization as updateOrg,
 	getFullOrganization as getFullOrg,
 } from '~/lib/auth-client';
@@ -17,99 +12,22 @@ import {
 	setRosterRefreshAfterSwitch,
 	useOrganizationSession,
 } from './useOrganizationSession';
+import type { OrganizationInvitation, OrganizationMember } from './organization/roster';
+import { useOrganizationMemberActions } from './organization/useOrganizationMemberActions';
+import { useOrganizationInvitations } from './organization/useOrganizationInvitations';
 
-export interface PendingMailboxInput {
-	localpart: string;
-	domain: string;
-	displayName?: string;
-}
+export {
+	planOwnershipTransfer,
+	type Organization,
+	type OrganizationInvitation,
+	type OrganizationMember,
+	type PendingMailboxInput,
+} from './organization/roster';
 
 // Defined in `@owlat/shared/organizationPermissions` alongside the permission
 // map the Convex gates enforce, so the role vocabulary cannot drift between the
 // two sides. Re-exported because the web app imports it from here.
 export type { OrganizationRole };
-
-/**
- * Plan the two role changes that make up an ownership transfer.
- *
- * Owlat keeps a single owner (bootstrapped by `/seed/admin`). BetterAuth's
- * `update-member-role` never demotes the existing owner when you promote
- * someone else, so a true hand-off is: promote the new owner FIRST (so the org
- * is never left without an owner — which BetterAuth would reject), THEN demote
- * the previous owner to admin. This pure helper validates the request and
- * returns the ordered steps so the ordering is unit-testable in isolation.
- *
- * Module scope, so it carries i18n KEYS rather than sentences (the registry
- * convention); `transferOwnership` resolves them with `t()` before they reach a
- * toast.
- *
- * @throws if there is no current owner, or the chosen member is already the owner.
- */
-export function planOwnershipTransfer(
-	members: Pick<OrganizationMember, 'id' | 'userId' | 'role'>[],
-	currentUserId: string | null | undefined,
-	newOwnerMemberId: string
-): Array<{ memberId: string; role: OrganizationRole }> {
-	const currentOwner = currentUserId
-		? members.find((m) => m.userId === currentUserId && m.role === 'owner')
-		: undefined;
-	if (!currentOwner) {
-		throw new Error('shared.useOrganization.errors.notCurrentOwner');
-	}
-	if (currentOwner.id === newOwnerMemberId) {
-		throw new Error('shared.useOrganization.errors.alreadyOwner');
-	}
-
-	return [
-		{ memberId: newOwnerMemberId, role: 'owner' },
-		{ memberId: currentOwner.id, role: 'admin' },
-	];
-}
-
-// BetterAuth uses 'member' internally, but we use 'editor' in our app
-type BetterAuthRole = 'owner' | 'admin' | 'member';
-
-/**
- * Map our app role to BetterAuth role
- * We use 'editor', BetterAuth expects 'member'
- */
-function mapToBetterAuthRole(role: OrganizationRole): BetterAuthRole {
-	if (role === 'editor') return 'member';
-	return role as BetterAuthRole;
-}
-
-export interface OrganizationMember {
-	id: string;
-	userId: string;
-	organizationId: string;
-	role: OrganizationRole;
-	createdAt: Date;
-	user: {
-		id: string;
-		name: string;
-		email: string;
-		image?: string | null;
-	};
-}
-
-export interface OrganizationInvitation {
-	id: string;
-	email: string;
-	role: OrganizationRole;
-	status: 'pending' | 'accepted' | 'rejected' | 'canceled';
-	expiresAt: Date;
-	inviterId: string;
-	organizationId: string;
-}
-
-export interface Organization {
-	id: string;
-	name: string;
-	slug: string;
-	logo?: string | null;
-	metadata?: Record<string, unknown>;
-	createdAt: Date;
-}
 
 // Module-level inflight tracking for fetch deduplication
 let inflightFetch: Promise<void> | null = null;
@@ -272,260 +190,18 @@ export function useOrganization() {
 		inflightFetch = doFetch();
 		return inflightFetch;
 	}
-
-	// Convex mutations for mailbox reservation tied to invitations.
-	const { run: setPendingMailbox } = useBackendOperation(api.mail.pendingMailbox.setForInvitation, {
-		label: () => t('shared.useOrganization.operations.reserveMailbox'),
+	const { remove, updateRole, transferOwnership } = useOrganizationMemberActions({
+		t,
+		organizationId,
+		members,
+		sessionUserId: () => sessionUser.value?.id,
+		fetchMembers,
 	});
-	const { run: cancelPendingMailbox } = useBackendOperation(
-		api.mail.pendingMailbox.cancelForInvitation,
-		{
-			label: () => t('shared.useOrganization.operations.cancelReservedMailbox'),
-		}
-	);
-	// Grants are keyed by invitee email (not invitation id), so cancelling an
-	// invite must also sweep any pending team-inbox membership reserved for them —
-	// otherwise the inbox would silently materialize if they ever joined later.
-	const { run: cancelPendingInboxMemberships } = useBackendOperation(
-		api.mail.pendingInboxMembership.cancelInboxMembershipsForEmail,
-		{
-			label: () => t('shared.useOrganization.operations.cancelReservedInboxAccess'),
-		}
-	);
-	// Read-only pre-check for the 1/min resend floor (the floor itself is enforced
-	// server-side in the send hook). `run` toasts the rate-limit message and
-	// returns undefined when the cooldown hasn't elapsed, so `resendInvite` can
-	// bail out before hitting BetterAuth's resend.
-	const { run: throttleResend } = useBackendOperation(api.auth.invitationResend.throttleResend, {
-		label: () => t('shared.useOrganization.operations.resendInvitation'),
+	const { invite, cancelInvite, resendInvite } = useOrganizationInvitations({
+		t,
+		organizationId,
+		fetchMembers,
 	});
-
-	/**
-	 * Invite a new member to the organization. When `mailbox` is supplied,
-	 * also reserve a pending mailbox at `localpart@domain` that will be
-	 * auto-provisioned when the invitee accepts.
-	 */
-	async function invite(email: string, role: OrganizationRole, mailbox?: PendingMailboxInput) {
-		if (!organizationId.value) {
-			throw new Error(t('shared.useOrganization.errors.noActiveOrganization'));
-		}
-
-		// Map our role to BetterAuth role (editor -> member)
-		const result = await inviteOrgMember({
-			organizationId: organizationId.value,
-			email,
-			role: mapToBetterAuthRole(role),
-		});
-
-		if (result.error) {
-			throw new Error(
-				result.error.message || t('shared.useOrganization.errors.sendInvitationFailed')
-			);
-		}
-
-		const invitationId: string | null =
-			(result.data as { id?: string } | null | undefined)?.id ?? null;
-
-		if (mailbox && invitationId) {
-			// `run` toasts the categorized mailbox failure itself; we still throw a
-			// flagged error so the invite caller knows the invite *was* sent.
-			const reserved = await setPendingMailbox({
-				invitationId,
-				inviteeEmail: email,
-				localpart: mailbox.localpart,
-				domain: mailbox.domain,
-				displayName: mailbox.displayName,
-			});
-			if (!reserved.ok) {
-				const wrapped = new Error(t('shared.useOrganization.errors.mailboxNotReserved'));
-				(wrapped as Error & { invitationSent?: boolean }).invitationSent = true;
-				throw wrapped;
-			}
-		}
-
-		// Refresh members list
-		await fetchMembers({ force: true });
-
-		return { invitationId };
-	}
-
-	/**
-	 * Remove a member from the organization
-	 */
-	async function remove(memberIdOrEmail: string) {
-		if (!organizationId.value) {
-			throw new Error(t('shared.useOrganization.errors.noActiveOrganization'));
-		}
-
-		const result = await removeOrgMember({
-			organizationId: organizationId.value,
-			memberIdOrEmail,
-		});
-
-		if (result.error) {
-			throw new Error(
-				result.error.message || t('shared.useOrganization.errors.removeMemberFailed')
-			);
-		}
-
-		// Refresh members list
-		await fetchMembers({ force: true });
-
-		return result.data;
-	}
-
-	/**
-	 * Update a member's role
-	 */
-	async function updateRole(memberId: string, role: OrganizationRole) {
-		if (!organizationId.value) {
-			throw new Error(t('shared.useOrganization.errors.noActiveOrganization'));
-		}
-
-		// Map our role to BetterAuth role (editor -> member)
-		const result = await updateOrgMemberRole({
-			organizationId: organizationId.value,
-			memberId,
-			role: mapToBetterAuthRole(role),
-		});
-
-		if (result.error) {
-			throw new Error(result.error.message || t('shared.useOrganization.errors.updateRoleFailed'));
-		}
-
-		// Refresh members list
-		await fetchMembers({ force: true });
-
-		return result.data;
-	}
-
-	/**
-	 * Transfer ownership of the organization to another member.
-	 *
-	 * Owlat is single-organization, single-owner (the owner is bootstrapped once
-	 * by `/seed/admin`). BetterAuth's `update-member-role` does not demote the
-	 * existing owner when you promote someone else, so a true hand-off is a
-	 * two-step sequence: promote the new owner FIRST (the org briefly has two
-	 * owners, which also satisfies BetterAuth's "can't leave the org without an
-	 * owner" guard), THEN demote the previous owner to admin. Both steps go
-	 * through the same `update-member-role` endpoint the role dropdown already
-	 * uses — no new backend surface is required.
-	 */
-	async function transferOwnership(newOwnerMemberId: string) {
-		if (!organizationId.value) {
-			throw new Error(t('shared.useOrganization.errors.noActiveOrganization'));
-		}
-
-		// `planOwnershipTransfer` is module scope, so it throws the message KEY;
-		// resolve it here, where `t` exists, so the team page toasts the sentence
-		// rather than a key path.
-		let steps: Array<{ memberId: string; role: OrganizationRole }>;
-		try {
-			steps = planOwnershipTransfer(members.value, sessionUser.value?.id, newOwnerMemberId);
-		} catch (error) {
-			if (error instanceof Error) throw new Error(t(error.message), { cause: error });
-			throw error;
-		}
-
-		// Step 1 promotes the new owner; step 2 demotes the previous owner. The
-		// order matters — by promoting first the org always has at least one
-		// owner, so BetterAuth permits the subsequent demotion.
-		let lastData: unknown = null;
-		for (const step of steps) {
-			const result = await updateOrgMemberRole({
-				organizationId: organizationId.value,
-				memberId: step.memberId,
-				role: mapToBetterAuthRole(step.role),
-			});
-			if (result.error) {
-				throw new Error(
-					result.error.message || t('shared.useOrganization.errors.transferOwnershipFailed')
-				);
-			}
-			lastData = result.data;
-		}
-
-		await fetchMembers({ force: true });
-
-		return lastData;
-	}
-
-	/**
-	 * Cancel a pending invitation. Also clears any reserved mailbox attached to it
-	 * and — when the invitee email is known — any pending team-inbox membership
-	 * grant reserved for them (both best-effort).
-	 */
-	async function cancelInvite(invitationId: string, inviteeEmail?: string) {
-		if (!organizationId.value) {
-			throw new Error(t('shared.useOrganization.errors.noActiveOrganization'));
-		}
-
-		const result = await cancelOrgInvitation({
-			invitationId,
-		});
-
-		if (result.error) {
-			throw new Error(
-				result.error.message || t('shared.useOrganization.errors.cancelInvitationFailed')
-			);
-		}
-
-		// Best-effort cleanup; a stale pending row is harmless until claim. `run`
-		// swallows the throw (returning undefined), so the cancellation proceeds
-		// regardless of whether the reserved mailbox could be cleared.
-		await cancelPendingMailbox({ invitationId });
-
-		// Grants are bound to the email, so sweep them too when we have it. A
-		// grant left behind would silently grant inbox access on a later join.
-		if (inviteeEmail) {
-			await cancelPendingInboxMemberships({ inviteeEmail });
-		}
-
-		// Refresh members list
-		await fetchMembers({ force: true });
-
-		return result.data;
-	}
-
-	/**
-	 * Re-send the invitation email for a still-pending invite. The actual send
-	 * goes through BetterAuth's `inviteMember({ resend: true })`, which reuses the
-	 * existing pending invitation and re-triggers the system-mail path — so no new
-	 * invite (or accept link) is created. The 1-per-minute floor is enforced
-	 * server-side inside the send hook; `throttleResend` is a read-only pre-check
-	 * so we can toast the friendly wait message and skip the round-trip when the
-	 * cooldown hasn't elapsed, returning `false` without sending.
-	 *
-	 * @returns `true` when the email was re-sent, `false` when it was throttled.
-	 */
-	async function resendInvite(
-		invitation: Pick<OrganizationInvitation, 'id' | 'email' | 'role'>
-	): Promise<boolean> {
-		if (!organizationId.value) {
-			throw new Error(t('shared.useOrganization.errors.noActiveOrganization'));
-		}
-
-		const allowed = await throttleResend({ invitationId: invitation.id });
-		if (!allowed.ok) {
-			// Throttled (or the throttle mutation failed) — `run` already toasted.
-			return false;
-		}
-
-		const result = await inviteOrgMember({
-			organizationId: organizationId.value,
-			email: invitation.email,
-			role: mapToBetterAuthRole(invitation.role),
-			resend: true,
-		});
-
-		if (result.error) {
-			throw new Error(
-				result.error.message || t('shared.useOrganization.errors.resendInvitationFailed')
-			);
-		}
-
-		return true;
-	}
 
 	/**
 	 * Update the organization name or slug
