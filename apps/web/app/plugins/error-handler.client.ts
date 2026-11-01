@@ -77,8 +77,26 @@ export default defineNuxtPlugin((nuxtApp) => {
 		if (import.meta.dev) logError(`[${source}]:`, error);
 	}
 
+	// The handlers here swallow what they catch (a toast, PostHog when enabled, a
+	// console line only in development), so nothing outside the page would see a
+	// component that threw while the rest of the page rendered. This event is
+	// that signal: the desktop launch smoke test's renderer probe
+	// (apps/desktop/src-tauri/src/e2e-probe.js) fails the run on it.
+	function announceRendererError(error: unknown, source: string) {
+		const err = error instanceof Error ? error : new Error(String(error));
+		window.dispatchEvent(
+			new CustomEvent('owlat:renderer-error', { detail: { source, message: err.message } })
+		);
+	}
+
+	// Errors Nuxt reports itself: a plugin that threw, or a failed mount.
+	nuxtApp.hook('app:error', (error) => {
+		announceRendererError(error, 'nuxt:app');
+	});
+
 	// Catch Vue component errors
 	nuxtApp.vueApp.config.errorHandler = (error, _instance, info) => {
+		announceRendererError(error, `vue:${info}`);
 		notify();
 		report(error, `vue:${info}`);
 	};

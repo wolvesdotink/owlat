@@ -1,7 +1,7 @@
 /**
- * The spend of a model run that failed partway (#1256). A tool loop or a
+ * The spend of a model run that failed partway. A tool loop or a
  * stream bills every step it finished, but the error it ends in carries no
- * usage, so the caller had nothing to record. The dispatch helpers that run
+ * usage, so the caller would have nothing to record. The dispatch helpers that run
  * several steps (lib/llm/dispatch.ts: `runLlmTextWithTools`, `runLlmStream`)
  * count the usage of each finished step and, when a later step throws, throw
  * an {@link LlmPartialUsageError} that carries it. Pure (no ctx, no

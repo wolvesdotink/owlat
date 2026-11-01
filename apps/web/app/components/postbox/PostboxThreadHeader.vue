@@ -90,20 +90,23 @@ const ICON_CLASS = 'w-3.5 h-3.5 flex-shrink-0 text-text-tertiary';
 <template>
 	<header ref="headerEl" class="pbx-reader-header mb-3" data-reader-chrome="header">
 		<div class="flex items-start gap-2">
-			<h1
-				class="flex-1 min-w-0 text-xl sm:text-2xl font-medium tracking-[-0.02em] text-text-primary"
-			>
-				<template v-if="messageCount > 1"
-					>{{ subjectParts.head
-					}}<span class="whitespace-nowrap"
-						>{{ subjectParts.tail
-						}}<span class="ml-1.5 text-base font-normal text-text-tertiary align-middle"
-							>({{ messageCount }})</span
-						></span
-					></template
-				>
-				<template v-else>{{ subjectText }}</template>
-			</h1>
+			<!-- The verbs stay siblings of the header rather than its #actions: on a
+			     phone they shrink to icons and keep to the subject's line, where the
+			     header's actions row would drop them below it. -->
+			<UiPageHeader class="flex-1 min-w-0">
+				<template #title>
+					<template v-if="messageCount > 1"
+						>{{ subjectParts.head
+						}}<span class="whitespace-nowrap"
+							>{{ subjectParts.tail
+							}}<span class="ml-1.5 text-base font-normal text-text-tertiary align-middle"
+								>({{ messageCount }})</span
+							></span
+						></template
+					>
+					<template v-else>{{ subjectText }}</template>
+				</template>
+			</UiPageHeader>
 			<!-- The thread's two verbs. On a phone they shrink to icons. -->
 			<UiTooltip :text="t('postbox.reader.header.reply')">
 				<template #shortcut><UiShortcut id="postbox.reply" /></template>

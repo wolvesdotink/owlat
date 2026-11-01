@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import { emailClients } from '../../data/clients';
 
 /**
- * Issue #1434: the web CSP blocks caniemail.com, so the analysis must not need
+ * The web CSP blocks caniemail.com, so the analysis must not need
  * it. With the network refused and nothing cached, the real bundled snapshot
  * still drives the findings (no mocks of the data here).
  */

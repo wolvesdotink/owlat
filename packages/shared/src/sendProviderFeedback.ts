@@ -37,9 +37,9 @@ export type SendProviderFeedbackSetupPanel = 'sns-topic' | 'signed-webhook';
  * `hasProviderFeedback` answers whether feedback exists AT ALL, which is what
  * measurement confidence grades on. It cannot answer what the delivery config
  * page has to draw: an SNS subscription and a console webhook with a signing key
- * are different ceremonies with different copy. That used to be a table of kind
- * literals inside `config.vue`, so a sixth provider with real feedback rendered
- * NO panel at all and nothing failed — the gap this descriptor closes.
+ * are different ceremonies with different copy. A table of kind literals inside
+ * `config.vue` would render NO panel for a new provider with real feedback, and
+ * nothing would fail; this descriptor lets the page draw what the catalog says.
  *
  * DATA ONLY, like every other field here: a route PATH and an env variable NAME,
  * never a key and never a URL (the absolute endpoint is the deployment's own

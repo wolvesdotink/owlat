@@ -1,11 +1,12 @@
 /**
  * `owlat` must end up on PATH no matter how a box was provisioned.
  *
- * install.sh used to be the only thing that created `/usr/local/bin/owlat`,
- * while the desktop SSH wizard and the documented hand-clone flow both clone the
- * repo themselves and run `./scripts/owlat quickstart` directly — so those boxes
- * got a working stack and no `owlat` command, contradicting the day-2 ops docs.
- * The link now lives in the wrapper, which every one of those paths goes through.
+ * install.sh is not the only way onto a box: the desktop SSH wizard and the
+ * documented hand-clone flow both clone the repo themselves and run
+ * `./scripts/owlat quickstart` directly. A link created only by install.sh
+ * would leave those boxes with a working stack and no `owlat` command,
+ * contradicting the day-2 ops docs, so the link lives in the wrapper, which
+ * every one of those paths goes through.
  *
  * These cases exercise the REAL `scripts/owlat`, copied into a throwaway clone,
  * with `OWLAT_CLI_LINK` pointed at a temporary directory instead of

@@ -361,7 +361,7 @@ services:
     # Run directly as the image's redis user (uid 999, gid 1000). With
     # cap_drop: ALL the root entrypoint has no DAC_OVERRIDE, so it cannot
     # traverse an appendonlydir created (and owned as 999) by a previous run —
-    # startup fails on preserved volumes (#551). As non-root the entrypoint
+    # startup fails on preserved volumes. As non-root the entrypoint
     # skips its chown/su-exec path entirely and works for fresh volumes too.
     user: '999:1000'
     volumes:
@@ -447,8 +447,8 @@ services:
       - ALL
     # ClamAV's entrypoint runs as root to prepare /run/clamav and chown the
     # signature DB under /var/lib/clamav before dropping to the clamav user.
-    # Under a bare cap_drop: ALL it restart-loops on "can't change ownership"
-    # (#551), on fresh and preserved volumes alike. These five capabilities are
+    # Under a bare cap_drop: ALL it restart-loops on "can't change ownership",
+    # on fresh and preserved volumes alike. These five capabilities are
     # the minimal set its entrypoint needs — don't remove them in a hardening
     # sweep without re-testing both volume states.
     cap_add:
@@ -1138,7 +1138,7 @@ services:
       # Port 993 is internet-facing and LOGIN is the only thing between the internet
       # and a user's mail, so this is NOT optional: without it the limiter has no
       # counters, every password guess is free, and the sole signal is one level-40
-      # log line at boot. Every deployment shipped that way until now.
+      # log line at boot.
       # apps/imap/src/config.ts refuses to boot in production if this is unset —
       # safe here because REDIS_PASSWORD is already `:?` (setup always mints it),
       # so a missing password aborts the compose command rather than creating a

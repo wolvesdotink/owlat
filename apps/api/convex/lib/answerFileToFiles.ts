@@ -59,7 +59,7 @@ export async function assertOwnUnclaimedUpload(
 
 /**
  * Save a blob to Files for a contact and return the new row. `claim` says who
- * owns the blob until now: `'upload'` is the caller's fresh upload, whose
+ * owns the blob before this call: `'upload'` is the caller's fresh upload, whose
  * receipt is consumed for the row; `'copy'` is a copy the caller just stored
  * (the upload itself went to a reply), which gets a bound receipt of its own
  * so deleting the row frees it. Throws forbidden for a caller who may not add

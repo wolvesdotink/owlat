@@ -2,9 +2,9 @@
 //
 // Accessibility contract for the block canvas.
 //
-// The canvas used to be an unnamed pile of divs: no structure a screen reader
-// could report ("list of 5 blocks, item 2 of 5"), no names on the blocks, and
-// no way to move between them from the keyboard. It is now a list — one list
+// A screen reader must be able to report the canvas's structure ("list of 5
+// blocks, item 2 of 5") and name each block, and the keyboard must move
+// between them, so the canvas is a list — one list
 // item per draggable unit, each block inside it a named `group` with an
 // accessible name of the form "<type label>: <content excerpt>", `aria-current`
 // wired to the editor's existing selection model, a roving tabindex so the

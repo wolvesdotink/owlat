@@ -2,7 +2,7 @@
  * The desktop wizard uploads a setup config holding the admin password and
  * provider keys in plaintext, then runs `scripts/owlat quickstart --config` with
  * OWLAT_CONSUME_CONFIG=1. The wrapper must then delete that file when the run
- * ends, however it ends (issue #953): a failed install, a signal, or the SSH
+ * ends, however it ends: a failed install, a signal, or the SSH
  * session that started it going away must not leave the secret on the server.
  *
  * These cases run the REAL `scripts/owlat` against a stub `docker` that records

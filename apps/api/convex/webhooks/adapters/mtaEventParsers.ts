@@ -172,7 +172,7 @@ export const MTA_EVENT_PARSERS = {
 			...(payload.sourceIsp ? { sourceIsp: payload.sourceIsp } : {}),
 		};
 		if (payload.messageId) {
-			// The recipient rides along for an id that matches no send (#1194).
+			// The recipient rides along for an id that matches no send.
 			return {
 				kind: 'email.complained',
 				providerMessageId: payload.messageId,

@@ -182,11 +182,11 @@ describe('transaction layer — smtp-server integration', () => {
 	});
 
 	it('cancels a stalled send by destroying the live SMTP socket, surfacing a distinct SmtpAbortError', async () => {
-		// Previously this asserted only a generic `/connection closed/` wire error — the
-		// exact fail-open Finding 3 fixes: a mid-flight abort closes the socket, so the
-		// in-flight read rejected with a wrapped wire SmtpError indistinguishable from a
-		// genuine transient failure, letting the retry classifier re-enqueue a cancelled
-		// send. It now must surface a recognizable SmtpAbortError instead.
+		// A generic `/connection closed/` wire error is not enough here: a mid-flight
+		// abort closes the socket, and an in-flight read rejected with a wrapped wire
+		// SmtpError is indistinguishable from a genuine transient failure, which lets
+		// the retry classifier re-enqueue a cancelled send (fail-open). It must surface
+		// a recognizable SmtpAbortError instead.
 		let peerClosed!: () => void;
 		let watchingClose = false;
 		const closed = new Promise<void>((resolve) => {
@@ -466,10 +466,10 @@ describe('transaction layer — phase-tagged failures against raw peers', () => 
 	it('preserves a complete 554 written mid-DATA before the server slams the socket', async () => {
 		// A hostile server emits a COMPLETE permanent verdict DURING the body stream and
 		// immediately closes: the 554 lands in the reader's queue, then the FIN poisons
-		// the reader. Previously the client rejected with a generic "socket closed" error
-		// carrying NO replyCode — the definitive 5xx verdict was lost and the hard bounce
-		// misclassified as an ambiguous data-phase failure. The client must now surface
-		// the buffered 554 (with its enhanced code), not the generic close error.
+		// the reader. A generic "socket closed" error carrying NO replyCode would lose
+		// the definitive 5xx verdict and misclassify the hard bounce as an ambiguous
+		// data-phase failure. The client must surface the buffered 554 (with its
+		// enhanced code), not the generic close error.
 		//
 		// To land the reply in the queue-then-poisoned recovery path DETERMINISTICALLY
 		// (not the incidental clean-read path), the peer STOPS reading after 354 so the

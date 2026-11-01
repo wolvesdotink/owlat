@@ -87,9 +87,7 @@ const compactEntries = computed(() =>
 						"
 					/>
 
-					<h1 v-if="heading" class="mb-1 text-2xl font-medium tracking-[-0.02em] text-text-primary">
-						{{ heading }}
-					</h1>
+					<UiPageHeader v-if="heading" class="mb-1" :title="heading" />
 				</template>
 
 				<slot />

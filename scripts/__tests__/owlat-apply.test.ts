@@ -1,6 +1,6 @@
 /**
  * `owlat apply` is the command every "change .env, then …" hint points at, so
- * it has to do what `owlat restart` never did (issue #839):
+ * it has to do what `owlat restart` does not:
  *   - run `docker compose up -d` with the install's COMPOSE_PROFILES, so a
  *     container whose resolved env changed is recreated and a newly enabled
  *     profile service is started;

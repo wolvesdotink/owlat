@@ -1,5 +1,5 @@
 /**
- * Leaked tool-call markup in draft text (lib/llm/toolMarkup.ts, #1254): the
+ * Leaked tool-call markup in draft text (lib/llm/toolMarkup.ts): the
  * final-text check every draft surface runs and the streaming view Answer mode
  * shows while the model writes.
  */

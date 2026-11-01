@@ -46,23 +46,17 @@ async function confirmPurge() {
 
 <template>
 	<div>
-		<div class="mb-8">
-			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-				{{ t('dashboard.admin.instance.plugins.index.title') }}
-			</h1>
-			<I18nT
-				keypath="dashboard.admin.instance.plugins.index.intro"
-				tag="p"
-				scope="global"
-				class="mt-1 text-text-secondary max-w-2xl"
-			>
-				<template #featuresLink>
-					<NuxtLink to="/dashboard/admin/instance/features" class="text-brand hover:underline">{{
-						t('dashboard.admin.instance.plugins.index.featuresLink')
-					}}</NuxtLink>
-				</template>
-			</I18nT>
-		</div>
+		<UiPageHeader class="mb-8" :title="t('dashboard.admin.instance.plugins.index.title')">
+			<template #description>
+				<I18nT keypath="dashboard.admin.instance.plugins.index.intro" tag="span" scope="global">
+					<template #featuresLink>
+						<NuxtLink to="/dashboard/admin/instance/features" class="text-brand hover:underline">{{
+							t('dashboard.admin.instance.plugins.index.featuresLink')
+						}}</NuxtLink>
+					</template>
+				</I18nT>
+			</template>
+		</UiPageHeader>
 
 		<UiQueryBoundary :loading="isLoading && !overview" :error="error" @retry="refetch">
 			<div class="space-y-8">

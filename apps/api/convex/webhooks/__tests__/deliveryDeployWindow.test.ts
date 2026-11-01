@@ -1,6 +1,5 @@
 /**
- * Outbound webhooks across the deploy that introduced the attempt model
- * (issue #809 finding 7, review follow-up).
+ * Outbound webhooks across the deploy that introduced the attempt model.
  *
  * - Scheduling: an event is handed to the scheduler as the enqueue MUTATION, so
  *   no at-most-once action sits between the event and its delivery rows.

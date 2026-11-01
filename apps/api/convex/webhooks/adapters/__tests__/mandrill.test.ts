@@ -86,7 +86,7 @@ const SAVED_ENV = { ...process.env };
 
 beforeEach(() => {
 	process.env['MANDRILL_WEBHOOK_KEY'] = WEBHOOK_KEY;
-	// A deployment that sends through Mandrill, so its account default is in scope (#1243).
+	// A deployment that sends through Mandrill, so its account default is in scope.
 	process.env['MANDRILL_API_KEY'] = 'mandrill-test-api-key';
 	process.env['CONVEX_SITE_URL'] = SITE_URL;
 	delete process.env['RATE_LIMIT_TRUSTED_PROXY'];
@@ -173,7 +173,7 @@ async function readSend(t: Harness, sendId: Id<'emailSends'>) {
 /**
  * A Mandrill message event, with the fields the adapter reads. Stamped a minute
  * ago by default: an address-keyed event older than the replay window acts on
- * no address (#1228).
+ * no address.
  */
 function event(
 	name: string,
@@ -508,7 +508,7 @@ describe('Mandrill event mapping', () => {
 		const topicId = await t.run(async (ctx: { db: DatabaseWriter }) => {
 			const id = await ctx.db.insert('topics', createTestTopic({ requireDoubleOptIn: false }));
 			// Subscribed before the event: a later membership is a re-subscribe
-			// the event must not undo (#1228).
+			// the event must not undo.
 			await ctx.db.insert('contactTopics', {
 				contactId,
 				topicId: id,

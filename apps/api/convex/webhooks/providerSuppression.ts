@@ -40,7 +40,7 @@
  *    reason whose MTA mirror expires and whose presence on the suppression
  *    screen reads as "someone put this here". A rule that refused one message
  *    is not a list entry: it can match the subject or the sender, so an
- *    adapter mints nothing for it (Mandrill `rule`, #1249).
+ *    adapter mints nothing for it (Mandrill `rule`).
  *  - `unsubscribed` — the person left. Owlat has a whole consent path for that
  *    (membership delete, opt-out stamp, campaign counter, webhook fanout); a
  *    blocklist row would record the outcome while skipping the accounting, so
@@ -53,7 +53,7 @@
  * the recipient is one an adapter never mints, so it cannot arrive here and be
  * mishandled.
  *
- * OPERATOR DECISIONS WIN OVER OLDER PROVIDER DATA (#1228). Every write carries
+ * OPERATOR DECISIONS WIN OVER OLDER PROVIDER DATA. Every write carries
  * the event's own time. `addFromEvent` refuses a re-add older than an
  * operator's removal of that address, and `processUnsubscribeByEmail` refuses
  * an unsubscribe older than the contact's re-subscribe, so a late redelivery or
@@ -61,8 +61,8 @@
  * keeps refusing the address after the operator unblocked it, that is fresh
  * evidence, and the fix is to remove it from the provider's list too.
  *
- * WHY THERE IS NO OWNERSHIP GATE HERE, unlike the unresolved-complaint path
- * (#1214, #1237). Those complaints name a message that matches no Send, which
+ * WHY THERE IS NO OWNERSHIP GATE HERE, unlike the unresolved-complaint path.
+ * Those complaints name a message that matches no Send, which
  * is itself evidence the mail may not be ours. A provider suppression is a fact
  * about the provider ACCOUNT's list, and this deployment's arm on that account
  * refuses the address whoever put it there, so mirroring it keeps the two arms
@@ -71,7 +71,7 @@
  * id for the webhook's `reject` to match. That synchronous refusal is mirrored
  * from the send response itself ({@link recordSendResponseRefusal}). Events
  * from another Mandrill subaccount are held back before they reach this file
- * (`./sendingScope.ts`, #1243).
+ * (`./sendingScope.ts`).
  */
 
 import { internal } from '../_generated/api';
@@ -199,7 +199,7 @@ export async function applyFailureSuppression(
 
 /**
  * Mirror the suppression a provider attached to a refusal in its own send
- * response (#1243): a Mandrill `rejected` result off its reject list. Every
+ * response: a Mandrill `rejected` result off its reject list. Every
  * caller of `sendProviderDispatch` passes its result here (the governed
  * dispatch and system mail; `__tests__/sendResponseRefusalCallers.test.ts`
  * fails a new caller that does not).

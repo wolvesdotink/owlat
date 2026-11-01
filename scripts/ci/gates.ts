@@ -271,12 +271,7 @@ export const ROOT_GATES: readonly RootGate[] = [
 	},
 	{
 		name: 'page-headers',
-		paths: [
-			'apps/web/app/',
-			'scripts/check-page-headers.sh',
-			'scripts/page-header-baseline.txt',
-			RATCHET,
-		],
+		paths: ['apps/web/app/', 'scripts/check-page-headers.sh', RATCHET],
 	},
 	{
 		name: 'tokens',

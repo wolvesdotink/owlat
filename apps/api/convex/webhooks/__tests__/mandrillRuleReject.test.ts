@@ -1,5 +1,5 @@
 /**
- * A Mandrill `rule` reject fails the Send and blocks no one (#1249).
+ * A Mandrill `rule` reject fails the Send and blocks no one.
  *
  * Mandrill's rules engine can reject a message on its subject, sender, tags,
  * template or API key, and the "reject message" action writes nothing to the

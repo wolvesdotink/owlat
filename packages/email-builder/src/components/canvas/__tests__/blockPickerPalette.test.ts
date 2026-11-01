@@ -13,8 +13,8 @@
 //
 // The package has no SFC compiler wired into vitest, so we exercise the same
 // registry-driven render path the popover uses rather than mounting the .vue
-// file directly. If the allowlist were dropped on the way down (the regression
-// this PR fixes), the restricted buttons would reappear here.
+// file directly. If the allowlist were dropped on the way down, the restricted
+// buttons would reappear here.
 import { describe, it, expect } from 'vitest';
 import { createApp, defineComponent, h, computed, type Component } from 'vue';
 import { getAllBlocks } from '../../../registry';

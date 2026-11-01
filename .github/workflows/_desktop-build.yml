@@ -231,6 +231,28 @@ jobs:
           # unsigned dev/CI builds must not require the updater signing key.
           args: ${{ matrix.args }} --config src-tauri/tauri.release.conf.json
 
+      # Launch the AppImage that was just uploaded, under a virtual display with
+      # a fresh profile: a missing library, a panic, a webview that cannot start
+      # or an app that exits on its own fails the job, and the release stays a
+      # draft. The release build carries no instrumentation, so this checks that
+      # the app is still running at the deadline with nothing fatal printed; the
+      # deeper mount and update checks run on the fixture builds in desktop-ci.yml.
+      - name: Launch smoke (Linux AppImage)
+        if: matrix.platform == 'ubuntu-22.04'
+        timeout-minutes: 10
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y xvfb dbus
+          appimage="$(find apps/desktop/src-tauri/target/release/bundle/appimage \
+            -maxdepth 1 -name '*.AppImage' -print -quit)"
+          if [ -z "$appimage" ]; then
+            echo "::error::No AppImage was built to launch." >&2
+            exit 1
+          fi
+          xvfb-run -a dbus-run-session -- bun scripts/desktop-smoke.ts liveness "$appimage" \
+            --scratch "$RUNNER_TEMP/desktop-smoke"
+
       # When signing IS configured, prove the shipped .app actually passes
       # Gatekeeper before the caller publishes the draft Release: a bad
       # certificate, broken entitlements, or a failed/unstapled notarization

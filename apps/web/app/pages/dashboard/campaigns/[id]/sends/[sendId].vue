@@ -21,6 +21,13 @@ const {
 } = useConvexQuery(api.delivery.sends.get, () => ({
 	id: sendId.value,
 }));
+
+const contactName = computed(() => {
+	const value = send.value;
+	if (!value) return '';
+	const first = value.contactFirstName || value.contactEmail?.split('@')[0] || t('common.unknown');
+	return value.contactLastName ? `${first} ${value.contactLastName}` : first;
+});
 </script>
 
 <template>
@@ -65,39 +72,30 @@ const {
 						{{ t('dashboard.campaigns.detail.sends.detail.backToReport') }}
 					</NuxtLink>
 
-					<div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-						<div>
-							<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-								{{ send.contactFirstName || send.contactEmail?.split('@')[0] || t('common.unknown') }}
-								{{ send.contactLastName || '' }}
-							</h1>
-							<p class="mt-1 text-text-secondary">{{ send.contactEmail }}</p>
-							<div
-								v-if="send.campaign"
-								class="mt-2 flex items-center gap-2 text-sm text-text-tertiary"
-							>
-								<Icon name="lucide:megaphone" class="w-4 h-4" />
-								<span>{{ send.campaign.name }}</span>
-								<span v-if="send.personalizedSubject" class="text-text-tertiary">
-									&mdash; {{ send.personalizedSubject }}
+					<UiPageHeader :title="contactName" :description="send.contactEmail">
+						<template #meta>
+							<div class="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-text-tertiary">
+								<span
+									v-if="send.abVariant"
+									class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-brand/10 text-brand"
+								>
+									{{
+										t('dashboard.campaigns.detail.sends.detail.variant', {
+											variant: send.abVariant,
+										})
+									}}
 								</span>
+								<DashboardSendStatusBadge :status="send.status" fallback="queued" />
+								<div v-if="send.campaign" class="flex items-center gap-2">
+									<Icon name="lucide:megaphone" class="w-4 h-4" />
+									<span>{{ send.campaign.name }}</span>
+									<span v-if="send.personalizedSubject" class="text-text-tertiary">
+										&mdash; {{ send.personalizedSubject }}
+									</span>
+								</div>
 							</div>
-						</div>
-
-						<div class="flex items-center gap-3 flex-shrink-0">
-							<span
-								v-if="send.abVariant"
-								class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-brand/10 text-brand"
-							>
-								{{
-									t('dashboard.campaigns.detail.sends.detail.variant', {
-										variant: send.abVariant,
-									})
-								}}
-							</span>
-							<DashboardSendStatusBadge :status="send.status" fallback="queued" />
-						</div>
-					</div>
+						</template>
+					</UiPageHeader>
 				</div>
 
 				<!-- Timeline -->

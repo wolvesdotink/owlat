@@ -148,7 +148,7 @@ const INVENTORY: readonly CallSite[] = [
 		branches: [['capable', 'draft']],
 	},
 	site('agent/steps/clarify/index.ts', "ctx, 'mail.clarify'", 'classify'),
-	// The questions about a held team draft's gaps (#1343), localized on the
+	// The questions about a held team draft's gaps, localized on the
 	// clarify step's own fast tier.
 	site('agent/steps/draft/gaps.ts', "ctx, 'mail.clarify'", 'classify'),
 	site('agent/steps/security_scan/guard.ts', "ctx, 'mail.guard'", 'guard'),

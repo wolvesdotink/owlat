@@ -1,4 +1,9 @@
 <script setup lang="ts">
+import AddEndpointModal from '~/components/forms/AddEndpointModal.vue';
+import EditEndpointModal from '~/components/forms/EditEndpointModal.vue';
+import EndpointDetails from '~/components/forms/EndpointDetails.vue';
+import EndpointHeader from '~/components/forms/EndpointHeader.vue';
+
 const { t } = useI18n();
 
 useHead({ title: () => t('dashboard.admin.instance.forms.pageTitle') });
@@ -185,528 +190,65 @@ watch([isAddDirty, isEditDirty], ([add, edit]) => setHasChanges(add || edit), { 
 			<div v-else-if="formsData && formsData.length > 0" class="space-y-4">
 				<div v-for="form in formsData" :key="form._id" class="card p-0 overflow-hidden">
 					<!-- Form Header -->
-					<div
-						class="px-6 py-4 flex items-center justify-between cursor-pointer hover:bg-bg-surface/50 transition-colors"
-						@click="toggleFormExpansion(form._id)"
-					>
-						<div class="flex items-center gap-4">
-							<UiIconBox icon="lucide:file-text" size="sm" variant="surface" rounded="lg" />
-							<div>
-								<div class="flex items-center gap-3">
-									<p class="font-medium text-text-primary">{{ form.name }}</p>
-									<span
-										:class="[
-											'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border',
-											form.isActive
-												? 'bg-success/20 text-success border-success/30'
-												: 'bg-text-tertiary/20 text-text-tertiary border-text-tertiary/30',
-										]"
-									>
-										<Icon
-											:name="form.isActive ? 'lucide:check-circle-2' : 'lucide:x-circle'"
-											class="w-3 h-3"
-										/>
-										{{ form.isActive ? t('common.active') : t('common.inactive') }}
-									</span>
-								</div>
-								<div class="flex items-center gap-4 mt-1 text-sm text-text-tertiary">
-									<span>{{
-										t('dashboard.admin.instance.forms.topicLine', {
-											topic: getTopicName(form.topicId),
-										})
-									}}</span>
-									<span class="text-border-default">&bull;</span>
-									<span>{{
-										t('dashboard.admin.instance.forms.submissionsCount', {
-											count: form.totalSubmissions,
-										})
-									}}</span>
-									<span class="text-border-default">&bull;</span>
-									<span>{{
-										t('dashboard.admin.instance.forms.createdOn', {
-											date: formatDate(form.createdAt),
-										})
-									}}</span>
-								</div>
-							</div>
-						</div>
-
-						<div class="flex items-center gap-2">
-							<!-- Active: the switch's state is the form's state -->
-							<UiSwitch
-								:model-value="form.isActive"
-								:label="form.name"
-								class="mr-1"
-								@click.stop
-								@update:model-value="handleToggleActive(form)"
-							/>
-							<!-- Edit -->
-							<UiTooltip :text="t('dashboard.admin.instance.forms.editForm')">
-								<UiButton
-									variant="ghost"
-									class="p-2"
-									:aria-label="t('dashboard.admin.instance.forms.editForm')"
-									@click.stop="openEditModal(form as Parameters<typeof openEditModal>[0])"
-								>
-									<Icon name="lucide:settings-2" class="w-4 h-4" />
-								</UiButton>
-							</UiTooltip>
-							<!-- Delete -->
-							<UiTooltip :text="t('dashboard.admin.instance.forms.deleteForm')">
-								<UiButton
-									variant="ghost"
-									class="p-2 text-error hover:bg-error/10"
-									:aria-label="t('dashboard.admin.instance.forms.deleteForm')"
-									@click.stop="
-										formToDelete = {
-											_id: form._id,
-											name: form.name,
-											totalSubmissions: form.totalSubmissions,
-										}
-									"
-								>
-									<Icon name="lucide:trash-2" class="w-4 h-4" />
-								</UiButton>
-							</UiTooltip>
-							<!-- Expand Arrow -->
-							<div
-								:class="[
-									'w-5 h-5 flex items-center justify-center transition-transform',
-									expandedFormId === form._id ? 'rotate-180' : '',
-								]"
-							>
-								<svg
-									class="w-4 h-4 text-text-tertiary"
-									fill="none"
-									viewBox="0 0 24 24"
-									stroke="currentColor"
-								>
-									<path
-										stroke-linecap="round"
-										stroke-linejoin="round"
-										stroke-width="2"
-										d="M19 9l-7 7-7-7"
-									/>
-								</svg>
-							</div>
-						</div>
-					</div>
+					<EndpointHeader
+						:form="form"
+						:topic-name="getTopicName(form.topicId)"
+						:created-on="formatDate(form.createdAt)"
+						:expanded="expandedFormId === form._id"
+						@toggle="toggleFormExpansion(form._id)"
+						@toggle-active="handleToggleActive(form)"
+						@edit="openEditModal(form as Parameters<typeof openEditModal>[0])"
+						@delete="
+							formToDelete = {
+								_id: form._id,
+								name: form.name,
+								totalSubmissions: form.totalSubmissions,
+							}
+						"
+					/>
 
 					<!-- Expanded Content (Embed Code & Stats) -->
 					<Transition name="expand">
-						<div v-if="expandedFormId === form._id" class="border-t border-border-subtle">
-							<div class="px-6 py-4 bg-bg-surface/30 space-y-6">
-								<!-- Stats Section -->
-								<div>
-									<h4 class="text-sm font-medium text-text-primary mb-3">
-										{{ t('dashboard.admin.instance.forms.stats.title') }}
-									</h4>
-									<div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-										<div class="bg-bg-elevated rounded-xl p-4 border border-border-subtle">
-											<div class="flex items-center gap-2 mb-1">
-												<Icon name="lucide:inbox" class="w-4 h-4 text-text-tertiary" />
-												<span class="text-xs text-text-tertiary">{{
-													t('dashboard.admin.instance.forms.stats.total')
-												}}</span>
-											</div>
-											<p class="text-xl font-semibold text-text-primary">
-												{{ form.totalSubmissions }}
-											</p>
-										</div>
-										<div class="bg-bg-elevated rounded-xl p-4 border border-border-subtle">
-											<div class="flex items-center gap-2 mb-1">
-												<Icon name="lucide:check-circle-2" class="w-4 h-4 text-success" />
-												<span class="text-xs text-text-tertiary">{{
-													t('dashboard.admin.instance.forms.stats.successful')
-												}}</span>
-											</div>
-											<p class="text-xl font-semibold text-success">
-												{{ form.successfulSubmissions }}
-											</p>
-										</div>
-										<div class="bg-bg-elevated rounded-xl p-4 border border-border-subtle">
-											<div class="flex items-center gap-2 mb-1">
-												<Icon name="lucide:alert-triangle" class="w-4 h-4 text-warning" />
-												<span class="text-xs text-text-tertiary">{{
-													t('dashboard.admin.instance.forms.stats.other')
-												}}</span>
-											</div>
-											<!-- Everything not successful: pending double-opt-in, spam, invalid,
-												and duplicates. The backend denormalizes only total + successful,
-												so this is the honest derived remainder (not just duplicates). -->
-											<p class="text-xl font-semibold text-warning">
-												{{ form.totalSubmissions - form.successfulSubmissions }}
-											</p>
-										</div>
-									</div>
-								</div>
-
-								<!-- Recent submissions -->
-								<FormsSubmissionsPanel :form-endpoint-id="form._id" />
-
-								<!-- Endpoint URL -->
-								<div>
-									<h4 class="text-sm font-medium text-text-primary mb-2">
-										{{ t('dashboard.admin.instance.forms.endpointUrl') }}
-									</h4>
-									<div class="flex items-center gap-2">
-										<code
-											class="flex-1 bg-bg-deep px-3 py-2 rounded-lg text-sm text-text-secondary font-mono break-all"
-										>
-											{{ getFormUrl(form._id) }}
-										</code>
-										<UiTooltip :text="t('dashboard.admin.instance.forms.copyUrl')">
-											<UiButton
-												variant="ghost"
-												class="p-2"
-												:aria-label="t('dashboard.admin.instance.forms.copyUrl')"
-												@click="copyToClipboard(getFormUrl(form._id), `url-${form._id}`)"
-											>
-												<Icon
-													v-if="copiedCode === `url-${form._id}`"
-													name="lucide:check"
-													class="w-4 h-4 text-success"
-												/>
-												<Icon v-else name="lucide:copy" class="w-4 h-4" />
-											</UiButton>
-										</UiTooltip>
-									</div>
-								</div>
-
-								<!-- Embed Code -->
-								<div>
-									<div class="flex items-center justify-between mb-2">
-										<h4 class="text-sm font-medium text-text-primary">
-											{{ t('dashboard.admin.instance.forms.embedCode') }}
-										</h4>
-										<UiButton
-											variant="ghost"
-											class="gap-1.5 text-sm py-1.5 px-3"
-											@click="copyToClipboard(getEmbedCode(form), `embed-${form._id}`)"
-										>
-											<Icon
-												v-if="copiedCode === `embed-${form._id}`"
-												name="lucide:check"
-												class="w-4 h-4 text-success"
-											/>
-											<Icon v-else name="lucide:copy" class="w-4 h-4" />
-											{{
-												copiedCode === `embed-${form._id}`
-													? t('dashboard.admin.instance.forms.copied')
-													: t('dashboard.admin.instance.forms.copyCode')
-											}}
-										</UiButton>
-									</div>
-									<pre
-										class="bg-bg-deep px-4 py-3 rounded-lg text-sm text-text-secondary font-mono overflow-x-auto whitespace-pre-wrap break-all"
-										>{{ getEmbedCode(form) }}</pre>
-								</div>
-
-								<!-- Help Text -->
-								<div class="p-4 bg-bg-surface rounded-xl border border-border-subtle">
-									<p class="text-sm text-text-secondary">
-										<I18nT keypath="dashboard.admin.instance.forms.tip" tag="span" scope="global">
-											<template #label>
-												<strong class="text-text-primary">{{
-													t('dashboard.admin.instance.forms.tipLabel')
-												}}</strong>
-											</template>
-										</I18nT>
-										<a
-											href="https://docs.owlat.app/developer/forms"
-											target="_blank"
-											rel="noopener"
-											class="inline-flex items-center gap-1 text-brand hover:underline ml-1"
-										>
-											{{ t('common.learnMore') }}
-											<Icon name="lucide:external-link" class="w-3 h-3" />
-										</a>
-									</p>
-								</div>
-							</div>
-						</div>
+						<EndpointDetails
+							v-if="expandedFormId === form._id"
+							:form="form"
+							:form-url="getFormUrl(form._id)"
+							:embed-code="getEmbedCode(form)"
+							:copied-code="copiedCode"
+							@copy="copyToClipboard"
+						/>
 					</Transition>
 				</div>
 			</div>
 		</div>
 
 		<!-- Add Form Modal -->
-		<UiModal
+		<AddEndpointModal
 			:open="isAddModalOpen"
-			:title="t('dashboard.admin.instance.forms.addModal.title')"
-			size="md"
-			@update:open="
-				(v) => {
-					if (!v) isAddModalOpen = false;
-				}
+			:form="addForm"
+			:errors="addFormErrors"
+			:is-adding="isAdding"
+			:topics="topicsData"
+			:field-editor="addFieldEditor"
+			@close="isAddModalOpen = false"
+			@cancel="
+				isAddModalOpen = false;
+				resetAddForm();
 			"
-		>
-			<form id="add-form" @submit.prevent="handleAddForm">
-				<div class="space-y-4">
-					<!-- Name Input -->
-					<div>
-						<label for="form-name" class="label">
-							{{ t('dashboard.admin.instance.forms.fields.name') }}
-							<span class="text-error">*</span>
-						</label>
-						<input
-							id="form-name"
-							v-model="addForm.name"
-							type="text"
-							:placeholder="t('dashboard.admin.instance.forms.fields.namePlaceholder')"
-							:class="['input', addFormErrors.name && 'input-error']"
-							:disabled="isAdding"
-						/>
-						<p v-if="addFormErrors.name" class="mt-1 text-xs text-error">
-							{{ addFormErrors.name }}
-						</p>
-					</div>
-
-					<!-- Topic Select -->
-					<div>
-						<label for="form-topic" class="label">
-							{{ t('dashboard.admin.instance.forms.fields.topic') }}
-						</label>
-						<select id="form-topic" v-model="addForm.topicId" class="input" :disabled="isAdding">
-							<option value="">{{ t('dashboard.admin.instance.forms.fields.noTopic') }}</option>
-							<option v-for="list in topicsData" :key="list._id" :value="list._id">
-								{{ list.name }}
-							</option>
-						</select>
-						<p class="mt-1 text-xs text-text-tertiary">
-							{{ t('dashboard.admin.instance.forms.fields.topicHelp') }}
-						</p>
-					</div>
-
-					<!-- Fields Editor -->
-					<FormsFieldsEditor
-						:fields="addForm.fields"
-						:editor="addFieldEditor"
-						:error="addFormErrors.fields"
-						:disabled="isAdding"
-						id-prefix="add"
-					/>
-
-					<!-- Redirect URL -->
-					<div>
-						<label for="form-redirect" class="label">
-							{{ t('dashboard.admin.instance.forms.fields.redirect') }}
-						</label>
-						<input
-							id="form-redirect"
-							v-model="addForm.redirectUrl"
-							type="url"
-							placeholder="https://example.com/thank-you"
-							class="input"
-							:disabled="isAdding"
-						/>
-						<p class="mt-1 text-xs text-text-tertiary">
-							{{ t('dashboard.admin.instance.forms.fields.redirectHelp') }}
-						</p>
-					</div>
-
-					<!-- Honeypot Field -->
-					<div>
-						<label for="form-honeypot" class="label">
-							{{ t('dashboard.admin.instance.forms.fields.honeypot') }}
-						</label>
-						<input
-							id="form-honeypot"
-							v-model="addForm.honeypotFieldName"
-							type="text"
-							:placeholder="t('dashboard.admin.instance.forms.fields.honeypotPlaceholder')"
-							class="input"
-							:disabled="isAdding"
-						/>
-						<p class="mt-1 text-xs text-text-tertiary">
-							{{ t('dashboard.admin.instance.forms.fields.honeypotHelp') }}
-						</p>
-					</div>
-
-					<!-- Double Opt-In -->
-					<div class="flex items-start gap-3 pt-2">
-						<input
-							id="form-double-optin"
-							v-model="addForm.doubleOptIn"
-							type="checkbox"
-							class="mt-1 h-4 w-4 rounded border-border-default bg-bg-deep text-brand focus:ring-brand focus:ring-offset-0"
-							:disabled="isAdding"
-						/>
-						<div>
-							<label
-								for="form-double-optin"
-								class="text-sm font-medium text-text-primary cursor-pointer"
-							>
-								{{ t('dashboard.admin.instance.forms.fields.doubleOptIn') }}
-							</label>
-							<p class="mt-0.5 text-xs text-text-tertiary">
-								{{ t('dashboard.admin.instance.forms.fields.doubleOptInHelp') }}
-							</p>
-						</div>
-					</div>
-				</div>
-			</form>
-
-			<template #footer>
-				<UiButton
-					variant="secondary"
-					type="button"
-					:disabled="isAdding"
-					@click="
-						isAddModalOpen = false;
-						resetAddForm();
-					"
-				>
-					{{ t('common.cancel') }}
-				</UiButton>
-				<UiButton type="submit" form="add-form" class="gap-2" :disabled="isAdding">
-					<Icon
-						v-if="isAdding"
-						name="lucide:loader-2"
-						class="w-4 h-4 animate-spin motion-reduce:animate-none"
-					/>
-					<Icon v-else name="lucide:plus" class="w-4 h-4" />
-					{{
-						isAdding
-							? t('dashboard.admin.instance.forms.addModal.creating')
-							: t('dashboard.admin.instance.forms.addModal.create')
-					}}
-				</UiButton>
-			</template>
-		</UiModal>
+			@submit="handleAddForm"
+		/>
 
 		<!-- Edit Form Modal -->
-		<UiModal
+		<EditEndpointModal
 			:open="!!formToEdit"
-			:title="t('dashboard.admin.instance.forms.editModal.title')"
-			size="md"
-			@update:open="
-				(v) => {
-					if (!v) formToEdit = null;
-				}
-			"
-		>
-			<form id="edit-form" @submit.prevent="handleSaveEdit">
-				<div class="space-y-4">
-					<!-- Name Input -->
-					<div>
-						<label for="edit-form-name" class="label">
-							{{ t('dashboard.admin.instance.forms.fields.name') }}
-							<span class="text-error">*</span>
-						</label>
-						<input
-							id="edit-form-name"
-							v-model="editForm.name"
-							type="text"
-							:placeholder="t('dashboard.admin.instance.forms.fields.namePlaceholder')"
-							:class="['input', editFormErrors.name && 'input-error']"
-							:disabled="isSaving"
-						/>
-						<p v-if="editFormErrors.name" class="mt-1 text-xs text-error">
-							{{ editFormErrors.name }}
-						</p>
-					</div>
-
-					<!-- Topic Select -->
-					<div>
-						<label for="edit-form-topic" class="label">
-							{{ t('dashboard.admin.instance.forms.fields.topic') }}
-						</label>
-						<select
-							id="edit-form-topic"
-							v-model="editForm.topicId"
-							class="input"
-							:disabled="isSaving"
-						>
-							<option value="">{{ t('dashboard.admin.instance.forms.fields.noTopic') }}</option>
-							<option v-for="list in topicsData" :key="list._id" :value="list._id">
-								{{ list.name }}
-							</option>
-						</select>
-					</div>
-
-					<!-- Fields Editor -->
-					<FormsFieldsEditor
-						:fields="editForm.fields"
-						:editor="editFieldEditor"
-						:error="editFormErrors.fields"
-						:disabled="isSaving"
-						id-prefix="edit"
-					/>
-
-					<!-- Redirect URL -->
-					<div>
-						<label for="edit-form-redirect" class="label">
-							{{ t('dashboard.admin.instance.forms.fields.redirect') }}
-						</label>
-						<input
-							id="edit-form-redirect"
-							v-model="editForm.redirectUrl"
-							type="url"
-							placeholder="https://example.com/thank-you"
-							class="input"
-							:disabled="isSaving"
-						/>
-					</div>
-
-					<!-- Honeypot Field -->
-					<div>
-						<label for="edit-form-honeypot" class="label">
-							{{ t('dashboard.admin.instance.forms.fields.honeypot') }}
-						</label>
-						<input
-							id="edit-form-honeypot"
-							v-model="editForm.honeypotFieldName"
-							type="text"
-							:placeholder="t('dashboard.admin.instance.forms.fields.honeypotPlaceholder')"
-							class="input"
-							:disabled="isSaving"
-						/>
-					</div>
-
-					<!-- Double Opt-In -->
-					<div class="flex items-start gap-3 pt-2">
-						<input
-							id="edit-form-double-optin"
-							v-model="editForm.doubleOptIn"
-							type="checkbox"
-							class="mt-1 h-4 w-4 rounded border-border-default bg-bg-deep text-brand focus:ring-brand focus:ring-offset-0"
-							:disabled="isSaving"
-						/>
-						<div>
-							<label
-								for="edit-form-double-optin"
-								class="text-sm font-medium text-text-primary cursor-pointer"
-							>
-								{{ t('dashboard.admin.instance.forms.fields.doubleOptIn') }}
-							</label>
-							<p class="mt-0.5 text-xs text-text-tertiary">
-								{{ t('dashboard.admin.instance.forms.fields.doubleOptInHelp') }}
-							</p>
-						</div>
-					</div>
-				</div>
-			</form>
-
-			<template #footer>
-				<UiButton variant="secondary" type="button" :disabled="isSaving" @click="formToEdit = null">
-					{{ t('common.cancel') }}
-				</UiButton>
-				<UiButton type="submit" form="edit-form" class="gap-2" :disabled="isSaving">
-					<Icon
-						v-if="isSaving"
-						name="lucide:loader-2"
-						class="w-4 h-4 animate-spin motion-reduce:animate-none"
-					/>
-					<Icon v-else name="lucide:check" class="w-4 h-4" />
-					{{
-						isSaving
-							? t('dashboard.admin.instance.forms.editModal.saving')
-							: t('dashboard.admin.instance.forms.editModal.save')
-					}}
-				</UiButton>
-			</template>
-		</UiModal>
+			:form="editForm"
+			:errors="editFormErrors"
+			:is-saving="isSaving"
+			:topics="topicsData"
+			:field-editor="editFieldEditor"
+			@close="formToEdit = null"
+			@submit="handleSaveEdit"
+		/>
 
 		<!-- Delete Form Confirmation Modal -->
 		<UiConfirmationDialog

@@ -1,5 +1,5 @@
 /**
- * Marking Mandrill webhook events from other subaccounts (#1243).
+ * Marking Mandrill webhook events from other subaccounts.
  *
  * A Mandrill webhook belongs to the whole ACCOUNT, so on an account shared with
  * other senders it carries every subaccount's events, each naming its origin in

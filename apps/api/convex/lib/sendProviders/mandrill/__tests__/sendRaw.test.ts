@@ -278,7 +278,7 @@ describe('per-recipient response parsing', () => {
 	});
 
 	// The same table the `reject` webhook reads, so the send response and the
-	// webhook suppress on exactly the same reasons (#1243).
+	// webhook suppress on exactly the same reasons.
 	it.each([
 		['hard-bounce', { reason: 'hard_bounce', evidence: 'MANDRILL_REJECT_HARD_BOUNCE' }],
 		['spam', { reason: 'spam_complaint', evidence: 'MANDRILL_REJECT_SPAM' }],
@@ -301,7 +301,7 @@ describe('per-recipient response parsing', () => {
 	});
 
 	// `rule` is a rules-engine action on the MESSAGE, which may match its
-	// subject or sender, so it says nothing about the address (#1249).
+	// subject or sender, so it says nothing about the address.
 	it.each(['unsigned', 'invalid-sender', 'test-mode-limit', 'invalid', 'rule'])(
 		'a rejected/%s result (sender-side or a rule) carries no suppression',
 		async (reason) => {

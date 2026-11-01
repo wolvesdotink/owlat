@@ -16,7 +16,7 @@ import { createBlock } from '../../utils/blocks';
 import type { EditorBlock, VariableType } from '../../types';
 
 /**
- * Cost bounds for the preview generations (issue #923). Every renderer entry
+ * Cost bounds for the preview generations. Every renderer entry
  * point `usePreview` calls is wrapped in a pass-through spy, so these tests pin
  * how much work one generation does, and that the shared/lazy results stay equal
  * to what the eager path used to produce.

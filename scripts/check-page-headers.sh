@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Page-header ratchet (#865). packages/ui's UiPageHeader is the one page
+# Page-header gate. packages/ui's UiPageHeader is the one page
 # header: the h1 at the app's title scale, a lead capped at the 540px measure,
 # and an #actions row that wraps at 375px. Before it existed every page
 # hand-rolled the same block — an `<h1 class="text-2xl font-medium
@@ -15,11 +15,11 @@
 # number), not a page header, and UiPageHeader is no answer for those. The tag
 # may span several lines; its attributes are read up to the closing `>`.
 #
-# scripts/ratchet.sh runs the comparison against
-# scripts/page-header-baseline.txt, strict in BOTH directions like every other
-# baseline here: a new file with a hand-rolled h1 fails (use UiPageHeader, do
-# not add a line), and a listed file that moved to UiPageHeader fails as stale
-# (delete the line, so the list only shrinks).
+# scripts/ratchet.sh --zero runs the comparison: every page renders
+# UiPageHeader now, so there is no baseline to add a page to, and any file the
+# generator reports fails. A title whose markup a string prop cannot carry (a
+# name in the accent face, a count kept with the subject's last word) goes in
+# UiPageHeader's #title slot, which renders inside the same h1.
 
 set -uo pipefail
 self="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
@@ -44,14 +44,11 @@ if [ "${1:-}" = "--generate" ]; then
 fi
 
 exec scripts/ratchet.sh \
-	--baseline scripts/page-header-baseline.txt \
-	--seed "bash scripts/check-page-headers.sh --write-baseline" \
-	--ok "no new hand-rolled page headers" \
-	--new-header "FAIL: {n} file(s) hand-roll a page header h1 and are not in {baseline}:" \
+	--zero \
+	--ok "no hand-rolled page headers" \
+	--new-header "FAIL: {n} file(s) hand-roll a page header h1:" \
 	--new-advice "Render the header with <UiPageHeader :title :description> and put the
-page's buttons in its #actions slot. Do NOT add a new line to {baseline};
-it is frozen debt." \
-	--stale-header "FAIL: {n} stale entr(y/ies) in {baseline} (header migrated or file removed):" \
-	--stale-advice "Delete these lines so the list only shrinks." \
+page's buttons in its #actions slot (a title with markup goes in its #title
+slot)." \
 	"$@" \
 	-- bash "$self" --generate

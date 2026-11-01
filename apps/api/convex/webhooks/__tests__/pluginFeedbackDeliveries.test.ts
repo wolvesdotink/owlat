@@ -323,8 +323,8 @@ describe('the durable feedback-activity marker', () => {
 });
 
 /**
- * The claim must not expire while the request it records can still verify
- * (#1328 review). The two arms round the clock differently — Svix floors it to
+ * The claim must not expire while the request it records can still verify.
+ * The two arms round the clock differently — Svix floors it to
  * whole seconds, the parameterized check compares milliseconds — so each is
  * walked to its own last accepted instant with a delivery signed as far ahead
  * of our clock as the window allows, the case that leaves the least room.
@@ -437,7 +437,7 @@ describe('a claim and the signature it records', () => {
 });
 
 /**
- * A claim whose digest names a MESSAGE rather than one signed request (#1367).
+ * A claim whose digest names a MESSAGE rather than one signed request.
  *
  * The Svix arm leaves the timestamp out of the digest, because the sender
  * re-signs every retry with a new one. So the same digest keeps arriving, each

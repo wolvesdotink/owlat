@@ -136,8 +136,8 @@ export function normalizeForHash(title: string, content: string): string {
 }
 
 /**
- * Whether relation inference could write any edge between these nodes (#1335,
- * AI routing plan missed call M6): an ordered pair of two different nodes
+ * Whether relation inference could write any edge between these nodes:
+ * an ordered pair of two different nodes
  * whose contact scopes may link and that carries no edge yet
  * (`existing` holds `from:to` keys). The inference pass persists nothing
  * else, so without such a pair its model call cannot change the graph and is

@@ -5,7 +5,7 @@ import { getInstanceSettings } from './instanceSettings';
 /**
  * Inbox processing-status bucket. Maps the wider `processingStatus`
  * literal union into the counter fields of `inboxStats` on the `inbox` row of
- * `instanceCounters` (plan 2.4; formerly on `instanceSettings`);
+ * `instanceCounters`;
  * `security_check`, `classifying`, `drafting`, and `awaiting_clarification`
  * collapse to the single `processing` bucket because that's what the dashboard
  * surfaces (the pipeline sub-stages aren't separately interesting to the

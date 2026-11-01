@@ -6,14 +6,11 @@ import { resolvePlainText } from './plaintext';
 /**
  * The ONE place a Postbox draft becomes wire bodies.
  *
- * This used to live inside `apps/api/convex/mail/outbound/build.ts`, reachable
- * only from the Node dispatch action — which meant the sender could never be
- * shown what would actually leave the building. In particular the `text/plain`
- * alternative, which terminal clients and screen readers get, was derived
- * entirely out of sight. Idea 14's "Preview as sent" needs the REAL one, so the
- * derivation moved here: dispatch and the composer preview now call the same
- * function, and a preview that disagrees with the send is a bug in one shared
- * implementation rather than a drift between two.
+ * Dispatch and the composer's "Preview as sent" both call it, so the sender is
+ * shown what will actually leave the building, the `text/plain` alternative
+ * (which terminal clients and screen readers get) included. Kept out of the
+ * Node dispatch action for that reason: a preview that disagrees with the send
+ * is then a bug in one shared implementation rather than a drift between two.
  *
  * Pure and runtime-agnostic (no Convex, no Node, no DOM), so the browser can
  * render exactly what the action renders.

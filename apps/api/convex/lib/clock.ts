@@ -3,10 +3,10 @@
  *
  * This module imports NOTHING: no `convex/values`, no `_generated/*`, no other
  * convex module (not even `./constants`, which pulls in `@owlat/shared`). That
- * is the whole point. The day arithmetic used to live in
- * `analytics/sendingReputation.ts`, a Convex FUNCTION module that registers
- * mutations and pulls in the generated API graph, so every "pure core" module
- * that only wanted the day-bucket arithmetic dragged that graph in behind it.
+ * is the whole point: if the day arithmetic lived in a Convex FUNCTION module
+ * (one that registers mutations and pulls in the generated API graph), every
+ * "pure core" module that only wants the day-bucket arithmetic would drag that
+ * graph in behind it.
  *
  * Every writer and reader of a day-bucketed row must agree on where a day starts
  * and how it is spelled: the `sendDailyStats` writer and the marketing overview
@@ -112,7 +112,7 @@ export function resolveNow(candidate: number | undefined): number {
 
 /**
  * The first instant certainly AFTER an event stamped `at`, read at whole-second
- * precision (#1228).
+ * precision.
  *
  * Mandrill stamps events in whole seconds while Owlat's own timestamps are
  * millis, so an event stamped 12:00:00 happened somewhere in [12:00:00,

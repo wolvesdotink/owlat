@@ -81,6 +81,10 @@ async function mountPage(file: FileRow) {
 			// `shallow` only stubs what it can resolve, so the ones this page
 			// reaches for are named here.
 			stubs: {
+				// The released-bytes note is the header's #meta: a stubbed header
+				// would drop its slots along with it. `shallow` matches the opt-out
+				// on the SFC's own name, not the `UiPageHeader` registration.
+				PageHeader: false,
 				UiSpinner: true,
 				DashboardDetailSkeleton: true,
 				UiIconBox: true,

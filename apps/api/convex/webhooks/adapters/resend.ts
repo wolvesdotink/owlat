@@ -130,7 +130,7 @@ export const resendAdapter: InboundParser<'resend'> = {
 			case 'email.complained': {
 				// The complainer is named when the message had exactly one recipient,
 				// so a complaint whose id matches no send can still reach the blocklist
-				// by address (#1194). `providerType` lets the dispatcher apply the
+				// by address. `providerType` lets the dispatcher apply the
 				// provenance rule for an untagged source rather than an unknown one.
 				const to = payload.data.to ?? [];
 				return {

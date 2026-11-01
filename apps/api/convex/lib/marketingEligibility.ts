@@ -66,7 +66,7 @@ export async function loadContactMarketingIneligibility(
  * audience will not mail it. THE definition: the audience selector
  * (`campaigns/audienceCandidates.ts` `selectRecipient`) excludes exactly these,
  * and the relay unsubscribe (`delivery/unsubscribeQueries.ts`) refuses to treat
- * them as a completed opt-in (#1228).
+ * them as a completed opt-in.
  *
  *  - The topic requires DOI and the contact has neither confirmed nor been
  *    marked `not_required` (an admin `skipDoi` subscribe, an import attest).

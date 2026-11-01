@@ -270,25 +270,22 @@ const handleRemoveRelation = async (relationId: string) => {
 		<!-- Entry Detail -->
 		<template v-else>
 			<!-- Header -->
-			<div class="flex items-start justify-between gap-4">
-				<div class="flex items-start gap-4 min-w-0">
-					<div
-						class="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0"
-						:class="{
-							'bg-brand-subtle text-brand': typeVariant(entry.entryType) === 'default',
-							'bg-warning/10 text-warning': typeVariant(entry.entryType) === 'warning',
-							'bg-bg-surface text-text-secondary': typeVariant(entry.entryType) === 'neutral',
-							'bg-success-subtle text-success': typeVariant(entry.entryType) === 'success',
-							'bg-error/10 text-error': typeVariant(entry.entryType) === 'error',
-						}"
-					>
-						<Icon :name="typeIcon(entry.entryType)" class="w-6 h-6" />
-					</div>
-					<div class="min-w-0">
-						<div class="flex items-center gap-2 mb-1">
-							<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-								{{ entry.title }}
-							</h1>
+			<div class="flex items-start gap-4">
+				<div
+					class="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0"
+					:class="{
+						'bg-brand-subtle text-brand': typeVariant(entry.entryType) === 'default',
+						'bg-warning/10 text-warning': typeVariant(entry.entryType) === 'warning',
+						'bg-bg-surface text-text-secondary': typeVariant(entry.entryType) === 'neutral',
+						'bg-success-subtle text-success': typeVariant(entry.entryType) === 'success',
+						'bg-error/10 text-error': typeVariant(entry.entryType) === 'error',
+					}"
+				>
+					<Icon :name="typeIcon(entry.entryType)" class="w-6 h-6" />
+				</div>
+				<UiPageHeader class="min-w-0 flex-1" :title="entry.title">
+					<template #meta>
+						<div class="flex flex-wrap items-center gap-x-3 gap-y-1.5">
 							<span
 								class="text-xs font-medium px-2 py-0.5 rounded-full uppercase tracking-wide"
 								:class="{
@@ -301,29 +298,27 @@ const handleRemoveRelation = async (relationId: string) => {
 							>
 								{{ entryTypeName(entry.entryType) }}
 							</span>
+							<p class="text-sm text-text-tertiary">
+								{{ t('dashboard.knowledge.detail.createdAt', { date: formattedCreatedAt }) }}
+							</p>
 						</div>
-						<p class="text-sm text-text-tertiary">
-							{{ t('dashboard.knowledge.detail.createdAt', { date: formattedCreatedAt }) }}
-						</p>
-					</div>
-				</div>
-
-				<!-- Actions -->
-				<div v-if="canChangeEntry" class="flex items-center gap-2 flex-shrink-0">
-					<!-- Owner/admin-only knowledge (migration 0069) can be shared again after a review. -->
-					<KnowledgeShareWithMembers
-						v-if="offersShareWithMembers(entry, isAdmin)"
-						:entry-id="entry._id"
-					/>
-					<UiButton variant="secondary" class="gap-2" @click="showEditForm = true">
-						<Icon name="lucide:pencil" class="w-4 h-4" />
-						{{ t('common.edit') }}
-					</UiButton>
-					<UiButton variant="danger-outline" class="gap-2" @click="showDeleteConfirm = true">
-						<Icon name="lucide:trash-2" class="w-4 h-4" />
-						{{ t('common.delete') }}
-					</UiButton>
-				</div>
+					</template>
+					<template v-if="canChangeEntry" #actions>
+						<!-- Owner/admin-only knowledge (migration 0069) can be shared again after a review. -->
+						<KnowledgeShareWithMembers
+							v-if="offersShareWithMembers(entry, isAdmin)"
+							:entry-id="entry._id"
+						/>
+						<UiButton variant="secondary" class="gap-2" @click="showEditForm = true">
+							<Icon name="lucide:pencil" class="w-4 h-4" />
+							{{ t('common.edit') }}
+						</UiButton>
+						<UiButton variant="danger-outline" class="gap-2" @click="showDeleteConfirm = true">
+							<Icon name="lucide:trash-2" class="w-4 h-4" />
+							{{ t('common.delete') }}
+						</UiButton>
+					</template>
+				</UiPageHeader>
 			</div>
 
 			<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">

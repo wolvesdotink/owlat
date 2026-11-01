@@ -1,7 +1,7 @@
 /**
  * `parse/binaryString`: the byte <-> binary-string conversion every caller uses
- * before handing a raw `.eml` to the walker (#1279). `TextDecoder('latin1')`,
- * which those callers used before, is windows-1252 and changes bytes 0x80-0x9F;
+ * before handing a raw `.eml` to the walker. `TextDecoder('latin1')` is
+ * windows-1252 and changes bytes 0x80-0x9F;
  * the cases below fail with it in place of `bytesToBinaryString`.
  */
 import { describe, expect, it } from 'vitest';
@@ -9,7 +9,7 @@ import { binaryStringToBytes, bytesToBinaryString } from '../parse/binaryString'
 import { extractAttachments } from '../parse/attachments';
 import { parseMessage } from '../parse/index';
 
-/** The binary attachment of #1279, every byte a windows-1252 decode changes or keeps. */
+/** A binary attachment: bytes a windows-1252 decode changes, and bytes it keeps. */
 const BINARY_PART = [0x00, 0x41, 0x80, 0x99, 0x9f, 0xa0, 0xff];
 const BODY_TEXT = 'Price — “quoted” 5€';
 

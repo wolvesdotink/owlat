@@ -98,15 +98,12 @@ async function onClaimPlatformAdmin() {
 
 <template>
 	<div>
-		<header class="mb-8">
-			<p class="lp-eyebrow mb-1">{{ t('dashboard.admin.index.eyebrow') }}</p>
-			<h1 class="text-2xl font-medium tracking-[-0.02em] text-text-primary">
-				{{ t('dashboard.admin.index.title') }}
-			</h1>
-			<p class="mt-2 text-text-secondary max-w-2xl">
-				{{ t('dashboard.admin.index.lede') }}
-			</p>
-		</header>
+		<UiPageHeader
+			class="mb-8"
+			:eyebrow="t('dashboard.admin.index.eyebrow')"
+			:title="t('dashboard.admin.index.title')"
+			:description="t('dashboard.admin.index.lede')"
+		/>
 
 		<NuxtLink
 			to="/dashboard/admin/delivery"
