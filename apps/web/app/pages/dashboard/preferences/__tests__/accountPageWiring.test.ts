@@ -27,7 +27,7 @@ const exporter = vi.hoisted(() => ({
 }));
 vi.mock('~/utils/accountJsonExport', () => ({ writeAccountJsonExport: exporter.write }));
 vi.mock('~/utils/incrementalJsonDownload', async (importOriginal) => ({
-	...(await importOriginal<typeof import('~/utils/incrementalJsonDownload')>()),
+	...(await importOriginal<Record<string, unknown>>()),
 	openIncrementalJsonDownload: exporter.open,
 }));
 
