@@ -119,7 +119,7 @@ describe('root gate manifest', () => {
 		);
 		for (const file of readByGates)
 			if (/\.(?:txt|json)$/.test(file)) expect(isFile(file), `missing: ${file}`).toBe(true);
-		expect(readByGates).toContain('scripts/file-size-baseline.txt');
+		expect(readByGates).toContain('scripts/html-to-text-baseline.txt');
 		expect(readByGates).toContain('scripts/provider-identity-collisions.txt');
 		const dataFiles = readdirSync(join(REPOSITORY_ROOT, 'scripts')).filter((file) =>
 			/baseline|allowlist|collisions/.test(file)

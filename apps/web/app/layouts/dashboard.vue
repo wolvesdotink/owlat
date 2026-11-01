@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { announcedPageLabel, shouldMoveFocusToMain } from '~/utils/liveAnnounce';
 import { useSectionNavigation } from '~/composables/useSectionNavigation';
 import { CORE_NAV_HREFS } from '~/lib/dashboardNavigationCore';
 import { UNDO_TOAST_REGION_ID } from '~/utils/undoToastRegion';
@@ -9,7 +8,10 @@ import { useCommandPaletteHost } from '~/composables/useCommandPaletteHost';
 import { useMountOnFirst } from '~/composables/useMountOnFirst';
 import { usePerfMark } from '~/composables/usePerfMark';
 import { useZenMode } from '~/composables/useZenMode';
-import { useMediaQuery } from '~/composables/useMediaQuery';
+import { useRouteAnnounce } from '~/composables/shell/useRouteAnnounce';
+import { useShellSidebarLayout } from '~/composables/shell/useShellSidebarLayout';
+import { useShellWindowChrome } from '~/composables/shell/useShellWindowChrome';
+import { useSidebarPeek } from '~/composables/shell/useSidebarPeek';
 
 const { t } = useI18n();
 const route = useRoute();
@@ -46,26 +48,20 @@ const {
 
 // A section lends its existing navigation to this sidebar on desktop.
 const { activeSection, showAppNavigation } = useSectionNavigation();
-// The Postbox brings its own folder rail beside the list, and next to it the
-// full sidebar is a second copy of the same inboxes. There the sidebar folds to
-// its icon rail on its own (desktop only; below lg it is the drawer), until it
-// is opened again, which holds for the session.
-const isDesktopViewport = useMediaQuery('(min-width: 1024px)');
-const foldsOnItsOwn = computed(
-	() => isDesktopViewport.value && route.path.startsWith('/dashboard/postbox')
-);
-const openedOnPostbox = useState('sidebar-opened-on-postbox', () => false);
-const isCollapsed = computed(() => {
-	if (activeSection.value) return false;
-	return preferredCollapsed.value || (foldsOnItsOwn.value && !openedOnPostbox.value);
+const {
+	isCollapsed,
+	onToggleCollapse,
+	sidebarToggleLabel,
+	sidebarWidthClass,
+	mainPaddingClass,
+	sidebarDesktopClass,
+} = useShellSidebarLayout({
+	preferredCollapsed,
+	toggleCollapsed,
+	effectiveHidden,
+	isPeeking,
+	activeSection,
 });
-function onToggleCollapse() {
-	if (!foldsOnItsOwn.value) return toggleCollapsed();
-	const opening = isCollapsed.value;
-	// Opening there also clears a saved "collapsed", so the rail actually opens.
-	if (opening && preferredCollapsed.value) toggleCollapsed();
-	openedOnPostbox.value = opening;
-}
 const showSectionNavigation = computed(() => !!activeSection.value && !showAppNavigation.value);
 const sectionNavigationTarget = ref<HTMLElement | null>(null);
 provide('section-navigation-target', sectionNavigationTarget);
@@ -136,22 +132,8 @@ const { isDesktop, isMac, isWindows } = useDesktopContext();
 // must also work on pre-workspace screens that never mount this layout.
 useWorkspaceHotkeys();
 
-// Native window material (macOS vibrancy / Windows 11 Mica). Behind a single flag
-// so it can be killed without a config rebuild; the branded chrome and menus do
-// not depend on it. The `.vibrancy-on` class (added only on success) gates the CSS
-// in assets/css/desktop.css that makes the sidebar translucent — so an unsupported
-// platform (e.g. Windows 10) can never reveal the desktop wallpaper.
-const ENABLE_VIBRANCY = true;
-onMounted(async () => {
-	if (!ENABLE_VIBRANCY || !isDesktop.value || !(isMac.value || isWindows.value)) return;
-	try {
-		const { applyVibrancy } = await import('@owlat/desktop/src/window');
-		await applyVibrancy(isWindows.value ? 'mica' : 'sidebar');
-		document.documentElement.classList.add('vibrancy-on');
-	} catch {
-		// Unsupported (e.g. Windows 10) or Tauri unavailable — solid theme stays.
-	}
-});
+// Native window material and the macOS traffic lights (desktop only).
+useShellWindowChrome({ isDesktop, isMac, isWindows, effectiveHidden, isPeeking });
 
 onMounted(() => {
 	registerNavigationShortcuts();
@@ -162,109 +144,8 @@ onMounted(() => {
 const { measureBoot } = usePerfMark();
 onMounted(() => measureBoot('owlat_boot_shell_ms'));
 
-// ── Route changes, said out loud ──────────────────────────────────────────
-// A client-side navigation is INVISIBLE to assistive technology. The browser
-// announces a real page load; a router that swaps the DOM under <main> announces
-// nothing, and keyboard focus is left standing on the rail link that was just
-// activated — several dozen tab stops away from the page it loaded. Two lines
-// of repair, both standard: say the new page's name into the app's live region,
-// and move focus into <main> (whose `tabindex="-1"` has been sitting below,
-// unfocused by anything, since it was added for the skip link).
-//
-// `route.path`, not `fullPath`: a query change is a filter or a sort, not a new
-// page, and re-announcing the same page name on every keystroke of a search box
-// is worse than saying nothing.
-const { announce } = useAnnounce();
-const { breadcrumbs } = useBreadcrumbs();
-
-watch(
-	() => route.path,
-	async () => {
-		// The new page has to be rendered before its trail is right and before
-		// asking where focus ended up.
-		await nextTick();
-		const label = announcedPageLabel(breadcrumbs.value);
-		// Trail labels are message keys from the route registries and plain text
-		// when a page supplied one dynamically; `t` passes the latter through.
-		if (label) announce(t('shell.dashboard.navigatedTo', { page: t(label) }));
-		if (shouldMoveFocusToMain(document.activeElement)) {
-			// `preventScroll`: the router has already restored the scroll position,
-			// and focusing a full-height <main> would undo it.
-			document.getElementById('main-content')?.focus({ preventScroll: true });
-		}
-	}
-);
-
-// Native macOS traffic lights follow the sidebar (desktop + macOS only). They
-// stay visible whenever the rail — or its transient peek overlay — is on screen,
-// and hide only when the sidebar is fully hidden and not peeking. Wired at mount
-// (after the webview is ready) with an immediate sync, so the buttons are never
-// stranded: a fresh launch with a persisted-hidden sidebar re-hides them, and
-// un-hiding the rail always brings them back.
-//
-// Fullscreen: macOS owns the buttons in native fullscreen (they live in the
-// auto-revealed menu bar), so we restore them to visible on enter — don't fight
-// the OS — and re-apply the sidebar-derived state on exit, since Cmd-\ toggles
-// that happen inside fullscreen are dropped by the native guard and would
-// otherwise leave the lights stale (visible with the rail hidden).
-//
-// Unmount: leaving this layout with the sidebar hidden (sign-out, session
-// expiry → login) would strand the window with no close/miniaturize/zoom
-// buttons on a surface that has no rail or peek to bring them back, so restore
-// them whenever the sidebar-owning layout is torn down.
-onMounted(() => {
-	if (!isDesktop.value || !isMac.value) return;
-
-	let unlistenFullscreen: (() => void) | null = null;
-	let isFullscreen = false;
-
-	// Reflect the current sidebar/peek state to the native buttons, unless the
-	// window is in fullscreen (macOS owns them there — leave native behavior).
-	const applySidebarState = async () => {
-		if (isFullscreen) return;
-		try {
-			const { setTrafficLightsVisible, trafficLightsVisibleFor } =
-				await import('@owlat/desktop/src/window');
-			await setTrafficLightsVisible(
-				trafficLightsVisibleFor(effectiveHidden.value, isPeeking.value)
-			);
-		} catch {
-			// Tauri unavailable — native buttons stay as-is.
-		}
-	};
-
-	watch([effectiveHidden, isPeeking], applySidebarState, { immediate: true });
-
-	void (async () => {
-		try {
-			const { setTrafficLightsVisible, watchFullscreen } =
-				await import('@owlat/desktop/src/window');
-			unlistenFullscreen = await watchFullscreen((fullscreen) => {
-				isFullscreen = fullscreen;
-				if (fullscreen) {
-					// Restore the buttons so the native fullscreen reveal bar shows the
-					// green-button exit affordance; the native side then owns them.
-					void setTrafficLightsVisible(true);
-				} else {
-					// Back to windowed — re-derive from the (possibly changed) sidebar.
-					void applySidebarState();
-				}
-			});
-		} catch {
-			// Tauri unavailable — fullscreen tracking is a no-op.
-		}
-	})();
-
-	onUnmounted(async () => {
-		unlistenFullscreen?.();
-		try {
-			const { setTrafficLightsVisible } = await import('@owlat/desktop/src/window');
-			await setTrafficLightsVisible(true);
-		} catch {
-			// Tauri unavailable — nothing to restore.
-		}
-	});
-});
+// A client-side navigation says the new page's name and moves focus into it.
+useRouteAnnounce();
 
 // Keep the sidebar's desktop-viewport flag in sync with the `lg` breakpoint so
 // the hidden/peek behavior stays desktop-only (mobile keeps its off-canvas
@@ -294,46 +175,11 @@ registerShortcut({
 	when: () => isFeatureEnabled('ai.assistant') && !isAnswerMode.value,
 });
 
-// Peek overlay: open on left-edge hover, close 300ms after the pointer leaves
-// (cancelled if it returns), or immediately on Esc / focus leaving the rail.
-const peekCloseTimer = ref<ReturnType<typeof setTimeout> | null>(null);
-const cancelPeekClose = () => {
-	if (peekCloseTimer.value !== null) {
-		clearTimeout(peekCloseTimer.value);
-		peekCloseTimer.value = null;
-	}
-};
-const schedulePeekClose = () => {
-	cancelPeekClose();
-	peekCloseTimer.value = setTimeout(() => {
-		closePeek();
-		peekCloseTimer.value = null;
-	}, 300);
-};
-const onPeekPointerEnter = () => {
-	cancelPeekClose();
-	openPeek();
-};
-const onPeekPointerLeave = () => {
-	// Only meaningful while a peek is open; ignore ordinary visible/collapsed leaves.
-	if (!isPeeking.value) return;
-	schedulePeekClose();
-};
-// Focus leaving the peeked rail (Tab out / click away) closes it.
-const onPeekFocusOut = (e: FocusEvent) => {
-	const next = e.relatedTarget as Node | null;
-	const current = e.currentTarget as HTMLElement | null;
-	if (!current || (next && current.contains(next))) return;
-	closePeek();
-};
-// Esc closes the peek without un-hiding the sidebar.
-const onPeekKeydown = (e: KeyboardEvent) => {
-	if (e.key === 'Escape' && isPeeking.value) {
-		e.stopPropagation();
-		closePeek();
-	}
-};
-onUnmounted(cancelPeekClose);
+const { onPeekPointerEnter, onPeekPointerLeave, onPeekFocusOut, onPeekKeydown } = useSidebarPeek({
+	isPeeking,
+	openPeek,
+	closePeek,
+});
 
 // Mobile sidebar state
 const isSidebarOpen = ref(false);
@@ -341,13 +187,6 @@ const isSidebarOpen = ref(false);
 // The sidebar renders one workspace at a time (Conversations ↔ Marketing). The
 // toggle is emergent: it only exists while both workspaces survived the flags.
 const { showToggle, activeContext, sidebarSections, switchContext } = useSidebarContext();
-
-// Frozen at setup, so `label` holds a MESSAGE KEY the template resolves rather
-// than a sentence captured in whatever locale was active at mount.
-const sidebarContexts = [
-	{ key: 'inbox', label: 'shell.dashboard.contexts.inbox', icon: 'lucide:messages-square' },
-	{ key: 'marketing', label: 'shell.dashboard.contexts.marketing', icon: 'lucide:megaphone' },
-] as const;
 
 // Plugin-contributed destinations for the active workspace. Core destinations
 // render as the workspace's own rows; anything a plugin adds is listed after.
@@ -406,42 +245,6 @@ useSendReadyNotice();
 // and its own open event. Both now live in `AppCommandPalette`, which opens
 // pre-switched to its Ask scope behind the same `ai.knowledge` gate — one
 // overlay, one shortcut owner, and knowledge answers next to object results.
-
-// The collapse control's one label.
-const sidebarToggleLabel = computed(() => {
-	return isCollapsed.value
-		? t('shell.dashboard.expandSidebar')
-		: t('shell.dashboard.collapseSidebar');
-});
-
-// Computed sidebar width class — a hidden sidebar peeks at its last width.
-// Collapse swaps the width in one frame: animating `width` here (and the
-// content padding below) relaid the whole app out on every frame of the move.
-const sidebarWidthClass = computed(() => {
-	return isCollapsed.value ? 'w-16' : 'w-64';
-});
-
-// Content padding reserves the rail's gutter. When hidden the content goes
-// full-bleed (no reflow when the peek floats over it). Never transitioned:
-// it changes in the same frame as the rail's width, so the page lays out once.
-const mainPaddingClass = computed(() => {
-	if (effectiveHidden.value) return '';
-	return isCollapsed.value ? 'lg:pl-16' : 'lg:pl-64';
-});
-
-// Desktop transform for the aside. When hidden it slides off-screen; the peek
-// brings it back over the content (no reflow — padding stays removed). Enter
-// uses the spring-bounce at motion-slow; exit uses ease-exit. Only `translate`
-// (and the peek's shadow) transition, both off the layout path; reduced motion
-// drops the slide outright (`motion-reduce:transition-none` on the aside).
-const sidebarDesktopClass = computed(() => {
-	if (!effectiveHidden.value) {
-		return 'lg:translate-x-0 duration-(--motion-moderate)';
-	}
-	return isPeeking.value
-		? 'lg:translate-x-0 shadow-(--shadow-6) duration-(--motion-slow) ease-(--ease-spring-bounce)'
-		: 'lg:-translate-x-full duration-(--motion-slow-exit) ease-(--ease-exit)';
-});
 </script>
 
 <template>
@@ -514,77 +317,20 @@ const sidebarDesktopClass = computed(() => {
 			@focusout="onPeekFocusOut"
 			@keydown="onPeekKeydown"
 		>
-			<!-- Logo — web only. On desktop the app identity lives in the native
-			     window chrome and the titlebar; the workspace (org) switcher is the
-			     titlebar chip, so the sidebar carries navigation only. -->
-			<div
+			<!-- Logo and the mobile drawer's close button; web only. -->
+			<ShellSidebarBrand
 				v-if="!isDesktop"
-				class="h-16 flex items-center justify-between px-4 border-b border-border-subtle"
-			>
-				<NuxtLink
-					to="/dashboard"
-					class="flex items-center gap-2"
-					:class="{ 'justify-center w-full': isCollapsed }"
-				>
-					<div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0">
-						<img src="/owlat.svg" alt="Owlat" class="w-8 h-8 dark:invert" />
-					</div>
-					<span v-if="!isCollapsed" class="text-lg font-semibold text-text-primary"> Owlat </span>
-					<UiBadge v-if="!isCollapsed" size="sm">{{ t('shell.dashboard.alphaBadge') }}</UiBadge>
-				</NuxtLink>
+				:collapsed="isCollapsed"
+				@close="isSidebarOpen = false"
+			/>
 
-				<!-- Mobile close button -->
-				<button
-					v-if="!isCollapsed"
-					class="lg:hidden p-2 text-text-secondary hover:text-text-primary"
-					@click="isSidebarOpen = false"
-					:aria-label="t('common.close')"
-				>
-					<Icon name="lucide:x" class="w-5 h-5" />
-				</button>
-			</div>
-
-			<!-- Context toggle: the sidebar shows one context at a time (Inbox ↔
-			     Marketing) so it stays focused on the current work. Emergent: only
-			     rendered while both contexts survived the feature flags. Switching
-			     navigates to the target context's last-visited route. -->
-			<div
+			<!-- Inbox ↔ Marketing, while both contexts survived the feature flags. -->
+			<ShellSidebarContextToggle
 				v-if="showToggle && !showSectionNavigation"
-				class="px-2 pt-3"
-				role="group"
-				:aria-label="t('shell.dashboard.sidebarContextGroup')"
-			>
-				<div :class="isCollapsed ? 'flex flex-col gap-1' : 'flex gap-1'">
-					<UiTooltip
-						v-for="context in sidebarContexts"
-						:key="context.key"
-						:text="isCollapsed ? t(context.label) : undefined"
-					>
-						<button
-							type="button"
-							:aria-pressed="activeContext === context.key"
-							:class="[
-								'flex items-center justify-center gap-1.5 rounded-lg text-xs font-medium transition-colors',
-								isCollapsed ? 'p-2' : 'flex-1 px-2 py-1.5',
-								activeContext === context.key
-									? 'bg-(--surface-2-selected) text-text-primary'
-									: 'text-text-secondary hover:text-text-primary hover:bg-(--surface-2-hover)',
-							]"
-							:aria-label="isCollapsed ? t(context.label) : undefined"
-							@click="switchContext(context.key)"
-						>
-							<Icon
-								:name="context.icon"
-								:class="[
-									isCollapsed ? 'w-5 h-5' : 'w-3.5 h-3.5',
-									activeContext === context.key ? 'text-text-primary' : 'text-text-tertiary',
-								]"
-							/>
-							<span v-if="!isCollapsed">{{ t(context.label) }}</span>
-						</button>
-					</UiTooltip>
-				</div>
-			</div>
+				:collapsed="isCollapsed"
+				:active-context="activeContext"
+				@switch="switchContext"
+			/>
 
 			<!-- Settings takes the sidebar over (its own nav, search and Back);
 			     daily work never does. -->

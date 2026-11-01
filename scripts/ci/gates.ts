@@ -206,12 +206,7 @@ export const ROOT_GATES: readonly RootGate[] = [
 	},
 	{
 		name: 'filesize',
-		paths: [
-			'{apps,packages}/**/*.{ts,vue}',
-			'scripts/check-file-size.sh',
-			'scripts/file-size-baseline.txt',
-			RATCHET,
-		],
+		paths: ['{apps,packages}/**/*.{ts,vue}', 'scripts/check-file-size.sh', RATCHET],
 	},
 	// Scans every tracked file.
 	{ name: 'branding', paths: [ANYWHERE] },

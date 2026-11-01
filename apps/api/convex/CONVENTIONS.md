@@ -85,12 +85,11 @@ mail/
 Don't pre-emptively split — the cost of locating a function across three files
 outweighs the cost of scrolling. Wait for real growth.
 
-This is enforced by a ratchet: `scripts/check-file-size.sh` (wired into
-`bun run lint` via `ci:lint`/`ci:verify`) fails when a `.ts`/`.vue` file under
-`apps/**` or `packages/**` crosses ~500 LOC and is not already in the frozen
-`scripts/file-size-baseline.txt`. The existing oversized files are grandfathered
-there; split a new god-file instead of adding a baseline line, and drop a
-baseline entry once its file falls back under the cap.
+This is enforced by `scripts/check-file-size.sh` (wired into `bun run lint`
+via `ci:lint`/`ci:verify`): it fails when any `.ts`/`.vue` file under `apps/**`
+or `packages/**` (tests and fixtures aside) crosses ~500 LOC. There is no
+baseline and no exception list; a file that grows past the cap is split into
+siblings in the same change.
 
 ### Drop redundant prefixes
 
@@ -817,8 +816,8 @@ When the matching domain module is already at the file-size cap, add a
 feature-named `schema/<feature>.ts` sibling exporting its own
 `<feature>Tables` object and spread that into `defineSchema` too — for example
 `schema/sendAssignments.ts`, split out because `schema/delivery.ts` sits at the
-cap. That is the sanctioned escape hatch; do NOT add a file-size baseline entry
-to keep growing a capped domain module.
+cap. That is the sanctioned escape hatch: the file-size gate has no baseline,
+so a capped domain module cannot keep growing.
 
 A domain that has outgrown one file splits into feature siblings that the
 domain module composes, so `schema.ts` keeps importing one name. Personal Mail

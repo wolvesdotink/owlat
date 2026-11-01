@@ -2,9 +2,8 @@
 import { parseStoredBlocks } from '@owlat/email-builder/stored-blocks';
 import { api } from '@owlat/api';
 import { languageOptions } from '~/data/languageOptions';
-import { translationBlockRows } from '~/utils/translationRows';
+import { translationBlockRows, type TranslatableRow } from '~/utils/translationRows';
 import { budgetCopyKeyOfError } from '~/utils/aiBudget';
-import type { Id } from '@owlat/api/dataModel';
 import {
 	buildLanguageAdd,
 	buildTranslationUpdate,
@@ -18,8 +17,13 @@ import {
 	type TranslationCell,
 	type TranslationCommitResult,
 } from '~/composables/useTranslationDrafts';
+import {
+	useTranslationEmail,
+	type TranslationEmailType,
+} from '~/composables/translation/useTranslationEmail';
+import TranslationTable from './Table.vue';
 
-type EmailType = 'marketing' | 'transactional';
+type EmailType = TranslationEmailType;
 
 interface Props {
 	emailId: string;
@@ -36,82 +40,15 @@ const router = useRouter();
 const { showToast } = useToast();
 const { emailTheme } = useEmailTheme();
 
-// Type definitions
-interface TranslatableRow {
-	id: string;
-	fieldType: 'subject' | 'previewText' | 'html' | 'buttonText' | 'alt';
-	sourceText: string;
-	label: string;
-	blockId?: string;
-}
-
-// Common languages for dropdown
-
-// Fetch email data based on type
 const {
-	data: marketingEmail,
-	isLoading: marketingLoading,
-	error: marketingError,
-	refetch: refetchMarketing,
-} = useConvexQuery(api.emailTemplates.emails.get, () => {
-	if (props.emailType !== 'marketing') return 'skip';
-	return { templateId: props.emailId as Id<'emailTemplates'> };
-});
-
-const {
-	data: transactionalEmail,
-	isLoading: transactionalLoading,
-	error: transactionalError,
-	refetch: refetchTransactional,
-} = useConvexQuery(api.transactional.emails.get, () => {
-	if (props.emailType !== 'transactional') return 'skip';
-	return { id: props.emailId as Id<'transactionalEmails'> };
-});
-
-// Unified email object
-const email = computed(() => {
-	if (props.emailType === 'marketing') return marketingEmail.value;
-	return transactionalEmail.value;
-});
-
-const isLoading = computed(() => {
-	if (props.emailType === 'marketing') return marketingLoading.value;
-	return transactionalLoading.value;
-});
-
-// A failed read is not a missing email (#721).
-const emailError = computed(() =>
-	props.emailType === 'marketing' ? marketingError.value : transactionalError.value
-);
-const refetchEmail = () =>
-	props.emailType === 'marketing' ? refetchMarketing() : refetchTransactional();
-
-// Mutations
-const { run: addMarketingTranslation } = useBackendOperation(
-	api.emailTemplates.i18n.addTranslation,
-	{ label: () => t('components.translation.manager.addLanguageOperation') }
-);
-const { run: updateMarketingTranslation } = useBackendOperation(
-	api.emailTemplates.i18n.updateTranslation,
-	{ label: () => t('components.translation.manager.saveTranslationOperation') }
-);
-const { run: removeMarketingTranslation } = useBackendOperation(
-	api.emailTemplates.i18n.removeTranslation,
-	{ label: () => t('components.translation.manager.removeLanguageOperation') }
-);
-
-const { run: addTransactionalTranslation } = useBackendOperation(
-	api.transactional.translations.addTranslation,
-	{ label: () => t('components.translation.manager.addLanguageOperation') }
-);
-const { run: updateTransactionalTranslation } = useBackendOperation(
-	api.transactional.translations.updateTranslation,
-	{ label: () => t('components.translation.manager.saveTranslationOperation') }
-);
-const { run: removeTransactionalTranslation } = useBackendOperation(
-	api.transactional.translations.removeTranslation,
-	{ label: () => t('components.translation.manager.removeLanguageOperation') }
-);
+	email,
+	isLoading,
+	emailError,
+	refetchEmail,
+	updateTranslation,
+	addTranslation,
+	removeTranslation,
+} = useTranslationEmail(props);
 
 // State
 const isSaving = ref(false);
@@ -139,25 +76,8 @@ const commitTranslation = async (
 	base: TranslationBase,
 	language: string,
 	edits: readonly TranslationFieldEdit[]
-): Promise<TranslationCommitResult> => {
-	const payload = buildTranslationUpdate(base, language, edits, renderOptions());
-	const saved =
-		props.emailType === 'marketing'
-			? await updateMarketingTranslation({
-					templateId: props.emailId as Id<'emailTemplates'>,
-					...payload,
-				})
-			: await updateTransactionalTranslation({
-					id: props.emailId as Id<'transactionalEmails'>,
-					language: payload.language,
-					subject: payload.subject,
-					blocks: payload.blocks,
-					htmlContent: payload.htmlContent,
-					rendererVersion: payload.rendererVersion,
-					expectedContentRevision: payload.expectedContentRevision,
-				});
-	return saved.ok ? { ok: true, revision: saved.result.contentRevision } : { ok: false };
-};
+): Promise<TranslationCommitResult> =>
+	updateTranslation(buildTranslationUpdate(base, language, edits, renderOptions()));
 
 const {
 	valueOf,
@@ -199,9 +119,6 @@ const translationLanguages = computed(() => {
 const availableLanguages = computed(() => {
 	return languageOptions.filter((lang) => !supportedLanguages.value.includes(lang.value));
 });
-
-// Dropdown state for add language
-const addLanguageDropdownOpen = ref(false);
 
 // Get language info
 const getLanguageInfo = (code: string) => {
@@ -269,20 +186,9 @@ const addLanguage = async (langCode: string) => {
 	isSaving.value = true;
 	try {
 		// The overlay the backend seeds and its HTML land in the same write.
-		const added = await runWrite(async (base) => {
-			const write = { language: langCode, ...buildLanguageAdd(base, renderOptions()) };
-			const result =
-				props.emailType === 'marketing'
-					? await addMarketingTranslation({
-							templateId: props.emailId as Id<'emailTemplates'>,
-							...write,
-						})
-					: await addTransactionalTranslation({
-							id: props.emailId as Id<'transactionalEmails'>,
-							...write,
-						});
-			return result.ok ? { ok: true, revision: result.result.contentRevision } : { ok: false };
-		});
+		const added = await runWrite((base) =>
+			addTranslation({ language: langCode, ...buildLanguageAdd(base, renderOptions()) })
+		);
 		if (!added.ok) return;
 		showToast(
 			t('components.translation.manager.languageAdded', { language: languageLabel(langCode) })
@@ -305,21 +211,9 @@ const confirmRemoveLanguage = async () => {
 
 	isSaving.value = true;
 	try {
-		// The backend drops the language's HTML with its overlay.
-		const removed = await runWrite(async (base) => {
-			const write = { language: langCode, expectedContentRevision: base.revision };
-			const result =
-				props.emailType === 'marketing'
-					? await removeMarketingTranslation({
-							templateId: props.emailId as Id<'emailTemplates'>,
-							...write,
-						})
-					: await removeTransactionalTranslation({
-							id: props.emailId as Id<'transactionalEmails'>,
-							...write,
-						});
-			return result.ok ? { ok: true, revision: result.result.contentRevision } : { ok: false };
-		});
+		const removed = await runWrite((base) =>
+			removeTranslation({ language: langCode, expectedContentRevision: base.revision })
+		);
 		if (!removed.ok) return;
 		forgetLanguage(langCode);
 		showToast(
@@ -481,148 +375,25 @@ const handleBack = () => {
 				</div>
 
 				<!-- Translation Table -->
-				<div v-else class="rounded-(--radius-card) surface-2 overflow-hidden">
-					<div class="overflow-x-auto">
-						<table class="w-full">
-							<thead>
-								<tr class="border-b border-border-subtle bg-bg-surface/50">
-									<!-- Field column -->
-									<th
-										class="px-4 py-3 text-left text-sm font-medium text-text-secondary sticky left-0 bg-bg-surface/50 min-w-[200px]"
-									>
-										{{ t('components.translation.manager.fieldColumn') }}
-									</th>
-
-									<!-- Default language column -->
-									<th
-										class="px-4 py-3 text-left text-sm font-medium text-text-secondary min-w-[250px]"
-									>
-										<div class="flex items-center gap-2">
-											<span>{{ languageNativeLabel(defaultLanguage) }}</span>
-											<span class="text-xs text-brand bg-brand/10 px-1.5 py-0.5 rounded">{{
-												t('components.translation.manager.defaultBadge')
-											}}</span>
-										</div>
-									</th>
-
-									<!-- Translation language columns -->
-									<th
-										v-for="lang in translationLanguages"
-										:key="lang"
-										class="px-4 py-3 text-left text-sm font-medium text-text-secondary min-w-[250px]"
-									>
-										<div class="flex items-center justify-between">
-											<span>{{ languageNativeLabel(lang) }}</span>
-											<div class="flex items-center gap-1">
-												<UiTooltip
-													v-if="isTranslating !== lang"
-													:text="t('components.translation.manager.autoTranslateTitle')"
-												>
-													<button
-														class="p-1 rounded hover:bg-brand/10 text-text-tertiary hover:text-brand transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-														:aria-label="t('components.translation.manager.autoTranslateTitle')"
-														@click="autoTranslateColumn(lang)"
-													>
-														<Icon name="lucide:sparkles" class="w-4 h-4" />
-													</button>
-												</UiTooltip>
-												<UiSpinner v-else size="xs" />
-												<UiTooltip :text="t('components.translation.manager.removeLanguageTitle')">
-													<button
-														class="p-1 rounded hover:bg-error/10 text-text-tertiary hover:text-error transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-														:aria-label="t('components.translation.manager.removeLanguageTitle')"
-														@click="removeLanguage(lang)"
-													>
-														<Icon name="lucide:trash-2" class="w-4 h-4" />
-													</button>
-												</UiTooltip>
-											</div>
-										</div>
-									</th>
-
-									<!-- Add language column -->
-									<th
-										class="px-4 py-3 text-left text-sm font-medium text-text-secondary min-w-[150px]"
-									>
-										<UiDropdownMenu
-											v-if="availableLanguages.length > 0"
-											v-model:open="addLanguageDropdownOpen"
-										>
-											<template #trigger>
-												<UiButton variant="outline" size="sm" :disabled="isSaving">
-													<Icon name="lucide:plus" class="w-4 h-4" />
-													{{ t('components.translation.manager.addLanguage') }}
-												</UiButton>
-											</template>
-
-											<UiDropdownMenuItem
-												v-for="lang in availableLanguages"
-												:key="lang.value"
-												@click="addLanguage(lang.value)"
-											>
-												<Icon name="lucide:globe" class="w-4 h-4" />
-												{{
-													t('components.translation.manager.languageOption', {
-														label: t(lang.label),
-														nativeLabel: t(lang.nativeLabel),
-													})
-												}}
-											</UiDropdownMenuItem>
-										</UiDropdownMenu>
-									</th>
-								</tr>
-							</thead>
-
-							<tbody>
-								<tr
-									v-for="row in translatableRows"
-									:key="row.id"
-									class="border-b border-border-subtle last:border-b-0 hover:bg-bg-surface/30 transition-colors"
-								>
-									<!-- Field label -->
-									<td
-										class="px-4 py-3 text-sm text-text-secondary sticky left-0 bg-bg-elevated font-medium"
-									>
-										{{ row.label }}
-										<span
-											v-if="row.fieldType === 'html'"
-											class="ml-1.5 text-xs text-text-tertiary bg-bg-surface px-1 py-0.5 rounded"
-										>
-											{{ t('components.translation.manager.htmlBadge') }}
-										</span>
-									</td>
-
-									<!-- Default language cell (read-only) -->
-									<td class="px-4 py-3">
-										<TranslationCell
-											:value="row.sourceText"
-											:is-html="row.fieldType === 'html'"
-											:is-default="true"
-										/>
-									</td>
-
-									<!-- Translation cells -->
-									<td v-for="lang in translationLanguages" :key="lang" class="px-4 py-3">
-										<TranslationCell
-											:value="getTranslationValue(row, lang)"
-											:is-html="row.fieldType === 'html'"
-											:status="statusOf(cellOf(row, lang))"
-											:field-label="row.label"
-											:language-label="languageNativeLabel(lang)"
-											@save="(value: string) => saveCell(cellOf(row, lang), value)"
-											@retry="retryCell(cellOf(row, lang))"
-											@discard="discardCell(cellOf(row, lang))"
-											@edit="(text: string | null) => setOpenEdit(cellOf(row, lang), text)"
-										/>
-									</td>
-
-									<!-- Empty cell for add column -->
-									<td class="px-4 py-3" />
-								</tr>
-							</tbody>
-						</table>
-					</div>
-				</div>
+				<TranslationTable
+					v-else
+					:rows="translatableRows"
+					:default-language="defaultLanguage"
+					:languages="translationLanguages"
+					:available-languages="availableLanguages"
+					:translating-language="isTranslating"
+					:is-saving="isSaving"
+					:native-label-of="languageNativeLabel"
+					:cell-value="getTranslationValue"
+					:cell-status="(row, lang) => statusOf(cellOf(row, lang))"
+					@auto-translate="autoTranslateColumn"
+					@remove-language="removeLanguage"
+					@add-language="addLanguage"
+					@save="(row, lang, value) => saveCell(cellOf(row, lang), value)"
+					@retry="(row, lang) => retryCell(cellOf(row, lang))"
+					@discard="(row, lang) => discardCell(cellOf(row, lang))"
+					@edit="(row, lang, text) => setOpenEdit(cellOf(row, lang), text)"
+				/>
 
 				<!-- Info Card -->
 				<div class="mt-6 p-4 rounded-xl surface-3">

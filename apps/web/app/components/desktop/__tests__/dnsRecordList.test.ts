@@ -1,7 +1,7 @@
 /**
  * DesktopDnsRecordList (DNS setup revamp piece E2) — the copy-friendly DNS
  * record table the server-setup wizard renders its instructions through (the
- * one renderer, used at two sites in pages/desktop/setup.vue).
+ * one renderer, used at two sites of the desktop setup wizard).
  *
  * Covers the rendering contract the wizard depends on:
  *   - one row per record: hostname, uppercased type badge, value;
