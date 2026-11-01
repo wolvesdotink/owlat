@@ -2,9 +2,9 @@
  * Server-managed desktop updates — the release cache, the instance policy, and
  * the query the public manifest route answers from.
  *
- * The desktop app used to read a hard-coded GitHub URL
- * (`/releases/latest/download/latest.json`), which made desktop-only releases
- * invisible to existing installs and gave an operator no way to hold a bad
+ * A hard-coded GitHub URL in the desktop app
+ * (`/releases/latest/download/latest.json`) would make desktop-only releases
+ * invisible to existing installs and give an operator no way to hold a bad
  * build back. This module makes the instance the decision point:
  *
  *   1. A six-hourly cron (and the admin "Check now" button) runs

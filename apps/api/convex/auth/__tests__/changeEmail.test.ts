@@ -3,7 +3,7 @@ import type { ActionCtx } from '../../_generated/server';
 import { createAuthOptions } from '../auth';
 
 /**
- * Wiring contract for the change-login-email flow (PR #166).
+ * Wiring contract for the change-login-email flow.
  *
  * BetterAuth 1.6.11 applies an email change only after a confirmation link is
  * followed, and for the *verified* path it is a TWO-hop flow:

@@ -101,7 +101,7 @@ export async function handBack(ctx: MutationCtx, item: Doc<'llmBatchItems'>): Pr
 /**
  * The guards the live extraction path runs, rechecked now that the result is
  * back (Sol r2 F1): the batch was out for up to a day. `ai.knowledge` still
- * on (#1335); a Team message the scan or a late guard has since held back
+ * on; a Team message the scan or a late guard has since held back
  * (quarantine, malware, phishing, a quarantine-confidence injection) is not
  * read; Postbox mail moved to Spam, Trash, Sent or Drafts is not read. Checked
  * in the transaction that would keep the result, so a refusal keeps nothing:

@@ -323,7 +323,7 @@ describe('push.dispatch assignment', () => {
 		expect(await prepare(t, { kind: 'assignment', noticeId })).toEqual([]);
 	});
 
-	// #1343: a held question can wait long, so its notice is checked again
+	// A held question can wait long, so its notice is checked again
 	// right before it is pushed.
 	it.each([
 		['answered', { processingStatus: 'drafting' }, 'open'],

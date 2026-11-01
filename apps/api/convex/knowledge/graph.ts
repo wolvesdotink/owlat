@@ -441,7 +441,7 @@ export const getOpenCommitmentsByContact = internalQuery({
 	},
 	handler: async (ctx, args): Promise<OpenCommitment[]> =>
 		// Walks the contact's open-commitment junction rows in due order and loads
-		// only the entries it returns (knowledge/commitmentFacets.ts, issue #919).
+		// only the entries it returns (knowledge/commitmentFacets.ts).
 		await readOpenCommitments(
 			ctx,
 			args.contactId,

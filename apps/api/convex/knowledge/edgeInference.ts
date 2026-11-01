@@ -188,7 +188,7 @@ export const inferRelations = internalAction({
 				})
 			);
 
-			// M6 (#1335): every pair is already linked, or may not be linked across
+			// Every pair is already linked, or may not be linked across
 			// contact scopes. Nothing the model proposes could be written, so it is
 			// not asked.
 			if (!hasLinkablePair(nodes, existing)) {

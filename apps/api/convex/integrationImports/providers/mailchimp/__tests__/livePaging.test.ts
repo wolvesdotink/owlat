@@ -1,5 +1,5 @@
 /**
- * Mailchimp paging against an audience that changes during the run (#1075).
+ * Mailchimp paging against an audience that changes during the run.
  *
  * Pages are separate requests, minutes apart when one is retried, and the
  * audience keeps receiving signups, unsubscribes and deletions in between.

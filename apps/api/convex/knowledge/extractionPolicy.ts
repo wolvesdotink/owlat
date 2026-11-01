@@ -1,6 +1,6 @@
 /**
  * What decides whether, and how much, knowledge extraction stores: the
- * `ai.knowledge` flag at run time (#1335) and the routing policy's
+ * `ai.knowledge` flag at run time and the routing policy's
  * per-message entry cap (L7). Used by `knowledge/extraction.ts`; no Convex
  * functions, isolate-safe.
  */
@@ -10,7 +10,7 @@ import { internal } from '../_generated/api';
 import { logInfo } from '../lib/runtimeLog';
 
 /**
- * #1335: `ai.knowledge` is checked where extraction RUNS, not only where it is
+ * `ai.knowledge` is checked where extraction RUNS, not only where it is
  * scheduled. The Team Inbox pipeline and file processing schedule extraction
  * without reading the flag, and the flag can flip before a scheduled run.
  */

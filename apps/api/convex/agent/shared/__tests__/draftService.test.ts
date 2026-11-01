@@ -9,7 +9,7 @@
  *   - the fail-soft rules hold: a failed self-check degrades to null quality
  *     (never auto-approvable).
  *   - it makes two model calls, the draft and its self-check, and no
- *     alternative-drafts call (#1200).
+ *     alternative-drafts call.
  *   - the prompt framing keeps owner-confirmed facts OUTSIDE the untrusted tags.
  *
  * The lib/llm dispatch seam, provider and spend accounting are mocked so no
@@ -219,10 +219,9 @@ describe('runSharedDraft — one pipeline, both entry points', () => {
 	});
 });
 
-// The service used to spend a third, capable-tier call on 2–3 alternative
-// drafts whenever the self-check scored low or failed, which on Postbox was
-// every draft. No screen offers them, so the call is gone (#1200). The
-// self-check and that call both went through `runLlmObject`.
+// No screen offers alternative drafts, so the service makes no third,
+// capable-tier call for them, whatever the self-check scored. The self-check
+// and such a call would both go through `runLlmObject`, so it runs once.
 describe('runSharedDraft — no alternative-drafts call', () => {
 	it.each([
 		['a low self-check score', 0.5],

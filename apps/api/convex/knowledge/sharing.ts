@@ -1,5 +1,5 @@
 /**
- * Sharing a restricted knowledge entry with members again (#1372).
+ * Sharing a restricted knowledge entry with members again.
  *
  * Migration 0069 made every entry that existed before it owner/admin-only
  * (`memberAccess: 'restricted'`), because a historical dedup merge may have

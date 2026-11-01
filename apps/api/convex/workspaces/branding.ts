@@ -5,7 +5,7 @@
  * owns the other settings columns.
  *
  * The logo replaces the Owlat mark on the pages people reach without an
- * account: sign-in, unsubscribe, preferences and invitations (#810). A person
+ * account: sign-in, unsubscribe, preferences and invitations. A person
  * on those pages knows the workspace, not the product it runs on.
  *
  * Entry points:

@@ -137,11 +137,11 @@ export async function recordContactActivity<L extends ContactActivityType>(
 	// activity into the cached decayed accumulator is O(1) — no activity-timeline read on this path —
 	// and both denormalizations land in ONE patch.
 	//
-	// WRITE COST, STATED PLAINLY. This used to be ~0 contact writes per open
-	// after the first (the flag was already set, so nothing was patched). It is
-	// now EXACTLY ONE contact write for every open, click, bounce, complaint and
-	// reply — the five literals in ENGAGEMENT_DENORMALIZED_LITERALS — on the
-	// hottest write path in the product. That is accepted because the score has
+	// WRITE COST, STATED PLAINLY. This is EXACTLY ONE contact write for every
+	// open, click, bounce, complaint and reply — the five literals in
+	// ENGAGEMENT_DENORMALIZED_LITERALS — on the hottest write path in the
+	// product, including every open after the first, where the flag alone is
+	// already set and would need no patch. That is accepted because the score has
 	// to decay against the accumulator's as-of instant, and an accumulator whose
 	// stamp did not advance is not a cheaper write, it is a wrong one. The cost
 	// is bounded: it is a patch of a PER-CONTACT row (never a shared document, so

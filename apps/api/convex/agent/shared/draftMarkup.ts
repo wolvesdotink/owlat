@@ -16,8 +16,8 @@ export type PrimaryDraft = Readonly<{
 }>;
 
 /**
- * The primary draft without tool-call markup the model typed into it (#1254,
- * lib/llm/toolMarkup.ts). A leading markup prefix is cut. A draft with markup
+ * The primary draft without tool-call markup the model typed into it
+ * (lib/llm/toolMarkup.ts). A leading markup prefix is cut. A draft with markup
  * after the reply started, cut inside a tag, or with nothing after the prefix,
  * is generated once more without tools, by a prompt that names none, since
  * that is what invites a typed-out call. When that one is unusable as well, or

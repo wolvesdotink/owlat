@@ -1,5 +1,5 @@
 /**
- * Workspace logo (#810): an owner or admin binds an uploaded PNG/JPEG/SVG as
+ * Workspace logo: an owner or admin binds an uploaded PNG/JPEG/SVG as
  * the workspace logo, the public recipient-sender read hands its URL to the
  * sign-in and recipient pages, and a file whose bytes are not the declared
  * image is taken down again.

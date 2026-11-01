@@ -363,7 +363,7 @@ async function runDefaultDraftStrategy(
 
 /**
  * The default strategy streamed into the owner's view (Answer mode). Tool-call
- * markup the model types instead of calling the tool (#1254) never reaches the
+ * markup the model types instead of calling the tool never reaches the
  * view as a reply: a stream that is markup is written once more without
  * tools, unless the owner stopped it. A draft that stays markup, or stopped
  * at its output ceiling, throws {@link DraftUnusableError}.
@@ -421,7 +421,7 @@ export async function runSinglePassDraft(
 	// on one meter, which hands each request out once, so flushing it on every
 	// path cannot double-count. The successful draft's usage is also returned;
 	// the Team Inbox walker keeps it on the step's agentActions row, a reporting
-	// view the spend ceiling does not read (#1259). It is written before the
+	// view the spend ceiling does not read. It is written before the
 	// caller persists anything, so a write that fails after the generation
 	// cannot lose it.
 	const target = draftSpendTarget(params);

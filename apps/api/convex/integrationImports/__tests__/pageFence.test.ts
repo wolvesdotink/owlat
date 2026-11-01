@@ -1,5 +1,5 @@
 /**
- * Integration import page fence (#996): a cancelled run writes nothing after
+ * Integration import page fence: a cancelled run writes nothing after
  * the cancel is accepted, and a page committed before it stays counted.
  *
  * The provider fetch is held open with a gate, so a cancel (through the real

@@ -293,7 +293,7 @@ export const draftStep: AgentStepModule<'draft', DraftInput, DraftOutput> = {
 			tools: { recallKnowledge },
 			maxSteps: MAX_RECALL_CALLS + 2,
 			// The service writes every generation to the ledger under these labels,
-			// the one store the spend ceiling reads (#1259). The usage it returns
+			// the one store the spend ceiling reads. The usage it returns
 			// goes onto the step's agentActions row, the cost-by-step view only.
 			spendLabels: { draft: 'agent_draft', selfCheck: 'agent_draft_selfcheck' },
 			root,

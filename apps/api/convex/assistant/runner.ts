@@ -13,7 +13,7 @@
  * mutation's `stop` signal, or a once-a-second check while no event comes)
  * aborts the turn and its nested calls and leaves the partial text terminal; any
  * error leaves the partial text errored and records the spend of the steps that
- * finished before it (#1261).
+ * finished before it.
  *
  *   run         → personal assistant   (aiConversations / aiMessages)
  *   runForChat  → @assistant in a room (chatMessages)

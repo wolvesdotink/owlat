@@ -1,15 +1,15 @@
 /**
  * Hosted assistant-tool registry (PP-11).
  *
- * The assistant's tool surface used to be an AI-SDK `ToolSet` map literal built
- * inline in the runner. It is now a registry of hosted *modules*, each carrying
- * the metadata the host enforces around it:
+ * The assistant's tool surface is a registry of hosted *modules*, not an AI-SDK
+ * `ToolSet` map literal built inline in the runner, so each module carries the
+ * metadata the host enforces around it:
  *
  *   - `flag`   — an optional feature flag; when set and OFF, the host omits the
  *                tool from the assembled set (feature-off ⇒ the tool does not
  *                exist for the model). The whole assistant is gated by
  *                `ai.assistant` upstream; `searchKnowledge` also carries
- *                `ai.knowledge` (#1335), and the field is the seam
+ *                `ai.knowledge`, and the field is the seam
  *                plugin-contributed tool packs gate on.
  *   - `scope`  — the data-access class the tool operates in. Built-ins are read
  *                (`workspace:read`) or draft-generation (`workspace:draft`). The

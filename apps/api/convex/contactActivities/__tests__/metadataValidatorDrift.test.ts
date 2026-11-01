@@ -5,8 +5,9 @@
  * metadata its writers may pass (`metadataSchema`), but the `contactActivities`
  * table stores all of them through one shared validator. A field a module
  * allows and the table does not makes every insert carrying it throw, which
- * rolls back whatever mutation wrote the activity (issue #1184: `automationId`
- * kept automation sends `queued` and dropped their bounces and complaints).
+ * rolls back whatever mutation wrote the activity (an `automationId` the table
+ * did not allow would keep automation sends `queued` and drop their bounces and
+ * complaints).
  *
  * The modules are read from `ACTIVITY_MODULES`, the writer's dispatch table,
  * which is compile-time tied to the activity catalog, so a new literal is

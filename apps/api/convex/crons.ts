@@ -375,7 +375,7 @@ crons.interval(
 	{}
 );
 
-// Answered conversations (#1346): drafts a reply obsoleted, and Team Inbox
+// Answered conversations: drafts a reply obsoleted, and Team Inbox
 // stashes it archived, are purged once the bounce window has passed.
 crons.interval('purge answered drafts', { hours: 1 }, internal.mail.answeredReply.purgeExpired, {});
 
@@ -457,7 +457,7 @@ crons.interval(
 	{}
 );
 
-// IMAP folder membership backfill (#927): start migration 0054 on a deployment
+// IMAP folder membership backfill: start migration 0054 on a deployment
 // that never ran it, and resume one whose chain died, so every deployment stops
 // listing whole folders for the IMAP server. One indexed read once completed.
 crons.interval(

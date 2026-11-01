@@ -232,10 +232,10 @@ export const sweepArrivalRecords = internalMutation({
  * Agent-health rollup points (`agentMetrics`) past their 7-day window.
  *
  * Lives here, on the daily schedule every other table's retention runs on,
- * because it used to be fired from inside the 5-minute rollup behind
- * `Math.random() < 0.05` — a sweep that ran on no schedule anyone could reason
- * about, and, because it neither batched to completion nor rescheduled itself,
- * could not drain a backlog larger than one batch even when it did fire.
+ * not inside the 5-minute rollup behind a `Math.random()` draw: a sweep fired
+ * that way runs on no schedule anyone can reason about, and one that neither
+ * batches to completion nor reschedules itself cannot drain a backlog larger
+ * than one batch even when it does fire.
  */
 export const sweepAgentMetrics = internalMutation({
 	args: {},

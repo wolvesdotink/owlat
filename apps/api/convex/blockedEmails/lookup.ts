@@ -76,7 +76,7 @@ const REMOVAL_SCAN_LIMIT = 500;
 const REMOVAL_ACTIONS = ['blocklist.removed', 'contact.sunset_restored'] as const;
 
 // Whether an operator removed `email` from the blocklist after an event the
-// provider stamped `eventAt` (#1228).
+// provider stamped `eventAt`.
 //
 // Read from the audit entries those removals already write in the same
 // transaction as the delete, each carrying the address, so the guard needs no

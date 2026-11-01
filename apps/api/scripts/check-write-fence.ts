@@ -6,7 +6,7 @@
  * `lib/authedFunctions.ts` build on a fenced `mutation`, and every internal
  * mutation uses the fenced `internalMutation` exported by `lib/writeFence.ts`.
  * A module that imports a raw mutation builder writes around the fence, so a
- * row it creates mid-deletion survives the sweep (#898).
+ * row it creates mid-deletion survives the sweep.
  *
  * This walk fails on any value import of a raw mutation builder outside the
  * modules allowed to hold one:

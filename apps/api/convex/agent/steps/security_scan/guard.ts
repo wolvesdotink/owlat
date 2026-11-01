@@ -232,7 +232,7 @@ export function isGuardFlagged(
  * conversation history. See {@link guardStanding}:
  *   - a message the scan or a late guard already rejected (quarantine,
  *     malware, a malicious URL, an injection at quarantine confidence) never
- *     proceeds, with no model call (#1339);
+ *     proceeds, with no model call;
  *   - a message whose scan skipped the model guard gets it now: the result is
  *     recorded on the message (clearing the marker, and leaving the injection
  *     flags that reject it from then on), and it proceeds only when the guard

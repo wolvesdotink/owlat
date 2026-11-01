@@ -83,7 +83,7 @@ describe('mandrill rejects import — adapter', () => {
 				{ email: 'custom@example.com', reason: 'custom' },
 				// About OUR account / OUR message — never a suppression. `rejects/list`
 				// does not report `rule` today; if it ever did, it would say nothing
-				// about the address (#1249).
+				// about the address.
 				{ email: 'rule@example.com', reason: 'rule' },
 				{ email: 'sender@example.com', reason: 'invalid-sender' },
 				{ email: 'invalid@example.com', reason: 'invalid' },

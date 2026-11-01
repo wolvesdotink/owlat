@@ -28,7 +28,7 @@
  * sufficient alone, and the claim is the same claim for both arms — it names a
  * BATCH, not a signature scheme. The Svix arm's name leaves the timestamp out,
  * so a sender's re-signed retry is the same batch, and its receipt is kept for
- * the sender's retry window rather than the signature's (#1367).
+ * the sender's retry window rather than the signature's.
  *
  * The ORIGIN-ONLY form the import-provider contract declares lives in
  * `./importProviderSignature.ts` and shares the two primitives below. It is in
@@ -136,7 +136,7 @@ export async function compareSignature(
  *
  * `receiptExpiresAtMs` is set only by an arm whose digest OUTLIVES the request,
  * because it leaves the timestamp out: the Svix arm names a message, and the
- * sender re-signs every retry of it with a fresh timestamp (#1367). It says how
+ * sender re-signs every retry of it with a fresh timestamp. It says how
  * long a completed receipt must still answer for that message. Absent, the
  * receipt only has to outlive the request, since nothing else can present the
  * same digest.
@@ -287,10 +287,9 @@ const SVIX_DIGEST_SCHEME = 'svix';
  *  - v1 hashed the raw `svix-signature` header. The header is a LIST that
  *    verifies when any one candidate matches, so a captured delivery could be
  *    re-sent with an extra junk candidate, doubled spaces or reordered
- *    candidates — still authentic, but a fresh digest and so a fresh claim
- *    (#1328).
+ *    candidates — still authentic, but a fresh digest and so a fresh claim.
  *  - v2 hashed the authenticated content instead: id, timestamp and body.
- *  - v3 (`v3:message`) drops the timestamp (#1367). Svix signs every attempt
+ *  - v3 (`v3:message`) drops the timestamp. Svix signs every attempt
  *    again with "the timestamp of the attempt" (docs.svix.com, "Verifying
  *    Webhooks Manually"),
  *    so under v2 a retry after a lost 2xx was a new digest and the batch was
@@ -327,8 +326,7 @@ const SVIX_DIGEST_VERSION = 'v3:message';
  * (docs.svix.com, "Retries"). The receipt is
  * counted from the attempt that APPLIED the batch, which is never earlier than
  * the first, so two days covers the schedule with room for the sender's own
- * queueing delays. A message re-sent by hand after that is applied again, as
- * every re-sent message was before #1367.
+ * queueing delays. A message re-sent by hand after that is applied again.
  */
 const SVIX_RECEIPT_RETENTION_MS = 48 * 60 * 60 * 1000;
 
@@ -392,7 +390,7 @@ async function verifyPluginSvixDelivery(
 	// in the name: the same delivery must keep one name across a reformatted
 	// header and across a key rotation. NOR BY THE ATTEMPT: the timestamp is
 	// signed, but the sender re-signs each retry with a new one, and a retry of
-	// a batch we applied is the same batch (#1367). The body is hashed first so
+	// a batch we applied is the same batch. The body is hashed first so
 	// the digest's input stays newline-free and never holds a payload.
 	const bodyDigest = bytesToHex(
 		await crypto.subtle.digest('SHA-256', new TextEncoder().encode(delivery.rawBody))

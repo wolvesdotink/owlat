@@ -12,7 +12,7 @@
  *   - key not found                  → invalid, keySource 'not_found'
  *   - key CHANGED (pin conflict)     → refusal, failure 'key_changed'
  *   - malformed signature part       → failure 'malformed_signature'
- * Clearsigned bodies are verified over the octets that were signed (#1300):
+ * Clearsigned bodies are verified over the octets that were signed:
  * 8-bit UTF-8, 8-bit ISO-8859-1, quoted-printable and base64 bodies all verify,
  * and a changed octet or a body re-encoded in another charset does not.
  * Plus the WKD-first ladder: `skipManifest` discovery never touches the

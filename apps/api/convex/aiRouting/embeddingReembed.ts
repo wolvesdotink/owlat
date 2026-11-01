@@ -1,5 +1,5 @@
 /**
- * The re-embed job's actions (#1334).
+ * The re-embed job's actions.
  *
  *   - `kickoff` runs from the cron and after every event that changes what is
  *     searchable (a settings save, a space switch, an attestation). With a

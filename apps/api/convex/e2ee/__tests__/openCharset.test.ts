@@ -1,11 +1,11 @@
 /**
- * Inbound unsealing reads the decrypted inner message byte-exactly (#1284).
+ * Inbound unsealing reads the decrypted inner message byte-exactly.
  *
  * Every case is a real OpenPGP round trip: the inner message is encrypted and
  * signed with `openpgp`, opened by `openSealed`, and restored by
- * `parseInnerMessage`. The inner message used to be decoded as UTF-8 as a whole
- * before its parts were extracted, so an 8-bit part lost every non-ASCII
- * character: `Price — 5€` came out as `Price \u0014 5�`.
+ * `parseInnerMessage`. Decoding the inner message as UTF-8 as a whole before
+ * its parts are extracted makes an 8-bit part lose every non-ASCII character:
+ * `Price — 5€` comes out as `Price \u0014 5�`.
  */
 
 import * as openpgp from 'openpgp';

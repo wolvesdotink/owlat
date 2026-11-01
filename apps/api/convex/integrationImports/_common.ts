@@ -29,7 +29,7 @@ export type IntegrationProviderKind = (typeof INTEGRATION_PROVIDER_KINDS)[number
  * is, for a whole-account blacklist, nothing at all.
  *
  * Mailchimp keeps its pasted key: the Marketing API is a DIFFERENT system with a
- * different key, connected per-import and never used to send.
+ * different key, connected per-import and never used for sending.
  */
 export type IntegrationProviderConfig =
 	| {

@@ -15,13 +15,13 @@
  * FAIL-SOFT is preserved end-to-end: the self-check degrades to `null` (unknown
  * quality → never auto-approve). The primary draft generation itself throws on
  * prompt-injection in the assembled context, and on a model failure or a draft
- * that is tool-call markup twice over (#1254) — the caller's catch turns that
+ * that is tool-call markup twice over — the caller's catch turns that
  * into human review or no draft, never an auto-send. What the run already
- * spent is recorded before it throws (#1256).
+ * spent is recorded before it throws.
  *
  * It makes no alternative-drafts call: no screen offers a reviewer a choice of
  * drafts, so a second capable-tier generation would be paid for and never
- * shown (#1200).
+ * shown.
  */
 
 import type { ActionCtx } from '../../_generated/server';

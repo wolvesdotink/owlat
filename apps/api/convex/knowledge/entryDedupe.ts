@@ -1,6 +1,6 @@
 /**
  * Knowledge entry deduplication, shared by the write and the preflight before
- * embedding (#1335, AI routing plan missed call M4).
+ * embedding.
  *
  * `knowledge.graph.saveEntry` returns an existing row instead of writing a
  * duplicate (both legs below, in its transaction, so a race between two

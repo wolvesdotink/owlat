@@ -1,6 +1,6 @@
 /**
  * `stripHiddenContent` and `detectSmuggling` stay linear in their input on
- * adversarial HTML (GHSA-v4gq-pq2j-3pcj, #1163, #1315). The strip is checked by
+ * adversarial HTML (GHSA-v4gq-pq2j-3pcj). The strip is checked by
  * counting its work through the scan meter, the detection by its input cap; the
  * time the regex-bound cases take is reported by `bun run perf:bench`.
  * Behaviour tests live in `stripHiddenContent.test.ts`.
@@ -20,9 +20,9 @@ describe('scan helpers run in linear time on adversarial input', () => {
 	const FIVE_MB = 5 * 1024 * 1024;
 	const repeatTo = (unit: string) => unit.repeat(Math.ceil(FIVE_MB / unit.length));
 
-	// The strip is checked by counting its work (#1315), not by timing it: a
+	// The strip is checked by counting its work, not by timing it: a
 	// shared CI runner is 8-17 times slower than a developer machine and its
-	// speed varies (#1163). Per character scanned (input past the cap is
+	// speed varies. Per character scanned (input past the cap is
 	// dropped first), the comment pass reads each character once and the
 	// element pass at most three times: once, plus at most one search to the
 	// end of the input for each quote character a value never closes. The

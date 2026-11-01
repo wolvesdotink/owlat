@@ -21,9 +21,9 @@ import { splitQuotedHtml, splitQuotedText } from '@owlat/shared/quotedText';
  * only appears when the call passes that tool: a prompt that names a tool the
  * model cannot call invites it to write the call out as text. Where the tool
  * is passed, the name stays (it is how the model ties the instruction to the
- * tool definition), and the sentence says the call is never part of the reply
- * (#1254): a model that cannot make a structured call there printed it, with a
- * made-up result, above the reply. lib/llm/toolMarkup.ts removes what slips
+ * tool definition), and the sentence says the call is never part of the reply:
+ * a model that cannot make a structured call there would otherwise print it,
+ * with a made-up result, above the reply. lib/llm/toolMarkup.ts removes what slips
  * through anyway.
  */
 export function missingFactInstruction(hasRecallTool: boolean): string {

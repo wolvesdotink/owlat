@@ -5,8 +5,8 @@ import { defineStep, DEFAULT_BATCH_SIZE } from './_common';
  * Delegating step: routes through the **Sending domain lifecycle
  * (module)**'s `remove` entry, which fires the `delete_with_provider`
  * effect — SES.send(DeleteIdentityCommand) or DELETE on the MTA HTTP
- * API depending on `providerType`. (The wipe used to call
- * `ctx.db.delete(d._id)` directly, orphaning provider-side identity records.)
+ * API depending on `providerType`. (Deleting the row with `ctx.db.delete`
+ * directly would orphan the provider-side identity record.)
  *
  * `userId: 'system'` because the org-wipe is platform-initiated, not
  * tied to a user. The audit log emitted by the lifecycle lands in

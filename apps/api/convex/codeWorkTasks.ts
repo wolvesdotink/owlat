@@ -262,7 +262,7 @@ export const markTesting = internalMutation({
  * Record the publication checkpoint right before the worker pushes: the branch,
  * the commit it is about to push and the test output that goes into the PR.
  * Doubles as the last cancellation check before anything leaves the worker. A
- * later attempt that finds the remote branch at this commit resumes publication
+ * later attempt that finds the remote branch at that commit resumes publication
  * rather than regenerating (see `publishCommitSha` in schema/codeWork.ts).
  */
 export const recordPublication = internalMutation({

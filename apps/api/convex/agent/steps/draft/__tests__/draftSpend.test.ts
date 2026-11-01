@@ -1,5 +1,5 @@
 /**
- * Where the Team Inbox draft step's spend lands (#1256, #1259). Every
+ * Where the Team Inbox draft step's spend lands. Every
  * generation writes one `agent_draft` row to the usage ledger, the store the
  * spend ceiling reads: a successful draft, a draft that throws after a paid
  * tool step, and a draft whose output fails to persist afterwards. A successful

@@ -1,5 +1,5 @@
 /**
- * Open-commitments recall on the junction projection (issue #919).
+ * Open-commitments recall on the junction projection.
  *
  * `knowledge.graph.getOpenCommitmentsByContact` used to load every knowledge
  * entry linked to the contact to return at most ten. These tests pin the new
