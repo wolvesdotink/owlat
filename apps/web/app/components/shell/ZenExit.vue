@@ -3,6 +3,7 @@ import { isOverlayOpen, isZenChord, zenTakesEscape } from '~/utils/zenMode';
 import { isEditableTarget } from '~/utils/postboxShortcuts';
 import { useZenMode } from '~/composables/useZenMode';
 import { useEscapeLayer } from '@owlat/ui/composables/useEscapeLayer';
+import { ShrinkIcon } from '@coolicons/vue';
 
 /**
  * Zen mode's keyboard and its one visible control. Mounted once by the
@@ -79,7 +80,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown));
 			class="flex min-h-8 items-center gap-2 rounded-full border border-border-subtle bg-bg-elevated px-3 text-xs font-medium text-text-secondary transition-colors hover:bg-bg-surface hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand pointer-coarse:min-h-11"
 			@click="exitZen"
 		>
-			<Icon name="lucide:minimize-2" class="size-3.5" />
+			<ShrinkIcon class="size-3.5" />
 			{{ t('components.shell.zen.exit') }}
 			<kbd class="hidden font-mono text-2xs text-text-tertiary sm:inline">Esc</kbd>
 		</button>

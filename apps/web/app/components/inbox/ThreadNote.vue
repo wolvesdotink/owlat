@@ -13,6 +13,7 @@ import type { Id } from '@owlat/api/dataModel';
 import { splitMentionSegments } from '@owlat/shared/chatMentions';
 import { formatRelativeTime } from '~/utils/formatters';
 import type { NoteMentionCandidate } from '~/utils/threadNotes';
+import { LockIcon, PencilIcon, TrashIcon } from '@coolicons/vue';
 
 export interface ThreadNoteView {
 	_id: Id<'threadNotes'>;
@@ -89,7 +90,7 @@ async function saveEdit(body: string): Promise<boolean> {
 			/>
 			<span class="min-w-0 truncate font-medium text-text-primary">{{ author }}</span>
 			<span class="inline-flex shrink-0 items-center gap-1 text-text-secondary">
-				<Icon name="lucide:lock" class="size-3" aria-hidden="true" />
+				<LockIcon class="size-3" aria-hidden="true" />
 				{{ t('components.inbox.notes.badge') }}
 			</span>
 			<span aria-hidden="true" class="text-text-tertiary">·</span>
@@ -115,7 +116,7 @@ async function saveEdit(body: string): Promise<boolean> {
 						data-testid="thread-note-edit"
 						@click="editing = true"
 					>
-						<Icon name="lucide:pencil" class="size-3.5" />
+						<PencilIcon class="size-3.5" />
 					</button>
 				</UiTooltip>
 				<UiTooltip v-if="canDelete" :text="t('components.inbox.notes.delete')">
@@ -126,7 +127,7 @@ async function saveEdit(body: string): Promise<boolean> {
 						data-testid="thread-note-delete"
 						@click="emit('delete')"
 					>
-						<Icon name="lucide:trash-2" class="size-3.5" />
+						<TrashIcon class="size-3.5" />
 					</button>
 				</UiTooltip>
 			</span>

@@ -12,6 +12,7 @@
  */
 import type { Id } from '@owlat/api/dataModel';
 import { usePostboxLabels } from '~/composables/postbox/usePostboxLabels';
+import { MailOpenIcon, SparklesIcon, TagIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	messageId: string;
@@ -50,7 +51,7 @@ const item = 'flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover
 				:class="item"
 				@click="close()"
 			>
-				<Icon name="lucide:mail-open" class="size-4 text-text-tertiary" />
+				<MailOpenIcon class="size-4 text-text-tertiary" />
 				{{ t('components.answer.mode.openInPostbox') }}
 			</NuxtLink>
 			<button
@@ -64,7 +65,7 @@ const item = 'flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover
 					emit('ask');
 				"
 			>
-				<Icon name="lucide:sparkles" class="size-4 text-text-tertiary" />
+				<SparklesIcon class="size-4 text-text-tertiary" />
 				{{ t('components.postbox.postboxAiStrip.askAbout') }}
 			</button>
 			<button
@@ -77,7 +78,7 @@ const item = 'flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover
 					labelOpen = true;
 				"
 			>
-				<Icon name="lucide:tag" class="size-4 text-text-tertiary" />
+				<TagIcon class="size-4 text-text-tertiary" />
 				{{ t('components.postbox.postboxLabelPickerDialog.title') }}
 			</button>
 		</template>

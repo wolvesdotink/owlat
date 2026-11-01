@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useShortcutLabels } from '~/composables/useShortcutLabels';
+import { SearchIcon } from '@coolicons/vue';
 
 /**
  * Header search entry point. The search + command experience itself lives in the
@@ -18,7 +19,7 @@ const { ariaFor } = useShortcutLabels();
 		:aria-keyshortcuts="ariaFor('global.commandPalette')"
 		@click="() => openSearch()"
 	>
-		<Icon name="lucide:search" class="w-4 h-4" />
+		<SearchIcon class="w-4 h-4" />
 		<span class="hidden sm:inline">{{ t('components.globalSearch.search') }}</span>
 		<UiShortcut
 			id="global.commandPalette"

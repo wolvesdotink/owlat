@@ -9,7 +9,7 @@
  *   - the denormalized snippet line
  *
  * The shared PostboxRowCore and the real StatusChip render so slots + the chip
- * vocabulary are exercised; Icon / UiAvatar / NuxtLink are global auto-imports,
+ * vocabulary are exercised; UiAvatar / NuxtLink are global auto-imports,
  * stubbed here (UiAvatar echoes its name so the assignee is assertable).
  */
 import { beforeAll, describe, it, expect } from 'vitest';
@@ -68,7 +68,6 @@ function mountRow(
 			plugins: [createTestI18n()],
 			components: { PostboxRowCore, InboxStatusChip: StatusChip, UiPresenceRing },
 			stubs: {
-				Icon: true,
 				UiAvatar: UiAvatarStub,
 				NuxtLink: NuxtLinkStub,
 				InboxAssignPopover: AssignPopoverStub,
@@ -227,7 +226,6 @@ describe('InboxThreadRow response-target chip', () => {
 				plugins: [createTestI18n()],
 				components: { PostboxRowCore, InboxStatusChip: StatusChip, UiPresenceRing },
 				stubs: {
-					Icon: true,
 					UiAvatar: UiAvatarStub,
 					NuxtLink: NuxtLinkStub,
 					InboxAssignPopover: AssignPopoverStub,

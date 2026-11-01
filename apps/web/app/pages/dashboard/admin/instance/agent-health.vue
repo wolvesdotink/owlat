@@ -1,5 +1,13 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
+import {
+	CircleCheckIcon,
+	CircleWarningIcon,
+	CoinsIcon,
+	LayersIcon,
+	TimerIcon,
+} from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 definePageMeta({
 	layout: 'admin',
@@ -165,7 +173,7 @@ const errorTrend = computed<'up' | 'down' | 'stable'>(() => {
 						<AgentMetricCard
 							:label="t('dashboard.admin.instance.agentHealth.metrics.queueDepth.label')"
 							:value="queueDepth"
-							icon="lucide:layers"
+							:icon="LayersIcon"
 							:description="
 								t('dashboard.admin.instance.agentHealth.metrics.queueDepth.description')
 							"
@@ -173,20 +181,20 @@ const errorTrend = computed<'up' | 'down' | 'stable'>(() => {
 						<AgentMetricCard
 							:label="t('dashboard.admin.instance.agentHealth.metrics.latency.label')"
 							:value="processingLatency"
-							icon="lucide:timer"
+							:icon="TimerIcon"
 							:description="t('dashboard.admin.instance.agentHealth.metrics.latency.description')"
 						/>
 						<AgentMetricCard
 							:label="t('dashboard.admin.instance.agentHealth.metrics.errorRate.label')"
 							:value="errorRate"
-							icon="lucide:alert-circle"
+							:icon="CircleWarningIcon"
 							:trend="errorTrend"
 							:description="t('dashboard.admin.instance.agentHealth.metrics.errorRate.description')"
 						/>
 						<AgentMetricCard
 							:label="t('dashboard.admin.instance.agentHealth.metrics.autoApprove.label')"
 							:value="autoApproveRatio"
-							icon="lucide:check-circle"
+							:icon="CircleCheckIcon"
 							:description="
 								t('dashboard.admin.instance.agentHealth.metrics.autoApprove.description')
 							"
@@ -194,13 +202,13 @@ const errorTrend = computed<'up' | 'down' | 'stable'>(() => {
 						<AgentMetricCard
 							:label="t('dashboard.admin.instance.agentHealth.metrics.llmCost.label')"
 							:value="llmCost"
-							icon="lucide:coins"
+							:icon="CoinsIcon"
 							:description="t('dashboard.admin.instance.agentHealth.metrics.llmCost.description')"
 						/>
 						<AgentMetricCard
 							:label="t('dashboard.admin.instance.agentHealth.metrics.processing.label')"
 							:value="metrics?.processingCount ?? 0"
-							icon="lucide:loader"
+							:icon="SpinnerIcon"
 							:description="
 								t('dashboard.admin.instance.agentHealth.metrics.processing.description')
 							"

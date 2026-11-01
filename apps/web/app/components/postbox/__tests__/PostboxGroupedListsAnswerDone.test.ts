@@ -24,6 +24,7 @@ import PostboxConversationRow from '../PostboxConversationRow.vue';
 import PostboxThreadListSkeleton from '../PostboxThreadListSkeleton.vue';
 import PostboxEmptyState from '../PostboxEmptyState.vue';
 import { BASE_MESSAGE } from './spoofedSenderFixture';
+import { InboxIcon, NotebookIcon, UserIcon } from '@coolicons/vue';
 
 const navigate = vi.fn();
 const state = new Map<string, Ref<unknown>>();
@@ -68,7 +69,6 @@ const globalOptions = {
 		PostboxEmptyState,
 	},
 	stubs: {
-		Icon: { props: ['name'], template: '<span />' },
 		NuxtLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
 		PostboxThreadRowBody: { template: '<span />' },
 		UiModal: { template: '<span />' },
@@ -148,9 +148,9 @@ describe('a reply marked done, opened from a grouped list', () => {
 		const list = mount(PostboxThreadCategoryList, {
 			props: {
 				sections: [
-					{ key: 'person', label: 'People', icon: 'lucide:user', threads: [thread('a')] },
-					{ key: 'newsletter', label: 'News', icon: 'lucide:news', threads: [thread('b')] },
-					{ key: 'other', label: 'Other', icon: 'lucide:inbox', threads: [thread('c')] },
+					{ key: 'person', label: 'People', icon: UserIcon, threads: [thread('a')] },
+					{ key: 'newsletter', label: 'News', icon: NotebookIcon, threads: [thread('b')] },
+					{ key: 'other', label: 'Other', icon: InboxIcon, threads: [thread('c')] },
 				],
 				collapsed: { newsletter: true },
 				loading: false,

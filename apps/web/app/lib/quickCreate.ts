@@ -23,6 +23,13 @@
 import type { FeatureFlagKey } from '@owlat/shared/featureFlags';
 import { minRole, type NavigationEnvironment } from './dashboardNavigationCore';
 import type { SidebarContext } from './sidebarContext';
+import {
+	MegaphoneIcon,
+	PencilIcon,
+	UserPlusCornerIcon,
+	ZapIcon,
+	type IconComponent,
+} from '@coolicons/vue';
 
 export type QuickCreateId = 'compose' | 'campaign' | 'contact' | 'automation';
 
@@ -42,7 +49,7 @@ export interface QuickCreateEntry {
 	readonly id: QuickCreateId;
 	/** i18n KEY — this module is module scope and cannot call `useI18n`. */
 	readonly labelKey: string;
-	readonly icon: string;
+	readonly icon: IconComponent;
 	/**
 	 * Where the verb lives when it is a PAGE. The two that are not (compose opens
 	 * a composer, contact opens a dialog on the list it already has) carry no
@@ -59,27 +66,27 @@ export const QUICK_CREATE_ENTRIES: readonly QuickCreateEntry[] = [
 	{
 		id: 'compose',
 		labelKey: 'shared.quickCreate.compose',
-		icon: 'lucide:pencil',
+		icon: PencilIcon,
 		shortcutId: 'global.compose',
 		gate: anyFlag('postbox', 'mail.external'),
 	},
 	{
 		id: 'campaign',
 		labelKey: 'shared.quickCreate.campaign',
-		icon: 'lucide:megaphone',
+		icon: MegaphoneIcon,
 		href: '/dashboard/campaigns/new',
 		gate: flag('campaigns'),
 	},
 	{
 		id: 'contact',
 		labelKey: 'shared.quickCreate.contact',
-		icon: 'lucide:user-plus',
+		icon: UserPlusCornerIcon,
 		gate: adminOnly,
 	},
 	{
 		id: 'automation',
 		labelKey: 'shared.quickCreate.automation',
-		icon: 'lucide:zap',
+		icon: ZapIcon,
 		href: '/dashboard/automations/new',
 		gate: (env) => adminOnly(env) && flag('automations')(env),
 	},

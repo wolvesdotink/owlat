@@ -32,6 +32,7 @@
 
 import type { SealLockText, SealState } from './sealComposer';
 import type { SealTone } from './sealTone';
+import { KeyIcon, LockIcon, LockOpenIcon, type IconComponent } from '@coolicons/vue';
 
 /** Web mirror of the Convex `RecipientKeyOutcome` (`mail/sealPolicy.ts`). */
 export type RecipientKeyOutcome = 'trusted' | 'keyChanged' | 'notFound' | 'missing';
@@ -71,7 +72,7 @@ export function allRecipientsVerified(recipients: readonly RecipientSealView[]):
 export interface RecipientSealGlyph {
 	/** Discriminator, carried through for styling and test assertions. */
 	kind: 'sealed' | 'keyChanged' | 'noKey';
-	icon: string;
+	icon: IconComponent;
 	tone: SealTone;
 	/** Hover/assistive sentence — a catalog key plus the address it names. */
 	title: SealLockText;
@@ -102,7 +103,7 @@ export function recipientSealGlyph(recipient: RecipientSealView): RecipientSealG
 	if (recipient.outcome === 'keyChanged') {
 		return {
 			kind: 'keyChanged',
-			icon: 'lucide:key-round',
+			icon: KeyIcon,
 			tone: 'warn',
 			title: {
 				key: 'shared.sealRecipients.keyChangedTitle',
@@ -113,14 +114,14 @@ export function recipientSealGlyph(recipient: RecipientSealView): RecipientSealG
 	if (recipient.hasUsableKey) {
 		return {
 			kind: 'sealed',
-			icon: 'lucide:lock',
+			icon: LockIcon,
 			tone: 'ok',
 			title: { key: 'shared.sealRecipients.hasKeyTitle', params: { address: recipient.address } },
 		};
 	}
 	return {
 		kind: 'noKey',
-		icon: 'lucide:lock-open',
+		icon: LockOpenIcon,
 		tone: 'muted',
 		title: { key: 'shared.sealRecipients.noKeyTitle', params: { address: recipient.address } },
 	};

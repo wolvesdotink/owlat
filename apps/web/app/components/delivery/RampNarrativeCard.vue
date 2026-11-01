@@ -29,6 +29,7 @@ import {
 } from '~/utils/deliverabilityRampNarrative';
 import { formatShortDate } from '~/utils/formatters';
 import { useLocalized } from '~/composables/useLocalized';
+import { RouteIcon } from '@coolicons/vue';
 
 const {
 	data: controls,
@@ -68,7 +69,7 @@ const progressPercent = computed(() =>
 			<p
 				class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-text-tertiary"
 			>
-				<Icon name="lucide:route" class="h-4 w-4" />
+				<RouteIcon class="h-4 w-4" />
 				{{ t('components.delivery.rampNarrativeCard.eyebrow') }}
 			</p>
 		</div>
@@ -203,7 +204,7 @@ const progressPercent = computed(() =>
 									:to="screen.to"
 									class="flex items-start gap-2 rounded-lg p-2 text-sm text-text-secondary transition-colors duration-(--motion-fast) hover:bg-bg-surface hover:text-brand focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
 								>
-									<Icon :name="screen.icon" class="mt-0.5 h-4 w-4 shrink-0" />
+									<component :is="screen.icon" class="mt-0.5 h-4 w-4 shrink-0" />
 									<span>
 										<span class="font-medium text-text-primary">
 											{{ localized(screen.label) }}

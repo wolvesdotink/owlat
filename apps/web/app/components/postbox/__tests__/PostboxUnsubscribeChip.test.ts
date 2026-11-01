@@ -88,7 +88,6 @@ function mountChip(unsubscribe: ListUnsubscribeTarget) {
 		props: { messageId: 'msg-1', mailboxId: 'mbx-1', unsubscribe },
 		global: {
 			plugins: [createTestI18n()],
-			stubs: { Icon: { props: ['name'], template: '<span />' } },
 		},
 	});
 }

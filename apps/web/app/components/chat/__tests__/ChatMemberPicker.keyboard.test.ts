@@ -50,7 +50,6 @@ function mountPicker({ excludePicked = true } = {}) {
 		global: {
 			plugins: [createTestI18n()],
 			components: { UiAvatar },
-			stubs: { Icon: true },
 		},
 	});
 	return { wrapper, selected, query };

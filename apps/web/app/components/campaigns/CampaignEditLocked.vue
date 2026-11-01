@@ -6,6 +6,7 @@
  */
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import { ChartBarVerticalIcon, CopyIcon, LockIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	campaignId: Id<'campaigns'>;
@@ -45,19 +46,19 @@ async function handleDuplicate() {
 
 <template>
 	<div class="max-w-4xl mx-auto px-6 py-16 text-center">
-		<UiIconBox icon="lucide:lock" size="xl" variant="surface" rounded="full" class="mb-4 mx-auto" />
+		<UiIconBox :icon="LockIcon" size="xl" variant="surface" rounded="full" class="mb-4 mx-auto" />
 		<p class="text-text-primary font-medium">
 			{{ t('dashboard.campaigns.detail.edit.cannotEditTitle') }}
 		</p>
 		<p class="text-sm text-text-secondary mt-1">{{ description }}</p>
 		<div class="mt-6 flex flex-wrap items-center justify-center gap-3">
 			<UiButton :to="`/dashboard/campaigns/${campaignId}/report`">
-				<template #iconLeft><Icon name="lucide:bar-chart-3" class="w-4 h-4" /></template>
+				<template #iconLeft><ChartBarVerticalIcon class="w-4 h-4" /></template>
 				{{ t(`${K}.viewReport`) }}
 			</UiButton>
 			<UiButton variant="secondary" :loading="isDuplicating" @click="handleDuplicate">
 				<template v-if="!isDuplicating" #iconLeft>
-					<Icon name="lucide:copy" class="w-4 h-4" />
+					<CopyIcon class="w-4 h-4" />
 				</template>
 				{{ t('common.duplicate') }}
 			</UiButton>

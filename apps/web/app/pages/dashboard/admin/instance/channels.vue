@@ -6,6 +6,7 @@ import {
 	type ChannelKind,
 } from '~/utils/channelKinds';
 import { useLocalized } from '~/composables/useLocalized';
+import { BroadcastIcon, ChartBarVerticalIcon, CircleInfoIcon, PlusIcon } from '@coolicons/vue';
 
 definePageMeta({
 	layout: 'admin',
@@ -119,7 +120,7 @@ const handleChannelError = (message: string) => {
 					<template #trigger>
 						<UiButton variant="secondary" :loading="addingChannel">
 							<template #iconLeft>
-								<Icon name="lucide:plus" class="w-4 h-4" />
+								<PlusIcon class="w-4 h-4" />
 							</template>
 							{{ t('dashboard.admin.instance.channels.addChannel') }}
 						</UiButton>
@@ -162,7 +163,7 @@ const handleChannelError = (message: string) => {
 					<!-- Empty State -->
 					<UiCard v-if="!channels?.length">
 						<div class="py-8 text-center">
-							<UiIconBox icon="lucide:radio" size="lg" variant="surface" class="mx-auto mb-4" />
+							<UiIconBox :icon="BroadcastIcon" size="lg" variant="surface" class="mx-auto mb-4" />
 							<h3 class="text-base font-medium text-text-primary mb-2">
 								{{ t('dashboard.admin.instance.channels.emptyTitle') }}
 							</h3>
@@ -192,7 +193,7 @@ const handleChannelError = (message: string) => {
 					<!-- Channel Overview -->
 					<UiCard>
 						<div class="flex items-center gap-3 mb-4">
-							<UiIconBox icon="lucide:bar-chart-3" size="sm" variant="surface" />
+							<UiIconBox :icon="ChartBarVerticalIcon" size="sm" variant="surface" />
 							<h3 class="text-base font-medium text-text-primary">
 								{{ t('dashboard.admin.instance.channels.overview.title') }}
 							</h3>
@@ -248,7 +249,7 @@ const handleChannelError = (message: string) => {
 					<!-- How Channels Work -->
 					<UiCard>
 						<div class="flex items-center gap-3 mb-4">
-							<UiIconBox icon="lucide:info" size="sm" variant="surface" />
+							<UiIconBox :icon="CircleInfoIcon" size="sm" variant="surface" />
 							<h3 class="text-base font-medium text-text-primary">
 								{{ t('dashboard.admin.instance.channels.howItWorks.title') }}
 							</h3>

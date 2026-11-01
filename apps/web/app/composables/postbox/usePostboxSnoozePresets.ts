@@ -1,6 +1,7 @@
 import { computeSnoozePresets, detectSnoozeHint } from '@owlat/shared/snoozePresets';
 import type { PaletteArgumentOption } from '~/lib/commandPalette';
 import { useLocalized } from '~/composables/useLocalized';
+import { CalendarIcon, ReplyIcon } from '@coolicons/vue';
 
 /** Fallback cap for "until they reply": resurface after a week if no reply. */
 export const SNOOZE_UNTIL_REPLY_CAP_MS = 7 * 24 * 60 * 60 * 1000;
@@ -69,14 +70,14 @@ export function usePostboxSnoozePresets() {
 				id: 'snooze-until-reply',
 				label: t('components.postbox.postboxSnoozeDialog.untilReply'),
 				subtitle: t('components.postbox.postboxSnoozeDialog.untilReplySub'),
-				icon: 'lucide:reply',
+				icon: ReplyIcon,
 				run: () => untilReply(Date.now() + SNOOZE_UNTIL_REPLY_CAP_MS),
 			});
 		}
 		options.push({
 			id: 'snooze-pick',
 			label: t('components.postbox.postboxSnoozeDialog.pickTime'),
-			icon: 'lucide:calendar',
+			icon: CalendarIcon,
 			run: handlers.onPickTime,
 		});
 		return options;

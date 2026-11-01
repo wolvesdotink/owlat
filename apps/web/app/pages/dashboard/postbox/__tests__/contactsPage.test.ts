@@ -47,7 +47,6 @@ beforeAll(() => {
 	});
 });
 
-const iconStub = { props: ['name'], template: '<span />' };
 const passthrough = (name: string) =>
 	defineComponent({
 		name,
@@ -71,7 +70,6 @@ let wrapper: VueWrapper | null = null;
 function mountPage() {
 	wrapper = mountDashboardPage(ContactsPage, {
 		components: {
-			Icon: iconStub,
 			UiModal: modalStub,
 			PostboxMailboxGuard: passthrough('PostboxMailboxGuard'),
 		},

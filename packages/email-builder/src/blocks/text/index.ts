@@ -1,4 +1,4 @@
-import { Type } from '@lucide/vue';
+import { TextIcon } from '@coolicons/vue';
 import type { EditorModule } from '../_module';
 import type { TextBlockContent } from '../../types';
 import { textSchema } from '../../schema/definitions/text';
@@ -7,7 +7,7 @@ import { defaultPadding } from '../../defaults';
 export const textEditor: EditorModule<'text'> = {
 	type: 'text',
 	label: 'Text',
-	icon: Type,
+	icon: TextIcon,
 	schema: textSchema,
 	slashCommand: {
 		name: 'Text',

@@ -13,7 +13,9 @@ import { readDataProperty, type DataProperty } from './manifestValue';
  */
 
 const SECTION_KEY = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
-const ICON = /^[a-z0-9]+(?:-[a-z0-9]+)*:[a-z0-9]+(?:-[a-z0-9]+)*$/;
+// The web app compiles every icon into its bundle, and the plugin codegen turns
+// this token into an import from `@coolicons/vue`, so only that set resolves.
+const ICON = /^coolicons:[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const MAX_SECTION_KEY_LENGTH = 64;
 const MAX_NAME_LENGTH = 64;
 /**
@@ -129,7 +131,7 @@ function validateIcon(
 			issues,
 			'invalid_format',
 			`${path}.icon`,
-			'must be an icon token such as lucide:sparkles'
+			'must be a coolicons icon token such as coolicons:sparkles'
 		);
 	}
 }

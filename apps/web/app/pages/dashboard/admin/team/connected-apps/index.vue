@@ -5,6 +5,17 @@ import { bundledPluginComposition } from '~/plugins/plugin-composition.generated
 import { connectedAppCapabilityLabel } from '~/utils/connectedAppCapabilities';
 import ConnectedAppRegisterModal from '~/components/settings/connectedApps/ConnectedAppRegisterModal.vue';
 import ConnectedAppSecretReveal from '~/components/settings/connectedApps/ConnectedAppSecretReveal.vue';
+import {
+	ActivityIcon,
+	CircleCheckIcon,
+	CircleCloseIcon,
+	LockIcon,
+	PlugIcon,
+	PlusIcon,
+	TriangleWarningIcon,
+	type IconComponent,
+} from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const { t } = useI18n();
 
@@ -181,10 +192,10 @@ function testTone(outcome: TestResult['outcome']): string {
 	if (outcome === 'error_status') return 'text-warning';
 	return 'text-error';
 }
-function testIcon(outcome: TestResult['outcome']): string {
-	if (outcome === 'ok') return 'lucide:check-circle';
-	if (outcome === 'error_status') return 'lucide:alert-triangle';
-	return 'lucide:x-circle';
+function testIcon(outcome: TestResult['outcome']): IconComponent {
+	if (outcome === 'ok') return CircleCheckIcon;
+	if (outcome === 'error_status') return TriangleWarningIcon;
+	return CircleCloseIcon;
 }
 </script>
 
@@ -197,7 +208,7 @@ function testIcon(outcome: TestResult['outcome']): string {
 		>
 			<template v-if="!showAdminGate" #actions>
 				<UiButton variant="primary" @click="openRegister">
-					<Icon name="lucide:plus" class="w-4 h-4" />
+					<PlusIcon class="w-4 h-4" />
 					{{ t('dashboard.admin.team.connectedApps.index.connect') }}
 				</UiButton>
 			</template>
@@ -208,7 +219,7 @@ function testIcon(outcome: TestResult['outcome']): string {
 			v-if="showAdminGate"
 			class="flex flex-col items-center justify-center py-16 text-center px-6"
 		>
-			<UiIconBox icon="lucide:lock" size="xl" variant="surface" rounded="full" class="mb-4" />
+			<UiIconBox :icon="LockIcon" size="xl" variant="surface" rounded="full" class="mb-4" />
 			<p class="text-text-secondary font-medium">
 				{{ t('dashboard.admin.team.connectedApps.index.adminGate.title') }}
 			</p>
@@ -221,12 +232,12 @@ function testIcon(outcome: TestResult['outcome']): string {
 			<!-- Empty -->
 			<UiCard v-if="!apps || apps.length === 0">
 				<UiEmptyState
-					icon="lucide:plug"
+					:icon="PlugIcon"
 					:title="t('dashboard.admin.team.connectedApps.index.empty.title')"
 					:description="t('dashboard.admin.team.connectedApps.index.empty.description')"
 				>
 					<UiButton variant="secondary" @click="openRegister">
-						<Icon name="lucide:plus" class="w-4 h-4" />
+						<PlusIcon class="w-4 h-4" />
 						{{ t('dashboard.admin.team.connectedApps.index.connect') }}
 					</UiButton>
 				</UiEmptyState>
@@ -281,15 +292,12 @@ function testIcon(outcome: TestResult['outcome']): string {
 							]"
 						>
 							<template v-if="testingId === app._id">
-								<Icon
-									name="lucide:loader-2"
-									class="w-4 h-4 shrink-0 mt-0.5 animate-spin motion-reduce:animate-none"
-								/>
+								<SpinnerIcon class="w-4 h-4 shrink-0 mt-0.5" />
 								<span>{{ t('dashboard.admin.team.connectedApps.index.testing') }}</span>
 							</template>
 							<template v-else-if="testResults[app._id]">
-								<Icon
-									:name="testIcon(testResults[app._id]!.outcome)"
+								<component
+									:is="testIcon(testResults[app._id]!.outcome)"
 									class="w-4 h-4 shrink-0 mt-0.5"
 								/>
 								<span>{{ testResults[app._id]!.message }}</span>
@@ -305,7 +313,7 @@ function testIcon(outcome: TestResult['outcome']): string {
 								:loading="testingId === app._id"
 								@click="runTest(app)"
 							>
-								<Icon name="lucide:activity" class="w-4 h-4" />
+								<ActivityIcon class="w-4 h-4" />
 								{{ t('dashboard.admin.team.connectedApps.index.testConnection') }}
 							</UiButton>
 							<UiButton

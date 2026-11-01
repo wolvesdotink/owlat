@@ -23,6 +23,8 @@
  */
 import { api } from '@owlat/api';
 import { deriveMailboxGuardState } from '~/utils/freshStart';
+import { LinkIcon, MailIcon, MailboxIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const { t } = useI18n();
 
@@ -86,9 +88,8 @@ const alreadyAsked = computed(() => Boolean(freshStatus.value?.hasOpenRequest) |
 	</div>
 
 	<div v-else-if="state === 'loading'" class="flex-1 flex items-center justify-center p-12">
-		<Icon
-			name="lucide:loader-2"
-			class="w-6 h-6 animate-spin motion-reduce:animate-none text-text-tertiary"
+		<SpinnerIcon
+			class="w-6 h-6 text-text-tertiary"
 			:aria-label="t('postbox.mailboxGuard.loading')"
 		/>
 	</div>
@@ -105,7 +106,7 @@ const alreadyAsked = computed(() => Boolean(freshStatus.value?.hasOpenRequest) |
 		data-testid="mailbox-guard-reserved"
 	>
 		<div class="w-full max-w-sm text-center">
-			<Icon name="lucide:mail-check" class="w-10 h-10 mx-auto text-text-tertiary" />
+			<MailIcon class="w-10 h-10 mx-auto text-text-tertiary" :stroke-width="1.5" />
 			<template v-if="reservationAwaitingDomain">
 				<h2 class="text-lg font-semibold text-text-primary mt-4">
 					{{ t('postbox.mailboxGuard.awaitingDomainHeading') }}
@@ -147,7 +148,7 @@ const alreadyAsked = computed(() => Boolean(freshStatus.value?.hasOpenRequest) |
 		data-testid="mailbox-guard-external"
 	>
 		<div class="w-full max-w-sm text-center">
-			<Icon name="lucide:link" class="w-10 h-10 mx-auto text-text-tertiary" />
+			<LinkIcon class="w-10 h-10 mx-auto text-text-tertiary" :stroke-width="1.5" />
 			<h2 class="text-lg font-semibold text-text-primary mt-4">
 				{{ t('postbox.mailboxGuard.externalHeading') }}
 			</h2>
@@ -167,7 +168,7 @@ const alreadyAsked = computed(() => Boolean(freshStatus.value?.hasOpenRequest) |
 		data-testid="mailbox-guard-deadend"
 	>
 		<div class="w-full max-w-sm text-center">
-			<Icon name="lucide:mailbox" class="w-10 h-10 mx-auto text-text-tertiary" />
+			<MailboxIcon class="w-10 h-10 mx-auto text-text-tertiary" :stroke-width="1.5" />
 			<h2 class="text-lg font-semibold text-text-primary mt-4">
 				{{ t('postbox.mailboxGuard.deadEndHeading') }}
 			</h2>

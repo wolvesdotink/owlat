@@ -11,6 +11,14 @@ import {
 	type PluginSettingsForm,
 	type PluginSettingsRedactedState,
 } from '~/utils/pluginSettings';
+import {
+	ArrowLeftIcon,
+	KeyIcon,
+	PowerIcon,
+	PuzzleIcon,
+	ShieldCheckIcon,
+	Slider1Icon,
+} from '@coolicons/vue';
 
 definePageMeta({ layout: 'admin', middleware: ['auth', 'admin'] });
 
@@ -145,7 +153,7 @@ function confirmOrphanClear() {
 			to="/dashboard/admin/instance/plugins"
 			class="inline-flex items-center gap-1.5 text-sm text-text-secondary hover:text-brand mb-4"
 		>
-			<Icon name="lucide:arrow-left" class="w-4 h-4" />
+			<ArrowLeftIcon class="w-4 h-4" />
 			{{ t('dashboard.admin.instance.plugins.detail.allPlugins') }}
 		</NuxtLink>
 
@@ -153,7 +161,7 @@ function confirmOrphanClear() {
 			<!-- Uninstalled plugin with residual settings: purge-only state. -->
 			<UiCard v-if="isOrphaned">
 				<UiEmptyState
-					icon="lucide:puzzle"
+					:icon="PuzzleIcon"
 					:title="t('dashboard.admin.instance.plugins.detail.orphaned.title', { pluginId })"
 					:description="t('dashboard.admin.instance.plugins.detail.orphaned.description')"
 				>
@@ -170,7 +178,7 @@ function confirmOrphanClear() {
 			<!-- Unknown plugin id. -->
 			<UiCard v-else-if="!manifest || !entry">
 				<UiEmptyState
-					icon="lucide:puzzle"
+					:icon="PuzzleIcon"
 					:title="t('dashboard.admin.instance.plugins.detail.notFound.title')"
 					:description="t('dashboard.admin.instance.plugins.detail.notFound.description')"
 				>
@@ -203,7 +211,7 @@ function confirmOrphanClear() {
 					v-if="!entry.enabled"
 					class="mb-6 flex items-start gap-3 rounded-lg bg-bg-surface border border-border-subtle p-4"
 				>
-					<Icon name="lucide:power-off" class="w-5 h-5 text-text-tertiary shrink-0 mt-0.5" />
+					<PowerIcon class="w-5 h-5 text-text-tertiary shrink-0 mt-0.5" />
 					<I18nT
 						keypath="dashboard.admin.instance.plugins.detail.disabledNotice"
 						tag="p"
@@ -225,7 +233,7 @@ function confirmOrphanClear() {
 					<UiCard padding="none" overflow="hidden">
 						<template #header>
 							<div class="flex items-center gap-3">
-								<UiIconBox icon="lucide:shield-check" size="sm" variant="surface" rounded="lg" />
+								<UiIconBox :icon="ShieldCheckIcon" size="sm" variant="surface" rounded="lg" />
 								<div>
 									<h2 class="text-lg font-semibold text-text-primary">
 										{{ t('dashboard.admin.instance.plugins.detail.capabilities.title') }}
@@ -261,12 +269,7 @@ function confirmOrphanClear() {
 					<UiCard padding="none" overflow="hidden">
 						<template #header>
 							<div class="flex items-center gap-3">
-								<UiIconBox
-									icon="lucide:sliders-horizontal"
-									size="sm"
-									variant="surface"
-									rounded="lg"
-								/>
+								<UiIconBox :icon="Slider1Icon" size="sm" variant="surface" rounded="lg" />
 								<div>
 									<h2 class="text-lg font-semibold text-text-primary">
 										{{ t('dashboard.admin.instance.plugins.detail.settings.title') }}
@@ -290,7 +293,7 @@ function confirmOrphanClear() {
 								class="mb-5 flex items-start gap-3 rounded-lg bg-bg-surface border border-border-subtle p-4"
 								role="status"
 							>
-								<Icon name="lucide:key-round" class="w-5 h-5 text-text-tertiary shrink-0 mt-0.5" />
+								<KeyIcon class="w-5 h-5 text-text-tertiary shrink-0 mt-0.5" />
 								<div class="text-sm text-text-secondary">
 									<p>
 										{{

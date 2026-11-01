@@ -18,6 +18,7 @@ import {
 	type PostboxSenderRow,
 	type PostboxSenderStatus,
 } from '~/utils/postboxSenders';
+import { PauseIcon } from '@coolicons/vue';
 
 const props = defineProps<{ row: PostboxSenderRow; busy?: boolean }>();
 
@@ -93,7 +94,7 @@ function onStatus(value: string) {
 				v-if="row.autoDraftPausedAt !== undefined"
 				class="order-last md:order-none w-full text-xs text-text-secondary md:mt-0.5 flex items-center gap-1.5"
 			>
-				<Icon name="lucide:pause" class="w-3 h-3" aria-hidden="true" />
+				<PauseIcon class="w-3 h-3" aria-hidden="true" />
 				{{ t('postbox.senders.draftsPaused') }}
 				<button
 					type="button"

@@ -6,6 +6,7 @@
 import { api } from '@owlat/api';
 import { toSlug } from '@owlat/shared';
 import { languageOptions, formatLanguageLabel } from '~/data/languageOptions';
+import { CircleWarningIcon } from '@coolicons/vue';
 
 const open = defineModel<boolean>('open', { required: true });
 
@@ -92,7 +93,7 @@ const handleCreate = async () => {
 				v-if="createError"
 				class="mb-4 p-3 rounded-lg bg-error-subtle border border-error/20 flex items-start gap-3"
 			>
-				<Icon name="lucide:alert-circle" class="w-5 h-5 text-error shrink-0 mt-0.5" />
+				<CircleWarningIcon class="w-5 h-5 text-error shrink-0 mt-0.5" />
 				<p class="text-sm text-error">{{ createError }}</p>
 			</div>
 

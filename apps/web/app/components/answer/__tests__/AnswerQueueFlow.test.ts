@@ -55,6 +55,7 @@ vi.mock('~/composables/useAnswerQueueChips', () => ({
 
 import AnswerQueueFlow from '../AnswerQueueFlow.vue';
 import InboxReadFailureNotice from '~/components/inbox/InboxReadFailureNotice.vue';
+import { CircleCheckIcon } from '@coolicons/vue';
 
 beforeEach(() => {
 	failures.value = [];
@@ -149,7 +150,7 @@ function renderFlow(locale: 'en' | 'de') {
 		global: {
 			plugins: [i18n],
 			components: { InboxReadFailureNotice },
-			stubs: { ...stubs, Icon: true },
+			stubs: { ...stubs },
 		},
 	});
 }
@@ -226,7 +227,7 @@ describe('AnswerQueueFlow done screen', () => {
 	// it: without mx-auto the check sat at the column's left edge.
 	it('centres the check icon above the title', () => {
 		const icon = renderDone('en').findComponent({ name: 'UiIconBox' });
-		expect(icon.attributes('icon')).toBe('lucide:check-circle-2');
+		expect(icon.vm.$attrs['icon']).toBe(CircleCheckIcon);
 		expect(icon.classes()).toContain('mx-auto');
 	});
 });

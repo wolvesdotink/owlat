@@ -47,7 +47,7 @@ function mountStep() {
 		global: {
 			plugins: [createTestI18n()],
 			components: { EmailTemplatePicker: TemplatePicker },
-			stubs: { Icon: true, SendTemplateStatusBadge: true },
+			stubs: { SendTemplateStatusBadge: true },
 		},
 	});
 }

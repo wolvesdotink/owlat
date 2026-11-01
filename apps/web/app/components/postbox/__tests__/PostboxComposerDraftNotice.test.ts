@@ -21,7 +21,6 @@ function mountNotice(
 		global: {
 			plugins: [createTestI18n()],
 			components: { UiButton: { template: '<button><slot /></button>' } },
-			stubs: { Icon: true },
 		},
 	});
 }
@@ -38,7 +37,7 @@ describe('PostboxComposerDraftNotice', () => {
 		expect(notice.text()).toContain("This draft couldn't be loaded.");
 
 		const [icon, text, action] = notice.element.children;
-		expect(icon!.tagName.toLowerCase()).toBe('icon-stub');
+		expect(icon!.tagName.toLowerCase()).toBe('svg');
 		// The sentence takes the remaining width and wraps inside it.
 		expect(text!.classList).toContain('flex-1');
 		expect(text!.classList).toContain('min-w-0');

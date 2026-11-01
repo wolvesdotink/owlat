@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue';
-import { ChevronDown, Check } from '@lucide/vue';
+import { CheckIcon, ChevronDownIcon } from '@coolicons/vue';
 import { useBuilderI18n } from '../../../i18n/useBuilderI18n';
 
 const { t } = useBuilderI18n();
@@ -131,7 +131,7 @@ onUnmounted(() => {
 				:class="{ 'text-text-tertiary': !hasSelection }"
 				>{{ displayText }}</span
 			>
-			<ChevronDown
+			<ChevronDownIcon
 				:size="14"
 				class="text-text-secondary shrink-0 transition-transform duration-(--motion-moderate) ease-spring"
 				:class="{ 'rotate-180': isOpen }"
@@ -166,7 +166,7 @@ onUnmounted(() => {
 						<span class="flex-1 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{{
 							opt.label
 						}}</span>
-						<Check
+						<CheckIcon
 							v-if="String(opt.value) === String(value)"
 							:size="14"
 							class="text-brand shrink-0"

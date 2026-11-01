@@ -36,6 +36,17 @@ import {
 } from '~/utils/mandrillMigration';
 import DeliveryEnvSetupSteps from '~/components/delivery/EnvSetupSteps.vue';
 import { useLocalized } from '~/composables/useLocalized';
+import {
+	CircleCheckIcon,
+	CircleDotIcon,
+	CircleIcon,
+	GlobeIcon,
+	GridAltIcon,
+	LockIcon,
+	Slider1Icon,
+	TrendingUpIcon,
+	type IconComponent,
+} from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -105,11 +116,11 @@ function blockedReason(id: string): string | null {
 	return blockedBy === undefined || blockedBy === null ? null : localized(blockedBy);
 }
 
-const STATE_ICON: Readonly<Record<MigrationStepState, string>> = {
-	complete: 'lucide:check-circle-2',
-	current: 'lucide:circle-dot',
-	blocked: 'lucide:lock',
-	upcoming: 'lucide:circle',
+const STATE_ICON: Readonly<Record<MigrationStepState, IconComponent>> = {
+	complete: CircleCheckIcon,
+	current: CircleDotIcon,
+	blocked: LockIcon,
+	upcoming: CircleIcon,
 };
 
 const STATE_CLASS: Readonly<Record<MigrationStepState, string>> = {
@@ -137,8 +148,8 @@ const STATE_CLASS: Readonly<Record<MigrationStepState, string>> = {
 				:data-state="step.state"
 			>
 				<div class="flex items-start gap-3">
-					<Icon
-						:name="STATE_ICON[step.state]"
+					<component
+						:is="STATE_ICON[step.state]"
 						class="mt-0.5 h-5 w-5 shrink-0"
 						:class="STATE_CLASS[step.state]"
 					/>
@@ -211,7 +222,7 @@ const STATE_CLASS: Readonly<Record<MigrationStepState, string>> = {
 								to="/dashboard/admin/delivery/domains"
 								class="inline-flex items-center gap-2 text-sm text-text-secondary hover:text-brand"
 							>
-								<Icon name="lucide:globe" class="h-4 w-4" />
+								<GlobeIcon class="h-4 w-4" />
 								{{ t('dashboard.admin.delivery.migrate.domain.domainsLink') }}
 							</NuxtLink>
 						</template>
@@ -238,21 +249,21 @@ const STATE_CLASS: Readonly<Record<MigrationStepState, string>> = {
 									class="inline-flex items-center gap-2 text-sm text-text-secondary hover:text-brand"
 									data-testid="migration-cells-link"
 								>
-									<Icon name="lucide:grid-3x3" class="h-4 w-4" />
+									<GridAltIcon class="h-4 w-4" />
 									{{ t('dashboard.admin.delivery.migrate.watch.cells') }}
 								</NuxtLink>
 								<NuxtLink
 									to="/dashboard/admin/delivery/advanced/controls"
 									class="inline-flex items-center gap-2 text-sm text-text-secondary hover:text-brand"
 								>
-									<Icon name="lucide:sliders-horizontal" class="h-4 w-4" />
+									<Slider1Icon class="h-4 w-4" />
 									{{ t('dashboard.admin.delivery.migrate.watch.controls') }}
 								</NuxtLink>
 								<NuxtLink
 									to="/dashboard/admin/delivery/advanced/independence"
 									class="inline-flex items-center gap-2 text-sm text-text-secondary hover:text-brand"
 								>
-									<Icon name="lucide:trending-up" class="h-4 w-4" />
+									<TrendingUpIcon class="h-4 w-4" />
 									{{ t('dashboard.admin.delivery.migrate.watch.independence') }}
 								</NuxtLink>
 							</div>

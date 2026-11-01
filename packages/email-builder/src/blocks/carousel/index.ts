@@ -1,11 +1,11 @@
-import { GalleryHorizontal } from '@lucide/vue';
+import { GalleryIcon } from '@coolicons/vue';
 import type { EditorModule } from '../_module';
 import { carouselSchema } from '../../schema/definitions/carousel';
 
 export const carouselEditor: EditorModule<'carousel'> = {
 	type: 'carousel',
 	label: 'Carousel',
-	icon: GalleryHorizontal,
+	icon: GalleryIcon,
 	schema: carouselSchema,
 	slashCommand: {
 		name: 'Carousel',

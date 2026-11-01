@@ -2,6 +2,7 @@
 import { api } from '@owlat/api';
 import ProfileSyncBanner from '~/components/settings/ProfileSyncBanner.vue';
 import { useProfileSync } from '~/composables/useProfileSync';
+import { DownloadIcon } from '@coolicons/vue';
 
 /**
  * Instance-level "moving from another platform" switch (Settings → Team).
@@ -99,7 +100,7 @@ async function confirmAndEnable() {
 	<UiCard>
 		<template #header>
 			<div class="flex items-center gap-3 pb-4">
-				<UiIconBox icon="lucide:import" size="sm" variant="surface" rounded="lg" />
+				<UiIconBox :icon="DownloadIcon" size="sm" variant="surface" rounded="lg" />
 				<div>
 					<h2 class="text-lg font-medium text-text-primary">
 						{{ t('components.settings.migrationModeCard.title') }}

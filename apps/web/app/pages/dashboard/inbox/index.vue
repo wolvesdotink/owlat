@@ -20,6 +20,13 @@ import {
 	isInboxSlaFilter,
 	nextInboxSort,
 } from '~/utils/inboxFilters';
+import {
+	ChartBarVerticalIcon,
+	CircleCheckIcon,
+	InboxIcon,
+	LockIcon,
+	TimerIcon,
+} from '@coolicons/vue';
 
 const { t, te } = useI18n();
 
@@ -293,12 +300,12 @@ const showOldestFirst = () => setSort('oldest-waiting');
 		>
 			<template #actions>
 				<UiButton v-if="isAdmin" to="/dashboard/inbox/analytics" variant="secondary" class="gap-2">
-					<Icon name="lucide:bar-chart-3" class="w-4 h-4" />
+					<ChartBarVerticalIcon class="w-4 h-4" />
 					{{ t('dashboard.inbox.index.analytics') }}
 				</UiButton>
 				<!-- The one answer queue, filtered to this inbox. -->
 				<UiButton to="/dashboard/answer?in=team" class="gap-2">
-					<Icon name="lucide:check-circle" class="w-4 h-4" />
+					<CircleCheckIcon class="w-4 h-4" />
 					{{ t('dashboard.inbox.index.reviewQueue') }}
 					<span
 						v-if="stats?.draftReady"
@@ -313,7 +320,7 @@ const showOldestFirst = () => setSort('oldest-waiting');
 		<!-- Access explainer: a non-admin on this route sees WHY it's empty and
 		     where to go instead — never a fake "no conversations" zero. -->
 		<div v-if="showAdminGate" class="flex flex-col items-center justify-center py-20 text-center">
-			<UiIconBox icon="lucide:lock" size="xl" variant="warning" rounded="full" class="mb-4" />
+			<UiIconBox :icon="LockIcon" size="xl" variant="warning" rounded="full" class="mb-4" />
 			<h2 class="text-lg font-medium text-text-primary">
 				{{ t('dashboard.inbox.index.accessTitle') }}
 			</h2>
@@ -322,7 +329,7 @@ const showOldestFirst = () => setSort('oldest-waiting');
 			</p>
 			<div class="mt-6 flex flex-wrap items-center justify-center gap-3">
 				<UiButton to="/dashboard/postbox/inbox" class="gap-2">
-					<Icon name="lucide:inbox" class="w-4 h-4" />
+					<InboxIcon class="w-4 h-4" />
 					{{ t('dashboard.inbox.index.openMyPostbox') }}
 				</UiButton>
 			</div>
@@ -360,7 +367,7 @@ const showOldestFirst = () => setSort('oldest-waiting');
 						class="inline-flex items-center gap-1.5 text-xs text-text-tertiary hover:text-text-primary transition-colors duration-(--motion-fast) outline-none focus-visible:ring-1 focus-visible:ring-brand/50 rounded px-1.5 py-1"
 						@click="toggleSort"
 					>
-						<Icon :name="INBOX_SORT_META[sort].icon" class="w-3.5 h-3.5" />
+						<component :is="INBOX_SORT_META[sort].icon" class="w-3.5 h-3.5" />
 						<span>
 							{{ t('dashboard.inbox.index.sortedBy', { sort: t(INBOX_SORT_META[sort].label) }) }}
 						</span>
@@ -374,7 +381,7 @@ const showOldestFirst = () => setSort('oldest-waiting');
 				class="-mt-3 mb-4 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-text-secondary"
 				data-testid="inbox-waiting-over-24h"
 			>
-				<Icon name="lucide:timer" class="w-4 h-4 text-warning shrink-0" aria-hidden="true" />
+				<TimerIcon class="w-4 h-4 text-warning shrink-0" aria-hidden="true" />
 				<span>
 					{{ t('dashboard.inbox.index.waitingOver24h', { count: waitingOver24h }, waitingOver24h) }}
 				</span>
@@ -405,7 +412,7 @@ const showOldestFirst = () => setSort('oldest-waiting');
 				     offers the way back to the full list. -->
 				<template #empty>
 					<UiEmptyState
-						:icon="isFiltered ? 'lucide:inbox' : undefined"
+						:icon="isFiltered ? InboxIcon : undefined"
 						:title="emptyMessage"
 						:variant="isFiltered ? 'no-results' : 'empty'"
 						:tone="isFiltered ? 'default' : 'clear'"

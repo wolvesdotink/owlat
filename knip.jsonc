@@ -117,16 +117,13 @@
 			// it).
 			"ignoreDependencies": [
 				"@nuxt/fonts",
-				"@nuxt/icon",
 				"@nuxtjs/color-mode",
 				"@nuxtjs/i18n",
 				"@nuxtjs/seo",
 				"nuxt-security",
 				"tailwindcss",
-				// Convention consumers knip cannot trace, not debt: @nuxt/icon loads
-				// the `@iconify-json/<set>` collection behind every `i-lucide-*`
-				// name (500+ files); `nuxt typecheck` shells out to vue-tsc.
-				"@iconify-json/lucide",
+				// A convention consumer knip cannot trace, not debt: `nuxt typecheck`
+				// shells out to vue-tsc.
 				"vue-tsc",
 			],
 			"playwright": { "config": ["e2e/playwright.config.ts"] },
@@ -142,7 +139,6 @@
 			// Nuxt modules: see the apps/web block.
 			"ignoreDependencies": [
 				"@nuxt/fonts",
-				"@nuxt/icon",
 				"@nuxtjs/color-mode",
 				"@nuxtjs/i18n",
 				"@nuxtjs/seo",
@@ -160,7 +156,6 @@
 			// Nuxt modules: see the apps/web block.
 			"ignoreDependencies": [
 				"@nuxt/fonts",
-				"@nuxt/icon",
 				"@nuxtjs/color-mode",
 				"@nuxtjs/i18n",
 				"@nuxtjs/seo",
@@ -397,7 +392,6 @@
 			// Nuxt modules: see the apps/web block.
 			"ignoreDependencies": [
 				"@nuxt/fonts",
-				"@nuxt/icon",
 				"@nuxtjs/color-mode",
 				"@nuxtjs/i18n",
 				"@nuxtjs/seo",

@@ -23,6 +23,7 @@ import {
 	showsRecipientSealGlyphs,
 	type RecipientSealView,
 } from '../sealRecipients';
+import { KeyIcon, LockIcon, LockOpenIcon } from '@coolicons/vue';
 
 const trusted = (address: string): RecipientSealView => ({
 	address,
@@ -63,7 +64,7 @@ describe('recipientSealGlyph', () => {
 	it('draws a lock only for a recipient with a usable key', () => {
 		expect(recipientSealGlyph(trusted('ines@x.test'))).toMatchObject({
 			kind: 'sealed',
-			icon: 'lucide:lock',
+			icon: LockIcon,
 			tone: 'ok',
 		});
 	});
@@ -75,7 +76,7 @@ describe('recipientSealGlyph', () => {
 			hasUsableKey: false,
 		});
 		expect(glyph.kind).toBe('noKey');
-		expect(glyph.icon).toBe('lucide:lock-open');
+		expect(glyph.icon).toBe(LockOpenIcon);
 	});
 
 	it('marks a rotated key as its own warning, never as a lock', () => {
@@ -84,7 +85,7 @@ describe('recipientSealGlyph', () => {
 			outcome: 'keyChanged',
 			hasUsableKey: false,
 		});
-		expect(glyph).toMatchObject({ kind: 'keyChanged', tone: 'warn', icon: 'lucide:key-round' });
+		expect(glyph).toMatchObject({ kind: 'keyChanged', tone: 'warn', icon: KeyIcon });
 	});
 
 	it('a rotated key outranks a still-usable one — the material is what is in doubt', () => {

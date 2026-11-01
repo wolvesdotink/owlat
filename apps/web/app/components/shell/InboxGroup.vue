@@ -4,6 +4,7 @@ import type { Id } from '@owlat/api/dataModel';
 import type { InboxIdentity } from '~/utils/inboxIdentity';
 import { CONVERSATION_STATUS_PRIORITY, type ConversationStatus } from '~/utils/conversationStatus';
 import type { SidebarThreadSort } from '~/composables/useShellSidebarPrefs';
+import { ChevronDownIcon, PlusIcon } from '@coolicons/vue';
 
 /**
  * One inbox in the Conversations sidebar: a header (chip, most urgent status,
@@ -71,8 +72,7 @@ const moreCount = computed(() =>
 				"
 				@click="emit('toggle')"
 			>
-				<Icon
-					name="lucide:chevron-down"
+				<ChevronDownIcon
 					class="size-3 transition-transform duration-(--motion-fast)"
 					:class="collapsed ? '-rotate-90' : ''"
 				/>
@@ -95,7 +95,7 @@ const moreCount = computed(() =>
 					class="flex size-6 shrink-0 items-center justify-center rounded text-text-tertiary opacity-0 transition-opacity hover:text-text-primary focus-visible:opacity-100 group-hover/inbox:opacity-100 max-lg:opacity-100"
 					:aria-label="t('components.shell.inboxGroup.compose', { name: inbox.name })"
 				>
-					<Icon name="lucide:plus" class="size-3.5" />
+					<PlusIcon class="size-3.5" />
 				</NuxtLink>
 			</UiTooltip>
 		</div>

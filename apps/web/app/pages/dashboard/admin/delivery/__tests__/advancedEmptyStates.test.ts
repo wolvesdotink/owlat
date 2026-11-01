@@ -47,7 +47,6 @@ beforeEach(() => {
 const globalOptions = {
 	stubs: {
 		UiIconBox: true,
-		Icon: true,
 		UiSpinner: true,
 		UiEmptyState: {
 			props: ['title', 'description'],

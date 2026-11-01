@@ -3,6 +3,20 @@
 // changes grouped by kind. Install instructions are left to the update guide
 // (see utils/releaseNotes.ts for what is parsed and what is dropped).
 import type { ReleaseChangeKind, ReleaseNotes } from '~/utils/releaseNotes';
+import {
+	BookOpenIcon,
+	ChevronDownIcon,
+	ChevronUpIcon,
+	CircleDotIcon,
+	CircleMinusIcon,
+	ShieldCheckIcon,
+	Slider1Icon,
+	SparklesIcon,
+	TrendingUpIcon,
+	TriangleWarningIcon,
+	WrenchIcon,
+	type IconComponent,
+} from '@coolicons/vue';
 
 const props = defineProps<{ notes: ReleaseNotes; version: string }>();
 
@@ -13,16 +27,16 @@ const COLLAPSED_ITEMS = 5;
 /** Groups that only appear once the list is expanded. */
 const MINOR_KINDS = new Set<ReleaseChangeKind>(['docs', 'maintenance', 'other']);
 
-const KIND_STYLE: Record<ReleaseChangeKind, { icon: string; tone: string }> = {
-	breaking: { icon: 'lucide:alert-triangle', tone: 'bg-error/10 text-error' },
-	security: { icon: 'lucide:shield-check', tone: 'bg-warning/10 text-warning' },
-	added: { icon: 'lucide:sparkles', tone: 'bg-brand/10 text-brand' },
-	changed: { icon: 'lucide:trending-up', tone: 'bg-info/10 text-info' },
-	fixed: { icon: 'lucide:wrench', tone: 'bg-success/10 text-success' },
-	removed: { icon: 'lucide:minus-circle', tone: 'bg-bg-surface text-text-secondary' },
-	docs: { icon: 'lucide:book-open', tone: 'bg-bg-surface text-text-secondary' },
-	maintenance: { icon: 'lucide:settings-2', tone: 'bg-bg-surface text-text-secondary' },
-	other: { icon: 'lucide:circle-dot', tone: 'bg-bg-surface text-text-secondary' },
+const KIND_STYLE: Record<ReleaseChangeKind, { icon: IconComponent; tone: string }> = {
+	breaking: { icon: TriangleWarningIcon, tone: 'bg-error/10 text-error' },
+	security: { icon: ShieldCheckIcon, tone: 'bg-warning/10 text-warning' },
+	added: { icon: SparklesIcon, tone: 'bg-brand/10 text-brand' },
+	changed: { icon: TrendingUpIcon, tone: 'bg-info/10 text-info' },
+	fixed: { icon: WrenchIcon, tone: 'bg-success/10 text-success' },
+	removed: { icon: CircleMinusIcon, tone: 'bg-bg-surface text-text-secondary' },
+	docs: { icon: BookOpenIcon, tone: 'bg-bg-surface text-text-secondary' },
+	maintenance: { icon: Slider1Icon, tone: 'bg-bg-surface text-text-secondary' },
+	other: { icon: CircleDotIcon, tone: 'bg-bg-surface text-text-secondary' },
 };
 
 const expanded = ref(false);
@@ -64,7 +78,7 @@ const hiddenCount = computed(() => {
 					class="inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-full"
 					:class="KIND_STYLE[group.kind].tone"
 				>
-					<Icon :name="KIND_STYLE[group.kind].icon" class="w-3.5 h-3.5" aria-hidden="true" />
+					<component :is="KIND_STYLE[group.kind].icon" class="w-3.5 h-3.5" aria-hidden="true" />
 					{{ t(`dashboard.admin.system.index.updates.kinds.${group.kind}`) }}
 				</span>
 				<span class="text-caption text-text-tertiary tabular-nums">{{ group.items.length }}</span>
@@ -83,8 +97,8 @@ const hiddenCount = computed(() => {
 			:aria-expanded="expanded"
 			@click="expanded = !expanded"
 		>
-			<Icon
-				:name="expanded ? 'lucide:chevron-up' : 'lucide:chevron-down'"
+			<component
+				:is="expanded ? ChevronUpIcon : ChevronDownIcon"
 				class="w-4 h-4"
 				aria-hidden="true"
 			/>

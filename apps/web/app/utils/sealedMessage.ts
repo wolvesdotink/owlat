@@ -19,6 +19,8 @@
  * time, in the active locale.
  */
 
+import { LockIcon, type IconComponent } from '@coolicons/vue';
+
 /** Web mirror of the Convex `InboundEncryptionInfo` union (`e2ee/inboundSeal.ts`). */
 export type InboundEncryptionInfo =
 	| {
@@ -40,7 +42,7 @@ export interface SealedBadgeResult {
 	/** Expandable plain-language explanation — a catalog key. */
 	detail: string;
 	tone: 'ok' | 'warn';
-	icon: string;
+	icon: IconComponent;
 }
 
 /**
@@ -64,7 +66,7 @@ export function deriveSealedBadge(
 			summary: 'shared.sealedMessage.cantDecrypt.summary',
 			detail: 'shared.sealedMessage.cantDecrypt.detail',
 			tone: 'warn',
-			icon: 'lucide:lock',
+			icon: LockIcon,
 		};
 	}
 
@@ -78,7 +80,7 @@ export function deriveSealedBadge(
 			summary: 'shared.sealedMessage.verified.summary',
 			detail: 'shared.sealedMessage.verified.detail',
 			tone: 'ok',
-			icon: 'lucide:lock',
+			icon: LockIcon,
 		};
 	}
 
@@ -90,6 +92,6 @@ export function deriveSealedBadge(
 		summary: 'shared.sealedMessage.unverified.summary',
 		detail: 'shared.sealedMessage.unverified.detail',
 		tone: 'warn',
-		icon: 'lucide:lock',
+		icon: LockIcon,
 	};
 }

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
+import type { IconComponent } from '@coolicons/vue';
 
 type Contact = {
 	_id: Id<'contacts'>;
@@ -20,7 +21,7 @@ defineProps<{
 	/** False while a search is active: results are relevance-ordered, so Created claims no sort. */
 	sortApplies: boolean;
 	createdAriaSort: 'ascending' | 'descending' | undefined;
-	createdSortIcon: string | null;
+	createdSortIcon: IconComponent | null;
 	contactPath: (contactId: Id<'contacts'>) => string;
 }>();
 
@@ -84,9 +85,9 @@ const { t } = useI18n();
 								@click="sortApplies && emit('toggle-sort')"
 							>
 								{{ t('dashboard.audience.contacts.index.table.created') }}
-								<Icon
+								<component
 									v-if="sortApplies && createdSortIcon"
-									:name="createdSortIcon"
+									:is="createdSortIcon"
 									class="w-4 h-4"
 								/>
 							</button>

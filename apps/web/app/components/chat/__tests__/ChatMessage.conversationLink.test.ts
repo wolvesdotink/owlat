@@ -35,7 +35,6 @@ function mountMessage(text: string) {
 		global: {
 			plugins: [createTestI18n()],
 			stubs: {
-				Icon: true,
 				UiAvatar: true,
 				UiButton: true,
 				AssistantToolCalls: true,

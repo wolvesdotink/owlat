@@ -3,7 +3,7 @@ import { ref } from 'vue';
 import type { PropertyGroup } from '../../schema/types';
 import type { EditorBlock, Variable, EmailTheme } from '../../types';
 import PropertyField from './PropertyField.vue';
-import { ChevronDown } from '@lucide/vue';
+import { ChevronDownIcon } from '@coolicons/vue';
 import { resolveGroupIcon } from '../../schema/groupIcons';
 import { getByPath } from '../../utils/propertyPath';
 import { useBuilderI18n } from '../../i18n/useBuilderI18n';
@@ -67,7 +67,7 @@ function isFieldVisible(field: { showWhen?: { key: string; value: unknown } }): 
 					>{{ label(group.label) }}</span
 				>
 			</div>
-			<ChevronDown
+			<ChevronDownIcon
 				class="text-text-disabled transition-transform duration-(--motion-moderate) ease-spring"
 				:class="{ '-rotate-90': isCollapsed }"
 				:size="12"

@@ -11,6 +11,7 @@ import type { ContextMenuItem } from '@owlat/ui/components/ui/ContextMenu.vue';
 import type { SidebarThreadSort } from '~/composables/useShellSidebarPrefs';
 import { teamThreadHasDraft, useComposerDrafts } from '~/composables/useComposerDrafts';
 import { usePostboxTriageUndo } from '~/composables/postbox/usePostboxTriageUndo';
+import { ChevronDownIcon, CircleCheckIcon, RobotIcon, UserCheckCornerIcon } from '@coolicons/vue';
 
 /**
  * The team inbox (the agent's shared inbound) as one more group in the
@@ -106,14 +107,14 @@ function menuFor(row: Row) {
 			{
 				id: 'assign-to-me',
 				label: t('components.inbox.rowMenu.assignToMe'),
-				icon: 'lucide:user-check',
+				icon: UserCheckCornerIcon,
 				disabled: !user.value?.id || assignedTo === user.value.id,
 				run: () => void assignToMe(threadId, assignedTo),
 			},
 			{
 				id: 'resolve',
 				label: t('components.inbox.inboxThreadRow.resolve'),
-				icon: 'lucide:check-circle',
+				icon: CircleCheckIcon,
 				disabled: threadStatus === 'resolved',
 				run: () => void resolve(threadId, threadStatus),
 			},
@@ -140,15 +141,14 @@ const activeThreadId = computed(
 				"
 				@click="emit('toggle')"
 			>
-				<Icon
-					name="lucide:chevron-down"
+				<ChevronDownIcon
 					class="size-3 transition-transform duration-(--motion-fast)"
 					:class="collapsed ? '-rotate-90' : ''"
 				/>
 			</button>
 			<NuxtLink to="/dashboard/inbox" class="flex min-w-0 flex-1 items-center gap-2 py-1">
 				<span class="inline-flex items-center gap-1.5 text-xs font-medium text-text-secondary">
-					<Icon name="lucide:bot" class="size-3.5 text-text-tertiary" />
+					<RobotIcon class="size-3.5 text-text-tertiary" />
 					{{ t('components.shell.teamInbox') }}
 				</span>
 				<ShellStatusPill v-if="groupStatus" :status="groupStatus" dot-only />

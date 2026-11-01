@@ -15,6 +15,7 @@ import CampaignReportOpensTimeline from '~/components/campaigns/report/ReportOpe
 import { selectPreviousComparable } from '~/utils/campaignReport';
 import { formatNumber } from '~/utils/formatters';
 import { useRecordPaletteObjectOpen } from '~/composables/useCommandPaletteObjectRecents';
+import { ChartBarVerticalIcon, CursorClickIcon, EyeIcon, FlameIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -254,7 +255,7 @@ const loadPrevClicked = () => {
 				class="card flex flex-col items-center justify-center py-16 text-center px-6"
 			>
 				<UiIconBox
-					icon="lucide:bar-chart-3"
+					:icon="ChartBarVerticalIcon"
 					size="xl"
 					variant="surface"
 					rounded="full"
@@ -348,7 +349,7 @@ const loadPrevClicked = () => {
 				<!-- Click Heatmap -->
 				<div v-if="campaign?.emailTemplate?.htmlContent" class="card p-4 sm:p-6 mb-8">
 					<div class="flex items-center gap-3 mb-6">
-						<UiIconBox icon="lucide:flame" size="sm" variant="warning" rounded="lg" />
+						<UiIconBox :icon="FlameIcon" size="sm" variant="warning" rounded="lg" />
 						<div>
 							<h3 class="text-base font-medium text-text-primary">
 								{{ t('dashboard.campaigns.detail.report.heatmap.title') }}
@@ -379,7 +380,7 @@ const loadPrevClicked = () => {
 							]"
 							@click="selectedTab = 'opened'"
 						>
-							<Icon name="lucide:eye" class="w-4 h-4" />
+							<EyeIcon class="w-4 h-4" />
 							{{
 								t('dashboard.campaigns.detail.report.tabs.opened', {
 									count: formatNumber(openedContacts?.total ?? 0),
@@ -395,7 +396,7 @@ const loadPrevClicked = () => {
 							]"
 							@click="selectedTab = 'clicked'"
 						>
-							<Icon name="lucide:mouse-pointer-click" class="w-4 h-4" />
+							<CursorClickIcon class="w-4 h-4" />
 							{{
 								t('dashboard.campaigns.detail.report.tabs.clicked', {
 									count: formatNumber(clickedContacts?.total ?? 0),

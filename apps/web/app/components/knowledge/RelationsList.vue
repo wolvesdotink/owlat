@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { relationLabel, relationBadgeClass } from '~/utils/knowledgeEntryTypes';
+import { ArrowLeftIcon, ArrowRightIcon, CloseIcon } from '@coolicons/vue';
 
 type Relation = {
 	_id: string;
@@ -51,7 +52,7 @@ const entryTypeLabel = (type: string) => {
 		<!-- Outgoing Relations -->
 		<div>
 			<h4 class="text-sm font-medium text-text-secondary mb-3 flex items-center gap-2">
-				<Icon name="lucide:arrow-right" class="w-4 h-4" />
+				<ArrowRightIcon class="w-4 h-4" />
 				{{ t('components.knowledge.relationsList.outgoing') }}
 				<span class="text-text-tertiary font-normal">{{
 					t('components.knowledge.relationsList.count', { count: outgoingRelations.length })
@@ -68,7 +69,7 @@ const entryTypeLabel = (type: string) => {
 					:key="`out-${rel._id}`"
 					class="flex items-center gap-3 py-2 px-3 rounded-lg bg-bg-surface group"
 				>
-					<Icon name="lucide:arrow-right" class="w-3.5 h-3.5 text-text-tertiary flex-shrink-0" />
+					<ArrowRightIcon class="w-3.5 h-3.5 text-text-tertiary flex-shrink-0" />
 
 					<span
 						class="text-xs font-medium px-2 py-0.5 rounded-full flex-shrink-0"
@@ -106,7 +107,7 @@ const entryTypeLabel = (type: string) => {
 						:aria-label="t('components.knowledge.relationsList.removeRelation')"
 						@click="emit('remove', rel._id)"
 					>
-						<Icon name="lucide:x" class="w-3.5 h-3.5" />
+						<CloseIcon class="w-3.5 h-3.5" />
 					</button>
 				</div>
 			</div>
@@ -115,7 +116,7 @@ const entryTypeLabel = (type: string) => {
 		<!-- Incoming Relations -->
 		<div>
 			<h4 class="text-sm font-medium text-text-secondary mb-3 flex items-center gap-2">
-				<Icon name="lucide:arrow-left" class="w-4 h-4" />
+				<ArrowLeftIcon class="w-4 h-4" />
 				{{ t('components.knowledge.relationsList.incoming') }}
 				<span class="text-text-tertiary font-normal">{{
 					t('components.knowledge.relationsList.count', { count: incomingRelations.length })
@@ -132,7 +133,7 @@ const entryTypeLabel = (type: string) => {
 					:key="`in-${rel._id}`"
 					class="flex items-center gap-3 py-2 px-3 rounded-lg bg-bg-surface group"
 				>
-					<Icon name="lucide:arrow-left" class="w-3.5 h-3.5 text-text-tertiary flex-shrink-0" />
+					<ArrowLeftIcon class="w-3.5 h-3.5 text-text-tertiary flex-shrink-0" />
 
 					<span
 						class="text-xs font-medium px-2 py-0.5 rounded-full flex-shrink-0"
@@ -170,7 +171,7 @@ const entryTypeLabel = (type: string) => {
 						:aria-label="t('components.knowledge.relationsList.removeRelation')"
 						@click="emit('remove', rel._id)"
 					>
-						<Icon name="lucide:x" class="w-3.5 h-3.5" />
+						<CloseIcon class="w-3.5 h-3.5" />
 					</button>
 				</div>
 			</div>

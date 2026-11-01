@@ -7,6 +7,18 @@
  */
 import type { TimelineStep, StepState } from '~/lib/desktop/provisioning';
 import type { LogLine } from '~/composables/useServerProvisioning';
+import {
+	ArrowDownIcon,
+	ChevronDownIcon,
+	ChevronRightIcon,
+	CircleCheckIcon,
+	CircleCloseIcon,
+	CircleIcon,
+	CircleMinusIcon,
+	TriangleWarningIcon,
+	type IconComponent,
+} from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const props = defineProps<{
 	steps: TimelineStep[];
@@ -79,13 +91,13 @@ const rows = computed<Row[]>(() => {
 	return out;
 });
 
-const ICON: Record<StepState, string> = {
-	pending: 'lucide:circle',
-	running: 'lucide:loader-2',
-	ok: 'lucide:check-circle-2',
-	warn: 'lucide:alert-triangle',
-	failed: 'lucide:x-circle',
-	skipped: 'lucide:minus-circle',
+const ICON: Record<StepState, IconComponent> = {
+	pending: CircleIcon,
+	running: SpinnerIcon,
+	ok: CircleCheckIcon,
+	warn: TriangleWarningIcon,
+	failed: CircleCloseIcon,
+	skipped: CircleMinusIcon,
 };
 
 const COLOR: Record<StepState, string> = {
@@ -137,8 +149,8 @@ watch(showLogs, async (open) => {
 					class="flex items-center gap-3 rounded-lg px-2 py-1.5 transition-colors duration-(--motion-moderate)"
 					:class="row.step.state === 'running' ? 'bg-bg-surface' : ''"
 				>
-					<Icon
-						:name="ICON[row.step.state]"
+					<component
+						:is="ICON[row.step.state]"
 						class="size-[18px] shrink-0 transition-colors duration-(--motion-moderate)"
 						:class="[
 							COLOR[row.step.state],
@@ -176,10 +188,7 @@ watch(showLogs, async (open) => {
 				@click="showLogs = !showLogs"
 			>
 				<span class="flex items-center gap-1.5">
-					<Icon
-						:name="showLogs ? 'lucide:chevron-down' : 'lucide:chevron-right'"
-						class="size-3.5"
-					/>
+					<component :is="showLogs ? ChevronDownIcon : ChevronRightIcon" class="size-3.5" />
 					{{ t('components.desktop.provisioningTimeline.serverLog') }}
 					<span class="text-text-secondary/60">({{ logs.length }})</span>
 				</span>
@@ -230,7 +239,7 @@ watch(showLogs, async (open) => {
 						class="absolute bottom-2 right-3 flex items-center gap-1 rounded-full border border-border-default bg-bg-surface px-2.5 py-1 text-[11px] text-text-secondary shadow-sm transition-colors duration-(--motion-fast) hover:text-text-primary"
 						@click="jumpToLatest"
 					>
-						<Icon name="lucide:arrow-down" class="size-3" />
+						<ArrowDownIcon class="size-3" />
 						{{ t('components.desktop.provisioningTimeline.jumpToLatest') }}
 					</button>
 				</div>

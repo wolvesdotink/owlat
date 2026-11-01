@@ -2,6 +2,8 @@
 // Shown on the builder routes below `md` (see useEmailBuilderViewport). The
 // canvas needs its block palette and inspector alongside it, so a phone gets an
 // honest explanation and a way out instead of an unusable editor.
+import { MonitorIcon } from '@coolicons/vue';
+
 const { t } = useI18n();
 </script>
 
@@ -9,7 +11,7 @@ const { t } = useI18n();
 	<div class="h-full flex items-center justify-center bg-bg-deep p-6">
 		<div class="max-w-sm text-center">
 			<UiIconBox
-				icon="lucide:monitor"
+				:icon="MonitorIcon"
 				size="xl"
 				variant="surface"
 				rounded="full"

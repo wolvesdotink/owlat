@@ -9,6 +9,8 @@
  * unsaved until Save, an inherited `null` — so the comparison lives next to
  * the value, never here.
  */
+import { RotateLeftIcon } from '@coolicons/vue';
+
 defineProps<{
 	/** The value differs from its default. */
 	changed: boolean;
@@ -35,7 +37,7 @@ const { t } = useI18n();
 			:disabled="disabled"
 			@click.stop.prevent="emit('reset')"
 		>
-			<Icon name="lucide:rotate-ccw" class="size-3" aria-hidden="true" />
+			<RotateLeftIcon class="size-3" aria-hidden="true" />
 			{{ t('components.settings.resetToDefault.reset') }}
 		</button>
 	</span>

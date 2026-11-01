@@ -16,6 +16,38 @@ import type { FeatureFlagKey } from '@owlat/shared/featureFlags';
 import type { SectionKey } from '~/composables/useSidebarState';
 import type { OrganizationRole } from '~/composables/useOrganization';
 import { SETTINGS_REGISTRY } from './settingsRegistry';
+import {
+	BrainIcon,
+	ChartBarVerticalIcon,
+	ChatCircleIcon,
+	ChatIcon,
+	CircleCheckIcon,
+	CircleSlashIcon,
+	CodeIcon,
+	FileCodeIcon,
+	FileEditIcon,
+	FileSearchIcon,
+	GaugeIcon,
+	GridIcon,
+	InboxIcon,
+	ListFilterIcon,
+	MailboxIcon,
+	MegaphoneIcon,
+	PaperPlaneIcon,
+	ReplyAllIcon,
+	ServerIcon,
+	SettingsIcon,
+	ShareIcon,
+	ShieldCheckIcon,
+	ShieldWarningIcon,
+	SparklesIcon,
+	TrashIcon,
+	TruckIcon,
+	UserPlusCornerIcon,
+	UsersIcon,
+	ZapIcon,
+	type IconComponent,
+} from '@coolicons/vue';
 
 /**
  * A sidebar destination. `name` is an i18n KEY for every CORE entry — this
@@ -27,7 +59,7 @@ import { SETTINGS_REGISTRY } from './settingsRegistry';
 export interface NavigationItem {
 	name: string;
 	href: string;
-	icon: string;
+	icon: IconComponent;
 }
 
 /** The environment the pure builder reads: role, resolved flags, and desktop context. */
@@ -69,7 +101,7 @@ interface CoreItem extends NavigationItem {
 export interface CoreSection {
 	readonly key: SectionKey;
 	readonly name: string;
-	readonly icon: string;
+	readonly icon: IconComponent;
 	readonly href?: string;
 	readonly gate?: Gate;
 	readonly items: readonly CoreItem[];
@@ -99,24 +131,24 @@ export const CORE_SECTIONS: readonly CoreSection[] = [
 	{
 		key: 'inbox',
 		name: 'shared.dashboardNavigation.sections.inbox',
-		icon: 'lucide:inbox',
+		icon: InboxIcon,
 		gate: flag('inbox'),
 		items: [
 			{
 				name: 'shared.dashboardNavigation.items.inbox.allThreads',
 				href: '/dashboard/inbox',
-				icon: 'lucide:message-square',
+				icon: ChatIcon,
 			},
 			{
 				name: 'shared.dashboardNavigation.items.inbox.reviewQueue',
 				href: '/dashboard/answer?in=team',
-				icon: 'lucide:check-circle',
+				icon: CircleCheckIcon,
 				gate: adminOnly,
 			},
 			{
 				name: 'shared.dashboardNavigation.items.inbox.codeTasks',
 				href: '/dashboard/inbox/code-tasks',
-				icon: 'lucide:code',
+				icon: CodeIcon,
 				gate: (env) => adminOnly(env) && flag('inbox.codeTasks')(env),
 			},
 		],
@@ -124,7 +156,7 @@ export const CORE_SECTIONS: readonly CoreSection[] = [
 	{
 		key: 'postbox',
 		name: 'shared.dashboardNavigation.sections.postbox',
-		icon: 'lucide:mailbox',
+		icon: MailboxIcon,
 		href: '/dashboard/postbox',
 		gate: anyFlag('postbox', 'mail.external'),
 		// The Conversations sidebar renders the inboxes themselves; these items
@@ -133,63 +165,63 @@ export const CORE_SECTIONS: readonly CoreSection[] = [
 			{
 				name: 'shared.dashboardNavigation.items.postbox.answerQueue',
 				href: '/dashboard/answer',
-				icon: 'lucide:reply-all',
+				icon: ReplyAllIcon,
 			},
 			{
 				name: 'shared.dashboardNavigation.items.postbox.allInboxes',
 				href: '/dashboard/inboxes',
-				icon: 'lucide:inbox',
+				icon: InboxIcon,
 			},
 			{
 				name: 'shared.dashboardNavigation.items.postbox.inbox',
 				href: '/dashboard/postbox/inbox',
-				icon: 'lucide:inbox',
+				icon: InboxIcon,
 			},
 			{
 				name: 'shared.dashboardNavigation.items.postbox.sent',
 				href: '/dashboard/postbox/sent',
-				icon: 'lucide:send',
+				icon: PaperPlaneIcon,
 			},
 			{
 				name: 'shared.dashboardNavigation.items.postbox.drafts',
 				href: '/dashboard/postbox/drafts',
-				icon: 'lucide:file-edit',
+				icon: FileEditIcon,
 			},
 			{
 				name: 'shared.dashboardNavigation.items.postbox.spam',
 				href: '/dashboard/postbox/spam',
-				icon: 'lucide:shield-alert',
+				icon: ShieldWarningIcon,
 			},
 			{
 				name: 'shared.dashboardNavigation.items.postbox.trash',
 				href: '/dashboard/postbox/trash',
-				icon: 'lucide:trash',
+				icon: TrashIcon,
 			},
 			{
 				name: 'shared.dashboardNavigation.items.postbox.preferences',
 				href: '/dashboard/preferences',
-				icon: 'lucide:settings',
+				icon: SettingsIcon,
 			},
 		],
 	},
 	{
 		key: 'chat',
 		name: 'shared.dashboardNavigation.sections.chat',
-		icon: 'lucide:message-circle',
+		icon: ChatCircleIcon,
 		href: '/dashboard/chat',
 		gate: (env) => adminOnly(env) && flag('chat')(env),
 		items: [
 			{
 				name: 'shared.dashboardNavigation.items.chat.messages',
 				href: '/dashboard/chat',
-				icon: 'lucide:message-circle',
+				icon: ChatCircleIcon,
 			},
 		],
 	},
 	{
 		key: 'assistant',
 		name: 'shared.dashboardNavigation.sections.assistant',
-		icon: 'lucide:sparkles',
+		icon: SparklesIcon,
 		href: '/dashboard/assistant',
 		// Every member, like the route: the user menu and ⌘J offer it to all.
 		gate: flag('ai.assistant'),
@@ -197,7 +229,7 @@ export const CORE_SECTIONS: readonly CoreSection[] = [
 			{
 				name: 'shared.dashboardNavigation.items.assistant.chat',
 				href: '/dashboard/assistant',
-				icon: 'lucide:sparkles',
+				icon: SparklesIcon,
 			},
 		],
 	},
@@ -207,42 +239,42 @@ export const CORE_SECTIONS: readonly CoreSection[] = [
 		// trail and the sidebar switch say the same word.
 		key: 'send',
 		name: 'shared.breadcrumbRoutes.sections.marketing',
-		icon: 'lucide:send',
+		icon: PaperPlaneIcon,
 		items: [
 			{
 				name: 'shared.dashboardNavigation.items.send.overview',
 				href: '/dashboard/marketing',
-				icon: 'lucide:chart-no-axes-column',
+				icon: ChartBarVerticalIcon,
 				gate: flag('campaigns'),
 			},
 			{
 				name: 'shared.dashboardNavigation.items.send.campaigns',
 				href: '/dashboard/campaigns',
-				icon: 'lucide:megaphone',
+				icon: MegaphoneIcon,
 				gate: flag('campaigns'),
 			},
 			{
 				name: 'shared.dashboardNavigation.items.send.automations',
 				href: '/dashboard/automations',
-				icon: 'lucide:zap',
+				icon: ZapIcon,
 				gate: (env) => adminOnly(env) && flag('automations')(env),
 			},
 			{
 				name: 'shared.dashboardNavigation.items.send.transactional',
 				href: '/dashboard/send/transactional',
-				icon: 'lucide:file-code',
+				icon: FileCodeIcon,
 				gate: (env) => adminOnly(env) && flag('transactional')(env),
 			},
 			{
 				name: 'shared.dashboardNavigation.items.send.templates',
 				href: '/dashboard/send',
-				icon: 'lucide:layout-grid',
+				icon: GridIcon,
 				gate: adminOnly,
 			},
 			{
 				name: 'shared.dashboardNavigation.items.send.recentlyDeleted',
 				href: '/dashboard/marketing/deleted',
-				icon: 'lucide:trash-2',
+				icon: TrashIcon,
 				gate: recentlyDeletedGate,
 			},
 		],
@@ -250,49 +282,49 @@ export const CORE_SECTIONS: readonly CoreSection[] = [
 	{
 		key: 'audience',
 		name: 'shared.dashboardNavigation.sections.audience',
-		icon: 'lucide:users',
+		icon: UsersIcon,
 		href: undefined,
 		items: [
 			{
 				name: 'shared.dashboardNavigation.items.audience.contacts',
 				href: '/dashboard/audience/contacts',
-				icon: 'lucide:users',
+				icon: UsersIcon,
 			},
 			{
 				name: 'shared.dashboardNavigation.items.audience.topics',
 				href: '/dashboard/audience/topics',
-				icon: 'lucide:list-filter',
+				icon: ListFilterIcon,
 				gate: adminOnly,
 			},
 			{
 				name: 'shared.dashboardNavigation.items.audience.segments',
 				href: '/dashboard/audience/segments',
-				icon: 'lucide:user-plus',
+				icon: UserPlusCornerIcon,
 				gate: adminOnly,
 			},
 			{
 				name: 'shared.dashboardNavigation.items.audience.suppressions',
 				href: '/dashboard/audience/suppressions',
-				icon: 'lucide:ban',
+				icon: CircleSlashIcon,
 			},
 		],
 	},
 	{
 		key: 'knowledge',
 		name: 'shared.dashboardNavigation.sections.knowledge',
-		icon: 'lucide:brain',
+		icon: BrainIcon,
 		// Every member: Knowledge sits in the Conversations sidebar next to Chat.
 		gate: flag('ai.knowledge'),
 		items: [
 			{
 				name: 'shared.dashboardNavigation.items.knowledge.explorer',
 				href: '/dashboard/knowledge',
-				icon: 'lucide:brain',
+				icon: BrainIcon,
 			},
 			{
 				name: 'shared.dashboardNavigation.items.knowledge.graph',
 				href: '/dashboard/knowledge/graph',
-				icon: 'lucide:share-2',
+				icon: ShareIcon,
 				gate: flag('ai.knowledge.analytics'),
 			},
 			{
@@ -300,35 +332,35 @@ export const CORE_SECTIONS: readonly CoreSection[] = [
 				// Nothing else links to it since the Templates overview went away.
 				name: 'shared.dashboardNavigation.items.knowledge.files',
 				href: '/dashboard/files',
-				icon: 'lucide:file-search',
+				icon: FileSearchIcon,
 			},
 		],
 	},
 	{
 		key: 'administration',
 		name: 'shared.dashboardNavigation.sections.administration',
-		icon: 'lucide:shield-check',
+		icon: ShieldCheckIcon,
 		gate: adminOnly,
 		items: [
 			{
 				name: 'shared.dashboardNavigation.items.administration.overview',
 				href: '/dashboard/admin',
-				icon: 'lucide:gauge',
+				icon: GaugeIcon,
 			},
 			{
 				name: 'shared.dashboardNavigation.items.administration.delivery',
 				href: '/dashboard/admin/delivery',
-				icon: 'lucide:truck',
+				icon: TruckIcon,
 			},
 			{
 				name: 'shared.dashboardNavigation.items.administration.teamAccess',
 				href: '/dashboard/admin/team',
-				icon: 'lucide:users-round',
+				icon: UsersIcon,
 			},
 			{
 				name: 'shared.dashboardNavigation.items.administration.instance',
 				href: '/dashboard/admin/instance',
-				icon: 'lucide:server-cog',
+				icon: ServerIcon,
 			},
 		],
 	},
@@ -336,7 +368,7 @@ export const CORE_SECTIONS: readonly CoreSection[] = [
 		key: 'preferences',
 		// The same name the Settings tab and the breadcrumb use ("My settings").
 		name: 'shared.breadcrumbRoutes.sections.preferences',
-		icon: 'lucide:settings',
+		icon: SettingsIcon,
 		href: '/dashboard/preferences',
 		// Every Preferences page renders the layout's own left nav, so the sidebar
 		// shows one flat link; these items are palette-only. They are DERIVED from

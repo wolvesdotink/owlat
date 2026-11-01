@@ -61,6 +61,71 @@ describe('composition rendering', () => {
 		);
 	});
 
+	it('compiles the icon tokens of sidebar entries and settings panels into imports', () => {
+		const plugins = composeBundledPlugins([
+			{
+				packageName: '@acme/deals',
+				manifest: {
+					id: 'deals',
+					version: '1.0.0',
+					capabilities: ['ui:navigation', 'ui:settings'],
+					flag: { default: false },
+					contributes: {
+						navItems: [
+							{
+								id: 'pipeline',
+								section: 'audience',
+								name: 'Pipeline',
+								href: '/dashboard/audience/pipeline',
+								icon: 'coolicons:kanban',
+							},
+							{
+								id: 'forecast',
+								section: 'audience',
+								name: 'Forecast',
+								href: '/dashboard/audience/forecast',
+								icon: 'coolicons:arrow-up-right',
+							},
+						],
+						settingsPanels: [
+							{
+								id: 'sync',
+								name: 'Deals sync',
+								href: '/dashboard/admin/deals',
+								icon: 'coolicons:kanban',
+							},
+						],
+					},
+				},
+			},
+		]);
+		const rendered = renderPluginComposition(plugins);
+		// One import per distinct glyph, however many entries share it.
+		expect(rendered.nuxt).toContain(
+			"import { ArrowUpRightIcon, KanbanIcon } from '@coolicons/vue';"
+		);
+		expect(rendered.nuxt).toContain(
+			'export const bundledPluginIcons: Readonly<Record<string, IconComponent>> = Object.freeze({\n\t"coolicons:arrow-up-right": ArrowUpRightIcon,\n\t"coolicons:kanban": KanbanIcon,\n});'
+		);
+		// The Convex side never renders an icon.
+		expect(rendered.convex).not.toContain('@coolicons/vue');
+	});
+
+	it('refuses an icon token outside the coolicons set', () => {
+		const plugin = {
+			packageName: 'rogue-plugin',
+			manifest: {
+				id: 'rogue',
+				version: '1.0.0',
+				capabilities: ['ui:settings'],
+				contributes: {
+					settingsPanels: [{ id: 's', name: 'S', href: '/dashboard/s', icon: 'lucide:x' }],
+				},
+			},
+		} as unknown as BundledPlugin;
+		expect(() => renderPluginComposition([plugin])).toThrow('Invalid bundled plugin icon token');
+	});
+
 	it('keeps a zero-plugin repository as an explicit no-op composition', () => {
 		const rendered = renderPluginComposition([]);
 		expect(rendered.convex).toContain('composeBundledPlugins([]);');
@@ -74,6 +139,10 @@ describe('composition rendering', () => {
 		expect(rendered.nuxt).toContain("import type { BundledPlugin } from '@owlat/plugin-host';");
 		expect(rendered.nuxt).not.toMatch(/^import \{[^}]*\} from '@owlat\/plugin-host';$/m);
 		expect(rendered.nuxt).not.toContain('composeBundledPlugins');
+		expect(rendered.nuxt).toContain(
+			'export const bundledPluginIcons: Readonly<Record<string, IconComponent>> = Object.freeze({});'
+		);
+		expect(rendered.nuxt).not.toMatch(/^import \{[^}]*\} from '@coolicons\/vue';$/m);
 		expect(rendered.components).toContain('void app;');
 		expect(rendered.sendTransportCatalog).toContain('Object.freeze([])');
 		expect(rendered.sendTransportWebCatalog).toBe(rendered.sendTransportCatalog);

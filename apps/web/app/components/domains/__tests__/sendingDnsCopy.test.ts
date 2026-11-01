@@ -46,7 +46,6 @@ function mountSection(spfCoexistence: { existing: string; merged: string } | nul
 		global: {
 			plugins: [createTestI18n()],
 			stubs: {
-				Icon: true,
 				DomainsDNSRecordPanel: true,
 				DomainsReturnPathEditor: true,
 				DomainsDmarcReportingPanel: true,

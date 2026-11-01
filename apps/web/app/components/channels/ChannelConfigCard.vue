@@ -4,6 +4,17 @@ import { api } from '@owlat/api';
 // restating the channel literals — or the health-status literals — a third
 // time: widening either union there must reach this card, not stop at it.
 import type { ChannelKind, ChannelHealthStatus } from '~/utils/channelKinds';
+import {
+	BroadcastIcon,
+	ChatCircleIcon,
+	ChatIcon,
+	ChevronDownIcon,
+	MailIcon,
+	MobileIcon,
+	SettingsIcon,
+	WebhookIcon,
+	type IconComponent,
+} from '@coolicons/vue';
 
 interface ChannelConfig {
 	_id: string;
@@ -46,29 +57,29 @@ const isTogglingEnabled = ref(false);
 
 // Channel metadata. `label`/`description` hold MESSAGE KEYS, not copy — the
 // record is built once, so translating here would freeze the mount locale.
-const channelMeta: Record<string, { icon: string; label: string; description: string }> = {
+const channelMeta: Record<string, { icon: IconComponent; label: string; description: string }> = {
 	email: {
-		icon: 'lucide:mail',
+		icon: MailIcon,
 		label: 'components.channels.channelConfigCard.channels.email.label',
 		description: 'components.channels.channelConfigCard.channels.email.description',
 	},
 	sms: {
-		icon: 'lucide:smartphone',
+		icon: MobileIcon,
 		label: 'components.channels.channelConfigCard.channels.sms.label',
 		description: 'components.channels.channelConfigCard.channels.sms.description',
 	},
 	whatsapp: {
-		icon: 'lucide:message-circle',
+		icon: ChatCircleIcon,
 		label: 'components.channels.channelConfigCard.channels.whatsapp.label',
 		description: 'components.channels.channelConfigCard.channels.whatsapp.description',
 	},
 	generic: {
-		icon: 'lucide:webhook',
+		icon: WebhookIcon,
 		label: 'components.channels.channelConfigCard.channels.generic.label',
 		description: 'components.channels.channelConfigCard.channels.generic.description',
 	},
 	chat: {
-		icon: 'lucide:message-square',
+		icon: ChatIcon,
 		label: 'components.channels.channelConfigCard.channels.chat.label',
 		description: 'components.channels.channelConfigCard.channels.chat.description',
 	},
@@ -76,7 +87,7 @@ const channelMeta: Record<string, { icon: string; label: string; description: st
 
 const meta = computed(() => channelMeta[props.channelConfig.channel] ?? null);
 // An unknown channel keeps falling back to its raw backend name and no blurb.
-const metaIcon = computed(() => meta.value?.icon ?? 'lucide:radio');
+const metaIcon = computed(() => meta.value?.icon ?? BroadcastIcon);
 const metaLabel = computed(() => (meta.value ? t(meta.value.label) : props.channelConfig.channel));
 const metaDescription = computed(() => (meta.value ? t(meta.value.description) : ''));
 
@@ -155,9 +166,10 @@ function handleConfigCancelled() {
 						channelConfig.isEnabled ? 'bg-brand-subtle' : 'bg-bg-surface',
 					]"
 				>
-					<Icon
-						:name="metaIcon"
+					<component
+						:is="metaIcon"
 						:class="['w-5 h-5', channelConfig.isEnabled ? 'text-brand' : 'text-text-tertiary']"
+						size="1em"
 					/>
 				</div>
 				<div class="min-w-0">
@@ -234,13 +246,13 @@ function handleConfigCancelled() {
 				class="inline-flex items-center gap-1.5 text-sm text-text-secondary hover:text-text-primary transition-colors"
 				@click="isConfiguring = !isConfiguring"
 			>
-				<Icon name="lucide:settings" class="w-4 h-4" />
+				<SettingsIcon class="w-4 h-4" />
 				{{
 					isConfiguring ? t('common.close') : t('components.channels.channelConfigCard.configure')
 				}}
-				<Icon
-					name="lucide:chevron-down"
+				<ChevronDownIcon
 					:class="['w-4 h-4 transition-transform', isConfiguring ? 'rotate-180' : '']"
+					size="1em"
 				/>
 			</button>
 		</div>

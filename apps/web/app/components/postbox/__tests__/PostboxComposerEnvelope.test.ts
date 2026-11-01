@@ -58,7 +58,6 @@ const mountOpts = {
 		plugins: [createTestI18n()],
 		components: { CampaignsSenderAuthChip },
 		stubs: {
-			Icon: true,
 			PostboxRecipientField: true,
 			PostboxComposerGuards: true,
 			InboxChip: true,

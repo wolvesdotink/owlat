@@ -19,6 +19,7 @@ import {
 	inboxSlaDurationLabel,
 	type InboxAnalyticsPreset,
 } from '~/utils/inboxSla';
+import { AlarmIcon, InboxIcon } from '@coolicons/vue';
 
 const { t, locale } = useI18n();
 
@@ -167,11 +168,11 @@ const labelEvery = computed(() => inboxAnalyticsLabelStep(volumeSeries.value.len
 		>
 			<template #actions>
 				<UiButton to="/dashboard/inbox/response-targets" variant="secondary" class="gap-2">
-					<Icon name="lucide:alarm-clock" class="w-4 h-4" />
+					<AlarmIcon class="w-4 h-4" />
 					{{ t('dashboard.inbox.analytics.targetsLink') }}
 				</UiButton>
 				<UiButton to="/dashboard/inbox" variant="ghost" class="gap-2">
-					<Icon name="lucide:inbox" class="w-4 h-4" />
+					<InboxIcon class="w-4 h-4" />
 					{{ t('dashboard.inbox.analytics.backToInbox') }}
 				</UiButton>
 			</template>

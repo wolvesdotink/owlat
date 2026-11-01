@@ -8,6 +8,7 @@ import {
 	type InboxesArchiveTarget,
 } from '~/composables/useInboxesThreadArchive';
 import PostboxSweepStatus from '~/components/postbox/PostboxSweepStatus.vue';
+import { ArchiveIcon, CloseIcon, RobotIcon } from '@coolicons/vue';
 
 /**
  * All inboxes — every conversation the viewer can read in one list, newest
@@ -251,7 +252,7 @@ const SHOW_OPTIONS = [
 				"
 				@click="setQuery({ in: 'team' })"
 			>
-				<Icon name="lucide:bot" class="size-3" />{{ t('components.shell.teamInbox') }}
+				<RobotIcon class="size-3" />{{ t('components.shell.teamInbox') }}
 			</button>
 			<span class="mx-1 h-4 w-px bg-border-subtle" aria-hidden="true" />
 			<button
@@ -277,7 +278,7 @@ const SHOW_OPTIONS = [
 				@click="setQuery({ category: null })"
 			>
 				{{ t(`dashboard.inboxes.category.${category}`) }}
-				<Icon name="lucide:x" class="size-3" />
+				<CloseIcon class="size-3" />
 			</button>
 		</div>
 
@@ -343,7 +344,7 @@ const SHOW_OPTIONS = [
 						<span
 							v-else
 							class="inline-flex items-center gap-1 rounded-full bg-bg-surface px-2 py-px text-2xs font-medium text-text-secondary"
-							><Icon name="lucide:bot" class="size-3" />{{ t('components.shell.teamInbox') }}</span
+							><RobotIcon class="size-3" />{{ t('components.shell.teamInbox') }}</span
 						>
 						<span class="text-2xs tabular-nums text-text-tertiary">{{
 							formatCompactRelativeTime(row.at)
@@ -359,7 +360,7 @@ const SHOW_OPTIONS = [
 						@pointerdown="sweep.start('archive', row.key, $event)"
 						@click="archiveRow(row)"
 					>
-						<Icon name="lucide:archive" class="size-4" />
+						<ArchiveIcon class="size-4" />
 					</button>
 				</UiTooltip>
 			</li>

@@ -1,6 +1,8 @@
 <script setup lang="ts">
 // The contacts list header's Import dropdown: a CSV file or a connected
 // integration. The page opens the matching modal.
+import { ChevronDownIcon, LinkHorizontalIcon, TableIcon, UploadIcon } from '@coolicons/vue';
+
 const emit = defineEmits<{ csv: []; integrations: [] }>();
 
 const { t } = useI18n();
@@ -20,9 +22,9 @@ useClickOutside(importDropdownRef, () => {
 			class="gap-2"
 			@click.stop="isImportDropdownOpen = !isImportDropdownOpen"
 		>
-			<Icon name="lucide:upload" class="w-4 h-4" />
+			<UploadIcon class="w-4 h-4" />
 			{{ t('dashboard.audience.contacts.index.import') }}
-			<Icon name="lucide:chevron-down" class="w-4 h-4" />
+			<ChevronDownIcon class="w-4 h-4" />
 		</UiButton>
 		<Transition
 			enter-active-class="duration-(--motion-moderate) ease-spring"
@@ -43,7 +45,7 @@ useClickOutside(importDropdownRef, () => {
 						isImportDropdownOpen = false;
 					"
 				>
-					<Icon name="lucide:file-spreadsheet" class="w-4 h-4 text-brand" />
+					<TableIcon class="w-4 h-4 text-brand" />
 					<div>
 						<p class="font-medium">
 							{{ t('dashboard.audience.contacts.index.importMenu.csvTitle') }}
@@ -61,7 +63,7 @@ useClickOutside(importDropdownRef, () => {
 						isImportDropdownOpen = false;
 					"
 				>
-					<Icon name="lucide:link-2" class="w-4 h-4 text-brand" />
+					<LinkHorizontalIcon class="w-4 h-4 text-brand" />
 					<div>
 						<p class="font-medium">
 							{{ t('dashboard.audience.contacts.index.importMenu.integrationsTitle') }}

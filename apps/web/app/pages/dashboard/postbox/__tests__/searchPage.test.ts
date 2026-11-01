@@ -158,7 +158,6 @@ function mountPage() {
 			PostboxMailboxGuard: passthrough('PostboxMailboxGuard'),
 		},
 		stubs: {
-			Icon: true,
 			I18nT: true,
 			PostboxThreadListSkeleton: true,
 			PostboxEmptyState: true,

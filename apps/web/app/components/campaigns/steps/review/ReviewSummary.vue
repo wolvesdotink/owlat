@@ -4,6 +4,14 @@
 // goes back to the step that sets it.
 import type { ReviewCampaignData } from '~/lib/campaignCompose';
 import ReviewAbTestSummary from '~/components/campaigns/steps/review/ReviewAbTestSummary.vue';
+import {
+	CircleWarningIcon,
+	FileTextIcon,
+	MailIcon,
+	PencilIcon,
+	UserIcon,
+	UsersIcon,
+} from '@coolicons/vue';
 
 defineProps<{
 	data: ReviewCampaignData;
@@ -21,7 +29,7 @@ const { t } = useI18n();
 		<!-- Campaign Name -->
 		<div class="flex items-start justify-between p-4 bg-bg-surface shadow-surface-1 rounded-lg">
 			<div class="flex items-start gap-3">
-				<UiIconBox icon="lucide:file-text" size="sm" rounded="lg" />
+				<UiIconBox :icon="FileTextIcon" size="sm" rounded="lg" />
 				<div>
 					<p class="text-sm text-text-secondary">
 						{{ t('components.campaigns.steps.reviewStep.campaignName') }}
@@ -34,14 +42,14 @@ const { t } = useI18n();
 				@click="emit('editStep', 'setup')"
 				:aria-label="t('common.edit')"
 			>
-				<Icon name="lucide:pencil" class="w-4 h-4" />
+				<PencilIcon class="w-4 h-4" />
 			</button>
 		</div>
 
 		<!-- From Info -->
 		<div class="flex items-start justify-between p-4 bg-bg-surface shadow-surface-1 rounded-lg">
 			<div class="flex items-start gap-3">
-				<UiIconBox icon="lucide:user" size="sm" rounded="lg" />
+				<UiIconBox :icon="UserIcon" size="sm" rounded="lg" />
 				<div>
 					<p class="text-sm text-text-secondary">
 						{{ t('components.campaigns.steps.reviewStep.from') }}
@@ -58,14 +66,14 @@ const { t } = useI18n();
 				@click="emit('editStep', 'setup')"
 				:aria-label="t('common.edit')"
 			>
-				<Icon name="lucide:pencil" class="w-4 h-4" />
+				<PencilIcon class="w-4 h-4" />
 			</button>
 		</div>
 
 		<!-- Audience -->
 		<div class="flex items-start justify-between p-4 bg-bg-surface shadow-surface-1 rounded-lg">
 			<div class="flex items-start gap-3">
-				<UiIconBox icon="lucide:users" size="sm" variant="success" rounded="lg" />
+				<UiIconBox :icon="UsersIcon" size="sm" variant="success" rounded="lg" />
 				<div>
 					<p class="text-sm text-text-secondary">
 						{{ t('components.campaigns.steps.reviewStep.audience') }}
@@ -88,7 +96,7 @@ const { t } = useI18n();
 				@click="emit('editStep', 'setup')"
 				:aria-label="t('common.edit')"
 			>
-				<Icon name="lucide:pencil" class="w-4 h-4" />
+				<PencilIcon class="w-4 h-4" />
 			</button>
 		</div>
 
@@ -96,7 +104,7 @@ const { t } = useI18n();
 		<div class="p-4 bg-bg-surface shadow-surface-1 rounded-lg">
 			<div class="flex items-start justify-between gap-3">
 				<div class="flex flex-1 min-w-0 items-start gap-3">
-					<UiIconBox icon="lucide:mail" size="sm" variant="warning" rounded="lg" />
+					<UiIconBox :icon="MailIcon" size="sm" variant="warning" rounded="lg" />
 					<div class="flex-1 min-w-0">
 						<p class="text-sm text-text-secondary">
 							{{ t('components.campaigns.steps.reviewStep.emailContent') }}
@@ -115,7 +123,7 @@ const { t } = useI18n();
 					@click="emit('editStep', 'content')"
 					:aria-label="t('common.edit')"
 				>
-					<Icon name="lucide:pencil" class="w-4 h-4" />
+					<PencilIcon class="w-4 h-4" />
 				</button>
 			</div>
 			<!-- Under the header, not inside it, so a phone gets the card's full width. -->
@@ -130,7 +138,7 @@ const { t } = useI18n();
 					class="flex items-center gap-2 text-sm text-warning"
 					data-testid="review-empty-body"
 				>
-					<Icon name="lucide:alert-circle" class="h-4 w-4 shrink-0" />
+					<CircleWarningIcon class="h-4 w-4 shrink-0" />
 					{{ t('components.campaigns.steps.reviewStep.emptyBody') }}
 				</p>
 				<CampaignsChangedSinceLastSend :template-id="data.selectedTemplate._id" class="mt-3" />
@@ -141,7 +149,7 @@ const { t } = useI18n();
 					data-testid="review-edit-email"
 					@click="emit('editEmail')"
 				>
-					<template #iconLeft><Icon name="lucide:pen-line" class="w-4 h-4" /></template>
+					<template #iconLeft><PencilIcon class="w-4 h-4" /></template>
 					{{ t('components.campaigns.steps.reviewStep.editEmail') }}
 				</UiButton>
 			</div>

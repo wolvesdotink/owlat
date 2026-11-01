@@ -14,6 +14,16 @@ import {
 	registerUploadedMediaReference,
 	type StoredMediaReference,
 } from '~/utils/mediaAssetReference';
+import {
+	ArchiveIcon,
+	CloseIcon,
+	FileIcon,
+	FileTextIcon,
+	ImageIcon,
+	PaperclipIcon,
+	TableIcon,
+} from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 export interface StoredAttachment {
 	id: string;
@@ -68,18 +78,17 @@ function generateAttachmentId() {
 }
 
 function getFileIcon(contentType: string) {
-	if (contentType.startsWith('image/')) return 'lucide:image';
-	if (contentType === 'application/pdf') return 'lucide:file-text';
+	if (contentType.startsWith('image/')) return ImageIcon;
+	if (contentType === 'application/pdf') return FileTextIcon;
 	if (
 		contentType.includes('spreadsheet') ||
 		contentType.includes('csv') ||
 		contentType.includes('excel')
 	)
-		return 'lucide:table';
-	if (contentType.includes('zip') || contentType.includes('compressed'))
-		return 'lucide:file-archive';
-	if (contentType.includes('word') || contentType.includes('document')) return 'lucide:file-text';
-	return 'lucide:file';
+		return TableIcon;
+	if (contentType.includes('zip') || contentType.includes('compressed')) return ArchiveIcon;
+	if (contentType.includes('word') || contentType.includes('document')) return FileTextIcon;
+	return FileIcon;
 }
 
 function getFileExtColor(contentType: string) {
@@ -272,7 +281,7 @@ function handleFileInput(event: Event) {
 						class="flex items-center justify-center w-7 h-7 rounded-md shrink-0"
 						:class="getFileExtColor(att.contentType)"
 					>
-						<Icon :name="getFileIcon(att.contentType)" class="w-3.5 h-3.5" />
+						<component :is="getFileIcon(att.contentType)" class="w-3.5 h-3.5" />
 					</div>
 					<div class="flex-1 min-w-0">
 						<p class="text-[13px] text-text-primary truncate leading-tight">{{ att.filename }}</p>
@@ -286,7 +295,7 @@ function handleFileInput(event: Event) {
 							:aria-label="t('components.attachmentPanel.removeAttachment')"
 							@click.stop="removeAttachment(att.id)"
 						>
-							<Icon name="lucide:x" class="w-3.5 h-3.5" />
+							<CloseIcon class="w-3.5 h-3.5" />
 						</button>
 					</UiTooltip>
 				</div>
@@ -313,13 +322,9 @@ function handleFileInput(event: Event) {
 				:class="attachments.length > 0 ? 'pb-3 pt-1' : 'py-5'"
 				@click="fileInputRef?.click()"
 			>
-				<Icon
-					v-if="isUploading"
-					name="lucide:loader-2"
-					class="w-4 h-4 text-brand animate-spin motion-reduce:animate-none"
-				/>
+				<SpinnerIcon v-if="isUploading" class="w-4 h-4 text-brand" />
 				<template v-else>
-					<Icon name="lucide:paperclip" class="w-4 h-4 text-text-tertiary" />
+					<PaperclipIcon class="w-4 h-4 text-text-tertiary" />
 					<span class="text-sm text-text-secondary">
 						{{
 							attachments.length > 0

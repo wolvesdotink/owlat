@@ -157,7 +157,7 @@ describe('service worker routing table', () => {
 		['the API', asset('/api/auth/session')],
 		// Read live or the version check would answer out of its own cache.
 		['the build manifest', asset('/_nuxt/builds/latest.json')],
-		// Convex, PostHog, iconify — all cross-origin.
+		// Convex, PostHog — all cross-origin.
 		['cross-origin traffic', { method: 'GET', mode: 'cors', url: 'https://convex.example/api' }],
 		// A mutation is never a cache read.
 		['a POST', { method: 'POST', mode: 'cors', url: `${ORIGIN}/_nuxt/entry.js` }],

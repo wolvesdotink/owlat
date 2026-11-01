@@ -4,6 +4,8 @@
  * reader loads a thread's newest page; this control asks for the page before
  * the loaded ones. When a page fails, the same control retries it.
  */
+import { ChevronDoubleUpIcon } from '@coolicons/vue';
+
 const props = defineProps<{
 	/** Messages of the thread not loaded yet; 0 when the thread doesn't say. */
 	remaining: number;
@@ -29,7 +31,7 @@ const label = computed(() =>
 <template>
 	<div class="flex flex-col items-center gap-1 py-1">
 		<UiButton variant="ghost" size="sm" :loading="loading" @click="emit('load')">
-			<Icon name="lucide:chevrons-up" class="w-4 h-4 mr-1.5" aria-hidden="true" />
+			<ChevronDoubleUpIcon class="w-4 h-4 mr-1.5" aria-hidden="true" />
 			{{ label }}
 		</UiButton>
 		<p v-if="failed" role="alert" class="text-xs text-error">

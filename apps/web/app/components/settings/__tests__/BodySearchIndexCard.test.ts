@@ -49,7 +49,6 @@ function mountCard(job: Job | null) {
 			plugins: [createTestI18n()],
 			components: { UiCard },
 			stubs: {
-				Icon: true,
 				UiSpinner: true,
 				UiIconBox: true,
 				UiSwitch: true,

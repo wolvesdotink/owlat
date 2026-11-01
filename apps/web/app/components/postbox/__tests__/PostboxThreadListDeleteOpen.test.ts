@@ -106,7 +106,6 @@ beforeAll(() => {
 	vi.stubGlobal('useI18n', i18nStubs.useI18n);
 });
 
-const iconStub = { props: ['name'], template: '<span />' };
 // Renderless: exposes the scoped-slot handlers the row binds, no popover.
 const contextMenuStub = {
 	props: ['items'],
@@ -156,7 +155,6 @@ function mountList(
 				PostboxThreadListSkeleton,
 				PostboxEmptyState,
 				UiSkeleton,
-				Icon: iconStub,
 				NuxtLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
 				UiContextMenu: contextMenuStub,
 				PostboxSnoozeDialog: { template: '<span />' },

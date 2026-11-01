@@ -42,7 +42,6 @@ function mountForm(profile: StoredBookingProfile) {
 			stubs: {
 				UiButton: { template: '<button type="button" v-bind="$attrs"><slot /></button>' },
 				BookingRangesEditor: true,
-				Icon: true,
 			},
 		},
 	});

@@ -1,5 +1,18 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import {
+	ArrowUpRightIcon,
+	BriefcaseIcon,
+	CrownIcon,
+	GraduationCapIcon,
+	HandshakeIcon,
+	HeartIcon,
+	LinkIcon,
+	PackageIcon,
+	TrendingUpIcon,
+	UsersIcon,
+	type IconComponent,
+} from '@coolicons/vue';
 
 interface ContactSearchResult {
 	_id: Id<'contacts'>;
@@ -123,19 +136,19 @@ export function useContactRelationships(contactId: Ref<Id<'contacts'>>) {
 	];
 
 	const getRelationshipIcon = (relationship: string) => {
-		const icons: Record<string, string> = {
-			colleague: 'lucide:users',
-			manager_of: 'lucide:crown',
-			reports_to: 'lucide:arrow-up-right',
-			client: 'lucide:briefcase',
-			vendor: 'lucide:package',
-			partner: 'lucide:handshake',
-			advisor: 'lucide:graduation-cap',
-			investor: 'lucide:trending-up',
-			friend: 'lucide:heart',
-			other: 'lucide:link',
+		const icons: Record<string, IconComponent> = {
+			colleague: UsersIcon,
+			manager_of: CrownIcon,
+			reports_to: ArrowUpRightIcon,
+			client: BriefcaseIcon,
+			vendor: PackageIcon,
+			partner: HandshakeIcon,
+			advisor: GraduationCapIcon,
+			investor: TrendingUpIcon,
+			friend: HeartIcon,
+			other: LinkIcon,
 		};
-		return icons[relationship] || 'lucide:link';
+		return icons[relationship] || LinkIcon;
 	};
 
 	// A message key, not copy — the relationships tab renders it through `t()`.

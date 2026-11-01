@@ -8,6 +8,20 @@ import {
 } from '@owlat/shared/operatingModes';
 import { bundledPluginComposition } from '~/plugins/plugin-composition.generated';
 import type { CoreFeatureFlagKey } from '@owlat/shared/featureFlags';
+import {
+	ActivityIcon,
+	BroadcastIcon,
+	Building2Icon,
+	FileTextIcon,
+	LockIcon,
+	MonitorIcon,
+	PaletteIcon,
+	PuzzleIcon,
+	RobotIcon,
+	SparklesIcon,
+	TagsIcon,
+	ToggleRightIcon,
+} from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -70,49 +84,49 @@ const groups = computed(() => [
 		title: t('dashboard.admin.instance.index.groups.general.title'),
 		description: t('dashboard.admin.instance.index.groups.general.description'),
 		href: '/dashboard/admin/instance/general',
-		icon: 'lucide:building-2',
+		icon: Building2Icon,
 	},
 	{
 		title: t('dashboard.admin.instance.index.groups.features.title'),
 		description: t('dashboard.admin.instance.index.groups.features.description'),
 		href: '/dashboard/admin/instance/features',
-		icon: 'lucide:toggle-right',
+		icon: ToggleRightIcon,
 	},
 	{
 		title: t('dashboard.admin.instance.index.groups.brandKit.title'),
 		description: t('dashboard.admin.instance.index.groups.brandKit.description'),
 		href: '/dashboard/admin/instance/brand-kit',
-		icon: 'lucide:palette',
+		icon: PaletteIcon,
 	},
 	{
 		title: t('dashboard.admin.instance.index.groups.properties.title'),
 		description: t('dashboard.admin.instance.index.groups.properties.description'),
 		href: '/dashboard/admin/instance/properties',
-		icon: 'lucide:tags',
+		icon: TagsIcon,
 	},
 	{
 		title: t('dashboard.admin.instance.index.groups.forms.title'),
 		description: t('dashboard.admin.instance.index.groups.forms.description'),
 		href: '/dashboard/admin/instance/forms',
-		icon: 'lucide:file-text',
+		icon: FileTextIcon,
 	},
 	{
 		title: t('dashboard.admin.instance.index.groups.channels.title'),
 		description: t('dashboard.admin.instance.index.groups.channels.description'),
 		href: '/dashboard/admin/instance/channels',
-		icon: 'lucide:radio',
+		icon: BroadcastIcon,
 	},
 	{
 		title: t('dashboard.admin.instance.index.groups.desktopUpdates.title'),
 		description: t('dashboard.admin.instance.index.groups.desktopUpdates.description'),
 		href: '/dashboard/admin/instance/desktop-updates',
-		icon: 'lucide:monitor-down',
+		icon: MonitorIcon,
 	},
 	{
 		title: t('dashboard.admin.instance.index.groups.aiProvider.title'),
 		description: t('dashboard.admin.instance.index.groups.aiProvider.description'),
 		href: '/dashboard/admin/instance/ai-provider',
-		icon: 'lucide:sparkles',
+		icon: SparklesIcon,
 	},
 	// AI replies holds the Off choice, so it stays reachable while `ai.agent`
 	// is off: it is where the agent gets turned back on.
@@ -122,7 +136,7 @@ const groups = computed(() => [
 					title: t('dashboard.admin.instance.index.groups.aiReplies.title'),
 					description: t('dashboard.admin.instance.index.groups.aiReplies.description'),
 					href: '/dashboard/admin/instance/ai-replies',
-					icon: 'lucide:bot',
+					icon: RobotIcon,
 				},
 			]
 		: []),
@@ -132,7 +146,7 @@ const groups = computed(() => [
 					title: t('dashboard.admin.instance.index.groups.agentHealth.title'),
 					description: t('dashboard.admin.instance.index.groups.agentHealth.description'),
 					href: '/dashboard/admin/instance/agent-health',
-					icon: 'lucide:activity',
+					icon: ActivityIcon,
 				},
 			]
 		: []),
@@ -142,7 +156,7 @@ const groups = computed(() => [
 					title: t('dashboard.admin.instance.index.groups.sealedMail.title'),
 					description: t('dashboard.admin.instance.index.groups.sealedMail.description'),
 					href: '/dashboard/admin/instance/sealed-mail',
-					icon: 'lucide:lock',
+					icon: LockIcon,
 				},
 			]
 		: []),
@@ -152,7 +166,7 @@ const groups = computed(() => [
 					title: t('dashboard.admin.instance.index.groups.plugins.title'),
 					description: t('dashboard.admin.instance.index.groups.plugins.description'),
 					href: '/dashboard/admin/instance/plugins',
-					icon: 'lucide:puzzle',
+					icon: PuzzleIcon,
 				},
 			]
 		: []),

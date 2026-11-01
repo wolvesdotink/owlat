@@ -37,7 +37,7 @@ function mountPanel(
 ) {
 	return mount(DNSRecordPanel, {
 		props: { record, label, domain },
-		global: { plugins: [createTestI18n()], stubs: { Icon: true } },
+		global: { plugins: [createTestI18n()] },
 	});
 }
 

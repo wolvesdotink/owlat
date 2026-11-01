@@ -25,6 +25,7 @@ import {
 	type OutboundDelivery,
 } from '~/utils/postboxDeliveryStrip';
 import { useLocalized } from '~/composables/useLocalized';
+import { PaperPlaneIcon } from '@coolicons/vue';
 
 const props = defineProps<{ delivery: OutboundDelivery }>();
 
@@ -60,8 +61,8 @@ function onResend() {
 		<ul class="divide-y divide-border-subtle">
 			<li v-for="row in view.rows" :key="row.idx" class="px-3 py-2">
 				<div class="flex items-start gap-2 text-xs">
-					<Icon
-						:name="row.icon"
+					<component
+						:is="row.icon"
 						class="w-3.5 h-3.5 mt-0.5 shrink-0"
 						:class="healthTextClass[row.tone]"
 					/>
@@ -115,7 +116,7 @@ function onResend() {
 				class="inline-flex items-center gap-1.5 text-xs font-medium text-brand hover:underline"
 				@click="onResend"
 			>
-				<Icon name="lucide:send-horizontal" class="w-3.5 h-3.5" />
+				<PaperPlaneIcon class="w-3.5 h-3.5" />
 				{{
 					targets.length === 1
 						? t('components.postbox.postboxDeliveryStrip.resendOne', { address: targets[0] })

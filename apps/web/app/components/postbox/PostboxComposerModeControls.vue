@@ -6,6 +6,7 @@
  * PostboxComposer.vue to keep that orchestrator under the file-size ratchet.
  */
 import type { ComposerMode } from '~/composables/postbox/usePostboxCompose';
+import { LayoutTemplateIcon, PencilIcon, TextIcon } from '@coolicons/vue';
 
 defineProps<{
 	mode: ComposerMode;
@@ -45,7 +46,7 @@ const { t } = useI18n();
 				"
 				@click="emit('toggle-toolbar')"
 			>
-				<Icon name="lucide:type" class="w-4 h-4" />
+				<TextIcon class="w-4 h-4" />
 			</UiButton>
 		</UiTooltip>
 		<UiButton
@@ -55,10 +56,7 @@ const { t } = useI18n();
 			:disabled="switchDisabled"
 			@click="emit('switch-mode', mode === 'simple' ? 'full' : 'simple')"
 		>
-			<Icon
-				:name="mode === 'simple' ? 'lucide:layout-template' : 'lucide:pen-line'"
-				class="w-4 h-4"
-			/>
+			<component :is="mode === 'simple' ? LayoutTemplateIcon : PencilIcon" class="w-4 h-4" />
 			{{
 				mode === 'simple'
 					? t('components.postbox.postboxComposerModeControls.designLayout')

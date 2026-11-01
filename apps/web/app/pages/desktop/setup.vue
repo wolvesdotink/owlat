@@ -11,6 +11,15 @@ import { useSetupConfigForm } from '~/composables/desktopSetup/useSetupConfigFor
 import { useSetupDnsRecords } from '~/composables/desktopSetup/useSetupDnsRecords';
 import DesktopSetupConnectForm from '~/components/desktop/setup/ConnectForm.vue';
 import DesktopSetupConfigureForm from '~/components/desktop/setup/ConfigureForm.vue';
+import {
+	ArrowLeftIcon,
+	CircleCheckIcon,
+	ReloadIcon,
+	ShieldCheckIcon,
+	ShieldWarningIcon,
+	SparkleIcon,
+} from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const { t } = useI18n();
 
@@ -114,7 +123,7 @@ watch(stage, (s) => {
 						to="/desktop/welcome"
 						class="mb-4 inline-flex items-center gap-1 text-xs text-text-secondary transition-colors duration-(--motion-fast) hover:text-text-primary"
 					>
-						<Icon name="lucide:arrow-left" class="size-3.5" /> {{ t('common.back') }}
+						<ArrowLeftIcon class="size-3.5" /> {{ t('common.back') }}
 					</NuxtLink>
 					<I18nT
 						keypath="desktop.setup.heading"
@@ -164,7 +173,7 @@ watch(stage, (s) => {
 						class="mt-6 rounded-xl border border-success/30 bg-success/5 p-4"
 					>
 						<p class="flex items-center gap-2 text-sm font-medium text-success">
-							<Icon name="lucide:party-popper" class="size-4" />
+							<SparkleIcon class="size-4" />
 							{{ t('desktop.setup.done.readyTitle') }}
 						</p>
 						<p v-if="siteUrl" class="mt-1 text-xs text-text-secondary">{{ siteUrl }}</p>
@@ -179,8 +188,7 @@ watch(stage, (s) => {
 						class="mt-6 rounded-xl border border-warning/40 bg-warning/5 p-4"
 					>
 						<p class="flex items-center gap-2 text-sm font-medium text-warning">
-							<Icon
-								name="lucide:loader-circle"
+							<SpinnerIcon
 								class="size-4"
 								:class="{ 'animate-spin motion-reduce:animate-none': checkingReach }"
 							/>
@@ -216,8 +224,7 @@ watch(stage, (s) => {
 							@click="recheckReachable"
 						>
 							<template #iconLeft>
-								<Icon
-									name="lucide:refresh-cw"
+								<ReloadIcon
 									class="size-3.5"
 									:class="{ 'animate-spin motion-reduce:animate-none': checkingReach }"
 								/>
@@ -236,7 +243,7 @@ watch(stage, (s) => {
 						class="mt-6 rounded-xl border border-warning/40 bg-warning/5 p-4"
 					>
 						<p class="flex items-center gap-2 text-sm font-medium text-warning">
-							<Icon name="lucide:circle-check" class="size-4" />
+							<CircleCheckIcon class="size-4" />
 							{{ t('desktop.setup.loopback.title') }}
 						</p>
 						<I18nT
@@ -259,8 +266,8 @@ watch(stage, (s) => {
 						v-if="stage === 'done'"
 						class="mt-3 flex items-start gap-2 text-xs text-text-secondary"
 					>
-						<Icon
-							:name="secretsRemoved ? 'lucide:shield-check' : 'lucide:shield-alert'"
+						<component
+							:is="secretsRemoved ? ShieldCheckIcon : ShieldWarningIcon"
 							class="mt-0.5 size-3.5 shrink-0"
 							:class="secretsRemoved ? 'text-success' : 'text-warning'"
 						/>
@@ -297,7 +304,7 @@ watch(stage, (s) => {
 						<!-- The uploaded config (admin password, provider keys) could not be
 						     removed after the failure: say so, with the exact command. -->
 						<div v-if="leftoverConfigCleanup" class="mt-3 flex items-start gap-2 text-xs">
-							<Icon name="lucide:shield-alert" class="mt-0.5 size-3.5 shrink-0 text-warning" />
+							<ShieldWarningIcon class="mt-0.5 size-3.5 shrink-0 text-warning" />
 							<I18nT
 								keypath="desktop.setup.secrets.leftAfterFailure"
 								tag="span"

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { CircleWarningIcon, TrashIcon } from '@coolicons/vue';
+
 const props = defineProps<{
 	count: number;
 }>();
@@ -24,7 +26,7 @@ const handleConfirm = () => {
 	<UiModal :open="isOpen" size="md" @update:open="(v) => { if (!v) close(); }">
 		<div class="flex items-center gap-3 mb-6">
 			<div class="p-2 rounded-lg flex items-center justify-center bg-error-subtle">
-				<Icon name="lucide:trash-2" class="w-5 h-5 text-error" />
+				<TrashIcon class="w-5 h-5 text-error" />
 			</div>
 			<div>
 				<h2 class="text-lg font-semibold text-text-primary">
@@ -37,7 +39,7 @@ const handleConfirm = () => {
 		</div>
 		<div class="p-4 rounded-lg bg-error-subtle border border-error/20 mb-4">
 			<div class="flex gap-3">
-				<Icon name="lucide:alert-circle" class="w-5 h-5 text-error flex-shrink-0 mt-0.5" />
+				<CircleWarningIcon class="w-5 h-5 text-error flex-shrink-0 mt-0.5" />
 				<div>
 					<p class="text-sm text-error font-medium">
 						{{ t('components.contacts.bulkDeleteModal.warning', { count }, count) }}
@@ -55,7 +57,7 @@ const handleConfirm = () => {
 		<template #footer>
 			<UiButton variant="secondary" @click="close">{{ t('common.cancel') }}</UiButton>
 			<UiButton variant="danger" @click="handleConfirm">
-				<template #iconLeft><Icon name="lucide:trash-2" class="w-4 h-4" /></template>
+				<template #iconLeft><TrashIcon class="w-4 h-4" /></template>
 				{{ t('components.contacts.bulkDeleteModal.confirm', { count }, count) }}
 			</UiButton>
 		</template>

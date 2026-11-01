@@ -2,6 +2,7 @@
 import { api } from '@owlat/api';
 import { formatDateTime } from '~/utils/formatters';
 import { inboxRetryCopy, inboxRetryToast } from '~/utils/inboxRetry';
+import { CircleCheckIcon, PaperPlaneIcon, ReloadIcon, TriangleWarningIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -66,7 +67,7 @@ const onRetry = async (message: NonNullable<typeof failedMessages.value>[number]
 			<template #empty>
 				<UiEmptyState
 					tone="clear"
-					icon="lucide:check-circle"
+					:icon="CircleCheckIcon"
 					:title="t('dashboard.inbox.failed.emptyTitle')"
 					:description="t('dashboard.inbox.failed.emptyBody')"
 				/>
@@ -80,7 +81,7 @@ const onRetry = async (message: NonNullable<typeof failedMessages.value>[number]
 							<div
 								class="flex-shrink-0 w-10 h-10 rounded-full bg-error-subtle flex items-center justify-center"
 							>
-								<Icon name="lucide:alert-triangle" class="w-5 h-5 text-error" />
+								<TriangleWarningIcon class="w-5 h-5 text-error" />
 							</div>
 							<div>
 								<p class="text-text-primary font-medium text-sm">{{ message.from }}</p>
@@ -121,10 +122,8 @@ const onRetry = async (message: NonNullable<typeof failedMessages.value>[number]
 							:disabled="actionInProgress === message._id"
 							@click="onRetry(message)"
 						>
-							<Icon
-								:name="
-									inboxRetryCopy(message).plan === 'sendAgain' ? 'lucide:send' : 'lucide:refresh-cw'
-								"
+							<component
+								:is="inboxRetryCopy(message).plan === 'sendAgain' ? PaperPlaneIcon : ReloadIcon"
 								class="w-3 h-3"
 							/>
 							{{ t(inboxRetryCopy(message).action) }}

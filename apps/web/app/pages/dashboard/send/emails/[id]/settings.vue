@@ -4,6 +4,14 @@ import { languageOptions } from '~/data/languageOptions';
 import { emailSettingsSave } from '~/composables/emailSettingsSave';
 import { readTranslationOverlays } from '~/utils/translationOverlays';
 import { useEditorDirtyTracking } from '~/composables/useEditorDirtyTracking';
+import {
+	ArrowLeftIcon,
+	CheckIcon,
+	CircleWarningIcon,
+	GlobeIcon,
+	SettingsIcon,
+	TriangleWarningIcon,
+} from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -251,14 +259,11 @@ const handleBack = () => {
 						@click="handleBack"
 						:aria-label="t('common.back')"
 					>
-						<Icon name="lucide:arrow-left" class="w-5 h-5" />
+						<ArrowLeftIcon class="w-5 h-5" />
 					</button>
 
 					<div class="flex min-w-0 items-center gap-2">
-						<Icon
-							name="lucide:settings"
-							class="w-5 h-5 shrink-0 text-text-tertiary max-sm:hidden"
-						/>
+						<SettingsIcon class="w-5 h-5 shrink-0 text-text-tertiary max-sm:hidden" />
 						<span class="truncate text-text-primary font-medium">{{
 							t('dashboard.send.emails.detail.settings.title')
 						}}</span>
@@ -267,7 +272,7 @@ const handleBack = () => {
 
 				<div class="flex shrink-0 items-center gap-3">
 					<span v-if="hasChanges" class="text-sm text-warning flex items-center gap-1.5">
-						<Icon name="lucide:alert-circle" class="w-4 h-4" />
+						<CircleWarningIcon class="w-4 h-4" />
 						<span class="max-sm:sr-only">{{
 							t('dashboard.send.emails.detail.settings.unsavedChanges')
 						}}</span>
@@ -278,7 +283,7 @@ const handleBack = () => {
 						@click="handleSave"
 					>
 						<template #iconLeft>
-							<Icon v-if="!isSaving" name="lucide:check" class="w-4 h-4" />
+							<CheckIcon v-if="!isSaving" class="w-4 h-4" />
 						</template>
 						{{
 							isSaving ? t('common.saving') : t('dashboard.send.emails.detail.settings.saveChanges')
@@ -326,7 +331,7 @@ const handleBack = () => {
 				<div class="max-w-3xl mx-auto space-y-8">
 					<UiCard v-if="storedTranslationsUnreadable" variant="error" role="alert">
 						<div class="flex gap-3">
-							<Icon name="lucide:alert-triangle" class="w-5 h-5 text-error shrink-0 mt-0.5" />
+							<TriangleWarningIcon class="w-5 h-5 text-error shrink-0 mt-0.5" />
 							<div class="text-sm">
 								<p class="text-text-primary font-medium mb-1">
 									{{ t('dashboard.send.emails.detail.settings.unreadableTranslations.title') }}
@@ -357,7 +362,7 @@ const handleBack = () => {
 					<!-- Info Card -->
 					<UiCard variant="info">
 						<div class="flex gap-3">
-							<Icon name="lucide:globe" class="w-5 h-5 text-brand shrink-0 mt-0.5" />
+							<GlobeIcon class="w-5 h-5 text-brand shrink-0 mt-0.5" />
 							<div class="text-sm">
 								<p class="text-text-primary font-medium mb-1">
 									{{ t('dashboard.send.emails.detail.settings.info.title') }}

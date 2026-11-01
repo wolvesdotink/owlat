@@ -10,6 +10,7 @@
  */
 import { formatRelativeTime } from '~/utils/formatters';
 import type { ReplyEntry } from '~/utils/teamStream';
+import { PaperPlaneIcon } from '@coolicons/vue';
 
 const props = withDefaults(
 	defineProps<{
@@ -46,7 +47,7 @@ const isCountingDown = computed(
 		:data-status="entry.status"
 	>
 		<header class="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
-			<Icon name="lucide:send" class="size-3.5 shrink-0 text-text-tertiary" aria-hidden="true" />
+			<PaperPlaneIcon class="size-3.5 shrink-0 text-text-tertiary" aria-hidden="true" />
 			<span class="min-w-0 truncate font-medium text-text-primary">{{ heading }}</span>
 			<time
 				class="shrink-0 text-text-tertiary"

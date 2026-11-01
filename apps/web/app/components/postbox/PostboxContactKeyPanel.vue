@@ -24,6 +24,7 @@ import { formatDateTime } from '~/utils/formatters';
 import { deriveContactVerificationBadge } from '~/utils/postboxKeyVerification';
 import { SEAL_TONE_CLASSES } from '~/utils/sealTone';
 import type { RecipientKeyStatus } from '~/utils/recipientKeyStatus';
+import { ChevronDownIcon, ChevronRightIcon, KeyIcon, LockIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	/** The correspondent's address (for the empty-state copy). */
@@ -87,8 +88,8 @@ const sourceLabel = computed(() => {
 
 		<div v-else class="mt-2 space-y-1.5 text-xs">
 			<div class="flex items-center gap-1.5">
-				<Icon
-					:name="status.outcome === 'trusted' ? 'lucide:lock' : 'lucide:key-round'"
+				<component
+					:is="status.outcome === 'trusted' ? LockIcon : KeyIcon"
 					class="w-3.5 h-3.5"
 					:class="status.outcome === 'trusted' ? 'text-success' : 'text-warning'"
 				/>
@@ -145,7 +146,7 @@ const sourceLabel = computed(() => {
 						:class="verificationTone.chip"
 						data-testid="contact-verification-state"
 					>
-						<Icon :name="verification.icon" class="w-3.5 h-3.5" :class="verificationTone.icon" />
+						<component :is="verification.icon" class="w-3.5 h-3.5" :class="verificationTone.icon" />
 						{{ t(verification.summary) }}
 					</span>
 					<span
@@ -165,10 +166,7 @@ const sourceLabel = computed(() => {
 					:aria-expanded="isComparing"
 					@click="isComparing = !isComparing"
 				>
-					<Icon
-						:name="isComparing ? 'lucide:chevron-down' : 'lucide:chevron-right'"
-						class="w-3.5 h-3.5"
-					/>
+					<component :is="isComparing ? ChevronDownIcon : ChevronRightIcon" class="w-3.5 h-3.5" />
 					{{
 						isComparing
 							? t('components.postbox.postboxContactKeyPanel.hideVerify')

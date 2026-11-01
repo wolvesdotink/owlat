@@ -18,7 +18,6 @@ beforeAll(() => {
 	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 });
 
-const iconStub = { props: ['name'], template: '<span class="icon" :data-name="name" />' };
 const nuxtLinkStub = {
 	props: ['to', 'title', 'ariaLabel'],
 	template: '<a :href="to" :title="title" :aria-label="ariaLabel"><slot /></a>',
@@ -40,7 +39,7 @@ function mountList(collapsed: boolean) {
 		},
 		global: {
 			plugins: [createTestI18n()],
-			components: { Icon: iconStub, NuxtLink: nuxtLinkStub },
+			components: { NuxtLink: nuxtLinkStub },
 		},
 	});
 }
@@ -57,7 +56,7 @@ describe('PostboxFolderList', () => {
 	it('renders an icon-only strip with badges + tooltips when collapsed', () => {
 		const w = mountList(true);
 		// Icons for every folder still render.
-		expect(w.findAll('.icon')).toHaveLength(2);
+		expect(w.findAll('svg')).toHaveLength(2);
 		// No label text in the strip.
 		expect(w.text().toLowerCase()).not.toContain('inbox');
 		expect(w.text().toLowerCase()).not.toContain('sent');
@@ -97,7 +96,7 @@ describe('PostboxFolderList as a drop target', () => {
 			},
 			global: {
 				plugins: [createTestI18n()],
-				components: { Icon: iconStub, NuxtLink: nuxtLinkStub },
+				components: { NuxtLink: nuxtLinkStub },
 			},
 		});
 	}

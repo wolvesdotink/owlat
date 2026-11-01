@@ -19,7 +19,6 @@ function mountChip(followUp: { remindAt: number; dueAt?: number }, cancelable: b
 		props: { followUp: { ...followUp, watched: true }, cancelable },
 		global: {
 			plugins: [createTestI18n()],
-			components: { Icon: { props: ['name'], template: '<span />' } },
 		},
 	});
 }

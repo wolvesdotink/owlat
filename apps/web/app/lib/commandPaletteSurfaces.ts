@@ -17,6 +17,7 @@
  * identical row.
  */
 import { type PaletteGroup, type PaletteItem, filterItems } from './commandPalette';
+import { BookmarkPlusIcon, ChatTextIcon, MegaphoneIcon } from '@coolicons/vue';
 
 // ── Campaigns command center ────────────────────────────────────────────────
 
@@ -68,7 +69,7 @@ export function buildCampaignSurfaceGroups(
 			// wherever that verb is enabled it wins and this row never renders.
 			id: 'verb:new-campaign',
 			label: deps.t('shared.useCommandPaletteProviders.newCampaign'),
-			icon: 'lucide:megaphone',
+			icon: MegaphoneIcon,
 			run: deps.onNewCampaign,
 		},
 		...deps.rows().map((row) => ({
@@ -83,7 +84,7 @@ export function buildCampaignSurfaceGroups(
 					? 'shared.commandPaletteSurfaces.campaigns.openReport'
 					: 'shared.commandPaletteSurfaces.campaigns.openCampaign'
 			),
-			icon: 'lucide:megaphone',
+			icon: MegaphoneIcon,
 			run: () => deps.onOpenCampaign(row),
 		})),
 	];
@@ -134,7 +135,7 @@ export function buildSavedReplyGroups(deps: SavedReplySurfaceDeps, query: string
 		id: `saved-reply:${reply._id}`,
 		label: reply.name,
 		...(reply.shortcut ? { subtitle: `;${reply.shortcut}` } : {}),
-		icon: 'lucide:message-square-quote',
+		icon: ChatTextIcon,
 		run: () => deps.onInsert(reply._id),
 	}));
 	const items: PaletteItem[] = [];
@@ -142,12 +143,12 @@ export function buildSavedReplyGroups(deps: SavedReplySurfaceDeps, query: string
 		items.push({
 			id: 'saved-reply:insert',
 			label: deps.t('shared.savedReplies.insertSubmenu'),
-			icon: 'lucide:message-square-quote',
+			icon: ChatTextIcon,
 			run: () => {},
 			argument: {
 				promptKey: 'shared.savedReplies.paletteHeading',
 				headingKey: 'shared.savedReplies.paletteHeading',
-				icon: 'lucide:message-square-quote',
+				icon: ChatTextIcon,
 				options: replyItems.map((item) => ({
 					id: item.id,
 					label: item.label,
@@ -160,7 +161,7 @@ export function buildSavedReplyGroups(deps: SavedReplySurfaceDeps, query: string
 	items.push({
 		id: 'saved-reply:save-current',
 		label: deps.t('shared.savedReplies.saveCurrent'),
-		icon: 'lucide:bookmark-plus',
+		icon: BookmarkPlusIcon,
 		run: deps.onSaveCurrent,
 	});
 	const typed = query.trim() !== '';

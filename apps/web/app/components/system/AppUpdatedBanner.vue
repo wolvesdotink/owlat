@@ -7,6 +7,7 @@
  */
 import { useAppVersionWatch } from '~/composables/useAppVersionWatch';
 import { releaseNotesUrl } from '~/lib/appVersion';
+import { CloseIcon, SparklesIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 const versionWatch = useAppVersionWatch();
@@ -54,7 +55,7 @@ function dismiss(): void {
 				class="flex size-7 flex-shrink-0 items-center justify-center rounded-full bg-brand-soft"
 				aria-hidden="true"
 			>
-				<Icon name="lucide:sparkles" size="16" class="text-brand" />
+				<SparklesIcon size="16" class="text-brand" />
 			</div>
 			<div class="min-w-0 flex-1 space-y-1">
 				<p class="text-sm font-medium text-text-primary">
@@ -101,7 +102,7 @@ function dismiss(): void {
 				:aria-label="t('shared.appUpdated.dismiss')"
 				@click="dismiss"
 			>
-				<Icon name="lucide:x" size="16" aria-hidden="true" />
+				<CloseIcon size="16" aria-hidden="true" />
 			</button>
 		</section>
 	</div>

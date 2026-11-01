@@ -46,7 +46,6 @@ const global = {
 	plugins: [createTestI18n()],
 	components: { NuxtLink: NuxtLinkStub },
 	stubs: {
-		Icon: true,
 		UiSkeleton: true,
 		ShellSidebarOptions: true,
 		ShellInboxGroup: true,

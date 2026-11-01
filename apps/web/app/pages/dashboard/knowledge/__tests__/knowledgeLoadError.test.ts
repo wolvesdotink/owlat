@@ -48,7 +48,6 @@ function render(): VueWrapper {
 			plugins: [createTestI18n()],
 			components: { UiQueryBoundary: QueryBoundary, UiPageHeader },
 			stubs: {
-				Icon: true,
 				NuxtLink: { template: '<a><slot /></a>' },
 				Teleport: true,
 				UiInput: true,

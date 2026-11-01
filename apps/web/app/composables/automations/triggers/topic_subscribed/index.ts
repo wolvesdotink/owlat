@@ -1,11 +1,12 @@
 import { defineAsyncComponent } from 'vue';
 import type { TriggerEditorModule } from '../types';
+import { ListPlusIcon } from '@coolicons/vue';
 
 export const topicSubscribedTriggerEditorModule: TriggerEditorModule<'topic_subscribed'> = {
 	kind: 'topic_subscribed',
 	label: 'shared.automations.triggers.topicSubscribed.label',
 	description: 'shared.automations.triggers.topicSubscribed.description',
-	icon: 'lucide:list-plus',
+	icon: ListPlusIcon,
 	color: 'success',
 	requiresConfig: true,
 	createDefault: () => ({ topicId: '' }),

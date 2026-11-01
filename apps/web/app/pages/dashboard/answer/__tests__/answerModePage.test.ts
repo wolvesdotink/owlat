@@ -288,7 +288,7 @@ async function mountAt(query: Record<string, string>, opts: { realMenu?: boolean
 							h('a', { href: props.to }, slots.default?.()),
 				}),
 			},
-			stubs: { Icon: true, AnswerAiBar: AiBarStub, AskCard: AskCardStub },
+			stubs: { AnswerAiBar: AiBarStub, AskCard: AskCardStub },
 		},
 	});
 	await flushPromises();

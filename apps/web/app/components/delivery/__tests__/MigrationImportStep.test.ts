@@ -12,7 +12,6 @@ import { getFunctionName, type FunctionReference } from 'convex/server';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 const stubs = {
-	Icon: { template: '<i />' },
 	NuxtLink: { template: '<a><slot /></a>' },
 	UiInput: {
 		props: ['modelValue'],

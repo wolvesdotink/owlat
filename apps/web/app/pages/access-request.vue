@@ -10,6 +10,8 @@
  * own route and says what it is. `/setup/team` still resolves and redirects here.
  */
 import { api } from '@owlat/api';
+import { CircleCheckIcon, MailIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const { t } = useI18n();
 
@@ -65,7 +67,7 @@ async function requestAccess() {
 
 		<!-- Show loading while checking organization status -->
 		<div v-if="orgLoading" class="relative flex flex-col items-center">
-			<Icon name="lucide:loader-2" class="w-8 h-8 text-text-tertiary animate-spin motion-reduce:animate-none" />
+			<SpinnerIcon class="w-8 h-8 text-text-tertiary" />
 		</div>
 
 		<!-- Invite-only: no organization yet, but the door isn't locked. -->
@@ -78,7 +80,7 @@ async function requestAccess() {
 			<UiCard class="relative w-full max-w-md">
 				<!-- After asking: a clear, honest confirmation. -->
 				<div v-if="requested" class="text-center space-y-4">
-					<Icon name="lucide:check-circle-2" class="w-12 h-12 text-brand mx-auto" />
+					<CircleCheckIcon class="w-12 h-12 text-brand mx-auto" :stroke-width="1.5" />
 					<div class="space-y-1">
 						<p class="font-medium text-text-primary">{{ t('accessRequest.requestSentTitle') }}</p>
 						<p class="text-text-secondary">
@@ -93,7 +95,7 @@ async function requestAccess() {
 				<!-- Before asking: request access, or sign out. -->
 				<div v-else class="space-y-4">
 					<div class="text-center space-y-3">
-						<Icon name="lucide:mail" class="w-12 h-12 text-text-tertiary mx-auto" />
+						<MailIcon class="w-12 h-12 text-text-tertiary mx-auto" :stroke-width="1.5" />
 						<p class="text-text-secondary">
 							{{ t('accessRequest.inviteExplainer') }}
 						</p>

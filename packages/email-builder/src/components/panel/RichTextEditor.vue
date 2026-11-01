@@ -5,7 +5,14 @@ import { useRichText } from '@owlat/ui/composables/useRichText';
 import { sanitizeEditorHtml } from '@owlat/email-renderer';
 import type { Variable } from '../../types';
 import { insertVariableChip, useVariableTrigger } from '../../composables/useVariableTrigger';
-import { Bold, Italic, Underline, Link, Code, Variable as VariableIcon } from '@lucide/vue';
+import {
+	BoldIcon,
+	BracesIcon,
+	CodeIcon,
+	ItalicIcon,
+	LinkIcon,
+	UnderlineIcon,
+} from '@coolicons/vue';
 import VariablePickerMenu from '../canvas/VariablePickerMenu.vue';
 import { useBuilderI18n } from '../../i18n/useBuilderI18n';
 
@@ -134,7 +141,7 @@ function handleSourceInput(event: Event) {
 					:aria-label="t('builder.toolbar.bold')"
 					@click="applyFormat(richText.toggleBold)"
 				>
-					<Bold :size="14" />
+					<BoldIcon :size="14" />
 				</button>
 			</UiTooltip>
 			<UiTooltip :text="shortcutTitle('builder.toolbar.italic', 'I')">
@@ -144,7 +151,7 @@ function handleSourceInput(event: Event) {
 					:aria-label="t('builder.toolbar.italic')"
 					@click="applyFormat(richText.toggleItalic)"
 				>
-					<Italic :size="14" />
+					<ItalicIcon :size="14" />
 				</button>
 			</UiTooltip>
 			<UiTooltip :text="shortcutTitle('builder.toolbar.underline', 'U')">
@@ -154,7 +161,7 @@ function handleSourceInput(event: Event) {
 					:aria-label="t('builder.toolbar.underline')"
 					@click="applyFormat(richText.toggleUnderline)"
 				>
-					<Underline :size="14" />
+					<UnderlineIcon :size="14" />
 				</button>
 			</UiTooltip>
 			<UiTooltip :text="shortcutTitle('builder.toolbar.link', 'K')">
@@ -164,7 +171,7 @@ function handleSourceInput(event: Event) {
 					:aria-label="t('builder.toolbar.link')"
 					@click="applyFormat(richText.setLink)"
 				>
-					<Link :size="14" />
+					<LinkIcon :size="14" />
 				</button>
 			</UiTooltip>
 			<div v-if="variables?.length" class="w-px h-[18px] bg-border-subtle mx-0.5" />
@@ -178,7 +185,7 @@ function handleSourceInput(event: Event) {
 						:aria-expanded="showVariableMenu"
 						@click="showVariableMenu = !showVariableMenu"
 					>
-						<VariableIcon :size="14" />
+						<BracesIcon :size="14" />
 					</button>
 				</UiTooltip>
 				<div
@@ -209,7 +216,7 @@ function handleSourceInput(event: Event) {
 					:aria-pressed="isSourceMode"
 					@click="toggleSourceMode"
 				>
-					<Code :size="14" />
+					<CodeIcon :size="14" />
 				</button>
 			</UiTooltip>
 		</div>

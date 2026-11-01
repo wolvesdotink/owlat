@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
+import { ShieldIcon, ShieldOffIcon, UserMinusCornerIcon } from '@coolicons/vue';
 
 interface Room {
 	_id: Id<'chatRooms'>;
@@ -148,7 +149,7 @@ const confirmRemove = async () => {
 							:aria-label="t('components.chat.chatMemberList.promote')"
 							@click="handlePromote(member.memberId)"
 						>
-							<Icon name="lucide:shield" class="w-3.5 h-3.5" />
+							<ShieldIcon class="w-3.5 h-3.5" />
 						</button>
 					</UiTooltip>
 					<UiTooltip v-else :text="t('components.chat.chatMemberList.demote')">
@@ -157,7 +158,7 @@ const confirmRemove = async () => {
 							:aria-label="t('components.chat.chatMemberList.demote')"
 							@click="handleDemote(member.memberId)"
 						>
-							<Icon name="lucide:shield-off" class="w-3.5 h-3.5" />
+							<ShieldOffIcon class="w-3.5 h-3.5" />
 						</button>
 					</UiTooltip>
 					<UiTooltip :text="t('common.remove')">
@@ -166,7 +167,7 @@ const confirmRemove = async () => {
 							:aria-label="t('common.remove')"
 							@click="memberToRemove = member"
 						>
-							<Icon name="lucide:user-minus" class="w-3.5 h-3.5" />
+							<UserMinusCornerIcon class="w-3.5 h-3.5" />
 						</button>
 					</UiTooltip>
 				</div>

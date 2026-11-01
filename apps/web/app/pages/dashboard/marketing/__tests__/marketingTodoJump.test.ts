@@ -51,7 +51,6 @@ function render(): VueWrapper {
 			plugins: [createTestI18n()],
 			stubs: {
 				UiPageHeader: { template: '<header><slot name="actions" /></header>' },
-				Icon: true,
 				UiButton: true,
 				UiSkeleton: true,
 				UiErrorAlert: true,

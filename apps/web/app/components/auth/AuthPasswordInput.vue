@@ -14,6 +14,8 @@
  * `aria-pressed`, so a screen reader hears "Show password, pressed" instead of
  * a label that flips between two opposite sentences.
  */
+import { EyeIcon, EyeOffIcon } from '@coolicons/vue';
+
 interface Props {
 	modelValue?: string;
 	label?: string;
@@ -92,7 +94,7 @@ function onInput(event: Event) {
 				data-testid="password-visibility-toggle"
 				@click="revealed = !revealed"
 			>
-				<Icon :name="revealed ? 'lucide:eye-off' : 'lucide:eye'" class="size-4" />
+				<component :is="revealed ? EyeOffIcon : EyeIcon" class="size-4" />
 			</button>
 		</div>
 

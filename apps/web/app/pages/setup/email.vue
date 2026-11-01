@@ -5,6 +5,7 @@ import { useSetupEmailStepForm } from '~/composables/useSetupEmailStepForm';
 import { OUTBOUND_TLS_MODE_OPTIONS } from '~/composables/setupOutboundTls';
 import { setupChoiceClass } from '~/utils/setupChoiceCard';
 import TransportCredentialFields from '~/components/delivery/TransportCredentialFields.vue';
+import { ArrowLeftIcon, ArrowRightIcon, CircleInfoIcon, FeatherIcon } from '@coolicons/vue';
 
 definePageMeta({ layout: false });
 
@@ -109,7 +110,7 @@ async function next() {
 
 		<div class="relative mx-auto max-w-3xl px-6 py-12">
 			<div class="flex items-center gap-3 mb-8">
-				<UiIconBox icon="lucide:feather" size="md" variant="brand" rounded="xl" />
+				<UiIconBox :icon="FeatherIcon" size="md" variant="brand" rounded="xl" />
 				<span class="lp-eyebrow">{{ t('setup.email.eyebrow') }}</span>
 			</div>
 
@@ -148,7 +149,7 @@ async function next() {
 						class="mb-5 flex items-start gap-2 text-sm text-text-secondary"
 						data-testid="setup-provider-hint"
 					>
-						<Icon name="lucide:info" class="mt-0.5 h-4 w-4 shrink-0 text-text-tertiary" />
+						<CircleInfoIcon class="mt-0.5 h-4 w-4 shrink-0 text-text-tertiary" />
 						{{
 							requiresProvider
 								? t('setup.email.providerRequiredHint')
@@ -319,14 +320,12 @@ async function next() {
 
 			<footer class="mt-8 flex items-center justify-between border-t border-border-subtle pt-6">
 				<UiButton variant="ghost" :disabled="submitting" @click="router.push('/setup/features')">
-					<template #iconLeft><Icon name="lucide:arrow-left" class="w-4 h-4 mr-2" /></template>
+					<template #iconLeft><ArrowLeftIcon class="w-4 h-4 mr-2" /></template>
 					{{ t('common.back') }}
 				</UiButton>
 				<UiButton :loading="submitting" @click="next">
 					{{ submitting ? t('setup.email.validating') : t('setup.email.next') }}
-					<template v-if="!submitting" #iconRight
-						><Icon name="lucide:arrow-right" class="w-4 h-4 ml-2"
-					/></template>
+					<template v-if="!submitting" #iconRight><ArrowRightIcon class="w-4 h-4 ml-2" /></template>
 				</UiButton>
 			</footer>
 		</div>

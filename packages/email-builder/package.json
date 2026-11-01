@@ -59,7 +59,7 @@
 		"vue-tsc": "catalog:"
 	},
 	"peerDependencies": {
-		"@lucide/vue": "^1.0.0",
+		"@coolicons/vue": "^5.1.0",
 		"@owlat/ui": "workspace:*",
 		"vue": "catalog:vue",
 		"vue-draggable-plus": "^0.6.0"

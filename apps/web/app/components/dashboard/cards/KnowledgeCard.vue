@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import { entryTypeLabel, entryTypeVariant } from '~/utils/knowledgeEntryTypes';
+import { BrainIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -32,7 +33,7 @@ function truncateContent(content: string, maxLength = 80): string {
 		<div class="p-5">
 			<div class="flex items-center justify-between mb-4">
 				<div class="flex items-center gap-2.5">
-					<UiIconBox icon="lucide:brain" size="sm" variant="surface" />
+					<UiIconBox :icon="BrainIcon" size="sm" variant="surface" />
 					<h3 class="text-sm font-semibold text-text-primary">
 						{{ t('components.dashboard.cards.knowledge.title') }}
 					</h3>

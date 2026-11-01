@@ -30,6 +30,7 @@ import type { DmarcPolicy } from '~/utils/domainStatus';
 // groups in the row's component tests, which stub only the leaf panels.
 import DnsChecklistSummary from './DnsChecklistSummary.vue';
 import DnsRecordGroup from './DnsRecordGroup.vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 type DomainRow = FunctionReturnType<typeof api.domains.domains.listByOrganization>[number];
 
@@ -144,7 +145,7 @@ const returnPathHost = computed(() => props.domain.returnPathHost ?? props.mailF
 			class="inline-flex items-center gap-1.5 text-xs text-text-secondary whitespace-nowrap"
 			:title="t('components.domains.recordRow.autoRecheckTitle')"
 		>
-			<Icon name="lucide:loader-2" class="w-3 h-3 animate-spin motion-reduce:animate-none" />
+			<SpinnerIcon class="w-3 h-3" />
 			{{ t('components.domains.recordRow.checkingDns') }}
 		</span>
 	</div>
@@ -204,11 +205,7 @@ const returnPathHost = computed(() => props.domain.returnPathHost ?? props.mailF
 							{{ opt.label }}
 						</option>
 					</select>
-					<Icon
-						v-if="isUpdatingDmarc"
-						name="lucide:loader-2"
-						class="w-4 h-4 animate-spin motion-reduce:animate-none text-text-tertiary"
-					/>
+					<SpinnerIcon v-if="isUpdatingDmarc" class="w-4 h-4 text-text-tertiary" />
 				</div>
 				<p class="mt-2 text-xs text-text-secondary">
 					{{ dmarcPolicyOptions.find((o) => o.value === (domain.dmarcPolicy ?? 'none'))?.hint }}

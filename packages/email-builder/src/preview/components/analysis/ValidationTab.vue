@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
-import { AlertCircle, AlertTriangle, Info } from '@lucide/vue';
+import { CircleInfoIcon, CircleWarningIcon, TriangleWarningIcon } from '@coolicons/vue';
 import type { PreviewValidationIssue } from '../../types';
 import AnalysisEmpty from './AnalysisEmpty.vue';
 import { useBuilderI18n } from '../../../i18n/useBuilderI18n';
@@ -45,7 +45,7 @@ function toggleSeverity(severity: string) {
 				:class="{ 'ep-filter-active': severityFilter.has('error') }"
 				@click="toggleSeverity('error')"
 			>
-				<AlertCircle class="ep-filter-icon ep-filter-error" />
+				<CircleWarningIcon class="ep-filter-icon ep-filter-error" />
 				{{ t('builder.analysis.validation.errors', { count: issueCounts.error }) }}
 			</button>
 			<button
@@ -53,7 +53,7 @@ function toggleSeverity(severity: string) {
 				:class="{ 'ep-filter-active': severityFilter.has('warning') }"
 				@click="toggleSeverity('warning')"
 			>
-				<AlertTriangle class="ep-filter-icon ep-filter-warning" />
+				<TriangleWarningIcon class="ep-filter-icon ep-filter-warning" />
 				{{ t('builder.analysis.validation.warnings', { count: issueCounts.warning }) }}
 			</button>
 			<button
@@ -61,7 +61,7 @@ function toggleSeverity(severity: string) {
 				:class="{ 'ep-filter-active': severityFilter.has('info') }"
 				@click="toggleSeverity('info')"
 			>
-				<Info class="ep-filter-icon ep-filter-info" />
+				<CircleInfoIcon class="ep-filter-icon ep-filter-info" />
 				{{ t('builder.analysis.validation.info', { count: issueCounts.info }) }}
 			</button>
 		</div>
@@ -77,10 +77,10 @@ function toggleSeverity(severity: string) {
 				<component
 					:is="
 						issue.severity === 'error'
-							? AlertCircle
+							? CircleWarningIcon
 							: issue.severity === 'warning'
-								? AlertTriangle
-								: Info
+								? TriangleWarningIcon
+								: CircleInfoIcon
 					"
 					class="ep-issue-icon"
 				/>

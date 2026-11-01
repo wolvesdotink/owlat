@@ -15,6 +15,15 @@
  */
 
 import type { Id } from '@owlat/api/dataModel';
+import {
+	ArchiveIcon,
+	CloseIcon,
+	FolderDownloadIcon,
+	MailIcon,
+	MailOpenIcon,
+	StarIcon,
+	TrashIcon,
+} from '@coolicons/vue';
 
 const props = defineProps<{
 	mailboxId: Id<'mailboxes'>;
@@ -76,7 +85,7 @@ const movableFolders = computed(() =>
 						@click="bulk.markRead(true)"
 					>
 						<template #iconLeft>
-							<Icon name="lucide:mail-open" class="w-4 h-4" />
+							<MailOpenIcon class="w-4 h-4" />
 						</template>
 						{{ t('components.postbox.postboxQuickActionsBar.read') }}
 					</UiButton>
@@ -89,7 +98,7 @@ const movableFolders = computed(() =>
 						@click="bulk.markRead(false)"
 					>
 						<template #iconLeft>
-							<Icon name="lucide:mail" class="w-4 h-4" />
+							<MailIcon class="w-4 h-4" />
 						</template>
 						{{ t('components.postbox.postboxQuickActionsBar.unread') }}
 					</UiButton>
@@ -97,7 +106,7 @@ const movableFolders = computed(() =>
 				<UiTooltip :text="t('components.postbox.postboxQuickActionsBar.starTitle')">
 					<UiButton variant="ghost" size="sm" class="gap-1.5 px-2 py-1" @click="bulk.star(true)">
 						<template #iconLeft>
-							<Icon name="lucide:star" class="w-4 h-4" />
+							<StarIcon class="w-4 h-4" />
 						</template>
 						{{ t('components.postbox.postboxQuickActionsBar.star') }}
 					</UiButton>
@@ -111,7 +120,7 @@ const movableFolders = computed(() =>
 						@click="moveOpen = !moveOpen"
 					>
 						<template #iconLeft>
-							<Icon name="lucide:folder-input" class="w-4 h-4" />
+							<FolderDownloadIcon class="w-4 h-4" />
 						</template>
 						{{ t('components.postbox.postboxQuickActionsBar.move') }}
 					</UiButton>
@@ -144,7 +153,7 @@ const movableFolders = computed(() =>
 						@click="bulk.archiveSelected()"
 					>
 						<template #iconLeft>
-							<Icon name="lucide:archive" class="w-4 h-4" />
+							<ArchiveIcon class="w-4 h-4" />
 						</template>
 						{{ t('components.postbox.postboxQuickActionsBar.archive') }}
 					</UiButton>
@@ -163,7 +172,7 @@ const movableFolders = computed(() =>
 						@click="bulk.trashSelected()"
 					>
 						<template #iconLeft>
-							<Icon name="lucide:trash" class="w-4 h-4" />
+							<TrashIcon class="w-4 h-4" />
 						</template>
 						{{ t('common.delete') }}
 					</UiButton>
@@ -177,7 +186,7 @@ const movableFolders = computed(() =>
 						:aria-label="t('components.postbox.postboxQuickActionsBar.clearSelectionTitle')"
 						@click="bulk.clear()"
 					>
-						<Icon name="lucide:x" class="w-4 h-4" />
+						<CloseIcon class="w-4 h-4" />
 					</button>
 				</UiTooltip>
 			</div>

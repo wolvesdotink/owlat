@@ -50,7 +50,6 @@ function mountPanel(data: unknown, canManage = true) {
 		global: {
 			plugins: [createTestI18n()],
 			stubs: {
-				Icon: true,
 				NuxtLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
 				DomainsDNSRecordPanel: {
 					props: ['record', 'label', 'domain'],

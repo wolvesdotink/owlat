@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
+import { CalendarEventIcon, CalendarIcon } from '@coolicons/vue';
 
 const { t, locale } = useI18n();
 
@@ -63,7 +64,7 @@ function getTimeUrgency(timestamp?: number): 'default' | 'warning' | 'error' | '
 		<div class="p-5">
 			<div class="flex items-center justify-between mb-4">
 				<div class="flex items-center gap-2.5">
-					<UiIconBox icon="lucide:calendar-clock" size="sm" variant="surface" />
+					<UiIconBox :icon="CalendarEventIcon" size="sm" variant="surface" />
 					<h3 class="text-sm font-semibold text-text-primary">
 						{{ t('components.dashboard.cards.upcomingCampaignsCard.title') }}
 					</h3>
@@ -79,7 +80,7 @@ function getTimeUrgency(timestamp?: number): 'default' | 'warning' | 'error' | '
 			<DashboardCardSkeleton v-if="isLoading" shape="list" :count="3" :avatar="false" />
 
 			<div v-else-if="campaigns.length === 0" class="py-4 text-center">
-				<Icon name="lucide:calendar" class="w-6 h-6 text-text-tertiary mx-auto mb-2" />
+				<CalendarIcon class="w-6 h-6 text-text-tertiary mx-auto mb-2" />
 				<p class="text-sm text-text-tertiary">
 					{{ t('components.dashboard.cards.upcomingCampaignsCard.empty') }}
 				</p>

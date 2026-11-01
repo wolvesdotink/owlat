@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const { t } = useI18n();
 
@@ -197,11 +198,7 @@ async function confirmDisable() {
 						{{ t('dashboard.preferences.vacation.turnOff') }}
 					</UiButton>
 					<UiButton type="button" :disabled="saving || !loaded" @click="save">
-						<Icon
-							v-if="saving"
-							name="lucide:loader-2"
-							class="w-4 h-4 mr-1.5 animate-spin motion-reduce:animate-none"
-						/>
+						<SpinnerIcon v-if="saving" class="w-4 h-4 mr-1.5" />
 						{{ saving ? t('common.saving') : t('common.save') }}
 					</UiButton>
 				</div>

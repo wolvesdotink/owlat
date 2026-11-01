@@ -31,7 +31,6 @@ function mountWith(component: Component, props: Record<string, unknown> = {}, sl
 		attachTo: document.body,
 		global: {
 			plugins: [createUiI18n('en')],
-			components: { Icon: { name: 'Icon', setup: () => () => h('i') } },
 		},
 	});
 	mounted.push(wrapper);

@@ -126,7 +126,6 @@ export async function mountEditPage(stubs: Record<string, unknown> = {}) {
 		global: {
 			plugins: [createTestI18n()],
 			stubs: {
-				Icon: true,
 				UiSpinner: true,
 				NuxtLink: { template: '<a><slot /></a>' },
 				UiButton: {

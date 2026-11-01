@@ -2,6 +2,17 @@
 import type { Id } from '@owlat/api/dataModel';
 import type { useBulkSelection } from '~/composables/useBulkSelection';
 import type { useContactBulkOperations } from '~/composables/useContactBulkOperations';
+import {
+	ChevronDownIcon,
+	ChevronRightIcon,
+	CloseIcon,
+	DownloadIcon,
+	ListMinusIcon,
+	MoreHorizontalIcon,
+	TagIcon,
+	TrashIcon,
+} from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 // The contacts list's bulk bar, shown while contacts are selected: the count,
 // "select all matching", the Actions menu (add to / remove from a topic,
@@ -47,11 +58,7 @@ useClickOutside(bulkActionDropdownRef, () => {
 				:disabled="bulkOps.isLoadingAllMatching.value"
 				@click="bulkOps.selectAllMatchingFilter"
 			>
-				<Icon
-					v-if="bulkOps.isLoadingAllMatching.value"
-					name="lucide:loader-2"
-					class="w-3 h-3 animate-spin motion-reduce:animate-none inline mr-1"
-				/>
+				<SpinnerIcon v-if="bulkOps.isLoadingAllMatching.value" class="w-3 h-3 inline mr-1" />
 				{{ t('dashboard.audience.contacts.index.selectAllMatching', { count: totalCount }) }}
 			</button>
 
@@ -64,9 +71,9 @@ useClickOutside(bulkActionDropdownRef, () => {
 						bulkOps.isBulkActionDropdownOpen.value = !bulkOps.isBulkActionDropdownOpen.value
 					"
 				>
-					<template #iconLeft><Icon name="lucide:more-horizontal" class="w-4 h-4" /></template>
+					<template #iconLeft><MoreHorizontalIcon class="w-4 h-4" /></template>
 					{{ t('common.actions') }}
-					<template #iconRight><Icon name="lucide:chevron-down" class="w-4 h-4" /></template>
+					<template #iconRight><ChevronDownIcon class="w-4 h-4" /></template>
 				</UiButton>
 
 				<Transition
@@ -91,10 +98,10 @@ useClickOutside(bulkActionDropdownRef, () => {
 								"
 							>
 								<span class="flex items-center gap-2">
-									<Icon name="lucide:tag" class="w-4 h-4 text-brand" />
+									<TagIcon class="w-4 h-4 text-brand" />
 									{{ t('dashboard.audience.contacts.index.bulk.addToTopic') }}
 								</span>
-								<Icon name="lucide:chevron-right" class="w-4 h-4" />
+								<ChevronRightIcon class="w-4 h-4" />
 							</button>
 
 							<Transition
@@ -137,10 +144,10 @@ useClickOutside(bulkActionDropdownRef, () => {
 								"
 							>
 								<span class="flex items-center gap-2">
-									<Icon name="lucide:list-minus" class="w-4 h-4 text-text-secondary" />
+									<ListMinusIcon class="w-4 h-4 text-text-secondary" />
 									{{ t('dashboard.audience.contacts.index.bulk.removeFromTopic') }}
 								</span>
-								<Icon name="lucide:chevron-right" class="w-4 h-4" />
+								<ChevronRightIcon class="w-4 h-4" />
 							</button>
 
 							<Transition
@@ -178,7 +185,7 @@ useClickOutside(bulkActionDropdownRef, () => {
 							class="w-full px-3 py-2 text-left text-sm text-text-primary hover:bg-bg-surface flex items-center gap-2 transition-colors"
 							@click="bulkOps.handleBulkExport"
 						>
-							<Icon name="lucide:download" class="w-4 h-4 text-text-secondary" />
+							<DownloadIcon class="w-4 h-4 text-text-secondary" />
 							{{ t('dashboard.audience.contacts.index.bulk.exportSelected') }}
 						</button>
 
@@ -188,7 +195,7 @@ useClickOutside(bulkActionDropdownRef, () => {
 							class="w-full px-3 py-2 text-left text-sm text-error hover:bg-error-subtle flex items-center gap-2 transition-colors"
 							@click="bulkOps.openBulkDeleteModal"
 						>
-							<Icon name="lucide:trash-2" class="w-4 h-4" />
+							<TrashIcon class="w-4 h-4" />
 							{{ t('dashboard.audience.contacts.index.bulk.deleteSelected') }}
 						</button>
 					</div>
@@ -200,7 +207,7 @@ useClickOutside(bulkActionDropdownRef, () => {
 				@click="bulkSelection.clearSelection()"
 				:aria-label="t('dashboard.audience.contacts.index.clearSelection')"
 			>
-				<Icon name="lucide:x" class="w-4 h-4" />
+				<CloseIcon class="w-4 h-4" />
 			</button>
 		</div>
 	</Transition>

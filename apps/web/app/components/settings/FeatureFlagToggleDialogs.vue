@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { FeatureFlagKey, FeatureFlagRegistry } from '@owlat/shared/featureFlags';
 import { useFeatureCopy } from '~/composables/useFeatureCopy';
+import { ArrowTurnDownRightIcon, ShieldCheckIcon } from '@coolicons/vue';
 
 /**
  * The three confirmation surfaces a feature-flag toggle can raise on the
@@ -63,7 +64,7 @@ const { flagKeyLabel } = useFeatureCopy();
 				:key="key"
 				class="text-sm text-text-secondary flex items-center gap-2"
 			>
-				<Icon name="lucide:corner-down-right" class="w-3.5 h-3.5 text-text-tertiary shrink-0" />
+				<ArrowTurnDownRightIcon class="w-3.5 h-3.5 text-text-tertiary shrink-0" />
 				<code class="text-xs bg-bg-surface px-1.5 py-0.5 rounded">{{ key }}</code>
 				<span class="truncate">{{ flagKeyLabel(key, registry[key]) }}</span>
 			</li>
@@ -94,7 +95,7 @@ const { flagKeyLabel } = useFeatureCopy();
 				:key="capability"
 				class="text-sm text-text-secondary flex items-center gap-2"
 			>
-				<Icon name="lucide:shield-check" class="w-3.5 h-3.5 text-warning shrink-0" />
+				<ShieldCheckIcon class="w-3.5 h-3.5 text-warning shrink-0" />
 				<code class="text-xs bg-bg-surface px-1.5 py-0.5 rounded">{{ capability }}</code>
 			</li>
 		</ul>

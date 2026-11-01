@@ -2,7 +2,7 @@
 import UiTooltip from '@owlat/ui/components/ui/Tooltip.vue';
 import { ref, shallowRef } from 'vue';
 import type { BlockType } from '../../types';
-import { Plus } from '@lucide/vue';
+import { PlusIcon } from '@coolicons/vue';
 import BlockPickerPopover from './BlockPickerPopover.vue';
 import { useBuilderI18n } from '../../i18n/useBuilderI18n';
 
@@ -71,7 +71,7 @@ function handleSelect(type: BlockType, afterBlockId: string) {
 				:aria-label="t('builder.canvas.insertHere')"
 				@click.stop="showPicker = !showPicker"
 			>
-				<Plus :size="12" :stroke-width="2.5" />
+				<PlusIcon :size="12" :stroke-width="2.5" />
 			</button>
 		</UiTooltip>
 

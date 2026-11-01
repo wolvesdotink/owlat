@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
+import { HashIcon, LockIcon, PlusIcon } from '@coolicons/vue';
 
 const emit = defineEmits<{
 	close: [];
@@ -89,7 +90,7 @@ const handleSubmit = async () => {
 						@click="visibility = 'public'"
 					>
 						<template #iconLeft>
-							<Icon name="lucide:hash" class="w-4 h-4" />
+							<HashIcon class="w-4 h-4" />
 						</template>
 						{{ t('components.chat.chatNewChannelDialog.public') }}
 					</UiButton>
@@ -101,7 +102,7 @@ const handleSubmit = async () => {
 						@click="visibility = 'private'"
 					>
 						<template #iconLeft>
-							<Icon name="lucide:lock" class="w-4 h-4" />
+							<LockIcon class="w-4 h-4" />
 						</template>
 						{{ t('components.chat.chatNewChannelDialog.private') }}
 					</UiButton>
@@ -124,7 +125,7 @@ const handleSubmit = async () => {
 			<UiButton variant="secondary" @click="emit('close')">{{ t('common.cancel') }}</UiButton>
 			<UiButton class="gap-2" :disabled="!name.trim() || isCreating" @click="handleSubmit">
 				<UiSpinner v-if="isCreating" size="xs" tone="inverse" />
-				<Icon v-else name="lucide:plus" class="w-4 h-4" />
+				<PlusIcon v-else class="w-4 h-4" />
 				{{ t('common.create') }}
 			</UiButton>
 		</div>

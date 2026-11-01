@@ -2,6 +2,18 @@
 import { api } from '@owlat/api';
 import type { ConversationStatus } from '~/utils/conversationStatus';
 import type { NavigationItem } from '~/lib/dashboardNavigationCore';
+import {
+	ChartBarVerticalIcon,
+	ChevronDownIcon,
+	CircleCheckIcon,
+	CircleWarningIcon,
+	LayoutTemplateIcon,
+	MegaphoneIcon,
+	PlusIcon,
+	TrashIcon,
+	UsersIcon,
+} from '@coolicons/vue';
+import { navIcon } from '~/lib/navIcons';
 
 /**
  * The Marketing workspace's sidebar: Overview first, then the campaigns and
@@ -98,20 +110,20 @@ const links = computed(() =>
 	[
 		{
 			to: '/dashboard/audience',
-			icon: 'lucide:users',
+			icon: UsersIcon,
 			label: t('components.shell.marketing.audience'),
 			show: true,
 		},
 		{
 			to: '/dashboard/send',
-			icon: 'lucide:layout-template',
+			icon: LayoutTemplateIcon,
 			label: t('components.shell.marketing.templates'),
 			show: isAdmin.value,
 		},
 		{
 			// Shown to whoever could restore something there (the page's own tabs).
 			to: '/dashboard/marketing/deleted',
-			icon: 'lucide:trash-2',
+			icon: TrashIcon,
 			label: t('components.shell.marketing.recentlyDeleted'),
 			show:
 				(campaignsOn.value && can('campaigns:manage')) ||
@@ -152,8 +164,8 @@ const activeAutomationId = computed(
 					props.collapsed ? 'justify-center' : '',
 				]"
 			>
-				<Icon
-					name="lucide:chart-no-axes-column"
+				<component
+					:is="navIcon(ChartBarVerticalIcon, isActive('/dashboard/marketing', true))"
 					class="size-4.5 shrink-0"
 					:class="isActive('/dashboard/marketing', true) ? 'text-brand' : 'text-text-tertiary'"
 				/>
@@ -170,8 +182,7 @@ const activeAutomationId = computed(
 						:aria-expanded="!isCollapsed('campaigns')"
 						@click="toggleGroup('campaigns')"
 					>
-						<Icon
-							name="lucide:chevron-down"
+						<ChevronDownIcon
 							class="size-3 transition-transform duration-(--motion-fast)"
 							:class="isCollapsed('campaigns') ? '-rotate-90' : ''"
 						/>
@@ -183,7 +194,7 @@ const activeAutomationId = computed(
 							class="flex size-6 items-center justify-center rounded text-text-tertiary hover:text-text-primary"
 							:aria-label="t('components.shell.marketing.newCampaign')"
 						>
-							<Icon name="lucide:plus" class="size-3.5" />
+							<PlusIcon class="size-3.5" />
 						</NuxtLink>
 					</UiTooltip>
 				</div>
@@ -218,8 +229,7 @@ const activeAutomationId = computed(
 					:aria-expanded="!isCollapsed('automations')"
 					@click="toggleGroup('automations')"
 				>
-					<Icon
-						name="lucide:chevron-down"
+					<ChevronDownIcon
 						class="size-3 transition-transform duration-(--motion-fast)"
 						:class="isCollapsed('automations') ? '-rotate-90' : ''"
 					/>
@@ -270,7 +280,11 @@ const activeAutomationId = computed(
 							: 'text-text-secondary hover:bg-(--surface-2-hover) hover:text-text-primary'
 					"
 				>
-					<Icon :name="link.icon" class="size-4 text-text-tertiary" />
+					<component
+						:is="navIcon(link.icon, isActive(link.to))"
+						class="size-4"
+						:class="isActive(link.to) ? 'text-brand' : 'text-text-tertiary'"
+					/>
 					<span class="truncate">{{ link.label }}</span>
 				</NuxtLink>
 			</div>
@@ -281,8 +295,8 @@ const activeAutomationId = computed(
 					to="/dashboard/admin/delivery"
 					class="mt-3 flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs text-text-secondary hover:bg-(--surface-2-hover)"
 				>
-					<Icon
-						:name="healthLevel === 'ok' ? 'lucide:circle-check' : 'lucide:circle-alert'"
+					<component
+						:is="healthLevel === 'ok' ? CircleCheckIcon : CircleWarningIcon"
 						class="size-4"
 						:class="
 							healthLevel === 'ok'
@@ -306,7 +320,7 @@ const activeAutomationId = computed(
 				v-for="link in [
 					{
 						to: '/dashboard/campaigns',
-						icon: 'lucide:megaphone',
+						icon: MegaphoneIcon,
 						label: t('components.shell.marketing.campaigns'),
 					},
 					...links,
@@ -319,7 +333,7 @@ const activeAutomationId = computed(
 					:aria-label="link.label"
 					class="flex justify-center rounded-lg py-2 text-text-tertiary hover:bg-(--surface-2-hover) hover:text-text-primary"
 				>
-					<Icon :name="link.icon" class="size-4.5" />
+					<component :is="link.icon" class="size-4.5" />
 				</NuxtLink>
 			</UiTooltip>
 		</template>

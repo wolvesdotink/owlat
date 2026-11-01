@@ -4,6 +4,7 @@ import {
 	SIDEBAR_THREADS_MIN,
 	type SidebarThreadSort,
 } from '~/composables/useShellSidebarPrefs';
+import { CheckIcon, MinusIcon, PlusIcon, Slider1Icon } from '@coolicons/vue';
 
 /**
  * "Sidebar options": how many conversations each inbox lists (0 keeps just the
@@ -36,7 +37,7 @@ function stepPerInbox(by: 1 | -1) {
 					class="flex size-6 items-center justify-center rounded text-text-tertiary hover:bg-(--surface-2-hover) hover:text-text-primary"
 					:aria-label="t('components.shell.options.label')"
 				>
-					<Icon name="lucide:sliders-horizontal" class="size-3.5" />
+					<Slider1Icon class="size-3.5" />
 				</button>
 			</UiTooltip>
 		</template>
@@ -56,7 +57,7 @@ function stepPerInbox(by: 1 | -1) {
 				:aria-label="t('components.shell.options.fewer')"
 				@click="stepPerInbox(-1)"
 			>
-				<Icon name="lucide:minus" class="size-3" />
+				<MinusIcon class="size-3" />
 			</button>
 			<span class="w-6 text-center text-xs tabular-nums text-text-primary" aria-live="polite">{{
 				perInbox
@@ -70,7 +71,7 @@ function stepPerInbox(by: 1 | -1) {
 				:aria-label="t('components.shell.options.more')"
 				@click="stepPerInbox(1)"
 			>
-				<Icon name="lucide:plus" class="size-3" />
+				<PlusIcon class="size-3" />
 			</button>
 		</div>
 		<UiDropdownDivider />
@@ -80,7 +81,7 @@ function stepPerInbox(by: 1 | -1) {
 		<UiDropdownMenuItem
 			v-for="option in SORTS"
 			:key="option.value"
-			:icon="sort === option.value ? 'lucide:check' : undefined"
+			:icon="sort === option.value ? CheckIcon : undefined"
 			@click="sort = option.value"
 		>
 			<span :class="sort === option.value ? '' : 'pl-6'">{{ t(option.label) }}</span>

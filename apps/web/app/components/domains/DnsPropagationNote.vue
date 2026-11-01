@@ -10,6 +10,8 @@
  */
 
 /** Where "Learn more" points. Named so the test asserts one constant, not a literal. */
+import { ExternalLinkIcon } from '@coolicons/vue';
+
 const DNS_DOCS_URL = 'https://docs.owlat.app/developer/self-hosting-dns-email';
 
 const { t } = useI18n();
@@ -32,7 +34,7 @@ const { t } = useI18n();
 				class="inline-flex items-center gap-1 text-brand hover:underline ml-1"
 			>
 				{{ t('common.learnMore') }}
-				<Icon name="lucide:external-link" class="w-3 h-3" />
+				<ExternalLinkIcon class="w-3 h-3" />
 			</a>
 		</p>
 	</div>

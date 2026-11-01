@@ -48,7 +48,6 @@ function mountItems(props: Record<string, unknown> = {}) {
 				PostboxOverflowMenu: MenuStub,
 				BriefIncomplete: Plain,
 			},
-			stubs: { Icon: true },
 		},
 	});
 }

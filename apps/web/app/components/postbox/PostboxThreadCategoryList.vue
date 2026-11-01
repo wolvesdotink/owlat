@@ -13,11 +13,17 @@ import { usePostboxPinRowDrag } from '~/composables/postbox/usePostboxMessageDra
 import type { PostboxConversationThread } from './PostboxConversationRow.vue';
 import type { PostboxThreadListSection } from './PostboxSectionedThreadList.vue';
 import { folderAnswerOrigin, useListAnswerOrigin } from '~/composables/useAnswerMode';
+import { TagIcon, type IconComponent } from '@coolicons/vue';
 
 type CategoryThread = PostboxConversationThread & { category?: { label: string } };
 
 const props = defineProps<{
-	sections: Array<{ key: MailCategory; label: string; icon: string; threads: CategoryThread[] }>;
+	sections: Array<{
+		key: MailCategory;
+		label: string;
+		icon: IconComponent;
+		threads: CategoryThread[];
+	}>;
 	collapsed: Record<string, boolean>;
 	loading: boolean;
 	folderRole: string;
@@ -128,7 +134,7 @@ function pickCategory(label: MailCategory) {
 					:aria-label="t('components.postbox.postboxThreadCategoryList.recategorize')"
 					@click.prevent.stop="recategorizeTarget = thread._id"
 				>
-					<Icon name="lucide:tag" class="w-3.5 h-3.5" />
+					<TagIcon class="w-3.5 h-3.5" />
 				</button>
 			</UiTooltip>
 		</template>

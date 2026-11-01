@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
+import { UsersIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -36,7 +37,7 @@ function getInitials(contact: Contact): string {
 		<div class="p-5">
 			<div class="flex items-center justify-between mb-4">
 				<div class="flex items-center gap-2.5">
-					<UiIconBox icon="lucide:users" size="sm" variant="surface" />
+					<UiIconBox :icon="UsersIcon" size="sm" variant="surface" />
 					<h3 class="text-sm font-semibold text-text-primary">
 						{{ t('components.dashboard.cards.recentContactsCard.title') }}
 					</h3>
@@ -52,7 +53,7 @@ function getInitials(contact: Contact): string {
 			<DashboardCardSkeleton v-if="isLoading" shape="list" :count="4" />
 
 			<div v-else-if="contactList.length === 0" class="py-4 text-center">
-				<Icon name="lucide:users" class="w-6 h-6 text-text-tertiary mx-auto mb-2" />
+				<UsersIcon class="w-6 h-6 text-text-tertiary mx-auto mb-2" />
 				<p class="text-sm text-text-tertiary">
 					{{ t('components.dashboard.cards.recentContactsCard.empty') }}
 				</p>

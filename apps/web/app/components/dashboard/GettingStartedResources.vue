@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { normalizeDashboardUrl, resolveConvexDashboardUrl } from '~/utils/convexDashboard';
 import { readStoredString } from '~/utils/storedValue';
+import { BookOpenIcon, DashboardIcon } from '@coolicons/vue';
 
 /**
  * Self-host resource links shown beneath the instance go-live steps in the
@@ -76,7 +77,7 @@ function cancelEditingDashboard() {
 				class="group flex flex-col gap-1 transition-transform hover:-translate-y-px"
 			>
 				<div class="flex items-center gap-2">
-					<Icon name="lucide:layout-dashboard" class="h-4 w-4 text-text-tertiary" />
+					<DashboardIcon class="h-4 w-4 text-text-tertiary" />
 					<span class="text-sm font-medium text-text-primary">{{
 						t('components.dashboard.gettingStartedResources.convexTitle')
 					}}</span>
@@ -152,7 +153,7 @@ function cancelEditingDashboard() {
 			class="group flex flex-col gap-1 rounded-lg bg-surface-2 shadow-surface-1 border border-transparent p-3 transition-[translate,border-color] hover:-translate-y-px hover:border-brand/40"
 		>
 			<div class="flex items-center gap-2">
-				<Icon name="lucide:book-open" class="h-4 w-4 text-text-tertiary" />
+				<BookOpenIcon class="h-4 w-4 text-text-tertiary" />
 				<span class="text-sm font-medium text-text-primary">{{
 					t('components.dashboard.gettingStartedResources.docsTitle')
 				}}</span>

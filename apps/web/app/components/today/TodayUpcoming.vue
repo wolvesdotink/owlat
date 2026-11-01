@@ -17,6 +17,13 @@ import {
 	upcomingWhen,
 	type UpcomingItem,
 } from '~/utils/todayUpcoming';
+import {
+	AlarmIcon,
+	BellIcon,
+	MegaphoneIcon,
+	PaperPlaneIcon,
+	type IconComponent,
+} from '@coolicons/vue';
 
 const { t, locale, n } = useI18n();
 const { inboxes } = useInboxes();
@@ -52,12 +59,12 @@ function when(item: UpcomingItem): string {
 	}
 }
 
-const ICONS: Record<UpcomingItem['kind'], string> = {
-	scheduled_send: 'lucide:send',
-	snooze_return: 'lucide:alarm-clock',
-	follow_up: 'lucide:bell',
-	team_snooze_return: 'lucide:alarm-clock',
-	campaign: 'lucide:megaphone',
+const ICONS: Record<UpcomingItem['kind'], IconComponent> = {
+	scheduled_send: PaperPlaneIcon,
+	snooze_return: AlarmIcon,
+	follow_up: BellIcon,
+	team_snooze_return: AlarmIcon,
+	campaign: MegaphoneIcon,
 };
 
 function title(item: UpcomingItem): string {
@@ -156,8 +163,8 @@ const asSend = (item: UpcomingItem) => item as UpcomingSend;
 					data-testid="today-upcoming-when"
 					>{{ when(item) }}</span
 				>
-				<Icon
-					:name="ICONS[item.kind]"
+				<component
+					:is="ICONS[item.kind]"
 					class="size-4 shrink-0 text-text-tertiary"
 					aria-hidden="true"
 				/>

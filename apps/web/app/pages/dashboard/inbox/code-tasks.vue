@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import { rules } from '~/composables/useFormValidation';
+import { ArrowLeftIcon, CodeIcon, PlusIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const { t } = useI18n();
 
@@ -72,7 +74,7 @@ const handleCreate = async () => {
 				class="mt-2 inline-flex items-center gap-2 text-text-secondary hover:text-text-primary transition-colors"
 				:aria-label="t('dashboard.inbox.detail.backToInbox')"
 			>
-				<Icon name="lucide:arrow-left" class="w-4 h-4" />
+				<ArrowLeftIcon class="w-4 h-4" />
 			</NuxtLink>
 			<UiPageHeader
 				class="min-w-0 flex-1"
@@ -81,7 +83,7 @@ const handleCreate = async () => {
 			>
 				<template #actions>
 					<UiButton class="gap-2" @click="createModal.open()">
-						<Icon name="lucide:plus" class="w-4 h-4" />
+						<PlusIcon class="w-4 h-4" />
 						{{ t('dashboard.inbox.codeTasks.newTask') }}
 					</UiButton>
 				</template>
@@ -100,13 +102,13 @@ const handleCreate = async () => {
 		>
 			<template #empty>
 				<UiEmptyState
-					icon="lucide:code-2"
+					:icon="CodeIcon"
 					:title="t('dashboard.inbox.codeTasks.emptyTitle')"
 					:description="t('dashboard.inbox.codeTasks.emptyBody')"
 				>
 					<template #action>
 						<UiButton class="gap-2" @click="createModal.open()">
-							<Icon name="lucide:plus" class="w-4 h-4" />
+							<PlusIcon class="w-4 h-4" />
 							{{ t('dashboard.inbox.codeTasks.newTask') }}
 						</UiButton>
 					</template>
@@ -161,12 +163,8 @@ const handleCreate = async () => {
 						{{ t('common.cancel') }}
 					</UiButton>
 					<UiButton type="submit" class="gap-2" :disabled="createModal.isLoading.value">
-						<Icon
-							v-if="createModal.isLoading.value"
-							name="lucide:loader-2"
-							class="w-4 h-4 animate-spin motion-reduce:animate-none"
-						/>
-						<Icon v-else name="lucide:plus" class="w-4 h-4" />
+						<SpinnerIcon v-if="createModal.isLoading.value" class="w-4 h-4" />
+						<PlusIcon v-else class="w-4 h-4" />
 						{{
 							createModal.isLoading.value
 								? t('dashboard.inbox.codeTasks.creating')

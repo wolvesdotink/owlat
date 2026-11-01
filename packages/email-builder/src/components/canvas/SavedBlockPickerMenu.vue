@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue';
 import type { SavedBlock } from '../../types';
-import { Search, Package, Loader2 } from '@lucide/vue';
+import { PackageIcon, SearchIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 import { useBuilderI18n } from '../../i18n/useBuilderI18n';
 
 const { t } = useBuilderI18n();
@@ -78,7 +79,7 @@ onUnmounted(() => {
 			@keydown="handleKeydown"
 		>
 			<div class="relative p-2 border-b border-border-subtle">
-				<Search :size="14" aria-hidden="true" class="absolute top-1/2 left-[18px] -translate-y-1/2 text-text-tertiary pointer-events-none" />
+				<SearchIcon :size="14" aria-hidden="true" class="absolute top-1/2 left-[18px] -translate-y-1/2 text-text-tertiary pointer-events-none" />
 				<input
 					ref="searchEl"
 					v-model="searchQuery"
@@ -90,7 +91,7 @@ onUnmounted(() => {
 			</div>
 
 			<div v-if="isLoading" class="flex items-center gap-2 p-4 text-[13px] text-text-tertiary">
-				<Loader2 :size="16" class="animate-spin motion-reduce:animate-none" />
+				<SpinnerIcon :size="16" />
 				{{ t('builder.savedBlocks.loading') }}
 			</div>
 
@@ -122,7 +123,7 @@ onUnmounted(() => {
 					@mousedown.prevent="emit('select', block)"
 					@mouseenter="selectedIndex = i"
 				>
-					<Package :size="16" class="shrink-0 text-text-tertiary" />
+					<PackageIcon :size="16" class="shrink-0 text-text-tertiary" />
 					<div class="flex-1 min-w-0 flex flex-col gap-0.5">
 						<span class="text-[13px] font-medium text-text-primary whitespace-nowrap overflow-hidden text-ellipsis">{{ block.name }}</span>
 						<span v-if="block.description" class="text-[11px] text-text-tertiary whitespace-nowrap overflow-hidden text-ellipsis">{{ block.description }}</span>

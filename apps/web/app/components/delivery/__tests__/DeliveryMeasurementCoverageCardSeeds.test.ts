@@ -99,7 +99,6 @@ const mountCard = () =>
 		global: {
 			plugins: [createTestI18n()],
 			stubs: {
-				Icon: { props: ['name'], template: '<span />' },
 				UiCard: passthrough('section'),
 				UiBadge: passthrough('span'),
 				UiDisclosure: { props: ['modelValue', 'label'], template: '<div><slot /></div>' },

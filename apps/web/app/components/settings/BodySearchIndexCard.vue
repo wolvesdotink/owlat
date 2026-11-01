@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
+import { SearchIcon } from '@coolicons/vue';
 
 /**
  * Deep body search — the instance switch for the widened plaintext carve-out,
@@ -101,7 +102,7 @@ async function stopBackfill() {
 	<UiCard>
 		<template #header>
 			<div class="flex items-center gap-3 pb-4">
-				<UiIconBox icon="lucide:search" size="sm" variant="surface" rounded="lg" />
+				<UiIconBox :icon="SearchIcon" size="sm" variant="surface" rounded="lg" />
 				<div class="min-w-0">
 					<h2 class="text-lg font-medium text-text-primary">
 						{{ t('dashboard.admin.instance.general.mailSearch.title') }}

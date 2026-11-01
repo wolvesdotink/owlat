@@ -3,6 +3,7 @@ import { api } from '@owlat/api';
 import { isValidEmail } from '@owlat/shared';
 import { MIN_PASSWORD_LENGTH, meetsMinPasswordLength } from '@owlat/shared/passwordPolicy';
 import { registrationOpenFor } from '~/utils/instanceEntry';
+import { LockIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -134,7 +135,7 @@ async function handleSubmit() {
 		</template>
 
 		<div class="text-center space-y-4">
-			<Icon name="lucide:lock" class="w-12 h-12 text-text-tertiary mx-auto" />
+			<LockIcon class="w-12 h-12 text-text-tertiary mx-auto" :stroke-width="1.5" />
 			<p class="text-text-secondary">{{ t('auth.register.inviteOnlyBody') }}</p>
 		</div>
 

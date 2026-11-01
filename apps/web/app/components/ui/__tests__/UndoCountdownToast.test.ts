@@ -11,6 +11,7 @@ import { nextTick } from 'vue';
 
 import UndoCountdownToast from '../UndoCountdownToast.vue';
 import { UNDO_TOAST_REGION_ID } from '~/utils/undoToastRegion';
+import { PaperPlaneIcon } from '@coolicons/vue';
 
 let region: HTMLElement;
 let wrapper: VueWrapper | undefined;
@@ -43,7 +44,7 @@ async function mountToast(props: Partial<Record<string, unknown>> = {}) {
 		props: {
 			visible: true,
 			sendAt: Date.now() + 10_000,
-			icon: 'lucide:send',
+			icon: PaperPlaneIcon,
 			message: (seconds: number) => `Sending in ${seconds}s`,
 			undoLabel: 'Undo',
 			onUndo: () => {},

@@ -48,7 +48,6 @@ function mountBar() {
 		global: {
 			plugins: [createTestI18n()],
 			stubs: {
-				Icon: true,
 				NuxtLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
 			},
 		},

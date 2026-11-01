@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
+import { ListUnorderedIcon, PlusIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -106,7 +107,7 @@ const deleteDescription = computed(() => {
 // Props shared by the table and the mobile card list; `ListPageShell` mounts one.
 const listTable = computed(() => ({
 	items: filteredTopics.value,
-	icon: 'lucide:list',
+	icon: ListUnorderedIcon,
 	itemTo: (topic: { _id: string }) => `/dashboard/audience/topics/${topic._id}`,
 	countOf: (topic: { contactCount: number }) => topic.contactCount,
 	countField: 'contactCount' as const,
@@ -153,12 +154,12 @@ onMounted(() => {
 		:active-search="debouncedSearch"
 		:search-placeholder="t('dashboard.audience.topics.index.searchPlaceholder')"
 		:empty-no-org="{
-			icon: 'lucide:list',
+			icon: ListUnorderedIcon,
 			title: t('dashboard.audience.topics.index.noWorkspace.title'),
 			description: t('dashboard.audience.topics.index.noWorkspace.description'),
 		}"
 		:empty="{
-			icon: 'lucide:list',
+			icon: ListUnorderedIcon,
 			title: t('dashboard.audience.topics.index.empty.title'),
 			description: t('dashboard.audience.topics.index.empty.description'),
 		}"
@@ -188,7 +189,7 @@ onMounted(() => {
 
 		<template #actions>
 			<UiButton v-if="canManage" @click="openCreateModal">
-				<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
+				<template #iconLeft><PlusIcon class="w-4 h-4" /></template>
 				{{ t('dashboard.audience.topics.index.newTopic') }}
 			</UiButton>
 			<p v-else-if="showManageGate" class="text-xs text-text-tertiary">
@@ -202,7 +203,7 @@ onMounted(() => {
 
 		<template v-if="canManage" #empty-action>
 			<UiButton @click="openCreateModal">
-				<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
+				<template #iconLeft><PlusIcon class="w-4 h-4" /></template>
 				{{ t('dashboard.audience.topics.index.newTopic') }}
 			</UiButton>
 		</template>

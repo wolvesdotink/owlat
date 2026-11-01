@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
+import { SparklesIcon } from '@coolicons/vue';
 
 const emit = defineEmits<{
 	created: [];
@@ -67,7 +68,7 @@ const handleCreate = async () => {
 <template>
 	<div class="card">
 		<div class="flex items-center gap-2 mb-4">
-			<Icon name="lucide:sparkles" class="w-5 h-5 text-brand" />
+			<SparklesIcon class="w-5 h-5 text-brand" />
 			<h3 class="text-lg font-medium text-text-primary">
 				{{ t('components.visualizations.visualizationPrompt.title') }}
 			</h3>
@@ -107,7 +108,7 @@ const handleCreate = async () => {
 
 				<UiButton class="gap-2" :disabled="!prompt.trim() || isCreating" @click="handleCreate">
 					<UiSpinner v-if="isCreating" size="xs" tone="inverse" />
-					<Icon v-else name="lucide:sparkles" class="w-4 h-4" />
+					<SparklesIcon v-else class="w-4 h-4" />
 					{{
 						isCreating
 							? t('components.visualizations.visualizationPrompt.generating')

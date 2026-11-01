@@ -40,7 +40,6 @@ function mountOutbound(props: Record<string, unknown> = {}) {
 			plugins: [createTestI18n()],
 			components: { InboxAutoSendCountdown: AutoSendCountdown },
 			stubs: {
-				Icon: true,
 				UiIconBox: true,
 				UiButton: {
 					emits: ['click'],

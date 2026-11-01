@@ -24,7 +24,6 @@ import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
 
 const stubs = {
-	Icon: { template: '<i />' },
 	NuxtLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
 	UiEmptyState: true,
 	// The sending-only receiving-mode choice — suppressed in the tracking context,

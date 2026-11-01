@@ -6,6 +6,7 @@ import { ROLE_DEFINITIONS } from '~/utils/teamRoles';
 import InviteSuccessPanel, {
 	type InviteSuccess,
 } from '~/components/settings/team/InviteSuccessPanel.vue';
+import { UserPlusCornerIcon } from '@coolicons/vue';
 
 // Use BetterAuth organization management (shared useState-backed store — the
 // same invitations/invite the parent page reads).
@@ -315,7 +316,7 @@ defineExpose({ open: openInviteModal });
 							@click="inviteForm.role = def.role"
 						>
 							<div class="flex items-center gap-2 mb-1">
-								<Icon :name="def.icon" class="w-4 h-4 text-text-secondary" />
+								<component :is="def.icon" class="w-4 h-4 text-text-secondary" />
 								<span class="font-medium text-text-primary text-sm">{{ t(def.label) }}</span>
 							</div>
 							<p class="text-xs text-text-secondary">{{ t(def.summary) }}</p>
@@ -457,7 +458,7 @@ defineExpose({ open: openInviteModal });
 			<template v-if="inviteSuccess">
 				<UiButton variant="secondary" @click="startAnotherInvite()">
 					<template #iconLeft>
-						<Icon name="lucide:user-plus" class="w-4 h-4" />
+						<UserPlusCornerIcon class="w-4 h-4" />
 					</template>
 					{{ t('components.settings.team.inviteModal.inviteAnother') }}
 				</UiButton>
@@ -469,7 +470,7 @@ defineExpose({ open: openInviteModal });
 				</UiButton>
 				<UiButton :loading="isInviting" @click="handleInvite">
 					<template #iconLeft>
-						<Icon v-if="!isInviting" name="lucide:user-plus" class="w-4 h-4" />
+						<UserPlusCornerIcon v-if="!isInviting" class="w-4 h-4" />
 					</template>
 					{{
 						isInviting

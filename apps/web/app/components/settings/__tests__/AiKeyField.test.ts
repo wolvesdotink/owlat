@@ -28,7 +28,7 @@ const UiInputStub = {
 function mountField(props: Record<string, unknown> = {}) {
 	return mount(AiKeyField, {
 		props: { label: 'API key', storedKeySet: false, modelValue: '', ...props },
-		global: { plugins: [createTestI18n()], stubs: { UiInput: UiInputStub, Icon: true } },
+		global: { plugins: [createTestI18n()], stubs: { UiInput: UiInputStub } },
 	});
 }
 

@@ -27,11 +27,12 @@
  * it renders at every width.
  */
 import type { ListSortOption } from '~/composables/useListPage';
+import { GridAltIcon, ListUnorderedIcon, SearchIcon, type IconComponent } from '@coolicons/vue';
 
 type ViewMode = 'grid' | 'list';
 
 interface EmptyCopy {
-	icon: string;
+	icon: IconComponent;
 	/** Optional line above the title (an all-clear state, not a missing one). */
 	eyebrow?: string;
 	title: string;
@@ -163,7 +164,7 @@ const onDeleteOpenChange = (open: boolean) => {
 					@update:model-value="emit('update:search', String($event ?? ''))"
 				>
 					<template #iconLeft>
-						<Icon name="lucide:search" class="w-4 h-4 text-text-tertiary" />
+						<SearchIcon class="w-4 h-4 text-text-tertiary" />
 					</template>
 				</UiInput>
 
@@ -186,11 +187,11 @@ const onDeleteOpenChange = (open: boolean) => {
 				>
 					<!-- Icon-only segments: the option label stays the accessible name. -->
 					<template #option-grid="{ option }">
-						<Icon name="lucide:grid-3x3" class="w-4 h-4" />
+						<GridAltIcon class="w-4 h-4" />
 						<span class="sr-only">{{ option.label }}</span>
 					</template>
 					<template #option-list="{ option }">
-						<Icon name="lucide:list" class="w-4 h-4" />
+						<ListUnorderedIcon class="w-4 h-4" />
 						<span class="sr-only">{{ option.label }}</span>
 					</template>
 				</UiSegmentedControl>
@@ -230,7 +231,7 @@ const onDeleteOpenChange = (open: boolean) => {
 			<UiEmptyState
 				v-else-if="showNoResults"
 				variant="no-results"
-				icon="lucide:search"
+				:icon="SearchIcon"
 				:title="noResults.title"
 				:description="noResults.description"
 				:clear-label="t('shared.listPage.clearSearch')"

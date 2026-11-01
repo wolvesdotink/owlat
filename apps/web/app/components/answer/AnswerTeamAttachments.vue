@@ -11,6 +11,15 @@ import { formatCompactFileSize } from '~/utils/formatters';
 import { useClickOutside } from '~/composables/useClickOutside';
 import { useEscapeToClose } from '~/composables/useEscapeToClose';
 import { useUploadQueueStatus } from '~/composables/postbox/useUploadQueueStatus';
+import {
+	ClockIcon,
+	CloseIcon,
+	FileIcon,
+	PaperclipIcon,
+	TriangleWarningIcon,
+	UploadIcon,
+} from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 /**
  * The files on a Team inbox reply, under the editor in Answer mode: what is
@@ -143,8 +152,8 @@ const menuItem =
 				:data-status="attachment.status"
 				data-testid="answer-team-attachment"
 			>
-				<Icon
-					:name="attachment.status === 'copying' ? 'lucide:loader-2' : 'lucide:paperclip'"
+				<component
+					:is="attachment.status === 'copying' ? SpinnerIcon : PaperclipIcon"
 					class="size-3.5 shrink-0"
 					:class="{ 'animate-spin motion-reduce:animate-none': attachment.status === 'copying' }"
 					aria-hidden="true"
@@ -161,7 +170,7 @@ const menuItem =
 					data-testid="answer-team-attachment-remove"
 					@click="emit('remove', index)"
 				>
-					<Icon name="lucide:x" class="size-3" aria-hidden="true" />
+					<CloseIcon class="size-3" aria-hidden="true" />
 				</button>
 			</li>
 			<li
@@ -171,13 +180,13 @@ const menuItem =
 				:data-status="upload.status"
 				data-testid="answer-team-upload"
 			>
-				<Icon
-					:name="
+				<component
+					:is="
 						upload.status === 'failed'
-							? 'lucide:alert-triangle'
+							? TriangleWarningIcon
 							: upload.status === 'queued'
-								? 'lucide:clock'
-								: 'lucide:loader-2'
+								? ClockIcon
+								: SpinnerIcon
 					"
 					class="size-3.5 shrink-0"
 					:class="{
@@ -210,7 +219,7 @@ const menuItem =
 					"
 					@click="emit('cancel-upload', upload.id)"
 				>
-					<Icon name="lucide:x" class="size-3" aria-hidden="true" />
+					<CloseIcon class="size-3" aria-hidden="true" />
 				</button>
 			</li>
 		</ul>
@@ -226,7 +235,7 @@ const menuItem =
 				data-testid="answer-team-attach"
 				@click="menuOpen = !menuOpen"
 			>
-				<Icon name="lucide:paperclip" class="size-3.5" aria-hidden="true" />
+				<PaperclipIcon class="size-3.5" aria-hidden="true" />
 				{{ t('components.answer.team.attachments.attach') }}
 			</UiButton>
 			<div
@@ -242,7 +251,7 @@ const menuItem =
 					data-testid="answer-team-upload-choose"
 					@click="chooseUpload"
 				>
-					<Icon name="lucide:upload" class="size-4 text-text-tertiary" aria-hidden="true" />
+					<UploadIcon class="size-4 text-text-tertiary" aria-hidden="true" />
 					{{ t('components.answer.team.attachments.upload') }}
 				</button>
 				<template v-if="contactId">
@@ -278,11 +287,7 @@ const menuItem =
 								data-testid="answer-team-pick-file"
 								@click="pick(file._id)"
 							>
-								<Icon
-									name="lucide:file"
-									class="size-4 shrink-0 text-text-tertiary"
-									aria-hidden="true"
-								/>
+								<FileIcon class="size-4 shrink-0 text-text-tertiary" aria-hidden="true" />
 								<span class="flex-1 truncate">{{ file.title || file.filename }}</span>
 								<span class="shrink-0 text-2xs text-text-tertiary">{{
 									formatCompactFileSize(file.fileSize)

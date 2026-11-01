@@ -26,6 +26,7 @@ import ProfileSyncBanner from '~/components/settings/ProfileSyncBanner.vue';
 import FeatureFlagToggleDialogs from '~/components/settings/FeatureFlagToggleDialogs.vue';
 import { useProfileSync } from '~/composables/useProfileSync';
 import { useFeatureCopy } from '~/composables/useFeatureCopy';
+import { InboxIcon } from '@coolicons/vue';
 
 const pluginFeatureFlagDefinitions =
 	getBundledPluginFeatureFlagDefinitions(bundledPluginComposition);
@@ -300,7 +301,7 @@ async function togglePack(packKey: FeaturePackKey) {
 						v-if="group.key === 'emailClient' && hasInboundFeature(resolved)"
 						class="px-6 py-3 bg-brand/5 border-b border-border-subtle flex items-start gap-3"
 					>
-						<Icon name="lucide:inbox" class="w-4 h-4 mt-0.5 text-brand shrink-0" />
+						<InboxIcon class="w-4 h-4 mt-0.5 text-brand shrink-0" />
 						<I18nT
 							keypath="dashboard.admin.instance.features.inboundDnsHint"
 							tag="p"

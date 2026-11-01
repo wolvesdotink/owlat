@@ -6,6 +6,7 @@
  * server. Renders nothing while the editor is not live.
  */
 import type { EditorPerson } from '~/composables/useEmailEditorPresence';
+import { CloudOffIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	people: EditorPerson[];
@@ -40,7 +41,7 @@ function title(person: EditorPerson): string {
 			class="inline-flex items-center gap-1 text-xs text-warning"
 			:title="t('components.email.editorPresence.offlineTitle')"
 		>
-			<Icon name="lucide:cloud-off" class="w-3.5 h-3.5" />
+			<CloudOffIcon class="w-3.5 h-3.5" />
 			<span class="max-2xl:sr-only">{{ t('components.email.editorPresence.offline') }}</span>
 		</span>
 		<div

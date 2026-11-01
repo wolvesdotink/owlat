@@ -7,6 +7,7 @@ import { readStoredBlocks } from '~/lib/presendChecks/blockLocator';
 import { sendTimingFromCampaign, sendTimingScheduleArgs, type SendTiming } from '~/lib/sendTiming';
 import ReviewSendOptions from '~/components/campaigns/steps/review/ReviewSendOptions.vue';
 import ReviewSummary from '~/components/campaigns/steps/review/ReviewSummary.vue';
+import { ArrowLeftIcon, PaperPlaneIcon } from '@coolicons/vue';
 
 type SendOption = 'now' | 'later';
 
@@ -358,7 +359,7 @@ const handleConfirmSend = async () => {
 					</p>
 				</div>
 				<UiButton variant="secondary" @click="isTestEmailModalOpen = true">
-					<template #iconLeft><Icon name="lucide:send-horizonal" class="w-4 h-4" /></template>
+					<template #iconLeft><PaperPlaneIcon class="w-4 h-4" /></template>
 					{{ t('components.campaigns.steps.reviewStep.sendTest') }}
 				</UiButton>
 			</div>
@@ -380,7 +381,7 @@ const handleConfirmSend = async () => {
 		<!-- Actions -->
 		<div class="flex items-center justify-between pt-2">
 			<UiButton variant="secondary" @click="emit('back')">
-				<template #iconLeft><Icon name="lucide:arrow-left" class="w-4 h-4" /></template>
+				<template #iconLeft><ArrowLeftIcon class="w-4 h-4" /></template>
 				{{ t('common.back') }}
 			</UiButton>
 			<UiButton
@@ -392,7 +393,7 @@ const handleConfirmSend = async () => {
 				"
 				@click="handleSendCampaign"
 			>
-				<template v-if="!isLoading" #iconLeft><Icon name="lucide:send" class="w-4 h-4" /></template>
+				<template v-if="!isLoading" #iconLeft><PaperPlaneIcon class="w-4 h-4" /></template>
 				{{
 					isLoading
 						? sendOption === 'now'

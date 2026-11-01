@@ -24,7 +24,7 @@ import ConfirmDialogHost from '../ConfirmDialogHost.vue';
 const global = {
 	components: { UiModal, UiButton },
 	plugins: [createTestI18n()],
-	stubs: { Icon: true, teleport: true },
+	stubs: { teleport: true },
 };
 
 afterEach(() => {

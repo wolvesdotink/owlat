@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import { HashIcon } from '@coolicons/vue';
 
 const emit = defineEmits<{ close: [] }>();
 
@@ -63,7 +64,7 @@ const handleOpen = (channelId: Id<'chatRooms'>) => {
 					:key="channel._id"
 					class="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-bg-surface transition-colors"
 				>
-					<Icon name="lucide:hash" class="w-4 h-4 text-text-tertiary flex-shrink-0" />
+					<HashIcon class="w-4 h-4 text-text-tertiary flex-shrink-0" />
 					<div class="flex-1 min-w-0">
 						<div class="text-sm font-medium text-text-primary truncate">
 							{{ channel.name }}

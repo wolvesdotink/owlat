@@ -83,7 +83,6 @@ function mountPage() {
 				UiContextMenu,
 			},
 			stubs: {
-				Icon: true,
 				UiModal: true,
 				UiPageHeader: true,
 				AudienceTabs: true,

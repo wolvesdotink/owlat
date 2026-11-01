@@ -16,6 +16,7 @@
  */
 import { sendReadinessNote, type SendingReadiness } from '~/lib/sendReadiness';
 import { useLocalized } from '~/composables/useLocalized';
+import { CalendarEventIcon, CircleCheckIcon, ClockIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	readiness: SendingReadiness | null | undefined;
@@ -48,17 +49,17 @@ const TONE = {
 	ready: {
 		box: 'bg-success/10 border-success/20',
 		icon: 'text-success',
-		name: 'lucide:check-circle',
+		name: CircleCheckIcon,
 	},
 	paced: {
 		box: 'bg-accent/5 border-accent/20',
 		icon: 'text-accent',
-		name: 'lucide:calendar-clock',
+		name: CalendarEventIcon,
 	},
 	waiting: {
 		box: 'bg-warning/10 border-warning/20',
 		icon: 'text-warning',
-		name: 'lucide:clock',
+		name: ClockIcon,
 	},
 } as const;
 
@@ -72,7 +73,7 @@ const tone = computed(() => TONE[note.value?.tone ?? 'ready']);
 		:class="tone.box"
 		data-testid="send-readiness-note"
 	>
-		<Icon :name="tone.name" class="w-5 h-5 shrink-0 mt-0.5" :class="tone.icon" />
+		<component :is="tone.name" class="w-5 h-5 shrink-0 mt-0.5" :class="tone.icon" />
 		<div class="min-w-0">
 			<p class="text-sm font-medium text-text-primary">{{ message(note.headline) }}</p>
 			<p v-if="note.detail" class="text-sm text-text-secondary mt-0.5">

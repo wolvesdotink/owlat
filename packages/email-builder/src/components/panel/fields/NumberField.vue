@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { Minus, Plus } from '@lucide/vue';
+import { MinusIcon, PlusIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	value: number;
@@ -48,7 +48,7 @@ function clamp(val: number): number {
 			:disabled="min !== undefined && value <= min"
 			@click="decrement"
 		>
-			<Minus :size="12" />
+			<MinusIcon :size="12" />
 		</button>
 		<input
 			type="number"
@@ -69,7 +69,7 @@ function clamp(val: number): number {
 			:disabled="max !== undefined && value >= max"
 			@click="increment"
 		>
-			<Plus :size="12" />
+			<PlusIcon :size="12" />
 		</button>
 	</div>
 </template>

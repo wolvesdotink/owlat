@@ -65,7 +65,6 @@ function mountList() {
 			plugins: [createTestI18n()],
 			components: { SettingsHostedDecisionExclusion: HostedDecisionExclusion },
 			stubs: {
-				Icon: true,
 				InboxChip: true,
 				NuxtLink: { template: '<a><slot /></a>' },
 				UiModal: true,

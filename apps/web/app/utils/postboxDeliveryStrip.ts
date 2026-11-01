@@ -14,6 +14,7 @@
 import type { HealthTone } from '~/utils/healthTone';
 import type { LocalizedText } from '~/utils/localizedText';
 import { explainBounce, type BounceExplanation } from '~/utils/postboxBounceCatalog';
+import { CheckIcon, ClockIcon, CloseIcon, type IconComponent } from '@coolicons/vue';
 
 /** Per-recipient state, exactly as `mailMessages.outbound.recipients[].state`. */
 export type DeliveryRecipientState = 'queued' | 'sent' | 'bounced' | 'failed';
@@ -45,7 +46,7 @@ export interface DeliveryRow {
 	address: string;
 	state: DeliveryRecipientState;
 	tone: HealthTone;
-	icon: string;
+	icon: IconComponent;
 	/**
 	 * The moment this row's state is timestamped by, or null when nothing
 	 * terminal has happened yet. A `sent` row prefers `acceptedAt` — the remote
@@ -78,11 +79,11 @@ export interface DeliveryStripView {
 
 const KEY = 'shared.postboxDeliveryStrip';
 
-const ROW_ICON: Record<DeliveryRecipientState, string> = {
-	queued: 'lucide:clock',
-	sent: 'lucide:check',
-	bounced: 'lucide:x',
-	failed: 'lucide:x',
+const ROW_ICON: Record<DeliveryRecipientState, IconComponent> = {
+	queued: ClockIcon,
+	sent: CheckIcon,
+	bounced: CloseIcon,
+	failed: CloseIcon,
 };
 
 const ROW_TONE: Record<DeliveryRecipientState, HealthTone> = {

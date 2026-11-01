@@ -12,6 +12,7 @@
 import type { TeamStreamEntry } from '../../../../api/convex/mail/interpret/briefShape';
 import type { PostboxTeamStream } from '~/composables/postbox/usePostboxTeamStream';
 import TeamThreadStream from '~/components/team/TeamThreadStream.vue';
+import { ChevronDoubleUpIcon } from '@coolicons/vue';
 
 defineProps<{
 	state: PostboxTeamStream;
@@ -42,7 +43,7 @@ const { t } = useI18n();
 					data-testid="team-stream-earlier"
 					@click="state.loadEarlier()"
 				>
-					<Icon name="lucide:chevrons-up" class="size-3.5" />
+					<ChevronDoubleUpIcon class="size-3.5" />
 					{{ t('components.team.stream.earlierNotes') }}
 				</UiButton>
 			</template>

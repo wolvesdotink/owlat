@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { ComponentPublicInstance } from 'vue';
 import { useEscapeToClose } from '~/composables/useEscapeToClose';
+import { MoreHorizontalIcon, type IconComponent } from '@coolicons/vue';
 
 /**
  * Compact "⋯" overflow menu used by the progressive-disclosure surfaces (the
@@ -31,7 +32,7 @@ const props = withDefaults(
 		/** Extra classes for the trigger button. */
 		triggerClass?: string;
 		/** Trigger glyph — horizontal ⋯ by default. */
-		icon?: string;
+		icon?: IconComponent;
 		/**
 		 * Optional visible text beside the glyph. A ⋯ trigger is self-explanatory
 		 * next to the actions it demotes; a menu that is the ONLY rendering of its
@@ -43,7 +44,9 @@ const props = withDefaults(
 		align: 'right',
 		direction: 'down',
 		triggerClass: '',
-		icon: 'lucide:more-horizontal',
+		// A component default must be a factory: the prop's runtime type is
+		// unresolved, so Vue would call the component itself to make the default.
+		icon: () => MoreHorizontalIcon,
 		triggerText: undefined,
 	}
 );
@@ -103,7 +106,7 @@ useEscapeToClose(
 				:aria-expanded="open"
 				@click="toggle"
 			>
-				<Icon :name="props.icon" class="w-4 h-4" />
+				<component :is="props.icon" class="w-4 h-4" />
 				<span v-if="props.triggerText" class="ml-1.5 text-xs">{{ props.triggerText }}</span>
 			</UiButton>
 		</UiTooltip>

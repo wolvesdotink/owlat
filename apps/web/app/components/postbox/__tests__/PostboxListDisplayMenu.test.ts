@@ -24,7 +24,6 @@ const stubs = {
 		template:
 			'<div><button class="trigger" :aria-label="label">{{ triggerText }}</button><div role="menu"><slot :close="() => {}" /></div></div>',
 	},
-	Icon: { props: ['name'], template: '<span />' },
 };
 
 const VIEW_MODES = [

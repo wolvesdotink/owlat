@@ -16,6 +16,7 @@ import type { NavigationEnvironment } from '../dashboardNavigationCore';
 import { routePaletteTargets } from '../commandPaletteRoutes';
 import { ADMIN_AREAS, adminEntryFor, type AdminEnvironment } from '../adminSettingsRegistry';
 import { createTestI18n } from '~/__tests__/i18n';
+import { ShieldCheckIcon, UsersIcon } from '@coolicons/vue';
 
 const { t } = createTestI18n().global;
 
@@ -64,7 +65,7 @@ describe('routePaletteTargets', () => {
 		expect(target).toMatchObject({
 			labelKey: 'shared.breadcrumbRoutes.pages.segments',
 			contextKey: 'shared.breadcrumbRoutes.sections.audience',
-			icon: 'lucide:users',
+			icon: UsersIcon,
 		});
 	});
 
@@ -82,7 +83,7 @@ describe('routePaletteTargets', () => {
 			labelKey: 'shared.breadcrumbRoutes.pages.webhooks',
 			// The Workspace group the page sits in, as the Settings sidebar names it.
 			contextKey: 'shell.admin.areas.delivery',
-			icon: 'lucide:shield-check',
+			icon: ShieldCheckIcon,
 		});
 	});
 

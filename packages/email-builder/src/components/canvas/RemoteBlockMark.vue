@@ -4,7 +4,7 @@
  * "… is editing" with a lock while they hold the block (co-editing). Purely visual; the canvas decides what a
  * locked block still allows.
  */
-import { Lock } from '@lucide/vue';
+import { LockIcon } from '@coolicons/vue';
 import type { RemoteBlockMark } from '../../types';
 
 defineProps<{ mark: RemoteBlockMark }>();
@@ -23,7 +23,7 @@ defineProps<{ mark: RemoteBlockMark }>();
 		:style="{ backgroundColor: mark.color }"
 		data-testid="remote-block-label"
 	>
-		<Lock v-if="mark.isLocked" :size="10" class="shrink-0" aria-hidden="true" />
+		<LockIcon v-if="mark.isLocked" :size="10" class="shrink-0" aria-hidden="true" />
 		<span class="truncate">{{ mark.label }}</span>
 	</div>
 </template>

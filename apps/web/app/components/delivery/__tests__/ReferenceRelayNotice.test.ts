@@ -9,7 +9,7 @@ import { computed } from 'vue';
 import { MULTI_RELAY_DETAIL_PREFIX } from '@owlat/shared/deliverabilityAlignment';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
-const stubs = { Icon: { template: '<i />' } };
+const stubs = {};
 
 async function mountNotice(arms: unknown) {
 	vi.stubGlobal('computed', computed);

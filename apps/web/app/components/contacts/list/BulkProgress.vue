@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { meterFillStyle } from '@owlat/ui/utils/meterFill';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 // The contacts list's progress strip while a bulk operation runs.
 defineProps<{
@@ -22,10 +23,7 @@ const { t } = useI18n();
 		leave-to-class="opacity-0 scale-95"
 	>
 		<div v-if="active" class="flex items-center gap-3 px-3 py-2 rounded-lg bg-bg-surface">
-			<Icon
-				name="lucide:loader-2"
-				class="w-4 h-4 animate-spin motion-reduce:animate-none text-brand"
-			/>
+			<SpinnerIcon class="w-4 h-4 text-brand" />
 			<span class="text-sm text-text-secondary">
 				<template v-if="type === 'add'">{{
 					t('dashboard.audience.contacts.index.bulk.progress.add')

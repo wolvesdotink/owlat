@@ -22,6 +22,7 @@ import {
 } from '~/utils/aiReplyMode';
 import SettingsResetToDefault from '~/components/settings/ResetToDefault.vue';
 import { ITEM_COVERAGE_ENFORCED_DEFAULT, WORKING_HOURS_DEFAULTS } from '~/utils/autonomyDefaults';
+import { SaveIcon } from '@coolicons/vue';
 
 definePageMeta({
 	layout: 'admin',
@@ -340,7 +341,7 @@ const { data: feedbackStats } = useConvexQuery(api.autonomy.feedback.getFeedback
 								@click="handleSave"
 							>
 								<UiSpinner v-if="isSaving" size="xs" tone="inverse" />
-								<Icon v-else name="lucide:save" class="w-4 h-4" />
+								<SaveIcon v-else class="w-4 h-4" />
 								{{ t('dashboard.admin.instance.aiReplies.saveChanges') }}
 							</UiButton>
 						</div>
@@ -462,7 +463,7 @@ const { data: feedbackStats } = useConvexQuery(api.autonomy.feedback.getFeedback
 							@click="handleSave"
 						>
 							<UiSpinner v-if="isSaving" size="xs" tone="inverse" />
-							<Icon v-else name="lucide:save" class="w-4 h-4" />
+							<SaveIcon v-else class="w-4 h-4" />
 							{{ t('dashboard.admin.instance.aiReplies.saveChanges') }}
 						</UiButton>
 					</div>

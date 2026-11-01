@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { CheckIcon, CircleCheckIcon, CircleWarningIcon, FileUploadIcon, UploadIcon } from '@coolicons/vue';
+
 const props = defineProps<{
 	blocklistImport: ReturnType<typeof useBlocklistImport>;
 }>();
@@ -41,7 +43,7 @@ const canClose = computed(() => props.blocklistImport.step.value !== 'importing'
 	>
 		<!-- Header -->
 		<div class="flex items-center gap-3 mb-6">
-			<UiIconBox icon="lucide:file-up" size="sm" variant="surface" rounded="lg" />
+			<UiIconBox :icon="FileUploadIcon" size="sm" variant="surface" rounded="lg" />
 			<div>
 				<h2 class="text-lg font-semibold text-text-primary">
 					{{ t('components.audience.suppressionsImportModal.title') }}
@@ -55,7 +57,7 @@ const canClose = computed(() => props.blocklistImport.step.value !== 'importing'
 			v-if="blocklistImport.error.value"
 			class="mb-4 p-3 rounded-lg bg-error-subtle border border-error/20 flex items-start gap-3"
 		>
-			<Icon name="lucide:alert-circle" class="w-5 h-5 text-error shrink-0 mt-0.5" />
+			<CircleWarningIcon class="w-5 h-5 text-error shrink-0 mt-0.5" />
 			<p class="text-sm text-error">{{ blocklistImport.error.value }}</p>
 		</div>
 
@@ -86,7 +88,7 @@ const canClose = computed(() => props.blocklistImport.step.value !== 'importing'
 			>
 				<div class="flex flex-col items-center gap-4">
 					<div class="p-4 rounded-full bg-bg-surface">
-						<Icon name="lucide:upload" class="w-8 h-8 text-text-tertiary" />
+						<UploadIcon class="w-8 h-8 text-text-tertiary" :stroke-width="1.5" />
 					</div>
 					<div>
 						<p class="text-text-primary font-medium">
@@ -196,7 +198,7 @@ const canClose = computed(() => props.blocklistImport.step.value !== 'importing'
 					:key="email"
 					class="px-4 py-2 text-sm text-text-primary flex items-center gap-2"
 				>
-					<Icon name="lucide:check-circle" class="w-4 h-4 text-success shrink-0" />
+					<CircleCheckIcon class="w-4 h-4 text-success shrink-0" />
 					{{ email }}
 				</div>
 			</div>
@@ -248,7 +250,7 @@ const canClose = computed(() => props.blocklistImport.step.value !== 'importing'
 		<div v-else-if="blocklistImport.step.value === 'complete'" class="py-4">
 			<div class="flex flex-col items-center gap-4 mb-6">
 				<div class="p-3 rounded-full bg-success/10">
-					<Icon name="lucide:check" class="w-8 h-8 text-success" />
+					<CheckIcon class="w-8 h-8 text-success" :stroke-width="1.5" />
 				</div>
 				<p class="text-lg font-medium text-text-primary">
 					{{ t('components.audience.suppressionsImportModal.completeTitle') }}
@@ -302,7 +304,7 @@ const canClose = computed(() => props.blocklistImport.step.value !== 'importing'
 					t('common.back')
 				}}</UiButton>
 				<UiButton :disabled="!blocklistImport.canImport.value" @click="emit('import')">
-					<template #iconLeft><Icon name="lucide:upload" class="w-4 h-4" /></template>
+					<template #iconLeft><UploadIcon class="w-4 h-4" /></template>
 					{{
 						t('components.audience.suppressionsImportModal.importAddresses', {
 							count: blocklistImport.validCount.value,

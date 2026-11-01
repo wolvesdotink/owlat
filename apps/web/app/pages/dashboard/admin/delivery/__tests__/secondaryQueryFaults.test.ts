@@ -90,7 +90,6 @@ const passthroughCard = { template: '<div><slot /></div>' };
 const globalOptions = {
 	stubs: {
 		UiIconBox: true,
-		Icon: true,
 		UiSpinner: true,
 		UiEmptyState: true,
 		UiButton: { template: '<button><slot /></button>' },
@@ -241,7 +240,6 @@ describe('the cells screen’s secondary reads', () => {
 
 describe('the Gmail compliance card', () => {
 	const stubs = {
-		Icon: { template: '<i />' },
 		UiCard: { template: '<div><slot /></div>' },
 		UiIconBox: { template: '<i />' },
 	};
@@ -301,7 +299,6 @@ describe('the delivery hub page', () => {
 
 	const hubOptions = {
 		stubs: {
-			Icon: true,
 			UiIconBox: true,
 			UiSpinner: true,
 			UiStatTile: true,

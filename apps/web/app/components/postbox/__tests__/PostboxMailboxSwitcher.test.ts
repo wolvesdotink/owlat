@@ -23,7 +23,6 @@ beforeAll(() => {
 	});
 });
 
-const iconStub = { props: ['name'], template: '<span class="icon" :data-name="name" />' };
 // The real dropdown teleports its menu to <body>; render it inline so the menu
 // contents are assertable in the wrapper.
 const dropdownStub = {
@@ -42,7 +41,6 @@ function mountSwitcher(collapsed = false) {
 		global: {
 			plugins: [createTestI18n()],
 			components: {
-				Icon: iconStub,
 				UiDropdownMenu: dropdownStub,
 				UiDropdownMenuItem: dropdownItemStub,
 			},

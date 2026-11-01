@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
+import { CheckIcon, CircleHelpIcon } from '@coolicons/vue';
 
 /**
  * Ask-eagerness dial — the single "how readily should Owlat stop and ask me a
@@ -72,7 +73,7 @@ async function choose(mode: EagernessMode) {
 <template>
 	<UiCard>
 		<div class="flex items-center gap-3 mb-2">
-			<UiIconBox icon="lucide:help-circle" size="sm" variant="surface" />
+			<UiIconBox :icon="CircleHelpIcon" size="sm" variant="surface" />
 			<h3 class="text-base font-medium text-text-primary">
 				{{ t('components.autonomy.askEagernessDial.title') }}
 			</h3>
@@ -111,11 +112,7 @@ async function choose(mode: EagernessMode) {
 			>
 				<div class="flex items-center justify-between gap-3">
 					<span class="text-sm font-medium text-text-primary">{{ opt.label }}</span>
-					<Icon
-						v-if="selected === opt.value"
-						name="lucide:check"
-						class="w-4 h-4 text-brand shrink-0"
-					/>
+					<CheckIcon v-if="selected === opt.value" class="w-4 h-4 text-brand shrink-0" />
 				</div>
 				<span class="text-xs text-text-tertiary">{{ opt.hint }}</span>
 			</button>

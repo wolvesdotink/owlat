@@ -12,6 +12,7 @@ import {
 } from '@owlat/shared/featureFlags';
 import { SETUP_WIZARD_STEPS } from '~/composables/useSetupWizard';
 import FeaturePackList from '~/components/settings/FeaturePackList.vue';
+import { ArrowLeftIcon, ArrowRightIcon, CircleInfoIcon, FeatherIcon } from '@coolicons/vue';
 
 definePageMeta({ layout: false });
 
@@ -59,7 +60,7 @@ function togglePack(packKey: FeaturePackKey) {
 
 		<div class="relative mx-auto max-w-3xl px-6 py-12">
 			<div class="flex items-center gap-3 mb-8">
-				<UiIconBox icon="lucide:feather" size="md" variant="brand" rounded="xl" />
+				<UiIconBox :icon="FeatherIcon" size="md" variant="brand" rounded="xl" />
 				<span class="lp-eyebrow">{{ t('setup.features.eyebrow') }}</span>
 			</div>
 
@@ -101,7 +102,7 @@ function togglePack(packKey: FeaturePackKey) {
 						class="mt-2 flex items-start gap-2 text-sm text-text-secondary"
 						data-testid="setup-provider-note"
 					>
-						<Icon name="lucide:info" class="w-4 h-4 mt-0.5 shrink-0 text-text-tertiary" />
+						<CircleInfoIcon class="w-4 h-4 mt-0.5 shrink-0 text-text-tertiary" />
 						{{ t('setup.features.providerNote') }}
 					</p>
 				</template>
@@ -109,12 +110,12 @@ function togglePack(packKey: FeaturePackKey) {
 
 			<footer class="mt-8 flex items-center justify-between border-t border-border-subtle pt-6">
 				<UiButton variant="ghost" @click="router.push('/setup/mode')">
-					<template #iconLeft><Icon name="lucide:arrow-left" class="w-4 h-4 mr-2" /></template>
+					<template #iconLeft><ArrowLeftIcon class="w-4 h-4 mr-2" /></template>
 					{{ t('common.back') }}
 				</UiButton>
 				<UiButton @click="router.push('/setup/email')">
 					{{ t('setup.features.next') }}
-					<template #iconRight><Icon name="lucide:arrow-right" class="w-4 h-4 ml-2" /></template>
+					<template #iconRight><ArrowRightIcon class="w-4 h-4 ml-2" /></template>
 				</UiButton>
 			</footer>
 		</div>

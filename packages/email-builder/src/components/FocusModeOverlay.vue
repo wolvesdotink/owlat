@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import UiTooltip from '@owlat/ui/components/ui/Tooltip.vue';
-import { X } from '@lucide/vue';
+import { CloseIcon } from '@coolicons/vue';
 import { useBuilderI18n } from '../i18n/useBuilderI18n';
 
 const { t } = useBuilderI18n();
@@ -72,7 +72,7 @@ const emit = defineEmits<{
 				type="button"
 				@click="emit('exit')"
 			>
-				<X :size="20" />
+				<CloseIcon :size="20" />
 			</button>
 		</UiTooltip>
 	</Transition>

@@ -48,7 +48,7 @@ export const preflightPlugin = definePlugin({
 				section: 'administration',
 				name: 'Preflight',
 				href: '/dashboard/admin/instance/plugins/preflight',
-				icon: 'lucide:radar',
+				icon: 'coolicons:radar',
 			},
 		],
 		settingsPanels: [
@@ -56,7 +56,7 @@ export const preflightPlugin = definePlugin({
 				id: 'settings',
 				name: 'Preflight',
 				href: '/dashboard/admin/instance/plugins/preflight',
-				icon: 'lucide:radar',
+				icon: 'coolicons:radar',
 			},
 		],
 	},

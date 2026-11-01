@@ -8,6 +8,7 @@ import type {
 import { conditionEditorModuleFor, useConditionEditorContext } from '~/composables/conditions';
 import type { ConditionStepConfig } from '~/composables/automations/steps';
 import { useLocalized } from '~/composables/useLocalized';
+import { CheckIcon, CloseIcon, GitBranchIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	modelValue: ConditionStepConfig;
@@ -87,7 +88,7 @@ const conditionDescription = computed(() => {
 			<div class="space-y-4">
 				<div class="p-4 bg-success/5 border border-success/20 rounded-lg">
 					<div class="flex items-center gap-2 mb-2">
-						<Icon name="lucide:check" class="w-4 h-4 text-success" />
+						<CheckIcon class="w-4 h-4 text-success" />
 						<span class="text-sm font-medium text-success">{{
 							t('components.automations.steps.condition.editor.ifTrue')
 						}}</span>
@@ -118,7 +119,7 @@ const conditionDescription = computed(() => {
 
 				<div class="p-4 bg-error/5 border border-error/20 rounded-lg">
 					<div class="flex items-center gap-2 mb-2">
-						<Icon name="lucide:x" class="w-4 h-4 text-error" />
+						<CloseIcon class="w-4 h-4 text-error" />
 						<span class="text-sm font-medium text-error">{{
 							t('components.automations.steps.condition.editor.ifFalse')
 						}}</span>
@@ -160,7 +161,7 @@ const conditionDescription = computed(() => {
 				<div
 					class="inline-flex items-center gap-2 px-4 py-2 bg-warning/10 border border-warning/30 rounded-full"
 				>
-					<Icon name="lucide:git-branch" class="w-4 h-4 text-warning" />
+					<GitBranchIcon class="w-4 h-4 text-warning" />
 					<span class="text-base font-medium text-warning">{{ conditionDescription }}</span>
 				</div>
 			</div>

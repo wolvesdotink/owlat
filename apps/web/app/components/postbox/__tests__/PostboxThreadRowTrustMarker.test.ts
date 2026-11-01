@@ -20,7 +20,6 @@ beforeAll(() => {
 	vi.stubGlobal('useI18n', i18nStubs.useI18n);
 });
 
-const iconStub = { props: ['name'], template: '<span :data-icon="name" />' };
 const nuxtLinkStub = { props: ['to'], template: '<a :href="to"><slot /></a>' };
 // Renderless: hands the row the scoped-slot handlers it binds, no popover.
 const contextMenuStub = {
@@ -47,7 +46,6 @@ function mountRow(msg: Partial<PostboxThreadRowMessage>, trustMarkers = true) {
 			components: {
 				PostboxRowCore,
 				PostboxThreadRowBody,
-				Icon: iconStub,
 				NuxtLink: nuxtLinkStub,
 				UiContextMenu: contextMenuStub,
 				UiAvatar: avatarStub,

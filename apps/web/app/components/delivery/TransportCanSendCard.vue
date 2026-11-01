@@ -17,6 +17,7 @@
  * deployment is not congratulated on every page load.
  */
 import DeliveryEnvSetupSteps from './EnvSetupSteps.vue';
+import { CircleCheckIcon, TriangleWarningIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	canSend: boolean;
@@ -45,7 +46,7 @@ const showConnected = computed(() => props.canSend && wasWaiting.value);
 				class="shrink-0 w-12 h-12 rounded-xl flex items-center justify-center"
 				:class="canSend ? 'bg-success/15 text-success' : 'bg-error/15 text-error'"
 			>
-				<Icon :name="canSend ? 'lucide:check-circle-2' : 'lucide:alert-triangle'" class="w-6 h-6" />
+				<component :is="canSend ? CircleCheckIcon : TriangleWarningIcon" class="w-6 h-6" />
 			</div>
 			<div class="flex-1 min-w-0">
 				<h2 class="text-lg font-semibold" :class="canSend ? 'text-success' : 'text-error'">

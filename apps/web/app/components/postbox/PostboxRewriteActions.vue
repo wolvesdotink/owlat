@@ -15,6 +15,16 @@
 
 import { ref } from 'vue';
 import type { RewriteIntent } from '~/composables/postbox/usePostboxSelectionRewrite';
+import {
+	BriefcaseIcon,
+	ChevronDownIcon,
+	FaceSmileIcon,
+	ScissorsIcon,
+	SpellCheckIcon,
+	TranslateIcon,
+	type IconComponent,
+} from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const { t } = useI18n();
 
@@ -43,26 +53,26 @@ function pickLanguage(language: string) {
 }
 
 /** Labels are message KEYS — the template resolves them so a locale switch repaints. */
-const OPTIONS: { intent: RewriteIntent; label: string; icon: string }[] = [
+const OPTIONS: { intent: RewriteIntent; label: string; icon: IconComponent }[] = [
 	{
 		intent: 'shorter',
 		label: 'components.postbox.postboxRewriteActions.shorter',
-		icon: 'lucide:scissors',
+		icon: ScissorsIcon,
 	},
 	{
 		intent: 'friendlier',
 		label: 'components.postbox.postboxRewriteActions.friendlier',
-		icon: 'lucide:smile',
+		icon: FaceSmileIcon,
 	},
 	{
 		intent: 'formal',
 		label: 'components.postbox.postboxRewriteActions.formal',
-		icon: 'lucide:briefcase',
+		icon: BriefcaseIcon,
 	},
 	{
 		intent: 'grammar',
 		label: 'components.postbox.postboxRewriteActions.grammar',
-		icon: 'lucide:spell-check',
+		icon: SpellCheckIcon,
 	},
 ];
 </script>
@@ -77,12 +87,8 @@ const OPTIONS: { intent: RewriteIntent; label: string; icon: string }[] = [
 			:disabled="loading"
 			@click="pick(opt.intent)"
 		>
-			<Icon
-				v-if="loading && activeIntent === opt.intent"
-				name="lucide:loader-2"
-				class="h-3.5 w-3.5 animate-spin motion-reduce:animate-none"
-			/>
-			<Icon v-else :name="opt.icon" class="h-3.5 w-3.5" />
+			<SpinnerIcon v-if="loading && activeIntent === opt.intent" class="h-3.5 w-3.5" />
+			<component v-else :is="opt.icon" class="h-3.5 w-3.5" />
 			<span>{{ t(opt.label) }}</span>
 		</button>
 		<div class="relative">
@@ -93,14 +99,10 @@ const OPTIONS: { intent: RewriteIntent; label: string; icon: string }[] = [
 					:disabled="loading"
 					@click="showTranslate = !showTranslate"
 				>
-					<Icon
-						v-if="loading && activeIntent === 'translate'"
-						name="lucide:loader-2"
-						class="h-3.5 w-3.5 animate-spin motion-reduce:animate-none"
-					/>
-					<Icon v-else name="lucide:languages" class="h-3.5 w-3.5" />
+					<SpinnerIcon v-if="loading && activeIntent === 'translate'" class="h-3.5 w-3.5" />
+					<TranslateIcon v-else class="h-3.5 w-3.5" />
 					<span>{{ t('components.postbox.postboxRewriteActions.translate') }}</span>
-					<Icon name="lucide:chevron-down" class="h-3 w-3" />
+					<ChevronDownIcon class="h-3 w-3" />
 				</button>
 			</UiTooltip>
 			<div

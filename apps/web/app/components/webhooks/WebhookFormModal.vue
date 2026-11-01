@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { WEBHOOK_EVENTS, type WebhookEvent } from '~/composables/useWebhookForm';
+import { CheckIcon, CircleWarningIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 interface Props {
 	isOpen: boolean;
@@ -61,7 +63,7 @@ const localUrl = computed({
 				v-if="formError"
 				class="mb-4 p-3 rounded-lg bg-error-subtle border border-error/20 flex items-start gap-3"
 			>
-				<Icon name="lucide:alert-circle" class="w-5 h-5 text-error shrink-0 mt-0.5" />
+				<CircleWarningIcon class="w-5 h-5 text-error shrink-0 mt-0.5" />
 				<p class="text-sm text-error">{{ formError }}</p>
 			</div>
 
@@ -149,9 +151,8 @@ const localUrl = computed({
 									: 'border-border-default',
 							]"
 						>
-							<Icon
+							<CheckIcon
 								v-if="formEvents.includes(event.value)"
-								name="lucide:check"
 								class="w-3 h-3 text-text-inverse"
 							/>
 						</div>
@@ -170,7 +171,7 @@ const localUrl = computed({
 				{{ t('common.cancel') }}
 			</UiButton>
 			<UiButton type="submit" form="webhook-form" class="gap-2" :disabled="isSubmitting">
-				<Icon v-if="isSubmitting" name="lucide:loader-2" class="w-4 h-4 animate-spin motion-reduce:animate-none" />
+				<SpinnerIcon v-if="isSubmitting" class="w-4 h-4" />
 				{{ isSubmitting ? submittingLabel : submitLabel }}
 			</UiButton>
 		</template>

@@ -10,6 +10,7 @@ import en from '~~/i18n/locales/en.json';
 import { MAIL_CATEGORY_META, type MailCategory } from '../mailCategory';
 import { POSTBOX_BUNDLE_CATEGORIES } from '../postboxBundles';
 import { RECATEGORIZE_OPTIONS } from '~/composables/postbox/usePostboxThreadCategories';
+import { MegaphoneIcon, TagIcon } from '@coolicons/vue';
 
 const ALL: MailCategory[] = [
 	'person',
@@ -35,10 +36,10 @@ describe('MAIL_CATEGORY_META', () => {
 		expect(Object.keys(MAIL_CATEGORY_META).sort()).toEqual([...ALL].sort());
 	});
 
-	it('carries a lucide icon and a catalog KEY that both locales resolve', () => {
+	it('carries an icon and a catalog KEY that both locales resolve', () => {
 		for (const category of ALL) {
 			const meta = MAIL_CATEGORY_META[category];
-			expect(meta.icon).toMatch(/^lucide:/);
+			expect(meta.icon).toBeTypeOf('function');
 			expect(meta.labelKey).toBe(`shared.mailCategory.${category}`);
 			expect(typeof lookup(en, meta.labelKey)).toBe('string');
 			expect(typeof lookup(de, meta.labelKey)).toBe('string');
@@ -48,8 +49,8 @@ describe('MAIL_CATEGORY_META', () => {
 	it('gives every category its own icon, never the Recategorize tag', () => {
 		const icons = ALL.map((category) => MAIL_CATEGORY_META[category].icon);
 		expect(new Set(icons).size).toBe(icons.length);
-		expect(icons).not.toContain('lucide:tag');
-		expect(MAIL_CATEGORY_META.promotion.icon).toBe('lucide:megaphone');
+		expect(icons).not.toContain(TagIcon);
+		expect(MAIL_CATEGORY_META.promotion.icon).toBe(MegaphoneIcon);
 	});
 
 	it('covers every subset a surface lists', () => {

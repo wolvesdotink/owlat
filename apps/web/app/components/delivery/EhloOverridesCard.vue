@@ -17,6 +17,7 @@ import {
 	type EhloOverrideRow,
 } from '~/utils/ehloOverrides';
 import { stableRowKey } from '~/utils/stableRowKey';
+import { NetworkIcon, PlusIcon, TrashIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -42,7 +43,7 @@ function removeRow(index: number) {
 	<UiCard padding="none" overflow="hidden" data-testid="ehlo-overrides">
 		<template #header>
 			<div class="flex items-center gap-3">
-				<UiIconBox icon="lucide:network" size="sm" variant="surface" rounded="lg" />
+				<UiIconBox :icon="NetworkIcon" size="sm" variant="surface" rounded="lg" />
 				<div>
 					<h2 class="text-lg font-semibold text-text-primary">
 						{{ t('components.delivery.ehloOverrides.title') }}
@@ -80,12 +81,12 @@ function removeRow(index: number) {
 					:aria-label="t('components.delivery.ehloOverrides.removeRow', { index: index + 1 })"
 					@click="removeRow(index)"
 				>
-					<Icon name="lucide:trash-2" class="w-4 h-4" />
+					<TrashIcon class="w-4 h-4" />
 				</UiButton>
 			</div>
 
 			<UiButton variant="secondary" size="sm" data-testid="ehlo-override-add" @click="addRow">
-				<Icon name="lucide:plus" class="w-4 h-4" />
+				<PlusIcon class="w-4 h-4" />
 				{{ t('components.delivery.ehloOverrides.addRow') }}
 			</UiButton>
 

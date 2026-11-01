@@ -16,7 +16,6 @@ import type { MigrationRouteView, MigrationTransportEntry } from '~/utils/mandri
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 
 const stubs = {
-	Icon: { template: '<i />' },
 	NuxtLink: { template: '<a><slot /></a>' },
 	DeliveryReferenceRelayNotice: { template: '<div data-testid="relay-notice-stub" />' },
 	UiButton: {

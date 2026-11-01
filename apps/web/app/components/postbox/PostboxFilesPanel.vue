@@ -22,6 +22,16 @@ import {
 	previewSliceFor,
 	type PostboxFileKind,
 } from '~/utils/postboxFileFacets';
+import {
+	ArchiveIcon,
+	DownloadIcon,
+	FileIcon,
+	FileTextIcon,
+	ImageIcon,
+	PaperclipIcon,
+	type IconComponent,
+} from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const props = defineProps<{ mailboxId: Id<'mailboxes'> }>();
 
@@ -58,12 +68,12 @@ const {
 } = usePostboxFileIndexBackfill(mailboxIdRef);
 
 /** Icon per coarse kind — the facet vocabulary, drawn. */
-const KIND_ICONS: Record<PostboxFileKind, string> = {
-	pdf: 'lucide:file-text',
-	image: 'lucide:image',
-	document: 'lucide:file',
-	archive: 'lucide:file-archive',
-	other: 'lucide:paperclip',
+const KIND_ICONS: Record<PostboxFileKind, IconComponent> = {
+	pdf: FileTextIcon,
+	image: ImageIcon,
+	document: FileIcon,
+	archive: ArchiveIcon,
+	other: PaperclipIcon,
 };
 
 type FileRow = (typeof files.value)[number];
@@ -162,10 +172,7 @@ function downloadLightbox(att: { filename: string; partIndex?: string }) {
 			v-else-if="backfill.status === 'running'"
 			class="card p-4 mb-4 flex items-center gap-3 text-sm text-text-secondary"
 		>
-			<Icon
-				name="lucide:loader-2"
-				class="w-4 h-4 animate-spin motion-reduce:animate-none flex-shrink-0"
-			/>
+			<SpinnerIcon class="w-4 h-4 flex-shrink-0" />
 			{{
 				t('components.postbox.postboxFilesPanel.backfillRunning', {
 					scanned: backfill.scannedCount,
@@ -236,10 +243,7 @@ function downloadLightbox(att: { filename: string; partIndex?: string }) {
 		</div>
 
 		<div v-if="isLoading" class="p-8 flex justify-center">
-			<Icon
-				name="lucide:loader-2"
-				class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary"
-			/>
+			<SpinnerIcon class="w-5 h-5 text-text-tertiary" />
 		</div>
 		<!-- A failed read is not "no files". -->
 		<UiQueryBoundary v-else-if="filesError" :error="filesError" @retry="refetchFiles" />
@@ -257,7 +261,7 @@ function downloadLightbox(att: { filename: string; partIndex?: string }) {
 					class="flex-1 flex items-center gap-3 min-w-0 text-left"
 					@click="open(file)"
 				>
-					<Icon :name="KIND_ICONS[file.kind]" class="w-5 h-5 flex-shrink-0 text-text-tertiary" />
+					<component :is="KIND_ICONS[file.kind]" class="w-5 h-5 flex-shrink-0 text-text-tertiary" />
 					<span class="min-w-0">
 						<span class="block truncate font-medium text-sm">{{ file.filename }}</span>
 						<span class="block truncate text-xs text-text-tertiary">
@@ -281,8 +285,8 @@ function downloadLightbox(att: { filename: string; partIndex?: string }) {
 					:aria-label="t('components.postbox.postboxFilesPanel.download', { name: file.filename })"
 					@click="download(file)"
 				>
-					<Icon
-						:name="downloading === file._id ? 'lucide:loader-2' : 'lucide:download'"
+					<component
+						:is="downloading === file._id ? SpinnerIcon : DownloadIcon"
 						class="w-4 h-4"
 						:class="{ 'animate-spin motion-reduce:animate-none': downloading === file._id }"
 					/>

@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import type { NavigationItem } from '~/lib/dashboardNavigationCore';
+import { BrainIcon, ChatCircleIcon, DashboardIcon, InboxIcon, ReplyAllIcon } from '@coolicons/vue';
+import { navIcon } from '~/lib/navIcons';
 
 /**
  * The Conversations workspace's sidebar (idea borrowed from T3 Code: the
@@ -39,14 +41,14 @@ const KNOWLEDGE_HREF = '/dashboard/knowledge';
 const pinned = computed(() => [
 	{
 		to: '/dashboard',
-		icon: 'lucide:layout-dashboard',
+		icon: DashboardIcon,
 		label: t('components.shell.nav.today'),
 		exact: true,
 		count: 0,
 	},
 	{
 		to: '/dashboard/answer',
-		icon: 'lucide:reply-all',
+		icon: ReplyAllIcon,
 		label: t('components.shell.nav.answer'),
 		exact: false,
 		count: answerCount.value,
@@ -55,7 +57,7 @@ const pinned = computed(() => [
 		? [
 				{
 					to: '/dashboard/inboxes',
-					icon: 'lucide:inbox',
+					icon: InboxIcon,
 					label: t('components.shell.nav.allInboxes'),
 					exact: false,
 					count: 0,
@@ -101,8 +103,8 @@ function isActive(to: string, exact: boolean): boolean {
 					props.collapsed ? 'justify-center' : '',
 				]"
 			>
-				<Icon
-					:name="item.icon"
+				<component
+					:is="navIcon(item.icon, isActive(item.to, item.exact))"
 					class="size-4.5 shrink-0"
 					:class="isActive(item.to, item.exact) ? 'text-brand' : 'text-text-tertiary'"
 				/>
@@ -142,7 +144,7 @@ function isActive(to: string, exact: boolean): boolean {
 					:aria-label="t('components.shell.chat.title')"
 					class="flex justify-center rounded-lg py-2 text-text-tertiary hover:bg-(--surface-2-hover) hover:text-text-primary"
 				>
-					<Icon name="lucide:message-circle" class="size-4.5" />
+					<ChatCircleIcon class="size-4.5" />
 				</NuxtLink>
 			</UiTooltip>
 			<UiTooltip v-if="showKnowledge" :text="t('shared.dashboardNavigation.sections.knowledge')">
@@ -154,7 +156,7 @@ function isActive(to: string, exact: boolean): boolean {
 					:class="isActive(KNOWLEDGE_HREF, false) ? 'text-brand' : 'text-text-tertiary'"
 					data-testid="shell-nav-knowledge"
 				>
-					<Icon name="lucide:brain" class="size-4.5" />
+					<component :is="navIcon(BrainIcon, isActive(KNOWLEDGE_HREF, false))" class="size-4.5" />
 				</NuxtLink>
 			</UiTooltip>
 		</template>
@@ -175,8 +177,8 @@ function isActive(to: string, exact: boolean): boolean {
 				"
 				data-testid="shell-nav-knowledge"
 			>
-				<Icon
-					name="lucide:brain"
+				<component
+					:is="navIcon(BrainIcon, isActive(KNOWLEDGE_HREF, false))"
 					class="size-4.5 shrink-0"
 					:class="isActive(KNOWLEDGE_HREF, false) ? 'text-brand' : 'text-text-tertiary'"
 				/>
@@ -233,7 +235,7 @@ function isActive(to: string, exact: boolean): boolean {
 					:to="item.href"
 					class="flex items-center gap-2.5 rounded-lg px-3 py-1.5 text-sm text-text-secondary hover:bg-(--surface-2-hover) hover:text-text-primary"
 				>
-					<Icon :name="item.icon" class="size-4 text-text-tertiary" />
+					<component :is="item.icon" class="size-4 text-text-tertiary" />
 					<span class="truncate">{{ t(item.name) }}</span>
 				</NuxtLink>
 			</template>

@@ -59,7 +59,6 @@ function mountRow(
 		},
 		global: {
 			plugins: [createTestI18n()],
-			components: { Icon: { props: ['name'], template: '<span />' } },
 		},
 	});
 }

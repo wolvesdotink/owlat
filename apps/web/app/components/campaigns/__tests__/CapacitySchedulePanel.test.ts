@@ -23,8 +23,6 @@ import de from '~~/i18n/locales/de.json';
 // resolve exactly as it does in the app (an auto-import, hence a global).
 Object.assign(globalThis, i18nStubs);
 
-const iconStub = { props: ['name'], template: '<span />' };
-
 /**
  * `finishesAt` is an exact UTC midnight — the ONLY value the backend can emit
  * (`capacityPlan.ts`: `utcDayStart(startsAt) + days * MS_PER_DAY`). Five days
@@ -66,7 +64,7 @@ function mountPanel(
 	}
 	return mount(CapacitySchedulePanel, {
 		props: { plan: { ...BASE, ...plan }, dismissible, now },
-		global: { plugins: [i18n], stubs: { Icon: iconStub } },
+		global: { plugins: [i18n] },
 	});
 }
 

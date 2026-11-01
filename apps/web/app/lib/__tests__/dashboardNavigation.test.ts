@@ -8,6 +8,7 @@ import {
 	type PluginNavigationContributions,
 } from '../dashboardNavigation';
 import { createTestI18n } from '~/__tests__/i18n';
+import { KanbanIcon, PackageIcon, PuzzleIcon, ReloadIcon, SkullIcon } from '@coolicons/vue';
 
 /**
  * Core destination names are catalog keys (module scope never calls `useI18n`);
@@ -102,7 +103,7 @@ function pluginNav(
 		id: href,
 		order: 0,
 		enabled: true,
-		value: { name: href, href, icon: 'lucide:box' },
+		value: { name: href, href, icon: PackageIcon },
 		...over,
 	};
 }
@@ -184,7 +185,7 @@ describe('buildNavigationSections — plugin contributions', () => {
 						value: {
 							name: 'Hijacked',
 							href: '/dashboard/audience/contacts',
-							icon: 'lucide:skull',
+							icon: SkullIcon,
 						},
 					}),
 				],
@@ -211,7 +212,7 @@ describe('buildNavigationSections — plugin contributions', () => {
 						value: {
 							name: 'Deals sync',
 							href: '/dashboard/admin/deals',
-							icon: 'lucide:refresh-ccw',
+							icon: ReloadIcon,
 						},
 					},
 				],
@@ -254,7 +255,7 @@ describe('derivePluginNavigation', () => {
 								section: 'audience',
 								name: 'Pipeline',
 								href: '/dashboard/audience/pipeline',
-								icon: 'lucide:kanban',
+								icon: 'coolicons:kanban',
 							},
 						],
 						settingsPanels: [
@@ -262,7 +263,7 @@ describe('derivePluginNavigation', () => {
 								id: 'sync',
 								name: 'Deals sync',
 								href: '/dashboard/admin/deals',
-								icon: 'lucide:refresh-ccw',
+								icon: 'coolicons:reload',
 							},
 						],
 					},
@@ -280,6 +281,22 @@ describe('derivePluginNavigation', () => {
 		const disabled = derivePluginNavigation(plugins, () => false);
 		expect(disabled.navItems[0]?.enabled).toBe(false);
 		expect(disabled.settingsPanels[0]?.enabled).toBe(false);
+	});
+
+	it('resolves each icon token through the compiled icon map', () => {
+		const derived = derivePluginNavigation(pluginFixture(), () => true, {
+			'coolicons:kanban': KanbanIcon,
+			'coolicons:reload': ReloadIcon,
+		});
+		expect(derived.navItems[0]?.value.icon).toBe(KanbanIcon);
+		expect(derived.settingsPanels[0]?.value.icon).toBe(ReloadIcon);
+	});
+
+	it('shows the puzzle piece for a token the compiled map does not hold', () => {
+		const derived = derivePluginNavigation(pluginFixture(), () => true, {
+			'coolicons:kanban': KanbanIcon,
+		});
+		expect(derived.settingsPanels[0]?.value.icon).toBe(PuzzleIcon);
 	});
 
 	it('defaults the ordering hint to declaration order and carries the target section', () => {
@@ -304,7 +321,7 @@ describe('derivePluginNavigation', () => {
 								id: 'x',
 								name: `Bad${String.fromCharCode(7)}Name${String.fromCharCode(0)}`,
 								href: '/dashboard/admin/rogue',
-								icon: 'lucide:x',
+								icon: 'coolicons:close',
 							},
 						],
 					},
@@ -335,7 +352,7 @@ describe('derivePluginNavigation', () => {
 					flag: { default: false },
 					contributes: {
 						settingsPanels: [
-							{ id: 'x', name: label, href: '/dashboard/admin/astral', icon: 'lucide:x' },
+							{ id: 'x', name: label, href: '/dashboard/admin/astral', icon: 'coolicons:close' },
 						],
 					},
 				}),
@@ -360,7 +377,7 @@ describe('derivePluginNavigation', () => {
 					flag: { default: false },
 					contributes: {
 						settingsPanels: [
-							{ id: 'x', name: noisy, href: '/dashboard/admin/noisy', icon: 'lucide:x' },
+							{ id: 'x', name: noisy, href: '/dashboard/admin/noisy', icon: 'coolicons:close' },
 						],
 					},
 				}),
@@ -385,7 +402,7 @@ describe('derivePluginNavigation', () => {
 					flag: { default: false },
 					contributes: {
 						settingsPanels: [
-							{ id: 'x', name: spoof, href: '/dashboard/admin/spoof', icon: 'lucide:x' },
+							{ id: 'x', name: spoof, href: '/dashboard/admin/spoof', icon: 'coolicons:close' },
 						],
 					},
 				}),

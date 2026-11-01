@@ -19,6 +19,7 @@ import { usePostboxPinRowDrag } from '~/composables/postbox/usePostboxMessageDra
 import { vReplyDrop } from '~/composables/useReplyFileDrop';
 import { replyDropForMessage } from '~/utils/replyFileDrop';
 import { folderAnswerOrigin, useListAnswerOrigin } from '~/composables/useAnswerMode';
+import { InboxIcon, PinIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	sections: PostboxInboxSection[];
@@ -78,7 +79,7 @@ const listSections = computed<PostboxThreadListSection<PostboxThreadRowMessage>[
 		key: section.key,
 		// The remainder has no name of its own.
 		label: section.name ?? t('components.postbox.postboxThreadSectionList.everythingElse'),
-		icon: section.name ? 'lucide:pin' : 'lucide:inbox',
+		icon: section.name ? PinIcon : InboxIcon,
 		items: section.messages,
 		headerBadge: {
 			count: section.unreadCount,

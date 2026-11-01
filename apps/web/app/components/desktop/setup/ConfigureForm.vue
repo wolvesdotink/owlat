@@ -11,6 +11,14 @@ import type { ConfigStep, SetupConfigForm } from '~/composables/desktopSetup/use
 import { hintClass, labelClass, sectionClass } from '~/composables/desktopSetup/setupFormClasses';
 import { useLocalized } from '~/composables/useLocalized';
 import TransportCredentialFields from '~/components/delivery/TransportCredentialFields.vue';
+import {
+	CheckIcon,
+	ChevronDownIcon,
+	CircleInfoIcon,
+	EyeIcon,
+	EyeOffIcon,
+	TriangleWarningIcon,
+} from '@coolicons/vue';
 
 const props = defineProps<{
 	form: SetupConfigForm;
@@ -77,7 +85,7 @@ const {
 				@update:model-value="goStep($event as ConfigStep)"
 			>
 				<template v-for="st in configSteps" :key="st.id" #[`option-${st.id}`]>
-					<Icon :name="st.icon" class="size-3.5 shrink-0" />
+					<component :is="st.icon" class="size-3.5 shrink-0" />
 					<span class="hidden sm:inline">{{ t(st.label) }}</span>
 				</template>
 			</UiSegmentedControl>
@@ -97,7 +105,7 @@ const {
 							class="flex size-4 shrink-0 items-center justify-center rounded border-2 transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-brand peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-surface-2"
 							:class="packs[opt.key] ? 'border-brand bg-brand' : 'border-border-default'"
 						>
-							<Icon v-if="packs[opt.key]" name="lucide:check" class="size-3 text-text-inverse" />
+							<CheckIcon v-if="packs[opt.key]" class="size-3 text-text-inverse" />
 						</span>
 						<span>{{ t(opt.label) }}</span>
 					</label>
@@ -112,8 +120,7 @@ const {
 							{{ opt.label }}
 						</option>
 					</select>
-					<Icon
-						name="lucide:chevron-down"
+					<ChevronDownIcon
 						class="pointer-events-none absolute right-2.5 top-1/2 size-4 -translate-y-1/2 text-text-secondary"
 					/>
 				</div>
@@ -151,8 +158,7 @@ const {
 						<option value="openai">{{ t('desktop.setup.ai.openai') }}</option>
 						<option value="ollama">{{ t('desktop.setup.ai.ollama') }}</option>
 					</select>
-					<Icon
-						name="lucide:chevron-down"
+					<ChevronDownIcon
 						class="pointer-events-none absolute right-2.5 top-1/2 size-4 -translate-y-1/2 text-text-secondary"
 					/>
 				</div>
@@ -194,7 +200,7 @@ const {
 							:aria-pressed="revealPassword"
 							@click="revealPassword = !revealPassword"
 						>
-							<Icon :name="revealPassword ? 'lucide:eye-off' : 'lucide:eye'" class="size-4" />
+							<component :is="revealPassword ? EyeOffIcon : EyeIcon" class="size-4" />
 						</button>
 					</div>
 					<input
@@ -257,7 +263,7 @@ const {
 					</template>
 				</p>
 				<p v-if="isRemoteTarget && !hasDomain" class="mt-1.5 text-xs text-warning">
-					<Icon name="lucide:triangle-alert" class="mb-0.5 mr-1 inline size-3.5" />
+					<TriangleWarningIcon class="mb-0.5 mr-1 inline size-3.5" />
 					{{ t('desktop.setup.domain.noDomainWarning') }}
 				</p>
 
@@ -303,7 +309,7 @@ const {
 							{{ t('desktop.setup.dns.tlsHint') }}
 						</p>
 						<p v-if="usesOwnMta && dnsRecords.length" class="mt-1.5 text-xs text-warning">
-							<Icon name="lucide:info" class="mb-0.5 mr-1 inline size-3.5" />
+							<CircleInfoIcon class="mb-0.5 mr-1 inline size-3.5" />
 							<I18nT keypath="desktop.setup.dns.deliverabilityHint" scope="global">
 								<template #settings
 									><span class="font-medium">{{
@@ -325,7 +331,7 @@ const {
 					class="flex size-4 shrink-0 items-center justify-center rounded border-2 transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-brand peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-surface-2"
 					:class="seedDemo ? 'border-brand bg-brand' : 'border-border-default'"
 				>
-					<Icon v-if="seedDemo" name="lucide:check" class="size-3 text-text-inverse" />
+					<CheckIcon v-if="seedDemo" class="size-3 text-text-inverse" />
 				</span>
 				<span>{{ t('desktop.setup.admin.seedDemo') }}</span>
 			</label>

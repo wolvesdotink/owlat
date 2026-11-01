@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { reactive } from 'vue';
-import { ChevronDown } from '@lucide/vue';
+import { ChevronDownIcon } from '@coolicons/vue';
 
 const expanded = reactive({ value: false });
 </script>
@@ -9,7 +9,7 @@ const expanded = reactive({ value: false });
 	<div class="ep-settings-accordion">
 		<button class="ep-settings-accordion-header" @click="expanded.value = !expanded.value">
 			<span><slot name="title" /></span>
-			<ChevronDown
+			<ChevronDownIcon
 				class="ep-settings-accordion-chevron"
 				:class="{ 'ep-settings-accordion-open': expanded.value }"
 			/>

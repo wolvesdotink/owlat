@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
 import { capitalize, formatDateTime } from '~/utils/formatters';
+import { ArrowLeftIcon, ChevronRightIcon, FileTextIcon, PaperPlaneIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 interface WebhookDeliveryLog {
 	_id: Id<'webhookDeliveryLogs'>;
@@ -145,7 +147,7 @@ function formatJson(value: unknown) {
 				class="flex items-center gap-1 text-sm text-text-tertiary hover:text-text-primary transition-colors"
 				@click="emit('clearSelectedLog')"
 			>
-				<Icon name="lucide:arrow-left" class="w-4 h-4" />
+				<ArrowLeftIcon class="w-4 h-4" />
 				{{ t('components.webhooks.webhookDeliveryLogsPanel.backToLogs') }}
 			</button>
 			<span v-else />
@@ -156,12 +158,8 @@ function formatJson(value: unknown) {
 				:disabled="isSendingTest"
 				@click="emit('sendTest')"
 			>
-				<Icon
-					v-if="isSendingTest"
-					name="lucide:loader-2"
-					class="w-4 h-4 animate-spin motion-reduce:animate-none"
-				/>
-				<Icon v-else name="lucide:send" class="w-4 h-4" />
+				<SpinnerIcon v-if="isSendingTest" class="w-4 h-4" />
+				<PaperPlaneIcon v-else class="w-4 h-4" />
 				{{
 					isSendingTest
 						? t('components.webhooks.webhookDeliveryLogsPanel.sending')
@@ -335,14 +333,14 @@ function formatJson(value: unknown) {
 					<span class="text-xs text-text-tertiary shrink-0 ml-auto">
 						{{ formatWhen(log.scheduledAt) }}
 					</span>
-					<Icon name="lucide:chevron-right" class="w-4 h-4 text-text-tertiary shrink-0" />
+					<ChevronRightIcon class="w-4 h-4 text-text-tertiary shrink-0" />
 				</div>
 			</div>
 
 			<!-- Empty state -->
 			<div v-else class="flex flex-col items-center justify-center py-16 text-center px-6">
 				<div class="p-4 rounded-full bg-bg-surface mb-4">
-					<Icon name="lucide:scroll-text" class="w-8 h-8 text-text-tertiary" />
+					<FileTextIcon class="w-8 h-8 text-text-tertiary" :stroke-width="1.5" />
 				</div>
 				<p class="text-text-secondary font-medium">
 					{{ t('components.webhooks.webhookDeliveryLogsPanel.emptyTitle') }}
@@ -351,12 +349,8 @@ function formatJson(value: unknown) {
 					{{ t('components.webhooks.webhookDeliveryLogsPanel.emptyDescription') }}
 				</p>
 				<UiButton class="gap-2 mt-4" :disabled="isSendingTest" @click="emit('sendTest')">
-					<Icon
-						v-if="isSendingTest"
-						name="lucide:loader-2"
-						class="w-4 h-4 animate-spin motion-reduce:animate-none"
-					/>
-					<Icon v-else name="lucide:send" class="w-4 h-4" />
+					<SpinnerIcon v-if="isSendingTest" class="w-4 h-4" />
+					<PaperPlaneIcon v-else class="w-4 h-4" />
 					{{
 						isSendingTest
 							? t('components.webhooks.webhookDeliveryLogsPanel.sending')

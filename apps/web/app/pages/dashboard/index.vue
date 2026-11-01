@@ -17,6 +17,7 @@ import {
 	type WorkbenchScope,
 	type WorkbenchTab,
 } from '~/utils/workbench';
+import { CircleWarningIcon, InboxIcon, MentionIcon } from '@coolicons/vue';
 
 /**
  * The Workbench — the home screen, one tab per inbox. Each tab summarises only
@@ -315,7 +316,7 @@ useWorkbenchKeyboard({
 				to="/dashboard/admin/delivery"
 				class="flex items-center gap-2 rounded-xl border border-error/30 bg-error-subtle px-4 py-2.5 text-sm text-error"
 			>
-				<Icon name="lucide:circle-alert" class="size-4" />
+				<CircleWarningIcon class="size-4" />
 				<span class="flex-1">{{ deliveryReason || t('dashboard.today.deliveryAlert') }}</span>
 				<span class="text-xs underline">{{ t('dashboard.today.openDelivery') }}</span>
 			</NuxtLink>
@@ -344,7 +345,7 @@ useWorkbenchKeyboard({
 			v-else-if="scope === null"
 			class="mt-8 flex flex-col items-start gap-3 rounded-2xl border border-dashed border-border-subtle px-6 py-8"
 		>
-			<Icon name="lucide:inbox" class="size-6 text-text-tertiary" />
+			<InboxIcon class="size-6 text-text-tertiary" />
 			<div>
 				<h2 class="text-base font-medium text-text-primary">
 					{{ t('dashboard.today.noInbox.title') }}
@@ -373,7 +374,7 @@ useWorkbenchKeyboard({
 						to="/dashboard/answer?in=chat"
 						class="mr-2 inline-flex items-center gap-1 rounded-full bg-bg-surface px-2 py-0.5 text-2xs font-medium text-text-secondary hover:text-text-primary"
 					>
-						<Icon name="lucide:at-sign" class="size-3" />
+						<MentionIcon class="size-3" />
 						{{ t('dashboard.today.since.mentions', { count: mentions }, mentions) }}
 					</NuxtLink>
 					<TodayInboxPicker

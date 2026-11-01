@@ -22,6 +22,7 @@
 import type { FunctionReturnType } from 'convex/server';
 import { api } from '@owlat/api';
 import { formatDate } from '~/utils/formatters';
+import { CircleInfoIcon, CircleWarningIcon, MailIcon, TriangleWarningIcon } from '@coolicons/vue';
 
 // Derived from the query's own return type so the server shape and the props
 // cannot drift — the same idiom as `DomainTable.vue`.
@@ -47,9 +48,9 @@ const SEVERITY_TONE = {
 } as const;
 
 const SEVERITY_ICON = {
-	critical: 'lucide:alert-triangle',
-	warning: 'lucide:alert-circle',
-	info: 'lucide:info',
+	critical: TriangleWarningIcon,
+	warning: CircleWarningIcon,
+	info: CircleInfoIcon,
 } as const;
 
 const reportedDomains = computed(() =>
@@ -78,7 +79,7 @@ const failingDomains = computed(() =>
 	<UiCard>
 		<div class="space-y-5">
 			<div class="flex items-center gap-3">
-				<UiIconBox icon="lucide:mail-check" size="lg" variant="brand" rounded="xl" />
+				<UiIconBox :icon="MailIcon" size="lg" variant="brand" rounded="xl" />
 				<div>
 					<h2 class="text-lg font-semibold text-text-primary">
 						{{ t('components.delivery.postmasterComplianceCard.title') }}
@@ -167,8 +168,8 @@ const failingDomains = computed(() =>
 						:class="SEVERITY_TONE[card.severity]"
 					>
 						<div class="flex items-start gap-2">
-							<Icon
-								:name="SEVERITY_ICON[card.severity]"
+							<component
+								:is="SEVERITY_ICON[card.severity]"
 								class="w-4 h-4 mt-0.5 shrink-0 text-text-secondary"
 							/>
 							<div class="min-w-0 space-y-1">

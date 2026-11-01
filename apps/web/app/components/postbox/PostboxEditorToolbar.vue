@@ -13,6 +13,17 @@
 import { computed } from 'vue';
 import type { ActiveMarks } from '@owlat/ui/composables/useRichText';
 import { useShortcutLabels } from '~/composables/useShortcutLabels';
+import {
+	BoldIcon,
+	Heading1Icon,
+	Heading2Icon,
+	ItalicIcon,
+	LinkIcon,
+	ListOrderedIcon,
+	ListUnorderedIcon,
+	QuoteLeftIcon,
+	UnderlineIcon,
+} from '@coolicons/vue';
 
 const { t } = useI18n();
 // The editor's own Cmd/Ctrl-B/I/U/K (useRichText's handleFormatKeydown).
@@ -63,7 +74,7 @@ const emit = defineEmits<{
 				@mousedown.prevent
 				@click="emit('bold')"
 			>
-				<Icon name="lucide:bold" class="w-4 h-4" />
+				<BoldIcon class="w-4 h-4" />
 			</button>
 		</UiTooltip>
 		<UiTooltip
@@ -79,7 +90,7 @@ const emit = defineEmits<{
 				@mousedown.prevent
 				@click="emit('italic')"
 			>
-				<Icon name="lucide:italic" class="w-4 h-4" />
+				<ItalicIcon class="w-4 h-4" />
 			</button>
 		</UiTooltip>
 		<UiTooltip
@@ -95,7 +106,7 @@ const emit = defineEmits<{
 				@mousedown.prevent
 				@click="emit('underline')"
 			>
-				<Icon name="lucide:underline" class="w-4 h-4" />
+				<UnderlineIcon class="w-4 h-4" />
 			</button>
 		</UiTooltip>
 		<span class="w-px h-4 bg-border-subtle mx-1" />
@@ -108,7 +119,7 @@ const emit = defineEmits<{
 				@mousedown.prevent
 				@click="emit('heading', 1)"
 			>
-				<Icon name="lucide:heading-1" class="w-4 h-4" />
+				<Heading1Icon class="w-4 h-4" />
 			</button>
 		</UiTooltip>
 		<UiTooltip :text="t('components.postbox.postboxEditorToolbar.heading2')">
@@ -120,7 +131,7 @@ const emit = defineEmits<{
 				@mousedown.prevent
 				@click="emit('heading', 2)"
 			>
-				<Icon name="lucide:heading-2" class="w-4 h-4" />
+				<Heading2Icon class="w-4 h-4" />
 			</button>
 		</UiTooltip>
 		<span class="w-px h-4 bg-border-subtle mx-1" />
@@ -133,7 +144,7 @@ const emit = defineEmits<{
 				@mousedown.prevent
 				@click="emit('list', false)"
 			>
-				<Icon name="lucide:list" class="w-4 h-4" />
+				<ListUnorderedIcon class="w-4 h-4" />
 			</button>
 		</UiTooltip>
 		<UiTooltip :text="t('components.postbox.postboxEditorToolbar.orderedList')">
@@ -145,7 +156,7 @@ const emit = defineEmits<{
 				@mousedown.prevent
 				@click="emit('list', true)"
 			>
-				<Icon name="lucide:list-ordered" class="w-4 h-4" />
+				<ListOrderedIcon class="w-4 h-4" />
 			</button>
 		</UiTooltip>
 		<UiTooltip :text="t('components.postbox.postboxEditorToolbar.blockquote')">
@@ -157,7 +168,7 @@ const emit = defineEmits<{
 				@mousedown.prevent
 				@click="emit('blockquote')"
 			>
-				<Icon name="lucide:quote" class="w-4 h-4" />
+				<QuoteLeftIcon class="w-4 h-4" />
 			</button>
 		</UiTooltip>
 		<span class="w-px h-4 bg-border-subtle mx-1" />
@@ -174,7 +185,7 @@ const emit = defineEmits<{
 				@mousedown.prevent
 				@click="emit('link')"
 			>
-				<Icon name="lucide:link" class="w-4 h-4" />
+				<LinkIcon class="w-4 h-4" />
 			</button>
 		</UiTooltip>
 	</div>

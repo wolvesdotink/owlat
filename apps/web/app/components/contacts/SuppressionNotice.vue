@@ -11,6 +11,7 @@
  */
 import { type BlockReason, suppressionReasonPresentation } from '~/utils/suppressionReasons';
 import { useLocalized } from '~/composables/useLocalized';
+import { MailIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	reason: BlockReason;
@@ -49,7 +50,7 @@ const detailOpen = ref(false);
 <template>
 	<div class="rounded-lg border border-warning/20 bg-warning/5 px-3 py-2 text-sm" role="status">
 		<div class="flex items-center gap-2.5">
-			<Icon name="lucide:mail-x" class="w-4 h-4 shrink-0 text-warning" />
+			<MailIcon class="w-4 h-4 shrink-0 text-warning" />
 			<p class="font-medium text-text-primary">
 				{{ t('components.contacts.suppressionNotice.title') }}
 			</p>

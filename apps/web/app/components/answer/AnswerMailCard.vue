@@ -14,6 +14,7 @@ import {
 	formatReplyQueueDueHint,
 	type ReplyQueueItem,
 } from '~/utils/postboxReplyQueue';
+import { AlarmIcon, CheckIcon, ExternalLinkIcon, ReplyIcon, SparklesIcon } from '@coolicons/vue';
 
 /**
  * A Postbox follow-up as an Answer-queue card: a "Remind me if no reply"
@@ -111,7 +112,7 @@ const secondaryButton =
 				<span
 					class="inline-flex items-center gap-1 text-[10px] font-medium uppercase tracking-wide px-1.5 py-px rounded-full bg-brand/10 text-brand"
 				>
-					<Icon name="lucide:alarm-clock" class="w-3 h-3" />
+					<AlarmIcon class="w-3 h-3" />
 					{{ t('components.postbox.postboxReplyFlow.followUp') }}
 				</span>
 				<span
@@ -126,7 +127,7 @@ const secondaryButton =
 
 		<TaskAsk class="mt-3 mb-4" :ask="headline" :detail="row.snippet" />
 
-		<TaskActions :primary-label="t('common.done')" primary-icon="lucide:check" @primary="markDone">
+		<TaskActions :primary-label="t('common.done')" :primary-icon="CheckIcon" @primary="markDone">
 			<button
 				v-if="canDraftNudge"
 				type="button"
@@ -134,7 +135,7 @@ const secondaryButton =
 				data-testid="answer-mail-draft-nudge"
 				@click="draftNudge"
 			>
-				<Icon name="lucide:sparkles" class="w-3.5 h-3.5" />
+				<SparklesIcon class="w-3.5 h-3.5" />
 				{{ t('answer.nudge.draft') }}
 			</button>
 			<button
@@ -143,11 +144,11 @@ const secondaryButton =
 				data-testid="answer-mail-nudge"
 				@click="answerInAnswerMode"
 			>
-				<Icon name="lucide:reply" class="w-3.5 h-3.5" />
+				<ReplyIcon class="w-3.5 h-3.5" />
 				{{ t('components.postbox.postboxReplyFlow.reply') }}
 			</button>
 			<button type="button" :class="secondaryButton" @click="openRow">
-				<Icon name="lucide:external-link" class="w-3.5 h-3.5" />
+				<ExternalLinkIcon class="w-3.5 h-3.5" />
 				{{ t('common.open') }}
 			</button>
 		</TaskActions>

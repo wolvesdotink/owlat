@@ -9,6 +9,14 @@ import { useAnswerModeNav } from '~/composables/useAnswerMode';
 import { useEscapeLayer } from '@owlat/ui/composables/useEscapeLayer';
 import { useKeyboardShortcuts } from '~/composables/useKeyboardShortcuts';
 import { useShortcutScope } from '~/composables/useShortcutScope';
+import {
+	ArrowLeftIcon,
+	ChevronDownIcon,
+	ChevronUpIcon,
+	PaperclipIcon,
+	ReplyIcon,
+	RobotIcon,
+} from '@coolicons/vue';
 
 /**
  * The email behind a Today phrase, in a panel over the page. Today stays put
@@ -183,7 +191,7 @@ watch(target, async (value, previous) => {
 					class="inline-flex items-center gap-1.5 rounded px-1.5 py-1 hover:bg-bg-surface hover:text-text-primary"
 					@click="emit('close')"
 				>
-					<Icon name="lucide:arrow-left" class="size-3.5" />
+					<ArrowLeftIcon class="size-3.5" />
 					{{ t('components.today.peek.back') }}
 					<kbd class="font-mono text-2xs">Esc</kbd>
 				</button>
@@ -196,7 +204,7 @@ watch(target, async (value, previous) => {
 						:aria-label="t('components.today.peek.previous')"
 						@click="step(-1)"
 					>
-						<Icon name="lucide:chevron-up" class="size-3.5" />
+						<ChevronUpIcon class="size-3.5" />
 					</button>
 					<button
 						type="button"
@@ -205,7 +213,7 @@ watch(target, async (value, previous) => {
 						:aria-label="t('components.today.peek.next')"
 						@click="step(1)"
 					>
-						<Icon name="lucide:chevron-down" class="size-3.5" />
+						<ChevronDownIcon class="size-3.5" />
 					</button>
 				</span>
 			</header>
@@ -225,7 +233,7 @@ watch(target, async (value, previous) => {
 						v-else-if="source?.kind === 'team'"
 						class="mt-0.5 inline-flex items-center gap-1 rounded-full bg-bg-surface px-2 py-px text-2xs font-medium text-text-secondary"
 					>
-						<Icon name="lucide:bot" class="size-3" />{{ t('components.shell.teamInbox') }}
+						<RobotIcon class="size-3" />{{ t('components.shell.teamInbox') }}
 					</span>
 					<h2 class="text-base font-medium leading-snug text-text-primary">
 						{{ view.subject || t('components.shell.noSubject') }}
@@ -243,7 +251,7 @@ watch(target, async (value, previous) => {
 						:key="name"
 						class="inline-flex items-center gap-1 rounded-full border border-border-subtle px-2 py-0.5 text-2xs text-text-secondary"
 					>
-						<Icon name="lucide:paperclip" class="size-3" />{{ name }}
+						<PaperclipIcon class="size-3" />{{ name }}
 					</span>
 					<span v-if="view.attachments.length > 3" class="text-2xs text-text-tertiary">
 						+{{ view.attachments.length - 3 }}
@@ -265,7 +273,7 @@ watch(target, async (value, previous) => {
 					data-testid="peek-reply"
 					@click="reply(source)"
 				>
-					<Icon name="lucide:reply" class="size-3.5" />
+					<ReplyIcon class="size-3.5" />
 					{{ t('components.today.peek.reply') }}
 				</UiButton>
 				<slot name="actions" :source="source" :informational="teamInformational" />

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import { UsersIcon } from '@coolicons/vue';
 
 // Team-inbox collision safety (display half): in a shared inbox, show who
 // replied last on this thread so a teammate can see at a glance that it's
@@ -41,7 +42,7 @@ const label = computed(() => {
 		class="inline-flex items-center gap-1.5 rounded-full bg-bg-surface border border-border-subtle px-2.5 py-1 text-xs text-text-secondary"
 		role="note"
 	>
-		<Icon name="lucide:users" class="w-3.5 h-3.5 flex-shrink-0 text-text-tertiary" />
+		<UsersIcon class="w-3.5 h-3.5 flex-shrink-0 text-text-tertiary" />
 		<span class="truncate">{{ label }}</span>
 	</div>
 </template>

@@ -3,6 +3,8 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { BudgetHoldReason } from '@owlat/shared/aiRouting';
 import { BUDGET_REASON_KEYS, budgetReasonOf } from '~/utils/aiBudget';
+import { ArrowTurnDownLeftIcon, SparklesIcon, WalletIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 /**
  * "Ask about this thread": a grounded Q&A about THIS thread (single-turn
@@ -89,7 +91,7 @@ watch(
 		data-testid="postbox-ai-strip"
 	>
 		<div class="flex items-center gap-2 px-3 py-2">
-			<Icon name="lucide:sparkles" class="w-3.5 h-3.5 text-text-tertiary shrink-0" />
+			<SparklesIcon class="w-3.5 h-3.5 text-text-tertiary shrink-0" />
 			<p class="flex-1 text-xs font-medium text-text-secondary">
 				{{ t('components.postbox.postboxAiStrip.askAbout') }}
 			</p>
@@ -122,10 +124,7 @@ watch(
 
 			<div aria-live="polite" :aria-busy="askBusy">
 				<p v-if="askBusy" class="flex items-center gap-1.5 text-xs text-text-tertiary">
-					<Icon
-						name="lucide:loader-2"
-						class="w-3.5 h-3.5 animate-spin motion-reduce:animate-none"
-					/>
+					<SpinnerIcon class="w-3.5 h-3.5" />
 					{{ t('components.postbox.postboxAiStrip.thinking') }}
 				</p>
 				<div
@@ -135,7 +134,7 @@ watch(
 					data-testid="postbox-ask-budget"
 					:data-reason="budgetReason"
 				>
-					<Icon name="lucide:wallet" class="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" />
+					<WalletIcon class="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" />
 					<p>
 						<span class="font-medium text-text-primary">{{ t('shared.aiBudget.title') }}</span>
 						{{ ' ' }}
@@ -148,7 +147,7 @@ watch(
 			</div>
 
 			<div class="input input-sm flex items-center gap-2">
-				<Icon name="lucide:sparkles" class="w-4 h-4 shrink-0 text-text-tertiary" />
+				<SparklesIcon class="w-4 h-4 shrink-0 text-text-tertiary" />
 				<input
 					ref="askInput"
 					v-model="question"
@@ -168,7 +167,7 @@ watch(
 					:disabled="askBusy"
 					@click="submitAsk"
 				>
-					<Icon name="lucide:corner-down-left" class="w-4 h-4" />
+					<ArrowTurnDownLeftIcon class="w-4 h-4" />
 				</button>
 			</div>
 		</div>

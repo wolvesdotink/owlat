@@ -43,7 +43,7 @@ function mountTab() {
 		props: { contactId: 'c_1' as never },
 		global: {
 			plugins: [createTestI18n()],
-			stubs: { NuxtLink: RouterLinkStub, Icon: true, UiSpinner: true, UiIconBox: true },
+			stubs: { NuxtLink: RouterLinkStub, UiSpinner: true, UiIconBox: true },
 			// Nuxt auto-imports the template reads.
 			mocks: { formatCompactFileSize: (bytes: number) => `${bytes} B`, formatDate: () => 'Oct 1' },
 		},

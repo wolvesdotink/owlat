@@ -33,6 +33,16 @@ import {
 	type OnboardingMode,
 } from '~/utils/welcomeFlow';
 import type { LocalizedText } from '~/utils/localizedText';
+import {
+	CompassIcon,
+	DatabaseIcon,
+	FileTextIcon,
+	KeyIcon,
+	MegaphoneIcon,
+	PaperPlaneIcon,
+	UsersIcon,
+	type IconComponent,
+} from '@coolicons/vue';
 
 /** Whether the viewer can drive instance-wide setup. */
 export type ViewerRole = 'admin' | 'member';
@@ -73,7 +83,7 @@ export interface GettingStartedStep {
 	/** Where the CTA navigates to do / resume this step. */
 	href: string;
 	cta: GettingStartedMessage;
-	icon: string;
+	icon: IconComponent;
 	completed: boolean;
 	/**
 	 * The member cannot do this step yet — something outside their control is
@@ -130,7 +140,7 @@ export const READY_TO_SEND_STEP: Omit<GettingStartedStep, 'completed'> = {
 	id: 'readyToSend',
 	title: 'shared.gettingStarted.readyToSend.title',
 	description: 'shared.gettingStarted.readyToSend.description',
-	icon: 'lucide:send',
+	icon: PaperPlaneIcon,
 	href: '/dashboard/admin/delivery',
 	cta: 'shared.gettingStarted.readyToSend.cta',
 };
@@ -149,7 +159,7 @@ export const INSTANCE_STEPS: readonly InstanceStepMeta[] = [
 		id: 'addedContacts',
 		title: 'shared.gettingStarted.addedContacts.title',
 		description: 'shared.gettingStarted.addedContacts.description',
-		icon: 'lucide:users',
+		icon: UsersIcon,
 		href: '/dashboard/audience/contacts',
 		cta: 'shared.gettingStarted.addedContacts.cta',
 	},
@@ -157,7 +167,7 @@ export const INSTANCE_STEPS: readonly InstanceStepMeta[] = [
 		id: 'createdEmail',
 		title: 'shared.gettingStarted.createdEmail.title',
 		description: 'shared.gettingStarted.createdEmail.description',
-		icon: 'lucide:file-text',
+		icon: FileTextIcon,
 		href: '/dashboard/send/marketing',
 		cta: 'shared.gettingStarted.createdEmail.cta',
 	},
@@ -165,7 +175,7 @@ export const INSTANCE_STEPS: readonly InstanceStepMeta[] = [
 		id: 'sentCampaign',
 		title: 'shared.gettingStarted.sentCampaign.title',
 		description: 'shared.gettingStarted.sentCampaign.description',
-		icon: 'lucide:megaphone',
+		icon: MegaphoneIcon,
 		href: '/dashboard/campaigns/new',
 		cta: 'shared.gettingStarted.sentCampaign.cta',
 	},
@@ -173,7 +183,7 @@ export const INSTANCE_STEPS: readonly InstanceStepMeta[] = [
 		id: 'createdApiKey',
 		title: 'shared.gettingStarted.createdApiKey.title',
 		description: 'shared.gettingStarted.createdApiKey.description',
-		icon: 'lucide:key',
+		icon: KeyIcon,
 		href: '/dashboard/admin/team/api',
 		cta: 'shared.gettingStarted.createdApiKey.cta',
 	},
@@ -188,7 +198,7 @@ export const BACKUPS_STEP: Omit<GettingStartedStep, 'completed'> = {
 	id: 'backupsScheduled',
 	title: 'shared.gettingStarted.backups.title',
 	description: 'shared.gettingStarted.backups.description',
-	icon: 'lucide:database-backup',
+	icon: DatabaseIcon,
 	href: '/dashboard/admin/backups',
 	cta: 'shared.gettingStarted.backups.cta',
 };
@@ -260,7 +270,7 @@ export const FINISH_SETUP_STEP: Omit<GettingStartedStep, 'completed'> = {
 	id: 'finishSetup',
 	title: 'shared.gettingStarted.finishSetup.title',
 	description: 'shared.gettingStarted.finishSetup.description',
-	icon: 'lucide:compass',
+	icon: CompassIcon,
 	href: '/welcome',
 	cta: 'shared.gettingStarted.finishSetup.cta',
 	informational: true,

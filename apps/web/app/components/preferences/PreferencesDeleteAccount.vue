@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { TrashIcon } from '@coolicons/vue';
+
 defineProps<{
 	/**
 	 * Owners trigger the org-deletion walker; members only erase their personal
@@ -16,7 +18,7 @@ const { t } = useI18n();
 	<div class="card p-0 overflow-hidden border-error/20">
 		<div class="px-6 py-4 border-b border-error/10 bg-error/5">
 			<div class="flex items-center gap-3">
-				<UiIconBox icon="lucide:trash-2" size="sm" variant="error" rounded="lg" />
+				<UiIconBox :icon="TrashIcon" size="sm" variant="error" rounded="lg" />
 				<div>
 					<h2 class="text-lg font-semibold text-error">
 						{{ t('dashboard.preferences.account.deleteAccountTitle') }}
@@ -67,7 +69,7 @@ const { t } = useI18n();
 				class="gap-2 bg-error/10 text-error hover:bg-error/20 border border-error/20"
 				@click="emit('request')"
 			>
-				<Icon name="lucide:trash-2" class="w-4 h-4" />
+				<TrashIcon class="w-4 h-4" />
 				{{ t('dashboard.preferences.account.requestDeletionAction') }}
 			</UiButton>
 		</div>

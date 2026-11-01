@@ -25,6 +25,8 @@
  */
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import { CircleCheckIcon, CircleIcon, ExternalLinkIcon, LockIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const props = defineProps<{
 	domainId: Id<'domains'>;
@@ -79,10 +81,10 @@ const stateClass = computed(() => (state.value ? STATE_CLASSES[state.value] : ''
 
 // Step affordance icons. `blocked` is "not your turn yet", not "something broke".
 const STEP_ICONS = {
-	done: 'lucide:check-circle-2',
-	in_progress: 'lucide:loader',
-	todo: 'lucide:circle',
-	blocked: 'lucide:lock',
+	done: CircleCheckIcon,
+	in_progress: SpinnerIcon,
+	todo: CircleIcon,
+	blocked: LockIcon,
 } as const;
 
 const STEP_CLASSES = {
@@ -187,8 +189,8 @@ async function reset() {
 				:data-testid="`yahoocfl-step-${step.id}`"
 				:data-status="step.status"
 			>
-				<Icon
-					:name="STEP_ICONS[step.status]"
+				<component
+					:is="STEP_ICONS[step.status]"
 					class="w-4 h-4 mt-0.5 shrink-0"
 					:class="STEP_CLASSES[step.status]"
 				/>
@@ -210,7 +212,7 @@ async function reset() {
 						:data-testid="`yahoocfl-link-${step.id}`"
 					>
 						{{ t('components.domains.yahooCflPanel.openForm') }}
-						<Icon name="lucide:external-link" class="w-3 h-3" />
+						<ExternalLinkIcon class="w-3 h-3" />
 					</a>
 				</div>
 			</li>

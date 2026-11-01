@@ -5,7 +5,6 @@
  *   - the reason renders in plain language, per reason
  *   - the "Remove suppression?" action is gated on canManage (permission)
  *   - the action emits `remove` and disables while removing
- * Icon is a global auto-import, stubbed here.
  */
 import { describe, it, expect, beforeAll } from 'vitest';
 import { mount } from '@vue/test-utils';
@@ -36,7 +35,7 @@ function mountNotice(props: {
 		},
 		global: {
 			plugins: [createTestI18n()],
-			stubs: { Icon: true, UiDisclosure: { template: '<div><slot name="label" /><slot /></div>' } },
+			stubs: { UiDisclosure: { template: '<div><slot name="label" /><slot /></div>' } },
 		},
 	});
 }

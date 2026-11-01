@@ -118,7 +118,6 @@ function mountSurface(component: unknown) {
 				AuthTwoFactorStageForm,
 			},
 			stubs: {
-				Icon: { template: '<span />' },
 				UiHeroField: HeroFieldStub,
 				UiSpinner: { template: '<span />' },
 				UiIconBox: { template: '<span />' },

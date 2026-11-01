@@ -2,6 +2,8 @@
 // The campaign editor's "Campaign details" card: name and reply-to. The sender
 // picker goes in the default slot, so the page keeps its template ref (every
 // save validates through it).
+import { FileTextIcon, ReplyIcon } from '@coolicons/vue';
+
 defineProps<{
 	nameError?: string;
 	disabled: boolean;
@@ -23,7 +25,7 @@ const { t } = useI18n();
 			<!-- Campaign Name -->
 			<div>
 				<label for="campaignName" class="label flex items-center gap-2">
-					<Icon name="lucide:file-text" class="w-4 h-4 text-text-tertiary" />
+					<FileTextIcon class="w-4 h-4 text-text-tertiary" />
 					{{ t('dashboard.campaigns.detail.edit.details.campaignName') }}
 					<span class="text-error">*</span>
 				</label>
@@ -45,7 +47,7 @@ const { t } = useI18n();
 			<!-- Reply-to -->
 			<div>
 				<label for="replyTo" class="label flex items-center gap-2">
-					<Icon name="lucide:reply" class="w-4 h-4 text-text-tertiary" />
+					<ReplyIcon class="w-4 h-4 text-text-tertiary" />
 					{{ t('dashboard.campaigns.detail.edit.details.replyTo') }}
 					<span class="text-text-tertiary">{{
 						t('dashboard.campaigns.detail.edit.details.optionalSuffix')

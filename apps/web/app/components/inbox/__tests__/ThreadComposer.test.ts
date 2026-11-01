@@ -89,7 +89,6 @@ function mountComposer(props: Record<string, unknown> = {}, slots: Record<string
 			plugins: [createTestI18n()],
 			components: { PostboxComposerPreflightChip },
 			stubs: {
-				Icon: true,
 				PostboxOverflowMenu: MenuStub,
 				UiModal: ModalStub,
 				// The mailbox-only controls of the shared footer, never shown here.

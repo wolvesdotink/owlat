@@ -9,6 +9,8 @@
  * exchange should DO was recorded when the flow started, keyed by `state`.
  */
 import { api } from '@owlat/api';
+import { TriangleWarningIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const { t } = useI18n();
 const KEY = 'oauth.google.callback';
@@ -69,15 +71,12 @@ const isWorking = computed(() => !denied.value && !errorMessage.value);
 	<div class="p-6 lg:p-8 max-w-lg mx-auto">
 		<UiCard padding="lg">
 			<div v-if="isWorking" class="flex items-center gap-3" aria-live="polite">
-				<Icon
-					name="lucide:loader-2"
-					class="w-5 h-5 animate-spin motion-reduce:animate-none text-text-tertiary"
-				/>
+				<SpinnerIcon class="w-5 h-5 text-text-tertiary" />
 				<p class="text-sm text-text-secondary">{{ t(`${KEY}.connecting`) }}</p>
 			</div>
 
 			<div v-else class="flex items-start gap-3">
-				<UiIconBox icon="lucide:alert-triangle" size="md" variant="error" rounded="xl" />
+				<UiIconBox :icon="TriangleWarningIcon" size="md" variant="error" rounded="xl" />
 				<div>
 					<h1 class="font-semibold">
 						{{ denied ? t(`${KEY}.deniedTitle`) : t(`${KEY}.failedTitle`) }}

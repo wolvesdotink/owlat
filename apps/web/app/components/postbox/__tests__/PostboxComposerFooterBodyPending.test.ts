@@ -63,7 +63,6 @@ function mountFooter(bodyPending: boolean) {
 				},
 			},
 			stubs: {
-				Icon: true,
 				PostboxComposerPreflightChip: true,
 				PostboxPreviewAsSent: true,
 				PostboxFollowUpDialog: true,

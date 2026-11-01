@@ -155,7 +155,6 @@ async function mountList(url = '/dashboard/campaigns') {
 				UiModal: UiModalStub,
 				CampaignsCommandRow: CommandRowStub,
 				DashboardListSkeleton: Blank,
-				Icon: Blank,
 			},
 		},
 	});

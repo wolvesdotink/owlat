@@ -41,6 +41,11 @@ const isRoadmap = (path: string) => path.includes('/5.vision/');
 const EXTERNAL_NAMES: Readonly<Record<string, string>> = {
 	AbortSignal: 'web platform',
 	AmazonSESFullAccess: 'AWS managed IAM policy',
+	ArrowUpRightIcon: 'a @coolicons/vue component',
+	InboxIcon: 'a @coolicons/vue component',
+	MailIcon: 'a @coolicons/vue component',
+	PencilIcon: 'a @coolicons/vue component',
+	UsersIcon: 'a @coolicons/vue component',
 	CONVEX_DEPLOYMENT: 'set by the Convex CLI, not by Owlat',
 	ConvexHttpClient: "the Convex client library's class",
 	DeleteIdentity: 'Amazon SES API action',

@@ -15,7 +15,7 @@ function mountPanel(state: ReaderTranslationState) {
 		props: { state, language: 'English' },
 		global: {
 			plugins: [createTestI18n()],
-			stubs: { Icon: true, UiButton: { template: '<button><slot /></button>' } },
+			stubs: { UiButton: { template: '<button><slot /></button>' } },
 		},
 	});
 }

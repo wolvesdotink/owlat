@@ -24,12 +24,18 @@ import {
 import { usePostboxSectionedVirtualList } from '~/composables/postbox/usePostboxVirtualList';
 import { usePostboxListAutoLoad } from '~/composables/postbox/usePostboxListAutoLoad';
 import { usePostboxListNow } from '~/composables/postbox/usePostboxListClock';
+import {
+	ChevronDownIcon,
+	ChevronRightIcon,
+	CircleCheckIcon,
+	type IconComponent,
+} from '@coolicons/vue';
 
 /** One section of the list. `label` is display text, already localized. */
 export interface PostboxThreadListSection<Item> {
 	key: string;
 	label: string;
-	icon: string;
+	icon: IconComponent;
 	items: Item[];
 	/**
 	 * The header's count. Both sectioned views count UNREAD, never the total: a
@@ -148,7 +154,7 @@ const { handleScroll } = usePostboxListAutoLoad({
 	<PostboxThreadListSkeleton v-if="loading && sections.length === 0" />
 	<PostboxEmptyState
 		v-else-if="sections.length === 0"
-		icon="lucide:check-circle-2"
+		:icon="CircleCheckIcon"
 		:title="emptyTitle"
 	/>
 	<div v-else ref="scrollEl" class="h-full overflow-auto" @scroll="handleScroll()">
@@ -171,11 +177,11 @@ const { handleScroll } = usePostboxListAutoLoad({
 						:aria-expanded="!collapsed[section.key]"
 						@click="emit('toggle', section.key)"
 					>
-						<Icon
-							:name="collapsed[section.key] ? 'lucide:chevron-right' : 'lucide:chevron-down'"
+						<component
+							:is="collapsed[section.key] ? ChevronRightIcon : ChevronDownIcon"
 							class="w-3.5 h-3.5 flex-shrink-0"
 						/>
-						<Icon :name="section.icon" class="w-3.5 h-3.5 flex-shrink-0" />
+						<component :is="section.icon" class="w-3.5 h-3.5 flex-shrink-0" />
 						<span
 							class="flex-1 text-left"
 							:class="{ 'normal-case tracking-normal': verbatimLabels }"

@@ -16,7 +16,7 @@ beforeAll(() => {
 function mountNotice(refusal: unknown, variant?: 'inline' | 'panel') {
 	return mount(BudgetRefusal, {
 		props: { refusal, ...(variant ? { variant } : {}) },
-		global: { plugins: [createTestI18n()], stubs: { Icon: true } },
+		global: { plugins: [createTestI18n()] },
 	});
 }
 

@@ -58,8 +58,6 @@ beforeEach(() => {
 	);
 });
 
-const iconStub = { props: ['name'], template: '<span />' };
-
 function mountBody(props: Record<string, unknown> = {}, id?: string) {
 	// A fresh id per mount: the client-scoped body cache would otherwise answer
 	// the second test from the first one's download.
@@ -75,7 +73,7 @@ function mountBody(props: Record<string, unknown> = {}, id?: string) {
 		},
 		global: {
 			plugins: [createTestI18n()],
-			components: { PostboxReaderSkeleton, UiSkeleton, Icon: iconStub },
+			components: { PostboxReaderSkeleton, UiSkeleton },
 			stubs: { PostboxImageBanner: true },
 		},
 	});

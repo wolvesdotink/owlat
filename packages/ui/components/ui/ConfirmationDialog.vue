@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, useId } from 'vue';
 import { useUiI18n } from '../../composables/useUiI18n';
+import { TrashIcon, TriangleWarningIcon, type IconComponent } from '@coolicons/vue';
 
 type Variant = 'danger' | 'warning' | 'default';
 
@@ -77,17 +78,17 @@ const emit = defineEmits<{
  * owns the only sanctioned solid danger fill and `.btn-primary` is the
  * monochrome default. The icon disc keeps its tint — a tint is not a fill.
  */
-const variantConfig: Record<Variant, { icon: string; iconClass: string }> = {
+const variantConfig: Record<Variant, { icon: IconComponent; iconClass: string }> = {
 	danger: {
-		icon: 'lucide:trash-2',
+		icon: TrashIcon,
 		iconClass: 'bg-error/10 text-error',
 	},
 	warning: {
-		icon: 'lucide:alert-triangle',
+		icon: TriangleWarningIcon,
 		iconClass: 'bg-warning/10 text-warning',
 	},
 	default: {
-		icon: 'lucide:alert-triangle',
+		icon: TriangleWarningIcon,
 		iconClass: 'bg-brand/10 text-brand',
 	},
 };
@@ -137,7 +138,7 @@ const handleBackdropClick = () => {
 			<div
 				:class="['w-12 h-12 flex items-center justify-center rounded-full mb-4', config.iconClass]"
 			>
-				<Icon :name="config.icon" class="w-6 h-6" />
+				<component :is="config.icon" class="w-6 h-6" />
 			</div>
 
 			<h3 :id="titleId" class="text-lg font-semibold text-text-primary mb-2">
@@ -173,7 +174,7 @@ const handleBackdropClick = () => {
 				@click="handleConfirm"
 			>
 				<template v-if="!isLoading" #iconLeft>
-					<Icon :name="config.icon" class="w-4 h-4" />
+					<component :is="config.icon" class="w-4 h-4" />
 				</template>
 				{{ isLoading ? t('ui.actions.pleaseWait') : resolvedConfirmText }}
 			</UiButton>

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import type { DelayStepConfig } from '~/composables/automations/steps';
+import { ClockIcon } from '@coolicons/vue';
 
 type Unit = DelayStepConfig['unit'];
 
@@ -57,7 +58,7 @@ const presets: { duration: number; unit: Unit; labelKey: string }[] = [
 	<div class="space-y-6">
 		<div>
 			<label class="label flex items-center gap-2 mb-2">
-				<Icon name="lucide:clock" class="w-4 h-4 text-brand" />
+				<ClockIcon class="w-4 h-4 text-brand" />
 				{{ t('components.automations.steps.delay.editor.durationLabel') }}
 			</label>
 			<div class="flex gap-3">
@@ -117,7 +118,7 @@ const presets: { duration: number; unit: Unit; labelKey: string }[] = [
 				<div
 					class="inline-flex items-center gap-2 px-4 py-2 bg-brand/10 border border-brand/30 rounded-full"
 				>
-					<Icon name="lucide:clock" class="w-4 h-4 text-brand" />
+					<ClockIcon class="w-4 h-4 text-brand" />
 					<span class="text-base font-medium text-brand">
 						{{ durationPreview }}
 					</span>

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { meterFillStyle } from '@owlat/ui/utils/meterFill';
+import { ShieldCheckIcon, ShieldOffIcon, ShieldWarningIcon } from '@coolicons/vue';
 
 interface Props {
 	breakerType: string;
@@ -82,13 +83,13 @@ const progressPercent = computed(() => {
 					</span>
 				</div>
 			</div>
-			<Icon
-				:name="
+			<component
+				:is="
 					state === 'closed'
-						? 'lucide:shield-check'
+						? ShieldCheckIcon
 						: state === 'open'
-							? 'lucide:shield-off'
-							: 'lucide:shield-alert'
+							? ShieldOffIcon
+							: ShieldWarningIcon
 				"
 				class="w-5 h-5"
 				:class="stateConfig.color"

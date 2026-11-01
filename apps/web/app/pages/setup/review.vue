@@ -10,12 +10,20 @@ import {
 	SETUP_TOKEN_FIELD_ID,
 	groupActiveFeatures,
 	launchBlockers,
+	SETUP_NEXT_STEPS,
 	type LaunchBlockerId,
 } from '~/composables/setupWizardReview';
 import { useFeatureCopy } from '~/composables/useFeatureCopy';
 import { isCsrfRejection } from '~/lib/csrf';
 import { apiFetch } from '~/lib/csrfFetch';
 import SetupReviewRow from '~/components/setup/ReviewRow.vue';
+import {
+	ArrowLeftIcon,
+	ArrowRightIcon,
+	FeatherIcon,
+	RocketIcon,
+	SparkleIcon,
+} from '@coolicons/vue';
 
 definePageMeta({ layout: false });
 
@@ -138,12 +146,6 @@ function signInHref(next?: string): string {
 	return setupSignInHref(redirectTarget.value, next);
 }
 
-const NEXT_STEPS = [
-	{ id: 'domain', icon: 'lucide:globe', to: '/dashboard/admin/delivery/domains' },
-	{ id: 'team', icon: 'lucide:user-plus', to: '/dashboard/admin/team' },
-	{ id: 'postbox', icon: 'lucide:inbox', to: '/dashboard/postbox' },
-] as const;
-
 async function pollUntilReady() {
 	if (await probeSetupCleared()) {
 		stopPolling();
@@ -220,7 +222,7 @@ onUnmounted(stopPolling);
 		     `signInHref`) — there is no second reload anywhere in this flow. -->
 		<div v-if="phase === 'complete'" class="relative mx-auto max-w-2xl px-6 py-12">
 			<div class="flex items-center gap-3 mb-8">
-				<UiIconBox icon="lucide:party-popper" size="md" variant="brand" rounded="xl" />
+				<UiIconBox :icon="SparkleIcon" size="md" variant="brand" rounded="xl" />
 				<span class="lp-eyebrow">{{ t('setup.review.complete.eyebrow') }}</span>
 			</div>
 
@@ -242,12 +244,12 @@ onUnmounted(stopPolling);
 
 			<h2 class="lp-eyebrow mb-3">{{ t('setup.review.complete.nextHeading') }}</h2>
 			<ul class="space-y-2">
-				<li v-for="step in NEXT_STEPS" :key="step.id">
+				<li v-for="step in SETUP_NEXT_STEPS" :key="step.id">
 					<a
 						:href="signInHref(step.to)"
 						class="flex items-center gap-4 rounded-xl bg-surface-1 shadow-surface-1 border border-transparent px-4 py-3 transition-[box-shadow] duration-(--motion-fast) ease-spring hover:shadow-surface-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
 					>
-						<Icon :name="step.icon" class="h-5 w-5 shrink-0 text-text-tertiary" />
+						<component :is="step.icon" class="h-5 w-5 shrink-0 text-text-tertiary" />
 						<span class="min-w-0 flex-1">
 							<span class="block font-medium text-text-primary">{{
 								t(`setup.review.complete.next.${step.id}.title`)
@@ -266,14 +268,14 @@ onUnmounted(stopPolling);
 			<div class="mt-8">
 				<UiButton size="lg" :href="signInHref()">
 					{{ t('setup.review.complete.signIn') }}
-					<template #iconRight><Icon name="lucide:arrow-right" class="w-4 h-4 ml-2" /></template>
+					<template #iconRight><ArrowRightIcon class="w-4 h-4 ml-2" /></template>
 				</UiButton>
 			</div>
 		</div>
 
 		<div v-else class="relative mx-auto max-w-3xl px-6 py-12">
 			<div class="flex items-center gap-3 mb-8">
-				<UiIconBox icon="lucide:feather" size="md" variant="brand" rounded="xl" />
+				<UiIconBox :icon="FeatherIcon" size="md" variant="brand" rounded="xl" />
 				<span class="lp-eyebrow">{{ t('setup.review.eyebrow') }}</span>
 			</div>
 
@@ -463,7 +465,7 @@ onUnmounted(stopPolling);
 						:disabled="phase !== 'idle'"
 						@click="router.push('/setup/admin')"
 					>
-						<template #iconLeft><Icon name="lucide:arrow-left" class="w-4 h-4 mr-2" /></template>
+						<template #iconLeft><ArrowLeftIcon class="w-4 h-4 mr-2" /></template>
 						{{ t('common.back') }}
 					</UiButton>
 					<UiButton
@@ -481,7 +483,7 @@ onUnmounted(stopPolling);
 									: t('setup.review.launch')
 						}}
 						<template v-if="phase === 'idle'" #iconRight
-							><Icon name="lucide:rocket" class="w-4 h-4 ml-2"
+							><RocketIcon class="w-4 h-4 ml-2"
 						/></template>
 					</UiButton>
 				</div>

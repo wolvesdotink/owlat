@@ -64,7 +64,6 @@ function mountRail() {
 			plugins: [createTestI18n()],
 			components: { PostboxRailLink, NuxtLink: nuxtLinkStub },
 			stubs: {
-				Icon: true,
 				PostboxMailboxSwitcher: true,
 				PostboxFolderList: true,
 				PostboxLabelTree: true,

@@ -11,6 +11,7 @@ import {
 	TEAM_THREAD_PRIORITY_KEYS,
 	type TeamThreadPriority,
 } from '~/utils/teamThreadPriority';
+import { UserCloseCornerIcon, UserIcon } from '@coolicons/vue';
 
 /** What the Team Inbox thread page hands the palette. */
 export interface TeamThreadCommandSources {
@@ -60,14 +61,14 @@ export function useTeamThreadCommandSurface(sources: TeamThreadCommandSources): 
 				: member.name
 					? { subtitle: member.email }
 					: {}),
-			icon: 'lucide:user',
+			icon: UserIcon,
 			run: () => sources.onAssign(member.userId),
 		}));
 		if (current) {
 			options.push({
 				id: 'assign-nobody',
 				label: t('shared.commandPaletteSurfaces.teamThread.unassign'),
-				icon: 'lucide:user-x',
+				icon: UserCloseCornerIcon,
 				run: () => sources.onAssign(undefined),
 			});
 		}

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Doc } from '@owlat/api/dataModel';
 import type { ContactUpdatedTriggerConfig } from '~/composables/automations/triggers';
+import { UserSettingsCornerIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -23,7 +24,7 @@ const updatePropertyKey = (event: Event) => {
 <template>
 	<div>
 		<label for="propertyKey" class="label flex items-center gap-2">
-			<Icon name="lucide:user-cog" class="w-4 h-4 text-brand" />
+			<UserSettingsCornerIcon class="w-4 h-4 text-brand" />
 			{{ t('components.automations.triggers.contactUpdated.editor.propertyLabel') }}
 			<span class="text-error">*</span>
 		</label>

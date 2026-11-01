@@ -16,6 +16,7 @@
 
 import { resolveFlags, type FeatureFlagState } from '@owlat/shared/featureFlags';
 import { operatingModeFlags, type OperatingModeKey } from '@owlat/shared/operatingModes';
+import { InboxIcon, LayersIcon, PaperPlaneIcon, type IconComponent } from '@coolicons/vue';
 
 export type SetupOutcome = 'conversations' | 'sending' | 'both';
 
@@ -25,7 +26,7 @@ export interface SetupOutcomeOption {
 	label: string;
 	/** i18n key for the one-line explanation under it. */
 	description: string;
-	icon: string;
+	icon: IconComponent;
 	/** Whether the answer includes answering email, so AI drafting can be offered. */
 	answersEmail: boolean;
 }
@@ -35,21 +36,21 @@ export const SETUP_OUTCOMES: readonly SetupOutcomeOption[] = [
 		key: 'conversations',
 		label: 'setup.mode.outcomes.conversations.label',
 		description: 'setup.mode.outcomes.conversations.description',
-		icon: 'lucide:inbox',
+		icon: InboxIcon,
 		answersEmail: true,
 	},
 	{
 		key: 'sending',
 		label: 'setup.mode.outcomes.sending.label',
 		description: 'setup.mode.outcomes.sending.description',
-		icon: 'lucide:send',
+		icon: PaperPlaneIcon,
 		answersEmail: false,
 	},
 	{
 		key: 'both',
 		label: 'setup.mode.outcomes.both.label',
 		description: 'setup.mode.outcomes.both.description',
-		icon: 'lucide:layers',
+		icon: LayersIcon,
 		answersEmail: true,
 	},
 ];

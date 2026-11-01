@@ -17,7 +17,6 @@ Object.assign(globalThis, {
 config.global.plugins = [...(config.global.plugins ?? []), createTestI18n()];
 
 const stubs = {
-	Icon: { template: '<i />' },
 	UiButton: {
 		emits: ['click'],
 		template: '<button type="button" @click="$emit(\'click\')"><slot /></button>',

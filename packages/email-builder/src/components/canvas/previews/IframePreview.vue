@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, nextTick, toRef } from 'vue';
-import { FileCode2 } from '@lucide/vue';
+import { FileCodeIcon } from '@coolicons/vue';
 import type { EditorBlock, EmailTheme } from '../../../types';
 import { useBlockRenderer } from '../../../composables/useBlockRenderer';
 import { getBlock } from '../../../registry';
@@ -86,7 +86,7 @@ onMounted(() => {
 			v-if="isEmpty"
 			class="flex flex-col items-center justify-center gap-2 h-[120px] m-2 bg-bg-surface border-2 border-dashed border-border-subtle rounded-lg text-text-tertiary"
 		>
-			<FileCode2 :size="24" />
+			<FileCodeIcon :size="24" />
 			<span class="text-xs">{{
 				t('builder.canvas.preview.configure', { block: blockLabel })
 			}}</span>

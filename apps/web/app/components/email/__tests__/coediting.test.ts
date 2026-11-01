@@ -35,7 +35,7 @@ function mountPresence(people: EditorPerson[], isOffline = false) {
 		props: { people, isOffline },
 		global: {
 			plugins: [createTestI18n()],
-			stubs: { UiAvatar: { props: ['name'], template: '<i>{{ name }}</i>' }, Icon: true },
+			stubs: { UiAvatar: { props: ['name'], template: '<i>{{ name }}</i>' } },
 		},
 	});
 }
@@ -76,7 +76,7 @@ describe('EmailCoeditNotices', () => {
 	function mountNotices(notices: CoeditNoticeView[], hasVersionHistory = false) {
 		return mount(CoeditNotices, {
 			props: { notices, hasVersionHistory },
-			global: { plugins: [createTestI18n()], stubs: { UiButton: buttonStub, Icon: true } },
+			global: { plugins: [createTestI18n()], stubs: { UiButton: buttonStub } },
 		});
 	}
 

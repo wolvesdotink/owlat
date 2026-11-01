@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { entryTypeIcon } from '~/utils/knowledgeEntryTypes';
+import { FileTextIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	kind: 'knowledge' | 'file';
@@ -13,7 +14,7 @@ const props = defineProps<{
 const { t } = useI18n();
 
 const icon = computed(() =>
-	props.kind === 'file' ? 'lucide:file-text' : entryTypeIcon(props.entryType ?? '')
+	props.kind === 'file' ? FileTextIcon : entryTypeIcon(props.entryType ?? '')
 );
 
 const tooltip = computed(() =>
@@ -31,7 +32,7 @@ const tooltip = computed(() =>
 		<button
 			class="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full bg-bg-surface border border-border-subtle text-text-secondary hover:text-text-primary hover:bg-bg-surface-hover transition-colors"
 		>
-			<Icon :name="icon" class="w-3 h-3 text-text-tertiary" />
+			<component :is="icon" class="w-3 h-3 text-text-tertiary" />
 			<span class="truncate max-w-[200px]">{{ title }}</span>
 		</button>
 	</UiTooltip>

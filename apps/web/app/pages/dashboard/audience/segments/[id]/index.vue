@@ -2,6 +2,14 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { buildContactsCsv, downloadCsv, type CsvContact } from '~/utils/contactsCsv';
+import {
+	ArrowLeftIcon,
+	CalendarIcon,
+	DownloadIcon,
+	FilterIcon,
+	Slider1Icon,
+	UsersIcon,
+} from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -160,7 +168,7 @@ const handleExport = async () => {
 			v-else-if="!isLoading && !segment"
 			class="flex flex-col items-center justify-center py-16 text-center px-6"
 		>
-			<UiIconBox icon="lucide:filter" size="xl" variant="surface" rounded="full" class="mb-4" />
+			<UiIconBox :icon="FilterIcon" size="xl" variant="surface" rounded="full" class="mb-4" />
 			<p class="text-text-secondary font-medium">
 				{{ t('dashboard.audience.segments.detail.index.notFound.title') }}
 			</p>
@@ -181,16 +189,16 @@ const handleExport = async () => {
 					class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors mt-1"
 					:aria-label="t('dashboard.audience.segments.detail.index.notFound.action')"
 				>
-					<Icon name="lucide:arrow-left" class="w-5 h-5" />
+					<ArrowLeftIcon class="w-5 h-5" />
 				</NuxtLink>
 				<div class="p-2 rounded-lg bg-brand/10 flex items-center justify-center">
-					<Icon name="lucide:filter" class="w-5 h-5 text-brand" />
+					<FilterIcon class="w-5 h-5 text-brand" />
 				</div>
 				<UiPageHeader class="flex-1" :title="segment.name" :description="segment.description">
 					<template #meta>
 						<div class="flex items-center flex-wrap gap-4 text-sm text-text-tertiary">
 							<div class="flex items-center gap-1.5">
-								<Icon name="lucide:users" class="w-4 h-4" />
+								<UsersIcon class="w-4 h-4" />
 								<span>{{
 									t(
 										'dashboard.audience.segments.detail.index.matchingContacts',
@@ -200,11 +208,11 @@ const handleExport = async () => {
 								}}</span>
 							</div>
 							<div class="flex items-center gap-1.5">
-								<Icon name="lucide:sliders-horizontal" class="w-4 h-4" />
+								<Slider1Icon class="w-4 h-4" />
 								<span>{{ filterSummary }}</span>
 							</div>
 							<div class="flex items-center gap-1.5">
-								<Icon name="lucide:calendar" class="w-4 h-4" />
+								<CalendarIcon class="w-4 h-4" />
 								<span>{{
 									t('dashboard.audience.segments.detail.index.createdOn', {
 										date: formatDate(segment.createdAt),
@@ -220,7 +228,7 @@ const handleExport = async () => {
 							:loading="isExporting"
 							@click="handleExport"
 						>
-							<template #iconLeft><Icon name="lucide:download" class="w-4 h-4" /></template>
+							<template #iconLeft><DownloadIcon class="w-4 h-4" /></template>
 							{{ t('dashboard.audience.segments.detail.index.exportCsv') }}
 						</UiButton>
 					</template>
@@ -237,7 +245,7 @@ const handleExport = async () => {
 				:loading="membersLoading"
 				:error="membersError"
 				:empty="{
-					icon: 'lucide:users',
+					icon: UsersIcon,
 					title: t('dashboard.audience.segments.detail.index.empty.title'),
 					description: t('dashboard.audience.segments.detail.index.empty.body'),
 				}"

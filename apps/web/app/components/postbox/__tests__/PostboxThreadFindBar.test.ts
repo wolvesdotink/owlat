@@ -45,7 +45,7 @@ function mountBar(find: ReturnType<typeof controller>) {
 	return mount(PostboxThreadFindBar, {
 		props: { find },
 		attachTo: document.body,
-		global: { plugins: [createTestI18n()], stubs: { Icon: true } },
+		global: { plugins: [createTestI18n()] },
 	});
 }
 

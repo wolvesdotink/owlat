@@ -6,6 +6,8 @@
  * click away. The page owns the deletion, the sign-out that follows it and the
  * inflight flag.
  */
+import { TrashIcon, TriangleWarningIcon } from '@coolicons/vue';
+
 const props = defineProps<{
 	open: boolean;
 	workspaceName?: string;
@@ -42,7 +44,7 @@ function confirm() {
 		@update:open="(v: boolean) => !v && emit('close')"
 	>
 		<div class="flex items-center gap-3 mb-6">
-			<UiIconBox icon="lucide:alert-triangle" size="sm" variant="error" rounded="lg" />
+			<UiIconBox :icon="TriangleWarningIcon" size="sm" variant="error" rounded="lg" />
 			<div>
 				<h2 class="text-lg font-semibold text-text-primary">
 					{{ t('dashboard.admin.team.deleteModal.title') }}
@@ -94,7 +96,7 @@ function confirm() {
 			</UiButton>
 			<UiButton variant="danger" :loading="busy" :disabled="!canConfirm" @click="confirm">
 				<template #iconLeft>
-					<Icon v-if="!busy" name="lucide:trash-2" class="w-4 h-4" />
+					<TrashIcon v-if="!busy" class="w-4 h-4" />
 				</template>
 				{{
 					busy

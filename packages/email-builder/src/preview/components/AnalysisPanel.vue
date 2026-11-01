@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
-import { ChevronDown, BarChart3, Loader2 } from '@lucide/vue';
+import { ChartBarVerticalIcon, ChevronDownIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 import type {
 	CompatibilityReport,
 	PreviewEmailAnalysis,
@@ -56,12 +57,15 @@ const headerSummary = computed(() => {
 		<!-- Collapsible Header -->
 		<button class="ep-analysis-header" @click="emit('toggle')">
 			<div class="ep-analysis-header-left">
-				<BarChart3 class="ep-analysis-header-icon" />
+				<ChartBarVerticalIcon class="ep-analysis-header-icon" />
 				<span class="ep-analysis-header-title">{{ t('builder.analysis.title') }}</span>
 				<span class="ep-analysis-header-summary">{{ headerSummary }}</span>
-				<Loader2 v-if="isAnalyzing" class="ep-analysis-spinner" />
+				<SpinnerIcon v-if="isAnalyzing" class="ep-analysis-spinner" />
 			</div>
-			<ChevronDown class="ep-analysis-chevron" :class="{ 'ep-analysis-chevron-open': expanded }" />
+			<ChevronDownIcon
+				class="ep-analysis-chevron"
+				:class="{ 'ep-analysis-chevron-open': expanded }"
+			/>
 		</button>
 
 		<!-- Expanded Content -->

@@ -18,6 +18,7 @@ import {
 	createEmptyRule,
 } from '~/composables/useDashboardRules';
 import { useDashboardCardCopy } from '~/composables/useDashboardCardCopy';
+import { CloseIcon, PlusIcon, TrashIcon } from '@coolicons/vue';
 
 interface AvailableCard {
 	type: string;
@@ -114,7 +115,7 @@ const roleOptions = computed(() =>
 			</h3>
 			<UiButton variant="ghost" size="sm" @click="addRule">
 				<template #iconLeft>
-					<Icon name="lucide:plus" class="w-3.5 h-3.5" />
+					<PlusIcon class="w-3.5 h-3.5" />
 				</template>
 				{{ t('components.dashboard.dashboardEditor.addRule') }}
 			</UiButton>
@@ -153,7 +154,7 @@ const roleOptions = computed(() =>
 						:aria-label="t('components.dashboard.dashboardEditor.removeRule')"
 						@click="removeRule(ruleIndex)"
 					>
-						<Icon name="lucide:trash-2" class="w-4 h-4" />
+						<TrashIcon class="w-4 h-4" />
 					</button>
 				</div>
 
@@ -264,7 +265,7 @@ const roleOptions = computed(() =>
 								:aria-label="t('components.dashboard.dashboardEditor.removeRuleCard')"
 								@click="removeRuleCard(rule, cardIndex)"
 							>
-								<Icon name="lucide:x" class="w-3.5 h-3.5" />
+								<CloseIcon class="w-3.5 h-3.5" />
 							</button>
 						</div>
 					</div>
@@ -276,7 +277,7 @@ const roleOptions = computed(() =>
 							class="flex items-center gap-1 px-2 py-1 text-xs rounded border border-dashed border-border-subtle text-text-secondary hover:border-brand hover:text-brand transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 							@click="addRuleCard(rule, card.type)"
 						>
-							<Icon name="lucide:plus" class="w-3 h-3" />
+							<PlusIcon class="w-3 h-3" />
 							{{ cardLabel(card) }}
 						</button>
 					</div>

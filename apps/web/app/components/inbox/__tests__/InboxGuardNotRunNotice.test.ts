@@ -15,7 +15,7 @@ beforeAll(() => {
 function mountNotice(reason: (typeof GUARD_NOT_RUN_REASONS)[number]) {
 	return mount(InboxGuardNotRunNotice, {
 		props: { marker: { reason, at: Date.UTC(2026, 9, 7, 7, 12) } },
-		global: { plugins: [createTestI18n()], stubs: { Icon: true } },
+		global: { plugins: [createTestI18n()] },
 	});
 }
 

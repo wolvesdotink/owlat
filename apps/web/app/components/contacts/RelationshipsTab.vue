@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
+import { CheckIcon, CloseIcon, PlusIcon, TrashIcon, UsersIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	contactId: Id<'contacts'>;
@@ -83,7 +84,7 @@ const onRemove = async (id: Id<'contactRelationships'>) => {
 					{{ t('components.contacts.relationshipsTab.title') }}
 				</h2>
 				<UiButton variant="secondary" size="sm" class="gap-1" @click="showAddForm = !showAddForm">
-					<Icon :name="showAddForm ? 'lucide:x' : 'lucide:plus'" class="w-3 h-3" />
+					<component :is="showAddForm ? CloseIcon : PlusIcon" class="w-3 h-3" />
 					{{
 						showAddForm
 							? t('common.cancel')
@@ -111,7 +112,7 @@ const onRemove = async (id: Id<'contactRelationships'>) => {
 								:aria-label="t('components.contacts.relationshipsTab.clearSelected')"
 								@click="clearTargetContact"
 							>
-								<Icon name="lucide:x" class="w-4 h-4" />
+								<CloseIcon class="w-4 h-4" />
 							</button>
 						</UiTooltip>
 					</div>
@@ -201,7 +202,7 @@ const onRemove = async (id: Id<'contactRelationships'>) => {
 			<!-- Empty -->
 			<div v-else-if="!relationships || relationships.length === 0" class="py-6 text-center">
 				<UiIconBox
-					icon="lucide:users"
+					:icon="UsersIcon"
 					size="lg"
 					variant="surface"
 					rounded="full"
@@ -225,7 +226,7 @@ const onRemove = async (id: Id<'contactRelationships'>) => {
 					<div
 						class="flex-shrink-0 w-10 h-10 rounded-full bg-bg-elevated flex items-center justify-center"
 					>
-						<Icon :name="getRelationshipIcon(rel.relationship)" class="w-5 h-5 text-brand" />
+						<component :is="getRelationshipIcon(rel.relationship)" class="w-5 h-5 text-brand" />
 					</div>
 					<div class="flex-1 min-w-0">
 						<div class="flex items-center gap-2">
@@ -286,7 +287,7 @@ const onRemove = async (id: Id<'contactRelationships'>) => {
 										:aria-label="t('components.contacts.relationshipsTab.saveConfidence')"
 										@click="saveConfidence(rel._id)"
 									>
-										<Icon name="lucide:check" class="w-3.5 h-3.5" />
+										<CheckIcon class="w-3.5 h-3.5" />
 									</button>
 								</UiTooltip>
 								<UiTooltip :text="t('common.cancel')">
@@ -296,7 +297,7 @@ const onRemove = async (id: Id<'contactRelationships'>) => {
 										:aria-label="t('common.cancel')"
 										@click="cancelEditConfidence"
 									>
-										<Icon name="lucide:x" class="w-3.5 h-3.5" />
+										<CloseIcon class="w-3.5 h-3.5" />
 									</button>
 								</UiTooltip>
 							</div>
@@ -321,7 +322,7 @@ const onRemove = async (id: Id<'contactRelationships'>) => {
 							:aria-label="t('components.contacts.relationshipsTab.removeRelationship')"
 							@click="onRemove(rel._id)"
 						>
-							<Icon name="lucide:trash-2" class="w-4 h-4" />
+							<TrashIcon class="w-4 h-4" />
 						</button>
 					</UiTooltip>
 				</div>

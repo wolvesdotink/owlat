@@ -114,7 +114,6 @@ function mountCard() {
 		global: {
 			plugins: [createTestI18n()],
 			stubs: {
-				Icon: true,
 				InboxTrustChip: true,
 				InboxDecisionRationale: true,
 				TaskContext: true,
@@ -178,7 +177,6 @@ describe('AnswerTeamCard with a draftless escalation', () => {
 			global: {
 				plugins: [createTestI18n()],
 				stubs: {
-					Icon: true,
 					InboxTrustChip: true,
 					InboxDecisionRationale: true,
 					TaskContext: true,
@@ -261,7 +259,6 @@ describe("AnswerTeamCard with the agent's questions", () => {
 			global: {
 				plugins: [createTestI18n()],
 				stubs: {
-					Icon: true,
 					InboxTrustChip: true,
 					InboxDecisionRationale: true,
 					TaskContext: true,
@@ -330,7 +327,6 @@ describe('AnswerTeamCard with an agent draft that has gaps', () => {
 			global: {
 				plugins: [createTestI18n()],
 				stubs: {
-					Icon: true,
 					InboxTrustChip: true,
 					InboxDecisionRationale: true,
 					TaskContext: true,

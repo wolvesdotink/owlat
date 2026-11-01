@@ -20,6 +20,7 @@ import {
 import { composedSendProviderCatalogEntry } from '~/utils/composedSendProviderCatalog';
 import { transportKindLabel } from '~/utils/transportState';
 import { useLocalized } from '~/composables/useLocalized';
+import { CircleInfoIcon, RouteIcon, TriangleWarningIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -276,7 +277,7 @@ watch(isEditDirty, (dirty) => setHasChanges(dirty), { immediate: true });
 		     names the surface rather than claiming there is nothing here. -->
 		<UiEmptyState
 			v-else-if="!hasActiveOrganization"
-			icon="lucide:route"
+			:icon="RouteIcon"
 			:eyebrow="t('dashboard.admin.delivery.providerRouting.title')"
 			:title="t('dashboard.admin.delivery.providerRouting.noWorkspace.title')"
 			:description="t('dashboard.admin.delivery.providerRouting.noWorkspace.description')"
@@ -287,7 +288,7 @@ watch(isEditDirty, (dirty) => setHasChanges(dirty), { immediate: true });
 			<!-- Info Card -->
 			<div class="card p-6 bg-brand/5 border-brand/20">
 				<div class="flex gap-4">
-					<UiIconBox icon="lucide:info" size="sm" variant="brand" rounded="lg" />
+					<UiIconBox :icon="CircleInfoIcon" size="sm" variant="brand" rounded="lg" />
 					<div>
 						<h3 class="font-medium text-text-primary mb-1">
 							{{ t('dashboard.admin.delivery.providerRouting.howItWorks.title') }}
@@ -404,7 +405,7 @@ watch(isEditDirty, (dirty) => setHasChanges(dirty), { immediate: true });
 						<option v-for="pool in ipPools ?? []" :key="pool" :value="pool" />
 					</datalist>
 					<p v-if="ipPoolWarning" class="mt-1 text-xs text-warning flex items-start gap-1.5">
-						<Icon name="lucide:alert-triangle" class="w-3.5 h-3.5 shrink-0 mt-px" />
+						<TriangleWarningIcon class="w-3.5 h-3.5 shrink-0 mt-px" />
 						<span>{{ ipPoolWarning }}</span>
 					</p>
 					<p class="mt-1 text-xs text-text-tertiary">

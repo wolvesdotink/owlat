@@ -1,4 +1,4 @@
-import { Square } from '@lucide/vue';
+import { SquareIcon } from '@coolicons/vue';
 import { moduleFor } from '@owlat/email-renderer';
 import type { EditorModule } from '../_module';
 import type { ContainerBlockContent } from '../../types';
@@ -8,7 +8,7 @@ import { itemsChildrenView, containerChildTypes } from '../_itemsChildren';
 export const containerEditor: EditorModule<'container'> = {
 	type: 'container',
 	label: 'Container',
-	icon: Square,
+	icon: SquareIcon,
 	schema: containerSchema,
 	slashCommand: {
 		name: 'Container',

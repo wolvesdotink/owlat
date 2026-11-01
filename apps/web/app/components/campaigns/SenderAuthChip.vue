@@ -14,6 +14,14 @@ import type { OutboundAlignmentState } from '@owlat/shared';
 import { senderAuthDisplay, type SenderAuthDisplay } from '~/utils/senderAlignment';
 import { healthChipClass, healthTextClass } from '~/utils/healthTone';
 import { useLocalized } from '~/composables/useLocalized';
+import {
+	CircleInfoIcon,
+	ShieldCheckIcon,
+	ShieldCloseIcon,
+	ShieldIcon,
+	ShieldWarningIcon,
+	type IconComponent,
+} from '@coolicons/vue';
 
 const props = defineProps<{
 	verified: boolean;
@@ -36,11 +44,11 @@ const display = computed<SenderAuthDisplay>(() =>
 	})
 );
 
-const ICON: Record<SenderAuthDisplay['tone'], string> = {
-	success: 'lucide:shield-check',
-	warning: 'lucide:shield-alert',
-	error: 'lucide:shield-x',
-	neutral: 'lucide:shield',
+const ICON: Record<SenderAuthDisplay['tone'], IconComponent> = {
+	success: ShieldCheckIcon,
+	warning: ShieldWarningIcon,
+	error: ShieldCloseIcon,
+	neutral: ShieldIcon,
 };
 </script>
 
@@ -50,7 +58,7 @@ const ICON: Record<SenderAuthDisplay['tone'], string> = {
 			class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium"
 			:class="healthChipClass[display.tone]"
 		>
-			<Icon :name="ICON[display.tone]" class="w-3.5 h-3.5 shrink-0" />
+			<component :is="ICON[display.tone]" class="w-3.5 h-3.5 shrink-0" />
 			{{ message(display.label) }}
 		</span>
 		<p
@@ -58,7 +66,7 @@ const ICON: Record<SenderAuthDisplay['tone'], string> = {
 			class="mt-1.5 flex items-start gap-1.5 text-sm"
 			:class="healthTextClass[display.tone]"
 		>
-			<Icon name="lucide:info" class="w-4 h-4 mt-0.5 shrink-0" />
+			<CircleInfoIcon class="w-4 h-4 mt-0.5 shrink-0" />
 			<span>{{ message(display.detail) }}</span>
 		</p>
 	</div>

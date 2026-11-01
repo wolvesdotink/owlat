@@ -2,6 +2,7 @@
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { categoryIcon as resolveCategoryIcon } from '~/utils/agentCategories';
+import { SaveIcon, TriangleWarningIcon } from '@coolicons/vue';
 
 interface AutonomyRule {
 	_id: string;
@@ -212,7 +213,7 @@ const handleCancel = () => {
 			</div>
 			<UiButton class="gap-2" :disabled="isSaving || (!form.category && isNew)" @click="handleSave">
 				<UiSpinner v-if="isSaving" size="xs" tone="inverse" />
-				<Icon v-else name="lucide:save" class="w-4 h-4" />
+				<SaveIcon v-else class="w-4 h-4" />
 				{{
 					isNew
 						? t('components.autonomy.autonomyRuleEditor.createRule')
@@ -224,7 +225,7 @@ const handleCancel = () => {
 		<!-- Delete Confirmation -->
 		<UiModal :open="showDeleteConfirm" size="sm" @update:open="showDeleteConfirm = $event">
 			<div class="flex items-center gap-3 mb-4">
-				<UiIconBox icon="lucide:alert-triangle" size="sm" variant="error" />
+				<UiIconBox :icon="TriangleWarningIcon" size="sm" variant="error" />
 				<h3 class="text-lg font-medium text-text-primary">
 					{{ t('components.autonomy.autonomyRuleEditor.deleteRule') }}
 				</h3>

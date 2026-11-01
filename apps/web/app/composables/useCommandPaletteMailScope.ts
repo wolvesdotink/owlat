@@ -23,6 +23,7 @@ import {
 	applySearchSuggestion,
 	buildSearchSuggestions,
 } from '~/utils/postboxSearchSuggest';
+import { MailIcon } from '@coolicons/vue';
 
 /** How many live hits the overlay shows before the "all results" row. */
 const MAIL_SCOPE_HIT_LIMIT = 5;
@@ -208,7 +209,7 @@ export function useCommandPaletteMailScope(options: CommandPaletteMailScopeOptio
 			objectId: message._id,
 			label: message.subject?.trim() || t('components.appCommandPalette.noSubject'),
 			subtitle: `${message.fromName || message.fromAddress} · ${message.snippet}`.trim(),
-			icon: 'lucide:mail',
+			icon: MailIcon,
 			run: () => {
 				options.onRemember(searched);
 				// A hit may live in another mailbox (a team inbox); point the Postbox

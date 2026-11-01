@@ -28,7 +28,7 @@ function mountInsight() {
 		},
 		global: {
 			plugins: [createTestI18n()],
-			stubs: { Icon: true, InboxAgentActionTimeline: { template: '<div data-stub="trace" />' } },
+			stubs: { InboxAgentActionTimeline: { template: '<div data-stub="trace" />' } },
 		},
 	});
 }

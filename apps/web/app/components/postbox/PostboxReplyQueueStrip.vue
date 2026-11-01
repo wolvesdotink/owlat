@@ -2,6 +2,7 @@
 import type { Id } from '@owlat/api/dataModel';
 import { usePostboxReplyQueueBanner } from '~/composables/postbox/usePostboxBanners';
 import { answerQueueHrefFor } from '~/utils/postboxReplyQueue';
+import { CloseIcon, ReplyIcon } from '@coolicons/vue';
 
 // Reply Queue inbox "waiting on your reply" strip. Inbox-only, non-empty queue
 // only, and dismissible for the session (in-memory state, resets on reload).
@@ -29,7 +30,7 @@ const { count, dismissed, visible } = usePostboxReplyQueueBanner(
 		v-if="visible"
 		class="flex items-center gap-2 px-4 py-2 border-b border-border-subtle bg-brand/5 text-sm"
 	>
-		<Icon name="lucide:reply" class="w-4 h-4 text-brand flex-shrink-0" />
+		<ReplyIcon class="w-4 h-4 text-brand flex-shrink-0" />
 		<span class="flex-1 truncate text-text-secondary">
 			{{ t('components.postbox.postboxReplyQueueStrip.waiting', { count }, count) }}
 		</span>
@@ -45,7 +46,7 @@ const { count, dismissed, visible } = usePostboxReplyQueueBanner(
 				:aria-label="t('components.postbox.postboxReplyQueueStrip.dismissLabel')"
 				@click="dismissed = true"
 			>
-				<Icon name="lucide:x" class="w-3.5 h-3.5" />
+				<CloseIcon class="w-3.5 h-3.5" />
 			</button>
 		</UiTooltip>
 	</div>

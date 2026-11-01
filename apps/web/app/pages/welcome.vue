@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import { stampWelcomed } from '~/lib/welcomeStamp';
+import { ChevronRightIcon, DownloadIcon, SparkleIcon, SparklesIcon } from '@coolicons/vue';
 
 /**
  * First-login welcome screen.
@@ -128,7 +129,7 @@ onBeforeUnmount(abortStamp);
 			<div v-else class="card">
 				<!-- Shared header -->
 				<div class="text-center">
-					<UiIconBox icon="lucide:party-popper" variant="brand" size="lg" class="mx-auto mb-6" />
+					<UiIconBox :icon="SparkleIcon" variant="brand" size="lg" class="mx-auto mb-6" />
 					<!-- The header sizes to its content, so centring the box centres the
 					     title and the capped lead together; text-center does the lines. -->
 					<div class="flex justify-center">
@@ -156,14 +157,14 @@ onBeforeUnmount(abortStamp);
 							to="/dashboard/postbox/migrate"
 							class="group flex flex-col rounded-xl border border-border-subtle bg-bg-surface/50 p-5 text-left transition-colors hover:border-brand hover:bg-bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
 						>
-							<UiIconBox icon="lucide:import" variant="surface" size="sm" />
+							<UiIconBox :icon="DownloadIcon" variant="surface" size="sm" />
 							<h2 class="mt-4 font-medium text-text-primary">{{ t('welcome.migrate.title') }}</h2>
 							<p class="mt-1 text-sm text-text-secondary">{{ t('welcome.migrate.body') }}</p>
 							<span
 								class="mt-4 inline-flex items-center gap-1 text-sm text-brand opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
 							>
 								{{ t('welcome.migrate.cta') }}
-								<Icon name="lucide:chevron-right" class="h-4 w-4" />
+								<ChevronRightIcon class="h-4 w-4" />
 							</span>
 						</NuxtLink>
 
@@ -171,14 +172,14 @@ onBeforeUnmount(abortStamp);
 							to="/dashboard"
 							class="group flex flex-col rounded-xl border border-border-subtle bg-bg-surface/50 p-5 text-left transition-colors hover:border-brand hover:bg-bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
 						>
-							<UiIconBox icon="lucide:sparkles" variant="surface" size="sm" />
+							<UiIconBox :icon="SparklesIcon" variant="surface" size="sm" />
 							<h2 class="mt-4 font-medium text-text-primary">{{ t('welcome.fresh.title') }}</h2>
 							<p class="mt-1 text-sm text-text-secondary">{{ t('welcome.fresh.body') }}</p>
 							<span
 								class="mt-4 inline-flex items-center gap-1 text-sm text-brand opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
 							>
 								{{ t('welcome.fresh.cta') }}
-								<Icon name="lucide:chevron-right" class="h-4 w-4" />
+								<ChevronRightIcon class="h-4 w-4" />
 							</span>
 						</NuxtLink>
 					</div>

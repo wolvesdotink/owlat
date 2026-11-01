@@ -26,6 +26,7 @@ import {
 	localDayStartOf,
 	type BriefSentence,
 } from '~/utils/postboxDailyBrief';
+import { CloseIcon } from '@coolicons/vue';
 
 const props = defineProps<{ mailboxId: Id<'mailboxes'> }>();
 
@@ -138,7 +139,7 @@ const isVisible = computed(
 					class="absolute -top-1 -right-1 flex items-center justify-center w-8 h-8 rounded text-text-tertiary hover:text-text-primary opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 focus-visible:ring-1 focus-visible:ring-brand/40 outline-none transition-opacity duration-(--motion-fast)"
 					@click="dismiss"
 				>
-					<Icon name="lucide:x" class="w-3.5 h-3.5" />
+					<CloseIcon class="w-3.5 h-3.5" />
 				</button>
 			</UiTooltip>
 			<h2 class="font-display text-xl text-text-primary">

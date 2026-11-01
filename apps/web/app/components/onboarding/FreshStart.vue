@@ -24,6 +24,7 @@
 import { api } from '@owlat/api';
 import { POSTBOX_NOTIFY_ABOUT_OPTIONS, type PostboxNotifyAbout } from '~/utils/postboxNotify';
 import { useShortcutLabels } from '~/composables/useShortcutLabels';
+import { CircleCheckIcon, ClockIcon, CommandIcon, PencilIcon, SparklesIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 const { user } = useAuth();
@@ -333,7 +334,7 @@ function skipToToday() {
 							v-else
 							class="inline-flex shrink-0 items-center gap-1.5 text-sm font-medium text-success"
 						>
-							<Icon name="lucide:check-circle-2" class="h-4 w-4" />
+							<CircleCheckIcon class="h-4 w-4" />
 							{{ t('welcome.freshStart.sent') }}
 						</span>
 					</div>
@@ -342,7 +343,7 @@ function skipToToday() {
 					     member can complete. Sending isn't wired up, so we don't pretend
 					     a test would land anywhere. -->
 					<div v-else class="flex items-start gap-3">
-						<Icon name="lucide:clock" class="mt-0.5 h-4 w-4 shrink-0 text-text-tertiary" />
+						<ClockIcon class="mt-0.5 h-4 w-4 shrink-0 text-text-tertiary" />
 						<div class="min-w-0">
 							<p class="text-sm font-medium">{{ t('welcome.freshStart.blockedTitle') }}</p>
 							<p class="mt-0.5 text-xs text-text-tertiary">
@@ -367,7 +368,7 @@ function skipToToday() {
 						class="flex items-start gap-3"
 						:class="KEYBOARD_ONLY"
 					>
-						<Icon name="lucide:pen-line" class="mt-0.5 h-4 w-4 shrink-0 text-text-tertiary" />
+						<PencilIcon class="mt-0.5 h-4 w-4 shrink-0 text-text-tertiary" />
 						<I18nT keypath="welcome.freshStart.tips.compose" tag="span" scope="global">
 							<template #key>
 								<UiShortcut
@@ -382,7 +383,7 @@ function skipToToday() {
 						class="flex items-start gap-3"
 						:class="KEYBOARD_ONLY"
 					>
-						<Icon name="lucide:command" class="mt-0.5 h-4 w-4 shrink-0 text-text-tertiary" />
+						<CommandIcon class="mt-0.5 h-4 w-4 shrink-0 text-text-tertiary" />
 						<I18nT keypath="welcome.freshStart.tips.command" tag="span" scope="global">
 							<template #keys>
 								<UiShortcut
@@ -393,7 +394,7 @@ function skipToToday() {
 						</I18nT>
 					</li>
 					<li v-if="showKnowledgeTip" class="flex items-start gap-3">
-						<Icon name="lucide:sparkles" class="mt-0.5 h-4 w-4 shrink-0 text-text-tertiary" />
+						<SparklesIcon class="mt-0.5 h-4 w-4 shrink-0 text-text-tertiary" />
 						<I18nT keypath="welcome.freshStart.tips.knowledge" tag="span" scope="global">
 							<template #tab>
 								<span class="font-medium text-text-primary">{{

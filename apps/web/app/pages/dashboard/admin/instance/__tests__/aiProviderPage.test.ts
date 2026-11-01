@@ -88,7 +88,6 @@ async function mountPage() {
 			// A template auto-import the test build does not resolve.
 			mocks: { DECISION_HEALTH_HOURS },
 			stubs: {
-				Icon: true,
 				UiSkeleton: true,
 				UiSkeletonText: true,
 				UiCard: slot,

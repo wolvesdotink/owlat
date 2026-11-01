@@ -72,7 +72,6 @@ function mountFiles(props: Record<string, unknown> = {}) {
 		global: {
 			plugins: [createTestI18n()],
 			components: { InboxAttachSuggestion: AttachSuggestion },
-			stubs: { Icon: true },
 		},
 	});
 }

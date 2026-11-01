@@ -77,7 +77,6 @@ const global = {
 		NuxtLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
 		ShellStatusPill: { props: ['status'], template: '<span />' },
 	},
-	stubs: { Icon: true },
 	mocks: { formatCompactRelativeTime: () => 'now' },
 };
 

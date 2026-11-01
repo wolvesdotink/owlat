@@ -29,6 +29,7 @@ import {
 	EXTERNAL_RECEIVING_OPTION_KEYS,
 	EXTERNAL_RECEIVING_PROVIDER_IDS,
 } from '~/utils/externalReceivingLabels';
+import { ShieldCheckIcon } from '@coolicons/vue';
 
 defineProps<{
 	/** Which side of the choice is currently selected. */
@@ -146,7 +147,7 @@ const optionLabel = (id: ExternalReceivingProvider) => t(EXTERNAL_RECEIVING_OPTI
 				<option v-for="id in providerIds" :key="id" :value="id">{{ optionLabel(id) }}</option>
 			</select>
 			<p class="mt-2 flex items-start gap-2 text-xs text-text-secondary">
-				<Icon name="lucide:shield-check" class="mt-0.5 h-3.5 w-3.5 shrink-0 text-success" />
+				<ShieldCheckIcon class="mt-0.5 h-3.5 w-3.5 shrink-0 text-success" />
 				<span>{{ t('components.domains.receivingModeChoice.reassurance') }}</span>
 			</p>
 		</div>

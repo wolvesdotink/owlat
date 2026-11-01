@@ -5,6 +5,8 @@ import type { FunctionReturnType } from 'convex/server';
 import type { Id } from '@owlat/api/dataModel';
 // TYPE-ONLY: the list needs the query's return shape, never the client.
 import type { api } from '@owlat/api';
+import { ChevronRightIcon, EyeIcon, UsersIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 defineProps<{
 	campaignId: Id<'campaigns'>;
@@ -22,14 +24,11 @@ const { t } = useI18n();
 <template>
 	<div>
 		<div v-if="loading && !contacts" class="p-8 flex justify-center">
-			<Icon
-				name="lucide:loader-2"
-				class="w-6 h-6 text-brand animate-spin motion-reduce:animate-none"
-			/>
+			<SpinnerIcon class="w-6 h-6 text-brand" />
 		</div>
 
 		<div v-else-if="!contacts || contacts.sends.length === 0" class="py-12 text-center">
-			<Icon name="lucide:eye" class="w-10 h-10 text-text-tertiary mx-auto mb-3" />
+			<EyeIcon class="w-10 h-10 text-text-tertiary mx-auto mb-3" :stroke-width="1.5" />
 			<p class="text-text-secondary">
 				{{ t('dashboard.campaigns.detail.report.openedEmpty') }}
 			</p>
@@ -43,7 +42,7 @@ const { t } = useI18n();
 					class="px-4 sm:px-6 py-4 flex items-center justify-between hover:bg-bg-surface transition-colors duration-(--motion-fast)"
 				>
 					<div class="flex items-center gap-3 min-w-0">
-						<UiIconBox icon="lucide:users" size="sm" rounded="full" />
+						<UiIconBox :icon="UsersIcon" size="sm" rounded="full" />
 						<div class="min-w-0">
 							<div class="text-text-primary font-medium truncate">
 								{{
@@ -77,7 +76,7 @@ const { t } = useI18n();
 								class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-elevated transition-colors duration-(--motion-fast)"
 								:aria-label="t('dashboard.campaigns.detail.report.viewSendDetails')"
 							>
-								<Icon name="lucide:chevron-right" class="w-4 h-4" />
+								<ChevronRightIcon class="w-4 h-4" />
 							</NuxtLink>
 						</UiTooltip>
 					</div>

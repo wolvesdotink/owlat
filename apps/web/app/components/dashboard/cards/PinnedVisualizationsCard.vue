@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import { budgetRefusalReason } from '~/utils/aiBudget';
+import { ChartLineIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -32,7 +33,7 @@ const isFirstBudgetRefused = computed(
 		<div class="p-5">
 			<div class="flex items-center justify-between mb-4">
 				<div class="flex items-center gap-2.5">
-					<UiIconBox icon="lucide:line-chart" size="sm" variant="surface" />
+					<UiIconBox :icon="ChartLineIcon" size="sm" variant="surface" />
 					<h3 class="text-sm font-semibold text-text-primary">
 						{{ t('components.dashboard.cards.pinnedVisualizations.title') }}
 					</h3>
@@ -48,7 +49,7 @@ const isFirstBudgetRefused = computed(
 			<DashboardCardSkeleton v-if="isLoading" shape="chart" :count="1" plot="lg" />
 
 			<div v-else-if="!firstVisualization" class="py-6 text-center">
-				<Icon name="lucide:line-chart" class="w-8 h-8 text-text-tertiary mx-auto mb-2" />
+				<ChartLineIcon class="w-8 h-8 text-text-tertiary mx-auto mb-2" :stroke-width="1.5" />
 				<p class="text-sm text-text-secondary mb-1">
 					{{ t('components.dashboard.cards.pinnedVisualizations.emptyTitle') }}
 				</p>

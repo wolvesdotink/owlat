@@ -32,7 +32,6 @@ beforeEach(() => {
 	vi.stubGlobal('useState', () => confirmed);
 });
 
-const iconStub = { props: ['name'], template: '<span />' };
 const modalStub = {
 	props: ['open', 'title', 'size'],
 	template: '<div v-if="open" data-testid="modal"><slot /></div>',
@@ -54,7 +53,7 @@ function mountGuard() {
 	const wrapper = mount(PostboxReplyGuard, {
 		global: {
 			plugins: [createTestI18n()],
-			stubs: { Icon: iconStub, UiModal: modalStub },
+			stubs: { UiModal: modalStub },
 		},
 	});
 	return { wrapper, vm: wrapper.vm as unknown as GuardVm };

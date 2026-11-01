@@ -1,6 +1,16 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import {
+	ChevronDownIcon,
+	ChevronRightIcon,
+	CircleCheckIcon,
+	CircleCloseIcon,
+	CircleIcon,
+	CircleMinusIcon,
+	type IconComponent,
+} from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 // Collapsible agent processing trace (security scan -> classify -> retrieve ->
 // draft -> route) for one inbound message. Lazy: the query runs only when
@@ -22,20 +32,20 @@ const { data: actions } = useConvexQuery(api.inbox.queries.getMessageActions, ()
 );
 
 interface AgentActionBadge {
-	icon: string;
+	icon: IconComponent;
 	color: string;
 }
 
 const STATUS_BADGES: Record<string, AgentActionBadge> = {
-	completed: { icon: 'lucide:check-circle-2', color: 'text-success' },
-	failed: { icon: 'lucide:x-circle', color: 'text-error' },
-	abandoned: { icon: 'lucide:x-circle', color: 'text-error' },
-	running: { icon: 'lucide:loader-2', color: 'text-text-secondary' },
-	skipped: { icon: 'lucide:minus-circle', color: 'text-text-tertiary' },
+	completed: { icon: CircleCheckIcon, color: 'text-success' },
+	failed: { icon: CircleCloseIcon, color: 'text-error' },
+	abandoned: { icon: CircleCloseIcon, color: 'text-error' },
+	running: { icon: SpinnerIcon, color: 'text-text-secondary' },
+	skipped: { icon: CircleMinusIcon, color: 'text-text-tertiary' },
 };
 
 const STATUS_BADGE_DEFAULT: AgentActionBadge = {
-	icon: 'lucide:circle',
+	icon: CircleIcon,
 	color: 'text-text-secondary',
 };
 
@@ -81,7 +91,7 @@ function statusLabel(status: string): string {
 			class="text-xs text-text-tertiary hover:text-text-secondary flex items-center gap-1"
 			@click="open = !open"
 		>
-			<Icon :name="open ? 'lucide:chevron-down' : 'lucide:chevron-right'" class="w-3 h-3" />
+			<component :is="open ? ChevronDownIcon : ChevronRightIcon" class="w-3 h-3" />
 			{{ t('components.inbox.agentActionTimeline.toggle') }}
 		</button>
 		<div
@@ -93,13 +103,14 @@ function statusLabel(status: string): string {
 				{{ t('components.inbox.agentActionTimeline.empty') }}
 			</div>
 			<div v-for="a in actions" :key="a._id" class="flex items-center gap-2 text-xs">
-				<Icon
-					:name="statusBadge(a.status).icon"
+				<component
+					:is="statusBadge(a.status).icon"
 					:class="[
 						'w-3.5 h-3.5 shrink-0',
 						statusBadge(a.status).color,
 						a.status === 'running' ? 'animate-spin motion-reduce:animate-none' : '',
 					]"
+					size="1em"
 				/>
 				<span class="text-text-primary">{{ actionLabel(a.actionType) }}</span>
 				<span class="text-text-tertiary">· {{ statusLabel(a.status) }}</span>

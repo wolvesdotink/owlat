@@ -86,7 +86,6 @@ function mountLayout(): VueWrapper {
 				// The shell this one nests inside is audited on its own; here it is
 				// just the frame around the rail.
 				NuxtLayout: { template: '<div><slot /></div>' },
-				Icon: true,
 				NuxtLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
 			},
 		},

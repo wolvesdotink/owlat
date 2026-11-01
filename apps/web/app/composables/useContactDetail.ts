@@ -2,6 +2,7 @@ import { computed, ref, watch, type ComputedRef } from 'vue';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { languageSelectOptions, timezoneOptions } from '~/data/languageOptions';
+import { CircleCheckIcon, ClockIcon, type IconComponent } from '@coolicons/vue';
 
 /**
  * Compute the minimal set/remove operations needed to persist edited custom
@@ -40,7 +41,7 @@ interface DoiStatusBadge {
 	/** Message key — this map is module scope, so it holds keys, not copy. */
 	label: string;
 	color: string;
-	icon: string | null;
+	icon: IconComponent | null;
 }
 
 // Single source of truth for double-opt-in status presentation (label + colour + icon).
@@ -48,12 +49,12 @@ const DOI_STATUS_BADGES: Record<string, DoiStatusBadge> = {
 	confirmed: {
 		label: 'shared.useContactDetail.doiStatus.confirmed',
 		color: 'text-success',
-		icon: 'lucide:check-circle',
+		icon: CircleCheckIcon,
 	},
 	pending: {
 		label: 'shared.useContactDetail.doiStatus.pending',
 		color: 'text-warning',
-		icon: 'lucide:clock',
+		icon: ClockIcon,
 	},
 };
 
@@ -305,7 +306,7 @@ export function useContactDetail(contactId: ComputedRef<Id<'contacts'>>) {
 		return key ? t(key) : '';
 	};
 	const getDoiStatusColor = (status: string | undefined) => getDoiStatusBadge(status).color;
-	const getDoiStatusIcon = (status: string | undefined): string | null =>
+	const getDoiStatusIcon = (status: string | undefined): IconComponent | null =>
 		getDoiStatusBadge(status).icon;
 
 	return {

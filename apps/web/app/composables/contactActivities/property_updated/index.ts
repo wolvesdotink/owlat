@@ -1,9 +1,10 @@
 import type { ContactActivityEditorModule } from '../types';
+import { SettingsIcon } from '@coolicons/vue';
 
 export const propertyUpdatedEditorModule: ContactActivityEditorModule<'property_updated'> = {
 	literal: 'property_updated',
 	displayConfig: {
-		icon: 'lucide:settings',
+		icon: SettingsIcon,
 		label: 'shared.contactActivities.propertyUpdated.label',
 		color: 'text-text-secondary',
 	},

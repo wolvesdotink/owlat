@@ -58,7 +58,7 @@ export interface EditorModule<T extends BlockType> {
 	/** Display name shown in the panel header, slash menu, etc. */
 	label: string;
 
-	/** Lucide icon component for the panel, slash menu, and child views. */
+	/** coolicons component for the panel, slash menu, and child views. */
 	icon: Component;
 
 	/** Property-panel schema. Omit for blocks with no settings UI. */

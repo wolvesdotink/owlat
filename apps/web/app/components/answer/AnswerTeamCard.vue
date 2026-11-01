@@ -21,6 +21,7 @@ import { authoredTextGaps, draftTextGapSegments } from '~/utils/answerDraft';
 import { backgroundAskAnswers } from '~/utils/backgroundAskAnswers';
 import AskCard, { type AskCardAnswer } from './AskCard.vue';
 import type { AskQuestion } from '~/composables/useAnswerAskSession';
+import { CheckIcon, MailIcon, PaperPlaneIcon, PencilIcon, RobotIcon } from '@coolicons/vue';
 
 type ReviewEntry = FunctionReturnType<typeof api.inbox.queries.getReviewQueue>[number];
 
@@ -299,7 +300,7 @@ const primaryButton =
 
 <template>
 	<TaskCardShell>
-		<TaskContext :who="message.from" icon="lucide:mail">
+		<TaskContext :who="message.from" :icon="MailIcon">
 			<template #trailing>
 				<div v-if="message.classification" class="flex items-center gap-2">
 					<InboxTrustChip :trust="trust" />
@@ -350,7 +351,7 @@ const primaryButton =
 			/>
 			<TaskActions
 				:primary-label="t('components.agentTasks.reviewFocusFlow.sendReply')"
-				primary-icon="lucide:send"
+				:primary-icon="PaperPlaneIcon"
 				:primary-disabled="busy || !composeBody.trim()"
 				:primary-loading="busy"
 				:skip-label="t('common.dismiss')"
@@ -374,7 +375,7 @@ const primaryButton =
 			/>
 			<TaskActions
 				:primary-label="t('components.agentTasks.reviewFocusFlow.sendReply')"
-				primary-icon="lucide:send"
+				:primary-icon="PaperPlaneIcon"
 				:primary-disabled="busy || !composeBody.trim()"
 				:primary-loading="busy"
 				:held="fillGapCount > 0"
@@ -396,7 +397,7 @@ const primaryButton =
 		<template v-else>
 			<div class="bg-brand-subtle/30 rounded-lg p-4 mb-4">
 				<div class="flex items-center gap-2 mb-2">
-					<Icon name="lucide:bot" class="w-4 h-4 text-brand" />
+					<RobotIcon class="w-4 h-4 text-brand" />
 					<p class="text-xs font-medium text-brand uppercase tracking-wider">
 						{{ t('components.agentTasks.reviewFocusFlow.draftReady') }}
 					</p>
@@ -415,7 +416,7 @@ const primaryButton =
 			<InboxDecisionRationale :grounding-sources="message.groundingSources" class="mb-4" />
 			<TaskActions
 				:primary-label="t('components.agentTasks.reviewFocusFlow.reviewAndSend')"
-				primary-icon="lucide:check"
+				:primary-icon="CheckIcon"
 				:primary-disabled="busy"
 				:primary-loading="busy"
 				:quiet="gapHeld"
@@ -444,7 +445,7 @@ const primaryButton =
 					data-testid="team-card-fill-gaps"
 					@click="startFill"
 				>
-					<Icon name="lucide:pencil" class="w-3.5 h-3.5" />
+					<PencilIcon class="w-3.5 h-3.5" />
 					{{ t('components.agentTasks.reviewFocusFlow.fillGaps') }}
 				</button>
 			</TaskActions>

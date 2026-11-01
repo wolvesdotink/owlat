@@ -30,6 +30,14 @@ import {
 	senderCountLine,
 	senderSearchLink,
 } from '~/utils/postboxSenderProfile';
+import {
+	CloseIcon,
+	CrownIcon,
+	LockIcon,
+	PaperclipIcon,
+	SearchIcon,
+	UserCheckCornerIcon,
+} from '@coolicons/vue';
 
 const props = defineProps<{
 	open: boolean;
@@ -156,7 +164,7 @@ function close() {
 						:aria-label="t('common.close')"
 						@click="close"
 					>
-						<Icon name="lucide:x" class="h-4 w-4" />
+						<CloseIcon class="h-4 w-4" />
 					</button>
 				</header>
 
@@ -170,7 +178,7 @@ function close() {
 							:aria-pressed="isVip"
 							@click="toggleVip"
 						>
-							<Icon name="lucide:crown" class="mr-1.5 h-3.5 w-3.5" />
+							<CrownIcon class="mr-1.5 h-3.5 w-3.5" />
 							{{
 								isVip
 									? t('components.postbox.postboxSenderControls.removeVip')
@@ -188,7 +196,7 @@ function close() {
 							:disabled="busy"
 							@click="acceptSender"
 						>
-							<Icon name="lucide:user-check" class="mr-1.5 h-3.5 w-3.5" />
+							<UserCheckCornerIcon class="mr-1.5 h-3.5 w-3.5" />
 							{{ t('components.postbox.postboxSenderControls.accept') }}
 						</UiButton>
 						<span
@@ -199,7 +207,7 @@ function close() {
 							{{ t('components.postbox.postboxSenderProfile.screenerAccepted') }}
 						</span>
 						<span v-if="isKeyPinned" class="flex items-center gap-1 text-xs text-success">
-							<Icon name="lucide:lock" class="h-3.5 w-3.5" />
+							<LockIcon class="h-3.5 w-3.5" />
 							{{ t('components.postbox.postboxSenderProfile.keyPinned') }}
 						</span>
 					</div>
@@ -242,7 +250,7 @@ function close() {
 									class="flex items-center gap-2 px-3 py-2 hover:bg-bg-surface"
 									@click="close"
 								>
-									<Icon name="lucide:paperclip" class="h-3.5 w-3.5 shrink-0 text-text-tertiary" />
+									<PaperclipIcon class="h-3.5 w-3.5 shrink-0 text-text-tertiary" />
 									<span class="min-w-0 flex-1 truncate text-sm text-text-secondary">
 										{{ file.filename }}
 									</span>
@@ -256,7 +264,7 @@ function close() {
 						class="flex items-center gap-2 text-sm text-brand hover:underline"
 						@click="close"
 					>
-						<Icon name="lucide:search" class="h-4 w-4" />
+						<SearchIcon class="h-4 w-4" />
 						{{ t('components.postbox.postboxSenderProfile.searchAll') }}
 					</NuxtLink>
 				</div>

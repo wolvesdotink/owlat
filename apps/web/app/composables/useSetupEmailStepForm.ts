@@ -26,6 +26,16 @@ import { getActiveProfiles, type FeatureFlagState } from '@owlat/shared/featureF
 import type { EmailStepDraft, ProviderChoice } from './useSetupWizard';
 import { validateEmailStep } from './setupWizardValidation';
 import { useRelayCredentialDraft } from './useRelayCredentialDraft';
+import {
+	CloudIcon,
+	InboxIcon,
+	PaperPlaneIcon,
+	RouteIcon,
+	ServerIcon,
+	ShuffleIcon,
+	ZapIcon,
+	type IconComponent,
+} from '@coolicons/vue';
 
 /** One delivery-transport choice card: message keys plus its icon. */
 export interface ProviderOption {
@@ -34,7 +44,7 @@ export interface ProviderOption {
 	label: string;
 	/** MESSAGE KEY for the one-line description under it. */
 	hint: string;
-	icon: string;
+	icon: IconComponent;
 }
 
 /**
@@ -47,43 +57,43 @@ const PROVIDER_OPTIONS: ProviderOption[] = [
 		value: 'mta',
 		label: 'setup.email.providers.mta.label',
 		hint: 'setup.email.providers.mta.hint',
-		icon: 'lucide:server',
+		icon: ServerIcon,
 	},
 	{
 		value: 'ses',
 		label: 'setup.email.providers.ses.label',
 		hint: 'setup.email.providers.ses.hint',
-		icon: 'lucide:cloud',
+		icon: CloudIcon,
 	},
 	{
 		value: 'smtp',
 		label: 'setup.email.providers.smtp.label',
 		hint: 'setup.email.providers.smtp.hint',
-		icon: 'lucide:route',
+		icon: RouteIcon,
 	},
 	{
 		value: 'resend',
 		label: 'setup.email.providers.resend.label',
 		hint: 'setup.email.providers.resend.hint',
-		icon: 'lucide:zap',
+		icon: ZapIcon,
 	},
 	{
 		value: 'mandrill',
 		label: 'setup.email.providers.mandrill.label',
 		hint: 'setup.email.providers.mandrill.hint',
-		icon: 'lucide:shuffle',
+		icon: ShuffleIcon,
 	},
 	{
 		value: 'emailit',
 		label: 'setup.email.providers.emailit.label',
 		hint: 'setup.email.providers.emailit.hint',
-		icon: 'lucide:send',
+		icon: PaperPlaneIcon,
 	},
 	{
 		value: 'none',
 		label: 'setup.email.providers.none.label',
 		hint: 'setup.email.providers.none.hint',
-		icon: 'lucide:inbox',
+		icon: InboxIcon,
 	},
 ];
 

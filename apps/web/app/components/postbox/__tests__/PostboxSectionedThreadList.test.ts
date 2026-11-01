@@ -19,6 +19,7 @@ import PostboxSectionedThreadList, {
 } from '../PostboxSectionedThreadList.vue';
 import PostboxThreadListSkeleton from '../PostboxThreadListSkeleton.vue';
 import PostboxEmptyState from '../PostboxEmptyState.vue';
+import { InboxIcon } from '@coolicons/vue';
 
 type Item = { _id: string };
 
@@ -38,7 +39,7 @@ function section(
 	rows: Item[],
 	extra: Partial<PostboxThreadListSection<Item>> = {}
 ): PostboxThreadListSection<Item> {
-	return { key, label: key.toUpperCase(), icon: 'lucide:inbox', items: rows, ...extra };
+	return { key, label: key.toUpperCase(), icon: InboxIcon, items: rows, ...extra };
 }
 
 function mountList(
@@ -76,7 +77,7 @@ function mountList(
 		global: {
 			plugins: [createTestI18n()],
 			components: { PostboxThreadListSkeleton, PostboxEmptyState },
-			stubs: { Icon: { props: ['name'], template: '<span />' }, UiSkeleton: true },
+			stubs: { UiSkeleton: true },
 		},
 	});
 }

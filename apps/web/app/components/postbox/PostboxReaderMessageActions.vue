@@ -7,6 +7,20 @@
  * Presentational; every verb is emitted back to the reader.
  */
 import { usePostboxOriginalEml } from '~/composables/postbox/usePostboxOriginalEml';
+import {
+	CircleSlashIcon,
+	DownloadIcon,
+	FilterIcon,
+	ForwardIcon,
+	LinkIcon,
+	PrinterIcon,
+	ReplyAllIcon,
+	ReplyIcon,
+	ShareIcon,
+	ShieldWarningIcon,
+	StarIcon,
+} from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const props = defineProps<{
 	messageId: string;
@@ -60,11 +74,11 @@ const MENU_ITEM_CLASS =
 				:aria-pressed="starred"
 				@click="emit('toggle-star')"
 			>
-				<Icon name="lucide:star" class="w-4 h-4" :class="{ 'fill-current': starred }" />
+				<StarIcon class="w-4 h-4" :class="{ 'fill-current': starred }" />
 			</UiButton>
 		</UiTooltip>
 		<UiButton variant="ghost" type="button" @click="emit('reply')">
-			<Icon name="lucide:reply" class="w-4 h-4 mr-1.5" />
+			<ReplyIcon class="w-4 h-4 mr-1.5" />
 			{{ t('components.postbox.postboxThreadReader.reply') }}
 		</UiButton>
 		<UiButton
@@ -74,7 +88,7 @@ const MENU_ITEM_CLASS =
 			class="pbx-reader-secondary-action"
 			@click="emit('reply-all')"
 		>
-			<Icon name="lucide:reply-all" class="w-4 h-4 mr-1.5" />
+			<ReplyAllIcon class="w-4 h-4 mr-1.5" />
 			{{ t('components.postbox.postboxThreadReader.replyAll') }}
 		</UiButton>
 		<UiButton
@@ -83,7 +97,7 @@ const MENU_ITEM_CLASS =
 			class="pbx-reader-secondary-action"
 			@click="emit('forward')"
 		>
-			<Icon name="lucide:forward" class="w-4 h-4 mr-1.5" />
+			<ForwardIcon class="w-4 h-4 mr-1.5" />
 			{{ t('components.postbox.postboxThreadReader.forward') }}
 		</UiButton>
 		<span class="flex-1" />
@@ -98,7 +112,7 @@ const MENU_ITEM_CLASS =
 						close();
 					"
 				>
-					<Icon name="lucide:link" class="w-4 h-4 text-text-tertiary" />
+					<LinkIcon class="w-4 h-4 text-text-tertiary" />
 					{{ t('shared.conversationLink.copyLink') }}
 				</button>
 				<button
@@ -111,7 +125,7 @@ const MENU_ITEM_CLASS =
 						close();
 					"
 				>
-					<Icon name="lucide:message-square-share" class="w-4 h-4 text-text-tertiary" />
+					<ShareIcon class="w-4 h-4 text-text-tertiary" />
 					{{ t('shared.conversationLink.shareInChat') }}
 				</button>
 				<button
@@ -123,7 +137,7 @@ const MENU_ITEM_CLASS =
 						close();
 					"
 				>
-					<Icon name="lucide:shield-alert" class="w-4 h-4 text-text-tertiary" />
+					<ShieldWarningIcon class="w-4 h-4 text-text-tertiary" />
 					{{ t('components.postbox.postboxThreadReader.reportSpam') }}
 				</button>
 				<button
@@ -135,7 +149,7 @@ const MENU_ITEM_CLASS =
 						close();
 					"
 				>
-					<Icon name="lucide:ban" class="w-4 h-4 text-text-tertiary" />
+					<CircleSlashIcon class="w-4 h-4 text-text-tertiary" />
 					{{ t('components.postbox.postboxThreadReader.blockSender') }}
 				</button>
 				<!-- "One more of these" is where a filter gets written, so the rule
@@ -149,7 +163,7 @@ const MENU_ITEM_CLASS =
 						close();
 					"
 				>
-					<Icon name="lucide:filter" class="w-4 h-4 text-text-tertiary" />
+					<FilterIcon class="w-4 h-4 text-text-tertiary" />
 					{{ t('components.postbox.postboxThreadReader.createFilter') }}
 				</button>
 				<button
@@ -161,7 +175,7 @@ const MENU_ITEM_CLASS =
 						close();
 					"
 				>
-					<Icon name="lucide:printer" class="w-4 h-4 text-text-tertiary" />
+					<PrinterIcon class="w-4 h-4 text-text-tertiary" />
 					{{ t('components.postbox.postboxThreadReader.print') }}
 				</button>
 				<button
@@ -171,8 +185,8 @@ const MENU_ITEM_CLASS =
 					:disabled="downloadingEml"
 					@click="downloadOriginal(messageId)"
 				>
-					<Icon
-						:name="downloadingEml ? 'lucide:loader-2' : 'lucide:download'"
+					<component
+						:is="downloadingEml ? SpinnerIcon : DownloadIcon"
 						class="w-4 h-4 text-text-tertiary"
 						:class="{ 'animate-spin motion-reduce:animate-none': downloadingEml }"
 					/>

@@ -7,6 +7,7 @@ import {
 	SNIPPET_LANGUAGES,
 	useTransactionalSnippets,
 } from '~/composables/useTransactionalSnippets';
+import { CheckIcon, CopyIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	/** The email the snippets send; `null` keeps the dialog closed. */
@@ -52,12 +53,8 @@ const onOpenChange = (open: boolean) => {
 						class="flex items-center gap-1.5 rounded text-xs text-text-secondary hover:text-text-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
 						@click="copySnippet(language.value)"
 					>
-						<Icon
-							v-if="copiedSnippet === language.value"
-							name="lucide:check"
-							class="w-3.5 h-3.5 text-success"
-						/>
-						<Icon v-else name="lucide:copy" class="w-3.5 h-3.5" />
+						<CheckIcon v-if="copiedSnippet === language.value" class="w-3.5 h-3.5 text-success" />
+						<CopyIcon v-else class="w-3.5 h-3.5" />
 						{{
 							copiedSnippet === language.value
 								? t('dashboard.send.transactional.index.apiUsage.copied')

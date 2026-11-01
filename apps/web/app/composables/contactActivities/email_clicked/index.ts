@@ -1,9 +1,10 @@
 import type { ContactActivityEditorModule } from '../types';
+import { CursorIcon } from '@coolicons/vue';
 
 export const emailClickedEditorModule: ContactActivityEditorModule<'email_clicked'> = {
 	literal: 'email_clicked',
 	displayConfig: {
-		icon: 'lucide:mouse-pointer',
+		icon: CursorIcon,
 		label: 'shared.contactActivities.emailClicked.label',
 		color: 'text-brand',
 	},

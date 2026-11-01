@@ -3,6 +3,7 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { FunctionReturnType } from 'convex/server';
 import { useListPage, type ListSortOption } from '~/composables/useListPage';
+import { ComponentIcon, PlusIcon } from '@coolicons/vue';
 
 type BlockRow = FunctionReturnType<typeof api.emailBlocks.blocks.list>[number];
 
@@ -215,12 +216,12 @@ const navigateToEditPage = (block: BlockRow) => {
 		:sort-label="t('dashboard.send.blocks.index.sortLabel')"
 		sort-listbox-id="blocks-sort-listbox"
 		:empty-no-org="{
-			icon: 'lucide:blocks',
+			icon: ComponentIcon,
 			title: t('dashboard.send.blocks.index.noWorkspaceTitle'),
 			description: t('dashboard.send.blocks.index.noWorkspaceDescription'),
 		}"
 		:empty="{
-			icon: 'lucide:blocks',
+			icon: ComponentIcon,
 			title: t('dashboard.send.blocks.index.emptyTitle'),
 			description: t('dashboard.send.blocks.index.emptyDescription'),
 		}"
@@ -248,7 +249,7 @@ const navigateToEditPage = (block: BlockRow) => {
 		<template #actions>
 			<UiButton v-if="canManage" size="sm" @click="openCreateModal">
 				<template #iconLeft>
-					<Icon name="lucide:plus" class="w-4 h-4" />
+					<PlusIcon class="w-4 h-4" />
 				</template>
 				{{ t('dashboard.send.blocks.index.newBlock') }}
 			</UiButton>
@@ -268,7 +269,7 @@ const navigateToEditPage = (block: BlockRow) => {
 		<template v-if="canManage" #empty-action>
 			<UiButton @click="openCreateModal">
 				<template #iconLeft>
-					<Icon name="lucide:plus" class="w-4 h-4" />
+					<PlusIcon class="w-4 h-4" />
 				</template>
 				{{ t('dashboard.send.blocks.index.createBlock') }}
 			</UiButton>

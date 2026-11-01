@@ -73,12 +73,10 @@ beforeEach(() => {
 	createObjectURL.mockClear();
 });
 
-const iconStub = { props: ['name'], template: '<span />' };
-
 function mountPanel() {
 	return mount(PostboxMessageDetails, {
 		props: { messageId: 'msg-1' },
-		global: { plugins: [createTestI18n()], stubs: { Icon: iconStub } },
+		global: { plugins: [createTestI18n()] },
 	});
 }
 

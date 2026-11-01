@@ -13,6 +13,7 @@ import PostboxThreadRow, { type PostboxThreadRowMessage } from '../PostboxThread
 import PostboxRowCore from '../PostboxRowCore.vue';
 import PostboxThreadRowBody from '../PostboxThreadRowBody.vue';
 import { BASE_MESSAGE } from './spoofedSenderFixture';
+import { PinIcon } from '@coolicons/vue';
 
 beforeAll(() => {
 	vi.stubGlobal('useI18n', i18nStubs.useI18n);
@@ -40,7 +41,6 @@ function mountRow(msg: Partial<PostboxThreadRowMessage>) {
 			components: {
 				PostboxRowCore,
 				PostboxThreadRowBody,
-				Icon: { props: ['name'], template: '<span :data-icon="name" />' },
 				NuxtLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
 				UiContextMenu: contextMenuStub,
 				UiAvatar: { template: '<span />' },
@@ -60,7 +60,7 @@ describe('PostboxThreadRow pin', () => {
 		const w = mountRow({});
 		const item = pinItem(w)!;
 		expect(item.label).toBe('Pin conversation');
-		expect(item.icon).toBe('lucide:pin');
+		expect(item.icon).toBe(PinIcon);
 		item.run();
 		expect(w.emitted('toggle-pin')).toHaveLength(1);
 		expect(w.find('[data-testid="row-pinned-chip"]').exists()).toBe(false);
@@ -71,6 +71,6 @@ describe('PostboxThreadRow pin', () => {
 		expect(pinItem(w)!.label).toBe('Unpin conversation');
 		const chip = w.find('[data-testid="row-pinned-chip"]');
 		expect(chip.attributes('aria-label')).toBe('Pinned to the top of the Inbox');
-		expect(chip.attributes('data-icon')).toBe('lucide:pin');
+		expect(w.findComponent(PinIcon).attributes('data-testid')).toBe('row-pinned-chip');
 	});
 });

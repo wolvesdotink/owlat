@@ -27,7 +27,6 @@ const mountOpts = {
 	global: {
 		plugins: [createTestI18n()],
 		components: { UiEmptyState },
-		stubs: { Icon: true },
 	},
 };
 

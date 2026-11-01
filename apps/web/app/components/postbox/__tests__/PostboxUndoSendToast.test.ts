@@ -71,7 +71,7 @@ async function mountArmed(undoToken: string, replyToMessageId?: string) {
 		...(replyToMessageId ? { replyToMessageId: replyToMessageId as never } : {}),
 	});
 	const wrapper = mount(PostboxUndoSendToast, {
-		global: { plugins: [createTestI18n()], stubs: { Icon: true, teleport: true } },
+		global: { plugins: [createTestI18n()], stubs: { teleport: true } },
 	});
 	await nextTick();
 	return wrapper;

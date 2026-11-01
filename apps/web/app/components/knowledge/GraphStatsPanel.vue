@@ -14,6 +14,7 @@ import { api } from '@owlat/api';
 import type { FunctionReturnType } from 'convex/server';
 import { confidenceBucketBars } from '~/utils/knowledgeGraphLayout';
 import { entryTypeIcon, relationLabel } from '~/utils/knowledgeEntryTypes';
+import { ExternalLinkIcon, PackageIcon, ShieldIcon, SparklesIcon, ZapIcon } from '@coolicons/vue';
 
 type Snapshot = NonNullable<FunctionReturnType<typeof api.knowledge.graphAnalytics.getGraphStats>>;
 
@@ -86,7 +87,7 @@ const maxCommunity = computed(() => Math.max(1, ...(props.stats?.communitySizes 
 		<!-- God nodes -->
 		<div class="rounded-(--radius-card) bg-surface-2 shadow-surface-1 p-5">
 			<h3 class="text-sm font-semibold text-text-primary mb-3 flex items-center gap-2">
-				<Icon name="lucide:zap" class="w-4 h-4 text-brand" />
+				<ZapIcon class="w-4 h-4 text-brand" />
 				{{ t('components.knowledge.graphStatsPanel.hubs') }}
 			</h3>
 			<div v-if="stats.godNodes.length === 0" class="text-sm text-text-tertiary">
@@ -103,8 +104,8 @@ const maxCommunity = computed(() => Math.max(1, ...(props.stats?.communitySizes 
 						class="flex items-center gap-2 min-w-0 flex-1 text-left group"
 						@click="emit('godNodeClick', g.entryId)"
 					>
-						<Icon
-							:name="entryTypeIcon(g.entryType)"
+						<component
+							:is="entryTypeIcon(g.entryType)"
 							class="w-3.5 h-3.5 text-text-tertiary flex-shrink-0"
 						/>
 						<span
@@ -129,7 +130,7 @@ const maxCommunity = computed(() => Math.max(1, ...(props.stats?.communitySizes 
 						class="text-text-tertiary hover:text-brand transition-colors flex-shrink-0"
 						:aria-label="t('components.knowledge.graphStatsPanel.openEntry', { title: g.title })"
 					>
-						<Icon name="lucide:external-link" class="w-3.5 h-3.5" />
+						<ExternalLinkIcon class="w-3.5 h-3.5" />
 					</NuxtLink>
 				</li>
 			</ul>
@@ -188,7 +189,7 @@ const maxCommunity = computed(() => Math.max(1, ...(props.stats?.communitySizes 
 		<!-- Communities -->
 		<div class="rounded-(--radius-card) bg-surface-2 shadow-surface-1 p-5">
 			<h3 class="text-sm font-semibold text-text-primary mb-1 flex items-center gap-2">
-				<Icon name="lucide:boxes" class="w-4 h-4 text-text-tertiary" />
+				<PackageIcon class="w-4 h-4 text-text-tertiary" />
 				{{ t('components.knowledge.graphStatsPanel.communities') }}
 				<span class="text-text-tertiary font-normal">
 					{{
@@ -216,7 +217,7 @@ const maxCommunity = computed(() => Math.max(1, ...(props.stats?.communitySizes 
 		<!-- Surprising connections (redacted) -->
 		<div class="rounded-(--radius-card) bg-surface-2 shadow-surface-1 p-5">
 			<h3 class="text-sm font-semibold text-text-primary mb-3 flex items-center gap-2">
-				<Icon name="lucide:sparkles" class="w-4 h-4 text-brand" />
+				<SparklesIcon class="w-4 h-4 text-brand" />
 				{{ t('components.knowledge.graphStatsPanel.surprising') }}
 			</h3>
 			<div v-if="stats.surprisingConnections.length === 0" class="text-sm text-text-tertiary">
@@ -249,7 +250,7 @@ const maxCommunity = computed(() => Math.max(1, ...(props.stats?.communitySizes 
 				v-if="stats.crossContactLinkCount > 0"
 				class="text-2xs text-text-tertiary mt-3 flex items-center gap-1.5"
 			>
-				<Icon name="lucide:shield" class="w-3.5 h-3.5 flex-shrink-0" />
+				<ShieldIcon class="w-3.5 h-3.5 flex-shrink-0" />
 				{{
 					t(
 						'components.knowledge.graphStatsPanel.hiddenCrossContact',

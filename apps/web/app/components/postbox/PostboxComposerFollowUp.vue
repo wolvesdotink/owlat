@@ -11,6 +11,8 @@
  * click outside it — and a click inside the teleported dialog counts as
  * outside. Owning the dialog here would therefore unmount it mid-interaction.
  */
+import { AlarmIcon, CheckIcon } from '@coolicons/vue';
+
 const remindAt = defineModel<number | null>('remindAt', { required: true });
 /** Whether the parent-rendered preset picker is open. */
 const pickerOpen = defineModel<boolean>('pickerOpen', { required: true });
@@ -50,8 +52,8 @@ const title = computed(() =>
 			:disabled="disabled"
 			@click="toggle"
 		>
-			<Icon name="lucide:alarm-clock" class="w-4 h-4" />
-			<Icon v-if="remindAt" name="lucide:check" class="w-3 h-3 -ml-1" />
+			<AlarmIcon class="w-4 h-4" />
+			<CheckIcon v-if="remindAt" class="w-3 h-3 -ml-1" />
 		</UiButton>
 	</UiTooltip>
 </template>

@@ -14,6 +14,13 @@ import {
 	type SetupOutcome,
 } from '~/composables/setupWizardOutcomes';
 import { setupChoiceClass } from '~/utils/setupChoiceCard';
+import {
+	ArrowLeftIcon,
+	ArrowRightIcon,
+	DownloadIcon,
+	FeatherIcon,
+	SparklesIcon,
+} from '@coolicons/vue';
 
 definePageMeta({ layout: false });
 
@@ -71,7 +78,7 @@ function pick(key: OperatingModeKey) {
 
 		<div class="relative mx-auto max-w-3xl px-6 py-12">
 			<div class="flex items-center gap-3 mb-8">
-				<UiIconBox icon="lucide:feather" size="md" variant="brand" rounded="xl" />
+				<UiIconBox :icon="FeatherIcon" size="md" variant="brand" rounded="xl" />
 				<span class="lp-eyebrow">{{ t('setup.mode.eyebrow') }}</span>
 			</div>
 
@@ -178,7 +185,7 @@ function pick(key: OperatingModeKey) {
 							/>
 							<span>
 								<span class="flex items-center gap-2 font-medium text-text-primary">
-									<Icon name="lucide:sparkles" class="h-4 w-4" />
+									<SparklesIcon class="h-4 w-4" />
 									{{ t('setup.mode.freshTitle') }}
 								</span>
 								<span class="mt-1 block text-sm text-text-secondary">{{
@@ -199,7 +206,7 @@ function pick(key: OperatingModeKey) {
 							/>
 							<span>
 								<span class="flex items-center gap-2 font-medium text-text-primary">
-									<Icon name="lucide:import" class="h-4 w-4" />
+									<DownloadIcon class="h-4 w-4" />
 									{{ t('setup.mode.migratingTitle') }}
 								</span>
 								<span class="mt-1 block text-sm text-text-secondary">{{
@@ -269,12 +276,12 @@ function pick(key: OperatingModeKey) {
 
 				<footer class="mt-8 flex items-center justify-between border-t border-border-subtle pt-6">
 					<UiButton type="button" variant="ghost" @click="router.push('/setup')">
-						<template #iconLeft><Icon name="lucide:arrow-left" class="w-4 h-4 mr-2" /></template>
+						<template #iconLeft><ArrowLeftIcon class="w-4 h-4 mr-2" /></template>
 						{{ t('common.back') }}
 					</UiButton>
 					<UiButton type="submit" variant="primary" data-testid="setup-mode-next">
 						{{ t('setup.mode.next') }}
-						<template #iconRight><Icon name="lucide:arrow-right" class="w-4 h-4 ml-2" /></template>
+						<template #iconRight><ArrowRightIcon class="w-4 h-4 ml-2" /></template>
 					</UiButton>
 				</footer>
 			</form>

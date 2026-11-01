@@ -39,6 +39,7 @@ import {
 import { useEmbeddingConfirm } from '~/composables/useEmbeddingConfirm';
 import { formatDateTime, formatNumber } from '~/utils/formatters';
 import { embeddingProviderMeta } from '~/utils/aiProviders';
+import { CircleCheckIcon, TriangleWarningIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 const K = 'dashboard.admin.instance.aiProvider.embeddingSpace';
@@ -143,8 +144,8 @@ const providerLabel = (kind: string | undefined) => {
 					data-testid="ai-embedding-search-state"
 					:data-state="searchState"
 				>
-					<Icon
-						:name="searchState === 'searchable' ? 'lucide:check-circle-2' : 'lucide:alert-triangle'"
+					<component
+						:is="searchState === 'searchable' ? CircleCheckIcon : TriangleWarningIcon"
 						class="w-5 h-5 shrink-0 mt-0.5"
 						:class="searchState === 'searchable' ? 'text-success' : 'text-warning'"
 					/>

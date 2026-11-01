@@ -29,13 +29,14 @@ import {
 import { useLocalized } from '~/composables/useLocalized';
 import { useRelayCredentialDraft } from '~/composables/useRelayCredentialDraft';
 import { OUTBOUND_TLS_MODE_OPTIONS } from '~/composables/setupOutboundTls';
+import { ComponentIcon, GlobeIcon, PlugIcon, UserSettingsCornerIcon } from '@coolicons/vue';
 
 // ---- configure wizard steps ----
 const configSteps = [
-	{ id: 'features', label: 'desktop.setup.steps.features', icon: 'lucide:blocks' },
-	{ id: 'providers', label: 'desktop.setup.steps.providers', icon: 'lucide:plug' },
-	{ id: 'domain', label: 'desktop.setup.steps.domain', icon: 'lucide:globe' },
-	{ id: 'admin', label: 'desktop.setup.steps.admin', icon: 'lucide:user-cog' },
+	{ id: 'features', label: 'desktop.setup.steps.features', icon: ComponentIcon },
+	{ id: 'providers', label: 'desktop.setup.steps.providers', icon: PlugIcon },
+	{ id: 'domain', label: 'desktop.setup.steps.domain', icon: GlobeIcon },
+	{ id: 'admin', label: 'desktop.setup.steps.admin', icon: UserSettingsCornerIcon },
 ] as const;
 export type ConfigStep = (typeof configSteps)[number]['id'];
 

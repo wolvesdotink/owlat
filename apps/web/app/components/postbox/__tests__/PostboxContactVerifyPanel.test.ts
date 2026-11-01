@@ -46,7 +46,6 @@ beforeEach(() => {
 
 const FINGERPRINT = 'AAAA1111BBBB2222CCCC3333DDDD4444EEEE5555';
 
-const iconStub = { props: ['name'], template: '<span />' };
 // Renders `$attrs` (which carries the parent's `@click` and `data-testid`) onto
 // a real button, so a click goes through the component's own handler once.
 const buttonStub = {
@@ -59,7 +58,7 @@ function mountPanel(state: 'unverified' | 'verified' | 'stale' = 'unverified') {
 		props: { address: 'bob@b.test', fingerprint: FINGERPRINT, state },
 		global: {
 			plugins: [createTestI18n()],
-			stubs: { Icon: iconStub, UiButton: buttonStub, PostboxQrCode },
+			stubs: { UiButton: buttonStub, PostboxQrCode },
 		},
 	});
 }

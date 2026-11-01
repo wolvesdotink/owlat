@@ -15,6 +15,8 @@
  * `c` in its own scope still wins the press (utils/shortcutScope.ts).
  */
 
+import { ChevronDownIcon, PlusIcon } from '@coolicons/vue';
+
 const { t } = useI18n();
 const { actions, defaultAction, composeAction } = useQuickCreateMenu();
 const { registerShortcut, unregisterShortcut } = useKeyboardShortcuts();
@@ -51,7 +53,7 @@ onUnmounted(() => unregisterShortcut('global.compose'));
 			@click="defaultAction.run()"
 		>
 			<template #iconLeft>
-				<Icon name="lucide:plus" class="w-4 h-4" />
+				<PlusIcon class="w-4 h-4" />
 			</template>
 			{{ defaultAction.label }}
 		</UiButton>
@@ -66,8 +68,7 @@ onUnmounted(() => unregisterShortcut('global.compose'));
 					:aria-label="t('components.dashboard.quickCreateMenu.more')"
 					data-testid="quick-create-more"
 				>
-					<Icon
-						name="lucide:chevron-down"
+					<ChevronDownIcon
 						class="w-4 h-4 transition-transform duration-(--motion-fast)"
 						:class="{ 'rotate-180': isOpen }"
 					/>

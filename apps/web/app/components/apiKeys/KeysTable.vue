@@ -3,6 +3,7 @@ import type { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { FunctionReturnType } from 'convex/server';
 import { formatCompactRelativeTime, formatDate, formatDateTime } from '~/utils/formatters';
+import { CheckIcon, ClockIcon, CloseIcon, EyeOffIcon, PencilIcon, TrashIcon } from '@coolicons/vue';
 
 defineProps<{
 	apiKeys: FunctionReturnType<typeof api.auth.apiKeys.listByTeam>;
@@ -93,7 +94,7 @@ const { t } = useI18n();
 										:aria-label="t('common.save')"
 										@click="emit('saveRename')"
 									>
-										<Icon name="lucide:check" class="w-4 h-4" />
+										<CheckIcon class="w-4 h-4" />
 									</button>
 								</UiTooltip>
 								<UiTooltip :text="t('common.cancel')">
@@ -102,7 +103,7 @@ const { t } = useI18n();
 										:aria-label="t('common.cancel')"
 										@click="emit('cancelRename')"
 									>
-										<Icon name="lucide:x" class="w-4 h-4" />
+										<CloseIcon class="w-4 h-4" />
 									</button>
 								</UiTooltip>
 							</div>
@@ -118,14 +119,14 @@ const { t } = useI18n();
 								v-if="key.isActive"
 								class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium bg-success/10 text-success"
 							>
-								<Icon name="lucide:check" class="w-3 h-3" />
+								<CheckIcon class="w-3 h-3" />
 								{{ t('common.active') }}
 							</span>
 							<span
 								v-else
 								class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium bg-error/10 text-error"
 							>
-								<Icon name="lucide:x" class="w-3 h-3" />
+								<CloseIcon class="w-3 h-3" />
 								{{ t('dashboard.admin.team.api.index.status.revoked') }}
 							</span>
 						</td>
@@ -135,7 +136,7 @@ const { t } = useI18n();
 								class="text-text-secondary text-sm flex items-center gap-1.5"
 								:title="formatDateTime(key.lastUsedAt)"
 							>
-								<Icon name="lucide:clock" class="w-3.5 h-3.5 text-text-tertiary" />
+								<ClockIcon class="w-3.5 h-3.5 text-text-tertiary" />
 								{{ formatCompactRelativeTime(key.lastUsedAt) }}
 							</span>
 							<span v-else class="text-text-tertiary text-sm">{{
@@ -156,7 +157,7 @@ const { t } = useI18n();
 										:aria-label="t('dashboard.admin.team.api.index.actions.rename')"
 										@click="emit('startRename', key._id, key.name)"
 									>
-										<Icon name="lucide:pencil" class="w-4 h-4" />
+										<PencilIcon class="w-4 h-4" />
 									</button>
 								</UiTooltip>
 								<UiTooltip
@@ -168,7 +169,7 @@ const { t } = useI18n();
 										:aria-label="t('dashboard.admin.team.api.index.actions.revoke')"
 										@click="emit('revoke', key._id, key.name)"
 									>
-										<Icon name="lucide:eye-off" class="w-4 h-4" />
+										<EyeOffIcon class="w-4 h-4" />
 									</button>
 								</UiTooltip>
 								<UiTooltip :text="t('dashboard.admin.team.api.index.actions.delete')">
@@ -177,7 +178,7 @@ const { t } = useI18n();
 										:aria-label="t('dashboard.admin.team.api.index.actions.delete')"
 										@click="emit('delete', key._id, key.name)"
 									>
-										<Icon name="lucide:trash-2" class="w-4 h-4" />
+										<TrashIcon class="w-4 h-4" />
 									</button>
 								</UiTooltip>
 							</div>

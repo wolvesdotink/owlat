@@ -11,8 +11,6 @@ import Modal from '../components/ui/Modal.vue';
 import Select from '../components/ui/Select.vue';
 import { createUiI18n } from './i18n';
 
-const IconStub = { name: 'Icon', setup: () => () => h('i') };
-
 const FRUIT = [
 	{ value: 'apple', label: 'Apple' },
 	{ value: 'banana', label: 'Banana' },
@@ -36,7 +34,6 @@ function mountSelect(props: Record<string, unknown> = {}): VueWrapper {
 		attachTo: document.body,
 		global: {
 			plugins: [createUiI18n('en')],
-			components: { Icon: IconStub },
 		},
 	});
 	mounted.push(wrapper);
@@ -411,7 +408,7 @@ describe('Select inside UiModal', () => {
 		});
 		const wrapper = mount(Host, {
 			attachTo: document.body,
-			global: { plugins: [createUiI18n('en')], components: { Icon: IconStub } },
+			global: { plugins: [createUiI18n('en')] },
 		});
 		mounted.push(wrapper);
 		return { open, value };

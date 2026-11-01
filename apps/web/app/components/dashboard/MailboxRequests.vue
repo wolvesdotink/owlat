@@ -21,6 +21,7 @@
  */
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
+import { MailboxIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -76,7 +77,7 @@ async function resolve(requestId: Id<'mailboxRequests'>) {
 <template>
 	<div v-if="!isLoading && openRequests.length" class="card mb-8">
 		<div class="flex items-center gap-3 mb-4">
-			<UiIconBox icon="lucide:mailbox" variant="surface" />
+			<UiIconBox :icon="MailboxIcon" variant="surface" />
 			<div>
 				<h2 class="text-lg font-semibold text-text-primary">
 					{{ t('components.dashboard.mailboxRequests.title') }}

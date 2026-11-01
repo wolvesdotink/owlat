@@ -1,4 +1,4 @@
-import { Image as ImageIcon } from '@lucide/vue';
+import { ImageIcon } from '@coolicons/vue';
 import type { EditorModule } from '../_module';
 import type { ImageBlockContent } from '../../types';
 import { imageSchema } from '../../schema/definitions/image';

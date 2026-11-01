@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { Bookmark, Loader2 } from '@lucide/vue';
+import { BookmarkIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 import UiButton from '@owlat/ui/components/ui/Button.vue';
 import UiModal from '@owlat/ui/components/ui/Modal.vue';
 import { useBuilderI18n } from '../../i18n/useBuilderI18n';
@@ -54,7 +55,7 @@ const emit = defineEmits<{
 				@click="emit('save')"
 			>
 				<template v-if="!isSaving" #iconLeft>
-					<Bookmark class="w-4 h-4" />
+					<BookmarkIcon class="w-4 h-4" />
 				</template>
 				{{ t('builder.saveBlock.save') }}
 			</UiButton>

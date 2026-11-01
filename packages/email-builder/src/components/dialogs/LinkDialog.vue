@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, nextTick } from 'vue';
-import { Link, Unlink } from '@lucide/vue';
+import { LinkBreakIcon, LinkIcon } from '@coolicons/vue';
 import UiButton from '@owlat/ui/components/ui/Button.vue';
 import UiModal from '@owlat/ui/components/ui/Modal.vue';
 import { useBuilderI18n } from '../../i18n/useBuilderI18n';
@@ -75,7 +75,7 @@ function handleKeydown(event: KeyboardEvent) {
 				@click="emit('remove')"
 			>
 				<template #iconLeft>
-					<Unlink class="w-3.5 h-3.5" />
+					<LinkBreakIcon class="w-3.5 h-3.5" />
 				</template>
 				{{ t('builder.link.remove') }}
 			</UiButton>

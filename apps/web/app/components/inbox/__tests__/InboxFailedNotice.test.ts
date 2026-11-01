@@ -19,7 +19,7 @@ const APPROVED = 'Hi Jonas, I sent the refund of 42 EUR today.';
 function mountNotice(message: Record<string, unknown>) {
 	return mount(InboxFailedNotice, {
 		props: { message, retrying: false },
-		global: { plugins: [createTestI18n()], stubs: { Icon: true } },
+		global: { plugins: [createTestI18n()] },
 	});
 }
 

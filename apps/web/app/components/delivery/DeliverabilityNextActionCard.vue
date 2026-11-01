@@ -10,6 +10,7 @@ import {
 } from '~/utils/deliverabilityCenter';
 import { useDeliverabilityChecklistCopy } from '~/composables/useDeliverabilityChecklistCopy';
 import { useLocalized } from '~/composables/useLocalized';
+import { CircleArrowRightIcon, ReloadIcon, SparkleIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	item: DeliverabilityChecklistItem | null;
@@ -71,7 +72,7 @@ async function copyValue(value: string, key: string) {
 	>
 		<div class="border-b border-border-subtle bg-brand/5 px-5 py-3 sm:px-6">
 			<p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-brand">
-				<Icon name="lucide:arrow-right-circle" class="h-4 w-4" />
+				<CircleArrowRightIcon class="h-4 w-4" />
 				{{ t('components.delivery.deliverabilityNextActionCard.doThisNext') }}
 			</p>
 		</div>
@@ -95,8 +96,8 @@ async function copyValue(value: string, key: string) {
 					:class="status.className"
 					role="status"
 				>
-					<Icon
-						:name="status.icon"
+					<component
+						:is="status.icon"
 						class="h-3.5 w-3.5"
 						:class="{ 'animate-spin motion-reduce:animate-none': item.status === 'pending-dns' }"
 					/>
@@ -174,7 +175,7 @@ async function copyValue(value: string, key: string) {
 					@click="emit('verify', item)"
 				>
 					<template #iconLeft>
-						<Icon v-if="!isVerifying" name="lucide:refresh-cw" class="h-4 w-4" />
+						<ReloadIcon v-if="!isVerifying" class="h-4 w-4" />
 					</template>
 					{{
 						item.status === 'pending-dns'
@@ -215,7 +216,7 @@ async function copyValue(value: string, key: string) {
 
 	<UiCard v-else class="border-success/25 bg-success/5">
 		<div class="flex items-start gap-4">
-			<UiIconBox icon="lucide:party-popper" size="lg" variant="success" rounded="xl" />
+			<UiIconBox :icon="SparkleIcon" size="lg" variant="success" rounded="xl" />
 			<div>
 				<p class="text-xs font-semibold uppercase tracking-wide text-success">
 					{{ t('components.delivery.deliverabilityNextActionCard.complete.eyebrow') }}

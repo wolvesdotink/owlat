@@ -31,6 +31,7 @@
 
 import { formatFingerprint, shortFingerprint } from '~/utils/fingerprints';
 import type { InboundEncryptionInfo } from '~/utils/sealedMessage';
+import { PenToolIcon, type IconComponent } from '@coolicons/vue';
 
 /** Web mirror of the Convex `InboundSignatureKeySource` union (`e2ee/inboundSignature.ts`). */
 export type InboundSignatureKeySource = 'pinned' | 'wkd' | 'manifest' | 'not_found';
@@ -64,7 +65,7 @@ export interface SignatureBadgeResult {
 	 */
 	tooltip: string;
 	tone: 'ok' | 'warn' | 'danger' | 'muted';
-	icon: string;
+	icon: IconComponent;
 	/** Catalog key naming the key's origin — present when the tooltip needs it. */
 	keySource?: string;
 	/** Full formatted fingerprint (grouped by 4) — present only when verified. */
@@ -114,7 +115,7 @@ export function deriveSignatureBadge(
 			summary: 'shared.signatureBadge.verified.summary',
 			tooltip: 'shared.signatureBadge.verified.tooltip',
 			tone: 'ok',
-			icon: 'lucide:pen-tool',
+			icon: PenToolIcon,
 			keySource: KEY_SOURCE_LABELS[info.keySource],
 			fingerprint: full,
 			fingerprintShort: shortFingerprint(info.signerFingerprint) ?? undefined,
@@ -130,7 +131,7 @@ export function deriveSignatureBadge(
 			summary: 'shared.signatureBadge.keyChanged.summary',
 			tooltip: 'shared.signatureBadge.keyChanged.tooltip',
 			tone: 'danger',
-			icon: 'lucide:pen-tool',
+			icon: PenToolIcon,
 		};
 	}
 
@@ -146,7 +147,7 @@ export function deriveSignatureBadge(
 			summary: 'shared.signatureBadge.keyNotFound.summary',
 			tooltip: 'shared.signatureBadge.keyNotFound.tooltip',
 			tone: 'muted',
-			icon: 'lucide:pen-tool',
+			icon: PenToolIcon,
 		};
 	}
 
@@ -157,7 +158,7 @@ export function deriveSignatureBadge(
 		summary: 'shared.signatureBadge.invalid.summary',
 		tooltip: 'shared.signatureBadge.invalid.tooltip',
 		tone: 'warn',
-		icon: 'lucide:pen-tool',
+		icon: PenToolIcon,
 		keySource: KEY_SOURCE_LABELS[info.keySource],
 	};
 }

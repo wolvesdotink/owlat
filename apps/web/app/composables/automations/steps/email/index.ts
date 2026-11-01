@@ -1,12 +1,13 @@
 import { defineAsyncComponent } from 'vue';
 import type { EmailStepConfig, StepDisplayContext, StepEditorModule } from '../types';
+import { MailIcon } from '@coolicons/vue';
 
 export const emailStepEditorModule: StepEditorModule<'email'> = {
 	kind: 'email',
 	label: 'shared.automations.steps.email.label',
 	description: 'shared.automations.steps.email.description',
 	color: 'lime',
-	icon: 'lucide:mail',
+	icon: MailIcon,
 	createDefault: () => ({ emailTemplateId: '', subjectOverride: undefined }),
 	parseConfig(raw): EmailStepConfig {
 		const r = (raw ?? {}) as Record<string, unknown>;

@@ -5,6 +5,7 @@
  * itself is not shown here; the confirmation mail carries it.
  */
 import type { BookingHost, PublicMeetingType } from '~/lib/bookingClient';
+import { ClockIcon, MapPinIcon, VideoIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	host: Pick<BookingHost, 'name' | 'image'>;
@@ -37,15 +38,15 @@ const initial = computed(() => props.host.name.trim().charAt(0).toUpperCase() ||
 			<h1 class="font-display text-2xl break-words text-text-primary">{{ meeting.title }}</h1>
 			<ul class="space-y-2 text-sm text-text-secondary">
 				<li class="flex items-center gap-2">
-					<Icon name="lucide:clock" class="h-4 w-4 shrink-0 text-text-tertiary" />
+					<ClockIcon class="h-4 w-4 shrink-0 text-text-tertiary" />
 					{{ t('components.booking.summary.duration', { minutes: meeting.durationMinutes }) }}
 				</li>
 				<li v-if="meeting.location" class="flex items-start gap-2 break-words">
-					<Icon name="lucide:map-pin" class="mt-0.5 h-4 w-4 shrink-0 text-text-tertiary" />
+					<MapPinIcon class="mt-0.5 h-4 w-4 shrink-0 text-text-tertiary" />
 					<span class="min-w-0">{{ meeting.location }}</span>
 				</li>
 				<li v-if="meeting.hasVideoLink" class="flex items-center gap-2">
-					<Icon name="lucide:video" class="h-4 w-4 shrink-0 text-text-tertiary" />
+					<VideoIcon class="h-4 w-4 shrink-0 text-text-tertiary" />
 					{{ t('components.booking.summary.videoLink') }}
 				</li>
 			</ul>

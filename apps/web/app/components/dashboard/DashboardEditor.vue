@@ -11,6 +11,7 @@ import { useDashboardCardCopy } from '~/composables/useDashboardCardCopy';
 // Explicit import (rather than the Nuxt auto-import) so the rules half resolves
 // wherever the editor is mounted without component resolution set up.
 import DashboardRulesEditor from './DashboardRulesEditor.vue';
+import { ChevronDownIcon, ChevronUpIcon, CloseIcon, PlusIcon } from '@coolicons/vue';
 
 interface CardEntry {
 	type: string;
@@ -138,7 +139,7 @@ const sizeOptions = computed<{ value: CardSize; label: string }[]>(() => [
 							@click="handleCancel"
 							:aria-label="t('common.close')"
 						>
-							<Icon name="lucide:x" class="w-5 h-5" />
+							<CloseIcon class="w-5 h-5" />
 						</button>
 					</div>
 
@@ -170,7 +171,7 @@ const sizeOptions = computed<{ value: CardSize; label: string }[]>(() => [
 											@click="moveCard(index, 'up')"
 											:aria-label="t('components.dashboard.dashboardEditor.moveUp')"
 										>
-											<Icon name="lucide:chevron-up" class="w-3.5 h-3.5" />
+											<ChevronUpIcon class="w-3.5 h-3.5" />
 										</button>
 										<button
 											:disabled="index === editableCards.length - 1"
@@ -178,7 +179,7 @@ const sizeOptions = computed<{ value: CardSize; label: string }[]>(() => [
 											@click="moveCard(index, 'down')"
 											:aria-label="t('components.dashboard.dashboardEditor.moveDown')"
 										>
-											<Icon name="lucide:chevron-down" class="w-3.5 h-3.5" />
+											<ChevronDownIcon class="w-3.5 h-3.5" />
 										</button>
 									</div>
 
@@ -215,7 +216,7 @@ const sizeOptions = computed<{ value: CardSize; label: string }[]>(() => [
 										@click="removeCard(index)"
 										:aria-label="t('components.dashboard.dashboardEditor.removeCard')"
 									>
-										<Icon name="lucide:x" class="w-4 h-4" />
+										<CloseIcon class="w-4 h-4" />
 									</button>
 								</div>
 							</div>
@@ -236,7 +237,7 @@ const sizeOptions = computed<{ value: CardSize; label: string }[]>(() => [
 									<div
 										class="flex items-center justify-center w-7 h-7 rounded-lg bg-bg-surface text-text-tertiary shrink-0"
 									>
-										<Icon name="lucide:plus" class="w-4 h-4" />
+										<PlusIcon class="w-4 h-4" />
 									</div>
 									<div class="min-w-0 flex-1">
 										<p class="text-sm font-medium text-text-primary">{{ cardLabel(card) }}</p>

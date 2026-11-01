@@ -17,8 +17,6 @@ beforeAll(() => {
 	});
 });
 
-const iconStub = { props: ['name'], template: '<span />' };
-
 function mountHeader(canSeeLinkedEmail: boolean) {
 	return mount(ChatRoomHeader, {
 		props: {
@@ -36,7 +34,6 @@ function mountHeader(canSeeLinkedEmail: boolean) {
 		} as never,
 		global: {
 			plugins: [createTestI18n()],
-			stubs: { Icon: iconStub },
 		},
 	});
 }

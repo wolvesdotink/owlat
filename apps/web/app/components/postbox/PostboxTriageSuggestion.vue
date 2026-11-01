@@ -16,6 +16,7 @@
  */
 import type { Id } from '@owlat/api/dataModel';
 import { postboxFilterRuleLink, postboxTriageVerbCopy } from '~/utils/postboxTriageSuggestion';
+import { CheckIcon } from '@coolicons/vue';
 
 const props = defineProps<{ messageId: string }>();
 
@@ -35,7 +36,7 @@ const offerCopy = computed(() =>
 		:aria-label="t('components.postbox.postboxTriageSuggestion.label')"
 	>
 		<div v-if="suggestion && offerCopy" class="flex flex-wrap items-center gap-x-3 gap-y-2">
-			<Icon :name="offerCopy.icon" class="w-4 h-4 flex-shrink-0 text-text-tertiary" />
+			<component :is="offerCopy.icon" class="w-4 h-4 flex-shrink-0 text-text-tertiary" />
 			<p class="flex-1 min-w-40 text-sm text-text-secondary">
 				{{ t(offerCopy.promptKey, { sender: senderAddress, count: suggestion.count }) }}
 			</p>
@@ -50,7 +51,7 @@ const offerCopy = computed(() =>
 		</div>
 
 		<div v-else-if="accepted" class="flex flex-wrap items-center gap-x-3 gap-y-2">
-			<Icon name="lucide:check" class="w-4 h-4 flex-shrink-0 text-success" />
+			<CheckIcon class="w-4 h-4 flex-shrink-0 text-success" />
 			<p class="flex-1 min-w-40 text-sm text-text-secondary">
 				{{ t('components.postbox.postboxTriageSuggestion.created', { rule: accepted.filterName }) }}
 			</p>

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
+import { FolderCloseIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -41,7 +42,7 @@ const notFound = computed(() => !mailboxLoading.value && mailbox.value === null)
 			<div
 				class="w-12 h-12 mx-auto rounded-full bg-bg-surface flex items-center justify-center text-text-tertiary"
 			>
-				<Icon name="lucide:folder-x" class="w-6 h-6" />
+				<FolderCloseIcon class="w-6 h-6" />
 			</div>
 			<h2 class="font-semibold mt-4">
 				{{ t('dashboard.preferences.members.detail.notFoundTitle') }}

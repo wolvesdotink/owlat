@@ -12,6 +12,7 @@
 import { api } from '@owlat/api';
 import { DEFAULT_SLA_FORM_POLICY, type SlaPolicyShape } from '~/utils/inboxSlaPolicyForm';
 import { AUTO_CLOSE_DEFAULT_DAYS, type AutoClosePolicyShape } from '~/utils/inboxAutoClose';
+import { ChartBarVerticalIcon, InboxIcon, LockIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -92,11 +93,11 @@ async function onSaveAutoClose(next: AutoClosePolicyShape) {
 		>
 			<template #actions>
 				<UiButton to="/dashboard/inbox/analytics" variant="secondary" class="gap-2">
-					<Icon name="lucide:bar-chart-3" class="w-4 h-4" />
+					<ChartBarVerticalIcon class="w-4 h-4" />
 					{{ t('dashboard.inbox.responseTargets.analyticsLink') }}
 				</UiButton>
 				<UiButton to="/dashboard/inbox" variant="ghost" class="gap-2">
-					<Icon name="lucide:inbox" class="w-4 h-4" />
+					<InboxIcon class="w-4 h-4" />
 					{{ t('dashboard.inbox.responseTargets.backToInbox') }}
 				</UiButton>
 			</template>
@@ -106,7 +107,7 @@ async function onSaveAutoClose(next: AutoClosePolicyShape) {
 			v-if="showAdminGate"
 			class="card flex flex-col items-center justify-center py-16 text-center px-6"
 		>
-			<UiIconBox icon="lucide:lock" size="xl" variant="surface" rounded="full" class="mb-4" />
+			<UiIconBox :icon="LockIcon" size="xl" variant="surface" rounded="full" class="mb-4" />
 			<p class="text-text-secondary font-medium">
 				{{ t('dashboard.inbox.responseTargets.adminGate.title') }}
 			</p>

@@ -1,3 +1,5 @@
+import { MailIcon, MegaphoneIcon, WorkflowIcon, type IconComponent } from '@coolicons/vue';
+
 export type ProviderRouteMessageType = 'campaign' | 'transactional' | 'automation';
 export type ProviderRouteStrategy =
 	| 'single'
@@ -53,25 +55,25 @@ export const PROVIDER_ROUTE_MESSAGE_TYPES: {
 	value: ProviderRouteMessageType;
 	label: string;
 	description: string;
-	icon: string;
+	icon: IconComponent;
 }[] = [
 	{
 		value: 'transactional',
 		label: 'shared.providerRouteOptions.messageTypes.transactional.label',
 		description: 'shared.providerRouteOptions.messageTypes.transactional.description',
-		icon: 'lucide:mail-check',
+		icon: MailIcon,
 	},
 	{
 		value: 'campaign',
 		label: 'shared.providerRouteOptions.messageTypes.campaign.label',
 		description: 'shared.providerRouteOptions.messageTypes.campaign.description',
-		icon: 'lucide:megaphone',
+		icon: MegaphoneIcon,
 	},
 	{
 		value: 'automation',
 		label: 'shared.providerRouteOptions.messageTypes.automation.label',
 		description: 'shared.providerRouteOptions.messageTypes.automation.description',
-		icon: 'lucide:workflow',
+		icon: WorkflowIcon,
 	},
 ];
 

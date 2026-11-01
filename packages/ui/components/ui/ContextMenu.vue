@@ -9,8 +9,8 @@ export interface ContextMenuItem {
 	/** Stable key for :key + tests. */
 	id: string;
 	label: string;
-	/** Optional lucide icon name (e.g. `lucide:archive`). */
-	icon?: string;
+	/** Optional coolicons component (e.g. `ArchiveIcon`). */
+	icon?: IconComponent;
 	/** Render in the danger colour (destructive verbs). */
 	danger?: boolean;
 	disabled?: boolean;
@@ -32,6 +32,7 @@ export interface ContextMenuItem {
 <script setup lang="ts">
 import { computed, nextTick, onUnmounted, ref, shallowRef, watch } from 'vue';
 import { useModalFocus } from '../../composables/useModalFocus';
+import type { IconComponent } from '@coolicons/vue';
 
 /**
  * App-wide right-click / context-menu primitive.
@@ -246,7 +247,7 @@ onUnmounted(() => {
 						"
 						@click="select(item)"
 					>
-						<Icon v-if="item.icon" :name="item.icon" class="w-4 h-4 shrink-0" />
+						<component v-if="item.icon" :is="item.icon" class="w-4 h-4 shrink-0" />
 						<span class="truncate">{{ item.label }}</span>
 						<kbd
 							v-if="item.shortcut"

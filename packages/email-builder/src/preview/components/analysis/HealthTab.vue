@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { Shield, Accessibility, Mail, Monitor } from '@lucide/vue';
+import { AccessibilityIcon, MailIcon, MonitorIcon, ShieldIcon } from '@coolicons/vue';
 import type { PreviewHealthScore } from '../../types';
 import { scoreBand, scoreColor } from '../../scoreBands';
 import AnalysisEmpty from './AnalysisEmpty.vue';
@@ -30,25 +30,25 @@ const subScores = computed(() => {
 			id: 'compatibility',
 			label: t('builder.analysis.health.compatibility'),
 			value: props.healthScore.compatibility,
-			icon: Shield,
+			icon: ShieldIcon,
 		},
 		{
 			id: 'accessibility',
 			label: t('builder.analysis.health.accessibility'),
 			value: props.healthScore.accessibility,
-			icon: Accessibility,
+			icon: AccessibilityIcon,
 		},
 		{
 			id: 'deliverability',
 			label: t('builder.analysis.health.deliverability'),
 			value: props.healthScore.deliverability,
-			icon: Mail,
+			icon: MailIcon,
 		},
 		{
 			id: 'outlook',
 			label: t('builder.analysis.health.outlook'),
 			value: props.healthScore.outlookSupport,
-			icon: Monitor,
+			icon: MonitorIcon,
 		},
 	];
 });

@@ -58,7 +58,6 @@ function mountSections(collapsed: Record<string, boolean> = {}) {
 			plugins: [createTestI18n()],
 			components: { PostboxSectionedThreadList, PostboxThreadListSkeleton, PostboxEmptyState },
 			stubs: {
-				Icon: { props: ['name'], template: '<span />' },
 				NuxtLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
 				PostboxThreadRowBody: { template: '<span />' },
 				UiSkeleton: true,

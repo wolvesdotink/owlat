@@ -6,6 +6,7 @@ import { useListPage } from '~/composables/useListPage';
 import { useMarketingDeleteUndo } from '~/composables/useMarketingDeleteUndo';
 import type { CampaignStatus } from '~/composables/useCampaignStatusBadge';
 import type { CampaignRowFields, DecoratedRow } from '~/utils/campaignCommandRow';
+import { CircleCheckIcon, PaperPlaneIcon, PlusIcon } from '@coolicons/vue';
 
 const { t } = useI18n();
 
@@ -214,13 +215,13 @@ const pills = computed<Pill[]>(() => {
 const emptyCopy = computed(() =>
 	selectedPill.value === 'attention'
 		? {
-				icon: 'lucide:check-circle',
+				icon: CircleCheckIcon,
 				eyebrow: t('dashboard.campaigns.index.attentionEmpty.eyebrow'),
 				title: t('dashboard.campaigns.index.attentionEmpty.title'),
 				description: t('dashboard.campaigns.index.attentionEmpty.description'),
 			}
 		: {
-				icon: 'lucide:send',
+				icon: PaperPlaneIcon,
 				title: t('dashboard.campaigns.index.listEmpty.title'),
 				description: t('dashboard.campaigns.index.listEmpty.description'),
 			}
@@ -282,7 +283,7 @@ async function handleDuplicate(id: Id<'campaigns'>) {
 		:active-search="debouncedSearch"
 		:search-placeholder="t('dashboard.campaigns.index.searchPlaceholder')"
 		:empty-no-org="{
-			icon: 'lucide:send',
+			icon: PaperPlaneIcon,
 			title: t('dashboard.campaigns.index.noWorkspace.title'),
 			description: t('dashboard.campaigns.index.noWorkspace.description'),
 		}"
@@ -301,7 +302,7 @@ async function handleDuplicate(id: Id<'campaigns'>) {
 		     has no create button. -->
 		<template #actions>
 			<UiButton class="lg:hidden" @click="handleNewCampaign">
-				<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
+				<template #iconLeft><PlusIcon class="w-4 h-4" /></template>
 				{{ t('dashboard.campaigns.index.newCampaign') }}
 			</UiButton>
 		</template>
@@ -330,7 +331,7 @@ async function handleDuplicate(id: Id<'campaigns'>) {
 
 		<template v-if="selectedPill !== 'attention'" #empty-action>
 			<UiButton @click="handleNewCampaign">
-				<template #iconLeft><Icon name="lucide:plus" class="w-4 h-4" /></template>
+				<template #iconLeft><PlusIcon class="w-4 h-4" /></template>
 				{{ t('dashboard.campaigns.index.newCampaign') }}
 			</UiButton>
 		</template>

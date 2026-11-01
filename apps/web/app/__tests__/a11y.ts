@@ -51,7 +51,7 @@ import {
 	type Component,
 } from 'vue';
 import { hasPermission, type Permission } from '@owlat/shared/organizationPermissions';
-import { IconStub, NuxtLinkStub } from './nuxtComponents';
+import { NuxtLinkStub } from './nuxtComponents';
 import { tolerateUnresolvedComponents } from './vueWarnings';
 import { paginatedResult, queryResult } from './queryStubs';
 import { createTestI18n } from './i18n';
@@ -139,7 +139,7 @@ for (const [path, module] of Object.entries(
 const unresolvedComponents = new Set<string>();
 
 const a11yGlobal = {
-	components: { ...uiComponents, ...shellComponents, NuxtLink: NuxtLinkStub, Icon: IconStub },
+	components: { ...uiComponents, ...shellComponents, NuxtLink: NuxtLinkStub },
 	// Several components pick their root element with
 	// `<component :is="cond ? 'div' : resolveComponent('NuxtLink')">` (the app
 	// gets this identifier from Nuxt's auto-imports). Template expressions
@@ -382,7 +382,6 @@ function convexClientStub() {
 /** Chrome a page suite never asserts on: inert icons, spinners, empty states, a passthrough card. */
 const DASHBOARD_PAGE_STUBS: Record<string, unknown> = {
 	UiIconBox: true,
-	Icon: true,
 	UiSpinner: true,
 	UiEmptyState: true,
 	UiCard: { template: '<div><slot name="header" /><slot /></div>' },

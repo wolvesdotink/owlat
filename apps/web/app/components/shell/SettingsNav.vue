@@ -2,6 +2,8 @@
 import type { SettingsSectionView } from '~/lib/settingsRegistry';
 import { adminRailEntryFor } from '~/lib/adminSettingsRegistry';
 import { type AdminAreaView } from '~/lib/adminSettingsNav';
+import { ArrowLeftIcon, SearchIcon } from '@coolicons/vue';
+import { navIcon } from '~/lib/navIcons';
 
 /**
  * The Settings sidebar. It takes the sidebar over while you are in Settings,
@@ -108,7 +110,7 @@ const tabs = computed(() => [
 				class="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-2xs text-text-tertiary hover:bg-bg-surface hover:text-text-primary"
 				@click="leaveSettings"
 			>
-				<Icon name="lucide:arrow-left" class="size-3" />
+				<ArrowLeftIcon class="size-3" />
 				{{ t('components.shell.settings.back') }}
 			</button>
 		</div>
@@ -150,7 +152,7 @@ const tabs = computed(() => [
 		<label
 			class="mx-2 flex items-center gap-2 rounded-lg bg-bg-surface px-2.5 py-1.5 text-xs text-text-tertiary focus-within:ring-2 focus-within:ring-brand"
 		>
-			<Icon name="lucide:search" class="size-3.5" />
+			<SearchIcon class="size-3.5" />
 			<input
 				v-model="query"
 				type="search"
@@ -167,7 +169,7 @@ const tabs = computed(() => [
 					:to="result.path"
 					class="flex items-center gap-2 rounded-md px-3 py-1.5 text-sm text-text-secondary hover:bg-bg-surface hover:text-text-primary"
 				>
-					<Icon :name="result.icon" class="size-4 shrink-0" />
+					<component :is="result.icon" class="size-4 shrink-0" />
 					<span class="truncate">{{ result.title }}</span>
 					<span class="ml-auto truncate text-2xs text-text-tertiary">{{ result.group }}</span>
 				</NuxtLink>
@@ -194,7 +196,11 @@ const tabs = computed(() => [
 							"
 							:aria-current="isCurrent(entry.path) ? 'page' : undefined"
 						>
-							<Icon :name="entry.icon" class="size-4 shrink-0" />
+							<component
+								:is="navIcon(entry.icon, isCurrent(entry.path))"
+								class="size-4 shrink-0"
+								:class="isCurrent(entry.path) ? 'text-brand' : undefined"
+							/>
 							<span class="truncate">{{ t(entry.titleKey) }}</span>
 						</NuxtLink>
 					</li>
@@ -223,7 +229,11 @@ const tabs = computed(() => [
 							"
 							:aria-current="isCurrent(entry.path) ? 'page' : undefined"
 						>
-							<Icon :name="entry.icon" class="size-4 shrink-0" />
+							<component
+								:is="navIcon(entry.icon, isCurrent(entry.path))"
+								class="size-4 shrink-0"
+								:class="isCurrent(entry.path) ? 'text-brand' : undefined"
+							/>
 							<span class="truncate">{{ t(entry.titleKey) }}</span>
 							<template v-if="badgeFor(entry.path) > 0">
 								<span

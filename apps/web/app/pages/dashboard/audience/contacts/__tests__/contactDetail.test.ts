@@ -18,6 +18,7 @@ import ContactDetail from '../[id].vue';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { installNuxtStubs, queryResult } from '~/__tests__/a11y';
 import { tooltipOf } from '~/__tests__/tooltip';
+import { ActivityIcon, CircleCheckIcon } from '@coolicons/vue';
 
 const isAdmin = ref(true);
 const activityTimelineGate = vi.fn();
@@ -73,7 +74,7 @@ beforeEach(() => {
 				hasMoreActivities: ref(false),
 				isLoadingMoreActivities: ref(false),
 				loadMoreActivities: vi.fn(),
-				getActivityIcon: () => 'lucide:activity',
+				getActivityIcon: () => ActivityIcon,
 				getActivityLabel: () => '',
 				getActivityColor: () => '',
 				getActivityDescription: () => '',
@@ -108,7 +109,7 @@ beforeEach(() => {
 			getDoiStatusLabel: (status?: string) =>
 				status === 'confirmed' ? 'Subscription confirmed' : '',
 			getDoiStatusColor: () => 'text-success',
-			getDoiStatusIcon: () => 'lucide:check-circle',
+			getDoiStatusIcon: () => CircleCheckIcon,
 		}),
 		formatDateTime: () => 'Jan 23, 2026',
 	});
@@ -126,7 +127,6 @@ function mountPage() {
 		global: {
 			plugins: [createTestI18n()],
 			stubs: {
-				Icon: true,
 				NuxtLink: { template: '<a><slot /></a>' },
 				UiTabs: tabsStub,
 				UiPageHeader: {

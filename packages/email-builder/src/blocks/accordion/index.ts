@@ -1,4 +1,4 @@
-import { ChevronDown } from '@lucide/vue';
+import { ChevronDownIcon } from '@coolicons/vue';
 import { moduleFor } from '@owlat/email-renderer';
 import type { EditorModule, NestedChild } from '../_module';
 import type { AccordionBlockContent } from '../../types';
@@ -9,7 +9,7 @@ import { generateId } from '../../utils/id';
 export const accordionEditor: EditorModule<'accordion'> = {
 	type: 'accordion',
 	label: 'Accordion',
-	icon: ChevronDown,
+	icon: ChevronDownIcon,
 	schema: accordionSchema,
 	slashCommand: {
 		name: 'Accordion',

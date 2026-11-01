@@ -1,5 +1,12 @@
 <script setup lang="ts">
 import { useUiI18n } from '../../composables/useUiI18n';
+import {
+	CircleCheckIcon,
+	CircleInfoIcon,
+	CircleWarningIcon,
+	TriangleWarningIcon,
+	type IconComponent,
+} from '@coolicons/vue';
 
 type AlertVariant = 'error' | 'warning' | 'info' | 'success';
 
@@ -14,7 +21,7 @@ interface Props {
 	 */
 	actionLabel?: string;
 	/** Icon for the action button. */
-	actionIcon?: string;
+	actionIcon?: IconComponent;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -31,25 +38,25 @@ defineEmits<{
 
 const variantConfig: Record<
 	AlertVariant,
-	{ icon: string; containerClass: string; iconClass: string }
+	{ icon: IconComponent; containerClass: string; iconClass: string }
 > = {
 	error: {
-		icon: 'lucide:alert-circle',
+		icon: CircleWarningIcon,
 		containerClass: 'bg-error/10 border-error/20',
 		iconClass: 'text-error',
 	},
 	warning: {
-		icon: 'lucide:alert-triangle',
+		icon: TriangleWarningIcon,
 		containerClass: 'bg-warning/10 border-warning/20',
 		iconClass: 'text-warning',
 	},
 	info: {
-		icon: 'lucide:info',
+		icon: CircleInfoIcon,
 		containerClass: 'bg-brand/10 border-brand/20',
 		iconClass: 'text-brand',
 	},
 	success: {
-		icon: 'lucide:check-circle',
+		icon: CircleCheckIcon,
 		containerClass: 'bg-success/10 border-success/20',
 		iconClass: 'text-success',
 	},
@@ -73,7 +80,11 @@ const displayTitle = computed(() => props.title ?? t(defaultTitleKeys[props.vari
 
 <template>
 	<div :class="['p-4 border rounded-lg flex items-start gap-3', config.containerClass]">
-		<Icon :name="config.icon" :class="['w-5 h-5 shrink-0 mt-0.5', config.iconClass]" />
+		<component
+			:is="config.icon"
+			:class="['w-5 h-5 shrink-0 mt-0.5', config.iconClass]"
+			size="1em"
+		/>
 		<div>
 			<p :class="['text-sm font-medium', config.iconClass]">{{ displayTitle }}</p>
 			<p :class="['text-sm', `${config.iconClass}/80`]">{{ message }}</p>
@@ -86,7 +97,7 @@ const displayTitle = computed(() => props.title ?? t(defaultTitleKeys[props.vari
 				@click="$emit('action')"
 			>
 				<template v-if="actionIcon" #iconLeft>
-					<Icon :name="actionIcon" class="w-4 h-4" />
+					<component :is="actionIcon" class="w-4 h-4" />
 				</template>
 				{{ actionLabel }}
 			</UiButton>

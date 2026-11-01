@@ -4,6 +4,13 @@
 // drag through the page's draggable list, or Space / arrows / Space from the
 // keyboard), and the actions menu moves or deletes it.
 import { stepEditorModuleFor, type StepKind } from '~/composables/automations/steps';
+import {
+	ArrowDownIcon,
+	ArrowUpIcon,
+	DragVerticalIcon,
+	MoreVerticalIcon,
+	TrashIcon,
+} from '@coolicons/vue';
 
 defineProps<{
 	step: { _id: string; stepType: string };
@@ -78,7 +85,7 @@ const stepAccent = (stepType: string): StepAccent => STEP_ACCENT[stepType as Ste
 				@click.stop
 				@keydown="emit('handleKeydown', $event)"
 			>
-				<Icon name="lucide:grip-vertical" class="w-4 h-4" />
+				<DragVerticalIcon class="w-4 h-4" />
 			</button>
 
 			<!-- Step Icon (resolved via the step editor module registry;
@@ -89,7 +96,7 @@ const stepAccent = (stepType: string): StepAccent => STEP_ACCENT[stepType as Ste
 					stepAccent(step.stepType).iconClass,
 				]"
 			>
-				<Icon :name="stepInfo(step.stepType).icon" class="w-5 h-5" />
+				<component :is="stepInfo(step.stepType).icon" class="w-5 h-5" />
 			</div>
 
 			<!-- Step Content -->
@@ -120,9 +127,10 @@ const stepAccent = (stepType: string): StepAccent => STEP_ACCENT[stepType as Ste
 							stepAccent(step.stepType).pill!.border,
 						]"
 					>
-						<Icon
-							:name="stepInfo(step.stepType).icon"
+						<component
+							:is="stepInfo(step.stepType).icon"
 							:class="['w-3.5 h-3.5', stepAccent(step.stepType).pill!.text]"
+							size="1em"
 						/>
 						<span :class="['text-sm font-medium', stepAccent(step.stepType).pill!.text]">
 							{{ description }}
@@ -144,25 +152,21 @@ const stepAccent = (stepType: string): StepAccent => STEP_ACCENT[stepType as Ste
 								})
 							"
 						>
-							<Icon name="lucide:more-vertical" class="w-4 h-4" />
+							<MoreVerticalIcon class="w-4 h-4" />
 						</button>
 					</template>
-					<UiDropdownMenuItem
-						icon="lucide:arrow-up"
-						:disabled="index === 0"
-						@click="emit('move', -1)"
-					>
+					<UiDropdownMenuItem :icon="ArrowUpIcon" :disabled="index === 0" @click="emit('move', -1)">
 						{{ t('dashboard.automations.detail.edit.reorder.moveUp') }}
 					</UiDropdownMenuItem>
 					<UiDropdownMenuItem
-						icon="lucide:arrow-down"
+						:icon="ArrowDownIcon"
 						:disabled="index === total - 1"
 						@click="emit('move', 1)"
 					>
 						{{ t('dashboard.automations.detail.edit.reorder.moveDown') }}
 					</UiDropdownMenuItem>
 					<UiDropdownDivider />
-					<UiDropdownMenuItem icon="lucide:trash-2" danger @click="emit('delete')">
+					<UiDropdownMenuItem :icon="TrashIcon" danger @click="emit('delete')">
 						{{ t('common.delete') }}
 					</UiDropdownMenuItem>
 				</UiDropdownMenu>

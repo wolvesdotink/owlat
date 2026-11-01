@@ -6,6 +6,7 @@
  */
 import { BOOKING_LIMITS } from '@owlat/shared/booking';
 import { formatSlotRange } from '~/utils/bookingSlots';
+import { CalendarEventIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	start: number;
@@ -43,10 +44,7 @@ function onSubmit() {
 	<form class="space-y-4" data-testid="booking-guest-form" @submit.prevent="onSubmit">
 		<div class="flex items-center justify-between gap-3 rounded-lg bg-bg-surface px-3 py-2">
 			<p class="text-sm text-text-primary">
-				<Icon
-					name="lucide:calendar-clock"
-					class="mr-1.5 inline h-4 w-4 align-text-bottom text-brand"
-				/>
+				<CalendarEventIcon class="mr-1.5 inline h-4 w-4 align-text-bottom text-brand" />
 				{{ when }}
 			</p>
 			<UiButton variant="ghost" size="sm" @click="emit('back')">

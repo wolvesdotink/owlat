@@ -11,6 +11,7 @@
 @source "../../../../../packages/email-builder/src/**/*.ts";
 @source "../../../../../packages/ui/components/**/*.vue";
 @source "../../../../../packages/ui/composables/**/*.ts";
+@source "../../../../../packages/ui/icons/**/*.ts";
 
 /* Email Previewer aliases (web-only — maps design tokens to --ep-* namespace) */
 :root {

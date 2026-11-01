@@ -7,6 +7,7 @@ import {
 	buildArgumentGroups,
 	flattenGroups,
 	groupsForMode,
+	indexById,
 	mergeGroups,
 	moveSelection,
 	parsePaletteQuery,
@@ -23,6 +24,7 @@ import {
 	buildCorePaletteProviders,
 } from '~/lib/commandPaletteCore';
 import { isImeComposing } from '~/utils/imeComposition';
+import { CloseIcon } from '@coolicons/vue';
 
 /**
  * The app's ONE search overlay, mounted by the dashboard layout the first time
@@ -238,11 +240,7 @@ const matchTerm = computed(() => (pendingArgument.value ? searchQuery.value : se
 // watcher below would otherwise rebuild every provider's groups on each route,
 // flag or recents change while nobody can see them.
 const flatItems = computed(() => (open.value ? flattenGroups(groups.value) : []));
-const flatIndexById = computed(() => {
-	const map = new Map<string, number>();
-	for (const [index, item] of flatItems.value.entries()) map.set(item.id, index);
-	return map;
-});
+const flatIndexById = computed(() => indexById(flatItems.value));
 const hasAnyResults = computed(() => flatItems.value.length > 0);
 
 /**
@@ -469,7 +467,7 @@ onBeforeUnmount(() => detachTriggers?.());
 						:aria-label="t('components.appCommandPalette.clearQuery')"
 						@click="searchQuery = ''"
 					>
-						<Icon name="lucide:x" class="w-4 h-4" />
+						<CloseIcon class="w-4 h-4" />
 					</button>
 					<kbd
 						class="hidden sm:inline-flex items-center px-2 py-1 text-xs text-text-tertiary bg-bg-surface border border-border-subtle rounded"

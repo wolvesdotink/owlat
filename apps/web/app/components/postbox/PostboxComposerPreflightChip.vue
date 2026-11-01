@@ -9,6 +9,7 @@
  */
 import { useLocalized } from '~/composables/useLocalized';
 import type { PreflightFinding } from '~/utils/postboxPreflight';
+import { ListChecklistIcon } from '@coolicons/vue';
 
 const props = defineProps<{ findings: PreflightFinding[] }>();
 
@@ -32,7 +33,7 @@ const summary = computed(() =>
 		class="flex items-start gap-1.5 min-w-0 text-xs text-text-tertiary"
 		data-testid="postbox-preflight-chip"
 	>
-		<Icon name="lucide:list-checks" class="w-3.5 h-3.5 mt-px shrink-0 text-warning" />
+		<ListChecklistIcon class="w-3.5 h-3.5 mt-px shrink-0 text-warning" />
 		<span class="min-w-0 break-words">{{ summary }}</span>
 	</span>
 </template>

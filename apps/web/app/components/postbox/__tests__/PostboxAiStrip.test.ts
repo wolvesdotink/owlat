@@ -56,7 +56,6 @@ beforeEach(() => {
 	askRun.mockResolvedValue({ ok: false });
 });
 
-const iconStub = { props: ['name'], template: '<span />' };
 const mdStub = { props: ['source'], template: '<div class="md">{{ source }}</div>' };
 
 function mountStrip() {
@@ -65,7 +64,7 @@ function mountStrip() {
 		props: { messageId: 'msg-1' },
 		global: {
 			plugins: [createTestI18n()],
-			stubs: { Icon: iconStub, AssistantMarkdown: mdStub },
+			stubs: { AssistantMarkdown: mdStub },
 		},
 	});
 }

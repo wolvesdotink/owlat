@@ -18,6 +18,7 @@ import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import type { WorkbenchTab } from '~/utils/workbench';
 import { FILED_CATEGORIES } from '@owlat/shared/threadStatus';
 import { MAIL_CATEGORY_META } from '~/utils/mailCategory';
+import { MegaphoneIcon } from '@coolicons/vue';
 
 beforeAll(() => {
 	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
@@ -56,7 +57,7 @@ const TABS: WorkbenchTab[] = [
 	},
 ];
 
-const stubs = { Icon: true, NuxtLink: { props: ['to'], template: '<a :href="to"><slot /></a>' } };
+const stubs = { NuxtLink: { props: ['to'], template: '<a :href="to"><slot /></a>' } };
 
 describe('TodayWorkbenchTabs', () => {
 	it('marks the open tab and says what waits in each', () => {
@@ -136,13 +137,12 @@ describe('TodayFiledAway', () => {
 			},
 			global: { plugins: [createTestI18n()], stubs },
 		});
-		const iconOf = (kind: string) =>
-			w.find(`[data-filed-kind="${kind}"]`).findAll('icon-stub')[0]!.attributes('name');
+		const row = (kind: string) => w.find(`[data-filed-kind="${kind}"]`);
 		for (const kind of FILED_CATEGORIES) {
-			expect(iconOf(kind)).toBe(MAIL_CATEGORY_META[kind].icon);
+			expect(row(kind).findComponent(MAIL_CATEGORY_META[kind].icon).exists()).toBe(true);
 		}
-		// `lucide:tag` is the Recategorize button; a promotion wears the megaphone.
-		expect(iconOf('promotion')).toBe('lucide:megaphone');
+		// The tag is the Recategorize button; a promotion wears the megaphone.
+		expect(row('promotion').findComponent(MegaphoneIcon).exists()).toBe(true);
 	});
 
 	it('says so when nothing was filed away', () => {

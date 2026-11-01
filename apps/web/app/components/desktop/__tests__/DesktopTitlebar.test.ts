@@ -10,7 +10,7 @@
  *     bridge
  *
  * The desktop composables are stubbed at the auto-import seam (same approach as
- * the Postbox component tests). Icon / NuxtLink are stubbed globals. The
+ * the Postbox component tests). NuxtLink is a stubbed global. The
  * `@owlat/desktop/src/window` bridge is module-mocked with the REAL
  * `windowTitleFor` mapping kept, so the title assertions cover the production
  * label→title rule rather than a local re-derivation.
@@ -87,7 +87,6 @@ beforeEach(() => {
 	themePreference.value = 'system';
 });
 
-const iconStub = { props: ['name'], template: '<span class="icon" :data-name="name" />' };
 const nuxtLinkStub = {
 	props: ['to'],
 	template: '<a class="nuxt-link" :href="to"><slot /></a>',
@@ -99,7 +98,6 @@ function mountBar(props: { showSearch?: boolean } = { showSearch: true }) {
 		global: {
 			plugins: [createTestI18n()],
 			components: {
-				Icon: iconStub,
 				NuxtLink: nuxtLinkStub,
 				// Rendered inside the shared WorkspaceMenu rows; count display is
 				// covered by that component's own concerns, not this bar's.

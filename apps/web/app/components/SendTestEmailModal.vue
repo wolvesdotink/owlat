@@ -3,6 +3,16 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { isValidEmail } from '@owlat/shared';
 import { stableRowKey } from '~/utils/stableRowKey';
+import {
+	BracesIcon,
+	CircleCheckIcon,
+	CircleWarningIcon,
+	MailIcon,
+	PaperPlaneIcon,
+	PlusIcon,
+	TrashIcon,
+	UserIcon,
+} from '@coolicons/vue';
 
 interface Props {
 	open: boolean;
@@ -196,7 +206,7 @@ watch(
 	>
 		<!-- Header -->
 		<div class="flex items-center gap-3 mb-6">
-			<UiIconBox icon="lucide:send" size="sm" variant="brand" rounded="lg" />
+			<UiIconBox :icon="PaperPlaneIcon" size="sm" variant="brand" rounded="lg" />
 			<div>
 				<h2 class="text-lg font-semibold text-text-primary">
 					{{ t('components.sendTestEmailModal.title') }}
@@ -211,7 +221,7 @@ watch(
 		<div class="space-y-6">
 			<!-- No verified domain warning -->
 			<div v-if="noVerifiedDomain" class="flex items-start gap-3 p-4 bg-warning-subtle rounded-lg">
-				<Icon name="lucide:alert-circle" class="w-5 h-5 text-warning flex-shrink-0 mt-0.5" />
+				<CircleWarningIcon class="w-5 h-5 text-warning flex-shrink-0 mt-0.5" />
 				<div>
 					<p class="font-medium text-warning">
 						{{ t('components.sendTestEmailModal.noVerifiedDomainTitle') }}
@@ -224,7 +234,7 @@ watch(
 
 			<!-- From info -->
 			<div v-if="fromEmail" class="flex items-center gap-3 p-3 bg-bg-surface rounded-lg">
-				<Icon name="lucide:mail" class="w-4 h-4 text-text-tertiary" />
+				<MailIcon class="w-4 h-4 text-text-tertiary" />
 				<div class="text-sm">
 					<I18nT
 						keypath="components.sendTestEmailModal.from"
@@ -262,8 +272,7 @@ watch(
 									'input-error': row.address && !isValidEmail(row.address),
 								}"
 							/>
-							<Icon
-								name="lucide:mail"
+							<MailIcon
 								class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-tertiary"
 							/>
 						</div>
@@ -272,7 +281,7 @@ watch(
 							class="p-2 rounded-lg text-text-tertiary hover:text-error hover:bg-error-subtle transition-colors"
 							@click="removeEmailField(index)"
 						>
-							<Icon name="lucide:trash-2" class="w-4 h-4" />
+							<TrashIcon class="w-4 h-4" />
 						</button>
 					</div>
 				</div>
@@ -281,7 +290,7 @@ watch(
 					class="flex items-center gap-2 text-sm text-brand hover:text-brand-hover transition-colors"
 					@click="addEmailField"
 				>
-					<Icon name="lucide:plus" class="w-4 h-4" />
+					<PlusIcon class="w-4 h-4" />
 					{{ t('components.sendTestEmailModal.addAnother') }}
 				</button>
 			</div>
@@ -306,10 +315,7 @@ watch(
 							:placeholder="t('components.sendTestEmailModal.firstNamePlaceholder')"
 							class="input input-sm pl-10"
 						/>
-						<Icon
-							name="lucide:user"
-							class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-tertiary"
-						/>
+						<UserIcon class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-tertiary" />
 					</div>
 					<div>
 						<input
@@ -338,8 +344,7 @@ watch(
 							:placeholder="variable.key"
 							class="input input-sm pl-10"
 						/>
-						<Icon
-							name="lucide:variable"
+						<BracesIcon
 							class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-tertiary"
 						/>
 					</div>
@@ -353,12 +358,8 @@ watch(
 					class="flex items-center gap-3 p-4 rounded-lg"
 					:class="sendResult.success ? 'bg-success-subtle' : 'bg-error-subtle'"
 				>
-					<Icon
-						v-if="sendResult.success"
-						name="lucide:check-circle"
-						class="w-5 h-5 text-success flex-shrink-0"
-					/>
-					<Icon v-else name="lucide:alert-circle" class="w-5 h-5 text-error flex-shrink-0" />
+					<CircleCheckIcon v-if="sendResult.success" class="w-5 h-5 text-success flex-shrink-0" />
+					<CircleWarningIcon v-else class="w-5 h-5 text-error flex-shrink-0" />
 					<p class="text-sm" :class="sendResult.success ? 'text-success' : 'text-error'">
 						{{ sendResult.message }}
 					</p>
@@ -371,7 +372,7 @@ watch(
 			<UiButton :disabled="!canSend || isSending" @click="handleSend">
 				<template #iconLeft>
 					<UiSpinner v-if="isSending" size="xs" tone="inverse" />
-					<Icon v-else name="lucide:send" class="w-4 h-4" />
+					<PaperPlaneIcon v-else class="w-4 h-4" />
 				</template>
 				<span>{{
 					isSending

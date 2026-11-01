@@ -2,6 +2,15 @@
 /** Staged real-message diagnostic for the active delivery transport. */
 import { api } from '@owlat/api';
 import { isValidEmail } from '@owlat/shared';
+import {
+	CheckIcon,
+	CircleCheckIcon,
+	CircleCloseIcon,
+	CircleDashedIcon,
+	CircleWarningIcon,
+	MailIcon,
+	PaperPlaneIcon,
+} from '@coolicons/vue';
 
 const props = defineProps<{
 	canSend: boolean;
@@ -44,9 +53,9 @@ const testReceipt = ref<{
 } | null>(null);
 
 const stageIcon = {
-	passed: 'lucide:check-circle-2',
-	failed: 'lucide:x-circle',
-	not_run: 'lucide:circle-dashed',
+	passed: CircleCheckIcon,
+	failed: CircleCloseIcon,
+	not_run: CircleDashedIcon,
 } as const;
 const stageClass = {
 	passed: 'text-success',
@@ -106,7 +115,7 @@ async function handleSendTest() {
 	<UiCard padding="none" overflow="hidden">
 		<template #header>
 			<div class="flex items-center gap-3">
-				<UiIconBox icon="lucide:mail-check" size="sm" variant="surface" rounded="lg" />
+				<UiIconBox :icon="MailIcon" size="sm" variant="surface" rounded="lg" />
 				<div>
 					<h2 class="text-lg font-semibold text-text-primary">
 						{{ t('components.delivery.testSendCard.title') }}
@@ -132,7 +141,7 @@ async function handleSendTest() {
 				</div>
 				<UiButton :loading="isSending" :disabled="isSending || !canSend" @click="handleSendTest">
 					<template #iconLeft>
-						<Icon v-if="!isSending" name="lucide:send" class="w-4 h-4" />
+						<PaperPlaneIcon v-if="!isSending" class="w-4 h-4" />
 					</template>
 					{{
 						isSending
@@ -151,8 +160,8 @@ async function handleSendTest() {
 					:key="stage.key"
 					class="flex items-start gap-3 px-3 py-2.5"
 				>
-					<Icon
-						:name="stageIcon[stage.status]"
+					<component
+						:is="stageIcon[stage.status]"
 						class="w-4 h-4 mt-0.5 shrink-0"
 						:class="stageClass[stage.status]"
 					/>
@@ -182,11 +191,11 @@ async function handleSendTest() {
 			</I18nT>
 
 			<p v-if="!canSend" class="text-xs text-warning flex items-center gap-1.5">
-				<Icon name="lucide:alert-circle" class="w-3.5 h-3.5" />
+				<CircleWarningIcon class="w-3.5 h-3.5" />
 				{{ t('components.delivery.testSendCard.needsProvider') }}
 			</p>
 			<p v-else-if="lastTestLabel" class="text-xs text-success flex items-center gap-1.5">
-				<Icon name="lucide:check" class="w-3.5 h-3.5" />
+				<CheckIcon class="w-3.5 h-3.5" />
 				{{ t('components.delivery.testSendCard.lastSuccess', { timestamp: lastTestLabel }) }}
 			</p>
 		</div>

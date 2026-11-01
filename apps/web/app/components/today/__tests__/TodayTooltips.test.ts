@@ -42,7 +42,7 @@ describe('Workbench tooltips', () => {
 		const w = mount(TodayWorkbenchTabs, {
 			props: { tabs, selected: tabs[0]!.scope },
 			attachTo: document.body,
-			global: { plugins: [createTestI18n()], stubs: { Icon: true } },
+			global: { plugins: [createTestI18n()] },
 		});
 		const [inbox, team] = w.findAll('[role="tab"]');
 		expect(inbox!.attributes('title')).toBeUndefined();
@@ -69,7 +69,6 @@ describe('Workbench tooltips', () => {
 			global: {
 				plugins: [createTestI18n()],
 				stubs: {
-					Icon: true,
 					NuxtLink: { props: ['to'], template: '<a :href="to"><slot /></a>' },
 					UiDropdownMenu: true,
 					UiDropdownMenuItem: true,

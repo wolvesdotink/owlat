@@ -4,6 +4,8 @@
  * the step was changed elsewhere while it held unsaved edits. Every other exit
  * (Close, Add step, another step, a reorder) waits for the save and moves on.
  */
+import { TriangleWarningIcon } from '@coolicons/vue';
+
 defineProps<{
 	open: boolean;
 	/** The step was changed elsewhere; the choice is whose version to keep. */
@@ -26,7 +28,7 @@ const { t } = useI18n();
 	>
 		<div class="flex items-start gap-3">
 			<div class="p-2 rounded-full bg-warning/10 shrink-0">
-				<Icon name="lucide:alert-triangle" class="w-5 h-5 text-warning" />
+				<TriangleWarningIcon class="w-5 h-5 text-warning" />
 			</div>
 			<p class="text-text-secondary">
 				{{

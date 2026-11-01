@@ -13,6 +13,7 @@
 import { usePostboxThreadTimestamp } from '~/composables/postbox/usePostboxListClock';
 import { vReplyDrop } from '~/composables/useReplyFileDrop';
 import { replyDropForMessage } from '~/utils/replyFileDrop';
+import { PaperclipIcon, PinIcon, StarIcon } from '@coolicons/vue';
 
 export type PostboxConversationThread = {
 	_id: string;
@@ -95,19 +96,14 @@ const rowLabel = computed(() =>
 			</span>
 		</div>
 		<div class="flex items-center gap-1.5 mt-0.5">
-			<Icon v-if="thread.hasFlagged" name="lucide:star" class="w-3.5 h-3.5 text-warning" />
-			<Icon
+			<StarIcon v-if="thread.hasFlagged" class="w-3.5 h-3.5 text-warning" />
+			<PinIcon
 				v-if="thread.pinnedAt"
-				name="lucide:pin"
 				class="w-3.5 h-3.5 text-brand"
 				:title="t('components.postbox.postboxThreadRow.pinnedChip')"
 				:aria-label="t('components.postbox.postboxThreadRow.pinnedChip')"
 			/>
-			<Icon
-				v-if="thread.hasAttachments"
-				name="lucide:paperclip"
-				class="w-3.5 h-3.5 text-text-tertiary"
-			/>
+			<PaperclipIcon v-if="thread.hasAttachments" class="w-3.5 h-3.5 text-text-tertiary" />
 			<p
 				class="truncate text-sm flex-1"
 				:class="thread.unreadCount > 0 ? 'font-medium text-text-primary' : 'text-text-secondary'"

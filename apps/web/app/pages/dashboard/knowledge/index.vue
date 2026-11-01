@@ -1,6 +1,15 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { EntryType } from '~/utils/knowledgeEntryTypes';
+import {
+	BrainIcon,
+	CircleInfoIcon,
+	CloseIcon,
+	LayersIcon,
+	PlusIcon,
+	SearchIcon,
+	WavyCheckIcon,
+} from '@coolicons/vue';
 
 const { t, te } = useI18n();
 
@@ -54,7 +63,7 @@ const entryTypeLabel = (type: EntryType): string => {
 };
 
 const tabs = computed(() => [
-	{ key: null as string | null, label: t('common.all'), icon: 'lucide:layers' },
+	{ key: null as string | null, label: t('common.all'), icon: LayersIcon },
 	...ENTRY_TYPES.map((entryType) => ({
 		key: entryType as string | null,
 		label: entryTypeLabel(entryType),
@@ -84,7 +93,7 @@ const handleCancelled = () => {
 		>
 			<template #actions>
 				<UiButton class="gap-2" @click="showCreateForm = true">
-					<Icon name="lucide:plus" class="w-4 h-4" />
+					<PlusIcon class="w-4 h-4" />
 					{{ t('dashboard.knowledge.index.createEntry') }}
 				</UiButton>
 			</template>
@@ -92,8 +101,7 @@ const handleCancelled = () => {
 
 		<!-- Search Bar -->
 		<div class="relative">
-			<Icon
-				name="lucide:search"
+			<SearchIcon
 				class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-tertiary pointer-events-none"
 			/>
 			<input
@@ -117,7 +125,7 @@ const handleCancelled = () => {
 				"
 				@click="handleTabChange(tab.key)"
 			>
-				<Icon :name="tab.icon" class="w-3.5 h-3.5" />
+				<component :is="tab.icon" class="w-3.5 h-3.5" />
 				{{ tab.label }}
 			</button>
 		</div>
@@ -144,9 +152,10 @@ const handleCancelled = () => {
 					<div
 						class="w-14 h-14 rounded-full bg-bg-surface border border-border-subtle flex items-center justify-center mb-4"
 					>
-						<Icon
-							:name="searchQuery ? 'lucide:search-x' : 'lucide:brain'"
+						<component
+							:is="searchQuery ? SearchIcon : BrainIcon"
 							class="w-7 h-7 text-text-tertiary"
+							:stroke-width="1.5"
 						/>
 					</div>
 					<h3 class="text-base font-medium text-text-primary">
@@ -164,7 +173,7 @@ const handleCancelled = () => {
 						}}
 					</p>
 					<UiButton v-if="!searchQuery" class="mt-4 gap-2" @click="showCreateForm = true">
-						<Icon name="lucide:plus" class="w-4 h-4" />
+						<PlusIcon class="w-4 h-4" />
 						{{ t('dashboard.knowledge.index.createFirstEntry') }}
 					</UiButton>
 				</div>
@@ -190,7 +199,7 @@ const handleCancelled = () => {
 			<div class="space-y-4">
 				<div class="rounded-xl border border-border-subtle bg-bg-elevated p-5">
 					<h3 class="flex items-center gap-2 text-sm font-semibold text-text-primary">
-						<Icon name="lucide:badge-check" class="h-4 w-4 text-brand" />
+						<WavyCheckIcon class="h-4 w-4 text-brand" />
 						{{ t('dashboard.knowledge.index.canonicalAnswers') }}
 					</h3>
 					<p class="mt-2 text-sm text-text-secondary">
@@ -231,7 +240,7 @@ const handleCancelled = () => {
 				<!-- How it works -->
 				<div class="rounded-xl border border-border-subtle bg-bg-elevated p-5">
 					<h3 class="text-sm font-semibold text-text-primary mb-3 flex items-center gap-2">
-						<Icon name="lucide:info" class="w-4 h-4 text-text-tertiary" />
+						<CircleInfoIcon class="w-4 h-4 text-text-tertiary" />
 						{{ t('dashboard.knowledge.index.howItWorks') }}
 					</h3>
 					<div class="space-y-3 text-sm text-text-secondary">
@@ -283,7 +292,7 @@ const handleCancelled = () => {
 									'bg-error/10 text-error': typeVariant(entryType) === 'error',
 								}"
 							>
-								<Icon :name="typeIcon(entryType)" class="w-3.5 h-3.5" />
+								<component :is="typeIcon(entryType)" class="w-3.5 h-3.5" />
 							</div>
 							<span class="text-sm text-text-secondary">{{ entryTypeLabel(entryType) }}</span>
 						</div>
@@ -330,7 +339,7 @@ const handleCancelled = () => {
 									@click="handleCancelled"
 									:aria-label="t('common.close')"
 								>
-									<Icon name="lucide:x" class="w-4 h-4" />
+									<CloseIcon class="w-4 h-4" />
 								</button>
 							</div>
 							<div class="px-5 py-4">

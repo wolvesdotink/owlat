@@ -23,8 +23,7 @@ const help = {
 function mountCallout(authError?: boolean) {
 	return mount(PostboxAppPasswordCallout, {
 		props: { help, authError },
-		// <Icon> is a Nuxt component; render it as an inert stub.
-		global: { plugins: [createTestI18n()], stubs: { Icon: true } },
+		global: { plugins: [createTestI18n()] },
 	});
 }
 

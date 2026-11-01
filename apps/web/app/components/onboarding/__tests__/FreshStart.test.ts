@@ -70,7 +70,6 @@ function mountFreshStart() {
 		global: {
 			plugins: [createTestI18n()],
 			stubs: {
-				Icon: { template: '<span />' },
 				UiSpinner: { template: '<span />' },
 				PostboxMailboxGuard: { template: '<div data-testid="mailbox-guard" />' },
 			},

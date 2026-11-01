@@ -22,8 +22,6 @@ const ModalStub = defineComponent({
 			]),
 });
 
-const IconStub = defineComponent({ setup: () => () => h('i', { class: 'spinner' }) });
-
 let wrappers: VueWrapper[] = [];
 afterEach(() => {
 	for (const w of wrappers) w.unmount();
@@ -35,7 +33,7 @@ function render({ saving, locale = 'en' }: { saving?: boolean; locale?: UiLocale
 		props: saving === undefined ? { show: true } : { show: true, saving },
 		global: {
 			plugins: [createUiI18n(locale)],
-			stubs: { UiModal: ModalStub, Icon: IconStub },
+			stubs: { UiModal: ModalStub },
 		},
 	});
 	wrappers.push(wrapper);
@@ -86,7 +84,7 @@ describe('UnsavedChangesDialog', () => {
 	it('locks Save and Discard while saving, and keeps Cancel', async () => {
 		const { wrapper, button } = render({ saving: true });
 		expect(button('Save').attributes('disabled')).toBeDefined();
-		expect(button('Save').find('.spinner').exists()).toBe(true);
+		expect(button('Save').find('svg.animate-spin').exists()).toBe(true);
 		expect(button('Discard').attributes('disabled')).toBeDefined();
 		expect(button('Cancel').attributes('disabled')).toBeUndefined();
 
@@ -111,7 +109,7 @@ describe('UnsavedChangesDialog accessible description', () => {
 		wrappers.push(
 			mount(Host, {
 				attachTo: document.body,
-				global: { plugins: [createUiI18n(locale)], components: { Icon: IconStub } },
+				global: { plugins: [createUiI18n(locale)] },
 			})
 		);
 		return [...document.querySelectorAll<HTMLElement>('[role="dialog"]')];

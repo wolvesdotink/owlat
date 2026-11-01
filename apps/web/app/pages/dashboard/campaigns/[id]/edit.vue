@@ -11,6 +11,7 @@ import CampaignEditNotices from '~/components/campaigns/edit/EditNotices.vue';
 import CampaignPendingReview from '~/components/campaigns/edit/PendingReview.vue';
 import CampaignScheduleCard from '~/components/campaigns/edit/ScheduleCard.vue';
 import CampaignWarmupCard from '~/components/campaigns/edit/WarmupCard.vue';
+import { CircleWarningIcon, PaperPlaneIcon } from '@coolicons/vue';
 
 const { t, locale } = useI18n();
 
@@ -208,7 +209,7 @@ const {
 			<!-- Not Found State -->
 			<div v-if="!campaignData" class="max-w-4xl mx-auto px-6 py-16 text-center">
 				<UiIconBox
-					icon="lucide:alert-circle"
+					:icon="CircleWarningIcon"
 					size="xl"
 					variant="surface"
 					rounded="full"
@@ -360,7 +361,7 @@ const {
 								class="gap-2 shrink-0"
 								@click="isTestEmailModalOpen = true"
 							>
-								<Icon name="lucide:send-horizonal" class="w-4 h-4" />
+								<PaperPlaneIcon class="w-4 h-4" />
 								{{ t('dashboard.campaigns.detail.edit.test.button') }}
 							</UiButton>
 						</div>

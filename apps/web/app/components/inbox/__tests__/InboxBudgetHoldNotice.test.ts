@@ -21,7 +21,7 @@ function mountNotice(hold: Partial<BudgetHold> = {}, retrying = false) {
 			hold: { reason: 'daily_ceiling', missingJudgments: [], at: AT, ...hold },
 			retrying,
 		},
-		global: { plugins: [createTestI18n()], stubs: { Icon: true } },
+		global: { plugins: [createTestI18n()] },
 	});
 }
 

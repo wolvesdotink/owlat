@@ -1,6 +1,16 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
 import type { DeliverabilityLoopbackResult } from '~/utils/deliverabilityCenter';
+import {
+	CheckIcon,
+	CircleCheckIcon,
+	CircleCloseIcon,
+	CircleDashedIcon,
+	CloseIcon,
+	LockKeyholeIcon,
+	PaperPlaneIcon,
+} from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const props = defineProps<{
 	domains: Array<{
@@ -77,9 +87,9 @@ const latestStatusLabel = computed(() => {
 });
 
 const resultIcon = {
-	pass: 'lucide:check-circle-2',
-	fail: 'lucide:x-circle',
-	unknown: 'lucide:circle-dashed',
+	pass: CircleCheckIcon,
+	fail: CircleCloseIcon,
+	unknown: CircleDashedIcon,
 } as const;
 const resultClass = {
 	pass: 'text-success',
@@ -97,7 +107,7 @@ function start() {
 		<template #header>
 			<div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
 				<div class="flex items-start gap-3">
-					<UiIconBox icon="lucide:send-horizontal" size="sm" variant="surface" rounded="lg" />
+					<UiIconBox :icon="PaperPlaneIcon" size="sm" variant="surface" rounded="lg" />
 					<div>
 						<h2 class="text-lg font-semibold text-text-primary">
 							{{ t('components.delivery.deliverabilityLoopbackCard.title') }}
@@ -117,13 +127,13 @@ function start() {
 						'border-brand/30 bg-brand/10 text-brand': isInFlight,
 					}"
 				>
-					<Icon
-						:name="
+					<component
+						:is="
 							latest.status === 'passed'
-								? 'lucide:check'
+								? CheckIcon
 								: latest.status === 'failed' || latest.status === 'timed_out'
-									? 'lucide:x'
-									: 'lucide:loader-2'
+									? CloseIcon
+									: SpinnerIcon
 						"
 						class="h-3.5 w-3.5"
 						:class="{ 'animate-spin motion-reduce:animate-none': isInFlight }"
@@ -157,7 +167,7 @@ function start() {
 				v-if="selectedDomain && !selectedDomain.eligible"
 				class="flex items-start gap-3 rounded-lg border border-border-subtle bg-bg-surface p-4"
 			>
-				<Icon name="lucide:lock-keyhole" class="mt-0.5 h-4 w-4 shrink-0 text-text-tertiary" />
+				<LockKeyholeIcon class="mt-0.5 h-4 w-4 shrink-0 text-text-tertiary" />
 				<div>
 					<p class="text-sm font-medium text-text-primary">
 						{{ t('components.delivery.deliverabilityLoopbackCard.lockedTitle') }}
@@ -184,7 +194,7 @@ function start() {
 					@click="start"
 				>
 					<template #iconLeft>
-						<Icon v-if="!isStarting && !isInFlight" name="lucide:send" class="h-4 w-4" />
+						<PaperPlaneIcon v-if="!isStarting && !isInFlight" class="h-4 w-4" />
 					</template>
 					{{
 						isInFlight
@@ -218,8 +228,8 @@ function start() {
 						:key="result.key"
 						class="rounded-lg border border-border-subtle bg-bg-surface p-3"
 					>
-						<Icon
-							:name="resultIcon[result.value!]"
+						<component
+							:is="resultIcon[result.value!]"
 							class="h-5 w-5"
 							:class="resultClass[result.value!]"
 						/>

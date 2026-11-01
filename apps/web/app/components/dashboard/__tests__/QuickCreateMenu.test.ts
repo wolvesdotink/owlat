@@ -12,11 +12,12 @@ import { mount } from '@vue/test-utils';
 import { ref, defineComponent, h } from 'vue';
 
 import QuickCreateMenu from '../QuickCreateMenu.vue';
+import { PencilIcon, UserPlusCornerIcon, type IconComponent } from '@coolicons/vue';
 
 interface Action {
 	id: string;
 	label: string;
-	icon: string;
+	icon: IconComponent;
 	shortcutId?: string;
 	run: () => void;
 }
@@ -24,10 +25,6 @@ interface Action {
 let actions: Action[];
 let registered: Map<string, { handler: () => void; ignoreInputs?: boolean }>;
 
-const Icon = defineComponent({
-	props: { name: { type: String, default: '' } },
-	setup: (props) => () => h('span', { 'data-icon': props.name }),
-});
 const UiDropdownMenu = defineComponent({
 	setup:
 		(_props, { slots }) =>
@@ -35,28 +32,24 @@ const UiDropdownMenu = defineComponent({
 			h('div', [h('div', slots['trigger']?.()), h('div', { role: 'menu' }, slots['default']?.())]),
 });
 const UiDropdownMenuItem = defineComponent({
-	props: { icon: { type: String, default: '' } },
+	props: { icon: { type: Function, default: undefined } },
 	emits: ['click'],
 	setup:
-		(props, { slots, emit }) =>
+		(_props, { slots, emit }) =>
 		() =>
-			h(
-				'button',
-				{ role: 'menuitem', 'data-icon': props.icon, onClick: () => emit('click') },
-				slots['default']?.()
-			),
+			h('button', { role: 'menuitem', onClick: () => emit('click') }, slots['default']?.()),
 });
 
 function mountMenu() {
 	return mount(QuickCreateMenu, {
-		global: { components: { Icon, UiDropdownMenu, UiDropdownMenuItem } },
+		global: { components: { UiDropdownMenu, UiDropdownMenuItem } },
 	});
 }
 
 const compose = (): Action => ({
 	id: 'compose',
 	label: 'Compose email',
-	icon: 'lucide:pencil',
+	icon: PencilIcon,
 	shortcutId: 'global.compose',
 	run: vi.fn(),
 });
@@ -64,7 +57,7 @@ const compose = (): Action => ({
 beforeEach(() => {
 	actions = [
 		compose(),
-		{ id: 'contact', label: 'Contact', icon: 'lucide:user-plus', run: vi.fn() },
+		{ id: 'contact', label: 'Contact', icon: UserPlusCornerIcon, run: vi.fn() },
 	];
 	registered = new Map();
 

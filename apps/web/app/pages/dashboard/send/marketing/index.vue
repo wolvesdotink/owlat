@@ -4,6 +4,7 @@ import type { Id } from '@owlat/api/dataModel';
 import type { FunctionReturnType } from 'convex/server';
 import { sortTemplateRows } from '~/utils/templateListSort';
 import { useMarketingDeleteUndo } from '~/composables/useMarketingDeleteUndo';
+import { MailIcon, MegaphoneIcon, PlusIcon } from '@coolicons/vue';
 
 type TemplateRow = FunctionReturnType<typeof api.emailTemplates.emails.list>['page'][number];
 
@@ -137,12 +138,12 @@ const handleCreateSubmit = async () => {
 		:sort-label="t('dashboard.send.marketing.index.sortLabel')"
 		sort-listbox-id="marketing-sort-listbox"
 		:empty-no-org="{
-			icon: 'lucide:mail',
+			icon: MailIcon,
 			title: t('dashboard.send.marketing.index.emptyNoTeam.title'),
 			description: t('dashboard.send.marketing.index.emptyNoTeam.description'),
 		}"
 		:empty="{
-			icon: 'lucide:megaphone',
+			icon: MegaphoneIcon,
 			title: t('dashboard.send.marketing.index.empty.title'),
 			description: t('dashboard.send.marketing.index.empty.description'),
 		}"
@@ -159,7 +160,7 @@ const handleCreateSubmit = async () => {
 		<template #actions>
 			<UiButton v-if="canManage" size="sm" @click="isTemplateLibraryOpen = true">
 				<template #iconLeft>
-					<Icon name="lucide:plus" class="w-4 h-4" />
+					<PlusIcon class="w-4 h-4" />
 				</template>
 				{{ t('dashboard.send.marketing.index.newTemplate') }}
 			</UiButton>
@@ -183,7 +184,7 @@ const handleCreateSubmit = async () => {
 		<template v-if="canManage" #empty-action>
 			<UiButton @click="isTemplateLibraryOpen = true">
 				<template #iconLeft>
-					<Icon name="lucide:plus" class="w-4 h-4" />
+					<PlusIcon class="w-4 h-4" />
 				</template>
 				{{ t('dashboard.send.marketing.index.empty.action') }}
 			</UiButton>

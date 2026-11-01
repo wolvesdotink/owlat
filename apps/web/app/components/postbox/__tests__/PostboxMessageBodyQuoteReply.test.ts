@@ -46,7 +46,7 @@ function mountBody(quoteReply?: PostboxReaderQuoteReply | null) {
 		props: { message },
 		global: {
 			plugins: [createTestI18n()],
-			components: { PostboxReaderSkeleton, UiSkeleton, Icon: { template: '<span />' } },
+			components: { PostboxReaderSkeleton, UiSkeleton },
 			stubs: { PostboxImageBanner: true },
 			provide: quoteReply === undefined ? {} : readerContextProvide({ quoteReply }),
 		},

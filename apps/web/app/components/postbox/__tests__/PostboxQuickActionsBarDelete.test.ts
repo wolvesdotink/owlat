@@ -50,7 +50,6 @@ function mountBar() {
 					template: '<button type="button" @click="$emit(\'click\')"><slot /></button>',
 				},
 				UiTooltip: { template: '<span><slot /></span>' },
-				Icon: { template: '<span />' },
 				PostboxBulkOverflowMenu: { template: '<span />' },
 				PostboxBulkSelectAllRow: { template: '<span />' },
 			},

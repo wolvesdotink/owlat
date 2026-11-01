@@ -97,7 +97,6 @@ function mountPage() {
 			plugins: [createTestI18n()],
 			mocks: { formatCompactRelativeTime, formatDate, formatDateTime },
 			stubs: {
-				Icon: true,
 				UiIconBox: true,
 				UiPageHeader: {
 					template:

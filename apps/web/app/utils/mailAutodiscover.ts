@@ -20,6 +20,9 @@
  * fixed; the domain is only ever interpolated as an encoded path/query value.
  */
 
+import { MailIcon, ServerIcon, type IconComponent } from '@coolicons/vue';
+import { fetchTextSoft, parseAutoconfigXml } from '~/lib/mailAutoconfig';
+
 /** The subset of connect-form server fields a preset fills. */
 export type MailPreset = {
 	imapHost: string;
@@ -271,8 +274,8 @@ export type MailProvider = {
 	id: MailProviderId;
 	/** Catalog key for the name shown on the picker card. */
 	name: string;
-	/** Lucide icon name for the picker card. */
-	icon: string;
+	/** The icon on the picker card. */
+	icon: IconComponent;
 	/** Catalog key for the one concise line under the name (the server, or a plain hint). */
 	hint: string;
 	/** Server preset, or `null` for the generic IMAP provider (manual entry). */
@@ -300,7 +303,7 @@ export type MailProvider = {
 export const GENERIC_IMAP_PROVIDER: MailProvider = {
 	id: 'imap',
 	name: 'shared.mailAutodiscover.provider.imap.name',
-	icon: 'lucide:server',
+	icon: ServerIcon,
 	hint: 'shared.mailAutodiscover.provider.imap.hint',
 	preset: null,
 	appPassword: null,
@@ -317,7 +320,7 @@ export const MAIL_PROVIDERS: readonly MailProvider[] = [
 	{
 		id: 'gmail',
 		name: 'shared.mailAutodiscover.provider.gmail.name',
-		icon: 'lucide:mail',
+		icon: MailIcon,
 		hint: 'shared.mailAutodiscover.provider.gmail.hint',
 		preset: DOMAIN_PRESETS['gmail.com'] ?? null,
 		appPassword: APP_PASSWORD_PROVIDERS['gmail.com'] ?? null,
@@ -329,7 +332,7 @@ export const MAIL_PROVIDERS: readonly MailProvider[] = [
 	{
 		id: 'outlook',
 		name: 'shared.mailAutodiscover.provider.outlook.name',
-		icon: 'lucide:mail',
+		icon: MailIcon,
 		hint: 'shared.mailAutodiscover.provider.outlook.hint',
 		preset: DOMAIN_PRESETS['outlook.com'] ?? null,
 		appPassword: APP_PASSWORD_PROVIDERS['outlook.com'] ?? null,
@@ -339,7 +342,7 @@ export const MAIL_PROVIDERS: readonly MailProvider[] = [
 	{
 		id: 'fastmail',
 		name: 'shared.mailAutodiscover.provider.fastmail.name',
-		icon: 'lucide:mail',
+		icon: MailIcon,
 		hint: 'shared.mailAutodiscover.provider.fastmail.hint',
 		preset: DOMAIN_PRESETS['fastmail.com'] ?? null,
 		appPassword: {
@@ -353,7 +356,7 @@ export const MAIL_PROVIDERS: readonly MailProvider[] = [
 	{
 		id: 'icloud',
 		name: 'shared.mailAutodiscover.provider.icloud.name',
-		icon: 'lucide:mail',
+		icon: MailIcon,
 		hint: 'shared.mailAutodiscover.provider.icloud.hint',
 		preset: DOMAIN_PRESETS['icloud.com'] ?? null,
 		appPassword: APP_PASSWORD_PROVIDERS['icloud.com'] ?? null,
@@ -363,7 +366,7 @@ export const MAIL_PROVIDERS: readonly MailProvider[] = [
 	{
 		id: 'yahoo',
 		name: 'shared.mailAutodiscover.provider.yahoo.name',
-		icon: 'lucide:mail',
+		icon: MailIcon,
 		hint: 'shared.mailAutodiscover.provider.yahoo.hint',
 		preset: DOMAIN_PRESETS['yahoo.com'] ?? null,
 		appPassword: APP_PASSWORD_PROVIDERS['yahoo.com'] ?? null,
@@ -393,68 +396,6 @@ export function providerForImapHost(host: string | null | undefined): MailProvid
 /** The IMAP/SMTP preset for a provider id, or `null` (generic IMAP / unknown). */
 export function providerPreset(id: string): MailPreset | null {
 	return providerById(id)?.preset ?? null;
-}
-
-/** Autoconfig `socketType` values that mean "implicit TLS". */
-function isSecureSocket(socketType: string | null): boolean {
-	return socketType?.toUpperCase() === 'SSL';
-}
-
-/**
- * Parse the `<incomingServer type="imap">` / `<outgoingServer type="smtp">`
- * blocks of a Thunderbird autoconfig XML document into a `MailPreset`. Returns
- * `null` when either server block or a required field is missing.
- */
-function parseAutoconfigXml(xml: string): MailPreset | null {
-	try {
-		const doc = new DOMParser().parseFromString(xml, 'application/xml');
-		if (doc.querySelector('parsererror')) return null;
-
-		const incoming = Array.from(doc.querySelectorAll('incomingServer')).find(
-			(el) => el.getAttribute('type')?.toLowerCase() === 'imap'
-		);
-		const outgoing = doc.querySelector('outgoingServer[type="smtp"]');
-		if (!incoming || !outgoing) return null;
-
-		const text = (parent: Element, tag: string): string | null =>
-			parent.querySelector(tag)?.textContent?.trim() ?? null;
-
-		const imapHost = text(incoming, 'hostname');
-		const imapPort = Number(text(incoming, 'port'));
-		const smtpHost = text(outgoing, 'hostname');
-		const smtpPort = Number(text(outgoing, 'port'));
-		if (!imapHost || !smtpHost || !Number.isFinite(imapPort) || !Number.isFinite(smtpPort)) {
-			return null;
-		}
-
-		return {
-			imapHost,
-			imapPort,
-			isImapSecure: isSecureSocket(text(incoming, 'socketType')),
-			smtpHost,
-			smtpPort,
-			isSmtpSecure: isSecureSocket(text(outgoing, 'socketType')),
-		};
-	} catch {
-		return null;
-	}
-}
-
-/** Fetch a URL and return its text body, or `null` on any error / non-2xx / timeout. */
-async function fetchTextSoft(url: string, timeoutMs: number): Promise<string | null> {
-	try {
-		const controller = new AbortController();
-		const timer = setTimeout(() => controller.abort(), timeoutMs);
-		try {
-			const response = await fetch(url, { signal: controller.signal });
-			if (!response.ok) return null;
-			return await response.text();
-		} finally {
-			clearTimeout(timer);
-		}
-	} catch {
-		return null;
-	}
 }
 
 /**

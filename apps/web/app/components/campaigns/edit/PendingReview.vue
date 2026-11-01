@@ -1,6 +1,8 @@
 <script setup lang="ts">
 // The campaign editor while the campaign is held for review: nothing is
 // editable, so it explains the hold (and the screening's reason, if any).
+import { ShieldWarningIcon, TriangleWarningIcon } from '@coolicons/vue';
+
 defineProps<{ contentBlockReason?: string }>();
 
 const emit = defineEmits<{ back: [] }>();
@@ -11,7 +13,7 @@ const { t } = useI18n();
 <template>
 	<div class="max-w-4xl mx-auto px-6 py-8">
 		<div class="p-4 bg-warning/10 border border-warning/20 rounded-lg flex items-start gap-3 mb-6">
-			<Icon name="lucide:shield-alert" class="w-5 h-5 text-warning shrink-0 mt-0.5" />
+			<ShieldWarningIcon class="w-5 h-5 text-warning shrink-0 mt-0.5" />
 			<div>
 				<p class="text-sm font-medium text-text-primary">
 					{{ t('dashboard.campaigns.detail.edit.underReview.title') }}
@@ -25,7 +27,7 @@ const { t } = useI18n();
 			v-if="contentBlockReason"
 			class="p-4 bg-error/10 border border-error/20 rounded-lg flex items-start gap-3 mb-6"
 		>
-			<Icon name="lucide:alert-triangle" class="w-5 h-5 text-error shrink-0 mt-0.5" />
+			<TriangleWarningIcon class="w-5 h-5 text-error shrink-0 mt-0.5" />
 			<div>
 				<p class="text-sm font-medium text-text-primary">
 					{{ t('dashboard.campaigns.detail.edit.underReview.issuesTitle') }}

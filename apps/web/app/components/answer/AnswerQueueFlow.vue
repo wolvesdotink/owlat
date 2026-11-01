@@ -10,6 +10,7 @@ import { replyQueueHeadline } from '~/utils/postboxReplyQueue';
 import { opensInAnswerMode } from '~/utils/answerQueue';
 import { useAnswerQueueChips } from '~/composables/useAnswerQueueChips';
 import { useLocalized } from '~/composables/useLocalized';
+import { CircleCheckIcon } from '@coolicons/vue';
 
 /**
  * The Answer queue page's body — over everything waiting on the viewer's
@@ -103,7 +104,7 @@ const failedNames = computed(() =>
 					class="!text-inherit"
 				/>
 				<template v-else>
-					<Icon v-if="chip.icon" :name="chip.icon" class="size-3" />
+					<component v-if="chip.icon" :is="chip.icon" class="size-3" />
 					{{ chip.label }}
 				</template>
 				<span class="tabular-nums opacity-70">{{ chip.count }}</span>
@@ -200,7 +201,7 @@ const failedNames = computed(() =>
 			<template #done>
 				<div class="py-8 text-center">
 					<UiIconBox
-						icon="lucide:check-circle-2"
+						:icon="CircleCheckIcon"
 						size="xl"
 						variant="success"
 						rounded="full"

@@ -21,6 +21,8 @@
  *     resolves them with `t()` at render time.
  */
 
+import { WavyCheckIcon, WavyHelpIcon, WavyWarningIcon, type IconComponent } from '@coolicons/vue';
+
 /** How a contact's key reads today, given a pin and whatever was verified. */
 export type ContactVerificationState = 'unverified' | 'verified' | 'stale';
 
@@ -31,7 +33,7 @@ export interface ContactVerificationBadge {
 	summary: string;
 	/** Shared seal tone (`ok` / `warn` / `muted`). */
 	tone: 'ok' | 'warn' | 'muted';
-	icon: string;
+	icon: IconComponent;
 }
 
 function normalize(fingerprint: string | null | undefined): string {
@@ -75,7 +77,7 @@ export function deriveContactVerificationBadge(
 				? 'shared.postboxKeyVerification.verifiedByYou'
 				: 'shared.postboxKeyVerification.verifiedByTeammate',
 			tone: 'ok',
-			icon: 'lucide:badge-check',
+			icon: WavyCheckIcon,
 		};
 	}
 	if (state === 'stale') {
@@ -83,14 +85,14 @@ export function deriveContactVerificationBadge(
 			state,
 			summary: 'shared.postboxKeyVerification.stale',
 			tone: 'warn',
-			icon: 'lucide:badge-alert',
+			icon: WavyWarningIcon,
 		};
 	}
 	return {
 		state,
 		summary: 'shared.postboxKeyVerification.unverified',
 		tone: 'muted',
-		icon: 'lucide:badge-help',
+		icon: WavyHelpIcon,
 	};
 }
 

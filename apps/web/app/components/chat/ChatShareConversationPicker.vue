@@ -14,6 +14,7 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { ConversationLinkTarget } from '~/utils/conversationLink';
 import { conversationLinkUrl } from '~/composables/useConversationLink';
+import { CheckIcon, HashIcon, LockIcon, UserIcon, type IconComponent } from '@coolicons/vue';
 
 const props = defineProps<{
 	conversation: ConversationLinkTarget;
@@ -29,7 +30,7 @@ const { channels, dms, isLoading, error, refetch } = useChatRooms();
 interface RoomChoice {
 	id: Id<'chatRooms'>;
 	label: string;
-	icon: string;
+	icon: IconComponent;
 }
 
 // Only rooms a post can land in: a channel you have joined (the send refuses
@@ -40,9 +41,9 @@ const rooms = computed<RoomChoice[]>(() => [
 		.map((channel) => ({
 			id: channel._id,
 			label: `#${channel.displayName}`,
-			icon: channel.visibility === 'private' ? 'lucide:lock' : 'lucide:hash',
+			icon: channel.visibility === 'private' ? LockIcon : HashIcon,
 		})),
-	...dms.value.map((dm) => ({ id: dm._id, label: dm.displayName, icon: 'lucide:user' })),
+	...dms.value.map((dm) => ({ id: dm._id, label: dm.displayName, icon: UserIcon })),
 ]);
 
 const search = ref('');
@@ -136,9 +137,9 @@ async function share() {
 					:data-testid="`share-room-${room.id}`"
 					@click="selectedId = room.id"
 				>
-					<Icon :name="room.icon" class="w-4 h-4 text-text-tertiary flex-shrink-0" />
+					<component :is="room.icon" class="w-4 h-4 text-text-tertiary flex-shrink-0" />
 					<span class="flex-1 min-w-0 truncate text-sm text-text-primary">{{ room.label }}</span>
-					<Icon v-if="room.id === selectedId" name="lucide:check" class="w-4 h-4 text-brand" />
+					<CheckIcon v-if="room.id === selectedId" class="w-4 h-4 text-brand" />
 				</button>
 			</div>
 		</template>

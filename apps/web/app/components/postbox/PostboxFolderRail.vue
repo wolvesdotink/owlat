@@ -6,6 +6,18 @@ import { resolveActiveShortcut } from '~/utils/shortcutScope';
 import { useShortcutLabels } from '~/composables/useShortcutLabels';
 import { answerQueueHrefFor } from '~/utils/postboxReplyQueue';
 import { usePostboxMessageDropTargets } from '~/composables/postbox/usePostboxMessageDrag';
+import {
+	ChevronDoubleLeftIcon,
+	ChevronDoubleRightIcon,
+	FolderIcon,
+	FolderPlusIcon,
+	PencilIcon,
+	PinOffIcon,
+	ReplyIcon,
+	SearchIcon,
+	Slider1Icon,
+	TrashIcon,
+} from '@coolicons/vue';
 
 const props = defineProps<{
 	mailboxId: Id<'mailboxes'>;
@@ -71,27 +83,27 @@ function folderMenuItems(folder: { _id: string; name: string }): ContextMenuItem
 		{
 			id: 'rename',
 			label: t('components.postbox.postboxFolderRail.renameFolder'),
-			icon: 'lucide:pencil',
+			icon: PencilIcon,
 			run: () => openManager({ editFolderId: folder._id as Id<'mailFolders'> }),
 		},
 		{
 			id: 'delete',
 			label: t('components.postbox.postboxFolderRail.deleteFolder'),
-			icon: 'lucide:trash-2',
+			icon: TrashIcon,
 			danger: true,
 			run: () => requestFolderDelete({ _id: folder._id as Id<'mailFolders'>, name: folder.name }),
 		},
 		{
 			id: 'new',
 			label: t('components.postbox.postboxFolderRail.newFolder'),
-			icon: 'lucide:folder-plus',
+			icon: FolderPlusIcon,
 			separatorBefore: true,
 			run: () => openManager({ section: 'folders', create: true }),
 		},
 		{
 			id: 'manage',
 			label: t('components.postbox.postboxLabelManager.title'),
-			icon: 'lucide:settings-2',
+			icon: Slider1Icon,
 			run: () => openManager({ section: 'folders' }),
 		},
 	];
@@ -186,7 +198,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 		     mailbox so it cannot be mistaken for the all-inbox count. -->
 		<PostboxRailLink
 			:to="answerQueueHref"
-			icon="lucide:reply"
+			:icon="ReplyIcon"
 			:label="t('components.postbox.postboxFolderRail.replyQueue')"
 			:collapsed="railCollapsed"
 			:count="replyQueueCount"
@@ -231,7 +243,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 								}"
 								v-on="drop.folder(folder)"
 							>
-								<Icon name="lucide:folder" class="w-4 h-4 flex-shrink-0" />
+								<FolderIcon class="w-4 h-4 flex-shrink-0" />
 								<span class="truncate">{{ folder.name }}</span>
 							</NuxtLink>
 						</li>
@@ -260,7 +272,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 							class="flex-1 flex items-center gap-2 px-2.5 py-1 rounded text-sm hover:bg-bg-surface min-w-0"
 							:class="{ 'bg-bg-surface text-brand': activeSavedQuery === saved.rawQuery }"
 						>
-							<Icon name="lucide:search" class="w-4 h-4 flex-shrink-0" />
+							<SearchIcon class="w-4 h-4 flex-shrink-0" />
 							<span class="truncate">{{ saved.name }}</span>
 						</NuxtLink>
 					</UiTooltip>
@@ -273,7 +285,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 							"
 							@click="setPinned(saved._id, false)"
 						>
-							<Icon name="lucide:pin-off" class="w-3 h-3" />
+							<PinOffIcon class="w-3 h-3" />
 						</button>
 					</UiTooltip>
 				</li>
@@ -325,8 +337,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey));
 				:aria-pressed="railCollapsed"
 				@click="toggleRail"
 			>
-				<Icon
-					:name="railCollapsed ? 'lucide:chevrons-right' : 'lucide:chevrons-left'"
+				<component
+					:is="railCollapsed ? ChevronDoubleRightIcon : ChevronDoubleLeftIcon"
 					class="w-4 h-4"
 				/>
 				<span v-if="!railCollapsed">{{ t('components.postbox.postboxFolderRail.collapse') }}</span>

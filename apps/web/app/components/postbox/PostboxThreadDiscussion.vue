@@ -4,6 +4,7 @@ import type { Id } from '@owlat/api/dataModel';
 import { formatCompactRelativeTime } from '~/utils/formatters';
 import { isImeComposing } from '~/utils/imeComposition';
 import { useComposerDraft } from '~/composables/useComposerDrafts';
+import { ChatConversationIcon, CloseIcon } from '@coolicons/vue';
 
 /**
  * The reader's "Team discussion": an internal chat thread bound to this email
@@ -109,7 +110,7 @@ watch(
 		data-testid="thread-discussion"
 	>
 		<header class="flex items-center gap-2 border-b border-border-subtle px-4 py-3">
-			<Icon name="lucide:messages-square" class="w-4 h-4 text-text-tertiary" aria-hidden="true" />
+			<ChatConversationIcon class="w-4 h-4 text-text-tertiary" aria-hidden="true" />
 			<h2 class="text-sm font-medium text-text-primary">
 				{{ t('components.postbox.threadDiscussion.title') }}
 			</h2>
@@ -132,7 +133,7 @@ watch(
 					:aria-label="t('components.postbox.threadDiscussion.close')"
 					@click="toggle"
 				>
-					<Icon name="lucide:x" class="w-4 h-4" aria-hidden="true" />
+					<CloseIcon class="w-4 h-4" aria-hidden="true" />
 				</button>
 			</UiTooltip>
 		</header>

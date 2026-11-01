@@ -14,6 +14,7 @@
 import type { FunctionArgs } from 'convex/server';
 import type { api } from '@owlat/api';
 import type { LocalizedText } from '~/utils/localizedText';
+import { ChatCircleIcon, MobileIcon, WebhookIcon, type IconComponent } from '@coolicons/vue';
 
 /**
  * The unified-message channel discriminator — DERIVED, never restated.
@@ -29,7 +30,7 @@ export type ChannelKind = FunctionArgs<typeof api.channels.config.updateChannelC
 
 export interface AddableChannel {
 	kind: ChannelKind;
-	icon: string;
+	icon: IconComponent;
 	/** i18n message key — the "Add channel" menu resolves it. */
 	label: LocalizedText;
 }
@@ -40,13 +41,13 @@ export interface AddableChannel {
  * literal set (apps/api/convex/lib/convexValidators.ts) minus the built-ins.
  */
 export const ADDABLE_CHANNEL_KINDS: AddableChannel[] = [
-	{ kind: 'sms', icon: 'lucide:smartphone', label: 'shared.channelKinds.addable.sms' },
+	{ kind: 'sms', icon: MobileIcon, label: 'shared.channelKinds.addable.sms' },
 	{
 		kind: 'whatsapp',
-		icon: 'lucide:message-circle',
+		icon: ChatCircleIcon,
 		label: 'shared.channelKinds.addable.whatsapp',
 	},
-	{ kind: 'generic', icon: 'lucide:webhook', label: 'shared.channelKinds.addable.generic' },
+	{ kind: 'generic', icon: WebhookIcon, label: 'shared.channelKinds.addable.generic' },
 ];
 
 /**

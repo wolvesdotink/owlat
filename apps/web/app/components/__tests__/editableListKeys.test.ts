@@ -33,7 +33,6 @@ Object.assign(globalThis, {
 });
 
 const stubs = {
-	Icon: { template: '<i />' },
 	I18nT: { template: '<span />' },
 	UiIconBox: { template: '<span />' },
 	UiCard: { template: '<section><slot name="header" /><slot /></section>' },

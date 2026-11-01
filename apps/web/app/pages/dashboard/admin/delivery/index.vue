@@ -5,6 +5,15 @@ import { deliveryVerdict, warmupSentence, deliveryStatTiles } from '~/utils/deli
 import { healthChipClass, levelTone } from '~/utils/healthTone';
 import { formatDate } from '~/utils/formatters';
 import { useLocalized } from '~/composables/useLocalized';
+import {
+	ArrowRightIcon,
+	CircleWarningIcon,
+	MailIcon,
+	ShieldCheckIcon,
+	ShieldOffIcon,
+	TriangleWarningIcon,
+} from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 const { t, locale } = useI18n();
 
@@ -280,10 +289,7 @@ const sendingDetail = computed(() => {
 
 		<!-- Loading -->
 		<div v-if="isLoading" class="flex items-center justify-center py-16">
-			<Icon
-				name="lucide:loader-2"
-				class="w-8 h-8 animate-spin motion-reduce:animate-none text-text-tertiary"
-			/>
+			<SpinnerIcon class="w-8 h-8 text-text-tertiary" />
 		</div>
 
 		<UiErrorAlert
@@ -304,10 +310,8 @@ const sendingDetail = computed(() => {
 				"
 				class="flex items-start gap-3 p-4 rounded-lg border"
 			>
-				<Icon
-					:name="
-						abuseWarning.severity === 'error' ? 'lucide:alert-triangle' : 'lucide:alert-circle'
-					"
+				<component
+					:is="abuseWarning.severity === 'error' ? TriangleWarningIcon : CircleWarningIcon"
 					class="w-5 h-5 mt-0.5 shrink-0"
 				/>
 				<p class="text-sm">{{ abuseWarning.message }}</p>
@@ -419,7 +423,7 @@ const sendingDetail = computed(() => {
 				class="flex items-center justify-between gap-3 px-4 py-3 rounded-lg bg-bg-surface hover:bg-bg-surface-hover transition-colors duration-(--motion-fast) group"
 			>
 				<div class="flex items-center gap-2 min-w-0">
-					<Icon name="lucide:shield-off" class="w-4 h-4 text-text-tertiary shrink-0" />
+					<ShieldOffIcon class="w-4 h-4 text-text-tertiary shrink-0" />
 					<I18nT
 						keypath="dashboard.admin.delivery.index.suppressions.summary"
 						tag="p"
@@ -436,8 +440,7 @@ const sendingDetail = computed(() => {
 				</div>
 				<span class="inline-flex items-center gap-0.5 text-sm text-brand font-medium shrink-0">
 					{{ t('dashboard.admin.delivery.index.suppressions.view') }}
-					<Icon
-						name="lucide:arrow-right"
+					<ArrowRightIcon
 						class="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform duration-(--motion-fast)"
 					/>
 				</span>
@@ -450,7 +453,7 @@ const sendingDetail = computed(() => {
 				class="flex items-start gap-2 px-4 py-3 rounded-lg bg-bg-surface"
 				data-testid="unresolved-feedback-summary"
 			>
-				<Icon name="lucide:mail-question" class="w-4 h-4 mt-0.5 text-text-tertiary shrink-0" />
+				<MailIcon class="w-4 h-4 mt-0.5 text-text-tertiary shrink-0" />
 				<I18nT
 					keypath="dashboard.admin.delivery.index.unresolvedFeedback.summary"
 					tag="p"
@@ -470,7 +473,7 @@ const sendingDetail = computed(() => {
 		<!-- No settings found -->
 		<UiEmptyState
 			v-else
-			icon="lucide:shield-check"
+			:icon="ShieldCheckIcon"
 			:title="t('dashboard.admin.delivery.index.empty.title')"
 			:description="t('dashboard.admin.delivery.index.empty.description')"
 		/>

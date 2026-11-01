@@ -4,7 +4,7 @@ import type { EditorBlock, EmailTheme, HeroBlockContent, Variable, SlashCommand 
 import { blockBoxStyle } from '../../../utils/blocks';
 import type { ParentContext } from '../types';
 import { VueDraggable } from 'vue-draggable-plus';
-import { ImageIcon } from '@lucide/vue';
+import { ImageIcon } from '@coolicons/vue';
 import { gradientCss as buildGradientCss } from '../../../utils/gradient';
 import { useBuilderI18n } from '../../../i18n/useBuilderI18n';
 

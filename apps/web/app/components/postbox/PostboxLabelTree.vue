@@ -20,6 +20,16 @@ import type { ContextMenuItem } from '@owlat/ui/components/ui/ContextMenu.vue';
 import { flattenLabelTree, labelAncestorIds } from '~/utils/postboxLabelTree';
 import { moveSibling } from '~/utils/postboxReorder';
 import { usePostboxMessageDropTargets } from '~/composables/postbox/usePostboxMessageDrag';
+import {
+	ChevronDownIcon,
+	ChevronRightIcon,
+	ChevronUpIcon,
+	PencilIcon,
+	PinIcon,
+	PlusIcon,
+	Slider1Icon,
+	TrashIcon,
+} from '@coolicons/vue';
 
 const props = withDefaults(
 	defineProps<{
@@ -183,19 +193,19 @@ function menuItems(label: { _id: string; name: string }): ContextMenuItem[] {
 		{
 			id: 'rename',
 			label: t('components.postbox.postboxLabelTree.renameLabel'),
-			icon: 'lucide:pencil',
+			icon: PencilIcon,
 			run: () => openManager({ editLabelId: label._id as Id<'mailLabels'> }),
 		},
 		{
 			id: 'new',
 			label: t('components.postbox.postboxFolderRail.newLabel'),
-			icon: 'lucide:plus',
+			icon: PlusIcon,
 			run: () => openManager({ section: 'labels', create: true }),
 		},
 		{
 			id: 'manage',
 			label: t('components.postbox.postboxLabelManager.title'),
-			icon: 'lucide:settings-2',
+			icon: Slider1Icon,
 			separatorBefore: true,
 			run: () => openManager({ section: 'labels' }),
 		},
@@ -241,10 +251,8 @@ function menuItems(label: { _id: string; name: string }): ContextMenuItem[] {
 						"
 						@click="toggle(row.label._id)"
 					>
-						<Icon
-							:name="
-								collapsedIds.has(row.label._id) ? 'lucide:chevron-right' : 'lucide:chevron-down'
-							"
+						<component
+							:is="collapsedIds.has(row.label._id) ? ChevronRightIcon : ChevronDownIcon"
 							class="w-3 h-3"
 						/>
 					</button>
@@ -265,11 +273,7 @@ function menuItems(label: { _id: string; name: string }): ContextMenuItem[] {
 							class="w-2.5 h-2.5 rounded-full flex-shrink-0"
 							:style="{ backgroundColor: row.label.color || 'var(--color-text-tertiary)' }"
 						/>
-						<Icon
-							v-if="row.label.isPinned"
-							name="lucide:pin"
-							class="w-3 h-3 flex-shrink-0 text-text-tertiary"
-						/>
+						<PinIcon v-if="row.label.isPinned" class="w-3 h-3 flex-shrink-0 text-text-tertiary" />
 						<span class="truncate flex-1">{{ row.label.name }}</span>
 						<!-- Collapsed rows carry the branch total, so folding a branch never
 						     hides unread mail; expanded rows show only their own. -->
@@ -339,7 +343,7 @@ function menuItems(label: { _id: string; name: string }): ContextMenuItem[] {
 							"
 							@click="move(row.label._id, -1)"
 						>
-							<Icon name="lucide:chevron-up" class="w-3 h-3" />
+							<ChevronUpIcon class="w-3 h-3" />
 						</button>
 						<button
 							type="button"
@@ -349,7 +353,7 @@ function menuItems(label: { _id: string; name: string }): ContextMenuItem[] {
 							"
 							@click="move(row.label._id, 1)"
 						>
-							<Icon name="lucide:chevron-down" class="w-3 h-3" />
+							<ChevronDownIcon class="w-3 h-3" />
 						</button>
 						<UiTooltip :text="t('components.postbox.postboxLabelManager.deleteLabel')">
 							<button
@@ -360,7 +364,7 @@ function menuItems(label: { _id: string; name: string }): ContextMenuItem[] {
 								"
 								@click="remove(row.label._id as Id<'mailLabels'>)"
 							>
-								<Icon name="lucide:trash" class="w-4 h-4" />
+								<TrashIcon class="w-4 h-4" />
 							</button>
 						</UiTooltip>
 					</template>

@@ -27,6 +27,7 @@ import type { InboundSignatureInfo } from '~/utils/signatureBadge';
 import { deriveTrustChip, TRUST_CHIP_TONE_CLASSES } from '~/utils/postboxTrustChip';
 import { useEscapeToClose } from '~/composables/useEscapeToClose';
 import { useLocalized } from '~/composables/useLocalized';
+import { ChevronDownIcon, ChevronUpIcon, ShieldIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	mailboxId: string;
@@ -132,11 +133,11 @@ useEscapeToClose(open);
 				data-testid="trust-chip-toggle"
 				@click="open = !open"
 			>
-				<Icon :name="chip.icon" class="w-3.5 h-3.5" :class="toneClasses.icon" />
+				<component :is="chip.icon" class="w-3.5 h-3.5" :class="toneClasses.icon" />
 				<span data-testid="trust-chip-summary" :class="{ 'sr-only': quiet }">{{ label }}</span>
-				<Icon
+				<component
 					v-if="!quiet"
-					:name="open ? 'lucide:chevron-up' : 'lucide:chevron-down'"
+					:is="open ? ChevronUpIcon : ChevronDownIcon"
 					class="w-3 h-3 text-text-tertiary"
 				/>
 			</button>
@@ -167,7 +168,7 @@ useEscapeToClose(open);
 			     PostboxMessageBody, this only names what was there. -->
 			<section v-if="tracker" class="mt-3" data-testid="trust-chip-trackers">
 				<p class="text-xs font-medium text-text-primary flex items-center gap-1.5">
-					<Icon name="lucide:shield" class="w-3.5 h-3.5 flex-shrink-0" />
+					<ShieldIcon class="w-3.5 h-3.5 flex-shrink-0" />
 					{{
 						t(
 							'components.postbox.postboxTrustChip.trackersDetected',

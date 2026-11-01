@@ -24,7 +24,7 @@
  * unread. Spelled at the call site inside a page, nothing would check it.
  *
  * Mounts the real shared row component underneath, so the assertions are about
- * the markup the browser paints. <Icon> is a global auto-import, stubbed here.
+ * the markup the browser paints.
  */
 import { beforeAll, beforeEach, describe, it, expect, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
@@ -33,6 +33,8 @@ import { ref } from 'vue';
 import type { AttachmentMeta } from '~/utils/attachmentMeta';
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { formatCompactFileSize } from '~/utils/formatters';
+import { DownloadIcon } from '@coolicons/vue';
+import { SpinnerIcon } from '@owlat/ui/icons/SpinnerIcon';
 
 /**
  * The download half, stubbed: fetching a raw `.eml` and extracting a MIME part
@@ -67,7 +69,6 @@ beforeEach(() => {
 const mountOpts = {
 	global: {
 		plugins: [createTestI18n()],
-		stubs: { Icon: true },
 		components: { MailMessageAttachmentList },
 	},
 };
@@ -172,9 +173,9 @@ describe('InboxMessageAttachments', () => {
 		const buttons = wrapper.findAll(DOWNLOAD);
 		expect(buttons).toHaveLength(2);
 		expect(buttons[0]!.attributes('disabled')).toBeDefined();
-		expect(buttons[0]!.html()).toContain('lucide:loader-2');
+		expect(buttons[0]!.findComponent(SpinnerIcon).exists()).toBe(true);
 		expect(buttons[1]!.attributes('disabled')).toBeUndefined();
-		expect(buttons[1]!.html()).toContain('lucide:download');
+		expect(buttons[1]!.findComponent(DownloadIcon).exists()).toBe(true);
 	});
 
 	it('renders two legacy same-named rows as two rows, both spinning together', () => {

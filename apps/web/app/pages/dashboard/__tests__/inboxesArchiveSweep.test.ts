@@ -105,7 +105,6 @@ async function render() {
 				ShellStatusPill: true,
 				UiSkeleton: true,
 				InboxReadFailureNotice: true,
-				Icon: true,
 				NuxtLink: { template: '<a><slot /></a>' },
 			},
 			mocks: { formatCompactRelativeTime: () => '1m' },

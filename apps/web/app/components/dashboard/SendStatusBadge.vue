@@ -5,6 +5,17 @@
  * and transactional-send detail pages; they differed only in the fallback
  * status used for unknown values. The pill itself is UiBadge.
  */
+import {
+	CircleCheckIcon,
+	CircleCloseIcon,
+	ClockIcon,
+	CursorClickIcon,
+	EyeIcon,
+	PaperPlaneIcon,
+	TriangleWarningIcon,
+	type IconComponent,
+} from '@coolicons/vue';
+
 interface Props {
 	status: string;
 	/** Status config to fall back to when `status` is not in the map. */
@@ -19,14 +30,14 @@ const { t } = useI18n();
 
 type SendStatusVariant = 'default' | 'success' | 'warning' | 'error' | 'neutral';
 
-const STATUS_CONFIG: Record<string, { icon: string; variant: SendStatusVariant }> = {
-	queued: { icon: 'lucide:clock', variant: 'neutral' },
-	sent: { icon: 'lucide:send', variant: 'default' },
-	delivered: { icon: 'lucide:check-circle-2', variant: 'success' },
-	opened: { icon: 'lucide:eye', variant: 'default' },
-	clicked: { icon: 'lucide:mouse-pointer-click', variant: 'warning' },
-	bounced: { icon: 'lucide:x-circle', variant: 'error' },
-	complained: { icon: 'lucide:alert-triangle', variant: 'error' },
+const STATUS_CONFIG: Record<string, { icon: IconComponent; variant: SendStatusVariant }> = {
+	queued: { icon: ClockIcon, variant: 'neutral' },
+	sent: { icon: PaperPlaneIcon, variant: 'default' },
+	delivered: { icon: CircleCheckIcon, variant: 'success' },
+	opened: { icon: EyeIcon, variant: 'default' },
+	clicked: { icon: CursorClickIcon, variant: 'warning' },
+	bounced: { icon: CircleCloseIcon, variant: 'error' },
+	complained: { icon: TriangleWarningIcon, variant: 'error' },
 };
 
 const config = computed(
@@ -56,7 +67,7 @@ const label = computed(() => {
 <template>
 	<UiBadge :variant="config.variant" size="md" pill class="shrink-0">
 		<template #icon>
-			<Icon :name="config.icon" class="w-3 h-3" />
+			<component :is="config.icon" class="w-3 h-3" />
 		</template>
 		{{ label }}
 	</UiBadge>

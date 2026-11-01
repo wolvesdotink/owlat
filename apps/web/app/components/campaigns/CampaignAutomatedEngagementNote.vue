@@ -10,6 +10,7 @@
  * include those requests. Used by the campaign report and the Marketing overview.
  */
 import { formatNumber } from '~/utils/formatters';
+import { CircleInfoIcon } from '@coolicons/vue';
 
 const props = defineProps<{
 	/** Emails whose tracking pixel was fetched automatically at least once. */
@@ -58,7 +59,7 @@ const lines = computed(() => {
 			:key="line"
 			class="flex items-start gap-1.5 text-xs text-text-tertiary"
 		>
-			<Icon name="lucide:info" class="w-3.5 h-3.5 mt-px shrink-0" aria-hidden="true" />
+			<CircleInfoIcon class="w-3.5 h-3.5 mt-px shrink-0" aria-hidden="true" />
 			<span>{{ line }}</span>
 		</p>
 	</div>
