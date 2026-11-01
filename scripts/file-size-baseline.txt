@@ -1,5 +1,0 @@
-apps/web/app/components/translation/Manager.vue
-apps/web/app/composables/useOrganization.ts
-apps/web/app/data/marketingTemplatePresets.ts
-apps/web/app/layouts/dashboard.vue
-apps/web/app/pages/desktop/setup.vue
