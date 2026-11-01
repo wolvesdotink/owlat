@@ -116,7 +116,7 @@ export const _connectSeedInternal = internalMutation({
  * WHO CALLS IT. The delivery admin hub renders this control beside each due
  * seed account returned by `delivery/observabilityStatus.get`, so the operator
  * can acknowledge the same account whose rotation reminder is visible. The
- * audit entry remains independently readable through `auditLogs.list`.
+ * audit entry remains independently readable through `auditActions/logs.list`.
  *
  * authz: adminMutation, matching `_connectSeedInternal` — a seed is org
  * infrastructure, so its hygiene state is admin-owned.

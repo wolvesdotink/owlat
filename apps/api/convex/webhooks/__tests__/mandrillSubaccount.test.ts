@@ -636,7 +636,7 @@ describe('a reject Mandrill made in a system mail response', () => {
 				)
 			) as unknown as typeof fetch;
 		try {
-			return await t.action(internal.systemMail.trySendSystemEmail, {
+			return await t.action(internal.maintenance.systemMail.trySendSystemEmail, {
 				to,
 				from: 'sender@example.com',
 				subject: 'Confirm your subscription',

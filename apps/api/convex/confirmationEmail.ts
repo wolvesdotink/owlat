@@ -33,7 +33,7 @@ export const sendConfirmationEmail = internalAction({
 		// Send through the configured system transport (Send system email module).
 		// Routes to whatever delivery provider is configured (MTA / Resend / SES),
 		// so this no longer requires the built-in MTA to be running.
-		await ctx.runAction(internal.systemMail.sendSystemEmail, {
+		await ctx.runAction(internal.maintenance.systemMail.sendSystemEmail, {
 			to: args.email,
 			from: formatFromAddress(fromEmail, fromName),
 			subject: `Confirm your subscription to ${teamName}`,

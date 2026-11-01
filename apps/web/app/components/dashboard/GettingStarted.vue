@@ -92,7 +92,7 @@ const { data: isPlatformAdmin } = useConvexQuery(
 	api.platformAdmin.platformAdmin.isPlatformAdmin,
 	() => (isInstanceViewer.value && isSelfHost ? {} : 'skip')
 );
-const { data: backupState } = useConvexQuery(api.backups.getBackupState, () =>
+const { data: backupState } = useConvexQuery(api.maintenance.backups.getBackupState, () =>
 	isPlatformAdmin.value === true ? {} : 'skip'
 );
 const showBackupsStep = computed(

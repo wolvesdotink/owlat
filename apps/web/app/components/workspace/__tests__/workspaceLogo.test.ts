@@ -120,7 +120,7 @@ describe('WorkspaceLogoCard', () => {
 			run: async (args: Record<string, unknown>) => {
 				const fn = getFunctionName(ref as Parameters<typeof getFunctionName>[0]);
 				calls.push({ fn, args });
-				return fn === 'storage:generateUploadUrl'
+				return fn === 'storage/files:generateUploadUrl'
 					? { ok: true, result: 'https://app.owlat.test/api/storage/upload?token=t' }
 					: { ok: true, result: null };
 			},
@@ -151,7 +151,7 @@ describe('WorkspaceLogoCard', () => {
 		const { wrapper, calls, toasts } = mountCard({ logoUrl: LOGO, logoDarkUrl: null });
 		await choose(wrapper, 'dark', new File(['<svg></svg>'], 'dark.svg', { type: 'image/svg+xml' }));
 		expect(calls.map((c) => c.fn)).toEqual([
-			'storage:generateUploadUrl',
+			'storage/files:generateUploadUrl',
 			'workspaces/branding:setLogo',
 		]);
 		expect(calls[1]!.args).toEqual({

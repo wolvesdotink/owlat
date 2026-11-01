@@ -219,14 +219,14 @@ const cases: Case<unknown>[] = [
 			t.mutation(api.mediaAssets.bulkDelete, { assetIds: [assetId] }),
 	}),
 	defineCase({
-		name: 'storage.getUrl',
+		name: 'storage.files.getUrl',
 		floor: 'requireOrgMember',
 		seed: async (t) => {
 			const storageId = await storedBlob(t);
 			await t.mutation(api.mediaAssets.create, { storageId, ...blob });
 			return storageId;
 		},
-		call: (t, storageId: Id<'_storage'>) => t.query(api.storage.getUrl, { storageId }),
+		call: (t, storageId: Id<'_storage'>) => t.query(api.storage.files.getUrl, { storageId }),
 		check: async (_t, _seeded, url) => {
 			expect(typeof url).toBe('string');
 		},

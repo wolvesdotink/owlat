@@ -32,7 +32,7 @@ const { data: logo, isLoading } = useConvexQuery(api.workspaces.branding.get, {}
 const sizeKb = MAX_WORKSPACE_LOGO_BYTES / 1024;
 const accept = WORKSPACE_LOGO_MIME_TYPES.join(',');
 
-const { run: generateUploadUrl } = useBackendOperation(api.storage.generateUploadUrl, {
+const { run: generateUploadUrl } = useBackendOperation(api.storage.files.generateUploadUrl, {
 	label: () => t('components.settings.workspaceLogoCard.uploadUrlOperation'),
 });
 const { run: setLogo } = useBackendOperation(api.workspaces.branding.setLogo, {

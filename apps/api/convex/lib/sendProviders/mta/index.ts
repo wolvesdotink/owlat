@@ -216,7 +216,7 @@ export const mtaSendProvider: SendProviderModule<'mta'> = {
 	 * same statement, read by the retry-disposition rule). Absent ⇒ omitted, and
 	 * the MTA mints a random one.
 	 *
-	 * Lifted verbatim out of `systemMail.ts`'s `if (provider === 'mta')` arm, so
+	 * Lifted verbatim out of `maintenance/systemMail.ts`'s `if (provider === 'mta')` arm, so
 	 * the /send/system body is byte-for-byte what it has always been.
 	 */
 	buildSystemMailExtras(input: SystemMailExtrasInput): MtaExtras {

@@ -279,7 +279,7 @@ export const instanceTables = {
 
 	// System updates — tracks upstream release checks and the history of
 	// in-app updates applied on this instance. Populated by
-	// apps/api/convex/systemUpdates.ts.
+	// apps/api/convex/maintenance/updates.ts and maintenance/releaseCheck.ts.
 	//
 	// Two kinds of documents share this table:
 	//   - kind='latestCheck'   — cached result of the last GitHub release poll
@@ -378,7 +378,7 @@ export const instanceTables = {
 	// after running `scripts/backup.sh`. The Settings → Backups panel reads it
 	// back and always shows the exact CLI commands to run on the host, so the
 	// state here is honest ("recorded by you"), never a fabricated live reading.
-	// Populated by apps/api/convex/backups.ts. One row per deployment.
+	// Populated by apps/api/convex/maintenance/backups.ts. One row per deployment.
 	backupState: defineTable({
 		// Whether the operator confirms the daily backup schedule is installed
 		// on the host. Drives the self-host onboarding "Set up backups" pointer

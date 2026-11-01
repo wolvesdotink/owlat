@@ -84,7 +84,7 @@ export const listByTeam = authedQuery({
  * an N+1 lookup per row.
  *
  * Admin-gated: audit data is not a member-level read (the same reason
- * `auditLogs.list` is gated), and the evidence string is a third party's raw
+ * `auditActions/logs.list` is gated), and the evidence string is a third party's raw
  * reason code. Not org-keyed, exactly like the `blockedEmails` rows it explains:
  * both are deployment-wide under the singleton-org invariant, and the writer
  * (`addFromEvent`, a system actor with no session) has no organization to

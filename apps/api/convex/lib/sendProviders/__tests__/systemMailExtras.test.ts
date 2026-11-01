@@ -1,7 +1,7 @@
 /**
  * THE SYSTEM/AUTH MAIL PATH NAMES NO PROVIDER (the seams plan's P0.4).
  *
- * `systemMail.ts` carried the same fact three times: an `if (provider === 'mta')`
+ * `maintenance/systemMail.ts` carried the same fact three times: an `if (provider === 'mta')`
  * arm that built the MTA's system-intake payload inline, a
  * `provider === 'resend' && key` ternary for the dedup header, and — in
  * `lib/systemMailOutcome.ts` — a `provider === 'mta' || provider === 'resend'`

@@ -23,7 +23,7 @@ import { capitalize } from '../utils/formatters';
 import { buildActionTypeGroups, RESOURCE_FILTER_OPTIONS } from './auditLogFilterCatalog';
 
 /**
- * A single audit-log row as returned by `api.auditLogs.list`. Lives here (the
+ * A single audit-log row as returned by `api.auditActions.logs.list`. Lives here (the
  * audit presentation SSOT) so the page and the row-list component share one
  * shape instead of redeclaring it. `details` is a jsonPrimitiveRecord (a plain
  * object), not a JSON string — do NOT JSON.parse it.

@@ -14,7 +14,7 @@ const i18n = createTestI18n();
 
 vi.mock('@owlat/api', () => ({
 	api: {
-		storage: { generateUploadUrl: 'storage.generateUploadUrl' },
+		storage: { files: { generateUploadUrl: 'storage.files.generateUploadUrl' } },
 		mail: {
 			drafts: {
 				get: 'drafts.get',
@@ -37,7 +37,7 @@ const originalFetch = globalThis.fetch;
 beforeEach(() => {
 	addAttachment = vi.fn(async () => ({ ok: true, result: { ok: true } }));
 	const ops: Record<string, (args: never) => Promise<unknown>> = {
-		'storage.generateUploadUrl': () =>
+		'storage.files.generateUploadUrl': () =>
 			Promise.resolve({ ok: true, result: 'https://upload.example' }),
 		'drafts.addAttachment': addAttachment as never,
 	};

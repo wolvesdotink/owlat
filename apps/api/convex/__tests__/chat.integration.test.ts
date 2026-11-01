@@ -886,7 +886,7 @@ describe('chat attachment privacy across the media library', () => {
 			totalBytes: 0,
 		});
 		expect(await t.query(api.mediaAssets.listTags, {})).toEqual([]);
-		await expect(t.query(api.storage.getUrl, { storageId })).rejects.toThrow();
+		await expect(t.query(api.storage.files.getUrl, { storageId })).rejects.toThrow();
 	});
 
 	it('rejects relabeling, deleting, and re-registering private attachments even by an admin', async () => {
@@ -955,7 +955,7 @@ describe('chat attachment privacy across the media library', () => {
 			paginationOpts: { numItems: 20, cursor: null },
 		});
 		expect(page.page.map((asset) => asset._id)).toEqual([shared.assetId]);
-		expect(await t.query(api.storage.getUrl, { storageId: shared.storageId })).toBeTruthy();
+		expect(await t.query(api.storage.files.getUrl, { storageId: shared.storageId })).toBeTruthy();
 		expect(await t.query(api.mediaAssets.listTags, {})).toEqual(['branding']);
 		const roomId = await t.mutation(api.chat.rooms.createChannel, {
 			name: 'marketing',

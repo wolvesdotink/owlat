@@ -43,7 +43,7 @@ describe('sendSystemEmail — MTA branch routes through sendProviderDispatch', (
 		);
 		global.fetch = fetchSpy as unknown as typeof fetch;
 
-		const result = await t.action(internal.systemMail.sendSystemEmail, {
+		const result = await t.action(internal.maintenance.systemMail.sendSystemEmail, {
 			to: 'user@example.com',
 			from: 'Owlat <noreply@mail.example.com>',
 			subject: 'Reset your password',
@@ -86,7 +86,7 @@ describe('sendSystemEmail — MTA branch routes through sendProviderDispatch', (
 		);
 		global.fetch = fetchSpy as unknown as typeof fetch;
 
-		await t.action(internal.systemMail.sendSystemEmail, {
+		await t.action(internal.maintenance.systemMail.sendSystemEmail, {
 			to: 'admin@example.com',
 			from: 'Owlat <noreply@mail.example.com>',
 			subject: 'Deliverability regression',
@@ -115,7 +115,7 @@ describe('sendSystemEmail — MTA branch routes through sendProviderDispatch', (
 			) as unknown as typeof fetch;
 
 		await expect(
-			t.action(internal.systemMail.sendSystemEmail, {
+			t.action(internal.maintenance.systemMail.sendSystemEmail, {
 				to: 'bad',
 				from: 'noreply@mail.example.com',
 				subject: 's',
@@ -129,7 +129,7 @@ describe('sendSystemEmail — MTA branch routes through sendProviderDispatch', (
 		const t = convexTest(schema, modules);
 
 		await expect(
-			t.action(internal.systemMail.sendSystemEmail, {
+			t.action(internal.maintenance.systemMail.sendSystemEmail, {
 				to: 'user@example.com',
 				from: 'noreply@mail.example.com',
 				subject: 's',

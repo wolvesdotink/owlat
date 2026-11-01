@@ -260,7 +260,7 @@ describe('loopback probe start writes', () => {
 			allowed: true,
 			domain: 'probe.example',
 		}),
-		'systemMail:sendSystemEmail': (args) => sendProbe(args),
+		'maintenance/systemMail:sendSystemEmail': (args) => sendProbe(args),
 	};
 
 	const attempts = (t: TestConvex<typeof schema>) =>

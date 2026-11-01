@@ -25,7 +25,7 @@ import { api, internal } from '../_generated/api';
 import { enableFeatures } from './factories';
 import { hashManageToken } from '../booking/model';
 import type * as SessionOrganization from '../lib/sessionOrganization';
-import type * as SystemMail from '../systemMail';
+import type * as SystemMail from '../maintenance/systemMail';
 import type * as Slots from '../booking/slots';
 import { rateLimiter } from '../lib/rateLimiter';
 import { capabilityKey } from '../lib/publicTokenPolicy';
@@ -62,7 +62,7 @@ vi.mock('../booking/slots', async (importOriginal) => {
 });
 
 const sentMail = vi.hoisted(() => [] as { subject: string; to: string; ics: string }[]);
-vi.mock('../systemMail', async (importOriginal) => ({
+vi.mock('../maintenance/systemMail', async (importOriginal) => ({
 	...(await importOriginal<typeof SystemMail>()),
 	attemptSystemEmail: vi.fn(
 		async (

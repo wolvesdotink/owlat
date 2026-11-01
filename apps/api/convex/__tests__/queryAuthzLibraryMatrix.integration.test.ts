@@ -223,7 +223,7 @@ const ROWS: Record<string, MatrixRow<LibrarySeed>> = {
 	'mediaAssets.listTags': member(api.mediaAssets.listTags),
 	'segments.get': member(api.segments.get, (s) => ({ id: s.segmentId })),
 	'segments.list': member(api.segments.list, () => page),
-	'storage.getUrl': member(api.storage.getUrl, (s) => ({ storageId: s.storageId })),
+	'storage.files.getUrl': member(api.storage.files.getUrl, (s) => ({ storageId: s.storageId })),
 	'topics.topics.get': member(api.topics.topics.get, (s) => ({ topicId: s.topicId })),
 	'topics.topics.getContactInTopicDetails': member(
 		api.topics.topics.getContactInTopicDetails,

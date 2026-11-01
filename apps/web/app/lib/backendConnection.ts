@@ -29,7 +29,7 @@ export const CONNECTION_GRACE_MS = 3_000;
 
 /**
  * How often the admin tab following an update confirms the rollout is still
- * under way (`systemUpdates.recordUpdateActivity`).
+ * under way (`maintenance/updates.recordUpdateActivity`).
  */
 export const ROLLOUT_HEARTBEAT_MS = 30_000;
 
@@ -147,7 +147,7 @@ export function attachBackendConnection(source: ConnectionSource): () => void {
 
 /**
  * The open update run's last confirmed activity (`activeAt` of
- * `systemUpdates.getRolloutActivity`), or `null` when no run is open.
+ * `maintenance/updates.getRolloutActivity`), or `null` when no run is open.
  *
  * Only a change this tab sees while connected counts as activity: the first
  * answer after a page load cannot tell a live rollout from a row orphaned

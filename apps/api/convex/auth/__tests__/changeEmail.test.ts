@@ -29,7 +29,7 @@ const ctx = {} as ActionCtx;
 
 type CapturedSend = { to: string; from: string; subject: string; html: string };
 
-// Auth emails now route through `ctx.runAction(internal.systemMail.sendSystemEmail, …)`
+// Auth emails now route through `ctx.runAction(internal.maintenance.systemMail.sendSystemEmail, …)`
 // (the Send system email module), so capture the action args rather than a raw
 // MTA fetch. Returns a ctx whose runAction records each send.
 function ctxWithCapture(): { ctx: ActionCtx; sends: CapturedSend[] } {

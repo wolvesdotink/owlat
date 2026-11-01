@@ -53,7 +53,7 @@ export const getStats = authedQuery({
 
 // Get recent activity for the dashboard
 // Combines audit logs (organization actions) and contact activities (email events).
-// Admin-gated like `auditLogs.list`: the feed narrates audit entries (member
+// Admin-gated like `auditActions/logs.list`: the feed narrates audit entries (member
 // invitations, settings changes), which are not a member-level read.
 export const getRecentActivity = adminQuery({
 	args: {

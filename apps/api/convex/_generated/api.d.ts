@@ -154,6 +154,7 @@ import type * as schema_counters from '../schema/counters.js';
 import type * as workspaces_deletion_steps_storageUploads from '../workspaces/deletion/steps/storageUploads.js';
 import type * as storage_uploadsHttp from '../storage/uploadsHttp.js';
 import type * as storage_uploads from '../storage/uploads.js';
+import type * as storage_files from '../storage/files.js';
 import type * as schema_storage from '../schema/storage.js';
 /* eslint-disable */
 /**
@@ -302,6 +303,7 @@ import type * as assistant_runner from '../assistant/runner.js';
 import type * as assistant_toolRegistry from '../assistant/toolRegistry.js';
 import type * as assistant_tools from '../assistant/tools.js';
 import type * as auditActions_catalog from '../auditActions/catalog.js';
+import type * as auditActions_logs from '../auditActions/logs.js';
 import type * as auditLogs from '../auditLogs.js';
 import type * as auth_accessRequest from '../auth/accessRequest.js';
 import type * as auth_accountDeletion from '../auth/accountDeletion.js';
@@ -1574,6 +1576,10 @@ import type * as maintenance_derivedFields_types from '../maintenance/derivedFie
 import type * as schema_derivedFields from '../schema/derivedFields.js';
 import type * as maintenance_workerRegistry from '../maintenance/workerRegistry.js';
 import type * as maintenance_workerReportHttp from '../maintenance/workerReportHttp.js';
+import type * as maintenance_backups from '../maintenance/backups.js';
+import type * as maintenance_releaseCheck from '../maintenance/releaseCheck.js';
+import type * as maintenance_systemMail from '../maintenance/systemMail.js';
+import type * as maintenance_updates from '../maintenance/updates.js';
 import type * as mediaAssets from '../mediaAssets.js';
 import type * as migrations_0035_seal_bodies_at_rest from '../migrations/0035_seal_bodies_at_rest.js';
 import type * as migrations_0036_seed_platform_admin from '../migrations/0036_seed_platform_admin.js';
@@ -2163,6 +2169,7 @@ declare const fullApi: ApiFromModules<{
 	'assistant/tools': typeof assistant_tools;
 }> & ApiFromModules<{
 	'auditActions/catalog': typeof auditActions_catalog;
+	'auditActions/logs': typeof auditActions_logs;
 }> & ApiFromModules<{
 	'auth/accessRequest': typeof auth_accessRequest;
 	'auth/accountDeletion': typeof auth_accountDeletion;
@@ -3646,6 +3653,10 @@ declare const fullApi: ApiFromModules<{
 	'maintenance/derivedFields/types': typeof maintenance_derivedFields_types;
 	'maintenance/workerRegistry': typeof maintenance_workerRegistry;
 	'maintenance/workerReportHttp': typeof maintenance_workerReportHttp;
+	'maintenance/backups': typeof maintenance_backups;
+	'maintenance/releaseCheck': typeof maintenance_releaseCheck;
+	'maintenance/systemMail': typeof maintenance_systemMail;
+	'maintenance/updates': typeof maintenance_updates;
 }> & ApiFromModules<{
 	'marketing/recentlyDeleted': typeof marketing_recentlyDeleted;
 	'marketing/noticeEvents': typeof marketing_noticeEvents;
@@ -3892,6 +3903,7 @@ declare const fullApi: ApiFromModules<{
 }> & ApiFromModules<{
 	'storage/uploadsHttp': typeof storage_uploadsHttp;
 	'storage/uploads': typeof storage_uploads;
+	'storage/files': typeof storage_files;
 }> & ApiFromModules<{
 	'today/mailbox': typeof today_mailbox;
 	'today/state': typeof today_state;

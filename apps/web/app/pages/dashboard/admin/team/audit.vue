@@ -64,7 +64,7 @@ const {
 	isLoading: auditLogsLoading,
 	error: auditLogsError,
 	refetch: refetchAuditLogs,
-} = useOrganizationQuery(api.auditLogs.list, () => ({
+} = useOrganizationQuery(api.auditActions.logs.list, () => ({
 	action: selectedAction.value || undefined,
 	resource: selectedResource.value || undefined,
 	userId: selectedUserId.value || undefined,
@@ -99,10 +99,10 @@ const {
 ]);
 
 // Get active users for the filter dropdown
-const { data: activeUsersData } = useOrganizationQuery(api.auditLogs.getActiveUsers);
+const { data: activeUsersData } = useOrganizationQuery(api.auditActions.logs.getActiveUsers);
 
 // Get stats for the stats cards
-const { data: statsData } = useOrganizationQuery(api.auditLogs.getStats, () => ({
+const { data: statsData } = useOrganizationQuery(api.auditActions.logs.getStats, () => ({
 	startDate: dateRangeValues.value.startDate,
 	endDate: dateRangeValues.value.endDate,
 }));

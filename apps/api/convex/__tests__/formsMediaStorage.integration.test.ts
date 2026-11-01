@@ -13,7 +13,7 @@
  *   2. mediaAssets.create — extension + MIME allowlist gate + role gate
  *      (`media:manage` = admin). getStats totals + cap saturation.
  *
- *   3. storage.getUrl / storage.deleteFile — the auth gates (logged-in vs
+ *   3. storage/files.getUrl / storage.deleteFile — the auth gates (logged-in vs
  *      admin) on obtaining / deleting a storage URL.
  *
  * The session module is mocked the same way the chat test does it: a single
@@ -719,10 +719,10 @@ describe('mediaAssets.getStats', () => {
 });
 
 // ============================================================================
-// storage.getUrl / storage.deleteFile — auth gates
+// storage/files.getUrl / storage.deleteFile — auth gates
 // ============================================================================
 
-describe('storage.getUrl', () => {
+describe('storage/files.getUrl', () => {
 	it('returns a URL for a storageId backed by a mediaAsset', async () => {
 		const t = setupTest();
 		const storageId = await storeBlob(t);
@@ -741,7 +741,7 @@ describe('storage.getUrl', () => {
 			} as never);
 		});
 
-		const url = await t.query(api.storage.getUrl, { storageId });
+		const url = await t.query(api.storage.files.getUrl, { storageId });
 		// convex-test resolves stored blobs to a (mock) URL string.
 		expect(url).toBeTruthy();
 		expect(typeof url).toBe('string');
@@ -753,7 +753,7 @@ describe('storage.getUrl', () => {
 		// mail body/raw blob). Auth alone must NOT mint its signed URL.
 		const storageId = await storeBlob(t);
 
-		await expect(t.query(api.storage.getUrl, { storageId })).rejects.toThrow(/File/);
+		await expect(t.query(api.storage.files.getUrl, { storageId })).rejects.toThrow(/File/);
 	});
 });
 

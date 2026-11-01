@@ -71,7 +71,7 @@ export function useSemanticFiles() {
 	const loadMore = () => active.value.loadMore(PAGE_SIZE);
 
 	// Mutations
-	const { run: generateUploadUrl } = useBackendOperation(api.storage.generateUploadUrl, {
+	const { run: generateUploadUrl } = useBackendOperation(api.storage.files.generateUploadUrl, {
 		label: () => t('shared.useSemanticFiles.getUploadUrl'),
 	});
 	const { run: createFile } = useBackendOperation(api.files.library.create, {

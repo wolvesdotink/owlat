@@ -20,7 +20,7 @@ import PostboxComposerFooter from '../PostboxComposerFooter.vue';
 
 vi.mock('@owlat/api', () => ({
 	api: {
-		storage: { generateUploadUrl: 'storage.generateUploadUrl' },
+		storage: { files: { generateUploadUrl: 'storage.files.generateUploadUrl' } },
 		mail: {
 			drafts: {
 				addAttachment: 'drafts.addAttachment',

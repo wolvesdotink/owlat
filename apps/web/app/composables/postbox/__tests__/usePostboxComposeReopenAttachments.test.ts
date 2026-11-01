@@ -30,7 +30,7 @@ const i18n = createTestI18n();
 
 vi.mock('@owlat/api', () => ({
 	api: {
-		storage: { generateUploadUrl: 'storage.generateUploadUrl' },
+		storage: { files: { generateUploadUrl: 'storage.files.generateUploadUrl' } },
 		mail: {
 			drafts: {
 				get: 'drafts.get',
@@ -169,7 +169,7 @@ beforeEach(() => {
 		return { ok: true, result: { ok: true } };
 	});
 	const ops: Record<string, (args: never) => Promise<unknown>> = {
-		'storage.generateUploadUrl': async () => ({ ok: true, result: 'https://upload.example' }),
+		'storage.files.generateUploadUrl': async () => ({ ok: true, result: 'https://upload.example' }),
 		'drafts.addAttachment': addAttachment as never,
 		'drafts.removeAttachment': removeAttachment as never,
 		'drafts.update': async (args: { bodyHtml?: string }) => {

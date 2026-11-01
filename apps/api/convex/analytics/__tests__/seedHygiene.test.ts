@@ -16,7 +16,7 @@ const SEED_ROTATION_INTERVAL_MS = 90 * 24 * 60 * 60 * 1000;
 
 /**
  * The rotation nudge has to be readable through a query the PRODUCT exposes,
- * and dismissable only by a human — so this suite drives `auditLogs.list`
+ * and dismissable only by a human — so this suite drives `auditActions/logs.list`
  * (adminQuery) and `mail.external.accountsSeed.acknowledgeSeedRotation`
  * (adminMutation) for real. Both sit behind the org session, which convex-test
  * has no identity for; the mock is the shipped pattern from
@@ -348,11 +348,13 @@ describe('the rotation reminder surfaces on schedule', () => {
 
 	/**
 	 * The reminders an OPERATOR can actually see — read back through
-	 * `auditLogs.list`, the admin query the product ships, not through a raw
+	 * `auditActions/logs.list`, the admin query the product ships, not through a raw
 	 * table scan. An artifact only a test can find is not a reminder.
 	 */
 	async function reminders(t: ReturnType<typeof convexTest>) {
-		const res = await t.query(api.auditLogs.list, { action: 'seed_mailbox.rotation_reminder' });
+		const res = await t.query(api.auditActions.logs.list, {
+			action: 'seed_mailbox.rotation_reminder',
+		});
 		return res.logs;
 	}
 

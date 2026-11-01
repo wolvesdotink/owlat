@@ -1,5 +1,5 @@
 /**
- * Integration tests for the backups surface (apps/api/convex/backups.ts).
+ * Integration tests for the backups surface (apps/api/convex/maintenance/backups.ts).
  *
  * `getBackupState` / `setScheduleEnabled` / `logManualRun` are secure-by-default
  * functions whose auth floor (`authedQuery` / `authedMutation` →
@@ -81,11 +81,11 @@ beforeEach(() => {
 	setCaller('caller-user');
 });
 
-describe('backups.getBackupState (admin gating)', () => {
+describe('maintenance/backups.getBackupState (admin gating)', () => {
 	it('rejects a caller with no platformAdmins row (even an org owner)', async () => {
 		const t = convexTest(schema, modules);
 		setCaller('not-a-platform-admin');
-		await expect(t.query(api.backups.getBackupState, {})).rejects.toThrow(
+		await expect(t.query(api.maintenance.backups.getBackupState, {})).rejects.toThrow(
 			/Platform admin access required/
 		);
 	});
@@ -93,17 +93,17 @@ describe('backups.getBackupState (admin gating)', () => {
 	it('returns null before any state is recorded (empty state)', async () => {
 		const t = convexTest(schema, modules);
 		await seedAdmin(t, 'caller-user');
-		expect(await t.query(api.backups.getBackupState, {})).toBeNull();
+		expect(await t.query(api.maintenance.backups.getBackupState, {})).toBeNull();
 	});
 });
 
-describe('backups.setScheduleEnabled (admin gating)', () => {
+describe('maintenance/backups.setScheduleEnabled (admin gating)', () => {
 	it('rejects a non-admin caller', async () => {
 		const t = convexTest(schema, modules);
 		setCaller('not-a-platform-admin');
-		await expect(t.mutation(api.backups.setScheduleEnabled, { enabled: true })).rejects.toThrow(
-			/Platform admin access required/
-		);
+		await expect(
+			t.mutation(api.maintenance.backups.setScheduleEnabled, { enabled: true })
+		).rejects.toThrow(/Platform admin access required/);
 	});
 });
 
@@ -112,14 +112,14 @@ describe('backups schedule round-trip', () => {
 		const t = convexTest(schema, modules);
 		await seedAdmin(t, 'caller-user', 'admin', 'admin@example.com');
 
-		await t.mutation(api.backups.setScheduleEnabled, { enabled: true });
-		let state = await t.query(api.backups.getBackupState, {});
+		await t.mutation(api.maintenance.backups.setScheduleEnabled, { enabled: true });
+		let state = await t.query(api.maintenance.backups.getBackupState, {});
 		expect(state?.isScheduleEnabled).toBe(true);
 		expect(state?.updatedBy).toBe('admin@example.com');
 		expect(typeof state?.updatedAt).toBe('number');
 
-		await t.mutation(api.backups.setScheduleEnabled, { enabled: false });
-		state = await t.query(api.backups.getBackupState, {});
+		await t.mutation(api.maintenance.backups.setScheduleEnabled, { enabled: false });
+		state = await t.query(api.maintenance.backups.getBackupState, {});
 		expect(state?.isScheduleEnabled).toBe(false);
 	});
 
@@ -127,21 +127,21 @@ describe('backups schedule round-trip', () => {
 		const t = convexTest(schema, modules);
 		await seedAdmin(t, 'caller-user');
 
-		await t.mutation(api.backups.setScheduleEnabled, { enabled: true });
-		await t.mutation(api.backups.setScheduleEnabled, { enabled: false });
+		await t.mutation(api.maintenance.backups.setScheduleEnabled, { enabled: true });
+		await t.mutation(api.maintenance.backups.setScheduleEnabled, { enabled: false });
 
 		const rows = await t.run(async (ctx) => ctx.db.query('backupState').collect());
 		expect(rows).toHaveLength(1);
 	});
 });
 
-describe('backups.logManualRun round-trip', () => {
+describe('maintenance/backups.logManualRun round-trip', () => {
 	it('rejects a non-admin caller', async () => {
 		const t = convexTest(schema, modules);
 		setCaller('not-a-platform-admin');
-		await expect(t.mutation(api.backups.logManualRun, { status: 'success' })).rejects.toThrow(
-			/Platform admin access required/
-		);
+		await expect(
+			t.mutation(api.maintenance.backups.logManualRun, { status: 'success' })
+		).rejects.toThrow(/Platform admin access required/);
 	});
 
 	it('records the run timestamp + status and the query reflects it', async () => {
@@ -149,8 +149,8 @@ describe('backups.logManualRun round-trip', () => {
 		await seedAdmin(t, 'caller-user');
 
 		const before = Date.now();
-		await t.mutation(api.backups.logManualRun, { status: 'success' });
-		const state = await t.query(api.backups.getBackupState, {});
+		await t.mutation(api.maintenance.backups.logManualRun, { status: 'success' });
+		const state = await t.query(api.maintenance.backups.getBackupState, {});
 
 		expect(state?.lastRunStatus).toBe('success');
 		expect(state?.lastRunAt).toBeGreaterThanOrEqual(before);
@@ -162,10 +162,10 @@ describe('backups.logManualRun round-trip', () => {
 		const t = convexTest(schema, modules);
 		await seedAdmin(t, 'caller-user');
 
-		await t.mutation(api.backups.setScheduleEnabled, { enabled: true });
-		await t.mutation(api.backups.logManualRun, { status: 'failed' });
+		await t.mutation(api.maintenance.backups.setScheduleEnabled, { enabled: true });
+		await t.mutation(api.maintenance.backups.logManualRun, { status: 'failed' });
 
-		const state = await t.query(api.backups.getBackupState, {});
+		const state = await t.query(api.maintenance.backups.getBackupState, {});
 		expect(state?.isScheduleEnabled).toBe(true);
 		expect(state?.lastRunStatus).toBe('failed');
 	});

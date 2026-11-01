@@ -27,7 +27,7 @@ const {
 	data: latestRelease,
 	error: latestReleaseError,
 	refetch: refetchLatestRelease,
-} = useConvexQuery(api.systemUpdates.getLatestRelease, () => ({}));
+} = useConvexQuery(api.maintenance.updates.getLatestRelease, () => ({}));
 
 // Action to force a fresh GitHub poll
 const convex = useConvex();
@@ -39,7 +39,7 @@ async function checkNow() {
 	}
 	checking.value = true;
 	try {
-		await convex.action(api.systemUpdatesReleaseCheck.checkForUpdates, { force: true });
+		await convex.action(api.maintenance.releaseCheck.checkForUpdates, { force: true });
 		showToast(t('dashboard.admin.system.index.toasts.checkComplete'));
 	} catch (err) {
 		const msg = err instanceof Error ? err.message : t('dashboard.admin.system.index.unknownError');

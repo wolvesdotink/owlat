@@ -59,7 +59,7 @@ export function usePostboxComposeAttachments(opts: {
 	rowState?: () => InitialHydrationState;
 }) {
 	const { t, locale } = useI18n();
-	const generateUploadUrl = useBackendOperation(api.storage.generateUploadUrl, {
+	const generateUploadUrl = useBackendOperation(api.storage.files.generateUploadUrl, {
 		label: () => t('shared.postbox.usePostboxComposeAttachments.prepareUploadOperation'),
 	});
 	const addAttachmentOp = useBackendOperation(api.mail.drafts.addAttachment, {

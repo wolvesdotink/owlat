@@ -9,7 +9,7 @@ vi.mock('@owlat/email-builder', () => ({
 }));
 vi.mock('@owlat/api', () => ({
 	api: {
-		storage: { generateUploadUrl: 'storage.generateUploadUrl' },
+		storage: { files: { generateUploadUrl: 'storage.files.generateUploadUrl' } },
 		mediaAssets: { create: 'mediaAssets.create' },
 		emailBlocks: { blocks: { create: 'emailBlocks.blocks.create' } },
 	},
@@ -80,7 +80,7 @@ describe('createUploadImageHandler', () => {
 		expect(deps.getUrl).toHaveBeenCalledWith('st_1');
 
 		// generateUploadUrl → POST → createMediaAsset → getUrl, in that order.
-		// The media asset must be registered BEFORE minting the URL: `storage.getUrl`
+		// The media asset must be registered BEFORE minting the URL: `storage/files.getUrl`
 		// only resolves blobs backed by a mediaAssets row (cross-resource IDOR guard).
 		const order = (fn: ReturnType<typeof vi.fn>) => fn.mock.invocationCallOrder[0];
 		expect(order(deps.generateUploadUrl)).toBeLessThan(order(fetchMock));

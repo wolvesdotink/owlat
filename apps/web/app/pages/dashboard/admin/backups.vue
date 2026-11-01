@@ -14,21 +14,24 @@ definePageMeta({
 const { showToast } = useToast();
 
 // Recorded backup plan (operator attestation — NOT a live host reading; see
-// apps/api/convex/backups.ts for why the app can't introspect the host).
+// apps/api/convex/maintenance/backups.ts for why the app can't introspect the host).
 const {
 	data: state,
 	isLoading,
 	error,
 	refetch,
-} = useConvexQuery(api.backups.getBackupState, () => ({}));
+} = useConvexQuery(api.maintenance.backups.getBackupState, () => ({}));
 
 const { run: setSchedule, isLoading: savingSchedule } = useBackendOperation(
-	api.backups.setScheduleEnabled,
+	api.maintenance.backups.setScheduleEnabled,
 	{ label: () => t('dashboard.admin.backups.updateScheduleOperation') }
 );
-const { run: logRun, isLoading: loggingRun } = useBackendOperation(api.backups.logManualRun, {
-	label: () => t('dashboard.admin.backups.logRunOperation'),
-});
+const { run: logRun, isLoading: loggingRun } = useBackendOperation(
+	api.maintenance.backups.logManualRun,
+	{
+		label: () => t('dashboard.admin.backups.logRunOperation'),
+	}
+);
 
 // The exact commands the operator runs on their server. These match the CLI
 // vocabulary the quickstart summary and `scripts/owlat` dispatcher teach

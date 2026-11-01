@@ -42,7 +42,7 @@ export const sendAccountDeletionEmail = internalAction({
 
 		// Send through the configured system transport (Send system email module).
 		// Routes to whatever delivery provider is configured (MTA / Resend / SES).
-		await ctx.runAction(internal.systemMail.sendSystemEmail, {
+		await ctx.runAction(internal.maintenance.systemMail.sendSystemEmail, {
 			to: args.email,
 			from: `Owlat <noreply@${getOptional('DEFAULT_FROM_DOMAIN') || 'mail.owlat.app'}>`,
 			subject: copy.subject,

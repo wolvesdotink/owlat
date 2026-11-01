@@ -55,7 +55,7 @@ export const createAuthOptions = (ctx: ActionCtx) => {
 	// / SES) — so auth mail no longer hard-requires the built-in MTA. Closes over
 	// the action ctx so the four hooks below stay unchanged.
 	const sendViaMta = (params: { to: string; from: string; subject: string; html: string }) =>
-		ctx.runAction(internal.systemMail.sendSystemEmail, params);
+		ctx.runAction(internal.maintenance.systemMail.sendSystemEmail, params);
 	// Email verification is opt-in per deployment so enabling it can never lock
 	// out an existing install whose current users signed up before verification
 	// existed (they'd have no verified flag). Unset ⇒ off (current behavior); when
