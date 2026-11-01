@@ -18,6 +18,7 @@ import { earlierThreadPageArgs, threadPageArgs } from '~/composables/postbox/pos
 
 import PostboxThreadReader, { type PostboxReaderMessage } from '../PostboxThreadReader.vue';
 import PostboxReaderMessageCard from '../PostboxReaderMessage.vue';
+import PostboxThreadReaderOverlays from '../PostboxThreadReaderOverlays.vue';
 import PostboxThreadEarlier from '../PostboxThreadEarlier.vue';
 import PostboxThreadFindBar from '../PostboxThreadFindBar.vue';
 
@@ -184,6 +185,8 @@ function mountReader(components: Record<string, unknown> = {}) {
 			components: {
 				...Object.fromEntries(CHROME.map((name) => [name, marker(name)])),
 				PostboxReaderMessage: PostboxReaderMessageCard,
+				// Real, so the pickers and dialogs it hosts resolve to the markers above.
+				PostboxThreadReaderOverlays,
 				PostboxThreadEarlier,
 				PostboxLazyBody: passThrough,
 				PostboxMessageBody: bodyProbe,

@@ -17,6 +17,8 @@ import { nextTick, ref, computed } from 'vue';
 import { i18nStubs } from '~/__tests__/i18n';
 import { mountDashboardPage } from '~/__tests__/a11y';
 import MigratePage from '../migrate.vue';
+import PostboxMigrateCompletedStep from '~/components/postbox/PostboxMigrateCompletedStep.vue';
+import PostboxMigrateProgressStep from '~/components/postbox/PostboxMigrateProgressStep.vue';
 
 type Account = { configured: boolean; imapHost?: string; mailboxId?: string; status?: string };
 
@@ -99,6 +101,8 @@ function mountPage(): VueWrapper {
 	// about the page's own return-from-OAuth logic (and keeps the warn guard
 	// happy about unresolved names).
 	wrapper = mountDashboardPage(MigratePage, {
+		// The wizard's own steps are real: the learn offer lives in the completed one.
+		components: { PostboxMigrateCompletedStep, PostboxMigrateProgressStep },
 		stubs: {
 			PreferencesBackLink: true,
 			UiStepIndicator: true,

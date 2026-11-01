@@ -4,10 +4,9 @@ import { MAIL_SYNC_MAX_RAW_MESSAGE_BYTES } from '@owlat/shared/mailSyncLimits';
 import type { MailProvider } from '~/utils/mailAutodiscover';
 import { canLearnFromImport } from '~/composables/postbox/useMailMigration';
 import { MAIL_PROVIDERS, providerForImapHost } from '~/utils/mailAutodiscover';
-import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 
-const { t, locale } = useI18n();
+const { t } = useI18n();
 
 useHead({ title: () => t('dashboard.postbox.migrate.pageTitle') });
 
@@ -15,11 +14,6 @@ definePageMeta({
 	layout: 'dashboard',
 	middleware: ['auth', postboxPageTransition],
 });
-
-/** Counts read as body copy, so they follow the active locale's grouping. */
-function formatCount(value: number | undefined): string {
-	return new Intl.NumberFormat(locale.value).format(value ?? 0);
-}
 
 const route = useRoute();
 const router = useRouter();
@@ -87,27 +81,6 @@ const connectedSource = computed<'google' | 'imap'>(() =>
 	account.value?.configured && account.value.imapHost.includes('gmail') ? 'google' : 'imap'
 );
 
-/**
- * Messages the import walked past without storing — an ingest that failed, or a
- * message the server would not hand over. They are still on the remote server,
- * so re-running the import retries them.
- */
-const skippedCount = computed(() => migration.value?.messagesFailed ?? 0);
-
-/**
- * "Your mail history is in Owlat" is not true of an import that left messages
- * behind, and claiming it directly above the count that says otherwise is the
- * same kind of overstatement this screen used to make about the whole import.
- */
-const completedBodyCopy = computed(() => {
-	const prefix = 'dashboard.postbox.migrate.';
-	if (skippedCount.value > 0) {
-		return t(
-			isAiIndexing.value ? `${prefix}completedPartialBodyWithAi` : `${prefix}completedPartialBody`
-		);
-	}
-	return t(isAiIndexing.value ? `${prefix}completedBodyWithAi` : `${prefix}completedBody`);
-});
 // An import that finished while `ai.knowledge` was off (or whose sweep stored
 // nothing) can still be learned from, without importing the mail again.
 const canLearn = computed(() => canLearnFromImport(migration.value, isEnabled('ai.knowledge')));
@@ -169,38 +142,12 @@ function handleUpdated() {
 	showToast(t('dashboard.postbox.migrate.toastCredentialsUpdated'), 'success');
 }
 
-// ── Detected signature (completion nice-touch) ──────────────────────────────
-// After the import finishes we scan the imported Sent mail for a repeated
-// trailing block and offer it pre-filled, so replies look like they did before.
+// ── Completed step ──────────────────────────────────────────────────────────
+// The mailbox the finished import landed in: PostboxMigrateCompletedStep saves
+// the signature it detected in the imported Sent mail there.
 const completedMailboxId = computed<Id<'mailboxes'> | null>(() =>
 	step.value === 'completed' && account.value?.configured ? account.value.mailboxId : null
 );
-const { data: suggestedSignature } = useConvexQuery(api.mail.signatures.suggestFromImport, () =>
-	completedMailboxId.value ? { mailboxId: completedMailboxId.value } : 'skip'
-);
-const createSignatureOp = useBackendOperation(api.mail.signatures.create, {
-	label: () => t('dashboard.postbox.migrate.saveSignatureOperation'),
-});
-const signatureSaved = ref(false);
-function detectedSignatureHtml(text: string): string {
-	const escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-	return `<div>${escaped.replace(/\n/g, '<br>')}</div>`;
-}
-async function saveDetectedSignature() {
-	const mailboxId = completedMailboxId.value;
-	const text = suggestedSignature.value;
-	if (!mailboxId || !text) return;
-	const res = await createSignatureOp.run({
-		mailboxId,
-		name: t('dashboard.postbox.migrate.importedSignatureName'),
-		html: detectedSignatureHtml(text),
-		isDefault: true,
-	});
-	if (res.ok) {
-		signatureSaved.value = true;
-		showToast(t('dashboard.postbox.migrate.toastSignatureSaved'), 'success');
-	}
-}
 
 // ── Cancel migration ────────────────────────────────────────────────────────
 const showCancel = ref(false);
@@ -415,273 +362,29 @@ const steps = computed(() =>
 				</UiCard>
 			</section>
 
-			<!-- ───────────────────────── Importing ───────────────────────── -->
-			<section v-else-if="step === 'importing'" class="space-y-5">
-				<UiCard padding="lg">
-					<!-- Paused for the provider's daily download budget (#760): the same
-					     card and bar, but saying when it picks up again — the worker
-					     resumes it unaided, so there is nothing to press. -->
-					<div v-if="isPaused" data-testid="migrate-paused" class="flex items-center gap-3">
-						<UiIconBox icon="lucide:clock" size="md" variant="brand" rounded="xl" />
-						<div>
-							<h2 class="font-semibold">
-								{{ t('dashboard.postbox.migrate.pausedTitle', { when: resumesAtLabel }) }}
-							</h2>
-							<p class="text-sm text-text-secondary">
-								{{ t('dashboard.postbox.migrate.pausedBody') }}
-							</p>
-						</div>
-					</div>
-					<div v-else class="flex items-center gap-3">
-						<UiIconBox icon="lucide:download-cloud" size="md" variant="brand" rounded="xl" />
-						<div>
-							<h2 class="font-semibold">
-								{{
-									isDiscovering
-										? t('dashboard.postbox.migrate.discoveringTitle')
-										: t('dashboard.postbox.migrate.importingTitle')
-								}}
-							</h2>
-							<p class="text-sm text-text-secondary">
-								{{ t('dashboard.postbox.migrate.importingBody') }}
-							</p>
-						</div>
-					</div>
-
-					<div class="mt-5 space-y-2">
-						<UiProgressBar
-							:value="importPercent"
-							:indeterminate="isDiscovering"
-							:aria-label="
-								isDiscovering
-									? t('dashboard.postbox.migrate.discoveringProgressLabel')
-									: t('dashboard.postbox.migrate.importProgressLabel')
-							"
-						/>
-						<div class="flex justify-between text-xs text-text-tertiary">
-							<span v-if="isDiscovering">{{
-								t('dashboard.postbox.migrate.discoveringFolders')
-							}}</span>
-							<span v-else>
-								{{
-									t('dashboard.postbox.migrate.importCount', {
-										imported: formatCount(migration?.messagesImported),
-										total: formatCount(migration?.messagesTotal),
-									})
-								}}
-							</span>
-							<span v-if="!isDiscovering">{{ importPercent }}%</span>
-						</div>
-					</div>
-
-					<div class="mt-5">
-						<UiButton variant="danger-ghost" size="sm" @click="showCancel = true">
-							{{ t('dashboard.postbox.migrate.cancelMigration') }}
-						</UiButton>
-					</div>
-				</UiCard>
-			</section>
-
-			<!-- ───────────────────────── Indexing (Teaching AI) ───────────────────────── -->
-			<section v-else-if="step === 'indexing'" class="space-y-5">
-				<UiCard padding="lg">
-					<div class="flex items-center gap-3">
-						<UiIconBox icon="lucide:sparkles" size="md" variant="success" rounded="xl" />
-						<div>
-							<h2 class="font-semibold">{{ t('dashboard.postbox.migrate.indexingTitle') }}</h2>
-							<p class="text-sm text-text-secondary">
-								{{ t('dashboard.postbox.migrate.indexingBody') }}
-							</p>
-						</div>
-					</div>
-
-					<div class="mt-5 space-y-2">
-						<UiProgressBar
-							:value="indexPercent"
-							variant="success"
-							:aria-label="t('dashboard.postbox.migrate.indexProgressLabel')"
-						/>
-						<div class="flex justify-between text-xs text-text-tertiary">
-							<span>
-								{{
-									t('dashboard.postbox.migrate.indexCount', {
-										indexed: formatCount(migration?.messagesIndexed),
-										imported: formatCount(migration?.messagesImported),
-									})
-								}}
-							</span>
-							<span>{{ indexPercent }}%</span>
-						</div>
-					</div>
-
-					<p class="mt-4 text-xs text-text-tertiary">
-						{{ t('dashboard.postbox.migrate.indexingFootnote') }}
-					</p>
-				</UiCard>
-			</section>
+			<!-- ─────────────── Importing / Indexing (Teaching AI) ─────────────── -->
+			<PostboxMigrateProgressStep
+				v-else-if="step === 'importing' || step === 'indexing'"
+				:step="step"
+				:migration="migration"
+				:import-percent="importPercent"
+				:index-percent="indexPercent"
+				:is-discovering="isDiscovering"
+				:is-paused="isPaused"
+				:resumes-at-label="resumesAtLabel"
+				@cancel="showCancel = true"
+			/>
 
 			<!-- ───────────────────────── Completed ───────────────────────── -->
-			<section v-else-if="step === 'completed'" class="space-y-5">
-				<UiCard padding="lg">
-					<div class="text-center py-2">
-						<UiIconBox
-							:icon="skippedCount > 0 ? 'lucide:package-check' : 'lucide:party-popper'"
-							size="xl"
-							:variant="skippedCount > 0 ? 'warning' : 'success'"
-							rounded="2xl"
-							class="mx-auto"
-						/>
-						<h2 class="text-xl font-semibold mt-4">
-							{{
-								skippedCount > 0
-									? t('dashboard.postbox.migrate.completedPartialTitle')
-									: t('dashboard.postbox.migrate.completedTitle')
-							}}
-						</h2>
-						<p class="text-text-secondary mt-1">
-							{{ completedBodyCopy }}
-						</p>
-
-						<div class="grid grid-cols-2 gap-3 mt-6 text-left">
-							<div class="rounded-xl bg-text-tertiary/5 p-4">
-								<p class="text-2xl font-medium tracking-[-0.02em]">
-									{{ formatCount(migration?.messagesImported) }}
-								</p>
-								<p class="text-xs text-text-tertiary mt-0.5">
-									{{ t('dashboard.postbox.migrate.statMessagesImported') }}
-								</p>
-							</div>
-							<div v-if="isAiIndexing" class="rounded-xl bg-text-tertiary/5 p-4">
-								<p class="text-2xl font-medium tracking-[-0.02em]">
-									{{ formatCount(migration?.messagesIndexed) }}
-								</p>
-								<p class="text-xs text-text-tertiary mt-0.5">
-									{{ t('dashboard.postbox.migrate.statConversationsLearned') }}
-								</p>
-							</div>
-						</div>
-
-						<div
-							v-if="skippedCount > 0"
-							class="mt-6 rounded-xl border border-warning/20 bg-warning/5 p-4 text-left flex items-start gap-3"
-						>
-							<UiIconBox
-								icon="lucide:alert-triangle"
-								size="sm"
-								variant="warning"
-								rounded="lg"
-								class="mt-0.5"
-							/>
-							<div>
-								<p class="text-sm font-medium">
-									{{
-										t('dashboard.postbox.migrate.skippedTitle', skippedCount, {
-											named: { count: formatCount(skippedCount) },
-										})
-									}}
-								</p>
-								<p class="text-xs text-text-secondary mt-0.5">
-									{{ t('dashboard.postbox.migrate.skippedBody') }}
-								</p>
-							</div>
-						</div>
-
-						<div
-							v-if="canLearn"
-							data-testid="migrate-learn"
-							class="mt-6 rounded-xl border border-border-subtle p-4 text-left flex items-start gap-3"
-						>
-							<UiIconBox
-								icon="lucide:brain"
-								size="sm"
-								variant="surface"
-								rounded="lg"
-								class="mt-0.5"
-							/>
-							<div class="flex-1">
-								<p class="text-sm font-medium">{{ t('dashboard.postbox.migrate.learnTitle') }}</p>
-								<p class="text-xs text-text-secondary mt-0.5">
-									{{ t('dashboard.postbox.migrate.learnBody') }}
-								</p>
-								<UiButton
-									class="mt-3"
-									size="sm"
-									variant="secondary"
-									:loading="learnBusy"
-									@click="handleLearn"
-								>
-									{{ t('dashboard.postbox.migrate.learnAction') }}
-								</UiButton>
-							</div>
-						</div>
-
-						<div class="flex flex-col sm:flex-row gap-3 justify-center mt-7">
-							<UiButton variant="primary" @click="navigateTo('/dashboard/postbox/inbox')">
-								{{ t('dashboard.postbox.migrate.openInbox') }}
-							</UiButton>
-							<UiButton
-								v-if="isAiIndexing"
-								variant="secondary"
-								@click="navigateTo('/dashboard/knowledge')"
-							>
-								{{ t('dashboard.postbox.migrate.seeWhatAiLearned') }}
-							</UiButton>
-						</div>
-
-						<!-- Detected signature: offer the block we found in imported sent mail. -->
-						<div
-							v-if="suggestedSignature && !signatureSaved"
-							class="mt-7 text-left rounded-xl border border-border-subtle bg-bg-surface p-4"
-						>
-							<p class="text-sm font-medium">
-								{{ t('dashboard.postbox.migrate.signatureFoundTitle') }}
-							</p>
-							<p class="text-xs text-text-tertiary mt-0.5">
-								{{ t('dashboard.postbox.migrate.signatureFoundBody') }}
-							</p>
-							<pre
-								class="mt-3 text-xs text-text-secondary whitespace-pre-wrap font-sans bg-text-tertiary/5 rounded-lg p-3"
-								>{{ suggestedSignature }}</pre>
-							<div class="mt-3 flex items-center gap-3">
-								<UiButton
-									size="sm"
-									variant="secondary"
-									:loading="createSignatureOp.isLoading.value"
-									@click="saveDetectedSignature"
-								>
-									{{ t('dashboard.postbox.migrate.useThisSignature') }}
-								</UiButton>
-								<NuxtLink
-									to="/dashboard/preferences/signatures"
-									class="text-xs text-text-tertiary hover:text-text-primary"
-								>
-									{{ t('dashboard.postbox.migrate.editSignatureFirst') }}
-								</NuxtLink>
-							</div>
-						</div>
-						<p
-							v-else-if="signatureSaved"
-							class="text-xs text-success mt-6 inline-flex items-center gap-1"
-						>
-							<Icon name="lucide:check" class="w-3.5 h-3.5" />
-							{{ t('dashboard.postbox.migrate.signatureSaved') }}
-						</p>
-						<I18nT
-							v-else
-							keypath="dashboard.postbox.migrate.signatureTip"
-							tag="p"
-							scope="global"
-							class="text-xs text-text-tertiary mt-6"
-						>
-							<template #link>
-								<NuxtLink to="/dashboard/preferences/signatures" class="text-brand hover:underline">
-									{{ t('dashboard.postbox.migrate.signatureTipLink') }}
-								</NuxtLink>
-							</template>
-						</I18nT>
-					</div>
-				</UiCard>
-			</section>
+			<PostboxMigrateCompletedStep
+				v-else-if="step === 'completed'"
+				:migration="migration"
+				:is-ai-indexing="isAiIndexing"
+				:can-learn="canLearn"
+				:learn-busy="learnBusy"
+				:mailbox-id="completedMailboxId"
+				@learn="handleLearn"
+			/>
 
 			<!-- ───────────────────────── Failed ───────────────────────── -->
 			<section v-else-if="step === 'failed'" class="space-y-5">

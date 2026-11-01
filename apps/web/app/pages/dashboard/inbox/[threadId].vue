@@ -1,9 +1,7 @@
 <script setup lang="ts">
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
-import { useOrganization } from '~/composables/useOrganization';
 import { teamThreadPreview } from '~/utils/teamThreadPreviews';
-import { formatRelativeTime } from '~/utils/formatters';
 import {
 	isChannelMessage,
 	otherWaitingDrafts,
@@ -18,19 +16,22 @@ import { useZenMode } from '~/composables/useZenMode';
 import { useAnswerModeNav } from '~/composables/useAnswerMode';
 import { useTeamKeptReply } from '~/composables/useTeamKeptReply';
 import { teamNoteDraftKey } from '~/composables/useComposerDrafts';
-import { inboxRetryToast } from '~/utils/inboxRetry';
 import {
-	TEAM_THREAD_PRIORITY_CHIP_KEYS,
 	TEAM_THREAD_PRIORITY_KEYS,
 	type TeamThreadPriority,
 	teamThreadPriorityOf,
 } from '~/utils/teamThreadPriority';
 import { useTeamThreadCommandSurface } from '~/composables/team/useTeamThreadCommandSurface';
+import { useTeamThreadPeople } from '~/composables/team/useTeamThreadPeople';
+import { useTeamThreadAutoClose } from '~/composables/team/useTeamThreadAutoClose';
+import { useTeamThreadDiscussionChannels } from '~/composables/team/useTeamThreadDiscussionChannels';
+import { useTeamThreadSnooze } from '~/composables/team/useTeamThreadSnooze';
+import { useTeamThreadDraftActions } from '~/composables/team/useTeamThreadDraftActions';
 import { useRecordPaletteObjectOpen } from '~/composables/useCommandPaletteObjectRecents';
-import { isAutoClosed, threadAutoCloseFact, threadAutoCloseSwitch } from '~/utils/inboxAutoClose';
+import { isAutoClosed } from '~/utils/inboxAutoClose';
 import { useConversationLink } from '~/composables/useConversationLink';
 
-const { t, locale } = useI18n();
+const { t } = useI18n();
 // Zen: the conversation and the reply only; the side cards wait outside.
 const { isZen } = useZenMode();
 
@@ -46,6 +47,7 @@ const threadId = useRouteId<'conversationThreads'>('threadId');
 // The Team Inbox row this thread was opened from, if the list loaded it.
 const threadPreview = computed(() => teamThreadPreview(threadId.value));
 
+const detail = useThreadDetail(threadId);
 const {
 	thread,
 	messages,
@@ -54,27 +56,13 @@ const {
 	threadError,
 	refetchThread,
 	handleReject,
-	handleRetry,
 	cancelFollowUp,
 	handleStatusChange,
-	handleSnooze,
-	handleUnsnooze,
 	handleAssign,
 	handleSetPriority,
-	handleSetAutoClose,
-} = useThreadDetail(threadId);
-const { isEnabled: isFeatureEnabled } = useFeatureFlag();
+} = detail;
 const answerNav = useAnswerModeNav();
 const keptReply = useTeamKeptReply();
-
-// Times read relative ("2 hours ago"), with the exact moment in the reader's
-// locale on hover — the same as everywhere else in the app.
-function absoluteTime(timestamp: number): string {
-	return new Date(timestamp).toLocaleString(locale.value, {
-		dateStyle: 'medium',
-		timeStyle: 'short',
-	});
-}
 
 // Breadcrumb: this is a Team inbox thread, not the generic "Inbox" the path
 // fallback derives from the URL segment.
@@ -86,28 +74,17 @@ setDynamicBreadcrumbs([
 onBeforeUnmount(clearDynamicBreadcrumbs);
 
 // Snooze picker — reuses the Postbox snooze presets (PostboxSnoozeDialog).
-const showSnoozeDialog = ref(false);
-const isSnoozed = computed(
-	() => !!thread.value?.snoozedUntil && thread.value.snoozedUntil > Date.now()
-);
+const { showSnoozeDialog, isSnoozed, onSnoozeConfirm, onSnoozeUntilReply, onUnsnooze } =
+	useTeamThreadSnooze({ thread, detail });
 
-// Org members for the assignee picker (shared-inbox team triage).
-const { members, fetchMembers } = useOrganization();
+// The org members the assignee picker offers, the assignee's name, and who
+// else has the thread open.
 const { user } = useAuth();
 const { isAdmin } = usePermissions();
-onMounted(() => {
-	void fetchMembers();
+const { assignMembers, assignedMemberName, presencePeople } = useTeamThreadPeople({
+	threadId,
+	assignedTo: () => thread.value?.assignedTo,
 });
-
-// Members projected for the avatar picker.
-const assignMembers = computed(() =>
-	members.value.map((m) => ({
-		userId: m.userId,
-		name: m.user.name,
-		email: m.user.email,
-		image: m.user.image,
-	}))
-);
 const onAssign = (assignedTo: string | undefined) => {
 	void handleAssign(assignedTo);
 };
@@ -145,71 +122,19 @@ const markSeen = () => {
 };
 onMounted(markSeen);
 watch(threadId, markSeen);
-const assignedMemberName = computed(() => {
-	const id = thread.value?.assignedTo;
-	if (!id) return null;
-	const m = members.value.find((x) => x.userId === id);
-	return m ? m.user.name || m.user.email : id;
-});
-
-// Live thread presence — heartbeat while this thread is open (the reply is
-// written in Answer mode, which reports "replying" itself). `others` excludes
-// the current user; resolve each to a display name/avatar via the
-// already-fetched org members.
-const { others: presenceOthers } = useThreadPresence(threadId, { replying: ref(false) });
-const presencePeople = computed(() =>
-	presenceOthers.value.map((p) => {
-		const m = members.value.find((x) => x.userId === p.userId);
-		return {
-			userId: p.userId,
-			mode: p.mode,
-			name: m ? m.user.name || m.user.email : t('dashboard.inbox.detail.someone'),
-			image: m?.user.image ?? null,
-		};
-	})
-);
-
 // Actions state
-const isRejecting = ref(false);
-const isRetrying = ref(false);
-const rejectReason = ref('');
 const showRejectModal = ref(false);
 const actionMessageId = ref<Id<'inboundMessages'> | null>(null);
-const { run: undoAutoSend, isLoading: isUndoingAutoSend } = useBackendOperation(
-	api.inbox.mutations.undoAutoSend,
-	{ label: () => t('dashboard.inbox.detail.undoAutoSendOperation') }
-);
-
-async function cancelAutoSend(messageId: Id<'inboundMessages'>) {
-	if (!isAdmin.value) return;
-	const result = await undoAutoSend({ inboundMessageId: messageId });
-	if (result.ok && result.result.cancelled)
-		showToast(t('dashboard.inbox.detail.autoSendCancelledToast'));
-}
+const { isRetrying, onRetry, isUndoingAutoSend, cancelAutoSend } = useTeamThreadDraftActions({
+	isAdmin,
+	detail,
+});
 
 // Use the shared global toast. The underlying actions go through
 // useBackendOperation, which already toasts any categorized failure — so we
 // only emit the success toast here, and only when the operation truly
 // succeeded (run resolves to `ok: false` on failure, never throws).
 const { showToast } = useToast();
-
-const onSnoozeConfirm = async (timestamp: number) => {
-	showSnoozeDialog.value = false;
-	const result = await handleSnooze(timestamp);
-	if (result.ok) showToast(t('dashboard.inbox.detail.snoozedToast'));
-};
-// "Until they reply" maps to a capped snooze: an inbound reply already
-// resurfaces a snoozed thread (the thread module's inbound_activity reducer
-// clears the snooze), so the cap is just the no-reply fallback.
-const onSnoozeUntilReply = async (capTimestamp: number) => {
-	showSnoozeDialog.value = false;
-	const result = await handleSnooze(capTimestamp);
-	if (result.ok) showToast(t('dashboard.inbox.detail.snoozedUntilReplyToast'));
-};
-const onUnsnooze = async () => {
-	const result = await handleUnsnooze();
-	if (result.ok) showToast(t('dashboard.inbox.detail.unsnoozedToast'));
-};
 
 // ── Reply ──
 // Every reply is written in Answer mode (`/dashboard/answer/t/<threadId>`); this
@@ -344,34 +269,10 @@ async function undoFollowUp(entry: ReplyEntry) {
 	}
 }
 
+// The reject confirm (InboxRejectDraftModal) owns the reason and the busy state.
 const openRejectModal = (messageId: Id<'inboundMessages'>) => {
 	actionMessageId.value = messageId;
-	rejectReason.value = '';
 	showRejectModal.value = true;
-};
-
-const onReject = async () => {
-	if (!actionMessageId.value) return;
-	isRejecting.value = true;
-	try {
-		const result = await handleReject(actionMessageId.value, rejectReason.value || undefined);
-		if (result.ok) {
-			showRejectModal.value = false;
-			showToast(t('dashboard.inbox.detail.draftRejectedToast'));
-		}
-	} finally {
-		isRejecting.value = false;
-	}
-};
-
-const onRetry = async (messageId: Id<'inboundMessages'>) => {
-	isRetrying.value = true;
-	try {
-		const result = await handleRetry(messageId);
-		if (result.ok) showToast(t(inboxRetryToast(result.result.retried)));
-	} finally {
-		isRetrying.value = false;
-	}
 };
 
 // The diff's "before" side is the AGENT's original draft (revision 0), not the
@@ -392,63 +293,13 @@ const currentStatus = computed<(typeof statusOptions)[number]>(() => {
 	return status === 'open' || status === 'waiting' ? status : 'resolved';
 });
 
-// Auto-close: the rule's state for this thread (when it will close, whether
-// it opted out), the switch in the header's ⋯ menu, and the notice with Reopen
-// over a thread the sweep resolved.
-const { data: autoClose } = useConvexQuery(api.inbox.autoClose.getThreadAutoClose, () =>
-	isAdmin.value ? { threadId: threadId.value } : 'skip'
-);
-const autoCloseSwitch = computed(() => threadAutoCloseSwitch(autoClose.value ?? null));
-const autoCloseFact = computed(() => threadAutoCloseFact(autoClose.value ?? null));
-const isReopening = ref(false);
-async function onReopen() {
-	isReopening.value = true;
-	try {
-		const result = await handleStatusChange('open');
-		if (result.ok) showToast(t('dashboard.inbox.detail.autoClose.reopenedToast'));
-	} finally {
-		isReopening.value = false;
-	}
-}
-async function onAutoClose(isDisabled: boolean) {
-	const result = await handleSetAutoClose(isDisabled);
-	if (result.ok && result.result.changed) {
-		showToast(
-			t(
-				isDisabled
-					? 'dashboard.inbox.detail.autoClose.turnedOffToast'
-					: 'dashboard.inbox.detail.autoClose.turnedOnToast'
-			)
-		);
-	}
-}
+// Auto-close: the rule's state for this thread, the header's switch and Reopen.
+const { autoClose, autoCloseSwitch, autoCloseFact, isReopening, onReopen, onAutoClose } =
+	useTeamThreadAutoClose({ threadId, isAdmin, detail });
 
-// Chat integration: surface existing chat channels that already discuss this
-// thread, and offer to spin up a new one. Only active when the chat flag is
-// enabled — the query throws FEATURE_DISABLED otherwise.
-const chatEnabled = computed(() => isFeatureEnabled('chat'));
-
-const { data: discussionChannelsData } = useConvexQuery(
-	api.chat.emailLink.findChannelsForInboxThread,
-	() => (chatEnabled.value ? { inboxThreadId: threadId.value } : 'skip')
-);
-const discussionChannels = computed(() => discussionChannelsData.value ?? []);
-
-const showNewChannel = ref(false);
-const router = useRouter();
-const { linkChannelToInboxThread } = useChatActions();
-const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
-	// Channel was just created — link it to this inbox thread, then jump.
-	// run() toasts its own failure and resolves `ok: false`; only navigate into
-	// the channel when the link actually persisted.
-	const result = await linkChannelToInboxThread(roomId, threadId.value);
-	showNewChannel.value = false;
-	if (!result.ok) {
-		showToast(t('dashboard.inbox.detail.channelLinkFailedToast'), 'error');
-		return;
-	}
-	router.push(`/dashboard/chat/${roomId}`);
-};
+// Chat channels that discuss this thread, and a new one linked to it.
+const { chatEnabled, discussionChannels, showNewChannel, onChannelCreated } =
+	useTeamThreadDiscussionChannels(threadId);
 </script>
 
 <template>
@@ -493,61 +344,14 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 			     the subject keeps at least 24rem and the actions drop below it. -->
 			<div class="mb-6 flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
 				<!-- The subject, once. Messages below don't repeat it. -->
-				<UiPageHeader class="min-w-0 flex-[1_1_24rem]">
-					<!-- A subject can be one unbroken token (a URL, an order number). -->
-					<template #title>
-						<span class="break-words">{{
-							thread.subject || t('dashboard.inbox.detail.noSubject')
-						}}</span>
-					</template>
-					<template #meta>
-						<p
-							class="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-text-tertiary"
-							data-testid="thread-meta"
-						>
-							<span v-if="contact" class="text-text-secondary">{{ contact.email }}</span>
-							<span v-if="contact" aria-hidden="true">·</span>
-							<span>
-								{{
-									t(
-										'dashboard.inbox.detail.messageCount',
-										{ count: thread.messageCount ?? 0 },
-										thread.messageCount ?? 0
-									)
-								}}
-							</span>
-							<template v-if="priority !== 'normal'">
-								<span aria-hidden="true">·</span>
-								<span
-									class="inline-flex items-center gap-1"
-									:class="priority === 'urgent' ? 'font-medium text-error' : ''"
-									data-testid="thread-priority"
-								>
-									<Icon name="lucide:flag" class="w-3.5 h-3.5" aria-hidden="true" />
-									{{ t(TEAM_THREAD_PRIORITY_CHIP_KEYS[priority]) }}
-								</span>
-							</template>
-							<template v-if="isSnoozed && thread.snoozedUntil">
-								<span aria-hidden="true">·</span>
-								<span class="inline-flex items-center gap-1">
-									<Icon name="lucide:alarm-clock" class="w-3.5 h-3.5" aria-hidden="true" />
-									<time
-										:datetime="new Date(thread.snoozedUntil).toISOString()"
-										:title="absoluteTime(thread.snoozedUntil)"
-									>
-										{{
-											t('dashboard.inbox.detail.snoozedUntil', {
-												time: formatRelativeTime(thread.snoozedUntil),
-											})
-										}}
-									</time>
-								</span>
-							</template>
-						</p>
-						<!-- Who else is here — pulsing viewer ring + "is replying" banner -->
-						<InboxThreadPresence :people="presencePeople" class="mt-3" />
-					</template>
-				</UiPageHeader>
+				<InboxThreadPageHeader
+					:subject="thread.subject"
+					:contact="contact"
+					:message-count="thread.messageCount"
+					:priority="priority"
+					:snoozed-until="isSnoozed ? thread.snoozedUntil : null"
+					:presence-people="presencePeople"
+				/>
 
 				<InboxThreadHeaderActions
 					:is-admin="isAdmin"
@@ -671,138 +475,24 @@ const onChannelCreated = async (roomId: Id<'chatRooms'>) => {
 					</AppErrorBoundary>
 				</div>
 
-				<div v-if="!isZen" class="space-y-6">
-					<BriefElsewhere :thread-ref="{ kind: 'team', id: threadId }" class="card" />
-					<!-- Contact Card -->
-					<div v-if="contact" class="card">
-						<h2 class="text-lg font-medium text-text-primary mb-4">
-							{{ t('dashboard.inbox.detail.contact') }}
-						</h2>
-						<div class="space-y-3">
-							<div class="flex items-center gap-3">
-								<UiIconBox icon="lucide:user" size="sm" variant="surface" rounded="full" />
-								<div>
-									<p class="text-text-primary text-sm font-medium">
-										{{
-											contact.firstName || contact.lastName
-												? `${contact.firstName ?? ''} ${contact.lastName ?? ''}`.trim()
-												: contact.email
-										}}
-									</p>
-									<p class="text-xs text-text-tertiary">{{ contact.email }}</p>
-								</div>
-							</div>
-							<NuxtLink
-								:to="`/dashboard/audience/contacts/${contact._id}`"
-								class="text-sm text-brand hover:underline"
-							>
-								{{ t('dashboard.inbox.detail.viewContactProfile') }}
-							</NuxtLink>
-						</div>
-					</div>
-
-					<!-- Thread Details. Status is changed in the header (its one
-					     control) and not repeated here. -->
-					<div class="card">
-						<h2 class="text-lg font-medium text-text-primary mb-4">
-							{{ t('dashboard.inbox.detail.details') }}
-						</h2>
-						<div class="space-y-3">
-							<div>
-								<p class="text-xs text-text-tertiary">{{ t('dashboard.inbox.detail.messages') }}</p>
-								<p class="text-text-primary">{{ thread.messageCount ?? 0 }}</p>
-							</div>
-							<!-- Assignment READS here and is CHANGED in the header (and on row
-							     hover in the list). A second assign popover here would render
-							     the same verb twice on one screen; the details card is a list
-							     of facts about the thread, and this is one of them. -->
-							<div>
-								<p class="text-xs text-text-tertiary mb-1">
-									{{ t('dashboard.inbox.detail.assignedTo') }}
-								</p>
-								<div class="flex items-center gap-2 text-sm text-text-primary">
-									<UiAvatar
-										v-if="thread.assignedTo"
-										:name="assignedMemberName ?? undefined"
-										deterministic-color
-										size="sm"
-									/>
-									<Icon v-else name="lucide:user-round" class="w-4 h-4 text-text-tertiary" />
-									<span class="truncate">
-										{{ assignedMemberName ?? t('dashboard.inbox.detail.unassigned') }}
-									</span>
-								</div>
-							</div>
-							<div v-if="thread.lastMessageAt">
-								<p class="text-xs text-text-tertiary">
-									{{ t('dashboard.inbox.detail.lastMessage') }}
-								</p>
-								<time
-									class="text-text-primary text-sm"
-									:datetime="new Date(thread.lastMessageAt).toISOString()"
-									:title="absoluteTime(thread.lastMessageAt)"
-								>
-									{{ formatRelativeTime(thread.lastMessageAt) }}
-								</time>
-							</div>
-							<!-- Auto-close READS here and is switched in the header's ⋯ menu. -->
-							<div v-if="autoCloseFact" data-testid="thread-auto-close-fact">
-								<p class="text-xs text-text-tertiary">
-									{{ t('dashboard.inbox.detail.autoClose.label') }}
-								</p>
-								<p v-if="'dueAt' in autoCloseFact" class="text-sm text-text-primary">
-									<time
-										:datetime="new Date(autoCloseFact.dueAt).toISOString()"
-										:title="absoluteTime(autoCloseFact.dueAt)"
-									>
-										{{ t(autoCloseFact.key, { time: formatRelativeTime(autoCloseFact.dueAt) }) }}
-									</time>
-								</p>
-								<p v-else-if="'days' in autoCloseFact" class="text-sm text-text-primary">
-									{{ t(autoCloseFact.key, { days: autoCloseFact.days }, autoCloseFact.days) }}
-								</p>
-								<p v-else class="text-sm text-text-primary">{{ t(autoCloseFact.key) }}</p>
-							</div>
-						</div>
-					</div>
-
-					<!-- SMS / WhatsApp on this thread, answerable here; nothing for email-only threads. -->
-					<InboxThreadChannelTimeline :thread-id="threadId" />
-				</div>
+				<InboxThreadSidebar
+					v-if="!isZen"
+					:thread-id="threadId"
+					:contact="contact"
+					:message-count="thread.messageCount"
+					:assigned-to="thread.assignedTo"
+					:assigned-member-name="assignedMemberName"
+					:last-message-at="thread.lastMessageAt"
+					:auto-close-fact="autoCloseFact"
+				/>
 			</div>
 		</template>
 
 		<!-- Reject Modal -->
-		<UiModal
-			:open="showRejectModal"
-			:title="t('dashboard.inbox.detail.rejectDraft')"
-			:closable="!isRejecting"
-			:persistent="isRejecting"
-			@update:open="(v: boolean) => !v && (showRejectModal = false)"
-		>
-			<p class="text-sm text-text-secondary mb-4">
-				{{ t('dashboard.inbox.detail.rejectModalBody') }}
-			</p>
-			<textarea
-				v-model="rejectReason"
-				rows="3"
-				class="input w-full resize-y"
-				:placeholder="t('dashboard.inbox.detail.rejectReasonPlaceholder')"
-				:disabled="isRejecting"
-			/>
-
-			<template #footer>
-				<UiButton variant="secondary" :disabled="isRejecting" @click="showRejectModal = false">
-					{{ t('common.cancel') }}
-				</UiButton>
-				<UiButton variant="danger" :loading="isRejecting" @click="onReject">
-					{{
-						isRejecting
-							? t('dashboard.inbox.detail.rejecting')
-							: t('dashboard.inbox.detail.rejectDraft')
-					}}
-				</UiButton>
-			</template>
-		</UiModal>
+		<InboxRejectDraftModal
+			v-model:open="showRejectModal"
+			:message-id="actionMessageId"
+			:reject="handleReject"
+		/>
 	</div>
 </template>
