@@ -156,10 +156,9 @@ of `bun run lint` and will fail CI, including:
   fixture goes only with its `contentBlockVersion` retired in `retired.json`,
   and a snapshot of the current renderer version goes only with its fixture or
   an `EMAIL_RENDERER_VERSION` bump (`scripts/check-stored-block-corpus.ts`).
-- `lint:comment-policy` (root, in `ci:lint`) — on the lines a change adds
-  against its merge base, comments carry no issue numbers, no narration of
-  earlier code and no tags into specs, plans or decision records the
-  repository does not hold. Test titles are checked for those document and
+- `lint:comment-policy` (root, in `ci:lint`) — across the whole working tree,
+  comments carry no issue numbers, no narration of earlier code and no tags
+  into specs, plans or decision records the repository does not hold. Test titles are checked for those document and
   decision tags only; an issue number or "previously" in a title passes
   (CLAUDE.md, "Comments"; `scripts/check-comment-policy.ts`).
 

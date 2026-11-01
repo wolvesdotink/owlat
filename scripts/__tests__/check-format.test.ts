@@ -3,7 +3,6 @@ import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { checkCommentPolicy } from '../check-comment-policy';
 import { NO_AUTO_MAINTENANCE } from './gitRepository.testlib';
 
 const SCRIPT = resolve(import.meta.dirname, '../check-format.sh');
@@ -277,10 +276,6 @@ describe('a pull request whose target branch moves during the job', () => {
 			expect(format.stdout.trim().split('\n').at(-1)).toBe('feature.ts');
 			expect(git(root, ['rev-parse', '--is-shallow-repository'])).toBe('false');
 			expect(git(root, ['rev-parse', 'origin/main'])).toBe(before);
-
-			const policy = checkCommentPolicy(root, { CI: 'true', GITHUB_BASE_REF: 'main', ...env });
-			expect(policy.status, policy.messages.join('\n')).toBe(0);
-			expect(policy.messages.at(-1)).toContain('1 changed file(s) against origin/main');
 		} finally {
 			rmSync(sandbox, { recursive: true, force: true });
 		}
