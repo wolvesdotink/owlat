@@ -23,7 +23,7 @@ export function useMediaLibrary() {
 		error,
 		refetch,
 	} = usePaginatedQuery(
-		api.mediaAssets.list,
+		api.workspaces.mediaAssets.list,
 		() => ({
 			search: debouncedSearch.value || undefined,
 			tag: selectedTag.value || undefined,
@@ -58,10 +58,10 @@ export function useMediaLibrary() {
 	});
 
 	// Stats
-	const { data: stats } = useConvexQuery(api.mediaAssets.getStats, () => ({}));
+	const { data: stats } = useConvexQuery(api.workspaces.mediaAssets.getStats, () => ({}));
 
 	// Tags
-	const { data: tags } = useConvexQuery(api.mediaAssets.listTags, () => ({}));
+	const { data: tags } = useConvexQuery(api.workspaces.mediaAssets.listTags, () => ({}));
 
 	// Multi-select
 	const selectedAssets = ref<Set<string>>(new Set());
@@ -84,13 +84,13 @@ export function useMediaLibrary() {
 	const { run: generateUploadUrl } = useBackendOperation(api.storage.files.generateUploadUrl, {
 		label: () => t('shared.useMediaLibrary.operations.getUploadUrl'),
 	});
-	const { run: createMediaAsset } = useBackendOperation(api.mediaAssets.create, {
+	const { run: createMediaAsset } = useBackendOperation(api.workspaces.mediaAssets.create, {
 		label: () => t('shared.useMediaLibrary.operations.saveAsset'),
 	});
-	const { run: updateMediaAsset } = useBackendOperation(api.mediaAssets.update, {
+	const { run: updateMediaAsset } = useBackendOperation(api.workspaces.mediaAssets.update, {
 		label: () => t('shared.useMediaLibrary.operations.updateAsset'),
 	});
-	const { run: bulkDeleteAssets } = useBackendOperation(api.mediaAssets.bulkDelete, {
+	const { run: bulkDeleteAssets } = useBackendOperation(api.workspaces.mediaAssets.bulkDelete, {
 		label: () => t('shared.useMediaLibrary.operations.deleteAssets'),
 	});
 

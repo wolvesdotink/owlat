@@ -38,7 +38,7 @@ const { t } = useI18n();
 const { run: generateUploadUrl } = useBackendOperation(api.storage.files.generateUploadUrl, {
 	label: () => t('components.attachmentPanel.getUploadUrlOperation'),
 });
-const { run: createMediaAsset } = useBackendOperation(api.mediaAssets.create, {
+const { run: createMediaAsset } = useBackendOperation(api.workspaces.mediaAssets.create, {
 	label: () => t('components.attachmentPanel.saveAttachmentOperation'),
 });
 const { showToast } = useToast();

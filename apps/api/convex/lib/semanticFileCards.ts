@@ -116,7 +116,7 @@ export function searchFilesBySourcePage(
 /**
  * Apply the `sourceType` provenance filter and the caller's read check to a
  * page of files. On the unfiltered readers both run after pagination
- * (mirroring `mediaAssets.list`), so a page can come back sparse while
+ * (mirroring `workspaces/mediaAssets.list`), so a page can come back sparse while
  * matching files sit on later pages. On the by-source readers the index has
  * already narrowed to the source and the check here is only a backstop. The
  * read gate can still leave a page short, or empty with more to load: a

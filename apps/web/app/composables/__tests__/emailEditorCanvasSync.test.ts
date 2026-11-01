@@ -19,7 +19,7 @@ import { fileURLToPath } from 'node:url';
 vi.mock('@owlat/api', () => ({
 	api: {
 		storage: { files: { generateUploadUrl: 'storage.files.generateUploadUrl' } },
-		mediaAssets: { create: 'mediaAssets.create' },
+		workspaces: { mediaAssets: { create: 'workspaces.mediaAssets.create' } },
 		emailBlocks: { blocks: { create: 'emailBlocks.blocks.create' } },
 	},
 }));

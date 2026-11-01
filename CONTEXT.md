@@ -290,7 +290,7 @@ illegal / kind-mismatched attempts. Two entry points:
 Effects:
 
 - `send_confirmation_email` — fires on `to: 'pending'` from
-  `not_required`, schedules `internal.confirmationEmail.send` with
+  `not_required`, schedules `internal.contacts.confirmationEmail.sendConfirmationEmail` with
   the freshly generated token. Skipped (no effect emitted) when
   `siteUrl` is absent — preserves today's admin-import behaviour.
 - `fire_topic_subscribed_triggers` — fires on `to: 'confirmed'`,
@@ -2431,7 +2431,7 @@ The app-side owner (an `apps/web` composable) that backs the `EmailBuilder`
 component against Convex and runs its edit loop. It produces the
 `EmailBuilderHandlers` the builder injects — the `uploadImage` pipeline
 (`generateUploadUrl` → upload → `storage/files.getUrl` → measure dimensions →
-`mediaAssets.create`, including its always-register-to-the-media-library
+`workspaces/mediaAssets.create`, including its always-register-to-the-media-library
 side effect), the `savedBlocks` fetch/save bridge, and the media-picker
 plumbing — and owns the generic load→dirty→unsaved-changes loop
 (`blocks`/`subject`/`name`, `isInitialized`, change-tracking, `isSaving`,

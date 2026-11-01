@@ -875,27 +875,31 @@ describe('chat attachment privacy across the media library', () => {
 			t.query(api.chat.attachments.getAttachmentDetails, { messageId })
 		).rejects.toThrow();
 		for (const search of [undefined, 'confidential']) {
-			const page = await t.query(api.mediaAssets.list, {
+			const page = await t.query(api.workspaces.mediaAssets.list, {
 				paginationOpts: { numItems: 20, cursor: null },
 				...(search ? { search } : {}),
 			});
 			expect(page.page).toEqual([]);
 		}
-		expect(await t.query(api.mediaAssets.getStats, {})).toMatchObject({
+		expect(await t.query(api.workspaces.mediaAssets.getStats, {})).toMatchObject({
 			totalCount: 0,
 			totalBytes: 0,
 		});
-		expect(await t.query(api.mediaAssets.listTags, {})).toEqual([]);
+		expect(await t.query(api.workspaces.mediaAssets.listTags, {})).toEqual([]);
 		await expect(t.query(api.storage.files.getUrl, { storageId })).rejects.toThrow();
 	});
 
 	it('rejects relabeling, deleting, and re-registering private attachments even by an admin', async () => {
 		const { t, storageId, assetId } = await privateAttachment();
 		setUser('user-bob', 'owner');
-		await expect(t.mutation(api.mediaAssets.update, { assetId, tags: [] })).rejects.toThrow();
-		await expect(t.mutation(api.mediaAssets.bulkDelete, { assetIds: [assetId] })).rejects.toThrow();
 		await expect(
-			t.mutation(api.mediaAssets.create, {
+			t.mutation(api.workspaces.mediaAssets.update, { assetId, tags: [] })
+		).rejects.toThrow();
+		await expect(
+			t.mutation(api.workspaces.mediaAssets.bulkDelete, { assetIds: [assetId] })
+		).rejects.toThrow();
+		await expect(
+			t.mutation(api.workspaces.mediaAssets.create, {
 				storageId,
 				filename: 'stolen.txt',
 				mimeType: 'text/plain',
@@ -951,12 +955,12 @@ describe('chat attachment privacy across the media library', () => {
 			return { storageId, assetId };
 		});
 		setUser('user-bob', 'owner');
-		const page = await t.query(api.mediaAssets.list, {
+		const page = await t.query(api.workspaces.mediaAssets.list, {
 			paginationOpts: { numItems: 20, cursor: null },
 		});
 		expect(page.page.map((asset) => asset._id)).toEqual([shared.assetId]);
 		expect(await t.query(api.storage.files.getUrl, { storageId: shared.storageId })).toBeTruthy();
-		expect(await t.query(api.mediaAssets.listTags, {})).toEqual(['branding']);
+		expect(await t.query(api.workspaces.mediaAssets.listTags, {})).toEqual(['branding']);
 		const roomId = await t.mutation(api.chat.rooms.createChannel, {
 			name: 'marketing',
 			visibility: 'public',

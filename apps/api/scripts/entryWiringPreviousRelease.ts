@@ -319,4 +319,27 @@ export const PREVIOUS_RELEASE_ENTRIES: Readonly<Record<string, string>> = {
 		'the previous Suppressions page and delivery overview, in tabs opened before the deploy',
 	'blockedEmails.ts#addFromEvent':
 		'old complaint and provider suppression webhook runs and suppression imports mid-run',
+	// The media library and the account and DOI confirmation mails moved to
+	// workspaces/mediaAssets.ts, workspaces/mediaAssetScan.ts,
+	// auth/accountDeletionEmail.ts and contacts/confirmationEmail{,Queries}.ts;
+	// remove after release 0.6.17. The old accountDeletionEmail.ts path has no
+	// line: the workspace deletion's survivor list names it by string path
+	// (workspaces/deletion/quiesce.ts), which this walk counts as its caller.
+	'mediaAssets.ts#list':
+		'the previous media library and media picker, in tabs opened before the deploy',
+	'mediaAssets.ts#getStats': 'the previous media library, in tabs opened before the deploy',
+	'mediaAssets.ts#countUsage': 'the previous media library, in tabs opened before the deploy',
+	'mediaAssets.ts#listTags': 'the previous media library, in tabs opened before the deploy',
+	'mediaAssets.ts#create':
+		'the previous media library, media picker, attachment panel and editor image upload, in tabs opened before the deploy',
+	'mediaAssets.ts#update': 'the previous media library, in tabs opened before the deploy',
+	'mediaAssets.ts#bulkDelete': 'the previous media library, in tabs opened before the deploy',
+	'mediaAssets.ts#scanAssetBytes':
+		'byte scans the previous release queued for library uploads and brand kit logo imports',
+	'mediaAssets.ts#reconcileAssetSize': 'old upload byte scans mid-run',
+	'mediaAssets.ts#quarantineAsset': 'old upload byte scans mid-run',
+	'confirmationEmail.ts#sendConfirmationEmail':
+		'DOI confirmation mails the previous release queued',
+	'confirmationEmailQueries.ts#getTeamInfo':
+		'old DOI confirmation mails and delivery tests mid-run',
 };

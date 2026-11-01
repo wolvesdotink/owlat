@@ -7,12 +7,12 @@ import type { Id } from '../_generated/dataModel';
 const modules = import.meta.glob('../**/*.*s');
 
 /**
- * Guards the storage-quota integrity fix in mediaAssets.ts: the persisted
+ * Guards the storage-quota integrity fix in workspaces/mediaAssetScan.ts: the persisted
  * `fileSize` (which the quota in getStats sums) is reconciled against the real
  * blob size by `reconcileAssetSize`, so a client can't under-report its upload
  * to evade the quota.
  */
-describe('mediaAssets.reconcileAssetSize', () => {
+describe('workspaces.mediaAssetScan.reconcileAssetSize', () => {
 	async function seedAsset(
 		t: ReturnType<typeof convexTest>,
 		claimedFileSize: number,
@@ -50,7 +50,7 @@ describe('mediaAssets.reconcileAssetSize', () => {
 		const { assetId, storageId, actualSize } = await seedAsset(t, 980, bytes);
 
 		await t.run(async (ctx) => {
-			await ctx.runMutation(internal.mediaAssets.reconcileAssetSize, {
+			await ctx.runMutation(internal.workspaces.mediaAssetScan.reconcileAssetSize, {
 				assetId,
 				storageId,
 				actualSize,
@@ -71,7 +71,7 @@ describe('mediaAssets.reconcileAssetSize', () => {
 		const { assetId, storageId, actualSize } = await seedAsset(t, 1000, bytes);
 
 		await t.run(async (ctx) => {
-			await ctx.runMutation(internal.mediaAssets.reconcileAssetSize, {
+			await ctx.runMutation(internal.workspaces.mediaAssetScan.reconcileAssetSize, {
 				assetId,
 				storageId,
 				actualSize,
@@ -92,7 +92,7 @@ describe('mediaAssets.reconcileAssetSize', () => {
 		const { assetId, storageId, actualSize } = await seedAsset(t, 1000, bytes);
 
 		await t.run(async (ctx) => {
-			await ctx.runMutation(internal.mediaAssets.reconcileAssetSize, {
+			await ctx.runMutation(internal.workspaces.mediaAssetScan.reconcileAssetSize, {
 				assetId,
 				storageId,
 				actualSize,
@@ -112,7 +112,7 @@ describe('mediaAssets.reconcileAssetSize', () => {
 		const before = await t.run(async (ctx) => (await ctx.db.get(assetId))?.updatedAt);
 
 		await t.run(async (ctx) => {
-			await ctx.runMutation(internal.mediaAssets.reconcileAssetSize, {
+			await ctx.runMutation(internal.workspaces.mediaAssetScan.reconcileAssetSize, {
 				assetId,
 				storageId,
 				actualSize,

@@ -14,7 +14,7 @@
  * a new one (`reopen`) instead of reusing the old confirmation.
  *
  * Effects:
- *   send_confirmation_email          — schedules confirmationEmail.send
+ *   send_confirmation_email          — schedules contacts/confirmationEmail:sendConfirmationEmail
  *   fire_topic_subscribed_triggers   — fans out to DOI-required memberships
  *   contact_activity                 — one `topic_confirmed` row per
  *                                      DOI-required membership; routed
@@ -444,7 +444,7 @@ async function applyEffects(ctx: MutationCtx, effects: ReadonlyArray<Effect>): P
 	for (const effect of effects) {
 		switch (effect.kind) {
 			case 'send_confirmation_email': {
-				await ctx.scheduler.runAfter(0, internal.confirmationEmail.sendConfirmationEmail, {
+				await ctx.scheduler.runAfter(0, internal.contacts.confirmationEmail.sendConfirmationEmail, {
 					email: effect.email,
 					firstName: effect.firstName,
 					confirmationToken: effect.token,
@@ -735,7 +735,7 @@ export const refreshPendingToken = internalMutation({
 			});
 		}
 		if (contact.email) {
-			await ctx.scheduler.runAfter(0, internal.confirmationEmail.sendConfirmationEmail, {
+			await ctx.scheduler.runAfter(0, internal.contacts.confirmationEmail.sendConfirmationEmail, {
 				email: contact.email,
 				firstName: contact.firstName,
 				confirmationToken: args.token,

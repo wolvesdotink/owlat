@@ -1,6 +1,6 @@
 /**
  * What the media library admits and how its search text is built: shared by
- * the library's own upload (`mediaAssets.ts`) and the brand kit's website
+ * the library's own upload (`workspaces/mediaAssets.ts`) and the brand kit's website
  * import (`workspaces/brandKit.ts`), which adds a fetched logo to the library.
  */
 import { DEFAULT_FILE_POLICY, mergePolicy } from '@owlat/email-scanner';

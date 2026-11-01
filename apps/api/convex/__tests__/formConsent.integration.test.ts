@@ -24,7 +24,7 @@ import { createTestAutomation, createTestAutomationStep } from './factories';
 // No MTA runs under test, so the confirmation email's send fails when its job
 // fires. These tests check that it was scheduled, not that it was delivered.
 beforeEach(() => {
-	expectScheduledFailure('confirmationEmail:sendConfirmationEmail');
+	expectScheduledFailure('contacts/confirmationEmail:sendConfirmationEmail');
 	vi.stubEnv('SITE_URL', 'https://app.example.com');
 });
 

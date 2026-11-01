@@ -192,41 +192,41 @@ const cases: Case<unknown>[] = [
 		call: (t, taskId: Id<'codeWorkTasks'>) => t.mutation(api.codeWorkTasks.cancel, { taskId }),
 	}),
 	defineCase({
-		name: 'mediaAssets.create',
+		name: 'workspaces.mediaAssets.create',
 		floor: 'getMutationContext',
 		denied: 'Only owners and admins can create media assets',
 		seed: storedBlob,
 		call: (t, storageId: Id<'_storage'>) =>
-			t.mutation(api.mediaAssets.create, { storageId, ...blob }),
+			t.mutation(api.workspaces.mediaAssets.create, { storageId, ...blob }),
 		check: async (t, _seeded, assetId) => {
 			const asset = await t.run((ctx) => ctx.db.get(assetId as Id<'mediaAssets'>));
 			expect(asset?.uploadedBy).toBe('admin-user');
 		},
 	}),
 	defineCase({
-		name: 'mediaAssets.update',
+		name: 'workspaces.mediaAssets.update',
 		floor: 'getMutationContext',
 		denied: 'Only owners and admins can update media assets',
 		seed: async (t) =>
-			t.mutation(api.mediaAssets.create, { storageId: await storedBlob(t), ...blob }),
+			t.mutation(api.workspaces.mediaAssets.create, { storageId: await storedBlob(t), ...blob }),
 		call: (t, assetId: Id<'mediaAssets'>) =>
-			t.mutation(api.mediaAssets.update, { assetId, alt: 'A note' }),
+			t.mutation(api.workspaces.mediaAssets.update, { assetId, alt: 'A note' }),
 	}),
 	defineCase({
-		name: 'mediaAssets.bulkDelete',
+		name: 'workspaces.mediaAssets.bulkDelete',
 		floor: 'getMutationContext',
 		denied: 'Only owners and admins can bulk-delete media assets',
 		seed: async (t) =>
-			t.mutation(api.mediaAssets.create, { storageId: await storedBlob(t), ...blob }),
+			t.mutation(api.workspaces.mediaAssets.create, { storageId: await storedBlob(t), ...blob }),
 		call: (t, assetId: Id<'mediaAssets'>) =>
-			t.mutation(api.mediaAssets.bulkDelete, { assetIds: [assetId] }),
+			t.mutation(api.workspaces.mediaAssets.bulkDelete, { assetIds: [assetId] }),
 	}),
 	defineCase({
 		name: 'storage.files.getUrl',
 		floor: 'requireOrgMember',
 		seed: async (t) => {
 			const storageId = await storedBlob(t);
-			await t.mutation(api.mediaAssets.create, { storageId, ...blob });
+			await t.mutation(api.workspaces.mediaAssets.create, { storageId, ...blob });
 			return storageId;
 		},
 		call: (t, storageId: Id<'_storage'>) => t.query(api.storage.files.getUrl, { storageId }),

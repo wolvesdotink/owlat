@@ -56,7 +56,7 @@ const {
 	loadMore,
 	isLoading,
 } = usePaginatedQuery(
-	api.mediaAssets.list,
+	api.workspaces.mediaAssets.list,
 	() => ({
 		search: debouncedSearch.value || undefined,
 		mimeTypePrefixes: props.allowAllFiles ? undefined : ['image/'],
@@ -89,7 +89,7 @@ watch(debouncedSearch, () => {
 const { run: generateUploadUrl } = useBackendOperation(api.storage.files.generateUploadUrl, {
 	label: () => t('components.mediaPickerModal.getUploadUrlOperation'),
 });
-const { run: createMediaAsset } = useBackendOperation(api.mediaAssets.create, {
+const { run: createMediaAsset } = useBackendOperation(api.workspaces.mediaAssets.create, {
 	label: () => t('components.mediaPickerModal.uploadMediaOperation'),
 });
 const isUploading = ref(false);

@@ -27,7 +27,7 @@ import { expectScheduledFailure } from '../../__tests__/helpers/scheduledFailure
 // job fires, often after the test that scheduled it. These tests are not about
 // the email itself.
 beforeEach(() => {
-	expectScheduledFailure('confirmationEmail:sendConfirmationEmail');
+	expectScheduledFailure('contacts/confirmationEmail:sendConfirmationEmail');
 });
 
 vi.mock('../../lib/sessionOrganization', async () => {

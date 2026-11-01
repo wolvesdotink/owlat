@@ -336,7 +336,7 @@ export function buildEnvPatchFromConfig(config: SetupConfig): EnvMap {
 		// Wire the system/auth From-identity off the configured sending/EHLO
 		// domain. Without these the Convex runtime never receives DEFAULT_FROM_*,
 		// so system mail falls back to placeholders (noreply@mail.owlat.app /
-		// noreply@example.com — auth/auth.ts, confirmationEmail.ts,
+		// noreply@example.com — auth/auth.ts, contacts/confirmationEmail.ts,
 		// transactional/dispatch.ts). The EHLO hostname is the DKIM-signed sending
 		// domain the MTA identifies as, so it is the correct From domain. Mirrors
 		// the legacy bash wizard (scripts/setup.sh: DEFAULT_FROM_{DOMAIN,EMAIL,NAME}).

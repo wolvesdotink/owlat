@@ -77,7 +77,7 @@ export const sendTest = authedAction({
 
 		if (step.kind === 'resolveSender') {
 			try {
-				const team = await ctx.runQuery(internal.confirmationEmailQueries.getTeamInfo, {});
+				const team = await ctx.runQuery(internal.contacts.confirmationEmailQueries.getTeamInfo, {});
 				facts = {
 					...facts,
 					sender: {

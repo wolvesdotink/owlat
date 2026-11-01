@@ -10,7 +10,7 @@
  *      and the `submit` internal mutation all run. The rateLimiter component
  *      is registered (the form route consumes the `formSubmission` bucket).
  *
- *   2. mediaAssets.create — extension + MIME allowlist gate + role gate
+ *   2. workspaces/mediaAssets.create — extension + MIME allowlist gate + role gate
  *      (`media:manage` = admin). getStats totals + cap saturation.
  *
  *   3. storage/files.getUrl / storage.deleteFile — the auth gates (logged-in vs
@@ -525,7 +525,7 @@ describe('submitForm (POST /forms/{formId})', () => {
 });
 
 // ============================================================================
-// mediaAssets.create — extension / MIME allowlist + role gate
+// workspaces/mediaAssets.create — extension / MIME allowlist + role gate
 // ============================================================================
 
 /** Store a small blob and return its `_storage` id so create() can resolve a URL. */
@@ -539,12 +539,12 @@ async function storeBlob(t: TestConvex<typeof schema>, bytes = 16): Promise<Id<'
 	});
 }
 
-describe('mediaAssets.create', () => {
+describe('workspaces.mediaAssets.create', () => {
 	it('accepts a valid image (allowed extension + MIME)', async () => {
 		const t = setupTest();
 		const storageId = await storeBlob(t);
 
-		const assetId = await t.mutation(api.mediaAssets.create, {
+		const assetId = await t.mutation(api.workspaces.mediaAssets.create, {
 			storageId,
 			filename: 'logo.png',
 			mimeType: 'image/png',
@@ -564,7 +564,7 @@ describe('mediaAssets.create', () => {
 		const t = setupTest();
 		const storageId = await storeBlob(t);
 
-		const assetId = await t.mutation(api.mediaAssets.create, {
+		const assetId = await t.mutation(api.workspaces.mediaAssets.create, {
 			storageId,
 			filename: 'icon.svg',
 			mimeType: 'image/svg+xml',
@@ -578,7 +578,7 @@ describe('mediaAssets.create', () => {
 		const storageId = await storeBlob(t);
 
 		await expect(
-			t.mutation(api.mediaAssets.create, {
+			t.mutation(api.workspaces.mediaAssets.create, {
 				storageId,
 				filename: 'data.psd',
 				mimeType: 'image/png',
@@ -592,7 +592,7 @@ describe('mediaAssets.create', () => {
 		const storageId = await storeBlob(t);
 
 		await expect(
-			t.mutation(api.mediaAssets.create, {
+			t.mutation(api.workspaces.mediaAssets.create, {
 				storageId,
 				filename: 'malware.exe',
 				mimeType: 'image/png',
@@ -606,7 +606,7 @@ describe('mediaAssets.create', () => {
 		const storageId = await storeBlob(t);
 
 		await expect(
-			t.mutation(api.mediaAssets.create, {
+			t.mutation(api.workspaces.mediaAssets.create, {
 				storageId,
 				filename: 'invoice.pdf.exe',
 				mimeType: 'application/pdf',
@@ -620,7 +620,7 @@ describe('mediaAssets.create', () => {
 		const storageId = await storeBlob(t);
 
 		await expect(
-			t.mutation(api.mediaAssets.create, {
+			t.mutation(api.workspaces.mediaAssets.create, {
 				storageId,
 				filename: 'logo.png',
 				mimeType: 'application/x-msdownload',
@@ -635,7 +635,7 @@ describe('mediaAssets.create', () => {
 		setUser('editor-user', 'editor');
 
 		await expect(
-			t.mutation(api.mediaAssets.create, {
+			t.mutation(api.workspaces.mediaAssets.create, {
 				storageId,
 				filename: 'logo.png',
 				mimeType: 'image/png',
@@ -647,7 +647,7 @@ describe('mediaAssets.create', () => {
 	it('stores the actual size even when the client overstates it', async () => {
 		const t = setupTest();
 		const storageId = await storeBlob(t);
-		const assetId = await t.mutation(api.mediaAssets.create, {
+		const assetId = await t.mutation(api.workspaces.mediaAssets.create, {
 			storageId,
 			filename: 'logo.png',
 			mimeType: 'image/png',
@@ -660,7 +660,7 @@ describe('mediaAssets.create', () => {
 		const t = setupTest();
 		const storageId = await storeBlob(t);
 
-		const assetId = await t.mutation(api.mediaAssets.create, {
+		const assetId = await t.mutation(api.workspaces.mediaAssets.create, {
 			storageId,
 			filename: 'logo.png',
 			mimeType: 'image/png',
@@ -671,10 +671,10 @@ describe('mediaAssets.create', () => {
 });
 
 // ============================================================================
-// mediaAssets.getStats — totals + cap
+// workspaces/mediaAssets.getStats — totals + cap
 // ============================================================================
 
-describe('mediaAssets.getStats', () => {
+describe('workspaces.mediaAssets.getStats', () => {
 	it('returns { totalCount, totalBytes, truncated:false } for a small library', async () => {
 		const t = setupTest();
 		const sa = await storeBlob(t);
@@ -705,7 +705,7 @@ describe('mediaAssets.getStats', () => {
 			} as never);
 		});
 
-		const stats = await t.query(api.mediaAssets.getStats, {});
+		const stats = await t.query(api.workspaces.mediaAssets.getStats, {});
 		expect(stats.totalCount).toBe(2);
 		expect(stats.totalBytes).toBe(350);
 		expect(stats.truncated).toBe(false);
@@ -713,7 +713,7 @@ describe('mediaAssets.getStats', () => {
 
 	it('returns zeroes for an empty library', async () => {
 		const t = setupTest();
-		const stats = await t.query(api.mediaAssets.getStats, {});
+		const stats = await t.query(api.workspaces.mediaAssets.getStats, {});
 		expect(stats).toEqual({ totalCount: 0, totalBytes: 0, truncated: false });
 	});
 });
@@ -780,7 +780,7 @@ it('deleting a legacy media alias cannot delete another resource blob', async ()
 		});
 		return { assetId, storageId };
 	});
-	await t.mutation(api.mediaAssets.bulkDelete, { assetIds: [assetId] });
+	await t.mutation(api.workspaces.mediaAssets.bulkDelete, { assetIds: [assetId] });
 	expect(await t.run((ctx) => ctx.db.get(assetId))).toBeNull();
 	expect(await t.run(async (ctx) => (await ctx.storage.get(storageId)) !== null)).toBe(true);
 });

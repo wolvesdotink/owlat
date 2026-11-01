@@ -18,7 +18,7 @@ import { expectScheduledFailure } from './helpers/scheduledFailures';
 const modules = import.meta.glob('../**/*.*s');
 
 beforeEach(() => {
-	expectScheduledFailure('confirmationEmail:sendConfirmationEmail');
+	expectScheduledFailure('contacts/confirmationEmail:sendConfirmationEmail');
 });
 
 type T = ReturnType<typeof convexTest>;

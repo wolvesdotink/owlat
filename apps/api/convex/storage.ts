@@ -20,7 +20,7 @@ export const generateUploadUrl = authedMutation({
 
 /** Remove after release 0.6.17; this release calls `storage/files:getUrl`. */
 // authz: readMediaAssetUrl resolves only a shared-library media asset's blob,
-// which mediaAssets.list already shows every member; anything else is not found.
+// which workspaces/mediaAssets.list already shows every member; anything else is not found.
 export const getUrl = authedQuery({
 	args: { storageId: v.id('_storage') },
 	handler: async (ctx, args) => await readMediaAssetUrl(ctx, args.storageId),

@@ -253,9 +253,13 @@ describe('the brand kit in rendering and new emails', () => {
 	it('the media library counts the brand kit logo as a use', async () => {
 		const t = convexTest(schema, modules);
 		const logo = await mediaImage(t);
-		expect(await t.query(api.mediaAssets.countUsage, { assetId: logo })).toEqual({ count: 0 });
+		expect(await t.query(api.workspaces.mediaAssets.countUsage, { assetId: logo })).toEqual({
+			count: 0,
+		});
 		await t.mutation(api.workspaces.brandKit.update, { ...KIT, logoMediaAssetId: logo });
-		expect(await t.query(api.mediaAssets.countUsage, { assetId: logo })).toEqual({ count: 1 });
+		expect(await t.query(api.workspaces.mediaAssets.countUsage, { assetId: logo })).toEqual({
+			count: 1,
+		});
 	});
 });
 

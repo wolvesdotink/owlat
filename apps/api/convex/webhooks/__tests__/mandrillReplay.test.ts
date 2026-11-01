@@ -105,7 +105,7 @@ function setupTest(overrides: Record<string, () => Promise<unknown>> = {}) {
 
 /** The DOI confirmation email a pending signup schedules, sent nowhere. */
 const quietConfirmationEmail = {
-	'../confirmationEmail.ts': async () => ({
+	'../contacts/confirmationEmail.ts': async () => ({
 		sendConfirmationEmail: internalAction({ handler: async () => null }),
 	}),
 };
