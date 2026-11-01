@@ -62,7 +62,10 @@ const { data: suggestedSignature } = useConvexQuery(api.mail.signatures.suggestF
 const createSignatureOp = useBackendOperation(api.mail.signatures.create, {
 	label: () => t('dashboard.postbox.migrate.saveSignatureOperation'),
 });
-const signatureSaved = ref(false);
+// The page owns this flag: "Learn from this import" passes through the indexing
+// step, which unmounts this one, and the offer must not come back afterwards
+// (saving it again would create a second signature).
+const signatureSaved = defineModel<boolean>('signatureSaved', { required: true });
 function detectedSignatureHtml(text: string): string {
 	const escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 	return `<div>${escaped.replace(/\n/g, '<br>')}</div>`;

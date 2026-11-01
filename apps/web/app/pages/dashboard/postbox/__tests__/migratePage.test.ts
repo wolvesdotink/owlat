@@ -44,6 +44,8 @@ const migration = ref<{
 	messagesIndexed?: number;
 } | null>(null);
 const query = ref<Record<string, string>>({});
+/** What `signatures.suggestFromImport` found in the imported Sent mail. */
+const suggestedSignature = ref<string | null>(null);
 
 beforeAll(() => {
 	Object.assign(globalThis, {
@@ -58,7 +60,7 @@ beforeAll(() => {
 		useRouter: () => ({ replace }),
 		useToast: () => ({ showToast }),
 		useFeatureFlag: () => ({ isEnabled: () => true, isLoading: ref(false) }),
-		useConvexQuery: () => ({ data: ref(null), isLoading: ref(false) }),
+		useConvexQuery: () => ({ data: suggestedSignature, isLoading: ref(false) }),
 		useBackendOperation: () => ({
 			run: vi.fn(async () => ({ ok: true, result: null })),
 			isLoading: ref(false),
@@ -88,6 +90,7 @@ beforeEach(() => {
 	account.value = null;
 	migration.value = null;
 	stepOverride.value = null;
+	suggestedSignature.value = null;
 	query.value = { googleConnected: '1' };
 });
 
@@ -222,5 +225,26 @@ describe('migrate wizard — learning from a finished import', () => {
 		await nextTick();
 
 		expect(page.find('[data-testid="migrate-learn"]').exists()).toBe(false);
+	});
+
+	it('keeps a saved signature saved after learning from the import', async () => {
+		migration.value = { status: 'completed', isAiIndexingEnabled: false, messagesImported: 8300 };
+		suggestedSignature.value = 'Ada\nOwlat';
+		const page = mountPage();
+		await nextTick();
+
+		const useIt = page.findAll('button').find((b) => b.text() === 'Use this signature');
+		await useIt!.trigger('click');
+		await nextTick();
+		expect(page.text()).toContain('Signature saved');
+
+		// Learning walks the wizard through indexing, which unmounts the step.
+		stepOverride.value = 'indexing';
+		await nextTick();
+		stepOverride.value = 'completed';
+		await nextTick();
+
+		expect(page.text()).toContain('Signature saved');
+		expect(page.text()).not.toContain('Use this signature');
 	});
 });

@@ -148,6 +148,7 @@ function handleUpdated() {
 const completedMailboxId = computed<Id<'mailboxes'> | null>(() =>
 	step.value === 'completed' && account.value?.configured ? account.value.mailboxId : null
 );
+const signatureSaved = ref(false);
 
 // ── Cancel migration ────────────────────────────────────────────────────────
 const showCancel = ref(false);
@@ -382,6 +383,7 @@ const steps = computed(() =>
 				:is-ai-indexing="isAiIndexing"
 				:can-learn="canLearn"
 				:learn-busy="learnBusy"
+				v-model:signature-saved="signatureSaved"
 				:mailbox-id="completedMailboxId"
 				@learn="handleLearn"
 			/>
