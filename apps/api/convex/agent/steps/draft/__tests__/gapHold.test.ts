@@ -1,6 +1,6 @@
 /**
  * The `draft` Agent step never stores a draft with `[[...]]` gaps the owner
- * did not agree to (#1343): its gaps go back as questions, a gap no question
+ * did not agree to: its gaps go back as questions, a gap no question
  * may ask for leaves the reply to a person, and with consent ("Draft with what
  * I have", or asking turned off) the draft keeps its gaps and every fixed
  * placeholder.

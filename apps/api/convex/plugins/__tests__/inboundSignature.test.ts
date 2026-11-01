@@ -226,8 +226,8 @@ describe('replay-bound plugin inbound signature verification', () => {
  * THE SCHEME DISPATCH — the widened vocabulary's own seam.
  *
  * Two properties, and both are about what did NOT change. A contract that names
- * no scheme must reach the replay-bound verifier with exactly the arguments the
- * route used to pass it — including the digest, which is a stored key: a digest
+ * no scheme must reach the replay-bound verifier with the arguments it has
+ * always been given — including the digest, which is a stored key: a digest
  * that shifted would make every in-flight claim from before the deploy invisible
  * and let one already-applied delivery be applied a second time. And the Svix arm
  * must answer in the SAME terms (a digest, an expiry, a 401/503), because

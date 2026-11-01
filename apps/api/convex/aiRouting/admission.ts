@@ -1,5 +1,5 @@
 /**
- * Spend admission (#1333).
+ * Spend admission.
  *
  * Reserve before dispatch, settle against the ledger after it:
  *

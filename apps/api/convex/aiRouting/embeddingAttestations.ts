@@ -1,5 +1,5 @@
 /**
- * Legacy embedding cohorts (#1334).
+ * Legacy embedding cohorts.
  *
  * Vectors written before provenance carry only the static `embeddingModel`
  * stamp, which proves nothing: env overrides changed the model without touching

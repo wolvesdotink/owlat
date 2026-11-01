@@ -1,5 +1,5 @@
 /**
- * The re-embed job's state (#1334): one job row
+ * The re-embed job's state: one job row
  * walks `knowledgeEntries`, then `semanticFiles`, a page at a time, and writes
  * fresh vectors into its target space's column with `measured` provenance.
  *

@@ -2,12 +2,11 @@
  * The MEMBER-facing half of Sealed Mail (plan idea 55) — the v8 (query/mutation)
  * plane behind the "Your mail is sealed" card in Preferences.
  *
- * Everything Sealed Mail exposed until now was admin-only: the instance settings
- * page, the key backfill, the recovery-kit export. A member could see sealed
- * badges on their mail and had no way to answer the two questions that follow
- * from them — "does MY address actually have a key?" and "what happens to my
- * sealed mail if this server is rebuilt?". This module answers exactly those,
- * and nothing more:
+ * The rest of Sealed Mail is admin-only: the instance settings page, the key
+ * backfill, the recovery-kit export for any address. A member sees sealed
+ * badges on their mail, and two questions follow from them — "does MY address
+ * actually have a key?" and "what happens to my sealed mail if this server is
+ * rebuilt?". This module answers exactly those, and nothing more:
  *
  *   - `getOwnSealedMailStatus` (authed member) — for each address the caller
  *     sends as, whether an active sealing key exists and its PUBLIC fingerprint;

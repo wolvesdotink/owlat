@@ -1,16 +1,10 @@
 /**
  * Contact-activity type catalog — single source of truth.
  *
- * Previously the literal list lived in three places:
- * - `schema/contacts.ts` `contactActivities.activityType` union (12 literals)
- * - `contacts/activities.ts` `create` mutation args union (only 10 literals
- *   — `inbound_received` / `inbound_replied` were missing, so callers
- *   couldn't insert those activity types through the public mutation)
- * - dashboard formatter switches in `analytics/dashboard.ts`
- *
- * The catalog below collapses the schema list. The schema and the mutation
- * args derive from it, so adding an activity type is a one-place change.
- * The previous schema-vs-mutation drift is closed by construction.
+ * The `schema/contacts.ts` `contactActivities.activityType` validator derives
+ * from the list below, and `contactActivities/writer.ts` fails to compile
+ * unless its per-literal module map covers exactly these literals, so adding
+ * an activity type starts here and the writer cannot drift from the schema.
  */
 
 import { literalUnion } from '../lib/literalUnion';

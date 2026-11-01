@@ -384,10 +384,7 @@ export const remove = internalMutation({
  * (floored at zero).
  *
  * The lifecycle modules call this directly from their mutations so the count
- * update is atomic with the consumer row write. The former
- * `updateBlockUsageCounts` Convex mutation only delegated here and had no
- * production caller, so it was removed under the entry-wiring debt tracked by
- * issue #528.
+ * update is atomic with the consumer row write.
  */
 export async function applyUsageCountDelta(
 	ctx: MutationCtx,

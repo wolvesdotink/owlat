@@ -1,6 +1,6 @@
 /**
  * PGP/MIME verdicts hold only when the reader's MIME walker agrees with the
- * extractor (`e2ee/signedMimeStructure.ts`, #1311). Each case signs a real
+ * extractor (`e2ee/signedMimeStructure.ts`). Each case signs a real
  * first part and then bends the structure around it the way a sender who
  * wants unsigned content shown beside a valid verdict would: the signature
  * still verifies over the extracted octets, so only the cross-check stands

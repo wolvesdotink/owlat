@@ -1,5 +1,5 @@
 /**
- * The Team Inbox's budget hold (#1333): at the spend ceiling,
+ * The Team Inbox's budget hold: at the spend ceiling,
  * a message is queued for a person instead of being drafted.
  *
  * The walker asks {@link holdForBudget} before each step whose model call

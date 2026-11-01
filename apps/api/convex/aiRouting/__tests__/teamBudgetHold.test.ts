@@ -1,5 +1,5 @@
 /**
- * The Team Inbox's budget hold (#1333): at the ceiling a message is queued
+ * The Team Inbox's budget hold: at the ceiling a message is queued
  * for a person with a visible reason and its missing judgments, auto-send is
  * blocked, and a re-run with headroom clears the hold.
  */

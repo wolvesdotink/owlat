@@ -1,5 +1,5 @@
 /**
- * The backfill walk behind the IMAP folder membership (#927).
+ * The backfill walk behind the IMAP folder membership.
  *
  * A folder that held mail before its membership was maintained is filled by
  * walking `by_folder_and_uid` one bounded page per mutation, rescheduling itself

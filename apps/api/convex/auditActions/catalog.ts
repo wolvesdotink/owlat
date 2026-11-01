@@ -1,15 +1,11 @@
 /**
  * Audit-log action and resource catalog — single source of truth.
  *
- * Previously the same 58 action literals lived in three places — the
- * `schema/auth.ts` `auditLogs.action` validator, the `lib/validators.ts`
- * `auditActionValidator`, and the `lib/auditLog.ts` typed `recordAuditLog`
- * signature — plus a hand-maintained markdown catalog at
- * `docs/audit-log-actions.md`. Adding an action required edits to all four.
- *
- * The catalog below collapses the literal lists into one. Validators are
- * derived, the schema imports them, the typed signature uses the derived
- * type. Adding an action is now a one-place change.
+ * The catalog below is the one list of action literals. The `schema/auth.ts`
+ * `auditLogs.action` validator, the `lib/validators.ts` `auditActionValidator`
+ * and the `lib/auditLog.ts` typed `recordAuditLog` signature all derive from
+ * it: validators are derived, the schema imports them, the typed signature
+ * uses the derived type. Adding an action is a one-place change.
  *
  * Dashboard activity-feed formatters (currently in
  * `analytics/dashboard.ts`) are intentionally NOT moved here — they cover
@@ -338,7 +334,7 @@ export const AUDIT_ACTION_LITERALS = [
 	action('knowledge.edge_backfill_started'),
 	action('knowledge.edge_backfill_cancelled'),
 	// An owner/admin shared a restricted knowledge entry with members after
-	// reviewing it (knowledge/sharing.ts, #1372).
+	// reviewing it (knowledge/sharing.ts).
 	action('knowledge.entry_shared'),
 	// Hosted plugin operations. The row's dedicated pluginId and organizationId
 	// columns provide attribution; details remain a redacted scalar summary.

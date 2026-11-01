@@ -21,8 +21,6 @@
  * has a scheduled hop (or a terminal status) behind it. What remains — a hop
  * that died, or a schedule that never ran — is the recovery sweep's job
  * (`recovery.ts`).
- *
- * See #996 and #999.
  */
 
 import { v } from 'convex/values';

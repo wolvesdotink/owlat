@@ -302,7 +302,7 @@ export const MEMBER_RELATIONS: readonly MemberRelation[] = [
 	rel('inboundMessages', 'assignedTo', 'retain', ORG_ATTRIBUTION),
 	rel('inboundMessages', 'draftRevisions[].savedBy', 'retain', ORG_ATTRIBUTION),
 	rel('inboundMessages', 'pendingClarification.remindedForUserId', 'retain', ORG_ATTRIBUTION),
-	// The same questions kept while a newer reply answered the message (#1346).
+	// The same questions kept while a newer reply answered the message.
 	rel(
 		'inboundMessages',
 		'answeredStash.pendingClarification.remindedForUserId',

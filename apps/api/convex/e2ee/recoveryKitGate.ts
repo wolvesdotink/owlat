@@ -1,11 +1,10 @@
 /**
  * The gate in front of a MEMBER's own recovery kit.
  *
- * A recovery kit is the one sanctioned egress of a private key from the vault. Until now only an
- * admin could ask for one, for any address. Putting the same download on the member's own
- * preferences page means the gate — not the crypto — is the security-sensitive part: a live
- * session on an unlocked laptop must not be enough to walk away with the key that opens someone's
- * sealed mail.
+ * A recovery kit is the one sanctioned egress of a private key from the vault. An admin can ask
+ * for one for any address; a member can download their own from their preferences page, which
+ * makes the gate — not the crypto — the security-sensitive part: a live session on an unlocked
+ * laptop must not be enough to walk away with the key that opens someone's sealed mail.
  *
  * So the export is guarded by four checks in a FIXED order, and that order is
  * the whole point of this module being separate, pure and injectable:

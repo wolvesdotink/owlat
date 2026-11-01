@@ -119,9 +119,9 @@ interface RestoredMessage {
  *
  * Takes the decrypted BYTES. The extractor reads a binary string (one char per
  * byte), so every part comes out byte-exact and is then decoded under its own
- * declared charset. Decoding the whole message as UTF-8 first turned each
+ * declared charset. Decoding the whole message as UTF-8 first would turn each
  * multi-byte character of an 8-bit part into one char, of which the extractor
- * kept only the low byte (#1284).
+ * keeps only the low byte.
  */
 export function parseInnerMessage(innerMime: Uint8Array): RestoredMessage {
 	const bytes = withoutUtf8Bom(innerMime);
@@ -156,8 +156,9 @@ export function parseInnerMessage(innerMime: Uint8Array): RestoredMessage {
 
 /**
  * A part's text under the charset it declares. A part that declares none is
- * read as UTF-8, as every inner part was before #1284, rather than under the
- * RFC 2045 us-ascii default.
+ * read as UTF-8 rather than under the RFC 2045 us-ascii default: a us-ascii
+ * part reads the same either way, and UTF-8 text sent without a charset still
+ * reads right.
  */
 function decodePartText(part: ExtractedAttachment): string {
 	return decodeCharset(part.bytes, part.charset ?? 'utf-8');

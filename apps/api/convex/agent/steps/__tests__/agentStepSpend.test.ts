@@ -1,5 +1,5 @@
 /**
- * Every billed call an agent step makes lands in the usage ledger once (#1259):
+ * Every billed call an agent step makes lands in the usage ledger once:
  * the security-scan guard windows, classify and each clarify call
  * (interpretation, which replaced the context step's quarantined extraction,
  * is metered in `mail/interpret/run.ts`). A failed call records the usage it carries

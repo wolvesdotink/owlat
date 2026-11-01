@@ -1,5 +1,5 @@
 /**
- * Open-commitment projection on the knowledge ↔ contact junction (issue #919).
+ * Open-commitment projection on the knowledge ↔ contact junction.
  *
  * The agent's context step asks, for every contact-linked inbound, "which
  * promises do we still owe this contact?". Answering that from the entries
@@ -18,8 +18,8 @@
  *     (maintenance.ts); a contact merge only changes `contactId`, so the facets,
  *     which describe the entry, stay valid;
  *   - erasure, expiry and delete remove the rows.
- * Rows written before this change have no facets; the reader hydrates them the
- * old way until migration 0053 has projected them.
+ * A row migration 0053 has not projected yet has no facets; the reader hydrates
+ * its entry and filters that instead.
  */
 
 import type { MutationCtx, QueryCtx } from '../_generated/server';

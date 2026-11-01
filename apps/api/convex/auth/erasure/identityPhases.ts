@@ -1,6 +1,6 @@
 /**
  * The authentication identity — the BetterAuth component rows of the member
- * being erased (issue #941).
+ * being erased.
  *
  * Deleting the Owlat profile and memberships is not deleting the account: the
  * login identity (`user`), the password hash (`account`), live `session`s,

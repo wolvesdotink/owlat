@@ -1,5 +1,5 @@
 /**
- * Run the cold-pitch question (#1381) over its labelled sample and check the
+ * Run the cold-pitch question over its labelled sample and check the
  * release gate before anyone turns `postbox.coldPitch` on:
  *
  *   bun apps/api/scripts/cold-pitch-eval.ts

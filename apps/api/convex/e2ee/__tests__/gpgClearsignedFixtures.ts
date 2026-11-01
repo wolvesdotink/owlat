@@ -2,7 +2,7 @@
  * Clearsigned messages made by GnuPG (`gpg --clearsign`, an Ed25519 test key
  * for alice@sender.test), not by openpgp.js, so the verifier is held to an
  * independent implementation's output. Both verify with `gpg --verify`; with
- * `aus` turned into `a<CR>us` both are a BAD signature to GnuPG (#1300).
+ * `aus` turned into `a<CR>us` both are a BAD signature to GnuPG.
  *
  * The messages are base64 so their 8-bit octets survive as they were signed.
  */

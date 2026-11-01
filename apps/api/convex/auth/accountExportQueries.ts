@@ -350,9 +350,9 @@ export const listDeliverabilityAlertRecipientStates = internalQuery({
 /**
  * The PRE-RUN manifest's row counts.
  *
- * "Export my data" used to be one button and a spinner: nothing said what was
- * about to be written or how much of it there was, so a fifteen-minute export
- * of a large mailbox was indistinguishable from a hung one. This is the count
+ * Without it, "Export my data" is one button and a spinner: nothing says what
+ * is about to be written or how much of it there is, so a fifteen-minute export
+ * of a large mailbox is indistinguishable from a hung one. This is the count
  * the manifest shows before the first byte is fetched.
  *
  * PERSONAL resources only. Every org resource is scoped through a membership

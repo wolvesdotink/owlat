@@ -1,5 +1,5 @@
 /**
- * The spend ceiling as the gates enforce it (#1333).
+ * The spend ceiling as the gates enforce it.
  *
  * Enforcement reads the complete period totals and outstanding holds
  * (`./admissionState.ts`), never the newest-12,000-row scan the dashboard

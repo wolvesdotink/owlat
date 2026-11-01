@@ -333,8 +333,8 @@ export const submit = internalMutation({
 					// Honor the form's own "Enable Double Opt-In" toggle. DOI is the
 					// union of the form and topic controls, so ticking it forces a
 					// confirmation step even when the topic itself does not require
-					// one (previously this toggle was persisted + shown but never
-					// consulted — a GDPR/compliance footgun).
+					// one. A toggle that is shown but not consulted here would be a
+					// GDPR/compliance footgun.
 					...(form.doubleOptIn === true ? { forceDoi: true } : {}),
 					...(siteUrl ? { siteUrl } : {}),
 				}

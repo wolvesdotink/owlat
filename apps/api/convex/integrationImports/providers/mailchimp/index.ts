@@ -132,8 +132,8 @@ async function memberKey(member: MailchimpMember): Promise<string> {
  * NO SECOND FETCH IS NEEDED, and that is the whole shape of this feature on the
  * Mailchimp side. `GET /lists/{id}/members` is not status-filtered here: every
  * page the contacts import already walks carries the audience's `unsubscribed`
- * and `cleaned` members too, and the importer's only use for them until now was
- * to `continue` past them. So the carry-over adds no request of its own (the
+ * and `cleaned` members too, which the contacts import itself only `continue`s
+ * past. So the carry-over adds no request of its own (the
  * closing pass over members changed during the run serves contacts and
  * suppressions alike) — it routes rows that were already on the wire and were
  * being dropped.

@@ -5,7 +5,7 @@
  * that cannot continue ends visibly instead of blocking every later import.
  *
  * Faults are injected into the real page commit (`commitIntegrationPage`) at
- * each point a page's work used to be split across calls: after the provider
+ * each stage boundary of a page's work: after the provider
  * fetch, after the contact and suppression stages, while scheduling the next
  * page, and after the progress write. Each one must leave the run exactly as it
  * was before the page, and the sweep must then finish the import with exact

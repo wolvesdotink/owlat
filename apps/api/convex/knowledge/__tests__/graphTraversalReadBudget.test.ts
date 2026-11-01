@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { expandNeighbors } from '../graphTraversal';
 
 /**
- * Read budget of `expandNeighbors` (#921): the real handler against an
+ * Read budget of `expandNeighbors`: the real handler against an
  * instrumented in-memory indexed reader. Scope/TTL/entryType semantics are
  * covered end-to-end in knowledgeGraphRetrieval.integration.test.ts; this file
  * bounds how many `knowledgeEntries` documents one traversal hydrates.
@@ -81,7 +81,7 @@ function graph() {
 }
 
 /**
- * The #921 dense fixture: 12 seeds with 32 outgoing + 32 incoming edges each.
+ * The dense fixture: 12 seeds with 32 outgoing + 32 incoming edges each.
  * Seed 0's first 16 outgoing edges reach A0..A15; every other edge lands in an
  * overlapping 64-node pool Q, so the same unknown ids recur. A nodes also point
  * into Q, which a 2-hop walk reaches.

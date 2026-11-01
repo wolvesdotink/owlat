@@ -53,7 +53,7 @@ type OpenOutcome =
 			status: 'opened';
 			/**
 			 * The decrypted inner message as bytes. Each MIME part declares its own
-			 * charset, so nothing decodes the whole message as one text (#1284);
+			 * charset, so nothing decodes the whole message as one text;
 			 * {@link parseInnerMessage} reads it.
 			 */
 			innerMime: Uint8Array;

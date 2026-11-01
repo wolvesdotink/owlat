@@ -1,5 +1,5 @@
 /**
- * `parseContentBlocks` gives every Block an id (#1432). Legacy saved Blocks
+ * `parseContentBlocks` gives every Block an id. Legacy saved Blocks
  * were stored as one `{ type, content }` object without an id, and an API
  * write or a hand-edited template can leave one out too; the renderer used to
  * throw on such a Block, so a publish or rerender failed without saying why.

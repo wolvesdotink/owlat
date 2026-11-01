@@ -2,7 +2,7 @@
  * Sample data for REAL installs — "explore with sample data", and the exact
  * removal that takes it back.
  *
- * The populated demo dataset used to be reachable only through
+ * The populated demo dataset is otherwise reachable only through
  * `POST /seed/demo`, which is fail-closed behind `OWLAT_DEV_MODE`. Turning that
  * flag on to give a self-hoster something to look at would also unlock
  * `POST /dev/reset` and disable BetterAuth rate limiting on a production

@@ -1,5 +1,5 @@
 /**
- * The `draft` Agent step writes one draft and no variants (#1200).
+ * The `draft` Agent step writes one draft and no variants.
  *
  * It used to spend a second capable-tier generation on 2–3 alternative drafts
  * whenever the classifier was unsure or the self-check scored low, and stored

@@ -1,5 +1,5 @@
 /**
- * Team Inbox agent spend in the usage ledger (#1259).
+ * Team Inbox agent spend in the usage ledger.
  *
  * The `llmUsageEvents` ledger is the one store the spend ceiling reads
  * (`analytics/spendBudget.ts`), so every billed call the agent pipeline makes
