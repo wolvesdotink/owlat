@@ -4,13 +4,20 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { computed } from 'vue';
 import { provideConditionEditorContext } from '~/composables/conditions';
-import { stepEditorModuleFor, type StepKind } from '~/composables/automations/steps';
-import { triggerEditorModuleFor, type TriggerKind } from '~/composables/automations/triggers';
-import { useLocalized } from '~/composables/useLocalized';
+import type { StepKind } from '~/composables/automations/steps';
+import { useAutomationStatusActions } from '~/composables/automations/useAutomationStatusActions';
 import { useKeyboardReorder } from '~/composables/automations/useKeyboardReorder';
+import { useStepExit } from '~/composables/automations/useStepExit';
 import { useStepOrderSync } from '~/composables/automations/useStepOrderSync';
-import type { LocalizedText } from '~/utils/localizedText';
 import { useRecordPaletteObjectOpen } from '~/composables/useCommandPaletteObjectRecents';
+import ActivateConfirmModal from '~/components/automations/editor/ActivateConfirmModal.vue';
+import ActivationIssues from '~/components/automations/editor/ActivationIssues.vue';
+import AddStepMenu from '~/components/automations/editor/AddStepMenu.vue';
+import EditorHeader from '~/components/automations/editor/EditorHeader.vue';
+import EditorProgress from '~/components/automations/editor/EditorProgress.vue';
+import EmptySteps from '~/components/automations/editor/EmptySteps.vue';
+import StepCard from '~/components/automations/editor/StepCard.vue';
+import TriggerNode from '~/components/automations/editor/TriggerNode.vue';
 
 const { t } = useI18n();
 
@@ -46,20 +53,6 @@ const { results: emailTemplates } = usePaginatedQuery(
 	() => ({ type: 'marketing' as const }),
 	{ initialNumItems: 100 }
 );
-
-// Mutations for automation status management
-const { run: activateAutomation } = useBackendOperation(api.automations.automations.activate, {
-	label: () => t('dashboard.automations.detail.edit.operations.activate'),
-});
-const { run: pauseAutomation } = useBackendOperation(api.automations.automations.pause, {
-	label: () => t('dashboard.automations.detail.edit.operations.pause'),
-});
-const { run: resumeAutomation } = useBackendOperation(api.automations.automations.resume, {
-	label: () => t('dashboard.automations.detail.edit.operations.resume'),
-});
-const { run: updateAutomation } = useBackendOperation(api.automations.automations.update, {
-	label: () => t('dashboard.automations.detail.edit.operations.saveDraft'),
-});
 
 // Fetch contact properties for condition step configuration
 const { data: contactProperties } = useOrganizationQuery(
@@ -98,6 +91,34 @@ const {
 	// Description helper
 	getStepDescription,
 } = useAutomationSteps(automationId, automation, emailTemplates);
+
+// Save draft, Pause, Resume and Activate, each after the open step's save.
+const {
+	isSavingDraft,
+	isActivating,
+	showActivateConfirmModal,
+	activationSaveFailed,
+	handleToggleStatus,
+	handleSaveDraft,
+	handleShowActivateConfirm,
+	handleConfirmActivate,
+} = useAutomationStatusActions({ automationId, automation, flushStepSave, canActivate });
+
+// Leaving the open step waits for its save; a failed save asks first.
+const {
+	pendingStepExit,
+	isRetryingStepExit,
+	afterStepSaved,
+	retryStepExit,
+	discardStepExit,
+	stayOnStep,
+} = useStepExit({
+	flushStepSave,
+	hasRemoteStepChange,
+	keepLocalStepConfig,
+	takeRemoteStepConfig,
+	discardStepChanges,
+});
 
 // The add-step mutation in flight, if any. See `requestAddStep`.
 let stepAdding: Promise<unknown> = Promise.resolve();
@@ -189,93 +210,6 @@ const isInspectorOverlay = computed(() => selectedStep.value !== null && !isWide
 // Provide reference data to descendant Condition editor modules
 provideConditionEditorContext({ contactProperties, topics });
 
-// Toast notification
-const { showToast } = useToast();
-
-// Page-level UI state
-const isSavingDraft = ref(false);
-const isActivating = ref(false);
-const showActivateConfirmModal = ref(false);
-// The open step's edits could not be saved when activation asked for them, so
-// the modal explains why it did not activate instead of closing.
-const activationSaveFailed = ref(false);
-
-// Trigger display — resolved through the trigger editor module registry.
-const getTriggerInfo = (triggerType: string) => {
-	const module = triggerEditorModuleFor(triggerType as TriggerKind);
-	return { label: module.label, icon: module.icon, color: module.color };
-};
-
-const topicsRef = computed(() => topics.value ?? []);
-// The trigger registry hands back translatable text rather than a finished
-// sentence: a bare key for a constant summary, `{ key, params }` for a
-// parameterized one.
-const renderRegistrySummary = useLocalized();
-
-const triggerSummary = computed(() => {
-	if (!automation.value?.triggerConfig) return '';
-	const module = triggerEditorModuleFor(automation.value.triggerType as TriggerKind);
-	return renderRegistrySummary(
-		(module.getSummary as (c: unknown, ctx: { topics: typeof topicsRef }) => LocalizedText)(
-			automation.value.triggerConfig,
-			{ topics: topicsRef }
-		)
-	);
-});
-
-// Per-step display — resolved through the step editor module registry.
-const stepInfo = (stepType: string) => {
-	const module = stepEditorModuleFor(stepType as StepKind);
-	return { label: module.label, icon: module.icon };
-};
-
-// Page-local accent palette per step kind. Lives at the page boundary
-// (not on the module) because the funnel page in `[id]/index.vue` uses a
-// different palette for the same kinds. Adding a step kind to `StepKind`
-// surfaces the missing entry as a compile error here.
-type StepAccent = {
-	readonly iconClass: string;
-	readonly pill: { readonly bg: string; readonly border: string; readonly text: string } | null;
-};
-
-const STEP_ACCENT: Readonly<Record<StepKind, StepAccent>> = {
-	email: { iconClass: 'text-brand bg-brand/10', pill: null },
-	delay: {
-		iconClass: 'text-brand bg-brand/10',
-		pill: { bg: 'bg-brand/10', border: 'border-brand/30', text: 'text-brand' },
-	},
-	condition: {
-		iconClass: 'text-warning bg-warning/10',
-		pill: { bg: 'bg-warning/10', border: 'border-warning/30', text: 'text-warning' },
-	},
-};
-
-const stepAccent = (stepType: string): StepAccent => STEP_ACCENT[stepType as StepKind];
-
-// Pause or resume. A draft activates through the confirm modal below.
-const handleToggleStatus = async () => {
-	if (!automation.value) return;
-
-	isActivating.value = true;
-
-	try {
-		if (automation.value.status === 'active') {
-			if (!(await pauseAutomation({ automationId: automationId.value })).ok) return;
-			showToast(t('dashboard.automations.detail.edit.toasts.paused'));
-		} else if (automation.value.status === 'paused') {
-			// Resuming runs what is saved, so what is on screen has to be saved first.
-			if (!(await flushStepSave())) {
-				showToast(t('dashboard.automations.detail.edit.toasts.resumeBlocked'), 'error');
-				return;
-			}
-			if (!(await resumeAutomation({ automationId: automationId.value })).ok) return;
-			showToast(t('dashboard.automations.detail.edit.toasts.resumed'));
-		}
-	} finally {
-		isActivating.value = false;
-	}
-};
-
 // Navigate back once the open step's save has landed. If it could not be saved,
 // `router.push` hits the unsaved-changes route guard below, which prompts
 // instead of dropping the edits.
@@ -304,46 +238,6 @@ const {
 	},
 });
 watch(isCurrentConfigDirty, (dirty) => setHasChanges(dirty), { immediate: true });
-
-// Leaving the open step (Close, Add step, another step, a reorder) waits for
-// its save and then goes ahead. Only when the save fails, or the step changed
-// elsewhere under unsaved edits, does the member get asked: Retry, Discard or
-// Stay. Stay keeps the selection and every value as they were.
-type StepExit = { proceed: () => unknown; stay?: () => void };
-const pendingStepExit = ref<StepExit | null>(null);
-const isRetryingStepExit = ref(false);
-async function afterStepSaved(proceed: () => unknown, stay?: () => void) {
-	if (await flushStepSave()) {
-		await proceed();
-		return;
-	}
-	pendingStepExit.value = { proceed, stay };
-}
-const continueStepExit = async () => {
-	const exit = pendingStepExit.value;
-	pendingStepExit.value = null;
-	await exit?.proceed();
-};
-const retryStepExit = async () => {
-	isRetryingStepExit.value = true;
-	let saved: boolean;
-	try {
-		saved = hasRemoteStepChange.value ? await keepLocalStepConfig() : await flushStepSave();
-	} finally {
-		isRetryingStepExit.value = false;
-	}
-	if (saved) await continueStepExit();
-};
-const discardStepExit = async () => {
-	if (hasRemoteStepChange.value) takeRemoteStepConfig();
-	else discardStepChanges();
-	await continueStepExit();
-};
-const stayOnStep = () => {
-	const exit = pendingStepExit.value;
-	pendingStepExit.value = null;
-	exit?.stay?.();
-};
 
 const requestSelectStep = (stepId: Id<'automationSteps'>) => {
 	if (stepId === selectedStepId.value) return;
@@ -377,104 +271,6 @@ const requestAddStep = (stepType: StepKind, insertAtIndex?: number) => {
 	});
 };
 
-// Handle save draft: the automation's name and description. Step edits save
-// themselves; Save draft only waits for them, and says so when they did not
-// land rather than reporting a draft that is not what the inspector shows.
-const handleSaveDraft = async () => {
-	if (!automation.value) return;
-
-	isSavingDraft.value = true;
-
-	try {
-		if (!(await flushStepSave())) {
-			showToast(t('dashboard.automations.detail.edit.toasts.stepSaveFailed'), 'error');
-			return;
-		}
-		const result = await updateAutomation({
-			automationId: automationId.value,
-			name: automation.value.name,
-			description: automation.value.description,
-		});
-		if (!result.ok) return;
-		showToast(t('dashboard.automations.detail.edit.toasts.draftSaved'));
-	} finally {
-		isSavingDraft.value = false;
-	}
-};
-
-const toastCannotActivate = () => {
-	showToast(
-		canActivate.value.reasons[0] || t('dashboard.automations.detail.edit.cannotActivate'),
-		'error'
-	);
-};
-
-// A draft that cannot be activated yet keeps Activate held (aria-disabled, not
-// disabled) so keyboard and pointer users can still reach it and its tooltip
-// can list what is missing: `.btn:disabled` drops pointer events and a disabled
-// button leaves the tab order. The fill fades through colour alpha so the
-// focus ring stays at full strength; the click handler keeps it inert.
-const ACTIVATE_HELD_CLASS =
-	'cursor-not-allowed active:scale-100 bg-text-primary/50 hover:bg-text-primary/50';
-
-// Activation always means "what you see": the open step's edits are saved
-// first, and the readiness check runs on the steps as saved.
-const handleShowActivateConfirm = async () => {
-	if (!canActivate.value.valid) return;
-	isActivating.value = true;
-	let saved: boolean;
-	try {
-		saved = await flushStepSave();
-	} finally {
-		isActivating.value = false;
-	}
-	activationSaveFailed.value = !saved;
-	if (saved && !canActivate.value.valid) {
-		toastCannotActivate();
-		return;
-	}
-	showActivateConfirmModal.value = true;
-};
-
-// Confirm activation
-const handleConfirmActivate = async () => {
-	if (!automation.value) return;
-	isActivating.value = true;
-	try {
-		// Edits made since the modal opened, or a save that failed before it.
-		if (!(await flushStepSave())) {
-			activationSaveFailed.value = true;
-			return;
-		}
-		activationSaveFailed.value = false;
-		showActivateConfirmModal.value = false;
-		if (!canActivate.value.valid) {
-			toastCannotActivate();
-			return;
-		}
-		if (!(await activateAutomation({ automationId: automationId.value })).ok) return;
-		showToast(t('dashboard.automations.detail.edit.toasts.activated'));
-	} finally {
-		isActivating.value = false;
-	}
-};
-
-// Get icon color class
-const getIconColorClass = (color: string) => {
-	switch (color) {
-		case 'lime':
-			return 'text-brand bg-brand/10';
-		case 'lavender':
-			return 'text-brand bg-brand/10';
-		case 'warning':
-			return 'text-warning bg-warning/10';
-		case 'success':
-			return 'text-success bg-success/10';
-		default:
-			return 'text-text-tertiary bg-bg-surface';
-	}
-};
-
 // Computed description for the selected step (used by the step preview)
 const selectedStepConditionDescription = computed(() => {
 	if (!selectedStep.value) return t('dashboard.automations.detail.edit.configureCondition');
@@ -493,182 +289,23 @@ onUnmounted(() => {
 
 <template>
 	<div class="min-h-full bg-bg-base flex flex-col">
-		<!-- Header -->
-		<div
-			class="bg-bg-elevated border-b border-border-subtle shrink-0"
+		<EditorHeader
 			:inert="isInspectorOverlay || undefined"
-		>
-			<div class="max-w-7xl mx-auto px-4 py-4 sm:px-6">
-				<!-- Wraps on a phone, so the actions drop below the name instead of
-				     running off the edge. -->
-				<div class="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
-					<div class="flex items-center gap-4 min-w-0">
-						<button
-							class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors"
-							@click="handleBack"
-							:aria-label="t('common.back')"
-						>
-							<Icon name="lucide:arrow-left" class="w-5 h-5" />
-						</button>
-						<div v-if="automation" class="min-w-0">
-							<h1 class="text-lg font-semibold text-text-primary">{{ automation.name }}</h1>
-							<p class="text-sm text-text-secondary">
-								{{ t('dashboard.automations.detail.edit.editWorkflow') }}
-							</p>
-						</div>
-						<div v-else-if="isLoadingAutomation" class="animate-pulse motion-reduce:animate-none">
-							<div class="h-5 w-40 bg-bg-surface rounded" />
-							<div class="h-4 w-24 bg-bg-surface rounded mt-1" />
-						</div>
-					</div>
-
-					<!-- Status and Actions -->
-					<div v-if="automation" class="flex flex-wrap items-center gap-3">
-						<!-- Mirrors the inspector's save line, which may be scrolled away. -->
-						<AutomationsStepSaveStatus
-							class="hidden md:flex"
-							:status="stepSaveStatus"
-							@retry="requestStepSave"
-						/>
-
-						<!-- Status Badge -->
-						<span
-							:class="[
-								'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium',
-								automation.status === 'active'
-									? 'bg-success/10 text-success'
-									: automation.status === 'paused'
-										? 'bg-warning/10 text-warning'
-										: 'bg-bg-surface text-text-secondary',
-							]"
-						>
-							<span
-								class="w-1.5 h-1.5 rounded-full"
-								:class="[
-									automation.status === 'active'
-										? 'bg-success'
-										: automation.status === 'paused'
-											? 'bg-warning'
-											: 'bg-text-tertiary',
-								]"
-							/>
-							{{
-								automation.status === 'active'
-									? t('common.active')
-									: automation.status === 'paused'
-										? t('dashboard.automations.detail.edit.status.paused')
-										: t('dashboard.automations.detail.edit.status.draft')
-							}}
-						</span>
-
-						<!-- Save Draft Button (only for draft status) -->
-						<UiButton
-							variant="secondary"
-							v-if="automation.status === 'draft'"
-							class="gap-2"
-							:disabled="isSavingDraft"
-							@click="handleSaveDraft"
-						>
-							<Icon
-								v-if="isSavingDraft"
-								name="lucide:loader-2"
-								class="w-4 h-4 animate-spin motion-reduce:animate-none"
-							/>
-							<Icon v-else name="lucide:save" class="w-4 h-4" />
-							{{ t('dashboard.automations.detail.edit.saveDraft') }}
-						</UiButton>
-
-						<!-- Activate/Pause Button -->
-						<UiButton
-							variant="secondary"
-							v-if="automation.status === 'active'"
-							class="gap-2"
-							:disabled="isActivating"
-							@click="handleToggleStatus"
-						>
-							<Icon
-								v-if="isActivating"
-								name="lucide:loader-2"
-								class="w-4 h-4 animate-spin motion-reduce:animate-none"
-							/>
-							<Icon v-else name="lucide:pause" class="w-4 h-4" />
-							{{ t('dashboard.automations.detail.edit.pause') }}
-						</UiButton>
-						<UiButton
-							v-else-if="automation.status === 'paused'"
-							class="gap-2"
-							:disabled="isActivating"
-							@click="handleToggleStatus"
-						>
-							<Icon
-								v-if="isActivating"
-								name="lucide:loader-2"
-								class="w-4 h-4 animate-spin motion-reduce:animate-none"
-							/>
-							<Icon v-else name="lucide:play" class="w-4 h-4" />
-							{{ t('dashboard.automations.detail.edit.resume') }}
-						</UiButton>
-						<UiTooltip
-							v-else
-							:text="
-								!canActivate.valid
-									? canActivate.reasons.join(', ')
-									: t('dashboard.automations.detail.edit.activateTitle')
-							"
-						>
-							<UiButton
-								class="gap-2"
-								:disabled="isActivating"
-								:aria-disabled="canActivate.valid ? undefined : 'true'"
-								:class="canActivate.valid ? undefined : ACTIVATE_HELD_CLASS"
-								data-testid="automation-activate"
-								@click="handleShowActivateConfirm"
-							>
-								<Icon
-									v-if="isActivating"
-									name="lucide:loader-2"
-									class="w-4 h-4 animate-spin motion-reduce:animate-none"
-								/>
-								<Icon v-else name="lucide:play" class="w-4 h-4" />
-								{{ t('dashboard.automations.detail.edit.activate') }}
-							</UiButton>
-						</UiTooltip>
-					</div>
-				</div>
-			</div>
-		</div>
+			:automation="automation"
+			:is-loading="isLoadingAutomation"
+			:step-save-status="stepSaveStatus"
+			:is-saving-draft="isSavingDraft"
+			:is-activating="isActivating"
+			:can-activate="canActivate"
+			@back="handleBack"
+			@retry-step-save="requestStepSave"
+			@save-draft="handleSaveDraft"
+			@toggle-status="handleToggleStatus"
+			@activate="handleShowActivateConfirm"
+		/>
 
 		<!-- Progress Indicator -->
-		<div
-			class="bg-bg-elevated border-b border-border-subtle shrink-0"
-			:inert="isInspectorOverlay || undefined"
-		>
-			<div class="max-w-7xl mx-auto px-4 py-4 sm:px-6">
-				<div class="flex items-center gap-3">
-					<div class="flex items-center gap-2">
-						<div
-							class="flex items-center justify-center w-8 h-8 rounded-full bg-brand/20 text-brand border-2 border-brand text-sm font-medium"
-						>
-							<Icon name="lucide:check" class="w-4 h-4" />
-						</div>
-						<span class="text-sm font-medium text-text-primary">{{
-							t('dashboard.automations.detail.edit.steps.chooseTrigger')
-						}}</span>
-					</div>
-					<div class="flex-1 h-0.5 bg-brand" />
-					<div class="flex items-center gap-2">
-						<div
-							class="flex items-center justify-center w-8 h-8 rounded-full bg-brand/20 text-brand border-2 border-brand text-sm font-medium"
-						>
-							2
-						</div>
-						<span class="text-sm font-medium text-text-primary">{{
-							t('dashboard.automations.detail.edit.steps.buildWorkflow')
-						}}</span>
-					</div>
-				</div>
-			</div>
-		</div>
+		<EditorProgress :inert="isInspectorOverlay || undefined" />
 
 		<!-- A failed read is not a missing automation (#721). -->
 		<div v-if="automationError" class="flex-1 flex items-center justify-center">
@@ -707,100 +344,14 @@ onUnmounted(() => {
 			>
 				<div class="max-w-xl mx-auto">
 					<!-- Trigger Node -->
-					<div class="relative">
-						<!-- Trigger Card -->
-						<div class="card p-4">
-							<div class="flex items-center gap-3">
-								<div
-									:class="[
-										'p-2 rounded-lg',
-										getIconColorClass(getTriggerInfo(automation.triggerType).color),
-									]"
-								>
-									<Icon :name="getTriggerInfo(automation.triggerType).icon" class="w-5 h-5" />
-								</div>
-								<div class="flex-1 min-w-0">
-									<div class="flex items-center gap-2">
-										<span class="text-xs font-medium text-text-tertiary uppercase tracking-wide">{{
-											t('dashboard.automations.detail.edit.trigger')
-										}}</span>
-									</div>
-									<p class="font-medium text-text-primary">
-										{{ t(getTriggerInfo(automation.triggerType).label) }}
-									</p>
-									<p v-if="automation.triggerConfig" class="text-sm text-text-secondary truncate">
-										{{ triggerSummary }}
-									</p>
-								</div>
-								<NuxtLink
-									:to="`/dashboard/automations/new?edit=${automation._id}`"
-									class="text-sm text-brand hover:underline"
-								>
-									{{ t('common.edit') }}
-								</NuxtLink>
-							</div>
-						</div>
-
-						<!-- Connector Line -->
-						<div class="flex flex-col items-center">
-							<div class="w-0.5 h-4 bg-border-default" />
-
-							<!-- Add Step Button (at start) -->
-							<div class="relative" @click.stop>
-								<button
-									class="flex items-center justify-center w-8 h-8 rounded-full bg-bg-surface border border-border-default text-text-tertiary hover:text-brand hover:border-brand transition-colors"
-									@click="addStepDropdownIndex = addStepDropdownIndex === -1 ? null : -1"
-									:aria-label="t('common.add')"
-								>
-									<Icon name="lucide:plus" class="w-4 h-4" />
-								</button>
-
-								<!-- Dropdown -->
-								<div
-									v-if="addStepDropdownIndex === -1"
-									class="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-64 bg-bg-elevated border border-border-subtle rounded-lg shadow-lg z-20"
-								>
-									<div class="p-2">
-										<p
-											class="text-xs font-medium text-text-tertiary uppercase tracking-wide px-2 py-1"
-										>
-											{{ t('dashboard.automations.detail.edit.addStep') }}
-										</p>
-										<button
-											v-for="type in stepTypes"
-											:key="type.id"
-											class="flex items-center gap-3 w-full p-2 rounded-lg text-left transition-colors hover:bg-bg-surface"
-											@click="requestAddStep(type.id, 0)"
-										>
-											<div
-												:class="[
-													'p-2 rounded-lg flex items-center justify-center',
-													getIconColorClass(type.color),
-												]"
-											>
-												<Icon
-													:name="
-														type.id === 'email'
-															? 'lucide:mail'
-															: type.id === 'delay'
-																? 'lucide:clock'
-																: 'lucide:git-branch'
-													"
-													class="w-4 h-4"
-												/>
-											</div>
-											<div class="flex-1 min-w-0">
-												<p class="font-medium text-text-primary text-sm">{{ t(type.label) }}</p>
-												<p class="text-xs text-text-secondary">{{ t(type.description) }}</p>
-											</div>
-										</button>
-									</div>
-								</div>
-							</div>
-
-							<div class="w-0.5 h-4 bg-border-default" />
-						</div>
-					</div>
+					<TriggerNode
+						:automation="automation"
+						:topics="topics"
+						:add-step-open="addStepDropdownIndex === -1"
+						:step-types="stepTypes"
+						@toggle-add-step="addStepDropdownIndex = addStepDropdownIndex === -1 ? null : -1"
+						@add-step="requestAddStep($event, 0)"
+					/>
 
 					<!-- Steps List -->
 					<p id="step-reorder-instructions" class="sr-only">
@@ -822,202 +373,33 @@ onUnmounted(() => {
 							class="relative"
 							data-testid="automation-step"
 						>
-							<!-- Step Card. The title is the button that opens it; the card
-							     click is a larger target for the pointer. -->
-							<div
-								:class="[
-									'card p-4 cursor-pointer transition-[border-color,box-shadow] has-[.step-title:focus-visible]:ring-2 has-[.step-title:focus-visible]:ring-brand',
-									selectedStepId === step._id
-										? 'ring-2 ring-brand border-brand'
-										: 'hover:border-border-default',
-									liftedStepId === step._id ? 'ring-2 ring-brand/60 shadow-lg' : '',
-								]"
-								@click="requestSelectStep(step._id)"
-							>
-								<div class="flex items-center gap-3">
-									<!-- Drag handle: pointer drag, or Space / arrows / Space from the keyboard -->
-									<button
-										type="button"
-										class="drag-handle cursor-grab active:cursor-grabbing p-1 -ml-1 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-										:class="
-											liftedStepId === step._id
-												? 'text-brand'
-												: 'text-text-tertiary hover:text-text-secondary'
-										"
-										:aria-label="
-											t('dashboard.automations.detail.edit.reorder.handle', { number: index + 1 })
-										"
-										:aria-pressed="liftedStepId === step._id"
-										aria-describedby="step-reorder-instructions"
-										:data-step-handle="step._id"
-										@click.stop
-										@keydown="keyboardReorder.onKeydown($event, step._id)"
-									>
-										<Icon name="lucide:grip-vertical" class="w-4 h-4" />
-									</button>
-
-									<!-- Step Icon (resolved via the step editor module registry;
-											page-local accent palette via STEP_ACCENT) -->
-									<div
-										:class="[
-											'p-2 rounded-lg flex items-center justify-center',
-											stepAccent(step.stepType).iconClass,
-										]"
-									>
-										<Icon :name="stepInfo(step.stepType).icon" class="w-5 h-5" />
-									</div>
-
-									<!-- Step Content -->
-									<div class="flex-1 min-w-0">
-										<button
-											type="button"
-											class="step-title block text-left focus-visible:outline-none"
-											:aria-current="selectedStepId === step._id ? 'step' : undefined"
-											:data-step-title="step._id"
-											@click.stop="requestSelectStep(step._id)"
-										>
-											<span
-												class="block text-xs font-medium text-text-tertiary uppercase tracking-wide"
-											>
-												{{
-													t('dashboard.automations.detail.edit.stepNumber', { number: index + 1 })
-												}}
-											</span>
-											<span class="block font-medium text-text-primary">
-												{{ t(stepInfo(step.stepType).label) }}
-											</span>
-										</button>
-										<!-- Description: plain text when no pill accent, pill chrome when defined. -->
-										<p
-											v-if="!stepAccent(step.stepType).pill"
-											class="text-sm text-text-secondary truncate"
-										>
-											{{ getStepDescription(step) }}
-										</p>
-										<div v-else class="mt-2">
-											<div
-												:class="[
-													'inline-flex items-center gap-2 px-3 py-1.5 rounded-full border',
-													stepAccent(step.stepType).pill!.bg,
-													stepAccent(step.stepType).pill!.border,
-												]"
-											>
-												<Icon
-													:name="stepInfo(step.stepType).icon"
-													:class="['w-3.5 h-3.5', stepAccent(step.stepType).pill!.text]"
-												/>
-												<span
-													:class="['text-sm font-medium', stepAccent(step.stepType).pill!.text]"
-												>
-													{{ getStepDescription(step) }}
-												</span>
-											</div>
-										</div>
-									</div>
-
-									<!-- Step actions -->
-									<div @click.stop>
-										<UiDropdownMenu
-											:open="openStepMenuId === step._id"
-											@update:open="openStepMenuId = $event ? step._id : null"
-										>
-											<template #trigger>
-												<button
-													type="button"
-													class="p-2 rounded-lg text-text-tertiary hover:text-text-primary hover:bg-bg-surface transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
-													:aria-label="
-														t('dashboard.automations.detail.edit.reorder.actions', {
-															number: index + 1,
-														})
-													"
-												>
-													<Icon name="lucide:more-vertical" class="w-4 h-4" />
-												</button>
-											</template>
-											<UiDropdownMenuItem
-												icon="lucide:arrow-up"
-												:disabled="index === 0"
-												@click="moveStepBy(step._id, -1)"
-											>
-												{{ t('dashboard.automations.detail.edit.reorder.moveUp') }}
-											</UiDropdownMenuItem>
-											<UiDropdownMenuItem
-												icon="lucide:arrow-down"
-												:disabled="index === orderedSteps.length - 1"
-												@click="moveStepBy(step._id, 1)"
-											>
-												{{ t('dashboard.automations.detail.edit.reorder.moveDown') }}
-											</UiDropdownMenuItem>
-											<UiDropdownDivider />
-											<UiDropdownMenuItem
-												icon="lucide:trash-2"
-												danger
-												@click="handleDeleteStep(step._id)"
-											>
-												{{ t('common.delete') }}
-											</UiDropdownMenuItem>
-										</UiDropdownMenu>
-									</div>
-								</div>
-							</div>
+							<StepCard
+								:step="step"
+								:index="index"
+								:total="orderedSteps.length"
+								:selected="selectedStepId === step._id"
+								:lifted="liftedStepId === step._id"
+								:menu-open="openStepMenuId === step._id"
+								:description="getStepDescription(step)"
+								@select="requestSelectStep(step._id)"
+								@handle-keydown="keyboardReorder.onKeydown($event, step._id)"
+								@update:menu-open="openStepMenuId = $event ? step._id : null"
+								@move="moveStepBy(step._id, $event)"
+								@delete="handleDeleteStep(step._id)"
+							/>
 
 							<!-- Connector Line -->
 							<div class="flex flex-col items-center">
 								<div class="w-0.5 h-4 bg-border-default" />
 
 								<!-- Add Step Button (after this step) -->
-								<div class="relative" @click.stop>
-									<button
-										class="flex items-center justify-center w-8 h-8 rounded-full bg-bg-surface border border-border-default text-text-tertiary hover:text-brand hover:border-brand transition-colors"
-										@click="addStepDropdownIndex = addStepDropdownIndex === index ? null : index"
-										:aria-label="t('common.add')"
-									>
-										<Icon name="lucide:plus" class="w-4 h-4" />
-									</button>
-
-									<!-- Dropdown -->
-									<div
-										v-if="addStepDropdownIndex === index"
-										data-testid="add-step-menu"
-										class="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-64 bg-bg-elevated border border-border-subtle rounded-lg shadow-lg z-20"
-									>
-										<div class="p-2">
-											<p
-												class="text-xs font-medium text-text-tertiary uppercase tracking-wide px-2 py-1"
-											>
-												{{ t('dashboard.automations.detail.edit.addStep') }}
-											</p>
-											<button
-												v-for="type in stepTypes"
-												:key="type.id"
-												class="flex items-center gap-3 w-full p-2 rounded-lg text-left transition-colors hover:bg-bg-surface"
-												@click="requestAddStep(type.id, index + 1)"
-											>
-												<div
-													:class="[
-														'p-2 rounded-lg flex items-center justify-center',
-														getIconColorClass(type.color),
-													]"
-												>
-													<Icon
-														:name="
-															type.id === 'email'
-																? 'lucide:mail'
-																: type.id === 'delay'
-																	? 'lucide:clock'
-																	: 'lucide:git-branch'
-														"
-														class="w-4 h-4"
-													/>
-												</div>
-												<div class="flex-1 min-w-0">
-													<p class="font-medium text-text-primary text-sm">{{ t(type.label) }}</p>
-													<p class="text-xs text-text-secondary">{{ t(type.description) }}</p>
-												</div>
-											</button>
-										</div>
-									</div>
-								</div>
+								<AddStepMenu
+									:open="addStepDropdownIndex === index"
+									:step-types="stepTypes"
+									menu-test-id="add-step-menu"
+									@toggle="addStepDropdownIndex = addStepDropdownIndex === index ? null : index"
+									@add="requestAddStep($event, index + 1)"
+								/>
 
 								<div v-if="index < orderedSteps.length - 1" class="w-0.5 h-4 bg-border-default" />
 							</div>
@@ -1025,29 +407,7 @@ onUnmounted(() => {
 					</VueDraggable>
 
 					<!-- Empty State - No Steps -->
-					<div v-else class="card p-8 text-center">
-						<div
-							class="w-16 h-16 mx-auto mb-4 rounded-full bg-bg-surface flex items-center justify-center"
-						>
-							<Icon name="lucide:zap" class="w-8 h-8 text-text-tertiary" />
-						</div>
-						<h3 class="text-lg font-semibold text-text-primary mb-2">
-							{{ t('dashboard.automations.detail.edit.empty.title') }}
-						</h3>
-						<p class="text-text-secondary mb-4">
-							{{ t('dashboard.automations.detail.edit.empty.body') }}
-						</p>
-						<div class="flex justify-center gap-3">
-							<UiButton class="gap-2" @click="requestAddStep('email')">
-								<Icon name="lucide:mail" class="w-4 h-4" />
-								{{ t('dashboard.automations.detail.edit.empty.addEmail') }}
-							</UiButton>
-							<UiButton variant="secondary" class="gap-2" @click="requestAddStep('delay')">
-								<Icon name="lucide:clock" class="w-4 h-4" />
-								{{ t('dashboard.automations.detail.edit.empty.addDelay') }}
-							</UiButton>
-						</div>
-					</div>
+					<EmptySteps v-else @add="requestAddStep" />
 
 					<!-- End Node -->
 					<div v-if="mutableSteps.length > 0" class="mt-4">
@@ -1062,28 +422,10 @@ onUnmounted(() => {
 					</div>
 
 					<!-- Validation Warnings (only show for drafts with issues) -->
-					<div
+					<ActivationIssues
 						v-if="automation.status === 'draft' && !canActivate.valid"
-						class="mt-6 p-4 bg-warning/10 border border-warning/20 rounded-lg"
-					>
-						<div class="flex items-start gap-3">
-							<Icon name="lucide:alert-circle" class="w-5 h-5 text-warning shrink-0 mt-0.5" />
-							<div class="flex-1 min-w-0">
-								<p class="font-medium text-warning mb-2">
-									{{ t('dashboard.automations.detail.edit.validation.title') }}
-								</p>
-								<ul class="list-disc list-inside space-y-1">
-									<li
-										v-for="(reason, idx) in canActivate.reasons"
-										:key="idx"
-										class="text-sm text-warning/80"
-									>
-										{{ reason }}
-									</li>
-								</ul>
-							</div>
-						</div>
-					</div>
+						:reasons="canActivate.reasons"
+					/>
 				</div>
 			</div>
 
@@ -1106,123 +448,15 @@ onUnmounted(() => {
 		</div>
 
 		<!-- Activate Confirmation Modal -->
-		<Teleport to="body">
-			<Transition
-				enter-active-class="transition-opacity duration-(--motion-fast)"
-				enter-from-class="opacity-0"
-				enter-to-class="opacity-100"
-				leave-active-class="transition-opacity duration-(--motion-fast-exit)"
-				leave-from-class="opacity-100"
-				leave-to-class="opacity-0"
-			>
-				<div
-					v-if="showActivateConfirmModal"
-					class="fixed inset-0 z-50 flex items-center justify-center p-4"
-				>
-					<!-- Backdrop -->
-					<div
-						class="absolute inset-0 bg-scrim/50 backdrop-blur-sm"
-						@click="showActivateConfirmModal = false"
-					/>
-
-					<!-- Modal -->
-					<div
-						class="relative bg-bg-elevated border border-border-subtle rounded-xl shadow-2xl w-full max-w-md"
-					>
-						<div class="p-6">
-							<!-- Icon -->
-							<div
-								class="w-12 h-12 mx-auto mb-4 rounded-full bg-brand/10 flex items-center justify-center"
-							>
-								<Icon name="lucide:play" class="w-6 h-6 text-brand" />
-							</div>
-
-							<!-- Title -->
-							<h3 class="text-lg font-semibold text-text-primary text-center mb-2">
-								{{ t('dashboard.automations.detail.edit.activateDialog.title') }}
-							</h3>
-
-							<!-- Description -->
-							<p class="text-text-secondary text-center mb-6">
-								{{ t('dashboard.automations.detail.edit.activateDialog.body') }}
-							</p>
-
-							<div
-								v-if="activationSaveFailed"
-								role="alert"
-								class="flex items-start gap-2 p-3 mb-6 rounded-lg bg-error/10 border border-error/20 text-sm text-error"
-							>
-								<Icon name="lucide:alert-circle" class="w-4 h-4 shrink-0 mt-0.5" />
-								<span>{{ t('dashboard.automations.detail.edit.activateDialog.saveFailed') }}</span>
-							</div>
-
-							<!-- Summary -->
-							<div
-								v-if="automation"
-								class="bg-bg-surface border border-border-subtle rounded-lg p-4 mb-6"
-							>
-								<div class="space-y-3">
-									<div class="flex items-center justify-between">
-										<span class="text-sm text-text-tertiary">{{
-											t('dashboard.automations.detail.edit.activateDialog.automation')
-										}}</span>
-										<span class="text-sm font-medium text-text-primary">{{ automation.name }}</span>
-									</div>
-									<div class="flex items-center justify-between">
-										<span class="text-sm text-text-tertiary">{{
-											t('dashboard.automations.detail.edit.trigger')
-										}}</span>
-										<span class="text-sm font-medium text-text-primary">{{
-											t(getTriggerInfo(automation.triggerType).label)
-										}}</span>
-									</div>
-									<div class="flex items-center justify-between">
-										<span class="text-sm text-text-tertiary">{{
-											t('dashboard.automations.detail.edit.activateDialog.steps')
-										}}</span>
-										<span class="text-sm font-medium text-text-primary">{{
-											t(
-												'dashboard.automations.detail.edit.activateDialog.stepCount',
-												{ count: mutableSteps.length },
-												mutableSteps.length
-											)
-										}}</span>
-									</div>
-								</div>
-							</div>
-
-							<!-- Buttons -->
-							<div class="flex gap-3">
-								<UiButton
-									variant="secondary"
-									class="flex-1"
-									@click="showActivateConfirmModal = false"
-								>
-									{{ t('common.cancel') }}
-								</UiButton>
-								<UiButton
-									class="flex-1 gap-2"
-									:disabled="isActivating"
-									@click="handleConfirmActivate"
-								>
-									<Icon
-										v-if="isActivating"
-										name="lucide:loader-2"
-										class="w-4 h-4 animate-spin motion-reduce:animate-none"
-									/>
-									<Icon v-else name="lucide:play" class="w-4 h-4" />
-									{{
-										isActivating
-											? t('dashboard.automations.detail.edit.activating')
-											: t('dashboard.automations.detail.edit.activate')
-									}}
-								</UiButton>
-							</div>
-						</div>
-					</div>
-				</div>
-			</Transition>
-		</Teleport>
+		<ActivateConfirmModal
+			:open="showActivateConfirmModal"
+			:automation="automation"
+			:step-count="mutableSteps.length"
+			:is-activating="isActivating"
+			:save-failed="activationSaveFailed"
+			@close="showActivateConfirmModal = false"
+			@confirm="handleConfirmActivate"
+		/>
 
 		<!-- Unsaved Changes Dialog — leaving the page with unsaved step edits -->
 		<UiUnsavedChangesDialog
