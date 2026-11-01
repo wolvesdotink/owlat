@@ -78,8 +78,13 @@ export class EmailEditorPage extends BasePage {
 	 * Wait until a save made on this page landed. Only a save that landed puts
 	 * its age beside the state ("Saved · now"); a draft that was merely loaded
 	 * reads a bare "Saved", so this cannot pass before an edit was written.
+	 *
+	 * A RegExp is matched against the raw textContent, where the template
+	 * whitespace between the state and the age survives as two spaces
+	 * ("Saved  · now") that the browser collapses on screen. Match any run of
+	 * whitespace there, as a string expectation would after normalizing.
 	 */
 	async waitForAutosaveAcknowledged() {
-		await expect(this.saveStatus).toHaveText(/^Saved · /);
+		await expect(this.saveStatus).toHaveText(/^Saved\s+·\s/);
 	}
 }
