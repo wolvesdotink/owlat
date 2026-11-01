@@ -22,7 +22,10 @@ import { createAuth } from '../auth';
  * message instead of sending it.
  */
 
-afterEach(() => vi.unstubAllEnvs());
+afterEach(() => {
+	vi.unstubAllEnvs();
+	vi.useRealTimers();
+});
 
 type SentEmail = { to: string; subject: string; html: string };
 
@@ -67,6 +70,47 @@ async function rows(t: ReturnType<typeof harness>['t'], model: string) {
 }
 
 const PASSWORD = 'correct-horse-battery';
+
+const BASE32_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+
+function base32Decode(encoded: string): Uint8Array<ArrayBuffer> {
+	const bytes: number[] = [];
+	let buffer = 0;
+	let bits = 0;
+	for (const char of encoded.replace(/=+$/, '')) {
+		buffer = (buffer << 5) | BASE32_ALPHABET.indexOf(char);
+		bits += 5;
+		if (bits >= 8) {
+			bits -= 8;
+			bytes.push((buffer >> bits) & 0xff);
+		}
+	}
+	return new Uint8Array(bytes);
+}
+
+/**
+ * Every code Better Auth's verifier accepts for the secret in `totpURI` at the
+ * frozen `Date.now()`: RFC 6238 SHA-1, six digits, 30 s period, one step of
+ * drift either way. A random secret makes any fixed "wrong" code valid one
+ * time in 10^6, so the test picks its wrong codes outside this set.
+ */
+async function acceptedTotpCodes(totpURI: string): Promise<Set<string>> {
+	const secret = base32Decode(new URL(totpURI).searchParams.get('secret')!);
+	const key = await crypto.subtle.importKey('raw', secret, { name: 'HMAC', hash: 'SHA-1' }, false, [
+		'sign',
+	]);
+	const step = Math.floor(Date.now() / 30_000);
+	const codes = new Set<string>();
+	for (let counter = step - 1; counter <= step + 1; counter++) {
+		const message = new DataView(new ArrayBuffer(8));
+		message.setBigUint64(0, BigInt(counter));
+		const mac = new Uint8Array(await crypto.subtle.sign('HMAC', key, message.buffer));
+		const offset = mac[mac.length - 1]! & 0x0f;
+		const binary = new DataView(mac.buffer).getUint32(offset) & 0x7fffffff;
+		codes.add(String(binary % 1_000_000).padStart(6, '0'));
+	}
+	return codes;
+}
 
 describe('Better Auth 1.7 over the Convex adapter', () => {
 	it('signs up and signs in, reading through the component with modelKey stripped', async () => {
@@ -123,7 +167,7 @@ describe('Better Auth 1.7 over the Convex adapter', () => {
 			body: { email: 'ada@owlat.example', password: PASSWORD },
 			returnHeaders: true,
 		});
-		await auth.api.enableTwoFactor({
+		const enabled = await auth.api.enableTwoFactor({
 			headers: cookieHeaders(first.headers),
 			body: { password: PASSWORD, method: 'totp' },
 		});
@@ -150,7 +194,14 @@ describe('Better Auth 1.7 over the Convex adapter', () => {
 		});
 		expect(challenge.response).toMatchObject({ twoFactorRedirect: true });
 		const challengeHeaders = cookieHeaders(challenge.headers);
-		for (const code of ['000000', '111111']) {
+		// Only Date is frozen, so the verifier's window is the one computed here.
+		vi.useFakeTimers({ toFake: ['Date'], now: Date.now() });
+		const accepted = await acceptedTotpCodes(enabled.totpURI!);
+		const wrongCodes = ['000000', '111111', '222222', '333333', '444444']
+			.filter((code) => !accepted.has(code))
+			.slice(0, 2);
+		expect(wrongCodes).toHaveLength(2);
+		for (const code of wrongCodes) {
 			await expect(
 				auth.api.verifyTOTP({ headers: challengeHeaders, body: { code } })
 			).rejects.toMatchObject({ status: 'UNAUTHORIZED' });
@@ -158,6 +209,13 @@ describe('Better Auth 1.7 over the Convex adapter', () => {
 
 		const [counted] = await rows(t, 'twoFactor');
 		expect(counted).toMatchObject({ failedVerificationCount: 2 });
+
+		// The derived set is the verifier's: one of its codes completes the sign-in.
+		const signedIn = await auth.api.verifyTOTP({
+			headers: challengeHeaders,
+			body: { code: [...accepted][0]! },
+		});
+		expect(signedIn).toMatchObject({ user: { email: 'ada@owlat.example' } });
 	});
 
 	it('resolves an update of a vanished row to null instead of throwing', async () => {
