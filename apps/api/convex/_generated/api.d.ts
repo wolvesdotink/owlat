@@ -150,6 +150,7 @@ import type * as migrations_0060_saved_reply_scopes from '../migrations/0060_sav
 import type * as migrations_0054_backfill_folder_membership from '../migrations/0054_backfill_folder_membership.js';
 import type * as maintenance_folderMembershipBackfill from '../maintenance/folderMembershipBackfill.js';
 import type * as mail_folderMembership from '../mail/folderMembership.js';
+import type * as mail_folderBulk from '../mail/folderBulk.js';
 import type * as schema_counters from '../schema/counters.js';
 import type * as workspaces_deletion_steps_storageUploads from '../workspaces/deletion/steps/storageUploads.js';
 import type * as storage_uploadsHttp from '../storage/uploadsHttp.js';
@@ -3276,6 +3277,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/nudgeQueue': typeof mail_nudgeQueue;
 	'mail/nudges': typeof mail_nudges;
 	'mail/folderMembership': typeof mail_folderMembership;
+	'mail/folderBulk': typeof mail_folderBulk;
 	'mail/_bodySearchLifecycle': typeof mail__bodySearchLifecycle;
 	'mail/_helpers': typeof mail__helpers;
 	'mail/_jobLifecycle': typeof mail__jobLifecycle;

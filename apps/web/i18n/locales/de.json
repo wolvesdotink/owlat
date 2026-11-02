@@ -6201,6 +6201,23 @@
 			"readerBackBar": {
 				"previous": "Vorherige Unterhaltung",
 				"next": "Nächste Unterhaltung"
+			},
+			"postboxFolderActions": {
+				"menuLabel": "Ordneraktionen",
+				"markAllRead": "Alle als gelesen markieren",
+				"empty": {
+					"trash": "Papierkorb leeren",
+					"spam": "Spam leeren"
+				},
+				"count": {
+					"trash": "{count} Nachricht im Papierkorb | {count} Nachrichten im Papierkorb",
+					"spam": "{count} Nachricht im Spam | {count} Nachrichten im Spam"
+				},
+				"confirmTitle": {
+					"trash": "Papierkorb leeren?",
+					"spam": "Spam leeren?"
+				},
+				"confirmBody": "{count} Nachricht wird endgültig gelöscht. Bei einem verbundenen Konto auch auf dem Mailserver. Das lässt sich nicht rückgängig machen. | {count} Nachrichten werden endgültig gelöscht. Bei einem verbundenen Konto auch auf dem Mailserver. Das lässt sich nicht rückgängig machen."
 			}
 		},
 		"preferences": {
@@ -16210,6 +16227,15 @@
 			"usePostboxAttachmentShares": {
 				"revokeOperation": "Freigabelink zurückziehen",
 				"scopeOperation": "Zugriff auf den Freigabelink ändern"
+			},
+			"usePostboxFolderBulk": {
+				"markAllReadOperation": "Alle als gelesen markieren",
+				"emptyOperation": "Ordner leeren",
+				"markedAllRead": "{count} Nachricht als gelesen markiert | {count} Nachrichten als gelesen markiert",
+				"emptied": {
+					"trash": "Papierkorb geleert",
+					"spam": "Spam geleert"
+				}
 			}
 		},
 		"postboxAfterReply": {

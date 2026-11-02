@@ -6201,6 +6201,23 @@
 			"readerBackBar": {
 				"previous": "Previous conversation",
 				"next": "Next conversation"
+			},
+			"postboxFolderActions": {
+				"menuLabel": "Folder actions",
+				"markAllRead": "Mark all as read",
+				"empty": {
+					"trash": "Empty trash",
+					"spam": "Empty spam"
+				},
+				"count": {
+					"trash": "{count} message in the trash | {count} messages in the trash",
+					"spam": "{count} message in spam | {count} messages in spam"
+				},
+				"confirmTitle": {
+					"trash": "Empty the trash?",
+					"spam": "Empty spam?"
+				},
+				"confirmBody": "{count} message will be deleted for good. On a connected account it is deleted on the mail server too. This can't be undone. | {count} messages will be deleted for good. On a connected account they are deleted on the mail server too. This can't be undone."
 			}
 		},
 		"preferences": {
@@ -16210,6 +16227,15 @@
 			"usePostboxAttachmentShares": {
 				"revokeOperation": "revoking the share link",
 				"scopeOperation": "changing who can open the share link"
+			},
+			"usePostboxFolderBulk": {
+				"markAllReadOperation": "Mark all as read",
+				"emptyOperation": "Empty folder",
+				"markedAllRead": "Marked {count} message as read | Marked {count} messages as read",
+				"emptied": {
+					"trash": "Trash emptied",
+					"spam": "Spam emptied"
+				}
 			}
 		},
 		"postboxAfterReply": {
