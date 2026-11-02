@@ -85,7 +85,7 @@ const CODE_ON_OWN_LINE = /^[ \t]*(\d{6,8}|\d{3}[ -]\d{3})[ \t]*$/gm;
 const TEXT_URL = /https:\/\/[^\s<>"')\]]+/g;
 const HREF_URL = /href\s*=\s*["']?(https:[^"'\s>]+)/gi;
 
-/** Path or query wording of a sign-in link. */
+/** Path wording of a sign-in link; a `?token=` on a help page does not count. */
 const SIGN_IN_PATH =
 	/(?:log-?in|sign-?in|signin|magic|auth|verify|session|otp|passwordless|token)/i;
 
@@ -131,8 +131,7 @@ function collectLinks(input: { text: string; html?: string }, fromDomain: string
 		const host = httpsHostOf(url);
 		if (!host || !isIdentifierAligned(host, fromDomain)) continue;
 		const { pathname, search } = new URL(url);
-		const target = `${pathname}${search}`;
-		if (/unsubscribe/i.test(target) || !SIGN_IN_PATH.test(target)) continue;
+		if (/unsubscribe/i.test(`${pathname}${search}`) || !SIGN_IN_PATH.test(pathname)) continue;
 		links.add(url);
 	}
 	return links;
@@ -141,7 +140,9 @@ function collectLinks(input: { text: string; html?: string }, fromDomain: string
 /**
  * The single code or sign-in link a message names, or null. Pure. Promotional
  * wording, two different codes, or two different sign-in links all give null:
- * offering the wrong one in one click is worse than offering none.
+ * offering the wrong one in one click is worse than offering none. A code and
+ * a link together give the code: many templates add "or click here to sign
+ * in" under the code, and both come from the same sender.
  */
 export function extractSignInCode(input: {
 	subject: string;

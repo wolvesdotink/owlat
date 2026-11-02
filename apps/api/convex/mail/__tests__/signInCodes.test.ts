@@ -72,6 +72,16 @@ describe('extractSignInCode', () => {
 		).toEqual({ kind: 'link', value: 'https://app.fabrikam.example/login/magic?token=7f3a9c2e41' });
 	});
 
+	it('offers the code when the message also carries a sign-in link', () => {
+		expect(
+			extractSignInCode({
+				...from,
+				subject: 'Your Northwind verification code',
+				text: `${CODE_TEXT}\n\nOr sign in here: https://northwind.example/login?t=1`,
+			})
+		).toEqual({ kind: 'code', value: '482913' });
+	});
+
 	it('reads a sign-in link from an HTML href', () => {
 		expect(
 			extractSignInCode({
@@ -81,6 +91,16 @@ describe('extractSignInCode', () => {
 				html: '<a href="https://app.fabrikam.example/auth?a=1&amp;b=2">Sign in</a>',
 			})
 		).toEqual({ kind: 'link', value: 'https://app.fabrikam.example/auth?a=1&b=2' });
+	});
+
+	it('reads the path, not the query, for sign-in wording', () => {
+		expect(
+			extractSignInCode({
+				fromDomain: 'fabrikam.example',
+				subject: 'Your Fabrikam sign-in link',
+				text: 'https://app.fabrikam.example/login/magic?token=7f3a\n\nhttps://fabrikam.example/help?token=123',
+			})
+		).toEqual({ kind: 'link', value: 'https://app.fabrikam.example/login/magic?token=7f3a' });
 	});
 
 	it('offers no link that points off the sender domain', () => {
