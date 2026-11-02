@@ -13658,6 +13658,10 @@
 				"snooze": "Zurückstellen",
 				"ask": "Frag zu diesem Verlauf"
 			},
+			"stickyBar": {
+				"backToTop": "Nach oben",
+				"backToTopOf": "{subject}, nach oben"
+			},
 			"strip": {
 				"reading": "Dieser Verlauf wird gerade gelesen",
 				"waitingOn": "Du wartest auf {name}: {text}",

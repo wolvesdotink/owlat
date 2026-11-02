@@ -276,6 +276,37 @@ providePostboxReaderContext({
 	find,
 });
 
+// The ⋯ menu's state and verbs, the same in the header line and the sticky bar.
+const threadMenu = computed(() => ({
+	thread: readerThread.value,
+	showMarkRead: showsManualMarkReadButton.value,
+	markingRead: markThreadReadOp.isLoading.value,
+	showWhyHere: !rb.isShared.value,
+	showAsk: isFeatureEnabled('ai'),
+	showFullBrief: rb.hasFullBrief.value,
+}));
+const threadMenuOn = {
+	'toggle-mute': () => readerActions.toggleOpenThreadMute(),
+	'toggle-alert': () => readerActions.toggleOpenThreadAlert(),
+	'toggle-pin': () => readerActions.toggleOpenThreadPin(),
+	'mark-read': () => markOpenThreadRead(),
+	snooze: () => readerActions.runReaderAction('snooze'),
+	ask: () => (calm.asking.value = !calm.asking.value),
+	details: () => (calm.detailsOpen.value = true),
+	'full-brief': () => (calm.sheetOpen.value = true),
+};
+
+// The sticky bar names the latest sender (whom Reply answers) and offers the
+// newest list unsubscribe in the conversation.
+const headerRef = ref<{ $el: HTMLElement } | null>(null);
+const headerEl = computed(() => headerRef.value?.$el ?? null);
+const stickyBarRef = ref<{ $el: HTMLElement } | null>(null);
+const stickySender = computed(() => {
+	const latest = latestMessage.value;
+	return latest ? latest.fromName || latest.fromAddress : undefined;
+});
+const stickyUnsubscribe = computed(() => allMessages.value.findLast((m) => !!m.unsubscribe));
+
 /** Open the filter builder pre-filled from this message (see postboxFilterQueryFrom). */
 function createFilterFrom(msg: { fromAddress?: string; subject?: string }) {
 	const query = postboxFilterQueryFrom(msg);
@@ -287,31 +318,46 @@ function createFilterFrom(msg: { fromAddress?: string; subject?: string }) {
 	<article
 		ref="articleEl"
 		v-reply-drop="replyDrop"
-		class="pbx-reader-article p-6 max-w-4xl mx-auto"
+		class="pbx-reader-article p-6 max-w-4xl mx-auto [--pbx-reader-bar-h:2.75rem]"
 		:class="team.isActive.value ? '' : discussionArticleClass"
 	>
+		<!-- Hidden until the header line scrolls away; it overlays the
+		     conversation, so it adds nothing to the page above the mail. -->
+		<PostboxReaderStickyBar
+			ref="stickyBarRef"
+			:subject="message.subject"
+			:sender="stickySender"
+			:header="headerEl"
+			@reply="readerActions.runReaderAction('reply')"
+			@archive="readerActions.runReaderAction('archive')"
+		>
+			<template #lead>
+				<PostboxUnsubscribeChip
+					v-if="stickyUnsubscribe?.unsubscribe"
+					class="flex-shrink-0 mx-1"
+					:message-id="stickyUnsubscribe._id"
+					:mailbox-id="message.mailboxId"
+					:unsubscribe="stickyUnsubscribe.unsubscribe"
+					:sender-name="stickyUnsubscribe.fromName || stickyUnsubscribe.fromAddress"
+				/>
+			</template>
+			<PostboxThreadMenu
+				v-bind="threadMenu"
+				v-on="threadMenuOn"
+				@why-here="calm.openWhyHere(stickyBarRef?.$el ?? null)"
+			/>
+		</PostboxReaderStickyBar>
 		<!-- One page (read on arrival §3): header line, the strip (or the slim
 		     "Why here? · Details" line), one notice, then the conversation. -->
 		<PostboxThreadHeader
+			ref="headerRef"
+			v-bind="threadMenu"
 			:subject="message.subject"
 			:message-count="threadMessageCount"
 			:message-id="messageId"
-			:thread="readerThread"
-			:show-mark-read="showsManualMarkReadButton"
-			:marking-read="markThreadReadOp.isLoading.value"
-			:show-why-here="!rb.isShared.value"
-			:show-ask="isFeatureEnabled('ai')"
-			:show-full-brief="rb.hasFullBrief.value"
-			@toggle-mute="readerActions.toggleOpenThreadMute"
-			@toggle-alert="readerActions.toggleOpenThreadAlert"
-			@toggle-pin="readerActions.toggleOpenThreadPin"
-			@mark-read="markOpenThreadRead"
+			v-on="threadMenuOn"
 			@reply="readerActions.runReaderAction('reply')"
 			@archive="readerActions.runReaderAction('archive')"
-			@snooze="readerActions.runReaderAction('snooze')"
-			@ask="calm.asking.value = !calm.asking.value"
-			@details="calm.detailsOpen.value = true"
-			@full-brief="calm.sheetOpen.value = true"
 			@why-here="calm.openWhyHere"
 		>
 			<template #actions>

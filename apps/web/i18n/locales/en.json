@@ -13658,6 +13658,10 @@
 				"snooze": "Snooze",
 				"ask": "Ask about this thread"
 			},
+			"stickyBar": {
+				"backToTop": "Back to top",
+				"backToTopOf": "{subject}, back to top"
+			},
 			"strip": {
 				"reading": "Reading this thread now",
 				"waitingOn": "Waiting on {name}: {text}",

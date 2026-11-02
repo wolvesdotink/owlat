@@ -198,6 +198,7 @@ const marker = (name: string) =>
 
 /** Reader chrome this suite does not look into. */
 const CHROME = [
+	'PostboxThreadMenu',
 	'LazyChatLinkEmailDialog',
 	'UiAvatar',
 	'PostboxThreadCiteNote',
@@ -270,6 +271,11 @@ async function mountReader(next: Fixture, provide: Record<symbol, unknown> = {})
 				// Closed, find renders nothing above the mail.
 				PostboxThreadFindBar: defineComponent({
 					name: 'PostboxThreadFindBar',
+					setup: () => () => null,
+				}),
+				// Until the header scrolls away the sticky bar shows nothing either.
+				PostboxReaderStickyBar: defineComponent({
+					name: 'PostboxReaderStickyBar',
 					setup: () => () => null,
 				}),
 				PostboxThreadHeader,

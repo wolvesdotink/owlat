@@ -118,6 +118,8 @@ const marker = (name: string) =>
 
 /** Reader and card chrome this suite does not look into. */
 const CHROME = [
+	'PostboxReaderStickyBar',
+	'PostboxThreadMenu',
 	'Icon',
 	'LazyChatLinkEmailDialog',
 	'UiAvatar',
@@ -160,7 +162,28 @@ const CHROME = [
 	'PostboxUnsubscribeChip',
 ];
 
-function mountReader() {
+/** The sticky bar with its props and the host's slots on show. */
+const stickyBarProbe = defineComponent({
+	name: 'PostboxReaderStickyBar',
+	props: { subject: String, sender: String, header: { type: null, required: true } },
+	setup:
+		(props, { slots }) =>
+		() =>
+			h('div', { 'data-testid': 'sticky-bar', 'data-sender': props.sender }, [
+				slots['lead']?.(),
+				slots['default']?.(),
+			]),
+});
+const unsubscribeProbe = defineComponent({
+	name: 'PostboxUnsubscribeChip',
+	// Only what it shows: the suite's mocks hold a `senderName` helper a prop would shadow.
+	props: { messageId: String },
+	inheritAttrs: false,
+	setup: (props) => () =>
+		h('div', { 'data-testid': 'unsubscribe', 'data-message-id': props.messageId }),
+});
+
+function mountReader(components: Record<string, unknown> = {}) {
 	return mount(PostboxThreadReader, {
 		props: { message: listRow, folderRole: 'inbox' },
 		global: {
@@ -168,6 +191,7 @@ function mountReader() {
 			mocks: autoImportedHelpers(),
 			components: {
 				...Object.fromEntries(CHROME.map((name) => [name, marker(name)])),
+				...components,
 				PostboxReaderMessage: PostboxReaderMessageCard,
 				// Real, so the pickers and dialogs it hosts resolve to the markers above.
 				PostboxThreadReaderOverlays,
@@ -221,5 +245,53 @@ describe('PostboxThreadReader while its thread loads', () => {
 			'From the thread'
 		);
 		expect(w.find('[data-testid="PostboxTriageSuggestion"]').exists()).toBe(true);
+	});
+});
+
+describe('PostboxThreadReader sticky bar', () => {
+	function loadThread(messages: Array<Partial<PostboxReaderMessage>>) {
+		thread.data.value = {
+			thread: { _id: 't1' },
+			labels: [],
+			messages: messages.map((m) => ({ ...listRow, flagSeen: true, ...m })),
+			envelopes: [],
+			olderCursor: null,
+		};
+		thread.isLoading.value = false;
+	}
+
+	it('names the latest sender and offers the newest list unsubscribe in the thread', async () => {
+		const w = mountReader({
+			PostboxReaderStickyBar: stickyBarProbe,
+			PostboxUnsubscribeChip: unsubscribeProbe,
+		});
+		loadThread([
+			{
+				_id: 'm0',
+				fromName: 'Northwind News',
+				fromAddress: 'news@northwind.example',
+				unsubscribe: { httpUrl: 'https://northwind.example/u', oneClick: true },
+			},
+			{ _id: 'm1', fromName: 'Ines Weber' },
+		]);
+		await flushPromises();
+
+		const bar = w.get('[data-testid="sticky-bar"]');
+		expect(bar.attributes('data-sender')).toBe('Ines Weber');
+		const chips = bar.findAll('[data-testid="unsubscribe"]');
+		expect(chips.map((c) => c.attributes('data-message-id'))).toEqual(['m0']);
+	});
+
+	it('offers no unsubscribe when no message came from a list', async () => {
+		const w = mountReader({
+			PostboxReaderStickyBar: stickyBarProbe,
+			PostboxUnsubscribeChip: unsubscribeProbe,
+		});
+		loadThread([{ _id: 'm0' }, { _id: 'm1' }]);
+		await flushPromises();
+
+		expect(w.get('[data-testid="sticky-bar"]').find('[data-testid="unsubscribe"]').exists()).toBe(
+			false
+		);
 	});
 });

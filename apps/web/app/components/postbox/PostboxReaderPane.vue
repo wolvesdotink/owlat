@@ -10,6 +10,7 @@
 import type { PostboxReaderMessage } from '~/components/postbox/PostboxThreadReader.vue';
 import type { PostboxFindSeed } from '~/composables/postbox/usePostboxThreadFind';
 import { POSTBOX_FIND_QUERY_PARAM } from '~/utils/postboxFindSeed';
+import { useBlockSize } from '~/composables/postbox/usePostboxReaderStickyBar';
 
 const props = defineProps<{
 	activeMessageId?: string | null;
@@ -37,13 +38,19 @@ const findSeed = computed<PostboxFindSeed | null>(() => {
 	const id = props.activeMessageId;
 	return typeof words === 'string' && words.trim() && id ? { query: words, messageId: id } : null;
 });
+
+// The reader's sticky bar sticks below the back bar, which is sticky too and
+// hidden at lg outside Zen (it then measures 0).
+const backBarRef = ref<{ $el: HTMLElement } | null>(null);
+const backBarHeight = useBlockSize(() => backBarRef.value?.$el);
 </script>
 
 <template>
-	<section>
+	<section :style="{ '--pbx-reader-sticky-top': `${backBarHeight}px` }">
 		<!-- Drill-in back (mobile; and in Zen, with previous/next). -->
 		<PostboxReaderBackBar
 			v-if="activeMessageId"
+			ref="backBarRef"
 			:folder-name="folderName"
 			:folder-path="folderPath"
 			:active-message-id="activeMessageId"
