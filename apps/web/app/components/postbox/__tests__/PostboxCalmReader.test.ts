@@ -272,6 +272,11 @@ async function mountReader(next: Fixture, provide: Record<symbol, unknown> = {})
 					name: 'PostboxThreadFindBar',
 					setup: () => () => null,
 				}),
+				// Until the header scrolls away the sticky bar shows nothing either.
+				PostboxReaderStickyBar: defineComponent({
+					name: 'PostboxReaderStickyBar',
+					setup: () => () => null,
+				}),
 				PostboxThreadHeader,
 				PostboxReaderStrip,
 				PostboxReaderStripLinks,

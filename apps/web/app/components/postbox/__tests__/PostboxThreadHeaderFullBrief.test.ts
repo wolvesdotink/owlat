@@ -70,6 +70,8 @@ describe('Full brief from the ⋯ menu', () => {
 				stubs: {
 					Icon: true,
 					UiButton: { template: '<button type="button"><slot /></button>' },
+					PostboxReaderStickyBar: true,
+					PostboxUnsubscribeChip: true,
 				},
 			},
 		});
@@ -103,6 +105,8 @@ describe('Full brief from the ⋯ menu', () => {
 				stubs: {
 					Icon: true,
 					UiButton: { template: '<button type="button"><slot /></button>' },
+					PostboxReaderStickyBar: true,
+					PostboxUnsubscribeChip: true,
 				},
 			},
 		});

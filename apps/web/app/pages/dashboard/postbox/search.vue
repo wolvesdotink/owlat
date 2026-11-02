@@ -3,6 +3,7 @@ import { postboxPageTransition } from '~/utils/postboxPageTransition';
 import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import { postboxFindTermsOf } from '~/utils/postboxFindSeed';
+import { useBlockSize } from '~/composables/postbox/usePostboxReaderStickyBar';
 
 const { t } = useI18n();
 
@@ -79,6 +80,10 @@ watch(results, (rows) => {
 const { data: activeMessage } = useConvexQuery(api.mail.mailbox.messages.getMessage, () =>
 	activeMessageId.value ? { messageId: activeMessageId.value as Id<'mailMessages'> } : 'skip'
 );
+// The reader's sticky bar sticks below the back bar (hidden at lg, 0 there).
+const backBarEl = ref<HTMLElement | null>(null);
+const backBarHeight = useBlockSize(() => backBarEl.value);
+
 // The preview opens with the searched words found (find in conversation),
 // in the result that was picked; operators alone seed nothing.
 const findSeed = computed(() => {
@@ -363,12 +368,14 @@ async function confirmSave() {
 				<section
 					class="flex-1 min-w-0 overflow-auto bg-bg-base"
 					:class="activeMessageId ? 'block' : 'hidden lg:block'"
+					:style="{ '--pbx-reader-sticky-top': `${backBarHeight}px` }"
 				>
 					<!-- The bar carries no vertical padding of its own: the button owns it,
 					     so the whole 44px height is a touch target and not just its
 					     middle third. -->
 					<div
 						v-if="activeMessageId"
+						ref="backBarEl"
 						class="lg:hidden sticky top-0 z-10 flex items-center border-b border-border-subtle bg-bg-base px-2"
 					>
 						<button

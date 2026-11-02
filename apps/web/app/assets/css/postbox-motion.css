@@ -73,6 +73,24 @@
 	transform: translateY(6px);
 }
 
+/* The reader's sticky bar: drops in from the top edge it sticks to, and
+   leaves the same way one notch faster. */
+.pbx-sticky-bar-enter-active {
+	transition:
+		opacity var(--pbx-motion-fast) var(--pbx-motion-ease),
+		transform var(--pbx-motion-fast) var(--pbx-motion-ease);
+}
+.pbx-sticky-bar-leave-active {
+	transition:
+		opacity var(--pbx-motion-fast-exit) var(--pbx-motion-ease-exit),
+		transform var(--pbx-motion-fast-exit) var(--pbx-motion-ease-exit);
+}
+.pbx-sticky-bar-enter-from,
+.pbx-sticky-bar-leave-to {
+	opacity: 0;
+	transform: translateY(-4px);
+}
+
 /* Focused task-flow card-stack: the completed card confirms and exits UPWARD
    (slow tier, plain ease-exit); the next card enters from below on the bouncy
    spring. Motion is the information here — it says "that one's done, here's the
@@ -190,12 +208,16 @@
 	.pbx-fade-leave-active,
 	.pbx-toast-enter-active,
 	.pbx-toast-leave-active,
+	.pbx-sticky-bar-enter-active,
+	.pbx-sticky-bar-leave-active,
 	.pbx-cardstack-enter-active,
 	.pbx-cardstack-leave-active {
 		transition-property: opacity;
 	}
 	.pbx-toast-enter-from,
 	.pbx-toast-leave-to,
+	.pbx-sticky-bar-enter-from,
+	.pbx-sticky-bar-leave-to,
 	.pbx-cardstack-enter-from,
 	.pbx-cardstack-leave-to {
 		transform: none;
@@ -214,12 +236,16 @@
 :root[data-motion='reduce'] .pbx-fade-leave-active,
 :root[data-motion='reduce'] .pbx-toast-enter-active,
 :root[data-motion='reduce'] .pbx-toast-leave-active,
+:root[data-motion='reduce'] .pbx-sticky-bar-enter-active,
+:root[data-motion='reduce'] .pbx-sticky-bar-leave-active,
 :root[data-motion='reduce'] .pbx-cardstack-enter-active,
 :root[data-motion='reduce'] .pbx-cardstack-leave-active {
 	transition-property: opacity;
 }
 :root[data-motion='reduce'] .pbx-toast-enter-from,
 :root[data-motion='reduce'] .pbx-toast-leave-to,
+:root[data-motion='reduce'] .pbx-sticky-bar-enter-from,
+:root[data-motion='reduce'] .pbx-sticky-bar-leave-to,
 :root[data-motion='reduce'] .pbx-cardstack-enter-from,
 :root[data-motion='reduce'] .pbx-cardstack-leave-to {
 	transform: none;

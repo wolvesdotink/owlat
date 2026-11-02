@@ -178,12 +178,13 @@ const renderToggleLabel = computed(() =>
 </script>
 
 <template>
-	<!-- Collapsed message header -->
+	<!-- Collapsed message header. Both roots keep a jump to them (a cite, a
+	     quote) clear of the reader's sticky bar and the host's bar above it. -->
 	<button
 		v-if="!expanded"
 		type="button"
 		:data-message-id="msg._id"
-		class="w-full flex items-center gap-3 px-4 py-2.5 rounded-md border border-border-subtle bg-bg-elevated text-left hover:bg-bg-surface"
+		class="w-full flex items-center gap-3 px-4 py-2.5 rounded-md border border-border-subtle bg-bg-elevated text-left hover:bg-bg-surface scroll-mt-[calc(var(--pbx-reader-sticky-top,0px)+var(--pbx-reader-bar-h,0px)+1rem)]"
 		@click="emit('toggle-expanded')"
 	>
 		<UiAvatar
@@ -224,7 +225,7 @@ const renderToggleLabel = computed(() =>
 		v-else
 		ref="sectionEl"
 		:data-message-id="msg._id"
-		class="pbx-reader-message border border-border-subtle rounded-md bg-bg-elevated px-5 py-4 scroll-mt-4"
+		class="pbx-reader-message border border-border-subtle rounded-md bg-bg-elevated px-5 py-4 scroll-mt-[calc(var(--pbx-reader-sticky-top,0px)+var(--pbx-reader-bar-h,0px)+1rem)]"
 		:class="{ 'ring-1 ring-brand': citeQuote != null }"
 	>
 		<header class="flex items-start gap-3">

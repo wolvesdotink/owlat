@@ -287,7 +287,7 @@ function createFilterFrom(msg: { fromAddress?: string; subject?: string }) {
 	<article
 		ref="articleEl"
 		v-reply-drop="replyDrop"
-		class="pbx-reader-article p-6 max-w-4xl mx-auto"
+		class="pbx-reader-article p-6 max-w-4xl mx-auto [--pbx-reader-bar-h:2.75rem]"
 		:class="team.isActive.value ? '' : discussionArticleClass"
 	>
 		<!-- One page (read on arrival §3): header line, the strip (or the slim
@@ -302,6 +302,8 @@ function createFilterFrom(msg: { fromAddress?: string; subject?: string }) {
 			:show-why-here="!rb.isShared.value"
 			:show-ask="isFeatureEnabled('ai')"
 			:show-full-brief="rb.hasFullBrief.value"
+			:messages="allMessages"
+			:mailbox-id="message.mailboxId"
 			@toggle-mute="readerActions.toggleOpenThreadMute"
 			@toggle-alert="readerActions.toggleOpenThreadAlert"
 			@toggle-pin="readerActions.toggleOpenThreadPin"
