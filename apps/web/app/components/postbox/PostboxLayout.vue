@@ -24,6 +24,7 @@ usePostboxCommandSurface(mailboxIdRef, { folderRole: folderRef, folderId: folder
 
 // List/reader density → applied as a single data-density attribute on the
 // Postbox root; all compact styling lives in CSS keyed off it (postbox-density.css).
+// unreadStyle → how unread rows stand out, the same way (postbox-unread.css).
 // viewMode → which of the three inbox list renderers is active (Flat /
 // Conversations / Categories), persisted per user on the server.
 // readingPane → where the reader sits (right / bottom / off) and how big the
@@ -43,6 +44,7 @@ const {
 	sortOrder: savedSortOrder,
 	setSortOrder,
 } = usePostboxSettings();
+const { unreadStyle, setUnreadStyle } = usePostboxUnreadStyle();
 
 // Zen: no rail, and the reader alone once a message is open (saved prefs untouched).
 const zen = usePostboxZen(readingPane);
@@ -254,6 +256,7 @@ const stepIds = computed(() => threadListRef.value?.visibleIds ?? advanceIds.val
 	<div
 		class="flex w-full min-w-0"
 		:data-density="density"
+		:data-unread-style="unreadStyle"
 		:data-reading-pane="zen.readingPane.value"
 		:style="paneStyle"
 	>
@@ -321,6 +324,7 @@ const stepIds = computed(() => threadListRef.value?.visibleIds ?? advanceIds.val
 							:view-mode-options="viewModeOptions"
 							:sort-order="sortOrder"
 							:density="density"
+							:unread-style="unreadStyle"
 							:reading-pane="readingPane"
 							:inbox-mode="inboxMode"
 							:mailbox-id="!grouped && folderRole !== 'drafts' ? mailboxId : undefined"
@@ -331,6 +335,7 @@ const stepIds = computed(() => threadListRef.value?.visibleIds ?? advanceIds.val
 							@select-view-mode="selectViewMode"
 							@select-sort-order="selectSortOrder"
 							@select-density="(mode) => void setDensity(mode)"
+							@select-unread-style="(style) => void setUnreadStyle(style)"
 							@select-reading-pane="(pane) => void setReadingPane(pane)"
 						/>
 						<PostboxEmptyFolderBar :mailbox-id="mailboxId" :folder-role="folderRole" />

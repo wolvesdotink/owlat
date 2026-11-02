@@ -24,6 +24,7 @@ import {
 	mailAutoAdvanceValidator,
 	mailReplyDefaultValidator,
 	mailDensityValidator,
+	mailUnreadStyleValidator,
 	mailViewModeValidator,
 	mailReadingPaneValidator,
 	mailListSizeValidator,
@@ -64,6 +65,7 @@ export const get = publicQuery({
 			replyDefault: row.replyDefault,
 			afterReply: row.afterReply,
 			density: row.density,
+			unreadStyle: row.unreadStyle,
 			viewMode: row.viewMode,
 			readingPane: row.readingPane,
 			listWidth: row.listWidth,
@@ -109,6 +111,7 @@ export const update = postboxMutation({
 		replyDefault: v.optional(mailReplyDefaultValidator),
 		afterReply: v.optional(mailAfterReplyValidator),
 		density: v.optional(mailDensityValidator),
+		unreadStyle: v.optional(mailUnreadStyleValidator),
 		viewMode: v.optional(mailViewModeValidator),
 		readingPane: v.optional(mailReadingPaneValidator),
 		listWidth: v.optional(mailListSizeValidator),
@@ -154,6 +157,7 @@ export const update = postboxMutation({
 			replyDefault?: (typeof args)['replyDefault'];
 			afterReply?: (typeof args)['afterReply'];
 			density?: (typeof args)['density'];
+			unreadStyle?: (typeof args)['unreadStyle'];
 			viewMode?: (typeof args)['viewMode'];
 			readingPane?: (typeof args)['readingPane'];
 			listWidth?: number;
@@ -188,6 +192,7 @@ export const update = postboxMutation({
 		if (args.replyDefault !== undefined) patch.replyDefault = args.replyDefault;
 		if (args.afterReply !== undefined) patch.afterReply = args.afterReply;
 		if (args.density !== undefined) patch.density = args.density;
+		if (args.unreadStyle !== undefined) patch.unreadStyle = args.unreadStyle;
 		if (args.viewMode !== undefined) patch.viewMode = args.viewMode;
 		if (args.readingPane !== undefined) patch.readingPane = args.readingPane;
 		if (args.listWidth !== undefined) patch.listWidth = args.listWidth;

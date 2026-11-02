@@ -19,6 +19,7 @@ import type { PostboxDensity } from '~/utils/postboxDensity';
 import type { PostboxInboxMode } from '~/utils/postboxInboxMode';
 import type { PostboxReadingPane } from '~/utils/postboxReadingPane';
 import type { PostboxSortOrder } from '~/utils/postboxSortOrder';
+import type { PostboxUnreadStyle } from '~/utils/postboxUnreadStyle';
 import { headerSelectionState } from '~/utils/postboxRangeSelect';
 
 const { t } = useI18n();
@@ -39,6 +40,8 @@ const props = defineProps<{
 	sortOrder?: string;
 	/** List/reader row density, shown as a radio group in the Display menu. */
 	density?: PostboxDensity;
+	/** How unread rows stand out (dot, weight, both, or a tinted row). */
+	unreadStyle?: PostboxUnreadStyle;
 	/** Where the reader sits (right / bottom / off). */
 	readingPane?: PostboxReadingPane;
 	/** Which inbox landing surface is on screen — drives the Today|Browse switch. */
@@ -83,6 +86,7 @@ const emit = defineEmits<{
 	'select-view-mode': [value: string];
 	'select-sort-order': [value: PostboxSortOrder];
 	'select-density': [value: PostboxDensity];
+	'select-unread-style': [value: PostboxUnreadStyle];
 	'select-reading-pane': [value: PostboxReadingPane];
 }>();
 </script>
@@ -167,7 +171,7 @@ const emit = defineEmits<{
 				@select="emit('switch-inbox-mode', $event)"
 			/>
 		</div>
-		<!-- Four persisted preferences behind one menu rather than permanent
+		<!-- Five persisted preferences behind one menu rather than permanent
 		     chrome, so the pane never has to scroll a control sideways to reach
 		     its own labels. The view-mode group is
 		     withheld outside the inbox, where every folder renders flat and the
@@ -178,10 +182,12 @@ const emit = defineEmits<{
 				:view-mode-options="folderRole === 'inbox' ? viewModeOptions : undefined"
 				:sort-order="sortOrder"
 				:density="density"
+				:unread-style="unreadStyle"
 				:reading-pane="readingPane"
 				@select-view-mode="emit('select-view-mode', $event)"
 				@select-sort-order="emit('select-sort-order', $event)"
 				@select-density="emit('select-density', $event)"
+				@select-unread-style="emit('select-unread-style', $event)"
 				@select-reading-pane="emit('select-reading-pane', $event)"
 			/>
 			<!-- Whole-folder verbs (mark all read, empty) for the folder on screen. -->

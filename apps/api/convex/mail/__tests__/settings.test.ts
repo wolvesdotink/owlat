@@ -153,6 +153,28 @@ describe('mail.settings get/update', () => {
 		).rejects.toThrow();
 	});
 
+	it('round-trips the unread style without clobbering other preferences', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
+		await t.mutation(api.mail.settings.update, { density: 'compact' });
+		await t.mutation(api.mail.settings.update, { unreadStyle: 'tint' });
+		expect(await t.query(api.mail.settings.get, {})).toEqual({
+			autoAdvance: 'next',
+			density: 'compact',
+			unreadStyle: 'tint',
+		});
+	});
+
+	it('rejects an unread style outside the union', async () => {
+		const t = convexTest(schema, modules);
+		await enableFeatures(t, ['mail.external']);
+		await expect(
+			t.mutation(api.mail.settings.update, {
+				unreadStyle: 'underline' as unknown as 'dot',
+			})
+		).rejects.toThrow();
+	});
+
 	it('rejects a view mode outside the union', async () => {
 		const t = convexTest(schema, modules);
 		await enableFeatures(t, ['mail.external']);

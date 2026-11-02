@@ -1,10 +1,11 @@
 /**
- * The Display menu — the one place four persisted list preferences now live.
+ * The Display menu — the one place five persisted list preferences now live.
  *
  * The contract is that nothing was lost on the way in: all five view modes are
  * reachable (the segmented control they came from could not fit its own labels
  * and shipped a horizontal scroller for them), both sort orders, both
- * densities and all three reading-pane positions are offered, each group
+ * densities, all three reading-pane positions and all four unread styles are
+ * offered, each group
  * reports which option is active, and a pick routes straight back out to the
  * layout that owns the setter.
  */
@@ -43,6 +44,7 @@ function mountMenu(props: Record<string, unknown> = {}) {
 			sortOrder: 'newest',
 			density: 'comfortable',
 			readingPane: 'right',
+			unreadStyle: 'dot-weight',
 			...props,
 		},
 		global: { plugins: [createTestI18n()], stubs },
@@ -69,7 +71,7 @@ describe('PostboxListDisplayMenu', () => {
 		expect(w.find('.trigger').attributes('aria-label')).toBe('Display options');
 	});
 
-	it('offers every option of all four preferences', () => {
+	it('offers every option of all five preferences', () => {
 		const w = mountMenu();
 		const labels = radios(w).map(nameOf);
 		// All five view modes, including the two the old control clipped.
@@ -85,10 +87,18 @@ describe('PostboxListDisplayMenu', () => {
 				'No reading pane — opening navigates',
 			])
 		);
+		expect(labels).toEqual(
+			expect.arrayContaining(['Dot and bold text', 'Dot', 'Bold text', 'Tinted row'])
+		);
 	});
 
 	it('marks exactly the active option in each group', () => {
-		const w = mountMenu({ viewMode: 'bundled', sortOrder: 'oldest', density: 'compact' });
+		const w = mountMenu({
+			viewMode: 'bundled',
+			sortOrder: 'oldest',
+			density: 'compact',
+			unreadStyle: 'tint',
+		});
 		const checked = radios(w)
 			.filter((r) => r.attributes('aria-checked') === 'true')
 			.map(nameOf);
@@ -96,6 +106,7 @@ describe('PostboxListDisplayMenu', () => {
 			'Bundled',
 			'Oldest first',
 			'Compact',
+			'Tinted row',
 			'Reader on the right (resizable)',
 		]);
 	});
@@ -117,11 +128,13 @@ describe('PostboxListDisplayMenu', () => {
 		await named(w, 'Oldest first')!.trigger('click');
 		await named(w, 'Compact')!.trigger('click');
 		await named(w, 'Reader below a wide list')!.trigger('click');
+		await named(w, 'Dot')!.trigger('click');
 
 		expect(w.emitted('select-view-mode')).toEqual([['categories']]);
 		expect(w.emitted('select-sort-order')).toEqual([['oldest']]);
 		expect(w.emitted('select-density')).toEqual([['compact']]);
 		expect(w.emitted('select-reading-pane')).toEqual([['bottom']]);
+		expect(w.emitted('select-unread-style')).toEqual([['dot']]);
 	});
 
 	it('drops the view-mode group where there is no view mode to pick', () => {

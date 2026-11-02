@@ -5042,7 +5042,8 @@
 				"display": "Display",
 				"label": "Display options",
 				"readingPane": "Reading pane",
-				"sortOrder": "Sort order"
+				"sortOrder": "Sort order",
+				"unreadStyle": "Unread messages"
 			},
 			"postboxListHeader": {
 				"deselectPage": "Clear selection",
@@ -5717,6 +5718,9 @@
 			"postboxTodayReaderOverlay": {
 				"conversation": "Conversation"
 			},
+			"postboxUnreadMark": {
+				"unread": "Unread."
+			},
 			"postboxTodayView": {
 				"allClear": "All clear — nothing new needs you.",
 				"answer": "Answer",
@@ -6312,6 +6316,8 @@
 				"densityHelp": "How tightly the message list and reader are packed. Compact drops the snippet line for single-line rows.",
 				"readingPaneLabel": "Reading pane",
 				"readingPaneHelp": "Where the reader sits next to the list. Drag the divider — or focus it and use the arrow keys — to move the seam.",
+				"unreadStyleLabel": "Unread messages",
+				"unreadStyleHelp": "How unread messages stand out in the list. A dot marks them without relying on bold text or color.",
 				"replyDefaultLabel": "Default reply behavior",
 				"replyDefaultHelp": "What the Reply button and the {replyKey} shortcut do. {replyAllKey} always replies to everyone; you can switch a reply to all while composing.",
 				"afterReplyLabel": "After replying",
@@ -16919,6 +16925,10 @@
 					"title": "Workspaces",
 					"keywords": "connected servers, accent, remove workspace"
 				},
+				"unreadStyle": {
+					"title": "Unread messages",
+					"keywords": "unread, dot, bold, tint, highlight, new mail"
+				},
 				"readingPane": {
 					"title": "Reading pane",
 					"keywords": "layout, split, preview pane, three panes, resize, list width"
@@ -18286,6 +18296,12 @@
 			"right": "Reader on the right (resizable)",
 			"bottom": "Reader below a wide list",
 			"off": "No reading pane — opening navigates"
+		},
+		"postboxUnreadStyle": {
+			"dotWeight": "Dot and bold text",
+			"dot": "Dot",
+			"weight": "Bold text",
+			"tint": "Tinted row"
 		},
 		"inboxSorts": {
 			"needsAttention": "needs attention",
