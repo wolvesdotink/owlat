@@ -23,6 +23,7 @@ import {
 	type PaletteMode,
 	filterItems,
 } from './commandPalette';
+import { senderZoomAtLimit, type SenderZoomAction } from '~/utils/senderZoom';
 
 type Translate = (key: string, params?: Record<string, unknown>) => string;
 
@@ -120,6 +121,30 @@ export interface ThreadSurfaceDeps {
 	onShareInChat: () => void;
 	/** Opens find in conversation; absent where the reader has none. */
 	onFind?: () => void;
+	/** The open message's sender zoom in percent; null when its From holds no address. */
+	senderZoom: () => number | null;
+	onZoom: (action: SenderZoomAction) => void;
+}
+
+const ZOOM_VERBS: ReadonlyArray<{ action: SenderZoomAction; slug: string; icon: string }> = [
+	{ action: 'zoomIn', slug: 'zoom-in', icon: 'lucide:zoom-in' },
+	{ action: 'zoomOut', slug: 'zoom-out', icon: 'lucide:zoom-out' },
+	{ action: 'zoomReset', slug: 'zoom-reset', icon: 'lucide:search' },
+];
+
+/** Zoom in, out and back to 100% for the open message's sender, each while it can move. */
+function zoomItems(deps: ThreadSurfaceDeps): PaletteItem[] {
+	const percent = deps.senderZoom();
+	if (percent === null) return [];
+	return ZOOM_VERBS.filter(({ action }) => !senderZoomAtLimit(percent, action)).map(
+		({ action, slug, icon }) => ({
+			id: `postbox:thread-${slug}`,
+			label: deps.t(`${P}.${action}`, { percent }),
+			icon,
+			shortcutId: `postbox.${action}`,
+			run: () => deps.onZoom(action),
+		})
+	);
 }
 
 const P = 'shared.commandPaletteSurfaces.thread';
@@ -273,6 +298,7 @@ export function buildThreadSurfaceGroups(
 			run: deps.onFind,
 		});
 	}
+	items.push(...zoomItems(deps));
 	if (deps.canTranslate()) {
 		items.push({
 			id: 'postbox:thread-translate',

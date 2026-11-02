@@ -78,7 +78,7 @@ describe('postboxBodyPlaceholder', () => {
 		const saved = savedSrcdoc(buildBaseStyle('light', 'simple'));
 		const larger = postboxBodyPlaceholder(
 			saved,
-			opts(false, { textSize: 'larger', readingWidth: 'narrow' })
+			opts(false, { textSize: 'larger', readingWidth: 'narrow', zoom: 1 })
 		)!.srcdoc;
 		expect(larger).toContain('max-width:60ch;font-size:15px;zoom:1.267;');
 		expect(larger).not.toContain('max-width:72ch');
@@ -95,7 +95,7 @@ describe('postboxBodyPlaceholder', () => {
 			'<style>html,body{font-size:14px;}html,body{background:transparent;}body{max-width:72ch;font-size:15px;}</style>';
 		const srcdoc = postboxBodyPlaceholder(
 			savedSrcdoc(legacyStyle),
-			opts(true, { textSize: 'large', readingWidth: 'full' })
+			opts(true, { textSize: 'large', readingWidth: 'full', zoom: 1 })
 		)!.srcdoc;
 		// Last in the head, so it wins the cascade over the old values.
 		expect(srcdoc).toContain(
@@ -106,7 +106,7 @@ describe('postboxBodyPlaceholder', () => {
 	it('scales a saved designed body instead of re-measuring it', () => {
 		const srcdoc = postboxBodyPlaceholder(
 			savedSrcdoc(buildBaseStyle('light', 'designed')),
-			opts(false, { textSize: 'larger', readingWidth: 'narrow' })
+			opts(false, { textSize: 'larger', readingWidth: 'narrow', zoom: 1 })
 		)!.srcdoc;
 		expect(srcdoc).toContain(`${POSTBOX_COMFORT_STYLE_OPEN}body{zoom:1.267;}</style>`);
 		expect(srcdoc).not.toContain('60ch');

@@ -1,7 +1,7 @@
 /**
- * Reading comfort: mail text size, reading width, higher contrast, an in-app
- * "Reduce motion" override, and list density for the Team Inbox, contacts and
- * campaign lists.
+ * Reading comfort: the app's text size, mail text size, reading width, higher
+ * contrast, an in-app "Reduce motion" override, and list density for the Team
+ * Inbox, contacts and campaign lists.
  *
  * Device-local, like the theme: these answer to the screen and the eyes in
  * front of it (a phone held close, a wide monitor across the desk), not to the
@@ -16,8 +16,15 @@
 export type MailTextSize = 'small' | 'default' | 'large' | 'larger';
 export type ReadingWidth = 'narrow' | 'default' | 'wide' | 'full';
 export type ListDensity = 'comfortable' | 'compact';
+/** The app's own text, in percent of the type scale's sizes. */
+export type UiTextSize = 90 | 100 | 110 | 120 | 130;
 
 export interface ReadingComfort {
+	/**
+	 * Scales the type tokens (and with them mail), never spacing or layout, so
+	 * larger text does not cost the room that browser zoom takes.
+	 */
+	uiTextSize: UiTextSize;
 	textSize: MailTextSize;
 	readingWidth: ReadingWidth;
 	/** Stronger text and border tokens in both themes. */
@@ -28,6 +35,7 @@ export interface ReadingComfort {
 }
 
 export const READING_COMFORT_DEFAULTS: Readonly<ReadingComfort> = Object.freeze({
+	uiTextSize: 100,
 	textSize: 'default',
 	readingWidth: 'default',
 	highContrast: false,
@@ -41,6 +49,7 @@ export const READING_COMFORT_STORAGE_KEY = 'owlat-reading-comfort';
 const TEXT_SIZES: readonly MailTextSize[] = ['small', 'default', 'large', 'larger'];
 const READING_WIDTHS: readonly ReadingWidth[] = ['narrow', 'default', 'wide', 'full'];
 const LIST_DENSITIES: readonly ListDensity[] = ['comfortable', 'compact'];
+export const UI_TEXT_SIZES: readonly UiTextSize[] = [90, 100, 110, 120, 130];
 
 /**
  * Picker options. Module scope never calls `useI18n`, so `label` is the catalog
@@ -61,10 +70,8 @@ export const LIST_DENSITY_OPTIONS = LIST_DENSITIES.map((value) => ({
 	label: optionKey('listDensity', value),
 }));
 
-function oneOf<T extends string>(allowed: readonly T[], value: unknown, fallback: T): T {
-	return typeof value === 'string' && (allowed as readonly string[]).includes(value)
-		? (value as T)
-		: fallback;
+function oneOf<T extends string | number>(allowed: readonly T[], value: unknown, fallback: T): T {
+	return (allowed as readonly unknown[]).includes(value) ? (value as T) : fallback;
 }
 
 /**
@@ -77,6 +84,7 @@ export function resolveReadingComfort(stored: unknown): ReadingComfort {
 	if (!stored || typeof stored !== 'object' || Array.isArray(stored)) return { ...d };
 	const s = stored as Record<string, unknown>;
 	return {
+		uiTextSize: oneOf(UI_TEXT_SIZES, s['uiTextSize'], d.uiTextSize),
 		textSize: oneOf(TEXT_SIZES, s['textSize'], d.textSize),
 		readingWidth: oneOf(READING_WIDTHS, s['readingWidth'], d.readingWidth),
 		highContrast: typeof s['highContrast'] === 'boolean' ? s['highContrast'] : d.highContrast,
@@ -96,18 +104,29 @@ export function parseReadingComfort(raw: string | null): ReadingComfort {
 }
 
 /**
- * The part of the settings that changes a rendered mail body. Kept separate so
- * the render cache keys on exactly these two fields and nothing else.
+ * What changes a rendered mail body. Kept separate so the render cache keys on
+ * exactly these fields and nothing else.
  */
 export interface MailTypography {
 	textSize: MailTextSize;
 	readingWidth: ReadingWidth;
+	/**
+	 * Zoom on top of the text size: the app's text size times the zoom kept
+	 * for the message's sender. 1 is none.
+	 */
+	zoom: number;
 }
 
 export const MAIL_TYPOGRAPHY_DEFAULT: Readonly<MailTypography> = Object.freeze({
 	textSize: 'default',
 	readingWidth: 'default',
+	zoom: 1,
 });
+
+/** Multiply zoom factors, rounded so equal products give equal cache keys. */
+export function combineZoom(...factors: number[]): number {
+	return Math.round(factors.reduce((product, factor) => product * factor, 1) * 1000) / 1000;
+}
 
 /**
  * Effective body text size of plain ("simple") mail in the Postbox reader, in
@@ -154,12 +173,17 @@ export const READING_WIDTH_CSS: Record<ReadingWidth, string> = {
  * sideways inside the frame instead of being squeezed.
  */
 export function mailZoom(textSize: MailTextSize): number {
-	return Math.round((MAIL_TEXT_PX[textSize] / MAIL_TEXT_PX.default) * 1000) / 1000;
+	return combineZoom(MAIL_TEXT_PX[textSize] / MAIL_TEXT_PX.default);
+}
+
+/** The whole zoom a mail body gets: its text size and the zoom on top. */
+export function mailBodyZoom(typography: MailTypography): number {
+	return combineZoom(mailZoom(typography.textSize), typography.zoom);
 }
 
 /** Stable cache-key fragment for a typography. */
 export function mailTypographyKey(typography: MailTypography): string {
-	return `${typography.textSize}-${typography.readingWidth}`;
+	return `${typography.textSize}-${typography.readingWidth}-${typography.zoom}`;
 }
 
 /**
@@ -168,8 +192,9 @@ export function mailTypographyKey(typography: MailTypography): string {
  */
 export function readingComfortRootAttributes(
 	comfort: ReadingComfort
-): Record<'data-contrast' | 'data-motion' | 'data-list-density', string | null> {
+): Record<'data-text-size' | 'data-contrast' | 'data-motion' | 'data-list-density', string | null> {
 	return {
+		'data-text-size': comfort.uiTextSize === 100 ? null : String(comfort.uiTextSize),
 		'data-contrast': comfort.highContrast ? 'more' : null,
 		'data-motion': comfort.reduceMotion ? 'reduce' : null,
 		'data-list-density': comfort.listDensity === 'compact' ? 'compact' : null,

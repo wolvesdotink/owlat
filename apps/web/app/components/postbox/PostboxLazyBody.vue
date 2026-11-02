@@ -14,7 +14,7 @@ import {
 	usePostboxLazyBody,
 } from '~/composables/postbox/usePostboxLazyBody';
 import { getPostboxRenderCache } from '~/utils/postboxRenderCache';
-import { useReadingComfort } from '~/composables/useReadingComfort';
+import { useSenderMailTypography } from '~/composables/useSenderZoom';
 import { postboxImagesLoadOnOpen, type PostboxBodyImageProps } from '~/utils/postboxImageAllowlist';
 
 const props = defineProps<{
@@ -22,12 +22,14 @@ const props = defineProps<{
 	/** Same inputs PostboxMessageBody starts its first render with. */
 	forceLight: boolean;
 	images: PostboxBodyImageProps;
+	/** The From header, whose zoom is part of the body's cache key. */
+	fromAddress?: string;
 	/** Mount now, wherever the body sits (printing). */
 	eager?: boolean;
 }>();
 
 const { isDark } = useAppTheme();
-const { mailTypography } = useReadingComfort();
+const mailTypography = useSenderMailTypography(() => props.fromAddress);
 
 const placeholderEl = ref<HTMLElement | null>(null);
 const { mounted } = usePostboxLazyBody({ target: placeholderEl, eager: () => !!props.eager });

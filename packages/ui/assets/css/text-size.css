@@ -1,0 +1,48 @@
+/* Text size — the app's own "Text size" setting, written as
+ * `data-text-size="<percent>"` on <html> by the reading-comfort plugin (absent
+ * at 100%).
+ *
+ * Only the type steps move. Spacing, widths and icons are rem-sized too, so
+ * scaling the root font size (or browser zoom) would grow the whole layout;
+ * re-pointing the `--text-*` tokens grows the words and leaves the room around
+ * them alone. Tailwind's own steps pair with unitless line heights, which
+ * follow on their own; the named sub-body steps in tokens.css pair with rem
+ * line heights, so those are scaled here as well. The values restate the
+ * scale's defaults (Tailwind's ladder and tokens.css), which must stay in step
+ * with it. Arbitrary `text-[Npx]` sizes sit outside the scale and keep their
+ * size. */
+
+:root[data-text-size='90'] {
+	--ui-text-scale: 0.9;
+}
+:root[data-text-size='110'] {
+	--ui-text-scale: 1.1;
+}
+:root[data-text-size='120'] {
+	--ui-text-scale: 1.2;
+}
+:root[data-text-size='130'] {
+	--ui-text-scale: 1.3;
+}
+
+:root[data-text-size] {
+	--text-2xs: calc(0.6875rem * var(--ui-text-scale));
+	--text-2xs--line-height: calc(1rem * var(--ui-text-scale));
+	--text-xs: calc(0.75rem * var(--ui-text-scale));
+	--text-caption: calc(0.8125rem * var(--ui-text-scale));
+	--text-caption--line-height: calc(1.25rem * var(--ui-text-scale));
+	--text-sm: calc(0.875rem * var(--ui-text-scale));
+	--text-md: calc(0.9375rem * var(--ui-text-scale));
+	--text-md--line-height: calc(1.5rem * var(--ui-text-scale));
+	--text-base: calc(1rem * var(--ui-text-scale));
+	--text-lg: calc(1.125rem * var(--ui-text-scale));
+	--text-xl: calc(1.25rem * var(--ui-text-scale));
+	--text-2xl: calc(1.5rem * var(--ui-text-scale));
+	--text-3xl: calc(1.875rem * var(--ui-text-scale));
+	--text-4xl: calc(2.25rem * var(--ui-text-scale));
+}
+
+/* Text with no size class inherits the body's, the browser's 1rem. */
+:root[data-text-size] body {
+	font-size: calc(1rem * var(--ui-text-scale));
+}

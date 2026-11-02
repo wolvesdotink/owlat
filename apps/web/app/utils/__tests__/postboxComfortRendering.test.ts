@@ -33,13 +33,13 @@ afterEach(async () => {
 });
 
 /** Rendered text size of each element: computed font size times every zoom above it. */
-function renderedSizes(textSize: MailTextSize): Record<(typeof IDS)[number], number> {
+function renderedSizes(textSize: MailTextSize, zoom = 1): Record<(typeof IDS)[number], number> {
 	const { html, scheme, kind } = adaptEmailHtml(REPLY, 'light');
 	expect(kind).toBe('simple');
 	const frame = new Window();
 	windows.push(frame);
 	frame.document.write(
-		`<!doctype html><html><head>${buildBaseStyle(scheme, kind, { textSize, readingWidth: 'default' })}</head><body>${html}</body></html>`
+		`<!doctype html><html><head>${buildBaseStyle(scheme, kind, { textSize, readingWidth: 'default', zoom })}</head><body>${html}</body></html>`
 	);
 	const zoomOf = (el: FrameElement): number => {
 		const value = parseFloat(frame.getComputedStyle(el).getPropertyValue('zoom'));
@@ -74,5 +74,14 @@ describe('mail text size in rendered simple mail', () => {
 				expect(sizes[id], `${id} at ${textSize}`).toBeCloseTo(base[id] * ratio, 1);
 			}
 		}
+	});
+
+	it('multiplies the zoom on top (app text size, sender zoom) into every run of text', () => {
+		const base = renderedSizes('default');
+		const sizes = renderedSizes('large', 1.5);
+		const ratio = (MAIL_TEXT_PX.large / MAIL_TEXT_PX.default) * 1.5;
+		for (const id of IDS) expect(sizes[id], id).toBeCloseTo(base[id] * ratio, 1);
+		// Zoom alone, at the default text size, still reaches the body.
+		expect(renderedSizes('default', 1.25).inherited).toBeCloseTo(15 * 1.25, 1);
 	});
 });

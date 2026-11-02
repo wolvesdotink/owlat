@@ -7,9 +7,7 @@
  * file the per-message rendering. Presentational over semantic emits: the
  * reader owns the mutations, the auto-advance and the undo registration.
  *
- * Star / Reply / Reply-all / Forward stay visible; the ⋯ keeps genuine
- * overflow (spam, block, filter, print, original). The dark-render toggle,
- * delivery strip and scheduling chip live in the message-details disclosure.
+ * The dark toggle, delivery strip and scheduling chip are in message details.
  *
  * What every card of the reader shares (mailbox, flags, theme, Answer mode's
  * reduced cut, where the chrome renders) comes from the reader context, so
@@ -442,6 +440,7 @@ const renderToggleLabel = computed(() =>
 			:message-id="msg._id"
 			:force-light="forcedLight"
 			:images="images"
+			:from-address="msg.fromAddress"
 			:eager="reader.eagerBody || find?.active != null"
 		>
 			<PostboxMessageBody
@@ -485,6 +484,7 @@ const renderToggleLabel = computed(() =>
 			:message-id="msg._id"
 			:starred="starred"
 			:show-reply-all="showReplyAll"
+			:from-address="msg.fromAddress"
 			@toggle-star="emit('toggle-star')"
 			@reply="emit('reply')"
 			@reply-all="emit('reply-all')"

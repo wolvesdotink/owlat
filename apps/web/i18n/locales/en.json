@@ -5676,7 +5676,12 @@
 				"undoMoved": "Moved",
 				"undoSpam": "Marked as spam",
 				"undoTrashed": "Moved to trash",
-				"unstar": "Unstar"
+				"unstar": "Unstar",
+				"zoomLabel": "Zoom",
+				"zoomIn": "Zoom in on this sender's mail",
+				"zoomOut": "Zoom out on this sender's mail",
+				"zoomReset": "Reset this sender's zoom (now {percent}%)",
+				"zoomPercent": "{percent}%"
 			},
 			"postboxSweepStatus": {
 				"select": "Select {count} message | Select {count} messages",
@@ -6265,6 +6270,10 @@
 			"preferencesComfort": {
 				"title": "Reading comfort",
 				"subtitle": "Text size, contrast, motion and list spacing on this device.",
+				"uiTextSizeLabel": "Text size",
+				"uiTextSizeHelp": "How large text reads across Owlat, mail included. Spacing and layout keep their size.",
+				"uiTextSizeOption": "{percent}%",
+				"uiTextSizeDefault": "100% (default)",
 				"textSizeLabel": "Mail text size",
 				"textSizeHelp": "How large mail reads in Postbox and the Team Inbox. Designed newsletters scale as a whole.",
 				"readingWidthLabel": "Reading width",
@@ -6275,6 +6284,9 @@
 				"highContrastHelp": "Darker text and stronger borders in light mode, brighter ones in dark mode.",
 				"reduceMotionLabel": "Reduce motion",
 				"reduceMotionHelp": "Turn off animations and smooth scrolling in Owlat. Motion is always reduced when your device asks for it.",
+				"senderZoomLabel": "Zoom per sender",
+				"senderZoomHelp": "Senders whose mail you zoomed in the reader, with + and - or in a message's ⋯ menu.",
+				"senderZoomCount": "None | One sender | {count} senders",
 				"textSize": {
 					"small": "Small",
 					"default": "Default",
@@ -13665,7 +13677,10 @@
 			"confirmUnsubscribeBody": "Their mail will be archived from now on.",
 			"shortcuts": {
 				"autoArchive": "Auto-archive this sender's mail",
-				"unsubscribe": "Unsubscribe from this sender"
+				"unsubscribe": "Unsubscribe from this sender",
+				"zoomIn": "Zoom in on this sender's mail",
+				"zoomOut": "Zoom out on this sender's mail",
+				"zoomReset": "Reset this sender's zoom"
 			}
 		},
 		"reader": {
@@ -16835,6 +16850,10 @@
 					"title": "Appearance",
 					"keywords": "dark mode, light mode, theme, colour scheme"
 				},
+				"uiTextSize": {
+					"title": "Text size",
+					"keywords": "font size, larger text, zoom, scale, readability, accessibility"
+				},
 				"mailTextSize": {
 					"title": "Mail text size",
 					"keywords": "font size, text size, zoom, larger text, readability"
@@ -16854,6 +16873,10 @@
 				"reduceMotion": {
 					"title": "Reduce motion",
 					"keywords": "animation, motion, accessibility, smooth scrolling, vestibular"
+				},
+				"senderZoom": {
+					"title": "Zoom per sender",
+					"keywords": "zoom, newsletter, small text, font size, sender"
 				},
 				"language": {
 					"title": "Language",
@@ -18487,7 +18510,10 @@
 				"find": "Find in conversation",
 				"showOriginal": "Download original (.eml)",
 				"pin": "Pin conversation",
-				"unpin": "Unpin conversation"
+				"unpin": "Unpin conversation",
+				"zoomIn": "Zoom in on this sender's mail",
+				"zoomOut": "Zoom out on this sender's mail",
+				"zoomReset": "Reset this sender's zoom (now {percent}%)"
 			},
 			"teamThread": {
 				"heading": "This conversation",

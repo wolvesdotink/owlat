@@ -28,13 +28,18 @@ const props = defineProps<{ message: InboxMessageText }>();
 const { t } = useI18n();
 
 // The reader's text size and reading width (Preferences → Reading comfort),
-// the same settings the Postbox reader applies to plain mail. The inline size
-// overrides `text-sm`, whose unitless line-height then scales with it.
+// the same settings the Postbox reader applies to plain mail, with the app's
+// text size on top. The inline size overrides `text-sm`, whose unitless
+// line-height then scales with it.
 const { mailTypography } = useReadingComfort();
-const textStyle = computed(() => ({
-	fontSize: INBOX_TEXT_REM[mailTypography.value.textSize],
-	maxWidth: READING_WIDTH_CSS[mailTypography.value.readingWidth],
-}));
+const textStyle = computed(() => {
+	const { textSize, readingWidth, zoom } = mailTypography.value;
+	const size = INBOX_TEXT_REM[textSize];
+	return {
+		fontSize: zoom === 1 ? size : `calc(${size} * ${zoom})`,
+		maxWidth: READING_WIDTH_CSS[readingWidth],
+	};
+});
 
 const fullText = ref<string | null>(null);
 const isLoading = ref(false);

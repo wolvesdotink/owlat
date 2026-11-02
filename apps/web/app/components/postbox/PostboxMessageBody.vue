@@ -37,7 +37,7 @@
 import type { TrackerDetection } from '@owlat/shared/postboxTrackers';
 import type { PostboxRenderScheme } from '~/utils/postboxDarkMode';
 import { getPostboxRenderCache } from '~/utils/postboxRenderCache';
-import { useReadingComfort } from '~/composables/useReadingComfort';
+import { useSenderMailTypography } from '~/composables/useSenderZoom';
 import { postboxBodyPlaceholder } from '~/utils/postboxBodyPlaceholder';
 import { usePostboxBodySource } from '~/composables/postbox/usePostboxBodySource';
 import { useRegisterReadableBody } from '~/composables/postbox/usePostboxSenderOpen';
@@ -127,9 +127,10 @@ const emit = defineEmits<{
 const { t } = useI18n();
 
 const { isDark } = useAppTheme();
-// Text size and reading width (Preferences → Reading comfort): part of the
-// rendered document and of its cache key, so a change re-renders the body.
-const { mailTypography } = useReadingComfort();
+// Text size and reading width (Preferences → Reading comfort) and the sender's
+// zoom: part of the rendered document and of its cache key, so a change
+// re-renders the body.
+const mailTypography = useSenderMailTypography(() => props.message.fromAddress);
 
 // Offline read cache: persist this message's post-sanitize srcdoc once rendered
 // (so it stays readable without a connection) and show the cached srcdoc until

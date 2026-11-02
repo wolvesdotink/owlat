@@ -54,6 +54,13 @@ describe('postboxRenderKey', () => {
 				typography: { ...MAIL_TYPOGRAPHY_DEFAULT, readingWidth: 'wide' },
 			})
 		).not.toBe(base);
+		// So is a different zoom on top (the app's text size, the sender's zoom).
+		expect(
+			postboxRenderKey('m1', {
+				...baseOptions,
+				typography: { ...MAIL_TYPOGRAPHY_DEFAULT, zoom: 1.25 },
+			})
+		).not.toBe(base);
 	});
 
 	it('changes when the message id changes', () => {

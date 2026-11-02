@@ -8,17 +8,20 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { createTestI18n, expectFullyLocalized, i18nStubs } from '~/__tests__/i18n';
 import { resetReadingComfortForTests, useReadingComfort } from '~/composables/useReadingComfort';
+import { resetSenderZoomForTests, useSenderZoom } from '~/composables/useSenderZoom';
 import { READING_COMFORT_STORAGE_KEY } from '~/utils/readingComfort';
 import PreferencesComfort from '../PreferencesComfort.vue';
 
 beforeEach(() => {
 	localStorage.clear();
 	resetReadingComfortForTests();
+	resetSenderZoomForTests();
 	vi.stubGlobal('useI18n', i18nStubs.useI18n);
 });
 
 afterEach(() => {
 	resetReadingComfortForTests();
+	resetSenderZoomForTests();
 });
 
 function mountCard() {
@@ -50,13 +53,16 @@ describe('PreferencesComfort', () => {
 			control: card.find(`#${label.attributes('for')}`),
 		}));
 		expect(labelled.map((l) => l.label)).toEqual([
+			'Text size',
 			'Mail text size',
 			'Reading width',
 			'List density',
 			'Higher contrast',
 			'Reduce motion',
+			'Zoom per sender',
 		]);
 		for (const { control } of labelled) expect(control.exists()).toBe(true);
+		expect((card.get('#comfort-ui-text-size').element as HTMLSelectElement).value).toBe('100');
 		expect((card.get('#comfort-text-size').element as HTMLSelectElement).value).toBe('default');
 		expect((card.get('#comfort-reading-width').element as HTMLSelectElement).value).toBe('default');
 		expect((card.get('#comfort-list-density').element as HTMLSelectElement).value).toBe(
@@ -64,6 +70,7 @@ describe('PreferencesComfort', () => {
 		);
 		expect(card.get('#comfort-high-contrast').attributes('aria-checked')).toBe('false');
 		expect(card.get('#comfort-reduce-motion').attributes('aria-checked')).toBe('false');
+		expect(card.get('#comfort-sender-zoom').text()).toBe('None');
 		expect(markers(card)).toEqual([]);
 		expectFullyLocalized(card);
 	});
@@ -75,6 +82,13 @@ describe('PreferencesComfort', () => {
 				.get(`#${id}`)
 				.findAll('option')
 				.map((option) => option.text());
+		expect(options('comfort-ui-text-size')).toEqual([
+			'90%',
+			'100% (default)',
+			'110%',
+			'120%',
+			'130%',
+		]);
 		expect(options('comfort-text-size')).toEqual(['Small', 'Default', 'Large', 'Larger']);
 		expect(options('comfort-reading-width')).toEqual(['Narrow', 'Default', 'Wide', 'Full width']);
 		expect(options('comfort-list-density')).toEqual(['Comfortable', 'Compact']);
@@ -82,12 +96,14 @@ describe('PreferencesComfort', () => {
 
 	it('writes a change to the shared settings and this device', async () => {
 		const card = mountCard();
+		await card.get('#comfort-ui-text-size').setValue('120');
 		await card.get('#comfort-text-size').setValue('larger');
 		await card.get('#comfort-list-density').setValue('compact');
 		await card.get('#comfort-reduce-motion').trigger('click');
 
 		const { comfort } = useReadingComfort();
 		expect(comfort.value).toMatchObject({
+			uiTextSize: 120,
 			textSize: 'larger',
 			listDensity: 'compact',
 			reduceMotion: true,
@@ -99,6 +115,7 @@ describe('PreferencesComfort', () => {
 		});
 		expect(card.get('#comfort-reduce-motion').attributes('aria-checked')).toBe('true');
 		expect(markers(card)).toEqual([
+			'Reset Text size to its default',
 			'Reset Mail text size to its default',
 			'Reset List density to its default',
 			'Reset Reduce motion to its default',
@@ -119,5 +136,18 @@ describe('PreferencesComfort', () => {
 		expect(comfort.value.highContrast).toBe(false);
 		expect(comfort.value.readingWidth).toBe('wide');
 		expect(markers(card)).toEqual(['Reset Reading width to its default']);
+	});
+
+	it('counts the senders with a zoom of their own and resets them all at once', async () => {
+		const { applyZoom } = useSenderZoom();
+		applyZoom('a@example.com', 'zoomIn');
+		applyZoom('b@example.com', 'zoomOut');
+		const card = mountCard();
+		expect(card.get('#comfort-sender-zoom').text()).toBe('2 senders');
+
+		await card.get('[aria-label="Reset Zoom per sender to its default"]').trigger('click');
+		expect(useSenderZoom().count.value).toBe(0);
+		expect(card.get('#comfort-sender-zoom').text()).toBe('None');
+		expect(markers(card)).toEqual([]);
 	});
 });
