@@ -135,8 +135,6 @@ const marker = (name: string) =>
 
 /** Reader and card chrome this suite does not look into. */
 const CHROME = [
-	'PostboxReaderStickyBar',
-	'PostboxThreadMenu',
 	'Icon',
 	'LazyChatLinkEmailDialog',
 	'UiAvatar',

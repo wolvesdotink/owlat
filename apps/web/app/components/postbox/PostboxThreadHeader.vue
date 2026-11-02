@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
+import type { ListUnsubscribeTarget } from '@owlat/shared/listUnsubscribe';
 import { useShortcutLabels } from '~/composables/useShortcutLabels';
 import PostboxThreadMenu from './PostboxThreadMenu.vue';
 
@@ -8,6 +9,11 @@ import PostboxThreadMenu from './PostboxThreadMenu.vue';
  * Reply, Archive and ONE ⋯ menu (PostboxThreadMenu). Nothing else sits between
  * the subject and the strip: the follow-up chip, the team badge, the labels and
  * the cross-surface link moved into the strip's Details row.
+ *
+ * It also renders the sticky bar that stands in for this line once it scrolls
+ * away (PostboxReaderStickyBar), as the sibling before the <header>: the bar's
+ * anchor has to be a direct child of the article, ahead of the line it
+ * watches. Both carry the same verbs and the same ⋯ menu.
  */
 const props = defineProps<{
 	subject?: string;
@@ -37,6 +43,14 @@ const props = defineProps<{
 	showAsk?: boolean;
 	/** Offer "Full brief" (the brief holds anything, `briefHasContent`). */
 	showFullBrief?: boolean;
+	/** The conversation, oldest first: the sticky bar's sender and Unsubscribe. */
+	messages?: ReadonlyArray<{
+		_id: string;
+		fromAddress: string;
+		fromName?: string | null;
+		unsubscribe?: ListUnsubscribeTarget;
+	}>;
+	mailboxId?: string;
 }>();
 
 const emit = defineEmits<{
@@ -58,6 +72,35 @@ const { t } = useI18n();
 // tooltips and accessible shortcuts name the key as this person has it bound.
 const { ariaFor } = useShortcutLabels();
 const headerEl = ref<HTMLElement | null>(null);
+const stickyBarRef = ref<{ $el: HTMLElement } | null>(null);
+
+// The ⋯ menu's state and verbs, the same here and in the sticky bar.
+const menuProps = computed(() => ({
+	thread: props.thread,
+	showMarkRead: props.showMarkRead,
+	markingRead: props.markingRead,
+	showWhyHere: props.showWhyHere,
+	showAsk: props.showAsk,
+	showFullBrief: props.showFullBrief,
+}));
+const menuOn = {
+	'toggle-mute': () => emit('toggle-mute'),
+	'mark-read': () => emit('mark-read'),
+	'toggle-alert': () => emit('toggle-alert'),
+	'toggle-pin': () => emit('toggle-pin'),
+	snooze: () => emit('snooze'),
+	ask: () => emit('ask'),
+	details: () => emit('details'),
+	'full-brief': () => emit('full-brief'),
+};
+
+// The bar names the latest sender (whom Reply answers) and offers the newest
+// list unsubscribe in the conversation.
+const latestSender = computed(() => {
+	const latest = props.messages?.at(-1);
+	return latest ? latest.fromName || latest.fromAddress : undefined;
+});
+const listMessage = computed(() => props.messages?.findLast((m) => !!m.unsubscribe));
 
 // The "(2)" count must not wrap onto a line of its own, so the subject's last
 // word and the count render as one unbreakable unit.
@@ -72,6 +115,32 @@ const subjectParts = computed(() => {
 </script>
 
 <template>
+	<!-- Hidden until this line scrolls away; it overlays the conversation, so it
+	     adds nothing to the page above the mail. -->
+	<PostboxReaderStickyBar
+		ref="stickyBarRef"
+		:subject="subject"
+		:sender="latestSender"
+		:header="headerEl"
+		@reply="emit('reply')"
+		@archive="emit('archive')"
+	>
+		<template #lead>
+			<PostboxUnsubscribeChip
+				v-if="listMessage?.unsubscribe && mailboxId"
+				class="flex-shrink-0 mx-1"
+				:message-id="listMessage._id"
+				:mailbox-id="mailboxId"
+				:unsubscribe="listMessage.unsubscribe"
+				:sender-name="listMessage.fromName || listMessage.fromAddress"
+			/>
+		</template>
+		<PostboxThreadMenu
+			v-bind="menuProps"
+			v-on="menuOn"
+			@why-here="emit('why-here', stickyBarRef?.$el ?? null)"
+		/>
+	</PostboxReaderStickyBar>
 	<!-- Focusable from script only: the sticky bar's "back to top" lands here,
 	     since the bar it was clicked in hides as the header comes back. -->
 	<header
@@ -131,23 +200,7 @@ const subjectParts = computed(() => {
 			</UiTooltip>
 			<!-- Host-owned thread actions (the reader's "Discuss" toggle). -->
 			<slot name="actions" />
-			<PostboxThreadMenu
-				:thread="thread"
-				:show-mark-read="showMarkRead"
-				:marking-read="markingRead"
-				:show-why-here="showWhyHere"
-				:show-ask="showAsk"
-				:show-full-brief="showFullBrief"
-				@toggle-mute="emit('toggle-mute')"
-				@mark-read="emit('mark-read')"
-				@toggle-alert="emit('toggle-alert')"
-				@toggle-pin="emit('toggle-pin')"
-				@snooze="emit('snooze')"
-				@ask="emit('ask')"
-				@details="emit('details')"
-				@full-brief="emit('full-brief')"
-				@why-here="emit('why-here', headerEl)"
-			/>
+			<PostboxThreadMenu v-bind="menuProps" v-on="menuOn" @why-here="emit('why-here', headerEl)" />
 		</div>
 	</header>
 </template>
