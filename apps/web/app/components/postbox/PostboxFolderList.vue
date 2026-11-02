@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import type { Id } from '@owlat/api/dataModel';
+import type { ContextMenuItem } from '@owlat/ui/components/ui/ContextMenu.vue';
 import { usePostboxMessageDropTargets } from '~/composables/postbox/usePostboxMessageDrag';
+import { isEmptyableRole } from '~/composables/postbox/usePostboxFolderBulk';
 
 type PostboxFolderRow = {
 	_id: string;
@@ -25,6 +27,35 @@ const { t } = useI18n();
 
 // Every row is also a drop target for dragged messages (Sent and Drafts refuse).
 const drop = usePostboxMessageDropTargets(computed(() => props.mailboxId));
+const bulk = usePostboxFolderBulk(computed(() => props.mailboxId));
+
+/**
+ * Right-click on a system folder: its whole-folder verbs. Drafts has none, so
+ * its row keeps the browser's own menu.
+ */
+function folderMenuItems(folder: PostboxFolderRow): ContextMenuItem[] {
+	if (folder.role === 'drafts') return [];
+	const items: ContextMenuItem[] = [
+		{
+			id: 'mark-all-read',
+			label: t('components.postbox.postboxFolderActions.markAllRead'),
+			icon: 'lucide:check-check',
+			disabled: folder.unseenCount === 0,
+			run: () => void bulk.markAllRead(folder),
+		},
+	];
+	if (isEmptyableRole(folder.role) && bulk.canEmpty(folder)) {
+		items.push({
+			id: 'empty',
+			label: t(`components.postbox.postboxFolderActions.empty.${folder.role}`),
+			icon: 'lucide:trash-2',
+			danger: true,
+			separatorBefore: true,
+			run: () => bulk.requestEmpty(folder),
+		});
+	}
+	return items;
+}
 
 const ICON_BY_ROLE: Record<string, string> = {
 	inbox: 'lucide:inbox',
@@ -64,39 +95,41 @@ function folderAriaLabel(folder: PostboxFolderRow): string {
 
 <template>
 	<nav class="flex flex-col gap-0.5" :class="{ 'items-center': collapsed }">
-		<UiTooltip
-			v-for="folder in folders"
-			:key="folder._id"
-			:text="collapsed ? folderLabel(folder) : undefined"
-		>
-			<NuxtLink
-				:to="`/dashboard/postbox/${folder.role}`"
-				class="rounded text-sm hover:bg-bg-surface"
-				:class="[
-					collapsed
-						? 'relative flex items-center justify-center w-9 h-9'
-						: 'flex items-center gap-2 px-2.5 py-1.5',
-					{ 'bg-bg-surface text-brand': activeFolder === folder.role },
-					{ 'pbx-drop-target': drop.isOverFolder(folder._id) },
-				]"
-				:aria-label="collapsed ? folderAriaLabel(folder) : undefined"
-				v-on="drop.folder(folder)"
-			>
-				<Icon :name="ICON_BY_ROLE[folder.role ?? ''] ?? 'lucide:folder'" class="w-4 h-4" />
-				<template v-if="!collapsed">
-					<span class="flex-1 capitalize">{{ folderLabel(folder) }}</span>
-					<span v-if="folder.unseenCount > 0" class="text-xs font-medium text-text-secondary">{{
-						folder.unseenCount
-					}}</span>
-				</template>
-				<!-- Collapsed: unread count as a corner badge so the number stays
+		<UiContextMenu v-for="folder in folders" :key="folder._id" :items="folderMenuItems(folder)">
+			<template #default="{ onContextmenu, onKeydown }">
+				<UiTooltip :text="collapsed ? folderLabel(folder) : undefined">
+					<NuxtLink
+						:to="`/dashboard/postbox/${folder.role}`"
+						class="rounded text-sm hover:bg-bg-surface"
+						:class="[
+							collapsed
+								? 'relative flex items-center justify-center w-9 h-9'
+								: 'flex items-center gap-2 px-2.5 py-1.5',
+							{ 'bg-bg-surface text-brand': activeFolder === folder.role },
+							{ 'pbx-drop-target': drop.isOverFolder(folder._id) },
+						]"
+						:aria-label="collapsed ? folderAriaLabel(folder) : undefined"
+						v-on="drop.folder(folder)"
+						@contextmenu="onContextmenu"
+						@keydown="onKeydown"
+					>
+						<Icon :name="ICON_BY_ROLE[folder.role ?? ''] ?? 'lucide:folder'" class="w-4 h-4" />
+						<template v-if="!collapsed">
+							<span class="flex-1 capitalize">{{ folderLabel(folder) }}</span>
+							<span v-if="folder.unseenCount > 0" class="text-xs font-medium text-text-secondary">{{
+								folder.unseenCount
+							}}</span>
+						</template>
+						<!-- Collapsed: unread count as a corner badge so the number stays
 				     visible without the label. -->
-				<span
-					v-else-if="folder.unseenCount > 0"
-					class="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 rounded-full bg-brand text-text-inverse text-[10px] leading-4 font-medium text-center"
-					>{{ folder.unseenCount > 99 ? '99+' : folder.unseenCount }}</span
-				>
-			</NuxtLink>
-		</UiTooltip>
+						<span
+							v-else-if="folder.unseenCount > 0"
+							class="absolute -top-0.5 -right-0.5 min-w-4 h-4 px-1 rounded-full bg-brand text-text-inverse text-[10px] leading-4 font-medium text-center"
+							>{{ folder.unseenCount > 99 ? '99+' : folder.unseenCount }}</span
+						>
+					</NuxtLink>
+				</UiTooltip>
+			</template>
+		</UiContextMenu>
 	</nav>
 </template>

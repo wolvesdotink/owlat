@@ -65,13 +65,28 @@ const folderActions = usePostboxFolderActions(mailboxIdRef);
 // Custom folders take dragged messages too (the system rows wire their own).
 const drop = usePostboxMessageDropTargets(mailboxIdRef);
 
+const folderBulk = usePostboxFolderBulk(mailboxIdRef);
+
 /** Right-click on a custom-folder row. */
-function folderMenuItems(folder: { _id: string; name: string }): ContextMenuItem[] {
+function folderMenuItems(folder: {
+	_id: string;
+	name: string;
+	unseenCount: number;
+	totalCount: number;
+}): ContextMenuItem[] {
 	return [
+		{
+			id: 'mark-all-read',
+			label: t('components.postbox.postboxFolderActions.markAllRead'),
+			icon: 'lucide:check-check',
+			disabled: folder.unseenCount === 0,
+			run: () => void folderBulk.markAllRead(folder),
+		},
 		{
 			id: 'rename',
 			label: t('components.postbox.postboxFolderRail.renameFolder'),
 			icon: 'lucide:pencil',
+			separatorBefore: true,
 			run: () => openManager({ editFolderId: folder._id as Id<'mailFolders'> }),
 		},
 		{

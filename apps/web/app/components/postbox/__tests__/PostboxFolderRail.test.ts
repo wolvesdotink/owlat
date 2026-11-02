@@ -41,6 +41,11 @@ beforeAll(() => {
 			clearFolderDelete: vi.fn(),
 		}),
 		usePostboxFolderActions: () => ({ remove: vi.fn() }),
+		usePostboxFolderBulk: () => ({
+			markAllRead: vi.fn(),
+			requestEmpty: vi.fn(),
+			canEmpty: () => false,
+		}),
 		usePostboxSavedSearches: () => ({ pinnedSearches: ref([]), setPinned: vi.fn() }),
 		useCommandPalette: () => ({ open: vi.fn() }),
 		useSidebarState: () => ({ toggleHidden: vi.fn() }),

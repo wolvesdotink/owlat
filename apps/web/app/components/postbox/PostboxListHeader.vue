@@ -45,6 +45,8 @@ const props = defineProps<{
 	inboxMode?: PostboxInboxMode;
 	/** Set on the flat list, which is the only renderer with a selection model. */
 	mailboxId?: Id<'mailboxes'>;
+	/** The mailbox on screen, whatever the renderer: the folder menu acts on it. */
+	folderMailboxId?: Id<'mailboxes'>;
 	/** Ids of the rows the list currently has loaded, in render order. */
 	pageIds?: string[];
 }>();
@@ -170,16 +172,25 @@ const emit = defineEmits<{
 		     its own labels. The view-mode group is
 		     withheld outside the inbox, where every folder renders flat and the
 		     choice would be a control that does nothing. -->
-		<PostboxListDisplayMenu
-			:view-mode="viewMode"
-			:view-mode-options="folderRole === 'inbox' ? viewModeOptions : undefined"
-			:sort-order="sortOrder"
-			:density="density"
-			:reading-pane="readingPane"
-			@select-view-mode="emit('select-view-mode', $event)"
-			@select-sort-order="emit('select-sort-order', $event)"
-			@select-density="emit('select-density', $event)"
-			@select-reading-pane="emit('select-reading-pane', $event)"
-		/>
+		<div class="flex items-center gap-1">
+			<PostboxListDisplayMenu
+				:view-mode="viewMode"
+				:view-mode-options="folderRole === 'inbox' ? viewModeOptions : undefined"
+				:sort-order="sortOrder"
+				:density="density"
+				:reading-pane="readingPane"
+				@select-view-mode="emit('select-view-mode', $event)"
+				@select-sort-order="emit('select-sort-order', $event)"
+				@select-density="emit('select-density', $event)"
+				@select-reading-pane="emit('select-reading-pane', $event)"
+			/>
+			<!-- Whole-folder verbs (mark all read, empty) for the folder on screen. -->
+			<PostboxFolderActionsMenu
+				v-if="folderMailboxId"
+				:mailbox-id="folderMailboxId"
+				:folder-role="folderRole"
+				:folder-id="folderId"
+			/>
+		</div>
 	</header>
 </template>

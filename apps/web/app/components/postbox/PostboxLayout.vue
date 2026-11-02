@@ -20,7 +20,7 @@ const { customFolders } = usePostboxFolders(mailboxIdRef);
 // Register Postbox as the app command palette's "current surface" while mounted
 // (reader actions + the folders/searches the sidebar doesn't list). Extracted to
 // a composable to keep this layout under the file-size cap.
-usePostboxCommandSurface(mailboxIdRef);
+usePostboxCommandSurface(mailboxIdRef, { folderRole: folderRef, folderId: folderIdRef });
 
 // List/reader density → applied as a single data-density attribute on the
 // Postbox root; all compact styling lives in CSS keyed off it (postbox-density.css).
@@ -324,6 +324,7 @@ const stepIds = computed(() => threadListRef.value?.visibleIds ?? advanceIds.val
 							:reading-pane="readingPane"
 							:inbox-mode="inboxMode"
 							:mailbox-id="!grouped && folderRole !== 'drafts' ? mailboxId : undefined"
+							:folder-mailbox-id="mailboxId"
 							:page-ids="listMessageIds"
 							@open-rail="railOpen = true"
 							@switch-inbox-mode="switchInboxMode"
@@ -332,6 +333,7 @@ const stepIds = computed(() => threadListRef.value?.visibleIds ?? advanceIds.val
 							@select-density="(mode) => void setDensity(mode)"
 							@select-reading-pane="(pane) => void setReadingPane(pane)"
 						/>
+						<PostboxEmptyFolderBar :mailbox-id="mailboxId" :folder-role="folderRole" />
 						<div v-if="folderRole === 'drafts'" class="flex-1 overflow-auto">
 							<PostboxDraftList :mailbox-id="mailboxId" />
 						</div>
@@ -479,5 +481,6 @@ const stepIds = computed(() => threadListRef.value?.visibleIds ?? advanceIds.val
 
 		<PostboxShortcutHelp />
 		<PostboxArrivalExplain />
+		<PostboxEmptyFolderDialog :mailbox-id="mailboxId" />
 	</div>
 </template>

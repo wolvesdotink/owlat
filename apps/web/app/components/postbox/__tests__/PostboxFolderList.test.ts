@@ -13,10 +13,32 @@ import { usePostboxMessageDrag } from '~/composables/postbox/usePostboxMessageDr
 import { createTestI18n, i18nStubs } from '~/__tests__/i18n';
 import { tooltipOf } from '~/__tests__/tooltip';
 
+const bulk = {
+	markAllRead: vi.fn(),
+	requestEmpty: vi.fn(),
+	mayEmpty: true,
+	canEmpty: (folder: { role?: string | null; totalCount: number }) =>
+		bulk.mayEmpty && (folder.role === 'trash' || folder.role === 'spam') && folder.totalCount > 0,
+};
+
 // The rows render their copy through vue-i18n; `useI18n` is a Nuxt auto-import.
 beforeAll(() => {
-	Object.assign(globalThis, { useI18n: i18nStubs.useI18n });
+	Object.assign(globalThis, {
+		useI18n: i18nStubs.useI18n,
+		usePostboxFolderBulk: () => bulk,
+	});
 });
+
+/** Renders the row and keeps the menu's items where a test can reach them. */
+type MenuItem = { id: string; label: string; disabled?: boolean; run: () => void };
+const menus: MenuItem[][] = [];
+const contextMenuStub = {
+	props: ['items'],
+	setup(props: { items: MenuItem[] }) {
+		menus.push(props.items);
+	},
+	template: '<div><slot :on-contextmenu="() => {}" :on-keydown="() => {}" /></div>',
+};
 
 const iconStub = { props: ['name'], template: '<span class="icon" :data-name="name" />' };
 const nuxtLinkStub = {
@@ -40,7 +62,7 @@ function mountList(collapsed: boolean) {
 		},
 		global: {
 			plugins: [createTestI18n()],
-			components: { Icon: iconStub, NuxtLink: nuxtLinkStub },
+			components: { Icon: iconStub, NuxtLink: nuxtLinkStub, UiContextMenu: contextMenuStub },
 		},
 	});
 }
@@ -97,7 +119,7 @@ describe('PostboxFolderList as a drop target', () => {
 			},
 			global: {
 				plugins: [createTestI18n()],
-				components: { Icon: iconStub, NuxtLink: nuxtLinkStub },
+				components: { Icon: iconStub, NuxtLink: nuxtLinkStub, UiContextMenu: contextMenuStub },
 			},
 		});
 	}
@@ -166,5 +188,56 @@ describe('PostboxFolderList as a drop target', () => {
 	it('ignores drags that are not message drags (files, text)', () => {
 		const w = mountTargets();
 		expect(fire(w.findAll('a')[2]!.element, 'dragover')).toBe(false);
+	});
+});
+
+describe('PostboxFolderList right-click menu', () => {
+	const menuFolders = [
+		{ _id: 'f1', name: 'Inbox', role: 'inbox', unseenCount: 4, totalCount: 10 },
+		{ _id: 'f2', name: 'Drafts', role: 'drafts', unseenCount: 1, totalCount: 1 },
+		{ _id: 'f3', name: 'Archive', role: 'archive', unseenCount: 0, totalCount: 7 },
+		{ _id: 'f4', name: 'Trash', role: 'trash', unseenCount: 0, totalCount: 5 },
+	];
+
+	function menusFor(mayEmpty = true) {
+		bulk.mayEmpty = mayEmpty;
+		menus.length = 0;
+		mount(PostboxFolderList, {
+			props: {
+				mailboxId: 'mbx-1' as never,
+				folders: menuFolders,
+				unreadCounts: {},
+				activeFolder: 'inbox',
+			},
+			global: {
+				plugins: [createTestI18n()],
+				components: { Icon: iconStub, NuxtLink: nuxtLinkStub, UiContextMenu: contextMenuStub },
+			},
+		});
+		return menus.map((items) =>
+			items.map((item) => `${item.label}${item.disabled ? ' (off)' : ''}`)
+		);
+	}
+
+	afterEach(() => {
+		bulk.markAllRead.mockClear();
+		bulk.requestEmpty.mockClear();
+	});
+
+	it('offers "Mark all as read" on every folder but Drafts, off while nothing is unread', () => {
+		expect(menusFor()).toEqual([
+			['Mark all as read'],
+			[],
+			['Mark all as read (off)'],
+			['Mark all as read (off)', 'Empty trash'],
+		]);
+		menus[0]![0]!.run();
+		expect(bulk.markAllRead).toHaveBeenCalledWith(menuFolders[0]);
+		menus[3]![1]!.run();
+		expect(bulk.requestEmpty).toHaveBeenCalledWith(menuFolders[3]);
+	});
+
+	it('leaves "Empty trash" out for someone who may not empty it', () => {
+		expect(menusFor(false)[3]).toEqual(['Mark all as read (off)']);
 	});
 });
