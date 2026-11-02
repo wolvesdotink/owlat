@@ -7282,7 +7282,8 @@
 				"allInboxes": "Alle Postfächer",
 				"inboxes": "Postfächer",
 				"more": "Mehr",
-				"answerCount": "eine wartet auf Antwort | {count} warten auf Antwort"
+				"answerCount": "eine wartet auf Antwort | {count} warten auf Antwort",
+				"inboxUnread": "{name}, {count} ungelesen"
 			},
 			"marketing": {
 				"overview": "Übersicht",

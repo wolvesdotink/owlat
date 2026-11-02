@@ -7282,7 +7282,8 @@
 				"allInboxes": "All inboxes",
 				"inboxes": "Inboxes",
 				"more": "More",
-				"answerCount": "one waiting for an answer | {count} waiting for an answer"
+				"answerCount": "one waiting for an answer | {count} waiting for an answer",
+				"inboxUnread": "{name}, {count} unread"
 			},
 			"marketing": {
 				"overview": "Overview",

@@ -7,7 +7,7 @@ import type { NavigationItem } from '~/lib/dashboardNavigationCore';
  * Workbench (one tab per inbox), the Answer queue, All inboxes — then every inbox the viewer reads with its
  * latest conversations and one status each, the team inbox for owners/admins,
  * chat, and Knowledge for every member while it is on. Collapsed (the icon rail) it keeps the pinned icons and one swatch
- * per inbox.
+ * per inbox, with its unread count and a highlight on the inbox that is open.
  */
 const props = defineProps<{
 	collapsed: boolean;
@@ -77,6 +77,22 @@ const railLabels = computed(() => {
 	);
 });
 
+// The mailbox the Postbox is showing: the one its URL names, else the shared
+// selection the Postbox falls back to. Outside the Postbox no inbox is open,
+// even though the selection persists.
+const { activeMailboxId } = usePostboxActiveMailbox();
+const openMailboxId = computed(() => {
+	if (!route.path.startsWith('/dashboard/postbox')) return null;
+	const requested = route.query['mailbox'];
+	return typeof requested === 'string' ? requested : activeMailboxId.value;
+});
+
+function railInboxLabel(inbox: { name: string; unread: number }): string {
+	return inbox.unread > 0
+		? t('components.shell.nav.inboxUnread', { name: inbox.name, count: inbox.unread })
+		: inbox.name;
+}
+
 function isActive(to: string, exact: boolean): boolean {
 	return exact ? route.path === to : route.path === to || route.path.startsWith(`${to}/`);
 }
@@ -123,10 +139,18 @@ function isActive(to: string, exact: boolean): boolean {
 		<template v-if="props.collapsed">
 			<div class="my-2 border-t border-border-subtle" aria-hidden="true" />
 			<UiTooltip v-for="inbox in inboxes" :key="inbox.mailboxId" :text="inbox.name">
+				<!-- aria-current is always passed: the router marks every entry as
+				     current on any Postbox inbox, because it ignores the query. -->
 				<NuxtLink
 					:to="`/dashboard/postbox/inbox?mailbox=${inbox.mailboxId}`"
-					:aria-label="inbox.name"
-					class="flex justify-center rounded-lg py-2 hover:bg-(--surface-2-hover)"
+					:aria-label="railInboxLabel(inbox)"
+					:aria-current="openMailboxId === inbox.mailboxId ? 'page' : undefined"
+					class="relative flex justify-center rounded-lg py-2 transition-colors"
+					:class="
+						openMailboxId === inbox.mailboxId
+							? 'bg-(--surface-2-selected)'
+							: 'hover:bg-(--surface-2-hover)'
+					"
 				>
 					<InboxChip
 						:name="railLabels.get(inbox.mailboxId) ?? inbox.name.charAt(0)"
@@ -134,6 +158,13 @@ function isActive(to: string, exact: boolean): boolean {
 						variant="plain"
 						size="md"
 					/>
+					<span
+						v-if="inbox.unread > 0"
+						class="absolute -right-1 -top-0.5 min-w-4 rounded-full bg-text-primary px-1 text-center text-2xs font-semibold leading-4 text-bg-elevated tabular-nums ring-2 ring-bg-elevated"
+						aria-hidden="true"
+						data-testid="rail-inbox-unread"
+						>{{ inbox.unread > 99 ? '99+' : inbox.unread }}</span
+					>
 				</NuxtLink>
 			</UiTooltip>
 			<UiTooltip v-if="showChat" :text="t('components.shell.chat.title')">
