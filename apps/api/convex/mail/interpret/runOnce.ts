@@ -19,6 +19,7 @@ import { renderSegments } from './prompt';
 import { extractOutput, prepareExtraction } from './extractOutput';
 import { admitInterpretRun, type InterpretRunHold } from './runHold';
 import { resolveLanguageModel } from '../../lib/llmProvider';
+import { AiNotConfiguredError } from '../../lib/aiNotConfigured';
 import {
 	finish,
 	RESTART_ERROR_CODE,
@@ -445,7 +446,12 @@ export async function runOnce(
 		if (refusal && countOnRefusal)
 			return await countOnRefusal().catch(() => ({ status: 'gone' as const }));
 		const isBudget = refusal !== null;
-		const errorCode = isBudget ? 'budget' : 'model_error';
+		// No provider is set up: the instance cannot run AI at all, the same
+		// state as the `ai` flag being off. Recorded as that gate refusal, it is
+		// re-checked on every call instead of spending this thread's retries,
+		// and the reader names the instance, not the thread, as the cause.
+		const isAiUnavailable = error instanceof AiNotConfiguredError;
+		const errorCode = isBudget ? 'budget' : isAiUnavailable ? 'ai_off' : 'model_error';
 		const budgetRefusal = refusal ? { reason: refusal.reason, limit: refusal.limit } : undefined;
 		// Only the first line: a validation error goes on to print its argument.
 		logWarn(
@@ -453,7 +459,8 @@ export async function runOnce(
 			error instanceof Error ? error.message.split('\n', 1)[0] : 'non-Error thrown'
 		);
 		try {
-			const attempts = isBudget && retryCount !== undefined ? retryCount - 1 : retryCount;
+			const isRefusal = isBudget || isAiUnavailable;
+			const attempts = isRefusal && retryCount !== undefined ? retryCount - 1 : retryCount;
 			return finish(
 				await apply(ctx, args, loaded, {
 					contentRevision,

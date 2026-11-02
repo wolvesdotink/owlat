@@ -58,7 +58,7 @@ import {
 	shiftPendingRepairs,
 } from './purgeRepairs';
 import { settleSource } from './outstanding';
-import { nextRetryAtOf } from './retry';
+import { isGateRefusalCode, nextRetryAtOf } from './retry';
 import { ATTEMPT_SUFFIX } from './load';
 import { sourceVersionOf } from './sourceVersion';
 import { refreshBriefTop } from './briefTop';
@@ -382,7 +382,9 @@ async function applyLeased(
 		);
 	}
 	const isMatching = matchRun !== null;
-	if (status === 'partial' || status === 'failed') {
+	// A gate refusal is the instance's state, not something that happened in
+	// this thread: the brief's gap and the admin's AI settings say it once.
+	if ((status === 'partial' || status === 'failed') && !isGateRefusalCode(errorCode)) {
 		await appendActivity(ctx, {
 			threadRef: ref,
 			mode,

@@ -1018,6 +1018,10 @@
 					"asserted": "laut dir",
 					"reported": "laut E-Mail"
 				},
+				"provenanceHint": {
+					"asserted": "Jemand auf deiner Seite hat das angegeben, zum Beispiel mit „Als erledigt markieren“.",
+					"reported": "Eine E-Mail in diesem Verlauf sagt das."
+				},
 				"type": {
 					"message_received": "Eine neue Nachricht ist eingegangen.",
 					"reply_sent": "Du hast geantwortet.",
@@ -1083,12 +1087,15 @@
 					"failed": "{done} von {total} Nachrichten sind in dieser Übersicht. Der Rest konnte nicht gelesen werden.",
 					"undecryptable": "{done} von {total} Nachrichten sind in dieser Übersicht. Der Rest ließ sich nicht entschlüsseln.",
 					"pending": "{done} von {total} Nachrichten sind in dieser Übersicht. Der Rest wird noch gelesen.",
-					"history": "{done} von {total} Nachrichten sind in dieser Übersicht. Einige frühere Antworten wurden gesendet, bevor Owlat ihren Text aufbewahrt hat, deshalb fehlen sie."
+					"history": "{done} von {total} Nachrichten sind in dieser Übersicht. Einige frühere Antworten wurden gesendet, bevor Owlat ihren Text aufbewahrt hat, deshalb fehlen sie.",
+					"aiOff": "{done} von {total} Nachrichten sind in dieser Übersicht. KI ist in diesem Workspace nicht verfügbar, deshalb wurde der Rest nicht gelesen.",
+					"budget": "{done} von {total} Nachrichten sind in dieser Übersicht. Das KI-Budget für diesen Zeitraum ist aufgebraucht, deshalb wurde der Rest noch nicht gelesen."
 				},
 				"pending": "Dieser Verlauf wird gerade gelesen. Die Übersicht folgt gleich.",
 				"none": {
 					"default": "Für diesen Verlauf gibt es noch keine Übersicht. Im E-Mail-Verlauf siehst du alles.",
-					"aiOff": "Die KI ist aus, deshalb gibt es keine Übersicht. Im E-Mail-Verlauf siehst du alles.",
+					"aiOff": "KI ist in diesem Workspace nicht verfügbar, deshalb gibt es keine Übersicht. Im E-Mail-Verlauf siehst du alles.",
+					"budget": "Das KI-Budget für diesen Zeitraum ist aufgebraucht, deshalb gibt es noch keine Übersicht. Im E-Mail-Verlauf siehst du alles.",
 					"undecryptable": "Diese Nachricht ließ sich nicht entschlüsseln, deshalb gibt es keine Übersicht.",
 					"ineligible": "Mails wie diese werden nicht zusammengefasst, deshalb gibt es keine Übersicht.",
 					"failed": "Das Lesen dieses Verlaufs ist fehlgeschlagen, deshalb gibt es keine Übersicht.",
@@ -1100,6 +1107,7 @@
 				"signed": "Nur der signierte Teil ist zusammengefasst.",
 				"stale": "Die Übersicht ist pausiert: Eine Signaturprüfung hat geändert, wofür eine Nachricht hier verlässlich ist. Im E-Mail-Verlauf siehst du alles.",
 				"openConversation": "E-Mail-Verlauf öffnen",
+				"aiSettings": "KI-Einstellungen",
 				"deferred": "Neue Mails in diesem Verlauf werden jetzt gelesen. Mails wie diese werden erst gelesen, wenn du ihren Verlauf öffnest, deshalb füllt sich die Übersicht gleich."
 			},
 			"conversation": {

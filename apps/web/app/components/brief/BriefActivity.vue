@@ -1,9 +1,9 @@
 <script setup lang="ts">
 /**
  * "Activity": the latest things that changed the substance of the thread,
- * newest first. Each row says how Owlat knows: `recorded` means it
- * saw it happen, `you said` that a person stated it, `from their email` that a
- * message reported it.
+ * newest first. A row Owlat saw happen (`recorded`) needs no label; one a
+ * person stated (`you said`) or an email reported (`from their email`) says
+ * so, because it is a claim rather than an observed event.
  */
 import type { ActivityView } from '../../../../api/convex/mail/interpret/briefShape';
 import { briefShortDate } from '~/utils/threadBriefContext';
@@ -36,7 +36,9 @@ function rowText(row: ActivityView): string {
 				<span
 					>{{ rowText(row) }}
 					<span
-						class="ml-1 rounded border border-border-subtle px-1 font-mono text-[10px] text-text-tertiary"
+						v-if="row.provenance !== 'recorded'"
+						class="ml-1 rounded border border-border-subtle px-1 text-[10px] text-text-tertiary"
+						:title="t(`components.brief.activity.provenanceHint.${row.provenance}`)"
 						data-testid="brief-activity-provenance"
 						>{{ t(`components.brief.activity.provenance.${row.provenance}`) }}</span
 					></span

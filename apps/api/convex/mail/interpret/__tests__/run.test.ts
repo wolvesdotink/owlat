@@ -15,6 +15,8 @@ import { modules, seedMailThread, type Test } from './interpret.testlib';
 import { captureInterpretSource } from '../sources';
 import { AdmissionRefusedError } from '../../../lib/llm/admissionPort';
 import { reconcileSpend } from '../../../aiRouting/__tests__/spend.testlib';
+import { resolveLanguageModel } from '../../../lib/llmProvider';
+import { AiNotConfiguredError } from '../../../lib/aiNotConfigured';
 
 /** Seed a message and take its enqueue-time snapshot, as delivery does. */
 async function seedCaptured(
@@ -441,6 +443,27 @@ describe('interpretMessage', () => {
 			source: { kind: 'mail', id: messageId },
 		});
 		expect(out).toMatchObject({ status: 'failed', errorCode: 'model_error' });
+	});
+
+	it('records a missing AI provider as the AI-off refusal, with no retry spent and no thread activity', async () => {
+		const t = convexTest(schema, modules);
+		rateLimiterTest.register(t);
+		await enableFeatures(t, ['ai']);
+		vi.mocked(resolveLanguageModel).mockRejectedValueOnce(new AiNotConfiguredError());
+		const { messageId, threadId } = await seedCaptured(t, { text: TEXT });
+		const out = await t.action(internal.mail.interpret.run.interpretMessage, {
+			source: { kind: 'mail', id: messageId },
+		});
+		expect(out).toMatchObject({ status: 'failed', errorCode: 'ai_off' });
+		const rows = await t.run(async (ctx) => ctx.db.query('messageInterpretations').collect());
+		expect(rows.find((r) => r.isCounted)).toMatchObject({ errorCode: 'ai_off', retryCount: 0 });
+		const activity = await t.run(async (ctx) =>
+			ctx.db
+				.query('threadActivity')
+				.withIndex('by_mail_thread_and_seq', (q) => q.eq('mailThreadId', threadId))
+				.collect()
+		);
+		expect(activity.map((row) => row.type)).not.toContain('interpretation_incomplete');
 	});
 
 	it('skips a muted thread and backfilled mail without a model call', async () => {

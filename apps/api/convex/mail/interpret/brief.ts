@@ -50,6 +50,7 @@ import {
 	readViewerState,
 	sinceLastSeenOf,
 	toActivityViews,
+	withoutGateRefusals,
 } from './briefRead';
 import { isReplyExpectingIntent, type ReplyIntent } from '../ai/replyIntent';
 import { openMessageBody } from '../../lib/messageBody';
@@ -110,7 +111,7 @@ export const get = publicQuery({
 
 		const [itemsPage, tail, interpretations, viewer] = await Promise.all([
 			readItemsPage(ctx, ref, locale, args.cursor ?? null, Date.now()),
-			readActivityTail(ctx, ref),
+			readActivityTail(ctx, ref).then(withoutGateRefusals),
 			readInterpretations(ctx, ref),
 			readViewerState(ctx, ref, session.userId),
 		]);

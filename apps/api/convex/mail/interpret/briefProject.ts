@@ -134,7 +134,7 @@ export function projectBrief(input: ProjectionInput): ThreadBriefView {
 	const shared = {
 		threadRef: input.threadRef,
 		interpretationRevision: input.interpretationRevision,
-		completeness: input.completeness,
+		completeness: viewCompletenessOf(input.completeness, input.gap, input.items.length),
 		...(showGap ? { gap: input.gap } : {}),
 		...(input.history ? { history: input.history } : {}),
 		...(input.deferredSources ? { deferredSources: input.deferredSources } : {}),
@@ -177,13 +177,47 @@ export function projectBrief(input: ProjectionInput): ThreadBriefView {
 	};
 }
 
+/**
+ * Gap reasons that describe the instance, not the thread: AI is off or has no
+ * provider, or the spend budget is used up. Every thread reads the same until
+ * an admin acts, so none of them is a fault of the thread.
+ */
+const INSTANCE_GAP_REASONS: ReadonlySet<GapReason> = new Set<GapReason>(['aiOff', 'budget']);
+
+/**
+ * The completeness the reader is given. A thread of which nothing was read,
+ * only because the instance cannot run AI now, has no brief: it reads `none`,
+ * so the reader opens the conversation instead of an empty, partly read
+ * overview. The stored completeness stays `partial`, so the gate refusal is
+ * still retried. Pure.
+ */
+export function viewCompletenessOf(
+	completeness: BriefCompleteness,
+	gap: ProjectionInput['gap'],
+	itemCount: number
+): BriefCompleteness {
+	const isInstanceGap = gap.reason !== undefined && INSTANCE_GAP_REASONS.has(gap.reason);
+	if (
+		completeness === 'partial' &&
+		isInstanceGap &&
+		gap.interpretedMessages === 0 &&
+		itemCount === 0
+	) {
+		return 'none';
+	}
+	return completeness;
+}
+
 /** Which gap reason an extraction row explains, if any. Pure. */
 export function gapReasonOf(row: {
 	status: 'complete' | 'partial' | 'failed' | 'skipped';
 	skipReason?: string;
 	errorCode?: string;
 }): GapReason | undefined {
-	if (row.status === 'failed') return row.errorCode === 'ai_off' ? 'aiOff' : 'failed';
+	if (row.status === 'failed') {
+		if (row.errorCode === 'ai_off') return 'aiOff';
+		return row.errorCode === 'budget' ? 'budget' : 'failed';
+	}
 	if (row.status === 'partial') {
 		return row.errorCode === 'overflow' || row.errorCode === 'too_long' ? 'tooLong' : 'failed';
 	}

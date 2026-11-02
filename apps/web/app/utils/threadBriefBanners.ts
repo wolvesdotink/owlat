@@ -11,12 +11,15 @@ export interface BriefBanner {
 	lead?: string;
 	text: LocalizedText;
 	offersConversation: boolean;
+	/** The cause is the instance's AI setup, which an admin fixes in AI settings. */
+	offersAiSettings?: boolean;
 }
 
 type GapReason = NonNullable<NonNullable<BriefModeView['gap']>['reason']>;
 
 const NONE_TEXT: Partial<Record<GapReason, string>> = {
 	aiOff: 'components.brief.incomplete.none.aiOff',
+	budget: 'components.brief.incomplete.none.budget',
 	undecryptable: 'components.brief.incomplete.none.undecryptable',
 	ineligible: 'components.brief.incomplete.none.ineligible',
 	failed: 'components.brief.incomplete.none.failed',
@@ -29,6 +32,17 @@ const PARTIAL_REASON: Partial<Record<GapReason, string>> = {
 	undecryptable: 'components.brief.incomplete.partialReason.undecryptable',
 	pending: 'components.brief.incomplete.partialReason.pending',
 	history: 'components.brief.incomplete.partialReason.history',
+};
+
+/**
+ * Reasons that are the instance's state, not the thread's: AI is off or has
+ * no provider, or its budget is used up. Every thread reads the same, so the
+ * banner is a quiet note that points an admin to AI settings, never a
+ * warning about this thread.
+ */
+const INSTANCE_REASON: Partial<Record<GapReason, string>> = {
+	aiOff: 'components.brief.incomplete.partialReason.aiOff',
+	budget: 'components.brief.incomplete.partialReason.budget',
 };
 
 /** What the banners read: the same on a personal brief and a team view. */
@@ -83,6 +97,7 @@ export function briefBanners(
 			tone: 'neutral',
 			text: (reason && NONE_TEXT[reason]) || 'components.brief.incomplete.none.default',
 			offersConversation: true,
+			...(reason && INSTANCE_REASON[reason] ? { offersAiSettings: true } : {}),
 		});
 	} else if (isReadingDeferred(brief)) {
 		banners.push({
@@ -97,6 +112,17 @@ export function briefBanners(
 			tone: 'info',
 			text: 'components.brief.incomplete.pending',
 			offersConversation: false,
+		});
+	} else if (brief.completeness === 'partial' && brief.gap && reason && INSTANCE_REASON[reason]) {
+		banners.push({
+			key: 'instance',
+			tone: 'neutral',
+			text: {
+				key: INSTANCE_REASON[reason],
+				params: { done: brief.gap.interpretedMessages, total: brief.gap.totalMessages },
+			},
+			offersConversation: true,
+			offersAiSettings: true,
 		});
 	} else if (brief.completeness === 'partial') {
 		const gap = brief.gap;

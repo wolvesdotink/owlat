@@ -13,7 +13,7 @@ import { isAppLocale, type AppLocale } from '@owlat/shared/appLocales';
 import { openMessageBody } from '../../lib/messageBody';
 import type { ThreadRef } from '../../lib/validators/threadRef';
 import type { TeamStreamEntry } from './briefShape';
-import { readViewerState, toActivityView } from './briefRead';
+import { isGateRefusalActivity, readViewerState, toActivityView } from './briefRead';
 import {
 	isStreamActivity,
 	rangesBefore,
@@ -115,7 +115,7 @@ export async function readActivityBatch(
 		budget: STREAM_SCAN_BUDGET,
 		positionOf: activityPosition,
 		toEntries: async (row): Promise<ActivityEntry[]> => {
-			if (!isStreamActivity(row)) return [];
+			if (!isStreamActivity(row) || (await isGateRefusalActivity(row))) return [];
 			const text = await itemText(row.itemId);
 			return [
 				{

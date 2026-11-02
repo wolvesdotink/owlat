@@ -14,6 +14,7 @@ import { gapOf, sinceLastSeenOf } from '../briefRead';
 import { MAX_PROMPT_ITEMS } from '../schema';
 import { captureInterpretSource } from '../sources';
 import { openBriefTop } from '../briefTop';
+import { appendActivity } from '../activity';
 import {
 	addMessageToThread,
 	modules,
@@ -180,14 +181,95 @@ describe('brief.get', () => {
 		const { messageId, threadId } = await seedMailThread(t);
 		await interpretMail(t, messageId, threadId, {
 			status: 'failed',
-			errorCode: 'ai_off',
+			errorCode: 'model_error',
 			result: undefined,
 		});
 		const view = await t.query(api.mail.interpret.brief.get, {
 			threadRef: { kind: 'mail', id: threadId },
 			locale: 'en',
 		});
-		expect(view).toMatchObject({ completeness: 'partial', gap: { reason: 'aiOff' } });
+		expect(view).toMatchObject({ completeness: 'partial', gap: { reason: 'failed' } });
+	});
+
+	it('reads as no brief when nothing was read only because the instance cannot run AI', async () => {
+		const t = convexTest(schema, modules);
+		const { messageId, threadId } = await seedMailThread(t);
+		const ref = { kind: 'mail' as const, id: threadId };
+		await interpretMail(t, messageId, threadId, {
+			status: 'failed',
+			errorCode: 'ai_off',
+			result: undefined,
+		});
+		const off = await t.query(api.mail.interpret.brief.get, { threadRef: ref, locale: 'en' });
+		expect(off).toMatchObject({
+			completeness: 'none',
+			gap: { interpretedMessages: 0, reason: 'aiOff' },
+		});
+		expect(off?.activity.map((row) => row.type)).toEqual(['message_received']);
+		await interpretMail(t, messageId, threadId, {
+			status: 'failed',
+			errorCode: 'budget',
+			result: undefined,
+			contentRevision: 'rev-2',
+			expectedRevision: 1,
+		});
+		expect(
+			await t.query(api.mail.interpret.brief.get, { threadRef: ref, locale: 'en' })
+		).toMatchObject({ completeness: 'none', gap: { reason: 'budget' } });
+	});
+
+	it('keeps a brief partial when part of it was read before the instance stopped running AI', async () => {
+		const t = convexTest(schema, modules);
+		const { mailboxId, messageId, threadId } = await seedMailThread(t);
+		await interpretMail(t, messageId, threadId);
+		const second = await addMessageToThread(
+			t,
+			{ mailboxId, threadId },
+			{ text: 'One more thing.', receivedAt: SENT + 60_000 }
+		);
+		await interpretMail(t, second, threadId, {
+			status: 'failed',
+			errorCode: 'ai_off',
+			result: undefined,
+			expectedRevision: 1,
+			sourceAt: SENT + 60_000,
+		});
+		const view = await t.query(api.mail.interpret.brief.get, {
+			threadRef: { kind: 'mail', id: threadId },
+			locale: 'en',
+		});
+		expect(view).toMatchObject({
+			completeness: 'partial',
+			gap: { interpretedMessages: 1, totalMessages: 2, reason: 'aiOff' },
+		});
+	});
+
+	it('never shows a gate refusal as thread activity, also one recorded as such', async () => {
+		const t = convexTest(schema, modules);
+		const { messageId, threadId } = await seedMailThread(t);
+		const ref = { kind: 'mail' as const, id: threadId };
+		await interpretMail(t, messageId, threadId);
+		await t.run(async (ctx) => {
+			for (const [key, code] of [
+				['refused', 'ai_off'],
+				['failed', 'model_error'],
+			] as const) {
+				await appendActivity(ctx, {
+					threadRef: ref,
+					mode: 'brief',
+					eventAt: SENT,
+					idempotencyKey: key,
+					type: 'interpretation_incomplete',
+					actor: { kind: 'system' },
+					provenance: 'recorded',
+					payload: { status: 'failed', code },
+				});
+			}
+		});
+		const view = await t.query(api.mail.interpret.brief.get, { threadRef: ref, locale: 'en' });
+		expect(view?.activity.filter((row) => row.type === 'interpretation_incomplete')).toHaveLength(
+			1
+		);
 	});
 
 	it('returns null for a caller without access', async () => {

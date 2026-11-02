@@ -30,6 +30,7 @@ import type {
 } from './briefShape';
 import { gapReasonOf, type GapReason, type OpenedItem } from './briefProject';
 import { openEvidence, openHeld } from './briefOpen';
+import { isGateRefusalCode } from './retry';
 
 type ReadCtx = Pick<QueryCtx, 'db'>;
 
@@ -215,18 +216,45 @@ export async function readActivityTail(ctx: ReadCtx, ref: ThreadRef) {
 				.take(ACTIVITY_SCAN);
 }
 
-async function activityText(row: Doc<'threadActivity'>): Promise<string | undefined> {
+/** One string field of a row's sealed payload, if the payload holds it. */
+async function activityPayloadField(
+	row: Doc<'threadActivity'>,
+	field: 'text' | 'code'
+): Promise<string | undefined> {
 	if (!row.payload) return undefined;
 	try {
 		const parsed: unknown = JSON.parse(await openMessageBody(row.payload));
-		if (parsed && typeof parsed === 'object' && 'text' in parsed) {
-			const text = (parsed as { text: unknown }).text;
-			return typeof text === 'string' ? text : undefined;
+		if (parsed && typeof parsed === 'object' && field in parsed) {
+			const value = (parsed as Record<string, unknown>)[field];
+			return typeof value === 'string' ? value : undefined;
 		}
 	} catch {
 		// A payload that does not parse renders without detail.
 	}
 	return undefined;
+}
+
+async function activityText(row: Doc<'threadActivity'>): Promise<string | undefined> {
+	return activityPayloadField(row, 'text');
+}
+
+/**
+ * Whether a row records a run the interpretation gate refused (AI off, no
+ * provider, budget used up). That is the instance's state, not an event of
+ * the thread, so such a row is never shown: not in the brief's activity, not
+ * as a team stream line, not as new since the last look.
+ */
+export async function isGateRefusalActivity(row: Doc<'threadActivity'>): Promise<boolean> {
+	if (row.type !== 'interpretation_incomplete') return false;
+	return isGateRefusalCode(await activityPayloadField(row, 'code'));
+}
+
+/** The activity rows a reader is shown: {@link isGateRefusalActivity} rows dropped. */
+export async function withoutGateRefusals(
+	rows: readonly Doc<'threadActivity'>[]
+): Promise<Doc<'threadActivity'>[]> {
+	const isRefusal = await Promise.all(rows.map(isGateRefusalActivity));
+	return rows.filter((_, i) => !isRefusal[i]);
 }
 
 /** One activity row as the brief and the team stream show it. */

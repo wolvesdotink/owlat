@@ -1018,6 +1018,10 @@
 					"asserted": "you said",
 					"reported": "from their email"
 				},
+				"provenanceHint": {
+					"asserted": "Someone on your side said so, for example with Mark done.",
+					"reported": "An email in this thread said so."
+				},
 				"type": {
 					"message_received": "A new message arrived.",
 					"reply_sent": "You sent a reply.",
@@ -1083,12 +1087,15 @@
 					"failed": "{done} of {total} messages are in this brief. Reading the rest failed.",
 					"undecryptable": "{done} of {total} messages are in this brief. The rest could not be decrypted.",
 					"pending": "{done} of {total} messages are in this brief. The rest is still being read.",
-					"history": "{done} of {total} messages are in this brief. Some earlier replies were sent before Owlat kept their text, so they are not in it."
+					"history": "{done} of {total} messages are in this brief. Some earlier replies were sent before Owlat kept their text, so they are not in it.",
+					"aiOff": "{done} of {total} messages are in this brief. AI isn't available in this workspace, so the rest hasn't been read.",
+					"budget": "{done} of {total} messages are in this brief. The AI budget for this period is used up, so the rest hasn't been read yet."
 				},
 				"pending": "Reading this thread. The brief fills in shortly.",
 				"none": {
 					"default": "There is no brief for this thread yet. The conversation shows everything.",
-					"aiOff": "AI is off, so there is no brief. The conversation shows everything.",
+					"aiOff": "AI isn't available in this workspace, so there is no brief. The conversation shows everything.",
+					"budget": "The AI budget for this period is used up, so there is no brief yet. The conversation shows everything.",
 					"undecryptable": "This message could not be decrypted, so there is no brief.",
 					"ineligible": "Mail like this is not summarised, so there is no brief.",
 					"failed": "Reading this thread failed, so there is no brief.",
@@ -1100,6 +1107,7 @@
 				"signed": "Only the signed part is summarised.",
 				"stale": "The brief is paused: a signature check changed what one message here can be trusted for. The conversation shows everything.",
 				"openConversation": "Open the conversation",
+				"aiSettings": "AI settings",
 				"deferred": "Reading new mail in this thread now. Mail like this is read when you open its thread, so the brief fills in shortly."
 			},
 			"conversation": {
