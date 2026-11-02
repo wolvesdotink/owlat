@@ -405,7 +405,15 @@
 			"select": "Auswählen",
 			"scopeLabel": "Suchbereich",
 			"scopeHint": "Bereich",
-			"filterPlaceholder": "Tippe, um die Liste einzugrenzen…"
+			"filterPlaceholder": "Tippe, um die Liste einzugrenzen…",
+			"keepTyping": "Tippe weiter, um deine E-Mails zu durchsuchen",
+			"prefixes": {
+				"heading": "Mit einem Präfix eingrenzen",
+				"commands": "Befehle, Seiten und Einstellungen",
+				"people": "Personen und Kontakte",
+				"labels": "Labels",
+				"ask": "Frag deine Wissensdatenbank"
+			}
 		},
 		"assistant": {
 			"assistantComposer": {
@@ -14688,8 +14696,20 @@
 				"templates": "Vorlagen",
 				"refine": "Verfeinern",
 				"inboxThreads": "Team-Postfach",
-				"jumpBack": "Zuletzt geöffnet"
+				"jumpBack": "Zuletzt geöffnet",
+				"savedSearches": "Gespeicherte Suchen",
+				"people": "Personen, denen du schreibst",
+				"tryOperators": "Probier aus",
+				"noMailHits": "Keine passenden Nachrichten"
 			}
+		},
+		"commandPaletteMailStart": {
+			"examples": {
+				"hasAttachment": "Nachrichten mit Anhängen",
+				"isUnread": "Ungelesene Nachrichten",
+				"olderThan30d": "Älter als 30 Tage"
+			},
+			"withoutOperator": "Ohne {operator} suchen"
 		},
 		"conditions": {
 			"contact_property": {

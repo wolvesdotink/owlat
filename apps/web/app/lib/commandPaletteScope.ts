@@ -78,15 +78,20 @@ export function nextPaletteScope(
 
 /**
  * The groups Mail scope renders in its own (unprefixed) palette: the records
- * opened last, its recents, its autocomplete, its live hits, and the row that
- * hands off to the deep search page. Everything else — navigation, verbs,
- * contacts, campaigns — stays one `>`/`@`/`#` prefix or one Tab away.
+ * opened last, its recents, the empty box's starting points, its autocomplete,
+ * its live hits or the way out of none, and the row that hands off to the deep
+ * search page. Everything else — navigation, verbs, contacts, campaigns — stays
+ * one `>`/`@`/`#` prefix or one Tab away.
  */
 export const MAIL_SCOPE_GROUP_KEYS: ReadonlySet<string> = new Set([
 	'jump-back',
 	'recent',
+	'mail-saved',
+	'mail-people',
+	'mail-try',
 	'mail-suggest',
 	'mail-hits',
+	'mail-fix',
 	'mail-search',
 ]);
 

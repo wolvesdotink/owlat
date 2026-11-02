@@ -69,6 +69,11 @@ const OPERATOR_REGISTRY: ReadonlyArray<{ token: string; hintKey: string; isTermi
 	{ token: 'older_than:', hintKey: `${HINT_ROOT}.olderThan`, isTerminal: false },
 ];
 
+/** Every operator name the grammar knows, without its colon (`from`, `is`, …). */
+const OPERATOR_NAMES: ReadonlySet<string> = new Set(
+	OPERATOR_REGISTRY.map((entry) => entry.token.slice(0, entry.token.indexOf(':')))
+);
+
 /** System folder roles `in:` accepts, in rail order. */
 const FOLDER_ROLES = ['inbox', 'sent', 'drafts', 'archive', 'spam', 'trash', 'snoozed'] as const;
 
@@ -118,6 +123,42 @@ export function applySearchSuggestion(
 ): { value: string; caret: number } {
 	const next = `${value.slice(0, token.start)}${insert}${value.slice(token.end)}`;
 	return { value: next, caret: token.start + insert.length };
+}
+
+/**
+ * The query with its last operator term taken out, for a search that found
+ * nothing: the operator added last is the likeliest one to have narrowed it to
+ * zero. Free words are never removed (they are what the user is looking for),
+ * and neither is a colon inside a word the grammar does not know (`http://…`).
+ * Null when the query has no operator, or when removing it would leave nothing
+ * to search for.
+ */
+export function withoutLastOperator(query: string): { removed: string; rest: string } | null {
+	const spans: Array<{ start: number; end: number }> = [];
+	let start = -1;
+	let inQuotes = false;
+	for (let i = 0; i <= query.length; i++) {
+		const ch = query[i];
+		if (ch !== undefined && (inQuotes || !/\s/.test(ch))) {
+			if (ch === '"') inQuotes = !inQuotes;
+			if (start < 0) start = i;
+			continue;
+		}
+		if (start >= 0) spans.push({ start, end: i });
+		start = -1;
+	}
+	for (let index = spans.length - 1; index >= 0; index--) {
+		const span = spans[index]!;
+		const removed = query.slice(span.start, span.end);
+		const body = removed.startsWith('-') ? removed.slice(1) : removed;
+		const colon = body.indexOf(':');
+		if (colon <= 0 || !OPERATOR_NAMES.has(body.slice(0, colon).toLowerCase())) continue;
+		const rest = [query.slice(0, span.start).trimEnd(), query.slice(span.end).trimStart()]
+			.filter(Boolean)
+			.join(' ');
+		return rest ? { removed, rest } : null;
+	}
+	return null;
 }
 
 /** Quote an operand that carries whitespace, so the tokenizer keeps it whole. */

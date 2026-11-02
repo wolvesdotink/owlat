@@ -15,6 +15,12 @@ import { api } from '@owlat/api';
 import type { Id } from '@owlat/api/dataModel';
 import type { PaletteItem } from '~/lib/commandPalette';
 import { SEARCH_MIN_QUERY } from '~/lib/commandPaletteCore';
+import {
+	MAIL_START_CONTACT_WINDOW,
+	type MailStartItems,
+	buildMailFixItems,
+	buildMailStartItems,
+} from '~/lib/commandPaletteMailStart';
 import { useLocalized } from '~/composables/useLocalized';
 import { parseSearchQuery } from '@owlat/shared/mailSearch';
 import { POSTBOX_FIND_QUERY_PARAM, postboxFindTermsOf } from '~/utils/postboxFindSeed';
@@ -224,5 +230,41 @@ export function useCommandPaletteMailScope(options: CommandPaletteMailScopeOptio
 		}));
 	});
 
-	return { suggestionItems, hitItems, isSearching, resetQuery };
+	/** Put a whole query in the box, ready for the next term. */
+	function applyQuery(value: string) {
+		options.onReplace(`${value} `, value.length + 1);
+	}
+
+	/**
+	 * Searched and resolved with nothing: offer the query minus its last operator.
+	 * An empty page that still has more behind it is not "nothing" yet.
+	 */
+	const fixItems = computed<PaletteItem[]>(() => {
+		if (!isSubscribed.value || isSearching.value) return [];
+		const page = searchData.value;
+		if (!page || page.messages.length > 0 || page.hasMore) return [];
+		return buildMailFixItems(options.query.value, t, applyQuery);
+	});
+
+	// ── Starting points for the empty box. Subscribed for the whole Mail-scope
+	// session rather than only while the box is empty, so clearing the box
+	// shows them at once instead of after a round trip.
+	const { data: savedSearchData } = useConvexQuery(api.mail.savedSearches.list, () =>
+		options.enabled.value && activeMailboxId.value ? { mailboxId: activeMailboxId.value } : 'skip'
+	);
+	const { data: addressBookData } = useConvexQuery(api.mail.contacts.list, () =>
+		options.enabled.value && activeMailboxId.value
+			? { mailboxId: activeMailboxId.value, limit: MAIL_START_CONTACT_WINDOW }
+			: 'skip'
+	);
+	const startItems = computed<MailStartItems>(() =>
+		buildMailStartItems({
+			savedSearches: options.enabled.value ? (savedSearchData.value ?? []) : [],
+			contacts: options.enabled.value ? (addressBookData.value ?? []) : [],
+			t,
+			apply: applyQuery,
+		})
+	);
+
+	return { suggestionItems, hitItems, startItems, fixItems, isSearching, resetQuery };
 }

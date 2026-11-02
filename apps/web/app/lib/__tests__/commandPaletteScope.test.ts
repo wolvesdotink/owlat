@@ -104,6 +104,18 @@ describe('groupsForScope', () => {
 		for (const key of MAIL_SCOPE_GROUP_KEYS) expect(typeof key).toBe('string');
 	});
 
+	it('keeps the empty box’s starting points and the way out of no hits', () => {
+		const mailGroups = ['mail-saved', 'mail-people', 'mail-try', 'mail-fix'].map(group);
+		expect(groupsForScope([...mailGroups, ...groups], 'mail', 'all').map((g) => g.key)).toEqual([
+			'mail-saved',
+			'mail-people',
+			'mail-try',
+			'mail-fix',
+			'recent',
+			'mail-hits',
+		]);
+	});
+
 	it('stops narrowing the moment a prefix asks for something else', () => {
 		// `>` means the user asked for commands; Mail scope must not eat them.
 		expect(groupsForScope(groups, 'mail', 'commands').map((g) => g.key)).toEqual(

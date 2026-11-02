@@ -61,6 +61,12 @@ function makeDeps(overrides: Partial<CorePaletteProviderDeps> = {}): CorePalette
 		isMailScope: () => false,
 		mailSuggestionItems: () => [paletteItem('mail-suggest:operator:from:')],
 		mailHitItems: () => [paletteItem('mail-hit:message1')],
+		mailStartItems: () => ({
+			saved: [paletteItem('mail-saved:s1')],
+			people: [paletteItem('mail-person:ines@example.com')],
+			examples: [paletteItem('mail-example:is:unread')],
+		}),
+		mailFixItems: () => [],
 		inboxThreadItems: () => [paletteItem('inbox-thread:thread1')],
 		...overrides,
 	};
@@ -78,11 +84,12 @@ function groupByKey(groups: PaletteGroup[], key: string): PaletteGroup | undefin
 }
 
 describe('buildCorePaletteProviders — provider set', () => {
-	it('is exactly the eleven core providers, in priority order, at fixed priorities', () => {
+	it('is exactly the twelve core providers, in priority order, at fixed priorities', () => {
 		const providers = buildCorePaletteProviders(makeDeps());
 		expect(providers.map((p) => p.id)).toEqual([
 			'core:jump-back',
 			'core:recent',
+			'core:mail-start',
 			'core:mail-suggest',
 			'core:mail-hits',
 			'core:inbox-threads',
@@ -93,7 +100,9 @@ describe('buildCorePaletteProviders — provider set', () => {
 			'core:mail',
 			'core:navigation',
 		]);
-		expect(providers.map((p) => p.priority)).toEqual([5, 10, 12, 13, 15, 20, 30, 35, 40, 45, 50]);
+		expect(providers.map((p) => p.priority)).toEqual([
+			5, 10, 11, 12, 13, 15, 20, 30, 35, 40, 45, 50,
+		]);
 	});
 
 	it('gates ONLY the Team Inbox threads, and gates them on both the flag and the route', () => {
@@ -321,6 +330,44 @@ describe('core:mail-suggest / core:mail-hits — the Mail scope', () => {
 		// discovering `from:` by typing `f` — but the search index does not.
 		expect(build('core:mail-suggest', 'f', { isMailScope: () => true })).toHaveLength(1);
 		expect(build('core:mail-hits', 'f', { isMailScope: () => true })).toEqual([]);
+	});
+});
+
+describe('core:mail-start — the empty Mail box', () => {
+	const mail = { isMailScope: () => true };
+
+	it('offers saved searches, people and operator examples while nothing is typed', () => {
+		const groups = build('core:mail-start', ' ', mail);
+		expect(groups.map((g) => [g.key, t(g.heading), g.order, g.cap])).toEqual([
+			['mail-saved', 'Saved searches', 0, 5],
+			['mail-people', 'People you mail', 0, 3],
+			['mail-try', 'Try', 0, undefined],
+		]);
+		expect(groups.flatMap((g) => g.items.map((i) => i.id))).toEqual([
+			'mail-saved:s1',
+			'mail-person:ines@example.com',
+			'mail-example:is:unread',
+		]);
+		expect(groups.every((g) => g.mode === undefined)).toBe(true);
+	});
+
+	it('steps aside on the first typed character, and outside Mail scope', () => {
+		expect(build('core:mail-start', 'f', mail)).toEqual([]);
+		expect(build('core:mail-start', '')).toEqual([]);
+	});
+});
+
+describe('core:mail-hits — a search that found nothing', () => {
+	it('puts the way out where the hits would be', () => {
+		const groups = build('core:mail-hits', 'invoice is:unread', {
+			isMailScope: () => true,
+			mailHitItems: () => [],
+			mailFixItems: () => [paletteItem('mail-fix:invoice')],
+		});
+		const fix = groupByKey(groups, 'mail-fix');
+		expect(fix?.order).toBe(2);
+		expect(t(fix?.heading ?? '')).toBe('No messages match');
+		expect(fix?.items.map((i) => i.id)).toEqual(['mail-fix:invoice']);
 	});
 });
 

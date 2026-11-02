@@ -37,6 +37,7 @@ function mountResults(items: PaletteItem[]) {
 			hasRows: true,
 			askAnswer: null,
 			askLoading: false,
+			askAvailable: false,
 		},
 		global: { plugins: [createTestI18n()], stubs: { QueryResult: true } },
 	});
