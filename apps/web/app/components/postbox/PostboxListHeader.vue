@@ -34,7 +34,7 @@ const props = defineProps<{
 	isOffline?: boolean;
 	/** Inbox-only view-mode options (Flat / Conversations / Categories / …). */
 	viewMode?: string;
-	viewModeOptions?: Array<{ value: string; label: string }>;
+	viewModeOptions?: Array<{ value: string; label: string; description?: string }>;
 	/** Arrival direction of the list — 'newest' (default) or 'oldest'. */
 	sortOrder?: string;
 	/** List/reader row density, shown as a radio group in the Display menu. */

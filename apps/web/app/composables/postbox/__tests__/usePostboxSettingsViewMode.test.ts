@@ -1,7 +1,8 @@
 /**
  * usePostboxSettings inbox view-mode preference:
- *   - derives 'flat' when the settings row is unset/loading, reflects a saved
- *     mode, and normalises an unknown stored value, and
+ *   - derives 'conversations' when the settings row is unset/loading, reflects
+ *     a saved mode (a saved 'flat' included), and normalises an unknown stored
+ *     value, and
  *   - setViewMode persists via the mail-settings update mutation and reports
  *     whether the save landed (a failed run() resolves to undefined).
  *
@@ -32,7 +33,19 @@ beforeEach(() => {
 });
 
 describe('usePostboxSettings viewMode', () => {
-	it('defaults to flat while unset/loading', () => {
+	it('defaults to conversations while unset/loading', () => {
+		const { viewMode } = usePostboxSettings();
+		expect(viewMode.value).toBe('conversations');
+	});
+
+	it('defaults to conversations when the row exists without a view mode', () => {
+		settingsRow.value = { density: 'compact' };
+		const { viewMode } = usePostboxSettings();
+		expect(viewMode.value).toBe('conversations');
+	});
+
+	it('keeps a saved flat choice', () => {
+		settingsRow.value = { viewMode: 'flat' };
 		const { viewMode } = usePostboxSettings();
 		expect(viewMode.value).toBe('flat');
 	});
@@ -49,10 +62,10 @@ describe('usePostboxSettings viewMode', () => {
 		expect(viewMode.value).toBe('bundled');
 	});
 
-	it('normalises an unknown stored mode to flat', () => {
+	it('normalises an unknown stored mode to the default', () => {
 		settingsRow.value = { viewMode: 'stacked' };
 		const { viewMode } = usePostboxSettings();
-		expect(viewMode.value).toBe('flat');
+		expect(viewMode.value).toBe('conversations');
 	});
 
 	it('setViewMode persists through the update mutation and reports success', async () => {

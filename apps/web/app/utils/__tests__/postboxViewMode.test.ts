@@ -1,7 +1,7 @@
 /**
  * Postbox inbox view-mode derivations:
  *   - resolvePostboxViewMode normalises stored/unknown values to a valid mode
- *     (defaulting to 'flat'), and
+ *     (defaulting to 'conversations', while a saved 'flat' stays flat), and
  *   - postboxListRenderer maps mode + folder to the list renderer — grouped
  *     renderers are inbox-only, every other folder always renders flat.
  */
@@ -14,10 +14,11 @@ import {
 } from '../postboxViewMode';
 
 describe('resolvePostboxViewMode', () => {
-	it('defaults to flat for unset values', () => {
-		expect(resolvePostboxViewMode(undefined)).toBe('flat');
-		expect(resolvePostboxViewMode(null)).toBe('flat');
-		expect(POSTBOX_VIEW_MODE_DEFAULT).toBe('flat');
+	it('defaults to conversations for unset values', () => {
+		expect(resolvePostboxViewMode(undefined)).toBe('conversations');
+		expect(resolvePostboxViewMode(null)).toBe('conversations');
+		expect(resolvePostboxViewMode('')).toBe('conversations');
+		expect(POSTBOX_VIEW_MODE_DEFAULT).toBe('conversations');
 	});
 
 	it('passes through every valid mode', () => {
@@ -28,8 +29,12 @@ describe('resolvePostboxViewMode', () => {
 		expect(resolvePostboxViewMode('sections')).toBe('sections');
 	});
 
-	it('normalises an unknown stored value to flat', () => {
-		expect(resolvePostboxViewMode('stacked')).toBe('flat');
+	it('keeps a saved flat choice instead of falling back to the default', () => {
+		expect(resolvePostboxViewMode('flat')).not.toBe(POSTBOX_VIEW_MODE_DEFAULT);
+	});
+
+	it('normalises an unknown stored value to the default', () => {
+		expect(resolvePostboxViewMode('stacked')).toBe('conversations');
 	});
 });
 

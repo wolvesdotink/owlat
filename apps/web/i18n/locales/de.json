@@ -5020,6 +5020,13 @@
 					"flat": "Einfach",
 					"bundled": "Gebündelt",
 					"sections": "Bereiche"
+				},
+				"viewModeDescriptions": {
+					"flat": "Eine Zeile pro Nachricht, also auch eine eigene für jede Antwort.",
+					"conversations": "Eine Zeile pro Konversation, mit ihren Antworten darin.",
+					"categories": "Nach Art gruppiert: Personen, Newsletter, Benachrichtigungen, Belege.",
+					"bundled": "Wie Einfach, aber Folgen von Newslettern und Benachrichtigungen werden zu einer Zeile gebündelt.",
+					"sections": "Die Bereiche, in die deine Filterregeln Mail anheften, danach alles Übrige."
 				}
 			},
 			"postboxListDisplayMenu": {

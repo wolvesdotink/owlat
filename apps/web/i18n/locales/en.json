@@ -5020,6 +5020,13 @@
 					"flat": "Flat",
 					"bundled": "Bundled",
 					"sections": "Sections"
+				},
+				"viewModeDescriptions": {
+					"flat": "One row per message, so a reply gets its own row.",
+					"conversations": "One row per conversation, with its replies inside.",
+					"categories": "Grouped by kind: people, newsletters, notifications, receipts.",
+					"bundled": "Like Flat, but runs of newsletters and notifications fold into one row.",
+					"sections": "The sections your filter rules pin mail to, then everything else."
 				}
 			},
 			"postboxListDisplayMenu": {

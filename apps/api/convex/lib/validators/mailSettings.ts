@@ -35,10 +35,11 @@ export const mailAfterReplyValidator = v.union(v.literal('keep'), v.literal('don
 export const mailDensityValidator = v.union(v.literal('comfortable'), v.literal('compact'));
 
 // Postbox inbox list view mode (mailUserSettings.viewMode and mail/settings
-// update args) — 'flat' (single message list, the default), 'conversations'
-// (thread-grouped rows), 'categories' (People / Newsletters / Notifications /
-// Receipts sections) or 'bundled' (the flat feed with runs of consecutive
-// low-signal mail folded into one expandable row per category). Inbox-only;
+// update args) — 'flat' (single message list), 'conversations'
+// (thread-grouped rows, the default), 'categories' (People / Newsletters /
+// Notifications / Receipts sections), 'bundled' (the flat feed with runs of
+// consecutive low-signal mail folded into one expandable row per category) or
+// 'sections' (the sections `pinToSection` filter rules name). Inbox-only;
 // other folders always render flat. Single source so schema and args can't
 // drift.
 export const mailViewModeValidator = v.union(
