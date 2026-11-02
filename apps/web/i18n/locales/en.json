@@ -405,7 +405,15 @@
 			"select": "Select",
 			"scopeLabel": "Search scope",
 			"scopeHint": "Scope",
-			"filterPlaceholder": "Type to narrow the list…"
+			"filterPlaceholder": "Type to narrow the list…",
+			"keepTyping": "Keep typing to search your mail",
+			"prefixes": {
+				"heading": "Narrow with a prefix",
+				"commands": "Commands, pages and settings",
+				"people": "People and contacts",
+				"labels": "Labels",
+				"ask": "Ask your knowledge base"
+			}
 		},
 		"assistant": {
 			"assistantComposer": {
@@ -14688,8 +14696,20 @@
 				"templates": "Templates",
 				"refine": "Refine",
 				"inboxThreads": "Team inbox",
-				"jumpBack": "Jump back"
+				"jumpBack": "Jump back",
+				"savedSearches": "Saved searches",
+				"people": "People you mail",
+				"tryOperators": "Try",
+				"noMailHits": "No messages match"
 			}
+		},
+		"commandPaletteMailStart": {
+			"examples": {
+				"hasAttachment": "Messages with attachments",
+				"isUnread": "Unread messages",
+				"olderThan30d": "Older than 30 days"
+			},
+			"withoutOperator": "Search without {operator}"
 		},
 		"conditions": {
 			"contact_property": {

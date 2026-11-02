@@ -19,6 +19,7 @@ import {
 	buildSearchSuggestions,
 	moveSuggestionIndex,
 	selectedSuggestion,
+	withoutLastOperator,
 } from '../postboxSearchSuggest';
 
 const contacts = [
@@ -163,5 +164,45 @@ describe('keyboard selection', () => {
 
 	it('hands back the selected row once one is selected', () => {
 		expect(selectedSuggestion(['a', 'b'], 1)).toBe('b');
+	});
+});
+
+describe('withoutLastOperator', () => {
+	it('drops the operator added last and keeps the rest of the query as typed', () => {
+		expect(withoutLastOperator('invoice from:ines is:unread')).toEqual({
+			removed: 'is:unread',
+			rest: 'invoice from:ines',
+		});
+		expect(withoutLastOperator('in:inbox  refund   -label:billing')).toEqual({
+			removed: '-label:billing',
+			rest: 'in:inbox  refund',
+		});
+	});
+
+	it('skips free words after the last operator, they are what is being looked for', () => {
+		expect(withoutLastOperator('older_than:30d quarterly report')).toEqual({
+			removed: 'older_than:30d',
+			rest: 'quarterly report',
+		});
+	});
+
+	it('removes a quoted operand whole, and leaves a quoted phrase alone', () => {
+		expect(withoutLastOperator('"is:unread here" subject:"q3 plan" refund')).toEqual({
+			removed: 'subject:"q3 plan"',
+			rest: '"is:unread here" refund',
+		});
+	});
+
+	it('ignores a colon the grammar does not know', () => {
+		expect(withoutLastOperator('see https://example.com')).toBeNull();
+		expect(withoutLastOperator('from:ines https://example.com')).toEqual({
+			removed: 'from:ines',
+			rest: 'https://example.com',
+		});
+	});
+
+	it('offers nothing when the operator is all there is', () => {
+		expect(withoutLastOperator('is:unread')).toBeNull();
+		expect(withoutLastOperator('')).toBeNull();
 	});
 });

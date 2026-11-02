@@ -12,6 +12,7 @@ export const INTENTIONALLY_IDENTICAL_KEYS: readonly string[] = [
 	'common.name',
 	'common.optional',
 	'common.status',
+	'components.appCommandPalette.prefixes.labels',
 	'components.autonomy.autonomyDemotionAlerts.incident',
 	'components.autonomy.autonomyRuleEditor.categories.spam',
 	'components.autonomy.autonomyRuleEditor.categories.support',

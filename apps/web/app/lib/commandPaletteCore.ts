@@ -1,8 +1,8 @@
 /**
  * Pure factory for the app command palette's built-in ("core") providers.
  *
- * The core providers — recent searches, the two Mail-scope providers (grammar
- * completions + live deep-search hits), route-scoped Team Inbox threads, verbs,
+ * The core providers — recent searches, the Mail-scope providers (starting
+ * points, grammar completions, live deep-search hits), route-scoped Team Inbox threads, verbs,
  * sidebar-context switch, settings controls, object search, mail, and
  * navigation — live here rather than as inline closures inside
  * `AppCommandPalette.vue`, so their ids, priorities, group keys, `order`/`cap`
@@ -24,6 +24,7 @@
  * never re-implements the prefix grammar.
  */
 import { type PaletteGroup, type PaletteItem, filterItems } from './commandPalette';
+import type { MailStartItems } from './commandPaletteMailStart';
 import { MAX_OBJECT_RECENTS } from './commandPaletteObjectRecents';
 import { type CommandPaletteProvider, routePrefixMatcher } from './commandPaletteRegistry';
 import { filterByKeywords } from './settingsRegistry';
@@ -117,6 +118,10 @@ export interface CorePaletteProviderDeps {
 	mailSuggestionItems: () => PaletteItem[];
 	/** Live top hits from `mail.mailbox.search.search`, newest first. */
 	mailHitItems: () => PaletteItem[];
+	/** Mail scope's starting points for an empty box (`~/lib/commandPaletteMailStart`). */
+	mailStartItems: () => MailStartItems;
+	/** The way out of a search that resolved with no hits; empty otherwise. */
+	mailFixItems: () => PaletteItem[];
 	/**
 	 * Team Inbox thread hits from `inbox.queries.listThreads`' search argument.
 	 * Only ever read on `/dashboard/inbox/**` — the provider below is route-gated,
@@ -127,7 +132,7 @@ export interface CorePaletteProviderDeps {
 
 /**
  * Build the ordered core provider set. Priorities fix the consult/dedup order
- * (5/10/12/13/15/20/30/35/40/45/50); each provider's group `order` still drives the final
+ * (5/10/11/12/13/15/20/30/35/40/45/50); each provider's group `order` still drives the final
  * render sort in `mergeGroups`. Pure.
  */
 export function buildCorePaletteProviders(deps: CorePaletteProviderDeps): CommandPaletteProvider[] {
@@ -176,6 +181,40 @@ export function buildCorePaletteProviders(deps: CorePaletteProviderDeps): Comman
 			},
 		},
 		{
+			// Mail scope with an empty box: where a search can start. It has run no
+			// search yet, so it shows starting points instead of an empty state.
+			// Order 0 sits under the recent searches; the completions and hits that
+			// share orders 1 and 2 only exist once something is typed.
+			id: 'core:mail-start',
+			priority: 11,
+			build: ({ query }): PaletteGroup[] => {
+				if (!deps.isMailScope() || query.trim()) return [];
+				const start = deps.mailStartItems();
+				return [
+					{
+						key: 'mail-saved',
+						heading: 'shared.commandPaletteCore.groups.savedSearches',
+						order: 0,
+						cap: 5,
+						items: start.saved,
+					},
+					{
+						key: 'mail-people',
+						heading: 'shared.commandPaletteCore.groups.people',
+						order: 0,
+						cap: 3,
+						items: start.people,
+					},
+					{
+						key: 'mail-try',
+						heading: 'shared.commandPaletteCore.groups.tryOperators',
+						order: 0,
+						items: start.examples,
+					},
+				];
+			},
+		},
+		{
 			// Mail scope: what the grammar offers for the token under the caret.
 			// Ranked above the hits — a completion the user is mid-way through
 			// typing beats a message that matched the half-typed operator.
@@ -208,6 +247,14 @@ export function buildCorePaletteProviders(deps: CorePaletteProviderDeps): Comman
 						order: 2,
 						cap: 5,
 						items: deps.mailHitItems(),
+					},
+					// Only filled once the search resolved with no hits, so it takes
+					// the hits' place and never sits next to them.
+					{
+						key: 'mail-fix',
+						heading: 'shared.commandPaletteCore.groups.noMailHits',
+						order: 2,
+						items: deps.mailFixItems(),
 					},
 				];
 			},
