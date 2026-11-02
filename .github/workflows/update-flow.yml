@@ -122,14 +122,21 @@ jobs:
           name: ${{ inputs.target_artifact }}
           path: ${{ runner.temp }}/update-target
 
-      # Two releases' images plus a Convex backend come to ~10 GB; a stock
-      # runner has about 14 GB free, and the updater refuses to pull below 4.
-      # They land in the dedicated daemon's volume, on this same disk. The
-      # runner's own images are left alone: nothing here prunes the host.
+      # Two releases' images plus a Convex backend come to ~10 GB in the
+      # dedicated daemon's volume, on this same disk, and the updater refuses
+      # to pull below 4 GB free. Hosted runner disks vary in size; deleting the
+      # preinstalled toolchains takes almost two minutes, so it only happens
+      # when the disk is short. The runner's own images are left alone:
+      # nothing here prunes the host.
       - name: Free runner disk space
         run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL \
-            /usr/local/.ghcup /usr/share/swift /usr/local/share/powershell
+          avail_gb="$(df --output=avail -BG / | tail -n 1 | tr -dc '0-9')"
+          if [ "$avail_gb" -ge 20 ]; then
+            echo "${avail_gb} GB free, no cleanup needed."
+          else
+            sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL \
+              /usr/local/.ghcup /usr/share/swift /usr/local/share/powershell
+          fi
           df -h /
 
       # As root inside the dedicated daemon's container, like a real install:
