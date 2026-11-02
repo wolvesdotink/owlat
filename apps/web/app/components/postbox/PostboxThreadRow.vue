@@ -48,6 +48,8 @@ export type PostboxThreadRowMessage = SenderAuthMessage & {
 	category?: NonNullable<Doc<'mailThreads'>['category']>['label'];
 	// Parsed List-Unsubscribe target; `oneClick` is what lets a bundle offer one.
 	unsubscribe?: ListUnsubscribeTarget;
+	// The sign-in code or link read at arrival (mail/signInCodes.ts).
+	signInCode?: Doc<'mailMessages'>['signInCode'];
 	// The thread brief's top open item (mail/interpret/briefTop.ts), shown
 	// instead of the snippet once the thread is interpreted.
 	briefTop?: BriefTopRow;

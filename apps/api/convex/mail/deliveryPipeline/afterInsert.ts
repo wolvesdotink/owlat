@@ -33,6 +33,7 @@ import { queuesNeedsReplyCheck, type InboundOrigin } from './insert';
 import { writeArrivalRecord, type ArrivalRecordSeed } from '../arrival/records';
 import { refreshArrivalProjection } from '../arrival/projection';
 import { isColdPitchAskable } from '../arrival/coldPitch';
+import { recordSignInCode } from '../signInCodes';
 
 export type { InboundOrigin };
 
@@ -73,6 +74,8 @@ const NOT_A_REPLY_ROLES: ReadonlySet<string> = new Set(['spam', 'trash', 'sent',
  *     (Auto-Submitted, a list, a bulk or `auto_reply` Precedence) does not.
  *     Synced live into Sent, it is also interpreted as our send, which closes
  *     the brief items it answered (`../interpret/enqueue.ts`).
+ *   - A one-time code or sign-in link of live mail from an authenticated
+ *     sender, for the row and reader chip (`../signInCodes.ts`).
  *   - Web Push to the owner of a personal mailbox, for live unread mail from
  *     someone else that stayed in the inbox (`../../push/`). Whether it
  *     actually notifies — scope, mute, quiet hours — is the sender's call.
@@ -113,6 +116,13 @@ export async function runPostInsertInboundEffects(
 		});
 		isCategoryRefining = await enqueueCategoryCheck(ctx, delivered.threadId, {
 			precedence,
+			messageId,
+		});
+	}
+	// After the category check, whose heuristic label keeps promotional mail out.
+	const signInCodeExpiresAt = await recordSignInCode(ctx, delivered, { isLive, now: Date.now() });
+	if (signInCodeExpiresAt !== null) {
+		await ctx.scheduler.runAt(signInCodeExpiresAt, internal.mail.signInCodes.expireSignInCode, {
 			messageId,
 		});
 	}

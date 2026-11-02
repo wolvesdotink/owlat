@@ -5739,6 +5739,14 @@
 				"undo": "Undo",
 				"undoSendOperation": "Undo send"
 			},
+			"postboxSignInCodeChip": {
+				"copied": "Code copied",
+				"copyFailed": "Couldn't copy the code",
+				"copyLabel": "Copy sign-in code {code} from {domain}",
+				"openLabel": "Open the sign-in link from {domain}",
+				"openLink": "Open sign-in link",
+				"openLinkShort": "Open link"
+			},
 			"postboxUnsubscribeChip": {
 				"chipTitle": "Unsubscribe from this mailing list",
 				"confirm": "Unsubscribe from this mailing list?",

@@ -87,6 +87,7 @@ export interface ListRow {
 	isSnoozeUntilReply?: boolean;
 	pinnedSection?: string;
 	unsubscribe?: { httpUrl?: string; mailtoUrl?: string; oneClick: boolean };
+	signInCode?: { kind: 'code' | 'link'; value: string; senderDomain: string; expiresAt: number };
 	receivedAt: number;
 	spamVerdict?: string;
 	virusVerdict?: string;
