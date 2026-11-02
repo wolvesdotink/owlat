@@ -5747,6 +5747,14 @@
 				"undo": "Rückgängig",
 				"undoSendOperation": "Senden rückgängig machen"
 			},
+			"postboxSignInCodeChip": {
+				"copied": "Code kopiert",
+				"copyFailed": "Der Code konnte nicht kopiert werden",
+				"copyLabel": "Anmeldecode {code} von {domain} kopieren",
+				"openLabel": "Anmeldelink von {domain} öffnen",
+				"openLink": "Anmeldelink öffnen",
+				"openLinkShort": "Link öffnen"
+			},
 			"postboxUnsubscribeChip": {
 				"chipTitle": "Von dieser Mailingliste abmelden",
 				"confirm": "Von dieser Mailingliste abmelden?",

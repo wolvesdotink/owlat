@@ -2,7 +2,8 @@
 /**
  * The presentational body of a Postbox message row: sender, timestamp, the
  * sender-trust marker, the state chips (star, pinned, snoozed, muted, back
- * from snooze, attachment, follow-up), subject and snippet.
+ * from snooze, attachment, follow-up), subject, the sign-in code chip and
+ * snippet.
  *
  * Every renderer that lists messages builds on this one body — the flat list
  * (PostboxThreadRow), the split inbox (PostboxThreadSectionList) and the
@@ -32,6 +33,7 @@ import {
 	priorityRowLine,
 } from '~/utils/postboxPriorityGroups';
 import { useBriefLinesShown } from '~/composables/postbox/usePostboxBriefLines';
+import PostboxSignInCodeChip from './PostboxSignInCodeChip.vue';
 
 const { t, locale } = useI18n();
 // Ticks with the list's shared minute clock (usePostboxListClock).
@@ -163,6 +165,7 @@ function onCancelFollowUp(event: MouseEvent) {
 			<span class="truncate max-sm:whitespace-normal max-sm:line-clamp-2">{{
 				priorityLine.text
 			}}</span>
+			<PostboxSignInCodeChip v-if="msg.signInCode" :sign-in-code="msg.signInCode" />
 		</span>
 		<span
 			class="flex-shrink-0 text-xs tabular-nums max-sm:hidden"
@@ -243,6 +246,7 @@ function onCancelFollowUp(event: MouseEvent) {
 			>
 				{{ msg.subject || t('components.postbox.postboxThreadRow.noSubject') }}
 			</p>
+			<PostboxSignInCodeChip v-if="msg.signInCode" :sign-in-code="msg.signInCode" />
 		</div>
 		<p
 			v-if="!compact && briefLine"

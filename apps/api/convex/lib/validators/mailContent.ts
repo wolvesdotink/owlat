@@ -26,6 +26,17 @@ export const mailUnsubscribeValidator = v.object({
 	oneClick: v.boolean(),
 });
 
+// A one-time code or sign-in link read out of an authenticated message at
+// arrival (mailMessages.signInCode, see mail/signInCodes.ts). `senderDomain` is
+// the From domain the chip names; the row is cleared at `expiresAt`.
+export const mailSignInCodeValidator = v.object({
+	kind: v.union(v.literal('code'), v.literal('link')),
+	value: v.string(),
+	senderDomain: v.string(),
+	expiresAt: v.number(),
+});
+export type MailSignInCode = Infer<typeof mailSignInCodeValidator>;
+
 // Observed triage verb (mailTriageTallies.verb + the mail/triageTally args).
 // Exactly the verbs that map onto a filter action a user would plausibly
 // automate: archive → move to Archive, trash → delete, spam → move to Spam.

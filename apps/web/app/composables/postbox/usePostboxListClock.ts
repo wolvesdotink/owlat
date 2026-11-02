@@ -34,6 +34,17 @@ export function usePostboxListNow(): Readonly<Ref<number>> {
 }
 
 /**
+ * The row side for something that expires: the list's clock, or a minute clock
+ * of its own outside any list (the reader). Only rows that expire call it, so
+ * the fallback interval is rare.
+ */
+export function usePostboxRowNow(): Readonly<Ref<number>> {
+	return (
+		inject(POSTBOX_LIST_NOW_KEY, null) ?? useNow({ intervalMs: POSTBOX_LIST_CLOCK_INTERVAL_MS })
+	);
+}
+
+/**
  * The row side: a timestamp formatter bound to the list's clock and the active
  * locale. A component that is itself the list passes the clock it got from
  * `usePostboxListNow` (a component cannot inject what it provided).

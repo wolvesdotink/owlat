@@ -4,6 +4,7 @@
  * they and the reader share one definition; PostboxThreadReader.vue re-exports
  * the message row for its hosts.
  */
+import type { Doc } from '@owlat/api/dataModel';
 import type { ListUnsubscribeTarget } from '@owlat/shared/listUnsubscribe';
 import type { Placement } from '@owlat/shared/arrival';
 import type { SenderHeuristics } from '~/utils/senderAuth';
@@ -71,6 +72,8 @@ export type PostboxReaderMessage = {
 	inboundSignatureInfo?: InboundSignatureInfo;
 	flagSeen?: boolean;
 	unsubscribe?: ListUnsubscribeTarget;
+	/** The sign-in code or link read at arrival (mail/signInCodes.ts). */
+	signInCode?: Doc<'mailMessages'>['signInCode'];
 };
 
 /** The open thread as the reader reads it off the thread page query. */

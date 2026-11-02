@@ -1545,6 +1545,7 @@ import type * as mail_senderHeuristics from '../mail/senderHeuristics.js';
 import type * as mail_senderProfile from '../mail/senderProfile.js';
 import type * as mail_sendingSwitch from '../mail/sendingSwitch.js';
 import type * as mail_settings from '../mail/settings.js';
+import type * as mail_signInCodes from '../mail/signInCodes.js';
 import type * as mail_signatures from '../mail/signatures.js';
 import type * as mail_snooze from '../mail/snooze.js';
 import type * as mail_subscriptions from '../mail/subscriptions.js';
@@ -3529,6 +3530,7 @@ declare const fullApi: ApiFromModules<{
 	'mail/senderProfile': typeof mail_senderProfile;
 	'mail/sendingSwitch': typeof mail_sendingSwitch;
 	'mail/settings': typeof mail_settings;
+	'mail/signInCodes': typeof mail_signInCodes;
 	'mail/signatures': typeof mail_signatures;
 	'mail/snooze': typeof mail_snooze;
 	'mail/subscriptions': typeof mail_subscriptions;

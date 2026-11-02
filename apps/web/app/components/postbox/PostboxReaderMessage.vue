@@ -32,6 +32,7 @@ import { usePostboxReaderContext } from '~/composables/postbox/usePostboxReaderC
 import type { CitedQuote } from '~/utils/postboxQuoteHighlight';
 import { isCalendarInviteAttachment } from '~/utils/postboxSchedulingChip';
 import type { PostboxBodyImageProps, PostboxImageBannerState } from '~/utils/postboxImageAllowlist';
+import PostboxSignInCodeChip from './PostboxSignInCodeChip.vue';
 
 const props = defineProps<{
 	message: PostboxReaderMessage;
@@ -386,6 +387,8 @@ const renderToggleLabel = computed(() =>
 				</Teleport>
 			</div>
 		</header>
+
+		<PostboxSignInCodeChip v-if="msg.signInCode" :sign-in-code="msg.signInCode" size="reader" />
 
 		<!-- DMARC fails show in PostboxAuthBadge behind `senderAuthBadges`; with the
 		     flag off this legacy line still says it. Spam always shows here. -->

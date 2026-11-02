@@ -6,6 +6,7 @@ import { spamVerdictValidator } from '../lib/convexValidators';
 import { attachmentIndexingValidator, virusVerdictValidator } from '../lib/literalValidators';
 import {
 	mailMessageAttachmentValidator,
+	mailSignInCodeValidator,
 	mailUnsubscribeValidator,
 } from '../lib/validators/mailContent';
 import { senderHeuristicsValidator } from '../lib/validators/senderHeuristics';
@@ -149,6 +150,12 @@ export const mailMessagesTables = {
 		// block. Absent for non-list mail — the reader's Unsubscribe chip keys
 		// off this field's presence.
 		unsubscribe: v.optional(mailUnsubscribeValidator),
+
+		// The one-time code or sign-in link of live mail from an authenticated
+		// sender, for the row and reader chip (mail/signInCodes.ts). Plaintext,
+		// like `snippet`, but only for its 15 minutes: a scheduled run clears it
+		// at `expiresAt`, and an IMAP COPY does not carry it to the copy.
+		signInCode: v.optional(mailSignInCodeValidator),
 
 		// Delivery/security metadata
 		receivedAt: v.number(),

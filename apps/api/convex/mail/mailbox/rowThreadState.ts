@@ -68,6 +68,7 @@ const MAIL_LIST_ROW_KEYS = [
 	'isSnoozeUntilReply',
 	'pinnedSection',
 	'unsubscribe',
+	'signInCode',
 	'receivedAt',
 	'spamVerdict',
 	'virusVerdict',

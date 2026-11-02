@@ -75,6 +75,9 @@ export const copyMessages = internalMutation({
 				modseq: _ms,
 				createdAt: _ca,
 				updatedAt: _ua,
+				// A copy never offers the original's sign-in code: only the
+				// original has the run that clears it.
+				signInCode: _code,
 				...rest
 			} = m;
 			void _id;
@@ -84,6 +87,7 @@ export const copyMessages = internalMutation({
 			void _ms;
 			void _ca;
 			void _ua;
+			void _code;
 			const copyId = await ctx.db.insert('mailMessages', {
 				...rest,
 				folderId: target._id,
