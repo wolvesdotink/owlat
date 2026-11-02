@@ -9,6 +9,10 @@ them (an earlier standalone copy here had drifted out of sync with the code).
   sessions' work, `/tmp`, typecheck and memory), testing and the proof each kind
   of change needs, the "Hit every surface" checklist, Convex backend rules, env
   access and pull request rules.
+- **Screenshots and video in PRs and issues** — capture them with
+  `bun run capture` and upload them with `gh ... --attach` (needs a current
+  `gh`). See "Pull requests" and "Attaching images and video" in
+  [`CLAUDE.md`](./CLAUDE.md).
 - **Convex file layout, naming, and permission rules** —
   [`apps/api/convex/CONVENTIONS.md`](./apps/api/convex/CONVENTIONS.md). Read it
   before adding/splitting backend files or touching mutation auth.

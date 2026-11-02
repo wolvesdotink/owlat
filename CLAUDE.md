@@ -320,9 +320,45 @@ the working tree the original state is gone.
 
 If it makes sense, feel free to also include video of the changes.
 
+### Attaching images and video
+
+Upload screenshots and recordings with the GitHub CLI's `--attach` flag. It
+works on `gh pr create|edit|comment` and `gh issue create|edit|comment`.
+Reference each file in the body by a path relative to the body file, and pass
+the same file to `--attach`. The CLI uploads it and rewrites the reference to
+the hosted URL:
+
+```sh
+# body.md contains: ![Inbox, before](./before-postbox.png)
+gh pr edit 1234 --body-file body.md \
+  --attach before-postbox.png --attach after-postbox.png
+```
+
+- An attached file that the body doesn't reference is appended at the end.
+  `gh issue edit` or `gh pr edit` with `--attach` and no body flag keeps the
+  current body and appends the files.
+- Alt text comes from the Markdown, or from `--attach 'file.png#alt text'` for
+  a file the body doesn't reference.
+- A video needs its reference alone in its own paragraph to render as a player.
+- If some uploads fail, the command still updates the body with the ones that
+  worked and exits non-zero. Check the exit code and re-run for the missing
+  files.
+- Only images and video can be uploaded, at most 50 files per command, and you
+  need push access to the repository.
+- `--attach` is recent. Distribution packages often ship a `gh` without it. If
+  `gh pr edit --help` doesn't mention `--attach`, install a current release
+  from https://github.com/cli/cli/releases (into `~/.local/bin` when you have
+  no root).
+- Keep the files outside the checkout (`bun run capture` already writes to
+  `~/.cache/owlat-captures/`). Check that they show only demo data before
+  uploading. Removing the reference from the body later doesn't delete the
+  uploaded file.
+
+Issues about something visible get screenshots the same way.
+
 ## Issues
 
-If you find things along the way that can be improved, feel free to fan out a sub agent that investigates the issue and then optionally creates an issue on GitHub. If it is a real issue.
+If you find things along the way that can be improved, feel free to fan out a sub agent that investigates the issue and then optionally creates an issue on GitHub. If it is a real issue. When the issue is about something a user sees, attach a screenshot (see [Attaching images and video](#attaching-images-and-video)).
 
 ## Personal Info
 
