@@ -5,6 +5,7 @@ import {
 	mailAutoAdvanceValidator,
 	mailDailyBriefEmailValidator,
 	mailDensityValidator,
+	mailUnreadStyleValidator,
 	mailInboxModeValidator,
 	mailListSizeValidator,
 	mailMarkReadPolicyValidator,
@@ -64,6 +65,10 @@ export const mailSettingsTables = {
 		// rows + single-line subject/snippet). Optional so existing rows read as
 		// undefined; the reader defaults it to 'comfortable'.
 		density: v.optional(mailDensityValidator),
+		// How an unread list row stands out: 'weight', 'dot', 'dot-weight' or
+		// 'tint'. Optional so existing rows read as undefined; the list defaults it
+		// to 'dot-weight'.
+		unreadStyle: v.optional(mailUnreadStyleValidator),
 		// Inbox list view mode: 'flat' (single message list), 'conversations'
 		// (thread-grouped), 'categories' (smart-inbox sections), 'bundled' (the
 		// flat feed with consecutive low-signal runs folded into one row per

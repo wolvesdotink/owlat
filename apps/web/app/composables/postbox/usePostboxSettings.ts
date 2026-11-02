@@ -22,6 +22,8 @@
  *     ('keep', the default) or marks it done. See utils/postboxAfterReply.
  *   - `density` — 'comfortable' (roomy default) vs 'compact' (tighter rows +
  *     single-line subject/snippet). Defaults to 'comfortable'.
+ *   - `unreadStyle` lives in the same row but is read and written by
+ *     usePostboxUnreadStyle.
  *   - `viewMode` — which list renderer the inbox uses: 'conversations'
  *     (thread-grouped, the default), 'flat', 'categories', 'bundled' or
  *     'sections'. See utils/postboxViewMode. Inbox-only; other folders always

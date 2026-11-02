@@ -168,6 +168,7 @@ export const SETTINGS_REGISTRY: readonly SettingsEntry[] = [
 			control('autoAdvance', 'reading', hasMail),
 			control('markRead', 'reading', hasMail),
 			control('density', 'reading', hasMail),
+			control('unreadStyle', 'reading', hasMail),
 			control('readingPane', 'reading', hasMail),
 			control('swipeActions', 'reading', hasMail),
 			control('replyDefault', 'reading', hasMail),

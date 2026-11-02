@@ -8,6 +8,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { ref } from 'vue';
 import { POSTBOX_READING_DEFAULTS } from '../postboxReadingDefaults';
 import { usePostboxSettings } from '~/composables/postbox/usePostboxSettings';
+import { usePostboxUnreadStyle } from '~/composables/postbox/usePostboxUnreadStyle';
 
 vi.mock('@owlat/api', () => {
 	const anyPath: unknown = new Proxy(function () {}, {
@@ -23,7 +24,10 @@ describe('POSTBOX_READING_DEFAULTS', () => {
 		vi.stubGlobal('useBackendOperation', () => ({ run: vi.fn(), isLoading: ref(false) }));
 		vi.stubGlobal('useFeatureFlag', () => ({ isEnabled: () => true }));
 
-		const settings = usePostboxSettings() as unknown as Record<string, { value: unknown }>;
+		const settings = {
+			...usePostboxSettings(),
+			...usePostboxUnreadStyle(),
+		} as unknown as Record<string, { value: unknown }>;
 		const resolved = Object.fromEntries(
 			Object.keys(POSTBOX_READING_DEFAULTS).map((field) => [field, settings[field]?.value])
 		);

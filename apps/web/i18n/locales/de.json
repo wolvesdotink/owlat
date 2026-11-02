@@ -5042,7 +5042,8 @@
 				"display": "Anzeige",
 				"label": "Anzeigeoptionen",
 				"readingPane": "Lesebereich",
-				"sortOrder": "Sortierung"
+				"sortOrder": "Sortierung",
+				"unreadStyle": "Ungelesene Nachrichten"
 			},
 			"postboxListHeader": {
 				"deselectPage": "Auswahl aufheben",
@@ -5717,6 +5718,9 @@
 			"postboxTodayReaderOverlay": {
 				"conversation": "Konversation"
 			},
+			"postboxUnreadMark": {
+				"unread": "Ungelesen."
+			},
 			"postboxTodayView": {
 				"allClear": "Alles erledigt — nichts Neues braucht deine Aufmerksamkeit.",
 				"answer": "Antworten",
@@ -6312,6 +6316,8 @@
 				"densityHelp": "Wie eng Nachrichtenliste und Reader gepackt sind. Kompakt lässt die Vorschauzeile weg und zeigt einzeilige Zeilen.",
 				"readingPaneLabel": "Lesebereich",
 				"readingPaneHelp": "Wo der Reader neben der Liste sitzt. Zieh den Trenner – oder fokussiere ihn und nutze die Pfeiltasten –, um ihn zu verschieben.",
+				"unreadStyleLabel": "Ungelesene Nachrichten",
+				"unreadStyleHelp": "Wie ungelesene Nachrichten in der Liste hervorstechen. Ein Punkt markiert sie, ohne dass du fette Schrift oder Farbe unterscheiden musst.",
 				"replyDefaultLabel": "Standardverhalten beim Antworten",
 				"replyDefaultHelp": "Was die Schaltfläche „Antworten“ und das Tastenkürzel {replyKey} tun. {replyAllKey} antwortet immer allen; beim Verfassen kannst du eine Antwort auf „Allen antworten“ umstellen.",
 				"afterReplyLabel": "Nach dem Antworten",
@@ -16919,6 +16925,10 @@
 					"title": "Workspaces",
 					"keywords": "verbundene Server, Akzent, Workspace entfernen"
 				},
+				"unreadStyle": {
+					"title": "Ungelesene Nachrichten",
+					"keywords": "ungelesen, punkt, fett, tönung, hervorheben, neue mail"
+				},
 				"readingPane": {
 					"title": "Lesebereich",
 					"keywords": "Layout, geteilt, Vorschau, drei Spalten, Größe, Listenbreite"
@@ -18286,6 +18296,12 @@
 			"right": "Reader rechts (in der Breite verstellbar)",
 			"bottom": "Reader unter einer breiten Liste",
 			"off": "Kein Lesebereich – Öffnen wechselt die Ansicht"
+		},
+		"postboxUnreadStyle": {
+			"dotWeight": "Punkt und fette Schrift",
+			"dot": "Punkt",
+			"weight": "Fette Schrift",
+			"tint": "Getönte Zeile"
 		},
 		"inboxSorts": {
 			"needsAttention": "Handlungsbedarf",

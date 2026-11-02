@@ -1,0 +1,51 @@
+/*
+ * How an unread Postbox list row stands out (utils/postboxUnreadStyle.ts).
+ *
+ * A single `data-unread-style` attribute on the Postbox root drives every
+ * difference here, the way `data-density` does. Rows only mark themselves:
+ * `pbx-unread-weight` on the text that turns heavier, and a `pbx-unread-dot`
+ * before the sender (PostboxUnreadMark). Outside the Postbox root (the Team
+ * Inbox shares PostboxRowCore) there is no attribute, so weight applies and the
+ * dot stays hidden, which is the row as it was before the setting existed.
+ */
+
+.pbx-unread-dot {
+	display: none;
+}
+
+[data-unread-style='dot'] .pbx-unread-dot,
+[data-unread-style='dot-weight'] .pbx-unread-dot {
+	display: inline-block;
+	width: 0.5rem;
+	height: 0.5rem;
+	margin-right: 0.375rem;
+	border-radius: 9999px;
+	background-color: var(--color-brand);
+	vertical-align: 0.0625rem;
+}
+
+/* Forced colours paint backgrounds away; keep the dot as a system colour. The
+   attribute in the selector matches the dot rules' specificity, so this wins. */
+@media (forced-colors: active) {
+	[data-unread-style] .pbx-unread-dot {
+		forced-color-adjust: none;
+		background-color: CanvasText;
+	}
+}
+
+/* The dot alone carries the state, so the text keeps the read row's weight.
+   Unlayered on purpose: it must beat the font-weight utilities on the row. */
+[data-unread-style='dot'] .pbx-unread-weight {
+	font-weight: inherit;
+}
+
+/*
+ * The tint keys off the dot, which every unread row renders even while it is
+ * hidden. It sits in the components layer so the row's hover, selected and
+ * active background utilities still win over it.
+ */
+@layer components {
+	[data-unread-style='tint'] .pbx-row-link:has(.pbx-unread-dot) {
+		background-color: color-mix(in srgb, var(--color-brand) 7%, transparent);
+	}
+}

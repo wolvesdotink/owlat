@@ -13,6 +13,8 @@ import type { PostboxAutoAdvanceMode } from './postboxAutoAdvance';
 import { POSTBOX_AUTO_ADVANCE_DEFAULT } from './postboxAutoAdvance';
 import type { PostboxDensity } from './postboxDensity';
 import { POSTBOX_DENSITY_DEFAULT } from './postboxDensity';
+import type { PostboxUnreadStyle } from './postboxUnreadStyle';
+import { POSTBOX_UNREAD_STYLE_DEFAULT } from './postboxUnreadStyle';
 import type { PostboxMarkReadPolicy } from './postboxMarkReadPolicy';
 import { POSTBOX_MARK_READ_POLICY_DEFAULT } from './postboxMarkReadPolicy';
 import type { PostboxReadingPane } from './postboxReadingPane';
@@ -28,6 +30,7 @@ interface PostboxReadingValues {
 	autoAdvance: PostboxAutoAdvanceMode;
 	markReadPolicy: PostboxMarkReadPolicy;
 	density: PostboxDensity;
+	unreadStyle: PostboxUnreadStyle;
 	readingPane: PostboxReadingPane;
 	swipeLeftAction: PostboxSwipeAction;
 	swipeRightAction: PostboxSwipeAction;
@@ -44,6 +47,7 @@ export const POSTBOX_READING_DEFAULTS: Readonly<PostboxReadingValues> = {
 	autoAdvance: POSTBOX_AUTO_ADVANCE_DEFAULT,
 	markReadPolicy: POSTBOX_MARK_READ_POLICY_DEFAULT,
 	density: POSTBOX_DENSITY_DEFAULT,
+	unreadStyle: POSTBOX_UNREAD_STYLE_DEFAULT,
 	readingPane: POSTBOX_READING_PANE_DEFAULT,
 	swipeLeftAction: POSTBOX_SWIPE_LEFT_DEFAULT,
 	swipeRightAction: POSTBOX_SWIPE_RIGHT_DEFAULT,
