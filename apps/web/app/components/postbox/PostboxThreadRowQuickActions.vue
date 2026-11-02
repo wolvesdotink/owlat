@@ -4,6 +4,7 @@
  * round-trip through the bulk selection. The row owns the verbs; each button
  * hands its click back so the row can keep it from following the row's link.
  * Archive is also a sweep handle (`data-sweep-handle`), read by the row.
+ * Its vertical place is set per density in postbox-density.css.
  */
 defineProps<{
 	// The two flags, not the row's message: each tooltip's slot reads its flag,
@@ -25,7 +26,7 @@ const { t } = useI18n();
 
 <template>
 	<div
-		class="ui-hover-reveal absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-0.5 bg-bg-elevated/95 rounded px-1 py-0.5 shadow-sm border border-border-subtle"
+		class="pbx-row-actions ui-hover-reveal absolute right-3 -translate-y-1/2 flex items-center gap-0.5 bg-bg-elevated/95 rounded px-1 shadow-sm border border-border-subtle"
 	>
 		<UiTooltip v-if="whyHereShown" :text="t('postbox.explain.rowLink')">
 			<button
