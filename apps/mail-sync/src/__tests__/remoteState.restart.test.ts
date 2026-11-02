@@ -7,6 +7,7 @@
  *   - mail expunged during the downtime is reported gone by the first pass of
  *     the new process, from Trash as well as from an emptied folder;
  *   - mail never seen on the provider, and Sent, are still never called gone;
+ *   - draft versions the client replaced during the downtime are called gone;
  *   - a UIDVALIDITY change between runs voids the sightings;
  *   - mail that arrives after a folder's census is not mistaken for gone;
  *   - a merge forgets the sightings of mail it finds nowhere, and what it saw
@@ -30,6 +31,7 @@ const ROLES: Record<string, LocalMessageRow['role']> = {
 	INBOX: 'inbox',
 	Archive: 'archive',
 	Sent: 'sent',
+	Drafts: 'drafts',
 	Trash: 'trash',
 	'[Gmail]/Trash': 'trash',
 	[ALL_MAIL]: 'archive',
@@ -191,6 +193,18 @@ describe('provider deletions made while the worker was stopped (#1071)', () => {
 
 		expect(gone(await acc.pass())).toEqual([]);
 		expect(acc.local.get('owlat-only@x')?.remoteName).toBe('INBOX');
+	});
+
+	it('calls the draft versions a client replaced during the downtime gone', async () => {
+		const acc = account({ INBOX: [], Drafts: ['d1@x', 'd2@x'], Sent: [], Trash: [] });
+		acc.ingested('d1@x', 'Drafts');
+		acc.ingested('d2@x', 'Drafts');
+		await acc.pass();
+
+		acc.restart();
+		acc.imap.remove('Drafts', 'd1@x');
+
+		expect(gone(await acc.pass())).toEqual(['d1@x']);
 	});
 
 	it('throws the sightings away when UIDVALIDITY changed between runs', async () => {

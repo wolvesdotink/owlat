@@ -180,8 +180,11 @@ export const lookupLocalMessages = internalQuery({
  *   - `isGone`: the message left the folder Owlat has it in and is on none of
  *     the synced folders — deleted on the provider. Out of Trash or Spam it is
  *     deleted here too; from anywhere else it goes to Trash, so nothing a
- *     misread can cost is unrecoverable. A copy moved to Trash drops its
- *     sighting, so it is not called gone a second time.
+ *     misread can cost is unrecoverable. Drafts are the exception: a client
+ *     replaces its draft on every autosave, so each version it drops is
+ *     deleted rather than piling up in Trash. Sent mail is never called gone.
+ *     A copy moved to Trash drops its sighting, so it is not called gone a
+ *     second time.
  *   - `flags`: the provider's flags, applied where they differ.
  *   - `sightings`: where the synced folders hold the message now, with UIDs.
  *     Each local copy records the one for the folder it ends up in.
@@ -238,8 +241,9 @@ export const applyRemoteObservations = internalMutation({
 				const local = remoteByFolder.get(row.folderId);
 
 				if (obs.isGone && isAligned && local !== undefined) {
-					if (folder.role === 'sent' || folder.role === 'drafts') continue;
-					if (folder.role === 'trash' || folder.role === 'spam') {
+					// Owlat files its own sends in Sent, which the provider may never have had.
+					if (folder.role === 'sent') continue;
+					if (folder.role === 'trash' || folder.role === 'spam' || folder.role === 'drafts') {
 						touchedThreads.add(await purgeMessageRow(ctx, row, purged));
 						pulled += 1;
 						continue;
