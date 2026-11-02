@@ -142,7 +142,8 @@
 		"perf:bench": "bun scripts/perf-bench/run.ts",
 		"goldens:update": "bun --cwd packages/mail-message run goldens:update",
 		"release:cut": "bun scripts/release.ts",
-		"release:promote": "bun scripts/release-promote.ts"
+		"release:promote": "bun scripts/release-promote.ts",
+		"release:push": "bun scripts/release-push.ts"
 	},
 	"dependencies": {
 		"nuxt": "4.5.2",

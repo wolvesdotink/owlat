@@ -67,6 +67,18 @@ jobs:
         if: runner.os == 'Windows'
         uses: ilammy/setup-nasm@72793074d3c8cdda771dba85f6deafe00623038b # v1
 
+      # openssl-sys builds the vendored OpenSSL with perl. Under `shell: bash`
+      # Git for Windows' perl comes first on PATH and lacks modules OpenSSL's
+      # Configure needs. The cache producer (desktop-cache.yml) and the release
+      # build name the same perl, so the cached build scripts stay fresh.
+      - name: Use Strawberry Perl for vendored OpenSSL
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $perl = 'C:\Strawberry\perl\bin\perl.exe'
+          if (-not (Test-Path $perl)) { throw "Strawberry Perl not found at $perl" }
+          "OPENSSL_SRC_PERL=$perl" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
       - uses: ./.github/actions/setup-bun
 
       - name: Read pinned Rust toolchain
@@ -83,11 +95,25 @@ jobs:
       # rust-cache keys only on OS family and CPU arch, so the runner label is
       # part of the key: a new runner image must not restore crates built
       # against the previous image's SDK. Must match desktop-cache.yml.
-      - uses: swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+      - id: rust-cache
+        uses: swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           workspaces: apps/desktop/src-tauri
           shared-key: desktop-release-${{ matrix.platform }}
           save-if: false
+
+      # desktop-cache.yml on main is the only producer of this cache. When it
+      # fails or the entry is evicted, every dependency compiles from scratch
+      # (about 13 extra minutes on Windows), so say so on the run.
+      - name: Report a cold Rust cache
+        if: steps.rust-cache.outputs.cache-hit != 'true'
+        shell: bash
+        env:
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          msg="No warm Rust cache for $PLATFORM: this build compiles every dependency. Check the latest desktop-cache.yml run on main."
+          echo "::warning::$msg"
+          printf '> [!WARNING]\n> %s\n\n' "$msg" >> "$GITHUB_STEP_SUMMARY"
 
       # Make the release TAG the single source of truth for the shipped version.
       # `bun run release:cut` keeps Cargo.toml in step, but tauri-action derives

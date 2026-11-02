@@ -15,13 +15,20 @@ bun run release:cut <major|minor|patch|X.Y.Z> --no-commit # prepare X.Y.Z: bump 
 # curate the generated CHANGELOG.md section, then commit and tag the candidate:
 git add -A && git commit -m "chore(release): vX.Y.Z-rc.1"
 git tag -a vX.Y.Z-rc.1 -m "Owlat vX.Y.Z-rc.1"
-git push origin main vX.Y.Z-rc.1
+bun run release:push vX.Y.Z-rc.1   # push main, wait for its CI, then push the tag
 # wait for release.yml to pass on the candidate, test it (below), then:
 bun run release:promote vX.Y.Z-rc.1 --push    # tag vX.Y.Z on the candidate's commit
 ```
 
 Without `--no-commit`, `release:cut` commits and tags the candidate itself
-(add `--push` to push both). The stable release is the candidate's commit, so
+(add `--push` to push both the way `release:push` does).
+
+`release:push` pushes the candidate's commit to main first and the tag only
+once full main CI of that exact commit has passed, using the same lookup as
+the pipeline's `verify` job. The release run then reuses that evidence instead
+of waiting for main CI, and a commit whose CI fails never gets a tag. If main
+CI fails, the tag stays local: rerun main CI and run `release:push` again, or
+cut the next candidate after the fix lands. The stable release is the candidate's commit, so
 changelog edits made after the tag exist only in a later commit: they reach a
 release only through the next candidate (`release:cut rc`).
 
