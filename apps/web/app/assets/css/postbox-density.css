@@ -35,6 +35,22 @@
 }
 
 /*
+ * The row's hover quick actions sit on the sender line, over the timestamp:
+ * the time is the least useful text while acting on a row, and the subject
+ * line below must stay readable. The bar is centred on that line, so its top
+ * is the row's top padding plus half the 20px line, and it must follow every
+ * .pbx-row-link padding rule in this file. The bar is 26px tall, so at both
+ * densities it ends above the subject's letters; a taller bar needs new offsets.
+ */
+.pbx-row-actions {
+	top: calc(0.75rem + 10px);
+}
+
+[data-density='compact'] .pbx-row-actions {
+	top: calc(0.3rem + 10px);
+}
+
+/*
  * Danger-only sender-trust marker (UX plan idea 51).
  *
  * The row accent is an INSET shadow, not a border: the windowed list positions
@@ -149,6 +165,10 @@
 	[data-density='compact'] .postbox-thread-list .pbx-row-link {
 		padding-top: 0.65rem;
 		padding-bottom: 0.65rem;
+	}
+
+	[data-density='compact'] .postbox-thread-list .pbx-row-actions {
+		top: calc(0.65rem + 10px);
 	}
 
 	/* That touch floor buys back the vertical room compact traded away, so the
