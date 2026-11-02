@@ -6481,6 +6481,20 @@
 					"heading": "What notifies you",
 					"notifyAboutHint": "Which new mail sends a notification. Quiet hours hold notifications back and send one summary when they end. Chat mentions and direct messages count as people."
 				}
+			},
+			"mailtoHandler": {
+				"heading": "Email links",
+				"intro": "Open {mailto} links you click on other websites in Owlat instead of your computer's mail app. This applies to this browser only.",
+				"thisBrowser": "This browser",
+				"request": "Open email links in Owlat",
+				"status": {
+					"idle": "Your browser asks you to confirm first.",
+					"requested": "Your browser was asked. If it showed a prompt, or an icon at the end of the address bar, allow Owlat there. To check, click an email link on another website: it opens a new message here.",
+					"failed": "Your browser turned the request down.",
+					"unsupported": "This browser can't open email links in a website. Chrome, Edge and Firefox on a computer can.",
+					"insecure": "Browsers only allow this when Owlat is served over HTTPS."
+				},
+				"undo": "To stop, remove Owlat in your browser's settings: in Chrome or Edge under Site settings → Protocol handlers, in Firefox under Settings → General → Applications, next to mailto."
 			}
 		},
 		"query": {
@@ -16914,6 +16928,10 @@
 				"defaultApp": {
 					"title": "Default email app",
 					"keywords": "mailto, default handler, open mail links"
+				},
+				"mailtoHandler": {
+					"title": "Open email links in Owlat",
+					"keywords": "mailto, protocol handler, email links, default mail app, browser"
 				},
 				"workspaces": {
 					"title": "Workspaces",

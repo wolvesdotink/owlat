@@ -277,17 +277,18 @@ export const SETTINGS_REGISTRY: readonly SettingsEntry[] = [
 		path: `${SETTINGS_ROOT}/device`,
 		icon: 'lucide:monitor',
 		section: 'device',
-		// Device-local: Web Push and the offline read cache (any browser) plus
-		// the desktop app's own switches; with them, the marketing notification
-		// switches that decide what push and the desktop notify about. Each
-		// section self-hides, and the page disappears entirely on an instance
-		// with none.
+		// Device-local: Web Push, the offline read cache and the mailto handler
+		// (any browser) plus the desktop app's own switches; with them, the
+		// marketing notification switches that decide what push and the desktop
+		// notify about. Each section self-hides, and the page disappears entirely
+		// on an instance with none.
 		gate: any(desktopOnly, hasMail, hasMarketingNotices, all(browserOnly, hasPushSource)),
 		controls: [
 			control('pushNotifications', 'push', all(browserOnly, hasPushSource)),
 			control('marketingNotifications', 'marketing-notifications', hasMarketingNotices),
 			control('alertSounds', 'alert-sounds', hasAlertSounds),
 			control('offlineCache', 'offline', hasMail),
+			control('mailtoHandler', 'mailto-handler', all(browserOnly, hasMail)),
 			control('notifyAbout', 'notifications', all(desktopOnly, hasMail)),
 			control('quietHours', 'notifications', all(desktopOnly, hasMail)),
 			control('hidePreview', 'notifications', all(desktopOnly, hasMail)),
