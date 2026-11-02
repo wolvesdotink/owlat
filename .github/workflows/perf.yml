@@ -33,7 +33,10 @@ concurrency:
 jobs:
   perf:
     name: Perf budgets (web components)
-    runs-on: ubuntu-latest
+    # Pinned: the Playwright version in apps/web has no browser or ffmpeg
+    # builds for Ubuntu 26.04, which ubuntu-latest now resolves to, so
+    # `playwright install` fails there. Move back with a Playwright upgrade.
+    runs-on: ubuntu-24.04
     # Steps: 2 + 5 + 10 + 10 + 20 + 5 = 52, under the job cap with room for the
     # actions' pre/post steps. A whole run of the scenarios takes 3-5 minutes.
     timeout-minutes: 60
