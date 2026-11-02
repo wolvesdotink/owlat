@@ -97,7 +97,7 @@ export function usePostboxFolderBulk(mailboxId: Ref<Id<'mailboxes'> | null>) {
 		try {
 			let cursor: { ceilingUid: number; afterUid: number } | null = null;
 			for (;;) {
-				const batch = await markBatch.run({ folderId, ...(cursor ?? {}) });
+				const batch = await markBatch.run({ folderId, ...cursor });
 				if (!batch.ok) break;
 				marked.push(...batch.result.markedIds);
 				if (batch.result.afterUid === null) break;

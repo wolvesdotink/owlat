@@ -144,7 +144,7 @@ async function markAllRead(
 	let calls = 0;
 	for (;;) {
 		const answer: { markedIds: Id<'mailMessages'>[]; ceilingUid: number; afterUid: number | null } =
-			await t.mutation(api.mail.folderBulk.markFolderRead, { folderId, ...(cursor ?? {}) });
+			await t.mutation(api.mail.folderBulk.markFolderRead, { folderId, ...cursor });
 		calls++;
 		markedIds.push(...answer.markedIds);
 		if (answer.afterUid === null) break;
