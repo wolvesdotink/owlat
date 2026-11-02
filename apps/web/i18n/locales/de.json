@@ -6487,6 +6487,20 @@
 					"heading": "Was dich benachrichtigt",
 					"notifyAboutHint": "Welche neue E-Mail eine Benachrichtigung auslöst. Ruhezeiten halten Benachrichtigungen zurück und senden am Ende eine Zusammenfassung. Chat-Erwähnungen und Direktnachrichten zählen als Personen."
 				}
+			},
+			"mailtoHandler": {
+				"heading": "E-Mail-Links",
+				"intro": "Öffne {mailto}-Links, die du auf anderen Websites anklickst, in Owlat statt im Mailprogramm deines Computers. Das gilt nur für diesen Browser.",
+				"thisBrowser": "Dieser Browser",
+				"request": "E-Mail-Links in Owlat öffnen",
+				"status": {
+					"idle": "Dein Browser fragt dich vorher um Bestätigung.",
+					"requested": "Dein Browser wurde gefragt. Wenn er eine Abfrage oder ein Symbol am Ende der Adressleiste zeigt, erlaube Owlat dort. Zum Prüfen klick auf einer anderen Website auf einen E-Mail-Link: er öffnet hier eine neue Nachricht.",
+					"failed": "Dein Browser hat die Anfrage abgelehnt.",
+					"unsupported": "Dieser Browser kann E-Mail-Links nicht in einer Website öffnen. Chrome, Edge und Firefox auf dem Computer können das.",
+					"insecure": "Browser erlauben das nur, wenn Owlat über HTTPS erreichbar ist."
+				},
+				"undo": "Um das rückgängig zu machen, entferne Owlat in den Einstellungen deines Browsers: in Chrome oder Edge unter Website-Einstellungen → Protokoll-Handler, in Firefox unter Einstellungen → Allgemein → Anwendungen, neben mailto."
 			}
 		},
 		"query": {
@@ -16920,6 +16934,10 @@
 				"defaultApp": {
 					"title": "Standard-E-Mail-App",
 					"keywords": "mailto, Standard-Handler, Mail-Links öffnen"
+				},
+				"mailtoHandler": {
+					"title": "E-Mail-Links in Owlat öffnen",
+					"keywords": "mailto, Protokoll-Handler, E-Mail-Links, Standard-Mailprogramm, Browser"
 				},
 				"workspaces": {
 					"title": "Workspaces",

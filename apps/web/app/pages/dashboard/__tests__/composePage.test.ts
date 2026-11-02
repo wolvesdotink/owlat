@@ -179,6 +179,39 @@ describe('compose page — the compose request', () => {
 		});
 	});
 
+	it('opens a mailto: link the browser hands over as a new message', () => {
+		// What the browser's mailto handler navigates to: the whole link, decoded
+		// once by the router, in `?mailto=`.
+		query = {
+			mailto:
+				'mailto:ada@example.com,list+news@example.com?cc=bob@example.com&bcc=eve%40example.com' +
+				'&subject=Hi%20there&body=Line%201%0D%0A%3Cb%3ELine%202%3C%2Fb%3E',
+		};
+		mountPage();
+		expect(replace).toHaveBeenCalledOnce();
+		const target = replace.mock.calls[0]![0] as { query: Record<string, string> };
+		expect(Object.keys(target.query)).toEqual(['c']);
+		expect(record(target.query['c']!)!.seed).toEqual({
+			mailboxId: 'mbx-1',
+			prefillTo: ['ada@example.com', 'list+news@example.com'],
+			prefillCc: ['bob@example.com'],
+			prefillBcc: ['eve@example.com'],
+			prefillSubject: 'Hi there',
+			prefillBodyHtml: 'Line 1<br>&lt;b&gt;Line 2&lt;/b&gt;',
+		});
+	});
+
+	it('opens a blank message for a mailto: link with nothing to fill in, or a link that is not one', () => {
+		for (const mailto of ['mailto:', 'https://example.com/?to=ada@example.com']) {
+			replace.mockClear();
+			query = { mailto };
+			const wrapper = mountPage();
+			const target = replace.mock.calls[0]![0] as { query: Record<string, string> };
+			expect(record(target.query['c']!)!.seed).toEqual({ mailboxId: 'mbx-1' });
+			wrapper.unmount();
+		}
+	});
+
 	it('gives a link that names a draft a request that keeps the draft in the URL', () => {
 		query = { mailbox: 'mbx-3', draft: 'draft-9' };
 		mountPage();

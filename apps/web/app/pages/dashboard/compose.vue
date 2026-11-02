@@ -8,6 +8,7 @@
  *   /dashboard/compose?c=<key>                         a compose request (usePostboxComposeNav)
  *   /dashboard/compose?c=<key>&mailbox=<id>&draft=<id> …that has a saved draft
  *   /dashboard/compose?to=…&cc=…&subject=…             a plain link: given a request first
+ *   /dashboard/compose?mailto=<mailto: URL>            a link the browser's mailto handler opened
  *
  * `c` names the compose request and keys the page, so a second open while this
  * one is on screen remounts the editor. A URL without one (a link, a contact)
@@ -22,7 +23,8 @@
  * saved in Drafts. A send leaves too, and the shell's undo toast keeps counting
  * down over the page underneath.
  */
-import { splitMailtoAddressList } from '@owlat/shared/mailto';
+import { escapeHtmlWithBreaks } from '@owlat/shared/html';
+import { parseMailto, splitMailtoAddressList } from '@owlat/shared/mailto';
 import type { Id } from '@owlat/api/dataModel';
 import type { ComposeSpec } from '~/composables/postbox/usePostboxComposeNav';
 import { composePageKey } from '~/utils/composePageKey';
@@ -64,8 +66,30 @@ const requestKey = singleQueryValue(route.query['c']);
 const urlMailbox = singleQueryValue(route.query['mailbox']) as Id<'mailboxes'> | null;
 const urlDraft = singleQueryValue(route.query['draft']) as Id<'mailDrafts'> | null;
 
+/**
+ * The prefill a `mailto:` link carries. The browser hands over the whole link,
+ * so its addresses are still percent-encoded and `parseMailto` decodes them.
+ */
+function mailtoPrefill(raw: string): Partial<ComposeSpec> | null {
+	const mailto = parseMailto(raw);
+	if (!mailto) return null;
+	const list = (addresses: string[]) => (addresses.length ? addresses : undefined);
+	return {
+		prefillTo: list(mailto.to),
+		prefillCc: list(mailto.cc),
+		prefillBcc: list(mailto.bcc),
+		prefillSubject: mailto.subject,
+		// A mailto body is plain text, its line breaks CRLF (RFC 6068).
+		prefillBodyHtml: mailto.body
+			? escapeHtmlWithBreaks(mailto.body.replace(/\r\n?/g, '\n'))
+			: undefined,
+	};
+}
+
 /** The prefill a plain link carries in its query, or null when it has none. */
 function queryPrefill(): Partial<ComposeSpec> | null {
+	const mailto = singleQueryValue(route.query['mailto']);
+	if (mailto !== null) return mailtoPrefill(mailto);
 	const list = (key: string) => {
 		const raw = singleQueryValue(route.query[key]);
 		return raw ? splitMailtoAddressList(raw) : undefined;

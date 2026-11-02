@@ -70,6 +70,7 @@ function mountPage() {
 				PreferencesMarketingNotifications: true,
 				PostboxAlertSoundSettings: true,
 				PostboxOfflineSettings: true,
+				PreferencesMailtoHandler: true,
 				PostboxNotificationSettings: true,
 				DesktopUpdateCard: true,
 				DesktopWorkspaceAccentPicker: true,

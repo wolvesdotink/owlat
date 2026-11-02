@@ -229,6 +229,14 @@ describe('settingsControlTargets', () => {
 		expect(ids).not.toContain('notifyAbout');
 	});
 
+	it('offers the mailto handler in a browser with mail, and not in the desktop app', () => {
+		const ids = (env: SettingsEnvironment) =>
+			settingsControlTargets(env).map((target) => target.control.id);
+		expect(ids(WEB_WITH_MAIL)).toContain('mailtoHandler');
+		expect(ids(FULL)).not.toContain('mailtoHandler');
+		expect(ids(MARKETING_ONLY)).not.toContain('mailtoHandler');
+	});
+
 	it('keeps Web Push to the browser — the desktop app has native notifications', () => {
 		const ids = settingsControlTargets(FULL).map((target) => target.control.id);
 		expect(ids).not.toContain('pushNotifications');
