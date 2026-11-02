@@ -40,6 +40,7 @@ beforeEach(() => {
 		}),
 		useKeyboardShortcuts: () => ({ openHelpModal: vi.fn() }),
 		useInboxes: () => ({ inboxes: ref([]), hasPersonalMail: ref(false) }),
+		usePostboxActiveMailbox: () => ({ activeMailboxId: ref(null) }),
 		useAnswerQueueCount: () => ({ count: ref(0) }),
 		useShellSidebarPrefs: () => ({
 			perInbox: ref(5),

@@ -501,6 +501,7 @@ export function dashboardShellStubs(): Record<string, unknown> {
 			error: ref(null),
 			refetch: vi.fn(),
 		}),
+		usePostboxActiveMailbox: () => ({ activeMailboxId: ref(null), setActiveMailboxId: vi.fn() }),
 		useAnswerQueueCount: () => ({ count: ref(0) }),
 		useAnswerQueue: () => ({
 			items: ref([]),
