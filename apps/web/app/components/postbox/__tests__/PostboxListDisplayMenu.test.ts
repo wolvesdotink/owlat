@@ -28,11 +28,11 @@ const stubs = {
 };
 
 const VIEW_MODES = [
-	{ value: 'flat', label: 'Flat' },
-	{ value: 'conversations', label: 'Conversations' },
-	{ value: 'categories', label: 'Categories' },
-	{ value: 'bundled', label: 'Bundled' },
-	{ value: 'sections', label: 'Sections' },
+	{ value: 'flat', label: 'Flat', description: 'One row per message.' },
+	{ value: 'conversations', label: 'Conversations', description: 'One row per thread.' },
+	{ value: 'categories', label: 'Categories', description: 'Grouped by kind of mail.' },
+	{ value: 'bundled', label: 'Bundled', description: 'Low-signal runs folded.' },
+	{ value: 'sections', label: 'Sections', description: 'Your own sections.' },
 ];
 
 function mountMenu(props: Record<string, unknown> = {}) {
@@ -50,8 +50,17 @@ function mountMenu(props: Record<string, unknown> = {}) {
 }
 
 const radios = (w: ReturnType<typeof mountMenu>) => w.findAll('[role="menuitemradio"]');
+/**
+ * The radio's accessible name: its text without the `aria-hidden` description,
+ * which reaches assistive technology through `aria-describedby` instead.
+ */
+function nameOf(radio: ReturnType<typeof radios>[number]): string {
+	const clone = radio.element.cloneNode(true) as HTMLElement;
+	for (const hidden of clone.querySelectorAll('[aria-hidden="true"]')) hidden.remove();
+	return (clone.textContent ?? '').trim();
+}
 const named = (w: ReturnType<typeof mountMenu>, text: string) =>
-	radios(w).find((r) => r.text().trim() === text);
+	radios(w).find((r) => nameOf(r) === text);
 
 describe('PostboxListDisplayMenu', () => {
 	it('names itself on the trigger — it is the only rendering of its contents', () => {
@@ -62,7 +71,7 @@ describe('PostboxListDisplayMenu', () => {
 
 	it('offers every option of all four preferences', () => {
 		const w = mountMenu();
-		const labels = radios(w).map((r) => r.text().trim());
+		const labels = radios(w).map(nameOf);
 		// All five view modes, including the two the old control clipped.
 		expect(labels).toEqual(
 			expect.arrayContaining(['Flat', 'Conversations', 'Categories', 'Bundled', 'Sections'])
@@ -82,13 +91,24 @@ describe('PostboxListDisplayMenu', () => {
 		const w = mountMenu({ viewMode: 'bundled', sortOrder: 'oldest', density: 'compact' });
 		const checked = radios(w)
 			.filter((r) => r.attributes('aria-checked') === 'true')
-			.map((r) => r.text().trim());
+			.map(nameOf);
 		expect(checked).toEqual([
 			'Bundled',
 			'Oldest first',
 			'Compact',
 			'Reader on the right (resizable)',
 		]);
+	});
+
+	it('describes each view mode in one line, outside its accessible name', () => {
+		const w = mountMenu();
+		for (const mode of VIEW_MODES) {
+			const radio = named(w, mode.label);
+			expect(radio, mode.label).toBeDefined();
+			const describedBy = radio!.attributes('aria-describedby');
+			expect(describedBy, mode.label).toBeTruthy();
+			expect(w.find(`[id="${describedBy}"]`).text()).toBe(mode.description);
+		}
 	});
 
 	it('routes each pick back to the layout', async () => {
@@ -107,7 +127,7 @@ describe('PostboxListDisplayMenu', () => {
 	it('drops the view-mode group where there is no view mode to pick', () => {
 		// Every folder but the inbox renders flat, so the group would be a lie.
 		const w = mountMenu({ viewModeOptions: undefined });
-		const labels = radios(w).map((r) => r.text().trim());
+		const labels = radios(w).map(nameOf);
 		expect(labels).not.toContain('Conversations');
 		expect(labels).toContain('Newest first');
 	});

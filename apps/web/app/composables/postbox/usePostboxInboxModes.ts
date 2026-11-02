@@ -3,8 +3,8 @@
  * PostboxLayout.vue (which owns the panes) to keep that file under the
  * file-size cap.
  *
- *   - `viewMode` — which of the three list renderers is active (Flat /
- *     Conversations / Categories). Inbox-only; every other folder renders flat.
+ *   - `viewMode` — which of the five list renderers is active (see
+ *     utils/postboxViewMode). Inbox-only; every other folder renders flat.
  *   - `inboxMode` — which surface the inbox route lands on: 'today' (the
  *     focused single column) or 'browse' (the three panes).
  *
@@ -62,10 +62,10 @@ export function usePostboxInboxModes(options: PostboxInboxModesOptions) {
 		void router.replace({ query: rest });
 	}
 
-	// Inbox view mode — exactly one of Flat / Conversations / Categories is
-	// active. The saved (server-persisted) value drives the list; a pending
-	// optimistic override reflects a tap immediately while the mutation lands,
-	// then hands back to the server value. Grouped renderers are inbox-only; the
+	// Inbox view mode — exactly one of the five list renderers is active. The
+	// saved (server-persisted) value drives the list; a pending optimistic
+	// override reflects a tap immediately while the mutation lands, then hands
+	// back to the server value. Grouped renderers are inbox-only; the
 	// flat list with its hover/keyboard triage serves all other folders.
 	const pendingViewMode = ref<PostboxViewMode | null>(null);
 	const viewMode = computed<PostboxViewMode>(() =>
@@ -87,11 +87,14 @@ export function usePostboxInboxModes(options: PostboxInboxModesOptions) {
 	}
 	const activeListRenderer = computed(() => postboxListRenderer(viewMode.value, folderRole.value));
 	// The mode registry stays a plain module-scope constant (non-UI code reads it
-	// too); its segment labels are localized here, where they are rendered.
+	// too); its labels and one-line descriptions are localized here, where they
+	// are rendered. Five views with bare names cannot be told apart without
+	// trying each one, so every option carries what it does.
 	const viewModeOptions = computed(() =>
 		POSTBOX_VIEW_MODE_OPTIONS.map(({ value }) => ({
 			value,
 			label: t(`components.postbox.postboxLayout.viewModes.${value}`),
+			description: t(`components.postbox.postboxLayout.viewModeDescriptions.${value}`),
 		}))
 	);
 

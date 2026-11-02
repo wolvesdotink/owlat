@@ -13,7 +13,10 @@
  * is active" preference actually is; picking the active option is a no-op.
  *
  * View mode is inbox-only, so its group renders only when the layout hands over
- * the options — every other folder always renders flat.
+ * the options — every other folder always renders flat. Each view carries a
+ * one-line description under its name: five bare names cannot be told apart
+ * without trying each one. The description is `aria-hidden` and referenced by
+ * `aria-describedby`, so a screen reader announces the name, then what it does.
  */
 import type { PostboxDensity } from '~/utils/postboxDensity';
 import { POSTBOX_DENSITY_OPTIONS } from '~/utils/postboxDensity';
@@ -25,7 +28,7 @@ import { POSTBOX_SORT_ORDER_OPTIONS } from '~/utils/postboxSortOrder';
 defineProps<{
 	/** Inbox-only list renderer; absent options hide the group entirely. */
 	viewMode?: string;
-	viewModeOptions?: Array<{ value: string; label: string }>;
+	viewModeOptions?: Array<{ value: string; label: string; description?: string }>;
 	sortOrder?: string;
 	density?: PostboxDensity;
 	readingPane?: PostboxReadingPane;
@@ -39,11 +42,14 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
+const descriptionIdPrefix = useId();
 
 /** Shared by all four groups — one string, not four copies drifting apart. */
 const HEADING_CLASS = 'px-3 pt-1.5 pb-1 text-2xs uppercase tracking-wider text-text-tertiary';
 const ITEM_CLASS =
 	'w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left whitespace-nowrap text-text-primary hover:bg-bg-surface';
+/** A view-mode item: the check sits beside the name, above its description. */
+const VIEW_MODE_ITEM_CLASS = ITEM_CLASS.replace('items-center', 'items-start');
 </script>
 
 <template>
@@ -62,7 +68,10 @@ const ITEM_CLASS =
 					type="button"
 					role="menuitemradio"
 					:aria-checked="viewMode === option.value"
-					:class="ITEM_CLASS"
+					:aria-describedby="
+						option.description ? `${descriptionIdPrefix}-${option.value}` : undefined
+					"
+					:class="VIEW_MODE_ITEM_CLASS"
 					@click="
 						emit('select-view-mode', option.value);
 						close();
@@ -70,11 +79,21 @@ const ITEM_CLASS =
 				>
 					<Icon
 						name="lucide:check"
-						class="w-3.5 h-3.5 flex-shrink-0 text-brand"
+						class="w-3.5 h-3.5 mt-0.5 flex-shrink-0 text-brand"
 						:class="{ invisible: viewMode !== option.value }"
 						aria-hidden="true"
 					/>
-					{{ option.label }}
+					<span class="flex flex-col">
+						{{ option.label }}
+						<span
+							v-if="option.description"
+							:id="`${descriptionIdPrefix}-${option.value}`"
+							aria-hidden="true"
+							class="max-w-60 whitespace-normal text-xs text-text-tertiary"
+						>
+							{{ option.description }}
+						</span>
+					</span>
 				</button>
 				<div class="my-1 border-t border-border-subtle" />
 			</template>

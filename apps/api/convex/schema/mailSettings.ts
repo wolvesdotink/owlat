@@ -70,7 +70,7 @@ export const mailSettingsTables = {
 		// category) or 'sections' (the split inbox — the sections a user's
 		// `pinToSection` filter rules name). Inbox-only — other folders always
 		// render flat. Optional so existing rows read as undefined; the reader
-		// defaults it to 'flat'.
+		// defaults it to 'conversations', so only an explicit 'flat' is flat.
 		viewMode: v.optional(mailViewModeValidator),
 		// Reading-pane layout: 'right' (the reader beside the list — the geometry
 		// that shipped before this control existed), 'bottom' (a full-width list
