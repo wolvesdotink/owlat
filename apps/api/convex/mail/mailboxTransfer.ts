@@ -19,7 +19,7 @@
  *   - `sealed`: a sealed (end-to-end encrypted) message bound for a mailbox
  *     on another address. Only the address it was sealed to holds the key, so
  *     it may only travel between mailboxes on that same address.
- *   - `sending`: a sent message whose delivery is still being tracked; the
+ *   - `sending`: a sent message with a recipient still queued; the
  *     transport's updates address the source row.
  *   - `over_quota`: the target has no room for the batch.
  *
@@ -128,6 +128,7 @@ async function collectSources(
 ): Promise<{ sources: Doc<'mailMessages'>[]; skipped: Id<'mailMessages'>[] }> {
 	const sources: Doc<'mailMessages'>[] = [];
 	const seen = new Set<Id<'mailMessages'>>();
+	const messageIds = new Set<string>();
 	const skipped: Id<'mailMessages'>[] = [];
 	for (const id of args.messageIds) {
 		if (seen.has(id)) continue;
@@ -142,7 +143,8 @@ async function collectSources(
 		if (isSealed(message) && owned.mailbox.address !== target.address) {
 			refuse('sealed', 'A sealed message can only move to a mailbox that can open it');
 		}
-		if (message.outbound?.state === 'queued') {
+		// `partial` can still hold queued recipients, whose updates address this row.
+		if (message.outbound?.recipients.some((r) => r.state === 'queued')) {
 			refuse('sending', 'This message is still being sent');
 		}
 		// The column is already canonical, so it is matched as stored.
@@ -152,10 +154,11 @@ async function collectSources(
 				q.eq('mailboxId', target._id).eq('rfc822MessageId', message.rfc822MessageId)
 			)
 			.first();
-		if (duplicate) {
+		if (duplicate || messageIds.has(message.rfc822MessageId)) {
 			skipped.push(id);
 			continue;
 		}
+		messageIds.add(message.rfc822MessageId);
 		sources.push(message);
 	}
 	return { sources, skipped };

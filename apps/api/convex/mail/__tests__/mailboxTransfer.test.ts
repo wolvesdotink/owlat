@@ -199,6 +199,54 @@ describe('mail.mailboxTransfer.transfer', () => {
 		expect(await messagesIn(t, work.mailboxId)).toHaveLength(1);
 	});
 
+	it('copies one message once when two sources share its Message-ID', async () => {
+		const t = convexTest(schema, modules);
+		const { work, personal } = await setup(t);
+		const shared = '<twice@example.com>';
+		const first = await seedMessage(t, personal.mailboxId, { rfc822MessageId: shared });
+		const second = await seedMessage(t, personal.mailboxId, {
+			rfc822MessageId: shared,
+			role: 'archive',
+		});
+
+		const result = await t.mutation(api.mail.mailboxTransfer.transfer, {
+			messageIds: [first, second],
+			targetMailboxId: work.mailboxId,
+			mode: 'move',
+		});
+
+		expect(result.skipped).toEqual([second]);
+		expect(await messagesIn(t, work.mailboxId)).toHaveLength(1);
+		expect((await messagesIn(t, personal.mailboxId)).map((m) => m._id)).toEqual([second]);
+	});
+
+	it('refuses a sent message while any recipient is still queued', async () => {
+		const t = convexTest(schema, modules);
+		const { work, personal } = await setup(t);
+		const messageId = await seedMessage(t, personal.mailboxId);
+		const recipient = (idx: number, state: 'queued' | 'sent') => ({
+			idx,
+			address: `r${idx}@example.com`,
+			mtaJobId: `pb-${messageId}-${idx}`,
+			state,
+		});
+		await t.run(async (ctx) => {
+			await ctx.db.patch(messageId, {
+				outbound: { state: 'partial', recipients: [recipient(0, 'sent'), recipient(1, 'queued')] },
+			});
+		});
+
+		await expect(
+			t.mutation(api.mail.mailboxTransfer.transfer, {
+				messageIds: [messageId],
+				targetMailboxId: work.mailboxId,
+				mode: 'move',
+			})
+		).rejects.toThrow(/still being sent/);
+		expect(await messagesIn(t, personal.mailboxId)).toHaveLength(1);
+		expect(await messagesIn(t, work.mailboxId)).toEqual([]);
+	});
+
 	it("refuses a teammate's personal mailbox, even to an org owner", async () => {
 		const t = convexTest(schema, modules);
 		const { personal } = await setup(t);
