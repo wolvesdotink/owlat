@@ -5227,8 +5227,29 @@
 				"toggle": "Nachrichtendetails"
 			},
 			"postboxMovePickerDialog": {
+				"alreadyThere": "{name} hat diese Nachricht schon, sie bleibt hier | {name} hat {count} dieser Nachrichten schon, sie bleiben hier",
+				"confirmTeamAction": "Weiter",
+				"confirmTeamBody": "Alle mit Zugriff auf {name} sehen die Mail, die du dort ablegst.",
+				"confirmTeamTitle": "Mail in {name} ablegen?",
+				"connectedNote": "In ein verbundenes Konto kann noch keine Mail verschoben werden.",
+				"copiedTo": "Nach {name} kopiert | {count} Nachrichten nach {name} kopiert",
+				"copy": "Kopieren",
+				"copyOnlyNote": "Diese Nachricht liegt in einem verbundenen Konto. Du kannst sie vorerst kopieren, aber nicht verschieben.",
+				"copyTo": "Nach {name} kopieren",
+				"movedTo": "Nach {name} verschoben | {count} Nachrichten nach {name} verschoben",
+				"moveTo": "Nach {name} verschieben",
 				"noOtherFolders": "Keine weiteren Ordner",
-				"title": "In Ordner verschieben"
+				"otherMailboxes": "Andere Postfächer",
+				"refused": {
+					"external_source": "Mail aus einem verbundenen Konto kannst du vorerst nur kopieren, nicht verschieben.",
+					"external_target": "In ein verbundenes Konto kann noch keine Mail verschoben werden.",
+					"over_quota": "Dieses Postfach ist voll.",
+					"sealed": "Diese Nachricht ist Ende-zu-Ende-verschlüsselt. Sie kann nur in ein Postfach derselben Adresse verschoben werden, denn nur dort liegt ihr Schlüssel.",
+					"sending": "Diese Nachricht wird noch gesendet. Versuch es noch mal, sobald sie zugestellt ist."
+				},
+				"title": "In Ordner verschieben",
+				"transferOperation": "In Postfach verschieben",
+				"undoCopyOperation": "Kopie rückgängig machen"
 			},
 			"postboxNotificationSettings": {
 				"badgeAll": {
@@ -18549,6 +18570,10 @@
 				"labelPrompt": "Label vergeben",
 				"move": "Verschieben nach…",
 				"movePrompt": "Verschieben nach",
+				"moveToMailbox": "In Postfach verschieben…",
+				"moveToMailboxPrompt": "In Postfach verschieben",
+				"copyToMailbox": "In Postfach kopieren…",
+				"copyToMailboxPrompt": "In Postfach kopieren",
 				"followUp": "Erinnern, falls keine Antwort kommt…",
 				"followUpPrompt": "Erinnern",
 				"cancelFollowUp": "Antwort-Erinnerung abbrechen",

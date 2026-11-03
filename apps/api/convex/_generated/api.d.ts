@@ -1500,6 +1500,8 @@ import type * as mail_mailboxMove from '../mail/mailboxMove.js';
 import type * as mail_mailboxMoveActions from '../mail/mailboxMoveActions.js';
 import type * as mail_mailboxMoveResolve from '../mail/mailboxMoveResolve.js';
 import type * as mail_mailboxRequest from '../mail/mailboxRequest.js';
+import type * as mail_mailboxTransfer from '../mail/mailboxTransfer.js';
+import type * as mail_mailboxTransferCopy from '../mail/mailboxTransferCopy.js';
 import type * as mail_mailboxUsage from '../mail/mailboxUsage.js';
 import type * as mail_memberMailboxStatus from '../mail/memberMailboxStatus.js';
 import type * as mail_messageActions from '../mail/messageActions.js';
@@ -3497,6 +3499,8 @@ declare const fullApi: ApiFromModules<{
 	'mail/mailboxMoveActions': typeof mail_mailboxMoveActions;
 	'mail/mailboxMoveResolve': typeof mail_mailboxMoveResolve;
 	'mail/mailboxRequest': typeof mail_mailboxRequest;
+	'mail/mailboxTransfer': typeof mail_mailboxTransfer;
+	'mail/mailboxTransferCopy': typeof mail_mailboxTransferCopy;
 	'mail/mailboxUsage': typeof mail_mailboxUsage;
 	'mail/memberMailboxStatus': typeof mail_memberMailboxStatus;
 	'mail/messageActions': typeof mail_messageActions;

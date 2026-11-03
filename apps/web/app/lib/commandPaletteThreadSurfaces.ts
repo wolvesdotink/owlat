@@ -104,6 +104,9 @@ export interface ThreadSurfaceDeps {
 	snoozeOptions: () => PaletteArgumentOption[];
 	labelOptions: () => PaletteArgumentOption[];
 	folderOptions: () => PaletteArgumentOption[];
+	/** The caller's other mailboxes; empty leaves the verb out. */
+	mailboxMoveOptions?: () => PaletteArgumentOption[];
+	mailboxCopyOptions?: () => PaletteArgumentOption[];
 	followUpOptions: () => PaletteArgumentOption[];
 	onReply: () => void;
 	onArchive: () => void;
@@ -268,6 +271,34 @@ export function buildThreadSurfaceGroups(
 				{ id: 'postbox:move', label: t(`${P}.move`), icon: 'lucide:folder-input' },
 				`${P}.movePrompt`,
 				folders
+			)
+		);
+	}
+	const mailboxMoves = deps.mailboxMoveOptions?.() ?? [];
+	if (mailboxMoves.length > 0) {
+		items.push(
+			withArgument(
+				{
+					id: 'postbox:thread-move-to-mailbox',
+					label: t(`${P}.moveToMailbox`),
+					icon: 'lucide:inbox',
+				},
+				`${P}.moveToMailboxPrompt`,
+				mailboxMoves
+			)
+		);
+	}
+	const mailboxCopies = deps.mailboxCopyOptions?.() ?? [];
+	if (mailboxCopies.length > 0) {
+		items.push(
+			withArgument(
+				{
+					id: 'postbox:thread-copy-to-mailbox',
+					label: t(`${P}.copyToMailbox`),
+					icon: 'lucide:copy',
+				},
+				`${P}.copyToMailboxPrompt`,
+				mailboxCopies
 			)
 		);
 	}

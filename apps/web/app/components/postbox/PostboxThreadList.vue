@@ -152,13 +152,13 @@ const {
 	labelOpen,
 	moveOpen,
 	labels,
-	movableFolders,
+	movePicker,
 	openSnooze,
 	openLabel,
 	openMove,
 	snoozeFocused,
 	applyLabelToFocused,
-	moveFocusedTo,
+	movePickerOn,
 } = usePostboxRowPickers({
 	mailboxId: mailboxIdRef,
 	folderRole: computed(() => props.folderRole),
@@ -492,8 +492,8 @@ useListAnswerRoundTrip({
 	/>
 	<PostboxMovePickerDialog
 		:open="moveOpen"
-		:folders="movableFolders"
+		v-bind="movePicker"
 		@update:open="moveOpen = $event"
-		@pick="moveFocusedTo"
+		v-on="movePickerOn"
 	/>
 </template>

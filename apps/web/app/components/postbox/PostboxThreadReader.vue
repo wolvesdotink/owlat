@@ -230,7 +230,7 @@ const readerActions = usePostboxReaderActions({
 });
 // Translate, Copy link / Share in chat, Find (⌘F), the ⌘K surface and the
 // single-key shortcuts, all acting on this conversation.
-const { translation, find, shareTarget, copyConversationLink, conversationLinkOf } =
+const { translation, find, shareTarget, copyConversationLink, conversationLinkOf, moves } =
 	usePostboxReaderCommands({
 		message: () => props.message,
 		folderRole: () => props.folderRole,
@@ -487,6 +487,7 @@ function createFilterFrom(msg: { fromAddress?: string; subject?: string }) {
 			v-model:share-target="shareTarget"
 			:mailbox-id="message.mailboxId"
 			:actions="readerActions"
+			:moves="moves"
 			:brief="rb"
 			:messages="allMessages"
 			:shared="rb.isShared.value"
