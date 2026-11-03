@@ -1335,6 +1335,8 @@ import type * as mail_ai_priorityScore from '../mail/ai/priorityScore.js';
 import type * as mail_ai_promptGuards from '../mail/ai/promptGuards.js';
 import type * as mail_ai_reviseDraft from '../mail/ai/reviseDraft.js';
 import type * as mail_ai_scheduling from '../mail/ai/scheduling.js';
+import type * as mail_ai_searchRewrite from '../mail/ai/searchRewrite.js';
+import type * as mail_ai_searchRewriteText from '../mail/ai/searchRewriteText.js';
 import type * as mail_ai_transcript from '../mail/ai/transcript.js';
 import type * as mail_ai_voiceGuidance from '../mail/ai/voiceGuidance.js';
 import type * as mail_ai_voiceProfile from '../mail/ai/voiceProfile.js';
@@ -3361,6 +3363,8 @@ declare const fullApi: ApiFromModules<{
 	'mail/ai/promptGuards': typeof mail_ai_promptGuards;
 	'mail/ai/reviseDraft': typeof mail_ai_reviseDraft;
 	'mail/ai/scheduling': typeof mail_ai_scheduling;
+	'mail/ai/searchRewrite': typeof mail_ai_searchRewrite;
+	'mail/ai/searchRewriteText': typeof mail_ai_searchRewriteText;
 	'mail/ai/transcript': typeof mail_ai_transcript;
 	'mail/ai/voiceGuidance': typeof mail_ai_voiceGuidance;
 	'mail/ai/voiceProfile': typeof mail_ai_voiceProfile;

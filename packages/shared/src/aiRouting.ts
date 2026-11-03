@@ -80,6 +80,8 @@ export const AI_TASK_NAMES = [
 	// Language plane: read on arrival's digest lines and the rule dry run (§6)
 	'mail.digest',
 	'mail.rule_test',
+	// Language plane: a plain-language Postbox search rewritten into operators
+	'mail.search_rewrite',
 ] as const;
 
 export type AiTaskName = (typeof AI_TASK_NAMES)[number];

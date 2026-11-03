@@ -11,11 +11,11 @@
 
 import {
 	formatSearchSize,
-	isOrToken,
+	isPlainTextSearch,
+	renderSearchTokens,
 	splitNegation,
 	tokenizeSearchQuery,
 	type MailSearchQuery,
-	type SearchToken,
 } from '@owlat/shared/mailSearch';
 
 /**
@@ -33,7 +33,7 @@ import {
 export function removeSearchOperator(input: string, key: string): string {
 	const wantNegated = key.startsWith('-');
 	const prefix = `${(wantNegated ? key.slice(1) : key).toLowerCase()}:`;
-	return renderTokens(
+	return renderSearchTokens(
 		tokenizeSearchQuery(input).filter((token) => {
 			const { negated, body } = splitNegation(token.raw);
 			if (!body.toLowerCase().startsWith(prefix)) return true;
@@ -50,38 +50,9 @@ export function removeSearchOperator(input: string, key: string): string {
  * words the moment the user cleared an unrelated operator.
  */
 export function stripSearchOperators(input: string): string {
-	return renderTokens(
+	return renderSearchTokens(
 		tokenizeSearchQuery(input).filter((token) => !/^[a-z_]+:/i.test(splitNegation(token.raw).body))
 	);
-}
-
-/**
- * Join tokens back into a query string, re-quoting what needs it and dropping
- * the `OR`s that a removal left dangling — `from:a OR from:b` minus `from` is
- * a bare `OR`, which would otherwise re-parse into an empty alternative.
- */
-function renderTokens(tokens: SearchToken[]): string {
-	const kept: SearchToken[] = [];
-	for (const token of tokens) {
-		if (isOrToken(token) && (kept.length === 0 || isOrToken(kept[kept.length - 1]!))) continue;
-		kept.push(token);
-	}
-	while (kept.length > 0 && isOrToken(kept[kept.length - 1]!)) kept.pop();
-	return kept
-		.map((token) => (token.quoted || /\s/.test(token.raw) ? quoteToken(token.raw) : token.raw))
-		.join(' ')
-		.trim();
-}
-
-/** Re-quote a token for display, keeping `-op:"value with spaces"` shape. */
-function quoteToken(raw: string): string {
-	const { negated, body } = splitNegation(raw);
-	const colon = body.indexOf(':');
-	const requoted =
-		colon > 0 && /^[a-z_]+:/i.test(body)
-			? `${body.slice(0, colon)}:"${body.slice(colon + 1)}"`
-			: `"${body}"`;
-	return negated ? `-${requoted}` : requoted;
 }
 
 export interface SearchChip {
@@ -136,4 +107,23 @@ export function describeChips(parsed: MailSearchQuery): SearchChip[] {
 		}
 	}
 	return chips;
+}
+
+/** At most this many results counts as "found little" for the rewrite offer. */
+const FEW_RESULTS = 3;
+
+/**
+ * Whether the search page offers to turn the query into operators: the query is
+ * at least two loose words with no syntax, and the search has settled on a
+ * handful of results or none. A query with operators was written by someone
+ * who knows them, and a single word has nothing to translate.
+ */
+export function isSearchRewriteOffered(input: {
+	parsed: MailSearchQuery;
+	resultCount: number;
+	hasMore: boolean;
+	isLoading: boolean;
+}): boolean {
+	if (input.isLoading || input.hasMore || input.resultCount > FEW_RESULTS) return false;
+	return isPlainTextSearch(input.parsed) && input.parsed.text.split(/\s+/).length >= 2;
 }

@@ -5568,6 +5568,17 @@
 					"olderThan": "älter als 7d, 24h, 30m"
 				}
 			},
+			"postboxSearchRewrite": {
+				"editHint": "Prüf die Operatoren, bevor du suchst, und korrigier, was falsch geraten wurde.",
+				"failed": "Die Suche konnte nicht vorgeschlagen werden. Versuch es gleich noch einmal.",
+				"none": "Kein Suchoperator passt zu diesen Wörtern. Beschreib die Nachricht anders.",
+				"offer": "Wenige Treffer. KI kann diese Wörter in eine Suche mit Operatoren umwandeln.",
+				"operation": "Suche vorschlagen",
+				"search": "Suchen",
+				"searchFor": "Suchen nach",
+				"suggest": "Suche vorschlagen",
+				"working": "Wird vorgeschlagen…"
+			},
 			"postboxSecurityBadge": {
 				"cantDecryptSuffix": "· nicht entschlüsselbar",
 				"copyCiphertext": "Verschlüsselte Nachricht kopieren",
