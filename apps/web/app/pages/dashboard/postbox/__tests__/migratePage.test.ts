@@ -1,9 +1,9 @@
 /**
- * The migrate wizard's "returning from Google sign-in" hand-off.
+ * The migrate wizard's "returning from provider sign-in" hand-off.
  *
  * The OAuth flow takes the browser away from this page, so the connect form's
  * `submitted` event never fires — the wizard restarts the import itself when it
- * comes back with `googleConnected=1`. Two timings have to work: the account
+ * comes back with `oauthConnected=1`. Two timings have to work: the account
  * subscription already resolved at mount (client-side nav / warm cache) and
  * resolving a tick later (cold load). On the first of those an `immediate:
  * true` watcher that calls its own not-yet-assigned stop handle throws
@@ -91,7 +91,7 @@ beforeEach(() => {
 	migration.value = null;
 	stepOverride.value = null;
 	suggestedSignature.value = null;
-	query.value = { googleConnected: '1' };
+	query.value = { oauthConnected: '1' };
 });
 
 afterEach(() => {
@@ -121,7 +121,7 @@ function mountPage(): VueWrapper {
 	return wrapper;
 }
 
-describe('migrate wizard — returning from Google sign-in', () => {
+describe('migrate wizard — returning from provider sign-in', () => {
 	it('starts the import once when the account is already resolved at mount', async () => {
 		account.value = connectedAccount;
 		mountPage();
@@ -132,13 +132,23 @@ describe('migrate wizard — returning from Google sign-in', () => {
 		expect(showToast).toHaveBeenCalledWith(expect.stringContaining('Import'), 'success');
 	});
 
-	it('strips the googleConnected flag from the URL', async () => {
+	it('strips the oauthConnected flag from the URL', async () => {
 		account.value = connectedAccount;
-		query.value = { googleConnected: '1', from: 'onboarding' };
+		query.value = { oauthConnected: '1', from: 'onboarding' };
 		mountPage();
 		await nextTick();
 
 		expect(replace).toHaveBeenCalledWith({ query: { from: 'onboarding' } });
+	});
+
+	it('still picks up a consent that returned with the previous flag', async () => {
+		account.value = connectedAccount;
+		query.value = { googleConnected: '1' };
+		mountPage();
+		await nextTick();
+
+		expect(start).toHaveBeenCalledTimes(1);
+		expect(replace).toHaveBeenCalledWith({ query: {} });
 	});
 
 	it('waits for a later-resolving account subscription, then starts once', async () => {

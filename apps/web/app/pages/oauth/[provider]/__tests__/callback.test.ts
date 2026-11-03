@@ -1,5 +1,5 @@
 /**
- * The page Google redirects back to after the consent screen.
+ * The page Google or Microsoft redirects back to after the consent screen.
  *
  * Everything that can go wrong here goes wrong in the user's face, on a page
  * they cannot retry by reloading: the authorization code is single-use, so a
@@ -21,13 +21,19 @@ import CallbackPage from '../callback.vue';
 
 let run: ReturnType<typeof vi.fn>;
 let navigateTo: ReturnType<typeof vi.fn>;
+/** The label the page gave its operation: which provider's exchange it runs. */
+let operationLabel: string | undefined;
 
-function mountPage(query: Record<string, string>) {
+function mountPage(query: Record<string, string>, provider = 'google') {
+	const path = `/oauth/${provider}/callback`;
 	installNuxtStubs({
 		...i18nStubs,
 		navigateTo,
-		useRoute: () => ({ path: '/oauth/google/callback', fullPath: '/oauth/google/callback', query }),
-		useBackendOperation: () => ({ run, isLoading: ref(false), inlineError: ref(null) }),
+		useRoute: () => ({ path, fullPath: path, params: { provider }, query }),
+		useBackendOperation: (_fn: unknown, opts?: { label?: () => string }) => {
+			operationLabel = opts?.label?.();
+			return { run, isLoading: ref(false), inlineError: ref(null) };
+		},
 	});
 	return mount(CallbackPage, {
 		global: {
@@ -84,6 +90,35 @@ describe('Google OAuth callback page', () => {
 
 	it('refuses a link that arrived without a code', async () => {
 		const wrapper = mountPage({ state: 'state-1' });
+		await flushPromises();
+
+		expect(run).not.toHaveBeenCalled();
+		expect(wrapper.text()).toContain('This link is incomplete');
+	});
+});
+
+describe('Microsoft OAuth callback page', () => {
+	it('exchanges the code through the Microsoft action', async () => {
+		const wrapper = mountPage({ code: 'auth-code', state: 'state-1' }, 'microsoft');
+		await flushPromises();
+
+		expect(operationLabel).toBe('Finish Microsoft sign-in');
+		expect(run).toHaveBeenCalledWith({ code: 'auth-code', state: 'state-1' });
+		expect(navigateTo).toHaveBeenCalledWith('/dashboard', { replace: true });
+		expect(wrapper.text()).toContain('Connecting your Microsoft mailbox');
+	});
+
+	it('points a declined work account at its admin', async () => {
+		const wrapper = mountPage({ error: 'access_denied', state: 'state-1' }, 'microsoft');
+		await flushPromises();
+
+		expect(run).not.toHaveBeenCalled();
+		expect(wrapper.text()).toContain('Microsoft sign-in not completed');
+		expect(wrapper.text()).toContain('admin may have to approve Owlat');
+	});
+
+	it('exchanges nothing on a provider path nobody was sent to', async () => {
+		const wrapper = mountPage({ code: 'auth-code', state: 'state-1' }, 'yahoo');
 		await flushPromises();
 
 		expect(run).not.toHaveBeenCalled();

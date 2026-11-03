@@ -681,6 +681,32 @@ describe('getCredentialsForWorker on an oauth2 row', () => {
 		expect(JSON.stringify(result)).not.toContain('1//REFRESH');
 	});
 
+	it('treats an oauth2 row without oauthProvider as a Google one', async () => {
+		const t = convexTest(schema, modules);
+		const accountId = await seedOAuthAccount(t);
+		await t.run((ctx) => ctx.db.patch(accountId, { oauthProvider: undefined }));
+		const urls: string[] = [];
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (url: string) => {
+				urls.push(url);
+				return {
+					status: 200,
+					json: async () => ({ access_token: 'ya29.LEGACY', expires_in: 3599 }),
+				} as unknown as Response;
+			})
+		);
+
+		const result = await t.action(internal.mail.external.accountsActions.getCredentialsForWorker, {
+			accountId: accountId as Id<'externalMailAccounts'>,
+		});
+
+		expect(urls).toEqual(['https://oauth2.googleapis.com/token']);
+		expect(result.kind === 'credentials' ? result.credentials.imapAccessToken : null).toBe(
+			'ya29.LEGACY'
+		);
+	});
+
 	it('marks the account auth_error and reports auth_revoked when the grant was revoked', async () => {
 		const t = convexTest(schema, modules);
 		const accountId = await seedOAuthAccount(t);

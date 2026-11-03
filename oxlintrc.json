@@ -301,7 +301,10 @@
 					},
 					{
 						"reason": "Instance capability, not mail data: a boolean from env presence that the connect form reads to pick its branch.",
-						"sites": ["apps/api/convex/mail/external/googleOAuth.ts:isConfigured"]
+						"sites": [
+							"apps/api/convex/mail/external/googleOAuth.ts:isConfigured",
+							"apps/api/convex/mail/external/microsoftOAuth.ts:isConfigured"
+						]
 					},
 					{
 						"reason": "The AI handling rules serve the ai.autonomy surface, not Postbox (mail/_helpers.ts exemption).",

@@ -1,6 +1,8 @@
 <script setup lang="ts">
 /**
- * Where Google sends the user back after the consent screen.
+ * Where Google (`/oauth/google/callback`) or Microsoft
+ * (`/oauth/microsoft/callback`) sends the user back after the consent screen.
+ * Each path is the redirect URI registered with that provider.
  *
  * A PAGE rather than an HTTP route on purpose: the exchange runs as an authed
  * Convex action, so the session that started the flow is still the one that
@@ -11,18 +13,26 @@
 import { api } from '@owlat/api';
 
 const { t } = useI18n();
-const KEY = 'oauth.google.callback';
 
 definePageMeta({ layout: 'dashboard', middleware: 'auth' });
-useHead({ title: () => t(`${KEY}.pageTitle`) });
 
 const route = useRoute();
 
+// Only the two registered providers; any other path segment is a link nobody
+// was sent to, and finishes as the "incomplete link" error under Google's copy.
+const isMicrosoft = route.params['provider'] === 'microsoft';
+const isKnownProvider = isMicrosoft || route.params['provider'] === 'google';
+const KEY = isMicrosoft ? 'oauth.microsoft.callback' : 'oauth.google.callback';
+useHead({ title: () => t(`${KEY}.pageTitle`) });
+
 const errorMessage = ref<string | null>(null);
-/** Google said no (the user declined, or the client is misconfigured). */
+/** The provider said no (the user declined, an admin must approve, or the app is misconfigured). */
 const denied = ref(false);
 
-const completeOp = useBackendOperation(api.mail.external.googleOAuthActions.complete, {
+const completeAction = isMicrosoft
+	? api.mail.external.microsoftOAuthActions.complete
+	: api.mail.external.googleOAuthActions.complete;
+const completeOp = useBackendOperation(completeAction, {
 	type: 'action',
 	label: () => t(`${KEY}.operation`),
 	inlineTarget: errorMessage,
@@ -43,7 +53,7 @@ async function exchange(): Promise<void> {
 		denied.value = true;
 		return;
 	}
-	if (!code || !state) {
+	if (!isKnownProvider || !code || !state) {
 		errorMessage.value = t(`${KEY}.missingParams`);
 		return;
 	}

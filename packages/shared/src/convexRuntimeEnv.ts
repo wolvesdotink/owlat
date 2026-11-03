@@ -238,6 +238,12 @@ export const CONVEX_RUNTIME_ENV_KEYS = [
 	// the Gmail card would silently keep offering only the app-password path.
 	'GOOGLE_OAUTH_CLIENT_ID',
 	'GOOGLE_OAUTH_CLIENT_SECRET',
+	// The Microsoft app registration for connecting an Outlook.com / Microsoft 365
+	// mailbox with Microsoft sign-in, read at function runtime
+	// (`mail/external/microsoftOAuth*`) like the Google pair above.
+	'MICROSOFT_OAUTH_CLIENT_ID',
+	'MICROSOFT_OAUTH_CLIENT_SECRET',
+	'MICROSOFT_OAUTH_TENANT',
 	'CALENDAR_TIMEZONE',
 	// Web Push VAPID key pair + contact subject, read by the push sender
 	// (apps/api/convex/push/) via getOptional(). Left in the compose `.env`

@@ -132,9 +132,9 @@ crons.interval(
 	internal.mail.authRateLimit.sweepOld,
 	{}
 );
-// Abandoned Google sign-in handshakes. `start` already deletes the caller's
-// prior row before inserting, so this only reclaims rows for users who walked
-// away and never came back; bounded per tick.
+// Abandoned Google and Microsoft sign-in handshakes. `start` already deletes
+// the caller's prior row before inserting, so this only reclaims rows for users
+// who walked away and never came back; bounded per tick.
 crons.interval(
 	'retention: external mailbox oauth states',
 	{ hours: 24 },

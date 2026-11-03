@@ -172,7 +172,7 @@ route 28 pages/desktop/welcome.vue
 route 4 pages/imprint.vue
 route 4 pages/index.vue
 route 9 pages/invite/accept.vue
-route 8 pages/oauth/google/callback.vue
+route 8 pages/oauth/[provider]/callback.vue
 route 11 pages/preferences.vue
 route 21 pages/setup/admin.vue
 route 30 pages/setup/email.vue

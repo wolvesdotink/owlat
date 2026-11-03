@@ -48,7 +48,7 @@ export const PRIVATE_ROUTE_NAMES: ReadonlySet<string> = new Set([
 	'confirm',
 	'archive',
 	'cancel-deletion',
-	'oauth-google-callback',
+	'oauth-provider-callback',
 	'desktop-connect',
 	'invite-accept',
 ]);
