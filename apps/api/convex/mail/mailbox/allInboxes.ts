@@ -64,8 +64,10 @@ async function readInbox(
 			.withIndex('by_folder_and_received', (q) => {
 				const folder = q.eq('folderId', source.folderId);
 				if (!range) return folder;
+				// The cursor's own `receivedAt` from its creation time down; the
+				// position filter in readSourceBatch drops what the page already showed.
 				if (range.tie !== undefined) {
-					return folder.eq('receivedAt', range.at).eq('_creationTime', range.tie);
+					return folder.eq('receivedAt', range.at).lte('_creationTime', range.tie);
 				}
 				return folder.lt('receivedAt', range.at);
 			})

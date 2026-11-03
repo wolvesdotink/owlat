@@ -98,6 +98,19 @@ describe('mail.mailbox.allInboxes.listMessages', () => {
 		expect(subjects[7]).toBe('oldest');
 	});
 
+	it('walks every message once across pages when they share a receivedAt but not a creation time', async () => {
+		const t = convexTest(schema, modules);
+		const at = Date.now() - 10_000;
+		const home = await seedInbox(t, { address: 'me@owlat.test' });
+		for (const n of [1, 2, 3, 4, 5]) {
+			await seedMessage(t, home.mailboxId, { subject: `same ${n}`, receivedAt: at });
+		}
+
+		const subjects = await walk(t, [home], 2);
+
+		expect([...subjects].sort()).toEqual(['same 1', 'same 2', 'same 3', 'same 4', 'same 5']);
+	});
+
 	it('leaves out a mailbox the caller only reaches as an org owner, and keeps a team inbox they belong to', async () => {
 		const t = convexTest(schema, modules);
 		const mine = await seedInbox(t, { address: 'me@owlat.test' });
