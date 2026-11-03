@@ -24,6 +24,7 @@ import type { BriefModeView } from '../../../../../api/convex/mail/interpret/bri
 
 import PostboxThreadReader, { type PostboxReaderMessage } from '../PostboxThreadReader.vue';
 import PostboxReaderMessageCard from '../PostboxReaderMessage.vue';
+import PostboxThreadChatItem from '../PostboxThreadChatItem.vue';
 import PostboxThreadReaderOverlays from '../PostboxThreadReaderOverlays.vue';
 import PostboxThreadHeader from '../PostboxThreadHeader.vue';
 import PostboxReaderStrip from '../PostboxReaderStrip.vue';
@@ -226,6 +227,8 @@ const CHROME = [
 	'PostboxThreadDiscussion',
 	'PostboxThreadDiscussionToggle',
 	'PostboxThreadFindButton',
+	'PostboxThreadChatToggle',
+	'PostboxChatBubble',
 	'PostboxThreadEarlier',
 	'PostboxTriageSuggestion',
 	'PostboxTeamComposer',
@@ -285,6 +288,8 @@ async function mountReader(next: Fixture, provide: Record<symbol, unknown> = {})
 				PostboxReaderNotice,
 				PostboxOverflowMenu: overflowMenu,
 				PostboxReaderMessage: PostboxReaderMessageCard,
+				// Real: with the chat layout off it renders the card above.
+				PostboxThreadChatItem,
 				// Real, so the pickers and dialogs it hosts resolve to the markers above.
 				PostboxThreadReaderOverlays,
 				PostboxLazyBody: passThrough,

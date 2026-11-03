@@ -19,6 +19,7 @@ import { useLocalStorage } from '~/composables/useLocalStorage';
 
 import PostboxThreadReader, { type PostboxReaderMessage } from '../PostboxThreadReader.vue';
 import PostboxReaderMessageCard from '../PostboxReaderMessage.vue';
+import PostboxThreadChatItem from '../PostboxThreadChatItem.vue';
 import PostboxThreadReaderOverlays from '../PostboxThreadReaderOverlays.vue';
 
 const THREAD = 'mail/mailbox/messages:listThreadMessages';
@@ -152,6 +153,8 @@ const CHROME = [
 	'PostboxThreadDiscussionToggle',
 	'PostboxThreadFindBar',
 	'PostboxThreadFindButton',
+	'PostboxThreadChatToggle',
+	'PostboxChatBubble',
 	'PostboxThreadEarlier',
 	'PostboxThreadHeader',
 	'PostboxTriageSuggestion',
@@ -171,6 +174,8 @@ function mountReader() {
 			components: {
 				...Object.fromEntries(CHROME.map((name) => [name, marker(name)])),
 				PostboxReaderMessage: PostboxReaderMessageCard,
+				// Real: with the chat layout off it renders the card above.
+				PostboxThreadChatItem,
 				// Real, so the pickers and dialogs it hosts resolve to the markers above.
 				PostboxThreadReaderOverlays,
 				PostboxLazyBody: passThrough,

@@ -19,6 +19,7 @@ import { earlierThreadPageArgs, threadPageArgs } from '~/composables/postbox/pos
 
 import PostboxThreadReader, { type PostboxReaderMessage } from '../PostboxThreadReader.vue';
 import PostboxReaderMessageCard from '../PostboxReaderMessage.vue';
+import PostboxThreadChatItem from '../PostboxThreadChatItem.vue';
 import PostboxThreadReaderOverlays from '../PostboxThreadReaderOverlays.vue';
 import PostboxThreadEarlier from '../PostboxThreadEarlier.vue';
 import PostboxThreadFindBar from '../PostboxThreadFindBar.vue';
@@ -168,6 +169,8 @@ const CHROME = [
 	'PostboxThreadDiscussionToggle',
 	'PostboxThreadFindBar',
 	'PostboxThreadFindButton',
+	'PostboxThreadChatToggle',
+	'PostboxChatBubble',
 	'PostboxThreadHeader',
 	'PostboxTriageSuggestion',
 	'PostboxTeamComposer',
@@ -187,6 +190,8 @@ function mountReader(components: Record<string, unknown> = {}) {
 			components: {
 				...Object.fromEntries(CHROME.map((name) => [name, marker(name)])),
 				PostboxReaderMessage: PostboxReaderMessageCard,
+				// Real: with the chat layout off it renders the card above.
+				PostboxThreadChatItem,
 				// Real, so the pickers and dialogs it hosts resolve to the markers above.
 				PostboxThreadReaderOverlays,
 				PostboxThreadEarlier,
